@@ -1341,6 +1341,27 @@ type Census = {
   readonly unknown: readonly string[]
 }
 
+type CasCensus = {
+  readonly inodes: ReadonlyMap<string, number>
+  readonly otherBytes: number
+  readonly unknown: readonly string[]
+}
+
+const censusCacheBrand: unique symbol = Symbol('EditorViewBudgetCensusCache')
+/** Opaque publication-lifetime owner of epoch-validated host CAS scans. */
+export type EditorViewBudgetCensusCache = { readonly [censusCacheBrand]: true }
+const censusCaches = new WeakMap<EditorViewBudgetCensusCache, Map<string, Promise<CasCensus>>>()
+
+/**
+ * One publication owns this opaque cache; a batch shares it across its root coordinators.
+ * Only CAS inode accounting is shared, never roots, generations, metadata, pins or readers.
+ */
+export const createEditorViewBudgetCensusCache = (): EditorViewBudgetCensusCache => {
+  const cache: EditorViewBudgetCensusCache = { [censusCacheBrand]: true }
+  censusCaches.set(cache, new Map())
+  return Object.freeze(cache)
+}
+
 const generationKey = ({
   editorRoot,
   name,
@@ -1434,6 +1455,79 @@ const casCensus = async (
 }
 /* eslint-enable no-await-in-loop */
 
+/** Exact ledger identity, including store registration independently of discovered roots. */
+const casLedgerFingerprint = (state: BudgetState): string =>
+  JSON.stringify([
+    state.epoch,
+    state.journalFloor,
+    state.journal.map((entry) => [entry.epoch, entry.estimatedBytes]),
+    Array.from(state.contentStores).toSorted(),
+  ])
+
+const hostCasCensus = async ({
+  state,
+  contentStores,
+  censusCache,
+}: {
+  readonly state: BudgetState
+  readonly contentStores: readonly string[]
+  readonly censusCache: EditorViewBudgetCensusCache | undefined
+}): Promise<CasCensus> => {
+  // Capture the complete ledger fingerprint before scanning. A writer after this
+  // snapshot is still charged by admission's existing journal and reservations.
+  // This is not a filesystem snapshot: unjournaled external CAS mutations are not
+  // validated, and removals can conservatively overcount until a fresh census.
+  const ledgerFingerprint = casLedgerFingerprint(state)
+  const key = JSON.stringify([
+    editorViewHostBudgetStateDirectory(),
+    ledgerFingerprint,
+    contentStores,
+  ])
+  const sharedEntries = censusCache === undefined ? undefined : censusCaches.get(censusCache)
+  // Root/generation walks can outlive another writer's ledger change. Never reuse
+  // or retain an old-key snapshot in that case, even though admission still charges
+  // that writer conservatively. This live read and lookup have no intervening await.
+  const entries =
+    casLedgerFingerprint(readState()) === ledgerFingerprint ? sharedEntries : undefined
+  if (entries === undefined) sharedEntries?.clear()
+  const cached = entries?.get(key)
+  if (cached !== undefined) return cached
+  // A changed fingerprint invalidates even an older completed key: store removal
+  // and later reappearance must not resurrect a path-only historical snapshot.
+  entries?.clear()
+  const scan = async (): Promise<CasCensus> => {
+    const inodes = new Map<string, number>()
+    let otherBytes = 0
+    const unknown: string[] = []
+    /* eslint-disable no-await-in-loop -- Bound host-wide CAS walks to one store at a time. */
+    for (const store of contentStores) {
+      try {
+        const footprint = await casCensus(store)
+        for (const [inode, size] of footprint.inodes) inodes.set(inode, size)
+        otherBytes += footprint.otherBytes
+      } catch {
+        // Even a vanished store during a failed scan is not a proven complete scan.
+        unknown.push(store)
+      }
+    }
+    /* eslint-enable no-await-in-loop */
+    return { inodes, otherBytes, unknown }
+  }
+  const pending: Promise<CasCensus> = scan().then(
+    (result) => {
+      // Share partial results only with current waiters, never as a later success.
+      if (result.unknown.length > 0 && entries?.get(key) === pending) entries.delete(key)
+      return result
+    },
+    (error: unknown) => {
+      if (entries?.get(key) === pending) entries.delete(key)
+      throw error
+    },
+  )
+  entries?.set(key, pending)
+  return pending
+}
+
 const listRoots = ({
   contentStore,
   root,
@@ -1520,12 +1614,14 @@ const takeCensus = async ({
   heldEditorRoot,
   discoverRoots,
   staged,
+  censusCache,
 }: {
   readonly contentStore: string
   readonly root: EditorViewBudgetRoot
   readonly heldEditorRoot: string
   readonly discoverRoots: () => readonly EditorViewBudgetRoot[]
   readonly staged: Map<string, string>
+  readonly censusCache: EditorViewBudgetCensusCache | undefined
 }): Promise<Census> => {
   /* eslint-disable no-await-in-loop -- Legacy reconciliation never waits for a root lock. */
   for (const store of readState().contentStores) await synchronizeLegacyStore(store)
@@ -1700,15 +1796,16 @@ const takeCensus = async ({
       })
     }
   }
-  const cas = { inodes: new Map<string, number>(), otherBytes: 0 }
-  const contentStores = new Set([...state.contentStores, ...roots.map((view) => view.contentStore)])
+  const contentStores = Array.from(
+    new Set([...state.contentStores, ...roots.map((view) => view.contentStore)]),
+  ).toSorted()
+  const cas = await hostCasCensus({ state, contentStores, censusCache })
+  unknown.push(...cas.unknown)
   let localMetadataBytes = 0
   const metadataLinked = new Map<string, number>()
   for (const store of contentStores) {
     try {
-      const footprint = await casCensus(store)
-      for (const [key, size] of footprint.inodes) cas.inodes.set(key, size)
-      cas.otherBytes += footprint.otherBytes
+      // Metadata is always fresh; it must not alias or mutate the cached CAS map.
       for (const path of [`${store}.budget`, `${store}.budget.retired`]) {
         const metadata = await walkTree({ root: path, unknown })
         if (metadata === undefined) continue
@@ -2154,6 +2251,8 @@ export const reserveEditorViewBudget = async ({
   beforeRetireRoot,
   budgetBytes,
   recencyMs = editorViewHostRecencyMs(),
+  censusCache,
+  onPhase,
 }: {
   readonly contentStore: string
   readonly root: EditorViewBudgetRoot
@@ -2164,6 +2263,8 @@ export const reserveEditorViewBudget = async ({
   readonly budgetBytes: number
   /** Root recency window protecting current generations; defaults to EDITOR_VIEW_HOST_RECENCY_MS. */
   readonly recencyMs?: number
+  readonly censusCache?: EditorViewBudgetCensusCache
+  readonly onPhase?: (phase: 'budget-census' | 'budget-admission') => void
   /** Called with the victim root lock held and neither flock held, before final eligibility. */
   readonly beforeRetireRoot?: (() => void | Promise<void>) | undefined
 }): Promise<{ readonly token: string }> => {
@@ -2183,6 +2284,19 @@ export const reserveEditorViewBudget = async ({
       const blocked = new Set<string>()
       const evicted: string[] = []
       let collected = false
+      const censusForAdmission = async (): Promise<Census> => {
+        onPhase?.('budget-census')
+        const census = await takeCensus({
+          contentStore: store,
+          root,
+          heldEditorRoot,
+          discoverRoots,
+          staged,
+          censusCache,
+        })
+        onPhase?.('budget-admission')
+        return census
+      }
       /** One short flock transaction: reconcile the ledger, then reserve if it fits (or when forced). */
       const admit = async ({
         census,
@@ -2315,13 +2429,7 @@ export const reserveEditorViewBudget = async ({
       let last: { census: Census; plan: Plan } | undefined
       for (let round = 0; round < maxAdmissionRounds; round += 1) {
         // eslint-disable-next-line no-await-in-loop -- Each round must observe the previous round's retirements.
-        const census = await takeCensus({
-          contentStore: store,
-          root,
-          heldEditorRoot,
-          discoverRoots,
-          staged,
-        })
+        const census = await censusForAdmission()
         if (
           collected === false &&
           census.unreferencedCasBytes > 0 &&
@@ -2332,6 +2440,7 @@ export const reserveEditorViewBudget = async ({
           // only if pressure remains after this cheapest, first-priority collection.
           // eslint-disable-next-line no-await-in-loop -- Recount after unlinking CAS-only entries.
           await collectBudgetContentStores(census.contentStores)
+          if (censusCache !== undefined) censusCaches.get(censusCache)?.clear()
           continue
         }
         // Every plan in this round uses the candidate eligibility observed at this instant.
@@ -2383,6 +2492,7 @@ export const reserveEditorViewBudget = async ({
           collected = true
           // eslint-disable-next-line no-await-in-loop -- Collection takes the CAS flock itself; no locks are held here.
           await collectBudgetContentStores(census.contentStores)
+          if (censusCache !== undefined) censusCaches.get(censusCache)?.clear()
           continue
         }
         // Evict the LRU prefix that reaches the budget, or every eligible generation when none does.
@@ -2430,13 +2540,12 @@ export const reserveEditorViewBudget = async ({
         if (evicted.length > retiredBefore) {
           // eslint-disable-next-line no-await-in-loop -- Retired payload links free CAS blobs only after collection.
           await collectBudgetContentStores(retiredStores)
+          if (censusCache !== undefined) censusCaches.get(censusCache)?.clear()
           collected = true
         }
       }
       // Advisory budget: protected bytes do not fit, so record the overrun and publish anyway.
-      const census =
-        last?.census ??
-        (await takeCensus({ contentStore: store, root, heldEditorRoot, discoverRoots, staged }))
+      const census = last?.census ?? (await censusForAdmission())
       const plan =
         last?.plan ?? planEviction({ census, blocked, live: new Set(), recencyMs, now: Date.now() })
       await admit({ census, plan, force: true })

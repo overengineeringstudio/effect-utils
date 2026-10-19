@@ -293,8 +293,13 @@ order; any invalid root or malformed result fails the complete request. This
 removes per-root process launches without trusting mutable Buck output paths or
 weakening editor-mutation detection.
 Only immutable Nix-store inputs are memoized, keyed by the tool and complete
-fingerprint arguments; mutable Buck outputs are always re-proven. Phase diagnostics
-are written as work advances, with phase spans on completion, failure, and SIGTERM.
+fingerprint arguments; mutable Buck outputs are always re-proven. Each publication
+run coalesces host CAS budget scans only at an identical ledger epoch, journal,
+and content-store set. Any mismatch requires a fresh scan; reservations and
+post-census journal estimates still participate in budget admission.
+Phase diagnostics distinguish declared-root fingerprints, residual previous-snapshot
+validation, reservation-size walks, census, and admission. Phase spans are emitted
+on completion, failure, and SIGTERM.
 
 ### Check All TypeScript Projects
 

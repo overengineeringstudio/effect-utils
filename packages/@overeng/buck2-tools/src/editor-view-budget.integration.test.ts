@@ -16,6 +16,7 @@ import {
   writeFileSync,
 } from 'node:fs'
 import * as Fs from 'node:fs'
+import * as FsPromises from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -23,6 +24,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 
 import {
   cancelEditorViewBudgetReservation,
+  createEditorViewBudgetCensusCache,
   editorViewHostBudgetStateDirectory,
   reserveEditorViewBudget,
 } from './editor-view-budget.ts'
@@ -44,8 +46,17 @@ const childProcessMocks = {
 }
 vi.mock('node:child_process', () => ({ ...nativeChildProcess, ...childProcessMocks }))
 const nativeFs = { ...Fs }
-const fsMocks = { readlinkSync: vi.fn(nativeFs.readlinkSync) }
+const fsMocks = {
+  readlinkSync: vi.fn(nativeFs.readlinkSync),
+  mkdirSync: vi.fn(nativeFs.mkdirSync),
+}
 vi.mock('node:fs', () => ({ ...nativeFs, ...fsMocks }))
+const nativeFsPromises = { ...FsPromises }
+const fsPromiseMocks = {
+  readdir: vi.fn(nativeFsPromises.readdir),
+  readFile: vi.fn(nativeFsPromises.readFile),
+}
+vi.mock('node:fs/promises', () => ({ ...nativeFsPromises, ...fsPromiseMocks }))
 
 /** Match the publisher's integration fixtures: tools never resolve through ambient PATH. */
 const requireTool = (name: string): string => {
@@ -1184,10 +1195,25 @@ describe('warm publication wins the census-to-victim-lock race', () => {
                 'process.stdout.write("warm-complete\\n")',
               ].join('\n')
               const warm = spawnSync(bun, ['--eval', script], { encoding: 'utf8' })
-              expect({ status: warm.status, stderr: warm.stderr }).toEqual({
-                status: 0,
-                stderr: '',
-              })
+              expect(warm.status).toBe(0)
+              const phases = warm.stderr
+                .trim()
+                .split('\n')
+                .map((line) => {
+                  expect(line.startsWith('[editor-view-phase] ')).toBe(true)
+                  const phase = JSON.parse(line.slice('[editor-view-phase] '.length))
+                  expect(phase.package).toBe(victim.options.package)
+                  expect(phase.elapsedMs).toBeGreaterThanOrEqual(0)
+                  return phase.phase
+                })
+              expect(phases).toEqual([
+                'fingerprint',
+                'declared-root-fingerprint',
+                'old-snapshot-validation',
+                'retention',
+                'pointers',
+                'gc',
+              ])
               expect(warm.stdout).toContain('warm-complete\n')
               warmed++
             }
@@ -1274,7 +1300,8 @@ describe('publication waits for a live budget eviction, but not stale publisher 
       pid: process.pid,
       process: expect.any(String),
     })
-    const attempts = vi.spyOn(Fs, 'mkdirSync')
+    const attempts = fsMocks.mkdirSync
+    attempts.mockClear()
     try {
       waiting = host.publish(victim)
       // publishEditorView reaches its first root-lock attempt synchronously. The
@@ -1282,7 +1309,7 @@ describe('publication waits for a live budget eviction, but not stale publisher 
       expect(attempts.mock.calls.some(([path]) => path === lockPath)).toBe(true)
       expect(readFileSync(join(lockPath, 'owner.json'), 'utf8')).toBe(owner)
     } finally {
-      attempts.mockRestore()
+      attempts.mockClear()
     }
   })
 
@@ -1771,5 +1798,281 @@ describe('budget telemetry rate limits across publisher processes per host store
         ]),
       ]),
     )
+  })
+})
+
+describe('per-publication CAS census cache', () => {
+  const stopAfterCensus = new Error('stop after observing the complete census')
+
+  const withCensusFixture = async (
+    run: (context: {
+      readonly host: Host
+      readonly fixture: Fixture
+      readonly probe: () => Promise<void>
+      readonly reserve: typeof reserveEditorViewBudget
+      readonly scans: () => number
+      readonly patchLedger: (patch: Readonly<Record<string, unknown>>) => void
+    }) => Promise<void>,
+  ) => {
+    const host = makeHost()
+    try {
+      const fixture = host.fixture('census-cache', 181, 64)
+      await host.publish(fixture)
+      const censusCache = createEditorViewBudgetCensusCache()
+      const reserve: typeof reserveEditorViewBudget = (options) =>
+        reserveEditorViewBudget({ ...options, censusCache })
+      const probe = async () => {
+        const phases: string[] = []
+        await expect(
+          host.track(
+            reserve({
+              contentStore: host.contentStore,
+              root: { repoRoot: fixture.root, editorRoot: fixture.editorRoot },
+              heldEditorRoot: fixture.editorRoot,
+              discoverRoots: () => [],
+              reservationBytes: 1,
+              budgetBytes: setupBudgetBytes,
+              tryLockRoot: () => undefined,
+              onPhase: (phase) => {
+                phases.push(phase)
+                // Observe the public boundary without creating a reservation/epoch.
+                if (phase === 'budget-admission') throw stopAfterCensus
+              },
+            }),
+          ),
+        ).rejects.toBe(stopAfterCensus)
+        expect(phases).toEqual(['budget-census', 'budget-admission'])
+      }
+      fsPromiseMocks.readdir.mockClear()
+      // Legacy synchronization/collection also lists the CAS root, but requests
+      // Dirents. Only the budget census uses the names-only readdir overload.
+      const scans = () =>
+        fsPromiseMocks.readdir.mock.calls.filter(
+          ([path, options]) => path === host.contentStore && options === undefined,
+        ).length
+      const patchLedger = (patch: Readonly<Record<string, unknown>>) => {
+        const path = join(host.budgetState, 'state-v1.json')
+        const value: unknown = JSON.parse(readFileSync(path, 'utf8'))
+        if (typeof value !== 'object' || value === null || Array.isArray(value) === true)
+          throw new Error('expected host budget ledger object')
+        // No operation is running: mutate one fingerprint field independently.
+        writeFileSync(path, JSON.stringify({ ...value, ...patch }))
+      }
+      await run({ host, fixture, probe, reserve, scans, patchLedger })
+    } finally {
+      fsPromiseMocks.readdir.mockReset()
+      fsPromiseMocks.readdir.mockImplementation(nativeFsPromises.readdir)
+      fsPromiseMocks.readFile.mockReset()
+      fsPromiseMocks.readFile.mockImplementation(nativeFsPromises.readFile)
+      await host.cleanup()
+    }
+  }
+
+  it('coalesces simultaneous callers and reuses only the same epoch snapshot', async () => {
+    await withCensusFixture(async ({ host, probe, scans }) => {
+      const release = host.gate()
+      let second: Promise<void> | undefined
+      let overlappingFootprint = false
+      fsPromiseMocks.readFile.mockImplementation(async (...args) => {
+        const bytes = await nativeFsPromises.readFile(...args)
+        if (
+          second !== undefined &&
+          typeof args[0] === 'string' &&
+          args[0].startsWith(join(host.budgetState, 'footprints') + '/') === true
+        ) {
+          // The second caller's sidecar read is its final generation await.
+          // Let its continuation reach the in-flight cache lookup before releasing
+          // the first scan on the next event-loop turn; no sleep or timeout.
+          setImmediate(() => {
+            overlappingFootprint = true
+            release.resolve()
+          })
+        }
+        return bytes
+      })
+      fsPromiseMocks.readdir.mockImplementation(async (...args) => {
+        if (args[0] === host.contentStore && args[1] === undefined && second === undefined) {
+          // Start the second caller from inside the first CAS loader, proving
+          // overlap rather than relying on an external readiness wait.
+          second = probe().finally(() => release.resolve())
+          await release.promise
+        }
+        return nativeFsPromises.readdir(...args)
+      })
+      try {
+        await probe()
+        if (second === undefined) throw new Error('first census did not invoke the CAS loader')
+        await second
+        expect(overlappingFootprint).toBe(true)
+        expect(scans()).toBe(1)
+        await probe()
+        expect(scans()).toBe(1)
+      } finally {
+        release.resolve()
+      }
+    })
+  })
+
+  it('rescans on epoch, journal contents, journal floor, and participating store changes', async () => {
+    await withCensusFixture(async ({ host, probe, scans, patchLedger }) => {
+      await probe()
+      const epoch = readBudgetLedger(host).epoch
+      patchLedger({ epoch: epoch + 1 })
+      await probe()
+      expect(scans()).toBe(2)
+      patchLedger({ journal: [{ epoch: epoch + 1, estimatedBytes: 123 }] })
+      await probe()
+      expect(scans()).toBe(3)
+      patchLedger({ journal: [{ epoch: epoch + 1, estimatedBytes: 456 }] })
+      await probe()
+      expect(scans()).toBe(4)
+      patchLedger({ journalFloor: epoch + 1 })
+      await probe()
+      expect(scans()).toBe(5)
+      const extraStore = join(host.root, 'extra-content', 'v1')
+      mkdirSync(extraStore, { recursive: true })
+      patchLedger({ contentStores: [host.contentStore, extraStore] })
+      await probe()
+      expect(scans()).toBe(6)
+      patchLedger({ contentStores: [extraStore, host.contentStore] })
+      await probe()
+      expect(scans()).toBe(6)
+      patchLedger({ contentStores: [host.contentStore] })
+      await probe()
+      // Removing a participating store invalidates the latest snapshot too.
+      expect(scans()).toBe(7)
+    })
+  })
+
+  it('retries failed partial CAS scans instead of treating unknown bytes as proven', async () => {
+    await withCensusFixture(async ({ host, probe, scans }) => {
+      let failed = false
+      fsPromiseMocks.readdir.mockImplementation(async (...args) => {
+        if (args[0] === host.contentStore && args[1] === undefined && failed === false) {
+          failed = true
+          throw Object.assign(new Error('unreadable CAS'), { code: 'EACCES' })
+        }
+        return nativeFsPromises.readdir(...args)
+      })
+      await probe()
+      expect(scans()).toBe(1)
+      await probe()
+      expect(scans()).toBe(2)
+      await probe()
+      expect(scans()).toBe(2)
+    })
+  })
+
+  it('keeps protected overflow, outstanding reservations, and fresh metadata accounting', async () => {
+    await withCensusFixture(async ({ host, fixture, probe, reserve, scans }) => {
+      await probe()
+      const metadata = join(fixture.editorRoot, 'fresh-metadata.bin')
+      writeFileSync(metadata, Buffer.alloc(payloadBytes, 182))
+      const phases: string[] = []
+      const captured = await captureStderr(() =>
+        reserve({
+          contentStore: host.contentStore,
+          root: { repoRoot: fixture.root, editorRoot: fixture.editorRoot },
+          heldEditorRoot: fixture.editorRoot,
+          discoverRoots: () => [],
+          reservationBytes: 321,
+          budgetBytes: 1,
+          tryLockRoot: () => undefined,
+          onPhase: (phase) => phases.push(phase),
+        }),
+      )
+      try {
+        const event = budgetEvents(captured.stderr).find(
+          (entry) => entry.event === 'editor-view.host-budget.over-budget',
+        )
+        expect(event?.usedBytes).toBeGreaterThanOrEqual(payloadBytes)
+        expect(event?.reservationBytes).toBe(321)
+        expect(readBudgetLedger(host).reservations.map(({ bytes }) => bytes)).toEqual([321])
+        expect(phases).toEqual(['budget-census', 'budget-admission'])
+        expect(scans()).toBe(1)
+        // Reservation admission advances the epoch, requiring another CAS scan.
+        await probe()
+        expect(scans()).toBe(2)
+      } finally {
+        await cancelEditorViewBudgetReservation({
+          contentStore: host.contentStore,
+          token: captured.value.token,
+        })
+      }
+    })
+  })
+
+  it('charges a concurrent finish journal entry after the cached source snapshot', async () => {
+    await withCensusFixture(async ({ host, fixture, probe, reserve, patchLedger }) => {
+      await probe()
+      const epoch = readBudgetLedger(host).epoch
+      let finished = false
+      const captured = await captureStderr(() =>
+        reserve({
+          contentStore: host.contentStore,
+          root: { repoRoot: fixture.root, editorRoot: fixture.editorRoot },
+          heldEditorRoot: fixture.editorRoot,
+          discoverRoots: () => [],
+          reservationBytes: 1,
+          budgetBytes: 1,
+          tryLockRoot: () => undefined,
+          onPhase: (phase) => {
+            if (phase === 'budget-admission' && finished === false) {
+              finished = true
+              patchLedger({
+                epoch: epoch + 1,
+                journal: [{ epoch: epoch + 1, estimatedBytes: payloadBytes * 2 }],
+              })
+            }
+          },
+        }),
+      )
+      try {
+        const event = budgetEvents(captured.stderr).find(
+          (entry) => entry.event === 'editor-view.host-budget.over-budget',
+        )
+        expect(event?.pendingEstimateBytes).toBe(payloadBytes * 2)
+        expect(readBudgetLedger(host).reservations).toHaveLength(1)
+      } finally {
+        await cancelEditorViewBudgetReservation({
+          contentStore: host.contentStore,
+          token: captured.value.token,
+        })
+      }
+    })
+  })
+
+  it('bypasses an old-key cache when a writer changes the ledger during root census', async () => {
+    await withCensusFixture(async ({ host, fixture, probe, reserve, scans, patchLedger }) => {
+      await probe()
+      const epoch = readBudgetLedger(host).epoch
+      await expect(
+        host.track(
+          reserve({
+            contentStore: host.contentStore,
+            root: { repoRoot: fixture.root, editorRoot: fixture.editorRoot },
+            heldEditorRoot: fixture.editorRoot,
+            discoverRoots: () => {
+              // takeCensus already captured state, but root reconstruction is
+              // still running. This writer invalidates the existing cached key.
+              patchLedger({ epoch: epoch + 1 })
+              return []
+            },
+            reservationBytes: 1,
+            budgetBytes: setupBudgetBytes,
+            tryLockRoot: () => undefined,
+            onPhase: (phase) => {
+              if (phase === 'budget-admission') throw stopAfterCensus
+            },
+          }),
+        ),
+      ).rejects.toBe(stopAfterCensus)
+      expect(scans()).toBe(2)
+      // The bypassed scan was not retained under the stale source fingerprint.
+      await probe()
+      expect(scans()).toBe(3)
+      await probe()
+      expect(scans()).toBe(3)
+    })
   })
 })

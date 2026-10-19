@@ -26,12 +26,14 @@ import process from 'node:process'
 
 import {
   editorViewHostBudgetBytes,
+  createEditorViewBudgetCensusCache,
   reserveEditorViewBudget,
   finishEditorViewBudgetReservation,
   cancelEditorViewBudgetReservation,
   touchEditorViewBudgetGeneration,
   collectEditorViewBudgetFootprints,
   withHostBudgetLock,
+  type EditorViewBudgetCensusCache,
   type EditorViewBudgetRoot,
 } from './editor-view-budget.ts'
 import {
@@ -2557,18 +2559,23 @@ const interruptedPublicationPhases = new Set<() => void>()
 const publishEditorViewCoordinated = async ({
   options,
   coordinator,
+  censusCache,
   onContentChanged,
 }: {
   options: EditorViewOptions
   coordinator?: PublicationCoordinator
+  censusCache: EditorViewBudgetCensusCache
   onContentChanged: () => void
 }): Promise<EditorViewRecord> => {
   const startedAtMs = performance.timeOrigin + performance.now()
-  const phaseTimings: (readonly [name: string, durationMs: number])[] = []
+  const phaseTimings = new Map<string, number>()
   let phaseName = 'admission'
   let phaseStartedAt = performance.now()
   const enterPhase = (name: string): void => {
-    phaseTimings.push([phaseName, performance.now() - phaseStartedAt])
+    phaseTimings.set(
+      phaseName,
+      (phaseTimings.get(phaseName) ?? 0) + performance.now() - phaseStartedAt,
+    )
     phaseName = name
     phaseStartedAt = performance.now()
     process.stderr.write(
@@ -2583,7 +2590,8 @@ const publishEditorViewCoordinated = async ({
         ['package.path', options.package],
         ['view.name', options.viewName],
         ['snapshot.created', created],
-        ...phaseTimings.map(
+        ...Array.from(
+          phaseTimings,
           ([name, durationMs]): OtelSpanAttribute => [`phase.${name}.ms`, Math.round(durationMs)],
         ),
       ],
@@ -2648,6 +2656,7 @@ const publishEditorViewCoordinated = async ({
   }
   try {
     interruptedPublicationPhases.add(reportInterruption)
+    // This phase admits the selected view/editor inputs, not the declared backing roots.
     enterPhase('fingerprint')
     const evictionMarker = join(paths.editorRoot, `.evicted-${paths.viewName}.json`)
     if (pathExists(evictionMarker) === true) {
@@ -2741,7 +2750,7 @@ const publishEditorViewCoordinated = async ({
         ),
       }
     })()
-    enterPhase('verify')
+    enterPhase('declared-root-fingerprint')
     const declaredRoots =
       finite === true
         ? await fingerprintDeclaredRoots({
@@ -2775,7 +2784,9 @@ const publishEditorViewCoordinated = async ({
     let record: EditorViewRecord
     let created = false
     if (existsSync(snapshotDir) === true) {
-      enterPhase('validate')
+      // A current-snapshot validation already overlaps declared-root fingerprinting;
+      // this phase measures only its remaining wait, or the full non-current validation.
+      enterPhase('old-snapshot-validation')
       let existing: EditorViewRecord
       if (currentSnapshotValidation?.snapshotDir === snapshotDir) {
         const validation = await currentSnapshotValidation.validation
@@ -2798,18 +2809,26 @@ const publishEditorViewCoordinated = async ({
         fail(`existing snapshot record mismatch: ${snapshotDir}`)
     } else {
       // Do not let an obsolete current-snapshot scan race snapshot retention below.
-      if (currentSnapshotValidation !== undefined) await currentSnapshotValidation.validation
+      if (currentSnapshotValidation !== undefined) {
+        enterPhase('old-snapshot-validation')
+        await currentSnapshotValidation.validation
+      }
       const reserved = await runEditorViewMaintenance({
         editorRoot: paths.editorRoot,
         phase: 'reserve',
-        run: () =>
-          reserveEditorViewBudget({
+        run: () => {
+          enterPhase('budget-reservation-walk')
+          const reservationBytes = budgetReservationBytes({
+            sources: finite === true ? roots.map((root) => root.source) : [selectedPath],
+            dereference: finite === false,
+          })
+          enterPhase('budget-admission')
+          return reserveEditorViewBudget({
             contentStore: paths.contentStore,
             root: budgetRoot,
-            reservationBytes: budgetReservationBytes({
-              sources: finite === true ? roots.map((root) => root.source) : [selectedPath],
-              dereference: finite === false,
-            }),
+            reservationBytes,
+            censusCache,
+            onPhase: enterPhase,
             heldEditorRoot: paths.editorRoot,
             discoverRoots: () => discoverBudgetRoots(budgetRoot),
             tryLockRoot: (root) => {
@@ -2830,7 +2849,8 @@ const publishEditorViewCoordinated = async ({
             ...(options.beforeBudgetEviction === undefined
               ? {}
               : { beforeRetireRoot: options.beforeBudgetEviction }),
-          }),
+          })
+        },
       })
       budgetReservation = reserved?.token
       candidate = join(paths.storeDir, `.candidate-${token}`)
@@ -3114,6 +3134,7 @@ export const publishEditorView = async (options: EditorViewOptions): Promise<Edi
   const contentChanges = { changed: false }
   const record = await publishEditorViewCoordinated({
     options,
+    censusCache: createEditorViewBudgetCensusCache(),
     onContentChanged: () => {
       contentChanges.changed = true
     },
@@ -3142,6 +3163,7 @@ export const publishEditorViews = async ({
   onPublished?: (record: EditorViewRecord, durationMs: number) => void
 }): Promise<readonly EditorViewRecord[]> => {
   const coordinators = new Map<string, PublicationCoordinator>()
+  const censusCache = createEditorViewBudgetCensusCache()
   const workers = new Map<string, PublicationWorkerState>()
   const identities = new Set<string>()
   const results: PromiseSettledResult<EditorViewRecord>[] = []
@@ -3199,6 +3221,7 @@ export const publishEditorViews = async ({
           const record = await publishEditorViewCoordinated({
             options: option,
             coordinator,
+            censusCache,
             onContentChanged: () => {
               changedStores.add(makePaths(option).contentStore)
             },
