@@ -426,6 +426,128 @@ export const gateDaemonStopDecision = ({
   return status.active_commands.length === 0 ? 'stop' : 'keep-active'
 }
 
+/** Compare gate ownership, not action/resource-control child cgroups. */
+export const gateScopeIdentity = (membership: string): string | undefined => {
+  const path = membership
+    .split('\n')
+    .find((line) => line.startsWith('0::'))
+    ?.slice(3)
+  if (path?.startsWith('/') !== true) return undefined
+  const components = path.split('/')
+  const scope = components.findLastIndex(
+    (component) => component.startsWith('gate-slot-') && component.endsWith('.scope'),
+  )
+  return scope === -1 ? undefined : components.slice(0, scope + 1).join('/')
+}
+
+export const gateCgroupRelation = (
+  caller: string,
+  daemon: string,
+): 'same' | 'foreign' | 'unknown' => {
+  const callerScope = gateScopeIdentity(caller)
+  if (callerScope === undefined || daemon.split('\n').some((line) => /^0::\//.test(line)) === false)
+    return 'unknown'
+  // A valid unified path outside any gate scope is determinably foreign.
+  return gateScopeIdentity(daemon) === callerScope ? 'same' : 'foreign'
+}
+
+/**
+ * Pin be6971d4 expands argfiles before clap (buck2_client_ctx/src/argfiles.rs).
+ * Lines are arguments, not shell words; nested paths remain relative to the
+ * invocation cwd. Config only participates in cell-path/fallback resolution,
+ * not the isolation default (buck2/src/lib.rs: BeforeSubcommandOptions).
+ *
+ * Do not execute Python argfiles or consume stdin a second time, and do not
+ * approximate Buck's config-backed cell resolver. Those forms retain daemons.
+ */
+export const resolveGateIsolation = ({
+  args,
+  env,
+  cwd,
+  readArgfile = (path) => {
+    const canonical = realpathSync(path)
+    return {
+      path: canonical,
+      contents: new TextDecoder('utf-8', { fatal: true }).decode(readFileSync(canonical)),
+    }
+  },
+}: {
+  readonly args: readonly string[]
+  readonly env: Readonly<Record<string, string | undefined>>
+  readonly cwd: string
+  readonly readArgfile?: (path: string) => { readonly path: string; readonly contents: string }
+}): string | undefined => {
+  const expanded: string[] = []
+  const active = new Set<string>()
+  const expand = (input: readonly string[], depth: number): boolean => {
+    if (depth > 64) return false
+    for (let index = 0; index < input.length; index++) {
+      const arg = input[index] ?? ''
+      if (arg.includes('\0') === true) return false
+      if (arg === '--') {
+        expanded.push(...input.slice(index))
+        break
+      }
+      if (arg.startsWith('--#') === true) continue
+      if (arg.startsWith('--flagfile=') === true) return false
+      if (arg !== '--flagfile' && arg.startsWith('@') === false) {
+        expanded.push(arg)
+        continue
+      }
+      const requested = arg === '--flagfile' ? input[++index] : arg.slice(1)
+      if (
+        requested === undefined ||
+        requested === '' ||
+        requested === '-' ||
+        requested.includes('//') === true ||
+        requested.includes('#') === true ||
+        (requested.startsWith('/') === true && resolve(requested) !== requested)
+      )
+        return false
+      // Missing cwd-relative files may use Buck's config-backed cell fallback.
+      // A failed read therefore cannot be interpreted as an empty argfile.
+      const file = readArgfile(resolve(cwd, requested))
+      if (file.path.endsWith('.py') === true || active.has(file.path) === true) return false
+      active.add(file.path)
+      const lines = file.contents.split('\n').map((line) => line.replace(/\r$/u, ''))
+      if (
+        expand(
+          lines.filter((line) => line !== ''),
+          depth + 1,
+        ) === false
+      )
+        return false
+      active.delete(file.path)
+    }
+    return true
+  }
+  try {
+    if (expand(args, 0) === false) return undefined
+  } catch {
+    return undefined
+  }
+  let isolation = env['BUCK_ISOLATION_DIR'] ?? 'v2'
+  let explicit = false
+  for (let index = 0; index < expanded.length && expanded[index] !== '--'; index++) {
+    const arg = expanded[index] ?? ''
+    if (arg === '--isolation-dir' || arg.startsWith('--isolation-dir=') === true) {
+      // clap's scalar Set option rejects duplicate occurrences. Never guess
+      // which one would win, including occurrences introduced by nested files.
+      if (explicit === true) return undefined
+      explicit = true
+      isolation = arg === '--isolation-dir' ? (expanded[++index] ?? '') : arg.slice(16)
+    } else if (arg.includes('--isolation') === true) return undefined
+  }
+  // Conservative subset of native FileNameBuf validation, including its
+  // reserved output prefix. Unsupported names are retained, never normalized.
+  return /^[A-Za-z0-9._-]+$/u.test(isolation) === true &&
+    isolation !== '.' &&
+    isolation !== '..' &&
+    isolation.startsWith('._buck2') === false
+    ? isolation
+    : undefined
+}
+
 /** Native status is ExistingOnly: admission and cleanup never spawn a daemon. */
 export const reconcileGateDaemon = ({
   native,
@@ -440,13 +562,15 @@ export const reconcileGateDaemon = ({
   readonly env: Readonly<Record<string, string | undefined>>
   readonly phase: 'start' | 'exit'
 }): void => {
-  if (skipsWatcherAdmission(args) === true) return
-  let isolation = env['BUCK_ISOLATION_DIR'] ?? 'v2'
-  for (let index = 0; index < args.length && args[index] !== '--'; index++) {
-    const arg = args[index] ?? ''
-    if (arg === '--isolation-dir') isolation = args[++index] ?? ''
-    else if (arg.startsWith('--isolation-dir=') === true) isolation = arg.slice(16)
+  const isolation = resolveGateIsolation({ args, env, cwd: process.cwd() })
+  if (isolation === undefined) {
+    if (phase === 'start')
+      process.stderr.write(
+        'warning: Buck2 gate retained daemon: native isolation could not be determined safely\n',
+      )
+    return
   }
+  if (skipsWatcherAdmission(args) === true) return
   const globalArgs = ['--isolation-dir', isolation]
   const options = { cwd: root, env, encoding: 'utf8' as const, timeout: 30000 }
   const warn = (reason: string): void => {
@@ -490,7 +614,12 @@ export const reconcileGateDaemon = ({
     try {
       foreign = readFileSync(`/proc/${status.process_info.pid}/cgroup`, 'utf8').trim()
       const caller = readFileSync('/proc/self/cgroup', 'utf8').trim()
-      if (foreign === caller) return
+      const relation = gateCgroupRelation(caller, foreign)
+      if (relation === 'same') return
+      if (relation === 'unknown') {
+        warn('gate scope ownership unavailable; daemon retained without migration')
+        return
+      }
     } catch (error) {
       // A daemon that exited between status and procfs needs no migration.
       if (error instanceof Error && 'code' in error && error.code === 'ENOENT') return

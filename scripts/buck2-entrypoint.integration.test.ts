@@ -20,6 +20,8 @@ import { createServer as createTlsServer } from 'node:tls'
 import type { CacheAdmissionInvocation } from '../genie/ci-scripts/buck2-cache-evidence.ts'
 import { type AdmissionProbeEndpoint, directBuckArguments } from './buck2-entrypoint.ts'
 import './buck2-entrypoint.unit.test.ts'
+import './buck2-gate-teardown.integration.test.ts'
+import './buck2-gate-isolation.integration.test.ts'
 
 const roots: string[] = []
 const launchProcesses = new Set<{ readonly pid: number; readonly exited: Promise<number> }>()
@@ -1415,7 +1417,7 @@ describe('Linux gate daemon lifecycle', () => {
         '[cells]\nroot = .\n[buck2]\nfile_watcher = fs_hash_crawler\n',
       )
       const isolation = `gate-${randomUUID()}`
-      const job = `buck2-gate-test-${randomUUID()}.scope`
+      const job = `gate-slot-buck2-test-${randomUUID()}.scope`
       const env = { ...process.env, GATE_SLOT_CLASS: 'heavy', BUCK2_GATE_WRAPPER_ACTIVE: undefined }
       const ungated = { ...env, GATE_SLOT_CLASS: '' }
       const command = (argv: string[]) =>
@@ -1470,7 +1472,7 @@ describe('Linux gate daemon lifecycle', () => {
         )
         console.log(`job scope ended and daemon stopped: ${job}`)
 
-        const sameJob = `buck2-gate-test-same-${randomUUID()}.scope`
+        const sameJob = `gate-slot-buck2-test-same-${randomUUID()}.scope`
         const sameStatus = join(root, 'same-scope-status.json')
         const sameScript = join(root, 'same-scope.sh')
         writeFileSync(
@@ -1546,7 +1548,7 @@ exec '${wrapper}' --isolation-dir '${isolation}' lsp
         )
         const before = status().process_info.pid
         const foreignBusyCgroup = readFileSync(`/proc/${before}/cgroup`, 'utf8').trim()
-        const busyJob = `buck2-gate-test-busy-${randomUUID()}.scope`
+        const busyJob = `gate-slot-buck2-test-busy-${randomUUID()}.scope`
         const gated = Bun.spawnSync(
           [
             'systemd-run',

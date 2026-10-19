@@ -587,11 +587,21 @@ available during an outage.
 When `GATE_SLOT_CLASS` is set, the packaged wrapper owns gated admission and
 teardown for the selected project/isolation. On Linux it compares native
 `buck2 status` plus `/proc/<buck2d pid>/cgroup` with the caller's own cgroup.
+Ownership is the nearest `gate-slot-*.scope` ancestor of the unified cgroup
+path: parent, nested action and sibling cgroups inside that scope are reused.
 An idle foreign daemon is stopped before the client runs, so its replacement
-and local actions inherit the job's lane limits and accounting. A daemon
-already in the caller's cgroup is reused. A foreign daemon with active clients
-is retained and reused with exactly one stderr accounting warning naming its
-foreign cgroup; moving or interrupting another build/editor client is unsafe.
+and local actions inherit the job's lane limits and accounting. A daemon with
+a valid unified path outside any gate scope is foreign to a known caller gate
+scope. Missing unified membership or an unknown caller scope instead retains
+the daemon with a warning, never guessing permission to migrate it.
+A foreign daemon with active clients is retained and reused with exactly one
+stderr accounting warning naming its foreign cgroup; moving or interrupting
+another build/editor client is unsafe.
+The selected isolation follows the pinned native CLI/environment default and
+plain `@file`/`--flagfile` expansion, including nested files relative to the
+invocation directory. Python/stdin argfiles, config-backed cell-path fallback
+and other unresolved forms fail closed: one warning and no lifecycle status
+or kill calls, rather than guessing the unrelated default `v2` daemon.
 
 An outer shell installs EXIT/INT/TERM/HUP traps and waits for its native client.
 At exit it invokes native `buck2 kill` only when a fresh status identifies the
