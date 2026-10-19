@@ -432,7 +432,7 @@ const validSubject = (s: string): boolean => {
   }
   return validName({ value: concrete, full: true })
 }
-const FullSubject = Text.pipe(Schema.refine((s): s is string => validSubject(s)))
+export const FullSubject = Text.pipe(Schema.refine((s): s is string => validSubject(s)))
 const Goal = Schema.Union([
   Text,
   Schema.NonEmptyArray(Text).pipe(

@@ -3,13 +3,13 @@ import { Schema } from 'effect'
 import {
   CalendarDaysSchema,
   CalendarTimeSchema,
-  DocumentReferenceSchema,
+  PinnedDocumentReferenceSchema,
   EveryScheduleSchema,
   ExecSchema,
+  FullSubject,
   IanaTimezoneSchema,
   MissionSchema,
   StepSchema,
-  SubjectId,
   WorkSchema,
   mission as nativeMission,
   node,
@@ -67,8 +67,8 @@ export const TimingSchema = Schema.Union([
 export type Timing = typeof TimingSchema.Encoded
 
 export const ReviewSchema = Schema.Union([
-  Schema.TaggedStruct('subject', { subject: SubjectId.pipe(Schema.refine((value): value is typeof value => value.includes('/') && !value.includes('//'))) }),
-  Schema.TaggedStruct('document', { reference: DocumentReferenceSchema }),
+  Schema.TaggedStruct('subject', { subject: FullSubject }),
+  Schema.TaggedStruct('document', { reference: PinnedDocumentReferenceSchema }),
 ]).annotate({ identifier: 'Bakeoff.Review' })
 export type Review = typeof ReviewSchema.Encoded
 
@@ -267,7 +267,12 @@ export type NativeTiming = typeof NativeTimingSchema.Encoded
 export type NativeSchedule = Omit<Schedule, 'timing'> & NativeTiming & UnsupportedPolicy
 const fromNativeLaunch = (input: NativeLaunch): Launch => {
   validate(NativeLaunchSchema, input)
-  return 'command' in input ? launch.shell(input.command, input) : launch.argv(input.argv, input)
+  const options: LaunchOptions = {
+    ...(input.env === undefined ? {} : { env: input.env }),
+    ...(input.unset === undefined ? {} : { unset: input.unset }),
+    ...(input.cwd === undefined ? {} : { cwd: input.cwd }),
+  }
+  return 'command' in input ? launch.shell(input.command, options) : launch.argv(input.argv, options)
 }
 const fromNativeTiming = (input: NativeTiming): Timing => {
   validate(NativeTimingSchema, input)
