@@ -490,31 +490,45 @@ describe('the CLI entry override', () => {
     ).toBe(1)
   })
 
-  it('ignores hardlink-ambiguous realpath results', () => {
-    const root = scratch('entry-hardlink-')
-    const entry = join(root, 'cli.ts')
-    const otherName = join(root, 'source.ts')
-    writeFileSync(entry, 'if (import.meta.main) console.log("entry")\n')
-    linkSync(entry, otherName)
-    const nativeRealpath = fs.realpathSync
-    let leafLookups = 0
-    // Model Darwin F_GETPATH returning different names for the same vnode on
-    // successive calls. Directory realpaths remain stable, as on Darwin.
-    const realpath = vi.spyOn(fs, 'realpathSync').mockImplementation((path) => {
-      const resolved = nativeRealpath(path)
-      if (resolved === entry && ++leafLookups === 1) return otherName
-      return resolved
-    })
-    try {
-      expect(loadOnce(entry, entry)).toEqual({
-        contents: 'if (true) console.log("entry")\n',
-        overrides: 1,
+  it.each([false, true])(
+    'ignores hardlink-ambiguous realpath results (pre-existing mock: %s)',
+    (preexistingMock) => {
+      const root = scratch('entry-hardlink-')
+      const entry = join(root, 'cli.ts')
+      const otherName = join(root, 'source.ts')
+      writeFileSync(entry, 'if (import.meta.main) console.log("entry")\n')
+      linkSync(entry, otherName)
+      // Read the implementation independently of other test files' node:fs mocks.
+      const nativeFs = { ...process.getBuiltinModule('fs') }
+      const realpath = vi.spyOn(fs, 'realpathSync')
+      const priorImplementation = realpath.getMockImplementation()
+      if (preexistingMock) {
+        // Exercise the shared-mock state even when this file runs before editor-view.
+        realpath.mockImplementation(vi.fn(nativeFs.realpathSync))
+      }
+      const nativeRealpath = nativeFs.realpathSync
+      let leafLookups = 0
+      // Model Darwin F_GETPATH returning different names for the same vnode on
+      // successive calls. Directory realpaths remain stable, as on Darwin.
+      realpath.mockImplementation((path) => {
+        const resolved = nativeRealpath(path)
+        if (resolved === entry && ++leafLookups === 1) return otherName
+        return resolved
       })
-      expect(loadOnce(entry, otherName).overrides).toBe(0)
-    } finally {
-      realpath.mockRestore()
-    }
-  })
+      try {
+        expect(loadOnce(entry, entry)).toEqual({
+          contents: 'if (true) console.log("entry")\n',
+          overrides: 1,
+        })
+        expect(loadOnce(entry, otherName).overrides).toBe(0)
+      } finally {
+        realpath.mockRestore()
+        // Bun's shared vi.fn stays exported after mockRestore, but loses its implementation.
+        if (priorImplementation !== undefined) realpath.mockImplementation(priorImplementation)
+      }
+      expect(realpathSync(root)).toBe(root)
+    },
+  )
 
   it('does not fire for a module which is not the entry', () => {
     const { packageTree } = createViewFixture(scratch('entry-other-'))
