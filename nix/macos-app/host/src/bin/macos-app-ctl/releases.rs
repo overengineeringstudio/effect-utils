@@ -18,10 +18,10 @@ impl Incumbent {
 }
 
 fn desired(ctl: &Ctl) -> Result<Value> {
-    let path = Path::new(ctl.arg("desired")?);
-    if path.is_dir() { artifact::describe(path, &ctl.config) }
+    let path = fs::canonicalize(ctl.arg("desired")?)?;
+    if path.is_dir() { artifact::describe(&path, &ctl.config) }
     else {
-        let value: Value = serde_json::from_slice(&fs::read(path)?)?;
+        let value: Value = serde_json::from_slice(&fs::read(&path)?)?;
         // describe-host's JSON CLI envelope is also the Nix descriptor output.
         Ok(if value["ok"] == true { value["result"].clone() } else { value })
     }
@@ -82,7 +82,7 @@ fn copy_pinned_source(source: &Path, app: &Path, descriptor: &Value, config: &Va
         fs::create_dir_all(source.join("Contents/Resources"))?;
         fs::write(source.join("Contents/Resources/seal-race.txt"), b"changed after describing\n")?;
     }
-    checked("/bin/cp", &["-R", text(source)?, text(app)?])?;
+    copy_app(source, app)?;
     if artifact::describe(app, config)? != *descriptor {
         return Err(mismatch("Staged source changed after its unsigned descriptor was pinned"));
     }
@@ -120,7 +120,7 @@ fn verify_options(diagnostic: &str, options: &[String]) -> Result<()> {
 }
 
 impl Ctl {
-    pub(super) fn describe_host(&self) -> Result<Value> { artifact::describe(Path::new(self.arg("desired")?), &self.config) }
+    pub(super) fn describe_host(&self) -> Result<Value> { artifact::describe(&fs::canonicalize(self.arg("desired")?)?, &self.config) }
 
     pub(super) fn verify_bundle(&self, app: &Path) -> Result<()> {
         self.verify_bundle_with(app, &self.config)
@@ -160,9 +160,9 @@ impl Ctl {
     }
 
     pub(super) fn seal_host(&self) -> Result<Value> {
-        let unsigned = Path::new(self.arg("desired")?);
+        let unsigned = fs::canonicalize(self.arg("desired")?)?;
         if !unsigned.is_dir() { return Err(fail(64, "invalid-input", "seal-host requires the unsigned complete .app")); }
-        let descriptor = artifact::describe(unsigned, &self.config)?;
+        let descriptor = artifact::describe(&unsigned, &self.config)?;
         let output = PathBuf::from(self.arg("output")?);
         if output.exists() {
             let release = artifact::verify_release(&output, &descriptor, &self.config)?;
@@ -183,7 +183,7 @@ impl Ctl {
         let stage = private_stage(parent)?;
         let result = (|| {
             let app = stage.join("host.app");
-            copy_pinned_source(unsigned, &app, &descriptor, &self.config)?;
+            copy_pinned_source(&unsigned, &app, &descriptor, &self.config)?;
             checked("/bin/chmod", &["-R", "u+w", text(&app)?])?;
             self.sign(&keychain_path, &keychain, &app)?;
             checked("/bin/chmod", &["-R", "a-w", text(&app)?])?;
@@ -316,7 +316,7 @@ impl Ctl {
             .map_err(|e| fail(23, "operation-failed", e.to_string()))?
             .as_nanos();
         let stage = archive.join(format!("retained-{}-{nonce}.app", std::process::id()));
-        checked("/bin/cp", &["-R", text(&candidate.app)?, text(&stage)?])?;
+        copy_app(&candidate.app, &stage)?;
         self.verify_bundle(&stage)?;
         if artifact::describe(&stage, &self.config)? != descriptor
             || artifact::artifact_revision(&stage)? != candidate.sealed_revision
@@ -394,16 +394,16 @@ impl Ctl {
     #[cfg(feature = "test-signing-cert")]
     pub(super) fn seal_fixture_artifact(&self) -> Result<Value> {
         if ["keychain", "keychain-password-fd"].iter().any(|key| self.args.contains_key(*key)) { return Err(fail(64, "invalid-input", "Ad-hoc test release accepts no keychain")); }
-        let source = Path::new(self.arg("desired")?);
-        let descriptor = artifact::describe(source, &self.config)?;
-        self.verify_bundle(source)?;
+        let source = fs::canonicalize(self.arg("desired")?)?;
+        let descriptor = artifact::describe(&source, &self.config)?;
+        self.verify_bundle(&source)?;
         let output = PathBuf::from(self.arg("output")?);
         let parent = output.parent().ok_or_else(|| fail(64, "invalid-input", "Release requires a parent"))?;
         destination(parent, false)?;
         let stage = private_stage(parent)?;
         let result = (|| {
             let app = stage.join("host.app");
-            copy_pinned_source(source, &app, &descriptor, &self.config)?;
+            copy_pinned_source(&source, &app, &descriptor, &self.config)?;
             self.verify_bundle(&app)?;
             checked("/bin/chmod", &["-R", "a-w", text(&app)?])?;
             let receipt = artifact::create_receipt(&app, &descriptor, &self.config)?;
@@ -424,6 +424,43 @@ impl Ctl {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn desired_symlink_is_copied_as_a_real_directory() {
+        let scratch = std::env::current_dir().unwrap().join("tmp");
+        fs::create_dir_all(&scratch).unwrap();
+        let root = private_stage(&scratch).unwrap();
+        let source = root.join("source.app");
+        fs::create_dir(&source).unwrap();
+        fs::write(source.join("content"), b"desired app").unwrap();
+        symlink("content", source.join("internal-link")).unwrap();
+        let desired = root.join("desired.app");
+        symlink(&source, &desired).unwrap();
+        let stage = root.join("stage.app");
+        copy_app(&desired, &stage).unwrap();
+        assert!(fs::symlink_metadata(&stage).unwrap().is_dir());
+        assert_eq!(fs::read(stage.join("content")).unwrap(), b"desired app");
+        assert!(fs::symlink_metadata(stage.join("internal-link")).unwrap().file_type().is_symlink());
+        fs::write(stage.join("content"), b"mutable stage").unwrap();
+        assert_eq!(fs::read(source.join("content")).unwrap(), b"desired app");
+        fs::remove_dir_all(root).unwrap();
+    }
+    #[test]
+    fn staged_symlinks_and_files_are_refused() {
+        let scratch = std::env::current_dir().unwrap().join("tmp");
+        fs::create_dir_all(&scratch).unwrap();
+        let root = private_stage(&scratch).unwrap();
+        let source = root.join("source.app");
+        fs::create_dir(&source).unwrap();
+        let stage = root.join("stage.app");
+        symlink(&source, &stage).unwrap();
+        let error = require_stage_directory(&stage).unwrap_err();
+        assert_eq!((error.code, error.kind), (22, "verification-failed"));
+        fs::remove_file(&stage).unwrap();
+        fs::write(&stage, b"not a directory").unwrap();
+        let error = require_stage_directory(&stage).unwrap_err();
+        assert_eq!((error.code, error.kind), (22, "verification-failed"));
+        fs::remove_dir_all(root).unwrap();
+    }
     #[test]
     fn incumbent_opt_in_is_explicit_and_typed() {
         assert_eq!(Incumbent::parse(None).unwrap(), Incumbent::Contract);

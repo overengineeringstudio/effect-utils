@@ -14,6 +14,19 @@ struct Ctl { config: Value, args: BTreeMap<String, String> }
 fn command(program: &str, args: &[&str]) -> Result<Output> { Ok(Command::new(program).args(args).output()?) }
 fn checked(program: &str, args: &[&str]) -> Result<Output> { let out = command(program, args)?; if !out.status.success() { return Err(fail(23, "operation-failed", format!("{program}: {}", String::from_utf8_lossy(&out.stderr)))); } Ok(out) }
 fn text(path: &Path) -> Result<&str> { path.to_str().ok_or_else(|| fail(64, "invalid-input", "Paths must be UTF-8")) }
+/// Resolve the source bundle, not its internal symlinks: BSD cp -R otherwise
+/// copies a command-line symlink itself instead of creating a mutable app stage.
+fn copy_app(source: &Path, stage: &Path) -> Result<()> {
+    let source = fs::canonicalize(source)?;
+    checked("/bin/cp", &["-R", text(&source)?, text(stage)?])?;
+    require_stage_directory(stage)
+}
+fn require_stage_directory(stage: &Path) -> Result<()> {
+    if !fs::symlink_metadata(stage)?.is_dir() {
+        return Err(mismatch("Staged app must be a real directory, not a symlink or file"));
+    }
+    Ok(())
+}
 fn atomic_write(path: &Path, bytes: &[u8]) -> Result<()> { let tmp = path.with_extension(format!("tmp-{}", std::process::id())); let mut f = fs::OpenOptions::new().write(true).create_new(true).open(&tmp)?; f.write_all(bytes)?; f.sync_all()?; fs::rename(tmp, path)?; Ok(()) }
 fn pointer(path: &Path) -> Option<PathBuf> { fs::read_link(path).ok() }
 fn select(path: &Path, target: &Path) -> Result<()> { let tmp = path.with_extension(format!("tmp-{}", std::process::id())); symlink(target, &tmp)?; fs::rename(tmp, path)?; Ok(()) }
@@ -481,7 +494,7 @@ impl Ctl {
         fs::create_dir_all(parent)?;
         let nonce = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_err(|e| fail(23, "operation-failed", e.to_string()))?.as_nanos();
         let stage = parent.join(format!(".{}.stage-{}-{nonce}", app.file_name().and_then(|s| s.to_str()).unwrap_or("app"), std::process::id()));
-        checked("/bin/cp", &["-R", text(&desired)?, text(&stage)?])?;
+        copy_app(&desired, &stage)?;
         let result = (|| {
             checked("/bin/chmod", &["-R", "u+w", text(&stage)?])?;
             self.sign(&keychain_path, &keychain, &stage).map_err(&record)?;
