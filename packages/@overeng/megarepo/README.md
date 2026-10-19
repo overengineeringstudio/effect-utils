@@ -369,7 +369,10 @@ or a scan that cannot be read, is `unknown` and keeps.
 
 `devenv tasks run test:megarepo` runs the bounded Buck lane and its source integration
 complement. Root script adapter contracts run in `genie:buck2:test`, part of the required
-`test:run` aggregate, without adding scripts to package or Nix closures.
+`test:run` aggregate, without adding scripts to package or Nix closures. The task waits for
+the aggregate's existing megarepo installer before importing the CLI from the root adapter;
+the shared test publisher alone does not provide that CLI's workspace dependencies.
+This ordering reuses the required megarepo publication rather than adding a second publisher.
 
 Native ownership safety assertions use deterministic subprocess projections on every
 host. An additional real-`pty` test skips only when the executable is absent from

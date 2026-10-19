@@ -57,10 +57,10 @@ describe('Buck maintenance script receipt contract', () => {
         encoding: 'utf8',
         env: { ...process.env, NO_COLOR: '1' },
       })
-      expect(result.signal).toBeNull()
-      expect(result.status).toBe(reason === 'daemon-changed' ? 0 : 1)
-      expect(result.stdout).not.toBe('')
-      expect(JSON.parse(result.stdout)).toEqual(receipt)
+      expect(result.signal, result.stderr).toBeNull()
+      expect(result.status, result.stderr).toBe(reason === 'daemon-changed' ? 0 : 1)
+      expect(result.stdout, result.stderr).not.toBe('')
+      expect(JSON.parse(result.stdout), result.stderr).toEqual(receipt)
       if (reason !== 'daemon-changed') expect(result.stderr).toContain('BuckMaintainCommandFailed')
     },
   )

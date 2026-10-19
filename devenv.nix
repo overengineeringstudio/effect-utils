@@ -1378,7 +1378,18 @@ in
   # Bun: the pnpm-lock projection it imports reads Bun.YAML.
   tasks."genie:buck2:test" = {
     description = "Run Buck2 projection, staged-runtime and root maintenance-adapter contracts under pinned Bun";
-    after = [ "buck2:editor:publish:test" ];
+    # Reuse the aggregate's existing scoped installer, not a second consumer
+    # publication. Its worker index is assigned by the weighted test scheduler.
+    after =
+      let
+        megarepoInstallers = builtins.filter (
+          name: lib.hasPrefix "test:run:install:" name && lib.hasSuffix ":megarepo:unbounded" name
+        ) (builtins.attrNames config.tasks);
+      in
+      assert lib.assertMsg (
+        builtins.length megarepoInstallers == 1
+      ) "genie:buck2:test requires exactly one scheduled megarepo installer";
+      [ "buck2:editor:publish:test" ] ++ megarepoInstallers;
     exec = trace.exec "genie:buck2:test" ''
       set -euo pipefail
       cd "''${DEVENV_ROOT:-$PWD}"
