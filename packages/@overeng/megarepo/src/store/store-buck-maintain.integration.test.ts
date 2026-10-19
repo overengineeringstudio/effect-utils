@@ -1,4 +1,5 @@
-import { spawn } from 'node:child_process'
+import { execFileSync, spawn } from 'node:child_process'
+import { hostname } from 'node:os'
 import { dirname, join } from 'node:path'
 
 import { NodeServices } from '@effect/platform-node'
@@ -7,6 +8,9 @@ import { Effect, Option, Schema } from 'effect'
 import * as FileSystem from 'effect/FileSystem'
 import { expect } from 'vitest'
 
+import { EffectPath } from '@overeng/effect-path'
+
+import { encodeJson } from '../test-utils/mod.ts'
 import {
   BuckDaemonStatus,
   findWorktreeBuckDaemons,
@@ -14,6 +18,12 @@ import {
   stopWorktreeBuckDaemons,
 } from './store-buck-daemons.ts'
 import { discoverBuckMaintainWorktrees, runBuckMaintain } from './store-buck-maintain.ts'
+import {
+  acquireDeletionLease,
+  deletionLeasePath,
+  releaseDeletionLease,
+} from './store-deletion-lease.ts'
+import { WORKSPACE_ACTIVITY_V2_SCHEMA } from './store-workspace-activity.ts'
 
 it.live('discovers nested slash refs without descending into worktrees or archives', () =>
   Effect.gen(function* () {
@@ -164,6 +174,190 @@ it.live(
       expect(stopped).toHaveLength(1)
       expect(stopped[0]?._tag).toBe('stopped')
       expect(yield* findWorktreeBuckDaemons({ worktreePath: root })).toHaveLength(0)
+    }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+  180_000,
+)
+
+it.live(
+  'maintains real worktrees through ownership, locks, native cleanup and final lease gates',
+  () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem
+      const store = yield* fs.realPath(yield* fs.makeTempDirectoryScoped())
+      const configured = process.env['BUCK2_BIN']
+      if (configured === undefined) return yield* Effect.die('BUCK2_BIN is required')
+      const real = yield* fs.realPath(configured)
+      const sibling = join(dirname(dirname(real)), 'libexec', 'buck2')
+      const binary = (yield* fs.exists(sibling)) === true ? sibling : real
+      yield* Effect.acquireRelease(
+        Effect.sync(() => {
+          const saved = {
+            store: process.env['MEGAREPO_STORE'],
+            seat: process.env['ST_AGENT'],
+            path: process.env['PATH'],
+          }
+          process.env['MEGAREPO_STORE'] = store
+          process.env['ST_AGENT'] = 'seat/a'
+          process.env['PATH'] = `${dirname(binary)}:${saved.path ?? ''}`
+          return saved
+        }),
+        (saved) =>
+          Effect.sync(() => {
+            for (const [key, value] of [
+              ['MEGAREPO_STORE', saved.store],
+              ['ST_AGENT', saved.seat],
+              ['PATH', saved.path],
+            ]) {
+              if (key === undefined) continue
+              if (value === undefined) delete process.env[key]
+              else process.env[key] = value
+            }
+          }),
+      )
+      const source = join(store, 'source')
+      yield* fs.makeDirectory(source)
+      yield* Effect.sync(() => {
+        execFileSync('git', ['init', source])
+        execFileSync('git', [
+          '-C',
+          source,
+          '-c',
+          'user.name=Fixture',
+          '-c',
+          'user.email=fixture@example.invalid',
+          'commit',
+          '--allow-empty',
+          '-m',
+          'fixture',
+        ])
+      })
+      const roots = join(store, 'refs', 'heads')
+      const paths = Object.fromEntries(
+        ['foreign', 'unowned', 'locked', 'budget', 'leased'].map((name) => [
+          name,
+          join(roots, name),
+        ]),
+      )
+      for (const worktree of Object.values(paths)) {
+        yield* Effect.sync(() =>
+          execFileSync('git', ['-C', source, 'worktree', 'add', '--detach', worktree, 'HEAD']),
+        )
+        yield* fs.writeFileString(join(worktree, '.buckroot'), '')
+        yield* fs.writeFileString(
+          join(worktree, '.buckconfig'),
+          '[cells]\n  root = .\n[buck2]\n  file_watcher = fs_hash_crawler\n',
+        )
+        yield* fs.makeDirectory(join(worktree, 'buck-out', 'v2'), { recursive: true })
+        yield* fs.writeFileString(
+          join(worktree, 'buck-out', 'v2', 'fixture-bytes'),
+          'x'.repeat(8192),
+        )
+        yield* Effect.addFinalizer(() =>
+          runBuck2({
+            binary,
+            daemon: { pid: 0, daemonId: '', isolation: 'v2', root: worktree, path: worktree },
+            subcommand: 'kill',
+          }).pipe(Effect.asVoid),
+        )
+      }
+      const foreign = paths['foreign']!
+      const unowned = paths['unowned']!
+      const locked = paths['locked']!
+      const budget = paths['budget']!
+      const leased = paths['leased']!
+      yield* Effect.sync(() => execFileSync('git', ['-C', source, 'worktree', 'lock', locked]))
+      const manifestPath = join(store, 'activity.json')
+      yield* fs.writeFileString(
+        manifestPath,
+        encodeJson({
+          schemaVersion: WORKSPACE_ACTIVITY_V2_SCHEMA,
+          producer: { name: 'maintenance-fixture', version: '1' },
+          epoch: { host: hostname(), snapshotId: 'fixture', storeIndex: 0 },
+          capturedAt: new Date(Date.now() - 1000).toISOString(),
+          expiresAt: new Date(Date.now() + 60_000).toISOString(),
+          complete: true,
+          errors: [],
+          claims: [
+            [foreign, 'seat/foreign'],
+            [budget, 'seat/a'],
+            [leased, 'seat/a'],
+          ].map(([workspace, owner]) => ({
+            workspace,
+            sources: ['st3-seat'],
+            agents: [owner],
+            activeRuntimeIds: [],
+            active: false,
+          })),
+        }),
+      )
+      yield* fs.makeDirectory(join(store, '.state'), { recursive: true })
+      yield* fs.writeFileString(
+        join(store, '.state', 'gc-config.json'),
+        encodeJson({
+          generatedArtifacts: {
+            manifestPath,
+            agentLivenessProducers: ['maintenance-fixture'],
+            builtin: false,
+          },
+        }),
+      )
+      const configPath = join(store, 'maintain.json')
+      const config = {
+        version: 1,
+        worktreeRoots: [roots],
+        buckOut: { budgetBytes: 0, keepSince: '0s' },
+        maintainOwners: ['seat/a'],
+      }
+      const storeBasePath = EffectPath.unsafe.absoluteDir(`${store}/`)
+      const held = yield* acquireDeletionLease({
+        storeBasePath,
+        ownerPath: leased,
+        now: Date.now(),
+      })
+      yield* Effect.addFinalizer(() => releaseDeletionLease(held))
+      const budgetLease = deletionLeasePath({ storeBasePath, ownerPath: budget })
+      const leaseAtCensus: boolean[] = []
+      // Model a fully readable, idle process table, not the host's unrelated protected PIDs.
+      // Git, worktrees, manifests, leases, du, and native Buck commands remain real.
+      const idleFs: FileSystem.FileSystem = {
+        ...fs,
+        readDirectory: (path, options) =>
+          path === '/proc'
+            ? fs.exists(budgetLease).pipe(
+                Effect.map((heldNow) => {
+                  leaseAtCensus.push(heldNow)
+                  return []
+                }),
+              )
+            : fs.readDirectory(path, options),
+      }
+      yield* fs.writeFileString(configPath, encodeJson({ ...config, maintainUnowned: false }))
+      const first = yield* runBuckMaintain({ configPath, dryRun: false }).pipe(
+        Effect.provideService(FileSystem.FileSystem, idleFs),
+      )
+      const firstByPath = new Map(first.entries.map((entry) => [entry.worktree, entry]))
+      expect(first.entries).toHaveLength(5)
+      expect(firstByPath.get(foreign)?.reason).toBe('foreign-owner')
+      expect(firstByPath.get(unowned)?.reason).toBe('unknown-owner')
+      expect(firstByPath.get(locked)?.reason).toBe('git-locked')
+      expect(firstByPath.get(leased)?.reason).toBe('lease-held')
+      expect(firstByPath.get(budget)?.action).toBe('clean-stale')
+      expect(firstByPath.get(budget)?.reason).toBe('completed')
+      expect(firstByPath.get(budget)?.bytesBefore).toBeGreaterThan(0)
+      expect(firstByPath.get(budget)?.bytesAfter).toEqual(expect.any(Number))
+      expect(leaseAtCensus).toContain(true)
+      expect(yield* fs.exists(budgetLease)).toBe(false)
+      expect(yield* fs.exists(held.leasePath)).toBe(true)
+      yield* fs.writeFileString(configPath, encodeJson({ ...config, maintainUnowned: true }))
+      const second = yield* runBuckMaintain({ configPath, dryRun: false }).pipe(
+        Effect.provideService(FileSystem.FileSystem, idleFs),
+      )
+      expect(second.entries.find((entry) => entry.worktree === unowned)?.action).toBe('clean-stale')
+      expect(second.entries.find((entry) => entry.worktree === foreign)?.reason).toBe(
+        'foreign-owner',
+      )
+      expect(second.entries.find((entry) => entry.worktree === leased)?.reason).toBe('lease-held')
+      expect(yield* fs.exists(held.leasePath)).toBe(true)
     }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
   180_000,
 )

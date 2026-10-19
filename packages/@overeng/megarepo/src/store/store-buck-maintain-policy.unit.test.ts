@@ -147,15 +147,20 @@ describe('maintenance safety gates', () => {
     ).toBe('foreign-owner')
   })
   it('never infers missing ownership from the seat and requires explicit unowned admission', () => {
-    expect(decideMaintainGate({ ...gate, owners: undefined })).toBe('unknown-owner')
+    expect(decideMaintainGate({ ...gate, owners: undefined })).toBe('foreign-owner')
     expect(decideMaintainGate({ ...gate, owners: [] })).toBe('unknown-owner')
     expect(decideMaintainGate({ ...gate, owners: [], maintainUnowned: true })).toBeUndefined()
-    expect(
-      decideMaintainGate({ ...gate, owners: undefined, maintainUnowned: true }),
-    ).toBeUndefined()
+    expect(decideMaintainGate({ ...gate, owners: undefined, maintainUnowned: true })).toBe(
+      'foreign-owner',
+    )
     expect(decideMaintainGate({ ...gate, owners: ['foreign'], maintainUnowned: true })).toBe(
       'foreign-owner',
     )
+  })
+  it('never lets unowned admission erase unknown, mixed or known foreign evidence', () => {
+    for (const owners of [[null], ['foreign', null], ['seat/a', null], ['foreign', 'seat/a']]) {
+      expect(decideMaintainGate({ ...gate, owners, maintainUnowned: true })).toBe('foreign-owner')
+    }
   })
   const reasons: readonly [
     Partial<Parameters<typeof decideMaintainGate>[0]>,

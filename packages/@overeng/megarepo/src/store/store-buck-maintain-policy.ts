@@ -113,7 +113,7 @@ export const decideMaintainGate = ({
   readonly gitLocked: boolean | undefined
   readonly liveHolder: boolean | undefined
   readonly activeClaim: boolean | undefined
-  readonly owners: readonly string[] | undefined
+  readonly owners: readonly (string | null)[] | undefined
   readonly currentAgent?: string | undefined
   readonly maintainOwners: readonly string[]
   readonly maintainUnowned: boolean
@@ -124,11 +124,13 @@ export const decideMaintainGate = ({
   if (liveHolder === true) return 'holder-live'
   if (liveHolder !== false) return 'holder-census-incomplete'
   if (activeClaim !== false) return 'active-claim'
-  if (owners === undefined || owners.length === 0) {
+  if (owners === undefined) return 'foreign-owner'
+  if (owners.length === 0) {
     if (maintainUnowned === false) return 'unknown-owner'
   } else if (
     owners.every(
       (owner) =>
+        owner !== null &&
         owner.length > 0 &&
         (maintainOwners.length > 0
           ? maintainOwners.some((pattern) => matchesMaintainOwner({ owner, pattern }))

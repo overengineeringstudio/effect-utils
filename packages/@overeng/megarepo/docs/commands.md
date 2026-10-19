@@ -227,8 +227,11 @@ maintenance remains conservative rather than assuming those processes are idle.
 Owner scope defaults to the current exact `ST_AGENT` identity. Explicit
 `maintainOwners` entries select exact identities or glob patterns; they do not
 mean “any owner value.” Without either a current seat or configured owners the
-command is report-only. Worktrees without attributable ownership require an
-explicit `maintainUnowned: true`; ownership is never inferred from the calling
+command is report-only. `maintainUnowned: true` admits only worktrees positively
+proven to have no owner evidence. Unknown or partial ownership remains foreign;
+the option never overrides a known foreign owner. Evidence from processes and
+claims is merged and retained through the final recheck, never overwritten by
+an empty or less complete source. Ownership is never inferred from the calling
 seat. Shared task/configuration contains no machine-specific roots or identities.
 
 ### `mr store lock`

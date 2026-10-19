@@ -1,4 +1,6 @@
 /** Root-scoped Buck2 shutdown before GC renames or removes a worktree. */
+import { dirname } from 'node:path'
+
 import { Effect, Option, Schema, Stream } from 'effect'
 import * as FileSystem from 'effect/FileSystem'
 import * as Command from 'effect/process/ChildProcess'
@@ -207,6 +209,87 @@ export const findWorktreeBuckDaemons = Effect.fn('store.findWorktreeBuckDaemons'
   }
   return daemons
 })
+
+/** Filesystem observations in cwd-to-root order, as used by pinned Buck's get_roots. */
+export interface BuckRootAncestor {
+  readonly path: string
+  readonly buckconfig: boolean
+  readonly buckroot: boolean
+}
+
+/**
+ * Buck selects the outermost .buckconfig before .buckroot, excluding HOME's
+ * configuration override. A .buckroot alone does not establish a project.
+ */
+export const buckClientProjectRoot = ({
+  ancestors,
+  homeDirectory,
+}: {
+  ancestors: ReadonlyArray<BuckRootAncestor>
+  homeDirectory: string | undefined
+}): string | undefined => {
+  let root: string | undefined
+  for (const ancestor of ancestors) {
+    if (ancestor.buckconfig === true) {
+      if (ancestor.path === homeDirectory) break
+      root = ancestor.path
+    }
+    if (ancestor.buckroot === true) break
+  }
+  return root
+}
+
+/** Unknown client identity holds teardown; known identity requires root AND isolation. */
+export const buckClientHoldsWorktree = ({
+  cwd,
+  root,
+  isolation,
+  worktree,
+  daemons,
+}: {
+  cwd: string
+  root: string | undefined
+  isolation: string | undefined
+  worktree: string
+  daemons: ReadonlyArray<BuckDaemonIdentity>
+}): boolean =>
+  isInsideWorktree({ candidate: cwd, worktreePath: worktree }) === true ||
+  root === undefined ||
+  isolation === undefined ||
+  daemons.some((daemon) => daemon.root === root && daemon.isolation === isolation) === true
+
+const readBuckClientRoot = Effect.fn('store.readBuckClientRoot')(function* ({
+  cwd,
+  homeDirectory,
+}: {
+  cwd: string
+  homeDirectory: string | undefined
+}) {
+  const fs = yield* FileSystem.FileSystem
+  if (cwd.startsWith('/') === false || cwd.endsWith(' (deleted)') === true) return undefined
+  const ancestors: BuckRootAncestor[] = []
+  let directory = cwd
+  while (true) {
+    // exists() can hide permission errors. Only NotFound proves an absent marker.
+    const markers = yield* Effect.forEach(['.buckconfig', '.buckroot'], (name) =>
+      fs.stat(`${directory}/${name}`).pipe(
+        Effect.map(() => true),
+        Effect.catchIf(
+          (error) => error.reason._tag === 'NotFound',
+          () => Effect.succeed(false),
+        ),
+      ),
+    )
+    const buckconfig = markers[0] === true
+    const buckroot = markers[1] === true
+    ancestors.push({ path: directory, buckconfig, buckroot })
+    if (buckroot === true || (buckconfig === true && directory === homeDirectory)) break
+    const parent = dirname(directory)
+    if (parent === directory) break
+    directory = parent
+  }
+  return buckClientProjectRoot({ ancestors, homeDirectory })
+})
 /** Any non-daemon Buck client targeting this root/isolation holds the daemon, including before RPC context registration. */
 export const hasWorktreeBuckClients = Effect.fn('store.hasWorktreeBuckClients')(function* (
   worktree: string,
@@ -223,22 +306,52 @@ export const hasWorktreeBuckClients = Effect.fn('store.hasWorktreeBuckClients')(
     const argv = yield* fs.readFileString(`/proc/${name}/cmdline`).pipe(Effect.option)
     const cwd = yield* fs.readLink(`/proc/${name}/cwd`).pipe(Effect.option)
     if (Option.isNone(argv) === true || Option.isNone(cwd) === true) return true
-    const args = argv.value.split('\0')
+    const args = argv.value.split('\0').filter((arg) => arg !== '')
     if (
       (args.includes('daemon') === true && args.includes('--daemon-id') === true) ||
       args[1] === 'forkserver'
     )
       continue
-    const isolationIndex = args.indexOf('--isolation-dir')
+    if (isInsideWorktree({ candidate: cwd.value, worktreePath: worktree }) === true) return true
+    // Native Buck 2026-09-01 has no -C/--cwd override: cwd comes from current_dir().
+    // Argfiles can hide identity flags, so they remain an uncertainty gate.
+    const separator = args.indexOf('--')
+    const options = separator < 0 ? args : args.slice(0, separator)
+    if (options.some((arg) => arg.startsWith('@') === true || arg === '--flagfile') === true)
+      return true
+    const environment = yield* fs.readFileString(`/proc/${name}/environ`).pipe(Effect.option)
+    if (Option.isNone(environment) === true) return true
+    const variables = environment.value.split('\0')
+    const homeDirectory = variables
+      .find((variable) => variable.startsWith('HOME=') === true)
+      ?.slice(5)
+    // Without HOME we cannot reproduce Buck's user-config ascent boundary.
+    if (homeDirectory === undefined || homeDirectory.startsWith('/') === false) return true
+    const isolationIndex = options.indexOf('--isolation-dir')
     const isolation =
       isolationIndex < 0
-        ? (args
+        ? (options
             .find((argument) => argument.startsWith('--isolation-dir=') === true)
-            ?.slice('--isolation-dir='.length) ?? 'v2')
-        : args[isolationIndex + 1]
+            ?.slice('--isolation-dir='.length) ??
+          variables
+            .find((variable) => variable.startsWith('BUCK_ISOLATION_DIR=') === true)
+            ?.slice('BUCK_ISOLATION_DIR='.length) ??
+          'v2')
+        : options[isolationIndex + 1]
+    const root = yield* readBuckClientRoot({ cwd: cwd.value, homeDirectory }).pipe(
+      Effect.orElseSucceed(() => undefined),
+    )
     if (
-      isInsideWorktree({ candidate: cwd.value, worktreePath: worktree }) === true ||
-      daemons.some((entry) => entry.daemon.isolation === isolation) === true
+      buckClientHoldsWorktree({
+        cwd: cwd.value,
+        root,
+        isolation:
+          isolation === undefined || isolation.length === 0 || isolation.startsWith('-') === true
+            ? undefined
+            : isolation,
+        worktree,
+        daemons: daemons.map((entry) => entry.daemon),
+      }) === true
     )
       return true
   }

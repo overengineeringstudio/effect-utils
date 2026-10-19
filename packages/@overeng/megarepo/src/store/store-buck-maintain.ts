@@ -170,7 +170,7 @@ const nativeBinary = Effect.fn('store.buckMaintain.nativeBinary')(function* (
   return Option.none<string>()
 })
 
-/** Owner evidence is process-lifetime checked; absent/unreadable ST_AGENT stays unknown. */
+/** Preserve uncertainty separately from a successfully inspected process with no ST_AGENT. */
 const processOwners = Effect.fn('store.buckMaintain.processOwners')(function* (
   worktree: string,
   daemons: ReadonlyArray<WorktreeBuckDaemon>,
@@ -186,7 +186,8 @@ const processOwners = Effect.fn('store.buckMaintain.processOwners')(function* (
       .map((reference) => reference.pid),
   )
   for (const entry of daemons) pids.add(entry.daemon.pid)
-  const evidence: BuckMaintainOwnerEvidence[] = []
+  const evidence: BuckMaintainOwnerEvidence[] =
+    scan._tag === 'complete' ? [] : [{ source: 'process', owner: null }]
   for (const pid of pids) {
     const before = yield* fs.readFileString(`/proc/${pid}/stat`).pipe(Effect.option)
     const environ = yield* fs.readFileString(`/proc/${pid}/environ`).pipe(Effect.option)
@@ -194,18 +195,16 @@ const processOwners = Effect.fn('store.buckMaintain.processOwners')(function* (
     const start =
       Option.isSome(before) === true ? parseProcStat(before.value)?.startTime : undefined
     const end = Option.isSome(after) === true ? parseProcStat(after.value)?.startTime : undefined
-    const owner =
-      start !== undefined && start === end && Option.isSome(environ) === true
-        ? environ.value
-            .split('\0')
-            .find((value) => value.startsWith('ST_AGENT=') === true)
-            ?.slice('ST_AGENT='.length)
-        : undefined
-    evidence.push({
-      source: 'process',
-      owner: owner === undefined || owner === '' ? null : owner,
-      pid,
-    })
+    if (start === undefined || start !== end || Option.isNone(environ) === true) {
+      evidence.push({ source: 'process', owner: null, pid })
+      continue
+    }
+    const owner = environ.value
+      .split('\0')
+      .find((value) => value.startsWith('ST_AGENT=') === true)
+      ?.slice('ST_AGENT='.length)
+    // A readable environment without ST_AGENT is positively unowned, not uncertain.
+    if (owner !== undefined && owner !== '') evidence.push({ source: 'process', owner, pid })
   }
   return evidence
 })
@@ -261,11 +260,11 @@ export const runBuckMaintain = Effect.fn('store.runBuckMaintain')(function* ({
             workspace: claim.workspace,
           })),
         )
-      const evidence = [...(yield* processOwners(worktree, daemons)), ...seatEvidence]
-      const owners =
-        evidence.length === 0 || evidence.some((entry) => entry.owner === null) === true
-          ? undefined
-          : evidence.flatMap((entry) => (entry.owner === null ? [] : [entry.owner]))
+      // Ownership is monotonic within a run: a later scan must not erase an earlier owner
+      // or uncertainty, and one unknown source must never hide a known foreign owner.
+      ownerEvidence.push(...(yield* processOwners(worktree, daemons)), ...seatEvidence)
+      const evidence = ownerEvidence
+      const owners = evidence.map((entry) => entry.owner)
       const reason = decideMaintainGate({
         blackout: isInBlackout({ now: Date.now(), blackout: config.blackout }),
         gitLocked: git.locked,
