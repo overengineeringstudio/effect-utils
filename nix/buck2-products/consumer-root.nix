@@ -69,6 +69,8 @@ let
       execution_platforms = rules//buck2/platforms:host_execution_platform
 
     [buck2]
+      # Track write actions for native clean --stale --tracked-only retention.
+      defer_write_actions = true
       file_watcher = ${watcherPolicies.${watcherPolicy}}
       digest_algorithms = SHA256
       remote_cache_enabled = ${boolString remoteCacheEnabled}
