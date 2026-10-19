@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process'
-import { copyFileSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -9,19 +9,6 @@ import { afterAll, describe, expect, it } from 'vitest'
 const cliPath = fileURLToPath(new URL('../bin/mr.ts', import.meta.url))
 const workspaceRoot = mkdtempSync(join(tmpdir(), 'megarepo-cli-contract-'))
 writeFileSync(join(workspaceRoot, 'megarepo.kdl'), 'members {\n}\n')
-// Stage the declared external adapter beside the same package/dependency layout it
-// uses in the source checkout. Buck's package tree deliberately excludes root scripts.
-const packageRoot = fileURLToPath(new URL('../', import.meta.url))
-mkdirSync(join(workspaceRoot, 'scripts'))
-mkdirSync(join(workspaceRoot, 'packages', '@overeng'), { recursive: true })
-symlinkSync(packageRoot, join(workspaceRoot, 'packages', '@overeng', 'megarepo'), 'dir')
-symlinkSync(join(packageRoot, 'node_modules'), join(workspaceRoot, 'node_modules'), 'dir')
-const scriptPath = join(workspaceRoot, 'scripts', 'buck2-daemon-reaper.ts')
-copyFileSync(
-  process.env['BUCK_MAINTAIN_SCRIPT'] ??
-    fileURLToPath(new URL('../../../../scripts/buck2-daemon-reaper.ts', import.meta.url)),
-  scriptPath,
-)
 
 afterAll(() => {
   rmSync(workspaceRoot, { recursive: true, force: true })
@@ -152,9 +139,9 @@ describe('megarepo CLI contract baselines (status/signal invariant, prose owner-
     })
   })
 
-  for (const adapter of ['mr', 'script'] as const) {
+  describe('mr maintenance receipts', () => {
     it.each(['clean-failed', 'kill-failed', 'daemon-changed'] as const)(
-      `prints the complete ${adapter} maintenance receipt before returning the exit status for %s`,
+      'prints the complete mr maintenance receipt before returning the exit status for %s',
       (reason) => {
         const receipt = {
           version: 1,
@@ -191,8 +178,8 @@ describe('megarepo CLI contract baselines (status/signal invariant, prose owner-
         // Keep this a CLI contract test: substitute only the runner's completed
         // receipt. Native failures and continued discovery are covered by the
         // maintenance integration tests; the real CLI owns rendering and exit.
-        const entrypoint = adapter === 'mr' ? cliPath : scriptPath
-        const args = adapter === 'mr' ? ['store', 'buck-maintain', '--json'] : ['--json']
+        const entrypoint = cliPath
+        const args = ['store', 'buck-maintain', '--json']
         const bootstrap = `
         import { mock } from 'bun:test'
         import { Effect } from ${JSON.stringify(import.meta.resolve('effect'))}
@@ -215,5 +202,5 @@ describe('megarepo CLI contract baselines (status/signal invariant, prose owner-
           expect(normalizeOutput(result.stderr)).toContain('BuckMaintainCommandFailed')
       },
     )
-  }
+  })
 })

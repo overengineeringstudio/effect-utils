@@ -368,11 +368,12 @@ or a scan that cannot be read, is `unknown` and keeps.
 ## Testing
 
 `devenv tasks run test:megarepo` runs the bounded Buck lane and its source integration
-complement. The CLI contract lane declares the root maintenance adapter as an external
-Buck input; it does not depend on scripts being present in the package tree.
+complement. Root script adapter contracts run in `buck2:cache-posture:test`, alongside
+the other root Buck entrypoint tests, without adding scripts to package or Nix closures.
 
-Native ownership integration tests require the real `pty` executable on `PATH` and
-skip when its capability probe fails. Empty native projections also require PTY
+Native ownership safety assertions use deterministic subprocess projections on every
+host. An additional real-`pty` test skips only when the executable is absent from
+`PATH`; other probe failures fail the test. Empty native projections also require PTY
 capture: unavailable PTY evidence is unknown, not proof of no owners.
 
 ## Documentation

@@ -114,13 +114,6 @@ export const rootBuckAggregateProjection = (): GenieOutput<RootBuckAggregatePlan
         weaverRootBuckLoad,
         aggregateRootBuckLoad,
         rootBuckBase,
-        // The megarepo CLI contract lane declares the root adapter as a source input.
-        `export_file(
-    name = "scripts/buck2-daemon-reaper.ts",
-    src = "scripts/buck2-daemon-reaper.ts",
-    visibility = ["PUBLIC"],
-)
-`,
         rootValidationSources,
         '',
         weaverRootBuckTargets,

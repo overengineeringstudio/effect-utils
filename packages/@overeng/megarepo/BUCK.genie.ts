@@ -61,7 +61,6 @@ export const buck2TypeScriptAdmission = {
       // nix, coreutils, or `script`, so they stay unbounded (decision 0026) under the
       // devenv `test:megarepo` and `test:megarepo-cold-gc` tasks.
       tools: { BUN_BIN: '//buck2/toolchains:tool_bun' },
-      externalInputs: { BUCK_MAINTAIN_SCRIPT: 'scripts/buck2-daemon-reaper.ts' },
       excludes: [
         'src/cli/cli.integration.test.ts',
         'src/cli/pin.integration.test.ts',

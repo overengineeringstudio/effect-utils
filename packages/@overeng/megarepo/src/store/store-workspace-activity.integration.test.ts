@@ -33,7 +33,9 @@ import {
 
 const PRODUCER = 'acceptance-fixture'
 const runsAsRoot = process.getuid?.() === 0
-const hasPty = spawnSync('pty', ['--version'], { stdio: 'ignore', timeout: 10_000 }).status === 0
+const ptyProbe = spawnSync('pty', ['--version'], { stdio: 'ignore', timeout: 10_000 })
+const ptyMissing =
+  ptyProbe.error !== undefined && 'code' in ptyProbe.error && ptyProbe.error.code === 'ENOENT'
 
 const manifest = ({
   workspace,
@@ -413,6 +415,46 @@ const retainExitedPty = Effect.fnUntraced(function* ({ id, cwd }: { id: string; 
   })
 })
 
+/** The exact list projection consumed by PtySessions in store-workspace-activity.ts. */
+const withPtyProjection = Effect.fnUntraced(function* ({
+  fs,
+  root,
+  sessions,
+}: {
+  fs: FileSystem.FileSystem
+  root: string
+  sessions: ReadonlyArray<{
+    name: string
+    status: 'running' | 'exited' | 'vanished'
+    pid: number | null
+    cwd: string
+  }>
+}) {
+  const binary = `${root}/pty-fixture`
+  yield* fs.writeFileString(`${binary}.json`, encodeJson(sessions))
+  yield* fs.writeFileString(
+    binary,
+    `#!/bin/sh
+[ "$*" = "list --json --tags" ] || exit 1
+cat "$0.json"
+`,
+  )
+  yield* fs.chmod(binary, 0o700)
+  yield* Effect.acquireRelease(
+    Effect.sync(() => {
+      const previous = process.env['MEGAREPO_GC_PTY_BIN']
+      process.env['MEGAREPO_GC_PTY_BIN'] = binary
+      return previous
+    }),
+    (previous) =>
+      Effect.sync(() => {
+        if (previous === undefined) delete process.env['MEGAREPO_GC_PTY_BIN']
+        else process.env['MEGAREPO_GC_PTY_BIN'] = previous
+      }),
+  )
+  return binary
+})
+
 /** Real subprocess protocol boundary, with scoped native projection payloads. */
 const withNativeProjection = Effect.fnUntraced(function* ({
   fs,
@@ -483,65 +525,81 @@ esac
   return binary
 })
 
-// Like the root-only retained-PTY fixtures below, this suite needs the real
-// optional host tool. Even an empty native projection requires PTY capture.
-describe.skipIf(hasPty === false)('readWorkspaceActivity native ownership', () => {
-  it.live(
-    'canonicalizes current local and remote seat owners without making retained PTYs seat owners',
-    Effect.fnUntraced(
-      function* () {
-        const { fs, root, workspace } = yield* fixture
-        const alias = `${root}/workspace-alias`
-        const ptyWorkspace = `${root}/pty-workspace`
-        yield* fs.symlink(workspace, alias)
-        yield* fs.makeDirectory(ptyWorkspace)
-        yield* withRealPty({ fs, root })
-        yield* retainExitedPty({ id: 'native-owner-retained', cwd: ptyWorkspace })
-        const statuses = ['running', 'waiting', 'idle', 'suspended', 'future-status']
-        yield* withNativeProjection({
-          fs,
-          root,
-          subjects: {
-            ...Object.fromEntries(
-              statuses.map((status) => [
-                `agent-${status}`,
-                {
-                  status,
-                  workspace: alias,
-                  host: status === 'running' ? hostname() : 'host/remote-fixture',
-                },
-              ]),
-            ),
-            'agent-stopped': { status: 'stopped' },
-            'agent-exited': { status: 'exited' },
-            'agent-absent-remote': {
-              status: 'waiting',
-              workspace: `${root}/absent-remote`,
-              host: 'host/remote-fixture',
+describe('readWorkspaceActivity native ownership', () => {
+  for (const capture of ['fixture', 'real'] as const) {
+    it.live.skipIf(capture === 'real' && ptyMissing)(
+      `canonicalizes current local and remote seat owners without making retained PTYs seat owners (${capture} PTY capture)`,
+      Effect.fnUntraced(
+        function* () {
+          const { fs, root, workspace } = yield* fixture
+          const alias = `${root}/workspace-alias`
+          const ptyWorkspace = `${root}/pty-workspace`
+          yield* fs.symlink(workspace, alias)
+          yield* fs.makeDirectory(ptyWorkspace)
+          if (capture === 'real') {
+            expect(
+              ptyProbe.error,
+              'pty --version must fail only when absent from PATH',
+            ).toBeUndefined()
+            expect(ptyProbe.signal).toBeNull()
+            expect(ptyProbe.status).toBe(0)
+            yield* withRealPty({ fs, root })
+            yield* retainExitedPty({ id: 'native-owner-retained', cwd: ptyWorkspace })
+          } else {
+            yield* withPtyProjection({
+              fs,
+              root,
+              sessions: [
+                { name: 'native-owner-retained', status: 'exited', pid: null, cwd: ptyWorkspace },
+              ],
+            })
+          }
+          const statuses = ['running', 'waiting', 'idle', 'suspended', 'future-status']
+          yield* withNativeProjection({
+            fs,
+            root,
+            subjects: {
+              ...Object.fromEntries(
+                statuses.map((status) => [
+                  `agent-${status}`,
+                  {
+                    status,
+                    workspace: alias,
+                    host: status === 'running' ? hostname() : 'host/remote-fixture',
+                  },
+                ]),
+              ),
+              'agent-stopped': { status: 'stopped' },
+              'agent-exited': { status: 'exited' },
+              'agent-absent-remote': {
+                status: 'waiting',
+                workspace: `${root}/absent-remote`,
+                host: 'host/remote-fixture',
+              },
             },
-          },
-        })
-        const activity = yield* readWorkspaceActivity({ fs })
-        expect(activity).toBeDefined()
-        expect(activity?.ownerClaims).toEqual([
-          {
-            workspace,
-            agents: statuses.map((status) => `agent-${status}`),
-          },
-        ])
-        expect(activity?.activePaths).toEqual(new Set([workspace, ptyWorkspace]))
-      },
-      Effect.provide(NodeServices.layer),
-      Effect.scoped,
-    ),
-  )
+          })
+          const activity = yield* readWorkspaceActivity({ fs })
+          expect(activity).toBeDefined()
+          expect(activity?.ownerClaims).toEqual([
+            {
+              workspace,
+              agents: statuses.map((status) => `agent-${status}`),
+            },
+          ])
+          expect(activity?.activePaths).toEqual(new Set([workspace, ptyWorkspace]))
+        },
+        Effect.provide(NodeServices.layer),
+        Effect.scoped,
+      ),
+    )
+  }
 
   it.live(
     'reports complete empty ownership for a successful empty native projection',
     Effect.fnUntraced(
       function* () {
         const { fs, root } = yield* fixture
-        yield* withRealPty({ fs, root })
+        yield* withPtyProjection({ fs, root, sessions: [] })
         yield* withNativeProjection({ fs, root, subjects: {} })
         const activity = yield* readWorkspaceActivity({ fs })
         expect(activity?.ownerClaims).toEqual([])
@@ -557,8 +615,8 @@ describe.skipIf(hasPty === false)('readWorkspaceActivity native ownership', () =
     Effect.fnUntraced(
       function* () {
         const { fs, root } = yield* fixture
-        yield* withRealPty({ fs, root })
-        const binary = yield* withNativeProjection({ fs, root, subjects: {} })
+        yield* withNativeProjection({ fs, root, subjects: {} })
+        const binary = yield* withPtyProjection({ fs, root, sessions: [] })
         yield* fs.remove(binary)
         expect(yield* readWorkspaceActivity({ fs })).toBeUndefined()
       },
