@@ -305,7 +305,11 @@ const EnvironmentName = Schema.String.pipe(
 )
 const launchFields = {
   cwd: Schema.optionalKey(Text),
-  env: Schema.optionalKey(Schema.Record(EnvironmentName, Schema.String)),
+  env: Schema.optionalKey(
+    Schema.Record(Schema.String, Schema.String).pipe(
+      Schema.refine((env): env is typeof env => Object.keys(env).every(Schema.is(EnvironmentName))),
+    ),
+  ),
   unset: Schema.optionalKey(Schema.Array(EnvironmentName)),
 }
 const LaunchShape = Schema.Union([

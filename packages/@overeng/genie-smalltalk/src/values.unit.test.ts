@@ -144,13 +144,8 @@ describe('canonical launch values', () => {
     ])
       expect(() => Schema.decodeUnknownSync(LaunchSchema)(value)).toThrow()
     expect(() => Launch.from({ command: 'true', argv: ['false'] })).toThrow()
-    expect(() =>
-      Launch.shell({
-        command: 'true',
-        cwd: '/tmp',
-        policy: {},
-      }),
-    ).toThrow()
+    const unsupportedLaunch = { command: 'true', cwd: '/tmp', policy: {} }
+    expect(() => Launch.shell(unsupportedLaunch)).toThrow()
     expect(Schema.is(LaunchSchema)({ _tag: 'Shell', command: 'true', argv: ['true'] })).toBe(false)
     expect(Schema.is(LaunchSchema)({ _tag: 'Argv', argv: ['true'], command: 'true' })).toBe(false)
     expect(Schema.is(LaunchSchema)({ _tag: 'Shell', command: 'true', policy: {} })).toBe(false)
