@@ -446,6 +446,7 @@ describe('compact native time rendering', () => {
           maxRounds: 2,
           until: [gate.exists({ name: 'result', subject: 'resource/result' })],
           round: {
+            completion: { dependsOn: ['retry'] },
             steps: [
               {
                 id: 'retry',
