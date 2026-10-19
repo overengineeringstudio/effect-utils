@@ -475,7 +475,7 @@ export const syncMember = <R = never>({
         }
         // Path changed - check if old worktree has uncommitted changes before switching
         if (force === false && dryRun === false) {
-          const worktreeStatus = yield* Git.getWorktreeStatus(existingLink).pipe(
+          const worktreeStatus = yield* Git.getWorktreeStatus({ worktreePath: existingLink }).pipe(
             Effect.orElseSucceed(() => ({
               isDirty: false,
               hasUnpushed: false,
@@ -708,7 +708,7 @@ export const syncMember = <R = never>({
 
       // Check if old worktree has uncommitted changes before switching
       if (preservesCanonicalBranch === false && force === false && dryRun === false) {
-        const worktreeStatus = yield* Git.getWorktreeStatus(currentLink).pipe(
+        const worktreeStatus = yield* Git.getWorktreeStatus({ worktreePath: currentLink }).pipe(
           Effect.orElseSucceed(() => ({
             isDirty: false,
             hasUnpushed: false,
@@ -1013,7 +1013,7 @@ export const syncMember = <R = never>({
           if ((yield* Git.getCurrentCommit(branchPath)) !== targetCommit) return false
           const branch = yield* Git.getCurrentBranch(branchPath)
           if (Option.isNone(branch) === true || branch.value !== targetRef) return false
-          return (yield* Git.getWorktreeStatus(branchPath)).isDirty === false
+          return (yield* Git.getWorktreeStatus({ worktreePath: branchPath })).isDirty === false
         }).pipe(Effect.orElseSucceed(() => false))
         if (reusable === true) return { _tag: 'branch' as const, ref: targetRef }
       } else if ((yield* fs.exists(branchPath)) === false) {
@@ -1175,7 +1175,7 @@ export const syncMember = <R = never>({
         Option.isSome(worktreeBranch) === true && worktreeBranch.value === targetRef
 
       const currentCommit = yield* Git.getCurrentCommit(worktreePath)
-      const worktreeStatus = yield* Git.getWorktreeStatus(worktreePath)
+      const worktreeStatus = yield* Git.getWorktreeStatus({ worktreePath })
       if (
         onExpectedBranch === false ||
         currentCommit !== targetCommit ||

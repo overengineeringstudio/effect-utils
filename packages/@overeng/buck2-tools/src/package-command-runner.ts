@@ -723,11 +723,10 @@ const createEntryOverridePlugin = ({
   readonly entry: string
   readonly onOverride: () => void
 }): BunPlugin => {
-  // Canonicalized once, unconditionally, on every host: `realpathSync` is the
-  // only comparison that survives a host whose build root is reached through a
-  // symlink (Darwin resolves `/tmp` to `/private/tmp`), and Bun reports the
-  // canonical path in `args.path`.
-  const expected = realpathSync(entry)
+  // Resolve symlinked build roots (Darwin's `/tmp` is `/private/tmp`) while
+  // preserving the entry's hardlink name. Darwin's F_GETPATH may report a
+  // different name for the same file on successive raw `realpathSync` calls.
+  const expected = realpathThroughName(entry)
   const loader =
     LOADERS[expected.slice(expected.lastIndexOf('.'))] ??
     fail(`unsupported entry extension: ${expected}`)
@@ -737,7 +736,7 @@ const createEntryOverridePlugin = ({
       build.onLoad({ filter: /\.(?:c|m)?[jt]sx?$/ }, (args) => {
         let candidate: string
         try {
-          candidate = realpathSync(args.path)
+          candidate = realpathThroughName(args.path)
         } catch {
           return undefined
         }

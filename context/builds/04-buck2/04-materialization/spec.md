@@ -21,12 +21,13 @@ view, and the staleness gate.
 ```text
 translate (genie, freshness-gated)
   pnpm-lock.yaml (+ pnpm-workspace.yaml, patches)
-  -> per package version: fetch target (url, sha256 from generated sidecar)
+  -> per package version: fetch target (canonical url, sha256, size from generated sidecar)
                           extract target (tarball -> package tree artifact)
   -> per importer:        node_modules assembly target
   -> per-configuration required-edge availability and optional filtering (select())
 
-fetch     download_file, remote-cacheable, network only here (BUILD.BUCK.MAT-R08)
+fetch     native download_file, verified digest/size, deferred materialization;
+          network only here (BUILD.BUCK.MAT-R08); not an RE CAS read
 extract   tar -> package tree, local-materialization-policy (no AC reads/uploads)
 assemble  importer virtual store: .pnpm/<name>@<ver>[_peer-suffix]/node_modules/<name>
           hardlinks from extract artifacts, relative symlinks for edges,
@@ -34,12 +35,24 @@ assemble  importer virtual store: .pnpm/<name>@<ver>[_peer-suffix]/node_modules/
           local-materialization-policy (BUILD.BUCK.MAT-T01); public node_modules output
 ```
 
-Extract, store-entry, store-SCC, store-view, and package-tree rules use the
+Extract, store-entry, store-SCC, store-view, package-tree, and runtime-module rules use the
 default non-remote execution platform, not the cache-admitted platform.
 Their cheap filesystem projections are recomputed locally; declared outputs,
 incremental invalidation, and editor backing-root completeness are unchanged.
 The decision and measured transfer cost are specified by
 [the local materialization policy](../06-reuse-client/spec.md#local-materialization-policy-buildbuckreuse-r08r10).
+
+Standalone pnpm archive acquisition uses one native `download_file` action
+with the canonical registry URL and reviewed SHA-256 and byte size. Buck owns
+verification and deferred materialization; no command fetch branch, runtime
+archive-origin selection, or automatic CAS-to-registry fallback is involved.
+Warm materialized archives need no transfer, but explicit fresh roots still
+download registry bytes. The private CAS and verified seeder are optional
+infrastructure, not archive read-path prerequisites. A mirror or CAS read path
+requires a separate decision
+([0038, Amendment 3](../../.decisions/0038-digest-origins-for-acquisition.md#amendment-3-one-native-download-shape-q58-2026-10-17)).
+Nix-backed builds instead retain the per-digest fixed-output archive projection
+through `nix_store.root`, copying and verifying each archive before extraction.
 
 No package manager executes inside Buck actions. pnpm is the developer-time
 resolver that writes `pnpm-lock.yaml`; the generated sha256 sidecar is derived

@@ -48,7 +48,7 @@ import {
   SyntaxKind,
 } from 'typescript/unstable/ast'
 
-import { runTsFileAnalysis } from '../../node/ts-api.ts'
+import { runTsFileAnalysis, TsApiTimeoutError } from '../../node/ts-api.ts'
 import type { TsFileAnalysisSession } from '../../node/ts-api.ts'
 import type { ExportEnvironmentContract, PackageJsonValidationRuntime } from '../mod.ts'
 import type { ValidationIssue } from '../validation.ts'
@@ -805,11 +805,11 @@ export const createNodePackageJsonValidationRuntime = ({
 }: NodePackageJsonValidationRuntimeOptions = {}): PackageJsonValidationRuntime => ({
   // One compiler session serves every export of the package: it parses each graph file and answers the
   // module resolution the walk needs, and is torn down before the runtime returns.
-  validateExportEnvironments: (args) =>
-    runAnalysis({
+  validateExportEnvironments: (args) => {
+    const start = performance.now()
+    return runAnalysis({
       cwd: args.cwd,
       use: async (session) => {
-        const start = performance.now()
         const issues: ValidationIssue[] = []
         let hits = 0
         let misses = 0
@@ -907,7 +907,22 @@ export const createNodePackageJsonValidationRuntime = ({
           cache: { hits, misses },
         }
       },
-    }),
+    }).catch((error: unknown) => {
+      if (!(error instanceof TsApiTimeoutError)) throw error
+      return {
+        issues: Object.keys(args.contracts).map((exportPath) =>
+          issue({
+            packageName: args.packageName,
+            dependency: exportPath,
+            message: `${error.message}; export environment validation could not complete.`,
+            rule: 'package-json-export-environment-analysis',
+          }),
+        ),
+        durationMs: performance.now() - start,
+        cache: { hits: 0, misses: 0 },
+      }
+    })
+  },
 })
 
 /** Package-json-owned node validation runtime injected during Genie validation. */

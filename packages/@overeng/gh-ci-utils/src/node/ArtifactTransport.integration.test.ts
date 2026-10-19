@@ -8,6 +8,9 @@ import { HttpClient, HttpClientRequest } from 'effect/http'
 import { expect } from 'vitest'
 
 import { ARTIFACT_LIMITS, type RetainedArtifact } from '../isomorphic/Artifacts.ts'
+import { makeZip } from './ArtifactArchive.fixtures.ts'
+import { readArtifactMember } from './ArtifactArchive.ts'
+import { renderArtifactOutput, selectArtifactReadWindow } from './commands/artifacts.ts'
 import { GitHubAuthConfigTag } from './Config.ts'
 import { GitHubClient } from './GitHubClient.ts'
 
@@ -39,6 +42,7 @@ it.live('bounds retained artifact transport and isolates managed authentication 
       workflow_run: { id: 12 },
     }
     let mode = 'ok'
+    let archive = zip
     let redirect = 'https://fixture.blob.core.windows.net/archive?signature=fixture-secret'
     const requests: string[] = []
     const storageAuth: Array<string | undefined> = []
@@ -71,7 +75,7 @@ it.live('bounds retained artifact transport and isolates managed authentication 
           response.end()
         } else {
           response.writeHead(200)
-          response.end(zip)
+          response.end(archive)
         }
         return
       }
@@ -114,7 +118,7 @@ it.live('bounds retained artifact transport and isolates managed authentication 
           response.end('fixture-secret')
         } else {
           response.writeHead(200)
-          response.end(zip)
+          response.end(archive)
         }
         return
       }
@@ -129,7 +133,7 @@ it.live('bounds retained artifact transport and isolates managed authentication 
             expired: mode === 'expired',
             workflow_run: mode === 'mismatch' ? { id: 99 } : metadata.workflow_run,
             size_in_bytes:
-              mode === 'metadata-size' ? ARTIFACT_LIMITS.compressedBytes + 1 : zip.length,
+              mode === 'metadata-size' ? ARTIFACT_LIMITS.compressedBytes + 1 : archive.length,
           }),
         )
       }
@@ -288,6 +292,76 @@ it.live('bounds retained artifact transport and isolates managed authentication 
       expect(storageAuth).toEqual([undefined, undefined])
       expect(storageTrace).toEqual([undefined, undefined])
       expect(apiAuth.every((header) => header === 'Bearer fixture-installation')).toBe(true)
+
+      mode = 'ok'
+      const prefix = 'a'.repeat(ARTIFACT_LIMITS.outputBytes + 100)
+      const text = prefix + '界🙂end'
+      archive = makeZip(text)
+      const beforeInvalid = requests.length
+      expect(
+        (yield* selectArtifactReadWindow(selection, 'log.txt', { offset: 1 }).pipe(Effect.flip))
+          .reason,
+      ).toBe('invalid-selection')
+      expect(requests.length).toBe(beforeInvalid)
+      const downloaded = yield* client.downloadRetainedArtifact(selection)
+      expect(
+        (yield* readArtifactMember(downloaded.bytes, selection, 'log.txt').pipe(Effect.flip))
+          .reason,
+      ).toBe('limit-exceeded')
+      const window = yield* selectArtifactReadWindow(selection, 'log.txt', {
+        offset: prefix.length + 1,
+        length: 8,
+      })
+      const content = yield* readArtifactMember(downloaded.bytes, selection, 'log.txt', window)
+      expect(content).toEqual({
+        path: 'log.txt',
+        text: '🙂en',
+        decompressedBytes: Buffer.byteLength(text),
+        window: { offset: prefix.length + 3, length: 6, totalBytes: Buffer.byteLength(text) },
+      })
+      const rendered = yield* renderArtifactOutput({
+        repo: selection.repo,
+        runId: selection.runId,
+        artifact: downloaded.artifact,
+        content,
+      })
+      expect(yield* Schema.decodeEffect(Json)(rendered)).toMatchObject({ content })
+      expect(
+        yield* readArtifactMember(downloaded.bytes, selection, 'log.txt', { tailBytes: 3 }),
+      ).toMatchObject({
+        text: 'end',
+        window: {
+          offset: Buffer.byteLength(text) - 3,
+          length: 3,
+          totalBytes: Buffer.byteLength(text),
+        },
+      })
+
+      // Matching but wrong CRC fields force validation of the complete decompressed member.
+      archive = makeZip(text)
+      const centralOffset = archive.readUInt32LE(archive.length - 6)
+      const wrongCrc = (archive.readUInt32LE(14) ^ 1) >>> 0
+      archive.writeUInt32LE(wrongCrc, 14)
+      archive.writeUInt32LE(wrongCrc, centralOffset + 16)
+      const corrupt = yield* client.downloadRetainedArtifact(selection)
+      expect(
+        (yield* readArtifactMember(corrupt.bytes, selection, 'log.txt', {
+          offset: 0,
+          length: 4,
+        }).pipe(Effect.flip)).reason,
+      ).toBe('unsafe-archive')
+
+      // Binary and malformed UTF-8 suffixes remain invalid outside a safe ASCII window.
+      for (const suffix of [Buffer.from([0]), Buffer.from([0xff])]) {
+        archive = makeZip(Buffer.concat([Buffer.from(prefix), suffix]))
+        const invalid = yield* client.downloadRetainedArtifact(selection)
+        expect(
+          (yield* readArtifactMember(invalid.bytes, selection, 'log.txt', {
+            offset: 0,
+            length: 4,
+          }).pipe(Effect.flip)).reason,
+        ).toBe('binary-content')
+      }
     }).pipe(
       Effect.provide(
         GitHubClient.layer({

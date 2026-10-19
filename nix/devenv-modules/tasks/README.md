@@ -38,7 +38,44 @@ Explicit `GENIE_MEMBER_OVERRIDE_MAP` overrides have the same precedence as
 genie imports. Materialize pinned sources with
 `mr apply --worktree-mode commit --lock-sync off` before staging.
 
+The check module also exports `config.effectUtils.buck2.aggregateExec`, taking
+a task name and a list of Buck2 arguments (including the subcommand). Existing
+consumers of `tasks/shared/check.nix` need no additional import:
+
+```nix
+env.BUCK2_BIN = "${inputs.effect-utils.packages.${pkgs.stdenv.hostPlatform.system}.buck2}/bin/buck2";
+env.OTEL_SPAN_BIN = "${inputs.effect-utils.packages.${pkgs.stdenv.hostPlatform.system}.otel-span}/bin/otel-span";
+tasks."bird:build".exec = config.effectUtils.buck2.aggregateExec "bird:build" [
+  "build"
+  "//flakes/bird:dist-package"
+  "//flakes/bird:bird-candidate"
+];
+```
+
+The helper preserves task tracing, the caller-root command span, event logs/build
+IDs, pipeline spooling versus standalone ingest/export, and the Buck2 exit status.
+`effectUtils.buck2.eventsPackage` defaults to the consumer's effect-utils input;
+`effectUtils.buck2.prepare` optionally supplies repository-specific setup before
+the command (for example, effect-utils' capability publication).
+
 ## Observability
+
+Aggregate tasks replace (never prepend to) `PATH` with nixpkgs Watchman's bin
+directory by default. To use a signed host Watchman on macOS, explicitly declare
+the executable in the ignored `devenv.local.nix`:
+
+```nix
+{
+  effectUtils.buck2.watchmanBin = "/usr/local/bin/watchman";
+}
+```
+
+The override must be absolute. A task-local `watchman` launcher executes that
+exact binary without copying or modifying it. Buck2's Watchman client discovers
+the CLI as `watchman` through `PATH`; it does not support a
+`BUCK2_WATCHMAN_BIN`/`WATCHMAN_BINARY` selector. There is no ambient PATH probing.
+Restart an existing Buck2 daemon (`buck2 kill`) after changing the selection;
+an already-running Watchman server retains its original executable/permissions.
 
 Import the sibling observability module once to capture native devenv spans
 and effect-utils task spans as one otelite trace:
@@ -106,18 +143,43 @@ for outer tasks that must complete before the nested devenv process can evaluate
     apps, while `"**"` explicitly exempts an entire repository. A reason is
     required; other library paths remain guarded.
 - `megarepo.nix` - Megarepo workspace tasks
-  - `(taskModules.megarepo { setupCommitMembers = [ "livestore" ]; })` makes
-    `mr:setup` prepare those members' nested megarepo trees in fresh commit
-    worktrees; unlisted members stay on tracking worktrees. Local readiness
-    checks every non-skipped root member with `mr status` (without `--all`),
-    then runs `mr status --all` inside only the listed, non-skipped members
-    that have their own megarepo config. Unlisted nested trees do not block
-    readiness; ordinary listed repos need no nested check. These checks also
-    run on the outer setup cache-hit path. Default `[ ]` keeps the plain
-    tracking setup and its root-mount-only outer cache-hit check.
-    With `CI=true`, `mr:setup` uses commit worktrees for every member; with a
-    non-empty list it passes `mr apply --commit-all-members`, preparing every
-    root member's nested tree to match the `mr status --all` readiness check.
+  - `effectUtils.megarepo.setup.mode` is a typed `"tracking" | "locked"` option,
+    defaulting to `"tracking"` to preserve local development. Set it to
+    `"locked"` in consumer configuration for reproducible setup, or opt in per
+    invocation with `MR_SETUP_MODE=locked devenv tasks run check:quick` (likewise
+    `check:all`). The process-level override reaches setup dependencies;
+    setting environment only on the aggregate check task does not. `CI=true`
+    always selects locked commits, even if the override requests tracking.
+    Locked setup materializes `megarepo.lock` commits without fetching refs or
+    rewriting locks. Canonical non-CI runners must explicitly select locked mode;
+    invoking a task named `check:*` alone does not change the setup policy.
+    Status validates the effective mode before checking readiness. Successful
+    setup records its mode under `.devenv/task-cache/mr-apply/setup-mode`;
+    switching between tracking and locked invalidates readiness, including
+    outer setup cache hits, so apply materializes the requested worktree policy.
+    Every shared apply path (`mr:setup`, `mr:bootstrap`, `mr:apply`, and
+    `mr:fetch-apply`) removes that proof before mutating member mounts, so an
+    explicit remount or failed apply cannot leave stale setup readiness.
+  - `(taskModules.megarepo { setupCommitMembers = [ "livestore" ]; })` additionally
+    prepares those members' nested megarepo trees in fresh commit worktrees.
+    Local readiness checks every non-skipped root member with `mr status`
+    (without `--all`), then runs `mr status --all` inside only the listed,
+    non-skipped members that have their own megarepo config. Unlisted nested
+    trees do not block readiness; ordinary listed repos need no nested check.
+    These exact-lock checks also run on the outer setup cache-hit path.
+    Default `[ ]` prepares and checks root members only.
+    With `CI=true`, a non-empty list passes `mr apply --commit-all-members`,
+    preparing every root member's nested tree to match the root-level
+    `mr status --all` readiness check.
+  - Setup probes `mr apply --help` before using `--verify-shared`, keeping
+    older published products usable without passing an unsupported flag.
+    Failed probes stop setup; legacy canonical-mutation refusal remains
+    fail-closed. The probe never changes the selected setup mode.
+  - Shared `genie:prepare` waits for `mr:setup` when that task exists, so Genie
+    run/check/watch and `lint:check:genie` in both lint modules await member
+    sources before their status or execution scripts. Concrete Buck task
+    dependencies remain consumer-owned; shared `buck2.nix` exposes execution
+    helpers rather than defining a generic typecheck task.
   - `megarepo-product-flags.test.sh` evaluates these task scripts with optional
     member preparation enabled and checks every emitted command/flag against
     the manifest-backed Nix `megarepo` product's help. The `pr/quality` gate runs

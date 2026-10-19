@@ -32,6 +32,32 @@ changes to transitive workspace source, declarations, or dependency bytes still
 select a new generation. Literal link inventories remain part of the admission
 stability proof, so changing even an equivalent link while copying fails closed.
 
+Root publication also converges the authority manifest's package-local dependency
+topology: real `node_modules` directories identified by a regular `.modules.yaml`
+or dependency symlinks into the root `node_modules/.pnpm` store are renamed into
+`.editor-view/.legacy/importer-*` before root first-hop cutover. Their bytes are
+retained, not deleted; unselected importers then use normal parent resolution
+through the root view. Existing first-hop symlinks are never traversed or moved.
+Unidentified real directories fail publication before changing the root pointer.
+Move the named directory outside the workspace (or delete it only after confirming
+it is cache-only), then rerun bootstrap. Retirement also recognizes already-dangling
+pnpm links, so rerunning bootstrap repairs old residue.
+
+Root publication locks its own state root first, then all affected package state
+roots in byte-sorted order before inspecting importer directories. A batch acquires
+the complete ordered lock set before starting workers and reuses its locks.
+An existing package publisher lock fails root publication without moving importers;
+retry after that publisher finishes (recover abandoned locks using the reported
+explicit recovery command).
+
+Retired importers remain in the repository-root `.editor-view/.legacy/importer-*`;
+the old root install is retained alongside them as `node_modules-*`. After a
+successful bootstrap and once those old installs are no longer needed for recovery,
+inspect the retained entries and manually remove only the unwanted entries from
+`.editor-view/.legacy`. Publication does not automatically garbage-collect this
+legacy state. Do not remove live `.editor-view/.store` generations or first hops
+as part of legacy cleanup.
+
 Batch publication prepares up to four private candidates concurrently and
 serializes commits within each editor state root. Fingerprint requests within
 each TypeScript process queue one child at a time, including independent roots.
@@ -326,7 +352,57 @@ or reused same-host owners; all uncertain ownership retains explicit exact-token
 The persistent control file records a dirty byte before repair/mutation and clears
 it only after successful restoration. Normal acquisitions inspect the bounded
 directory set and staging metadata; dirty acquisitions also scan shard metadata
-for abandoned temporary links. Repair never rewrites or chmods payload inodes.
+for abandoned temporary links. Automatic crash repair never rewrites or chmods
+payload inodes.
+
+### Recovering a chmod-poisoned shared store
+
+Cleanup must unlock **directories only**, never recursively chmod payload files:
+snapshot payloads are hardlinked into the CAS and other worktrees. A writable
+blob is rejected even when its bytes happen to match its address. Do not bypass
+this check with a blanket chmod or a private-copy fallback.
+
+An initial read-only census requires no quiescence acknowledgement and does not
+create a flock, normalize directories, or change any inode:
+
+```sh
+bun packages/@overeng/buck2-tools/src/editor-view.ts repair-content \
+  --repo-root "$PWD" --dry-run true
+```
+
+It reports matching writable blobs, mismatches, and total checked blob inodes;
+`repairedBlobs` is zero. It fails if entries change while being hashed.
+
+First stop every editor-view publisher, watcher and reader using this shared
+store, and stop the cleanup process that made its files writable. The CAS flock
+excludes cooperating publishers, but cannot exclude arbitrary open writable
+descriptors. Then explicitly acknowledge that quiescence:
+
+```sh
+bun packages/@overeng/buck2-tools/src/editor-view.ts repair-content \
+  --repo-root "$PWD" --quiesced true
+```
+
+Like `collect-content`, this command accepts `--content-store` for an explicitly
+selected store (including an offline copy). Under the existing CAS flock it
+hashes each writable blob against its SHA-256 content address before restoring
+its addressed mode (0444 or 0555). Matching inodes retain their hardlinks, so
+their linked snapshots regain immutability too. It never blesses bytes solely
+from a filename or cached source manifest.
+The final locked metadata census requires every surviving blob inode to have its
+addressed immutable mode. Since mode belongs to the inode, this also proves
+that every alias outside the store is readonly, not only the CAS pathname.
+
+Mismatches are moved to a private sibling `<content-store>.quarantine` directory
+without chmodding their inodes. The JSON receipt lists the original and
+quarantine paths and actual digest; any quarantine makes the CLI exit nonzero.
+Linked snapshots still hold the corrupted, untrusted inode: retire those
+snapshots using directory-only unlock/unlink and republish their views from
+admitted sources before restarting readers. Keep quarantine evidence until the
+incident is understood. After a matching-only repair, rerun bootstrap and the
+normal quick gate before resuming work. Never run repair against a shared live
+store without coordinating its users.
+
 The dirty byte provides **process-crash recovery, not power-loss durability**:
 metadata/control writes are not fsync-ordered for machine or filesystem failure.
 Five-minute eviction of unknowable-owner staging files is an **availability
@@ -382,6 +458,11 @@ remain the declared package tree, closure roots, runner closure, Bun toolchain,
 and platform-gated package manifest; bundling does not execute the entrypoint.
 The subsequent compiled-product action likewise consumes the portable module
 without invoking the fingerprint tool.
+
+CLI bundles override `import.meta.main` only in the selected entry and require
+exactly one override. Entry matching resolves symlinks while preserving hardlink
+names, so macOS file-descriptor path ambiguity cannot select a source outside the
+portable farm or skip the entry override.
 
 Non-bundle package execution (`exec`, `check`, `native-check`, and `build-dir`)
 still requires an explicitly declared immutable `/nix/store/.../bin/buck2-fingerprint`

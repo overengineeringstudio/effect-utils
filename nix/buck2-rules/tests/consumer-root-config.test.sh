@@ -16,7 +16,7 @@ render_config() {
       rules = flake.packages.\${system}.buck2-rules;
       capabilities = flake.packages.\${system}.buck2-capabilities;
       cellName = \"fixture\";
-    } // $1)).buckConfig
+    } // $1)).${2:-buckConfig}
   "
 }
 
@@ -42,6 +42,9 @@ require_line "$default_config" '  allow_cache_uploads = false'
 forbid_line "$default_config" '  default_allow_cache_upload = true'
 forbid_line "$default_config" '[buck2_re_client]'
 forbid_line "$default_config" '[archive_origin]'
+
+root_buck="$(render_config '{}' rootBuck)"
+require_line "$root_buck" 'toolchain_alias(name = "cxx_no_default_deps", actual = "//buck2/toolchains:cxx", visibility = ["PUBLIC"])'
 
 immutable_config="$(render_config '{ watcherPolicy = "immutable-input"; }')"
 require_line "$immutable_config" '  file_watcher = fs_hash_crawler'
@@ -74,7 +77,8 @@ require_line "$private_config" '  cas_address = https://cas.example.invalid'
 require_line "$private_config" '  instance_name = fixture-private'
 require_line "$private_config" '  tls = true'
 require_line "$private_config" '[archive_origin]'
-require_line "$private_config" '  url_prefix = https://archives.example.invalid/cas/'
+require_line "$private_config" '  trusted_url_prefix = https://archives.example.invalid/cas/'
+forbid_line "$private_config" '  url_prefix = https://archives.example.invalid/cas/'
 require_line "$private_config" '  trusted_tier = private'
 
 explicit_engine_config="$(render_config '{
@@ -109,11 +113,20 @@ trap 'rm -rf "$fixture_root"' EXIT
 printf '%s\n' "$private_config" > "$fixture_root/.buckconfig"
 env -u BUCK2_NO_REMOTE_CACHE -u BUCK2_PUBLIC_CACHE_READ_ONLY -u BUCK2_CACHE_WRITE_BASIC_AUTH \
   bun "$repo_root/scripts/buck2-cache-posture.ts" "$fixture_root"
-require_line "$(cat "$fixture_root/.buckconfig.local")" '  url_prefix = https://archives.example.invalid/cas/'
-require_line "$(cat "$fixture_root/.buckconfig.local")" '  tier = private'
+forbid_line "$(cat "$fixture_root/.buckconfig.local")" '[archive_origin]'
+seed_destination="$(bun -e '
+  import { readFileSync } from "node:fs";
+  const { resolveArchiveOrigin } = await import(process.env.BUCK2_RULES_REPO + "/buck2/dependencies/seed-archives.ts");
+  console.log(JSON.stringify(resolveArchiveOrigin({
+    env: {},
+    localConfig: readFileSync(process.argv[1] + "/.buckconfig.local", "utf8"),
+    trackedConfig: readFileSync(process.argv[1] + "/.buckconfig", "utf8"),
+  })));
+' "$fixture_root")"
+require_line "$seed_destination" '{"tier":"private","urlPrefix":"https://archives.example.invalid/cas/"}'
 BUCK2_NO_REMOTE_CACHE=1 bun "$repo_root/scripts/buck2-cache-posture.ts" "$fixture_root"
 require_line "$(cat "$fixture_root/.buckconfig.local")" '  remote_cache_enabled = false'
 require_line "$(cat "$fixture_root/.buckconfig.local")" '  allow_cache_uploads = false'
-require_line "$(cat "$fixture_root/.buckconfig.local")" '  tier = public'
+forbid_line "$(cat "$fixture_root/.buckconfig.local")" '[archive_origin]'
 
 echo 'buck2 consumer root config passed'

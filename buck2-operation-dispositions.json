@@ -123,6 +123,10 @@
       "operation": "check:quick"
     },
     {
+      "disposition": "outside-by-policy:authoring-mutation",
+      "operation": "content-address:contract:generate"
+    },
+    {
       "disposition": "outside-by-policy:stage-zero-bootstrap-freshness",
       "operation": "genie:check"
     },

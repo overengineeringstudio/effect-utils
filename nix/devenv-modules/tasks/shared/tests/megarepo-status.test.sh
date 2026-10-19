@@ -225,4 +225,21 @@ done
 echo "  ok: shared mutation tasks stop after a failed mr command"
 
 echo ""
+echo "Test 9: setup delegates shared-cache verification without writing a manifest"
+setup_block="$(sed -n '/"mr:setup" = {/,/status =/p' "$module_file")"
+if [ "$(grep -Fc 'MR_VERIFY_SHARED_ARGS[@]' <<< "$setup_block")" -ne 3 ]; then
+  echo "FAIL: every setup mode must use capability-selected shared verification"
+  exit 1
+fi
+if ! grep -Fq 'MR_VERIFY_SHARED_ARGS=(--verify-shared)' <<< "$setup_block"; then
+  echo "FAIL: capable mr products must enable read-only shared-cache verification"
+  exit 1
+fi
+if grep -F 'recordWorkspaceMembers' <<< "$setup_block" >/dev/null; then
+  echo "FAIL: shared-cache setup must not write a cache manifest after verification"
+  exit 1
+fi
+echo "  ok: setup performs read-only shared-cache verification"
+
+echo ""
 echo "All megarepo status tests passed"

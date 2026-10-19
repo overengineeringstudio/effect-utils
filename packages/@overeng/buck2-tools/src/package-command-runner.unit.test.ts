@@ -1,3 +1,4 @@
+import * as fs from 'node:fs'
 import {
   linkSync,
   lstatSync,
@@ -14,7 +15,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import {
   assemblePortableFarm,
@@ -487,6 +488,32 @@ describe('the CLI entry override', () => {
     expect(
       loadOnce(join(alias, 'src', 'cli.ts'), join(packageTree, 'src', 'cli.ts')).overrides,
     ).toBe(1)
+  })
+
+  it('ignores hardlink-ambiguous realpath results', () => {
+    const root = scratch('entry-hardlink-')
+    const entry = join(root, 'cli.ts')
+    const otherName = join(root, 'source.ts')
+    writeFileSync(entry, 'if (import.meta.main) console.log("entry")\n')
+    linkSync(entry, otherName)
+    const nativeRealpath = fs.realpathSync
+    let leafLookups = 0
+    // Model Darwin F_GETPATH returning different names for the same vnode on
+    // successive calls. Directory realpaths remain stable, as on Darwin.
+    const realpath = vi.spyOn(fs, 'realpathSync').mockImplementation((path) => {
+      const resolved = nativeRealpath(path)
+      if (resolved === entry && ++leafLookups === 1) return otherName
+      return resolved
+    })
+    try {
+      expect(loadOnce(entry, entry)).toEqual({
+        contents: 'if (true) console.log("entry")\n',
+        overrides: 1,
+      })
+      expect(loadOnce(entry, otherName).overrides).toBe(0)
+    } finally {
+      realpath.mockRestore()
+    }
   })
 
   it('does not fire for a module which is not the entry', () => {

@@ -21,6 +21,15 @@ const NonNegativeInt = Schema.Int.check(
   Schema.isLessThanOrEqualTo(Number.MAX_SAFE_INTEGER),
 )
 
+const WindowLength = NonNegativeInt.check(Schema.isLessThanOrEqualTo(ARTIFACT_LIMITS.outputBytes))
+
+/** Byte windows in decompressed content; the escaped JSON envelope has its own output ceiling. */
+export const ArtifactReadWindow = Schema.Union([
+  Schema.Struct({ offset: NonNegativeInt, length: WindowLength }),
+  Schema.Struct({ tailBytes: WindowLength }),
+]).annotate({ identifier: 'Artifacts.ReadWindow' })
+export type ArtifactReadWindow = typeof ArtifactReadWindow.Type
+
 /** Artifact API fields intentionally exclude signed download URLs and credentials. */
 export const RetainedArtifact = Schema.Struct({
   id: Id,

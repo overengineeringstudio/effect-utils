@@ -47,6 +47,8 @@ export interface MegarepoSyncResult {
   readonly results: ReadonlyArray<MemberSyncResult>
   readonly nestedMegarepos: ReadonlyArray<string>
   readonly nestedResults: ReadonlyArray<MegarepoSyncResult>
+  /** Shared-cache verification performed no writes, including configured generators. */
+  readonly readOnly?: true
   /** Results from lock sync (flake.lock, devenv.lock, nested megarepo.lock in recursive mode) */
   readonly lockSyncResults?: NixLockSyncResult | undefined
 }

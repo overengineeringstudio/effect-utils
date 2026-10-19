@@ -868,6 +868,7 @@ fn decode_with(path: &PathBuf, limits: Limits) -> Result<Model, Box<dyn std::err
     let mut by_id = HashMap::new();
     let mut critical = HashSet::new();
     let mut last_time = 0;
+    let mut command_success = None;
     let mut records = 1u64;
     let mut critical_ids_read = 0u64;
     loop {
@@ -905,8 +906,25 @@ fn decode_with(path: &PathBuf, limits: Limits) -> Result<Model, Box<dyn std::err
         // Prost drops fields outside the pinned schema. Record each envelope
         // with discarded bytes; ingestion remains forward-compatible.
         model.unknown_fields += usize::from(progress.encoded_len() < buf.len());
-        let Some(command_progress::Progress::Event(e)) = progress.progress else {
-            continue;
+        let e = match progress.progress {
+            Some(command_progress::Progress::Event(event)) => event,
+            Some(command_progress::Progress::Result(result)) => {
+                // CommandEnd.is_success is deprecated and unset by current Buck.
+                // The final response carries command errors and test exit status.
+                use gen::buck::daemon::command_result::Result;
+                command_success = result.result.map(|result| match result {
+                    Result::Error(_) => false,
+                    Result::BuildResponse(response) => response.errors.is_empty(),
+                    Result::BxlResponse(response) => response.errors.is_empty(),
+                    Result::TargetsResponse(response) => response.error_count == 0,
+                    Result::TestResponse(response) => {
+                        response.build_errors.is_empty() && response.executor_exit_code == 0
+                    }
+                    _ => true,
+                });
+                continue;
+            }
+            _ => continue,
         };
         if model.uuid.is_empty() {
             model.uuid = e.trace_id.clone();
@@ -1047,9 +1065,6 @@ fn decode_with(path: &PathBuf, limits: Limits) -> Result<Model, Box<dyn std::err
                                     .push(int_attr("buck2.total_bytes", m.total_bytes));
                                 span.attrs.push(attr("buck2.path", m.path));
                             }
-                            span_end_event::Data::Command(c) => {
-                                span.attrs.push(bool_attr("buck2.is_success", c.is_success))
-                            }
                             _ => {}
                         }
                     }
@@ -1172,6 +1187,9 @@ fn decode_with(path: &PathBuf, limits: Limits) -> Result<Model, Box<dyn std::err
         .iter_mut()
         .find(|s| s.name.starts_with("buck2.command "))
     {
+        if let Some(success) = command_success {
+            command.attrs.push(bool_attr("buck2.is_success", success));
+        }
         command.attrs.extend([
             int_attr("buck2.action_count", actions),
             int_attr("buck2.cache_hit_count", hits),

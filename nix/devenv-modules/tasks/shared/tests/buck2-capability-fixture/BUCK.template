@@ -1,3 +1,5 @@
+# Instantiated as BUCK only in the daemon test's private, configured root.
+# This template must not be discovered by whole-repository queries.
 load(":configured.bzl", "support_directory", "support_tool")
 load(":rules.bzl", "pnpm_extract")
 

@@ -15,6 +15,7 @@ export const developerOperationDispositions = {
   'buck2:typescript:materialize-dist': 'outside-by-policy:workspace-publication',
   'check:all': 'outside-by-policy:cross-boundary-aggregate',
   'check:quick': 'outside-by-policy:cross-boundary-aggregate',
+  'content-address:contract:generate': 'outside-by-policy:authoring-mutation',
   'genie:check': 'outside-by-policy:stage-zero-bootstrap-freshness',
   'genie:run': 'outside-by-policy:authoring-mutation',
   'genie:watch': 'outside-by-policy:long-lived-watcher',

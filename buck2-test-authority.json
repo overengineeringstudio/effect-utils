@@ -731,6 +731,7 @@
         "src/core/git-memory.integration.test.ts",
         "src/core/git-streaming-parsers.integration.test.ts",
         "src/core/git-timeout.integration.test.ts",
+        "src/core/nix-lock/mod.integration.test.ts",
         "src/store/git-writer-lock.integration.test.ts",
         "src/store/store-archive.integration.test.ts",
         "src/store/store-branch-worktree.integration.test.ts",
@@ -769,6 +770,7 @@
         "src/core/megarepo-traversal.unit.test.ts",
         "src/core/nix-lock/flake-url.unit.test.ts",
         "src/core/nix-lock/input-discovery.unit.test.ts",
+        "src/core/nix-lock/mod.integration.test.ts",
         "src/core/nix-lock/mod.unit.test.ts",
         "src/core/nix-lock/schema.unit.test.ts",
         "src/core/nix-lock/source-rewriter.unit.test.ts",
@@ -829,6 +831,7 @@
         "src/core/megarepo-traversal.unit.test.ts",
         "src/core/nix-lock/flake-url.unit.test.ts",
         "src/core/nix-lock/input-discovery.unit.test.ts",
+        "src/core/nix-lock/mod.integration.test.ts",
         "src/core/nix-lock/mod.unit.test.ts",
         "src/core/nix-lock/schema.unit.test.ts",
         "src/core/nix-lock/source-rewriter.unit.test.ts",
@@ -875,6 +878,7 @@
         "src/core/git-memory.integration.test.ts",
         "src/core/git-streaming-parsers.integration.test.ts",
         "src/core/git-timeout.integration.test.ts",
+        "src/core/nix-lock/mod.integration.test.ts",
         "src/store/git-writer-lock.integration.test.ts",
         "src/store/store-archive.integration.test.ts",
         "src/store/store-branch-worktree.integration.test.ts",
@@ -890,12 +894,17 @@
     },
     {
       "collectionTarget": "effect_utils//packages/@overeng/meters:test_collect",
-      "excludes": ["e2e/meter-strip.pw.test.ts", "e2e/perf-gates.pw.test.ts"],
+      "excludes": [
+        "e2e/meter-strip.pw.test.ts",
+        "e2e/meter-tile.pw.test.ts",
+        "e2e/perf-gates.pw.test.ts"
+      ],
       "packageName": "meters",
       "packagePath": "packages/@overeng/meters",
       "runner": "vitest",
       "selectedTestFiles": [
         "e2e/meter-strip.pw.test.ts",
+        "e2e/meter-tile.pw.test.ts",
         "e2e/perf-gates.pw.test.ts",
         "src/canvas/canvas.unit.test.ts",
         "src/canvas/layout.unit.test.ts",
@@ -905,6 +914,7 @@
         "src/react/commits.unit.test.ts",
         "src/react/panel.unit.test.tsx",
         "src/react/react.unit.test.tsx",
+        "src/react/tile.unit.test.tsx",
         "src/series/series.unit.test.ts",
         "src/session/frame.unit.test.ts",
         "src/session/session.unit.test.ts",
@@ -915,16 +925,19 @@
         "src/sources/memory/memory.unit.test.ts",
         "src/sources/otel-browser/otel-browser.unit.test.ts",
         "src/sources/spans/spans.unit.test.ts",
-        "src/sources/status/status.unit.test.ts"
+        "src/sources/status/status.unit.test.ts",
+        "src/sources/user-timing/user-timing.unit.test.ts"
       ],
       "sourceOwners": {
         "e2e/meter-strip.pw.test.ts": "test:pw:meters",
+        "e2e/meter-tile.pw.test.ts": "test:pw:meters",
         "e2e/perf-gates.pw.test.ts": "test:pw:meters"
       },
       "target": "effect_utils//packages/@overeng/meters:test",
       "taskName": "test:meters",
       "testFiles": [
         "e2e/meter-strip.pw.test.ts",
+        "e2e/meter-tile.pw.test.ts",
         "e2e/perf-gates.pw.test.ts",
         "src/canvas/canvas.unit.test.ts",
         "src/canvas/layout.unit.test.ts",
@@ -934,6 +947,7 @@
         "src/react/commits.unit.test.ts",
         "src/react/panel.unit.test.tsx",
         "src/react/react.unit.test.tsx",
+        "src/react/tile.unit.test.tsx",
         "src/series/series.unit.test.ts",
         "src/session/frame.unit.test.ts",
         "src/session/session.unit.test.ts",
@@ -944,7 +958,8 @@
         "src/sources/memory/memory.unit.test.ts",
         "src/sources/otel-browser/otel-browser.unit.test.ts",
         "src/sources/spans/spans.unit.test.ts",
-        "src/sources/status/status.unit.test.ts"
+        "src/sources/status/status.unit.test.ts",
+        "src/sources/user-timing/user-timing.unit.test.ts"
       ],
       "unboundedAfter": [],
       "unboundedFiles": []
@@ -1179,6 +1194,7 @@
         "src/nmd.unit.test.ts",
         "src/pages.unit.test.ts",
         "src/schema-helpers.unit.test.ts",
+        "src/search.unit.test.ts",
         "src/test/integration/blocks-nested.integration.test.ts",
         "src/test/integration/blocks.integration.test.ts",
         "src/test/integration/databases.integration.test.ts",
@@ -1218,6 +1234,7 @@
         "src/nmd.unit.test.ts",
         "src/pages.unit.test.ts",
         "src/schema-helpers.unit.test.ts",
+        "src/search.unit.test.ts",
         "src/test/integration/blocks-nested.integration.test.ts",
         "src/test/integration/blocks.integration.test.ts",
         "src/test/integration/databases.integration.test.ts",

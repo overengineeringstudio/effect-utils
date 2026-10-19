@@ -1,7 +1,10 @@
 {
   pkgs,
   repoRoot,
-  versions ? [ "one" "two" ],
+  versions ? [
+    "one"
+    "two"
+  ],
 }:
 
 let
@@ -15,7 +18,8 @@ let
     mkdir -p "$out"
     printf 'immutable directory input\n' > "$out/support.txt"
   '';
-  makeProfile = version:
+  makeProfile =
+    version:
     let
       # This is a real declared executable capability, not a Buck/process mock.
       # It performs an offline npm-shaped extraction and consumes the manifest.
@@ -46,38 +50,44 @@ let
         ${pkgs.jq}/bin/jq -r .executableStorePath "$manifest" > "$output/executable-store-path.txt"
         ${pkgs.jq}/bin/jq -r .closureIdentity "$manifest" > "$output/closure-identity.txt"
       '';
-      inputs = pkgs.writeText "capability-fixture-${version}-inputs.json" (builtins.toJSON [
-        {
-          capability = {
-            toolId = "archive-tool";
-            protocol = "effect-utils/archive-tool/v1";
-            flakePackage = "fixture-archive-tool-${version}";
-            executable = "bin/archive-tool";
-          };
-          nixOutputPath = tool;
-          closurePathsFile = "${pkgs.closureInfo { rootPaths = [ tool ]; }}/store-paths";
-        }
-        {
-          capability = {
-            toolId = "support-directory";
-            protocol = "effect-utils/store-directory/v1";
-            flakePackage = "fixture-support-directory";
-            kind = "directory";
-          };
-          nixOutputPath = directory;
-          closurePathsFile = "${pkgs.closureInfo { rootPaths = [ directory ]; }}/store-paths";
-        }
-      ]);
+      inputs = pkgs.writeText "capability-fixture-${version}-inputs.json" (
+        builtins.toJSON [
+          {
+            capability = {
+              toolId = "archive-tool";
+              protocol = "effect-utils/archive-tool/v1";
+              flakePackage = "fixture-archive-tool-${version}";
+              executable = "bin/archive-tool";
+            };
+            nixOutputPath = tool;
+            closurePathsFile = "${pkgs.closureInfo { rootPaths = [ tool ]; }}/store-paths";
+          }
+          {
+            capability = {
+              toolId = "support-directory";
+              protocol = "effect-utils/store-directory/v1";
+              flakePackage = "fixture-support-directory";
+              kind = "directory";
+            };
+            nixOutputPath = directory;
+            closurePathsFile = "${pkgs.closureInfo { rootPaths = [ directory ]; }}/store-paths";
+          }
+        ]
+      );
     in
     pkgs.runCommand "buck2-capabilities-fixture-${version}" { nativeBuildInputs = [ pkgs.bun ]; } ''
       bun ${projector} \
         --input ${inputs} --output "$out" --platform ${platform}
     '';
-  profiles = builtins.listToAttrs (map (version: {
-    name = version;
-    value = makeProfile version;
-  }) versions);
+  profiles = builtins.listToAttrs (
+    map (version: {
+      name = version;
+      value = makeProfile version;
+    }) versions
+  );
 in
-pkgs.writeText "buck2-capability-fixture-profiles.json" (builtins.toJSON {
-  inherit platform profiles;
-})
+pkgs.writeText "buck2-capability-fixture-profiles.json" (
+  builtins.toJSON {
+    inherit platform profiles;
+  }
+)

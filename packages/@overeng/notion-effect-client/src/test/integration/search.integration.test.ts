@@ -98,12 +98,20 @@ Vitest.describe.skipIf(SKIP_INTEGRATION)('NotionSearch (integration)', () => {
                 readonly page: number
                 readonly resultCount: number
                 readonly matchingFixtureCount: number
+                readonly nonfixtureResultCount: number
+                readonly requestCursorHash: string | null
+                /** Null on the first page of each polling attempt (no predecessor). */
+                readonly requestCursorMatchesPreviousResponse: boolean | null
                 readonly hasMore: boolean
                 readonly nextCursorHash: string | null
                 readonly repeatedTrackedCursor: boolean
                 readonly cursorTrackingSaturated: boolean
               }[] = []
               let totalSearchPages = 0
+              let totalMatchingFixtureCount = 0
+              let totalNonfixtureResultCount = 0
+              let cursorMismatchCount = 0
+              let previousCursorHash: string | null = null
               let pageInAttempt = 0
               let observedAttempt = 0
               let observerFailures = 0
@@ -113,6 +121,9 @@ Vitest.describe.skipIf(SKIP_INTEGRATION)('NotionSearch (integration)', () => {
                 has_more: Schema.Boolean,
                 next_cursor: Schema.NullOr(Schema.String),
               })
+              const observedRequestSchema = Schema.fromJsonString(
+                Schema.Struct({ start_cursor: Schema.optional(Schema.String) }),
+              )
               const observePage = HttpClient.tap((response) =>
                 Effect.gen(function* () {
                   if (
@@ -127,11 +138,23 @@ Vitest.describe.skipIf(SKIP_INTEGRATION)('NotionSearch (integration)', () => {
                   // decodes this same response; this observer never issues requests.
                   const body = yield* response.json
                   const result = yield* Schema.decodeUnknownEffect(observedPageSchema)(body)
+                  const requestBody = response.request.body
+                  if (requestBody._tag !== 'Uint8Array') {
+                    return yield* Effect.die('Search observer expected a JSON request body')
+                  }
+                  const request = yield* Schema.decodeEffect(observedRequestSchema)(
+                    new TextDecoder().decode(requestBody.body),
+                  )
+                  const requestCursorHash =
+                    request.start_cursor === undefined
+                      ? null
+                      : createHash('sha256').update(request.start_cursor).digest('hex')
                   if (observedAttempt !== attempts) {
                     observedAttempt = attempts
                     pageInAttempt = 0
                     cursorHashes.clear()
                     cursorTrackingSaturated = false
+                    previousCursorHash = null
                   }
                   pageInAttempt++
                   totalSearchPages++
@@ -139,6 +162,16 @@ Vitest.describe.skipIf(SKIP_INTEGRATION)('NotionSearch (integration)', () => {
                     result.next_cursor === null
                       ? null
                       : createHash('sha256').update(result.next_cursor).digest('hex')
+                  const requestCursorMatchesPreviousResponse =
+                    pageInAttempt === 1 ? null : requestCursorHash === previousCursorHash
+                  if (requestCursorMatchesPreviousResponse === false) cursorMismatchCount++
+                  previousCursorHash = cursorHash
+                  const matchingFixtureCount = result.results.filter((item) =>
+                    expectedFixtureIds.includes(item.id),
+                  ).length
+                  const nonfixtureResultCount = result.results.length - matchingFixtureCount
+                  totalMatchingFixtureCount += matchingFixtureCount
+                  totalNonfixtureResultCount += nonfixtureResultCount
                   const repeatedTrackedCursor = cursorHash !== null && cursorHashes.has(cursorHash)
                   if (cursorHash !== null && repeatedTrackedCursor === false) {
                     if (cursorHashes.size < retentionLimit) {
@@ -151,9 +184,10 @@ Vitest.describe.skipIf(SKIP_INTEGRATION)('NotionSearch (integration)', () => {
                     pollAttempt: attempts,
                     page: pageInAttempt,
                     resultCount: result.results.length,
-                    matchingFixtureCount: result.results.filter((item) =>
-                      expectedFixtureIds.includes(item.id),
-                    ).length,
+                    matchingFixtureCount,
+                    nonfixtureResultCount,
+                    requestCursorHash: requestCursorHash?.slice(0, 12) ?? null,
+                    requestCursorMatchesPreviousResponse,
                     hasMore: result.has_more,
                     nextCursorHash: cursorHash?.slice(0, 12) ?? null,
                     // False means "not in the retained first 100 hashes", not
@@ -210,39 +244,46 @@ Vitest.describe.skipIf(SKIP_INTEGRATION)('NotionSearch (integration)', () => {
                     }),
                 }),
                 Effect.onExit((exit) =>
-                  Exit.isFailure(exit) === true
-                    ? Effect.gen(function* () {
-                        const now = yield* Clock.currentTimeMillis
-                        // Only synthetic fixture IDs, counts, and cursor hashes are logged.
-                        // Preserve the original failure; diagnostics never retry assertions.
-                        yield* Effect.logError(
-                          'Notion search fixture readiness failed',
-                          yield* Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown))({
-                            shape,
-                            attempts,
-                            elapsedMs: now - indexStarted,
-                            pollElapsedMs: now - started,
-                            remainingMs: Math.max(0, indexDeadline - now),
-                            remainingAtStartMs: remaining,
-                            expectedFixtureIds,
-                            lastResult,
-                            httpEvents,
-                            searchPageObserver: {
-                              shape,
-                              searchPages,
-                              totalSearchPages,
-                              observerFailures,
-                              retainedCursorHashCount: cursorHashes.size,
-                              cursorTrackingSaturated,
-                              retentionLimit,
-                            },
-                          }),
-                        )
-                      }).pipe(
-                        // Diagnostic encoding/logging must not replace the readiness failure.
-                        Effect.ignoreCause({ log: false }),
-                      )
-                    : Effect.void,
+                  Effect.gen(function* () {
+                    const now = yield* Clock.currentTimeMillis
+                    // Only synthetic fixture IDs, counts, and cursor hashes are logged.
+                    // Successful shapes matter too: they may consume a later shape's deadline.
+                    const message =
+                      Exit.isFailure(exit) === true
+                        ? 'Notion search fixture readiness failed'
+                        : 'Notion search fixture readiness succeeded'
+                    const diagnostics = yield* Schema.encodeEffect(
+                      Schema.fromJsonString(Schema.Unknown),
+                    )({
+                      shape,
+                      attempts,
+                      elapsedMs: now - indexStarted,
+                      pollElapsedMs: now - started,
+                      remainingMs: Math.max(0, indexDeadline - now),
+                      remainingAtStartMs: remaining,
+                      expectedFixtureIds,
+                      lastResult,
+                      httpEvents,
+                      searchPageObserver: {
+                        shape,
+                        searchPages,
+                        totalSearchPages,
+                        totalMatchingFixtureCount,
+                        totalNonfixtureResultCount,
+                        cursorMismatchCount,
+                        observerFailures,
+                        retainedCursorHashCount: cursorHashes.size,
+                        cursorTrackingSaturated,
+                        retentionLimit,
+                      },
+                    })
+                    yield* Exit.isFailure(exit) === true
+                      ? Effect.logError(message, diagnostics)
+                      : Effect.logInfo(message, diagnostics)
+                  }).pipe(
+                    // Diagnostic encoding/logging must not replace the readiness outcome.
+                    Effect.ignoreCause({ log: false }),
+                  ),
                 ),
               )
             })

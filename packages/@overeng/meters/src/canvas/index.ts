@@ -29,6 +29,7 @@ export type {
   BlockAggregation,
   BlockAggregationEvidence,
   BlockEvidence,
+  BlockEvidenceRange,
   BlockOptions,
   BlockReader,
   CanvasBlockSpec,
@@ -98,6 +99,36 @@ export const makeStripView = (options: {
       }
     },
   }
+}
+/** One frozen instant shared by several single-block presentations (tiles). */
+export interface MeterFreeze {
+  readonly atMs: number
+  /** The frozen single-block view for a block ID supplied to `freezeMeters`. */
+  readonly view: (id: string) => StripView | undefined
+}
+/**
+ * Snapshot every block once, synchronously, at one session-clock instant, so tiles, their
+ * evidence and any card read the same frozen histories. Sources and the clock keep running.
+ */
+export const freezeMeters = (options: {
+  readonly meters: MeterSession
+  readonly blocks: readonly CanvasBlockSpec[]
+}): MeterFreeze => {
+  const atMs = options.meters.clock.now()
+  const views = new Map<string, StripView>()
+  for (const item of options.blocks) {
+    if (views.has(item.id) === true) throw new TypeError(`Duplicate meter block: ${item.id}`)
+    views.set(
+      item.id,
+      makeStripView({
+        store: options.meters.store,
+        blocks: [item],
+        now: options.meters.clock.now,
+        frozenAtMs: atMs,
+      }),
+    )
+  }
+  return { atMs, view: (id) => views.get(id) }
 }
 /** Injected attachment capabilities for deterministic sizing and disposal tests. */
 export interface CanvasPlatform {

@@ -1,4 +1,5 @@
 import * as Crypto from 'node:crypto'
+import * as FsSync from 'node:fs'
 import * as Fs from 'node:fs/promises'
 import * as Path from 'node:path'
 import process from 'node:process'
@@ -78,54 +79,55 @@ for (const sourcePath of normalizedSources) {
 }
 
 const ignoredName = (name) => name === '.git' || name === 'node_modules'
-const hashTree = async (root) => {
+// These traversals are strictly sequential; sync reads avoid per-file promise overhead.
+const hashTree = (root) => {
   const hash = Crypto.createHash('sha256')
-  const visit = async (current, relative = '') => {
-    const entries = (await Fs.readdir(current, { withFileTypes: true }))
+  const visit = (current, relative = '') => {
+    const entries = FsSync.readdirSync(current, { withFileTypes: true })
       .filter((entry) => !ignoredName(entry.name))
       .sort((left, right) => (left.name < right.name ? -1 : left.name > right.name ? 1 : 0))
     for (const entry of entries) {
       const entryPath = Path.join(current, entry.name)
       const entryRelative = Path.posix.join(relative, entry.name)
       if (entry.isSymbolicLink()) {
-        const resolved = await Fs.realpath(entryPath)
+        const resolved = FsSync.realpathSync(entryPath)
         if (!isWithin(root, resolved))
           throw new Error(`source symlink escapes package: ${entryPath} -> ${resolved}`)
-        const stat = await Fs.stat(resolved)
+        const stat = FsSync.statSync(resolved)
         if (stat.isDirectory()) {
           throw new Error(`source directory symlink is not supported: ${entryPath}`)
         } else {
           hash.update(`file\0${entryRelative}\0${stat.mode & 0o111 ? 1 : 0}\0`)
-          hash.update(await Fs.readFile(resolved))
+          hash.update(FsSync.readFileSync(resolved))
         }
       } else if (entry.isDirectory()) {
         hash.update(`dir\0${entryRelative}\0`)
-        await visit(entryPath, entryRelative)
+        visit(entryPath, entryRelative)
       } else if (entry.isFile()) {
-        const stat = await Fs.stat(entryPath)
+        const stat = FsSync.statSync(entryPath)
         hash.update(`file\0${entryRelative}\0${stat.mode & 0o111 ? 1 : 0}\0`)
-        hash.update(await Fs.readFile(entryPath))
+        hash.update(FsSync.readFileSync(entryPath))
       }
     }
   }
-  await visit(root)
+  visit(root)
   return hash.digest('hex')
 }
 
-const sourceIdentity = async () => {
+const sourceIdentity = () => {
   const entries = []
   for (const [sourcePath, sourceRoot] of sourceRoots)
-    entries.push([sourcePath, await hashTree(sourceRoot)])
+    entries.push([sourcePath, hashTree(sourceRoot)])
   const encoded = JSON.stringify(entries)
   return { entries, identity: Crypto.createHash('sha256').update(encoded).digest('hex') }
 }
 
-const validatePublished = async (expected) => {
-  const currentRoot = await Fs.realpath(currentPath)
+const validatePublished = (expected) => {
+  const currentRoot = FsSync.realpathSync(currentPath)
   if (!isWithin(generationsRoot, currentRoot))
     throw new Error('published generation escapes staging root')
   const manifest = JSON.parse(
-    await Fs.readFile(Path.join(currentRoot, '.source-inputs.json'), 'utf8'),
+    FsSync.readFileSync(Path.join(currentRoot, '.source-inputs.json'), 'utf8'),
   )
   if (
     manifest.identity !== expected.identity ||
@@ -134,7 +136,7 @@ const validatePublished = async (expected) => {
     throw new Error('published source generation identity is stale')
   }
   for (const [sourcePath, expectedHash] of expected.entries) {
-    if ((await hashTree(Path.join(currentRoot, sourcePath))) !== expectedHash) {
+    if (hashTree(Path.join(currentRoot, sourcePath)) !== expectedHash) {
       throw new Error(`published source generation drifted: ${sourcePath}`)
     }
   }
@@ -162,14 +164,14 @@ const makeWritable = async (root) => {
 }
 
 await assertNoSymlinkAncestors(workspaceRoot, stageRoot)
-const before = await sourceIdentity()
+const before = sourceIdentity()
 if (mode === 'check') {
-  await validatePublished(before)
+  validatePublished(before)
   process.exit(0)
 }
 
 if (mode === 'gc') {
-  await validatePublished(before)
+  validatePublished(before)
   const currentRoot = await Fs.realpath(currentPath)
   for (const entry of await Fs.readdir(generationsRoot, { withFileTypes: true })) {
     const candidate = Path.join(generationsRoot, entry.name)
@@ -181,7 +183,7 @@ if (mode === 'gc') {
 }
 
 try {
-  await validatePublished(before)
+  validatePublished(before)
   process.exit(0)
 } catch (error) {
   if (String(error).includes('escapes staging root')) throw error
@@ -199,11 +201,11 @@ try {
       filter: (path) => !ignoredName(Path.basename(path)),
     })
   }
-  const after = await sourceIdentity()
+  const after = sourceIdentity()
   if (JSON.stringify(after) !== JSON.stringify(before))
     throw new Error('canonical source changed during staging')
   for (const [sourcePath, expectedHash] of before.entries) {
-    if ((await hashTree(Path.join(nextRoot, sourcePath))) !== expectedHash) {
+    if (hashTree(Path.join(nextRoot, sourcePath)) !== expectedHash) {
       throw new Error(`constructed generation differs from canonical source: ${sourcePath}`)
     }
   }
@@ -218,7 +220,7 @@ try {
   const pointer = Path.join(stageRoot, `.current-${process.pid}-${Crypto.randomUUID()}`)
   await Fs.symlink(Path.relative(stageRoot, generationRoot), pointer)
   await Fs.rename(pointer, currentPath)
-  await validatePublished(before)
+  validatePublished(before)
 } catch (error) {
   try {
     await makeWritable(nextRoot)

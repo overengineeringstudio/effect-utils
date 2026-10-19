@@ -21,6 +21,7 @@ import {
   writeFileSync,
   utimesSync,
 } from 'node:fs'
+import { createRequire } from 'node:module'
 import { hostname, tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -911,6 +912,129 @@ describe('editor view publisher', () => {
       cleanup(fixture)
     }
   })
+
+  for (const residue of ['link', 'marker', 'ambiguous', 'published', 'locked', 'batch'] as const) {
+    it(`retires only pnpm-owned unselected importers at root cutover (${residue})`, async () => {
+      const fixture = makeFixture()
+      try {
+        writeFileSync(join(fixture.root, 'package.json'), '{"private":true}\n')
+        const oldEffect = join(
+          fixture.root,
+          'node_modules',
+          '.pnpm',
+          'effect@4.0.3',
+          'node_modules',
+          'effect',
+        )
+        mkdirSync(oldEffect, { recursive: true })
+        writeFileSync(join(oldEffect, 'index.js'), 'old effect\n')
+        mkdirSync(join(fixture.nodeModules, 'effect'))
+        writeFileSync(join(fixture.nodeModules, 'effect', 'index.js'), 'root view effect\n')
+        const importer = join(fixture.packageDir, 'node_modules')
+        const legacyIdentity = statSync(importer, { bigint: true }).ino
+        if (residue === 'link')
+          symlinkSync(
+            '../../../../node_modules/.pnpm/effect@4.0.3/node_modules/effect',
+            join(importer, 'effect'),
+          )
+        if (residue === 'marker' || residue === 'locked' || residue === 'batch')
+          writeFileSync(join(importer, '.modules.yaml'), 'layoutVersion: 5\n')
+        if (residue === 'published') await publishEditorView(fixture.options)
+        const publishedTarget = residue === 'published' ? readlinkSync(importer) : undefined
+        writeFileSync(
+          fixture.workspaceAuthority,
+          `${JSON.stringify({
+            schema: 'effect-utils/workspace-dependency-authority/v1',
+            requiredPackages: ['.', fixture.options.package],
+            ownedPackages: ['.', fixture.options.package],
+          })}\n`,
+        )
+        const options: EditorViewOptions = {
+          ...fixture.options,
+          package: '.',
+          viewName: 'root',
+          cell: 'effect_utils',
+          target: '//:editor_inputs',
+          consumerCache: join(fixture.root, '.devenv', 'vite-cache', 'root'),
+        }
+        if (residue === 'locked') {
+          const packageLock = join(fixture.editorRoot, '.publish.lock')
+          mkdirSync(packageLock, { recursive: true })
+          writeFileSync(
+            join(packageLock, 'owner.json'),
+            '{"schema":"effect-utils/editor-view-lock/v1","token":"held-package-publisher","pid":1}\n',
+          )
+          // Normal live publication contention fails closed rather than waiting.
+          // The importer cannot be classified or moved while its publisher owns it.
+          await expect(publishEditorView(options)).rejects.toThrow('publication lock exists')
+          expect(statSync(importer, { bigint: true }).ino).toBe(legacyIdentity)
+          expect(lstatSync(join(fixture.root, 'node_modules')).isDirectory()).toBe(true)
+          expect(existsSync(join(fixture.root, '.editor-view', '.publish.lock'))).toBe(false)
+          expect(readFileSync(join(packageLock, 'owner.json'), 'utf8')).toContain(
+            'held-package-publisher',
+          )
+          rmSync(packageLock, { recursive: true })
+          await publishEditorView(options)
+          expect(existsSync(importer)).toBe(false)
+          return
+        }
+        if (residue === 'batch') {
+          const acquired: string[] = []
+          fsMocks.mkdirSync.mockImplementation((...args) => {
+            const path = String(args[0])
+            if (path.endsWith('/.publish.lock') === true) acquired.push(path)
+            return nativeFs.mkdirSync(...args)
+          })
+          // Reverse request order must still lock root first and reuse the
+          // package lock already owned by the batch, without self-contention.
+          await publishEditorViews({ options: [fixture.options, options] })
+          expect(acquired).toEqual([
+            join(fixture.root, '.editor-view', '.publish.lock'),
+            join(fixture.editorRoot, '.publish.lock'),
+          ])
+          expect(lstatSync(importer).isSymbolicLink()).toBe(true)
+          expect(existsSync(join(fixture.root, '.editor-view', '.publish.lock'))).toBe(false)
+          expect(existsSync(join(fixture.editorRoot, '.publish.lock'))).toBe(false)
+          return
+        }
+        if (residue === 'ambiguous') {
+          await expect(publishEditorView(options)).rejects.toThrow(
+            'ambiguous package-local node_modules ownership',
+          )
+          expect(statSync(importer, { bigint: true }).ino).toBe(legacyIdentity)
+          expect(lstatSync(join(fixture.root, 'node_modules')).isDirectory()).toBe(true)
+        } else {
+          await publishEditorView(options)
+          if (residue === 'published') {
+            expect(readlinkSync(importer)).toBe(publishedTarget)
+          } else {
+            expect(existsSync(importer)).toBe(false)
+            // This is the same parent fallback used by a package-local import.
+            expect(
+              createRequire(join(fixture.packageDir, 'package.json')).resolve('effect/index.js'),
+            ).toBe(realpathSync(join(fixture.root, 'node_modules', 'effect', 'index.js')))
+            const retained = readdirSync(join(fixture.root, '.editor-view', '.legacy')).find(
+              (name) => name.startsWith('importer-'),
+            )!
+            const retainedDir = join(fixture.root, '.editor-view', '.legacy', retained)
+            expect(statSync(retainedDir, { bigint: true }).ino).toBe(legacyIdentity)
+            expect(readFileSync(join(retainedDir, 'legacy-root-install'), 'utf8')).toBe('retained')
+            expect(
+              readFileSync(join(fixture.root, 'node_modules', 'effect', 'index.js'), 'utf8'),
+            ).toBe('root view effect\n')
+            await publishEditorView(options)
+            expect(
+              readdirSync(join(fixture.root, '.editor-view', '.legacy')).filter((name) =>
+                name.startsWith('importer-'),
+              ),
+            ).toEqual([retained])
+          }
+        }
+      } finally {
+        cleanup(fixture)
+      }
+    })
+  }
 
   it('survives deletion of every backing artifact', async () => {
     const fixture = makeFixture()

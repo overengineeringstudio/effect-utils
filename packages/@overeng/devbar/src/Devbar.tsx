@@ -25,6 +25,8 @@ export interface DevbarSegment {
   readonly render: () => React.ReactNode
   /** Host-owned alert mirrored on the overflow trigger when this segment is hidden. */
   readonly hasAlert?: boolean | undefined
+  /** Display name for the overflow trigger's accessible name when hidden; defaults to `id`. */
+  readonly label?: string | undefined
 }
 
 /** Controlled composition of the developer shell; the host owns every slot and the selection. */
@@ -508,7 +510,7 @@ const SegmentGroup = ({
         <button
           ref={triggerRef}
           type="button"
-          aria-label={`${hidden.length} more status items: ${hidden.map((segment) => segment.id).join(', ')}${hidden.some((segment) => segment.hasAlert === true) === true ? ', including unseen changes' : ''}`}
+          aria-label={`${hidden.length} more status items: ${hidden.map((segment) => segment.label ?? segment.id).join(', ')}${hidden.some((segment) => segment.hasAlert === true) === true ? ', including unseen changes' : ''}`}
           aria-expanded={expanded}
           aria-controls={popoverId}
           aria-haspopup="dialog"

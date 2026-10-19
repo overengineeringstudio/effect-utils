@@ -4,14 +4,14 @@
 # nixpkgs' `restate` (which builds from source: heavy, uncached, and unfree
 # BSL-1.1). This gives a Docker-free, Nix-idiomatic Restate runtime on $PATH.
 #
-# Exposes BOTH binaries in $out/bin:
+# Exposes all three binaries in $out/bin:
 #   - restate-server  (the durable execution server)
 #   - restate         (the CLI; the `restate-cli-*` archive ships it as `restate`)
-# (`restatectl` is intentionally omitted for now.)
+#   - restatectl      (the cluster administration CLI)
 #
 # Usage:
 #   restate = import ./restate.nix { inherit pkgs; };
-#   # => restate-server and restate on PATH
+#   # => restate-server, restate and restatectl on PATH
 #
 # =============================================================================
 # Updating to a new version
@@ -23,14 +23,15 @@
 #      BASE="https://github.com/restatedev/restate/releases/download/v<version>"
 #      nix store prefetch-file --json "$BASE/restate-server-x86_64-unknown-linux-musl.tar.xz"
 #      nix store prefetch-file --json "$BASE/restate-cli-x86_64-unknown-linux-musl.tar.xz"
+#      nix store prefetch-file --json "$BASE/restatectl-x86_64-unknown-linux-musl.tar.xz"
 #
 # 3. For the other systems, fetch the tiny `.sha256` sidecars (avoid the big
-#    tarballs) and convert hex -> SRI:
+#    tarballs) for restate-server, restate-cli and restatectl and convert hex -> SRI:
 #      curl -sL "$BASE/<asset>.tar.xz.sha256" | awk '{print $1}'
 #      nix hash convert --hash-algo sha256 --to sri <hex>
 #    If a `.sha256` sidecar 404s, fall back to prefetching that tarball.
 #
-# 4. Update the `hashes` attrset below.
+# 4. Update the `server`, `cli` and `ctl` entries in `hashes` below for all systems.
 #
 # =============================================================================
 { pkgs }:
@@ -51,25 +52,29 @@ let
     aarch64-darwin = "aarch64-apple-darwin";
   };
 
-  # Per-system SRI hashes for the `restate-server-*` and `restate-cli-*` tarballs.
+  # Per-system SRI hashes for the server, CLI and restatectl tarballs.
   # x86_64-linux hashes are from real prefetched tarballs (this build host);
   # the rest are derived from the assets' `.sha256` sidecars.
   hashes = {
     x86_64-linux = {
       server = "sha256-w25mCaWRqqWRTdIRQySednRXBLVx1KVzXBymwgsTvc8=";
       cli = "sha256-qwW8Y9FrZGotwntTinkNm0SURW8hDHkljhxt2nQACEY=";
+      ctl = "sha256-5MLJVIuPirKp8uIPF3l0W6NKSOZbYQ36swP4OLl2HT0=";
     };
     aarch64-linux = {
       server = "sha256-W2nHwKblW7cIApJM6CLqCUPYLZtsrBV/JOuF14jTWXY=";
       cli = "sha256-KqMeIY6yoAcmYY3PZlknuQdIq9qAi/Tqn5rd3HFogAs=";
+      ctl = "sha256-k3NSpmg9IK3/KSDfq2jxjUuGbokjzT2fRmTbOSAcrlI=";
     };
     x86_64-darwin = {
       server = "sha256-z8fNLoZwvsBivx53H2fuKDQuvxNm6e3K8MBydPCZfLo=";
       cli = "sha256-kANn4FvAbtXMchwGPvp250MWSxFGciG7g7m0hsy9i/E=";
+      ctl = "sha256-1LfKjwQ/SPQvMDK3tmG/KtHWDoBii4mSJmTUDEizMng=";
     };
     aarch64-darwin = {
       server = "sha256-7bK3N1Jf/cXc0kSdB0IVr78EFKx7Qf/+Dwu3h4UixYw=";
       cli = "sha256-VY2ZoGLFeGLJryo5Di2yEKGZ/YNmo+BAH82maiHcRYw=";
+      ctl = "sha256-KqTsPqlVRd5eDSqGtDb2Q9ay114jox8pDqktbIeeOUw=";
     };
   };
 
@@ -85,6 +90,11 @@ let
   cliTarball = pkgs.fetchurl {
     url = "${baseUrl}/restate-cli-${rustTarget}.tar.xz";
     hash = systemHashes.cli;
+  };
+
+  ctlTarball = pkgs.fetchurl {
+    url = "${baseUrl}/restatectl-${rustTarget}.tar.xz";
+    hash = systemHashes.ctl;
   };
 in
 pkgs.stdenvNoCC.mkDerivation {
@@ -104,15 +114,17 @@ pkgs.stdenvNoCC.mkDerivation {
 
     tar -xJf ${serverTarball}
     tar -xJf ${cliTarball}
+    tar -xJf ${ctlTarball}
 
     install -Dm755 restate-server-${rustTarget}/restate-server $out/bin/restate-server
     install -Dm755 restate-cli-${rustTarget}/restate $out/bin/restate
+    install -Dm755 restatectl-${rustTarget}/restatectl $out/bin/restatectl
 
     runHook postInstall
   '';
 
   meta = {
-    description = "Restate durable execution server + CLI (official prebuilt binaries)";
+    description = "Restate durable execution server, CLI and cluster administration CLI (official prebuilt binaries)";
     homepage = "https://restate.dev";
     mainProgram = "restate-server";
     license = lib.licenses.bsl11;

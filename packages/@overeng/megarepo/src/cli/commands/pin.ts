@@ -15,7 +15,6 @@ import { run } from '@overeng/tui-react'
 import {
   buildSourceStringWithRef,
   MegarepoConfig,
-  getMemberPath,
   getMembersRoot,
   getSourceUrl,
   parseSourceString,
@@ -39,7 +38,7 @@ import { classifyRef } from '../../core/ref.ts'
 import { resolveStoreBranchWorktree } from '../../store/store-branch-worktree.ts'
 import { runPreflightChecks } from '../../store/store-hygiene.ts'
 import { refreshWorkspaceRegistry } from '../../store/store-liveness.ts'
-import { assertCanonicalMutationAllowed } from '../../store/store-path.ts'
+import { authorizeAuthorWorkspaceWrite } from '../../store/store-path.ts'
 import { Store, StoreLayer } from '../../store/store.ts'
 import { foreignMemberMountMessage, inspectMemberMount } from '../../sync/member-mount.ts'
 import {
@@ -101,8 +100,14 @@ export const pinCommand = Cli.Command.make(
               return yield* new NotInMegarepoError({ message: 'Not in a megarepo' })
             }
 
-            yield* assertCanonicalMutationAllowed({ target: root.value })
-            yield* assertCanonicalMutationAllowed({ target: getMembersRoot(root.value) })
+            yield* authorizeAuthorWorkspaceWrite({
+              target: root.value,
+              workspaceRoot: root.value,
+            })
+            const authorizedMembersRoot = yield* authorizeAuthorWorkspaceWrite({
+              target: getMembersRoot(root.value),
+              workspaceRoot: root.value,
+            })
             const fs = yield* FileSystem.FileSystem
             const store = yield* Store
 
@@ -119,7 +124,7 @@ export const pinCommand = Cli.Command.make(
               return yield* new MemberNotFoundError({ message: 'Member not found', member })
             }
 
-            const memberPath = getMemberPath({ megarepoRoot: root.value, name: member })
+            const memberPath = EffectPath.unsafe.absoluteDir(`${authorizedMembersRoot}/${member}/`)
             const memberPathNormalized = memberPath.replace(/\/$/, '')
             const memberMount = yield* inspectMemberMount(memberPathNormalized)
             if (memberMount._tag === 'Foreign') {
@@ -171,6 +176,7 @@ export const pinCommand = Cli.Command.make(
               configOwner,
               EffectPath.unsafe.relativeFile(LOCK_FILE_NAME),
             )
+            yield* authorizeAuthorWorkspaceWrite({ target: lockPath, workspaceRoot: root.value })
             const lockFileOpt = yield* readLockFile(lockPath)
             let lockFile = Option.getOrElse(lockFileOpt, () => createEmptyLockFile())
 
@@ -368,7 +374,7 @@ export const pinCommand = Cli.Command.make(
                     pinned: true,
                   }),
                 })
-                yield* writeLockFile({ lockPath, lockFile })
+                yield* writeLockFile({ lockPath, lockFile, workspaceRoot: root.value })
               }
 
               // Keep the store liveness record fresh after repinning so a
@@ -459,7 +465,7 @@ export const pinCommand = Cli.Command.make(
 
             // Actually perform the changes
             lockFile = pinMember({ lockFile, memberName: member })
-            yield* writeLockFile({ lockPath, lockFile })
+            yield* writeLockFile({ lockPath, lockFile, workspaceRoot: root.value })
 
             // If the commit worktree doesn't exist, create it
             if (commitWorktreeExists === false) {
@@ -594,8 +600,14 @@ export const unpinCommand = Cli.Command.make(
               return yield* new NotInMegarepoError({ message: 'Not in a megarepo' })
             }
 
-            yield* assertCanonicalMutationAllowed({ target: root.value })
-            yield* assertCanonicalMutationAllowed({ target: getMembersRoot(root.value) })
+            yield* authorizeAuthorWorkspaceWrite({
+              target: root.value,
+              workspaceRoot: root.value,
+            })
+            const authorizedMembersRoot = yield* authorizeAuthorWorkspaceWrite({
+              target: getMembersRoot(root.value),
+              workspaceRoot: root.value,
+            })
             const fs = yield* FileSystem.FileSystem
 
             // Load config to verify member exists
@@ -610,7 +622,7 @@ export const unpinCommand = Cli.Command.make(
               return yield* new MemberNotFoundError({ message: 'Member not found', member })
             }
 
-            const memberPath = getMemberPath({ megarepoRoot: root.value, name: member })
+            const memberPath = EffectPath.unsafe.absoluteDir(`${authorizedMembersRoot}/${member}/`)
             const memberPathNormalized = memberPath.replace(/\/$/, '')
             const memberMount = yield* inspectMemberMount(memberPathNormalized)
             if (memberMount._tag === 'Foreign') {
@@ -636,6 +648,7 @@ export const unpinCommand = Cli.Command.make(
               configOwner,
               EffectPath.unsafe.relativeFile(LOCK_FILE_NAME),
             )
+            yield* authorizeAuthorWorkspaceWrite({ target: lockPath, workspaceRoot: root.value })
             const lockFileOpt = yield* readLockFile(lockPath)
             if (Option.isNone(lockFileOpt) === true) {
               tui.dispatch({
@@ -672,7 +685,7 @@ export const unpinCommand = Cli.Command.make(
 
             // Unpin the member
             lockFile = unpinMember({ lockFile, memberName: member })
-            yield* writeLockFile({ lockPath, lockFile })
+            yield* writeLockFile({ lockPath, lockFile, workspaceRoot: root.value })
 
             const sourceString = config.members[member]
             if (sourceString === undefined) {

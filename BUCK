@@ -114,6 +114,15 @@ export_file(
     src = "patches/@myobie__pty@0.10.0.patch",
     visibility = ["PUBLIC"],
 )
+
+# Prelude includes this unreachable select branch in unconfigured Cxx/Rust queries.
+# Our Cxx toolchain already has no default deps, so both labels share one instance.
+toolchain_alias(
+    name = "cxx_no_default_deps",
+    actual = "//buck2/toolchains:cxx",
+    visibility = ["PUBLIC"],
+)
+
 static_source_set(
     name = "nix_sources",
     prefix = "",
