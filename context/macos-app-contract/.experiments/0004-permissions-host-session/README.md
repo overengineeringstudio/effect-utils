@@ -254,6 +254,15 @@ file hashes, inbox bytes, actual successful import receipt and destination conte
 A sentinel-only success or copied files without an import is not sufficient. The native
 copy operation may exist, but this harness deliberately does not execute it for DQ9.
 
+## Known issues
+
+The sealed host's accept loop uses `FileHandle.read(upToCount: 4096)`, which waits
+for a full buffer or EOF rather than returning a short newline-terminated request.
+The client half-closes its write side after sending the request, supplying EOF while
+keeping the response side open. A future host reseal must replace that accept-loop
+read with raw `read()` and retain bounded newline framing; do not modify or replace
+the installed sealed host during this session.
+
 ## Evidence and handoff
 
 Each live invocation writes private raw/parsed tccd JSONL, client responses, correlated

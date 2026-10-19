@@ -34,6 +34,8 @@ let connected = withUnsafePointer(to: &address) { pointer in
 guard connected == 0 else { fail("connect failed: \(errno)") }
 let handle = FileHandle(fileDescriptor: fd, closeOnDealloc: true)
 try handle.write(contentsOf: encoded)
+// The sealed host reads until EOF; half-close writes so a short request can complete.
+shutdown(fd, SHUT_WR)
 var response = Data()
 while response.count <= 1_048_576 {
     guard let chunk = try handle.read(upToCount: 4096), !chunk.isEmpty else { break }
