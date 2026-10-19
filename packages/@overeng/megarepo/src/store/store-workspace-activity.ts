@@ -64,7 +64,7 @@ const Sync = Schema.Struct({
   ),
 })
 const AgentPage = Schema.Struct({
-  api_version: Schema.Literal('st3.client.v0'),
+  api_version: Schema.Literals(['st3.client.v0', 'fractal.client.v0']),
   snapshot: Snapshot,
   value: Schema.Struct({
     kind: Schema.Literal('page'),
