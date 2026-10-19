@@ -248,6 +248,7 @@ require the contract to pass freshness first. `genie:check` (including the CI
 freshness lane) runs `content-address:contract:check`, which uses that same runtime
 and requires byte-identical regeneration of the committed contract and provenance.
 The check restores checkout read-only permissions without rewriting any bytes.
+
 ### Work storage contract
 
 [`@overeng/work-storage`](./packages/@overeng/work-storage) and the

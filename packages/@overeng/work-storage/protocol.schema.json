@@ -9,7 +9,7 @@
   "additionalProperties": true,
   "properties": {
     "version": { "const": 1 },
-    "app": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$", "not": { "pattern": "\\n" } },
+    "app": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$(?![\\s\\S])" },
     "provider": {
       "type": "object",
       "required": ["kind", "root", "identity"],
@@ -33,7 +33,7 @@
       "type": "string",
       "pattern": "^/(?:[^/\\u0000]+(?:/[^/\\u0000]+)*)?$(?![\\s\\S])",
       "allOf": [
-        { "not": { "pattern": "(^|/)\\.{1,2}(/|$)" } },
+        { "not": { "pattern": "(^|/)\\.{1,2}(/|$(?![\\s\\S]))" } },
         { "not": { "pattern": "\\u0000" } }
       ]
     }
