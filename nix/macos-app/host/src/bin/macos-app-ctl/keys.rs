@@ -334,11 +334,10 @@ fn private_key_labels(keychain: &Keychain) -> Result<Vec<String>> {
     // SAFETY: each element is a live attribute dictionary owned by `found`.
     Ok(elements(found.0).into_iter().map(|attributes| unsafe { string(CFDictionaryGetValue(attributes, kSecAttrLabel)) }.unwrap_or_default()).collect())
 }
-fn public_key_pkcs1(key: Ref) -> Result<Vec<u8>> {
-    // SAFETY: key is a live SecKey; both results follow the copy rule.
-    let public = owned(unsafe { SecKeyCopyPublicKey(key) }, "SecKeyCopyPublicKey")?;
+fn public_key_der(public: Ref) -> Result<Vec<u8>> {
     let mut error = std::ptr::null();
-    let data = unsafe { SecKeyCopyExternalRepresentation(public.0, &mut error) };
+    // SAFETY: public is a live public SecKey; the data follows the copy rule.
+    let data = unsafe { SecKeyCopyExternalRepresentation(public, &mut error) };
     if data.is_null() { return Err(cf_failure(error, "SecKeyCopyExternalRepresentation")); }
     Ok(bytes(Cf(data).0))
 }
@@ -436,10 +435,14 @@ pub(super) fn provision(ctl: &Ctl) -> Result<Value> {
     if extractable != Some(false) || actual.lock_on_sleep == 0 || actual.lock_interval != LOCK_INTERVAL {
         return Err(fail(22, "verification-failed", format!("Provisioning readback refused: keyExtractable {extractable:?}, lockOnSleep {}, lockIntervalSeconds {}", actual.lock_on_sleep != 0, actual.lock_interval)));
     }
-    let spki = subject_public_key_info(&public_key_pkcs1(key.0)?);
+    // No certificate exists yet. Copy the freshly generated key's public part before
+    // prove-signing-key narrows its partition list to [apple:], which excludes ctl.
+    // SAFETY: key is live; the public key follows the copy rule.
+    let public = owned(unsafe { SecKeyCopyPublicKey(key.0) }, "SecKeyCopyPublicKey")?;
+    let spki = subject_public_key_info(&public_key_der(public.0)?);
     let info = request_info(common_name, &spki);
     let signature = sign_request(key.0, &info)?;
-    let ctl_path = record_ctl(&path, key.0)?;
+    let ctl_path = record_ctl(&path, key.0, &sha256(&spki))?;
     #[cfg(feature = "test-signing-cert")]
     if let Some(out) = ctl.args.get("test-self-signed-cert-out") {
         let certificate_sha1 = test_certificate::issue(key.0, common_name, &spki, Path::new(out))?;
@@ -493,14 +496,10 @@ pub(super) fn import_certificate(ctl: &Ctl) -> Result<Value> {
     // SAFETY: certificate is live; the results follow the copy rule.
     let certificate_sha1 = sha1(&bytes(owned(unsafe { SecCertificateCopyData(certificate.0) }, "SecCertificateCopyData")?.0));
     let subject = owned(unsafe { SecCertificateCopySubjectSummary(certificate.0) }, "SecCertificateCopySubjectSummary").ok().and_then(|s| string(s.0));
-    let key = owned(unsafe { SecCertificateCopyKey(certificate.0) }, "SecCertificateCopyKey")?;
-    let mut error = std::ptr::null();
-    let pkcs1 = unsafe { SecKeyCopyExternalRepresentation(key.0, &mut error) };
-    if pkcs1.is_null() { return Err(cf_failure(error, "SecKeyCopyExternalRepresentation")); }
-    let spki = subject_public_key_info(&bytes(Cf(pkcs1).0));
+    let key_id = certificate_key_id(certificate.0)?;
     // The identity lookup install-host uses (codesigning policy, keychain may be locked).
     if !identity_in_keychain(&path, &certificate_sha1)? { return Err(fail(22, "verification-failed", "Imported identity is not found by find-identity")); }
-    Ok(json!({"keychain": path, "imported": imported, "certificateSha1": certificate_sha1, "subject": subject, "publicKeySha256": sha256(&spki), "identity": true}))
+    Ok(json!({"keychain": path, "imported": imported, "certificateSha1": certificate_sha1, "subject": subject, "publicKeySha256": key_id, "identity": true}))
     })();
     keychain.finish(result)
 }
@@ -558,9 +557,9 @@ fn named_identity(keychain: &Keychain, name: &str) -> Result<(Cf, Cf, Cf)> {
 /// admit exactly `{/usr/bin/codesign, recorded ctl}`. Anything wider or different refuses; a
 /// missing or foreign ACL record refuses (64). Only ACLs are read.
 struct Guard { capable: bool, partitions: Vec<String>, ctl: String, sign_acl_exact: bool, ready: bool }
-fn codesign_guard(keychain_path: &Path, key: Ref) -> Result<Guard> {
+fn codesign_guard(keychain_path: &Path, key: Ref, certificate: Ref) -> Result<Guard> {
     let capable = keychain_path.parent().is_some_and(partition_capable);
-    let ctl = recorded_ctl(keychain_path, key)?;
+    let ctl = recorded_ctl(keychain_path, certificate)?;
     let partitions = partition_list(key)?;
     let sign = sign_applications(key)?;
     let sign_acl_exact = !sign.is_empty() && sign.iter().all(|paths| paths.as_deref().is_some_and(|paths| exact_sign_applications(paths, &ctl)));
@@ -571,7 +570,7 @@ fn codesign_guard(keychain_path: &Path, key: Ref) -> Result<Guard> {
 /// while unlocked). Fails (22, or 64 for the ACL record) without invoking codesign unless ready.
 pub(super) fn require_codesign_ready(keychain_path: &Path, keychain: &Keychain, identity: &str) -> Result<()> {
     let (_, key, certificate) = named_identity(keychain, identity)?;
-    let guard = codesign_guard(keychain_path, key.0)?;
+    let guard = codesign_guard(keychain_path, key.0, certificate.0)?;
     if guard.ready { require_chain(certificate.0)?; return Ok(()); }
     Err(fail(22, "verification-failed", format!("Codesign guard refused (partitionCapable {}, partitionList {:?}, signAclExact {} for ctl {}); run prove-signing-key", guard.capable, guard.partitions, guard.sign_acl_exact, guard.ctl)))
 }
@@ -656,7 +655,12 @@ fn sidecar_path(keychain_path: &Path) -> PathBuf {
     path.push(".acl.json");
     PathBuf::from(path)
 }
-fn key_id(key: Ref) -> Result<String> { Ok(sha256(&subject_public_key_info(&public_key_pkcs1(key)?))) }
+fn key_id_of_public(public: Ref) -> Result<String> { Ok(sha256(&subject_public_key_info(&public_key_der(public)?))) }
+fn certificate_key_id(certificate: Ref) -> Result<String> {
+    // SAFETY: certificate is live; its public key follows the copy rule.
+    let public = owned(unsafe { SecCertificateCopyKey(certificate) }, "SecCertificateCopyKey")?;
+    key_id_of_public(public.0)
+}
 fn read_sidecar(keychain_path: &Path) -> Result<Value> {
     let path = sidecar_path(keychain_path);
     let refuse = |why: &str| fail(64, "invalid-input", format!("ACL record {}: {why}; re-run provision-signing-key", path.display()));
@@ -669,21 +673,21 @@ fn read_sidecar(keychain_path: &Path) -> Result<Value> {
     if record["keychain"].as_str() != Some(text(keychain_path)?) { return Err(refuse("names a different keychain")); }
     Ok(record)
 }
-fn recorded_ctl(keychain_path: &Path, key: Ref) -> Result<String> {
+fn recorded_ctl(keychain_path: &Path, certificate: Ref) -> Result<String> {
     let record = read_sidecar(keychain_path)?;
-    let id = key_id(key)?;
+    let id = certificate_key_id(certificate)?;
     record["keys"][&id]["ctlPath"].as_str().map(str::to_owned)
         .ok_or_else(|| fail(64, "invalid-input", format!("ACL record {} has no entry for key {id}; re-run provision-signing-key", sidecar_path(keychain_path).display())))
 }
 /// Records the one non-codesign application the new key's signing ACL holds (the provisioning
 /// ctl, as securityd stored it), merging into an existing record (`--replace`).
-fn record_ctl(keychain_path: &Path, key: Ref) -> Result<String> {
+fn record_ctl(keychain_path: &Path, key: Ref, key_id: &str) -> Result<String> {
     let mut others: Vec<String> = sign_applications(key)?.into_iter().flatten().flatten().filter(|path| path != CODESIGN).collect();
     others.sort_unstable();
     others.dedup();
     let [ctl] = <[String; 1]>::try_from(others).map_err(|others| fail(23, "operation-failed", format!("The new key's signing ACL holds {others:?} besides codesign; expected exactly this ctl")))?;
     let mut record = if sidecar_path(keychain_path).exists() { read_sidecar(keychain_path)? } else { json!({"keychain": text(keychain_path)?, "keys": {}}) };
-    record["keys"][key_id(key)?] = json!({"ctlPath": ctl});
+    record["keys"][key_id] = json!({"ctlPath": ctl});
     let path = sidecar_path(keychain_path);
     let mut tmp = path.as_os_str().to_owned();
     tmp.push(format!(".tmp-{}", std::process::id()));
@@ -903,11 +907,11 @@ pub(super) fn prove(ctl: &Ctl) -> Result<Value> {
     let window = keychain.unlock(&password)?;
     let (identity, key, certificate) = sole_identity(&keychain)?;
     let identity_sha1 = certificate_sha1(certificate.0)?;
-    let pinned_before = codesign_guard(&path, key.0)?.ready;
+    let pinned_before = codesign_guard(&path, key.0, certificate.0)?.ready;
     let Nonextractable { extractable, export } = prove_nonextractable(identity.0, key.0, pinned_before)?;
     if !pinned_before { pin_partition(key.0, &password)?; }
     drop(password);
-    let guard = codesign_guard(&path, key.0)?;
+    let guard = codesign_guard(&path, key.0, certificate.0)?;
     if guard.ready && !no_sign { require_chain(certificate.0)?; }
     let sign_ok = match (guard.ready, no_sign) { (true, false) => Some(codesign_probe(&path, &identity_sha1)?), _ => None };
     let settings = keychain_settings(&keychain)?;
@@ -972,12 +976,7 @@ fn require_not_production(ctl: &Ctl, keychain: &Keychain, sha1: &str, recorded_k
         let is_selected = actual_sha1.eq_ignore_ascii_case(sha1);
         if is_selected && is_production { return Err(refuse()); }
         if !is_selected && !is_production { continue; }
-        // SAFETY: certificate is live; its public key and external bytes follow the copy rule.
-        let public = owned(unsafe { SecCertificateCopyKey(certificate) }, "SecCertificateCopyKey")?;
-        let mut error = std::ptr::null();
-        let data = unsafe { SecKeyCopyExternalRepresentation(public.0, &mut error) };
-        if data.is_null() { return Err(cf_failure(error, "SecKeyCopyExternalRepresentation(public certificate)")); }
-        let key = sha256(&subject_public_key_info(&bytes(Cf(data).0)));
+        let key = certificate_key_id(certificate)?;
         if is_selected { selected = Some(key); } else { production_keys.push(key); }
     }
     let selected = selected.ok_or_else(|| fail(64, "invalid-input", "Fixture certificate is not present in the dedicated keychain"))?;
@@ -1041,12 +1040,12 @@ pub(super) fn sign_fixture(ctl: &Ctl) -> Result<Value> {
     inventory.push(target.clone());
         let password = Password::read(ctl.password_fd()?)?;
         let window = keychain.unlock(&password)?;
-        let (identity, key, _) = named_identity(&keychain, sha1)?;
-        if !key_id(key.0)?.eq_ignore_ascii_case(&fixture_key) {
+        let (identity, key, certificate) = named_identity(&keychain, sha1)?;
+        if !certificate_key_id(certificate.0)?.eq_ignore_ascii_case(&fixture_key) {
             return Err(fail(64, "invalid-input", "Fixture identity record names a different private key"));
         }
         // Read the recorded ACL before changing anything. Missing/foreign records refuse.
-        let guard = codesign_guard(&path, key.0)?;
+        let guard = codesign_guard(&path, key.0, certificate.0)?;
         prove_nonextractable(identity.0, key.0, guard.ready)?;
         if !guard.ready { pin_partition(key.0, &password)?; }
         drop(password);
@@ -1100,6 +1099,15 @@ mod tests {
         assert_eq!(der(0x04, &[1, 2]), vec![0x04, 0x02, 1, 2]);
         assert_eq!(&der(0x04, &[0; 200])[..3], &[0x04, 0x81, 200]);
         assert_eq!(&der(0x04, &[0; 300])[..4], &[0x04, 0x82, 0x01, 0x2c]);
+    }
+    #[test]
+    fn public_key_fingerprint_preserves_the_spki_sidecar_id() {
+        // A small RSA public-key fixture (n = 3233, e = 17), encoded as PKCS#1 DER.
+        // Both provisioning and certificate lookup hash this same SPKI encoding.
+        let pkcs1 = unhex("300702020ca1020111").unwrap();
+        let spki = subject_public_key_info(&pkcs1);
+        assert_eq!(hex(&spki), "301b300d06092a864886f70d0101010500030a00300702020ca1020111");
+        assert_eq!(sha256(&spki), "e96b711038ed8c976b3103d05c31160eb84b3be26da96a985a38e2fb21f8ff6c");
     }
     #[test]
     fn request_info_encodes_subject_key_and_empty_attributes() {
