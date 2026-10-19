@@ -125,7 +125,12 @@ type Request = {
   input: StatusInput | CopyInput | NotifyInput // selected by operation + operationVersion
 }
 type Response =
-  | { protocolVersion: 1; requestId: string; ok: true; result: StatusResult | CopyResult | NotifyResult }
+  | {
+      protocolVersion: 1
+      requestId: string
+      ok: true
+      result: StatusResult | CopyResult | NotifyResult
+    }
   | {
       protocolVersion: 1
       requestId: string | null
@@ -337,15 +342,15 @@ categories and seven concrete `enabledGrants` strings, not FDA-only delivery
 with other categories silently deferred. Consumer enablement selects the needed
 grants and Automation targets; compiled support does not itself grant a category.
 
-| Grant / config category                 | Scope and harmless positive onboarding check                                                  |
-| --------------------------------------- | --------------------------------------------------------------------------------------------- |
-| Full Disk Access / `full-disk-access`    | Human System Settings approval; bounded read of a configured protected sentinel                |
-| Notifications / `notifications`         | Explicit host allowance; bounded test notification, distinguish submission from visible delivery |
-| Screen Recording / `screen-recording`   | Explicit approval; capture and verify the host's synthetic red 32×32 fixture window, never an arbitrary desktop (DQ2) |
-| Accessibility / `accessibility`         | Explicit approval; bounded harmless AX interaction/observation of a test fixture (DQ3)          |
-| Microphone / `microphone`               | Explicit approval; bounded disposable test capture, never retained production audio (DQ4)      |
-| System audio / `system-audio`           | Separate AudioCapture approval; bounded process-tap capture of synthetic audio on macOS 14.4+ (DQ4) |
-| Automation / `automation`               | Separate approval per allowlisted target; harmless typed event per target (DQ6)                |
+| Grant / config category               | Scope and harmless positive onboarding check                                                                          |
+| ------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| Full Disk Access / `full-disk-access` | Human System Settings approval; bounded read of a configured protected sentinel                                       |
+| Notifications / `notifications`       | Explicit host allowance; bounded test notification, distinguish submission from visible delivery                      |
+| Screen Recording / `screen-recording` | Explicit approval; capture and verify the host's synthetic red 32×32 fixture window, never an arbitrary desktop (DQ2) |
+| Accessibility / `accessibility`       | Explicit approval; bounded harmless AX interaction/observation of a test fixture (DQ3)                                |
+| Microphone / `microphone`             | Explicit approval; bounded disposable test capture, never retained production audio (DQ4)                             |
+| System audio / `system-audio`         | Separate AudioCapture approval; bounded process-tap capture of synthetic audio on macOS 14.4+ (DQ4)                   |
+| Automation / `automation`             | Separate approval per allowlisted target; harmless typed event per target (DQ6)                                       |
 
 One host means one stable identity, **not one universal consent click**. Each
 permission type still needs approval; Automation needs approval per target.
