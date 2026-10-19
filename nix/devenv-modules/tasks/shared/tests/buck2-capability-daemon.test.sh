@@ -108,7 +108,8 @@ for watcher in "${watchers[@]}"; do
   fixture="$TEMP_ROOT/$watcher"
   isolation="capability-regression-$watcher"
   mkdir -p "$fixture/.buck2"
-  cp "$FIXTURES/BUCK" "$FIXTURES/configured.bzl" "$FIXTURES/rules.bzl" "$fixture/"
+  cp "$FIXTURES/BUCK.template" "$fixture/BUCK"
+  cp "$FIXTURES/configured.bzl" "$FIXTURES/rules.bzl" "$fixture/"
   touch "$fixture/.buckroot"
   cat >"$fixture/.buckconfig" <<CONFIG
 [cells]

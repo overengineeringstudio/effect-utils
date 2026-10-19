@@ -240,6 +240,15 @@ Key features:
 - **Read-only protection** - Generated files are read-only by default
 - **CI integration** - `--check` mode verifies files are up to date
 
+The content-address Rust contract is compiled from its Effect schema with
+`devenv tasks run content-address:contract:generate`. This task bootstraps the
+generator's dependency view from the current standalone Buck sources before
+running `packages/@overeng/content-address/src/generate-contract.ts`; it does not
+require the contract to pass freshness first. `genie:check` (including the CI
+freshness lane) runs `content-address:contract:check`, which uses that same runtime
+and requires byte-identical regeneration of the committed contract and provenance.
+The check restores checkout read-only permissions without rewriting any bytes.
+
 ## Quick Start
 
 ### Enter the dev shell
