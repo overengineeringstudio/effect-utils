@@ -16,6 +16,11 @@ Authoritative grammar: `compoundingtech/smalltalk`, `crates/st3/src/graph.rs` an
 
 Schedule work accepts either a pinned `mission@revision` or an unpinned mission ID.
 
+## Mission API bakeoff prototype
+
+`src/bakeoff.ts` is a direct-import scratch prototype, not a published package entrypoint. Design A uses nested launch/timing/review values and reusable native step fragments; Design B uses native-shaped inputs and an immutable mission builder. Both share lowering and preserve the complete existing `MissionSchema` through an explicit native adapter, including loops, finalization, products, owned declarations, reporting and gates. Redesigned launch overrides support exact argv or shell command plus env/unset/cwd; schedules support one-shot UTC, anchored intervals and calendar timing, with native catch-up constraints. Review values validate subject/document references before mapping to human-gate review strings. Policy, hard-timeout and consent slots reject unsupported lowering instead of emitting invented fields. Native enforcement of immutable pre-run document review remains outside this prototype. Integration checks are deliberately deferred to the parent integration pass.
+
+
 ## Subject trees (`@overeng/genie-smalltalk/tree`, Node only)
 
 `loadSubjectTree({ root, context })` discovers `agent.ts|kdl`, `mission.ts|kdl` and `schedule.ts|kdl` declarations recursively. IDs come from directories relative to the root. A seat and mission may share a directory; mission and schedule cannot. Symlink aliases load once under their canonical path, and declarations outside the tree are rejected.
