@@ -11,7 +11,7 @@ gate() {
 }
 TASK_MODULE="$ROOT/nix/devenv-modules/tasks/shared/buck2-rust-deps.nix"
 TEMP_ROOT="$(mktemp -d)"
-trap 'rm -rf "$TEMP_ROOT"' EXIT
+trap 'chmod -R u+w "$TEMP_ROOT"; rm -rf "$TEMP_ROOT"' EXIT
 FIXTURE="$TEMP_ROOT/repository"
 WORKSPACE_ROOT="workspaces/demo"
 WORKSPACE="$FIXTURE/$WORKSPACE_ROOT"
@@ -38,6 +38,13 @@ cat >"$FAKE_REINDEER" <<'FAKE'
 set -euo pipefail
 printf '%s\n' "$CARGO_HOME" >"$FAKE_REINDEER_HOME_LOG"
 printf 'invoked\n' >>"$FAKE_REINDEER_CALL_LOG"
+if [ -n "${FAKE_REINDEER_CLEAN_REPO:-}" ]; then
+  status="$(git -C "$FAKE_REINDEER_CLEAN_REPO" status --porcelain --untracked-files=all)"
+  if [ -n "$status" ]; then
+    printf 'check dirtied checkout during buckify:\n%s\n' "$status" >&2
+    exit 1
+  fi
+fi
 if [ "${FAKE_REINDEER_BEHAVIOR:-generate}" = mutate-lock ]; then
   printf 'rewritten lock bytes\n' >Cargo.lock
 fi
@@ -96,10 +103,46 @@ grep -Fq 'http_archive(' "$THIRD_PARTY/BUCK" || fail "generate did not install t
 # The gate resolves the repository physically (macOS temp dirs live behind /var -> /private/var).
 expected_cargo_home="$(cd "$FIXTURE" && pwd -P)/.devenv/reindeer-cargo-home"
 [ "$(cat "$FAKE_REINDEER_HOME_LOG")" = "$expected_cargo_home" ] || fail "buckify did not use the repository-pinned Cargo home"
+# Checking must work without write access to the graph directory, and must
+# leave Git clean both while Reindeer runs and after all candidates are removed.
+git -C "$FIXTURE" init -q
+# Fixture commits must not inherit machine-global hooks.
+mkdir -p "$TEMP_ROOT/empty-hooks"
+git -C "$FIXTURE" config core.hooksPath "$TEMP_ROOT/empty-hooks"
+printf '.devenv/\n' >"$FIXTURE/.gitignore"
+git -C "$FIXTURE" add .
+git -C "$FIXTURE" -c user.name=Test -c user.email=test@example.invalid -c commit.gpgsign=false commit -qm fixture
+export FAKE_REINDEER_CLEAN_REPO="$FIXTURE"
+chmod a-w "$THIRD_PARTY"
 "$GATE" check "$FIXTURE" "$WORKSPACE_ROOT" "$THIRD_PARTY_BUCK_PATH" "$FAKE_REINDEER" /fake/cargo /fake/rustc "$BUN"
+chmod u+w "$THIRD_PARTY"
+unset FAKE_REINDEER_CLEAN_REPO
+[ -z "$(git -C "$FIXTURE" status --porcelain --untracked-files=all)" ] || fail "check left a dirty checkout"
+check_cargo_home="$(cat "$FAKE_REINDEER_HOME_LOG")"
+case "$check_cargo_home" in
+  "${expected_cargo_home%/.devenv/reindeer-cargo-home}" | "${expected_cargo_home%/.devenv/reindeer-cargo-home}"/*) fail "check used a Cargo home inside the checkout" ;;
+esac
+[ ! -e "$check_cargo_home" ] || fail "check leaked its temporary Cargo home"
+
+# Reject checkout-local TMPDIR (including symlinks) before creating anything.
+ln -s "$FIXTURE" "$TEMP_ROOT/checkout-tmp"
+: >"$FAKE_REINDEER_CALL_LOG"
+if TMPDIR="$TEMP_ROOT/checkout-tmp" "$GATE" check "$FIXTURE" "$WORKSPACE_ROOT" "$THIRD_PARTY_BUCK_PATH" "$FAKE_REINDEER" /fake/cargo /fake/rustc "$BUN" 2>"$TEMP_ROOT/tmpdir-error"; then
+  fail "check accepted a temporary directory inside the checkout"
+fi
+grep -Fq 'check temporary directory must be outside repository' "$TEMP_ROOT/tmpdir-error" || fail "checkout-local TMPDIR was not diagnosed"
+[ ! -s "$FAKE_REINDEER_CALL_LOG" ] || fail "checkout-local TMPDIR ran Reindeer"
+[ -z "$(git -C "$FIXTURE" status --porcelain --untracked-files=all)" ] || fail "rejected TMPDIR dirtied the checkout"
 
 printf '# graph that must survive a failed gate\n' >"$THIRD_PARTY/BUCK"
 cp "$THIRD_PARTY/BUCK" "$TEMP_ROOT/graph-before-lock-rewrite"
+chmod a-w "$THIRD_PARTY"
+if "$GATE" check "$FIXTURE" "$WORKSPACE_ROOT" "$THIRD_PARTY_BUCK_PATH" "$FAKE_REINDEER" /fake/cargo /fake/rustc "$BUN" 2>"$TEMP_ROOT/graph-stale-error"; then
+  fail "check accepted a stale graph in a read-only third-party directory"
+fi
+chmod u+w "$THIRD_PARTY"
+grep -Fq 'generated Reindeer graph is stale' "$TEMP_ROOT/graph-stale-error" || fail "stale graph was not diagnosed"
+cmp -s "$TEMP_ROOT/graph-before-lock-rewrite" "$THIRD_PARTY/BUCK" || fail "check replaced a stale graph"
 export FAKE_REINDEER_BEHAVIOR=mutate-lock
 if "$GATE" generate "$FIXTURE" "$WORKSPACE_ROOT" "$THIRD_PARTY_BUCK_PATH" "$FAKE_REINDEER" /fake/cargo /fake/rustc "$BUN" 2>"$TEMP_ROOT/lock-error"; then
   fail "gate accepted a buckify run that rewrote Cargo.lock"
