@@ -488,7 +488,8 @@ describe('compact native time rendering', () => {
       }),
     ])
     for (const native of [
-      'timeout="2d" stalled-after="1h"',
+      'timeout="2d"',
+      'stalled-after="1h"',
       'step "wait" timeout="90s"',
       'backoff "1501ms"',
       'time-limit "1m"',
