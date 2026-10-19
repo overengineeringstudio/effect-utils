@@ -500,33 +500,45 @@ describe('the CLI entry override', () => {
       linkSync(entry, otherName)
       // Read the implementation independently of other test files' node:fs mocks.
       const nativeFs = { ...process.getBuiltinModule('fs') }
-      const realpath = vi.spyOn(fs, 'realpathSync')
-      const priorImplementation = realpath.getMockImplementation()
+      const previousFs = { ...fs }
+      const forwardingRealpath = vi.fn(nativeFs.realpathSync)
       if (preexistingMock === true) {
-        // Exercise the shared-mock state even when this file runs before editor-view.
-        realpath.mockImplementation(vi.fn(nativeFs.realpathSync))
+        // Match editor-view's shared forwarding export before acquiring the spy.
+        vi.mock('node:fs', () => ({ ...previousFs, realpathSync: forwardingRealpath }))
       }
-      const nativeRealpath = nativeFs.realpathSync
-      let leafLookups = 0
-      // Model Darwin F_GETPATH returning different names for the same vnode on
-      // successive calls. Directory realpaths remain stable, as on Darwin.
-      realpath.mockImplementation((path) => {
-        const resolved = nativeRealpath(path)
-        if (resolved === entry && ++leafLookups === 1) return otherName
-        return resolved
-      })
       try {
-        expect(loadOnce(entry, entry)).toEqual({
-          contents: 'if (true) console.log("entry")\n',
-          overrides: 1,
+        if (preexistingMock === true) expect(fs.realpathSync).toBe(forwardingRealpath)
+        const nativeRealpath = nativeFs.realpathSync
+        const realpath = vi.spyOn(fs, 'realpathSync')
+        const priorImplementation = realpath.getMockImplementation()
+        let leafLookups = 0
+        // Model Darwin F_GETPATH returning different names for the same vnode on
+        // successive calls. Directory realpaths remain stable, as on Darwin.
+        realpath.mockImplementation((path) => {
+          const resolved = nativeRealpath(path)
+          if (resolved === entry && ++leafLookups === 1) return otherName
+          return resolved
         })
-        expect(loadOnce(entry, otherName).overrides).toBe(0)
+        try {
+          expect(loadOnce(entry, entry)).toEqual({
+            contents: 'if (true) console.log("entry")\n',
+            overrides: 1,
+          })
+          expect(loadOnce(entry, otherName).overrides).toBe(0)
+        } finally {
+          realpath.mockRestore()
+          // Bun leaves a shared vi.fn exported, but clears its implementation.
+          if (priorImplementation !== undefined) realpath.mockImplementation(priorImplementation)
+        }
+        expect(fs.realpathSync(root)).toBe(root)
+        expect(realpathSync(root)).toBe(root)
+        if (preexistingMock === true) {
+          expect(fs.realpathSync).toBe(forwardingRealpath)
+          expect(forwardingRealpath).toHaveBeenCalled()
+        }
       } finally {
-        realpath.mockRestore()
-        // Bun's shared vi.fn stays exported after mockRestore, but loses its implementation.
-        if (priorImplementation !== undefined) realpath.mockImplementation(priorImplementation)
+        if (preexistingMock === true) vi.mock('node:fs', () => previousFs)
       }
-      expect(realpathSync(root)).toBe(root)
     },
   )
 
