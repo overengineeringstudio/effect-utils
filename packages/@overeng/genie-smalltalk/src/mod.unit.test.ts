@@ -587,7 +587,7 @@ describe('Smalltalk declarations', () => {
     ).toThrow()
   })
   it.each([
-    { harness: { kind: 'omp', model: 'example-model' } },
+    { harness: { kind: 'omp', model: '' } },
     { harness: { kind: 'codex', model: '', effort: 'high' } },
     {
       command: 'true',
@@ -738,6 +738,19 @@ describe('Smalltalk declarations', () => {
       ]),
     ).toContain('harness "omp" {\n    model "example-model"\n    effort "high"\n')
   })
+  it('decodes and renders an OMP role selector without adding effort', () => {
+    const harness = { kind: 'omp', model: '@generalist_root' } as const
+    const declaration = { id: 'example/omp', harness }
+    expect(Schema.decodeSync(AgentSchema)(declaration)).toEqual(declaration)
+    expect(omp({ model: '@generalist_root' })).toEqual(harness)
+    const expected =
+      'version 2\nagent "example/omp" {\n  harness "omp" {\n' +
+      '    model "@generalist_root"\n  }\n}\n'
+    expect(emit([agent(declaration)])).toBe(expected)
+    expect(emit([agent({ ...declaration, harness: omp({ model: '@generalist_root' }) })])).toBe(
+      expected,
+    )
+  })
   it.each(['low', 'medium', 'high', 'xhigh'] as const)(
     'renders OMP effort %s through the canonical helper and direct schema',
     (effort) => {
@@ -752,12 +765,24 @@ describe('Smalltalk declarations', () => {
   )
   it.each(['', 'extra-high', 'XHIGH'])('rejects unsupported OMP effort %j', (effort) => {
     expect(() => omp({ model: 'example-model', effort } as never)).toThrow()
+    expect(() =>
+      Schema.decodeUnknownSync(AgentSchema)({
+        id: 'example/omp',
+        harness: { kind: 'omp', model: '@generalist_root', effort },
+      }),
+    ).toThrow()
+    expect(() =>
+      agent({
+        id: 'example/omp',
+        harness: { kind: 'omp', model: '@generalist_root', effort },
+      } as never),
+    ).toThrow()
   })
-  it('requires both routing fields in every harness authoring type', () => {
+  it('requires model for OMP and both routing fields for Codex', () => {
     expectTypeOf<Omit<typeof OmpSchema.Encoded, 'model'>>().not.toMatchTypeOf<
       typeof OmpSchema.Encoded
     >()
-    expectTypeOf<Omit<typeof OmpSchema.Encoded, 'effort'>>().not.toMatchTypeOf<
+    expectTypeOf<Omit<typeof OmpSchema.Encoded, 'effort'>>().toMatchTypeOf<
       typeof OmpSchema.Encoded
     >()
     expectTypeOf<Omit<typeof CodexSchema.Encoded, 'model'>>().not.toMatchTypeOf<
@@ -770,10 +795,10 @@ describe('Smalltalk declarations', () => {
   it.each(['omp', 'codex'])('rejects absent or empty %s routing fields', (kind) => {
     for (const routing of [
       {},
-      { model: 'example-model' },
       { effort: 'medium' },
       { model: '', effort: 'medium' },
       { model: 'example-model', effort: '' },
+      ...(kind === 'codex' ? [{ model: 'example-model' }] : []),
     ]) {
       expect(() => agent({ id: 'seat', harness: { kind, ...routing } } as never)).toThrow()
       expect(() =>
@@ -1945,6 +1970,39 @@ const stJson = <T>(st: IsolatedSt, ...args: string[]): T => {
   ).toBe(0)
   return JSON.parse(result.stdout) as T
 }
+
+testWithSt(
+  'plans native OMP role launch without a thinking override',
+  async ({ signal }) =>
+    withIsolatedSt({ kind: 'production', signal }, async ({ dir, command, get }) => {
+      const source = join(dir, 'role.kdl')
+      writeFileSync(
+        source,
+        emit([
+          agent({
+            id: 'garden/role',
+            workspace: dir,
+            rollout: 'manual',
+            harness: omp({ model: '@generalist_root' }),
+          }),
+        ]),
+      )
+      const applied = command('agents', 'apply', source, '--as', gateReviewer)
+      expect(applied.status, applied.stderr).toBe(0)
+      const desired = await get<{
+        member: { launch: { type: string; value: Array<string> } }
+      }>('/v1/desired/agent/garden/role')
+      const launch = desired.member.launch
+      expect(launch.type).toBe('argv')
+      expect(launch.value.slice(launch.value.indexOf('--') + 1)).toEqual([
+        'omp',
+        '--model',
+        '@generalist_root',
+      ])
+      expect(launch.value).not.toContain('--thinking')
+    }),
+  30000,
+)
 
 testWithSt(
   'round-trips canonical mission and strict agent fields through isolated st daemon',

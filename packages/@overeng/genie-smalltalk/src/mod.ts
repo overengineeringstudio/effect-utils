@@ -278,7 +278,7 @@ export const OmpResumeSchema = Schema.Union([
 export const OmpSchema = Schema.Struct({
   kind: Schema.Literal('omp'),
   model: Text,
-  effort: Schema.Literals(['low', 'medium', 'high', 'xhigh']),
+  effort: Schema.optionalKey(Schema.Literals(['low', 'medium', 'high', 'xhigh'])),
   resume: Schema.optionalKey(OmpResumeSchema),
 }).annotate({ identifier: 'St.Omp' })
 
@@ -996,12 +996,17 @@ export const omp = ({
   resume,
 }: {
   readonly model: string
-  readonly effort: (typeof OmpSchema.Encoded)['effort']
+  readonly effort?: (typeof OmpSchema.Encoded)['effort']
   readonly resume?: typeof OmpResumeSchema.Encoded
 }): typeof OmpSchema.Type =>
   decode({
     schema: OmpSchema,
-    input: { kind: 'omp', model, effort, ...(resume === undefined ? {} : { resume }) },
+    input: {
+      kind: 'omp',
+      model,
+      ...(effort === undefined ? {} : { effort }),
+      ...(resume === undefined ? {} : { resume }),
+    },
   })
 
 /** Decodes and renders a resource node. */
@@ -2335,7 +2340,7 @@ export const agent = (input: typeof AgentSchema.Encoded): Node => {
         args: [a.harness.kind],
         children: [
           child({ name: 'model', value: a.harness.model }),
-          child({ name: 'effort', value: a.harness.effort }),
+          ...optionalChild({ name: 'effort', value: a.harness.effort }),
           ...(a.harness.kind === 'codex' && a.harness.args !== undefined
             ? [node({ name: 'args', args: a.harness.args })]
             : []),
