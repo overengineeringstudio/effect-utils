@@ -181,6 +181,8 @@ let
     }
   ];
   check = pkgs.runCommand "macos-app-host-stability" { } ''
+    test ${pkgs.lib.escapeShellArg first.hostAppBundle} = '${first.hostApp}/SyntheticHost.app'
+    test ${pkgs.lib.escapeShellArg first.appBundleName} = 'Synthetic Host.app'
     cmp ${pkgs.lib.escapeShellArg "${first.hostAppBundle}/Contents/MacOS/macos-app-host"} \
       ${pkgs.lib.escapeShellArg "${second.hostAppBundle}/Contents/MacOS/macos-app-host"}
     test '${first.generation}' != '${second.generation}'
