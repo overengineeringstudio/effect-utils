@@ -430,9 +430,27 @@ payload inodes.
 ### Recovering a chmod-poisoned shared store
 
 Cleanup must unlock **directories only**, never recursively chmod payload files:
-snapshot payloads are hardlinked into the CAS and other worktrees. A writable
-blob is rejected even when its bytes happen to match its address. Do not bypass
-this check with a blanket chmod or a private-copy fallback.
+snapshot payloads are hardlinked into the CAS and other worktrees. Snapshot
+prepare and verification first validate the complete payload byte digest. When
+regular payload files have writable-mode drift, repair repeats the canonical
+TypeScript aggregate hash through `O_RDONLY | O_NOFOLLOW | O_NONBLOCK` descriptors,
+recording each candidate's inode identity and SHA-256 while its bytes feed that
+aggregate. Only a matching secondary aggregate authorizes mode repair; private
+source-stat hints are not authority, and legacy snapshots without hints remain
+supported. All candidate digests must participate in the matching aggregate before
+any mode changes. Repair uses bounded descriptor counts: it reopens one candidate
+at a time, checks its inode and SHA-256 again, then removes write bits through that
+matching descriptor. It rehashes the same descriptor after chmod with strict
+before/after metadata checks; a mismatch restores its prior mode through that
+descriptor and fails. Each rehash reads at most the initial descriptor size and
+rejects short reads or growth. A later inode failure leaves already proven inodes
+protected; only the mismatched inode retains or regains its prior mode, and the
+snapshot verification still fails closed. The `[editor-view-mode-drift]` stderr record reports the
+repaired inode count and up to five sample paths; hardlinked aliases are repaired
+together. A byte mismatch during aggregate verification fails before changing any
+file mode. Writable directories and private metadata
+remain errors. Direct CAS admission still rejects writable blobs; do not bypass
+its checks with a blanket chmod or a private-copy fallback.
 
 An initial read-only census requires no quiescence acknowledgement and does not
 create a flock, normalize directories, or change any inode:
