@@ -442,7 +442,6 @@ success. Child verification gives hard failures precedence (exit 22); only
 explicit typed permission deferral uses exit 75 and `error.details.children`.
 Lifecycle contention uses exit 23 rather than impersonating permission deferral.
 
-
 ## Typed operation registry
 
 ```text

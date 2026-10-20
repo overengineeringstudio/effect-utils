@@ -3,53 +3,229 @@
   "$id": "https://example.org/macos-app/children-v1.schema.json",
   "title": "Supervised children declarations (unique IDs and helper paths)",
   "type": "array",
-  "items": {"$ref": "#/$defs/child"},
+  "items": { "$ref": "#/$defs/child" },
   "$defs": {
-    "id": {"type": "string", "maxLength": 128, "pattern": "^[a-z][a-z0-9-]*$"},
-    "op": {"type": "string", "pattern": "^[a-z][a-z0-9-]{0,127}\\.[a-z][a-z0-9-]{0,127}$"},
-    "text": {"type": "string", "pattern": "^[^\\u0000]*$"},
-    "absolute": {"type": "string", "pattern": "^/(?!nix/store(?:/|$))(?:$|(?!(?:[^/]+/)*\\.{1,2}(?:/|$))[^/\\\\\\u0000]+(?:/[^/\\\\\\u0000]+)*)$"},
-    "timeout": {"type": "integer", "minimum": 1, "maximum": 300000},
-    "service": {"enum": ["full-disk-access", "notifications", "screen-recording", "accessibility", "microphone", "system-audio", "automation"]},
-    "directory": {"type": "object", "additionalProperties": false, "required": ["path"], "properties": {"path": {"allOf": [{"$ref": "#/$defs/absolute"}, {"not": {"const": "/"}}]}, "mode": {"type": "integer", "minimum": 0, "maximum": 511, "default": 448}}},
-    "probeResult": {"oneOf": [
-      {"type": "object", "additionalProperties": false, "required": ["outcome"], "properties": {"outcome": {"const": "ready"}}},
-      {"type": "object", "additionalProperties": false, "required": ["outcome", "service", "evidence"], "properties": {"outcome": {"const": "deferred"}, "service": {"$ref": "#/$defs/service"}, "evidence": {"type": "string", "minLength": 1, "maxLength": 4096}}},
-      {"type": "object", "additionalProperties": false, "required": ["outcome", "code"], "properties": {"outcome": {"const": "failed"}, "code": {"$ref": "#/$defs/id"}}}
-    ]},
-    "child": {
-      "type": "object", "additionalProperties": false,
-      "required": ["id", "helperPath", "argv", "env", "cwd", "requiredTccServices", "requiresSession", "readiness", "restart", "stop", "schedule", "rlimitNofile", "nice", "processType", "directories"],
+    "id": { "type": "string", "maxLength": 128, "pattern": "^[a-z][a-z0-9-]*$" },
+    "op": { "type": "string", "pattern": "^[a-z][a-z0-9-]{0,127}\\.[a-z][a-z0-9-]{0,127}$" },
+    "text": { "type": "string", "pattern": "^[^\\u0000]*$" },
+    "absolute": {
+      "type": "string",
+      "pattern": "^/(?!nix/store(?:/|$))(?:$|(?!(?:[^/]+/)*\\.{1,2}(?:/|$))[^/\\\\\\u0000]+(?:/[^/\\\\\\u0000]+)*)$"
+    },
+    "timeout": { "type": "integer", "minimum": 1, "maximum": 300000 },
+    "service": {
+      "enum": [
+        "full-disk-access",
+        "notifications",
+        "screen-recording",
+        "accessibility",
+        "microphone",
+        "system-audio",
+        "automation"
+      ]
+    },
+    "directory": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path"],
       "properties": {
-        "id": {"$ref": "#/$defs/id"},
-        "helperPath": {"type": "string", "pattern": "^Contents/Helpers/(?!(?:[^/]+/)*\\.{1,2}(?:/|$))[^/\\\\\\u0000]+(?:/[^/\\\\\\u0000]+)*$"},
-        "argv": {"type": "array", "items": {"$ref": "#/$defs/text"}},
-        "env": {"type": "object", "propertyNames": {"minLength": 1, "pattern": "^[^=\\u0000]+$"}, "additionalProperties": {"$ref": "#/$defs/text"}},
-        "cwd": {"$ref": "#/$defs/absolute"},
-        "requiredTccServices": {"type": "array", "uniqueItems": true, "items": {"enum": ["full-disk-access", "notifications", "screen-recording", "accessibility", "microphone", "system-audio", "automation"]}},
-        "activation": {"enum": ["active", "inactive"], "default": "inactive"},
-        "requiresSession": {"enum": ["none", "gui"]},
-        "rlimitNofile": {"type": "object", "additionalProperties": false, "required": ["soft", "hard"], "properties": {"soft": {"type": "integer", "minimum": 1, "maximum": 18446744073709551615}, "hard": {"type": "integer", "minimum": 1, "maximum": 18446744073709551615}}},
-        "nice": {"type": "integer", "minimum": -20, "maximum": 19},
-        "processType": {"enum": ["Background", "Standard", "Interactive", "Adaptive"], "description": "Inherited launchd job ProcessType, not a per-child override. Must equal the system supervisor job type for requiresSession=none or the GUI agent job type for requiresSession=gui; mismatches are rejected at admission."},
-        "directories": {"type": "object", "additionalProperties": false, "required": ["state", "run", "log"], "properties": {"state": {"$ref": "#/$defs/directory"}, "run": {"$ref": "#/$defs/directory"}, "log": {"$ref": "#/$defs/directory"}}},
-        "clientSocket": {"oneOf": [{"$ref": "#/$defs/absolute"}, {"type": "null"}]},
-        "stop": {"type": "object", "additionalProperties": false, "required": ["signal", "graceMs"], "properties": {"signal": {"enum": ["int", "term"]}, "graceMs": {"$ref": "#/$defs/timeout"}}},
-        "readiness": {"oneOf": [
-          {"type": "object", "additionalProperties": false, "required": ["kind", "path", "timeoutMs"], "properties": {"kind": {"const": "socket-accepts"}, "path": {"$ref": "#/$defs/absolute"}, "timeoutMs": {"$ref": "#/$defs/timeout"}}},
-          {"type": "object", "additionalProperties": false, "required": ["kind", "op", "timeoutMs"], "properties": {"kind": {"const": "probe-op"}, "op": {"$ref": "#/$defs/op"}, "timeoutMs": {"$ref": "#/$defs/timeout"}}},
-          {"type": "object", "additionalProperties": false, "required": ["kind"], "properties": {"kind": {"const": "none"}}}
-        ]},
-        "restart": {"oneOf": [
-          {"type": "object", "additionalProperties": false, "required": ["kind"], "properties": {"kind": {"const": "never"}}},
-          {"type": "object", "additionalProperties": false, "required": ["kind", "initialBackoffMs", "maxBackoffMs", "maxAttempts"], "properties": {"kind": {"const": "on-failure"}, "initialBackoffMs": {"$ref": "#/$defs/timeout"}, "maxBackoffMs": {"$ref": "#/$defs/timeout"}, "maxAttempts": {"type": "integer", "minimum": 1, "maximum": 100}}}
-        ]},
-        "schedule": {"oneOf": [
-          {"type": "object", "additionalProperties": false, "required": ["kind"], "properties": {"kind": {"const": "resident"}}},
-          {"type": "object", "additionalProperties": false, "required": ["kind", "op"], "properties": {"kind": {"const": "launchd-scheduled"}, "op": {"$ref": "#/$defs/op"}}}
-        ]}
+        "path": { "allOf": [{ "$ref": "#/$defs/absolute" }, { "not": { "const": "/" } }] },
+        "mode": { "type": "integer", "minimum": 0, "maximum": 511, "default": 448 }
+      }
+    },
+    "probeResult": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["outcome"],
+          "properties": { "outcome": { "const": "ready" } }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["outcome", "service", "evidence"],
+          "properties": {
+            "outcome": { "const": "deferred" },
+            "service": { "$ref": "#/$defs/service" },
+            "evidence": { "type": "string", "minLength": 1, "maxLength": 4096 }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["outcome", "code"],
+          "properties": { "outcome": { "const": "failed" }, "code": { "$ref": "#/$defs/id" } }
+        }
+      ]
+    },
+    "child": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "helperPath",
+        "argv",
+        "env",
+        "cwd",
+        "requiredTccServices",
+        "requiresSession",
+        "readiness",
+        "restart",
+        "stop",
+        "schedule",
+        "rlimitNofile",
+        "nice",
+        "processType",
+        "directories"
+      ],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "helperPath": {
+          "type": "string",
+          "pattern": "^Contents/Helpers/(?!(?:[^/]+/)*\\.{1,2}(?:/|$))[^/\\\\\\u0000]+(?:/[^/\\\\\\u0000]+)*$"
+        },
+        "argv": { "type": "array", "items": { "$ref": "#/$defs/text" } },
+        "env": {
+          "type": "object",
+          "propertyNames": { "minLength": 1, "pattern": "^[^=\\u0000]+$" },
+          "additionalProperties": { "$ref": "#/$defs/text" }
+        },
+        "cwd": { "$ref": "#/$defs/absolute" },
+        "requiredTccServices": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "full-disk-access",
+              "notifications",
+              "screen-recording",
+              "accessibility",
+              "microphone",
+              "system-audio",
+              "automation"
+            ]
+          }
+        },
+        "activation": { "enum": ["active", "inactive"], "default": "inactive" },
+        "requiresSession": { "enum": ["none", "gui"] },
+        "rlimitNofile": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["soft", "hard"],
+          "properties": {
+            "soft": { "type": "integer", "minimum": 1, "maximum": 18446744073709551615 },
+            "hard": { "type": "integer", "minimum": 1, "maximum": 18446744073709551615 }
+          }
+        },
+        "nice": { "type": "integer", "minimum": -20, "maximum": 19 },
+        "processType": {
+          "enum": ["Background", "Standard", "Interactive", "Adaptive"],
+          "description": "Inherited launchd job ProcessType, not a per-child override. Must equal the system supervisor job type for requiresSession=none or the GUI agent job type for requiresSession=gui; mismatches are rejected at admission."
+        },
+        "directories": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["state", "run", "log"],
+          "properties": {
+            "state": { "$ref": "#/$defs/directory" },
+            "run": { "$ref": "#/$defs/directory" },
+            "log": { "$ref": "#/$defs/directory" }
+          }
+        },
+        "clientSocket": { "oneOf": [{ "$ref": "#/$defs/absolute" }, { "type": "null" }] },
+        "stop": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["signal", "graceMs"],
+          "properties": {
+            "signal": { "enum": ["int", "term"] },
+            "graceMs": { "$ref": "#/$defs/timeout" }
+          }
+        },
+        "readiness": {
+          "oneOf": [
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["kind", "path", "timeoutMs"],
+              "properties": {
+                "kind": { "const": "socket-accepts" },
+                "path": { "$ref": "#/$defs/absolute" },
+                "timeoutMs": { "$ref": "#/$defs/timeout" }
+              }
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["kind", "op", "timeoutMs"],
+              "properties": {
+                "kind": { "const": "probe-op" },
+                "op": { "$ref": "#/$defs/op" },
+                "timeoutMs": { "$ref": "#/$defs/timeout" }
+              }
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["kind"],
+              "properties": { "kind": { "const": "none" } }
+            }
+          ]
+        },
+        "restart": {
+          "oneOf": [
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["kind"],
+              "properties": { "kind": { "const": "never" } }
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["kind", "initialBackoffMs", "maxBackoffMs", "maxAttempts"],
+              "properties": {
+                "kind": { "const": "on-failure" },
+                "initialBackoffMs": { "$ref": "#/$defs/timeout" },
+                "maxBackoffMs": { "$ref": "#/$defs/timeout" },
+                "maxAttempts": { "type": "integer", "minimum": 1, "maximum": 100 }
+              }
+            }
+          ]
+        },
+        "schedule": {
+          "oneOf": [
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["kind"],
+              "properties": { "kind": { "const": "resident" } }
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["kind", "op"],
+              "properties": {
+                "kind": { "const": "launchd-scheduled" },
+                "op": { "$ref": "#/$defs/op" }
+              }
+            }
+          ]
+        }
       },
-      "allOf": [{"if": {"properties": {"schedule": {"properties": {"kind": {"const": "launchd-scheduled"}}}}}, "then": {"properties": {"restart": {"properties": {"kind": {"const": "never"}}}}}}]
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "schedule": { "properties": { "kind": { "const": "launchd-scheduled" } } }
+            }
+          },
+          "then": {
+            "properties": { "restart": { "properties": { "kind": { "const": "never" } } } }
+          }
+        }
+      ]
     }
   }
 }
