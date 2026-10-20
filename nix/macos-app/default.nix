@@ -29,7 +29,12 @@ let
   # Only owner/group/world read-write modes are supported; never executable sockets.
   inherit (pkgs) lib;
   helperAssembly = import ./helpers.nix {
-    inherit pkgs bundleId signer helpers;
+    inherit
+      pkgs
+      bundleId
+      signer
+      helpers
+      ;
   };
   # Product-facing paths keep one canonical basename, independent of derivation names.
   appBundleName = "${displayName}.app";
@@ -136,11 +141,16 @@ let
         ;
       inherit nestedCode signingOptions supervisedChildren;
       inherit targetUid policyRevision releaseRevision;
-      guiLaunchd = if guiLaunchd == null then null else {
-        inherit (guiLaunchd) label;
-        keepAlive = guiLaunchd.keepAlive or true;
-        runAtLoad = guiLaunchd.runAtLoad or true;
-      } // (guiLaunchd.extra or { });
+      guiLaunchd =
+        if guiLaunchd == null then
+          null
+        else
+          {
+            inherit (guiLaunchd) label;
+            keepAlive = guiLaunchd.keepAlive or true;
+            runAtLoad = guiLaunchd.runAtLoad or true;
+          }
+          // (guiLaunchd.extra or { });
       entitlements = if entitlements == null then null else toString entitlements;
       launchd = launchdData;
     }
@@ -244,29 +254,31 @@ let
     }
   );
   hostApp = pkgs.runCommand "${name}-unsigned-app" { } (
-    (if hostBundle != null then
-      ''
-        mkdir -p "$out"
-        cp -R ${lib.escapeShellArg (toString hostBundle.path)} "$out/${name}.app"
-        ${lib.optionalString (helpers != { }) ''
-          test ! -L "$out/${name}.app/Contents"
-          test ! -L "$out/${name}.app/Contents/Helpers"
-          chmod u+w "$out/${name}.app/Contents"
-          if [ -d "$out/${name}.app/Contents/Helpers" ]; then
-            chmod u+w "$out/${name}.app/Contents/Helpers"
-          fi
-        ''}
-      ''
-    else
-      ''
-        app="$out/${name}.app"
-        mkdir -p "$app/Contents/MacOS"
-        mkdir -p "$app/Contents/Resources"
-        cp '${hostPath}' "$app/Contents/MacOS/${hostExecutable}"
-        printf '%s\n' '${hostSourceHash}' > "$app/Contents/Resources/host-source-hash"
-        cp '${plist}' "$app/Contents/Info.plist"
-      ''
-    ) + ''
+    (
+      if hostBundle != null then
+        ''
+          mkdir -p "$out"
+          cp -R ${lib.escapeShellArg (toString hostBundle.path)} "$out/${name}.app"
+          ${lib.optionalString (helpers != { }) ''
+            test ! -L "$out/${name}.app/Contents"
+            test ! -L "$out/${name}.app/Contents/Helpers"
+            chmod u+w "$out/${name}.app/Contents"
+            if [ -d "$out/${name}.app/Contents/Helpers" ]; then
+              chmod u+w "$out/${name}.app/Contents/Helpers"
+            fi
+          ''}
+        ''
+      else
+        ''
+          app="$out/${name}.app"
+          mkdir -p "$app/Contents/MacOS"
+          mkdir -p "$app/Contents/Resources"
+          cp '${hostPath}' "$app/Contents/MacOS/${hostExecutable}"
+          printf '%s\n' '${hostSourceHash}' > "$app/Contents/Resources/host-source-hash"
+          cp '${plist}' "$app/Contents/Info.plist"
+        ''
+    )
+    + ''
       app="$out/${name}.app"
       ${helperAssembly.copy}
     ''
@@ -332,21 +344,29 @@ assert builtins.elem session [
   "system-daemon"
 ];
 assert builtins.match "[A-Za-z0-9.-]+" launchd.label != null;
-assert guiLaunchd == null || (
-  session == "system-daemon"
-  && builtins.isInt targetUid && targetUid > 0
-  && builtins.match "[A-Za-z0-9.-]+" guiLaunchd.label != null
-  && guiLaunchd.label != launchd.label
-);
+assert
+  guiLaunchd == null
+  || (
+    session == "system-daemon"
+    && builtins.isInt targetUid
+    && targetUid > 0
+    && builtins.match "[A-Za-z0-9.-]+" guiLaunchd.label != null
+    && guiLaunchd.label != launchd.label
+  );
 assert lib.all (child: builtins.elem child.helperPath nestedPaths) supervisedChildren;
-assert lib.all (child:
+assert lib.all (
+  child:
   let
-    jobType = if child.requiresSession == "gui" then
-      (if guiLaunchd == null then null else guiLaunchd.extra.ProcessType or "Background")
-    else launchd.extra.ProcessType or "Background";
+    jobType =
+      if child.requiresSession == "gui" then
+        (if guiLaunchd == null then null else guiLaunchd.extra.ProcessType or "Background")
+      else
+        launchd.extra.ProcessType or "Background";
   in
   lib.assertMsg (child.processType == jobType)
-    "macos-app: child ${child.id} processType ${child.processType} conflicts with its ${child.requiresSession} launchd job ProcessType ${if jobType == null then "(missing GUI job)" else jobType}; change the job declaration explicitly"
+    "macos-app: child ${child.id} processType ${child.processType} conflicts with its ${child.requiresSession} launchd job ProcessType ${
+      if jobType == null then "(missing GUI job)" else jobType
+    }; change the job declaration explicitly"
 ) supervisedChildren;
 assert lib.all (
   key:

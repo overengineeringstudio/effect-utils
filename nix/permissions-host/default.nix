@@ -10,7 +10,9 @@
   policyFiles,
   helpers ? { },
   enableExampleChildren ? false,
-  guiLaunchd ? { label = "${bundleId}.gui"; },
+  guiLaunchd ? {
+    label = "${bundleId}.gui";
+  },
   name ? "macos-permissions-host",
   enabledGrants ? [
     "full-disk-access"
@@ -30,7 +32,12 @@
 let
   inherit (pkgs) lib;
   helperAssembly = import ../macos-app/helpers.nix {
-    inherit pkgs bundleId signer helpers;
+    inherit
+      pkgs
+      bundleId
+      signer
+      helpers
+      ;
   };
   grantCategories = [
     "full-disk-access"
@@ -119,7 +126,11 @@ let
     cargoBuildFlags = [
       "--bin"
       "macos-permissions-host"
-    ] ++ lib.optionals enableExampleChildren [ "--features" "example-children" ];
+    ]
+    ++ lib.optionals enableExampleChildren [
+      "--features"
+      "example-children"
+    ];
     buildInputs = [ pkgs.apple-sdk_15 ];
     # Reuse the capability's pure SDK environment, NOT its compiler wrapper:
     # that wrapper signs outputs after ABI normalization. This assembly must not.
@@ -214,8 +225,18 @@ let
       signer
       requirement
       ;
-    launchd = launchd // { extra = { ProcessType = "Background"; } // (launchd.extra or { }); };
-    guiLaunchd = guiLaunchd // { extra = { ProcessType = "Background"; } // (guiLaunchd.extra or { }); };
+    launchd = launchd // {
+      extra = {
+        ProcessType = "Background";
+      }
+      // (launchd.extra or { });
+    };
+    guiLaunchd = guiLaunchd // {
+      extra = {
+        ProcessType = "Background";
+      }
+      // (guiLaunchd.extra or { });
+    };
     actions = { };
     supervisedChildren = policyData.supervisedChildren or [ ];
     statusAllowedUids = [ policyData.uid ];
@@ -245,24 +266,33 @@ assert lib.assertMsg (
   ) automationTargets
   && builtins.length automationTargets == builtins.length (lib.unique automationTargets)
 ) "permissions-host automationTargets must be unique bundle identifiers";
-assert lib.assertMsg (
-  lib.all (child: builtins.hasAttr child.helperPath helperAssembly.requirements) (policyData.supervisedChildren or [ ])
+assert lib.assertMsg (lib.all (child: builtins.hasAttr child.helperPath helperAssembly.requirements)
+  (policyData.supervisedChildren or [ ])
 ) "permissions-host supervised children must reference an assembled native helper";
-assert lib.assertMsg (
-  lib.all (
-    child: lib.all (service: builtins.elem service enabledGrants) child.requiredTccServices
-  ) (policyData.supervisedChildren or [ ])
+assert lib.assertMsg (lib.all
+  (child: lib.all (service: builtins.elem service enabledGrants) child.requiredTccServices)
+  (policyData.supervisedChildren or [ ])
 ) "permissions-host child requires a disabled grant category";
-assert lib.assertMsg (
-  lib.all (child:
-    (child.readiness.kind != "probe-op" || (
-      enableExampleChildren && child.readiness.op == "example.ready" && child.requiresSession == "none"
-    ))
-    && (child.schedule.kind != "launchd-scheduled" || (
-      enableExampleChildren && child.schedule.op == "example.run"
-      && child.id == "headless-worker" && child.requiresSession == "none"
-    ))
-  ) (policyData.supervisedChildren or [ ])
+assert lib.assertMsg (lib.all
+  (
+    child:
+    (
+      child.readiness.kind != "probe-op"
+      || (
+        enableExampleChildren && child.readiness.op == "example.ready" && child.requiresSession == "none"
+      )
+    )
+    && (
+      child.schedule.kind != "launchd-scheduled"
+      || (
+        enableExampleChildren
+        && child.schedule.op == "example.run"
+        && child.id == "headless-worker"
+        && child.requiresSession == "none"
+      )
+    )
+  )
+  (policyData.supervisedChildren or [ ])
 ) "permissions-host child operation is absent from the compiled product registry";
 {
   inherit

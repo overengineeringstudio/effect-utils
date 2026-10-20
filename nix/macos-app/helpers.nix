@@ -1,18 +1,34 @@
 # Copy pinned native bytes into the bundle; seal-host signs this explicit inventory.
 # Scripts/store symlinks are not executable nested code and are rejected here.
-{ pkgs, bundleId, signer, helpers }:
+{
+  pkgs,
+  bundleId,
+  signer,
+  helpers,
+}:
 let
   inherit (pkgs) lib;
   entries = lib.mapAttrsToList (
     id: helper:
     let
       identifier = helper.identifier or "${bundleId}.helper.${id}";
-      requirement = helper.requirement or ''identifier "${identifier}" and anchor apple generic and certificate leaf[subject.OU] = "${signer.teamId}"'';
+      requirement =
+        helper.requirement
+          or ''identifier "${identifier}" and anchor apple generic and certificate leaf[subject.OU] = "${signer.teamId}"'';
     in
     assert builtins.match "[a-z][a-z0-9-]*" id != null;
     assert builtins.stringLength id <= 128;
     assert lib.hasPrefix "/nix/store/" (toString helper.executable);
-    assert lib.all (key: builtins.elem key [ "executable" "identifier" "requirement" "entitlements" "signingOptions" ]) (builtins.attrNames helper);
+    assert lib.all (
+      key:
+      builtins.elem key [
+        "executable"
+        "identifier"
+        "requirement"
+        "entitlements"
+        "signingOptions"
+      ]
+    ) (builtins.attrNames helper);
     {
       path = "Contents/Helpers/${id}";
       executable = toString helper.executable;
@@ -24,7 +40,12 @@ let
 in
 {
   nestedCode = map (entry: builtins.removeAttrs entry [ "executable" ]) entries;
-  requirements = builtins.listToAttrs (map (entry: { name = entry.path; value = entry.requirement; }) entries);
+  requirements = builtins.listToAttrs (
+    map (entry: {
+      name = entry.path;
+      value = entry.requirement;
+    }) entries
+  );
   copy = lib.concatMapStringsSep "\n" (entry: ''
     test ! -L "$app/Contents"
     test ! -L "$app/Contents/Helpers"
