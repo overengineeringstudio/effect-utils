@@ -216,6 +216,8 @@ This ledger owns last-use, reservations, and rebuildable inode-footprint caches;
 it is not a disposable payload shard. Obsolete footprint sidecars are reclaimed
 with the corresponding generation's cached identity.
 Batch publication shares one in-flight census across workers and admission retries.
+Reuse is keyed by host ledger, root identity, and content store; a worker missing
+from the measured roots/stores takes a fresh census before admission.
 Every fit decision still reads outstanding reservations and later publication
 estimates under the host ledger flock. Collection, eviction, or a stale journal
 invalidates the shared census. Fitting reservations do not scan live readers,

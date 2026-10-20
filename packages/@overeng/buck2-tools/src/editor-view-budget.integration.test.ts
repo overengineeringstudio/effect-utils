@@ -1903,6 +1903,73 @@ describe('budget admission defers reader proof until eviction needs it', () => {
     }
   })
 
+  it.each(['root', 'store', 'ledger'])(
+    'retakes a shared census when the caller changes its %s',
+    async (changed) => {
+      const host = makeHost()
+      try {
+        const first = host.fixture('coverage-first', 188, 64)
+        mkdirSync(join(first.editorRoot, '.store'), { recursive: true })
+        const censusSession = makeEditorViewBudgetCensusSession()
+        let censuses = 0
+        const options = {
+          contentStore: host.contentStore,
+          root: { repoRoot: first.root, editorRoot: first.editorRoot },
+          heldEditorRoot: first.editorRoot,
+          discoverRoots: () => [],
+          reservationBytes: 1,
+          budgetBytes: setupBudgetBytes,
+          censusSession,
+          onCensus: () => {
+            censuses++
+          },
+          tryLockRoot: () => {
+            throw new Error('coverage test attempted eviction')
+          },
+        }
+        const initial = await host.track(reserveEditorViewBudget(options))
+        const initialBytes = readBudgetLedger(host).usedBytes
+        await cancelEditorViewBudgetReservation({
+          contentStore: host.contentStore,
+          token: initial.token,
+        })
+        expect(censuses).toBe(1)
+
+        const next = changed === 'root' ? host.fixture('coverage-next', 189, 64) : first
+        const contentStore =
+          changed === 'store' ? join(host.root, 'other-content', 'v1') : host.contentStore
+        if (changed === 'ledger')
+          process.env.EDITOR_VIEW_HOST_BUDGET_STATE = join(host.root, 'other-ledger')
+        const unmanaged = join(next.editorRoot, '.store', 'unmanaged-new')
+        mkdirSync(unmanaged, { recursive: true })
+        writeFileSync(join(unmanaged, 'payload.bin'), Buffer.alloc(payloadBytes, 190))
+        const reservation = await host.track(
+          reserveEditorViewBudget({
+            ...options,
+            contentStore,
+            root: { repoRoot: next.root, editorRoot: next.editorRoot },
+            heldEditorRoot: next.editorRoot,
+          }),
+        )
+        expect(censuses).toBe(2)
+        // Read the selected ledger, not the original host fixture's ledger path.
+        const state = readBudgetLedger({
+          ...host,
+          budgetState: editorViewHostBudgetStateDirectory(),
+        })
+        expect(state.contentStores).toContain(contentStore)
+        expect(state.reservations).toEqual([
+          expect.objectContaining({ token: reservation.token, editorRoot: next.editorRoot }),
+        ])
+        expect(state.usedBytes).toBeGreaterThan(initialBytes)
+        expect(state.usedBytes).toBeGreaterThanOrEqual(payloadBytes)
+        await cancelEditorViewBudgetReservation({ contentStore, token: reservation.token })
+      } finally {
+        await host.cleanup()
+      }
+    },
+  )
+
   it('shares one near-full census between workers but refreshes after a generation mutation before eviction', async () => {
     const host = makeHost()
     try {
@@ -1941,9 +2008,7 @@ describe('budget admission defers reader proof until eviction needs it', () => {
       }
       const scansBefore = readerScans()
       const workers = [0, 1].map(() =>
-        host.track(
-          reserveEditorViewBudget({ ...options, budgetBytes, censusSession, onCensus }),
-        ),
+        host.track(reserveEditorViewBudget({ ...options, budgetBytes, censusSession, onCensus })),
       )
       await Promise.race([
         entered.promise,

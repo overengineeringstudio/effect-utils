@@ -2847,11 +2847,18 @@ const publishEditorViewCoordinated = async ({
   const phaseTimings: (readonly [name: string, durationMs: number])[] = []
   let phaseName = 'admission'
   let phaseStartedAt = performance.now()
-  const enterPhase = (name: string): void => {
-    phaseTimings.push([phaseName, performance.now() - phaseStartedAt])
+  let phasesCompleted = false
+  const completePhase = (): void => {
+    const now = performance.now()
+    const durationMs = now - phaseStartedAt
+    phaseTimings.push([phaseName, durationMs])
     process.stderr.write(
-      `[editor-view-phase] ${JSON.stringify({ package: options.package, phase: phaseName, event: 'complete', durationMs: Math.round(performance.now() - phaseStartedAt), elapsedMs: Math.round(performance.timeOrigin + performance.now() - startedAtMs) })}\n`,
+      `[editor-view-phase] ${JSON.stringify({ package: options.package, phase: phaseName, event: 'complete', durationMs: Math.round(durationMs), elapsedMs: Math.round(performance.timeOrigin + now - startedAtMs) })}\n`,
     )
+  }
+  const enterPhase = (name: string): void => {
+    if (phasesCompleted === true) return
+    completePhase()
     phaseName = name
     phaseStartedAt = performance.now()
     process.stderr.write(
@@ -2865,6 +2872,9 @@ const publishEditorViewCoordinated = async ({
     readonly created: boolean
     readonly exitCode: number
   }): void => {
+    if (phasesCompleted === true) return
+    completePhase()
+    phasesCompleted = true
     emitCompletedSpanAsync({
       name: 'editor-view.phases',
       label: `phases ${options.viewName}`,
