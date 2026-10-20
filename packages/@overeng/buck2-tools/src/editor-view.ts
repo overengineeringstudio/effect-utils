@@ -1621,10 +1621,16 @@ const viteWriteDiagnostic = (directory: string): string => {
     : ''
 }
 
-/** Complete immutability proof: every directory, file, and link of the snapshot payload. */
 type SnapshotModeDrift = { readonly path: string; readonly status: BigIntStats }
 
-const requireReadOnlySnapshot = (snapshotDir: string, modeDrift?: SnapshotModeDrift[]): void => {
+/** Complete immutability proof, optionally collecting writable payloads for hash-verified repair. */
+const requireReadOnlySnapshot = ({
+  snapshotDir,
+  modeDrift,
+}: {
+  readonly snapshotDir: string
+  readonly modeDrift?: SnapshotModeDrift[]
+}): void => {
   const finite = pathExists(join(snapshotDir, '.backing'))
   const visit = (directory: string): void => {
     const status = lstatSync(directory)
@@ -2383,7 +2389,7 @@ const validateSnapshotContents = async ({
   const snapshotNodeModules = join(snapshotDir, 'node_modules')
   requireDirectory({ path: snapshotNodeModules, field: 'snapshot node_modules' })
   const modeDrift: SnapshotModeDrift[] = []
-  requireReadOnlySnapshot(snapshotDir, modeDrift)
+  requireReadOnlySnapshot({ snapshotDir, modeDrift })
   const digest = (await fingerprintSnapshotPayload({ snapshotDir, fingerprintTool })).digest
   if (digest !== record.byteSnapshotDigest)
     fail(
@@ -3134,7 +3140,7 @@ const publishEditorViewCoordinated = async ({
       enterPhase('harden')
       const prepared = candidate ?? fail('prepared snapshot candidate is absent')
       hardenSnapshot(prepared)
-      requireReadOnlySnapshot(prepared)
+      requireReadOnlySnapshot({ snapshotDir: prepared })
     }
     const commit = async (): Promise<EditorViewRecord> => {
       if (created === true) {
@@ -3165,7 +3171,8 @@ const publishEditorViewCoordinated = async ({
           run: async () => selectSnapshotRetirement({ paths, options, ordered: retention }),
         })) ?? []
       // Permission violations are publication failures, not post-commit cleanup failures.
-      for (const name of eligible) requireReadOnlySnapshot(join(paths.storeDir, name))
+      for (const name of eligible)
+        requireReadOnlySnapshot({ snapshotDir: join(paths.storeDir, name) })
       enterPhase('pointers')
       const pointerChanged =
         pathExists(paths.current) === false ||
@@ -3539,7 +3546,7 @@ const validatePublishedView = async ({
     return failCheck({ message: 'record package/cell/target/snapshot fields are invalid', context })
   const modeDrift: SnapshotModeDrift[] = []
   try {
-    requireReadOnlySnapshot(snapshotDir, modeDrift)
+    requireReadOnlySnapshot({ snapshotDir, modeDrift })
   } catch (error) {
     return failCheck({
       message: `snapshot immutability violation: ${error instanceof Error ? error.message : String(error)}`,
