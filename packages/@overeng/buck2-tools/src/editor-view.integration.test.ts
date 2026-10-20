@@ -3213,12 +3213,15 @@ describe('editor view publisher', () => {
         await expect(publishEditorView(fixture.options)).resolves.toEqual(record)
         expect(statSync(payload).mode & 0o777).toBe(0o444)
         expect(statSync(alias).mode & 0o777).toBe(0o444)
-        expect(stderr.mock.calls.some(([message]) =>
-          typeof message === 'string' &&
-          message.includes('[editor-view-mode-drift]') &&
-          message.includes('"count":1') &&
-          message.includes(payload),
-        )).toBe(true)
+        expect(
+          stderr.mock.calls.some(
+            ([message]) =>
+              typeof message === 'string' &&
+              message.includes('[editor-view-mode-drift]') &&
+              message.includes('"count":1') &&
+              message.includes(payload),
+          ),
+        ).toBe(true)
         await expect(verifyEditorViewSnapshot(fixture.options)).resolves.toEqual(record)
       } finally {
         stderr.mockRestore()
@@ -3244,8 +3247,7 @@ describe('editor view publisher', () => {
             message: expect.stringContaining('existing snapshot byte digest mismatch'),
           }),
         })
-        for (const path of [clean, mutated, alias])
-          expect(statSync(path).mode & 0o777).toBe(0o644)
+        for (const path of [clean, mutated, alias]) expect(statSync(path).mode & 0o777).toBe(0o644)
       } finally {
         cleanup(fixture)
       }
@@ -3264,7 +3266,13 @@ describe('editor view publisher', () => {
       await pending
       pending = publishEditorView(sibling.options)
       await pending
-      const payload = join(first.editorRoot, currentTarget(first), 'node_modules', 'dep', 'index.js')
+      const payload = join(
+        first.editorRoot,
+        currentTarget(first),
+        'node_modules',
+        'dep',
+        'index.js',
+      )
       chmodSync(payload, 0o644)
       writeFileSync(payload, 'mutated shared bytes\n')
     })
@@ -3282,7 +3290,9 @@ describe('editor view publisher', () => {
         await expect(pending).rejects.toMatchObject({
           message: expect.stringContaining('; publication workers='),
           cause: expect.objectContaining({
-            message: expect.stringMatching(/^editor view: existing snapshot byte digest mismatch:/u),
+            message: expect.stringMatching(
+              /^editor view: existing snapshot byte digest mismatch:/u,
+            ),
           }),
         })
       })

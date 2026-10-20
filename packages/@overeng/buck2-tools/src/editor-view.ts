@@ -1624,10 +1624,7 @@ const viteWriteDiagnostic = (directory: string): string => {
 /** Complete immutability proof: every directory, file, and link of the snapshot payload. */
 type SnapshotModeDrift = { readonly path: string; readonly status: BigIntStats }
 
-const requireReadOnlySnapshot = (
-  snapshotDir: string,
-  modeDrift?: SnapshotModeDrift[],
-): void => {
+const requireReadOnlySnapshot = (snapshotDir: string, modeDrift?: SnapshotModeDrift[]): void => {
   const finite = pathExists(join(snapshotDir, '.backing'))
   const visit = (directory: string): void => {
     const status = lstatSync(directory)
