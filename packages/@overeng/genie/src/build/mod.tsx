@@ -39,6 +39,7 @@ export {
   GenieFileError,
   GenieGenerationFailedError,
   GenieImportError,
+  GenieRuntimeTranspilerCacheError,
 } from '../core/errors.ts'
 
 /** Bridge GenieEvent stream to TUI dispatch. */
