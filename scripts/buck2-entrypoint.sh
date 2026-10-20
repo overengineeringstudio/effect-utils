@@ -2,6 +2,58 @@
 # Keep a warm pinned-Buck loop out of the JavaScript runtime. Cache only complete
 # read-only invocations with identical config, arguments and exported environment.
 set -euo pipefail
+# Keep local actions in the gate's cgroup. Native Buck cannot route individual
+# commands back to their client's cgroup from a shared daemon-owned scope.
+if [[ -n "${GATE_SLOT_CLASS:-}" && "${BUCK2_GATE_WRAPPER_ACTIVE:-}" != 1 ]]; then
+  export BUCK2_GATE_WRAPPER_ACTIVE=1
+  gate_args=("$@")
+  gate_child=""
+  gate_exit_signal=""
+  gate_cleanup() {
+    trap - EXIT
+    trap '' INT TERM HUP
+    @launcher@ @native@ --gate-cleanup "${gate_args[@]}" || true
+  }
+  gate_finish() {
+    local result="$1"
+    gate_cleanup
+    if [[ -n "$gate_exit_signal" ]]; then
+      # Re-signal in normal flow, outside both signal and EXIT trap contexts.
+      trap - "$gate_exit_signal"
+      kill -s "$gate_exit_signal" "$$"
+    fi
+    exit "$result"
+  }
+  gate_signal() {
+    gate_exit_signal="$1"
+    trap '' INT TERM HUP
+    if [[ -n "$gate_child" ]]; then
+      kill -s "$gate_exit_signal" "$gate_child" 2>/dev/null || true
+      wait "$gate_child" 2>/dev/null || true
+    fi
+    return 0
+  }
+  trap gate_cleanup EXIT
+  trap 'gate_signal INT' INT
+  trap 'gate_signal TERM' TERM
+  trap 'gate_signal HUP' HUP
+  gate_result=0
+  @launcher@ @native@ --gate-admit "${gate_args[@]}" || gate_result=$?
+  if [[ "$gate_result" != 0 || -n "$gate_exit_signal" ]]; then
+    gate_finish "$gate_result"
+  fi
+  # Bash otherwise makes asynchronous commands inherit ignored INT/QUIT.
+  # Reset before exec without changing the process group.
+  (trap - INT QUIT TERM HUP; exec "$0" "$@") <&0 &
+  gate_child=$!
+  if [[ -n "$gate_exit_signal" ]]; then
+    gate_signal "$gate_exit_signal"
+    gate_finish 0
+  fi
+  gate_result=0
+  wait "$gate_child" || gate_result=$?
+  gate_finish "$gate_result"
+fi
 root="$PWD"
 while [[ ! -f "$root/.buckroot" && "$root" != / ]]; do root="${root%/*}"; [[ -n "$root" ]] || root=/; done
 cache=""

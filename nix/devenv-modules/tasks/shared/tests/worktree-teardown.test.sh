@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
+# The teardown fixture owns persistent native daemons until explicit retirement.
+# Take the wrapper's outer-owner role without changing gate class or cgroup.
+export BUCK2_GATE_WRAPPER_ACTIVE=1
 # Keep command diagnostics in the aggregate runner's captured test stream.
 exec 2>&1
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
