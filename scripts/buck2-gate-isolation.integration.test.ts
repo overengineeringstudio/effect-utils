@@ -81,6 +81,49 @@ for (const phase of ${JSON.stringify(phases)}) reconcileGateDaemon({ native: ${J
       ])
       expect(JSON.parse(readFileSync(state, 'utf8'))).toEqual({ owned: 'stopped', v2: 'running' })
     }
+    for (const command of ['run', 'test', 'install', 'bxl']) {
+      for (const payload of ['--help', '-h', '--version', '--isolation-dir=other']) {
+        const args = ['--isolation-dir', 'owned', command, '//:target', '--', payload]
+        writeFileSync(join(cwd, 'payload'), `${args.join('\n')}\n`)
+        for (const invocationArgs of [args, ['@payload']]) {
+          writeFileSync(calls, '')
+          writeFileSync(
+            state,
+            JSON.stringify({ owned: 'running', other: 'running', v2: 'running' }),
+          )
+          const result = invoke(invocationArgs, {}, ['exit'])
+          expect(result.status).toBe(0)
+          expect(result.stderr).toBe('')
+          expect(readFileSync(calls, 'utf8')).toBe(
+            `${JSON.stringify(['--isolation-dir', 'owned', 'status'])}\n${JSON.stringify(['--isolation-dir', 'owned', 'kill'])}\n`,
+          )
+          expect(JSON.parse(readFileSync(state, 'utf8'))).toEqual({
+            owned: 'stopped',
+            other: 'running',
+            v2: 'running',
+          })
+        }
+      }
+    }
+    for (const args of [
+      ['run', '//:tool', 'positional', '--isolation-dir=other'],
+      ['run', '//:tool', 'positional', '--isolation-dir', 'other'],
+      ['run', '//:tool', 'positional', '--isolation-dir=other', '--', '--help'],
+    ]) {
+      writeFileSync(join(cwd, 'ambiguous-run'), `${args.join('\n')}\n`)
+      for (const invocationArgs of [args, ['@ambiguous-run']]) {
+        writeFileSync(calls, '')
+        const daemons = { owned: 'running', other: 'running', v2: 'running' }
+        writeFileSync(state, JSON.stringify(daemons))
+        const result = invoke(invocationArgs, {}, ['start', 'exit'])
+        expect(result.status).toBe(0)
+        expect(result.stderr).toBe(
+          'warning: Buck2 gate retained daemon: native isolation could not be determined safely\n',
+        )
+        expect(readFileSync(calls, 'utf8')).toBe('')
+        expect(JSON.parse(readFileSync(state, 'utf8'))).toEqual(daemons)
+      }
+    }
     for (const subcommand of ['status', 'log', 'kill']) {
       writeFileSync(join(cwd, 'maintenance'), `${subcommand}\n--isolation-dir\nowned\n`)
       writeFileSync(calls, '')
@@ -117,4 +160,4 @@ for (const phase of ${JSON.stringify(phases)}) reconcileGateDaemon({ native: ${J
   } finally {
     rmSync(root, { recursive: true, force: true })
   }
-})
+}, 60000)

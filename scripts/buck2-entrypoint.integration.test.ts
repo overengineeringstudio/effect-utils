@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, setSystemTime } from 'bun:test'
+import { spawn } from 'node:child_process'
 import { createHash, randomUUID } from 'node:crypto'
 import {
   chmodSync,
@@ -1317,27 +1318,49 @@ const waitForGateCondition = async (description: string, condition: () => boolea
 }
 
 describe('gate wrapper EXIT and signal traps', () => {
-  for (const signal of ['EXIT', 'SIGINT', 'SIGTERM', 'SIGHUP'] as const) {
+  for (const signal of ['EXIT', 'EXIT130', 'SIGINT', 'SIGTERM', 'SIGHUP'] as const) {
     it(`preserves ${signal} status and cleans only the selected isolation`, async () => {
       const root = fixture()
+      const packaged = process.env['BUCK2_BIN'] ?? Bun.which('buck2')
+      if (packaged === null || packaged === undefined)
+        throw new Error('pinned buck2 wrapper required')
+      // PATH may contain a process-wrapping Bash shim; use the actual
+      // interpreter selected by the packaged production wrapper.
+      const bash = /^#!(\/\S+)\n/u.exec(readFileSync(packaged, 'utf8'))?.[1]
+      if (bash === undefined) throw new Error('expected pinned Buck wrapper interpreter')
       writeFileSync(join(root, '.buckconfig'), '[cells]\nroot = .\n')
       const native = join(root, 'native')
       const launcher = join(root, 'launcher')
       const wrapper = join(root, 'buck2')
       const ready = join(root, 'ready')
+      const started = join(root, 'started')
       const killed = join(root, 'killed')
+      const received = join(root, 'received')
+      const stopped = join(root, 'stopped')
+      const signaled = signal !== 'EXIT' && signal !== 'EXIT130'
       writeFileSync(
         native,
         `#!${process.execPath}
+import { appendFileSync, existsSync, writeFileSync } from 'node:fs'
 const args = process.argv.slice(2)
 if (args.at(-1) === 'status') {
-  console.log(JSON.stringify({project_root: ${JSON.stringify(realpathSync(root))}, isolation_dir: 'owned', active_commands: [], process_info: {pid: process.ppid}}))
+  if (existsSync(${JSON.stringify(started)})) console.log(JSON.stringify({project_root: ${JSON.stringify(realpathSync(root))}, isolation_dir: 'owned', active_commands: [], process_info: {pid: process.ppid}}))
 } else if (args.at(-1) === 'kill') {
-  await Bun.write(${JSON.stringify(killed)}, args.join(' '))
-} else if (${JSON.stringify(signal)} === 'EXIT') {
-  process.exit(23)
+  if (${JSON.stringify(signaled)} && !existsSync(${JSON.stringify(stopped)})) appendFileSync(${JSON.stringify(killed)}, 'native still busy\\n')
+  appendFileSync(${JSON.stringify(killed)}, args.join(' ') + '\\n')
+} else if (${JSON.stringify(signaled)} === false) {
+  writeFileSync(${JSON.stringify(started)}, 'started')
+  process.exit(${signal === 'EXIT130' ? 130 : 23})
 } else {
-  for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP']) process.on(signal, () => process.exit(0))
+  writeFileSync(${JSON.stringify(started)}, 'started')
+  const released = Promise.withResolvers()
+  process.stdin.once('data', released.resolve)
+  for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP']) process.on(signal, async () => {
+    appendFileSync(${JSON.stringify(received)}, signal + '\\n')
+    await released.promise
+    writeFileSync(${JSON.stringify(stopped)}, 'stopped')
+    process.exit(0)
+  })
   await Bun.write(${JSON.stringify(ready)}, 'ready')
   process.stdin.resume()
   await Promise.withResolvers().promise
@@ -1347,36 +1370,78 @@ if (args.at(-1) === 'status') {
       )
       writeFileSync(
         launcher,
-        `#!${Bun.which('bash')}\nexec '${process.execPath}' '${join(import.meta.dir, 'buck2-entrypoint.ts')}' "$@"\n`,
+        `#!${bash}\nexec '${process.execPath}' '${join(import.meta.dir, 'buck2-entrypoint.ts')}' "$@"\n`,
         { mode: 0o700 },
       )
       writeFileSync(
         wrapper,
         readFileSync(join(import.meta.dir, 'buck2-entrypoint.sh'), 'utf8')
-          .replaceAll('@shell@', Bun.which('bash') ?? '')
+          .replaceAll('@shell@', bash)
           .replaceAll('@native@', native)
           .replaceAll('@launcher@', launcher)
           .replaceAll('@sha256@', Bun.which('sha256sum') ?? 'false'),
         { mode: 0o700 },
       )
-      const child = Bun.spawn([wrapper, '--isolation-dir', 'owned', 'build', '//:fixture'], {
+      // node:child_process exposes the parent's raw wait distinction rather
+      // than flattening signal death to the shell-style numeric 128+signal.
+      const env = process.platform === 'linux' ? Bun.which('env') : undefined
+      if (env === null) throw new Error('GNU env required to reset inherited SIGINT')
+      const args = [wrapper, '--isolation-dir', 'owned', 'build', '//:fixture']
+      const command = env ?? wrapper
+      const commandArgs =
+        env === undefined ? args.slice(1) : ['--default-signal=INT', '--', ...args]
+      const child = spawn(command, commandArgs, {
         cwd: root,
         detached: true,
-        env: { ...process.env, GATE_SLOT_CLASS: 'heavy', BUCK2_GATE_WRAPPER_ACTIVE: undefined },
-        stdin: 'pipe',
-        stdout: 'pipe',
-        stderr: 'pipe',
+        env: {
+          ...process.env,
+          BASH_ENV: undefined,
+          GATE_SLOT_CLASS: 'heavy',
+          BUCK2_GATE_WRAPPER_ACTIVE: undefined,
+        },
+        stdio: ['pipe', 'pipe', 'pipe'],
       })
-      launchProcesses.add(child)
-      const stderr = new Response(child.stderr).text()
-      if (signal !== 'EXIT') {
+      let stderr = ''
+      child.stderr.on('data', (chunk) => {
+        stderr += chunk.toString()
+      })
+      child.stdout.resume()
+      const completion = Promise.withResolvers<{ code: number | null; signal: string | null }>()
+      child.once('error', completion.reject)
+      child.once('close', (code, signal) => completion.resolve({ code, signal }))
+      const exited = completion.promise
+      if (child.pid === undefined) throw new Error('gate wrapper did not spawn')
+      launchProcesses.add({ pid: child.pid, exited: exited.then(({ code }) => code ?? 0) })
+      if (signaled === true) {
         await waitForGateCondition('fake native signal readiness', () => existsSync(ready))
+        if (process.platform === 'linux') {
+          expect(realpathSync(`/proc/${child.pid}/exe`)).toBe(realpathSync(bash))
+          const wrapperEnv = readFileSync(`/proc/${child.pid}/environ`, 'utf8').split('\0')
+          expect(wrapperEnv.some((entry) => entry.startsWith('BASH_ENV='))).toBe(false)
+          const ignored = /^SigIgn:\s*([0-9a-f]+)$/imu.exec(
+            readFileSync(`/proc/${child.pid}/status`, 'utf8'),
+          )?.[1]
+          if (ignored === undefined) throw new Error('missing wrapper SigIgn mask')
+          expect(BigInt(`0x${ignored}`) & 2n).toBe(0n)
+        }
         child.kill(signal)
+        await waitForGateCondition('forwarded native signal', () => existsSync(received))
+        // A second delivery while the native is draining must neither bypass
+        // its wait nor trigger a second daemon cleanup.
+        child.kill(signal)
+        child.stdin.write('release\n')
       }
-      expect(await child.exited, await stderr).toBe(
-        signal === 'EXIT' ? 23 : signal === 'SIGINT' ? 130 : signal === 'SIGTERM' ? 143 : 129,
-      )
-      expect(readFileSync(killed, 'utf8')).toBe('--isolation-dir owned kill')
+      const result = await exited
+      expect(result, stderr).toEqual({
+        code: signaled === true ? null : signal === 'EXIT130' ? 130 : 23,
+        signal: signaled === true ? signal : null,
+      })
+      expect(child.signalCode).toBe(signaled === true ? signal : null)
+      expect(readFileSync(killed, 'utf8')).toBe('--isolation-dir owned kill\n')
+      if (signaled === true) {
+        expect(readFileSync(received, 'utf8')).toBe(`${signal}\n`)
+        expect(readFileSync(stopped, 'utf8')).toBe('stopped')
+      }
       child.stdin.end()
     }, 60000)
   }

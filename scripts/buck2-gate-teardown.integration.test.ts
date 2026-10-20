@@ -15,8 +15,11 @@ const waitFor = async (description: string, condition: () => boolean) => {
 
 const teardownFixture = () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'buck2-gate-teardown-')))
-  const bash = Bun.which('bash')
-  if (bash === null) throw new Error('bash required for the actual Buck wrapper')
+  const packaged = process.env['BUCK2_BIN'] ?? Bun.which('buck2')
+  if (packaged === null || packaged === undefined) throw new Error('pinned buck2 wrapper required')
+  // Use the packaged interpreter, not a possible process-wrapping PATH shim.
+  const bash = /^#!(\/\S+)\n/u.exec(readFileSync(packaged, 'utf8'))?.[1]
+  if (bash === undefined) throw new Error('expected pinned Buck wrapper interpreter')
   const native = join(root, 'native')
   const launcher = join(root, 'launcher')
   const wrapper = join(root, 'buck2')

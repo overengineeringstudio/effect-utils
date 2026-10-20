@@ -50,7 +50,7 @@ it('stops expansion at a sentinel within each argfile and ignores isolation in p
   ).toBe('v2')
   expect(
     resolveGateIsolation({
-      args: ['run', '--', '@missing', '--isolation-dir=ignored'],
+      args: ['run', '//:target', '--', '@missing', '--isolation-dir=ignored'],
       env: {},
       cwd,
       readArgfile,
@@ -65,6 +65,34 @@ it('stops expansion at a sentinel within each argfile and ignores isolation in p
       readArgfile,
     }),
   ).toBeUndefined()
+})
+
+it('retains ambiguous run forms instead of selecting an isolation from executable payload', () => {
+  for (const args of [
+    ['run', '//:target', 'positional', '--isolation-dir=other'],
+    ['run', '//:target', 'positional', '--isolation-dir', 'other'],
+    ['run', '//:target', 'positional', '--isolation-dir=other', '--', '--help'],
+    ['run', '--chdir', 'directory', '//:target', 'positional', '--isolation-dir=other'],
+  ])
+    expect(resolveGateInvocation({ args, env: {}, cwd })).toBeUndefined()
+})
+
+it('returns only Buck arguments, preserving the native run/test payload boundary', () => {
+  for (const command of ['run', 'test', 'install', 'bxl']) {
+    const buckArgs = ['--isolation-dir', 'owned', command, '//:target']
+    for (const payload of ['--help', '-h', '--version', '--isolation-dir=other'])
+      expect(resolveGateInvocation({ args: [...buckArgs, '--', payload], env: {}, cwd })).toEqual({
+        isolation: 'owned',
+        args: buckArgs,
+      })
+  }
+  expect(
+    resolveGateIsolation({
+      args: ['test', '//:target', '--isolation-dir=owned'],
+      env: {},
+      cwd,
+    }),
+  ).toBe('owned')
 })
 
 it('does not confuse build config values with an isolation source', () => {

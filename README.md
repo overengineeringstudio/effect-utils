@@ -624,14 +624,30 @@ plain `@file`/`--flagfile` expansion, including nested files relative to the
 invocation directory. Python/stdin argfiles, config-backed cell-path fallback
 and other unresolved forms fail closed: one warning and no lifecycle status
 or kill calls, rather than guessing the unrelated default `v2` daemon.
+Only Buck arguments before the expanded `--` separator determine lifecycle
+identity and help/version bypass; executable payload such as `-- --help` does
+not bypass cleanup. Native `run` also accepts separator-free trailing payload,
+which can contain isolation-looking options. Lifecycle resolution conservatively
+supports `run TARGET [-- payload]` with Buck options before `run`; other run
+forms retain daemons with the same fail-closed warning rather than guessing
+where Buck options end.
 
 An outer shell installs EXIT/INT/TERM/HUP traps and waits for its native client.
 At exit it invokes native `buck2 kill` only when a fresh status identifies the
 selected daemon and reports zero active commands, even if this invocation
 started it. Busy status quietly retains the daemon; unavailable/malformed status
-warns and never authorizes a kill. Cleanup preserves the client's exit code or
-signal-derived status. `kill`, `status`, and `log` remain diagnostic/lifecycle
-commands and bypass both gated admission and teardown.
+warns and never authorizes a kill. Cleanup preserves ordinary numeric exits;
+after a wrapper INT/TERM/HUP it restores the default disposition and re-raises
+the signal, so parents observe signal termination rather than an explicit
+128+N exit. `kill`, `status`, and `log` remain diagnostic/lifecycle commands and
+bypass both gated admission and teardown.
+Signals already ignored on entry to Bash remain ignored as POSIX requires;
+the wrapper does not override that inherited caller policy.
+An injected `BASH_ENV` that replaces Bash's `kill` builtin with an external
+command can instead make Bash translate its self-SIGINT into numeric exit 130
+(128+N); the agent command guard is one such environment. Native signal tests
+use the packaged interpreter without `BASH_ENV` and assert default SIGINT
+disposition before delivery.
 
 Outside gate-slot, native warm-daemon behavior and the admitted-argument fast
 path are unchanged. A nested wrapper inherits the outer wrapper's cleanup
@@ -645,6 +661,11 @@ limits, while a daemon-unit memory cap would cap compiler/test actions too.
 Buck's kill RPC has no conditional-idle form. At both **start** (foreign idle
 daemon migration) and **exit** (idle teardown), a new client can arrive between
 the final empty-active-commands status read and `buck2 kill`, and be interrupted.
+Wrapper exit teardown and `mr store buck-maintain` can both observe the same
+idle daemon in that window and send duplicate native kill RPCs; native kill is
+not serialized between those independent owners. Either observer can also
+race a new client arriving after its last idle check. Maintenance invokes the
+native executable, so it does not recursively trigger wrapper teardown.
 An already observed active client is never deliberately killed. Reusing a
 foreign busy daemon leaves an explicitly logged accounting gap for that
 invocation, and retaining a busy daemon at exit may keep its original job scope

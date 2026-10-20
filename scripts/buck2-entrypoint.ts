@@ -466,6 +466,11 @@ export const gateCgroupRelation = ({
  *
  * Do not execute Python argfiles or consume stdin a second time, and do not
  * approximate Buck's config-backed cell resolver. Those forms retain daemons.
+ *
+ * RunCommand alone uses trailing_var_arg: a positional executable argument can
+ * start its payload before `--`. Accept only `run TARGET [-- ...]`, with Buck
+ * options before `run`; retain ambiguous run forms rather than model clap.
+ * Test, install and bxl use raw payload arguments separated by `--`.
  */
 export const resolveGateInvocation = ({
   args,
@@ -539,16 +544,24 @@ export const resolveGateInvocation = ({
   } catch {
     return undefined
   }
+  const sentinel = expanded.indexOf('--')
+  const buckArgs = sentinel === -1 ? expanded : expanded.slice(0, sentinel)
+  const runIndex = buckArgs.indexOf('run')
+  if (
+    runIndex !== -1 &&
+    (buckArgs.length !== runIndex + 2 || buckArgs[runIndex + 1]?.startsWith('-') !== false)
+  )
+    return undefined
   let isolation = env['BUCK_ISOLATION_DIR'] ?? 'v2'
   let explicit = false
-  for (let index = 0; index < expanded.length && expanded[index] !== '--'; index++) {
-    const arg = expanded[index] ?? ''
+  for (let index = 0; index < buckArgs.length; index++) {
+    const arg = buckArgs[index] ?? ''
     if (arg === '--isolation-dir' || arg.startsWith('--isolation-dir=') === true) {
       // clap's scalar Set option rejects duplicate occurrences. Never guess
       // which one would win, including occurrences introduced by nested files.
       if (explicit === true) return undefined
       explicit = true
-      isolation = arg === '--isolation-dir' ? (expanded[++index] ?? '') : arg.slice(16)
+      isolation = arg === '--isolation-dir' ? (buckArgs[++index] ?? '') : arg.slice(16)
     } else if (arg.includes('--isolation') === true) return undefined
   }
   // Conservative subset of native FileNameBuf validation, including its
@@ -557,7 +570,7 @@ export const resolveGateInvocation = ({
     isolation !== '.' &&
     isolation !== '..' &&
     isolation.startsWith('._buck2') === false
-    ? { isolation, args: expanded }
+    ? { isolation, args: buckArgs }
     : undefined
 }
 
