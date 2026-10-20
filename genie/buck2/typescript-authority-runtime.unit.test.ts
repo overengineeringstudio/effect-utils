@@ -1,7 +1,7 @@
 import { execFileSync } from 'node:child_process'
 import {
   chmodSync,
-  existsSync,
+  lstatSync,
   linkSync,
   mkdirSync,
   readFileSync,
@@ -95,9 +95,11 @@ const successfulCommandOutcome: CommandOutcome = { _tag: 'Status', status: 0 }
 const makeMaterializationRuntime = ({
   cleanupOutcome = successfulCommandOutcome,
   invalidatePublishedDist = false,
+  afterExchange,
 }: {
   readonly cleanupOutcome?: CommandOutcome
   readonly invalidatePublishedDist?: boolean
+  readonly afterExchange?: (staging: string) => void
 } = {}): CommandRuntime => {
   let publishCount = 0
   return {
@@ -118,6 +120,7 @@ const makeMaterializationRuntime = ({
             renameSync(source, previous)
             renameSync(destination, source)
             renameSync(previous, destination)
+            afterExchange?.(source)
           } else {
             renameSync(source, destination)
           }
@@ -262,7 +265,6 @@ describe('Buck2 TypeScript authority runtime planning', () => {
         symlinkSync(externalDirectory, join(dist, 'external-directory'), 'dir')
         symlinkSync(externalFile, join(dist, 'external-file'))
         chmodSync(join(dist, 'types'), 0o555)
-        chmodSync(dist, 0o555)
         const snapshotMetadata = statSync(snapshotAlias)
         expect(statSync(join(dist, 'types/index.d.ts')).ino).toBe(snapshotMetadata.ino)
         expect(snapshotMetadata.nlink).toBe(2)
@@ -275,7 +277,12 @@ describe('Buck2 TypeScript authority runtime planning', () => {
             mvBin: '/tools/mv',
             packagePath: 'packages/@example/widget',
             root,
-            runtime: makeMaterializationRuntime(),
+            runtime: makeMaterializationRuntime({
+              // Moving a directory across parents needs owner-write on its root.
+              // Make the exchanged tree read-only only after publication, so this
+              // regression exercises cleanup rather than the exchange primitive.
+              afterExchange: (staging) => chmodSync(staging, 0o555),
+            }),
             target: 'effect_utils//packages/@example/widget:dist',
             workspaceRoot,
           }),
@@ -294,7 +301,13 @@ describe('Buck2 TypeScript authority runtime planning', () => {
           'export type Fresh = true\n',
         )
       } finally {
-        if (existsSync(externalDirectory)) chmodSync(externalDirectory, 0o755)
+        const unlockDirectories = (directory: string): void => {
+          const metadata = lstatSync(directory)
+          if (metadata.isDirectory() === false) return
+          chmodSync(directory, metadata.mode | 0o700)
+          for (const name of readdirSync(directory)) unlockDirectories(join(directory, name))
+        }
+        unlockDirectories(root)
         rmSync(root, { force: true, recursive: true })
       }
     },
