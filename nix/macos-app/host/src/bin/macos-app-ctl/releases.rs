@@ -78,9 +78,9 @@ pub(super) fn destination(path: &Path, create: bool) -> Result<()> {
     macos_app_host::endpoint::validate_directory(path, owner).map_err(|e| fail(64, "invalid-input", e.to_string()))
 }
 
-fn private_stage(parent: &Path) -> Result<PathBuf> {
+pub(super) fn private_stage(parent: &Path) -> Result<PathBuf> {
     use std::os::unix::ffi::OsStringExt;
-    let mut template = CString::new(text(&parent.join(".sealed-release-XXXXXX"))?)
+    let mut template = CString::new(text(&parent.join(format!("{STAGE_DIRECTORY_PREFIX}XXXXXX")))?)
         .map_err(|error| fail(64, "invalid-input", error.to_string()))?.into_bytes_with_nul();
     // SAFETY: mkdtemp receives a writable NUL-terminated template. It atomically
     // creates a unique directory with mode 0700, independent of ambient umask.
@@ -91,7 +91,7 @@ fn private_stage(parent: &Path) -> Result<PathBuf> {
     let path = PathBuf::from(std::ffi::OsString::from_vec(template));
     let metadata = fs::symlink_metadata(&path)?;
     if metadata.uid() != unsafe { libc::geteuid() } || metadata.mode() & 0o777 != 0o700 {
-        return Err(mismatch("Sealing stage must be private and owned by the sealing UID"));
+        return Err(mismatch("Bundle stage parent must be private and owned by the installing UID"));
     }
     Ok(path)
 }
@@ -202,7 +202,7 @@ impl Ctl {
         destination(parent, true)?;
         let stage = private_stage(parent)?;
         let result = (|| {
-            let app = stage.join("host.app");
+            let app = stage.join(artifact::app_bundle_name(&self.config)?);
             copy_pinned_source(&unsigned, &app, &descriptor, &self.config)?;
             checked("/bin/chmod", &["-R", "u+w", text(&app)?])?;
             self.sign(&keychain_path, &keychain, &app)?;
@@ -332,39 +332,44 @@ impl Ctl {
                 );
             }
         }
-        let nonce = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map_err(|e| fail(23, "operation-failed", e.to_string()))?
-            .as_nanos();
-        let stage = archive.join(format!("retained-{}-{nonce}.app", std::process::id()));
-        copy_app(&candidate.app, &stage)?;
-        self.verify_bundle(&stage)?;
-        if artifact::describe(&stage, &self.config)? != descriptor
-            || artifact::artifact_revision(&stage)? != candidate.sealed_revision
-        {
-            return Err(mismatch(
-                "Staged artifact content or sealed revision differs",
-            ));
+        let stage_parent = private_stage(&archive)?;
+        let stage = stage_parent.join(artifact::app_bundle_name(&self.config)?);
+        let result = (|| {
+            copy_app(&candidate.app, &stage)?;
+            self.verify_bundle(&stage)?;
+            if artifact::describe(&stage, &self.config)? != descriptor
+                || artifact::artifact_revision(&stage)? != candidate.sealed_revision
+            {
+                return Err(mismatch(
+                    "Staged artifact content or sealed revision differs",
+                ));
+            }
+            // Darwin requires write access to a directory moved between parents.
+            // Installed owner-write bits are excluded from the artifact revision;
+            // retained incumbents are frozen again by publish_archive.
+            checked("/bin/chmod", &["-R", "u+w", text(&stage)?])?;
+            self.record_host_config(&stage)?;
+            if app.exists() {
+                let txn = json!({"stage": stage, "stageInode": inode(&stage), "generation": pointer(&self.state()?.join("current")), "immutable": true});
+                atomic_write(&transaction_record(&app), &serde_json::to_vec(&txn)?)?;
+                exchange(&stage, &app)?;
+                self.publish_archive(&app, &txn)?;
+            } else {
+                publish_exclusive(&stage, &app).map_err(|mut error| {
+                    error.reason = format!("Publishing verified artifact: {}", error.reason);
+                    error
+                })?;
+                fs::remove_dir(&stage_parent)?;
+            }
+            Ok(
+                json!({"changed": true, "descriptor": descriptor, "sealedRevision": candidate.sealed_revision, "archive": pointer(&archive_pointer(&app)), "reconciled": reconciled}),
+            )
+        })();
+        if result.is_err() && stage_parent.exists() && !transaction_record(&app).exists() {
+            checked("/bin/chmod", &["-R", "u+w", text(&stage_parent)?])?;
+            fs::remove_dir_all(&stage_parent)?;
         }
-        // Darwin requires write access to a directory moved between parents.
-        // Installed owner-write bits are excluded from the artifact revision;
-        // retained incumbents are frozen again by publish_archive.
-        checked("/bin/chmod", &["-R", "u+w", text(&stage)?])?;
-        self.record_host_config(&stage)?;
-        if app.exists() {
-            let txn = json!({"stage": stage, "stageInode": inode(&stage), "generation": pointer(&self.state()?.join("current")), "immutable": true});
-            atomic_write(&transaction_record(&app), &serde_json::to_vec(&txn)?)?;
-            exchange(&stage, &app)?;
-            self.publish_archive(&app, &txn)?;
-        } else {
-            publish_exclusive(&stage, &app).map_err(|mut error| {
-                error.reason = format!("Publishing verified artifact: {}", error.reason);
-                error
-            })?;
-        }
-        Ok(
-            json!({"changed": true, "descriptor": descriptor, "sealedRevision": candidate.sealed_revision, "archive": pointer(&archive_pointer(&app)), "reconciled": reconciled}),
-        )
+        result
     }
 
     /// A paired release has one rollback authority: the existing D.rollback.json.
@@ -409,6 +414,7 @@ impl Ctl {
             if !old_config["guiLaunchd"].is_object() || old_config["session"] != self.config["session"]
                 || old_config["targetUid"] != self.config["targetUid"]
                 || old_config["bundleId"] != self.config["bundleId"]
+                || old_config["appBundleName"] != self.config["appBundleName"]
                 || old_config["launchd"]["label"] != self.config["launchd"]["label"]
                 || old_config["guiLaunchd"]["label"] != self.config["guiLaunchd"]["label"] {
                 return Err(fail(64, "migration-required", "Release installation cannot change the pinned paired job principal or adopt a single-job incumbent"));
@@ -418,11 +424,10 @@ impl Ctl {
                 && artifact::artifact_revision(&app)? == candidate.sealed_revision
         } else { false };
         let stage = if unchanged { None } else {
-            let nonce = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)
-                .map_err(|error| fail(23, "operation-failed", error.to_string()))?.as_nanos();
-            let stage = archive.join(format!("retained-{}-{nonce}.app", std::process::id()));
-            copy_app(&candidate.app, &stage)?;
+            let stage_parent = private_stage(&archive)?;
+            let stage = stage_parent.join(artifact::app_bundle_name(&self.config)?);
             let staged = (|| {
+                copy_app(&candidate.app, &stage)?;
                 self.verify_bundle(&stage)?;
                 if artifact::describe(&stage, &self.config)? != descriptor || artifact::artifact_revision(&stage)? != candidate.sealed_revision {
                     return Err(mismatch("Staged artifact differs from the independently pinned release"));
@@ -431,8 +436,8 @@ impl Ctl {
                 self.record_host_config(&stage)
             })();
             if let Err(error) = staged {
-                checked("/bin/chmod", &["-R", "u+w", text(&stage)?])?;
-                fs::remove_dir_all(&stage)?;
+                checked("/bin/chmod", &["-R", "u+w", text(&stage_parent)?])?;
+                fs::remove_dir_all(&stage_parent)?;
                 return Err(error);
             }
             Some(stage)
@@ -466,10 +471,13 @@ impl Ctl {
             }
             remove_if_present(&signing_failure_marker(&app))?;
             remove_if_present(&journal)?;
+            let leftover = if record["oldInode"].is_null() {
+                stage.as_ref().and_then(|stage| stage.parent()).and_then(remove_leftover)
+            } else { None };
             Ok(json!({"changed": !unchanged || selected["changed"] == true || launchd["changed"] == true,
                 "descriptor": descriptor, "sealedRevision": candidate.sealed_revision,
                 "generation": generation, "launchd": launchd, "admissionRequired": true,
-                "archive": pointer(&archive_pointer(&app))}))
+                "archive": pointer(&archive_pointer(&app)), "leftovers": leftover.into_iter().collect::<Vec<_>>()}))
         })();
         if let Err(error) = applied {
             self.recover_paired().map_err(|recovery| fail(23, "release-unresolved",
@@ -503,8 +511,11 @@ impl Ctl {
             let stage = record["stage"].as_str().map(PathBuf::from);
             if let Some(stage) = &stage {
                 let archive = PathBuf::from(self.arg("archive-dir")?);
-                if stage.parent() != Some(archive.as_path()) || !stage.file_name().is_some_and(|name| name.to_string_lossy().starts_with("retained-")) {
-                    return Err(mismatch("Paired rollback stage is outside the explicit archive"));
+                let parent = stage.parent().ok_or_else(|| mismatch("Paired rollback stage has no parent"))?;
+                if parent.parent() != Some(archive.as_path())
+                    || !parent.file_name().and_then(|name| name.to_str()).is_some_and(|name| name.starts_with(STAGE_DIRECTORY_PREFIX))
+                    || stage.file_name().and_then(|name| name.to_str()) != Some(artifact::app_bundle_name(&self.config)?) {
+                    return Err(mismatch("Paired rollback stage is not a canonical bundle in the explicit private archive"));
                 }
                 if inode(&app) == Some(candidate_inode) {
                     if let Some(expected) = old_inode {
@@ -531,7 +542,10 @@ impl Ctl {
                 if stage.exists() {
                     if inode(&stage) != record["candidateInode"].as_u64() { return Err(mismatch("Rejected release stage inode differs")); }
                     checked("/bin/chmod", &["-R", "u+w", text(&stage)?])?;
-                    fs::remove_dir_all(stage)?;
+                    remove_staged_bundle(&stage)?;
+                }
+                if let Some(parent) = stage.parent().filter(|parent| parent.exists()) {
+                    fs::remove_dir(parent)?;
                 }
             }
         }
@@ -560,11 +574,17 @@ impl Ctl {
 
     pub(super) fn rollback_artifact(&self) -> Result<Value> {
         if self.paired() {
-            let installed = self.install_paired_artifact()?;
+            let installed = self.install_paired_artifact().map_err(|mut error| {
+                if error.kind == "reseal-required" { error.kind = "rollback-unavailable"; }
+                error
+            })?;
             return Ok(json!({"installed": installed, "restartRequired": false, "admissionRequired": true}));
         }
         // The caller selects the exact release/generation pair; no latest-success policy.
-        let installed = self.install_artifact()?;
+        let installed = self.install_artifact().map_err(|mut error| {
+            if error.kind == "reseal-required" { error.kind = "rollback-unavailable"; }
+            error
+        })?;
         let selected = self.generation()?;
         let launchd = if self.paired() { Some(self.converge_topology()?) }
             else if self.args.contains_key("plist") { Some(self.converge_supplied()?) } else { None };
@@ -601,7 +621,7 @@ impl Ctl {
         destination(parent, false)?;
         let stage = private_stage(parent)?;
         let result = (|| {
-            let app = stage.join("host.app");
+            let app = stage.join(artifact::app_bundle_name(&self.config)?);
             copy_pinned_source(&source, &app, &descriptor, &self.config)?;
             self.verify_bundle(&app)?;
             checked("/bin/chmod", &["-R", "a-w", text(&app)?])?;
@@ -729,7 +749,7 @@ mod tests {
         };
         write_plist(identifier);
         sign(identifier);
-        let legacy_config = json!({"bundleId": identifier, "hostExecutable": "host",
+        let legacy_config = json!({"bundleId": identifier, "appBundleName": "Host.app", "hostExecutable": "host",
             "requirement": format!("identifier \"{identifier}\""), "nestedCode": []});
         let mut candidate_config = legacy_config.clone();
         candidate_config["nestedCode"] = json!([{"path": "Contents/Helpers/helper",
@@ -778,7 +798,7 @@ mod tests {
         let make_release = |name: &str, config: &Value, nested: bool| {
             let release = root.join(name);
             fs::create_dir(&release).unwrap();
-            let host = release.join("host.app");
+            let host = release.join(artifact::app_bundle_name(config).unwrap());
             checked(
                 "/bin/cp",
                 &["-R", text(&app).unwrap(), text(&host).unwrap()],
@@ -827,6 +847,10 @@ mod tests {
             )
             .unwrap();
             checked("/bin/chmod", &["-R", "a-w", text(&release).unwrap()]).unwrap();
+            assert_eq!(artifact::verify_release(&release, &descriptor, config).unwrap().app, host);
+            let mut wrong_name = config.clone();
+            wrong_name["appBundleName"] = json!("Other Product.app");
+            assert!(artifact::verify_release(&release, &descriptor, &wrong_name).is_err());
             release
         };
         let nested_release = make_release("nested-release", &ctl.config, true);
@@ -849,6 +873,9 @@ mod tests {
         assert_eq!(inode(&app), incumbent_inode);
         ctl.args.insert("incumbent".into(), "legacy".into());
         assert_eq!(ctl.install_artifact().unwrap()["changed"], true);
+        let first_archive = pointer(&archive_pointer(&app)).unwrap();
+        assert_eq!(first_archive.file_name().unwrap(), "Host.app");
+        assert_ne!(first_archive.parent(), app.parent());
         assert!(app.join("Contents/Helpers/helper").is_file());
         assert_eq!(
             read_json(&ctl.host_config_path(&app).unwrap()).unwrap(),
@@ -863,6 +890,10 @@ mod tests {
             text(&plain_release.join("descriptor.json")).unwrap().into(),
         );
         assert_eq!(ctl.install_artifact().unwrap()["changed"], true);
+        let second_archive = pointer(&archive_pointer(&app)).unwrap();
+        assert_eq!(second_archive.file_name().unwrap(), "Host.app");
+        assert_ne!(first_archive.parent(), second_archive.parent());
+        assert!(first_archive.is_dir());
         assert!(!app.join("Contents/Helpers/helper").exists());
         assert_eq!(ctl.install_artifact().unwrap()["changed"], false);
         checked("/bin/chmod", &["-R", "u+w", text(&root).unwrap()]).unwrap();
