@@ -66,6 +66,92 @@ const humanReviewGate = {
   reviewer: operator,
 } satisfies typeof HumanGateSchema.Encoded
 
+describe('mission lanes', () => {
+  const base = {
+    id: 'example/lanes',
+    state: 'ready',
+    reportTo: owner,
+    goal: 'Verify the host.',
+    steps: [],
+  } as const
+
+  it('accepts optional lane children and distinct run-owned names', () => {
+    const value = {
+      ...base,
+      lanes: [
+        {
+          name: 'host-proof-dev3',
+          entries: 'resource/github/schickling/dotfiles/ci/pull-request/',
+        },
+        { name: 'approval', approver: 'person/reviewer' },
+        { name: 'unconfigured' },
+      ],
+    }
+    expect(Schema.decodeSync(MissionSchema)(value).lanes).toEqual(value.lanes)
+  })
+
+  it.each([
+    ['entries without a trailing slash', [{ name: 'proof', entries: 'resource/proof' }]],
+    ['approver without person/', [{ name: 'proof', approver: 'agent/reviewer' }]],
+    ['duplicate names', [{ name: 'proof' }, { name: 'proof' }]],
+    ['empty name', [{ name: '' }]],
+    ['name containing a slash', [{ name: 'host/proof' }]],
+    ['name containing whitespace', [{ name: 'host proof' }]],
+    ['name exceeding the UTF-8 byte limit', [{ name: 'é'.repeat(81) }]],
+  ])('rejects %s', (_, lanes) => {
+    expect(() => Schema.decodeSync(MissionSchema)({ ...base, lanes })).toThrow()
+  })
+
+  it('renders lanes before execution, omitting absent children', () => {
+    expect(
+      emit([
+        mission({
+          ...base,
+          lanes: [
+            {
+              name: 'host-proof-dev3',
+              entries: 'resource/github/schickling/dotfiles/ci/pull-request/',
+            },
+            { name: 'approval', approver: 'person/reviewer' },
+            { name: 'unconfigured' },
+          ],
+          steps: [
+            {
+              id: 'verify',
+              exec: {
+                host: 'example-host',
+                workspace: '/workspace',
+                launch: Launch.shell({ command: 'true' }),
+              },
+            },
+          ],
+        }),
+      ]),
+    ).toMatchInlineSnapshot(`
+      "version 2
+      mission "example/lanes" report-to="agent/example/owner" state="ready" {
+        goal "Verify the host."
+        lane "host-proof-dev3" {
+          entries "resource/github/schickling/dotfiles/ci/pull-request/"
+        }
+        lane "approval" {
+          approver "person/reviewer"
+        }
+        lane "unconfigured" {
+        }
+        step "verify" {
+          exec {
+            host "example-host"
+            workspace "/workspace"
+            command "true"
+          }
+        }
+      }
+      "
+    `)
+  })
+})
+
 // These are authoring contracts, not assertions about person authentication.
 describe('attributed human gates', () => {
   it('keeps person references distinct from imported agent references', () => {
