@@ -28,8 +28,12 @@ example = Path(sys.argv[1]) if len(sys.argv) > 1 else Path(subprocess.check_outp
     cwd=root, text=True).strip())
 validator = Draft202012Validator(json.loads((Path(__file__).parent / 'wire.schema.json').read_text()))
 Draft202012Validator.check_schema(validator.schema)
-host = example / 'hostApp/SyntheticHost.app/Contents/MacOS/macos-app-host'
-second_host = example / 'secondHostApp/SyntheticHost.app/Contents/MacOS/macos-app-host'
+ctl_config = json.loads((example / 'ctl-config.json').read_text())
+app_bundle_name = ctl_config['appBundleName']
+assert app_bundle_name == 'Synthetic Host.app'
+host_app = example / 'hostApp' / app_bundle_name
+host = host_app / 'Contents/MacOS/macos-app-host'
+second_host = example / 'secondHostApp' / app_bundle_name / 'Contents/MacOS/macos-app-host'
 assert hashlib.sha256(host.read_bytes()).digest() == hashlib.sha256(second_host.read_bytes()).digest()
 
 def audit_session():
@@ -41,9 +45,10 @@ def audit_session():
     if status != 0 or attributes.value & 0x0001: return 'no-session'
     return 'gui' if attributes.value & 0x0010 else 'background-only'
 expected_session = audit_session()
-with (example / 'hostApp/SyntheticHost.app/Contents/Info.plist').open('rb') as file:
+with (host_app / 'Contents/Info.plist').open('rb') as file:
     plist = plistlib.load(file)
 assert plist['CFBundleIdentifier'] == 'dev.example.synthetic-host' and plist['LSBackgroundOnly'] is True
+assert plist['CFBundleDisplayName'] + '.app' == app_bundle_name
 runtime_sources = Path(__file__).parent / 'host/src'
 runtime_bytes = b''.join(path.name.encode() + b'\n' + path.read_bytes()
                          for path in sorted(runtime_sources.glob('*.rs')))

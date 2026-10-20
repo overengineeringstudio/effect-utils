@@ -623,6 +623,16 @@ fn checked_descriptor(desired: &Value, config: &Value) -> Result<()> {
     if body["policy"] != policy(&signing_entries(config)?,required(config,"hostExecutable")?)? { return Err(mismatch("Desired descriptor does not match independent signing policy")); }
     Ok(())
 }
+/// Product-owned basename, independent of the source bundle's filename.
+pub(super) fn app_bundle_name(config: &Value) -> Result<&str> {
+    let name = required(config, "appBundleName")?;
+    let stem = name.strip_suffix(".app").ok_or_else(|| mismatch("appBundleName must end in .app"))?;
+    if stem.is_empty() || matches!(stem, "." | "..") || name.chars().any(|c| c == '/' || c == '\\' || c.is_control()) {
+        return Err(mismatch("appBundleName must be a single nonempty .app basename"));
+    }
+    Ok(name)
+}
+
 /// Actual sealed tree revision for installed/status evidence. Owner-write bits
 /// may exist on an installed copy; group/world-write and unsafe objects may not.
 pub fn artifact_revision(app: &Path) -> Result<String> {
@@ -646,21 +656,23 @@ pub struct VerifiedRelease {
     pub sealed_revision: String,
 }
 
-/// Read-only verification of exactly release/{host.app,descriptor.json,receipt.json}.
+/// Read-only verification of exactly release/{<appBundleName>,descriptor.json,receipt.json}.
 /// The desired descriptor is supplied independently, never obtained from release.
 /// Signature and compiled-requirement verification remains mandatory in the caller.
 pub fn verify_release(release: &Path, desired: &Value, config: &Value) -> Result<VerifiedRelease> {
     checked_descriptor(desired,config)?;
+    let bundle_name = app_bundle_name(config)?;
     let all = inventory(release,true)?;
     let top = all.iter().filter(|item| !item.path.contains('/')).map(|item| item.path.as_str()).collect::<BTreeSet<_>>();
-    if top != BTreeSet::from(["descriptor.json","host.app","receipt.json"]) { return Err(mismatch("Invalid immutable release layout")); }
+    if top != BTreeSet::from(["descriptor.json",bundle_name,"receipt.json"]) { return Err(mismatch("Invalid immutable release layout")); }
     let descriptor: Value = serde_json::from_slice(&fs::read(release.join("descriptor.json"))?)?;
     if descriptor != *desired { return Err(mismatch("Release descriptor differs from independently desired descriptor")); }
     let receipt: Value = serde_json::from_slice(&fs::read(release.join("receipt.json"))?)?;
-    let app = release.join("host.app");
+    let app = release.join(bundle_name);
+    let prefix_len = bundle_name.len() + 1;
     let items = all.into_iter().filter_map(|mut item| {
-        if !item.path.starts_with("host.app/") { return None; }
-        item.path.drain(.."host.app/".len());
+        if !item.path.strip_prefix(bundle_name).is_some_and(|suffix| suffix.starts_with('/')) { return None; }
+        item.path.drain(..prefix_len);
         Some(item)
     }).collect::<Vec<_>>();
     if receipt != receipt_from_items(&app,desired,config,&items)? { return Err(mismatch("Release receipt/actual sealed bytes mismatch")); }
@@ -670,7 +682,17 @@ pub fn verify_release(release: &Path, desired: &Value, config: &Value) -> Result
 #[cfg(test)]
 mod tests {
     use super::*;
-    fn config() -> Value { json!({"bundleId":"org.example.host","hostExecutable":"host","requirement":"identifier org.example.host","nestedCode":[],"entitlements":null,"signingOptions":[]}) }
+    fn config() -> Value { json!({"bundleId":"org.example.host","appBundleName":"Example Host.app","hostExecutable":"host","requirement":"identifier org.example.host","nestedCode":[],"entitlements":null,"signingOptions":[]}) }
+    #[test]
+    fn product_bundle_name_is_pinned_and_path_safe() {
+        for name in ["Product Name.app", "Another Product.app"] {
+            assert_eq!(app_bundle_name(&json!({"appBundleName": name})).unwrap(), name);
+        }
+        for name in ["", ".app", "..app", "...app", "Product", "../Product.app", "/Product.app", "a/b.app", "a\\b.app", "a\nb.app", "a\0b.app"] {
+            assert!(app_bundle_name(&json!({"appBundleName": name})).is_err(), "{name:?}");
+        }
+        assert!(app_bundle_name(&json!({})).is_err());
+    }
     #[test]
     fn refuses_escaping_and_duplicate_inventory() {
         for path in ["../helper","/helper","Contents/../helper","Contents//helper","Contents/./helper","Contents\\helper","Contents/MacOS/host"] {
