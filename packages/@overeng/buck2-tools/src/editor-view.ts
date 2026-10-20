@@ -1724,12 +1724,14 @@ const fingerprintSnapshotDescriptor = ({
 }): string | undefined => {
   const before = fstatSync(descriptor, { bigint: true })
   const hash = createHash('sha256')
-  let position = 0
-  for (;;) {
-    const count = readSync(descriptor, buffer, 0, buffer.length, position)
-    if (count === 0) break
+  let position = 0n
+  while (position < before.size) {
+    const remaining = before.size - position
+    const length = remaining < BigInt(buffer.length) ? Number(remaining) : buffer.length
+    const count = readSync(descriptor, buffer, 0, length, position)
+    if (count !== length) return undefined
     hash.update(buffer.subarray(0, count))
-    position += count
+    position += BigInt(count)
   }
   const after = fstatSync(descriptor, { bigint: true })
   if (
@@ -1751,6 +1753,8 @@ const restoreSnapshotModes = (modeDrift: readonly SnapshotModeDrift[]): void => 
   const restored = new Set<string>()
   const buffer = Buffer.allocUnsafe(65_536)
   // Reopen one inode at a time, rather than retaining thousands of descriptors.
+  // Keep successfully proven inodes protected if a later inode fails; only the
+  // mismatched inode must retain (or regain) its prior mode before failing closed.
   for (const [inode, { path, status, digest }] of verified) {
     const descriptor = openSync(
       path,

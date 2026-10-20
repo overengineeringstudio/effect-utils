@@ -442,7 +442,10 @@ any mode changes. Repair uses bounded descriptor counts: it reopens one candidat
 at a time, checks its inode and SHA-256 again, then removes write bits through that
 matching descriptor. It rehashes the same descriptor after chmod with strict
 before/after metadata checks; a mismatch restores its prior mode through that
-descriptor and fails. The `[editor-view-mode-drift]` stderr record reports the
+descriptor and fails. Each rehash reads at most the initial descriptor size and
+rejects short reads or growth. A later inode failure leaves already proven inodes
+protected; only the mismatched inode retains or regains its prior mode, and the
+snapshot verification still fails closed. The `[editor-view-mode-drift]` stderr record reports the
 repaired inode count and up to five sample paths; hardlinked aliases are repaired
 together. A byte mismatch during aggregate verification fails before changing any
 file mode. Writable directories and private metadata

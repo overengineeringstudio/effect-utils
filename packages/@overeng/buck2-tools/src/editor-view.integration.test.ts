@@ -3433,7 +3433,7 @@ describe('editor view publisher', () => {
     })
   })
 
-  it.each(['after-chmod', 'during-rehash'] as const)(
+  it.each(['after-chmod', 'during-rehash', 'append-during-rehash'] as const)(
     'restores the shared inode mode when a preopened writer mutates bytes %s',
     async (timing) => {
       const fixture = makeFixture()
@@ -3468,23 +3468,33 @@ describe('editor view publisher', () => {
         fsMocks.readSync.mockImplementation((...args) => {
           const count = Reflect.apply(nativeFs.readSync, fs, args)
           if (
-            timing === 'during-rehash' &&
+            (timing === 'during-rehash' || timing === 'append-during-rehash') &&
             args[0] === repairedDescriptor &&
-            writtenBytes === 0 &&
+            (writtenBytes === 0 || timing === 'append-during-rehash') &&
             count > 0
-          )
-            writtenBytes = nativeFs.writeSync(writableFd, mutation, 0, 'utf8')
+          ) {
+            // Keep feeding an unbounded EOF loop, but fail the regression promptly.
+            expect(writtenBytes).toBeLessThan(Buffer.byteLength(mutation) * 3)
+            writtenBytes += nativeFs.writeSync(
+              writableFd,
+              mutation,
+              timing === 'append-during-rehash' ? identity.size + writtenBytes : 0,
+              'utf8',
+            )
+          }
           return count
         })
+        const started = Date.now()
         await expect(publishEditorView(fixture.options)).rejects.toMatchObject({
           cause: expect.objectContaining({
             message: expect.stringContaining('snapshot file changed after mode repair:'),
           }),
         })
+        expect(Date.now() - started).toBeLessThan(5000)
         expect(repairedDescriptor).toBeDefined()
         expect(writtenBytes).toBe(Buffer.byteLength(mutation))
         expect(rollbackDescriptor).toBe(repairedDescriptor)
-        expect(readFileSync(alias, 'utf8').startsWith(mutation)).toBe(true)
+        expect(readFileSync(alias, 'utf8').includes(mutation)).toBe(true)
         expect(statSync(payload).mode & 0o777).toBe(0o644)
         expect(statSync(alias).mode & 0o777).toBe(0o644)
       } finally {
@@ -3495,6 +3505,69 @@ describe('editor view publisher', () => {
       }
     },
   )
+
+  it('keeps a proven inode protected when a later inode changes after the aggregate proof', async () => {
+    const fixture = makeFixture()
+    try {
+      // Distinct payloads and inode identities avoid the fixture's duplicated dep aliases.
+      const source = join(fixture.options.nodeModules, 'race-two-inodes')
+      mkdirSync(source)
+      writeFileSync(join(source, 'a.js'), 'export default "first"\n')
+      writeFileSync(join(source, 'b.js'), 'export default "second"\n')
+      const record = await publishEditorView(fixture.options)
+      const payloadRoot = join(
+        fixture.editorRoot,
+        record.snapshot,
+        'node_modules',
+        'race-two-inodes',
+      )
+      const first = join(payloadRoot, 'a.js')
+      const second = join(payloadRoot, 'b.js')
+      const firstAlias = join(fixture.root, 'first-retained-alias')
+      const secondAlias = join(fixture.root, 'second-retained-alias')
+      linkSync(first, firstAlias)
+      linkSync(second, secondAlias)
+      chmodSync(first, 0o644)
+      chmodSync(second, 0o644)
+      const identities = [statSync(first).ino, statSync(second).ino]
+      const repairState: { protectedInode?: number } = {}
+      let mutations = 0
+      fsMocks.fchmodSync.mockImplementation((fd, mode) => {
+        nativeFs.fchmodSync(fd, mode)
+        const status = nativeFs.fstatSync(fd)
+        if (
+          repairState.protectedInode === undefined &&
+          identities.includes(status.ino) === true &&
+          (status.mode & 0o222) === 0
+        ) {
+          repairState.protectedInode = status.ino
+          const laterAlias = status.ino === identities[0] ? secondAlias : firstAlias
+          writeFileSync(laterAlias, 'changed after aggregate proof\n')
+          mutations += 1
+        }
+      })
+      await expect(publishEditorView(fixture.options)).rejects.toMatchObject({
+        cause: expect.objectContaining({
+          message: expect.stringContaining('snapshot file changed after hash verification:'),
+        }),
+      })
+      expect(mutations).toBe(1)
+      for (const [payload, alias, original] of [
+        [first, firstAlias, 'export default "first"\n'],
+        [second, secondAlias, 'export default "second"\n'],
+      ] as const) {
+        const protectedInode = statSync(payload).ino === repairState.protectedInode
+        for (const path of [payload, alias])
+          expect(statSync(path).mode & 0o777).toBe(protectedInode === true ? 0o444 : 0o644)
+        expect(readFileSync(alias, 'utf8')).toBe(
+          protectedInode === true ? original : 'changed after aggregate proof\n',
+        )
+      }
+    } finally {
+      fsMocks.fchmodSync.mockReset().mockImplementation(nativeFs.fchmodSync)
+      cleanup(fixture)
+    }
+  })
 
   describe('tampered shared inode rejection in every owning view', () => {
     let first: Fixture
