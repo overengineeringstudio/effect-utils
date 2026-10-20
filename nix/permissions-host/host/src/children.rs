@@ -668,7 +668,11 @@ mod tests {
     }
     #[test] fn failed_readiness_audit_reaps_all_readiness_kinds() {
         for kind in ["none", "socket-accepts", "probe-op"] {
-            let root = root();
+            // Darwin's per-user temp prefix plus a UUID exceeds sockaddr_un;
+            // retain a unique owner-only fixture under the short sticky root.
+            let root = fs::canonicalize("/tmp").unwrap().join(format!("cr-{}", opaque_id().unwrap()));
+            use std::os::unix::fs::DirBuilderExt;
+            fs::DirBuilder::new().mode(0o700).create(&root).unwrap();
             fs::create_dir(root.join("run")).unwrap();
             let socket = root.join("run/probe");
             let listener = std::os::unix::net::UnixListener::bind(&socket).unwrap();
