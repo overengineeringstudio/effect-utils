@@ -86,9 +86,19 @@ signed executable with a copied policy. Each peer additionally binds the kernel
 peer PID/incarnation to the current launchd-managed job, using fixed
 `/bin/launchctl` job evidence and immutable target UID/job labels from the
 bundle-sealed `Contents/Resources/runtime-identity.json`, never caller-selected
-config. This binding is refreshed before dispatch and response. Private request
-and response envelopes bind the current policy and release revisions; a stale
-GUI agent cannot execute forwarded work. All exchanges are bounded.
+config. This binding is refreshed before dispatch and response.
+The system domain requires root management, but the target UID controls
+`gui/<uid>` and can replace its agent under the correct sealed label. Job PID
+evidence therefore does not grant policy authority. Every production entrypoint
+loads only the verified bundle's `Contents/Resources/policy.json`; `--config`
+is accepted only when its bytes exactly equal that sealed resource, otherwise
+typed `policy-denied` is returned before Host construction. Serving additionally
+requires non-JSON provenance from this loader. Private request and response
+`policyRevision` fields carry SHA-256 of the actual verified policy bytes, not
+the caller-declared revision string; both sides require the sealed digest plus
+release revision. Replacing a GUI job cannot install attacker-selected child
+argv/environment/paths, even while retaining the declared revision strings.
+All exchanges are bounded.
 The supervisor routes only compiled GUI operations;
 clients cannot select a transport or another endpoint. A missing GUI agent yields
 `session-unavailable`, never client autospawn or execution in a substitute app.

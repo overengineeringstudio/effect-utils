@@ -21,6 +21,11 @@ pub fn verify_managed_role(role: Role) -> Result<(), HostError> {
     managed::identity()?.check_self(role)
 }
 
+/// Production policy authority is sealed bundle content, never invocation data.
+pub fn load_sealed_config(path: &std::path::Path) -> Result<Config, HostError> {
+    managed::identity()?.load_config(path)
+}
+
 /// Both directions admit only the target UID and the release-pinned outer code identity.
 /// No client-provided identity, PID-only lookup, or weaker fallback is used.
 pub struct GuiChannel {
@@ -33,7 +38,7 @@ impl GuiChannel {
         let requirement = CompiledRequirement::compile(&config.host_requirement)
             .map_err(|_| HostError::new("policy-denied", "Pinned host requirement is invalid"))?;
         Ok(Self { path, uid: config.uid, requirement,
-            policy_revision: config.policy_revision.clone(), release_revision: config.release_revision.clone() })
+            policy_revision: config.sealed_policy_digest.clone().unwrap_or_default(), release_revision: config.release_revision.clone() })
     }
     fn authenticate(&self, stream: &UnixStream, expected_role: Role) -> Result<macos_app_security::AuthenticatedPeer, HostError> {
         let peer = authenticate_peer(stream, PeerPolicy { allowed_uids: &[self.uid], requirement: &self.requirement })
@@ -193,7 +198,7 @@ impl Drop for Signals {
 fn handle_private(host: &Host, stream: &mut UnixStream) -> Result<Value, HostError> {
     let authenticated = host.gui_channel.authenticate(stream, Role::Supervisor)?;
     let frame = read_frame(stream)?;
-    let request = decode_private_request(&frame, &host.config.policy_revision, &host.config.release_revision)?;
+    let request = decode_private_request(&frame, &host.gui_channel.policy_revision, &host.config.release_revision)?;
     authenticated.recheck_freshness().map_err(|_| HostError::new("caller-denied", "Private caller incarnation changed"))?;
     host.gui_channel.authenticate(stream, Role::Supervisor)?;
     if disconnected(stream) { return Err(HostError::new("cancelled", "Private caller disconnected")); }
@@ -207,6 +212,7 @@ fn handle_private(host: &Host, stream: &mut UnixStream) -> Result<Value, HostErr
 /// active operations, joins every worker and only then removes the endpoint.
 pub fn serve(host: Arc<Host>) -> Result<(), HostError> {
     verify_managed_role(host.role)?;
+    managed::identity()?.check_config(&host.config)?;
     if host.role == Role::GuiAgent { crate::native::require_gui_session()?; }
     let _signals = Signals::install()?;
     let path = if host.role == Role::Supervisor { &host.config.socket } else { &host.gui_channel.path };
@@ -228,8 +234,8 @@ pub fn serve(host: Arc<Host>) -> Result<(), HostError> {
                 match std::thread::Builder::new().name("host-request".into()).spawn(move || {
                     let response = if host.role == Role::GuiAgent {
                         match handle_private(&host, &mut stream) {
-                            Ok(result) => json!({"wireVersion":1,"policyRevision":host.config.policy_revision,"releaseRevision":host.config.release_revision,"ok":true,"result":result}),
-                            Err(error) => json!({"wireVersion":1,"policyRevision":host.config.policy_revision,"releaseRevision":host.config.release_revision,"ok":false,"error":error}),
+                            Ok(result) => json!({"wireVersion":1,"policyRevision":host.gui_channel.policy_revision,"releaseRevision":host.config.release_revision,"ok":true,"result":result}),
+                            Err(error) => json!({"wireVersion":1,"policyRevision":host.gui_channel.policy_revision,"releaseRevision":host.config.release_revision,"ok":false,"error":error}),
                         }
                     } else {
                         match peer(&stream, host.config.uid) {
@@ -255,6 +261,21 @@ pub fn serve(host: Arc<Host>) -> Result<(), HostError> {
 }
 #[cfg(test)]
 mod tests {
+    #[test] fn supervisor_refuses_modified_gui_policy_even_when_declared_revisions_match() {
+        use sha2::{Digest, Sha256};
+        let sealed = br#"{"policyRevision":"same","releaseRevision":"same","argv":["declared"]}"#;
+        let modified = br#"{"policyRevision":"same","releaseRevision":"same","argv":["attacker"]}"#;
+        let expected = hex::encode(Sha256::digest(sealed));
+        let changed = hex::encode(Sha256::digest(modified));
+        let response = serde_json::to_vec(&json!({
+            "wireVersion":1,"policyRevision":changed,"releaseRevision":"same","ok":true,"result":{}
+        })).unwrap();
+        assert_eq!(decode_private_response(&response, &expected, "same").unwrap_err().code, "gui-release-mismatch");
+        let request = serde_json::to_vec(&json!({
+            "wireVersion":1,"policyRevision":changed,"releaseRevision":"same","request":{}
+        })).unwrap();
+        assert_eq!(decode_private_request(&request, &expected, "same").unwrap_err().code, "gui-release-mismatch");
+    }
     use super::*;
     #[test] fn rejects_second_frame() {
         let (mut input, mut output) = UnixStream::pair().unwrap();

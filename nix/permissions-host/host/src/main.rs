@@ -1,4 +1,4 @@
-use macos_permissions_host::{Config, Host, transport::Role};
+use macos_permissions_host::{Host, transport::Role};
 use std::path::PathBuf;
 
 /// launchd supplies stdio only. Do not let an unexpected inherited descriptor
@@ -69,7 +69,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         Some(path) => path,
         None => std::env::current_exe()?.parent().ok_or("Missing executable parent")?.join("../Resources/policy.json"),
     };
-    let config = Config::load(&config_path)?;
+    let config = macos_permissions_host::transport::load_sealed_config(&config_path)?;
     if mode == "onboard" {
         println!("{}", serde_json::to_string(&macos_permissions_host::onboard(config)?)?);
     } else {

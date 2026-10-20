@@ -68,6 +68,10 @@ pub struct Config {
     pub helper_requirements: BTreeMap<String, String>,
     #[serde(default)]
     pub job_process_types: BTreeMap<String, String>,
+    // Only the sealed production loader can establish this provenance. JSON
+    // cannot assert that a caller-selected policy was admitted by the bundle.
+    #[serde(skip)]
+    sealed_policy_digest: Option<String>,
 }
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -161,7 +165,10 @@ impl Config {
     pub fn load_with_registry(path: &Path, registry: &children::Registry) -> Result<Self, HostError> {
         let bytes = std::fs::read(path)?;
         if bytes.len() > 1024 * 1024 { return Err(HostError::new("policy-denied", "Policy exceeds size bound")); }
-        let config: Self = serde_json::from_slice(&bytes).map_err(|_| HostError::new("policy-denied", "Invalid policy"))?;
+        Self::from_bytes(&bytes, registry)
+    }
+    fn from_bytes(bytes: &[u8], registry: &children::Registry) -> Result<Self, HostError> {
+        let config: Self = serde_json::from_slice(bytes).map_err(|_| HostError::new("policy-denied", "Invalid policy"))?;
         config.validate_with_registry(registry)?;
         Ok(config)
     }
