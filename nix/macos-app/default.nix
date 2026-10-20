@@ -12,6 +12,7 @@
   statusAllowedUids,
   host ? null,
   hostBundle ? null,
+  supervisedChildren ? [ ],
   requirement ? ''identifier "${bundleId}" and anchor apple generic and certificate leaf[subject.OU] = "${signer.teamId}"'',
   session ? "background-agent",
   launchd,
@@ -122,7 +123,7 @@ let
         signer
         lifecycleLockPath
         ;
-      inherit nestedCode signingOptions;
+      inherit nestedCode signingOptions supervisedChildren;
       entitlements = if entitlements == null then null else toString entitlements;
       launchd = launchdData;
     }

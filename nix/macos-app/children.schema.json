@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.org/macos-app/children-v1.schema.json",
+  "title": "Supervised children declarations (unique IDs and helper paths)",
+  "type": "array",
+  "items": {"$ref": "#/$defs/child"},
+  "$defs": {
+    "id": {"type": "string", "maxLength": 128, "pattern": "^[a-z][a-z0-9-]*$"},
+    "op": {"type": "string", "pattern": "^[a-z][a-z0-9-]{0,127}\\.[a-z][a-z0-9-]{0,127}$"},
+    "text": {"type": "string", "pattern": "^[^\\u0000]*$"},
+    "absolute": {"type": "string", "pattern": "^/(?!nix/store(?:/|$))(?:$|(?!(?:[^/]+/)*\\.{1,2}(?:/|$))[^/\\\\\\u0000]+(?:/[^/\\\\\\u0000]+)*)$"},
+    "timeout": {"type": "integer", "minimum": 1, "maximum": 300000},
+    "child": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "helperPath", "argv", "env", "cwd", "requiredTccServices", "requiresSession", "readiness", "restart", "schedule"],
+      "properties": {
+        "id": {"$ref": "#/$defs/id"},
+        "helperPath": {"type": "string", "pattern": "^Contents/Helpers/(?!(?:[^/]+/)*\\.{1,2}(?:/|$))[^/\\\\\\u0000]+(?:/[^/\\\\\\u0000]+)*$"},
+        "argv": {"type": "array", "items": {"$ref": "#/$defs/text"}},
+        "env": {"type": "object", "propertyNames": {"minLength": 1, "pattern": "^[^=\\u0000]+$"}, "additionalProperties": {"$ref": "#/$defs/text"}},
+        "cwd": {"$ref": "#/$defs/absolute"},
+        "requiredTccServices": {"type": "array", "uniqueItems": true, "items": {"enum": ["full-disk-access", "notifications", "screen-recording", "accessibility", "microphone", "system-audio", "automation"]}},
+        "activation": {"enum": ["active", "inactive"], "default": "inactive"},
+        "requiresSession": {"enum": ["none", "gui"]},
+        "readiness": {"oneOf": [
+          {"type": "object", "additionalProperties": false, "required": ["kind", "path", "timeoutMs"], "properties": {"kind": {"const": "socket-accepts"}, "path": {"$ref": "#/$defs/absolute"}, "timeoutMs": {"$ref": "#/$defs/timeout"}}},
+          {"type": "object", "additionalProperties": false, "required": ["kind", "op", "timeoutMs"], "properties": {"kind": {"const": "exit-zero"}, "op": {"$ref": "#/$defs/op"}, "timeoutMs": {"$ref": "#/$defs/timeout"}}},
+          {"type": "object", "additionalProperties": false, "required": ["kind"], "properties": {"kind": {"const": "none"}}}
+        ]},
+        "restart": {"oneOf": [
+          {"type": "object", "additionalProperties": false, "required": ["kind"], "properties": {"kind": {"const": "never"}}},
+          {"type": "object", "additionalProperties": false, "required": ["kind", "initialBackoffMs", "maxBackoffMs", "maxAttempts"], "properties": {"kind": {"const": "on-failure"}, "initialBackoffMs": {"$ref": "#/$defs/timeout"}, "maxBackoffMs": {"$ref": "#/$defs/timeout"}, "maxAttempts": {"type": "integer", "minimum": 1, "maximum": 100}}}
+        ]},
+        "schedule": {"oneOf": [
+          {"type": "object", "additionalProperties": false, "required": ["kind"], "properties": {"kind": {"const": "resident"}}},
+          {"type": "object", "additionalProperties": false, "required": ["kind", "op"], "properties": {"kind": {"const": "launchd-scheduled"}, "op": {"$ref": "#/$defs/op"}}}
+        ]}
+      },
+      "allOf": [{"if": {"properties": {"schedule": {"properties": {"kind": {"const": "launchd-scheduled"}}}}}, "then": {"properties": {"restart": {"properties": {"kind": {"const": "never"}}}}}}]
+    }
+  }
+}

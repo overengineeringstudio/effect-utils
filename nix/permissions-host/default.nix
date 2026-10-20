@@ -187,6 +187,7 @@ let
       launchd
       ;
     actions = { };
+    supervisedChildren = policyData.supervisedChildren or [ ];
     statusAllowedUids = [ policyData.uid ];
     socketMode = 384; # 0600; the native host independently checks peer UIDs.
     session = "gui-agent";

@@ -51,6 +51,8 @@ pub struct Config {
     pub documents: DocumentsPolicy, pub products: BTreeMap<String, String>, pub audit_max_bytes: u64,
     #[serde(default = "notification_interval")]
     pub notification_min_interval_ms: u64,
+    #[serde(default)]
+    pub supervised_children: macos_app_security::children::Children,
 }
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -137,6 +139,7 @@ impl Config {
         Ok(config)
     }
     fn validate(&self) -> Result<(), HostError> {
+        self.supervised_children.require_inactive().map_err(|reason| HostError::new("policy-denied", reason))?;
         let grants = ["full-disk-access", "notifications", "screen-recording", "accessibility", "system-audio", "microphone", "automation"];
         if self.uid != unsafe { libc::geteuid() } || self.uid != unsafe { libc::getuid() } || self.audit_max_bytes < 4096 || self.audit_max_bytes > 1024 * 1024 * 1024 || self.documents.max_items == 0 || self.documents.max_items > 4096 || self.documents.max_bytes == 0 || self.documents.timeout_ms == 0 || self.documents.timeout_ms > 300_000 || self.policy_revision.is_empty() || self.release_revision.is_empty() || self.policy_revision.len() > 128 || self.release_revision.len() > 128 {
             return Err(HostError::new("policy-denied", "Invalid policy bounds or host UID"));
