@@ -165,28 +165,48 @@ describe('the realpath-closed hardlink farm', () => {
       const linked = statSync(join(farm, 'src', 'cli.ts'))
       expect(linked.ino).toBe(source.ino)
       expect(linked.nlink).toBeGreaterThan(1)
-      // A store entry keeps its dependencies as siblings in its own
-      // `node_modules`, so resolution from `left` finds `right` one level up.
-      // Preserve that traversal until after following `left`, not in `join`.
-      // Darwin's raw realpath of a hardlinked file may report its source name;
-      // containment concerns the name reached through the farm's symlinks.
-      const inside = `${realpathSync(farm)}/`
-      const leftImage = realpathThroughName(join(farm, 'node_modules', 'left', 'index.js'))
-      const rightViaLeft = realpathThroughName(
-        `${join(farm, 'node_modules', 'left')}/../right/index.cjs`,
+      const sourceFiles = closureRoots.flatMap((root) =>
+        root.name === 'cell/deps/entry_left/entry'
+          ? [join(root.path, 'node_modules', 'left', 'index.js')]
+          : root.name === 'cell/deps/entry_right/entry'
+            ? [join(root.path, 'node_modules', 'right', 'index.cjs')]
+            : [],
       )
-      expect(leftImage.startsWith(inside)).toBe(true)
-      expect(rightViaLeft.startsWith(inside)).toBe(true)
-      expect(rightViaLeft).toBe(
-        join(
-          realpathSync(farm),
-          '.closure',
-          'cell/deps/entry_right/entry',
-          'node_modules',
-          'right',
-          'index.cjs',
-        ),
-      )
+      const sourceNames = new Map(sourceFiles.map((path) => [statSync(path).ino, path]))
+      const nativeRealpath = process.getBuiltinModule('fs').realpathSync
+      const realpath = rootKind === 'symlinked' ? vi.spyOn(fs, 'realpathSync') : undefined
+      const priorImplementation = realpath?.getMockImplementation()
+      realpath?.mockImplementation((path) => {
+        const status = statSync(path)
+        return status.isFile() === true
+          ? (sourceNames.get(status.ino) ?? nativeRealpath(path))
+          : nativeRealpath(path)
+      })
+      try {
+        // Resolve `left` before `..`; path.join would erase this traversal.
+        // In the aliased-root case, raw file realpaths deliberately return
+        // the other, real source name for the same hardlinked inode.
+        const inside = `${realpathSync(farm)}/`
+        const leftImage = realpathThroughName(join(farm, 'node_modules', 'left', 'index.js'))
+        const rightViaLeft = realpathThroughName(
+          `${join(farm, 'node_modules', 'left')}/../right/index.cjs`,
+        )
+        expect(leftImage.startsWith(inside)).toBe(true)
+        expect(rightViaLeft.startsWith(inside)).toBe(true)
+        expect(rightViaLeft).toBe(
+          join(
+            realpathSync(farm),
+            '.closure',
+            'cell/deps/entry_right/entry',
+            'node_modules',
+            'right',
+            'index.cjs',
+          ),
+        )
+      } finally {
+        realpath?.mockRestore()
+        if (priorImplementation !== undefined) realpath?.mockImplementation(priorImplementation)
+      }
     },
   )
 
@@ -628,6 +648,46 @@ describe('post-build portability assertions', () => {
       'var __dirname = import.meta.dirname, __filename = import.meta.filename;',
     )
   })
+
+  it('normalizes a farm filename when raw realpath reports its source hardlink', () => {
+    const parent = scratch('portable-hardlink-')
+    const farm = join(parent, 'farm')
+    const root = join(parent, 'alias')
+    const source = join(parent, 'source.cjs')
+    mkdirSync(farm)
+    writeFileSync(source, 'module.exports = 1\n')
+    const image = join(farm, 'image.cjs')
+    linkSync(source, image)
+    symlinkSync(farm, root)
+    symlinkSync('image.cjs', join(farm, 'linked.cjs'))
+    symlinkSync(source, join(farm, 'escape.cjs'))
+    const nativeRealpath = process.getBuiltinModule('fs').realpathSync
+    const realpath = vi.spyOn(fs, 'realpathSync')
+    const priorImplementation = realpath.getMockImplementation()
+    realpath.mockImplementation((path) =>
+      statSync(path).isFile() === true ? source : nativeRealpath(path),
+    )
+    try {
+      for (const filename of [image, join(root, 'image.cjs'), join(root, 'linked.cjs')]) {
+        expect(
+          normalizePortableCommonJsGlobals({
+            bundle: `var __filename = ${JSON.stringify(filename)};`,
+            root,
+          }),
+        ).toBe('var __filename = import.meta.filename;')
+      }
+      expect(() =>
+        normalizePortableCommonJsGlobals({
+          bundle: `var __filename = ${JSON.stringify(join(root, 'escape.cjs'))};`,
+          root,
+        }),
+      ).toThrow('__filename path escapes the build root')
+    } finally {
+      realpath.mockRestore()
+      if (priorImplementation !== undefined) realpath.mockImplementation(priorImplementation)
+    }
+  })
+
   it('rewrites Bun undici-style __filename followed by other var declarators', () => {
     const root = '/tmp/portable-root'
     const bundle = `var __filename = "${root}/node_modules/@effect/platform-node/node_modules/undici/index.js", Client, Dispatcher;`
