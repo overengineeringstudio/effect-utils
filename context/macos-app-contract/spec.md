@@ -809,7 +809,7 @@ restriction applies before exchanging an incompatible archived host, not after.
 --archive-dir R --generation G` verifies consumer-pinned desired policy, receipt,
 content and actual signatures without signing credentials or fallback. Paired
 products require the generation and both launchd configuration directories and
-use the same release transaction for installation and `rollback-host`.
+use the same release transaction for installation and `rollback`.
 Keep immutable verified incumbents for rollback; invalid input leaves them unchanged.
 
 The paired topology is fresh-install only at its initial boundary; subsequent
@@ -826,7 +826,7 @@ exchange. Endpoint and topology migration require a separate explicit consumer
 plan; there is no fallback reader, automatic adoption or guessed old domain.
 
 For paired products, `install-host` requires `--artifact` and `--generation`;
-`rollback-host --artifact --generation` uses the same transaction. Standalone
+`rollback --artifact --generation` uses the same transaction. Standalone
 `select-generation`, local-sign install and legacy rollback are rejected for
 paired products. The installation result's `admissionRequired: true` distinguishes
 release convergence from child permission/readiness admission in `verify`.
