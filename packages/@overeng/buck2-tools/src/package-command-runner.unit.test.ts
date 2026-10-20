@@ -145,32 +145,50 @@ const createViewFixture = (
 }
 
 describe('the realpath-closed hardlink farm', () => {
-  it('materializes the resolvable tree with hardlinks, never copies and never escapes', () => {
-    const { closureRoots, packageTree } = createViewFixture(scratch('farm-'))
-    const farmRoot = join(scratch('farm-out-'), 'farm')
+  it.each(['canonical', 'symlinked'] as const)(
+    'materializes the resolvable tree with hardlinks, never copies and never escapes (%s root)',
+    (rootKind) => {
+      const { closureRoots, packageTree } = createViewFixture(scratch('farm-'))
+      const canonicalOut = scratch('farm-out-')
+      const out = rootKind === 'canonical' ? canonicalOut : join(scratch('farm-alias-'), 'out')
+      if (rootKind === 'symlinked') symlinkSync(canonicalOut, out)
+      const farmRoot = join(out, 'farm')
 
-    const farm = assemblePortableFarm({
-      closureRoots,
-      gatedPackages: [],
-      packageTree,
-      root: farmRoot,
-    })
+      const farm = assemblePortableFarm({
+        closureRoots,
+        gatedPackages: [],
+        packageTree,
+        root: farmRoot,
+      })
 
-    const source = statSync(join(packageTree, 'src', 'cli.ts'))
-    const linked = statSync(join(farm, 'src', 'cli.ts'))
-    expect(linked.ino).toBe(source.ino)
-    expect(linked.nlink).toBeGreaterThan(1)
-    // A store entry keeps its dependencies as siblings in its own
-    // `node_modules`, so resolution from `left` finds `right` one level up —
-    // and both realpaths must land inside the farm.
-    const inside = `${realpathSync(farm)}/`
-    const leftImage = realpathSync(join(farm, 'node_modules', 'left', 'index.js'))
-    const rightViaLeft = realpathSync(
-      join(farm, 'node_modules', 'left', '..', 'right', 'index.cjs'),
-    )
-    expect(leftImage.startsWith(inside)).toBe(true)
-    expect(rightViaLeft.startsWith(inside)).toBe(true)
-  })
+      const source = statSync(join(packageTree, 'src', 'cli.ts'))
+      const linked = statSync(join(farm, 'src', 'cli.ts'))
+      expect(linked.ino).toBe(source.ino)
+      expect(linked.nlink).toBeGreaterThan(1)
+      // A store entry keeps its dependencies as siblings in its own
+      // `node_modules`, so resolution from `left` finds `right` one level up.
+      // Preserve that traversal until after following `left`, not in `join`.
+      // Darwin's raw realpath of a hardlinked file may report its source name;
+      // containment concerns the name reached through the farm's symlinks.
+      const inside = `${realpathSync(farm)}/`
+      const leftImage = realpathThroughName(join(farm, 'node_modules', 'left', 'index.js'))
+      const rightViaLeft = realpathThroughName(
+        `${join(farm, 'node_modules', 'left')}/../right/index.cjs`,
+      )
+      expect(leftImage.startsWith(inside)).toBe(true)
+      expect(rightViaLeft.startsWith(inside)).toBe(true)
+      expect(rightViaLeft).toBe(
+        join(
+          realpathSync(farm),
+          '.closure',
+          'cell/deps/entry_right/entry',
+          'node_modules',
+          'right',
+          'index.cjs',
+        ),
+      )
+    },
+  )
 
   it('terminates on a dependency cycle instead of expanding it forever', () => {
     const { closureRoots, packageTree } = createViewFixture(scratch('farm-cycle-'))
@@ -258,7 +276,9 @@ describe('the realpath-closed hardlink farm', () => {
       'left',
     )
     expect(lstatSync(bin).isSymbolicLink()).toBe(true)
-    expect(realpathSync(bin)).toBe(realpathSync(join(farm, 'node_modules', 'left', 'index.js')))
+    expect(realpathThroughName(bin)).toBe(
+      realpathThroughName(join(farm, 'node_modules', 'left', 'index.js')),
+    )
   })
 
   it('rejects a link into a sibling of the farm that merely shares its name prefix', () => {
@@ -305,6 +325,34 @@ describe('realpathThroughName', () => {
     expect(realpathThroughName(join(root, 'var', 'file.js'))).toBe(
       join(root, 'private', 'var', 'file.js'),
     )
+  })
+
+  it('keeps a file inside an aliased farm when raw realpath reports its source hardlink', () => {
+    const root = scratch('real-path-farm-alias-')
+    const farm = join(root, 'farm')
+    const alias = join(root, 'alias')
+    const source = join(root, 'source.js')
+    mkdirSync(farm)
+    writeFileSync(source, 'x\n')
+    linkSync(source, join(farm, 'image.js'))
+    symlinkSync(farm, alias)
+    const entry = join(alias, 'image.js')
+    const nativeRealpath = process.getBuiltinModule('fs').realpathSync
+    const realpath = vi.spyOn(fs, 'realpathSync')
+    const priorImplementation = realpath.getMockImplementation()
+    // Darwin may choose either hardlink name for a file's vnode. Model the
+    // source name deterministically on every platform, leaving directories real.
+    realpath.mockImplementation((path) => {
+      if (statSync(path).isFile() === true) return source
+      return nativeRealpath(path)
+    })
+    try {
+      expect(realpathSync(entry).startsWith(`${farm}/`)).toBe(false)
+      expect(realpathThroughName(entry)).toBe(join(farm, 'image.js'))
+    } finally {
+      realpath.mockRestore()
+      if (priorImplementation !== undefined) realpath.mockImplementation(priorImplementation)
+    }
   })
 
   it('resolves an intermediate symlink before applying a parent traversal', () => {

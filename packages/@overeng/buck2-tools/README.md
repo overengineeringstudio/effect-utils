@@ -554,6 +554,11 @@ exactly one override. Entry matching resolves symlinks while preserving hardlink
 names, so macOS file-descriptor path ambiguity cannot select a source outside the
 portable farm or skip the entry override.
 
+Farm containment assertions use the same name-preserving symlink resolution:
+raw `realpathSync` on macOS can report the original source name for a hardlinked
+farm file. Canonicalize directory roots, but resolve file names through their
+symlink chains; a descriptor-reported hardlink alias is not evidence of an escape.
+
 Non-bundle package execution (`exec`, `check`, `native-check`, and `build-dir`)
 still requires an explicitly declared immutable `/nix/store/.../bin/buck2-fingerprint`
 executable and fingerprints its declared read roots before and after the child
