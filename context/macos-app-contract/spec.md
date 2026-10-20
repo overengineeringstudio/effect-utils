@@ -473,6 +473,11 @@ the unsigned source; no legacy sealed-layout reader is provided. Selecting that
 release, or an old-basename retained host, for rollback returns typed
 `rollback-unavailable`. Rollbacks across the naming cutover require a resealed
 release with the pinned product basename.
+An already committed host-rollback exchange is recovered even when its journal
+names an old-basename archive: the restored inode is already installed, so the
+controller selects the recorded generation, converges and verifies the host,
+then removes the rollback journal and rolled-away archive. The basename
+restriction applies before exchanging an incompatible archived host, not after.
 
 `install-host --desired DESCRIPTOR --artifact RELEASE --app-dir D --state S
 --archive-dir R` verifies consumer-pinned desired policy, receipt, content and

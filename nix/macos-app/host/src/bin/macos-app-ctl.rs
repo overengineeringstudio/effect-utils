@@ -670,8 +670,8 @@ impl Ctl {
             }
         };
         let (archive, target, restored) = rollback_fields(&record)?;
-        require_current_layout(&archive)?;
         if inode(app) == record["rejectedInode"].as_u64() {
+            require_current_layout(&archive)?;
             exchange(&archive, app)?;
             if failpoint("rollback-after-exchange") { std::process::exit(137); }
         } else if inode(app) != restored {

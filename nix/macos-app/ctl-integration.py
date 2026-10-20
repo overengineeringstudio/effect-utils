@@ -1451,11 +1451,26 @@ os.execv('/usr/bin/codesign', ['codesign'] + args)
     assert install(changed)['result']['changed']
     call('converge-launchd')
     assert call('rollback', '--restore-host', failpoint='rollback-after-exchange', code=137) is None
+    # Model an older controller's committed exchange: its journal and pointer still
+    # name a standalone archive, but the restored inode is already at the app path.
+    rollback_record = app.with_suffix('.rollback.json')
+    pending = json.loads(rollback_record.read_text())
+    archived = Path(pending['archive'])
+    legacy_archive = app.parent / 'retained-before-naming-cutover.app'
+    archived.rename(legacy_archive)
+    archived.parent.rmdir()
+    pending['archive'] = str(legacy_archive)
+    rollback_record.write_text(json.dumps(pending))
+    archive_pointer = app.with_suffix('.previous')
+    archive_pointer.unlink()
+    archive_pointer.symlink_to(legacy_archive)
     assert call('status')['result']['interruptedRollback']
     resumed = call('rollback')['result']
     assert resumed['resumed'] and state.joinpath('current').readlink() == third
     call('verify', '--desired', metadata, '--generation', third)
     assert call('status')['result']['hostArchive'] is None and stages() == []
+    assert not rollback_record.exists() and not legacy_archive.exists()
+    print('PASS committed old-layout rollback exchange resumes, verifies and clears its journal', flush=True)
     assert install(changed)['result']['changed']
     call('converge-launchd')
     assert call('rollback', '--restore-host', failpoint='rollback-after-exchange', code=137) is None
