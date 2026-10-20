@@ -1348,6 +1348,7 @@ export type EditorViewBudgetCensusSession = {
   readonly pending: Map<string, Promise<Census>>
 }
 
+/** Creates the advisory census cache shared by one publication invocation. */
 export const makeEditorViewBudgetCensusSession = (): EditorViewBudgetCensusSession => ({
   censuses: new Map(),
   pending: new Map(),
@@ -2432,10 +2433,11 @@ export const reserveEditorViewBudget = async ({
         let census: Census = {
           ...measured,
           roots,
-          generations: measured.generations.map((generation) => ({
-            ...generation,
-            root: byKey.get(generation.root.key) ?? generation.root,
-          })),
+          generations: measured.generations.map((generation) =>
+            Object.assign({}, generation, {
+              root: byKey.get(generation.root.key) ?? generation.root,
+            }),
+          ),
         }
         if (
           collected === false &&

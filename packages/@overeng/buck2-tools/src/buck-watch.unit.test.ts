@@ -556,10 +556,10 @@ describe('Buck watch reconciliation', () => {
         expect(onTiming).toHaveBeenCalledWith({
           phase: 'editor-view',
           packagePath: 'packages/app',
-          durationMs: batchPublication ? 12 : expect.any(Number),
+          durationMs: batchPublication === true ? 12 : expect.any(Number),
         })
         expect(stderr.mock.calls.filter(([line]) => line === diagnostic)).toHaveLength(
-          batchPublication ? 2 : 1,
+          batchPublication === true ? 2 : 1,
         )
       } finally {
         shutdown.abort()
