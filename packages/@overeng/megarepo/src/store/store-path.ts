@@ -231,6 +231,26 @@ export const assertCanonicalMutationAllowed = ({
           return resolvedPath
         }
       }
+      // Diagnostic reads must not change the authorization decision or hide its original error.
+      const branchMismatchHint = yield* Effect.gen(function* () {
+        const root = yield* resolvePhysicalMutationPath(
+          authoringRoot ?? materializationRoot ?? target,
+        )
+        const directoryBranch = root.match(/^.+?\/refs\/heads\/(.+)$/)?.[1]
+        if (directoryBranch === undefined) return ''
+        const fs = yield* FileSystem.FileSystem
+        const gitdirLink = (yield* fs.readFileString(path.join(root, '.git'))).match(
+          /^gitdir: (.+)\n?$/,
+        )?.[1]
+        if (gitdirLink === undefined) return ''
+        const headBranch = (
+          yield* fs.readFileString(path.resolve(root, gitdirLink, 'HEAD'))
+        ).match(/^ref: refs\/heads\/(.+)\n?$/)?.[1]
+        return headBranch !== undefined && headBranch !== directoryBranch
+          ? `HEAD branch '${headBranch}' does not match worktree directory branch '${directoryBranch}' (the branch was renamed?). ` +
+              'Recreate the worktree with the intended branch name, or rename the branch back. '
+          : ''
+      }).pipe(Effect.orElseSucceed(() => ''))
       return yield* systemError({
         _tag: 'PermissionDenied',
         module: 'megarepo',
@@ -238,6 +258,7 @@ export const assertCanonicalMutationAllowed = ({
         pathOrDescriptor: resolvedPath,
         description:
           `Refusing to mutate canonical worktree '${resolvedPath}'. ` +
+          branchMismatchHint +
           (authoringRoot !== undefined
             ? 'Authoring writes require an owned author workspace and must stay inside it; shared canonical caches remain protected. '
             : materializationRoot !== undefined

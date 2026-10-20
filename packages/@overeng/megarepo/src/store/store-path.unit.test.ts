@@ -307,7 +307,10 @@ describe('canonical mutation write boundaries', () => {
       await expect(run(canonical)).rejects.toThrow(canonical)
       // A worktree whose HEAD disagrees with its canonical path, or is detached, is not authored.
       await registerWorktree(canonical, 'feature', 'ref: refs/heads/other')
-      await expect(run(canonical)).rejects.toThrow(canonical)
+      await expect(run(canonical)).rejects.toThrow(
+        "HEAD branch 'other' does not match worktree directory branch 'team/feature' (the branch was renamed?). " +
+          'Recreate the worktree with the intended branch name, or rename the branch back.',
+      )
       await registerWorktree(canonical, 'feature', 'a'.repeat(40))
       await expect(run(canonical)).rejects.toThrow(canonical)
       await registerWorktree(canonical, 'feature', 'ref: refs/heads/team/feature')
