@@ -8,6 +8,7 @@ import {
   fchmodSync,
   fstatSync,
   openSync,
+  readSync,
   type BigIntStats,
   copyFileSync,
   chmodSync,
@@ -301,14 +302,55 @@ const ensureRealDirectory = ({ path, field }: { path: string; field: string }): 
   requireDirectory({ path, field })
 }
 
+const sameFingerprintFile = ({ left, right }: { left: BigIntStats; right: BigIntStats }): boolean =>
+  left.isFile() === true &&
+  right.isFile() === true &&
+  left.dev === right.dev &&
+  left.ino === right.ino &&
+  left.size === right.size &&
+  left.mtimeNs === right.mtimeNs &&
+  left.mode === right.mode &&
+  left.uid === right.uid &&
+  (left.ctimeNs === right.ctimeNs ||
+    ((left.mode & 0o222n) === 0n && (left.nlink > 1n || right.nlink > 1n)))
+
 const streamFileIntoHash = async ({
   path,
   hashes,
+  expected,
+  modeDrift,
 }: {
   path: string
   hashes: readonly ReturnType<typeof createHash>[]
+  expected: BigIntStats
+  modeDrift?: SnapshotModeDrift
 }) => {
-  for await (const chunk of createReadStream(path)) for (const hash of hashes) hash.update(chunk)
+  const descriptor = openSync(
+    path,
+    constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK,
+  )
+  try {
+    const opened = fstatSync(descriptor, { bigint: true })
+    if (
+      sameFingerprintFile({ left: expected, right: opened }) === false ||
+      (modeDrift !== undefined &&
+        (opened.dev !== modeDrift.status.dev || opened.ino !== modeDrift.status.ino))
+    )
+      fail(`snapshot file changed before descriptor hashing: ${path}`)
+    const digest = modeDrift === undefined ? undefined : createHash('sha256')
+    for await (const chunk of createReadStream(path, { fd: descriptor, autoClose: false })) {
+      for (const hash of hashes) hash.update(chunk)
+      digest?.update(chunk)
+    }
+    if (
+      sameFingerprintFile({ left: opened, right: fstatSync(descriptor, { bigint: true }) }) ===
+      false
+    )
+      fail(`snapshot file changed during descriptor hashing: ${path}`)
+    if (modeDrift !== undefined && digest !== undefined) modeDrift.digest = digest.digest('hex')
+  } finally {
+    closeSync(descriptor)
+  }
 }
 
 /** Inputs of {@link canonicalTreeFingerprint}: the tree to hash and its dereferencing mode. */
@@ -422,8 +464,10 @@ const canonicalTreeFingerprints = async ({
   backingRoots = [],
   linkOwners = [],
   fingerprintTool,
+  modeDrift,
 }: CanonicalTreeFingerprintOptions & {
   readonly linkOwners?: TreeLinkOwners
+  readonly modeDrift?: ReadonlyMap<string, SnapshotModeDrift>
 }): Promise<CanonicalTreeFingerprints> => {
   if (fingerprintTool !== undefined) {
     if (/^\/nix\/store\/[^/]+\/bin\/buck2-fingerprint$/u.test(fingerprintTool) === false)
@@ -608,24 +652,15 @@ const canonicalTreeFingerprints = async ({
     resolvedHash?.update(pathLength)
     resolvedHash?.update(pathBytes)
     resolvedHash?.update(u64(before.size))
+    const drift = modeDrift?.get(absolutePath)
     await streamFileIntoHash({
       path: absolutePath,
       hashes: resolvedHash === undefined ? [hash] : [hash, resolvedHash],
+      expected: before,
+      ...(drift === undefined ? {} : { modeDrift: drift }),
     })
     const after = lstatSync(absolutePath, { bigint: true })
-    const immutableSharedFile =
-      (before.mode & 0o222n) === 0n &&
-      before.mode === after.mode &&
-      (before.nlink > 1n || after.nlink > 1n)
-    if (
-      after.isFile() === false ||
-      after.dev !== before.dev ||
-      after.ino !== before.ino ||
-      after.size !== before.size ||
-      after.mtimeNs !== before.mtimeNs ||
-      after.mode !== before.mode ||
-      (after.ctimeNs !== before.ctimeNs && immutableSharedFile === false)
-    )
+    if (sameFingerprintFile({ left: before, right: after }) === false)
       fail(`tree changed while hashing: ${absolutePath}`)
   }
 
@@ -1283,11 +1318,13 @@ const fingerprintSnapshotPayload = async ({
   roots = [],
   fingerprintTool,
   onFailure,
+  modeDrift,
 }: {
   readonly snapshotDir: string
   readonly fingerprintTool: string
   readonly roots?: readonly DeclaredSnapshotRoot[]
   readonly onFailure?: () => void
+  readonly modeDrift?: readonly SnapshotModeDrift[]
 }): Promise<SnapshotPayloadFingerprints> => {
   let firstFailure: { readonly error: unknown } | undefined
   const diagnose = <T>(operation: Promise<T>): Promise<T> =>
@@ -1298,11 +1335,17 @@ const fingerprintSnapshotPayload = async ({
       }
       throw error
     })
+  const driftByPath =
+    modeDrift === undefined ? undefined : new Map(modeDrift.map((entry) => [entry.path, entry]))
+  const fingerprintTree = async (tree: string): Promise<string> =>
+    driftByPath === undefined
+      ? canonicalTreeFingerprint({ tree, fingerprintTool })
+      : (await canonicalTreeFingerprints({ tree, modeDrift: driftByPath })).digest
   const backing = join(snapshotDir, '.backing')
   const nodeModules = join(snapshotDir, 'node_modules')
   if (pathExists(backing) === false)
     return {
-      digest: await diagnose(canonicalTreeFingerprint({ tree: nodeModules, fingerprintTool })),
+      digest: await diagnose(fingerprintTree(nodeModules)),
       resolvedRootsDigest: undefined,
     }
   const extraRoots = roots.filter((root) => root.identity !== 'node_modules')
@@ -1318,7 +1361,7 @@ const fingerprintSnapshotPayload = async ({
   // Keep the candidate alive and unchanged until every fingerprint child has settled,
   // even after a failure: cleanup chmods directories before removing the payload.
   const [backingResult, extraResult, nodeModulesResult] = await Promise.allSettled([
-    diagnose(canonicalTreeFingerprint({ tree: backing, fingerprintTool })),
+    diagnose(fingerprintTree(backing)),
     Promise.allSettled(
       extraRoots.map(async (root) => ({
         digest: (
@@ -1354,8 +1397,7 @@ const fingerprintSnapshotPayload = async ({
   })
   const nodeModulesFingerprints = nodeModulesResult.value
   const nodeModulesDigest =
-    nodeModulesFingerprints?.digest ??
-    (await diagnose(canonicalTreeFingerprint({ tree: nodeModules, fingerprintTool })))
+    nodeModulesFingerprints?.digest ?? (await diagnose(fingerprintTree(nodeModules)))
   const entries = [
     ['.backing', backingDigest],
     ['node_modules', nodeModulesDigest],
@@ -1621,7 +1663,12 @@ const viteWriteDiagnostic = (directory: string): string => {
     : ''
 }
 
-type SnapshotModeDrift = { readonly path: string; readonly status: BigIntStats }
+type SnapshotModeDrift = {
+  readonly path: string
+  readonly status: BigIntStats
+  /** SHA-256 streamed from this inode into a matching complete canonical payload proof. */
+  digest?: string
+}
 
 /** Complete immutability proof, optionally collecting writable payloads for hash-verified repair. */
 const requireReadOnlySnapshot = ({
@@ -1667,38 +1714,106 @@ const requireReadOnlySnapshot = ({
   visit(snapshotDir)
 }
 
-/** Called only after the complete payload digest matches; chmod the opened inode, never a link. */
+/** Hash one already acquired regular inode, without depending on a mutable pathname or offset. */
+const fingerprintSnapshotDescriptor = ({
+  descriptor,
+  buffer,
+}: {
+  descriptor: number
+  buffer: Buffer
+}): string | undefined => {
+  const before = fstatSync(descriptor, { bigint: true })
+  const hash = createHash('sha256')
+  let position = 0
+  for (;;) {
+    const count = readSync(descriptor, buffer, 0, buffer.length, position)
+    if (count === 0) break
+    hash.update(buffer.subarray(0, count))
+    position += count
+  }
+  const after = fstatSync(descriptor, { bigint: true })
+  if (
+    sameFingerprintFile({ left: before, right: after }) === false ||
+    before.ctimeNs !== after.ctimeNs
+  )
+    return undefined
+  return hash.digest('hex')
+}
+
+/** Every digest below was streamed from its collected inode into a matching complete payload proof. */
 const restoreSnapshotModes = (modeDrift: readonly SnapshotModeDrift[]): void => {
+  const verified = new Map<string, SnapshotModeDrift & { digest: string }>()
+  for (const entry of modeDrift) {
+    const digest =
+      entry.digest ?? fail(`snapshot file was not included in descriptor proof: ${entry.path}`)
+    verified.set(`${entry.status.dev}:${entry.status.ino}`, { ...entry, digest })
+  }
   const restored = new Set<string>()
-  for (const { path, status } of modeDrift) {
-    const inode = `${status.dev}:${status.ino}`
-    if (restored.has(inode) === true) continue
-    const descriptor = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW)
+  const buffer = Buffer.allocUnsafe(65_536)
+  // Reopen one inode at a time, rather than retaining thousands of descriptors.
+  for (const [inode, { path, status, digest }] of verified) {
+    const descriptor = openSync(
+      path,
+      constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK,
+    )
     try {
       const current = fstatSync(descriptor, { bigint: true })
       if (
         current.isFile() === false ||
         current.dev !== status.dev ||
         current.ino !== status.ino ||
-        current.size !== status.size ||
-        current.mtimeNs !== status.mtimeNs ||
         current.uid !== status.uid ||
-        (current.mode !== status.mode && current.mode !== (status.mode & ~0o222n)) ||
-        (current.mode === status.mode && current.ctimeNs !== status.ctimeNs)
+        fingerprintSnapshotDescriptor({ descriptor, buffer }) !== digest
       )
         fail(`snapshot file changed after hash verification: ${path}`)
       // Another owning view may have repaired the same inode while we hashed.
       if ((current.mode & 0o222n) === 0n) continue
-      fchmodSync(descriptor, Number(status.mode & 0o7777n & ~0o222n))
+      const previousMode = Number(current.mode & 0o7777n)
+      const repairedMode = previousMode & ~0o222
+      fchmodSync(descriptor, repairedMode)
+      try {
+        // A writer may retain a writable descriptor across chmod. Detect that race
+        // through this same inode and undo our permission change before failing.
+        if (
+          fingerprintSnapshotDescriptor({ descriptor, buffer }) !== digest ||
+          Number(fstatSync(descriptor, { bigint: true }).mode & 0o7777n) !== repairedMode
+        )
+          fail(`snapshot file changed after mode repair: ${path}`)
+      } catch (error) {
+        fchmodSync(descriptor, previousMode)
+        throw error
+      }
       restored.add(inode)
     } finally {
       closeSync(descriptor)
     }
   }
-  if (modeDrift.length > 0)
-    process.stderr.write(
-      `[editor-view-mode-drift] ${JSON.stringify({ count: restored.size, samples: modeDrift.slice(0, 5).map(({ path }) => path) })}\n`,
+  process.stderr.write(
+    `[editor-view-mode-drift] ${JSON.stringify({ count: restored.size, samples: modeDrift.slice(0, 5).map(({ path }) => path) })}\n`,
+  )
+}
+
+const verifySnapshotModeDrift = async ({
+  snapshotDir,
+  fingerprintTool,
+  expectedDigest,
+  modeDrift,
+}: {
+  snapshotDir: string
+  fingerprintTool: string
+  expectedDigest: string
+  modeDrift: readonly SnapshotModeDrift[]
+}): Promise<void> => {
+  if (modeDrift.length === 0) return
+  // Source-stat manifests are optimization hints, not integrity authority. Bind
+  // each candidate inode and its SHA-256 to the recorded complete payload digest,
+  // including legacy snapshots without per-file manifests, before any chmod.
+  const proof = await fingerprintSnapshotPayload({ snapshotDir, fingerprintTool, modeDrift })
+  if (proof.digest !== expectedDigest)
+    fail(
+      `snapshot byte digest mismatch during descriptor proof: recorded=${expectedDigest} actual=${proof.digest}`,
     )
+  restoreSnapshotModes(modeDrift)
 }
 
 const ensureConsumerCache = (paths: ViewPaths): void => {
@@ -2395,7 +2510,12 @@ const validateSnapshotContents = async ({
     fail(
       `existing snapshot byte digest mismatch: recorded=${record.byteSnapshotDigest} actual=${digest}`,
     )
-  restoreSnapshotModes(modeDrift)
+  await verifySnapshotModeDrift({
+    snapshotDir,
+    fingerprintTool,
+    expectedDigest: record.byteSnapshotDigest,
+    modeDrift,
+  })
   return record
 }
 
@@ -3570,7 +3690,12 @@ const validatePublishedView = async ({
       message: `snapshot byte digest mismatch: recorded=${record.byteSnapshotDigest} snapshot=${snapshotDigest}`,
       context,
     })
-  restoreSnapshotModes(modeDrift)
+  await verifySnapshotModeDrift({
+    snapshotDir,
+    fingerprintTool: options.fingerprintTool,
+    expectedDigest: record.byteSnapshotDigest,
+    modeDrift,
+  })
   let firstHopStatus
   try {
     firstHopStatus = lstatSync(paths.firstHop)
