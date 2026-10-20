@@ -7,6 +7,7 @@ use std::os::unix::net::UnixStream;
 use std::path::PathBuf;
 use std::sync::{Arc, atomic::{AtomicBool, Ordering}};
 use std::time::{Duration, Instant};
+mod managed;
 
 const REQUEST_LIMIT: usize = 64 * 1024;
 const RESPONSE_LIMIT: usize = 1024 * 1024;
@@ -14,6 +15,11 @@ static STOPPING: AtomicBool = AtomicBool::new(false);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Role { Supervisor, GuiAgent }
+
+/// Reject standalone launches before they can expose either role's endpoints.
+pub fn verify_managed_role(role: Role) -> Result<(), HostError> {
+    managed::identity()?.check_self(role)
+}
 
 /// Both directions admit only the target UID and the release-pinned outer code identity.
 /// No client-provided identity, PID-only lookup, or weaker fallback is used.
@@ -29,15 +35,17 @@ impl GuiChannel {
         Ok(Self { path, uid: config.uid, requirement,
             policy_revision: config.policy_revision.clone(), release_revision: config.release_revision.clone() })
     }
-    fn authenticate(&self, stream: &UnixStream) -> Result<macos_app_security::AuthenticatedPeer, HostError> {
-        authenticate_peer(stream, PeerPolicy { allowed_uids: &[self.uid], requirement: &self.requirement })
-            .map_err(|_| HostError::new("caller-denied", "Private peer UID or pinned code identity denied"))
+    fn authenticate(&self, stream: &UnixStream, expected_role: Role) -> Result<macos_app_security::AuthenticatedPeer, HostError> {
+        let peer = authenticate_peer(stream, PeerPolicy { allowed_uids: &[self.uid], requirement: &self.requirement })
+            .map_err(|_| HostError::new("caller-denied", "Private peer UID or pinned code identity denied"))?;
+        managed::identity()?.authenticate(peer.token(), expected_role)?;
+        Ok(peer)
     }
     pub fn call(&self, request: &Value, cancelled: &dyn Fn() -> bool) -> Result<Value, HostError> {
         if cancelled() || STOPPING.load(Ordering::Acquire) { return Err(HostError::new("cancelled", "Request cancelled")); }
         let mut stream = UnixStream::connect(&self.path)
             .map_err(|_| HostError::new("session-unavailable", "Authenticated GUI agent is unavailable"))?;
-        let peer = self.authenticate(&stream)?;
+        let peer = self.authenticate(&stream, Role::GuiAgent)?;
         peer.recheck_freshness().map_err(|_| HostError::new("caller-denied", "Private peer incarnation changed"))?;
         #[derive(serde::Serialize)]
         #[serde(rename_all = "camelCase")]
@@ -46,6 +54,7 @@ impl GuiChannel {
             release_revision: &self.release_revision, request }, REQUEST_LIMIT)?;
         let bytes = read_bounded_frame(&mut stream, RESPONSE_LIMIT, Duration::from_secs(65), cancelled)?;
         peer.recheck_freshness().map_err(|_| HostError::new("caller-denied", "Private peer incarnation changed"))?;
+        self.authenticate(&stream, Role::GuiAgent)?;
         decode_private_response(&bytes, &self.policy_revision, &self.release_revision)
     }
 }
@@ -182,17 +191,22 @@ impl Drop for Signals {
     }
 }
 fn handle_private(host: &Host, stream: &mut UnixStream) -> Result<Value, HostError> {
-    let authenticated = host.gui_channel.authenticate(stream)?;
+    let authenticated = host.gui_channel.authenticate(stream, Role::Supervisor)?;
     let frame = read_frame(stream)?;
     let request = decode_private_request(&frame, &host.config.policy_revision, &host.config.release_revision)?;
     authenticated.recheck_freshness().map_err(|_| HostError::new("caller-denied", "Private caller incarnation changed"))?;
+    host.gui_channel.authenticate(stream, Role::Supervisor)?;
     if disconnected(stream) { return Err(HostError::new("cancelled", "Private caller disconnected")); }
-    host.respond_private(request, &|| disconnected(stream))
+    let result = host.respond_private(request, &|| disconnected(stream));
+    host.gui_channel.authenticate(stream, Role::Supervisor)?;
+    authenticated.recheck_freshness().map_err(|_| HostError::new("caller-denied", "Private caller incarnation changed before response"))?;
+    result
 }
 
 /// The GUI role never binds the public endpoint. Shutdown stops admission, cancels
 /// active operations, joins every worker and only then removes the endpoint.
 pub fn serve(host: Arc<Host>) -> Result<(), HostError> {
+    verify_managed_role(host.role)?;
     if host.role == Role::GuiAgent { crate::native::require_gui_session()?; }
     let _signals = Signals::install()?;
     let path = if host.role == Role::Supervisor { &host.config.socket } else { &host.gui_channel.path };
@@ -291,7 +305,7 @@ mod tests {
             requirement: CompiledRequirement::compile("anchor apple and identifier \"org.example.permissions-host-test.denied\"").unwrap(),
             policy_revision: "policy".into(), release_revision: "release".into(),
         };
-        assert!(channel.authenticate(&input).is_err());
+        assert!(channel.authenticate(&input, Role::Supervisor).is_err());
     }
     #[test] fn private_channel_rejects_foreign_uid() {
         let (input, _output) = UnixStream::pair().unwrap();
@@ -302,7 +316,7 @@ mod tests {
             requirement: CompiledRequirement::compile("anchor apple").unwrap(),
             policy_revision: "policy".into(), release_revision: "release".into(),
         };
-        assert!(channel.authenticate(&input).is_err());
+        assert!(channel.authenticate(&input, Role::Supervisor).is_err());
     }
     fn decode_test_response(bytes: &[u8]) -> Result<Value, HostError> {
         let mut response: Value = serde_json::from_slice(bytes).unwrap();

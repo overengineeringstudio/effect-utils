@@ -296,7 +296,7 @@ impl Inner {
                 entry.status.state = "backoff";
             } else { entry.suppressed = true; }
         } else { entry.suppressed = true; }
-        if self.event(child, entry, "failed").is_err() { entry.suppressed = true; entry.retry = None; entry.status.state = "stopped"; entry.status.readiness = Some(json!({"outcome":"failed","code":"audit-unavailable"})); }
+        if self.event(child, entry, "failed").is_err() { self.audit_failed(child, entry); }
     }
     fn tick(&self, child: &Child, entry: &mut Entry) {
         if let Some(process) = entry.process.as_mut() {

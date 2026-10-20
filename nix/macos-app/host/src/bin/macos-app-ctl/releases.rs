@@ -504,39 +504,73 @@ impl Ctl {
         if old.config["bundleId"] != self.config["bundleId"] || old.config["targetUid"] != self.config["targetUid"] {
             return Err(mismatch("Paired rollback principal differs from the requested release"));
         }
-        self.stop_topology()?;
+        let state = self.state()?;
+        let mut stage = None;
+        let mut exchange_required = false;
+        let mut initial_removal = false;
+        let mut incumbent = app.exists().then(|| app.clone());
         if direction == "paired-release" {
-            let old_inode = record["oldInode"].as_u64();
+            let old_inode = if record["oldInode"].is_null() { None } else {
+                Some(record["oldInode"].as_u64().ok_or_else(|| mismatch("Corrupt incumbent inode"))?)
+            };
             let candidate_inode = record["candidateInode"].as_u64().ok_or_else(|| mismatch("Corrupt candidate inode"))?;
-            let stage = record["stage"].as_str().map(PathBuf::from);
-            if let Some(stage) = &stage {
+            stage = if record["stage"].is_null() { None } else {
+                Some(PathBuf::from(record["stage"].as_str().ok_or_else(|| mismatch("Corrupt rollback stage"))?))
+            };
+            if let Some(path) = &stage {
                 let archive = PathBuf::from(self.arg("archive-dir")?);
-                let parent = stage.parent().ok_or_else(|| mismatch("Paired rollback stage has no parent"))?;
+                destination(&archive, false)?;
+                let parent = path.parent().ok_or_else(|| mismatch("Paired rollback stage has no parent"))?;
                 if parent.parent() != Some(archive.as_path())
                     || !parent.file_name().and_then(|name| name.to_str()).is_some_and(|name| name.starts_with(STAGE_DIRECTORY_PREFIX))
-                    || stage.file_name().and_then(|name| name.to_str()) != Some(artifact::app_bundle_name(&self.config)?) {
+                    || path.file_name().and_then(|name| name.to_str()) != Some(artifact::app_bundle_name(&old.config)?) {
                     return Err(mismatch("Paired rollback stage is not a canonical bundle in the explicit private archive"));
                 }
                 if inode(&app) == Some(candidate_inode) {
                     if let Some(expected) = old_inode {
-                        if inode(stage) != Some(expected) { return Err(mismatch("Paired rollback incumbent stage differs")); }
-                        old.verify_bundle(stage)?;
-                        checked("/bin/chmod", &["-R", "u+w", text(stage)?])?;
-                        exchange(stage, &app)?;
+                        if inode(path) != Some(expected) { return Err(mismatch("Paired rollback incumbent stage differs")); }
+                        incumbent = Some(path.clone());
+                        exchange_required = true;
                     } else {
-                        if stage.exists() { return Err(mismatch("Unexpected initial-install rollback stage")); }
-                        fs::rename(&app, stage)?;
+                        if path.exists() { return Err(mismatch("Unexpected initial-install rollback stage")); }
+                        incumbent = None;
+                        initial_removal = true;
                     }
-                } else if inode(&app) != old_inode { return Err(mismatch("Installed bundle holds neither recorded release")); }
+                } else {
+                    if inode(&app) != old_inode { return Err(mismatch("Installed bundle holds neither recorded release")); }
+                    if path.exists() && inode(path) != Some(candidate_inode) { return Err(mismatch("Rejected release stage inode differs")); }
+                }
             } else if inode(&app) != old_inode { return Err(mismatch("Unchanged release inode differs")); }
-            let state = self.state()?;
+            // Reject malformed pointers and unavailable incumbent generations
+            // while both currently running jobs are still untouched.
+            for key in ["generation", "previousGeneration", "archive", "archiveGeneration"] {
+                if !record[key].is_null() && !record[key].as_str().is_some_and(|value| Path::new(value).is_absolute()) {
+                    return Err(mismatch(format!("Corrupt recovery pointer {key}")));
+                }
+            }
+            if record["topology"]["jobs"][0]["loaded"] == true {
+                let generation = record["generation"].as_str().ok_or_else(|| mismatch("Recovery supervisor lacks a generation"))?;
+                let manifest: Value = serde_json::from_slice(&fs::read(Path::new(generation).join("manifest.json"))?)?;
+                if manifest["generation"].as_str().is_none_or(str::is_empty) { return Err(mismatch("Invalid recovery generation")); }
+            }
+        }
+        if let Some(incumbent) = &incumbent { old.verify_bundle(incumbent)?; }
+        let restoration = old.prepare_topology_restore(&record["topology"], incumbent.as_deref())?;
+        // No fallible recovery prerequisite may be resolved after this point.
+        self.stop_topology()?;
+        if let Some(stage) = &stage {
+            if exchange_required {
+                checked("/bin/chmod", &["-R", "u+w", text(stage)?])?;
+                exchange(stage, &app)?;
+            } else if initial_removal { fs::rename(&app, stage)?; }
+        }
+        if direction == "paired-release" {
             restore_pointer(&state.join("current"), &record["generation"])?;
             restore_pointer(&state.join("previous"), &record["previousGeneration"])?;
             restore_pointer(&archive_pointer(&app), &record["archive"])?;
             restore_pointer(&state.join("host-previous-generation"), &record["archiveGeneration"])?;
         }
-        if app.exists() { old.verify_bundle(&app)?; }
-        old.restore_topology(&record["topology"])?;
+        restoration.apply(&old)?;
         if direction == "paired-release" {
             if let Some(stage) = record["stage"].as_str().map(PathBuf::from) {
                 if stage.exists() {
@@ -643,6 +677,39 @@ impl Ctl {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn paired_recovery_rejects_unavailable_prerequisites_before_job_control() {
+        let root = private_stage(&fs::canonicalize(std::env::temp_dir()).unwrap()).unwrap();
+        let app = root.join("Host.app");
+        let archive = root.join("archive");
+        fs::create_dir(&app).unwrap();
+        fs::create_dir(&archive).unwrap();
+        let stage_parent = private_stage(&archive).unwrap();
+        let stage = stage_parent.join("Host.app");
+        fs::create_dir(&stage).unwrap();
+        let config = json!({"bundleId": "dev.example.recovery", "appBundleName": "Host.app",
+            "hostExecutable": "host", "requirement": "identifier \"dev.example.recovery\"", "targetUid": 501});
+        let record = json!({"direction": "paired-release", "oldConfig": config,
+            "oldInode": inode(&stage), "candidateInode": inode(&app), "stage": stage,
+            "generation": null, "previousGeneration": null, "archive": null, "archiveGeneration": null});
+        let journal = rollback_record(&app);
+        atomic_write(&journal, &serde_json::to_vec(&record).unwrap()).unwrap();
+        // No launchd/domain/plist arguments exist: reaching job control would
+        // return their missing-argument error instead of these prerequisites.
+        let mut ctl = Ctl { config, args: BTreeMap::from([
+            ("app-dir".into(), text(&app).unwrap().into()),
+            ("state".into(), text(&root.join("state")).unwrap().into()),
+        ]) };
+        let before = inode(&app);
+        assert!(ctl.recover_paired().unwrap_err().reason.contains("archive-dir"));
+        ctl.args.insert("archive-dir".into(), text(&root).unwrap().into());
+        assert!(ctl.recover_paired().unwrap_err().reason.contains("canonical bundle"));
+        ctl.args.insert("archive-dir".into(), text(&archive).unwrap().into());
+        assert!(ctl.recover_paired().is_err()); // unsigned incumbent cannot be restored
+        assert_eq!(inode(&app), before);
+        assert_eq!(read_json(&journal).unwrap().unwrap(), record);
+        fs::remove_dir_all(root).unwrap();
+    }
     #[test]
     fn fixed_child_endpoints_require_explicit_migration() {
         let old = json!({"supervisedChildren": [{"id": "worker", "clientSocket": "/run/fixed.sock"}]});

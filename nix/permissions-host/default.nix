@@ -57,10 +57,21 @@ let
     };
   };
   policy = pkgs.writeText "${name}-policy.json" (builtins.toJSON policyData);
+  # Security identity is sealed bundle data, never an invocation's --config.
+  runtimeIdentityData = {
+    version = 1;
+    targetUid = policyData.uid;
+    supervisorLabel = launchd.label;
+    guiLabel = guiLaunchd.label;
+    hostRequirement = requirement;
+  };
+  runtimeIdentity = pkgs.writeText "${name}-runtime-identity.json" (
+    builtins.toJSON runtimeIdentityData
+  );
   # ctl compares Info.plist metadata as well as compiled source bytes. Bind the
-  # exact sealed policy/entitlement bytes there so policy-only upgrades install.
+  # sealed policy, entitlement and runtime-identity bytes so data-only upgrades install.
   bundlePolicyHash = builtins.hashString "sha256" (
-    builtins.toJSON policyData + "\n" + entitlementsXml
+    builtins.toJSON policyData + "\n" + entitlementsXml + "\n" + builtins.toJSON runtimeIdentityData
   );
   source = lib.fileset.toSource {
     # Preserve the relative Cargo path dependency ../../macos-app/host.
@@ -191,6 +202,7 @@ let
     cp '${runtime}/bin/macos-permissions-host' "$app/Contents/MacOS/macos-permissions-host"
     cp '${infoPlist}' "$app/Contents/Info.plist"
     cp '${policy}' "$app/Contents/Resources/policy.json"
+    cp '${runtimeIdentity}' "$app/Contents/Resources/runtime-identity.json"
     cp '${entitlements}' "$app/Contents/Resources/entitlements.plist"
     printf '%s\n' '${hostSourceHash}' > "$app/Contents/Resources/host-source-hash"
   '';

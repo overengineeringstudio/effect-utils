@@ -638,7 +638,7 @@ impl Ctl {
         let mode = socket_mode(self.arg("socket")?);
         if mode.map(u64::from) != manifest["socketMode"].as_u64() { return Err(mismatch(format!("Socket mode {mode:?} differs from the generation's socketMode"))); }
         let children = if self.paired() { self.topology_evidence_with(&ipc)?["children"].clone() }
-            else { topology::verify_children(&self.config, &ipc["status"]["children"])? };
+            else { topology::inactive_single_job_children(&self.config)? };
         Ok(json!({"verified": true, "domain": domain, "pid": pid, "hostSourceHash": expected_hash, "bundleMetadataDigest": expected_metadata, "generation": generation, "children": children}))
     }
     fn verify(&self) -> Result<Value> {
@@ -812,7 +812,11 @@ fn run() -> Result<Value> {
         .ok_or_else(|| fail(64, "invalid-input", "Missing --config"))?;
     let config: Value = serde_json::from_slice(&fs::read(config_path)?)?;
     if let Some(declarations) = config.get("supervisedChildren") {
-        let _: macos_app_host::children::Children = serde_json::from_value(declarations.clone())?;
+        let children: macos_app_host::children::Children = serde_json::from_value(declarations.clone())?;
+        if !config.get("guiLaunchd").is_some_and(Value::is_object)
+            && children.0.iter().any(|child| child.activation == macos_app_host::children::Activation::Active) {
+            return Err(fail(64, "invalid-input", "Single-job hosts support only inactive supervised child declarations"));
+        }
     }
     if config.get("guiLaunchd").is_some_and(Value::is_object) {
         if !args.contains_key("target-uid") {

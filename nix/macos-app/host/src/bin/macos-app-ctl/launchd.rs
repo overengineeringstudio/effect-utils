@@ -186,14 +186,18 @@ pub(super) fn validate(ctl: &Ctl) -> Result<Validated> {
 }
 
 pub(super) fn validate_bytes(ctl: &Ctl, bytes: Vec<u8>) -> Result<Validated> {
-    validate_snapshot(ctl, bytes, true)
+    validate_snapshot(ctl, bytes, true, None)
 }
 
 pub(super) fn validate_previous_bytes(ctl: &Ctl, bytes: Vec<u8>) -> Result<Validated> {
-    validate_snapshot(ctl, bytes, false)
+    validate_snapshot(ctl, bytes, false, None)
 }
 
-fn validate_snapshot(ctl: &Ctl, bytes: Vec<u8>, require_current_policy: bool) -> Result<Validated> {
+pub(super) fn validate_recovery_bytes(ctl: &Ctl, bytes: Vec<u8>, incumbent: &Path) -> Result<Validated> {
+    validate_snapshot(ctl, bytes, false, Some(incumbent))
+}
+
+fn validate_snapshot(ctl: &Ctl, bytes: Vec<u8>, require_current_policy: bool, incumbent: Option<&Path>) -> Result<Validated> {
     let target_uid = uid(ctl.arg("target-uid")?)?;
     let domain = ctl.arg("domain")?;
     let evidence = ctl.arg("evidence")?;
@@ -210,8 +214,12 @@ fn validate_snapshot(ctl: &Ctl, bytes: Vec<u8>, require_current_policy: bool) ->
     let executable = ctl.field("hostExecutable")?;
     if executable.is_empty() || executable.contains('/') || matches!(executable, "." | "..") { return Err(invalid("hostExecutable must be a single filename")); }
     let program = app.join("Contents/MacOS").join(executable);
-    protected_path(&program, target_uid)?;
-    let metadata = fs::symlink_metadata(&program)?;
+    // Recovery validates the executable in the incumbent bundle BEFORE exchanging
+    // it back, while the plist's closed argv still names the installed app path.
+    let recovery_program = incumbent.map(|app| app.join("Contents/MacOS").join(executable));
+    let inspected = recovery_program.as_deref().unwrap_or(&program);
+    protected_path(inspected, target_uid)?;
+    let metadata = fs::symlink_metadata(inspected)?;
     if !metadata.is_file() || metadata.mode() & 0o111 == 0 { return Err(invalid("Installed entrypoint must be an executable regular file")); }
     let generic_argv = if matches!(executable, "macos-app-host" | "macos-permissions-host") {
         let state = ctl.state()?;

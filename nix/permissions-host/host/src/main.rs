@@ -74,6 +74,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         println!("{}", serde_json::to_string(&macos_permissions_host::onboard(config)?)?);
     } else {
         let role = role.unwrap_or(Role::Supervisor);
+        macos_permissions_host::transport::verify_managed_role(role)?;
         if role == Role::GuiAgent {
             if socket.is_some() || generation_pointer.is_some() { return Err("GUI agent cannot expose a controller endpoint".into()); }
             macos_permissions_host::native::require_gui_session()?;

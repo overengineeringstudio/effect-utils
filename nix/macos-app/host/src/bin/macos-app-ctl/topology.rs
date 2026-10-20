@@ -5,6 +5,9 @@ use super::*;
 
 struct Job { ctl: Ctl, desired: launchd::Validated, path: PathBuf }
 
+struct RestoreJob { ctl: Ctl, path: PathBuf, bytes: Option<Vec<u8>>, was_loaded: bool }
+pub(super) struct RestoreTopology<'a> { jobs: Vec<RestoreJob>, receipt: &'a Value }
+
 impl Ctl {
     pub(super) fn paired(&self) -> bool { self.config.get("guiLaunchd").is_some_and(Value::is_object) }
 
@@ -249,48 +252,78 @@ impl Ctl {
         Ok(())
     }
 
-    pub(super) fn restore_topology(&self, record: &Value) -> Result<()> {
+    /// Resolve every path, closed plist, executable and receipt before the caller
+    /// stops either live job. The prepared plan owns the exact validated bytes.
+    pub(super) fn prepare_topology_restore<'a>(&self, record: &'a Value, incumbent: Option<&Path>) -> Result<RestoreTopology<'a>> {
         let controls = self.topology_controls()?;
         let previous = record["jobs"].as_array().filter(|jobs| jobs.len() == controls.len()).ok_or_else(|| mismatch("Corrupt paired transaction"))?;
-        for (ctl, old) in controls.iter().zip(previous) {
+        let mut jobs = Vec::with_capacity(controls.len());
+        for (ctl, old) in controls.into_iter().zip(previous) {
             let path = Path::new(ctl.arg("plist-dir")?).join(format!("{}.plist", ctl.label()?));
             if old["domain"] != ctl.arg("domain")? || old["label"] != ctl.label()? || old["path"].as_str() != Some(text(&path)?) { return Err(mismatch("Paired transaction identity differs")); }
-            if old["bytes"].is_null() {
-                if old["loaded"] == true { return Err(mismatch("Paired transaction lacks a loaded job's configuration")); }
+            releases::destination(path.parent().ok_or_else(|| mismatch("Recovery plist has no parent"))?, false)?;
+            let was_loaded = old["loaded"].as_bool().ok_or_else(|| mismatch("Corrupt paired loaded evidence"))?;
+            let bytes = if old["bytes"].is_null() {
+                if was_loaded { return Err(mismatch("Paired transaction lacks a loaded job's configuration")); }
+                None
             } else {
+                let incumbent = incumbent.ok_or_else(|| mismatch("Recovery configurations have no incumbent bundle"))?;
                 let bytes: Vec<u8> = serde_json::from_value(old["bytes"].clone())?;
-                launchd::validate_previous_bytes(ctl, bytes)?;
+                Some(launchd::validate_recovery_bytes(&ctl, bytes, incumbent)?.bytes)
+            };
+            jobs.push(RestoreJob { ctl, path, bytes, was_loaded });
+        }
+        let receipt = &record["receipt"];
+        if !receipt.is_null() && (!receipt.is_object()
+            || receipt["appInode"].as_u64() != incumbent.and_then(inode)
+            || receipt["publicSocket"] != self.arg("socket")? || receipt["guiSocket"] != self.arg("gui-socket")?) {
+            return Err(mismatch("Restored topology receipt differs from the incumbent principal"));
+        }
+        Ok(RestoreTopology { jobs, receipt })
+    }
+}
+
+impl RestoreTopology<'_> {
+    pub(super) fn apply(&self, owner: &Ctl) -> Result<()> {
+        for job in &self.jobs {
+            if let Some(bytes) = &job.bytes { atomic_write(&job.path, bytes)?; }
+            else { remove_if_present(&job.path)?; }
+        }
+        let mut gui_started = false;
+        for (index, job) in self.jobs.iter().enumerate() {
+            let domain = job.ctl.arg("domain")?;
+            let gui_present = index == 1 && command(LAUNCHCTL, &["print", domain])?.status.success();
+            if !restore_job_required(index == 1, job.was_loaded, job.bytes.is_some(), gui_present) { continue; }
+            if let Err(error) = checked(LAUNCHCTL, &["bootstrap", domain, text(&job.path)?]) {
+                if index != 1 || command(LAUNCHCTL, &["print", domain])?.status.success() { return Err(error); }
+                continue;
             }
+            gui_started = index == 1;
         }
-        self.stop_topology()?;
-        for old in previous {
-            let path = Path::new(old["path"].as_str().ok_or_else(|| mismatch("Corrupt paired path"))?);
-            if old["bytes"].is_null() { remove_if_present(path)?; }
-            else { let bytes: Vec<u8> = serde_json::from_value(old["bytes"].clone())?; atomic_write(path, &bytes)?; }
-        }
-        for (ctl, old) in controls.iter().zip(previous) {
-            let domain = ctl.arg("domain")?;
-            if old["loaded"] == true {
-                if domain.starts_with("gui/") && !command(LAUNCHCTL, &["print", domain])?.status.success() { continue; }
-                checked(LAUNCHCTL, &["bootstrap", domain, old["path"].as_str().ok_or_else(|| mismatch("Corrupt paired path"))?])?;
+        if self.jobs[0].was_loaded {
+            running_control_pid(&self.jobs[0].ctl)?;
+            let status = owner.ipc()?;
+            if status["ok"] != true || status["status"]["hostSourceHash"].as_str() != hash(&owner.app()?).as_deref() {
+                return Err(mismatch("Restored supervisor release differs"));
             }
-        }
-        let receipt = self.state()?.join("launchd-pair-current.json");
-        if record["receipt"].is_null() { remove_if_present(&receipt)?; }
-        else { atomic_write(&receipt, &serde_json::to_vec(&record["receipt"])?)?; }
-        if previous[0]["loaded"] == true {
-            running_control_pid(&controls[0])?;
-            let status = self.ipc()?;
-            if status["ok"] != true || status["status"]["hostSourceHash"].as_str() != hash(&self.app()?).as_deref() { return Err(mismatch("Restored supervisor release differs")); }
-            let generation = pointer(&self.state()?.join("current")).ok_or_else(|| mismatch("Restored supervisor has no generation"))?;
+            let generation = pointer(&owner.state()?.join("current")).ok_or_else(|| mismatch("Restored supervisor has no generation"))?;
             let manifest: Value = serde_json::from_slice(&fs::read(generation.join("manifest.json"))?)?;
             if status["status"]["generation"] != manifest["generation"] { return Err(mismatch("Restored supervisor generation differs")); }
         }
-        if previous[1]["loaded"] == true && command(LAUNCHCTL, &["print", controls[1].arg("domain")?])?.status.success() {
-            authenticate_control(&controls[1], self.arg("gui-socket")?)?;
+        if gui_started {
+            if let Err(error) = authenticate_control(&self.jobs[1].ctl, owner.arg("gui-socket")?) {
+                if command(LAUNCHCTL, &["print", self.jobs[1].ctl.arg("domain")?])?.status.success() { return Err(error); }
+            }
         }
+        let receipt = owner.state()?.join("launchd-pair-current.json");
+        if self.receipt.is_null() { remove_if_present(&receipt)?; }
+        else { atomic_write(&receipt, &serde_json::to_vec(self.receipt)?)?; }
         Ok(())
     }
+}
+
+fn restore_job_required(gui: bool, was_loaded: bool, has_configuration: bool, gui_present: bool) -> bool {
+    if gui { has_configuration && gui_present } else { was_loaded }
 }
 
 fn stop_control(ctl: &Ctl) -> Result<()> {
@@ -305,6 +338,17 @@ fn stop_control(ctl: &Ctl) -> Result<()> {
         std::thread::sleep(Duration::from_millis(50));
     }
     Ok(())
+}
+
+/// The generic single-job host has no child runtime. Preserve its declaration-only
+/// inactive report without claiming readiness or requiring a runtime inventory.
+pub(super) fn inactive_single_job_children(config: &Value) -> Result<Value> {
+    config["supervisedChildren"].as_array().into_iter().flatten().map(|child| {
+        if child["activation"].as_str().unwrap_or("inactive") != "inactive" {
+            return Err(fail(64, "invalid-input", "Single-job hosts support only inactive supervised child declarations"));
+        }
+        Ok(json!({"id": child["id"], "activation": "inactive", "state": "inactive", "probe": "not-run"}))
+    }).collect::<Result<Vec<_>>>().map(Value::Array)
 }
 
 pub(super) fn verify_children(config: &Value, observed: &Value) -> Result<Value> {
@@ -340,6 +384,10 @@ pub(super) fn verify_children(config: &Value, observed: &Value) -> Result<Value>
                     "scheduled-idle"
                 } else if probe == "none" { "spawn-only" } else { "probe-passed" };
                 if live["readiness"]["probe"] != probe || live["readiness"]["evidence"] != expected_evidence { failed.push(id); }
+                if expected_evidence == "scheduled-idle"
+                    && (!live["pid"].is_null() || live["running"] == true) {
+                    failed.push(id);
+                }
             }
             Some("deferred") => {
                 let service = live["readiness"]["service"].as_str().unwrap_or_default();
@@ -393,6 +441,41 @@ mod tests {
     use super::*;
     fn policy() -> Value { json!({"policyRevision": "policy", "releaseRevision": "release", "supervisedChildren": [{"id": "worker", "activation": "active", "schedule": {"kind": "resident"}, "requiresSession": "none", "readiness": {"kind": "none"}, "requiredTccServices": ["full-disk-access"]}]}) }
     fn live(readiness: Value) -> Value { json!([{"id": "worker", "policyRevision": "policy", "releaseRevision": "release", "activation": "active", "schedule": "resident", "requiresSession": "none", "state": "running", "instanceId": "release-instance", "readiness": readiness}]) }
+    #[test]
+    fn restored_gui_configuration_follows_current_session_availability() {
+        assert!(restore_job_required(true, false, true, true));
+        assert!(!restore_job_required(true, true, true, false));
+        assert!(!restore_job_required(true, false, false, true));
+        assert!(restore_job_required(false, true, true, false));
+        assert!(!restore_job_required(false, false, true, true));
+    }
+    #[test]
+    fn inactive_single_job_declarations_need_no_runtime_inventory() {
+        let config = json!({"supervisedChildren": [{"id": "disabled", "activation": "inactive"}, {"id": "default"}]});
+        assert_eq!(inactive_single_job_children(&config).unwrap(), json!([
+            {"id": "disabled", "activation": "inactive", "state": "inactive", "probe": "not-run"},
+            {"id": "default", "activation": "inactive", "state": "inactive", "probe": "not-run"}
+        ]));
+        assert_eq!(inactive_single_job_children(&json!({"supervisedChildren": [{"id": "active", "activation": "active"}]})).unwrap_err().code, 64);
+    }
+    #[test]
+    fn fresh_scheduled_idle_receipt_is_ready_without_a_first_run() {
+        let mut config = policy();
+        config["supervisedChildren"][0]["schedule"] = json!({"kind": "launchd-scheduled", "op": "example.run"});
+        config["supervisedChildren"][0]["readiness"] = json!({"kind": "probe-op", "op": "example.ready"});
+        let mut actual = live(json!({"outcome": "ready", "probe": "probe-op", "evidence": "scheduled-idle"}));
+        actual[0]["schedule"] = json!("launchd-scheduled");
+        actual[0]["state"] = json!("running");
+        actual[0]["pid"] = Value::Null;
+        actual[0]["instanceId"] = Value::Null;
+        actual[0]["running"] = json!(false);
+        assert!(verify_children(&config, &actual).is_ok());
+        actual[0]["readiness"]["probe"] = json!("none");
+        assert_eq!(verify_children(&config, &actual).unwrap_err().code, 22);
+        actual[0]["readiness"]["probe"] = json!("probe-op");
+        actual[0]["running"] = json!(true);
+        assert_eq!(verify_children(&config, &actual).unwrap_err().code, 22);
+    }
     #[test]
     fn typed_ready_is_required() {
         assert!(verify_children(&policy(), &live(json!({"outcome": "ready", "probe": "none", "evidence": "spawn-only"}))).is_ok());
