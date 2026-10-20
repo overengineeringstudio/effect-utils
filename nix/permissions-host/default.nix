@@ -8,6 +8,9 @@
   displayName,
   signer,
   policyFiles,
+  helpers ? { },
+  enableExampleChildren ? false,
+  guiLaunchd ? { label = "${bundleId}.gui"; },
   name ? "macos-permissions-host",
   enabledGrants ? [
     "full-disk-access"
@@ -26,6 +29,9 @@
 }:
 let
   inherit (pkgs) lib;
+  helperAssembly = import ../macos-app/helpers.nix {
+    inherit pkgs bundleId signer helpers;
+  };
   grantCategories = [
     "full-disk-access"
     "notifications"
@@ -43,6 +49,12 @@ let
   # the runtime policy cannot accidentally disagree through a policy override.
   policyData = consumerPolicy // {
     inherit enabledGrants automationTargets;
+    helperRequirements = helperAssembly.requirements;
+    hostRequirement = requirement;
+    jobProcessTypes = {
+      none = launchd.extra.ProcessType or "Background";
+      gui = guiLaunchd.extra.ProcessType or "Background";
+    };
   };
   policy = pkgs.writeText "${name}-policy.json" (builtins.toJSON policyData);
   # ctl compares Info.plist metadata as well as compiled source bytes. Bind the
@@ -81,7 +93,9 @@ let
       else
         throw "permissions-host: compiled source must contain only regular files and directories"
     ) (builtins.attrNames (builtins.readDir directory));
-  hostSourceHash = builtins.hashString "sha256" (sourceContents source);
+  hostSourceHash = builtins.hashString "sha256" (
+    sourceContents source + builtins.toJSON { inherit enableExampleChildren; }
+  );
   darwinRust = import ../workspace-tools/lib/buck2-darwin-rust-capability.nix {
     inherit pkgs nixpkgsRevision;
   };
@@ -94,7 +108,7 @@ let
     cargoBuildFlags = [
       "--bin"
       "macos-permissions-host"
-    ];
+    ] ++ lib.optionals enableExampleChildren [ "--features" "example-children" ];
     buildInputs = [ pkgs.apple-sdk_15 ];
     # Reuse the capability's pure SDK environment, NOT its compiler wrapper:
     # that wrapper signs outputs after ABI normalization. This assembly must not.
@@ -172,6 +186,8 @@ let
   entitlements = pkgs.writeText "${name}-entitlements.plist" entitlementsXml;
   bundle = pkgs.runCommand "${name}-native-bundle" { } ''
     mkdir -p "$out/${name}.app/Contents/MacOS" "$out/${name}.app/Contents/Resources"
+    app="$out/${name}.app"
+    ${helperAssembly.copy}
     cp '${runtime}/bin/macos-permissions-host' "$out/${name}.app/Contents/MacOS/macos-permissions-host"
     cp '${infoPlist}' "$out/${name}.app/Contents/Info.plist"
     cp '${policy}' "$out/${name}.app/Contents/Resources/policy.json"
@@ -185,18 +201,21 @@ let
       displayName
       signer
       requirement
-      launchd
       ;
+    launchd = launchd // { extra = { ProcessType = "Background"; } // (launchd.extra or { }); };
+    guiLaunchd = guiLaunchd // { extra = { ProcessType = "Background"; } // (guiLaunchd.extra or { }); };
     actions = { };
     supervisedChildren = policyData.supervisedChildren or [ ];
     statusAllowedUids = [ policyData.uid ];
     socketMode = 384; # 0600; the native host independently checks peer UIDs.
-    session = "gui-agent";
+    session = "system-daemon";
+    targetUid = policyData.uid;
+    inherit (policyData) policyRevision releaseRevision;
     hostBundle = {
       path = "${bundle}/${name}.app";
       executable = "Contents/MacOS/macos-permissions-host";
       inherit hostSourceHash entitlements;
-      nestedCode = [ ];
+      nestedCode = helperAssembly.nestedCode;
       signingOptions = [ "runtime" ];
     };
   };
@@ -214,6 +233,25 @@ assert lib.assertMsg (
   ) automationTargets
   && builtins.length automationTargets == builtins.length (lib.unique automationTargets)
 ) "permissions-host automationTargets must be unique bundle identifiers";
+assert lib.assertMsg (
+  lib.all (child: builtins.hasAttr child.helperPath helperAssembly.requirements) (policyData.supervisedChildren or [ ])
+) "permissions-host supervised children must reference an assembled native helper";
+assert lib.assertMsg (
+  lib.all (
+    child: lib.all (service: builtins.elem service enabledGrants) child.requiredTccServices
+  ) (policyData.supervisedChildren or [ ])
+) "permissions-host child requires a disabled grant category";
+assert lib.assertMsg (
+  lib.all (child:
+    (child.readiness.kind != "probe-op" || (
+      enableExampleChildren && child.readiness.op == "example.ready" && child.requiresSession == "none"
+    ))
+    && (child.schedule.kind != "launchd-scheduled" || (
+      enableExampleChildren && child.schedule.op == "example.run"
+      && child.id == "headless-worker" && child.requiresSession == "none"
+    ))
+  ) (policyData.supervisedChildren or [ ])
+) "permissions-host child operation is absent from the compiled product registry";
 {
   inherit
     runtime

@@ -28,6 +28,7 @@ impl Ctl {
     }
 
     pub(super) fn supplied_evidence(&self) -> Result<Value> {
+        if self.paired() { return self.topology_evidence(); }
         let desired = launchd::validate(self)?;
         let (loaded, pid) = self.job(&desired.domain)?;
         if !loaded { return Err(mismatch("Supplied job is not loaded")); }
@@ -64,7 +65,7 @@ impl Ctl {
         let (loaded, pid) = self.job(&validated.domain)?;
         if loaded && previous.as_ref().is_some_and(|old| old["domain"] == validated.domain &&
             old["targetUid"] == validated.target_uid && old["plistDigest"] == digest && old["appInode"].as_u64() == app_inode) {
-            if validated.evidence == "resident" && pid.is_none() { return Err(fail(75, "restart-deferred", "Resident is configured but not running")); }
+            if validated.evidence == "resident" && pid.is_none() { return Err(mismatch("Resident is configured but not running")); }
             return self.supplied_summary(&validated, false, true, pid);
         }
         let target = format!("{}/{}", validated.domain, validated.label);
@@ -81,7 +82,7 @@ impl Ctl {
         atomic_write(&record, &serde_json::to_vec(&json!({"domain": validated.domain, "targetUid": validated.target_uid, "plistDigest": digest, "appInode": app_inode}))?)?;
         let (loaded, pid) = self.job(&validated.domain)?;
         if !loaded { return Err(mismatch("Configured job is not loaded")); }
-        if validated.evidence == "resident" && pid.is_none() { return Err(fail(75, "restart-deferred", "Resident is configured but not running")); }
+        if validated.evidence == "resident" && pid.is_none() { return Err(mismatch("Resident is configured but not running")); }
         self.supplied_summary(&validated, true, loaded, pid)
     }
 }

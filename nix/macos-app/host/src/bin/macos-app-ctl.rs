@@ -11,9 +11,9 @@ const LAUNCHCTL: &str = "launchctl";
 
 type Result<T, E = Failure> = std::result::Result<T, E>;
 #[derive(Debug)]
-struct Failure { code: i32, kind: &'static str, category: Option<&'static str>, reason: String }
-fn fail(code: i32, kind: &'static str, reason: impl Into<String>) -> Failure { Failure { code, kind, category: None, reason: reason.into() } }
-fn signing(category: &'static str, reason: impl Into<String>) -> Failure { Failure { code: 20, kind: "signing-failed", category: Some(category), reason: reason.into() } }
+struct Failure { code: i32, kind: &'static str, category: Option<&'static str>, reason: String, details: Option<Value> }
+fn fail(code: i32, kind: &'static str, reason: impl Into<String>) -> Failure { Failure { code, kind, category: None, reason: reason.into(), details: None } }
+fn signing(category: &'static str, reason: impl Into<String>) -> Failure { Failure { code: 20, kind: "signing-failed", category: Some(category), reason: reason.into(), details: None } }
 fn mismatch(reason: impl Into<String>) -> Failure { fail(22, "verification-failed", reason) }
 impl From<io::Error> for Failure { fn from(e: io::Error) -> Self { fail(23, "operation-failed", e.to_string()) } }
 impl From<serde_json::Error> for Failure { fn from(e: serde_json::Error) -> Self { fail(64, "invalid-input", e.to_string()) } }
@@ -128,6 +128,8 @@ mod supplied;
 mod lifecycle;
 #[path = "macos-app-ctl/readiness.rs"]
 mod readiness;
+#[path = "macos-app-ctl/topology.rs"]
+mod topology;
 #[cfg(feature = "test-signing-cert")]
 #[path = "macos-app-ctl/helper_probe.rs"]
 mod helper_probe;
@@ -543,6 +545,7 @@ impl Ctl {
         Ok(json!({"changed": true, "generation": generation, "gcRootCreated": rooted, "consumerRootRequired": !rooted}))
     }
     fn converge(&self) -> Result<Value> {
+        if self.paired() { return self.converge_topology(); }
         let domain = self.domain()?;
         let app = self.app()?; let state = self.state()?;
         let program = app.join("Contents/MacOS").join(self.field("hostExecutable")?);
@@ -592,10 +595,20 @@ impl Ctl {
         let (loaded, pid) = self.job(&domain)?;
         let pid = pid.filter(|_| loaded).ok_or_else(|| fail(23, "job-not-running", "Launchd job is not running"))?;
         let mut stream = self.connect_endpoint(&domain, pid)?;
+        let requirement = macos_app_host::CompiledRequirement::compile(self.field("requirement")?)
+            .map_err(|e| fail(64, "invalid-input", e.to_string()))?;
+        let target_uid = self.args.get("target-uid").map(|value| value.parse::<u32>()
+            .map_err(|_| fail(64, "invalid-input", "Invalid target UID"))).transpose()?.unwrap_or_else(|| unsafe { libc::geteuid() });
+        let peer = macos_app_host::authenticate_peer(&stream, macos_app_host::PeerPolicy {
+            allowed_uids: &[target_uid], requirement: &requirement,
+        }).map_err(|error| mismatch(error.to_string()))?;
+        if peer.token().pid() != pid { return Err(mismatch("Authenticated status endpoint differs from launchd PID")); }
+        peer.recheck_freshness().map_err(|error| mismatch(error.to_string()))?;
         stream.set_read_timeout(Some(Duration::from_secs(5)))?; stream.set_write_timeout(Some(Duration::from_secs(5)))?;
         stream.write_all(b"{\"wireVersion\":1,\"action\":\"status\",\"args\":{}}\n")?;
         let mut bytes = Vec::new();
-        BufReader::new(stream).take(65536).read_until(b'\n', &mut bytes)?;
+        BufReader::new(&mut stream).take(65536).read_until(b'\n', &mut bytes)?;
+        peer.recheck_freshness().map_err(|error| mismatch(error.to_string()))?;
         Ok(serde_json::from_slice(&bytes)?)
     }
     fn verify_expected(&self, expected_hash: &str, expected_metadata: &str, generation: &Path) -> Result<Value> {
@@ -608,11 +621,8 @@ impl Ctl {
         if !loaded || pid.is_none() || ipc["ok"] != true || ipc["status"]["hostSourceHash"] != expected_hash || ipc["status"]["generation"] != manifest["generation"] || ipc["status"]["pid"].as_u64() != pid.map(u64::from) { return Err(mismatch("IPC host hash/generation/PID does not match desired and launchd")); }
         let mode = socket_mode(self.arg("socket")?);
         if mode.map(u64::from) != manifest["socketMode"].as_u64() { return Err(mismatch(format!("Socket mode {mode:?} differs from the generation's socketMode"))); }
-        let children = self.config.get("supervisedChildren").map(|value| {
-            serde_json::from_value::<macos_app_host::children::Children>(value.clone())
-        }).transpose()?.unwrap_or_default();
-        children.require_inactive().map_err(|reason| fail(64, "invalid-input", reason))?;
-        let children: Vec<_> = children.0.iter().map(|child| json!({"id": child.id, "activation": "inactive", "state": "inactive", "probe": "not-run"})).collect();
+        let children = if self.paired() { self.topology_evidence_with(&ipc)?["children"].clone() }
+            else { topology::verify_children(&self.config, &ipc["status"]["children"])? };
         Ok(json!({"verified": true, "domain": domain, "pid": pid, "hostSourceHash": expected_hash, "bundleMetadataDigest": expected_metadata, "generation": generation, "children": children}))
     }
     fn verify(&self) -> Result<Value> {
@@ -693,6 +703,9 @@ fn known_option(key: &str) -> bool {
             | "state"
             | "socket"
             | "plist-dir"
+            | "gui-plist-dir"
+            | "gui-plist"
+            | "gui-socket"
             | "domain"
             | "desired"
             | "generation"
@@ -777,10 +790,28 @@ fn run() -> Result<Value> {
         .ok_or_else(|| fail(64, "invalid-input", "Missing --config"))?;
     let config: Value = serde_json::from_slice(&fs::read(config_path)?)?;
     if let Some(declarations) = config.get("supervisedChildren") {
-        let children: macos_app_host::children::Children = serde_json::from_value(declarations.clone())?;
-        children.require_inactive().map_err(|reason| fail(64, "invalid-input", reason))?;
+        let _: macos_app_host::children::Children = serde_json::from_value(declarations.clone())?;
+    }
+    if config.get("guiLaunchd").is_some_and(Value::is_object) {
+        if !args.contains_key("target-uid") {
+            if let Some(uid) = config["targetUid"].as_u64() { args.insert("target-uid".into(), uid.to_string()); }
+        }
+        args.entry("domain".into()).or_insert_with(|| "system".into());
     }
     let ctl = Ctl { config, args };
+    if ctl.args.contains_key("gui-plist") && (!ctl.paired() || !ctl.args.contains_key("plist")) {
+        return Err(fail(64, "invalid-input", "--gui-plist requires paired configuration and --plist"));
+    }
+    if ctl.paired() && ctl.args.contains_key("plist") && !ctl.args.contains_key("gui-plist") {
+        return Err(fail(64, "invalid-input", "Paired supplied configuration requires both --plist and --gui-plist"));
+    }
+    if ctl.paired() && matches!(action.as_str(), "install-host" | "rollback")
+        && (!ctl.args.contains_key("artifact") || !ctl.args.contains_key("generation")) {
+        return Err(fail(64, "invalid-input", "Paired install-host/rollback requires --artifact and --generation for one coherent release transaction"));
+    }
+    if ctl.paired() && action == "select-generation" {
+        return Err(fail(64, "invalid-input", "Paired generation selection belongs to install-host --artifact --generation"));
+    }
     // Keychain calls in this process fail instead of showing UI (errSecInteractionNotAllowed).
     // SAFETY: a plain flag setter for this process's Security framework client state.
     let status = unsafe { SecKeychainSetUserInteractionAllowed(0) };
@@ -816,6 +847,7 @@ fn run() -> Result<Value> {
         "install-host" if ctl.args.contains_key("artifact") => ctl.install_artifact(),
         "install-host" => ctl.install(),
         "select-generation" => ctl.generation(),
+        "converge-launchd" if ctl.paired() => ctl.converge_topology(),
         "converge-launchd" if ctl.args.contains_key("plist") => ctl.converge_supplied(),
         "converge-launchd" => ctl.converge(),
         "verify" if ctl.args.contains_key("artifact") => ctl.verify_artifact(),
@@ -838,7 +870,9 @@ fn run() -> Result<Value> {
     Ok(json!({"ok": true, "primitive": action, "result": result}))
 }
 fn print_failure(e: Failure) -> ! {
-    println!("{}", json!({"ok": false, "error": {"kind": e.kind, "category": e.category, "reason": e.reason, "exitCode": e.code}}));
+    let mut error = json!({"kind": e.kind, "category": e.category, "reason": e.reason, "exitCode": e.code});
+    if let Some(details) = e.details { error["details"] = details; }
+    println!("{}", json!({"ok": false, "error": error}));
     std::process::exit(e.code);
 }
 fn main() {

@@ -94,3 +94,7 @@ devenv.local.*
 
 # Agent-session MCP server config (e.g. coord/smalltalk); regenerated per session, not tracked
 .mcp.json
+
+# Standalone macOS host crate builds are local artifacts.
+/nix/macos-app/host/target/
+/nix/permissions-host/host/target/

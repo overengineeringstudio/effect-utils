@@ -31,7 +31,7 @@
         "requiresSession": {"enum": ["none", "gui"]},
         "rlimitNofile": {"type": "object", "additionalProperties": false, "required": ["soft", "hard"], "properties": {"soft": {"type": "integer", "minimum": 1, "maximum": 18446744073709551615}, "hard": {"type": "integer", "minimum": 1, "maximum": 18446744073709551615}}},
         "nice": {"type": "integer", "minimum": -20, "maximum": 19},
-        "processType": {"enum": ["Background", "Standard", "Interactive", "Adaptive"]},
+        "processType": {"enum": ["Background", "Standard", "Interactive", "Adaptive"], "description": "Inherited launchd job ProcessType, not a per-child override. Must equal the system supervisor job type for requiresSession=none or the GUI agent job type for requiresSession=gui; mismatches are rejected at admission."},
         "directories": {"type": "object", "additionalProperties": false, "required": ["state", "run", "log"], "properties": {"state": {"$ref": "#/$defs/directory"}, "run": {"$ref": "#/$defs/directory"}, "log": {"$ref": "#/$defs/directory"}}},
         "clientSocket": {"oneOf": [{"$ref": "#/$defs/absolute"}, {"type": "null"}]},
         "stop": {"type": "object", "additionalProperties": false, "required": ["signal", "graceMs"], "properties": {"signal": {"enum": ["int", "term"]}, "graceMs": {"$ref": "#/$defs/timeout"}}},

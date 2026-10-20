@@ -27,6 +27,26 @@ fn desired(ctl: &Ctl) -> Result<Value> {
     }
 }
 
+fn restore_pointer(path: &Path, value: &Value) -> Result<()> {
+    if value.is_null() { return remove_if_present(path); }
+    let target = Path::new(value.as_str().ok_or_else(|| mismatch("Corrupt rollback pointer"))?);
+    if !target.is_absolute() { return Err(mismatch("Rollback pointer must be absolute")); }
+    select(path, target)
+}
+
+fn check_child_endpoints(old: &Value, desired: &Value) -> Result<()> {
+    for previous in old["supervisedChildren"].as_array().into_iter().flatten() {
+        if let Some(current) = desired["supervisedChildren"].as_array().into_iter().flatten().find(|child| child["id"] == previous["id"]) {
+            if previous["clientSocket"] != current["clientSocket"] {
+                return Err(fail(64, "endpoint-migration-required", format!(
+                    "Child {} changes its fixed clientSocket; explicit endpoint migration is required",
+                    previous["id"].as_str().unwrap_or("unknown"))));
+            }
+        }
+    }
+    Ok(())
+}
+
 /// Mutable destination directories never traverse a symlink or another user's
 /// writable directory. Root-owned read-only ancestors are acceptable for users.
 pub(super) fn destination(path: &Path, create: bool) -> Result<()> {
@@ -248,6 +268,7 @@ impl Ctl {
     }
 
     pub(super) fn install_artifact(&self) -> Result<Value> {
+        if self.paired() { return self.install_paired_artifact(); }
         if ["keychain", "keychain-password-fd", "signing-auth-pending"]
             .iter()
             .any(|key| self.args.contains_key(*key))
@@ -346,6 +367,177 @@ impl Ctl {
         )
     }
 
+    /// A paired release has one rollback authority: the existing D.rollback.json.
+    /// It is durable before the bundle exchange and removed only after both job
+    /// configurations and authenticated process identities are committed.
+    fn install_paired_artifact(&self) -> Result<Value> {
+        self.arg("generation")?;
+        if ["keychain", "keychain-password-fd", "signing-auth-pending"].iter().any(|key| self.args.contains_key(*key)) {
+            return Err(fail(64, "invalid-input", "Paired artifact import accepts no signing credentials"));
+        }
+        self.recover_paired()?;
+        let descriptor = desired(self)?;
+        let candidate = artifact::verify_release(Path::new(self.arg("artifact")?), &descriptor, &self.config)?;
+        self.verify_bundle(&candidate.app)?;
+        let app = self.app()?;
+        let state = self.state()?;
+        let parent = app.parent().ok_or_else(|| fail(64, "invalid-input", "App requires parent"))?;
+        let archive = PathBuf::from(self.arg("archive-dir")?);
+        let generation = Path::new(self.arg("generation")?);
+        if !generation.is_absolute() || !generation.join("manifest.json").is_file() {
+            return Err(fail(64, "invalid-input", "Generation must be absolute and contain manifest.json"));
+        }
+        // This validates target identity and both restorable configurations
+        // before the exchange. A first install cannot adopt unrelated jobs.
+        let topology = self.capture_topology()?;
+        destination(parent, true)?;
+        destination(&archive, true)?;
+        destination(&state, true)?;
+        if fs::metadata(parent)?.dev() != fs::metadata(&archive)?.dev() {
+            return Err(fail(64, "invalid-input", "App and archive must share a filesystem for atomic exchange"));
+        }
+        self.reconcile(&app)?;
+        let incumbent = Incumbent::parse(self.args.get("incumbent").map(String::as_str))?;
+        let mut old_config = self.config.clone();
+        let unchanged = if app.exists() {
+            let metadata = fs::symlink_metadata(&app)?;
+            if !metadata.is_dir() || metadata.uid() != unsafe { libc::geteuid() } {
+                return Err(fail(64, "invalid-input", "Installed app is not an owned directory"));
+            }
+            let actual = self.describe_incumbent(&app, incumbent)?;
+            old_config = read_json(&self.host_config_path(&app)?)?.ok_or_else(|| fail(64, "migration-required", "Paired installation requires a recorded paired incumbent; migrate the old job topology explicitly"))?;
+            if !old_config["guiLaunchd"].is_object() || old_config["session"] != self.config["session"]
+                || old_config["targetUid"] != self.config["targetUid"]
+                || old_config["bundleId"] != self.config["bundleId"]
+                || old_config["launchd"]["label"] != self.config["launchd"]["label"]
+                || old_config["guiLaunchd"]["label"] != self.config["guiLaunchd"]["label"] {
+                return Err(fail(64, "migration-required", "Release installation cannot change the pinned paired job principal or adopt a single-job incumbent"));
+            }
+            check_child_endpoints(&old_config, &self.config)?;
+            actual.as_ref() == Some(&descriptor) && self.verify_bundle(&app).is_ok()
+                && artifact::artifact_revision(&app)? == candidate.sealed_revision
+        } else { false };
+        let stage = if unchanged { None } else {
+            let nonce = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)
+                .map_err(|error| fail(23, "operation-failed", error.to_string()))?.as_nanos();
+            let stage = archive.join(format!("retained-{}-{nonce}.app", std::process::id()));
+            copy_app(&candidate.app, &stage)?;
+            let staged = (|| {
+                self.verify_bundle(&stage)?;
+                if artifact::describe(&stage, &self.config)? != descriptor || artifact::artifact_revision(&stage)? != candidate.sealed_revision {
+                    return Err(mismatch("Staged artifact differs from the independently pinned release"));
+                }
+                checked("/bin/chmod", &["-R", "u+w", text(&stage)?])?;
+                self.record_host_config(&stage)
+            })();
+            if let Err(error) = staged {
+                checked("/bin/chmod", &["-R", "u+w", text(&stage)?])?;
+                fs::remove_dir_all(&stage)?;
+                return Err(error);
+            }
+            Some(stage)
+        };
+        let record = json!({"direction": "paired-release", "stage": stage,
+            "oldInode": inode(&app), "candidateInode": stage.as_deref().and_then(inode).or_else(|| inode(&app)),
+            "oldConfig": old_config, "topology": topology,
+            "generation": pointer(&state.join("current")), "previousGeneration": pointer(&state.join("previous")),
+            "archive": pointer(&archive_pointer(&app)), "archiveGeneration": pointer(&state.join("host-previous-generation"))});
+        let journal = rollback_record(&app);
+        atomic_write(&journal, &serde_json::to_vec(&record)?)?;
+        let applied = (|| {
+            if let Some(stage) = &stage {
+                // Stop the incumbent before moving its bytes. A crash before or
+                // after exchange is distinguished by the recorded bundle inode.
+                self.stop_topology()?;
+                if app.exists() { exchange(stage, &app)?; } else { fs::rename(stage, &app)?; }
+                if failpoint("paired-release-after-exchange") { std::process::exit(137); }
+                if failpoint("paired-release-fail-after-exchange") { return Err(fail(23, "operation-failed", "Injected release failure after exchange")); }
+            }
+            let selected = self.generation()?;
+            let launchd = self.apply_topology()?;
+            // Admission is separate: GUI absence or pending consent does not
+            // discard a correctly installed and authenticated system release.
+            if let Some(stage) = &stage {
+                if record["oldInode"].is_number() {
+                    checked("/bin/chmod", &["-R", "a-w", text(stage)?])?;
+                    select(&archive_pointer(&app), stage)?;
+                    restore_pointer(&state.join("host-previous-generation"), &record["generation"])?;
+                }
+            }
+            remove_if_present(&signing_failure_marker(&app))?;
+            remove_if_present(&journal)?;
+            Ok(json!({"changed": !unchanged || selected["changed"] == true || launchd["changed"] == true,
+                "descriptor": descriptor, "sealedRevision": candidate.sealed_revision,
+                "generation": generation, "launchd": launchd, "admissionRequired": true,
+                "archive": pointer(&archive_pointer(&app))}))
+        })();
+        if let Err(error) = applied {
+            self.recover_paired().map_err(|recovery| fail(23, "release-unresolved",
+                format!("{}; recovery failed: {}; D.rollback.json retained", error.reason, recovery.reason)))?;
+            return Err(error);
+        }
+        applied
+    }
+
+    /// Roll back an interrupted paired release/configuration transaction. Every
+    /// step is restartable; the journal is the last recovery state removed.
+    pub(super) fn recover_paired(&self) -> Result<()> {
+        let app = self.app()?;
+        let journal = rollback_record(&app);
+        let Some(record) = read_json(&journal)? else { return Ok(()); };
+        let direction = record["direction"].as_str().ok_or_else(|| mismatch("Corrupt rollback journal"))?;
+        if !matches!(direction, "paired-release" | "paired-config") {
+            return Err(mismatch("A non-paired host rollback must be resumed before paired installation"));
+        }
+        let config = record["oldConfig"].as_object().ok_or_else(|| mismatch("Paired rollback lacks incumbent configuration"))?;
+        let old = Ctl { config: Value::Object(config.clone()), args: self.args.clone() };
+        // Validate the journal's snapshot identity before touching the live jobs.
+        // Both controls must retain the same public principal and explicit UID.
+        if old.config["bundleId"] != self.config["bundleId"] || old.config["targetUid"] != self.config["targetUid"] {
+            return Err(mismatch("Paired rollback principal differs from the requested release"));
+        }
+        self.stop_topology()?;
+        if direction == "paired-release" {
+            let old_inode = record["oldInode"].as_u64();
+            let candidate_inode = record["candidateInode"].as_u64().ok_or_else(|| mismatch("Corrupt candidate inode"))?;
+            let stage = record["stage"].as_str().map(PathBuf::from);
+            if let Some(stage) = &stage {
+                let archive = PathBuf::from(self.arg("archive-dir")?);
+                if stage.parent() != Some(archive.as_path()) || !stage.file_name().is_some_and(|name| name.to_string_lossy().starts_with("retained-")) {
+                    return Err(mismatch("Paired rollback stage is outside the explicit archive"));
+                }
+                if inode(&app) == Some(candidate_inode) {
+                    if let Some(expected) = old_inode {
+                        if inode(stage) != Some(expected) { return Err(mismatch("Paired rollback incumbent stage differs")); }
+                        old.verify_bundle(stage)?;
+                        checked("/bin/chmod", &["-R", "u+w", text(stage)?])?;
+                        exchange(stage, &app)?;
+                    } else {
+                        if stage.exists() { return Err(mismatch("Unexpected initial-install rollback stage")); }
+                        fs::rename(&app, stage)?;
+                    }
+                } else if inode(&app) != old_inode { return Err(mismatch("Installed bundle holds neither recorded release")); }
+            } else if inode(&app) != old_inode { return Err(mismatch("Unchanged release inode differs")); }
+            let state = self.state()?;
+            restore_pointer(&state.join("current"), &record["generation"])?;
+            restore_pointer(&state.join("previous"), &record["previousGeneration"])?;
+            restore_pointer(&archive_pointer(&app), &record["archive"])?;
+            restore_pointer(&state.join("host-previous-generation"), &record["archiveGeneration"])?;
+        }
+        if app.exists() { old.verify_bundle(&app)?; }
+        old.restore_topology(&record["topology"])?;
+        if direction == "paired-release" {
+            if let Some(stage) = record["stage"].as_str().map(PathBuf::from) {
+                if stage.exists() {
+                    if inode(&stage) != record["candidateInode"].as_u64() { return Err(mismatch("Rejected release stage inode differs")); }
+                    checked("/bin/chmod", &["-R", "u+w", text(&stage)?])?;
+                    fs::remove_dir_all(stage)?;
+                }
+            }
+        }
+        remove_if_present(&journal)
+    }
+
     pub(super) fn verify_artifact(&self) -> Result<Value> {
         let descriptor = desired(self)?;
         let candidate = artifact::verify_release(Path::new(self.arg("artifact")?), &descriptor, &self.config)?;
@@ -360,19 +552,25 @@ impl Ctl {
         let generation = Path::new(self.arg("generation")?);
         if pointer(&state.join("current")).as_deref() != Some(generation) { return Err(mismatch("Generation pointer differs")); }
         let manifest: Value = serde_json::from_slice(&fs::read(generation.join("manifest.json"))?)?;
-        let live = if self.args.contains_key("plist") { Some(self.supplied_evidence()?) } else { None };
+        let live = if self.paired() { Some(self.topology_evidence()?) }
+            else if self.args.contains_key("plist") { Some(self.supplied_evidence()?) } else { None };
         Ok(json!({"verified": true, "descriptor": descriptor, "sealedRevision": sealed_revision,
             "generation": generation, "generationDigest": manifest["generation"], "launchd": live}))
     }
 
     pub(super) fn rollback_artifact(&self) -> Result<Value> {
+        if self.paired() {
+            let installed = self.install_paired_artifact()?;
+            return Ok(json!({"installed": installed, "restartRequired": false, "admissionRequired": true}));
+        }
         // The caller selects the exact release/generation pair; no latest-success policy.
         let installed = self.install_artifact()?;
         let selected = self.generation()?;
-        let launchd = if self.args.contains_key("plist") { Some(self.converge_supplied()?) } else { None };
+        let launchd = if self.paired() { Some(self.converge_topology()?) }
+            else if self.args.contains_key("plist") { Some(self.converge_supplied()?) } else { None };
         let verified = self.verify_artifact()?;
         Ok(json!({"installed": installed, "selected": selected, "launchd": launchd, "verification": verified,
-            "restartRequired": !self.args.contains_key("plist")}))
+            "restartRequired": !self.paired() && !self.args.contains_key("plist")}))
     }
 
     pub(super) fn status_artifact(&self) -> Result<Value> {
@@ -385,7 +583,8 @@ impl Ctl {
             sealed_revision == candidate.sealed_revision;
         let generation = pointer(&self.state()?.join("current"));
         let manifest = generation.as_ref().map(|path| read_json(&path.join("manifest.json"))).transpose()?.flatten();
-        let live = if self.args.contains_key("plist") { Some(self.supplied_evidence()?) } else { None };
+        let live = if self.paired() { Some(self.topology_evidence()?) }
+            else if self.args.contains_key("plist") { Some(self.supplied_evidence()?) } else { None };
         Ok(json!({"descriptor": actual, "sealedRevision": sealed_revision, "artifactValid": valid,
             "activeGeneration": generation, "generationDigest": manifest.as_ref().map(|value| &value["generation"]),
             "launchd": live, "hostArchive": pointer(&archive_pointer(&app))}))
@@ -424,6 +623,21 @@ impl Ctl {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn fixed_child_endpoints_require_explicit_migration() {
+        let old = json!({"supervisedChildren": [{"id": "worker", "clientSocket": "/run/fixed.sock"}]});
+        assert!(check_child_endpoints(&old, &old).is_ok());
+        for socket in [json!("/run/changed.sock"), Value::Null] {
+            let candidate = json!({"supervisedChildren": [{"id": "worker", "clientSocket": socket}]});
+            let error = check_child_endpoints(&old, &candidate).unwrap_err();
+            assert_eq!(error.code, 64);
+            assert_eq!(error.kind, "endpoint-migration-required");
+        }
+        assert!(check_child_endpoints(&old, &json!({"supervisedChildren": []})).is_ok());
+        assert!(check_child_endpoints(&old, &json!({"supervisedChildren": [
+            {"id": "worker", "clientSocket": "/run/fixed.sock"}, {"id": "new", "clientSocket": "/run/new.sock"}
+        ]})).is_ok());
+    }
     #[test]
     fn desired_symlink_is_copied_as_a_real_directory() {
         let scratch = std::env::current_dir().unwrap().join("tmp");

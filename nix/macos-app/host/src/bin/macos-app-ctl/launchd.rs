@@ -12,6 +12,7 @@ pub(super) struct Validated {
     pub(super) label: String,
     pub(super) program: PathBuf,
     pub(super) disabled: bool,
+    pub(super) process_policy: Value,
 }
 
 fn invalid(reason: impl Into<String>) -> Failure { fail(64, "invalid-input", reason) }
@@ -145,7 +146,7 @@ fn validate_value(value: &Value, input: &Input<'_>) -> Result<()> {
     Ok(())
 }
 
-fn account_names(target_uid: u32) -> Result<(String, String)> {
+pub(super) fn account_names(target_uid: u32) -> Result<(String, String)> {
     use std::ffi::CStr;
     let mut buffer = vec![0_u8; 16 * 1024];
     let mut account = std::mem::MaybeUninit::<libc::passwd>::uninit();
@@ -181,6 +182,21 @@ pub(super) fn validate(ctl: &Ctl) -> Result<Validated> {
         .map_err(|error| invalid(format!("Unsafe captured plist ACL: {error}")))?;
     let mut bytes = Vec::new();
     file.read_to_end(&mut bytes)?;
+    validate_bytes(ctl, bytes)
+}
+
+pub(super) fn validate_bytes(ctl: &Ctl, bytes: Vec<u8>) -> Result<Validated> {
+    validate_snapshot(ctl, bytes, true)
+}
+
+pub(super) fn validate_previous_bytes(ctl: &Ctl, bytes: Vec<u8>) -> Result<Validated> {
+    validate_snapshot(ctl, bytes, false)
+}
+
+fn validate_snapshot(ctl: &Ctl, bytes: Vec<u8>, require_current_policy: bool) -> Result<Validated> {
+    let target_uid = uid(ctl.arg("target-uid")?)?;
+    let domain = ctl.arg("domain")?;
+    let evidence = ctl.arg("evidence")?;
     // Parse exactly the protected snapshot returned to convergence, not a second path read.
     let mut child = Command::new("/usr/bin/plutil").args(["-convert", "json", "-o", "-", "--", "-"])
         .stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped()).spawn()?;
@@ -197,21 +213,54 @@ pub(super) fn validate(ctl: &Ctl) -> Result<Validated> {
     protected_path(&program, target_uid)?;
     let metadata = fs::symlink_metadata(&program)?;
     if !metadata.is_file() || metadata.mode() & 0o111 == 0 { return Err(invalid("Installed entrypoint must be an executable regular file")); }
-    let generic_argv = if executable == "macos-app-host" {
+    let generic_argv = if matches!(executable, "macos-app-host" | "macos-permissions-host") {
         let state = ctl.state()?;
         let socket = Path::new(ctl.arg("socket")?);
         safe_path(&state)?;
         safe_path(socket)?;
         protected_path(&state, target_uid)?;
         protected_path(socket.parent().ok_or_else(|| invalid("Socket has no parent"))?, target_uid)?;
-        Some(vec![text(&program)?.to_owned(), "serve".into(), "--socket".into(), text(socket)?.to_owned(), "--generation-pointer".into(), text(&state.join("current"))?.to_owned()])
+        let mut arguments = vec![text(&program)?.to_owned(), "serve".into()];
+        if ctl.config.get("guiLaunchd").is_some_and(Value::is_object) {
+            let role = if domain == "system" { "supervisor" } else { "gui-agent" };
+            let gui_socket = Path::new(ctl.arg("gui-socket")?);
+            safe_path(gui_socket)?;
+            protected_path(gui_socket.parent().ok_or_else(|| invalid("GUI socket has no parent"))?, target_uid)?;
+            if gui_socket == socket || gui_socket.parent() == socket.parent() {
+                return Err(invalid("Public and private endpoints require distinct socket directories"));
+            }
+            arguments.extend(["--role".into(), role.into(), "--gui-socket".into(), text(gui_socket)?.to_owned()]);
+            if role == "supervisor" {
+                arguments.extend(["--socket".into(), text(socket)?.to_owned(), "--generation-pointer".into(), text(&state.join("current"))?.to_owned()]);
+            }
+        } else {
+            arguments.extend(["--socket".into(), text(socket)?.to_owned(), "--generation-pointer".into(), text(&state.join("current"))?.to_owned()]);
+        }
+        Some(arguments)
     } else { None };
     let names = if domain == "system" { Some(account_names(target_uid)?) } else { None };
     let label = ctl.label()?;
     validate_value(&value, &Input { session: ctl.field("session")?, domain, target_uid, evidence, label, program: &program, generic_argv,
         user_name: names.as_ref().map(|n| n.0.as_str()), group_name: names.as_ref().map(|n| n.1.as_str()) })?;
     if value.get("Disabled").is_some_and(|disabled| !disabled.is_boolean()) { return Err(invalid("Disabled must be a boolean")); }
-    Ok(Validated { domain: domain.to_owned(), target_uid, evidence: evidence.to_owned(), bytes, label: label.to_owned(), program, disabled: value["Disabled"] == true })
+    if ctl.paired() {
+        if !matches!(value["ProcessType"].as_str(), Some("Background" | "Standard" | "Interactive" | "Adaptive"))
+            || (require_current_policy && value["ProcessType"] != ctl.config["launchd"]["ProcessType"]) {
+            return Err(invalid("Paired plist ProcessType must equal its declared owning-job ProcessType"));
+        }
+        if value.get("Nice").is_some_and(|nice| nice.as_i64().is_none_or(|nice| !(-20..=20).contains(&nice))) {
+            return Err(invalid("Paired plist Nice must be an integer in -20..20"));
+        }
+        for key in ["SoftResourceLimits", "HardResourceLimits"] {
+            if value.get(key).is_some_and(|limits| !limits.is_object()
+                || limits.get("NumberOfFiles").is_some_and(|limit| limit.as_u64().is_none())) {
+                return Err(invalid("Paired plist nofile limits must be unsigned integers"));
+            }
+        }
+    }
+    let process_policy = json!({"processType": value["ProcessType"], "nice": value["Nice"],
+        "softNofile": value["SoftResourceLimits"]["NumberOfFiles"], "hardNofile": value["HardResourceLimits"]["NumberOfFiles"]});
+    Ok(Validated { domain: domain.to_owned(), target_uid, evidence: evidence.to_owned(), bytes, label: label.to_owned(), program, disabled: value["Disabled"] == true, process_policy })
 }
 
 #[cfg(test)]
