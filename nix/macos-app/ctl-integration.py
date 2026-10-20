@@ -1509,7 +1509,10 @@ os.execv('/usr/bin/codesign', ['codesign'] + args)
     other_app = work / 'other-apps/Other.app'
     common[common.index('--app-dir') + 1] = str(other_app)
     common[common.index('--state') + 1] = str(work / 'other-state')
-    common[common.index('--socket') + 1] = str(work.relative_to(root) / 'other.sock')
+    # EndpointGuard holds an exclusive parent-directory flock for the host's lifetime.
+    other_socket_dir = work / 'other'
+    other_socket_dir.mkdir(mode=0o700)
+    common[common.index('--socket') + 1] = str(other_socket_dir.relative_to(root) / 's')
     install(other)
     call('select-generation', '--generation', first)
     call('converge-launchd')

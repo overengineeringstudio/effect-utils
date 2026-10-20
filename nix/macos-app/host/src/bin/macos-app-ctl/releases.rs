@@ -538,10 +538,11 @@ mod tests {
             ]),
         };
         assert!(ctl.describe_incumbent(&app, Incumbent::Contract).is_err());
-        assert!(matches!(
-            ctl.describe_incumbent(&app, Incumbent::Legacy),
-            Ok(None)
-        ));
+        assert_eq!(
+            ctl.describe_incumbent(&app, Incumbent::Legacy)
+                .expect("Legacy incumbent signature must verify without a recorded config"),
+            None
+        );
         write_plist("dev.example.wrong");
         sign(identifier);
         assert!(ctl.describe_incumbent(&app, Incumbent::Legacy).is_err());
