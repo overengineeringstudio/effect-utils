@@ -99,6 +99,8 @@ let
     binaryName = "genie";
     environment = genieProviders.environment // {
       CLI_BUILD_STAMP = buildStamp;
+      # Bun caches plugin-linked imports without the invoking workspace's lock.
+      BUN_RUNTIME_TRANSPILER_CACHE_PATH = "0";
     };
     expectedExternalCapabilities = genieProviders.capabilities;
     expectedExternalModules = genieProviders.externalModules;

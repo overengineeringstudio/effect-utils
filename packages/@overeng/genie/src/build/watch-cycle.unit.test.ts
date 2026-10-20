@@ -51,7 +51,10 @@ describe('genie watch cycle', () => {
       // them as one batched pass.
       fsSync.mkdirSync(join(root, 'members'), { recursive: true })
 
-      const probe = spawnSync('bun', [probePath, root], { encoding: 'utf8' })
+      const probe = spawnSync('bun', [probePath, root], {
+        encoding: 'utf8',
+        env: { ...process.env, BUN_RUNTIME_TRANSPILER_CACHE_PATH: '0' },
+      })
       expect(probe.status).toBe(0)
 
       const changed = join(root, 'members', 'package.json.genie.ts')

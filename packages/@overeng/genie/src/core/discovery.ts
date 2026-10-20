@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url'
 import { Effect, FileSystem, Option, Path } from 'effect'
 import type { PlatformError } from 'effect/PlatformError'
 
-import { GenieSourceWorkspaceConflictError } from './errors.ts'
+import { GenieRuntimeTranspilerCacheError, GenieSourceWorkspaceConflictError } from './errors.ts'
 import { resolveImportMapSpecifierForImporterSync } from './import-map/mod.ts'
 import * as Observability from './observability.ts'
 import type { StatResult } from './types.ts'
@@ -71,6 +71,15 @@ export const ensureImportMapResolver = Effect.fn('ensureImportMapResolver')(func
   if (typeof Bun === 'undefined') return
   // Compiled graphs carry their own workspace context and do not use the process-global hook.
   if (isCompiledBinary() === true) return
+  if (
+    process.env.BUN_RUNTIME_TRANSPILER_CACHE_PATH !== '0' &&
+    process.env.BUN_RUNTIME_TRANSPILER_CACHE_PATH !== ''
+  ) {
+    return yield* new GenieRuntimeTranspilerCacheError({
+      message:
+        'Bun runtime transpiler caching can reuse imports from a different member pin. Start Bun with BUN_RUNTIME_TRANSPILER_CACHE_PATH=0 before calling loadGenieFile; changing it after startup is not sufficient.',
+    })
+  }
   const normalizedWorkspaceRoot = path.resolve(workspaceRoot)
   if (importMapResolverWorkspace !== undefined) {
     if (importMapResolverWorkspace !== normalizedWorkspaceRoot) {
