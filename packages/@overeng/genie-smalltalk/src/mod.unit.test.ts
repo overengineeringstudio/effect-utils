@@ -119,9 +119,11 @@ describe('mission lanes', () => {
             {
               id: 'verify',
               exec: {
+                id: 'host-proof',
                 host: 'example-host',
                 workspace: '/workspace',
                 launch: Launch.shell({ command: 'true' }),
+                restart: 'never',
               },
             },
           ],
@@ -140,10 +142,11 @@ describe('mission lanes', () => {
         lane "unconfigured" {
         }
         step "verify" {
-          exec {
+          exec "host-proof" {
             host "example-host"
             workspace "/workspace"
             command "true"
+            restart "never"
           }
         }
       }
