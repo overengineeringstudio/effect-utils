@@ -171,12 +171,13 @@ let
   );
   entitlements = pkgs.writeText "${name}-entitlements.plist" entitlementsXml;
   bundle = pkgs.runCommand "${name}-native-bundle" { } ''
-    mkdir -p "$out/${name}.app/Contents/MacOS" "$out/${name}.app/Contents/Resources"
-    cp '${runtime}/bin/macos-permissions-host' "$out/${name}.app/Contents/MacOS/macos-permissions-host"
-    cp '${infoPlist}' "$out/${name}.app/Contents/Info.plist"
-    cp '${policy}' "$out/${name}.app/Contents/Resources/policy.json"
-    cp '${entitlements}' "$out/${name}.app/Contents/Resources/entitlements.plist"
-    printf '%s\n' '${hostSourceHash}' > "$out/${name}.app/Contents/Resources/host-source-hash"
+    app="$out/${name}.app"
+    mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
+    cp '${runtime}/bin/macos-permissions-host' "$app/Contents/MacOS/macos-permissions-host"
+    cp '${infoPlist}' "$app/Contents/Info.plist"
+    cp '${policy}' "$app/Contents/Resources/policy.json"
+    cp '${entitlements}' "$app/Contents/Resources/entitlements.plist"
+    printf '%s\n' '${hostSourceHash}' > "$app/Contents/Resources/host-source-hash"
   '';
   assembly = import ../macos-app { inherit pkgs nixpkgsRevision; } {
     inherit
@@ -230,6 +231,8 @@ assert lib.assertMsg (
   # Those tools do not sign this app until the consumer explicitly seals it.
   inherit (assembly)
     hostApp
+    hostAppBundle
+    appBundleName
     requirement
     ctl
     ctlConfig

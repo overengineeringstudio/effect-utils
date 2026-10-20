@@ -23,6 +23,8 @@
 let
   # Only owner/group/world read-write modes are supported; never executable sockets.
   inherit (pkgs) lib;
+  # Product-facing paths keep one canonical basename, independent of derivation names.
+  appBundleName = "${displayName}.app";
   # Runtime modules live at src's root; controller-only bin sources are excluded.
   runtimeSources = builtins.readDir ./host/src;
   genericHostSourceHash = builtins.hashString "sha256" (
@@ -117,6 +119,7 @@ let
     builtins.toJSON {
       inherit
         bundleId
+        appBundleName
         session
         hostExecutable
         requirement
@@ -234,21 +237,33 @@ let
       ''
     else
       ''
-        mkdir -p "$out/${name}.app/Contents/MacOS"
-        mkdir -p "$out/${name}.app/Contents/Resources"
-        cp '${hostPath}' "$out/${name}.app/Contents/MacOS/${hostExecutable}"
-        printf '%s\n' '${hostSourceHash}' > "$out/${name}.app/Contents/Resources/host-source-hash"
-        cp '${plist}' "$out/${name}.app/Contents/Info.plist"
+        app="$out/${name}.app"
+        mkdir -p "$app/Contents/MacOS"
+        mkdir -p "$app/Contents/Resources"
+        cp '${hostPath}' "$app/Contents/MacOS/${hostExecutable}"
+        printf '%s\n' '${hostSourceHash}' > "$app/Contents/Resources/host-source-hash"
+        cp '${plist}' "$app/Contents/Info.plist"
       ''
   );
+  # Source bytes retain the technical build name; only ctl-created signed copies
+  # use the product-facing appBundleName.
+  hostAppBundle = "${hostApp}/${name}.app";
   # One shared byte-normalization implementation binds sealing and installation.
   desiredDescriptor = pkgs.runCommand "${name}-desired-host.json" { } ''
     '${genericHost}/bin/macos-app-ctl' describe-host \
-      --config '${ctlConfig}' --desired '${hostApp}/${name}.app' > "$out"
+      --config '${ctlConfig}' --desired ${lib.escapeShellArg hostAppBundle} > "$out"
   '';
 in
 assert pkgs.stdenv.hostPlatform.isDarwin;
 assert builtins.match "[A-Za-z0-9._-]+" name != null;
+assert
+  builtins.isString displayName
+  && displayName != ""
+  && displayName != "."
+  && displayName != ".."
+  && !lib.hasInfix "/" displayName
+  && !lib.hasInfix "\\" displayName
+  && builtins.match ".*[[:cntrl:]].*" displayName == null;
 assert builtins.match "[A-Za-z0-9.-]+" bundleId != null;
 assert builtins.match "[A-Z0-9]+" signer.teamId != null;
 assert signer.identity != "" && signer.identity != "-";
@@ -316,6 +331,8 @@ assert builtins.elem socketMode [
     ctl
     ctlConfig
     hostApp
+    hostAppBundle
+    appBundleName
     desiredDescriptor
     ;
   # Unwrapped host + ctl binaries; its build runs the crate's unit tests.
