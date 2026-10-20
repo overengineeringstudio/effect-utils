@@ -1451,6 +1451,7 @@ os.execv('/usr/bin/codesign', ['codesign'] + args)
     assert install(changed)['result']['changed']
     call('converge-launchd')
     assert call('rollback', '--restore-host', failpoint='rollback-after-exchange', code=137) is None
+    assert call('status')['result']['interruptedRollback']
     # Model an older controller's committed exchange: its journal and pointer still
     # name a standalone archive, but the restored inode is already at the app path.
     rollback_record = app.with_suffix('.rollback.json')
@@ -1464,7 +1465,6 @@ os.execv('/usr/bin/codesign', ['codesign'] + args)
     archive_pointer = app.with_suffix('.previous')
     archive_pointer.unlink()
     archive_pointer.symlink_to(legacy_archive)
-    assert call('status')['result']['interruptedRollback']
     resumed = call('rollback')['result']
     assert resumed['resumed'] and state.joinpath('current').readlink() == third
     call('verify', '--desired', metadata, '--generation', third)
