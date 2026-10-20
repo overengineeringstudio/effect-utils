@@ -1,5 +1,5 @@
 //! macos-app controller wire v1. This socket reports identity only; it never executes actions.
-use crate::{Config, HostError};
+use crate::{Host, HostError};
 use macos_app_security::{AuditToken, endpoint};
 use parking_lot::Mutex;
 use serde::Deserialize;
@@ -118,7 +118,32 @@ fn session() -> &'static str {
     session_kind(status, attributes)
 }
 
-fn respond(stream: &mut UnixStream, pointer: &Path, uid: u32) -> Result<Value, HostError> {
+/// Nice/nofile are kernel observations. ProcessType is immutable policy evidence,
+/// corroborated by ctl against the authenticated owning launchd job definition.
+pub(crate) fn process_policy(host: &Host) -> Result<Value, HostError> {
+    let mut limits: libc::rlimit = unsafe { std::mem::zeroed() };
+    // SAFETY: limits is a live output and getrlimit does not retain it.
+    if unsafe { libc::getrlimit(libc::RLIMIT_NOFILE, &mut limits) } != 0 {
+        return Err(HostError::new("process-policy-unavailable", "Cannot observe host nofile policy"));
+    }
+    // SAFETY: Darwin errno is thread-local. Clear it to distinguish valid nice -1.
+    unsafe { *libc::__error() = 0; }
+    let nice = unsafe { libc::getpriority(libc::PRIO_PROCESS, 0) };
+    if nice == -1 && unsafe { *libc::__error() } != 0 {
+        return Err(HostError::new("process-policy-unavailable", "Cannot observe host nice policy"));
+    }
+    let (role, session) = match host.role {
+        crate::transport::Role::Supervisor => ("supervisor", "none"),
+        crate::transport::Role::GuiAgent => ("gui-agent", "gui"),
+    };
+    let process_type = host.config.job_process_types.get(session)
+        .ok_or_else(|| HostError::new("process-policy-unavailable", "Owning launchd ProcessType is not configured"))?;
+    Ok(json!({"nice":nice,"rlimitNofile":{"soft":limits.rlim_cur,"hard":limits.rlim_max},
+        "role":role,"processType":process_type,"processTypeEvidence":"launchd-inherited"}))
+}
+
+fn respond(stream: &mut UnixStream, pointer: &Path, host: &Host, cancelled: &dyn Fn() -> bool) -> Result<Value, HostError> {
+    let uid = host.config.uid;
     let deadline = Instant::now() + IO_TIMEOUT;
     let token = AuditToken::from_stream(stream)
         .map_err(|_| HostError::new("unauthorized", "Kernel peer credentials unavailable"))?;
@@ -133,14 +158,26 @@ fn respond(stream: &mut UnixStream, pointer: &Path, uid: u32) -> Result<Value, H
     }
     let hash = option_env!("HOST_SOURCE_HASH")
         .ok_or_else(|| HostError::new("hostIdentity", "No compiled host source hash"))?;
+    let mut children = host.child_statuses(cancelled)?;
+    for child in &mut children {
+        child["policyRevision"] = json!(host.config.policy_revision);
+        child["releaseRevision"] = json!(host.config.release_revision);
+    }
+    let gui_policy = match host.gui_channel.call(&json!({"operation":"host.process-policy","input":{}}), cancelled) {
+        Ok(policy) => policy,
+        Err(error) if error.code == "session-unavailable" => Value::Null,
+        Err(error) => return Err(error),
+    };
     Ok(json!({"wireVersion":1,"ok":true,"status":{
         "hostVersion":"1","hostSourceHash":hash,"generation":selected.generation,
-        "pid":std::process::id(),"session":session()
+        "pid":std::process::id(),"session":session(),"children":children,
+        "policyRevision":host.config.policy_revision,"releaseRevision":host.config.release_revision,
+        "processPolicy":process_policy(host)?,"guiProcessPolicy":gui_policy
     }}))
 }
 
-fn handle(stream: &mut UnixStream, pointer: &Path, uid: u32) -> Result<(), HostError> {
-    let response = match respond(stream, pointer, uid) {
+fn handle(stream: &mut UnixStream, pointer: &Path, host: &Host, cancelled: &dyn Fn() -> bool) -> Result<(), HostError> {
+    let response = match respond(stream, pointer, host, cancelled) {
         Ok(response) => response,
         Err(error) => json!({"wireVersion":1,"ok":false,"error":{"code":error.code,"message":error.message}}),
     };
@@ -183,7 +220,11 @@ impl Drop for ControlServer {
 
 /// Start the distinct controller listener before entering the typed RPC server.
 /// Retain this value until the typed server exits. No permission-bearing work runs here.
-pub fn serve(socket: PathBuf, generation_pointer: PathBuf, config: &Config) -> Result<ControlServer, HostError> {
+pub fn serve(socket: PathBuf, generation_pointer: PathBuf, host: Arc<Host>) -> Result<ControlServer, HostError> {
+    if host.role != crate::transport::Role::Supervisor {
+        return Err(HostError::new("policy-denied", "Only the supervisor owns the controller endpoint"));
+    }
+    let config = &host.config;
     if socket == config.socket {
         return Err(HostError::new("policy-denied", "Controller and typed RPC sockets must differ"));
     }
@@ -196,7 +237,6 @@ pub fn serve(socket: PathBuf, generation_pointer: PathBuf, config: &Config) -> R
     let active = Arc::new(Mutex::new(None::<UnixStream>));
     let stopped = Arc::clone(&stop);
     let connection = Arc::clone(&active);
-    let uid = config.uid;
     let thread = thread::Builder::new().name("host-control".into()).spawn(move || {
         let _guard = guard;
         while !stopped.load(Ordering::Acquire) {
@@ -208,7 +248,7 @@ pub fn serve(socket: PathBuf, generation_pointer: PathBuf, config: &Config) -> R
                         if stopped.load(Ordering::Acquire) { break; }
                         *current = Some(cancel);
                     }
-                    let _ = handle(&mut stream, &generation_pointer, uid);
+                    let _ = handle(&mut stream, &generation_pointer, &host, &|| stopped.load(Ordering::Acquire));
                     *connection.lock() = None;
                 }
                 Err(error) if error.kind() == io::ErrorKind::WouldBlock => thread::park_timeout(Duration::from_millis(20)),

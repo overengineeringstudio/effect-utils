@@ -12,7 +12,16 @@ use std::time::Instant;
 pub mod documents;
 pub mod native;
 pub mod control;
-mod transport;
+pub mod transport;
+pub mod children;
+#[cfg(feature = "example-children")]
+pub mod example_children;
+pub fn child_operations() -> children::Registry {
+    #[cfg(feature = "example-children")]
+    { example_children::registry() }
+    #[cfg(not(feature = "example-children"))]
+    { children::Registry::default() }
+}
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -53,6 +62,16 @@ pub struct Config {
     pub notification_min_interval_ms: u64,
     #[serde(default)]
     pub supervised_children: macos_app_security::children::Children,
+    #[serde(default)]
+    pub host_requirement: String,
+    #[serde(default)]
+    pub helper_requirements: BTreeMap<String, String>,
+    #[serde(default)]
+    pub job_process_types: BTreeMap<String, String>,
+    // Only the sealed production loader can establish this provenance. JSON
+    // cannot assert that a caller-selected policy was admitted by the bundle.
+    #[serde(skip)]
+    sealed_policy_digest: Option<String>,
 }
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -75,27 +94,32 @@ pub struct NotifyInput { pub product_id: String, pub title: String, pub body: St
 #[serde(deny_unknown_fields)]
 pub struct EmptyInput {}
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ChildStopInput { pub id: String }
+#[derive(Deserialize)]
 #[serde(tag = "operation", content = "input")]
 pub enum Operation {
     #[serde(rename = "host.status")] Status(EmptyInput),
     #[serde(rename = "documents.copy")] Copy(CopyInput),
     #[serde(rename = "notify")] Notify(NotifyInput),
+    #[serde(rename = "children.stop")] ChildStop(ChildStopInput),
+    #[serde(skip)] Scheduled { operation: String },
 }
 impl Operation {
-    fn id(&self) -> &'static str { match self { Self::Status(_) => "host.status", Self::Copy(_) => "documents.copy", Self::Notify(_) => "notify" } }
+    fn id(&self) -> &str { match self { Self::Status(_) => "host.status", Self::Copy(_) => "documents.copy", Self::Notify(_) => "notify", Self::ChildStop(_) => "children.stop", Self::Scheduled { operation } => operation } }
 }
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct OperationVersion { pub operation: &'static str, pub operation_version: u32 }
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct StatusResult { pub operations: Vec<OperationVersion>, pub policy_revision: String, pub release_revision: String, pub consent_pending: bool }
+pub struct StatusResult { pub operations: Vec<OperationVersion>, pub policy_revision: String, pub release_revision: String, pub consent_pending: bool, pub children: Vec<Value> }
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NotifyResult { pub notification_id: String, pub submitted: bool }
 #[derive(Debug, Serialize)]
 #[serde(untagged)]
-pub enum OperationResult { Status(StatusResult), Copy(CopyResult), Notify(NotifyResult) }
+pub enum OperationResult { Status(StatusResult), Copy(CopyResult), Notify(NotifyResult), ChildStop(Value) }
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AuditedResult { pub audit_id: String, #[serde(flatten)] pub output: OperationResult }
@@ -109,13 +133,19 @@ pub enum Response {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct WireRequest { protocol_version: u32, request_id: String, operation_version: u32, caller_label: String, operation: String, input: Value }
 pub struct Request { request_id: String, caller_label: String, operation: Operation }
-fn decode(bytes: &[u8]) -> Result<Request, HostError> {
+#[cfg(test)]
+fn decode(bytes: &[u8]) -> Result<Request, HostError> { decode_with_registry(bytes, &child_operations()) }
+fn decode_with_registry(bytes: &[u8], registry: &children::Registry) -> Result<Request, HostError> {
     let wire: WireRequest = serde_json::from_slice(bytes).map_err(|_| HostError::new("invalid-request", "Invalid request envelope"))?;
     if wire.protocol_version != 1 || wire.operation_version != 1 { return Err(HostError::new("unsupported-version", "Only protocol and operation version 1 are supported")); }
     if wire.request_id.is_empty() || wire.request_id.len() > 64 || !wire.request_id.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-') || wire.caller_label.len() > 128 { return Err(HostError::new("invalid-request", "Invalid correlation or caller label")); }
-    if !["host.status", "documents.copy", "notify"].contains(&wire.operation.as_str()) { return Err(HostError::new("unknown-operation", "Operation is not registered")); }
-    let operation: Operation = serde_json::from_value(json!({"operation":wire.operation,"input":wire.input})).map_err(|_| HostError::new("invalid-request", "Invalid operation input"))?;
-    let symbolic_id = match &operation { Operation::Copy(input) => Some(&input.source_id), Operation::Notify(input) => Some(&input.product_id), Operation::Status(_) => None };
+    let operation = if ["host.status", "documents.copy", "notify", "children.stop"].contains(&wire.operation.as_str()) {
+        serde_json::from_value(json!({"operation":wire.operation,"input":wire.input})).map_err(|_| HostError::new("invalid-request", "Invalid operation input"))?
+    } else if registry.scheduled.iter().any(|entry| entry.id == wire.operation) {
+        let _: EmptyInput = serde_json::from_value(wire.input).map_err(|_| HostError::new("invalid-request", "Scheduled operation accepts no input"))?;
+        Operation::Scheduled { operation: wire.operation }
+    } else { return Err(HostError::new("unknown-operation", "Operation is not registered")); };
+    let symbolic_id = match &operation { Operation::Copy(input) => Some(&input.source_id), Operation::Notify(input) => Some(&input.product_id), Operation::ChildStop(input) => Some(&input.id), Operation::Status(_) | Operation::Scheduled { .. } => None };
     if symbolic_id.is_some_and(|id| id.is_empty() || id.len() > 128 || !id.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')) { return Err(HostError::new("invalid-request", "Invalid symbolic policy ID")); }
     Ok(Request { request_id: wire.request_id, caller_label: wire.caller_label, operation })
 }
@@ -131,15 +161,19 @@ fn private_directory(path: &Path, uid: u32) -> Result<(), HostError> {
     Ok(())
 }
 impl Config {
-    pub fn load(path: &Path) -> Result<Self, HostError> {
+    pub fn load(path: &Path) -> Result<Self, HostError> { Self::load_with_registry(path, &child_operations()) }
+    pub fn load_with_registry(path: &Path, registry: &children::Registry) -> Result<Self, HostError> {
         let bytes = std::fs::read(path)?;
         if bytes.len() > 1024 * 1024 { return Err(HostError::new("policy-denied", "Policy exceeds size bound")); }
-        let config: Self = serde_json::from_slice(&bytes).map_err(|_| HostError::new("policy-denied", "Invalid policy"))?;
-        config.validate()?;
+        Self::from_bytes(&bytes, registry)
+    }
+    fn from_bytes(bytes: &[u8], registry: &children::Registry) -> Result<Self, HostError> {
+        let config: Self = serde_json::from_slice(bytes).map_err(|_| HostError::new("policy-denied", "Invalid policy"))?;
+        config.validate_with_registry(registry)?;
         Ok(config)
     }
-    fn validate(&self) -> Result<(), HostError> {
-        self.supervised_children.require_inactive().map_err(|reason| HostError::new("policy-denied", reason))?;
+    fn validate_with_registry(&self, registry: &children::Registry) -> Result<(), HostError> {
+        registry.validate(self)?;
         let grants = ["full-disk-access", "notifications", "screen-recording", "accessibility", "system-audio", "microphone", "automation"];
         if self.uid != unsafe { libc::geteuid() } || self.uid != unsafe { libc::getuid() } || self.audit_max_bytes < 4096 || self.audit_max_bytes > 1024 * 1024 * 1024 || self.documents.max_items == 0 || self.documents.max_items > 4096 || self.documents.max_bytes == 0 || self.documents.timeout_ms == 0 || self.documents.timeout_ms > 300_000 || self.policy_revision.is_empty() || self.release_revision.is_empty() || self.policy_revision.len() > 128 || self.release_revision.len() > 128 {
             return Err(HostError::new("policy-denied", "Invalid policy bounds or host UID"));
@@ -188,23 +222,43 @@ fn utc() -> String {
     // SAFETY: time_t and tm are live output buffers; gmtime_r has no shared mutable state.
     unsafe { let mut now = libc::time(std::ptr::null_mut()); let mut tm: libc::tm = std::mem::zeroed(); libc::gmtime_r(&mut now, &mut tm); format!("{:04}-{:02}-{:02}T{:02}:{:02}:{:02}Z",tm.tm_year+1900,tm.tm_mon+1,tm.tm_mday,tm.tm_hour,tm.tm_min,tm.tm_sec) }
 }
-pub struct Host { config: Config, audit: Mutex<Audit>, work: Mutex<()>, consent_pending: bool, last_notification: Mutex<Option<Instant>> }
+pub struct Host {
+    config: Arc<Config>, audit: Arc<Mutex<Audit>>, work: Mutex<()>, consent_pending: bool,
+    last_notification: Mutex<Option<Instant>>, role: transport::Role,
+    gui_channel: transport::GuiChannel, children: children::Supervisor,
+    registry: Arc<children::Registry>,
+}
 impl Host {
     pub fn new(config: Config) -> Result<Self, HostError> {
-        let mut audit = Audit::open(&config)?;
+        let socket = config.socket.with_extension("gui.sock");
+        Self::new_with_role(config, transport::Role::Supervisor, socket)
+    }
+    pub fn new_with_role(config: Config, role: transport::Role, gui_socket: PathBuf) -> Result<Self, HostError> {
+        Self::new_with_registry(config, role, gui_socket, child_operations())
+    }
+    pub fn new_with_registry(mut config: Config, role: transport::Role, gui_socket: PathBuf, registry: children::Registry) -> Result<Self, HostError> {
+        registry.validate(&config)?;
+        let registry = Arc::new(registry);
         let consent_pending = !read_consent(&config);
+        if role == transport::Role::GuiAgent { config.audit = config.audit.with_extension("gui.jsonl"); }
+        let mut audit = Audit::open(&config)?;
         audit.append(&json!({"phase":"recovery","utc":utc(),"releaseRevision":config.release_revision,"policyRevision":config.policy_revision,"priorAdmittedWork":"outcome-unknown-unless-terminal-recorded"}))?;
-        Ok(Self { config, audit: Mutex::new(audit), work: Mutex::new(()), consent_pending, last_notification: Mutex::new(None) })
+        let gui_channel = transport::GuiChannel::new(&config, gui_socket)?;
+        let config = Arc::new(config);
+        let audit = Arc::new(Mutex::new(audit));
+        let children = children::Supervisor::new(Arc::clone(&config), Arc::clone(&audit), role, consent_pending, Arc::clone(&registry))?;
+        Ok(Self { config, audit, work: Mutex::new(()), consent_pending, last_notification: Mutex::new(None), role, gui_channel, children, registry })
     }
     fn execute(&self, operation: &Operation, cancelled: &dyn Fn() -> bool) -> Result<OperationResult, HostError> {
         match operation {
             Operation::Status(_) => Ok(OperationResult::Status(StatusResult {
-                operations: ["host.status", "documents.copy", "notify"].into_iter().filter(|operation| match *operation {
+                operations: ["host.status", "documents.copy", "notify", "children.stop"].into_iter().filter(|operation| match *operation {
                     "documents.copy" => self.config.grant("full-disk-access").is_ok() && !self.config.documents.sources.is_empty(),
                     "notify" => self.config.grant("notifications").is_ok() && !self.config.products.is_empty(),
                     _ => true,
-                }).map(|operation| OperationVersion { operation, operation_version: 1 }).collect(),
+                }).chain(self.children.scheduled_ids()).map(|operation| OperationVersion { operation, operation_version: 1 }).collect(),
                 policy_revision: self.config.policy_revision.clone(), release_revision: self.config.release_revision.clone(), consent_pending: self.consent_pending,
+                children: self.child_statuses(cancelled)?,
             })),
             Operation::Copy(input) => {
                 self.config.grant("full-disk-access")?;
@@ -212,6 +266,12 @@ impl Host {
                 documents::copy(&self.config.documents, &self.config.staging, input, cancelled).map(OperationResult::Copy)
             },
             Operation::Notify(input) => {
+                if self.role == transport::Role::Supervisor {
+                    self.config.grant("notifications")?;
+                    let value = self.gui_channel.call(&json!({"operation":"notify","input":{"productId":input.product_id,"title":input.title,"body":input.body}}), cancelled)?;
+                    let notification_id = value.get("notificationId").and_then(Value::as_str).ok_or_else(|| HostError::new("invalid-gui-response", "GUI notification receipt is invalid"))?.to_owned();
+                    return Ok(OperationResult::Notify(NotifyResult { notification_id, submitted: true }));
+                }
                 self.config.grant("notifications")?;
                 if input.title.len()>256 || input.body.len()>4096 { return Err(HostError::new("invalid-request", "Notification exceeds byte bounds")); }
                 let label = self.config.products.get(&input.product_id).ok_or_else(|| HostError::new("policy-denied", "Unknown notification product"))?;
@@ -221,11 +281,22 @@ impl Host {
                 let id = native::notify(label, &input.title, &input.body, cancelled)?;
                 Ok(OperationResult::Notify(NotifyResult { notification_id: id, submitted: true }))
             }
+            Operation::ChildStop(input) => {
+                if self.role == transport::Role::Supervisor && self.children.gui_child(&input.id)? {
+                    self.gui_channel.call(&json!({"operation":"children.stop","input":{"id":input.id}}),cancelled).map(OperationResult::ChildStop)
+                } else { self.children.stop(&input.id).map(OperationResult::ChildStop) }
+            }
+            Operation::Scheduled { operation } => {
+                let registered = self.registry.scheduled.iter().find(|entry| entry.id == operation).ok_or_else(||HostError::new("unknown-operation","Scheduled operation is not registered"))?;
+                if self.role == transport::Role::Supervisor && registered.requires_session == "gui" {
+                    self.gui_channel.call(&json!({"operation":operation,"input":{}}),cancelled).map(OperationResult::ChildStop)
+                } else { self.children.run_scheduled(operation,cancelled).map(OperationResult::ChildStop) }
+            }
         }
     }
     fn respond(&self, bytes: Result<Vec<u8>, HostError>, peer: Value, cancelled: &dyn Fn() -> bool) -> Value {
         let start = Instant::now();
-        let decoded = bytes.and_then(|b| decode(&b));
+        let decoded = bytes.and_then(|b| decode_with_registry(&b, &self.registry));
         let id = match opaque_id() { Ok(id) => id, Err(_) => return failure(None, HostError::new("audit-unavailable", "Secure audit identity unavailable")) };
         let correlation = decoded.as_ref().ok().map(|r| r.request_id.clone());
         let operation = decoded.as_ref().ok().map(|r| r.operation.id());
@@ -235,6 +306,8 @@ impl Host {
             Operation::Copy(input) => json!({"sourceId":input.source_id,"requestedItems":input.files.len()}),
             Operation::Notify(input) => json!({"productId":input.product_id}),
             Operation::Status(_) => json!({}),
+            Operation::ChildStop(input) => json!({"childId":input.id}),
+            Operation::Scheduled { operation } => json!({"scheduledOperation":operation}),
         });
         // Six bytes per input byte covers maximal JSON escaping; 256 per receipt
         // covers SHA-256, u64 byte counts and framing. Fixed envelope slack also
@@ -247,7 +320,7 @@ impl Host {
         if let Err(error) = audit.admit(&admission, terminal_capacity) { return failure(correlation, error); }
         drop(audit);
         let result = decoded.and_then(|request| {
-            let _exclusion = self.work.try_lock().ok_or_else(|| HostError::new("busy", "Host operation in progress"))?;
+            let _exclusion = if matches!(request.operation, Operation::Scheduled { .. }) { None } else { Some(self.work.try_lock().ok_or_else(|| HostError::new("busy", "Host operation in progress"))?) };
             self.execute(&request.operation, cancelled)
         });
         let outcome = match &result { Ok(OperationResult::Copy(value)) => json!({"result":value}), Ok(OperationResult::Notify(value)) => json!({"result":value}), Ok(_) => json!({"result":"completed"}), Err(e) => json!({"error":e.code}) };
@@ -256,6 +329,43 @@ impl Host {
         match result {
             Ok(output) => serde_json::to_value(Response::Success { protocol_version: 1, request_id: correlation.unwrap_or_default(), ok: true, result: AuditedResult { audit_id: id, output } }).expect("Response contains only JSON-safe types"),
             Err(mut error) => { error.audit_id = Some(id); failure(correlation, error) }
+        }
+    }
+    fn child_statuses(&self, cancelled: &dyn Fn() -> bool) -> Result<Vec<Value>,HostError> {
+        let mut statuses: Vec<Value> = self.children.statuses().into_iter().map(|value| serde_json::to_value(value).expect("JSON-safe child status")).collect();
+        if self.role == transport::Role::Supervisor && self.config.supervised_children.0.iter().any(|child| matches!(child.requires_session, macos_app_security::children::Session::Gui)) {
+            match self.gui_channel.call(&json!({"operation":"children.status","input":{}}),cancelled) {
+                Ok(Value::Array(values)) => statuses.extend(values),
+                Err(error) if error.code == "session-unavailable" => statuses.extend(self.children.missing_gui_statuses()),
+                Ok(_) => return Err(HostError::new("invalid-gui-response", "GUI child status is invalid")),
+                Err(error) => return Err(error),
+            }
+        }
+        statuses.sort_by(|a,b| a["id"].as_str().cmp(&b["id"].as_str()));
+        Ok(statuses)
+    }
+    fn respond_private(&self, value: Value, cancelled: &dyn Fn()->bool) -> Result<Value,HostError> {
+        if self.role != transport::Role::GuiAgent { return Err(HostError::new("policy-denied", "Private operations require GUI agent")); }
+        #[derive(Deserialize)]
+        #[serde(deny_unknown_fields)]
+        struct PrivateRequest { operation: String, input: Value }
+        let request: PrivateRequest = serde_json::from_value(value).map_err(|_| HostError::new("invalid-request","Invalid private operation"))?;
+        if request.operation == "host.process-policy" {
+            let _: EmptyInput = serde_json::from_value(request.input).map_err(|_|HostError::new("invalid-request","Process policy accepts no input"))?;
+            return control::process_policy(self);
+        }
+        if request.operation == "children.status" {
+            let _: EmptyInput = serde_json::from_value(request.input).map_err(|_| HostError::new("invalid-request","Invalid child status input"))?;
+            return self.child_statuses(cancelled).map(Value::Array);
+        }
+        if !["notify","children.stop"].contains(&request.operation.as_str()) && !self.registry.scheduled.iter().any(|entry|entry.id==request.operation && entry.requires_session=="gui") { return Err(HostError::new("policy-denied","Operation is not GUI-forwardable")); }
+        let response = self.respond(serde_json::to_vec(&json!({"protocolVersion":1,"requestId":opaque_id()?,"operationVersion":1,"callerLabel":"system-supervisor","operation":request.operation,"input":request.input})).map_err(|_| HostError::new("invalid-request","Invalid private frame")),json!({"authenticatedRole":"system-supervisor","uid":self.config.uid}),cancelled);
+        if response["ok"] == true {
+            let mut result = response["result"].clone();
+            if let Some(object) = result.as_object_mut() { object.remove("auditId"); }
+            Ok(result)
+        } else {
+            Err(transport::private_error(&response["error"]))
         }
     }
     pub fn serve(self) -> Result<(), HostError> { transport::serve(Arc::new(self)) }
@@ -306,7 +416,7 @@ mod tests {
         assert!(!read_consent(&config));
     }
     fn test_config(root: &Path) -> Config {
-        serde_json::from_value(json!({"uid":unsafe { libc::geteuid() },"socket":root.join("socket"),"audit":root.join("audit"),"staging":root,"policyRevision":"p","releaseRevision":"r","enabledGrants":["full-disk-access"],"automationTargets":[],"documents":{"sources":{},"maxItems":1,"maxBytes":1,"timeoutMs":1},"products":{},"auditMaxBytes":65536})).unwrap()
+        serde_json::from_value(json!({"uid":unsafe { libc::geteuid() },"hostRequirement":"anchor apple","socket":root.join("socket"),"audit":root.join("audit"),"staging":root,"policyRevision":"p","releaseRevision":"r","enabledGrants":["full-disk-access"],"automationTargets":[],"documents":{"sources":{},"maxItems":1,"maxBytes":1,"timeoutMs":1},"products":{},"auditMaxBytes":65536})).unwrap()
     }
     #[test] fn outcome_is_durable_before_success_response() {
         let root = std::env::temp_dir().join(opaque_id().unwrap());
@@ -382,6 +492,21 @@ mod tests {
         assert_eq!(audit.reserved, 0);
         drop(audit);
         std::fs::remove_dir_all(root).unwrap();
+    }
+    #[test] fn scheduled_dispatch_is_compiled_and_input_closed() {
+        let registry = children::Registry { probes: vec![], scheduled: vec![children::ScheduledOperation { id: "fixture.run", child_id: "fixture", requires_session: "none" }] };
+        let wire = |operation: &str,input:Value| serde_json::to_vec(&json!({"protocolVersion":1,"requestId":"test","operationVersion":1,"callerLabel":"","operation":operation,"input":input})).unwrap();
+        assert!(matches!(decode_with_registry(&wire("fixture.run",json!({})),&registry).unwrap().operation,Operation::Scheduled{operation} if operation=="fixture.run"));
+        assert_eq!(decode_with_registry(&wire("fixture.unknown",json!({})),&registry).err().unwrap().code,"unknown-operation");
+        assert_eq!(decode_with_registry(&wire("fixture.run",json!({"argv":[]})),&registry).err().unwrap().code,"invalid-request");
+        let root=std::env::temp_dir().join(opaque_id().unwrap());
+        std::fs::create_dir(&root).unwrap();
+        let config=test_config(&root);
+        let gui=config.socket.with_extension("gui.sock");
+        let host=Host::new_with_registry(config,transport::Role::Supervisor,gui,registry).unwrap();
+        let response=host.respond(Ok(wire("fixture.run",json!({}))),json!({}),&||false);
+        assert_eq!(response["error"]["code"],"child-supervisor-unavailable");
+        drop(host); std::fs::remove_dir_all(root).unwrap();
     }
     #[test] fn audit_projects_policy_target_but_not_notification_content() {
         let root = std::env::temp_dir().join(opaque_id().unwrap());

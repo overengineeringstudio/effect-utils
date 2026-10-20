@@ -1,6 +1,121 @@
 { pkgs, nixpkgsRevision }:
 let
   mkMacosApp = import ./default.nix { inherit pkgs nixpkgsRevision; };
+  # A separate permissions-host example exercises the real two-job runtime.
+  # Both helpers are native, offline and consent-free; only their session differs.
+  childHelper = pkgs.stdenv.mkDerivation {
+    pname = "macos-app-example-child";
+    version = "1";
+    src = ./example-child.c;
+    dontUnpack = true;
+    dontStrip = true;
+    dontAutoSignDarwinBinaries = true;
+    buildPhase = ''
+      $CC -Wall -Wextra -Werror -Wl,-no_adhoc_codesign "$src" -o example-child
+    '';
+    installPhase = ''
+      mkdir -p "$out/bin"
+      cp example-child "$out/bin/example-child"
+    '';
+  };
+  childDeclaration = id: requiresSession: {
+    inherit id requiresSession;
+    helperPath = "Contents/Helpers/${id}";
+    activation = "active";
+    argv = [
+      (if requiresSession == "none" then "scheduled" else "resident")
+      "/private/tmp/dev.example.supervised-host/${id}/run/ready.sock"
+    ];
+    env = { };
+    cwd = "/";
+    requiredTccServices = [ ];
+    readiness =
+      if requiresSession == "none" then
+        {
+          kind = "probe-op";
+          op = "example.ready";
+          timeoutMs = 1000;
+        }
+      else
+        { kind = "none"; };
+    clientSocket =
+      if requiresSession == "none" then
+        "/private/tmp/dev.example.supervised-host/${id}/run/ready.sock"
+      else
+        null;
+    restart.kind = "never";
+    stop = {
+      signal = "term";
+      graceMs = 1000;
+    };
+    schedule =
+      if requiresSession == "none" then
+        {
+          kind = "launchd-scheduled";
+          op = "example.run";
+        }
+      else
+        { kind = "resident"; };
+    rlimitNofile = {
+      soft = 256;
+      hard = 256;
+    };
+    nice = 5;
+    processType = "Background";
+    directories = builtins.listToAttrs (
+      map
+        (kind: {
+          name = kind;
+          value = {
+            path = "/private/tmp/dev.example.supervised-host/${id}/${kind}";
+            mode = 448;
+          };
+        })
+        [
+          "state"
+          "run"
+          "log"
+        ]
+    );
+  };
+  childrenPolicy = pkgs.writeText "supervised-example-policy.json" (
+    builtins.toJSON {
+      uid = 501; # Set the target user's UID when adapting this example.
+      socket = "/private/tmp/dev.example.supervised-host/control.sock";
+      audit = "/private/tmp/dev.example.supervised-host/audit.jsonl";
+      staging = "/private/tmp/dev.example.supervised-host/staging";
+      policyRevision = "1";
+      releaseRevision = "1";
+      auditMaxBytes = 1048576;
+      products = { };
+      documents = {
+        sources = { };
+        maxItems = 1;
+        maxBytes = 1024;
+        timeoutMs = 1000;
+      };
+      supervisedChildren = [
+        (childDeclaration "headless-worker" "none")
+        (childDeclaration "session-worker" "gui")
+      ];
+    }
+  );
+  childrenProduct = import ../permissions-host { inherit pkgs nixpkgsRevision; } {
+    name = "SupervisedHost";
+    bundleId = "dev.example.supervised-host";
+    displayName = "Supervised Host";
+    signer = {
+      teamId = "EXAMPLE123";
+      identity = "Example certificate identity (not used by tests)";
+    };
+    enabledGrants = [ ];
+    policyFiles = [ childrenPolicy ];
+    enableExampleChildren = true;
+    helpers = {
+      headless-worker.executable = "${childHelper}/bin/example-child";
+      session-worker.executable = "${childHelper}/bin/example-child";
+    };
+  };
   payload =
     text:
     pkgs.writeShellScript "synthetic-payload" ''
@@ -184,6 +299,26 @@ let
     {
       name = "complete-desired-host.json";
       path = completeProduct.desiredDescriptor;
+    }
+    {
+      name = "childrenHostApp";
+      path = childrenProduct.hostApp;
+    }
+    {
+      name = "children-ctl-config.json";
+      path = childrenProduct.ctlConfig;
+    }
+    {
+      name = "children-desired-host.json";
+      path = childrenProduct.desiredDescriptor;
+    }
+    {
+      name = "childrenGeneration";
+      path = childrenProduct.generation;
+    }
+    {
+      name = "childrenCtl";
+      path = childrenProduct.ctl;
     }
   ];
   check = pkgs.runCommand "macos-app-host-stability" { } ''

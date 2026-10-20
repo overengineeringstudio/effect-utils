@@ -131,6 +131,23 @@ unsafe extern "C" fn permission_callback(block: *const Block, granted: i8, error
 unsafe extern "C" fn audio_permission_callback(block: *const Block, granted: i8) {
     unsafe { (*(*block).state).finish(i64::from(granted != 0)) }
 }
+#[link(name = "Security", kind = "framework")]
+unsafe extern "C" {
+    fn SessionGetInfo(session: u32, id: *mut u32, attributes: *mut u32) -> i32;
+}
+/// Inspect this process's execution session only; never request authorization.
+pub fn require_gui_session() -> Result<(), HostError> {
+    let (mut id, mut attributes) = (0, 0);
+    // SAFETY: callerSecuritySession selects this process; both output pointers are valid.
+    let status = unsafe { SessionGetInfo(u32::MAX, &mut id, &mut attributes) };
+    gui_session_result(status, attributes)
+}
+fn gui_session_result(status: i32, attributes: u32) -> Result<(), HostError> {
+    if status != 0 || attributes & 0x0001 != 0 || attributes & 0x0010 == 0 {
+        Err(HostError::new("session-unavailable", "Operation requires the authenticated GUI agent session"))
+    } else { Ok(()) }
+}
+
 fn notification_center() -> Result<Id, HostError> {
     let center: Id = unsafe { send0(class(c"UNUserNotificationCenter"), c"currentNotificationCenter") };
     if center.is_null() { Err(HostError::new("session-unavailable", "Host notification center is unavailable in this session")) } else { Ok(center) }
@@ -149,6 +166,7 @@ fn notification_settings(center: Id) -> Result<(), HostError> {
 /// Submit through this process's own notification identity, never requesting consent.
 /// The returned ID establishes OS submission only, not banner delivery or reading.
 pub fn notify(product_label: &str, title: &str, body: &str, cancelled: &dyn Fn() -> bool) -> Result<String, HostError> {
+    require_gui_session()?;
     if cancelled() { return Err(HostError::new("deadline-exceeded", "Notification cancelled before submission")); }
     let _pool = Pool::new();
     let center = notification_center()?;
@@ -612,4 +630,16 @@ fn record(category: &str, target: Option<&str>, result: Result<String, HostError
     };
     if let Some(target) = target { record["target"] = json!(target); }
     record
+}
+
+#[cfg(test)]
+mod session_tests {
+    use super::*;
+    #[test]
+    fn only_graphical_nonroot_session_is_admitted() {
+        assert!(gui_session_result(0, 0x0010).is_ok());
+        for (status, attributes) in [(0, 0), (0, 0x0011), (-1, 0x0010)] {
+            assert_eq!(gui_session_result(status, attributes).unwrap_err().code, "session-unavailable");
+        }
+    }
 }

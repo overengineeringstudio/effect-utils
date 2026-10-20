@@ -41,7 +41,7 @@ fn verify_fd(fd: i32, path: &Path) -> Result<Guard> {
     // PRESENT exclusive exclusion; the consumer covers all preceding pre-checks.
     // SAFETY: inherited OFD is live; nonblocking flock never waits or unlocks it.
     if unsafe { libc::flock(held.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) } != 0 {
-        return Err(fail(75, "restart-deferred", "Lifecycle exclusion belongs to another open-file description"));
+        return Err(fail(23, "lifecycle-busy", "Lifecycle exclusion belongs to another open-file description"));
     }
     // Descriptor flags are process-local: do not let a spawned command retain
     // the consumer's exclusion after ctl returns. Never unlock the shared OFD.

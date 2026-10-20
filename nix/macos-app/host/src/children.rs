@@ -165,15 +165,6 @@ impl TryFrom<Vec<Child>> for Children {
         Ok(Self(children))
     }
 }
-impl Children {
-    /// Fail closed until the separately reviewed supervisor runtime exists.
-    pub fn require_inactive(&self) -> Result<(), &'static str> {
-        if self.0.iter().any(|child| child.activation == Activation::Active) {
-            return Err("Active supervised children require the supervisor runtime; only inactive declarations are supported");
-        }
-        Ok(())
-    }
-}
 
 #[cfg(test)]
 mod tests {
@@ -181,10 +172,10 @@ mod tests {
     use serde_json::{Value, json};
     fn child() -> Value { json!({"id":"watcher","helperPath":"Contents/Helpers/watcher","argv":[],"env":{},"cwd":"/","requiredTccServices":["full-disk-access"],"requiresSession":"none","rlimitNofile":{"soft":8192,"hard":8192},"nice":0,"processType":"Standard","directories":{"state":{"path":"/var/example/state"},"run":{"path":"/var/example/run"},"log":{"path":"/var/example/log"}},"clientSocket":"/var/example/run/watcher.sock","readiness":{"kind":"socket-accepts","path":"/var/example/run/watcher.sock","timeoutMs":1000},"restart":{"kind":"on-failure","initialBackoffMs":100,"maxBackoffMs":1000,"maxAttempts":3},"stop":{"signal":"term","graceMs":30000},"schedule":{"kind":"resident"}}) }
     fn parse(value: Value) -> Result<Children, serde_json::Error> { serde_json::from_value(json!([value])) }
-    #[test] fn inactive_is_default_and_active_is_not_silently_started() {
-        assert!(parse(child()).unwrap().require_inactive().is_ok());
+    #[test] fn inactive_is_default_and_active_is_explicit() {
+        assert_eq!(parse(child()).unwrap().0[0].activation, Activation::Inactive);
         let mut value = child(); value["activation"] = json!("active");
-        assert!(parse(value).unwrap().require_inactive().is_err());
+        assert_eq!(parse(value).unwrap().0[0].activation, Activation::Active);
     }
     #[test] fn rejects_unknown_fields_at_every_object_boundary() {
         for key in ["", "readiness", "restart", "schedule", "stop", "rlimitNofile", "directories"] {

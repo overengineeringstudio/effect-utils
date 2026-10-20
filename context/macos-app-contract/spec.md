@@ -74,6 +74,79 @@ each child's executable, argv, environment, working directory and file descripto
 clients cannot choose or override them. Supervision does not introduce an
 execution API.
 
+### P2 runtime design: two jobs, one principal
+
+The system-domain supervisor runs directly from the signed bundle as the explicit
+target user and owns the sole public client socket. The GUI-domain agent runs the
+same signed entrypoint with a distinct role and owns only a private, owner-only
+forwarding socket. Both ends authenticate the kernel peer UID and validate the
+peer's live code against the pinned host signing requirement. Signing identity
+alone does not establish a role: a same-UID caller can launch the unchanged
+signed executable with a copied policy. Each peer additionally binds the kernel
+peer PID/incarnation to the current launchd-managed job, using fixed
+`/bin/launchctl` job evidence and immutable target UID/job labels from the
+bundle-sealed `Contents/Resources/runtime-identity.json`, never caller-selected
+config. This binding is refreshed before dispatch and response.
+The system domain requires root management, but the target UID controls
+`gui/<uid>` and can replace its agent under the correct sealed label. Job PID
+evidence therefore does not grant policy authority. Every production entrypoint
+loads only the verified bundle's `Contents/Resources/policy.json`; `--config`
+is accepted only when its bytes exactly equal that sealed resource, otherwise
+typed `policy-denied` is returned before Host construction. Serving additionally
+requires non-JSON provenance from this loader. Private request and response
+`policyRevision` fields carry SHA-256 of the actual verified policy bytes, not
+the caller-declared revision string; both sides require the sealed digest plus
+release revision. Replacing a GUI job cannot install attacker-selected child
+argv/environment/paths, even while retaining the declared revision strings.
+All exchanges are bounded.
+The supervisor routes only compiled GUI operations;
+clients cannot select a transport or another endpoint. A missing GUI agent yields
+`session-unavailable`, never client autospawn or execution in a substitute app.
+
+The system job survives GUI logout; launchd creates and removes the GUI job with
+the login session. Each role owns only children matching its session requirement.
+Shutdown first closes admission, then signals and reaps its children within their
+declared grace periods, before releasing its endpoint. Release installation
+switches the bundle, selected generation and both launchd configurations as one
+recoverable transaction. Any post-exchange failure restores the prior bundle,
+generation and configurations and reconverges both jobs; an absent GUI session
+is distinct from a failed system supervisor.
+
+Each child has one lifetime-owned slot: inactive, starting, running, backoff or
+stopped, plus a separate ready/deferred/failed probe outcome. Admission reserves
+the slot before spawning, so overlap returns `skipped: already-running`.
+Only declared resident activation or a compiled scheduled operation may start it.
+Spawn and readiness failures and unexpected exits spend a bounded lifetime retry
+budget with capped exponential backoff; successful readiness does not reset it.
+Explicit stop suppresses restart, sends the declared signal, waits the declared
+grace and then kills/reaps the process group. Scheduled invocation results retain
+the actual exit code/signal; nonzero exit alone never becomes deferral. Only a
+compiled, permission-specific probe can produce deferred evidence, retained in
+bounded private audit rather than public status.
+An idle scheduled child reports the declared readiness kind with
+`evidence: scheduled-idle`, both before its first invocation and after successful
+completion; this is schedule admission, not evidence that a probe executed.
+Readiness/exit audit failure unconditionally stops and reaps admitted work,
+publishes `failed: audit-unavailable`, and suppresses restart. Internal safety
+cleanup and cancellation never depend on admitting another audited client stop.
+
+ProcessType is inherited from the owning launchd job, not independently changed
+after spawn. Build-time admission requires each child's declared ProcessType to
+equal its role's job ProcessType; runtime repeats that check defensively.
+The child applies nofile limits and nice before exec using only async-signal-safe
+`setrlimit` and `setpriority`, and a failed call fails spawning with a typed error.
+The alternative private `posix_spawnattr_setprocesstype_np`/SETEXEC trampoline was
+rejected: its undocumented ABI would add an unnecessary security boundary.
+Consumers needing different process types must choose compatible job-level
+policies explicitly; the runtime never silently changes a GUI job for a backup.
+
+`ChildOperations` registration is compiled Rust assembly, separate from immutable
+declarations. The production registry is empty by default: unknown probes,
+scheduled IDs, session-incompatible registrations and mismatched scheduled child
+bindings fail closed. The explicitly enabled offline example registry provides
+`example.ready` and `example.run`; it does not supply a Watchman or restic adapter
+or claim protected-resource access.
+
 ### Public runtime and private assembly
 
 | Owner         | Contents                                                                                                                                                       |
@@ -95,11 +168,10 @@ No dynamically loaded client code bypasses assembly and sealing.
 
 The host is the single macOS permissions principal. Tools such as a filesystem
 watcher or backup helper execute as supervised children, not separately granted
-apps, external Nix-store payloads or shell wrappers. Declaration admission is
-implemented; spawning, readiness observation, restart supervision and active-child
-verification are a separate runtime implementation. Until that runtime exists,
-both ctl and the native host reject `active` declarations rather than accepting
-configuration they cannot enforce. Inactive declarations never spawn or probe.
+apps, external Nix-store payloads or shell wrappers. Declaration admission,
+supervision, readiness and active-child verification share the immutable policy.
+Inactive declarations never spawn or probe. Positive platform evidence for real
+protected-resource access and pre-login behavior remains a separate release gate.
 
 ### Declaration and pinned bundle boundary
 
@@ -137,6 +209,10 @@ register an operation. Scheduling names an existing consumer launchd-scheduled
 host operation; it does not add a timer/cron DSL or let launchd execute the helper
 directly.
 
+Every declared required TCC service must also be enabled in host policy.
+Assembly and runtime reject disabled categories before admitting child work;
+disabled policy is not permission deferral and cannot request onboarding.
+
 Before spawning, the host creates the declared state/run/log directories as the
 target UID with their declared modes (0700 unless explicitly overridden). Reject
 foreign ownership, symlink traversal, incompatible existing modes and unsafe ACLs;
@@ -156,9 +232,9 @@ host job's own Nice/ProcessType and effective nofile limits, not just the child'
 requested values. A child can refuse startup above a known nice threshold, and
 an unprivileged host cannot lower an inherited nice value; incompatible inherited
 policy is a hard admission failure, never a failed launch followed by a silent
-fallback. ProcessType uses launchd semantics, not a claim that setting nice alone
-changes background scheduling. Runtime application and ctl process-policy
-evidence remain part of #1963.
+fallback. ProcessType is the owning launchd job's inherited property, not a claim
+that setting nice alone changes background scheduling. Child declarations must
+match that job's ProcessType at assembly; no private process-policy API is used.
 
 Every helper is a pinned, signed nested code object in the complete host bundle,
 covered by the explicit `nestedCode` inventory and unsigned descriptor/sealed
@@ -166,8 +242,8 @@ receipt. Copy real bytes during assembly; a symlink to a store executable is not
 a nested helper. Verify its pinned designated requirement and sealed content before
 spawn. Runtime resolution must stay inside the installed bundle after symlink
 resolution; a lexically valid declaration alone is not executable admission.
-The current permissions-host assembly does not package helpers; a declaration
-does not bypass that runtime/assembly follow-up.
+The permissions-host assembly's `helpers` inventory copies and inventories real
+nested helper bytes and pins the requirements used for runtime admission.
 
 ### Spawn, scheduling and ownership
 
@@ -196,8 +272,7 @@ instance, whether it was already stopped, and its actual exit code/signal.
 Normal peer/policy/audit admission applies; the caller cannot choose a signal,
 extend grace or stop an undeclared process. An explicit stop suppresses resident
 restart until a subsequent authorized activation/start, rather than racing
-the supervisor's restart loop. This operation is a runtime follow-up, not an
-operation accepted by the declaration-only host.
+the supervisor's restart loop.
 
 The host owns resident restart accounting and capped exponential backoff:
 `min(maxBackoffMs, initialBackoffMs * 2^attempt)`. The first retry is attempt zero;
@@ -221,8 +296,8 @@ set to the target user and work before graphical login; it owns the single
 client endpoint. Only `gui` children/ops run in the `gui/<uid>` agent, reached
 through a private mutually authenticated socket (notifications, capture,
 Accessibility and Automation). GUI requests return `session-unavailable` while
-that session is absent. The current ctl configuration models one job; the
-two-job topology implementation and positive pre-login proof remain #1963.
+that session is absent. ctl treats the paired configurations as one release
+transaction; positive pre-login proof remains a platform acceptance gate.
 
 Both jobs run as the same explicit target UID. For the system supervisor,
 `UserName` resolves to that target user, not root; ctl validates it against
@@ -335,12 +410,37 @@ reasons. Activation must retain this as deferred admission, not stamp complete,
 roll back a valid install merely for pending consent, or treat exit 75 as ready.
 Verification never prompts.
 
-In the declaration-only implementation, ctl validates child declarations before
-performing operations, rejects active children with `invalid-input` (exit 64),
-and successful legacy `verify` includes
-`children:[{id,activation:"inactive",state:"inactive",probe:"not-run"}]`.
-This is configuration admission, not the runtime status/evidence contract above.
-It makes no child readiness, TCC, restart or pre-login success claim.
+ctl validates immutable child declarations before mutation and authenticates live
+child evidence through the existing controller status protocol. Inactive children
+have null readiness and cannot satisfy active readiness. A successful offline
+example establishes protocol and lifecycle evidence, not TCC or pre-login proof.
+
+Paired ctl configuration supplies `session = "system-daemon"`, an explicit
+non-root `targetUid`, and `launchd` plus `guiLaunchd` declarations.
+`converge-launchd` uses `--plist-dir` and `--gui-plist-dir` for the two
+configuration directories and `--gui-socket` for the private endpoint. The
+private socket needs its own owner-only directory, separate from both public
+protocol sockets. `--domain` defaults to `system`; `--target-uid` defaults to
+the immutable configured target. Supplied `--plist` and `--gui-plist` must occur
+together and name the same installed entrypoint with exact `serve --role
+supervisor|gui-agent --gui-socket ...` arguments.
+
+The existing `D.rollback.json` exchange journal owns bundle, generation and paired
+configuration/job recovery; there is no parallel paired release journal.
+Recovery validates the recorded stage, archive, identity and all required inputs
+before stopping any live job. Missing or unverifiable prerequisites retain the
+journal and return a typed unresolved error without booting out services.
+Recovery after an error or crash restores the complete incumbent release before
+restarting its jobs. GUI restoration follows current GUI-domain availability,
+not just whether the agent was loaded before the transaction: login during a
+failed release must restore the old agent, and logout must not fabricate GUI
+success. Unresolved recovery retains the journal for the next ctl invocation.
+A pair receipt pins the installed
+bundle inode and both configurations. With no GUI session, ctl publishes the GUI
+configuration but starts only the system job; this is not a substitute GUI
+success. Child verification gives hard failures precedence (exit 22); only
+explicit typed permission deferral uses exit 75 and `error.details.children`.
+Lifecycle contention uses exit 23 rather than impersonating permission deferral.
 
 ## Typed operation registry
 
@@ -361,8 +461,9 @@ passed to a command. Status advertises enabled ID/version pairs and policy
 revision, not executable paths or private source configuration.
 
 Operation IDs are case-sensitive repository-local protocol names stewarded by
-effect-utils. Release one registers exactly `host.status`, `documents.copy` and
-`notify`. Dotted names use `[a-z][a-z0-9-]*\.[a-z][a-z0-9-]*`;
+effect-utils. The runtime registers `host.status`, `documents.copy`, `notify` and
+`children.stop`, plus explicitly compiled product scheduled operations.
+Dotted names use `[a-z][a-z0-9-]*\.[a-z][a-z0-9-]*`;
 `host.*` and `documents.*` are public namespaces and `private.*` is allocated
 only by the assembling repo, with no interoperability across consumers.
 `notify` is the sole explicitly registered single-word exception: retain the
@@ -550,10 +651,11 @@ type StatusResult = {
   policyRevision: string
   releaseRevision: string
   consentPending: boolean
+  children: ChildStatus[]
 }
 ```
 
-The operation inventory contains the three release-one IDs. Status does not
+The operation inventory contains enabled runtime IDs and compiled scheduled IDs. Status does not
 expose private paths, request consent or claim that observed authorization
 establishes positive access. A nonpending observation is not evidence that
 DQ1–DQ9 passed. The legacy ctl status remains a distinct protocol.
@@ -731,18 +833,41 @@ then removes the rollback journal and rolled-away archive. The basename
 restriction applies before exchanging an incompatible archived host, not after.
 
 `install-host --desired DESCRIPTOR --artifact RELEASE --app-dir D --state S
---archive-dir R` verifies consumer-pinned desired policy, receipt, content and
-actual signatures without signing credentials or fallback. Keep immutable
-verified incumbents for rollback; invalid input leaves the incumbent unchanged.
+--archive-dir R --generation G` verifies consumer-pinned desired policy, receipt,
+content and actual signatures without signing credentials or fallback. Paired
+products require the generation and both launchd configuration directories and
+use the same release transaction for installation and `rollback`.
+Keep immutable verified incumbents for rollback; invalid input leaves them unchanged.
+
+The paired topology is fresh-install only at its initial boundary; subsequent
+paired upgrades and rollbacks preserve the recorded principal. A recorded
+single-job or unrecorded incumbent, or a change to bundle ID, job labels, session
+or target UID, returns typed `migration-required` (exit 64) before bundle exchange,
+including an otherwise matching no-op. Existing single-job products retain their
+installation, upgrade and rollback behavior; this is not an implicit migration
+of unrelated products into the Permissions Host.
+
+Changing an existing child's fixed `clientSocket`, or a paired public/private
+host endpoint, returns typed `endpoint-migration-required` (exit 64) before
+exchange. Endpoint and topology migration require a separate explicit consumer
+plan; there is no fallback reader, automatic adoption or guessed old domain.
+
+For paired products, `install-host` requires `--artifact` and `--generation`;
+`rollback --artifact --generation` uses the same transaction. Standalone
+`select-generation`, local-sign install and legacy rollback are rejected for
+paired products. The installation result's `admissionRequired: true` distinguishes
+release convergence from child permission/readiness admission in `verify`.
+
 Existing explicitly selected `--incumbent legacy` only relaxes unrecorded
 incumbent layout compatibility, never strict outer signature, bundle ID or pinned
 identity checks. Recorded incumbent configurations govern their own validation;
 an invalid record cannot be bypassed with the legacy flag. This facility is not
 a grant-transfer mechanism between product and host identities.
 
-Consumer activation owns serialization, generation selection/GC roots,
-installation, supplied-plist convergence, verification and rollback. Preserve
-`--lifecycle-fd` exclusion and the consumer's pre-check interval; shared operation
+Consumer activation owns serialization, generation GC roots, readiness verification
+and explicit recovery policy. Paired ctl installation owns the coherent bundle,
+generation and two-job switch, rather than separate consumer-selected commit points.
+Preserve `--lifecycle-fd` exclusion and the consumer's pre-check interval; shared operation
 admission retains exclusion until work finishes. ctl's acquiring `flock` check
 is not proof the preceding interval was locked. Sign-only sealing is separate.
 Use the existing journaled atomic-exchange installation/rollback behavior rather
@@ -762,10 +887,13 @@ The public unsigned assembly module is
 Consumers normally call `effectUtils.lib.mkMacosPermissionsHost` with `pkgs`,
 `bundleId`, `displayName`, `signer` (`teamId`, `identity`) and ordered `policyFiles`.
 Direct imports take `pkgs` and `nixpkgsRevision` before those assembly inputs. Optional
-inputs are `name`, `launchd`, `enabledGrants` (all seven concrete grant strings by
-default) and `automationTargets` (empty by default). The consumer supplies the identity;
-public examples must not expose the final private value. Signer metadata pins
-the intended requirement but unsigned assembly does not perform signing.
+inputs are `name`, `launchd`, `guiLaunchd`, `helpers`, `enabledGrants` (all seven
+concrete grant strings by default) and `automationTargets` (empty by default).
+`helpers` maps fixed IDs to pinned native executable derivations and optional
+identifier/requirement/signing metadata; assembly copies regular executable bytes
+to `Contents/Helpers/<id>` and includes them in `nestedCode`. The consumer supplies
+the identity; public examples must not expose the final private value. Signer
+metadata pins the intended requirement but unsigned assembly does not sign it.
 
 Policy files are JSON objects applied in order with shallow top-level overrides:
 later lists and objects replace earlier values, not deep merge.
@@ -773,6 +901,10 @@ later lists and objects replace earlier values, not deep merge.
 the files supply the remaining runtime configuration.
 `notificationMinIntervalMs` defaults to 1000 milliseconds and must be in the
 finite inclusive range 1..3600000; it is consumer configuration, not request input.
+`hostRequirement`, `helperRequirements` and the `jobProcessTypes` role map are
+assembly-owned policy values, not file overrides. `enableExampleChildren` is an
+explicit build-only switch for the offline example's compiled operation registry;
+it defaults off and is included in source identity.
 Outputs include the standard `mkMacosApp` `hostApp`, `requirement`, `ctl`,
 `ctlConfig`, `generation`, `desiredDescriptor` and `primitives`, plus `runtime`,
 merged `policy`, `infoPlist`, `entitlements` and `hostSourceHash`. Outputs are

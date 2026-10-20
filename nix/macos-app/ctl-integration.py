@@ -33,6 +33,10 @@ root = Path.cwd()
 example = Path(sys.argv[1]) if len(sys.argv) > 1 else Path(subprocess.check_output([
     'nix', 'build', '.#macos-app-example', '--no-link', '--print-out-paths',
     '--option', 'builders', '', '--option', 'max-jobs', '2'], text=True).strip())
+no_keychain = os.environ.get('MACOS_APP_CTL_NO_KEYCHAIN') == '1'
+class KeychainLaneNotAuthorized(Exception):
+    """Unwind through normal process cleanup without entering signing-key mutation."""
+
 scratch = root / 'tmp'
 scratch.mkdir(exist_ok=True)
 work = Path(tempfile.mkdtemp(prefix='macos-app-ctl-', dir=scratch))
@@ -250,9 +254,13 @@ def issue(csr, cert):
 hosts = []
 def cleanup():
     if (work / 'jobs.json').exists():
-        for job in json.loads((work / 'jobs.json').read_text()).values():
-            try: os.kill(job['pid'], signal.SIGTERM)
-            except ProcessLookupError: pass
+        for target, job in json.loads((work / 'jobs.json').read_text()).copy().items():
+            result = subprocess.run([str(bin_dir / 'launchctl'), 'bootout', target],
+                                    env=dict(os.environ, MACOS_APP_TEST_WORK=str(work)),
+                                    capture_output=True, timeout=15)
+            if result.returncode != 0:
+                try: os.killpg(job['pid'], signal.SIGTERM)
+                except ProcessLookupError: pass
     # File removal only: the keychains were never on the search list.
     for path in (keychain, unpinned, chain_missing, fixture_keychain):
         path.unlink(missing_ok=True)
@@ -294,14 +302,20 @@ jobs_file = base / 'jobs.json'
 jobs = json.loads(jobs_file.read_text()) if jobs_file.exists() else {}
 if args[0] == 'print':
     target = args[1]
-    if target.count('/') < 2:
+    if target == 'system' or (target.startswith(('gui/', 'user/')) and target.count('/') == 1):
         if target.startswith('gui/') and (base / 'gui-absent').exists(): sys.exit(1)
         sys.exit(0)
     if target not in jobs: sys.exit(1)
     print('pid =', jobs[target]['pid'])
     sys.exit(0)
+if args[0] == 'print-disabled':
+    print('disabled services = {}')
+    sys.exit(0)
 if (base / 'launchctl-fail').exists():
     print('test-injected launchctl failure', file=sys.stderr)
+    sys.exit(5)
+if args[0] == 'bootstrap' and args[1].startswith('gui/') and (base / 'launchctl-fail-gui-bootstrap').exists():
+    print('test-injected GUI bootstrap failure before process creation', file=sys.stderr)
     sys.exit(5)
 with (base / 'launchctl.log').open('a') as log: log.write(json.dumps(args) + '\n')
 def stop(job):
@@ -316,7 +330,8 @@ def start(plist_path):
     assert plist['Program'] == argv[0] and '/Contents/MacOS/' in argv[0]
     log = (base / 'host.log').open('ab')
     process = subprocess.Popen(argv, stdin=subprocess.DEVNULL, stdout=log, stderr=log, start_new_session=True)
-    sock = argv[argv.index('--socket') + 1]
+    socket_flag = '--socket' if '--socket' in argv else '--gui-socket'
+    sock = argv[argv.index(socket_flag) + 1]
     for _ in range(500):
         if Path(sock).exists(): break
         if process.poll() is not None: raise RuntimeError('host failed to start')
@@ -842,7 +857,7 @@ os.execv('/usr/bin/codesign', ['codesign'] + args)
             locked_install(borrowed, refusal=False)  # Own shared lock can upgrade when uncontended.
             fcntl.flock(borrowed, fcntl.LOCK_UN)
             fcntl.flock(borrowed, fcntl.LOCK_EX)
-            locked_install(other)
+            assert locked_install(other)['error']['exitCode'] == 23
             fcntl.flock(foreign, fcntl.LOCK_EX)
             locked_install(foreign)
             locked_install(borrowed, refusal=False)
@@ -937,6 +952,17 @@ os.execv('/usr/bin/codesign', ['codesign'] + args)
               'for unsafe/ACL/symlink/writable paths and stale owned-socket inode cases', flush=True)
 
     thin_contract_cases()
+
+    # Native paired roles authenticate their actual /bin/launchctl-managed
+    # incarnation. A subprocess behind this fake launchctl cannot establish
+    # that identity; do not weaken production authentication for test coverage.
+    print('BLOCKED/UNVERIFIED paired native installation, dispatch, stop and rollback: '
+          'requires a real root-installed system target-user job and GUI domain; '
+          'fake-launchctl fixtures are not authentication evidence. '
+          'Recovery preflight and typed child verification have crate regressions.',
+          flush=True)
+    if no_keychain:
+        raise KeychainLaneNotAuthorized()
 
     # Provisioning: key and CSR by ctl, certificate by the test CA, then the codesign pin.
     def key_call(action, path, *args, code=0, secret=password, failpoint=None):
@@ -1562,9 +1588,17 @@ os.execv('/usr/bin/codesign', ['codesign'] + args)
     assert other_signatures and all(path.name == config['appBundleName']
                                     for path in other_signatures), other_signatures
     print('PASS host-only rollback works without a previous generation', flush=True)
+except KeychainLaneNotAuthorized:
+    print('NOT RUN keychain provisioning/ACL/partition-list signing lane: authorization restriction '
+          '(MACOS_APP_CTL_NO_KEYCHAIN=1)', flush=True)
 finally:
     cleanup()
-    print('PASS throwaway keychains removed; user search list unchanged')
-    print(f'SecurityAgent after: {security_agent_windows()}' if agent_baseline is not None else
+    print('PASS no signing-keychain mutations; user search list unchanged' if no_keychain else
+          'PASS throwaway keychains removed; user search list unchanged')
+    agent_after = security_agent_windows()
+    if agent_baseline is not None:
+        assert agent_after == agent_baseline, (agent_baseline, agent_after)
+    print(f'SecurityAgent after: {agent_after}' if agent_baseline is not None else
           f'SecurityAgent after: unavailable; no-UI audit session flags={no_ui_session():#x}', flush=True)
-print(f'PASS primitive integration; scratch: {work.relative_to(root)}')
+print(f'PASS partial primitive integration (non-keychain lanes only); scratch: {work.relative_to(root)}'
+      if no_keychain else f'PASS primitive integration; scratch: {work.relative_to(root)}')
