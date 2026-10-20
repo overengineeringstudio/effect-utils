@@ -19,11 +19,65 @@
       ];
       forAllSystems = f: lib.genAttrs systems (system: f system);
 
+      mkPlaywrightDriver =
+        system:
+        let
+          pkgs = nixpkgs.legacyPackages.${system};
+          upstream = playwright-web-flake.packages.${system}.playwright-driver;
+          components = upstream.components // {
+            chromium = pkgs.callPackage ./chromium-darwin.nix {
+              chromium = upstream.components.chromium;
+            };
+          };
+          selectBrowsers = lib.makeOverridable (
+            {
+              withChromium ? true,
+              withFirefox ? true,
+              withWebkit ? true,
+              withFfmpeg ? true,
+              withChromiumHeadlessShell ? true,
+              fontconfig_file ? null,
+            }:
+            pkgs.linkFarm "playwright-browsers" (
+              map (
+                name:
+                let
+                  revName = if name == "chromium-headless-shell" then "chromium" else name;
+                  revision = upstream.browsersJSON.${revName}.revision;
+                in
+                {
+                  name = "${lib.replaceStrings [ "-" ] [ "_" ] name}-${revision}";
+                  path = components.${name};
+                }
+              ) (
+                lib.optional withChromium "chromium"
+                ++ lib.optional withChromiumHeadlessShell "chromium-headless-shell"
+                ++ lib.optional withFirefox "firefox"
+                ++ lib.optional withWebkit "webkit"
+                ++ lib.optional withFfmpeg "ffmpeg"
+              )
+            )
+          );
+        in
+        if !pkgs.stdenv.hostPlatform.isDarwin then upstream else
+        upstream.overrideAttrs {
+          passthru = {
+            inherit (upstream) browsersJSON;
+            inherit components selectBrowsers;
+            browsers = selectBrowsers { };
+            browsers-chromium = selectBrowsers {
+              withFirefox = false;
+              withWebkit = false;
+              withChromiumHeadlessShell = false;
+            };
+          };
+        };
+
       mkPlaywrightWrapper =
         system:
         let
           pkgs = nixpkgs.legacyPackages.${system};
-          playwrightDriver = playwright-web-flake.packages.${system}.playwright-driver;
+          playwrightDriver = mkPlaywrightDriver system;
           playwrightBrowsers = playwrightDriver.browsers.override { withWebkit = false; };
         in
         pkgs.writeShellScriptBin "playwright" ''
@@ -33,7 +87,7 @@
     in
     {
       packages = forAllSystems (system: {
-        playwright-driver = playwright-web-flake.packages.${system}.playwright-driver;
+        playwright-driver = mkPlaywrightDriver system;
         playwright = mkPlaywrightWrapper system;
         default = mkPlaywrightWrapper system;
       });
@@ -42,7 +96,7 @@
         { pkgs, ... }:
         let
           system = pkgs.stdenv.hostPlatform.system;
-          playwrightDriver = playwright-web-flake.packages.${system}.playwright-driver;
+          playwrightDriver = mkPlaywrightDriver system;
           playwrightBrowsers = playwrightDriver.browsers.override { withWebkit = false; };
           playwrightWrapper = mkPlaywrightWrapper system;
         in
