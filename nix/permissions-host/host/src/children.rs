@@ -109,8 +109,8 @@ impl Supervisor {
                 state: if child.activation != Activation::Active { "inactive" } else if consent_pending && !child.required_tcc_services.is_empty() { "stopped" } else if matches!(child.schedule, Schedule::LaunchdScheduled { .. }) { "running" } else { "starting" },
                 readiness: if child.activation != Activation::Active { None } else if consent_pending && !child.required_tcc_services.is_empty() {
                     Some(json!({"outcome":"failed","code":"permission-required"}))
-                } else if let Schedule::LaunchdScheduled { op } = &child.schedule {
-                    Some(json!({"outcome":"ready","probe":"scheduled-idle","evidence":"compiled-operation","operation":op}))
+                } else if let Schedule::LaunchdScheduled { .. } = &child.schedule {
+                    Some(scheduled_idle(child))
                 } else { None },
                 instance_id: None, pid: None,
                 restart_count: 0, next_retry_at: None, last_exit: None, last_start: None,
@@ -204,7 +204,16 @@ impl Supervisor {
         let _lease = ScheduledLease(&self.inner.entries[index]);
         loop {
             let mut entry = self.inner.entries[index].lock();
-            if cancelled() || self.inner.stop.load(Ordering::Acquire) { let _ = self.inner.stop_child(child,&mut entry); return Err(HostError::new("cancelled","Scheduled child cancelled and reaped")); }
+            if cancelled() || self.inner.stop.load(Ordering::Acquire) {
+                entry.suppressed = true;
+                entry.retry = None;
+                entry.status.next_retry_at = None;
+                let _ = self.inner.stop_process(child, &mut entry);
+                entry.status.state = "stopped";
+                entry.status.readiness = None;
+                if self.inner.event(child, &entry, "cancelled").is_err() { self.inner.audit_failed(child, &mut entry); }
+                return Err(HostError::new("cancelled", "Scheduled child cancelled and reaped"));
+            }
             self.inner.tick(child,&mut entry);
             if entry.process.is_none() { return Ok(json!({"id":child.id,"instanceId":entry.status.instance_id,"lastExit":entry.status.last_exit,"readiness":entry.status.readiness})); }
             drop(entry); thread::sleep(Duration::from_millis(10));
@@ -233,6 +242,21 @@ impl Drop for Supervisor {
 impl Inner {
     fn event(&self, child: &Child, entry: &Entry, kind: &str) -> Result<(), HostError> {
         self.audit.lock().append(&json!({"phase":"child","auditId":opaque_id()?,"utc":utc(),"childId":child.id,"instanceId":entry.status.instance_id,"event":kind,"state":entry.status.state,"readiness":entry.status.readiness,"restartCount":entry.status.restart_count,"releaseRevision":self.config.release_revision,"policyRevision":self.config.policy_revision,"exit":entry.status.last_exit}))
+    }
+    // Internal safety cleanup is not a client operation: an unavailable audit
+    // must never prevent reaping work whose admission evidence could not persist.
+    fn audit_failed(&self, child: &Child, entry: &mut Entry) {
+        entry.suppressed = true;
+        entry.retry = None;
+        entry.status.next_retry_at = None;
+        let _ = self.stop_process(child, entry);
+        entry.status.state = "stopped";
+        entry.status.readiness = Some(json!({"outcome":"failed","code":"audit-unavailable"}));
+    }
+    fn ready(&self, child: &Child, entry: &mut Entry, probe: &str, evidence: &str) {
+        entry.status.state = "running";
+        entry.status.readiness = Some(json!({"outcome":"ready","probe":probe,"evidence":evidence}));
+        if self.event(child, entry, "ready").is_err() { self.audit_failed(child, entry); }
     }
     fn defer_exit(&self, child: &Child, entry: &mut Entry) -> bool {
         use std::io::{Seek, SeekFrom};
@@ -282,11 +306,11 @@ impl Inner {
                     entry.status.last_exit = Some(Exit { code: status.code(), signal: status.signal() });
                     if let Some(pid) = entry.status.pid { unsafe { libc::kill(-(pid as i32), libc::SIGKILL); } }
                     entry.process = None; entry.status.pid = None; self.finish_logs(entry);
-                    let _ = self.event(child, entry, "exit");
+                    if self.event(child, entry, "exit").is_err() { self.audit_failed(child, entry); return; }
                     if status.success() && matches!(child.schedule, Schedule::LaunchdScheduled { .. }) {
                         entry.suppressed = false;
                         entry.status.state = "running";
-                        entry.status.readiness = Some(json!({"outcome":"ready","probe":"scheduled-idle","evidence":"completed-operation"}));
+                        entry.status.readiness = Some(scheduled_idle(child));
                         return;
                     }
                     if status.code() == Some(75) && self.defer_exit(child, entry) { return; }
@@ -297,9 +321,9 @@ impl Inner {
             }
             if entry.status.state == "starting" {
                 match &child.readiness {
-                    Readiness::None {} => { entry.status.state = "running"; entry.status.readiness = Some(json!({"outcome":"ready","probe":"none","evidence":"spawn-only"})); if self.event(child,entry,"ready").is_err() { let _ = self.stop_child(child,entry); } }
+                    Readiness::None {} => self.ready(child, entry, "none", "spawn-only"),
                     Readiness::SocketAccepts { path, .. } => {
-                        if socket_ready(path) { entry.status.state = "running"; entry.status.readiness = Some(json!({"outcome":"ready","probe":"socket-accepts","evidence":"probe-passed"})); if self.event(child,entry,"ready").is_err() { let _ = self.stop_child(child,entry); } }
+                        if socket_ready(path) { self.ready(child, entry, "socket-accepts", "probe-passed"); }
                         else if entry.probe_deadline.is_some_and(|deadline| Instant::now() >= deadline) { let _ = self.stop_process(child,entry); self.fail(child,entry,"child-readiness-timeout"); }
                     }
                     Readiness::ProbeOp { op, .. } => {
@@ -316,7 +340,7 @@ impl Inner {
                         let outcome = self.registry.probes.iter().find(|probe| probe.id == op).ok_or_else(|| HostError::new("unregistered-child-probe","Probe missing")).and_then(|probe| (probe.run)(&self.config,child,entry.status.instance_id.as_deref().unwrap_or(""),deadline));
                         if Instant::now() >= deadline { let _=self.stop_process(child,entry); self.fail(child,entry,"child-readiness-timeout"); }
                         else { match outcome {
-                            Ok(ProbeOutcome::Ready) => { entry.status.state="running"; entry.status.readiness=Some(json!({"outcome":"ready","probe":"probe-op","evidence":"probe-passed"})); if self.event(child,entry,"ready").is_err(){let _=self.stop_child(child,entry);} }
+                            Ok(ProbeOutcome::Ready) => self.ready(child, entry, "probe-op", "probe-passed"),
                             Ok(ProbeOutcome::Deferred{service,evidence}) if valid_deferral(child,&service,&evidence) => {
                                 let audit = opaque_id().map_err(HostError::from).and_then(|id| self.audit.lock().append(&json!({"phase":"child-probe","auditId":id,"utc":utc(),"childId":child.id,"instanceId":entry.status.instance_id,"releaseRevision":self.config.release_revision,"policyRevision":self.config.policy_revision,"service":service,"evidence":evidence})));
                                 entry.suppressed=true; entry.deferred_blocked=true; let _=self.stop_process(child,entry); entry.status.state="stopped";
@@ -426,6 +450,14 @@ impl Inner {
         let result = json!({"id":child.id,"instanceId":entry.status.instance_id,"alreadyStopped":already_stopped,"lastExit":entry.status.last_exit});
         self.event(child,entry,"stop")?; Ok(result)
     }
+}
+fn scheduled_idle(child: &Child) -> Value {
+    let probe = match child.readiness {
+        Readiness::None {} => "none",
+        Readiness::SocketAccepts { .. } => "socket-accepts",
+        Readiness::ProbeOp { .. } => "probe-op",
+    };
+    json!({"outcome":"ready","probe":probe,"evidence":"scheduled-idle"})
 }
 fn backoff(initial: u32, max: u32, attempt: u32) -> u64 { u64::from(initial).saturating_mul(1_u64.checked_shl(attempt).unwrap_or(u64::MAX)).min(u64::from(max)) }
 fn validate_compiled_registry(registry: &Registry) -> Result<(), HostError> {
@@ -586,6 +618,93 @@ fn capture(mut input: impl Read + AsRawFd + Send + 'static, mut file: File, stop
 #[cfg(test)]
 mod tests {
     use super::*;
+    fn runtime_fixture(root: &Path, readiness: Value, schedule: Value) -> (Config, Registry) {
+        let restart = if schedule["kind"] == "launchd-scheduled" { json!({"kind":"never"}) }
+            else { json!({"kind":"on-failure","initialBackoffMs":10,"maxBackoffMs":100,"maxAttempts":2}) };
+        let config = serde_json::from_value(json!({
+            "uid":unsafe { libc::geteuid() },"socket":root.join("socket"),
+            "audit":root.join("audit"),"staging":root,"policyRevision":"policy","releaseRevision":"release",
+            "enabledGrants":[],"automationTargets":[],"products":{},"auditMaxBytes":65536,
+            "documents":{"sources":{},"maxItems":1,"maxBytes":1,"timeoutMs":1},
+            "helperRequirements":{"Contents/Helpers/worker":"identifier test.worker"},
+            "jobProcessTypes":{"none":"Standard"},
+            "supervisedChildren":[{
+                "id":"worker","activation":"active","helperPath":"Contents/Helpers/worker",
+                "argv":[],"env":{},"cwd":root,"requiredTccServices":[],"requiresSession":"none",
+                "rlimitNofile":{"soft":128,"hard":128},"nice":0,"processType":"Standard",
+                "directories":{"state":{"path":root.join("state")},"run":{"path":root.join("run")},"log":{"path":root.join("log")}},
+                "clientSocket":root.join("run/probe"),"readiness":readiness,"restart":restart,
+                "stop":{"signal":"term","graceMs":100},"schedule":schedule
+            }]
+        })).unwrap();
+        let registry = Registry {
+            probes: vec![ProbeOperation { id:"worker.ready",requires_session:"none",run:|_,_,_,_| Ok(ProbeOutcome::Ready) }],
+            scheduled: vec![ScheduledOperation { id:"worker.run",child_id:"worker",requires_session:"none" }],
+        };
+        (config, registry)
+    }
+    #[test] fn fresh_scheduled_child_has_verifiable_idle_receipt() {
+        let root = root();
+        let (config, registry) = runtime_fixture(&root, json!({"kind":"probe-op","op":"worker.ready","timeoutMs":1000}), json!({"kind":"launchd-scheduled","op":"worker.run"}));
+        let audit = Arc::new(Mutex::new(Audit::open(&config).unwrap()));
+        let supervisor = Supervisor::new(Arc::new(config), audit, Role::Supervisor, false, Arc::new(registry)).unwrap();
+        let status = &supervisor.statuses()[0];
+        assert_eq!(status.readiness, Some(json!({"outcome":"ready","probe":"probe-op","evidence":"scheduled-idle"})));
+        assert!(status.pid.is_none());
+        assert!(status.instance_id.is_none());
+        {
+            let child = &supervisor.inner.config.supervised_children.0[0];
+            let mut entry = supervisor.inner.entries[0].lock();
+            let mut process = Command::new("/usr/bin/true").process_group(0).spawn().unwrap();
+            process.wait().unwrap();
+            entry.process = Some(process);
+            supervisor.inner.tick(child, &mut entry);
+            assert_eq!(entry.status.readiness, status.readiness);
+            assert_eq!(entry.status.last_exit.as_ref().unwrap().code, Some(0));
+        }
+        supervisor.shutdown();
+        drop(supervisor);
+        fs::remove_dir_all(root).unwrap();
+    }
+    #[test] fn failed_readiness_audit_reaps_all_readiness_kinds() {
+        for kind in ["none", "socket-accepts", "probe-op"] {
+            let root = root();
+            fs::create_dir(root.join("run")).unwrap();
+            let socket = root.join("run/probe");
+            let listener = std::os::unix::net::UnixListener::bind(&socket).unwrap();
+            let readiness = match kind {
+                "none" => json!({"kind":"none"}),
+                "socket-accepts" => json!({"kind":kind,"path":socket,"timeoutMs":1000}),
+                _ => json!({"kind":kind,"op":"worker.ready","timeoutMs":1000}),
+            };
+            let (config, registry) = runtime_fixture(&root, readiness, json!({"kind":"resident"}));
+            let audit = Arc::new(Mutex::new(Audit::open(&config).unwrap()));
+            // Exercise real audit retention failure, not a mocked event callback.
+            audit.lock().max = 0;
+            let supervisor = Supervisor::new(Arc::new(config), audit, Role::Supervisor, false, Arc::new(registry)).unwrap();
+            let child = &supervisor.inner.config.supervised_children.0[0];
+            {
+                let mut entry = supervisor.inner.entries[0].lock();
+                let process = Command::new("/bin/sleep").arg("60").process_group(0).spawn().unwrap();
+                let pid = process.id();
+                entry.process = Some(process);
+                entry.status.pid = Some(pid);
+                entry.probe_deadline = Some(Instant::now() + Duration::from_secs(1));
+                supervisor.inner.tick(child, &mut entry);
+                assert!(entry.process.is_none(), "{kind}");
+                assert!(entry.status.pid.is_none(), "{kind}");
+                assert_eq!(entry.status.state, "stopped", "{kind}");
+                assert_eq!(entry.status.readiness, Some(json!({"outcome":"failed","code":"audit-unavailable"})), "{kind}");
+                assert!(entry.suppressed && entry.retry.is_none(), "{kind}");
+                assert_eq!(unsafe { libc::kill(pid as i32, 0) }, -1, "{kind}");
+                assert_eq!(std::io::Error::last_os_error().raw_os_error(), Some(libc::ESRCH), "{kind}");
+            }
+            supervisor.shutdown();
+            drop(supervisor);
+            drop(listener);
+            fs::remove_dir_all(root).unwrap();
+        }
+    }
     #[test] fn retry_delay_caps_without_overflow() { assert_eq!(backoff(100,1000,0),100); assert_eq!(backoff(100,1000,3),800); assert_eq!(backoff(100,1000,100),1000); }
     fn root() -> PathBuf {
         let path = fs::canonicalize(std::env::temp_dir()).unwrap().join(format!("child-runtime-{}", opaque_id().unwrap()));

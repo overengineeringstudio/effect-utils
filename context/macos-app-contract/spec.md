@@ -80,9 +80,15 @@ The system-domain supervisor runs directly from the signed bundle as the explici
 target user and owns the sole public client socket. The GUI-domain agent runs the
 same signed entrypoint with a distinct role and owns only a private, owner-only
 forwarding socket. Both ends authenticate the kernel peer UID and validate the
-peer's live code against the pinned host signing requirement before exchanging
-bounded protocol frames. Private request and response envelopes bind the current
-policy and release revisions; a stale GUI agent cannot execute forwarded work.
+peer's live code against the pinned host signing requirement. Signing identity
+alone does not establish a role: a same-UID caller can launch the unchanged
+signed executable with a copied policy. Each peer additionally binds the kernel
+peer PID/incarnation to the current launchd-managed job, using fixed
+`/bin/launchctl` job evidence and immutable target UID/job labels from the
+bundle-sealed `Contents/Resources/runtime-identity.json`, never caller-selected
+config. This binding is refreshed before dispatch and response. Private request
+and response envelopes bind the current policy and release revisions; a stale
+GUI agent cannot execute forwarded work. All exchanges are bounded.
 The supervisor routes only compiled GUI operations;
 clients cannot select a transport or another endpoint. A missing GUI agent yields
 `session-unavailable`, never client autospawn or execution in a substitute app.
@@ -107,6 +113,12 @@ grace and then kills/reaps the process group. Scheduled invocation results retai
 the actual exit code/signal; nonzero exit alone never becomes deferral. Only a
 compiled, permission-specific probe can produce deferred evidence, retained in
 bounded private audit rather than public status.
+An idle scheduled child reports the declared readiness kind with
+`evidence: scheduled-idle`, both before its first invocation and after successful
+completion; this is schedule admission, not evidence that a probe executed.
+Readiness/exit audit failure unconditionally stops and reaps admitted work,
+publishes `failed: audit-unavailable`, and suppresses restart. Internal safety
+cleanup and cancellation never depend on admitting another audited client stop.
 
 ProcessType is inherited from the owning launchd job, not independently changed
 after spawn. Build-time admission requires each child's declared ProcessType to
@@ -405,9 +417,15 @@ supervisor|gui-agent --gui-socket ...` arguments.
 
 The existing `D.rollback.json` exchange journal owns bundle, generation and paired
 configuration/job recovery; there is no parallel paired release journal.
+Recovery validates the recorded stage, archive, identity and all required inputs
+before stopping any live job. Missing or unverifiable prerequisites retain the
+journal and return a typed unresolved error without booting out services.
 Recovery after an error or crash restores the complete incumbent release before
-restarting its jobs. Unresolved recovery retains the journal and returns a typed
-error for the next ctl invocation to recover. A pair receipt pins the installed
+restarting its jobs. GUI restoration follows current GUI-domain availability,
+not just whether the agent was loaded before the transaction: login during a
+failed release must restore the old agent, and logout must not fabricate GUI
+success. Unresolved recovery retains the journal for the next ctl invocation.
+A pair receipt pins the installed
 bundle inode and both configurations. With no GUI session, ctl publishes the GUI
 configuration but starts only the system job; this is not a substitute GUI
 success. Child verification gives hard failures precedence (exit 22); only
