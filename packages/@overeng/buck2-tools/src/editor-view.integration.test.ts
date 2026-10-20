@@ -257,7 +257,7 @@ const makeWritable = (path: string): void => {
     for (const name of readdirSync(path)) makeWritable(join(path, name))
     return
   }
-  chmodSync(path, 0o600)
+  // Regular files may share snapshot/CAS inodes; only parent directories need write access.
 }
 
 const cleanup = (fixture: Fixture): void => {
@@ -271,6 +271,42 @@ const cleanup = (fixture: Fixture): void => {
   unlock(fixture.root)
   rmSync(fixture.root, { recursive: true, force: true })
 }
+
+it('preserves shared payload modes while unlocking and removing readonly fixture directories', async () => {
+  const fixture = makeFixture()
+  const retainedRoot = mkdtempSync(join(tmpdir(), 'editor-view-cleanup-alias-'))
+  try {
+    const record = await publishEditorView(fixture.options)
+    const snapshot = join(fixture.editorRoot, record.snapshot)
+    const payload = join(snapshot, 'node_modules', 'dep', 'index.js')
+    const retained = join(retainedRoot, 'payload')
+    linkSync(payload, retained)
+    const payloadMode = statSync(retained).mode
+    expect(payloadMode & 0o222).toBe(0)
+    expect(statSync(payload).ino).toBe(statSync(retained).ino)
+    const externalDirectory = join(retainedRoot, 'external')
+    mkdirSync(externalDirectory)
+    chmodSync(externalDirectory, 0o500)
+    symlinkSync(externalDirectory, join(fixture.root, 'external-directory'))
+    symlinkSync(retained, join(fixture.root, 'external-file'))
+    symlinkSync('missing', join(fixture.root, 'dangling'))
+    chmodSync(fixture.root, 0o500)
+
+    makeWritable(fixture.root)
+    expect(statSync(retained).mode).toBe(payloadMode)
+    expect(statSync(externalDirectory).mode & 0o777).toBe(0o500)
+    // Exercise cleanup from readonly directories independently of the unlock above.
+    chmodSync(snapshot, 0o500)
+    chmodSync(fixture.root, 0o500)
+    cleanup(fixture)
+    expect(existsSync(fixture.root)).toBe(false)
+    expect(statSync(retained).mode).toBe(payloadMode)
+    expect(statSync(externalDirectory).mode & 0o777).toBe(0o500)
+  } finally {
+    if (existsSync(fixture.root) === true) cleanup(fixture)
+    rmSync(retainedRoot, { recursive: true, force: true })
+  }
+})
 
 const currentTarget = (fixture: Fixture): string =>
   readlinkSync(join(fixture.editorRoot, fixture.options.viewName))
@@ -3163,6 +3199,59 @@ describe('editor view publisher', () => {
     })
   })
 
+  describe('hash-verified snapshot mode drift', () => {
+    it('prepares a writable hardlinked snapshot and reports repaired inode modes', async () => {
+      const fixture = makeFixture()
+      const stderr = vi.spyOn(process.stderr, 'write')
+      try {
+        const record = await publishEditorView(fixture.options)
+        const payload = join(fixture.editorRoot, record.snapshot, 'node_modules', 'dep', 'index.js')
+        const alias = join(fixture.root, 'retained-snapshot-alias')
+        linkSync(payload, alias)
+        chmodSync(alias, 0o644)
+        stderr.mockClear()
+        await expect(publishEditorView(fixture.options)).resolves.toEqual(record)
+        expect(statSync(payload).mode & 0o777).toBe(0o444)
+        expect(statSync(alias).mode & 0o777).toBe(0o444)
+        expect(stderr.mock.calls.some(([message]) =>
+          typeof message === 'string' &&
+          message.includes('[editor-view-mode-drift]') &&
+          message.includes('"count":1') &&
+          message.includes(payload),
+        )).toBe(true)
+        await expect(verifyEditorViewSnapshot(fixture.options)).resolves.toEqual(record)
+      } finally {
+        stderr.mockRestore()
+        cleanup(fixture)
+      }
+    })
+
+    it('leaves every writable mode unchanged when any snapshot byte is mutated', async () => {
+      const fixture = makeFixture()
+      try {
+        writeFileSync(join(fixture.nodeModules, 'clean.js'), 'unchanged bytes\n')
+        const record = await publishEditorView(fixture.options)
+        const snapshot = join(fixture.editorRoot, record.snapshot, 'node_modules')
+        const clean = join(snapshot, 'clean.js')
+        const mutated = join(snapshot, 'dep', 'index.js')
+        const alias = join(fixture.root, 'mutated-snapshot-alias')
+        linkSync(mutated, alias)
+        chmodSync(clean, 0o644)
+        chmodSync(alias, 0o644)
+        writeFileSync(alias, 'mutated bytes\n')
+        await expect(publishEditorView(fixture.options)).rejects.toMatchObject({
+          cause: expect.objectContaining({
+            message: expect.stringContaining('existing snapshot byte digest mismatch'),
+          }),
+        })
+        for (const path of [clean, mutated, alias])
+          expect(statSync(path).mode & 0o777).toBe(0o644)
+      } finally {
+        cleanup(fixture)
+      }
+    })
+  })
+
   describe('tampered shared inode rejection in every owning view', () => {
     let first: Fixture
     let sibling: { readonly options: EditorViewOptions; readonly editorInputs: string }
@@ -3175,10 +3264,9 @@ describe('editor view publisher', () => {
       await pending
       pending = publishEditorView(sibling.options)
       await pending
-      chmodSync(
-        join(first.editorRoot, currentTarget(first), 'node_modules', 'dep', 'index.js'),
-        0o644,
-      )
+      const payload = join(first.editorRoot, currentTarget(first), 'node_modules', 'dep', 'index.js')
+      chmodSync(payload, 0o644)
+      writeFileSync(payload, 'mutated shared bytes\n')
     })
     afterAll(async () => {
       await pending?.catch(() => undefined)
@@ -3189,12 +3277,12 @@ describe('editor view publisher', () => {
       it(`rejects the tampered shared inode in the ${owner} view without repair`, async () => {
         const options = owner === 'first' ? first.options : sibling.options
         pending = checkEditorView(options)
-        await expect(pending).rejects.toThrow('snapshot immutability violation')
+        await expect(pending).rejects.toThrow('snapshot byte digest mismatch')
         pending = publishEditorView(options)
         await expect(pending).rejects.toMatchObject({
           message: expect.stringContaining('; publication workers='),
           cause: expect.objectContaining({
-            message: expect.stringMatching(/^editor view: snapshot file is writable:/u),
+            message: expect.stringMatching(/^editor view: existing snapshot byte digest mismatch:/u),
           }),
         })
       })

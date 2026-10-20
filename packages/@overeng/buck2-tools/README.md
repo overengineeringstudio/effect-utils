@@ -430,9 +430,15 @@ payload inodes.
 ### Recovering a chmod-poisoned shared store
 
 Cleanup must unlock **directories only**, never recursively chmod payload files:
-snapshot payloads are hardlinked into the CAS and other worktrees. A writable
-blob is rejected even when its bytes happen to match its address. Do not bypass
-this check with a blanket chmod or a private-copy fallback.
+snapshot payloads are hardlinked into the CAS and other worktrees. Snapshot
+prepare and verification first validate the complete payload byte digest; only
+a matching digest permits removing write bits from drifted regular payload files.
+Repairs use `O_NOFOLLOW` descriptors and recheck inode identity and metadata before
+changing modes. The `[editor-view-mode-drift]` stderr record reports the repaired
+inode count and up to five sample paths; hardlinked aliases are repaired together.
+Any byte mismatch fails before changing any file mode. Writable directories and
+private metadata remain errors. Direct CAS admission still rejects writable blobs;
+do not bypass its checks with a blanket chmod or a private-copy fallback.
 
 An initial read-only census requires no quiescence acknowledgement and does not
 create a flock, normalize directories, or change any inode:

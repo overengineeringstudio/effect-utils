@@ -4,6 +4,11 @@ import { createHash, randomUUID } from 'node:crypto'
 import { createReadStream } from 'node:fs'
 import {
   constants,
+  closeSync,
+  fchmodSync,
+  fstatSync,
+  openSync,
+  type BigIntStats,
   copyFileSync,
   chmodSync,
   existsSync,
@@ -1617,7 +1622,12 @@ const viteWriteDiagnostic = (directory: string): string => {
 }
 
 /** Complete immutability proof: every directory, file, and link of the snapshot payload. */
-const requireReadOnlySnapshot = (snapshotDir: string): void => {
+type SnapshotModeDrift = { readonly path: string; readonly status: BigIntStats }
+
+const requireReadOnlySnapshot = (
+  snapshotDir: string,
+  modeDrift?: SnapshotModeDrift[],
+): void => {
   const finite = pathExists(join(snapshotDir, '.backing'))
   const visit = (directory: string): void => {
     const status = lstatSync(directory)
@@ -1640,11 +1650,52 @@ const requireReadOnlySnapshot = (snapshotDir: string): void => {
         continue
       }
       if (entry.isFile() === false) fail(`snapshot contains unsupported special file: ${path}`)
-      if ((entry.mode & 0o222) !== 0) fail(`snapshot file is writable: ${path}`)
+      if ((entry.mode & 0o222) !== 0) {
+        // Only payload bytes participate in byteSnapshotDigest. Private records and
+        // source hints must remain read-only rather than being repaired without a hash.
+        const payload = relative(snapshotDir, path).split('/')[0]
+        if (modeDrift === undefined || (payload !== 'node_modules' && payload !== '.backing'))
+          fail(`snapshot file is writable: ${path}`)
+        modeDrift.push({ path, status: lstatSync(path, { bigint: true }) })
+      }
     }
   }
   requireReadOnlySnapshotRoot(snapshotDir)
   visit(snapshotDir)
+}
+
+/** Called only after the complete payload digest matches; chmod the opened inode, never a link. */
+const restoreSnapshotModes = (modeDrift: readonly SnapshotModeDrift[]): void => {
+  const restored = new Set<string>()
+  for (const { path, status } of modeDrift) {
+    const inode = `${status.dev}:${status.ino}`
+    if (restored.has(inode) === true) continue
+    const descriptor = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW)
+    try {
+      const current = fstatSync(descriptor, { bigint: true })
+      if (
+        current.isFile() === false ||
+        current.dev !== status.dev ||
+        current.ino !== status.ino ||
+        current.size !== status.size ||
+        current.mtimeNs !== status.mtimeNs ||
+        current.uid !== status.uid ||
+        (current.mode !== status.mode && current.mode !== (status.mode & ~0o222n)) ||
+        (current.mode === status.mode && current.ctimeNs !== status.ctimeNs)
+      )
+        fail(`snapshot file changed after hash verification: ${path}`)
+      // Another owning view may have repaired the same inode while we hashed.
+      if ((current.mode & 0o222n) === 0n) continue
+      fchmodSync(descriptor, Number(status.mode & 0o7777n & ~0o222n))
+      restored.add(inode)
+    } finally {
+      closeSync(descriptor)
+    }
+  }
+  if (modeDrift.length > 0)
+    process.stderr.write(
+      `[editor-view-mode-drift] ${JSON.stringify({ count: restored.size, samples: modeDrift.slice(0, 5).map(({ path }) => path) })}\n`,
+    )
 }
 
 const ensureConsumerCache = (paths: ViewPaths): void => {
@@ -2334,12 +2385,14 @@ const validateSnapshotContents = async ({
   const record = readRecord(join(snapshotDir, 'editor-view.json'))
   const snapshotNodeModules = join(snapshotDir, 'node_modules')
   requireDirectory({ path: snapshotNodeModules, field: 'snapshot node_modules' })
-  requireReadOnlySnapshot(snapshotDir)
+  const modeDrift: SnapshotModeDrift[] = []
+  requireReadOnlySnapshot(snapshotDir, modeDrift)
   const digest = (await fingerprintSnapshotPayload({ snapshotDir, fingerprintTool })).digest
   if (digest !== record.byteSnapshotDigest)
     fail(
       `existing snapshot byte digest mismatch: recorded=${record.byteSnapshotDigest} actual=${digest}`,
     )
+  restoreSnapshotModes(modeDrift)
   return record
 }
 
@@ -3487,8 +3540,9 @@ const validatePublishedView = async ({
     recordsEqual({ left: record, right: { ...expected, snapshot: pointer } }) === false
   )
     return failCheck({ message: 'record package/cell/target/snapshot fields are invalid', context })
+  const modeDrift: SnapshotModeDrift[] = []
   try {
-    requireReadOnlySnapshot(snapshotDir)
+    requireReadOnlySnapshot(snapshotDir, modeDrift)
   } catch (error) {
     return failCheck({
       message: `snapshot immutability violation: ${error instanceof Error ? error.message : String(error)}`,
@@ -3512,6 +3566,7 @@ const validatePublishedView = async ({
       message: `snapshot byte digest mismatch: recorded=${record.byteSnapshotDigest} snapshot=${snapshotDigest}`,
       context,
     })
+  restoreSnapshotModes(modeDrift)
   let firstHopStatus
   try {
     firstHopStatus = lstatSync(paths.firstHop)

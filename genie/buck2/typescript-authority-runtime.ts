@@ -3,6 +3,7 @@ import {
   chmod,
   lstat,
   mkdtemp,
+  readdir,
   rm,
   stat,
 } from 'node:fs/promises'
@@ -219,11 +220,23 @@ export const materializeTypeScriptDist = async ({
     return { _tag: 'Status', status: 0 }
   } finally {
     if (await isPresent(stagingRoot)) {
-      const cleanupOutcome = await executeCommandPlan({
-        commands: [[chmodBin, '-R', 'u+w', stagingRoot]],
-        runtime,
-      })
-      await chmod(stagingRoot, 0o700).catch(() => undefined)
+      // Exchanged dist files may share snapshot inodes. Only directory permissions
+      // are needed for unlinking; never chmod files or descend through symlinks.
+      const makeDirectoriesWritable = async (directory: string): Promise<CommandOutcome> => {
+        const metadata = await lstat(directory)
+        if (metadata.isDirectory() === false) return { _tag: 'Status', status: 0 }
+        let outcome = await executeCommandPlan({
+          commands: [[chmodBin, 'u+w', '--', directory]],
+          runtime,
+        })
+        await chmod(directory, metadata.mode | 0o700).catch(() => undefined)
+        for (const name of await readdir(directory)) {
+          const childOutcome = await makeDirectoriesWritable(join(directory, name))
+          if (successful(outcome) && successful(childOutcome) === false) outcome = childOutcome
+        }
+        return outcome
+      }
+      const cleanupOutcome = await makeDirectoriesWritable(stagingRoot)
       await rm(stagingRoot, { force: true, recursive: true })
       if (successful(cleanupOutcome) === false) return cleanupOutcome
     }
