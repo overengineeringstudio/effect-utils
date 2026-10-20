@@ -22,6 +22,11 @@ pub struct Child {
     pub activation: Activation,
     pub schedule: Schedule,
     pub requires_session: Session,
+    pub rlimit_nofile: RlimitNofile,
+    pub nice: i8,
+    pub process_type: ProcessType,
+    pub directories: Directories,
+    pub client_socket: Option<String>,
 }
 #[derive(Debug, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
 #[serde(rename_all = "kebab-case")]
@@ -39,8 +44,20 @@ pub struct Stop { pub signal: StopSignal, pub grace_ms: u32 }
 #[serde(rename_all = "lowercase")]
 pub enum StopSignal { Int, Term }
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RlimitNofile { pub soft: u64, pub hard: u64 }
+#[derive(Debug, Deserialize)]
+pub enum ProcessType { Background, Standard, Interactive, Adaptive }
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Directories { pub state: Directory, pub run: Directory, pub log: Directory }
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Directory { pub path: String, #[serde(default = "directory_mode")] pub mode: u32 }
+fn directory_mode() -> u32 { 0o700 }
+#[derive(Debug, Deserialize)]
 #[serde(tag = "kind", rename_all = "kebab-case", deny_unknown_fields)]
-pub enum Readiness { SocketAccepts { path: String, #[serde(rename = "timeoutMs")] timeout_ms: u32 }, ExitZero { op: String, #[serde(rename = "timeoutMs")] timeout_ms: u32 }, None {} }
+pub enum Readiness { SocketAccepts { path: String, #[serde(rename = "timeoutMs")] timeout_ms: u32 }, ProbeOp { op: String, #[serde(rename = "timeoutMs")] timeout_ms: u32 }, None {} }
 #[derive(Debug, Deserialize)]
 #[serde(tag = "kind", rename_all = "kebab-case", deny_unknown_fields)]
 pub enum Restart { Never {}, OnFailure { #[serde(rename = "initialBackoffMs")] initial_backoff_ms: u32, #[serde(rename = "maxBackoffMs")] max_backoff_ms: u32, #[serde(rename = "maxAttempts")] max_attempts: u32 } }
@@ -81,9 +98,21 @@ impl TryFrom<Vec<Child>> for Children {
             if child.required_tcc_services.iter().collect::<BTreeSet<_>>().len() != child.required_tcc_services.len() {
                 return Err("Duplicate child TCC service");
             }
+            if child.rlimit_nofile.soft == 0 || child.rlimit_nofile.soft > child.rlimit_nofile.hard || !(-20..=19).contains(&child.nice) {
+                return Err("Invalid child resource policy");
+            }
+            let mut directories = BTreeSet::new();
+            for directory in [&child.directories.state, &child.directories.run, &child.directories.log] {
+                if !absolute(&directory.path) || directory.path == "/" || directory.mode > 0o777 || !directories.insert(&directory.path) {
+                    return Err("Invalid or duplicate child directory");
+                }
+            }
+            if child.client_socket.as_ref().is_some_and(|socket| !absolute(socket) || !socket.strip_prefix(&child.directories.run.path).is_some_and(|suffix| suffix.starts_with('/'))) {
+                return Err("Child client socket must be inside its declared run directory");
+            }
             match &child.readiness {
-                Readiness::SocketAccepts { path, timeout_ms } if !absolute(path) || !(1..=300_000).contains(timeout_ms) => return Err("Invalid child socket probe"),
-                Readiness::ExitZero { op, timeout_ms } if !operation(op) || !(1..=300_000).contains(timeout_ms) => return Err("Invalid child probe operation"),
+                Readiness::SocketAccepts { path, timeout_ms } if !absolute(path) || child.client_socket.as_ref() != Some(path) || !(1..=300_000).contains(timeout_ms) => return Err("Invalid child socket probe or mismatched client endpoint"),
+                Readiness::ProbeOp { op, timeout_ms } if !operation(op) || !(1..=300_000).contains(timeout_ms) => return Err("Invalid child probe operation"),
                 _ => {}
             }
             if !(1..=300_000).contains(&child.stop.grace_ms) { return Err("Invalid child stop grace period"); }
@@ -113,7 +142,7 @@ impl Children {
 mod tests {
     use super::*;
     use serde_json::{Value, json};
-    fn child() -> Value { json!({"id":"watcher","helperPath":"Contents/Helpers/watcher","argv":[],"env":{},"cwd":"/","requiredTccServices":["full-disk-access"],"requiresSession":"none","readiness":{"kind":"socket-accepts","path":"/var/run/example.sock","timeoutMs":1000},"restart":{"kind":"on-failure","initialBackoffMs":100,"maxBackoffMs":1000,"maxAttempts":3},"stop":{"signal":"term","graceMs":30000},"schedule":{"kind":"resident"}}) }
+    fn child() -> Value { json!({"id":"watcher","helperPath":"Contents/Helpers/watcher","argv":[],"env":{},"cwd":"/","requiredTccServices":["full-disk-access"],"requiresSession":"none","rlimitNofile":{"soft":8192,"hard":8192},"nice":0,"processType":"Standard","directories":{"state":{"path":"/var/example/state"},"run":{"path":"/var/example/run"},"log":{"path":"/var/example/log"}},"clientSocket":"/var/example/run/watcher.sock","readiness":{"kind":"socket-accepts","path":"/var/example/run/watcher.sock","timeoutMs":1000},"restart":{"kind":"on-failure","initialBackoffMs":100,"maxBackoffMs":1000,"maxAttempts":3},"stop":{"signal":"term","graceMs":30000},"schedule":{"kind":"resident"}}) }
     fn parse(value: Value) -> Result<Children, serde_json::Error> { serde_json::from_value(json!([value])) }
     #[test] fn inactive_is_default_and_active_is_not_silently_started() {
         assert!(parse(child()).unwrap().require_inactive().is_ok());
@@ -121,7 +150,7 @@ mod tests {
         assert!(parse(value).unwrap().require_inactive().is_err());
     }
     #[test] fn rejects_unknown_fields_at_every_object_boundary() {
-        for key in ["", "readiness", "restart", "schedule", "stop"] {
+        for key in ["", "readiness", "restart", "schedule", "stop", "rlimitNofile", "directories"] {
             let mut value = child();
             let target = if key.is_empty() { &mut value } else { &mut value[key] };
             target["unexpected"] = json!(true);
@@ -147,7 +176,7 @@ mod tests {
     #[test] fn validates_scheduled_operations_and_unique_inventory() {
         let mut value = child(); value["schedule"] = json!({"kind":"launchd-scheduled","op":"private.backup"});
         assert!(parse(value.clone()).is_err());
-        value["restart"] = json!({"kind":"never"}); value["readiness"] = json!({"kind":"exit-zero","op":"private.probe","timeoutMs":1000});
+        value["restart"] = json!({"kind":"never"}); value["readiness"] = json!({"kind":"probe-op","op":"private.probe","timeoutMs":1000});
         assert!(parse(value).is_ok());
         assert!(serde_json::from_value::<Children>(json!([child(),child()])).is_err());
         let mut other = child(); other["id"] = json!("other");
@@ -164,5 +193,17 @@ mod tests {
         }
         let mut value = child(); value.as_object_mut().unwrap().remove("stop");
         assert!(parse(value).is_err());
+    }
+    #[test] fn rejects_invalid_resources_directories_and_changed_socket() {
+        for (key, bad) in [("rlimitNofile", json!({"soft":0,"hard":1})), ("rlimitNofile", json!({"soft":2,"hard":1})), ("nice", json!(-21)), ("nice", json!(20)), ("processType", json!("unknown")), ("clientSocket", json!("/other/socket")), ("readiness", json!({"kind":"exit-zero","op":"private.probe","timeoutMs":1}))] {
+            let mut value = child(); value[key] = bad;
+            assert!(parse(value).is_err(), "{key}");
+        }
+        for directory in [json!({"path":"/"}), json!({"path":"/nix/store/state"}), json!({"path":"/state","mode":512}), json!({"path":"/state","extra":true})] {
+            let mut value = child(); value["directories"]["state"] = directory;
+            assert!(parse(value).is_err());
+        }
+        let parsed = parse(child()).unwrap();
+        assert_eq!(parsed.0[0].directories.run.mode, 0o700);
     }
 }

@@ -10,9 +10,16 @@
     "text": {"type": "string", "pattern": "^[^\\u0000]*$"},
     "absolute": {"type": "string", "pattern": "^/(?!nix/store(?:/|$))(?:$|(?!(?:[^/]+/)*\\.{1,2}(?:/|$))[^/\\\\\\u0000]+(?:/[^/\\\\\\u0000]+)*)$"},
     "timeout": {"type": "integer", "minimum": 1, "maximum": 300000},
+    "service": {"enum": ["full-disk-access", "notifications", "screen-recording", "accessibility", "microphone", "system-audio", "automation"]},
+    "directory": {"type": "object", "additionalProperties": false, "required": ["path"], "properties": {"path": {"allOf": [{"$ref": "#/$defs/absolute"}, {"not": {"const": "/"}}]}, "mode": {"type": "integer", "minimum": 0, "maximum": 511, "default": 448}}},
+    "probeResult": {"oneOf": [
+      {"type": "object", "additionalProperties": false, "required": ["outcome"], "properties": {"outcome": {"const": "ready"}}},
+      {"type": "object", "additionalProperties": false, "required": ["outcome", "service", "evidence"], "properties": {"outcome": {"const": "deferred"}, "service": {"$ref": "#/$defs/service"}, "evidence": {"type": "string", "minLength": 1, "maxLength": 4096}}},
+      {"type": "object", "additionalProperties": false, "required": ["outcome", "code"], "properties": {"outcome": {"const": "failed"}, "code": {"$ref": "#/$defs/id"}}}
+    ]},
     "child": {
       "type": "object", "additionalProperties": false,
-      "required": ["id", "helperPath", "argv", "env", "cwd", "requiredTccServices", "requiresSession", "readiness", "restart", "stop", "schedule"],
+      "required": ["id", "helperPath", "argv", "env", "cwd", "requiredTccServices", "requiresSession", "readiness", "restart", "stop", "schedule", "rlimitNofile", "nice", "processType", "directories"],
       "properties": {
         "id": {"$ref": "#/$defs/id"},
         "helperPath": {"type": "string", "pattern": "^Contents/Helpers/(?!(?:[^/]+/)*\\.{1,2}(?:/|$))[^/\\\\\\u0000]+(?:/[^/\\\\\\u0000]+)*$"},
@@ -22,10 +29,15 @@
         "requiredTccServices": {"type": "array", "uniqueItems": true, "items": {"enum": ["full-disk-access", "notifications", "screen-recording", "accessibility", "microphone", "system-audio", "automation"]}},
         "activation": {"enum": ["active", "inactive"], "default": "inactive"},
         "requiresSession": {"enum": ["none", "gui"]},
+        "rlimitNofile": {"type": "object", "additionalProperties": false, "required": ["soft", "hard"], "properties": {"soft": {"type": "integer", "minimum": 1, "maximum": 18446744073709551615}, "hard": {"type": "integer", "minimum": 1, "maximum": 18446744073709551615}}},
+        "nice": {"type": "integer", "minimum": -20, "maximum": 19},
+        "processType": {"enum": ["Background", "Standard", "Interactive", "Adaptive"]},
+        "directories": {"type": "object", "additionalProperties": false, "required": ["state", "run", "log"], "properties": {"state": {"$ref": "#/$defs/directory"}, "run": {"$ref": "#/$defs/directory"}, "log": {"$ref": "#/$defs/directory"}}},
+        "clientSocket": {"oneOf": [{"$ref": "#/$defs/absolute"}, {"type": "null"}]},
         "stop": {"type": "object", "additionalProperties": false, "required": ["signal", "graceMs"], "properties": {"signal": {"enum": ["int", "term"]}, "graceMs": {"$ref": "#/$defs/timeout"}}},
         "readiness": {"oneOf": [
           {"type": "object", "additionalProperties": false, "required": ["kind", "path", "timeoutMs"], "properties": {"kind": {"const": "socket-accepts"}, "path": {"$ref": "#/$defs/absolute"}, "timeoutMs": {"$ref": "#/$defs/timeout"}}},
-          {"type": "object", "additionalProperties": false, "required": ["kind", "op", "timeoutMs"], "properties": {"kind": {"const": "exit-zero"}, "op": {"$ref": "#/$defs/op"}, "timeoutMs": {"$ref": "#/$defs/timeout"}}},
+          {"type": "object", "additionalProperties": false, "required": ["kind", "op", "timeoutMs"], "properties": {"kind": {"const": "probe-op"}, "op": {"$ref": "#/$defs/op"}, "timeoutMs": {"$ref": "#/$defs/timeout"}}},
           {"type": "object", "additionalProperties": false, "required": ["kind"], "properties": {"kind": {"const": "none"}}}
         ]},
         "restart": {"oneOf": [

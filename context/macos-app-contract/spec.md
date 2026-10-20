@@ -97,7 +97,8 @@ forwards the policy field unchanged. Omission is an empty inventory. The shared
 Rust decoder rejects unknown fields at every declaration/tagged-object boundary,
 duplicate IDs/helper paths, non-nested helpers, traversal and Nix-store executable
 paths. JSON Schema additionally describes the structural contract; cross-entry
-uniqueness and `initialBackoffMs <= maxBackoffMs` are semantic decoder checks.
+uniqueness, limit ordering, socket/run-directory agreement and
+`initialBackoffMs <= maxBackoffMs` are semantic decoder checks.
 
 | Field | Contract |
 | --- | --- |
@@ -106,11 +107,15 @@ uniqueness and `initialBackoffMs <= maxBackoffMs` are semantic decoder checks.
 | `argv`, `env`, `cwd` | Complete fixed argument list (excluding argv[0]), environment map and canonical absolute working directory. No ambient environment merging, NUL, or environment keys containing `=`. cwd and probe socket paths cannot be in `/nix/store`. |
 | `requiredTccServices` | Unique grant-category strings: `full-disk-access`, `notifications`, `screen-recording`, `accessibility`, `microphone`, `system-audio`, `automation`. A declaration is not evidence of a grant. |
 | `requiresSession` | Required `none` or `gui`. Session-free children belong to the supervisor; GUI children require its authenticated GUI-session execution context. |
-| `readiness` | `{kind:"socket-accepts",path,timeoutMs}`, `{kind:"exit-zero",op,timeoutMs}` or `{kind:"none"}`. Timeout is 1..300000 ms. `op` is a compiled, enabled, nonprompting bounded probe operation, not an executable. |
+| `readiness` | `{kind:"socket-accepts",path,timeoutMs}`, `{kind:"probe-op",op,timeoutMs}` or `{kind:"none"}`. Timeout is 1..300000 ms. `op` is a compiled, enabled, nonprompting bounded host probe returning the typed result below, never a client-supplied command. Plain `exit-zero` declarations are rejected. |
 | `restart` | `{kind:"never"}` or `{kind:"on-failure",initialBackoffMs,maxBackoffMs,maxAttempts}`. Backoff is 1..300000 ms, initial <= maximum, attempts 1..100. |
 | `stop` | Required `{signal:"int"|"term",graceMs}`; send SIGINT or SIGTERM, wait 1..300000 ms, then SIGKILL only if still alive. |
 | `activation` | `active` or `inactive`; omitted means **inactive**. Backup tools remain inactive/shadow declarations until separately proven and explicitly activated. |
 | `schedule` | `{kind:"resident"}` or `{kind:"launchd-scheduled",op}`. Scheduled operation IDs name compiled work; restart must be `never` because launchd owns the next invocation. |
+| `rlimitNofile` | Required closed `{soft,hard}` positive unsigned-64-bit limits with soft <= hard; reject unsupported platform limits before spawn. |
+| `nice`, `processType` | Required nice -20..19 and launchd `ProcessType`: `Background`, `Standard`, `Interactive` or `Adaptive`. |
+| `directories` | Required closed `{state,run,log}`, each `{path,mode?}`; distinct canonical absolute non-root/non-store paths. Default mode 0700 (decimal 448), explicit modes 0000..0777. Owner is always the target UID, never client input. |
+| `clientSocket` | Optional fixed canonical absolute socket inside the declared run directory; null/omitted for tools without a client socket. `socket-accepts.path` must equal it. |
 
 Operation names consist of two dot-separated declaration-ID segments. Assembly
 must resolve probe/scheduled IDs against the compiled registry and reject absent,
@@ -118,6 +123,29 @@ disabled, prompting or execution-like implementations; syntax alone does not
 register an operation. Scheduling names an existing consumer launchd-scheduled
 host operation; it does not add a timer/cron DSL or let launchd execute the helper
 directly.
+
+Before spawning, the host creates the declared state/run/log directories as the
+target UID with their declared modes (0700 unless explicitly overridden). Reject
+foreign ownership, symlink traversal, incompatible existing modes and unsafe ACLs;
+do not chmod arbitrary preexisting trees or silently widen access. No client may
+choose these paths.
+
+`clientSocket` is a **release invariant**, not a per-generation scratch pathname:
+the daemon's fixed argv/config, compiled probe operation and clients' fixed
+sockname must agree across upgrade and rollback. ctl must compare the desired
+and incumbent endpoint and reject changes without an explicit reviewed endpoint
+migration; a matching path in JSON alone does not prove argv/client agreement.
+Children supporting client autospawn must have it disabled by their immutable
+configuration. A stopped/replacing host never authorizes client-side spawning.
+
+Apply the declared resource policy before child work. ctl must also verify the
+host job's own Nice/ProcessType and effective nofile limits, not just the child's
+requested values. A child can refuse startup above a known nice threshold, and
+an unprivileged host cannot lower an inherited nice value; incompatible inherited
+policy is a hard admission failure, never a failed launch followed by a silent
+fallback. ProcessType uses launchd semantics, not a claim that setting nice alone
+changes background scheduling. Runtime application and ctl process-policy
+evidence remain part of #1963.
 
 Every helper is a pinned, signed nested code object in the complete host bundle,
 covered by the explicit `nestedCode` inventory and unsigned descriptor/sealed
@@ -173,24 +201,39 @@ a second app identity. GUI-only probes report session failure, not readiness.
 
 Declarations are independent of the launchd job executing them. Each compiled
 operation also declares `requiresSession: "none" | "gui"`; a probe/scheduled op
-must be compatible with its child's session requirement. The intended next
-topology is one signed bundle with two direct-entrypoint jobs: a system-domain
-LaunchDaemon with `UserName` set to the target user, owning session-free children
-and the single client endpoint; and a `gui/<uid>` agent for GUI-only operations
-(notifications, capture, Accessibility and Automation), reached through a private
-mutually authenticated socket. GUI requests return `session-unavailable` while
-that session is absent. The current ctl configuration models one job; this
-declaration PR does not implement or claim verification of the two-job topology.
+must be compatible with its child's session requirement. The contract requires
+one signed bundle with two direct-entrypoint jobs: `requiresSession: none`
+children/ops run in the system-domain supervisor LaunchDaemon with `UserName`
+set to the target user and work before graphical login; it owns the single
+client endpoint. Only `gui` children/ops run in the `gui/<uid>` agent, reached
+through a private mutually authenticated socket (notifications, capture,
+Accessibility and Automation). GUI requests return `session-unavailable` while
+that session is absent. The current ctl configuration models one job; the
+two-job topology implementation and positive pre-login proof remain #1963.
 
 ### Readiness, status and audit
 
 Activation/lifecycle (`inactive | starting | running | backoff | stopped`) is
 distinct from the readiness outcome below. Starting/backoff are not ready.
 
+A compiled `probe-op` returns exactly the schema's `probeResult`:
+`{outcome:"ready"}`, `{outcome:"deferred",service,evidence}` or
+`{outcome:"failed",code}`. Deferred evidence is nonempty, bounded to 4096 characters,
+permission-specific and tied to the current child/release; generic socket failure
+or nonzero exit is not permission evidence. It stays in private audit; public
+status carries only the stable service/reason. The compiled operation validates
+the evidence semantics, not the client or arbitrary stderr.
+
+For a filesystem-watcher child, a real watch-list request over its fixed socket
+proves application readiness; `socket-accepts` proves connection readiness only.
+Full Disk Access evidence requires **both plain and rename-exchange FSEvents
+probes** as a compiled child-specific host operation. Connection success, a
+watch-list success or one FSEvents shape alone cannot establish FDA capability.
+
 | Outcome | Evidence and transition |
 | --- | --- |
-| `ready` | Declared socket accepts a connection within its deadline, or declared probe op exits zero. File existence and PID presence are insufficient. `none` explicitly opts out of a service-readiness claim: after successful spawn, report `ready` with `probe:"none"` and `evidence:"spawn-only"`, never socket/application readiness. A scheduled idle child reports `ready` only with authenticated scheduling evidence, `evidence:"scheduled-idle"`; that does not claim a completed backup. |
-| `deferred` | Only an actual child/probe exit **75 together with** a stderr line `deferred-admission: pending-grant: <service>` for a declared required service. Stop admissions/spawn retries until explicit re-evaluation after onboarding or activation. A bare 75, diagnostic without 75, timeout or unknown service is failed, never inferred pending consent. |
+| `ready` | Declared socket accepts a connection within its deadline (connection-only evidence), or the compiled probe returns typed `ready` (application/permission evidence defined by that op). File existence and PID presence are insufficient. `none` explicitly opts out of a service-readiness claim: after successful spawn, report `ready` with `probe:"none"` and `evidence:"spawn-only"`, never socket/application readiness. A scheduled idle child reports `ready` only with authenticated scheduling evidence, `evidence:"scheduled-idle"`; that does not claim a completed backup. |
+| `deferred` | A compiled probe returns typed deferred with permission-specific evidence for a declared required service. When classifying a child/process exit, only actual exit **75 together with** `deferred-admission: pending-grant: <service>` stderr and permission-specific probe evidence permits deferred. A bare 75, diagnostic without 75, timeout or unknown service is failed. Stop admissions/retries until explicit re-evaluation. |
 | `failed` | Invalid bundle/signature/policy, probe error or deadline, unexpected termination, missing session, or exhausted restart budget. Preserve a stable error code and last observed outcome. |
 
 A ready child returns to starting on restart and loses old readiness evidence.
@@ -210,7 +253,7 @@ type ChildStatus = {
   requiresSession: 'none' | 'gui'
   state: 'inactive' | 'starting' | 'running' | 'backoff' | 'stopped'
   readiness: null | (
-    { outcome: 'ready'; probe: 'socket-accepts' | 'exit-zero' | 'none'
+    { outcome: 'ready'; probe: 'socket-accepts' | 'probe-op' | 'none'
       evidence: 'probe-passed' | 'spawn-only' | 'scheduled-idle' } |
     { outcome: 'deferred'; service: string; reason: string } |
     { outcome: 'failed'; code: string }
@@ -238,7 +281,8 @@ Record the child's real exit status unchanged in `lastExit` and audit (including
 75); a signal termination has a null code and actual signal, not a fabricated
 shell-style exit code. Classification never replaces the child's exit code with
 ctl's aggregate status. Only the paired exit-75/deferred-admission evidence above
-permits deferred classification.
+permits deferred classification of process exits; typed host probes separately
+require the permission-specific evidence contract.
 
 Runtime follow-ups also include per-child append-only stdout/stderr destinations
 (never truncate during a run; retention/rotation only between runs), multiple
