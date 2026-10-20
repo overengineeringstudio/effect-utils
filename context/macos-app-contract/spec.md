@@ -51,15 +51,15 @@ label and actual designated requirement before the first grant.
 launchd starts the installed signed native entrypoint directly, never a resident
 shell, resource-accounting wrapper or client. A socket/SSH client does not launch
 a replacement host when the service is absent. GUI-dependent operations require
-the host's GUI session; absence returns `session-unavailable`, not a fallback to
-another privileged app. Root-daemon integration is unresolved (DQ7), not implicit
-permission to create a second consent identity.
+the host's GUI-session execution context; absence returns `session-unavailable`,
+not a fallback to another privileged app. A system-domain supervisor and a
+GUI-session agent may share the single signed bundle and consent identity.
 
-Protected APIs and policy execute in the host. Compiled, reviewed operations are
-not external action commands. A later operation may encapsulate a specifically
-reviewed pinned worker only after its platform gate succeeds; the client cannot
-choose the executable, argv, environment, working directory or inherited file
-descriptors. This exception does not introduce an execution API.
+Protected APIs and policy execute in the host or its declared supervised children.
+Compiled, reviewed operations are not external action commands. The host fixes
+each child's executable, argv, environment, working directory and file descriptors;
+clients cannot choose or override them. Supervision does not introduce an
+execution API.
 
 ### Public runtime and private assembly
 
@@ -77,6 +77,257 @@ require neither a host identity nor a permission grant. Private operations link
 into the same assembled host and receive the same whole-disk-authority review;
 private configuration, source paths and labels never enter the public repo.
 No dynamically loaded client code bypasses assembly and sealing.
+
+## Supervised children
+
+The host is the single macOS permissions principal. Tools such as a filesystem
+watcher or backup helper execute as supervised children, not separately granted
+apps, external Nix-store payloads or shell wrappers. Declaration admission is
+implemented; spawning, readiness observation, restart supervision and active-child
+verification are a separate runtime implementation. Until that runtime exists,
+both ctl and the native host reject `active` declarations rather than accepting
+configuration they cannot enforce. Inactive declarations never spawn or probe.
+
+### Declaration and pinned bundle boundary
+
+[`children.schema.json`](../../nix/macos-app/children.schema.json) defines the
+`supervisedChildren` array in immutable consumer policy and ctl configuration.
+`mkMacosApp.supervisedChildren` supplies ctl's view; `mkMacosPermissionsHost`
+forwards the policy field unchanged. Omission is an empty inventory. The shared
+Rust decoder rejects unknown fields at every declaration/tagged-object boundary,
+duplicate IDs/helper paths, non-nested helpers, traversal and Nix-store executable
+paths. JSON Schema additionally describes the structural contract; cross-entry
+uniqueness, limit ordering, socket/run-directory agreement and
+`initialBackoffMs <= maxBackoffMs` are semantic decoder checks.
+
+| Field                 | Contract                                                                                                                                                                                                                                                                                             |
+| --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `id`                  | Unique `[a-z][a-z0-9-]*`, at most 128 ASCII characters.                                                                                                                                                                                                                                              |
+| `helperPath`          | Canonical bundle-relative `Contents/Helpers/...` executable; no empty, `.` or `..` components, backslash, NUL, absolute or store path.                                                                                                                                                               |
+| `argv`, `env`, `cwd`  | Complete fixed argument list (excluding argv[0]), environment map and canonical absolute working directory. No ambient environment merging, NUL, or environment keys containing `=`. cwd and probe socket paths cannot be in `/nix/store`.                                                           |
+| `requiredTccServices` | Unique grant-category strings: `full-disk-access`, `notifications`, `screen-recording`, `accessibility`, `microphone`, `system-audio`, `automation`. A declaration is not evidence of a grant.                                                                                                       |
+| `requiresSession`     | Required `none` or `gui`. Session-free children belong to the supervisor; GUI children require its authenticated GUI-session execution context.                                                                                                                                                      |
+| `readiness`           | `{kind:"socket-accepts",path,timeoutMs}`, `{kind:"probe-op",op,timeoutMs}` or `{kind:"none"}`. Timeout is 1..300000 ms. `op` is a compiled, enabled, nonprompting bounded host probe returning the typed result below, never a client-supplied command. Plain `exit-zero` declarations are rejected. |
+| `restart`             | `{kind:"never"}` or `{kind:"on-failure",initialBackoffMs,maxBackoffMs,maxAttempts}`. Backoff is 1..300000 ms, initial <= maximum, attempts 1..100.                                                                                                                                                   |
+| `stop`                | Required `{signal:"int"                                                                                                                                                                                                                                                                              | "term",graceMs}`; send SIGINT or SIGTERM, wait 1..300000 ms, then SIGKILL only if still alive. |
+| `activation`          | `active` or `inactive`; omitted means **inactive**. Backup tools remain inactive/shadow declarations until separately proven and explicitly activated.                                                                                                                                               |
+| `schedule`            | `{kind:"resident"}` or `{kind:"launchd-scheduled",op}`. Scheduled operation IDs name compiled work; restart must be `never` because launchd owns the next invocation.                                                                                                                                |
+| `rlimitNofile`        | Required closed `{soft,hard}` positive unsigned-64-bit limits with soft <= hard; reject unsupported platform limits before spawn.                                                                                                                                                                    |
+| `nice`, `processType` | Required nice -20..19 and launchd `ProcessType`: `Background`, `Standard`, `Interactive` or `Adaptive`.                                                                                                                                                                                              |
+| `directories`         | Required closed `{state,run,log}`, each `{path,mode?}`; distinct canonical absolute non-root/non-store paths. Default mode 0700 (decimal 448), explicit modes 0000..0777. Owner is always the target UID, never client input.                                                                        |
+| `clientSocket`        | Optional fixed canonical absolute socket inside the declared run directory; null/omitted for tools without a client socket. `socket-accepts.path` must equal it.                                                                                                                                     |
+
+Operation names consist of two dot-separated declaration-ID segments. Assembly
+must resolve probe/scheduled IDs against the compiled registry and reject absent,
+disabled, prompting or execution-like implementations; syntax alone does not
+register an operation. Scheduling names an existing consumer launchd-scheduled
+host operation; it does not add a timer/cron DSL or let launchd execute the helper
+directly.
+
+Before spawning, the host creates the declared state/run/log directories as the
+target UID with their declared modes (0700 unless explicitly overridden). Reject
+foreign ownership, symlink traversal, incompatible existing modes and unsafe ACLs;
+do not chmod arbitrary preexisting trees or silently widen access. No client may
+choose these paths.
+
+`clientSocket` is a **release invariant**, not a per-generation scratch pathname:
+the daemon's fixed argv/config, compiled probe operation and clients' fixed
+sockname must agree across upgrade and rollback. ctl must compare the desired
+and incumbent endpoint and reject changes without an explicit reviewed endpoint
+migration; a matching path in JSON alone does not prove argv/client agreement.
+Children supporting client autospawn must have it disabled by their immutable
+configuration. A stopped/replacing host never authorizes client-side spawning.
+
+Apply the declared resource policy before child work. ctl must also verify the
+host job's own Nice/ProcessType and effective nofile limits, not just the child's
+requested values. A child can refuse startup above a known nice threshold, and
+an unprivileged host cannot lower an inherited nice value; incompatible inherited
+policy is a hard admission failure, never a failed launch followed by a silent
+fallback. ProcessType uses launchd semantics, not a claim that setting nice alone
+changes background scheduling. Runtime application and ctl process-policy
+evidence remain part of #1963.
+
+Every helper is a pinned, signed nested code object in the complete host bundle,
+covered by the explicit `nestedCode` inventory and unsigned descriptor/sealed
+receipt. Copy real bytes during assembly; a symlink to a store executable is not
+a nested helper. Verify its pinned designated requirement and sealed content before
+spawn. Runtime resolution must stay inside the installed bundle after symlink
+resolution; a lexically valid declaration alone is not executable admission.
+The current permissions-host assembly does not package helpers; a declaration
+does not bypass that runtime/assembly follow-up.
+
+### Spawn, scheduling and ownership
+
+Spawn directly **without a responsibility disclaim**; do not use
+`responsibility_spawnattrs_setdisclaim`, detach to another permissions principal,
+or invoke a separately launched service. TCC is expected to evaluate the host,
+as observed for the bounded non-disclaimed-child experiment; every real helper
+and launch topology still requires positive protected-resource evidence. There
+is no `core.exec` or other client-chosen execution operation.
+
+The supervisor supplies the pinned executable, exact argv/env/cwd, stdin from
+`/dev/null`, bounded captured stdout/stderr, and no other inherited descriptors.
+Children cannot inherit request sockets, audit descriptors, signing material or
+lifecycle locks. Stop/reap children before host shutdown or replacement, applying
+the declared stop signal and grace period on upgrades/restarts as well. A
+resident starts only when active; a scheduled child starts only inside its
+declared host operation and is reaped before that invocation completes.
+Every child ID is single-instance: a scheduled or requested start while that ID
+is running returns `skipped: already-running`, records it in audit/status and
+never launches a parallel instance. No catch-up queue accumulates overlapping work.
+
+The runtime adds typed operation `children.stop`, version 1, with closed
+input `{id: string}` (a declared child ID, never a PID or executable), stopping
+exactly that child using its declared protocol. The result names the child and
+instance, whether it was already stopped, and its actual exit code/signal.
+Normal peer/policy/audit admission applies; the caller cannot choose a signal,
+extend grace or stop an undeclared process. An explicit stop suppresses resident
+restart until a subsequent authorized activation/start, rather than racing
+the supervisor's restart loop. This operation is a runtime follow-up, not an
+operation accepted by the declaration-only host.
+
+The host owns resident restart accounting and capped exponential backoff:
+`min(maxBackoffMs, initialBackoffMs * 2^attempt)`. The first retry is attempt zero;
+`maxAttempts` caps retries after the initial spawn within one host lifetime.
+Unexpected exit, spawn failure and readiness timeout consume this budget;
+intentional shutdown, inactive configuration and pending consent do not.
+Exhaustion is failed, not an endless restart loop. A successful readiness probe
+does not reset the lifetime budget.
+
+Pre-login-capable children must work under a system LaunchDaemon running the
+consumer's explicit non-root UID before graphical login. `gui/<uid>` success is
+not proof of this topology, and the absence of a GUI must never silently select
+a second app identity. GUI-only probes report session failure, not readiness.
+
+Declarations are independent of the launchd job executing them. Each compiled
+operation also declares `requiresSession: "none" | "gui"`; a probe/scheduled op
+must be compatible with its child's session requirement. The contract requires
+one signed bundle with two direct-entrypoint jobs: `requiresSession: none`
+children/ops run in the system-domain supervisor LaunchDaemon with `UserName`
+set to the target user and work before graphical login; it owns the single
+client endpoint. Only `gui` children/ops run in the `gui/<uid>` agent, reached
+through a private mutually authenticated socket (notifications, capture,
+Accessibility and Automation). GUI requests return `session-unavailable` while
+that session is absent. The current ctl configuration models one job; the
+two-job topology implementation and positive pre-login proof remain #1963.
+
+Both jobs run as the same explicit target UID. For the system supervisor,
+`UserName` resolves to that target user, not root; ctl validates it against
+`--target-uid` and requires matching `UserName` for a non-root system target
+([`launchd.rs`](../../nix/macos-app/host/src/bin/macos-app-ctl/launchd.rs),
+`account_names` and `validate_value`). The GUI job is loaded in `gui/<uid>` for
+that same UID; ctl rejects a domain UID differing from `--target-uid` and rejects
+`UserName`/`GroupName` overrides outside the system domain. Children inherit their
+host job's UID without setuid/setgid or other privilege changes. There is
+deliberately no per-child user field; unknown-field rejection prevents declaring
+a child-specific execution identity.
+
+### Readiness, status and audit
+
+Activation/lifecycle (`inactive | starting | running | backoff | stopped`) is
+distinct from the readiness outcome below. Starting/backoff are not ready.
+
+A compiled `probe-op` returns exactly the schema's `probeResult`:
+`{outcome:"ready"}`, `{outcome:"deferred",service,evidence}` or
+`{outcome:"failed",code}`. Deferred evidence is nonempty, bounded to 4096 characters,
+permission-specific and tied to the current child/release; generic socket failure
+or nonzero exit is not permission evidence. It stays in private audit; public
+status carries only the stable service/reason. The compiled operation validates
+the evidence semantics, not the client or arbitrary stderr.
+
+For a filesystem-watcher child, a real watch-list request over its fixed socket
+proves application readiness; `socket-accepts` proves connection readiness only.
+Full Disk Access evidence requires **both plain and rename-exchange FSEvents
+probes** as a compiled child-specific host operation. Connection success, a
+watch-list success or one FSEvents shape alone cannot establish FDA capability.
+
+| Outcome    | Evidence and transition                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ready`    | Declared socket accepts a connection within its deadline (connection-only evidence), or the compiled probe returns typed `ready` (application/permission evidence defined by that op). File existence and PID presence are insufficient. `none` explicitly opts out of a service-readiness claim: after successful spawn, report `ready` with `probe:"none"` and `evidence:"spawn-only"`, never socket/application readiness. A scheduled idle child reports `ready` only with authenticated scheduling evidence, `evidence:"scheduled-idle"`; that does not claim a completed backup. |
+| `deferred` | A compiled probe returns typed deferred with permission-specific evidence for a declared required service. When classifying a child/process exit, only actual exit **75 together with** `deferred-admission: pending-grant: <service>` stderr and permission-specific probe evidence permits deferred. A bare 75, diagnostic without 75, timeout or unknown service is failed. Stop admissions/retries until explicit re-evaluation.                                                                                                                                                   |
+| `failed`   | Invalid bundle/signature/policy, probe error or deadline, unexpected termination, missing session, or exhausted restart budget. Preserve a stable error code and last observed outcome.                                                                                                                                                                                                                                                                                                                                                                                                |
+
+A ready child returns to starting on restart and loses old readiness evidence.
+An explicit re-evaluation may move deferred/failed to starting; ready requires a
+fresh probe for the current release and instance. Denied or unknown authorization
+never becomes ready from a PID. Inactive is outside this state machine and cannot
+be reported as ready or deferred.
+
+`host.status` adds a sorted `children` inventory with the following redacted
+projection (never argv, environment, executable/private paths or log contents):
+
+```typescript
+type ChildStatus = {
+  id: string
+  activation: 'active' | 'inactive'
+  schedule: 'resident' | 'launchd-scheduled'
+  requiresSession: 'none' | 'gui'
+  state: 'inactive' | 'starting' | 'running' | 'backoff' | 'stopped'
+  readiness:
+    | null
+    | (
+        | {
+            outcome: 'ready'
+            probe: 'socket-accepts' | 'probe-op' | 'none'
+            evidence: 'probe-passed' | 'spawn-only' | 'scheduled-idle'
+          }
+        | { outcome: 'deferred'; service: string; reason: string }
+        | { outcome: 'failed'; code: string }
+      )
+  instanceId: string | null
+  pid: number | null
+  restartCount: number
+  nextRetryAt: string | null
+  lastExit: null | { code: number | null; signal: number | null }
+  lastStart: null | { outcome: 'started' | 'skipped'; reason: null | 'already-running' }
+  policyRevision: string
+  releaseRevision: string
+}
+```
+
+Append bounded audit events for admission, spawn, probe outcome, deferred grant,
+exit, retry scheduling/exhaustion and stop. Events contain `auditId`, UTC timestamp,
+`childId`, `instanceId`, event kind, prior/new state, readiness outcome/reason code,
+restart count, release/policy revisions and exit code/signal where applicable.
+Audit loss denies new child admission. Bounded child stdout/stderr logs are
+separate from audit, use existing private log retention, and never enter status or
+the activation verifier's public diagnostic envelope.
+
+Record the child's real exit status unchanged in `lastExit` and audit (including
+75); a signal termination has a null code and actual signal, not a fabricated
+shell-style exit code. Classification never replaces the child's exit code with
+ctl's aggregate status. Only the paired exit-75/deferred-admission evidence above
+permits deferred classification of process exits; typed host probes separately
+require the permission-specific evidence contract.
+
+Runtime follow-ups also include per-child append-only stdout/stderr destinations
+(never truncate during a run; retention/rotation only between runs), multiple
+`StartCalendarInterval` entries for consumer launchd-scheduled host operations,
+and secrets access through the op-proxy service bundle in preference to per-helper
+Keychain ACLs, so signing changes do not introduce new prompts. Secret values
+never enter declarations, argv, public diagnostics or audit/status. These are
+supervisor-runtime requirements, not capabilities implemented by this PR.
+
+### ctl verify and activation admission
+
+The supervisor runtime's ctl verifier must authenticate the running host and its
+release/policy before consuming `children`. Compare the exact desired inventory,
+activation and schedule, then report each child's outcome; do not infer child
+health from the host PID. All active children ready (or inactive by declaration)
+means exit 0. Any failed/missing/stale child evidence means a hard verification
+failure (exit 22), taking precedence over deferred children. If no hard failures
+exist and any active child is deferred, return exit **75** with diagnostic
+`deferred-admission: pending-grant: <service>` and structured child IDs/service
+reasons. Activation must retain this as deferred admission, not stamp complete,
+roll back a valid install merely for pending consent, or treat exit 75 as ready.
+Verification never prompts.
+
+In the declaration-only implementation, ctl validates child declarations before
+performing operations, rejects active children with `invalid-input` (exit 64),
+and successful legacy `verify` includes
+`children:[{id,activation:"inactive",state:"inactive",probe:"not-run"}]`.
+This is configuration admission, not the runtime status/evidence contract above.
+It makes no child readiness, TCC, restart or pre-login success claim.
 
 ## Typed operation registry
 

@@ -2,6 +2,7 @@
 //! Audit tokens must come from the kernel transport, never from request data.
 mod requirement;
 pub mod endpoint;
+pub mod children;
 pub use requirement::{AuditToken, AuthenticatedPeer, CompiledRequirement, PeerPolicy, authenticate_peer, authenticate_token};
 
 #[derive(Debug)]

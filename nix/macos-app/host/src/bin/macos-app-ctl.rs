@@ -608,7 +608,12 @@ impl Ctl {
         if !loaded || pid.is_none() || ipc["ok"] != true || ipc["status"]["hostSourceHash"] != expected_hash || ipc["status"]["generation"] != manifest["generation"] || ipc["status"]["pid"].as_u64() != pid.map(u64::from) { return Err(mismatch("IPC host hash/generation/PID does not match desired and launchd")); }
         let mode = socket_mode(self.arg("socket")?);
         if mode.map(u64::from) != manifest["socketMode"].as_u64() { return Err(mismatch(format!("Socket mode {mode:?} differs from the generation's socketMode"))); }
-        Ok(json!({"verified": true, "domain": domain, "pid": pid, "hostSourceHash": expected_hash, "bundleMetadataDigest": expected_metadata, "generation": generation}))
+        let children = self.config.get("supervisedChildren").map(|value| {
+            serde_json::from_value::<macos_app_host::children::Children>(value.clone())
+        }).transpose()?.unwrap_or_default();
+        children.require_inactive().map_err(|reason| fail(64, "invalid-input", reason))?;
+        let children: Vec<_> = children.0.iter().map(|child| json!({"id": child.id, "activation": "inactive", "state": "inactive", "probe": "not-run"})).collect();
+        Ok(json!({"verified": true, "domain": domain, "pid": pid, "hostSourceHash": expected_hash, "bundleMetadataDigest": expected_metadata, "generation": generation, "children": children}))
     }
     fn verify(&self) -> Result<Value> {
         let desired = Path::new(self.arg("desired")?);
@@ -770,7 +775,11 @@ fn run() -> Result<Value> {
     let config_path = args
         .get("config")
         .ok_or_else(|| fail(64, "invalid-input", "Missing --config"))?;
-    let config = serde_json::from_slice(&fs::read(config_path)?)?;
+    let config: Value = serde_json::from_slice(&fs::read(config_path)?)?;
+    if let Some(declarations) = config.get("supervisedChildren") {
+        let children: macos_app_host::children::Children = serde_json::from_value(declarations.clone())?;
+        children.require_inactive().map_err(|reason| fail(64, "invalid-input", reason))?;
+    }
     let ctl = Ctl { config, args };
     // Keychain calls in this process fail instead of showing UI (errSecInteractionNotAllowed).
     // SAFETY: a plain flag setter for this process's Security framework client state.

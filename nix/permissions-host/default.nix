@@ -61,6 +61,7 @@ let
       ../macos-app/host/Cargo.toml
       ../macos-app/host/Cargo.lock
       ../macos-app/host/src
+      ../macos-app/children.schema.json
     ];
   };
   # Hash every compiled input, including source paths and the dependency lock.
@@ -187,6 +188,7 @@ let
       launchd
       ;
     actions = { };
+    supervisedChildren = policyData.supervisedChildren or [ ];
     statusAllowedUids = [ policyData.uid ];
     socketMode = 384; # 0600; the native host independently checks peer UIDs.
     session = "gui-agent";

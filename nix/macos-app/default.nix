@@ -12,6 +12,7 @@
   statusAllowedUids,
   host ? null,
   hostBundle ? null,
+  supervisedChildren ? [ ],
   requirement ? ''identifier "${bundleId}" and anchor apple generic and certificate leaf[subject.OU] = "${signer.teamId}"'',
   session ? "background-agent",
   launchd,
@@ -122,7 +123,7 @@ let
         signer
         lifecycleLockPath
         ;
-      inherit nestedCode signingOptions;
+      inherit nestedCode signingOptions supervisedChildren;
       entitlements = if entitlements == null then null else toString entitlements;
       launchd = launchdData;
     }
@@ -146,7 +147,18 @@ let
   genericHost = pkgs.rustPlatform.buildRustPackage {
     pname = "macos-app-host";
     version = "1";
-    src = ./host;
+    src = lib.fileset.toSource {
+      root = ./.;
+      fileset = lib.fileset.unions [
+        ./host/Cargo.toml
+        ./host/Cargo.lock
+        ./host/src
+        ./host/tests
+        (lib.fileset.maybeMissing ./host/build.rs)
+        ./children.schema.json
+      ];
+    };
+    sourceRoot = "source/host";
     cargoLock.lockFile = ./host/Cargo.lock;
     buildInputs = [ pkgs.apple-sdk_15 ];
     env = darwinRust.compileEnv // {
