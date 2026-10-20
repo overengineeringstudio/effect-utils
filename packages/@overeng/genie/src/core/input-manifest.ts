@@ -39,17 +39,30 @@ export const recordGeneratorSourceGraph = (entries: ReadonlyArray<string>, cwd: 
       scope = parent
     }
     if (/\.[cm]?[jt]sx?$/.test(sourcePath) === false) continue
-    const source = inputReadFileSync(sourcePath, 'utf8')
-    for (const { path: specifier } of transpiler.scanImports(source)) {
+    let imports: ReadonlyArray<{ path: string }>
+    try {
+      imports = transpiler.scanImports(inputReadFileSync(sourcePath, 'utf8'))
+    } catch {
+      // Importing this module may be conditional or caught by the generator. Its
+      // recorded path still invalidates if unreadable/invalid source is repaired.
+      continue
+    }
+    for (const { path: specifier } of imports) {
       if (isBuiltin(specifier) === true) continue
-      const mapped =
-        specifier.startsWith('#') === true
+      let mapped: string | undefined
+      try {
+        mapped = specifier.startsWith('#')
           ? resolveImportMapSpecifierForImporterSync({
               specifier,
               importerPath: sourcePath,
               workspaceRoot: cwd,
             })
           : undefined
+      } catch {
+        // Resolver probes have already recorded the missing member/metadata paths.
+        // Leave failure semantics to the actual runtime import, not this scanner.
+        continue
+      }
       const base = mapped ?? specifier
       if (
         base.startsWith('.') === false &&
@@ -62,6 +75,7 @@ export const recordGeneratorSourceGraph = (entries: ReadonlyArray<string>, cwd: 
           .join('/')
         let directory = path.dirname(sourcePath)
         while (true) {
+          recordInput(path.join(directory, 'node_modules', packageName))
           recordInput(path.join(directory, 'node_modules', packageName, 'package.json'))
           const parent = path.dirname(directory)
           if (parent === directory) break
@@ -88,8 +102,16 @@ export const recordGeneratorSourceGraph = (entries: ReadonlyArray<string>, cwd: 
           recordInput(`${absolute}${suffix}`)
         }
       }
-      const resolved = Bun.resolveSync(base, path.dirname(sourcePath))
-      const canonical = realpathSync(resolved)
+      let resolved: string
+      let canonical: string
+      try {
+        resolved = Bun.resolveSync(base, path.dirname(sourcePath))
+        canonical = realpathSync(resolved)
+      } catch {
+        // In particular, `try { await import('./optional.ts') } catch { ... }`
+        // must remain valid. Missing candidates above invalidate when it appears.
+        continue
+      }
       // A bare workspace package can resolve through a node_modules symlink. Decide
       // whether this is installed dependency code only after following that symlink.
       if (canonical.includes(`${path.sep}node_modules${path.sep}`) === false) {

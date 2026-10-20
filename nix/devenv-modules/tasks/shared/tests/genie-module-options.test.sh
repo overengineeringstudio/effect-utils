@@ -104,7 +104,8 @@ if [ -f pnpm-lock.yaml ]; then
 fi
 if [ -n "${GENIE_INPUT_MANIFEST:-}" ] && [ "${GENIE_FIXTURE_INPUTS:-current}" != old ]; then
   printf '%s\n' "${GENIE_FIXTURE_MANIFEST_VERSION:-genie-inputs-v1}" \
-    "$PWD/pnpm-lock.yaml" "$PWD/optional-input.json" "$PWD/semantic/nested" > "$GENIE_INPUT_MANIFEST"
+    "$PWD/pnpm-lock.yaml" "$PWD/optional-input.json" "$PWD/semantic/nested" \
+    "$PWD/linked-inputs" "$PWD/workspace/module.ts" "$PWD/member-one/helper.txt" > "$GENIE_INPUT_MANIFEST"
 fi
 EOF
 chmod +x "$test_dir/bin/genie"
@@ -121,6 +122,13 @@ printf 'lockfileVersion: 9\n' > "$test_dir/pnpm-lock.yaml"
 mkdir -p "$test_dir/buck2/dependencies"
 printf 'export default {}\n' > "$test_dir/buck2/dependencies/BUCK.genie.ts"
 printf 'export default {}\n' > "$test_dir/buck2/dependencies/pnpm-lock.sha256.json.genie.ts"
+mkdir -p "$test_dir/directory-target" "$test_dir/member-one" "$test_dir/member-two"
+ln -s directory-target "$test_dir/linked-inputs"
+printf "export { value } from './helper.txt'\n" > "$test_dir/member-one/module.ts"
+cp "$test_dir/member-one/module.ts" "$test_dir/member-two/module.ts"
+printf 'first helper\n' > "$test_dir/member-one/helper.txt"
+printf 'second helper\n' > "$test_dir/member-two/helper.txt"
+ln -s member-one "$test_dir/workspace"
 git -C "$test_dir" add \
   contract.json.genie.ts contract.json \
   nested/contract.json.genie.ts nested/contract.json \
@@ -184,6 +192,26 @@ run_fixture 1 "$run_exec"
 rm "$test_dir/semantic/nested/new.txt"
 if run_fixture 1 "$run_status"; then
   echo "FAIL: removing a recorded directory member should invalidate Genie warm state"
+  exit 1
+fi
+run_fixture 1 "$run_exec"
+
+printf 'linked member\n' > "$test_dir/directory-target/new.txt"
+if run_fixture 1 "$run_status"; then
+  echo "FAIL: a linked directory membership change should invalidate Genie warm state"
+  exit 1
+fi
+run_fixture 1 "$run_exec"
+rm "$test_dir/directory-target/new.txt"
+if run_fixture 1 "$run_status"; then
+  echo "FAIL: deleting a linked directory member should invalidate Genie warm state"
+  exit 1
+fi
+run_fixture 1 "$run_exec"
+rm "$test_dir/workspace"
+ln -s member-two "$test_dir/workspace"
+if run_fixture 1 "$run_status"; then
+  echo "FAIL: retargeting a workspace source link with identical entrypoint bytes should invalidate warm state"
   exit 1
 fi
 run_fixture 1 "$run_exec"

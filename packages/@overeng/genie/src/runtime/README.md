@@ -58,6 +58,9 @@ consulted import-map/megarepo files. Root `megarepo.lock`, `flake.lock`,
 `pnpm-lock.yaml`, `pnpm-workspace.yaml`, `package.json`, and formatter configuration
 are inputs too. Literal dynamic imports discoverable by Bun's import scanner
 are included; computed import paths must be declared with `recordInput`.
+Unresolved or unreadable imports remain recorded inputs but do not make the
+scanner fail generation: optional imports may legitimately be conditional or
+caught. The real runtime import remains responsible for its own failure semantics.
 Installed dependency closures whose real paths remain under `node_modules`
 are owned by the package-manager/tool identity, not traversed as generator source.
 

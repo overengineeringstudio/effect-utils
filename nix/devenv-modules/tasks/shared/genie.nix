@@ -193,12 +193,17 @@ let
         } | LC_ALL=C sort -u | while IFS= read -r file; do
           [ -n "$file" ] || continue
           printf '%s\n' "$file"
+          # Resolution identity matters even when linked entrypoint bytes match:
+          # its relative imports may resolve to a different source tree.
+          if [ -e "$file" ]; then
+            ${pkgs.coreutils}/bin/realpath -- "$file"
+          fi
           if [ -f "$file" ]; then
             printf 'file\n'
             ${pkgs.coreutils}/bin/sha256sum "$file" | awk '{print $1}'
           elif [ -d "$file" ]; then
             printf 'directory\n'
-            ${pkgs.findutils}/bin/find "$file" -mindepth 1 -maxdepth 1 -printf '%f %y\0' \
+            ${pkgs.findutils}/bin/find -H "$file" -mindepth 1 -maxdepth 1 -printf '%f %y\0' \
               | LC_ALL=C sort -z \
               | ${pkgs.coreutils}/bin/sha256sum | awk '{print $1}'
           else

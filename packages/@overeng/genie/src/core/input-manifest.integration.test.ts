@@ -167,6 +167,39 @@ export default { data: {}, stringify: () => read() }
     }
   }, 60_000)
 
+  it.each(['dynamic', 'require'])(
+    'preserves caught optional %s imports and records absent-to-present inputs',
+    (mode) => {
+      const { root, manifest, run } = fixture()
+      try {
+        writeFileSync(
+          path.join(root, 'result.txt.genie.ts'),
+          `
+// Intentionally load an optional module: a static import cannot be caught.
+let value = 'absent'
+try {
+  value = ${mode === 'dynamic' ? "(await import('./optional.ts')).value" : "require('./optional.ts').value"}
+} catch {}
+export default { data: {}, stringify: () => value + '\\n' }
+`,
+        )
+        const absent = run()
+        expect(absent.status, absent.stdout + absent.stderr).toBe(0)
+        const optional = path.join(root, 'optional.ts')
+        expect(readFileSync(manifest, 'utf8').split('\n')).toContain(optional)
+        expect(readFileSync(path.join(root, 'result.txt'), 'utf8')).toBe('absent\n')
+        writeFileSync(optional, "export const value = 'present'\n")
+        const present = run()
+        expect(present.status, present.stdout + present.stderr).toBe(0)
+        expect(readFileSync(manifest, 'utf8').split('\n')).toContain(optional)
+        expect(readFileSync(path.join(root, 'result.txt'), 'utf8')).toBe('present\n')
+      } finally {
+        rmSync(root, { recursive: true, force: true })
+      }
+    },
+    60_000,
+  )
+
   it('does not publish without opt-in, on dry/partial runs, or after a failed generation', () => {
     const { root, manifest, run } = fixture()
     try {
