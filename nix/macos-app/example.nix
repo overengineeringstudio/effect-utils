@@ -116,11 +116,17 @@ let
     printf '# tampered bytes\n' >> "$out/payload"
   '';
   # Test-only issuance stays outside the shipped primitives and host app.
-  testPrimitives = first.primitives.overrideAttrs {
+  testPrimitives = first.primitives.overrideAttrs (old: {
     pname = "macos-app-test-primitives";
     cargoBuildFlags = [ "--features=test-signing-cert" ];
     cargoTestFlags = [ "--features=test-signing-cert" ];
-  };
+    # Feature-built checks resolve codesign through PATH, just like the integration runner.
+    nativeCheckInputs = (old.nativeCheckInputs or [ ]) ++ [
+      (pkgs.writeShellScriptBin "codesign" ''
+        exec /usr/bin/codesign "$@"
+      '')
+    ];
+  });
   example = pkgs.linkFarm "macos-app-example" [
     {
       name = "ctl";
