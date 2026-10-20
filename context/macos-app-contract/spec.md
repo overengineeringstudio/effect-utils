@@ -56,6 +56,11 @@ output name. This keeps macOS System Settings permission/background-item names
 readable and product-specific even when macOS observes a temporary or retained
 copy rather than the installed bundle.
 
+Nix's unsigned `hostApp` output retains its technical `${name}.app` filename for
+source consumers; `hostAppBundle` exposes that complete source path without
+requiring consumers to reconstruct it. Only ctl-created signed copies use
+`appBundleName`; the source filename is never registered or granted authority.
+
 launchd starts the installed signed native entrypoint directly, never a resident
 shell, resource-accounting wrapper or client. A socket/SSH client does not launch
 a replacement host when the service is absent. GUI-dependent operations require
@@ -461,6 +466,13 @@ An existing matching valid release is reused; mismatching output is refused. The
 `macos-app-release` v1 receipt inventories sealed bytes, with `sealedRevision`
 separate from source/unsigned revisions. A receipt is integrity evidence, not an
 authority to choose the desired identity.
+
+An existing release with the old `host.app` layout returns typed
+`reseal-required` without deleting or installing it. Regenerate it by resealing
+the unsigned source; no legacy sealed-layout reader is provided. Selecting that
+release, or an old-basename retained host, for rollback returns typed
+`rollback-unavailable`. Rollbacks across the naming cutover require a resealed
+release with the pinned product basename.
 
 `install-host --desired DESCRIPTOR --artifact RELEASE --app-dir D --state S
 --archive-dir R` verifies consumer-pinned desired policy, receipt, content and

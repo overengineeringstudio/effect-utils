@@ -221,11 +221,11 @@ let
     if hostBundle != null then
       ''
         mkdir -p "$out"
-        cp -R ${lib.escapeShellArg (toString hostBundle.path)} "$out"/${lib.escapeShellArg appBundleName}
+        cp -R ${lib.escapeShellArg (toString hostBundle.path)} "$out/${name}.app"
       ''
     else
       ''
-        app="$out"/${lib.escapeShellArg appBundleName}
+        app="$out/${name}.app"
         mkdir -p "$app/Contents/MacOS"
         mkdir -p "$app/Contents/Resources"
         cp '${hostPath}' "$app/Contents/MacOS/${hostExecutable}"
@@ -233,10 +233,13 @@ let
         cp '${plist}' "$app/Contents/Info.plist"
       ''
   );
+  # Source bytes retain the technical build name; only ctl-created signed copies
+  # use the product-facing appBundleName.
+  hostAppBundle = "${hostApp}/${name}.app";
   # One shared byte-normalization implementation binds sealing and installation.
   desiredDescriptor = pkgs.runCommand "${name}-desired-host.json" { } ''
     '${genericHost}/bin/macos-app-ctl' describe-host \
-      --config '${ctlConfig}' --desired ${lib.escapeShellArg "${hostApp}/${appBundleName}"} > "$out"
+      --config '${ctlConfig}' --desired ${lib.escapeShellArg hostAppBundle} > "$out"
   '';
 in
 assert pkgs.stdenv.hostPlatform.isDarwin;
@@ -316,6 +319,7 @@ assert builtins.elem socketMode [
     ctl
     ctlConfig
     hostApp
+    hostAppBundle
     appBundleName
     desiredDescriptor
     ;

@@ -280,8 +280,8 @@ impl Smoke {
         let plists = folder.join("plists");
         let socket = folder.strip_prefix(&self.root)?.join("host.sock");
         let config = folder.join("config.json");
-        let desired = self.assets.join("hostApp/Launchd Smoke.app");
-        let changed_host = self.assets.join("changedHostApp/Launchd Smoke Changed Host.app");
+        let desired = self.assets.join("hostApp/SmokeHost.app");
+        let changed_host = self.assets.join("changedHostApp/SmokeHost.app");
         let first = folder.join("first");
         let second = folder.join("second");
         let uid = unsafe { libc::geteuid() };

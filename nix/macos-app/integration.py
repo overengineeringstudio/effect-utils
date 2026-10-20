@@ -31,9 +31,9 @@ Draft202012Validator.check_schema(validator.schema)
 ctl_config = json.loads((example / 'ctl-config.json').read_text())
 app_bundle_name = ctl_config['appBundleName']
 assert app_bundle_name == 'Synthetic Host.app'
-host_app = example / 'hostApp' / app_bundle_name
+host_app = example / 'hostAppBundle'
 host = host_app / 'Contents/MacOS/macos-app-host'
-second_host = example / 'secondHostApp' / app_bundle_name / 'Contents/MacOS/macos-app-host'
+second_host = example / 'secondHostApp/SyntheticHost.app/Contents/MacOS/macos-app-host'
 assert hashlib.sha256(host.read_bytes()).digest() == hashlib.sha256(second_host.read_bytes()).digest()
 
 def audit_session():

@@ -372,7 +372,10 @@ impl Ctl {
 
     pub(super) fn rollback_artifact(&self) -> Result<Value> {
         // The caller selects the exact release/generation pair; no latest-success policy.
-        let installed = self.install_artifact()?;
+        let installed = self.install_artifact().map_err(|mut error| {
+            if error.kind == "reseal-required" { error.kind = "rollback-unavailable"; }
+            error
+        })?;
         let selected = self.generation()?;
         let launchd = if self.args.contains_key("plist") { Some(self.converge_supplied()?) } else { None };
         let verified = self.verify_artifact()?;

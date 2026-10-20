@@ -75,8 +75,8 @@ let
   # Products own complete bundle construction, including their native helpers.
   completeBundle = pkgs.runCommand "synthetic-complete-bundle" { } ''
     mkdir -p "$out"
-    cp -R ${pkgs.lib.escapeShellArg "${first.hostApp}/${first.appBundleName}"} "$out"/${pkgs.lib.escapeShellArg first.appBundleName}
-    app="$out"/${pkgs.lib.escapeShellArg first.appBundleName}
+    app="$out/SyntheticHost.app"
+    cp -R ${pkgs.lib.escapeShellArg first.hostAppBundle} "$app"
     chmod -R u+w "$app"
     mkdir -p "$app/Contents/Helpers"
     cp '${first.primitives}/bin/macos-app-host' \
@@ -93,7 +93,7 @@ let
       identity = "Example certificate identity (not used by tests)";
     };
     hostBundle = {
-      path = "${completeBundle}/${first.appBundleName}";
+      path = "${completeBundle}/SyntheticHost.app";
       executable = "Contents/MacOS/macos-app-host";
       hostSourceHash = first.hostSourceHash;
       signingOptions = [ "runtime" ];
@@ -144,6 +144,10 @@ let
       path = first.hostApp;
     }
     {
+      name = "hostAppBundle";
+      path = first.hostAppBundle;
+    }
+    {
       name = "generation";
       path = first.generation;
     }
@@ -177,8 +181,8 @@ let
     }
   ];
   check = pkgs.runCommand "macos-app-host-stability" { } ''
-    cmp ${pkgs.lib.escapeShellArg "${first.hostApp}/${first.appBundleName}/Contents/MacOS/macos-app-host"} \
-      ${pkgs.lib.escapeShellArg "${second.hostApp}/${second.appBundleName}/Contents/MacOS/macos-app-host"}
+    cmp ${pkgs.lib.escapeShellArg "${first.hostAppBundle}/Contents/MacOS/macos-app-host"} \
+      ${pkgs.lib.escapeShellArg "${second.hostAppBundle}/Contents/MacOS/macos-app-host"}
     test '${first.generation}' != '${second.generation}'
     mkdir -p "$out"
     printf 'host byte stability: PASS\n' > "$out/result"

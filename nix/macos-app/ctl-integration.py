@@ -52,7 +52,7 @@ sock = str(work.relative_to(root) / 'host.sock')
 # The incoming desired filename is deliberately not the pinned product name.
 desired = work / 'incoming/UnrelatedBuildOutput.app'
 desired.parent.mkdir()
-shutil.copytree(example / 'hostApp' / app_bundle_name, desired)
+shutil.copytree(example / 'hostAppBundle', desired)
 uid = os.getuid()
 first = work / 'generation-first'
 second = work / 'generation-second'
@@ -554,6 +554,19 @@ os.execv('/usr/bin/codesign', ['codesign'] + args)
         for path in [release, *release.rglob('*')]:
             if not path.is_symlink():
                 assert path.stat().st_mode & 0o222 == 0, f'mutable published artifact: {path}'
+        old_release = work / 'old-layout-release'
+        shutil.copytree(release, old_release)
+        old_release.chmod(0o700)
+        (old_release / app_bundle_name).rename(old_release / 'host.app')
+        old_release.chmod(0o500)
+        refused = invoke('install-host', '--desired', descriptor_path,
+                         '--artifact', old_release, refusal=True)
+        assert refused['error']['kind'] == 'reseal-required', refused
+        refused = invoke('rollback', '--desired', descriptor_path,
+                         '--artifact', old_release, '--generation', first, refusal=True)
+        assert refused['error']['kind'] == 'rollback-unavailable', refused
+        assert not thin_app.exists() and not thin_app.with_suffix('.txn.json').exists()
+        print('PASS old sealed layout requires resealing; cross-cutover rollback is typed unavailable', flush=True)
         signing_before = (work / 'sign.log').read_text()
         invoke('seal-host', '--desired', signed, '--output', release,
                '--keychain', work / 'must-not-open.keychain-db', '--keychain-password-fd', '999')

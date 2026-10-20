@@ -652,11 +652,16 @@ impl Ctl {
     /// the recovery state (record, D.previous, host-previous-generation) is removed only after
     /// verify succeeds, so any failure or crash is retried to completion.
     fn restore_host(&self, app: &Path, state: &Path, pending: Option<Value>) -> Result<Value> {
+        let require_current_layout = |archive: &Path| -> Result<()> {
+            if archive.file_name().and_then(|name| name.to_str()) == Some(artifact::app_bundle_name(&self.config)?) { return Ok(()); }
+            Err(fail(22, "rollback-unavailable", "Archived host uses an old bundle basename; rollback across the naming cutover requires a resealed release"))
+        };
         let resumed = pending.is_some();
         let record = match pending {
             Some(record) => record,
             None => {
                 let archive = pointer(&archive_pointer(app)).ok_or_else(|| mismatch("No archived host"))?;
+                require_current_layout(&archive)?;
                 let target = pointer(&state.join("host-previous-generation")).or_else(|| pointer(&state.join("current"))).ok_or_else(|| mismatch("No generation to run the restored host with"))?;
                 self.signature(&archive)?;
                 let record = json!({"direction": "restore-host", "archive": archive, "targetGeneration": target, "restoredInode": inode(&archive), "rejectedInode": inode(app)});
@@ -665,6 +670,7 @@ impl Ctl {
             }
         };
         let (archive, target, restored) = rollback_fields(&record)?;
+        require_current_layout(&archive)?;
         if inode(app) == record["rejectedInode"].as_u64() {
             exchange(&archive, app)?;
             if failpoint("rollback-after-exchange") { std::process::exit(137); }
@@ -882,6 +888,20 @@ mod tests {
             ctl.args.insert("app-dir".into(), format!("/Applications/{name}"));
             assert_eq!(ctl.app().unwrap_err().kind, "invalid-input");
         }
+    }
+
+    #[test]
+    fn rollback_across_old_bundle_layout_is_unavailable() {
+        let root = releases::private_stage(&fs::canonicalize(std::env::temp_dir()).unwrap()).unwrap();
+        let app = root.join("Product Name.app");
+        let archive = root.join("retained-1.app");
+        symlink(&archive, archive_pointer(&app)).unwrap();
+        let ctl = Ctl { config: json!({"appBundleName": "Product Name.app"}), args: BTreeMap::new() };
+        assert_eq!(ctl.restore_host(&app, &root, None).unwrap_err().kind, "rollback-unavailable");
+        assert!(!rollback_record(&app).exists());
+        let pending = json!({"archive": archive, "targetGeneration": root, "restoredInode": 1});
+        assert_eq!(ctl.restore_host(&app, &root, Some(pending)).unwrap_err().kind, "rollback-unavailable");
+        fs::remove_dir_all(root).unwrap();
     }
 
     #[test]

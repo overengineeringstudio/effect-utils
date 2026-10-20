@@ -664,6 +664,9 @@ pub fn verify_release(release: &Path, desired: &Value, config: &Value) -> Result
     let bundle_name = app_bundle_name(config)?;
     let all = inventory(release,true)?;
     let top = all.iter().filter(|item| !item.path.contains('/')).map(|item| item.path.as_str()).collect::<BTreeSet<_>>();
+    if bundle_name != "host.app" && top == BTreeSet::from(["descriptor.json","host.app","receipt.json"]) {
+        return Err(fail(22, "reseal-required", "Release uses the old host.app layout; reseal unsigned source with the product appBundleName before activation or rollback"));
+    }
     if top != BTreeSet::from(["descriptor.json",bundle_name,"receipt.json"]) { return Err(mismatch("Invalid immutable release layout")); }
     let descriptor: Value = serde_json::from_slice(&fs::read(release.join("descriptor.json"))?)?;
     if descriptor != *desired { return Err(mismatch("Release descriptor differs from independently desired descriptor")); }

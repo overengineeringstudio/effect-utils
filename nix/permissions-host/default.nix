@@ -26,7 +26,6 @@
 }:
 let
   inherit (pkgs) lib;
-  appBundleName = "${displayName}.app";
   grantCategories = [
     "full-disk-access"
     "notifications"
@@ -171,7 +170,7 @@ let
   );
   entitlements = pkgs.writeText "${name}-entitlements.plist" entitlementsXml;
   bundle = pkgs.runCommand "${name}-native-bundle" { } ''
-    app="$out"/${lib.escapeShellArg appBundleName}
+    app="$out/${name}.app"
     mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
     cp '${runtime}/bin/macos-permissions-host' "$app/Contents/MacOS/macos-permissions-host"
     cp '${infoPlist}' "$app/Contents/Info.plist"
@@ -193,7 +192,7 @@ let
     socketMode = 384; # 0600; the native host independently checks peer UIDs.
     session = "gui-agent";
     hostBundle = {
-      path = "${bundle}/${appBundleName}";
+      path = "${bundle}/${name}.app";
       executable = "Contents/MacOS/macos-permissions-host";
       inherit hostSourceHash entitlements;
       nestedCode = [ ];
@@ -230,6 +229,7 @@ assert lib.assertMsg (
   # Those tools do not sign this app until the consumer explicitly seals it.
   inherit (assembly)
     hostApp
+    hostAppBundle
     appBundleName
     requirement
     ctl
