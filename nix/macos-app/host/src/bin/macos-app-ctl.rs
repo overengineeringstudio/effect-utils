@@ -3,7 +3,11 @@ use serde_json::{json, Value};
 use std::{collections::BTreeMap, ffi::{c_char, c_void, CString}, fs::{self, File}, io::{self, BufRead, BufReader, Read, Write}, os::{fd::{AsRawFd, FromRawFd}, unix::{fs::{symlink, MetadataExt, PermissionsExt}, net::UnixStream}}, path::{Path, PathBuf}, process::{Command, Output}, time::{Duration, Instant}};
 
 // Home Manager activation may provide only Nix store paths in PATH.
+#[cfg(not(feature = "test-signing-cert"))]
 const LAUNCHCTL: &str = "/bin/launchctl";
+// Only testPrimitives may use the integration runner's offline PATH substitute.
+#[cfg(feature = "test-signing-cert")]
+const LAUNCHCTL: &str = "launchctl";
 
 type Result<T, E = Failure> = std::result::Result<T, E>;
 #[derive(Debug)]
@@ -839,9 +843,16 @@ fn main() {
 mod tests {
     use super::*;
     #[test]
+    #[cfg(not(feature = "test-signing-cert"))]
     fn launchctl_program_is_absolute() {
         assert!(Path::new(LAUNCHCTL).is_absolute(), "launchctl must not depend on PATH");
         assert_eq!(LAUNCHCTL, "/bin/launchctl");
+    }
+
+    #[test]
+    #[cfg(feature = "test-signing-cert")]
+    fn launchctl_program_uses_test_shim() {
+        assert_eq!(LAUNCHCTL, "launchctl");
     }
 
     #[test]
