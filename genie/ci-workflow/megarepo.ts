@@ -1,5 +1,4 @@
-import { readFileSync } from 'node:fs'
-
+import { inputReadFileSync as readFileSync } from '../../packages/@overeng/genie/src/runtime/node/inputs.ts'
 import { defaultRefPolicyCheckScript } from './default-ref-policy-script.ts'
 import { defaultRefPolicyVerdictStepId, githubTokenEnv, shellSingleQuote } from './shared.ts'
 
@@ -181,8 +180,7 @@ export type DefaultRefPolicyCheckStepOptions = {
 const defaultRefPolicyNixpkgs: { rev: string; narHash: string } = JSON.parse(
   readFileSync(new URL('../../flake.lock', import.meta.url), 'utf8'),
 ).nodes.nixpkgs.locked
-const defaultRefPolicyNodeInstallable =
-  `github:NixOS/nixpkgs/${defaultRefPolicyNixpkgs.rev}?narHash=${encodeURIComponent(defaultRefPolicyNixpkgs.narHash)}#nodejs_24`
+const defaultRefPolicyNodeInstallable = `github:NixOS/nixpkgs/${defaultRefPolicyNixpkgs.rev}?narHash=${encodeURIComponent(defaultRefPolicyNixpkgs.narHash)}#nodejs_24`
 
 /** Fail before composition when first-party megarepo/flake/devenv inputs target non-default refs. */
 export const defaultRefPolicyCheckStep = (opts: DefaultRefPolicyCheckStepOptions = {}) => ({

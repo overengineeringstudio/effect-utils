@@ -1,4 +1,3 @@
-import { existsSync, readdirSync } from 'node:fs'
 import path from 'node:path'
 import process from 'node:process'
 
@@ -7,6 +6,10 @@ import {
   createGenieOutput,
   type GenieOutput,
 } from '../../packages/@overeng/genie/src/runtime/core.ts'
+import {
+  inputExistsSync as existsSync,
+  inputReaddirSync as readdirSync,
+} from '../../packages/@overeng/genie/src/runtime/node/inputs.ts'
 import type { PackageJsonData } from '../../packages/@overeng/genie/src/runtime/package-json/mod.ts'
 import { buck2SemanticFingerprint, renderBuck2Visibility } from './mod.ts'
 import { packageTreeRuntime, stagedModuleName } from './runtime-modules.ts'

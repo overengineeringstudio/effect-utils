@@ -1,11 +1,10 @@
+import { rootWorkspacePackages } from '../package.json.genie.ts'
 /**
  * Shared configuration for the split Storybook preview workflows:
  * - `.github/workflows/storybook-preview-build.yml` (uncredentialed `pull_request`)
  * - `.github/workflows/storybook-preview-deploy.yml` (trusted `workflow_run`)
  */
-import { existsSync } from 'node:fs'
-
-import { rootWorkspacePackages } from '../package.json.genie.ts'
+import { inputExistsSync as existsSync } from '../packages/@overeng/genie/src/runtime/node/inputs.ts'
 import { projectPnpmPackageClosure } from '../packages/@overeng/genie/src/runtime/pnpm-workspace/mod.ts'
 import {
   cachixCliBuildStep,

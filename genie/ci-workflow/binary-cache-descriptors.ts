@@ -1,9 +1,8 @@
-import { readFileSync } from 'node:fs'
-
 import {
   type BinaryCacheDescriptor,
   decodeBinaryCacheDescriptors,
 } from '../../packages/@overeng/genie/src/runtime/github-workflow/binary-cache-descriptor.ts'
+import { inputReadFileSync as readFileSync } from '../../packages/@overeng/genie/src/runtime/node/inputs.ts'
 
 export {
   type BinaryCacheDescriptor,

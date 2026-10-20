@@ -1,12 +1,13 @@
-import { readFileSync } from 'node:fs'
-
-import { productBuildCapabilities, productLinuxBuildCapabilities } from '../../genie/buck2/product-capabilities.ts'
-
 import {
   assertPublishedPackageClosure,
   type PublishedPackageManifest,
 } from '../../genie/buck2/package-product-inventory.ts'
+import {
+  productBuildCapabilities,
+  productLinuxBuildCapabilities,
+} from '../../genie/buck2/product-capabilities.ts'
 import { projectionArtifact } from '../../packages/@overeng/genie/src/runtime/mod.ts'
+import { inputReadFileSync as readFileSync } from '../../packages/@overeng/genie/src/runtime/node/inputs.ts'
 
 const javascriptProducts = [
   [
@@ -82,7 +83,9 @@ const packageProducts = [
 
 const packageManifests = packageProducts.map(
   (name) =>
-    JSON.parse(readFileSync(`packages/${name}/package.json`, 'utf8')) as PublishedPackageManifest & {
+    JSON.parse(
+      readFileSync(`packages/${name}/package.json`, 'utf8'),
+    ) as PublishedPackageManifest & {
       readonly version: string
     },
 )
@@ -90,20 +93,18 @@ const rootPackage = JSON.parse(readFileSync('package.json', 'utf8')) as {
   readonly workspaces: readonly string[]
 }
 const workspaceNames = new Set(
-  rootPackage.workspaces.map(
-    (path) => {
-      const packageJson: unknown = JSON.parse(readFileSync(`${path}/package.json`, 'utf8'))
-      if (
-        packageJson === null ||
-        typeof packageJson !== 'object' ||
-        'name' in packageJson === false ||
-        typeof packageJson.name !== 'string'
-      ) {
-        throw new Error(`Invalid workspace package name in ${path}/package.json`)
-      }
-      return packageJson.name
-    },
-  ),
+  rootPackage.workspaces.map((path) => {
+    const packageJson: unknown = JSON.parse(readFileSync(`${path}/package.json`, 'utf8'))
+    if (
+      packageJson === null ||
+      typeof packageJson !== 'object' ||
+      'name' in packageJson === false ||
+      typeof packageJson.name !== 'string'
+    ) {
+      throw new Error(`Invalid workspace package name in ${path}/package.json`)
+    }
+    return packageJson.name
+  }),
 )
 assertPublishedPackageClosure({ packages: packageManifests, workspaceNames })
 
@@ -142,7 +143,9 @@ const buckProductSourceEntries = [
   })),
   ...packageEntries,
 ]
-  .map((product) => ({ ...product, buildCapabilities: productBuildCapabilities(product),
+  .map((product) => ({
+    ...product,
+    buildCapabilities: productBuildCapabilities(product),
     linuxBuildCapabilities: productLinuxBuildCapabilities(product),
   }))
   .toSorted((left, right) => left.name.localeCompare(right.name))

@@ -7,8 +7,9 @@
  * the public sync API from here for backward compatibility.
  */
 
-import fs from 'node:fs'
 import * as path from 'node:path'
+
+import { inputFileSystem as fs } from '../../runtime/node/inputs.ts'
 
 /** Parsed import map from package.json#imports */
 export type ImportMap = Record<string, string>
