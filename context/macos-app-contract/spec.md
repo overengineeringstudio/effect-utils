@@ -108,6 +108,7 @@ uniqueness and `initialBackoffMs <= maxBackoffMs` are semantic decoder checks.
 | `requiresSession` | Required `none` or `gui`. Session-free children belong to the supervisor; GUI children require its authenticated GUI-session execution context. |
 | `readiness` | `{kind:"socket-accepts",path,timeoutMs}`, `{kind:"exit-zero",op,timeoutMs}` or `{kind:"none"}`. Timeout is 1..300000 ms. `op` is a compiled, enabled, nonprompting bounded probe operation, not an executable. |
 | `restart` | `{kind:"never"}` or `{kind:"on-failure",initialBackoffMs,maxBackoffMs,maxAttempts}`. Backoff is 1..300000 ms, initial <= maximum, attempts 1..100. |
+| `stop` | Required `{signal:"int"|"term",graceMs}`; send SIGINT or SIGTERM, wait 1..300000 ms, then SIGKILL only if still alive. |
 | `activation` | `active` or `inactive`; omitted means **inactive**. Backup tools remain inactive/shadow declarations until separately proven and explicitly activated. |
 | `schedule` | `{kind:"resident"}` or `{kind:"launchd-scheduled",op}`. Scheduled operation IDs name compiled work; restart must be `never` because launchd owns the next invocation. |
 
@@ -139,10 +140,23 @@ is no `core.exec` or other client-chosen execution operation.
 The supervisor supplies the pinned executable, exact argv/env/cwd, stdin from
 `/dev/null`, bounded captured stdout/stderr, and no other inherited descriptors.
 Children cannot inherit request sockets, audit descriptors, signing material or
-lifecycle locks. Stop/reap children before host shutdown or replacement. A
+lifecycle locks. Stop/reap children before host shutdown or replacement, applying
+the declared stop signal and grace period on upgrades/restarts as well. A
 resident starts only when active; a scheduled child starts only inside its
-declared host operation and is reaped before that invocation completes. Missed
-schedules do not create overlapping child instances.
+declared host operation and is reaped before that invocation completes.
+Every child ID is single-instance: a scheduled or requested start while that ID
+is running returns `skipped: already-running`, records it in audit/status and
+never launches a parallel instance. No catch-up queue accumulates overlapping work.
+
+The runtime adds typed operation `core.children.stop`, version 1, with closed
+input `{id: string}` (a declared child ID, never a PID or executable), stopping
+exactly that child using its declared protocol. The result names the child and
+instance, whether it was already stopped, and its actual exit code/signal.
+Normal peer/policy/audit admission applies; the caller cannot choose a signal,
+extend grace or stop an undeclared process. An explicit stop suppresses resident
+restart until a subsequent authorized activation/start, rather than racing
+the supervisor's restart loop. This operation is a runtime follow-up, not an
+operation accepted by the declaration-only host.
 
 The host owns resident restart accounting and capped exponential backoff:
 `min(maxBackoffMs, initialBackoffMs * 2^attempt)`. The first retry is attempt zero;
@@ -176,7 +190,7 @@ distinct from the readiness outcome below. Starting/backoff are not ready.
 | Outcome | Evidence and transition |
 | --- | --- |
 | `ready` | Declared socket accepts a connection within its deadline, or declared probe op exits zero. File existence and PID presence are insufficient. `none` explicitly opts out of a service-readiness claim: after successful spawn, report `ready` with `probe:"none"` and `evidence:"spawn-only"`, never socket/application readiness. A scheduled idle child reports `ready` only with authenticated scheduling evidence, `evidence:"scheduled-idle"`; that does not claim a completed backup. |
-| `deferred` | Nonprompting permission/probe evidence identifies a required service awaiting human consent: `reason:"pending-grant: <service>"`. Stop admissions/spawn retries for that child until explicit re-evaluation after onboarding or activation. A timeout alone cannot be relabeled pending-grant. |
+| `deferred` | Only an actual child/probe exit **75 together with** a stderr line `deferred-admission: pending-grant: <service>` for a declared required service. Stop admissions/spawn retries until explicit re-evaluation after onboarding or activation. A bare 75, diagnostic without 75, timeout or unknown service is failed, never inferred pending consent. |
 | `failed` | Invalid bundle/signature/policy, probe error or deadline, unexpected termination, missing session, or exhausted restart budget. Preserve a stable error code and last observed outcome. |
 
 A ready child returns to starting on restart and loses old readiness evidence.
@@ -205,6 +219,8 @@ type ChildStatus = {
   pid: number | null
   restartCount: number
   nextRetryAt: string | null
+  lastExit: null | { code: number | null; signal: number | null }
+  lastStart: null | { outcome: 'started' | 'skipped'; reason: null | 'already-running' }
   policyRevision: string
   releaseRevision: string
 }
@@ -217,6 +233,20 @@ restart count, release/policy revisions and exit code/signal where applicable.
 Audit loss denies new child admission. Bounded child stdout/stderr logs are
 separate from audit, use existing private log retention, and never enter status or
 the activation verifier's public diagnostic envelope.
+
+Record the child's real exit status unchanged in `lastExit` and audit (including
+75); a signal termination has a null code and actual signal, not a fabricated
+shell-style exit code. Classification never replaces the child's exit code with
+ctl's aggregate status. Only the paired exit-75/deferred-admission evidence above
+permits deferred classification.
+
+Runtime follow-ups also include per-child append-only stdout/stderr destinations
+(never truncate during a run; retention/rotation only between runs), multiple
+`StartCalendarInterval` entries for consumer launchd-scheduled host operations,
+and secrets access through the op-proxy service bundle in preference to per-helper
+Keychain ACLs, so signing changes do not introduce new prompts. Secret values
+never enter declarations, argv, public diagnostics or audit/status. These are
+supervisor-runtime requirements, not capabilities implemented by this PR.
 
 ### ctl verify and activation admission
 

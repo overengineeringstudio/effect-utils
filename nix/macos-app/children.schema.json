@@ -12,7 +12,7 @@
     "timeout": {"type": "integer", "minimum": 1, "maximum": 300000},
     "child": {
       "type": "object", "additionalProperties": false,
-      "required": ["id", "helperPath", "argv", "env", "cwd", "requiredTccServices", "requiresSession", "readiness", "restart", "schedule"],
+      "required": ["id", "helperPath", "argv", "env", "cwd", "requiredTccServices", "requiresSession", "readiness", "restart", "stop", "schedule"],
       "properties": {
         "id": {"$ref": "#/$defs/id"},
         "helperPath": {"type": "string", "pattern": "^Contents/Helpers/(?!(?:[^/]+/)*\\.{1,2}(?:/|$))[^/\\\\\\u0000]+(?:/[^/\\\\\\u0000]+)*$"},
@@ -22,6 +22,7 @@
         "requiredTccServices": {"type": "array", "uniqueItems": true, "items": {"enum": ["full-disk-access", "notifications", "screen-recording", "accessibility", "microphone", "system-audio", "automation"]}},
         "activation": {"enum": ["active", "inactive"], "default": "inactive"},
         "requiresSession": {"enum": ["none", "gui"]},
+        "stop": {"type": "object", "additionalProperties": false, "required": ["signal", "graceMs"], "properties": {"signal": {"enum": ["int", "term"]}, "graceMs": {"$ref": "#/$defs/timeout"}}},
         "readiness": {"oneOf": [
           {"type": "object", "additionalProperties": false, "required": ["kind", "path", "timeoutMs"], "properties": {"kind": {"const": "socket-accepts"}, "path": {"$ref": "#/$defs/absolute"}, "timeoutMs": {"$ref": "#/$defs/timeout"}}},
           {"type": "object", "additionalProperties": false, "required": ["kind", "op", "timeoutMs"], "properties": {"kind": {"const": "exit-zero"}, "op": {"$ref": "#/$defs/op"}, "timeoutMs": {"$ref": "#/$defs/timeout"}}},

@@ -17,6 +17,7 @@ pub struct Child {
     pub required_tcc_services: Vec<Service>,
     pub readiness: Readiness,
     pub restart: Restart,
+    pub stop: Stop,
     #[serde(default)]
     pub activation: Activation,
     pub schedule: Schedule,
@@ -31,6 +32,12 @@ pub enum Activation { Active, #[default] Inactive }
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum Session { None, Gui }
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct Stop { pub signal: StopSignal, pub grace_ms: u32 }
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum StopSignal { Int, Term }
 #[derive(Debug, Deserialize)]
 #[serde(tag = "kind", rename_all = "kebab-case", deny_unknown_fields)]
 pub enum Readiness { SocketAccepts { path: String, #[serde(rename = "timeoutMs")] timeout_ms: u32 }, ExitZero { op: String, #[serde(rename = "timeoutMs")] timeout_ms: u32 }, None {} }
@@ -79,6 +86,7 @@ impl TryFrom<Vec<Child>> for Children {
                 Readiness::ExitZero { op, timeout_ms } if !operation(op) || !(1..=300_000).contains(timeout_ms) => return Err("Invalid child probe operation"),
                 _ => {}
             }
+            if !(1..=300_000).contains(&child.stop.grace_ms) { return Err("Invalid child stop grace period"); }
             if let Restart::OnFailure { initial_backoff_ms, max_backoff_ms, max_attempts } = &child.restart {
                 if *initial_backoff_ms == 0 || initial_backoff_ms > max_backoff_ms || *max_backoff_ms > 300_000 || !(1..=100).contains(max_attempts) {
                     return Err("Invalid child restart bounds");
@@ -105,7 +113,7 @@ impl Children {
 mod tests {
     use super::*;
     use serde_json::{Value, json};
-    fn child() -> Value { json!({"id":"watcher","helperPath":"Contents/Helpers/watcher","argv":[],"env":{},"cwd":"/","requiredTccServices":["full-disk-access"],"requiresSession":"none","readiness":{"kind":"socket-accepts","path":"/var/run/example.sock","timeoutMs":1000},"restart":{"kind":"on-failure","initialBackoffMs":100,"maxBackoffMs":1000,"maxAttempts":3},"schedule":{"kind":"resident"}}) }
+    fn child() -> Value { json!({"id":"watcher","helperPath":"Contents/Helpers/watcher","argv":[],"env":{},"cwd":"/","requiredTccServices":["full-disk-access"],"requiresSession":"none","readiness":{"kind":"socket-accepts","path":"/var/run/example.sock","timeoutMs":1000},"restart":{"kind":"on-failure","initialBackoffMs":100,"maxBackoffMs":1000,"maxAttempts":3},"stop":{"signal":"term","graceMs":30000},"schedule":{"kind":"resident"}}) }
     fn parse(value: Value) -> Result<Children, serde_json::Error> { serde_json::from_value(json!([value])) }
     #[test] fn inactive_is_default_and_active_is_not_silently_started() {
         assert!(parse(child()).unwrap().require_inactive().is_ok());
@@ -113,7 +121,7 @@ mod tests {
         assert!(parse(value).unwrap().require_inactive().is_err());
     }
     #[test] fn rejects_unknown_fields_at_every_object_boundary() {
-        for key in ["", "readiness", "restart", "schedule"] {
+        for key in ["", "readiness", "restart", "schedule", "stop"] {
             let mut value = child();
             let target = if key.is_empty() { &mut value } else { &mut value[key] };
             target["unexpected"] = json!(true);
@@ -144,5 +152,17 @@ mod tests {
         assert!(serde_json::from_value::<Children>(json!([child(),child()])).is_err());
         let mut other = child(); other["id"] = json!("other");
         assert!(serde_json::from_value::<Children>(json!([child(),other])).is_err());
+    }
+    #[test] fn validates_stop_signal_and_grace_bounds() {
+        for signal in ["int", "term"] {
+            let mut value = child(); value["stop"] = json!({"signal":signal,"graceMs":1});
+            assert!(parse(value).is_ok());
+        }
+        for stop in [json!({"signal":"kill","graceMs":1}), json!({"signal":"term","graceMs":0}), json!({"signal":"int","graceMs":300001}), json!({"signal":"term"}), json!({"graceMs":1000})] {
+            let mut value = child(); value["stop"] = stop;
+            assert!(parse(value).is_err());
+        }
+        let mut value = child(); value.as_object_mut().unwrap().remove("stop");
+        assert!(parse(value).is_err());
     }
 }
