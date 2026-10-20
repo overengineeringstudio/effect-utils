@@ -255,6 +255,9 @@ emits a structured `over-budget` event with budget, use, and top holders.
 Budget discovery and maintenance failures are structured advisory diagnostics:
 uncertain discovery aborts that budget round without eviction, and maintenance
 failure never rejects an otherwise successful publication.
+Reserve start, work reasons, and grant durations use the `[editor-view-budget]`
+prefix and are forwarded live by both single and batch publication. Phase records
+explicitly distinguish entry from completion and include completion durations.
 The `editor-view.host-budget` OpenTelemetry span records over-budget publication
 and the protected-share early warning at 80%. Budget, publication, phase, and
 watch-build spans share deferred, fire-and-forget, drop-on-full delivery, with at

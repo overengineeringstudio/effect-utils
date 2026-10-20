@@ -275,12 +275,12 @@ const runEditorViewMaintenance = async <T>({
   try {
     if (reserveStartedAt !== undefined)
       process.stderr.write(
-        `${JSON.stringify({ event: 'editor-view.host-budget.reserve-start', editorRoot, atMs: Date.now() })}\n`,
+        `[editor-view-budget] ${JSON.stringify({ event: 'editor-view.host-budget.reserve-start', editorRoot, atMs: Date.now() })}\n`,
       )
     const result = await run()
     if (reserveStartedAt !== undefined)
       process.stderr.write(
-        `${JSON.stringify({ event: 'editor-view.host-budget.reserve-granted', editorRoot, atMs: Date.now(), durationMs: Math.round(performance.now() - reserveStartedAt) })}\n`,
+        `[editor-view-budget] ${JSON.stringify({ event: 'editor-view.host-budget.reserve-granted', editorRoot, atMs: Date.now(), durationMs: Math.round(performance.now() - reserveStartedAt) })}\n`,
       )
     return result
   } catch (error) {

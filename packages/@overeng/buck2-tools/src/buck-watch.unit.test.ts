@@ -466,6 +466,110 @@ describe('Buck watch reconciliation', () => {
     }
   })
 
+  it.each([false, true])(
+    'forwards budget diagnostics before the publisher exits (batch=%s)',
+    async (batchPublication) => {
+      const root = await mkdtemp(join(tmpdir(), 'buck-watch-budget-'))
+      const release = join(root, 'release')
+      const publisher = join(root, 'publisher.mjs')
+      const manifest = join(root, 'editor-inputs.json')
+      const diagnostic = '[editor-view-budget] {"event":"working","reason":"census"}\n'
+      const observed = Promise.withResolvers<void>()
+      const shutdown = new AbortController()
+      const stderr = vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
+      const onTiming = vi.fn()
+      let publisherCompleted = false
+      let running: Promise<void> | undefined
+      try {
+        await writeFile(release, '')
+        await writeFile(
+          publisher,
+          [
+            "import { watch } from 'node:fs'",
+            'const released = Promise.withResolvers()',
+            `const watcher = watch(${JSON.stringify(release)}, () => released.resolve())`,
+            `process.stderr.write(${JSON.stringify(diagnostic.slice(0, 12))})`,
+            `setImmediate(() => process.stderr.write(${JSON.stringify(diagnostic.slice(12))}))`,
+            'await released.promise',
+            'watcher.close()',
+            `process.stderr.write('[editor-view-timing] {"phase":"editor-view","packagePath":"packages/app","durationMs":12}\\n')`,
+          ].join('\n'),
+        )
+        await writeFile(
+          manifest,
+          JSON.stringify({
+            schema: 'effect-utils/editor-view-inputs/v1',
+            editorInputs: 'buck-out/app/node_modules',
+            packageTree: 'buck-out/app/package_tree',
+            readRoots: ['buck-out/app/package_tree'],
+          }),
+        )
+        running = reconcileBuckViews({
+          request: {
+            packagePaths: ['packages/app'],
+            changedPaths: [],
+            buildTargets: ['//packages/app:editor_view_inputs'],
+          },
+          options: {
+            plan,
+            mode: 'publish',
+            batchPublication,
+            repoRoot: root,
+            workspaceRoot: root,
+            buck2: '/tools/buck2',
+            editorViewCommand: [process.execPath, publisher],
+            workspaceAuthority: '/repo/authority.json',
+            cp: '/tools/cp',
+            mv: '/tools/mv',
+            fingerprintTool: '/tools/buck2-fingerprint',
+            snapshotRetention: 3,
+            onTiming,
+            run: async (invocation) => {
+              if (invocation.command === '/tools/buck2')
+                return { stdout: `//packages/app:editor_view_inputs ${manifest}\n`, stderr: '' }
+              try {
+                return await runCommand({
+                  ...invocation,
+                  signal: shutdown.signal,
+                  onStderr: (chunk) => {
+                    invocation.onStderr?.(chunk)
+                    if (chunk.includes('\n') === true) observed.resolve()
+                  },
+                })
+              } finally {
+                publisherCompleted = true
+              }
+            },
+          },
+        })
+        await Promise.race([
+          observed.promise,
+          running.then(() => {
+            throw new Error('publisher completed before emitting its budget diagnostic')
+          }),
+        ])
+        expect(publisherCompleted).toBe(false)
+        expect(stderr.mock.calls.filter(([line]) => line === diagnostic)).toHaveLength(1)
+        await writeFile(release, 'release')
+        await running
+        expect(publisherCompleted).toBe(true)
+        expect(onTiming).toHaveBeenCalledWith({
+          phase: 'editor-view',
+          packagePath: 'packages/app',
+          durationMs: batchPublication ? 12 : expect.any(Number),
+        })
+        expect(stderr.mock.calls.filter(([line]) => line === diagnostic)).toHaveLength(
+          batchPublication ? 2 : 1,
+        )
+      } finally {
+        shutdown.abort()
+        await running?.catch(() => undefined)
+        stderr.mockRestore()
+        await rm(root, { recursive: true, force: true })
+      }
+    },
+  )
+
   it('emits command spans for the build and each publication without wrapping commands', async () => {
     const root = await mkdtemp(join(tmpdir(), 'buck-watch-'))
     const otelDirectory = mkdtempSync(join(tmpdir(), 'otel-span-cli-'))
