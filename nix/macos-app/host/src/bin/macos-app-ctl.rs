@@ -2,6 +2,13 @@
 use serde_json::{json, Value};
 use std::{collections::BTreeMap, ffi::{c_char, c_void, CString}, fs::{self, File}, io::{self, BufRead, BufReader, Read, Write}, os::{fd::{AsRawFd, FromRawFd}, unix::{fs::{symlink, MetadataExt, PermissionsExt}, net::UnixStream}}, path::{Path, PathBuf}, process::{Command, Output}, time::{Duration, Instant}};
 
+// Home Manager activation may provide only Nix store paths in PATH.
+#[cfg(not(feature = "test-signing-cert"))]
+const LAUNCHCTL: &str = "/bin/launchctl";
+// Only testPrimitives may use the integration runner's offline PATH substitute.
+#[cfg(feature = "test-signing-cert")]
+const LAUNCHCTL: &str = "launchctl";
+
 type Result<T, E = Failure> = std::result::Result<T, E>;
 #[derive(Debug)]
 struct Failure { code: i32, kind: &'static str, category: Option<&'static str>, reason: String }
@@ -336,8 +343,8 @@ impl Ctl {
     }
     fn session(&self) -> Result<&'static str> {
         let uid = unsafe { libc::geteuid() }.to_string();
-        if command("launchctl", &["print", &format!("gui/{uid}")])?.status.success() { Ok("gui") }
-        else if command("launchctl", &["print", &format!("user/{uid}")])?.status.success() { Ok("background-only") }
+        if command(LAUNCHCTL, &["print", &format!("gui/{uid}")])?.status.success() { Ok("gui") }
+        else if command(LAUNCHCTL, &["print", &format!("user/{uid}")])?.status.success() { Ok("background-only") }
         else { Ok("no-session") }
     }
     fn domain(&self) -> Result<String> {
@@ -346,7 +353,7 @@ impl Ctl {
     }
     fn label(&self) -> Result<&str> { self.config["launchd"]["label"].as_str().ok_or_else(|| fail(64, "invalid-input", "Missing launchd label")) }
     fn job(&self, domain: &str) -> Result<(bool, Option<u32>)> {
-        let out = command("launchctl", &["print", &format!("{domain}/{}", self.label()?)])?;
+        let out = command(LAUNCHCTL, &["print", &format!("{domain}/{}", self.label()?)])?;
         let pid = String::from_utf8_lossy(&out.stdout).lines().find_map(|line| line.trim().strip_prefix("pid = ").and_then(|s| s.parse().ok()));
         Ok((out.status.success(), pid))
     }
@@ -561,11 +568,11 @@ impl Ctl {
         let target = format!("{domain}/{}", self.label()?);
         if same && loaded && hash(&app) == running_hash && installed_inode == launched_inode {
             if socket_mode(socket) == Some(self.desired_socket_mode()?) { return Ok(json!({"changed": false, "domain": domain})); }
-            checked("launchctl", &["kickstart", "-k", &target])?;
+            checked(LAUNCHCTL, &["kickstart", "-k", &target])?;
             return Ok(json!({"changed": true, "domain": domain, "restart": "socket-mode"}));
         }
         if loaded {
-            checked("launchctl", &["bootout", &target])?;
+            checked(LAUNCHCTL, &["bootout", &target])?;
             // launchd can still be tearing the job down when bootout returns; bootstrapping the
             // same label then fails with EIO (5). Wait, bounded, until print reports it gone.
             let deadline = Instant::now() + Duration::from_secs(10);
@@ -575,7 +582,7 @@ impl Ctl {
             }
         }
         if !same { fs::create_dir_all(&dir)?; atomic_write(&path, &bytes)?; }
-        checked("launchctl", &["bootstrap", &domain, text(&path)?])?;
+        checked(LAUNCHCTL, &["bootstrap", &domain, text(&path)?])?;
         fs::create_dir_all(&state)?;
         atomic_write(&launched_record, installed_inode.as_bytes())?;
         Ok(json!({"changed": true, "domain": domain}))
@@ -835,6 +842,19 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    #[cfg(not(feature = "test-signing-cert"))]
+    fn launchctl_program_is_absolute() {
+        assert!(Path::new(LAUNCHCTL).is_absolute(), "launchctl must not depend on PATH");
+        assert_eq!(LAUNCHCTL, "/bin/launchctl");
+    }
+
+    #[test]
+    #[cfg(feature = "test-signing-cert")]
+    fn launchctl_program_uses_test_shim() {
+        assert_eq!(LAUNCHCTL, "launchctl");
+    }
+
     #[test]
     fn failure_json_process_fixture() {
         let Ok(kind) = std::env::var("MACOS_APP_CTL_ERROR_JSON_FIXTURE") else { return };

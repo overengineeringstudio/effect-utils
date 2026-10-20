@@ -44,10 +44,10 @@ impl Ctl {
         if validated.evidence == "resident" { self.arg("socket")?; }
         self.signature(&self.app()?)?;
         // A missing explicit GUI domain is a structured non-mutation outcome.
-        if validated.domain.starts_with("gui/") && !command("launchctl", &["print", &validated.domain])?.status.success() {
+        if validated.domain.starts_with("gui/") && !command(LAUNCHCTL, &["print", &validated.domain])?.status.success() {
             return Err(fail(21, "gui-absent", "Explicit GUI domain is absent; no job operation attempted"));
         }
-        let disabled = checked("launchctl", &["print-disabled", &validated.domain])?;
+        let disabled = checked(LAUNCHCTL, &["print-disabled", &validated.domain])?;
         let disabled_text = String::from_utf8_lossy(&disabled.stdout);
         if validated.disabled || disabled_text.lines().any(|line| line.trim() == format!("\"{}\" => true", validated.label)) || self.config["launchd"]["held"] == true {
             let (loaded, pid) = self.job(&validated.domain)?;
@@ -69,7 +69,7 @@ impl Ctl {
         }
         let target = format!("{}/{}", validated.domain, validated.label);
         if loaded {
-            checked("launchctl", &["bootout", &target])?;
+            checked(LAUNCHCTL, &["bootout", &target])?;
             let deadline = Instant::now() + Duration::from_secs(10);
             while self.job(&validated.domain)?.0 {
                 if Instant::now() >= deadline { return Err(fail(23, "operation-failed", "Job remained loaded after bootout")); }
@@ -77,7 +77,7 @@ impl Ctl {
             }
         }
         atomic_write(&path, &validated.bytes)?;
-        checked("launchctl", &["bootstrap", &validated.domain, text(&path)?])?;
+        checked(LAUNCHCTL, &["bootstrap", &validated.domain, text(&path)?])?;
         atomic_write(&record, &serde_json::to_vec(&json!({"domain": validated.domain, "targetUid": validated.target_uid, "plistDigest": digest, "appInode": app_inode}))?)?;
         let (loaded, pid) = self.job(&validated.domain)?;
         if !loaded { return Err(mismatch("Configured job is not loaded")); }
