@@ -147,7 +147,18 @@ let
   genericHost = pkgs.rustPlatform.buildRustPackage {
     pname = "macos-app-host";
     version = "1";
-    src = ./host;
+    src = lib.fileset.toSource {
+      root = ./.;
+      fileset = lib.fileset.unions [
+        ./host/Cargo.toml
+        ./host/Cargo.lock
+        ./host/src
+        ./host/tests
+        (lib.fileset.maybeMissing ./host/build.rs)
+        ./children.schema.json
+      ];
+    };
+    sourceRoot = "source/host";
     cargoLock.lockFile = ./host/Cargo.lock;
     buildInputs = [ pkgs.apple-sdk_15 ];
     env = darwinRust.compileEnv // {

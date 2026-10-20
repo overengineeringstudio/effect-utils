@@ -29,25 +29,62 @@ pub struct Child {
     pub client_socket: Option<String>,
 }
 #[derive(Debug, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
-#[serde(rename_all = "kebab-case")]
+#[serde(try_from = "String")]
 pub enum Service { FullDiskAccess, Notifications, ScreenRecording, Accessibility, Microphone, SystemAudio, Automation }
 #[derive(Debug, Default, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "kebab-case")]
+#[serde(try_from = "String")]
 pub enum Activation { Active, #[default] Inactive }
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "kebab-case")]
+#[serde(try_from = "String")]
 pub enum Session { None, Gui }
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Stop { pub signal: StopSignal, pub grace_ms: u32 }
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "lowercase")]
+#[serde(try_from = "String")]
 pub enum StopSignal { Int, Term }
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct RlimitNofile { pub soft: u64, pub hard: u64 }
 #[derive(Debug, Deserialize)]
+#[serde(try_from = "String")]
 pub enum ProcessType { Background, Standard, Interactive, Adaptive }
+
+impl TryFrom<String> for Activation {
+    type Error = &'static str;
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        match value.as_str() { "active" => Ok(Self::Active), "inactive" => Ok(Self::Inactive), _ => Err("Invalid child activation") }
+    }
+}
+impl TryFrom<String> for Session {
+    type Error = &'static str;
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        match value.as_str() { "none" => Ok(Self::None), "gui" => Ok(Self::Gui), _ => Err("Invalid child session") }
+    }
+}
+impl TryFrom<String> for StopSignal {
+    type Error = &'static str;
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        match value.as_str() { "int" => Ok(Self::Int), "term" => Ok(Self::Term), _ => Err("Invalid child stop signal") }
+    }
+}
+impl TryFrom<String> for ProcessType {
+    type Error = &'static str;
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        match value.as_str() { "Background" => Ok(Self::Background), "Standard" => Ok(Self::Standard), "Interactive" => Ok(Self::Interactive), "Adaptive" => Ok(Self::Adaptive), _ => Err("Invalid child process type") }
+    }
+}
+impl TryFrom<String> for Service {
+    type Error = &'static str;
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        match value.as_str() {
+            "full-disk-access" => Ok(Self::FullDiskAccess), "notifications" => Ok(Self::Notifications),
+            "screen-recording" => Ok(Self::ScreenRecording), "accessibility" => Ok(Self::Accessibility),
+            "microphone" => Ok(Self::Microphone), "system-audio" => Ok(Self::SystemAudio),
+            "automation" => Ok(Self::Automation), _ => Err("Invalid child TCC service")
+        }
+    }
+}
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Directories { pub state: Directory, pub run: Directory, pub log: Directory }
@@ -205,5 +242,28 @@ mod tests {
         }
         let parsed = parse(child()).unwrap();
         assert_eq!(parsed.0[0].directories.run.mode, 0o700);
+    }
+    #[test] fn string_enum_admission_matches_json_schema() {
+        let schema: Value = serde_json::from_str(include_str!("../../children.schema.json")).unwrap();
+        for field in ["activation", "requiresSession", "processType", "signal", "requiredTccServices"] {
+            let properties = &schema["$defs"]["child"]["properties"];
+            let choices = match field {
+                "signal" => &properties["stop"]["properties"]["signal"]["enum"],
+                "requiredTccServices" => &properties[field]["items"]["enum"],
+                _ => &properties[field]["enum"],
+            }.as_array().unwrap();
+            let mut candidates = choices.clone();
+            candidates.extend([json!({"inactive":null}), json!({"none":null}), json!({"Standard":null}), json!({"term":null}), json!({"full-disk-access":null}), json!(null), json!(0), json!(true), json!("unknown")]);
+            for candidate in candidates {
+                let schema_accepts = choices.contains(&candidate);
+                let mut value = child();
+                match field {
+                    "signal" => value["stop"]["signal"] = candidate.clone(),
+                    "requiredTccServices" => value[field] = json!([candidate]),
+                    _ => value[field] = candidate.clone(),
+                }
+                assert_eq!(parse(value).is_ok(), schema_accepts, "{field}: {candidate}");
+            }
+        }
     }
 }

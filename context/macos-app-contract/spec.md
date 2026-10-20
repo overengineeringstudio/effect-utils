@@ -100,22 +100,22 @@ paths. JSON Schema additionally describes the structural contract; cross-entry
 uniqueness, limit ordering, socket/run-directory agreement and
 `initialBackoffMs <= maxBackoffMs` are semantic decoder checks.
 
-| Field | Contract |
-| --- | --- |
-| `id` | Unique `[a-z][a-z0-9-]*`, at most 128 ASCII characters. |
-| `helperPath` | Canonical bundle-relative `Contents/Helpers/...` executable; no empty, `.` or `..` components, backslash, NUL, absolute or store path. |
-| `argv`, `env`, `cwd` | Complete fixed argument list (excluding argv[0]), environment map and canonical absolute working directory. No ambient environment merging, NUL, or environment keys containing `=`. cwd and probe socket paths cannot be in `/nix/store`. |
-| `requiredTccServices` | Unique grant-category strings: `full-disk-access`, `notifications`, `screen-recording`, `accessibility`, `microphone`, `system-audio`, `automation`. A declaration is not evidence of a grant. |
-| `requiresSession` | Required `none` or `gui`. Session-free children belong to the supervisor; GUI children require its authenticated GUI-session execution context. |
-| `readiness` | `{kind:"socket-accepts",path,timeoutMs}`, `{kind:"probe-op",op,timeoutMs}` or `{kind:"none"}`. Timeout is 1..300000 ms. `op` is a compiled, enabled, nonprompting bounded host probe returning the typed result below, never a client-supplied command. Plain `exit-zero` declarations are rejected. |
-| `restart` | `{kind:"never"}` or `{kind:"on-failure",initialBackoffMs,maxBackoffMs,maxAttempts}`. Backoff is 1..300000 ms, initial <= maximum, attempts 1..100. |
-| `stop` | Required `{signal:"int"|"term",graceMs}`; send SIGINT or SIGTERM, wait 1..300000 ms, then SIGKILL only if still alive. |
-| `activation` | `active` or `inactive`; omitted means **inactive**. Backup tools remain inactive/shadow declarations until separately proven and explicitly activated. |
-| `schedule` | `{kind:"resident"}` or `{kind:"launchd-scheduled",op}`. Scheduled operation IDs name compiled work; restart must be `never` because launchd owns the next invocation. |
-| `rlimitNofile` | Required closed `{soft,hard}` positive unsigned-64-bit limits with soft <= hard; reject unsupported platform limits before spawn. |
-| `nice`, `processType` | Required nice -20..19 and launchd `ProcessType`: `Background`, `Standard`, `Interactive` or `Adaptive`. |
-| `directories` | Required closed `{state,run,log}`, each `{path,mode?}`; distinct canonical absolute non-root/non-store paths. Default mode 0700 (decimal 448), explicit modes 0000..0777. Owner is always the target UID, never client input. |
-| `clientSocket` | Optional fixed canonical absolute socket inside the declared run directory; null/omitted for tools without a client socket. `socket-accepts.path` must equal it. |
+| Field                 | Contract                                                                                                                                                                                                                                                                                             |
+| --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `id`                  | Unique `[a-z][a-z0-9-]*`, at most 128 ASCII characters.                                                                                                                                                                                                                                              |
+| `helperPath`          | Canonical bundle-relative `Contents/Helpers/...` executable; no empty, `.` or `..` components, backslash, NUL, absolute or store path.                                                                                                                                                               |
+| `argv`, `env`, `cwd`  | Complete fixed argument list (excluding argv[0]), environment map and canonical absolute working directory. No ambient environment merging, NUL, or environment keys containing `=`. cwd and probe socket paths cannot be in `/nix/store`.                                                           |
+| `requiredTccServices` | Unique grant-category strings: `full-disk-access`, `notifications`, `screen-recording`, `accessibility`, `microphone`, `system-audio`, `automation`. A declaration is not evidence of a grant.                                                                                                       |
+| `requiresSession`     | Required `none` or `gui`. Session-free children belong to the supervisor; GUI children require its authenticated GUI-session execution context.                                                                                                                                                      |
+| `readiness`           | `{kind:"socket-accepts",path,timeoutMs}`, `{kind:"probe-op",op,timeoutMs}` or `{kind:"none"}`. Timeout is 1..300000 ms. `op` is a compiled, enabled, nonprompting bounded host probe returning the typed result below, never a client-supplied command. Plain `exit-zero` declarations are rejected. |
+| `restart`             | `{kind:"never"}` or `{kind:"on-failure",initialBackoffMs,maxBackoffMs,maxAttempts}`. Backoff is 1..300000 ms, initial <= maximum, attempts 1..100.                                                                                                                                                   |
+| `stop`                | Required `{signal:"int"                                                                                                                                                                                                                                                                              | "term",graceMs}`; send SIGINT or SIGTERM, wait 1..300000 ms, then SIGKILL only if still alive. |
+| `activation`          | `active` or `inactive`; omitted means **inactive**. Backup tools remain inactive/shadow declarations until separately proven and explicitly activated.                                                                                                                                               |
+| `schedule`            | `{kind:"resident"}` or `{kind:"launchd-scheduled",op}`. Scheduled operation IDs name compiled work; restart must be `never` because launchd owns the next invocation.                                                                                                                                |
+| `rlimitNofile`        | Required closed `{soft,hard}` positive unsigned-64-bit limits with soft <= hard; reject unsupported platform limits before spawn.                                                                                                                                                                    |
+| `nice`, `processType` | Required nice -20..19 and launchd `ProcessType`: `Background`, `Standard`, `Interactive` or `Adaptive`.                                                                                                                                                                                              |
+| `directories`         | Required closed `{state,run,log}`, each `{path,mode?}`; distinct canonical absolute non-root/non-store paths. Default mode 0700 (decimal 448), explicit modes 0000..0777. Owner is always the target UID, never client input.                                                                        |
+| `clientSocket`        | Optional fixed canonical absolute socket inside the declared run directory; null/omitted for tools without a client socket. `socket-accepts.path` must equal it.                                                                                                                                     |
 
 Operation names consist of two dot-separated declaration-ID segments. Assembly
 must resolve probe/scheduled IDs against the compiled registry and reject absent,
@@ -176,7 +176,7 @@ Every child ID is single-instance: a scheduled or requested start while that ID
 is running returns `skipped: already-running`, records it in audit/status and
 never launches a parallel instance. No catch-up queue accumulates overlapping work.
 
-The runtime adds typed operation `core.children.stop`, version 1, with closed
+The runtime adds typed operation `children.stop`, version 1, with closed
 input `{id: string}` (a declared child ID, never a PID or executable), stopping
 exactly that child using its declared protocol. The result names the child and
 instance, whether it was already stopped, and its actual exit code/signal.
@@ -211,6 +211,17 @@ Accessibility and Automation). GUI requests return `session-unavailable` while
 that session is absent. The current ctl configuration models one job; the
 two-job topology implementation and positive pre-login proof remain #1963.
 
+Both jobs run as the same explicit target UID. For the system supervisor,
+`UserName` resolves to that target user, not root; ctl validates it against
+`--target-uid` and requires matching `UserName` for a non-root system target
+([`launchd.rs`](../../nix/macos-app/host/src/bin/macos-app-ctl/launchd.rs),
+`account_names` and `validate_value`). The GUI job is loaded in `gui/<uid>` for
+that same UID; ctl rejects a domain UID differing from `--target-uid` and rejects
+`UserName`/`GroupName` overrides outside the system domain. Children inherit their
+host job's UID without setuid/setgid or other privilege changes. There is
+deliberately no per-child user field; unknown-field rejection prevents declaring
+a child-specific execution identity.
+
 ### Readiness, status and audit
 
 Activation/lifecycle (`inactive | starting | running | backoff | stopped`) is
@@ -230,11 +241,11 @@ Full Disk Access evidence requires **both plain and rename-exchange FSEvents
 probes** as a compiled child-specific host operation. Connection success, a
 watch-list success or one FSEvents shape alone cannot establish FDA capability.
 
-| Outcome | Evidence and transition |
-| --- | --- |
-| `ready` | Declared socket accepts a connection within its deadline (connection-only evidence), or the compiled probe returns typed `ready` (application/permission evidence defined by that op). File existence and PID presence are insufficient. `none` explicitly opts out of a service-readiness claim: after successful spawn, report `ready` with `probe:"none"` and `evidence:"spawn-only"`, never socket/application readiness. A scheduled idle child reports `ready` only with authenticated scheduling evidence, `evidence:"scheduled-idle"`; that does not claim a completed backup. |
-| `deferred` | A compiled probe returns typed deferred with permission-specific evidence for a declared required service. When classifying a child/process exit, only actual exit **75 together with** `deferred-admission: pending-grant: <service>` stderr and permission-specific probe evidence permits deferred. A bare 75, diagnostic without 75, timeout or unknown service is failed. Stop admissions/retries until explicit re-evaluation. |
-| `failed` | Invalid bundle/signature/policy, probe error or deadline, unexpected termination, missing session, or exhausted restart budget. Preserve a stable error code and last observed outcome. |
+| Outcome    | Evidence and transition                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ready`    | Declared socket accepts a connection within its deadline (connection-only evidence), or the compiled probe returns typed `ready` (application/permission evidence defined by that op). File existence and PID presence are insufficient. `none` explicitly opts out of a service-readiness claim: after successful spawn, report `ready` with `probe:"none"` and `evidence:"spawn-only"`, never socket/application readiness. A scheduled idle child reports `ready` only with authenticated scheduling evidence, `evidence:"scheduled-idle"`; that does not claim a completed backup. |
+| `deferred` | A compiled probe returns typed deferred with permission-specific evidence for a declared required service. When classifying a child/process exit, only actual exit **75 together with** `deferred-admission: pending-grant: <service>` stderr and permission-specific probe evidence permits deferred. A bare 75, diagnostic without 75, timeout or unknown service is failed. Stop admissions/retries until explicit re-evaluation.                                                                                                                                                   |
+| `failed`   | Invalid bundle/signature/policy, probe error or deadline, unexpected termination, missing session, or exhausted restart budget. Preserve a stable error code and last observed outcome.                                                                                                                                                                                                                                                                                                                                                                                                |
 
 A ready child returns to starting on restart and loses old readiness evidence.
 An explicit re-evaluation may move deferred/failed to starting; ready requires a
@@ -252,12 +263,17 @@ type ChildStatus = {
   schedule: 'resident' | 'launchd-scheduled'
   requiresSession: 'none' | 'gui'
   state: 'inactive' | 'starting' | 'running' | 'backoff' | 'stopped'
-  readiness: null | (
-    { outcome: 'ready'; probe: 'socket-accepts' | 'probe-op' | 'none'
-      evidence: 'probe-passed' | 'spawn-only' | 'scheduled-idle' } |
-    { outcome: 'deferred'; service: string; reason: string } |
-    { outcome: 'failed'; code: string }
-  )
+  readiness:
+    | null
+    | (
+        | {
+            outcome: 'ready'
+            probe: 'socket-accepts' | 'probe-op' | 'none'
+            evidence: 'probe-passed' | 'spawn-only' | 'scheduled-idle'
+          }
+        | { outcome: 'deferred'; service: string; reason: string }
+        | { outcome: 'failed'; code: string }
+      )
   instanceId: string | null
   pid: number | null
   restartCount: number
