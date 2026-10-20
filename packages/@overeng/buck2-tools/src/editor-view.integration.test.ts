@@ -56,6 +56,9 @@ import * as fingerprintRunner from './typescript-runner.ts'
 // Capture native functions, then register stable mocked exports for fault injection.
 const nativeFs = { ...fs }
 const fsMocks = {
+  openSync: vi.fn(nativeFs.openSync),
+  fchmodSync: vi.fn(nativeFs.fchmodSync),
+  readSync: vi.fn(nativeFs.readSync),
   readFileSync: vi.fn(nativeFs.readFileSync),
   readdirSync: vi.fn(nativeFs.readdirSync),
   lstatSync: vi.fn(nativeFs.lstatSync),
@@ -146,6 +149,9 @@ afterEach(async () => {
     await child.exited
     editorCliProcesses.delete(child)
   }
+  fsMocks.openSync.mockReset().mockImplementation(nativeFs.openSync)
+  fsMocks.fchmodSync.mockReset().mockImplementation(nativeFs.fchmodSync)
+  fsMocks.readSync.mockReset().mockImplementation(nativeFs.readSync)
   fsMocks.readFileSync.mockReset().mockImplementation(nativeFs.readFileSync)
   fsMocks.readdirSync.mockReset().mockImplementation(nativeFs.readdirSync)
   fsMocks.lstatSync.mockReset().mockImplementation(nativeFs.lstatSync)
@@ -257,7 +263,7 @@ const makeWritable = (path: string): void => {
     for (const name of readdirSync(path)) makeWritable(join(path, name))
     return
   }
-  chmodSync(path, 0o600)
+  // Regular files may share snapshot/CAS inodes; only parent directories need write access.
 }
 
 const cleanup = (fixture: Fixture): void => {
@@ -271,6 +277,42 @@ const cleanup = (fixture: Fixture): void => {
   unlock(fixture.root)
   rmSync(fixture.root, { recursive: true, force: true })
 }
+
+it('preserves shared payload modes while unlocking and removing readonly fixture directories', async () => {
+  const fixture = makeFixture()
+  const retainedRoot = mkdtempSync(join(tmpdir(), 'editor-view-cleanup-alias-'))
+  try {
+    const record = await publishEditorView(fixture.options)
+    const snapshot = join(fixture.editorRoot, record.snapshot)
+    const payload = join(snapshot, 'node_modules', 'dep', 'index.js')
+    const retained = join(retainedRoot, 'payload')
+    linkSync(payload, retained)
+    const payloadMode = statSync(retained).mode
+    expect(payloadMode & 0o222).toBe(0)
+    expect(statSync(payload).ino).toBe(statSync(retained).ino)
+    const externalDirectory = join(retainedRoot, 'external')
+    mkdirSync(externalDirectory)
+    chmodSync(externalDirectory, 0o500)
+    symlinkSync(externalDirectory, join(fixture.root, 'external-directory'))
+    symlinkSync(retained, join(fixture.root, 'external-file'))
+    symlinkSync('missing', join(fixture.root, 'dangling'))
+    chmodSync(fixture.root, 0o500)
+
+    makeWritable(fixture.root)
+    expect(statSync(retained).mode).toBe(payloadMode)
+    expect(statSync(externalDirectory).mode & 0o777).toBe(0o500)
+    // Exercise cleanup from readonly directories independently of the unlock above.
+    chmodSync(snapshot, 0o500)
+    chmodSync(fixture.root, 0o500)
+    cleanup(fixture)
+    expect(existsSync(fixture.root)).toBe(false)
+    expect(statSync(retained).mode).toBe(payloadMode)
+    expect(statSync(externalDirectory).mode & 0o777).toBe(0o500)
+  } finally {
+    if (existsSync(fixture.root) === true) cleanup(fixture)
+    rmSync(retainedRoot, { recursive: true, force: true })
+  }
+})
 
 const currentTarget = (fixture: Fixture): string =>
   readlinkSync(join(fixture.editorRoot, fixture.options.viewName))
@@ -3163,6 +3205,370 @@ describe('editor view publisher', () => {
     })
   })
 
+  describe('snapshot mode repair rejects descriptor races', () => {
+    it('rejects a FIFO swapped in after native hashing without blocking or protecting the retained inode', async () => {
+      const fixture = makeFixture()
+      let payloadDirectory: string | undefined
+      let swapped = false
+      let nativeHashed = false
+      let unsafeOpenAttempt = false
+      try {
+        const record = await publishEditorView(fixture.options)
+        const snapshot = join(fixture.editorRoot, record.snapshot, 'node_modules')
+        const payload = join(snapshot, 'dep', 'index.js')
+        payloadDirectory = dirname(payload)
+        const alias = join(fixture.root, 'fifo-retained-inode')
+        linkSync(payload, alias)
+        chmodSync(alias, 0o644)
+        fsMocks.openSync.mockImplementation((...args) => {
+          if (String(args[0]) === payload) {
+            const flags = args[1]
+            const nonblocking =
+              typeof flags === 'number' && (flags & nativeFs.constants.O_NONBLOCK) !== 0
+            unsafeOpenAttempt ||= nonblocking === false
+            // Assert before the real open: a blocking FIFO open would wedge the test runner.
+            expect(nonblocking).toBe(true)
+            if (nativeHashed === true && swapped === false) {
+              // Swap after the walk's lstat, immediately before its descriptor open.
+              chmodSync(dirname(payload), 0o755)
+              rmSync(payload)
+              const fifo = spawnSync(join(dirname(cp), 'mkfifo'), [payload], {
+                encoding: 'utf8',
+              })
+              expect(fifo.status, fifo.stderr).toBe(0)
+              chmodSync(dirname(payload), 0o555)
+              swapped = true
+            }
+          }
+          return Reflect.apply(nativeFs.openSync, fs, args)
+        })
+        childProcessMocks.spawn.mockImplementation((...args) => {
+          const child = Reflect.apply(
+            nativeChildProcess.spawn,
+            ChildProcess,
+            args,
+          ) as ChildProcess.ChildProcess
+          if (
+            String(args[0]) === fingerprintTool &&
+            Array.isArray(args[1]) === true &&
+            args[1][0] === snapshot
+          ) {
+            // Register before runFingerprintTool receives the child and resumes its verifier.
+            child.once('exit', (code) => {
+              expect(code).toBe(0)
+              nativeHashed = true
+            })
+          }
+          return child
+        })
+        const started = performance.now()
+        await expect(verifyEditorViewSnapshot(fixture.options)).rejects.toThrow()
+        expect(performance.now() - started).toBeLessThan(5_000)
+        expect(swapped).toBe(true)
+        expect(unsafeOpenAttempt).toBe(false)
+        expect(lstatSync(payload).isFIFO()).toBe(true)
+        expect(statSync(alias).mode & 0o777).toBe(0o644)
+        expect(readFileSync(alias, 'utf8')).toBe('export default 1\n')
+      } finally {
+        fsMocks.openSync.mockReset().mockImplementation(nativeFs.openSync)
+        childProcessMocks.spawn.mockReset().mockImplementation(nativeChildProcess.spawn)
+        if (payloadDirectory !== undefined) chmodSync(payloadDirectory, 0o755)
+        cleanup(fixture)
+      }
+    })
+
+    it('rejects a corrupted writable inode hidden by an ancestor swap during native hashing', async () => {
+      const fixture = makeFixture()
+      let snapshot: string | undefined
+      let ancestor: string | undefined
+      let parked: string | undefined
+      let replacement: string | undefined
+      const swapState = { hidden: false }
+      let restored = false
+      let nativeDigestOutput = ''
+      try {
+        // Unique bytes avoid sharing A with the fixture's duplicated dep/.pnpm payloads.
+        mkdirSync(join(fixture.nodeModules, 'race-payload'))
+        writeFileSync(join(fixture.nodeModules, 'race-payload', 'index.js'), 'clean inode B\n')
+        const record = await publishEditorView(fixture.options)
+        snapshot = join(fixture.editorRoot, record.snapshot, 'node_modules')
+        ancestor = join(snapshot, 'race-payload')
+        parked = join(fixture.root, 'corrupted-ancestor')
+        replacement = join(fixture.root, 'clean-ancestor')
+        const payload = join(ancestor, 'index.js')
+        const alias = join(fixture.root, 'ancestor-retained-inode')
+        const cleanDigest = await canonicalTreeFingerprint({ tree: snapshot, fingerprintTool })
+        nativeFs.cpSync(ancestor, replacement, { recursive: true })
+        const originalInode = statSync(payload).ino
+        linkSync(payload, alias)
+        chmodSync(alias, 0o644)
+        writeFileSync(alias, 'corrupted inode A\n')
+        const snapshotPath = snapshot
+        const ancestorPath = ancestor
+        const parkedPath = parked
+        const replacementPath = replacement
+        childProcessMocks.spawn.mockImplementation((...args) => {
+          const target =
+            String(args[0]) === fingerprintTool &&
+            Array.isArray(args[1]) === true &&
+            args[1][0] === snapshotPath
+          if (target === true) {
+            // Collection already saw writable inode A. Only the native subprocess sees clean B.
+            chmodSync(snapshotPath, 0o755)
+            // Cross-parent directory renames need owner-write on the moved roots.
+            chmodSync(ancestorPath, 0o755)
+            chmodSync(replacementPath, 0o755)
+            nativeFs.renameSync(ancestorPath, parkedPath)
+            nativeFs.renameSync(replacementPath, ancestorPath)
+            chmodSync(ancestorPath, 0o555)
+            chmodSync(snapshotPath, 0o555)
+            swapState.hidden = true
+          }
+          const child = Reflect.apply(
+            nativeChildProcess.spawn,
+            ChildProcess,
+            args,
+          ) as ChildProcess.ChildProcess
+          if (target === true) {
+            child.stdout?.on('data', (chunk) => {
+              nativeDigestOutput += String(chunk)
+            })
+            // Restore A before the caller's subprocess completion handler can resume repair.
+            child.once('exit', (code) => {
+              chmodSync(snapshotPath, 0o755)
+              chmodSync(ancestorPath, 0o755)
+              nativeFs.renameSync(ancestorPath, replacementPath)
+              nativeFs.renameSync(parkedPath, ancestorPath)
+              chmodSync(ancestorPath, 0o555)
+              chmodSync(replacementPath, 0o555)
+              chmodSync(snapshotPath, 0o555)
+              swapState.hidden = false
+              restored = true
+              expect(code).toBe(0)
+            })
+          }
+          return child
+        })
+        await expect(verifyEditorViewSnapshot(fixture.options)).rejects.toThrow()
+        expect(restored).toBe(true)
+        expect(nativeDigestOutput.trim()).toBe(`digest ${cleanDigest}`)
+        expect(statSync(payload).ino).toBe(originalInode)
+        expect(statSync(payload).mode & 0o777).toBe(0o644)
+        expect(statSync(alias).mode & 0o777).toBe(0o644)
+        expect(readFileSync(alias, 'utf8')).toBe('corrupted inode A\n')
+      } finally {
+        childProcessMocks.spawn.mockReset().mockImplementation(nativeChildProcess.spawn)
+        if (snapshot !== undefined) chmodSync(snapshot, 0o755)
+        if (
+          swapState.hidden === true &&
+          ancestor !== undefined &&
+          parked !== undefined &&
+          replacement !== undefined
+        ) {
+          chmodSync(ancestor, 0o755)
+          nativeFs.renameSync(ancestor, replacement)
+          nativeFs.renameSync(parked, ancestor)
+        }
+        // Both swapped directories are fixture-owned; restore their modes before removal.
+        if (ancestor !== undefined && existsSync(ancestor) === true) makeWritable(ancestor)
+        if (replacement !== undefined && existsSync(replacement) === true) makeWritable(replacement)
+        if (parked !== undefined && existsSync(parked) === true) makeWritable(parked)
+        cleanup(fixture)
+      }
+    })
+  })
+
+  describe('hash-verified snapshot mode drift', () => {
+    it('prepares a writable hardlinked snapshot and reports repaired inode modes', async () => {
+      const fixture = makeFixture()
+      const stderr = vi.spyOn(process.stderr, 'write')
+      try {
+        const record = await publishEditorView(fixture.options)
+        const payload = join(fixture.editorRoot, record.snapshot, 'node_modules', 'dep', 'index.js')
+        const alias = join(fixture.root, 'retained-snapshot-alias')
+        linkSync(payload, alias)
+        chmodSync(alias, 0o644)
+        stderr.mockClear()
+        await expect(publishEditorView(fixture.options)).resolves.toEqual(record)
+        expect(statSync(payload).mode & 0o777).toBe(0o444)
+        expect(statSync(alias).mode & 0o777).toBe(0o444)
+        expect(
+          stderr.mock.calls.some(
+            ([message]) =>
+              typeof message === 'string' &&
+              message.includes('[editor-view-mode-drift]') &&
+              message.includes('"count":1') &&
+              message.includes(payload),
+          ),
+        ).toBe(true)
+        await expect(verifyEditorViewSnapshot(fixture.options)).resolves.toEqual(record)
+      } finally {
+        stderr.mockRestore()
+        cleanup(fixture)
+      }
+    })
+
+    it('leaves every writable mode unchanged when any snapshot byte is mutated', async () => {
+      const fixture = makeFixture()
+      try {
+        writeFileSync(join(fixture.nodeModules, 'clean.js'), 'unchanged bytes\n')
+        const record = await publishEditorView(fixture.options)
+        const snapshot = join(fixture.editorRoot, record.snapshot, 'node_modules')
+        const clean = join(snapshot, 'clean.js')
+        const mutated = join(snapshot, 'dep', 'index.js')
+        const alias = join(fixture.root, 'mutated-snapshot-alias')
+        linkSync(mutated, alias)
+        chmodSync(clean, 0o644)
+        chmodSync(alias, 0o644)
+        writeFileSync(alias, 'mutated bytes\n')
+        await expect(publishEditorView(fixture.options)).rejects.toMatchObject({
+          cause: expect.objectContaining({
+            message: expect.stringContaining('existing snapshot byte digest mismatch'),
+          }),
+        })
+        for (const path of [clean, mutated, alias]) expect(statSync(path).mode & 0o777).toBe(0o644)
+      } finally {
+        cleanup(fixture)
+      }
+    })
+  })
+
+  it.each(['after-chmod', 'during-rehash', 'append-during-rehash'] as const)(
+    'restores the shared inode mode when a preopened writer mutates bytes %s',
+    async (timing) => {
+      const fixture = makeFixture()
+      let writer: number | undefined
+      try {
+        const record = await publishEditorView(fixture.options)
+        const payload = join(fixture.editorRoot, record.snapshot, 'node_modules', 'dep', 'index.js')
+        const alias = join(fixture.root, 'post-chmod-snapshot-alias')
+        linkSync(payload, alias)
+        chmodSync(alias, 0o644)
+        writer = nativeFs.openSync(alias, 'r+')
+        const writableFd = writer
+        const identity = nativeFs.fstatSync(writableFd)
+        // Keep size fixed so a write to an already-read region can fool a hash without stat guards.
+        const mutation = 'x'.repeat(identity.size)
+        let repairedDescriptor: number | undefined
+        let rollbackDescriptor: number | undefined
+        let writtenBytes = 0
+        fsMocks.fchmodSync.mockImplementation((fd, mode) => {
+          nativeFs.fchmodSync(fd, mode)
+          const status = nativeFs.fstatSync(fd)
+          if (status.dev !== identity.dev || status.ino !== identity.ino) return
+          if (repairedDescriptor === undefined && (status.mode & 0o222) === 0) {
+            repairedDescriptor = fd
+            // An already-open writer remains writable after fchmod removes permission bits.
+            if (timing === 'after-chmod')
+              writtenBytes = nativeFs.writeSync(writableFd, mutation, 0, 'utf8')
+          } else if ((status.mode & 0o777) === (identity.mode & 0o777)) {
+            rollbackDescriptor = fd
+          }
+        })
+        fsMocks.readSync.mockImplementation((...args) => {
+          const count = Reflect.apply(nativeFs.readSync, fs, args)
+          if (
+            (timing === 'during-rehash' || timing === 'append-during-rehash') &&
+            args[0] === repairedDescriptor &&
+            (writtenBytes === 0 || timing === 'append-during-rehash') &&
+            count > 0
+          ) {
+            // Keep feeding an unbounded EOF loop, but fail the regression promptly.
+            expect(writtenBytes).toBeLessThan(Buffer.byteLength(mutation) * 3)
+            writtenBytes += nativeFs.writeSync(
+              writableFd,
+              mutation,
+              timing === 'append-during-rehash' ? identity.size + writtenBytes : 0,
+              'utf8',
+            )
+          }
+          return count
+        })
+        const started = Date.now()
+        await expect(publishEditorView(fixture.options)).rejects.toMatchObject({
+          cause: expect.objectContaining({
+            message: expect.stringContaining('snapshot file changed after mode repair:'),
+          }),
+        })
+        expect(Date.now() - started).toBeLessThan(5000)
+        expect(repairedDescriptor).toBeDefined()
+        expect(writtenBytes).toBe(Buffer.byteLength(mutation))
+        expect(rollbackDescriptor).toBe(repairedDescriptor)
+        expect(readFileSync(alias, 'utf8').includes(mutation)).toBe(true)
+        expect(statSync(payload).mode & 0o777).toBe(0o644)
+        expect(statSync(alias).mode & 0o777).toBe(0o644)
+      } finally {
+        fsMocks.fchmodSync.mockReset().mockImplementation(nativeFs.fchmodSync)
+        fsMocks.readSync.mockReset().mockImplementation(nativeFs.readSync)
+        if (writer !== undefined) nativeFs.closeSync(writer)
+        cleanup(fixture)
+      }
+    },
+  )
+
+  it('keeps a proven inode protected when a later inode changes after the aggregate proof', async () => {
+    const fixture = makeFixture()
+    try {
+      // Distinct payloads and inode identities avoid the fixture's duplicated dep aliases.
+      const source = join(fixture.options.nodeModules, 'race-two-inodes')
+      mkdirSync(source)
+      writeFileSync(join(source, 'a.js'), 'export default "first"\n')
+      writeFileSync(join(source, 'b.js'), 'export default "second"\n')
+      const record = await publishEditorView(fixture.options)
+      const payloadRoot = join(
+        fixture.editorRoot,
+        record.snapshot,
+        'node_modules',
+        'race-two-inodes',
+      )
+      const first = join(payloadRoot, 'a.js')
+      const second = join(payloadRoot, 'b.js')
+      const firstAlias = join(fixture.root, 'first-retained-alias')
+      const secondAlias = join(fixture.root, 'second-retained-alias')
+      linkSync(first, firstAlias)
+      linkSync(second, secondAlias)
+      chmodSync(first, 0o644)
+      chmodSync(second, 0o644)
+      const identities = [statSync(first).ino, statSync(second).ino]
+      const repairState: { protectedInode?: number } = {}
+      let mutations = 0
+      fsMocks.fchmodSync.mockImplementation((fd, mode) => {
+        nativeFs.fchmodSync(fd, mode)
+        const status = nativeFs.fstatSync(fd)
+        if (
+          repairState.protectedInode === undefined &&
+          identities.includes(status.ino) === true &&
+          (status.mode & 0o222) === 0
+        ) {
+          repairState.protectedInode = status.ino
+          const laterAlias = status.ino === identities[0] ? secondAlias : firstAlias
+          writeFileSync(laterAlias, 'changed after aggregate proof\n')
+          mutations += 1
+        }
+      })
+      await expect(publishEditorView(fixture.options)).rejects.toMatchObject({
+        cause: expect.objectContaining({
+          message: expect.stringContaining('snapshot file changed after hash verification:'),
+        }),
+      })
+      expect(mutations).toBe(1)
+      for (const [payload, alias, original] of [
+        [first, firstAlias, 'export default "first"\n'],
+        [second, secondAlias, 'export default "second"\n'],
+      ] as const) {
+        const protectedInode = statSync(payload).ino === repairState.protectedInode
+        for (const path of [payload, alias])
+          expect(statSync(path).mode & 0o777).toBe(protectedInode === true ? 0o444 : 0o644)
+        expect(readFileSync(alias, 'utf8')).toBe(
+          protectedInode === true ? original : 'changed after aggregate proof\n',
+        )
+      }
+    } finally {
+      fsMocks.fchmodSync.mockReset().mockImplementation(nativeFs.fchmodSync)
+      cleanup(fixture)
+    }
+  })
+
   describe('tampered shared inode rejection in every owning view', () => {
     let first: Fixture
     let sibling: { readonly options: EditorViewOptions; readonly editorInputs: string }
@@ -3175,10 +3581,15 @@ describe('editor view publisher', () => {
       await pending
       pending = publishEditorView(sibling.options)
       await pending
-      chmodSync(
-        join(first.editorRoot, currentTarget(first), 'node_modules', 'dep', 'index.js'),
-        0o644,
+      const payload = join(
+        first.editorRoot,
+        currentTarget(first),
+        'node_modules',
+        'dep',
+        'index.js',
       )
+      chmodSync(payload, 0o644)
+      writeFileSync(payload, 'mutated shared bytes\n')
     })
     afterAll(async () => {
       await pending?.catch(() => undefined)
@@ -3189,12 +3600,14 @@ describe('editor view publisher', () => {
       it(`rejects the tampered shared inode in the ${owner} view without repair`, async () => {
         const options = owner === 'first' ? first.options : sibling.options
         pending = checkEditorView(options)
-        await expect(pending).rejects.toThrow('snapshot immutability violation')
+        await expect(pending).rejects.toThrow('snapshot byte digest mismatch')
         pending = publishEditorView(options)
         await expect(pending).rejects.toMatchObject({
           message: expect.stringContaining('; publication workers='),
           cause: expect.objectContaining({
-            message: expect.stringMatching(/^editor view: snapshot file is writable:/u),
+            message: expect.stringMatching(
+              /^editor view: existing snapshot byte digest mismatch:/u,
+            ),
           }),
         })
       })

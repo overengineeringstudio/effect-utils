@@ -1,6 +1,7 @@
 import {
   chmodSync,
   existsSync,
+  linkSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -68,10 +69,19 @@ it.each([
       writeFileSync(join(tree, 'tsconfig.json'), '{"compilerOptions":{"noEmit":true}}\n')
     }
     const abandoned = join(output, '.abandoned')
+    const retained = join(root, 'retained.d.ts')
+    const retainedExecutable = join(root, 'retained-executable')
+    writeFileSync(retained, 'stale declaration\n')
+    writeFileSync(retainedExecutable, '#!/bin/sh\n')
+    chmodSync(retained, 0o444)
+    chmodSync(retainedExecutable, 0o555)
+    const retainedMode = statSync(retained).mode
+    const executableMode = statSync(retainedExecutable).mode
     if (preExistingOutput === true) {
       mkdirSync(abandoned, { recursive: true })
-      writeFileSync(join(abandoned, 'old.d.ts'), 'stale declaration\n')
-      chmodSync(join(abandoned, 'old.d.ts'), 0o444)
+      linkSync(retained, join(abandoned, 'old.d.ts'))
+      linkSync(retainedExecutable, join(output, 'old-executable'))
+      symlinkSync(retained, join(output, 'retained-link'))
       symlinkSync(packageTree, join(output, 'dependency'))
       symlinkSync('missing', join(output, 'dangling'))
       chmodSync(abandoned, 0o555)
@@ -115,6 +125,9 @@ it.each([
       if (preExistingOutput === true) expect(statSync(output).ino).toBe(outputInode)
       expect(readdirSync(output).toSorted()).toEqual(['mod.d.ts', 'mutation.txt'])
       expect(statSync(packageTree).mode).toBe(packageMode)
+      // Output cleanup must unlink aliases without chmodding their retained inodes.
+      expect(statSync(retained).mode).toBe(retainedMode)
+      expect(statSync(retainedExecutable).mode).toBe(executableMode)
       for (const tree of [packageTree, siblingTree])
         expect(readFileSync(join(tree, 'src', 'mod.ts'), 'utf8')).toBe('export const value = 1\n')
     } finally {

@@ -412,7 +412,7 @@ const makeTreeRemovable = async (path: string): Promise<void> => {
   }
   if (metadata.isFile() === false)
     fail(`unsupported filesystem entry while cleaning staging: ${path}`)
-  await chmod(path, metadata.mode | 0o600)
+  // Unlinking needs writable parent directories, not writable shared file inodes.
 }
 
 const removeTree = async (path: string): Promise<void> => {

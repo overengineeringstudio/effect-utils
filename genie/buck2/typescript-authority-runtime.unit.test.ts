@@ -1,9 +1,15 @@
+import { execFileSync } from 'node:child_process'
 import {
+  chmodSync,
+  lstatSync,
+  linkSync,
   mkdirSync,
   readFileSync,
   readdirSync,
   renameSync,
   rmSync,
+  statSync,
+  symlinkSync,
   writeFileSync,
 } from 'node:fs'
 import { mkdtemp } from 'node:fs/promises'
@@ -89,9 +95,11 @@ const successfulCommandOutcome: CommandOutcome = { _tag: 'Status', status: 0 }
 const makeMaterializationRuntime = ({
   cleanupOutcome = successfulCommandOutcome,
   invalidatePublishedDist = false,
+  afterExchange,
 }: {
   readonly cleanupOutcome?: CommandOutcome
   readonly invalidatePublishedDist?: boolean
+  readonly afterExchange?: (staging: string) => void
 } = {}): CommandRuntime => {
   let publishCount = 0
   return {
@@ -102,6 +110,8 @@ const makeMaterializationRuntime = ({
           const output = args.at(args.indexOf('--out') + 1)!
           mkdirSync(join(output, 'types'), { recursive: true })
           writeFileSync(join(output, 'types/index.d.ts'), 'export type Fresh = true\n')
+        } else if (executable === '/tools/chmod') {
+          execFileSync('chmod', args)
         } else if (executable === '/tools/mv') {
           const source = args.at(-2)!
           const destination = args.at(-1)!
@@ -110,6 +120,7 @@ const makeMaterializationRuntime = ({
             renameSync(source, previous)
             renameSync(destination, source)
             renameSync(previous, destination)
+            afterExchange?.(source)
           } else {
             renameSync(source, destination)
           }
@@ -230,6 +241,77 @@ describe('Buck2 TypeScript authority runtime planning', () => {
       rmSync(root, { force: true, recursive: true })
     }
   })
+
+  it.each([0o444, 0o555])(
+    'removes read-only staging directories without changing hardlinked file mode %o or symlink targets',
+    async (fileMode) => {
+      const root = await mkdtemp(join(tmpdir(), 'typescript-dist-cleanup-modes-'))
+      const packageDirectory = join(root, 'packages/@example/widget')
+      const dist = join(packageDirectory, 'dist')
+      const workspaceRoot = join(root, 'workspace')
+      const snapshotAlias = join(root, 'snapshot-alias.d.ts')
+      const externalDirectory = join(root, 'external')
+      const externalFile = join(externalDirectory, 'index.d.ts')
+      try {
+        mkdirSync(join(dist, 'types'), { recursive: true })
+        mkdirSync(workspaceRoot)
+        mkdirSync(externalDirectory)
+        writeFileSync(snapshotAlias, 'export type Stale = true\n')
+        chmodSync(snapshotAlias, fileMode)
+        linkSync(snapshotAlias, join(dist, 'types/index.d.ts'))
+        writeFileSync(externalFile, 'export type External = true\n')
+        chmodSync(externalFile, 0o444)
+        chmodSync(externalDirectory, 0o555)
+        symlinkSync(externalDirectory, join(dist, 'external-directory'), 'dir')
+        symlinkSync(externalFile, join(dist, 'external-file'))
+        chmodSync(join(dist, 'types'), 0o555)
+        const snapshotMetadata = statSync(snapshotAlias)
+        expect(statSync(join(dist, 'types/index.d.ts')).ino).toBe(snapshotMetadata.ino)
+        expect(snapshotMetadata.nlink).toBe(2)
+
+        await expect(
+          materializeTypeScriptDist({
+            buck2Bin: '/tools/buck2',
+            chmodBin: '/tools/chmod',
+            declarationEntrypoint: 'types/index.d.ts',
+            mvBin: '/tools/mv',
+            packagePath: 'packages/@example/widget',
+            root,
+            runtime: makeMaterializationRuntime({
+              // Moving a directory across parents needs owner-write on its root.
+              // Make the exchanged tree read-only only after publication, so this
+              // regression exercises cleanup rather than the exchange primitive.
+              afterExchange: (staging) => chmodSync(staging, 0o555),
+            }),
+            target: 'effect_utils//packages/@example/widget:dist',
+            workspaceRoot,
+          }),
+        ).resolves.toEqual({ _tag: 'Status', status: 0 })
+
+        expect(readdirSync(packageDirectory).filter((name) => name.startsWith('.dist-buck2.'))).toEqual(
+          [],
+        )
+        expect(statSync(snapshotAlias).ino).toBe(snapshotMetadata.ino)
+        expect(statSync(snapshotAlias).mode & 0o777).toBe(fileMode)
+        expect(statSync(snapshotAlias).nlink).toBe(1)
+        expect(statSync(externalDirectory).mode & 0o777).toBe(0o555)
+        expect(statSync(externalFile).mode & 0o777).toBe(0o444)
+        expect(readFileSync(externalFile, 'utf8')).toBe('export type External = true\n')
+        expect(readFileSync(join(dist, 'types/index.d.ts'), 'utf8')).toBe(
+          'export type Fresh = true\n',
+        )
+      } finally {
+        const unlockDirectories = (directory: string): void => {
+          const metadata = lstatSync(directory)
+          if (metadata.isDirectory() === false) return
+          chmodSync(directory, metadata.mode | 0o700)
+          for (const name of readdirSync(directory)) unlockDirectories(join(directory, name))
+        }
+        unlockDirectories(root)
+        rmSync(root, { force: true, recursive: true })
+      }
+    },
+  )
 
   it('propagates a cleanup signal after removing staging state', async () => {
     const root = await mkdtemp(join(tmpdir(), 'typescript-dist-cleanup-signal-'))
