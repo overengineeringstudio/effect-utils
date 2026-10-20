@@ -215,6 +215,11 @@ metadata; this is conservative accounting, not compressed physical ZFS usage.
 This ledger owns last-use, reservations, and rebuildable inode-footprint caches;
 it is not a disposable payload shard. Obsolete footprint sidecars are reclaimed
 with the corresponding generation's cached identity.
+Batch publication shares one in-flight census across workers and admission retries.
+Every fit decision still reads outstanding reservations and later publication
+estimates under the host ledger flock. Collection, eviction, or a stale journal
+invalidates the shared census. Fitting reservations do not scan live readers,
+including above the 80% warning threshold.
 
 Under pressure, unreferenced CAS payloads and unused old generations are reclaimed
 first, then least-recently-used current generations outside the five-minute grace.
@@ -227,12 +232,12 @@ The ordinary current-plus-previous policy is not an unconditional guarantee unde
 pressure: pin a generation when it must remain available. Idle-current eviction
 removes both the owned consumer hop and current pointer, records an eviction marker,
 and the next explicit publication explains the eviction and cleanly republishes.
-Each eviction round fixes one eligibility timestamp before observing readers,
-including the fallback when a concurrent reservation consumes headroom. Crossing
-grace or recency during the process scan cannot add an unobserved victim; a later
-round observes newly eligible generations before retiring them. Retirement also
-rechecks last-use and publication timestamps after acquiring the victim root lock
-and CAS flock, so a newly used view cannot be evicted from an older census.
+An eviction plan always retakes the census instead of trusting shared accounting.
+Retirement checks the journal epoch and immutable generation identity under the
+host ledger fence, then takes a fresh reader proof while the victim root and CAS
+are excluded. As with footprint sidecars, payload immutability is required.
+Retirement also rechecks last-use and publication timestamps, so newly used views
+cannot be evicted from an older plan.
 Vanished victims are skipped even if teardown removes a held eviction lock.
 Active eviction locks are explicitly marked with process-incarnation
 identity; a publisher waits for that live maintenance operation rather than
