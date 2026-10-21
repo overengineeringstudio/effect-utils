@@ -473,6 +473,10 @@ export const lower = (
           if (referenced?.kind !== 'alias') break
           nullable = referenced.type
         }
+        const description =
+          options.descriptions === true
+            ? Schema.resolveAnnotations(Schema.make(field.type))?.description
+            : undefined
         return {
           wire: field.name,
           type:
@@ -480,10 +484,7 @@ export const lower = (
               ? { kind: 'patch', inner: nullable.inner }
               : lowered,
           presence: optional === true ? 'optional' : 'required',
-          ...(options.descriptions === true &&
-          Schema.resolveAnnotations(Schema.make(field.type))?.description !== undefined
-            ? { description: Schema.resolveAnnotations(Schema.make(field.type))!.description }
-            : {}),
+          ...(description !== undefined ? { description } : {}),
         }
       })
       const excess = ast.annotations?.[EffectRust.excess] ?? 'error'
