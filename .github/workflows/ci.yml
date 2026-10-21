@@ -1607,6 +1607,17 @@ jobs:
         run: |
           __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
           bash "$__genie_ci_retry_script" 'devenv tasks run buck2:editor:bootstrap' 'cd "${GITHUB_WORKSPACE:-$PWD}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false ${PIPELINE_RUN_PREFIX:+$PIPELINE_RUN_PREFIX }"${DEVENV_BIN:?DEVENV_BIN not set}" tasks run buck2:editor:bootstrap'
+      - name: Warm local Nix substituter after bootstrap
+        if: ${{ (success()) && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
+        continue-on-error: true
+        timeout-minutes: 15
+        run: |
+          set -euo pipefail
+          started=$SECONDS
+          paths="$RUNNER_TEMP/substitutable-store-paths"
+          nix path-info --all --json | jq -r 'to_entries[] | select(((.value.signatures // []) | length > 0) or ((.value.ca // "") | length > 0)) | .key' > "$paths"
+          sudo env "PATH=$PATH" nix copy --stdin --to 'file:///Users/runner/.cache/nix-substituter?compression=zstd&parallel-compression=true' < "$paths"
+          echo "saved $(wc -l < "$paths") signed or content-addressed paths in $((SECONDS - started))s; cache size $(du -sh '/Users/runner/.cache/nix-substituter/' | cut -f1)"
       - name: Force diagnostics failure (debug)
         if: ${{ github.event_name == 'workflow_dispatch' && (inputs.debug_force_nix_diagnostics_failure == true || inputs.debug_force_nix_diagnostics_failure == 'true') }}
         shell: bash
@@ -1651,17 +1662,17 @@ jobs:
           fi
           unset BUCK2_PUBLIC_CACHE_WRITE_AUTH
           cd "${GITHUB_WORKSPACE:-$PWD}" && bash genie/ci-scripts/compiled-products.sh
-      - name: Save signed store paths to local Nix substituter
+      - name: Save signed and content-addressed store paths to local Nix substituter
         if: ${{ (!cancelled()) && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
         continue-on-error: true
         timeout-minutes: 15
         run: |
           set -euo pipefail
           started=$SECONDS
-          paths="$RUNNER_TEMP/signed-store-paths"
-          nix path-info --all --sigs | awk -F'\t' '{ n = split($2, t, " "); for (i = 1; i <= n; i++) if (t[i] != "ultimate" && t[i] !~ /^ca:/) { print $1; break } }' > "$paths"
+          paths="$RUNNER_TEMP/substitutable-store-paths"
+          nix path-info --all --json | jq -r 'to_entries[] | select(((.value.signatures // []) | length > 0) or ((.value.ca // "") | length > 0)) | .key' > "$paths"
           sudo env "PATH=$PATH" nix copy --stdin --to 'file:///Users/runner/.cache/nix-substituter?compression=zstd&parallel-compression=true' < "$paths"
-          echo "saved $(wc -l < "$paths") signed paths in $((SECONDS - started))s; cache size $(du -sh '/Users/runner/.cache/nix-substituter/' | cut -f1)"
+          echo "saved $(wc -l < "$paths") signed or content-addressed paths in $((SECONDS - started))s; cache size $(du -sh '/Users/runner/.cache/nix-substituter/' | cut -f1)"
       - name: Nix diagnostics summary
         if: ${{ (failure()) && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
         shell: bash
