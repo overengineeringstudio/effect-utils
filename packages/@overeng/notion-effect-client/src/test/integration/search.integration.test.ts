@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto'
 
-import { Clock, Duration, Effect, Exit, Option, Schedule, Schema, Stream } from 'effect'
+import { Clock, Duration, Effect, Exit, Option, Schedule, Schema } from 'effect'
 import * as HttpClient from 'effect/http/HttpClient'
 import { expect } from 'vitest'
 
@@ -10,6 +10,7 @@ import { NotionDatabases } from '../../databases.ts'
 import { NotionHttpTelemetry } from '../../internal/http.ts'
 import { NotionPages } from '../../pages.ts'
 import { NotionSearch } from '../../search.ts'
+import { collectSearchFixtures } from '../test-utils.ts'
 import {
   IntegrationTestLayer,
   SKIP_FIXTURE_INTEGRATION,
@@ -37,7 +38,7 @@ Vitest.describe.skipIf(SKIP_INTEGRATION)('NotionSearch (integration)', () => {
       'finds run-scoped fixtures with filters, sorting, pagination, and streaming',
       () =>
         Effect.gen(function* () {
-          const query = `effect-utils search fixture ${crypto.randomUUID()}`
+          const query = crypto.randomUUID().replaceAll('-', '')
           const title = [{ type: 'text', text: { content: query } }]
           const page = yield* Effect.acquireRelease(
             NotionPages.create({
@@ -55,7 +56,9 @@ Vitest.describe.skipIf(SKIP_INTEGRATION)('NotionSearch (integration)', () => {
             (created) => NotionDatabases.archive({ databaseId: created.id }).pipe(Effect.orDie),
           )
           const dataSourceId = database.data_sources?.[0]?.id
-          expect(dataSourceId).toBeDefined()
+          if (dataSourceId === undefined) {
+            return yield* Effect.die('Search fixture database did not create a data source')
+          }
 
           // Every query shape observes its own index readiness, sharing the fixture's
           // one-minute deadline (including HTTP requests and rate-limit retries).
@@ -319,11 +322,14 @@ Vitest.describe.skipIf(SKIP_INTEGRATION)('NotionSearch (integration)', () => {
 
             const streamed = yield* waitForIndex(
               `searchStream:filter=${value}:pageSize=1`,
-              NotionSearch.searchStream({
-                query,
-                filter: { property: 'object', value },
-                pageSize: 1,
-              }).pipe(Stream.runCollect),
+              collectSearchFixtures(
+                NotionSearch.searchStream({
+                  query,
+                  filter: { property: 'object', value },
+                  pageSize: 1,
+                }),
+                [id],
+              ),
               (items) => items.some((item) => item.id === id),
               (items) => ({ items, hasMore: undefined }),
             )
@@ -370,7 +376,10 @@ Vitest.describe.skipIf(SKIP_INTEGRATION)('NotionSearch (integration)', () => {
 
           const streamed = yield* waitForIndex(
             'searchStream:unfiltered:pageSize=1',
-            NotionSearch.searchStream({ query, pageSize: 1 }).pipe(Stream.runCollect),
+            collectSearchFixtures(NotionSearch.searchStream({ query, pageSize: 1 }), [
+              page.id,
+              dataSourceId,
+            ]),
             (items) =>
               items.some((item) => item.id === page.id) &&
               items.some((item) => item.id === dataSourceId),
