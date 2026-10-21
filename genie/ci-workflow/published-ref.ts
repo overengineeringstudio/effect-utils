@@ -2,18 +2,21 @@ import { githubAccessTokenEnv, githubAppInstallationTokenStep } from './setup.ts
 
 /** Eligibility comes only from this run's successful status write for its exact SHA. */
 export const publishedRefIf =
-  "github.event_name == 'push' && github.ref == 'refs/heads/main' && (steps.publication-scope.outputs.current-sha == github.sha || steps.product-publication.outputs.current-sha == github.sha)"
+  "github.repository == 'overengineeringstudio/effect-utils' && github.event_name == 'push' && github.ref == 'refs/heads/main' && (steps.publication-scope.outputs.current-sha == github.sha || steps.product-publication.outputs.current-sha == github.sha)"
+
+const publishedRefTokenStep = githubAppInstallationTokenStep({
+  id: 'published-ref-token',
+  name: 'Mint publisher GitHub App token for published ref',
+  appId: '${{ vars.NIX_PUBLISHER_GITHUB_APP_ID }}',
+  privateKey: '${{ secrets.NIX_PUBLISHER_GITHUB_APP_PRIVATE_KEY }}',
+  owner: 'overengineeringstudio',
+  repositories: ['effect-utils'],
+})
 
 export const publishedRefSteps = [
   {
-    ...githubAppInstallationTokenStep({
-      id: 'published-ref-token',
-      name: 'Mint publisher GitHub App token for published ref',
-      appId: '${{ vars.NIX_PUBLISHER_GITHUB_APP_ID }}',
-      privateKey: '${{ secrets.NIX_PUBLISHER_GITHUB_APP_PRIVATE_KEY }}',
-      owner: 'overengineeringstudio',
-      repositories: ['effect-utils'],
-    }),
+    ...publishedRefTokenStep,
+    with: { ...publishedRefTokenStep.with, 'permission-contents': 'write' },
     if: publishedRefIf,
   },
   {

@@ -3626,10 +3626,11 @@ jobs:
           private-key: ${{ secrets.NIX_PUBLISHER_GITHUB_APP_PRIVATE_KEY }}
           owner: overengineeringstudio
           repositories: effect-utils
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && (steps.publication-scope.outputs.current-sha == github.sha || steps.product-publication.outputs.current-sha == github.sha)
+          permission-contents: write
+        if: github.repository == 'overengineeringstudio/effect-utils' && github.event_name == 'push' && github.ref == 'refs/heads/main' && (steps.publication-scope.outputs.current-sha == github.sha || steps.product-publication.outputs.current-sha == github.sha)
       - id: advance-published-ref
         name: Advance published ref
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && (steps.publication-scope.outputs.current-sha == github.sha || steps.product-publication.outputs.current-sha == github.sha)
+        if: github.repository == 'overengineeringstudio/effect-utils' && github.event_name == 'push' && github.ref == 'refs/heads/main' && (steps.publication-scope.outputs.current-sha == github.sha || steps.product-publication.outputs.current-sha == github.sha)
         env:
           GITHUB_TOKEN: ${{ steps.published-ref-token.outputs.token }}
           GH_TOKEN: ${{ steps.published-ref-token.outputs.token }}

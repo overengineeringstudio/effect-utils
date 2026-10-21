@@ -893,6 +893,7 @@ describe('published consumer ref', () => {
     expect(advance).toBeDefined()
     expect(advance.if).toBe(publishedRefIf)
     expect(token.if).toBe(publishedRefIf)
+    expect(publishedRefIf).toContain("github.repository == 'overengineeringstudio/effect-utils'")
     expect(publishedRefIf).toContain("github.event_name == 'push'")
     expect(publishedRefIf).toContain("github.ref == 'refs/heads/main'")
     expect(publishedRefIf).toContain('steps.publication-scope.outputs.current-sha == github.sha')
@@ -910,6 +911,10 @@ describe('published consumer ref', () => {
   it('uses the publisher App and checks ancestry before and after a raced push', () => {
     const token = steps.find((step) => step.id === 'published-ref-token')!
     expect(token.with?.['app-id']).toBe('${{ vars.NIX_PUBLISHER_GITHUB_APP_ID }}')
+    expect(token.with?.['permission-contents']).toBe('write')
+    expect(Object.keys(token.with ?? {}).filter((key) => key.startsWith('permission-'))).toEqual([
+      'permission-contents',
+    ])
     const advance = steps.find((step) => step.id === 'advance-published-ref')!
     expect(advance.env?.GH_TOKEN).toBe('${{ steps.published-ref-token.outputs.token }}')
     expect(advance.run).toContain('git merge-base --is-ancestor "$old" "$GITHUB_SHA"')
