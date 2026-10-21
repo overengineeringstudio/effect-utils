@@ -1,7 +1,7 @@
 // Bootstrap-only: no dependency may resolve through an editor generation here.
 // The launcher leases the generations reachable at launch and keeps those
 // leases for the process lifetime. It does not refresh leases when a pointer
-// moves later. Unmanaged-root no-eviction remains the future-open boundary.
+// moves later. Every root still requires complete legacy reader evidence.
 'use strict'
 const childProcess = require('node:child_process')
 const { syncBuiltinESMExports } = require('node:module')

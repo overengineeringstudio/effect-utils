@@ -23,8 +23,9 @@ const run = (body: string): void => {
     import { join } from 'node:path';
     import { tmpdir } from 'node:os';
     import { spawn, spawnSync } from 'node:child_process';
+    import { once } from 'node:events';
     import { setTimeout as delay } from 'node:timers/promises';
-    import { acquireEditorViewLease, ensureEditorViewLeaseControl, probeEditorViewLease, editorViewLeaseFilesystem } from ${JSON.stringify(leaseModule)};
+    import { acquireEditorViewLease, ensureEditorViewLeaseControl, probeEditorViewLease, probeEditorViewLeaseUnderFence, observeEditorViewLeaseForRetirement, editorViewLeaseFilesystem } from ${JSON.stringify(leaseModule)};
     import { withEditorViewContentStoreLock } from ${JSON.stringify(sharingModule)};
     const launcher = ${JSON.stringify(launcher)};
     const helper = ${JSON.stringify(childHelper)};
@@ -71,8 +72,13 @@ describe('editor generation native leases (Linux and macOS)', () => {
     run(`
     const left = await acquire(); const right = await acquire();
     assert.equal(probe(), 'held');
+    const observedHeld = observeEditorViewLeaseForRetirement(input);
+    assert.equal(observedHeld.kind, 'held'); assert.equal(observedHeld.state, 'held'); observedHeld.release();
     left.release(); left.release(); assert.equal(probe(), 'held');
     right.release(); assert.equal(probe(), 'clear');
+    const observedClear = observeEditorViewLeaseForRetirement(input);
+    assert.equal(observedClear.kind, 'clear'); assert.equal(observedClear.state, 'clear');
+    assert.equal(probe(), 'held'); observedClear.release();
     const exclusive = probeEditorViewLease(input); assert.equal(exclusive.state, 'clear');
     await assert.rejects(acquire()); exclusive.release();
     const reader = await acquire(); reader.release();
@@ -105,30 +111,81 @@ describe('editor generation native leases (Linux and macOS)', () => {
     reader.release(); assert.equal(probe(), 'clear');
   `))
 
-  it('explicit native legacy backfill creates controls without replacing tombstones or executing source', () =>
-    run(`
+  it.each(['retire', 'admit'])(
+    'lazy fenced control admission serializes a concurrent reader: %s',
+    (outcome) =>
+      run(`
+    const outcome = ${JSON.stringify(outcome)};
+    fs.rmSync(join(editorRoot, '.leases'), { recursive: true });
+    fs.writeFileSync(join(payload, 'reader-source'), 'safe');
+    const observation = observeEditorViewLeaseForRetirement(input);
+    assert.equal(observation.state, 'clear'); assert.equal(observation.kind, 'no-control');
+    assert.match(observation.reasons.join(';'), /clear under fence/); observation.release();
+    assert.equal(fs.existsSync(control), false); assert.equal(probe(), 'unknown');
+    const started = join(root, 'waiting-reader'); const resolved = join(root, 'reader-resolved');
+    const result = join(root, 'reader-result');
+    let child;
+    await fence(async () => {
+      const source = [
+        'import * as fs from "node:fs";',
+        'import { acquireEditorViewLease } from ' + JSON.stringify(${JSON.stringify(leaseModule)}) + ';',
+        'fs.writeFileSync(' + JSON.stringify(started) + ', "started");',
+        'try {',
+        ' const lease = await acquireEditorViewLease({ editorRoot: ' + JSON.stringify(editorRoot) + ', contentStore: ' + JSON.stringify(contentStore) + ', resolveSnapshot: () => { fs.writeFileSync(' + JSON.stringify(resolved) + ', "resolved"); return ' + JSON.stringify(snapshot) + '; } });',
+        ' try { fs.readFileSync(lease.snapshot + "/reader-source"); fs.writeFileSync(' + JSON.stringify(result) + ', "read"); } finally { lease.release(); }',
+        '} catch { fs.writeFileSync(' + JSON.stringify(result) + ', "blocked"); }',
+      ].join('\\n');
+      child = spawn(${JSON.stringify(bun)}, ['--eval', source], { stdio: 'ignore' }); launched.push(child);
+      await waitUntil(() => fs.existsSync(started));
+      assert.equal(fs.existsSync(resolved), false);
+      const exclusive = probeEditorViewLeaseUnderFence(input);
+      try {
+        assert.equal(exclusive.state, 'clear'); assert.equal(fs.existsSync(control), true);
+        assert.equal(probe(), 'held'); assert.equal(fs.existsSync(resolved), false);
+        if (outcome === 'retire') fs.rmSync(payload, { recursive: true });
+      } finally { exclusive.release(); }
+    });
+    await waitUntil(() => fs.existsSync(result));
+    assert.equal(fs.readFileSync(result, 'utf8'), outcome === 'retire' ? 'blocked' : 'read');
+    await waitUntil(() => child.exitCode !== null);
+    assert.equal(child.exitCode, 0);
+  `),
+  )
+
+  it.each(['typescript', 'native'])(
+    'reader lazily creates and shares a legacy control inside CAS: %s',
+    (reader) =>
+      run(`
+    const reader = ${JSON.stringify(reader)};
     fs.rmSync(join(editorRoot, '.leases'), { recursive: true });
     assert.equal(probe(), 'unknown');
-    const env = { ...process.env, EDITOR_VIEW_LEASE_EXECUTABLE: '', EDITOR_VIEW_LEASE_FDS: '' };
-    const args = ['--content-store', contentStore, '--workspace-root', root, '--backfill-controls'];
-    assert.equal(spawnSync(launcher, args, { env }).status, 0);
+    const observation = observeEditorViewLeaseForRetirement(input);
+    assert.equal(observation.kind, 'no-control'); observation.release();
+    const ready = join(root, 'reader-backfill-ready');
+    let child;
+    await fence(async () => {
+      if (reader === 'native') child = launch('mapped-hold', ready);
+      else {
+        const source = [
+          'import * as fs from "node:fs";',
+          'import { acquireEditorViewLease } from ' + JSON.stringify(${JSON.stringify(leaseModule)}) + ';',
+          'const lease = await acquireEditorViewLease({ editorRoot: ' + JSON.stringify(editorRoot) + ', contentStore: ' + JSON.stringify(contentStore) + ', resolveSnapshot: () => ' + JSON.stringify(snapshot) + ' });',
+          'fs.writeFileSync(' + JSON.stringify(ready) + ', "ready");',
+          'process.stdin.resume();',
+        ].join('\\n');
+        child = spawn(${JSON.stringify(bun)}, ['--eval', source], { stdio: ['pipe', 'ignore', 'ignore'] }); launched.push(child);
+      }
+      await once(child, 'spawn'); assert.equal(fs.existsSync(control), false); assert.equal(fs.existsSync(ready), false);
+    });
+    await waitUntil(() => fs.existsSync(ready));
+    assert.equal(probe(), 'held');
     assert.equal(fs.lstatSync(control).mode & 0o777, 0o600);
-    const inode = fs.lstatSync(control).ino;
     await fence(async () => ensureEditorViewLeaseControl(input));
-    assert.equal(spawnSync(launcher, args, { env }).status, 0);
-    assert.equal(fs.lstatSync(control).ino, inode);
-    const reader = await acquire(); assert.equal(probe(), 'held'); reader.release();
-    const marker = join(root, 'no-backfill-exec');
-    const rejected = spawnSync(launcher, [...args, '--', ${JSON.stringify(bun)}, '--eval', 'require("node:fs").writeFileSync(' + JSON.stringify(marker) + ', "bad")'], { env });
-    assert.notEqual(rejected.status, 0); assert.equal(fs.existsSync(marker), false);
-    fs.writeFileSync(control, 'replaced');
-    assert.notEqual(spawnSync(launcher, args, { env }).status, 0);
-    assert.equal(fs.readFileSync(control, 'utf8'), 'replaced');
-    const missing = spawnSync(launcher, ['--content-store', join(root, 'absent-cas'), '--editor-root', editorRoot, '--backfill-controls'], { env });
-    assert.notEqual(missing.status, 0); assert.equal(fs.existsSync(join(root, 'absent-cas.flock')), false);
-  `))
+    child.kill('SIGKILL'); await waitUntil(() => probe() === 'clear');
+  `),
+  )
 
-  it.each(['missing', 'symlink', 'hardlink', 'permissions', 'replacement', 'directory'])(
+  it.each(['symlink', 'hardlink', 'permissions', 'replacement', 'directory'])(
     'fails closed for %s controls before importing command source',
     (unsafe) =>
       run(`
@@ -140,11 +197,32 @@ describe('editor generation native leases (Linux and macOS)', () => {
       if (unsafe === 'replacement') fs.copyFileSync(backup, control);
       if (unsafe === 'directory') fs.mkdirSync(control);
       assert.equal(probe(), 'unknown'); await assert.rejects(acquire());
+      const observation = observeEditorViewLeaseForRetirement(input);
+      assert.equal(observation.kind, 'unsafe');
+      assert.equal(observation.state, 'unknown');
+      observation.release();
+      await fence(async () => {
+        const final = probeEditorViewLeaseUnderFence(input);
+        assert.equal(final.state, 'unknown'); final.release();
+      });
       const marker = join(root, 'must-not-import');
       const command = spawnSync(launcher, ['--content-store', contentStore, '--editor-root', editorRoot, '--', ${JSON.stringify(bun)}, '--eval', 'require("node:fs").writeFileSync(' + JSON.stringify(marker) + ', "bad")'], { env: { ...process.env, EDITOR_VIEW_LEASE_EXECUTABLE: '', EDITOR_VIEW_LEASE_FDS: '' } });
       assert.notEqual(command.status, 0); assert.equal(fs.existsSync(marker), false);
     `),
   )
+
+  it('missing controls behind an unsafe control directory remain unknown and unmodified', () =>
+    run(`
+    fs.unlinkSync(control); fs.chmodSync(join(editorRoot, '.leases'), 0o777);
+    const observation = observeEditorViewLeaseForRetirement(input);
+    assert.equal(observation.state, 'unknown'); assert.equal(observation.kind, 'unsafe');
+    observation.release(); assert.equal(fs.existsSync(control), false);
+    await fence(async () => {
+      const final = probeEditorViewLeaseUnderFence(input);
+      assert.equal(final.state, 'unknown'); final.release();
+    });
+    assert.equal(fs.existsSync(control), false);
+  `))
 
   it('fork plus exec retains SH after the original parent is SIGKILLed; last close releases', () =>
     run(`
@@ -249,8 +327,6 @@ describe('editor generation native leases (Linux and macOS)', () => {
     const command = [${JSON.stringify(bun)}, '--eval', 'process.exit(process.env.EDITOR_VIEW_LEASE_ACTIVE === "1" ? 0 : 1)'];
     const empty = spawnSync(launcher, ['--workspace-root', cold, '--', ...command], { env });
     assert.equal(empty.status, 0); assert.equal(fs.existsSync(absentStore + '.flock'), false);
-    const backfill = spawnSync(launcher, ['--workspace-root', cold, '--backfill-controls'], { env });
-    assert.equal(backfill.status, 0); assert.equal(fs.existsSync(absentStore + '.flock'), false);
     const published = spawnSync(launcher, ['--editor-root', editorRoot, '--', ...command], { env });
     assert.notEqual(published.status, 0); assert.equal(fs.existsSync(absentStore + '.flock'), false);
   `))

@@ -22,9 +22,6 @@ pkgs.writeShellApplication {
     export EDITOR_VIEW_LEASE_PRELOAD=${preload}
     export NODE_OPTIONS="''${NODE_OPTIONS:-} --require=${preload}"
     export BUN_OPTIONS="''${BUN_OPTIONS:-} --preload=${preload}"
-    if [ "$#" -eq 1 ] && [ "$1" = "--backfill-controls" ]; then
-      exec ${native}/bin/editor-view-lease --workspace-root "$root" --backfill-controls
-    fi
     exec ${native}/bin/editor-view-lease --workspace-root "$root" -- "$@"
   '';
 }

@@ -489,9 +489,6 @@ let
     }
   '';
   publishBuckCapabilities = ''
-    # Publisher-only native migration repairs sibling controls before any
-    # source/bootstrap import. Normal reader launches never repair evidence.
-    ${sourceLease}/bin/editor-view-source --backfill-controls || exit "$?"
     ${sourceBun}/bin/bun "$root/scripts/buck2-capability-publish.ts" \
       --root "$root" --profile ${buck2Capabilities} \
       --nix-store ${pkgs.nix}/bin/nix-store --buck2 "$BUCK2_BIN" >&2
@@ -925,6 +922,9 @@ in
   env.EDITOR_VIEW_SOURCE_LAUNCHER = "${sourceLease}/bin/editor-view-source";
   env.EDITOR_VIEW_LEASE_BIN = "${editorViewLease}/bin/editor-view-lease";
   env.EDITOR_VIEW_LEASE_TEST_CHILD_BIN = "${editorViewLease.testHelpers}/bin/editor-view-lease-test-child";
+  env.EDITOR_VIEW_READER_INFRASTRUCTURE_TEST_CHILD_BIN =
+    lib.optionalString pkgs.stdenv.isLinux
+      "${editorViewLease.testHelpers}/bin/editor-view-reader-infrastructure-test-child";
 
   effectUtils.buck2 = {
     eventsPackage = repoPackages.buck2-events;

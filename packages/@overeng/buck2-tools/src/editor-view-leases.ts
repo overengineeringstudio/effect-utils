@@ -307,6 +307,81 @@ export const probeEditorViewLease = (input: {
   readonly snapshot: string
 }): EditorViewLeaseProbe => acquire({ ...input, exclusive: true })
 
+/**
+ * Retirement admission only. Caller MUST hold the owning CAS fence: readers can
+ * acquire only an existing validated control under that same fence, so absence
+ * permits lazy creation before the exclusive probe. Existing unsafe controls
+ * are never repaired or replaced. Retain a clear handle through retirement.
+ */
+export const probeEditorViewLeaseUnderFence = (input: {
+  readonly editorRoot: string
+  readonly snapshot: string
+}): EditorViewLeaseProbe => {
+  try {
+    ensureEditorViewLeaseControl(input)
+    return probeEditorViewLease(input)
+  } catch (error) {
+    return {
+      state: 'unknown',
+      reasons: [error instanceof Error ? error.message : String(error)],
+      release: () => {},
+    }
+  }
+}
+
+/** Read-only planning evidence; no-control is conditional, never a retirement authorization. */
+export type EditorViewLeaseRetirementObservation = EditorViewLeaseProbe & {
+  readonly kind: 'held' | 'no-control' | 'clear' | 'unsafe'
+}
+
+/**
+ * Never creates migration controls. A no-control observation is clear only
+ * conditionally: final retirement must use probeEditorViewLeaseUnderFence.
+ * Existing valid controls retain their EX probe until release.
+ */
+export const observeEditorViewLeaseForRetirement = (input: {
+  readonly editorRoot: string
+  readonly snapshot: string
+}): EditorViewLeaseRetirementObservation => {
+  try {
+    const identity = paths(input)
+    validateGeneration({ root: identity.root, snapshot: identity.snapshot })
+    let directoryPresent = true
+    try {
+      lstatSync(dirname(identity.control))
+    } catch (error) {
+      if (!(error instanceof Error && 'code' in error && error.code === 'ENOENT')) throw error
+      directoryPresent = false
+    }
+    if (directoryPresent === true) privateDirectory(dirname(identity.control))
+    try {
+      lstatSync(identity.control)
+    } catch (error) {
+      if (!(error instanceof Error && 'code' in error && error.code === 'ENOENT')) throw error
+      return {
+        state: 'clear',
+        kind: 'no-control',
+        reasons: [
+          'no control (clear under fence): retirement must create and exclusively probe under the owning CAS fence',
+        ],
+        release: () => {},
+      }
+    }
+    const probe = probeEditorViewLease(input)
+    return {
+      ...probe,
+      kind: probe.state === 'unknown' ? 'unsafe' : probe.state,
+    }
+  } catch (error) {
+    return {
+      state: 'unknown',
+      kind: 'unsafe',
+      reasons: [error instanceof Error ? error.message : String(error)],
+      release: () => {},
+    }
+  }
+}
+
 /** Resolution happens inside the CAS fence, never before it. Closing, not LOCK_UN, releases ownership. */
 export const acquireEditorViewLease = async ({
   editorRoot,
@@ -327,7 +402,11 @@ export const acquireEditorViewLease = async ({
     return await withEditorViewContentStoreLock({
       contentStore,
       run: async () => {
-        const lease = acquire({ editorRoot, snapshot: await resolveSnapshot(), exclusive: false })
+        const snapshot = await resolveSnapshot()
+        const identity = paths({ editorRoot, snapshot })
+        validateGeneration({ root: identity.root, snapshot: identity.snapshot })
+        ensureEditorViewLeaseControl({ editorRoot, snapshot })
+        const lease = acquire({ editorRoot, snapshot, exclusive: false })
         retained = lease
         if (
           lease.state !== 'clear' ||

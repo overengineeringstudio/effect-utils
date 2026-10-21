@@ -18,9 +18,8 @@
 #include <unistd.h>
 
 /* Independent of Bun, node_modules and every evictable editor generation.
- * --backfill-controls is migration control creation only, never a reader-clear
- * or managed-root claim. It executes no source command and replaces no inode.
- * Zero-generation inventory is a no-op without opening/creating a CAS fence. */
+ * Missing controls are lazily created only inside the owning CAS fence.
+ * Zero-generation inventory opens and creates no CAS fence. */
 static void die(const char *message, const char *path) {
   fprintf(stderr, "editor-view-lease: %s: %s (%s)\n", message, path, strerror(errno));
   exit(1);
@@ -102,7 +101,6 @@ static void leaseIdentity(const char *path, int fd, const char *root, const char
   if(length<0 || length>=(int)sizeof(expected) || s.st_size!=length || pread(fd,actual,(size_t)length,0)!=length || memcmp(actual,expected,(size_t)length))
     die("replaced lease identity",path);
 }
-static int backfillControls;
 static void generation(const char *root, const char *name) {
   localfs(root);
   char store[PATH_MAX], snapshot[PATH_MAX], leaseDir[PATH_MAX], controlPath[PATH_MAX], lockname[PATH_MAX];
@@ -111,17 +109,14 @@ static void generation(const char *root, const char *name) {
   pathcat(snapshot, store, name); directory(snapshot, 0); localfs(snapshot);
   if (lstat(snapshot, &before)) die("generation disappeared", snapshot);
   pathcat(leaseDir, root, ".leases");
-  if(backfillControls && mkdir(leaseDir,0700) && errno!=EEXIST) die("cannot create private lease directory",leaseDir);
+  if(mkdir(leaseDir,0700) && errno!=EEXIST) die("cannot create private lease directory",leaseDir);
   directory(leaseDir, 1);
   if (snprintf(lockname, sizeof(lockname), "%s.lock", name) >= (int)sizeof(lockname)) die("generation too long", name);
   pathcat(controlPath, leaseDir, lockname);
-  int fd=-1, created=0;
-  if(backfillControls) {
-    fd=open(controlPath,O_RDWR|O_NONBLOCK|O_NOFOLLOW|O_CLOEXEC|O_CREAT|O_EXCL,0600);
-    if(fd>=0) created=1;
-    else if(errno!=EEXIST) die("cannot create lease tombstone",controlPath);
-  }
-  if(fd<0) fd=open(controlPath,O_RDWR|O_NONBLOCK|O_NOFOLLOW|O_CLOEXEC);
+  int created=0;
+  int fd=open(controlPath,O_RDWR|O_NONBLOCK|O_NOFOLLOW|O_CLOEXEC|O_CREAT|O_EXCL,0600);
+  if(fd>=0) created=1;
+  else if(errno==EEXIST) fd=open(controlPath,O_RDWR|O_NONBLOCK|O_NOFOLLOW|O_CLOEXEC);
   if (fd < 0) die("missing lease control", controlPath);
   control(controlPath, fd);
   if(created) {
@@ -138,13 +133,11 @@ static void generation(const char *root, const char *name) {
     }
   }
   leaseIdentity(controlPath,fd,root,name);
-  if(!backfillControls) lockfd(fd, LOCK_SH | LOCK_NB, controlPath);
+  lockfd(fd, LOCK_SH | LOCK_NB, controlPath);
   control(controlPath, fd);
   leaseIdentity(controlPath,fd,root,name);
   if (lstat(snapshot, &after) || !same(&before, &after)) die("generation replaced", snapshot);
-  if(backfillControls) {
-    if(close(fd)) die("cannot close backfilled control",controlPath);
-  } else retain(fd);
+  retain(fd);
 }
 static void editorrootContents(const char *root) {
   directory(root, 0);
@@ -307,14 +300,12 @@ static void discover(int argc, char **argv, int command, int trampolineMode, con
     workspace(canonical);
   } else {
     int roots=0;
-    if(!backfillControls && (!command || command>=argc)) die("root and command required","arguments");
-    int end=command?command-1:argc;
-    for(int i=1;i<end;) {
-      if(!strcmp(argv[i],"--backfill-controls")) { i++; continue; }
-      if(!strcmp(argv[i],"--content-store")) { i+=2; continue; }
+    if(!command || command>=argc) die("root and command required","arguments");
+    for(int i=1;i<command-1;i+=2) {
+      if(!strcmp(argv[i],"--content-store")) continue;
       if(!realpath(argv[i+1],canonical)) die("invalid root",argv[i+1]);
       if(!strcmp(argv[i],"--workspace-root")) workspace(canonical); else editorroot(canonical);
-      roots++; i+=2;
+      roots++;
     }
     if(!roots) die("root required","arguments");
   }
@@ -337,7 +328,6 @@ int main(int argc, char **argv) {
     free(copy);
   }
   for (int i=1; !trampolineMode && i<argc; i++) {
-    if (!strcmp(argv[i],"--backfill-controls")) { backfillControls=1; continue; }
     if (!strcmp(argv[i],"--")) { command=i+1; break; }
     if ((!strcmp(argv[i],"--content-store") || !strcmp(argv[i],"--workspace-root") || !strcmp(argv[i],"--editor-root")) && i+1<argc) {
       if (!strcmp(argv[i],"--content-store")) storeOverride=argv[i+1];
@@ -345,9 +335,7 @@ int main(int argc, char **argv) {
       i++;
     } else die("invalid arguments", argv[i]);
   }
-  if(backfillControls && command) die("backfill mode never executes a command","arguments");
   discover(argc,argv,command,trampolineMode,workspaceRoot);
-  if(backfillControls) return 0;
   size_t capacity=count*24+1; char *mapping=calloc(capacity,1); if(!mapping) die("allocation failure","fd mapping");
   size_t used=0;
   for(size_t i=0;i<count;i++) {
