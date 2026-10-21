@@ -10,6 +10,7 @@ if (root === undefined) {
 }
 
 const evaluatedTaskJson = process.env.DEVENV_TASKS_JSON
+const ciUnitTest = process.env.EFFECT_UTILS_CI_TEST === '1'
 let taskJson
 if (evaluatedTaskJson === undefined) {
   const devenv = process.env.DEVENV_BIN ?? 'devenv'
@@ -114,6 +115,27 @@ const reaches = ({ start, target }) => {
   return visit(start)
 }
 
+if (ciUnitTest === true) {
+  const forbiddenTaskPatterns = [
+    /^storybook(?::|$)/u,
+    /^netlify(?::|$)/u,
+    /^workflow-report(?::|$)/u,
+    /^test:pw(?::|$)/u,
+    /^test:(?:notion-integration|restate-integration)(?::|$)/u,
+    /^test:(?:consumer-smoke|megarepo-cold-gc)(?::|$)/u,
+    /^weaver:live-check(?::|$)/u,
+    /^buck2:editor:publish:(?:batch|consumer|restate-effect|otel-contract|playwright)(?::|$)/u,
+  ]
+  const forbiddenTasks = [...tasks.keys()].filter((name) =>
+    forbiddenTaskPatterns.some((pattern) => pattern.test(name)),
+  )
+  ok({
+    condition: forbiddenTasks.length === 0,
+    name: 'unit profile excludes deploy, browser, live integration and consumer aggregate tasks',
+    detail: forbiddenTasks.join(', '),
+  })
+}
+
 for (const name of [
   'check:quick',
   'check:all',
@@ -136,9 +158,13 @@ for (const name of [
   'buck2:editor:authority',
   'buck2:editor:publish',
   'buck2:editor:check',
-  'buck2:editor:publish:restate-effect',
-  'buck2:editor:publish:otel-contract',
-  'buck2:editor:publish:playwright',
+  ...(ciUnitTest === true
+    ? []
+    : [
+        'buck2:editor:publish:restate-effect',
+        'buck2:editor:publish:otel-contract',
+        'buck2:editor:publish:playwright',
+      ]),
   'buck2:editor:publish:test',
   'test:run',
   'test:buck2:unit',
@@ -395,9 +421,13 @@ const standaloneBuckTaskNames = [
   'buck2:editor:authority',
   'buck2:editor:publish',
   'buck2:editor:check',
-  'buck2:editor:publish:restate-effect',
-  'buck2:editor:publish:otel-contract',
-  'buck2:editor:publish:playwright',
+  ...(ciUnitTest === true
+    ? []
+    : [
+        'buck2:editor:publish:restate-effect',
+        'buck2:editor:publish:otel-contract',
+        'buck2:editor:publish:playwright',
+      ]),
   'buck2:editor:publish:test',
   'buck2:nix-bridge:check',
   'nix:buck2-artifact-import:check',
@@ -568,30 +598,32 @@ const packagePublisherContracts = Object.fromEntries(
 )
 
 const scopedPublisherContracts = {
-  'buck2:editor:publish:restate-effect': {
-    consumers: ['test:restate-integration'],
-    packagePaths: ['packages/@overeng/restate-effect'],
-  },
-  'buck2:editor:publish:otel-contract': {
-    consumers: ['weaver:live-check'],
-    packagePaths: ['packages/@overeng/otel-contract'],
-  },
-  'buck2:editor:publish:playwright': {
-    consumers: ['test:pw:meters', 'test:pw:tui-react', 'test:pw:utils'],
-    packagePaths: [
-      'packages/@overeng/meters',
-      'packages/@overeng/tui-react',
-      'packages/@overeng/utils',
-    ],
-  },
+  ...(ciUnitTest === true
+    ? {}
+    : {
+        'buck2:editor:publish:restate-effect': {
+          consumers: ['test:restate-integration'],
+          packagePaths: ['packages/@overeng/restate-effect'],
+        },
+        'buck2:editor:publish:otel-contract': {
+          consumers: ['weaver:live-check'],
+          packagePaths: ['packages/@overeng/otel-contract'],
+        },
+        'buck2:editor:publish:playwright': {
+          consumers: ['test:pw:meters', 'test:pw:tui-react', 'test:pw:utils'],
+          packagePaths: [
+            'packages/@overeng/meters',
+            'packages/@overeng/tui-react',
+            'packages/@overeng/utils',
+          ],
+        },
+      }),
   'buck2:editor:publish:test': {
     // check:all's observability profile names the test publisher among its prerequisites.
     consumers: [
       // Execution chains use their own ordered package-scoped installer aliases.
       ...sourceTestExtraSuites,
-      ...(process.env.EFFECT_UTILS_CI_TEST === '1'
-        ? []
-        : ['otel:profile:genie-check', 'otel:verify:genie-check']),
+      ...(ciUnitTest === true ? [] : ['otel:profile:genie-check', 'otel:verify:genie-check']),
     ],
     packagePaths: [
       ...bootstrapPackagePaths,
@@ -659,12 +691,14 @@ if (typeof fullPublisherCommand === 'string') {
     detail: fullPublisherCommand,
   })
 }
-ok({
-  condition:
-    [...(dependencies.get('test:pw:tui-react') ?? [])].join('\n') ===
-    [...(dependencies.get('test:pw:utils') ?? [])].join('\n'),
-  name: 'both Playwright lanes depend on one canonical union publisher',
-})
+if (ciUnitTest === false) {
+  ok({
+    condition:
+      [...(dependencies.get('test:pw:tui-react') ?? [])].join('\n') ===
+      [...(dependencies.get('test:pw:utils') ?? [])].join('\n'),
+    name: 'both Playwright lanes depend on one canonical union publisher',
+  })
+}
 
 // Distinct package views can still share one state root (all @overeng packages
 // use packages/.editor-view). Unordered publishers need the same bounded flock admission.
@@ -827,7 +861,9 @@ const consumerAggregateContracts = [
   { name: 'netlify:deploy', scope: 'netlify', buildPrefix: 'storybook:build' },
   { name: 'test:notion-integration' },
 ]
-for (const { name, scope = name, buildPrefix } of consumerAggregateContracts) {
+for (const { name, scope = name, buildPrefix } of ciUnitTest === true
+  ? []
+  : consumerAggregateContracts) {
   const publisher = `buck2:editor:publish:batch:${scope}`
   const standaloneTasks = [...tasks.keys()].filter(
     (task) => task.startsWith(`${name}:`) && task.slice(name.length + 1).includes(':') === false,
