@@ -96,25 +96,12 @@ export const recordGeneratorSourceGraph = ({
           directory = parent
         }
       }
-      // Record candidate paths too: adding a higher-priority file can change resolution.
+      // Hash directory membership instead of approximating Bun's candidate order:
+      // a new sibling extension or directory index can supersede the resolved file.
       if (base.startsWith('.') === true || path.isAbsolute(base) === true) {
         const absolute = path.resolve(path.dirname(sourcePath), base)
-        for (const suffix of [
-          '',
-          '.ts',
-          '.tsx',
-          '.mts',
-          '.cts',
-          '.js',
-          '.mjs',
-          '/index.ts',
-          '/index.tsx',
-          '/index.js',
-          '/mod.ts',
-          '/mod.tsx',
-        ]) {
-          recordInput(`${absolute}${suffix}`)
-        }
+        recordInput(path.dirname(absolute))
+        recordInput(absolute)
       }
       let resolved: string
       let canonical: string

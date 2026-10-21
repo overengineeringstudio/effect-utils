@@ -103,6 +103,41 @@ describe('generator input manifests', () => {
     }
   }, 60_000)
 
+  it.each(['sibling', 'index'])(
+    'records resolution directory membership when a higher-priority %s JSX input appears',
+    (mode) => {
+      const { root, manifest, run } = fixture()
+      try {
+        const directory = path.join(root, 'sources', ...(mode === 'index' ? ['helper'] : []))
+        mkdirSync(directory, { recursive: true })
+        const basename = mode === 'index' ? 'index' : 'helper'
+        writeFileSync(path.join(directory, `${basename}.ts`), "export const value = 'typescript'\n")
+        writeFileSync(
+          path.join(root, 'result.txt.genie.ts'),
+          "import { value } from './sources/helper'\nexport default { data: {}, stringify: () => value + '\\n' }\n",
+        )
+        const first = run()
+        expect(first.status, first.stdout + first.stderr).toBe(0)
+        expect(readFileSync(manifest, 'utf8').split('\n')[0]).toBe('genie-inputs-v1')
+        // The task hashes these recorded directory entries, so adding JSX must miss
+        // the warm cache even though the previously resolved TypeScript is unchanged.
+        expect(readFileSync(manifest, 'utf8').split('\n')).toContain(directory)
+        expect(readFileSync(path.join(root, 'result.txt'), 'utf8')).toBe(
+          generatedText('typescript\n'),
+        )
+        const previousMembers = readdirSync(directory)
+        writeFileSync(path.join(directory, `${basename}.jsx`), "export const value = 'jsx'\n")
+        expect(readdirSync(directory)).not.toEqual(previousMembers)
+        const second = run()
+        expect(second.status, second.stdout + second.stderr).toBe(0)
+        expect(readFileSync(path.join(root, 'result.txt'), 'utf8')).toBe(generatedText('jsx\n'))
+      } finally {
+        rmSync(root, { recursive: true, force: true })
+      }
+    },
+    60_000,
+  )
+
   it.each([false, true])(
     'records nested recursive directory membership (withFileTypes=%s)',
     (withFileTypes) => {
