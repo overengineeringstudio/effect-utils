@@ -14,6 +14,14 @@ export * from '../mod.ts'
 export { nodeGenieIO } from './io.ts'
 
 export {
+  recordInput,
+  inputReadFileSync,
+  inputExistsSync,
+  inputStatSync,
+  inputReaddirSync,
+} from './inputs.ts'
+
+export {
   checkBootstrapClosure,
   formatViolationChain,
   type BootstrapClosureResult,

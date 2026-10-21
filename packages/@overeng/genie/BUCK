@@ -10,7 +10,7 @@ load("//buck2/products:defs.bzl", "javascript_product")
 # Projection source: packages/@overeng/genie/BUCK.genie.ts
 # Projection schema version: 13
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:21ade8d2cda0d937bd9639e6b7091e8c9ee88e57117a390f5e54287d88374efa
+# Semantic fingerprint: sha256:cf3805da31c6ca3ef2ad538d41ee77b6c514b7818cb587f778f0fde38b2720e0
 # Regenerate: devenv tasks run genie:run
 
 load("//buck2:materialization.bzl", "export_materialization_inputs", "package_view")
@@ -60,6 +60,8 @@ export_materialization_inputs([
     "src/core/import-map/import-map.unit.test.ts",
     "src/core/import-map/mod.ts",
     "src/core/import-map/sync-resolver.ts",
+    "src/core/input-manifest.integration.test.ts",
+    "src/core/input-manifest.ts",
     "src/core/observability.ts",
     "src/core/observability.unit.test.ts",
     "src/core/package-json-context.ts",
@@ -103,6 +105,7 @@ export_materialization_inputs([
     "src/runtime/node/bootstrap-closure-check-cli.ts",
     "src/runtime/node/bootstrap-closure.ts",
     "src/runtime/node/bootstrap-closure.unit.test.ts",
+    "src/runtime/node/inputs.ts",
     "src/runtime/node/io.ts",
     "src/runtime/node/mod.ts",
     "src/runtime/node/ts-api.ts",
@@ -215,6 +218,8 @@ package_view(
         "src/core/import-map/import-map.unit.test.ts": "src/core/import-map/import-map.unit.test.ts",
         "src/core/import-map/mod.ts": "src/core/import-map/mod.ts",
         "src/core/import-map/sync-resolver.ts": "src/core/import-map/sync-resolver.ts",
+        "src/core/input-manifest.integration.test.ts": "src/core/input-manifest.integration.test.ts",
+        "src/core/input-manifest.ts": "src/core/input-manifest.ts",
         "src/core/observability.ts": "src/core/observability.ts",
         "src/core/observability.unit.test.ts": "src/core/observability.unit.test.ts",
         "src/core/package-json-context.ts": "src/core/package-json-context.ts",
@@ -258,6 +263,7 @@ package_view(
         "src/runtime/node/bootstrap-closure-check-cli.ts": "src/runtime/node/bootstrap-closure-check-cli.ts",
         "src/runtime/node/bootstrap-closure.ts": "src/runtime/node/bootstrap-closure.ts",
         "src/runtime/node/bootstrap-closure.unit.test.ts": "src/runtime/node/bootstrap-closure.unit.test.ts",
+        "src/runtime/node/inputs.ts": "src/runtime/node/inputs.ts",
         "src/runtime/node/io.ts": "src/runtime/node/io.ts",
         "src/runtime/node/mod.ts": "src/runtime/node/mod.ts",
         "src/runtime/node/ts-api.ts": "src/runtime/node/ts-api.ts",
@@ -360,6 +366,8 @@ package_view(
         "src/core/import-map/import-map.unit.test.ts": "src/core/import-map/import-map.unit.test.ts",
         "src/core/import-map/mod.ts": "src/core/import-map/mod.ts",
         "src/core/import-map/sync-resolver.ts": "src/core/import-map/sync-resolver.ts",
+        "src/core/input-manifest.integration.test.ts": "src/core/input-manifest.integration.test.ts",
+        "src/core/input-manifest.ts": "src/core/input-manifest.ts",
         "src/core/observability.ts": "src/core/observability.ts",
         "src/core/observability.unit.test.ts": "src/core/observability.unit.test.ts",
         "src/core/package-json-context.ts": "src/core/package-json-context.ts",
@@ -403,6 +411,7 @@ package_view(
         "src/runtime/node/bootstrap-closure-check-cli.ts": "src/runtime/node/bootstrap-closure-check-cli.ts",
         "src/runtime/node/bootstrap-closure.ts": "src/runtime/node/bootstrap-closure.ts",
         "src/runtime/node/bootstrap-closure.unit.test.ts": "src/runtime/node/bootstrap-closure.unit.test.ts",
+        "src/runtime/node/inputs.ts": "src/runtime/node/inputs.ts",
         "src/runtime/node/io.ts": "src/runtime/node/io.ts",
         "src/runtime/node/mod.ts": "src/runtime/node/mod.ts",
         "src/runtime/node/ts-api.ts": "src/runtime/node/ts-api.ts",
@@ -502,6 +511,8 @@ package_view(
         "src/core/import-map/import-map.unit.test.ts": "src/core/import-map/import-map.unit.test.ts",
         "src/core/import-map/mod.ts": "src/core/import-map/mod.ts",
         "src/core/import-map/sync-resolver.ts": "src/core/import-map/sync-resolver.ts",
+        "src/core/input-manifest.integration.test.ts": "src/core/input-manifest.integration.test.ts",
+        "src/core/input-manifest.ts": "src/core/input-manifest.ts",
         "src/core/observability.ts": "src/core/observability.ts",
         "src/core/observability.unit.test.ts": "src/core/observability.unit.test.ts",
         "src/core/package-json-context.ts": "src/core/package-json-context.ts",
@@ -545,6 +556,7 @@ package_view(
         "src/runtime/node/bootstrap-closure-check-cli.ts": "src/runtime/node/bootstrap-closure-check-cli.ts",
         "src/runtime/node/bootstrap-closure.ts": "src/runtime/node/bootstrap-closure.ts",
         "src/runtime/node/bootstrap-closure.unit.test.ts": "src/runtime/node/bootstrap-closure.unit.test.ts",
+        "src/runtime/node/inputs.ts": "src/runtime/node/inputs.ts",
         "src/runtime/node/io.ts": "src/runtime/node/io.ts",
         "src/runtime/node/mod.ts": "src/runtime/node/mod.ts",
         "src/runtime/node/ts-api.ts": "src/runtime/node/ts-api.ts",

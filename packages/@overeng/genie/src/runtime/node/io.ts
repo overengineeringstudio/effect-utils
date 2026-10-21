@@ -1,6 +1,5 @@
-import { existsSync, readFileSync } from 'node:fs'
-
 import type { GenieIO } from '../core.ts'
+import { inputExistsSync as existsSync, inputReadFileSync as readFileSync } from './inputs.ts'
 
 /**
  * Node-backed {@link GenieIO} implementation injected by the genie engine during validation.

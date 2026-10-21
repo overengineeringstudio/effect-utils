@@ -1,7 +1,6 @@
-import { readFileSync } from 'node:fs'
-
 import { buck2SemanticFingerprint } from '../../../genie/buck2/mod.ts'
 import { createGenieOutput } from '../../../packages/@overeng/genie/src/runtime/core.ts'
+import { inputReadFileSync as readFileSync } from '../../../packages/@overeng/genie/src/runtime/node/inputs.ts'
 
 // The eager group links into the app's initial bundle; `lazy` becomes its own wasm behind a dynamic import.
 const manifest = { eager: ['hash_core'], lazy: ['math_core'] }
