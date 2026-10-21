@@ -1188,10 +1188,8 @@ in
   # PR lint CI checks every standalone-staged source and inventory completeness.
   tasks."lint:check:standalone-staging" = {
     description = "Guard standalone Nix-staged JS/TS sources and inventory completeness";
-    after = [
-      "buck2:editor:publish:test"
-      "buck2:editor:publish:standalone-staging"
-    ];
+    # The AST compiler comes from the scoped Genie projection; the runner uses only builtins.
+    after = [ "buck2:editor:publish:standalone-staging" ];
     exec = trace.exec "lint:check:standalone-staging" ''
       set -euo pipefail
       root="''${DEVENV_ROOT:-$PWD}"

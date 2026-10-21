@@ -21,10 +21,21 @@ import {
 } from 'typescript/unstable/ast'
 import { describe, expect, it } from 'vitest'
 
-import inventory from '../../../../../../nix/standalone-staging.json'
 import { runTsFileAnalysis } from '../../runtime/node/ts-api.ts'
 
 const root = fileURLToPath(new URL('../../../../../../', import.meta.url))
+
+// This repository-wide fixture is read at runtime, not included in Genie's package closure.
+const inventory = JSON.parse(
+  readFileSync(path.join(root, 'nix/standalone-staging.json'), 'utf8'),
+) as {
+  readonly extensions: Readonly<Record<string, boolean>>
+  readonly nixFiles: Readonly<Record<string, NixFileClassification>>
+  readonly sources: readonly (StagedSource & {
+    readonly initializationError: string
+    readonly allowedImports: Readonly<Record<string, string>>
+  })[]
+}
 
 // Classify every Nix file containing a JS/TS reference, regardless of syntax or
 // position. This intentionally has no Nix/shell statement parser.
@@ -236,7 +247,10 @@ describe('standalone Nix-staged JS/TS sources (issue #1994)', () => {
           }
           const visit = (node: Node): void => {
             // Type-only edges are erased by Bun/TypeScript and need no staged file.
-            if (isImportDeclaration(node) === true && node.importClause?.isTypeOnly !== true) {
+            if (
+              isImportDeclaration(node) === true &&
+              node.importClause?.phaseModifier !== SyntaxKind.TypeKeyword
+            ) {
               const clause = node.importClause
               const bindings = clause?.namedBindings
               const erased =
