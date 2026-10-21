@@ -19,7 +19,7 @@ import * as Fs from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 
 import {
   cancelEditorViewBudgetReservation,
@@ -118,6 +118,8 @@ type Reader = {
   readonly child: ChildProcessWithoutNullStreams
   readonly ready: Promise<void>
   readonly exited: Promise<{ readonly code: number | null; readonly signal: NodeJS.Signals | null }>
+  /** Fixture disposal awaits exit without turning an already-failed timeout into another assertion. */
+  readonly release: () => Promise<void>
   readonly stop: () => Promise<void>
 }
 
@@ -138,7 +140,16 @@ type Host = {
   readonly cleanup: () => Promise<void>
 }
 
-const makeHost = (): Host => {
+const testHostCleanups = new Set<() => Promise<void>>()
+afterEach(async () => {
+  const cleanups = [...testHostCleanups]
+  testHostCleanups.clear()
+  // Bun can resume the next test before a timed-out async body's finally settles.
+  // Drain its real operations before any later fixture can replace global state.
+  await Promise.all(cleanups.map((cleanup) => cleanup()))
+})
+
+const makeHost = ({ drainAfterEach = false }: { readonly drainAfterEach?: boolean } = {}): Host => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'editor-view-host-budget-')))
   const contentStore = join(root, 'shared-content', 'v1')
   const budgetState = join(root, 'host-budget')
@@ -221,6 +232,35 @@ const makeHost = (): Host => {
     // Keep the equal directory mtimes below every last-use timestamp, preserving the LRU order.
     utimesSync(path, lstatSync(path).atime, new Date(now - (hostRecencyMs + hostGraceMs) * 2 - 1))
   }
+  let cleanupPromise: Promise<void> | undefined
+  const cleanupFinished = Promise.withResolvers<void>()
+  void cleanupFinished.promise.catch(() => undefined)
+  const cleanup = (): Promise<void> => {
+    if (cleanupPromise === undefined) {
+      cleanupPromise = (async () => {
+        for (const release of releases) release()
+        try {
+          try {
+            await Promise.all(readers.map((reader) => reader.release()))
+          } finally {
+            await Promise.allSettled(pending)
+          }
+        } finally {
+          clock.mockRestore()
+          if (savedRecency === undefined) delete process.env.EDITOR_VIEW_HOST_RECENCY_MS
+          else process.env.EDITOR_VIEW_HOST_RECENCY_MS = savedRecency
+          if (savedBudgetState === undefined) delete process.env.EDITOR_VIEW_HOST_BUDGET_STATE
+          else process.env.EDITOR_VIEW_HOST_BUDGET_STATE = savedBudgetState
+          removeOwnedTree(root)
+        }
+      })()
+      void cleanupPromise.then(cleanupFinished.resolve, cleanupFinished.reject)
+    }
+    return cleanupPromise
+  }
+  // Wait for the body's own finally, rather than deleting its fixture while
+  // captureStderr or post-operation assertions are still completing.
+  if (drainAfterEach === true) testHostCleanups.add(() => cleanupFinished.promise)
   return {
     root,
     contentStore,
@@ -235,24 +275,7 @@ const makeHost = (): Host => {
     },
     publish: (fixture: Fixture, overrides: Partial<EditorViewOptions> = {}) =>
       track(publishEditorView({ ...fixture.options, ...overrides })),
-    cleanup: async (): Promise<void> => {
-      for (const release of releases) release()
-      try {
-        try {
-          await Promise.all(readers.map((reader) => reader.stop()))
-        } finally {
-          // A failed reader assertion must not delete a still-running publisher's root.
-          await Promise.allSettled(pending)
-        }
-      } finally {
-        clock.mockRestore()
-        if (savedRecency === undefined) delete process.env.EDITOR_VIEW_HOST_RECENCY_MS
-        else process.env.EDITOR_VIEW_HOST_RECENCY_MS = savedRecency
-        if (savedBudgetState === undefined) delete process.env.EDITOR_VIEW_HOST_BUDGET_STATE
-        else process.env.EDITOR_VIEW_HOST_BUDGET_STATE = savedBudgetState
-        removeOwnedTree(root)
-      }
-    },
+    cleanup,
   }
 }
 
@@ -538,12 +561,17 @@ const openReader = (
   })
   void ready.promise.catch(() => undefined)
   void exited.promise.catch(() => undefined)
+  const release = async (): Promise<void> => {
+    if (child.exitCode === null && child.signalCode === null) child.stdin.end('release\n')
+    await exited.promise
+  }
   const reader: Reader = {
     child,
     ready: ready.promise,
     exited: exited.promise,
+    release,
     stop: async () => {
-      if (child.exitCode === null && child.signalCode === null) child.stdin.end('release\n')
+      await release()
       expect(await exited.promise).toEqual({ code: 0, signal: null })
     },
   }
@@ -2041,33 +2069,71 @@ describe('budget admission defers reader proof until eviction needs it', () => {
     }
   })
 
+  it('drains a terminated reader and restores fixture state exactly once', async () => {
+    const savedBudgetState = process.env.EDITOR_VIEW_HOST_BUDGET_STATE
+    const host = makeHost({ drainAfterEach: true })
+    try {
+      const fixture = host.fixture('terminated-reader-cleanup', 164, 64)
+      const record = await host.publish(fixture)
+      const reader = openReader(host, fixture, record)
+      await reader.ready
+      // Bun terminates test-owned children on a test timeout. Exercise that
+      // disposal state without adding an intentionally failing timeout test.
+      reader.child.kill('SIGTERM')
+      expect(await reader.exited).toEqual({ code: null, signal: 'SIGTERM' })
+      const firstCleanup = host.cleanup()
+      expect(host.cleanup()).toBe(firstCleanup)
+      await firstCleanup
+      expect(pathExists(host.root)).toBe(false)
+      expect(process.env.EDITOR_VIEW_HOST_BUDGET_STATE).toBe(savedBudgetState)
+    } finally {
+      await host.cleanup()
+    }
+  })
+
   it('keeps an unobserved reader-held orphan exposed by pointer removal during locking', async () => {
-    const host = makeHost()
+    const host = makeHost({ drainAfterEach: true })
     try {
       const fixture = host.fixture('pointer-removal-reader', 174, 64)
       const record = await host.publish(fixture)
-      const legacy = join(fixture.editorRoot, '.legacy', 'retained')
-      const dependency = join(legacy, 'node_modules', '.pnpm', 'dep@1', 'node_modules', 'dep')
+      const readerPayloadBytes = 128 * 1024
+      const retained = join(fixture.editorRoot, '.store', '.candidate-held')
+      const dependency = join(retained, 'node_modules', '.pnpm', 'dep@1', 'node_modules', 'dep')
       mkdirSync(dependency, { recursive: true })
-      writeFileSync(join(dependency, 'payload.bin'), Buffer.alloc(payloadBytes, 175))
+      writeFileSync(join(dependency, 'payload.bin'), Buffer.alloc(readerPayloadBytes, 175))
+      // Both orphans have equal census recency, so the newly exposed "-held"
+      // key sorts before "-trigger" in a buggy unrestricted refreshed plan.
       const pointer = join(fixture.editorRoot, 'orphan-reader')
-      symlinkSync('.legacy/retained', pointer)
+      symlinkSync('.store/.candidate-held', pointer)
       const eligible = join(fixture.editorRoot, '.store', '.candidate-trigger')
       mkdirSync(eligible)
-      writeFileSync(join(eligible, 'payload.bin'), Buffer.alloc(payloadBytes, 173))
-      const reader = openReader(host, fixture, { ...record, snapshot: '.legacy/retained' })
+      writeFileSync(join(eligible, 'payload.bin'), Buffer.alloc(readerPayloadBytes, 173))
+      const reader = openReader(host, fixture, { ...record, snapshot: '.store/.candidate-held' })
       await reader.ready
+      const options = {
+        contentStore: host.contentStore,
+        root: { repoRoot: fixture.root, editorRoot: fixture.editorRoot },
+        heldEditorRoot: fixture.editorRoot,
+        discoverRoots: () => [],
+        reservationBytes: 1,
+        tryLockRoot: lockRoot,
+      }
+      const probe = await host.track(
+        reserveEditorViewBudget({ ...options, budgetBytes: setupBudgetBytes }),
+      )
+      // Derive pressure from this filesystem's actual footprint (including
+      // directory/journal bytes); one 128 KiB trigger must cover the shortfall.
+      const budgetBytes = readBudgetLedger(host).usedBytes - readerPayloadBytes / 2
+      await cancelEditorViewBudgetReservation({
+        contentStore: host.contentStore,
+        token: probe.token,
+      })
       let removedPointer = false
       const captured = await captureStderr(() =>
         host.track(
           reserveEditorViewBudget({
-            contentStore: host.contentStore,
-            root: { repoRoot: fixture.root, editorRoot: fixture.editorRoot },
-            heldEditorRoot: fixture.editorRoot,
-            discoverRoots: () => [],
-            reservationBytes: 1,
-            budgetBytes: 1,
-            tryLockRoot: lockRoot,
+            ...options,
+            budgetBytes,
             beforeRetireRoot: () => {
               if (removedPointer === false) {
                 rmSync(pointer)
@@ -2078,11 +2144,14 @@ describe('budget admission defers reader proof until eviction needs it', () => {
         ),
       )
       expect(removedPointer).toBe(true)
+      expect(pathExists(retained)).toBe(true)
       expect(captured.stderr).toContain('"stage":"pointer-inventory"')
       expect(captured.stderr).toContain('"roots":1,"entries":')
       expect(captured.stderr).toContain('"inventories":[{"editorRoot":')
-      expect(pathExists(legacy)).toBe(true)
-      expect(readFileSync(join(dependency, 'payload.bin'))).toEqual(Buffer.alloc(payloadBytes, 175))
+      expect(pathExists(eligible)).toBe(false)
+      expect(readFileSync(join(dependency, 'payload.bin'))).toEqual(
+        Buffer.alloc(readerPayloadBytes, 175),
+      )
       expectRunningReader(reader)
       expectCurrent(fixture, record)
       await cancelEditorViewBudgetReservation({
@@ -2095,7 +2164,7 @@ describe('budget admission defers reader proof until eviction needs it', () => {
   })
 
   it('keeps a reader when its generation becomes eligible during root locking', async () => {
-    const host = makeHost()
+    const host = makeHost({ drainAfterEach: true })
     try {
       const victim = host.fixture('newly-eligible-reader', 181)
       const incoming = host.fixture('newly-eligible-incoming', 182, 64)
