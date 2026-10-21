@@ -42,8 +42,8 @@ extern "C" fn check(context: *mut c_void, action: i32) -> *const c_char {
 pub(crate) fn run(config: &Config) -> Vec<Value> {
     let rows = Row::enabled(&config.enabled_grants, &config.automation_targets);
     let presentation: Vec<Value> = rows.iter().map(|row| {
-        let (title, explanation, _) = row.presentation();
-        json!({"category":row.category,"target":row.target,"title":title,"explanation":explanation,"pane":row.pane(),"state":row.state.status(),"detail":row.detail})
+        let (_, explanation, _) = row.presentation();
+        json!({"category":row.category,"target":row.target,"title":row.title(),"explanation":explanation,"pane":row.pane(),"state":row.state.status(),"detail":row.detail})
     }).collect();
     let encoded = CString::new(serde_json::to_string(&presentation).expect("Presentation JSON")).expect("JSON escapes NUL");
     // Only the actual enclosing .app is a drag source, never a configurable URL.

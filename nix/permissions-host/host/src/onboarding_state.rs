@@ -1,4 +1,5 @@
 //! Pure presentation state: opening Settings is never positive permission evidence.
+use std::borrow::Cow;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum State { Pending, Passed, ActionRequired, Failed }
 impl State {
@@ -32,6 +33,13 @@ impl Row {
     pub fn observe(&mut self, status: &str, detail: String) {
         self.state = State::from_check(status);
         self.detail = detail;
+    }
+    pub fn title(&self) -> Cow<'_, str> {
+        let (title, _, _) = self.presentation();
+        match self.target.as_deref() {
+            Some(target) if self.category == "automation" => Cow::Owned(format!("{title} — {target}")),
+            _ => Cow::Borrowed(title),
+        }
     }
     pub fn presentation(&self) -> (&'static str, &'static str, &'static str) {
         match self.category.as_str() {
@@ -67,6 +75,14 @@ mod tests {
         assert!(rows.iter().all(|row| row.state == State::Pending));
         assert!(Row::enabled(&["automation".into()], &[]).is_empty());
         assert!(Row::enabled(&[], &["com.example.One".into()]).is_empty());
+    }
+    #[test] fn automation_titles_identify_each_target() {
+        let rows = Row::enabled(&["automation".into()], &["com.example.One".into(), "com.example.Two".into()]);
+        assert_eq!(rows[0].title(), "Automation — com.example.One");
+        assert_eq!(rows[1].title(), "Automation — com.example.Two");
+        assert_ne!(rows[0].title(), rows[1].title());
+        let ordinary = Row::enabled(&["microphone".into()], &[]);
+        assert_eq!(ordinary[0].title(), "Microphone");
     }
     #[test] fn denial_and_revocation_replace_success() {
         let mut rows = Row::enabled(&["microphone".into()], &[]);
