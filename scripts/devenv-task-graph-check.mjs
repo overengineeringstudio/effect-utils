@@ -411,7 +411,11 @@ const buck2UnboundedTaskNames = buck2TestAuthority.lanes.flatMap(({ unboundedTas
 const buck2ExternalOwnerTaskNames = [
   ...new Set(buck2TestAuthority.lanes.flatMap(({ sourceOwners }) => Object.values(sourceOwners))),
 ]
-for (const name of [...buck2UnboundedTaskNames, ...buck2ExternalOwnerTaskNames]) {
+// Cold-GC is an explicitly external owner, exercised by its separate empirical
+// job in the full shell rather than by the unit aggregate.
+for (const name of [...buck2UnboundedTaskNames, ...buck2ExternalOwnerTaskNames].filter(
+  (name) => ciUnitTest === false || name !== 'test:megarepo-cold-gc',
+)) {
   ok({
     condition: tasks.has(name),
     name: `${name} exists as a source-side test owner`,
