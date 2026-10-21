@@ -24,7 +24,9 @@ const StorybookDecorator = ({
   children: ReactNode
   isDark: boolean
 }): ReactNode => (
-  <div {...stylex.props(styles.page, isDark ? darkExplorerTheme : undefined)}>{children}</div>
+  <div {...stylex.props(styles.page, isDark === true ? darkExplorerTheme : undefined)}>
+    {children}
+  </div>
 )
 
 const preview: Preview = {
@@ -42,6 +44,7 @@ const preview: Preview = {
     },
   },
   decorators: [
+    // oxlint-disable-next-line overeng/named-args -- Storybook decorators receive positional story/context arguments.
     (Story, context) => (
       <StorybookDecorator isDark={context.globals.theme === 'dark'}>
         <Story />
