@@ -5,44 +5,46 @@ import { NotionSearch } from './search.ts'
 import { collectSearchFixtures, collectStream, createTestLayer } from './test/test-utils.ts'
 
 describe('NotionSearch pagination', () => {
-  it.effect('observes every fixture before stopping without fetching unrelated trailing pages', () =>
-    Effect.gen(function* () {
-      for (const expectedIds of [['page-one'], ['page-one', 'source-one']]) {
-        const pages = [
-          { object: 'page', id: 'unrelated-before' },
-          { object: 'page', id: 'page-one' },
-          { object: 'page', id: 'unrelated-between' },
-          { object: 'data_source', id: 'source-one' },
-        ]
-        let requests = 0
-        const layer = createTestLayer(() => {
-          const item = pages[requests++]
-          expect(item).toBeDefined()
-          return {
-            status: 200,
-            body: {
-              object: 'list',
-              results: [item],
-              has_more: true,
-              next_cursor: `cursor-${requests}`,
-            },
+  it.effect(
+    'observes every fixture before stopping without fetching unrelated trailing pages',
+    () =>
+      Effect.gen(function* () {
+        for (const expectedIds of [['page-one'], ['page-one', 'source-one']]) {
+          const pages = [
+            { object: 'page', id: 'unrelated-before' },
+            { object: 'page', id: 'page-one' },
+            { object: 'page', id: 'unrelated-between' },
+            { object: 'data_source', id: 'source-one' },
+          ]
+          let requests = 0
+          const layer = createTestLayer(() => {
+            const item = pages[requests++]
+            expect(item).toBeDefined()
+            return {
+              status: 200,
+              body: {
+                object: 'list',
+                results: [item],
+                has_more: true,
+                next_cursor: `cursor-${requests}`,
+              },
+            }
+          })
+          const observed = collectSearchFixtures(
+            NotionSearch.searchStream({ query: 'unique-run-token', pageSize: 1 }),
+            expectedIds,
+          ).pipe(Effect.provide(layer))
+          // Re-execution must not reuse a previous attempt's completed membership set.
+          for (let attempt = 0; attempt < 2; attempt++) {
+            requests = 0
+            const items = yield* observed
+            const expectedCount = expectedIds.length === 1 ? 2 : 4
+            expect(items).toEqual(pages.slice(0, expectedCount))
+            expect(requests).toBe(expectedCount)
+            expect(items.map((item) => item.id)).toEqual(expect.arrayContaining(expectedIds))
           }
-        })
-        const observed = collectSearchFixtures(
-          NotionSearch.searchStream({ query: 'unique-run-token', pageSize: 1 }),
-          expectedIds,
-        ).pipe(Effect.provide(layer))
-        // Re-execution must not reuse a previous attempt's completed membership set.
-        for (let attempt = 0; attempt < 2; attempt++) {
-          requests = 0
-          const items = yield* observed
-          const expectedCount = expectedIds.length === 1 ? 2 : 4
-          expect(items).toEqual(pages.slice(0, expectedCount))
-          expect(requests).toBe(expectedCount)
-          expect(items.map((item) => item.id)).toEqual(expect.arrayContaining(expectedIds))
         }
-      }
-    }),
+      }),
   )
 
   it.effect('does not manufacture missing fixtures when the stream ends', () =>
