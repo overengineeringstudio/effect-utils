@@ -103,12 +103,19 @@ eligibility proof; workflow dispatch and pull requests cannot advance the ref.
 If the ref is absent, the same eligible main-push job creates it at its own
 SHA using the App token; no separate human bootstrap push is required.
 
-The publisher GitHub App is the sole creation/update actor. The repository
-ruleset prevents deletion and non-fast-forward updates. Before pushing, the
-job checks that the previous published commit is an ancestor of the candidate.
+The publisher GitHub App is the sole creation/update actor. The writers
+ruleset restricts creation and updates, with only that App allowed to bypass.
+A separate history ruleset blocks deletion and non-fast-forward updates
+without any bypass actors, including the App. History protection does not
+restrict initial ref creation; the App bypasses only the writers ruleset.
+See [GitHub's ruleset semantics](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/available-rules-for-rulesets).
+
+Before each of at most three push attempts, the job refetches the tip.
+An absent tip permits creation; an ancestor tip permits a fast-forward push.
 A candidate already at or behind the published tip is a successful no-op.
-If a concurrent push wins, a rejected push succeeds only when the newly fetched
-published tip is a descendant of the candidate; divergence fails loudly.
+A rejected push retries this comparison, so an intervening ancestor can still
+be advanced. Divergence fails loudly, as does exhausting the push attempts
+without observing the candidate or a descendant at the published tip.
 This ref guarantees manifest eligibility, not success of unrelated CI checks.
 
 ### Consumer from-source identity

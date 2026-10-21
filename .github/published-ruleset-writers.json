@@ -1,5 +1,5 @@
 {
-  "name": "protect-published",
+  "name": "protect-published-writers",
   "target": "branch",
   "enforcement": "active",
   "bypass_actors": [
@@ -16,8 +16,6 @@
     }
   },
   "rules": [
-    { "type": "non_fast_forward" },
-    { "type": "deletion" },
     { "type": "update" },
     { "type": "creation" }
   ]
