@@ -283,6 +283,15 @@ The retirement fence repeats identity and reachability checks before renaming
 the entry to a private `.gc-*` name; recursive deletion follows outside the
 metadata fence. An interrupted rename or deletion is resumed by the next lock
 holder. Budget eviction considers these orphans before completed generations.
+Publisher acquisition and budget victim acquisition share the same fenced
+dead-owner recovery helper; budget acquisition never waits for a live holder.
+A budget batch holds its exclusion fence and uses one fresh census and reader
+proof, considering orphans before generations and retiring only enough payloads
+to cover the shortfall. The proof expires after 30 seconds. Each candidate
+rechecks identity and ledger epoch immediately before retirement; failed checks
+skip that candidate without waiting. An expired or insufficient batch starts
+another census and proof. Every committed retirement emits its own deletion
+receipt, followed by a batch summary, even when admission subsequently fails.
 
 Legacy entries are evaluated independently: a referenced displaced install does
 not preserve unrelated legacy entries. A still-referenced legacy entry is

@@ -2239,6 +2239,49 @@ const writeMarker = ({
 
 type Retirement = { readonly retired: readonly string[]; readonly blocked: readonly string[] }
 
+/** A reader proof is a bounded observation, never a durable permission to delete. */
+const retirementProofMaxAgeMs = 30_000
+type RetirementBatch = {
+  readonly state: BudgetState
+  readonly live: ReadonlySet<string>
+  readonly proofAtMs: number
+  readonly garbage: string[]
+  readonly beforeCandidateRetirement?: (candidate: {
+    readonly key: string
+    readonly dir: string
+  }) => void
+  expired: boolean
+}
+
+/** Sole per-candidate seam for #1990's future exclusive-lease probe. Host/root fences are held. */
+const checkEditorViewBudgetCandidateBeforeDelete = ({
+  candidate,
+  kind,
+  state,
+  batch,
+}: {
+  readonly candidate: OrphanCandidate
+  readonly kind: 'orphan' | 'generation'
+  readonly state: BudgetState
+  readonly batch?: RetirementBatch
+}): boolean => {
+  batch?.beforeCandidateRetirement?.({ key: candidate.key, dir: candidate.dir })
+  if (batch !== undefined && Date.now() - batch.proofAtMs >= retirementProofMaxAgeMs) {
+    batch.expired = true
+    return false
+  }
+  const identity =
+    kind === 'orphan'
+      ? orphanIdentity({ dir: candidate.dir })?.identity
+      : generationIdentity(candidate.dir)?.identity
+  return (
+    candidate.identity !== undefined &&
+    identity === candidate.identity &&
+    readState().epoch === state.epoch &&
+    batch?.live.has(candidate.key) !== true
+  )
+}
+
 type OrphanCandidate = {
   readonly key: string
   readonly dir: string
@@ -2252,20 +2295,22 @@ const retireOrphans = async ({
   candidates,
   censusEpoch,
   publisherCleanup = false,
+  batch,
 }: {
   readonly editorRoot: string
   readonly repoRoot?: string
   readonly candidates: readonly OrphanCandidate[]
   readonly censusEpoch?: number
   readonly publisherCleanup?: boolean
+  readonly batch?: RetirementBatch
 }): Promise<Retirement> => {
-  const owners = budgetProcessOwners()
+  const owners = batch === undefined ? budgetProcessOwners() : new Map<number, string>()
   const retired: string[] = []
   const blocked: string[] = []
-  const garbage: string[] = []
-  await withHostBudgetLock(async () => {
-    const state = readState()
-    if (censusEpoch !== undefined && censusEpoch !== state.epoch) return
+  const garbage: string[] = batch?.garbage ?? []
+  const transaction = async () => {
+    const state = batch?.state ?? readState()
+    if (batch === undefined && censusEpoch !== undefined && censusEpoch !== state.epoch) return
     const reclaimed = reclaimDeadReservations({ state, owners })
     if (reclaimed > 0) writeState(state)
     if (hasEditorViewBudgetReservation({ editorRoot }) === true) {
@@ -2303,7 +2348,8 @@ const retireOrphans = async ({
             )
           : candidates
       const live =
-        readerCandidates.length === 0
+        batch?.live ??
+        (readerCandidates.length === 0
           ? new Set<string>()
           : observeEditorViewProcessCandidates({
               candidates: readerCandidates.map((candidate) => ({
@@ -2312,7 +2358,7 @@ const retireOrphans = async ({
                 snapshotRoot: candidate.dir,
                 linkedInodes: linkedInodes(candidate.linked),
               })),
-            })
+            }))
       for (const candidate of candidates) {
         if (
           candidate.identity === undefined ||
@@ -2323,6 +2369,17 @@ const retireOrphans = async ({
           ) === true
         ) {
           blocked.push(candidate.key)
+          continue
+        }
+        if (
+          checkEditorViewBudgetCandidateBeforeDelete({
+            candidate,
+            kind: 'orphan',
+            state,
+            batch,
+          }) === false
+        ) {
+          if (batch?.expired !== true) blocked.push(candidate.key)
           continue
         }
         const destination = join(editorRoot, `.gc-${randomUUID()}-orphan`)
@@ -2339,16 +2396,26 @@ const retireOrphans = async ({
         retired.push(candidate.key)
         state.generations.delete(candidate.key)
         state.lastUse.delete(candidate.key)
-      }
-      if (retired.length > 0) {
         state.epoch += 1
         writeState(state)
+        process.stderr.write(
+          `[editor-view-budget] ${JSON.stringify({
+            event: 'editor-view.host-budget.retired',
+            editorRoot,
+            classification: 'orphan',
+            evicted: [candidate.key],
+            phase: 'committed',
+            publisherCleanup,
+          })}\n`,
+        )
       }
     }
     await withEditorViewContentStoreLock({ contentStore, run: retire })
-  })
+  }
+  if (batch === undefined) await withHostBudgetLock(transaction)
+  else await transaction()
   // Failed/interrupted cleanup leaves another recognizable orphan for the next lock owner.
-  for (const directory of garbage) {
+  for (const directory of batch === undefined ? garbage : []) {
     makeDirectoriesWritable(directory)
     rmSync(directory, { recursive: true })
   }
@@ -2428,6 +2495,7 @@ const retireRoot = async ({
   usedBytes,
   recencyMs,
   censusEpoch,
+  batch,
 }: {
   readonly root: RootView
   readonly generations: readonly GenerationView[]
@@ -2435,6 +2503,7 @@ const retireRoot = async ({
   readonly usedBytes: number
   readonly recencyMs: number
   readonly censusEpoch: number
+  readonly batch?: RetirementBatch
 }): Promise<Retirement> => {
   const orphans = generations.filter((generation) => generation.kind === 'orphan')
   if (orphans.length > 0) {
@@ -2443,6 +2512,7 @@ const retireRoot = async ({
       repoRoot: root.root.repoRoot,
       candidates: orphans,
       censusEpoch,
+      batch,
     })
     const normal = generations.filter((generation) => generation.kind !== 'orphan')
     if (normal.length === 0) return result
@@ -2453,6 +2523,7 @@ const retireRoot = async ({
       usedBytes,
       recencyMs,
       censusEpoch: result.retired.length > 0 ? censusEpoch + 1 : censusEpoch,
+      batch,
     })
     return {
       retired: [...result.retired, ...remaining.retired],
@@ -2477,15 +2548,15 @@ const retireRoot = async ({
   }
   if (admitted.length === 0) return { retired: [], blocked }
   const token = randomUUID()
-  const garbage: string[] = []
+  const garbage: string[] = batch?.garbage ?? []
   const retired: string[] = []
-  await withHostBudgetLock(async () => {
+  const transaction = async () => {
     await withEditorViewContentStoreLock({
       contentStore: root.contentStore,
       run: async () => {
-        const state = readState()
+        const state = batch?.state ?? readState()
         // Journal changes after the fresh census require another admission round.
-        if (state.epoch !== censusEpoch) {
+        if (batch === undefined && state.epoch !== censusEpoch) {
           return
         }
         const registration = state.roots.get(root.key)
@@ -2496,8 +2567,7 @@ const retireRoot = async ({
           blocked.push(...admitted.map(({ generation }) => generation.key))
           return
         }
-        // Repeat the full reader proof immediately before retirement under exclusion.
-        const live = observeGenerations(admitted.map(({ generation }) => generation))
+        const live = batch?.live ?? observeGenerations(admitted.map(({ generation }) => generation))
         const pinned = managedEditorViewSnapshots({ editorRoot: root.key })
         let activeAtMs = 0
         for (const [key, at] of state.lastUse)
@@ -2539,6 +2609,17 @@ const retireRoot = async ({
               graceMs + touchRefreshMs
           ) {
             blocked.push(generation.key)
+            continue
+          }
+          if (
+            checkEditorViewBudgetCandidateBeforeDelete({
+              candidate: generation,
+              kind: 'generation',
+              state,
+              batch,
+            }) === false
+          ) {
+            if (batch?.expired !== true) blocked.push(generation.key)
             continue
           }
           const target = `.store/${generation.name}`
@@ -2597,16 +2678,25 @@ const retireRoot = async ({
           retired.push(generation.key)
           state.generations.delete(generation.key)
           state.lastUse.delete(generation.key)
-        }
-        if (retired.length > 0) {
           state.epoch += 1
           writeState(state)
+          process.stderr.write(
+            `[editor-view-budget] ${JSON.stringify({
+              event: 'editor-view.host-budget.retired',
+              editorRoot: root.key,
+              classification: 'generation',
+              evicted: [generation.key],
+              phase: 'committed',
+            })}\n`,
+          )
         }
       },
     })
-  })
+  }
+  if (batch === undefined) await withHostBudgetLock(transaction)
+  else await transaction()
   // Directory-only unlock of private retired trees; payload inodes are never chmodded.
-  for (const path of garbage) {
+  for (const path of batch === undefined ? garbage : []) {
     makeDirectoriesWritable(path)
     rmSync(path, { recursive: true })
   }
@@ -2635,6 +2725,7 @@ export const reserveEditorViewBudget = async ({
   discoverRoots,
   tryLockRoot,
   beforeRetireRoot,
+  beforeCandidateRetirement,
   budgetBytes,
   recencyMs = editorViewHostRecencyMs(),
   censusSession = makeEditorViewBudgetCensusSession(),
@@ -2645,7 +2736,9 @@ export const reserveEditorViewBudget = async ({
   readonly reservationBytes: number
   readonly heldEditorRoot: string
   readonly discoverRoots: () => readonly EditorViewBudgetRoot[]
-  readonly tryLockRoot: (root: EditorViewBudgetRoot) => EditorViewBudgetRootLock | undefined
+  readonly tryLockRoot: (
+    root: EditorViewBudgetRoot,
+  ) => EditorViewBudgetRootLock | undefined | Promise<EditorViewBudgetRootLock | undefined>
   readonly budgetBytes: number
   /** Root recency window protecting current generations; defaults to EDITOR_VIEW_HOST_RECENCY_MS. */
   readonly recencyMs?: number
@@ -2654,6 +2747,11 @@ export const reserveEditorViewBudget = async ({
   readonly onCensus?: (() => void | Promise<void>) | undefined
   /** Called with the victim root lock held and neither flock held, before final eligibility. */
   readonly beforeRetireRoot?: (() => void | Promise<void>) | undefined
+  /** Synchronous coordination seam immediately before each fenced identity/epoch check. */
+  readonly beforeCandidateRetirement?: (candidate: {
+    readonly key: string
+    readonly dir: string
+  }) => void
 }): Promise<{ readonly token: string }> => {
   if (Number.isSafeInteger(reservationBytes) === false || reservationBytes <= 0)
     fail(`reservation must be a positive safe integer of bytes: ${reservationBytes}`)
@@ -2976,75 +3074,109 @@ export const reserveEditorViewBudget = async ({
         const freshAdmission = await admit({ census, plan, force: false })
         if (freshAdmission.admitted === true) return { token }
         if (freshAdmission.stale === true) continue
-        progress('reader-scan')
-        plan = planEviction({
-          census,
-          blocked,
-          live: observeGenerations(plan.order),
-          recencyMs,
-          now: roundAtMs,
-        })
-        last = { census, plan }
         if (collected === false && census.unreferencedCasBytes > 0) {
           collected = true
           // eslint-disable-next-line no-await-in-loop -- Collection takes the CAS flock itself; no locks are held here.
           await collectBudgetContentStores(census.contentStores)
           continue
         }
-        // Evict the LRU prefix that reaches the budget, or every eligible generation when none does.
-        progress('eviction')
-        const needed = freshAdmission.used + reservationBytes - budgetBytes
-        const prefix = plan.cumulative.findIndex((freed) => freed >= needed)
-        const prefixOrder = plan.order.slice(0, prefix === -1 ? plan.order.length : prefix + 1)
-        // Finish orphan reconciliation across every root before considering normal generations.
-        const selected =
-          prefixOrder[0]?.kind === 'orphan'
-            ? prefixOrder.filter((generation) => generation.kind === 'orphan')
-            : prefixOrder
-        if (selected.length === 0) break
-        const byRoot = new Map<string, GenerationView[]>()
-        for (const generation of selected)
-          byRoot.set(generation.root.key, [...(byRoot.get(generation.root.key) ?? []), generation])
+        if (plan.order.length === 0) break
+        const retirementRoots = new Map(
+          plan.order.map((generation) => [generation.root.key, generation.root]),
+        )
+        const locks: EditorViewBudgetRootLock[] = []
+        const available = new Set<string>()
+        const garbage: string[] = []
         const retiredBefore = evicted.length
         const retiredStores = new Set<string>()
-        let retirementEpoch = census.epoch
-        for (const generations of byRoot.values()) {
-          const rootView = generations[0]?.root
-          if (rootView === undefined) continue
-          // The admitting publisher already holds its own root; other roots never wait.
-          const lock = rootView.held === true ? undefined : tryLockRoot(rootView.root)
-          if (rootView.held === false && lock === undefined) {
-            for (const generation of census.generations)
-              if (generation.root.key === rootView.key) blocked.add(generation.key)
-            continue
-          }
-          try {
-            // eslint-disable-next-line no-await-in-loop -- Test/coordination hook runs outside both flocks.
-            await beforeRetireRoot?.()
-            // eslint-disable-next-line no-await-in-loop -- Root locks are held one root at a time.
-            const outcome = await retireRoot({
-              root: rootView,
-              generations,
-              budgetBytes,
-              usedBytes: census.usedBytes,
-              recencyMs,
-              censusEpoch: retirementEpoch,
-            })
-            for (const key of outcome.blocked) blocked.add(key)
-            evicted.push(...outcome.retired)
-            if (outcome.retired.length > 0) {
-              retiredStores.add(rootView.contentStore)
-              // Each successful root transaction advances the epoch exactly once.
-              retirementEpoch += 1
+        let proofExpired = false
+        const batchStartedAtMs = Date.now()
+        try {
+          // Acquire every selected publication exclusion before taking the single host fence.
+          // A live owner is never waited on; abandoned-owner recovery may perform async I/O.
+          for (const rootView of retirementRoots.values()) {
+            // eslint-disable-next-line no-await-in-loop -- Root locks are nonblocking and acquired in candidate order.
+            const lock = rootView.held === true ? undefined : await tryLockRoot(rootView.root)
+            if (rootView.held === false && lock === undefined) {
+              for (const generation of plan.order)
+                if (generation.root.key === rootView.key) blocked.add(generation.key)
+              continue
             }
-          } catch (error) {
-            if (vanished(error) === false) throw error
-            // A torn-down victim is unavailable, never grounds to reject this publisher.
-            for (const generation of generations) blocked.add(generation.key)
+            if (lock !== undefined) locks.push(lock)
+            available.add(rootView.key)
+            // eslint-disable-next-line no-await-in-loop -- Coordination runs before either metadata flock.
+            await beforeRetireRoot?.()
+          }
+          progress('reader-scan')
+          // eslint-disable-next-line no-await-in-loop -- One held host fence covers the complete retirement batch.
+          await withHostBudgetLock(async () => {
+            const state = readState()
+            if (state.epoch !== census.epoch) return
+            const proofAtMs = Date.now()
+            const candidates = plan.order.filter((generation) => available.has(generation.root.key))
+            const live = observeGenerations(candidates)
+            const batch: RetirementBatch = {
+              state,
+              live,
+              proofAtMs,
+              garbage,
+              beforeCandidateRetirement,
+              expired: false,
+            }
+            plan = planEviction({ census, blocked, live, recencyMs, now: Date.now() })
+            last = { census, plan }
+            const needed = freshAdmission.used + reservationBytes - budgetBytes
+            const prefix = plan.cumulative.findIndex((freed) => freed >= needed)
+            const selected = plan.order.slice(0, prefix === -1 ? plan.order.length : prefix + 1)
+            progress('eviction')
+            try {
+              for (const generation of selected) {
+                if (batch.expired === true) break
+                if (available.has(generation.root.key) === false) continue
+                try {
+                  // eslint-disable-next-line no-await-in-loop -- Owning CAS exclusion nests under the held host fence.
+                  const outcome = await retireRoot({
+                    root: generation.root,
+                    generations: [generation],
+                    budgetBytes,
+                    usedBytes: census.usedBytes,
+                    recencyMs,
+                    censusEpoch: state.epoch,
+                    batch,
+                  })
+                  for (const key of outcome.blocked) blocked.add(key)
+                  evicted.push(...outcome.retired)
+                  if (outcome.retired.length > 0) retiredStores.add(generation.root.contentStore)
+                } catch (error) {
+                  if (vanished(error) === false) throw error
+                  blocked.add(generation.key)
+                }
+              }
+            } finally {
+              proofExpired = batch.expired
+              process.stderr.write(
+                `[editor-view-budget] ${JSON.stringify({
+                  event: 'editor-view.host-budget.retirement-batch',
+                  evicted: evicted.slice(retiredBefore),
+                  proofExpired,
+                  candidates: candidates.length,
+                  durationMs: Date.now() - batchStartedAtMs,
+                })}\n`,
+              )
+            }
+          })
+        } finally {
+          // Private recursive cleanup never extends either metadata fence.
+          try {
+            for (const directory of garbage) {
+              makeDirectoriesWritable(directory)
+              rmSync(directory, { recursive: true })
+            }
           } finally {
-            lock?.release()
+            for (const lock of locks) lock.release()
           }
         }
+        if (proofExpired === true) invalidateCensus()
         if (evicted.length > retiredBefore) {
           // eslint-disable-next-line no-await-in-loop -- Retired payload links free CAS blobs only after collection.
           await collectBudgetContentStores(retiredStores)

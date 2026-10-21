@@ -41,6 +41,7 @@ import {
   reclaimEditorViewOrphans,
   withHostBudgetLock,
   type EditorViewBudgetRoot,
+  type EditorViewBudgetRootLock,
   type EditorViewBudgetCensusSession,
 } from './editor-view-budget.ts'
 import {
@@ -2245,6 +2246,82 @@ const publicationLockRecoveryReason = (owner: LockOwner): 'dead-pid' | 'reused-p
     ? 'reused-pid'
     : undefined
 }
+
+/** The same incarnation proof authorizes publisher and nonblocking budget recovery. */
+const recoverAbandonedPublicationLock = async ({
+  editorRoot,
+  owner,
+}: {
+  readonly editorRoot: string
+  readonly owner: LockOwner
+}): Promise<boolean> => {
+  if (publicationLockRecoveryReason(owner) === undefined) return false
+  // Recovery shares the host fence across CAS namespaces; root acquisition stays outside it.
+  return withHostBudgetLock(async () => {
+    let current: LockOwner
+    try {
+      current = readLockOwner(join(editorRoot, '.publish.lock', 'owner.json'))
+    } catch (error) {
+      if (isNodeErrorCode({ error, code: 'ENOENT' }) === true) return true
+      throw error
+    }
+    if (current.token !== owner.token) return false
+    const reason = publicationLockRecoveryReason(current)
+    if (reason === undefined) return false
+    recoverPublicationLock({ editorRoot, token: current.token })
+    console.error(
+      JSON.stringify({
+        event: 'editor-view.publication-lock.recovered',
+        editorRoot,
+        pid: current.pid,
+        reason,
+      }),
+    )
+    return true
+  })
+}
+
+/** Never wait for another root; reclaim its lock only after proven owner death. */
+export const tryAcquireEditorViewBudgetRootLock = async (
+  root: EditorViewBudgetRoot,
+): Promise<EditorViewBudgetRootLock | undefined> => {
+  const request = {
+    editorRoot: root.editorRoot,
+    recoveryCommand: `recover-lock --repo-root ${root.repoRoot}`,
+    kind: 'eviction' as const,
+  }
+  let acquired: { readonly path: string; readonly token: string }
+  try {
+    acquired = acquireLock(request)
+  } catch (error) {
+    if (isNodeErrorCode({ error, code: 'ENOENT' }) === true) return undefined
+    if (
+      error instanceof Error === false ||
+      isNodeErrorCode({ error: error.cause, code: 'EEXIST' }) === false
+    )
+      throw error
+    let owner: LockOwner
+    try {
+      owner = readLockOwner(join(root.editorRoot, '.publish.lock', 'owner.json'))
+    } catch {
+      return undefined
+    }
+    if ((await recoverAbandonedPublicationLock({ editorRoot: root.editorRoot, owner })) === false)
+      return undefined
+    try {
+      acquired = acquireLock(request)
+    } catch (retryError) {
+      if (
+        isNodeErrorCode({ error: retryError, code: 'ENOENT' }) === true ||
+        (retryError instanceof Error &&
+          isNodeErrorCode({ error: retryError.cause, code: 'EEXIST' }) === true)
+      )
+        return undefined
+      throw retryError
+    }
+  }
+  return { release: () => releaseLock(acquired) }
+}
 const acquirePublicationLock = async ({
   editorRoot,
   recoveryCommand,
@@ -2293,30 +2370,8 @@ const acquirePublicationLock = async ({
         }
         throw error
       }
-      if (publicationLockRecoveryReason(owner) !== undefined) {
-        // The host flock serializes recovery across CAS namespaces; no root acquisition occurs inside it.
-        // eslint-disable-next-line no-await-in-loop -- Recovery is a bounded metadata transaction.
-        await withHostBudgetLock(async () => {
-          let current: LockOwner
-          try {
-            current = readLockOwner(join(path, 'owner.json'))
-          } catch (inspectionError) {
-            if (isNodeErrorCode({ error: inspectionError, code: 'ENOENT' }) === true) return
-            throw inspectionError
-          }
-          if (current.token !== owner.token) return
-          const reason = publicationLockRecoveryReason(current)
-          if (reason === undefined) return
-          recoverPublicationLock({ editorRoot, token: current.token })
-          console.error(
-            JSON.stringify({
-              event: 'editor-view.publication-lock.recovered',
-              editorRoot,
-              pid: current.pid,
-              reason,
-            }),
-          )
-        })
+      // eslint-disable-next-line no-await-in-loop -- Recovery repeats proof under the host fence.
+      if ((await recoverAbandonedPublicationLock({ editorRoot, owner })) === true) {
         // eslint-disable-next-line no-await-in-loop -- Yield before retrying the now-free root lock.
         await Bun.sleep(10)
         continue
@@ -3156,20 +3211,7 @@ const publishEditorViewCoordinated = async ({
             }),
             heldEditorRoot: paths.editorRoot,
             discoverRoots: () => discoverBudgetRoots(budgetRoot),
-            tryLockRoot: (root) => {
-              try {
-                const acquired = acquireLock({
-                  editorRoot: root.editorRoot,
-                  recoveryCommand: `recover-lock --repo-root ${root.repoRoot}`,
-                  kind: 'eviction',
-                })
-                return { release: () => releaseLock(acquired) }
-              } catch (error) {
-                if (isNodeErrorCode({ error, code: 'ENOENT' }) === true) return undefined
-                if (existsSync(join(root.editorRoot, '.publish.lock')) === true) return undefined
-                throw error
-              }
-            },
+            tryLockRoot: tryAcquireEditorViewBudgetRootLock,
             budgetBytes,
             ...(options.beforeBudgetEviction === undefined
               ? {}

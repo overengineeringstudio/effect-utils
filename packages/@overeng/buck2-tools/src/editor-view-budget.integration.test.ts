@@ -1926,7 +1926,7 @@ describe('budget admission defers reader proof until eviction needs it', () => {
     }
   })
 
-  it('scans before eviction and re-proves a reader opened after the victim lock', async () => {
+  it('proves readers after locking and preserves a reader opened at the victim lock', async () => {
     const host = makeHost()
     try {
       const victim = host.fixture('proof-victim', 183)
@@ -1949,7 +1949,7 @@ describe('budget admission defers reader proof until eviction needs it', () => {
           budgetBytes: 1,
           tryLockRoot: (root) => {
             expect(root.editorRoot).toBe(victim.editorRoot)
-            expect(readerScans()).toBeGreaterThan(scansBefore)
+            if (reader === undefined) expect(readerScans()).toBe(scansBefore)
             return lockRoot(root)
           },
           beforeRetireRoot: async () => {
@@ -2272,6 +2272,311 @@ describe('orphan retirement under the publication exclusion', () => {
       try {
         expect(await reclaimEditorViewOrphans({ editorRoot: fixture.editorRoot })).toBe(true)
         expect(pathExists(legacy)).toBe(false)
+      } finally {
+        lock.release()
+      }
+    } finally {
+      await host.cleanup()
+    }
+  })
+})
+
+describe('batched budget candidate retirement', () => {
+  const retirementReceipts = (stderr: string) => {
+    const retired: { readonly evicted: readonly string[] }[] = []
+    const batches: {
+      readonly evicted: readonly string[]
+      readonly proofExpired: boolean
+      readonly candidates: number
+      readonly durationMs: number
+    }[] = []
+    const prefix = '[editor-view-budget] '
+    for (const line of stderr.split('\n')) {
+      if (line.startsWith(prefix) === false) continue
+      const entry: unknown = JSON.parse(line.slice(prefix.length))
+      if (typeof entry !== 'object' || entry === null || 'event' in entry === false) continue
+      if (
+        entry.event !== 'editor-view.host-budget.retired' &&
+        entry.event !== 'editor-view.host-budget.retirement-batch'
+      )
+        continue
+      if (
+        'evicted' in entry === false ||
+        Array.isArray(entry.evicted) === false ||
+        entry.evicted.some((key: unknown) => typeof key !== 'string') === true
+      )
+        throw new Error(`retirement receipt lacks exact evicted keys: ${line}`)
+      const evicted = entry.evicted.filter((key: unknown): key is string => typeof key === 'string')
+      if (entry.event === 'editor-view.host-budget.retired') {
+        if ('phase' in entry === false || entry.phase !== 'committed')
+          throw new Error(`retirement receipt does not report its commit: ${line}`)
+        retired.push({ evicted })
+      } else {
+        if (
+          'proofExpired' in entry === false ||
+          typeof entry.proofExpired !== 'boolean' ||
+          'candidates' in entry === false ||
+          typeof entry.candidates !== 'number' ||
+          'durationMs' in entry === false ||
+          typeof entry.durationMs !== 'number'
+        )
+          throw new Error(`retirement batch receipt is incomplete: ${line}`)
+        batches.push({
+          evicted,
+          proofExpired: entry.proofExpired,
+          candidates: entry.candidates,
+          durationMs: entry.durationMs,
+        })
+      }
+    }
+    return { retired, batches }
+  }
+
+  const prepareBatch = async (host: Host) => {
+    const fixture = host.fixture('batch-retirement', 211, 64)
+    const record = await host.publish(fixture)
+    const root = { repoRoot: fixture.root, editorRoot: fixture.editorRoot }
+    const roots = [root]
+    const options = {
+      contentStore: host.contentStore,
+      root,
+      heldEditorRoot: fixture.editorRoot,
+      discoverRoots: () => roots,
+      reservationBytes: 1,
+      tryLockRoot: lockRoot,
+    }
+    const candidates = Array.from({ length: 10 }, (_, index) => {
+      const name = `.candidate-batch-${String(index).padStart(2, '0')}`
+      const victim = host.fixture(`batch-orphan-${index}`, index + 1, 64)
+      roots.push({ repoRoot: victim.root, editorRoot: victim.editorRoot })
+      const dir = join(victim.editorRoot, '.store', name)
+      mkdirSync(join(victim.editorRoot, '.store'), { recursive: true })
+      return {
+        dir,
+        key: `${victim.editorRoot}\0.store/${name}`,
+        root: { repoRoot: victim.root, editorRoot: victim.editorRoot },
+      }
+    })
+    for (const candidate of candidates) {
+      // Register the shared CAS authority before another root may plan this victim.
+      // eslint-disable-next-line no-await-in-loop -- Registration owns the real host metadata fence.
+      const registration = await host.track(
+        reserveEditorViewBudget({
+          ...options,
+          root: candidate.root,
+          heldEditorRoot: candidate.root.editorRoot,
+          budgetBytes: setupBudgetBytes,
+        }),
+      )
+      // eslint-disable-next-line no-await-in-loop -- Release each real reservation before the next root.
+      await cancelEditorViewBudgetReservation({
+        contentStore: host.contentStore,
+        token: registration.token,
+      })
+    }
+    const probe = await host.track(
+      reserveEditorViewBudget({ ...options, budgetBytes: setupBudgetBytes }),
+    )
+    const baselineBytes = readBudgetLedger(host).usedBytes
+    await cancelEditorViewBudgetReservation({
+      contentStore: host.contentStore,
+      token: probe.token,
+    })
+    for (const [index, { dir }] of candidates.entries()) {
+      mkdirSync(dir)
+      writeFileSync(join(dir, 'payload.bin'), Buffer.alloc(payloadBytes, index + 1))
+    }
+    return {
+      fixture,
+      record,
+      candidates,
+      // Leave room for real journal/sidecar metadata, but less than one orphan payload.
+      options: { ...options, budgetBytes: baselineBytes + payloadBytes / 2 },
+    }
+  }
+
+  it('admits pressure requiring ten root retirements in one bounded reader-proof batch', async () => {
+    const host = makeHost()
+    try {
+      const { fixture, record, candidates, options } = await prepareBatch(host)
+      const lock = lockRoot(fixture)
+      try {
+        let censuses = 0
+        const started = performance.now()
+        const captured = await captureStderr(() =>
+          host.track(
+            reserveEditorViewBudget({
+              ...options,
+              onCensus: () => {
+                censuses += 1
+              },
+            }),
+          ),
+        )
+        const elapsedMs = performance.now() - started
+        const receipts = retirementReceipts(captured.stderr)
+        const keys = candidates.map(({ key }) => key).toSorted()
+        expect(receipts.retired).toHaveLength(10)
+        expect(receipts.retired.flatMap(({ evicted }) => evicted).toSorted()).toEqual(keys)
+        expect(receipts.batches).toHaveLength(1)
+        expect(receipts.batches[0]).toMatchObject({
+          candidates: 10,
+          proofExpired: false,
+        })
+        expect(receipts.batches[0]!.evicted.toSorted()).toEqual(keys)
+        expect(receipts.batches[0]!.durationMs).toBeLessThan(10_000)
+        expect(elapsedMs).toBeLessThan(10_000)
+        expect(censuses).toBeLessThanOrEqual(3)
+        for (const { dir } of candidates) expect(pathExists(dir)).toBe(false)
+        expect(readBudgetLedger(host).usedBytes + 1).toBeLessThanOrEqual(options.budgetBytes)
+        expectCurrent(fixture, record)
+        await cancelEditorViewBudgetReservation({
+          contentStore: host.contentStore,
+          token: captured.value.token,
+        })
+      } finally {
+        lock.release()
+      }
+    } finally {
+      await host.cleanup()
+    }
+  })
+
+  it('skips a candidate changed at the named retirement fence while retiring the remaining batch', async () => {
+    const host = makeHost()
+    try {
+      const { fixture, record, candidates, options } = await prepareBatch(host)
+      const lock = lockRoot(fixture)
+      try {
+        let visited = 0
+        let changed: string | undefined
+        const captured = await captureStderr(() =>
+          host.track(
+            reserveEditorViewBudget({
+              ...options,
+              beforeCandidateRetirement: ({ dir }) => {
+                visited += 1
+                if (visited !== 2) return
+                changed = dir
+                utimesSync(dir, lstatSync(dir).atime, new Date(Date.now() + 1_000))
+              },
+            }),
+          ),
+        )
+        expect(changed).toBeDefined()
+        const skipped = candidates.find(({ dir }) => dir === changed)
+        if (skipped === undefined)
+          throw new Error('retirement hook did not mutate a batch candidate')
+        const receipts = retirementReceipts(captured.stderr)
+        expect(receipts.batches).toHaveLength(1)
+        expect(receipts.batches[0]).toMatchObject({ candidates: 10, proofExpired: false })
+        const expected = candidates.filter(({ dir }) => dir !== changed).map(({ key }) => key)
+        expect(receipts.retired.flatMap(({ evicted }) => evicted).toSorted()).toEqual(
+          expected.toSorted(),
+        )
+        expect(receipts.batches[0]!.evicted.toSorted()).toEqual(expected.toSorted())
+        expect(pathExists(skipped.dir)).toBe(true)
+        expect(readFileSync(join(skipped.dir, 'payload.bin'))).toHaveLength(payloadBytes)
+        for (const { dir } of candidates) if (dir !== changed) expect(pathExists(dir)).toBe(false)
+        expectCurrent(fixture, record)
+        await cancelEditorViewBudgetReservation({
+          contentStore: host.contentStore,
+          token: captured.value.token,
+        })
+      } finally {
+        lock.release()
+      }
+    } finally {
+      await host.cleanup()
+    }
+  })
+
+  it('stops an expired thirty-second proof and re-proves the unretired candidates', async () => {
+    const host = makeHost()
+    try {
+      const { fixture, record, candidates, options } = await prepareBatch(host)
+      const lock = lockRoot(fixture)
+      try {
+        let visited = 0
+        let expiredCandidate: string | undefined
+        let retried = false
+        let censuses = 0
+        const captured = await captureStderr(() =>
+          host.track(
+            reserveEditorViewBudget({
+              ...options,
+              onCensus: () => {
+                censuses += 1
+              },
+              beforeCandidateRetirement: ({ dir }) => {
+                visited += 1
+                if (visited === 2) {
+                  expiredCandidate = dir
+                  host.advance(30_000)
+                } else if (dir === expiredCandidate) {
+                  retried = true
+                }
+              },
+            }),
+          ),
+        )
+        const receipts = retirementReceipts(captured.stderr)
+        expect(retried).toBe(true)
+        expect(censuses).toBeGreaterThanOrEqual(3)
+        expect(receipts.batches).toHaveLength(2)
+        expect(receipts.batches[0]!.proofExpired).toBe(true)
+        expect(receipts.batches[0]!.evicted).toHaveLength(1)
+        expect(receipts.batches[1]!.proofExpired).toBe(false)
+        expect(receipts.batches[1]!.evicted).toHaveLength(9)
+        const keys = candidates.map(({ key }) => key).toSorted()
+        expect(receipts.retired.flatMap(({ evicted }) => evicted).toSorted()).toEqual(keys)
+        expect(receipts.batches.flatMap(({ evicted }) => evicted).toSorted()).toEqual(keys)
+        for (const { dir } of candidates) expect(pathExists(dir)).toBe(false)
+        expect(readBudgetLedger(host).usedBytes + 1, captured.stderr).toBeLessThanOrEqual(
+          options.budgetBytes,
+        )
+        expectCurrent(fixture, record)
+        await cancelEditorViewBudgetReservation({
+          contentStore: host.contentStore,
+          token: captured.value.token,
+        })
+      } finally {
+        lock.release()
+      }
+    } finally {
+      await host.cleanup()
+    }
+  })
+
+  it('retains committed retirement receipts when admission fails partway through a batch', async () => {
+    const host = makeHost()
+    try {
+      const { fixture, record, candidates, options } = await prepareBatch(host)
+      const lock = lockRoot(fixture)
+      try {
+        let visited = 0
+        const captured = await captureStderr(async () => {
+          await expect(
+            host.track(
+              reserveEditorViewBudget({
+                ...options,
+                beforeCandidateRetirement: () => {
+                  visited += 1
+                  if (visited === 3) throw new Error('injected mid-batch admission failure')
+                },
+              }),
+            ),
+          ).rejects.toThrow('injected mid-batch admission failure')
+        })
+        const receipts = retirementReceipts(captured.stderr)
+        expect(receipts.retired).toHaveLength(2)
+        expect(receipts.batches).toHaveLength(1)
+        const committed = receipts.retired.flatMap(({ evicted }) => evicted)
+        expect(receipts.batches[0]!.evicted.toSorted()).toEqual(committed.toSorted())
+        for (const { key, dir } of candidates)
+          expect(pathExists(dir)).toBe(committed.includes(key) === false)
+        expectCurrent(fixture, record)
+        expect(readBudgetLedger(host).reservations).toEqual([])
       } finally {
         lock.release()
       }

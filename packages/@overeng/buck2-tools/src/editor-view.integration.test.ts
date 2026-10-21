@@ -28,7 +28,11 @@ import { fileURLToPath } from 'node:url'
 
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 
-import { cancelEditorViewBudgetReservation, reserveEditorViewBudget } from './editor-view-budget.ts'
+import {
+  cancelEditorViewBudgetReservation,
+  reserveEditorViewBudget,
+  type EditorViewBudgetRootLock,
+} from './editor-view-budget.ts'
 import { managedEditorViewSnapshots, type EditorViewPinRecord } from './editor-view-readers.ts'
 import {
   editorViewStagingCreatorIdentity,
@@ -46,6 +50,7 @@ import {
   releaseEditorViewRoot,
   unpinEditorView,
   verifyEditorViewSnapshot,
+  tryAcquireEditorViewBudgetRootLock,
   type EditorViewOptions,
   type EditorViewRecord,
 } from './editor-view.ts'
@@ -4515,6 +4520,62 @@ await publishEditorView({
     } finally {
       await publisher.kill()
       if (publication !== undefined) await Promise.allSettled([publication])
+      cleanup(fixture)
+      restoreHostBudget()
+    }
+  })
+
+  it('budget eviction recovers a SIGKILLed publisher lock and reclaims its candidate', async () => {
+    const fixture = makeFixture()
+    const pressure = makeFixture()
+    const restoreHostBudget = isolateHostBudget()
+    const publisher = pausedPublisher({ fixture, hook: 'beforeMaterialize' })
+    let reservation: string | undefined
+    let pressureLock: EditorViewBudgetRootLock | undefined
+    try {
+      await publisher.ready
+      const candidateName = readdirSync(join(fixture.editorRoot, '.store')).find((name) =>
+        name.startsWith('.candidate-'),
+      )!
+      const candidate = join(fixture.editorRoot, '.store', candidateName)
+      const ownerPath = join(fixture.editorRoot, '.publish.lock', 'owner.json')
+      const owner = readFileSync(ownerPath, 'utf8')
+      expect(
+        await tryAcquireEditorViewBudgetRootLock({
+          repoRoot: fixture.root,
+          editorRoot: fixture.editorRoot,
+        }),
+      ).toBeUndefined()
+      expect(readFileSync(ownerPath, 'utf8')).toBe(owner)
+      expect(existsSync(candidate)).toBe(true)
+      await publisher.kill()
+      expect(publisher.child.signalCode).toBe('SIGKILL')
+      mkdirSync(join(pressure.editorRoot, '.store'), { recursive: true })
+      const pressureRoot = { repoRoot: pressure.root, editorRoot: pressure.editorRoot }
+      pressureLock = await tryAcquireEditorViewBudgetRootLock(pressureRoot)
+      expect(pressureLock).toBeDefined()
+      const admitted = await reserveEditorViewBudget({
+        contentStore: fixture.options.contentStore!,
+        root: pressureRoot,
+        heldEditorRoot: pressure.editorRoot,
+        discoverRoots: () => [{ repoRoot: fixture.root, editorRoot: fixture.editorRoot }],
+        tryLockRoot: tryAcquireEditorViewBudgetRootLock,
+        reservationBytes: 1,
+        budgetBytes: 1,
+      })
+      reservation = admitted.token
+      expect(existsSync(candidate)).toBe(false)
+      expect(existsSync(join(fixture.editorRoot, '.publish.lock'))).toBe(false)
+      expect(readdirSync(join(fixture.editorRoot, '.store'))).toEqual([])
+    } finally {
+      await publisher.kill()
+      if (reservation !== undefined)
+        await cancelEditorViewBudgetReservation({
+          contentStore: fixture.options.contentStore!,
+          token: reservation,
+        })
+      pressureLock?.release()
+      cleanup(pressure)
       cleanup(fixture)
       restoreHostBudget()
     }
