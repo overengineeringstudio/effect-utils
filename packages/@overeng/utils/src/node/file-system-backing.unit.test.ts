@@ -934,30 +934,43 @@ Vitest.describe('FileSystemBacking', () => {
         const watchFiber = yield* fsService
           .watch(watchDir)
           .pipe(Stream.runForEach(recordEvent), Effect.forkChild)
-        yield* Effect.yieldNow
 
-        const writeDirectFileUntilObserved = (fileName: string, content: string) =>
+        const writeDirectFileAndObserve = (fileName: string, content: string) =>
           Effect.gen(function* () {
             const observation = observePath(fileName)
             const eventFiber = yield* observation.event.pipe(Effect.forkChild)
             yield* observation.registered
 
-            for (const attempt of [1, 2, 3, 4, 5]) {
-              yield* fsService.writeFileString(
-                path.join(watchDir, fileName),
-                `${content}-${attempt}`,
-              )
-              yield* Effect.yieldNow
-            }
+            yield* fsService.writeFileString(path.join(watchDir, fileName), content)
 
             return yield* Fiber.join(eventFiber)
           })
 
-        yield* writeDirectFileUntilObserved(directBefore, 'direct')
+        // Starting the stream first awaits an asynchronous stat; yielding a fiber
+        // does not establish that the native watcher is registered. Wait for an
+        // actual event from a dedicated readiness probe before writing test files.
+        // Only the probe repeats: each membership assertion observes one write.
+        const readinessFile = '.watch-ready'
+        const readiness = observePath(readinessFile)
+        const readinessFiber = yield* readiness.event.pipe(Effect.forkChild)
+        yield* readiness.registered
+        yield* Effect.gen(function* () {
+          while (true) {
+            yield* fsService.writeFileString(path.join(watchDir, readinessFile), 'ready')
+            // Native filesystem events require a live event loop; fake time
+            // cannot advance watcher registration or event delivery.
+            yield* Effect.callback<void>((resume) => {
+              const timer = setTimeout(() => resume(Effect.void), 10)
+              return Effect.sync(() => clearTimeout(timer))
+            })
+          }
+        }).pipe(Effect.raceFirst(Fiber.join(readinessFiber)))
+
+        yield* writeDirectFileAndObserve(directBefore, 'direct')
 
         yield* fsService.makeDirectory(nestedDir)
         yield* fsService.writeFileString(path.join(nestedDir, nestedChild), 'nested')
-        yield* writeDirectFileUntilObserved(directAfter, 'settled')
+        yield* writeDirectFileAndObserve(directAfter, 'settled')
         yield* Fiber.interrupt(watchFiber)
 
         const observedPathNames = observed
