@@ -148,7 +148,8 @@ it.each([
 it.each(['node_modules', 'package.json', 'tsconfig.json'])(
   'refuses a contaminated emit staging ancestor: %s',
   async (name) => {
-    const root = mkdtempSync(join(tmpdir(), 'typescript-ambient-'))
+    const temporaryDirectory = process.platform === 'darwin' ? '/private/tmp' : '/tmp'
+    const root = mkdtempSync(join(temporaryDirectory, 'typescript-ambient-'))
     const stagingRoot = join(root, 'scratch', 'emit')
     mkdirSync(stagingRoot, { recursive: true })
     try {
@@ -251,6 +252,61 @@ it('stages nested workspace references and enables sibling emit without modifyin
     })
     expect(readFileSync(join(siblingTree, 'tsconfig.json'), 'utf8')).toBe(config)
   } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
+it('removes the private emit stage after compiler failure without changing immutable inputs', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'typescript-failed-cleanup-'))
+  const packageTree = join(root, 'package')
+  const dependency = join(root, 'dependency')
+  const output = join(root, 'output')
+  const compiler = join(root, 'tsgo')
+  mkdirSync(packageTree)
+  mkdirSync(join(dependency, 'nested'), { recursive: true })
+  writeFileSync(join(dependency, 'nested', 'index.d.ts'), 'export type Value = true\n')
+  symlinkSync(dependency, join(packageTree, 'node_modules'))
+  writeFileSync(join(packageTree, 'tsconfig.json'), '{}\n')
+  writeFileSync(
+    compiler,
+    `#!${process.execPath}\n` +
+      `import { statSync, writeFileSync } from 'node:fs';\n` +
+      `import { dirname, join } from 'node:path';\n` +
+      `const stage = dirname(process.cwd());\n` +
+      `const output = process.argv[process.argv.indexOf('--outDir') + 1];\n` +
+      `writeFileSync(join(output, 'stage.json'), JSON.stringify({ stage, mode: statSync(stage).mode & 0o777 }));\n` +
+      `process.exit(17);\n`,
+  )
+  chmodSync(compiler, 0o755)
+  chmodSync(join(dependency, 'nested', 'index.d.ts'), 0o444)
+  chmodSync(join(dependency, 'nested'), 0o555)
+  chmodSync(dependency, 0o555)
+  const fingerprintTool = process.env['FINGERPRINT_BIN'] ?? ''
+  if (fingerprintTool === '') throw new Error('declared test tool is unavailable: FINGERPRINT_BIN')
+  try {
+    const status = await runEmit({
+      declarationEntrypoint: undefined,
+      declarationSources: [],
+      outDir: 'dist',
+      output,
+      packageTree,
+      fingerprintTool,
+      readRoots: [dependency],
+      project: 'tsconfig.json',
+      tsgo: compiler,
+    })
+    const receipt = JSON.parse(readFileSync(join(output, 'stage.json'), 'utf8')) as {
+      stage: string
+      mode: number
+    }
+    expect(status).toBe(17)
+    expect(receipt.mode).toBe(0o700)
+    expect(existsSync(receipt.stage)).toBe(false)
+    expect(statSync(dependency).mode & 0o777).toBe(0o555)
+    expect(statSync(join(dependency, 'nested', 'index.d.ts')).mode & 0o777).toBe(0o444)
+  } finally {
+    chmodSync(dependency, 0o755)
+    chmodSync(join(dependency, 'nested'), 0o755)
     rmSync(root, { recursive: true, force: true })
   }
 })

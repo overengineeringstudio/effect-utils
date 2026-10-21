@@ -642,8 +642,9 @@ export const stageDeclaredEmitInputs = async (options: {
     readonly writable: boolean
   }): void => {
     const entries = readdirSync(source, { withFileTypes: true })
-    if (writable === true || entries.some((entry) => entry.isSymbolicLink()) === true)
-      chmodSync(destination, 0o700)
+    // Writable cloned directories permit cleanup without chmodding leaf inodes
+    // or following dependency symlinks, including after a compiler failure.
+    chmodSync(destination, 0o700)
     for (const entry of entries) {
       const from = join(source, entry.name)
       const to = join(destination, entry.name)
@@ -658,6 +659,7 @@ export const stageDeclaredEmitInputs = async (options: {
     await forEachSequential({
       iterator: roots.values(),
       visit: async (root) => {
+        if (forwardedSignal !== undefined) fail(`emit staging interrupted by ${forwardedSignal}`)
         await mkdir(dirname(root.destination), { recursive: true })
         let cloned = false
         if (native !== undefined) {
@@ -878,7 +880,10 @@ export const runEmit = async (options: EmitOptions): Promise<number> => {
     roots: readRoots,
     fingerprintTool: options.fingerprintTool,
   })
-  const stagingRoot = await mkdtemp(join(tmpdir(), 'tsgo-emit-'))
+  // Buck overrides TMPDIR with worktree-local action scratch on Darwin. Keep
+  // resolution outside that hierarchy even when the inherited TMPDIR is local.
+  const temporaryDirectory = process.platform === 'darwin' ? '/private/tmp' : tmpdir()
+  const stagingRoot = await mkdtemp(join(temporaryDirectory, 'tsgo-emit-'))
   let status = 1
   let primaryError: unknown
 
@@ -965,7 +970,8 @@ export const runEmit = async (options: EmitOptions): Promise<number> => {
 
   let cleanupError: unknown
   try {
-    await rm(stagingRoot, { force: true, recursive: true })
+    if (process.platform === 'darwin' && primaryError !== undefined) await removeTree(stagingRoot)
+    else await rm(stagingRoot, { force: true, recursive: true })
   } catch (error) {
     cleanupError = error
   }

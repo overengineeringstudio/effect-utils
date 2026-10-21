@@ -151,8 +151,10 @@ unchanged. Linux reports
 from shared cache by `local-materialization-policy` even when sandboxed.
 
 Darwin emit resolution is isolated independently of containment admission. The
-runner clones each declared source/dependency read root into one private
-`TMPDIR` staging directory with one fixed-arity `clonefile(2)` call per root.
+runner clones each declared source/dependency read root into one unique mode-0700
+staging directory under `/private/tmp`, independent of Buck's worktree-local
+`TMPDIR`, with one fixed-arity `clonefile(2)` call per root. Staging is removed
+after success, failure, and handled termination signals.
 Non-APFS or cross-filesystem inputs use a logged byte-copy fallback. Every
 dependency symlink is rebound to a staged declared root; a link outside the
 declared closure fails before compilation. Imported declarations therefore
