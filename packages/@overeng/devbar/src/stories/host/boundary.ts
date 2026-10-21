@@ -26,6 +26,17 @@ export const startHostDiagnostics = async (
   return mountDiagnostics(options)
 }
 
+/** Keep loader and runtime failures visible even when a runner omits Error.cause. */
+export const hostDiagnosticsFailure = (cause: unknown): Error => {
+  const detail =
+    cause instanceof Error
+      ? cause.message
+      : typeof cause === 'object' && cause !== null && '_tag' in cause
+        ? String(cause._tag)
+        : String(cause)
+  return new Error(`Host diagnostics Failed: ${detail}`, { cause })
+}
+
 /** Storage is best-effort host policy, never a responsibility of the shell. */
 export const readHostPreference = (key: string): boolean => {
   if (import.meta.env.DEV === false && import.meta.env.VITE_HOST_DIAGNOSTICS !== 'true')

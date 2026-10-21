@@ -19,6 +19,7 @@ in
           pkgs.git
           pkgs.coreutils
           pkgs.findutils
+          pkgs.gawk
           pkgs.watchman
         ]
       }:"$PATH"

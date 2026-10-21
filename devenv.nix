@@ -1476,6 +1476,15 @@ in
     '';
   };
 
+  tasks."test:consumer-smoke" = {
+    description = "Install a fixture consumer through the candidate's standalone-staged pnpm module";
+    exec = trace.exec "test:consumer-smoke" ''
+      set -euo pipefail
+      bash ${lib.escapeShellArg "${config.devenv.root}/nix/fixtures/consumer-smoke/run.sh"} \
+        "''${CONSUMER_SMOKE_CANDIDATE:-${config.devenv.root}}"
+    '';
+  };
+
   tasks."test:megarepo-cold-gc" = {
     after = [ (consumerPublisherName "packages/@overeng/megarepo") ];
     description = "Run fixture-isolated megarepo cold-GC integration tests from the standalone checkout";

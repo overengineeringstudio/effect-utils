@@ -1,0 +1,41 @@
+{
+  "contract": "effect-utils/pnpm-install-contract",
+  "dependencyGraphContract": {
+    "allowBuilds": {},
+    "packageManager": {
+      "name": "pnpm",
+      "version": "12.7.0"
+    }
+  },
+  "installPolicy": {
+    "ignoreScripts": true
+  },
+  "packageManager": {
+    "name": "pnpm",
+    "version": "12.7.0"
+  },
+  "schemaVersion": 2,
+  "storeContract": {
+    "ci": {
+      "scope": "job"
+    },
+    "layoutVersion": "v11",
+    "localDevelopment": {
+      "contentAddressedFiles": "shared",
+      "defaultPath": "~/.local/share/pnpm/store-shared-v1",
+      "derivedIndex": "shared-pnpm-owned",
+      "pathOverrideEnvironmentVariable": "PNPM_SHARED_STORE_DIR",
+      "scope": "host-user",
+      "trustBoundary": "same-os-user"
+    },
+    "owner": "pnpm",
+    "virtualStore": {
+      "global": false,
+      "path": "node_modules/.pnpm",
+      "scope": "materialization-root"
+    }
+  },
+  "workspaceManifestContract": {
+    "packages": ["."]
+  }
+}
