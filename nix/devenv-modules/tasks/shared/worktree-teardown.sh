@@ -132,31 +132,28 @@ if [ "${WORKTREE_TEARDOWN_EDITOR_RELEASE:-0}" = 1 ]; then
   DEVENV_TUI=false devenv tasks run buck2:editor:release --mode single
 fi
 
-# Read-only Buck materializations may remain. Walk in this shell so testing
-# ownership boundaries does not start a process for every directory. Do not
-# enqueue symlinks or descend into nested repositories, including their roots.
-directories=( "$root" )
-writable=()
-while [ "${#directories[@]}" -gt 0 ]; do
-  index=$((${#directories[@]} - 1))
-  directory="${directories[$index]}"
-  unset 'directories[index]'
-  if [ "$directory" != "$root" ] &&
-    { [ -e "$directory/.git" ] || [ -L "$directory/.git" ] ||
-      [ -f "$directory/megarepo.kdl" ] || [ -f "$directory/megarepo.json" ] ||
-      [ -d "$directory/.bare" ] ||
-      { [ "${directory##*/}" = repos ] &&
-        { [ -f "${directory%/*}/megarepo.kdl" ] || [ -f "${directory%/*}/megarepo.json" ]; }; }; }; then
-    continue
+# Find ownership markers separately from directories: no shell/stat tests per
+# directory. Encode boundaries as "path/" and directories as "path//"; sorting
+# puts each boundary before its root and descendants, even for newline names.
+# The streaming filter prunes whole ownership prefixes before batched chmod.
+{
+  find -P "$root" -mindepth 2 \
+    \( -name .git -o \( -name .bare -xtype d \) -o \
+      \( \( -name megarepo.kdl -o -name megarepo.json \) -xtype f \) \) \
+    -printf '%h/\0'
+  if [ -f "$root/megarepo.kdl" ] || [ -f "$root/megarepo.json" ]; then
+    printf '%s/\0' "$root/repos"
   fi
-  writable+=( "$directory" )
-  for child in "$directory"/*; do
-    if [ -d "$child" ] && [ ! -L "$child" ]; then directories+=( "$child" ); fi
-  done
-  # Keep chmod calls batched and bounded independently of checkout size.
-  if [ "${#writable[@]}" -eq 256 ]; then
-    chmod u+w -- "${writable[@]}"
-    writable=()
-  fi
-done
-if [ "${#writable[@]}" -gt 0 ]; then chmod u+w -- "${writable[@]}"; fi
+  find -P "$root" -type d -printf '%p//\0'
+} | LC_ALL=C sort -zu | awk '
+  BEGIN { RS = "\0"; ORS = "\0" }
+  {
+    if (protected != "" && index($0, protected) == 1) next
+    protected = ""
+    if (substr($0, length($0) - 1) == "//") {
+      print substr($0, 1, length($0) - 2)
+    } else {
+      protected = $0
+    }
+  }
+' | xargs -0 -r chmod u+w --

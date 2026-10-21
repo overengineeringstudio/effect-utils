@@ -124,10 +124,10 @@ for outer tasks that must complete before the nested devenv process can evaluate
   removal; inherited by setup, check, clean, and worktree-guard imports. Stops
   every root-owned Buck isolation, releases reachable Watchman and root-keyed
   admission state, calls `buck2:editor:release` when defined, and makes real
-  directories owner-writable using one shell traversal and bounded chmod batches,
-  without following symlinks or entering nested Git/megarepo ownership boundaries.
-  Never auto-scheduled; indirect Nix gcroots are left to become dangling and be
-  pruned by Nix GC.
+  directories owner-writable using NUL-delimited find scans and a sorted streaming
+  ownership-prefix filter before batched chmod. It never follows symlinks or
+  chmods nested Git/megarepo ownership boundaries. Never auto-scheduled; indirect
+  Nix gcroots are left to become dangling and be pruned by Nix GC.
   Its live shell fixture also runs through `devenv-modules:test`; the repository's
   aggregate runner supplies pinned fingerprint, copy, move, and JSON tools rather
   than relying on a developer's ambient tool-input environment. The fixture uses

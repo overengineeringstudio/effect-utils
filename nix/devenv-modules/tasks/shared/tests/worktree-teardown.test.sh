@@ -251,6 +251,12 @@ touch "$nested_outer/composition/megarepo.kdl"
 ' "$nested_outer"
 mkdir -p "$nested_outer/bare-boundary/.bare/readonly" "$nested_outer/git-link/readonly"
 ln -s "$TEMP_ROOT/missing-git" "$nested_outer/git-link/.git"
+# A protected path prefix must not hide ordinary sibling names, and marker
+# types must retain the original shell test semantics.
+mkdir -p "$nested_outer/checkout-other" "$nested_outer/not-a-repo/megarepo.kdl"
+touch "$nested_outer/not-a-repo/.bare"
+chmod 555 "$nested_outer/checkout-other" "$nested_outer/not-a-repo" \
+  "$nested_outer/not-a-repo/megarepo.kdl"
 outer_state="$HOME/.buck/buckd/${nested_outer#/}"
 child_state="$outer_state/nested"
 (cd "$nested_outer" && "$BUCK2" --isolation-dir outer targets //: >/dev/null)
@@ -286,6 +292,9 @@ for iteration in first second; do
   "$BUN" -e '
     const fs = require("node:fs");
     const root = process.argv[1];
+    for (const name of ["checkout-other", "not-a-repo", "not-a-repo/megarepo.kdl"]) {
+      if ((fs.statSync(`${root}/${name}`).mode & 0o777) !== 0o755) process.exit(1);
+    }
     for (const [parent, mode] of [["node_modules", 0o755], ["checkout/node_modules", 0o555]]) {
       for (const name of ["", ...fs.readdirSync(`${root}/${parent}`)]) {
         const path = `${root}/${parent}/${name}`;
