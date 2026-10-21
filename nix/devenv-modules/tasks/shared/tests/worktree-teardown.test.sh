@@ -46,6 +46,9 @@ cleanup() {
     done
     # These are test-owned fixtures; restore their protected nested directories
     # only after the survival assertions, so failed tests also clean up safely.
+    for unreadable in "$nested_outer/checkout/unreadable" "$nested_outer/unreadable-owned"; do
+      if [ -d "$unreadable" ]; then chmod 700 "$unreadable"; fi
+    done
     find -P "$nested_outer" -type d -exec chmod u+w -- {} +
     git -C "$main" worktree remove --force "$nested_child" >/dev/null 2>&1 || true
     git -C "$main" worktree remove --force "$nested_outer" >/dev/null 2>&1 || true
@@ -257,6 +260,10 @@ mkdir -p "$nested_outer/checkout-other" "$nested_outer/not-a-repo/megarepo.kdl"
 touch "$nested_outer/not-a-repo/.bare"
 chmod 555 "$nested_outer/checkout-other" "$nested_outer/not-a-repo" \
   "$nested_outer/not-a-repo/megarepo.kdl"
+# Scans must not fail on unreadable nested contents, or omit an unreadable owned
+# directory from chmod. Nested ownership still protects the mode-000 directory.
+mkdir -p "$nested_outer/checkout/unreadable" "$nested_outer/unreadable-owned"
+chmod 000 "$nested_outer/checkout/unreadable" "$nested_outer/unreadable-owned"
 outer_state="$HOME/.buck/buckd/${nested_outer#/}"
 child_state="$outer_state/nested"
 (cd "$nested_outer" && "$BUCK2" --isolation-dir outer targets //: >/dev/null)
@@ -292,6 +299,8 @@ for iteration in first second; do
   "$BUN" -e '
     const fs = require("node:fs");
     const root = process.argv[1];
+    if ((fs.statSync(`${root}/checkout/unreadable`).mode & 0o777) !== 0o000) process.exit(1);
+    if ((fs.statSync(`${root}/unreadable-owned`).mode & 0o777) !== 0o200) process.exit(1);
     for (const name of ["checkout-other", "not-a-repo", "not-a-repo/megarepo.kdl"]) {
       if ((fs.statSync(`${root}/${name}`).mode & 0o777) !== 0o755) process.exit(1);
     }
@@ -307,7 +316,7 @@ for iteration in first second; do
   ' "$nested_outer" || fail 'large generated tree modes violate repository boundaries'
 done
 (cd "$nested_child" && "$BUCK2" --isolation-dir child status >/dev/null)
-echo 'PASS: nested checkout state and live daemon survive both parent teardowns; 4096 generated directories respect Git, dangling .git, .bare and megarepo boundaries; escaping and in-base intermediate symlinks are refused'
+echo 'PASS: nested checkout state and live daemon survive both parent teardowns; 4096 generated directories and unreadable nested/owned directories respect ownership boundaries; escaping and in-base intermediate symlinks are refused'
 
 # The review collision: the parent isolation name is also the nested checkout's
 # path component. Start the parent first, since native startup rotates its state.

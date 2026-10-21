@@ -137,14 +137,21 @@ fi
 # puts each boundary before its root and descendants, even for newline names.
 # The streaming filter prunes whole ownership prefixes before batched chmod.
 {
-  find -P "$root" -mindepth 2 \
-    \( -name .git -o \( -name .bare -xtype d \) -o \
-      \( \( -name megarepo.kdl -o -name megarepo.json \) -xtype f \) \) \
-    -printf '%h/\0'
+  # Use fixed relative names to exempt the worktree's own markers, without
+  # interpreting glob characters that may occur in its canonical root path.
+  # Unreadable directories cannot expose markers or descendants: prune them in
+  # both scans, but still emit owned unreadable roots for chmod below.
+  find -P . \
+    \( ! -path './.git' ! -path './.bare' \
+      ! -path './megarepo.kdl' ! -path './megarepo.json' \
+      \( -name .git -o \( -name .bare -xtype d \) -o \
+        \( \( -name megarepo.kdl -o -name megarepo.json \) -xtype f \) \) \
+      -printf '%h/\0' \) , \( -type d ! -readable -prune \)
   if [ -f "$root/megarepo.kdl" ] || [ -f "$root/megarepo.json" ]; then
-    printf '%s/\0' "$root/repos"
+    printf './repos/\0'
   fi
-  find -P "$root" -type d -printf '%p//\0'
+  find -P . -type d ! -readable -printf '%p//\0' -prune -o \
+    -type d -printf '%p//\0'
 } | LC_ALL=C sort -zu | awk '
   BEGIN { RS = "\0"; ORS = "\0" }
   {
