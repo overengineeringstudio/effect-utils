@@ -150,6 +150,19 @@ unchanged. Linux reports
 `admission_status = "linux-bwrap"`; package-tree projection remains excluded
 from shared cache by `local-materialization-policy` even when sandboxed.
 
+Darwin emit resolution is isolated independently of containment admission. The
+runner preserves writable package staging and links to declared dependency
+artifacts, then wraps only tsgo in `/usr/bin/sandbox-exec`. Its allow-default
+profile denies reads of `node_modules` subtrees and literal `package.json`,
+`tsconfig.json`, and `jsconfig.json` files at every ancestor of canonical
+`buck-out`, from the physical worktree root through `/`. Imported declarations
+cannot discover published editor dependencies by climbing out of Buck artifacts.
+Missing sandbox-exec or profile rejection fails the action without an
+unsandboxed fallback. This narrow read-deny boundary does not grant containment
+or shared-cache admission. Private mode-0700 staging is removed after success,
+failure, and handled termination signals. Linux retains its existing Bubblewrap
+boundary, which hides undeclared worktree ancestors.
+
 Decision authority is the live 2026-10-11 axe record `jd5hbf`,
 `enforce-linux-block-darwin`: enforce Linux containment and block Darwin
 admission, not Darwin execution. Action evidence names `darwin-unsandboxed`

@@ -1,8 +1,8 @@
 import { githubAccessTokenEnv, githubAppInstallationTokenStep } from './setup.ts'
 
-/** Eligibility comes only from this run's successful status write for its exact SHA. */
+/** Both independent producers must prove this run's exact candidate SHA. */
 export const publishedRefIf =
-  "github.repository == 'overengineeringstudio/effect-utils' && github.event_name == 'push' && github.ref == 'refs/heads/main' && (steps.publication-scope.outputs.current-sha == github.sha || steps.product-publication.outputs.current-sha == github.sha)"
+  "github.repository == 'overengineeringstudio/effect-utils' && github.event_name == 'push' && github.ref == 'refs/heads/main' && needs['publish-products'].result == 'success' && needs['consumer-smoke'].result == 'success' && needs['publish-products'].outputs.current-sha == github.sha && needs['consumer-smoke'].outputs.current-sha == github.sha"
 
 const publishedRefTokenStep = githubAppInstallationTokenStep({
   id: 'published-ref-token',

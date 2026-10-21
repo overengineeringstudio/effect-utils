@@ -17,10 +17,7 @@
       "-o",
       "<temporary-directory>/m3-e5-build-nyq0tfnw/probe"
     ],
-    [
-      "<temporary-directory>/m3-e5-build-nyq0tfnw/probe",
-      "suite"
-    ]
+    ["<temporary-directory>/m3-e5-build-nyq0tfnw/probe", "suite"]
   ],
   "ciChecks": [
     {

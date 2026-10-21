@@ -4,6 +4,8 @@ import { describe, it } from '@effect/vitest'
 import { Effect, FileSystem } from 'effect'
 import { expect } from 'vitest'
 
+import { hostDiagnosticsFailure } from './stories/host/boundary.ts'
+
 const forbiddenModule = /^@overeng\/(?:meters|rpc-devtools|effect-rpc-[^/]+|otel-browser)(?:\/|$)/
 
 // Scan module specifiers without depending on the unavailable tsgo compiler API.
@@ -141,4 +143,26 @@ describe('devbar shell dependency boundary', () => {
       expect(violations).toEqual([])
     }).pipe(Effect.provide(NodeServices.layer)),
   )
+})
+
+describe('host diagnostics failure reporting', () => {
+  it('keeps the original error and includes its message in runner output', () => {
+    const cause = new Error('Transport initialization failed')
+    const error = hostDiagnosticsFailure(cause)
+    expect(error.cause).toBe(cause)
+    expect(error.message).toBe('Host diagnostics Failed: Transport initialization failed')
+  })
+
+  it('includes the tag of a structured failure without a message', () => {
+    const cause = { _tag: 'TransportStartupError' }
+    const error = hostDiagnosticsFailure(cause)
+    expect(error.cause).toBe(cause)
+    expect(error.message).toContain('TransportStartupError')
+  })
+
+  it('preserves primitive rejections', () => {
+    const error = hostDiagnosticsFailure('Failed to fetch dynamically imported module')
+    expect(error.cause).toBe('Failed to fetch dynamically imported module')
+    expect(error.message).toContain('Failed to fetch dynamically imported module')
+  })
 })
