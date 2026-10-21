@@ -13,6 +13,9 @@
     "devenv.nix": {
       "stages": true
     },
+    "nix/fixtures/consumer-smoke/devenv.nix": {
+      "noStandaloneStaging": "workspace: Executes assert-consumer.cjs from the fixture checkout after pnpm:install; no single-file store staging."
+    },
     "flake.nix": {
       "noStandaloneStaging": "fixture: References synthetic inline modules and deliberately assembled runtime closures, not standalone repository sources."
     },

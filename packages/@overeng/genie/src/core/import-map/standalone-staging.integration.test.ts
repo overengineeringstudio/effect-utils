@@ -68,7 +68,7 @@ const checkNixFileInventory = ({
     references[nix] = found
     if (found.length > 0 && classifications[nix] === undefined) {
       errors.push(
-        `${nix}: unclassified Nix file references ${found[0]}; add stages or noStandaloneStaging with a reason to nix/standalone-staging.json`,
+        `${nix}: unclassified Nix file references ${found[0]}; in nix/standalone-staging.json nixFiles["${nix}"], add {"stages": true} plus sources entries for standalone files, or {"noStandaloneStaging": "<reason>"} when no repository JS/TS source is staged alone`,
       )
     }
   }
