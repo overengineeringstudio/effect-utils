@@ -113,6 +113,7 @@ export {
   standardCIEnv,
   withCiSourceRoot,
   withGcRaceRetry,
+  withNixRealisationTimeouts,
   type CiTrustTier,
   type CiWorkflowArgs,
   type GcRaceRetryOptions,

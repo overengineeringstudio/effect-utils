@@ -49,6 +49,42 @@ export const bashShellDefaults = {
   run: { shell: 'bash' },
 } as const
 
+/**
+ * Bound substitution/bootstrap steps at three times their measured p95, with
+ * a two-minute floor for runner noise. Keep measurements at the workflow call
+ * site: cache warmth and runner classes are repository-specific. GitHub's step
+ * timer also catches downloads that never trigger Nix's stalled-download-timeout.
+ */
+export const withNixRealisationTimeouts = (
+  jobs: GitHubWorkflowArgs['jobs'],
+  p95Seconds: Readonly<Record<string, number | { readonly Linux: number; readonly macOS: number }>>,
+): GitHubWorkflowArgs['jobs'] =>
+  Object.fromEntries(
+    Object.entries(jobs).map(([id, job]) => [
+      id,
+      {
+        ...job,
+        steps: job.steps.map((step) => {
+          const measured = step.name === undefined ? undefined : p95Seconds[step.name]
+          if (measured === undefined) return step
+          const timeout = (seconds: number) => {
+            const minutes = Math.max(2, Math.ceil((3 * seconds) / 60))
+            return typeof step['timeout-minutes'] === 'number'
+              ? Math.min(minutes, step['timeout-minutes'])
+              : minutes
+          }
+          const linux = timeout(typeof measured === 'number' ? measured : measured.Linux)
+          const macOS = timeout(typeof measured === 'number' ? measured : measured.macOS)
+          return {
+            ...step,
+            'timeout-minutes':
+              linux === macOS ? linux : `\${{ runner.os == 'macOS' && ${macOS} || ${linux} }}`,
+          }
+        }),
+      },
+    ]),
+  )
+
 export type CiTrustTier = 'private' | 'public'
 
 /** Step-local environment for GitHub CLI and authenticated Nix access. */
