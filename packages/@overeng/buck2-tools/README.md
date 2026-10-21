@@ -257,7 +257,17 @@ count, and actionable blockers; it deletes no unknown candidate. Explicitly stop
 unmanaged sessions and release idle worktrees/pins, or deliberately raise
 `EDITOR_VIEW_HOST_BUDGET_BYTES`. Admission/discovery failures are not swallowed.
 Post-commit maintenance failures remain advisory and do not undo a valid view.
-Reserve start, work reasons, and grants use the `[editor-view-budget]` prefix.
+Reserve start, work reasons, and grant durations use the `[editor-view-budget]`
+prefix and are forwarded live by both single and batch publication. Phase records
+explicitly distinguish entry from completion and include completion durations.
+Census completion records use `event: "completed"`, `stage`, and monotonic
+`durationMs`, with aggregate counts for root discovery, generation enumeration,
+sidecar reads (hits, misses, bytes), footprint walks on misses (walks, linked
+bytes), sidecar staging, CAS accounting, linked-inode merge (entries and distinct
+entries), sidecar installation, and fenced admission. Enumeration time excludes
+the separately measured reads, walks, and staging; records are per census or
+admission attempt, never per generation. Installation and admission durations
+include waiting for the host ledger fence.
 The structured `over-budget` event and `editor-view.host-budget` span record
 rejected admission with nonzero exit status, alongside the protected-share
 early warning at 80%. Budget, publication, phase, and
