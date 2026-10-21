@@ -260,6 +260,14 @@ failure never rejects an otherwise successful publication.
 Reserve start, work reasons, and grant durations use the `[editor-view-budget]`
 prefix and are forwarded live by both single and batch publication. Phase records
 explicitly distinguish entry from completion and include completion durations.
+Census completion records use `event: "completed"`, `stage`, and monotonic
+`durationMs`, with aggregate counts for root discovery, generation enumeration,
+sidecar reads (hits, misses, bytes), footprint walks on misses (walks, linked
+bytes), sidecar staging, CAS accounting, linked-inode merge (entries and distinct
+entries), sidecar installation, and fenced admission. Enumeration time excludes
+the separately measured reads, walks, and staging; records are per census or
+admission attempt, never per generation. Installation and admission durations
+include waiting for the host ledger fence.
 The `editor-view.host-budget` OpenTelemetry span records over-budget publication
 and the protected-share early warning at 80%. Budget, publication, phase, and
 watch-build spans share deferred, fire-and-forget, drop-on-full delivery, with at

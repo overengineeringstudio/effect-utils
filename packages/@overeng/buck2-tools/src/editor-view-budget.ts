@@ -1594,6 +1594,18 @@ const listRoots = ({
   return views
 }
 
+const censusStage = ({
+  stage,
+  durationMs,
+  ...counts
+}: { readonly stage: string; readonly durationMs: number } & Readonly<
+  Record<string, string | number>
+>): void => {
+  process.stderr.write(
+    `[editor-view-budget] ${JSON.stringify({ event: 'completed', stage, durationMs, ...counts })}\n`,
+  )
+}
+
 const takeCensus = async ({
   contentStore,
   root,
@@ -1607,6 +1619,7 @@ const takeCensus = async ({
   readonly discoverRoots: () => readonly EditorViewBudgetRoot[]
   readonly staged: Map<string, string>
 }): Promise<Census> => {
+  const discoveryStarted = performance.now()
   /* eslint-disable no-await-in-loop -- Legacy reconciliation never waits for a root lock. */
   for (const store of readState().contentStores) await synchronizeLegacyStore(store)
   /* eslint-enable no-await-in-loop */
@@ -1645,6 +1658,35 @@ const takeCensus = async ({
     }
   }
   /* eslint-enable no-await-in-loop */
+  censusStage({
+    stage: 'root-discovery',
+    durationMs: performance.now() - discoveryStarted,
+    roots: roots.length,
+  })
+  const enumerationStarted = performance.now()
+  let sidecarReadMs = 0
+  let sidecarHits = 0
+  let sidecarMisses = 0
+  let sidecarBytes = 0
+  let footprintMs = 0
+  let footprintWalks = 0
+  let footprintBytes = 0
+  let sidecarWriteMs = 0
+  let sidecarWrites = 0
+  const measureFootprint = async ({
+    dir,
+    seal = false,
+  }: {
+    readonly dir: string
+    readonly seal?: boolean
+  }) => {
+    const started = performance.now()
+    const footprint = await walkTree({ root: dir, unknown, seal })
+    footprintMs += performance.now() - started
+    footprintWalks += 1
+    footprintBytes += footprint?.linked.length ?? 0
+    return footprint
+  }
   const reservedRoots = new Set(
     Array.from(state.reservations.values(), (entry) => entry.editorRoot),
   )
@@ -1682,9 +1724,13 @@ const takeCensus = async ({
       const key = generationKey({ editorRoot: rootView.key, name })
       const stamp = cachedTreeIdentity({ editorRoot: rootView.key, name })
       const existing = state.generations.get(key)
+      const sidecarStarted = performance.now()
       if (stamp !== undefined && existing?.identity === stamp.identity) {
         const linked = await readSidecar({ entry: existing })
         if (linked !== undefined) {
+          sidecarReadMs += performance.now() - sidecarStarted
+          sidecarHits += 1
+          sidecarBytes += linked.length
           cache.set(key, existing)
           generations.push({
             key,
@@ -1702,11 +1748,12 @@ const takeCensus = async ({
           return
         }
       }
+      sidecarReadMs += performance.now() - sidecarStarted
+      sidecarMisses += 1
     }
     const unknownBefore = unknown.length
-    const footprint = await walkTree({
-      root: dir,
-      unknown,
+    const footprint = await measureFootprint({
+      dir,
       seal: reachedLegacy === true && rootView.held === true && rootView.trusted === true,
     })
     if (footprint === undefined) return
@@ -1714,7 +1761,10 @@ const takeCensus = async ({
     if (reachedLegacy === true && footprint.readOnly === true && stamp !== undefined) {
       const key = generationKey({ editorRoot: rootView.key, name })
       const sidecar = sidecarName({ key, identity: stamp.identity })
+      const writeStarted = performance.now()
       await writeSidecar({ staged, name: sidecar, linked: footprint.linked })
+      sidecarWriteMs += performance.now() - writeStarted
+      sidecarWrites += 1
       cache.set(key, {
         editorRoot: rootView.key,
         name,
@@ -1797,18 +1847,28 @@ const takeCensus = async ({
       const cached = state.generations.get(key)
       let entry: CachedGeneration | undefined
       let linked: Buffer | undefined
+      const sidecarStarted = performance.now()
       if (stamp !== undefined && cached !== undefined && cached.identity === stamp.identity) {
         linked = await readSidecar({ entry: cached })
         if (linked !== undefined) entry = cached
       }
+      sidecarReadMs += performance.now() - sidecarStarted
+      if (linked === undefined) sidecarMisses += 1
+      else {
+        sidecarHits += 1
+        sidecarBytes += linked.length
+      }
       if (entry === undefined || linked === undefined) {
-        const footprint = await walkTree({ root: dir, unknown })
+        const footprint = await measureFootprint({ dir })
         if (footprint === undefined) continue
         const recordedPackage = await recordPackage({ dir, name })
         linked = footprint.linked
         if (stamp !== undefined && footprint.readOnly === true) {
           const sidecar = sidecarName({ key, identity: stamp.identity })
+          const writeStarted = performance.now()
           await writeSidecar({ staged, name: sidecar, linked })
+          sidecarWriteMs += performance.now() - writeStarted
+          sidecarWrites += 1
           entry = {
             editorRoot,
             name,
@@ -1852,6 +1912,27 @@ const takeCensus = async ({
       })
     }
   }
+  censusStage({
+    stage: 'generation-enumeration',
+    durationMs:
+      performance.now() - enumerationStarted - sidecarReadMs - footprintMs - sidecarWriteMs,
+    generations: generations.length,
+  })
+  censusStage({
+    stage: 'sidecar-reads',
+    durationMs: sidecarReadMs,
+    hits: sidecarHits,
+    misses: sidecarMisses,
+    bytes: sidecarBytes,
+  })
+  censusStage({
+    stage: 'footprint-walks',
+    durationMs: footprintMs,
+    walks: footprintWalks,
+    linkedBytes: footprintBytes,
+  })
+  censusStage({ stage: 'sidecar-staging', durationMs: sidecarWriteMs, sidecars: sidecarWrites })
+  const casStarted = performance.now()
   const cas = { inodes: new Map<string, number>(), otherBytes: 0 }
   const contentStores = new Set([...state.contentStores, ...roots.map((view) => view.contentStore)])
   let localMetadataBytes = 0
@@ -1884,6 +1965,14 @@ const takeCensus = async ({
   /* eslint-enable no-await-in-loop */
   // Host metadata participates in accounting, but obsolete sidecars are collected under its flock.
   const ledger = await walkTree({ root: editorViewHostBudgetStateDirectory(), unknown })
+  censusStage({
+    stage: 'cas-accounting',
+    durationMs: performance.now() - casStarted,
+    stores: contentStores.size,
+    entries: cas.inodes.size,
+  })
+  const mergeStarted = performance.now()
+  let linkedEntries = 0
   const distinct = new Map(cas.inodes)
   for (const [key, size] of metadataLinked) distinct.set(key, size)
   if (ledger !== undefined)
@@ -1905,6 +1994,7 @@ const takeCensus = async ({
     forEachLinked({
       linked: generation.linked,
       visit: (key, size) => {
+        linkedEntries += 1
         distinct.set(key, size)
         referenced.add(key)
         if (holder.seen.has(key) === false) {
@@ -1925,6 +2015,12 @@ const takeCensus = async ({
   }))
     .toSorted((left, right) => right.bytes - left.bytes)
     .slice(0, topHolderCount)
+  censusStage({
+    stage: 'linked-inode-merge',
+    durationMs: performance.now() - mergeStarted,
+    entries: linkedEntries,
+    distinctEntries: distinct.size,
+  })
   return {
     epoch: state.epoch,
     measuredAtMs: Date.now(),
@@ -2615,6 +2711,7 @@ export const reserveEditorViewBudget = async ({
         await onCensus?.()
         // Publish sidecars before releasing a shared result: their temporary files
         // belong to this reservation and disappear when its scope completes.
+        const installationStarted = performance.now()
         await withHostBudgetLock(async () => {
           const state = readState()
           for (const [key, entry] of measured.cache)
@@ -2625,6 +2722,11 @@ export const reserveEditorViewBudget = async ({
             )
               state.generations.set(key, entry)
           writeState(state)
+        })
+        censusStage({
+          stage: 'sidecar-installation',
+          durationMs: performance.now() - installationStarted,
+          entries: measured.cache.size,
         })
         return measured
       }
@@ -2656,9 +2758,10 @@ export const reserveEditorViewBudget = async ({
         readonly plan: Plan
         readonly force: boolean
       }) => {
+        const admissionStarted = performance.now()
         const owners = budgetProcessOwners()
         const obsolete = obsoleteGenerationFootprints()
-        return withHostBudgetLock(async () => {
+        const result = await withHostBudgetLock(async () => {
           const state = readState()
           reclaimDeadReservations({ state, owners })
           const stale =
@@ -2775,6 +2878,15 @@ export const reserveEditorViewBudget = async ({
           writeState(state)
           return { admitted, stale, used, reserved, pending }
         })
+        censusStage({
+          stage: 'fenced-admission',
+          durationMs: performance.now() - admissionStarted,
+          admitted: Number(result.admitted),
+          usedBytes: result.used,
+          reservationBytes,
+          budgetBytes,
+        })
+        return result
       }
       let last: { census: Census; plan: Plan } | undefined
       for (let round = 0; round < maxAdmissionRounds; round += 1) {
