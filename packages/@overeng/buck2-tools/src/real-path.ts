@@ -11,9 +11,10 @@ const isMissingPath = (error: unknown): boolean =>
  * in the same namespace or the comparison is meaningless: on macOS `/tmp` is a
  * symlink to `/private/tmp`, so a realpath-ed root and a caller-supplied
  * `/tmp/...` candidate never share a prefix even when the candidate is plainly
- * inside the root. `realpathSync` alone cannot canonicalize the candidate
- * because it throws on a path the caller has not created yet, so canonicalize
- * the deepest existing ancestor and re-attach the components below it.
+ * inside the root. Resolve existing components through their reached names:
+ * raw `realpathSync` can report a different hardlink alias for a file on Darwin.
+ * For a path not created yet, canonicalize the deepest existing ancestor and
+ * re-attach the components below it.
  *
  * Where no ancestor is a symlink this is the identity, so paths under a
  * non-symlinked root (every Linux `/tmp` path, and every path already derived
@@ -25,7 +26,7 @@ export const canonicalizePath = (path: string): string => {
   let existing = absolute
   for (;;) {
     try {
-      return join(realpathSync(existing), ...trailing)
+      return join(realpathThroughName(existing), ...trailing)
     } catch (error) {
       if (isMissingPath(error) === false) throw error
     }

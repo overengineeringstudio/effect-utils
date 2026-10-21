@@ -554,6 +554,13 @@ exactly one override. Entry matching resolves symlinks while preserving hardlink
 names, so macOS file-descriptor path ambiguity cannot select a source outside the
 portable farm or skip the entry override.
 
+CommonJS `__dirname`/`__filename` normalization and farm containment assertions
+use the same name-preserving symlink resolution: raw `realpathSync` on macOS can
+report the original source name for a hardlinked farm file. Canonicalization
+resolves existing files through their symlink chains and retains missing suffixes
+below the deepest existing ancestor. A descriptor-reported hardlink alias is not
+evidence of an escape; an actual symlink to a source outside the farm is rejected.
+
 Non-bundle package execution (`exec`, `check`, `native-check`, and `build-dir`)
 still requires an explicitly declared immutable `/nix/store/.../bin/buck2-fingerprint`
 executable and fingerprints its declared read roots before and after the child
