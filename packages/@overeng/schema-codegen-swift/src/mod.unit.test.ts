@@ -56,12 +56,13 @@ describe('Swift shared-IR emitter', () => {
     })[0]!.content
     expect(text).toContain('value >= 4 && value <= 19')
     expect(text).toContain('public let value: UInt8')
-    expect(text).toContain('public typealias `Counts` = [SchemaCodegenInteger0]')
-    expect(text).toContain('public typealias `Count` = SchemaCodegenInteger0')
+    expect(text).toContain('public typealias `Counts` = [SchemaCodegen_5_Count_Integer0]')
+    expect(text).toContain('public typealias `Count` = SchemaCodegen_5_Count_Integer0')
   })
 
   it('supports finite numeric scalars and bare safe integers through the Swift admission profile', () => {
     const text = generateSwift({
+      // @effect-diagnostics-next-line schemaNumber:off -- deliberately exercises broad AST; generated scalar rejects non-finite values
       schemas: { Numbers: Schema.Array(Schema.Number), Integer: Schema.Int },
       options,
     })[0]!.content
@@ -81,10 +82,48 @@ describe('Swift shared-IR emitter', () => {
       options,
     })[0]!.content
     expect(text).toContain('/// First line\n/// Second line')
-    expect(text).toContain('case `value0` = "a-b"')
-    expect(text).toContain('case `value1` = "\\\\(interpolation)"')
-    expect(text).toContain('case `value2` = "\\u{e9}"')
-    expect(text).toContain('case `value3` = ""')
+    expect(text).toContain('case .`value0`: try container.encode("a-b")')
+    expect(text).toContain('case .`value1`: try container.encode("\\\\(interpolation)")')
+    expect(text).toContain('case .`value2`: try container.encode("\\u{e9}")')
+    expect(text).toContain('case .`value3`: try container.encode("")')
+  })
+
+  it('uses exact UTF16 literal and discriminator matching rather than Swift canonical equality', () => {
+    const text = generateSwift({
+      schemas: {
+        Literal: Schema.Literals(['é', 'e\u0301']),
+        Tag: Schema.Union([Schema.TaggedStruct('K', {}), Schema.TaggedStruct('other', {})]),
+      },
+      options,
+    })[0].content
+    expect(text).toContain('public enum `Literal`: Codable, Equatable, Sendable')
+    expect(text).not.toContain('public enum `Literal`: String')
+    expect(text).toContain('if value.utf16.elementsEqual("\\u{e9}".utf16)')
+    expect(text).toContain('if value.utf16.elementsEqual("e\\u{301}".utf16)')
+    expect(text).toContain('case let value where value.utf16.elementsEqual("K".utf16)')
+    expect(text).toContain('if stringValue.utf16.elementsEqual("_tag".utf16)')
+  })
+
+  it('namespaces numeric wrappers across independently generated files', () => {
+    const first = generateSwift({ schemas: { FirstCount: Schema.Int }, options })[0].content
+    const second = generateSwift({
+      // @effect-diagnostics-next-line schemaNumber:off -- deliberately exercises broad AST; generated scalar rejects non-finite values
+      schemas: { SecondCount: Schema.Number },
+      options: { ...options, filename: 'Secondary.swift' },
+    })[0].content
+    const firstNames = [...first.matchAll(/public struct (SchemaCodegen_\w+)/g)].map(
+      (match) => match[1],
+    )
+    const secondNames = [...second.matchAll(/public struct (SchemaCodegen_\w+)/g)].map(
+      (match) => match[1],
+    )
+    expect(firstNames).toHaveLength(1)
+    expect(secondNames).toHaveLength(1)
+    expect(firstNames[0]).not.toBe(secondNames[0])
+    expect(first).toContain('public typealias `FirstCount` = SchemaCodegen_10_FirstCount_Integer0')
+    expect(second).toContain(
+      'public typealias `SecondCount` = SchemaCodegen_11_SecondCount_Integer0',
+    )
   })
 
   it('keeps the Genie adapter an exact projection of the same files seam', () => {

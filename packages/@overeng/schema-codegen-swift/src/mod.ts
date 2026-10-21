@@ -90,6 +90,10 @@ export const generateSwift = ({
 }
 
 const emit = ({ ir, header }: { readonly ir: ContractIR; readonly header: string }): string => {
+  // Definition sets must be disjoint when files share a Swift target. Namespace
+  // public scalar wrappers by one emitted definition, not a process-global index.
+  const firstDefinition = Object.keys(ir.defs)[0] ?? ir.contract
+  const scalarNamespace = `SchemaCodegen_${firstDefinition.length}_${firstDefinition}_Integer`
   const integers = new Map<
     string,
     { readonly name: string; readonly type: Extract<Type, { kind: 'int' | 'f64' }> }
@@ -124,7 +128,7 @@ const emit = ({ ir, header }: { readonly ir: ContractIR; readonly header: string
         const key = JSON.stringify(type)
         let integer = integers.get(key)
         if (integer === undefined) {
-          integer = { name: `SchemaCodegenInteger${integers.size}`, type }
+          integer = { name: `${scalarNamespace}${integers.size}`, type }
           if (ir.defs[integer.name] !== undefined)
             return unsupported(`$/${integer.name}`, 'reserved generated integer names')
           integers.set(key, integer)
@@ -158,9 +162,9 @@ const emit = ({ ir, header }: { readonly ir: ContractIR; readonly header: string
   const keys = (names: readonly string[]): string =>
     names.length === 0
       ? 'private typealias CodingKeys = SchemaCodegenKey'
-      : `private enum CodingKeys: String, CodingKey {\n${names.map((name) => `    case ${id(name)} = ${quote(name)}`).join('\n')}\n  }`
+      : `private enum CodingKeys: String, CodingKey {\n${names.map((name) => `    case ${id(name)} = ${quote(name)}`).join('\n')}\n    var stringValue: String { rawValue }\n    var intValue: Int? { nil }\n    init?(intValue: Int) { return nil }\n    init?(stringValue: String) {\n${names.map((name) => `      if stringValue.utf16.elementsEqual(${quote(name)}.utf16) { self = .${id(name)}; return }`).join('\n')}\n      return nil\n    }\n  }`
   const excess = (names: readonly string[]): string =>
-    `let allKeys = try decoder.container(keyedBy: SchemaCodegenKey.self).allKeys\n    guard allKeys.allSatisfy({ key in ${names.length === 0 ? 'false' : names.map((name) => `key.stringValue == ${quote(name)}`).join(' || ')} }) else {\n      throw DecodingError.dataCorrupted(.init(codingPath: decoder.codingPath, debugDescription: "Unknown object key"))\n    }`
+    `let allKeys = try decoder.container(keyedBy: SchemaCodegenKey.self).allKeys\n    guard allKeys.allSatisfy({ key in ${names.length === 0 ? 'false' : names.map((name) => `key.stringValue.utf16.elementsEqual(${quote(name)}.utf16)`).join(' || ')} }) else {\n      throw DecodingError.dataCorrupted(.init(codingPath: decoder.codingPath, debugDescription: "Unknown object key"))\n    }`
   // Direct recursive value structs have infinite size. Arrays and indirect enums break that cycle.
   const checkSize = (type: Type, seen: ReadonlySet<string>): void => {
     if (type.kind === 'nullable' || type.kind === 'patch') return checkSize(type.inner, seen)
@@ -210,7 +214,8 @@ const emit = ({ ir, header }: { readonly ir: ContractIR; readonly header: string
         'Decoder',
         'Encoder',
         'DecodingError',
-      ].includes(name)
+      ].includes(name) ||
+      name.startsWith('SchemaCodegen_')
     )
       unsupported(`$/${name}`, 'names reserved by the Swift standard library or emitter runtime')
     const prefix = doc(definition.description)
@@ -230,7 +235,7 @@ const emit = ({ ir, header }: { readonly ir: ContractIR; readonly header: string
         )
         if (new Set(cases).size !== cases.length)
           unsupported(`$/${name}`, 'normalized literal case collisions')
-        return `${prefix}public enum ${id(name)}: String, Codable, Equatable, Sendable {\n${definition.values.map((value, index) => `  case ${id(cases[index]!)} = ${quote(value)}`).join('\n')}\n}`
+        return `${prefix}public enum ${id(name)}: Codable, Equatable, Sendable {\n${cases.map((value) => `  case ${id(value)}`).join('\n')}\n  public init(from decoder: Decoder) throws {\n    let container = try decoder.singleValueContainer()\n    let value = try container.decode(String.self)\n${definition.values.map((value, index) => `    if value.utf16.elementsEqual(${quote(value)}.utf16) { self = .${id(cases[index]!)}; return }`).join('\n')}\n    throw DecodingError.dataCorruptedError(in: container, debugDescription: "Unknown string literal")\n  }\n  public func encode(to encoder: Encoder) throws {\n    var container = encoder.singleValueContainer()\n    switch self {\n${definition.values.map((value, index) => `    case .${id(cases[index]!)}: try container.encode(${quote(value)})`).join('\n')}\n    }\n  }\n}`
       }
       case 'struct': {
         definition.fields.forEach((field) => checkSize(field.type, new Set([name])))
@@ -250,7 +255,7 @@ const emit = ({ ir, header }: { readonly ir: ContractIR; readonly header: string
             ...variants.flatMap(({ body }) => body.fields.map((field) => field.wire)),
           ]),
         ]
-        return `${prefix}public indirect enum ${id(name)}: Codable, Equatable, Sendable {\n${variants.map((variant) => `  case ${id(variant.tag)}(${id(variant.ref)})`).join('\n')}\n  ${keys(names)}\n  public init(from decoder: Decoder) throws {\n    let container = try decoder.container(keyedBy: CodingKeys.self)\n    switch try container.decode(String.self, forKey: .${id(definition.tagField)}) {\n${variants.map(({ tag, ref, body }) => `    case ${quote(tag)}:\n      ${body.excess === 'ignore' ? '' : excess([definition.tagField, ...body.fields.map((field) => field.wire)])}\n      self = .${id(tag)}(${id(ref)}(${body.fields.map((field) => `${id(field.wire)}: ${decode(field)}`).join(', ')}))`).join('\n')}\n    default: throw DecodingError.dataCorruptedError(forKey: .${id(definition.tagField)}, in: container, debugDescription: "Unknown union tag")\n    }\n  }\n  public func encode(to encoder: Encoder) throws {\n    var container = encoder.container(keyedBy: CodingKeys.self)\n    switch self {\n${variants.map(({ tag, body }) => `    case .${id(tag)}(let payload):\n      try container.encode(${quote(tag)}, forKey: .${id(definition.tagField)})\n${body.fields.map((field) => `      ${encode(field, `payload.${id(field.wire)}`)}`).join('\n')}`).join('\n')}\n    }\n  }\n}`
+        return `${prefix}public indirect enum ${id(name)}: Codable, Equatable, Sendable {\n${variants.map((variant) => `  case ${id(variant.tag)}(${id(variant.ref)})`).join('\n')}\n  ${keys(names)}\n  public init(from decoder: Decoder) throws {\n    let container = try decoder.container(keyedBy: CodingKeys.self)\n    let tag = try container.decode(String.self, forKey: .${id(definition.tagField)})\n    switch tag {\n${variants.map(({ tag, ref, body }) => `    case let value where value.utf16.elementsEqual(${quote(tag)}.utf16):\n      ${body.excess === 'ignore' ? '' : excess([definition.tagField, ...body.fields.map((field) => field.wire)])}\n      self = .${id(tag)}(${id(ref)}(${body.fields.map((field) => `${id(field.wire)}: ${decode(field)}`).join(', ')}))`).join('\n')}\n    default: throw DecodingError.dataCorruptedError(forKey: .${id(definition.tagField)}, in: container, debugDescription: "Unknown union tag")\n    }\n  }\n  public func encode(to encoder: Encoder) throws {\n    var container = encoder.container(keyedBy: CodingKeys.self)\n    switch self {\n${variants.map(({ tag, body }) => `    case .${id(tag)}(let payload):\n      try container.encode(${quote(tag)}, forKey: .${id(definition.tagField)})\n${body.fields.map((field) => `      ${encode(field, `payload.${id(field.wire)}`)}`).join('\n')}`).join('\n')}\n    }\n  }\n}`
       }
     }
   })

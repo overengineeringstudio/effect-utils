@@ -23,8 +23,12 @@ export const schemas = {
     labels: Schema.Array(Schema.String),
   }),
   Empty: Schema.Struct({}),
+  // @effect-diagnostics-next-line schemaNumber:off -- deliberately exercises broad AST; generated scalar rejects non-finite values
   NumberValue: Schema.Number,
   IntegerValue: Schema.Int,
+  ComposedLiteral: Schema.Literals(['é']),
+  DistinctLiterals: Schema.Literals(['é', 'e\u0301']),
+  ExactTag: Schema.Union([Schema.TaggedStruct('K', {}), Schema.TaggedStruct('other', {})]),
 }
 export const options = {
   filename: 'Contracts.swift',

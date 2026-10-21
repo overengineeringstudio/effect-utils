@@ -4,6 +4,40 @@ import CodableHelpers
 import GeneratedContracts
 
 final class ContractsTests: XCTestCase {
+  func testExactUnicodeLiteralMembership() throws {
+    let decoder = JSONDecoder()
+    let composed = Data(#""\u00e9""#.utf8)
+    let decomposed = Data(#""e\u0301""#.utf8)
+    XCTAssertEqual(try decoder.decode(ComposedLiteral.self, from: composed), .value0)
+    XCTAssertThrowsError(try decoder.decode(ComposedLiteral.self, from: decomposed))
+    let first = try decoder.decode(DistinctLiterals.self, from: composed)
+    let second = try decoder.decode(DistinctLiterals.self, from: decomposed)
+    XCTAssertEqual(first, .value0)
+    XCTAssertEqual(second, .value1)
+    XCTAssertNotEqual(first, second)
+    for (value, expected) in [(first, "\u{e9}"), (second, "e\u{301}")] {
+      let encoded = try JSONEncoder().encode(value)
+      let wire = try decoder.decode(String.self, from: encoded)
+      XCTAssertTrue(wire.utf16.elementsEqual(expected.utf16))
+    }
+  }
+
+  func testExactUnicodeDiscriminatorMembership() throws {
+    let decoder = JSONDecoder()
+    let value = try decoder.decode(ExactTag.self, from: Data(#"{"_tag":"K"}"#.utf8))
+    guard case .K = value else { return XCTFail("Expected exact K discriminator") }
+    XCTAssertThrowsError(try decoder.decode(ExactTag.self, from: Data(#"{"_tag":"\u212a"}"#.utf8)))
+  }
+
+  func testNumericHelpersFromTwoGeneratedFilesCoexist() throws {
+    let decoder = JSONDecoder()
+    XCTAssertEqual(try decoder.decode(SecondaryNumber.self, from: Data("7".utf8)).value, 7)
+    XCTAssertThrowsError(try decoder.decode(SecondaryNumber.self, from: Data("100".utf8)))
+    let primary = try decoder.decode(Scalars.self, from: Data(#"{"count":100,"truth":true,"nothing":null,"labels":[]}"#.utf8))
+    XCTAssertEqual(primary.count.value, 100)
+    XCTAssertEqual(try decoder.decode(NumberValue.self, from: Data("1.5".utf8)).value, 1.5)
+  }
+
   func testProducerRoundtrip() throws {
     let inputs = [
       #"{"_tag":"local","name":"compiler","items":[{"title":"example"}]}"#,

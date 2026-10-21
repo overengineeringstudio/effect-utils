@@ -7,7 +7,7 @@ let package = Package(
   products: [.library(name: "GeneratedContracts", targets: ["GeneratedContracts"])],
   dependencies: [.package(path: "../../../../../../swift/OverengKit")],
   targets: [
-    .target(name: "GeneratedContracts", dependencies: [.product(name: "CodableHelpers", package: "OverengKit")], exclude: ["Contracts.swift.genie.ts"]),
+    .target(name: "GeneratedContracts", dependencies: [.product(name: "CodableHelpers", package: "OverengKit")], exclude: ["Contracts.swift.genie.ts", "Secondary.swift.genie.ts"]),
     .testTarget(name: "GeneratedContractsTests", dependencies: ["GeneratedContracts", .product(name: "CodableHelpers", package: "OverengKit")]),
   ]
 )
