@@ -1,6 +1,7 @@
 import { Effect, FileSystem, Path, Schema } from 'effect'
 
 import type { PackageInfo } from '../common/types.ts'
+import { recordInput } from '../runtime/node/inputs.ts'
 import * as Observability from './observability.ts'
 
 /** Workspace provider that discovers package.json paths in a monorepo */
@@ -30,6 +31,7 @@ export const buildPackageJsonValidationContext = Effect.fn(
 
   const packages: PackageInfo[] = []
   for (const packageJsonPath of packageJsonPaths) {
+    recordInput(packageJsonPath)
     const content = yield* fs.readFileString(packageJsonPath).pipe(Effect.catch(() => Effect.void))
     if (content === undefined) continue
     const parsed = Effect.try({

@@ -36,8 +36,11 @@ know about `packageJson(...)`.
 
 With `GENIE_INPUT_MANIFEST` set, a successful full generation (all phases,
 validation enabled, not a dry run) atomically publishes that file. Its first line
-is `genie-inputs-v1`; remaining lines are sorted, deduplicated absolute input
-paths, terminated by newlines. Failed, interrupted, partial, and dry runs never
+is `genie-inputs-v1` when source closure analysis completes, or
+`genie-inputs-incomplete` when it cannot establish the closure. Only `v1` is
+cacheable; incomplete/unknown headers must mean a cache miss. Remaining lines
+are sorted, deduplicated absolute input paths, terminated by newlines.
+Failed, interrupted, partial, and dry runs never
 replace an existing manifest. Without the environment variable the CLI behaves
 as before.
 
@@ -58,9 +61,12 @@ consulted import-map/megarepo files. Root `megarepo.lock`, `flake.lock`,
 `pnpm-lock.yaml`, `pnpm-workspace.yaml`, `package.json`, and formatter configuration
 are inputs too. Literal dynamic imports discoverable by Bun's import scanner
 are included; computed import paths must be declared with `recordInput`.
-Unresolved or unreadable imports remain recorded inputs but do not make the
-scanner fail generation: optional imports may legitimately be conditional or
-caught. The real runtime import remains responsible for its own failure semantics.
+Unresolved, unreadable, or unparseable imports do not make generation fail:
+optional imports may legitimately be conditional or caught. They instead mark
+the process-shared recording incomplete, so its manifest cannot enable warm
+reuse. Missing package export targets can depend on arbitrary resolver metadata;
+recording guessed candidate paths alone is not proof of a complete closure.
+The real runtime import remains responsible for its own failure semantics.
 Installed dependency closures whose real paths remain under `node_modules`
 are owned by the package-manager/tool identity, not traversed as generator source.
 

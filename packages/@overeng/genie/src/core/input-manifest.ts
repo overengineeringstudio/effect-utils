@@ -11,6 +11,8 @@ import {
   endInputRecording,
   inputReadFileSync,
   isInputRecording,
+  isInputRecordingComplete,
+  markInputRecordingIncomplete,
   recordInput,
 } from '../runtime/node/inputs.ts'
 import { GenieGenerationFailedError } from './errors.ts'
@@ -43,8 +45,8 @@ export const recordGeneratorSourceGraph = (entries: ReadonlyArray<string>, cwd: 
     try {
       imports = transpiler.scanImports(inputReadFileSync(sourcePath, 'utf8'))
     } catch {
-      // Importing this module may be conditional or caught by the generator. Its
-      // recorded path still invalidates if unreadable/invalid source is repaired.
+      // Optional imports keep their runtime semantics, but unknown closure is not cacheable.
+      markInputRecordingIncomplete()
       continue
     }
     for (const { path: specifier } of imports) {
@@ -59,8 +61,8 @@ export const recordGeneratorSourceGraph = (entries: ReadonlyArray<string>, cwd: 
             })
           : undefined
       } catch {
-        // Resolver probes have already recorded the missing member/metadata paths.
-        // Leave failure semantics to the actual runtime import, not this scanner.
+        // Resolver errors leave the closure unknown, even when the runtime catches them.
+        markInputRecordingIncomplete()
         continue
       }
       const base = mapped ?? specifier
@@ -108,8 +110,9 @@ export const recordGeneratorSourceGraph = (entries: ReadonlyArray<string>, cwd: 
         resolved = Bun.resolveSync(base, path.dirname(sourcePath))
         canonical = realpathSync(resolved)
       } catch {
-        // In particular, `try { await import('./optional.ts') } catch { ... }`
-        // must remain valid. Missing candidates above invalidate when it appears.
+        // Missing optional exports can resolve through arbitrary package metadata.
+        // Do not guess their eventual targets or publish a cacheable closure.
+        markInputRecordingIncomplete()
         continue
       }
       // A bare workspace package can resolve through a node_modules symlink. Decide
@@ -142,7 +145,9 @@ export const withInputManifest = <A, E, R>(
                 try {
                   await fs.writeFile(
                     temporary,
-                    `genie-inputs-v1\n${[...inputs]
+                    `${isInputRecordingComplete() ? 'genie-inputs-v1' : 'genie-inputs-incomplete'}\n${[
+                      ...inputs,
+                    ]
                       .sort()
                       .map((input) => `${input}\n`)
                       .join('')}`,

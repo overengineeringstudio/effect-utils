@@ -8,6 +8,15 @@ const state = Symbol.for('@overeng/genie/input-recorder')
 const globalState = globalThis as typeof globalThis & { [state]?: Set<string> }
 const history = Symbol.for('@overeng/genie/input-history')
 const globalHistory = globalThis as typeof globalThis & { [history]?: Set<string> }
+const completeness = Symbol.for('@overeng/genie/input-completeness')
+const globalCompleteness = globalThis as typeof globalThis & { [completeness]?: boolean }
+
+/** Source analysis must fail closed without changing optional import runtime semantics. */
+export const markInputRecordingIncomplete = (): void => {
+  if (isInputRecording()) globalCompleteness[completeness] = false
+}
+
+export const isInputRecordingComplete = (): boolean => globalCompleteness[completeness] === true
 
 export const isInputRecording = (): boolean => globalState[state] !== undefined
 
@@ -23,11 +32,13 @@ export const beginInputRecording = (): Set<string> => {
   const inputs = globalHistory[history] ?? new Set<string>()
   globalHistory[history] = inputs
   globalState[state] = inputs
+  globalCompleteness[completeness] = true
   return inputs
 }
 
 export const endInputRecording = (): void => {
   delete globalState[state]
+  delete globalCompleteness[completeness]
 }
 
 // Proxies preserve Node's overloads and error semantics, including file descriptors.

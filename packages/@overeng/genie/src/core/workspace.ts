@@ -1,5 +1,6 @@
 import { Effect, FileSystem, Path } from 'effect'
 
+import { recordInput } from '../runtime/node/inputs.ts'
 import { matchesAnyPattern } from '../runtime/package-json/validation.ts'
 import { GenieNotImplementedError } from './errors.ts'
 import * as Observability from './observability.ts'
@@ -33,6 +34,7 @@ const findWorkspaceRoot = Effect.fn('workspace/findWorkspaceRoot')(function* ({
   let currentDir = cwd
   while (true) {
     const workspaceFile = pathService.join(currentDir, 'pnpm-workspace.yaml')
+    recordInput(workspaceFile)
     const stat = yield* fs.stat(workspaceFile).pipe(Effect.catch(() => Effect.void))
     if (stat?.type === 'File') {
       return currentDir
@@ -89,12 +91,14 @@ const listLevel = Effect.fnUntraced(function* (dirs: ReadonlyArray<string>) {
 
   const listings = yield* Effect.forEach(
     dirs,
-    (dir) =>
+    (dir) => {
       // A file, or a path that does not exist, simply has no entries.
-      fs.readDirectory(dir).pipe(
+      recordInput(dir)
+      return fs.readDirectory(dir).pipe(
         Effect.orElseSucceed((): ReadonlyArray<string> => []),
         Effect.map((entries) => ({ dir, entries })),
-      ),
+      )
+    },
     { concurrency: LISTING_CONCURRENCY },
   )
 
@@ -179,6 +183,7 @@ const discoverPnpmPackageJsonPaths = Effect.fn('workspace/discoverPnpmPackageJso
     if (workspaceRoot === undefined) return []
 
     const workspaceFile = pathService.join(workspaceRoot, 'pnpm-workspace.yaml')
+    recordInput(workspaceFile)
     const content = yield* fs.readFileString(workspaceFile).pipe(Effect.orElseSucceed(() => ''))
     const patterns = parsePnpmWorkspacePackages(content)
     if (patterns.length === 0) return []

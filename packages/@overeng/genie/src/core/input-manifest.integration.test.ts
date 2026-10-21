@@ -185,12 +185,14 @@ export default { data: {}, stringify: () => value + '\\n' }
         )
         const absent = run()
         expect(absent.status, absent.stdout + absent.stderr).toBe(0)
+        expect(readFileSync(manifest, 'utf8').split('\n')[0]).toBe('genie-inputs-incomplete')
         const optional = path.join(root, 'optional.ts')
         expect(readFileSync(manifest, 'utf8').split('\n')).toContain(optional)
         expect(readFileSync(path.join(root, 'result.txt'), 'utf8')).toBe('absent\n')
         writeFileSync(optional, "export const value = 'present'\n")
         const present = run()
         expect(present.status, present.stdout + present.stderr).toBe(0)
+        expect(readFileSync(manifest, 'utf8').split('\n')[0]).toBe('genie-inputs-v1')
         expect(readFileSync(manifest, 'utf8').split('\n')).toContain(optional)
         expect(readFileSync(path.join(root, 'result.txt'), 'utf8')).toBe('present\n')
       } finally {
@@ -199,6 +201,93 @@ export default { data: {}, stringify: () => value + '\\n' }
     },
     60_000,
   )
+
+  it('fails cache publication closed for a missing optional bare-package export target', () => {
+    const { root, manifest, run } = fixture()
+    try {
+      const localPackage = path.join(root, 'local-helper')
+      mkdirSync(path.join(localPackage, 'lib'), { recursive: true })
+      mkdirSync(path.join(root, 'node_modules'))
+      writeFileSync(
+        path.join(localPackage, 'package.json'),
+        JSON.stringify({
+          name: 'fixture-helper',
+          exports: { './optional': './lib/optional.ts' },
+        }),
+      )
+      symlinkSync(localPackage, path.join(root, 'node_modules', 'fixture-helper'), 'dir')
+      writeFileSync(
+        path.join(root, 'result.txt.genie.ts'),
+        `
+// Optional package export target deliberately does not exist on the first run.
+let value = 'absent'
+try {
+  value = (await import('fixture-helper/optional')).value
+} catch {}
+export default { data: {}, stringify: () => value + '\\n' }
+`,
+      )
+      const absent = run()
+      expect(absent.status, absent.stdout + absent.stderr).toBe(0)
+      expect(readFileSync(manifest, 'utf8').split('\n')[0]).toBe('genie-inputs-incomplete')
+      expect(readFileSync(path.join(root, 'result.txt'), 'utf8')).toBe('absent\n')
+      const previousPackageEntries = readdirSync(localPackage)
+      const optional = path.join(localPackage, 'lib', 'optional.ts')
+      writeFileSync(optional, "export const value = 'present'\n")
+      expect(readdirSync(localPackage)).toEqual(previousPackageEntries)
+      const present = run()
+      expect(present.status, present.stdout + present.stderr).toBe(0)
+      const inputs = readFileSync(manifest, 'utf8').split('\n')
+      expect(inputs[0]).toBe('genie-inputs-v1')
+      expect(inputs).toContain(optional)
+      expect(readFileSync(path.join(root, 'result.txt'), 'utf8')).toBe('present\n')
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  }, 60_000)
+
+  it('records handwritten workspace package census directories and manifests without importing them', () => {
+    const { root, manifest, run } = fixture()
+    try {
+      const packages = path.join(root, 'packages')
+      const firstDirectory = path.join(packages, 'first')
+      const firstManifest = path.join(firstDirectory, 'package.json')
+      mkdirSync(firstDirectory, { recursive: true })
+      writeFileSync(path.join(root, 'package.json'), '{"name":"fixture-root","private":true}\n')
+      writeFileSync(path.join(root, 'pnpm-workspace.yaml'), "packages:\n  - 'packages/*'\n")
+      writeFileSync(firstManifest, '{"name":"fixture-first","version":"1.0.0"}\n')
+      const first = run()
+      expect(first.status, first.stdout + first.stderr).toBe(0)
+      const firstInputs = readFileSync(manifest, 'utf8').split('\n')
+      expect(firstInputs[0]).toBe('genie-inputs-v1')
+      expect(firstInputs).toContain(packages)
+      expect(firstInputs).toContain(firstDirectory)
+      expect(firstInputs).toContain(firstManifest)
+      expect(existsSync(path.join(firstDirectory, 'package.json.genie.ts'))).toBe(false)
+
+      writeFileSync(firstManifest, '{"name":"fixture-first","version":"2.0.0"}\n')
+      const secondDirectory = path.join(packages, 'second')
+      const secondManifest = path.join(secondDirectory, 'package.json')
+      mkdirSync(secondDirectory)
+      writeFileSync(secondManifest, '{"name":"fixture-second","version":"1.0.0"}\n')
+      const second = run()
+      expect(second.status, second.stdout + second.stderr).toBe(0)
+      const secondInputs = readFileSync(manifest, 'utf8').split('\n')
+      expect(secondInputs[0]).toBe('genie-inputs-v1')
+      for (const input of [
+        packages,
+        firstDirectory,
+        firstManifest,
+        secondDirectory,
+        secondManifest,
+      ]) {
+        expect(secondInputs).toContain(input)
+      }
+      expect(existsSync(path.join(secondDirectory, 'package.json.genie.ts'))).toBe(false)
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  }, 60_000)
 
   it('does not publish without opt-in, on dry/partial runs, or after a failed generation', () => {
     const { root, manifest, run } = fixture()
