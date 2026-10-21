@@ -26,10 +26,14 @@ interrupted run may leave an archived-or-active scratch child page named
 confirming no test process is still running.
 
 Search tests create their own uniquely titled page under the scratch parent and
-a database with the same run-scoped title beneath that page. They poll search
-every two seconds until both the page and data source are indexed, with a
-60-second total polling timeout (including HTTP retries). The database and page
-are archived when the test scope closes, including on assertion failure.
+a database with the same run-scoped title beneath that page. The query/title is
+a single random token, without shared fixture-name words. They poll search every
+two seconds until both the page and data source are indexed, with a 60-second
+total polling timeout (including HTTP retries). Stream readiness stops
+inclusively after observing every required fixture ID, rather than exhausting
+unrelated workspace results at one result per request. Missing fixtures still
+fail readiness; the deadline is unchanged. The database and page are archived
+when the test scope closes, including on assertion failure.
 
 Each search readiness shape logs diagnostics on success and failure: time spent
 in the shape and since polling began, completed page count, fixture and
@@ -40,10 +44,12 @@ Cursor comparisons use full SHA-256 hashes, while logs retain only hash prefixes
 never raw cursors, queries, or titles. The first page of each polling attempt has
 no predecessor, so its cursor-chain comparison is `null`.
 
-The offline `search.unit.test.ts` property test uses the existing HTTP fixture
-layer to cover both manual and streamed pagination with opaque Unicode cursors,
-an empty non-terminal page, and a terminal null cursor. It needs no credentials
-and never contacts Notion.
+The offline `search.unit.test.ts` tests use the existing HTTP fixture layer to
+cover both manual and exhaustive streamed pagination with opaque Unicode
+cursors, an empty non-terminal page, and a terminal null cursor. They also cover
+the live fixture consumer with unrelated results before/between fixtures, an
+unbounded unrelated tail, missing fixtures, and fresh state on each execution.
+They need no credentials and never contact Notion.
 
 Without a scratch parent, fixture-backed tests are skipped via
 `SKIP_FIXTURE_INTEGRATION`. Token-only search checks validate response objects
