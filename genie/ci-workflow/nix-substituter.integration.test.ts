@@ -25,11 +25,15 @@ test('macOS warms the substituter immediately after successful bootstrap and ret
   )
   expect(bootstrap).toBeGreaterThan(-1)
   expect(steps[bootstrap + 1]?.name).toBe(earlyName)
-  expect(early.if).toBe('${{ success() }}')
+  expect(early.if).toBe(
+    "${{ (success()) && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}",
+  )
   expect(steps.findIndex((step) => step.name === finalName)).toBeGreaterThan(
     steps.findIndex((step) => step.name === 'Unit tests'),
   )
-  expect(final.if).toBe('${{ !cancelled() }}')
+  expect(final.if).toBe(
+    "${{ (!cancelled()) && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}",
+  )
   expect(workflow.jobs.test!.steps.some((step) => step.name === earlyName)).toBe(false)
   expect(workflow.jobs.test!.steps.some((step) => step.name === finalName)).toBe(false)
 })

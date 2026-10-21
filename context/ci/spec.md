@@ -100,6 +100,12 @@ This cache is a partial bootstrap shield: explicit remote `fetchClosure` sources
 the pinned devenv resolver's own substituter override, and the Cachix CLI built
 before local enable can still access network caches.
 
+The bounded Nix retry wrapper treats `error: unable to download '<url>': HTTP
+error 416` as transient: after an HTTP/2 drop, Nix can resume an already complete
+body at EOF and receive a correct range rejection. No `nix.conf` setting fixes
+this resume-at-EOF bug. Other HTTP 4xx failures, including 404, do not match this
+retry signature.
+
 The unit-test step retains non-gating host resource evidence sampled every five
 seconds in `test-resources-*` JSON artifacts. Linux reads `/proc`; Darwin uses
 native `vm_stat`, `sysctl`, and `ps`. Peaks are sampled, not an exhaustive

@@ -217,6 +217,50 @@ chmod +x "$download_fixture"
 CI_PROGRESS_HEARTBEAT_SECONDS=1 NIX_GC_RACE_MAX_RETRIES=2 run_nix_gc_race_retry "download-fixture" "$download_fixture" >/dev/null
 assert_eq "2" "$(cat "$test_dir/download-attempt")" "origin download failure retry count"
 
+echo "Test 4c: retries HTTP 416 from Nix resuming a completed download at EOF"
+range_fixture="$test_dir/range-fixture.sh"
+cat > "$range_fixture" <<EOF
+#!/usr/bin/env bash
+set -euo pipefail
+attempt_file="$test_dir/range-attempt"
+attempt=0
+if [ -f "\$attempt_file" ]; then
+  attempt=\$(cat "\$attempt_file")
+fi
+attempt=\$((attempt + 1))
+echo "\$attempt" > "\$attempt_file"
+if [ "\$attempt" -eq 1 ]; then
+  echo "error: unable to download 'https://example.com/archive.tar.xz': HTTP error 416" >&2
+  exit 1
+fi
+echo "range download recovered"
+EOF
+chmod +x "$range_fixture"
+CI_PROGRESS_HEARTBEAT_SECONDS=1 NIX_GC_RACE_MAX_RETRIES=2 run_nix_gc_race_retry "range-fixture" "$range_fixture" >/dev/null
+assert_eq "2" "$(cat "$test_dir/range-attempt")" "HTTP 416 retry count"
+
+echo "Test 4d: does not retry HTTP 404 download failures"
+not_found_fixture="$test_dir/not-found-fixture.sh"
+cat > "$not_found_fixture" <<EOF
+#!/usr/bin/env bash
+set -euo pipefail
+attempt_file="$test_dir/not-found-attempt"
+attempt=0
+if [ -f "\$attempt_file" ]; then
+  attempt=\$(cat "\$attempt_file")
+fi
+echo "\$((attempt + 1))" > "\$attempt_file"
+echo "error: unable to download 'https://example.com/missing.tar.xz': HTTP error 404" >&2
+exit 8
+EOF
+chmod +x "$not_found_fixture"
+set +e
+CI_PROGRESS_HEARTBEAT_SECONDS=1 NIX_GC_RACE_MAX_RETRIES=2 run_nix_gc_race_retry "not-found-fixture" "$not_found_fixture" >/dev/null 2>&1
+exit_code=$?
+set -e
+assert_exit_code 8 "$exit_code" "HTTP 404 preserves its exit code"
+assert_eq "1" "$(cat "$test_dir/not-found-attempt")" "HTTP 404 is not retried"
+
 echo "Test 5: retries missing Nix daemon socket failures without host mutation"
 daemon_fixture="$test_dir/daemon-fixture.sh"
 cat > "$daemon_fixture" <<EOF
