@@ -44,35 +44,38 @@ describe('standalone bootstrap sync resolver', () => {
         const specifiers: string[] = []
         const visit = (node: Node): void => {
           // Include type-only imports and re-exports: this module must stay self-contained.
-          if (isImportDeclaration(node) || isExportDeclaration(node)) {
+          if (isImportDeclaration(node) === true || isExportDeclaration(node) === true) {
             const specifier = node.moduleSpecifier
             if (specifier !== undefined) {
               expect(isStringLiteral(specifier)).toBe(true)
-              if (isStringLiteral(specifier)) specifiers.push(specifier.text)
+              if (isStringLiteral(specifier) === true) specifiers.push(specifier.text)
             }
           }
-          if (isImportEqualsDeclaration(node) && isExternalModuleReference(node.moduleReference)) {
+          if (
+            isImportEqualsDeclaration(node) === true &&
+            isExternalModuleReference(node.moduleReference) === true
+          ) {
             const specifier = node.moduleReference.expression
             expect(specifier !== undefined && isStringLiteral(specifier)).toBe(true)
-            if (specifier !== undefined && isStringLiteral(specifier))
+            if (specifier !== undefined && isStringLiteral(specifier) === true)
               specifiers.push(specifier.text)
           }
-          if (isImportTypeNode(node)) {
+          if (isImportTypeNode(node) === true) {
             expect(isLiteralTypeNode(node.argument)).toBe(true)
-            if (isLiteralTypeNode(node.argument)) {
+            if (isLiteralTypeNode(node.argument) === true) {
               expect(isStringLiteral(node.argument.literal)).toBe(true)
-              if (isStringLiteral(node.argument.literal))
+              if (isStringLiteral(node.argument.literal) === true)
                 specifiers.push(node.argument.literal.text)
             }
           }
           if (
-            isCallExpression(node) &&
+            isCallExpression(node) === true &&
             (node.expression.kind === SyntaxKind.ImportKeyword ||
-              (isIdentifier(node.expression) && node.expression.text === 'require'))
+              (isIdentifier(node.expression) === true && node.expression.text === 'require'))
           ) {
             const [specifier] = node.arguments
             expect(specifier !== undefined && isStringLiteral(specifier)).toBe(true)
-            if (specifier !== undefined && isStringLiteral(specifier))
+            if (specifier !== undefined && isStringLiteral(specifier) === true)
               specifiers.push(specifier.text)
           }
           node.forEachChild((child) => {

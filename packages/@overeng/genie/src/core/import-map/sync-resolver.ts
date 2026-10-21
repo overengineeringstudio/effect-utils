@@ -52,10 +52,13 @@ export const parseImportMapFromGenieSource = (sourceContent: string): ImportMap 
 /**
  * Synchronous version of findPackageJsonWithImports for Bun resolver hooks.
  */
-export const findPackageJsonWithImportsSync = (
-  fromPath: string,
-  fs: ResolverFileSystem = nodeFs,
-): string | undefined => {
+export const findPackageJsonWithImportsSync = ({
+  fromPath,
+  fs = nodeFs,
+}: {
+  fromPath: string
+  fs?: ResolverFileSystem
+}): string | undefined => {
   let dir = path.dirname(fromPath)
   const root = path.parse(dir).root
 
@@ -96,10 +99,13 @@ export const findPackageJsonWithImportsSync = (
 /**
  * Synchronous import map extraction for resolver hooks.
  */
-export const extractImportMapSync = (
-  packageJsonPath: string,
-  fs: ResolverFileSystem = nodeFs,
-): ImportMap => {
+export const extractImportMapSync = ({
+  packageJsonPath,
+  fs = nodeFs,
+}: {
+  packageJsonPath: string
+  fs?: ResolverFileSystem
+}): ImportMap => {
   if (fs.existsSync(packageJsonPath) === true) {
     try {
       const content = fs.readFileSync(packageJsonPath, 'utf8')
@@ -264,7 +270,13 @@ const deriveStoreWorktreePathFromLockMember = ({
   })
 }
 
-const findRepoRootSync = (fromDirectory: string, fs: ResolverFileSystem): string | undefined => {
+const findRepoRootSync = ({
+  fromDirectory,
+  fs,
+}: {
+  fromDirectory: string
+  fs: ResolverFileSystem
+}): string | undefined => {
   let current = path.resolve(fromDirectory)
   let previous = ''
 
@@ -296,7 +308,10 @@ const resolveLocalMegarepoMemberRootSync = ({
   workspaceRoot?: string | undefined
   fs: ResolverFileSystem
 }): string | undefined => {
-  const repoRoot = findRepoRootSync(workspaceRoot ?? path.dirname(importerPath), fs)
+  const repoRoot = findRepoRootSync({
+    fromDirectory: workspaceRoot ?? path.dirname(importerPath),
+    fs,
+  })
   if (repoRoot === undefined) return undefined
 
   const lockPath = path.join(repoRoot, 'megarepo.lock')
@@ -454,12 +469,12 @@ export const resolveImportMapSpecifierForImporterSync = ({
     return resolvedMegarepoMember
   }
 
-  const packageJsonPath = findPackageJsonWithImportsSync(importerPath, fs)
+  const packageJsonPath = findPackageJsonWithImportsSync({ fromPath: importerPath, fs })
   if (packageJsonPath === undefined) {
     return undefined
   }
 
-  const importMap = extractImportMapSync(packageJsonPath, fs)
+  const importMap = extractImportMapSync({ packageJsonPath, fs })
   if (Object.keys(importMap).length === 0) {
     return undefined
   }
