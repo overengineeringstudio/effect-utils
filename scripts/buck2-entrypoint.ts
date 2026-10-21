@@ -1,5 +1,5 @@
 #!/usr/bin/env -S bun
-import { cc } from 'bun:ffi'
+import { cc, dlopen } from 'bun:ffi'
 import { spawnSync } from 'node:child_process'
 import { createHash, randomUUID } from 'node:crypto'
 import {
@@ -32,7 +32,6 @@ import {
   reconcileWatcherDaemon,
   withoutManagedWatcherBlock,
 } from './buck2-file-watcher.ts'
-import stdioSource from './buck2-stdio.c' with { type: 'file' }
 
 const configCommands: Record<string, true> = {
   build: true,
@@ -675,18 +674,40 @@ export const reconcileGateDaemon = ({
   }
 }
 
+// Replaced by the Nix build; source execution uses TinyCC on the physical file.
+declare const BUCK2_STDIO_LIBRARY: string
 if (import.meta.main === true) {
   try {
-    // Bun embeds this source in the compiled launcher. TinyCC needs neither
-    // generated packages nor host SDK headers for these fixed-arity wrappers.
-    const stdio = cc({
-      source: Bun.file(stdioSource),
-      symbols: {
+    let restoreStdio: (() => void) | undefined
+    try {
+      const symbols = {
         eu_getfl: { args: ['i32'], returns: 'i32' },
         eu_setfl: { args: ['i32', 'i32'], returns: 'i32' },
-      },
-    })
-    const stdioFlags = [0, 1, 2].map((fd) => stdio.symbols.eu_getfl(fd))
+      } as const
+      // Packaged launches only load a prebuilt library. Source launches compile
+      // a physical, header-free source file without generated packages or SDKs.
+      const stdio =
+        typeof BUCK2_STDIO_LIBRARY === 'string'
+          ? dlopen(BUCK2_STDIO_LIBRARY, symbols)
+          : cc({ source: new URL('./buck2-stdio.c', import.meta.url), symbols })
+      const flags = [0, 1, 2].map((fd) => stdio.symbols.eu_getfl(fd))
+      restoreStdio = () => {
+        try {
+          for (const [fd, value] of flags.entries()) {
+            // Closed inherited descriptors have no status flags.
+            if (
+              value >= 0 &&
+              (stdio.symbols.eu_setfl(fd, value) !== 0 || stdio.symbols.eu_getfl(fd) !== value)
+            )
+              throw new Error(`could not restore inherited fd ${fd} status flags`)
+          }
+        } finally {
+          stdio.close()
+        }
+      }
+    } catch (error) {
+      writeSync(2, `warning: Buck2 stdio flag protection unavailable: ${String(error)}\n`)
+    }
     const native = process.argv[2]
     if (native === undefined) throw new Error('expected pinned Buck binary')
     if (process.argv[3] === '--gate-cleanup' || process.argv[3] === '--gate-admit') {
@@ -762,17 +783,13 @@ if (import.meta.main === true) {
     }
     if (process.execve === undefined)
       throw new Error('pinned Buck launcher requires a runtime with process.execve')
-    // Bun's process.std{in,out,err} streams can set O_NONBLOCK on the shared
-    // open file description. Preserve the caller's flags, not an assumed
-    // blocking default. Closed inherited descriptors have no flags to restore.
-    for (const [fd, flags] of stdioFlags.entries()) {
-      if (
-        flags >= 0 &&
-        (stdio.symbols.eu_setfl(fd, flags) !== 0 || stdio.symbols.eu_getfl(fd) !== flags)
-      )
-        throw new Error(`Buck2 launcher: could not restore inherited fd ${fd} status flags`)
+    // Synchronous diagnostics are the primary fix. Native flag restoration is
+    // defence in depth and must not prevent Buck from running.
+    try {
+      restoreStdio?.()
+    } catch (error) {
+      writeSync(2, `warning: Buck2 stdio flag restoration failed: ${String(error)}\n`)
     }
-    stdio.close()
     process.execve(native, [native, ...args], process.env)
   } catch (error) {
     writeSync(2, `${error instanceof Error ? error.message : String(error)}\n`)

@@ -227,31 +227,39 @@ afterEach(async () => {
 })
 
 describe('direct pinned Buck posture', () => {
-  for (const compiled of [false, true]) {
-    it(`preserves inherited stdio flags and complete large stderr after a launcher diagnostic (${compiled === true ? 'compiled' : 'source'})`, async () => {
+  for (const mode of ['source', 'compiled', 'missing-shim'] as const) {
+    it(`preserves inherited stdio flags and complete large stderr after a launcher diagnostic (${mode})`, async () => {
       const root = fixture()
       const baseline = join(root, 'stdio-before.json')
       const observed = join(root, 'stdio-after.json')
       const childPath = join(root, 'native-stderr.ts')
       const launcher = join(import.meta.dir, 'buck2-entrypoint.ts')
-      const executable = compiled === true ? join(root, 'compiled-launcher') : process.execPath
-      const launcherArgs = compiled === true ? [] : [launcher]
-      if (compiled === true) {
+      const library = process.env['BUCK2_STDIO_LIBRARY']
+      expect(library).toBeDefined()
+      const executable = mode === 'source' ? process.execPath : join(root, 'compiled-launcher')
+      const launcherArgs = mode === 'source' ? [launcher] : []
+      if (mode !== 'source') {
         const build = Bun.spawnSync(
-          [process.execPath, 'build', '--compile', launcher, '--outfile', executable],
+          [
+            process.execPath,
+            'build',
+            '--compile',
+            launcher,
+            '--define',
+            `BUCK2_STDIO_LIBRARY=${JSON.stringify(mode === 'missing-shim' ? join(root, 'absent-shim') : library)}`,
+            '--outfile',
+            executable,
+          ],
           { cwd: root, stdout: 'pipe', stderr: 'pipe' },
         )
         expect({ code: build.exitCode, stderr: build.stderr.toString() }).toMatchObject({ code: 0 })
       }
       const nativeFlags = `
-import { cc } from 'bun:ffi'
+import { dlopen } from 'bun:ffi'
 import { writeFileSync, writeSync } from 'node:fs'
-const stdio = cc({
-  source: ${JSON.stringify(join(import.meta.dir, 'buck2-stdio.c'))},
-  symbols: {
-    eu_getfl: { args: ['i32'], returns: 'i32' },
-    eu_setfl: { args: ['i32', 'i32'], returns: 'i32' },
-  },
+const stdio = dlopen(${JSON.stringify(library)}, {
+  eu_getfl: { args: ['i32'], returns: 'i32' },
+  eu_setfl: { args: ['i32', 'i32'], returns: 'i32' },
 })
 const flags = () => [0, 1, 2].map((fd) => stdio.symbols.eu_getfl(fd))
 `
@@ -316,6 +324,11 @@ process.execve(${JSON.stringify(executable)}, [${JSON.stringify(executable)}, ..
       }
       const stderr = Buffer.concat(chunks).toString()
       expect(stderr).toContain('warning: Buck2 REAPI probe failed:')
+      if (mode === 'missing-shim') {
+        expect(stderr.split('warning: Buck2 stdio flag protection unavailable:')).toHaveLength(2)
+      } else {
+        expect(stderr).not.toContain('warning: Buck2 stdio flag')
+      }
       expect(JSON.parse(readFileSync(observed, 'utf8'))).toEqual(
         JSON.parse(readFileSync(baseline, 'utf8')),
       )

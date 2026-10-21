@@ -1255,6 +1255,7 @@ in
   # actionlint binary path for genie's workflow validation (also used by tests)
   env.GENIE_ACTIONLINT_BIN = "${pkgs.actionlint}/bin/actionlint";
   env.BUCK2_BIN = "${buck2Machine}/bin/buck2";
+  env.BUCK2_STDIO_LIBRARY = "${buck2Machine}/libexec/libbuck2-stdio${pkgs.stdenv.hostPlatform.extensions.sharedLibrary}";
   env.BUCK2_MACHINE_VERSION = buck2Machine.version;
   # Explicit digest-tool input for the JavaScript product contract test, including
   # its direct `devenv shell -- bash ...` CI invocation.
