@@ -899,6 +899,33 @@ export const MissionSchema = Schema.Struct({
     ),
   ),
   constraints: Schema.optionalKey(Schema.Array(Text)),
+  lanes: Schema.optionalKey(
+    Schema.Array(
+      Schema.Struct({
+        name: LocalId,
+        entries: Schema.optionalKey(
+          Schema.String.pipe(
+            Schema.refine((value): value is string => value.endsWith('/'), {
+              message: 'lane entries must end with /',
+            }),
+          ),
+        ),
+        approver: Schema.optionalKey(
+          Schema.String.pipe(
+            Schema.refine((value): value is string => value.startsWith('person/'), {
+              message: 'lane approver must start with person/',
+            }),
+          ),
+        ),
+      }),
+    ).pipe(
+      Schema.refine(
+        (lanes): lanes is typeof lanes =>
+          new Set(lanes.map((lane) => lane.name)).size === lanes.length,
+        { message: 'lane names must be unique within a mission' },
+      ),
+    ),
+  ),
   steps: Schema.Array(Schema.Union([StepSchema, LoopSchema])),
   completion: Schema.optionalKey(CompletionSchema),
   finally: Schema.optionalKey(Schema.NonEmptyArray(StepSchema)),
@@ -2332,6 +2359,16 @@ export const mission = <const TMission extends string>(input: MissionInput<TMiss
       ...ownedDeclarationNodes(m),
       ...(m.schedule === undefined ? [] : [schedule(m.schedule)]),
       ...(m.completion === undefined ? [] : [completion(m.completion)]),
+      ...(m.lanes ?? []).map((lane) =>
+        node({
+          name: 'lane',
+          args: [lane.name],
+          children: [
+            ...optionalChild({ name: 'entries', value: lane.entries }),
+            ...optionalChild({ name: 'approver', value: lane.approver }),
+          ],
+        }),
+      ),
       ...m.steps.map((s) => ('maxRounds' in s ? loop(s) : lowerStep(s))),
       ...(m.finally === undefined
         ? []
