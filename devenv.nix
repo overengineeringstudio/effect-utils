@@ -1931,6 +1931,15 @@ in
     '';
   };
 
+  tasks."git-hooks:environment:test" = {
+    description = "Keep fixture Git commands out of the hook caller repository and staged index";
+    exec = trace.exec "git-hooks:environment:test" ''
+      exec ${pkgs.bash}/bin/bash \
+        ${./scripts/without-git-local-env.sh} \
+        ${pkgs.bash}/bin/bash "$DEVENV_ROOT/scripts/without-git-local-env.test.sh"
+    '';
+  };
+
   tasks."check:quick".after = lib.mkForce [
     "buck2:quick"
     "lint:check:format:parity"
@@ -1941,6 +1950,7 @@ in
     "check:buck2-producer-overlap"
     "nix:check:quick"
     "otel:pipeline-run:test"
+    "git-hooks:environment:test"
   ];
   # Prebuild selected collection products after genie freshness alongside editor publication,
   # then execute the platform's bounded lanes in one Buck test invocation. The per-lane tasks
@@ -2006,7 +2016,7 @@ in
   git-hooks.enable = true;
   git-hooks.hooks.check-quick = {
     enable = true;
-    entry = "DEVENV_TUI=false devenv tasks run check:quick";
+    entry = "${pkgs.bash}/bin/bash ${./scripts/without-git-local-env.sh} env DEVENV_TUI=false devenv tasks run check:quick";
     stages = [ "pre-commit" ];
     always_run = true;
     pass_filenames = false;
