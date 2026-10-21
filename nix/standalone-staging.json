@@ -1,27 +1,31 @@
 {
+  "extensions": {
+    ".ts": true,
+    ".mts": true,
+    ".cts": true,
+    ".js": true,
+    ".mjs": true,
+    ".cjs": true,
+    ".tsx": false,
+    ".jsx": false
+  },
   "sources": [
     {
       "initializationError": "",
       "source": "packages/@overeng/genie/src/core/import-map/sync-resolver.ts",
-      "nix": [
-        "nix/devenv-modules/tasks/shared/pnpm.nix"
-      ],
+      "nix": ["nix/devenv-modules/tasks/shared/pnpm.nix"],
       "allowedImports": {}
     },
     {
       "initializationError": "",
       "source": "nix/devenv-modules/tasks/shared/check-node-modules-projection-health.cjs",
-      "nix": [
-        "nix/devenv-modules/tasks/shared/pnpm.nix"
-      ],
+      "nix": ["nix/devenv-modules/tasks/shared/pnpm.nix"],
       "allowedImports": {}
     },
     {
       "initializationError": "usage: stage-pnpm-source-inputs.mjs <check|gc|publish> <workspace> <stage> [source ...]",
       "source": "nix/devenv-modules/tasks/shared/stage-pnpm-source-inputs.mjs",
-      "nix": [
-        "nix/devenv-modules/tasks/shared/pnpm.nix"
-      ],
+      "nix": ["nix/devenv-modules/tasks/shared/pnpm.nix"],
       "allowedImports": {
         "../../../../packages/@overeng/genie/src/core/import-map/sync-resolver.ts": "packages/@overeng/genie/src/core/import-map/sync-resolver.ts"
       }
@@ -29,33 +33,25 @@
     {
       "initializationError": "",
       "source": "nix/devenv-modules/tasks/shared/changesets/check-bodies.ts",
-      "nix": [
-        "nix/devenv-modules/tasks/shared/changesets.nix"
-      ],
+      "nix": ["nix/devenv-modules/tasks/shared/changesets.nix"],
       "allowedImports": {}
     },
     {
       "initializationError": "",
       "source": "scripts/lint-no-tailwind.mjs",
-      "nix": [
-        "nix/devenv-modules/tasks/shared/lint-oxc.nix"
-      ],
+      "nix": ["nix/devenv-modules/tasks/shared/lint-oxc.nix"],
       "allowedImports": {}
     },
     {
       "initializationError": "expected root, workspace, cargo and cargo-home",
       "source": "scripts/buck2-rust-supply-manifest.ts",
-      "nix": [
-        "nix/devenv-modules/tasks/shared/buck2-rust-deps.nix"
-      ],
+      "nix": ["nix/devenv-modules/tasks/shared/buck2-rust-deps.nix"],
       "allowedImports": {}
     },
     {
       "initializationError": "",
       "source": "packages/@overeng/megarepo/src/buck2-capabilities/capability-projection.ts",
-      "nix": [
-        "nix/devenv-modules/tasks/shared/tests/buck2-capability-fixture/profiles.nix"
-      ],
+      "nix": ["nix/devenv-modules/tasks/shared/tests/buck2-capability-fixture/profiles.nix"],
       "allowedImports": {}
     },
     {
@@ -70,9 +66,7 @@
     {
       "initializationError": "",
       "source": "packages/@overeng/pty-effect/test/node-pty-native-hook.ts",
-      "nix": [
-        "devenv.nix"
-      ],
+      "nix": ["devenv.nix"],
       "allowedImports": {}
     }
   ],

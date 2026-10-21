@@ -32,8 +32,22 @@ const root = fileURLToPath(new URL('../../../../../../', import.meta.url))
 // closures need a source + Nix-file exemption with a reason in the inventory.
 // Concatenated paths support a literal relative base or a repo-root variable.
 // Keep JS/TS staging paths literal: computed paths cannot be inventoried reliably.
-const sourceReferences =
-  /(?<base>\.{1,2}\/[\w./@+-]+|\b\w+)\s*\+\s*"(?<suffix>\/[^"\n]+\.(?:ts|mts|mjs|cjs|js))"|(?<direct>\.{1,2}\/[\w./@+-]+\.(?:ts|mts|mjs|cjs|js))\b/g
+const extensionPattern = Object.keys(inventory.extensions)
+  .map((extension) => extension.slice(1))
+  .join('|')
+const sourceReferences = new RegExp(
+  String.raw`(?<base>\.{1,2}\/[\w./@+-]+|\b\w+)\s*\+\s*"(?<suffix>\/[^"\n]+\.(?:${extensionPattern}))"|(?<direct>\.{1,2}\/[\w./@+-]+\.(?:${extensionPattern}))\b`,
+  'g',
+)
+
+const assertIsolatableExtension = (source: string): void => {
+  expect(
+    Object.entries(inventory.extensions).some(
+      ([extension, supported]) => path.extname(source) === extension && supported === true,
+    ),
+    `${source}: unsupported standalone source extension; Node 24 cannot import JSX/TSX without transformation. See extensions in nix/standalone-staging.json.`,
+  ).toBe(true)
+}
 
 describe('standalone Nix-staged JS/TS sources (issue #1994)', () => {
   it('inventories every literal source reference in Nix', () => {
@@ -93,6 +107,7 @@ describe('standalone Nix-staged JS/TS sources (issue #1994)', () => {
 
   for (const entry of inventory.sources) {
     it(`${entry.source} imports only Node builtins or explicitly staged edges`, async () => {
+      assertIsolatableExtension(entry.source)
       const source = path.join(root, entry.source)
       await runTsFileAnalysis({
         cwd: path.dirname(source),
@@ -178,6 +193,7 @@ describe('standalone Nix-staged JS/TS sources (issue #1994)', () => {
       })
     })
     it(`${entry.source} loads from an isolated directory without node_modules`, () => {
+      assertIsolatableExtension(entry.source)
       const isolated = mkdtempSync(path.join(os.tmpdir(), 'standalone-staging-'))
       try {
         // Node 24 strips TS types without resolving erased type-only imports.

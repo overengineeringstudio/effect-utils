@@ -44,6 +44,10 @@ Each source is also imported by Node 24 from a fresh directory with no
 rewrite. CLI entries must reach their exact declared argument-validation error;
 other initialization errors fail. The native hook receives an explicit fixture
 entrypoint for its resolver registration.
+The inventory's `extensions` map is the single extension authority shared by the
+Nix scanner and isolation checks. A `true` value permits isolated Node imports;
+`false` keeps JSX/TSX visible to the scanner but rejects standalone entries with
+an explicit unsupported-extension diagnostic instead of silently skipping them.
 
 The completeness check scans tracked and untracked, non-ignored `*.nix` files for
 literal JS/TS source paths, conservatively including workspace commands and
@@ -453,8 +457,8 @@ and toolchain capabilities; no rule interprets the header as a dependency manife
 cache key. Rules that explicitly stage a `BUCK` file still hash its complete bytes.
 
 ### Consumer Buck Roots
-Consumers needing an always-eligible product manifest should pin `ref published`, not `ref main`; see the [consumer pin contract](./context/builds/05-product-distribution/02-nix-bridge/spec.md#consumer-pin-eligibility).
 
+Consumers needing an always-eligible product manifest should pin `ref published`, not `ref main`; see the [consumer pin contract](./context/builds/05-product-distribution/02-nix-bridge/spec.md#consumer-pin-eligibility).
 
 `mkConsumerBuckRoot` accepts the named `watcherPolicy` argument. Its default,
 `"mutable-checkout"`, emits `file_watcher = watchman` and retains fail-closed
