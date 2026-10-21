@@ -439,7 +439,7 @@ mod tests {
         // Other tests spawn processes in parallel. A fork can inherit the
         // snapshot's shared flock until exec, even after read_file closes it.
         // Run the assertion alone in a child that never spawns another process.
-        let status = Command::new(std::env::current_exe().unwrap())
+        let output = Command::new(std::env::current_exe().unwrap())
             .args([
                 "--exact",
                 "inspect_cmd::tests::committed_corruption_process",
@@ -447,9 +447,16 @@ mod tests {
                 "--nocapture",
                 "--test-threads=1",
             ])
-            .status()
+            .output()
             .unwrap();
-        assert!(status.success(), "corruption subprocess failed: {status}");
+        assert!(
+            output.status.success(),
+            "corruption subprocess failed: {output:?}"
+        );
+        assert!(
+            String::from_utf8_lossy(&output.stdout).contains("COMPLETED_CORRUPTION_LOCK_CHECK"),
+            "corruption subprocess did not complete its assertions: {output:?}"
+        );
     }
 
     #[test]
@@ -466,5 +473,6 @@ mod tests {
             let writer = std::fs::OpenOptions::new().write(true).open(&path).unwrap();
             writer.try_lock().unwrap();
         }
+        println!("COMPLETED_CORRUPTION_LOCK_CHECK");
     }
 }
