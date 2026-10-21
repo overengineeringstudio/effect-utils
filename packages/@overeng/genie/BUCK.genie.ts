@@ -51,6 +51,8 @@ export const buck2TypeScriptAdmission = {
       excludes: [
         'src/build/mod.integration.test.ts',
         'src/core/discovery.unit.test.ts',
+        // Repo-wide inventory belongs to lint:check:standalone-staging, not the package tree.
+        'src/core/import-map/standalone-staging.integration.test.ts',
         'src/runtime/github-workflow/ci-runtime-scripts.unit.test.ts',
         'src/runtime/github-workflow/ci-workflow-helpers.unit.test.ts',
         'src/runtime/package-json/package-json.unit.test.ts',

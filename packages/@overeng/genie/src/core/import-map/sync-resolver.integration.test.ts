@@ -1,23 +1,9 @@
 import { spawnSync } from 'node:child_process'
 import { copyFileSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
-import { isBuiltin } from 'node:module'
 import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import type { Node } from 'typescript/unstable/ast'
-import {
-  isCallExpression,
-  isExportDeclaration,
-  isExternalModuleReference,
-  isIdentifier,
-  isImportDeclaration,
-  isImportEqualsDeclaration,
-  isImportTypeNode,
-  isLiteralTypeNode,
-  isStringLiteral,
-  SyntaxKind,
-} from 'typescript/unstable/ast'
 import { describe, expect, it } from 'vitest'
 
 import {
@@ -25,73 +11,12 @@ import {
   endInputRecording,
   inputFileSystem,
 } from '../../runtime/node/inputs.ts'
-import { runTsFileAnalysis } from '../../runtime/node/ts-api.ts'
 import { resolveImportMapSpecifierForImporterSync } from './sync-resolver.ts'
 
 const resolverPath = fileURLToPath(new URL('./sync-resolver.ts', import.meta.url))
 
 /** Decision 0003: pnpm stages this file alone, not its relative dependency closure. */
 describe('standalone bootstrap sync resolver', () => {
-  it('imports only explicit node: builtins, with no relative module dependencies (decision 0003)', async () => {
-    await runTsFileAnalysis({
-      cwd: path.dirname(resolverPath),
-      initialFiles: [resolverPath],
-      use: async (session) => {
-        const outcome = await session.analyze(resolverPath)
-        expect(outcome.kind).toBe('analyzed')
-        if (outcome.kind !== 'analyzed') return
-
-        const specifiers: string[] = []
-        const visit = (node: Node): void => {
-          // Include type-only imports and re-exports: this module must stay self-contained.
-          if (isImportDeclaration(node) === true || isExportDeclaration(node) === true) {
-            const specifier = node.moduleSpecifier
-            if (specifier !== undefined) {
-              expect(isStringLiteral(specifier)).toBe(true)
-              if (isStringLiteral(specifier) === true) specifiers.push(specifier.text)
-            }
-          }
-          if (
-            isImportEqualsDeclaration(node) === true &&
-            isExternalModuleReference(node.moduleReference) === true
-          ) {
-            const specifier = node.moduleReference.expression
-            expect(specifier !== undefined && isStringLiteral(specifier)).toBe(true)
-            if (specifier !== undefined && isStringLiteral(specifier) === true)
-              specifiers.push(specifier.text)
-          }
-          if (isImportTypeNode(node) === true) {
-            expect(isLiteralTypeNode(node.argument)).toBe(true)
-            if (isLiteralTypeNode(node.argument) === true) {
-              expect(isStringLiteral(node.argument.literal)).toBe(true)
-              if (isStringLiteral(node.argument.literal) === true)
-                specifiers.push(node.argument.literal.text)
-            }
-          }
-          if (
-            isCallExpression(node) === true &&
-            (node.expression.kind === SyntaxKind.ImportKeyword ||
-              (isIdentifier(node.expression) === true && node.expression.text === 'require'))
-          ) {
-            const [specifier] = node.arguments
-            expect(specifier !== undefined && isStringLiteral(specifier)).toBe(true)
-            if (specifier !== undefined && isStringLiteral(specifier) === true)
-              specifiers.push(specifier.text)
-          }
-          node.forEachChild((child) => {
-            visit(child)
-            return undefined
-          })
-        }
-        visit(outcome.analysis.sourceFile)
-        expect(specifiers.length).toBeGreaterThan(0)
-        expect(
-          specifiers.filter((specifier) => !specifier.startsWith('node:') || !isBuiltin(specifier)),
-        ).toEqual([])
-      },
-    })
-  })
-
   it('loads the resolver copied alone into pnpm staging without installed dependencies', () => {
     const root = realpathSync(mkdtempSync(path.join(os.tmpdir(), 'genie-sync-resolver-')))
     try {
