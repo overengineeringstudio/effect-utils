@@ -296,6 +296,8 @@ Each contract has one authoring owner. The foundation owns a TypeScript compiler
 
 The compiler lowers a closed, versioned IR covering structs, records, arrays, literals, discriminated unions, refs/recursion, integer widths, string predicates, presence, and semantic scalars. Admission failures carry source path, unsupported feature and remedy; opaque checks, arbitrary transforms/defaults, unsafe number projections, unsupported regex flags and UTF-16/code-point mismatches fail rather than lose constraints.
 
+Shared admission and IR are owned by [`@overeng/schema-codegen`](../../packages/@overeng/schema-codegen/docs/spec.md). `@overeng/effect-rust/compiler` composes that core with its Rust and JSON Schema emitters; the Swift emitter consumes the same IR with an explicitly selected Swift JSON admission profile. Existing Rust callers retain the default profile, registered schema identities and byte-identical emitted files. Target-specific admission does not silently broaden another emitter's accepted wire subset.
+
 Contracts use ordinary Effect Schema nodes and checks, not a parallel `Wire.*` authoring language. A small `EffectRust` module supplies namespaced annotations where validation alone cannot select storage or transport. `ContractJson`, `Borsh` and `Columns` are boundary operations, not schema replacements:
 
 ```ts

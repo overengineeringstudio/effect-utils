@@ -1,6 +1,6 @@
 import { Schema } from 'effect'
 
-import { AdmissionError } from '../compiler/ir.ts'
+import { AdmissionError } from './ir.ts'
 
 /** Deliberately small intersection of ECMAScript Unicode and Rust regex syntax.
  * Full-string anchors avoid the engines' different unanchored/end-line rules.

@@ -506,6 +506,44 @@
       ],
       "kind": "package",
       "linuxBuildCapabilities": ["bubblewrap"],
+      "name": "@overeng/schema-codegen",
+      "outputName": "overeng-schema-codegen.tgz",
+      "packagePath": "packages/@overeng/schema-codegen",
+      "packageTreePath": "packages/@overeng/schema-codegen",
+      "target": "effect_utils//packages/@overeng/schema-codegen:dist-package",
+      "version": "0.1.0"
+    },
+    {
+      "buildCapabilities": [
+        "action-env",
+        "archive-tool",
+        "buck2-fingerprint",
+        "bun",
+        "effect-tsgo",
+        "product",
+        "rust-shell"
+      ],
+      "kind": "package",
+      "linuxBuildCapabilities": ["bubblewrap"],
+      "name": "@overeng/schema-codegen-swift",
+      "outputName": "overeng-schema-codegen-swift.tgz",
+      "packagePath": "packages/@overeng/schema-codegen-swift",
+      "packageTreePath": "packages/@overeng/schema-codegen-swift",
+      "target": "effect_utils//packages/@overeng/schema-codegen-swift:dist-package",
+      "version": "0.1.0"
+    },
+    {
+      "buildCapabilities": [
+        "action-env",
+        "archive-tool",
+        "buck2-fingerprint",
+        "bun",
+        "effect-tsgo",
+        "product",
+        "rust-shell"
+      ],
+      "kind": "package",
+      "linuxBuildCapabilities": ["bubblewrap"],
       "name": "@overeng/stylex-tokens",
       "outputName": "overeng-stylex-tokens.tgz",
       "packagePath": "packages/@overeng/stylex-tokens",

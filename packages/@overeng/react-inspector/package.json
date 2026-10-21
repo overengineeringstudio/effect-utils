@@ -8,6 +8,7 @@
       "packages/@overeng/effect-rust",
       "packages/@overeng/otel-contract",
       "packages/@overeng/react-inspector",
+      "packages/@overeng/schema-codegen",
       "packages/@overeng/utils",
       "packages/@overeng/utils-dev",
       "packages/@overeng/utils-storybook"

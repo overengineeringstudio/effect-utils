@@ -1,4 +1,10 @@
-import { integerRanges, reject, type ContractIR, type Definition, type Type } from './ir.ts'
+import {
+  integerRanges,
+  reject,
+  type ContractIR,
+  type Definition,
+  type Type,
+} from '@overeng/schema-codegen'
 
 /** Versioned vocabulary: consumers must implement these keywords, not silently ignore them. */
 export const EFFECT_RUST_VOCABULARY = 'https://effect-rust.dev/schema/v1'
@@ -33,6 +39,12 @@ export const emitJsonSchema = (ir: ContractIR, root: string): JsonSchemaObject =
     property?: boolean
   }): JsonSchemaObject => {
     switch (value.kind) {
+      case 'f64':
+        return reject(
+          '$',
+          'binary64 is not admitted by the Rust profile',
+          'Use explicit F32 or bounded integers',
+        )
       case 'string':
         return { type: 'string' }
       case 'bool':

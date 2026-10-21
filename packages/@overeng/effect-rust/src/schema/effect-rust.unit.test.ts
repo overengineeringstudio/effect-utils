@@ -2,11 +2,12 @@ import { describe, it } from '@effect/vitest'
 import { Schema, SchemaTransformation } from 'effect'
 import { expect } from 'vitest'
 
+import * as EffectRust from '@overeng/schema-codegen/annotations'
+
 import { importRustSchema } from '../compiler/import-rust.ts'
 import { emitJsonSchema } from '../compiler/json-schema.ts'
 import { AdmissionError, lower } from '../compiler/mod.ts'
 import * as ContractJson from './contract-json.ts'
-import * as EffectRust from './effect-rust.ts'
 
 // These are the exact expressions emitted for a transparent Rust f32 newtype
 // and a required Option<Newtype> field, respectively.

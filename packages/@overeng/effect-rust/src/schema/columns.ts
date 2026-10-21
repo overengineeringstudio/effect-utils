@@ -1,7 +1,8 @@
 import { Schema } from 'effect'
 
-import type { Type, Width } from '../compiler/ir.ts'
-import { lower } from '../compiler/lower.ts'
+import type { Type, Width } from '@overeng/schema-codegen'
+import { lower } from '@overeng/schema-codegen'
+
 import { FrameError } from './borsh.ts'
 
 /** Numeric structure-of-arrays storage uses the same inferred or pinned width as frames. */

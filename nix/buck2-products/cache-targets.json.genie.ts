@@ -73,6 +73,8 @@ const packageProducts = [
   '@overeng/outline',
   '@overeng/otel-contract',
   '@overeng/restate-effect',
+  '@overeng/schema-codegen',
+  '@overeng/schema-codegen-swift',
   '@overeng/stylex-tokens',
   '@overeng/tui-core',
   '@overeng/tui-react',

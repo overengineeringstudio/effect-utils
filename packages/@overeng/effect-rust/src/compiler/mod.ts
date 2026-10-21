@@ -32,16 +32,17 @@
  * and no `properties`. Wire JSON decoders accept any key order; canonical encoders emit the discriminator first, then
  * the remaining keys sorted by UTF-16 code unit.
  */
-import { Schema } from 'effect'
+import type { Schema } from 'effect'
+
+import { hasNumericFloats, tagFields, type ContractIR } from '@overeng/schema-codegen'
+import { lower } from '@overeng/schema-codegen'
 
 import type { FrameOptions } from '../schema/borsh.ts'
 import { canonicalJson } from '../schema/json.ts'
 import { importRustSchema } from './import-rust.ts'
-import { hasNumericFloats, tagFields, type ContractIR } from './ir.ts'
 import { emitJsonSchema } from './json-schema.ts'
-import { lower } from './lower.ts'
 import { emitRust, type RustOptions } from './rust.ts'
-export { lower } from './lower.ts'
+export { contractsOf, lower } from '@overeng/schema-codegen'
 export { emitJsonSchema, EFFECT_RUST_KEYWORDS, EFFECT_RUST_VOCABULARY } from './json-schema.ts'
 export { importRustSchema } from './import-rust.ts'
 export { emitRust } from './rust.ts'
@@ -52,8 +53,8 @@ export type {
   RustVector,
   RustOutput,
 } from './rust.ts'
-export { AdmissionError, tagFields } from './ir.ts'
-export type { ContractIR, Definition, Field, Type, Width } from './ir.ts'
+export { AdmissionError, tagFields } from '@overeng/schema-codegen'
+export type { ContractIR, Definition, Field, Type, Width } from '@overeng/schema-codegen'
 
 /** Shared acceptance vector: `input`/`canonical` are JSON data; decoders see `JSON.stringify(input)`. */
 export interface Vector {
@@ -75,16 +76,6 @@ export interface CompileOutput {
   readonly ir: ContractIR
   readonly files: Readonly<Record<string, string>>
 }
-
-/** Selects the schema-valued exports of a contract module namespace (`import * as Contracts from './contracts.ts'`). */
-export const contractsOf = (
-  module: Readonly<Record<string, unknown>>,
-): Readonly<Record<string, Schema.Constraint>> =>
-  Object.fromEntries(
-    Object.entries(module).filter((entry): entry is [string, Schema.Constraint] =>
-      Schema.isSchema(entry[1]),
-    ),
-  )
 
 /** Pure deterministic compiler; filesystem/build orchestration belongs to the caller. Throws {@link AdmissionError}. */
 // eslint-disable-next-line overeng/named-args -- Preserve the public compile positional SDK signature.

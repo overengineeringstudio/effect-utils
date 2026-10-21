@@ -2,8 +2,9 @@ import { describe, it } from '@effect/vitest'
 import { Effect, Schema } from 'effect'
 import { expect } from 'vitest'
 
+import { pattern } from '@overeng/schema-codegen'
+
 import { parseJson } from '../schema/json.ts'
-import { pattern } from '../schema/pattern.ts'
 import { AdmissionError, compile, lower } from './mod.ts'
 
 /** Nonempty trimmed string contract shared with compiler edge proofs. */

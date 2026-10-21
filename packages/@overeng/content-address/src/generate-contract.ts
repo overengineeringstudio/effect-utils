@@ -18,6 +18,7 @@ const command = 'bun packages/@overeng/content-address/src/generate-contract.ts'
 const sourceDirectories = [
   'packages/@overeng/effect-rust/src/compiler',
   'packages/@overeng/effect-rust/src/schema',
+  'packages/@overeng/schema-codegen/src',
 ]
 const sourcePaths = [
   'packages/@overeng/content-address/src/generate-contract.ts',

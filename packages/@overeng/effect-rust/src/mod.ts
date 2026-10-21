@@ -1,7 +1,7 @@
 /** Explicit transport Layers, scoped Rust runtimes, and host capability bridges. */
 export * as Interop from './runtime/interop.ts'
 /** Portable metadata and genuinely necessary typed helpers for plain Effect Schema. */
-export * as EffectRust from './schema/effect-rust.ts'
+export * as EffectRust from '@overeng/schema-codegen/annotations'
 /** Strict JSON boundaries preserving authored Effect domain types. */
 export * as ContractJson from './schema/contract-json.ts'
 /** Typed wasm/native boundaries without JSON leaf staging. */

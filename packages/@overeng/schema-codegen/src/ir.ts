@@ -15,6 +15,7 @@ export const integerRanges: Readonly<Record<Width, readonly [number, number]>> =
 export type Type =
   | { readonly kind: 'string' | 'bool' | 'dateTime' | 'null' | 'f32' }
   | { readonly kind: 'u64' | 'i64'; readonly minimum?: string; readonly maximum?: string }
+  | { readonly kind: 'f64'; readonly minimum?: number; readonly maximum?: number }
   | {
       readonly kind: 'int'
       readonly width: Width
@@ -30,9 +31,10 @@ export interface Field {
   readonly wire: string
   readonly type: Type
   readonly presence: 'required' | 'optional'
+  readonly description?: string
 }
 /** Named portable contract definition with its validation and wire policies. */
-export type Definition =
+export type Definition = { readonly description?: string } & (
   | {
       readonly kind: 'string'
       readonly pattern?: string
@@ -55,6 +57,7 @@ export type Definition =
       readonly nonExhaustive?: boolean
     }
   | { readonly kind: 'alias'; readonly type: Type }
+)
 /** Versioned portable contract set shared by every compiler emitter. */
 export interface ContractIR {
   readonly irVersion: 1
@@ -74,6 +77,7 @@ export const tagFields = (ir: ContractIR): readonly string[] =>
 const typeHasNumericFloats = (type: Type): boolean => {
   switch (type.kind) {
     case 'f32':
+    case 'f64':
       return true
     case 'nullable':
     case 'patch':

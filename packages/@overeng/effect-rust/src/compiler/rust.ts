@@ -1,5 +1,4 @@
-import { canonicalJson } from '../schema/json.ts'
-import { assertPortablePattern } from '../schema/pattern.ts'
+import { assertPortablePattern } from '@overeng/schema-codegen'
 import {
   integerRanges,
   reject,
@@ -9,7 +8,9 @@ import {
   type Field,
   type Type,
   type Width,
-} from './ir.ts'
+} from '@overeng/schema-codegen'
+
+import { canonicalJson } from '../schema/json.ts'
 import { emitRustMetadata } from './rust-metadata.ts'
 import { rustSupport } from './rust-template.ts'
 
@@ -323,6 +324,12 @@ export const emitRust = (ir: ContractIR, options: RustOptions = {}): RustOutput 
     path: string
   }): string => {
     switch (type.kind) {
+      case 'f64':
+        return reject(
+          path,
+          'binary64 is not admitted by the Rust profile',
+          'Use explicit F32 or bounded integers',
+        )
       case 'string':
         return 'String'
       case 'bool':

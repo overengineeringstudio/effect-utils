@@ -4,7 +4,7 @@
 # Projection source: packages/@overeng/effect-rust/BUCK.genie.ts
 # Projection schema version: 13
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:a9394f735898216dec346941b9fdc8a0944177eeef1fb3bf9b1b718d96c5a895
+# Semantic fingerprint: sha256:4521e8f0a72d6e9a509fa04bd76988e6d69586768df5e07de7ce4e910bdda757
 # Regenerate: devenv tasks run genie:run
 
 load("//buck2:materialization.bzl", "export_materialization_inputs", "package_view")
@@ -21,15 +21,14 @@ export_file(
 )
 
 export_materialization_inputs([
+    "src/compiler/compiler-output.unit.test.ts",
     "src/compiler/compiler.unit.test.ts",
     "src/compiler/fixtures/bounded-contracts.ts",
     "src/compiler/fixtures/contracts.ts",
     "src/compiler/fixtures/vectors.json",
     "src/compiler/import-rust.ts",
     "src/compiler/import-rust.unit.test.ts",
-    "src/compiler/ir.ts",
     "src/compiler/json-schema.ts",
-    "src/compiler/lower.ts",
     "src/compiler/mod.ts",
     "src/compiler/optional-omission.unit.test.ts",
     "src/compiler/rough-edges.unit.test.ts",
@@ -52,13 +51,9 @@ export_materialization_inputs([
     "src/schema/contract-json.ts",
     "src/schema/contract-json.unit.test.ts",
     "src/schema/direct.ts",
-    "src/schema/discriminator.ts",
-    "src/schema/effect-rust.ts",
     "src/schema/effect-rust.unit.test.ts",
     "src/schema/json.ts",
     "src/schema/mod.ts",
-    "src/schema/pattern.ts",
-    "src/schema/timestamp.ts",
     "src/schema/validation.ts",
     "src/schema/value-codec.ts",
 ])
@@ -102,15 +97,14 @@ package_view(
     dependency_view = "//buck2/dependencies:view_packages_overeng_effect_rust_c20e5aed8413",
     files = {
         "package.json": "package.json",
+        "src/compiler/compiler-output.unit.test.ts": "src/compiler/compiler-output.unit.test.ts",
         "src/compiler/compiler.unit.test.ts": "src/compiler/compiler.unit.test.ts",
         "src/compiler/fixtures/bounded-contracts.ts": "src/compiler/fixtures/bounded-contracts.ts",
         "src/compiler/fixtures/contracts.ts": "src/compiler/fixtures/contracts.ts",
         "src/compiler/fixtures/vectors.json": "src/compiler/fixtures/vectors.json",
         "src/compiler/import-rust.ts": "src/compiler/import-rust.ts",
         "src/compiler/import-rust.unit.test.ts": "src/compiler/import-rust.unit.test.ts",
-        "src/compiler/ir.ts": "src/compiler/ir.ts",
         "src/compiler/json-schema.ts": "src/compiler/json-schema.ts",
-        "src/compiler/lower.ts": "src/compiler/lower.ts",
         "src/compiler/mod.ts": "src/compiler/mod.ts",
         "src/compiler/optional-omission.unit.test.ts": "src/compiler/optional-omission.unit.test.ts",
         "src/compiler/rough-edges.unit.test.ts": "src/compiler/rough-edges.unit.test.ts",
@@ -133,22 +127,21 @@ package_view(
         "src/schema/contract-json.ts": "src/schema/contract-json.ts",
         "src/schema/contract-json.unit.test.ts": "src/schema/contract-json.unit.test.ts",
         "src/schema/direct.ts": "src/schema/direct.ts",
-        "src/schema/discriminator.ts": "src/schema/discriminator.ts",
-        "src/schema/effect-rust.ts": "src/schema/effect-rust.ts",
         "src/schema/effect-rust.unit.test.ts": "src/schema/effect-rust.unit.test.ts",
         "src/schema/json.ts": "src/schema/json.ts",
         "src/schema/mod.ts": "src/schema/mod.ts",
-        "src/schema/pattern.ts": "src/schema/pattern.ts",
-        "src/schema/timestamp.ts": "src/schema/timestamp.ts",
         "src/schema/validation.ts": "src/schema/validation.ts",
         "src/schema/value-codec.ts": "src/schema/value-codec.ts",
         "tsconfig.json": "tsconfig.json",
     },
     workspace_dist = {
+        "node_modules/@overeng/schema-codegen/dist": "//packages/@overeng/schema-codegen:dist",
+        "node_modules/@overeng/schema-codegen/package.json": "//packages/@overeng/schema-codegen:package.json",
     },
     generated_dependencies = {
     },
     workspace_dependency_views = {
+        "node_modules/@overeng/schema-codegen/node_modules": "//packages/@overeng/schema-codegen:package_tree",
     },
     strip_project_references = True,
     runtime = "//packages/@overeng/buck2-tools:package_tree_runtime",
@@ -161,15 +154,14 @@ package_view(
     dependency_view = "//buck2/dependencies:product_view_packages_overeng_effect_rust_c20e5aed8413",
     files = {
         "package.json": "package.json",
+        "src/compiler/compiler-output.unit.test.ts": "src/compiler/compiler-output.unit.test.ts",
         "src/compiler/compiler.unit.test.ts": "src/compiler/compiler.unit.test.ts",
         "src/compiler/fixtures/bounded-contracts.ts": "src/compiler/fixtures/bounded-contracts.ts",
         "src/compiler/fixtures/contracts.ts": "src/compiler/fixtures/contracts.ts",
         "src/compiler/fixtures/vectors.json": "src/compiler/fixtures/vectors.json",
         "src/compiler/import-rust.ts": "src/compiler/import-rust.ts",
         "src/compiler/import-rust.unit.test.ts": "src/compiler/import-rust.unit.test.ts",
-        "src/compiler/ir.ts": "src/compiler/ir.ts",
         "src/compiler/json-schema.ts": "src/compiler/json-schema.ts",
-        "src/compiler/lower.ts": "src/compiler/lower.ts",
         "src/compiler/mod.ts": "src/compiler/mod.ts",
         "src/compiler/optional-omission.unit.test.ts": "src/compiler/optional-omission.unit.test.ts",
         "src/compiler/rough-edges.unit.test.ts": "src/compiler/rough-edges.unit.test.ts",
@@ -192,22 +184,20 @@ package_view(
         "src/schema/contract-json.ts": "src/schema/contract-json.ts",
         "src/schema/contract-json.unit.test.ts": "src/schema/contract-json.unit.test.ts",
         "src/schema/direct.ts": "src/schema/direct.ts",
-        "src/schema/discriminator.ts": "src/schema/discriminator.ts",
-        "src/schema/effect-rust.ts": "src/schema/effect-rust.ts",
         "src/schema/effect-rust.unit.test.ts": "src/schema/effect-rust.unit.test.ts",
         "src/schema/json.ts": "src/schema/json.ts",
         "src/schema/mod.ts": "src/schema/mod.ts",
-        "src/schema/pattern.ts": "src/schema/pattern.ts",
-        "src/schema/timestamp.ts": "src/schema/timestamp.ts",
         "src/schema/validation.ts": "src/schema/validation.ts",
         "src/schema/value-codec.ts": "src/schema/value-codec.ts",
         "tsconfig.json": "tsconfig.json",
     },
     workspace_dist = {
+        "node_modules/@overeng/schema-codegen/package.json": "//packages/@overeng/schema-codegen:package.json",
     },
     generated_dependencies = {
     },
     workspace_dependency_views = {
+        "node_modules/@overeng/schema-codegen/node_modules": "//packages/@overeng/schema-codegen:product_package_tree",
     },
     strip_project_references = True,
     runtime = "//packages/@overeng/buck2-tools:package_tree_runtime",
@@ -220,15 +210,14 @@ package_view(
     dependency_view = "//buck2/dependencies:view_packages_overeng_effect_rust_c20e5aed8413",
     files = {
         "package.json": "package.json",
+        "src/compiler/compiler-output.unit.test.ts": "src/compiler/compiler-output.unit.test.ts",
         "src/compiler/compiler.unit.test.ts": "src/compiler/compiler.unit.test.ts",
         "src/compiler/fixtures/bounded-contracts.ts": "src/compiler/fixtures/bounded-contracts.ts",
         "src/compiler/fixtures/contracts.ts": "src/compiler/fixtures/contracts.ts",
         "src/compiler/fixtures/vectors.json": "src/compiler/fixtures/vectors.json",
         "src/compiler/import-rust.ts": "src/compiler/import-rust.ts",
         "src/compiler/import-rust.unit.test.ts": "src/compiler/import-rust.unit.test.ts",
-        "src/compiler/ir.ts": "src/compiler/ir.ts",
         "src/compiler/json-schema.ts": "src/compiler/json-schema.ts",
-        "src/compiler/lower.ts": "src/compiler/lower.ts",
         "src/compiler/mod.ts": "src/compiler/mod.ts",
         "src/compiler/optional-omission.unit.test.ts": "src/compiler/optional-omission.unit.test.ts",
         "src/compiler/rough-edges.unit.test.ts": "src/compiler/rough-edges.unit.test.ts",
@@ -251,23 +240,22 @@ package_view(
         "src/schema/contract-json.ts": "src/schema/contract-json.ts",
         "src/schema/contract-json.unit.test.ts": "src/schema/contract-json.unit.test.ts",
         "src/schema/direct.ts": "src/schema/direct.ts",
-        "src/schema/discriminator.ts": "src/schema/discriminator.ts",
-        "src/schema/effect-rust.ts": "src/schema/effect-rust.ts",
         "src/schema/effect-rust.unit.test.ts": "src/schema/effect-rust.unit.test.ts",
         "src/schema/json.ts": "src/schema/json.ts",
         "src/schema/mod.ts": "src/schema/mod.ts",
-        "src/schema/pattern.ts": "src/schema/pattern.ts",
-        "src/schema/timestamp.ts": "src/schema/timestamp.ts",
         "src/schema/validation.ts": "src/schema/validation.ts",
         "src/schema/value-codec.ts": "src/schema/value-codec.ts",
         "tsconfig.json": "tsconfig.json",
         "vitest.config.ts": "vitest.config.ts",
     },
     workspace_dist = {
+        "node_modules/@overeng/schema-codegen/dist": "//packages/@overeng/schema-codegen:dist",
+        "node_modules/@overeng/schema-codegen/package.json": "//packages/@overeng/schema-codegen:package.json",
     },
     generated_dependencies = {
     },
     workspace_dependency_views = {
+        "node_modules/@overeng/schema-codegen/node_modules": "//packages/@overeng/schema-codegen:package_tree",
     },
     strip_project_references = True,
     runtime = "//packages/@overeng/buck2-tools:package_tree_runtime",
@@ -303,6 +291,7 @@ npm_package_archive(
     dist = ":dist",
     typecheck = ":typecheck",
     workspace_manifests = [
+        "//packages/@overeng/schema-codegen:package.json",
     ],
     output = "overeng-effect-rust.tgz",
     visibility = ["PUBLIC"],

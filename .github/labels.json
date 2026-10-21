@@ -396,6 +396,16 @@
       "description": "@overeng/rpc-devtools package · Set: manual"
     },
     {
+      "name": "system:schema-codegen",
+      "color": "a371f7",
+      "description": "@overeng/schema-codegen package · Set: manual"
+    },
+    {
+      "name": "system:schema-codegen-swift",
+      "color": "a371f7",
+      "description": "@overeng/schema-codegen-swift package · Set: manual"
+    },
+    {
       "name": "system:stylex-tokens",
       "color": "a371f7",
       "description": "@overeng/stylex-tokens package · Set: manual"

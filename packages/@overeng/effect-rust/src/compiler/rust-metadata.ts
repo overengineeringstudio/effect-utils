@@ -1,4 +1,5 @@
-import { reject, type ContractIR } from './ir.ts'
+import { reject, type ContractIR } from '@overeng/schema-codegen'
+
 import { emitJsonSchema } from './json-schema.ts'
 
 /** Emit lawful schemars implementations from the compiler's normalized schema definitions. */

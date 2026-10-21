@@ -1,6 +1,7 @@
 import { Effect, Schema, SchemaAST, SchemaIssue, SchemaParser, SchemaTransformation } from 'effect'
 
-import { tagKeys } from './discriminator.ts'
+import { tagKeys } from '@overeng/schema-codegen'
+
 import { canonicalJson, parseJson } from './json.ts'
 import { decode as decodeSchema, encode as encodeSchema, prepare } from './validation.ts'
 import { makeOptionalOmitter, makeValueCodec } from './value-codec.ts'
@@ -11,7 +12,7 @@ export const valueCodec = <TSchema extends Schema.ConstraintCodec<unknown>>(
 ): Schema.Codec<TSchema['Type'], unknown> => makeValueCodec({ schema, transport: 'json' })
 
 export { canonicalJson, parseJson, JsonError } from './json.ts'
-export { tagKeys } from './discriminator.ts'
+export { tagKeys } from '@overeng/schema-codegen'
 
 const jsonEffect = <TValue>(run: () => TValue): Effect.Effect<TValue, SchemaIssue.Issue> =>
   Effect.try({

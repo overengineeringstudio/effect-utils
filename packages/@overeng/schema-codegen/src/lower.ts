@@ -1,9 +1,7 @@
 import { Exit, Schema, SchemaAST } from 'effect'
 
-import { discriminator } from '../schema/discriminator.ts'
-import * as EffectRust from '../schema/effect-rust.ts'
-import { assertPortablePattern } from '../schema/pattern.ts'
-import { isTimestampAST } from '../schema/timestamp.ts'
+import * as EffectRust from './annotations.ts'
+import { discriminator } from './discriminator.ts'
 import {
   reject,
   integerRanges,
@@ -13,12 +11,15 @@ import {
   type Type,
   type Width,
 } from './ir.ts'
+import { assertPortablePattern } from './pattern.ts'
+import { isTimestampAST } from './timestamp.ts'
 
 /** Lowers live Effect schemas into the portable contract IR, rejecting lossy constructs. */
 // eslint-disable-next-line overeng/named-args -- Preserve the public lower positional SDK signature.
 export const lower = (
   contracts: Readonly<Record<string, Schema.Constraint>>,
   contract = 'contracts',
+  options: { readonly descriptions?: boolean; readonly profile?: 'swift' } = {},
 ): ContractIR => {
   const defs: Record<string, Definition> = {}
   const names = new Map<SchemaAST.AST, string>()
@@ -74,7 +75,12 @@ export const lower = (
       resolved = Schema.make<Schema.Top>(resolved).annotate(annotations).ast
       names.set(resolved, name)
     }
-    defs[name] = definition({ ast: resolved, name, path })
+    const description =
+      options.descriptions === true
+        ? Schema.resolveAnnotations(Schema.make(resolved))?.description
+        : undefined
+    const lowered = definition({ ast: resolved, name, path })
+    defs[name] = description === undefined ? lowered : { ...lowered, description }
     return { kind: 'ref', name }
   }
   const scalar = ({ ast, path }: { ast: SchemaAST.AST; path: string }): Type | undefined => {
@@ -160,8 +166,26 @@ export const lower = (
       return { kind: 'null' }
     }
     if (ast._tag === 'Number') {
+      if (options.profile === 'swift' && ast.checks === undefined) {
+        if (annotations?.[EffectRust.width] !== undefined)
+          return reject(
+            path,
+            'Width on a floating-point schema',
+            'Use Schema.Int for a storage width',
+          )
+        return { kind: 'f64' }
+      }
       const constraints = portableChecks({ ast, path })
-      const { minimum, maximum } = constraints
+      const minimum =
+        constraints.minimum ??
+        (options.profile === 'swift' && constraints.integer === true
+          ? -Number.MAX_SAFE_INTEGER
+          : undefined)
+      const maximum =
+        constraints.maximum ??
+        (options.profile === 'swift' && constraints.integer === true
+          ? Number.MAX_SAFE_INTEGER
+          : undefined)
       if (
         constraints.integer !== true ||
         minimum === undefined ||
@@ -456,6 +480,10 @@ export const lower = (
               ? { kind: 'patch', inner: nullable.inner }
               : lowered,
           presence: optional === true ? 'optional' : 'required',
+          ...(options.descriptions === true &&
+          Schema.resolveAnnotations(Schema.make(field.type))?.description !== undefined
+            ? { description: Schema.resolveAnnotations(Schema.make(field.type))!.description }
+            : {}),
         }
       })
       const excess = ast.annotations?.[EffectRust.excess] ?? 'error'

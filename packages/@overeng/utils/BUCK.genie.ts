@@ -24,7 +24,13 @@ export const buck2TypeScriptAdmission = {
       distTarget: '//packages/@overeng/utils-dev:dist',
     },
   ],
-  authorities: [{ declarationEntrypoint: 'src/isomorphic/mod.d.ts', projectFile: 'tsconfig.json' }],
+  authorities: [
+    {
+      declarationEntrypoint: 'src/isomorphic/mod.d.ts',
+      projectFile: 'tsconfig.json',
+      projectInputs: ['src/fixtures/build-identity-goldens.json'],
+    },
+  ],
   testDataRoots: [{ root: 'patches', extensions: ['.patch'] }],
   tests: [
     {

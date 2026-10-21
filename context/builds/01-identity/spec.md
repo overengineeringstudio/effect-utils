@@ -195,6 +195,66 @@ in the **binary crate** and pass it to `build_identity_from_env` and telemetry's
 `embedded_build_stamp`. Buck compiles shared libraries separately from product
 stamps; reading `option_env!` inside the helper crate loses the Nix revision.
 
+### Swift runtime and portable conformance
+
+```text
+canonical bundle fields -> BuildStamp -> machine/display -> BuildIdentity
+CLI_BUILD_STAMP JSON ----> CLIStamp -> resolveCLI --------> BuildIdentity
+                                                           |
+                                                     short/details
+```
+
+`swift/OverengKit` supplies the `BuildIdentity` SwiftPM product for macOS 13+
+and iOS 16+. `BuildStamp` models the canonical fields and derives the examples
+above: a seven-character revision, `-dirty` when dirty, commit-age display
+when available and legacy run-age fallback for a local stamp. No timestamp
+affects machine identity. `BuildIdentity` holds already-resolved machine and
+display strings; human formatting preserves them verbatim, including consumer
+wording, while deriving short/details from the same revision/time fields.
+
+`BundleBuildIdentityProvider` reads canonical fields from the generic
+`BuildIdentity` Info.plist key (a caller may select another key). Missing or
+malformed data is an explicit `unstamped` state, not a fabricated version
+from bundle ordinals. Resolve once at the composition root and inject
+`BuildIdentityProviding`. The runtime does not choose a closure revision or
+infer deployment time: stamp producers own those decisions.
+
+The `CLIStamp` adapter accepts the existing local/Nix transport without
+changing its established language-independent wire behavior:
+
+| Transport | Machine output | Display time |
+| --------- | -------------- | ------------ |
+| local | `baseVersion+local.rev[.dirty]` | run age, or committed age when supplied |
+| nix | `version+rev[-dirty]` | build age when supplied, otherwise commit age |
+| no valid stamp | `baseVersion` | no invented age |
+
+The adapter retains the supplied CLI revision rather than truncating it and
+does not duplicate an existing Nix `-dirty` suffix. Embedded Nix metadata wins
+over runtime `CLI_BUILD_STAMP`; runtime local/Nix metadata wins over the package
+fallback. An embedded local stamp alone is not a runtime stamp. These legacy
+CLI transport renderings are distinct from canonical bundle-field examples;
+short status text always uses the shared seven-character presentation rule.
+
+The contract owns
+[`identity.json`](../../../swift/OverengKit/Tests/OverengKitTests/Goldens/identity.json).
+Swift XCTest reads that authority; TypeScript's
+`build-identity-goldens.unit.test.ts` imports its package-local
+`src/fixtures/build-identity-goldens.json`. The adjacent `.json.genie.ts`
+projects the authority byte-identically so Buck inputs remain package-local.
+The authoring file records provenance; the data carries no generator metadata.
+Regenerate with `devenv tasks run genie:run`; `genie:check` owns freshness.
+Edit only the authority. Both consumers cover canonical examples, compact/long
+age buckets, supplied-string preservation, deployment details and CLI precedence.
+Swift additionally covers explicit unstamped states, missing/empty revisions,
+non-finite timestamps, clock skew and the calendar-date long-time branch.
+The calendar-date branch intentionally uses the host time zone, matching the
+existing TypeScript formatter; portable goldens do not pin a host calendar day.
+
+Run `swift test --package-path swift/OverengKit` on macOS or
+`bash swift/OverengKit/test.sh ios 'platform=iOS Simulator,id=<device-UDID>'`
+on an available iOS simulator. Both execute the same bundled corpus.
+
+
 ## Modality Rules
 
 ### CLI

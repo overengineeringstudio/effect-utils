@@ -1,5 +1,5 @@
 /** Rust-compatible schema factories and annotations. */
-export * as EffectRust from './effect-rust.ts'
+export * as EffectRust from '@overeng/schema-codegen/annotations'
 /** Strict schema-directed JSON codecs. */
 export * as ContractJson from './contract-json.ts'
 /** Structured in-process codecs: bigint widths and integral epoch milliseconds. */

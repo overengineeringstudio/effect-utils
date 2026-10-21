@@ -1,9 +1,10 @@
 import { describe, it } from '@effect/vitest'
 import { expect } from 'vitest'
 
+import { AdmissionError } from '@overeng/schema-codegen'
+import type { ContractIR } from '@overeng/schema-codegen'
+
 import { importRustSchema } from './import-rust.ts'
-import { AdmissionError } from './ir.ts'
-import type { ContractIR } from './ir.ts'
 import { emitJsonSchema } from './json-schema.ts'
 
 describe('Rust-owned JSON Schema admission', () => {

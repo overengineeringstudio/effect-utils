@@ -2,13 +2,14 @@ import { describe, it } from '@effect/vitest'
 import { DateTime, Effect, Schema, SchemaTransformation } from 'effect'
 import { expect, expectTypeOf } from 'vitest'
 
+import * as EffectRust from '@overeng/schema-codegen/annotations'
+
 import { importRustSchema } from '../compiler/import-rust.ts'
 import { AdmissionError } from '../compiler/mod.ts'
 import * as Borsh from './borsh.ts'
 import * as Columns from './columns.ts'
 import * as ContractJson from './contract-json.ts'
 import * as Direct from './direct.ts'
-import * as EffectRust from './effect-rust.ts'
 
 const unsigned64 = Schema.BigInt.check(
   Schema.isBetweenBigInt({ minimum: 0n, maximum: 18446744073709551615n }),

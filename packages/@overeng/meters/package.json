@@ -9,6 +9,7 @@
       "packages/@overeng/meters",
       "packages/@overeng/otel-browser",
       "packages/@overeng/otel-contract",
+      "packages/@overeng/schema-codegen",
       "packages/@overeng/utils",
       "packages/@overeng/utils-dev",
       "packages/@overeng/utils-storybook"

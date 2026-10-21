@@ -7,7 +7,13 @@ export const buck2TypeScriptAdmission = {
   packagePath: 'packages/@overeng/effect-rust',
   projectionSource: 'packages/@overeng/effect-rust/BUCK.genie.ts',
   sourceRoots: ['src'],
-  workspaceSiblings: [],
+  workspaceSiblings: [
+    {
+      packageName: '@overeng/schema-codegen',
+      packagePath: 'packages/@overeng/schema-codegen',
+      distTarget: '//packages/@overeng/schema-codegen:dist',
+    },
+  ],
   authorities: [
     {
       declarationEntrypoint: 'src/mod.d.ts',

@@ -1,6 +1,6 @@
 import { Schema } from 'effect'
 
-import * as EffectRust from '../../schema/effect-rust.ts'
+import * as EffectRust from '@overeng/schema-codegen/annotations'
 
 const Count32 = Schema.Int.check(Schema.isBetween({ minimum: 0, maximum: 2 ** 32 - 1 }))
 const Signed32 = Schema.Int.check(Schema.isBetween({ minimum: -(2 ** 31), maximum: 2 ** 31 - 1 }))

@@ -9,6 +9,7 @@
       "packages/@overeng/effect-rpc-tanstack/examples/basic",
       "packages/@overeng/effect-rust",
       "packages/@overeng/otel-contract",
+      "packages/@overeng/schema-codegen",
       "packages/@overeng/utils",
       "packages/@overeng/utils-dev"
     ]

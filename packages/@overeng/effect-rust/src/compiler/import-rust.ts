@@ -1,6 +1,6 @@
 import { SchemaRepresentation as R } from 'effect'
 
-import { assertPortablePattern } from '../schema/pattern.ts'
+import { assertPortablePattern } from '@overeng/schema-codegen'
 import {
   integerRanges as ranges,
   reject,
@@ -8,7 +8,8 @@ import {
   type Definition,
   type Type,
   type Width,
-} from './ir.ts'
+} from '@overeng/schema-codegen'
+
 import { EFFECT_RUST_VOCABULARY } from './json-schema.ts'
 
 const referencesType = ({ type, name }: { type: Type; name: string }): boolean => {
@@ -1133,6 +1134,12 @@ const finish = (ir: ContractIR): { readonly ir: ContractIR; readonly source: str
   for (const name of dependencies.keys()) if (indices.has(name) === false) visit(name)
   const type = (value: Type): R.Representation => {
     switch (value.kind) {
+      case 'f64':
+        return reject(
+          '$',
+          'binary64 is not admitted by the Rust profile',
+          'Use explicit F32 or bounded integers',
+        )
       case 'string':
         return { _tag: 'String', checks: [] }
       case 'bool':
