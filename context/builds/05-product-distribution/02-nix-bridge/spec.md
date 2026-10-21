@@ -146,7 +146,9 @@ test:consumer-smoke(candidate checkout)
 
 The dedicated `consumer-smoke` CI job runs on trusted main pushes and manual
 dispatch on a Linux x86 Namespace runner, with a 10-minute timeout. It invokes
-the root `test:consumer-smoke` task, not a separate CI-only implementation.
+the shared fixture runner directly with the resolved lock-pinned devenv binary,
+without evaluating or realizing the repository root's development shell.
+The local `test:consumer-smoke` task invokes that same runner.
 The timeout is a bound on execution, not a measured runtime guarantee.
 
 The root task calls the fixture runner with a candidate checkout argument.
