@@ -32,7 +32,7 @@ import {
 import testPlatforms from './test-platforms.json' with { type: 'json' }
 
 describe('Nix realisation step timeouts', () => {
-  it('rounds three times p95 up per runner without loosening an existing bound', () => {
+  it('uses the p95, maximum and noise floor without loosening an existing bound', () => {
     const jobs = withNixRealisationTimeouts(
       {
         setup: {
@@ -42,28 +42,31 @@ describe('Nix realisation step timeouts', () => {
             { name: 'Substitute', run: 'nix build .#tool' },
             { name: 'Already bounded', run: 'nix build .#tool', 'timeout-minutes': 2 },
             { name: 'Unrelated', run: 'echo done' },
+            { name: 'Noise floor', run: 'nix build .#small' },
           ],
         },
       },
       {
-        Substitute: { Linux: 21, macOS: 101 },
-        'Already bounded': { Linux: 100, macOS: 200 },
+        Substitute: { Linux: { p95: 21, max: 150 }, macOS: { p95: 101, max: 110 } },
+        'Already bounded': { p95: 100, max: 200 },
+        'Noise floor': { p95: 1, max: 2 },
       },
     )
     expect(jobs.setup!['timeout-minutes']).toBe(90)
     expect(jobs.setup!.steps[0]!['timeout-minutes']).toBe(
-      "${{ runner.os == 'macOS' && 6 || 2 }}",
+      "${{ runner.os == 'macOS' && 6 || 5 }}",
     )
     expect(jobs.setup!.steps[1]!['timeout-minutes']).toBe(2)
     expect(jobs.setup!.steps[2]!['timeout-minutes']).toBeUndefined()
+    expect(jobs.setup!.steps[3]!['timeout-minutes']).toBe(2)
   })
 
   it('bounds every product bootstrap on Linux and macOS but leaves consumer policy alone', () => {
     const expected = {
       'Install Nix': "${{ runner.os == 'macOS' && 5 || 2 }}",
-      'Provide cachix CLI from nixpkgs': "${{ runner.os == 'macOS' && 3 || 2 }}",
-      'Resolve devenv': "${{ runner.os == 'macOS' && 3 || 4 }}",
-      'Prepare source generator dependency views': "${{ runner.os == 'macOS' && 24 || 14 }}",
+      'Provide cachix CLI from nixpkgs': 3,
+      'Resolve devenv': "${{ runner.os == 'macOS' && 3 || 6 }}",
+      'Prepare source generator dependency views': "${{ runner.os == 'macOS' && 25 || 26 }}",
     }
     for (const [id, job] of Object.entries(ciWorkflow.data.jobs)) {
       if (id === 'consumer-smoke') continue
