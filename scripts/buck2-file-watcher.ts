@@ -13,6 +13,7 @@ import {
   renameSync,
   rmSync,
   writeFileSync,
+  writeSync,
 } from 'node:fs'
 import { getPriority, homedir } from 'node:os'
 import { join } from 'node:path'
@@ -370,7 +371,8 @@ export const reconcileWatcherDaemon = ({
     if (existsSync(pidPath) === true) {
       if (lstatSync(pidPath).isFile() === false)
         throw new Error(`Buck2 watcher migration: invalid registered daemon ${pidPath}`)
-      process.stderr.write(
+      writeSync(
+        2,
         `Buck2 watcher migration: stopping ${repoRoot} (${isolation}) before ${provider} startup\n`,
       )
       const result = spawnSync(native, ['--isolation-dir', isolation, 'kill'], {

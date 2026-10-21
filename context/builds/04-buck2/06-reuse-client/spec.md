@@ -252,6 +252,28 @@ the selected idle daemon, leaving all local build work in the job's cgroup.
 The [wrapper lifecycle contract](../../../../README.md) defines signal handling,
 concurrent-client protection and the residual status-to-kill race.
 
+Launcher diagnostics, including watcher migration and admission helpers, use
+`node:fs` synchronous descriptor writes rather than Bun's process streams.
+At startup the launcher captures fd 0/1/2 file status flags through
+`fcntl(F_GETFL)`, then restores and reads them back immediately before native
+`execve`. A header-free C shim exposes fixed-arity get/set functions: calling
+variadic `fcntl` directly through a fixed-arity FFI binding is not ABI-correct
+on macOS arm64. Nix builds the shared library once and fixes its immutable
+installed path in the packaged launcher. Packaged invocations only `dlopen`
+the library; no compiler or host SDK is needed at runtime. Source execution
+loads the same library from the devenv-declared `BUCK2_STDIO_LIBRARY` path,
+avoiding runtime compiler and libc linker discovery during bootstrap.
+Readback compares status options but excludes macOS's kernel-only
+`FWASWRITTEN` bookkeeping bit, which changes when a descriptor is written and
+cannot be reset with `F_SETFL`; raw flags are still captured and restored.
+
+Closed inherited descriptors are skipped. A protection load or restoration
+failure attempts one best-effort synchronous warning and still executes native
+Buck, even if inherited stderr is closed or cannot accept the warning.
+Synchronous diagnostics are the primary fix and this defence must not block
+builds. The launcher preserves intentionally non-blocking caller descriptors
+rather than unconditionally forcing blocking mode.
+
 RE client configuration alone opts into admission. A missing
 `remote_cache_enabled` inherits the execution policy's enabled default;
 RE-only roots do not need trusted archive metadata.
