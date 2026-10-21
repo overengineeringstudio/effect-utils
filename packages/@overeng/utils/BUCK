@@ -4,7 +4,7 @@
 # Projection source: packages/@overeng/utils/BUCK.genie.ts
 # Projection schema version: 13
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:02378bc5e409d4a8ff9f6c15747200d04f6864c875d577d8fbf41f800620d778
+# Semantic fingerprint: sha256:58f1fca15a2a18e465730550f9eb5eb7ba689555614c5b4e6f9650efbb54f006
 # Regenerate: devenv tasks run genie:run
 
 load("//buck2:materialization.bzl", "export_materialization_inputs", "package_view")
@@ -605,6 +605,9 @@ npm_package_archive(
 vitest_test(
     name = "test",
     package_tree = ":test_package_tree",
+    directory_inputs = {
+        "STYLEX_NEXT_FIXTURE": "//buck2/toolchains:stylex_next_fixture",
+    },
     excludes = [
         "src/browser/__tests__/BroadcastLogger.pw.test.ts",
         "src/node/cmd.unit.test.ts",
@@ -625,6 +628,9 @@ vitest_test(
 vitest_collect(
     name = "test_collect",
     package_tree = ":test_package_tree",
+    directory_inputs = {
+        "STYLEX_NEXT_FIXTURE": "//buck2/toolchains:stylex_next_fixture",
+    },
     excludes = [
         "src/browser/__tests__/BroadcastLogger.pw.test.ts",
         "src/node/cmd.unit.test.ts",

@@ -960,6 +960,76 @@ describe('declared test lanes', () => {
     ).toThrow('requires provider-backed external inputs')
   })
 
+  it('projects attested directory inputs into both cacheable Vitest targets', () => {
+    const output = outputsByAdmission.utils
+    for (const rule of ['vitest_test', 'vitest_collect']) {
+      const block = output.split(`\n${rule}(\n`)[1]?.split('\n)\n')[0] ?? ''
+      expect(block).toContain('    directory_inputs = {')
+      expect(block).toContain(
+        '        "STYLEX_NEXT_FIXTURE": "//buck2/toolchains:stylex_next_fixture",',
+      )
+      expect(block).not.toContain('configured_external_inputs')
+      expect(block).not.toContain('inherited_env')
+      expect(block).not.toContain('cacheable = False')
+    }
+  })
+
+  it('rejects malformed directory input names and target labels before generation', () => {
+    expect(() =>
+      buck2TypeScriptPackageProjection({
+        ...kdlAdmissionWithoutTests,
+        tests: [
+          {
+            name: 'test',
+            runner: 'vitest',
+            directoryInputs: { 'fixture-path': '//buck2/toolchains:stylex_next_fixture' },
+          },
+        ],
+      }).stringify(genieContext),
+    ).toThrow('test directory input name must be an upper-case environment name')
+    for (const label of ['//buck2/toolchains:', '//buck2/toolchains:../fixture'] as const) {
+      expect(() =>
+        buck2TypeScriptPackageProjection({
+          ...kdlAdmissionWithoutTests,
+          tests: [{ name: 'test', runner: 'vitest', directoryInputs: { FIXTURE: label } }],
+        }).stringify(genieContext),
+      ).toThrow('must be an attested store directory')
+    }
+  })
+
+  it('carries directory target identity into the semantic fingerprint', () => {
+    const project = (label: `//buck2/toolchains:${string}`): string =>
+      buck2TypeScriptPackageProjection({
+        ...kdlAdmissionWithoutTests,
+        tests: [{ name: 'test', runner: 'vitest', directoryInputs: { FIXTURE: label } }],
+      })
+        .stringify(genieContext)
+        .split('# Semantic fingerprint: ')[1]
+        ?.split('\n')[0] ?? ''
+    expect(project('//buck2/toolchains:fixture_a')).not.toBe(
+      project('//buck2/toolchains:fixture_b'),
+    )
+  })
+
+  it('binds directory bytes and manifests to the JavaScript action and read identity', () => {
+    const rules = readFileSync('buck2/javascript.bzl', 'utf8')
+    expect(rules).toContain('value = attrs.exec_dep(providers = [BuckStoreDirectoryInfo])')
+    expect(rules).toContain('directory = ctx.attrs.directory_inputs[name][BuckStoreDirectoryInfo]')
+    expect(rules).toContain('args.add("--external-path", name, directory.store_path)')
+    expect(rules).toContain('cmd_args(hidden = [directory.directory, directory.manifest])')
+    expect(rules).toContain('args.add("--read-root", directory.manifest)')
+    expect(rules).toContain('for root in directory.closure_store_paths:')
+    const toolchains = readFileSync('buck2/toolchains/BUCK', 'utf8')
+    expect(toolchains).toContain(
+      [
+        'store_directory(',
+        '    name = "stylex_next_fixture",',
+        '    protocol = "effect-utils/stylex-next-fixture/v1",',
+        '    input_id = "stylex-next-fixture",',
+      ].join('\n'),
+    )
+  })
+
   it('projects the node Vitest runtime only with its attested executable', () => {
     expect(outputsByAdmission.notionDatasourceSync).toContain('    vitest_runtime = "node",')
     expect(outputsByAdmission.notionDatasourceSync).toContain(
@@ -1067,6 +1137,7 @@ describe('derived test collection targets', () => {
           vitestRuntime: 'node',
           staticCollection: true,
           tools: { NODE_BIN: '//buck2/toolchains:tool_node' },
+          directoryInputs: { FIXTURE: '//buck2/toolchains:stylex_next_fixture' },
           writableDirectories: { KDL_WORKSPACE: 'kdl' },
         },
       ],
@@ -1078,6 +1149,7 @@ describe('derived test collection targets', () => {
     expect(collectBlock).toContain('        "src/mod.test.ts",')
     expect(collectBlock).toContain('        "local-only",')
     expect(collectBlock).toContain('        "NODE_BIN": "//buck2/toolchains:tool_node",')
+    expect(collectBlock).toContain('        "FIXTURE": "//buck2/toolchains:stylex_next_fixture",')
     expect(collectBlock).toContain('    vitest_runtime = "node",')
     expect(collectBlock).toContain('    static_parse = True,')
     expect(collectBlock).toContain('        "KDL_WORKSPACE": "kdl",')
