@@ -18,6 +18,8 @@ import { describe, expect, it } from 'vitest'
 const cliPath = fileURLToPath(new URL('../../bin/genie.tsx', import.meta.url))
 const readersPath = fileURLToPath(new URL('../runtime/node/inputs.ts', import.meta.url))
 const repoContextPath = fileURLToPath(new URL('../runtime/repo-context/mod.ts', import.meta.url))
+const generatedText = (body: string) =>
+  `// Generated file - DO NOT EDIT\n// Source: result.txt.genie.ts\n${body}`
 
 const fixture = () => {
   const root = mkdtempSync(path.join(os.tmpdir(), 'genie-input-manifest-'))
@@ -81,16 +83,18 @@ describe('generator input manifests', () => {
       ]) {
         expect(lines).toContain(path.resolve(root, input))
       }
-      expect(readFileSync(path.join(root, 'result.txt'), 'utf8')).toBe('first\n')
+      expect(readFileSync(path.join(root, 'result.txt'), 'utf8')).toBe(generatedText('first\n'))
       writeFileSync(path.join(root, 'optional.txt'), 'added\n')
       writeFileSync(path.join(root, 'input.txt'), 'changed\n')
       const second = run()
       expect(second.status, second.stdout + second.stderr).toBe(0)
-      expect(readFileSync(path.join(root, 'result.txt'), 'utf8')).toBe('changed\nadded\n')
+      expect(readFileSync(path.join(root, 'result.txt'), 'utf8')).toBe(
+        generatedText('changed\nadded\n'),
+      )
       rmSync(path.join(root, 'optional.txt'))
       const third = run()
       expect(third.status, third.stdout + third.stderr).toBe(0)
-      expect(readFileSync(path.join(root, 'result.txt'), 'utf8')).toBe('changed\n')
+      expect(readFileSync(path.join(root, 'result.txt'), 'utf8')).toBe(generatedText('changed\n'))
       expect(readdirSync(root).some((name) => name.endsWith('.tmp'))).toBe(false)
     } finally {
       rmSync(root, { recursive: true, force: true })
@@ -161,7 +165,7 @@ export default { data: {}, stringify: () => read() }
       expect(inputs).toContain(path.join(localPackage, 'package.json'))
       expect(inputs).toContain(path.join(root, 'node_modules', 'fixture-helper', 'package.json'))
       expect(inputs).toContain(path.join(root, 'helper.ts'))
-      expect(readFileSync(path.join(root, 'result.txt'), 'utf8')).toBe('first\n')
+      expect(readFileSync(path.join(root, 'result.txt'), 'utf8')).toBe(generatedText('first\n'))
     } finally {
       rmSync(root, { recursive: true, force: true })
     }
@@ -188,13 +192,13 @@ export default { data: {}, stringify: () => value + '\\n' }
         expect(readFileSync(manifest, 'utf8').split('\n')[0]).toBe('genie-inputs-incomplete')
         const optional = path.join(root, 'optional.ts')
         expect(readFileSync(manifest, 'utf8').split('\n')).toContain(optional)
-        expect(readFileSync(path.join(root, 'result.txt'), 'utf8')).toBe('absent\n')
+        expect(readFileSync(path.join(root, 'result.txt'), 'utf8')).toBe(generatedText('absent\n'))
         writeFileSync(optional, "export const value = 'present'\n")
         const present = run()
         expect(present.status, present.stdout + present.stderr).toBe(0)
         expect(readFileSync(manifest, 'utf8').split('\n')[0]).toBe('genie-inputs-v1')
         expect(readFileSync(manifest, 'utf8').split('\n')).toContain(optional)
-        expect(readFileSync(path.join(root, 'result.txt'), 'utf8')).toBe('present\n')
+        expect(readFileSync(path.join(root, 'result.txt'), 'utf8')).toBe(generatedText('present\n'))
       } finally {
         rmSync(root, { recursive: true, force: true })
       }
@@ -230,7 +234,7 @@ export default { data: {}, stringify: () => value + '\\n' }
       const absent = run()
       expect(absent.status, absent.stdout + absent.stderr).toBe(0)
       expect(readFileSync(manifest, 'utf8').split('\n')[0]).toBe('genie-inputs-incomplete')
-      expect(readFileSync(path.join(root, 'result.txt'), 'utf8')).toBe('absent\n')
+      expect(readFileSync(path.join(root, 'result.txt'), 'utf8')).toBe(generatedText('absent\n'))
       const previousPackageEntries = readdirSync(localPackage)
       const optional = path.join(localPackage, 'lib', 'optional.ts')
       writeFileSync(optional, "export const value = 'present'\n")
@@ -240,7 +244,7 @@ export default { data: {}, stringify: () => value + '\\n' }
       const inputs = readFileSync(manifest, 'utf8').split('\n')
       expect(inputs[0]).toBe('genie-inputs-v1')
       expect(inputs).toContain(optional)
-      expect(readFileSync(path.join(root, 'result.txt'), 'utf8')).toBe('present\n')
+      expect(readFileSync(path.join(root, 'result.txt'), 'utf8')).toBe(generatedText('present\n'))
     } finally {
       rmSync(root, { recursive: true, force: true })
     }

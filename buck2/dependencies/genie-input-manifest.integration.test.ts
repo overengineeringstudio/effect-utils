@@ -66,7 +66,9 @@ export default { data: {}, stringify: () => translatePnpmLock({
       return readFileSync(path.join(root, 'metadata.txt'), 'utf8')
     }
     const first = run()
-    expect(first).toMatch(/^sha256:[a-f0-9]{64}\n$/)
+    expect(first).toMatch(
+      /^\/\/ Generated file - DO NOT EDIT\n\/\/ Source: metadata\.txt\.genie\.ts\nsha256:[a-f0-9]{64}\n$/,
+    )
     writeFileSync(lockPath, lock(false))
     expect(run()).not.toBe(first)
   } finally {
