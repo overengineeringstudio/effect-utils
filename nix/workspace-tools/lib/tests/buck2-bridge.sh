@@ -112,7 +112,8 @@ for mutation in no-load truncated; do
   cp "$diagnostic_root/intact" "$diagnostic_root/bin/fixture-tool"
   case "$mutation" in
     no-load)
-      # ELF64 e_phnum = 0: a valid header with no loadable segments.
+      # ELF64 e_phoff/e_phnum = 0: a valid header with no loadable segments.
+      printf '\0\0\0\0\0\0\0\0' | dd of="$diagnostic_root/bin/fixture-tool" bs=1 seek=32 conv=notrunc status=none
       printf '\0\0' | dd of="$diagnostic_root/bin/fixture-tool" bs=1 seek=56 conv=notrunc status=none
       expected_fatal='entrypoint has no loadable ELF segment: bin/fixture-tool'
       ;;
