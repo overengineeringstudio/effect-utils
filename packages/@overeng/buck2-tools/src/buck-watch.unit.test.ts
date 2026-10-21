@@ -489,13 +489,15 @@ describe('Buck watch reconciliation', () => {
         await writeFile(
           publisher,
           [
-            "import { readFileSync, writeSync } from 'node:fs'",
+            "import { closeSync, openSync, readSync, writeSync } from 'node:fs'",
             // A blocking FIFO read keeps the publisher alive even when the runtime
             // does not keep fs.watch or an unresolved top-level await alive.
             `writeSync(2, 'publisher startup\\n')`,
             `writeSync(2, ${JSON.stringify(diagnostic.slice(0, 12))})`,
             `writeSync(2, ${JSON.stringify(diagnostic.slice(12))})`,
-            `readFileSync(${JSON.stringify(release)})`,
+            `const release = openSync(${JSON.stringify(release)}, 'r')`,
+            'readSync(release, Buffer.alloc(1), 0, 1, null)',
+            'closeSync(release)',
             `process.stderr.write('[editor-view-timing] {"phase":"editor-view","packagePath":"packages/app","durationMs":12}\\n')`,
           ].join('\n'),
         )
@@ -549,7 +551,7 @@ describe('Buck watch reconciliation', () => {
         await observed.promise
         expect(publisherCompleted).toBe(false)
         expect(stderr.mock.calls.filter(([line]) => line === diagnostic)).toHaveLength(1)
-        await writeFile(release, 'release')
+        writeFileSync(release, 'x')
         await running
         expect(publisherCompleted).toBe(true)
         expect(onTiming).toHaveBeenCalledWith({
