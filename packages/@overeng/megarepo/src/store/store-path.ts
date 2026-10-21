@@ -243,9 +243,9 @@ export const assertCanonicalMutationAllowed = ({
           /^gitdir: (.+)\n?$/,
         )?.[1]
         if (gitdirLink === undefined) return ''
-        const headBranch = (
-          yield* fs.readFileString(path.resolve(root, gitdirLink, 'HEAD'))
-        ).match(/^ref: refs\/heads\/(.+)\n?$/)?.[1]
+        const headBranch = (yield* fs.readFileString(path.resolve(root, gitdirLink, 'HEAD'))).match(
+          /^ref: refs\/heads\/(.+)\n?$/,
+        )?.[1]
         return headBranch !== undefined && headBranch !== directoryBranch
           ? `HEAD branch '${headBranch}' does not match worktree directory branch '${directoryBranch}' (the branch was renamed?). ` +
               'Recreate the worktree with the intended branch name, or rename the branch back. '
