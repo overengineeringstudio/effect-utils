@@ -21,7 +21,7 @@ stdenv.mkDerivation {
 
     # The x86_64 linker leaves the launcher unsigned; use Chromium's identifier
     # explicitly rather than relying on an architecture-specific linker signature.
-    identifier=$(/usr/bin/codesign -dv "$main.original" 2>&1 | grep '^Identifier=' | cut -d= -f2-)
+    identifier=$(/usr/bin/codesign -dv "$main.original" 2>&1 | grep '^Identifier=' | cut -d= -f2- || true)
     if [ -z "$identifier" ]; then
       echo "Cannot sign Chromium launcher: original executable has no signing identifier" >&2
       exit 1
