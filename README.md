@@ -42,6 +42,8 @@ policy and the isolated Node proof. Non-literal runtime dependencies are rejecte
 An explicitly rewritten
 edge may name another isolation-checked source; the pnpm source-input stager uses
 this for its store-path rewrite of `sync-resolver.ts`.
+Import-form fixtures run both runtimes explicitly (`NODE_BIN` / `BUN_BIN`, or
+`node` / `bun` on the task PATH), independently of the test runner's host runtime.
 
 Each source is also imported by Node 24 from a fresh directory with no
 `node_modules`, stripping TS types and applying only the declared store-path

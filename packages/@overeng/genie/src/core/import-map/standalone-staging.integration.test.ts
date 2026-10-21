@@ -216,8 +216,8 @@ describe('standalone Nix-staged JS/TS sources (issue #1994)', () => {
           },
         })
         for (const [runtime, expected] of [
-          ['node', fixture.node],
-          [process.execPath, fixture.bun],
+          [process.env.NODE_BIN ?? 'node', fixture.node],
+          [process.env.BUN_BIN ?? 'bun', fixture.bun],
         ] as const) {
           const result = spawnSync(runtime, [source], {
             cwd: isolated,
