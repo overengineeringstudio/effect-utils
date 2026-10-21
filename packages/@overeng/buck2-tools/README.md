@@ -377,6 +377,14 @@ no address space or filesystem handles. A disappearing process is ignored only
 after a fresh stat confirms exit; a live replacement not completely observed
 still blocks. This is exit evidence, not a permission-error exemption.
 
+Retirement integration fixtures scope enumeration to their test process and real
+spawned readers/publishers, including inside publisher children. A contextual
+test dependency refreshes the fixture PID inventory for each scan; Linux `/proc`
+and macOS libproc/`lsof` observations and fail-closed decisions are unchanged.
+The native-lease suite retains one explicit host-wide fail-closed scan.
+Production always enumerates all processes: neither environment variables nor
+CLI flags can install the test enumeration context.
+
 On macOS, an `lsof` descriptor with missing/unknown type may be excluded only by
 the packaged fixed-arity `int eu_darwin_dead_vnode(int pid, int fd)` helper.
 The census probes only numeric process IDs and numeric descriptors. The helper

@@ -1,6 +1,7 @@
 import { spawn, spawnSync, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import * as ChildProcess from 'node:child_process'
 import { createHash, randomUUID } from 'node:crypto'
+import * as Fs from 'node:fs'
 import {
   chmodSync,
   lstatSync,
@@ -15,7 +16,6 @@ import {
   utimesSync,
   writeFileSync,
 } from 'node:fs'
-import * as Fs from 'node:fs'
 import { hostname, tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -26,22 +26,33 @@ import {
   EditorViewCapacityError,
   editorViewHostBudgetStateDirectory,
   makeEditorViewBudgetCensusSession,
-  reserveEditorViewBudget,
-  reclaimEditorViewOrphans,
+  reserveEditorViewBudget as reserveEditorViewBudgetUnscoped,
+  reclaimEditorViewOrphans as reclaimEditorViewOrphansUnscoped,
 } from './editor-view-budget.ts'
-import { referencedEditorViewPaths } from './editor-view-readers.ts'
+import { referencedEditorViewPaths as referencedEditorViewPathsUnscoped } from './editor-view-readers.ts'
 import { editorViewStagingCreatorIdentity, shareSnapshotFiles } from './editor-view-sharing.ts'
 import {
+  scopeEditorViewTestProcesses,
+  trackEditorViewTestSpawn,
+} from './editor-view-test-processes.ts'
+import {
   pinEditorView,
-  publishEditorView,
-  releaseEditorViewRoot,
+  publishEditorView as publishEditorViewUnscoped,
+  releaseEditorViewRoot as releaseEditorViewRootUnscoped,
   type EditorViewOptions,
   type EditorViewRecord,
 } from './editor-view.ts'
 import { emitCompletedSpanAsync } from './otel-span-cli.ts'
 
 // Stable forwarding exports observe the named imports used by Bun's native modules.
-const nativeChildProcess = { ...ChildProcess }
+const fixtureProcessIds = new Set([process.pid])
+const nativeChildProcess = {
+  ...ChildProcess,
+  spawn: trackEditorViewTestSpawn({
+    processIds: fixtureProcessIds,
+    spawnProcess: ChildProcess.spawn,
+  }),
+}
 const childProcessMocks = {
   spawn: vi.fn(nativeChildProcess.spawn),
   spawnSync: vi.fn(nativeChildProcess.spawnSync),
@@ -49,20 +60,29 @@ const childProcessMocks = {
 vi.mock('node:child_process', () => ({ ...nativeChildProcess, ...childProcessMocks }))
 // Read the builtin independently of forwarding mocks installed by earlier suites.
 const nativeFs = { ...process.getBuiltinModule('fs') }
-// Keep actual kernel descriptor observations, but inventory only fixture-owned
-// processes. Unrelated host process permissions are covered by the reader suite.
-const fixtureProcessIds = new Set([process.pid])
-const readFixtureDirectory = (...args: Parameters<typeof Fs.readdirSync>) => {
-  const entries = nativeFs.readdirSync(...args)
-  return String(args[0]) === '/proc'
-    ? entries.filter((entry) =>
-        fixtureProcessIds.has(Number(typeof entry === 'object' ? entry.name : entry)),
-      )
-    : entries
-}
+// Restrict enumeration only: Linux /proc and macOS libproc/lsof evidence stays real.
+const publishEditorView = scopeEditorViewTestProcesses({
+  processIds: fixtureProcessIds,
+  operation: publishEditorViewUnscoped,
+})
+const reserveEditorViewBudget = scopeEditorViewTestProcesses({
+  processIds: fixtureProcessIds,
+  operation: reserveEditorViewBudgetUnscoped,
+})
+const reclaimEditorViewOrphans = scopeEditorViewTestProcesses({
+  processIds: fixtureProcessIds,
+  operation: reclaimEditorViewOrphansUnscoped,
+})
+const releaseEditorViewRoot = scopeEditorViewTestProcesses({
+  processIds: fixtureProcessIds,
+  operation: releaseEditorViewRootUnscoped,
+})
+const referencedEditorViewPaths = scopeEditorViewTestProcesses({
+  processIds: fixtureProcessIds,
+  operation: referencedEditorViewPathsUnscoped,
+})
 const fsMocks = {
   readlinkSync: vi.fn(nativeFs.readlinkSync),
-  readdirSync: vi.fn(nativeFs.readdirSync),
 }
 vi.mock('node:fs', () => ({ ...nativeFs, ...fsMocks }))
 
@@ -89,13 +109,11 @@ const savedBudgetTraceContext = {
   OTEL_TASK_TRACEPARENT: process.env.OTEL_TASK_TRACEPARENT,
 }
 beforeAll(() => {
-  fsMocks.readdirSync.mockImplementation(readFixtureDirectory)
   // Phase spans also share the bound; ambient CI tracing must not compete with capture fixtures.
   delete process.env.TRACEPARENT
   delete process.env.OTEL_TASK_TRACEPARENT
 })
 afterAll(() => {
-  fsMocks.readdirSync.mockReset().mockImplementation(nativeFs.readdirSync)
   for (const [key, value] of Object.entries(savedBudgetTraceContext))
     if (value === undefined) delete process.env[key]
     else process.env[key] = value
@@ -592,7 +610,6 @@ const openReader = (
     ].join('\n'),
   )
   const child = spawn(bun, [script, openedPath], { stdio: ['pipe', 'pipe', 'pipe'] })
-  if (child.pid !== undefined) fixtureProcessIds.add(child.pid)
   const ready = Promise.withResolvers<void>()
   const exited = Promise.withResolvers<{
     readonly code: number | null
@@ -612,7 +629,6 @@ const openReader = (
     exited.reject(error)
   })
   child.once('exit', (code, signal) => {
-    if (child.pid !== undefined) fixtureProcessIds.delete(child.pid)
     exited.resolve({ code, signal })
     ready.reject(new Error(`snapshot reader exited before readiness: ${code ?? signal}; ${stderr}`))
   })
@@ -1303,6 +1319,8 @@ describe('warm publication wins the census-to-victim-lock race', () => {
                 host.advance(1_000)
                 const script = [
                   `import { publishEditorView } from ${JSON.stringify(new URL('./editor-view.ts', import.meta.url).href)}`,
+                  `import { editorViewProcessTestScope } from ${JSON.stringify(new URL('./editor-view-readers.ts', import.meta.url).href)}`,
+                  `editorViewProcessTestScope.enterWith(() => [process.pid, ...${JSON.stringify([...fixtureProcessIds])}])`,
                   `Date.now = () => ${Date.now()}`,
                   `const record = await publishEditorView({ ...${JSON.stringify(victim.options)}, beforeMaterialize: () => { throw new Error('expected a real warm publication') } })`,
                   `if (record.snapshot !== ${JSON.stringify(victimRecord.snapshot)}) throw new Error('warm generation changed')`,
@@ -1828,6 +1846,8 @@ describe('budget telemetry rate limits across publisher processes per host store
       const script = [
         `import { EditorViewCapacityError } from ${JSON.stringify(new URL('./editor-view-budget.ts', import.meta.url).href)}`,
         `import { publishEditorView } from ${JSON.stringify(new URL('./editor-view.ts', import.meta.url).href)}`,
+        `import { editorViewProcessTestScope } from ${JSON.stringify(new URL('./editor-view-readers.ts', import.meta.url).href)}`,
+        `editorViewProcessTestScope.enterWith(() => [process.pid, ...${JSON.stringify([...fixtureProcessIds])}])`,
         `Date.now = () => ${Date.now()}`,
         `try { await publishEditorView({ ...${JSON.stringify(second.options)}, hostBudgetBytes: 1 }); throw new Error('unexpected admission') } catch (error) { if (!(error instanceof EditorViewCapacityError)) throw error }`,
       ].join('\n')

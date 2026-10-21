@@ -30,7 +30,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest
 
 import {
   cancelEditorViewBudgetReservation,
-  reserveEditorViewBudget,
+  reserveEditorViewBudget as reserveEditorViewBudgetUnscoped,
   type EditorViewBudgetRootLock,
 } from './editor-view-budget.ts'
 import { managedEditorViewSnapshots, type EditorViewPinRecord } from './editor-view-readers.ts'
@@ -39,15 +39,19 @@ import {
   readEditorViewSourceManifest,
 } from './editor-view-sharing.ts'
 import {
+  scopeEditorViewTestProcesses,
+  trackEditorViewTestSpawn,
+} from './editor-view-test-processes.ts'
+import {
   canonicalTreeFingerprint,
   canonicalTreeFingerprintWithResolvedLinks,
   checkEditorView,
   editorViewPublicationWorkers,
   pinEditorView,
-  publishEditorView,
-  publishEditorViews,
+  publishEditorView as publishEditorViewUnscoped,
+  publishEditorViews as publishEditorViewsUnscoped,
   recoverEditorViewLock,
-  releaseEditorViewRoot,
+  releaseEditorViewRoot as releaseEditorViewRootUnscoped,
   unpinEditorView,
   verifyEditorViewSnapshot,
   tryAcquireEditorViewBudgetRootLock,
@@ -61,17 +65,25 @@ import * as fingerprintRunner from './typescript-runner.ts'
 // Namespace-property spies do not replace Bun's native named-import bindings.
 // Capture native functions, then register stable mocked exports for fault injection.
 const nativeFs = { ...process.getBuiltinModule('fs') }
-// Scope the Linux process inventory to this fixture's real descriptor owner.
-// Other host processes are unrelated test infrastructure; their permission policy
-// is exercised separately by the reader-infrastructure integration tests.
-const readFixtureDirectory = (...args: Parameters<typeof fs.readdirSync>) => {
-  const entries = nativeFs.readdirSync(...args)
-  return String(args[0]) === '/proc'
-    ? entries.filter(
-        (entry) => String(typeof entry === 'object' ? entry.name : entry) === String(process.pid),
-      )
-    : entries
-}
+// Scope every retirement entrypoint to real fixture PIDs on Linux and macOS.
+// Host-wide fail-closed policy has one explicit native-lease integration case.
+const fixtureProcessIds = new Set([process.pid])
+const publishEditorView = scopeEditorViewTestProcesses({
+  processIds: fixtureProcessIds,
+  operation: publishEditorViewUnscoped,
+})
+const publishEditorViews = scopeEditorViewTestProcesses({
+  processIds: fixtureProcessIds,
+  operation: publishEditorViewsUnscoped,
+})
+const reserveEditorViewBudget = scopeEditorViewTestProcesses({
+  processIds: fixtureProcessIds,
+  operation: reserveEditorViewBudgetUnscoped,
+})
+const releaseEditorViewRoot = scopeEditorViewTestProcesses({
+  processIds: fixtureProcessIds,
+  operation: releaseEditorViewRootUnscoped,
+})
 const fsMocks = {
   openSync: vi.fn(nativeFs.openSync),
   fchmodSync: vi.fn(nativeFs.fchmodSync),
@@ -83,7 +95,13 @@ const fsMocks = {
   realpathSync: vi.fn(nativeFs.realpathSync),
 }
 vi.mock('node:fs', () => ({ ...nativeFs, ...fsMocks }))
-const nativeChildProcess = { ...ChildProcess }
+const nativeChildProcess = {
+  ...ChildProcess,
+  spawn: trackEditorViewTestSpawn({
+    processIds: fixtureProcessIds,
+    spawnProcess: ChildProcess.spawn,
+  }),
+}
 const childProcessMocks = { spawn: vi.fn(nativeChildProcess.spawn) }
 vi.mock('node:child_process', () => ({ ...nativeChildProcess, ...childProcessMocks }))
 
@@ -107,7 +125,7 @@ const savedIntegrationTraceContext = {
   OTEL_TASK_TRACEPARENT: process.env.OTEL_TASK_TRACEPARENT,
 }
 beforeAll(() => {
-  fsMocks.readdirSync.mockImplementation(readFixtureDirectory)
+  fsMocks.readdirSync.mockImplementation(nativeFs.readdirSync)
   // Unrelated publications must not consume the shared exporter bound from CI's ambient trace.
   delete process.env.TRACEPARENT
   delete process.env.OTEL_TASK_TRACEPARENT
@@ -166,13 +184,14 @@ afterEach(async () => {
       if (!(error instanceof Error && 'code' in error && error.code === 'ESRCH')) throw error
     }
     await child.exited
+    fixtureProcessIds.delete(child.pid)
     editorCliProcesses.delete(child)
   }
   fsMocks.openSync.mockReset().mockImplementation(nativeFs.openSync)
   fsMocks.fchmodSync.mockReset().mockImplementation(nativeFs.fchmodSync)
   fsMocks.readSync.mockReset().mockImplementation(nativeFs.readSync)
   fsMocks.readFileSync.mockReset().mockImplementation(nativeFs.readFileSync)
-  fsMocks.readdirSync.mockReset().mockImplementation(readFixtureDirectory)
+  fsMocks.readdirSync.mockReset().mockImplementation(nativeFs.readdirSync)
   fsMocks.lstatSync.mockReset().mockImplementation(nativeFs.lstatSync)
   fsMocks.mkdirSync.mockReset().mockImplementation(nativeFs.mkdirSync)
   fsMocks.realpathSync.mockReset().mockImplementation(nativeFs.realpathSync)
@@ -204,6 +223,7 @@ const runEditorViewCli = async ({
     { stdin: 'ignore', stdout: 'pipe', stderr: 'pipe', detached: true },
   )
   editorCliProcesses.add(child)
+  fixtureProcessIds.add(child.pid)
   try {
     const [status, stdout, stderr] = await Promise.all([
       child.exited,
@@ -212,6 +232,7 @@ const runEditorViewCli = async ({
     ])
     return { status, stdout, stderr }
   } finally {
+    fixtureProcessIds.delete(child.pid)
     editorCliProcesses.delete(child)
   }
 }
@@ -1387,25 +1408,25 @@ describe('editor view publisher', () => {
           await publication
         }
         let scans = 0
-        fsMocks.readdirSync.mockImplementation((...args) => {
-          if (String(args[0]) === '/proc') {
+        fsMocks.lstatSync.mockImplementation((...args) => {
+          if (String(args[0]) === `/proc/${process.pid}`) {
             scans++
-            throw Object.assign(new Error('unobserved fixture processes'), { code: 'EACCES' })
+            throw Object.assign(new Error('unobserved fixture process'), { code: 'EACCES' })
           }
-          return readFixtureDirectory(...args)
+          return nativeFs.lstatSync(...args)
         })
         writeFileSync(join(fixture.editorInputs, 'install-descriptor.json'), 'third\n')
         publication = publishEditorView(fixture.options)
         await publication
         expect(scans).toBeGreaterThan(0)
         expect(ownedSnapshots(fixture)).toHaveLength(3)
-        fsMocks.readdirSync.mockReset().mockImplementation(readFixtureDirectory)
+        fsMocks.lstatSync.mockReset().mockImplementation(nativeFs.lstatSync)
         publication = publishEditorView(fixture.options)
         await publication
         expect(ownedSnapshots(fixture)).toHaveLength(2)
       } finally {
         if (publication !== undefined) await Promise.allSettled([publication])
-        fsMocks.readdirSync.mockReset().mockImplementation(readFixtureDirectory)
+        fsMocks.lstatSync.mockReset().mockImplementation(nativeFs.lstatSync)
         cleanup(fixture)
       }
     },
@@ -2985,7 +3006,9 @@ describe('editor view publisher', () => {
       const preload = join(fixture.root, 'interrupt-publication.ts')
       writeFileSync(
         preload,
-        `const write = process.stderr.write.bind(process.stderr)
+        `import { editorViewProcessTestScope } from ${JSON.stringify(new URL('./editor-view-readers.ts', import.meta.url).href)}
+editorViewProcessTestScope.enterWith(() => [process.pid, ...${JSON.stringify([...fixtureProcessIds])}])
+const write = process.stderr.write.bind(process.stderr)
 process.stderr.write = (...args) => {
   const result = write(...args)
   if (String(args[0]).includes('"phase":"fingerprint","event":"enter"'))
@@ -3020,12 +3043,14 @@ process.stderr.write = (...args) => {
         { stdin: 'ignore', stdout: 'pipe', stderr: 'pipe', detached: true },
       )
       editorCliProcesses.add(child)
+      fixtureProcessIds.add(child.pid)
       const [status, , stderr] = await Promise.all([
         child.exited,
         Bun.readableStreamToText(child.stdout),
         Bun.readableStreamToText(child.stderr),
       ])
       editorCliProcesses.delete(child)
+      fixtureProcessIds.delete(child.pid)
       expect(status).not.toBe(0)
       expectCompletedPublicationPhases(stderr, 'interrupted')
     } finally {
@@ -4496,7 +4521,8 @@ describe('publication startup orphan reclamation', () => {
       [
         '--eval',
         `import { publishEditorView } from ${JSON.stringify(new URL('./editor-view.ts', import.meta.url).href)};
-await publishEditorView({
+import { editorViewProcessTestScope } from ${JSON.stringify(new URL('./editor-view-readers.ts', import.meta.url).href)};
+await editorViewProcessTestScope.run(() => [process.pid, ...${JSON.stringify([...fixtureProcessIds])}], async () => publishEditorView({
   ...${JSON.stringify(fixture.options)},
   backingRoots: ${JSON.stringify([fixture.nodeModules])},
   ${hook}: async () => {
@@ -4504,7 +4530,7 @@ await publishEditorView({
     process.stdin.resume();
     await Promise.withResolvers().promise;
   },
-});`,
+}));`,
       ],
       { stdio: ['pipe', 'pipe', 'pipe'] },
     )

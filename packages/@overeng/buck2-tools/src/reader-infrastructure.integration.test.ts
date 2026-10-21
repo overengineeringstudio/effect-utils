@@ -104,13 +104,13 @@ const observeNondumpable = async ({
       snapshotRoot: join(root, '.editor-view', '.store', 'default-test'),
       linkedInodes: [],
     }
-    const evidence = classifyEditorViewProcessCandidates({ candidates: [candidate] }).get(
-      candidate.key,
-    )
+    const evidence = classifyEditorViewProcessCandidates({
+      candidates: [candidate],
+      processIds: [process.pid, child.pid!],
+    }).get(candidate.key)
     expect(evidence).toBeDefined()
-    // Other real same-user processes can independently make a whole-host scan
-    // unknown. Assert precisely whether THIS kernel-denied process blocks it;
-    // do not mock away other processes or treat their unknown evidence as clear.
+    // Only enumeration is scoped: the fixture's kernel-denied process must
+    // still contribute unknown evidence unless its exact identity is allowlisted.
     const ownReasons = evidence?.reasons.filter((reason) => reason.includes(`${base}/`)) ?? []
     if (exempt === true) {
       expect(ownReasons).toEqual([])
@@ -242,9 +242,10 @@ describe.skipIf(process.platform !== 'linux')('real exited Linux reader processe
           snapshotRoot: join(root, '.editor-view', '.store', 'default-test'),
           linkedInodes: [],
         }
-        const evidence = classifyEditorViewProcessCandidates({ candidates: [candidate] }).get(
-          candidate.key,
-        )
+        const evidence = classifyEditorViewProcessCandidates({
+          candidates: [candidate],
+          processIds: [process.pid, parent.pid!, pid],
+        }).get(candidate.key)
         expect(evidence).toBeDefined()
         if (mode === 'exit-race') expect(hookTriggered).toBe(true)
         expect(

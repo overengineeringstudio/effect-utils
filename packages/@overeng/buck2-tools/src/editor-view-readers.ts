@@ -1,4 +1,5 @@
 import type { dlopen as openNativeLibrary } from 'bun:ffi'
+import { AsyncLocalStorage } from 'node:async_hooks'
 import { spawnSync } from 'node:child_process'
 import {
   closeSync,
@@ -17,6 +18,14 @@ import { isAbsolute, join, relative, resolve, sep } from 'node:path'
 import process from 'node:process'
 
 import { isLinuxReaderInfrastructureIdentity } from './reader-infrastructure.ts'
+
+/**
+ * Integration-only enumeration dependency, inherited by real publication work.
+ * The supplier includes the test process and its live children; all observations
+ * still come from the kernel. No production entrypoint installs this context,
+ * and no environment variable or command-line flag can narrow a production scan.
+ */
+export const editorViewProcessTestScope = new AsyncLocalStorage<() => readonly number[]>()
 
 // Static import cannot work in portable Node consumers: bun:ffi is Bun-only.
 const linuxDescriptorDirectory =
@@ -673,7 +682,7 @@ const processIncarnation = (base: string): ProcessIncarnation => {
 const scanEditorViewProcesses = (
   observer: ProcessObserver & { readonly processIds?: readonly number[] },
 ): readonly string[] => {
-  const { processIds } = observer
+  const processIds = observer.processIds ?? editorViewProcessTestScope.getStore()?.()
   const reasons: string[] = []
   if (
     processIds?.some((pid) => Number.isInteger(pid) === false || pid <= 0 || pid > 0x7fffffff) ===

@@ -1417,9 +1417,10 @@ describe.skipIf(process.platform !== 'linux' && process.platform !== 'darwin')(
                     linkedInodes: [],
                   },
                 ],
+                processIds: [process.pid, child.pid!],
               })
-              // Host visibility may independently be unknown. Only actual
-              // positive references establish the candidate-scoping assertion.
+              // Enumerate only the fixture owners; all references remain real
+              // cwd/descriptor observations rather than synthetic evidence.
               expect(
                 new Set(
                   [...evidence]
