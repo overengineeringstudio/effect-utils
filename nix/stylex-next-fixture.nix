@@ -26,7 +26,7 @@ let
     fetcherVersion = 4;
     # Measure with: nix build .#stylex-next-fixture.pnpmDeps --no-link
     # One normalized, all-platform store hash is shared by every system.
-    hash = lib.fakeHash;
+    hash = "sha256-T9xUm2wJkLHJMfyijPdHlE29jZY7nMy2gu0qhAMtVg0=";
     prePnpmInstall = ''
       # fetchPnpmDeps forwards this impure variable as --registry. Pin it here:
       # an unset daemon environment otherwise replaces the derivation value.
