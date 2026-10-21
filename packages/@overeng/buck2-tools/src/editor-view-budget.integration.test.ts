@@ -1798,7 +1798,10 @@ const lockRoot = (root: { readonly editorRoot: string }) => {
       pid: process.pid,
     }),
   )
-  return { release: () => rmSync(path, { recursive: true }) }
+  return {
+    publicationLock: { path, token: 'admission-test-owner', acquisition: 'normal' as const },
+    release: () => rmSync(path, { recursive: true }),
+  }
 }
 describe('budget admission defers reader proof until eviction needs it', () => {
   const readerScans = (): number =>
@@ -2357,6 +2360,99 @@ describe('budget admission defers reader proof until eviction needs it', () => {
 })
 
 describe('orphan retirement under the publication exclusion', () => {
+  it.each(['.store/.candidate-reader-held', '.gc-reader-held'])(
+    'keeps startup orphan %s held by a real reader and refuses an invalid lock proof',
+    async (snapshot) => {
+      const host = makeHost()
+      try {
+        const fixture = host.fixture('startup-reader-held', 168, 64)
+        const record = await host.publish(fixture)
+        const candidate = join(fixture.editorRoot, snapshot)
+        const dependency = join(candidate, 'node_modules', '.pnpm', 'dep@1', 'node_modules', 'dep')
+        mkdirSync(dependency, { recursive: true })
+        writeFileSync(join(dependency, 'payload.bin'), Buffer.alloc(payloadBytes, 169))
+        const reader = openReader(host, fixture, { ...record, snapshot })
+        await reader.ready
+        const lock = lockRoot(fixture)
+        try {
+          expect(
+            await reclaimEditorViewOrphans({
+              editorRoot: fixture.editorRoot,
+              repoRoot: fixture.root,
+              publicationLock: { ...lock.publicationLock, token: 'not-the-held-owner' },
+            }),
+          ).toBe(false)
+          expect(
+            await reclaimEditorViewOrphans({
+              editorRoot: fixture.editorRoot,
+              repoRoot: fixture.root,
+              publicationLock: lock.publicationLock,
+            }),
+          ).toBe(false)
+          expect(pathExists(candidate)).toBe(true)
+          expectRunningReader(reader)
+          await reader.stop()
+          expect(
+            await reclaimEditorViewOrphans({
+              editorRoot: fixture.editorRoot,
+              repoRoot: fixture.root,
+              publicationLock: lock.publicationLock,
+            }),
+          ).toBe(true)
+          expect(pathExists(candidate)).toBe(false)
+        } finally {
+          lock.release()
+        }
+      } finally {
+        await host.cleanup()
+      }
+    },
+  )
+
+  it('keeps a batch candidate opened by a real reader after its census', async () => {
+    const host = makeHost()
+    try {
+      const fixture = host.fixture('batch-reader-held', 166, 64)
+      const record = await host.publish(fixture)
+      const snapshot = '.store/.candidate-reader-after-census'
+      const candidate = join(fixture.editorRoot, snapshot)
+      const dependency = join(candidate, 'node_modules', '.pnpm', 'dep@1', 'node_modules', 'dep')
+      mkdirSync(dependency, { recursive: true })
+      writeFileSync(join(dependency, 'payload.bin'), Buffer.alloc(payloadBytes, 167))
+      let reader: Reader | undefined
+      const reservation = await host.track(
+        reserveEditorViewBudget({
+          contentStore: host.contentStore,
+          root: { repoRoot: fixture.root, editorRoot: fixture.editorRoot },
+          heldEditorRoot: fixture.editorRoot,
+          discoverRoots: () => [],
+          reservationBytes: 1,
+          budgetBytes: 1,
+          tryLockRoot: lockRoot,
+          beforeRetireRoot: async () => {
+            // This hold starts after census, BEFORE reader observation. A hold
+            // arriving after observation leaves identity/epoch unchanged and is
+            // the accepted advisory race; #1990's exclusive lease must cover it.
+            if (reader === undefined) {
+              reader = openReader(host, fixture, { ...record, snapshot })
+              await reader.ready
+            }
+          },
+        }),
+      )
+      if (reader === undefined) throw new Error('candidate never reached the retirement batch')
+      expectRunningReader(reader)
+      expect(pathExists(candidate)).toBe(true)
+      expect(readFileSync(join(dependency, 'payload.bin'))).toEqual(Buffer.alloc(payloadBytes, 167))
+      await cancelEditorViewBudgetReservation({
+        contentStore: host.contentStore,
+        token: reservation.token,
+      })
+    } finally {
+      await host.cleanup()
+    }
+  })
+
   it('preserves reserved and pointer-reached candidates, then converges after release', async () => {
     const host = makeHost()
     try {
@@ -2377,7 +2473,12 @@ describe('orphan retirement under the publication exclusion', () => {
           budgetBytes: setupBudgetBytes,
           tryLockRoot: lockRoot,
         })
-        expect(await reclaimEditorViewOrphans({ editorRoot: fixture.editorRoot })).toBe(false)
+        expect(
+          await reclaimEditorViewOrphans({
+            editorRoot: fixture.editorRoot,
+            publicationLock: lock.publicationLock,
+          }),
+        ).toBe(false)
         expect(pathExists(join(candidate, 'payload.bin'))).toBe(true)
         await cancelEditorViewBudgetReservation({
           contentStore: host.contentStore,
@@ -2385,12 +2486,27 @@ describe('orphan retirement under the publication exclusion', () => {
         })
         const pointer = join(fixture.editorRoot, 'retained')
         symlinkSync('.store/.candidate-abandoned', pointer)
-        expect(await reclaimEditorViewOrphans({ editorRoot: fixture.editorRoot })).toBe(false)
+        expect(
+          await reclaimEditorViewOrphans({
+            editorRoot: fixture.editorRoot,
+            publicationLock: lock.publicationLock,
+          }),
+        ).toBe(false)
         expect(pathExists(candidate)).toBe(true)
         rmSync(pointer)
-        expect(await reclaimEditorViewOrphans({ editorRoot: fixture.editorRoot })).toBe(true)
+        expect(
+          await reclaimEditorViewOrphans({
+            editorRoot: fixture.editorRoot,
+            publicationLock: lock.publicationLock,
+          }),
+        ).toBe(true)
         expect(pathExists(candidate)).toBe(false)
-        expect(await reclaimEditorViewOrphans({ editorRoot: fixture.editorRoot })).toBe(false)
+        expect(
+          await reclaimEditorViewOrphans({
+            editorRoot: fixture.editorRoot,
+            publicationLock: lock.publicationLock,
+          }),
+        ).toBe(false)
       } finally {
         lock.release()
       }
@@ -2463,6 +2579,7 @@ describe('orphan retirement under the publication exclusion', () => {
             await reclaimEditorViewOrphans({
               editorRoot: fixture.editorRoot,
               repoRoot: fixture.root,
+              publicationLock: lock.publicationLock,
             }),
           ).toBe(false)
           const reservation = await host.track(
@@ -2486,6 +2603,7 @@ describe('orphan retirement under the publication exclusion', () => {
             await reclaimEditorViewOrphans({
               editorRoot: fixture.editorRoot,
               repoRoot: fixture.root,
+              publicationLock: lock.publicationLock,
             }),
           ).toBe(true)
           for (const name of orphans) expect(pathExists(join(fixture.editorRoot, name))).toBe(false)
@@ -2543,7 +2661,12 @@ describe('orphan retirement under the publication exclusion', () => {
       const lock = lockRoot(options.root)
       if (lock === undefined) throw new Error('fixture root lock unavailable')
       try {
-        expect(await reclaimEditorViewOrphans({ editorRoot: fixture.editorRoot })).toBe(true)
+        expect(
+          await reclaimEditorViewOrphans({
+            editorRoot: fixture.editorRoot,
+            publicationLock: lock.publicationLock,
+          }),
+        ).toBe(true)
         expect(pathExists(legacy)).toBe(false)
       } finally {
         lock.release()

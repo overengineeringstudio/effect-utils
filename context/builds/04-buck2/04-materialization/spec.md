@@ -271,12 +271,15 @@ leaves the prior current view intact. Snapshot payloads never retain links into
 Abandoned `.store/.candidate-*`, interrupted root `.gc-*`, and individual
 unreferenced `.legacy/*` entries are reclaimable payloads, not completed
 generations. Publisher startup reclaims candidates and interrupted garbage under
-the exclusive publication lock: candidates were never published, and `.gc-*`
-entries were already committed to deletion after retention's reader proof.
-Recovery establishes that their previous publisher is dead before reclaiming
-them. Budget and displaced-install retirement retain the existing reader proof.
-Reclamation also requires no live reservation for the root and no pointer
-reaching the entry. Pointer reachability includes
+the exclusive publication lock. Cleanup carries normal-acquisition or
+proven-dead-owner-recovery provenance and validates the held lock path/token/PID.
+Normal acquisition follows the preceding holder's release; recovery proves the
+preceding holder is dead. Both exclude publisher writes. Missing or mismatched
+lock proof refuses cleanup. Startup also observes readers for candidates and
+interrupted garbage: stale cwd/fd references keep those entries even though they
+were unpublished or had previously crossed deletion commitment.
+Reclamation requires no live reservation and a known pointer inventory proving
+that no pointer reaches the entry. Pointer reachability includes
 root/control symlinks and package `node_modules` links, with both lexical and
 resolved targets retained so dangling or indirect legacy links remain protected.
 The retirement fence repeats identity and reachability checks before renaming
@@ -292,6 +295,10 @@ rechecks identity and ledger epoch immediately before retirement; failed checks
 skip that candidate without waiting. An expired or insufficient batch starts
 another census and proof. Every committed retirement emits its own deletion
 receipt, followed by a batch summary, even when admission subsequently fails.
+The pre-delete seam is an identity/epoch check, not a reader exclusion: a reader
+arriving after observation need not change either value. Non-blocking exclusive
+reader leases in #1990 must be probed at this seam to close that advisory race;
+a held lease skips the candidate without waiting.
 
 Legacy entries are evaluated independently: a referenced displaced install does
 not preserve unrelated legacy entries. A still-referenced legacy entry is

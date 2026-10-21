@@ -244,6 +244,10 @@ Reader-protected accounting is refreshed even if a journal epoch mismatch skips
 the batch, including the final round before forced advisory admission. Retirement
 then checks the epoch and each immutable generation identity under the host/CAS
 fences. As with footprint sidecars, payload immutability is required.
+Without reader leases the pre-delete seam checks identity/epoch, not exclusion
+of late readers. **#1990 MUST add the non-blocking exclusive lease probe in this
+seam** and skip a held candidate. A reader opened after the advisory proof can
+otherwise leave identity and epoch unchanged.
 Retirement also rechecks last-use and publication timestamps, so newly used views
 cannot be evicted from an older plan.
 Vanished victims are skipped even if teardown removes a held eviction lock.
@@ -271,6 +275,12 @@ Each census/planning invocation caches at most one inventory per such root and
 emits a `pointer-inventory` aggregate with root count, entry count, total duration,
 and per-root entries/durations. Retirement repeats the selected orphan root's
 reachability proof at its deletion fence.
+Startup cleanup carries normal-acquisition or proven-dead-owner-recovery
+provenance and validates the held lock path, token, and current PID. Normal
+acquisition follows the previous holder's release; automatic recovery proves
+the previous holder dead. Missing or mismatched proof refuses reclamation.
+Every startup candidate and interrupted `.gc-*` payload also receives a fresh
+reader observation, preserving stale cwd/fd holders as well as pointer targets.
 
 If protected usage prevents reaching the budget, publication **continues** and
 emits a structured `over-budget` event with budget, use, and top holders.

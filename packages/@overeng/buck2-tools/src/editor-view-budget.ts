@@ -57,6 +57,38 @@ export type EditorViewBudgetRoot = { readonly repoRoot: string; readonly editorR
 /** A held root publication lock acquired by `tryLockRoot`. */
 export type EditorViewBudgetRootLock = { readonly release: () => void }
 
+/** Proven provenance of the publication exclusion authorizing startup cleanup. */
+export type EditorViewPublicationLockProof = {
+  readonly path: string
+  readonly token: string
+  readonly acquisition: 'normal' | 'recovered-dead-owner'
+}
+
+const holdsPublicationLock = ({
+  editorRoot,
+  proof,
+}: {
+  readonly editorRoot: string
+  readonly proof: EditorViewPublicationLockProof
+}): boolean => {
+  if (
+    (proof.acquisition !== 'normal' && proof.acquisition !== 'recovered-dead-owner') ||
+    resolve(proof.path) !== join(resolve(editorRoot), '.publish.lock')
+  )
+    return false
+  try {
+    const owner: unknown = JSON.parse(readFileSync(join(proof.path, 'owner.json'), 'utf8'))
+    return (
+      isObject(owner) === true &&
+      owner.schema === 'effect-utils/editor-view-lock/v1' &&
+      owner.token === proof.token &&
+      owner.pid === process.pid
+    )
+  } catch {
+    return false
+  }
+}
+
 /** Marker left at `<editorRoot>/.evicted-<view>.json` after a current generation is evicted. */
 export const editorViewEvictedSchema = 'effect-utils/editor-view-evicted/v1' as const
 /** Durable explanation consumed when an evicted current view is republished. */
@@ -2300,7 +2332,12 @@ type RetirementBatch = {
   expired: boolean
 }
 
-/** Sole per-candidate seam for #1990's future exclusive-lease probe. Host/root fences are held. */
+/**
+ * #1990 MUST add its non-blocking exclusive lease probe in this seam and skip
+ * held candidates. Without leases this is an identity/epoch check, bounded by
+ * observed membership/proof age; it cannot exclude readers arriving after proof.
+ * Host/root fences are held: the future lease probe must never wait here.
+ */
 const checkEditorViewBudgetCandidateBeforeDelete = ({
   candidate,
   kind,
@@ -2343,6 +2380,7 @@ const retireOrphans = async ({
   candidates,
   censusEpoch,
   publisherCleanup = false,
+  publicationLock,
   batch,
 }: {
   readonly editorRoot: string
@@ -2350,6 +2388,7 @@ const retireOrphans = async ({
   readonly candidates: readonly OrphanCandidate[]
   readonly censusEpoch?: number
   readonly publisherCleanup?: boolean
+  readonly publicationLock?: EditorViewPublicationLockProof
   readonly batch?: RetirementBatch | undefined
 }): Promise<Retirement> => {
   const owners = batch === undefined ? budgetProcessOwners() : new Map<number, string>()
@@ -2383,32 +2422,25 @@ const retireOrphans = async ({
         blocked.push(...candidates.map((candidate) => candidate.key))
         return
       }
-      // Startup alone can trust publication exclusion and prior-owner death: candidates
-      // were never published, and .gc payloads already crossed deletion commitment.
-      // Budget victims and retained legacy imports still require the existing reader proof.
-      const readerCandidates =
-        publisherCleanup === true
-          ? candidates.filter(
-              (candidate) =>
-                /^(?:\.store\/\.candidate-[^/]+|\.legacy\/\.candidate-[^/]+|\.gc-[^/]+)$/.test(
-                  relative(editorRoot, candidate.dir),
-                ) === false,
-            )
-          : candidates
+      // Normal acquisition follows the previous publisher's release; recovered
+      // acquisition follows its same-host dead-owner proof. Both exclude writes.
+      // Pointers must still prove unreachability, and stale cwd/fd readers keep
+      // even unpublished candidates and already-committed .gc payloads.
       const live =
         batch?.live ??
-        (readerCandidates.length === 0
-          ? new Set<string>()
-          : observeEditorViewProcessCandidates({
-              candidates: readerCandidates.map((candidate) => ({
-                key: candidate.key,
-                editorRoot,
-                snapshotRoot: candidate.dir,
-                linkedInodes: linkedInodes(candidate.linked),
-              })),
-            }))
+        observeEditorViewProcessCandidates({
+          candidates: candidates.map((candidate) => ({
+            key: candidate.key,
+            editorRoot,
+            snapshotRoot: candidate.dir,
+            linkedInodes: linkedInodes(candidate.linked),
+          })),
+        })
       for (const candidate of candidates) {
         if (
+          (publisherCleanup === true &&
+            (publicationLock === undefined ||
+              holdsPublicationLock({ editorRoot, proof: publicationLock }) === false)) ||
           candidate.identity === undefined ||
           orphanIdentity({ dir: candidate.dir })?.identity !== candidate.identity ||
           live.has(candidate.key) === true ||
@@ -2454,6 +2486,9 @@ const retireOrphans = async ({
             evicted: [candidate.key],
             phase: 'committed',
             publisherCleanup,
+            ...(publicationLock === undefined
+              ? {}
+              : { publicationLockAcquisition: publicationLock.acquisition }),
           })}\n`,
         )
       }
@@ -2477,10 +2512,17 @@ const retireOrphans = async ({
 export const reclaimEditorViewOrphans = async ({
   editorRoot,
   repoRoot,
+  publicationLock,
 }: {
   readonly editorRoot: string
   readonly repoRoot?: string | undefined
+  readonly publicationLock: EditorViewPublicationLockProof
 }): Promise<boolean> => {
+  if (
+    publicationLock === undefined ||
+    holdsPublicationLock({ editorRoot, proof: publicationLock }) === false
+  )
+    return false
   ensureBudgetDirectory()
   const root = resolve(editorRoot)
   const paths: string[] = []
@@ -2532,8 +2574,15 @@ export const reclaimEditorViewOrphans = async ({
     })
   }
   return (
-    (await retireOrphans({ editorRoot: root, repoRoot, candidates, publisherCleanup: true }))
-      .retired.length > 0
+    (
+      await retireOrphans({
+        editorRoot: root,
+        repoRoot,
+        candidates,
+        publisherCleanup: true,
+        publicationLock,
+      })
+    ).retired.length > 0
   )
 }
 

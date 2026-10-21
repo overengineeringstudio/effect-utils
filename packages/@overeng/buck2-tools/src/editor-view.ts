@@ -43,6 +43,7 @@ import {
   type EditorViewBudgetRoot,
   type EditorViewBudgetRootLock,
   type EditorViewBudgetCensusSession,
+  type EditorViewPublicationLockProof,
 } from './editor-view-budget.ts'
 import {
   editorViewPinSchema,
@@ -2333,15 +2334,21 @@ const acquirePublicationLock = async ({
 }): Promise<{ readonly path: string; readonly token: string }> => {
   // Wait only for identified live eviction; recover only positively abandoned same-host owners.
   // Ordinary live, foreign-host, legacy, and unreadable owners retain explicit recovery.
+  let acquisition: EditorViewPublicationLockProof['acquisition'] = 'normal'
   for (;;) {
     try {
       const lock = acquireLock({ editorRoot, recoveryCommand })
       try {
-        // Run once per exclusive root acquisition, before batch workers create
-        // their private candidates. Recovery above only admits proven-dead owners.
+        // A normal acquisition follows the previous holder's release; automatic
+        // recovery below requires its dead-owner proof. Carry that provenance
+        // into cleanup, which also validates the held token and observes readers.
         if (repoRoot !== undefined)
           // eslint-disable-next-line no-await-in-loop -- Reclaim only after this attempt owns the root lock.
-          await reclaimEditorViewOrphans({ editorRoot, repoRoot })
+          await reclaimEditorViewOrphans({
+            editorRoot,
+            repoRoot,
+            publicationLock: { ...lock, acquisition },
+          })
         return lock
       } catch (cleanupError) {
         releaseLock(lock)
@@ -2372,6 +2379,7 @@ const acquirePublicationLock = async ({
       }
       // eslint-disable-next-line no-await-in-loop -- Recovery repeats proof under the host fence.
       if ((await recoverAbandonedPublicationLock({ editorRoot, owner })) === true) {
+        acquisition = 'recovered-dead-owner'
         // eslint-disable-next-line no-await-in-loop -- Yield before retrying the now-free root lock.
         await Bun.sleep(10)
         continue
