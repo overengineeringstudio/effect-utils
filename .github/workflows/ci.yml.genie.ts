@@ -53,11 +53,11 @@ import {
 } from '../../genie/ci-workflow.ts'
 import { withBuck2CacheEvidence } from '../../genie/ci-workflow/buck2-cache-evidence.ts'
 import { withBuck2CachePostures } from '../../genie/ci-workflow/buck2-cache-posture.ts'
-import { publishedRefIf, publishedRefSteps } from '../../genie/ci-workflow/published-ref.ts'
 import {
   withPipelineTelemetry,
   pipelineCloseJob,
 } from '../../genie/ci-workflow/pipeline-telemetry.ts'
+import { publishedRefIf, publishedRefSteps } from '../../genie/ci-workflow/published-ref.ts'
 import type { CoreCIJobName } from '../../genie/ci.ts'
 import { pipelineJobIdentifierSet } from '../../packages/@overeng/ci-tools/src/pipeline-job-names.ts'
 
@@ -596,6 +596,79 @@ const frozenLockfileStep = {
   ),
 } as const
 
+// Cheap deterministic queue proofs share the existing PR bootstrap and remain in
+// the inert-Buck queue job. Keep their commands identical on both paths.
+const cheapInertBuckSteps = [
+  {
+    name: 'Run focused normalized, projection, and runner tests',
+    env: githubTokenEnv(),
+    run: withCiSourceRoot(
+      [
+        'set -euo pipefail',
+        'FINGERPRINT_BIN="$(nix build --no-link --print-out-paths .#buck2-fingerprint)/bin/buck2-fingerprint"',
+        'export FINGERPRINT_BIN',
+        'runner_modules="$("${DEVENV_BIN:?DEVENV_BIN not set}" shell -- buck2 build //packages/@overeng/buck2-tools:node_modules --show-simple-output)"',
+        'package_modules=packages/@overeng/buck2-tools/node_modules',
+        'if [ -e "$package_modules" ] || [ -L "$package_modules" ]; then mv "$package_modules" "${RUNNER_TEMP:?RUNNER_TEMP not set}/buck2-tools-original-node-modules"; fi',
+        'ln -s "$PWD/$runner_modules" "$package_modules"',
+        '"${DEVENV_BIN:?DEVENV_BIN not set}" shell -- bun test \\',
+        // Bare Bun arguments are suffix filters and discover staged buck-out copies.
+        '  ./genie/buck2/typescript-package-projection.unit.test.ts \\',
+        '  ./genie/buck2/javascript-candidates.unit.test.ts \\',
+        '  ./packages/@overeng/buck2-tools/src/package-command-runner.unit.test.ts \\',
+        '  ./packages/@overeng/buck2-tools/src/javascript-runner.unit.test.ts',
+      ].join('\n'),
+    ),
+  },
+  {
+    name: 'Reject tracked product and editor payload bytes',
+    // Derive Nix recipe admission from //:nix_sources ownership, then check
+    // the remaining exact metadata/test allowlist.
+    run: withCiSourceRoot(
+      [
+        'set -euo pipefail',
+        "tracked_editor=$(git ls-files -- '**/.editor-view/**' '.editor-view/**')",
+        `tracked_product=$(git ls-files -- 'nix/buck2-products/**' ${rootNixSourceGlobs.map((glob) => `':(glob,exclude)nix/buck2-products/${glob}'`).join(' ')} | grep -Ev '^nix/buck2-products/(cache-targets\\.json|cache-targets\\.json\\.genie\\.ts|capability-closure\\.test\\.sh|compiled-targets\\.json|compiled-targets\\.json\\.genie\\.ts|from-source-contract\\.test\\.sh|from-source-cores\\.test\\.sh|manifest\\.json|native-targets\\.json|native-targets\\.json\\.genie\\.ts|private-product-tarballs\\.test\\.sh|publish\\.sh|targets\\.json|targets\\.json\\.genie\\.ts)$' || true)`,
+        'invalid_sources=()',
+        "while IFS= read -r -d '' path; do",
+        '  case "/$path/" in',
+        '    */buck-out/*|*/.editor-view/*|*/result*/*|*/dist/*|*/node_modules/*|*/storybook-static/*|*/tmp/*|*/target/*|*/.devenv/*) ;;',
+        '    *)',
+        '      if [ "$(git --literal-pathspecs cat-file -s ":$path")" -le 262144 ] && git --literal-pathspecs grep --cached -I --name-only -e \'\' -- "$path" >/dev/null; then',
+        '        continue',
+        '      fi',
+        '      ;;',
+        '  esac',
+        '  invalid_sources+=("$path")',
+        `done < <(git ls-files -z -- ${rootNixSourceGlobs.map((glob) => `':(glob)nix/buck2-products/${glob}'`).join(' ')})`,
+        'tracked_source=$(printf \'%s\\n\' "${invalid_sources[@]}")',
+        'if [ -n "$tracked_editor$tracked_product$tracked_source" ]; then',
+        '  printf \'Tracked inert payload bytes are forbidden:\\n%s\\n%s\\n%s\\n\' "$tracked_editor" "$tracked_product" "$tracked_source" >&2',
+        '  exit 1',
+        'fi',
+      ].join('\n'),
+    ),
+  },
+  {
+    name: 'Query and build representative inert Buck targets',
+    env: githubTokenEnv(),
+    run: withCiSourceRoot(
+      [
+        'set -euo pipefail',
+        '"${DEVENV_BIN:?DEVENV_BIN not set}" shell -- bash -euo pipefail -c \'',
+        '  cd "${GITHUB_WORKSPACE:?GITHUB_WORKSPACE not set}"',
+        '  buck="${BUCK2_BIN:?BUCK2_BIN not set}"',
+        '  "$buck" query effect_utils//packages/@overeng/ci-tools:ci-tools-candidate',
+        '  "$buck" query effect_utils//:editor_view_inputs',
+        '  "$buck" build \\',
+        '    effect_utils//packages/@overeng/ci-tools:ci-tools-candidate \\',
+        '    effect_utils//:editor_view_inputs',
+        "'",
+      ].join('\n'),
+    ),
+  },
+]
+
 // Core product jobs keyed by the shared Genie CI source of truth.
 const jobs: Record<CoreCIJobName, CiWorkflowArgs['jobs'][string]> = {
   // Share one Linux bootstrap across the four quality invariants.
@@ -656,6 +729,41 @@ const jobs: Record<CoreCIJobName, CiWorkflowArgs['jobs'][string]> = {
           // Generated-file freshness stays authoritative, not just a local fast path.
           run: runDevenvTasksBefore('genie:check', 'lint:check'),
         }),
+        // Keep these source-side contract suites on the PR path as well as test:run:
+        // generator freshness and Buck type checking do not execute their assertions.
+        buck2TrustedCacheWriterStep({
+          name: 'Genie projection and CI workflow regression tests',
+          env: githubTokenEnv(),
+          // test:run publishes every source-test editor view. These suites need only
+          // the root generator closure and Megarepo's root-adapter dependencies.
+          // Build/link those exact Buck views, as the focused runner proof does,
+          // then execute the unchanged full tasks without the aggregate installers.
+          run: withCiSourceRoot(
+            [
+              'set -euo pipefail',
+              '"${DEVENV_BIN:?DEVENV_BIN not set}" shell -- bash -euo pipefail -c \'',
+              '  prepared=()',
+              '  restore_views() {',
+              '    for package in "${prepared[@]}"; do',
+              '      rm -f "$package/node_modules"',
+              '      backup="$RUNNER_TEMP/genie-pr-${package##*/}-node-modules"',
+              '      if [ -e "$backup" ] || [ -L "$backup" ]; then mv "$backup" "$package/node_modules"; fi',
+              '    done',
+              '  }',
+              '  trap restore_views EXIT',
+              '  for package in . packages/@overeng/megarepo; do',
+              '    if [ "$package" = . ]; then target=//:node_modules; else target=//$package:node_modules; fi',
+              '    modules="$("${BUCK2_BIN:?BUCK2_BIN not set}" build "$target" --show-simple-output)"',
+              '    backup="${RUNNER_TEMP:?RUNNER_TEMP not set}/genie-pr-${package##*/}-node-modules"',
+              '    if [ -e "$package/node_modules" ] || [ -L "$package/node_modules" ]; then mv "$package/node_modules" "$backup"; fi',
+              '    prepared+=("$package")',
+              '    ln -s "$PWD/$modules" "$package/node_modules"',
+              '  done',
+              '  "$DEVENV_BIN" tasks run --mode single genie:buck2:test genie:ci-workflow:test buck2:rust:generators:test',
+              "'",
+            ].join('\n'),
+          ),
+        }),
         buck2TrustedCacheWriterStep({
           name: 'Bundle smoke tests',
           env: githubTokenEnv(),
@@ -695,6 +803,7 @@ const jobs: Record<CoreCIJobName, CiWorkflowArgs['jobs'][string]> = {
             'bash nix/workspace-tools/lib/tests/downstream-flake-input.sh "$PWD"',
           ),
         },
+        ...cheapInertBuckSteps,
       ],
       step: nativeDepPolicyAuditStep,
     }),
@@ -932,26 +1041,6 @@ const extraJobs: Record<string, any> = {
         run: runDevenvTasksBefore('nix:flake:eval'),
       },
       {
-        name: 'Run focused normalized, projection, and runner tests',
-        env: githubTokenEnv(),
-        run: withCiSourceRoot(
-          [
-            'set -euo pipefail',
-            'FINGERPRINT_BIN="$(nix build --no-link --print-out-paths .#buck2-fingerprint)/bin/buck2-fingerprint"',
-            'export FINGERPRINT_BIN',
-            'runner_modules="$("${DEVENV_BIN:?DEVENV_BIN not set}" shell -- buck2 build //packages/@overeng/buck2-tools:node_modules --show-simple-output)"',
-            'package_modules=packages/@overeng/buck2-tools/node_modules',
-            'if [ -e "$package_modules" ] || [ -L "$package_modules" ]; then mv "$package_modules" "${RUNNER_TEMP:?RUNNER_TEMP not set}/buck2-tools-original-node-modules"; fi',
-            'ln -s "$PWD/$runner_modules" "$package_modules"',
-            '"${DEVENV_BIN:?DEVENV_BIN not set}" shell -- bun test \\',
-            '  genie/buck2/typescript-package-projection.unit.test.ts \\',
-            '  genie/buck2/javascript-candidates.unit.test.ts \\',
-            '  packages/@overeng/buck2-tools/src/package-command-runner.unit.test.ts \\',
-            '  packages/@overeng/buck2-tools/src/javascript-runner.unit.test.ts',
-          ].join('\n'),
-        ),
-      },
-      {
         name: 'Check published package runtime imports',
         env: githubTokenEnv(),
         run: withCiSourceRoot(
@@ -975,53 +1064,7 @@ const extraJobs: Record<string, any> = {
           ].join('\n'),
         ),
       },
-      {
-        name: 'Reject tracked product and editor payload bytes',
-        // Derive Nix recipe admission from //:nix_sources ownership, then check
-        // the remaining exact metadata/test allowlist.
-        run: withCiSourceRoot(
-          [
-            'set -euo pipefail',
-            "tracked_editor=$(git ls-files -- '**/.editor-view/**' '.editor-view/**')",
-            `tracked_product=$(git ls-files -- 'nix/buck2-products/**' ${rootNixSourceGlobs.map((glob) => `':(glob,exclude)nix/buck2-products/${glob}'`).join(' ')} | grep -Ev '^nix/buck2-products/(cache-targets\\.json|cache-targets\\.json\\.genie\\.ts|capability-closure\\.test\\.sh|compiled-targets\\.json|compiled-targets\\.json\\.genie\\.ts|from-source-contract\\.test\\.sh|from-source-cores\\.test\\.sh|manifest\\.json|native-targets\\.json|native-targets\\.json\\.genie\\.ts|private-product-tarballs\\.test\\.sh|publish\\.sh|targets\\.json|targets\\.json\\.genie\\.ts)$' || true)`,
-            'invalid_sources=()',
-            "while IFS= read -r -d '' path; do",
-            '  case "/$path/" in',
-            '    */buck-out/*|*/.editor-view/*|*/result*/*|*/dist/*|*/node_modules/*|*/storybook-static/*|*/tmp/*|*/target/*|*/.devenv/*) ;;',
-            '    *)',
-            '      if [ "$(git --literal-pathspecs cat-file -s ":$path")" -le 262144 ] && git --literal-pathspecs grep --cached -I --name-only -e \'\' -- "$path" >/dev/null; then',
-            '        continue',
-            '      fi',
-            '      ;;',
-            '  esac',
-            '  invalid_sources+=("$path")',
-            `done < <(git ls-files -z -- ${rootNixSourceGlobs.map((glob) => `':(glob)nix/buck2-products/${glob}'`).join(' ')})`,
-            'tracked_source=$(printf \'%s\\n\' "${invalid_sources[@]}")',
-            'if [ -n "$tracked_editor$tracked_product$tracked_source" ]; then',
-            '  printf \'Tracked inert payload bytes are forbidden:\\n%s\\n%s\\n%s\\n\' "$tracked_editor" "$tracked_product" "$tracked_source" >&2',
-            '  exit 1',
-            'fi',
-          ].join('\n'),
-        ),
-      },
-      {
-        name: 'Query and build representative inert Buck targets',
-        env: githubTokenEnv(),
-        run: withCiSourceRoot(
-          [
-            'set -euo pipefail',
-            '"${DEVENV_BIN:?DEVENV_BIN not set}" shell -- bash -euo pipefail -c \'',
-            '  cd "${GITHUB_WORKSPACE:?GITHUB_WORKSPACE not set}"',
-            '  buck="${BUCK2_BIN:?BUCK2_BIN not set}"',
-            '  "$buck" query effect_utils//packages/@overeng/ci-tools:ci-tools-candidate',
-            '  "$buck" query effect_utils//:editor_view_inputs',
-            '  "$buck" build \\',
-            '    effect_utils//packages/@overeng/ci-tools:ci-tools-candidate \\',
-            '    effect_utils//:editor_view_inputs',
-            "'",
-          ].join('\n'),
-        ),
-      },
+      ...cheapInertBuckSteps,
     ],
   },
   /** Queue and fallback main build of every published from-source product. */
