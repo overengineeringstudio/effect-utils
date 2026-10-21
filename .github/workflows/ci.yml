@@ -891,10 +891,10 @@ jobs:
           if [ -e "$package_modules" ] || [ -L "$package_modules" ]; then mv "$package_modules" "${RUNNER_TEMP:?RUNNER_TEMP not set}/buck2-tools-original-node-modules"; fi
           ln -s "$PWD/$runner_modules" "$package_modules"
           "${DEVENV_BIN:?DEVENV_BIN not set}" shell -- bun test \
-            genie/buck2/typescript-package-projection.unit.test.ts \
-            genie/buck2/javascript-candidates.unit.test.ts \
-            packages/@overeng/buck2-tools/src/package-command-runner.unit.test.ts \
-            packages/@overeng/buck2-tools/src/javascript-runner.unit.test.ts
+            ./genie/buck2/typescript-package-projection.unit.test.ts \
+            ./genie/buck2/javascript-candidates.unit.test.ts \
+            ./packages/@overeng/buck2-tools/src/package-command-runner.unit.test.ts \
+            ./packages/@overeng/buck2-tools/src/javascript-runner.unit.test.ts
       - name: Reject tracked product and editor payload bytes
         run: |
           cd "${GITHUB_WORKSPACE:-$PWD}" && set -euo pipefail
@@ -3314,10 +3314,10 @@ jobs:
           if [ -e "$package_modules" ] || [ -L "$package_modules" ]; then mv "$package_modules" "${RUNNER_TEMP:?RUNNER_TEMP not set}/buck2-tools-original-node-modules"; fi
           ln -s "$PWD/$runner_modules" "$package_modules"
           "${DEVENV_BIN:?DEVENV_BIN not set}" shell -- bun test \
-            genie/buck2/typescript-package-projection.unit.test.ts \
-            genie/buck2/javascript-candidates.unit.test.ts \
-            packages/@overeng/buck2-tools/src/package-command-runner.unit.test.ts \
-            packages/@overeng/buck2-tools/src/javascript-runner.unit.test.ts
+            ./genie/buck2/typescript-package-projection.unit.test.ts \
+            ./genie/buck2/javascript-candidates.unit.test.ts \
+            ./packages/@overeng/buck2-tools/src/package-command-runner.unit.test.ts \
+            ./packages/@overeng/buck2-tools/src/javascript-runner.unit.test.ts
       - name: Reject tracked product and editor payload bytes
         run: |
           cd "${GITHUB_WORKSPACE:-$PWD}" && set -euo pipefail

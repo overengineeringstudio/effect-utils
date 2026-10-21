@@ -198,6 +198,26 @@ describe('generated CI cache trust behavior', () => {
     )
   })
 
+  it('selects exact focused source files rather than suffix-matching staged Buck copies', async () => {
+    const workflow = await readWorkflow()
+    const files = [
+      'genie/buck2/typescript-package-projection.unit.test.ts',
+      'genie/buck2/javascript-candidates.unit.test.ts',
+      'packages/@overeng/buck2-tools/src/package-command-runner.unit.test.ts',
+      'packages/@overeng/buck2-tools/src/javascript-runner.unit.test.ts',
+    ]
+    for (const job of [workflow.jobs.quality!, workflow.jobs['pr-a-inert-buck']!]) {
+      const focused = job.steps.find(
+        ({ name }) => name === 'Run focused normalized, projection, and runner tests',
+      )
+      expect(focused).toBeDefined()
+      for (const file of files) {
+        expect(focused?.run).toContain(`./${file}`)
+        expect(focused?.run).not.toContain(`  ${file}`)
+      }
+    }
+  })
+
   it('skips main heavy lanes only for tested trees and still runs queues, publishers and the proof', async () => {
     const workflow = await readWorkflow()
     for (const id of [
