@@ -1,6 +1,3 @@
-# Generated file - DO NOT EDIT
-# Source: BUCK.genie.ts
-
 # Projection source: packages/@overeng/tui-react/BUCK.genie.ts
 # Projection schema version: 13
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
@@ -293,6 +290,7 @@ package_view(
         "node_modules/@overeng/utils/node_modules": "//packages/@overeng/utils:package_tree",
     },
     strip_project_references = True,
+    project_files = ["tsconfig.buck.json"],
     runtime = "//packages/@overeng/buck2-tools:package_tree_runtime",
     runtime_entry = "package-tree.ts",
     visibility = ["PUBLIC"],
@@ -425,6 +423,7 @@ package_view(
         "node_modules/@overeng/utils/node_modules": "//packages/@overeng/utils:product_package_tree",
     },
     strip_project_references = True,
+    project_files = ["tsconfig.buck.json"],
     runtime = "//packages/@overeng/buck2-tools:package_tree_runtime",
     runtime_entry = "package-tree.ts",
     visibility = ["PUBLIC"],
@@ -561,6 +560,7 @@ package_view(
         "node_modules/@overeng/utils/node_modules": "//packages/@overeng/utils:package_tree",
     },
     strip_project_references = True,
+    project_files = ["tsconfig.buck.json"],
     runtime = "//packages/@overeng/buck2-tools:package_tree_runtime",
     runtime_entry = "package-tree.ts",
     visibility = ["PUBLIC"],

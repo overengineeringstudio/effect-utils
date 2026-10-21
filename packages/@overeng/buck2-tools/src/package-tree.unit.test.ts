@@ -186,32 +186,37 @@ describe('Buck package view over a normalized dependency view', () => {
     expect(statSync(join(link, 'safe', 'package.json')).isFile()).toBe(true)
     expect(statSync(join(fixture.output, 'src', 'mod.ts')).isFile()).toBe(true)
   })
-  it('strips authored workspace project references from a bounded package view', () => {
-    const fixture = createAssemblyFixture()
-    const source = join(fixture.root, 'tsconfig.json')
-    writeFileSync(
-      source,
-      '// generated JSONC\n{"compilerOptions":{"jsx":"react-jsx"},"references":[{"path":"../sibling"}]}\n',
-    )
+  it.each(['tsconfig.json', 'tsconfig.typecheck.json'])(
+    'strips authored workspace project references from authority %s',
+    (project) => {
+      const fixture = createAssemblyFixture()
+      const source = join(fixture.root, project)
+      writeFileSync(
+        source,
+        '// generated JSONC\n{"compilerOptions":{"jsx":"react-jsx"},"references":[{"path":"../sibling"}]}\n',
+      )
 
-    runPackageTreeCli([
-      '--output',
-      fixture.output,
-      '--dependency-view',
-      fixture.nodeModules,
-      '--strip-project-references',
-      'true',
-      '--file',
-      'tsconfig.json',
-      source,
-    ])
+      runPackageTreeCli([
+        '--output',
+        fixture.output,
+        '--dependency-view',
+        fixture.nodeModules,
+        '--strip-project-references',
+        'true',
+        '--project',
+        project,
+        '--file',
+        project,
+        source,
+      ])
 
-    expect(JSON.parse(readFileSync(join(fixture.output, 'tsconfig.json'), 'utf8'))).toEqual({
-      compilerOptions: { jsx: 'react-jsx' },
-      references: [],
-    })
-    expect(readFileSync(source, 'utf8')).toContain('../sibling')
-  })
+      expect(JSON.parse(readFileSync(join(fixture.output, project), 'utf8'))).toEqual({
+        compilerOptions: { jsx: 'react-jsx' },
+        references: [],
+      })
+      expect(readFileSync(source, 'utf8')).toContain('../sibling')
+    },
+  )
 
   it.each([
     ['absent', '// generated JSONC\n{"compilerOptions":{"jsx":"react-jsx"}}\n'],
@@ -257,6 +262,66 @@ describe('Buck package view over a normalized dependency view', () => {
     ).toThrow('--strip-project-references declared but no tsconfig.json was staged')
     expect(lstatSync(fixture.output).isDirectory()).toBe(true)
     expect(readdirSync(fixture.output)).toEqual([])
+  })
+
+  it('fails closed when a named authority is missing even if tsconfig.json is staged', () => {
+    const fixture = createAssemblyFixture()
+    const source = join(fixture.root, 'tsconfig.json')
+    writeFileSync(source, '{"references":[{"path":"../sibling"}]}\n')
+
+    expect(() =>
+      runPackageTreeCli([
+        '--output',
+        fixture.output,
+        '--dependency-view',
+        fixture.nodeModules,
+        '--strip-project-references',
+        'true',
+        '--project',
+        'tsconfig.typecheck.json',
+        '--file',
+        'tsconfig.json',
+        source,
+      ]),
+    ).toThrow('--strip-project-references declared but no tsconfig.typecheck.json was staged')
+    expect(readdirSync(fixture.output)).toEqual([])
+  })
+
+  it('strips every authority without rewriting an extends-only config', () => {
+    const fixture = createAssemblyFixture()
+    const base = join(fixture.root, 'tsconfig.json')
+    const contents = '{"references":[{"path":"../base-sibling"}]}\n'
+    writeFileSync(base, contents)
+    const project = join(fixture.root, 'tsconfig.typecheck.json')
+    writeFileSync(project, '{"extends":"./tsconfig.json","references":[{"path":"../sibling"}]}\n')
+    runPackageTreeCli([
+      '--output',
+      fixture.output,
+      '--dependency-view',
+      fixture.nodeModules,
+      '--strip-project-references',
+      'true',
+      '--project',
+      'tsconfig.typecheck.json',
+      '--project',
+      'tsconfig.emit.json',
+      '--file',
+      'tsconfig.typecheck.json',
+      project,
+      '--file',
+      'tsconfig.emit.json',
+      project,
+      '--file',
+      'tsconfig.json',
+      base,
+    ])
+    for (const authority of ['tsconfig.typecheck.json', 'tsconfig.emit.json']) {
+      expect(JSON.parse(readFileSync(join(fixture.output, authority), 'utf8'))).toEqual({
+        extends: './tsconfig.json',
+        references: [],
+      })
+    }
+    expect(readFileSync(join(fixture.output, 'tsconfig.json'), 'utf8')).toBe(contents)
   })
 
   it('overlays authoritative workspace declarations without copying dependency bytes', () => {

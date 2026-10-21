@@ -646,12 +646,29 @@ describe('declared-closure package projection', () => {
     expect(output).toContain('    declaration_entrypoint = "src/tokens.stylex.d.ts",')
   })
 
+  it('strips the named authority used by both typecheck and emit', () => {
+    const output = buck2TypeScriptPackageProjection({
+      ...buck2TypeScriptAdmissions.stylexTokens,
+      authorities: [{ projectFile: 'tsconfig.typecheck.json' }],
+    }).stringify(genieContext)
+
+    expect(output.match(/    project = "tsconfig.typecheck.json",/gu)).toHaveLength(2)
+    for (const tree of ['package_tree', 'product_package_tree']) {
+      const target = output.split(`    name = "${tree}",\n`)[1]?.split('\n)\n')[0]
+      expect(target).toContain('    project_files = ["tsconfig.typecheck.json"],')
+      expect(target).toContain('"tsconfig.typecheck.json": "tsconfig.typecheck.json",')
+    }
+  })
+
   it('projects an additional no-emit project under its own typecheck target', () => {
     const output = outputsByAdmission.reactInspector
 
     expect(output).toContain('    name = "strict_consumer_typecheck",')
     expect(output).toContain('    project = "tsconfig.strict-consumer.json",')
     expect(output.split('    name = "dist",')).toHaveLength(2)
+    expect(output).toContain(
+      '    project_files = ["tsconfig.json", "tsconfig.strict-consumer.json"],',
+    )
   })
 
   it('refuses an unnamed additional authority project', () => {
