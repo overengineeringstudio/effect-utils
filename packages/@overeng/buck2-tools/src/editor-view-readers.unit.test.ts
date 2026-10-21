@@ -416,6 +416,39 @@ describe('macOS lsof completeness', () => {
     expect(classify().get('a')?.state).toBe('unknown')
   })
 
+  it('logs each unknown fd with process identity and unavailable lsof errno without clearing it', () => {
+    const logged: string[] = []
+    const output = vi
+      .spyOn(console, 'error')
+      .mockImplementation((line) => logged.push(String(line)))
+    try {
+      io.spawnSync.mockReturnValue({
+        stdout: `p123\0cfixture-reader\0u${uid}\0f15\0n/unknown-type\0\nf16\0tREG\0n/unknown-inode\0\n`,
+        stderr: '',
+        status: 0,
+        signal: null,
+      })
+      expect(classify().get('a')?.state).toBe('unknown')
+      const records = logged
+        .filter(
+          (line) =>
+            line.startsWith('editor-view-reader-unknown: ') && line.includes('"call":"lsof.'),
+        )
+        .map((line) => JSON.parse(line.slice('editor-view-reader-unknown: '.length)))
+      expect(records).toEqual([
+        { pid: '123', comm: 'fixture-reader', fd: '15', call: 'lsof.file-type', errno: null },
+        { pid: '123', comm: 'fixture-reader', fd: '16', call: 'lsof.file-inode', errno: null },
+      ])
+      expect(io.spawnSync).toHaveBeenCalledWith(
+        '/usr/sbin/lsof',
+        ['-nP', '-FpcuftDin0', '-u', String(uid)],
+        expect.anything(),
+      )
+    } finally {
+      output.mockRestore()
+    }
+  })
+
   it('retains positive references even when the remaining output failed', () => {
     io.spawnSync.mockReturnValue({
       stdout: `p123\0u${uid}\0fcwd\0tDIR\0n/views/.store/a\0\n`,

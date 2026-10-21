@@ -49,6 +49,47 @@ export const editorViewDarwinDeadVnode: {
   },
 }
 
+let darwinUnknownLogger: ((pid: number, fd: number) => void) | undefined
+
+/** Observations for diagnosis only; logging must never change reader evidence. */
+const logDarwinUnknownRecord = (record: {
+  readonly pid: string | null
+  readonly comm: string | null
+  readonly fd: string | null
+  readonly call: string
+  readonly errno: string | number | null
+}): void => {
+  console.error(`editor-view-reader-unknown: ${JSON.stringify(record)}`)
+  if (record.pid === null || /^\d+$/.test(record.pid) === false || typeof Bun === 'undefined')
+    return
+  const pid = Number(record.pid)
+  if (pid <= 0 || pid > 0x7fffffff) return
+  const fd = record.fd !== null && /^\d+$/.test(record.fd) === true ? Number(record.fd) : -1
+  if (fd > 0x7fffffff) return
+  try {
+    if (darwinUnknownLogger === undefined) {
+      const library = process.env.EDITOR_VIEW_LEASE_LIBRARY
+      if (library === undefined || isAbsolute(library) === false)
+        throw new Error('packaged native diagnostic library is unavailable')
+      const { dlopen }: { readonly dlopen: typeof openNativeLibrary } = createRequire(
+        import.meta.url,
+      )('bun:ffi')
+      darwinUnknownLogger = dlopen(library, {
+        eu_darwin_log_unknown: { args: ['i32', 'i32'], returns: 'void' },
+      }).symbols.eu_darwin_log_unknown
+    }
+    darwinUnknownLogger(pid, fd)
+  } catch (error) {
+    console.error(
+      `editor-view-reader-unknown: ${JSON.stringify({
+        ...record,
+        call: 'native-diagnostics',
+        errno: failureCode(error),
+      })}`,
+    )
+  }
+}
+
 const vanished = (error: unknown): boolean =>
   error instanceof Error && 'code' in error && (error.code === 'ENOENT' || error.code === 'ESRCH')
 
@@ -730,14 +771,39 @@ const scanEditorViewProcesses = (observer: ProcessObserver): readonly string[] =
     return reasons
   }
   if (process.platform !== 'darwin') return [`unsupported-process-platform: ${process.platform}`]
+  let pid = ''
+  let comm = ''
+  let descriptor = ''
+  const unknownRecord = ({
+    reason,
+    call,
+    errno = null,
+  }: {
+    readonly reason: string
+    readonly call: string
+    readonly errno?: string | number | null
+  }): void => {
+    reasons.push(reason)
+    logDarwinUnknownRecord({
+      pid: pid.length === 0 ? null : pid,
+      comm: comm.length === 0 ? null : comm,
+      fd: descriptor.length === 0 ? null : descriptor,
+      call,
+      errno,
+    })
+  }
   const result = (() => {
     try {
-      return spawnSync('/usr/sbin/lsof', ['-nP', '-FpuftDin0', '-u', String(uid)], {
+      return spawnSync('/usr/sbin/lsof', ['-nP', '-FpcuftDin0', '-u', String(uid)], {
         encoding: 'utf8',
         maxBuffer: 256 * 1024 * 1024,
       })
     } catch (error) {
-      reasons.push(`lsof-spawn: ${failureCode(error)}`)
+      unknownRecord({
+        reason: `lsof-spawn: ${failureCode(error)}`,
+        call: 'lsof.spawn',
+        errno: failureCode(error),
+      })
       return undefined
     }
   })()
@@ -747,23 +813,32 @@ const scanEditorViewProcesses = (observer: ProcessObserver): readonly string[] =
   }
   const stdout = result.stdout ?? ''
   const stderr = result.stderr ?? ''
-  if (result.error !== undefined) reasons.push(`lsof-spawn: ${failureCode(result.error)}`)
-  if (result.signal !== null) reasons.push(`lsof-signal: ${result.signal}`)
+  if (result.error !== undefined)
+    unknownRecord({
+      reason: `lsof-spawn: ${failureCode(result.error)}`,
+      call: 'lsof.spawn',
+      errno: failureCode(result.error),
+    })
+  if (result.signal !== null)
+    unknownRecord({ reason: `lsof-signal: ${result.signal}`, call: 'lsof.signal' })
   // lsof documents 1 for an empty selection. Accept it only with truly empty
   // output and no diagnostics; partial/nonempty output is not an empty scan.
   const empty = result.status === 1 && stdout.length === 0 && stderr.length === 0
-  if (result.status !== 0 && empty === false) reasons.push(`lsof-status: ${result.status}`)
-  if (stderr.length !== 0) reasons.push(`lsof-diagnostics: ${stderr.trim()}`)
+  if (result.status !== 0 && empty === false)
+    unknownRecord({ reason: `lsof-status: ${result.status}`, call: 'lsof.exit' })
+  if (stderr.length !== 0)
+    unknownRecord({ reason: `lsof-diagnostics: ${stderr.trim()}`, call: 'lsof.stderr' })
   if (stdout.length !== 0 && stdout.endsWith('\0') === false && stdout.endsWith('\0\n') === false)
-    reasons.push('lsof-incomplete: unterminated field output')
+    unknownRecord({ reason: 'lsof-incomplete: unterminated field output', call: 'lsof.fields' })
   if (stdout.length === 0 && result.status === 0)
-    reasons.push('lsof-incomplete: successful scan without any process records')
+    unknownRecord({
+      reason: 'lsof-incomplete: successful scan without any process records',
+      call: 'lsof.processes',
+    })
   let sameUser = false
   let userKnown = false
   let processSeen = false
-  let pid = ''
   let deadVnode = 0
-  let descriptor = ''
   let type = ''
   let device = ''
   let inode = ''
@@ -771,7 +846,10 @@ const scanEditorViewProcesses = (observer: ProcessObserver): readonly string[] =
   const admit = (): void => {
     if (descriptor.length === 0) return
     if (userKnown === false) {
-      reasons.push(`lsof-incomplete: missing process uid: ${descriptor}`)
+      unknownRecord({
+        reason: `lsof-incomplete: missing process uid: ${descriptor}`,
+        call: 'lsof.process-uid',
+      })
       return
     }
     if (sameUser === false) return
@@ -794,7 +872,10 @@ const scanEditorViewProcesses = (observer: ProcessObserver): readonly string[] =
           // Missing or failed native evidence preserves the unknown record.
         }
       }
-      reasons.push(`lsof-incomplete: missing/unknown file type: ${descriptor}`)
+      unknownRecord({
+        reason: `lsof-incomplete: missing/unknown file type: ${descriptor}`,
+        call: 'lsof.file-type',
+      })
       return
     }
     if (type !== 'REG' && type !== 'DIR') return
@@ -802,7 +883,10 @@ const scanEditorViewProcesses = (observer: ProcessObserver): readonly string[] =
     observer.path(path, reason)
     if (type !== 'REG') return
     if (/^0x[0-9a-f]+$/i.test(device) === false || /^\d+$/.test(inode) === false) {
-      reasons.push(`lsof-incomplete: missing device/inode: ${descriptor}`)
+      unknownRecord({
+        reason: `lsof-incomplete: missing device/inode: ${descriptor}`,
+        call: 'lsof.file-inode',
+      })
       return
     }
     observer.inode(inode, String(BigInt(device)), reason)
@@ -819,24 +903,33 @@ const scanEditorViewProcesses = (observer: ProcessObserver): readonly string[] =
       path = ''
       if (identifier === 'p') {
         pid = field.slice(1)
+        comm = ''
         processSeen = true
         if (/^\d+$/.test(field.slice(1)) === false)
-          reasons.push('lsof-incomplete: invalid process id')
+          unknownRecord({ reason: 'lsof-incomplete: invalid process id', call: 'lsof.pid' })
         sameUser = false
         userKnown = false
       }
     } else if (identifier === 'u') {
       sameUser = field.slice(1) === String(uid)
       userKnown = /^\d+$/.test(field.slice(1))
-    } else if (identifier === 't') type = field.slice(1)
+    } else if (identifier === 'c') comm = field.slice(1)
+    else if (identifier === 't') type = field.slice(1)
     else if (identifier === 'D') device = field.slice(1)
     else if (identifier === 'i') inode = field.slice(1)
     else if (identifier === 'n') path = field.slice(1)
-    else if (field.length !== 0) reasons.push(`lsof-incomplete: unexpected field ${identifier}`)
+    else if (field.length !== 0)
+      unknownRecord({
+        reason: `lsof-incomplete: unexpected field ${identifier}`,
+        call: 'lsof.field',
+      })
   }
   admit()
   if (stdout.length !== 0 && processSeen === false)
-    reasons.push('lsof-incomplete: no process identity records')
+    unknownRecord({
+      reason: 'lsof-incomplete: no process identity records',
+      call: 'lsof.process-identity',
+    })
   console.error(`editor-view-process-census: deadVnode=${deadVnode} unknown=${reasons.length}`)
   return reasons
 }

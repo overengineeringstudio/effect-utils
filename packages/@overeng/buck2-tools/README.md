@@ -378,6 +378,14 @@ process or another handle. Positive pathname/device/inode references and all sca
 completeness checks remain in force. The exact `lsof` marker `(revoked)` alone is
 not proof. Diagnostics expose `editor-view-process-census: deadVnode=N unknown=M`,
 where `N` counts proven descriptors and `M` counts unresolved census reasons.
+Every unknown `lsof` record also emits `editor-view-reader-unknown` with its
+observed PID, command name, descriptor, failing observation and errno. Missing
+identity fields and errno not exposed by `lsof` are explicitly `null`, never
+invented. The packaged fixed-arity `eu_darwin_log_unknown` helper emits correlated
+kernel diagnostics with numeric errno/results for BSD process info before and
+after the query, a bounded descriptor-type sample, and vnode/path-info calls.
+These observations help distinguish an exit race from an inaccessible live
+process; they never change classification or authorize retirement.
 
 This narrow rule follows the Darwin vnode-query implementation in
 [XNU `proc_info.c`](https://github.com/apple-oss-distributions/xnu/blob/main/bsd/kern/proc_info.c#L2555-L2608):

@@ -416,6 +416,24 @@ describe.skipIf(process.platform !== 'darwin')('Darwin native dead-vnode proof',
       } finally { fs.closeSync(file); fs.closeSync(directory); }
     `))
 
+  it('logs kernel calls and errno without changing live-vnode evidence', () =>
+    run(`
+      const program = [
+        "import { dlopen } from 'bun:ffi';",
+        "import { openSync, closeSync } from 'node:fs';",
+        "const native = dlopen(process.env.EDITOR_VIEW_LEASE_LIBRARY, { eu_darwin_log_unknown: { args: ['i32', 'i32'], returns: 'void' }, eu_darwin_dead_vnode: { args: ['i32', 'i32'], returns: 'i32' } });",
+        "const fd = openSync(" + JSON.stringify(payload) + ", 'r');",
+        "native.symbols.eu_darwin_log_unknown(process.pid, fd);",
+        "process.stdout.write(String(native.symbols.eu_darwin_dead_vnode(process.pid, fd)));",
+        "closeSync(fd); native.close();",
+      ].join("\\n");
+      const observed = spawnSync(process.execPath, ['--eval', program], { encoding: 'utf8', env: process.env });
+      assert.equal(observed.status, 0, observed.stderr);
+      assert.equal(observed.stdout, '0');
+      for (const call of ['PROC_PIDTBSDINFO-before', 'PROC_PIDLISTFDS', 'PROC_PIDFDVNODEINFO', 'PROC_PIDFDVNODEPATHINFO', 'PROC_PIDTBSDINFO-after'])
+        assert.match(observed.stderr, new RegExp('editor-view-reader-kernel: pid=\\\\d+ comm=\\\\S+ fd=\\\\d+ call=' + call + ' result=\\\\d+ errno=\\\\d+'));
+    `))
+
   it('does not mistake an invalid or closed descriptor for a proven dead vnode', () =>
     runProbe(`
       assert.equal(deadVnode(-1), 0);
