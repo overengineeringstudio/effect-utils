@@ -145,32 +145,70 @@ const createViewFixture = (
 }
 
 describe('the realpath-closed hardlink farm', () => {
-  it('materializes the resolvable tree with hardlinks, never copies and never escapes', () => {
-    const { closureRoots, packageTree } = createViewFixture(scratch('farm-'))
-    const farmRoot = join(scratch('farm-out-'), 'farm')
+  it.each(['canonical', 'symlinked'] as const)(
+    'materializes the resolvable tree with hardlinks, never copies and never escapes (%s root)',
+    (rootKind) => {
+      const { closureRoots, packageTree } = createViewFixture(scratch('farm-'))
+      const canonicalOut = scratch('farm-out-')
+      const out = rootKind === 'canonical' ? canonicalOut : join(scratch('farm-alias-'), 'out')
+      if (rootKind === 'symlinked') symlinkSync(canonicalOut, out)
+      const farmRoot = join(out, 'farm')
 
-    const farm = assemblePortableFarm({
-      closureRoots,
-      gatedPackages: [],
-      packageTree,
-      root: farmRoot,
-    })
+      const farm = assemblePortableFarm({
+        closureRoots,
+        gatedPackages: [],
+        packageTree,
+        root: farmRoot,
+      })
 
-    const source = statSync(join(packageTree, 'src', 'cli.ts'))
-    const linked = statSync(join(farm, 'src', 'cli.ts'))
-    expect(linked.ino).toBe(source.ino)
-    expect(linked.nlink).toBeGreaterThan(1)
-    // A store entry keeps its dependencies as siblings in its own
-    // `node_modules`, so resolution from `left` finds `right` one level up —
-    // and both realpaths must land inside the farm.
-    const inside = `${realpathSync(farm)}/`
-    const leftImage = realpathSync(join(farm, 'node_modules', 'left', 'index.js'))
-    const rightViaLeft = realpathSync(
-      join(farm, 'node_modules', 'left', '..', 'right', 'index.cjs'),
-    )
-    expect(leftImage.startsWith(inside)).toBe(true)
-    expect(rightViaLeft.startsWith(inside)).toBe(true)
-  })
+      const source = statSync(join(packageTree, 'src', 'cli.ts'))
+      const linked = statSync(join(farm, 'src', 'cli.ts'))
+      expect(linked.ino).toBe(source.ino)
+      expect(linked.nlink).toBeGreaterThan(1)
+      const sourceFiles = closureRoots.flatMap((root) =>
+        root.name === 'cell/deps/entry_left/entry'
+          ? [join(root.path, 'node_modules', 'left', 'index.js')]
+          : root.name === 'cell/deps/entry_right/entry'
+            ? [join(root.path, 'node_modules', 'right', 'index.cjs')]
+            : [],
+      )
+      const sourceNames = new Map(sourceFiles.map((path) => [statSync(path).ino, path]))
+      const nativeRealpath = process.getBuiltinModule('fs').realpathSync
+      const realpath = rootKind === 'symlinked' ? vi.spyOn(fs, 'realpathSync') : undefined
+      const priorImplementation = realpath?.getMockImplementation()
+      realpath?.mockImplementation((path) => {
+        const status = statSync(path)
+        return status.isFile() === true
+          ? (sourceNames.get(status.ino) ?? nativeRealpath(path))
+          : nativeRealpath(path)
+      })
+      try {
+        // Resolve `left` before `..`; path.join would erase this traversal.
+        // In the aliased-root case, raw file realpaths deliberately return
+        // the other, real source name for the same hardlinked inode.
+        const inside = `${realpathSync(farm)}/`
+        const leftImage = realpathThroughName(join(farm, 'node_modules', 'left', 'index.js'))
+        const rightViaLeft = realpathThroughName(
+          `${join(farm, 'node_modules', 'left')}/../right/index.cjs`,
+        )
+        expect(leftImage.startsWith(inside)).toBe(true)
+        expect(rightViaLeft.startsWith(inside)).toBe(true)
+        expect(rightViaLeft).toBe(
+          join(
+            realpathSync(farm),
+            '.closure',
+            'cell/deps/entry_right/entry',
+            'node_modules',
+            'right',
+            'index.cjs',
+          ),
+        )
+      } finally {
+        realpath?.mockRestore()
+        if (priorImplementation !== undefined) realpath?.mockImplementation(priorImplementation)
+      }
+    },
+  )
 
   it('terminates on a dependency cycle instead of expanding it forever', () => {
     const { closureRoots, packageTree } = createViewFixture(scratch('farm-cycle-'))
@@ -258,7 +296,9 @@ describe('the realpath-closed hardlink farm', () => {
       'left',
     )
     expect(lstatSync(bin).isSymbolicLink()).toBe(true)
-    expect(realpathSync(bin)).toBe(realpathSync(join(farm, 'node_modules', 'left', 'index.js')))
+    expect(realpathThroughName(bin)).toBe(
+      realpathThroughName(join(farm, 'node_modules', 'left', 'index.js')),
+    )
   })
 
   it('rejects a link into a sibling of the farm that merely shares its name prefix', () => {
@@ -305,6 +345,34 @@ describe('realpathThroughName', () => {
     expect(realpathThroughName(join(root, 'var', 'file.js'))).toBe(
       join(root, 'private', 'var', 'file.js'),
     )
+  })
+
+  it('keeps a file inside an aliased farm when raw realpath reports its source hardlink', () => {
+    const root = scratch('real-path-farm-alias-')
+    const farm = join(root, 'farm')
+    const alias = join(root, 'alias')
+    const source = join(root, 'source.js')
+    mkdirSync(farm)
+    writeFileSync(source, 'x\n')
+    linkSync(source, join(farm, 'image.js'))
+    symlinkSync(farm, alias)
+    const entry = join(alias, 'image.js')
+    const nativeRealpath = process.getBuiltinModule('fs').realpathSync
+    const realpath = vi.spyOn(fs, 'realpathSync')
+    const priorImplementation = realpath.getMockImplementation()
+    // Darwin may choose either hardlink name for a file's vnode. Model the
+    // source name deterministically on every platform, leaving directories real.
+    realpath.mockImplementation((path) => {
+      if (statSync(path).isFile() === true) return source
+      return nativeRealpath(path)
+    })
+    try {
+      expect(realpathSync(entry).startsWith(`${farm}/`)).toBe(false)
+      expect(realpathThroughName(entry)).toBe(join(farm, 'image.js'))
+    } finally {
+      realpath.mockRestore()
+      if (priorImplementation !== undefined) realpath.mockImplementation(priorImplementation)
+    }
   })
 
   it('resolves an intermediate symlink before applying a parent traversal', () => {
@@ -580,6 +648,46 @@ describe('post-build portability assertions', () => {
       'var __dirname = import.meta.dirname, __filename = import.meta.filename;',
     )
   })
+
+  it('normalizes a farm filename when raw realpath reports its source hardlink', () => {
+    const parent = scratch('portable-hardlink-')
+    const farm = join(parent, 'farm')
+    const root = join(parent, 'alias')
+    const source = join(parent, 'source.cjs')
+    mkdirSync(farm)
+    writeFileSync(source, 'module.exports = 1\n')
+    const image = join(farm, 'image.cjs')
+    linkSync(source, image)
+    symlinkSync(farm, root)
+    symlinkSync('image.cjs', join(farm, 'linked.cjs'))
+    symlinkSync(source, join(farm, 'escape.cjs'))
+    const nativeRealpath = process.getBuiltinModule('fs').realpathSync
+    const realpath = vi.spyOn(fs, 'realpathSync')
+    const priorImplementation = realpath.getMockImplementation()
+    realpath.mockImplementation((path) =>
+      statSync(path).isFile() === true ? source : nativeRealpath(path),
+    )
+    try {
+      for (const filename of [image, join(root, 'image.cjs'), join(root, 'linked.cjs')]) {
+        expect(
+          normalizePortableCommonJsGlobals({
+            bundle: `var __filename = ${JSON.stringify(filename)};`,
+            root,
+          }),
+        ).toBe('var __filename = import.meta.filename;')
+      }
+      expect(() =>
+        normalizePortableCommonJsGlobals({
+          bundle: `var __filename = ${JSON.stringify(join(root, 'escape.cjs'))};`,
+          root,
+        }),
+      ).toThrow('__filename path escapes the build root')
+    } finally {
+      realpath.mockRestore()
+      if (priorImplementation !== undefined) realpath.mockImplementation(priorImplementation)
+    }
+  })
+
   it('rewrites Bun undici-style __filename followed by other var declarators', () => {
     const root = '/tmp/portable-root'
     const bundle = `var __filename = "${root}/node_modules/@effect/platform-node/node_modules/undici/index.js", Client, Dispatcher;`

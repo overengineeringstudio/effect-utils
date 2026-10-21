@@ -33,6 +33,10 @@ root = Path.cwd()
 example = Path(sys.argv[1]) if len(sys.argv) > 1 else Path(subprocess.check_output([
     'nix', 'build', '.#macos-app-example', '--no-link', '--print-out-paths',
     '--option', 'builders', '', '--option', 'max-jobs', '2'], text=True).strip())
+no_keychain = os.environ.get('MACOS_APP_CTL_NO_KEYCHAIN') == '1'
+class KeychainLaneNotAuthorized(Exception):
+    """Unwind through normal process cleanup without entering signing-key mutation."""
+
 scratch = root / 'tmp'
 scratch.mkdir(exist_ok=True)
 work = Path(tempfile.mkdtemp(prefix='macos-app-ctl-', dir=scratch))
@@ -44,10 +48,15 @@ base_config = json.loads((example / 'ctl-config.json').read_text())
 bin_dir = work / 'bin'
 bin_dir.mkdir()
 state = work / 'state'
-app = work / 'apps/SyntheticHost.app'
+app_bundle_name = base_config['appBundleName']
+assert app_bundle_name == 'Synthetic Host.app', base_config
+app = work / 'apps' / app_bundle_name
 plists = work / 'plists'
 sock = str(work.relative_to(root) / 'host.sock')
-desired = example / 'hostApp/SyntheticHost.app'
+# The incoming desired filename is deliberately not the pinned product name.
+desired = work / 'incoming/UnrelatedBuildOutput.app'
+desired.parent.mkdir()
+shutil.copytree(example / 'hostAppBundle', desired)
 uid = os.getuid()
 first = work / 'generation-first'
 second = work / 'generation-second'
@@ -56,6 +65,35 @@ for source, target in [(example / 'generation', first), (example / 'secondGenera
     manifest = json.loads((source / 'manifest.json').read_text())
     manifest['statusAllowedUids'] = [uid]
     (target / 'manifest.json').write_text(json.dumps(manifest))
+
+
+def assert_bundle_copies(parent, bundle_name):
+    """Managed output trees must never turn uniqueness into a bundle filename."""
+    if not parent.exists():
+        return
+    for path in parent.rglob('*'):
+        if path.is_dir() and (path.name.endswith('.app') or '.app.stage-' in path.name):
+            assert path.name == bundle_name, f'noncanonical managed bundle: {path}'
+            assert path.name != 'host.app' and not path.name.startswith('retained-'), path
+
+def assert_managed_layout(installed, bundle_name, *extra_roots):
+    assert installed.name == bundle_name, installed
+    assert_bundle_copies(installed.parent, bundle_name)
+    for parent in extra_roots:
+        assert_bundle_copies(parent, bundle_name)
+    journal = installed.with_suffix('.txn.json')
+    if journal.exists():
+        stage = Path(json.loads(journal.read_text())['stage'])
+        assert stage.name == bundle_name and stage.parent != installed.parent, stage
+        assert stage.is_dir(), stage
+
+def assert_archive_pointer(reply, installed, bundle_name):
+    for key in ('archive', 'hostArchive'):
+        value = reply.get('result', {}).get(key)
+        if value is not None:
+            bundle = Path(value)
+            assert bundle.name == bundle_name and bundle.parent != installed.parent, bundle
+            assert bundle.is_dir(), bundle
 
 PROMPT_TIMEOUT = 15
 def tool(*args, check=True):
@@ -216,9 +254,13 @@ def issue(csr, cert):
 hosts = []
 def cleanup():
     if (work / 'jobs.json').exists():
-        for job in json.loads((work / 'jobs.json').read_text()).values():
-            try: os.kill(job['pid'], signal.SIGTERM)
-            except ProcessLookupError: pass
+        for target, job in json.loads((work / 'jobs.json').read_text()).copy().items():
+            result = subprocess.run([str(bin_dir / 'launchctl'), 'bootout', target],
+                                    env=dict(os.environ, MACOS_APP_TEST_WORK=str(work)),
+                                    capture_output=True, timeout=15)
+            if result.returncode != 0:
+                try: os.killpg(job['pid'], signal.SIGTERM)
+                except ProcessLookupError: pass
     # File removal only: the keychains were never on the search list.
     for path in (keychain, unpinned, chain_missing, fixture_keychain):
         path.unlink(missing_ok=True)
@@ -260,14 +302,20 @@ jobs_file = base / 'jobs.json'
 jobs = json.loads(jobs_file.read_text()) if jobs_file.exists() else {}
 if args[0] == 'print':
     target = args[1]
-    if target.count('/') < 2:
+    if target == 'system' or (target.startswith(('gui/', 'user/')) and target.count('/') == 1):
         if target.startswith('gui/') and (base / 'gui-absent').exists(): sys.exit(1)
         sys.exit(0)
     if target not in jobs: sys.exit(1)
     print('pid =', jobs[target]['pid'])
     sys.exit(0)
+if args[0] == 'print-disabled':
+    print('disabled services = {}')
+    sys.exit(0)
 if (base / 'launchctl-fail').exists():
     print('test-injected launchctl failure', file=sys.stderr)
+    sys.exit(5)
+if args[0] == 'bootstrap' and args[1].startswith('gui/') and (base / 'launchctl-fail-gui-bootstrap').exists():
+    print('test-injected GUI bootstrap failure before process creation', file=sys.stderr)
     sys.exit(5)
 with (base / 'launchctl.log').open('a') as log: log.write(json.dumps(args) + '\n')
 def stop(job):
@@ -282,7 +330,8 @@ def start(plist_path):
     assert plist['Program'] == argv[0] and '/Contents/MacOS/' in argv[0]
     log = (base / 'host.log').open('ab')
     process = subprocess.Popen(argv, stdin=subprocess.DEVNULL, stdout=log, stderr=log, start_new_session=True)
-    sock = argv[argv.index('--socket') + 1]
+    socket_flag = '--socket' if '--socket' in argv else '--gui-socket'
+    sock = argv[argv.index(socket_flag) + 1]
     for _ in range(500):
         if Path(sock).exists(): break
         if process.poll() is not None: raise RuntimeError('host failed to start')
@@ -373,10 +422,15 @@ os.execv('/usr/bin/codesign', ['codesign'] + args)
             for fd in fds: os.close(fd)
             if write is not None: os.close(write)
         assert process.returncode == code, (action, process.returncode, process.stdout, process.stderr)
+        assert_managed_layout(Path(common[common.index('--app-dir') + 1]),
+                              config['appBundleName'])
         if code == 137: return None
         lines = process.stdout.splitlines()
         assert len(lines) == 1, process.stdout
-        return json.loads(lines[0])
+        reply = json.loads(lines[0])
+        assert_archive_pointer(reply, Path(common[common.index('--app-dir') + 1]),
+                               config['appBundleName'])
+        return reply
     def install(desired_app, secret=password, *extra, code=0, failpoint=None):
         return call('install-host', '--desired', desired_app, '--keychain', keychain, *extra, code=code,
                     secret=secret, failpoint=failpoint)
@@ -387,7 +441,7 @@ os.execv('/usr/bin/codesign', ['codesign'] + args)
                            nestedCode=[], entitlements=None, signingOptions=[])
         thin_config_path = work / 'thin-config.json'
         thin_state = work / 'thin-state'
-        thin_app = work / 'thin-apps/SyntheticHost.app'
+        thin_app = work / 'thin-apps' / app_bundle_name
         archive = work / 'thin-archive'
         thin_config_path.write_text(json.dumps(thin_config))
         def invoke(action, *args, refusal=False, fds=(), config_override=None):
@@ -395,16 +449,23 @@ os.execv('/usr/bin/codesign', ['codesign'] + args)
                               str(config_override or thin_config_path), '--app-dir', str(thin_app),
                               '--state', str(thin_state), '--archive-dir', str(archive),
                               '--socket', str(work / 'thin.sock'), *map(str, args)], env=env, pass_fds=fds)
+            assert_managed_layout(thin_app, thin_config['appBundleName'], archive)
+            if '--output' in args:
+                output = Path(args[args.index('--output') + 1])
+                if output.exists():
+                    assert_bundle_copies(output, thin_config['appBundleName'])
             lines = result.stdout.splitlines()
             assert len(lines) == 1, (result.stdout, result.stderr)
             reply = json.loads(lines[0])
+            assert_archive_pointer(reply, thin_app, thin_config['appBundleName'])
             if refusal:
                 assert result.returncode != 0 and 'error' in reply, (action, result, reply)
             else:
                 assert result.returncode == 0 and 'result' in reply, (action, result, reply)
             return reply
         def copy_bundle(name):
-            target = work / name
+            target = work / Path(name).stem / app_bundle_name
+            target.parent.mkdir()
             shutil.copytree(desired, target)
             for path in [target, *target.rglob('*')]:
                 if not path.is_symlink():
@@ -499,19 +560,35 @@ os.execv('/usr/bin/codesign', ['codesign'] + args)
         print('PASS required signing flag absent from real signature refuses despite matching policy descriptor', flush=True)
         release = work / 'thin-release'
         invoke('seal-fixture-artifact', '--desired', signed, '--output', release)
-        assert (release / 'host.app').is_dir() and (release / 'descriptor.json').is_file()
+        assert sorted(path.name for path in release.iterdir()) == [
+            app_bundle_name, 'descriptor.json', 'receipt.json']
+        assert (release / app_bundle_name).is_dir()
         receipt = json.loads((release / 'receipt.json').read_text())
         assert receipt['hostRevision'] == descriptor['hostRevision'] and receipt['sealedRevision']
         assert json.loads((release / 'descriptor.json').read_text()) == descriptor
         for path in [release, *release.rglob('*')]:
             if not path.is_symlink():
                 assert path.stat().st_mode & 0o222 == 0, f'mutable published artifact: {path}'
+        old_release = work / 'old-layout-release'
+        shutil.copytree(release, old_release)
+        old_release.chmod(0o700)
+        (old_release / app_bundle_name).rename(old_release / 'host.app')
+        old_release.chmod(0o500)
+        refused = invoke('install-host', '--desired', descriptor_path,
+                         '--artifact', old_release, refusal=True)
+        assert refused['error']['kind'] == 'reseal-required', refused
+        refused = invoke('rollback', '--desired', descriptor_path,
+                         '--artifact', old_release, '--generation', first, refusal=True)
+        assert refused['error']['kind'] == 'rollback-unavailable', refused
+        assert not thin_app.exists() and not thin_app.with_suffix('.txn.json').exists()
+        print('PASS old sealed layout requires resealing; cross-cutover rollback is typed unavailable', flush=True)
         signing_before = (work / 'sign.log').read_text()
         invoke('seal-host', '--desired', signed, '--output', release,
                '--keychain', work / 'must-not-open.keychain-db', '--keychain-password-fd', '999')
         assert (work / 'sign.log').read_text() == signing_before
         print('PASS pinned predicate accepts differing diagnostic DR; wrong predicate rejects; seal reuses verified artifact without signing', flush=True)
-        raced = work / 'ThinRaced.app'
+        raced = work / 'thin-raced' / app_bundle_name
+        raced.parent.mkdir()
         shutil.copytree(signed, raced)
         env['MACOS_APP_CTL_TEST_FAILPOINT'] = 'seal-source-after-describe'
         try:
@@ -542,7 +619,7 @@ os.execv('/usr/bin/codesign', ['codesign'] + args)
         installed_bytes = (thin_app / 'Contents/MacOS' / base_config['hostExecutable']).read_bytes()
         tampered = work / 'thin-tampered-release'
         shutil.copytree(release, tampered)
-        bad_binary = tampered / 'host.app/Contents/MacOS' / base_config['hostExecutable']
+        bad_binary = tampered / app_bundle_name / 'Contents/MacOS' / base_config['hostExecutable']
         bad_binary.chmod(0o700)
         with bad_binary.open('ab') as output:
             output.write(b'tamper')
@@ -557,8 +634,9 @@ os.execv('/usr/bin/codesign', ['codesign'] + args)
         print('NOT RUN: root-to-user artifact destination (requires parent-owned root execution)', flush=True)
         # Crash before exchange leaves an immutable candidate inode in the stage,
         # not at D. Reconcile must restore owner writability only to discard it.
-        abandoned = thin_app.parent / '.SyntheticHost.app.stage-public-fixture'
-        shutil.copytree(release / 'host.app', abandoned)
+        abandoned_parent = Path(tempfile.mkdtemp(prefix='.macos-app-stage-', dir=thin_app.parent))
+        abandoned = abandoned_parent / app_bundle_name
+        shutil.copytree(release / app_bundle_name, abandoned)
         incumbent_inode = thin_app.stat().st_ino
         incumbent_revision = invoke('status', '--desired', descriptor_path,
                                     '--artifact', release)['result']['sealedRevision']
@@ -569,14 +647,15 @@ os.execv('/usr/bin/codesign', ['codesign'] + args)
         reconciled = invoke('install-host', '--desired', descriptor_path,
                             '--artifact', release)['result']
         assert reconciled['changed'] is False and reconciled['reconciled'] == 'stage-discarded', reconciled
-        assert not abandoned.exists() and not journal.exists()
+        assert not abandoned_parent.exists() and not journal.exists()
         assert thin_app.stat().st_ino == incumbent_inode
         assert invoke('status', '--desired', descriptor_path, '--artifact', release)['result']['sealedRevision'] == incumbent_revision
         print('PASS immutable unexchanged transaction stage discarded with incumbent inode and revision preserved', flush=True)
 
         # Two valid embedded DRs can satisfy the same independently pinned
         # predicate and unsigned descriptor while carrying different sealed bytes.
-        signed_again = work / 'ThinSignedAgain.app'
+        signed_again = work / 'thin-signed-again' / app_bundle_name
+        signed_again.parent.mkdir()
         shutil.copytree(signed, signed_again)
         tool(str(codesign), '--force', '-s', '-', '--identifier', thin_config['bundleId'],
              '--requirements', '=designated => ' + thin_config['requirement'], str(signed_again))
@@ -621,7 +700,12 @@ os.execv('/usr/bin/codesign', ['codesign'] + args)
 
             for case in ('valid', 'wrong-bundle-id', 'wrong-pinned-requirement',
                          'invalid-outer-signature'):
-                thin_app = copy_bundle(f'ThinLegacy-{case}.app')
+                thin_app = work / f'thin-legacy-{case}' / app_bundle_name
+                thin_app.parent.mkdir()
+                shutil.copytree(desired, thin_app)
+                for path in [thin_app, *thin_app.rglob('*')]:
+                    if not path.is_symlink():
+                        path.chmod(path.stat().st_mode | 0o200)
                 thin_state = work / f'thin-legacy-{case}-state'
                 if case == 'wrong-bundle-id':
                     info = thin_app / 'Contents/Info.plist'
@@ -657,7 +741,7 @@ os.execv('/usr/bin/codesign', ['codesign'] + args)
                 assert (work / 'sign.log').read_text() == before_import
             print('PASS helper-layout legacy cutover requires opt-in and still rejects wrong plist identity, pinned requirement and outer signature', flush=True)
 
-            thin_app = work / 'thin-recorded-apps/SyntheticHost.app'
+            thin_app = work / 'thin-recorded-apps' / app_bundle_name
             thin_state = work / 'thin-recorded-state'
             before_import = (work / 'sign.log').read_text()
             invoke('install-host', '--desired', descriptor_path, '--artifact', release)
@@ -773,7 +857,7 @@ os.execv('/usr/bin/codesign', ['codesign'] + args)
             locked_install(borrowed, refusal=False)  # Own shared lock can upgrade when uncontended.
             fcntl.flock(borrowed, fcntl.LOCK_UN)
             fcntl.flock(borrowed, fcntl.LOCK_EX)
-            locked_install(other)
+            assert locked_install(other)['error']['exitCode'] == 23
             fcntl.flock(foreign, fcntl.LOCK_EX)
             locked_install(foreign)
             locked_install(borrowed, refusal=False)
@@ -868,6 +952,17 @@ os.execv('/usr/bin/codesign', ['codesign'] + args)
               'for unsafe/ACL/symlink/writable paths and stale owned-socket inode cases', flush=True)
 
     thin_contract_cases()
+
+    # Native paired roles authenticate their actual /bin/launchctl-managed
+    # incarnation. A subprocess behind this fake launchctl cannot establish
+    # that identity; do not weaken production authentication for test coverage.
+    print('BLOCKED/UNVERIFIED paired native installation, dispatch, stop and rollback: '
+          'requires a real root-installed system target-user job and GUI domain; '
+          'fake-launchctl fixtures are not authentication evidence. '
+          'Recovery preflight and typed child verification have crate regressions.',
+          flush=True)
+    if no_keychain:
+        raise KeychainLaneNotAuthorized()
 
     # Provisioning: key and CSR by ctl, certificate by the test CA, then the codesign pin.
     def key_call(action, path, *args, code=0, secret=password, failpoint=None):
@@ -1325,8 +1420,9 @@ os.execv('/usr/bin/codesign', ['codesign'] + args)
     assert reinstalled['leftovers'] == [first_archive], reinstalled
     status = call('status')['result']
     assert status['hostArchive'] == reinstalled['archive'] != first_archive and not status['interruptedTransaction']
+    assert Path(reinstalled['archive']).parent != Path(first_archive).parent, 'archive parent reused'
     assert status['bundleMetadataDigest'] == reinstalled['bundleMetadataDigest'], 'cleanup failure undid the exchange'
-    shutil.rmtree(first_archive)
+    shutil.rmtree(Path(first_archive).parent)
     assert len(list(app.parent.glob('.*stage*'))) == 1
     call('verify', '--desired', changed, '--generation', first, code=22)
     assert call('converge-launchd')['result']['changed'], 'metadata-only exchange did not restart'
@@ -1350,7 +1446,8 @@ os.execv('/usr/bin/codesign', ['codesign'] + args)
     print('PASS startup-only socketMode change restarts via kickstart; verify checks the socket mode', flush=True)
 
     def stages():
-        return sorted(str(p) for p in app.parent.glob('.*stage*'))
+        return sorted(str(p / app_bundle_name) for p in app.parent.glob('.macos-app-stage-*')
+                      if (p / app_bundle_name).is_dir())
     metadata_archive = call('status')['result']['hostArchive']
     assert install(changed, failpoint='after-archive-pointer', code=137) is None
     status = call('status')['result']
@@ -1381,10 +1478,25 @@ os.execv('/usr/bin/codesign', ['codesign'] + args)
     call('converge-launchd')
     assert call('rollback', '--restore-host', failpoint='rollback-after-exchange', code=137) is None
     assert call('status')['result']['interruptedRollback']
+    # Model an older controller's committed exchange: its journal and pointer still
+    # name a standalone archive, but the restored inode is already at the app path.
+    rollback_record = app.with_suffix('.rollback.json')
+    pending = json.loads(rollback_record.read_text())
+    archived = Path(pending['archive'])
+    legacy_archive = app.parent / 'retained-before-naming-cutover.app'
+    archived.rename(legacy_archive)
+    archived.parent.rmdir()
+    pending['archive'] = str(legacy_archive)
+    rollback_record.write_text(json.dumps(pending))
+    archive_pointer = app.with_suffix('.previous')
+    archive_pointer.unlink()
+    archive_pointer.symlink_to(legacy_archive)
     resumed = call('rollback')['result']
     assert resumed['resumed'] and state.joinpath('current').readlink() == third
     call('verify', '--desired', metadata, '--generation', third)
     assert call('status')['result']['hostArchive'] is None and stages() == []
+    assert not rollback_record.exists() and not legacy_archive.exists()
+    print('PASS committed old-layout rollback exchange resumes, verifies and clears its journal', flush=True)
     assert install(changed)['result']['changed']
     call('converge-launchd')
     assert call('rollback', '--restore-host', failpoint='rollback-after-exchange', code=137) is None
@@ -1398,6 +1510,14 @@ os.execv('/usr/bin/codesign', ['codesign'] + args)
 
     calls = [json.loads(line) for line in log(work / 'codesign.log').splitlines()]
     assert calls and all(password not in json.dumps(entry) for entry in calls)
+    product_signatures = [Path(entry['argv'][-1]) for entry in calls
+                          if ('--sign' in entry['argv'] or '-s' in entry['argv'])
+                          and entry['argv'][-1].endswith('.app')
+                          and not Path(entry['argv'][-1]).is_relative_to(fixture)]
+    assert product_signatures, 'no product bundle signatures observed'
+    assert all(path.name == app_bundle_name for path in product_signatures), product_signatures
+    print('PASS all product signing targets, sealed/imported bundles, exchange stages, retained '
+          'archives and rollback copies keep the pinned product basename', flush=True)
     print('PASS keychain password never appears in codesign argv or environment', flush=True)
 
     (work / 'gui-absent').touch()
@@ -1416,18 +1536,18 @@ os.execv('/usr/bin/codesign', ['codesign'] + args)
           'background agent resolves user domain', flush=True)
     (work / 'gui-absent').unlink()
 
-    other = work / 'Other.app'
+    other = work / 'UnrelatedOtherBuild.app'
     shutil.copytree(desired, other)
     for path in other.rglob('*'):
         if not path.is_symlink(): path.chmod(path.stat().st_mode | 0o200)
     with (other / 'Contents/Info.plist').open('rb') as f: info = plistlib.load(f)
     info['CFBundleIdentifier'] = 'dev.example.other-host'
     with (other / 'Contents/Info.plist').open('wb') as f: plistlib.dump(info, f)
-    config = dict(config, bundleId='dev.example.other-host',
+    config = dict(config, bundleId='dev.example.other-host', appBundleName='Other.app',
                   requirement=f'identifier "dev.example.other-host" and certificate leaf = H"{leaf}"',
                   launchd=dict(config['launchd'], label='dev.example.other-host'))
     write_config()
-    other_app = work / 'apps/Other.app'
+    other_app = work / 'other-apps/Other.app'
     common[common.index('--app-dir') + 1] = str(other_app)
     common[common.index('--state') + 1] = str(work / 'other-state')
     # EndpointGuard holds an exclusive parent-directory flock for the host's lifetime.
@@ -1460,10 +1580,25 @@ os.execv('/usr/bin/codesign', ['codesign'] + args)
     call('rollback', '--restore-host')
     assert (work / 'other-state/current').readlink() == first
     call('verify', '--desired', other, '--generation', first)
+    other_signatures = [Path(entry['argv'][-1])
+                        for entry in map(json.loads, log(work / 'codesign.log').splitlines())
+                        if ('--sign' in entry['argv'] or '-s' in entry['argv'])
+                        and entry['argv'][-1].endswith('.app')
+                        and Path(entry['argv'][-1]).is_relative_to(other_app.parent)]
+    assert other_signatures and all(path.name == config['appBundleName']
+                                    for path in other_signatures), other_signatures
     print('PASS host-only rollback works without a previous generation', flush=True)
+except KeychainLaneNotAuthorized:
+    print('NOT RUN keychain provisioning/ACL/partition-list signing lane: authorization restriction '
+          '(MACOS_APP_CTL_NO_KEYCHAIN=1)', flush=True)
 finally:
     cleanup()
-    print('PASS throwaway keychains removed; user search list unchanged')
-    print(f'SecurityAgent after: {security_agent_windows()}' if agent_baseline is not None else
+    print('PASS no signing-keychain mutations; user search list unchanged' if no_keychain else
+          'PASS throwaway keychains removed; user search list unchanged')
+    agent_after = security_agent_windows()
+    if agent_baseline is not None:
+        assert agent_after == agent_baseline, (agent_baseline, agent_after)
+    print(f'SecurityAgent after: {agent_after}' if agent_baseline is not None else
           f'SecurityAgent after: unavailable; no-UI audit session flags={no_ui_session():#x}', flush=True)
-print(f'PASS primitive integration; scratch: {work.relative_to(root)}')
+print(f'PASS partial primitive integration (non-keychain lanes only); scratch: {work.relative_to(root)}'
+      if no_keychain else f'PASS primitive integration; scratch: {work.relative_to(root)}')

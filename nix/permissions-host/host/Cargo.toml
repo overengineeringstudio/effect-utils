@@ -6,6 +6,10 @@ publish = false
 
 [workspace]
 
+[features]
+default = []
+example-children = []
+
 [dependencies]
 libc = "0.2"
 serde = { version = "1", features = ["derive"] }

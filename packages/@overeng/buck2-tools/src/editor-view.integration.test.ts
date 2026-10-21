@@ -398,6 +398,27 @@ const makeSiblingView = ({
   }
 }
 
+/** Every entered phase, plus implicit admission, must finish exactly once. */
+const expectCompletedPublicationPhases = (stderr: string, terminalPhase: string): void => {
+  const phases: { phase: string; event: string; durationMs?: number }[] = stderr
+    .split('\n')
+    .filter((line) => line.startsWith('[editor-view-phase] '))
+    .map((line) => JSON.parse(line.slice('[editor-view-phase] '.length)))
+  const entered = [
+    'admission',
+    ...phases.filter((phase) => phase.event === 'enter').map((phase) => phase.phase),
+  ]
+  const completed = phases.filter((phase) => phase.event === 'complete')
+  expect(completed.map((phase) => phase.phase)).toEqual(entered)
+  expect(new Set(completed.map((phase) => phase.phase)).size).toBe(completed.length)
+  expect(completed.at(-1)?.phase).toBe(terminalPhase)
+  for (const phase of completed) {
+    expect(phase.durationMs).toEqual(expect.any(Number))
+    expect(Number.isInteger(phase.durationMs)).toBe(true)
+    expect(phase.durationMs).toBeGreaterThanOrEqual(0)
+  }
+}
+
 /** Observe actual exporter requests/close events without making publication await delivery. */
 const withPublisherTelemetry = async <TValue>(
   fixture: Fixture,
@@ -2129,6 +2150,46 @@ describe('editor view publisher', () => {
     })
   })
 
+  it('shares one admission census across real batch publications, but not across invocations', async () => {
+    const restoreBudget = isolateHostBudget()
+    const fixture = makeFixture()
+    const stderr = vi.spyOn(process.stderr, 'write')
+    try {
+      const options = [
+        fixture.options,
+        ...['genie', 'utils'].map(
+          (packageName) => makeSiblingView({ fixture, packageName }).options,
+        ),
+      ]
+      const censusCount = (): number =>
+        stderr.mock.calls.filter(([message]) => {
+          if (typeof message !== 'string' || message.startsWith('[editor-view-budget] ') === false)
+            return false
+          const event = JSON.parse(message.slice('[editor-view-budget] '.length))
+          return event.event === 'working' && event.reason === 'census'
+        }).length
+      const first = await publishEditorViews({ options })
+      expect(first).toHaveLength(options.length)
+      expect(censusCount()).toBe(1)
+      for (const option of options)
+        writeFileSync(join(option.editorInputs, 'install-descriptor.json'), '{"revision":2}\n')
+      const second = await publishEditorViews({ options })
+      expect(second).toHaveLength(options.length)
+      expect(second.map((record) => record.snapshot)).not.toEqual(
+        first.map((record) => record.snapshot),
+      )
+      expect(censusCount()).toBe(2)
+      for (const [index, option] of options.entries())
+        expect(readlinkSync(join(fixture.editorRoot, option.viewName))).toBe(
+          second[index]?.snapshot,
+        )
+    } finally {
+      stderr.mockRestore()
+      cleanup(fixture)
+      restoreBudget()
+    }
+  })
+
   describe('bounded shared-root preparation and exclusive teardown fencing', () => {
     let fixture: Fixture
     let options: readonly EditorViewOptions[]
@@ -2834,6 +2895,86 @@ describe('editor view publisher', () => {
     }
   })
 
+  it.each(['created', 'reused', 'failed'] as const)(
+    'completes every phase exactly once for a %s publication',
+    async (outcome) => {
+      const fixture = makeFixture()
+      const stderr = vi.spyOn(process.stderr, 'write')
+      try {
+        if (outcome === 'reused') await publishEditorView(fixture.options)
+        stderr.mockClear()
+        if (outcome === 'failed')
+          await expect(publishEditorView({ ...fixture.options, cp: falseTool })).rejects.toThrow(
+            'cp --dereference --reflink=auto failed',
+          )
+        else await publishEditorView(fixture.options)
+        expectCompletedPublicationPhases(
+          stderr.mock.calls.map(([message]) => String(message)).join(''),
+          outcome === 'failed' ? 'failed' : 'gc',
+        )
+      } finally {
+        stderr.mockRestore()
+        cleanup(fixture)
+      }
+    },
+  )
+
+  it('completes the interrupted phase and terminal interruption exactly once', async () => {
+    const fixture = makeFixture()
+    try {
+      // Interrupt at an actual asynchronous publication boundary, before the
+      // fingerprint child can finish, without timing-dependent parent polling.
+      const preload = join(fixture.root, 'interrupt-publication.ts')
+      writeFileSync(
+        preload,
+        `const write = process.stderr.write.bind(process.stderr)
+process.stderr.write = (...args) => {
+  const result = write(...args)
+  if (String(args[0]).includes('"phase":"fingerprint","event":"enter"'))
+    process.kill(process.pid, 'SIGTERM')
+  return result
+}
+`,
+      )
+      const child = Bun.spawn(
+        [
+          requireTool('BUN_BIN'),
+          '--preload',
+          preload,
+          fileURLToPath(new URL('./editor-view.ts', import.meta.url)),
+          'publish',
+          ...Object.entries({
+            '--repo-root': fixture.root,
+            '--package': fixture.options.package,
+            '--cell': fixture.options.cell,
+            '--target': fixture.options.target,
+            '--editor-inputs': fixture.editorInputs,
+            '--node-modules': fixture.nodeModules,
+            '--cp': cp,
+            '--mv': mv,
+            '--fingerprint-tool': fingerprintTool,
+            '--workspace-authority': fixture.workspaceAuthority,
+            '--consumer-cache': fixture.consumerCache,
+            '--snapshot-retention': '2',
+            '--content-store': fixture.options.contentStore!,
+          }).flat(),
+        ],
+        { stdin: 'ignore', stdout: 'pipe', stderr: 'pipe', detached: true },
+      )
+      editorCliProcesses.add(child)
+      const [status, , stderr] = await Promise.all([
+        child.exited,
+        Bun.readableStreamToText(child.stdout),
+        Bun.readableStreamToText(child.stderr),
+      ])
+      editorCliProcesses.delete(child)
+      expect(status).not.toBe(0)
+      expectCompletedPublicationPhases(stderr, 'interrupted')
+    } finally {
+      cleanup(fixture)
+    }
+  })
+
   it('emits one completed editor-view.phases span per publication when tracing is active', async () => {
     const fixture = makeFixture()
     try {
@@ -2845,6 +2986,10 @@ describe('editor view publisher', () => {
       expect(captured).toContain('--attr-bool snapshot.created=true')
       expect(captured).toContain('--attr-int phase.fingerprint.ms=')
       expect(captured).toContain('--attr-int phase.pointers.ms=')
+      expect(captured).toContain('--attr-int phase.gc.ms=')
+      expect(
+        invocations[0]?.filter((argument) => argument.startsWith('phase.gc.ms=')),
+      ).toHaveLength(1)
       expect(captured).toContain('--attr-string package.path=packages/@overeng/tui-core')
       expect(captured).toContain('--attr-string span.label=phases tui-core')
       expect(invocations[0]).toEqual(expect.arrayContaining(['exit.code=0', 'ok']))

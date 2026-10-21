@@ -46,9 +46,9 @@ import { emitCompletedSpanAsync, type OtelSpanAttribute } from './otel-span-cli.
  * touches never walk payloads.
  *
  * Lock order is root publication lock, host ledger flock, then victim CAS flock.
- * Other root locks are always nonblocking. Payload walks, process observation,
- * footprint I/O and recursive cleanup run outside both flocks. The host flock
- * uses an empty coordination CAS namespace, separate from the accounted stores.
+ * Other root locks are always nonblocking. Payload walks, footprint I/O and
+ * recursive cleanup run outside both flocks. Final reader observation runs
+ * inside retirement exclusion. The host flock uses a separate empty CAS namespace.
  */
 
 /** One editor state root and the repository (worktree) that encloses it. */
@@ -1329,6 +1329,7 @@ type GenerationView = {
 
 type Census = {
   readonly epoch: number
+  readonly measuredAtMs: number
   readonly contentStores: readonly string[]
   readonly roots: readonly RootView[]
   readonly generations: readonly GenerationView[]
@@ -1340,6 +1341,18 @@ type Census = {
   /** Paths whose bytes could not be read; usage is reported as a lower bound. */
   readonly unknown: readonly string[]
 }
+
+/** Invocation-scoped, single-flight accounting; never an authority for retirement. */
+export type EditorViewBudgetCensusSession = {
+  readonly censuses: Map<string, Promise<Census>>
+  readonly pending: Map<string, Promise<Census>>
+}
+
+/** Creates the advisory census cache shared by one publication invocation. */
+export const makeEditorViewBudgetCensusSession = (): EditorViewBudgetCensusSession => ({
+  censuses: new Map(),
+  pending: new Map(),
+})
 
 const generationKey = ({
   editorRoot,
@@ -1775,6 +1788,7 @@ const takeCensus = async ({
     .slice(0, topHolderCount)
   return {
     epoch: state.epoch,
+    measuredAtMs: Date.now(),
     contentStores: Array.from(contentStores),
     roots,
     generations,
@@ -1976,12 +1990,14 @@ const retireRoot = async ({
   budgetBytes,
   usedBytes,
   recencyMs,
+  censusEpoch,
 }: {
   readonly root: RootView
   readonly generations: readonly GenerationView[]
   readonly budgetBytes: number
   readonly usedBytes: number
   readonly recencyMs: number
+  readonly censusEpoch: number
 }): Promise<Retirement> => {
   const blocked: string[] = []
   const admitted: { generation: GenerationView; view: string | undefined; firstHop: FirstHop }[] =
@@ -2008,6 +2024,10 @@ const retireRoot = async ({
       contentStore: root.contentStore,
       run: async () => {
         const state = readState()
+        // Journal changes after the fresh census require another admission round.
+        if (state.epoch !== censusEpoch) {
+          return
+        }
         const registration = state.roots.get(root.key)
         if (
           registration?.contentStore !== root.contentStore ||
@@ -2016,6 +2036,8 @@ const retireRoot = async ({
           blocked.push(...admitted.map(({ generation }) => generation.key))
           return
         }
+        // Repeat the full reader proof immediately before retirement under exclusion.
+        const live = observeGenerations(admitted.map(({ generation }) => generation))
         const pinned = managedEditorViewSnapshots({ editorRoot: root.key })
         let activeAtMs = 0
         for (const [key, at] of state.lastUse)
@@ -2050,6 +2072,7 @@ const retireRoot = async ({
           const now = Date.now()
           if (
             pinned.has(generation.name) === true ||
+            live.has(generation.key) === true ||
             stamp?.identity !== generation.identity ||
             now - activeAtMs < recencyMs ||
             now - Math.max(stamp?.mtimeMs ?? 0, state.lastUse.get(generation.key) ?? 0) <
@@ -2154,6 +2177,8 @@ export const reserveEditorViewBudget = async ({
   beforeRetireRoot,
   budgetBytes,
   recencyMs = editorViewHostRecencyMs(),
+  censusSession = makeEditorViewBudgetCensusSession(),
+  onCensus,
 }: {
   readonly contentStore: string
   readonly root: EditorViewBudgetRoot
@@ -2164,6 +2189,9 @@ export const reserveEditorViewBudget = async ({
   readonly budgetBytes: number
   /** Root recency window protecting current generations; defaults to EDITOR_VIEW_HOST_RECENCY_MS. */
   readonly recencyMs?: number
+  readonly censusSession?: EditorViewBudgetCensusSession | undefined
+  /** Coordination hook after an actual census, not after a shared-cache hit. */
+  readonly onCensus?: (() => void | Promise<void>) | undefined
   /** Called with the victim root lock held and neither flock held, before final eligibility. */
   readonly beforeRetireRoot?: (() => void | Promise<void>) | undefined
 }): Promise<{ readonly token: string }> => {
@@ -2175,6 +2203,34 @@ export const reserveEditorViewBudget = async ({
     fail(`recency must be a non-negative safe integer of milliseconds: ${recencyMs}`)
   const startedAtMs = Date.now()
   const store = resolve(contentStore)
+  const ledger = editorViewHostBudgetStateDirectory()
+  const callerKey = `${ledger}\0${resolve(root.repoRoot)}\0${resolve(root.editorRoot)}\0${store}`
+  const coversCaller = (census: Census): boolean =>
+    census.contentStores.includes(store) === true &&
+    census.roots.some(
+      (view) =>
+        view.key === resolve(root.editorRoot) &&
+        view.root.repoRoot === resolve(root.repoRoot) &&
+        view.contentStore === store,
+    )
+  const invalidateCensus = (): void => {
+    censusSession.pending.delete(ledger)
+    for (const key of censusSession.censuses.keys())
+      if (key.startsWith(`${ledger}\0`) === true) censusSession.censuses.delete(key)
+  }
+  const progress = (reason: string) => {
+    const pressure: Record<string, string> = {}
+    if (process.platform === 'linux')
+      for (const resource of ['memory', 'io'])
+        try {
+          pressure[resource] = readFileSync(`/proc/pressure/${resource}`, 'utf8').trim()
+        } catch {
+          // Pressure information is optional, never part of the admission proof.
+        }
+    process.stderr.write(
+      `[editor-view-budget] ${JSON.stringify({ event: 'working', reason, elapsedMs: Date.now() - startedAtMs, pressure })}\n`,
+    )
+  }
   return withBudgetFootprints({
     contentStore: store,
     root,
@@ -2183,6 +2239,49 @@ export const reserveEditorViewBudget = async ({
       const blocked = new Set<string>()
       const evicted: string[] = []
       let collected = false
+      const loadCensus = async (): Promise<Census> => {
+        progress('census')
+        const measured = await takeCensus({
+          contentStore: store,
+          root,
+          heldEditorRoot,
+          discoverRoots,
+          staged,
+        })
+        await onCensus?.()
+        // Publish sidecars before releasing a shared result: their temporary files
+        // belong to this reservation and disappear when its scope completes.
+        await withHostBudgetLock(async () => {
+          const state = readState()
+          for (const [key, entry] of measured.cache)
+            if (
+              generationIdentity(join(entry.editorRoot, '.store', entry.name))?.identity ===
+                entry.identity &&
+              installSidecar({ staged, entry }) === true
+            )
+              state.generations.set(key, entry)
+          writeState(state)
+        })
+        return measured
+      }
+      const startCensus = (): Promise<Census> => {
+        const pending: Promise<Census> = loadCensus()
+          .then((measured) => {
+            // Do not repopulate an entry invalidated while its census was in flight.
+            if (censusSession.pending.get(ledger) === pending)
+              for (const view of measured.roots)
+                censusSession.censuses.set(
+                  `${ledger}\0${view.root.repoRoot}\0${view.key}\0${view.contentStore}`,
+                  pending,
+                )
+            return measured
+          })
+          .finally(() => {
+            if (censusSession.pending.get(ledger) === pending) censusSession.pending.delete(ledger)
+          })
+        censusSession.pending.set(ledger, pending)
+        return pending
+      }
       /** One short flock transaction: reconcile the ledger, then reserve if it fits (or when forced). */
       const admit = async ({
         census,
@@ -2199,6 +2298,7 @@ export const reserveEditorViewBudget = async ({
           const state = readState()
           reclaimDeadReservations({ state, owners })
           const stale =
+            coversCaller(census) === false ||
             census.epoch < state.journalFloor ||
             Array.from(state.contentStores).some(
               (entry) => census.contentStores.includes(entry) === false,
@@ -2244,7 +2344,7 @@ export const reserveEditorViewBudget = async ({
           state.usage = {
             usedBytes: census.usedBytes,
             protectedBytes: plan.protectedBytes,
-            measuredAtMs: Date.now(),
+            measuredAtMs: census.measuredAtMs,
           }
           const admitted =
             force === true || (stale === false && used + reservationBytes <= budgetBytes)
@@ -2315,13 +2415,30 @@ export const reserveEditorViewBudget = async ({
       let last: { census: Census; plan: Plan } | undefined
       for (let round = 0; round < maxAdmissionRounds; round += 1) {
         // eslint-disable-next-line no-await-in-loop -- Each round must observe the previous round's retirements.
-        const census = await takeCensus({
-          contentStore: store,
-          root,
-          heldEditorRoot,
-          discoverRoots,
-          staged,
-        })
+        let measured = await (censusSession.censuses.get(callerKey) ??
+          censusSession.pending.get(ledger) ??
+          startCensus())
+        // A different worker's discovery may omit a newly registered root/store.
+        // Validate this caller independently of the pre-registration journal state.
+        if (coversCaller(measured) === false) {
+          // eslint-disable-next-line no-await-in-loop -- A coverage miss requires a fresh census.
+          measured = await startCensus()
+        }
+        // Held-root status is caller-local; a different worker may have measured it.
+        const roots = measured.roots.map((view) => ({
+          ...view,
+          held: view.key === resolve(heldEditorRoot),
+        }))
+        const byKey = new Map(roots.map((view) => [view.key, view]))
+        let census: Census = {
+          ...measured,
+          roots,
+          generations: measured.generations.map((generation) =>
+            Object.assign({}, generation, {
+              root: byKey.get(generation.root.key) ?? generation.root,
+            }),
+          ),
+        }
         if (
           collected === false &&
           census.unreferencedCasBytes > 0 &&
@@ -2332,6 +2449,7 @@ export const reserveEditorViewBudget = async ({
           // only if pressure remains after this cheapest, first-priority collection.
           // eslint-disable-next-line no-await-in-loop -- Recount after unlinking CAS-only entries.
           await collectBudgetContentStores(census.contentStores)
+          invalidateCensus()
           continue
         }
         // Every plan in this round uses the candidate eligibility observed at this instant.
@@ -2343,42 +2461,54 @@ export const reserveEditorViewBudget = async ({
           recencyMs,
           now: roundAtMs,
         })
-        // Recent/grace/pinned roots already have complete protection. A host process
-        // walk cannot change their eligibility and must not tax ordinary publication.
-        const observesReaders =
-          plan.order.length > 0 &&
-          census.usedBytes -
-            census.unreferencedCasBytes +
-            reservedBytes(readState()) +
-            reservationBytes >=
-            budgetBytes * warningRatio
-        if (observesReaders === true)
-          plan = planEviction({
-            census,
-            blocked,
-            live: observeGenerations(plan.order),
-            recencyMs,
-            now: roundAtMs,
-          })
         last = { census, plan }
         // eslint-disable-next-line no-await-in-loop -- Admission is a single short flock transaction per round.
         const admission = await admit({ census, plan, force: false })
         if (admission.admitted === true) {
           return { token }
         }
-        if (admission.stale === true) continue
-        // A concurrent reservation can consume headroom after the outside-lock census.
-        // Observe readers before any pressure-driven retirement in that case too.
-        if (observesReaders === false && plan.order.length > 0) {
-          plan = planEviction({
-            census,
-            blocked,
-            live: observeGenerations(plan.order),
-            recencyMs,
-            now: roundAtMs,
-          })
-          last = { census, plan }
+        if (admission.stale === true) {
+          invalidateCensus()
+          continue
         }
+        // Shared accounting is advisory and can authorize admission, never eviction.
+        // Retake before planning retirement; immutable payloads are the same invariant
+        // used by footprint sidecars. retireRoot fences identity/epoch and reader proofs.
+        progress('waiting for capacity')
+        invalidateCensus()
+        progress('census')
+        // eslint-disable-next-line no-await-in-loop -- Eviction never trusts a shared census.
+        census = await takeCensus({
+          contentStore: store,
+          root,
+          heldEditorRoot,
+          discoverRoots,
+          staged,
+        })
+        // eslint-disable-next-line no-await-in-loop -- Coordination hook follows actual censuses only.
+        await onCensus?.()
+        plan = planEviction({
+          census,
+          blocked,
+          live: new Set(),
+          recencyMs,
+          now: roundAtMs,
+        })
+        last = { census, plan }
+        // Recheck fit with the fresh accounting before paying for reader observation.
+        // eslint-disable-next-line no-await-in-loop -- The journal fence precedes any retirement.
+        const freshAdmission = await admit({ census, plan, force: false })
+        if (freshAdmission.admitted === true) return { token }
+        if (freshAdmission.stale === true) continue
+        progress('reader-scan')
+        plan = planEviction({
+          census,
+          blocked,
+          live: observeGenerations(plan.order),
+          recencyMs,
+          now: roundAtMs,
+        })
+        last = { census, plan }
         if (collected === false && census.unreferencedCasBytes > 0) {
           collected = true
           // eslint-disable-next-line no-await-in-loop -- Collection takes the CAS flock itself; no locks are held here.
@@ -2386,7 +2516,8 @@ export const reserveEditorViewBudget = async ({
           continue
         }
         // Evict the LRU prefix that reaches the budget, or every eligible generation when none does.
-        const needed = admission.used + reservationBytes - budgetBytes
+        progress('eviction')
+        const needed = freshAdmission.used + reservationBytes - budgetBytes
         const prefix = plan.cumulative.findIndex((freed) => freed >= needed)
         const selected = plan.order.slice(0, prefix === -1 ? plan.order.length : prefix + 1)
         if (selected.length === 0) break
@@ -2395,6 +2526,7 @@ export const reserveEditorViewBudget = async ({
           byRoot.set(generation.root.key, [...(byRoot.get(generation.root.key) ?? []), generation])
         const retiredBefore = evicted.length
         const retiredStores = new Set<string>()
+        let retirementEpoch = census.epoch
         for (const generations of byRoot.values()) {
           const rootView = generations[0]?.root
           if (rootView === undefined) continue
@@ -2415,10 +2547,15 @@ export const reserveEditorViewBudget = async ({
               budgetBytes,
               usedBytes: census.usedBytes,
               recencyMs,
+              censusEpoch: retirementEpoch,
             })
             for (const key of outcome.blocked) blocked.add(key)
             evicted.push(...outcome.retired)
-            if (outcome.retired.length > 0) retiredStores.add(rootView.contentStore)
+            if (outcome.retired.length > 0) {
+              retiredStores.add(rootView.contentStore)
+              // Each successful root transaction advances the epoch exactly once.
+              retirementEpoch += 1
+            }
           } catch (error) {
             if (vanished(error) === false) throw error
             // A torn-down victim is unavailable, never grounds to reject this publisher.
@@ -2431,6 +2568,7 @@ export const reserveEditorViewBudget = async ({
           // eslint-disable-next-line no-await-in-loop -- Retired payload links free CAS blobs only after collection.
           await collectBudgetContentStores(retiredStores)
           collected = true
+          invalidateCensus()
         }
       }
       // Advisory budget: protected bytes do not fit, so record the overrun and publish anyway.

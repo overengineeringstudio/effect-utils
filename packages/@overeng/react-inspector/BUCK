@@ -148,6 +148,7 @@ package_view(
     workspace_dependency_views = {
     },
     strip_project_references = True,
+    project_files = ["tsconfig.json", "tsconfig.strict-consumer.json"],
     runtime = "//packages/@overeng/buck2-tools:package_tree_runtime",
     runtime_entry = "package-tree.ts",
     visibility = ["PUBLIC"],
@@ -206,6 +207,7 @@ package_view(
     workspace_dependency_views = {
     },
     strip_project_references = True,
+    project_files = ["tsconfig.json", "tsconfig.strict-consumer.json"],
     runtime = "//packages/@overeng/buck2-tools:package_tree_runtime",
     runtime_entry = "package-tree.ts",
     visibility = ["PUBLIC"],
@@ -274,6 +276,7 @@ package_view(
     workspace_dependency_views = {
     },
     strip_project_references = True,
+    project_files = ["tsconfig.json", "tsconfig.strict-consumer.json"],
     runtime = "//packages/@overeng/buck2-tools:package_tree_runtime",
     runtime_entry = "package-tree.ts",
     visibility = ["PUBLIC"],

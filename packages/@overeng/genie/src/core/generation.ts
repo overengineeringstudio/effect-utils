@@ -40,6 +40,7 @@ import {
   GenieCheckError,
   GenieFileError,
   GenieImportError,
+  GenieRuntimeTranspilerCacheError,
   InvalidOxfmtConfigError,
 } from './errors.ts'
 import { resolveImportMapsInSource } from './import-map/mod.ts'
@@ -939,13 +940,14 @@ export const loadGenieFile = Effect.fn('loadGenieFile')(function* ({
     targetFilePath: genieFilePath.replace('.genie.ts', ''),
   })
   yield* ensureImportMapResolver(cwd).pipe(
-    Effect.mapError(
-      (cause) =>
-        new GenieImportError({
-          genieFilePath,
-          message: `Failed to import ${genieFilePath}: ${cause.message}`,
-          cause,
-        }),
+    Effect.mapError((cause) =>
+      cause instanceof GenieRuntimeTranspilerCacheError
+        ? cause
+        : new GenieImportError({
+            genieFilePath,
+            message: `Failed to import ${genieFilePath}: ${cause.message}`,
+            cause,
+          }),
     ),
   )
 
@@ -1281,7 +1283,7 @@ export const checkFile = ({
   oxfmtConfigPath: Option.Option<string>
 }): Effect.Effect<
   void,
-  GenieCheckError | GenieImportError | PlatformError,
+  GenieCheckError | GenieImportError | GenieRuntimeTranspilerCacheError | PlatformError,
   FileSystem.FileSystem | CommandExecutor.ChildProcessSpawner
 > => checkFileDetailed({ genieFilePath, cwd, oxfmtConfigPath }).pipe(Effect.asVoid)
 
@@ -1296,7 +1298,7 @@ export const checkFileDetailed = ({
   oxfmtConfigPath: Option.Option<string>
 }): Effect.Effect<
   { targetFilePath: string; loadedGenieFile: LoadedGenieFile },
-  GenieCheckError | GenieImportError | PlatformError,
+  GenieCheckError | GenieImportError | GenieRuntimeTranspilerCacheError | PlatformError,
   FileSystem.FileSystem | CommandExecutor.ChildProcessSpawner
 > =>
   Effect.gen(function* () {

@@ -11,9 +11,9 @@ const LAUNCHCTL: &str = "launchctl";
 
 type Result<T, E = Failure> = std::result::Result<T, E>;
 #[derive(Debug)]
-struct Failure { code: i32, kind: &'static str, category: Option<&'static str>, reason: String }
-fn fail(code: i32, kind: &'static str, reason: impl Into<String>) -> Failure { Failure { code, kind, category: None, reason: reason.into() } }
-fn signing(category: &'static str, reason: impl Into<String>) -> Failure { Failure { code: 20, kind: "signing-failed", category: Some(category), reason: reason.into() } }
+struct Failure { code: i32, kind: &'static str, category: Option<&'static str>, reason: String, details: Option<Value> }
+fn fail(code: i32, kind: &'static str, reason: impl Into<String>) -> Failure { Failure { code, kind, category: None, reason: reason.into(), details: None } }
+fn signing(category: &'static str, reason: impl Into<String>) -> Failure { Failure { code: 20, kind: "signing-failed", category: Some(category), reason: reason.into(), details: None } }
 fn mismatch(reason: impl Into<String>) -> Failure { fail(22, "verification-failed", reason) }
 impl From<io::Error> for Failure { fn from(e: io::Error) -> Self { fail(23, "operation-failed", e.to_string()) } }
 impl From<serde_json::Error> for Failure { fn from(e: serde_json::Error) -> Self { fail(64, "invalid-input", e.to_string()) } }
@@ -56,10 +56,20 @@ fn rollback_fields(record: &Value) -> Result<(PathBuf, PathBuf, Option<u64>)> {
     let target = PathBuf::from(record["targetGeneration"].as_str().ok_or_else(corrupt)?);
     Ok((archive, target, Some(record["restoredInode"].as_u64().ok_or_else(corrupt)?)))
 }
+const STAGE_DIRECTORY_PREFIX: &str = ".macos-app-stage-";
+/// New stages isolate a canonical bundle in an owned unique parent. Older
+/// transaction records still name a standalone bundle and remain recoverable.
+fn remove_staged_bundle(path: &Path) -> io::Result<()> {
+    fs::remove_dir_all(path)?;
+    if let Some(parent) = path.parent().filter(|parent| parent.file_name().and_then(|name| name.to_str()).is_some_and(|name| name.starts_with(STAGE_DIRECTORY_PREFIX))) {
+        fs::remove_dir(parent)?;
+    }
+    Ok(())
+}
 /// Post-commit cleanup: a failure is reported as a leftover path and never undoes the commit.
 fn remove_leftover(path: &Path) -> Option<PathBuf> {
     if !path.exists() { return None; }
-    if failpoint("cleanup") || fs::remove_dir_all(path).is_err() { Some(path.to_owned()) } else { None }
+    if failpoint("cleanup") || remove_staged_bundle(path).is_err() { Some(path.to_owned()) } else { None }
 }
 /// Test-only failpoints can force failure or crash paths; they cannot make any check pass.
 fn failpoint(name: &str) -> bool { std::env::var("MACOS_APP_CTL_TEST_FAILPOINT").is_ok_and(|v| v == name) }
@@ -128,6 +138,8 @@ mod supplied;
 mod lifecycle;
 #[path = "macos-app-ctl/readiness.rs"]
 mod readiness;
+#[path = "macos-app-ctl/topology.rs"]
+mod topology;
 #[cfg(feature = "test-signing-cert")]
 #[path = "macos-app-ctl/helper_probe.rs"]
 mod helper_probe;
@@ -324,7 +336,13 @@ fn identity_in_keychain(keychain: &Path, identity: &str) -> Result<bool> {
 impl Ctl {
     fn arg(&self, key: &str) -> Result<&str> { self.args.get(key).map(String::as_str).ok_or_else(|| fail(64, "invalid-input", format!("Missing --{key}"))) }
     fn field(&self, key: &str) -> Result<&str> { self.config[key].as_str().ok_or_else(|| fail(64, "invalid-input", format!("Invalid config {key}"))) }
-    fn app(&self) -> Result<PathBuf> { Ok(PathBuf::from(self.arg("app-dir")?)) }
+    fn app(&self) -> Result<PathBuf> {
+        let app = PathBuf::from(self.arg("app-dir")?);
+        if app.file_name().and_then(|name| name.to_str()) != Some(artifact::app_bundle_name(&self.config)?) {
+            return Err(fail(64, "invalid-input", "Installed app basename must match product appBundleName"));
+        }
+        Ok(app)
+    }
     fn state(&self) -> Result<PathBuf> { Ok(PathBuf::from(self.arg("state")?)) }
     fn password_fd(&self) -> Result<i32> { self.arg("keychain-password-fd")?.parse::<i32>().map_err(|_| fail(64, "invalid-input", "Invalid password fd")) }
     fn signature(&self, app: &Path) -> Result<String> { self.signature_with(app, self.field("requirement")?) }
@@ -430,7 +448,7 @@ impl Ctl {
                     return Err(mismatch("Abandoned stage is not an owned directory"));
                 }
                 checked("/bin/chmod", &["-R", "u+w", text(&stage)?])?;
-                fs::remove_dir_all(&stage)?;
+                remove_staged_bundle(&stage)?;
             }
             remove_if_present(&record)?;
             return Ok((Some("stage-discarded"), None));
@@ -501,10 +519,10 @@ impl Ctl {
         if current() { return Ok(unchanged()); }
         let parent = app.parent().ok_or_else(|| fail(64, "invalid-input", "App requires parent"))?;
         fs::create_dir_all(parent)?;
-        let nonce = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_err(|e| fail(23, "operation-failed", e.to_string()))?.as_nanos();
-        let stage = parent.join(format!(".{}.stage-{}-{nonce}", app.file_name().and_then(|s| s.to_str()).unwrap_or("app"), std::process::id()));
-        copy_app(&desired, &stage)?;
+        let stage_parent = releases::private_stage(parent)?;
+        let stage = stage_parent.join(artifact::app_bundle_name(&self.config)?);
         let result = (|| {
+            copy_app(&desired, &stage)?;
             checked("/bin/chmod", &["-R", "u+w", text(&stage)?])?;
             self.sign(&keychain_path, &keychain, &stage).map_err(&record)?;
             let mut leftovers: Vec<PathBuf> = reconcile_leftover.iter().cloned().collect();
@@ -517,11 +535,11 @@ impl Ctl {
                 exchange(&stage, &app)?;
                 if failpoint("after-exchange") { std::process::exit(137); }
                 leftovers.extend(self.publish_archive(&app, &txn)?);
-            } else { fs::rename(&stage, &app)?; }
+            } else { fs::rename(&stage, &app)?; fs::remove_dir(&stage_parent)?; }
             remove_if_present(&failure_marker)?;
             Ok(json!({"changed": true, "hostSourceHash": expected, "bundleMetadataDigest": expected_metadata, "archive": pointer(&archive_pointer(&app)), "reconciled": reconciled, "leftovers": leftovers}))
         })();
-        if result.is_err() && stage.exists() && pointer(&archive_pointer(&app)).as_ref() != Some(&stage) && !transaction_record(&app).exists() { fs::remove_dir_all(stage)?; }
+        if result.is_err() && stage_parent.exists() && pointer(&archive_pointer(&app)).as_ref() != Some(&stage) && !transaction_record(&app).exists() { fs::remove_dir_all(&stage_parent)?; }
         result
     }
     fn generation(&self) -> Result<Value> {
@@ -543,6 +561,7 @@ impl Ctl {
         Ok(json!({"changed": true, "generation": generation, "gcRootCreated": rooted, "consumerRootRequired": !rooted}))
     }
     fn converge(&self) -> Result<Value> {
+        if self.paired() { return self.converge_topology(); }
         let domain = self.domain()?;
         let app = self.app()?; let state = self.state()?;
         let program = app.join("Contents/MacOS").join(self.field("hostExecutable")?);
@@ -592,10 +611,20 @@ impl Ctl {
         let (loaded, pid) = self.job(&domain)?;
         let pid = pid.filter(|_| loaded).ok_or_else(|| fail(23, "job-not-running", "Launchd job is not running"))?;
         let mut stream = self.connect_endpoint(&domain, pid)?;
+        let requirement = macos_app_host::CompiledRequirement::compile(self.field("requirement")?)
+            .map_err(|e| fail(64, "invalid-input", e.to_string()))?;
+        let target_uid = self.args.get("target-uid").map(|value| value.parse::<u32>()
+            .map_err(|_| fail(64, "invalid-input", "Invalid target UID"))).transpose()?.unwrap_or_else(|| unsafe { libc::geteuid() });
+        let peer = macos_app_host::authenticate_peer(&stream, macos_app_host::PeerPolicy {
+            allowed_uids: &[target_uid], requirement: &requirement,
+        }).map_err(|error| mismatch(error.to_string()))?;
+        if peer.token().pid() != pid { return Err(mismatch("Authenticated status endpoint differs from launchd PID")); }
+        peer.recheck_freshness().map_err(|error| mismatch(error.to_string()))?;
         stream.set_read_timeout(Some(Duration::from_secs(5)))?; stream.set_write_timeout(Some(Duration::from_secs(5)))?;
         stream.write_all(b"{\"wireVersion\":1,\"action\":\"status\",\"args\":{}}\n")?;
         let mut bytes = Vec::new();
-        BufReader::new(stream).take(65536).read_until(b'\n', &mut bytes)?;
+        BufReader::new(&mut stream).take(65536).read_until(b'\n', &mut bytes)?;
+        peer.recheck_freshness().map_err(|error| mismatch(error.to_string()))?;
         Ok(serde_json::from_slice(&bytes)?)
     }
     fn verify_expected(&self, expected_hash: &str, expected_metadata: &str, generation: &Path) -> Result<Value> {
@@ -608,7 +637,9 @@ impl Ctl {
         if !loaded || pid.is_none() || ipc["ok"] != true || ipc["status"]["hostSourceHash"] != expected_hash || ipc["status"]["generation"] != manifest["generation"] || ipc["status"]["pid"].as_u64() != pid.map(u64::from) { return Err(mismatch("IPC host hash/generation/PID does not match desired and launchd")); }
         let mode = socket_mode(self.arg("socket")?);
         if mode.map(u64::from) != manifest["socketMode"].as_u64() { return Err(mismatch(format!("Socket mode {mode:?} differs from the generation's socketMode"))); }
-        Ok(json!({"verified": true, "domain": domain, "pid": pid, "hostSourceHash": expected_hash, "bundleMetadataDigest": expected_metadata, "generation": generation}))
+        let children = if self.paired() { self.topology_evidence_with(&ipc)?["children"].clone() }
+            else { topology::inactive_single_job_children(&self.config)? };
+        Ok(json!({"verified": true, "domain": domain, "pid": pid, "hostSourceHash": expected_hash, "bundleMetadataDigest": expected_metadata, "generation": generation, "children": children}))
     }
     fn verify(&self) -> Result<Value> {
         let desired = Path::new(self.arg("desired")?);
@@ -636,11 +667,16 @@ impl Ctl {
     /// the recovery state (record, D.previous, host-previous-generation) is removed only after
     /// verify succeeds, so any failure or crash is retried to completion.
     fn restore_host(&self, app: &Path, state: &Path, pending: Option<Value>) -> Result<Value> {
+        let require_current_layout = |archive: &Path| -> Result<()> {
+            if archive.file_name().and_then(|name| name.to_str()) == Some(artifact::app_bundle_name(&self.config)?) { return Ok(()); }
+            Err(fail(22, "rollback-unavailable", "Archived host uses an old bundle basename; rollback across the naming cutover requires a resealed release"))
+        };
         let resumed = pending.is_some();
         let record = match pending {
             Some(record) => record,
             None => {
                 let archive = pointer(&archive_pointer(app)).ok_or_else(|| mismatch("No archived host"))?;
+                require_current_layout(&archive)?;
                 let target = pointer(&state.join("host-previous-generation")).or_else(|| pointer(&state.join("current"))).ok_or_else(|| mismatch("No generation to run the restored host with"))?;
                 self.signature(&archive)?;
                 let record = json!({"direction": "restore-host", "archive": archive, "targetGeneration": target, "restoredInode": inode(&archive), "rejectedInode": inode(app)});
@@ -650,6 +686,7 @@ impl Ctl {
         };
         let (archive, target, restored) = rollback_fields(&record)?;
         if inode(app) == record["rejectedInode"].as_u64() {
+            require_current_layout(&archive)?;
             exchange(&archive, app)?;
             if failpoint("rollback-after-exchange") { std::process::exit(137); }
         } else if inode(app) != restored {
@@ -688,6 +725,9 @@ fn known_option(key: &str) -> bool {
             | "state"
             | "socket"
             | "plist-dir"
+            | "gui-plist-dir"
+            | "gui-plist"
+            | "gui-socket"
             | "domain"
             | "desired"
             | "generation"
@@ -770,8 +810,34 @@ fn run() -> Result<Value> {
     let config_path = args
         .get("config")
         .ok_or_else(|| fail(64, "invalid-input", "Missing --config"))?;
-    let config = serde_json::from_slice(&fs::read(config_path)?)?;
+    let config: Value = serde_json::from_slice(&fs::read(config_path)?)?;
+    if let Some(declarations) = config.get("supervisedChildren") {
+        let children: macos_app_host::children::Children = serde_json::from_value(declarations.clone())?;
+        if !config.get("guiLaunchd").is_some_and(Value::is_object)
+            && children.0.iter().any(|child| child.activation == macos_app_host::children::Activation::Active) {
+            return Err(fail(64, "invalid-input", "Single-job hosts support only inactive supervised child declarations"));
+        }
+    }
+    if config.get("guiLaunchd").is_some_and(Value::is_object) {
+        if !args.contains_key("target-uid") {
+            if let Some(uid) = config["targetUid"].as_u64() { args.insert("target-uid".into(), uid.to_string()); }
+        }
+        args.entry("domain".into()).or_insert_with(|| "system".into());
+    }
     let ctl = Ctl { config, args };
+    if ctl.args.contains_key("gui-plist") && (!ctl.paired() || !ctl.args.contains_key("plist")) {
+        return Err(fail(64, "invalid-input", "--gui-plist requires paired configuration and --plist"));
+    }
+    if ctl.paired() && ctl.args.contains_key("plist") && !ctl.args.contains_key("gui-plist") {
+        return Err(fail(64, "invalid-input", "Paired supplied configuration requires both --plist and --gui-plist"));
+    }
+    if ctl.paired() && matches!(action.as_str(), "install-host" | "rollback")
+        && (!ctl.args.contains_key("artifact") || !ctl.args.contains_key("generation")) {
+        return Err(fail(64, "invalid-input", "Paired install-host/rollback requires --artifact and --generation for one coherent release transaction"));
+    }
+    if ctl.paired() && action == "select-generation" {
+        return Err(fail(64, "invalid-input", "Paired generation selection belongs to install-host --artifact --generation"));
+    }
     // Keychain calls in this process fail instead of showing UI (errSecInteractionNotAllowed).
     // SAFETY: a plain flag setter for this process's Security framework client state.
     let status = unsafe { SecKeychainSetUserInteractionAllowed(0) };
@@ -807,6 +873,7 @@ fn run() -> Result<Value> {
         "install-host" if ctl.args.contains_key("artifact") => ctl.install_artifact(),
         "install-host" => ctl.install(),
         "select-generation" => ctl.generation(),
+        "converge-launchd" if ctl.paired() => ctl.converge_topology(),
         "converge-launchd" if ctl.args.contains_key("plist") => ctl.converge_supplied(),
         "converge-launchd" => ctl.converge(),
         "verify" if ctl.args.contains_key("artifact") => ctl.verify_artifact(),
@@ -829,7 +896,9 @@ fn run() -> Result<Value> {
     Ok(json!({"ok": true, "primitive": action, "result": result}))
 }
 fn print_failure(e: Failure) -> ! {
-    println!("{}", json!({"ok": false, "error": {"kind": e.kind, "category": e.category, "reason": e.reason, "exitCode": e.code}}));
+    let mut error = json!({"kind": e.kind, "category": e.category, "reason": e.reason, "exitCode": e.code});
+    if let Some(details) = e.details { error["details"] = details; }
+    println!("{}", json!({"ok": false, "error": error}));
     std::process::exit(e.code);
 }
 fn main() {
@@ -853,6 +922,33 @@ mod tests {
     #[cfg(feature = "test-signing-cert")]
     fn launchctl_program_uses_test_shim() {
         assert_eq!(LAUNCHCTL, "launchctl");
+    }
+
+    #[test]
+    fn installed_bundle_name_is_product_owned() {
+        let mut ctl = Ctl {
+            config: json!({"appBundleName": "Product Name.app"}),
+            args: BTreeMap::from([("app-dir".into(), "/Applications/Product Name.app".into())]),
+        };
+        assert_eq!(ctl.app().unwrap(), Path::new("/Applications/Product Name.app"));
+        for name in ["BuildOutput.app", "host.app", "retained-1.app", ".Product Name.app.stage-1"] {
+            ctl.args.insert("app-dir".into(), format!("/Applications/{name}"));
+            assert_eq!(ctl.app().unwrap_err().kind, "invalid-input");
+        }
+    }
+
+    #[test]
+    fn rollback_across_old_bundle_layout_is_unavailable() {
+        let root = releases::private_stage(&fs::canonicalize(std::env::temp_dir()).unwrap()).unwrap();
+        let app = root.join("Product Name.app");
+        let archive = root.join("retained-1.app");
+        symlink(&archive, archive_pointer(&app)).unwrap();
+        let ctl = Ctl { config: json!({"appBundleName": "Product Name.app"}), args: BTreeMap::new() };
+        assert_eq!(ctl.restore_host(&app, &root, None).unwrap_err().kind, "rollback-unavailable");
+        assert!(!rollback_record(&app).exists());
+        let pending = json!({"archive": archive, "targetGeneration": root, "restoredInode": 1});
+        assert_eq!(ctl.restore_host(&app, &root, Some(pending)).unwrap_err().kind, "rollback-unavailable");
+        fs::remove_dir_all(root).unwrap();
     }
 
     #[test]

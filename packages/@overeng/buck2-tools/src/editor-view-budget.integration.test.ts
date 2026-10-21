@@ -24,6 +24,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import {
   cancelEditorViewBudgetReservation,
   editorViewHostBudgetStateDirectory,
+  makeEditorViewBudgetCensusSession,
   reserveEditorViewBudget,
 } from './editor-view-budget.ts'
 import { shareSnapshotFiles } from './editor-view-sharing.ts'
@@ -1781,5 +1782,289 @@ describe('budget telemetry rate limits across publisher processes per host store
         ]),
       ]),
     )
+  })
+})
+
+describe('budget admission defers reader proof until eviction needs it', () => {
+  const readerScans = (): number =>
+    fsMocks.readlinkSync.mock.calls.filter(([path]) =>
+      /^\/proc\/[0-9]+\/(?:cwd|fd\/)/.test(String(path)),
+    ).length +
+    childProcessMocks.spawnSync.mock.calls.filter(([command]) => command === '/usr/sbin/lsof')
+      .length
+
+  const lockRoot = (root: { readonly editorRoot: string }) => {
+    const path = join(root.editorRoot, '.publish.lock')
+    mkdirSync(path)
+    writeFileSync(
+      join(path, 'owner.json'),
+      JSON.stringify({
+        schema: 'effect-utils/editor-view-lock/v1',
+        token: 'admission-test-owner',
+        pid: process.pid,
+      }),
+    )
+    return { release: () => rmSync(path, { recursive: true }) }
+  }
+
+  it('admits a footprint above the warning ratio without scanning eligible readers', async () => {
+    const host = makeHost()
+    try {
+      const victim = host.fixture('fit-victim', 181)
+      const incoming = host.fixture('fit-incoming', 182, 64)
+      const victimRecord = await host.publish(victim)
+      await host.publish(incoming)
+      const incomingLock = lockRoot(incoming)
+      host.advance(hostRecencyMs + hostGraceMs + 1)
+      host.age(victim, victimRecord)
+      const options = {
+        contentStore: host.contentStore,
+        root: { repoRoot: incoming.root, editorRoot: incoming.editorRoot },
+        heldEditorRoot: incoming.editorRoot,
+        discoverRoots: () => [{ repoRoot: victim.root, editorRoot: victim.editorRoot }],
+        reservationBytes: 1,
+        tryLockRoot: () => {
+          throw new Error('fitting admission attempted eviction')
+        },
+      }
+      const probe = await host.track(
+        reserveEditorViewBudget({ ...options, budgetBytes: setupBudgetBytes }),
+      )
+      await cancelEditorViewBudgetReservation({
+        contentStore: host.contentStore,
+        token: probe.token,
+      })
+      const usedBytes = readBudgetLedger(host).usedBytes
+      const budgetBytes = Math.ceil((usedBytes + options.reservationBytes) / 0.9)
+      expect(usedBytes + options.reservationBytes).toBeGreaterThan(budgetBytes * 0.8)
+      expect(usedBytes + options.reservationBytes).toBeLessThan(budgetBytes)
+      const scansBefore = readerScans()
+      const reservation = await host.track(reserveEditorViewBudget({ ...options, budgetBytes }))
+      expect(readerScans()).toBe(scansBefore)
+      expectCurrent(victim, victimRecord)
+      await cancelEditorViewBudgetReservation({
+        contentStore: host.contentStore,
+        token: reservation.token,
+      })
+      incomingLock.release()
+    } finally {
+      await host.cleanup()
+    }
+  })
+
+  it('scans before eviction and re-proves a reader opened after the victim lock', async () => {
+    const host = makeHost()
+    try {
+      const victim = host.fixture('proof-victim', 183)
+      const incoming = host.fixture('proof-incoming', 184, 64)
+      const victimRecord = await host.publish(victim)
+      await host.publish(incoming)
+      const incomingLock = lockRoot(incoming)
+      host.advance(hostRecencyMs + hostGraceMs + 1)
+      host.age(victim, victimRecord)
+      const scansBefore = readerScans()
+      let reader: Reader | undefined
+      let scansAtLock = 0
+      const reservation = await host.track(
+        reserveEditorViewBudget({
+          contentStore: host.contentStore,
+          root: { repoRoot: incoming.root, editorRoot: incoming.editorRoot },
+          heldEditorRoot: incoming.editorRoot,
+          discoverRoots: () => [{ repoRoot: victim.root, editorRoot: victim.editorRoot }],
+          reservationBytes: 1,
+          budgetBytes: 1,
+          tryLockRoot: (root) => {
+            expect(root.editorRoot).toBe(victim.editorRoot)
+            expect(readerScans()).toBeGreaterThan(scansBefore)
+            return lockRoot(root)
+          },
+          beforeRetireRoot: async () => {
+            scansAtLock = readerScans()
+            if (reader === undefined) {
+              reader = openReader(host, victim, victimRecord, { fromContentStore: true })
+              await reader.ready
+            }
+          },
+        }),
+      )
+      expect(reader).toBeDefined()
+      expect(readerScans()).toBeGreaterThan(scansAtLock)
+      expectCurrent(victim, victimRecord)
+      expect(pathExists(join(victim.editorRoot, '.evicted-budget-view.json'))).toBe(false)
+      if (reader === undefined) throw new Error('eviction never reached its reader barrier')
+      expectRunningReader(reader)
+      await cancelEditorViewBudgetReservation({
+        contentStore: host.contentStore,
+        token: reservation.token,
+      })
+      incomingLock.release()
+    } finally {
+      await host.cleanup()
+    }
+  })
+
+  it.each(['root', 'store', 'ledger'])(
+    'retakes a shared census when the caller changes its %s',
+    async (changed) => {
+      const host = makeHost()
+      try {
+        const first = host.fixture('coverage-first', 188, 64)
+        mkdirSync(join(first.editorRoot, '.store'), { recursive: true })
+        const censusSession = makeEditorViewBudgetCensusSession()
+        let censuses = 0
+        const options = {
+          contentStore: host.contentStore,
+          root: { repoRoot: first.root, editorRoot: first.editorRoot },
+          heldEditorRoot: first.editorRoot,
+          discoverRoots: () => [],
+          reservationBytes: 1,
+          budgetBytes: setupBudgetBytes,
+          censusSession,
+          onCensus: () => {
+            censuses++
+          },
+          tryLockRoot: () => {
+            throw new Error('coverage test attempted eviction')
+          },
+        }
+        const initial = await host.track(reserveEditorViewBudget(options))
+        const initialBytes = readBudgetLedger(host).usedBytes
+        await cancelEditorViewBudgetReservation({
+          contentStore: host.contentStore,
+          token: initial.token,
+        })
+        expect(censuses).toBe(1)
+
+        const next = changed === 'root' ? host.fixture('coverage-next', 189, 64) : first
+        const contentStore =
+          changed === 'store' ? join(host.root, 'other-content', 'v1') : host.contentStore
+        if (changed === 'ledger')
+          process.env.EDITOR_VIEW_HOST_BUDGET_STATE = join(host.root, 'other-ledger')
+        const unmanaged = join(next.editorRoot, '.store', 'unmanaged-new')
+        mkdirSync(unmanaged, { recursive: true })
+        writeFileSync(join(unmanaged, 'payload.bin'), Buffer.alloc(payloadBytes, 190))
+        const reservation = await host.track(
+          reserveEditorViewBudget({
+            ...options,
+            contentStore,
+            root: { repoRoot: next.root, editorRoot: next.editorRoot },
+            heldEditorRoot: next.editorRoot,
+          }),
+        )
+        expect(censuses).toBe(2)
+        // Read the selected ledger, not the original host fixture's ledger path.
+        const state = readBudgetLedger({
+          ...host,
+          budgetState: editorViewHostBudgetStateDirectory(),
+        })
+        expect(state.contentStores).toContain(contentStore)
+        expect(state.reservations).toEqual([
+          expect.objectContaining({ token: reservation.token, editorRoot: next.editorRoot }),
+        ])
+        expect(state.usedBytes).toBeGreaterThan(initialBytes)
+        expect(state.usedBytes).toBeGreaterThanOrEqual(payloadBytes)
+        await cancelEditorViewBudgetReservation({ contentStore, token: reservation.token })
+      } finally {
+        await host.cleanup()
+      }
+    },
+  )
+
+  it('shares one near-full census between workers but refreshes after a generation mutation before eviction', async () => {
+    const host = makeHost()
+    try {
+      const victim = host.fixture('session-victim', 185)
+      const incoming = host.fixture('session-incoming', 186, 64)
+      const oldRecord = await host.publish(victim)
+      await host.publish(incoming)
+      const incomingLock = lockRoot(incoming)
+      host.advance(hostRecencyMs + hostGraceMs + 1)
+      host.age(victim, oldRecord)
+      const options = {
+        contentStore: host.contentStore,
+        root: { repoRoot: incoming.root, editorRoot: incoming.editorRoot },
+        heldEditorRoot: incoming.editorRoot,
+        discoverRoots: () => [{ repoRoot: victim.root, editorRoot: victim.editorRoot }],
+        reservationBytes: 1,
+        tryLockRoot: lockRoot,
+      }
+      const probe = await host.track(
+        reserveEditorViewBudget({ ...options, budgetBytes: setupBudgetBytes }),
+      )
+      await cancelEditorViewBudgetReservation({
+        contentStore: host.contentStore,
+        token: probe.token,
+      })
+      const baseline = readBudgetLedger(host)
+      const budgetBytes = Math.ceil((baseline.usedBytes + 2) / 0.9)
+      const censusSession = makeEditorViewBudgetCensusSession()
+      const entered = Promise.withResolvers<void>()
+      const release = host.gate()
+      let censuses = 0
+      const onCensus = async () => {
+        censuses++
+        entered.resolve()
+        await release.promise
+      }
+      const scansBefore = readerScans()
+      const workers = [0, 1].map(() =>
+        host.track(reserveEditorViewBudget({ ...options, budgetBytes, censusSession, onCensus })),
+      )
+      await Promise.race([
+        entered.promise,
+        Promise.race(workers).then(() => {
+          throw new Error('worker skipped the census barrier')
+        }),
+      ])
+      release.resolve()
+      const reservations = await Promise.all(workers)
+      expect(censuses).toBe(1)
+      expect(readerScans()).toBe(scansBefore)
+      const held = readBudgetLedger(host)
+      expect(held.reservations).toHaveLength(2)
+      expect(new Set(reservations.map(({ token }) => token)).size).toBe(2)
+      expect(held.usedBytes + 2).toBeGreaterThan(budgetBytes * 0.8)
+      expect(held.usedBytes + 2).toBeLessThanOrEqual(budgetBytes)
+      for (const { token } of reservations)
+        await cancelEditorViewBudgetReservation({ contentStore: host.contentStore, token })
+
+      // The batch session still contains the old generation set. A real publication
+      // changes both that set and the host journal before pressure reuses the session.
+      writeFileSync(victim.payload, Buffer.alloc(payloadBytes, 187))
+      const currentRecord = await host.publish(victim)
+      expect(currentRecord.snapshot).not.toBe(oldRecord.snapshot)
+      const reader = openReader(host, victim, currentRecord, { fromContentStore: true })
+      await reader.ready
+      host.advance(hostRecencyMs + hostGraceMs + 1)
+      host.age(victim, oldRecord)
+      host.age(victim, currentRecord)
+      let attemptedEviction = false
+      const pressure = await host.track(
+        reserveEditorViewBudget({
+          ...options,
+          budgetBytes: 1,
+          censusSession,
+          onCensus: () => {
+            censuses++
+          },
+          tryLockRoot: (root) => {
+            attemptedEviction = true
+            expect(censuses).toBeGreaterThan(1)
+            return lockRoot(root)
+          },
+        }),
+      )
+      expect(attemptedEviction).toBe(true)
+      expect(pathExists(join(victim.editorRoot, oldRecord.snapshot))).toBe(false)
+      expectCurrent(victim, currentRecord)
+      expectRunningReader(reader)
+      await cancelEditorViewBudgetReservation({
+        contentStore: host.contentStore,
+        token: pressure.token,
+      })
+      incomingLock.release()
+    } finally {
+      await host.cleanup()
+    }
   })
 })

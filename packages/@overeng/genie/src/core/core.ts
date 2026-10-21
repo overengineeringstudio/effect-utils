@@ -8,6 +8,7 @@ import type * as CommandExecutor from 'effect/process/ChildProcessSpawner'
 
 import { assertNever } from '@overeng/utils'
 
+import { recordInput } from '../runtime/node/inputs.ts'
 import { formatValidationIssues } from '../runtime/package-json/validation.ts'
 import { findGenieFiles } from './discovery.ts'
 import { GenieGenerationFailedError } from './errors.ts'
@@ -21,6 +22,7 @@ import {
   type LoadedGenieFile,
   isTdzError,
 } from './generation.ts'
+import { recordGeneratorSourceGraph, withInputManifest } from './input-manifest.ts'
 import * as Observability from './observability.ts'
 import { type GeneratorPhase, parseGeneratorPhase } from './phase.ts'
 import type { GenieFileStatus, GenieSummary } from './schema.ts'
@@ -207,7 +209,27 @@ export const generateAll = ({
   FileSystem.FileSystem | Path.Path | CommandExecutor.ChildProcessSpawner | GenieEventBus
 > =>
   Effect.gen(function* () {
+    for (const input of [
+      'megarepo.lock',
+      'flake.lock',
+      'pnpm-lock.yaml',
+      'pnpm-workspace.yaml',
+      'package.json',
+      ...OXFMT_CONFIG_CONVENTION_PATHS,
+    ]) {
+      recordInput(path.join(cwd, input))
+    }
+    if (Option.isSome(oxfmtConfigPath) === true) recordInput(oxfmtConfigPath.value)
     const genieFiles = yield* discoverAndValidate(cwd, phase)
+    yield* Effect.try({
+      try: () => recordGeneratorSourceGraph({ entries: genieFiles, cwd }),
+      catch: (cause) =>
+        new GenieGenerationFailedError({
+          failedCount: 1,
+          message: `Failed to record generator source inputs: ${String(cause)}`,
+          files: [],
+        }),
+    })
 
     if (genieFiles.length === 0) {
       const summary = computeSummary({ successes: [], failedCount: 0 })
@@ -366,6 +388,11 @@ export const generateAll = ({
     yield* emit({ _tag: 'Complete', summary })
     return { summary, files: successes }
   }).pipe(
+    (effect) =>
+      withInputManifest({
+        effect,
+        complete: dryRun === false && phase === undefined && validate === true,
+      }),
     Observability.withCommandSpan({
       label: dryRun === true ? 'dry-run' : readOnly === true ? 'generate' : 'generate-writable',
       cwd,

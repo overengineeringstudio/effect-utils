@@ -275,7 +275,7 @@ impl Smoke {
     fn run_domain(&mut self, kind: &str, domain: &str, leaf: &str, keychain: &Path) -> Result<()> {
         let folder = self.work.join(kind);
         fs::create_dir(&folder)?;
-        let app = folder.join("apps/SmokeHost.app");
+        let app = folder.join("apps/Launchd Smoke.app");
         let state = folder.join("state");
         let plists = folder.join("plists");
         let socket = folder.strip_prefix(&self.root)?.join("host.sock");
@@ -301,7 +301,7 @@ impl Smoke {
         let first = PathBuf::from(String::from_utf8(self.checked(Path::new("nix-store"), &["--add", text(&first)])?.stdout)?.trim());
         let second = PathBuf::from(String::from_utf8(self.checked(Path::new("nix-store"), &["--add", text(&second)])?.stdout)?.trim());
         fs::write(&config, serde_json::to_vec(&json!({
-            "bundleId": LABEL, "session": kind, "hostExecutable": "macos-app-host",
+            "bundleId": LABEL, "appBundleName": "Launchd Smoke.app", "session": kind, "hostExecutable": "macos-app-host",
             "requirement": format!("identifier \"{LABEL}\" and certificate leaf = H\"{leaf}\""),
             "signer": {"teamId": "TEST", "identity": leaf},
             "launchd": {"label": LABEL, "keepAlive": true, "runAtLoad": true, "WorkingDirectory": self.root}

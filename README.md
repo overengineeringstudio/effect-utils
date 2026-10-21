@@ -429,6 +429,8 @@ and toolchain capabilities; no rule interprets the header as a dependency manife
 cache key. Rules that explicitly stage a `BUCK` file still hash its complete bytes.
 
 ### Consumer Buck Roots
+Consumers needing an always-eligible product manifest should pin `ref published`, not `ref main`; see the [consumer pin contract](./context/builds/05-product-distribution/02-nix-bridge/spec.md#consumer-pin-eligibility).
+
 
 `mkConsumerBuckRoot` accepts the named `watcherPolicy` argument. Its default,
 `"mutable-checkout"`, emits `file_watcher = watchman` and retains fail-closed

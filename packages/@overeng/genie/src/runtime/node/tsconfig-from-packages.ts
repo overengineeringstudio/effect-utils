@@ -6,12 +6,12 @@
  * and the workspace-graph projection helpers, are imported from the pure runtime.
  */
 
-import { existsSync } from 'node:fs'
 import path from 'node:path'
 
 import { tsconfigJson, type GenieOutput, type TSConfigArgs } from '../mod.ts'
 import type { WorkspacePackageLike } from '../package-json/mod.ts'
 import { rootWorkspaceMemberPathsFromPackages } from '../workspace-graph.ts'
+import { inputExistsSync as existsSync } from './inputs.ts'
 
 const sortStrings = (values: Iterable<string>) =>
   [...new Set(values)].toSorted((a, b) => a.localeCompare(b))

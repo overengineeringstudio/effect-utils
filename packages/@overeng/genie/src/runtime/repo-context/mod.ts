@@ -1,6 +1,7 @@
-import { existsSync, readFileSync } from 'node:fs'
 import { dirname, join, parse } from 'node:path'
 import { fileURLToPath } from 'node:url'
+
+import { inputExistsSync as existsSync, inputReadFileSync as readFileSync } from '../node/inputs.ts'
 
 /** Repo-local file access anchored at the repository that owns a generator module. */
 export interface RepoContext {
