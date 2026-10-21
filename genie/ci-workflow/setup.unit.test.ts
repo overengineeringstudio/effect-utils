@@ -981,7 +981,7 @@ describe('published consumer ref', () => {
     }
   })
 
-  it('runs the real consumer task without editor bootstrap and emits success only afterward', () => {
+  it('runs the shared consumer harness without the root shell and emits success only afterward', () => {
     expect(smoke.if).toBe(publisher.if)
     expect(smoke['timeout-minutes']).toBe(10)
     expect(smoke.permissions).toEqual({ contents: 'read' })
@@ -992,8 +992,12 @@ describe('published consumer ref', () => {
     expect(resolution.run).toContain('resolve-devenv.sh')
     expect(smoke.steps!.indexOf(resolution)).toBeLessThan(smoke.steps!.indexOf(smokeStep))
     const command = smokeStep.run as string
-    expect(command).toContain('test:consumer-smoke')
-    expect(command.indexOf('test:consumer-smoke')).toBeLessThan(
+    expect(command).toContain(
+      'bash nix/fixtures/consumer-smoke/run.sh "$PWD" "${DEVENV_BIN:?DEVENV_BIN not set}"',
+    )
+    expect(command).not.toContain('tasks run')
+    expect(command).not.toContain(' shell ')
+    expect(command.indexOf('nix/fixtures/consumer-smoke/run.sh')).toBeLessThan(
       command.indexOf('echo "current-sha=$GITHUB_SHA"'),
     )
     expect(smoke.steps!.some((step) => String(step.run).includes('buck2:editor:bootstrap'))).toBe(false)

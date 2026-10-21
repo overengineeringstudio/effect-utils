@@ -1105,7 +1105,8 @@ const extraJobs: Record<string, any> = {
         name: 'Install an isolated consumer from the candidate checkout',
         env: githubTokenEnv(),
         run: [
-          runDevenvTasksBefore('test:consumer-smoke'),
+          // Use runner base tools, Nix and the resolved runtime, not the broad root shell.
+          'bash nix/fixtures/consumer-smoke/run.sh "$PWD" "${DEVENV_BIN:?DEVENV_BIN not set}"',
           'echo "current-sha=$GITHUB_SHA" >> "$GITHUB_OUTPUT"',
         ].join('\n'),
       },
