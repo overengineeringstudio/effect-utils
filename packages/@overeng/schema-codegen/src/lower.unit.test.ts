@@ -19,6 +19,7 @@ describe('shared schema admission', () => {
         },
       },
     })
+    // @effect-diagnostics-next-line schemaNumber:off -- deliberately verifies rejection of the broad number AST in the default Rust profile
     expect(() => lower({ Value: Schema.Number })).toThrow(AdmissionError)
     expect(() => lower({ Value: Schema.Int })).toThrow(AdmissionError)
   })
@@ -36,6 +37,7 @@ describe('shared schema admission', () => {
   })
 
   it('admits binary64 and safe integer scalars only in the Swift JSON profile', () => {
+    // @effect-diagnostics-next-line schemaNumber:off -- deliberately exercises the Swift profile's admission of the broad number AST; emitted scalar validation rejects non-finite values
     const ir = lower({ Value: Schema.Number, Count: Schema.Int }, 'example', { profile: 'swift' })
     expect(ir.defs.Value).toEqual({ kind: 'alias', type: { kind: 'f64' } })
     expect(ir.defs.Count).toEqual({ kind: 'alias', type: { kind: 'int', width: 'i64' } })
