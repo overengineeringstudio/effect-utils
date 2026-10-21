@@ -34,8 +34,12 @@ required checks and workflow frequency are independent of these labels.
 `devenv tasks run lint:check:standalone-staging` (included in PR `lint:check`)
 checks `nix/standalone-staging.json`. Each standalone source must import only
 Node builtins (with or without the `node:` prefix), including re-exports,
-dynamic imports and `require`. Type-only edges are erased and ignored;
-non-literal runtime module dependencies are rejected. An explicitly rewritten
+dynamic imports and `require`. Whole-declaration `import type` / `export type`
+edges are erased and ignored. Inline-only `import { type X }` still resolves its
+module under Node's type stripping, so it is checked as a runtime edge (even
+though Bun elides it). This matches the repository's `verbatimModuleSyntax`
+policy and the isolated Node proof. Non-literal runtime dependencies are rejected.
+An explicitly rewritten
 edge may name another isolation-checked source; the pnpm source-input stager uses
 this for its store-path rewrite of `sync-resolver.ts`.
 

@@ -1199,6 +1199,14 @@ in
     # No cache: a newly staged source must always be discovered.
   };
 
+  tasks."lint:check:format:parity" = {
+    description = "Compare Buck and Git formatter sources against exact documented differences";
+    after = [ "genie:check" ];
+    exec = trace.exec "lint:check:format:parity" ''
+      bun scripts/buck2-format-parity.ts
+    '';
+  };
+
   tasks."lint:check:format".after = lib.mkForce [ "genie:check" ];
   tasks."lint:check:format".exec = lib.mkForce (buck2BuildExec {
     name = "lint:check:format";
@@ -1276,6 +1284,7 @@ in
   # actionlint binary path for genie's workflow validation (also used by tests)
   env.GENIE_ACTIONLINT_BIN = "${pkgs.actionlint}/bin/actionlint";
   env.BUCK2_BIN = "${buck2Machine}/bin/buck2";
+  env.BUCK2_STDIO_LIBRARY = "${buck2Machine}/libexec/libbuck2-stdio${pkgs.stdenv.hostPlatform.extensions.sharedLibrary}";
   env.BUCK2_MACHINE_VERSION = buck2Machine.version;
   # Explicit digest-tool input for the JavaScript product contract test, including
   # its direct `devenv shell -- bash ...` CI invocation.
@@ -1339,6 +1348,7 @@ in
     execIfModified = [
       "nix/buck2.nix"
       "scripts/buck2-entrypoint.*"
+      "scripts/buck2-stdio.*"
       "scripts/buck2-cache-posture.*"
       "scripts/buck2-remote-cache-proof.sh"
       "genie/ci-scripts/buck2-action-evidence.ts"
@@ -1944,6 +1954,8 @@ in
 
   tasks."check:quick".after = lib.mkForce [
     "buck2:quick"
+    "lint:check:format:parity"
+    "lint:check:standalone-staging"
     "buck2:cache-posture:test"
     "buck2:capabilities:test"
     "worktree:teardown:test"

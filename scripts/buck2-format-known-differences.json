@@ -1,0 +1,218 @@
+[
+  {
+    "path": "packages/@overeng/otel-scrape/BUCK.genie.ts",
+    "side": "git-only",
+    "reason": "Native Cargo or nested Rust fixture BUCK boundary is absent from the formatter source census.",
+    "issue": "https://github.com/overengineeringstudio/effect-utils/issues/1995"
+  },
+  {
+    "path": "packages/@overeng/otel-scrape/Cargo.toml",
+    "side": "git-only",
+    "reason": "Native Cargo or nested Rust fixture BUCK boundary is absent from the formatter source census.",
+    "issue": "https://github.com/overengineeringstudio/effect-utils/issues/1995"
+  },
+  {
+    "path": "packages/@overeng/otel-scrape/README.md",
+    "side": "git-only",
+    "reason": "Native Cargo or nested Rust fixture BUCK boundary is absent from the formatter source census.",
+    "issue": "https://github.com/overengineeringstudio/effect-utils/issues/1995"
+  },
+  {
+    "path": "packages/@overeng/otel-scrape/src/telemetry_registry.gen.rs.genie.ts",
+    "side": "git-only",
+    "reason": "Native Cargo or nested Rust fixture BUCK boundary is absent from the formatter source census.",
+    "issue": "https://github.com/overengineeringstudio/effect-utils/issues/1995"
+  },
+  {
+    "path": "packages/@overeng/otelite/BUCK.genie.ts",
+    "side": "git-only",
+    "reason": "Native Cargo or nested Rust fixture BUCK boundary is absent from the formatter source census.",
+    "issue": "https://github.com/overengineeringstudio/effect-utils/issues/1995"
+  },
+  {
+    "path": "packages/@overeng/otelite/Cargo.toml",
+    "side": "git-only",
+    "reason": "Native Cargo or nested Rust fixture BUCK boundary is absent from the formatter source census.",
+    "issue": "https://github.com/overengineeringstudio/effect-utils/issues/1995"
+  },
+  {
+    "path": "packages/@overeng/otelite/README.md",
+    "side": "git-only",
+    "reason": "Native Cargo or nested Rust fixture BUCK boundary is absent from the formatter source census.",
+    "issue": "https://github.com/overengineeringstudio/effect-utils/issues/1995"
+  },
+  {
+    "path": "packages/@overeng/otelite/tests/conformance/fixtures/otel-cli/trace-inspect-basic/args.toml",
+    "side": "git-only",
+    "reason": "Native Cargo or nested Rust fixture BUCK boundary is absent from the formatter source census.",
+    "issue": "https://github.com/overengineeringstudio/effect-utils/issues/1995"
+  },
+  {
+    "path": "packages/@overeng/otelite/tests/conformance/fixtures/otel-cli/trace-inspect-basic/golden.json",
+    "side": "git-only",
+    "reason": "Native Cargo or nested Rust fixture BUCK boundary is absent from the formatter source census.",
+    "issue": "https://github.com/overengineeringstudio/effect-utils/issues/1995"
+  },
+  {
+    "path": "packages/@overeng/otelite/tests/conformance/fixtures/otel-cli/trace-inspect-basic/mocks/_routes.toml",
+    "side": "git-only",
+    "reason": "Native Cargo or nested Rust fixture BUCK boundary is absent from the formatter source census.",
+    "issue": "https://github.com/overengineeringstudio/effect-utils/issues/1995"
+  },
+  {
+    "path": "packages/@overeng/otelite/tests/conformance/fixtures/otel-cli/trace-inspect-basic/mocks/trace.json",
+    "side": "git-only",
+    "reason": "Native Cargo or nested Rust fixture BUCK boundary is absent from the formatter source census.",
+    "issue": "https://github.com/overengineeringstudio/effect-utils/issues/1995"
+  },
+  {
+    "path": "packages/@overeng/otelite/tests/conformance/fixtures/otel-cli/trace-summarize-json/args.toml",
+    "side": "git-only",
+    "reason": "Native Cargo or nested Rust fixture BUCK boundary is absent from the formatter source census.",
+    "issue": "https://github.com/overengineeringstudio/effect-utils/issues/1995"
+  },
+  {
+    "path": "packages/@overeng/otelite/tests/conformance/fixtures/otel-cli/trace-summarize-json/golden.json",
+    "side": "git-only",
+    "reason": "Native Cargo or nested Rust fixture BUCK boundary is absent from the formatter source census.",
+    "issue": "https://github.com/overengineeringstudio/effect-utils/issues/1995"
+  },
+  {
+    "path": "packages/@overeng/otelite/tests/conformance/fixtures/otel-cli/trace-summarize-json/mocks/_routes.toml",
+    "side": "git-only",
+    "reason": "Native Cargo or nested Rust fixture BUCK boundary is absent from the formatter source census.",
+    "issue": "https://github.com/overengineeringstudio/effect-utils/issues/1995"
+  },
+  {
+    "path": "packages/@overeng/otelite/tests/conformance/fixtures/otel-cli/trace-summarize-json/mocks/trace.json",
+    "side": "git-only",
+    "reason": "Native Cargo or nested Rust fixture BUCK boundary is absent from the formatter source census.",
+    "issue": "https://github.com/overengineeringstudio/effect-utils/issues/1995"
+  },
+  {
+    "path": "packages/@overeng/otelite/tests/conformance/m6/log-summary.golden.json",
+    "side": "git-only",
+    "reason": "Native Cargo or nested Rust fixture BUCK boundary is absent from the formatter source census.",
+    "issue": "https://github.com/overengineeringstudio/effect-utils/issues/1995"
+  },
+  {
+    "path": "packages/@overeng/otelite/tests/conformance/m6/metric-summary.golden.json",
+    "side": "git-only",
+    "reason": "Native Cargo or nested Rust fixture BUCK boundary is absent from the formatter source census.",
+    "issue": "https://github.com/overengineeringstudio/effect-utils/issues/1995"
+  },
+  {
+    "path": "packages/@overeng/otelite/tests/conformance/spanmetrics/summary.golden.json",
+    "side": "git-only",
+    "reason": "Native Cargo or nested Rust fixture BUCK boundary is absent from the formatter source census.",
+    "issue": "https://github.com/overengineeringstudio/effect-utils/issues/1995"
+  },
+  {
+    "path": "packages/@overeng/pingping/BUCK.genie.ts",
+    "side": "git-only",
+    "reason": "Native Cargo or nested Rust fixture BUCK boundary is absent from the formatter source census.",
+    "issue": "https://github.com/overengineeringstudio/effect-utils/issues/1995"
+  },
+  {
+    "path": "packages/@overeng/pingping/Cargo.toml",
+    "side": "git-only",
+    "reason": "Native Cargo or nested Rust fixture BUCK boundary is absent from the formatter source census.",
+    "issue": "https://github.com/overengineeringstudio/effect-utils/issues/1995"
+  },
+  {
+    "path": "packages/@overeng/pingping/README.md",
+    "side": "git-only",
+    "reason": "Native Cargo or nested Rust fixture BUCK boundary is absent from the formatter source census.",
+    "issue": "https://github.com/overengineeringstudio/effect-utils/issues/1995"
+  },
+  {
+    "path": "packages/@overeng/pingping/crates/netinfo-macos/BUCK.genie.ts",
+    "side": "git-only",
+    "reason": "Native Cargo or nested Rust fixture BUCK boundary is absent from the formatter source census.",
+    "issue": "https://github.com/overengineeringstudio/effect-utils/issues/1995"
+  },
+  {
+    "path": "packages/@overeng/pingping/crates/netinfo-macos/Cargo.toml",
+    "side": "git-only",
+    "reason": "Native Cargo or nested Rust fixture BUCK boundary is absent from the formatter source census.",
+    "issue": "https://github.com/overengineeringstudio/effect-utils/issues/1995"
+  },
+  {
+    "path": "scripts/fixtures/rust-foreign/a/BUCK.genie.ts",
+    "side": "git-only",
+    "reason": "Native Cargo or nested Rust fixture BUCK boundary is absent from the formatter source census.",
+    "issue": "https://github.com/overengineeringstudio/effect-utils/issues/1995"
+  },
+  {
+    "path": "scripts/fixtures/rust-foreign/a/Cargo.toml",
+    "side": "git-only",
+    "reason": "Native Cargo or nested Rust fixture BUCK boundary is absent from the formatter source census.",
+    "issue": "https://github.com/overengineeringstudio/effect-utils/issues/1995"
+  },
+  {
+    "path": "scripts/fixtures/rust-foreign/a/app/BUCK.genie.ts",
+    "side": "git-only",
+    "reason": "Native Cargo or nested Rust fixture BUCK boundary is absent from the formatter source census.",
+    "issue": "https://github.com/overengineeringstudio/effect-utils/issues/1995"
+  },
+  {
+    "path": "scripts/fixtures/rust-foreign/a/app/Cargo.toml",
+    "side": "git-only",
+    "reason": "Native Cargo or nested Rust fixture BUCK boundary is absent from the formatter source census.",
+    "issue": "https://github.com/overengineeringstudio/effect-utils/issues/1995"
+  },
+  {
+    "path": "scripts/fixtures/rust-foreign/a/foreign-packages.json",
+    "side": "git-only",
+    "reason": "Native Cargo or nested Rust fixture BUCK boundary is absent from the formatter source census.",
+    "issue": "https://github.com/overengineeringstudio/effect-utils/issues/1995"
+  },
+  {
+    "path": "scripts/fixtures/rust-foreign/a/reindeer.toml",
+    "side": "git-only",
+    "reason": "Native Cargo or nested Rust fixture BUCK boundary is absent from the formatter source census.",
+    "issue": "https://github.com/overengineeringstudio/effect-utils/issues/1995"
+  },
+  {
+    "path": "scripts/fixtures/rust-foreign/a/third-party/cargo-resolution.json",
+    "side": "git-only",
+    "reason": "Native Cargo or nested Rust fixture BUCK boundary is absent from the formatter source census.",
+    "issue": "https://github.com/overengineeringstudio/effect-utils/issues/1995"
+  },
+  {
+    "path": "scripts/fixtures/rust-foreign/a/third-party/fixups/pulp/fixups.toml",
+    "side": "git-only",
+    "reason": "Native Cargo or nested Rust fixture BUCK boundary is absent from the formatter source census.",
+    "issue": "https://github.com/overengineeringstudio/effect-utils/issues/1995"
+  },
+  {
+    "path": "scripts/fixtures/rust-foreign/b/crates/shared/BUCK.genie.ts",
+    "side": "git-only",
+    "reason": "Native Cargo or nested Rust fixture BUCK boundary is absent from the formatter source census.",
+    "issue": "https://github.com/overengineeringstudio/effect-utils/issues/1995"
+  },
+  {
+    "path": "scripts/fixtures/rust-foreign/b/crates/shared/Cargo.toml",
+    "side": "git-only",
+    "reason": "Native Cargo or nested Rust fixture BUCK boundary is absent from the formatter source census.",
+    "issue": "https://github.com/overengineeringstudio/effect-utils/issues/1995"
+  },
+  {
+    "path": ".oxfmtrc.json",
+    "side": "buck-only",
+    "reason": "Root configuration input is outside the devenv lintPaths.",
+    "issue": "https://github.com/overengineeringstudio/effect-utils/issues/1995"
+  },
+  {
+    "path": ".oxlintrc.json",
+    "side": "buck-only",
+    "reason": "Root configuration input is outside the devenv lintPaths.",
+    "issue": "https://github.com/overengineeringstudio/effect-utils/issues/1995"
+  },
+  {
+    "path": "devenv.yaml",
+    "side": "buck-only",
+    "reason": "Root configuration input is outside the devenv lintPaths.",
+    "issue": "https://github.com/overengineeringstudio/effect-utils/issues/1995"
+  }
+]

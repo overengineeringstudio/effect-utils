@@ -212,9 +212,12 @@ resulting authority file must name identical required and owned package sets;
 every package publication validates it.
 
 Publication holds the exclusive state-root `.publish.lock`, created atomically.
-An existing lock fails immediately and prints the explicit token-gated recovery
-operation. There is no age heuristic, timeout, or automatic lock theft. Under
-the lock, the publisher:
+A positively identified dead same-host holder can be recovered after repeating
+the process-incarnation proof under the host fence. Live publishers, foreign-host
+owners, and ambiguous ownership retain explicit token-gated recovery; lock age
+does not authorize recovery. After acquiring the lock, before any batch worker
+creates a candidate, the publisher reclaims abandoned payloads. Under the lock,
+the publisher:
 
 1. fingerprints each distinct selected dependency view and finite declared root
    once for the admitted state;
@@ -264,6 +267,44 @@ If a legacy root install occupies the first hop, immutable GNU
 retains the exchanged entry under `.legacy/`. A failure before the pointer flip
 leaves the prior current view intact. Snapshot payloads never retain links into
 `buck-out`, whose action directories Buck may delete before rebuilding.
+
+Abandoned `.store/.candidate-*`, interrupted root `.gc-*`, and individual
+unreferenced `.legacy/*` entries are reclaimable payloads, not completed
+generations. Publisher startup reclaims candidates and interrupted garbage under
+the exclusive publication lock. Cleanup carries normal-acquisition or
+proven-dead-owner-recovery provenance and validates the held lock path/token/PID.
+Normal acquisition follows the preceding holder's release; recovery proves the
+preceding holder is dead. Both exclude publisher writes. Missing or mismatched
+lock proof refuses cleanup. Startup also observes readers for candidates and
+interrupted garbage: stale cwd/fd references keep those entries even though they
+were unpublished or had previously crossed deletion commitment.
+Reclamation requires no live reservation and a known pointer inventory proving
+that no pointer reaches the entry. Pointer reachability includes
+root/control symlinks and package `node_modules` links, with both lexical and
+resolved targets retained so dangling or indirect legacy links remain protected.
+The retirement fence repeats identity and reachability checks before renaming
+the entry to a private `.gc-*` name; recursive deletion follows outside the
+metadata fence. An interrupted rename or deletion is resumed by the next lock
+holder. Budget eviction considers these orphans before completed generations.
+Publisher acquisition and budget victim acquisition share the same fenced
+dead-owner recovery helper; budget acquisition never waits for a live holder.
+A budget batch holds its exclusion fence and uses one fresh census and reader
+proof, considering orphans before generations and retiring only enough payloads
+to cover the shortfall. The proof expires after 30 seconds. Each candidate
+rechecks identity and ledger epoch immediately before retirement; failed checks
+skip that candidate without waiting. An expired or insufficient batch starts
+another census and proof. Every committed retirement emits its own deletion
+receipt, followed by a batch summary, even when admission subsequently fails.
+The pre-delete seam is an identity/epoch check, not a reader exclusion: a reader
+arriving after observation need not change either value. Non-blocking exclusive
+reader leases in #1990 must be probed at this seam to close that advisory race;
+a held lease skips the candidate without waiting.
+
+Legacy entries are evaluated independently: a referenced displaced install does
+not preserve unrelated legacy entries. A still-referenced legacy entry is
+adopted with one footprint walk and an immutable-identity sidecar when its bytes
+can be sealed safely. Writable shared inodes are not chmodded through aliases;
+unproven immutability remains conservatively uncached.
 
 Repository tasks configure two completed snapshots **per view**: current and
 previous. For `N` admitted views the shared-store bound is `2 × N`, excluding

@@ -10,6 +10,19 @@ JSON config files with shared base configs.
 
 Both tools auto-discover config files at repo root (`oxlint.json`, `oxfmt.json`).
 
+The effect-utils Buck format gate includes hidden source files and directories, such as
+`.storybook`, `.decisions`, and `.experiments`, just like the Git-enumerated format tasks.
+Buck2 does not support Buck1's `include_dotfiles` argument, so `buck2/static_checks.bzl`
+declares explicit hidden-segment patterns alongside the ordinary extension globs. Ignored
+dependency, build, and local-state directories remain excluded. Intentional source-format
+exceptions belong in `.oxfmtrc.json`, not in implicit dot-directory omissions.
+
+`lint:check:format:parity` compares the extension-filtered Buck source manifest with
+the Git-enumerated format surface and runs in `check:quick`. Exact existing package-boundary
+and root-path differences are recorded, with reasons and a follow-up issue, in
+`scripts/buck2-format-known-differences.json`. Unexpected differences and stale exceptions
+both fail the check; the list is not a wildcard exclusion mechanism.
+
 ## File Structure
 
 ```

@@ -476,7 +476,11 @@ describe('Buck watch reconciliation', () => {
       const diagnostic = '[editor-view-budget] {"event":"working","reason":"census"}\n'
       const observed = Promise.withResolvers<void>()
       const shutdown = new AbortController()
-      const stderr = vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
+      const stderr = vi.spyOn(process.stderr, 'write').mockImplementation((line) => {
+        // Wait for the assertion's exact condition, not an unrelated raw stderr newline.
+        if (line === diagnostic) observed.resolve()
+        return true
+      })
       const onTiming = vi.fn()
       let publisherCompleted = false
       let running: Promise<void> | undefined
@@ -488,6 +492,7 @@ describe('Buck watch reconciliation', () => {
             "import { watch } from 'node:fs'",
             'const released = Promise.withResolvers()',
             `const watcher = watch(${JSON.stringify(release)}, () => released.resolve())`,
+            `process.stderr.write('publisher startup\\n')`,
             `process.stderr.write(${JSON.stringify(diagnostic.slice(0, 12))})`,
             `setImmediate(() => process.stderr.write(${JSON.stringify(diagnostic.slice(12))}))`,
             'await released.promise',
@@ -532,8 +537,8 @@ describe('Buck watch reconciliation', () => {
                   ...invocation,
                   signal: shutdown.signal,
                   onStderr: (chunk) => {
-                    invocation.onStderr?.(chunk)
-                    if (chunk.includes('\n') === true) observed.resolve()
+                    // Force every possible character boundary, even if the OS coalesces writes.
+                    for (const character of chunk) invocation.onStderr?.(character)
                   },
                 })
               } finally {

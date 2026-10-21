@@ -23,10 +23,7 @@
     "nested-code": {
       "verdict": "PASS",
       "signCount": 2,
-      "leafFirst": [
-        "Contents/Helpers/Helper.app",
-        "Fixture.app"
-      ],
+      "leafFirst": ["Contents/Helpers/Helper.app", "Fixture.app"],
       "deep": false,
       "preSignStaticExit": 1
     },

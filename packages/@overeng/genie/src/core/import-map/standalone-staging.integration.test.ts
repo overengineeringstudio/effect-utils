@@ -13,8 +13,6 @@ import {
   isIdentifier,
   isImportDeclaration,
   isImportEqualsDeclaration,
-  isNamedExports,
-  isNamedImports,
   isStringLiteral,
   isNoSubstitutionTemplateLiteral,
   SyntaxKind,
@@ -126,7 +124,116 @@ const assertIsolatableExtension = (source: string): void => {
   ).toBe(true)
 }
 
+const runtimeSpecifiers = (sourceFile: Node, source: string): string[] => {
+  const specifiers: string[] = []
+  const record = (node: Node | undefined): void => {
+    expect(
+      node !== undefined &&
+        (isStringLiteral(node) === true || isNoSubstitutionTemplateLiteral(node) === true),
+      `${source}: non-literal module dependency cannot be checked in isolation`,
+    ).toBe(true)
+    if (
+      node !== undefined &&
+      (isStringLiteral(node) === true || isNoSubstitutionTemplateLiteral(node) === true)
+    )
+      specifiers.push(node.text)
+  }
+  const visit = (node: Node): void => {
+    // Node stripping retains inline-only imports as `import {} from ...`.
+    // Only a whole-declaration `import type` / `export type` erases the edge.
+    if (
+      isImportDeclaration(node) === true &&
+      node.importClause?.phaseModifier !== SyntaxKind.TypeKeyword
+    )
+      record(node.moduleSpecifier)
+    if (
+      isExportDeclaration(node) === true &&
+      node.isTypeOnly === false &&
+      node.moduleSpecifier !== undefined
+    )
+      record(node.moduleSpecifier)
+    if (
+      isImportEqualsDeclaration(node) === true &&
+      node.isTypeOnly === false &&
+      isExternalModuleReference(node.moduleReference) === true
+    )
+      record(node.moduleReference.expression)
+    if (
+      isCallExpression(node) === true &&
+      (node.expression.kind === SyntaxKind.ImportKeyword ||
+        (isIdentifier(node.expression) === true && node.expression.text === 'require'))
+    )
+      record(node.arguments[0])
+    node.forEachChild((child) => {
+      visit(child)
+      return undefined
+    })
+  }
+  visit(sourceFile)
+  return specifiers
+}
+
 describe('standalone Nix-staged JS/TS sources (issue #1994)', () => {
+  for (const fixture of [
+    {
+      name: 'whole type import',
+      code: "import type { X } from './sib.ts'",
+      node: 0,
+      bun: 0,
+      edges: [],
+    },
+    {
+      name: 'inline-only type import',
+      code: "import { type X } from './sib.ts'",
+      node: 1,
+      bun: 0,
+      edges: ['./sib.ts'],
+    },
+    { name: 'side-effect import', code: "import './sib.ts'", node: 1, bun: 1, edges: ['./sib.ts'] },
+    {
+      name: 'mixed import',
+      code: "import { type X, y } from './sib.ts'; console.log(y)",
+      node: 1,
+      bun: 1,
+      edges: ['./sib.ts'],
+    },
+  ]) {
+    it(`classifies ${fixture.name} consistently with isolated Node stripping`, async () => {
+      const isolated = realpathSync(mkdtempSync(path.join(os.tmpdir(), 'staging-import-form-')))
+      try {
+        const source = path.join(isolated, 'fixture.mts')
+        writeFileSync(source, fixture.code)
+        await runTsFileAnalysis({
+          cwd: isolated,
+          initialFiles: [source],
+          use: async (session) => {
+            const outcome = await session.analyze(source)
+            expect(outcome.kind).toBe('analyzed')
+            if (outcome.kind !== 'analyzed') return
+            expect(runtimeSpecifiers(outcome.analysis.sourceFile, fixture.name)).toEqual(
+              fixture.edges,
+            )
+          },
+        })
+        for (const [runtime, expected] of [
+          ['node', fixture.node],
+          [process.execPath, fixture.bun],
+        ] as const) {
+          const result = spawnSync(runtime, [source], {
+            cwd: isolated,
+            encoding: 'utf8',
+            timeout: 10_000,
+            env: { ...process.env, NODE_OPTIONS: '', NODE_PATH: '', BUN_OPTIONS: '' },
+          })
+          expect(result.status, `${fixture.name}: ${runtime}: ${result.stderr}`).toBe(expected)
+          if (expected !== 0) expect(result.stderr).toContain('sib.ts')
+        }
+      } finally {
+        rmSync(isolated, { recursive: true, force: true })
+      }
+    })
+  }
+
   it('classifies every Nix file with JS/TS references and rejects stale inventory', () => {
     const result = spawnSync(
       'git',
@@ -232,66 +339,7 @@ describe('standalone Nix-staged JS/TS sources (issue #1994)', () => {
           const outcome = await session.analyze(source)
           expect(outcome.kind).toBe('analyzed')
           if (outcome.kind !== 'analyzed') return
-          const specifiers: string[] = []
-          const record = (node: Node | undefined): void => {
-            expect(
-              node !== undefined &&
-                (isStringLiteral(node) === true || isNoSubstitutionTemplateLiteral(node) === true),
-              `${entry.source}: non-literal module dependency cannot be checked in isolation`,
-            ).toBe(true)
-            if (
-              node !== undefined &&
-              (isStringLiteral(node) === true || isNoSubstitutionTemplateLiteral(node) === true)
-            )
-              specifiers.push(node.text)
-          }
-          const visit = (node: Node): void => {
-            // Type-only edges are erased by Bun/TypeScript and need no staged file.
-            if (
-              isImportDeclaration(node) === true &&
-              node.importClause?.phaseModifier !== SyntaxKind.TypeKeyword
-            ) {
-              const clause = node.importClause
-              const bindings = clause?.namedBindings
-              const erased =
-                clause?.name === undefined &&
-                bindings !== undefined &&
-                isNamedImports(bindings) &&
-                bindings.elements.length > 0 &&
-                bindings.elements.every((element) => element.isTypeOnly)
-              if (erased === false) record(node.moduleSpecifier)
-            }
-            if (
-              isExportDeclaration(node) === true &&
-              node.isTypeOnly === false &&
-              node.moduleSpecifier !== undefined
-            ) {
-              const clause = node.exportClause
-              const erased =
-                clause !== undefined &&
-                isNamedExports(clause) &&
-                clause.elements.length > 0 &&
-                clause.elements.every((element) => element.isTypeOnly)
-              if (erased === false) record(node.moduleSpecifier)
-            }
-            if (
-              isImportEqualsDeclaration(node) === true &&
-              node.isTypeOnly === false &&
-              isExternalModuleReference(node.moduleReference) === true
-            )
-              record(node.moduleReference.expression)
-            if (
-              isCallExpression(node) === true &&
-              (node.expression.kind === SyntaxKind.ImportKeyword ||
-                (isIdentifier(node.expression) === true && node.expression.text === 'require'))
-            )
-              record(node.arguments[0])
-            node.forEachChild((child) => {
-              visit(child)
-              return undefined
-            })
-          }
-          visit(outcome.analysis.sourceFile)
+          const specifiers = runtimeSpecifiers(outcome.analysis.sourceFile, entry.source)
           const allowed = entry.allowedImports
           expect(
             specifiers.filter(
