@@ -151,20 +151,17 @@ unchanged. Linux reports
 from shared cache by `local-materialization-policy` even when sandboxed.
 
 Darwin emit resolution is isolated independently of containment admission. The
-runner clones each declared source/dependency read root into one unique mode-0700
-staging directory under `/private/tmp`, independent of Buck's worktree-local
-`TMPDIR`, with one fixed-arity `clonefile(2)` call per root. Staging is removed
-after success, failure, and handled termination signals.
-Non-APFS or cross-filesystem inputs use a logged byte-copy fallback. Every
-dependency symlink is rebound to a staged declared root; a link outside the
-declared closure fails before compilation. Imported declarations therefore
-cannot realpath back into `buck-out` and discover worktree editor dependencies.
-Workspace project-reference topology is preserved without changing the
-compiler's symlink/type-identity semantics. Before compilation, the runner
-rejects any staging ancestor containing `node_modules`, `package.json`, or
-`tsconfig.json`. Linux retains its existing writable package staging and links
-to declared dependency artifacts: Bubblewrap hides the undeclared worktree
-ancestors without copying those dependency roots.
+runner preserves writable package staging and links to declared dependency
+artifacts, then wraps only tsgo in `/usr/bin/sandbox-exec`. Its allow-default
+profile denies reads of `node_modules` subtrees and literal `package.json`,
+`tsconfig.json`, and `jsconfig.json` files at every ancestor of canonical
+`buck-out`, from the physical worktree root through `/`. Imported declarations
+cannot discover published editor dependencies by climbing out of Buck artifacts.
+Missing sandbox-exec or profile rejection fails the action without an
+unsandboxed fallback. This narrow read-deny boundary does not grant containment
+or shared-cache admission. Private mode-0700 staging is removed after success,
+failure, and handled termination signals. Linux retains its existing Bubblewrap
+boundary, which hides undeclared worktree ancestors.
 
 
 Decision authority is the live 2026-10-11 axe record `jd5hbf`,
