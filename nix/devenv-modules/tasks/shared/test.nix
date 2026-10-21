@@ -49,6 +49,7 @@
   packageConcurrency ? null,
   packageWeights ? { },
   retainVitestJson ? false,
+  sourceLauncher ? null,
 }:
 {
   config,
@@ -62,6 +63,14 @@ let
   pnpmTaskHelpersScript = pkgs.writeText "pnpm-task-helpers.sh" (
     builtins.readFile ./pnpm-task-helpers.sh
   );
+  leaseSource =
+    script:
+    if sourceLauncher == null then
+      script
+    else
+      ''
+        exec ${sourceLauncher} ${pkgs.writeShellScript "leased-source-test" script}
+      '';
   hasPackages = packages != [ ];
   hasPackageConcurrency = packageConcurrency != null;
   validatedPackageConcurrency =
@@ -115,7 +124,7 @@ let
       extraArgs ? "",
       runtime ? "node",
     }:
-    ''
+    leaseSource ''
       set -euo pipefail
       source ${lib.escapeShellArg pnpmTaskHelpersScript}
       ${trace.instr {

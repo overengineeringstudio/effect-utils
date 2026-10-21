@@ -20,6 +20,7 @@
  * Both own the session lifetime: the `tsgo` child process is always closed, including on throw.
  */
 
+import { createRequire } from 'node:module'
 import path from 'node:path'
 import type { Writable } from 'node:stream'
 
@@ -59,6 +60,18 @@ export const isAnalyzableSourcePath = (file: string): boolean =>
  * and therefore cannot find the platform package on disk at all.
  */
 const apiSpawnOptions = (cwd: string) => {
+  // The upstream client pins stdio to three slots and offers no spawn hook.
+  // Install the store-backed descriptor mapper before constructing the API,
+  // including compiled Bun products that do not honor runtime preload flags.
+  // The actual compiler child owns duplicates until close/exit; parent death
+  // cannot release its leases. Never import a lease implementation from a view.
+  if (process.env.EDITOR_VIEW_LEASE_ACTIVE === '1') {
+    const preload = process.env.EDITOR_VIEW_LEASE_PRELOAD
+    if (preload === undefined || path.isAbsolute(preload) === false) {
+      throw new Error('TypeScript API requires the bootstrap-safe editor-view lease preload')
+    }
+    createRequire(path.join(cwd, 'package.json'))(preload)
+  }
   const configured = process.env.GENIE_TYPESCRIPT_API_SERVER
   return configured === undefined || configured === '' ? { cwd } : { cwd, tsserverPath: configured }
 }

@@ -21,6 +21,7 @@
   installTask ? "pnpm:install",
   playwrightBin ? "playwright",
   playwrightPkg ? null,
+  sourceLauncher ? null,
 }:
 {
   lib,
@@ -31,6 +32,14 @@
 let
   trace = import ../lib/trace.nix { inherit lib; };
   cliGuard = import ../lib/cli-guard.nix { inherit pkgs; };
+  leaseSource =
+    script:
+    if sourceLauncher == null then
+      script
+    else
+      ''
+        exec ${sourceLauncher} ${pkgs.writeShellScript "leased-playwright-test" script}
+      '';
 
   mkTestTask = pkg: {
     "test:pw:${pkg.name}" = {
@@ -38,11 +47,11 @@ let
       # Storybook and Vite otherwise discover caches below node_modules inside
       # the immutable Buck editor view and fail before Playwright can start.
       # Same per-checkout location as the storybook task module.
-      exec = trace.exec "test:pw:${pkg.name}" ''
+      exec = trace.exec "test:pw:${pkg.name}" (leaseSource ''
         export CACHE_DIR=${lib.escapeShellArg "${config.devenv.root}/.devenv/storybook-cache/${pkg.name}"}
         export VITE_CACHE_DIR=${lib.escapeShellArg "${config.devenv.root}/.devenv/vite-cache/${pkg.name}"}
         ${playwrightBin} test
-      '';
+      '');
       cwd = pkg.path;
       after = [ installTask ];
     };
