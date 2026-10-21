@@ -105,10 +105,16 @@ export const managedEditorViewSnapshots = ({
 export const referencedEditorViewPaths = ({
   editorRoot,
   repoRoot,
+  onInventory,
 }: {
   readonly editorRoot: string
   readonly repoRoot?: string | undefined
+  readonly onInventory?: (observation: {
+    readonly entries: number
+    readonly durationMs: number
+  }) => void
 }): ReadonlySet<string> | undefined => {
+  const inventoryStarted = performance.now()
   const referenced = new Set<string>()
   const pointer = (path: string): void => {
     if (lstatSync(path).isSymbolicLink() === false) return
@@ -145,13 +151,23 @@ export const referencedEditorViewPaths = ({
   let packageEntries = 0
   const resolvedEditorRoot = resolve(editorRoot)
   const packages = (directory: string): void => {
-    for (const entry of readdirSync(directory, { withFileTypes: true })) {
+    for (const name of readdirSync(directory)) {
       packageEntries += 1
-      if (packageEntries > 100_000)
+      if (packageEntries > 200_000)
         throw new Error('editor view: package pointer inventory exceeds its entry bound')
-      const path = join(directory, entry.name)
-      if (entry.name === 'node_modules' && entry.isSymbolicLink() === true) pointer(path)
-      if (entry.isDirectory() === true && path !== resolvedEditorRoot) packages(path)
+      const path = join(directory, name)
+      const status = lstatSync(path)
+      if (name === 'node_modules' && status.isSymbolicLink() === true) pointer(path)
+      if (status.isDirectory() === false) continue
+      // Real node_modules contents are dependency payload, not package first
+      // hops; inspect the entry above but never inventory that payload tree.
+      if (name === 'node_modules') continue
+      // Git's object/index metadata contains no package first hops.
+      if (name === '.git') continue
+      // Editor payload stores are not package inputs. Each editor root has its
+      // own control-pointer inventory; custom roots also match by exact path.
+      if (name === '.editor-view' || path === resolvedEditorRoot) continue
+      packages(path)
     }
   }
   try {
@@ -160,6 +176,8 @@ export const referencedEditorViewPaths = ({
     return referenced
   } catch {
     return undefined
+  } finally {
+    onInventory?.({ entries: packageEntries, durationMs: performance.now() - inventoryStarted })
   }
 }
 

@@ -28,6 +28,7 @@ import {
   reserveEditorViewBudget,
   reclaimEditorViewOrphans,
 } from './editor-view-budget.ts'
+import { referencedEditorViewPaths } from './editor-view-readers.ts'
 import { shareSnapshotFiles } from './editor-view-sharing.ts'
 import {
   pinEditorView,
@@ -1972,6 +1973,119 @@ describe('budget admission defers reader proof until eviction needs it', () => {
         token: reservation.token,
       })
       incomingLock.release()
+    } finally {
+      await host.cleanup()
+    }
+  })
+
+  it('does not inventory package pointers for generation-only census roots', async () => {
+    const host = makeHost()
+    try {
+      const fixture = host.fixture('no-orphan-inventory', 172, 64)
+      await host.publish(fixture)
+      const captured = await captureStderr(() =>
+        host.track(
+          reserveEditorViewBudget({
+            contentStore: host.contentStore,
+            root: { repoRoot: fixture.root, editorRoot: fixture.editorRoot },
+            heldEditorRoot: fixture.editorRoot,
+            discoverRoots: () => [],
+            reservationBytes: 1,
+            budgetBytes: 1,
+            tryLockRoot: lockRoot,
+          }),
+        ),
+      )
+      expect(captured.stderr).not.toContain('"stage":"pointer-inventory"')
+      await cancelEditorViewBudgetReservation({
+        contentStore: host.contentStore,
+        token: captured.value.token,
+      })
+    } finally {
+      await host.cleanup()
+    }
+  })
+
+  it('prunes dependency payloads, Git metadata and other editor stores before descending', async () => {
+    const host = makeHost()
+    try {
+      const fixture = host.fixture('pruned-inventory', 171, 64)
+      await host.publish(fixture)
+      const ignored = ['node_modules', '.git', '.editor-view']
+      for (const name of ignored) {
+        const payload = join(fixture.root, 'payloads', name)
+        mkdirSync(join(payload, 'unreadable'), { recursive: true })
+        chmodSync(payload, 0)
+      }
+      const packageDir = join(fixture.root, 'buck-out', 'package')
+      mkdirSync(packageDir, { recursive: true })
+      const target = join(fixture.editorRoot, '.legacy', 'retained')
+      symlinkSync(target, join(packageDir, 'node_modules'))
+      let entries = 0
+      const references = referencedEditorViewPaths({
+        editorRoot: fixture.editorRoot,
+        repoRoot: fixture.root,
+        onInventory: (observation) => {
+          entries = observation.entries
+        },
+      })
+      expect(references).toBeDefined()
+      expect(references?.has(target)).toBe(true)
+      expect(entries).toBeGreaterThan(0)
+      expect(entries).toBeLessThan(100)
+    } finally {
+      await host.cleanup()
+    }
+  })
+
+  it('keeps an unobserved reader-held orphan exposed by pointer removal during locking', async () => {
+    const host = makeHost()
+    try {
+      const fixture = host.fixture('pointer-removal-reader', 174, 64)
+      const record = await host.publish(fixture)
+      const legacy = join(fixture.editorRoot, '.legacy', 'retained')
+      const dependency = join(legacy, 'node_modules', '.pnpm', 'dep@1', 'node_modules', 'dep')
+      mkdirSync(dependency, { recursive: true })
+      writeFileSync(join(dependency, 'payload.bin'), Buffer.alloc(payloadBytes, 175))
+      const pointer = join(fixture.editorRoot, 'orphan-reader')
+      symlinkSync('.legacy/retained', pointer)
+      const eligible = join(fixture.editorRoot, '.store', '.candidate-trigger')
+      mkdirSync(eligible)
+      writeFileSync(join(eligible, 'payload.bin'), Buffer.alloc(payloadBytes, 173))
+      const reader = openReader(host, fixture, { ...record, snapshot: '.legacy/retained' })
+      await reader.ready
+      let removedPointer = false
+      const captured = await captureStderr(() =>
+        host.track(
+          reserveEditorViewBudget({
+            contentStore: host.contentStore,
+            root: { repoRoot: fixture.root, editorRoot: fixture.editorRoot },
+            heldEditorRoot: fixture.editorRoot,
+            discoverRoots: () => [],
+            reservationBytes: 1,
+            budgetBytes: 1,
+            tryLockRoot: lockRoot,
+            beforeRetireRoot: () => {
+              if (removedPointer === false) {
+                rmSync(pointer)
+                removedPointer = true
+              }
+            },
+          }),
+        ),
+      )
+      expect(removedPointer).toBe(true)
+      expect(captured.stderr).toContain('"stage":"pointer-inventory"')
+      expect(captured.stderr).toContain('"roots":1,"entries":')
+      expect(captured.stderr).toContain('"inventories":[{"editorRoot":')
+      expect(pathExists(legacy)).toBe(true)
+      expect(readFileSync(join(dependency, 'payload.bin'))).toEqual(Buffer.alloc(payloadBytes, 175))
+      expectRunningReader(reader)
+      expectCurrent(fixture, record)
+      await cancelEditorViewBudgetReservation({
+        contentStore: host.contentStore,
+        token: captured.value.token,
+      })
     } finally {
       await host.cleanup()
     }

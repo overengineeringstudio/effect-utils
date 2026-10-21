@@ -1606,6 +1606,47 @@ const censusStage = ({
   )
 }
 
+/** One invocation-local inventory per candidate-bearing root, never every census root. */
+const makePointerInventory = () => {
+  const pointers = new Map<string, ReadonlySet<string> | undefined>()
+  const observations: {
+    readonly editorRoot: string
+    readonly entries: number
+    readonly durationMs: number
+  }[] = []
+  return {
+    read: (root: EditorViewBudgetRoot): ReadonlySet<string> | undefined => {
+      if (pointers.has(root.editorRoot) === false)
+        pointers.set(
+          root.editorRoot,
+          referencedEditorViewPaths({
+            ...root,
+            onInventory: (observation) =>
+              observations.push({ editorRoot: root.editorRoot, ...observation }),
+          }),
+        )
+      return pointers.get(root.editorRoot)
+    },
+    report: (phase: 'census' | 'plan'): void => {
+      if (observations.length === 0) return
+      process.stderr.write(
+        `[editor-view-budget] ${JSON.stringify({
+          event: 'completed',
+          stage: 'pointer-inventory',
+          phase,
+          roots: observations.length,
+          entries: observations.reduce((total, observation) => total + observation.entries, 0),
+          durationMs: observations.reduce(
+            (total, observation) => total + observation.durationMs,
+            0,
+          ),
+          inventories: observations,
+        })}\n`,
+      )
+    },
+  }
+}
+
 const takeCensus = async ({
   contentStore,
   root,
@@ -1693,6 +1734,7 @@ const takeCensus = async ({
   const cache = new Map<string, CachedGeneration>()
   const generations: GenerationView[] = []
   const rootBytes = new Map<string, number>()
+  const pointerInventory = makePointerInventory()
   const addUnmanaged = async ({
     rootView,
     dir,
@@ -1703,9 +1745,7 @@ const takeCensus = async ({
     name: string
   }) => {
     const pointers =
-      name.startsWith('.legacy/') === true
-        ? referencedEditorViewPaths({ editorRoot: rootView.key, repoRoot: rootView.root.repoRoot })
-        : undefined
+      name.startsWith('.legacy/') === true ? pointerInventory.read(rootView.root) : undefined
     const reachedLegacy =
       name.startsWith('.legacy/') === true &&
       pointers !== undefined &&
@@ -1912,6 +1952,7 @@ const takeCensus = async ({
       })
     }
   }
+  pointerInventory.report('census')
   censusStage({
     stage: 'generation-enumeration',
     durationMs:
@@ -2065,6 +2106,7 @@ const planEviction = ({
   census,
   blocked,
   live,
+  observed,
   recencyMs,
   now,
 }: {
@@ -2072,29 +2114,33 @@ const planEviction = ({
   readonly blocked: ReadonlySet<string>
   /** Generations with positive kernel references (path or shared inode). */
   readonly live: ReadonlySet<string>
+  /** When supplied, absence from the reader census cannot authorize deletion. */
+  readonly observed?: ReadonlySet<string>
   readonly recencyMs: number
   readonly now: number
 }): Plan => {
-  const pointers = new Map(
-    census.roots.map((root) => [
-      root.key,
-      referencedEditorViewPaths({ editorRoot: root.key, repoRoot: root.root.repoRoot }),
-    ]),
-  )
+  const pointerInventory = makePointerInventory()
   const eligible = census.generations.filter((generation) => {
+    if (observed !== undefined && observed.has(generation.key) === false) return false
     const current = generation.root.currents.has(generation.name)
-    if (generation.kind === 'orphan')
-      return (
-        generation.root.trusted === true &&
-        generation.identity !== undefined &&
-        blocked.has(generation.key) === false &&
-        live.has(generation.key) === false &&
-        hasEditorViewBudgetReservation({ editorRoot: generation.root.key }) === false &&
-        pointers.get(generation.root.key) !== undefined &&
-        Array.from(pointers.get(generation.root.key) ?? []).some((path) =>
-          isWithin({ root: generation.dir, candidate: path }),
-        ) === false
+    if (generation.kind === 'orphan') {
+      if (
+        generation.root.trusted === false ||
+        generation.identity === undefined ||
+        blocked.has(generation.key) === true ||
+        live.has(generation.key) === true ||
+        hasEditorViewBudgetReservation({ editorRoot: generation.root.key }) === true
       )
+        return false
+      // Ordinary generations need no package-pointer walk. Only a potentially
+      // evictable orphan can request this invocation's root-local inventory.
+      const pointers = pointerInventory.read(generation.root.root)
+      return (
+        pointers !== undefined &&
+        Array.from(pointers).some((path) => isWithin({ root: generation.dir, candidate: path })) ===
+          false
+      )
+    }
     return (
       generation.kind === 'generation' &&
       generation.root.trusted === true &&
@@ -2113,6 +2159,7 @@ const planEviction = ({
       now - generation.lastUseMs >= graceMs + touchRefreshMs
     )
   })
+  pointerInventory.report('plan')
   const order = eligible.toSorted((left, right) => {
     if ((left.kind === 'orphan') !== (right.kind === 'orphan'))
       return left.kind === 'orphan' ? -1 : 1
@@ -2244,6 +2291,7 @@ const retirementProofMaxAgeMs = 30_000
 type RetirementBatch = {
   readonly state: BudgetState
   readonly live: ReadonlySet<string>
+  readonly observed: ReadonlySet<string>
   readonly proofAtMs: number
   readonly garbage: string[]
   readonly beforeCandidateRetirement:
@@ -2264,6 +2312,7 @@ const checkEditorViewBudgetCandidateBeforeDelete = ({
   readonly state: BudgetState
   readonly batch?: RetirementBatch | undefined
 }): boolean => {
+  if (batch !== undefined && batch.observed.has(candidate.key) === false) return false
   batch?.beforeCandidateRetirement?.({ key: candidate.key, dir: candidate.dir })
   if (batch !== undefined && Date.now() - batch.proofAtMs >= retirementProofMaxAgeMs) {
     batch.expired = true
@@ -2445,6 +2494,7 @@ export const reclaimEditorViewOrphans = async ({
           paths.push(join(path, entry))
     }
   }
+  if (paths.length === 0) return false
   const candidates: OrphanCandidate[] = []
   const pointers = referencedEditorViewPaths({
     editorRoot: root,
@@ -3114,14 +3164,16 @@ export const reserveEditorViewBudget = async ({
             // epoch mismatch can skip retirement and force advisory admission.
             const candidates = plan.order
             const live = observeGenerations(candidates)
-            // Freeze eligibility at the round boundary: time spent acquiring
-            // locks/scanning readers cannot introduce an unobserved candidate.
-            plan = planEviction({ census, blocked, live, recencyMs, now: roundAtMs })
+            const observed = new Set(candidates.map((generation) => generation.key))
+            // Freeze time AND reader-observed membership: pointer removal may
+            // expose an orphan even without time advancing during the proof.
+            plan = planEviction({ census, blocked, live, observed, recencyMs, now: roundAtMs })
             last = { census, plan }
             if (state.epoch !== census.epoch) return
             const batch: RetirementBatch = {
               state,
               live,
+              observed,
               proofAtMs,
               garbage,
               beforeCandidateRetirement,
@@ -3135,6 +3187,7 @@ export const reserveEditorViewBudget = async ({
               for (const generation of selected) {
                 if (batch.expired === true) break
                 if (available.has(generation.root.key) === false) continue
+                if (observed.has(generation.key) === false) continue
                 try {
                   // eslint-disable-next-line no-await-in-loop -- Owning CAS exclusion nests under the held host fence.
                   const outcome = await retireRoot({

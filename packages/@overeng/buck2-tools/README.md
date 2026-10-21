@@ -237,7 +237,9 @@ and the next explicit publication explains the eviction and cleanly republishes.
 An eviction plan always retakes the census instead of trusting shared accounting.
 Retirement takes one fresh reader proof under the host ledger fence after acquiring
 the selected publication exclusions. Eligibility stays fixed at the round's initial
-timestamp, so waiting for locks cannot add an unobserved generation to the batch.
+timestamp and refreshed plans may select only reader-observed keys. A pointer
+removed during locking cannot expose an unobserved orphan to deletion. The
+per-candidate pre-delete seam independently rejects unobserved keys.
 Reader-protected accounting is refreshed even if a journal epoch mismatch skips
 the batch, including the final round before forced advisory admission. Retirement
 then checks the epoch and each immutable generation identity under the host/CAS
@@ -256,10 +258,19 @@ and legacy records without host evidence still require explicit recovery.
 
 Orphan reachability includes package `node_modules` symlinks under hidden directories,
 `repos`, `dist`, `result`, and `buck-out`, not just ordinary source directories.
-The package inventory walks real directories without following directory symlinks;
-the editor root uses its separate control-pointer inventory, not a payload walk.
-The package walk is bounded to 100,000 entries. Unreadable or oversized inventories
+The package inventory walks real directories without following directory symlinks.
+It prunes real `node_modules` payloads, Git metadata, and editor roots' payload
+stores (their control pointers have a separate inventory), but inspects each
+entry before pruning so package `node_modules` symlinks remain visible.
+The package walk is bounded to 200,000 entries. Unreadable or oversized inventories
 are unknown and keep orphan payloads, never evidence that pointers are absent.
+Only candidate-bearing roots request this inventory: census adoption does so
+for actual `.legacy` entries, and eviction planning does so lazily for potentially
+eligible orphans. Ordinary generation-only roots never trigger a package walk.
+Each census/planning invocation caches at most one inventory per such root and
+emits a `pointer-inventory` aggregate with root count, entry count, total duration,
+and per-root entries/durations. Retirement repeats the selected orphan root's
+reachability proof at its deletion fence.
 
 If protected usage prevents reaching the budget, publication **continues** and
 emits a structured `over-budget` event with budget, use, and top holders.
