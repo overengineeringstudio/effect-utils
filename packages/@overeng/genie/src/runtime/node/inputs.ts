@@ -13,11 +13,13 @@ const globalCompleteness = globalThis as typeof globalThis & { [completeness]?: 
 
 /** Source analysis must fail closed without changing optional import runtime semantics. */
 export const markInputRecordingIncomplete = (): void => {
-  if (isInputRecording()) globalCompleteness[completeness] = false
+  if (isInputRecording() === true) globalCompleteness[completeness] = false
 }
 
+/** Whether the active session established a complete cache-authorizing source closure. */
 export const isInputRecordingComplete = (): boolean => globalCompleteness[completeness] === true
 
+/** Whether generator filesystem inputs are currently being collected. */
 export const isInputRecording = (): boolean => globalState[state] !== undefined
 
 /** Record a consulted path, including a missing optional input, before inspecting it. */
@@ -36,30 +38,35 @@ export const beginInputRecording = (): Set<string> => {
   return inputs
 }
 
+/** Stop recording after the generation session releases its permit. */
 export const endInputRecording = (): void => {
   delete globalState[state]
   delete globalCompleteness[completeness]
 }
 
 // Proxies preserve Node's overloads and error semantics, including file descriptors.
+/** Read file content while recording the path; descriptors require an explicit declaration. */
 export const inputReadFileSync: typeof fs.readFileSync = new Proxy(fs.readFileSync, {
   apply: (target, receiver, args: Parameters<typeof fs.readFileSync>) => {
     if (typeof args[0] !== 'number') recordInput(args[0])
     return Reflect.apply(target, receiver, args)
   },
 })
+/** Probe existence and retain missing paths so their later creation invalidates warm state. */
 export const inputExistsSync: typeof fs.existsSync = new Proxy(fs.existsSync, {
   apply: (target, receiver, args: Parameters<typeof fs.existsSync>) => {
     recordInput(args[0])
     return Reflect.apply(target, receiver, args)
   },
 })
+/** Inspect a path while retaining its file/directory existence as an input. */
 export const inputStatSync: typeof fs.statSync = new Proxy(fs.statSync, {
   apply: (target, receiver, args: Parameters<typeof fs.statSync>) => {
     recordInput(args[0])
     return Reflect.apply(target, receiver, args)
   },
 })
+/** Read directory members and retain recursively listed paths for membership invalidation. */
 export const inputReaddirSync: typeof fs.readdirSync = new Proxy(fs.readdirSync, {
   apply: (target, receiver, args: Parameters<typeof fs.readdirSync>) => {
     recordInput(args[0])
@@ -80,7 +87,7 @@ export const inputReaddirSync: typeof fs.readdirSync = new Proxy(fs.readdirSync,
       // path so an immediate-entry directory hash also catches nested additions.
       for (const entry of entries) {
         recordInput(
-          typeof entry === 'string' || Buffer.isBuffer(entry)
+          typeof entry === 'string' || Buffer.isBuffer(entry) === true
             ? path.resolve(root, entry.toString())
             : path.resolve(entry.parentPath, entry.name.toString()),
         )

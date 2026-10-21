@@ -219,10 +219,10 @@ export const generateAll = ({
     ]) {
       recordInput(path.join(cwd, input))
     }
-    if (Option.isSome(oxfmtConfigPath)) recordInput(oxfmtConfigPath.value)
+    if (Option.isSome(oxfmtConfigPath) === true) recordInput(oxfmtConfigPath.value)
     const genieFiles = yield* discoverAndValidate(cwd, phase)
     yield* Effect.try({
-      try: () => recordGeneratorSourceGraph(genieFiles, cwd),
+      try: () => recordGeneratorSourceGraph({ entries: genieFiles, cwd }),
       catch: (cause) =>
         new GenieGenerationFailedError({
           failedCount: 1,
@@ -389,7 +389,10 @@ export const generateAll = ({
     return { summary, files: successes }
   }).pipe(
     (effect) =>
-      withInputManifest(effect, dryRun === false && phase === undefined && validate === true),
+      withInputManifest({
+        effect,
+        complete: dryRun === false && phase === undefined && validate === true,
+      }),
     Observability.withCommandSpan({
       label: dryRun === true ? 'dry-run' : readOnly === true ? 'generate' : 'generate-writable',
       cwd,

@@ -21,7 +21,13 @@ import { resolveImportMapSpecifierForImporterSync } from './import-map/sync-reso
 const recordingPermit = Semaphore.makeUnsafe(1)
 
 /** Record the runtime source graph even when Bun has already cached imported modules. */
-export const recordGeneratorSourceGraph = (entries: ReadonlyArray<string>, cwd: string): void => {
+export const recordGeneratorSourceGraph = ({
+  entries,
+  cwd,
+}: {
+  entries: ReadonlyArray<string>
+  cwd: string
+}): void => {
   const pending = [...entries]
   if (isInputRecording() === false) return
   const seen = new Set<string>()
@@ -53,13 +59,14 @@ export const recordGeneratorSourceGraph = (entries: ReadonlyArray<string>, cwd: 
       if (isBuiltin(specifier) === true) continue
       let mapped: string | undefined
       try {
-        mapped = specifier.startsWith('#')
-          ? resolveImportMapSpecifierForImporterSync({
-              specifier,
-              importerPath: sourcePath,
-              workspaceRoot: cwd,
-            })
-          : undefined
+        mapped =
+          specifier.startsWith('#') === true
+            ? resolveImportMapSpecifierForImporterSync({
+                specifier,
+                importerPath: sourcePath,
+                workspaceRoot: cwd,
+              })
+            : undefined
       } catch {
         // Resolver errors leave the closure unknown, even when the runtime catches them.
         markInputRecordingIncomplete()
@@ -73,7 +80,7 @@ export const recordGeneratorSourceGraph = (entries: ReadonlyArray<string>, cwd: 
       ) {
         const packageName = base
           .split('/')
-          .slice(0, base.startsWith('@') ? 2 : 1)
+          .slice(0, base.startsWith('@') === true ? 2 : 1)
           .join('/')
         let directory = path.dirname(sourcePath)
         while (true) {
@@ -126,10 +133,13 @@ export const recordGeneratorSourceGraph = (entries: ReadonlyArray<string>, cwd: 
 }
 
 /** Publish only a successfully completed full generation, using a same-directory rename. */
-export const withInputManifest = <A, E, R>(
-  effect: Effect.Effect<A, E, R>,
-  complete: boolean,
-): Effect.Effect<A, E | GenieGenerationFailedError, R> => {
+export const withInputManifest = <TOutput, TError, TRequirements>({
+  effect,
+  complete,
+}: {
+  effect: Effect.Effect<TOutput, TError, TRequirements>
+  complete: boolean
+}): Effect.Effect<TOutput, TError | GenieGenerationFailedError, TRequirements> => {
   const destination = process.env.GENIE_INPUT_MANIFEST
   if (destination === undefined || destination === '' || complete === false) return effect
   const manifestPath = path.resolve(destination)
@@ -145,7 +155,7 @@ export const withInputManifest = <A, E, R>(
                 try {
                   await fs.writeFile(
                     temporary,
-                    `${isInputRecordingComplete() ? 'genie-inputs-v1' : 'genie-inputs-incomplete'}\n${[
+                    `${isInputRecordingComplete() === true ? 'genie-inputs-v1' : 'genie-inputs-incomplete'}\n${[
                       ...inputs,
                     ]
                       .sort()
@@ -153,7 +163,7 @@ export const withInputManifest = <A, E, R>(
                       .join('')}`,
                     { flag: 'wx' },
                   )
-                  if ([...inputs].some((input) => /[\r\n]/.test(input))) {
+                  if ([...inputs].some((input) => /[\r\n]/.test(input)) === true) {
                     throw new Error('Generator input paths cannot contain newlines')
                   }
                   await fs.rename(temporary, manifestPath)

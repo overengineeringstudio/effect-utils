@@ -52,7 +52,7 @@ export default { data: {}, stringify: () => read() }
       encoding: 'utf8',
       env: {
         ...process.env,
-        GENIE_INPUT_MANIFEST: enabled ? manifest : '',
+        GENIE_INPUT_MANIFEST: enabled === true ? manifest : '',
         XDG_STATE_HOME: path.join(root, 'state'),
       },
     })
