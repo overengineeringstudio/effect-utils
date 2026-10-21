@@ -1807,6 +1807,38 @@ describe('budget admission defers reader proof until eviction needs it', () => {
     return { release: () => rmSync(path, { recursive: true }) }
   }
 
+  it('reports aggregate census substage durations and counts', async () => {
+    const host = makeHost()
+    try {
+      const fixture = host.fixture('substage-timing', 190, 64)
+      const captured = await captureStderr(() => host.publish(fixture))
+      const prefix = '[editor-view-budget] '
+      const stages = captured.stderr.split('\n').flatMap((line) => {
+        if (line.startsWith(prefix) === false) return []
+        const value = JSON.parse(line.slice(prefix.length))
+        return value.event === 'completed' ? [value] : []
+      })
+      for (const [stage, keys] of [
+        ['root-discovery', ['roots']],
+        ['generation-enumeration', ['generations']],
+        ['sidecar-reads', ['hits', 'misses', 'bytes']],
+        ['footprint-walks', ['walks', 'linkedBytes']],
+        ['sidecar-staging', ['sidecars']],
+        ['cas-accounting', ['stores', 'entries']],
+        ['linked-inode-merge', ['entries', 'distinctEntries']],
+        ['sidecar-installation', ['entries']],
+        ['fenced-admission', ['admitted', 'usedBytes', 'reservationBytes', 'budgetBytes']],
+      ] as const) {
+        const matching = stages.filter((entry) => entry.stage === stage)
+        expect(matching).toHaveLength(1)
+        expect(matching[0].durationMs).toBeGreaterThanOrEqual(0)
+        for (const key of keys) expect(matching[0][key]).toBeGreaterThanOrEqual(0)
+      }
+    } finally {
+      await host.cleanup()
+    }
+  })
+
   it('admits a footprint above the warning ratio without scanning eligible readers', async () => {
     const host = makeHost()
     try {
