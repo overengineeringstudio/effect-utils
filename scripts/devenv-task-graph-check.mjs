@@ -477,7 +477,12 @@ const sourceTaskSelected = (name) =>
 const allDirectSourceTestTasks = [
   ...new Set([...directSourceTestTasks, ...buck2UnboundedTaskNames]),
 ]
-const bootstrapPackagePaths = ['.', 'packages/@overeng/otel-contract']
+const bootstrapPackagePaths = [
+  '.',
+  'packages/@overeng/otel-contract',
+  'packages/@overeng/schema-codegen',
+  'packages/@overeng/schema-codegen-swift',
+]
 ok({
   condition: sourceTestTasks.length > 0,
   name: `${sourceTestAggregate} schedules source test tasks through independent chains`,
