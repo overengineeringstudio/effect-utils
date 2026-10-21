@@ -52,6 +52,7 @@ const createFixtureStash = Effect.fnUntraced(function* (cwd: AbsoluteDirPath) {
     'fixture stash',
   )
   yield* git(cwd, 'update-ref', 'refs/stash', stashCommit)
+  yield* git(cwd, 'restore', '--source=HEAD', '--staged', '--worktree', '--', 'f.txt')
 })
 
 /**
@@ -265,6 +266,7 @@ describe('store-lossless', () => {
           'to-stash\n',
         )
         yield* createFixtureStash(wt)
+        expect(yield* git(wt, 'status', '--porcelain')).toBe('')
         yield* fs.writeFileString(
           EffectPath.ops.join(wt, EffectPath.unsafe.relativeFile('untracked.txt')),
           'new dirt\n',
