@@ -82,8 +82,9 @@ mode disables global virtual store reuse regardless of local opt-ins.
 
 Frozen lockfile verification (`lint:check:lockfile`) resolves storage independently
 using the same selection prologue as `pnpm:install`; task-local exports are not
-inherited between tasks. It uses the selected store and import method under a
-shared Store Cache admission lease, while `--lockfile-only --frozen-lockfile`
+inherited between tasks. It uses the selected store and import method under the
+same Materialization-Root mutex and shared Store Cache admission lease, while
+`--lockfile-only --frozen-lockfile`
 leaves the materialized dependency graph untouched.
 
 ## Import Policy

@@ -244,15 +244,7 @@ let
     ${loadPnpmTaskHelpersFn}
     ${ensureLocalPnpmHomeFn}
     ${configurePnpmStorageFn}
-    mkdir -p ${lib.escapeShellArg cacheRoot}
-
-    lockfile=${lib.escapeShellArg "${cacheRoot}/pnpm-install.lock"}
-    exec 200>"$lockfile"
-    if ! ${flock} -w 600 200; then
-      echo "[pnpm] Materialization-root mutation lock timeout after 600s: $lockfile" >&2
-      echo "[pnpm] Another managed pnpm mutation may be stuck" >&2
-      exit 1
-    fi
+    ${pnpmStorage.acquireRootLock}
 
     pnpm_home_lockfile="''${PNPM_HOME:-${cacheRoot}}/.effect-utils-pnpm-install.lock"
     mkdir -p "$(dirname "$pnpm_home_lockfile")"

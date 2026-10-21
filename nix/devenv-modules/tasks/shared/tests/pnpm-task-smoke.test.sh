@@ -555,6 +555,7 @@ for scenario in dev-host github-actions job-local shared-override; do
       for key in PNPM_STORE_DIR PNPM_CONFIG_STORE_DIR npm_config_store_dir; do
         grep -Fxq "$key=$expected_store" "$TEST_PNPM_LOG"
       done
+      grep -Fxq 'flock -w 600 200' "$TEST_FLOCK_LOG"
       grep -Fxq 'PNPM_PACKAGE_IMPORT_METHOD=auto' "$TEST_PNPM_LOG"
       grep -Fxq 'flock --shared -w 600 202' "$TEST_FLOCK_LOG"
     done

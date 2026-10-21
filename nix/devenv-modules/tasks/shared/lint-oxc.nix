@@ -367,6 +367,7 @@ let
         set -euo pipefail
         source ${lib.escapeShellArg pnpmStorage.helpersScript}
         ${pnpmStorage.configure}
+        ${pnpmStorage.acquireRootLock}
         # Verification can touch the Store Cache too; keep maintenance excluded
         # without serializing independent installs and checks.
         acquire_pnpm_store_cache_lease ${lib.escapeShellArg "${pkgs.flock}/bin/flock"} shared "$npm_config_store_dir" 600
