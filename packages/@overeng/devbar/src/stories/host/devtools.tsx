@@ -27,9 +27,8 @@ export const mountDiagnostics = async (
   if (Exit.isFailure(result) === true) {
     // Retain acquisition and finalizer failures rather than letting cleanup replace the cause.
     const closed = await Effect.runPromiseExit(Scope.close(scope, result))
-    const cause: Cause.Cause<HostRuntimeError> = Exit.isFailure(closed)
-      ? Cause.combine(result.cause, closed.cause)
-      : result.cause
+    const cause: Cause.Cause<HostRuntimeError> =
+      Exit.isFailure(closed) === true ? Cause.combine(result.cause, closed.cause) : result.cause
     throw new Error(`Unable to acquire host diagnostics:\n${Cause.pretty(cause)}`, { cause })
   }
   if (options.signal.aborted === true) {
