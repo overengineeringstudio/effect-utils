@@ -679,7 +679,7 @@ const emitBuckOut = (path: string): string => {
 const runTsgo = async (options: {
   readonly argv: readonly string[]
   readonly cwd: string
-  readonly darwinBuckOut?: string
+  readonly darwinBuckOut?: string | undefined
 }): Promise<number> => {
   if (forwardedSignal !== undefined) return 128 + signalNumbers[forwardedSignal]
   const argv =
