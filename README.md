@@ -49,17 +49,21 @@ Nix scanner and isolation checks. A `true` value permits isolated Node imports;
 `false` keeps JSX/TSX visible to the scanner but rejects standalone entries with
 an explicit unsupported-extension diagnostic instead of silently skipping them.
 
-The completeness check scans tracked and untracked, non-ignored `*.nix` files for
-literal JS/TS source paths, conservatively including workspace commands and
-multi-file closures. Add each source and its staging Nix file to the central list.
-Non-standalone references require a per-source, per-Nix-file exemption with a
-reason; stale entries fail too. The scan also inspects extension-bearing arguments
-to `readFile`, `writeText*`, `writeScript*`, `builtins.path`, `copyPathToStore`,
-and shell `cp`/`install`, including interpolation and workspace-relative inputs.
-An argument that cannot be resolved is an error, not a skipped reference:
-`unresolvedStagings` requires its exact Nix file, operation, argument and reason.
-Known repository-root variables are `repoRoot`, `repositoryRoot` and `sourceRoot`.
-Other computed paths require explicit review; this is not a Nix evaluator.
+The completeness check scans every position in tracked and untracked, non-ignored
+`*.nix` files for JS/TS filename references, including comments, strings,
+interpolation, shell code, globs and output names. It does not parse staging
+constructs. Every file containing such a reference must have a `nixFiles` entry:
+`stages: true` requires at least one isolation-checked source; otherwise
+`noStandaloneStaging` requires a one-line reason (workspace execution, deliberate
+closure, fixture, build rules, or non-source names). Each listed source must still
+appear as a path/reference fragment in its declared Nix file. Stale source and
+file classifications fail.
+
+This part-1 gate is deliberately file-level: a new staging inside an already
+classified file, including a `noStandaloneStaging` file, is not detected.
+Extensions assembled by computation, such as `"x." + "ts"`, also evade the token
+scan. The consumer lane in #1994 part 2 is the backstop and gates `published`;
+this part-1 inventory guard does not replace that consumer proof.
 
 ## Packages
 

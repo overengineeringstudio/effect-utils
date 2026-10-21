@@ -9,32 +9,98 @@
     ".tsx": false,
     ".jsx": false
   },
-  "unresolvedStagings": [
-    {
-      "nix": "flake.nix",
-      "operation": "writeTextDir",
-      "argument": "index.js",
-      "reason": "Synthetic native-slot fixture generated inline, not a repository source file."
+  "nixFiles": {
+    "devenv.nix": {
+      "stages": true
     },
-    {
-      "nix": "nix/buck2.nix",
-      "operation": "cp",
-      "argument": "${launcherSource}/buck2-entrypoint.ts",
-      "reason": "Copied together with buck2-cache-posture.ts and buck2-file-watcher.ts into the deliberate launcher closure."
+    "flake.nix": {
+      "noStandaloneStaging": "fixture: References synthetic inline modules and deliberately assembled runtime closures, not standalone repository sources."
     },
-    {
-      "nix": "nix/buck2.nix",
-      "operation": "cp",
-      "argument": "${launcherSource}/buck2-cache-posture.ts",
-      "reason": "Copied together with buck2-entrypoint.ts and buck2-file-watcher.ts into the deliberate launcher closure."
+    "nix/buck2-capabilities.nix": {
+      "noStandaloneStaging": "closure: The capability projector is carried in a directory source projection with its manifest."
     },
-    {
-      "nix": "nix/buck2.nix",
-      "operation": "cp",
-      "argument": "${launcherSource}/buck2-file-watcher.ts",
-      "reason": "Copied together with buck2-entrypoint.ts and buck2-cache-posture.ts into the deliberate launcher closure."
+    "nix/buck2-products/consumer-root.nix": {
+      "noStandaloneStaging": "build-rules: The TypeScript runner is resolved from the complete rules cell."
+    },
+    "nix/buck2-products/root-projection.nix": {
+      "noStandaloneStaging": "closure: Generator sources and suffix filters belong to the repository directory projection."
+    },
+    "nix/buck2-products/vite-runtime-fixture.nix": {
+      "noStandaloneStaging": "closure: The Vite fixture deliberately packages its module with the runtime dependency closure."
+    },
+    "nix/buck2-rules/default.nix": {
+      "noStandaloneStaging": "build-rules: Generated Buck declarations export tools and assemble their explicit multi-file source/dependency closures."
+    },
+    "nix/buck2.nix": {
+      "noStandaloneStaging": "closure: The launcher entrypoint, cache posture and file watcher are copied and compiled together."
+    },
+    "nix/devenv-modules/tasks/local/notion-integration-test.nix": {
+      "noStandaloneStaging": "workspace: Vitest configurations and test entrypoints run inside the workspace package."
+    },
+    "nix/devenv-modules/tasks/local/restate-integration-test.nix": {
+      "noStandaloneStaging": "workspace: Vitest configurations, tests and comment references belong to workspace integration execution."
+    },
+    "nix/devenv-modules/tasks/shared/buck2-rust-deps.nix": {
+      "stages": true
+    },
+    "nix/devenv-modules/tasks/shared/changesets.nix": {
+      "stages": true
+    },
+    "nix/devenv-modules/tasks/shared/context.nix": {
+      "noStandaloneStaging": "workspace: Context examples execute in the socket package directory with sibling sources available."
+    },
+    "nix/devenv-modules/tasks/shared/genie.nix": {
+      "noStandaloneStaging": "workspace: Generator suffixes and filenames are inspected inside the checkout."
+    },
+    "nix/devenv-modules/tasks/shared/lint-oxc.nix": {
+      "stages": true
+    },
+    "nix/devenv-modules/tasks/shared/pnpm.nix": {
+      "stages": true
+    },
+    "nix/devenv-modules/tasks/shared/setup.nix": {
+      "noStandaloneStaging": "workspace: Generator suffix matching inspects checkout files."
+    },
+    "nix/devenv-modules/tasks/shared/storybook.nix": {
+      "noStandaloneStaging": "workspace: The gate configuration is loaded from the Storybook workspace package."
+    },
+    "nix/devenv-modules/tasks/shared/test.nix": {
+      "noStandaloneStaging": "workspace: Vitest configurations and source globs run from workspace packages."
+    },
+    "nix/devenv-modules/tasks/shared/tests/buck2-capability-fixture/profiles.nix": {
+      "stages": true
+    },
+    "nix/devenv-modules/tasks/shared/weaver-live-check.nix": {
+      "noStandaloneStaging": "workspace: The integration test runs from its workspace package."
+    },
+    "nix/oxlint-npm.nix": {
+      "noStandaloneStaging": "not-a-source: JavaScript paths name outputs of already-built plugin products."
+    },
+    "nix/oxlint-with-plugins.nix": {
+      "noStandaloneStaging": "closure: Plugin override paths describe complete workspace/Buck plugin modules."
+    },
+    "nix/pnpm.nix": {
+      "noStandaloneStaging": "not-a-source: References upstream pnpm package files and a generator-owner comment, not standalone repository inputs."
+    },
+    "nix/provider-clis/netlify-cli/default.nix": {
+      "noStandaloneStaging": "closure: The upstream CLI entrypoint is inside its installed package dependency tree."
+    },
+    "nix/provider-clis/vercel-cli/default.nix": {
+      "noStandaloneStaging": "closure: The upstream CLI entrypoint is inside its installed package dependency tree."
+    },
+    "nix/workspace-tools/lib/buck2-product-candidates.nix": {
+      "noStandaloneStaging": "not-a-source: JavaScript paths name symlinks to already-built plugin products."
+    },
+    "nix/workspace-tools/lib/javascript-published-import.nix": {
+      "stages": true
+    },
+    "nix/workspace-tools/lib/javascript-source-import.nix": {
+      "stages": true
+    },
+    "packages/@overeng/genie/flake.nix": {
+      "noStandaloneStaging": "not-a-source: The .genie.ts reference is descriptive text."
     }
-  ],
+  },
   "sources": [
     {
       "initializationError": "",
@@ -94,83 +160,6 @@
       "source": "packages/@overeng/pty-effect/test/node-pty-native-hook.ts",
       "nix": ["devenv.nix"],
       "allowedImports": {}
-    }
-  ],
-  "exemptions": [
-    {
-      "source": "packages/@overeng/buck2-tools/src/bun-test-runner.ts",
-      "nix": "devenv.nix",
-      "reason": "Executed from the workspace; the relative shell path is not interpolated into the Nix store."
-    },
-    {
-      "source": "genie/ci-workflow/rust.unit.test.ts",
-      "nix": "devenv.nix",
-      "reason": "Executed from the workspace; the relative shell path is not interpolated into the Nix store."
-    },
-    {
-      "source": "genie/ci-workflow/setup.unit.test.ts",
-      "nix": "devenv.nix",
-      "reason": "Executed from the workspace; the relative shell path is not interpolated into the Nix store."
-    },
-    {
-      "source": "scripts/buck2-entrypoint.integration.test.ts",
-      "nix": "devenv.nix",
-      "reason": "Executed from the workspace; the relative shell path is not interpolated into the Nix store."
-    },
-    {
-      "source": "scripts/buck2-cache-posture.integration.test.ts",
-      "nix": "devenv.nix",
-      "reason": "Executed from the workspace; the relative shell path is not interpolated into the Nix store."
-    },
-    {
-      "source": "scripts/buck2-capability-publish.unit.test.ts",
-      "nix": "devenv.nix",
-      "reason": "Executed from the workspace; the relative shell path is not interpolated into the Nix store."
-    },
-    {
-      "source": "buck2/dependencies/genie-input-manifest.integration.test.ts",
-      "nix": "devenv.nix",
-      "reason": "Executed from the workspace; the relative shell path is not interpolated into the Nix store."
-    },
-    {
-      "source": "scripts/editor-view-authority.unit.test.ts",
-      "nix": "devenv.nix",
-      "reason": "Executed from the workspace; the relative shell path is not interpolated into the Nix store."
-    },
-    {
-      "source": "scripts/buck2-daemon-reaper.integration.test.ts",
-      "nix": "devenv.nix",
-      "reason": "Executed from the workspace; the relative shell path is not interpolated into the Nix store."
-    },
-    {
-      "source": "packages/@overeng/buck2-tools/src/ts-sandbox.integration.test.ts",
-      "nix": "devenv.nix",
-      "reason": "Executed from the workspace; the relative shell path is not interpolated into the Nix store."
-    },
-    {
-      "source": "packages/@overeng/megarepo/src/buck2-capabilities/capability-projection.ts",
-      "nix": "nix/buck2-capabilities.nix",
-      "reason": "Deliberate multi-file source closure, not a standalone store file."
-    },
-    {
-      "source": "scripts/buck2-entrypoint.ts",
-      "nix": "nix/buck2.nix",
-      "reason": "Deliberate multi-file source closure, not a standalone store file."
-    },
-    {
-      "source": "scripts/buck2-cache-posture.ts",
-      "nix": "nix/buck2.nix",
-      "reason": "Deliberate multi-file source closure, not a standalone store file."
-    },
-    {
-      "source": "scripts/buck2-file-watcher.ts",
-      "nix": "nix/buck2.nix",
-      "reason": "Deliberate multi-file source closure, not a standalone store file."
-    },
-    {
-      "source": "buck2/products/vite-runtime-fixture.mjs",
-      "nix": "nix/buck2-products/vite-runtime-fixture.nix",
-      "reason": "Deliberate multi-file source closure, not a standalone store file."
     }
   ]
 }

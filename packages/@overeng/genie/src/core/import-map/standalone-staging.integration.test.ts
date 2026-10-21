@@ -26,223 +26,85 @@ import { runTsFileAnalysis } from '../../runtime/node/ts-api.ts'
 
 const root = fileURLToPath(new URL('../../../../../../', import.meta.url))
 
-// Inventory literal paths conservatively, then inspect staging operations too.
-// Unresolved extension-bearing arguments fail closed and require an exact,
-// reasoned operation/argument exemption, rather than silently escaping the scan.
+// Classify every Nix file containing a JS/TS reference, regardless of syntax or
+// position. This intentionally has no Nix/shell statement parser.
 const extensionPattern = Object.keys(inventory.extensions)
   .map((extension) => extension.slice(1))
   .join('|')
-const sourceReferences = new RegExp(
-  String.raw`(?<base>\.{1,2}\/[\w./@+-]+|\b\w+)\s*\+\s*"(?<suffix>\/[^"\n]+\.(?:${extensionPattern}))"|(?<direct>\.{1,2}\/[\w./@+-]+\.(?:${extensionPattern}))\b`,
-  'g',
-)
+const sourceReferences = new RegExp('[\\w./${}-]+\\.(?:' + extensionPattern + ')\\b', 'g')
 
-type StagingReference = {
-  readonly source: string | undefined
-  readonly argument: string
-  readonly operation: string
-  readonly index: number
-  readonly end: number
+type NixFileClassification = {
+  readonly stages?: boolean
+  readonly noStandaloneStaging?: string
 }
 
-const repositoryRoots: Record<string, true> = {
-  repoRoot: true,
-  repositoryRoot: true,
-  sourceRoot: true,
+type StagedSource = {
+  readonly source: string
+  readonly nix: readonly string[]
 }
 
-const scanStagingReferences = (nix: string, content: string): StagingReference[] => {
-  const references: StagingReference[] = []
-  const inComment = (index: number): boolean =>
-    content
-      .slice(content.lastIndexOf('\n', index) + 1, index)
-      .trimStart()
-      .startsWith('#')
-  for (const match of content.matchAll(sourceReferences)) {
-    if (inComment(match.index) === true) continue
-    const { base, suffix, direct } = match.groups!
-    const resolvable =
-      base === undefined || base.startsWith('.') === true || Object.hasOwn(repositoryRoots, base)
-    const source =
-      resolvable === true
-        ? path.relative(
-            root,
-            base !== undefined
-              ? path.resolve(
-                  base.startsWith('.') === true
-                    ? path.resolve(root, path.dirname(nix), base)
-                    : root,
-                  `.${suffix}`,
-                )
-              : path.resolve(root, path.dirname(nix), direct!),
+const checkNixFileInventory = ({
+  files,
+  classifications,
+  sources,
+}: {
+  readonly files: Readonly<Record<string, string>>
+  readonly classifications: Readonly<Record<string, NixFileClassification>>
+  readonly sources: readonly StagedSource[]
+}): string[] => {
+  const errors: string[] = []
+  const references: Record<string, readonly string[]> = {}
+  for (const [nix, content] of Object.entries(files)) {
+    const found = [...content.matchAll(sourceReferences)].map((match) => match[0])
+    references[nix] = found
+    if (found.length > 0 && classifications[nix] === undefined) {
+      errors.push(
+        `${nix}: unclassified Nix file references ${found[0]}; add stages or noStandaloneStaging with a reason to nix/standalone-staging.json`,
+      )
+    }
+  }
+  for (const [nix, classification] of Object.entries(classifications)) {
+    if ((references[nix]?.length ?? 0) === 0) {
+      errors.push(`${nix}: stale Nix-file classification has no JS/TS references`)
+    }
+    const stages = classification.stages === true
+    const noStandalone =
+      typeof classification.noStandaloneStaging === 'string' &&
+      classification.noStandaloneStaging.trim().length > 0
+    if (stages === noStandalone) {
+      errors.push(`${nix}: classify as either stages or noStandaloneStaging with a nonempty reason`)
+    }
+    if (stages === true && sources.some((entry) => entry.nix.includes(nix)) === false) {
+      errors.push(`${nix}: stages file has no standalone inventory entry`)
+    }
+  }
+  for (const entry of sources) {
+    for (const nix of entry.nix) {
+      if (classifications[nix]?.stages !== true) {
+        errors.push(`${nix}: standalone source ${entry.source} requires a stages classification`)
+      }
+      const appears = (references[nix] ?? []).some((reference) => {
+        const literal = reference.replace(/^\$\{/, '')
+        if (literal.startsWith('./') === true || literal.startsWith('../') === true) {
+          return (
+            path.posix.normalize(path.posix.join(path.posix.dirname(nix), literal)) === entry.source
           )
-        : undefined
-    references.push({
-      source,
-      argument: match[0],
-      operation: 'path',
-      index: match.index,
-      end: match.index + match[0].length,
-    })
-  }
-
-  const fileTokens = new RegExp(
-    String.raw`(?:\$\{[^}\n]+\}|[\w@./$+-])(?:\$\{[^}\n]+\}|[\w@./$+-])*\.(?:${extensionPattern})\b`,
-    'g',
-  )
-  const inspect = (operation: string, body: string, offset: number): void => {
-    const tokens = [...body.matchAll(fileTokens)]
-    const covered =
-      references.some(
-        (reference) =>
-          reference.operation === 'path' &&
-          reference.index >= offset &&
-          reference.end <= offset + body.length,
-      ) || tokens.some((token) => token[0].includes('/'))
-    for (const token of tokens) {
-      const argument = token[0]
-      const index = offset + token.index
-      if (
-        references.some(
-          (reference) =>
-            reference.operation === 'path' && index >= reference.index && index < reference.end,
-        ) === true
-      )
-        continue
-      // writeText's output basename is not a second source when its source path
-      // is already inventoried; a source-less generated file needs an exemption.
-      if (
-        covered === true &&
-        argument.includes('/') === false &&
-        (operation.startsWith('write') === true || operation === 'path')
-      )
-        continue
-      const interpolated = argument.match(/^\$\{([^}]+)\}\/(.+)$/)
-      const source =
-        interpolated !== null
-          ? Object.hasOwn(repositoryRoots, interpolated[1]!) === true
-            ? interpolated[2]
-            : undefined
-          : argument.includes('${') === false &&
-              argument.includes('$') === false &&
-              argument.includes('/') === true &&
-              path.isAbsolute(argument) === false
-            ? path.posix.normalize(argument)
-            : undefined
-      references.push({ source, argument, operation, index, end: index + argument.length })
-    }
-    for (const mention of body.matchAll(new RegExp(String.raw`\.(?:${extensionPattern})\b`, 'g'))) {
-      if (
-        tokens.some(
-          (token) => mention.index >= token.index && mention.index < token.index + token[0].length,
-        ) === false
-      ) {
-        references.push({
-          source: undefined,
-          argument: body.trim(),
-          operation,
-          index: offset + mention.index,
-          end: offset + body.length,
-        })
+        }
+        // Concatenated root suffixes and scoped paths appear as fragments.
+        // The all-position token scan splits at @; never accept only a basename.
+        const fragment = literal.replace(/^\//, '')
+        return (
+          fragment === entry.source ||
+          (fragment.includes('/') === true && entry.source.endsWith(fragment))
+        )
+      })
+      if (appears === false) {
+        errors.push(`${nix}: stale standalone source reference ${entry.source}`)
       }
     }
   }
-  // Find the containing Nix expression's terminator without treating semicolons
-  // inside strings, interpolations, or attrsets as the end of its arguments.
-  const operationEnd = (start: number): number => {
-    type Quote = 'double' | 'indented'
-    let quote: Quote | undefined
-    const stack: { closer: string; quote?: Quote }[] = []
-    const closers: Record<string, string> = { '(': ')', '[': ']', '{': '}' }
-    for (let index = start; index < content.length; index++) {
-      const char = content[index]
-      if (quote !== undefined) {
-        if (quote === 'double' && char === '\\') {
-          index++
-          continue
-        }
-        if (
-          quote === 'indented' &&
-          content.startsWith("''", index) === true &&
-          ["'", '\\', '$'].includes(content[index + 2] ?? '') === true
-        ) {
-          index += 3
-          continue
-        }
-        if (content.startsWith('${', index) === true) {
-          stack.push({ closer: '}', quote })
-          quote = undefined
-          index++
-        } else if (quote === 'double' && char === '"') {
-          quote = undefined
-        } else if (quote === 'indented' && content.startsWith("''", index) === true) {
-          quote = undefined
-          index++
-        }
-        continue
-      }
-      if (char === '#') {
-        const end = content.indexOf('\n', index)
-        if (end === -1) return content.length
-        index = end
-      } else if (content.startsWith('/*', index) === true) {
-        const end = content.indexOf('*/', index + 2)
-        if (end === -1) return content.length
-        index = end + 1
-      } else if (char === '"') {
-        quote = 'double'
-      } else if (content.startsWith("''", index) === true) {
-        quote = 'indented'
-        index++
-      } else if (char !== undefined && Object.hasOwn(closers, char) === true) {
-        stack.push({ closer: closers[char]! })
-      } else if (stack.length > 0 && char === stack.at(-1)?.closer) {
-        quote = stack.pop()?.quote
-      } else if (char === ';' && stack.length === 0) {
-        return index
-      }
-    }
-    return content.length
-  }
-  // Conservative statement windows include multiline readFile/writeText and
-  // builtins.path arguments. Nested operations are inspected independently.
-  for (const match of content.matchAll(
-    /\b(?:builtins\.path|(?:builtins\.)?readFile|(?:builtins\.)?copyPathToStore|writeText\w*|writeScript\w*)\b/g,
-  )) {
-    if (inComment(match.index) === true) continue
-    const start = match.index + match[0].length
-    inspect(match[0].replace('builtins.', ''), content.slice(start, operationEnd(start)), start)
-  }
-  for (const match of content.matchAll(/\b(cp|install)\s+([^\n]*(?:\\\n[^\n]*)*)/g)) {
-    if (inComment(match.index) === true) continue
-    const body = match[2]!
-    const operands = [...body.matchAll(/"(?:\\.|[^"])*"|'[^']*'|(?:\$\{[^}]*\}|[^\s])+/g)].filter(
-      (operand) => operand[0].startsWith('-') === false,
-    )
-    // The last operand is the destination, not a repo source.
-    for (const operand of operands.slice(0, -1)) {
-      inspect(match[1]!, operand[0], match.index + match[0].indexOf(body) + operand.index)
-    }
-  }
-  return references
+  return errors
 }
-
-const isInventoried = (nix: string, reference: StagingReference): boolean =>
-  reference.source !== undefined
-    ? inventory.sources.some(
-        (entry) => entry.source === reference.source && entry.nix.includes(nix),
-      ) ||
-      inventory.exemptions.some(
-        (entry) =>
-          entry.source === reference.source && entry.nix === nix && entry.reason.trim().length > 0,
-      )
-    : inventory.unresolvedStagings.some(
-        (entry) =>
-          entry.nix === nix &&
-          entry.operation === reference.operation &&
-          entry.argument === reference.argument &&
-          entry.reason.trim().length > 0,
-      )
 
 const assertIsolatableExtension = (source: string): void => {
   expect(
@@ -254,83 +116,98 @@ const assertIsolatableExtension = (source: string): void => {
 }
 
 describe('standalone Nix-staged JS/TS sources (issue #1994)', () => {
-  it('inventories every literal source reference in Nix', () => {
-    const files = spawnSync(
+  it('classifies every Nix file with JS/TS references and rejects stale inventory', () => {
+    const result = spawnSync(
       'git',
       ['ls-files', '--cached', '--others', '--exclude-standard', '-z', '--', '*.nix'],
       { cwd: root, encoding: 'utf8' },
     )
-    expect(files.status, files.stderr).toBe(0)
-    const found = new Set<string>()
-    const missing: string[] = []
-    for (const nix of new Set(files.stdout.split('\0').filter(Boolean))) {
-      const content = readFileSync(path.join(root, nix), 'utf8')
-      for (const reference of scanStagingReferences(nix, content)) {
-        found.add(`${nix}:${reference.source ?? `${reference.operation}:${reference.argument}`}`)
-        if (isInventoried(nix, reference) === false) {
-          missing.push(
-            `${nix}:${content.slice(0, reference.index).split('\n').length} -> ${reference.source ?? `unresolved ${reference.operation} argument ${JSON.stringify(reference.argument)}`}`,
-          )
-        }
-      }
+    expect(result.status, result.stderr).toBe(0)
+    const files: Record<string, string> = {}
+    for (const nix of new Set(result.stdout.split('\0').filter(Boolean))) {
+      files[nix] = readFileSync(path.join(root, nix), 'utf8')
     }
     expect(
-      missing,
-      'Add standalone sources (or an explicit closure/workspace exemption with a reason) to nix/standalone-staging.json',
+      checkNixFileInventory({
+        files,
+        classifications: inventory.nixFiles,
+        sources: inventory.sources,
+      }),
     ).toEqual([])
-    for (const entry of inventory.sources) {
-      for (const nix of entry.nix)
-        expect(found.has(`${nix}:${entry.source}`), `Stale staging: ${nix}:${entry.source}`).toBe(
-          true,
-        )
-    }
-    for (const entry of inventory.exemptions)
-      expect(
-        found.has(`${entry.nix}:${entry.source}`),
-        `Stale exemption: ${entry.nix}:${entry.source}`,
-      ).toBe(true)
-    for (const entry of inventory.unresolvedStagings) {
-      expect(
-        found.has(`${entry.nix}:${entry.operation}:${entry.argument}`),
-        `Stale staging exemption: ${entry.nix}:${entry.operation}:${entry.argument}`,
-      ).toBe(true)
-    }
   })
 
   it.each([
-    ['relative readFile', 'builtins.readFile ./x.ts;', './x.ts'],
-    ['CommonJS TypeScript readFile', 'builtins.readFile ./x.cts;', './x.cts'],
-    ['concatenated readFile', 'builtins.readFile (base + "/x.ts");', '/x.ts'],
-    ['interpolated readFile', 'builtins.readFile "${root}/x.mjs";', '${root}/x.mjs'],
+    ['relative readFile', 'builtins.readFile ./x.ts;'],
+    ['CommonJS TypeScript readFile', 'builtins.readFile ./x.cts;'],
+    ['concatenated readFile', 'builtins.readFile (base + "/x.ts");'],
+    ['interpolated readFile', 'builtins.readFile "${root}/x.mjs";'],
+    ['known-root interpolation', 'builtins.readFile "${repoRoot}/scripts/x.mjs";'],
+    ['workspace-relative cp', 'cp scripts/x.mjs "$out"'],
+    ['interpolated cp', 'cp ${src}/x.ts "$out"'],
+    ['interpolated install', 'install -m 755 ${src}/x.ts "$out"'],
+    ['attrset after semicolon', 'builtins.path { name = "fixture"; path = "${src}/x.ts"; };'],
+    ['copyPathToStore', 'builtins.copyPathToStore "${src}/x.ts";'],
+    ['nested writeText/readFile', 'pkgs.writeText "runner" (builtins.readFile "${root}/x.mjs");'],
+    ['cp target directory', 'cp -t "$out" scripts/x.mjs'],
+    ['install target directory', 'install -t "$out" scripts/x.mjs'],
     [
-      'known-root interpolation',
-      'builtins.readFile "${repoRoot}/scripts/x.mjs";',
-      '${repoRoot}/scripts/x.mjs',
+      'let-bound interpolation',
+      'let script = "${root}/x.mjs"; in pkgs.writeText "runner" (builtins.readFile script);',
     ],
-    ['workspace-relative cp', 'cp scripts/x.mjs "$out"', 'scripts/x.mjs'],
-    ['interpolated cp', 'cp ${src}/x.ts "$out"', '${src}/x.ts'],
-    ['interpolated install', 'install -m 755 ${src}/x.ts "$out"', '${src}/x.ts'],
-    [
-      'attrset after semicolon',
-      'builtins.path { name = "fixture"; path = "${src}/x.ts"; };',
-      '${src}/x.ts',
-    ],
-    ['copyPathToStore interpolation', 'builtins.copyPathToStore "${src}/x.ts";', '${src}/x.ts'],
-    ['computed extension', 'builtins.readFile ("x" + ".ts");', '.ts'],
-    [
-      'nested writeText/readFile',
-      'pkgs.writeText "runner" (builtins.readFile "${root}/x.mjs");',
-      '${root}/x.mjs',
-    ],
-  ])('rejects an unlisted staging fixture: %s', (_name, content, argument) => {
-    const references = scanStagingReferences('standalone-staging-fixture.nix', content)
+    ['scoped constructor', 'with builtins; readFile ./x.ts'],
+    ['writeTextFile', 'pkgs.writeTextFile { name = "x.ts"; text = source; }'],
+    ['fileContents', 'lib.fileContents ./x.ts'],
+    ['toFile', 'builtins.toFile "x.ts" source'],
+  ])('rejects a new unclassified file containing %s', (_name, content) => {
     expect(
-      references.filter(
-        (reference) =>
-          reference.argument.includes(argument) &&
-          isInventoried('standalone-staging-fixture.nix', reference) === false,
-      ).length,
-    ).toBeGreaterThan(0)
+      checkNixFileInventory({
+        files: { 'fixture.nix': content },
+        classifications: {},
+        sources: [],
+      }).some((error) => error.includes('unclassified Nix file')),
+    ).toBe(true)
+  })
+
+  it('rejects a stale source even when its output basename remains', () => {
+    expect(
+      checkNixFileInventory({
+        files: { 'fixture.nix': 'pkgs.writeText "missing.ts" (builtins.readFile ./present.ts);' },
+        classifications: { 'fixture.nix': { stages: true } },
+        sources: [{ source: 'scripts/missing.ts', nix: ['fixture.nix'] }],
+      }),
+    ).toContain('fixture.nix: stale standalone source reference scripts/missing.ts')
+  })
+
+  it('rejects a stages file without a standalone entry', () => {
+    expect(
+      checkNixFileInventory({
+        files: { 'fixture.nix': 'builtins.readFile ./x.ts;' },
+        classifications: { 'fixture.nix': { stages: true } },
+        sources: [],
+      }),
+    ).toContain('fixture.nix: stages file has no standalone inventory entry')
+  })
+
+  it('requires a reason for noStandaloneStaging', () => {
+    expect(
+      checkNixFileInventory({
+        files: { 'fixture.nix': 'bun ./x.ts' },
+        classifications: { 'fixture.nix': { noStandaloneStaging: '' } },
+        sources: [],
+      }),
+    ).toContain(
+      'fixture.nix: classify as either stages or noStandaloneStaging with a nonempty reason',
+    )
+  })
+
+  it('documents the computed-extension residual', () => {
+    expect(
+      checkNixFileInventory({
+        files: { 'fixture.nix': 'builtins.readFile ("x." + "ts");' },
+        classifications: {},
+        sources: [],
+      }),
+    ).toEqual([])
   })
 
   for (const entry of inventory.sources) {
