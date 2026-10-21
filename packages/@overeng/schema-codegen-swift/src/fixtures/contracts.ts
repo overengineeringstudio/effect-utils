@@ -4,6 +4,7 @@ const Item = Schema.Struct({ title: Schema.String }).annotate({
   identifier: 'Catalog.Item',
   description: 'An item supplied by a producer.',
 })
+/** Swift emitter fixture contracts compiled by the generated SwiftPM package. */
 export const schemas = {
   Producer: Schema.Union([
     Schema.TaggedStruct('local', { name: Schema.String, items: Schema.Array(Item) }),
@@ -30,6 +31,7 @@ export const schemas = {
   DistinctLiterals: Schema.Literals(['é', 'e\u0301']),
   ExactTag: Schema.Union([Schema.TaggedStruct('K', {}), Schema.TaggedStruct('other', {})]),
 }
+/** Generation options for the primary fixture output. */
 export const options = {
   filename: 'Contracts.swift',
   moduleName: 'Fixture',
