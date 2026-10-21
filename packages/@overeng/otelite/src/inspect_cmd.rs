@@ -436,6 +436,25 @@ mod tests {
 
     #[test]
     fn committed_corruption_is_not_hidden() {
+        // Other tests spawn processes in parallel. A fork can inherit the
+        // snapshot's shared flock until exec, even after read_file closes it.
+        // Run the assertion alone in a child that never spawns another process.
+        let status = Command::new(std::env::current_exe().unwrap())
+            .args([
+                "--exact",
+                "inspect_cmd::tests::committed_corruption_process",
+                "--ignored",
+                "--nocapture",
+                "--test-threads=1",
+            ])
+            .status()
+            .unwrap();
+        assert!(status.success(), "corruption subprocess failed: {status}");
+    }
+
+    #[test]
+    #[ignore = "subprocess fixture for committed_corruption_is_not_hidden"]
+    fn committed_corruption_process() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("traces.ndjson");
         for raw in ["not json\n", "{\"resourceSpans\":"] {
