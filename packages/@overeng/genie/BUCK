@@ -10,7 +10,7 @@ load("//buck2/products:defs.bzl", "javascript_product")
 # Projection source: packages/@overeng/genie/BUCK.genie.ts
 # Projection schema version: 13
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:20e3a8d3f85f7e2e2595285d10ae269b35651a2dfea0b65019d39c8640c853d4
+# Semantic fingerprint: sha256:d8d72eec81503c9240838bcf1ec5fd638fa885484a1f8b246d6a596059ea918f
 # Regenerate: devenv tasks run genie:run
 
 load("//buck2:materialization.bzl", "export_materialization_inputs", "package_view")
@@ -59,6 +59,7 @@ export_materialization_inputs([
     "src/core/genie.contract.ts",
     "src/core/import-map/import-map.unit.test.ts",
     "src/core/import-map/mod.ts",
+    "src/core/import-map/standalone-staging.integration.test.ts",
     "src/core/import-map/sync-resolver.integration.test.ts",
     "src/core/import-map/sync-resolver.ts",
     "src/core/input-manifest.integration.test.ts",
@@ -218,6 +219,7 @@ package_view(
         "src/core/genie.contract.ts": "src/core/genie.contract.ts",
         "src/core/import-map/import-map.unit.test.ts": "src/core/import-map/import-map.unit.test.ts",
         "src/core/import-map/mod.ts": "src/core/import-map/mod.ts",
+        "src/core/import-map/standalone-staging.integration.test.ts": "src/core/import-map/standalone-staging.integration.test.ts",
         "src/core/import-map/sync-resolver.integration.test.ts": "src/core/import-map/sync-resolver.integration.test.ts",
         "src/core/import-map/sync-resolver.ts": "src/core/import-map/sync-resolver.ts",
         "src/core/input-manifest.integration.test.ts": "src/core/input-manifest.integration.test.ts",
@@ -367,6 +369,7 @@ package_view(
         "src/core/genie.contract.ts": "src/core/genie.contract.ts",
         "src/core/import-map/import-map.unit.test.ts": "src/core/import-map/import-map.unit.test.ts",
         "src/core/import-map/mod.ts": "src/core/import-map/mod.ts",
+        "src/core/import-map/standalone-staging.integration.test.ts": "src/core/import-map/standalone-staging.integration.test.ts",
         "src/core/import-map/sync-resolver.integration.test.ts": "src/core/import-map/sync-resolver.integration.test.ts",
         "src/core/import-map/sync-resolver.ts": "src/core/import-map/sync-resolver.ts",
         "src/core/input-manifest.integration.test.ts": "src/core/input-manifest.integration.test.ts",
@@ -513,6 +516,7 @@ package_view(
         "src/core/genie.contract.ts": "src/core/genie.contract.ts",
         "src/core/import-map/import-map.unit.test.ts": "src/core/import-map/import-map.unit.test.ts",
         "src/core/import-map/mod.ts": "src/core/import-map/mod.ts",
+        "src/core/import-map/standalone-staging.integration.test.ts": "src/core/import-map/standalone-staging.integration.test.ts",
         "src/core/import-map/sync-resolver.integration.test.ts": "src/core/import-map/sync-resolver.integration.test.ts",
         "src/core/import-map/sync-resolver.ts": "src/core/import-map/sync-resolver.ts",
         "src/core/input-manifest.integration.test.ts": "src/core/input-manifest.integration.test.ts",
@@ -670,6 +674,7 @@ vitest_test(
     excludes = [
         "src/build/mod.integration.test.ts",
         "src/core/discovery.unit.test.ts",
+        "src/core/import-map/standalone-staging.integration.test.ts",
         "src/runtime/github-workflow/ci-runtime-scripts.unit.test.ts",
         "src/runtime/github-workflow/ci-workflow-helpers.unit.test.ts",
         "src/runtime/package-json/package-json.unit.test.ts",
@@ -690,6 +695,7 @@ vitest_collect(
     excludes = [
         "src/build/mod.integration.test.ts",
         "src/core/discovery.unit.test.ts",
+        "src/core/import-map/standalone-staging.integration.test.ts",
         "src/runtime/github-workflow/ci-runtime-scripts.unit.test.ts",
         "src/runtime/github-workflow/ci-workflow-helpers.unit.test.ts",
         "src/runtime/package-json/package-json.unit.test.ts",

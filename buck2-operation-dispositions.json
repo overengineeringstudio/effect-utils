@@ -81,6 +81,14 @@
       "operation": "publish-products"
     },
     {
+      "disposition": "outside-by-policy:bootstrap-integration",
+      "operation": "consumer-smoke"
+    },
+    {
+      "disposition": "outside-by-policy:live-publication",
+      "operation": "promote-published"
+    },
+    {
       "disposition": "outside-by-policy:ci-measurement-with-run-timestamp",
       "operation": "main-source-shape"
     },
@@ -157,6 +165,10 @@
     {
       "disposition": "buck-pending:static",
       "operation": "lint:check:getflake"
+    },
+    {
+      "disposition": "outside-by-policy:repository-staging-contract",
+      "operation": "lint:check:standalone-staging"
     },
     {
       "disposition": "outside-by-policy:authoring-mutation",

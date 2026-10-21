@@ -21,6 +21,9 @@ eval_genie_module_attr() {
           ({ ... }: {
             options.tasks = pkgs.lib.mkOption { type = pkgs.lib.types.attrsOf pkgs.lib.types.anything; default = { }; };
             options.packages = pkgs.lib.mkOption { type = pkgs.lib.types.listOf pkgs.lib.types.anything; default = [ ]; };
+            # The composed lint module resolves managed pnpm storage from the
+            # Materialization Root, just as the real devenv module does.
+            options.devenv.root = pkgs.lib.mkOption { type = pkgs.lib.types.str; default = \"$ROOT\"; };
           })
           $ROOT/nix/devenv-modules/tasks/shared/genie.nix
           $extra_modules

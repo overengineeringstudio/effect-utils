@@ -27,10 +27,10 @@ let
     set -euo pipefail
     export LC_ALL=C
 
-    fail() {
-      echo "buck2-runtime-inspect-mach-o-dynamic: FATAL - $*" >&2
-      exit 1
-    }
+    inspector_name=buck2-runtime-inspect-mach-o-dynamic
+    inspection_command=( ${pkgs.lib.escapeShellArg inspectionTools.otool.executable} -l )
+    inspection_label="otool -l"
+    source ${import ./buck2-runtime-inspection-failure.nix { inherit pkgs; }}
 
     [ "$#" -eq 2 ] || fail "usage: $0 DESCRIPTOR_JSON EXTRACTED_ROOT"
     descriptor="$1"
@@ -54,6 +54,7 @@ let
     inspect_entrypoint() {
       local relative="$1"
       local executable="$root/$relative"
+      local inspection_path="$executable"
       [ -f "$executable" ] && [ ! -L "$executable" ] \
         || fail "entrypoint must be a regular non-symlink file: $relative"
       [ -x "$executable" ] || fail "entrypoint is not executable: $relative"
@@ -109,10 +110,10 @@ let
       }' | ${pkgs.coreutils}/bin/sort -u)"
       expected_dylibs="$(${pkgs.jq}/bin/jq -r '.runtime.dylibs[]' "$descriptor")"
       [ "$actual_dylibs" = "$expected_dylibs" ] || fail "Mach-O dylib mismatch for $relative"
-      if printf '%s\n' "$actual_dylibs" | ${pkgs.gnugrep}/bin/grep -Ev '^/usr/lib/|^/System/Library/' >/dev/null; then
+      if ${pkgs.gnugrep}/bin/grep -Ev '^/usr/lib/|^/System/Library/' <<<"$actual_dylibs" >/dev/null; then
         fail "Mach-O install names must be system-only: $relative"
       fi
-      if printf '%s\n' "$load_commands" | ${pkgs.gnugrep}/bin/grep -Eq '^      cmd LC_RPATH$'; then
+      if ${pkgs.gnugrep}/bin/grep -Eq '^      cmd LC_RPATH$' <<<"$load_commands"; then
         fail "Mach-O LC_RPATH must be absent: $relative"
       fi
       local signing_policy signature_offset signature_size file_size magic declared_size count index slot blob_offset blob_magic blob_size flags cms_size cms_count

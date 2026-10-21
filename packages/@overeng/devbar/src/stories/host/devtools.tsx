@@ -1,5 +1,5 @@
 import * as stylex from '@stylexjs/stylex'
-import { Effect, Exit, Metric, Scope } from 'effect'
+import { Cause, Effect, Exit, Metric, Scope } from 'effect'
 import * as React from 'react'
 import { createRoot } from 'react-dom/client'
 
@@ -25,8 +25,11 @@ export const mountDiagnostics = async (
   )
   const result = await Effect.runPromiseExit(program)
   if (Exit.isFailure(result) === true) {
-    await Effect.runPromise(Scope.close(scope, result))
-    return Effect.runPromise(Effect.failCause(result.cause))
+    // Retain acquisition and finalizer failures rather than letting cleanup replace the cause.
+    const closed = await Effect.runPromiseExit(Scope.close(scope, result))
+    const cause: Cause.Cause<HostRuntimeError> =
+      Exit.isFailure(closed) === true ? Cause.combine(result.cause, closed.cause) : result.cause
+    throw new Error(`Unable to acquire host diagnostics:\n${Cause.pretty(cause)}`, { cause })
   }
   if (options.signal.aborted === true) {
     await Effect.runPromise(Scope.close(scope, Exit.void))

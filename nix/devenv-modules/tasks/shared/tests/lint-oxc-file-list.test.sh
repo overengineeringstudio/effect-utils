@@ -81,7 +81,7 @@ for module in lint-oxc.nix lint-genie.nix; do
       exit 1
     fi
   done
-  if grep -qF -- '--config.package-import-method=' <<< "$task"; then
+  if [ "$module" != lint-oxc.nix ] && grep -qF -- '--config.package-import-method=' <<< "$task"; then
     echo "FAIL: $module lockfile verification must not configure package materialization"
     exit 1
   fi

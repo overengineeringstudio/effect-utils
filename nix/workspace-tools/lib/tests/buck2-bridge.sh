@@ -93,6 +93,59 @@ expect_command_failure() {
 
 static_product="$(build_expr "($base_expr).staticElfProduct")"
 export BUCK2_BRIDGE_STATIC_PRODUCT="$static_product"
+
+# Keep success silent; preserve broken entrypoint evidence even when readelf fails.
+static_inspector="$(build_expr "let $common_let in
+  import (repo + \"/nix/workspace-tools/lib/buck2-runtime-inspect-elf-static.nix\") { inherit pkgs; }")"
+diagnostic_root="$(mktemp -d)"
+tar --extract --file "$static_product/artifact.tar" --directory "$diagnostic_root"
+jq '.runtime = {
+  kind: "elf-static", inspectionContract: "elf-static/v1",
+  elfClass: "ELF64", machine: .platform.architecture
+}' "$static_product/descriptor.json" >"$diagnostic_root/descriptor.json"
+"$static_inspector" "$diagnostic_root/descriptor.json" "$diagnostic_root" \
+  >"$diagnostic_root/stdout" 2>"$diagnostic_root/stderr"
+[ ! -s "$diagnostic_root/stdout" ] && [ ! -s "$diagnostic_root/stderr" ]
+chmod u+w "$diagnostic_root/bin/fixture-tool"
+cp "$diagnostic_root/bin/fixture-tool" "$diagnostic_root/intact"
+for mutation in no-load truncated; do
+  cp "$diagnostic_root/intact" "$diagnostic_root/bin/fixture-tool"
+  case "$mutation" in
+    no-load)
+      # ELF64 e_phoff/e_phnum = 0: a valid header with no loadable segments.
+      printf '\0\0\0\0\0\0\0\0' | dd of="$diagnostic_root/bin/fixture-tool" bs=1 seek=32 conv=notrunc status=none
+      printf '\0\0' | dd of="$diagnostic_root/bin/fixture-tool" bs=1 seek=56 conv=notrunc status=none
+      expected_fatal='entrypoint has no loadable ELF segment: bin/fixture-tool'
+      ;;
+    truncated)
+      truncate -s 16 "$diagnostic_root/bin/fixture-tool"
+      expected_fatal='readelf --file-header failed for bin/fixture-tool'
+      ;;
+  esac
+  diagnostic_rc=0
+  "$static_inspector" "$diagnostic_root/descriptor.json" "$diagnostic_root" \
+    >"$diagnostic_root/stdout" 2>"$diagnostic_root/stderr" || diagnostic_rc=$?
+  [ "$diagnostic_rc" -ne 0 ]
+  [ ! -s "$diagnostic_root/stdout" ]
+  for expected in \
+    "buck2-runtime-inspect-elf-static: FATAL - $expected_fatal" \
+    '--- runtime inspection diagnostics ---' \
+    "path: $diagnostic_root/bin/fixture-tool" \
+    'size (bytes):' "$(stat -c %s "$diagnostic_root/bin/fixture-tool")" \
+    'sha256:' "$(sha256sum "$diagnostic_root/bin/fixture-tool")" \
+    'file:' 'readelf -lW:' '--- end runtime inspection diagnostics ---'; do
+    grep -F -- "$expected" "$diagnostic_root/stderr" >/dev/null
+  done
+  if [ "$mutation" = truncated ]; then
+    grep -F 'diagnostic command failed (exit ' "$diagnostic_root/stderr" >/dev/null
+  else
+    grep -F 'There are no program headers in this file.' "$diagnostic_root/stderr" >/dev/null
+  fi
+  echo "buck2-bridge-test: RED inspector diagnostics ($mutation), exit=$diagnostic_rc"
+  cat "$diagnostic_root/stderr"
+done
+rm -rf "$diagnostic_root"
+
 unsupported_runtime_expr="let
   $common_let
   exported = builtins.storePath (builtins.getEnv \"BUCK2_BRIDGE_STATIC_PRODUCT\");

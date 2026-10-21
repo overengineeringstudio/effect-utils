@@ -1179,6 +1179,26 @@ in
     NODE_OPTIONS = "--import=${./. + "/packages/@overeng/pty-effect/test/node-pty-native-hook.ts"}";
   };
 
+  tasks."buck2:editor:publish:standalone-staging" = scopedEditorViewPublisher {
+    description = "Publish compiler dependencies for the standalone staging guard";
+    packagePaths = [ "packages/@overeng/genie" ];
+    traceScope = "standalone-staging";
+  };
+
+  # PR lint CI checks every standalone-staged source and inventory completeness.
+  tasks."lint:check:standalone-staging" = {
+    description = "Guard standalone Nix-staged JS/TS sources and inventory completeness";
+    # The AST compiler comes from the scoped Genie projection; the runner uses only builtins.
+    after = [ "buck2:editor:publish:standalone-staging" ];
+    exec = trace.exec "lint:check:standalone-staging" ''
+      set -euo pipefail
+      root="''${DEVENV_ROOT:-$PWD}"
+      cd "$root"
+      exec ${pkgs.bun}/bin/bun "$root/packages/@overeng/buck2-tools/src/bun-test-runner.ts" test "$root/packages/@overeng/genie/src/core/import-map/standalone-staging.integration.test.ts"
+    '';
+    # No cache: a newly staged source must always be discovered.
+  };
+
   tasks."lint:check:format:parity" = {
     description = "Compare Buck and Git formatter sources against exact documented differences";
     after = [ "genie:check" ];
@@ -1209,6 +1229,7 @@ in
     "genie:check"
     "lint:check:no-tailwind"
     "lint:check:getflake"
+    "lint:check:standalone-staging"
   ];
   tasks."lint:check".exec = lib.mkForce (buck2BuildExec {
     name = "lint:check";
@@ -1452,6 +1473,15 @@ in
       set -euo pipefail
       root="''${DEVENV_ROOT:-$PWD}"
       exec bash "$root/genie/ci-scripts/bootstrap-cold-proof.sh"
+    '';
+  };
+
+  tasks."test:consumer-smoke" = {
+    description = "Install a fixture consumer through the candidate's standalone-staged pnpm module";
+    exec = trace.exec "test:consumer-smoke" ''
+      set -euo pipefail
+      bash ${lib.escapeShellArg "${config.devenv.root}/nix/fixtures/consumer-smoke/run.sh"} \
+        "''${CONSUMER_SMOKE_CANDIDATE:-${config.devenv.root}}"
     '';
   };
 
@@ -1931,9 +1961,19 @@ in
     '';
   };
 
+  tasks."git-hooks:environment:test" = {
+    description = "Keep fixture Git commands out of the hook caller repository and staged index";
+    exec = trace.exec "git-hooks:environment:test" ''
+      exec ${pkgs.bash}/bin/bash \
+        ${./scripts/without-git-local-env.sh} \
+        ${pkgs.bash}/bin/bash "$DEVENV_ROOT/scripts/without-git-local-env.test.sh"
+    '';
+  };
+
   tasks."check:quick".after = lib.mkForce [
     "buck2:quick"
     "lint:check:format:parity"
+    "lint:check:standalone-staging"
     "buck2:cache-posture:test"
     "buck2:capabilities:test"
     "worktree:teardown:test"
@@ -1941,6 +1981,7 @@ in
     "check:buck2-producer-overlap"
     "nix:check:quick"
     "otel:pipeline-run:test"
+    "git-hooks:environment:test"
   ];
   # Prebuild selected collection products after genie freshness alongside editor publication,
   # then execute the platform's bounded lanes in one Buck test invocation. The per-lane tasks
@@ -1992,9 +2033,6 @@ in
   # is fixed; currently this workaround prevents shell-entry failures with core.hooksPath.
   tasks."devenv:git-hooks:install".before = lib.mkForce [ ];
 
-  # Repo-local pnpm store for consistent local installs (not used by Nix builds).
-  env.PNPM_STORE_DIR = "${config.devenv.root}/.devenv/pnpm-store-pure-v1";
-
   enterShell = ''
     export WORKSPACE_ROOT="$PWD"
     export PATH="$WORKSPACE_ROOT/node_modules/.bin:$PATH"
@@ -2009,7 +2047,7 @@ in
   git-hooks.enable = true;
   git-hooks.hooks.check-quick = {
     enable = true;
-    entry = "DEVENV_TUI=false devenv tasks run check:quick";
+    entry = "${pkgs.bash}/bin/bash ${./scripts/without-git-local-env.sh} env DEVENV_TUI=false devenv tasks run check:quick";
     stages = [ "pre-commit" ];
     always_run = true;
     pass_filenames = false;

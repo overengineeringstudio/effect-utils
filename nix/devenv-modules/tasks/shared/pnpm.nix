@@ -62,6 +62,15 @@ let
   trace = import ../lib/trace.nix { inherit lib; };
   cliGuard = import ../lib/cli-guard.nix { inherit pkgs; };
   cache = import ../lib/cache.nix { inherit config; };
+  pnpmStorage = import ../lib/pnpm-storage.nix {
+    inherit
+      lib
+      pkgs
+      config
+      workspaceRoot
+      globalVirtualStore
+      ;
+  };
   workspaceCacheName =
     if workspaceRoot == "." then
       "root"
@@ -79,11 +88,6 @@ let
       "${config.devenv.root}/.devenv/pnpm-home"
     else
       "${config.devenv.root}/.devenv/pnpm-home/${workspaceCacheName}";
-  jobLocalPnpmStoreDir =
-    if workspaceRoot == "." then
-      "${config.devenv.root}/.devenv/pnpm-store-pure-v1"
-    else
-      "${config.devenv.root}/.devenv/pnpm-store-pure-v1/${workspaceCacheName}";
   installTaskName =
     if taskSuffix == null then
       "${taskNamePrefix}:install"
@@ -109,9 +113,7 @@ let
       "${taskNamePrefix}:reset-lock-files"
     else
       "${taskNamePrefix}:reset-lock-files:${taskSuffix}";
-  pnpmTaskHelpersScript = pkgs.writeText "pnpm-task-helpers.sh" (
-    builtins.readFile ./pnpm-task-helpers.sh
-  );
+  pnpmTaskHelpersScript = pnpmStorage.helpersScript;
   nodeModulesProjectionScript = pkgs.writeText "check-node-modules-projection-health.cjs" (
     builtins.readFile ./check-node-modules-projection-health.cjs
   );
@@ -237,12 +239,7 @@ let
     fi
   '';
   configurePnpmStorageFn = ''
-    configure_pnpm_storage \
-      ${lib.escapeShellArg "${pkgs.nodejs}/bin/node"} \
-      ${lib.escapeShellArg workspaceRootAbs} \
-      ${lib.escapeShellArg jobLocalPnpmStoreDir} \
-      ${lib.boolToString pkgs.stdenv.hostPlatform.isLinux} \
-      ${lib.boolToString globalVirtualStore}
+    ${pnpmStorage.configure}
     if [ "$PNPM_CONFIG_ENABLE_GLOBAL_VIRTUAL_STORE" = true ]; then
       pnpm_policy_flags=( ${gvsPolicyFlagsString} )
     else
@@ -253,15 +250,7 @@ let
     ${loadPnpmTaskHelpersFn}
     ${ensureLocalPnpmHomeFn}
     ${configurePnpmStorageFn}
-    mkdir -p ${lib.escapeShellArg cacheRoot}
-
-    lockfile=${lib.escapeShellArg "${cacheRoot}/pnpm-install.lock"}
-    exec 200>"$lockfile"
-    if ! ${flock} -w 600 200; then
-      echo "[pnpm] Materialization-root mutation lock timeout after 600s: $lockfile" >&2
-      echo "[pnpm] Another managed pnpm mutation may be stuck" >&2
-      exit 1
-    fi
+    ${pnpmStorage.acquireRootLock}
 
     pnpm_home_lockfile="''${PNPM_HOME:-${cacheRoot}}/.effect-utils-pnpm-install.lock"
     mkdir -p "$(dirname "$pnpm_home_lockfile")"

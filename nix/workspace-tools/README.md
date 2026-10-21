@@ -12,6 +12,10 @@ dependency archives and imports or reconstructs the pinned Buck product graph.
   - `buck2-artifact-import.nix` — fail-closed product import entry point with
     runtime inspection delegated to the admitted runtime-specific inspectors.
   - `buck2-runtime-inspect-*.nix` — observation-only runtime verification.
+    Failures share a stderr diagnostic block containing the inspected path,
+    byte size, SHA-256, file identification, and full ELF program headers or
+    Mach-O load commands. Diagnostic tool failures are recorded without hiding
+    the original failure; successful inspections remain silent.
   - `buck2-product-candidates.nix` — package candidates backed by Buck products.
   - `javascript-product-import.nix` — JavaScript module and runtime-tree import;
     dispatches to `javascript-published-import.nix` (eval-time validation of
