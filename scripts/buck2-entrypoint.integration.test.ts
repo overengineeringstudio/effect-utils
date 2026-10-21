@@ -146,7 +146,7 @@ await new Promise<void>((resolve) => process.stdin.once('data', () => resolve())
   }
   const child = Bun.spawn([process.execPath, '--preload', preload, ...args], {
     cwd: root,
-    env,
+    env: { ...env, BUCK2_STDIO_LIBRARY: process.env['BUCK2_STDIO_LIBRARY'] },
     detached: true,
     stdin: 'pipe',
     stdout: 'pipe',
@@ -227,6 +227,226 @@ afterEach(async () => {
 })
 
 describe('direct pinned Buck posture', () => {
+  for (const mode of ['source', 'compiled', 'missing-shim'] as const) {
+    it(`preserves inherited stdio flags and complete large stderr after a launcher diagnostic (${mode})`, async () => {
+      const root = fixture()
+      const baseline = join(root, 'stdio-before.json')
+      const observed = join(root, 'stdio-after.json')
+      const childPath = join(root, 'native-stderr.ts')
+      const launcher = join(import.meta.dir, 'buck2-entrypoint.ts')
+      const library = process.env['BUCK2_STDIO_LIBRARY']
+      expect(library).toBeDefined()
+      const executable = mode === 'source' ? process.execPath : join(root, 'compiled-launcher')
+      const launcherArgs = mode === 'source' ? [launcher] : []
+      if (mode !== 'source') {
+        const build = Bun.spawnSync(
+          [
+            process.execPath,
+            'build',
+            '--compile',
+            launcher,
+            '--define',
+            `BUCK2_STDIO_LIBRARY=${JSON.stringify(mode === 'missing-shim' ? join(root, 'absent-shim') : library)}`,
+            '--outfile',
+            executable,
+          ],
+          { cwd: root, stdout: 'pipe', stderr: 'pipe' },
+        )
+        expect({ code: build.exitCode, stderr: build.stderr.toString() }).toMatchObject({ code: 0 })
+      }
+      const nativeFlags = `
+import { dlopen } from 'bun:ffi'
+import { writeFileSync, writeSync } from 'node:fs'
+const stdio = dlopen(${JSON.stringify(library)}, {
+  eu_getfl: { args: ['i32'], returns: 'i32' },
+  eu_setfl: { args: ['i32', 'i32'], returns: 'i32' },
+})
+const flags = () => [0, 1, 2].map((fd) => stdio.symbols.eu_getfl(fd))
+`
+      const payloadSize = 2 * 1024 * 1024
+      writeFileSync(
+        childPath,
+        `#!${process.execPath}
+${nativeFlags}
+writeFileSync(${JSON.stringify(observed)}, JSON.stringify(flags()))
+const payload = Buffer.alloc(${payloadSize}, 'x')
+let offset = 0
+while (offset < payload.length) offset += writeSync(2, payload, offset, payload.length - offset)
+writeSync(2, '\\nlarge-stderr-complete\\n')
+`,
+        { mode: 0o700 },
+      )
+      // Establish genuinely blocking inherited descriptors independently of the
+      // test runner's stream implementation, then exec the real launcher.
+      const child = Bun.spawn(
+        [
+          process.execPath,
+          '-e',
+          `${nativeFlags}
+const nonblock = process.platform === 'darwin' ? 4 : 2048
+for (const [fd, value] of flags().entries()) {
+  if (value < 0 || stdio.symbols.eu_setfl(fd, value & ~nonblock) !== 0) process.exit(70)
+}
+writeFileSync(${JSON.stringify(baseline)}, JSON.stringify(flags()))
+// Exercise the native ABI with an actual flag transition, not a no-op restore.
+const blocking = flags()
+for (const [fd, value] of blocking.entries()) {
+  if (stdio.symbols.eu_setfl(fd, value | nonblock) !== 0) process.exit(71)
+  if (stdio.symbols.eu_getfl(fd) !== (value | nonblock)) process.exit(72)
+  if (stdio.symbols.eu_setfl(fd, value) !== 0 || stdio.symbols.eu_getfl(fd) !== value) process.exit(73)
+}
+process.execve(${JSON.stringify(executable)}, [${JSON.stringify(executable)}, ...${JSON.stringify(launcherArgs)}, ${JSON.stringify(childPath)}, 'build', '//:app'], process.env)
+`,
+        ],
+        {
+          cwd: root,
+          env: {
+            PATH: process.env['PATH'],
+            HOME: root,
+            XDG_CACHE_HOME: join(root, 'cache'),
+            BUCK2_STDIO_LIBRARY: library,
+          },
+          detached: true,
+          stdin: 'ignore',
+          stdout: 'pipe',
+          stderr: 'pipe',
+        },
+      )
+      launchProcesses.add(child)
+      const reader = child.stderr.getReader()
+      const chunks: Uint8Array[] = []
+      try {
+        for (;;) {
+          const { done, value } = await reader.read()
+          if (done === true) break
+          chunks.push(value)
+          // Deliberately apply backpressure rather than buffering the entire
+          // stream in a fast Response reader.
+          await Bun.sleep(5)
+        }
+      } finally {
+        reader.releaseLock()
+      }
+      const stderr = Buffer.concat(chunks).toString()
+      expect(stderr).toContain('warning: Buck2 REAPI probe failed:')
+      if (mode === 'missing-shim') {
+        expect(stderr.split('warning: Buck2 stdio flag protection unavailable:')).toHaveLength(2)
+      } else {
+        expect(stderr.includes('warning: Buck2 stdio flag')).toBe(false)
+      }
+      // Darwin F_GETFL also exposes kernel FWASWRITTEN bookkeeping after the
+      // warning. It is not a status option and cannot be cleared by F_SETFL.
+      const statusMask = process.platform === 'darwin' ? ~0x10000 : -1
+      expect(
+        JSON.parse(readFileSync(observed, 'utf8')).map((value: number) => value & statusMask),
+      ).toEqual(
+        JSON.parse(readFileSync(baseline, 'utf8')).map((value: number) => value & statusMask),
+      )
+      expect(await child.exited).toBe(0)
+      expect(stderr.endsWith(`${'x'.repeat(payloadSize)}\nlarge-stderr-complete\n`)).toBe(true)
+    }, 20000)
+  }
+
+  for (const scenario of ['unwritable-stderr', 'restore-failure'] as const) {
+    it(`still execs with complete child output after stdio protection ${scenario}`, async () => {
+      const root = fixture()
+      const launcher = join(import.meta.dir, 'buck2-entrypoint.ts')
+      const native = join(root, 'native-stdout.ts')
+      const payloadSize = 256 * 1024
+      writeFileSync(
+        native,
+        `#!${process.execPath}
+import { writeSync } from 'node:fs'
+const payload = Buffer.alloc(${payloadSize}, 'y')
+let offset = 0
+while (offset < payload.length) offset += writeSync(1, payload, offset, payload.length - offset)
+writeSync(1, '\\nchild-executed\\n')
+`,
+        { mode: 0o700 },
+      )
+      let command: string[]
+      if (scenario === 'unwritable-stderr') {
+        const executable = join(root, 'missing-protection-launcher')
+        const build = Bun.spawnSync(
+          [
+            process.execPath,
+            'build',
+            '--compile',
+            launcher,
+            '--define',
+            `BUCK2_STDIO_LIBRARY=${JSON.stringify(join(root, 'absent-shim'))}`,
+            '--outfile',
+            executable,
+          ],
+          { cwd: root, stdout: 'pipe', stderr: 'pipe' },
+        )
+        expect({ code: build.exitCode, stderr: build.stderr.toString() }).toMatchObject({ code: 0 })
+        command = [
+          process.execPath,
+          '-e',
+          `import { closeSync, openSync } from 'node:fs'
+// Bun itself cannot exec with a closed fd2, even without a launcher. Keep
+// fd2 present but read-only so the optional warning genuinely gets EBADF.
+closeSync(2)
+if (openSync('/dev/null', 'r') !== 2) process.exit(71)
+process.execve(${JSON.stringify(executable)}, [${JSON.stringify(executable)}, ${JSON.stringify(native)}, '--version'], process.env)`,
+        ]
+      } else {
+        const preload = join(root, 'inject-restore-failure.ts')
+        // Force a real EBADF during restoration, then reopen stdin only at the
+        // actual exec call: Bun itself rejects closed stdio before execve.
+        writeFileSync(
+          preload,
+          `import { closeSync, openSync } from 'node:fs'
+import process from 'node:process'
+const execve = process.execve
+const forwardExecve = (file: string, args: string[], env: Record<string, string>) => {
+  if (openSync('/dev/null', 'r') !== 0) process.exit(73)
+  return execve(file, args, env)
+}
+let injected = false
+Object.defineProperty(process, 'execve', {
+  get() {
+    if (injected === false) {
+      closeSync(0)
+      injected = true
+    }
+    return forwardExecve
+  },
+})
+`,
+        )
+        command = [process.execPath, '--preload', preload, launcher, native, '--version']
+      }
+      const child = Bun.spawn(command, {
+        cwd: root,
+        env: {
+          PATH: process.env['PATH'],
+          HOME: root,
+          BUCK2_STDIO_LIBRARY: process.env['BUCK2_STDIO_LIBRARY'],
+        },
+        detached: true,
+        stdin: 'ignore',
+        stdout: 'pipe',
+        stderr: 'pipe',
+      })
+      launchProcesses.add(child)
+      const [stdout, stderr, code] = await Promise.all([
+        new Response(child.stdout).text(),
+        new Response(child.stderr).text(),
+        child.exited,
+      ])
+      expect(code).toBe(0)
+      expect(stdout).toBe(`${'y'.repeat(payloadSize)}\nchild-executed\n`)
+      if (scenario === 'restore-failure') {
+        expect(stderr.split('warning: Buck2 stdio flag restoration failed:')).toHaveLength(2)
+        expect(stderr).not.toContain('warning: Buck2 stdio flag protection unavailable:')
+      } else {
+        expect(stderr).toBe('')
+      }
+    }, 20000)
+  }
+
   for (const scenario of ['healthy', 'retry-success', 'both-fail'] as const) {
     it(`records per-invocation cache admission for ${scenario}`, async () => {
       let requests = 0

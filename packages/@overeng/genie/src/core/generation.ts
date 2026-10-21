@@ -32,6 +32,7 @@ import { DistributedSemaphore } from '@overeng/utils/lock'
 import { FileSystemBacking } from '@overeng/utils/node'
 
 import type { GenieOutput } from '../runtime/mod.ts'
+import { inputFileSystem } from '../runtime/node/inputs.ts'
 import { isAnalyzableSourcePath, runTsFileAnalysis } from '../runtime/node/ts-api.ts'
 import type { TsFileAnalysisSession } from '../runtime/node/ts-api.ts'
 import { CatalogConflictError } from '../runtime/package-json/catalog.ts'
@@ -419,6 +420,7 @@ const stageGraphWithinRoot = ({
             specifier,
             importerPath: sourcePath,
             workspaceRoot,
+            fs: inputFileSystem,
           })
           if (resolvedMemberPath === undefined) continue
 

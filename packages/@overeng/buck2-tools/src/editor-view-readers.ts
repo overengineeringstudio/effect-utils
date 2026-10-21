@@ -142,6 +142,91 @@ export const managedEditorViewSnapshots = ({
 }
 
 /**
+ * Observe pointers separately from payloads before orphan retirement. Lexical
+ * targets preserve dangling legacy pointers; resolved targets catch indirect
+ * links. Callers hold the root publication lock and repeat this observation at
+ * their retirement fence. An unreadable pointer inventory never proves absence.
+ */
+export const referencedEditorViewPaths = ({
+  editorRoot,
+  repoRoot,
+  onInventory,
+}: {
+  readonly editorRoot: string
+  readonly repoRoot?: string | undefined
+  readonly onInventory?: (observation: {
+    readonly entries: number
+    readonly durationMs: number
+  }) => void
+}): ReadonlySet<string> | undefined => {
+  const inventoryStarted = performance.now()
+  const referenced = new Set<string>()
+  const pointer = (path: string): void => {
+    if (lstatSync(path).isSymbolicLink() === false) return
+    referenced.add(resolve(path, '..', readlinkSync(path)))
+    try {
+      referenced.add(realpathSync(path))
+    } catch (error) {
+      if (vanished(error) === false) throw error
+    }
+  }
+  const controls = (directory: string): void => {
+    for (const entry of readdirSync(directory, { withFileTypes: true })) {
+      const path = join(directory, entry.name)
+      if (entry.isSymbolicLink() === true) pointer(path)
+      else if (entry.isDirectory() === true && entry.name === '.legacy') {
+        // An exchanged first hop can itself be a symlink. It is a pointer
+        // root, unlike links internal to a displaced dependency payload.
+        for (const retained of readdirSync(path, { withFileTypes: true }))
+          if (retained.isSymbolicLink() === true) pointer(join(path, retained.name))
+      } else if (
+        entry.isDirectory() === true &&
+        entry.name !== '.store' &&
+        entry.name !== '.legacy' &&
+        entry.name.startsWith('.gc-') === false &&
+        entry.name.startsWith('.publish.lock') === false
+      )
+        controls(path)
+    }
+  }
+  // Package first hops may live under hidden/build/workspace directories too.
+  // Walk real directories only (never follow workspace/dependency symlinks),
+  // bounded by entries rather than silently declaring excluded inputs absent.
+  // The editor root has its separate control-pointer inventory above.
+  let packageEntries = 0
+  const resolvedEditorRoot = resolve(editorRoot)
+  const packages = (directory: string): void => {
+    for (const name of readdirSync(directory)) {
+      packageEntries += 1
+      if (packageEntries > 200_000)
+        throw new Error('editor view: package pointer inventory exceeds its entry bound')
+      const path = join(directory, name)
+      const status = lstatSync(path)
+      if (name === 'node_modules' && status.isSymbolicLink() === true) pointer(path)
+      if (status.isDirectory() === false) continue
+      // Real node_modules contents are dependency payload, not package first
+      // hops; inspect the entry above but never inventory that payload tree.
+      if (name === 'node_modules') continue
+      // Git's object/index metadata contains no package first hops.
+      if (name === '.git') continue
+      // Editor payload stores are not package inputs. Each editor root has its
+      // own control-pointer inventory; custom roots also match by exact path.
+      if (name === '.editor-view' || path === resolvedEditorRoot) continue
+      packages(path)
+    }
+  }
+  try {
+    controls(editorRoot)
+    if (repoRoot !== undefined) packages(resolve(repoRoot))
+    return referenced
+  } catch {
+    return undefined
+  } finally {
+    onInventory?.({ entries: packageEntries, durationMs: performance.now() - inventoryStarted })
+  }
+}
+
+/**
  * This census is advisory: kernel references and shell symlinks can appear after
  * inspection, and permissions can hide readers. Guaranteed retention requires a
  * managed pin admitted under the content-store flock before using a generation.

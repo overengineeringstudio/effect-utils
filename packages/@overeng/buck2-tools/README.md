@@ -226,19 +226,27 @@ invalidates the shared census. Fitting reservations do not scan live readers,
 including above the 80% warning threshold.
 
 Under pressure, unreferenced CAS-only payloads are reclaimed first. Generation
-eviction additionally requires managed reader lifetimes, complete applicable
-migration evidence, and a nonblocking exclusive generation lease. Pins, held
-leases, positive legacy references, incomplete evidence, recency, and grace
-protect candidates. `EDITOR_VIEW_HOST_RECENCY_MS` configures the default 24-hour
-recency window. Inaccessible same-user `/proc` observations are **unknown**, not
-evidence of inactivity; another namespace or an outside cwd does not prove
-that a process cannot reach a view through aliases or retained directory handles.
+eviction requires complete applicable legacy reader evidence and a nonblocking
+exclusive generation lease. Pins, held leases, positive legacy references,
+incomplete evidence, recency, and grace protect candidates.
+`EDITOR_VIEW_HOST_RECENCY_MS` configures the default 24-hour recency window.
+Inaccessible same-user `/proc` observations are **unknown**, not evidence of
+inactivity; another namespace or an outside cwd does not prove that a process
+cannot reach a view through aliases or retained directory handles.
 Only clear candidates may enter a destructive plan. Before retirement the
 census is retaken, then journal epoch, generation identity, pointers, pins,
 reader evidence, recency, and lease identity are rechecked under root → host →
-owning-CAS exclusion. Exclusive leases remain open through rename and cleanup;
-cleanup failures close descriptors without explicitly unlocking shared inherited
-descriptions. No retirement waits for a reader while holding a fence.
+owning-CAS exclusion. Eligibility stays fixed at the round's initial timestamp
+and refreshed plans may select only reader-observed keys. A pointer removed
+during locking cannot expose an unobserved orphan to deletion. The per-candidate
+pre-delete seam independently rejects unobserved keys and takes a nonblocking
+exclusive generation lease; held candidates are skipped, never waited on.
+Exclusive leases remain open through rename and actual payload cleanup,
+including deferred shared-batch cleanup; cleanup failures close descriptors
+without explicitly unlocking shared inherited descriptions.
+Reader-protected accounting is refreshed even if an epoch mismatch skips a
+batch. Retirement rechecks last-use and publication timestamps, so newly used
+views cannot be evicted from an older plan. Payload immutability is required.
 Vanished victims are skipped even if teardown removes a held eviction lock.
 Active eviction locks are explicitly marked with process-incarnation
 identity; a publisher waits for that live maintenance operation rather than
@@ -249,6 +257,30 @@ recovery only on the recorded host; recovery is serialized by the host coordinat
 logged. Live publishers, foreign hosts, unknown identities, unreadable owners,
 and legacy records without host evidence still require explicit recovery.
 
+Orphan reachability includes package `node_modules` symlinks under hidden directories,
+`repos`, `dist`, `result`, and `buck-out`, not just ordinary source directories.
+The package inventory walks real directories without following directory symlinks.
+It prunes real `node_modules` payloads, Git metadata, and editor roots' payload
+stores (their control pointers have a separate inventory), but inspects each
+entry before pruning so package `node_modules` symlinks remain visible.
+The package walk is bounded to 200,000 entries. Unreadable or oversized inventories
+are unknown and keep orphan payloads, never evidence that pointers are absent.
+Only candidate-bearing roots request this inventory: census adoption does so
+for actual `.legacy` entries, and eviction planning does so lazily for potentially
+eligible orphans. Ordinary generation-only roots never trigger a package walk.
+Each census/planning invocation caches at most one inventory per such root and
+emits a `pointer-inventory` aggregate with root count, entry count, total duration,
+and per-root entries/durations. Retirement repeats the selected orphan root's
+reachability proof at its deletion fence.
+Startup cleanup carries normal-acquisition or proven-dead-owner-recovery
+provenance and validates the held lock path, exact per-acquisition token, current
+PID, host, and process-start incarnation (including the Linux boot identity).
+Unknown identities refuse reclamation. Normal acquisition follows the previous
+holder's release; automatic recovery proves the previous holder dead. Missing or
+mismatched proof refuses reclamation. Every startup candidate and interrupted
+`.gc-*` payload also receives a fresh reader observation, preserving stale cwd/fd
+holders as well as pointer targets.
+
 If protected or unknown usage prevents admission, publication fails **before
 materialization** with `EditorViewCapacityError` (`EDITOR_VIEW_CAPACITY`).
 This replaces the previous force-admit/publish-anyway fallback. The bounded
@@ -258,8 +290,10 @@ unmanaged sessions and release idle worktrees/pins, or deliberately raise
 `EDITOR_VIEW_HOST_BUDGET_BYTES`. Admission/discovery failures are not swallowed.
 Post-commit maintenance failures remain advisory and do not undo a valid view.
 Reserve start, work reasons, and grant durations use the `[editor-view-budget]`
-prefix and are forwarded live by both single and batch publication. Phase records
-explicitly distinguish entry from completion and include completion durations.
+prefix and are forwarded live by both single and batch publication. Forwarding
+buffers partial stderr lines until their terminating newline, independently of
+child-process chunk boundaries. Phase records explicitly distinguish entry from
+completion and include completion durations.
 Census completion records use `event: "completed"`, `stage`, and monotonic
 `durationMs`, with aggregate counts for root discovery, generation enumeration,
 sidecar reads (hits, misses, bytes), footprint walks on misses (walks, linked

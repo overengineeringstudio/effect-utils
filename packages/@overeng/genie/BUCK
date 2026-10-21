@@ -10,7 +10,7 @@ load("//buck2/products:defs.bzl", "javascript_product")
 # Projection source: packages/@overeng/genie/BUCK.genie.ts
 # Projection schema version: 13
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:cf3805da31c6ca3ef2ad538d41ee77b6c514b7818cb587f778f0fde38b2720e0
+# Semantic fingerprint: sha256:c180c4508f40c37d96f21a6ad9b7c77d25007907b01efabd048fba9f6d9a8933
 # Regenerate: devenv tasks run genie:run
 
 load("//buck2:materialization.bzl", "export_materialization_inputs", "package_view")
@@ -59,6 +59,7 @@ export_materialization_inputs([
     "src/core/genie.contract.ts",
     "src/core/import-map/import-map.unit.test.ts",
     "src/core/import-map/mod.ts",
+    "src/core/import-map/sync-resolver.integration.test.ts",
     "src/core/import-map/sync-resolver.ts",
     "src/core/input-manifest.integration.test.ts",
     "src/core/input-manifest.ts",
@@ -217,6 +218,7 @@ package_view(
         "src/core/genie.contract.ts": "src/core/genie.contract.ts",
         "src/core/import-map/import-map.unit.test.ts": "src/core/import-map/import-map.unit.test.ts",
         "src/core/import-map/mod.ts": "src/core/import-map/mod.ts",
+        "src/core/import-map/sync-resolver.integration.test.ts": "src/core/import-map/sync-resolver.integration.test.ts",
         "src/core/import-map/sync-resolver.ts": "src/core/import-map/sync-resolver.ts",
         "src/core/input-manifest.integration.test.ts": "src/core/input-manifest.integration.test.ts",
         "src/core/input-manifest.ts": "src/core/input-manifest.ts",
@@ -365,6 +367,7 @@ package_view(
         "src/core/genie.contract.ts": "src/core/genie.contract.ts",
         "src/core/import-map/import-map.unit.test.ts": "src/core/import-map/import-map.unit.test.ts",
         "src/core/import-map/mod.ts": "src/core/import-map/mod.ts",
+        "src/core/import-map/sync-resolver.integration.test.ts": "src/core/import-map/sync-resolver.integration.test.ts",
         "src/core/import-map/sync-resolver.ts": "src/core/import-map/sync-resolver.ts",
         "src/core/input-manifest.integration.test.ts": "src/core/input-manifest.integration.test.ts",
         "src/core/input-manifest.ts": "src/core/input-manifest.ts",
@@ -510,6 +513,7 @@ package_view(
         "src/core/genie.contract.ts": "src/core/genie.contract.ts",
         "src/core/import-map/import-map.unit.test.ts": "src/core/import-map/import-map.unit.test.ts",
         "src/core/import-map/mod.ts": "src/core/import-map/mod.ts",
+        "src/core/import-map/sync-resolver.integration.test.ts": "src/core/import-map/sync-resolver.integration.test.ts",
         "src/core/import-map/sync-resolver.ts": "src/core/import-map/sync-resolver.ts",
         "src/core/input-manifest.integration.test.ts": "src/core/input-manifest.integration.test.ts",
         "src/core/input-manifest.ts": "src/core/input-manifest.ts",
