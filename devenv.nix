@@ -822,6 +822,7 @@ let
   editorBootstrapPackagePaths = [
     "."
     "packages/@overeng/otel-contract"
+    "packages/@overeng/schema-codegen"
     "packages/@overeng/schema-codegen-swift"
   ];
   buck2AggregateExec = config.effectUtils.buck2.aggregateExec;
