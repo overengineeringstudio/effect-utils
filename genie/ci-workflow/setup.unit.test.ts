@@ -10,7 +10,10 @@ import storybookPlaysWorkflow from '../../.github/workflows/storybook-plays.yml.
 import previewBuildWorkflow from '../../.github/workflows/storybook-preview-build.yml.genie.ts'
 import previewDeployWorkflow from '../../.github/workflows/storybook-preview-deploy.yml.genie.ts'
 import buck2TestAuthority from '../../buck2-test-authority.json' with { type: 'json' }
-import { pipelineIdentityStepName } from '../../packages/@overeng/ci-tools/src/pipeline-job-names.ts'
+import {
+  pipelineDevenvStepName,
+  pipelineIdentityStepName,
+} from '../../packages/@overeng/ci-tools/src/pipeline-job-names.ts'
 import type { GitHubWorkflowArgs } from '../../packages/@overeng/genie/src/runtime/mod.ts'
 import { pipelineCloseJob } from './pipeline-telemetry.ts'
 import { publishedRefIf } from './published-ref.ts'
@@ -925,6 +928,10 @@ describe('published consumer ref', () => {
     expect(smoke.permissions).toEqual({ contents: 'read' })
     expect(smoke.outputs?.['current-sha']).toBe('${{ steps.consumer-smoke.outputs.current-sha }}')
     const smokeStep = smoke.steps!.find((step) => step.id === 'consumer-smoke')!
+    const resolution = smoke.steps!.find((step) => step.name === pipelineDevenvStepName)!
+    expect(resolution).toBeDefined()
+    expect(resolution.run).toContain('resolve-devenv.sh')
+    expect(smoke.steps!.indexOf(resolution)).toBeLessThan(smoke.steps!.indexOf(smokeStep))
     const command = smokeStep.run as string
     expect(command).toContain('test:consumer-smoke')
     expect(command.indexOf('test:consumer-smoke')).toBeLessThan(

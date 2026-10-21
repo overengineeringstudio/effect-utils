@@ -1078,6 +1078,7 @@ const extraJobs: Record<string, any> = {
       linuxSandboxPrerequisitesStep({ privileged: 'trusted' }),
       prepareCiScriptsStep,
       preparePinnedDevenvStep,
+      validateNixStoreStep,
       {
         id: 'consumer-smoke',
         name: 'Install an isolated consumer from the candidate checkout',
