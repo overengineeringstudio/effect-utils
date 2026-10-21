@@ -50,7 +50,10 @@ const buckInputs: unknown = JSON.parse(
     'json',
   ]),
 )
-if (Array.isArray(buckInputs) === false || buckInputs.every((file) => typeof file === 'string') === false) {
+if (
+  Array.isArray(buckInputs) === false ||
+  buckInputs.every((file) => typeof file === 'string') === false
+) {
   throw new Error('Unexpected Buck input enumeration')
 }
 const buck = new Set(buckInputs.filter(admitted))
