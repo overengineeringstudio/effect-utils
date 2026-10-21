@@ -1,6 +1,8 @@
+import type { dlopen as openNativeLibrary } from 'bun:ffi'
 import { spawnSync } from 'node:child_process'
 import { lstatSync, readFileSync, readlinkSync, readdirSync, realpathSync, statSync } from 'node:fs'
-import { join, relative, resolve, sep } from 'node:path'
+import { createRequire } from 'node:module'
+import { isAbsolute, join, relative, resolve, sep } from 'node:path'
 import process from 'node:process'
 
 import { isLinuxReaderInfrastructureIdentity } from './reader-infrastructure.ts'
@@ -8,6 +10,44 @@ import { isLinuxReaderInfrastructureIdentity } from './reader-infrastructure.ts'
 // Static import cannot work in portable Node consumers: bun:ffi is Bun-only.
 const linuxDescriptorDirectory =
   typeof Bun !== 'undefined' ? await import('./editor-view-reader-directory.ts') : undefined
+
+let darwinDeadVnodeProbe: ((pid: number, fd: number) => number) | undefined
+
+/** Descriptor-local kernel proof, never an exemption for the owning process. */
+export const editorViewDarwinDeadVnode: {
+  readonly probe: (input: { readonly pid: number; readonly fd: number }) => boolean
+} = {
+  probe: ({ pid, fd }) => {
+    if (
+      process.platform !== 'darwin' ||
+      typeof Bun === 'undefined' ||
+      Number.isInteger(pid) === false ||
+      pid <= 0 ||
+      pid > 0x7fffffff ||
+      Number.isInteger(fd) === false ||
+      fd < 0 ||
+      fd > 0x7fffffff
+    )
+      return false
+    try {
+      if (darwinDeadVnodeProbe === undefined) {
+        const library = process.env.EDITOR_VIEW_LEASE_LIBRARY
+        if (library === undefined || isAbsolute(library) === false) return false
+        // Load only the packaged library and Bun's builtin FFI, never code from
+        // an evictable editor view. Node-only census consumers remain portable.
+        const { dlopen }: { readonly dlopen: typeof openNativeLibrary } = createRequire(
+          import.meta.url,
+        )('bun:ffi')
+        darwinDeadVnodeProbe = dlopen(library, {
+          eu_darwin_dead_vnode: { args: ['i32', 'i32'], returns: 'i32' },
+        }).symbols.eu_darwin_dead_vnode
+      }
+      return darwinDeadVnodeProbe(pid, fd) === 1
+    } catch {
+      return false
+    }
+  },
+}
 
 const vanished = (error: unknown): boolean =>
   error instanceof Error && 'code' in error && (error.code === 'ENOENT' || error.code === 'ESRCH')
@@ -616,7 +656,10 @@ const scanEditorViewProcesses = (observer: ProcessObserver): readonly string[] =
       return undefined
     }
   })()
-  if (result === undefined) return reasons
+  if (result === undefined) {
+    console.error(`editor-view-process-census: deadVnode=0 unknown=${reasons.length}`)
+    return reasons
+  }
   const stdout = result.stdout ?? ''
   const stderr = result.stderr ?? ''
   if (result.error !== undefined) reasons.push(`lsof-spawn: ${failureCode(result.error)}`)
@@ -633,6 +676,8 @@ const scanEditorViewProcesses = (observer: ProcessObserver): readonly string[] =
   let sameUser = false
   let userKnown = false
   let processSeen = false
+  let pid = ''
+  let deadVnode = 0
   let descriptor = ''
   let type = ''
   let device = ''
@@ -646,6 +691,24 @@ const scanEditorViewProcesses = (observer: ProcessObserver): readonly string[] =
     }
     if (sameUser === false) return
     if (type.length === 0 || /unknown|UNKN|\?/.test(type) === true) {
+      if (
+        /^\d+$/.test(pid) === true &&
+        /^\d+$/.test(descriptor) === true &&
+        Number(pid) > 0 &&
+        Number(pid) <= 0x7fffffff &&
+        Number(descriptor) <= 0x7fffffff
+      ) {
+        try {
+          if (
+            editorViewDarwinDeadVnode.probe({ pid: Number(pid), fd: Number(descriptor) }) === true
+          ) {
+            deadVnode++
+            return
+          }
+        } catch {
+          // Missing or failed native evidence preserves the unknown record.
+        }
+      }
       reasons.push(`lsof-incomplete: missing/unknown file type: ${descriptor}`)
       return
     }
@@ -670,6 +733,7 @@ const scanEditorViewProcesses = (observer: ProcessObserver): readonly string[] =
       inode = ''
       path = ''
       if (identifier === 'p') {
+        pid = field.slice(1)
         processSeen = true
         if (/^\d+$/.test(field.slice(1)) === false)
           reasons.push('lsof-incomplete: invalid process id')
@@ -688,6 +752,7 @@ const scanEditorViewProcesses = (observer: ProcessObserver): readonly string[] =
   admit()
   if (stdout.length !== 0 && processSeen === false)
     reasons.push('lsof-incomplete: no process identity records')
+  console.error(`editor-view-process-census: deadVnode=${deadVnode} unknown=${reasons.length}`)
   return reasons
 }
 

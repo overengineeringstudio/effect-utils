@@ -8,6 +8,7 @@ import * as ReaderDirectory from './editor-view-reader-directory.ts'
 import {
   classifyEditorViewProcessCandidates,
   editorViewAutomaticEvictionEvidence,
+  editorViewDarwinDeadVnode,
   measureEditorViewReaders,
   observeEditorViewProcessCandidates,
 } from './editor-view-readers.ts'
@@ -18,8 +19,10 @@ const nativeFs = { ...process.getBuiltinModule('fs') }
 const nativeChildProcess = { ...ChildProcess }
 const nativeLeases = { ...Leases }
 const nativeReaderDirectory = { ...ReaderDirectory }
+const nativeDeadVnodeProbe = editorViewDarwinDeadVnode.probe
 const io = {
   readdirSync: vi.fn(),
+  deadVnodeProbe: vi.spyOn(editorViewDarwinDeadVnode, 'probe'),
   visitEditorViewProcessDescriptors: vi.fn(),
   lstatSync: vi.fn(),
   statSync: vi.fn(),
@@ -55,6 +58,7 @@ const incarnation = (start = '100', state = 'S'): string =>
 
 beforeEach(() => {
   for (const mock of Object.values(io)) mock.mockReset()
+  io.deadVnodeProbe.mockReturnValue(false)
   Object.defineProperty(process, 'platform', { value: 'linux', configurable: true })
   io.readdirSync.mockImplementation((path: string) => (path === '/proc' ? ['123'] : []))
   io.lstatSync.mockReturnValue({ uid })
@@ -83,6 +87,7 @@ afterEach(() => {
   io.readFileSync.mockReset().mockImplementation(nativeFs.readFileSync)
   io.realpathSync.mockReset().mockImplementation(nativeFs.realpathSync)
   io.spawnSync.mockReset().mockImplementation(nativeChildProcess.spawnSync)
+  io.deadVnodeProbe.mockReset().mockImplementation(nativeDeadVnodeProbe)
   io.observeEditorViewLeaseForRetirement
     .mockReset()
     .mockImplementation(nativeLeases.observeEditorViewLeaseForRetirement)
@@ -431,6 +436,69 @@ describe('macOS lsof completeness', () => {
     })
     expect(classify().get('a')?.state).toBe('held')
     expect(classify().get('b')?.state).toBe('clear')
+  })
+
+  it('clears the observed revoked descriptor without a type only after native dead-vnode proof', () => {
+    io.spawnSync.mockReturnValue({
+      stdout: `p123\0u${uid}\0f15\0n(revoked)\0\n`,
+      stderr: '',
+      status: 0,
+      signal: null,
+    })
+    io.deadVnodeProbe.mockReturnValue(true)
+    expect([...classify().values()].map(({ state }) => state)).toEqual(['clear', 'clear', 'clear'])
+    expect(io.deadVnodeProbe).toHaveBeenCalledWith({ pid: 123, fd: 15 })
+  })
+
+  it('keeps the observed revoked descriptor unknown without native proof', () => {
+    io.spawnSync.mockReturnValue({
+      stdout: `p123\0u${uid}\0f15\0n(revoked)\0\n`,
+      stderr: '',
+      status: 0,
+      signal: null,
+    })
+    expect([...classify().values()].map(({ state }) => state)).toEqual([
+      'unknown',
+      'unknown',
+      'unknown',
+    ])
+    expect(io.deadVnodeProbe).toHaveBeenCalledWith({ pid: 123, fd: 15 })
+  })
+
+  it('keeps a missing-type descriptor without a revoked marker unknown without native proof', () => {
+    io.spawnSync.mockReturnValue({
+      stdout: `p123\0u${uid}\0f15\0n/alias\0\n`,
+      stderr: '',
+      status: 0,
+      signal: null,
+    })
+    expect(classify().get('a')?.state).toBe('unknown')
+  })
+
+  it('keeps a revoked descriptor unknown when the native probe is unavailable', () => {
+    io.spawnSync.mockReturnValue({
+      stdout: `p123\0u${uid}\0f15\0n(revoked)\0\n`,
+      stderr: '',
+      status: 0,
+      signal: null,
+    })
+    io.deadVnodeProbe.mockImplementation(() => {
+      throw denied('ENOENT')
+    })
+    expect(classify().get('a')?.state).toBe('unknown')
+  })
+
+  it('limits native dead-vnode proof to its fd and retains another positive fd in the same process', () => {
+    io.spawnSync.mockReturnValue({
+      stdout: `p123\0u${uid}\0f15\0n(revoked)\0\nf16\0tREG\0D0x1\0i42\0n/views/.store/a/payload\0\n`,
+      stderr: '',
+      status: 0,
+      signal: null,
+    })
+    io.deadVnodeProbe.mockImplementation(({ pid, fd }) => pid === 123 && fd === 15)
+    expect(classify().get('a')?.state).toBe('held')
+    expect(classify().get('b')?.state).toBe('clear')
+    expect(io.deadVnodeProbe).toHaveBeenCalledWith({ pid: 123, fd: 15 })
   })
 
   it('reports a throwing native spawn as unknown', () => {

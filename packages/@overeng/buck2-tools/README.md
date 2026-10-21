@@ -321,12 +321,39 @@ Linux alone exempts the process identities in `reader-infrastructure.ts`: exact
 comm and argv shapes for same-user `sshd-session`, `systemd --user`, and `(sd-pam)`.
 Children remain independently scanned, and name-only matches are unknown.
 Permission failures outside that rule, including macOS `lsof` failures, remain
-unknown. Census diagnostics count allowlisted and unknown processes.
+unknown. Linux census diagnostics count allowlisted and unknown processes.
 Linux task state and starttime are read together from `/proc/<pid>/stat`.
 Zombie/dead states positively prove that the incarnation has exited and retains
 no address space or filesystem handles. A disappearing process is ignored only
 after a fresh stat confirms exit; a live replacement not completely observed
 still blocks. This is exit evidence, not a permission-error exemption.
+
+On macOS, an `lsof` descriptor with missing/unknown type may be excluded only by
+the packaged fixed-arity `int eu_darwin_dead_vnode(int pid, int fd)` helper.
+The census probes only numeric process IDs and numeric descriptors. The helper
+returns `1` only when `PROC_PIDLISTFDS` confirms that this exact descriptor is
+`PROX_FDTYPE_VNODE` and **both** `PROC_PIDFDVNODEINFO` and
+`PROC_PIDFDVNODEPATHINFO` return zero with `errno == ENOENT`. Every other result,
+missing helper/library, or helper failure leaves that record unknown. The library
+is loaded lazily from the absolute packaged `EDITOR_VIEW_LEASE_LIBRARY` path;
+the Linux helper returns zero. A proof excludes only that descriptor, never its
+process or another handle. Positive pathname/device/inode references and all scan
+completeness checks remain in force. The exact `lsof` marker `(revoked)` alone is
+not proof. Diagnostics expose `editor-view-process-census: deadVnode=N unknown=M`,
+where `N` counts proven descriptors and `M` counts unresolved census reasons.
+
+This narrow rule follows the Darwin vnode-query implementation in
+[XNU `proc_info.c`](https://github.com/apple-oss-distributions/xnu/blob/main/bsd/kern/proc_info.c#L2555-L2608):
+the queries acquire the vnode with `vnode_getwithvid`, then obtain vnode metadata
+through `fill_vnodeinfo`/`vn_stat`. The affected Watchman process had 68 descriptors
+listed as VNODE for which both queries failed with ENOENT. In an owned same-volume
+APFS experiment, an open-and-unlinked file, an open-and-removed directory, and a
+renamed view parent all retained successful vnode-info and vnode-path-info queries
+with device/inode identities; open-file reads still succeeded. Force-unmounting
+the owned APFS disk image instead produced paired ENOENT and file reads failed
+with EIO. These observations support this specific paired-query, confirmed-VNODE
+rule, not a general claim that ENOENT or an unlinked pathname proves a dead handle.
+Routine tests do not mount or unmount devices.
 
 Controls are tombstones: retirement, recreation, and explicit root release never
 unlink/recreate their identities. Their inode and metadata usage participates in

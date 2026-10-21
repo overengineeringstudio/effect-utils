@@ -20,7 +20,7 @@ const run = (body: string): void => {
   const source = `
     import assert from 'node:assert/strict';
     import * as fs from 'node:fs';
-    import { join } from 'node:path';
+    import { isAbsolute, join } from 'node:path';
     import { tmpdir } from 'node:os';
     import { spawn, spawnSync } from 'node:child_process';
     import { once } from 'node:events';
@@ -340,4 +340,87 @@ describe('editor generation native leases (Linux and macOS)', () => {
     const result = spawnSync(launcher, ['--content-store', contentStore, '--editor-root', unsupported, '--', helper, 'hold', join(root, 'unknown')], { env: { ...process.env, EDITOR_VIEW_LEASE_EXECUTABLE: '', EDITOR_VIEW_LEASE_FDS: '' } });
     assert.notEqual(result.status, 0);
   `))
+})
+
+describe.skipIf(process.platform !== 'darwin')('Darwin native dead-vnode proof', () => {
+  const runProbe = (body: string): void =>
+    run(`
+      // bun:ffi is Bun-only; import it inside this Darwin-only subprocess, never in Vitest.
+      const { dlopen } = await import('bun:ffi');
+      const library = process.env.EDITOR_VIEW_LEASE_LIBRARY;
+      assert.ok(library && isAbsolute(library), 'absolute packaged native library is required');
+      const native = dlopen(library, {
+        eu_darwin_dead_vnode: { args: ['i32', 'i32'], returns: 'i32' },
+      });
+      const deadVnode = (fd) => native.symbols.eu_darwin_dead_vnode(process.pid, fd);
+      try { ${body} } finally { native.close(); }
+    `)
+
+  it('does not prove a live file dead', () =>
+    runProbe(`
+      const path = join(payload, 'live-file');
+      fs.writeFileSync(path, 'still readable');
+      const fd = fs.openSync(path, 'r');
+      try {
+        assert.equal(deadVnode(fd), 0);
+        assert.equal(fs.readFileSync(fd, 'utf8'), 'still readable');
+      } finally { fs.closeSync(fd); }
+    `))
+
+  it('does not prove an open unlinked file dead', () =>
+    runProbe(`
+      const path = join(payload, 'unlinked-file');
+      fs.writeFileSync(path, 'still readable after unlink');
+      const fd = fs.openSync(path, 'r');
+      const before = fs.fstatSync(fd);
+      try {
+        fs.unlinkSync(path);
+        assert.equal(deadVnode(fd), 0);
+        assert.equal(fs.fstatSync(fd).ino, before.ino);
+        assert.equal(fs.fstatSync(fd).dev, before.dev);
+        assert.equal(fs.readFileSync(fd, 'utf8'), 'still readable after unlink');
+      } finally { fs.closeSync(fd); }
+    `))
+
+  it('does not prove an open removed directory dead', () =>
+    runProbe(`
+      const path = join(payload, 'removed-directory');
+      fs.mkdirSync(path);
+      const fd = fs.openSync(path, 'r');
+      const before = fs.fstatSync(fd);
+      try {
+        fs.rmdirSync(path);
+        assert.equal(deadVnode(fd), 0);
+        assert.equal(fs.fstatSync(fd).ino, before.ino);
+        assert.equal(fs.fstatSync(fd).dev, before.dev);
+        assert.equal(fs.fstatSync(fd).isDirectory(), true);
+      } finally { fs.closeSync(fd); }
+    `))
+
+  it('does not prove directory or file descriptors dead after renaming their view parent', () =>
+    runProbe(`
+      const parent = join(payload, 'view-parent');
+      fs.mkdirSync(parent);
+      fs.writeFileSync(join(parent, 'source'), 'still readable after rename');
+      const directory = fs.openSync(parent, 'r');
+      const file = fs.openSync(join(parent, 'source'), 'r');
+      const before = [directory, file].map((fd) => fs.fstatSync(fd));
+      try {
+        fs.renameSync(parent, parent + '-renamed');
+        for (const [index, fd] of [directory, file].entries()) {
+          assert.equal(deadVnode(fd), 0);
+          assert.equal(fs.fstatSync(fd).ino, before[index].ino);
+          assert.equal(fs.fstatSync(fd).dev, before[index].dev);
+        }
+        assert.equal(fs.readFileSync(file, 'utf8'), 'still readable after rename');
+      } finally { fs.closeSync(file); fs.closeSync(directory); }
+    `))
+
+  it('does not mistake an invalid or closed descriptor for a proven dead vnode', () =>
+    runProbe(`
+      assert.equal(deadVnode(-1), 0);
+      const fd = fs.openSync(payload, 'r');
+      fs.closeSync(fd);
+      assert.equal(deadVnode(fd), 0);
+    `))
 })

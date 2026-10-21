@@ -4,6 +4,8 @@
 #include <sys/file.h>
 #ifdef __APPLE__
 #include <sys/mount.h>
+#include <libproc.h>
+#include <sys/proc_info.h>
 #else
 #include <sys/vfs.h>
 #endif
@@ -24,6 +26,47 @@ int eu_dupfd_cloexec(int fd, int minimum) {
 }
 int eu_getfd(int fd) {
   return fcntl(fd, F_GETFD);
+}
+
+/* An lsof "(revoked)" name alone is heuristic, never sufficient proof.
+ * Confirm the kernel's vnode type and both pathless/pathful ENOENT results.
+ * Live APFS unlinked files, removed directories and renamed parents retain
+ * vnode identity; a force-unmounted APFS vnode gives this paired result and EIO.
+ * Any other state or failed observation stays unknown (return zero). */
+int eu_darwin_dead_vnode(int pid, int fd) {
+#ifdef __APPLE__
+  if (pid <= 0 || fd < 0) return 0;
+  int bytes = proc_pidinfo(pid, PROC_PIDLISTFDS, 0, NULL, 0);
+  if (bytes <= 0 || bytes > INT_MAX - (int)sizeof(struct proc_fdinfo)) return 0;
+  bytes += (int)sizeof(struct proc_fdinfo);
+  struct proc_fdinfo *entries = malloc((size_t)bytes);
+  if (!entries) return 0;
+  int used = proc_pidinfo(pid, PROC_PIDLISTFDS, 0, entries, bytes);
+  int vnode = 0;
+  if (used > 0 && used <= bytes && used % (int)sizeof(*entries) == 0) {
+    for (int i = 0; i < used / (int)sizeof(*entries); i++) {
+      if (entries[i].proc_fd == fd && entries[i].proc_fdtype == PROX_FDTYPE_VNODE) {
+        vnode = 1;
+        break;
+      }
+    }
+  }
+  free(entries);
+  if (!vnode) return 0;
+  struct vnode_fdinfo info;
+  struct vnode_fdinfowithpath path;
+  errno = 0;
+  int simple = proc_pidfdinfo(pid, fd, PROC_PIDFDVNODEINFO, &info, sizeof(info));
+  int simple_error = errno;
+  errno = 0;
+  int named = proc_pidfdinfo(pid, fd, PROC_PIDFDVNODEPATHINFO, &path, sizeof(path));
+  int named_error = errno;
+  return simple == 0 && simple_error == ENOENT && named == 0 && named_error == ENOENT;
+#else
+  (void)pid;
+  (void)fd;
+  return 0;
+#endif
 }
 
 #ifndef EU_LEASE_FFI
