@@ -337,6 +337,94 @@ process.execve(${JSON.stringify(executable)}, [${JSON.stringify(executable)}, ..
     }, 20000)
   }
 
+  for (const scenario of ['closed-stderr', 'restore-failure'] as const) {
+    it(`still execs with complete child output after stdio protection ${scenario}`, async () => {
+      const root = fixture()
+      const launcher = join(import.meta.dir, 'buck2-entrypoint.ts')
+      const native = join(root, 'native-stdout.ts')
+      const payloadSize = 256 * 1024
+      writeFileSync(
+        native,
+        `#!${process.execPath}
+import { writeSync } from 'node:fs'
+const payload = Buffer.alloc(${payloadSize}, 'y')
+let offset = 0
+while (offset < payload.length) offset += writeSync(1, payload, offset, payload.length - offset)
+writeSync(1, '\\nchild-executed\\n')
+`,
+        { mode: 0o700 },
+      )
+      let command: string[]
+      if (scenario === 'closed-stderr') {
+        const executable = join(root, 'missing-protection-launcher')
+        const build = Bun.spawnSync(
+          [
+            process.execPath,
+            'build',
+            '--compile',
+            launcher,
+            '--define',
+            `BUCK2_STDIO_LIBRARY=${JSON.stringify(join(root, 'absent-shim'))}`,
+            '--outfile',
+            executable,
+          ],
+          { cwd: root, stdout: 'pipe', stderr: 'pipe' },
+        )
+        expect({ code: build.exitCode, stderr: build.stderr.toString() }).toMatchObject({ code: 0 })
+        command = [
+          process.execPath,
+          '-e',
+          `import { closeSync } from 'node:fs'
+closeSync(2)
+process.execve(${JSON.stringify(executable)}, [${JSON.stringify(executable)}, ${JSON.stringify(native)}, '--version'], process.env)`,
+        ]
+      } else {
+        const preload = join(root, 'inject-restore-failure.ts')
+        // Disturb the real inherited fd immediately before protection runs.
+        // The native fcntl then fails with EBADF; no FFI behavior is mocked.
+        writeFileSync(
+          preload,
+          `import { closeSync } from 'node:fs'
+const execve = process.execve
+let injected = false
+Object.defineProperty(process, 'execve', {
+  get() {
+    if (injected === false) {
+      closeSync(0)
+      injected = true
+    }
+    return execve
+  },
+})
+`,
+        )
+        command = [process.execPath, '--preload', preload, launcher, native, '--version']
+      }
+      const child = Bun.spawn(command, {
+        cwd: root,
+        env: { PATH: process.env['PATH'], HOME: root },
+        detached: true,
+        stdin: 'ignore',
+        stdout: 'pipe',
+        stderr: 'pipe',
+      })
+      launchProcesses.add(child)
+      const [stdout, stderr, code] = await Promise.all([
+        new Response(child.stdout).text(),
+        new Response(child.stderr).text(),
+        child.exited,
+      ])
+      expect(code).toBe(0)
+      expect(stdout).toBe(`${'y'.repeat(payloadSize)}\nchild-executed\n`)
+      if (scenario === 'restore-failure') {
+        expect(stderr.split('warning: Buck2 stdio flag restoration failed:')).toHaveLength(2)
+        expect(stderr).not.toContain('warning: Buck2 stdio flag protection unavailable:')
+      } else {
+        expect(stderr).toBe('')
+      }
+    }, 20000)
+  }
+
   for (const scenario of ['healthy', 'retry-success', 'both-fail'] as const) {
     it(`records per-invocation cache admission for ${scenario}`, async () => {
       let requests = 0

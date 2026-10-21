@@ -678,6 +678,13 @@ export const reconcileGateDaemon = ({
 declare const BUCK2_STDIO_LIBRARY: string
 if (import.meta.main === true) {
   try {
+    const warnStdio = (message: string): void => {
+      try {
+        writeSync(2, message)
+      } catch {
+        // Optional protection must still exec with closed or unwritable stderr.
+      }
+    }
     let restoreStdio: (() => void) | undefined
     try {
       const symbols = {
@@ -706,7 +713,7 @@ if (import.meta.main === true) {
         }
       }
     } catch (error) {
-      writeSync(2, `warning: Buck2 stdio flag protection unavailable: ${String(error)}\n`)
+      warnStdio(`warning: Buck2 stdio flag protection unavailable: ${String(error)}\n`)
     }
     const native = process.argv[2]
     if (native === undefined) throw new Error('expected pinned Buck binary')
@@ -788,7 +795,7 @@ if (import.meta.main === true) {
     try {
       restoreStdio?.()
     } catch (error) {
-      writeSync(2, `warning: Buck2 stdio flag restoration failed: ${String(error)}\n`)
+      warnStdio(`warning: Buck2 stdio flag restoration failed: ${String(error)}\n`)
     }
     process.execve(native, [native, ...args], process.env)
   } catch (error) {

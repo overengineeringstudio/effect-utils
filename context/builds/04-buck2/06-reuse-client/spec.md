@@ -265,8 +265,9 @@ uses Bun's embedded TinyCC on the physical C source, keeping development and
 bootstrap tests independent of generated packages.
 
 Closed inherited descriptors are skipped. A protection load or restoration
-failure emits one synchronous warning and still executes native Buck:
-synchronous diagnostics are the primary fix and this defence must not block
+failure attempts one best-effort synchronous warning and still executes native
+Buck, even if inherited stderr is closed or cannot accept the warning.
+Synchronous diagnostics are the primary fix and this defence must not block
 builds. The launcher preserves intentionally non-blocking caller descriptors
 rather than unconditionally forcing blocking mode.
 
