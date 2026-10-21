@@ -80,8 +80,8 @@ describe('mission lanes', () => {
       ...base,
       lanes: [
         {
-          name: 'host-proof-dev3',
-          entries: 'resource/github/schickling/dotfiles/ci/pull-request/',
+          name: 'host-proof',
+          entries: 'resource/github/example/repo/ci/pull-request/',
         },
         { name: 'approval', approver: 'person/reviewer' },
         { name: 'unconfigured' },
@@ -109,8 +109,8 @@ describe('mission lanes', () => {
           ...base,
           lanes: [
             {
-              name: 'host-proof-dev3',
-              entries: 'resource/github/schickling/dotfiles/ci/pull-request/',
+              name: 'host-proof',
+              entries: 'resource/github/example/repo/ci/pull-request/',
             },
             { name: 'approval', approver: 'person/reviewer' },
             { name: 'unconfigured' },
@@ -133,8 +133,8 @@ describe('mission lanes', () => {
       "version 2
       mission "example/lanes" report-to="agent/example/owner" state="ready" {
         goal "Verify the host."
-        lane "host-proof-dev3" {
-          entries "resource/github/schickling/dotfiles/ci/pull-request/"
+        lane "host-proof" {
+          entries "resource/github/example/repo/ci/pull-request/"
         }
         lane "approval" {
           approver "person/reviewer"
