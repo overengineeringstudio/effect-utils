@@ -1,7 +1,16 @@
 /* oxlint-disable overeng/exports-first -- Focused tests import narrow seams beside the private helpers they exercise. */
+import { dlopen, read as ffiRead } from 'bun:ffi'
 import { spawn } from 'node:child_process'
 import { createHash, type Hash } from 'node:crypto'
-import { type Stats } from 'node:fs'
+import {
+  chmodSync,
+  lstatSync,
+  readdirSync,
+  realpathSync,
+  symlinkSync,
+  unlinkSync,
+  type Stats,
+} from 'node:fs'
 import {
   chmod,
   copyFile,
@@ -457,14 +466,8 @@ const prepareStagedOutput = async (options: {
 }
 
 /**
- * Rebinds declared dependency links after copying a package tree into the
- * system temp directory.
- *
- * A package tree either links its complete `node_modules` boundary or projects
- * first-hop dependency links around workspace declaration overlays. Copying
- * either relative link shape verbatim changes its destination, so every link
- * that resolves outside the source package tree is rebound to the declared
- * artifact before TypeScript reads the staging tree.
+ * Linux's Bubblewrap boundary hides undeclared ancestors. Rebind its writable
+ * package copy to the declared immutable dependency artifacts without cloning them.
  */
 export const relinkStagedDependencyView = async (options: {
   readonly packageTree: string
@@ -535,14 +538,7 @@ export const stagedEmitPackageRoot = (options: {
   return join(options.stagingRoot, ...Array(depth).fill('workspace'), 'package')
 }
 
-/**
- * Recreates the relative workspace topology around an emit staging directory.
- *
- * Generated TypeScript project references preserve source-relative paths such
- * as `../effect-path`. Each declared sibling is copied into that position so
- * its generated config can opt into declaration emit locally; the immutable
- * Buck input remains untouched.
- */
+/** Recreate source-relative workspace references inside Linux's writable stage. */
 export const linkStagedWorkspaceProjects = async (options: {
   readonly packageTree: string
   readonly readRoots: readonly string[]
@@ -551,7 +547,6 @@ export const linkStagedWorkspaceProjects = async (options: {
 }): Promise<void> => {
   const packageArtifactDirectory = packageTreeArtifactDirectory(options.packageTree)
   if (packageArtifactDirectory === undefined) return
-
   await forEachSequential({
     iterator: options.readRoots.values(),
     visit: async (readRoot) => {
@@ -561,7 +556,6 @@ export const linkStagedWorkspaceProjects = async (options: {
         resolve(readRoot) === resolve(options.packageTree)
       )
         return
-
       const projectPath = relative(packageArtifactDirectory, siblingArtifactDirectory)
       const destination = resolve(options.stagedPackageRoot, projectPath)
       const fromStagingRoot = relative(options.stagingRoot, destination)
@@ -569,9 +563,8 @@ export const linkStagedWorkspaceProjects = async (options: {
         isAbsolute(fromStagingRoot) === true ||
         fromStagingRoot === '..' ||
         fromStagingRoot.startsWith(`..${sep}`) === true
-      ) {
+      )
         fail(`workspace project escapes emit staging root: ${projectPath}`)
-      }
       await mkdir(dirname(destination), { recursive: true })
       await copyWritableTree({ source: readRoot, destination })
       await relinkStagedDependencyView({
@@ -580,18 +573,158 @@ export const linkStagedWorkspaceProjects = async (options: {
       })
       const configPath = join(destination, 'tsconfig.json')
       if ((await pathExists(configPath)) === false) return
-
       const config = Bun.JSONC.parse(await readFile(configPath, 'utf8')) as {
         compilerOptions?: Record<string, unknown>
       }
       if (config.compilerOptions === undefined || config.compilerOptions.noEmit !== true) return
-
       const metadata = await lstat(configPath)
       await chmod(configPath, metadata.mode | 0o200)
       config.compilerOptions.noEmit = false
       await writeFile(configPath, `${JSON.stringify(config, undefined, 2)}\n`)
     },
   })
+}
+
+/**
+ * Copy the complete declared closure, not links back into buck-out. TypeScript
+ * realpaths imported declarations before resolving their imports; a link back
+ * into the worktree would make its editor node_modules an undeclared ancestor.
+ */
+export const stageDeclaredEmitInputs = async (options: {
+  readonly packageTree: string
+  readonly readRoots: readonly string[]
+  readonly stagingRoot: string
+}): Promise<string> => {
+  const packageRoot = stagedEmitPackageRoot(options)
+  const ownerArtifact = packageTreeArtifactDirectory(options.packageTree)
+  const roots = await Promise.all(
+    canonicalRoots([options.packageTree, ...options.readRoots]).map(async (source, index) => {
+      const artifact = packageTreeArtifactDirectory(source)
+      const destination =
+        source === options.packageTree
+          ? packageRoot
+          : artifact !== undefined && ownerArtifact !== undefined
+            ? resolve(packageRoot, relative(ownerArtifact, artifact))
+            : join(options.stagingRoot, 'inputs', String(index))
+      return { source: await realpath(source), destination, package: artifact !== undefined }
+    }),
+  )
+  const mapSymlink = (source: string): string => {
+    const target = realpathSync(source)
+    for (const root of roots) {
+      const suffix = relative(root.source, target)
+      if (
+        suffix === '' ||
+        (isAbsolute(suffix) === false && suffix !== '..' && suffix.startsWith(`..${sep}`) === false)
+      )
+        return join(root.destination, suffix)
+    }
+    return fail(`emit dependency link escapes declared read roots: ${source} -> ${target}`)
+  }
+  // Fixed-arity clonefile(2), one syscall per root, not per file. Buffers remain
+  // alive for each synchronous call; unlike hardlinks, clones own their inodes.
+  const native =
+    process.platform === 'darwin'
+      ? dlopen('/usr/lib/libSystem.B.dylib', {
+          clonefile: { args: ['ptr', 'ptr', 'u32'], returns: 'i32' },
+          __error: { args: [], returns: 'ptr' },
+        })
+      : undefined
+  let fallbackRoots = 0
+  const fallbackErrors = new Set<number>()
+  const rebindDirectory = ({
+    source,
+    destination,
+    writable,
+  }: {
+    readonly source: string
+    readonly destination: string
+    readonly writable: boolean
+  }): void => {
+    const entries = readdirSync(source, { withFileTypes: true })
+    if (writable === true || entries.some((entry) => entry.isSymbolicLink()) === true)
+      chmodSync(destination, 0o700)
+    for (const entry of entries) {
+      const from = join(source, entry.name)
+      const to = join(destination, entry.name)
+      if (entry.isDirectory() === true) rebindDirectory({ source: from, destination: to, writable })
+      else if (entry.isSymbolicLink() === true) {
+        unlinkSync(to)
+        symlinkSync(mapSymlink(from), to)
+      } else if (writable === true) chmodSync(to, lstatSync(from).mode | 0o200)
+    }
+  }
+  try {
+    await forEachSequential({
+      iterator: roots.values(),
+      visit: async (root) => {
+        await mkdir(dirname(root.destination), { recursive: true })
+        let cloned = false
+        if (native !== undefined) {
+          const source = Buffer.from(`${root.source}\0`)
+          const destination = Buffer.from(`${root.destination}\0`)
+          cloned = native.symbols.clonefile(source, destination, 1) === 0
+          if (cloned === false) {
+            // eslint-disable-next-line no-underscore-dangle -- Fixed Darwin libc errno ABI.
+            const pointer = native.symbols.__error()
+            if (pointer === null) fail('libc did not expose clonefile errno')
+            const errno = ffiRead.i32(pointer)
+            // EXDEV / ENOTSUP: the source or TMPDIR is not on the same APFS
+            // filesystem. Permission, missing-input and other failures are fatal.
+            if (errno !== 18 && errno !== 45)
+              fail(`clonefile failed for declared emit root (errno ${errno}): ${root.source}`)
+            fallbackRoots += 1
+            fallbackErrors.add(errno)
+          }
+        }
+        if (cloned === false)
+          await copyWritableTree({ source: root.source, destination: root.destination })
+        if (lstatSync(root.source).isDirectory() === true)
+          rebindDirectory({
+            source: root.source,
+            destination: root.destination,
+            writable: root.package,
+          })
+        if (root.package === false || root.destination === packageRoot) return
+        const configPath = join(root.destination, 'tsconfig.json')
+        if ((await pathExists(configPath)) === false) return
+        const config = Bun.JSONC.parse(await readFile(configPath, 'utf8')) as {
+          compilerOptions?: Record<string, unknown>
+        }
+        if (config.compilerOptions?.noEmit !== true) return
+        config.compilerOptions.noEmit = false
+        await writeFile(configPath, `${JSON.stringify(config, undefined, 2)}\n`)
+      },
+    })
+  } finally {
+    native?.close()
+    if (fallbackRoots > 0)
+      console.error(
+        `typescript runner: Darwin emit byte-copy fallback for ${fallbackRoots} declared roots (clonefile errno ${[...fallbackErrors].join(', ')})`,
+      )
+  }
+  return packageRoot
+}
+
+/** Refuse ambient lookup roots above the private closure rather than inherit them. */
+export const assertCleanEmitAncestors = async (stagingRoot: string): Promise<void> => {
+  let ancestor = dirname(await realpath(stagingRoot))
+  for (;;) {
+    for (const name of ['node_modules', 'package.json', 'tsconfig.json']) {
+      const candidate = join(ancestor, name)
+      let exists = false
+      try {
+        lstatSync(candidate)
+        exists = true
+      } catch (error) {
+        if (isErrnoException(error) === false || error.code !== 'ENOENT') throw error
+      }
+      if (exists === true) fail(`emit staging has an undeclared resolution ancestor: ${candidate}`)
+    }
+    const parent = dirname(ancestor)
+    if (parent === ancestor) return
+    ancestor = parent
+  }
 }
 
 /** Copies only the explicitly action-keyed declaration sources into an emitted dist. */
@@ -750,22 +883,29 @@ export const runEmit = async (options: EmitOptions): Promise<number> => {
   let primaryError: unknown
 
   try {
-    const packageRoot = stagedEmitPackageRoot({ packageTree, readRoots, stagingRoot })
-    await mkdir(dirname(packageRoot), { recursive: true })
-    await copyWritableTree({ source: packageTree, destination: packageRoot })
-    await relinkStagedDependencyView({ packageTree, stagedPackageRoot: packageRoot })
-    await linkStagedWorkspaceProjects({
-      packageTree,
-      readRoots,
-      stagedPackageRoot: packageRoot,
-      stagingRoot,
-    })
+    let packageRoot: string
+    if (process.platform === 'darwin') {
+      await assertCleanEmitAncestors(stagingRoot)
+      packageRoot = await stageDeclaredEmitInputs({ packageTree, readRoots, stagingRoot })
+    } else {
+      packageRoot = stagedEmitPackageRoot({ packageTree, readRoots, stagingRoot })
+      await mkdir(dirname(packageRoot), { recursive: true })
+      await copyWritableTree({ source: packageTree, destination: packageRoot })
+      await relinkStagedDependencyView({ packageTree, stagedPackageRoot: packageRoot })
+      await linkStagedWorkspaceProjects({
+        packageTree,
+        readRoots,
+        stagedPackageRoot: packageRoot,
+        stagingRoot,
+      })
+    }
     await prepareStagedOutput({ outDir: options.outDir, output, packageRoot })
     // The output is a symlink: no-follow hashing covers all staged inputs, not emitted bytes.
     const stagedBefore = await hashDeclaredInputRoots({
       roots: [stagingRoot],
       fingerprintTool: options.fingerprintTool,
     })
+    if (process.platform === 'darwin') await assertCleanEmitAncestors(stagingRoot)
     status = await runTsgo({
       argv: [
         options.tsgo,

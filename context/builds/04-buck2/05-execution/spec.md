@@ -150,6 +150,21 @@ unchanged. Linux reports
 `admission_status = "linux-bwrap"`; package-tree projection remains excluded
 from shared cache by `local-materialization-policy` even when sandboxed.
 
+Darwin emit resolution is isolated independently of containment admission. The
+runner clones each declared source/dependency read root into one private
+`TMPDIR` staging directory with one fixed-arity `clonefile(2)` call per root.
+Non-APFS or cross-filesystem inputs use a logged byte-copy fallback. Every
+dependency symlink is rebound to a staged declared root; a link outside the
+declared closure fails before compilation. Imported declarations therefore
+cannot realpath back into `buck-out` and discover worktree editor dependencies.
+Workspace project-reference topology is preserved without changing the
+compiler's symlink/type-identity semantics. Before compilation, the runner
+rejects any staging ancestor containing `node_modules`, `package.json`, or
+`tsconfig.json`. Linux retains its existing writable package staging and links
+to declared dependency artifacts: Bubblewrap hides the undeclared worktree
+ancestors without copying those dependency roots.
+
+
 Decision authority is the live 2026-10-11 axe record `jd5hbf`,
 `enforce-linux-block-darwin`: enforce Linux containment and block Darwin
 admission, not Darwin execution. Action evidence names `darwin-unsandboxed`

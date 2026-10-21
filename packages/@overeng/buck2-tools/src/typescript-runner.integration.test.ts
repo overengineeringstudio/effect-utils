@@ -6,17 +6,23 @@ import {
   mkdtempSync,
   readFileSync,
   readdirSync,
+  realpathSync,
   rmSync,
   statSync,
   symlinkSync,
   writeFileSync,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join, relative } from 'node:path'
 
 import { expect, it } from 'vitest'
 
-import { copyWritableTree, runEmit } from './typescript-runner.ts'
+import {
+  assertCleanEmitAncestors,
+  copyWritableTree,
+  runEmit,
+  stageDeclaredEmitInputs,
+} from './typescript-runner.ts'
 
 it('creates removable scratch copies of immutable inputs without following symlinks', async () => {
   const root = mkdtempSync(join(tmpdir(), 'typescript-scratch-copy-'))
@@ -138,3 +144,113 @@ it.each([
     }
   },
 )
+
+it.each(['node_modules', 'package.json', 'tsconfig.json'])(
+  'refuses a contaminated emit staging ancestor: %s',
+  async (name) => {
+    const root = mkdtempSync(join(tmpdir(), 'typescript-ambient-'))
+    const stagingRoot = join(root, 'scratch', 'emit')
+    mkdirSync(stagingRoot, { recursive: true })
+    try {
+      await expect(assertCleanEmitAncestors(stagingRoot)).resolves.toBeUndefined()
+      if (name === 'node_modules') mkdirSync(join(root, name))
+      else writeFileSync(join(root, name), '{}\n')
+      await expect(assertCleanEmitAncestors(stagingRoot)).rejects.toThrow(
+        `undeclared resolution ancestor: ${join(realpathSync(root), name)}`,
+      )
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  },
+)
+
+it.each(['whole-view', 'projected-entries'])(
+  'stages the complete %s dependency closure without links back to Buck artifacts',
+  async (shape) => {
+    const root = mkdtempSync(join(tmpdir(), 'typescript-closure-'))
+    const packageTree = join(root, 'buck-out', 'owner', '__package_tree__', 'package_tree')
+    const dependency = join(root, 'buck-out', 'dependency', 'node_modules', 'dependency')
+    const view = join(root, 'buck-out', 'view', 'node_modules')
+    const stagingRoot = join(root, 'scratch')
+    mkdirSync(packageTree, { recursive: true })
+    mkdirSync(dependency, { recursive: true })
+    mkdirSync(view, { recursive: true })
+    writeFileSync(join(dependency, 'package.json'), '{"name":"dependency"}\n')
+    const viewLink = join(view, 'dependency')
+    symlinkSync(relative(dirname(viewLink), dependency), viewLink)
+    if (shape === 'whole-view') symlinkSync(view, join(packageTree, 'node_modules'))
+    else {
+      mkdirSync(join(packageTree, 'node_modules'))
+      symlinkSync(dependency, join(packageTree, 'node_modules', 'dependency'))
+    }
+    try {
+      const packageRoot = await stageDeclaredEmitInputs({
+        packageTree,
+        readRoots: [packageTree, view, dirname(dirname(dependency))],
+        stagingRoot,
+      })
+      const stagedDependency = realpathSync(join(packageRoot, 'node_modules', 'dependency'))
+      expect(relative(stagingRoot, stagedDependency).startsWith('..')).toBe(false)
+      expect(stagedDependency).not.toBe(realpathSync(dependency))
+      expect(readFileSync(join(stagedDependency, 'package.json'), 'utf8')).toContain('dependency')
+      // CoW copies must not share a mutable inode or chmod state with the input.
+      writeFileSync(join(stagedDependency, 'package.json'), '{}\n')
+      expect(readFileSync(join(dependency, 'package.json'), 'utf8')).toContain('dependency')
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  },
+)
+
+it('rejects an emit dependency link outside the declared closure', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'typescript-undeclared-'))
+  const packageTree = join(root, 'package')
+  const undeclared = join(root, 'undeclared')
+  mkdirSync(packageTree)
+  mkdirSync(undeclared)
+  symlinkSync(undeclared, join(packageTree, 'node_modules'))
+  try {
+    await expect(
+      stageDeclaredEmitInputs({
+        packageTree,
+        readRoots: [packageTree],
+        stagingRoot: join(root, 'scratch'),
+      }),
+    ).rejects.toThrow('emit dependency link escapes declared read roots')
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
+it('stages nested workspace references and enables sibling emit without modifying inputs', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'typescript-workspace-'))
+  const artifactRoot = join(root, 'buck-out', 'packages', '@overeng')
+  const packageTree = join(
+    artifactRoot,
+    'effect-rpc-tanstack',
+    'examples',
+    'basic',
+    '__package_tree__',
+    'package_tree',
+  )
+  const siblingTree = join(artifactRoot, 'content-address', '__package_tree__', 'package_tree')
+  const stagingRoot = join(root, 'scratch')
+  mkdirSync(packageTree, { recursive: true })
+  mkdirSync(siblingTree, { recursive: true })
+  const config = '{"compilerOptions":{"composite":true,"noEmit":true}}\n'
+  writeFileSync(join(siblingTree, 'tsconfig.json'), config)
+  try {
+    await stageDeclaredEmitInputs({
+      packageTree,
+      readRoots: [packageTree, siblingTree],
+      stagingRoot,
+    })
+    const stagedSibling = join(stagingRoot, 'workspace', 'content-address')
+    expect(JSON.parse(readFileSync(join(stagedSibling, 'tsconfig.json'), 'utf8'))).toEqual({
+      compilerOptions: { composite: true, noEmit: false },
+    })
+    expect(readFileSync(join(siblingTree, 'tsconfig.json'), 'utf8')).toBe(config)
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
