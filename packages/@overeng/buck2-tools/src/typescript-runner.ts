@@ -669,7 +669,7 @@ export const stageDeclaredEmitInputs = async (options: {
           if (cloned === false) {
             // eslint-disable-next-line no-underscore-dangle -- Fixed Darwin libc errno ABI.
             const pointer = native.symbols.__error()
-            if (pointer === null) fail('libc did not expose clonefile errno')
+            if (pointer === null) return fail('libc did not expose clonefile errno')
             const errno = ffiRead.i32(pointer)
             // EXDEV / ENOTSUP: the source or TMPDIR is not on the same APFS
             // filesystem. Permission, missing-input and other failures are fatal.
