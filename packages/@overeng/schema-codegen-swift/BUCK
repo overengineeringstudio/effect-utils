@@ -4,7 +4,7 @@
 # Projection source: packages/@overeng/schema-codegen-swift/BUCK.genie.ts
 # Projection schema version: 13
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:a2e4ecbd7fb41a1d5d78b19cbb8f99a3deac22e71978fd46fcea92f4961a3c39
+# Semantic fingerprint: sha256:a89f23897870756bf673c47a01b7c2435a5d50f62ce825f9639ca6923389a825
 # Regenerate: devenv tasks run genie:run
 
 load("//buck2:materialization.bzl", "export_materialization_inputs", "package_view")
@@ -23,6 +23,7 @@ export_file(
 export_materialization_inputs([
     "src/fixtures/contracts.ts",
     "src/fixtures/swift/Sources/GeneratedContracts/Contracts.swift.genie.ts",
+    "src/fixtures/swift/Sources/GeneratedContracts/Secondary.swift.genie.ts",
     "src/genie.ts",
     "src/mod.ts",
     "src/mod.unit.test.ts",
@@ -69,6 +70,7 @@ package_view(
         "package.json": "package.json",
         "src/fixtures/contracts.ts": "src/fixtures/contracts.ts",
         "src/fixtures/swift/Sources/GeneratedContracts/Contracts.swift.genie.ts": "src/fixtures/swift/Sources/GeneratedContracts/Contracts.swift.genie.ts",
+        "src/fixtures/swift/Sources/GeneratedContracts/Secondary.swift.genie.ts": "src/fixtures/swift/Sources/GeneratedContracts/Secondary.swift.genie.ts",
         "src/genie.ts": "src/genie.ts",
         "src/mod.ts": "src/mod.ts",
         "src/mod.unit.test.ts": "src/mod.unit.test.ts",
@@ -93,6 +95,7 @@ package_view(
         "package.json": "package.json",
         "src/fixtures/contracts.ts": "src/fixtures/contracts.ts",
         "src/fixtures/swift/Sources/GeneratedContracts/Contracts.swift.genie.ts": "src/fixtures/swift/Sources/GeneratedContracts/Contracts.swift.genie.ts",
+        "src/fixtures/swift/Sources/GeneratedContracts/Secondary.swift.genie.ts": "src/fixtures/swift/Sources/GeneratedContracts/Secondary.swift.genie.ts",
         "src/genie.ts": "src/genie.ts",
         "src/mod.ts": "src/mod.ts",
         "src/mod.unit.test.ts": "src/mod.unit.test.ts",
@@ -117,6 +120,7 @@ package_view(
         "package.json": "package.json",
         "src/fixtures/contracts.ts": "src/fixtures/contracts.ts",
         "src/fixtures/swift/Sources/GeneratedContracts/Contracts.swift.genie.ts": "src/fixtures/swift/Sources/GeneratedContracts/Contracts.swift.genie.ts",
+        "src/fixtures/swift/Sources/GeneratedContracts/Secondary.swift.genie.ts": "src/fixtures/swift/Sources/GeneratedContracts/Secondary.swift.genie.ts",
         "src/genie.ts": "src/genie.ts",
         "src/mod.ts": "src/mod.ts",
         "src/mod.unit.test.ts": "src/mod.unit.test.ts",

@@ -12,7 +12,7 @@ private struct SchemaCodegenKey: CodingKey {
   init?(intValue: Int) { return nil }
 }
 
-public struct SchemaCodegenInteger0: Codable, Equatable, Sendable {
+public struct SchemaCodegen_12_Catalog_Item_Integer0: Codable, Equatable, Sendable {
   public let value: Int64
   public init(_ value: Int64) throws {
     guard value >= -9007199254740991 && value <= 9007199254740991 else { throw DecodingError.dataCorrupted(.init(codingPath: [], debugDescription: "Integer outside contract bounds")) }
@@ -30,7 +30,7 @@ public struct SchemaCodegenInteger0: Codable, Equatable, Sendable {
   }
 }
 
-public struct SchemaCodegenInteger1: Codable, Equatable, Sendable {
+public struct SchemaCodegen_12_Catalog_Item_Integer1: Codable, Equatable, Sendable {
   public let value: Double
   public init(_ value: Double) throws {
     guard value.isFinite else { throw DecodingError.dataCorrupted(.init(codingPath: [], debugDescription: "Integer outside contract bounds")) }
@@ -48,7 +48,7 @@ public struct SchemaCodegenInteger1: Codable, Equatable, Sendable {
   }
 }
 
-public struct SchemaCodegenInteger2: Codable, Equatable, Sendable {
+public struct SchemaCodegen_12_Catalog_Item_Integer2: Codable, Equatable, Sendable {
   public let value: UInt8
   public init(_ value: UInt8) throws {
     guard value >= 0 && value <= 100 else { throw DecodingError.dataCorrupted(.init(codingPath: [], debugDescription: "Integer outside contract bounds")) }
@@ -74,10 +74,17 @@ public struct `Catalog_Item`: Codable, Equatable, Sendable {
   }
   private enum CodingKeys: String, CodingKey {
     case `title` = "title"
+    var stringValue: String { rawValue }
+    var intValue: Int? { nil }
+    init?(intValue: Int) { return nil }
+    init?(stringValue: String) {
+      if stringValue.utf16.elementsEqual("title".utf16) { self = .`title`; return }
+      return nil
+    }
   }
   public init(from decoder: Decoder) throws {
     let allKeys = try decoder.container(keyedBy: SchemaCodegenKey.self).allKeys
-    guard allKeys.allSatisfy({ key in key.stringValue == "title" }) else {
+    guard allKeys.allSatisfy({ key in key.stringValue.utf16.elementsEqual("title".utf16) }) else {
       throw DecodingError.dataCorrupted(.init(codingPath: decoder.codingPath, debugDescription: "Unknown object key"))
     }
     let container = try decoder.container(keyedBy: CodingKeys.self)
@@ -86,6 +93,41 @@ public struct `Catalog_Item`: Codable, Equatable, Sendable {
   public func encode(to encoder: Encoder) throws {
     var container = encoder.container(keyedBy: CodingKeys.self)
     try container.encode(self.`title`, forKey: .`title`)
+  }
+}
+
+public enum `ComposedLiteral`: Codable, Equatable, Sendable {
+  case `value0`
+  public init(from decoder: Decoder) throws {
+    let container = try decoder.singleValueContainer()
+    let value = try container.decode(String.self)
+    if value.utf16.elementsEqual("\u{e9}".utf16) { self = .`value0`; return }
+    throw DecodingError.dataCorruptedError(in: container, debugDescription: "Unknown string literal")
+  }
+  public func encode(to encoder: Encoder) throws {
+    var container = encoder.singleValueContainer()
+    switch self {
+    case .`value0`: try container.encode("\u{e9}")
+    }
+  }
+}
+
+public enum `DistinctLiterals`: Codable, Equatable, Sendable {
+  case `value0`
+  case `value1`
+  public init(from decoder: Decoder) throws {
+    let container = try decoder.singleValueContainer()
+    let value = try container.decode(String.self)
+    if value.utf16.elementsEqual("\u{e9}".utf16) { self = .`value0`; return }
+    if value.utf16.elementsEqual("e\u{301}".utf16) { self = .`value1`; return }
+    throw DecodingError.dataCorruptedError(in: container, debugDescription: "Unknown string literal")
+  }
+  public func encode(to encoder: Encoder) throws {
+    var container = encoder.singleValueContainer()
+    switch self {
+    case .`value0`: try container.encode("\u{e9}")
+    case .`value1`: try container.encode("e\u{301}")
+    }
   }
 }
 
@@ -109,14 +151,113 @@ public struct `Empty`: Codable, Equatable, Sendable {
   }
 }
 
-public typealias `IntegerValue` = SchemaCodegenInteger0
+public indirect enum `ExactTag`: Codable, Equatable, Sendable {
+  case `K`(`ExactTag_K`)
+  case `other`(`ExactTag_other`)
+  private enum CodingKeys: String, CodingKey {
+    case `_tag` = "_tag"
+    var stringValue: String { rawValue }
+    var intValue: Int? { nil }
+    init?(intValue: Int) { return nil }
+    init?(stringValue: String) {
+      if stringValue.utf16.elementsEqual("_tag".utf16) { self = .`_tag`; return }
+      return nil
+    }
+  }
+  public init(from decoder: Decoder) throws {
+    let container = try decoder.container(keyedBy: CodingKeys.self)
+    let tag = try container.decode(String.self, forKey: .`_tag`)
+    switch tag {
+    case let value where value.utf16.elementsEqual("K".utf16):
+      let allKeys = try decoder.container(keyedBy: SchemaCodegenKey.self).allKeys
+    guard allKeys.allSatisfy({ key in key.stringValue.utf16.elementsEqual("_tag".utf16) }) else {
+      throw DecodingError.dataCorrupted(.init(codingPath: decoder.codingPath, debugDescription: "Unknown object key"))
+    }
+      self = .`K`(`ExactTag_K`())
+    case let value where value.utf16.elementsEqual("other".utf16):
+      let allKeys = try decoder.container(keyedBy: SchemaCodegenKey.self).allKeys
+    guard allKeys.allSatisfy({ key in key.stringValue.utf16.elementsEqual("_tag".utf16) }) else {
+      throw DecodingError.dataCorrupted(.init(codingPath: decoder.codingPath, debugDescription: "Unknown object key"))
+    }
+      self = .`other`(`ExactTag_other`())
+    default: throw DecodingError.dataCorruptedError(forKey: .`_tag`, in: container, debugDescription: "Unknown union tag")
+    }
+  }
+  public func encode(to encoder: Encoder) throws {
+    var container = encoder.container(keyedBy: CodingKeys.self)
+    switch self {
+    case .`K`(let payload):
+      try container.encode("K", forKey: .`_tag`)
 
-public enum `Mode`: String, Codable, Equatable, Sendable {
-  case `active` = "active"
-  case `paused` = "paused"
+    case .`other`(let payload):
+      try container.encode("other", forKey: .`_tag`)
+
+    }
+  }
 }
 
-public typealias `NumberValue` = SchemaCodegenInteger1
+public struct `ExactTag_K`: Codable, Equatable, Sendable {
+
+  public init() {
+
+  }
+  private typealias CodingKeys = SchemaCodegenKey
+  public init(from decoder: Decoder) throws {
+    let allKeys = try decoder.container(keyedBy: SchemaCodegenKey.self).allKeys
+    guard allKeys.allSatisfy({ key in false }) else {
+      throw DecodingError.dataCorrupted(.init(codingPath: decoder.codingPath, debugDescription: "Unknown object key"))
+    }
+    let container = try decoder.container(keyedBy: CodingKeys.self)
+
+  }
+  public func encode(to encoder: Encoder) throws {
+    var container = encoder.container(keyedBy: CodingKeys.self)
+
+  }
+}
+
+public struct `ExactTag_other`: Codable, Equatable, Sendable {
+
+  public init() {
+
+  }
+  private typealias CodingKeys = SchemaCodegenKey
+  public init(from decoder: Decoder) throws {
+    let allKeys = try decoder.container(keyedBy: SchemaCodegenKey.self).allKeys
+    guard allKeys.allSatisfy({ key in false }) else {
+      throw DecodingError.dataCorrupted(.init(codingPath: decoder.codingPath, debugDescription: "Unknown object key"))
+    }
+    let container = try decoder.container(keyedBy: CodingKeys.self)
+
+  }
+  public func encode(to encoder: Encoder) throws {
+    var container = encoder.container(keyedBy: CodingKeys.self)
+
+  }
+}
+
+public typealias `IntegerValue` = SchemaCodegen_12_Catalog_Item_Integer0
+
+public enum `Mode`: Codable, Equatable, Sendable {
+  case `active`
+  case `paused`
+  public init(from decoder: Decoder) throws {
+    let container = try decoder.singleValueContainer()
+    let value = try container.decode(String.self)
+    if value.utf16.elementsEqual("active".utf16) { self = .`active`; return }
+    if value.utf16.elementsEqual("paused".utf16) { self = .`paused`; return }
+    throw DecodingError.dataCorruptedError(in: container, debugDescription: "Unknown string literal")
+  }
+  public func encode(to encoder: Encoder) throws {
+    var container = encoder.singleValueContainer()
+    switch self {
+    case .`active`: try container.encode("active")
+    case .`paused`: try container.encode("paused")
+    }
+  }
+}
+
+public typealias `NumberValue` = SchemaCodegen_12_Catalog_Item_Integer1
 
 public struct `PresenceSample`: Codable, Equatable, Sendable {
   public var `required`: String?
@@ -131,10 +272,19 @@ public struct `PresenceSample`: Codable, Equatable, Sendable {
     case `required` = "required"
     case `optional` = "optional"
     case `patch` = "patch"
+    var stringValue: String { rawValue }
+    var intValue: Int? { nil }
+    init?(intValue: Int) { return nil }
+    init?(stringValue: String) {
+      if stringValue.utf16.elementsEqual("required".utf16) { self = .`required`; return }
+      if stringValue.utf16.elementsEqual("optional".utf16) { self = .`optional`; return }
+      if stringValue.utf16.elementsEqual("patch".utf16) { self = .`patch`; return }
+      return nil
+    }
   }
   public init(from decoder: Decoder) throws {
     let allKeys = try decoder.container(keyedBy: SchemaCodegenKey.self).allKeys
-    guard allKeys.allSatisfy({ key in key.stringValue == "required" || key.stringValue == "optional" || key.stringValue == "patch" }) else {
+    guard allKeys.allSatisfy({ key in key.stringValue.utf16.elementsEqual("required".utf16) || key.stringValue.utf16.elementsEqual("optional".utf16) || key.stringValue.utf16.elementsEqual("patch".utf16) }) else {
       throw DecodingError.dataCorrupted(.init(codingPath: decoder.codingPath, debugDescription: "Unknown object key"))
     }
     let container = try decoder.container(keyedBy: CodingKeys.self)
@@ -161,25 +311,37 @@ public indirect enum `Producer`: Codable, Equatable, Sendable {
     case `items` = "items"
     case `endpoint` = "endpoint"
     case `enabled` = "enabled"
+    var stringValue: String { rawValue }
+    var intValue: Int? { nil }
+    init?(intValue: Int) { return nil }
+    init?(stringValue: String) {
+      if stringValue.utf16.elementsEqual("_tag".utf16) { self = .`_tag`; return }
+      if stringValue.utf16.elementsEqual("name".utf16) { self = .`name`; return }
+      if stringValue.utf16.elementsEqual("items".utf16) { self = .`items`; return }
+      if stringValue.utf16.elementsEqual("endpoint".utf16) { self = .`endpoint`; return }
+      if stringValue.utf16.elementsEqual("enabled".utf16) { self = .`enabled`; return }
+      return nil
+    }
   }
   public init(from decoder: Decoder) throws {
     let container = try decoder.container(keyedBy: CodingKeys.self)
-    switch try container.decode(String.self, forKey: .`_tag`) {
-    case "local":
+    let tag = try container.decode(String.self, forKey: .`_tag`)
+    switch tag {
+    case let value where value.utf16.elementsEqual("local".utf16):
       let allKeys = try decoder.container(keyedBy: SchemaCodegenKey.self).allKeys
-    guard allKeys.allSatisfy({ key in key.stringValue == "_tag" || key.stringValue == "name" || key.stringValue == "items" }) else {
+    guard allKeys.allSatisfy({ key in key.stringValue.utf16.elementsEqual("_tag".utf16) || key.stringValue.utf16.elementsEqual("name".utf16) || key.stringValue.utf16.elementsEqual("items".utf16) }) else {
       throw DecodingError.dataCorrupted(.init(codingPath: decoder.codingPath, debugDescription: "Unknown object key"))
     }
       self = .`local`(`Producer_local`(`name`: try container.decode(String.self, forKey: .`name`), `items`: try container.decode([`Catalog_Item`].self, forKey: .`items`)))
-    case "remote":
+    case let value where value.utf16.elementsEqual("remote".utf16):
       let allKeys = try decoder.container(keyedBy: SchemaCodegenKey.self).allKeys
-    guard allKeys.allSatisfy({ key in key.stringValue == "_tag" || key.stringValue == "endpoint" || key.stringValue == "enabled" }) else {
+    guard allKeys.allSatisfy({ key in key.stringValue.utf16.elementsEqual("_tag".utf16) || key.stringValue.utf16.elementsEqual("endpoint".utf16) || key.stringValue.utf16.elementsEqual("enabled".utf16) }) else {
       throw DecodingError.dataCorrupted(.init(codingPath: decoder.codingPath, debugDescription: "Unknown object key"))
     }
       self = .`remote`(`Producer_remote`(`endpoint`: try container.decode(String.self, forKey: .`endpoint`), `enabled`: try container.decode(Bool.self, forKey: .`enabled`)))
-    case "idle":
+    case let value where value.utf16.elementsEqual("idle".utf16):
       let allKeys = try decoder.container(keyedBy: SchemaCodegenKey.self).allKeys
-    guard allKeys.allSatisfy({ key in key.stringValue == "_tag" }) else {
+    guard allKeys.allSatisfy({ key in key.stringValue.utf16.elementsEqual("_tag".utf16) }) else {
       throw DecodingError.dataCorrupted(.init(codingPath: decoder.codingPath, debugDescription: "Unknown object key"))
     }
       self = .`idle`(`Producer_idle`())
@@ -234,10 +396,18 @@ public struct `Producer_local`: Codable, Equatable, Sendable {
   private enum CodingKeys: String, CodingKey {
     case `name` = "name"
     case `items` = "items"
+    var stringValue: String { rawValue }
+    var intValue: Int? { nil }
+    init?(intValue: Int) { return nil }
+    init?(stringValue: String) {
+      if stringValue.utf16.elementsEqual("name".utf16) { self = .`name`; return }
+      if stringValue.utf16.elementsEqual("items".utf16) { self = .`items`; return }
+      return nil
+    }
   }
   public init(from decoder: Decoder) throws {
     let allKeys = try decoder.container(keyedBy: SchemaCodegenKey.self).allKeys
-    guard allKeys.allSatisfy({ key in key.stringValue == "name" || key.stringValue == "items" }) else {
+    guard allKeys.allSatisfy({ key in key.stringValue.utf16.elementsEqual("name".utf16) || key.stringValue.utf16.elementsEqual("items".utf16) }) else {
       throw DecodingError.dataCorrupted(.init(codingPath: decoder.codingPath, debugDescription: "Unknown object key"))
     }
     let container = try decoder.container(keyedBy: CodingKeys.self)
@@ -261,10 +431,18 @@ public struct `Producer_remote`: Codable, Equatable, Sendable {
   private enum CodingKeys: String, CodingKey {
     case `endpoint` = "endpoint"
     case `enabled` = "enabled"
+    var stringValue: String { rawValue }
+    var intValue: Int? { nil }
+    init?(intValue: Int) { return nil }
+    init?(stringValue: String) {
+      if stringValue.utf16.elementsEqual("endpoint".utf16) { self = .`endpoint`; return }
+      if stringValue.utf16.elementsEqual("enabled".utf16) { self = .`enabled`; return }
+      return nil
+    }
   }
   public init(from decoder: Decoder) throws {
     let allKeys = try decoder.container(keyedBy: SchemaCodegenKey.self).allKeys
-    guard allKeys.allSatisfy({ key in key.stringValue == "endpoint" || key.stringValue == "enabled" }) else {
+    guard allKeys.allSatisfy({ key in key.stringValue.utf16.elementsEqual("endpoint".utf16) || key.stringValue.utf16.elementsEqual("enabled".utf16) }) else {
       throw DecodingError.dataCorrupted(.init(codingPath: decoder.codingPath, debugDescription: "Unknown object key"))
     }
     let container = try decoder.container(keyedBy: CodingKeys.self)
@@ -279,11 +457,11 @@ public struct `Producer_remote`: Codable, Equatable, Sendable {
 }
 
 public struct `Scalars`: Codable, Equatable, Sendable {
-  public var `count`: SchemaCodegenInteger2
+  public var `count`: SchemaCodegen_12_Catalog_Item_Integer2
   public var `truth`: Bool
   public var `nothing`: JSONNull
   public var `labels`: [String]
-  public init(`count`: SchemaCodegenInteger2, `truth`: Bool, `nothing`: JSONNull, `labels`: [String]) {
+  public init(`count`: SchemaCodegen_12_Catalog_Item_Integer2, `truth`: Bool, `nothing`: JSONNull, `labels`: [String]) {
     self.`count` = `count`
     self.`truth` = `truth`
     self.`nothing` = `nothing`
@@ -294,14 +472,24 @@ public struct `Scalars`: Codable, Equatable, Sendable {
     case `truth` = "truth"
     case `nothing` = "nothing"
     case `labels` = "labels"
+    var stringValue: String { rawValue }
+    var intValue: Int? { nil }
+    init?(intValue: Int) { return nil }
+    init?(stringValue: String) {
+      if stringValue.utf16.elementsEqual("count".utf16) { self = .`count`; return }
+      if stringValue.utf16.elementsEqual("truth".utf16) { self = .`truth`; return }
+      if stringValue.utf16.elementsEqual("nothing".utf16) { self = .`nothing`; return }
+      if stringValue.utf16.elementsEqual("labels".utf16) { self = .`labels`; return }
+      return nil
+    }
   }
   public init(from decoder: Decoder) throws {
     let allKeys = try decoder.container(keyedBy: SchemaCodegenKey.self).allKeys
-    guard allKeys.allSatisfy({ key in key.stringValue == "count" || key.stringValue == "truth" || key.stringValue == "nothing" || key.stringValue == "labels" }) else {
+    guard allKeys.allSatisfy({ key in key.stringValue.utf16.elementsEqual("count".utf16) || key.stringValue.utf16.elementsEqual("truth".utf16) || key.stringValue.utf16.elementsEqual("nothing".utf16) || key.stringValue.utf16.elementsEqual("labels".utf16) }) else {
       throw DecodingError.dataCorrupted(.init(codingPath: decoder.codingPath, debugDescription: "Unknown object key"))
     }
     let container = try decoder.container(keyedBy: CodingKeys.self)
-    self.`count` = try container.decode(SchemaCodegenInteger2.self, forKey: .`count`)
+    self.`count` = try container.decode(SchemaCodegen_12_Catalog_Item_Integer2.self, forKey: .`count`)
     self.`truth` = try container.decode(Bool.self, forKey: .`truth`)
     self.`nothing` = try container.decode(JSONNull.self, forKey: .`nothing`)
     self.`labels` = try container.decode([String].self, forKey: .`labels`)
