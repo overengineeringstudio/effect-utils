@@ -55,15 +55,31 @@ describe('bootstrap-safe source consumer descriptor handoff', () => {
     writeFileSync(payload, 'leaf-generation')
     const fd = openSync(payload, 'r')
     try {
-      const result = spawnSync(process.execPath, ['--require', preload, '-e', inheritedRead], {
-        stdio: ['ignore', 'pipe', 'pipe', fd],
-        env: {
-          ...cleanEnvironment(),
-          EDITOR_VIEW_LEASE_FDS: '3',
-          EDITOR_VIEW_LEASE_LIBRARY: join(directory, 'unused-native-library'),
+      const result = spawnSync(
+        'env',
+        [
+          '-u',
+          'NODE_OPTIONS',
+          '-u',
+          'BUN_OPTIONS',
+          'EDITOR_VIEW_LEASE_FDS=3',
+          `EDITOR_VIEW_LEASE_LIBRARY=${join(directory, 'unused-native-library')}`,
+          process.execPath,
+          '--require',
+          preload,
+          '-e',
+          inheritedRead,
+        ],
+        {
+          stdio: ['ignore', 'pipe', 'pipe', fd],
+          env: {
+            ...cleanEnvironment(),
+            EDITOR_VIEW_LEASE_FDS: '3',
+            EDITOR_VIEW_LEASE_LIBRARY: join(directory, 'unused-native-library'),
+          },
+          timeout: 10_000,
         },
-        timeout: 10_000,
-      })
+      )
       expect(result.status).toBe(0)
       expect(result.stderr?.toString()).toBe('')
       expect(result.stdout?.toString()).toBe('leaf-generation')
