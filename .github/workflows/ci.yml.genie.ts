@@ -1082,6 +1082,7 @@ const extraJobs: Record<string, any> = {
       {
         id: 'consumer-smoke',
         name: 'Install an isolated consumer from the candidate checkout',
+        env: githubTokenEnv(),
         run: [
           runDevenvTasksBefore('test:consumer-smoke'),
           'echo "current-sha=$GITHUB_SHA" >> "$GITHUB_OUTPUT"',
