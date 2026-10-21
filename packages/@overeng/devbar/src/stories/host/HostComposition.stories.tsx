@@ -2,12 +2,12 @@ import type { Meta, StoryObj } from '@storybook/react'
 import * as React from 'react'
 import { expect, userEvent, waitFor, within } from 'storybook/test'
 
-import { readHostPreference, startHostDiagnostics } from './boundary.ts'
+import { hostDiagnosticsFailure, readHostPreference, startHostDiagnostics } from './boundary.ts'
 
 type HostDiagnosticsState =
   | { readonly _tag: 'Mounted' }
   | { readonly _tag: 'Disabled' }
-  | { readonly _tag: 'Failed' }
+  | { readonly _tag: 'Failed'; readonly cause: unknown }
 
 /** The ordinary host imports only this guarded loader, never diagnostics eagerly. */
 const HostComposition = ({
@@ -42,10 +42,10 @@ const HostComposition = ({
         },
         () => undefined,
       )
-      void acquired.catch(() => {
+      void acquired.catch((cause: unknown) => {
         if (controller.signal.aborted === true) return
         node.textContent = 'Unable to start host diagnostics.'
-        onDiagnosticsReady?.({ _tag: 'Failed' })
+        onDiagnosticsReady?.({ _tag: 'Failed', cause })
       })
       return () => {
         controller.abort()
@@ -83,6 +83,19 @@ export default meta
 
 type Story = StoryObj<typeof meta>
 
+/** Settle a play test's readiness gate, keeping the startup cause on failure. */
+const settleReady = ({
+  ready,
+  state,
+}: {
+  readonly ready: PromiseWithResolvers<void>
+  readonly state: HostDiagnosticsState
+}): void => {
+  if (state._tag === 'Mounted') ready.resolve()
+  else if (state._tag === 'Failed') ready.reject(hostDiagnosticsFailure(state.cause))
+  else ready.reject(new Error(`Host diagnostics ${state._tag}`))
+}
+
 /** Full enabled host: collection starts now, explorer UI only on panel activation. */
 export const Light: Story = {
   play: async ({ args, mount, canvasElement }) => {
@@ -90,10 +103,7 @@ export const Light: Story = {
     const canvas = await mount(
       <HostComposition
         dark={args.dark === true}
-        onDiagnosticsReady={(state) => {
-          if (state._tag === 'Mounted') ready.resolve()
-          else ready.reject(new Error(`Host diagnostics ${state._tag}`))
-        }}
+        onDiagnosticsReady={(state) => settleReady({ ready, state })}
       />,
     )
     // Await actual scoped bootstrap, including its guarded cold import, not a DOM polling deadline.
@@ -195,12 +205,7 @@ export const PersistedSelection: Story = {
     localStorage.setItem('host-composition.light.panel.meter', 'heap')
     const ready = Promise.withResolvers<void>()
     const canvas = await mount(
-      <HostComposition
-        onDiagnosticsReady={(state) => {
-          if (state._tag === 'Mounted') ready.resolve()
-          else ready.reject(new Error(`Host diagnostics ${state._tag}`))
-        }}
-      />,
+      <HostComposition onDiagnosticsReady={(state) => settleReady({ ready, state })} />,
     )
     await ready.promise
     // Scoped acquisition completes before the nested React root's first commit.
@@ -221,12 +226,7 @@ export const UnknownStoredMeter: Story = {
     localStorage.setItem('host-composition.light.panel.meter', 'removed-meter')
     const ready = Promise.withResolvers<void>()
     const canvas = await mount(
-      <HostComposition
-        onDiagnosticsReady={(state) => {
-          if (state._tag === 'Mounted') ready.resolve()
-          else ready.reject(new Error(`Host diagnostics ${state._tag}`))
-        }}
-      />,
+      <HostComposition onDiagnosticsReady={(state) => settleReady({ ready, state })} />,
     )
     await ready.promise
     await expect(canvas.findByRole('region', { name: 'Frame rate details' })).resolves.toBeVisible()
@@ -243,12 +243,7 @@ export const PreviousMeterPanel: Story = {
     localStorage.setItem('host-composition.light.panel', 'fibers')
     const ready = Promise.withResolvers<void>()
     const canvas = await mount(
-      <HostComposition
-        onDiagnosticsReady={(state) => {
-          if (state._tag === 'Mounted') ready.resolve()
-          else ready.reject(new Error(`Host diagnostics ${state._tag}`))
-        }}
-      />,
+      <HostComposition onDiagnosticsReady={(state) => settleReady({ ready, state })} />,
     )
     await ready.promise
     const meters = await canvas.findByRole('button', { name: 'Meters' })
