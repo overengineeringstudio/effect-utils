@@ -48,13 +48,42 @@ const inherit = (options = {}) => {
 
 if (leases.length > 0) {
   if (typeof Bun !== 'undefined') {
+    const { closeSync } = require('node:fs')
+    const { dlopen } = require('bun:ffi')
+    if (process.platform !== 'linux' && process.platform !== 'darwin') {
+      throw new Error('Editor-view descriptor inheritance requires Linux or macOS')
+    }
+    const native = dlopen(
+      process.platform === 'darwin' ? '/usr/lib/libSystem.B.dylib' : 'libc.so.6',
+      { fcntl: { args: ['i32', 'i32', 'i32'], returns: 'i32' } },
+    )
+    const duplicateCloseOnExec = process.platform === 'darwin' ? 67 : 1030
     for (const method of ['spawn', 'spawnSync']) {
       const original = Bun[method].bind(Bun)
       Bun[method] = (command, options) => {
         const input = Array.isArray(command) ? { ...options, cmd: command } : command
         const { stdin = 'ignore', stdout = 'pipe', stderr = 'inherit', ...rest } = input
         const mapped = inherit({ ...rest, stdio: input.stdio ?? [stdin, stdout, stderr] })
-        return original(mapped)
+        const temporary = []
+        try {
+          // Bun applies child stdio file actions in slot order. A caller's
+          // "ignore"/IPC slot can close an original lease fd before its later
+          // dup action. Copy sources above every target slot first, so no file
+          // action can overwrite/close them before the lease mapping completes.
+          const firstLeaseSlot = mapped.stdio.length - leases.length
+          const minimum = mapped.stdio.length + (input.ipc ? 1 : 0)
+          for (let index = 0; index < leases.length; index++) {
+            const fd = native.symbols.fcntl(leases[index], duplicateCloseOnExec, minimum)
+            if (fd < 0) throw new Error('Cannot duplicate editor-view lease before spawning child')
+            temporary.push(fd)
+            mapped.stdio[firstLeaseSlot + index] = fd
+          }
+          return original(mapped)
+        } finally {
+          // Close only our temporary copies, never LOCK_UN the shared open
+          // descriptions. The actual child retains its mapped descriptors.
+          for (const fd of temporary) closeSync(fd)
+        }
       }
     }
   } else {
