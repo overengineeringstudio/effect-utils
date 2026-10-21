@@ -1810,8 +1810,36 @@ describe('budget admission defers reader proof until eviction needs it', () => {
   it('reports aggregate census substage durations and counts', async () => {
     const host = makeHost()
     try {
-      const fixture = host.fixture('substage-timing', 190, 64)
-      const captured = await captureStderr(() => host.publish(fixture))
+      const hit = host.fixture('substage-sidecar-hit', 190, 64)
+      const miss = host.fixture('substage-sidecar-miss', 191, 64)
+      await host.publish(hit)
+      await host.publish(miss)
+      const footprints = join(host.budgetState, 'footprints')
+      const sidecars = readdirSync(footprints).toSorted()
+      expect(sidecars).toHaveLength(2)
+      // Keep one cached footprint and force the other generation through walking and staging.
+      rmSync(join(footprints, sidecars[0]!))
+      const heldLock = lockRoot(hit)
+      const captured = await captureStderr(() =>
+        host.track(
+          reserveEditorViewBudget({
+            contentStore: host.contentStore,
+            root: { repoRoot: hit.root, editorRoot: hit.editorRoot },
+            discoverRoots: () => [{ repoRoot: miss.root, editorRoot: miss.editorRoot }],
+            heldEditorRoot: hit.editorRoot,
+            tryLockRoot: () => {
+              throw new Error('fitting census timing reservation attempted eviction')
+            },
+            reservationBytes: 1,
+            budgetBytes: setupBudgetBytes,
+          }),
+        ),
+      )
+      await cancelEditorViewBudgetReservation({
+        contentStore: host.contentStore,
+        token: captured.value.token,
+      })
+      heldLock.release()
       const prefix = '[editor-view-budget] '
       const stages = captured.stderr.split('\n').flatMap((line) => {
         if (line.startsWith(prefix) === false) return []
@@ -1834,6 +1862,20 @@ describe('budget admission defers reader proof until eviction needs it', () => {
         expect(matching[0].durationMs).toBeGreaterThanOrEqual(0)
         for (const key of keys) expect(matching[0][key]).toBeGreaterThanOrEqual(0)
       }
+      expect(stages).toHaveLength(9)
+      const stageCounts = Object.fromEntries(stages.map((entry) => [entry.stage, entry]))
+      expect(stageCounts['root-discovery']).toMatchObject({ roots: 2 })
+      // The held publication lock is also enumerated as one unmanaged directory.
+      expect(stageCounts['generation-enumeration']).toMatchObject({ generations: 3 })
+      expect(stageCounts['sidecar-reads']).toMatchObject({ hits: 1, misses: 1 })
+      expect(stageCounts['sidecar-reads'].bytes).toBeGreaterThan(0)
+      expect(stageCounts['footprint-walks']).toMatchObject({ walks: 2 })
+      expect(stageCounts['footprint-walks'].linkedBytes).toBeGreaterThan(0)
+      expect(stageCounts['sidecar-staging']).toMatchObject({ sidecars: 1 })
+      expect(stageCounts['cas-accounting']).toMatchObject({ stores: 1 })
+      expect(stageCounts['linked-inode-merge'].entries).toBeGreaterThan(0)
+      expect(stageCounts['linked-inode-merge'].distinctEntries).toBeGreaterThan(0)
+      expect(stageCounts['sidecar-installation']).toMatchObject({ entries: 2 })
     } finally {
       await host.cleanup()
     }
