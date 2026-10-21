@@ -34,6 +34,8 @@ export const pipelineJobIds = [
   'test-live-deploy-ci-tools',
   'deploy-storybooks',
   'publish-products',
+  'consumer-smoke',
+  'promote-published',
   'devenv-perf',
   'ci-measurements-report',
   'notify-alignment',

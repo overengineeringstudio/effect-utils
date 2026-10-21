@@ -81,6 +81,12 @@
       "operation": "publish-products"
     },
     {
+      "operation": "consumer-smoke"
+    },
+    {
+      "operation": "promote-published"
+    },
+    {
       "disposition": "outside-by-policy:ci-measurement-with-run-timestamp",
       "operation": "main-source-shape"
     },

@@ -1,0 +1,10 @@
+{
+  "dependencies": {
+    "@fixture/shared": "file:.devenv/pnpm-source-inputs/current/repos/source/packages/shared"
+  },
+  "name": "@fixture/consumer",
+  "packageManager": "pnpm@12.7.0",
+  "private": true,
+  "schemaVersion": 1,
+  "version": "1.0.0"
+}
