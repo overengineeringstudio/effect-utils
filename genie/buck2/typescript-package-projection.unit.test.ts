@@ -646,6 +646,32 @@ describe('declared-closure package projection', () => {
     expect(output).toContain('    declaration_entrypoint = "src/tokens.stylex.d.ts",')
   })
 
+  it('preserves the legacy default-authority action argv byte for byte', () => {
+    const output = buck2TypeScriptPackageProjection({
+      ...buck2TypeScriptAdmissions.stylexTokens,
+      authorities: [{ projectFile: 'tsconfig.json' }],
+    }).stringify(genieContext)
+    expect(output).not.toContain('    project_files = ')
+
+    const materialization = readFileSync('buck2/materialization.bzl', 'utf8')
+    const referenceArguments = materialization
+      .split('    if ctx.attrs.strip_project_references:\n')[1]
+      ?.split('    _add_mapped_sources(args, "--file", ctx.attrs.files)\n')[0]
+    // Snapshot the actual Starlark command assembly: default authorities execute only
+    // the legacy args.add, with every new argument guarded behind the non-default list.
+    expect(referenceArguments).toBe(
+      '        args.add("--strip-project-references", "true")\n' +
+        '        # Preserve the existing action argv/cache key for default authorities.\n' +
+        '        if ctx.attrs.project_files != ["tsconfig.json"]:\n' +
+        '            for project in ctx.attrs.project_files:\n' +
+        '                _require_relative_path(project, "authority project")\n' +
+        '                args.add("--project", project)\n',
+    )
+    expect(materialization).toContain(
+      '"project_files": attrs.list(attrs.string(), default = ["tsconfig.json"]),',
+    )
+  })
+
   it('strips the named authority used by both typecheck and emit', () => {
     const output = buck2TypeScriptPackageProjection({
       ...buck2TypeScriptAdmissions.stylexTokens,

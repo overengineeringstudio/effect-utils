@@ -117,9 +117,11 @@ def _package_tree_impl(ctx):
         inputs.append(ctx.attrs.node_modules)
     if ctx.attrs.strip_project_references:
         args.add("--strip-project-references", "true")
-        for project in ctx.attrs.project_files:
-            _require_relative_path(project, "authority project")
-            args.add("--project", project)
+        # Preserve the existing action argv/cache key for default authorities.
+        if ctx.attrs.project_files != ["tsconfig.json"]:
+            for project in ctx.attrs.project_files:
+                _require_relative_path(project, "authority project")
+                args.add("--project", project)
     _add_mapped_sources(args, "--file", ctx.attrs.files)
     _add_mapped_sources(args, "--workspace-file", ctx.attrs.workspace_files)
     for destination in sorted(ctx.attrs.workspace_dependency_views.keys()):
