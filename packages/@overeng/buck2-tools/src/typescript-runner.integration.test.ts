@@ -58,7 +58,7 @@ it.each([
   'preserves output lifecycle and input fingerprints: $mutation (pre-existing root: $preExistingOutput)',
   async ({ mutation, preExistingOutput }) => {
     const root = mkdtempSync(join(tmpdir(), 'typescript-emit-invariant-'))
-    const artifactRoot = join(root, 'artifacts')
+    const artifactRoot = join(root, 'buck-out', 'artifacts')
     const packageTree = join(artifactRoot, 'owner', '__package_tree__', 'package_tree')
     const siblingTree = join(artifactRoot, 'sibling', '__package_tree__', 'package_tree')
     const output = join(root, 'output')
@@ -142,11 +142,11 @@ it.each([
 
 it('removes the private emit stage after compiler failure without changing immutable inputs', async () => {
   const root = mkdtempSync(join(tmpdir(), 'typescript-failed-cleanup-'))
-  const packageTree = join(root, 'package')
+  const packageTree = join(root, 'buck-out', 'package')
   const dependency = join(root, 'dependency')
   const output = join(root, 'output')
   const compiler = join(root, 'tsgo')
-  mkdirSync(packageTree)
+  mkdirSync(packageTree, { recursive: true })
   mkdirSync(join(dependency, 'nested'), { recursive: true })
   writeFileSync(join(dependency, 'nested', 'index.d.ts'), 'export type Value = true\n')
   symlinkSync(dependency, join(packageTree, 'node_modules'))

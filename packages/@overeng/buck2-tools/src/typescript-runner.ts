@@ -668,15 +668,23 @@ const validateOutput = async (options: {
   await visit(output)
 }
 
+/** Locate the artifact boundary from the declared input, never the caller's cwd. */
+const emitBuckOut = (path: string): string => {
+  if (basename(path) === 'buck-out') return path
+  const parent = dirname(path)
+  if (parent === path) return fail(`emit input is not below buck-out: ${path}`)
+  return emitBuckOut(parent)
+}
+
 const runTsgo = async (options: {
   readonly argv: readonly string[]
   readonly cwd: string
-  readonly darwinSandbox?: boolean
+  readonly darwinBuckOut?: string
 }): Promise<number> => {
   if (forwardedSignal !== undefined) return 128 + signalNumbers[forwardedSignal]
   const argv =
-    options.darwinSandbox === true
-      ? await darwinEmitCommand({ argv: options.argv, buckOut: join(process.cwd(), 'buck-out') })
+    options.darwinBuckOut !== undefined
+      ? await darwinEmitCommand({ argv: options.argv, buckOut: options.darwinBuckOut })
       : options.argv
   const child = Bun.spawn([...argv], {
     cwd: options.cwd,
@@ -800,7 +808,7 @@ export const runEmit = async (options: EmitOptions): Promise<number> => {
         '--pretty',
         'false',
       ],
-      darwinSandbox: process.platform === 'darwin',
+      darwinBuckOut: process.platform === 'darwin' ? emitBuckOut(packageTree) : undefined,
       cwd: packageRoot,
     })
     const stagedAfter = await hashDeclaredInputRoots({
