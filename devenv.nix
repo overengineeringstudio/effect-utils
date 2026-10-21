@@ -1179,6 +1179,14 @@ in
     NODE_OPTIONS = "--import=${./. + "/packages/@overeng/pty-effect/test/node-pty-native-hook.ts"}";
   };
 
+  tasks."lint:check:format:parity" = {
+    description = "Compare Buck and Git formatter sources against exact documented differences";
+    after = [ "genie:check" ];
+    exec = trace.exec "lint:check:format:parity" ''
+      bun scripts/buck2-format-parity.ts
+    '';
+  };
+
   tasks."lint:check:format".after = lib.mkForce [ "genie:check" ];
   tasks."lint:check:format".exec = lib.mkForce (buck2BuildExec {
     name = "lint:check:format";
@@ -1923,6 +1931,7 @@ in
 
   tasks."check:quick".after = lib.mkForce [
     "buck2:quick"
+    "lint:check:format:parity"
     "buck2:cache-posture:test"
     "buck2:capabilities:test"
     "worktree:teardown:test"

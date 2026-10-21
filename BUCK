@@ -94,7 +94,6 @@ static_source_set(
             for root in ["context", "packages", "scripts"]
             for pattern in STATIC_SOURCE_EXCLUDES
         ],
-        include_dotfiles = True,
     ) + [
         ".oxfmtrc.json",
         ".oxlintrc.json",

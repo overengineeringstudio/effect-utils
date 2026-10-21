@@ -1347,7 +1347,7 @@ export const buck2TypeScriptPackageProjection = ({
       '    name = "static_sources",',
       '    node_modules = ":node_modules",',
       `    prefix = ${starlarkString(packagePath)},`,
-      `    srcs = ["BUCK"] + glob(STATIC_SOURCE_GLOBS, exclude = STATIC_SOURCE_EXCLUDES${staticSourceExcludes.length === 0 ? '' : ` + ${JSON.stringify(staticSourceExcludes)}`}, include_dotfiles = True),`,
+      `    srcs = ["BUCK"] + glob(STATIC_SOURCE_GLOBS, exclude = STATIC_SOURCE_EXCLUDES${staticSourceExcludes.length === 0 ? '' : ` + ${JSON.stringify(staticSourceExcludes)}`}),`,
       renderBuck2Visibility({ visibility }),
       ')',
       '',
