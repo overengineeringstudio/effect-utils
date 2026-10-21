@@ -156,7 +156,8 @@ describe('ci-tools deploy vercel live E2E', () => {
           console.error(
             formatLiveDeployFailure({
               ...failureResult,
-              report: existsSync(reportFile) === true ? readFileSync(reportFile, 'utf8') : undefined,
+              report:
+                existsSync(reportFile) === true ? readFileSync(reportFile, 'utf8') : undefined,
               secretValues: [
                 process.env.VERCEL_TOKEN,
                 process.env.VERCEL_AUTOMATION_BYPASS_SECRET,
