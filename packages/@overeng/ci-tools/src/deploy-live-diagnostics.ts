@@ -1,5 +1,6 @@
 import { redactDeployDiagnosticText } from './deploy-domain.ts'
 
+/** Captured child-process outcome retained until live deployment assertions finish. */
 export type LiveDeployProcessResult = {
   readonly status: number | null
   readonly stdout: string
