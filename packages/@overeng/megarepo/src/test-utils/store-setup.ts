@@ -21,6 +21,7 @@ import {
 } from '../core/lock.ts'
 import * as Observability from '../core/observability.ts'
 import { refTypeToPathSegment, classifyRef } from '../core/ref.ts'
+import { bootstrapMain } from './git-fixture.ts'
 
 // =============================================================================
 // Types
@@ -151,7 +152,7 @@ export const createStoreFixture = (repos: ReadonlyArray<StoreRepoFixture>) =>
         )
 
         // Seed a separate upstream for `withRemote`; otherwise seed the store bare.
-        // Fetching from a local source populates refs without pushing canonical branches.
+        // These fixtures exercise canonical main worktree paths and remote refs.
         let seedTargetPath = bareRepoPath
         if (withRemote === true) {
           seedTargetPath = yield* Effect.gen(function* () {
@@ -189,27 +190,21 @@ export const createStoreFixture = (repos: ReadonlyArray<StoreRepoFixture>) =>
           return yield* runGitCommand(sourceRepoPath, 'rev-parse', 'HEAD')
         }).pipe(Observability.withStoreFixturePhaseSpan({ phase: 'init-source', repo: repoKey }))
 
-        // Populate the bare remote from local refs without any pushes.
+        // Bootstrap main exactly once while the bare upstream has no refs.
         yield* Effect.gen(function* () {
+          yield* runGitCommand(sourceRepoPath, 'remote', 'add', 'origin', seedTargetPath)
+          yield* bootstrapMain(sourceRepoPath)
           for (const branch of repoFixture.branches ?? []) {
-            if (branch === 'main' || branch === 'master') continue
-            yield* runGitCommand(sourceRepoPath, 'branch', branch, commitSha).pipe(
-              Effect.catch(() => Effect.void),
-            )
+            if (branch === 'main') continue
+            yield* runGitCommand(sourceRepoPath, 'branch', branch, commitSha)
+            yield* runGitCommand(sourceRepoPath, 'push', 'origin', branch)
           }
 
           // Create tags if requested
           for (const tag of repoFixture.tags ?? []) {
             yield* runGitCommand(sourceRepoPath, 'tag', '--no-sign', tag)
+            yield* runGitCommand(sourceRepoPath, 'push', 'origin', `refs/tags/${tag}`)
           }
-          yield* runGitCommand(
-            seedTargetPath,
-            'fetch',
-            '--no-write-fetch-head',
-            sourceRepoPath,
-            '+refs/heads/*:refs/heads/*',
-            '+refs/tags/*:refs/tags/*',
-          )
         }).pipe(Observability.withStoreFixturePhaseSpan({ phase: 'push-refs', repo: repoKey }))
 
         // Wire the store bare to the upstream so it gains `refs/remotes/origin/*`

@@ -19,6 +19,7 @@ import { expect } from 'vitest'
 
 import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
 
+import { FIXTURE_BRANCH, initFixtureRepo, pushFixtureBranch } from '../test-utils/git-fixture.ts'
 import { assessLossless, hasStash, unpushedCommitCount } from './store-lossless.ts'
 
 const GIT_USER = ['-c', 'user.email=test@example.com', '-c', 'user.name=Test User'] as const
@@ -32,9 +33,31 @@ const git = (cwd: string, ...args: ReadonlyArray<string>) =>
     return result.trim()
   })
 
+/** Build Git's two-parent stash shape without invoking the managed keyed-stash UI. */
+const createFixtureStash = Effect.fnUntraced(function* (cwd: AbsoluteDirPath) {
+  const head = yield* git(cwd, 'rev-parse', 'HEAD')
+  const indexTree = yield* git(cwd, 'write-tree')
+  const indexCommit = yield* git(cwd, 'commit-tree', indexTree, '-p', head, '-m', 'fixture index')
+  yield* git(cwd, 'add', 'f.txt')
+  const worktreeTree = yield* git(cwd, 'write-tree')
+  const stashCommit = yield* git(
+    cwd,
+    'commit-tree',
+    worktreeTree,
+    '-p',
+    head,
+    '-p',
+    indexCommit,
+    '-m',
+    'fixture stash',
+  )
+  yield* git(cwd, 'update-ref', 'refs/stash', stashCommit)
+  yield* git(cwd, 'restore', '--source=HEAD', '--staged', '--worktree', '--', 'f.txt')
+})
+
 /**
  * Build a store-like bare repo wired to a separate upstream (real
- * `refs/remotes/origin/*`) with an initial pushed commit on `main`.
+ * `refs/remotes/origin/*`) with an initial pushed commit on `fixture-main`.
  *
  * Returns the bare path, the upstream path, the source repo path (still wired to
  * the upstream so the test can push more branches), and the initial commit SHA.
@@ -47,13 +70,12 @@ const makeWiredBare = Effect.fnUntraced(function* () {
   const bare = EffectPath.ops.join(tmp, EffectPath.unsafe.relativeDir('store.bare/'))
   const source = EffectPath.ops.join(tmp, EffectPath.unsafe.relativeDir('source/'))
 
-  // `-b main` so the default branch is deterministic regardless of the host's
-  // `init.defaultBranch` (CI git defaults to `master`).
+  // Keep the remote HEAD deterministic without using a protected branch name.
   yield* fs.makeDirectory(upstream, { recursive: true })
-  yield* git(upstream, 'init', '--bare', '-b', 'main')
+  yield* git(upstream, 'init', '--bare', '-b', FIXTURE_BRANCH)
 
   yield* fs.makeDirectory(source, { recursive: true })
-  yield* git(source, 'init', '-b', 'main')
+  yield* initFixtureRepo(source)
   yield* fs.writeFileString(
     EffectPath.ops.join(source, EffectPath.unsafe.relativeFile('f.txt')),
     'base\n',
@@ -61,12 +83,12 @@ const makeWiredBare = Effect.fnUntraced(function* () {
   yield* git(source, 'add', '-A')
   yield* git(source, 'commit', '--no-gpg-sign', '--no-verify', '-m', 'base')
   yield* git(source, 'remote', 'add', 'origin', upstream)
-  yield* git(source, 'push', '-u', 'origin', 'main')
+  yield* pushFixtureBranch(source)
   const baseCommit = yield* git(source, 'rev-parse', 'HEAD')
 
   // Wire the bare to the upstream with a fetching refspec (mirrors Git.cloneBare).
   yield* fs.makeDirectory(bare, { recursive: true })
-  yield* git(bare, 'init', '--bare', '-b', 'main')
+  yield* git(bare, 'init', '--bare', '-b', FIXTURE_BRANCH)
   yield* git(bare, 'remote', 'add', 'origin', upstream)
   yield* git(bare, 'config', 'remote.origin.fetch', '+refs/heads/*:refs/remotes/origin/*')
   yield* git(bare, 'fetch', '--tags', '--prune', 'origin')
@@ -107,10 +129,10 @@ describe('store-lossless', () => {
       function* () {
         const { bare, source } = yield* makeWiredBare()
 
-        // Push the base commit to an UNRELATED remote branch `other` (not `main`'s
+        // Push the base commit to an UNRELATED remote branch `other` (not the default branch's
         // tip, but here equal). The point: the worktree's NEW commit's parent is
         // reachable via a remote ref, yet the new commit itself is not pushed.
-        yield* git(source, 'push', 'origin', 'main:other')
+        yield* git(source, 'push', 'origin', `${FIXTURE_BRANCH}:other`)
         yield* git(bare, 'fetch', '--prune', 'origin')
         const otherTip = yield* git(bare, 'rev-parse', 'refs/remotes/origin/other')
 
@@ -150,8 +172,8 @@ describe('store-lossless', () => {
         const { bare, source } = yield* makeWiredBare()
 
         // Create a feature branch on the upstream, fetch it, then DELETE it from
-        // the upstream and prune — but the same commit is also on `main`.
-        yield* git(source, 'push', 'origin', 'main:feature')
+        // the upstream and prune — but the same commit is also on the default branch.
+        yield* git(source, 'push', 'origin', `${FIXTURE_BRANCH}:feature`)
         yield* git(bare, 'fetch', '--prune', 'origin')
         const featureTip = yield* git(bare, 'rev-parse', 'refs/remotes/origin/feature')
 
@@ -163,7 +185,7 @@ describe('store-lossless', () => {
         yield* git(bare, 'fetch', '--prune', 'origin')
 
         const count = yield* unpushedCommitCount({ bareRepoPath: bare, worktreeHead: wtHead })
-        // Still reachable via refs/remotes/origin/main ⇒ recoverable ⇒ 0.
+        // Still reachable via the default remote branch ⇒ recoverable ⇒ 0.
         expect(count).toBe(0)
       },
       Effect.provide(NodeServices.layer),
@@ -182,9 +204,9 @@ describe('store-lossless', () => {
 
         // A bare with a branch but NO refs/remotes/* (never fetched a remote).
         yield* fs.makeDirectory(bare, { recursive: true })
-        yield* git(bare, 'init', '--bare', '-b', 'main')
+        yield* git(bare, 'init', '--bare', '-b', FIXTURE_BRANCH)
         yield* fs.makeDirectory(source, { recursive: true })
-        yield* git(source, 'init', '-b', 'main')
+        yield* initFixtureRepo(source)
         yield* fs.writeFileString(
           EffectPath.ops.join(source, EffectPath.unsafe.relativeFile('f.txt')),
           'x\n',
@@ -192,8 +214,8 @@ describe('store-lossless', () => {
         yield* git(source, 'add', '-A')
         yield* git(source, 'commit', '--no-gpg-sign', '--no-verify', '-m', 'c0')
         yield* git(source, 'remote', 'add', 'origin', bare)
-        yield* git(source, 'push', 'origin', 'main')
-        const head = yield* git(bare, 'rev-parse', 'refs/heads/main')
+        yield* pushFixtureBranch(source)
+        const head = yield* git(bare, 'rev-parse', `refs/heads/${FIXTURE_BRANCH}`)
 
         const count = yield* unpushedCommitCount({ bareRepoPath: bare, worktreeHead: head })
         // No remote-tracking refs ⇒ everything reads as unpushed ⇒ keep.
@@ -219,18 +241,7 @@ describe('store-lossless', () => {
           EffectPath.ops.join(wt, EffectPath.unsafe.relativeFile('f.txt')),
           'dirty\n',
         )
-        // Bare `git stash` is intercepted by the agent-policy wrapper, so bypass
-        // it to produce a genuine `refs/stash` (fixture concern, not product).
-        // Override only the policy flag; git still needs the host executable PATH.
-        yield* ChildProcessSpawner.use((spawner) =>
-          spawner.string(
-            Command.make('git', [...GIT_USER, 'stash'], {
-              cwd: wt,
-              env: { AGENT_POLICY_BYPASS: '1' },
-              extendEnv: true,
-            }),
-          ),
-        )
+        yield* createFixtureStash(wt)
 
         expect(yield* hasStash({ bareRepoPath: bare })).toBe(true)
       },
@@ -254,18 +265,8 @@ describe('store-lossless', () => {
           EffectPath.ops.join(wt, EffectPath.unsafe.relativeFile('f.txt')),
           'to-stash\n',
         )
-        // Bare `git stash` is intercepted by the agent-policy wrapper, so bypass
-        // it to produce a genuine `refs/stash` (fixture concern, not product).
-        // Override only the policy flag; git still needs the host executable PATH.
-        yield* ChildProcessSpawner.use((spawner) =>
-          spawner.string(
-            Command.make('git', [...GIT_USER, 'stash'], {
-              cwd: wt,
-              env: { AGENT_POLICY_BYPASS: '1' },
-              extendEnv: true,
-            }),
-          ),
-        )
+        yield* createFixtureStash(wt)
+        expect(yield* git(wt, 'status', '--porcelain')).toBe('')
         yield* fs.writeFileString(
           EffectPath.ops.join(wt, EffectPath.unsafe.relativeFile('untracked.txt')),
           'new dirt\n',
