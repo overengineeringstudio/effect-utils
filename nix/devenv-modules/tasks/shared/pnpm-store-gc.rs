@@ -17,6 +17,29 @@ mod linux {
     const STORE_NAME: &str = "pnpm-store-pure-v1";
     const LEASE_NAME: &str = ".effect-utils-pnpm-store-cache-maintenance.lock";
 
+    // Linux UAPI: include/uapi/asm-generic/fcntl.h supplies the x86 values;
+    // arch/arm64/include/uapi/asm/fcntl.h overrides them to match ARM.
+    // Keep this standalone rustc binary dependency-free, and fail closed on
+    // architectures whose open flags have not been admitted here.
+    #[cfg(any(target_arch = "x86_64", target_arch = "x86"))]
+    const O_DIRECTORY: i32 = 0o200000;
+    #[cfg(any(target_arch = "x86_64", target_arch = "x86"))]
+    const O_NOFOLLOW: i32 = 0o400000;
+    #[cfg(any(target_arch = "aarch64", target_arch = "arm"))]
+    const O_DIRECTORY: i32 = 0o40000;
+    #[cfg(any(target_arch = "aarch64", target_arch = "arm"))]
+    const O_NOFOLLOW: i32 = 0o100000;
+    #[cfg(not(any(
+        target_arch = "x86_64",
+        target_arch = "x86",
+        target_arch = "aarch64",
+        target_arch = "arm"
+    )))]
+    compile_error!("pnpm-store-gc: Linux open flags are not defined for this architecture");
+
+    // include/uapi/asm-generic/errno-base.h; shared by the admitted architectures.
+    const ESRCH: i32 = 3;
+
     type Result<T, E = String> = std::result::Result<T, E>;
 
     #[derive(Clone, Copy, PartialEq, Eq)]
@@ -348,9 +371,9 @@ mod linux {
     }
 
     fn process_gone(pid_dir: &Path, error: &io::Error) -> bool {
-        error.raw_os_error() == Some(3)
+        error.raw_os_error() == Some(ESRCH)
             || fs::metadata(pid_dir).is_err_and(|error| {
-                error.kind() == io::ErrorKind::NotFound || error.raw_os_error() == Some(3)
+                error.kind() == io::ErrorKind::NotFound || error.raw_os_error() == Some(ESRCH)
             })
     }
 
@@ -616,7 +639,7 @@ mod linux {
                     ));
                 }
             }
-            if !observed && !process_gone(&pid_dir, &io::Error::from_raw_os_error(2)) {
+            if !observed && !process_gone(&pid_dir, &io::Error::from(io::ErrorKind::NotFound)) {
                 return Err(format!(
                     "process has no observable tasks: {}",
                     pid_dir.display()
@@ -761,11 +784,9 @@ mod linux {
 
     fn open_directory(path: &Path) -> Result<fs::File> {
         use std::os::unix::fs::OpenOptionsExt;
-        #[cfg(target_os = "linux")]
-        let flags = 0x10000 | 0x20000; // O_DIRECTORY | O_NOFOLLOW
         fs::OpenOptions::new()
             .read(true)
-            .custom_flags(flags)
+            .custom_flags(O_DIRECTORY | O_NOFOLLOW)
             .open(path)
             .map_err(|error| error.to_string())
     }
@@ -842,13 +863,11 @@ mod linux {
             if mode == Mode::DryRun {
                 return Ok(None);
             }
-            #[cfg(target_os = "linux")]
-            let nofollow = 0x20000;
             let lease = fs::OpenOptions::new()
                 .append(true)
                 .create(true)
                 .mode(0o600)
-                .custom_flags(nofollow)
+                .custom_flags(O_NOFOLLOW)
                 .open(descriptor_path(&self.directory).join(LEASE_NAME))
                 .map_err(|error| error.to_string())?;
             if !lease
@@ -1253,8 +1272,11 @@ exec "$2" --exact linux::tests::overlay_device_numbers_do_not_define_mount_bound
                     .unwrap_err()
                     .contains("live process reference")
             );
-            assert!(!process_gone(&pid, &io::Error::from_raw_os_error(2)));
-            assert!(!process_gone(&pid, &io::Error::from_raw_os_error(13)));
+            assert!(!process_gone(&pid, &io::Error::from(io::ErrorKind::NotFound)));
+            assert!(!process_gone(
+                &pid,
+                &io::Error::from(io::ErrorKind::PermissionDenied)
+            ));
         }
 
         #[test]
@@ -1334,12 +1356,15 @@ exec "$2" --exact linux::tests::overlay_device_numbers_do_not_define_mount_bound
             let root = fixture("exited-process");
             let live = root.join("123");
             fs::create_dir_all(&live).unwrap();
-            assert!(process_gone(&live, &io::Error::from_raw_os_error(3)));
-            assert!(!process_gone(&live, &io::Error::from_raw_os_error(2)));
-            assert!(!process_gone(&live, &io::Error::from_raw_os_error(13)));
+            assert!(process_gone(&live, &io::Error::from_raw_os_error(ESRCH)));
+            assert!(!process_gone(&live, &io::Error::from(io::ErrorKind::NotFound)));
+            assert!(!process_gone(
+                &live,
+                &io::Error::from(io::ErrorKind::PermissionDenied)
+            ));
             assert!(process_gone(
                 &root.join("gone"),
-                &io::Error::from_raw_os_error(13)
+                &io::Error::from(io::ErrorKind::PermissionDenied)
             ));
         }
 

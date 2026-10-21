@@ -241,7 +241,10 @@ for outer tasks that must complete before the nested devenv process can evaluate
     installs and unknown bridges fail closed.
   - `pnpm-store-gc --git-dir /path/to/repo/.bare --root /path/to/worktree`
     reports historical root-local store retirement in a read-only dry-run.
-    The collector is Linux-only. On other platforms it exits nonzero before
+    The collector supports Linux x86/x86_64 and ARM/aarch64, selecting each
+    architecture's directory and no-follow open flags. Other Linux architectures
+    fail at compile time rather than assuming compatible flags.
+    On other platforms it exits nonzero before
     filesystem input access with `pnpm-store-gc: unsupported platform (Linux only; Darwin census not implemented)`.
     Repeat `--root` for explicitly selected worktrees; there is no fleet traversal.
     It never targets `$HOME/.local/share/pnpm` or `PNPM_SHARED_STORE_DIR`.
