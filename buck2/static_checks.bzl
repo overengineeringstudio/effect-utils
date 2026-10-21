@@ -42,7 +42,7 @@ STATIC_SOURCE_GLOBS = _STATIC_VISIBLE_SOURCE_GLOBS + [
     for prefix in ["**/.*", "**/.*/**/*", "**/.*/**/.*", "**/.*/**/.*/**/*"]
     for pattern in _STATIC_VISIBLE_SOURCE_GLOBS
 ]
-STATIC_SOURCE_EXCLUDES = [
+_STATIC_SOURCE_EXCLUDES = [
     "**/.cache/**",
     "**/.codex/**",
     "**/.context/**",
@@ -61,6 +61,13 @@ STATIC_SOURCE_EXCLUDES = [
     "**/node_modules/**",
     "**/storybook-static/**",
     "**/tmp/**",
+]
+# Exclusions need the same explicit hidden ancestors as inclusions. Otherwise
+# `.experiments/.devenv/foo.ts` would bypass `**/.devenv/**`.
+STATIC_SOURCE_EXCLUDES = _STATIC_SOURCE_EXCLUDES + [
+    prefix + pattern.removeprefix("**/")
+    for prefix in ["**/.*/**/", "**/.*/**/.*/**/"]
+    for pattern in _STATIC_SOURCE_EXCLUDES
 ]
 
 StaticSourceSetInfo = provider(fields = {
