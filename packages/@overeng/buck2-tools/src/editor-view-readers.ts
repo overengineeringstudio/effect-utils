@@ -138,29 +138,25 @@ export const referencedEditorViewPaths = ({
         controls(path)
     }
   }
-  // Package first hops live outside the editor root. Do not follow workspace
-  // member links or descend into dependency/build payloads while locating them.
+  // Package first hops may live under hidden/build/workspace directories too.
+  // Walk real directories only (never follow workspace/dependency symlinks),
+  // bounded by entries rather than silently declaring excluded inputs absent.
+  // The editor root has its separate control-pointer inventory above.
+  let packageEntries = 0
+  const resolvedEditorRoot = resolve(editorRoot)
   const packages = (directory: string): void => {
     for (const entry of readdirSync(directory, { withFileTypes: true })) {
+      packageEntries += 1
+      if (packageEntries > 100_000)
+        throw new Error('editor view: package pointer inventory exceeds its entry bound')
       const path = join(directory, entry.name)
-      if (entry.name === 'node_modules') {
-        if (entry.isSymbolicLink() === true) pointer(path)
-        continue
-      }
-      if (
-        entry.isDirectory() === true &&
-        entry.name.startsWith('.') === false &&
-        entry.name !== 'buck-out' &&
-        entry.name !== 'repos' &&
-        entry.name !== 'dist' &&
-        entry.name !== 'result'
-      )
-        packages(path)
+      if (entry.name === 'node_modules' && entry.isSymbolicLink() === true) pointer(path)
+      if (entry.isDirectory() === true && path !== resolvedEditorRoot) packages(path)
     }
   }
   try {
     controls(editorRoot)
-    if (repoRoot !== undefined) packages(repoRoot)
+    if (repoRoot !== undefined) packages(resolve(repoRoot))
     return referenced
   } catch {
     return undefined

@@ -235,9 +235,13 @@ pressure: pin a generation when it must remain available. Idle-current eviction
 removes both the owned consumer hop and current pointer, records an eviction marker,
 and the next explicit publication explains the eviction and cleanly republishes.
 An eviction plan always retakes the census instead of trusting shared accounting.
-Retirement checks the journal epoch and immutable generation identity under the
-host ledger fence, then takes a fresh reader proof while the victim root and CAS
-are excluded. As with footprint sidecars, payload immutability is required.
+Retirement takes one fresh reader proof under the host ledger fence after acquiring
+the selected publication exclusions. Eligibility stays fixed at the round's initial
+timestamp, so waiting for locks cannot add an unobserved generation to the batch.
+Reader-protected accounting is refreshed even if a journal epoch mismatch skips
+the batch, including the final round before forced advisory admission. Retirement
+then checks the epoch and each immutable generation identity under the host/CAS
+fences. As with footprint sidecars, payload immutability is required.
 Retirement also rechecks last-use and publication timestamps, so newly used views
 cannot be evicted from an older plan.
 Vanished victims are skipped even if teardown removes a held eviction lock.
@@ -249,6 +253,13 @@ PID with a different observed start incarnation, permits automatic exact-token
 recovery only on the recorded host; recovery is serialized by the host coordination flock and
 logged. Live publishers, foreign hosts, unknown identities, unreadable owners,
 and legacy records without host evidence still require explicit recovery.
+
+Orphan reachability includes package `node_modules` symlinks under hidden directories,
+`repos`, `dist`, `result`, and `buck-out`, not just ordinary source directories.
+The package inventory walks real directories without following directory symlinks;
+the editor root uses its separate control-pointer inventory, not a payload walk.
+The package walk is bounded to 100,000 entries. Unreadable or oversized inventories
+are unknown and keep orphan payloads, never evidence that pointers are absent.
 
 If protected usage prevents reaching the budget, publication **continues** and
 emits a structured `over-budget` event with budget, use, and top holders.

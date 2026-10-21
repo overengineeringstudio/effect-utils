@@ -3109,10 +3109,16 @@ export const reserveEditorViewBudget = async ({
           // eslint-disable-next-line no-await-in-loop -- One held host fence covers the complete retirement batch.
           await withHostBudgetLock(async () => {
             const state = readState()
-            if (state.epoch !== census.epoch) return
             const proofAtMs = Date.now()
-            const candidates = plan.order.filter((generation) => available.has(generation.root.key))
+            // Observe every planned key, including contended roots, before an
+            // epoch mismatch can skip retirement and force advisory admission.
+            const candidates = plan.order
             const live = observeGenerations(candidates)
+            // Freeze eligibility at the round boundary: time spent acquiring
+            // locks/scanning readers cannot introduce an unobserved candidate.
+            plan = planEviction({ census, blocked, live, recencyMs, now: roundAtMs })
+            last = { census, plan }
+            if (state.epoch !== census.epoch) return
             const batch: RetirementBatch = {
               state,
               live,
@@ -3121,8 +3127,6 @@ export const reserveEditorViewBudget = async ({
               beforeCandidateRetirement,
               expired: false,
             }
-            plan = planEviction({ census, blocked, live, recencyMs, now: Date.now() })
-            last = { census, plan }
             const needed = freshAdmission.used + reservationBytes - budgetBytes
             const prefix = plan.cumulative.findIndex((freed) => freed >= needed)
             const selected = plan.order.slice(0, prefix === -1 ? plan.order.length : prefix + 1)

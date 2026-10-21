@@ -1977,6 +1977,105 @@ describe('budget admission defers reader proof until eviction needs it', () => {
     }
   })
 
+  it('keeps a reader when its generation becomes eligible during root locking', async () => {
+    const host = makeHost()
+    try {
+      const victim = host.fixture('newly-eligible-reader', 181)
+      const incoming = host.fixture('newly-eligible-incoming', 182, 64)
+      const record = await host.publish(victim)
+      await host.publish(incoming)
+      host.advance(hostRecencyMs + hostGraceMs + 1)
+      const snapshot = join(victim.editorRoot, record.snapshot)
+      utimesSync(snapshot, new Date(Date.now()), new Date(Date.now() - 360_000 + 1))
+      const orphan = join(victim.editorRoot, '.store', '.candidate-eligible')
+      mkdirSync(orphan)
+      writeFileSync(join(orphan, 'payload.bin'), Buffer.alloc(payloadBytes, 180))
+      const reader = openReader(host, victim, record)
+      await reader.ready
+      const reservation = await host.track(
+        reserveEditorViewBudget({
+          contentStore: host.contentStore,
+          root: { repoRoot: incoming.root, editorRoot: incoming.editorRoot },
+          heldEditorRoot: incoming.editorRoot,
+          discoverRoots: () => [{ repoRoot: victim.root, editorRoot: victim.editorRoot }],
+          reservationBytes: 1,
+          budgetBytes: 1,
+          tryLockRoot: lockRoot,
+          beforeRetireRoot: () => {
+            host.advance(2)
+          },
+        }),
+      )
+      expect(pathExists(snapshot)).toBe(true)
+      expectCurrent(victim, record)
+      expectRunningReader(reader)
+      await cancelEditorViewBudgetReservation({
+        contentStore: host.contentStore,
+        token: reservation.token,
+      })
+    } finally {
+      await host.cleanup()
+    }
+  })
+
+  it('accounts real readers when every retirement epoch fence mismatches', async () => {
+    const host = makeHost()
+    try {
+      const victim = host.fixture('epoch-reader', 179)
+      const incoming = host.fixture('epoch-incoming', 178)
+      const record = await host.publish(victim)
+      await host.publish(incoming)
+      host.advance(hostRecencyMs + hostGraceMs + 1)
+      host.age(victim, record)
+      const reader = openReader(host, victim, record)
+      await reader.ready
+      const options = {
+        contentStore: host.contentStore,
+        root: { repoRoot: incoming.root, editorRoot: incoming.editorRoot },
+        heldEditorRoot: incoming.editorRoot,
+        discoverRoots: () => [{ repoRoot: victim.root, editorRoot: victim.editorRoot }],
+        reservationBytes: 1,
+        tryLockRoot: lockRoot,
+      }
+      const tokens: string[] = []
+      for (let index = 0; index < 8; index += 1) {
+        // eslint-disable-next-line no-await-in-loop -- Each real cancellation must advance a later fence's epoch.
+        tokens.push(
+          (await host.track(reserveEditorViewBudget({ ...options, budgetBytes: setupBudgetBytes })))
+            .token,
+        )
+      }
+      let mismatches = 0
+      const captured = await captureStderr(() =>
+        host.track(
+          reserveEditorViewBudget({
+            ...options,
+            budgetBytes: 1,
+            beforeRetireRoot: async () => {
+              const token = tokens.pop()
+              if (token === undefined) throw new Error('unexpected extra retirement round')
+              await cancelEditorViewBudgetReservation({ contentStore: host.contentStore, token })
+              mismatches += 1
+            },
+          }),
+        ),
+      )
+      expect(mismatches).toBe(8)
+      expect(readBudgetLedger(host).protectedBytes).toBeGreaterThanOrEqual(payloadBytes * 2)
+      expect(budgetEvents(captured.stderr).at(-1)?.protectedBytes).toBeGreaterThanOrEqual(
+        payloadBytes * 2,
+      )
+      expectCurrent(victim, record)
+      expectRunningReader(reader)
+      await cancelEditorViewBudgetReservation({
+        contentStore: host.contentStore,
+        token: captured.value.token,
+      })
+    } finally {
+      await host.cleanup()
+    }
+  })
+
   it.each(['root', 'store', 'ledger'])(
     'retakes a shared census when the caller changes its %s',
     async (changed) => {
@@ -2224,6 +2323,66 @@ describe('orphan retirement under the publication exclusion', () => {
       await host.cleanup()
     }
   })
+
+  it.each(['.scratch', 'repos', 'dist', 'result', 'buck-out'])(
+    'preserves orphan package pointers beneath %s during cleanup and budget retirement',
+    async (subtree) => {
+      const host = makeHost()
+      try {
+        const fixture = host.fixture('excluded-pointer', 176, 64)
+        await host.publish(fixture)
+        const orphans = ['.legacy/retained', '.store/.candidate-retained', '.gc-retained']
+        const pointers: string[] = []
+        for (const [index, name] of orphans.entries()) {
+          const path = join(fixture.editorRoot, name)
+          mkdirSync(path, { recursive: true })
+          writeFileSync(join(path, 'payload.bin'), Buffer.alloc(payloadBytes, 170 + index))
+          const packageDir = join(fixture.root, subtree, `reader-${index}`)
+          mkdirSync(packageDir, { recursive: true })
+          const pointer = join(packageDir, 'node_modules')
+          symlinkSync(path, pointer)
+          pointers.push(pointer)
+        }
+        const lock = lockRoot(fixture)
+        try {
+          expect(
+            await reclaimEditorViewOrphans({
+              editorRoot: fixture.editorRoot,
+              repoRoot: fixture.root,
+            }),
+          ).toBe(false)
+          const reservation = await host.track(
+            reserveEditorViewBudget({
+              contentStore: host.contentStore,
+              root: { repoRoot: fixture.root, editorRoot: fixture.editorRoot },
+              heldEditorRoot: fixture.editorRoot,
+              discoverRoots: () => [],
+              reservationBytes: 1,
+              budgetBytes: 1,
+              tryLockRoot: lockRoot,
+            }),
+          )
+          for (const name of orphans) expect(pathExists(join(fixture.editorRoot, name))).toBe(true)
+          await cancelEditorViewBudgetReservation({
+            contentStore: host.contentStore,
+            token: reservation.token,
+          })
+          for (const pointer of pointers) rmSync(pointer)
+          expect(
+            await reclaimEditorViewOrphans({
+              editorRoot: fixture.editorRoot,
+              repoRoot: fixture.root,
+            }),
+          ).toBe(true)
+          for (const name of orphans) expect(pathExists(join(fixture.editorRoot, name))).toBe(false)
+        } finally {
+          lock.release()
+        }
+      } finally {
+        await host.cleanup()
+      }
+    },
+  )
 
   it('adopts reached legacy once into immutable sidecars and retires it after its pointer disappears', async () => {
     const host = makeHost()
