@@ -52,6 +52,7 @@ let
       ../scripts/buck2-entrypoint.ts
       ../scripts/buck2-cache-posture.ts
       ../scripts/buck2-file-watcher.ts
+      ../scripts/buck2-stdio.c
       ../scripts/buck2-entrypoint.sh
     ];
   };
@@ -80,6 +81,7 @@ pkgs.buck2.overrideAttrs (oldAttrs: {
     cp ${launcherSource}/buck2-entrypoint.ts "$out/libexec/buck2-entrypoint.ts"
     cp ${launcherSource}/buck2-cache-posture.ts "$out/libexec/buck2-cache-posture.ts"
     cp ${launcherSource}/buck2-file-watcher.ts "$out/libexec/buck2-file-watcher.ts"
+    cp ${launcherSource}/buck2-stdio.c "$out/libexec/buck2-stdio.c"
     # Darwin clonefile preserves Bun's read-only store mode. Its copy fallback
     # uses TMPDIR, so compiling there would reopen the same clone with O_EXCL.
     # Keep the compile working directory distinct from TMPDIR.
@@ -88,7 +90,7 @@ pkgs.buck2.overrideAttrs (oldAttrs: {
       ${pkgs.bun}/bin/bun build --compile "$out/libexec/buck2-entrypoint.ts" \
         --outfile "$out/libexec/buck2-entrypoint"
     )
-    rm "$out/libexec/buck2-entrypoint.ts" "$out/libexec/buck2-cache-posture.ts" "$out/libexec/buck2-file-watcher.ts"
+    rm "$out/libexec/buck2-entrypoint.ts" "$out/libexec/buck2-cache-posture.ts" "$out/libexec/buck2-file-watcher.ts" "$out/libexec/buck2-stdio.c"
     substitute ${launcherSource}/buck2-entrypoint.sh "$out/bin/buck2" \
       --replace-fail '@shell@' '${pkgs.runtimeShell}' \
       --replace-fail '@native@' "$out/libexec/buck2" \

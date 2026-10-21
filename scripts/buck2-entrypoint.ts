@@ -1,5 +1,5 @@
 #!/usr/bin/env -S bun
-import { dlopen } from 'bun:ffi'
+import { cc } from 'bun:ffi'
 import { spawnSync } from 'node:child_process'
 import { createHash, randomUUID } from 'node:crypto'
 import {
@@ -32,6 +32,7 @@ import {
   reconcileWatcherDaemon,
   withoutManagedWatcherBlock,
 } from './buck2-file-watcher.ts'
+import stdioSource from './buck2-stdio.c' with { type: 'file' }
 
 const configCommands: Record<string, true> = {
   build: true,
@@ -676,13 +677,16 @@ export const reconcileGateDaemon = ({
 
 if (import.meta.main === true) {
   try {
-    // Loading libc needs no generated packages or editor materialization. The
-    // watcher already uses this Bun FFI ABI at launcher bootstrap.
-    const libc = dlopen(
-      process.platform === 'darwin' ? '/usr/lib/libSystem.B.dylib' : 'libc.so.6',
-      { fcntl: { args: ['i32', 'i32', 'i32'], returns: 'i32' } },
-    )
-    const stdioFlags = [0, 1, 2].map((fd) => libc.symbols.fcntl(fd, 3, 0))
+    // Bun embeds this source in the compiled launcher. TinyCC needs neither
+    // generated packages nor host SDK headers for these fixed-arity wrappers.
+    const stdio = cc({
+      source: Bun.file(stdioSource),
+      symbols: {
+        eu_getfl: { args: ['i32'], returns: 'i32' },
+        eu_setfl: { args: ['i32', 'i32'], returns: 'i32' },
+      },
+    })
+    const stdioFlags = [0, 1, 2].map((fd) => stdio.symbols.eu_getfl(fd))
     const native = process.argv[2]
     if (native === undefined) throw new Error('expected pinned Buck binary')
     if (process.argv[3] === '--gate-cleanup' || process.argv[3] === '--gate-admit') {
@@ -762,10 +766,13 @@ if (import.meta.main === true) {
     // open file description. Preserve the caller's flags, not an assumed
     // blocking default. Closed inherited descriptors have no flags to restore.
     for (const [fd, flags] of stdioFlags.entries()) {
-      if (flags >= 0 && libc.symbols.fcntl(fd, 4, flags) !== 0)
+      if (
+        flags >= 0 &&
+        (stdio.symbols.eu_setfl(fd, flags) !== 0 || stdio.symbols.eu_getfl(fd) !== flags)
+      )
         throw new Error(`Buck2 launcher: could not restore inherited fd ${fd} status flags`)
     }
-    libc.close()
+    stdio.close()
     process.execve(native, [native, ...args], process.env)
   } catch (error) {
     writeSync(2, `${error instanceof Error ? error.message : String(error)}\n`)

@@ -254,9 +254,13 @@ concurrent-client protection and the residual status-to-kill race.
 
 Launcher diagnostics, including watcher migration and admission helpers, use
 `node:fs` synchronous descriptor writes rather than Bun's process streams.
-At startup the launcher captures fd 0/1/2 file status flags through libc
-`fcntl(F_GETFL)` (libSystem on macOS), then restores them with `F_SETFL`
-immediately before native `execve`. Closed inherited descriptors are skipped.
+At startup the launcher captures fd 0/1/2 file status flags through
+`fcntl(F_GETFL)`, then restores and reads them back immediately before native
+`execve`. Bun's embedded TinyCC compiles a header-free C shim with fixed-arity
+get/set functions: calling variadic `fcntl` directly through a fixed-arity FFI
+binding is not ABI-correct on macOS arm64. The C source is embedded in the
+standalone launcher and needs neither generated packages nor SDK headers.
+Closed inherited descriptors are skipped.
 A restoration failure emits a synchronous diagnostic and prevents native
 startup: executing with altered stream semantics can hide the actual action
 failure behind `EAGAIN`. The launcher preserves intentionally non-blocking

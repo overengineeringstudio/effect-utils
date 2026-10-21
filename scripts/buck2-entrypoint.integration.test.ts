@@ -227,24 +227,38 @@ afterEach(async () => {
 })
 
 describe('direct pinned Buck posture', () => {
-  it('preserves inherited stdio flags and complete large stderr after a launcher diagnostic', async () => {
-    const root = fixture()
-    const baseline = join(root, 'stdio-before.json')
-    const observed = join(root, 'stdio-after.json')
-    const childPath = join(root, 'native-stderr.ts')
-    const launcher = join(import.meta.dir, 'buck2-entrypoint.ts')
-    const nativeFlags = `
-import { dlopen } from 'bun:ffi'
+  for (const compiled of [false, true]) {
+    it(`preserves inherited stdio flags and complete large stderr after a launcher diagnostic (${compiled === true ? 'compiled' : 'source'})`, async () => {
+      const root = fixture()
+      const baseline = join(root, 'stdio-before.json')
+      const observed = join(root, 'stdio-after.json')
+      const childPath = join(root, 'native-stderr.ts')
+      const launcher = join(import.meta.dir, 'buck2-entrypoint.ts')
+      const executable = compiled === true ? join(root, 'compiled-launcher') : process.execPath
+      const launcherArgs = compiled === true ? [] : [launcher]
+      if (compiled === true) {
+        const build = Bun.spawnSync(
+          [process.execPath, 'build', '--compile', launcher, '--outfile', executable],
+          { cwd: root, stdout: 'pipe', stderr: 'pipe' },
+        )
+        expect({ code: build.exitCode, stderr: build.stderr.toString() }).toMatchObject({ code: 0 })
+      }
+      const nativeFlags = `
+import { cc } from 'bun:ffi'
 import { writeFileSync, writeSync } from 'node:fs'
-const libc = dlopen(process.platform === 'darwin' ? '/usr/lib/libSystem.B.dylib' : 'libc.so.6', {
-  fcntl: { args: ['i32', 'i32', 'i32'], returns: 'i32' },
+const stdio = cc({
+  source: ${JSON.stringify(join(import.meta.dir, 'buck2-stdio.c'))},
+  symbols: {
+    eu_getfl: { args: ['i32'], returns: 'i32' },
+    eu_setfl: { args: ['i32', 'i32'], returns: 'i32' },
+  },
 })
-const flags = () => [0, 1, 2].map((fd) => libc.symbols.fcntl(fd, 3, 0))
+const flags = () => [0, 1, 2].map((fd) => stdio.symbols.eu_getfl(fd))
 `
-    const payloadSize = 2 * 1024 * 1024
-    writeFileSync(
-      childPath,
-      `#!${process.execPath}
+      const payloadSize = 2 * 1024 * 1024
+      writeFileSync(
+        childPath,
+        `#!${process.execPath}
 ${nativeFlags}
 writeFileSync(${JSON.stringify(observed)}, JSON.stringify(flags()))
 const payload = Buffer.alloc(${payloadSize}, 'x')
@@ -252,55 +266,63 @@ let offset = 0
 while (offset < payload.length) offset += writeSync(2, payload, offset, payload.length - offset)
 writeSync(2, '\\nlarge-stderr-complete\\n')
 `,
-      { mode: 0o700 },
-    )
-    // Establish genuinely blocking inherited descriptors independently of the
-    // test runner's stream implementation, then exec the real launcher.
-    const child = Bun.spawn(
-      [
-        process.execPath,
-        '-e',
-        `${nativeFlags}
+        { mode: 0o700 },
+      )
+      // Establish genuinely blocking inherited descriptors independently of the
+      // test runner's stream implementation, then exec the real launcher.
+      const child = Bun.spawn(
+        [
+          process.execPath,
+          '-e',
+          `${nativeFlags}
 const nonblock = process.platform === 'darwin' ? 4 : 2048
 for (const [fd, value] of flags().entries()) {
-  if (value < 0 || libc.symbols.fcntl(fd, 4, value & ~nonblock) !== 0) process.exit(70)
+  if (value < 0 || stdio.symbols.eu_setfl(fd, value & ~nonblock) !== 0) process.exit(70)
 }
 writeFileSync(${JSON.stringify(baseline)}, JSON.stringify(flags()))
-process.execve(process.execPath, [process.execPath, ${JSON.stringify(launcher)}, ${JSON.stringify(childPath)}, 'build', '//:app'], process.env)
+// Exercise the native ABI with an actual flag transition, not a no-op restore.
+const blocking = flags()
+for (const [fd, value] of blocking.entries()) {
+  if (stdio.symbols.eu_setfl(fd, value | nonblock) !== 0) process.exit(71)
+  if (stdio.symbols.eu_getfl(fd) !== (value | nonblock)) process.exit(72)
+  if (stdio.symbols.eu_setfl(fd, value) !== 0 || stdio.symbols.eu_getfl(fd) !== value) process.exit(73)
+}
+process.execve(${JSON.stringify(executable)}, [${JSON.stringify(executable)}, ...${JSON.stringify(launcherArgs)}, ${JSON.stringify(childPath)}, 'build', '//:app'], process.env)
 `,
-      ],
-      {
-        cwd: root,
-        env: { PATH: process.env['PATH'], HOME: root, XDG_CACHE_HOME: join(root, 'cache') },
-        detached: true,
-        stdin: 'ignore',
-        stdout: 'pipe',
-        stderr: 'pipe',
-      },
-    )
-    launchProcesses.add(child)
-    const reader = child.stderr.getReader()
-    const chunks: Uint8Array[] = []
-    try {
-      for (;;) {
-        const { done, value } = await reader.read()
-        if (done === true) break
-        chunks.push(value)
-        // Deliberately apply backpressure rather than buffering the entire
-        // stream in a fast Response reader.
-        await Bun.sleep(5)
+        ],
+        {
+          cwd: root,
+          env: { PATH: process.env['PATH'], HOME: root, XDG_CACHE_HOME: join(root, 'cache') },
+          detached: true,
+          stdin: 'ignore',
+          stdout: 'pipe',
+          stderr: 'pipe',
+        },
+      )
+      launchProcesses.add(child)
+      const reader = child.stderr.getReader()
+      const chunks: Uint8Array[] = []
+      try {
+        for (;;) {
+          const { done, value } = await reader.read()
+          if (done === true) break
+          chunks.push(value)
+          // Deliberately apply backpressure rather than buffering the entire
+          // stream in a fast Response reader.
+          await Bun.sleep(5)
+        }
+      } finally {
+        reader.releaseLock()
       }
-    } finally {
-      reader.releaseLock()
-    }
-    const stderr = Buffer.concat(chunks).toString()
-    expect(stderr).toContain('warning: Buck2 REAPI probe failed:')
-    expect(JSON.parse(readFileSync(observed, 'utf8'))).toEqual(
-      JSON.parse(readFileSync(baseline, 'utf8')),
-    )
-    expect(await child.exited).toBe(0)
-    expect(stderr.endsWith(`${'x'.repeat(payloadSize)}\nlarge-stderr-complete\n`)).toBe(true)
-  }, 20000)
+      const stderr = Buffer.concat(chunks).toString()
+      expect(stderr).toContain('warning: Buck2 REAPI probe failed:')
+      expect(JSON.parse(readFileSync(observed, 'utf8'))).toEqual(
+        JSON.parse(readFileSync(baseline, 'utf8')),
+      )
+      expect(await child.exited).toBe(0)
+      expect(stderr.endsWith(`${'x'.repeat(payloadSize)}\nlarge-stderr-complete\n`)).toBe(true)
+    }, 20000)
+  }
 
   for (const scenario of ['healthy', 'retry-success', 'both-fail'] as const) {
     it(`records per-invocation cache admission for ${scenario}`, async () => {
