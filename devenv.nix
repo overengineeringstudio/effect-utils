@@ -782,6 +782,8 @@ let
     "packages/**/.storybook/**"
     "packages/@overeng/buck2-tools/src/**/*.ts"
     "packages/@overeng/megarepo/src/buck2-manifest.ts"
+    "packages/@overeng/schema-codegen/src/**/*.ts"
+    "packages/@overeng/schema-codegen-swift/src/**/*.ts"
     "packages/@overeng/tui-core/src/**/*.ts"
     "packages/@overeng/tui-core/src/**/*.tsx"
     "packages/@overeng/tui-core/src/**/*.cts"
@@ -820,6 +822,7 @@ let
   editorBootstrapPackagePaths = [
     "."
     "packages/@overeng/otel-contract"
+    "packages/@overeng/schema-codegen-swift"
   ];
   buck2AggregateExec = config.effectUtils.buck2.aggregateExec;
   editorViewExec =
