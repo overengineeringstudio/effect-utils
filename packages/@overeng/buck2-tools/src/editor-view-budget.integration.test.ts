@@ -1755,11 +1755,11 @@ describe('budget admission defers complete reader proof until eviction needs it'
       expect(stages).toHaveLength(9)
       const stageCounts = Object.fromEntries(stages.map((entry) => [entry.stage, entry]))
       expect(stageCounts['root-discovery']).toMatchObject({ roots: 2 })
-      // The held publication lock is also enumerated as one unmanaged directory.
-      expect(stageCounts['generation-enumeration']).toMatchObject({ generations: 3 })
+      // Two generations, the held publication lock, and two persistent lease directories.
+      expect(stageCounts['generation-enumeration']).toMatchObject({ generations: 5 })
       expect(stageCounts['sidecar-reads']).toMatchObject({ hits: 1, misses: 1 })
       expect(stageCounts['sidecar-reads'].bytes).toBeGreaterThan(0)
-      expect(stageCounts['footprint-walks']).toMatchObject({ walks: 2 })
+      expect(stageCounts['footprint-walks']).toMatchObject({ walks: 4 })
       expect(stageCounts['footprint-walks'].linkedBytes).toBeGreaterThan(0)
       expect(stageCounts['sidecar-staging']).toMatchObject({ sidecars: 1 })
       expect(stageCounts['cas-accounting']).toMatchObject({ stores: 1 })
