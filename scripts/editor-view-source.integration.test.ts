@@ -1,6 +1,14 @@
 import { afterEach, describe, expect, it } from 'bun:test'
 import { spawnSync } from 'node:child_process'
-import { closeSync, existsSync, mkdtempSync, openSync, rmSync, writeFileSync } from 'node:fs'
+import {
+  closeSync,
+  existsSync,
+  mkdtempSync,
+  openSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -32,6 +40,15 @@ const inheritedRead = `const fs = require('node:fs'); process.stdout.write(fs.re
 // Exercise actual descriptor passing, not just the parent's lifetime or an env
 // variable containing a pathname. Native lock semantics have their own suite.
 describe('bootstrap-safe source consumer descriptor handoff', () => {
+  it('root release uses bootstrap Bun rather than acquiring its own conflicting reader lease', () => {
+    const config = readFileSync(new URL('../devenv.nix', import.meta.url), 'utf8')
+    const release = config.slice(
+      config.indexOf('tasks."buck2:editor:release"'),
+      config.indexOf('tasks."buck2:typescript:materialize-dist"'),
+    )
+    expect(release).toContain('${pkgs.bun}/bin/bun')
+    expect(release).not.toContain('${sourceBun}/bin/bun')
+  })
   for (const runtime of ['node', 'bun']) {
     for (const method of [
       'spawn',
