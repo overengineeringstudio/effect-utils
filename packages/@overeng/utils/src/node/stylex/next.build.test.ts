@@ -286,6 +286,9 @@ const installFixtureDependencies = ({
       `--store-dir=${storeRoot}`,
       '--config.package-import-method=copy',
       '--config.enable-global-virtual-store=false',
+      // The release-age policy needs registry metadata the content store does
+      // not carry; the hash-pinned Nix fixture already fixed the package set.
+      '--config.minimum-release-age=0',
     ],
     {
       cwd: fixtureRoot,
