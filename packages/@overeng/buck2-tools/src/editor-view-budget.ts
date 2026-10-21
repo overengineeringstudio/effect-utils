@@ -23,7 +23,9 @@ import { homedir } from 'node:os'
 import { isAbsolute, join, relative, resolve, sep } from 'node:path'
 import process from 'node:process'
 
+import { probeEditorViewLease } from './editor-view-leases.ts'
 import {
+  editorViewAutomaticEvictionEvidence,
   managedEditorViewSnapshots,
   observeEditorViewProcessCandidates,
   type EditorViewProcessCandidate,
@@ -65,6 +67,27 @@ export type EditorViewEvictedMarker = {
   readonly reason: 'host-budget'
   readonly budgetBytes: number
   readonly usedBytes: number
+}
+
+/** Admission cannot safely reclaim enough space; publication has not been authorized. */
+export class EditorViewCapacityError extends Error {
+  readonly code = 'EDITOR_VIEW_CAPACITY'
+
+  constructor(
+    readonly budgetBytes: number,
+    readonly usedBytes: number,
+    readonly reservationBytes: number,
+    readonly blockedGenerations: number,
+    readonly reasons: readonly string[],
+  ) {
+    super(
+      `editor view host budget: capacity exhausted (${usedBytes} used + ${reservationBytes} requested; ` +
+        `${budgetBytes} budget; ${blockedGenerations} protected generations). ` +
+        `${reasons.slice(0, 8).join('; ')}. Nothing further can be safely deleted. ` +
+        'Close unmanaged editor sessions and explicitly release idle worktrees or pins, or raise EDITOR_VIEW_HOST_BUDGET_BYTES.',
+    )
+    this.name = 'EditorViewCapacityError'
+  }
 }
 
 const defaultBudgetBytes = 40_000_000_000
@@ -1844,6 +1867,7 @@ const planEviction = ({
     const current = generation.root.currents.has(generation.name)
     return (
       generation.kind === 'generation' &&
+      editorViewAutomaticEvictionEvidence({ editorRoot: generation.root.key }).state === 'clear' &&
       generation.root.trusted === true &&
       generation.readOnly === true &&
       generation.identity !== undefined &&
@@ -1899,10 +1923,17 @@ const linkedInodes = function* (linked: Buffer): Generator<string> {
     yield `${linked.readBigUInt64LE(offset)}:${linked.readBigUInt64LE(offset + 8)}`
 }
 
-/** Build only the candidates whose eligibility can still be changed by a positive reference. */
+/** Positive readers and incomplete migration evidence both protect a candidate. */
 const observeGenerations = (generations: readonly GenerationView[]): ReadonlySet<string> => {
   const candidates: EditorViewProcessCandidate[] = []
+  const protectedGenerations = new Set<string>()
   for (const generation of generations) {
+    if (
+      editorViewAutomaticEvictionEvidence({ editorRoot: generation.root.key }).state !== 'clear'
+    ) {
+      protectedGenerations.add(generation.key)
+      continue
+    }
     candidates.push({
       key: generation.key,
       editorRoot: generation.root.key,
@@ -1910,7 +1941,9 @@ const observeGenerations = (generations: readonly GenerationView[]): ReadonlySet
       linkedInodes: linkedInodes(generation.linked),
     })
   }
-  return observeEditorViewProcessCandidates({ candidates })
+  for (const key of observeEditorViewProcessCandidates({ candidates }))
+    protectedGenerations.add(key)
+  return protectedGenerations
 }
 
 type FirstHop = { readonly path: string; readonly target: string } | 'absent' | 'protect'
@@ -2019,138 +2052,156 @@ const retireRoot = async ({
   const token = randomUUID()
   const garbage: string[] = []
   const retired: string[] = []
-  await withHostBudgetLock(async () => {
-    await withEditorViewContentStoreLock({
-      contentStore: root.contentStore,
-      run: async () => {
-        const state = readState()
-        // Journal changes after the fresh census require another admission round.
-        if (state.epoch !== censusEpoch) {
-          return
-        }
-        const registration = state.roots.get(root.key)
-        if (
-          registration?.contentStore !== root.contentStore ||
-          registration.repoRoot !== root.root.repoRoot
-        ) {
-          blocked.push(...admitted.map(({ generation }) => generation.key))
-          return
-        }
-        // Repeat the full reader proof immediately before retirement under exclusion.
-        const live = observeGenerations(admitted.map(({ generation }) => generation))
-        const pinned = managedEditorViewSnapshots({ editorRoot: root.key })
-        let activeAtMs = 0
-        for (const [key, at] of state.lastUse)
-          if (key.startsWith(`${root.key}\0`) === true) activeAtMs = Math.max(activeAtMs, at)
-        const pointers = new Map<string, string>()
-        let entries: string[]
-        try {
-          entries = readdirSync(root.key)
-        } catch (error) {
-          if (vanished(error) === false) throw error
-          blocked.push(...admitted.map(({ generation }) => generation.key))
-          return
-        }
-        for (const name of entries) {
-          const path = join(root.key, name)
+  const leases: { readonly release: () => void }[] = []
+  try {
+    await withHostBudgetLock(async () => {
+      await withEditorViewContentStoreLock({
+        contentStore: root.contentStore,
+        run: async () => {
+          if (editorViewAutomaticEvictionEvidence({ editorRoot: root.key }).state !== 'clear') {
+            blocked.push(...admitted.map(({ generation }) => generation.key))
+            return
+          }
+          const state = readState()
+          // Journal changes after the fresh census require another admission round.
+          if (state.epoch !== censusEpoch) {
+            return
+          }
+          const registration = state.roots.get(root.key)
+          if (
+            registration?.contentStore !== root.contentStore ||
+            registration.repoRoot !== root.root.repoRoot
+          ) {
+            blocked.push(...admitted.map(({ generation }) => generation.key))
+            return
+          }
+          // Repeat the full reader proof immediately before retirement under exclusion.
+          const live = observeGenerations(admitted.map(({ generation }) => generation))
+          const pinned = managedEditorViewSnapshots({ editorRoot: root.key })
+          let activeAtMs = 0
+          for (const [key, at] of state.lastUse)
+            if (key.startsWith(`${root.key}\0`) === true) activeAtMs = Math.max(activeAtMs, at)
+          const pointers = new Map<string, string>()
+          let entries: string[]
           try {
-            const status = lstatSync(path)
-            if (status.isSymbolicLink() === true) {
-              const target = readlinkSync(path)
-              pointers.set(name, target)
-              const snapshot = snapshotPattern.exec(target)?.[1]
-              if (snapshot !== undefined && snapshot.startsWith(`${name}-`) === true)
-                activeAtMs = Math.max(activeAtMs, status.mtimeMs)
-            }
+            entries = readdirSync(root.key)
           } catch (error) {
             if (vanished(error) === false) throw error
+            blocked.push(...admitted.map(({ generation }) => generation.key))
+            return
           }
-        }
-        for (const { generation, view, firstHop } of admitted) {
-          // Recent use is reread only after root → host → owning CAS exclusion.
-          const stamp = generationIdentity(generation.dir)
-          const now = Date.now()
-          if (
-            pinned.has(generation.name) === true ||
-            live.has(generation.key) === true ||
-            stamp?.identity !== generation.identity ||
-            now - activeAtMs < recencyMs ||
-            now - Math.max(stamp?.mtimeMs ?? 0, state.lastUse.get(generation.key) ?? 0) <
-              graceMs + touchRefreshMs
-          ) {
-            blocked.push(generation.key)
-            continue
+          for (const name of entries) {
+            const path = join(root.key, name)
+            try {
+              const status = lstatSync(path)
+              if (status.isSymbolicLink() === true) {
+                const target = readlinkSync(path)
+                pointers.set(name, target)
+                const snapshot = snapshotPattern.exec(target)?.[1]
+                if (snapshot !== undefined && snapshot.startsWith(`${name}-`) === true)
+                  activeAtMs = Math.max(activeAtMs, status.mtimeMs)
+              }
+            } catch (error) {
+              if (vanished(error) === false) throw error
+            }
           }
-          const target = `.store/${generation.name}`
-          const pointed = Array.from(pointers).filter(([, link]) => link === target)
-          if (view === undefined) {
-            if (pointed.length > 0) {
+          for (const { generation, view, firstHop } of admitted) {
+            const lease = probeEditorViewLease({ editorRoot: root.key, snapshot: generation.name })
+            if (lease.state !== 'clear') {
+              lease.release()
               blocked.push(generation.key)
               continue
             }
-          } else {
-            if (pointed.length !== 1 || pointed[0]?.[0] !== view) {
+            // Keep the exclusive open description through private payload cleanup.
+            leases.push(lease)
+            // Recent use is reread only after root → host → owning CAS exclusion.
+            const stamp = generationIdentity(generation.dir)
+            const now = Date.now()
+            if (
+              pinned.has(generation.name) === true ||
+              live.has(generation.key) === true ||
+              stamp?.identity !== generation.identity ||
+              now - activeAtMs < recencyMs ||
+              now - Math.max(stamp?.mtimeMs ?? 0, state.lastUse.get(generation.key) ?? 0) <
+                graceMs + touchRefreshMs
+            ) {
               blocked.push(generation.key)
               continue
             }
-            if (typeof firstHop === 'object') {
-              try {
-                if (readlinkSync(firstHop.path) !== firstHop.target) {
-                  blocked.push(generation.key)
-                  continue
+            const target = `.store/${generation.name}`
+            const pointed = Array.from(pointers).filter(([, link]) => link === target)
+            if (view === undefined) {
+              if (pointed.length > 0) {
+                blocked.push(generation.key)
+                continue
+              }
+            } else {
+              if (pointed.length !== 1 || pointed[0]?.[0] !== view) {
+                blocked.push(generation.key)
+                continue
+              }
+              if (typeof firstHop === 'object') {
+                try {
+                  if (readlinkSync(firstHop.path) !== firstHop.target) {
+                    blocked.push(generation.key)
+                    continue
+                  }
+                } catch (error) {
+                  if (vanished(error) === false) throw error
                 }
-              } catch (error) {
-                if (vanished(error) === false) throw error
               }
-            }
-            writeMarker({
-              root,
-              view,
-              marker: {
-                schema: editorViewEvictedSchema,
-                snapshot: target,
-                reason: 'host-budget',
-                budgetBytes,
-                usedBytes,
-              },
-            })
-            if (typeof firstHop === 'object') {
-              try {
-                unlinkSync(firstHop.path)
-              } catch (error) {
-                if (vanished(error) === false) throw error
+              writeMarker({
+                root,
+                view,
+                marker: {
+                  schema: editorViewEvictedSchema,
+                  snapshot: target,
+                  reason: 'host-budget',
+                  budgetBytes,
+                  usedBytes,
+                },
+              })
+              if (typeof firstHop === 'object') {
+                try {
+                  unlinkSync(firstHop.path)
+                } catch (error) {
+                  if (vanished(error) === false) throw error
+                }
               }
+              unlinkSync(join(root.key, view))
             }
-            unlinkSync(join(root.key, view))
+            const destination = join(root.key, `.gc-${token}-${generation.name}`)
+            const mode = statSync(generation.dir).mode & 0o777
+            chmodSync(generation.dir, mode | 0o200)
+            try {
+              renameSync(generation.dir, destination)
+            } catch (error) {
+              chmodSync(generation.dir, mode)
+              throw error
+            }
+            chmodSync(destination, mode)
+            garbage.push(destination)
+            retired.push(generation.key)
+            state.generations.delete(generation.key)
+            state.lastUse.delete(generation.key)
           }
-          const destination = join(root.key, `.gc-${token}-${generation.name}`)
-          const mode = statSync(generation.dir).mode & 0o777
-          chmodSync(generation.dir, mode | 0o200)
-          try {
-            renameSync(generation.dir, destination)
-          } catch (error) {
-            chmodSync(generation.dir, mode)
-            throw error
+          if (retired.length > 0) {
+            state.epoch += 1
+            writeState(state)
           }
-          chmodSync(destination, mode)
-          garbage.push(destination)
-          retired.push(generation.key)
-          state.generations.delete(generation.key)
-          state.lastUse.delete(generation.key)
-        }
-        if (retired.length > 0) {
-          state.epoch += 1
-          writeState(state)
-        }
-      },
+        },
+      })
     })
-  })
-  // Directory-only unlock of private retired trees; payload inodes are never chmodded.
-  for (const path of garbage) {
-    makeDirectoriesWritable(path)
-    rmSync(path, { recursive: true })
+    // Directory-only unlock of private retired trees; payload inodes are never chmodded.
+    for (const path of garbage) {
+      makeDirectoriesWritable(path)
+      rmSync(path, { recursive: true })
+    }
+    return { retired, blocked }
+  } finally {
+    // Closing, never LOCK_UN: inherited readers retain their own descriptions.
+    for (const lease of leases) lease.release()
   }
-  return { retired, blocked }
 }
 
 // ---------------------------------------------------------------------------
@@ -2282,16 +2333,8 @@ export const reserveEditorViewBudget = async ({
         censusSession.pending.set(ledger, pending)
         return pending
       }
-      /** One short flock transaction: reconcile the ledger, then reserve if it fits (or when forced). */
-      const admit = async ({
-        census,
-        plan,
-        force,
-      }: {
-        readonly census: Census
-        readonly plan: Plan
-        readonly force: boolean
-      }) => {
+      /** One short flock transaction: reconcile the ledger, then reserve only if it fits. */
+      const admit = async ({ census, plan }: { readonly census: Census; readonly plan: Plan }) => {
         const owners = budgetProcessOwners()
         const obsolete = obsoleteGenerationFootprints()
         return withHostBudgetLock(async () => {
@@ -2346,8 +2389,7 @@ export const reserveEditorViewBudget = async ({
             protectedBytes: plan.protectedBytes,
             measuredAtMs: census.measuredAtMs,
           }
-          const admitted =
-            force === true || (stale === false && used + reservationBytes <= budgetBytes)
+          const admitted = stale === false && used + reservationBytes <= budgetBytes
           if (admitted === true) {
             state.reservations.set(token, {
               token,
@@ -2368,27 +2410,7 @@ export const reserveEditorViewBudget = async ({
             topHolders: census.topHolders,
             startedAtMs,
           })
-          if (admitted === true && force === true)
-            signal({
-              state,
-              contentStore: store,
-              event: {
-                event: 'editor-view.host-budget.over-budget',
-                budgetBytes,
-                usedBytes: census.usedBytes,
-                protectedBytes: plan.protectedBytes,
-                reservedBytes: reserved,
-                pendingEstimateBytes: pending,
-                reservationBytes,
-                topHolders: census.topHolders,
-                evicted,
-                ...(census.unknown.length > 0 ? { unaccounted: census.unknown } : {}),
-                message: `editor views exceed the host budget: ${census.usedBytes} of ${budgetBytes} bytes measured (${plan.protectedBytes} protected: pinned, open by a process, within ${graceMs / 60_000}min grace, root used within ${recencyMs}ms, or lock contended) plus ${reserved} reserved and ${pending} estimated since the census, before admitting ${reservationBytes}${census.unknown.length > 0 ? `; ${census.unknown.length} unreadable path(s) uncounted` : ''}; evicted ${evicted.length} generation(s); top holders: ${formatHolders(census.topHolders)}. Publishing anyway; release idle worktrees or pins, or raise EDITOR_VIEW_HOST_BUDGET_BYTES.`,
-              },
-              startedAtMs,
-              exitCode: 0,
-            })
-          else if (admitted === true && evicted.length > 0)
+          if (admitted === true && evicted.length > 0)
             signal({
               state,
               contentStore: store,
@@ -2463,7 +2485,7 @@ export const reserveEditorViewBudget = async ({
         })
         last = { census, plan }
         // eslint-disable-next-line no-await-in-loop -- Admission is a single short flock transaction per round.
-        const admission = await admit({ census, plan, force: false })
+        const admission = await admit({ census, plan })
         if (admission.admitted === true) {
           return { token }
         }
@@ -2497,7 +2519,7 @@ export const reserveEditorViewBudget = async ({
         last = { census, plan }
         // Recheck fit with the fresh accounting before paying for reader observation.
         // eslint-disable-next-line no-await-in-loop -- The journal fence precedes any retirement.
-        const freshAdmission = await admit({ census, plan, force: false })
+        const freshAdmission = await admit({ census, plan })
         if (freshAdmission.admitted === true) return { token }
         if (freshAdmission.stale === true) continue
         progress('reader-scan')
@@ -2571,14 +2593,71 @@ export const reserveEditorViewBudget = async ({
           invalidateCensus()
         }
       }
-      // Advisory budget: protected bytes do not fit, so record the overrun and publish anyway.
+      // Reader uncertainty is a retention boundary, never permission to force admission.
       const census =
         last?.census ??
         (await takeCensus({ contentStore: store, root, heldEditorRoot, discoverRoots, staged }))
-      const plan =
-        last?.plan ?? planEviction({ census, blocked, live: new Set(), recencyMs, now: Date.now() })
-      await admit({ census, plan, force: true })
-      return { token }
+      const capacityError = new EditorViewCapacityError(
+        budgetBytes,
+        census.usedBytes + reservedBytes(readState()),
+        reservationBytes,
+        census.generations.reduce(
+          (count, generation) =>
+            count +
+            (generation.kind === 'generation' && evicted.includes(generation.key) === false
+              ? 1
+              : 0),
+          0,
+        ),
+        [
+          ...new Set(
+            census.roots.flatMap(
+              (view) => editorViewAutomaticEvictionEvidence({ editorRoot: view.key }).reasons,
+            ),
+          ),
+          ...census.unknown.slice(0, 5),
+          'persistent lease-control tombstones retain inode and metadata pressure and must not be unlinked',
+          'held leases, pins, recent use, incomplete reader evidence, and contended locks remain protected',
+        ],
+      )
+      await withHostBudgetLock(async () => {
+        const state = readState()
+        state.usage = {
+          usedBytes: census.usedBytes,
+          protectedBytes: last?.plan.protectedBytes ?? census.usedBytes,
+          measuredAtMs: census.measuredAtMs,
+        }
+        updateWarning({
+          state,
+          contentStore: store,
+          budgetBytes,
+          topHolders: census.topHolders,
+          startedAtMs,
+        })
+        signal({
+          state,
+          contentStore: store,
+          event: {
+            event: 'editor-view.host-budget.over-budget',
+            budgetBytes,
+            usedBytes: census.usedBytes,
+            protectedBytes: last?.plan.protectedBytes ?? census.usedBytes,
+            reservedBytes: reservedBytes(state),
+            pendingEstimateBytes: state.journal
+              .filter((entry) => entry.epoch > census.epoch)
+              .reduce((sum, entry) => sum + entry.estimatedBytes, 0),
+            reservationBytes,
+            topHolders: census.topHolders,
+            evicted,
+            ...(census.unknown.length > 0 ? { unaccounted: census.unknown } : {}),
+            message: capacityError.message,
+          },
+          startedAtMs,
+          exitCode: 1,
+        })
+        writeState(state)
+      })
+      throw capacityError
     },
   })
 }

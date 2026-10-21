@@ -31,6 +31,7 @@ import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:pat
 import process from 'node:process'
 
 import {
+  EditorViewCapacityError,
   editorViewHostBudgetBytes,
   makeEditorViewBudgetCensusSession,
   reserveEditorViewBudget,
@@ -42,7 +43,9 @@ import {
   type EditorViewBudgetRoot,
   type EditorViewBudgetCensusSession,
 } from './editor-view-budget.ts'
+import { ensureEditorViewLeaseControl, probeEditorViewLease } from './editor-view-leases.ts'
 import {
+  editorViewAutomaticEvictionEvidence,
   editorViewPinSchema,
   managedEditorViewSnapshots,
   readEditorViewPinRecord,
@@ -261,7 +264,7 @@ const pathExists = (path: string): boolean => {
 const isNodeErrorCode = ({ error, code }: { error: unknown; code: string }): boolean =>
   error instanceof Error && 'code' in error && error.code === code
 
-/** Advisory maintenance never changes a successful publication into a command failure. */
+/** Post-commit maintenance is advisory; capacity rejection before publication is not. */
 const runEditorViewMaintenance = async <T>({
   editorRoot,
   phase,
@@ -284,6 +287,7 @@ const runEditorViewMaintenance = async <T>({
       )
     return result
   } catch (error) {
+    if (phase === 'reserve') throw error
     console.error(
       JSON.stringify({
         event: 'editor-view.host-budget.maintenance-error',
@@ -2059,14 +2063,27 @@ const garbageCollectSnapshots = async ({
   // Payload validation precedes the pointer commit and does not hold the CAS flock.
   // A pin admitted meanwhile is checked again before the canonical rename;
   // a concurrent unpin may conservatively defer retirement until next time.
-  const referenced = referencedEditorSnapshots(paths)
   const retired: { readonly snapshotDir: string; readonly garbage: string }[] = []
+  const leases: { readonly release: () => void }[] = []
   try {
     // The census is advisory and runs outside the flock. Only managed-pin
     // inspection, canonical-name retirement and retention metadata are locked.
     await withEditorViewContentStoreLock({
       contentStore: paths.contentStore,
       run: async () => {
+        // Legacy/unmanaged sessions can open the view after any scan. Until external
+        // integrations own the full lifetime, the entire root is non-evictable.
+        if (editorViewAutomaticEvictionEvidence({ editorRoot: paths.editorRoot }).state !== 'clear')
+          return
+        const referenced = referencedEditorSnapshots(paths)
+        const leaseProtected = new Set<string>()
+        for (const name of eligible) {
+          const lease = probeEditorViewLease({ editorRoot: paths.editorRoot, snapshot: name })
+          if (lease.state !== 'clear') {
+            leaseProtected.add(name)
+            lease.release()
+          } else leases.push(lease)
+        }
         const pinned = managedEditorViewSnapshots({ editorRoot: paths.editorRoot })
         await options.beforeSnapshotRetirement?.()
         const keep = ordered.filter(
@@ -2074,6 +2091,7 @@ const garbageCollectSnapshots = async ({
             retained.has(name) === true ||
             eligible.includes(name) === false ||
             pinned.has(name) === true ||
+            leaseProtected.has(name) === true ||
             referenced === undefined ||
             referenced.has(name) === true,
         )
@@ -2127,6 +2145,9 @@ const garbageCollectSnapshots = async ({
         },
       })
     throw error
+  } finally {
+    // Never explicitly unlock a description that descendants might inherit.
+    for (const lease of leases) lease.release()
   }
 }
 
@@ -2451,17 +2472,37 @@ export const releaseEditorViewRoot = async (options: EditorViewOptions): Promise
       editorRoot: paths.editorRoot,
       recoveryCommand: `recover-lock --repo-root ${paths.repoRoot} --package ${options.package}`,
     })
-    const retired = `${paths.editorRoot}.release-${tokenSafe(lock.token)}`
-    let lockPath = lock.path
+    const leases: { readonly release: () => void }[] = []
     try {
-      // Only directories need write permission for unlinking. The walk uses lstat,
-      // so relocated payload links and external links never change their targets.
-      makeDirectoriesWritable(paths.editorRoot)
-      renameSync(paths.editorRoot, retired)
-      lockPath = join(retired, '.publish.lock')
-      rmSync(retired, { recursive: true })
+      await withEditorViewContentStoreLock({
+        contentStore: paths.contentStore,
+        run: async () => {
+          const generations = pathExists(paths.storeDir) ? readdirSync(paths.storeDir) : []
+          for (const snapshot of generations) {
+            if (/^[A-Za-z0-9][A-Za-z0-9_-]*-[0-9a-f]{64}$/.test(snapshot) === false) continue
+            ensureEditorViewLeaseControl({ editorRoot: paths.editorRoot, snapshot })
+            const lease = probeEditorViewLease({ editorRoot: paths.editorRoot, snapshot })
+            if (lease.state !== 'clear') {
+              lease.release()
+              fail(
+                `cannot release editor root with held or unknown readers: ${snapshot}: ${lease.reasons.join('; ')}`,
+              )
+            }
+            leases.push(lease)
+          }
+          // Preserve the canonical root and persistent lock identities even on explicit
+          // teardown: recreating a pathname must never split flock ownership.
+          for (const name of readdirSync(paths.editorRoot)) {
+            if (name === '.leases' || name === '.publish.lock') continue
+            const path = join(paths.editorRoot, name)
+            if (lstatSync(path).isDirectory()) makeDirectoriesWritable(path)
+            rmSync(path, { recursive: true })
+          }
+        },
+      })
     } finally {
-      if (pathExists(lockPath) === true) releaseLock({ path: lockPath, token: lock.token })
+      for (const lease of leases) lease.release()
+      if (pathExists(lock.path) === true) releaseLock({ path: lock.path, token: lock.token })
     }
   }
   await runEditorViewMaintenance({
@@ -3296,18 +3337,27 @@ const publishEditorViewCoordinated = async ({
       requireReadOnlySnapshot({ snapshotDir: prepared })
     }
     const commit = async (): Promise<EditorViewRecord> => {
-      if (created === true) {
-        // Darwin directory rename updates the source's `..` entry and therefore
-        // needs owner-write on the directory itself. Keep its payload hardened,
-        // then restore the root's immutability before publishing any pointer.
-        renameReadOnlySnapshot({
-          source: candidate ?? fail('prepared snapshot candidate is absent'),
-          destination: snapshotDir,
-        })
-        candidate = undefined
-        chmodSync(snapshotDir, statSync(snapshotDir).mode & ~0o222)
-        requireReadOnlySnapshotRoot(snapshotDir)
-      }
+      await withEditorViewContentStoreLock({
+        contentStore: paths.contentStore,
+        run: async () => {
+          if (created === true) {
+            // Darwin directory rename updates the source's `..` entry and therefore
+            // needs owner-write on the directory itself. Keep its payload hardened,
+            // then restore the root's immutability before publishing any pointer.
+            renameReadOnlySnapshot({
+              source: candidate ?? fail('prepared snapshot candidate is absent'),
+              destination: snapshotDir,
+            })
+            candidate = undefined
+            chmodSync(snapshotDir, statSync(snapshotDir).mode & ~0o222)
+            requireReadOnlySnapshotRoot(snapshotDir)
+          }
+          // Backfill under exclusion, without claiming legacy readers adopted leases.
+          for (const name of readdirSync(paths.storeDir))
+            if (/^[A-Za-z0-9][A-Za-z0-9_-]*-[0-9a-f]{64}$/.test(name))
+              ensureEditorViewLeaseControl({ editorRoot: paths.editorRoot, snapshot: name })
+        },
+      })
       enterPhase('retention')
       // Sibling views share the store inventory. Promotion, retention, pointers and GC
       // stay ordered under the exclusive root lock while private preparation overlaps.
@@ -3327,19 +3377,24 @@ const publishEditorViewCoordinated = async ({
       for (const name of eligible)
         requireReadOnlySnapshot({ snapshotDir: join(paths.storeDir, name) })
       enterPhase('pointers')
-      const pointerChanged =
-        pathExists(paths.current) === false ||
-        readlinkSync(paths.current) !== `.store/${snapshotName}`
-      const firstHopChanged =
-        pathExists(paths.firstHop) === false ||
-        lstatSync(paths.firstHop).isSymbolicLink() === false ||
-        readlinkSync(paths.firstHop) !== paths.firstHopTarget
-      if (options.package === '.')
-        retireLegacyImporters({ paths, packages: authority.requiredPackages, token })
-      publishCurrentPointer({ paths, identity, token })
-      adoptFirstHop({ paths, mv: options.mv, token })
-      if (pointerChanged === true || firstHopChanged === true)
-        signalEditorResolution({ paths, token })
+      await withEditorViewContentStoreLock({
+        contentStore: paths.contentStore,
+        run: async () => {
+          const pointerChanged =
+            pathExists(paths.current) === false ||
+            readlinkSync(paths.current) !== `.store/${snapshotName}`
+          const firstHopChanged =
+            pathExists(paths.firstHop) === false ||
+            lstatSync(paths.firstHop).isSymbolicLink() === false ||
+            readlinkSync(paths.firstHop) !== paths.firstHopTarget
+          if (options.package === '.')
+            retireLegacyImporters({ paths, packages: authority.requiredPackages, token })
+          publishCurrentPointer({ paths, identity, token })
+          adoptFirstHop({ paths, mv: options.mv, token })
+          if (pointerChanged === true || firstHopChanged === true)
+            signalEditorResolution({ paths, token })
+        },
+      })
       enterPhase('gc')
       if (
         (await runEditorViewMaintenance({
@@ -3402,6 +3457,7 @@ const publishEditorViewCoordinated = async ({
     // Payload failures capture siblings immediately, before waiting for other children to settle.
     // Other failures are captured here, before cleanup can mutate the candidate's metadata.
     captureFailure()
+    if (error instanceof EditorViewCapacityError) throw error
     const contextual = new Error(
       `${error instanceof Error ? error.message : String(error)}; publication workers=${JSON.stringify(failureStates)}`,
       { cause: error },

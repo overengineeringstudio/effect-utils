@@ -233,13 +233,12 @@ the lock, the publisher:
 6. atomically renames the current pointer, installs or validates the package
    first hop, and emits the package-manifest settle signal required by live
    language servers;
-7. updates the retention record and garbage-collects snapshots outside the
-   configured finite retention set. Retention proves every snapshot of the
-   published view read-only in full; a store entry owned by another view is
-   proven only by its self-addressed record and read-only root, because its
-   owner proves its payload in full at every publication, reuse, and check. A
-   whole-workspace publication therefore stays linear in total snapshot size.
-   Pointer helpers validate their exact writes; a separate
+7. updates retention eligibility and attempts only reader-proven-safe collection.
+   Retention proves eligible snapshots of the published view read-only in full;
+   a store entry owned by another view is proven by its self-addressed record and
+   read-only root, because its owner proves its payload at publication, reuse,
+   and check. A whole-workspace publication stays linear in total snapshot size.
+   Pointer helpers validate exact writes under CAS exclusion; a separate
    `buck2:editor:check` performs the full admitted-state traversal.
 
 Bootstrap and publication commands submit all selected views in one
@@ -266,14 +265,66 @@ leaves the prior current view intact. Snapshot payloads never retain links into
 `buck-out`, whose action directories Buck may delete before rebuilding.
 
 Repository tasks configure two completed snapshots **per view**: current and
-previous. For `N` admitted views the shared-store bound is `2 × N`, excluding
-in-flight candidates, which are not retention garbage. GC deletes only
-validated older snapshots of the publishing view after its pointer flip; it
-neither infers process liveness nor collects inactive worktrees. The preceding
-snapshot supplies a bounded rollback/read-overlap window, not an indefinite
-lease for a process pinned to an older generation. Literal admitted link text
-participates in identity, so changed Buck artifact paths can create a new
-snapshot even when dependency file bytes remain identical.
+previous. This is a retention-eligibility target, not a bound on protected state.
+Grace, pins, reader leases, legacy evidence, and unmanaged-session policy can
+retain older generations indefinitely. Literal admitted link text participates
+in identity, so changed Buck artifact paths can create a new snapshot even when
+dependency file bytes remain identical.
+
+### Generation Reader Leases
+
+The reader-lifetime boundary supplements atomic publication (BUILD.BUCK.MAT-R05):
+
+```text
+publish/backfill: CAS fence → persistent generation control → pointer publication
+reader:          CAS fence → resolve/validate → shared lease → source reads → close
+retirement:      root → host → CAS → fresh proof + nonblocking exclusive lease
+                                      → rename → payload cleanup → close
+```
+
+Each generation has a private regular control at
+`<editorRoot>/.leases/<generation>.lock`, separate from immutable payloads. Its
+canonical root, generation name, and inode identity are validated under CAS
+exclusion; readers resolve pointers inside that fence rather than trusting a
+pre-resolved path. Locks use native `flock`; only known local Linux/macOS
+filesystems supply usable evidence. NFS, SMB, unclassified filesystems,
+missing/replaced/unsafe controls, and native errors are unknown.
+
+The launcher leases the generations reachable at launch and keeps those leases for the process lifetime. It does not refresh leases when a pointer moves later.
+The packaged launcher loads no helper from an evictable view. Explicit fd
+mappings keep leases in source-reading servers and worker descendants, including
+the Genie TypeScript API child. Parent `SIGKILL` does not release a child's open
+description. Cleanup closes descriptors, never `LOCK_UN`; unrelated CAS
+descriptors remain close-on-exec.
+
+A lease alone never makes a root eligible for automatic eviction; the legacy reader scan stays on for every root until #1985.
+Every root is **presumed unmanaged**, not classified unmanaged because a scan
+detected an editor. No managed-only opt-in is exposed. External integration and
+dynamic refresh belong to [#1985](https://github.com/overengineeringstudio/effect-utils/issues/1985);
+until those lifetime boundaries are established, automatic generation eviction
+is disabled root-wide. Launch leases therefore do not claim protection of later
+moving-pointer opens.
+
+Applicable evidence merges as `held > unknown > clear`. Positive legacy inode
+or pathname references and shared leases hold the generation; incomplete
+same-user `/proc` observations or failed/partial `lsof` output make it unknown.
+An outside cwd or a different namespace does not prove view unreachability.
+Only clear candidates may be retired by either host-budget eviction or
+per-view snapshot collection. Final proof repeats under root → host → owning-CAS
+exclusion, including journal epoch, pointers, pins, recency, and identity.
+Exclusive leases remain open through private cleanup and are closed on errors.
+
+Control files are persistent tombstones and are not unlinked on generation
+retirement, recreation, or explicit editor-root release. Their inode and
+metadata pressure participates in host accounting and classification reports.
+Explicit release requires stopped users and exclusive generation leases, removes
+payloads, and preserves the canonical root/control identities.
+
+Host-budget admission replaces force-admit with bounded
+`EditorViewCapacityError` (`EDITOR_VIEW_CAPACITY`) when clear candidates cannot
+provide capacity. Rejection reports measured/requested/budget bytes, protected
+generation count, reasons and remediation, without materializing a candidate
+or deleting unknown generations. Post-commit maintenance remains advisory.
 
 ## Staleness Gate
 
