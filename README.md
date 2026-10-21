@@ -29,6 +29,48 @@ pipeline traces, alignment notices and review-request notifications use 4. The r
 PR source-shape check retains delivery priority. Shapes, caches, access controls,
 required checks and workflow frequency are independent of these labels.
 
+## Standalone Nix-staged JavaScript and TypeScript
+
+`devenv tasks run lint:check:standalone-staging` (included in PR `lint:check`)
+checks `nix/standalone-staging.json`. Each standalone source must import only
+Node builtins (with or without the `node:` prefix), including re-exports,
+dynamic imports and `require`. Whole-declaration `import type` / `export type`
+edges are erased and ignored. Inline-only `import { type X }` still resolves its
+module under Node's type stripping, so it is checked as a runtime edge (even
+though Bun elides it). This matches the repository's `verbatimModuleSyntax`
+policy and the isolated Node proof. Non-literal runtime dependencies are rejected.
+An explicitly rewritten
+edge may name another isolation-checked source; the pnpm source-input stager uses
+this for its store-path rewrite of `sync-resolver.ts`.
+Import-form fixtures run both runtimes explicitly (`NODE_BIN` / `BUN_BIN`, or
+`node` / `bun` on the task PATH), independently of the test runner's host runtime.
+
+Each source is also imported by Node 24 from a fresh directory with no
+`node_modules`, stripping TS types and applying only the declared store-path
+rewrite. CLI entries must reach their exact declared argument-validation error;
+other initialization errors fail. The native hook receives an explicit fixture
+entrypoint for its resolver registration.
+The inventory's `extensions` map is the single extension authority shared by the
+Nix scanner and isolation checks. A `true` value permits isolated Node imports;
+`false` keeps JSX/TSX visible to the scanner but rejects standalone entries with
+an explicit unsupported-extension diagnostic instead of silently skipping them.
+
+The completeness check scans every position in tracked and untracked, non-ignored
+`*.nix` files for JS/TS filename references, including comments, strings,
+interpolation, shell code, globs and output names. It does not parse staging
+constructs. Every file containing such a reference must have a `nixFiles` entry:
+`stages: true` requires at least one isolation-checked source; otherwise
+`noStandaloneStaging` requires a one-line reason (workspace execution, deliberate
+closure, fixture, build rules, or non-source names). Each listed source must still
+appear as a path/reference fragment in its declared Nix file. Stale source and
+file classifications fail.
+
+This part-1 gate is deliberately file-level: a new staging inside an already
+classified file, including a `noStandaloneStaging` file, is not detected.
+Extensions assembled by computation, such as `"x." + "ts"`, also evade the token
+scan. The consumer lane in #1994 part 2 is the backstop and gates `published`;
+this part-1 inventory guard does not replace that consumer proof.
+
 ## Packages
 
 ### GitHub Actions retained artifacts
@@ -429,8 +471,8 @@ and toolchain capabilities; no rule interprets the header as a dependency manife
 cache key. Rules that explicitly stage a `BUCK` file still hash its complete bytes.
 
 ### Consumer Buck Roots
-Consumers needing an always-eligible product manifest should pin `ref published`, not `ref main`; see the [consumer pin contract](./context/builds/05-product-distribution/02-nix-bridge/spec.md#consumer-pin-eligibility).
 
+Consumers needing an always-eligible product manifest should pin `ref published`, not `ref main`; see the [consumer pin contract](./context/builds/05-product-distribution/02-nix-bridge/spec.md#consumer-pin-eligibility).
 
 `mkConsumerBuckRoot` accepts the named `watcherPolicy` argument. Its default,
 `"mutable-checkout"`, emits `file_watcher = watchman` and retains fail-closed
