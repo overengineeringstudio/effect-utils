@@ -6,7 +6,7 @@ load("//buck2:materialization.bzl", "runtime_modules")
 # Projection source: packages/@overeng/buck2-tools/BUCK.genie.ts
 # Projection schema version: 13
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:107b4e6d677fe55df838c1a95fd0e501c7ea71ade2657207c350530247184e27
+# Semantic fingerprint: sha256:a9d59c3383e11c20d82f4d2ff475a7dfc531821ce057e4bc578156a0f1acb6d2
 # Regenerate: devenv tasks run genie:run
 
 load("//buck2:materialization.bzl", "export_materialization_inputs", "package_view")
@@ -34,7 +34,11 @@ export_materialization_inputs([
     "src/editor-view-authority.ts",
     "src/editor-view-budget.integration.test.ts",
     "src/editor-view-budget.ts",
+    "src/editor-view-leases.integration.test.ts",
+    "src/editor-view-leases.ts",
+    "src/editor-view-reader-directory.ts",
     "src/editor-view-readers.ts",
+    "src/editor-view-readers.unit.test.ts",
     "src/editor-view-sharing.integration.test.ts",
     "src/editor-view-sharing.ts",
     "src/editor-view.integration.test.ts",
@@ -55,6 +59,9 @@ export_materialization_inputs([
     "src/package-command-runner.unit.test.ts",
     "src/package-tree.ts",
     "src/package-tree.unit.test.ts",
+    "src/reader-infrastructure.integration.test.ts",
+    "src/reader-infrastructure.ts",
+    "src/reader-infrastructure.unit.test.ts",
     "src/real-path.ts",
     "src/repository-policy-runner.ts",
     "src/repository-policy-runner.unit.test.ts",
@@ -122,7 +129,11 @@ package_view(
         "src/editor-view-authority.ts": "src/editor-view-authority.ts",
         "src/editor-view-budget.integration.test.ts": "src/editor-view-budget.integration.test.ts",
         "src/editor-view-budget.ts": "src/editor-view-budget.ts",
+        "src/editor-view-leases.integration.test.ts": "src/editor-view-leases.integration.test.ts",
+        "src/editor-view-leases.ts": "src/editor-view-leases.ts",
+        "src/editor-view-reader-directory.ts": "src/editor-view-reader-directory.ts",
         "src/editor-view-readers.ts": "src/editor-view-readers.ts",
+        "src/editor-view-readers.unit.test.ts": "src/editor-view-readers.unit.test.ts",
         "src/editor-view-sharing.integration.test.ts": "src/editor-view-sharing.integration.test.ts",
         "src/editor-view-sharing.ts": "src/editor-view-sharing.ts",
         "src/editor-view.integration.test.ts": "src/editor-view.integration.test.ts",
@@ -143,6 +154,9 @@ package_view(
         "src/package-command-runner.unit.test.ts": "src/package-command-runner.unit.test.ts",
         "src/package-tree.ts": "src/package-tree.ts",
         "src/package-tree.unit.test.ts": "src/package-tree.unit.test.ts",
+        "src/reader-infrastructure.integration.test.ts": "src/reader-infrastructure.integration.test.ts",
+        "src/reader-infrastructure.ts": "src/reader-infrastructure.ts",
+        "src/reader-infrastructure.unit.test.ts": "src/reader-infrastructure.unit.test.ts",
         "src/real-path.ts": "src/real-path.ts",
         "src/repository-policy-runner.ts": "src/repository-policy-runner.ts",
         "src/repository-policy-runner.unit.test.ts": "src/repository-policy-runner.unit.test.ts",
@@ -188,7 +202,11 @@ package_view(
         "src/editor-view-authority.ts": "src/editor-view-authority.ts",
         "src/editor-view-budget.integration.test.ts": "src/editor-view-budget.integration.test.ts",
         "src/editor-view-budget.ts": "src/editor-view-budget.ts",
+        "src/editor-view-leases.integration.test.ts": "src/editor-view-leases.integration.test.ts",
+        "src/editor-view-leases.ts": "src/editor-view-leases.ts",
+        "src/editor-view-reader-directory.ts": "src/editor-view-reader-directory.ts",
         "src/editor-view-readers.ts": "src/editor-view-readers.ts",
+        "src/editor-view-readers.unit.test.ts": "src/editor-view-readers.unit.test.ts",
         "src/editor-view-sharing.integration.test.ts": "src/editor-view-sharing.integration.test.ts",
         "src/editor-view-sharing.ts": "src/editor-view-sharing.ts",
         "src/editor-view.integration.test.ts": "src/editor-view.integration.test.ts",
@@ -209,6 +227,9 @@ package_view(
         "src/package-command-runner.unit.test.ts": "src/package-command-runner.unit.test.ts",
         "src/package-tree.ts": "src/package-tree.ts",
         "src/package-tree.unit.test.ts": "src/package-tree.unit.test.ts",
+        "src/reader-infrastructure.integration.test.ts": "src/reader-infrastructure.integration.test.ts",
+        "src/reader-infrastructure.ts": "src/reader-infrastructure.ts",
+        "src/reader-infrastructure.unit.test.ts": "src/reader-infrastructure.unit.test.ts",
         "src/real-path.ts": "src/real-path.ts",
         "src/repository-policy-runner.ts": "src/repository-policy-runner.ts",
         "src/repository-policy-runner.unit.test.ts": "src/repository-policy-runner.unit.test.ts",
