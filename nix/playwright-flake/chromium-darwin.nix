@@ -19,6 +19,15 @@ stdenv.mkDerivation {
     mv "$main" "$main.original"
     cp chromium-launcher "$main"
 
+    # The x86_64 linker leaves the launcher unsigned; use Chromium's identifier
+    # explicitly rather than relying on an architecture-specific linker signature.
+    identifier=$(/usr/bin/codesign -dv "$main.original" 2>&1 | grep '^Identifier=' | cut -d= -f2-)
+    if [ -z "$identifier" ]; then
+      echo "Cannot sign Chromium launcher: original executable has no signing identifier" >&2
+      exit 1
+    fi
+    /usr/bin/codesign --force --sign - --identifier "$identifier" "$main"
+
     # Sign individual Mach-O files before their containing framework/app bundles.
     # Keep identifiers and entitlements on existing code. The main bundle keeps
     # upstream's linker identifier as well as its unchanged CFBundleIdentifier.
