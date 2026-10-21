@@ -1,5 +1,5 @@
 #!/usr/bin/env -S bun
-import { cc, dlopen } from 'bun:ffi'
+import { dlopen } from 'bun:ffi'
 import { spawnSync } from 'node:child_process'
 import { createHash, randomUUID } from 'node:crypto'
 import {
@@ -682,7 +682,7 @@ const warnStdio = (message: string): void => {
   }
 }
 
-// Replaced by the Nix build; source execution uses TinyCC on the physical file.
+// Replaced by Nix; source execution receives the same library from devenv.
 declare const BUCK2_STDIO_LIBRARY: string
 if (import.meta.main === true) {
   try {
@@ -692,12 +692,16 @@ if (import.meta.main === true) {
         eu_getfl: { args: ['i32'], returns: 'i32' },
         eu_setfl: { args: ['i32', 'i32'], returns: 'i32' },
       } as const
-      // Packaged launches only load a prebuilt library. Source launches compile
-      // a physical, header-free source file without generated packages or SDKs.
-      const stdio =
+      const library =
         typeof BUCK2_STDIO_LIBRARY === 'string'
-          ? dlopen(BUCK2_STDIO_LIBRARY, symbols)
-          : cc({ source: new URL('./buck2-stdio.c', import.meta.url), symbols })
+          ? BUCK2_STDIO_LIBRARY
+          : process.env['BUCK2_STDIO_LIBRARY']
+      if (library === undefined || library === '')
+        throw new Error('BUCK2_STDIO_LIBRARY does not name the built stdio protection library')
+      const stdio = dlopen(library, symbols)
+      // Darwin exposes kernel-only FWASWRITTEN after writing a descriptor.
+      // F_SETFL cannot undo this bookkeeping; it is not a file status option.
+      const statusMask = process.platform === 'darwin' ? ~0x10000 : -1
       const flags = [0, 1, 2].map((fd) => stdio.symbols.eu_getfl(fd))
       restoreStdio = () => {
         try {
@@ -705,7 +709,8 @@ if (import.meta.main === true) {
             // Closed inherited descriptors have no status flags.
             if (
               value >= 0 &&
-              (stdio.symbols.eu_setfl(fd, value) !== 0 || stdio.symbols.eu_getfl(fd) !== value)
+              (stdio.symbols.eu_setfl(fd, value) !== 0 ||
+                (stdio.symbols.eu_getfl(fd) & statusMask) !== (value & statusMask))
             )
               throw new Error(`could not restore inherited fd ${fd} status flags`)
           }

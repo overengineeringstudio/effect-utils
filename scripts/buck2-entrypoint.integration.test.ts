@@ -146,7 +146,7 @@ await new Promise<void>((resolve) => process.stdin.once('data', () => resolve())
   }
   const child = Bun.spawn([process.execPath, '--preload', preload, ...args], {
     cwd: root,
-    env,
+    env: { ...env, BUCK2_STDIO_LIBRARY: process.env['BUCK2_STDIO_LIBRARY'] },
     detached: true,
     stdin: 'pipe',
     stdout: 'pipe',
@@ -300,7 +300,12 @@ process.execve(${JSON.stringify(executable)}, [${JSON.stringify(executable)}, ..
         ],
         {
           cwd: root,
-          env: { PATH: process.env['PATH'], HOME: root, XDG_CACHE_HOME: join(root, 'cache') },
+          env: {
+            PATH: process.env['PATH'],
+            HOME: root,
+            XDG_CACHE_HOME: join(root, 'cache'),
+            BUCK2_STDIO_LIBRARY: library,
+          },
           detached: true,
           stdin: 'ignore',
           stdout: 'pipe',
@@ -327,17 +332,22 @@ process.execve(${JSON.stringify(executable)}, [${JSON.stringify(executable)}, ..
       if (mode === 'missing-shim') {
         expect(stderr.split('warning: Buck2 stdio flag protection unavailable:')).toHaveLength(2)
       } else {
-        expect(stderr).not.toContain('warning: Buck2 stdio flag')
+        expect(stderr.includes('warning: Buck2 stdio flag')).toBe(false)
       }
-      expect(JSON.parse(readFileSync(observed, 'utf8'))).toEqual(
-        JSON.parse(readFileSync(baseline, 'utf8')),
+      // Darwin F_GETFL also exposes kernel FWASWRITTEN bookkeeping after the
+      // warning. It is not a status option and cannot be cleared by F_SETFL.
+      const statusMask = process.platform === 'darwin' ? ~0x10000 : -1
+      expect(
+        JSON.parse(readFileSync(observed, 'utf8')).map((value: number) => value & statusMask),
+      ).toEqual(
+        JSON.parse(readFileSync(baseline, 'utf8')).map((value: number) => value & statusMask),
       )
       expect(await child.exited).toBe(0)
       expect(stderr.endsWith(`${'x'.repeat(payloadSize)}\nlarge-stderr-complete\n`)).toBe(true)
     }, 20000)
   }
 
-  for (const scenario of ['closed-stderr', 'restore-failure'] as const) {
+  for (const scenario of ['unwritable-stderr', 'restore-failure'] as const) {
     it(`still execs with complete child output after stdio protection ${scenario}`, async () => {
       const root = fixture()
       const launcher = join(import.meta.dir, 'buck2-entrypoint.ts')
@@ -355,7 +365,7 @@ writeSync(1, '\\nchild-executed\\n')
         { mode: 0o700 },
       )
       let command: string[]
-      if (scenario === 'closed-stderr') {
+      if (scenario === 'unwritable-stderr') {
         const executable = join(root, 'missing-protection-launcher')
         const build = Bun.spawnSync(
           [
@@ -374,8 +384,11 @@ writeSync(1, '\\nchild-executed\\n')
         command = [
           process.execPath,
           '-e',
-          `import { closeSync } from 'node:fs'
+          `import { closeSync, openSync } from 'node:fs'
+// Bun itself cannot exec with a closed fd2, even without a launcher. Keep
+// fd2 present but read-only so the optional warning genuinely gets EBADF.
 closeSync(2)
+if (openSync('/dev/null', 'r') !== 2) process.exit(71)
 process.execve(${JSON.stringify(executable)}, [${JSON.stringify(executable)}, ${JSON.stringify(native)}, '--version'], process.env)`,
         ]
       } else {
@@ -385,6 +398,7 @@ process.execve(${JSON.stringify(executable)}, [${JSON.stringify(executable)}, ${
         writeFileSync(
           preload,
           `import { closeSync } from 'node:fs'
+import process from 'node:process'
 const execve = process.execve
 let injected = false
 Object.defineProperty(process, 'execve', {
@@ -402,7 +416,11 @@ Object.defineProperty(process, 'execve', {
       }
       const child = Bun.spawn(command, {
         cwd: root,
-        env: { PATH: process.env['PATH'], HOME: root },
+        env: {
+          PATH: process.env['PATH'],
+          HOME: root,
+          BUCK2_STDIO_LIBRARY: process.env['BUCK2_STDIO_LIBRARY'],
+        },
         detached: true,
         stdin: 'ignore',
         stdout: 'pipe',

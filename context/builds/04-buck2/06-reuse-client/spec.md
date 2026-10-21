@@ -261,8 +261,11 @@ variadic `fcntl` directly through a fixed-arity FFI binding is not ABI-correct
 on macOS arm64. Nix builds the shared library once and fixes its immutable
 installed path in the packaged launcher. Packaged invocations only `dlopen`
 the library; no compiler or host SDK is needed at runtime. Source execution
-uses Bun's embedded TinyCC on the physical C source, keeping development and
-bootstrap tests independent of generated packages.
+loads the same library from the devenv-declared `BUCK2_STDIO_LIBRARY` path,
+avoiding runtime compiler and libc linker discovery during bootstrap.
+Readback compares status options but excludes macOS's kernel-only
+`FWASWRITTEN` bookkeeping bit, which changes when a descriptor is written and
+cannot be reset with `F_SETFL`; raw flags are still captured and restored.
 
 Closed inherited descriptors are skipped. A protection load or restoration
 failure attempts one best-effort synchronous warning and still executes native
