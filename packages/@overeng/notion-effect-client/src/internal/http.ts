@@ -93,11 +93,9 @@ export const notionTracerHeaderFilter = (
 
 /**
  * Opt-in layer binding `HttpClient.TracerHeaderFilter` to
- * {@link notionTracerHeaderFilter}, keeping verbose Notion traffic spans
- * (header attributes) controllable without core patches. Default behavior —
- * every header name emitted as a span attribute, with value redaction intact —
- * is unchanged unless this layer (or an explicit
- * `Effect.provideService(HttpClient.TracerHeaderFilter, ...)`) is provided.
+ * {@link notionTracerHeaderFilter}. Effect records no header attributes by
+ * default; this layer enables only the allowlisted Notion span headers.
+ * Sensitive-value redaction remains intact for any explicitly captured headers.
  */
 export const NotionTracerHeaderFilterLive: Layer.Layer<never> = Layer.succeed(
   TracerHeaderFilter,

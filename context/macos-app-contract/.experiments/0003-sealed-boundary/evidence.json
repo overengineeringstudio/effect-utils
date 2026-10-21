@@ -1,0 +1,375 @@
+{
+  "host": "headless CI Mac",
+  "signingMode": "ad-hoc ONLY",
+  "cases": {
+    "external-presentation-generation": {
+      "verdict": "PASS",
+      "signCount": 0,
+      "sealedDigest": "30aa1a931b18e28c16a1edf4adeaf1490e1be1e81a011cd7ad21b92e7439b1f9",
+      "staticValidity": 0
+    },
+    "pinned-payload": {
+      "verdict": "PASS",
+      "signCount": 0,
+      "sealedDigest": "30aa1a931b18e28c16a1edf4adeaf1490e1be1e81a011cd7ad21b92e7439b1f9",
+      "staticValidity": 0
+    },
+    "sealed-metadata": {
+      "verdict": "PASS",
+      "decision": "reject; explicit host release required",
+      "staticExit": 1,
+      "detail": "compiled=0 validity=-67030\n"
+    },
+    "nested-code": {
+      "verdict": "PASS",
+      "signCount": 2,
+      "leafFirst": ["Contents/Helpers/Helper.app", "Fixture.app"],
+      "deep": false,
+      "preSignStaticExit": 1
+    },
+    "undeclared-MachO": {
+      "verdict": "PASS",
+      "decision": "rejected by explicit inventory before signing",
+      "signCount": 0
+    },
+    "compiled-requirement": {
+      "verdict": "PASS",
+      "first": "identifier \"dev.overeng.macos-app.m3-host\" and cdhash H\"e3044cf87b4f9c9a395dc828ab7e3bc0cde40a80\"",
+      "reordered": "cdhash H\"e3044cf87b4f9c9a395dc828ab7e3bc0cde40a80\" and identifier \"dev.overeng.macos-app.m3-host\"",
+      "differentText": true,
+      "crossChecks": 2,
+      "differentMeaningRejected": 2,
+      "api": "SecRequirementCreateWithString + SecStaticCodeCheckValidity",
+      "logicalEquivalenceClaim": false
+    }
+  },
+  "verdict": "PASS",
+  "launchdOperations": 0,
+  "sealedDigest": "30aa1a931b18e28c16a1edf4adeaf1490e1be1e81a011cd7ad21b92e7439b1f9",
+  "cleanup": {
+    "temporaryTreeRemoved": true
+  },
+  "argv": [
+    [
+      "/usr/bin/clang",
+      "-x",
+      "c",
+      "<temporary-directory>/m3-experiments.V37kxE/0003-sealed-boundary/native.c",
+      "-o",
+      "<temporary-directory>/m3-e3-39a5iop_/native"
+    ],
+    [
+      "/usr/bin/clang",
+      "<temporary-directory>/m3-experiments.V37kxE/0003-sealed-boundary/requirement.c",
+      "-framework",
+      "Security",
+      "-framework",
+      "CoreFoundation",
+      "-o",
+      "<temporary-directory>/m3-e3-39a5iop_/requirement"
+    ],
+    [
+      "/usr/bin/codesign",
+      "--force",
+      "-s",
+      "-",
+      "--timestamp=none",
+      "--identifier",
+      "dev.overeng.macos-app.m3-helper",
+      "<temporary-directory>/m3-e3-39a5iop_/Fixture.app/Contents/Helpers/Helper.app"
+    ],
+    [
+      "/usr/bin/codesign",
+      "--force",
+      "-s",
+      "-",
+      "--timestamp=none",
+      "--identifier",
+      "dev.overeng.macos-app.m3-host",
+      "<temporary-directory>/m3-e3-39a5iop_/Fixture.app"
+    ],
+    [
+      "<temporary-directory>/m3-e3-39a5iop_/requirement",
+      "check",
+      "<temporary-directory>/m3-e3-39a5iop_/Fixture.app/Contents/Helpers/Helper.app",
+      "identifier \"dev.overeng.macos-app.m3-helper\""
+    ],
+    [
+      "<temporary-directory>/m3-e3-39a5iop_/requirement",
+      "check",
+      "<temporary-directory>/m3-e3-39a5iop_/Fixture.app",
+      "identifier \"dev.overeng.macos-app.m3-host\""
+    ],
+    [
+      "<temporary-directory>/m3-e3-39a5iop_/requirement",
+      "check",
+      "<temporary-directory>/m3-e3-39a5iop_/Fixture.app",
+      "identifier \"dev.overeng.macos-app.m3-host\""
+    ],
+    [
+      "/usr/bin/clang",
+      "-DM3_REVISION=3",
+      "<temporary-directory>/m3-experiments.V37kxE/0003-sealed-boundary/native.c",
+      "-o",
+      "<temporary-directory>/m3-e3-39a5iop_/payload"
+    ],
+    [
+      "<temporary-directory>/m3-e3-39a5iop_/requirement",
+      "check",
+      "<temporary-directory>/m3-e3-39a5iop_/Fixture.app",
+      "identifier \"dev.overeng.macos-app.m3-host\""
+    ],
+    [
+      "<temporary-directory>/m3-e3-39a5iop_/requirement",
+      "check",
+      "<temporary-directory>/m3-e3-39a5iop_/Fixture.app",
+      "identifier \"dev.overeng.macos-app.m3-host\""
+    ],
+    [
+      "/usr/bin/clang",
+      "-DM3_REVISION=2",
+      "<temporary-directory>/m3-experiments.V37kxE/0003-sealed-boundary/native.c",
+      "-o",
+      "<temporary-directory>/m3-e3-39a5iop_/Fixture.app/Contents/Helpers/Helper.app/Contents/MacOS/Helper"
+    ],
+    [
+      "<temporary-directory>/m3-e3-39a5iop_/requirement",
+      "check",
+      "<temporary-directory>/m3-e3-39a5iop_/Fixture.app",
+      "identifier \"dev.overeng.macos-app.m3-host\""
+    ],
+    [
+      "/usr/bin/codesign",
+      "--force",
+      "-s",
+      "-",
+      "--timestamp=none",
+      "--identifier",
+      "dev.overeng.macos-app.m3-helper",
+      "<temporary-directory>/m3-e3-39a5iop_/Fixture.app/Contents/Helpers/Helper.app"
+    ],
+    [
+      "/usr/bin/codesign",
+      "--force",
+      "-s",
+      "-",
+      "--timestamp=none",
+      "--identifier",
+      "dev.overeng.macos-app.m3-host",
+      "<temporary-directory>/m3-e3-39a5iop_/Fixture.app"
+    ],
+    [
+      "<temporary-directory>/m3-e3-39a5iop_/requirement",
+      "check",
+      "<temporary-directory>/m3-e3-39a5iop_/Fixture.app/Contents/Helpers/Helper.app",
+      "identifier \"dev.overeng.macos-app.m3-helper\""
+    ],
+    [
+      "<temporary-directory>/m3-e3-39a5iop_/requirement",
+      "check",
+      "<temporary-directory>/m3-e3-39a5iop_/Fixture.app",
+      "identifier \"dev.overeng.macos-app.m3-host\""
+    ],
+    [
+      "<temporary-directory>/m3-e3-39a5iop_/requirement",
+      "hash",
+      "<temporary-directory>/m3-e3-39a5iop_/Fixture.app"
+    ],
+    [
+      "<temporary-directory>/m3-e3-39a5iop_/requirement",
+      "check",
+      "<temporary-directory>/m3-e3-39a5iop_/Fixture.app",
+      "cdhash H\"e3044cf87b4f9c9a395dc828ab7e3bc0cde40a80\" and identifier \"dev.overeng.macos-app.m3-host\""
+    ],
+    [
+      "<temporary-directory>/m3-e3-39a5iop_/requirement",
+      "check",
+      "<temporary-directory>/m3-e3-39a5iop_/Candidate.app",
+      "identifier \"dev.overeng.macos-app.m3-host\" and cdhash H\"e3044cf87b4f9c9a395dc828ab7e3bc0cde40a80\""
+    ],
+    [
+      "<temporary-directory>/m3-e3-39a5iop_/requirement",
+      "check",
+      "<temporary-directory>/m3-e3-39a5iop_/Fixture.app",
+      "identifier \"wrong\" and cdhash H\"e3044cf87b4f9c9a395dc828ab7e3bc0cde40a80\""
+    ],
+    [
+      "<temporary-directory>/m3-e3-39a5iop_/requirement",
+      "check",
+      "<temporary-directory>/m3-e3-39a5iop_/Candidate.app",
+      "identifier \"wrong\" and cdhash H\"e3044cf87b4f9c9a395dc828ab7e3bc0cde40a80\""
+    ]
+  ],
+  "ciChecks": [
+    {
+      "time": 1791942310.8525162,
+      "activeJobCount": 0
+    },
+    {
+      "time": 1791942311.189829,
+      "activeJobCount": 0
+    },
+    {
+      "time": 1791942311.460747,
+      "activeJobCount": 0
+    },
+    {
+      "time": 1791942311.5286121,
+      "activeJobCount": 0
+    },
+    {
+      "time": 1791942311.604724,
+      "activeJobCount": 0
+    },
+    {
+      "time": 1791942312.036515,
+      "activeJobCount": 0
+    },
+    {
+      "time": 1791942312.101679,
+      "activeJobCount": 0
+    },
+    {
+      "time": 1791942312.158182,
+      "activeJobCount": 0
+    },
+    {
+      "time": 1791942312.264361,
+      "activeJobCount": 0
+    },
+    {
+      "time": 1791942312.340676,
+      "activeJobCount": 0
+    },
+    {
+      "time": 1791942312.4080808,
+      "activeJobCount": 0
+    },
+    {
+      "time": 1791942312.51706,
+      "activeJobCount": 0
+    },
+    {
+      "time": 1791942312.5731342,
+      "activeJobCount": 0
+    },
+    {
+      "time": 1791942312.630192,
+      "activeJobCount": 0
+    },
+    {
+      "time": 1791942312.687267,
+      "activeJobCount": 0
+    },
+    {
+      "time": 1791942312.744421,
+      "activeJobCount": 0
+    },
+    {
+      "time": 1791942312.8174982,
+      "activeJobCount": 0
+    },
+    {
+      "time": 1791942312.8938072,
+      "activeJobCount": 0
+    },
+    {
+      "time": 1791942312.944146,
+      "activeJobCount": 0
+    },
+    {
+      "time": 1791942313.007309,
+      "activeJobCount": 0
+    },
+    {
+      "time": 1791942313.061895,
+      "activeJobCount": 0
+    }
+  ],
+  "uiChecks": [
+    {
+      "auditFlags": "0x5020",
+      "windowList": "unavailable"
+    },
+    {
+      "auditFlags": "0x5020",
+      "windowList": "unavailable"
+    },
+    {
+      "auditFlags": "0x5020",
+      "windowList": "unavailable"
+    },
+    {
+      "auditFlags": "0x5020",
+      "windowList": "unavailable"
+    },
+    {
+      "auditFlags": "0x5020",
+      "windowList": "unavailable"
+    },
+    {
+      "auditFlags": "0x5020",
+      "windowList": "unavailable"
+    },
+    {
+      "auditFlags": "0x5020",
+      "windowList": "unavailable"
+    },
+    {
+      "auditFlags": "0x5020",
+      "windowList": "unavailable"
+    },
+    {
+      "auditFlags": "0x5020",
+      "windowList": "unavailable"
+    },
+    {
+      "auditFlags": "0x5020",
+      "windowList": "unavailable"
+    },
+    {
+      "auditFlags": "0x5020",
+      "windowList": "unavailable"
+    },
+    {
+      "auditFlags": "0x5020",
+      "windowList": "unavailable"
+    },
+    {
+      "auditFlags": "0x5020",
+      "windowList": "unavailable"
+    },
+    {
+      "auditFlags": "0x5020",
+      "windowList": "unavailable"
+    },
+    {
+      "auditFlags": "0x5020",
+      "windowList": "unavailable"
+    },
+    {
+      "auditFlags": "0x5020",
+      "windowList": "unavailable"
+    },
+    {
+      "auditFlags": "0x5020",
+      "windowList": "unavailable"
+    },
+    {
+      "auditFlags": "0x5020",
+      "windowList": "unavailable"
+    },
+    {
+      "auditFlags": "0x5020",
+      "windowList": "unavailable"
+    },
+    {
+      "auditFlags": "0x5020",
+      "windowList": "unavailable"
+    },
+    {
+      "auditFlags": "0x5020",
+      "windowList": "unavailable"
+    }
+  ]
+}

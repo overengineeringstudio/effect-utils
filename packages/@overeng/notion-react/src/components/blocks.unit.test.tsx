@@ -18,6 +18,7 @@ import {
   Image,
   Page,
   Paragraph,
+  Raw,
   TableOfContents,
   ToDo,
   Toggle,
@@ -113,6 +114,13 @@ describe('block components', () => {
   it('renders table_of_contents', () => {
     const ops = collect(<TableOfContents />)
     expect(ops[0]!.kind === 'append' && ops[0]!.type).toBe('table_of_contents')
+    expect(ops[0]!.kind === 'append' && ops[0]!.props).toEqual({ color: 'default' })
+  })
+
+  it('preserves the explicit Raw table_of_contents payload', () => {
+    const ops = collect(<Raw type="table_of_contents" content={{ color: 'red' }} />)
+    expect(ops[0]!.kind === 'append' && ops[0]!.type).toBe('table_of_contents')
+    expect(ops[0]!.kind === 'append' && ops[0]!.props).toEqual({ color: 'red' })
   })
 
   it('renders bulleted_list_item with nested children', () => {

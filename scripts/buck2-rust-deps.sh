@@ -113,17 +113,38 @@ if [ "$fixup_violations" -ne 0 ]; then
   exit 1
 fi
 
-mkdir -p "$cargo_home"
-lock_before="$(mktemp "$cargo_home/Cargo.lock.before.XXXXXX")"
-candidate="$(mktemp "$third_party/.BUCK.next.XXXXXX")"
+# Generate uses same-directory candidates for atomic installation. Check keeps
+# every transient (including Cargo metadata/cache and foreign supply) outside
+# the checkout so concurrent clean-tree checks never observe candidate files.
+check_tmp=""
+lock_before=""
+candidate=""
+git_archives_candidate=""
 supply_dir=""
 cargo_resolution="$third_party/cargo-resolution.json"
 manifest_args=()
 cleanup() {
-  rm -f "$lock_before" "$candidate"
+  rm -f "$lock_before" "$candidate" "$git_archives_candidate"
   if [ -n "$supply_dir" ]; then rm -rf "$supply_dir"; fi
+  if [ -n "$check_tmp" ]; then rm -rf "$check_tmp"; fi
 }
 trap cleanup EXIT
+candidate_dir="$third_party"
+if [ "$mode" = check ]; then
+  temp_parent="$(cd "${TMPDIR:-/tmp}" && pwd -P)"
+  case "$temp_parent" in
+    "$root" | "$root"/*)
+      echo "buck2-rust-deps: check temporary directory must be outside repository: $temp_parent" >&2
+      exit 64
+      ;;
+  esac
+  check_tmp="$(mktemp -d "$temp_parent/buck2-rust-deps.XXXXXX")"
+  cargo_home="$check_tmp/cargo-home"
+  candidate_dir="$check_tmp"
+fi
+mkdir -p "$cargo_home"
+lock_before="$(mktemp "$cargo_home/Cargo.lock.before.XXXXXX")"
+candidate="$(mktemp "$candidate_dir/.BUCK.next.XXXXXX")"
 cp "$lock" "$lock_before"
 
 if [ -f "$workspace/foreign-packages.json" ]; then
@@ -169,8 +190,7 @@ fi
 # GitHub tarballs are fetched and verified; declared Nix inputs supply their
 # deterministic source tarball without an unauthenticated GitHub request.
 git_archives="$third_party/git-archives.json"
-git_archives_candidate="$(mktemp "$third_party/.git-archives.json.next.XXXXXX")"
-trap 'cleanup; rm -f "$git_archives_candidate"' EXIT
+git_archives_candidate="$(mktemp "$candidate_dir/.git-archives.json.next.XXXXXX")"
 # shellcheck disable=SC2016 # JavaScript template literals, not shell expansions.
 if ! "$bun" -e '
 const [candidatePath, sidecarPath, outputPath, sourceConfigPath] = process.argv.slice(1);

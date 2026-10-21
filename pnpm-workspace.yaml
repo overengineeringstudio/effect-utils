@@ -6,17 +6,21 @@ packages:
   - context/opentui
   - packages/@overeng/agent-session-ingest
   - packages/@overeng/ai-gateway-conformance
+  - packages/@overeng/ai-gateway-edge
   - packages/@overeng/buck2-tools
   - packages/@overeng/ci-tools
   - packages/@overeng/content-address
+  - packages/@overeng/data-graph
   - packages/@overeng/devbar
   - packages/@overeng/effect-ai-claude-cli
   - packages/@overeng/effect-ai-gateway
   - packages/@overeng/effect-distributed-lock
+  - packages/@overeng/effect-iroh
   - packages/@overeng/effect-path
   - packages/@overeng/effect-react
   - packages/@overeng/effect-rpc-explorer
   - packages/@overeng/effect-rpc-explorer-react
+  - packages/@overeng/effect-rpc-observer
   - packages/@overeng/effect-rpc-tanstack
   - packages/@overeng/effect-rpc-tanstack/examples/basic
   - packages/@overeng/effect-rust
@@ -29,6 +33,7 @@ packages:
   - packages/@overeng/kdl
   - packages/@overeng/kdl-effect
   - packages/@overeng/megarepo
+  - packages/@overeng/meters
   - packages/@overeng/notion-cli
   - packages/@overeng/notion-core
   - packages/@overeng/notion-datasource-sync
@@ -45,6 +50,7 @@ packages:
   - packages/@overeng/pty-effect
   - packages/@overeng/react-inspector
   - packages/@overeng/restate-effect
+  - packages/@overeng/rpc-devtools
   - packages/@overeng/stylex-tokens
   - packages/@overeng/tui-core
   - packages/@overeng/tui-react
@@ -54,7 +60,7 @@ packages:
   - packages/@overeng/utils-storybook
 
 overrides:
-  '@effect/platform-node-shared': 4.0.0
+  '@effect/platform-node-shared': 4.0.3
 
 patchedDependencies:
   '@myobie/pty@0.10.0': patches/@myobie__pty@0.10.0.patch

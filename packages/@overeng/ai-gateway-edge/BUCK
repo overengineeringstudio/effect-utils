@@ -1,0 +1,217 @@
+# Generated file - DO NOT EDIT
+# Source: BUCK.genie.ts
+
+load("//buck2:package_tools.bzl", "package_bin_artifact")
+load("//buck2/products:defs.bzl", "javascript_product")
+
+# Projection source: packages/@overeng/ai-gateway-edge/BUCK.genie.ts
+# Projection schema version: 13
+# Projection generator: effect-utils/genie/buck2-typescript-package-projection
+# Semantic fingerprint: sha256:838c637e0fb490f94100f7b79791c05833e5ef7e33917c97ded08e60c4e52320
+# Regenerate: devenv tasks run genie:run
+
+load("//buck2:materialization.bzl", "export_materialization_inputs", "package_view")
+load("//buck2:editor_view.bzl", "editor_view_inputs")
+load("//buck2:static_checks.bzl", "STATIC_SOURCE_EXCLUDES", "STATIC_SOURCE_GLOBS", "static_source_set")
+load("//buck2:javascript.bzl", "vitest_collect", "vitest_test")
+load("//buck2:typescript.bzl", "tsgo_emit", "tsgo_typecheck")
+load("//buck2:package_tools.bzl", "npm_package_archive")
+
+export_file(
+    name = "package.json",
+    src = "package.json",
+    visibility = ["PUBLIC"],
+)
+
+export_materialization_inputs([
+    "src/Config.ts",
+    "src/Metrics.ts",
+    "src/Proxy.integration.test.ts",
+    "src/Proxy.ts",
+    "src/cli.ts",
+    "src/mod.ts",
+])
+
+static_source_set(
+    name = "static_sources",
+    node_modules = ":node_modules",
+    prefix = "packages/@overeng/ai-gateway-edge",
+    srcs = ["BUCK"] + glob(STATIC_SOURCE_GLOBS, exclude = STATIC_SOURCE_EXCLUDES),
+    visibility = ["PUBLIC"],
+)
+
+static_source_set(
+    name = "repository_validation_sources",
+    prefix = "packages/@overeng/ai-gateway-edge",
+    srcs = ["BUCK", "package.json", "tsconfig.json"] + glob(["**/*.genie.ts"]),
+    visibility = ["PUBLIC"],
+)
+
+static_source_set(
+    name = "nix_sources",
+    prefix = "packages/@overeng/ai-gateway-edge",
+    srcs = glob(["**/*.nix"]),
+    visibility = ["PUBLIC"],
+)
+
+alias(
+    name = "node_modules",
+    actual = "//buck2/dependencies:view_packages_overeng_ai_gateway_edge_944509ea8eb5",
+    visibility = ["PUBLIC"],
+)
+
+alias(
+    name = "editor_inputs",
+    actual = ":node_modules",
+    visibility = ["PUBLIC"],
+)
+
+package_view(
+    name = "package_tree",
+    dependency_view = "//buck2/dependencies:view_packages_overeng_ai_gateway_edge_944509ea8eb5",
+    files = {
+        "package.json": "package.json",
+        "src/Config.ts": "src/Config.ts",
+        "src/Metrics.ts": "src/Metrics.ts",
+        "src/Proxy.integration.test.ts": "src/Proxy.integration.test.ts",
+        "src/Proxy.ts": "src/Proxy.ts",
+        "src/cli.ts": "src/cli.ts",
+        "src/mod.ts": "src/mod.ts",
+        "tsconfig.json": "tsconfig.json",
+    },
+    workspace_dist = {
+        "node_modules/@overeng/ai-gateway-conformance/dist": "//packages/@overeng/ai-gateway-conformance:dist",
+        "node_modules/@overeng/ai-gateway-conformance/package.json": "//packages/@overeng/ai-gateway-conformance:package.json",
+    },
+    generated_dependencies = {
+    },
+    workspace_dependency_views = {
+        "node_modules/@overeng/ai-gateway-conformance/node_modules": "//packages/@overeng/ai-gateway-conformance:package_tree",
+    },
+    strip_project_references = True,
+    runtime = "//packages/@overeng/buck2-tools:package_tree_runtime",
+    runtime_entry = "package-tree.ts",
+    visibility = ["PUBLIC"],
+)
+
+package_view(
+    name = "product_package_tree",
+    dependency_view = "//buck2/dependencies:product_view_packages_overeng_ai_gateway_edge_944509ea8eb5",
+    files = {
+        "package.json": "package.json",
+        "src/Config.ts": "src/Config.ts",
+        "src/Metrics.ts": "src/Metrics.ts",
+        "src/Proxy.integration.test.ts": "src/Proxy.integration.test.ts",
+        "src/Proxy.ts": "src/Proxy.ts",
+        "src/cli.ts": "src/cli.ts",
+        "src/mod.ts": "src/mod.ts",
+        "tsconfig.json": "tsconfig.json",
+    },
+    workspace_dist = {
+        "node_modules/@overeng/ai-gateway-conformance/package.json": "//packages/@overeng/ai-gateway-conformance:package.json",
+    },
+    generated_dependencies = {
+    },
+    workspace_dependency_views = {
+        "node_modules/@overeng/ai-gateway-conformance/node_modules": "//packages/@overeng/ai-gateway-conformance:product_package_tree",
+    },
+    strip_project_references = True,
+    runtime = "//packages/@overeng/buck2-tools:package_tree_runtime",
+    runtime_entry = "package-tree.ts",
+    visibility = ["PUBLIC"],
+)
+
+package_view(
+    name = "test_package_tree",
+    dependency_view = "//buck2/dependencies:view_packages_overeng_ai_gateway_edge_944509ea8eb5",
+    files = {
+        "package.json": "package.json",
+        "src/Config.ts": "src/Config.ts",
+        "src/Metrics.ts": "src/Metrics.ts",
+        "src/Proxy.integration.test.ts": "src/Proxy.integration.test.ts",
+        "src/Proxy.ts": "src/Proxy.ts",
+        "src/cli.ts": "src/cli.ts",
+        "src/mod.ts": "src/mod.ts",
+        "tsconfig.json": "tsconfig.json",
+        "vitest.config.ts": "vitest.config.ts",
+    },
+    workspace_dist = {
+        "node_modules/@overeng/ai-gateway-conformance/dist": "//packages/@overeng/ai-gateway-conformance:dist",
+        "node_modules/@overeng/ai-gateway-conformance/package.json": "//packages/@overeng/ai-gateway-conformance:package.json",
+    },
+    generated_dependencies = {
+    },
+    workspace_dependency_views = {
+        "node_modules/@overeng/ai-gateway-conformance/node_modules": "//packages/@overeng/ai-gateway-conformance:package_tree",
+    },
+    strip_project_references = True,
+    runtime = "//packages/@overeng/buck2-tools:package_tree_runtime",
+    runtime_entry = "package-tree.ts",
+    visibility = ["PUBLIC"],
+)
+
+editor_view_inputs(
+    name = "editor_view_inputs",
+    editor_inputs = ":editor_inputs",
+    package_tree = ":package_tree",
+    visibility = ["PUBLIC"],
+)
+
+tsgo_typecheck(
+    name = "typecheck",
+    package_tree = ":package_tree",
+    visibility = ["PUBLIC"],
+)
+
+tsgo_emit(
+    name = "dist",
+    package_tree = ":package_tree",
+    declaration_sources = {
+    },
+    declaration_entrypoint = "src/mod.d.ts",
+    visibility = ["PUBLIC"],
+)
+
+npm_package_archive(
+    name = "dist-package",
+    package_tree = ":package_tree",
+    dist = ":dist",
+    typecheck = ":typecheck",
+    workspace_manifests = [
+        "//packages/@overeng/ai-gateway-conformance:package.json",
+    ],
+    output = "overeng-ai-gateway-edge.tgz",
+    visibility = ["PUBLIC"],
+)
+
+vitest_test(
+    name = "test",
+    package_tree = ":test_package_tree",
+    visibility = ["PUBLIC"],
+)
+
+vitest_collect(
+    name = "test_collect",
+    package_tree = ":test_package_tree",
+    visibility = ["PUBLIC"],
+)
+
+package_bin_artifact(
+    name = "ai-gateway-edge-candidate-module",
+    entrypoint = "src/cli.ts",
+    external = [],
+    external_capabilities = [],
+    kind = "cli",
+    output = "ai-gateway-edge.js",
+    package_tree = ":product_package_tree",
+    target = "bun",
+    visibility = ["PUBLIC"],
+)
+
+javascript_product(
+    name = "ai-gateway-edge-candidate",
+    module = ":ai-gateway-edge-candidate-module",
+    product_kind = "cli",
+    product_name = "ai-gateway-edge",
+    visibility = ["PUBLIC"],
+)

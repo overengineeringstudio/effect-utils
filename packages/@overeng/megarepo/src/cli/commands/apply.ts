@@ -26,6 +26,12 @@ export const applyCommand = Cli.Command.make(
       Cli.Flag.withDescription('Show what would be done without making changes'),
       Cli.Flag.withDefault(false),
     ),
+    verifyShared: Cli.Flag.Boolean('verify-shared').pipe(
+      Cli.Flag.withDescription(
+        'Verify prepared members without writes in shared canonical caches; otherwise apply normally (root members only, requires --lock-sync off)',
+      ),
+      Cli.Flag.withDefault(false),
+    ),
     force: Cli.Flag.Boolean('force').pipe(
       Cli.Flag.withAlias('f'),
       Cli.Flag.withDescription('Force updates for pinned members'),
@@ -33,6 +39,18 @@ export const applyCommand = Cli.Command.make(
     ),
     all: Cli.Flag.Boolean('all').pipe(
       Cli.Flag.withDescription('Recursively apply nested megarepos'),
+      Cli.Flag.withDefault(false),
+    ),
+    commitMembers: Cli.Flag.String('commit-members').pipe(
+      Cli.Flag.withDescription(
+        'Apply these root members (comma-separated) as fresh commit worktrees and prepare their nested megarepo trees recursively; other members keep --worktree-mode (requires --lock-sync off)',
+      ),
+      Cli.Flag.optional,
+    ),
+    commitAllMembers: Cli.Flag.Boolean('commit-all-members').pipe(
+      Cli.Flag.withDescription(
+        'Like --commit-members, selecting every root member without listing names (requires --lock-sync off; exclusive with --commit-members)',
+      ),
       Cli.Flag.withDefault(false),
     ),
     only: Cli.Flag.String('only').pipe(
@@ -58,13 +76,28 @@ export const applyCommand = Cli.Command.make(
     lockSync: lockSyncOption,
     verbose: verboseOption,
   },
-  ({ output, dryRun, force, all, only, skip, gitProtocol, worktreeMode, lockSync, verbose }) =>
+  ({
+    output,
+    dryRun,
+    verifyShared,
+    force,
+    all,
+    commitMembers,
+    commitAllMembers,
+    only,
+    skip,
+    gitProtocol,
+    worktreeMode,
+    lockSync,
+    verbose,
+  }) =>
     resolveOutputOption(output).pipe(
       Effect.flatMap((outputMode) =>
         runCommand({
           mode: 'apply',
           output: outputMode,
           dryRun,
+          verifyShared,
           force,
           all,
           only,
@@ -74,6 +107,8 @@ export const applyCommand = Cli.Command.make(
           verbose,
           worktreeMode,
           lockSyncMode: lockSync,
+          commitMembers,
+          commitAllMembers,
         }),
       ),
     ),

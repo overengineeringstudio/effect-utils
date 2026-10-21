@@ -12,6 +12,10 @@ import {
   definePatchedDependencies,
   definePackageJson,
   githubLabels,
+  githubRepoSettings,
+  type GithubRepositorySettings,
+  type GithubRepoSettings,
+  type GithubRulesetPayload,
   githubRuleset,
   githubWorkflow,
   githubWorkflowEvent,
@@ -33,6 +37,7 @@ import {
   type GenieOutput,
   type GithubLabelsArgs,
   type GithubRulesetArgs,
+  type GithubRepoSettingsArgs,
   type GitHubWorkflowArgs,
   type LabelDef,
   type LegacyMigration,
@@ -91,6 +96,7 @@ export {
   definePackageJson,
   defineRepoContext,
   githubLabels,
+  githubRepoSettings,
   githubRuleset,
   githubWorkflow,
   githubWorkflowEvent,
@@ -118,6 +124,10 @@ export type {
   GenieOutput,
   GithubLabelsArgs,
   GithubRulesetArgs,
+  GithubRepoSettingsArgs,
+  GithubRepositorySettings,
+  GithubRepoSettings,
+  GithubRulesetPayload,
   GitHubWorkflowArgs,
   LabelDef,
   LegacyMigration,
@@ -289,18 +299,23 @@ export const catalog = defineCatalog({
   // Schema
   '@standard-schema/spec': '1.1.0',
 
+  // Retained Actions artifacts: lazy ZIP metadata and bounded member streams.
+  yauzl: '3.4.0',
+  '@types/yauzl': '3.4.0',
+
   // Effect ecosystem
   // Effect 4 cohort (see `effectV4Cohort`): platform/cli/rpc/schema/http/
   // socket/process/ai/cluster/workflow/sql and Atom reactivity are merged into
   // the `effect` core package (mostly under `effect/*`); only these
   // packages remain separate.
-  effect: '4.0.0',
-  '@effect/ai-openai-compat': '4.0.0',
-  '@effect/ai-typesafe': '4.0.0',
-  '@effect/platform-node': '4.0.0',
-  '@effect/vitest': '4.0.0',
-  '@effect/opentelemetry': '4.0.0',
-  '@effect/atom-react': '4.0.0',
+  effect: '4.0.3',
+  '@number0/iroh': '1.1.0',
+  '@effect/ai-openai-compat': '4.0.3',
+  '@effect/ai-typesafe': '4.0.3',
+  '@effect/platform-node': '4.0.3',
+  '@effect/vitest': '4.0.3',
+  '@effect/opentelemetry': '4.0.3',
+  '@effect/atom-react': '4.0.3',
 
   // React ecosystem
   react: '19.2.8',
@@ -1022,6 +1037,7 @@ export {
   installMegarepoStep,
   installNixStep,
   namespaceRunner,
+  type NamespacePrivilege,
   nixDiagnosticsArtifactStep,
   runDevenvTasksBefore,
   validateNixStoreStep,

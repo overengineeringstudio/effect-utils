@@ -86,6 +86,38 @@ tree, or rewritten package rule. Changing later repository metadata does not
 change the identity of an already-published product. The anonymous artifact
 URL is an interoperability path, not a second source of product authority.
 
+### Consumer pin eligibility
+
+```text
+main push -> manifest-current success for that SHA -> fast-forward published
+          -> stale manifest -> publisher manifest PR -> main push
+```
+
+Consumers requiring an always-eligible product manifest track `ref published`
+rather than `ref main`. `main` may be temporarily non-current after a
+product-input merge while its publisher manifest proposal is pending.
+`refs/heads/published` only fast-forwards to main commits whose
+`buck2-products/manifest-current` status succeeded for that exact SHA.
+The main-push publication job uses its own successful status write as the
+eligibility proof; workflow dispatch and pull requests cannot advance the ref.
+If the ref is absent, the same eligible main-push job creates it at its own
+SHA using the App token; no separate human bootstrap push is required.
+
+The publisher GitHub App is the sole creation/update actor. The writers
+ruleset restricts creation and updates, with only that App allowed to bypass.
+A separate history ruleset blocks deletion and non-fast-forward updates
+without any bypass actors, including the App. History protection does not
+restrict initial ref creation; the App bypasses only the writers ruleset.
+See [GitHub's ruleset semantics](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/available-rules-for-rulesets).
+
+Before each of at most three push attempts, the job refetches the tip.
+An absent tip permits creation; an ancestor tip permits a fast-forward push.
+A candidate already at or behind the published tip is a successful no-op.
+A rejected push retries this comparison, so an intervening ancestor can still
+be advanced. Divergence fails loudly, as does exhausting the push attempts
+without observing the candidate or a descendant at the published tip.
+This ref guarantees manifest eligibility, not success of unrelated CI checks.
+
 ### Consumer from-source identity
 
 Consumer products built from their own repository, rather than imported from
@@ -136,7 +168,7 @@ and `effect-utils/buck-product-provenance/v1` unchanged (decision 0037).
 
 ### Native products
 
-`otelite`, `otel-scrape`, and `typescript-api-server` use the same
+`otelite`, `otel-scrape`, `pingping`, and `typescript-api-server` use the same
 source-backed, cache-substituted Nix import as compiled executables. The
 generated `nix/buck2-products/native-targets.json` inventory binds each name
 to its Buck `build_product` target and `artifact.tar` output; the Rust rows
@@ -150,6 +182,18 @@ products have dynamic runtimes. Genie wrappers bind
 `GENIE_TYPESCRIPT_API_SERVER` to that same imported package; the reusable
 observability module uses the imported `otelite` for capture.
 
+The TypeScript server's `package_tree_product_executable` consumes
+`PnpmDeclaredClosureInfo` from Genie's lock-projected `external_view_` target,
+not the workspace `:package_tree` or its shared `:node_modules` view. The
+external-only view retains the full pinned external closure and platform gates
+but declares no workspace links. `package_anchor = "typescript"` is relative
+to its `node_modules`; the executable and support-copy actions declare every
+read root needed to resolve the pinned store links. Extraction copies the
+platform `@typescript` executable and support files without compiling workspace
+declarations or invoking effect-tsgo/fingerprint. Pinned archives, Bun,
+action-env, product provenance and native packaging/validation remain required;
+the npm package views, emit, typecheck and archive targets are unchanged.
+
 Native shell imports instead use the source-addressed provenance contract
 above. Their generated `sourcePaths` declare the Rust crate, workspace profile
 and lock, and Reindeer graph; the TypeScript server derives its recursive pnpm
@@ -159,6 +203,16 @@ generators are excluded from that input. Neither the checkout's store root nor
 its Git revision is part of these recipes' identity. Unrelated commits retain
 the same per-platform derivation; edits to declared sources, pinned toolchains,
 archives or validation contracts invalidate it.
+
+Scoped Rust native products default to an embedded JSON stamp with the shared
+`type: "nix"`, `version`, `rev`, and `dirty` fields. `rev` is the first seven
+hexadecimal characters of the existing `sourceDigest`, not a Git revision;
+`dirty: false` describes the immutable source projection, not checkout
+cleanliness. No commit timestamp is invented for this source-addressed policy.
+An explicit `product.cliBuildStamp` overrides the default for callers selecting
+another identity policy. Buck rules opting into `cliBuildStamp` receive the
+stamp through `build_identity.cli_build_stamp`, so unrelated commits cannot
+change the embedded native version.
 
 Files passed to build-time helpers must be content-scoped too. The stage-zero
 root metadata, Cargo profile reader and descriptor contract are materialized

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
-# Build compiled-executable and native products for this runner's platform
-# through their source-backed Nix imports, then smoke `bin/<name> --help`.
+# Build the exported Buck rules cell, retained shell, and compiled-executable
+# and native products; smoke `bin/<name> --help` for inventoried products only.
 # `--push` publishes each realized store path to the public Cachix cache
 # (protected-main publisher only; needs CACHIX_AUTH_TOKEN).
 #
@@ -20,8 +20,8 @@ case "${1:-}" in
 esac
 
 # Use the same package graph as devenv's repoPackages. Evaluate it once for
-# every inventoried import and the retained shell closure, not once per product.
-refs=(.#ci-test-shell-products)
+# every inventoried import, the retained shell closure, and the Buck rules cell.
+refs=(.#ci-test-shell-products .#buck2-rules)
 product_names=()
 product_attrs=()
 for inventory in nix/buck2-products/compiled-targets.json nix/buck2-products/native-targets.json; do
@@ -63,6 +63,6 @@ done
 
 if [ "$push" = true ]; then
   # Store paths contain no whitespace; publish every exact direct output and
-  # its transitive closure, including the retained-shell aggregate.
+  # its transitive closure, including the retained shell and Buck rules cell.
   cachix push overeng-effect-utils $outputs
 fi

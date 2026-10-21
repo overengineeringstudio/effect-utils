@@ -12,9 +12,16 @@ permissions:
 
 jobs:
   request-review:
-    runs-on: ['namespace-profile-linux-x86-64;github.run-id=${{ github.run_id }}']
+    runs-on: ['namespace-profile-linux-x86-64;github.run-id=${{ github.run_id }};job.priority=4']
     timeout-minutes: 30
     steps:
+      - id: linux-nix-sandbox-policy
+        name: Disable Linux Nix sandbox fallback
+        if: ${{ runner.os == 'Linux' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf 'NIX_CONFIG<<EOF\n%s\nsandbox = true\nsandbox-fallback = false\nEOF\n' "${NIX_CONFIG:-}" >> "$GITHUB_ENV"
       - name: Request review from schickling
         if: github.event.pull_request.user.login == 'schickling-assistant' && github.event.pull_request.draft == false
         env:

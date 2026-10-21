@@ -18,6 +18,10 @@
       "types": "./dist/src/mod.d.ts",
       "default": "./src/mod.ts"
     },
+    "./agent": {
+      "types": "./dist/src/agent.contract.d.ts",
+      "default": "./src/agent.contract.ts"
+    },
     "./registry": {
       "types": "./dist/src/registry.d.ts",
       "default": "./src/registry.ts"
@@ -33,12 +37,12 @@
   "devDependencies": {
     "@overeng/utils-dev": "workspace:^",
     "@types/node": "26.5.0",
-    "effect": "4.0.0",
+    "effect": "4.0.3",
     "typescript": "7.0.2",
     "vitest": "5.0.3"
   },
   "peerDependencies": {
-    "effect": "^4.0.0"
+    "effect": "^4.0.3"
   },
   "publishConfig": {
     "access": "public",
@@ -50,6 +54,10 @@
       "./registry": {
         "types": "./dist/src/registry.d.ts",
         "default": "./dist/src/registry.js"
+      },
+      "./agent": {
+        "types": "./dist/src/agent.contract.d.ts",
+        "default": "./dist/src/agent.contract.js"
       },
       "./Traceparent": {
         "types": "./dist/src/Traceparent.d.ts",

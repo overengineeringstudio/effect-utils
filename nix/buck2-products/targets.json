@@ -1,6 +1,10 @@
 {
   "products": [
     {
+      "name": "ai-gateway-edge",
+      "target": "effect_utils//packages/@overeng/ai-gateway-edge:ai-gateway-edge-candidate"
+    },
+    {
       "name": "ci-tools",
       "target": "effect_utils//packages/@overeng/ci-tools:ci-tools-candidate"
     },
@@ -50,7 +54,7 @@
     }
   ],
   "provenance": {
-    "fingerprint": "sha256:546ff155a723865914b52d8a97301ee35492c928fe4a86d4b20c4dd00083b081",
+    "fingerprint": "sha256:c901b88418f2a312a40bbdc207af489135f07be1511e24be423edce71b2f2261",
     "generator": "effect-utils/genie/buck2-javascript-release-targets",
     "regenerationCommand": "devenv tasks run genie:run",
     "semanticInputs": [

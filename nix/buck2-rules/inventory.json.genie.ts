@@ -3,7 +3,6 @@ import { projectionArtifact } from '../../packages/@overeng/genie/src/runtime/mo
 
 const files = [
   'buck2-member.json',
-  'buck2/dependencies/acquire-archive.ts',
   'buck2/dependencies/assemble-store.ts',
   'buck2/dependencies/defs.bzl',
   'buck2/dependencies/nix-archive.ts',
@@ -39,7 +38,11 @@ const files = [
   'buck2/toolchains/configured.bzl',
   'buck2/toolchains/defs.bzl',
   'buck2/toolchains/provider_identity_fixture.bzl',
+  'buck2/toolchains/ts_sandbox.bzl',
   'buck2/typescript.bzl',
+  'packages/@overeng/buck2-tools/src/bun-test-preload.ts',
+  'packages/@overeng/buck2-tools/src/bun-test-runner.ts',
+  'packages/@overeng/buck2-tools/src/bun-test-timeout.ts',
   'packages/@overeng/buck2-tools/src/javascript-runner.ts',
   'packages/@overeng/buck2-tools/src/owned-files.ts',
   'packages/@overeng/buck2-tools/src/package-command-runner.ts',

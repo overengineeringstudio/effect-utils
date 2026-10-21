@@ -11,16 +11,21 @@
 export const internalPackages = [
   'agent-session-ingest',
   'ai-gateway-conformance',
+  'ai-gateway-edge',
   'buck2-tools',
   'content-address',
+  'data-graph',
   'devbar',
   'effect-ai-claude-cli',
   'effect-ai-gateway',
   'effect-distributed-lock',
+  'effect-iroh',
   'effect-path',
   'effect-react',
   'effect-rpc-explorer',
   'effect-rpc-explorer-react',
+  'effect-rpc-observer',
+  'rpc-devtools',
   'effect-rpc-tanstack',
   'effect-rust',
   'effect-rust-fixture-consumer',
@@ -32,6 +37,7 @@ export const internalPackages = [
   'kdl',
   'kdl-effect',
   'megarepo',
+  'meters',
   'notion-cli',
   'notion-core',
   'notion-datasource-sync',
@@ -109,6 +115,15 @@ export const nixOnlyPackages = [
     kind: 'rust-crate',
     flakeRef: 'otel-scrape',
     cratePath: 'packages/@overeng/otel-scrape',
+  },
+  {
+    name: 'pingping',
+    /** Rust crate: live latency and loss inspection. */
+    kind: 'rust-crate',
+    flakeRef: 'pingping',
+    cratePath: 'packages/@overeng/pingping',
+    /** Install bash, zsh and fish hooks for the COMPLETE=<shell> protocol. */
+    shellCompletions: true,
   },
 ] as const
 

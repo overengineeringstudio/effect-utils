@@ -25,7 +25,7 @@ GLOBAL FLAGS
   --help, -h                                                          Show help information
   --version, -v                                                       Show version information
   --wizard                                                            Start wizard mode for a command
-  --completions <bash|zsh|fish|sh>                                    Print shell completion script (choices: bash, zsh, fish, sh)
+  --completions <bash|zsh|fish|powershell|sh|pwsh>                    Print shell completion script (choices: bash, zsh, fish, powershell, sh, pwsh)
   --log-level <all|trace|debug|info|warn|warning|error|fatal|none>    Sets the minimum log level (choices: all, trace, debug, info, warn, warning, error, fatal, none)
   --cwd string                                                        Override the working directory
 ",
@@ -51,7 +51,7 @@ GLOBAL FLAGS
   --help, -h                                                          Show help information
   --version, -v                                                       Show version information
   --wizard                                                            Start wizard mode for a command
-  --completions <bash|zsh|fish|sh>                                    Print shell completion script (choices: bash, zsh, fish, sh)
+  --completions <bash|zsh|fish|powershell|sh|pwsh>                    Print shell completion script (choices: bash, zsh, fish, powershell, sh, pwsh)
   --log-level <all|trace|debug|info|warn|warning|error|fatal|none>    Sets the minimum log level (choices: all, trace, debug, info, warn, warning, error, fatal, none)
   --cwd string                                                        Override the working directory
 
@@ -93,7 +93,7 @@ GLOBAL FLAGS
   --help, -h                                                          Show help information
   --version, -v                                                       Show version information
   --wizard                                                            Start wizard mode for a command
-  --completions <bash|zsh|fish|sh>                                    Print shell completion script (choices: bash, zsh, fish, sh)
+  --completions <bash|zsh|fish|powershell|sh|pwsh>                    Print shell completion script (choices: bash, zsh, fish, powershell, sh, pwsh)
   --log-level <all|trace|debug|info|warn|warning|error|fatal|none>    Sets the minimum log level (choices: all, trace, debug, info, warn, warning, error, fatal, none)
   --cwd string                                                        Override the working directory
 ",
@@ -115,7 +115,7 @@ GLOBAL FLAGS
   --help, -h                                                          Show help information
   --version, -v                                                       Show version information
   --wizard                                                            Start wizard mode for a command
-  --completions <bash|zsh|fish|sh>                                    Print shell completion script (choices: bash, zsh, fish, sh)
+  --completions <bash|zsh|fish|powershell|sh|pwsh>                    Print shell completion script (choices: bash, zsh, fish, powershell, sh, pwsh)
   --log-level <all|trace|debug|info|warn|warning|error|fatal|none>    Sets the minimum log level (choices: all, trace, debug, info, warn, warning, error, fatal, none)
   --cwd string                                                        Override the working directory
 
@@ -154,19 +154,22 @@ GLOBAL FLAGS
   --help, -h                                                          Show help information
   --version, -v                                                       Show version information
   --wizard                                                            Start wizard mode for a command
-  --completions <bash|zsh|fish|sh>                                    Print shell completion script (choices: bash, zsh, fish, sh)
+  --completions <bash|zsh|fish|powershell|sh|pwsh>                    Print shell completion script (choices: bash, zsh, fish, powershell, sh, pwsh)
   --log-level <all|trace|debug|info|warn|warning|error|fatal|none>    Sets the minimum log level (choices: all, trace, debug, info, warn, warning, error, fatal, none)
   --cwd string                                                        Override the working directory
 
 SUBCOMMANDS
-  add         Add a repository to the store (without adding to megarepo)
-  ls          List repositories in the store
-  status      Show store status and detect issues
-  fetch       Fetch all repositories in the store
-  gc          Garbage collect unused worktrees
-  fix         Fix store issues
-  lease       Run a command while holding a store deletion lease
-  worktree    Manage worktrees in the store
+  add              Add a repository to the store (without adding to megarepo)
+  ls               List repositories in the store
+  status           Show store status and detect issues
+  fetch            Fetch all repositories in the store
+  gc               Garbage collect unused worktrees
+  buck-maintain    Maintain owner-scoped Buck outputs and idle daemons using native Buck commands
+  fix              Fix store issues
+  lease            Run a command while holding a store deletion lease
+  lock             Run a command under the host-local Git common-directory writer lock
+  activity         Produce workspace-activity evidence for store reclamation
+  worktree         Manage worktrees in the store
 ",
 }
 `;

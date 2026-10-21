@@ -8,12 +8,17 @@ export type OperationDisposition =
   | `outside-by-policy:${string}`
 
 export const developerOperationDispositions = {
+  'buck2:editor:materialize': 'outside-by-policy:authoring-mutation',
   'buck2:editor:publish': 'outside-by-policy:workspace-publication',
+  'buck2:editor:publish:all': 'outside-by-policy:workspace-publication',
+  'buck2:maintain': 'outside-by-policy:host-local-maintenance',
   'buck2:providers:check': 'buck-owned',
   'buck2:quick': 'buck-owned',
+  'buck2:rust:generators:test': 'outside-by-policy:workspace-publication',
   'buck2:typescript:materialize-dist': 'outside-by-policy:workspace-publication',
   'check:all': 'outside-by-policy:cross-boundary-aggregate',
   'check:quick': 'outside-by-policy:cross-boundary-aggregate',
+  'content-address:contract:generate': 'outside-by-policy:authoring-mutation',
   'genie:check': 'outside-by-policy:stage-zero-bootstrap-freshness',
   'genie:run': 'outside-by-policy:authoring-mutation',
   'genie:watch': 'outside-by-policy:long-lived-watcher',

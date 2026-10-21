@@ -14,6 +14,14 @@ export * from '../mod.ts'
 export { nodeGenieIO } from './io.ts'
 
 export {
+  recordInput,
+  inputReadFileSync,
+  inputExistsSync,
+  inputStatSync,
+  inputReaddirSync,
+} from './inputs.ts'
+
+export {
   checkBootstrapClosure,
   formatViolationChain,
   type BootstrapClosureResult,
@@ -35,5 +43,14 @@ export {
   type RulesetDiff,
   type RulesetMode,
 } from '../github-ruleset/reconcile.ts'
+
+export {
+  decodeGithubRepoSettings,
+  formatGithubRepoSettingsReport,
+  GithubRepoSettingsError,
+  reconcileGithubRepoSettings,
+  type GithubRepoSettingsOptions,
+  type GithubRepoSettingsReport,
+} from '../../build/github-repo-settings/reconcile.ts'
 
 export * from '../repo-context/mod.ts'

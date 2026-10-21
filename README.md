@@ -2,7 +2,86 @@
 
 A collection of production-ready [Effect](https://effect.website) utilities and integrations.
 
+## Namespace scheduling
+
+Namespace priorities express queue order across the shared projects. Lower numbers
+start first; any explicit priority precedes an unspecified priority.
+
+| Priority | Work                                |
+| -------- | ----------------------------------- |
+| 1        | effect-utils delivery               |
+| 2        | Smalltalk, PTY and tooling delivery |
+| 3        | LiveStore delivery                  |
+| 4        | effect-utils background             |
+| 5        | Smalltalk and tooling background    |
+| 6        | LiveStore background                |
+
+Delivery includes required-check prerequisites, main verification, releases and
+actual deployments. Background includes optional benchmarks, advisory reports
+and maintenance. A scheduled verification is still delivery. Priorities do not
+reserve capacity or preempt running jobs; there is no new concurrency cap.
+
+For effect-utils, required product checks, cache contract proofs, live integrations,
+compiled-product publication and required Storybook play tests use 1 on both
+platforms. Optional Storybook previews, cold-bootstrap/GC proofs, Devenv performance,
+Nix closure measurements, source-shape measurements on main, measurement reports,
+pipeline traces, alignment notices and review-request notifications use 4. The required
+PR source-shape check retains delivery priority. Shapes, caches, access controls,
+required checks and workflow frequency are independent of these labels.
+
 ## Packages
+
+### GitHub Actions retained artifacts
+
+[`@overeng/gh-ci-utils`](./packages/@overeng/gh-ci-utils) provides read-only
+artifact inspection through the same configured GitHub authentication as its CI commands:
+
+```sh
+gh-ci-utils artifacts list 123 --repo example-org/example-repo --page 1
+gh-ci-utils artifacts members 123 --repo example-org/example-repo --artifact 456
+gh-ci-utils artifacts read 123 --repo example-org/example-repo --artifact 456 --member cost.json
+gh-ci-utils artifacts read 123 --repo example-org/example-repo --artifact 456 --member log.txt --offset 1048576 --length 65536
+gh-ci-utils artifacts read 123 --repo example-org/example-repo --artifact 456 --member log.txt --tail-bytes 65536
+```
+
+Output is terminal-safe JSON with explicit repository, run, and artifact provenance.
+The `members` response includes `totalCount`, equal to `members.length` (including
+directory entries). Artifact names never imply a job association. Expired artifacts,
+missing artifacts or members, and run mismatches fail explicitly. Member reads select
+one exact portable relative path; there is no automatic extraction or binary/raw output.
+
+Reads without window flags return the complete member with the existing output shape.
+For larger text members, `--length M` selects the first M bytes; `--offset N --length M`
+selects a byte range, and `--tail-bytes M` selects the last M bytes. Offset requires
+length; tail is mutually exclusive with either offset or length. Values must be
+nonnegative safe integers, and length/tail must be at most 262144 bytes (256 KiB).
+Invalid selections fail with `ArtifactError` reason `invalid-selection` before download.
+
+Windows count UTF-8 bytes, not characters or lines. Start edges advance past partial
+codepoints and end edges retreat to complete codepoints; no replacement characters
+are introduced. Offsets beyond EOF clamp to EOF. Zero-byte windows are valid; an
+empty window inside a codepoint reports the next codepoint boundary as its offset.
+Windowed `content` adds `window: { offset, length, totalBytes }` describing the actual
+aligned bytes returned, while `decompressedBytes` remains the entire member size.
+The whole selected member is still streamed and checked for CRC integrity, valid
+UTF-8 and binary content, including bytes outside the window. Corruption fails with
+`unsafe-archive`; binary or malformed UTF-8 content fails with `binary-content`.
+
+Hard limits are 100 artifacts per page (pages 1–1000), 1 MiB metadata responses,
+32 MiB compressed downloads, 1024 ZIP entries, 1024-byte member paths, 8 MiB
+decompressed per member, and 256 KiB selected text/escaped JSON output including its
+envelope and final newline. Limits apply to actual streamed bytes as well as advertised
+sizes. Windowing does not increase any limit or skip full-member validation. The entire
+escaped JSON document must still fit: even a valid 256 KiB window can fail with
+`limit-exceeded` because of metadata or JSON/terminal escaping; request a smaller
+window instead. Oversized output fails instead of silently truncating.
+Only unencrypted stored/DEFLATE members without
+ZIP64 member fields are supported. Bounded ZIP64 directory records are supported by
+the maintained parser; directory/member counts, offsets and sizes are independently
+bounded. Unsafe/duplicate paths, symlinks, special files, inconsistent headers,
+and corrupt selected-member contents are rejected. Metadata enumeration does not
+decompress members. Signed storage redirects are allowlisted and receive no GitHub
+authorization header.
 
 ### Notion Integration
 
@@ -124,6 +203,16 @@ schema-first `OtelMetric` contracts, preserving their exported metric identities
 - **OTEL spans** - Automatic tracing with cross-process trace propagation
 - **Test helpers** - `withTestCtx` for automatic layer provision in Playwright tests
 
+### Peer-to-peer QUIC
+
+Effect 4 bindings for authenticated peer-to-peer QUIC and schema-framed messages
+in Node and Bun desktop/server applications.
+See the [package README](./packages/@overeng/effect-iroh/README.md) for usage and limitations.
+
+| Package                                                 | Description                         |
+| ------------------------------------------------------- | ----------------------------------- |
+| [@overeng/effect-iroh](./packages/@overeng/effect-iroh) | Effect wrapper for the iroh binding |
+
 ### Utilities
 
 | Package                                     | Description                                          |
@@ -151,6 +240,15 @@ Key features:
 - **Read-only protection** - Generated files are read-only by default
 - **CI integration** - `--check` mode verifies files are up to date
 
+The content-address Rust contract is compiled from its Effect schema with
+`devenv tasks run content-address:contract:generate`. This task bootstraps the
+generator's dependency view from the current standalone Buck sources before
+running `packages/@overeng/content-address/src/generate-contract.ts`; it does not
+require the contract to pass freshness first. `genie:check` (including the CI
+freshness lane) runs `content-address:contract:check`, which uses that same runtime
+and requires byte-identical regeneration of the committed contract and provenance.
+The check restores checkout read-only permissions without rewriting any bytes.
+
 ## Quick Start
 
 ### Enter the dev shell
@@ -163,9 +261,70 @@ devenv shell
 
 ### Publish Dependency Views
 
+Source-side generator freshness (`genie:check`) needs the root dependency view:
+it directly runs `buck2:editor:bootstrap` for only `.` and `packages/@overeng/otel-contract`,
+never whole-workspace publication. The static generator closure checker remains
+self-contained. Shell entry, `genie:run`, and `lint:fix` do not publish dependency
+views; explicitly regenerate and publish source-generator dependencies with:
+
 ```bash
-devenv tasks run buck2:editor:publish
+devenv tasks run buck2:editor:materialize
 ```
+
+Publish only requested consumers (JSON package paths), or omit the environment
+variable to reconcile changes since `origin/main`. Automatic selection uses the pnpm
+lockfile importer graph, including transitive workspace-dependent consumers. Global
+dependency inputs or unproven ownership fail closed to the complete authority with a diagnostic.
+
+```bash
+EDITOR_VIEW_PACKAGES='["packages/@overeng/notion-core"]' devenv tasks run buck2:editor:publish
+```
+
+The default never substitutes a whole-workspace publication for an empty change
+set. Every automated consumer selects its own scoped publisher. Aggregate source-test
+chains preserve each package's own publication prerequisite; their shared harness
+publisher covers only the selected generator/module-script views, not the union
+of source-test packages. The full operation
+is **manual only and currently exceeds its 300-second deadline**; verification
+optimization is tracked in [#1915](https://github.com/overengineeringstudio/effect-utils/issues/1915):
+
+```bash
+devenv tasks run buck2:editor:publish:all
+```
+
+Each authority/bootstrap/publication invocation has a **300-second total deadline**
+(plus a 5-second forced-kill grace), including Buck builds, filesystem work and
+lock waits. A separate supervisor owns the publication session and always escalates
+to a group-wide kill after the grace, even if the authority already exited.
+Fingerprint admission closes on termination. Expiry prints a deadline diagnostic and fails nonzero; partial
+publication is never reported as success. This bounds shared-lane occupancy
+well below the 53-minute TT-148 incident. Both view preparations and fingerprint
+subprocesses are limited to four workers, matching the native host-wide walk cap.
+Only immutable Nix-store inputs are memoized, keyed by the tool and complete
+fingerprint arguments; mutable Buck outputs are always re-proven. Phase diagnostics
+are written as work advances, with phase spans on completion, failure, and SIGTERM.
+
+### Maintain Buck Outputs and Idle Daemons
+
+```bash
+devenv tasks run buck2:maintain
+# Preview the same repository policy and inspect its complete receipt:
+mr store buck-maintain --config ./buck-maintain.json --dry-run --json
+```
+
+`buck-maintain.json` contains neutral defaults for the current checkout: a soft
+2 GiB output budget, 24-hour recent-output retention, and a 30-minute idle-daemon
+**policy**. Maintenance uses native Buck clean/kill commands only; the budget is
+not a hard disk limit. It does not configure `daemon_idle_timeout_s`.
+By default only the current `ST_AGENT` owner is eligible, unowned worktrees are
+excluded, and no seat or explicit owner configuration means report-only.
+Active commands (including LSP) and live Buck clients prevent maintenance.
+The legacy `scripts/buck2-daemon-reaper.ts` entrypoint delegates to the same
+runtime; the independent reaper policy and its old flags are removed. Use
+`--config` to configure policy and `--dry-run` to preview it. See
+[the command reference](packages/@overeng/megarepo/docs/commands.md#mr-store-buck-maintain)
+for ownership, blackout windows, native cleanup, and the remaining client-arrival
+race between final activity recheck and kill.
 
 ### Check All TypeScript Projects
 
@@ -190,6 +349,9 @@ devenv tasks run test:run
 devenv tasks run test:utils
 devenv tasks run test:genie
 
+# Rust interop generator integration tests (Bun)
+devenv tasks run buck2:rust:generators:test
+
 # Integration tests (requires NOTION_API_TOKEN for Notion packages)
 NOTION_API_TOKEN=secret_xxx devenv tasks run test:integration
 
@@ -198,18 +360,36 @@ devenv tasks run test:watch
 ```
 
 The aggregate starts `test:buck2:unit` after `genie:check`, independently of
-editor dependency publication. It first prebuilds every declared Vitest collection
-product from `buck2-test-authority.json`, then executes the bounded lanes in the
-existing single Buck test invocation. The prebuild performs no source tests and
+editor dependency publication. It first prebuilds the selected Vitest collection
+products from `buck2-test-authority.json`, then executes the selected bounded lanes
+in the existing single Buck test invocation. The prebuild performs no source tests and
 does not cache source reports or coverage verdicts.
 
 After the source suites and bounded verdicts finish, `test:run` still invokes
 the baseline-collection gate. That gate resolves the identical collection targets
 with the same local-only host-platform Buck build, so current inputs are checked
 even when the products are warm. It then validates the complete filesystem census,
-each bounded selection's exact inventory, source-task ownership and baseline counts.
-Prebuilding changes scheduling only: missing or malformed products, coverage drift,
-failed bounded execution and missing source evidence still fail the aggregate.
+each selected bounded lane's exact inventory, source-task ownership and baseline counts.
+Missing or malformed products, coverage drift, failed bounded execution and missing
+selected source evidence still fail the aggregate.
+
+`genie/ci-workflow/test-platforms.json` classifies aggregate source tasks, individual
+bounded Buck lanes, and every shared module shell script as Darwin-sensitive or
+platform-neutral, with a rationale for each. The required macOS lane sets
+`EFFECT_UTILS_TEST_PLATFORM=darwin` and runs only the Darwin subsets; Linux and an
+unset platform run both subsets. Disjointness and completeness are enforced against
+the generated Buck authority and discovered module scripts. The complete ownership
+authority is retained even when collection products and baseline evidence are scoped.
+Editor publication follows the selected source suites and module fixtures rather
+than publishing neutral-only package views. macOS still builds and smokes the native
+and compiled products to cover Darwin artifacts.
+
+Infrastructure Bun suites outside package source roots run through source tasks
+rather than `buck2-test-authority.json`: `genie:buck2:test` covers the Buck projection
+suite, and `buck2:rust:generators:test` covers every test under `buck2/rust/`, including
+the interop service and wasm guest packager integration tests. Both tasks participate
+in `test:run`; the platform-neutral Rust generator suite runs in the Linux CI partition,
+while the Darwin partition retains only host-sensitive suites.
 
 ### Type Checking
 
@@ -231,7 +411,26 @@ Audit cross-cell Buck provider identity separately:
 devenv tasks run buck2:providers:check
 ```
 
+Generated TypeScript package and root aggregate `BUCK` files record their projection
+source, generator, schema version, semantic fingerprint, and regeneration command.
+They deliberately do not enumerate the workspace-wide generator inputs: unrelated
+package additions must not rewrite package-local headers. Follow the projection source
+and its imports for the authoring provenance; the package projection reads the owning
+repository's Genie registry to resolve workspace dependencies and nested package exclusions.
+The fingerprint hashes the canonical projection data, not an enumerated list of filenames
+or the bytes of every source file. Freshness is enforced independently by
+`devenv tasks run genie:check`, which loads the generators and compares their complete
+formatted output with the committed files (`packages/@overeng/genie/src/core/generation.ts`).
+The warm `genie:run` task fingerprint separately covers generator sources, configured
+extra input globs, generated bytes, and CLI identity in
+`nix/devenv-modules/tasks/shared/genie.nix`; it does not parse these comments.
+Buck action/cache identity continues to come from declared target inputs, dependencies,
+and toolchain capabilities; no rule interprets the header as a dependency manifest or
+cache key. Rules that explicitly stage a `BUCK` file still hash its complete bytes.
+
 ### Consumer Buck Roots
+Consumers needing an always-eligible product manifest should pin `ref published`, not `ref main`; see the [consumer pin contract](./context/builds/05-product-distribution/02-nix-bridge/spec.md#consumer-pin-eligibility).
+
 
 `mkConsumerBuckRoot` accepts the named `watcherPolicy` argument. Its default,
 `"mutable-checkout"`, emits `file_watcher = watchman` and retains fail-closed
@@ -247,6 +446,19 @@ during the build, so no Watchman executable or service is required. The
 from-source builder uses the same policy mapping. Unknown policies fail Nix
 evaluation with a message listing both allowed values; raw watcher-provider
 strings are not accepted.
+
+The packaged Prelude explicitly clears `RUSTC_WRAPPER` and
+`RUSTC_WORKSPACE_WRAPPER` in Reindeer build-script action environments, matching
+the Rust toolchain and first-party launcher rules. A local Buck daemon started
+inside a Cargo development shell must not introduce ambient sccache selection.
+Compiler selection and cache identity remain owned by the declared Buck tools;
+inherited sccache settings cannot activate a wrapper when these selectors are empty.
+
+First-party and Reindeer build-script launchers also declare `PATH` from the
+immutable Bash and coreutils capabilities. Bundled Prelude shims invoke Bash
+through `/usr/bin/env` and use `dirname`/`realpath`; they must not depend on the
+environment of whichever task first started the Buck daemon (aggregate tasks
+intentionally expose only Watchman on their own `PATH`).
 
 TypeScript package projections retain census destinations below nested Buck packages,
 but resolve each input through its nearest owning `BUCK` (or `BUCK.genie.ts` during
@@ -296,6 +508,25 @@ The consumer's Nix source closure must supply the same cell, package bytes, and
 target declarations. The root continues to ignore `.devenv` wholesale. Unmapped
 workspace packages retain their conventional same-cell `:package_tree` labels;
 mapped labels participate in the projection fingerprint.
+
+Workspace `link:` dependencies resolve relative to their importer, or relative
+to the lockfile root when pnpm emits them inside a package snapshot. Both forms
+reference the same workspace importer and package tree. Links must remain inside
+the repository; snapshot links must resolve to a known lockfile importer.
+Directory snapshots without their own importer view get a normalized store entry
+backed by their declared source tree. Their snapshot dependencies, including
+workspace links, remain explicit Buck edges rather than being lost behind a
+source-tree reference. Directory snapshots with an importer reuse its workspace
+tree and dependency view.
+
+Dependency-view availability is derived from the complete required resolver
+context, not just a package's own platform fields. Required native dependencies
+retain their edges on supported machine platforms; their owners and importer
+views have no `javascript_portable` configuration. Generation still succeeds,
+but selecting an unsupported configuration fails analysis before execution.
+Optional native packages retain platform filtering. The normalized store schema
+is `effect-utils/buck2-pnpm-store/v2`; importer `platforms` lists supported
+configurations and `variants` covers only that set.
 
 Put the effect-utils flake's pinned `packages.<system>.buck2` on `PATH` (or use
 its `bin/buck2` as `BUCK2_BIN`). Direct commands, agents and devenv tasks then
@@ -376,6 +607,73 @@ and other worktrees and isolations are never stopped. Failed stops prevent
 startup and do not record successful migration. Maintenance `kill`, `status`,
 and `log` commands bypass Watchman admission so diagnosis and shutdown remain
 available during an outage.
+
+When `GATE_SLOT_CLASS` is set, the packaged wrapper owns gated admission and
+teardown for the selected project/isolation. On Linux it compares native
+`buck2 status` plus `/proc/<buck2d pid>/cgroup` with the caller's own cgroup.
+Ownership is the nearest `gate-slot-*.scope` ancestor of the unified cgroup
+path: parent, nested action and sibling cgroups inside that scope are reused.
+An idle foreign daemon is stopped before the client runs, so its replacement
+and local actions inherit the job's lane limits and accounting. A daemon with
+a valid unified path outside any gate scope is foreign to a known caller gate
+scope. Missing unified membership or an unknown caller scope instead retains
+the daemon with a warning, never guessing permission to migrate it.
+A foreign daemon with active clients is retained and reused with exactly one
+stderr accounting warning naming its foreign cgroup; moving or interrupting
+another build/editor client is unsafe.
+The selected isolation follows the pinned native CLI/environment default and
+plain `@file`/`--flagfile` expansion, including nested files relative to the
+invocation directory. Python/stdin argfiles, config-backed cell-path fallback
+and other unresolved forms fail closed: one warning and no lifecycle status
+or kill calls, rather than guessing the unrelated default `v2` daemon.
+Only Buck arguments before the expanded `--` separator determine lifecycle
+identity and help/version bypass; executable payload such as `-- --help` does
+not bypass cleanup. Native `run` also accepts separator-free trailing payload,
+which can contain isolation-looking options. Lifecycle resolution conservatively
+supports `run TARGET [-- payload]` with Buck options before `run`; other run
+forms retain daemons with the same fail-closed warning rather than guessing
+where Buck options end.
+
+An outer shell installs EXIT/INT/TERM/HUP traps and waits for its native client.
+At exit it invokes native `buck2 kill` only when a fresh status identifies the
+selected daemon and reports zero active commands, even if this invocation
+started it. Busy status quietly retains the daemon; unavailable/malformed status
+warns and never authorizes a kill. Cleanup preserves ordinary numeric exits;
+after a wrapper INT/TERM/HUP it restores the default disposition and re-raises
+the signal, so parents observe signal termination rather than an explicit
+128+N exit. `kill`, `status`, and `log` remain diagnostic/lifecycle commands and
+bypass both gated admission and teardown.
+Signals already ignored on entry to Bash remain ignored as POSIX requires;
+the wrapper does not override that inherited caller policy.
+An injected `BASH_ENV` that replaces Bash's `kill` builtin with an external
+command can instead make Bash translate its self-SIGINT into numeric exit 130
+(128+N); the agent command guard is one such environment. Native signal tests
+use the packaged interpreter without `BASH_ENV` and assert default SIGINT
+disposition before delivery.
+
+Outside gate-slot, native warm-daemon behavior and the admitted-argument fast
+path are unchanged. A nested wrapper inherits the outer wrapper's cleanup
+ownership rather than stopping the daemon beneath its caller. No daemon memory
+cap or separate daemon unit is installed. At the pinned Buck2 revision,
+resource control places actions in a daemon-owned reusable cgroup pool;
+the public client protocol has no per-command caller-cgroup destination.
+Moving the daemon alone therefore moves local build work out of gate-slot's
+limits, while a daemon-unit memory cap would cap compiler/test actions too.
+
+Buck's kill RPC has no conditional-idle form. At both **start** (foreign idle
+daemon migration) and **exit** (idle teardown), a new client can arrive between
+the final empty-active-commands status read and `buck2 kill`, and be interrupted.
+Wrapper exit teardown and `mr store buck-maintain` can both observe the same
+idle daemon in that window and send duplicate native kill RPCs; native kill is
+not serialized between those independent owners. Either observer can also
+race a new client arriving after its last idle check. Maintenance invokes the
+native executable, so it does not recursively trigger wrapper teardown.
+An already observed active client is never deliberately killed. Reusing a
+foreign busy daemon leaves an explicitly logged accounting gap for that
+invocation, and retaining a busy daemon at exit may keep its original job scope
+alive. Independent idle-daemon maintenance remains the backstop for this
+conservative concurrent-client case.
+
 The existing explicit local `[buck2] file_watcher = notify` choice is retained
 for deliberate non-agent use, but is unsafe for agent builds: completed source
 writes can race notify's unsynchronized callback buffer and produce stale
@@ -399,9 +697,16 @@ bazel-remote's 4 MiB gRPC receive limit; larger individual blobs use ByteStream
 with the same bounded chunk size. A server capability value of
 `max_batch_total_size_bytes = 0` does not remove its gRPC message limit.
 
-The entrypoint reads the tracked private archive origin from
-`archive_origin.trusted_url_prefix` and `archive_origin.trusted_tier`, including
-roots generated by `mkConsumerBuckRoot`. Public read-only jobs set
+Standalone pnpm archives use native Buck `download_file` actions with the
+canonical registry URL, reviewed SHA-256 and byte size. Buck verifies bytes and
+defers materialization; warm archives need no transfer, while explicit fresh
+roots still download registry bytes. Downloads do not read the RE CAS. The
+private CAS and verified seeder remain optional infrastructure; there is no
+runtime archive-origin selection or automatic fallback. A future mirror or CAS
+read path needs a separate decision. Nix's per-digest fixed-output archives and
+copy-and-verify projection are unchanged.
+
+Public read-only jobs set
 `BUCK2_PUBLIC_CACHE_READ_ONLY=1`; protected public publishers provide
 `BUCK2_CACHE_WRITE_BASIC_AUTH`. A private host resolves its own
 `BUCK2_PRIVATE_CACHE_WRITE_AUTH=username:password` credential and declares
@@ -410,17 +715,17 @@ converts raw host credentials into `BUCK2_PRIVATE_CACHE_WRITE_BASIC_AUTH`;
 credentials never enter config files. Do not use a publisher credential as a
 host credential.
 
-Configured REAPI roots without archive-origin metadata use the same admission;
-an omitted `remote_cache_enabled` follows the execution policy's enabled default.
+Configured REAPI roots use endpoint admission; an omitted
+`remote_cache_enabled` follows the execution policy's enabled default.
 
 `BUCK2_NO_REMOTE_CACHE=1` disables reads and uploads, and public read-only posture
-wins over either writer credential. The entrypoint probes REAPI capabilities and
-the archive origin concurrently with a 900 ms deadline, caches endpoint outcomes
-for five seconds in the user's cache directory, and emits a warning on every
-fail-open invocation. An unavailable read-only REAPI endpoint selects local
-execution; an unavailable archive origin selects the registry while retaining a
-reachable REAPI session. Writers still fail closed on REAPI outages. Outage
-overrides are invocation-local and do not change tracked configuration.
+wins over either writer credential. The entrypoint probes REAPI capabilities
+with a 900 ms deadline, caches endpoint outcomes for five seconds in the user's
+cache directory, and emits a warning on every fail-open invocation. An
+unavailable read-only REAPI endpoint selects local execution. Writers still
+fail closed on REAPI outages. Outage overrides are invocation-local and do not
+change tracked configuration. Archive availability does not participate in
+REAPI admission.
 
 Identical healthy read-only invocations reuse a shell fast path within the
 remaining probe lifetime, avoiding JavaScript startup in warm loops. Its cache

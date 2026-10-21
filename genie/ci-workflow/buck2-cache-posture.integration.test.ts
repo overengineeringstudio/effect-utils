@@ -144,7 +144,6 @@ describe('generated CI cache trust behavior', () => {
           // Reader policy wins even if an accidental credential reaches the resolver.
           const config = standaloneCachePostureConfig({
             current: '',
-            trustedOrigin: { tier: 'private', urlPrefix: 'https://cache.example/cas/' },
             env: { ...env, BUCK2_CACHE_WRITE_BASIC_AUTH: 'fixture-credential' },
           })
           expect(config).toContain(
@@ -261,12 +260,12 @@ describe('generated CI cache trust behavior', () => {
       }
   })
 
-  it('publishes the exact retained shell closure only from protected main', async () => {
+  it('publishes the exact retained shell and Buck rules closures only from protected main', async () => {
     const publisher = (await readWorkflow('compiled-products.yml')).jobs[
       'publish-compiled-products'
     ]!
     const publication = publisher.steps.find(
-      (step) => step.name === 'Publish retained shell, native and compiled products',
+      (step) => step.name === 'Publish Buck rules, retained shell, native and compiled products',
     )!
     expect(evaluate(publisher.if!, 'push', 'refs/heads/main')).toBe(true)
     expect(evaluate(publisher.if!, 'workflow_dispatch', 'refs/heads/main')).toBe(true)
@@ -279,7 +278,7 @@ describe('generated CI cache trust behavior', () => {
     const script = await Bun.file(
       new URL('../ci-scripts/compiled-products.sh', import.meta.url),
     ).text()
-    expect(script).toContain('refs=(.#ci-test-shell-products)')
+    expect(script).toContain('refs=(.#ci-test-shell-products .#buck2-rules)')
     expect(script.match(/\bnix build\b/g)).toHaveLength(1)
     expect(script).toContain('--json "${refs[@]}"')
     expect(script).toContain('cachix push overeng-effect-utils $outputs')
@@ -299,6 +298,7 @@ describe('generated CI cache trust behavior', () => {
     const names = ['compiled-one', 'compiled-two', 'native-one']
     const outputPaths = names.map((name) => join(work, `output-${name}`))
     const shellOutput = join(work, 'output-shell')
+    const rulesOutput = join(work, 'output-buck2-rules')
     const logs = {
       NIX_LOG: join(work, 'nix.log'),
       SMOKE_LOG: join(work, 'smoke.log'),
@@ -312,6 +312,7 @@ describe('generated CI cache trust behavior', () => {
       mkdirSync(join(work, 'nix/buck2-products'), { recursive: true })
       mkdirSync(join(work, 'tools'))
       mkdirSync(shellOutput)
+      mkdirSync(rulesOutput)
       writeFileSync(
         join(work, 'nix/buck2-products/compiled-targets.json'),
         JSON.stringify({ products: names.slice(0, 2).map((name) => ({ name })) }),
@@ -336,7 +337,7 @@ describe('generated CI cache trust behavior', () => {
         path: join(work, 'tools/cachix'),
         content: 'printf \'%s\\n\' "$*" >> "$CACHE_LOG"',
       })
-      const outputs = [outputPaths[2]!, shellOutput, outputPaths[1]!, outputPaths[0]!]
+      const outputs = [outputPaths[2]!, shellOutput, rulesOutput, outputPaths[1]!, outputPaths[0]!]
       const run = ({
         args,
         selectedOutputs = outputs,
@@ -366,7 +367,7 @@ describe('generated CI cache trust behavior', () => {
       for (const args of [[], ['--push']]) {
         expect(run({ args }).exitCode).toBe(0)
         expect(readFileSync(logs.NIX_LOG, 'utf8').trim().split('\n')).toEqual([
-          'build --no-link --print-build-logs --json .#ci-test-shell-products .#compiled-one-compiled .#compiled-two-compiled .#native-one',
+          'build --no-link --print-build-logs --json .#ci-test-shell-products .#buck2-rules .#compiled-one-compiled .#compiled-two-compiled .#native-one',
         ])
         expect(readFileSync(logs.SMOKE_LOG, 'utf8').trim().split('\n')).toEqual(
           names.map((name) => `${name} --help`),

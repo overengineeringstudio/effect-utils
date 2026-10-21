@@ -32,12 +32,131 @@ staged tree, for cache-upload economics.
 Emit scratch copies retain owner-write permission on files and directories,
 including copied workspace siblings. Buck can therefore remove an abandoned
 `TMPDIR` before rerunning the action even when the runner was killed without
-cleanup. Input integrity (BUILD.BUCK.EXEC-R08) is checked rather than enforced
-with read-only scratch directories: the runner fingerprints declared roots and
-the complete staged workspace before and after the compiler. The staged walk
+cleanup. Within the writable scratch staging view, input integrity
+(BUILD.BUCK.EXEC-R08) is additionally checked: the runner fingerprints declared
+roots and the complete staged workspace before and after the compiler. The staged walk
 hashes symlink destinations without following them, so the declared output
 symlink permits emission without exempting staged source or sibling mutations.
 Any input fingerprint change fails the action, including a compiler exit of zero.
+
+### TypeScript containment and platform admission (BUILD.BUCK-R04)
+
+```text
+selected Linux executor -> mandatory linux-bwrap -> admitted check/emit
+                                                -> local-only package projection
+selected Darwin executor -> darwin-unsandboxed   -> local execution, no admission/reuse
+```
+
+The exported `hermetic_sandboxed_action` in `@rules//buck2:hermetic.bzl`
+accepts the sandbox capability and a caller-supplied map of tool closures.
+Other cells can use the same boundary for admitted non-TS tools: each supplied
+closure is attested by a consuming toolchain dependency, with its capability
+artifacts declared as hidden tool inputs. No payload tool is implicitly bound.
+The thin `ts_action` caller supplies Bun plus its consuming rule's additional
+tool closures (effect-tsgo, `buck2-fingerprint`); package-tree actions therefore
+do not depend on compiler tools.
+
+The Linux actions use the declared Nix Bubblewrap capability. There is no
+unsandboxed fallback: a missing capability, failed namespace setup, denied
+access or failed payload makes the action fail. Admission and the native
+`darwin-unsandboxed` lane are shared and unchanged: Darwin runs locally without
+cache upload or containment admission. A scoped product root lacking the
+launcher-shell or Linux Bubblewrap capability declares no sandbox toolchain,
+so dependent action rules fail analysis there. Bun is optional in the toolchain:
+the TS wrapper requires it and adds its capability artifacts to its own action
+inputs. Non-TS actions do not bind Bun or include its artifacts in their keys.
+The `buck2/tests/ts_sandbox` suite exercises both the TS wrapper and a Bash-only
+payload through the shared launcher, including declared reads, denied
+undeclared reads and denied external TCP connections.
+
+Analysis emits the exact bind argv in a declared shell argument script. The
+scrubbed, Nix-pinned Bash entry creates output directories and immediately
+execs Bubblewrap; no Bun containment observer or per-input realpath/stat walk
+runs outside the action:
+
+| Resource                                                                   | Linux action access                                                                                                         |
+| -------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| Declared artifact/read-root inputs and their declared symlink destinations | Read-only                                                                                                                   |
+| Exact transitive Nix closures of the selected action tools                 | Read-only; no whole `/nix/store` mount                                                                                      |
+| Declared per-action output directories                                     | Writable in place; host siblings and parents are not mounted                                                                |
+| Buck-owned action scratch and private `/tmp`                               | Writable                                                                                                                    |
+| `/proc` and minimal `/dev`                                                 | Minimal namespace views, read-only mounts                                                                                   |
+| Environment                                                                | Cleared; only `LC_ALL=C`, `TZ=UTC`, `BUCK_SCRATCH_PATH`, private `TMPDIR`, and action-owned `PWD` (also synthesized by Bun) |
+| Network and undeclared host filesystem                                     | Unavailable; isolated network namespace and no ambient filesystem mount                                                     |
+
+The capability pins upstream Bubblewrap 0.13.0 in `nix/bubblewrap.nix`.
+Its recursive `mount_setattr` path applies read-only, `nodev`, and `nosuid`
+without reparsing the growing mount table for each declared bind. Older kernels
+use Bubblewrap's upstream attribute-setting fallback; neither path weakens the
+filesystem or network boundary. Declared inputs remain individual mounts:
+there is no copied input-view grouping, overlay, image, or FUSE dependency.
+
+Every TS run action declares directory outputs, including directories holding
+projected file receipts. The shared scrubbed launcher creates those directories
+before Linux containment or unsandboxed Darwin execution, so fresh nested verdicts
+do not depend on a pre-existing output root. Runners reset their contents without deleting the
+mount point. Outputs are written in place: there is no staging publication
+copy, rename, or post-action observer. Files staged into scratch remain writable
+for abandoned-action cleanup; compiler mutation
+of staged inputs still fails the fingerprint check. Read-only input mounts and
+the exact closure prevent ambient reads and live-input mutation independently
+of that check. Linux TS actions hold BUILD.BUCK-R04 at this declared boundary;
+environment scrubbing or fingerprint detection alone does not establish it.
+
+Linux Nix from-source product builds run the same Bubblewrap boundary nested in
+the Nix build sandbox; there is no outer-sandbox mode or substitute boundary.
+Linux from-source builds of TS products therefore require nested unprivileged
+user namespaces; where the host restricts them, the build fails with a named
+diagnostic and the package must be substituted from the binary cache instead.
+Namespace Linux CI jobs explicitly select `always`, `trusted` or `never`
+container privilege. Nix/Bubblewrap build jobs request `container.privileged=true`
+only when the job's event policy permits it; PR-reachable builds use `trusted`
+and fork PRs select unprivileged runners. Buck TS setup rejects those untrusted
+PRs explicitly rather than falling back to an unsandboxed action.
+The privilege applies inside each ephemeral per-job VM. It lets Nix create its
+real build namespaces instead of disabling sandboxing, and lets nested
+Bubblewrap pivot its root. Darwin runner labels do not request it. Network
+isolation is judged by egress properties: no addressed non-loopback interface
+and no non-loopback IPv4/IPv6 route. Down kernel fallback tunnel devices such as
+`tunl0` and `ip6tnl0` may appear in every new network namespace.
+
+The from-source core-budget contract checks the evaluated shared `buck_build`
+command and its three output calls (artifact, descriptor, runtime closure).
+Both from-source contract scripts report the failing command and exit status,
+with its line when available, on any nonzero exit, including child contracts.
+
+`buck2/platforms:ts_action_execution_policy` is a default-only execution
+dependency, selected in Buck's actual execution configuration. The policy does
+not infer execution OS from a portable target, host metadata or tool strings.
+`ts_action_policy_attrs()` installs that dependency;
+`ts_action_execution_constraints(constraints = [])` preserves caller constraints,
+pins the native host executor, and adds `cache_hermetic` only on Linux.
+Rule-owned `ts_action_cache_eligible(ctx)` admits Linux only, and
+`ts_action_admission_status(ctx)` checks actual execution before registering any
+TS run action. Explicit `exec_compatible_with` cache overrides cannot admit a
+Darwin executor. These helpers do not change other action families' platform
+policy.
+
+Darwin TS actions continue to run locally unsandboxed with `local_only = True`.
+They explicitly report `admission_status = "darwin-unsandboxed"` and use the
+nonremote native platform with cache uploads disabled. BUILD.BUCK-R04 does
+**not** hold for Darwin TS execution; it is not hermetic/shareable or eligible
+for hermetic shared immutable-store admission. Unsupported admission is not
+refusal to execute macOS merge-group tests or editor development workflows:
+worktree-local editor snapshot reuse remains permitted on Darwin and is not
+shared/hermetic admission. No cross-checkout shared immutable TS store is
+introduced by this policy; existing npm/archive and Nix product boundaries are
+unchanged. Linux reports
+`admission_status = "linux-bwrap"`; package-tree projection remains excluded
+from shared cache by `local-materialization-policy` even when sandboxed.
+
+Decision authority is the live 2026-10-11 axe record `jd5hbf`,
+`enforce-linux-block-darwin`: enforce Linux containment and block Darwin
+admission, not Darwin execution. Action evidence names `darwin-unsandboxed`
+separately from `local-materialization-policy`, using the explicit
+`_darwin_unsandboxed` category suffix rather than guessing executor OS from a
+target configuration. Both exclusions stay outside eligible shared-cache
+cohorts without rewriting native execution/cache outcome enums.
 
 ## Rust Actions
 
@@ -117,6 +236,39 @@ the root Cargo workspace and the strict Reindeer graph; a Cargo library declares
   Bun (`runtime`), asserts that the runtime resolved its own export condition,
   and records a verdict artifact; `//:all` includes the fixture smokes under
   `rust/effect-rust-fixtures` for both runtimes.
+
+## Portable JavaScript Source Graph
+
+```text
+package_bin_artifact -> product_package_tree -> product_view_<importer>
+                              |                       |
+                              +-> sibling sources     +-> immutable external store
+                              +-> recursive product_package_tree views
+                              +-> declared generated package products
+```
+
+The portable module prerequisite for BUILD.BUCK.EXEC-R06 and
+BUILD.BUCK.EXEC-R07 uses a dedicated source-only view. The package projection
+stages its declared source roots and runtime files; declaration-backed
+workspace sibling source roots derive from the workspace package generator's
+runtime exports and binaries, not `publishConfig` or guessed directories.
+Sibling sources retain their recursive package-view links and full read-root
+closure. Missing source metadata or exported sources fails closed.
+
+`product_view_<importer>` preserves the ordinary importer's external direct
+links, bins, closure and platform maps, but workspace links target
+`:product_package_tree`. These product trees have no sibling `:dist` overlays.
+Generated packages remain real action dependencies: Rust interop services and
+their package artifacts are not replaced by source placeholders.
+
+The portable farm names `product_package_tree` and `product_view_<importer>`
+using the corresponding `package_tree` and `view_<importer>` layout names,
+so separating declaration generation does not rename unchanged bundled
+modules. Actual action dependencies and identities retain the product target
+names; logical-name collisions fail analysis. The ordinary npm/editor
+`package_tree` and `view_<importer>` graph, declaration overlays, emit/typecheck
+mutation proof and npm archive prerequisites remain unchanged. Compiled
+JavaScript products consume the same source-only portable module.
 
 ## Compiled JavaScript Executables
 
@@ -221,6 +373,27 @@ credentials, authenticated key logs, AC instance mangling per repo, validation
 and a purge runbook. Public PR write denial is server-enforced. This admission
 contract does not operate the cache or create credentials (axe record `4pmebr`).
 
+### Default-off Rust Prelude adapter
+
+`nix/buck2.nix` pins Prelude as a hashed `.tar.gz`; its materialization in
+`nix/buck2-rules/default.nix` applies the versioned
+`patches/rust-action-adapter.patch`. The
+[upstream contribution](https://github.com/facebook/buck2/pull/1580)
+is the removal authority: drop the patch and its applicator once it lands and
+the pinned Prelude includes it. Keep the default-off posture regression.
+
+`rust.action_adapter_enabled` defaults to `false`. Opt-in also requires a
+declared `RustToolchainInfo.rustc_action_adapter` executable. It intercepts the
+complete rustc action before argument parsing, with Buck's declared-input
+metadata and a versioned manifest of every command output, including diagnostics
+and hidden output directories. Its `RunInfo` owns all runtime resources. The
+default rustc executable and inputs remain unchanged; the posture test compares
+real executor action digests with a bypassed baseline and explicit false.
+
+This seam enables no lane and grants no `cache_hermetic` admission. Native Rust,
+build scripts, rustdoc and linkers remain denied until each lane's complete
+action set has its own containment and key-stability proof.
+
 ### Audited action inventory
 
 Admission is the execution constraint `@rules//buck2/platforms:cache_hermetic`,
@@ -245,9 +418,9 @@ scratch config, so package-local startup hooks cannot bypass the runner contract
 
 | Action family                                                                                    | Admission and audited boundary                                                                                                                                                                                                                                                                                                                                                                                                                                 |
 | ------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Dependency extraction/store assembly and package-tree projections                                | Not admitted: the five cheap filesystem categories use `local-materialization-policy`, with remote-cache reads and writes disabled despite their declared inputs and scrubbed execution. See [the policy decision](../06-reuse-client/spec.md#local-materialization-policy-buildbuckreuse-r08r10).                                                                                                                                                             |
+| Dependency extraction/store assembly, package-tree projections and runtime-module copies         | Not admitted: the cheap filesystem categories use `local-materialization-policy`, with remote-cache reads and writes disabled despite their declared inputs and scrubbed execution. See [the policy decision](../06-reuse-client/spec.md#local-materialization-policy-buildbuckreuse-r08r10).                                                                                                                                                                  |
 | Declared pnpm runtime closure                                                                    | Admitted: normalized declared read roots, exact runtime tools, no install-time network or ambient tool discovery.                                                                                                                                                                                                                                                                                                                                              |
-| TypeScript check/emit                                                                            | Admitted: projected Bun/tsgo, source/dependency view, declaration sources and exact arguments; scrubbed outer launcher.                                                                                                                                                                                                                                                                                                                                        |
+| TypeScript check/emit                                                                            | Linux only: mandatory `linux-bwrap` boundary over declared source/dependency view, declarations, exact Bun/tsgo closure and arguments. Darwin is local-only, unsandboxed and explicitly excluded as `darwin-unsandboxed`; caller cache constraints cannot override this exclusion.                                                                                                                                                                             |
 | Static formatter/linter, Nix-source and Devenv trace-source checks                               | Admitted: declared source set, configuration, projected native tool and runner; scrubbed outer launcher. Trace-source audit reads only the declared source view; Nix-source mode invokes attested nixfmt/deadnix over explicit files.                                                                                                                                                                                                                          |
 | Weaver registry and version-pin checks                                                           | Admitted: declared registry/model and pin sources, attested Weaver/model locator, and scrubbed Bun launcher; registry copy/rewrite uses executor scratch and invokes only the pinned checker.                                                                                                                                                                                                                                                                  |
 | JavaScript collection runner                                                                     | Admitted only for deterministic `cacheable` lanes: complete runner-relative module closure, declared package/read roots, config/selection/runtime and fingerprint tool. The runner constructs the child's env/PATH from declared tools and scratch, checks input immutability, and normalizes collected paths. A false-cacheable lane uses the default deny platform and disables uploads while retaining env scrubbing. Inherited-env collection is rejected. |
@@ -256,11 +429,12 @@ scratch config, so package-local startup hooks cannot bypass the runner contract
 | External test orchestration, native compilation, repository validation and remaining run actions | No blanket admission. The default deny platform prevents shared reads/writes until the family's complete action closure is audited. Deterministic verdict actions have their own declared admission; flaky/host-dependent suites remain uncached.                                                                                                                                                                                                              |
 
 The prerequisite categories `pnpm_extract`, `pnpm_store_entry`,
-`pnpm_store_scc`, `pnpm_store_view`, and `package_tree` use the default
-nonremote platform under `local-materialization-policy`; `tsgo_emit` retains
-the cache-admitted TypeScript platform. Each macro owns its own admission:
-a verdict hit does not admit its ancestors. This classification does not
-admit native compilation or executable build scripts.
+`pnpm_store_scc`, `pnpm_store_view`, `package_tree`, and `runtime_module` use the default
+nonremote platform under `local-materialization-policy`; Linux `tsgo_emit`
+retains the cache-admitted TypeScript platform, while Darwin check/emit uses
+the nonremote platform under `darwin-unsandboxed`. Each macro owns its own
+admission: a verdict hit does not admit its ancestors. This classification
+does not admit native compilation or executable build scripts.
 
 Repository `workspace-contract` and `genie-import-closure` modes are not
 promoted with the source-only checks: the former executes Cargo/Nix through a
@@ -270,25 +444,30 @@ source-only modes. Product executable/support staging remains unadmitted where
 the target also owns native compilation; a copy action alone cannot admit its
 target's other actions. Rust build scripts remain host-dependent and denied.
 
-Hash-and-size-validated pnpm archive acquisition is admitted separately from
-offline extraction. The network source is an explicit CAS/registry acquisition
-capability; a successful output must match both declared digest and byte size
-before atomic publication. Nix-backed acquisition reads the explicit immutable
-store root and verifies the same output identity. Complete acquisition/import
-sources and projected Bun participate in the action key; launchers clear env,
-dotenv/preloads and implicit installation. Endpoint availability can fail an
-acquisition but cannot alter a successful output's pinned bytes.
+Hash-and-size-validated pnpm archive acquisition is separate from offline
+extraction and command-action cache admission. Standalone builds register
+native `download_file` with the canonical registry URL, reviewed SHA-256 and
+byte size; Buck verifies the output and owns deferred materialization. There
+is no runtime CAS fetch command or automatic origin fallback. Nix-backed
+acquisition retains the explicit immutable store root and copy-and-verify
+action: complete import sources and projected Bun participate in its action
+key, and launchers clear env, dotenv/preloads and implicit installation.
+Endpoint availability can fail a required download but cannot alter a
+successful output's pinned bytes.
 
-These local runners do not provide an OS filesystem/network sandbox. GNU env
-scrubbing is startup enforcement, declared-input hashing detects mutation, and
-the bundle farm prevents resolver escape; none is a general undeclared-read
-sandbox. Auditing a runner does not certify every arbitrary program it launches.
-Tests that need host/network access are not promoted merely because they use
-the same runner. Feasible sandbox enforcement remains an explicit design question.
+Linux TS check/emit and package-tree projections provide the OS boundary
+defined above. The remaining local runners do not provide a general OS
+filesystem/network sandbox. GNU env scrubbing is startup enforcement,
+declared-input hashing detects mutation, and the bundle farm prevents resolver
+escape; none alone is a general undeclared-read sandbox. Auditing a runner does
+not certify every arbitrary program it launches. Host/network-dependent tests
+are not promoted merely because they use the same runner.
 
 ## Open Design Questions
 
-- **BUILD.BUCK.EXEC-DQ02 Filesystem/network sandbox enforcement:** The inventory
-  and startup env scrubbing above are implemented; local actions still need a
-  feasible OS-level sandbox where declared-closure controls do not enforce all
-  undeclared reads. Unlisted and host-dependent actions remain default-deny.
+- **BUILD.BUCK.EXEC-DQ02 Remaining filesystem/network sandbox enforcement:**
+  Linux TS containment is defined above; other action families still need
+  feasible OS-level enforcement where declared-closure controls do not prevent
+  undeclared reads. Darwin TS admission remains unsupported under the named
+  `darwin-unsandboxed` exclusion. Unlisted and host-dependent actions remain
+  default-deny.

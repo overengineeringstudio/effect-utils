@@ -27,6 +27,7 @@ import { canonicalCacheAdmissionInvocationId } from '../../scripts/buck2-cache-p
 import { decodeActionArtifact, decodeActionExclusionCounts } from './buck2-action-evidence-codec.ts'
 import {
   actionExclusionReason,
+  actionExclusionReasons,
   countActionExclusions,
   actionsArtifactName,
   cacheOutcomeMapping,
@@ -58,10 +59,20 @@ export type CacheAdmissionInvocation = {
   admissionFallbacks: { reapi: number; archiveOrigin: number }
   admissionRetrySuccesses: { reapi: number; archiveOrigin: number }
 }
+// Historical command diagnostics remain readable; native downloads emit none.
+const archiveOriginFallbackReasons = [
+  'not-found',
+  'headers-timeout',
+  'connection-error',
+  'server-error',
+] as const
+type ArchiveOriginFallbackReason = (typeof archiveOriginFallbackReasons)[number]
+type ArchiveOriginFallbackCounts = Record<ArchiveOriginFallbackReason, number>
 type CacheAdmissionEvidence = {
   admissionFallbacks: CacheAdmissionInvocation['admissionFallbacks']
   admissionRetrySuccesses: CacheAdmissionInvocation['admissionRetrySuccesses']
   admissionInvocations: CacheAdmissionInvocation[]
+  archiveOriginFallbacks?: ArchiveOriginFallbackCounts
 }
 export type CacheAction = {
   buildId: string
@@ -88,6 +99,8 @@ export type CacheInvocation = {
   noDigestReasons?: OutcomeCounts
   missingIdentityCount: number
   unpairedStartCount: number
+  /** Actual acquisition fallbacks, separate from endpoint admission probes. */
+  archiveOriginFallbacks?: ArchiveOriginFallbackCounts
 }
 export type CacheEvidence = {
   schemaVersion: 1
@@ -96,6 +109,7 @@ export type CacheEvidence = {
   admissionFallbacks?: CacheAdmissionInvocation['admissionFallbacks']
   admissionRetrySuccesses?: CacheAdmissionInvocation['admissionRetrySuccesses']
   admissionInvocations?: CacheAdmissionInvocation[]
+  archiveOriginFallbacks?: ArchiveOriginFallbackCounts
   reason?: string
   metadata: Record<string, string>
   counts: OutcomeCounts
@@ -174,14 +188,97 @@ const collectAdmissionInvocations = (
   }
   return result
 }
+const zeroArchiveOriginFallbacks = (): ArchiveOriginFallbackCounts => ({
+  'not-found': 0,
+  'headers-timeout': 0,
+  'connection-error': 0,
+  'server-error': 0,
+})
+const decodeArchiveOriginFallbacks = (value: unknown): ArchiveOriginFallbackCounts => {
+  const result = zeroArchiveOriginFallbacks()
+  for (const reason of archiveOriginFallbackReasons)
+    result[reason] = count(field({ value, key: reason }))
+  return result
+}
+/** Preserve endpoint admission rows; add actual acquisitions only in the aggregate. */
+const withArchiveOriginFallbacks = ({
+  admission,
+  invocations,
+}: {
+  admission: CacheAdmissionEvidence
+  invocations: readonly Pick<CacheInvocation, 'archiveOriginFallbacks'>[]
+}): CacheAdmissionEvidence => {
+  const counts = zeroArchiveOriginFallbacks()
+  let observed = false
+  for (const invocation of invocations) {
+    if (invocation.archiveOriginFallbacks === undefined) continue
+    observed = true
+    for (const reason of archiveOriginFallbackReasons)
+      counts[reason] += invocation.archiveOriginFallbacks[reason]
+  }
+  if (observed === false) return admission
+  return {
+    ...admission,
+    admissionFallbacks: {
+      ...admission.admissionFallbacks,
+      archiveOrigin:
+        admission.admissionFallbacks.archiveOrigin +
+        archiveOriginFallbackReasons.reduce((sum, reason) => sum + counts[reason], 0),
+    },
+    archiveOriginFallbacks: counts,
+  }
+}
+/** Read only allowlisted JSON diagnostics from archive actions, never retain raw stderr. */
+const archiveFallbacksFor = (action: unknown): ArchiveOriginFallbackCounts => {
+  const counts = zeroArchiveOriginFallbacks()
+  const commands = field({ value: action, key: 'commands' })
+  if (Array.isArray(commands) === false) return counts
+  for (const command of commands) {
+    const stderr = text(
+      field({ value: field({ value: command, key: 'details' }), key: 'cmd_stderr' }),
+    )
+    if (stderr === undefined) continue
+    for (const line of stderr.split('\n')) {
+      if (line.startsWith('{"type":"archive-origin-fallback",') === false) continue
+      let diagnostic: unknown
+      try {
+        diagnostic = JSON.parse(line)
+      } catch {
+        continue
+      }
+      const reason = archiveOriginFallbackReasons.find(
+        (candidateReason) => candidateReason === field({ value: diagnostic, key: 'reason' }),
+      )
+      const sha256 = text(field({ value: diagnostic, key: 'sha256' }))
+      if (reason !== undefined && sha256 !== undefined && /^[a-f0-9]{64}$/.test(sha256) === true)
+        counts[reason]++
+    }
+  }
+  return counts
+}
+
 /** Legacy v1 summaries omit all admission fields; present fields remain strictly validated. */
 export const decodeCacheAdmissionEvidence = (value: unknown): CacheAdmissionEvidence => {
   const rows = field({ value, key: 'admissionInvocations' })
   if (rows !== undefined && Array.isArray(rows) === false)
     throw new Error('Invalid cache admission invocations')
-  const result = collectAdmissionInvocations(
-    rows === undefined ? [] : rows.map(decodeCacheAdmissionInvocation),
-  )
+  const invocationValues = field({ value, key: 'invocations' })
+  const invocations: Pick<CacheInvocation, 'archiveOriginFallbacks'>[] = []
+  if (Array.isArray(invocationValues) === true) {
+    for (const invocationValue of invocationValues) {
+      const counts = field({ value: invocationValue, key: 'archiveOriginFallbacks' })
+      if (counts !== undefined)
+        invocations.push({
+          archiveOriginFallbacks: decodeArchiveOriginFallbacks(counts),
+        })
+    }
+  }
+  const result = withArchiveOriginFallbacks({
+    admission: collectAdmissionInvocations(
+      rows === undefined ? [] : rows.map(decodeCacheAdmissionInvocation),
+    ),
+    invocations: invocations,
+  })
   if (rows !== undefined && result.admissionInvocations.length !== rows.length)
     throw new Error('Duplicate cache admission invocation ID')
   for (const key of ['admissionFallbacks', 'admissionRetrySuccesses'] as const) {
@@ -193,6 +290,13 @@ export const decodeCacheAdmissionEvidence = (value: unknown): CacheAdmissionEvid
         throw new Error('Cache admission aggregate mismatch')
     }
     result[key] = decoded
+  }
+  const archiveCounts = field({ value, key: 'archiveOriginFallbacks' })
+  if (archiveCounts !== undefined) {
+    const decoded = decodeArchiveOriginFallbacks(archiveCounts)
+    for (const reason of archiveOriginFallbackReasons)
+      if (decoded[reason] !== (result.archiveOriginFallbacks?.[reason] ?? 0))
+        throw new Error('Archive origin fallback aggregate mismatch')
   }
   return result
 }
@@ -307,7 +411,13 @@ const eventTime = (event: unknown): number | null => {
   const result = seconds * 1000 + Math.floor(nanos / 1e6)
   return Number.isSafeInteger(result) === true ? result : null
 }
-const safeIdentity = (value: string | undefined, grammar: RegExp): string | null =>
+const safeIdentity = ({
+  value,
+  grammar,
+}: {
+  value: string | undefined
+  grammar: RegExp
+}): string | null =>
   value !== undefined && value.length <= 4096 && grammar.test(value) === true ? value : null
 const labelGrammar = /^[a-zA-Z0-9_.-]+\/\/[a-zA-Z0-9_./@+-]*:[a-zA-Z0-9_.@+/-]+$/
 const configurationGrammar =
@@ -352,6 +462,7 @@ export const createCacheEvidenceProjector = ({
   let missingCommandDigestCount = 0
   let missingIdentityCount = 0
   const noDigestReasons = zeroCounts()
+  const archiveOriginFallbacks = zeroArchiveOriginFallbacks()
   const add = (value: unknown): void => {
     const event = field({ value: value, key: 'Event' })
     const traceId = text(field({ value: event ?? value, key: 'trace_id' }))
@@ -397,6 +508,11 @@ export const createCacheEvidenceProjector = ({
     const category = identity.category ?? fallback?.identity.category
     const target = identity.target ?? fallback?.identity.target
     const configuration = identity.configuration ?? fallback?.identity.configuration
+    if (category === 'pnpm_archive') {
+      const fallbackCounts = archiveFallbacksFor(end)
+      for (const reason of archiveOriginFallbackReasons)
+        archiveOriginFallbacks[reason] += fallbackCounts[reason]
+    }
     const executionKind = nativeEnum(field({ value: end, key: 'execution_kind' }))
     const cacheUploadResult = nativeEnum(field({ value: end, key: 'cache_upload_result' }))
     const outcome = outcomeFor({ executionKind: executionKind, uploadResult: cacheUploadResult })
@@ -420,13 +536,13 @@ export const createCacheEvidenceProjector = ({
     const commandAction = actionKind === 'Run'
     const row: ActionRecord = {
       type: 'action',
-      buildId: safeIdentity(buildId, /^[a-zA-Z0-9_.-]+$/),
-      context: safeIdentity(context, /^[a-zA-Z0-9_.:-]+$/),
-      category: safeIdentity(category, /^[a-zA-Z0-9_.-]+$/),
+      buildId: safeIdentity({ value: buildId, grammar: /^[a-zA-Z0-9_.-]+$/ }),
+      context: safeIdentity({ value: context, grammar: /^[a-zA-Z0-9_.:-]+$/ }),
+      category: safeIdentity({ value: category, grammar: /^[a-zA-Z0-9_.-]+$/ }),
       exclusionReason,
-      target: safeIdentity(target, labelGrammar),
-      configuration: safeIdentity(configuration, configurationGrammar),
-      digest: safeIdentity(digest, /^[a-fA-F0-9]+:[0-9]+$/),
+      target: safeIdentity({ value: target, grammar: labelGrammar }),
+      configuration: safeIdentity({ value: configuration, grammar: configurationGrammar }),
+      digest: safeIdentity({ value: digest, grammar: /^[a-fA-F0-9]+:[0-9]+$/ }),
       executionKind,
       cacheUploadResult,
       outcome,
@@ -503,10 +619,17 @@ export const createCacheEvidenceProjector = ({
         invocationCompletedAt !== null &&
         invocationCompletedAt >= invocationStartedAt,
     })
+    const fallbackEvidence =
+      archiveOriginFallbackReasons.some((reason) => archiveOriginFallbacks[reason] > 0) === true
+        ? { archiveOriginFallbacks: { ...archiveOriginFallbacks } }
+        : {}
     return {
       schemaVersion: 1,
       status: 'collected',
-      ...zeroAdmissionEvidence(),
+      ...withArchiveOriginFallbacks({
+        admission: zeroAdmissionEvidence(),
+        invocations: [fallbackEvidence],
+      }),
       metadata: {},
       counts: { ...counts },
       excludedByDesign: { ...excludedByDesign },
@@ -525,6 +648,7 @@ export const createCacheEvidenceProjector = ({
           noDigestReasons: { ...noDigestReasons },
           missingIdentityCount,
           unpairedStartCount: starts.size,
+          ...fallbackEvidence,
         },
       ],
       actions: [...actions],
@@ -547,10 +671,21 @@ export const mergeCacheEvidence = ({
   ) {
     throw new Error('Cannot combine disabled-by-design and collected cache evidence')
   }
-  const admission = collectAdmissionInvocations([
-    ...(previous.admissionInvocations ?? []),
-    ...(next.admissionInvocations ?? []),
-  ])
+  const admission = withArchiveOriginFallbacks({
+    admission: collectAdmissionInvocations([
+      ...(previous.admissionInvocations ?? []),
+      ...(next.admissionInvocations ?? []),
+    ]),
+    invocations: [
+      ...previous.invocations,
+      ...next.invocations.filter(
+        (item) =>
+          previous.invocations.some(
+            (priorInvocation) => priorInvocation.buildId === item.buildId,
+          ) === false,
+      ),
+    ],
+  })
   if (previous.status === 'no-native-logs') return { ...next, ...admission }
   if (next.status === 'no-native-logs') return { ...previous, ...admission }
   const seen = new Set(previous.invocations.map((item) => item.buildId))
@@ -585,8 +720,8 @@ export const mergeCacheEvidence = ({
     for (const outcome of cacheEvidenceOutcomes) counts[outcome] += invocation.counts[outcome]
     actionCount += invocation.actionCount
     if (invocation.excludedByDesign !== undefined)
-      excludedByDesign['local-materialization-policy'] +=
-        invocation.excludedByDesign['local-materialization-policy']
+      for (const reason of actionExclusionReasons)
+        excludedByDesign[reason] += invocation.excludedByDesign[reason]
   }
   return {
     schemaVersion: 1,
@@ -594,7 +729,7 @@ export const mergeCacheEvidence = ({
     ...admission,
     metadata: { ...previous.metadata, ...next.metadata },
     counts,
-    ...(invocations.every((invocation) => invocation.excludedByDesign !== undefined)
+    ...(invocations.every((invocation) => invocation.excludedByDesign !== undefined) === true
       ? { excludedByDesign }
       : {}),
     actionCount,
@@ -660,6 +795,9 @@ export const decodeCacheEvidence = (value: unknown): CacheEvidence => {
       invocation.excludedByDesign = decodeActionExclusionCounts(excludedByDesign)
     const noDigestReasons = field({ value: item, key: 'noDigestReasons' })
     if (noDigestReasons !== undefined) invocation.noDigestReasons = decodeCounts(noDigestReasons)
+    const archiveCounts = field({ value: item, key: 'archiveOriginFallbacks' })
+    if (archiveCounts !== undefined)
+      invocation.archiveOriginFallbacks = decodeArchiveOriginFallbacks(archiveCounts)
     const context = field({ value: item, key: 'context' })
     if (context !== undefined) invocation.context = requiredText(context)
     return invocation
@@ -702,7 +840,9 @@ export const decodeCacheEvidence = (value: unknown): CacheEvidence => {
     counts: decodeCounts(field({ value: value, key: 'counts' })),
     ...(field({ value, key: 'excludedByDesign' }) === undefined
       ? {}
-      : { excludedByDesign: decodeActionExclusionCounts(field({ value, key: 'excludedByDesign' })) }),
+      : {
+          excludedByDesign: decodeActionExclusionCounts(field({ value, key: 'excludedByDesign' })),
+        }),
     actionCount: count(field({ value: value, key: 'actionCount' })),
     droppedActionCount: count(field({ value: value, key: 'droppedActionCount' })),
     invocations,
@@ -917,7 +1057,13 @@ const run = async (): Promise<void> => {
       stream.destroy()
     }
   }
-  Object.assign(evidence, collectAdmissionInvocations(admissionRows))
+  Object.assign(
+    evidence,
+    withArchiveOriginFallbacks({
+      admission: collectAdmissionInvocations(admissionRows),
+      invocations: evidence.invocations,
+    }),
+  )
   const envFields = {
     repository: 'GITHUB_REPOSITORY',
     runId: 'GITHUB_RUN_ID',
@@ -954,10 +1100,13 @@ const run = async (): Promise<void> => {
     }
   }
   header.metadata = {
-    repo: safeIdentity(evidence.metadata.repository, /^[a-zA-Z0-9_.-]+\/[a-zA-Z0-9_.-]+$/),
-    runId: safeIdentity(evidence.metadata.runId, /^[0-9]+$/),
-    runAttempt: safeIdentity(evidence.metadata.runAttempt, /^[0-9]+$/),
-    job: safeIdentity(evidence.metadata.job, /^[a-zA-Z0-9_.-]+$/),
+    repo: safeIdentity({
+      value: evidence.metadata.repository,
+      grammar: /^[a-zA-Z0-9_.-]+\/[a-zA-Z0-9_.-]+$/,
+    }),
+    runId: safeIdentity({ value: evidence.metadata.runId, grammar: /^[0-9]+$/ }),
+    runAttempt: safeIdentity({ value: evidence.metadata.runAttempt, grammar: /^[0-9]+$/ }),
+    job: safeIdentity({ value: evidence.metadata.job, grammar: /^[a-zA-Z0-9_.-]+$/ }),
     lane:
       process.env.GITHUB_EVENT_NAME === 'merge_group'
         ? 'merge_group'
@@ -969,7 +1118,7 @@ const run = async (): Promise<void> => {
               ? 'main-writer'
               : 'main-reader'
             : null,
-    headSha: safeIdentity(evidence.metadata.headSha, /^[a-fA-F0-9]{40}$/),
+    headSha: safeIdentity({ value: evidence.metadata.headSha, grammar: /^[a-fA-F0-9]{40}$/ }),
     posture:
       disabled === true || evidence.metadata.remoteCacheDisabled === '1'
         ? 'disabled-by-design'
@@ -984,7 +1133,7 @@ const run = async (): Promise<void> => {
   }
   if (values.finalize === true) {
     for (const invocation of header.invocations) {
-      if (!invocationWithinJobWindow(invocation, header.metadata)) {
+      if (invocationWithinJobWindow({ invocation, metadata: header.metadata }) === false) {
         invocation.freshRoot = false
         header.evidenceGaps.push('native-invocation-outside-job-window')
       }
@@ -992,9 +1141,9 @@ const run = async (): Promise<void> => {
     // Buck's LocalActionCache hits omit command metadata (including the RE action
     // digest). Preserve those rows, but permit the omission only outside freshness.
     for (const action of full.actions) {
-      if (action.commandAction && action.executionKind === 10 && action.digest === null) {
+      if (action.commandAction === true && action.executionKind === 10 && action.digest === null) {
         const invocation = header.invocations.find((item) => item.buildId === action.buildId)
-        if (invocation === undefined || invocation.freshRoot)
+        if (invocation === undefined || invocation.freshRoot === true)
           header.evidenceGaps.push('fresh-local-cache-action-missing-digest')
       }
     }
@@ -1023,7 +1172,7 @@ const run = async (): Promise<void> => {
   const metadataComplete = Object.values(header.metadata).every((item) => item !== null)
   if (values.finalize === true && metadataComplete === false)
     header.evidenceGaps.push('job-metadata-missing')
-  header.evidenceGaps = [...new Set(header.evidenceGaps)].sort()
+  header.evidenceGaps = [...new Set(header.evidenceGaps)].toSorted()
   header.complete =
     values.finalize === true &&
     metadataComplete === true &&
@@ -1081,9 +1230,14 @@ const run = async (): Promise<void> => {
       (invocation) =>
         `| ${invocation.invocationId} | ${invocation.admissionFallbacks.reapi} | ${invocation.admissionFallbacks.archiveOrigin} | ${invocation.admissionRetrySuccesses.reapi} | ${invocation.admissionRetrySuccesses.archiveOrigin} |`,
     )
+    const counts = admission.archiveOriginFallbacks
+    const acquisitionSummary =
+      counts === undefined
+        ? ''
+        : `\n### Archive acquisition fallbacks\n\n| 404 miss | Header timeout | Connection error | CAS 5xx |\n| ---: | ---: | ---: | ---: |\n| ${counts['not-found']} | ${counts['headers-timeout']} | ${counts['connection-error']} | ${counts['server-error']} |\n`
     await Bun.write(
       summary,
-      `${previousText}\n### Buck cache admission\n\n| Invocation ID | REAPI fallbacks | Archive fallbacks | REAPI retry successes | Archive retry successes |\n| --- | ---: | ---: | ---: | ---: |\n| Total | ${admission.admissionFallbacks.reapi} | ${admission.admissionFallbacks.archiveOrigin} | ${admission.admissionRetrySuccesses.reapi} | ${admission.admissionRetrySuccesses.archiveOrigin} |\n${rows.join('\n')}\n`,
+      `${previousText}\n### Buck cache admission\n\n| Invocation ID | REAPI fallbacks | Archive fallbacks | REAPI retry successes | Archive retry successes |\n| --- | ---: | ---: | ---: | ---: |\n| Total | ${admission.admissionFallbacks.reapi} | ${admission.admissionFallbacks.archiveOrigin} | ${admission.admissionRetrySuccesses.reapi} | ${admission.admissionRetrySuccesses.archiveOrigin} |\n${rows.join('\n')}\n${acquisitionSummary}`,
     )
   }
   if (values.finalize === true && header.complete === false) {

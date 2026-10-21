@@ -1,0 +1,346 @@
+{
+  "experiment": "E4",
+  "host": "headless CI Mac",
+  "status": "PASS",
+  "cases": {
+    "authorized": {
+      "verdict": "PASS",
+      "serverExit": 0,
+      "clientExit": 0,
+      "mode": "hold",
+      "logs": {
+        "server": "REQUIREMENT status=0\nAPI requested_available=1 selected=SecCodeCreateWithAuditToken freshness_available=1\nREADY\nCAPTURED token=[501,501,20,501,20,92642,165848,63248591] pid=92642 pidversion=63248591 euid=501 ruid=501 server_uid=501\nPRIMITIVE create_status=0 check_attempted=1 check_status=0 same_uid=1 primitive_accept=1\nFRESHNESS stage=after-security rc=0 errno=0 csflags=570425857\nLIVENESS hello=1\nFRESHNESS stage=before-admission rc=0 errno=0 csflags=570425857\nDECISION accepted=1\n",
+        "client": "LIVE pid=92642\nCLIENT decision=A\n"
+      },
+      "forcedTransitionBeforeSecurityLookup": false
+    },
+    "rejected-cdhash": {
+      "verdict": "PASS",
+      "serverExit": 1,
+      "clientExit": 1,
+      "mode": "hold",
+      "logs": {
+        "server": "REQUIREMENT status=0\nAPI requested_available=1 selected=SecCodeCreateWithAuditToken freshness_available=1\nREADY\nCAPTURED token=[501,501,20,501,20,92648,165848,63248609] pid=92648 pidversion=63248609 euid=501 ruid=501 server_uid=501\nPRIMITIVE create_status=0 check_attempted=1 check_status=-67050 same_uid=1 primitive_accept=0\nFRESHNESS stage=after-security rc=0 errno=0 csflags=570425857\nLIVENESS hello=1\nFRESHNESS stage=before-admission rc=0 errno=0 csflags=570425857\nDECISION accepted=0\n",
+        "client": "LIVE pid=92648\nCLIENT decision=D\n"
+      },
+      "forcedTransitionBeforeSecurityLookup": false
+    },
+    "exit-before-check": {
+      "verdict": "PASS",
+      "serverExit": 1,
+      "clientExit": 0,
+      "mode": "exit",
+      "logs": {
+        "server": "REQUIREMENT status=0\nAPI requested_available=1 selected=SecCodeCreateWithAuditToken freshness_available=1\nREADY\nCAPTURED token=[501,501,20,501,20,92654,165848,63248628] pid=92654 pidversion=63248628 euid=501 ruid=501 server_uid=501\nPRIMITIVE create_status=0 check_attempted=1 check_status=100003 same_uid=1 primitive_accept=0\nFRESHNESS stage=after-security rc=-1 errno=3 csflags=0\nLIVENESS hello=0\nFRESHNESS stage=before-admission rc=-1 errno=3 csflags=0\nDECISION accepted=0\n",
+        "client": "EXITING pid=92654\n"
+      },
+      "forcedTransitionBeforeSecurityLookup": true
+    },
+    "exec-rejected-before-check": {
+      "verdict": "PASS",
+      "serverExit": 1,
+      "clientExit": 1,
+      "mode": "exec",
+      "logs": {
+        "server": "REQUIREMENT status=0\nAPI requested_available=1 selected=SecCodeCreateWithAuditToken freshness_available=1\nREADY\nCAPTURED token=[501,501,20,501,20,92661,165848,63248647] pid=92661 pidversion=63248647 euid=501 ruid=501 server_uid=501\nPRIMITIVE create_status=0 check_attempted=1 check_status=-67065 same_uid=1 primitive_accept=0\nFRESHNESS stage=after-security rc=-1 errno=3 csflags=0\nLIVENESS hello=1\nFRESHNESS stage=before-admission rc=-1 errno=3 csflags=0\nDECISION accepted=0\n",
+        "client": "EXECED pid=92661\nCLIENT decision=D\n"
+      },
+      "forcedTransitionBeforeSecurityLookup": true
+    },
+    "exec-authorized-before-check": {
+      "verdict": "PASS",
+      "serverExit": 1,
+      "clientExit": 1,
+      "mode": "exec",
+      "logs": {
+        "server": "REQUIREMENT status=0\nAPI requested_available=1 selected=SecCodeCreateWithAuditToken freshness_available=1\nREADY\nCAPTURED token=[501,501,20,501,20,92667,165848,63248666] pid=92667 pidversion=63248666 euid=501 ruid=501 server_uid=501\nPRIMITIVE create_status=0 check_attempted=1 check_status=-67065 same_uid=1 primitive_accept=0\nFRESHNESS stage=after-security rc=-1 errno=3 csflags=0\nLIVENESS hello=1\nFRESHNESS stage=before-admission rc=-1 errno=3 csflags=0\nDECISION accepted=0\n",
+        "client": "EXECED pid=92667\nCLIENT decision=D\n"
+      },
+      "forcedTransitionBeforeSecurityLookup": true
+    },
+    "synthetic-pid-reuse-wrong-incarnation": {
+      "verdict": "PASS",
+      "serverExit": 1,
+      "clientExit": 1,
+      "mode": "hold",
+      "logs": {
+        "server": "REQUIREMENT status=0\nAPI requested_available=1 selected=SecCodeCreateWithAuditToken freshness_available=1\nREADY\nCAPTURED token=[501,501,20,501,20,92673,165848,63248685] pid=92673 pidversion=63248685 euid=501 ruid=501 server_uid=501\nSYNTHETIC_PID_REUSE pid=92673 stale_pidversion=2210732333\nPRIMITIVE create_status=0 check_attempted=1 check_status=-67065 same_uid=1 primitive_accept=0\nFRESHNESS stage=after-security rc=-1 errno=3 csflags=0\nLIVENESS hello=1\nFRESHNESS stage=before-admission rc=-1 errno=3 csflags=0\nDECISION accepted=0\n",
+        "client": "LIVE pid=92673\nCLIENT decision=D\n"
+      },
+      "forcedTransitionBeforeSecurityLookup": false
+    }
+  },
+  "signingMode": "ad-hoc only",
+  "nice": 19,
+  "noLaunchd": true,
+  "apiContract": "audit token, never PID-only; API availability logged",
+  "pidReuseScope": "Synthetic wrong-incarnation token; no real kernel PID recycling claimed",
+  "compiledRequirementInput": "cdhash H\"a4df7a5539e6402683e6d75874063beaa8740294\" and identifier \"dev.overeng.macos-app.m3-e4-authorized\"",
+  "cleanup": {
+    "temporaryTreeRemoved": true
+  },
+  "argv": [
+    [
+      "/usr/bin/clang",
+      "-std=c11",
+      "-Wall",
+      "-Wextra",
+      "<temporary-directory>/m3-experiments.V37kxE/0004-caller-auth/fixture.c",
+      "-framework",
+      "Security",
+      "-framework",
+      "CoreFoundation",
+      "-o",
+      "<temporary-directory>/m3-e4-build-irem8be0/server"
+    ],
+    [
+      "/usr/bin/clang",
+      "<temporary-directory>/m3-experiments.V37kxE/0003-sealed-boundary/requirement.c",
+      "-framework",
+      "Security",
+      "-framework",
+      "CoreFoundation",
+      "-o",
+      "<temporary-directory>/m3-e4-build-irem8be0/requirement"
+    ],
+    [
+      "/usr/bin/codesign",
+      "--force",
+      "-s",
+      "-",
+      "--timestamp=none",
+      "--identifier",
+      "dev.overeng.macos-app.m3-e4-authorized",
+      "<temporary-directory>/m3-e4-build-irem8be0/authorized"
+    ],
+    [
+      "/usr/bin/codesign",
+      "--force",
+      "-s",
+      "-",
+      "--timestamp=none",
+      "--identifier",
+      "dev.overeng.macos-app.m3-e4-rejected",
+      "<temporary-directory>/m3-e4-build-irem8be0/rejected"
+    ],
+    [
+      "<temporary-directory>/m3-e4-build-irem8be0/requirement",
+      "hash",
+      "<temporary-directory>/m3-e4-build-irem8be0/authorized"
+    ],
+    [
+      "<temporary-directory>/m3-e4-build-irem8be0/server",
+      "server",
+      "<temporary-directory>/m3-e4-ysq1l5o5/s",
+      "cdhash H\"a4df7a5539e6402683e6d75874063beaa8740294\" and identifier \"dev.overeng.macos-app.m3-e4-authorized\""
+    ],
+    [
+      "<temporary-directory>/m3-e4-build-irem8be0/authorized",
+      "client",
+      "<temporary-directory>/m3-e4-ysq1l5o5/s",
+      "hold"
+    ],
+    [
+      "<temporary-directory>/m3-e4-build-irem8be0/server",
+      "server",
+      "<temporary-directory>/m3-e4-afy999_r/s",
+      "cdhash H\"a4df7a5539e6402683e6d75874063beaa8740294\" and identifier \"dev.overeng.macos-app.m3-e4-authorized\""
+    ],
+    [
+      "<temporary-directory>/m3-e4-build-irem8be0/rejected",
+      "client",
+      "<temporary-directory>/m3-e4-afy999_r/s",
+      "hold"
+    ],
+    [
+      "<temporary-directory>/m3-e4-build-irem8be0/server",
+      "server",
+      "<temporary-directory>/m3-e4-31xled_q/s",
+      "cdhash H\"a4df7a5539e6402683e6d75874063beaa8740294\" and identifier \"dev.overeng.macos-app.m3-e4-authorized\""
+    ],
+    [
+      "<temporary-directory>/m3-e4-build-irem8be0/authorized",
+      "client",
+      "<temporary-directory>/m3-e4-31xled_q/s",
+      "exit"
+    ],
+    [
+      "<temporary-directory>/m3-e4-build-irem8be0/server",
+      "server",
+      "<temporary-directory>/m3-e4-1js13f0b/s",
+      "cdhash H\"a4df7a5539e6402683e6d75874063beaa8740294\" and identifier \"dev.overeng.macos-app.m3-e4-authorized\""
+    ],
+    [
+      "<temporary-directory>/m3-e4-build-irem8be0/authorized",
+      "client",
+      "<temporary-directory>/m3-e4-1js13f0b/s",
+      "exec",
+      "<temporary-directory>/m3-e4-build-irem8be0/rejected"
+    ],
+    [
+      "<temporary-directory>/m3-e4-build-irem8be0/server",
+      "server",
+      "<temporary-directory>/m3-e4-kyjvlssl/s",
+      "cdhash H\"a4df7a5539e6402683e6d75874063beaa8740294\" and identifier \"dev.overeng.macos-app.m3-e4-authorized\""
+    ],
+    [
+      "<temporary-directory>/m3-e4-build-irem8be0/authorized",
+      "client",
+      "<temporary-directory>/m3-e4-kyjvlssl/s",
+      "exec",
+      "<temporary-directory>/m3-e4-build-irem8be0/authorized"
+    ],
+    [
+      "<temporary-directory>/m3-e4-build-irem8be0/server",
+      "stale-version-server",
+      "<temporary-directory>/m3-e4-c8vgk25k/s",
+      "cdhash H\"a4df7a5539e6402683e6d75874063beaa8740294\" and identifier \"dev.overeng.macos-app.m3-e4-authorized\""
+    ],
+    [
+      "<temporary-directory>/m3-e4-build-irem8be0/authorized",
+      "client",
+      "<temporary-directory>/m3-e4-c8vgk25k/s",
+      "hold"
+    ]
+  ],
+  "ciChecks": [
+    {
+      "time": 1791942398.0442429,
+      "activeJobCount": 0
+    },
+    {
+      "time": 1791942398.682826,
+      "activeJobCount": 0
+    },
+    {
+      "time": 1791942398.8586318,
+      "activeJobCount": 0
+    },
+    {
+      "time": 1791942398.935661,
+      "activeJobCount": 0
+    },
+    {
+      "time": 1791942398.990232,
+      "activeJobCount": 0
+    },
+    {
+      "time": 1791942399.274292,
+      "activeJobCount": 0
+    },
+    {
+      "time": 1791942399.6254542,
+      "activeJobCount": 0
+    },
+    {
+      "time": 1791942399.9372559,
+      "activeJobCount": 0
+    },
+    {
+      "time": 1791942399.983265,
+      "activeJobCount": 0
+    },
+    {
+      "time": 1791942400.321076,
+      "activeJobCount": 0
+    },
+    {
+      "time": 1791942400.356763,
+      "activeJobCount": 0
+    },
+    {
+      "time": 1791942400.398456,
+      "activeJobCount": 0
+    },
+    {
+      "time": 1791942400.43076,
+      "activeJobCount": 0
+    },
+    {
+      "time": 1791942400.4632251,
+      "activeJobCount": 0
+    },
+    {
+      "time": 1791942400.49341,
+      "activeJobCount": 0
+    },
+    {
+      "time": 1791942400.5276642,
+      "activeJobCount": 0
+    },
+    {
+      "time": 1791942400.577914,
+      "activeJobCount": 0
+    }
+  ],
+  "uiChecks": [
+    {
+      "auditFlags": "0x5020",
+      "windowList": "unavailable"
+    },
+    {
+      "auditFlags": "0x5020",
+      "windowList": "unavailable"
+    },
+    {
+      "auditFlags": "0x5020",
+      "windowList": "unavailable"
+    },
+    {
+      "auditFlags": "0x5020",
+      "windowList": "unavailable"
+    },
+    {
+      "auditFlags": "0x5020",
+      "windowList": "unavailable"
+    },
+    {
+      "auditFlags": "0x5020",
+      "windowList": "unavailable"
+    },
+    {
+      "auditFlags": "0x5020",
+      "windowList": "unavailable"
+    },
+    {
+      "auditFlags": "0x5020",
+      "windowList": "unavailable"
+    },
+    {
+      "auditFlags": "0x5020",
+      "windowList": "unavailable"
+    },
+    {
+      "auditFlags": "0x5020",
+      "windowList": "unavailable"
+    },
+    {
+      "auditFlags": "0x5020",
+      "windowList": "unavailable"
+    },
+    {
+      "auditFlags": "0x5020",
+      "windowList": "unavailable"
+    },
+    {
+      "auditFlags": "0x5020",
+      "windowList": "unavailable"
+    },
+    {
+      "auditFlags": "0x5020",
+      "windowList": "unavailable"
+    },
+    {
+      "auditFlags": "0x5020",
+      "windowList": "unavailable"
+    },
+    {
+      "auditFlags": "0x5020",
+      "windowList": "unavailable"
+    },
+    {
+      "auditFlags": "0x5020",
+      "windowList": "unavailable"
+    }
+  ]
+}

@@ -5,14 +5,14 @@ import {
   type CiWorkflowArgs,
   netlifyPreviewBuildSteps,
 } from '../../genie/ci-workflow.ts'
+import { withBuck2CacheEvidence } from '../../genie/ci-workflow/buck2-cache-evidence.ts'
+import { buck2CachePostureEnv } from '../../genie/ci-workflow/buck2-cache-posture.ts'
 import {
   storybookPaths,
   storybookPreviewBuildWorkflowName,
   storybookPreviewRunner,
   storybookPreviewSetupSteps,
 } from '../../genie/storybook-preview.ts'
-import { withBuck2CacheEvidence } from '../../genie/ci-workflow/buck2-cache-evidence.ts'
-import { buck2CachePostureEnv } from '../../genie/ci-workflow/buck2-cache-posture.ts'
 
 // Untrusted half of the Storybook preview split: PR code builds the storybooks
 // with no secrets and uploads the static output. `storybook-preview-deploy.yml`
@@ -27,12 +27,16 @@ export default ciWorkflow({
   permissions: { contents: 'read' },
   jobs: withBuck2CacheEvidence({
     'build-storybooks': {
-      'runs-on': storybookPreviewRunner,
+      'runs-on': storybookPreviewRunner('trusted'),
       'timeout-minutes': 30,
       permissions: { contents: 'read' },
       defaults: bashShellDefaults,
       env: buck2CachePostureEnv('reader'),
-      steps: [checkoutStep(), ...storybookPreviewSetupSteps, ...netlifyPreviewBuildSteps()],
+      steps: [
+        checkoutStep(),
+        ...storybookPreviewSetupSteps('trusted'),
+        ...netlifyPreviewBuildSteps(),
+      ],
     },
   }),
 } satisfies CiWorkflowArgs)

@@ -8,6 +8,8 @@ publisher="$repo_root/nix/buck2-products/publish.sh"
 targets="$repo_root/nix/buck2-products/cache-targets.json"
 workflow="$repo_root/.github/workflows/ci.yml"
 
+bash "$repo_root/genie/ci-scripts/buck2-manifest-inventory.test.sh" "$repo_root"
+
 jq -e '
   .schema == "effect-utils/buck-cache-targets/v1" and
   (.products | length > 0) and
@@ -21,13 +23,34 @@ jq -e '
 ' "$targets" >/dev/null
 expected_names="$(jq -c '[.products[].name]' "$targets")"
 
+# Product dependency declarations are part of the exact publication inventory
+# contract. Reject malformed, missing and overlapping IDs before source access,
+# credentials or any build; the repository inventory is the positive control.
+mkdir -p "$tmp/invalid-targets/nix/buck2-products"
+cp "$repo_root/nix/buck2-products/manifest.json" "$tmp/invalid-targets/nix/buck2-products/manifest.json"
+for mutation in \
+  'del(.products[0].buildCapabilities)' \
+  '.products[0].buildCapabilities = []' \
+  '.products[0].buildCapabilities = ["bun", "bun"]' \
+  '.products[0].buildCapabilities = ["Not-a-capability"]' \
+  '.products[0].linuxBuildCapabilities = "bubblewrap"' \
+  '.products[0].linuxBuildCapabilities = ["bun"]' \
+  '.products[0].unexpected = true'; do
+  jq "$mutation" "$targets" >"$tmp/invalid-targets/nix/buck2-products/cache-targets.json"
+  if BUCK2_CACHE_PRODUCTS_REPO="$tmp/invalid-targets" bash "$publisher" --dry-run >"$tmp/invalid-targets.log" 2>&1; then
+    echo "buck2-cache-products-test: accepted invalid capability inventory: $mutation" >&2
+    exit 1
+  fi
+  grep -F 'target inventory violates effect-utils/buck-cache-targets/v1' "$tmp/invalid-targets.log" >/dev/null
+done
+
 plan="$(bash "$publisher" --dry-run)"
 jq -e --argjson expected "$expected_names" '
   .schema == "effect-utils/buck-cache-publication-plan/v1" and
   .cache == "overeng-effect-utils" and
   [.products[].name] == $expected
 ' <<<"$plan" >/dev/null
-for public_package in '@overeng/devbar' '@overeng/effect-rpc-explorer' '@overeng/effect-rpc-explorer-react' '@overeng/stylex-tokens'; do
+for public_package in '@overeng/devbar' '@overeng/meters' '@overeng/effect-rpc-explorer' '@overeng/effect-rpc-explorer-react' '@overeng/effect-rpc-observer' '@overeng/rpc-devtools' '@overeng/stylex-tokens'; do
   bash "$publisher" --dry-run --product "$public_package" |
     jq -e --arg name "$public_package" '.products | length == 1 and .[0].name == $name' >/dev/null
 done
@@ -73,16 +96,30 @@ grep -F 'env -u CACHIX_AUTH_TOKEN curl -fsS "$artifact_url"' "$publisher" >/dev/
 grep -F 'P1 cache publisher (decision 0037)' "$publisher" >/dev/null
 grep -F 'publish-products:' "$workflow" >/dev/null
 grep -F 'CACHIX_AUTH_TOKEN: ${{ secrets.CACHIX_AUTH_TOKEN }}' "$workflow" >/dev/null
-# The manifest PR is opened with the publisher GitHub App token; the job token stays read-only.
+# The manifest PR and published ref use the publisher GitHub App token. Only
+# GITHUB_TOKEN contents/pull-requests grants are forbidden; statuses and OIDC
+# permissions remain available for publication evidence.
 publish_job="$(sed -n '/^  publish-products:/,/^  [a-z][a-z0-9-]*:$/p' "$workflow")"
 grep -F 'uses: actions/create-github-app-token@' <<<"$publish_job" >/dev/null
 grep -F 'private-key: ${{ secrets.NIX_PUBLISHER_GITHUB_APP_PRIVATE_KEY }}' <<<"$publish_job" >/dev/null
-if grep -E 'pull-requests: write|contents: write' <<<"$publish_job" >/dev/null; then
-  echo "buck2-cache-products-test: publish-products must not grant write scopes to GITHUB_TOKEN" >&2
+# Parse the actual workflow/job permissions, independent of YAML formatting and
+# separate from permission-contents inputs to actions/create-github-app-token.
+if ! bun -e 'console.log(JSON.stringify(Bun.YAML.parse(await Bun.file(process.argv[1]).text())))' "$workflow" |
+  jq -e '
+    [.permissions, .jobs["publish-products"].permissions] |
+    all(
+      if type == "object" then
+        .contents != "write" and .["pull-requests"] != "write"
+      else
+        . == null or . == "read-all"
+      end
+    )
+  ' >/dev/null; then
+  echo "buck2-cache-products-test: publish-products must not grant contents/pull-requests write scopes to GITHUB_TOKEN" >&2
   exit 1
 fi
-if [ "$(grep -c 'NIX_PUBLISHER_GITHUB_APP_PRIVATE_KEY' <<<"$publish_job")" -ne 2 ]; then
-  echo "buck2-cache-products-test: the publisher App key must reach only the token-minting step (and the presence check)" >&2
+if [ "$(grep -c 'NIX_PUBLISHER_GITHUB_APP_PRIVATE_KEY' <<<"$publish_job")" -ne 3 ]; then
+  echo "buck2-cache-products-test: the publisher App key must reach only the two token-minting steps (and the presence check)" >&2
   exit 1
 fi
 grep -F 'nix/buck2-products/publish.sh --proposal "$proposal"' "$workflow" >/dev/null
@@ -123,7 +160,9 @@ collision_store="$(nix store add-path "$tmp/collision-output")"
 cat >"$tmp/collision-repo/nix/buck2-products/cache-targets.json" <<'EOF'
 {
   "products": [{
+    "buildCapabilities": ["action-env", "archive-tool", "bun", "rust-shell"],
     "kind": "javascript",
+    "linuxBuildCapabilities": ["bubblewrap"],
     "name": "fixture",
     "outputName": "fixture.js",
     "packagePath": "packages/@overeng/fixture",
@@ -334,7 +373,9 @@ cat >"$tmp/products/cache-targets.json" <<'EOF'
 {
   "products": [
     {
+      "buildCapabilities": ["action-env", "archive-tool", "bun", "rust-shell"],
       "kind": "javascript",
+      "linuxBuildCapabilities": ["bubblewrap"],
       "name": "fixture",
       "outputName": "fixture.js",
       "packagePath": "packages/@overeng/fixture",
@@ -371,7 +412,7 @@ cat >"$tmp/products/manifest.json" <<EOF
 }
 EOF
 
-loader_expr="let
+loader_bindings="let
   mkPath = path: attrs: attrs // { outPath = path; __toString = self: self.outPath; };
   recipe = mkPath \"$store_path\" {
     artifactName = \"fixture.js\";
@@ -392,9 +433,14 @@ loader_expr="let
     runCommand = name: attrs: script: mkPath \"/nix/store/validated-fixture\" (attrs // { inherit name script; });
     writeText = name: text: mkPath \"/nix/store/text-fixture\" { inherit name text; };
   };
-  loaded = import $tmp/products { inherit pkgs; fromSourceProducts.fixture = recipe; };
-in {
-  inherit (loaded) declaredProductNames publishedProductNames fullyPublished;
+  loaded = import $tmp/products { inherit pkgs; fromSourceProducts.fixture = recipe; };"
+inventory_expr="$loader_bindings
+in assert loaded.assertDeclaredProducts;
+assert (builtins.getEnv \"MANIFEST_CHANGED\" != \"true\" || loaded.assertFullyPublished);
+loaded.missingProductNames"
+loader_expr="$loader_bindings
+in assert loaded.assertFullyPublished; {
+  inherit (loaded) declaredProductNames publishedProductNames fullyPublished assertFullyPublished;
   artifactUrl = loaded.products.fixture.artifactUrl;
   productNames = builtins.attrNames loaded.products;
   sourcePath = builtins.toString loaded.products.fixture.sourceRecipe;
@@ -402,11 +448,45 @@ in {
 summary="$(nix eval --impure --json --expr "$loader_expr")"
 jq -e --arg storePath "$store_path" --arg artifactUrl "$artifact_url" '
   .fullyPublished == true and
+  .assertFullyPublished == true and
   .declaredProductNames == ["fixture"] and
   .publishedProductNames == ["fixture"] and
   .sourcePath == $storePath and
   .artifactUrl == $artifactUrl
 ' <<<"$summary" >/dev/null
+
+# GREEN: a source PR may declare a new product before post-merge publication.
+cp "$tmp/products/cache-targets.json" "$tmp/products/cache-targets.exact.json"
+jq '.products += [.products[0] | .name = "missing-fixture"]' \
+  "$tmp/products/cache-targets.json" >"$tmp/products/cache-targets.missing.json"
+mv "$tmp/products/cache-targets.missing.json" "$tmp/products/cache-targets.json"
+MANIFEST_CHANGED=false nix eval --impure --json --expr "$inventory_expr" |
+  jq -e '. == ["missing-fixture"]' >/dev/null
+
+# RED: a PR editing the manifest must publish the entire declared inventory.
+if MANIFEST_CHANGED=true nix eval --impure --json --expr "$inventory_expr" >"$tmp/missing.log" 2>&1; then
+  echo "buck2-cache-products-test: manifest PR accepted a missing product" >&2
+  exit 1
+fi
+grep -F 'missing products: ["missing-fixture"]; undeclared products: []' "$tmp/missing.log" >/dev/null
+cp "$tmp/products/cache-targets.exact.json" "$tmp/products/cache-targets.json"
+
+# RED: a manifest entry not declared by the inventory names the offending product.
+cp "$tmp/products/manifest.json" "$tmp/products/manifest.exact.json"
+jq '.products += [.products[0] | .name = "undeclared-fixture"]' \
+  "$tmp/products/manifest.json" >"$tmp/products/manifest.undeclared.json"
+mv "$tmp/products/manifest.undeclared.json" "$tmp/products/manifest.json"
+if MANIFEST_CHANGED=false nix eval --impure --json --expr "$inventory_expr" >"$tmp/undeclared.log" 2>&1; then
+  echo "buck2-cache-products-test: source PR accepted an undeclared manifest product" >&2
+  exit 1
+fi
+grep -F 'manifest contains undeclared products: ["undeclared-fixture"]' "$tmp/undeclared.log" >/dev/null
+cp "$tmp/products/manifest.exact.json" "$tmp/products/manifest.json"
+
+# GREEN: restoring the exact inventory/manifest match satisfies the same guard.
+nix eval --impure --json --expr "$loader_expr" | jq -e '.assertFullyPublished == true' >/dev/null
+MANIFEST_CHANGED=true nix eval --impure --json --expr "$inventory_expr" |
+  jq -e '. == []' >/dev/null
 
 cp "$tmp/products/manifest.json" "$tmp/products/manifest.v2.json"
 jq '.schema = "effect-utils/buck-cache-products/v3"' \

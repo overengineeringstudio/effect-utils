@@ -21,6 +21,33 @@ pub use effect_rust_macros::{export, resource, ExportError};
 pub use host::Error;
 pub use wire::{Patch, TimestampMillis, ValidationError};
 
+// Select generated glue in this crate, not in the macro caller's feature namespace.
+// Target gating also prevents unified dependency features from mixing JS runtimes.
+#[cfg(all(feature = "wasm", target_arch = "wasm32"))]
+#[macro_export]
+#[doc(hidden)]
+macro_rules! __wasm_only {
+    ($($tokens:tt)*) => { $($tokens)* };
+}
+#[cfg(not(all(feature = "wasm", target_arch = "wasm32")))]
+#[macro_export]
+#[doc(hidden)]
+macro_rules! __wasm_only {
+    ($($tokens:tt)*) => {};
+}
+#[cfg(all(feature = "napi", not(target_arch = "wasm32")))]
+#[macro_export]
+#[doc(hidden)]
+macro_rules! __napi_only {
+    ($($tokens:tt)*) => { $($tokens)* };
+}
+#[cfg(not(all(feature = "napi", not(target_arch = "wasm32"))))]
+#[macro_export]
+#[doc(hidden)]
+macro_rules! __napi_only {
+    ($($tokens:tt)*) => {};
+}
+
 /// Owned bytes crossing an interop boundary. Borrowed paths use slices instead.
 pub type Bytes = Vec<u8>;
 

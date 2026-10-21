@@ -2,7 +2,7 @@
 # Source: signals.yaml.genie.ts
 
 # registry-source: genie/weaver-registry/registry.ts
-# fingerprint: sha256:c89d180db66f915f730f675d1f9a7b5ad796f3beadfcb7bc000c711f95f95a81
+# fingerprint: sha256:c1cf74c7acc4cbb27e8b1f6225561d8a47da240b31fd75158e477dc4d0e15d22
 # regen: devenv tasks run genie:run
 groups:
   - id: metric.acme.probe.duration
@@ -27,6 +27,96 @@ groups:
         requirement_level: required
       - ref: acme.region
         requirement_level: recommended
+  - id: metric.github.app.mint_failures
+    type: metric
+    metric_name: github_app_mint_failures_total
+    instrument: counter
+    unit: '1'
+    stability: development
+    brief: Failed installation token mint attempts
+    attributes:
+      - ref: github.app.client_id
+        requirement_level: required
+      - ref: github.installation.id
+        requirement_level: required
+      - ref: github.consumer
+        requirement_level: required
+  - id: metric.github.app.mints
+    type: metric
+    metric_name: github_app_mints_total
+    instrument: counter
+    unit: '1'
+    stability: development
+    brief: Installation token mint attempts
+    attributes:
+      - ref: github.app.client_id
+        requirement_level: required
+      - ref: github.installation.id
+        requirement_level: required
+      - ref: github.consumer
+        requirement_level: required
+  - id: metric.github.app.rate_limit.limit
+    type: metric
+    metric_name: github_app_rate_limit_limit
+    instrument: gauge
+    unit: '1'
+    stability: development
+    brief: Last observed GitHub budget limit, separated by resource bucket
+    attributes:
+      - ref: github.app.client_id
+        requirement_level: required
+      - ref: github.installation.id
+        requirement_level: required
+      - ref: github.consumer
+        requirement_level: required
+      - ref: github.resource
+        requirement_level: required
+  - id: metric.github.app.rate_limit.remaining
+    type: metric
+    metric_name: github_app_rate_limit_remaining
+    instrument: gauge
+    unit: '1'
+    stability: development
+    brief: Last observed GitHub budget, separated by resource bucket
+    attributes:
+      - ref: github.app.client_id
+        requirement_level: required
+      - ref: github.installation.id
+        requirement_level: required
+      - ref: github.consumer
+        requirement_level: required
+      - ref: github.resource
+        requirement_level: required
+  - id: metric.github.app.rate_limit.reset_at
+    type: metric
+    metric_name: github_app_rate_limit_reset_at_seconds
+    instrument: gauge
+    unit: s
+    stability: development
+    brief: Last observed GitHub budget reset time (Unix seconds), separated by resource bucket
+    attributes:
+      - ref: github.app.client_id
+        requirement_level: required
+      - ref: github.installation.id
+        requirement_level: required
+      - ref: github.consumer
+        requirement_level: required
+      - ref: github.resource
+        requirement_level: required
+  - id: metric.github.app.token_expiry
+    type: metric
+    metric_name: github_app_token_expiry_seconds
+    instrument: gauge
+    unit: s
+    stability: development
+    brief: Earliest cached token expiry (Unix seconds); zero when invalidated
+    attributes:
+      - ref: github.app.client_id
+        requirement_level: required
+      - ref: github.installation.id
+        requirement_level: required
+      - ref: github.consumer
+        requirement_level: required
   - id: metric.megarepo.store_gc_rss
     type: metric
     metric_name: megarepo_store_gc_rss_bytes
@@ -129,6 +219,38 @@ groups:
       - ref: acme.attempt
         requirement_level: recommended
       - ref: http.request.method
+        requirement_level: recommended
+  - id: span.agent.activity
+    type: span
+    span_kind: internal
+    stability: development
+    brief: Agent activity with logical actor, mission, step, and provider-native harness context.
+    attributes:
+      - ref: agent.actor.id
+        requirement_level: recommended
+      - ref: agent.persona
+        requirement_level: recommended
+      - ref: agent.supervisor.id
+        requirement_level: recommended
+      - ref: agent.mission.name
+        requirement_level: recommended
+      - ref: agent.mission.run.id
+        requirement_level: recommended
+      - ref: agent.step.name
+        requirement_level: recommended
+      - ref: agent.step.run.id
+        requirement_level: recommended
+      - ref: agent.harness.tool
+        requirement_level: recommended
+      - ref: agent.harness.version
+        requirement_level: recommended
+      - ref: agent.harness.session.id
+        requirement_level: recommended
+      - ref: agent.model.effort
+        requirement_level: recommended
+      - ref: agent.principal.id
+        requirement_level: opt_in
+      - ref: gen_ai.request.model
         requirement_level: recommended
   - id: span.ci_tools.deploy
     type: span

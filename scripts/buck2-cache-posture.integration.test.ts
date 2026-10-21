@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'bun:test'
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { createServer, type ServerHttp2Stream } from 'node:http2'
 import { createServer as createTcpServer, type Socket } from 'node:net'
 import { tmpdir } from 'node:os'
@@ -15,45 +15,111 @@ import {
   standaloneCachePostureConfig,
 } from './buck2-cache-posture.ts'
 
-const trustedOrigin = {
-  tier: 'private',
-  urlPrefix: 'https://trusted-cache.example/cas/',
-} as const
-
 const temporaryRoots: string[] = []
+const replayProcesses = new Set<Bun.Subprocess<'ignore', 'pipe', 'pipe'>>()
+
+const stopReplayProcesses = async (
+  children: Iterable<Bun.Subprocess<'ignore', 'pipe', 'pipe'>>,
+) => {
+  for (const child of children) {
+    try {
+      process.kill(-child.pid, 'SIGKILL')
+    } catch (error) {
+      if (!(error instanceof Error && 'code' in error && error.code === 'ESRCH')) throw error
+    }
+    await child.exited
+    // The shell's exit does not reap descendants from command substitutions.
+    // Wait for the entire group to disappear before removing its input files.
+    // OS reaping has no awaitable signal for non-child processes; poll the real
+    // group condition rather than assuming a fixed grace period is sufficient.
+    const deadline = performance.now() + 2000
+    for (;;) {
+      try {
+        process.kill(-child.pid, 0)
+      } catch (error) {
+        if (error instanceof Error && 'code' in error && error.code === 'ESRCH') break
+        throw error
+      }
+      if (performance.now() >= deadline) {
+        const members: string[] = []
+        if (existsSync('/proc') === true) {
+          for (const pid of readdirSync('/proc')) {
+            if (/^\d+$/.test(pid) === false) continue
+            try {
+              const stat = readFileSync(`/proc/${pid}/stat`, 'utf8')
+              const fields = stat.slice(stat.lastIndexOf(')') + 2).split(' ')
+              if (Number(fields[2]) === child.pid) members.push(`${pid} (${fields[0]})`)
+            } catch (error) {
+              if (!(error instanceof Error && 'code' in error && error.code === 'ENOENT'))
+                throw error
+            }
+          }
+        }
+        throw new Error(
+          `Replay process group ${child.pid} was not reaped within 2000 ms; members: ${
+            members.length > 0 ? members.join(', ') : 'unavailable'
+          }; preserving fixtures`,
+        )
+      }
+      await Bun.sleep(10)
+    }
+  }
+}
 
 const makeRoot = (): string => {
   const root = mkdtempSync(join(tmpdir(), 'buck2-cache-posture-'))
-  writeFileSync(
-    join(root, '.buckconfig'),
-    `[archive_origin]
-  trusted_url_prefix = ${trustedOrigin.urlPrefix}
-  trusted_tier = ${trustedOrigin.tier}
-`,
-  )
+  writeFileSync(join(root, '.buckconfig'), '[buck2]\n  remote_cache_enabled = true\n')
   temporaryRoots.push(root)
   return root
 }
 
-afterEach(() => {
+afterEach(async () => {
+  await stopReplayProcesses(replayProcesses)
+  replayProcesses.clear()
   for (const root of temporaryRoots.splice(0)) rmSync(root, { force: true, recursive: true })
 })
 
+describe('replay subprocess cleanup', () => {
+  for (const ignoreSigterm of [false, true]) {
+    it(`reaps command-substitution descendants before deleting fixtures (ignore SIGTERM: ${ignoreSigterm})`, async () => {
+      const fixture = join(makeRoot(), 'events.jsonl')
+      writeFileSync(fixture, 'fixture')
+      const child = Bun.spawn(
+        [
+          'bash',
+          '-c',
+          `${ignoreSigterm === true ? "trap '' TERM; " : ''}result="$(${ignoreSigterm === true ? "trap '' TERM; " : ''}printf ready >&2; exec sleep 30)"`,
+        ],
+        { detached: true, stdin: 'ignore', stdout: 'pipe', stderr: 'pipe' },
+      )
+      replayProcesses.add(child)
+      const { value } = await child.stderr.getReader().read()
+      expect(new TextDecoder().decode(value)).toBe('ready')
+      if (ignoreSigterm === true) {
+        process.kill(-child.pid, 'SIGTERM')
+        expect(() => process.kill(-child.pid, 0)).not.toThrow()
+      }
+      await stopReplayProcesses([child])
+      replayProcesses.delete(child)
+      expect(() => process.kill(-child.pid, 0)).toThrow(expect.objectContaining({ code: 'ESRCH' }))
+      expect(existsSync(fixture)).toBe(true)
+      rmSync(fixture)
+      expect(existsSync(fixture)).toBe(false)
+    })
+  }
+})
+
 describe('standalone Buck cache posture', () => {
-  it('selects registry for the exact public-lane opt-out and CAS otherwise', () => {
+  it('disables remote cache only for the exact opt-out without selecting an archive origin', () => {
     expect(
       standaloneCachePostureConfig({
         current: '',
         env: { BUCK2_NO_REMOTE_CACHE: '1' },
-        trustedOrigin,
       }),
     ).toBe(`# effect-utils standalone cache posture: begin
 [buck2]
   remote_cache_enabled = false
   allow_cache_uploads = false
-[archive_origin]
-  url_prefix =
-  tier = public
 # effect-utils standalone cache posture: end
 `)
 
@@ -62,12 +128,8 @@ describe('standalone Buck cache posture', () => {
         standaloneCachePostureConfig({
           current: '',
           env: { BUCK2_NO_REMOTE_CACHE: value },
-          trustedOrigin,
         }),
       ).toBe(`# effect-utils standalone cache posture: begin
-[archive_origin]
-  url_prefix = https://trusted-cache.example/cas/
-  tier = private
 # effect-utils standalone cache posture: end
 `)
   })
@@ -76,18 +138,16 @@ describe('standalone Buck cache posture', () => {
     const prLane = standaloneCachePostureConfig({
       current: '',
       env: { BUCK2_PUBLIC_CACHE_READ_ONLY: '1' },
-      trustedOrigin,
     })
 
     expect(prLane).toContain('remote_cache_enabled = true')
     expect(prLane).toContain('allow_cache_uploads = false')
-    expect(prLane).toContain('url_prefix =\n  tier = public')
+    expect(prLane).not.toContain('[archive_origin]')
     expect(prLane).not.toContain('http_headers')
 
     const escapeHatch = standaloneCachePostureConfig({
       current: prLane,
       env: { BUCK2_PUBLIC_CACHE_READ_ONLY: '1', BUCK2_NO_REMOTE_CACHE: '1' },
-      trustedOrigin,
     })
     expect(escapeHatch).toContain('remote_cache_enabled = false')
     expect(escapeHatch).toContain('allow_cache_uploads = false')
@@ -100,7 +160,6 @@ describe('standalone Buck cache posture', () => {
     const publisher = standaloneCachePostureConfig({
       current: '',
       env: { BUCK2_NO_REMOTE_CACHE: '0', BUCK2_CACHE_WRITE_BASIC_AUTH: credential },
-      trustedOrigin,
     })
     expect(publisher).toBe(`# effect-utils standalone cache posture: begin
 [buck2]
@@ -108,9 +167,6 @@ describe('standalone Buck cache posture', () => {
   default_allow_cache_upload = true
 [buck2_re_client]
   http_headers = authorization: Basic $BUCK2_CACHE_WRITE_BASIC_AUTH
-[archive_origin]
-  url_prefix =
-  tier = public
 # effect-utils standalone cache posture: end
 `)
     expect(publisher).not.toContain(credential)
@@ -120,7 +176,6 @@ describe('standalone Buck cache posture', () => {
         standaloneCachePostureConfig({
           current: '',
           env: { BUCK2_CACHE_WRITE_BASIC_AUTH: value },
-          trustedOrigin,
         }),
       ).not.toContain('allow_cache_uploads = true')
 
@@ -129,7 +184,6 @@ describe('standalone Buck cache posture', () => {
       standaloneCachePostureConfig({
         current: '',
         env: { BUCK2_NO_REMOTE_CACHE: '1', BUCK2_CACHE_WRITE_BASIC_AUTH: credential },
-        trustedOrigin,
       }),
     ).not.toContain('allow_cache_uploads = true')
   })
@@ -141,13 +195,13 @@ describe('standalone Buck cache posture', () => {
       BUCK2_PRIVATE_CACHE_ADDRESS: 'grpc://private-cache.example:41045',
       BUCK2_CACHE_WRITE_BASIC_AUTH: 'publisher-credential',
     }
-    const writer = standaloneCachePostureConfig({ current: '', env, trustedOrigin })
+    const writer = standaloneCachePostureConfig({ current: '', env })
     expect(writer).toContain('allow_cache_uploads = true')
     for (const field of ['action_cache_address', 'cas_address', 'engine_address'])
       expect(writer).toContain(`${field} = ${env.BUCK2_PRIVATE_CACHE_ADDRESS}`)
     expect(writer).toContain('tls = false')
     expect(writer).toContain('$BUCK2_PRIVATE_CACHE_WRITE_BASIC_AUTH')
-    expect(writer).toContain(`url_prefix = ${trustedOrigin.urlPrefix}`)
+    expect(writer).not.toContain('[archive_origin]')
     expect(writer).not.toContain(credential)
     expect(writer).not.toContain('$BUCK2_CACHE_WRITE_BASIC_AUTH')
     for (const override of [
@@ -157,7 +211,6 @@ describe('standalone Buck cache posture', () => {
       const reader = standaloneCachePostureConfig({
         current: writer,
         env: { ...env, ...override },
-        trustedOrigin,
       })
       expect(reader).toContain('allow_cache_uploads = false')
       expect(reader).not.toContain('http_headers')
@@ -167,7 +220,6 @@ describe('standalone Buck cache posture', () => {
       standaloneCachePostureConfig({
         current: '',
         env: { BUCK2_PRIVATE_CACHE_WRITE_BASIC_AUTH: credential },
-        trustedOrigin,
       }),
     ).toThrow()
   })
@@ -176,12 +228,10 @@ describe('standalone Buck cache posture', () => {
     const publisher = standaloneCachePostureConfig({
       current: '',
       env: { BUCK2_CACHE_WRITE_BASIC_AUTH: 'd3JpdGVyOnNlY3JldA==' },
-      trustedOrigin,
     })
     const reader = standaloneCachePostureConfig({
       current: publisher,
       env: { BUCK2_PUBLIC_CACHE_READ_ONLY: '1' },
-      trustedOrigin,
     })
 
     expect(reader).toContain('remote_cache_enabled = true')
@@ -204,9 +254,6 @@ describe('standalone Buck cache posture', () => {
 [buck2]
   remote_cache_enabled = false
   allow_cache_uploads = false
-[archive_origin]
-  url_prefix =
-  tier = public
 # effect-utils standalone cache posture: end
 `)
 
@@ -214,14 +261,11 @@ describe('standalone Buck cache posture', () => {
     expect(readFileSync(output, 'utf8')).toBe(`${local.trimEnd()}
 
 # effect-utils standalone cache posture: begin
-[archive_origin]
-  url_prefix = https://trusted-cache.example/cas/
-  tier = private
 # effect-utils standalone cache posture: end
 `)
   })
 
-  it('replaces the public posture when a checkout returns to the trusted tier', () => {
+  it('removes the public posture when a checkout returns to its default cache tier', () => {
     const root = makeRoot()
     const output = join(root, '.buckconfig.local')
 
@@ -229,9 +273,7 @@ describe('standalone Buck cache posture', () => {
     expect(existsSync(output)).toBeTrue()
 
     reconcileStandaloneCachePosture({ repoRoot: root, env: { BUCK2_NO_REMOTE_CACHE: '0' } })
-    expect(readFileSync(output, 'utf8')).toContain(
-      'url_prefix = https://trusted-cache.example/cas/',
-    )
+    expect(readFileSync(output, 'utf8')).not.toContain('[archive_origin]')
     expect(readFileSync(output, 'utf8')).not.toContain('remote_cache_enabled = false')
   })
 })
@@ -392,7 +434,7 @@ describe('REAPI probe diagnostics', () => {
 })
 
 describe('fresh-root remote build proof', () => {
-  const replay = (actions: readonly { category: string; executionKind: number }[]) => {
+  const replay = async (actions: readonly { category: string; executionKind: number }[]) => {
     const root = makeRoot()
     const events = join(root, 'events.jsonl')
     writeFileSync(
@@ -417,21 +459,39 @@ describe('fresh-root remote build proof', () => {
         .join('\n'),
     )
     const repoRoot = resolve(import.meta.dirname, '..')
-    return Bun.spawnSync(
+    const child = Bun.spawn(
       [
         'bash',
         join(repoRoot, 'scripts/buck2-remote-cache-proof.sh'),
         '--assert-context-b-build',
         events,
       ],
-      { cwd: repoRoot, env: { ...process.env, GITHUB_WORKSPACE: repoRoot } },
+      {
+        cwd: repoRoot,
+        env: { ...process.env, GITHUB_WORKSPACE: repoRoot },
+        stdin: 'ignore',
+        stdout: 'pipe',
+        detached: true,
+        stderr: 'pipe',
+      },
     )
+    replayProcesses.add(child)
+    try {
+      const [exitCode, stdout, stderr] = await Promise.all([
+        child.exited,
+        new Response(child.stdout).text(),
+        new Response(child.stderr).text(),
+      ])
+      return { exitCode, stdout, stderr }
+    } finally {
+      replayProcesses.delete(child)
+    }
   }
 
   const descriptorHit = { category: 'javascript_product_descriptor', executionKind: 3 }
 
-  it('accepts remote compute hits alongside every intentionally local materialization category', () => {
-    const result = replay([
+  it('accepts remote compute hits alongside every intentionally local materialization category', async () => {
+    const result = await replay([
       descriptorHit,
       { category: 'tsgo_emit', executionKind: 3 },
       ...localMaterializationCategories.flatMap((category) =>
@@ -441,25 +501,39 @@ describe('fresh-root remote build proof', () => {
     expect(result.exitCode).toBe(0)
   })
 
-  it('rejects executed or locally reused cache-eligible actions despite a descriptor remote hit', () => {
-    for (const category of ['tsgo_emit', 'package_bin_artifact', 'unknown_category']) {
-      for (const executionKind of [1, 2, 7, 8, 10, 11]) {
-        const result = replay([descriptorHit, { category, executionKind }])
-        expect(result.exitCode).toBe(1)
-        expect(result.stdout.toString()).toContain('Context B executed a cache-eligible action')
-      }
-    }
+  it('accepts noncacheable runtime module copies alongside remote compute hits', async () => {
+    const result = await replay([
+      descriptorHit,
+      { category: 'tsgo_emit', executionKind: 3 },
+      ...[1, 7, 8, 10].map((executionKind) => ({
+        category: 'runtime_module',
+        executionKind,
+      })),
+    ])
+    expect(result.exitCode).toBe(0)
   })
 
-  it('still requires both a remote hit and the explicit remote descriptor hit', () => {
-    const missingAllHits = replay([{ category: 'package_tree', executionKind: 1 }])
-    expect(missingAllHits.exitCode).toBe(1)
-    expect(missingAllHits.stdout.toString()).toContain('did not report a remote action-cache hit')
+  // Each replay gets the runner's normal hang guard, not one shared wall-clock
+  // budget for 18 subprocess trees. Await the actual exit without blocking Bun.
+  for (const category of ['tsgo_emit', 'package_bin_artifact', 'unknown_category']) {
+    for (const executionKind of [1, 2, 7, 8, 10, 11]) {
+      it(`rejects ${category} execution kind ${executionKind} despite a descriptor remote hit`, async () => {
+        const result = await replay([descriptorHit, { category, executionKind }])
+        expect(result.exitCode).toBe(1)
+        expect(result.stdout).toContain('Context B executed a cache-eligible action')
+      })
+    }
+  }
 
-    const missingDescriptor = replay([{ category: 'tsgo_emit', executionKind: 3 }])
-    expect(missingDescriptor.exitCode).toBe(1)
-    expect(missingDescriptor.stdout.toString()).toContain(
-      'did not reuse the remote product descriptor',
-    )
+  it('requires a remote action-cache hit', async () => {
+    const result = await replay([{ category: 'package_tree', executionKind: 1 }])
+    expect(result.exitCode).toBe(1)
+    expect(result.stdout).toContain('did not report a remote action-cache hit')
+  })
+
+  it('requires the explicit remote descriptor hit', async () => {
+    const result = await replay([{ category: 'tsgo_emit', executionKind: 3 }])
+    expect(result.exitCode).toBe(1)
+    expect(result.stdout).toContain('did not reuse the remote product descriptor')
   })
 })

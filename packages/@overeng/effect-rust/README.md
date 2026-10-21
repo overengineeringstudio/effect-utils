@@ -2,6 +2,169 @@
 
 Effect-facing services for plain Rust cores. Rust owns traits, iterators, futures, and domain errors; Effect owns Layers, Effects, Sinks, Streams, interruption, and scopes. Thin generated adapters translate between them.
 
+## Getting started
+
+Start with the working [Rust fixtures](../../../rust/effect-rust-fixtures)
+and their [TypeScript consumer](../effect-rust-fixture-consumer/src/mod.ts).
+The path is **plain Rust core → annotated adapter → built product → generated
+Effect service → explicitly provided Layer**. This example uses their existing
+crate and package names; replace those names and Buck labels for your own service.
+
+### 1. Keep the core plain Rust
+
+The core needs no Effect, wasm-bindgen, or Node-API dependency:
+
+```rust
+pub const fn add(left: i32, right: i32) -> i32 {
+    left.saturating_add(right)
+}
+```
+
+Source: [`math-core/src/lib.rs`](../../../rust/effect-rust-fixtures/math-core/src/lib.rs).
+
+### 2. Export through a thin adapter
+
+Depend on the core and `effect-rust`, then annotate the adapter's public function:
+
+```rust
+#[effect_rust::export]
+pub fn add(left: i32, right: i32) -> i32 {
+    math_core::add(left, right)
+}
+```
+
+Source: [`math-interop/src/lib.rs`](../../../rust/effect-rust-fixtures/math-interop/src/lib.rs).
+Copy the backend feature and target-specific dependency setup from its
+[`Cargo.toml`](../../../rust/effect-rust-fixtures/math-interop/Cargo.toml);
+the macro emits backend entrypoints and binary export metadata. The fixture's
+[`wasm-adapter`](../../../rust/effect-rust-fixtures/wasm-adapter/src/lib.rs) and
+[`napi-adapter`](../../../rust/effect-rust-fixtures/napi-adapter/src/lib.rs)
+re-export those annotated functions into the two product crates.
+
+Backend selection follows the `effect-rust` dependency's `wasm` and `napi`
+features, together with the compilation target. The macros do not reference
+features in the calling crate: a wasm-only consumer need not declare `napi`.
+
+### 3. Build and admit the generated service package
+
+In this repository's configured Buck workspace:
+
+```sh
+buck2 build //rust/effect-rust-fixtures/wasm-adapter:wasm \
+  //rust/effect-rust-fixtures/napi-adapter:napi \
+  //rust/effect-rust-fixtures/service:service
+```
+
+Targets: [`wasm-adapter/BUCK`](../../../rust/effect-rust-fixtures/wasm-adapter/BUCK),
+[`napi-adapter/BUCK`](../../../rust/effect-rust-fixtures/napi-adapter/BUCK), and
+[`service/BUCK`](../../../rust/effect-rust-fixtures/service/BUCK).
+The wasm product contains the `.wasm` binary, bindgen glue, and fresh-instance
+loaders; the native product contains a platform-specific Node-API `.node` addon
+and its loader. Both carry `exports.json`. The `rust_interop_service` rule reads
+those products and emits the `effect-rust-fixture` TypeScript package: one
+`EffectRustFixture` `Context.Service`, its Effect-returning methods, generated
+adapters, and Layer statics for the supplied products.
+
+Admit that package with the consumer's
+[`generatedDependencies`](#generated-package-admission); building a Buck target
+alone does not install a package into an arbitrary application's `node_modules`.
+Keep `effect` deduplicated between your application, generated service, and
+`@overeng/effect-rust`. Import the generated tag instead of declaring a second
+service class.
+
+### Admitting @overeng/effect-rust itself
+
+A consumer outside effect-utils must admit `@overeng/effect-rust` through
+[root-owned source staging](../../../context/dependency-materialization/01-live-pnpm/.decisions/0001-root-scoped-source-input-staging.md),
+not a plain `link:` dependency. With `link:`, Node resolves `effect` from the
+member's own install rather than the consumer's root. That creates a second
+Effect instance, which `Interop.assertEffectCohort` rejects. Do not bypass this
+guard: the consumer, generated service, and runtime must share one instance.
+
+In the root's Genie projection, stage the runtime package and merge its overrides
+after the catalog's `effect` pin. Also pass the generated peer rules to the same
+`pnpmWorkspaceYaml` output:
+
+```ts
+const rootPnpmSourceInputs = projectPnpmSourceInputs({
+  packages: [effectRustPkg],
+  repoName,
+})
+
+const overrides = {
+  effect: catalog.effect,
+  ...rootPnpmSourceInputs.overrides,
+}
+
+const peerDependencyRules = rootPnpmSourceInputs.peerDependencyRules
+```
+
+Carry `rootPnpmSourceInputs.sourceInputPaths` and the stage path
+`pnpmSourceInputStagePath` into the root's install contract. Pass the same
+`sourceInputPaths` to the root pnpm task; its staging directory is fixed at
+`.devenv/pnpm-source-inputs`, with the current generation under `current`.
+`pnpmSourceInputStagePath` names that current generation, not a configurable
+pnpm task option.
+
+The package's runtime `exports` resolve to erasable TypeScript under `src/*.ts`;
+`publishConfig.exports` resolve to emitted JavaScript under `dist/src/*.js`.
+Source staging carries sources only, not a built runtime distribution. Choose
+one of these supported setups:
+
+- A bundler or TypeScript-aware runtime, such as Vite or Bun.
+- Vitest with `test.server.deps.inline: ['@overeng/effect-rust']`, so the runtime
+  sources are transformed rather than externalized.
+- Unbundled Node with a self-built runtime distribution (for example, a tsgo
+  emit). Pass that dist directory to the service package generator as
+  `--runtime-dist`, and admit the emitted runtime JavaScript into the consumer's
+  runtime package tree. Node refuses type stripping inside `node_modules`
+  (`ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING`); source staging alone does not
+  make the TypeScript exports runnable there.
+
+### 4. Choose a Layer and call the service
+
+For Node, choose wasm explicitly (or replace the Layer line with the native
+alternative). Providing the Layer acquires the runtime and releases it when
+this program finishes:
+
+```ts
+import { Effect } from 'effect'
+import { EffectRustFixture } from 'effect-rust-fixture'
+
+const layer = EffectRustFixture.layerWasm.node()
+// Native alternative: const layer = EffectRustFixture.layerNative.node()
+
+const program = Effect.gen(function* () {
+  const fixture = yield* EffectRustFixture
+  return yield* fixture.add(20, 22)
+})
+
+const result = await Effect.runPromise(program.pipe(Effect.provide(layer)))
+// result === 42
+```
+
+Service acquisition and `add` calls:
+[`service-smoke.ts`](../../../rust/effect-rust-fixtures/service-smoke.ts).
+Generated-package imports, both runtime Layer statics, and `Effect.provide`:
+[`effect-rust-fixture-consumer/src/mod.ts`](../effect-rust-fixture-consumer/src/mod.ts).
+The Rust signature generates an Effect-returning method, not a plain JS
+function; invalid i32 arguments fail with `Interop.Input`. Initialization fails
+with `Interop.Init`; Rust panics are defects. For a service that must outlive
+one program, build the Layer in a caller-owned Scope (see [Failure and lifetime](#failure-and-lifetime)).
+
+### Choosing a runtime
+
+| Runtime          | Use when                                                                                                                            | Explicit selection                                                              |
+| ---------------- | ----------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------- |
+| Wasm             | You need the same Rust core in browsers, Node, Bun, or workerd without a native addon. Synchronous work runs on the calling thread. | `layerWasm.node()`, `.bun()`, `.browser()`, `.browserWorker()`, or `.workerd()` |
+| Native           | You deploy on Node or Bun and can ship a platform-specific Node-API addon.                                                          | `layerNative.node()` or `.bun()`                                                |
+| Dedicated Worker | You need CPU work off the main thread or an independently terminable worker. Messages add a separate transport boundary.            | `Interop.workerLayer.browser` or `.node`, with an explicit endpoint and handler |
+
+`.browserWorker()` initializes wasm **inside an existing browser Worker**;
+it does not create one. Dedicated worker ownership is described in
+[Isolates and dedicated Workers](#isolates-and-dedicated-workers).
+Runtime choice never performs environment detection or transport fallback.
+
 ## Explicit runtime Layers
 
 ```ts
@@ -37,7 +200,7 @@ const digest = ContentCore.pipe(
 
 `wasmLayer.node`, `.bun`, `.browser`, `.browserWorker`, and `.workerd` are explicit constructors. Browser Workers fetch the emitted wasm asset; workerd receives a precompiled `WebAssembly.Module`. There is no ambiguous `.worker` constructor. `nativeLayer.node` and `.bun` load the selected native adapter. Nothing detects an environment or falls back to another transport. `load` returns `{ api, release, observePanic? }`; it may reuse an immutable compiled `WebAssembly.Module`, but not an initialized bindgen module or its mutable glue state. Async wasm factories provide a generation-local `observePanic(observer)` subscription, returning an unsubscribe function; generated factories install it at the bindgen scheduler callback boundary. `release` must sever instance/glue references and stop generation-owned external callbacks; it must not invoke poisoned Rust destructors.
 
-Service classes use `defineStatics(Service, { make, wasm?, native? })` with generated adapters to expose `ContentCore.layerWasm.node(options)`, `.bun`, `.browser`, `.browserWorker`, `.workerd`, and `layerNative.node` / `.bun` for the supplied loaders. The optional `wasm` and `native` records contain explicit loaders for each advertised runtime. Layer construction initializes the service; imports and static declarations do not initialize instances.
+Service classes use `defineStatics(Service, { make, wasm?, native? })` with generated adapters to expose `ContentCore.layerWasm.node(options)`, `.bun`, `.browser`, `.browserWorker`, `.workerd`, and `layerNative.node` / `.bun` for the supplied loaders. The optional `wasm` and `native` records contain explicit loaders for each advertised runtime. Building or providing the Layer initializes the service; creating a Layer value, importing a module, and declaring statics do not initialize instances.
 
 ### Wasm package delivery
 
@@ -101,6 +264,7 @@ through their own root and `./load` conditions.
 - `Init` is a typed construction failure only. A failed rebuild is a defect, never a new `Init` error in an operation's error channel.
 - `Input`, `Transport`, and `Unsupported` are foundation `Schema.TaggedError` classes. Domain error enums are generated separately, preserving their reason union.
 - Scalar `i8`/`u8`, `i16`/`u16`, and `i32`/`u32` arguments must be finite, integral, within their declared width, and not negative zero. Generated services return `Input` for violations before ABI conversion; direct wasm/native adapters validate the original number and reject with the `RUST_INPUT:` envelope rather than truncating it.
+- Generated `Input` and `Transport` errors identify the calling export in `operation`, including exports returning `Result`; the Rust domain error type is not an operation name.
 - A synchronous wasm trap or async scheduler-poll trap poisons its entire generation: every pending Effect dies with the trap, Rust handles are retired without destructors, and glue is released. The observer is instance-local and never patches global schedulers. The default `panicPolicy: 'rebuild'` constructs fresh glue and an instance before further calls; `'retire'` permanently denies further calls. Calls and streams bound to the old generation cannot use the rebuilt instance accidentally.
 - Generated lexical wasm glue uses instance-local finalization registries. Live instances run bindgen finalizers normally; retiring an instance disables its delayed destructors before clearing wasm references, so garbage collection after Scope release cannot dereference retired glue.
 - Native adapters expose caught panics with the `RUST_PANIC:` envelope, which is also a defect. The native build must enable unwinding and guard every export. Retirement cancels sibling abortable Rust jobs and awaits their acknowledgments, and waits for settle-only jobs to finish before releasing the generation or loading its replacement. This native cancellation never applies to poisoned wasm, whose job functions and handle destructors must not be called.
@@ -343,6 +507,14 @@ ECMAScript shortest representation of the widened binary32 value, matching
 binary frames, but canonical JSON normalizes it to `0`. Borsh uses four
 little-endian bytes; Columns uses Float32Array. Width metadata alone cannot
 authorize an arbitrary transformation.
+Named aliases such as `EffectRust.F32.annotate({ identifier: 'FiniteScore' })`
+retain the registered codec and are admitted, including in required nullable
+fields (`Schema.Union([Schema.Null, FiniteScore])`). Annotation-only derivations
+do not authorize additional filters or different transformations.
+
+`#[wire(f32)]` also accepts `Option<f32>`: the key is required, `None` is JSON
+`null`, and present values use the same finite binary32 codec. Missing keys fail;
+use `Patch` when absence is part of the contract.
 
 `Schema.optionalKey(Schema.NullOr(T))` represents Patch directly in TypeScript:
 missing, `null` and a present value stay distinct. Generated Rust keeps
@@ -440,6 +612,8 @@ helper to imitate pure calls.
 
 ### Generated package admission
 
+For the runtime dependency itself, see [Admitting @overeng/effect-rust itself](#admitting-overengeffect-rust-itself).
+
 Declare generated service products in a consumer's TypeScript package
 projection, instead of copying them into the source tree or defining a second
 service tag:
@@ -496,6 +670,17 @@ export CARGO_BUILD_JOBS=6
   --release --target wasm32-unknown-unknown
 ```
 
+The wasm-only macro regression consumer denies warnings and declares no `napi`
+feature. The `cargo:check` gate checks it on both targets using the shared Cargo
+target directory. To run those checks directly:
+
+```sh
+cargo check --locked --manifest-path rust/effect-rust-macros/tests/wasm-only/Cargo.toml \
+  --target-dir rust/target
+cargo check --locked --manifest-path rust/effect-rust-macros/tests/wasm-only/Cargo.toml \
+  --target-dir rust/target --target wasm32-unknown-unknown
+```
+
 Package the resulting adapters with `buck2/rust/interop-package.ts`, then run
 `rust/effect-rust-fixtures/smoke.mjs` against both package directories. Generate
 the service with `buck2/rust/interop-service.ts`; run
@@ -504,6 +689,9 @@ the service with `buck2/rust/interop-service.ts`; run
 erasable for Node's type stripping as well as Bun. Node cannot strip TypeScript
 inside `node_modules`, so use compiled `dist` for installed dependencies. The
 Buck service-smoke rules already stage compiled runtime output.
+Rejected shared contract vectors must throw `Schema.SchemaError`; malformed
+generated-service requests must fail with `Interop.Input` carrying the expected
+operation. Direct adapter exports instead report their `RUST_INPUT:` host errors.
 
 Direct Cargo/Bun fixture smokes prove adapter, packaging, and runtime behavior.
 They do not prove Buck daemon startup, action execution, or exact production

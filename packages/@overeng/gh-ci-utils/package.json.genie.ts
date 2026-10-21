@@ -27,6 +27,7 @@ const composition = catalog.compose({
   mode: 'install',
   workspace: workspaceMember({ memberPath: 'packages/@overeng/gh-ci-utils' }),
   dependencies: {
+    external: catalog.pick('yauzl'),
     workspace: [ciToolsPkg, otelContractPkg, tuiReactPkg, utilsPkg],
     liveWorkspaceLinks: ['@overeng/ci-tools'],
   },
@@ -41,6 +42,7 @@ const composition = catalog.compose({
       '@types/node',
       '@types/react',
       '@types/react-reconciler',
+      '@types/yauzl',
       '@vitejs/plugin-react',
       'storybook',
       'typescript',
@@ -59,11 +61,17 @@ export default packageJson(
     ...privatePackageDefaults,
     exports: {
       '.': exportEntry('./src/mod.ts', { environment: 'node' }),
+      './node/github-client': exportEntry('./src/node/GitHubClient.ts', { environment: 'node' }),
+      './node/config': exportEntry('./src/node/Config.ts', { environment: 'node' }),
     },
     publishConfig: {
       access: 'public',
       bin: { 'gh-ci-utils': './dist/bin/gh-ci-utils.js' },
-      exports: { '.': './dist/src/mod.js' },
+      exports: {
+        '.': './dist/src/mod.js',
+        './node/github-client': './dist/src/node/GitHubClient.js',
+        './node/config': './dist/src/node/Config.js',
+      },
     },
     dependenciesMeta: {
       '@overeng/tui-react': { injected: true },

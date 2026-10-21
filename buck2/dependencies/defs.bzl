@@ -42,8 +42,10 @@ single-component workspace key to a declared package-view target; the view
 re-exports that target's own declared roots so a workspace first hop stays
 resolvable inside a sandbox without copying its dependency bytes. Assembly
 is an offline action and never reads a package-manager store. Per-platform
-maps have exactly the keys ``linux_x86_64``, ``linux_aarch64``, and
-``macos_aarch64``; the macros own the mandatory cpu/os ``select()``.
+maps have exactly the four admitted configuration keys, including
+``javascript_portable``; the macros own the mandatory cpu/os ``select()``.
+``unavailable_by_platform`` selects an explicit analysis error for configurations
+without a complete required closure. It is checked before any assembly action.
 """
 
 load("//buck2:hermetic.bzl", "hermetic_action", "hermetic_attrs", "hermetic_bun_command", "hermetic_execution_constraints")
@@ -194,47 +196,12 @@ def _fetch_impl(ctx):
         if archive_root == "":
             fail("private product {} needs nix_store.root or nix_store.product_root".format(ctx.attrs.url))
     if archive_root == "":
-        url_prefix = read_config("archive_origin", "url_prefix", "")
-        if url_prefix != "" and (not url_prefix.startswith("https://") and not url_prefix.startswith("http://")):
-            fail("archive_origin.url_prefix must use http or https: {}".format(url_prefix))
-        if url_prefix != "" and not url_prefix.endswith("/cas/"):
-            fail("archive_origin.url_prefix must end with /cas/: {}".format(url_prefix))
-        if url_prefix == "":
-            out = ctx.actions.download_file(
-                "package.tgz",
-                ctx.attrs.url,
-                sha256 = ctx.attrs.sha256,
-                size_bytes = ctx.attrs.size_bytes,
-            )
-        else:
-            out = ctx.actions.declare_output("package.tgz")
-
-            # Bun resolves relative imports beside the executed script, not
-            # beside its separately materialized source artifacts.
-            sources = ctx.actions.copied_dir("acquisition_sources", {
-                "acquire-archive.ts": ctx.attrs._acquire_archive,
-                "public-archive-origin.ts": ctx.attrs._public_archive_origin,
-            })
-            hermetic_action(
-                ctx,
-                cmd_args([
-                    hermetic_bun_command(ctx, ctx.attrs._bun[BunToolchainInfo].executable),
-                    sources.project("acquire-archive.ts"),
-                    "--cas-url",
-                    "{}{}".format(url_prefix, ctx.attrs.sha256),
-                    "--registry-url",
-                    ctx.attrs.url,
-                    "--sha256",
-                    ctx.attrs.sha256,
-                    "--size",
-                    str(ctx.attrs.size_bytes),
-                    "--output",
-                    out.as_output(),
-                ], hidden = [sources]),
-                category = "pnpm_archive",
-                identifier = ctx.attrs.name,
-                local_only = True,
-            )
+        out = ctx.actions.download_file(
+            "package.tgz",
+            ctx.attrs.url,
+            sha256 = ctx.attrs.sha256,
+            size_bytes = ctx.attrs.size_bytes,
+        )
     else:
         _require_nix_store_path(archive_root, "nix_store.root")
         out = ctx.actions.declare_output("package.tgz")
@@ -268,12 +235,6 @@ _fetch = cache_guarded_rule(
         "_bun": attrs.default_only(attrs.exec_dep(
             default = "//buck2/toolchains:bun",
             providers = [BunToolchainInfo],
-        )),
-        "_acquire_archive": attrs.default_only(attrs.source(
-            default = "//buck2/dependencies:acquire-archive.ts",
-        )),
-        "_public_archive_origin": attrs.default_only(attrs.source(
-            default = "//buck2/dependencies:public-archive-origin.ts",
         )),
         "_nix_archive": attrs.default_only(attrs.source(
             default = "//buck2/dependencies:nix-archive.ts",
@@ -330,6 +291,23 @@ _extract = cache_guarded_rule(
             providers = [RunInfo],
         )),
     }),
+)
+
+def _directory_package_impl(ctx):
+    outputs = ctx.attrs.source[DefaultInfo].default_outputs
+    if len(outputs) != 1:
+        fail("pnpm directory package requires exactly one declared source tree")
+    return [
+        DefaultInfo(default_output = outputs[0]),
+        PnpmPackageInfo(bins = {}, package_name = ctx.attrs.package_name, tree = outputs[0]),
+    ]
+
+pnpm_directory_package = cache_guarded_rule(
+    impl = _directory_package_impl,
+    attrs = {
+        "package_name": attrs.string(),
+        "source": attrs.dep(providers = [DefaultInfo]),
+    },
 )
 
 def pnpm_package(name, package_name, url, sha256, size_bytes, bins = {}, patches = [], **kwargs):
@@ -456,6 +434,8 @@ def _workspace_roots(view):
     return [_workspace_tree(view)] + list(view[DefaultInfo].other_outputs)
 
 def _store_entry_impl(ctx):
+    if ctx.attrs.unavailable != "":
+        fail(ctx.attrs.unavailable)
     _require_store_key(ctx.attrs.store_key, "store_key")
     package = ctx.attrs.package[PnpmPackageInfo]
     _require_portable_path(package.package_name, "package name")
@@ -513,6 +493,13 @@ def _store_entry_impl(ctx):
     read_root_candidates = [out]
     for name in dependency_keys:
         read_root_candidates.extend(ctx.attrs.dependencies[name][PnpmStoreEntryInfo].read_roots)
+    for name in sorted(ctx.attrs.workspaces.keys()):
+        _require_portable_path(name, "workspace dependency name")
+        if name in ctx.attrs.dependencies:
+            fail("duplicate dependency {}".format(name))
+        workspace = ctx.attrs.workspaces[name]
+        args.add("--workspace-link", name, _workspace_tree(workspace))
+        read_root_candidates.extend(_workspace_roots(workspace))
     read_roots = _unique_artifacts(read_root_candidates)
     for name in dependency_keys:
         dependency = ctx.attrs.dependencies[name]
@@ -571,6 +558,8 @@ _store_entry = cache_guarded_rule(
         "runtime": attrs.source(),
         "scc": attrs.option(attrs.dep(providers = [PnpmStoreSccInfo]), default = None),
         "store_key": attrs.string(),
+        "unavailable": attrs.string(default = ""),
+        "workspaces": attrs.dict(key = attrs.string(), value = attrs.dep(providers = [DefaultInfo]), default = {}),
         "_bun": attrs.default_only(attrs.exec_dep(
             default = "//buck2/toolchains:bun",
             providers = [BunToolchainInfo],
@@ -585,8 +574,11 @@ def pnpm_store_entry(
         runtime,
         dependencies = None,
         dependencies_by_platform = None,
+        workspaces = None,
+        workspaces_by_platform = None,
         package_override = "",
         scc = None,
+        unavailable_by_platform = None,
         **kwargs):
     """Declares one normalized store entry; only varying edges are selected."""
     _store_entry(
@@ -596,16 +588,24 @@ def pnpm_store_entry(
             dependencies_by_platform,
             "pnpm_store_entry dependencies",
         ),
+        workspaces = {} if workspaces == None and workspaces_by_platform == None else _exactly_one(
+            workspaces,
+            workspaces_by_platform,
+            "pnpm_store_entry workspaces",
+        ),
         package = package,
         package_override = package_override,
         runtime = runtime,
         scc = scc,
         store_key = store_key,
+        unavailable = "" if unavailable_by_platform == None else _platform_select(unavailable_by_platform, "pnpm_store_entry unavailable"),
         exec_compatible_with = kwargs.pop("exec_compatible_with", []),
         **kwargs
     )
 
 def _store_scc_impl(ctx):
+    if ctx.attrs.unavailable != "":
+        fail(ctx.attrs.unavailable)
     members = {}
     for store_key in sorted(ctx.attrs.members.keys()):
         _require_store_key(store_key, "component member key")
@@ -676,6 +676,7 @@ _store_scc = cache_guarded_rule(
         "internal_edges": attrs.dict(key = attrs.string(), value = attrs.string(), default = {}),
         "members": attrs.dict(key = attrs.string(), value = attrs.dep(providers = [PnpmPackageInfo])),
         "runtime": attrs.source(),
+        "unavailable": attrs.string(default = ""),
         "_bun": attrs.default_only(attrs.exec_dep(
             default = "//buck2/toolchains:bun",
             providers = [BunToolchainInfo],
@@ -685,12 +686,14 @@ _store_scc = cache_guarded_rule(
 
 def pnpm_store_scc(
         name,
-        members,
         runtime,
+        members = None,
+        members_by_platform = None,
         internal_edges = None,
         internal_edges_by_platform = None,
         external_edges = None,
         external_edges_by_platform = None,
+        unavailable_by_platform = None,
         **kwargs):
     """Assembles one strongly connected component with platform-selected edges."""
     _store_scc(
@@ -705,13 +708,16 @@ def pnpm_store_scc(
             internal_edges_by_platform,
             "pnpm_store_scc internal_edges",
         ),
-        members = members,
+        members = _exactly_one(members, members_by_platform, "pnpm_store_scc members"),
         runtime = runtime,
+        unavailable = "" if unavailable_by_platform == None else _platform_select(unavailable_by_platform, "pnpm_store_scc unavailable"),
         exec_compatible_with = kwargs.pop("exec_compatible_with", []),
         **kwargs
     )
 
 def _store_view_impl(ctx):
+    if ctx.attrs.unavailable != "":
+        fail(ctx.attrs.unavailable)
     closure = ctx.attrs.closure
     for store_key in closure.keys():
         _require_store_key(store_key, "closure key")
@@ -803,6 +809,7 @@ _store_view = cache_guarded_rule(
         ),
         "direct": attrs.dict(key = attrs.string(), value = attrs.string(), default = {}),
         "runtime": attrs.source(),
+        "unavailable": attrs.string(default = ""),
         "workspace_dependencies": attrs.dict(key = attrs.string(), value = attrs.string(), default = {}),
         "workspace_trees": attrs.dict(key = attrs.string(), value = attrs.dep(providers = [DefaultInfo]), default = {}),
         "_bun": attrs.default_only(attrs.exec_dep(
@@ -821,8 +828,11 @@ def pnpm_store_view(
         direct_by_platform = None,
         bins = None,
         bins_by_platform = None,
-        workspace_trees = {},
-        workspace_dependencies = {},
+        workspace_trees = None,
+        workspace_trees_by_platform = None,
+        workspace_dependencies = None,
+        workspace_dependencies_by_platform = None,
+        unavailable_by_platform = None,
         **kwargs):
     """Declares one metadata-only importer dependency view over the shared store."""
     _store_view(
@@ -831,8 +841,9 @@ def pnpm_store_view(
         closure = _exactly_one(closure, closure_by_platform, "pnpm_store_view closure"),
         direct = _exactly_one(direct, direct_by_platform, "pnpm_store_view direct"),
         runtime = runtime,
-        workspace_dependencies = workspace_dependencies,
-        workspace_trees = workspace_trees,
+        unavailable = "" if unavailable_by_platform == None else _platform_select(unavailable_by_platform, "pnpm_store_view unavailable"),
+        workspace_dependencies = {} if workspace_dependencies == None and workspace_dependencies_by_platform == None else _exactly_one(workspace_dependencies, workspace_dependencies_by_platform, "pnpm_store_view workspace dependencies"),
+        workspace_trees = {} if workspace_trees == None and workspace_trees_by_platform == None else _exactly_one(workspace_trees, workspace_trees_by_platform, "pnpm_store_view workspace trees"),
         exec_compatible_with = kwargs.pop("exec_compatible_with", []),
         **kwargs
     )

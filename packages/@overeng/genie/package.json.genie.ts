@@ -77,6 +77,13 @@ export default packageJson(
         },
         { environment: 'isomorphic-es2024' },
       ),
+      './weaver': exportEntry(
+        {
+          types: './dist/src/runtime/weaver/mod.d.ts',
+          default: './src/runtime/weaver/mod.ts',
+        },
+        { environment: 'isomorphic-es2024' },
+      ),
       './cli': exportEntry(
         { types: './dist/src/build/mod.d.ts', default: './src/build/mod.tsx' },
         { environment: 'node' },
@@ -97,6 +104,10 @@ export default packageJson(
         './composition': {
           types: './dist/src/runtime/composition/mod.d.ts',
           default: './dist/src/runtime/composition/mod.js',
+        },
+        './weaver': {
+          types: './dist/src/runtime/weaver/mod.d.ts',
+          default: './dist/src/runtime/weaver/mod.js',
         },
         './cli': { types: './dist/src/build/mod.d.ts', default: './dist/src/build/mod.js' },
         './sdk': { types: './dist/src/sdk/mod.d.ts', default: './dist/src/sdk/mod.js' },

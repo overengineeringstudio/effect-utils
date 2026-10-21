@@ -3,6 +3,7 @@
   src,
   capabilityPackages,
   extraCapabilities ? { },
+  requiredCapabilities ? null,
 }:
 
 let
@@ -56,36 +57,86 @@ let
       // (if extra.kind == "directory" then { kind = "directory"; } else { inherit (extra) executable; })
     ) extraNames
   );
-  projectionInputs = map (
-    capability:
-    let
-      package =
-        if builtins.hasAttr capability.flakePackage capabilityPackages then
-          builtins.getAttr capability.flakePackage capabilityPackages
-        else if builtins.elem capability.toolId extraNames then
-          extraCapabilities.${capability.toolId}.package
+  projectionInputs =
+    map
+      (
+        capability:
+        let
+          package =
+            if builtins.hasAttr capability.flakePackage capabilityPackages then
+              builtins.getAttr capability.flakePackage capabilityPackages
+            else if builtins.elem capability.toolId extraNames then
+              extraCapabilities.${capability.toolId}.package
+            else
+              throw "buck2-capabilities: missing flake package ${capability.flakePackage} for ${capability.toolId}";
+          closure = pkgs.closureInfo { rootPaths = [ package ]; };
+        in
+        {
+          inherit capability;
+          nixOutputPath = package;
+          closurePathsFile = "${closure}/store-paths";
+        }
+      )
+      (
+        if requiredCapabilities == null then
+          capabilities
         else
-          throw "buck2-capabilities: missing flake package ${capability.flakePackage} for ${capability.toolId}";
-      closure = pkgs.closureInfo { rootPaths = [ package ]; };
-    in
-    {
-      inherit capability;
-      nixOutputPath = package;
-      closurePathsFile = "${closure}/store-paths";
-    }
-  ) capabilities;
+          builtins.filter (capability: builtins.elem capability.toolId requiredCapabilities) capabilities
+      );
   input = pkgs.writeText "buck2-capability-projection-input.json" (builtins.toJSON projectionInputs);
   platform =
     if pkgs.stdenv.hostPlatform.isDarwin then "aarch64-macos" else pkgs.stdenv.hostPlatform.system;
 in
 assert pkgs.lib.assertMsg _validExtras
   "buck2-capabilities: extra capabilities must be unique, named lowercase-kebab, and declare kind, package, protocol, and executable for executable inputs";
+assert pkgs.lib.assertMsg
+  (
+    requiredCapabilities == null
+    || (
+      builtins.isList requiredCapabilities
+      && requiredCapabilities != [ ]
+      && builtins.all builtins.isString requiredCapabilities
+      && builtins.length requiredCapabilities == builtins.length (pkgs.lib.unique requiredCapabilities)
+      && builtins.all (
+        name: builtins.elem name (map (capability: capability.toolId) capabilities)
+      ) requiredCapabilities
+    )
+  )
+  "buck2-capabilities: required capabilities must be nonempty, unique, and declared by the producer";
 pkgs.runCommand "buck2-capabilities"
   {
     nativeBuildInputs = [ pkgs.bun ];
     passthru = {
       inherit capabilityPackages;
+      inherit extraCapabilities;
       src = projectionSource;
+      inherit requiredCapabilities;
+      select =
+        names:
+        import ./buck2-capabilities.nix {
+          inherit
+            pkgs
+            src
+            capabilityPackages
+            extraCapabilities
+            ;
+          requiredCapabilities = names;
+        };
+      # Products declare host-neutral capabilities plus Linux-only ones (the TS
+      # sandbox's Bubblewrap); both lists go through the same fail-closed select.
+      selectProduct =
+        product:
+        import ./buck2-capabilities.nix {
+          inherit
+            pkgs
+            src
+            capabilityPackages
+            extraCapabilities
+            ;
+          requiredCapabilities =
+            product.buildCapabilities
+            ++ pkgs.lib.optionals pkgs.stdenv.hostPlatform.isLinux product.linuxBuildCapabilities;
+        };
     };
   }
   ''

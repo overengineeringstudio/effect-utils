@@ -1,9 +1,9 @@
 //! Edge adapters for plain Rust exports. Backend code is target-gated; the original
 //! function remains available to Rust callers in every feature configuration.
 //!
-//! Adapter crates declare `wasm` and `napi` features and supply their backend
-//! dependencies directly. Glue is selected by both feature and target, so a
-//! unified Cargo feature graph can enable both without mixing JS runtimes.
+//! Adapter crates select `wasm` or `napi` through their effect-rust dependency
+//! features and supply backend dependencies directly. Glue follows effect-rust's
+//! features and target, without referencing features in the macro caller.
 //! Native adapters require panic unwinding. Normal Rust builds have no JS types.
 //!
 //! Domain types cross the edge through typed serde traversal. Wide fields inside
@@ -32,7 +32,8 @@ mod resource;
 /// `x-effect-rust-*` vocabulary. Field attributes:
 ///
 /// - `#[wire(u64)]` / `#[wire(i64)]`: bigint in-process, canonical decimal JSON strings.
-/// - `#[wire(f32)]`: finite numeric input rounded to binary32; overflow fails.
+/// - `#[wire(f32)]` on `f32` or required nullable `Option<f32>`: finite numeric
+///   input rounded to binary32; overflow fails.
 /// - `#[wire(timestamp_millis)]` on `chrono::DateTime<Utc>`: integral epoch milliseconds
 ///   in-process, RFC3339 milliseconds in JSON.
 /// - `effect_rust::Patch<T>` fields become omittable (`Absent`/`Null`/`Value`).
@@ -699,12 +700,13 @@ fn expand(args: Tokens, item: Tokens) -> syn::Result<Tokens> {
         pub static #static_ident: [u8; #length] = *#bytes;
         #[doc(hidden)]
         #[allow(non_snake_case)]
-        #[cfg(any(all(feature = "wasm", target_arch = "wasm32"), all(feature = "napi", not(target_arch = "wasm32"))))]
         mod #module {
             #[allow(unused_imports)]
             use super::*;
-            #[cfg(all(feature = "napi", not(target_arch = "wasm32"), not(panic = "unwind")))]
-            compile_error!("effect-rust napi exports require panic=unwind");
+            ::effect_rust::__napi_only! {
+                #[cfg(not(panic = "unwind"))]
+                compile_error!("effect-rust napi exports require panic=unwind");
+            }
             #wasm
             #napi
         }

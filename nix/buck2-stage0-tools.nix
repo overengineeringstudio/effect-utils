@@ -7,8 +7,6 @@ let
   sharedRustFileset = lib.fileset.unions [
     (workspaceRoot + "/Cargo.toml")
     (workspaceRoot + "/Cargo.lock")
-    (workspaceRoot + "/buck2-tools/core/Cargo.toml")
-    (lib.fileset.fileFilter (file: file.hasExt "rs") (workspaceRoot + "/buck2-tools/core/src"))
   ];
   sharedRootFiles = [
     (repositoryRoot + "/rust-toolchain.toml")
@@ -21,20 +19,25 @@ let
     builtins.readFile (repositoryRoot + "/rust-toolchain.toml")
   );
   recipeFile = pkgs.writeText "buck2-stage0-tools.nix" (builtins.readFile ./buck2-stage0-tools.nix);
-  mkRustFileset =
+  mkCrateFileset =
     packageRoot:
     lib.fileset.unions [
-      sharedRustFileset
       (packageRoot + "/Cargo.toml")
       (lib.fileset.fileFilter (file: file.hasExt "rs") (packageRoot + "/src"))
     ];
-  mkSourceInputs = packageRoot: sharedRootFiles ++ lib.fileset.toList (mkRustFileset packageRoot);
+  mkRustFileset =
+    definition:
+    lib.fileset.unions (
+      [ sharedRustFileset ]
+      ++ map mkCrateFileset ([ definition.packageRoot ] ++ definition.dependencyRoots)
+    );
+  mkSourceInputs = definition: sharedRootFiles ++ lib.fileset.toList (mkRustFileset definition);
   mkSource =
-    packageRoot:
+    definition:
     let
       rustSource = lib.fileset.toSource {
         root = workspaceRoot;
-        fileset = mkRustFileset packageRoot;
+        fileset = mkRustFileset definition;
       };
     in
     pkgs.runCommand "buck2-stage0-source" { } ''
@@ -46,25 +49,28 @@ let
 
   toolDefinitions = {
     fingerprint = {
-      package = "buck2-tool-core";
-      packageRoot = workspaceRoot + "/buck2-tools/core";
-      workspaceMember = "buck2-tools/core";
-      mainProgram = "buck2-fingerprint";
+      package = "buck2-fingerprint";
+      packageRoot = workspaceRoot + "/buck2-tools/fingerprint";
+      workspaceMember = "buck2-tools/fingerprint";
+      dependencyRoots = [ ];
     };
     archive-tool = {
       package = "buck2-archive-tool";
       packageRoot = workspaceRoot + "/buck2-tools/archive-tool";
       workspaceMember = "buck2-tools/archive-tool";
+      dependencyRoots = [ (workspaceRoot + "/buck2-tools/core") ];
     };
     events = {
       package = "buck2-events";
       packageRoot = workspaceRoot + "/buck2-tools/events";
       workspaceMember = "buck2-tools/events";
+      dependencyRoots = [ ];
     };
     product = {
       package = "buck2-product";
       packageRoot = workspaceRoot + "/buck2-tools/product";
       workspaceMember = "buck2-tools/product";
+      dependencyRoots = [ (workspaceRoot + "/buck2-tools/core") ];
     };
   };
 
@@ -73,12 +79,13 @@ let
       package,
       packageRoot,
       workspaceMember,
+      dependencyRoots,
       mainProgram ? package,
     }:
     pkgs.rustPlatform.buildRustPackage {
       pname = package;
       version = "0.0.0";
-      src = mkSource packageRoot;
+      src = mkSource { inherit packageRoot dependencyRoots; };
       cargoRoot = "rust";
       buildAndTestSubdir = "rust";
       cargoLock.lockFile = workspaceRoot + "/Cargo.lock";
@@ -90,12 +97,17 @@ let
         "--package"
         package
       ];
-      # Cargo parses every workspace member before selecting --package. Narrow
-      # this derivation to the shared core and one leaf, preserving fine-grained
-      # source invalidation while keeping the root lock as dependency authority.
+      # Cargo parses every workspace member before selecting --package. Keep
+      # only this crate and its actual path dependencies, with the root lock
+      # remaining the dependency authority.
       postPatch = ''
-        awk '
-          /^members = \[/ { print "members = [\"buck2-tools/core\", \"${workspaceMember}\"]"; skipping = 1; next }
+        awk -v members='${
+          builtins.toJSON (
+            [ workspaceMember ]
+            ++ map (root: lib.removePrefix "${toString workspaceRoot}/" (toString root)) dependencyRoots
+          )
+        }' '
+          /^members = \[/ { print "members = " members; skipping = 1; next }
           skipping && /^\]/ { skipping = 0; next }
           !skipping { print }
         ' rust/Cargo.toml > rust/Cargo.toml.narrow
@@ -113,6 +125,6 @@ in
   archive-tool = mkTool toolDefinitions.archive-tool;
   events = mkTool toolDefinitions.events;
   fingerprint = mkTool toolDefinitions.fingerprint;
-  source-inputs = lib.mapAttrs (_: definition: mkSourceInputs definition.packageRoot) toolDefinitions;
   product = mkTool toolDefinitions.product;
+  source-inputs = lib.mapAttrs (_: definition: mkSourceInputs definition) toolDefinitions;
 }

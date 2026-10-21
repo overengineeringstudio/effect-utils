@@ -1,0 +1,18 @@
+load(":probe.bzl", "ts_sandbox_probe")
+
+# Linux containment receipt (the default output is JSON):
+#   buck2 build effect_utils//buck2/tests/ts_sandbox:probe --show-output
+# This intentionally has no Darwin unsandboxed counterpart: macOS remains an
+# unsupported containment lane, not a failing required native execution lane.
+ts_sandbox_probe(
+    name = "probe",
+    probe = "probe.ts",
+    visibility = ["PUBLIC"],
+)
+
+ts_sandbox_probe(
+    name = "bash-probe",
+    probe = "probe.sh",
+    non_ts = True,
+    visibility = ["PUBLIC"],
+)

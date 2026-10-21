@@ -153,6 +153,62 @@ def cache_guarded_rule(impl, attrs, cache_eligible = None, **kwargs):
 def _cache_admission_label_attr():
     return attrs.default_only(attrs.label(default = "@rules//buck2/platforms:cache_hermetic"))
 
+# Resolve this lookup as an exec dependency: target and host OS are not evidence
+# of the executor Buck selected, especially for portable JavaScript products.
+TsActionExecutionPolicyInfo = provider(fields = {
+    "cache_admitted": bool,
+    "os": str,
+})
+
+def _ts_action_execution_policy_impl(ctx):
+    return [
+        DefaultInfo(),
+        TsActionExecutionPolicyInfo(
+            cache_admitted = ctx.attrs.cache_admitted,
+            os = ctx.attrs.os,
+        ),
+    ]
+
+ts_action_execution_policy = rule(
+    impl = _ts_action_execution_policy_impl,
+    attrs = {
+        "cache_admitted": attrs.bool(),
+        "os": attrs.string(),
+    },
+)
+
+def ts_action_policy_attrs():
+    return {
+        "_ts_action_execution_policy": attrs.default_only(attrs.exec_dep(
+            default = "@rules//buck2/platforms:ts_action_execution_policy",
+            providers = [TsActionExecutionPolicyInfo],
+        )),
+    }
+
+def ts_action_admission_status(ctx):
+    """Checks the actual executor before registering a TS action."""
+    policy = ctx.attrs._ts_action_execution_policy[TsActionExecutionPolicyInfo]
+    if policy.os == "linux":
+        return "linux-bwrap"
+    if policy.os == "darwin":
+        if policy.cache_admitted:
+            fail("darwin-unsandboxed: TypeScript execution cannot use the cache-admitted execution platform")
+        return "darwin-unsandboxed"
+    fail("TypeScript execution has no admitted policy for executor OS {}".format(policy.os))
+
+def ts_action_cache_eligible(ctx):
+    return ts_action_admission_status(ctx) == "linux-bwrap"
+
+def ts_action_execution_constraints(constraints = []):
+    """Linux requires bwrap; Darwin keeps only local, nonremote execution."""
+    native = host_execution_constraints()
+    result = constraints + [constraint for constraint in native if constraint not in constraints]
+    if host_info().os.is_linux:
+        admission = "@rules//buck2/platforms:cache_hermetic"
+        if admission not in result:
+            result = result + [admission]
+    return result
+
 def _native_execution_platform_impl(ctx):
     constraints = {}
     for dep in ctx.attrs.constraint_values:

@@ -4,7 +4,9 @@
 #
 # Tasks:
 # - mr:bootstrap - Materialize the minimal lock-based members needed for local tooling
-# - mr:setup - Materialize committed root members without fetching or rewriting locks
+# - mr:setup - Materialize committed root members without fetching or rewriting locks.
+#   Local setup defaults to tracking; locked mode is an explicit opt-in.
+#   CI=true always selects locked commits.
 # - mr:fetch-apply - Fetch latest refs and apply to workspace (mr fetch --apply)
 # - mr:lock - Record the current workspace into megarepo.lock (mr lock)
 # - mr:apply - Apply megarepo.lock to the workspace (explicit apply operation)
@@ -13,13 +15,21 @@
 #
 # Options:
 # - syncAll: Whether explicit update/apply tasks use `--all` (recursive nested
-#   sync). Default: true for backwards compatibility.
+#   sync). Default: true for backwards compatibility. mr:setup does not use it.
 #   Set to false in CI where root members are already synced and nested sync
 #   may fail due to credential scoping or version mismatches.
 # - bootstrapMembers: Minimal members that must exist before tooling like genie
 #   can evaluate. Uses lock-based `mr apply --only ...` and never fetches remote
 #   refs. Default: [ ] (task becomes a no-op)
 # - disabledTasks: Task names omitted from this module instance. Default: [ ].
+# - setupCommitMembers: Root members whose nested megarepo trees mr:setup
+#   prepares in the same invocation (`mr apply --commit-members ...`).
+#   Other root members follow effectUtils.megarepo.setup.mode (tracking by default).
+#   Local readiness checks all root members with `mr status`, then only listed,
+#   non-skipped nested megarepos with `mr status --all`, including on the outer
+#   setup cache-hit path. Use it for members whose own repos/ must exist locally
+#   (validation-only nested hooks). Default: [ ] (root-only preparation).
+#   With CI=true, a non-empty list prepares and checks every root's nested tree.
 # NOTE: No pnpm:install:megarepo dependency here — this shared module is used by
 # repos where megarepo may be a Nix package (no pnpm install needed). Repos that
 # use source-mode megarepo via pnpm should add dependencies in their devenv.nix:
@@ -29,21 +39,45 @@
   syncAll ? true,
   bootstrapMembers ? [ ],
   disabledTasks ? [ ],
+  setupCommitMembers ? [ ],
   # Real derivation/path backing the `mr` guard. When set, the guard owns
   # `bin/mr` and exec's this by absolute path under passthrough (see
   # cli-guard.nix). Required for source-mode `mr` (no node_modules/.bin
   # fallback) so passthrough does not exit 127.
   mrPkg ? null,
 }:
-{ lib, pkgs, ... }:
+{
+  lib,
+  pkgs,
+  config ? { },
+  ...
+}:
 let
   trace = import ../lib/trace.nix { inherit lib; };
   cliGuard = import ../lib/cli-guard.nix { inherit pkgs; };
   jq = "${pkgs.jq}/bin/jq";
+  setupMode = config.effectUtils.megarepo.setup.mode or "tracking";
+  loadSetupModeScript = ''
+    mr_setup_mode="''${MR_SETUP_MODE:-${setupMode}}"
+    if [ "''${CI:-}" = "true" ]; then
+      mr_setup_mode=locked
+    fi
+    case "$mr_setup_mode" in
+      tracking|locked) ;;
+      *) echo "[devenv] Invalid MR_SETUP_MODE: $mr_setup_mode (expected tracking or locked)" >&2; exit 1 ;;
+    esac
+  '';
   bootstrapOnlyArgs = lib.concatMapStringsSep " " (
     member: "--only ${lib.escapeShellArg member}"
   ) bootstrapMembers;
+  setupNestedTrees = setupCommitMembers != [ ];
+  setupCommitArgs = lib.optionalString setupNestedTrees " --commit-members ${lib.escapeShellArg (lib.concatStringsSep "," setupCommitMembers)}";
   cacheRoot = ".devenv/task-cache/mr-apply";
+  setupModeFile = "${cacheRoot}/setup-mode";
+  invalidateSetupMode = ''
+    # Any mount mutation can invalidate the policy proof, even if apply fails.
+    ${pkgs.coreutils}/bin/rm -f ${lib.escapeShellArg setupModeFile} || exit $?
+  '';
   membersFile = "${cacheRoot}/members.txt";
   recordWorkspaceMembers = ''
     set -o pipefail
@@ -137,25 +171,71 @@ let
     | .[].name
   '';
 
-  mrStatusCheck = ''
-    # Use the already-installed source CLI here. `nix run ...#megarepo` adds a
-    # second eval/build hop to every warm status check.
-    if [ ! -f ./megarepo.kdl ] && [ ! -f ./megarepo.json ]; then
-      exit 0
-    fi
+  mkMrStatusCheck =
+    {
+      recursive,
+      checkRootOnCacheHit ? false,
+    }:
+    ''
+      # Use the already-installed source CLI here. `nix run ...#megarepo` adds a
+      # second eval/build hop to every warm status check.
+      if [ ! -f ./megarepo.kdl ] && [ ! -f ./megarepo.json ]; then
+        exit 0
+      fi
 
-    if [ "''${DEVENV_SETUP_OUTER_CACHE_HIT:-0}" = "1" ]; then
+      ${lib.optionalString (!recursive && !checkRootOnCacheHit) ''
+        if [ "''${DEVENV_SETUP_OUTER_CACHE_HIT:-0}" = "1" ]; then
+          ${checkWorkspaceMembersScript}
+          exit 0
+        fi
+      ''}
       ${checkWorkspaceMembersScript}
+      status_is_ready() {
+        ${jq} -e --arg skip "$_mr_skip_csv" '
+          ($skip | split(",") | map(select(length > 0))) as $skipped
+          | if ($skipped | length) == 0 or (.syncReasons | type) != "array" then
+              (.syncNeeded // false) == false and (.applyNeeded // false) == false
+            else
+              [.syncReasons[] | . as $reason
+                | select(any($skipped[];
+                    . as $member | $reason
+                    | startswith("Member \u0027" + $member + "\u0027")
+                      or startswith("Member \u0027" + $member + "/")
+                      or startswith("Lock file has extra member \u0027" + $member + "\u0027")
+                  ) | not)] | length == 0
+            end
+        ' >/dev/null 2>&1
+      }
+
+      ${lib.optionalString recursive ''
+        # CI prepares every root tree; local setup prepares only selected trees.
+        # Both scopes must still be checked on the outer setup cache-hit path.
+        if [ "''${CI:-}" = "true" ]; then
+          status_json=$(mr status --all --output json 2>/dev/null) || exit 1
+          echo "$status_json" | status_is_ready
+          exit $?
+        fi
+      ''}
+      status_json=$(mr status --output json 2>/dev/null) || exit 1
+      echo "$status_json" | status_is_ready || exit 1
+
+      ${lib.optionalString recursive (
+        lib.concatMapStringsSep "\n" (member: ''
+          if ! should_skip_member ${lib.escapeShellArg member}; then
+            member_root="$workspace_root/repos/"${lib.escapeShellArg member}
+            # Ordinary repos have no nested megarepo to prepare or inspect.
+            if [ -f "$member_root/megarepo.kdl" ] || [ -f "$member_root/megarepo.json" ]; then
+              status_json=$(cd "$member_root" && mr status --all --output json 2>/dev/null) || exit 1
+              echo "$status_json" \
+                | ${jq} -e '(.syncNeeded // false) == false and (.applyNeeded // false) == false' \
+                >/dev/null 2>&1 || exit 1
+            fi
+          fi
+        '') setupCommitMembers
+      )}
       exit 0
-    fi
-
-    ${checkWorkspaceMembersScript}
-
-    status_json=$(mr status --output json 2>/dev/null) || exit 1
-    echo "$status_json" \
-      | ${jq} -e '(.syncNeeded // false) == false and (.applyNeeded // false) == false' \
-      >/dev/null 2>&1
-  '';
+    '';
+  mrStatusCheck = mkMrStatusCheck { recursive = false; };
 
   allTasks = {
     "mr:bootstrap" = {
@@ -170,6 +250,7 @@ let
           exit 0
         fi
 
+        ${invalidateSetupMode}
         mr apply --worktree-mode commit ${bootstrapOnlyArgs}
       '';
       status = trace.status "mr:bootstrap" "path" ''
@@ -206,11 +287,49 @@ let
         fi
 
         ${loadCheckSkipMembersScript}
+        ${loadSetupModeScript}
         build_mr_skip_args
-        mr apply --worktree-mode tracking --lock-sync off "''${MR_SKIP_ARGS[@]}"
-        ${recordWorkspaceMembers}
+        # Remove this probe after the next manifest publication includes --verify-shared.
+        # Older products retain their canonical-mutation refusal; never bypass that guard.
+        MR_VERIFY_SHARED_ARGS=()
+        mr_apply_help="$(mr apply --help)"
+        if [[ "$mr_apply_help" == *--verify-shared* ]]; then
+          MR_VERIFY_SHARED_ARGS=(--verify-shared)
+        fi
+        ${invalidateSetupMode}
+        if [ "''${CI:-}" = "true" ]; then
+          # CI materializes locked commits end to end and never advances
+          # shared branch worktrees.
+          # With nested trees, readiness is `mr status --all`, which inspects
+          # every root member's nested tree, so every root member is prepared.
+          mr apply --worktree-mode commit${lib.optionalString setupNestedTrees " --commit-all-members"} --lock-sync off "''${MR_VERIFY_SHARED_ARGS[@]}" "''${MR_SKIP_ARGS[@]}"
+        elif [ "$mr_setup_mode" = locked ]; then
+          mr apply --worktree-mode commit${setupCommitArgs} --lock-sync off "''${MR_VERIFY_SHARED_ARGS[@]}" "''${MR_SKIP_ARGS[@]}"
+        else
+          mr apply --worktree-mode tracking${setupCommitArgs} --lock-sync off "''${MR_VERIFY_SHARED_ARGS[@]}" "''${MR_SKIP_ARGS[@]}"
+        fi
+        # Record policy only after successful materialization. A mode transition
+        # must rerun apply even when the current mounts otherwise look ready.
+        mkdir -p ${lib.escapeShellArg cacheRoot}
+        setup_mode_tmp="$(mktemp ${lib.escapeShellArg "${setupModeFile}.XXXXXX"})"
+        printf '%s\n' "$mr_setup_mode" > "$setup_mode_tmp"
+        mv "$setup_mode_tmp" ${lib.escapeShellArg setupModeFile}
       '';
-      status = trace.status "mr:setup" "binary" mrStatusCheck;
+      status = trace.status "mr:setup" "binary" (
+        ''
+          ${loadSetupModeScript}
+          if [ ! -f ./megarepo.kdl ] && [ ! -f ./megarepo.json ]; then
+            exit 0
+          fi
+          [ "$(cat ${lib.escapeShellArg setupModeFile} 2>/dev/null)" = "$mr_setup_mode" ] || exit 1
+        ''
+        + mkMrStatusCheck {
+          recursive = setupNestedTrees;
+          # External edits can change canonical HEAD or dirtiness without moving
+          # the root mount. Presence alone cannot prove exact-lock readiness.
+          checkRootOnCacheHit = true;
+        }
+      );
     };
 
     "mr:fetch-apply" = {
@@ -225,6 +344,7 @@ let
 
         ${loadCheckSkipMembersScript}
         build_mr_skip_args
+        ${invalidateSetupMode}
         mr fetch --apply --worktree-mode tracking${if syncAll then " --all" else ""} "''${MR_SKIP_ARGS[@]}"
         ${recordWorkspaceMembers}
       '';
@@ -257,6 +377,7 @@ let
 
         ${loadCheckSkipMembersScript}
         build_mr_skip_args
+        ${invalidateSetupMode}
         mr apply --worktree-mode tracking${if syncAll then " --all" else ""} "''${MR_SKIP_ARGS[@]}"
         ${recordWorkspaceMembers}
       '';
@@ -408,6 +529,23 @@ let
   );
 in
 {
+  imports = [
+    {
+      options.effectUtils.megarepo.setup.mode = lib.mkOption {
+        type = lib.types.enum [
+          "tracking"
+          "locked"
+        ];
+        default = "tracking";
+        description = ''
+          Root member setup policy. Locked mode materializes megarepo.lock commits;
+          tracking preserves local branch worktrees. MR_SETUP_MODE overrides this
+          per invocation, while CI=true always selects locked mode.
+        '';
+      };
+    }
+  ];
+
   # mr shells out to git for clone/fetch/worktree operations
   packages = [
     pkgs.git

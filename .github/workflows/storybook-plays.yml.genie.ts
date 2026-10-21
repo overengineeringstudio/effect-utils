@@ -5,15 +5,13 @@ import {
   ciWorkflow,
   type CiWorkflowArgs,
   githubTokenEnv,
+  namespaceRunner,
   runDevenvTasksBefore,
 } from '../../genie/ci-workflow.ts'
 import { withBuck2CacheEvidence } from '../../genie/ci-workflow/buck2-cache-evidence.ts'
 import { buck2CachePostureEnv } from '../../genie/ci-workflow/buck2-cache-posture.ts'
 import { STANDALONE_REQUIRED_CI_JOB_NAMES } from '../../genie/ci.ts'
-import {
-  storybookPreviewRunner,
-  storybookPreviewSetupSteps,
-} from '../../genie/storybook-preview.ts'
+import { storybookPreviewSetupSteps } from '../../genie/storybook-preview.ts'
 
 // Storybook play and accessibility tests (#1392) for every package opted in
 // with `playTests` in devenv.nix. A workflow of its own rather than a `ci.yml`
@@ -40,14 +38,19 @@ export default ciWorkflow({
   jobs: withBuck2CacheEvidence({
     [playsJobName]: {
       if: "${{ github.event_name == 'merge_group' }}",
-      'runs-on': storybookPreviewRunner,
+      'runs-on': namespaceRunner({
+        profile: 'namespace-profile-linux-x86-64',
+        runId: '${{ github.run_id }}',
+        privileged: 'always',
+        priority: 1,
+      }),
       'timeout-minutes': 45,
       permissions: { contents: 'read' },
       defaults: bashShellDefaults,
       env: { FORCE_SETUP: '1', CI: 'true', ...buck2CachePostureEnv('trusted-writer') },
       steps: [
         checkoutStep(),
-        ...storybookPreviewSetupSteps,
+        ...storybookPreviewSetupSteps('always'),
         buck2TrustedCacheWriterStep({
           name: 'Storybook play tests',
           env: githubTokenEnv(),

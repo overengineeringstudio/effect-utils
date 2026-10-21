@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'bun:test'
 
 import {
+  darwinUnsandboxedCategories,
   localMaterializationCategories,
   type ActionInvocation,
   type ActionRecord,
@@ -67,6 +68,116 @@ const project = (values: unknown[], context?: string) => {
 }
 
 describe('native Buck cache evidence projection', () => {
+  it('counts structured archive fallbacks by reason, deduplicates native logs and drops payloads', () => {
+    const sha256 = 'a'.repeat(64)
+    const reasons = ['not-found', 'headers-timeout', 'connection-error', 'server-error']
+    const events = reasons.map((reason, index) =>
+      nativeEvent(
+        'SpanEnd',
+        actionEnd({
+          name: { category: 'pnpm_archive' },
+          commands: [
+            {
+              details: {
+                ...fixtureCommand.details,
+                cmd_stderr: `${JSON.stringify({
+                  type: 'archive-origin-fallback',
+                  reason,
+                  sha256,
+                  privateHost: 'PRIVATE_HOST',
+                })}\nPRIVATE_STDERR\n`,
+              },
+            },
+          ],
+        }),
+        index,
+      ),
+    )
+    const evidence = project([...events, ...events])
+    const counts = {
+      'not-found': 1,
+      'headers-timeout': 1,
+      'connection-error': 1,
+      'server-error': 1,
+    }
+    expect(evidence.archiveOriginFallbacks).toEqual(counts)
+    expect(evidence.invocations[0]?.archiveOriginFallbacks).toEqual(counts)
+    expect(evidence.admissionFallbacks).toEqual({ reapi: 0, archiveOrigin: 4 })
+    const admitted = {
+      ...evidence,
+      admissionFallbacks: { reapi: 1, archiveOrigin: 5 },
+      admissionInvocations: [
+        {
+          invocationId: '2fc13b48-c94a-4a9c-936f-bc24615bc360',
+          admissionFallbacks: { reapi: 1, archiveOrigin: 1 },
+          admissionRetrySuccesses: { reapi: 0, archiveOrigin: 0 },
+        },
+      ],
+    }
+    expect(decodeCacheEvidence(admitted)).toEqual(admitted)
+    const merged = mergeCacheEvidence({ previous: admitted, next: evidence })
+    expect(merged.archiveOriginFallbacks).toEqual(counts)
+    expect(merged.admissionFallbacks).toEqual(admitted.admissionFallbacks)
+    expect(JSON.stringify(merged)).not.toContain('PRIVATE')
+    expect(() =>
+      decodeCacheEvidence({
+        ...admitted,
+        archiveOriginFallbacks: { ...counts, 'headers-timeout': 2 },
+      }),
+    ).toThrow('Archive origin fallback aggregate mismatch')
+    expect(() =>
+      decodeCacheEvidence({
+        ...admitted,
+        admissionFallbacks: { reapi: 1, archiveOrigin: 1 },
+      }),
+    ).toThrow('Cache admission aggregate mismatch')
+    const second = project(
+      events.map((event) =>
+        Object.assign({}, event, {
+          Event: { ...event.Event, trace_id: 'second-build' },
+        }),
+      ),
+    )
+    expect(mergeCacheEvidence({ previous: merged, next: second }).admissionFallbacks).toEqual({
+      reapi: 1,
+      archiveOrigin: 9,
+    })
+  })
+
+  it('ignores fallback lookalikes outside archive actions or with invalid identities/reasons', () => {
+    const diagnostic = (reason: string, sha256 = 'a'.repeat(64)) =>
+      `${JSON.stringify({ type: 'archive-origin-fallback', reason, sha256 })}\n`
+    const command = (stderr: string) => ({
+      details: { ...fixtureCommand.details, cmd_stderr: stderr },
+    })
+    const evidence = project([
+      nativeEvent(
+        'SpanEnd',
+        actionEnd({
+          commands: [command(diagnostic('headers-timeout'))],
+        }),
+        1,
+      ),
+      nativeEvent(
+        'SpanEnd',
+        actionEnd({
+          name: { category: 'pnpm_archive' },
+          commands: [
+            command(
+              diagnostic('unknown') +
+                diagnostic('headers-timeout', 'PRIVATE_HOST') +
+                '{"type":"archive-origin-fallback",broken-json\n',
+            ),
+          ],
+        }),
+        2,
+      ),
+    ])
+    expect(evidence.archiveOriginFallbacks).toBeUndefined()
+    expect(evidence.admissionFallbacks).toEqual({ reapi: 0, archiveOrigin: 0 })
+    expect(JSON.stringify(evidence)).not.toContain('PRIVATE')
+  })
+
   it('reports every materialization category separately without relabeling native outcomes', () => {
     for (const category of localMaterializationCategories) {
       for (const executionKind of [1, 3, 8, 10]) {
@@ -91,7 +202,10 @@ describe('native Buck cache evidence projection', () => {
         const outcome =
           executionKind === 3 ? 'remote-hit' : executionKind === 10 ? 'local-cache' : 'local'
         expect(summary.counts[outcome]).toBe(1)
-        expect(summary.excludedByDesign).toEqual({ 'local-materialization-policy': 1 })
+        expect(summary.excludedByDesign).toEqual({
+          'local-materialization-policy': 1,
+          'darwin-unsandboxed': 0,
+        })
         expect(summary.invocations[0]?.excludedByDesign).toEqual(summary.excludedByDesign)
         expect(invocations[0]?.excludedByDesign).toEqual(summary.excludedByDesign)
         expect(rows[0]).toMatchObject({
@@ -104,9 +218,48 @@ describe('native Buck cache evidence projection', () => {
         expect(decodeCacheEvidence(summary)).toEqual(summary)
       }
     }
-    const eligible = project([nativeEvent('SpanEnd', actionEnd({ name: { category: 'tsgo_emit' } }))])
-    expect(eligible.excludedByDesign).toEqual({ 'local-materialization-policy': 0 })
+    const eligible = project([
+      nativeEvent('SpanEnd', actionEnd({ name: { category: 'tsgo_emit' } })),
+    ])
+    expect(eligible.excludedByDesign).toEqual({
+      'local-materialization-policy': 0,
+      'darwin-unsandboxed': 0,
+    })
     expect(eligible.actions[0]?.exclusionReason).toBeNull()
+  })
+
+  it('names Darwin TS exclusion without excluding Linux TS or unrelated Darwin actions', () => {
+    const summaries = darwinUnsandboxedCategories.map((category, index) =>
+      decodeCacheEvidence(
+        project([
+          nativeEvent(
+            'SpanEnd',
+            actionEnd({
+              name: { category },
+              execution_kind: 1,
+              cache_upload_result: 0,
+            }),
+            index,
+            `darwin-${index}`,
+          ),
+        ]),
+      ),
+    )
+    for (const summary of summaries) {
+      expect(summary.excludedByDesign).toEqual({
+        'local-materialization-policy': 0,
+        'darwin-unsandboxed': 1,
+      })
+      expect(summary.actions[0]?.exclusionReason).toBe('darwin-unsandboxed')
+      expect(summary.counts.local).toBe(1)
+    }
+    const merged = summaries.reduce((previous, next) => mergeCacheEvidence({ previous, next }))
+    expect(merged.excludedByDesign?.['darwin-unsandboxed']).toBe(darwinUnsandboxedCategories.length)
+    expect(decodeCacheEvidence(merged)).toEqual(merged)
+    for (const category of ['tsgo_typecheck', 'tsgo_emit', 'rust_compile']) {
+      const summary = project([nativeEvent('SpanEnd', actionEnd({ name: { category } }))])
+      expect(summary.actions[0]?.exclusionReason).toBeNull()
+    }
   })
 
   it('preserves exclusion counts through bounded decoding and duplicate-aware merging', () => {
@@ -133,13 +286,16 @@ describe('native Buck cache evidence projection', () => {
     )
     const first = summaries[0]!
     const next = summaries[1]!
-    expect(first.actions).toHaveLength(5)
+    expect(first.actions).toHaveLength(localMaterializationCategories.length)
     const merged = mergeCacheEvidence({ previous: first, next })
-    expect(merged.excludedByDesign).toEqual({ 'local-materialization-policy': 200 })
+    expect(merged.excludedByDesign).toEqual({
+      'local-materialization-policy': 200,
+      'darwin-unsandboxed': 0,
+    })
     expect(merged.counts['remote-hit']).toBe(200)
     expect(merged.invocations.map((invocation) => invocation.excludedByDesign)).toEqual([
-      { 'local-materialization-policy': 100 },
-      { 'local-materialization-policy': 100 },
+      { 'local-materialization-policy': 100, 'darwin-unsandboxed': 0 },
+      { 'local-materialization-policy': 100, 'darwin-unsandboxed': 0 },
     ])
     expect(decodeCacheEvidence(merged)).toEqual(merged)
     expect(mergeCacheEvidence({ previous: merged, next })).toEqual(merged)
@@ -622,7 +778,7 @@ describe('native Buck cache evidence projection', () => {
         context: 'populate',
         freshRoot: true,
         actionCount: 100,
-        excludedByDesign: { 'local-materialization-policy': 0 },
+        excludedByDesign: { 'local-materialization-policy': 0, 'darwin-unsandboxed': 0 },
         complete: true,
         startedAt: 1700000000000,
         completedAt: 1700000003000,

@@ -137,6 +137,11 @@ prelude's internal Rust tools, which are `python_bootstrap_binary` targets —
 therefore finds exactly one instance of each conventional toolchain, and it is
 the capability-backed one.
 
+The root also exports `cxx_no_default_deps` onto the same Cxx toolchain, which
+already declares no default dependencies. Prelude names it in the unreachable
+`config//:none` branch of its Cxx toolchain select; unconfigured `uquery deps()`
+traverses that branch even though configured builds never select it.
+
 The bootstrap interpreter those prelude tools need is admitted in exactly one
 realization — the hermetic, Nix-realized `python_bootstrap` toolchain of
 [decision 0028](../../.decisions/0028-hermetic-python-bootstrap-for-consumer-cells.md).

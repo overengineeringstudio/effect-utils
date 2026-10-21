@@ -32,6 +32,7 @@ import { DistributedSemaphore } from '@overeng/utils/lock'
 import { FileSystemBacking } from '@overeng/utils/node'
 
 import type { GenieOutput } from '../runtime/mod.ts'
+import { inputFileSystem } from '../runtime/node/inputs.ts'
 import { isAnalyzableSourcePath, runTsFileAnalysis } from '../runtime/node/ts-api.ts'
 import type { TsFileAnalysisSession } from '../runtime/node/ts-api.ts'
 import { CatalogConflictError } from '../runtime/package-json/catalog.ts'
@@ -40,6 +41,7 @@ import {
   GenieCheckError,
   GenieFileError,
   GenieImportError,
+  GenieRuntimeTranspilerCacheError,
   InvalidOxfmtConfigError,
 } from './errors.ts'
 import { resolveImportMapsInSource } from './import-map/mod.ts'
@@ -418,6 +420,7 @@ const stageGraphWithinRoot = ({
             specifier,
             importerPath: sourcePath,
             workspaceRoot,
+            fs: inputFileSystem,
           })
           if (resolvedMemberPath === undefined) continue
 
@@ -939,13 +942,14 @@ export const loadGenieFile = Effect.fn('loadGenieFile')(function* ({
     targetFilePath: genieFilePath.replace('.genie.ts', ''),
   })
   yield* ensureImportMapResolver(cwd).pipe(
-    Effect.mapError(
-      (cause) =>
-        new GenieImportError({
-          genieFilePath,
-          message: `Failed to import ${genieFilePath}: ${cause.message}`,
-          cause,
-        }),
+    Effect.mapError((cause) =>
+      cause instanceof GenieRuntimeTranspilerCacheError
+        ? cause
+        : new GenieImportError({
+            genieFilePath,
+            message: `Failed to import ${genieFilePath}: ${cause.message}`,
+            cause,
+          }),
     ),
   )
 
@@ -1281,7 +1285,7 @@ export const checkFile = ({
   oxfmtConfigPath: Option.Option<string>
 }): Effect.Effect<
   void,
-  GenieCheckError | GenieImportError | PlatformError,
+  GenieCheckError | GenieImportError | GenieRuntimeTranspilerCacheError | PlatformError,
   FileSystem.FileSystem | CommandExecutor.ChildProcessSpawner
 > => checkFileDetailed({ genieFilePath, cwd, oxfmtConfigPath }).pipe(Effect.asVoid)
 
@@ -1296,7 +1300,7 @@ export const checkFileDetailed = ({
   oxfmtConfigPath: Option.Option<string>
 }): Effect.Effect<
   { targetFilePath: string; loadedGenieFile: LoadedGenieFile },
-  GenieCheckError | GenieImportError | PlatformError,
+  GenieCheckError | GenieImportError | GenieRuntimeTranspilerCacheError | PlatformError,
   FileSystem.FileSystem | CommandExecutor.ChildProcessSpawner
 > =>
   Effect.gen(function* () {

@@ -152,7 +152,7 @@ const scanMembersRecursive = ({
         const isGit = yield* Git.isGitRepo(memberPath)
         if (isGit === true) {
           // Get worktree status (dirty, unpushed)
-          const worktreeStatus = yield* Git.getWorktreeStatus(memberPath).pipe(
+          const worktreeStatus = yield* Git.getWorktreeStatus({ worktreePath: memberPath }).pipe(
             Effect.orElseSucceed(() => ({
               isDirty: false,
               hasUnpushed: false,
@@ -485,6 +485,15 @@ export const statusCommand = Cli.Command.make(
             if (member.commitDrift !== undefined) {
               applyReasons.push(
                 `Member '${memberLabel}' commit drift: workspace is '${member.commitDrift.localCommit.slice(0, 8)}' but lock records '${member.commitDrift.lockedCommit.slice(0, 8)}'`,
+              )
+            }
+            if (
+              member.isLocal === false &&
+              member.gitStatus?.isDirty === true &&
+              member.gitStatus.branch !== 'HEAD'
+            ) {
+              applyReasons.push(
+                `Member '${memberLabel}' dirty tracking worktree requires a locked commit mount`,
               )
             }
             if (member.nestedMembers !== undefined) {

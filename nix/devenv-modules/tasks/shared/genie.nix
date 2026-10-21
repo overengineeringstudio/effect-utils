@@ -155,6 +155,11 @@ let
   '';
   computeGenieStateHash = ''
     ${collectGenieGeneratedFiles}
+    valid_genie_input_manifest() {
+      [ -f "$1" ] || return 1
+      IFS= read -r manifest_version < "$1" || return 1
+      [ "$manifest_version" = "genie-inputs-v1" ]
+    }
     compute_genie_state_hash() {
       {
         if command -v genie >/dev/null 2>&1; then
@@ -181,11 +186,29 @@ let
               -print
           fi
           ${enumerateGenieInputGlobs}
+          if [ -f ${lib.escapeShellArg "${cacheRoot}/inputs.txt"} ]; then
+            { IFS= read -r manifest_version; cat; } < ${lib.escapeShellArg "${cacheRoot}/inputs.txt"}
+          fi
           collect_genie_generated_files
         } | LC_ALL=C sort -u | while IFS= read -r file; do
-          [ -f "$file" ] || continue
+          [ -n "$file" ] || continue
           printf '%s\n' "$file"
-          ${pkgs.coreutils}/bin/sha256sum "$file" | awk '{print $1}'
+          # Resolution identity matters even when linked entrypoint bytes match:
+          # its relative imports may resolve to a different source tree.
+          if [ -e "$file" ]; then
+            ${pkgs.coreutils}/bin/realpath -- "$file"
+          fi
+          if [ -f "$file" ]; then
+            printf 'file\n'
+            ${pkgs.coreutils}/bin/sha256sum "$file" | awk '{print $1}'
+          elif [ -d "$file" ]; then
+            printf 'directory\n'
+            ${pkgs.findutils}/bin/find -H "$file" -mindepth 1 -maxdepth 1 -printf '%f %y\0' \
+              | LC_ALL=C sort -z \
+              | ${pkgs.coreutils}/bin/sha256sum | awk '{print $1}'
+          else
+            printf 'missing\n'
+          fi
         done
       } \
         | ${pkgs.coreutils}/bin/sha256sum \
@@ -196,6 +219,9 @@ let
   tasks = {
     "genie:prepare" = {
       description = "Run shared prerequisites before invoking genie";
+      # Generator imports and the run-status fingerprint can read member sources.
+      # Share this prerequisite across run/check/watch and both lint modules.
+      after = lib.optionals (builtins.hasAttr "mr:setup" config.tasks) [ "mr:setup" ];
       exec = trace.exec "genie:prepare" "true";
       env = genieTaskEnv;
     };
@@ -208,7 +234,12 @@ let
         set -euo pipefail
         mkdir -p ${lib.escapeShellArg cacheRoot}
         ${computeGenieStateHash}
-        genie
+        # Older packaged CLIs may not yet record inputs. Never let a previous
+        # manifest accidentally authorize caching a run from one of those CLIs.
+        input_manifest="$(mktemp "$PWD/${cacheRoot}/inputs.XXXXXX")"
+        rm "$input_manifest"
+        trap 'rm -f "$input_manifest"' EXIT
+        GENIE_INPUT_MANIFEST="$input_manifest" genie
 
         generated_tmp_file="$(mktemp)"
         collect_genie_generated_files | LC_ALL=C sort -u > "$generated_tmp_file"
@@ -220,6 +251,14 @@ let
           rm "$generated_tmp_file"
           exit 1
         fi
+        if ! valid_genie_input_manifest "$input_manifest"; then
+          # Product publication can lag this module. Generation still succeeds,
+          # but no complete freshness proof means every later status is a miss.
+          rm -f ${lib.escapeShellArg stateFile} ${lib.escapeShellArg "${cacheRoot}/inputs.txt"}
+          mv "$generated_tmp_file" ${lib.escapeShellArg generatedFilesFile}
+          exit 0
+        fi
+        mv "$input_manifest" ${lib.escapeShellArg "${cacheRoot}/inputs.txt"}
 
         cache_value="$(compute_genie_state_hash)"
         tmp_file="$(mktemp)"
@@ -234,23 +273,12 @@ let
       '';
       status = trace.status "genie:run" "binary" ''
         set -euo pipefail
-        if [ "''${DEVENV_SETUP_OUTER_CACHE_HIT:-0}" = "1" ]; then
-          # The outer setup fingerprint already covers tracked generated-file
-          # drift plus genie binary identity. On that warm path, only prove that
-          # the outputs we generated last time still exist. Content drift is
-          # intentionally deferred to the next full fingerprint recomputation so
-          # shell entry does not have to boot the generator or re-hash every
-          # generated file on every hit.
-          [ -f ${lib.escapeShellArg stateFile} ] || exit 1
-          [ -f ${lib.escapeShellArg generatedFilesFile} ] || exit 1
-          while IFS= read -r file; do
-            [ -n "$file" ] || continue
-            [ -f "$file" ] || exit 1
-          done < ${lib.escapeShellArg generatedFilesFile}
-          exit 0
-        fi
-        [ -f ${lib.escapeShellArg stateFile} ] || exit 1
+        # The outer setup fingerprint is not a proof of generator freshness:
+        # generators may consult arbitrary paths outside that fingerprint.
+        # Always compare the input manifest, including missing paths.
         ${computeGenieStateHash}
+        valid_genie_input_manifest ${lib.escapeShellArg "${cacheRoot}/inputs.txt"} || exit 1
+        [ -f ${lib.escapeShellArg stateFile} ] || exit 1
         current_hash="$(compute_genie_state_hash)"
         stored_hash="$(cat ${lib.escapeShellArg stateFile})"
         [ "$current_hash" = "$stored_hash" ]
@@ -298,9 +326,10 @@ in
       type = lib.types.listOf lib.types.str;
       default = [ ];
       description = ''
-        Extra non-.genie.ts generator inputs, expressed as plain Git glob
-        patterns without pathspec magic, that should participate in the
-        `genie:run` warm-cache fingerprint.
+        Additional generator inputs, expressed as plain Git glob patterns
+        without pathspec magic, that participate in the `genie:run` warm-cache
+        fingerprint alongside Genie's recorded input manifest. Built-in
+        projection inputs are recorded automatically and need no configuration.
       '';
     };
   };

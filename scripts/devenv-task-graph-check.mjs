@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { spawnSync } from 'node:child_process'
 import { existsSync, readFileSync } from 'node:fs'
+import { posix } from 'node:path'
 
 const root = process.argv[2]
 if (root === undefined) {
@@ -24,7 +25,9 @@ if (evaluatedTaskJson === undefined) {
     console.error(`devenv tasks list --json failed with exit ${result.status}`)
     process.exit(result.status ?? 1)
   }
-  taskJson = result.stdout
+  // `tasks list --json` is presentation-only: it omits executable paths.
+  // Read the full evaluated config it just refreshed, as task-guards:check does.
+  taskJson = readFileSync(`${root}/.devenv/gc/task-config-devenv-config-task-config`, 'utf8')
 } else {
   taskJson = readFileSync(evaluatedTaskJson, 'utf8')
 }
@@ -253,14 +256,25 @@ ok({
   condition: reaches({ start: 'nix:flake:eval', target: 'genie:check' }),
   name: 'nix:flake:eval waits for source-side generation freshness',
 })
-// The editor bootstrap hashes Buck outputs; an aggregate materializing into `buck-out` in
-// parallel fails with "tree changed while hashing" (observed on #1362 when an unrelated edge
-// that ordered them transitively was removed).
-for (const aggregateTask of ['buck2:quick', 'buck2:all']) {
-  ok({
-    condition: reaches({ start: aggregateTask, target: 'buck2:editor:bootstrap' }),
-    name: `${aggregateTask} waits for the editor bootstrap`,
-  })
+// Source-side generator freshness needs the minimal root dependency view, never
+// materialization or broader publication (TT-148).
+ok({
+  condition: dependencies.get('genie:check')?.has('buck2:editor:bootstrap') === true,
+  name: 'genie:check directly depends on the source-generator bootstrap',
+})
+for (const entrypoint of ['lint:fix', 'genie:run', 'genie:check', 'setup:strict']) {
+  requireTask(entrypoint)
+  for (const publisher of [...tasks.keys()].filter(
+    (name) =>
+      name === 'buck2:editor:materialize' ||
+      name === 'buck2:editor:publish' ||
+      name.startsWith('buck2:editor:publish:'),
+  )) {
+    ok({
+      condition: reaches({ start: entrypoint, target: publisher }) === false,
+      name: `${entrypoint} never implicitly schedules ${publisher}`,
+    })
+  }
 }
 for (const checkTask of ['check:quick', 'check:all']) {
   ok({
@@ -320,6 +334,20 @@ if (typeof genieBuckTestCommand === 'string') {
       commandBody.includes(' test genie/buck2/') === false,
     name: 'Genie Buck tests use an explicit source directory, not a staged-copy substring filter',
     detail: genieBuckTestCommand,
+  })
+}
+const rustGeneratorTestCommand = requireTask('buck2:rust:generators:test').command
+if (typeof rustGeneratorTestCommand === 'string') {
+  const commandBody =
+    existsSync(rustGeneratorTestCommand) === true
+      ? readFileSync(rustGeneratorTestCommand, 'utf8')
+      : ''
+  ok({
+    condition:
+      commandBody.includes(' test ./buck2/rust/') &&
+      commandBody.includes(' test buck2/rust/') === false,
+    name: 'Rust generator tests use an explicit source directory without excluding integration files',
+    detail: rustGeneratorTestCommand,
   })
 }
 const collectionGateCommand = requireTask('test:run').command
@@ -412,10 +440,14 @@ ok({
   name: 'editor bootstrap reads committed standalone dependencies without mutating projections',
 })
 
-// Aggregate-only aliases use the union publisher. Direct source tasks publish
-// only their own execution view and the generator bootstrap closure.
+// Aggregate-only aliases preserve per-package publication, admitted after their
+// own previous execution. Only shared harness scripts use the harness publisher.
 const sourceTestAggregate = 'test:run'
-const sourceTestExtraSuites = ['devenv-modules:test', 'genie:buck2:test']
+const sourceTestExtraSuites = [
+  'devenv-modules:test',
+  'genie:buck2:test',
+  'buck2:rust:generators:test',
+]
 const sourceTestChainPrefix = `${sourceTestAggregate}:chain:`
 const chainExecutionPattern = /^test:run:chain:(\d+):/
 const sourceTestTasks = [...dependencies.keys()].filter((name) => chainExecutionPattern.test(name))
@@ -488,6 +520,30 @@ for (const name of sourceTestTasks) {
       reaches({ start: sourceTestAggregate, target: name }),
     name: `${name} advances only its own chain and remains in aggregate coverage`,
   })
+  const installerName = name.replace(sourceTestChainPrefix, 'test:run:install:')
+  const installerDependencies = [...(dependencies.get(installerName) ?? [])]
+  const packagePublisher = `buck2:editor:publish:${name.replace(chainExecutionPattern, 'test:')}`
+  ok({
+    condition:
+      tasks.has(installerName) === true &&
+      dependencies.get(name)?.has(installerName) === true &&
+      dependencies.get(name)?.has(packagePublisher) === false &&
+      installerDependencies.includes('genie:check') === true &&
+      predecessors.every((previous) => installerDependencies.includes(previous)) === true &&
+      installerDependencies.length === predecessors.length + 1,
+    name: `${name} admits only its scoped installer after its own predecessor`,
+  })
+  const installerCommand = tasks.get(installerName)?.command
+  const packageCommand = tasks.get(packagePublisher)?.command
+  if (typeof installerCommand === 'string' && typeof packageCommand === 'string') {
+    ok({
+      condition:
+        existsSync(installerCommand) === true &&
+        existsSync(packageCommand) === true &&
+        readFileSync(installerCommand, 'utf8') === readFileSync(packageCommand, 'utf8'),
+      name: `${installerName} preserves its standalone publisher's exact bounded command`,
+    })
+  }
 }
 for (const name of sourceTestTasks) {
   const isTail = sourceTestTasks.every((other) => dependencies.get(other)?.has(name) !== true)
@@ -521,23 +577,31 @@ const scopedPublisherContracts = {
     packagePaths: ['packages/@overeng/otel-contract'],
   },
   'buck2:editor:publish:playwright': {
-    consumers: ['test:pw:tui-react', 'test:pw:utils'],
-    packagePaths: ['packages/@overeng/tui-react', 'packages/@overeng/utils'],
+    consumers: ['test:pw:meters', 'test:pw:tui-react', 'test:pw:utils'],
+    packagePaths: [
+      'packages/@overeng/meters',
+      'packages/@overeng/tui-react',
+      'packages/@overeng/utils',
+    ],
   },
   'buck2:editor:publish:test': {
     // check:all's observability profile names the test publisher among its prerequisites.
     consumers: [
-      ...sourceTestTasks,
+      // Execution chains use their own ordered package-scoped installer aliases.
       ...sourceTestExtraSuites,
       ...(process.env.EFFECT_UTILS_CI_TEST === '1'
         ? []
         : ['otel:profile:genie-check', 'otel:verify:genie-check']),
     ],
     packagePaths: [
-      '.',
-      'packages/@overeng/ci-tools',
-      'packages/@overeng/genie',
-      ...directSourceTestTasks.map((name) => tasks.get(name)?.cwd),
+      ...bootstrapPackagePaths,
+      ...(sourceTaskSelected('devenv-modules:test') === true ? ['packages/@overeng/genie'] : []),
+      ...(process.env.EFFECT_UTILS_TEST_PLATFORM !== 'darwin' ||
+      platformSuites.moduleScripts.darwin.some(({ script }) =>
+        ['deploy-task-e2e.test.sh', 'workflow-report-task-e2e.test.sh'].includes(script),
+      ) === true
+        ? ['packages/@overeng/ci-tools']
+        : []),
     ],
   },
   ...packagePublisherContracts,
@@ -578,7 +642,7 @@ for (const [publisher, { consumers, packagePaths }] of Object.entries(scopedPubl
     detail: `expected ${consumers.join(', ')}, received ${actualConsumers.join(', ')}`,
   })
 }
-const fullPublisherTask = requireTask('buck2:editor:publish')
+const fullPublisherTask = requireTask('buck2:editor:publish:all')
 const fullPublisherCommand = fullPublisherTask.command
 ok({
   condition: fullPublisherTask.hasExec === true || typeof fullPublisherCommand === 'string',
@@ -602,8 +666,8 @@ ok({
   name: 'both Playwright lanes depend on one canonical union publisher',
 })
 
-// Publishers sharing an editor state root fail fast on its `.publish.lock` (no waiting, no
-// theft), so any two publishers one entrypoint schedules together must be ordered by an edge.
+// Distinct package views can still share one state root (all @overeng packages
+// use packages/.editor-view). Unordered publishers need the same bounded flock admission.
 const editorPublishers = [...dependencies.keys()].filter(
   (name) =>
     name === 'buck2:editor:bootstrap' ||
@@ -624,27 +688,223 @@ const closureOf = (start) => {
   closures.set(start, seen)
   return seen
 }
+const publisherStateRoots = new Map()
+const publisherAdmissionLocks = new Map()
+const batchWorkerCount = Number(
+  readFileSync(`${root}/packages/@overeng/buck2-tools/src/editor-view.ts`, 'utf8').match(
+    /export const editorViewPublicationWorkers = (\d+)/u,
+  )?.[1],
+)
+const measuredPublicationEstimates = Object.values(scheduling.editorViewSeconds)
+ok({
+  condition:
+    Number.isInteger(batchWorkerCount) &&
+    batchWorkerCount > 0 &&
+    measuredPublicationEstimates.length > 0 &&
+    measuredPublicationEstimates.every((seconds) => Number.isInteger(seconds) && seconds > 0),
+  name: 'Storybook play-test publication budget has positive measured seconds and the real batch worker count',
+})
+const fallbackPublicationSeconds = Math.max(...measuredPublicationEstimates)
+for (const name of editorPublishers) {
+  const command = tasks.get(name)?.command
+  const body =
+    typeof command === 'string' && existsSync(command) === true ? readFileSync(command, 'utf8') : ''
+  const packages = JSON.parse(body.match(/--packages\s+'(\[[^\n]*?\])'/u)?.[1] ?? '[]')
+  const actualDeadline = body.match(/editor-view-supervisor\.py" (\d+|none) 5/u)?.[1]
+  if (name === 'buck2:editor:publish:batch:storybook:test') {
+    const budget = JSON.parse(body.match(/# editor-view-batch-budget: ([^\n]+)/u)?.[1] ?? 'null')
+    const missingConsumers = packages.filter(
+      (path) => scheduling.editorViewSeconds[path] === undefined,
+    )
+    const totalEstimateSeconds = packages.reduce(
+      (sum, path) => sum + (scheduling.editorViewSeconds[path] ?? fallbackPublicationSeconds),
+      0,
+    )
+    // Reviewed dev5 IO envelope: 4x preparation headroom, 120s build/authority,
+    // and a hard 1200s ceiling. Changes to that policy need an explicit guard update.
+    const expectedDeadline = Math.ceil(totalEstimateSeconds / batchWorkerCount) * 4 + 120
+    ok({
+      condition:
+        budget !== null &&
+        budget.workers === batchWorkerCount &&
+        budget.headroom === 4 &&
+        budget.buildAuthoritySeconds === 120 &&
+        budget.maximumSeconds === 1200 &&
+        budget.fallbackSeconds === fallbackPublicationSeconds &&
+        budget.totalEstimateSeconds === totalEstimateSeconds &&
+        budget.deadlineSeconds === expectedDeadline &&
+        Number(actualDeadline) === expectedDeadline &&
+        actualDeadline <= 1200,
+      name: `${name} retains its derived ${expectedDeadline}s deadline (maximum 1200s)`,
+    })
+    ok({
+      condition:
+        JSON.stringify(budget.missingConsumers.toSorted()) ===
+        JSON.stringify(missingConsumers.toSorted()),
+      name: `${name} explicitly reports ${fallbackPublicationSeconds}s max-measured fallback consumers: ${missingConsumers.join(', ') || '(none)'}`,
+    })
+  } else if (name.startsWith('buck2:editor:publish:batch:') === true) {
+    ok({
+      condition:
+        actualDeadline === 'none' && body.includes('# editor-view-batch-budget:') === false,
+      name: `${name} has no total publication deadline or unused budget metadata`,
+    })
+  } else {
+    ok({
+      condition: actualDeadline === '300',
+      name: `${name} retains the 300s scoped/bootstrap publication cap`,
+    })
+  }
+  publisherStateRoots.set(
+    name,
+    packages.map((path) =>
+      path === '.' ? '.editor-view' : posix.join(path, '..', '..', '.editor-view'),
+    ),
+  )
+  publisherAdmissionLocks.set(
+    name,
+    /editor-view-supervisor\.py" (?:\d+|none) 5\s+\\\s+--lock "\$root\/\.devenv\/editor-view-publication\.lock"/u.test(
+      body,
+    ),
+  )
+}
 const unorderedPublishers = []
+const unbatchedConsumerFanouts = []
 for (const entrypoint of dependencies.keys()) {
   const scheduled = editorPublishers.filter((publisher) => closureOf(entrypoint).has(publisher))
   for (const [index, left] of scheduled.entries())
-    for (const right of scheduled.slice(index + 1))
-      if (closureOf(left).has(right) === false && closureOf(right).has(left) === false)
-        unorderedPublishers.push(`${entrypoint}: ${left} || ${right}`)
+    for (const right of scheduled.slice(index + 1)) {
+      const unordered = closureOf(left).has(right) === false && closureOf(right).has(left) === false
+      const sharedRoot =
+        publisherStateRoots.get(left).length === 0 ||
+        publisherStateRoots.get(right).length === 0 ||
+        publisherStateRoots
+          .get(left)
+          .some((path) => publisherStateRoots.get(right).includes(path)) === true
+      if (unordered === true && sharedRoot === true) {
+        const pair = `${entrypoint}: ${left} || ${right}`
+        if (
+          publisherAdmissionLocks.get(left) !== true ||
+          publisherAdmissionLocks.get(right) !== true
+        )
+          unorderedPublishers.push(pair)
+        if (
+          left.startsWith('buck2:editor:publish:consumer:') === true &&
+          right.startsWith('buck2:editor:publish:consumer:') === true
+        )
+          unbatchedConsumerFanouts.push(pair)
+      }
+    }
+}
+for (const name of dependencies.keys()) {
+  if (name === 'buck2:editor:publish:all') continue
+  ok({
+    condition: reaches({ start: name, target: 'buck2:editor:publish:all' }) === false,
+    name: `${name} never schedules the manual full-workspace publisher`,
+  })
 }
 ok({
   condition: unorderedPublishers.length === 0,
-  name: 'no entrypoint co-schedules two editor publishers without an ordering edge',
+  name: 'co-scheduled publishers sharing state roots have an ordering edge or bounded flock admission',
   detail: unorderedPublishers.join('; '),
 })
+ok({
+  condition: unbatchedConsumerFanouts.length === 0,
+  name: 'no aggregate concurrently fans out individual consumer publishers sharing a state root',
+  detail: unbatchedConsumerFanouts.join('; '),
+})
+
+const commandBody = (name) => {
+  const command = requireTask(name).command
+  return typeof command === 'string' && existsSync(command) === true
+    ? readFileSync(command, 'utf8')
+    : command
+}
+const consumerAggregateContracts = [
+  { name: 'storybook:build' },
+  { name: 'storybook:test' },
+  { name: 'netlify:stage', scope: 'netlify', buildPrefix: 'storybook:build' },
+  { name: 'netlify:deploy', scope: 'netlify', buildPrefix: 'storybook:build' },
+  { name: 'test:notion-integration' },
+]
+for (const { name, scope = name, buildPrefix } of consumerAggregateContracts) {
+  const publisher = `buck2:editor:publish:batch:${scope}`
+  const standaloneTasks = [...tasks.keys()].filter(
+    (task) => task.startsWith(`${name}:`) && task.slice(name.length + 1).includes(':') === false,
+  )
+  const expectedPaths = standaloneTasks.map(
+    (task) =>
+      requireTask(
+        buildPrefix === undefined ? task : `${buildPrefix}:${task.slice(name.length + 1)}`,
+      ).cwd,
+  )
+  ok({
+    condition:
+      standaloneTasks.length > 1 && expectedPaths.every((path) => typeof path === 'string'),
+    name: `${name} has an explicit multi-consumer aggregate scope`,
+  })
+  const batchBody = commandBody(publisher)
+  ok({
+    condition:
+      typeof batchBody === 'string' &&
+      JSON.stringify(
+        JSON.parse(batchBody.match(/--packages\s+'(\[[^\n]*?\])'/u)?.[1] ?? '[]').toSorted(),
+      ) === JSON.stringify([...new Set(expectedPaths)].toSorted()) &&
+      [...(dependencies.get(publisher) ?? [])].join('\n') === 'genie:check' &&
+      publisherAdmissionLocks.get(publisher) === true,
+    name: `${name} publishes exactly its selected consumers in one bounded batch`,
+  })
+  const scheduledPublishers = editorPublishers.filter((task) => closureOf(name).has(task))
+  ok({
+    condition:
+      scheduledPublishers
+        .filter((task) => task.startsWith('buck2:editor:publish:batch:'))
+        .join('\n') === publisher &&
+      scheduledPublishers.some((task) => task.startsWith('buck2:editor:publish:consumer:')) ===
+        false,
+    name: `${name} never fans out individual consumer installers sharing a state root`,
+    detail: scheduledPublishers.join(', '),
+  })
+  for (const standalone of standaloneTasks) {
+    const packageName = standalone.slice(name.length + 1)
+    const executionAlias = `${name}:aggregate:${packageName}`
+    const originalBuild = buildPrefix === undefined ? standalone : `${buildPrefix}:${packageName}`
+    const buildAlias =
+      buildPrefix === undefined ? executionAlias : `${name}:aggregate-build:${packageName}`
+    const consumer = `buck2:editor:publish:consumer:${posix.basename(requireTask(originalBuild).cwd)}`
+    for (const [alias, original] of [
+      [executionAlias, standalone],
+      ...(buildPrefix === undefined ? [] : [[buildAlias, originalBuild]]),
+    ]) {
+      ok({
+        condition:
+          commandBody(alias) === commandBody(original) &&
+          requireTask(alias).cwd === requireTask(original).cwd &&
+          closureOf(name).has(alias) === true,
+        name: `${alias} reuses the final standalone command and cwd`,
+      })
+    }
+    const expectedDependencies = [...(dependencies.get(originalBuild) ?? [])].map((dependency) =>
+      dependency === consumer ? publisher : dependency,
+    )
+    ok({
+      condition:
+        JSON.stringify([...(dependencies.get(buildAlias) ?? [])].toSorted()) ===
+          JSON.stringify(expectedDependencies.toSorted()) &&
+        closureOf(standalone).has(consumer) === true &&
+        closureOf(standalone).has(publisher) === false,
+      name: `${standalone} stays single-consumer while its aggregate alias replaces only installation`,
+    })
+  }
+}
 
 ok({
   condition:
     reaches({
       start: 'buck2:typescript:materialize-dist',
       target: 'buck2:editor:materialize',
-    }) === true && reaches({ start: 'setup:strict', target: 'buck2:editor:materialize' }) === true,
-  name: 'mutating setup and dist publication share the ordered editor materialization barrier',
+    }) === true,
+  name: 'dist publication retains the explicit ordered editor materialization barrier',
 })
 ok({
   condition: reaches({ start: 'genie:check', target: 'genie:run' }) === false,
@@ -658,6 +918,12 @@ const taskSource = (name) => {
   const end = source.indexOf('\n  tasks."', start + 1)
   return source.slice(start, end === -1 ? source.length : end)
 }
+ok({
+  condition: taskSource('genie:editor-view-closure:check').includes(
+    '${repoPackages.genie-bootstrap-closure-check}/bin/genie-bootstrap-closure-check',
+  ),
+  name: 'generator closure checking uses the self-contained product without editor dependencies',
+})
 
 ok({
   condition: taskSource('test:buck2:unit').includes('prebuildCollection = true;'),
@@ -675,7 +941,11 @@ ok({
     prebuildBranchOffset !== -1 &&
     prebuildBranchOffset < collectionGateSource.indexOf('const sourceTasksPath =') &&
     prebuildBranchOffset < collectionGateSource.indexOf('const testFiles =') &&
-    collectionGateSource.includes('const buildPlan = collectionBuildPlan({ lanes })') &&
+    collectionGateSource.includes(
+      'const buildPlan = collectionBuildPlan({ lanes: selectedLanes })',
+    ) &&
+    collectionGateSource.indexOf('const selectedLanes = selectTestLanes(') < prebuildBranchOffset &&
+    collectionGateSource.includes('ownershipForFile({ file, lanes })') &&
     collectionGateSource.includes('const collectionBuildError = await') &&
     collectionGateSource.includes('const built = await buildCollectionArtifacts()'),
   name: 'prebuild shares the final current-input plan without reading or caching source verdicts',
@@ -686,7 +956,7 @@ const orderedMaterializationSteps = [
   'devenv tasks run buck2:editor:bootstrap --mode single',
   'devenv tasks run genie:run --mode single',
   'devenv tasks run genie:check --mode single',
-  'devenv tasks run buck2:editor:publish --mode single',
+  'devenv tasks run buck2:editor:publish:generators --mode single',
 ]
 const orderedMaterializationOffsets = orderedMaterializationSteps.map((step) =>
   editorMaterializeSource.indexOf(step),
@@ -750,6 +1020,23 @@ ok({
   condition: /\bbuck2[^\n]*\bkill\b/.test(editorViewHelper) === false,
   name: 'whole-workspace editor publisher never kills the shared Buck daemon',
 })
+ok({
+  condition:
+    editorViewHelper.includes('deadlineSeconds ? 300') &&
+    editorViewHelper.includes(
+      'if deadlineSeconds == null then "none" else toString deadlineSeconds',
+    ) &&
+    editorViewHelper.includes('lib.optionalString (deadlineSeconds != null)') &&
+    source.includes(
+      'if group.name == "storybook:test" then editorViewBatchBudget packagePaths else null;',
+    ) &&
+    source.includes(
+      'deadlineSeconds = if publicationBudget == null then null else publicationBudget.deadlineSeconds;',
+    ) &&
+    source.includes('deadlineSeconds <= editorViewBatchMaximumSeconds') &&
+    editorViewHelper.includes('exit "$status"'),
+  name: 'publication supervision preserves scoped caps and only budgets the Storybook play-test aggregate',
+})
 
 const capabilityPublisherHelper = source.slice(
   source.indexOf('  publishBuckCapabilities ='),
@@ -768,11 +1055,12 @@ const buckAllSource = taskSource('buck2:all')
 const producerOverlapSource = taskSource('check:buck2-producer-overlap')
 ok({
   condition:
-    source.includes('buck2AggregateExec =') === true &&
+    source.includes('buck2AggregateExec = config.effectUtils.buck2.aggregateExec;') === true &&
     buckProviderCheckSource.includes('audit providers') === true &&
     buckProviderCheckSource.includes('typescript-authority-runtime.ts') === false &&
-    buckQuickSource.includes('buck2AggregateExec "buck2:quick" "//:quick"') === true &&
-    buckAllSource.includes('buck2AggregateExec "buck2:all" "//:all"') === true &&
+    /buck2AggregateExec "buck2:quick" \[\s*"build"\s*"\/\/:quick"\s*\]/.test(buckQuickSource) ===
+      true &&
+    /buck2AggregateExec "buck2:all" \[\s*"build"\s*"\/\/:all"\s*\]/.test(buckAllSource) === true &&
     buckQuickSource.includes('--local-only') === false &&
     buckAllSource.includes('--local-only') === false,
   name: 'Buck check tasks separate provider audit from standalone cache-enabled aggregates',

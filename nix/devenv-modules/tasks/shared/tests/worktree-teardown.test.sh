@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
+# The teardown fixture owns persistent native daemons until explicit retirement.
+# Take the wrapper's outer-owner role without changing gate class or cgroup.
+export BUCK2_GATE_WRAPPER_ACTIVE=1
 # Keep command diagnostics in the aggregate runner's captured test stream.
 exec 2>&1
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -58,6 +61,10 @@ cleanup() {
     watchman --sockname="$WATCHMAN_SOCK" --no-spawn --no-local shutdown-server >/dev/null
   fi
   [ -z "$socket_dir" ] || rm -rf "$socket_dir"
+  # The ordinary Git fixture's shared CAS is beside .git and remains readonly
+  # after blob collection. Only test-owned directories need unlocking; never
+  # chmod shared payload files or follow links outside this temporary root.
+  find -P "$TEMP_ROOT" -type d -exec chmod u+w -- {} +
   rm -rf "$TEMP_ROOT"
   exit "$result"
 }

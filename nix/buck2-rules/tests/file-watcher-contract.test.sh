@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
+# Watcher observation requires the same daemon across source edits; this fixture
+# owns its shutdown without changing the gate class or physical cgroup.
+export BUCK2_GATE_WRAPPER_ACTIVE=1
 
 repo_root="${1:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd -P)}"
 work="$(mktemp -d)"
@@ -24,6 +27,7 @@ BUCK
 
 cd "$work"
 [[ "$(buck2 --isolation-dir file-watcher-contract targets //:)" == 'effect_utils//:before' ]]
+daemon_pid="$(buck2 --isolation-dir file-watcher-contract status | jq -er '.process_info.pid')"
 # Verify OS-level pruning, not merely Buck's event filtering after registration.
 ignored="$(jq -cn --arg root "$work" \
   '["query",$root,{"fields":["name"],"expression":["anyof",["dirname","buck-out"],["dirname",".devenv"]]}]' \
@@ -36,4 +40,5 @@ load("@prelude//:prelude.bzl", "native")
 native.export_file(name = "after", src = "payload.txt")
 BUCK
 [[ "$(buck2 --isolation-dir file-watcher-contract targets //:)" == 'effect_utils//:after' ]]
+[[ "$(buck2 --isolation-dir file-watcher-contract status | jq -er '.process_info.pid')" == "$daemon_pid" ]]
 echo 'Buck file watcher excludes build outputs and observes source edits'

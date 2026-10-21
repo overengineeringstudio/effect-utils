@@ -33,7 +33,8 @@
 #   - vitest as a devDependency in package.json
 #   - vitest.config.ts in the package root
 #   - optional `after = [ ... ]` for package-specific prerequisites
-#   - optional `installTask` overriding the aggregate's installer for direct execution
+#   - optional `installTask` overriding the default installer in direct and aggregate execution
+#   - optional `vitestRuntime = "bun"` when tests use Bun-native APIs (default: node)
 #
 # Provides:
 #   - test:run - Run all tests
@@ -112,6 +113,7 @@ let
     {
       name,
       extraArgs ? "",
+      runtime ? "node",
     }:
     ''
       set -euo pipefail
@@ -130,7 +132,9 @@ let
           "--outputFile.json=$_vitest_collection_dir/${taskFileStem name}.vitest.json"
         )
       ''}
-      "''${_otel_instr[@]}" "$(resolve_package_bin vitest vitest)" run --testTimeout 30000 --hookTimeout 30000 "''${_vitest_collection_args[@]}" ${extraArgs}
+      "''${_otel_instr[@]}" ${
+        lib.optionalString (runtime == "bun") "${pkgs.bun}/bin/bun --bun "
+      }"$(resolve_package_bin vitest vitest)" run --testTimeout 30000 --hookTimeout 30000 "''${_vitest_collection_args[@]}" ${extraArgs}
     '';
   vitestWatchExec = ''
     set -euo pipefail
@@ -180,6 +184,7 @@ let
     else
       [ ];
   packageTestExecutionName = index: pkg: "test:run:chain:${toString index}:${pkg.name}";
+  packageTestInstallerName = index: pkg: "test:run:install:${toString index}:${pkg.name}";
   packageTestChainTails = map (
     chain: packageTestExecutionName chain.index (lib.last chain.packages)
   ) (lib.filter (chain: chain.packages != [ ]) packageTestChains);
@@ -190,6 +195,7 @@ let
       exec = trace.exec "test:${pkg.name}" (vitestExec {
         name = "test:${pkg.name}";
         extraArgs = pkg.vitestArgs or "";
+        runtime = pkg.vitestRuntime or "node";
       });
       cwd = pkg.path;
       execIfModified = [
@@ -207,15 +213,24 @@ let
     };
   };
 
-  # Aggregate-only execution aliases carry per-chain ordering. Direct package
-  # tasks keep their own prerequisites and never pull another source task into
-  # their closure. Each alias uses the aggregate's one installer.
+  # Aggregate-only aliases order scoped installation after the previous test.
+  # A plain `after = [ installer previous ]` eagerly schedules every installer,
+  # defeating the chain bound and timing out publishers waiting on the root lock.
+  # Shared default installation stays shared; direct package tasks stay independent.
   mkPackageTestChain =
     chain:
     lib.imap0 (
       index: pkg:
       let
         execution = config.tasks.${packageTaskName pkg};
+        definition = lib.findFirst (candidate: candidate.name == pkg.name) pkg packages;
+        installerName = definition.installTask or installTask;
+        scopedInstaller = installerName != installTask;
+        installer = config.tasks.${installerName};
+        installAlias = packageTestInstallerName chain.index pkg;
+        previous = lib.optional (index > 0) (
+          packageTestExecutionName chain.index (builtins.elemAt chain.packages (index - 1))
+        );
       in
       {
         "${packageTestExecutionName chain.index pkg}" = {
@@ -225,13 +240,24 @@ let
           execIfModified = execution.execIfModified or [ ];
           # trace-audit-allow: inherit the final task's already-instrumented status; do not wrap twice.
           status = execution.status or null;
-          after = [
-            installTask
-          ]
-          ++ (pkg.after or [ ])
-          ++ lib.optional (index > 0) (
-            packageTestExecutionName chain.index (builtins.elemAt chain.packages (index - 1))
-          );
+          # Retain the direct chain edge: tail guards classify execution aliases,
+          # while the installer edge separately bounds publication admission.
+          after =
+            if scopedInstaller then
+              [ installAlias ] ++ lib.remove installerName (execution.after or [ ]) ++ previous
+            else
+              (execution.after or [ ]) ++ previous;
+        };
+      }
+      // lib.optionalAttrs scopedInstaller {
+        "${installAlias}" = {
+          inherit (installer) description exec;
+          cwd = installer.cwd or null;
+          env = installer.env or { };
+          execIfModified = installer.execIfModified or [ ];
+          # trace-audit-allow: reuse the final installer's instrumented command and status.
+          status = installer.status or null;
+          after = (installer.after or [ ]) ++ previous;
         };
       }
     ) chain.packages;

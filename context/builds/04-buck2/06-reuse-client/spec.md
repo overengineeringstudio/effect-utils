@@ -52,9 +52,9 @@ Tailnet hosts resolve their own raw `username:password` credential into
 `BUCK2_PRIVATE_CACHE_WRITE_BASIC_AUTH` before starting the native executable. The private writer
 also declares `BUCK2_PRIVATE_CACHE_ADDRESS=grpc://<private-host>:<port>`.
 Its overlay sets all three RE client addresses, disables TLS for the direct
-private listener, permits root-authorized uploads, retains the trusted private
-archive origin, and references the Basic header variable. Credential values
-never enter the config file; the daemon expands the variable at startup.
+private listener, permits root-authorized uploads, and references the Basic
+header variable. Credential values never enter the config file; the daemon
+expands the variable at startup. Archive origins do not select the read path.
 The public read-only override takes precedence over either credential.
 No publisher credential is a fallback for a host writer.
 
@@ -91,13 +91,16 @@ audited compute/verdict action  -> cache_hermetic executor -> root cache posture
 ```
 
 **BUILD.BUCK.REUSE-DQ04 (resolved):** `pnpm_extract`, `pnpm_store_entry`,
-`pnpm_store_scc`, `pnpm_store_view`, and `package_tree` execute locally without
-remote-cache lookup or upload. Their rules retain `cache_guarded_rule` but do
+`pnpm_store_scc`, `pnpm_store_view`, `package_tree`, and `runtime_module` execute
+locally without remote-cache lookup or upload. Their rules retain `cache_guarded_rule` but do
 not admit the `cache_hermetic` constraint; their actions prohibit cache uploads.
 The default execution platform has `remote_cache_enabled = False` and
 `allow_cache_uploads = False`, independently of the root writer posture.
 `local_only` alone is insufficient: it restricts execution, not remote-cache
 reads. Compute actions such as `tsgo_emit` retain audited remote-cache admission.
+`runtime_module` dereferences each declared runtime source file into an ordinary
+artifact; these cheap copies are excluded from the proof and evidence denominator
+just like tree/store assembly, without admitting other local compute actions.
 
 The policy favors recomputing cheap filesystem projections over transferring
 their expanded trees. The Linux test-lane bootstrap in
@@ -243,7 +246,33 @@ Remote endpoint outcomes expire after five seconds. Complete successful
 read-only invocations can bypass the JavaScript launcher within the remaining
 probe lifetime; the key includes config contents, arguments, working directory
 and exported environment. Writer credentials, includes and external mode files
-bypass that fast path.
+bypass that fast path. Inside gate-slot, an outer shell retains cleanup ownership
+even when arguments are cached: it waits for the native client and stops only
+the selected idle daemon, leaving all local build work in the job's cgroup.
+The [wrapper lifecycle contract](../../../../README.md) defines signal handling,
+concurrent-client protection and the residual status-to-kill race.
+
+Launcher diagnostics, including watcher migration and admission helpers, use
+`node:fs` synchronous descriptor writes rather than Bun's process streams.
+At startup the launcher captures fd 0/1/2 file status flags through
+`fcntl(F_GETFL)`, then restores and reads them back immediately before native
+`execve`. A header-free C shim exposes fixed-arity get/set functions: calling
+variadic `fcntl` directly through a fixed-arity FFI binding is not ABI-correct
+on macOS arm64. Nix builds the shared library once and fixes its immutable
+installed path in the packaged launcher. Packaged invocations only `dlopen`
+the library; no compiler or host SDK is needed at runtime. Source execution
+loads the same library from the devenv-declared `BUCK2_STDIO_LIBRARY` path,
+avoiding runtime compiler and libc linker discovery during bootstrap.
+Readback compares status options but excludes macOS's kernel-only
+`FWASWRITTEN` bookkeeping bit, which changes when a descriptor is written and
+cannot be reset with `F_SETFL`; raw flags are still captured and restored.
+
+Closed inherited descriptors are skipped. A protection load or restoration
+failure attempts one best-effort synchronous warning and still executes native
+Buck, even if inherited stderr is closed or cannot accept the warning.
+Synchronous diagnostics are the primary fix and this defence must not block
+builds. The launcher preserves intentionally non-blocking caller descriptors
+rather than unconditionally forcing blocking mode.
 
 RE client configuration alone opts into admission. A missing
 `remote_cache_enabled` inherits the execution policy's enabled default;
@@ -296,13 +325,21 @@ to describe omitted **representatives**, not missing full-artifact rows.
 Populate and replay invocations retain proof context labels; repeated native
 logs are deduplicated by build ID, preserving the first context.
 Summary and per-invocation `excludedByDesign` contain
-`{ "local-materialization-policy": <count> }`. Native `counts` still retain
-every observed outcome; the exclusion counters are a separate policy axis,
-not an alternative execution-kind mapping.
+`{ "local-materialization-policy": <count>, "darwin-unsandboxed": <count> }`.
+Darwin TS execution uses the named exclusion defined by
+[the execution policy](../05-execution/spec.md#typescript-containment-and-platform-admission-buildbuck-r04):
+it runs locally but cannot enter shared-cache or hermetic shared immutable-store
+admission. Worktree-local editor snapshots remain reusable on Darwin; this
+exclusion does not alter existing npm/archive or Nix product boundaries.
+Native `counts` still retain every observed outcome; the exclusion counters
+are a separate policy axis, not an alternative execution-kind mapping.
 Retained schema-1 full artifacts without policy fields derive exclusions from
 their complete category rows. Older bounded summaries may omit
 `excludedByDesign`: their sampled rows cannot reconstruct a complete total,
 so absence means unavailable, not zero. New collectors always emit the counters.
+Retained counters predating Darwin-specific categories decode a missing
+`darwin-unsandboxed` key as zero; complete artifact rows must agree with that
+count. New collectors always emit both keys.
 
 Admission evidence is independent of native execution evidence. Before writer
 fail-closed handling, every direct invocation that probes cache appends a UTF-8
@@ -313,7 +350,7 @@ JSONL row to `${CI_BUCK2_CACHE_EVIDENCE_PATH}.admission.jsonl`, with the authori
 {
   "invocationId": "9552ef6c-294e-4a51-9100-9006d6f2c343",
   "admissionFallbacks": { "reapi": 0, "archiveOrigin": 0 },
-  "admissionRetrySuccesses": { "reapi": 0, "archiveOrigin": 1 }
+  "admissionRetrySuccesses": { "reapi": 1, "archiveOrigin": 0 }
 }
 ```
 
@@ -327,18 +364,37 @@ trace ID, without imposing version or variant bits.
 Evidence-enabled invocations bypass the native-launch argument fast path so it
 cannot reuse a prior UUID or skip admission counters. The compact summary adds
 `admissionInvocations` (these rows, deduplicated by invocation UUID),
-`admissionFallbacks` and `admissionRetrySuccesses` (endpoint-wise sums across
-those rows). Each endpoint counter is 0 or 1 per invocation: healthy first
+`admissionRetrySuccesses` (endpoint-wise sums across those rows), and
+`admissionFallbacks` (endpoint-wise sums of admission decisions). Current
+invocations probe REAPI only; archive acquisition does not participate in
+endpoint admission. Retained `archiveOrigin` fields describe historical
+archive admission and acquisition evidence, not an active archive read path.
+When historical acquisition reason counts are present, the historical
+`admissionFallbacks.archiveOrigin` aggregate also includes those counts.
+Each probed endpoint counter in an admission row is 0 or 1: healthy first
 attempts have zeroes, failure of both attempts records one fallback, and a
-successful second attempt records one retry success without a fallback. A reused
-cached failure still records one fallback for that invocation; reused cached
-health records no retry success. An endpoint not probed has zeroes. These are
-admission decisions, not action-cache misses or native upload failures, and do
-not enter the warm99 action denominator.
+successful second attempt records one retry success without a fallback. A
+reused cached failure still records one fallback for that invocation; reused
+cached health records no retry success. An endpoint not probed has zeroes.
+Admission rows describe admission decisions, not action-cache misses or
+native upload failures, and do not enter the warm99 action denominator.
 The sidecar survives devenv task boundaries and is consumed into the compact
 summary, not uploaded as a separate raw artifact. Collector finalization writes
 fallback counts and invocation IDs to `GITHUB_STEP_SUMMARY`; the existing stderr
 warning remains available at invocation time.
+
+Standalone pnpm acquisition uses native Deferred download actions rather than
+`pnpm_archive` commands. These actions verify the canonical registry download
+against its declared SHA-256 and byte size; they are not RE CAS reads or
+command-action cache hits. Warm materialized archives need no transfer, while
+explicit fresh roots still fetch registry bytes. Extraction and assembly remain
+under the local materialization policy above.
+
+Historical archive-command evidence can contain `archive-origin-fallback`
+diagnostics with reasons `not-found`, `headers-timeout`, `connection-error`,
+and `server-error`, and projected `archiveOriginFallbacks` reason counts.
+Those describe past command-based acquisitions, not a current runtime
+fallback contract. Native downloads emit no such repository-owned diagnostics.
 
 The summary adds `cacheOutcomeMapping: "effect-utils/compact-cache-outcome/v1"`
 and `actionsArtifact: { name, rows, sha256, bytes, uncompressedBytes, complete,
@@ -371,7 +427,7 @@ Missing fields remain explicit `null`; they do not suppress a row.
 | Outcomes              | `outcome` and `cacheOutcome` use the named compact mapping; `uploadOutcome` is `uploaded`, `failed` (native values 9–15), or `not-uploaded` |
 | Times                 | `startedAt`, `completedAt`, `endTime` (same as completedAt), `uploadCompletedAt`                                                            |
 | `commandAction`       | Native action kind is `Run`; non-command actions are retained but do not form a command-cache denominator                                   |
-| `exclusionReason`     | Repository-owned exact reason `local-materialization-policy` for the five policy categories; `null` otherwise                               |
+| `exclusionReason`     | Repository-owned exact reason `local-materialization-policy` for the policy categories; `null` otherwise                                    |
 
 All times are integer Unix milliseconds. The pinned log decoder emits native
 timestamps as `[seconds,nanoseconds]`; conversion floors sub-millisecond time.
@@ -555,7 +611,14 @@ on B. It uses the shared local-materialization classification to exempt cheap
 tree/store assembly without dropping those actions from retained evidence.
 `scripts/buck2-remote-cache-proof.sh --assert-context-b-build <native-log.jsonl>`
 replays the same build assertions without contacting the cache or mutating proof
-sources.
+sources. Its integration suite gives each replay its own test case and awaits
+the subprocess exit and output streams. The runner's normal timeout guards
+hangs; replay latency is not a production deadline, and a case matrix does not
+share a single wall-clock budget. Replays run in isolated process groups;
+timeout cleanup kills the group and waits for all descendants to be reaped
+before deleting the event-log fixture. A two-second reaping hang guard fails
+cleanup with process-group diagnostics and preserves fixtures if the group
+does not disappear.
 
 ### Lane budget measurements
 

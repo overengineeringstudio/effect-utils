@@ -4,21 +4,25 @@ import opentuiPkg from './context/opentui/package.json.genie.ts'
 import { packageJson } from './genie/internal.ts'
 import agentSessionIngestPkg from './packages/@overeng/agent-session-ingest/package.json.genie.ts'
 import aiGatewayConformancePkg from './packages/@overeng/ai-gateway-conformance/package.json.genie.ts'
+import aiGatewayEdgePkg from './packages/@overeng/ai-gateway-edge/package.json.genie.ts'
 import buck2ToolsPkg from './packages/@overeng/buck2-tools/package.json.genie.ts'
 import ciToolsPkg from './packages/@overeng/ci-tools/package.json.genie.ts'
 import contentAddressPkg from './packages/@overeng/content-address/package.json.genie.ts'
+import dataGraphPkg from './packages/@overeng/data-graph/package.json.genie.ts'
 import devbarPkg from './packages/@overeng/devbar/package.json.genie.ts'
 import effectAiClaudeCliPkg from './packages/@overeng/effect-ai-claude-cli/package.json.genie.ts'
 import effectAiGatewayPkg from './packages/@overeng/effect-ai-gateway/package.json.genie.ts'
 import effectDistributedLockPkg from './packages/@overeng/effect-distributed-lock/package.json.genie.ts'
+import effectIrohPkg from './packages/@overeng/effect-iroh/package.json.genie.ts'
 import effectPathPkg from './packages/@overeng/effect-path/package.json.genie.ts'
 import effectReactPkg from './packages/@overeng/effect-react/package.json.genie.ts'
 import effectRpcExplorerReactPkg from './packages/@overeng/effect-rpc-explorer-react/package.json.genie.ts'
 import effectRpcExplorerPkg from './packages/@overeng/effect-rpc-explorer/package.json.genie.ts'
+import effectRpcObserverPkg from './packages/@overeng/effect-rpc-observer/package.json.genie.ts'
 import effectRpcTanstackBasicPkg from './packages/@overeng/effect-rpc-tanstack/examples/basic/package.json.genie.ts'
 import effectRpcTanstackPkg from './packages/@overeng/effect-rpc-tanstack/package.json.genie.ts'
-import effectRustPkg from './packages/@overeng/effect-rust/package.json.genie.ts'
 import effectRustFixtureConsumerPkg from './packages/@overeng/effect-rust-fixture-consumer/package.json.genie.ts'
+import effectRustPkg from './packages/@overeng/effect-rust/package.json.genie.ts'
 import effectSchemaFormAriaPkg from './packages/@overeng/effect-schema-form-aria/package.json.genie.ts'
 import effectSchemaFormPkg from './packages/@overeng/effect-schema-form/package.json.genie.ts'
 import genieSmalltalkPkg from './packages/@overeng/genie-smalltalk/package.json.genie.ts'
@@ -27,6 +31,7 @@ import ghCiUtilsPkg from './packages/@overeng/gh-ci-utils/package.json.genie.ts'
 import kdlEffectPkg from './packages/@overeng/kdl-effect/package.json.genie.ts'
 import kdlPkg from './packages/@overeng/kdl/package.json.genie.ts'
 import megarepoPkg from './packages/@overeng/megarepo/package.json.genie.ts'
+import metersPkg from './packages/@overeng/meters/package.json.genie.ts'
 import notionCliPkg from './packages/@overeng/notion-cli/package.json.genie.ts'
 import notionCorePkg from './packages/@overeng/notion-core/package.json.genie.ts'
 import notionDatasourceSyncPkg from './packages/@overeng/notion-datasource-sync/package.json.genie.ts'
@@ -36,13 +41,14 @@ import notionMdPkg from './packages/@overeng/notion-md/package.json.genie.ts'
 import notionPropertyWritePkg from './packages/@overeng/notion-property-write/package.json.genie.ts'
 import notionReactPkg from './packages/@overeng/notion-react/package.json.genie.ts'
 import npmReleasePkg from './packages/@overeng/npm-release/package.json.genie.ts'
-import outlinePkg from './packages/@overeng/outline/package.json.genie.ts'
 import otelBrowserPkg from './packages/@overeng/otel-browser/package.json.genie.ts'
 import otelContractPkg from './packages/@overeng/otel-contract/package.json.genie.ts'
+import outlinePkg from './packages/@overeng/outline/package.json.genie.ts'
 import oxcConfigPkg from './packages/@overeng/oxc-config/package.json.genie.ts'
 import ptyEffectPkg from './packages/@overeng/pty-effect/package.json.genie.ts'
 import reactInspectorPkg from './packages/@overeng/react-inspector/package.json.genie.ts'
 import restateEffectPkg from './packages/@overeng/restate-effect/package.json.genie.ts'
+import rpcDevtoolsPkg from './packages/@overeng/rpc-devtools/package.json.genie.ts'
 import stylexTokensPkg from './packages/@overeng/stylex-tokens/package.json.genie.ts'
 import tuiCorePkg from './packages/@overeng/tui-core/package.json.genie.ts'
 import tuiReactPkg from './packages/@overeng/tui-react/package.json.genie.ts'
@@ -55,17 +61,23 @@ import utilsPkg from './packages/@overeng/utils/package.json.genie.ts'
 export const rootWorkspacePackages = [
   agentSessionIngestPkg,
   aiGatewayConformancePkg,
+  aiGatewayEdgePkg,
   buck2ToolsPkg,
   contentAddressPkg,
+  dataGraphPkg,
   devbarPkg,
+  metersPkg,
   effectSocketPkg,
   effectAiClaudeCliPkg,
   effectAiGatewayPkg,
   effectDistributedLockPkg,
+  effectIrohPkg,
   effectPathPkg,
   effectReactPkg,
   effectRpcExplorerPkg,
   effectRpcExplorerReactPkg,
+  effectRpcObserverPkg,
+  rpcDevtoolsPkg,
   effectRpcTanstackBasicPkg,
   effectRpcTanstackPkg,
   effectRustPkg,

@@ -97,6 +97,10 @@ every row.
   fire-and-forget emitters, `--drain-idle <ms>` waits until no export arrives for
   one `<ms>` window (capped at 50 windows → at most `50 × <ms>`), never
   unbounded. Each export is written durably before it is acked.
+- **Live inspection:** `inspect` takes a shared file lock while reading a snapshot;
+  the receiver holds an exclusive lock across each complete NDJSON record write.
+  An in-flight append cannot appear as corrupt JSON. Already committed malformed
+  or truncated records still fail with exit `65`; no capture bytes are discarded.
 - **Exit codes:** `run` preserves the child's code (signal deaths → `128+signo`);
   otelite's own failures use `sysexits.h` (`64` usage, `65` decode, `66` missing
   source, `73` out-dir, `74` bind/shared-out, `75` drain-idle timeout). stdout

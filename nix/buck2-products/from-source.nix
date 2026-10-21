@@ -39,9 +39,6 @@ let
   releaseProfileScript = pkgs.writeText "cargo-release-profile.py" (
     builtins.readFile ../workspace-tools/lib/cargo-release-profile.py
   );
-  # Build identity for projections rendered with `cliBuildStamp`: their Rust rules read
-  # `CLI_BUILD_STAMP` from `build_identity.cli_build_stamp`, which is empty unless set here.
-  cliBuildStamp = product.cliBuildStamp or null;
   source =
     if sourcePaths != null then
       lib.fileset.toSource {
@@ -85,6 +82,23 @@ let
         );
       };
   sourceDigest = builtins.hashString "sha256" (toString source);
+  # Rust projections rendered with `cliBuildStamp` read this JSON through
+  # `build_identity.cli_build_stamp`. Scoped native recipes have no Git
+  # provenance: default to their existing source identity, never repository HEAD.
+  # Explicit stamps still belong to the caller's selected identity policy.
+  cliBuildStamp =
+    product.cliBuildStamp or (
+      if sourcePaths != null && product.kind == "native" && cargoWorkspaceRoot != null then
+        builtins.toJSON {
+          type = "nix";
+          version = product.version;
+          rev = builtins.substring 0 7 sourceDigest;
+          # This is an immutable source projection, not a Git cleanliness claim.
+          dirty = false;
+        }
+      else
+        null
+    );
 
   target = product.target;
   productName = product.name;
@@ -228,17 +242,31 @@ let
           rust_profile_args+=(--config "$setting")
         done <<< "$release_settings"
       ''}
+      # Linux TS actions run Bubblewrap nested in this sandbox. Its EPERM at
+      # namespace setup is a host restriction; name it without changing the
+      # failure. Stderr is streamed unchanged and also scanned after failure.
+      buck_build() {
+        local status
+        set +e
+        { ${buck2}/bin/buck2 ${buckGlobalArgs} build ${buckBuildArgs} "''${rust_profile_args[@]}" "$@" 2>&1 1>&3 3>&- | tee -a "$TMPDIR/buck-build-stderr.log" >&2; } 3>&1
+        status="''${PIPESTATUS[0]}"
+        set -e
+        if [ "$status" != 0 ] && grep -qE 'bwrap: .*(pivot_root|RTM_NEWADDR).*Operation not permitted' "$TMPDIR/buck-build-stderr.log"; then
+          echo 'buck2-products: nested user namespaces are restricted on this host (e.g. Ubuntu 24.04 AppArmor `kernel.apparmor_restrict_unprivileged_userns=1` or an unprivileged container); enable them or substitute this package from the binary cache' >&2
+        fi
+        return "$status"
+      }
 
-      artifact="$(${buck2}/bin/buck2 ${buckGlobalArgs} build ${buckBuildArgs} "''${rust_profile_args[@]}" ${lib.escapeShellArg target})"
+      artifact="$(buck_build ${lib.escapeShellArg target})"
       test -f "$artifact"
       cp "$artifact" ${lib.escapeShellArg outputName}
       ${lib.optionalString hasDescriptor ''
-        descriptor="$(${buck2}/bin/buck2 ${buckGlobalArgs} build ${buckBuildArgs} "''${rust_profile_args[@]}" ${lib.escapeShellArg "${target}[descriptor]"})"
+        descriptor="$(buck_build ${lib.escapeShellArg "${target}[descriptor]"})"
         test -f "$descriptor"
         jq -cS . "$descriptor" > descriptor.json
       ''}
       ${lib.optionalString (runtimeClosureTarget != null) ''
-        runtime_closure="$(${buck2}/bin/buck2 ${buckGlobalArgs} build ${buckBuildArgs} "''${rust_profile_args[@]}" ${lib.escapeShellArg runtimeClosureTarget})"
+        runtime_closure="$(buck_build ${lib.escapeShellArg runtimeClosureTarget})"
         test -f "$runtime_closure/descriptor.json"
         cp -R "$runtime_closure" runtime-closure
       ''}
@@ -304,6 +332,60 @@ let
       inherit productName;
       productKind = product.kind;
       expectedProductSha256 = expectedSha256;
+      # The only source JavaScript import entry point. Consumer facts are
+      # static; no descriptor or provenance output is read during evaluation.
+      importJavaScript =
+        {
+          expectedProductKind,
+          expectedProductName,
+          expectedModulePath,
+          expectedRuntimeKind,
+          expectedRuntimeContract,
+          expectedRuntimeContractVersion,
+          expectedExternalCapabilities,
+          expectedExternalModules,
+          expectedProducerCommit ? producerCommit,
+          checkProducerCommit ? producerCommit != null,
+          binaryName ? null,
+          environment ? { },
+          generateCompletions ? binaryName != null,
+          nativeNodePackages ? [ ],
+          pathPackages ? [ ],
+          smokeTestArgs ? null,
+        }:
+        assert lib.assertMsg (
+          product.kind == "javascript"
+        ) "buck2-products: importJavaScript requires a JavaScript product";
+        (import ../workspace-tools/lib/javascript-product-import.nix { inherit pkgs; }) {
+          inherit
+            expectedProductKind
+            expectedProductName
+            expectedExternalCapabilities
+            expectedExternalModules
+            binaryName
+            environment
+            generateCompletions
+            nativeNodePackages
+            pathPackages
+            smokeTestArgs
+            ;
+          artifact = "${sourceProduct}/${outputName}";
+          descriptor = "${sourceProduct}/descriptor.json";
+          sourceImport = {
+            product = sourceProduct;
+            hasRuntimeClosure = runtimeClosureTarget != null;
+            facts = {
+              inherit
+                expectedModulePath
+                expectedRuntimeKind
+                expectedRuntimeContract
+                expectedRuntimeContractVersion
+                expectedProducerCommit
+                checkProducerCommit
+                ;
+            };
+          };
+        };
     };
   };
 in

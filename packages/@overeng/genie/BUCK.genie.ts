@@ -54,6 +54,7 @@ export const buck2TypeScriptAdmission = {
         'src/runtime/github-workflow/ci-runtime-scripts.unit.test.ts',
         'src/runtime/github-workflow/ci-workflow-helpers.unit.test.ts',
         'src/runtime/package-json/package-json.unit.test.ts',
+        'src/runtime/peer-facade-imports.unit.test.ts',
         'src/runtime/weaver/rust-constants.unit.test.ts',
       ],
     },
@@ -72,8 +73,8 @@ ${projection.stringify(context)}
 
 package_tree_product_executable(
     name = "typescript-api-server-product-executable",
-    package_tree = ":package_tree",
-    package_anchor = "node_modules/typescript",
+    dependency_view = "//buck2/dependencies:external_view_packages_overeng_genie_b7534483be10",
+    package_anchor = "typescript",
     executable_paths = {
         "aarch64-darwin-darwin": "@typescript/typescript-darwin-arm64/lib/tsc",
         "aarch64-linux-glibc": "@typescript/typescript-linux-arm64/lib/tsc",

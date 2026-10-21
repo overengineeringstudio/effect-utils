@@ -31,6 +31,7 @@ import {
   type GenieMode,
 } from '../core/schema.ts'
 import { GenieApp } from './app.ts'
+import { githubSettingsCommand } from './github-repo-settings/cli.ts'
 import { GenieView } from './view.tsx'
 
 export {
@@ -38,6 +39,7 @@ export {
   GenieFileError,
   GenieGenerationFailedError,
   GenieImportError,
+  GenieRuntimeTranspilerCacheError,
 } from '../core/errors.ts'
 
 /** Bridge GenieEvent stream to TUI dispatch. */
@@ -368,4 +370,4 @@ export const genieCommand = Cli.Command.make(
 
     return handler
   },
-)
+).pipe(Cli.Command.withSubcommands([githubSettingsCommand]))

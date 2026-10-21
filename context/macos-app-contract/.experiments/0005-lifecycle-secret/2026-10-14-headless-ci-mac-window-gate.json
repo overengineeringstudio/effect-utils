@@ -1,0 +1,789 @@
+{
+  "host": "headless CI Mac",
+  "commandShape": "ssh headless-ci-mac nice -n 19 python3 0005-lifecycle-secret/run.py",
+  "verdict": "FAIL",
+  "error": "CGWindowList unavailable; fail closed",
+  "argv": [],
+  "ciChecks": [
+    {
+      "time": 1791938988.662384,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791939003.714417,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791939018.767946,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791939033.813323,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791939048.953218,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791939063.996864,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791939079.056569,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791939094.113718,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791939109.1622899,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791939124.2266612,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791939139.2777689,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791939154.343002,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791939169.398008,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791939184.45475,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791939199.512317,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791939214.587651,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791939229.6535192,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791939244.7205591,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791939259.7802088,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791939274.842554,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791939289.903858,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791939304.9639199,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791939320.017422,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791939335.0703208,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791939350.1275709,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791939365.176275,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791939380.226165,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791939395.282006,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791939410.3355231,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791939425.384486,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791939440.434931,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791939455.506801,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791939470.55762,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791939485.6319418,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791939500.678883,
+      "activeJobCount": 3
+    },
+    {
+      "time": 1791939515.735351,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791939530.8104389,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791939545.863086,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791939560.9097521,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791939575.974974,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791939591.0308192,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791939606.075995,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791939621.143317,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791939636.212587,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791939651.267128,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791939666.329911,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791939681.404292,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791939696.462389,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791939711.517288,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791939726.5646799,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791939741.620689,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791939756.688889,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791939771.746912,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791939786.798731,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791939801.853377,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791939816.913347,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791939831.9731169,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791939847.028914,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791939862.084745,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791939877.1537979,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791939892.203368,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791939907.256309,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791939922.3050518,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791939937.365636,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791939952.4177458,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791939967.46877,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791939982.521315,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791939997.568924,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791940012.627724,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791940027.68373,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791940042.7390552,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791940057.7897542,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791940072.8388748,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791940087.892887,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791940102.9337459,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791940117.974116,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791940133.0278358,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791940148.088147,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791940163.135699,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791940178.176341,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791940193.2359412,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791940208.289053,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791940223.339073,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791940238.3886201,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791940253.444919,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791940268.491817,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791940283.538476,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791940298.603452,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791940313.667101,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791940328.73053,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791940343.779915,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791940358.829368,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791940373.894206,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791940388.961751,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791940404.0108202,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791940419.061014,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791940434.130961,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791940449.182166,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791940464.274107,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791940479.324973,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791940494.390471,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791940509.438874,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791940524.5138419,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791940539.565291,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791940554.625603,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791940569.6803148,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791940584.76143,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791940599.814948,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791940614.878386,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791940629.957076,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791940645.002787,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791940660.042915,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791940675.090077,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791940690.1379871,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791940705.188576,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791940720.229752,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791940735.2899342,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791940750.346716,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791940765.3931851,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791940780.441798,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791940795.4904928,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791940810.536875,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791940825.587788,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791940840.653001,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791940855.693061,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791940870.740312,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791940885.79834,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791940900.861917,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791940915.914546,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791940930.9637508,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791940946.025283,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791940961.101758,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791940976.1541069,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791940991.21475,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791941006.321953,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791941021.403711,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791941036.4663181,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791941051.515917,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791941066.595605,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791941081.652954,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791941096.6964722,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791941111.7477372,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791941126.820438,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791941141.867002,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791941156.920089,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791941171.970725,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791941187.0361102,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791941202.088769,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791941217.1608682,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791941232.225847,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791941247.294028,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791941262.357357,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791941277.431534,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791941292.495986,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791941307.5557818,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791941322.62205,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791941337.7064698,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791941352.780596,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791941367.848598,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791941382.9064388,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791941397.963634,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791941413.0648599,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791941428.1286201,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791941443.191851,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791941458.253931,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791941473.315763,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791941488.40501,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791941503.4688919,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791941518.539762,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791941533.6036851,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791941548.669628,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791941563.729721,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791941578.7852101,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791941593.843293,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791941608.920208,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791941623.98863,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791941639.0467,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791941654.106167,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791941669.16399,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791941684.230314,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791941699.306505,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791941714.3722398,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791941729.4623702,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791941744.5331042,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791941759.608861,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791941774.682595,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791941789.785687,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791941804.858968,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791941819.917113,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791941834.980791,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791941850.061014,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791941865.134531,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791941880.202849,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791941895.265759,
+      "activeJobCount": 2
+    },
+    {
+      "time": 1791941910.3438568,
+      "activeJobCount": 0
+    }
+  ]
+}

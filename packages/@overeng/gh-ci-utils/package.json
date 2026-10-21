@@ -21,13 +21,15 @@
   "type": "module",
   "private": true,
   "exports": {
-    ".": "./src/mod.ts"
+    ".": "./src/mod.ts",
+    "./node/config": "./src/node/Config.ts",
+    "./node/github-client": "./src/node/GitHubClient.ts"
   },
   "dependencies": {
-    "@effect/atom-react": "4.0.0",
-    "@effect/opentelemetry": "4.0.0",
-    "@effect/platform-node": "4.0.0",
-    "@effect/vitest": "4.0.0",
+    "@effect/atom-react": "4.0.3",
+    "@effect/opentelemetry": "4.0.3",
+    "@effect/platform-node": "4.0.3",
+    "@effect/vitest": "4.0.3",
     "@opentui/core": "0.5.11",
     "@opentui/react": "0.5.11",
     "@overeng/ci-tools": "workspace:../ci-tools",
@@ -40,12 +42,13 @@
     "@types/react": "19.2.18",
     "@types/react-reconciler": "0.33.0",
     "@vitest/browser-playwright": "5.0.3",
-    "effect": "4.0.0",
+    "effect": "4.0.3",
     "react": "19.2.8",
     "react-dom": "19.2.8",
     "react-reconciler": "0.33.0",
     "storybook": "10.6.0",
-    "vitest": "5.0.3"
+    "vitest": "5.0.3",
+    "yauzl": "3.4.0"
   },
   "dependenciesMeta": {
     "@overeng/tui-react": {
@@ -53,8 +56,8 @@
     }
   },
   "devDependencies": {
-    "@effect/platform-node": "4.0.0",
-    "@effect/vitest": "4.0.0",
+    "@effect/platform-node": "4.0.3",
+    "@effect/vitest": "4.0.3",
     "@opentui/core": "0.5.11",
     "@opentui/react": "0.5.11",
     "@overeng/utils-storybook": "workspace:^",
@@ -64,8 +67,9 @@
     "@types/node": "26.5.0",
     "@types/react": "19.2.18",
     "@types/react-reconciler": "0.33.0",
+    "@types/yauzl": "3.4.0",
     "@vitejs/plugin-react": "6.1.1",
-    "effect": "4.0.0",
+    "effect": "4.0.3",
     "react": "19.2.8",
     "react-dom": "19.2.8",
     "react-reconciler": "0.33.0",
@@ -75,10 +79,10 @@
     "vitest": "5.0.3"
   },
   "peerDependencies": {
-    "@effect/platform-node": "^4.0.0",
+    "@effect/platform-node": "^4.0.3",
     "@opentui/core": "^0.5.11",
     "@opentui/react": "^0.5.11",
-    "effect": "^4.0.0",
+    "effect": "^4.0.3",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "react-reconciler": "^0.33.0"
@@ -89,7 +93,9 @@
       "gh-ci-utils": "./dist/bin/gh-ci-utils.js"
     },
     "exports": {
-      ".": "./dist/src/mod.js"
+      ".": "./dist/src/mod.js",
+      "./node/github-client": "./dist/src/node/GitHubClient.js",
+      "./node/config": "./dist/src/node/Config.js"
     }
   }
 }

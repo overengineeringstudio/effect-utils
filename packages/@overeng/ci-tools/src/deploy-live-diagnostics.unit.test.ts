@@ -2,63 +2,83 @@ import { describe, expect, it } from 'vitest'
 
 import { formatLiveDeployFailure } from './deploy-live-diagnostics.ts'
 
-// Synthetic child output: no provider, network, or credentials are needed.
+// Synthetic reports: no provider, network, or credentials are needed.
 describe('live deploy failure diagnostics', () => {
-  it('retains the child failure and workflow report instead of only the exit status', () => {
+  it('publishes only known classifications and numeric HTTP statuses', () => {
     const diagnostic = formatLiveDeployFailure({
       status: 1,
-      stdout: 'Preparing static output',
-      stderr: 'ProviderOperationFailed: deployment rejected',
-      report:
-        'WORKFLOW_REPORT_V1: {"status":"failure","data":{"errorKind":"ProviderOperationFailed"}}',
-      secretValues: [],
+      report: `WORKFLOW_REPORT_V1: ${JSON.stringify({
+        summary: 'private provider output',
+        data: {
+          target: 'private-project',
+          errorKind: 'ProviderOperationFailed',
+          operation: 'deploy',
+          diagnostics: { apiStatus: '403', httpStatus: 503, stderr: 'private child output' },
+        },
+      })}`,
     })
 
-    expect(diagnostic).toContain('ci-tools exit status: 1')
-    expect(diagnostic).toContain('stdout:\nPreparing static output')
-    expect(diagnostic).toContain('stderr:\nProviderOperationFailed: deployment rejected')
-    expect(diagnostic).toContain('workflow report:\nWORKFLOW_REPORT_V1:')
-    expect(diagnostic).toContain('"errorKind":"ProviderOperationFailed"')
+    expect(JSON.parse(diagnostic)).toEqual({
+      exitStatus: 1,
+      errorKind: 'ProviderOperationFailed',
+      operation: 'deploy',
+      apiStatus: 403,
+      httpStatus: 503,
+    })
   })
 
-  it('redacts credentials, account identifiers, and secret-bearing URLs in every channel', () => {
-    const diagnostic = formatLiveDeployFailure({
+  it.each([
+    String.raw`https:\/\/example.invalid\/deploy?secret=escaped-url-sentinel`,
+    String.raw`\u0075\u006e\u0069\u0063\u006f\u0064\u0065-sentinel`,
+    Buffer.from('base64-secret-sentinel').toString('base64'),
+    'split-secret\nsentinel',
+    'quoted-"secret"-sentinel',
+  ])('omits encoded or split private data without inspecting its representation: %j', (privateValue) => {
+    const input = {
       status: 1,
-      stdout: 'token-sentinel project-sentinel https://user:password@example.invalid/deploy',
-      stderr:
-        'Authorization: Bearer unlisted-token\nhttps://example.invalid/?x-vercel-protection-bypass=encoded%2Fsecret',
-      report:
-        'WORKFLOW_REPORT_V1: {"message":"bypass-sentinel","url":"https://example.invalid/#private-fragment"}',
-      secretValues: ['token-sentinel', 'project-sentinel', 'bypass-sentinel', ''],
-    })
-
-    for (const privateValue of [
-      'token-sentinel',
-      'project-sentinel',
-      'bypass-sentinel',
-      'unlisted-token',
-      'user:password',
-      'encoded%2Fsecret',
-      'private-fragment',
-      'https://',
-    ]) {
-      expect(diagnostic).not.toContain(privateValue)
+      stdout: privateValue,
+      stderr: privateValue,
+      report: `WORKFLOW_REPORT_V1: ${JSON.stringify({
+        summary: privateValue,
+        links: [{ url: privateValue }],
+        data: {
+          errorKind: 'ProviderOperationFailed',
+          operation: 'deploy',
+          target: privateValue,
+          diagnostics: { stdout: privateValue, stderr: privateValue, code: privateValue },
+        },
+      })}`,
     }
-    expect(diagnostic).toContain('[REDACTED URL]')
-    expect(diagnostic).toContain('Authorization: Bearer [REDACTED]')
-  })
+    const diagnostic = formatLiveDeployFailure(input)
 
-  it('explains a missing report without hiding a child terminated by a signal', () => {
-    const diagnostic = formatLiveDeployFailure({
-      status: null,
-      stdout: '',
-      stderr: 'child terminated',
-      report: undefined,
-      secretValues: [],
+    expect(JSON.parse(diagnostic)).toEqual({
+      exitStatus: 1,
+      errorKind: 'ProviderOperationFailed',
+      operation: 'deploy',
     })
-
-    expect(diagnostic).toContain('ci-tools exit status: null')
-    expect(diagnostic).toContain('child terminated')
-    expect(diagnostic).toContain('workflow report:\n(not written)')
+    expect(diagnostic).not.toContain(privateValue)
   })
+
+  it.each([
+    undefined,
+    'not a workflow report',
+    'WORKFLOW_REPORT_V1: {invalid JSON',
+    'WORKFLOW_REPORT_V1: {"data":null}',
+    String.raw`WORKFLOW_REPORT_V1: {"data":{"errorKind":"https:\/\/private.invalid"}}`,
+    String.raw`WORKFLOW_REPORT_V1: {"data":{"operation":"\u0073\u0065\u0063\u0072\u0065\u0074"}}`,
+    'WORKFLOW_REPORT_V1: {"data":{"errorKind":"c2VjcmV0"}}',
+    'WORKFLOW_REPORT_V1: {"data":{"operation":"split-secret\\nsentinel"}}',
+  ])('fails closed for absent, malformed or unrecognized report classifications: %j', (report) => {
+    expect(JSON.parse(formatLiveDeployFailure({ status: null, report }))).toEqual({ exitStatus: null })
+  })
+
+  it.each(['403-secret', '0403', '999', 99, 600, 403.5])(
+    'omits unrecognized numeric status representations: %j',
+    (status) => {
+      const report = `WORKFLOW_REPORT_V1: ${JSON.stringify({
+        data: { diagnostics: { apiStatus: status, httpStatus: status } },
+      })}`
+      expect(JSON.parse(formatLiveDeployFailure({ status: 1, report }))).toEqual({ exitStatus: 1 })
+    },
+  )
 })

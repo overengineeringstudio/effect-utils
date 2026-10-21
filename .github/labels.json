@@ -161,6 +161,11 @@
       "description": "@overeng/ai-gateway-conformance package · Set: manual"
     },
     {
+      "name": "system:ai-gateway-edge",
+      "color": "a371f7",
+      "description": "@overeng/ai-gateway-edge package · Set: manual"
+    },
+    {
       "name": "system:buck2-tools",
       "color": "a371f7",
       "description": "@overeng/buck2-tools package · Set: manual"
@@ -174,6 +179,11 @@
       "name": "system:content-address",
       "color": "a371f7",
       "description": "@overeng/content-address package · Set: manual"
+    },
+    {
+      "name": "system:data-graph",
+      "color": "a371f7",
+      "description": "@overeng/data-graph package · Set: manual"
     },
     {
       "name": "system:devbar",
@@ -196,6 +206,11 @@
       "description": "@overeng/effect-distributed-lock package · Set: manual"
     },
     {
+      "name": "system:effect-iroh",
+      "color": "a371f7",
+      "description": "@overeng/effect-iroh package · Set: manual"
+    },
+    {
       "name": "system:effect-path",
       "color": "a371f7",
       "description": "@overeng/effect-path package · Set: manual"
@@ -214,6 +229,11 @@
       "name": "system:effect-rpc-explorer-react",
       "color": "a371f7",
       "description": "@overeng/effect-rpc-explorer-react package · Set: manual"
+    },
+    {
+      "name": "system:effect-rpc-observer",
+      "color": "a371f7",
+      "description": "@overeng/effect-rpc-observer package · Set: manual"
     },
     {
       "name": "system:effect-rpc-tanstack",
@@ -269,6 +289,11 @@
       "name": "system:megarepo",
       "color": "a371f7",
       "description": "@overeng/megarepo package · Set: manual"
+    },
+    {
+      "name": "system:meters",
+      "color": "a371f7",
+      "description": "@overeng/meters package · Set: manual"
     },
     {
       "name": "system:notion-cli",
@@ -346,6 +371,11 @@
       "description": "@overeng/oxc-config package · Set: manual"
     },
     {
+      "name": "system:pingping",
+      "color": "a371f7",
+      "description": "@overeng/pingping package · Set: manual"
+    },
+    {
       "name": "system:pty-effect",
       "color": "a371f7",
       "description": "@overeng/pty-effect package · Set: manual"
@@ -359,6 +389,11 @@
       "name": "system:restate-effect",
       "color": "a371f7",
       "description": "@overeng/restate-effect package · Set: manual"
+    },
+    {
+      "name": "system:rpc-devtools",
+      "color": "a371f7",
+      "description": "@overeng/rpc-devtools package · Set: manual"
     },
     {
       "name": "system:stylex-tokens",

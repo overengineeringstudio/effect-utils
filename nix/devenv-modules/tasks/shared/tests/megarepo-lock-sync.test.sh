@@ -54,10 +54,15 @@ check_count 0
 echo "Test 4: an auxiliary input with no declared revision fails closed"
 write_inputs "$current" "$legacy" "$unknown"
 check_count 1
+jq -n \
+  --slurpfile ml "$tmpdir/megarepo.lock" \
+  --slurpfile lf "$tmpdir/devenv.lock" \
+  -f "$policy" \
+  | jq -e '.[0].reason == "no-declared-revision"' >/dev/null
 
-echo "Test 5: an auxiliary input matching multiple declared members fails closed"
+echo "Test 5: an auxiliary input may match multiple members at the same revision"
 write_members "$current" "$current"
 write_inputs "$current" "$current" "$current"
-check_count 1
+check_count 0
 
 echo "All megarepo lock sync tests passed."

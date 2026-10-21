@@ -13,6 +13,7 @@ import {
   renameSync,
   rmSync,
   writeFileSync,
+  writeSync,
 } from 'node:fs'
 import { getPriority, homedir } from 'node:os'
 import { join } from 'node:path'
@@ -106,21 +107,33 @@ const shellQuote = (value: string): string => `'${value.replaceAll("'", "'\\''")
 const defaultServiceMissing = async ({
   env,
   deadlineMs,
+  deadlineSignal,
 }: {
   readonly env: Readonly<Record<string, string | undefined>>
   readonly deadlineMs: number
+  readonly deadlineSignal?: AbortSignal
 }): Promise<boolean> => {
   try {
     const stdout = await new Promise<string>((resolve, reject) => {
-      execFile(
+      let closed: Promise<void> | undefined
+      const child = execFile(
         'watchman',
         ['--no-spawn', '--output-encoding=json', 'get-sockname'],
-        { env, timeout: deadlineMs, killSignal: 'SIGKILL', maxBuffer: 64 * 1024 },
-        (error, out) => {
+        {
+          env,
+          timeout: deadlineSignal === undefined ? deadlineMs : undefined,
+          signal: deadlineSignal,
+          killSignal: 'SIGKILL',
+          maxBuffer: 64 * 1024,
+        },
+        async (error, out) => {
+          if (closed !== undefined) await closed
           if (error !== null) reject(error)
           else resolve(out)
         },
       )
+      if (deadlineSignal !== undefined)
+        closed = new Promise<void>((resolveClosed) => child.once('close', () => resolveClosed()))
     })
     const parsed: unknown = JSON.parse(stdout)
     const sockname =
@@ -139,10 +152,12 @@ export const probeWatchman = async ({
   env,
   repoRoot,
   deadlineMs,
+  makeDeadlineSignal,
 }: {
   readonly env: Readonly<Record<string, string | undefined>>
   readonly repoRoot: string
   readonly deadlineMs: number
+  readonly makeDeadlineSignal?: () => AbortSignal | undefined
 }): Promise<boolean> => {
   const root = realpathSync(repoRoot)
   const socket = env['WATCHMAN_SOCK']
@@ -159,12 +174,23 @@ export const probeWatchman = async ({
   ]
   const command = ['watchman', ...args].map(shellQuote).join(' ')
   const query = (): Promise<unknown> => {
+    const deadlineSignal = makeDeadlineSignal?.()
+    let closed: Promise<void> | undefined
     const { promise, resolve, reject } = Promise.withResolvers<unknown>()
-    execFile(
+    const child = execFile(
       'watchman',
       args,
-      { env, timeout: deadlineMs, killSignal: 'SIGKILL', maxBuffer: 64 * 1024 },
+      {
+        env,
+        timeout: deadlineSignal === undefined ? deadlineMs : undefined,
+        signal: deadlineSignal,
+        killSignal: 'SIGKILL',
+        maxBuffer: 64 * 1024,
+      },
       async (error, stdout, stderr) => {
+        // AbortSignal reports its error before process close. Do not retry or
+        // remove fixtures until the actual child and its output pipes are reaped.
+        if (closed !== undefined) await closed
         if (error !== null) {
           const priorityRefusal = stderr.match(
             /nice_value=(\d+), min_acceptable_nice_value=\d+[\s\S]*Watchman is refusing to start/,
@@ -174,14 +200,18 @@ export const probeWatchman = async ({
           // proven to mean "no default service". Every other failure keeps
           // its genuine class (executable, service or timeout).
           let reason: 'timeout' | 'executable' | 'priority' | 'service' = 'service'
-          if (error.killed === true) reason = 'timeout'
+          if (error.killed === true || deadlineSignal?.aborted === true) reason = 'timeout'
           else if (error.code === 'ENOENT' || error.code === 'EACCES') reason = 'executable'
           else if (priorityRefusal !== null) reason = 'priority'
           else if (
             nicedDefault === true &&
             stdout.trim() === '' &&
             stderr.trim() === '' &&
-            (await defaultServiceMissing({ env, deadlineMs })) === true
+            (await defaultServiceMissing({
+              env,
+              deadlineMs,
+              deadlineSignal: makeDeadlineSignal?.(),
+            })) === true
           )
             reason = 'priority'
           reject(
@@ -222,6 +252,8 @@ export const probeWatchman = async ({
         }
       },
     )
+    if (deadlineSignal !== undefined)
+      closed = new Promise<void>((resolveClosed) => child.once('close', () => resolveClosed()))
     return promise
   }
   // A delayed process/socket response is retried once without a sleep or a new deadline knob.
@@ -339,7 +371,8 @@ export const reconcileWatcherDaemon = ({
     if (existsSync(pidPath) === true) {
       if (lstatSync(pidPath).isFile() === false)
         throw new Error(`Buck2 watcher migration: invalid registered daemon ${pidPath}`)
-      process.stderr.write(
+      writeSync(
+        2,
         `Buck2 watcher migration: stopping ${repoRoot} (${isolation}) before ${provider} startup\n`,
       )
       const result = spawnSync(native, ['--isolation-dir', isolation, 'kill'], {

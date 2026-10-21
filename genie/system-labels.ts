@@ -14,9 +14,8 @@
  * carry it. Only the `LabelDef` *type* is imported from the runtime.
  */
 
-import { readdirSync } from 'node:fs'
-
 import type { LabelDef } from '../packages/@overeng/genie/src/runtime/github-labels/mod.ts'
+import { inputReaddirSync as readdirSync } from '../packages/@overeng/genie/src/runtime/node/inputs.ts'
 
 /** Single, axis-consistent color for every `system:*` chip (violet, distinct from area blue). */
 export const systemLabelColor = 'a371f7'

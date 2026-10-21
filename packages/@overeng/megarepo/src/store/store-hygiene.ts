@@ -20,6 +20,7 @@ import * as Git from '../core/git.ts'
 import type { LockFile } from '../core/lock.ts'
 import { classifyRef } from '../core/ref.ts'
 import { resolveStoreBranchWorktree } from './store-branch-worktree.ts'
+import { makeStoreDirectory } from './store-path.ts'
 import type { MegarepoStore } from './store.ts'
 
 // =============================================================================
@@ -237,7 +238,7 @@ export const validateStoreMembers = ({
       }
 
       // Check dirty/unpushed (warnings)
-      const worktreeStatus = yield* Git.getWorktreeStatus(worktreePath).pipe(
+      const worktreeStatus = yield* Git.getWorktreeStatus({ worktreePath }).pipe(
         Effect.orElseSucceed(() => ({ isDirty: false, hasUnpushed: false, changesCount: 0 })),
       )
 
@@ -457,7 +458,7 @@ export const fixStoreIssues = ({
 
           // Recreate the worktree
           yield* Effect.gen(function* () {
-            yield* fs.makeDirectory(worktreePath, { recursive: true }).pipe(Effect.ignore)
+            yield* makeStoreDirectory(worktreePath).pipe(Effect.ignore)
 
             const parsed = parseWorktreeRef(worktreePath)
 
@@ -548,7 +549,7 @@ export const fixStoreIssues = ({
 
           yield* Effect.gen(function* () {
             const repoBasePath = store.getRepoBasePath(source)
-            yield* fs.makeDirectory(repoBasePath, { recursive: true })
+            yield* makeStoreDirectory(repoBasePath)
             yield* Git.cloneBare({ url: cloneUrl, targetPath: bareRepoPath })
             results.push({
               memberName: issue.memberName,

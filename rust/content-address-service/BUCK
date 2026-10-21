@@ -4,7 +4,7 @@
 # Projection source: rust/content-address-service/BUCK.genie.ts
 # Projection generator: effect-utils/rust/content-address-service
 # Projection schema version: 1
-# Semantic fingerprint: sha256:66d98487d8311003e4b70a5f6e97d3eb89e95aee201fe3bdd92990d74e4fb54a
+# Semantic fingerprint: sha256:640d7638e00670c5fcd6a5c2ba67c0ffcab3653717d677c10f5f87422ce8f4a6
 # Semantic inputs: rust/content-address-service/BUCK.genie.ts
 # Regenerate: devenv tasks run genie:run
 

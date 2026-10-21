@@ -1,12 +1,21 @@
-import { readFileSync } from 'node:fs'
-
 import {
   assertPublishedPackageClosure,
   type PublishedPackageManifest,
 } from '../../genie/buck2/package-product-inventory.ts'
+import {
+  productBuildCapabilities,
+  productLinuxBuildCapabilities,
+} from '../../genie/buck2/product-capabilities.ts'
 import { projectionArtifact } from '../../packages/@overeng/genie/src/runtime/mod.ts'
+import { inputReadFileSync as readFileSync } from '../../packages/@overeng/genie/src/runtime/node/inputs.ts'
 
 const javascriptProducts = [
+  [
+    'ai-gateway-edge',
+    'ai-gateway-edge.js',
+    'packages/@overeng/ai-gateway-edge',
+    'ai-gateway-edge-candidate',
+  ],
   ['ci-tools', 'ci-tools.js', 'packages/@overeng/ci-tools', 'ci-tools-candidate'],
   ['genie', 'genie.js', 'packages/@overeng/genie', 'genie-candidate'],
   [
@@ -40,7 +49,9 @@ const javascriptProducts = [
 const packageProducts = [
   '@overeng/agent-session-ingest',
   '@overeng/ai-gateway-conformance',
+  '@overeng/ai-gateway-edge',
   '@overeng/content-address',
+  '@overeng/data-graph',
   '@overeng/devbar',
   '@overeng/effect-ai-claude-cli',
   '@overeng/effect-ai-gateway',
@@ -48,8 +59,11 @@ const packageProducts = [
   '@overeng/effect-react',
   '@overeng/effect-rpc-explorer',
   '@overeng/effect-rpc-explorer-react',
+  '@overeng/effect-rpc-observer',
   '@overeng/effect-rust',
+  '@overeng/rpc-devtools',
   '@overeng/genie',
+  '@overeng/meters',
   '@overeng/notion-core',
   '@overeng/notion-effect-client',
   '@overeng/notion-effect-schema',
@@ -69,7 +83,9 @@ const packageProducts = [
 
 const packageManifests = packageProducts.map(
   (name) =>
-    JSON.parse(readFileSync(`packages/${name}/package.json`, 'utf8')) as PublishedPackageManifest & {
+    JSON.parse(
+      readFileSync(`packages/${name}/package.json`, 'utf8'),
+    ) as PublishedPackageManifest & {
       readonly version: string
     },
 )
@@ -77,20 +93,18 @@ const rootPackage = JSON.parse(readFileSync('package.json', 'utf8')) as {
   readonly workspaces: readonly string[]
 }
 const workspaceNames = new Set(
-  rootPackage.workspaces.map(
-    (path) => {
-      const packageJson: unknown = JSON.parse(readFileSync(`${path}/package.json`, 'utf8'))
-      if (
-        packageJson === null ||
-        typeof packageJson !== 'object' ||
-        'name' in packageJson === false ||
-        typeof packageJson.name !== 'string'
-      ) {
-        throw new Error(`Invalid workspace package name in ${path}/package.json`)
-      }
-      return packageJson.name
-    },
-  ),
+  rootPackage.workspaces.map((path) => {
+    const packageJson: unknown = JSON.parse(readFileSync(`${path}/package.json`, 'utf8'))
+    if (
+      packageJson === null ||
+      typeof packageJson !== 'object' ||
+      'name' in packageJson === false ||
+      typeof packageJson.name !== 'string'
+    ) {
+      throw new Error(`Invalid workspace package name in ${path}/package.json`)
+    }
+    return packageJson.name
+  }),
 )
 assertPublishedPackageClosure({ packages: packageManifests, workspaceNames })
 
@@ -128,7 +142,13 @@ const buckProductSourceEntries = [
     version: '0.0.0',
   })),
   ...packageEntries,
-].toSorted((left, right) => left.name.localeCompare(right.name))
+]
+  .map((product) => ({
+    ...product,
+    buildCapabilities: productBuildCapabilities(product),
+    linuxBuildCapabilities: productLinuxBuildCapabilities(product),
+  }))
+  .toSorted((left, right) => left.name.localeCompare(right.name))
 
 export default projectionArtifact.json({
   schemaVersion: 1,

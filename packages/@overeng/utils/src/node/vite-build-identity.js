@@ -1,6 +1,8 @@
 // Checked JavaScript: Vite config dependencies must load under Node from node_modules.
 import { execFile } from 'node:child_process'
-import { watchFile, unwatchFile } from 'node:fs'
+import { constants, watchFile, unwatchFile } from 'node:fs'
+import { access, readFile, stat } from 'node:fs/promises'
+import { dirname, join, resolve } from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
 import { fileURLToPath } from 'node:url'
 import { promisify } from 'node:util'
@@ -20,21 +22,180 @@ const readGit = async ({ root, args }) =>
     })
   ).stdout.trim()
 
-/** @param {string} root @returns {Promise<import('./cli-build-identity.js').LocalStamp>} */
-const localStamp = async (root) => ({
-  type: 'local',
-  rev: await readGit({ root, args: ['rev-parse', 'HEAD'] }),
-  ts: Math.floor(Date.now() / 1000),
-  dirty:
-    (await readGit({ root, args: ['status', '--porcelain=v1', '--untracked-files=no'] })) !== '',
-})
+/**
+ * Resolve ordinary loose/packed refs without subprocesses, including linked worktrees.
+ * Register each watch before reading it so atomic ref replacements cannot fall in a gap.
+ * @param {{root: string, subscribe?: (path: string) => void}} options
+ * @returns {Promise<{rev: string, paths: Set<string>}>}
+ */
+export const readWorktreeGitMetadata = async ({ root, subscribe }) => {
+  /** @type {Set<string>} */
+  const paths = new Set()
+  /** @param {string} path */
+  const watch = (path) => {
+    paths.add(path)
+    subscribe?.(path)
+  }
+  try {
+    let directory = resolve(root)
+    /** @type {string | undefined} */
+    let gitDir
+    while (gitDir === undefined) {
+      const candidate = join(directory, '.git')
+      try {
+        // oxlint-disable-next-line eslint/no-await-in-loop -- discover the nearest enclosing repository
+        const info = await stat(candidate)
+        if (info.isDirectory() === true) {
+          gitDir = candidate
+        } else {
+          // oxlint-disable-next-line eslint/no-await-in-loop -- gitdir files resolve relative to their repository
+          const gitFile = await readFile(candidate, 'utf8')
+          gitDir = resolve(directory, gitFile.trim().replace(/^gitdir: /, ''))
+        }
+      } catch (error) {
+        if (!(error instanceof Error && 'code' in error && error.code === 'ENOENT')) throw error
+        const parent = dirname(directory)
+        if (parent === directory) throw error
+        directory = parent
+      }
+    }
+    let commonDir = gitDir
+    try {
+      commonDir = resolve(gitDir, (await readFile(join(gitDir, 'commondir'), 'utf8')).trim())
+    } catch (error) {
+      if (!(error instanceof Error && 'code' in error && error.code === 'ENOENT')) throw error
+    }
+    const config = await readFile(join(commonDir, 'config'), 'utf8')
+    if (/^\s*refstorage\s*=\s*reftable\s*$/im.test(config) === true) {
+      throw new Error('Reftable requires Git ref resolution')
+    }
+    const headPath = join(gitDir, 'HEAD')
+    watch(headPath)
+    watch(join(gitDir, 'index'))
+    let head = (await readFile(headPath, 'utf8')).trim()
+    /** @type {Set<string>} */
+    const seen = new Set()
+    while (head.startsWith('ref: ') === true) {
+      const ref = head.slice(5)
+      // Qualified worktree aliases and non-ref names need Git's own path resolver.
+      if (
+        ref.startsWith('refs/') === false ||
+        ref.split('/').some((part) => part === '.' || part === '..' || part === '') === true
+      )
+        throw new Error('Git symbolic ref requires CLI resolution')
+      const privateRef = ['refs/bisect/', 'refs/worktree/', 'refs/rewritten/'].some((prefix) =>
+        ref.startsWith(prefix),
+      )
+      if (seen.has(ref) === true) throw new Error('Cyclic Git symbolic ref')
+      seen.add(ref)
+      const refPath = join(privateRef === true ? gitDir : commonDir, ref)
+      watch(refPath)
+      try {
+        // oxlint-disable-next-line eslint/no-await-in-loop -- follow Git symbolic refs in order
+        head = (await readFile(refPath, 'utf8')).trim()
+      } catch (error) {
+        if (!(error instanceof Error && 'code' in error && error.code === 'ENOENT')) throw error
+        // Per-worktree refs are never resolved from the shared packed-ref store.
+        if (privateRef === true) throw error
+        const packedPath = join(commonDir, 'packed-refs')
+        watch(packedPath)
+        // oxlint-disable-next-line eslint/no-await-in-loop -- loose refs take precedence over packed refs
+        const packed = await readFile(packedPath, 'utf8')
+        const entry = packed.split('\n').find((line) => line.endsWith(` ${ref}`))
+        if (entry === undefined) throw new Error(`Git ref not found: ${ref}`, { cause: error })
+        head = entry.slice(0, entry.indexOf(' '))
+      }
+    }
+    if (/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/i.test(head) === false)
+      throw new Error('Invalid Git object ID')
+    if (seen.size === 0) {
+      // Git verifies detached revisions whose object is packed, missing, or unreadable.
+      await access(join(commonDir, 'objects', head.slice(0, 2), head.slice(2)), constants.R_OK)
+    }
+    return { rev: head, paths }
+  } catch {
+    // Git remains the authority for reftable, object alternates, and unusual layouts.
+    const [headPath, indexPath, initialBranch, refFormat] = await Promise.all([
+      readGit({ root, args: ['rev-parse', '--path-format=absolute', '--git-path', 'HEAD'] }),
+      readGit({ root, args: ['rev-parse', '--path-format=absolute', '--git-path', 'index'] }),
+      readGit({ root, args: ['rev-parse', '--symbolic-full-name', 'HEAD'] }),
+      readGit({ root, args: ['rev-parse', '--show-ref-format'] }),
+    ])
+    watch(headPath)
+    watch(indexPath)
+    if (refFormat === 'reftable') {
+      watch(
+        await readGit({
+          root,
+          args: ['rev-parse', '--path-format=absolute', '--git-path', 'reftable/tables.list'],
+        }),
+      )
+    }
+    if (refFormat === 'files') {
+      watch(
+        await readGit({
+          root,
+          args: ['rev-parse', '--path-format=absolute', '--git-path', 'packed-refs'],
+        }),
+      )
+    }
+    // Re-read after subscriptions: the discovery snapshot may predate a watch.
+    // Revalidate the symbolic target too, subscribing before reading a new branch.
+    let branch = initialBranch
+    let snapshotBranch
+    let rev
+    do {
+      snapshotBranch = branch
+      if (branch !== 'HEAD') {
+        // oxlint-disable-next-line eslint/no-await-in-loop -- watch each newly discovered target before its revision
+        const refPath = await readGit({
+          root,
+          args: ['rev-parse', '--path-format=absolute', '--git-path', branch],
+        })
+        watch(refPath)
+      }
+      // oxlint-disable-next-line eslint/no-await-in-loop -- validate the revision only after installing its watches
+      rev = await readGit({ root, args: ['rev-parse', '--verify', 'HEAD^{commit}'] })
+      // oxlint-disable-next-line eslint/no-await-in-loop -- detect a branch switch during snapshot discovery
+      branch = await readGit({
+        root,
+        args: ['rev-parse', '--symbolic-full-name', 'HEAD'],
+      })
+    } while (branch !== snapshotBranch)
+    return { rev, paths }
+  }
+}
+
+/**
+ * @param {{root: string, metadata: ReturnType<typeof readWorktreeGitMetadata>}} options
+ * @returns {Promise<import('./cli-build-identity.js').LocalStamp>}
+ */
+const localStamp = async ({ root, metadata }) => {
+  const [git, status] = await Promise.all([
+    metadata,
+    readGit({ root, args: ['status', '--porcelain=v1', '--untracked-files=no'] }),
+  ])
+  const rev = git.rev
+  // Resolve the timestamp against the captured revision, even if HEAD moves meanwhile.
+  const commitTsRaw = await readGit({ root, args: ['log', '-1', '--format=%ct', rev] }).catch(
+    () => '',
+  )
+  const commitTs = commitTsRaw === '' ? undefined : Number(commitTsRaw)
+  return {
+    type: 'local',
+    rev,
+    ts: Math.floor(Date.now() / 1000),
+    ...(commitTs === undefined || Number.isFinite(commitTs) === false ? {} : { commitTs }),
+    dirty: status !== '',
+  }
+}
 
 /**
  * Emit the shared CLI identity as a browser-safe virtual module and JSON asset.
  * A declared deployment injects its closure identity before browser modules execute.
  * Local source identity is read from Vite's root, not a possibly stale shell's stamp.
  * @param {import('./vite-build-identity-types.d.ts').BuildIdentityPluginOptions} options
- * @returns {import('vite').Plugin}
+ * @returns {import('vite').Plugin & import('./vite-build-identity-types.d.ts').BuildIdentityVitePlugin}
  */
 export const createBuildIdentityPlugin = ({ baseVersion, buildStamp }) => {
   /** @type {import('./cli-build-identity.js').CliBuildIdentity} */
@@ -46,12 +207,23 @@ export const createBuildIdentityPlugin = ({ baseVersion, buildStamp }) => {
   const embedded = parseCliBuildStamp(buildStamp)
   /** @type {Array<() => Promise<void>>} */
   const cleanup = []
-  const resolveIdentity = async (preserveSnapshot = false) => {
+  /** @type {Promise<void> | undefined} */
+  let refreshFlight
+  /**
+   * @param {{preserveSnapshot?: boolean, metadata?: ReturnType<typeof readWorktreeGitMetadata>}} [options]
+   */
+  const resolveIdentity = async ({ preserveSnapshot = false, metadata } = {}) => {
     const options = {
       baseVersion,
       buildStamp,
       env:
-        embedded?.type === 'nix' ? {} : { CLI_BUILD_STAMP: JSON.stringify(await localStamp(root)) },
+        embedded?.type === 'nix'
+          ? {}
+          : {
+              CLI_BUILD_STAMP: JSON.stringify(
+                await localStamp({ root, metadata: metadata ?? readWorktreeGitMetadata({ root }) }),
+              ),
+            },
     }
     const nextIdentity = resolveCliBuildIdentity({
       ...options,
@@ -75,6 +247,11 @@ export const createBuildIdentityPlugin = ({ baseVersion, buildStamp }) => {
   }
   return {
     name: 'overeng:build-identity',
+    api: {
+      async waitForRefresh() {
+        await refreshFlight
+      },
+    },
     async configResolved(config) {
       root = config.root
       serving = config.command === 'serve'
@@ -112,11 +289,6 @@ export const createBuildIdentityPlugin = ({ baseVersion, buildStamp }) => {
       let flight
       /** @type {Map<string, () => void>} */
       const watched = new Map()
-      const worktreePaths = await Promise.all(
-        ['HEAD', 'index'].map((name) =>
-          readGit({ root, args: ['rev-parse', '--path-format=absolute', '--git-path', name] }),
-        ),
-      )
       /** @param {string} path */
       const subscribe = (path) => {
         if (watched.has(path) === true || isStopped() === true) return
@@ -129,26 +301,15 @@ export const createBuildIdentityPlugin = ({ baseVersion, buildStamp }) => {
         watched.set(path, listener)
       }
       const updateWatches = async () => {
-        // Subscribe to HEAD before discovering its branch, then subscribe to
-        // that ref before reading identity. A checkout/commit cannot fall in
-        // a gap between snapshotting and installing the new branch watch.
-        for (const path of worktreePaths) subscribe(path)
-        const branch = await readGit({ root, args: ['rev-parse', '--symbolic-full-name', 'HEAD'] })
-        const paths = new Set(worktreePaths)
-        if (branch !== 'HEAD') {
-          const path = await readGit({
-            root,
-            args: ['rev-parse', '--path-format=absolute', '--git-path', branch],
-          })
-          paths.add(path)
-          subscribe(path)
-        }
+        const metadata = await readWorktreeGitMetadata({ root, subscribe })
+        const { paths } = metadata
         for (const [path, listener] of watched) {
           if (paths.has(path) === false) {
             unwatchFile(path, listener)
             watched.delete(path)
           }
         }
+        return metadata
       }
       /** @param {unknown} error */
       const reportError = (error) =>
@@ -167,11 +328,11 @@ export const createBuildIdentityPlugin = ({ baseVersion, buildStamp }) => {
             if (isStopped() === true) break
             if (performance.now() < requestedAt + 50) continue
             pending = false
-            // oxlint-disable-next-line eslint/no-await-in-loop -- subscribe before the sequential snapshot
-            await updateWatches()
-            if (isStopped() === true) break
             // oxlint-disable-next-line eslint/no-await-in-loop -- snapshots cannot overlap
-            const changed = await resolveIdentity(true)
+            const changed = await resolveIdentity({
+              preserveSnapshot: true,
+              metadata: updateWatches(),
+            })
             if (changed === false || isStopped() === true) continue
             const module = server.moduleGraph.getModuleById(resolvedId)
             if (module === undefined) continue
@@ -181,6 +342,7 @@ export const createBuildIdentityPlugin = ({ baseVersion, buildStamp }) => {
         })().finally(() => {
           flight = undefined
         })
+        refreshFlight = flight
         return flight
       }
       const onSourceEvent = () => {

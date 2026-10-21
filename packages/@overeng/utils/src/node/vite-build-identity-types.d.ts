@@ -8,7 +8,20 @@ export interface BuildIdentityPluginOptions {
 /** Structural plugin boundary permits consumers on a different Vite major. */
 export interface BuildIdentityVitePlugin {
   name: string
+  readonly api: {
+    /**
+     * Await the latest requested source-serving refresh, including coalesced events.
+     * Observe a watcher event first: this neither requests a refresh nor waits for future events.
+     */
+    readonly waitForRefresh: () => Promise<void>
+  }
 }
+
+/** Resolve loose/packed Git metadata and the exact paths that own its snapshot. */
+export declare const readWorktreeGitMetadata: (options: {
+  root: string
+  subscribe?: (path: string) => void
+}) => Promise<{ rev: string; paths: Set<string> }>
 
 /**
  * Provides virtual:build-identity ({buildIdentity, deploymentId}) and build-identity.json.

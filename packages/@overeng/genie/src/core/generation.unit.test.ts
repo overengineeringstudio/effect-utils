@@ -1,4 +1,4 @@
-import { execFileSync } from 'node:child_process'
+import { execFileSync, spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from 'node:fs/promises'
 import os from 'node:os'
@@ -160,6 +160,96 @@ describe('compiled binary import graph scheduling', () => {
       await rm(tempRoot, { recursive: true, force: true })
     }
   })
+})
+
+describe('source import graph transpiler cache isolation', () => {
+  it('evaluates the current member pin and refuses an unsafe programmatic loader', async () => {
+    const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'genie-source-cache-'))
+    const workspace = path.join(tempRoot, 'workspace')
+    const entryPath = path.join(workspace, 'config.json.genie.ts')
+    const runnerPath = path.join(process.cwd(), `.genie-source-cache-${Date.now()}.ts`)
+    const cliPath = path.resolve(import.meta.dirname, '../../bin/genie.tsx')
+    const cachePath = path.join(tempRoot, 'cache')
+    const run = ({
+      pin,
+      cache,
+      cliArgs,
+    }: {
+      pin: string
+      cache?: string
+      cliArgs?: ReadonlyArray<string>
+    }) =>
+      spawnSync(
+        'bun',
+        cliArgs === undefined
+          ? [runnerPath, entryPath, workspace]
+          : [cliPath, '--cwd', workspace, ...cliArgs],
+        {
+          encoding: 'utf8',
+          env: {
+            ...process.env,
+            HOME: path.join(tempRoot, 'home'),
+            BUN_INSTALL: path.join(tempRoot, 'home/.bun'),
+            BUN_RUNTIME_TRANSPILER_CACHE_PATH: cache,
+            GENIE_MEMBER_OVERRIDE_MAP: JSON.stringify({ member: path.join(tempRoot, pin) }),
+            GENIE_MEMBER_SOURCE_MAP: '',
+          },
+        },
+      )
+    try {
+      await mkdir(workspace, { recursive: true })
+      for (const [pin, value] of [
+        ['old', '4.0.0'],
+        ['new', '4.0.3'],
+      ] as const) {
+        await mkdir(path.join(tempRoot, pin), { recursive: true })
+        await writeFile(path.join(tempRoot, pin, 'catalog.ts'), `export const value = '${value}'\n`)
+      }
+      await writeFile(
+        entryPath,
+        [
+          `import { value } from '#mr/member/catalog.ts'`,
+          `export default { data: { value }, stringify: () => JSON.stringify({ value }) }`,
+          // Exceed Bun's disk-cache threshold, including older releases' 50 KiB floor.
+          ...Array.from({ length: 3000 }, (_, index) => `export const unused${index} = ${index}`),
+        ].join('\n'),
+      )
+      await writeFile(
+        runnerPath,
+        [
+          `import { NodeServices } from '@effect/platform-node'`,
+          `import { Effect } from 'effect'`,
+          `import { loadGenieFile } from './src/core/generation.ts'`,
+          `const loaded = await Effect.runPromise(loadGenieFile({ genieFilePath: process.argv[2]!, cwd: process.argv[3]! }).pipe(Effect.provide(NodeServices.layer)))`,
+          `console.log(JSON.stringify(loaded.output.data))`,
+        ].join('\n'),
+      )
+      // Across Bun processes, a stale transform must never make --check report success.
+      const generated = run({ pin: 'old', cliArgs: ['--json'] })
+      expect(generated.status, generated.stderr).toBe(0)
+      const checked = run({ pin: 'new', cliArgs: ['--check', '--json'] })
+      expect(checked.status, checked.stderr).not.toBe(0)
+      expect(JSON.parse(checked.stdout).summary.failed).toBe(1)
+      const updated = run({ pin: 'new', cliArgs: ['--json'] })
+      expect(updated.status, updated.stderr).toBe(0)
+      expect(JSON.parse(await readFile(path.join(workspace, 'config.json'), 'utf8')).value).toBe(
+        '4.0.3',
+      )
+
+      const unsafe = run({ pin: 'new', cache: cachePath })
+      expect(unsafe.status).not.toBe(0)
+      expect(unsafe.stderr).toContain('GenieRuntimeTranspilerCacheError')
+      expect(unsafe.stderr).toContain('Start Bun with BUN_RUNTIME_TRANSPILER_CACHE_PATH=0')
+      const safe = run({ pin: 'new', cache: '0' })
+      expect(safe.status, safe.stderr).toBe(0)
+      expect(JSON.parse(safe.stdout)).toEqual({ value: '4.0.3' })
+    } finally {
+      await Promise.all([
+        rm(runnerPath, { force: true }),
+        rm(tempRoot, { recursive: true, force: true }),
+      ])
+    }
+  }, 120_000)
 })
 
 describe('compiled binary import graph pile-cache isolation', () => {
@@ -352,6 +442,7 @@ describe('locked workspace nested member imports', () => {
           encoding: 'utf8',
           env: {
             ...process.env,
+            BUN_RUNTIME_TRANSPILER_CACHE_PATH: '0',
             MEGAREPO_STORE: store,
             GENIE_MEMBER_OVERRIDE_MAP: '',
             GENIE_MEMBER_SOURCE_MAP: '',
@@ -437,6 +528,7 @@ describe('source import resolver workspace isolation', () => {
           timeout: 30_000,
           env: {
             ...process.env,
+            BUN_RUNTIME_TRANSPILER_CACHE_PATH: '0',
             MEGAREPO_STORE: store,
             GENIE_MEMBER_OVERRIDE_MAP: '',
             GENIE_MEMBER_SOURCE_MAP: '',

@@ -36,6 +36,7 @@ pkgs.runCommand "buck2-rules"
     nativeBuildInputs = [
       pkgs.gnutar
       pkgs.gzip
+      pkgs.patch
     ];
     passthru = {
       inherit inventory;
@@ -92,12 +93,6 @@ pkgs.runCommand "buck2-rules"
     ) patchFiles}
     cat > "$out/buck2/dependencies/BUCK" <<'BUCK'
     export_file(
-        name = "acquire-archive.ts",
-        src = "acquire-archive.ts",
-        visibility = ["PUBLIC"],
-    )
-
-    export_file(
         name = "assemble-store.ts",
         src = "assemble-store.ts",
         visibility = ["PUBLIC"],
@@ -124,8 +119,10 @@ pkgs.runCommand "buck2-rules"
     mkdir -p "$out/packages/@overeng/buck2-tools"
     cat > "$out/packages/@overeng/buck2-tools/BUCK" <<'BUCK'
     load("//buck2/package_tools.bzl", "package_command_runtime")
+    load("//buck2:materialization.bzl", "runtime_modules")
 
-    filegroup(
+
+    runtime_modules(
         name = "package_tree_runtime",
         srcs = {
             "package-tree.ts": "src/package-tree.ts",
@@ -155,10 +152,13 @@ pkgs.runCommand "buck2-rules"
         visibility = ["PUBLIC"],
     )
 
-    filegroup(
+    runtime_modules(
         name = "javascript_action_runtime",
         srcs = {
             "javascript-runner.ts": "src/javascript-runner.ts",
+            "bun-test-runner.ts": "src/bun-test-runner.ts",
+            "bun-test-timeout.ts": "src/bun-test-timeout.ts",
+            "bun-test-preload.ts": "src/bun-test-preload.ts",
             "test-verdict.ts": "src/test-verdict.ts",
             "typescript-runner.ts": "src/typescript-runner.ts",
         },
@@ -192,6 +192,9 @@ pkgs.runCommand "buck2-rules"
     chmod -R u+w "$out"
     mkdir -p "$out/prelude"
     tar -xzf ${buck2.passthru.prelude} --strip-components=1 -C "$out/prelude"
+    # Default-off analysis seam only; no lane is admitted by this patch.
+    patch --batch --fuzz=0 -p2 -d "$out/prelude" \
+      -i ${./patches/rust-action-adapter.patch}
     # Prelude-generated linker and Cargo buildscript shims run in Nix sandboxes,
     # where /usr/bin/env does not exist. Bind their interpreter to the declared
     # shell rather than relying on the host filesystem.
@@ -202,6 +205,12 @@ pkgs.runCommand "buck2-rules"
       substituteInPlace "$script" \
         --replace-fail '"#!/usr/bin/env bash"' '"#!${pkgs.bash}/bin/bash"'
     done
+    # Reindeer calls Prelude directly, bypassing our first-party buildscript
+    # wrapper. Declare the same compiler-wrapper isolation on those actions:
+    # daemon-local Cargo/sccache selection must not affect Buck tool selection.
+    substituteInPlace "$out/prelude/rust/cargo_buildscript.bzl" \
+      --replace-fail '    env = {}' \
+        '    env = {"RUSTC_WRAPPER": "", "RUSTC_WORKSPACE_WRAPPER": ""}'
     ${lib.optionalString pkgs.stdenv.hostPlatform.isLinux ''
       # Product binaries intentionally use the portable /lib64 interpreter.
       # A Cargo build script is an executable build-time tool, however, and

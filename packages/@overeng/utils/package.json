@@ -24,6 +24,10 @@
       "types": "./dist/src/browser/mod.d.ts",
       "default": "./src/browser/mod.ts"
     },
+    "./build-identity": {
+      "types": "./src/build-identity-types.d.ts",
+      "default": "./src/build-identity.js"
+    },
     "./cuid": {
       "types": "./dist/src/cuid/mod.d.ts",
       "browser": "./src/cuid/cuid.browser.ts",
@@ -45,6 +49,10 @@
     "./node/cli-version": {
       "types": "./dist/src/node/cli-version.d.ts",
       "default": "./src/node/cli-version.ts"
+    },
+    "./node/github-app": {
+      "types": "./dist/src/node/github-app.d.ts",
+      "default": "./src/node/github-app.ts"
     },
     "./node/otel": {
       "types": "./dist/src/node/otel.d.ts",
@@ -80,24 +88,24 @@
     }
   },
   "dependencies": {
-    "@effect/opentelemetry": "4.0.0",
-    "@effect/platform-node": "4.0.0",
-    "@effect/vitest": "4.0.0",
+    "@effect/opentelemetry": "4.0.3",
+    "@effect/platform-node": "4.0.3",
+    "@effect/vitest": "4.0.3",
     "@noble/hashes": "2.4.0",
     "@opentelemetry/api": "1.9.1",
     "@overeng/effect-distributed-lock": "workspace:^",
     "@overeng/otel-contract": "workspace:^",
     "@stylexjs/unplugin": "0.19.0",
-    "effect": "4.0.0",
+    "effect": "4.0.3",
     "postcss": "8.5.26",
     "unplugin": "3.3.0",
     "vitest": "5.0.3"
   },
   "devDependencies": {
     "@babel/core": "7.29.7",
-    "@effect/opentelemetry": "4.0.0",
-    "@effect/platform-node": "4.0.0",
-    "@effect/vitest": "4.0.0",
+    "@effect/opentelemetry": "4.0.3",
+    "@effect/platform-node": "4.0.3",
+    "@effect/vitest": "4.0.3",
     "@opentelemetry/resources": "2.11.0",
     "@opentelemetry/sdk-logs": "0.222.0",
     "@opentelemetry/sdk-metrics": "2.11.0",
@@ -113,7 +121,7 @@
     "@types/node": "26.5.0",
     "@types/react": "19.2.18",
     "babel-loader": "10.1.1",
-    "effect": "4.0.0",
+    "effect": "4.0.3",
     "next": "16.2.6",
     "playwright": "1.63.0",
     "react": "19.2.8",
@@ -123,10 +131,10 @@
     "vitest": "5.0.3"
   },
   "peerDependencies": {
-    "@effect/opentelemetry": "^4.0.0",
-    "@effect/platform-node": "^4.0.0",
+    "@effect/opentelemetry": "^4.0.3",
+    "@effect/platform-node": "^4.0.3",
     "@playwright/test": "^1.63.0",
-    "effect": "^4.0.0"
+    "effect": "^4.0.3"
   },
   "publishConfig": {
     "access": "public",
@@ -138,6 +146,10 @@
       "./node": {
         "types": "./dist/src/node/mod.d.ts",
         "default": "./dist/src/node/mod.js"
+      },
+      "./node/github-app": {
+        "types": "./dist/src/node/github-app.d.ts",
+        "default": "./dist/src/node/github-app.js"
       },
       "./node/cli-help-rewrite": {
         "types": "./dist/src/node/cli-help-rewrite.d.ts",
@@ -186,6 +198,10 @@
       "./browser": {
         "types": "./dist/src/browser/mod.d.ts",
         "default": "./dist/src/browser/mod.js"
+      },
+      "./build-identity": {
+        "types": "./src/build-identity-types.d.ts",
+        "default": "./src/build-identity.js"
       },
       "./cuid": {
         "types": "./dist/src/cuid/mod.d.ts",

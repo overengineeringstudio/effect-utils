@@ -1,6 +1,5 @@
 import {
   RUNNER_PROFILES,
-  type RunnerProfile,
   bashShellDefaults,
   cachixCliBuildStep,
   cachixPushStep,
@@ -24,8 +23,8 @@ const binaryCache = readBinaryCacheDescriptors(
 const protectedMainIf =
   "${{ github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') }}"
 
-// Protected-main publisher for compiled-executable and native products, and for
-// the Buck capability closure the `test` lanes consume.
+// Protected-main publisher for compiled-executable and native products, the
+// exported Buck rules cell, and the Buck capability closure `test` lanes consume.
 // Products are platform-specific imported store paths, not cache-manifest rows:
 // each matching runner builds and smokes the product before publishing it.
 // There is no aarch64 Linux publisher, so its consumers build from source.
@@ -34,6 +33,8 @@ const protectedMainIf =
 // oxlint-disable-next-line overeng/exports-first -- generated entrypoint
 export default ciWorkflow({
   trustTier: 'public',
+  // The matrix below gives every Linux profile privileged: 'always'.
+  linuxNixSandboxCapabilities: { 'publish-compiled-products': 'supported' },
   name: 'Native and Compiled Products',
   on: {
     push: { branches: ['main'] },
@@ -49,12 +50,19 @@ export default ciWorkflow({
       if: protectedMainIf,
       strategy: {
         'fail-fast': false,
-        matrix: { runner: [...RUNNER_PROFILES] },
+        matrix: {
+          include: RUNNER_PROFILES.map((runner) => ({
+            runner,
+            runnerLabel: namespaceRunner({
+              profile: runner,
+              runId: '{0}',
+              privileged: 'always',
+              priority: 1,
+            })[0],
+          })),
+        },
       },
-      'runs-on': namespaceRunner({
-        profile: '${{ matrix.runner }}' as RunnerProfile,
-        runId: '${{ github.run_id }}',
-      }),
+      'runs-on': ['${{ format(matrix.runnerLabel, github.run_id) }}'],
       'timeout-minutes': 120,
       permissions: { contents: 'read' },
       defaults: bashShellDefaults,
@@ -69,7 +77,7 @@ export default ciWorkflow({
           triggers: ['push', 'workflow_dispatch'],
           authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}',
           step: {
-            name: 'Publish retained shell, native and compiled products',
+            name: 'Publish Buck rules, retained shell, native and compiled products',
             env: githubTokenEnv(),
             run: withCiSourceRoot('bash genie/ci-scripts/compiled-products.sh --push'),
           },

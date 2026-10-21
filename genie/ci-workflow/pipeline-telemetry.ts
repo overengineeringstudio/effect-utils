@@ -4,6 +4,12 @@ import {
   pipelineJobIdentityForName,
 } from '../../packages/@overeng/ci-tools/src/pipeline-job-names.ts'
 import type { GitHubWorkflowArgs } from '../../packages/@overeng/genie/src/runtime/mod.ts'
+import {
+  ciJobAdmission,
+  linuxNixSandboxFallbackConf,
+  withCiAdmissionCleanup,
+  namespacePrivilegeTrustedPredicate,
+} from './shared.ts'
 
 type Job = GitHubWorkflowArgs['jobs'][string]
 const script = 'bash genie/ci-scripts/evidence-job.sh'
@@ -28,9 +34,11 @@ export const withPipelineTelemetry = (jobs: Record<string, Job>): Record<string,
         (step) => 'uses' in step && step.uses?.startsWith('actions/checkout@'),
       )
       if (checkout < 0) return [jobId, job]
+      const admission = ciJobAdmission(steps)
       const matrix = job.strategy !== undefined && 'matrix' in job.strategy
       const identity = pipelineJobIdentityForName(job.name ?? jobId)
-      steps.splice(checkout + 1, 0, {
+      // Every execution prerequisite must precede checkout-controlled telemetry.
+      steps.splice(Math.max(checkout, admission.after) + 1, 0, {
         name: pipelineIdentityStepName,
         shell: 'bash',
         env: {
@@ -83,7 +91,7 @@ export const withPipelineTelemetry = (jobs: Record<string, Job>): Record<string,
             ...job.env,
             CI_EVIDENCE_MODE: '${{ vars.CI_EVIDENCE_MODE }}',
           },
-          steps,
+          steps: withCiAdmissionCleanup(steps),
         },
       ]
     }),
@@ -101,10 +109,15 @@ export const pipelineCloseJob = (jobs: Record<string, Job>): Job => ({
   },
   steps: [
     { uses: 'actions/checkout@v6', with: { 'persist-credentials': false } },
-    { name: 'Prepare Nix', uses: 'cachix/install-nix-action@v31' },
+    {
+      name: 'Prepare Nix',
+      uses: 'cachix/install-nix-action@v31',
+      with: { extra_nix_config: linuxNixSandboxFallbackConf },
+    },
     joinTailnetStep,
     {
       name: 'Link started job roots',
+      if: `\${{ always() && (${namespacePrivilegeTrustedPredicate})${Object.hasOwn(jobs, 'default-ref-policy') === true ? " && needs.default-ref-policy.result == 'success'" : ''} }}`,
       shell: 'bash',
       'continue-on-error': true,
       env: {

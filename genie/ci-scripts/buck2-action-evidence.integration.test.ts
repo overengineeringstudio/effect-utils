@@ -52,25 +52,26 @@ const nativeLog = (
     const end = event(buildId, 'SpanEnd', index + 2, 1700000002 + offset, {
       ActionExecution: {
         ...action,
-        execution_kind: localCache ? 10 : executionKind,
-        cache_upload_result: localCache ? 3 : executionKind === 3 ? 0 : 1,
-        commands: localCache
-          ? []
-          : [
-              {
-                details: {
-                  command_kind: {
-                    command: {
-                      LocalCommand: {
-                        action_digest: `${index.toString(16).padStart(64, '0')}:123`,
-                        argv: ['/private/root/SECRET_ARG'],
-                        env: [{ key: 'TOKEN', value: 'SECRET_VALUE' }],
+        execution_kind: localCache === true ? 10 : executionKind,
+        cache_upload_result: localCache === true ? 3 : executionKind === 3 ? 0 : 1,
+        commands:
+          localCache === true
+            ? []
+            : [
+                {
+                  details: {
+                    command_kind: {
+                      command: {
+                        LocalCommand: {
+                          action_digest: `${index.toString(16).padStart(64, '0')}:123`,
+                          argv: ['/private/root/SECRET_ARG'],
+                          env: [{ key: 'TOKEN', value: 'SECRET_VALUE' }],
+                        },
                       },
                     },
                   },
                 },
-              },
-            ],
+              ],
       },
     })
     records.push(end, end)
@@ -103,36 +104,56 @@ describe('complete normalized action artifact CLI', () => {
       const actions = join(directory, actionsArtifactName)
       for (const [index, category] of [...localMaterializationCategories, 'tsgo_emit'].entries()) {
         await Bun.write(events, nativeLog(`policy-${index}`, 0, false, category, 3))
-        const child = Bun.spawn([
-          process.execPath, collector, '--events', events, '--output', output,
-          '--context', 'populate', '--fresh-root',
-        ], { env: fixtureEnv, stdout: 'ignore', stderr: 'pipe' })
+        const child = Bun.spawn(
+          [
+            process.execPath,
+            collector,
+            '--events',
+            events,
+            '--output',
+            output,
+            '--context',
+            'populate',
+            '--fresh-root',
+          ],
+          { env: fixtureEnv, stdout: 'ignore', stderr: 'pipe' },
+        )
         expect(await new Response(child.stderr).text()).toBe('')
         expect(await child.exited).toBe(0)
       }
       const finalize = Bun.spawn([process.execPath, collector, '--output', output, '--finalize'], {
-        env: fixtureEnv, stdout: 'ignore', stderr: 'pipe',
+        env: fixtureEnv,
+        stdout: 'ignore',
+        stderr: 'pipe',
       })
       expect(await new Response(finalize.stderr).text()).toBe('')
       expect(await finalize.exited).toBe(0)
       const summary: CacheEvidence = await Bun.file(output).json()
       const bytes = new Uint8Array(await Bun.file(actions).arrayBuffer())
-      const full = decodeEvidence(bytes, summary, 'main-writer')
-      expect(summary.actionCount).toBe(600)
-      expect(summary.actions).toHaveLength(6)
-      expect(summary.counts['remote-hit']).toBe(600)
-      expect(summary.excludedByDesign).toEqual({ 'local-materialization-policy': 500 })
+      const full = decodeEvidence({ compressed: bytes, summary, expectedLane: 'main-writer' })
+      expect(summary.actionCount).toBe(100 * (localMaterializationCategories.length + 1))
+      expect(summary.actions).toHaveLength(localMaterializationCategories.length + 1)
+      expect(summary.counts['remote-hit']).toBe(100 * (localMaterializationCategories.length + 1))
+      expect(summary.excludedByDesign).toEqual({
+        'local-materialization-policy': 100 * localMaterializationCategories.length,
+        'darwin-unsandboxed': 0,
+      })
       expect(full.header.excludedByDesign).toEqual(summary.excludedByDesign)
       expect(full.header.invocations.map((invocation) => invocation.excludedByDesign)).toEqual([
-        ...localMaterializationCategories.map(() => ({ 'local-materialization-policy': 100 })),
-        { 'local-materialization-policy': 0 },
+        ...localMaterializationCategories.map(() => ({
+          'local-materialization-policy': 100,
+          'darwin-unsandboxed': 0,
+        })),
+        { 'local-materialization-policy': 0, 'darwin-unsandboxed': 0 },
       ])
-      expect(full.actions.filter((action) =>
-        action.exclusionReason === 'local-materialization-policy',
-      )).toHaveLength(500)
-      expect(full.actions.filter((action) => action.category === 'tsgo_emit').every((action) =>
-        action.exclusionReason === null,
-      )).toBe(true)
+      expect(
+        full.actions.filter((action) => action.exclusionReason === 'local-materialization-policy'),
+      ).toHaveLength(100 * localMaterializationCategories.length)
+      expect(
+        full.actions
+          .filter((action) => action.category === 'tsgo_emit')
+          .every((action) => action.exclusionReason === null),
+      ).toBe(true)
     } finally {
       await rm(directory, { recursive: true, force: true })
     }
@@ -306,7 +327,7 @@ describe('complete normalized action artifact CLI', () => {
             stderr: 'ignore',
           },
         )
-        expect(await child.exited).toBe(bounds.valid ? 0 : 1)
+        expect(await child.exited).toBe(bounds.valid === true ? 0 : 1)
         const full = decodeActionArtifact(
           gunzipSync(await Bun.file(join(directory, actionsArtifactName)).arrayBuffer()).toString(
             'utf8',
@@ -316,7 +337,7 @@ describe('complete normalized action artifact CLI', () => {
         expect(full.header.complete).toBe(bounds.valid)
         expect(full.header.invocations[0]?.freshRoot).toBe(bounds.valid)
         expect(full.header.evidenceGaps).toEqual(
-          bounds.valid ? [] : ['native-invocation-outside-job-window'],
+          bounds.valid === true ? [] : ['native-invocation-outside-job-window'],
         )
       } finally {
         await rm(directory, { recursive: true, force: true })

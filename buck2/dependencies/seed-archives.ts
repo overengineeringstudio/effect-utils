@@ -85,9 +85,9 @@ const parseBuckConfig = (text: string): Readonly<Record<string, string>> => {
 }
 
 /**
- * Resolve the seeder destination with the same precedence as Buck: explicit CI
- * environment, active local posture, active tracked posture, then the tracked
- * trusted-origin fallback used to generate local posture.
+ * Resolve the optional seeder destination: explicit CI environment, local seeder
+ * override, tracked seeder override, then the reviewed tracked destination.
+ * Runtime archive acquisition does not read or project these settings.
  */
 export const resolveArchiveOrigin = ({
   env,

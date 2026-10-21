@@ -1,8 +1,11 @@
 import { createHash } from 'node:crypto'
-import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 
 import { buck2SemanticFingerprint } from '../../genie/buck2/mod.ts'
+import {
+  inputExistsSync as existsSync,
+  inputReadFileSync as readFileSync,
+} from '../../packages/@overeng/genie/src/runtime/node/inputs.ts'
 import { defineRepoContext } from '../../packages/@overeng/genie/src/runtime/repo-context/mod.ts'
 import { publicArchiveRedirectUrl, publicArchiveUrl } from './public-archive-origin.ts'
 
@@ -681,6 +684,12 @@ export const translatePnpmLock = ({
     }
   }
 
+  const importerRecords = recordField({
+    record: lock,
+    field: 'importers',
+    location: 'pnpm-lock.yaml',
+    required: true,
+  })
   const snapshotRecords = recordField({
     record: lock,
     field: 'snapshots',
@@ -707,16 +716,17 @@ export const translatePnpmLock = ({
     location: string
   }): PnpmDependencyReference => {
     if (version.startsWith('link:') === true) {
-      if (importer === undefined)
-        return fail(`${location} workspace link is only supported in an importer`)
+      // Snapshot links are lockfile-root relative; importer links are importer relative.
       const linked = version.slice('link:'.length)
       if (linked.length === 0 || path.posix.isAbsolute(linked) === true)
         return fail(`${location} has unsafe workspace link`)
       const resolved = path.posix.normalize(
-        path.posix.join(importer === '.' ? '' : importer, linked),
+        path.posix.join(importer === undefined || importer === '.' ? '' : importer, linked),
       )
       if (resolved === '..' || resolved.startsWith('../') === true)
         return fail(`${location} workspace link escapes the repository`)
+      if (importer === undefined && Object.hasOwn(importerRecords, resolved) === false)
+        return fail(`${location} workspace link does not resolve to a known importer (${resolved})`)
       return { kind: 'workspace', path: resolved }
     }
     const aliasVersion =
@@ -794,12 +804,6 @@ export const translatePnpmLock = ({
     }
   }
 
-  const importerRecords = recordField({
-    record: lock,
-    field: 'importers',
-    location: 'pnpm-lock.yaml',
-    required: true,
-  })
   const importers: Record<string, PnpmImporterMetadata> = {}
   for (const [importer, value] of sortedEntries(importerRecords)) {
     const location = `pnpm-lock.yaml.importers.${importer}`
@@ -942,7 +946,7 @@ const decodeSidecarEntry = ({
   }
 }
 
-/** Decodes and validates the committed sha256 sidecar schema. */
+/** Decodes and validates the sidecar in the canonical key order emitted by the generator. */
 export const decodePnpmSha256Sidecar = (value: unknown): PnpmSha256Sidecar => {
   const sidecar = recordAt({ value: value, location: 'pnpm sha256 sidecar' })
   rejectUnknownFields({
@@ -999,10 +1003,10 @@ export const decodePnpmSha256Sidecar = (value: unknown): PnpmSha256Sidecar => {
   return {
     schema: pnpmSha256SidecarSchema,
     lockfileFingerprint: lockfileFingerprint as `sha256:${string}`,
+    packages,
     source: 'pnpm-lock.yaml',
     generator: 'buck2/dependencies/pnpm-lock.sha256.json.genie.ts',
     regenerate: 'devenv tasks run genie:run',
-    packages,
     fingerprint: fingerprint as `sha256:${string}`,
   }
 }

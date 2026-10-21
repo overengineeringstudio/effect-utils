@@ -46,25 +46,25 @@ assert_excludes() {
   fi
 }
 
-# Each support tool maps to its Cargo package directory; the fingerprint tool is the shared core.
-tool_dir() {
-  case "$1" in
-    fingerprint) echo core ;;
-    *) echo "$1" ;;
-  esac
-}
-
 for tool in archive-tool events fingerprint product; do
   assert_contains "$tool" rust/Cargo.toml
   assert_contains "$tool" rust/Cargo.lock
   assert_contains "$tool" rust-toolchain.toml
-  assert_contains "$tool" rust/buck2-tools/core/Cargo.toml
-  assert_contains "$tool" "rust/buck2-tools/$(tool_dir "$tool")/Cargo.toml"
+  assert_contains "$tool" "rust/buck2-tools/$tool/Cargo.toml"
+  case "$tool" in
+    archive-tool | product)
+      assert_contains "$tool" rust/buck2-tools/core/Cargo.toml
+      assert_contains "$tool" rust/buck2-tools/core/src/lib.rs
+      ;;
+    events | fingerprint)
+      assert_excludes "$tool" rust/buck2-tools/core/
+      ;;
+  esac
   assert_excludes "$tool" packages/@overeng/otelite
   assert_excludes "$tool" packages/@overeng/otel-scrape
-  for sibling in archive-tool events product; do
+  for sibling in archive-tool events fingerprint product; do
     if [ "$sibling" != "$tool" ]; then
-      assert_excludes "$tool" "rust/buck2-tools/$sibling/src"
+      assert_excludes "$tool" "rust/buck2-tools/$sibling/"
     fi
   done
 done

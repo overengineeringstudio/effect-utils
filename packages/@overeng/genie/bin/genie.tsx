@@ -17,6 +17,25 @@ import {
 import { otelEndpointFromConfig, withTelemetry } from '@overeng/utils/node/otel'
 
 import { genieCommand } from '../src/build/mod.tsx'
+import { isCompiledBinary } from '../src/core/discovery.ts'
+import { GenieRuntimeTranspilerCacheError } from '../src/core/errors.ts'
+
+// The packaged wrapper sets this before Bun starts. Unwrapped source invocations
+// replace themselves once: a late environment assignment cannot invalidate Bun's
+// memoized cache configuration, and cached plugin output can contain another pin.
+if (isCompiledBinary() === false && process.env.BUN_RUNTIME_TRANSPILER_CACHE_PATH === undefined) {
+  if (process.execve === undefined) {
+    throw new GenieRuntimeTranspilerCacheError({
+      message:
+        'This runtime cannot replace the current process. Start Genie with BUN_RUNTIME_TRANSPILER_CACHE_PATH=0.',
+    })
+  }
+  process.execve(
+    process.execPath,
+    [process.execPath, ...process.execArgv, ...process.argv.slice(1)],
+    { ...process.env, BUN_RUNTIME_TRANSPILER_CACHE_PATH: '0' },
+  )
+}
 
 // Build stamp placeholder replaced by nix build with NixStamp JSON
 const buildStamp = '__CLI_BUILD_STAMP__'

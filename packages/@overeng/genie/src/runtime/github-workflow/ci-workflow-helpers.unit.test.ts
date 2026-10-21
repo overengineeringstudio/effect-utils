@@ -54,6 +54,42 @@ const generatedCiWorkflowYamlSource = [
   generatedEmpiricalWorkflowYamlSource,
 ].join('\n')
 
+describe('tracked inert payload admission', () => {
+  it('admits the capability closure regression but rejects product payloads', () => {
+    const start = generatedProductCiWorkflowYamlSource.indexOf('tracked_editor=$(git ls-files')
+    expect(start).toBeGreaterThan(-1)
+    const end = generatedProductCiWorkflowYamlSource.indexOf('\n          fi', start)
+    expect(end).toBeGreaterThan(start)
+    const script = generatedProductCiWorkflowYamlSource.slice(start, end) + '\nfi\n'
+    const root = mkdtempSync(join(tmpdir(), 'inert-payload-admission-'))
+    const run = (...args: string[]) => spawnSync('git', args, { cwd: root, encoding: 'utf8' })
+    try {
+      expect(run('init', '--quiet').status).toBe(0)
+      mkdirSync(join(root, 'nix/buck2-products'), { recursive: true })
+      writeFileSync(join(root, 'nix/buck2-products/capability-closure.test.sh'), '#!/bin/bash\n')
+      expect(run('add', '.').status).toBe(0)
+      expect(
+        spawnSync('bash', ['-euo', 'pipefail', '-c', script], {
+          cwd: root,
+          encoding: 'utf8',
+        }).status,
+      ).toBe(0)
+      for (const payload of ['product.tar.gz', 'unrelated.sh']) {
+        writeFileSync(join(root, 'nix/buck2-products', payload), 'payload')
+        expect(run('add', '.').status).toBe(0)
+        const rejected = spawnSync('bash', ['-euo', 'pipefail', '-c', script], {
+          cwd: root,
+          encoding: 'utf8',
+        })
+        expect(rejected.status).toBe(1)
+        expect(rejected.stderr).toContain(`nix/buck2-products/${payload}`)
+      }
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+})
+
 describe('pipeline traces image attachment', () => {
   // Modes that run the checked-in GitBucket adapter instead of a stub uploader.
   const adapterModes: Readonly<Record<string, true>> = {
@@ -1493,15 +1529,23 @@ describe('storybook preview split build/deploy', () => {
             )
           const resolveStep = deploy.jobs['resolve-preview'].steps.find((s) => s.id === 'pull-request')
           const deployStep = deploy.jobs['deploy-preview'].steps.find((s) => s.id === 'deploy')
-          const stagedRun = netlifyPreviewDeployJobs({
-            runsOn: 'runner',
+          const generatedDeployJobs = netlifyPreviewDeployJobs({
+            runsOn: {
+              resolvePreview: 'resolve-runner',
+              deployPreview: 'deploy-runner',
+              publishPreviewComment: 'publish-runner',
+            },
             setupSteps: [],
             netlifyAuthToken: 'token',
             title: 't',
             noRecordsMessage: 'n',
             stateId: 's',
-          })['deploy-preview'].steps.find((s) => s.id === 'deploy').run
+          })
+          const stagedRun = generatedDeployJobs['deploy-preview'].steps.find((s) => s.id === 'deploy').run
           console.log(JSON.stringify({
+            generatedRunners: Object.fromEntries(
+              Object.entries(generatedDeployJobs).map(([jobId, job]) => [jobId, job['runs-on']]),
+            ),
             buildName: build.name,
             buildTriggers: Object.keys(build.on),
             buildSecretRefs: secretRefs(build),
@@ -1543,6 +1587,14 @@ describe('storybook preview split build/deploy', () => {
     )
     expect(fixture.status, fixture.stderr).toBe(0)
     facts = JSON.parse(fixture.stdout)
+  })
+
+  it('retains the explicit runner selected for each generated helper job', () => {
+    expect(facts.generatedRunners).toEqual({
+      'resolve-preview': 'resolve-runner',
+      'deploy-preview': 'deploy-runner',
+      'publish-preview-comment': 'publish-runner',
+    })
   })
 
   it('builds PR previews in an uncredentialed pull_request job', () => {

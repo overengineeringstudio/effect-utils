@@ -31,7 +31,56 @@ tasks."repo:typecheck".exec = "pnpm exec tsc --noEmit";
 select their own aggregate explicitly (for example, `buck2:quick` and
 `buck2:all`).
 
+pnpm source-input staging resolves `repos/<member>/...` with genie's
+bootstrap-safe member resolver. The initiating workspace's `megarepo.lock`
+selects the member source, not the potentially newer tracking symlink.
+Explicit `GENIE_MEMBER_OVERRIDE_MAP` overrides have the same precedence as
+genie imports. Materialize pinned sources with
+`mr apply --worktree-mode commit --lock-sync off` before staging.
+
+`mr:lock-sync-check` matches named Nix lock inputs to their exact same-repository
+megarepo members. An unnamed input is accepted when its revision matches any
+member of that repository, including several members at the same revision.
+If none match, it reports `no-declared-revision`.
+
+The check module also exports `config.effectUtils.buck2.aggregateExec`, taking
+a task name and a list of Buck2 arguments (including the subcommand). Existing
+consumers of `tasks/shared/check.nix` need no additional import:
+
+```nix
+env.BUCK2_BIN = "${inputs.effect-utils.packages.${pkgs.stdenv.hostPlatform.system}.buck2}/bin/buck2";
+env.OTEL_SPAN_BIN = "${inputs.effect-utils.packages.${pkgs.stdenv.hostPlatform.system}.otel-span}/bin/otel-span";
+tasks."bird:build".exec = config.effectUtils.buck2.aggregateExec "bird:build" [
+  "build"
+  "//flakes/bird:dist-package"
+  "//flakes/bird:bird-candidate"
+];
+```
+
+The helper preserves task tracing, the caller-root command span, event logs/build
+IDs, pipeline spooling versus standalone ingest/export, and the Buck2 exit status.
+`effectUtils.buck2.eventsPackage` defaults to the consumer's effect-utils input;
+`effectUtils.buck2.prepare` optionally supplies repository-specific setup before
+the command (for example, effect-utils' capability publication).
+
 ## Observability
+
+Aggregate tasks replace (never prepend to) `PATH` with nixpkgs Watchman's bin
+directory by default. To use a signed host Watchman on macOS, explicitly declare
+the executable in the ignored `devenv.local.nix`:
+
+```nix
+{
+  effectUtils.buck2.watchmanBin = "/usr/local/bin/watchman";
+}
+```
+
+The override must be absolute. A task-local `watchman` launcher executes that
+exact binary without copying or modifying it. Buck2's Watchman client discovers
+the CLI as `watchman` through `PATH`; it does not support a
+`BUCK2_WATCHMAN_BIN`/`WATCHMAN_BINARY` selector. There is no ambient PATH probing.
+Restart an existing Buck2 daemon (`buck2 kill`) after changing the selection;
+an already-running Watchman server retains its original executable/permissions.
 
 Import the sibling observability module once to capture native devenv spans
 and effect-utils task spans as one otelite trace:
@@ -99,6 +148,54 @@ for outer tasks that must complete before the nested devenv process can evaluate
     apps, while `"**"` explicitly exempts an entire repository. A reason is
     required; other library paths remain guarded.
 - `megarepo.nix` - Megarepo workspace tasks
+  - `effectUtils.megarepo.setup.mode` is a typed `"tracking" | "locked"` option,
+    defaulting to `"tracking"` to preserve local development. Set it to
+    `"locked"` in consumer configuration for reproducible setup, or opt in per
+    invocation with `MR_SETUP_MODE=locked devenv tasks run check:quick` (likewise
+    `check:all`). The process-level override reaches setup dependencies;
+    setting environment only on the aggregate check task does not. `CI=true`
+    always selects locked commits, even if the override requests tracking.
+    Locked setup materializes `megarepo.lock` commits without fetching refs or
+    rewriting locks. Canonical non-CI runners must explicitly select locked mode;
+    invoking a task named `check:*` alone does not change the setup policy.
+    Status validates the effective mode before checking readiness. Successful
+    setup records its mode under `.devenv/task-cache/mr-apply/setup-mode`;
+    switching between tracking and locked invalidates readiness, including
+    outer setup cache hits, so apply materializes the requested worktree policy.
+    Every shared apply path (`mr:setup`, `mr:bootstrap`, `mr:apply`, and
+    `mr:fetch-apply`) removes that proof before mutating member mounts, so an
+    explicit remount or failed apply cannot leave stale setup readiness.
+  - `(taskModules.megarepo { setupCommitMembers = [ "livestore" ]; })` additionally
+    prepares those members' nested megarepo trees in fresh commit worktrees.
+    Local readiness checks every non-skipped root member with `mr status`
+    (without `--all`), then runs `mr status --all` inside only the listed,
+    non-skipped members that have their own megarepo config. Unlisted nested
+    trees do not block readiness; ordinary listed repos need no nested check.
+    These exact-lock checks also run on the outer setup cache-hit path.
+    Default `[ ]` prepares and checks root members only.
+    With `CI=true`, a non-empty list passes `mr apply --commit-all-members`,
+    preparing every root member's nested tree to match the root-level
+    `mr status --all` readiness check.
+  - Setup probes `mr apply --help` before using `--verify-shared`, keeping
+    older published products usable without passing an unsupported flag.
+    Failed probes stop setup; legacy canonical-mutation refusal remains
+    fail-closed. The probe never changes the selected setup mode.
+  - Shared `genie:prepare` waits for `mr:setup` when that task exists, so Genie
+    run/check/watch and `lint:check:genie` in both lint modules await member
+    sources before their status or execution scripts. Concrete Buck task
+    dependencies remain consumer-owned; shared `buck2.nix` exposes execution
+    helpers rather than defining a generic typecheck task.
+  - `megarepo-product-flags.test.sh` evaluates these task scripts with optional
+    member preparation enabled and checks every emitted command/flag against
+    the manifest-backed Nix `megarepo` product's help. The `pr/quality` gate runs
+    this contract on pull requests and rejects task/source changes that outrun
+    the published CLI; source CLI tests alone cannot prove the consumer contract.
+    Extraction must find flags and include CI nested setup's
+    `mr apply --commit-all-members`, so empty/partial extraction fails closed.
+    Product refreshes come from the protected-main `publish-products` job in
+    `ci.yml` (push or `workflow_dispatch`), which proposes
+    `automation/buck2-products-manifest`. Land its manifest PR before consumers
+    repin task modules requiring new flags; never hand-edit product provenance.
 - `flake-lock-duplicates.nix` - Exact duplicate flake lock-node policy
   - `(taskModules.flake-lock-duplicates { lockfiles = [ "flake.lock" ... ]; })`
     selects the lockfiles and only defines `nix:flake-lock:check-duplicates`.
@@ -112,7 +209,10 @@ for outer tasks that must complete before the nested devenv process can evaluate
 - `nix-cli.nix` - Nix CLI build/check tasks
 - `pnpm.nix` - pnpm install tasks
   - Local development shares one complete pnpm Store Cache between trusted
-    roots of the same OS user; CI uses a job-local Store Cache.
+    roots of the same OS user. `GITHUB_ACTIONS=true` or the explicit opt-in
+    `PNPM_JOB_LOCAL_STORE=1` selects the job-local Store Cache under
+    `<root>/.devenv/pnpm-store-pure-v1` (with a workspace suffix for nested roots).
+    `CI=1` alone keeps shared storage, so non-watch dev-host tasks reuse the cache.
   - By default dependency graphs and `node_modules/.pnpm` remain
     Materialization-Root-owned. Pass `globalVirtualStore = true;` to opt local
     development into pnpm's graph-hashed shared projections with the isolated
@@ -123,9 +223,10 @@ for outer tasks that must complete before the nested devenv process can evaluate
     The default complete store is `$HOME/.local/share/pnpm/store` in GVS mode
     versus `$HOME/.local/share/pnpm/store-shared-v1` otherwise;
     `PNPM_SHARED_STORE_DIR` overrides either local store.
-  - CI explicitly disables GVS (including inherited environment/YAML opt-ins)
-    and uses the job-local store and projection. Fixed-output preparation stays
-    root-local and GVS-disabled.
+  - Job-local mode explicitly disables GVS (including inherited environment/YAML
+    opt-ins) and uses the job-local store and projection. Other CI runners must
+    set `PNPM_JOB_LOCAL_STORE=1` to obtain that isolation. Fixed-output preparation
+    stays root-local and GVS-disabled.
   - Install, update, dedupe, status, doctor, and shell setup share the selected
     policy. Readiness receipts include effective GVS/store policy. Health and
     projection fingerprints visit only this root's reachable shared instances,
@@ -138,6 +239,81 @@ for outer tasks that must complete before the nested devenv process can evaluate
   - `pnpm:store:migrate-legacy` explicitly replaces only the recognized
     historical `v11/files` bridge under the exclusive cache lease; normal
     installs and unknown bridges fail closed.
+  - `pnpm-store-gc --git-dir /path/to/repo/.bare --root /path/to/worktree`
+    reports historical root-local store retirement in a read-only dry-run.
+    The collector is Linux-only. On other platforms it exits nonzero before
+    filesystem input access with `pnpm-store-gc: unsupported platform (Linux only; Darwin census not implemented)`.
+    Repeat `--root` for explicitly selected worktrees; there is no fleet traversal.
+    It never targets `$HOME/.local/share/pnpm` or `PNPM_SHARED_STORE_DIR`.
+    Before ownership admission or lease creation, resolved paths and inode
+    identities reject candidates overlapping either default shared store or
+    `PNPM_SHARED_STORE_DIR`. Mount inventory also rejects mount points at the
+    candidate root or below it, including same-filesystem bind mounts.
+    Directory mount IDs define traversal containment; `st_dev` remains part of
+    inode accounting only. Overlayfs payloads can expose differing backing
+    device IDs without crossing a mount, so device-number inequality is not
+    grounds to reject an otherwise contained historical cache.
+    `--observe` records eligible roots without deleting payloads; after 24 hours,
+    repeat the dry-run, then opt in to `--apply` to retire eligible payloads.
+    An initial `--apply` only establishes the observation, never skips grace.
+  - Eligibility requires the root to be absent from Git's worktree registry
+    **and** have no `.git` marker, or its own checkout to have stopped owning
+    the historical store. For effect-utils this is proved by HEAD containing
+    `727cb7544bea32ec031c9f6e5e840cbe717e772a` (#1794). Consumer checkouts can
+    prove resolved selection through matching `pnpm-storage-state` receipts
+    and `.modules.yaml` metadata naming the default shared store (or the
+    operator's `PNPM_SHARED_STORE_DIR`). Any projection still naming a
+    worktree-local store protects the cache. Unknown metadata, incomplete
+    ownership evidence, and Git worktree locks fail closed; PR closure alone
+    does not prove a checkout stopped referencing its store.
+  - The collector requires no own-UID cwd/open-fd references under the
+    historical **store**, not the entire checkout, using Linux `/proc`.
+    Other-UID processes are outside the normal
+    user-owned-cache flow; the CLI states this assumption explicitly. Unreadable
+    own-UID processes fail closed, except the explicit Linux privileged-broker
+    allowlist. SSH brokers (`sshd-session`, Tailscale SSH's
+    `.tailscaled-wrapped` executable or truncated `.tailscaled-wra` comm)
+    require a root-owned fd directory. The `systemd` user-manager exception
+    requires `PPid=1` and nonzero permitted capabilities. Its `(sd-pam)` child
+    shares the same exception only when its PPid identifies that same approved,
+    same-UID manager. Only `ESRCH` or disappearance of the PID directory proves
+    a process gone. A live PID with missing leader cwd/fd evidence requires
+    inventory of its remaining tasks; unreadable task evidence fails closed.
+    Other unreadable process classes fail closed. Every exception prints the PID,
+    comm, executable
+    (or its read error), parent, permitted capabilities, and the normal-flow
+    assumption that privileged brokers do not use pnpm stores. The invoking UID
+    must own the store; no privileged observer or GitHub/API access is needed.
+    It rechecks checkout ownership, process references, and every payload inode's
+    size/link-count/mtime/ctime under a proved exclusive Store Cache lease before
+    retirement. Changed observed eligibility resets the 24-hour grace.
+    The candidate is opened once at admission: its directory descriptor and
+    inode/mount identity remain held through lease acquisition, proofs, and
+    retirement. The lease is opened relative to that descriptor, and its locked
+    open-file description remains held in the same collector process. Pathname
+    replacement aborts rather than admitting a replacement directory; deletion
+    never reopens the root path and verifies its identity again at the end.
+    Linux retirement walks held directory descriptors with `O_NOFOLLOW` and
+    compares each opened directory's mount ID before descending or unlinking;
+    a newly inserted mount or replacement symlink cannot redirect the walk.
+    Observations live in `$XDG_STATE_HOME/effect-utils/pnpm-store-gc` (default
+    `$HOME/.local/state/...`); the stable store directory and maintenance-lock
+    inode remain, so cooperating pnpm mutations cannot bypass the lease.
+  - Output lists `would-free`, `grace`, `protected`, or `absent` per root and a
+    `would-free-total` in bytes. Reclaim estimates count allocated blocks once
+    per inode and exclude payload inodes still hardlinked outside the selected
+    store; `allocated=` also reports the gross store footprint. These are not
+    physical reclaim guarantees on compressed, snapshotted, or clone-sharing
+    filesystems. Unmanaged processes can start after a census: stop/unpin root
+    users first; process evidence does not replace lifecycle ownership.
+  - Historical attribution: `8c5bc8e6be49440f03b9b0bb9504264352d47bd8`
+    (#692) introduced the `pure-v1` namespace for lifecycle-free, integrity-
+    checked frozen installs, not because Buck/Nix required worktree-local CAS.
+    `4514099e0` (#922) selected a complete shared Store Cache with root-owned
+    topology. `727cb7544bea32ec031c9f6e5e840cbe717e772a` (#1794) stopped
+    treating ambient `CI=1` as job isolation; ordinary dev-host tasks now share
+    the cache even in non-watch CI mode. Copies created before that selection
+    change can be historical, but age alone does not authorize their retirement.
   - Frozen installs and `pnpm:update` both use the current guarded pnpm
     runtime: pnpm 12 is outside the 11.5.2-11.14.0 `hasBin` window that
     required a separate lock mutator, so the dedicated pin is retired while
@@ -190,10 +366,15 @@ They assume the effect-utils repo structure and are not exported in flake.nix.
 
 ### Module shell-test scheduling
 
-`devenv-modules:test` discovers every `shared/tests/*.test.sh`; it does not
-filter the suite. `local/devenv-module-tests.sh` runs unaudited and shared-checkout
-state scripts serially before starting a bounded worker pool for explicitly
-admitted scripts. Only admitted scripts are ordered longest-first, with lexical
+`devenv-modules:test` discovers every `shared/tests/*.test.sh` and requires each
+script to appear exactly once in `genie/ci-workflow/test-platforms.json`'s
+`moduleScripts` classification. The Nix import and shell dispatcher both reject
+missing, stale, duplicate or overlapping entries before dispatch. Darwin runs
+only Darwin-sensitive scripts; Linux and an unset platform run the complete
+catalog. Platform classification is independent of parallel-safety admission.
+`local/devenv-module-tests.sh` runs selected unaudited and shared-checkout state
+scripts serially before starting a bounded worker pool for explicitly admitted
+scripts. Only admitted scripts are ordered longest-first, with lexical
 ties and weight one for scripts without a declared duration. Both phases keep
 running after failures. The aggregate fails if any script fails, and stderr
 records each script's UTC start/end timestamp, scheduling class, and original
@@ -206,8 +387,8 @@ for the complete pool on ordinary failures and on INT/TERM to the supervisor.
 
 #### Isolation admission audit
 
-The admission list is fail-closed: a new script still runs, but runs serially
-until its side effects have been reviewed. The audit at
+The parallel admission list is fail-closed: a newly platform-classified script
+runs serially until its side effects have been reviewed. The audit at
 [`1f4b2947`](https://github.com/overengineeringstudio/effect-utils/commit/1f4b2947b8cfe2617e34ade8e5fafb63fd2c5587)
 admitted 42 of the original 43 scripts. Every admitted script runs in a
 separate Bash process, preserving cwd/environment isolation. Their ownership

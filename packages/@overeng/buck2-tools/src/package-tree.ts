@@ -42,13 +42,15 @@ export type PackageTreeOptions = {
   readonly workspaceDependencyViews: ReadonlyMap<string, string>
   readonly workspaceLinks: ReadonlyMap<string, string>
   /**
-   * Remove TypeScript project references from the staged root tsconfig.
+   * Remove TypeScript project references from the staged authority projects.
    *
    * Package views contain one package, while references describe the source-workspace
    * build graph. Bundlers and per-file transforms may follow them into unstaged sibling
    * projects; Buck typecheck and emit use the package's declared dependency view instead.
    */
   readonly stripProjectReferences: boolean
+  /** Package-relative authority files; references are not inherited through extends. */
+  readonly projectFiles: readonly string[]
 }
 
 const invalidArguments = (message: string): never => {
@@ -108,6 +110,7 @@ const parseOptions = (args: readonly string[]): PackageTreeOptions => {
   const workspaceDependencyViews = new Map<string, string>()
   const workspaceLinks = new Map<string, string>()
   let stripProjectReferences = false
+  const projectFiles = new Set<string>()
 
   for (let index = 0; index < args.length;) {
     const flag = requireValue({ args, index, flag: 'argument' })
@@ -145,6 +148,7 @@ const parseOptions = (args: readonly string[]): PackageTreeOptions => {
       dependencies = { kind: 'link', path: value }
     else if (flag === '--strip-project-references' && value === 'true')
       stripProjectReferences = true
+    else if (flag === '--project') projectFiles.add(requireRelativePath({ value, field: flag }))
     else invalidArguments(`unexpected argument: ${flag}`)
     index += 2
   }
@@ -160,6 +164,7 @@ const parseOptions = (args: readonly string[]): PackageTreeOptions => {
     workspaceDependencyViews,
     workspaceLinks,
     stripProjectReferences,
+    projectFiles: projectFiles.size === 0 ? ['tsconfig.json'] : [...projectFiles],
   }
 }
 
@@ -382,7 +387,7 @@ const cloneProjectFileWithoutReferences = ({
 }): void => {
   const parsed = parseJsonc(readFileSync(source, 'utf8'))
   if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed) === true) {
-    throw new Error('package tree: tsconfig.json must contain an object')
+    throw new Error(`package tree: ${source} must contain an object`)
   }
   const config = parsed as Readonly<Record<string, unknown>>
   const references = config.references
@@ -395,11 +400,18 @@ const cloneProjectFileWithoutReferences = ({
   writeFileSync(destination, `${JSON.stringify(project, null, 2)}\n`)
 }
 
-/** Assembles one complete package tree from declared package and dependency artifacts. */
+const clearOutputContents = (output: string): void => {
+  for (const entry of readdirSync(output)) {
+    rmSync(join(output, entry), { recursive: true, force: true })
+  }
+}
+
+/** Assembles a complete package tree, retaining the output directory even if assembly fails. */
 export const assemblePackageTree = (options: PackageTreeOptions): void => {
   const output = resolve(options.output)
-  rmSync(output, { recursive: true, force: true })
   mkdirSync(output, { recursive: true })
+  // The declared output may be a writable bind mount: remove entries, never its root.
+  clearOutputContents(output)
   try {
     const allowedExternalLinks = new Set<string>()
     const workspacePackages = new Set(
@@ -458,18 +470,20 @@ export const assemblePackageTree = (options: PackageTreeOptions): void => {
         })
       }
     }
-    let strippedProjectReferences = false
+    const pendingProjects = new Set(options.projectFiles)
     for (const [destination, source] of [...options.files, ...options.workspaceFiles]) {
       const outputPath = destinationInside({ root: output, relativePath: destination })
-      if (options.stripProjectReferences === true && destination === 'tsconfig.json') {
+      if (options.stripProjectReferences === true && pendingProjects.has(destination) === true) {
         cloneProjectFileWithoutReferences({ source, destination: outputPath })
-        strippedProjectReferences = true
+        pendingProjects.delete(destination)
       } else {
         cloneTree({ source, destination: outputPath })
       }
     }
-    if (options.stripProjectReferences === true && strippedProjectReferences === false) {
-      invalidArguments('--strip-project-references declared but no tsconfig.json was staged')
+    if (options.stripProjectReferences === true && pendingProjects.size > 0) {
+      invalidArguments(
+        `--strip-project-references declared but no ${[...pendingProjects].join(', ')} was staged`,
+      )
     }
     for (const [destination, source] of options.workspaceDependencyViews) {
       if (lstatSync(source).isDirectory() === false) {
@@ -506,7 +520,7 @@ export const assemblePackageTree = (options: PackageTreeOptions): void => {
       root: output,
     })
   } catch (error) {
-    rmSync(output, { recursive: true, force: true })
+    clearOutputContents(output)
     throw error
   }
 }

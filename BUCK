@@ -4,8 +4,7 @@
 # Projection source: BUCK.genie.ts
 # Projection schema version: 1
 # Projection generator: effect-utils/genie/buck2-root-aggregate-projection
-# Semantic fingerprint: sha256:0b4227a03ef786dcfff5eba4e8d17ffb8221e50f3fe73e48d5793939b625ae8d
-# Semantic inputs: BUCK.genie.ts, genie/buck2/mod.ts, genie/buck2/root-aggregate-projection.ts, genie/buck2/typescript-admissions.ts, rust/effect-rust-fixtures/BUCK.genie.ts, buck2/check_aggregate.bzl, buck2/weaver.bzl, packages/@overeng/buck2-tools/src/weaver-check-runner.ts, context/effect/socket/BUCK.genie.ts, context/opentui/BUCK.genie.ts, packages/@overeng/agent-session-ingest/BUCK.genie.ts, packages/@overeng/ai-gateway-conformance/BUCK.genie.ts, packages/@overeng/buck2-tools/BUCK.genie.ts, packages/@overeng/ci-tools/BUCK.genie.ts, packages/@overeng/content-address/BUCK.genie.ts, packages/@overeng/devbar/BUCK.genie.ts, packages/@overeng/effect-ai-claude-cli/BUCK.genie.ts, packages/@overeng/effect-ai-gateway/BUCK.genie.ts, packages/@overeng/effect-distributed-lock/BUCK.genie.ts, packages/@overeng/effect-path/BUCK.genie.ts, packages/@overeng/effect-react/BUCK.genie.ts, packages/@overeng/effect-rpc-explorer-react/BUCK.genie.ts, packages/@overeng/effect-rpc-explorer/BUCK.genie.ts, packages/@overeng/effect-rpc-tanstack/BUCK.genie.ts, packages/@overeng/effect-rpc-tanstack/examples/basic/BUCK.genie.ts, packages/@overeng/effect-rust-fixture-consumer/BUCK.genie.ts, packages/@overeng/effect-rust/BUCK.genie.ts, packages/@overeng/effect-schema-form-aria/BUCK.genie.ts, packages/@overeng/effect-schema-form/BUCK.genie.ts, packages/@overeng/genie-smalltalk/BUCK.genie.ts, packages/@overeng/genie/BUCK.genie.ts, packages/@overeng/gh-ci-utils/BUCK.genie.ts, packages/@overeng/kdl-effect/BUCK.genie.ts, packages/@overeng/kdl/BUCK.genie.ts, packages/@overeng/megarepo/BUCK.genie.ts, packages/@overeng/notion-cli/BUCK.genie.ts, packages/@overeng/notion-core/BUCK.genie.ts, packages/@overeng/notion-datasource-sync/BUCK.genie.ts, packages/@overeng/notion-effect-client/BUCK.genie.ts, packages/@overeng/notion-effect-schema/BUCK.genie.ts, packages/@overeng/notion-md/BUCK.genie.ts, packages/@overeng/notion-property-write/BUCK.genie.ts, packages/@overeng/notion-react/BUCK.genie.ts, packages/@overeng/npm-release/BUCK.genie.ts, packages/@overeng/otel-browser/BUCK.genie.ts, packages/@overeng/otel-contract/BUCK.genie.ts, packages/@overeng/outline/BUCK.genie.ts, packages/@overeng/oxc-config/BUCK.genie.ts, packages/@overeng/pty-effect/BUCK.genie.ts, packages/@overeng/react-inspector/BUCK.genie.ts, packages/@overeng/restate-effect/BUCK.genie.ts, packages/@overeng/stylex-tokens/BUCK.genie.ts, packages/@overeng/tui-core/BUCK.genie.ts, packages/@overeng/tui-react/BUCK.genie.ts, packages/@overeng/tui-stories/BUCK.genie.ts, packages/@overeng/utils-dev/BUCK.genie.ts, packages/@overeng/utils-storybook/BUCK.genie.ts, packages/@overeng/utils/BUCK.genie.ts
+# Semantic fingerprint: sha256:300aad6e219d97dc5d38b6adcb7f36bd189894708e5b9710a746207012401b36
 # Regenerate: devenv tasks run genie:run
 load("//buck2:weaver.bzl", "weaver_checks")
 load("//buck2:check_aggregate.bzl", "check_aggregate")
@@ -115,6 +114,15 @@ export_file(
     src = "patches/@myobie__pty@0.10.0.patch",
     visibility = ["PUBLIC"],
 )
+
+# Prelude includes this unreachable select branch in unconfigured Cxx/Rust queries.
+# Our Cxx toolchain already has no default deps, so both labels share one instance.
+toolchain_alias(
+    name = "cxx_no_default_deps",
+    actual = "//buck2/toolchains:cxx",
+    visibility = ["PUBLIC"],
+)
+
 static_source_set(
     name = "nix_sources",
     prefix = "",
@@ -167,13 +175,19 @@ check_aggregate(
         "//context/opentui:typecheck",
         "//packages/@overeng/agent-session-ingest:typecheck",
         "//packages/@overeng/ai-gateway-conformance:typecheck",
+        "//packages/@overeng/ai-gateway-edge:typecheck",
         "//packages/@overeng/buck2-tools:typecheck",
         "//packages/@overeng/ci-tools:typecheck",
         "//packages/@overeng/content-address:typecheck",
+        "//packages/@overeng/data-graph:typecheck",
         "//packages/@overeng/devbar:typecheck",
+        "//packages/@overeng/meters:typecheck",
+        "//packages/@overeng/effect-rpc-observer:typecheck",
+        "//packages/@overeng/rpc-devtools:typecheck",
         "//packages/@overeng/effect-ai-claude-cli:typecheck",
         "//packages/@overeng/effect-ai-gateway:typecheck",
         "//packages/@overeng/effect-distributed-lock:typecheck",
+        "//packages/@overeng/effect-iroh:typecheck",
         "//packages/@overeng/effect-path:typecheck",
         "//packages/@overeng/effect-react:typecheck",
         "//packages/@overeng/effect-rpc-explorer:typecheck",
@@ -229,13 +243,19 @@ check_aggregate(
         ":quick",
         "//packages/@overeng/agent-session-ingest:dist",
         "//packages/@overeng/ai-gateway-conformance:dist",
+        "//packages/@overeng/ai-gateway-edge:dist",
         "//packages/@overeng/buck2-tools:dist",
         "//packages/@overeng/ci-tools:dist",
         "//packages/@overeng/content-address:dist",
+        "//packages/@overeng/data-graph:dist",
         "//packages/@overeng/devbar:dist",
+        "//packages/@overeng/meters:dist",
+        "//packages/@overeng/effect-rpc-observer:dist",
+        "//packages/@overeng/rpc-devtools:dist",
         "//packages/@overeng/effect-ai-claude-cli:dist",
         "//packages/@overeng/effect-ai-gateway:dist",
         "//packages/@overeng/effect-distributed-lock:dist",
+        "//packages/@overeng/effect-iroh:dist",
         "//packages/@overeng/effect-path:dist",
         "//packages/@overeng/effect-react:dist",
         "//packages/@overeng/effect-rpc-explorer:dist",
@@ -275,17 +295,21 @@ check_aggregate(
         "//packages/@overeng/utils-dev:dist",
         "//packages/@overeng/utils-storybook:dist",
         "effect_utils//packages/@overeng/agent-session-ingest:test",
+        "effect_utils//packages/@overeng/ai-gateway-edge:test",
         "effect_utils//packages/@overeng/ci-tools:test",
         "effect_utils//packages/@overeng/ci-tools:test_pipeline_report_local_api",
         "effect_utils//packages/@overeng/content-address:test",
+        "effect_utils//packages/@overeng/data-graph:test",
         "effect_utils//packages/@overeng/devbar:test",
         "effect_utils//packages/@overeng/effect-ai-claude-cli:test",
         "effect_utils//packages/@overeng/effect-ai-gateway:test",
         "effect_utils//packages/@overeng/effect-distributed-lock:test",
+        "effect_utils//packages/@overeng/effect-iroh:test",
         "effect_utils//packages/@overeng/effect-path:test",
         "effect_utils//packages/@overeng/effect-react:test",
         "effect_utils//packages/@overeng/effect-rpc-explorer-react:test",
         "effect_utils//packages/@overeng/effect-rpc-explorer:test",
+        "effect_utils//packages/@overeng/effect-rpc-observer:test",
         "effect_utils//packages/@overeng/effect-rpc-tanstack:test",
         "effect_utils//packages/@overeng/effect-rust:test",
         "effect_utils//packages/@overeng/effect-schema-form-aria:test",
@@ -296,6 +320,7 @@ check_aggregate(
         "effect_utils//packages/@overeng/kdl-effect:test",
         "effect_utils//packages/@overeng/kdl:test",
         "effect_utils//packages/@overeng/megarepo:test",
+        "effect_utils//packages/@overeng/meters:test",
         "effect_utils//packages/@overeng/notion-cli:test",
         "effect_utils//packages/@overeng/notion-core:test",
         "effect_utils//packages/@overeng/notion-datasource-sync:test",
@@ -313,6 +338,7 @@ check_aggregate(
         "effect_utils//packages/@overeng/pty-effect:test",
         "effect_utils//packages/@overeng/react-inspector:test",
         "effect_utils//packages/@overeng/restate-effect:test",
+        "effect_utils//packages/@overeng/rpc-devtools:test",
         "effect_utils//packages/@overeng/tui-core:test",
         "effect_utils//packages/@overeng/tui-react:test",
         "effect_utils//packages/@overeng/tui-stories:test",

@@ -35,6 +35,7 @@ const SELF_HOSTED_RUNNER_LABELS = [
     'sh-linux-arm64-publish',
     ...darwinArm64Runner,
     namespaceLinuxX64PairedPerfRunner,
+    `${namespaceLinuxX64PairedPerfRunner};job.priority=4`,
   ]),
 ] as const
 
@@ -101,25 +102,31 @@ type CiConcurrencyOptions = {
   readonly labelEvents?: boolean
 }
 
-const ciConcurrencyScope = (opts?: Pick<CiConcurrencyOptions, 'measurementBaselineBackfill' | 'labelEvents'>) => {
-  const manual = "github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id)"
-  const labels = opts?.labelEvents === false
-    ? "'code'"
-    : "(github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code')"
+const ciConcurrencyScope = (
+  opts?: Pick<CiConcurrencyOptions, 'measurementBaselineBackfill' | 'labelEvents'>,
+) => {
+  const manual =
+    "github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id)"
+  const labels =
+    opts?.labelEvents === false
+      ? "'code'"
+      : "(github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code')"
   return opts?.measurementBaselineBackfill === true
     ? `\${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (${manual} || ${labels}) }}`
     : `\${{ ${manual} || ${labels} }}`
 }
 
-const ciCancelInProgress = (opts?: Pick<CiConcurrencyOptions, 'measurementBaselineBackfill' | 'labelEvents'>) => {
+const ciCancelInProgress = (
+  opts?: Pick<CiConcurrencyOptions, 'measurementBaselineBackfill' | 'labelEvents'>,
+) => {
   if (opts?.labelEvents === false) {
     return opts.measurementBaselineBackfill === true
-      ? "\${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') }}"
+      ? "${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') }}"
       : true
   }
   return opts?.measurementBaselineBackfill === true
-    ? "\${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') && (github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled')) }}"
-    : "\${{ github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled') }}"
+    ? "${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') && (github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled')) }}"
+    : "${{ github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled') }}"
 }
 
 export const ciJobConcurrency = ({ jobId, ...opts }: { jobId: string } & CiConcurrencyOptions) =>
@@ -174,7 +181,7 @@ const supportsMeasurementBaselineBackfill = (on: GitHubWorkflowArgs['on']) =>
   on.workflow_dispatch !== null
 
 const excludesLabelEvents = (on: GitHubWorkflowArgs['on']): boolean => {
-  if (typeof on !== 'object' || on === null || Array.isArray(on)) return false
+  if (typeof on !== 'object' || on === null || Array.isArray(on) === true) return false
   return [on.pull_request, on.pull_request_target].every(
     (trigger) =>
       trigger === undefined ||
@@ -210,6 +217,206 @@ export const ciWorkflowConcurrency = {
 export type CiWorkflowArgs = GitHubWorkflowArgs & {
   readonly trustTier: CiTrustTier
   readonly binaryCaches?: readonly BinaryCacheDescriptor[]
+  /**
+   * Attest sandbox support for jobs whose runs-on cannot be resolved statically.
+   * This does not override an explicitly unprivileged Namespace Linux label.
+   */
+  readonly linuxNixSandboxCapabilities?: Readonly<Record<string, 'supported'>>
+}
+
+const linuxNixSandboxSettings = ['sandbox = true', 'sandbox-fallback = false']
+
+/** Installer/daemon setting; the empty Darwin branch leaves its policy unchanged. */
+export const linuxNixSandboxFallbackConf = linuxNixSandboxSettings
+  .map((setting) => `\${{ runner.os == 'Linux' && '${setting}' || '' }}`)
+  .join('\n')
+
+/** Fork policy shared by runner selection, sandbox validation, and TS admission. */
+export const namespacePrivilegeTrustedPredicate =
+  "github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository"
+
+/**
+ * Resolve bounded runner alternatives, not incidental quoted strings.
+ * The trusted suffix is the existing runtime-admitted exception; arbitrary
+ * feature interpolation must instead carry an explicit capability attestation.
+ */
+const resolveRunnerLabelAlternatives = (label: string): readonly string[] | undefined => {
+  const expression = /^\s*\$\{\{([\s\S]*?)\}\}\s*$/.exec(label)
+  if (expression !== null) {
+    const alternatives = /^[^&|]+&&\s*'((?:[^']|'')*)'\s*\|\|\s*'((?:[^']|'')*)'\s*$/.exec(
+      expression[1] ?? '',
+    )
+    return alternatives?.slice(1).map((alternative) => alternative.replaceAll("''", "'"))
+  }
+  const trustedSuffix = `\${{ (${namespacePrivilegeTrustedPredicate}) && ';container.privileged=true' || '' }}`
+  const resolved = label
+    .replaceAll(trustedSuffix, ';container.privileged=true')
+    .replace(/\$\{\{\s*github\.run_id\s*\}\}/g, 'GENIE_RUN_ID')
+  return resolved.includes('${{') === true ? undefined : [resolved]
+}
+
+/**
+ * Validate the runner before emitting a workflow that installs strict-sandbox Nix.
+ * Namespace feature labels can be separate array entries; expression alternatives
+ * must be checked independently rather than borrowing another branch's privilege.
+ */
+const validateLinuxNixSandboxRunners = ({
+  jobs,
+  capabilities,
+}: {
+  readonly jobs: GitHubWorkflowArgs['jobs']
+  readonly capabilities: CiWorkflowArgs['linuxNixSandboxCapabilities']
+}): void => {
+  for (const [jobId, job] of Object.entries(jobs)) {
+    if (
+      job.steps.some(
+        (step) => step.uses?.startsWith('DeterminateSystems/determinate-nix-action@') === true,
+      ) === false
+    )
+      continue
+    const labels = [job['runs-on']].flat()
+    // Fixed machine constraints apply to the entire job, not each selector.
+    if (
+      labels.includes('self-hosted') === true ||
+      labels.some((label) =>
+        /^(?:namespace-profile-|nscloud-)[^$;]*(?:macos|darwin)[^$;]*$/.test(
+          label.split(';')[0] ?? '',
+        ),
+      ) === true
+    )
+      continue
+    const fail = (reason: string): never => {
+      throw new Error(
+        `CI job "${jobId}": ${reason}. Install Nix requires sandbox = true and sandbox-fallback = false on Linux. ` +
+          'Append container.privileged=true to a Namespace profile label, or use a namespace-features label beside a -with-features machine label. ' +
+          'For an opaque runs-on expression, declare linuxNixSandboxCapabilities: { ' +
+          `[${JSON.stringify(jobId)}]: 'supported' } only when every possible Linux runner supports strict Nix sandboxing.`,
+      )
+    }
+    const entries = labels.map((label) => {
+      const resolved = resolveRunnerLabelAlternatives(label)
+      return {
+        opaque: resolved === undefined,
+        unknownMachine: resolved === undefined && (label.split(';')[0] ?? '').includes('${{'),
+        // Unknown programs need attestation, but cannot erase their static
+        // fragments or their literal runner alternatives.
+        alternatives: resolved ?? [
+          label.replace(/\$\{\{[\s\S]*?\}\}/g, 'GENIE_OPAQUE'),
+          ...[...label.matchAll(/'((?:[^']|'')*)'/g)]
+            .map((match) => (match[1] ?? '').replaceAll("''", "'"))
+            .filter((literal) =>
+              /^(?:namespace-profile-|nscloud-|namespace-features:)/.test(literal),
+            ),
+        ],
+      }
+    })
+    const staticLabels = entries.flatMap((entry) => entry.alternatives)
+    const namespaceLinux = staticLabels.filter(
+      (label) =>
+        /^(?:namespace-profile-|nscloud-)/.test(label) === true &&
+        /(?:^|[-;])(?:macos|darwin)(?:[-;]|$)/.test(label) === false,
+    )
+    if (
+      namespaceLinux.length === 0 &&
+      entries.every((entry) => entry.unknownMachine === false) === true
+    )
+      continue
+    // Static disablement always wins, including separate feature alternatives.
+    if (
+      staticLabels.some((label) => /(?:^|[;:])container\.privileged=false(?:;|$)/.test(label)) ===
+      true
+    )
+      fail(
+        'literal runner feature lacks container.privileged=true: explicitly disables container.privileged',
+      )
+    const hasOpaqueLabel = entries.some((entry) => entry.opaque)
+    if (hasOpaqueLabel === true && capabilities?.[jobId] !== 'supported')
+      fail(`cannot statically determine runs-on ${JSON.stringify(job['runs-on'])}`)
+    // A separate feature entry guarantees privilege only if all its alternatives
+    // supply it. Attestation may fill an unknown entry, never an unprivileged literal.
+    const hasPrivilegedFeatures = entries.some((entry) =>
+      entry.alternatives.every(
+        (label) =>
+          label.startsWith('namespace-features:') === true &&
+          /(?:^|[;:])container\.privileged=true(?:;|$)/.test(label) === true,
+      ),
+    )
+    for (const label of staticLabels) {
+      if (
+        label.startsWith('namespace-features:') === true &&
+        label.includes('GENIE_OPAQUE') === false &&
+        /(?:^|[;:])container\.privileged=true(?:;|$)/.test(label) === false
+      )
+        fail(`literal feature label ${JSON.stringify(label)} lacks container.privileged=true`)
+    }
+    for (const label of namespaceLinux) {
+      const privileged =
+        (label.split(';')[0] ?? '').endsWith('-with-features') === true
+          ? hasPrivilegedFeatures || hasOpaqueLabel
+          : /(?:^|;)container\.privileged=true(?:;|$)/.test(label)
+      if (privileged === false)
+        fail(
+          `Namespace Linux runner ${JSON.stringify(label)} lacks container.privileged=true in its supported label format`,
+        )
+    }
+  }
+}
+
+/** Also covers preinstalled Nix and jobs that do not use the shared installer. */
+export const linuxNixSandboxFallbackStep = {
+  id: 'linux-nix-sandbox-policy',
+  name: 'Disable Linux Nix sandbox fallback',
+  if: "${{ runner.os == 'Linux' }}",
+  shell: 'bash' as const,
+  run: [
+    'set -euo pipefail',
+    `printf 'NIX_CONFIG<<EOF\\n%s\\n${linuxNixSandboxSettings.join('\\n')}\\nEOF\\n' "\${NIX_CONFIG:-}" >> "$GITHUB_ENV"`,
+  ].join('\n'),
+}
+
+export const linuxSandboxAdmissionStepId = 'linux-sandbox-admission'
+export const defaultRefPolicyVerdictStepId = 'default-ref-policy-verdict'
+
+type CiJobSteps = GitHubWorkflowArgs['jobs'][string]['steps']
+
+/** All execution prerequisites in a job jointly own its admission boundary. */
+export const ciJobAdmission = (steps: CiJobSteps) => {
+  let after = -1
+  const conditions: string[] = []
+  for (const [index, step] of steps.entries()) {
+    const condition =
+      step.id === linuxSandboxAdmissionStepId
+        ? `(runner.os != 'Linux' || steps.${linuxSandboxAdmissionStepId}.outcome == 'success')`
+        : step.id === defaultRefPolicyVerdictStepId
+          ? `steps.${defaultRefPolicyVerdictStepId}.outcome == 'success'`
+          : undefined
+    if (condition !== undefined) {
+      after = index
+      conditions.push(condition)
+    }
+  }
+  return { after, condition: conditions.length === 0 ? undefined : conditions.join(' && ') }
+}
+
+/**
+ * Explicit status functions bypass Actions' implicit success() prerequisite.
+ * Restore admission for executable cleanup, retaining data-only artifact/cache saves.
+ */
+export const withCiAdmissionCleanup = (steps: CiJobSteps): CiJobSteps => {
+  const { condition } = ciJobAdmission(steps)
+  if (condition === undefined) return steps
+  const suffix = ` && (${condition})`
+  return steps.map((step) => {
+    if (
+      step.if === undefined ||
+      /\b(?:always|failure|cancelled|success)\s*\(/.test(step.if) === false
+    )
+      return step
+    if (/^actions\/(?:upload-artifact|cache\/save)@/.test(step.uses ?? '') === true) return step
+    const expression = step.if.replace(/^\s*\$\{\{\s*|\s*\}\}\s*$/g, '')
+    if (expression.endsWith(suffix) === true) return step
+    return { ...step, if: `\${{ (${expression})${suffix} }}` }
+  })
 }
 
 const withStandardCIEnv = ({
@@ -228,6 +435,10 @@ const withStandardCIEnv = ({
           ...standardCIEnv({ trustTier }),
           ...job.env,
         },
+        steps: withCiAdmissionCleanup([
+          linuxNixSandboxFallbackStep,
+          ...job.steps.filter((step) => step.id !== linuxNixSandboxFallbackStep.id),
+        ]),
       },
     ]),
   )
@@ -240,8 +451,14 @@ const withStandardCIEnv = ({
  * `concurrency` field, and individual jobs can opt out or provide their own
  * `concurrency`.
  */
-export const ciWorkflow = ({ trustTier, binaryCaches, ...args }: CiWorkflowArgs) => {
+export const ciWorkflow = ({
+  trustTier,
+  binaryCaches,
+  linuxNixSandboxCapabilities,
+  ...args
+}: CiWorkflowArgs) => {
   const { concurrency, actionlint, jobs, on, ...rest } = args
+  validateLinuxNixSandboxRunners({ jobs, capabilities: linuxNixSandboxCapabilities })
   const workflow = {
     [workflowCacheDescriptors]: binaryCaches ?? [],
     ...rest,

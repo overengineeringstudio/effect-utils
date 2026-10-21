@@ -3,7 +3,7 @@ import { spawn } from 'node:child_process'
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
 import { dirname, isAbsolute, join, resolve } from 'node:path'
 
-import { emitCompletedSpan } from './otel-span-cli.ts'
+import { emitCompletedSpanAsync } from './otel-span-cli.ts'
 
 /** Versioned identity of the machine-readable watch status file. */
 export const buckWatchStatusSchema = 'effect-utils/buck-watch-status/v1' as const
@@ -412,6 +412,7 @@ export type RunCommand = (options: {
   readonly input?: string
   readonly detached?: boolean
   readonly signal?: AbortSignal
+  readonly onStderr?: (chunk: string) => void
 }) => Promise<CommandResult>
 
 /**
@@ -438,7 +439,15 @@ export class CommandFailure extends Error {
 }
 
 /** Default {@link RunCommand}: buffers output and fails closed on a non-zero exit. */
-export const runCommand: RunCommand = ({ command, args, cwd, signal, detached, input }) => {
+export const runCommand: RunCommand = ({
+  command,
+  args,
+  cwd,
+  signal,
+  detached,
+  input,
+  onStderr,
+}) => {
   const settled = Promise.withResolvers<CommandResult>()
   const child =
     input === undefined
@@ -451,6 +460,7 @@ export const runCommand: RunCommand = ({ command, args, cwd, signal, detached, i
   })
   child.stderr.setEncoding('utf8').on('data', (chunk: string) => {
     stderr += chunk
+    onStderr?.(chunk)
   })
   child.once('error', settled.reject)
   child.stdin?.on('error', settled.reject)
@@ -561,11 +571,23 @@ export const reconcileBuckViews = async ({
   readonly options: BuckReconcilerOptions
 }): Promise<void> => {
   const execute = options.run ?? runCommand
+  let pendingDiagnostics = ''
+  const forwardDiagnostics = (chunk: string): void => {
+    pendingDiagnostics += chunk
+    const lines = pendingDiagnostics.split('\n')
+    pendingDiagnostics = lines.pop() ?? ''
+    for (const line of lines)
+      if (
+        line.startsWith('[editor-view-phase] ') === true ||
+        line.startsWith('[editor-view-budget] ') === true
+      )
+        process.stderr.write(`${line}\n`)
+  }
   const buildStartedAt = performance.now()
   // Telemetry is best effort: the real Buck command runs unwrapped and its exit
   // status is preserved even when span delivery afterwards fails.
-  const emitBuildSpan = (exitCode: number): void =>
-    emitCompletedSpan({
+  const emitBuildSpan = (exitCode: number): void => {
+    emitCompletedSpanAsync({
       name: 'buck2.build',
       label: 'buck2 build editor view inputs',
       attributes: [['buck2.targets', request.buildTargets.length]],
@@ -573,6 +595,7 @@ export const reconcileBuckViews = async ({
       endedAtMs: performance.timeOrigin + performance.now(),
       exitCode,
     })
+  }
   let built: CommandResult
   try {
     built = await execute({
@@ -641,8 +664,8 @@ export const reconcileBuckViews = async ({
     const publicationStartedAt = performance.now()
     // Telemetry is best effort here too: a publication span that cannot be
     // delivered never changes the publisher's own exit status.
-    const emitPublicationSpan = (exitCode: number): void =>
-      emitCompletedSpan({
+    const emitPublicationSpan = (exitCode: number): void => {
+      emitCompletedSpanAsync({
         name: 'editor-view.publish',
         label: `publish ${entry.editor.viewName}`,
         attributes: [['package.path', entry.packagePath]],
@@ -650,11 +673,12 @@ export const reconcileBuckViews = async ({
         endedAtMs: performance.timeOrigin + performance.now(),
         exitCode,
       })
+    }
     try {
       await execute({
         command: options.editorViewCommand[0],
         args: [...options.editorViewCommand.slice(1), ...(await publicationArgs(entry))],
-        detached: true,
+        onStderr: forwardDiagnostics,
         cwd: options.repoRoot,
       })
     } catch (error) {
@@ -678,7 +702,7 @@ export const reconcileBuckViews = async ({
       command: options.editorViewCommand[0],
       args: [...options.editorViewCommand.slice(1), 'publish-batch'],
       input: JSON.stringify(requests),
-      detached: true,
+      onStderr: forwardDiagnostics,
       cwd: options.repoRoot,
     })
     // Preserve the existing per-view callback as well as successful-task stderr evidence.

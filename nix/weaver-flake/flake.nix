@@ -24,7 +24,7 @@
   #   2. Set `version` below to the new tag (without the leading `v`).
   #   3. Refresh the source hash without compiling:
   #        nix run nixpkgs#nurl -- https://github.com/open-telemetry/weaver v<version>
-  #      and paste the printed `hash` into `src.hash`.
+  #      and paste the printed `hash` into `sourceHash`.
   #   4. Refresh the pnpm deps hash. Easiest: set `pnpmDeps.hash` to
   #      lib.fakeHash, run `nix build .#weaver`, and copy the `got:` hash from
   #      the fixed-output-derivation mismatch (this FOD fails fast, before the
@@ -54,6 +54,15 @@
       forAllSystems = f: lib.genAttrs systems (system: f system);
 
       version = "0.26.1";
+      sourceHash = "sha256-RR+DrsE/e4DwXC9KpEVkvRswh8YDWi6jNVs9IRa6Eeg=";
+      # Cargo.lock is evaluator input, not a platform build output. Fetch the
+      # same pinned tree independently of pkgs so cross-system consumers never
+      # need to realize another system's fetchFromGitHub derivation to read it.
+      lockSource = builtins.fetchTree {
+        type = "tarball";
+        url = "https://github.com/open-telemetry/weaver/archive/refs/tags/v${version}.tar.gz";
+        narHash = sourceHash;
+      };
 
       # Pinned upstream OTel semantic-conventions registry — materialized as a Nix
       # fixed-output derivation so the weaver gate resolves `http.*` (and other upstream)
@@ -77,7 +86,7 @@
             owner = "open-telemetry";
             repo = "weaver";
             tag = "v${version}";
-            hash = "sha256-RR+DrsE/e4DwXC9KpEVkvRswh8YDWi6jNVs9IRa6Eeg=";
+            hash = sourceHash;
           };
 
           semconvSrc = pkgs.fetchFromGitHub {
@@ -87,9 +96,28 @@
             hash = "sha256-//peesRhGcjkJj8fett8TxLxa/Wc/qavUQvuLmGP+TM=";
           };
 
-          # Just the `model/` subtree — the directory weaver's `registry_path` points at.
-          semconv-model = pkgs.runCommand "semconv-model-${semconvVersion}" { } ''
+          semconvBaseModel = pkgs.runCommand "semconv-model-${semconvVersion}" { } ''
             cp -r ${semconvSrc}/model $out
+          '';
+          genaiSrc = pkgs.fetchFromGitHub {
+            owner = "open-telemetry";
+            repo = "semantic-conventions-genai";
+            rev = "6fd0d763a092db245a54104fc1124031eb3c51d2";
+            hash = "sha256-JT/nIMJ/k5R1rhdfaV9j+94fQ44i5y8lL/ToE1ONiTc=";
+          };
+          genaiModel = pkgs.runCommand "genai-model-${genaiSrc.rev}" { } ''
+            cp -r ${genaiSrc}/model $out
+            chmod -R u+w $out
+            substituteInPlace $out/manifest.yaml --replace-fail \
+              'registry_path: https://github.com/open-telemetry/semantic-conventions.git@v${semconvVersion}[model]' \
+              'registry_path: ${semconvBaseModel}'
+          '';
+          # The existing locator carries all hermetic dependencies, keyed by manifest name.
+          semconv-model = pkgs.runCommand "semconv-model-${semconvVersion}" { } ''
+            cp -r ${semconvBaseModel} $out
+            chmod u+w $out
+            printf '{"otel":"%s","semantic-conventions-genai":"%s"}\n' \
+              "$out" "${genaiModel}" > $out/registry-paths.json
           '';
 
           weaver = pkgs.rustPlatform.buildRustPackage {
@@ -98,7 +126,7 @@
 
             # Cargo.lock is committed upstream and has no git dependencies, so
             # the lockfile fully determines the vendored deps - no cargoHash FOD.
-            cargoLock.lockFile = "${src}/Cargo.lock";
+            cargoLock.lockFile = "${lockSource.outPath}/Cargo.lock";
 
             # The web UI (Vite/pnpm) is embedded into the binary at compile time,
             # so its dependencies are fetched as a fixed-output derivation and

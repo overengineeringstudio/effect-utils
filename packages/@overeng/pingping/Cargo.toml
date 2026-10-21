@@ -1,0 +1,32 @@
+[package]
+name = "pingping"
+workspace = "../../../rust"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[[bin]]
+name = "pingping"
+path = "src/main.rs"
+
+[dependencies]
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
+clap = { version = "4.5", features = ["derive"] }
+clap_complete = { version = "4.5", features = ["unstable-dynamic"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+crossterm = "0.29"
+nix = { version = "0.31", default-features = false, features = ["poll", "fs", "socket", "net"] }
+socket2 = "0.6"
+unicode-width = "0.2"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+pingping-netinfo-macos = { path = "crates/netinfo-macos" }
+
+[lints.rust]
+unsafe_code = "forbid"
+warnings = "deny"
+
+[lints.clippy]
+pedantic = { level = "deny", priority = -1 }

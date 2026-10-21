@@ -84,6 +84,28 @@ pub struct FloatSample {
     pub value: f32,
 }
 
+/// Transparent binary32 alias retained by generated Effect schemas.
+#[effect_rust::contract]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(transparent)]
+pub struct FiniteScore {
+    #[wire(f32)]
+    pub value: f32,
+}
+
+#[effect_rust::contract]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct NullableScore {
+    pub score: Option<FiniteScore>,
+}
+
+#[effect_rust::contract]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct NullableFloatSample {
+    #[wire(f32)]
+    pub value: Option<f32>,
+}
+
 #[effect_rust::contract]
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct WideSample {
@@ -180,6 +202,7 @@ mod tests {
                 "Order" => roundtrip::<Order>(&input),
                 "Quote" => roundtrip::<Quote>(&input),
                 "FloatSample" => roundtrip::<FloatSample>(&input),
+                "NullableFloatSample" => roundtrip::<NullableFloatSample>(&input),
                 "WideSample" => roundtrip::<WideSample>(&input),
                 other => panic!("unknown vector contract {other}"),
             };
@@ -199,6 +222,37 @@ mod tests {
                 (accept, result) => panic!("{label}: expected accept={accept}, got {result:?}"),
             }
         }
+    }
+
+    #[test]
+    fn nullable_binary32_is_required_finite_and_schema_marked() {
+        assert_eq!(
+            decode_json::<NullableFloatSample>(r#"{"value":null}"#)
+                .unwrap()
+                .value,
+            None
+        );
+        assert_eq!(
+            decode_json::<NullableFloatSample>(r#"{"value":0.1}"#)
+                .unwrap()
+                .value,
+            Some(0.1_f32)
+        );
+        assert!(decode_json::<NullableFloatSample>("{}").is_err());
+        for value in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY] {
+            assert!(encode_json(&NullableFloatSample { value: Some(value) }, &[]).is_err());
+        }
+        let schema = effect_rust::contract::schemars::schema_for!(NullableFloatSample).to_value();
+        assert_eq!(schema["required"], serde_json::json!(["value"]));
+        assert_eq!(
+            schema["properties"]["value"]["type"],
+            serde_json::json!(["number", "null"])
+        );
+        assert_eq!(schema["properties"]["value"]["x-effect-rust-width"], "f32");
+        assert_eq!(
+            schema["properties"]["value"]["x-effect-rust-nonfinite"],
+            "reject"
+        );
     }
 
     #[test]

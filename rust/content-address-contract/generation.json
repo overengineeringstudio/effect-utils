@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "inputFingerprint": "sha256:851e4969f2daf33e75a20594e95426ae170f1908b1001fea4cf4653522663a91",
-  "generatedAt": "2026-10-09T14:33:58.658Z",
+  "inputFingerprint": "sha256:c5031b0e0ad34659d340115efe0c48eb80a885a5ecc59fd4a4b2df752065a906",
+  "generatedAt": "2026-10-17T15:04:42.903Z",
   "runtime": {
     "name": "bun",
     "version": "1.4.2"
@@ -45,7 +45,7 @@
     },
     {
       "path": "packages/@overeng/effect-rust/src/compiler/mod.ts",
-      "sha256": "ffa4840d34a4903d5054e3a2d32dd62f52152ec09d318c08f62ddf50e8c8a8ce"
+      "sha256": "1b9086dccbcc437a3e2c2d04df0315b25217ceb4fed7096fd337df3d0ab10721"
     },
     {
       "path": "packages/@overeng/effect-rust/src/compiler/rust-metadata.ts",
@@ -85,7 +85,7 @@
     },
     {
       "path": "packages/@overeng/effect-rust/src/schema/effect-rust.ts",
-      "sha256": "575abaa26b71f99a9ef4ce80e46480bf36006b93730da6f53971fafe50d6f0fe"
+      "sha256": "abdf56edd1b73073b5f2480a7ef075db910874e4893d3c21d2292d4394e01aeb"
     },
     {
       "path": "packages/@overeng/effect-rust/src/schema/json.ts",
@@ -113,21 +113,21 @@
     },
     {
       "path": "pnpm-lock.yaml",
-      "sha256": "dbb1010d522834444f2d85a8d6fbd069be23cff2df0471c6cf0722433f45cb62"
+      "sha256": "37f76a7b49c9ba79be72cb8366981fc43c468e63d82ee09f69b7e28dc01d93bf"
     },
     {
       "path": "rust/Cargo.lock",
-      "sha256": "139b53bcd563c9b0a4441aa24765e7b84ba09459296f69eb961c319f6d606fe6"
+      "sha256": "891c9bc36ed9e0f57f8bb3def25cdd28455eaf569fc085171c5c8e021319d46e"
     },
     {
       "path": "rust/Cargo.toml",
-      "sha256": "632790e87b07ca308d903ff698e508f70aae180e19144c5bd6599da7c7411f27"
+      "sha256": "ed1038779ae9f24220fcd22e04e60b10cf15c307fbde4837c9e757ae8097d260"
     }
   ],
   "artifacts": [
     {
       "path": "Cargo.toml",
-      "sha256": "01d0685ff1c655c23f9f29e34ee3630996962c8e354b1fd4465aa9150d43fc99"
+      "sha256": "c656dc5bdfa6e825e4f6a21179cecd2a6a580a3dcadce318a67a950b3d9eefda"
     },
     {
       "path": "schema/Codec.json",
@@ -151,7 +151,7 @@
     },
     {
       "path": "src/lib.rs",
-      "sha256": "49a9ea98771068befe4598e35bd4d2a0f68399ea2d8393f5887ba843f3965a0f"
+      "sha256": "1681d5e99f597ca28562e81a1359df288c5d0f29fb7ec4533e9389bb199125e4"
     }
   ]
 }

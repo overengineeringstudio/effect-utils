@@ -8,6 +8,7 @@ import {
   type PackageJsonInputData,
 } from '../../../genie/internal.ts'
 import corePkg from '../effect-rpc-explorer/package.json.genie.ts'
+import observerPkg from '../effect-rpc-observer/package.json.genie.ts'
 import stylexTokensPkg from '../stylex-tokens/package.json.genie.ts'
 import utilsStorybookPkg from '../utils-storybook/package.json.genie.ts'
 import utilsPkg from '../utils/package.json.genie.ts'
@@ -22,7 +23,7 @@ const peerDepNames = [
 const runtimeDeps = catalog.compose({
   workspace: workspaceMember({ memberPath: 'packages/@overeng/effect-rpc-explorer-react' }),
   dependencies: {
-    workspace: [corePkg, stylexTokensPkg],
+    workspace: [corePkg, observerPkg, stylexTokensPkg],
   },
   devDependencies: {
     workspace: [utilsPkg, utilsStorybookPkg],
@@ -44,7 +45,15 @@ const runtimeDeps = catalog.compose({
     ),
   },
   peerDependencies: {
-    external: catalog.pick(...peerDepNames),
+    external: {
+      ...catalog.pick(...peerDepNames),
+      /**
+       * React 19.2.3 is the lowest React 19.2 release verified by a consumer.
+       * Catalog-derived peers over-constrain hosts whose React cannot move in lockstep.
+       */
+      react: '^19.2.3',
+      'react-dom': '^19.2.3',
+    },
   },
 })
 

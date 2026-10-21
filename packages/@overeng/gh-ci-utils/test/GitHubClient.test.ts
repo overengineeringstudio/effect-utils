@@ -1,4 +1,5 @@
 import { generateKeyPairSync } from 'node:crypto'
+import { createServer } from 'node:http'
 import path from 'node:path'
 
 import { NodeServices } from '@effect/platform-node'
@@ -57,6 +58,19 @@ const runWithSyntheticAppClient = async <TValue, TError>({
   scopeResponseBodies?: boolean
 }) => {
   const requests: RecordedRequest[] = []
+  const server = createServer(async (request, response) => {
+    const chunks: Buffer[] = []
+    for await (const chunk of request) chunks.push(Buffer.from(chunk))
+    requests.push({
+      method: request.method ?? '',
+      url: new URL(request.url ?? '/', 'https://api.github.com').href,
+      authorization: request.headers.authorization ?? '',
+      userAgent: request.headers['user-agent'] ?? '',
+      body: Buffer.concat(chunks).toString(),
+    })
+    response.writeHead(201, { 'content-type': 'application/json' })
+    response.end('{"token":"installation-test-token","expires_at":"2099-01-01T00:00:00Z"}')
+  })
   const forbiddenProcess = Effect.die('App-auth request must not spawn a child process')
   const spawnerLayer = Layer.succeed(ChildProcessSpawner, {
     string: () => forbiddenProcess,
@@ -72,19 +86,13 @@ const runWithSyntheticAppClient = async <TValue, TError>({
       Effect.gen(function* () {
         requests.push({
           method: request.method,
-          url: url.toString(),
+          url: new URL(`${url.pathname}${url.search}`, 'https://api.github.com').href,
           authorization: request.headers['authorization'] ?? '',
           userAgent: request.headers['user-agent'] ?? '',
           body:
             request.body._tag === 'Uint8Array' ? new TextDecoder().decode(request.body.body) : null,
         })
-        const response =
-          url.pathname === '/app/installations/654321/access_tokens'
-            ? new Response(
-                '{"token":"installation-test-token","expires_at":"2099-01-01T00:00:00Z"}',
-                { status: 201 },
-              )
-            : responseFor(url)
+        const response = responseFor(url)
         if (!scopeResponseBodies || response.body === null) {
           return HttpClientResponse.fromWeb(request, response)
         }
@@ -112,6 +120,14 @@ const runWithSyntheticAppClient = async <TValue, TError>({
   )
 
   const result = await Effect.gen(function* () {
+    yield* Effect.acquireRelease(
+      Effect.promise(() => new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))),
+      () => Effect.promise(() => new Promise<void>((resolve) => server.close(() => resolve()))),
+    )
+    const address = server.address()
+    if (address === null || typeof address === 'string')
+      return yield* Effect.die('Expected fixture TCP address')
+    const apiBase = new URL(`http://127.0.0.1:${address.port}`)
     const fs = yield* FileSystem.FileSystem
     const directory = yield* fs.makeTempDirectoryScoped()
     const privateKeyPath = path.join(directory, 'synthetic-app.pem')
@@ -129,9 +145,16 @@ const runWithSyntheticAppClient = async <TValue, TError>({
       return yield* program(client)
     }).pipe(
       Effect.provide(
-        GitHubClient.Default.pipe(
-          Layer.provide(Layer.mergeAll(httpLayer, spawnerLayer, authLayer)),
-        ),
+        GitHubClient.layer({
+          consumer: 'gh-ci-utils',
+          permissions: {
+            actions: 'write',
+            checks: 'read',
+            contents: 'read',
+            pull_requests: 'read',
+          },
+          apiBase,
+        }).pipe(Layer.provide(Layer.mergeAll(httpLayer, spawnerLayer, authLayer))),
       ),
     )
   }).pipe(Effect.scoped, Effect.provide(NodeServices.layer), Effect.runPromise)

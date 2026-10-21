@@ -1,3 +1,4 @@
+import * as fs from 'node:fs'
 import {
   linkSync,
   lstatSync,
@@ -14,7 +15,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import {
   assemblePortableFarm,
@@ -36,6 +37,7 @@ const scratchDirectories: string[] = []
 const fingerprintTool =
   '/nix/store/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-buck2-fingerprint/bin/buck2-fingerprint'
 const parsePackageCommand = (args: readonly string[]) => {
+  if (args[0] === 'bundle') return parsePackage(args)
   const delimiter = args.indexOf('--')
   const at = delimiter < 0 ? args.length : delimiter
   return parsePackage([
@@ -143,32 +145,70 @@ const createViewFixture = (
 }
 
 describe('the realpath-closed hardlink farm', () => {
-  it('materializes the resolvable tree with hardlinks, never copies and never escapes', () => {
-    const { closureRoots, packageTree } = createViewFixture(scratch('farm-'))
-    const farmRoot = join(scratch('farm-out-'), 'farm')
+  it.each(['canonical', 'symlinked'] as const)(
+    'materializes the resolvable tree with hardlinks, never copies and never escapes (%s root)',
+    (rootKind) => {
+      const { closureRoots, packageTree } = createViewFixture(scratch('farm-'))
+      const canonicalOut = scratch('farm-out-')
+      const out = rootKind === 'canonical' ? canonicalOut : join(scratch('farm-alias-'), 'out')
+      if (rootKind === 'symlinked') symlinkSync(canonicalOut, out)
+      const farmRoot = join(out, 'farm')
 
-    const farm = assemblePortableFarm({
-      closureRoots,
-      gatedPackages: [],
-      packageTree,
-      root: farmRoot,
-    })
+      const farm = assemblePortableFarm({
+        closureRoots,
+        gatedPackages: [],
+        packageTree,
+        root: farmRoot,
+      })
 
-    const source = statSync(join(packageTree, 'src', 'cli.ts'))
-    const linked = statSync(join(farm, 'src', 'cli.ts'))
-    expect(linked.ino).toBe(source.ino)
-    expect(linked.nlink).toBeGreaterThan(1)
-    // A store entry keeps its dependencies as siblings in its own
-    // `node_modules`, so resolution from `left` finds `right` one level up —
-    // and both realpaths must land inside the farm.
-    const inside = `${realpathSync(farm)}/`
-    const leftImage = realpathSync(join(farm, 'node_modules', 'left', 'index.js'))
-    const rightViaLeft = realpathSync(
-      join(farm, 'node_modules', 'left', '..', 'right', 'index.cjs'),
-    )
-    expect(leftImage.startsWith(inside)).toBe(true)
-    expect(rightViaLeft.startsWith(inside)).toBe(true)
-  })
+      const source = statSync(join(packageTree, 'src', 'cli.ts'))
+      const linked = statSync(join(farm, 'src', 'cli.ts'))
+      expect(linked.ino).toBe(source.ino)
+      expect(linked.nlink).toBeGreaterThan(1)
+      const sourceFiles = closureRoots.flatMap((root) =>
+        root.name === 'cell/deps/entry_left/entry'
+          ? [join(root.path, 'node_modules', 'left', 'index.js')]
+          : root.name === 'cell/deps/entry_right/entry'
+            ? [join(root.path, 'node_modules', 'right', 'index.cjs')]
+            : [],
+      )
+      const sourceNames = new Map(sourceFiles.map((path) => [statSync(path).ino, path]))
+      const nativeRealpath = process.getBuiltinModule('fs').realpathSync
+      const realpath = rootKind === 'symlinked' ? vi.spyOn(fs, 'realpathSync') : undefined
+      const priorImplementation = realpath?.getMockImplementation()
+      realpath?.mockImplementation((path) => {
+        const status = statSync(path)
+        return status.isFile() === true
+          ? (sourceNames.get(status.ino) ?? nativeRealpath(path))
+          : nativeRealpath(path)
+      })
+      try {
+        // Resolve `left` before `..`; path.join would erase this traversal.
+        // In the aliased-root case, raw file realpaths deliberately return
+        // the other, real source name for the same hardlinked inode.
+        const inside = `${realpathSync(farm)}/`
+        const leftImage = realpathThroughName(join(farm, 'node_modules', 'left', 'index.js'))
+        const rightViaLeft = realpathThroughName(
+          `${join(farm, 'node_modules', 'left')}/../right/index.cjs`,
+        )
+        expect(leftImage.startsWith(inside)).toBe(true)
+        expect(rightViaLeft.startsWith(inside)).toBe(true)
+        expect(rightViaLeft).toBe(
+          join(
+            realpathSync(farm),
+            '.closure',
+            'cell/deps/entry_right/entry',
+            'node_modules',
+            'right',
+            'index.cjs',
+          ),
+        )
+      } finally {
+        realpath?.mockRestore()
+        if (priorImplementation !== undefined) realpath?.mockImplementation(priorImplementation)
+      }
+    },
+  )
 
   it('terminates on a dependency cycle instead of expanding it forever', () => {
     const { closureRoots, packageTree } = createViewFixture(scratch('farm-cycle-'))
@@ -256,7 +296,9 @@ describe('the realpath-closed hardlink farm', () => {
       'left',
     )
     expect(lstatSync(bin).isSymbolicLink()).toBe(true)
-    expect(realpathSync(bin)).toBe(realpathSync(join(farm, 'node_modules', 'left', 'index.js')))
+    expect(realpathThroughName(bin)).toBe(
+      realpathThroughName(join(farm, 'node_modules', 'left', 'index.js')),
+    )
   })
 
   it('rejects a link into a sibling of the farm that merely shares its name prefix', () => {
@@ -304,6 +346,63 @@ describe('realpathThroughName', () => {
       join(root, 'private', 'var', 'file.js'),
     )
   })
+
+  it('keeps a file inside an aliased farm when raw realpath reports its source hardlink', () => {
+    const root = scratch('real-path-farm-alias-')
+    const farm = join(root, 'farm')
+    const alias = join(root, 'alias')
+    const source = join(root, 'source.js')
+    mkdirSync(farm)
+    writeFileSync(source, 'x\n')
+    linkSync(source, join(farm, 'image.js'))
+    symlinkSync(farm, alias)
+    const entry = join(alias, 'image.js')
+    const nativeRealpath = process.getBuiltinModule('fs').realpathSync
+    const realpath = vi.spyOn(fs, 'realpathSync')
+    const priorImplementation = realpath.getMockImplementation()
+    // Darwin may choose either hardlink name for a file's vnode. Model the
+    // source name deterministically on every platform, leaving directories real.
+    realpath.mockImplementation((path) => {
+      if (statSync(path).isFile() === true) return source
+      return nativeRealpath(path)
+    })
+    try {
+      expect(realpathSync(entry).startsWith(`${farm}/`)).toBe(false)
+      expect(realpathThroughName(entry)).toBe(join(farm, 'image.js'))
+    } finally {
+      realpath.mockRestore()
+      if (priorImplementation !== undefined) realpath.mockImplementation(priorImplementation)
+    }
+  })
+
+  it('resolves an intermediate symlink before applying a parent traversal', () => {
+    const root = scratch('real-path-traversal-')
+    mkdirSync(join(root, 'tree'))
+    mkdirSync(join(root, 'backing'))
+    writeFileSync(join(root, 'tree', 'secret'), 'decoy\n')
+    writeFileSync(join(root, 'secret'), 'secret\n')
+    symlinkSync(join(root, 'backing'), join(root, 'tree', 'dir'))
+    symlinkSync('dir/../secret', join(root, 'tree', 'leaf'))
+
+    expect(readFileSync(join(root, 'tree', 'leaf'), 'utf8')).toBe('secret\n')
+    expect(realpathThroughName(join(root, 'tree', 'leaf'))).toBe(join(root, 'secret'))
+  })
+
+  it.each(['payload.js/.', 'payload.js/'])(
+    'requires a directory where a link target spells %s',
+    (target) => {
+      const root = scratch('real-path-notdir-')
+      writeFileSync(join(root, 'payload.js'), 'x\n')
+      symlinkSync(target, join(root, 'leaf'))
+
+      expect(() => readFileSync(join(root, 'leaf'))).toThrow(
+        expect.objectContaining({ code: 'ENOTDIR' }),
+      )
+      expect(() => realpathThroughName(join(root, 'leaf'))).toThrow(
+        expect.objectContaining({ code: 'ENOTDIR' }),
+      )
+    },
+  )
 
   it('fails on a dangling link and on a cycle', () => {
     const root = scratch('real-path-broken-')
@@ -366,8 +465,6 @@ const bundleProduct = (prefix: string): { readonly bytes: string; readonly descr
       'fixture//p:cli-module',
       '--platform-gated-manifest',
       manifest,
-      '--fingerprint-tool',
-      process.env['FINGERPRINT_BIN'] ?? 'missing FINGERPRINT_BIN',
       ...closureRoots.flatMap((closureRoot) => [
         '--closure-root',
         `${closureRoot.name}\t${closureRoot.path}`,
@@ -461,6 +558,58 @@ describe('the CLI entry override', () => {
     ).toBe(1)
   })
 
+  it.each([false, true])(
+    'ignores hardlink-ambiguous realpath results (pre-existing mock: %s)',
+    (preexistingMock) => {
+      const root = scratch('entry-hardlink-')
+      const entry = join(root, 'cli.ts')
+      const otherName = join(root, 'source.ts')
+      writeFileSync(entry, 'if (import.meta.main) console.log("entry")\n')
+      linkSync(entry, otherName)
+      // Read the implementation independently of other test files' node:fs mocks.
+      const nativeFs = { ...process.getBuiltinModule('fs') }
+      const previousFs = { ...fs }
+      const forwardingRealpath = vi.fn(nativeFs.realpathSync)
+      if (preexistingMock === true) {
+        // Match editor-view's shared forwarding export before acquiring the spy.
+        vi.mock('node:fs', () => ({ ...previousFs, realpathSync: forwardingRealpath }))
+      }
+      try {
+        if (preexistingMock === true) expect(fs.realpathSync).toBe(forwardingRealpath)
+        const nativeRealpath = nativeFs.realpathSync
+        const realpath = vi.spyOn(fs, 'realpathSync')
+        const priorImplementation = realpath.getMockImplementation()
+        let leafLookups = 0
+        // Model Darwin F_GETPATH returning different names for the same vnode on
+        // successive calls. Directory realpaths remain stable, as on Darwin.
+        realpath.mockImplementation((path) => {
+          const resolved = nativeRealpath(path)
+          if (resolved === entry && ++leafLookups === 1) return otherName
+          return resolved
+        })
+        try {
+          expect(loadOnce(entry, entry)).toEqual({
+            contents: 'if (true) console.log("entry")\n',
+            overrides: 1,
+          })
+          expect(loadOnce(entry, otherName).overrides).toBe(0)
+        } finally {
+          realpath.mockRestore()
+          // Bun leaves a shared vi.fn exported, but clears its implementation.
+          if (priorImplementation !== undefined) realpath.mockImplementation(priorImplementation)
+        }
+        expect(fs.realpathSync(root)).toBe(root)
+        expect(realpathSync(root)).toBe(root)
+        if (preexistingMock === true) {
+          expect(fs.realpathSync).toBe(forwardingRealpath)
+          expect(forwardingRealpath).toHaveBeenCalled()
+        }
+      } finally {
+        if (preexistingMock === true) vi.mock('node:fs', () => previousFs)
+      }
+    },
+  )
+
   it('does not fire for a module which is not the entry', () => {
     const { packageTree } = createViewFixture(scratch('entry-other-'))
 
@@ -499,6 +648,46 @@ describe('post-build portability assertions', () => {
       'var __dirname = import.meta.dirname, __filename = import.meta.filename;',
     )
   })
+
+  it('normalizes a farm filename when raw realpath reports its source hardlink', () => {
+    const parent = scratch('portable-hardlink-')
+    const farm = join(parent, 'farm')
+    const root = join(parent, 'alias')
+    const source = join(parent, 'source.cjs')
+    mkdirSync(farm)
+    writeFileSync(source, 'module.exports = 1\n')
+    const image = join(farm, 'image.cjs')
+    linkSync(source, image)
+    symlinkSync(farm, root)
+    symlinkSync('image.cjs', join(farm, 'linked.cjs'))
+    symlinkSync(source, join(farm, 'escape.cjs'))
+    const nativeRealpath = process.getBuiltinModule('fs').realpathSync
+    const realpath = vi.spyOn(fs, 'realpathSync')
+    const priorImplementation = realpath.getMockImplementation()
+    realpath.mockImplementation((path) =>
+      statSync(path).isFile() === true ? source : nativeRealpath(path),
+    )
+    try {
+      for (const filename of [image, join(root, 'image.cjs'), join(root, 'linked.cjs')]) {
+        expect(
+          normalizePortableCommonJsGlobals({
+            bundle: `var __filename = ${JSON.stringify(filename)};`,
+            root,
+          }),
+        ).toBe('var __filename = import.meta.filename;')
+      }
+      expect(() =>
+        normalizePortableCommonJsGlobals({
+          bundle: `var __filename = ${JSON.stringify(join(root, 'escape.cjs'))};`,
+          root,
+        }),
+      ).toThrow('__filename path escapes the build root')
+    } finally {
+      realpath.mockRestore()
+      if (priorImplementation !== undefined) realpath.mockImplementation(priorImplementation)
+    }
+  })
+
   it('rewrites Bun undici-style __filename followed by other var declarators', () => {
     const root = '/tmp/portable-root'
     const bundle = `var __filename = "${root}/node_modules/@effect/platform-node/node_modules/undici/index.js", Client, Dispatcher;`
@@ -915,19 +1104,36 @@ describe('package command runner', () => {
     ).toThrow('entrypoint must be a normalized portable relative path')
   })
 
-  it('requires the immutable fingerprint tool for every launch mode', () => {
-    const args = [
-      'check',
-      '/nix/store/runtime/bin/bun',
-      '/buck/tree',
-      'src/mod.ts',
-      '/buck/verdict',
-    ]
-    expect(() => parsePackage(args)).toThrow('missing --fingerprint-tool')
-    expect(() => parsePackage([...args, '--fingerprint-tool', '/tmp/buck2-fingerprint'])).toThrow(
-      'immutable /nix/store executable',
-    )
-  })
+  it.each(['exec', 'check', 'native-check', 'build-dir'])(
+    'requires the immutable fingerprint tool for %s',
+    (mode) => {
+      const args = [
+        mode,
+        '/nix/store/runtime/bin/bun',
+        '/buck/tree',
+        'src/mod.ts',
+        '/buck/verdict',
+        ...(mode === 'build-dir' ? ['--arg', '{OUT}'] : []),
+      ]
+      expect(() => parsePackage(args)).toThrow('missing --fingerprint-tool')
+      expect(() => parsePackage([...args, '--fingerprint-tool', '/tmp/buck2-fingerprint'])).toThrow(
+        'immutable /nix/store executable',
+      )
+      expect(parsePackage([...args, '--fingerprint-tool', fingerprintTool])).toMatchObject({
+        mode,
+        fingerprintTool,
+      })
+      expect(() =>
+        parsePackage([
+          ...args,
+          '--fingerprint-tool',
+          fingerprintTool,
+          '--fingerprint-tool',
+          fingerprintTool,
+        ]),
+      ).toThrow('duplicate --fingerprint-tool')
+    },
+  )
 
   it('preserves repeated arguments and explicit environment entries', () => {
     expect(
@@ -990,6 +1196,15 @@ describe('package command runner', () => {
     '--target-identity',
     'cell//p:cli-module',
   ]
+
+  it('parses bundles without a fingerprint capability and rejects attempts to add one', () => {
+    expect(parsePackage(bundle)).not.toHaveProperty('fingerprintTool')
+    for (const tool of [fingerprintTool, '/tmp/buck2-fingerprint']) {
+      expect(() => parsePackage([...bundle, '--fingerprint-tool', tool])).toThrow(
+        'bundle does not accept --fingerprint-tool',
+      )
+    }
+  })
 
   it('defaults bundles to tree shaking and accepts a full-closure product', () => {
     expect(parsePackageCommand(bundle)).toMatchObject({ kind: 'module', treeShaking: true })

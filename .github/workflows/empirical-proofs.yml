@@ -35,12 +35,22 @@ on:
 jobs:
   test-megarepo-cold-gc:
     if: ${{ (!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && ((github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')) || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'ci:heavy-proofs') && (github.event.action != 'labeled' || github.event.label.name == 'ci:heavy-proofs'))) }}
-    runs-on: ['namespace-profile-linux-x86-64;github.run-id=${{ github.run_id }}']
+    runs-on:
+      [
+        "namespace-profile-linux-x86-64;github.run-id=${{ github.run_id }}${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && ';container.privileged=true' || '' }};job.priority=4",
+      ]
     timeout-minutes: 45
     defaults:
       run:
         shell: bash
     steps:
+      - id: linux-nix-sandbox-policy
+        name: Disable Linux Nix sandbox fallback
+        if: ${{ runner.os == 'Linux' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf 'NIX_CONFIG<<EOF\n%s\nsandbox = true\nsandbox-fallback = false\nEOF\n' "${NIX_CONFIG:-}" >> "$GITHUB_ENV"
       - name: Prepare CI OpenTelemetry capture
         shell: bash
         run: |
@@ -63,7 +73,27 @@ jobs:
             extra-substituters = https://overeng-effect-utils.cachix.org
             extra-trusted-public-keys = overeng-effect-utils.cachix.org-1:KFmqYNF6Q7ZzVYPl2znpJYZGEolage9YNCA9res6vKc=
             access-tokens = github.com=${{ github.token }}
+            ${{ runner.os == 'Linux' && 'sandbox = true' || '' }}
+            ${{ runner.os == 'Linux' && 'sandbox-fallback = false' || '' }}
           summarize: true
+      - id: linux-sandbox-admission
+        name: Log Linux sandbox prerequisites
+        if: ${{ runner.os == 'Linux' }}
+        shell: bash
+        env:
+          BUCK2_TS_PRIVILEGE_ALLOWED: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+        run: |
+          set -euo pipefail
+          if [ "$BUCK2_TS_PRIVILEGE_ALLOWED" != true ]; then
+            echo "::error::Buck TypeScript lane refused: untrusted pull_request runs on an unprivileged Namespace runner; privileged Nix/Bubblewrap execution is not admitted (fork policy Q49 pending)." >&2
+            exit 1
+          fi
+          nix config show | grep -E '^sandbox'
+          for key in kernel.apparmor_restrict_unprivileged_userns user.max_user_namespaces; do
+            if sysctl "$key"; then :; else printf "Unavailable sysctl: %s\n" "$key"; fi
+          done
+          unshare -Ur true
+          echo "unshare -Ur true: passed"
       - name: Checkout CI measurement baseline ref
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' }}
         uses: actions/checkout@v6
@@ -142,6 +172,13 @@ jobs:
           __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
           bash "$__genie_ci_retry_script" 'resolve devenv (devenv.lock)' 'cd "${GITHUB_WORKSPACE:-$PWD}" && '"'"'${{ runner.temp }}/composition-state/ci-runtime/resolve-devenv.sh'"'"' '"'"'devenv.lock'"'"''
         shell: bash
+      - name: Prepare source generator dependency views
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          PIPELINE_RUN_PREFIX: ${{ format('{0} shell -- otel-span pipeline-run --', env.DEVENV_BIN) }}
+        run: |
+          __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
+          bash "$__genie_ci_retry_script" 'devenv tasks run buck2:editor:bootstrap' 'cd "${GITHUB_WORKSPACE:-$PWD}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false ${PIPELINE_RUN_PREFIX:+$PIPELINE_RUN_PREFIX }"${DEVENV_BIN:?DEVENV_BIN not set}" tasks run buck2:editor:bootstrap'
       - name: Force diagnostics failure (debug)
         if: ${{ github.event_name == 'workflow_dispatch' && (inputs.debug_force_nix_diagnostics_failure == true || inputs.debug_force_nix_diagnostics_failure == 'true') }}
         shell: bash
@@ -163,7 +200,7 @@ jobs:
           __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
           bash "$__genie_ci_retry_script" 'devenv tasks run test:megarepo-cold-gc' 'cd "${GITHUB_WORKSPACE:-$PWD}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false ${PIPELINE_RUN_PREFIX:+$PIPELINE_RUN_PREFIX }"${DEVENV_BIN:?DEVENV_BIN not set}" tasks run test:megarepo-cold-gc'
       - name: Nix diagnostics summary
-        if: failure()
+        if: ${{ (failure()) && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
         shell: bash
         run: |
           diag_dir="${NIX_STORE_DIAGNOSTICS_DIR:-}"
@@ -207,13 +244,13 @@ jobs:
           if-no-files-found: ignore
           retention-days: 14
       - name: Failure note
-        if: failure()
+        if: ${{ (failure()) && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
         shell: bash
         run: |
           echo "If this looks like Namespace runner Nix store corruption (e.g. \"... is not valid\", \"config.cachix\", \"cachix.package\"), add the run link + full nix-store output to:"
           echo "  https://github.com/overengineeringstudio/effect-utils/issues/201"
       - name: Summarize CI OpenTelemetry spans
-        if: always() && env.OTEL_SPAN_SPOOL_DIR != ''
+        if: ${{ (always() && env.OTEL_SPAN_SPOOL_DIR != '') && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
         shell: bash
         run: |
           set -euo pipefail
@@ -254,7 +291,7 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
       - name: Collect Buck2 cache evidence
-        if: ${{ always() }}
+        if: ${{ (always()) && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
         shell: bash
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -273,7 +310,7 @@ jobs:
             ${{ env.CI_BUCK2_CACHE_ACTIONS_PATH }}
           if-no-files-found: warn
           retention-days: 14
-      - if: ${{ always() && env.CI_EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && vars.TS_EVIDENCE_CLIENT_ID != '' && vars.TS_EVIDENCE_AUDIENCE != '' }}
+      - if: ${{ (always() && env.CI_EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && vars.TS_EVIDENCE_CLIENT_ID != '' && vars.TS_EVIDENCE_AUDIENCE != '') && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
         uses: tailscale/github-action@v4
         continue-on-error: true
         with:
@@ -282,7 +319,7 @@ jobs:
           tags: 'tag:ci-buck2-evidence'
           args: --accept-dns=true
       - name: Export completed job trace
-        if: ${{ always() }}
+        if: ${{ (always()) && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
         shell: bash
         env:
           OTEL_EXPORTER_OTLP_ENDPOINT: ${{ vars.OTEL_EXPORTER_OTLP_ENDPOINT }}
@@ -307,12 +344,22 @@ jobs:
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') && (github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled')) }}
   bootstrap-cold-proof:
     if: ${{ (!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && ((github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')) || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'ci:heavy-proofs') && (github.event.action != 'labeled' || github.event.label.name == 'ci:heavy-proofs'))) }}
-    runs-on: ['namespace-profile-linux-x86-64;github.run-id=${{ github.run_id }}']
+    runs-on:
+      [
+        "namespace-profile-linux-x86-64;github.run-id=${{ github.run_id }}${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && ';container.privileged=true' || '' }};job.priority=4",
+      ]
     timeout-minutes: 30
     defaults:
       run:
         shell: bash
     steps:
+      - id: linux-nix-sandbox-policy
+        name: Disable Linux Nix sandbox fallback
+        if: ${{ runner.os == 'Linux' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf 'NIX_CONFIG<<EOF\n%s\nsandbox = true\nsandbox-fallback = false\nEOF\n' "${NIX_CONFIG:-}" >> "$GITHUB_ENV"
       - uses: actions/checkout@v6
         with:
           persist-credentials: false
@@ -327,7 +374,27 @@ jobs:
             extra-substituters = https://overeng-effect-utils.cachix.org
             extra-trusted-public-keys = overeng-effect-utils.cachix.org-1:KFmqYNF6Q7ZzVYPl2znpJYZGEolage9YNCA9res6vKc=
             access-tokens = github.com=${{ github.token }}
+            ${{ runner.os == 'Linux' && 'sandbox = true' || '' }}
+            ${{ runner.os == 'Linux' && 'sandbox-fallback = false' || '' }}
           summarize: true
+      - id: linux-sandbox-admission
+        name: Log Linux sandbox prerequisites
+        if: ${{ runner.os == 'Linux' }}
+        shell: bash
+        env:
+          BUCK2_TS_PRIVILEGE_ALLOWED: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+        run: |
+          set -euo pipefail
+          if [ "$BUCK2_TS_PRIVILEGE_ALLOWED" != true ]; then
+            echo "::error::Buck TypeScript lane refused: untrusted pull_request runs on an unprivileged Namespace runner; privileged Nix/Bubblewrap execution is not admitted (fork policy Q49 pending)." >&2
+            exit 1
+          fi
+          nix config show | grep -E '^sandbox'
+          for key in kernel.apparmor_restrict_unprivileged_userns user.max_user_namespaces; do
+            if sysctl "$key"; then :; else printf "Unavailable sysctl: %s\n" "$key"; fi
+          done
+          unshare -Ur true
+          echo "unshare -Ur true: passed"
       - name: Checkout CI measurement baseline ref
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' }}
         uses: actions/checkout@v6
@@ -406,6 +473,13 @@ jobs:
           __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
           bash "$__genie_ci_retry_script" 'resolve devenv (devenv.lock)' 'cd "${GITHUB_WORKSPACE:-$PWD}" && '"'"'${{ runner.temp }}/composition-state/ci-runtime/resolve-devenv.sh'"'"' '"'"'devenv.lock'"'"''
         shell: bash
+      - name: Prepare source generator dependency views
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          PIPELINE_RUN_PREFIX: ${{ format('{0} shell -- otel-span pipeline-run --', env.DEVENV_BIN) }}
+        run: |
+          __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
+          bash "$__genie_ci_retry_script" 'devenv tasks run buck2:editor:bootstrap' 'cd "${GITHUB_WORKSPACE:-$PWD}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false ${PIPELINE_RUN_PREFIX:+$PIPELINE_RUN_PREFIX }"${DEVENV_BIN:?DEVENV_BIN not set}" tasks run buck2:editor:bootstrap'
       - name: Force diagnostics failure (debug)
         if: ${{ github.event_name == 'workflow_dispatch' && (inputs.debug_force_nix_diagnostics_failure == true || inputs.debug_force_nix_diagnostics_failure == 'true') }}
         shell: bash
@@ -427,7 +501,7 @@ jobs:
           __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
           bash "$__genie_ci_retry_script" 'devenv tasks run bootstrap:cold-proof' 'cd "${GITHUB_WORKSPACE:-$PWD}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false ${PIPELINE_RUN_PREFIX:+$PIPELINE_RUN_PREFIX }"${DEVENV_BIN:?DEVENV_BIN not set}" tasks run bootstrap:cold-proof'
       - name: Nix diagnostics summary
-        if: failure()
+        if: ${{ (failure()) && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
         shell: bash
         run: |
           diag_dir="${NIX_STORE_DIAGNOSTICS_DIR:-}"
@@ -471,13 +545,13 @@ jobs:
           if-no-files-found: ignore
           retention-days: 14
       - name: Failure note
-        if: failure()
+        if: ${{ (failure()) && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
         shell: bash
         run: |
           echo "If this looks like Namespace runner Nix store corruption (e.g. \"... is not valid\", \"config.cachix\", \"cachix.package\"), add the run link + full nix-store output to:"
           echo "  https://github.com/overengineeringstudio/effect-utils/issues/201"
       - name: Collect Buck2 cache evidence
-        if: ${{ always() }}
+        if: ${{ (always()) && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
         shell: bash
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -496,7 +570,7 @@ jobs:
             ${{ env.CI_BUCK2_CACHE_ACTIONS_PATH }}
           if-no-files-found: warn
           retention-days: 14
-      - if: ${{ always() && env.CI_EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && vars.TS_EVIDENCE_CLIENT_ID != '' && vars.TS_EVIDENCE_AUDIENCE != '' }}
+      - if: ${{ (always() && env.CI_EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && vars.TS_EVIDENCE_CLIENT_ID != '' && vars.TS_EVIDENCE_AUDIENCE != '') && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
         uses: tailscale/github-action@v4
         continue-on-error: true
         with:
@@ -505,7 +579,7 @@ jobs:
           tags: 'tag:ci-buck2-evidence'
           args: --accept-dns=true
       - name: Export completed job trace
-        if: ${{ always() }}
+        if: ${{ (always()) && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
         shell: bash
         env:
           OTEL_EXPORTER_OTLP_ENDPOINT: ${{ vars.OTEL_EXPORTER_OTLP_ENDPOINT }}
@@ -532,8 +606,8 @@ jobs:
     if: ${{ github.event_name == 'workflow_dispatch' }}
     runs-on:
       [
-        nscloud-ubuntu-24.04-amd64-16x64-with-features,
-        'namespace-features:github.run-id=${{ github.run_id }}',
+        nscloud-ubuntu-24.04-amd64-16x64-with-features;job.priority=4,
+        'namespace-features:github.run-id=${{ github.run_id }};container.privileged=true',
       ]
     permissions:
       contents: read
@@ -549,7 +623,7 @@ jobs:
       BUCK2_PUBLIC_CACHE_READ_ONLY: '1'
       ARTIFACT_DIR: '${{ github.workspace }}/tmp/devenv-perf-ci'
       OTEL_SERVICE_NAME: devenv-perf-ci
-      RUNNER_CLASS: 'nscloud-ubuntu-24.04-amd64-16x64-with-features,namespace-features:github.run-id=${{ github.run_id }}'
+      RUNNER_CLASS: 'nscloud-ubuntu-24.04-amd64-16x64-with-features;job.priority=4,namespace-features:github.run-id=${{ github.run_id }};container.privileged=true'
       CI_MEASUREMENT_SUBJECT_REF: ${{ inputs.measurement_baseline_ref || github.event.pull_request.head.ref || github.ref }}
       CI_MEASUREMENT_SUBJECT_SHA: ${{ inputs.measurement_baseline_ref || github.event.pull_request.head.sha || github.sha }}
       CI_MEASUREMENT_SUBJECT_LABEL: ${{ inputs.measurement_baseline_label }}
@@ -562,6 +636,13 @@ jobs:
       CI_BUCK2_CACHE_EVIDENCE_DISABLED: '0'
       CI_EVIDENCE_MODE: ${{ vars.CI_EVIDENCE_MODE }}
     steps:
+      - id: linux-nix-sandbox-policy
+        name: Disable Linux Nix sandbox fallback
+        if: ${{ runner.os == 'Linux' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf 'NIX_CONFIG<<EOF\n%s\nsandbox = true\nsandbox-fallback = false\nEOF\n' "${NIX_CONFIG:-}" >> "$GITHUB_ENV"
       - uses: actions/checkout@v6
         with:
           persist-credentials: false
@@ -576,7 +657,27 @@ jobs:
             extra-substituters = https://overeng-effect-utils.cachix.org
             extra-trusted-public-keys = overeng-effect-utils.cachix.org-1:KFmqYNF6Q7ZzVYPl2znpJYZGEolage9YNCA9res6vKc=
             access-tokens = github.com=${{ github.token }}
+            ${{ runner.os == 'Linux' && 'sandbox = true' || '' }}
+            ${{ runner.os == 'Linux' && 'sandbox-fallback = false' || '' }}
           summarize: true
+      - id: linux-sandbox-admission
+        name: Log Linux sandbox prerequisites
+        if: ${{ runner.os == 'Linux' }}
+        shell: bash
+        env:
+          BUCK2_TS_PRIVILEGE_ALLOWED: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+        run: |
+          set -euo pipefail
+          if [ "$BUCK2_TS_PRIVILEGE_ALLOWED" != true ]; then
+            echo "::error::Buck TypeScript lane refused: untrusted pull_request runs on an unprivileged Namespace runner; privileged Nix/Bubblewrap execution is not admitted (fork policy Q49 pending)." >&2
+            exit 1
+          fi
+          nix config show | grep -E '^sandbox'
+          for key in kernel.apparmor_restrict_unprivileged_userns user.max_user_namespaces; do
+            if sysctl "$key"; then :; else printf "Unavailable sysctl: %s\n" "$key"; fi
+          done
+          unshare -Ur true
+          echo "unshare -Ur true: passed"
       - name: Checkout CI measurement baseline ref
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' }}
         uses: actions/checkout@v6
@@ -655,6 +756,13 @@ jobs:
           __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
           bash "$__genie_ci_retry_script" 'resolve devenv (devenv.lock)' 'cd "${GITHUB_WORKSPACE:-$PWD}" && '"'"'${{ runner.temp }}/composition-state/ci-runtime/resolve-devenv.sh'"'"' '"'"'devenv.lock'"'"''
         shell: bash
+      - name: Prepare source generator dependency views
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          PIPELINE_RUN_PREFIX: ${{ format('{0} shell -- otel-span pipeline-run --', env.DEVENV_BIN) }}
+        run: |
+          __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
+          bash "$__genie_ci_retry_script" 'devenv tasks run buck2:editor:bootstrap' 'cd "${GITHUB_WORKSPACE:-$PWD}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false ${PIPELINE_RUN_PREFIX:+$PIPELINE_RUN_PREFIX }"${DEVENV_BIN:?DEVENV_BIN not set}" tasks run buck2:editor:bootstrap'
       - name: Force diagnostics failure (debug)
         if: ${{ github.event_name == 'workflow_dispatch' && (inputs.debug_force_nix_diagnostics_failure == true || inputs.debug_force_nix_diagnostics_failure == 'true') }}
         shell: bash
@@ -1115,7 +1223,7 @@ jobs:
           measure 'shell_eval_warm' 'Warm shell eval' 'devenv shell' 'Activates the mutation-free warm shell; repository setup is explicit and Buck must not run.' '' '1' '5' '{"enabled":true,"comparisonMode":"paired","minPairedSamples":5,"minBaselineSources":10,"minCurrentSamples":5,"warnRatio":1.1,"failRatio":1.2,"warnAbs":0.25,"failAbs":1,"noiseFloor":0.1,"statisticalToleranceRatio":0.1,"statisticalToleranceAbs":0.25}' '{"path":["devenv","shell"],"dimensions":{"workload":"setup-free-activation","setupMode":"disabled","buckExpected":"not-invoked"}}' '$DEVENV_BIN' 'shell' '--no-reload' '--' 'true'
           measure 'tasks_list' 'devenv tasks list' 'devenv cli' 'Lists devenv tasks to measure task graph loading overhead.' '' '1' '9' '{"enabled":true,"comparisonMode":"paired","minPairedSamples":7,"minBaselineSources":10,"minCurrentSamples":5,"warnRatio":1.25,"failRatio":1.5,"warnAbs":0.05,"failAbs":0.15,"noiseFloor":0.03,"statisticalToleranceRatio":0.1,"statisticalToleranceAbs":0.03}' '{"path":[],"dimensions":{}}' '$DEVENV_BIN' 'tasks' 'list'
           measure 'processes_help' 'devenv processes --help' 'devenv cli' 'Loads the devenv processes command help path.' '' '1' '9' '{"enabled":true,"comparisonMode":"paired","minPairedSamples":7,"minBaselineSources":10,"minCurrentSamples":5,"warnRatio":1.25,"failRatio":1.5,"warnAbs":0.05,"failAbs":0.15,"noiseFloor":0.03,"statisticalToleranceRatio":0.1,"statisticalToleranceAbs":0.03}' '{"path":[],"dimensions":{}}' '$DEVENV_BIN' 'processes' '--help'
-          measure 'task_buck2_editor_publish' 'Editor dependency publication' 'workspace setup' 'Publishes the complete Buck-owned editor dependency surface.' '' '1' '5' '{"enabled":true,"comparisonMode":"paired","minPairedSamples":5,"minBaselineSources":10,"minCurrentSamples":5,"warnRatio":1.1,"failRatio":1.2,"warnAbs":0.25,"failAbs":1,"noiseFloor":0.1,"statisticalToleranceRatio":0.1,"statisticalToleranceAbs":0.25}' '{"path":[],"dimensions":{}}' '$DEVENV_BIN' 'tasks' 'run' 'buck2:editor:publish' '--show-output'
+          measure 'task_buck2_editor_publish_generators' 'Editor dependency publication' 'workspace setup' 'Publishes the source-generator editor dependency views.' '' '1' '5' '{"enabled":true,"comparisonMode":"paired","minPairedSamples":5,"minBaselineSources":10,"minCurrentSamples":5,"warnRatio":1.1,"failRatio":1.2,"warnAbs":0.25,"failAbs":1,"noiseFloor":0.1,"statisticalToleranceRatio":0.1,"statisticalToleranceAbs":0.25}' '{"path":[],"dimensions":{}}' '$DEVENV_BIN' 'tasks' 'run' 'buck2:editor:publish:generators' '--show-output'
           measure 'task_genie_run' 'Genie run task' 'genie' 'Runs the normal devenv genie:run task including its declared dependencies.' '' '1' '5' '{"enabled":true,"comparisonMode":"paired","minPairedSamples":5,"minBaselineSources":10,"minCurrentSamples":5,"warnRatio":1.1,"failRatio":1.2,"warnAbs":0.25,"failAbs":1,"noiseFloor":0.1,"statisticalToleranceRatio":0.1,"statisticalToleranceAbs":0.25}' '{"path":[],"dimensions":{}}' '$DEVENV_BIN' 'tasks' 'run' 'genie:run' '--show-output'
           measure 'task_check_quick_warm' 'Warm cached check:quick' 'quality gates' 'Runs the fast local quality gate through devenv after a warmup. This measures the cached no-op path and task/status orchestration overhead.' '' '1' '5' '{"enabled":true,"comparisonMode":"paired","minPairedSamples":5,"minBaselineSources":10,"minCurrentSamples":5,"warnRatio":1.1,"failRatio":1.2,"warnAbs":0.25,"failAbs":1,"noiseFloor":0.1,"statisticalToleranceRatio":0.1,"statisticalToleranceAbs":0.25}' '{"path":["quality gates","check:quick"],"dimensions":{"workload":"cached-no-op","taskCacheMode":"warm"}}' '$DEVENV_BIN' 'tasks' 'run' 'check:quick' '--show-output'
           measure 'task_check_quick_forced' 'Forced check:quick' 'quality gates' 'Runs the fast local quality gate through devenv with task-cache refresh. This measures the developer-facing quick-check workload rather than the cached no-op path.' '' '0' '3' '{"enabled":true,"comparisonMode":"paired","minPairedSamples":3,"minBaselineSources":10,"minCurrentSamples":3,"warnRatio":1.15,"failRatio":1.3,"warnAbs":1.5,"failAbs":4,"noiseFloor":0.75,"statisticalToleranceRatio":0.15,"statisticalToleranceAbs":1}' '{"path":["quality gates","check:quick"],"dimensions":{"workload":"forced-task-cache","taskCacheMode":"refresh"}}' '$DEVENV_BIN' 'tasks' 'run' 'check:quick' '--show-output' '--refresh-task-cache'
@@ -1364,7 +1472,7 @@ jobs:
           if-no-files-found: error
           retention-days: 7
       - name: Collect Buck2 cache evidence
-        if: ${{ always() }}
+        if: ${{ (always()) && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
         shell: bash
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -1383,7 +1491,7 @@ jobs:
             ${{ env.CI_BUCK2_CACHE_ACTIONS_PATH }}
           if-no-files-found: warn
           retention-days: 14
-      - if: ${{ always() && env.CI_EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && vars.TS_EVIDENCE_CLIENT_ID != '' && vars.TS_EVIDENCE_AUDIENCE != '' }}
+      - if: ${{ (always() && env.CI_EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && vars.TS_EVIDENCE_CLIENT_ID != '' && vars.TS_EVIDENCE_AUDIENCE != '') && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
         uses: tailscale/github-action@v4
         continue-on-error: true
         with:
@@ -1392,7 +1500,7 @@ jobs:
           tags: 'tag:ci-buck2-evidence'
           args: --accept-dns=true
       - name: Export completed job trace
-        if: ${{ always() }}
+        if: ${{ (always()) && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
         shell: bash
         env:
           OTEL_EXPORTER_OTLP_ENDPOINT: ${{ vars.OTEL_EXPORTER_OTLP_ENDPOINT }}
@@ -1403,7 +1511,10 @@ jobs:
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') && (github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled')) }}
   nix-closure-sizes:
     if: ${{ (!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && ((github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')) || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'ci:heavy-proofs') && (github.event.action != 'labeled' || github.event.label.name == 'ci:heavy-proofs'))) }}
-    runs-on: ['namespace-profile-linux-x86-64;github.run-id=${{ github.run_id }}']
+    runs-on:
+      [
+        "namespace-profile-linux-x86-64;github.run-id=${{ github.run_id }}${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && ';container.privileged=true' || '' }};job.priority=4",
+      ]
     timeout-minutes: 30
     defaults:
       run:
@@ -1429,6 +1540,13 @@ jobs:
       CI_BUCK2_CACHE_EVIDENCE_DISABLED: '0'
       CI_EVIDENCE_MODE: ${{ vars.CI_EVIDENCE_MODE }}
     steps:
+      - id: linux-nix-sandbox-policy
+        name: Disable Linux Nix sandbox fallback
+        if: ${{ runner.os == 'Linux' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf 'NIX_CONFIG<<EOF\n%s\nsandbox = true\nsandbox-fallback = false\nEOF\n' "${NIX_CONFIG:-}" >> "$GITHUB_ENV"
       - uses: actions/checkout@v6
         with:
           persist-credentials: false
@@ -1443,7 +1561,27 @@ jobs:
             extra-substituters = https://overeng-effect-utils.cachix.org
             extra-trusted-public-keys = overeng-effect-utils.cachix.org-1:KFmqYNF6Q7ZzVYPl2znpJYZGEolage9YNCA9res6vKc=
             access-tokens = github.com=${{ github.token }}
+            ${{ runner.os == 'Linux' && 'sandbox = true' || '' }}
+            ${{ runner.os == 'Linux' && 'sandbox-fallback = false' || '' }}
           summarize: true
+      - id: linux-sandbox-admission
+        name: Log Linux sandbox prerequisites
+        if: ${{ runner.os == 'Linux' }}
+        shell: bash
+        env:
+          BUCK2_TS_PRIVILEGE_ALLOWED: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+        run: |
+          set -euo pipefail
+          if [ "$BUCK2_TS_PRIVILEGE_ALLOWED" != true ]; then
+            echo "::error::Buck TypeScript lane refused: untrusted pull_request runs on an unprivileged Namespace runner; privileged Nix/Bubblewrap execution is not admitted (fork policy Q49 pending)." >&2
+            exit 1
+          fi
+          nix config show | grep -E '^sandbox'
+          for key in kernel.apparmor_restrict_unprivileged_userns user.max_user_namespaces; do
+            if sysctl "$key"; then :; else printf "Unavailable sysctl: %s\n" "$key"; fi
+          done
+          unshare -Ur true
+          echo "unshare -Ur true: passed"
       - name: Checkout CI measurement baseline ref
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' }}
         uses: actions/checkout@v6
@@ -1522,6 +1660,13 @@ jobs:
           __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
           bash "$__genie_ci_retry_script" 'resolve devenv (devenv.lock)' 'cd "${GITHUB_WORKSPACE:-$PWD}" && '"'"'${{ runner.temp }}/composition-state/ci-runtime/resolve-devenv.sh'"'"' '"'"'devenv.lock'"'"''
         shell: bash
+      - name: Prepare source generator dependency views
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          PIPELINE_RUN_PREFIX: ${{ format('{0} shell -- otel-span pipeline-run --', env.DEVENV_BIN) }}
+        run: |
+          __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
+          bash "$__genie_ci_retry_script" 'devenv tasks run buck2:editor:bootstrap' 'cd "${GITHUB_WORKSPACE:-$PWD}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false ${PIPELINE_RUN_PREFIX:+$PIPELINE_RUN_PREFIX }"${DEVENV_BIN:?DEVENV_BIN not set}" tasks run buck2:editor:bootstrap'
       - name: Force diagnostics failure (debug)
         if: ${{ github.event_name == 'workflow_dispatch' && (inputs.debug_force_nix_diagnostics_failure == true || inputs.debug_force_nix_diagnostics_failure == 'true') }}
         shell: bash
@@ -2017,7 +2162,7 @@ jobs:
           if-no-files-found: error
           retention-days: 14
       - name: Nix diagnostics summary
-        if: failure()
+        if: ${{ (failure()) && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
         shell: bash
         run: |
           diag_dir="${NIX_STORE_DIAGNOSTICS_DIR:-}"
@@ -2061,13 +2206,13 @@ jobs:
           if-no-files-found: ignore
           retention-days: 14
       - name: Failure note
-        if: failure()
+        if: ${{ (failure()) && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
         shell: bash
         run: |
           echo "If this looks like Namespace runner Nix store corruption (e.g. \"... is not valid\", \"config.cachix\", \"cachix.package\"), add the run link + full nix-store output to:"
           echo "  https://github.com/overengineeringstudio/effect-utils/issues/201"
       - name: Collect Buck2 cache evidence
-        if: ${{ always() }}
+        if: ${{ (always()) && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
         shell: bash
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -2086,7 +2231,7 @@ jobs:
             ${{ env.CI_BUCK2_CACHE_ACTIONS_PATH }}
           if-no-files-found: warn
           retention-days: 14
-      - if: ${{ always() && env.CI_EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && vars.TS_EVIDENCE_CLIENT_ID != '' && vars.TS_EVIDENCE_AUDIENCE != '' }}
+      - if: ${{ (always() && env.CI_EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && vars.TS_EVIDENCE_CLIENT_ID != '' && vars.TS_EVIDENCE_AUDIENCE != '') && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
         uses: tailscale/github-action@v4
         continue-on-error: true
         with:
@@ -2095,7 +2240,7 @@ jobs:
           tags: 'tag:ci-buck2-evidence'
           args: --accept-dns=true
       - name: Export completed job trace
-        if: ${{ always() }}
+        if: ${{ (always()) && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
         shell: bash
         env:
           OTEL_EXPORTER_OTLP_ENDPOINT: ${{ vars.OTEL_EXPORTER_OTLP_ENDPOINT }}
@@ -2104,7 +2249,10 @@ jobs:
       group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || (github.event_name == 'pull_request' && (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('label-{0}', github.event.label.name) || 'code')) }}-nix-closure-sizes"
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') && (github.event_name != 'pull_request' || (github.event.action != 'labeled' && github.event.action != 'unlabeled')) }}
   main-source-shape:
-    runs-on: ['namespace-profile-linux-x86-64;github.run-id=${{ github.run_id }}']
+    runs-on:
+      [
+        'namespace-profile-linux-x86-64;github.run-id=${{ github.run_id }};container.privileged=true;job.priority=4',
+      ]
     timeout-minutes: 30
     defaults:
       run:
@@ -2130,9 +2278,48 @@ jobs:
       CI_BUCK2_CACHE_EVIDENCE_DISABLED: '0'
       CI_EVIDENCE_MODE: ${{ vars.CI_EVIDENCE_MODE }}
     steps:
+      - id: linux-nix-sandbox-policy
+        name: Disable Linux Nix sandbox fallback
+        if: ${{ runner.os == 'Linux' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf 'NIX_CONFIG<<EOF\n%s\nsandbox = true\nsandbox-fallback = false\nEOF\n' "${NIX_CONFIG:-}" >> "$GITHUB_ENV"
       - uses: actions/checkout@v6
         with:
           persist-credentials: false
+      - name: Install Nix
+        uses: DeterminateSystems/determinate-nix-action@v3
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        with:
+          extra-conf: |
+            experimental-features = nix-command flakes
+            accept-flake-config = true
+            extra-substituters = 
+            extra-trusted-public-keys = 
+            access-tokens = github.com=${{ github.token }}
+            ${{ runner.os == 'Linux' && 'sandbox = true' || '' }}
+            ${{ runner.os == 'Linux' && 'sandbox-fallback = false' || '' }}
+          summarize: true
+      - id: linux-sandbox-admission
+        name: Log Linux sandbox prerequisites
+        if: ${{ runner.os == 'Linux' }}
+        shell: bash
+        env:
+          BUCK2_TS_PRIVILEGE_ALLOWED: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+        run: |
+          set -euo pipefail
+          if [ "$BUCK2_TS_PRIVILEGE_ALLOWED" != true ]; then
+            echo "::error::Buck TypeScript lane refused: untrusted pull_request runs on an unprivileged Namespace runner; privileged Nix/Bubblewrap execution is not admitted (fork policy Q49 pending)." >&2
+            exit 1
+          fi
+          nix config show | grep -E '^sandbox'
+          for key in kernel.apparmor_restrict_unprivileged_userns user.max_user_namespaces; do
+            if sysctl "$key"; then :; else printf "Unavailable sysctl: %s\n" "$key"; fi
+          done
+          unshare -Ur true
+          echo "unshare -Ur true: passed"
       - name: Checkout CI measurement baseline ref
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' }}
         uses: actions/checkout@v6
@@ -2175,41 +2362,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          ensure_ci_measurement_tool() {
-            tool_name="$1"
-            nix_attr="$2"
-            if command -v "$tool_name" >/dev/null 2>&1; then
-              return 0
-            fi
-            if ! command -v nix >/dev/null 2>&1; then
-              return 1
-            fi
-            if tool_out="$(nix build --no-link --print-out-paths "nixpkgs#$nix_attr" 2>/dev/null)"; then
-              while IFS= read -r tool_path; do
-                [ -n "$tool_path" ] || continue
-                [ -d "$tool_path/bin" ] || continue
-                export PATH="$tool_path/bin:$PATH"
-                if command -v "$tool_name" >/dev/null 2>&1; then
-                  return 0
-                fi
-              done <<EOF
-          $tool_out
-          EOF
-            fi
-            command -v "$tool_name" >/dev/null 2>&1
-          }
-
-          require_ci_measurement_tool() {
-            tool_name="$1"
-            nix_attr="$2"
-            if ensure_ci_measurement_tool "$tool_name" "$nix_attr"; then
-              return 0
-            fi
-            echo "::error::$tool_name is not available; unable to produce CI measurement artifact"
-            exit 1
-          }
-
-          require_ci_measurement_tool node nodejs
+          node_out="$(nix build --no-update-lock-file --no-link --print-out-paths .#buck2-node)"
 
           mkdir -p "$ARTIFACT_DIR"
           target_id='effect_utils'
@@ -2226,7 +2379,7 @@ jobs:
           TARGET_LABEL="$target_label" \
           TARGET_GROUP="$target_group" \
           TARGET_SYSTEM="$target_system" \
-          node <<'NODE' >"$artifact_file"
+          "$node_out/bin/node" <<'NODE' >"$artifact_file"
           const cp = require('node:child_process')
           const fs = require('node:fs')
           const path = require('node:path')
@@ -2395,7 +2548,7 @@ jobs:
           if-no-files-found: error
           retention-days: 14
       - name: Collect Buck2 cache evidence
-        if: ${{ always() }}
+        if: ${{ (always()) && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
         shell: bash
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -2414,7 +2567,7 @@ jobs:
             ${{ env.CI_BUCK2_CACHE_ACTIONS_PATH }}
           if-no-files-found: warn
           retention-days: 14
-      - if: ${{ always() && env.CI_EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && vars.TS_EVIDENCE_CLIENT_ID != '' && vars.TS_EVIDENCE_AUDIENCE != '' }}
+      - if: ${{ (always() && env.CI_EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && vars.TS_EVIDENCE_CLIENT_ID != '' && vars.TS_EVIDENCE_AUDIENCE != '') && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
         uses: tailscale/github-action@v4
         continue-on-error: true
         with:
@@ -2423,7 +2576,7 @@ jobs:
           tags: 'tag:ci-buck2-evidence'
           args: --accept-dns=true
       - name: Export completed job trace
-        if: ${{ always() }}
+        if: ${{ (always()) && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
         shell: bash
         env:
           OTEL_EXPORTER_OTLP_ENDPOINT: ${{ vars.OTEL_EXPORTER_OTLP_ENDPOINT }}
@@ -2437,7 +2590,10 @@ jobs:
     name: ci/measurements-report
     if: ${{ !cancelled() && (!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.event_name == 'schedule') && needs.devenv-perf.result != 'failure' && needs.nix-closure-sizes.result != 'failure' && needs.main-source-shape.result != 'failure' }}
     needs: [devenv-perf, nix-closure-sizes, main-source-shape]
-    runs-on: ['namespace-profile-linux-x86-64;github.run-id=${{ github.run_id }}']
+    runs-on:
+      [
+        'namespace-profile-linux-x86-64;github.run-id=${{ github.run_id }};container.privileged=true;job.priority=4',
+      ]
     timeout-minutes: 30
     defaults:
       run:
@@ -2463,6 +2619,13 @@ jobs:
       CI_BUCK2_CACHE_EVIDENCE_DISABLED: '0'
       CI_EVIDENCE_MODE: ${{ vars.CI_EVIDENCE_MODE }}
     steps:
+      - id: linux-nix-sandbox-policy
+        name: Disable Linux Nix sandbox fallback
+        if: ${{ runner.os == 'Linux' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf 'NIX_CONFIG<<EOF\n%s\nsandbox = true\nsandbox-fallback = false\nEOF\n' "${NIX_CONFIG:-}" >> "$GITHUB_ENV"
       - uses: actions/checkout@v6
         with:
           persist-credentials: false
@@ -2505,6 +2668,8 @@ jobs:
             extra-substituters = 
             extra-trusted-public-keys = 
             access-tokens = github.com=${{ github.token }}
+            ${{ runner.os == 'Linux' && 'sandbox = true' || '' }}
+            ${{ runner.os == 'Linux' && 'sandbox-fallback = false' || '' }}
           summarize: true
       - name: Provide CI measurement report tools
         shell: bash

@@ -20,6 +20,9 @@
   execution_platforms = effect_utils//buck2/platforms:host_execution_platform
 
 [buck2]
+  # Track write actions for native clean --stale --tracked-only retention.
+  # Changing this setting resets the materializer SQLite state on daemon startup.
+  defer_write_actions = true
   # notify recursively watches ignored output trees before filtering events.
   # Watchman prunes these trees using the shipped .watchmanconfig.
   file_watcher = watchman
@@ -38,9 +41,8 @@
   max_total_batch_size = 3145728
 
 [archive_origin]
-  # Source of truth for trusted local and protected-main seeding. The
-  # reconciler projects these into gitignored `url_prefix`/`tier` keys.
-  # Public/cache-cold contexts project an empty URL and use the registry.
+  # Reviewed destination for optional archive seeding; runtime fetches use
+  # canonical registry URLs or the configured Nix archive tree.
   trusted_url_prefix = http://dev3:41046/cas/
   trusted_tier = private
 

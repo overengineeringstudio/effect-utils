@@ -1,0 +1,380 @@
+#!/usr/bin/env bash
+# mr:setup keeps local tracking development and supports explicit locked checks.
+# setupCommitMembers selects local nested trees to prepare/check.
+# CI always selects locked commits and prepares/checks every nested tree.
+set -euo pipefail
+
+TESTS_DIR="$(cd "$(dirname "$0")" && pwd)"
+ROOT="$(cd "$TESTS_DIR/../../../../.." && pwd)"
+NIX_FLAKE_REF="${NIX_FLAKE_REF:-git+file://$ROOT?shallow=1}"
+
+setup_task_attr() {
+  local members="$1"
+  local attr="$2"
+  local task="${3:-mr:setup}"
+  local mode="${4:-tracking}"
+  local bootstrap="${5:-[ ]}"
+  nix eval --impure --raw --expr "
+    let
+      flake = builtins.getFlake \"$NIX_FLAKE_REF\";
+      pkgs = import flake.inputs.nixpkgs { system = builtins.currentSystem; };
+      module = (import $ROOT/nix/devenv-modules/tasks/shared/megarepo.nix {
+        setupCommitMembers = $members;
+        bootstrapMembers = $bootstrap;
+      }) { inherit pkgs; lib = pkgs.lib; config.effectUtils.megarepo.setup.mode = \"$mode\"; };
+    in module.tasks.\"$task\".$attr
+  "
+}
+
+tmpdir="$(mktemp -d)"
+trap 'rm -rf "$tmpdir"' EXIT
+workspace="$tmpdir/workspace"
+mkdir -p "$workspace/repos/plain" "$workspace/repos/nested" "$workspace/repos/unlisted" "$tmpdir/bin"
+touch "$workspace/megarepo.kdl" "$workspace/repos/nested/megarepo.kdl" "$workspace/repos/unlisted/megarepo.json"
+calls="$tmpdir/calls"
+status_calls="$tmpdir/status-calls"
+
+cat > "$tmpdir/bin/mr" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+if [ "$*" = 'apply --help' ]; then
+  printf '%s\n' probe >> "${MR_PROBE_CALLS:?}"
+  if [ "${MR_HELP_EXIT:-0}" -ne 0 ]; then exit "$MR_HELP_EXIT"; fi
+  printf '%s\n' 'mr apply --worktree-mode tracking --lock-sync off'
+  if [ "${MR_SUPPORTS_VERIFY_SHARED:-1}" = 1 ]; then
+    printf '%s\n' '--verify-shared'
+  fi
+  exit 0
+fi
+printf '%s\n' "$*" >> "${MR_CALLS:?}"
+case "$*" in
+  'root --output json') printf '{"_tag":"Success","root":"%s"}\n' "${MR_ROOT:?}" ;;
+  'ls --output json') printf '{"_tag":"Success","members":[{"name":"plain"},{"name":"nested"},{"name":"unlisted"}]}\n' ;;
+  'status --output json'|'status --all --output json')
+    printf '%s: %s\n' "${PWD#"${MR_ROOT:?}"}" "$*" >> "${MR_STATUS_CALLS:?}"
+    if [ "$PWD" = "$MR_ROOT" ] && { [ ! -d "$MR_ROOT/repos/nested" ] || [ -f "$MR_ROOT/repos/nested/drift" ]; }; then
+      printf '%s\n' '{"syncNeeded":true,"applyNeeded":true,"syncReasons":["Member \u0027nested\u0027 commit drift"]}'
+      exit 0
+    fi
+    case "$PWD:$*" in
+      "$MR_ROOT:status --output json") needed="${MR_ROOT_APPLY_NEEDED:-false}" ;;
+      "$MR_ROOT:status --all --output json")
+        needed=false
+        if [ "${MR_NESTED_APPLY_NEEDED:-false}" = true ] || [ "${MR_UNLISTED_APPLY_NEEDED:-true}" = true ]; then
+          needed=true
+        fi
+        ;;
+      "$MR_ROOT/repos/nested:status --all --output json") needed="${MR_NESTED_APPLY_NEEDED:-false}" ;;
+      "$MR_ROOT/repos/unlisted:status --all --output json") needed="${MR_UNLISTED_APPLY_NEEDED:-true}" ;;
+      *) echo "unexpected status scope: $PWD: $*" >&2; exit 2 ;;
+    esac
+    printf '{"syncNeeded":false,"applyNeeded":%s}\n' "$needed"
+    ;;
+  apply*|fetch*)
+    if [ "${MR_EXPECT_MODE_INVALIDATED:-0}" = 1 ] && [ -e "$MR_ROOT/.devenv/task-cache/mr-apply/setup-mode" ]; then
+      echo 'setup mode record must be removed before mutation' >&2
+      exit 65
+    fi
+    if [ "${MR_SUPPORTS_VERIFY_SHARED:-1}" = 0 ] && [[ " $* " == *' --verify-shared '* ]]; then
+      echo 'unsupported --verify-shared' >&2
+      exit 64
+    fi
+    if [ "${MR_SHARED_ROOT:-0}" = 1 ] && [[ " $* " != *' --verify-shared '* ]]; then
+      echo 'Refusing to mutate canonical worktree' >&2
+      exit 1
+    fi
+    ;;
+  *) echo "unexpected mr invocation: $*" >&2; exit 2 ;;
+esac
+EOF
+chmod +x "$tmpdir/bin/mr"
+export PATH="$tmpdir/bin:$PATH" MR_ROOT="$workspace" MR_CALLS="$calls" MR_STATUS_CALLS="$status_calls"
+export MR_PROBE_CALLS="$tmpdir/probe-calls"
+# Local cases must not inherit the runner's CI marker.
+unset CI MR_SETUP_MODE
+
+# Runs a task script in the fixture workspace; prints its exit code.
+run_script() {
+  local script="$1"
+  : > "$calls"
+  : > "$status_calls"
+  : > "$MR_PROBE_CALLS"
+  set +e
+  (cd "$workspace" && bash -c "$script") >/dev/null 2>&1
+  local code=$?
+  set -e
+  echo "$code"
+}
+
+fail() {
+  echo "FAIL: $1" >&2
+  echo "  mr calls:" >&2
+  sed 's/^/    /' "$calls" >&2
+  echo "  status scopes:" >&2
+  cat "$status_calls" >&2
+  exit 1
+}
+
+echo "Running megarepo setup commit-members tests..."
+
+echo "Test 1: default non-CI setup preserves tracking development"
+exec_unset="$(setup_task_attr '[ ]' exec)"
+status_unset="$(setup_task_attr '[ ]' status)"
+[ "$(run_script "$exec_unset")" = 0 ] || fail "unset setup exec failed"
+grep -qx 'apply --worktree-mode tracking --lock-sync off --verify-shared' "$calls" \
+  || fail "default setup must select tracking with read-only shared-cache verification"
+[ "$(wc -l < "$MR_PROBE_CALLS")" -eq 1 ] || fail "setup must probe capabilities exactly once"
+[ "$(DEVENV_SETUP_OUTER_CACHE_HIT=1 run_script "$status_unset")" = 0 ] \
+  || fail "unset cache-hit readiness must pass on root mounts"
+grep -qx 'status --output json' "$calls" \
+  || fail "unset cache-hit readiness must query exact-lock root status"
+[ "$(DEVENV_SETUP_OUTER_CACHE_HIT=1 MR_ROOT_APPLY_NEEDED=true run_script "$status_unset")" = 1 ] \
+  || fail "root drift must invalidate unset setup even on cache hits"
+[ "$(run_script "$status_unset")" = 0 ] || fail "unset readiness failed"
+grep -qx 'status --output json' "$calls" || fail "unset readiness must stay root-only"
+echo "  ok"
+
+echo "Test 2: listed members are applied with recursive commit preparation"
+exec_set="$(setup_task_attr '[ "nested" "plain" ]' exec)"
+status_set="$(setup_task_attr '[ "nested" "plain" ]' status)"
+[ "$(run_script "$exec_set")" = 0 ] || fail "set setup exec failed"
+grep -qx 'apply --worktree-mode tracking --commit-members nested,plain --lock-sync off --verify-shared' "$calls" \
+  || fail "set setup must pass exactly the listed members"
+echo "  ok"
+
+echo "Test 3: local readiness ignores unlisted missing nested mounts on cold and warm paths"
+for cache_hit in 0 1; do
+  [ "$(DEVENV_SETUP_OUTER_CACHE_HIT="$cache_hit" run_script "$status_set")" = 0 ] \
+    || fail "unlisted missing nested mounts must not block local readiness"
+  [ "$(cat "$status_calls")" = $': status --output json\n/repos/nested: status --all --output json' ] \
+    || fail "local readiness must check root plus selected nested scope only"
+done
+echo "  ok"
+
+echo "Test 4: listed missing nested mounts block cold and warm readiness"
+for cache_hit in 0 1; do
+  [ "$(DEVENV_SETUP_OUTER_CACHE_HIT="$cache_hit" MR_NESTED_APPLY_NEEDED=true run_script "$status_set")" = 1 ] \
+    || fail "listed missing nested mounts must make setup run"
+  grep -qx '/repos/nested: status --all --output json' "$status_calls" \
+    || fail "listed nested scope must be queried"
+done
+echo "  ok"
+
+echo "Test 5: every non-skipped root remains required"
+mv "$workspace/repos/unlisted" "$tmpdir/unlisted"
+for cache_hit in 0 1; do
+  [ "$(DEVENV_SETUP_OUTER_CACHE_HIT="$cache_hit" run_script "$status_set")" = 1 ] \
+    || fail "unlisted missing root mounts must block local readiness"
+done
+mv "$tmpdir/unlisted" "$workspace/repos/unlisted"
+[ "$(DEVENV_SETUP_OUTER_CACHE_HIT=1 MR_ROOT_APPLY_NEEDED=true run_script "$status_set")" = 1 ] \
+  || fail "root apply-needed must block warm readiness"
+echo "  ok"
+
+echo "Test 6: skipped selected roots are not nested-checked"
+[ "$(DEVENV_SETUP_OUTER_CACHE_HIT=1 MEGAREPO_SKIP_MEMBERS=nested MR_NESTED_APPLY_NEEDED=true run_script "$status_set")" = 0 ] \
+  || fail "skipped selected nested mounts must not block readiness"
+[ "$(cat "$status_calls")" = ': status --output json' ] \
+  || fail "skipped selected roots must not get a nested status check"
+mv "$workspace/repos/nested" "$tmpdir/nested"
+[ "$(DEVENV_SETUP_OUTER_CACHE_HIT=1 MEGAREPO_SKIP_MEMBERS=nested run_script "$status_set")" = 0 ] \
+  || fail "skipped selected root mounts may be omitted"
+mv "$tmpdir/nested" "$workspace/repos/nested"
+touch "$workspace/repos/nested/drift"
+for cache_hit in 0 1; do
+  [ "$(DEVENV_SETUP_OUTER_CACHE_HIT="$cache_hit" MEGAREPO_SKIP_MEMBERS=nested run_script "$status_set")" = 0 ] \
+    || fail "skipped drifted member must not block readiness"
+  [ "$(DEVENV_SETUP_OUTER_CACHE_HIT="$cache_hit" run_script "$status_set")" = 1 ] \
+    || fail "non-skipped drifted member must block readiness"
+done
+rm "$workspace/repos/nested/drift"
+[ "$(MEGAREPO_SKIP_MEMBERS=nested run_script "$exec_set")" = 0 ] || fail "skipped setup exec failed"
+grep -qx 'apply --worktree-mode tracking --commit-members nested,plain --lock-sync off --verify-shared --skip nested' "$calls" \
+  || fail "exec must preserve the skip selection"
+echo "  ok"
+
+echo "Test 7: ordinary selected roots are accepted without nested checks"
+status_plain="$(setup_task_attr '[ "plain" ]' status)"
+[ "$(DEVENV_SETUP_OUTER_CACHE_HIT=1 run_script "$status_plain")" = 0 ] \
+  || fail "ordinary selected repos need no megarepo config"
+[ "$(cat "$status_calls")" = ': status --output json' ] \
+  || fail "ordinary selected repos must not get a nested status check"
+echo "  ok"
+
+echo "Test 8: CI applies commit worktrees and prepares every root member's tree"
+[ "$(CI=true run_script "$exec_unset")" = 0 ] || fail "unset CI setup exec failed"
+grep -qx 'apply --worktree-mode commit --lock-sync off --verify-shared' "$calls" \
+  || fail "unset CI setup must apply commit worktrees"
+[ "$(CI=true run_script "$exec_set")" = 0 ] || fail "set CI setup exec failed"
+grep -qx 'apply --worktree-mode commit --commit-all-members --lock-sync off --verify-shared' "$calls" \
+  || fail "set CI setup must prepare every member that mr status --all inspects"
+if grep -q 'tracking' "$calls"; then
+  fail "CI setup must never use tracking worktrees"
+fi
+echo "  ok"
+
+echo "Test 9: CI still checks unlisted nested trees on cold and warm paths"
+for cache_hit in 0 1; do
+  [ "$(CI=true DEVENV_SETUP_OUTER_CACHE_HIT="$cache_hit" run_script "$status_set")" = 1 ] \
+    || fail "CI must reject unlisted missing nested mounts"
+  [ "$(cat "$status_calls")" = ': status --all --output json' ] \
+    || fail "CI readiness must remain recursive at the root"
+  [ "$(CI=true DEVENV_SETUP_OUTER_CACHE_HIT="$cache_hit" MR_UNLISTED_APPLY_NEEDED=false run_script "$status_set")" = 0 ] \
+    || fail "CI readiness must converge when all nested trees are prepared"
+done
+echo "  ok"
+
+echo "Test 10: legacy products preserve setup mode and canonical refusal without new flags"
+for ci in '' false true 1; do
+  [ "$(CI="$ci" MR_SUPPORTS_VERIFY_SHARED=0 run_script "$exec_unset")" = 0 ] \
+    || fail "legacy product must accept setup without the unpublished flag"
+  mode=tracking
+  if [ "$ci" = true ]; then mode=commit; fi
+  grep -qx "apply --worktree-mode $mode --lock-sync off" "$calls" \
+    || fail "legacy product must preserve setup mode without the unpublished flag"
+  [ "$(wc -l < "$MR_PROBE_CALLS")" -eq 1 ] || fail "legacy setup must probe once"
+  [ "$(CI="$ci" MR_SUPPORTS_VERIFY_SHARED=0 MR_SHARED_ROOT=1 run_script "$exec_unset")" = 1 ] \
+    || fail "legacy canonical refusal must remain fail-closed"
+  [ "$(CI="$ci" MR_SUPPORTS_VERIFY_SHARED=1 MR_SHARED_ROOT=1 run_script "$exec_unset")" = 0 ] \
+    || fail "capable products must verify shared roots"
+done
+echo "  ok"
+
+echo "Test 11: failed capability probes do not run apply"
+[ "$(MR_HELP_EXIT=42 run_script "$exec_unset")" = 42 ] \
+  || fail "help failures must propagate"
+[ ! -s "$calls" ] || fail "a failed probe must never execute apply"
+echo "  ok"
+
+echo "Test 12: canonical runners can request locked setup without a CI marker"
+check_dependencies="$(nix eval --impure --raw --expr "
+  let
+    flake = builtins.getFlake \"$NIX_FLAKE_REF\";
+    pkgs = import flake.inputs.nixpkgs { system = builtins.currentSystem; };
+    checks = (import $ROOT/nix/devenv-modules/tasks/shared/check.nix { })
+      { lib = pkgs.lib; };
+    megarepo = (import $ROOT/nix/devenv-modules/tasks/shared/megarepo.nix { })
+      { inherit pkgs; lib = pkgs.lib; };
+    reachesSetup = task:
+      builtins.elem \"mr:check\" checks.tasks.\${task}.after
+      && builtins.elem \"mr:setup\" megarepo.tasks.\"mr:check\".after;
+  in if reachesSetup \"check:quick\" && reachesSetup \"check:all\"
+     then \"locked-setup\" else throw \"canonical check lost mr:setup dependency\"
+")"
+[ "$check_dependencies" = locked-setup ] || fail "canonical checks must depend on setup"
+for ci in '' false 1; do
+  for script in "$exec_unset" "$exec_set"; do
+    [ "$(CI="$ci" MR_SETUP_MODE=locked run_script "$script")" = 0 ] || fail "non-CI check setup failed"
+    grep -q '^apply --worktree-mode commit ' "$calls" \
+      || fail "canonical checks must never select tracking, regardless of CI marker"
+  done
+done
+echo "  ok"
+
+echo "Test 13: tracking development remains an explicit workflow"
+exec_apply="$(setup_task_attr '[ ]' exec mr:apply)"
+[ "$(run_script "$exec_apply")" = 0 ] || fail "explicit development apply failed"
+grep -qx 'apply --worktree-mode tracking --all' "$calls" \
+  || fail "explicit mr:apply must retain tracking development"
+echo "  ok"
+
+echo "Test 14: selected locked preparation supports legacy published products"
+for ci in '' false true 1; do
+  [ "$(CI="$ci" MR_SETUP_MODE=locked MR_SUPPORTS_VERIFY_SHARED=0 MEGAREPO_SKIP_MEMBERS=nested run_script "$exec_set")" = 0 ] \
+    || fail "legacy selected setup failed"
+  selector='--commit-members nested,plain'
+  if [ "$ci" = true ]; then selector=--commit-all-members; fi
+  grep -qx "apply --worktree-mode commit $selector --lock-sync off --skip nested" "$calls" \
+    || fail "legacy selected setup must preserve locked mode, nested scope, and skip"
+  [ "$(wc -l < "$MR_PROBE_CALLS")" -eq 1 ] || fail "legacy selected setup must probe once"
+done
+echo "  ok"
+
+echo "Test 15: typed locked policy and per-invocation override"
+exec_locked="$(setup_task_attr '[ ]' exec mr:setup locked)"
+[ "$(run_script "$exec_locked")" = 0 ] || fail "configured locked setup failed"
+grep -qx 'apply --worktree-mode commit --lock-sync off --verify-shared' "$calls" \
+  || fail "typed locked setup must select commit worktrees"
+[ "$(MR_SETUP_MODE=tracking run_script "$exec_locked")" = 0 ] || fail "tracking override failed"
+grep -qx 'apply --worktree-mode tracking --lock-sync off --verify-shared' "$calls" \
+  || fail "per-invocation policy must override typed policy"
+[ "$(CI=true MR_SETUP_MODE=tracking run_script "$exec_locked")" = 0 ] || fail "CI override failed"
+grep -qx 'apply --worktree-mode commit --lock-sync off --verify-shared' "$calls" \
+  || fail "CI must always select commit worktrees"
+[ "$(MR_SETUP_MODE=invalid run_script "$exec_unset")" = 1 ] || fail "invalid mode must fail"
+[ ! -s "$calls" ] && [ ! -s "$MR_PROBE_CALLS" ] || fail "invalid mode must not invoke mr"
+for cache_hit in 0 1; do
+  [ "$(MR_SETUP_MODE=locked DEVENV_SETUP_OUTER_CACHE_HIT="$cache_hit" MR_ROOT_APPLY_NEEDED=true run_script "$status_unset")" = 1 ] \
+    || fail "locked checks must reject root commit drift on cold and warm paths"
+done
+echo "  ok"
+
+echo "Test 16: setup mode option is typed and defaults to tracking"
+option_contract="$(nix eval --impure --raw --expr "
+  let
+    flake = builtins.getFlake \"$NIX_FLAKE_REF\";
+    pkgs = import flake.inputs.nixpkgs { system = builtins.currentSystem; };
+    module = (import $ROOT/nix/devenv-modules/tasks/shared/megarepo.nix { })
+      { inherit pkgs; lib = pkgs.lib; };
+    optionsModule = builtins.head module.imports;
+    evaluated = pkgs.lib.evalModules { modules = [ optionsModule ]; };
+    option = evaluated.options.effectUtils.megarepo.setup.mode;
+  in if evaluated.config.effectUtils.megarepo.setup.mode == \"tracking\"
+    && option.type.check \"tracking\" && option.type.check \"locked\"
+    && !option.type.check \"invalid\"
+  then \"typed-tracking-default\" else throw \"invalid setup mode option contract\"
+")"
+[ "$option_contract" = typed-tracking-default ] || fail "setup mode option contract failed"
+echo "  ok"
+
+echo "Test 17: ready workspaces must reapply when the effective setup mode changes"
+for cache_hit in 0 1; do
+  [ "$(MR_SETUP_MODE=tracking run_script "$exec_unset")" = 0 ] || fail "tracking preparation failed"
+  [ "$(MR_SETUP_MODE=tracking DEVENV_SETUP_OUTER_CACHE_HIT="$cache_hit" run_script "$status_unset")" = 0 ] \
+    || fail "ready tracking workspace must remain cacheable"
+  [ "$(MR_SETUP_MODE=locked DEVENV_SETUP_OUTER_CACHE_HIT="$cache_hit" run_script "$status_unset")" = 1 ] \
+    || fail "tracking readiness must not satisfy a locked setup request"
+  [ ! -s "$calls" ] || fail "mode mismatch must invalidate before querying workspace readiness"
+  [ "$(MR_SETUP_MODE=locked run_script "$exec_unset")" = 0 ] || fail "locked transition failed"
+  grep -qx 'apply --worktree-mode commit --lock-sync off --verify-shared' "$calls" \
+    || fail "locked transition must materialize commit worktrees"
+  [ "$(MR_SETUP_MODE=locked DEVENV_SETUP_OUTER_CACHE_HIT="$cache_hit" run_script "$status_unset")" = 0 ] \
+    || fail "successful locked materialization must establish locked readiness"
+  [ "$(MR_SETUP_MODE=tracking DEVENV_SETUP_OUTER_CACHE_HIT="$cache_hit" run_script "$status_unset")" = 1 ] \
+    || fail "locked readiness must not satisfy a tracking setup request"
+done
+echo "  ok"
+
+echo "Test 18: invalid mode cannot hide behind a ready workspace"
+for cache_hit in 0 1; do
+  [ "$(MR_SETUP_MODE=invalid DEVENV_SETUP_OUTER_CACHE_HIT="$cache_hit" run_script "$status_unset")" = 1 ] \
+    || fail "ready workspace must reject invalid setup mode"
+  [ ! -s "$calls" ] && [ ! -s "$MR_PROBE_CALLS" ] \
+    || fail "invalid status mode must fail before invoking mr"
+done
+echo "  ok"
+
+echo "Test 19: every other apply path invalidates previously locked setup"
+exec_fetch="$(setup_task_attr '[ ]' exec mr:fetch-apply)"
+exec_bootstrap="$(setup_task_attr '[ ]' exec mr:bootstrap tracking '[ "plain" ]')"
+for script in "$exec_apply" "$exec_fetch" "$exec_bootstrap"; do
+  for cache_hit in 0 1; do
+    [ "$(MR_SETUP_MODE=locked run_script "$exec_unset")" = 0 ] || fail "locked preparation failed"
+    [ "$(MR_SETUP_MODE=locked run_script "$status_unset")" = 0 ] || fail "locked preparation must be ready"
+    [ "$(MR_EXPECT_MODE_INVALIDATED=1 run_script "$script")" = 0 ] \
+      || fail "mount mutator must invalidate the record before it applies"
+    [ "$(MR_SETUP_MODE=locked DEVENV_SETUP_OUTER_CACHE_HIT="$cache_hit" run_script "$status_unset")" = 1 ] \
+      || fail "another apply must invalidate locked setup even when mr status reports ready"
+  done
+done
+echo "  ok"
+
+echo "Test 20: failed setup materialization cannot retain a previous mode proof"
+[ "$(MR_SETUP_MODE=locked run_script "$exec_unset")" = 0 ] || fail "locked preparation failed"
+[ "$(MR_EXPECT_MODE_INVALIDATED=1 MR_SHARED_ROOT=1 MR_SUPPORTS_VERIFY_SHARED=0 run_script "$exec_unset")" = 1 ] \
+  || fail "legacy shared mutation must fail after invalidating readiness"
+[ "$(MR_SETUP_MODE=locked run_script "$status_unset")" = 1 ] \
+  || fail "failed mutation must leave setup unready"
+echo "  ok"
+
+echo "All megarepo setup commit-members tests passed"

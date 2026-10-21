@@ -47,6 +47,10 @@ rec {
       system:
       let
         pkgs = import nixpkgs { inherit system; };
+        macosAppExample = import ./nix/macos-app/example.nix {
+          inherit pkgs;
+          nixpkgsRevision = nixpkgs.rev;
+        };
         weaverPackages =
           ((import ./nix/weaver-flake/flake.nix).outputs { inherit nixpkgs; }).packages.${system};
         cliBuildStamp = import ./nix/workspace-tools/lib/cli-build-stamp.nix { inherit pkgs; };
@@ -87,11 +91,11 @@ rec {
         # Compiled-executable products imported for this host platform (compiled.nix).
         buckCompiledProducts = import ./nix/buck2-products/compiled.nix {
           inherit
+            pkgs
             mkBuckProductFromSource
             pnpmArchives
             ;
           capabilities = buck2Capabilities;
-          producerCommit = self.sourceInfo.rev or "0000000000000000000000000000000000000000";
           repositoryRoot = ./.;
         };
         viteRuntimeFixture =
@@ -202,9 +206,18 @@ rec {
           inherit pkgs buck2 pnpmArchives;
           src = ./.;
         };
+        buck2Bubblewrap = import ./nix/bubblewrap.nix { inherit pkgs; };
         buck2Capabilities = import ./nix/buck2-capabilities.nix {
           inherit pkgs capabilityPackages;
           src = ./.;
+          extraCapabilities = pkgs.lib.optionalAttrs pkgs.stdenv.hostPlatform.isLinux {
+            bubblewrap = {
+              kind = "executable";
+              package = buck2Bubblewrap;
+              executable = "bin/bwrap";
+              protocol = "containers/bubblewrap/v1";
+            };
+          };
         };
         # Buck is the sole producer for admitted repository products.
         trackedBuck2Products = import ./nix/buck2-products {
@@ -265,10 +278,69 @@ rec {
           cli-build-stamp = cliBuildStamp.package;
           otel-span = import ./nix/devenv-modules/otel/otel-span.nix { inherit pkgs; };
         };
+        # Keep the admitted Genie's runtime closure and capabilities, adding gh
+        # for settings reconciliation and running the current source module.
+        githubRepoSettingsGenie =
+          pkgs.runCommand "github-repo-settings-genie"
+            {
+              nativeBuildInputs = [
+                pkgs.makeWrapper
+                pkgs.jq
+              ];
+            }
+            ''
+              jq -e --argjson expected ${
+                pkgs.lib.escapeShellArg (
+                  builtins.toJSON (
+                    cliPackages.genie.checkedDescriptor
+                    // {
+                      externalCapabilities = pkgs.lib.unique (
+                        cliPackages.genie.checkedDescriptor.externalCapabilities ++ [ "gh" ]
+                      );
+                    }
+                  )
+                )
+              } '
+                def contract: {
+                  externalCapabilities: (.externalCapabilities | sort),
+                  externalModules, modulePath, productKind, productName,
+                  runtimeContract, runtimeContractVersion, runtimeKind
+                };
+                contract == ($expected | contract)
+              ' ${buckProductsFromSource.genie}/descriptor.json >/dev/null
+              mkdir -p "$out/bin" "$out/libexec"
+              cp ${cliPackages.genie}/bin/genie "$out/bin/genie"
+              cp ${buckProductsFromSource.genie}/${buckProductsFromSource.genie.artifactName} "$out/libexec/${cliPackages.genie.checkedDescriptor.modulePath}"
+              ln -s ${cliPackages.genie}/libexec/node_modules "$out/libexec/node_modules"
+              substituteInPlace "$out/bin/genie" \
+                --replace-fail "${cliPackages.genie}/libexec/${cliPackages.genie.checkedDescriptor.modulePath}" \
+                  "$out/libexec/${cliPackages.genie.checkedDescriptor.modulePath}"
+              wrapProgram "$out/bin/genie" \
+                --prefix PATH : ${pkgs.lib.escapeShellArg (pkgs.lib.makeBinPath [ pkgs.gh ])}
+            '';
+        mkGithubRepoSettingsLauncher = import ./nix/github-repo-settings.nix {
+          inherit pkgs;
+          genieBin = "${githubRepoSettingsGenie}/bin/genie";
+        };
+        githubRepoSettingsApps = pkgs.lib.genAttrs [ "gh-apply-settings" "gh-check-settings" ] (
+          name:
+          flake-utils.lib.mkApp {
+            drv = mkGithubRepoSettingsLauncher (if name == "gh-apply-settings" then "apply" else "check");
+            exePath = "/bin/${name}";
+          }
+        );
 
       in
       {
         buckProducts = trackedBuck2Products;
+        checks = pkgs.lib.optionalAttrs (system == "aarch64-darwin") {
+          macos-app-host-stability = macosAppExample.check;
+          macos-app-primitives = macosAppExample.primitives;
+          macos-app-appkit-link = import ./nix/macos-app/appkit-link-check.nix {
+            inherit pkgs;
+            nixpkgsRevision = nixpkgs.rev;
+          };
+        };
         packages =
           cliPackages
           // providerCliPackages
@@ -284,6 +356,12 @@ rec {
             buck2-pnpm-archives = pnpmArchives;
             cli-build-stamp = cliBuildStamp.package;
             otel-span = import ./nix/devenv-modules/otel/otel-span.nix { inherit pkgs; };
+            restate = import ./nix/restate.nix {
+              pkgs = import nixpkgs {
+                inherit system;
+                config.allowUnfreePredicate = pkg: pkgs.lib.getName pkg == "restate";
+              };
+            };
             # Both the rasterizer and fonts follow this repository's locked nixpkgs.
             # Ignore runner fonts so identical SVGs have a deterministic font closure.
             pipeline-waterfall-rasterizer = pkgs.writeShellScriptBin "pipeline-waterfall-rasterizer" ''
@@ -292,6 +370,7 @@ rec {
                 --use-fonts-dir ${pkgs.dejavu_fonts}/share/fonts/truetype \
                 "$@"
             '';
+            gh-settings-genie = githubRepoSettingsGenie;
             buck-products-from-source = pkgs.linkFarm "effect-utils-buck-products-from-source" (
               pkgs.lib.mapAttrsToList (name: path: {
                 name = pkgs.lib.replaceStrings [ "@" "/" ] [ "" "-" ] name;
@@ -300,6 +379,15 @@ rec {
             );
             oxlint-npm = oxlintNpm;
             node-pty-native = nodePtyNative;
+          }
+          // pkgs.lib.optionalAttrs pkgs.stdenv.hostPlatform.isLinux {
+            buck2-bubblewrap = buck2Bubblewrap;
+          }
+          // pkgs.lib.optionalAttrs (system == "aarch64-darwin") {
+            macos-app-example = macosAppExample.example;
+            macos-app-integration = macosAppExample.integration;
+            macos-app-ctl-integration = macosAppExample.ctlIntegration;
+            macos-app-launchd-smoke = macosAppExample.launchdSmoke;
           }
           // pkgs.lib.optionalAttrs (system == "x86_64-linux") {
             buck2-vite-runtime-closure-fixture = viteRuntimeFixture;
@@ -319,16 +407,18 @@ rec {
           notion-md = cliPackages.notion-md.outPath;
         };
 
-        apps = pkgs.lib.optionalAttrs (nativeProductPackages ? otelite) {
-          otelite = flake-utils.lib.mkApp {
-            drv = nativeProductPackages.otelite;
-            exePath = "/bin/otelite";
+        apps =
+          githubRepoSettingsApps
+          // pkgs.lib.optionalAttrs (nativeProductPackages ? otelite) {
+            otelite = flake-utils.lib.mkApp {
+              drv = nativeProductPackages.otelite;
+              exePath = "/bin/otelite";
+            };
+            otel-scrape = flake-utils.lib.mkApp {
+              drv = nativeProductPackages.otel-scrape;
+              exePath = "/bin/otel-scrape";
+            };
           };
-          otel-scrape = flake-utils.lib.mkApp {
-            drv = nativeProductPackages.otel-scrape;
-            exePath = "/bin/otel-scrape";
-          };
-        };
       }
     )
     // {
@@ -377,7 +467,16 @@ rec {
           bun = import ./nix/devenv-modules/tasks/shared/bun.nix;
           buck2-rust-deps = import ./nix/devenv-modules/tasks/shared/buck2-rust-deps.nix;
           changesets = import ./nix/devenv-modules/tasks/shared/changesets.nix;
-          github-ruleset = import ./nix/devenv-modules/tasks/shared/github-ruleset.nix;
+          github-ruleset =
+            args:
+            { pkgs, ... }@moduleArgs:
+            (import ./nix/devenv-modules/tasks/shared/github-ruleset.nix (
+              {
+                genieBin = "${self.packages.${pkgs.stdenv.hostPlatform.system}.gh-settings-genie}/bin/genie";
+              }
+              // args
+            ))
+              moduleArgs;
           # gh:apply-labels / gh:check-labels — reconcile .github/labels.json with live labels.
           # Parameterized by `{ repo = "owner/name"; }`; consumed like the other task modules.
           gh-labels = import ./nix/devenv-modules/gh-labels.nix;
@@ -409,7 +508,8 @@ rec {
           base = self.packages.${pkgs.stdenv.hostPlatform.system}.buck2-capabilities;
         in
         import ./nix/buck2-capabilities.nix {
-          inherit pkgs extraCapabilities;
+          inherit pkgs;
+          extraCapabilities = base.passthru.extraCapabilities // extraCapabilities;
           inherit (base.passthru) capabilityPackages src;
         };
 
@@ -483,6 +583,23 @@ rec {
       # Standalone otel-span CLI (run + emit subcommands).
       # Can be added to devenv packages without importing the full OTEL module.
       lib.mkOtelSpan = { pkgs }: import ./nix/devenv-modules/otel/otel-span.nix { inherit pkgs; };
+
+      # Consumers can fail closed at evaluation before requesting a legacy cutover.
+      lib.macosAppCapabilities.legacyIncumbentImport = true;
+
+      lib.mkMacosApp =
+        args:
+        import ./nix/macos-app/default.nix {
+          pkgs = args.pkgs;
+          nixpkgsRevision = nixpkgs.rev;
+        } (builtins.removeAttrs args [ "pkgs" ]);
+
+      lib.mkMacosPermissionsHost =
+        args:
+        import ./nix/permissions-host/default.nix {
+          pkgs = args.pkgs;
+          nixpkgsRevision = nixpkgs.rev;
+        } (builtins.removeAttrs args [ "pkgs" ]);
 
       # Convenience helper for bundling the common genie/megarepo CLIs from
       # this effect-utils revision's tracked Buck products. An explicit

@@ -74,6 +74,12 @@ GitHub creates a check run for each materialized job and groups runs from one wo
 
 The main-only exclusion is deliberate and fixes the absent-check failure mode: requiring `test-integration-notion`, `test-live-deploy-ci-tools`, or `deploy-storybooks` on a pull request would leave branch protection waiting for check runs that the workflow never creates.
 
+`test-integration-notion` also supports a collaborator-triggered branch proof:
+dispatch `ci.yml` on the branch with `run_notion_integration_on_branch=true`.
+The input defaults to false and only admits `workflow_dispatch`; pull requests
+and merge groups cannot select this credentialed lane. Main push and dispatch
+behavior is unchanged. Baseline-measurement dispatches still exclude the lane.
+
 `.github/repo-settings.json.genie.ts` derives the repository ruleset directly from `requiredCIJobs` (the expanded `REQUIRED_CI_JOB_NAMES` plus `STANDALONE_REQUIRED_CI_JOB_NAMES`). The same ruleset requires GitHub's native merge queue with `SQUASH`, `ALLGREEN`, build concurrency one, merge limit one, and a 180-minute check-response timeout. Required contexts are unchanged by the queue cutover: a PR's skipped heavy checks permit queue admission, not direct merge; the native queue must obtain successful real heavy-job results on its synthetic combined head. There are no admission labels, sentinel successes, or per-PR heavy cohorts.
 
 Linux `test` and Darwin `test-macos` are physical workflow jobs with static check names `test (namespace-profile-linux-x86-64)` and `test (namespace-profile-macos-arm64)`. Both retain canonical pipeline job `test` with their respective runner dimension, so queue validation and historical trace identities agree. Darwin retains its native/compiled product smoke after unit tests.
@@ -221,18 +227,24 @@ import {
 export default githubWorkflow({
   name: 'Rust CI',
   on: { pull_request: githubWorkflowEvent.all, push: { branches: ['main'] } },
+  linuxNixSandboxCapabilities: { test: 'supported' },
   actionlint: defaultActionlintConfig,
   jobs: {
-    fmt: cargoFmtJob(),
-    clippy: cargoClippyJob({ extraArgs: ['--', '-D', 'warnings'] }),
+    fmt: cargoFmtJob({ namespacePrivilege: 'trusted' }),
+    clippy: cargoClippyJob({ namespacePrivilege: 'trusted', extraArgs: ['--', '-D', 'warnings'] }),
     test: cargoNextestJob({
+      namespacePrivilege: 'trusted',
       retries: 2,
       testThreads: 8,
       'timeout-minutes': 30,
       strategy: { matrix: { runner: [...RUNNER_PROFILES] }, 'fail-fast': false },
-      runsOn: namespaceRunner({ profile: '${{ matrix.runner }}', runId: '${{ github.run_id }}' }),
+      runsOn: namespaceRunner({
+        profile: '${{ matrix.runner }}',
+        runId: '${{ github.run_id }}',
+        privileged: 'trusted',
+      }),
     }),
-    freshness: plainFlakeGenieCheckJob(),
+    freshness: plainFlakeGenieCheckJob({ namespacePrivilege: 'trusted' }),
   },
 })
 ```
@@ -241,6 +253,78 @@ Jobs default to the shared Namespace Linux profile with workflow-run affinity.
 Runner matrices use the same `namespaceRunner`, `RUNNER_PROFILES` and actionlint
 configuration as other CI helpers. Job options retain GitHub's gates, environment,
 permissions, defaults, matrix and timeout controls, plus `preSteps`/`postSteps`.
+
+Every Namespace Linux job explicitly selects `privileged: 'always' | 'trusted' |
+'never'`; the generator rejects omission rather than silently granting
+privilege. `never` is only for jobs that cannot build with Nix or run Bubblewrap,
+including cache-miss fallback paths. Build jobs unreachable from PR events use
+`always`; PR-reachable build jobs use `trusted`. Its isolated trust predicate is
+`github.event_name != 'pull_request' ||
+github.event.pull_request.head.repo.full_name == github.repository`.
+Fork PRs select unprivileged runners, and Buck TS setup fails closed with a named
+diagnostic while fork admission policy remains unresolved. Darwin labels never
+receive Linux container privilege.
+The Linux prerequisites guard takes the same explicit policy: only `trusted`
+renders the PR-identity expression. `always` emits literal permission and never
+reads the PR event, preserving the `workflow_run` deployment trust boundary.
+
+Every Linux CI job sets `sandbox = true` and `sandbox-fallback = false` before
+other steps, preserving unrelated inherited `NIX_CONFIG` settings. Fresh Nix
+installers also apply both settings to daemon configuration. Neither an inherited
+disabled sandbox nor an unavailable sandbox may silently run a build unsandboxed.
+The settings are conditional on `runner.os == 'Linux'`, leaving Darwin policy
+unchanged; they do not grant privileges or bypass fork admission guards.
+
+For jobs using the shared Install Nix action, `ciWorkflow` validates `runs-on`
+before generation. Namespace Linux labels (`namespace-profile-*` or `nscloud-*`)
+must request `container.privileged=true` in their supported format: profiles
+append it inline, while `-with-features` machines use a separate
+`namespace-features:` label. Literal alternatives in both machine and feature
+labels are resolved before validation; every alternative must request privilege
+in the applicable format. Only the shared run-ID interpolation and exact
+trusted-only privilege suffix are recognized within labels. Other interpolated
+features and opaque runner expressions fail closed with job-specific guidance,
+rather than treating incidental quoted strings as emitted feature values.
+Runtime fork admission is unchanged.
+`linuxNixSandboxCapabilities: { [jobId]: 'supported' }` attests that every
+possible Linux runner supports strict sandboxing for such expressions. This
+generation-only option cannot override any statically unprivileged Namespace
+machine or feature alternative, even beside opaque labels. Static Namespace
+profile fragments must include inline privilege; attestation cannot turn an
+opaque interpolated feature into a static privilege declaration. An explicit
+`self-hosted` selector constrains the entire job, including dynamic selectors.
+Self-hosted, macOS, and jobs without the shared installer keep their existing
+behavior and sandbox policy.
+
+The source-only `default-ref-policy` job must not evaluate the checkout's flake
+before checking its refs. Genie freezes the root `flake.lock` nixpkgs revision
+and NAR hash into an upstream `github:NixOS/nixpkgs/...#nodejs_24` installable in
+the generated workflow; the running gate never reads the checkout's lockfile to
+resolve its interpreter. `source-shape` explicitly needs `default-ref-policy`
+before realizing the declared `.#buck2-node` output. Both invoke the exact
+realized `bin/node`, use `--no-update-lock-file`, and never select ambient Node
+or an unpinned registry package. Both apply the `trusted` Linux prerequisites
+guard before realizing tools: fork PRs fail closed. The separate main source-shape
+proof inherits that guard but does not depend on the product workflow's gate;
+its main/dispatch-only events are admitted without granting fork PRs privilege.
+
+Execution prerequisites publish stable `linux-sandbox-admission` and
+`default-ref-policy-verdict` step identities. The shared admission policy
+combines every prerequisite present in a job. Linux namespace admission must
+succeed on Linux; its deliberate Darwin skip is neutral, preserving Darwin
+cleanup. The source-policy verdict must succeed whenever present.
+
+Evidence wrappers attach checkout-dependent identity and cache-window capture
+only after the last admission step. The wrappers and final workflow composition
+apply the same admission condition to executable steps with explicit status
+functions (`always`, `failure`, `cancelled`, or `success`), which otherwise bypass
+Actions' implicit success prerequisite. This includes local-flake collection,
+checkout scripts, reporting, diagnostics and tailnet actions. Data-only
+`actions/upload-artifact` and `actions/cache/save` retain their original cleanup
+conditions; jobs with no admission prerequisites retain their independent policy.
+Pipeline-attempt closing also refuses fork PR local-flake execution; when the
+product source-policy job is present, closing additionally requires that job's
+successful admission.
 
 `plainFlakeSetupSteps` installs Determinate Nix and accepts an optional public
 `cachix` name for read-only cache access. For custom jobs, compose these setup steps

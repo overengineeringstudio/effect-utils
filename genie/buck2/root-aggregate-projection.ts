@@ -53,7 +53,8 @@ const renderAggregate = ({ name, targets }: { name: string; targets: readonly st
   ].join('\n')
 
 const rootBuckBase =
-  'load("//buck2:editor_view.bzl", "editor_view_inputs")\nload("@prelude//toolchains:genrule.bzl", "system_genrule_toolchain")\nload("//buck2:static_checks.bzl", "STATIC_SOURCE_EXCLUDES", "STATIC_SOURCE_GLOBS", "static_source_set")\n\n# Conventional prelude toolchain targets.\n#\n# The standalone root sets `[cell_aliases] toolchains = effect_utils`, so prelude\'s\n# conventional `toolchains//:<lang>` spelling resolves into *this* package. Prelude rules\n# therefore find exactly one instance of each conventional toolchain, and it is the\n# capability-backed one.\ntoolchain_alias(\n    name = "rust",\n    actual = "//buck2/toolchains:rust",\n    visibility = ["PUBLIC"],\n)\n\ntoolchain_alias(\n    name = "cxx",\n    actual = "//buck2/toolchains:cxx",\n    visibility = ["PUBLIC"],\n)\n\ntoolchain_alias(\n    name = "go_bootstrap",\n    actual = "//buck2/toolchains:go_bootstrap",\n    visibility = ["PUBLIC"],\n)\n\ntoolchain_alias(\n    name = "python_bootstrap",\n    actual = "//buck2/toolchains:python_bootstrap",\n    visibility = ["PUBLIC"],\n)\n\n# Prelude\'s genrule toolchain carries no executable at all (`zip_scrubber = None`,\n# `@prelude//:genrule_toolchain.bzl`), so there is nothing to pin and nothing to project:\n# the upstream instance is already hermetic.\nsystem_genrule_toolchain(\n    name = "genrule",\n    visibility = ["PUBLIC"],\n)\n\nexport_file(\n    name = "package.json",\n    src = "package.json",\n    visibility = ["PUBLIC"],\n)\n\nalias(\n    name = "node_modules",\n    actual = "//packages/@overeng/genie:node_modules",\n    visibility = ["PUBLIC"],\n)\n\nalias(\n    name = "editor_inputs",\n    actual = ":node_modules",\n    visibility = ["PUBLIC"],\n)\n\nalias(\n    name = "root_editor_package_tree",\n    actual = "//packages/@overeng/genie:package_tree",\n    visibility = ["PUBLIC"],\n)\n\neditor_view_inputs(\n    name = "editor_view_inputs",\n    editor_inputs = ":editor_inputs",\n    package_tree = ":root_editor_package_tree",\n    visibility = ["PUBLIC"],\n)\nstatic_source_set(\n    name = "static_sources",\n    prefix = "",\n    srcs = glob(\n        [\n            root + "/" + pattern\n            for root in ["context", "packages", "scripts"]\n            for pattern in STATIC_SOURCE_GLOBS\n        ],\n        exclude = [\n            root + "/" + pattern\n            for root in ["context", "packages", "scripts"]\n            for pattern in STATIC_SOURCE_EXCLUDES\n        ],\n    ) + [\n        ".oxfmtrc.json",\n        ".oxlintrc.json",\n        "devenv.lock",\n        "devenv.yaml",\n        "flake.lock",\n        "flake.nix",\n        "megarepo.kdl",\n        "megarepo.lock",\n    ],\n    visibility = ["PUBLIC"],\n)\n\n\n# Workspace patches are declared inputs to the generated pnpm extraction actions.\nexport_file(\n    name = "patches/@myobie__pty@0.10.0.patch",\n    src = "patches/@myobie__pty@0.10.0.patch",\n    visibility = ["PUBLIC"],\n)'
+  'load("//buck2:editor_view.bzl", "editor_view_inputs")\nload("@prelude//toolchains:genrule.bzl", "system_genrule_toolchain")\nload("//buck2:static_checks.bzl", "STATIC_SOURCE_EXCLUDES", "STATIC_SOURCE_GLOBS", "static_source_set")\n\n# Conventional prelude toolchain targets.\n#\n# The standalone root sets `[cell_aliases] toolchains = effect_utils`, so prelude\'s\n# conventional `toolchains//:<lang>` spelling resolves into *this* package. Prelude rules\n# therefore find exactly one instance of each conventional toolchain, and it is the\n# capability-backed one.\ntoolchain_alias(\n    name = "rust",\n    actual = "//buck2/toolchains:rust",\n    visibility = ["PUBLIC"],\n)\n\ntoolchain_alias(\n    name = "cxx",\n    actual = "//buck2/toolchains:cxx",\n    visibility = ["PUBLIC"],\n)\n\ntoolchain_alias(\n    name = "go_bootstrap",\n    actual = "//buck2/toolchains:go_bootstrap",\n    visibility = ["PUBLIC"],\n)\n\ntoolchain_alias(\n    name = "python_bootstrap",\n    actual = "//buck2/toolchains:python_bootstrap",\n    visibility = ["PUBLIC"],\n)\n\n# Prelude\'s genrule toolchain carries no executable at all (`zip_scrubber = None`,\n# `@prelude//:genrule_toolchain.bzl`), so there is nothing to pin and nothing to project:\n# the upstream instance is already hermetic.\nsystem_genrule_toolchain(\n    name = "genrule",\n    visibility = ["PUBLIC"],\n)\n\nexport_file(\n    name = "package.json",\n    src = "package.json",\n    visibility = ["PUBLIC"],\n)\n\nalias(\n    name = "node_modules",\n    actual = "//packages/@overeng/genie:node_modules",\n    visibility = ["PUBLIC"],\n)\n\nalias(\n    name = "editor_inputs",\n    actual = ":node_modules",\n    visibility = ["PUBLIC"],\n)\n\nalias(\n    name = "root_editor_package_tree",\n    actual = "//packages/@overeng/genie:package_tree",\n    visibility = ["PUBLIC"],\n)\n\neditor_view_inputs(\n    name = "editor_view_inputs",\n    editor_inputs = ":editor_inputs",\n    package_tree = ":root_editor_package_tree",\n    visibility = ["PUBLIC"],\n)\nstatic_source_set(\n    name = "static_sources",\n    prefix = "",\n    srcs = glob(\n        [\n            root + "/" + pattern\n            for root in ["context", "packages", "scripts"]\n            for pattern in STATIC_SOURCE_GLOBS\n        ],\n        exclude = [\n            root + "/" + pattern\n            for root in ["context", "packages", "scripts"]\n            for pattern in STATIC_SOURCE_EXCLUDES\n        ],\n    ) + [\n        ".oxfmtrc.json",\n        ".oxlintrc.json",\n        "devenv.lock",\n        "devenv.yaml",\n        "flake.lock",\n        "flake.nix",\n        "megarepo.kdl",\n        "megarepo.lock",\n    ],\n    visibility = ["PUBLIC"],\n)\n\n\n# Workspace patches are declared inputs to the generated pnpm extraction actions.\nexport_file(\n    name = "patches/@myobie__pty@0.10.0.patch",\n    src = "patches/@myobie__pty@0.10.0.patch",\n    visibility = ["PUBLIC"],\n)' +
+  '\n\n# Prelude includes this unreachable select branch in unconfigured Cxx/Rust queries.\n# Our Cxx toolchain already has no default deps, so both labels share one instance.\ntoolchain_alias(\n    name = "cxx_no_default_deps",\n    actual = "//buck2/toolchains:cxx",\n    visibility = ["PUBLIC"],\n)\n'
 
 export const rootRepositoryValidationSourceGlobs = [
   '**/*.ts',
@@ -95,22 +96,6 @@ const weaverRootBuckTargets =
   'weaver_checks(\n    name = "weaver",\n    registry = {\n        "attributes.yaml": "genie/weaver-registry/attributes.yaml",\n        "manifest.yaml": "genie/weaver-registry/manifest.yaml",\n        "signals.yaml": "genie/weaver-registry/signals.yaml",\n    },\n    flake_nix = "nix/weaver-flake/flake.nix",\n    registry_source = "genie/weaver-registry/registry.ts",\n    visibility = ["PUBLIC"],\n)'
 export const rootBuckAggregateProjection = (): GenieOutput<RootBuckAggregatePlan> => {
   const data = planRootBuckAggregates()
-  const packageInputs = [
-    ...new Set(
-      authoritativeBuck2TypeScriptProjects.map((project) => `${project.packagePath}/BUCK.genie.ts`),
-    ),
-  ].toSorted()
-  const semanticInputs = [
-    'BUCK.genie.ts',
-    'genie/buck2/mod.ts',
-    'genie/buck2/root-aggregate-projection.ts',
-    'genie/buck2/typescript-admissions.ts',
-    'rust/effect-rust-fixtures/BUCK.genie.ts',
-    'buck2/check_aggregate.bzl',
-    'buck2/weaver.bzl',
-    'packages/@overeng/buck2-tools/src/weaver-check-runner.ts',
-    ...packageInputs,
-  ]
   const fingerprint = buck2SemanticFingerprint({
     generator: 'effect-utils/genie/buck2-root-aggregate-projection',
     schemaVersion: 1,
@@ -125,7 +110,6 @@ export const rootBuckAggregateProjection = (): GenieOutput<RootBuckAggregatePlan
         '# Projection schema version: 1',
         '# Projection generator: effect-utils/genie/buck2-root-aggregate-projection',
         `# Semantic fingerprint: ${fingerprint}`,
-        `# Semantic inputs: ${semanticInputs.join(', ')}`,
         `# Regenerate: ${regenerationCommand}`,
         weaverRootBuckLoad,
         aggregateRootBuckLoad,

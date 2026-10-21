@@ -463,12 +463,13 @@ Live E2E flow:
 Cleanup failures degrade the record but do not mask deploy or verification
 failure.
 
-The Vercel live test prints child exit status, stdout, stderr, and the workflow
-report when an assertion fails, before deleting its temporary directory. Missing
-reports are identified explicitly. Successful assertions produce no diagnostic
-dump. Public failure output redacts credential and provider/account identifier
-values from the environment and replaces HTTP(S) URLs entirely, including
-credential-bearing query strings, fragments, and user information.
+The Vercel live test emits an allowlisted structured failure summary before
+deleting its temporary directory. It parses the workflow report and publishes
+only the child exit status, known deploy error tags and operation names, and
+numeric API/HTTP status codes. Provider-operation failures include their typed
+operation in the report. Unknown classifications, malformed reports, free-form
+fields, and raw stdout/stderr are omitted, regardless of encoding. Missing
+reports leave only the exit status. Successful assertions emit no summary.
 
 Requirement trace: R18, R19, R20, R21, R22, R23.
 

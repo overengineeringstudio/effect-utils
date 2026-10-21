@@ -10,11 +10,11 @@ import { buck2StagedRuntimes, stagedModuleName } from './runtime-modules.ts'
  * Every relative specifier in one module, in source order.
  *
  * Matches `import`/`export ... from './x.ts'`, bare `import './x.ts'`, and
- * dynamic `import('./x.ts')`. Buck stages sources verbatim, so the specifier a
- * runner writes is the path Bun resolves inside the action.
+ * dynamic `import('./x.ts')`, and `new URL('./x.ts', import.meta.url)` preload entries.
+ * Buck stages sources verbatim, so each specifier resolves inside the action.
  */
 const relativeSpecifiers = (source: string): readonly string[] =>
-  [...source.matchAll(/(?:from|import)\s*\(?\s*['"](\.[^'"]*)['"]/gu)].map(
+  [...source.matchAll(/(?:from|import|new URL)\s*\(?\s*['"](\.[^'"]*)['"]/gu)].map(
     (match) => match[1] ?? '',
   )
 
@@ -65,6 +65,20 @@ describe('staged Buck runtime closure', () => {
     expect(runtime.modules).toEqual([runtime.entry])
     expect(relativeSpecifiers(readFileSync(runtime.entry, 'utf8'))).toEqual([])
     expect(buck2ToolsBuck).toContain(`    src = "src/${stagedModuleName(runtime.entry)}",`)
+  })
+
+  it('dereferences sandboxed runtime modules without copying dependency views', () => {
+    for (const runtime of buck2StagedRuntimes) {
+      if (runtime.staging === 'export_file') continue
+      const hasDependencies = 'nodeModules' in runtime
+      const name = runtime.label.slice(runtime.label.lastIndexOf(':') + 1)
+      const filesName = hasDependencies ? `${name}_files` : name
+      const stanza = buck2ToolsBuck
+        .split(`${runtime.staging}(\n    name = "${filesName}",`)[1]
+        ?.split('\n)')[0]
+      expect(stanza).toBeDefined()
+      expect(runtime.staging).toBe(hasDependencies ? 'filegroup' : 'runtime_modules')
+    }
   })
 
   it('follows relative imports, so a clean closure is not a vacuous pass', () => {

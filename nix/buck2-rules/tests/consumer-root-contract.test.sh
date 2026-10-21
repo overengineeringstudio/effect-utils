@@ -3,8 +3,17 @@ set -euo pipefail
 
 repo_root="${1:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd -P)}"
 export BUCK2_RULES_REPO="$repo_root"
-"$repo_root/nix/buck2-rules/tests/consumer-root-config.test.sh" "$repo_root"
-bash "$repo_root/nix/buck2-rules/tests/file-watcher-contract.test.sh" "$repo_root"
+runtime_only=false
+if [[ "${2:-}" == "--runtime-only" ]]; then
+  runtime_only=true
+elif [[ -n "${2:-}" ]]; then
+  echo "unknown consumer-root contract mode: $2" >&2
+  exit 1
+fi
+if ! "$runtime_only"; then
+  "$repo_root/nix/buck2-rules/tests/consumer-root-config.test.sh" "$repo_root"
+  bash "$repo_root/nix/buck2-rules/tests/file-watcher-contract.test.sh" "$repo_root"
+fi
 
 build_root() {
   BUCK2_WATCHER_POLICY="$1" nix build --impure --no-link --print-out-paths --expr '
@@ -30,9 +39,14 @@ build_root() {
 '
 }
 
-root="$(build_root mutable-checkout)"
-immutable_root="$(build_root immutable-input)"
-grep -Fx '  file_watcher = watchman' "$root/.buckconfig" >/dev/null
+if "$runtime_only"; then
+  root="$(build_root immutable-input)"
+  immutable_root="$root"
+else
+  root="$(build_root mutable-checkout)"
+  immutable_root="$(build_root immutable-input)"
+  grep -Fx '  file_watcher = watchman' "$root/.buckconfig" >/dev/null
+fi
 grep -Fx '  file_watcher = fs_hash_crawler' "$immutable_root/.buckconfig" >/dev/null
 
 [ -f "$root/.buckroot" ]
@@ -106,13 +120,147 @@ grep -F 'name = "runtime-closure.ts"' "$root/.buck2/rules/buck2/dependencies/BUC
 
 # Buck writes buck-out under the project root, so queries run in a writable copy.
 work="$(mktemp -d)"
+runtime_work="$(mktemp -d)"
 cleanup() {
   (cd "$work" && buck2 --isolation-dir consumer-root-contract kill >/dev/null 2>&1) || true
+  (cd "$runtime_work" && buck2 --isolation-dir consumer-root-contract kill >/dev/null 2>&1) || true
   watchman watch-del "$work" >/dev/null 2>&1 || true
-  chmod -R u+w "$work"
-  rm -rf "$work"
+  chmod -R u+w "$work" "$runtime_work"
+  rm -rf "$work" "$runtime_work"
 }
 trap cleanup EXIT
+# This immutable-cell fixture is separate from the writable native-product
+# source snapshot, whose capability cell the product builder repopulates.
+(
+work="$runtime_work"
+root="$immutable_root"
+# Keep the actual Nix-exported cells immutable. Copying their source files into
+# this checkout would hide absolute Buck source symlinks into the store.
+mkdir -p "$work/.buck2" "$work/buck2/toolchains"
+cp "$root/.buckroot" "$root/.buckconfig" "$root/.watchmanconfig" "$root/BUCK" "$work/"
+cp "$root/buck2/toolchains/BUCK" "$work/buck2/toolchains/BUCK"
+ln -s "$root/.buck2/rules" "$work/.buck2/rules"
+ln -s "$root/.buck2/capabilities" "$work/.buck2/capabilities"
+chmod -R u+w "$work/buck2" "$work/BUCK" "$work/.buckconfig"
+
+# Exercise the distributed declarations, not a hand-assembled runtime cell:
+# package_tree must run its real TS action, and the JavaScript runtime must
+# import its full closure inside that same production sandbox boundary.
+mkdir -p "$work/runtime"
+printf '{"name":"consumer-runtime-fixture"}\n' > "$work/runtime/package.json"
+cat > "$work/runtime/probe.ts" <<'TS'
+import { resolve } from 'node:path'
+const [runtime, forbidden, output] = process.argv.slice(2)
+const runner = await import(resolve(runtime, 'javascript-runner.ts'))
+if (typeof runner.runJavaScriptCli !== 'function') throw new Error('runtime export missing')
+// Darwin containment is unsupported; only Linux makes a read-denial claim.
+if (process.platform === 'linux') {
+  try {
+    await import(forbidden)
+    throw new Error('UNDECLARED_EXPORTED_SOURCE_ADMITTED')
+  } catch (error) {
+    if (!(error instanceof Error) || !error.message.includes(forbidden) ||
+        !('code' in error) || error.code !== 'ERR_MODULE_NOT_FOUND') throw error
+  }
+}
+await Bun.write(`${output}/receipt.json`, JSON.stringify({
+  declared: true, undeclared: process.platform === 'linux' ? false : 'unsupported',
+}))
+TS
+cat > "$work/runtime/defs.bzl" <<'BZL'
+load("@rules//buck2:hermetic.bzl", "hermetic_bun_command", "ts_action", "ts_action_attrs")
+load("@rules//buck2/platforms:defs.bzl", "host_execution_constraints")
+load("@rules//buck2/toolchains:defs.bzl", "BunToolchainInfo")
+
+def _probe_impl(ctx):
+    runtime = ctx.attrs.runtime[DefaultInfo].default_outputs[0]
+    output = ctx.actions.declare_output("probe", dir = True)
+    inputs = [runtime, ctx.attrs.entry]
+    command = cmd_args([
+        hermetic_bun_command(ctx, ctx.attrs._bun[BunToolchainInfo].executable, sandbox_inputs = inputs),
+        ctx.attrs.entry, runtime, ctx.attrs.forbidden, output,
+    ])
+    ts_action(ctx, command, inputs = inputs, outputs = [output],
+              category = "exported_runtime_probe", cacheable = False)
+    return [DefaultInfo(default_output = output)]
+
+_probe = rule(impl = _probe_impl, attrs = dict(ts_action_attrs(), **{
+    "runtime": attrs.dep(),
+    "entry": attrs.source(),
+    "forbidden": attrs.string(),
+    "_bun": attrs.default_only(attrs.exec_dep(
+        default = "@rules//buck2/toolchains:bun", providers = [BunToolchainInfo],
+    )),
+}))
+
+def probe(name, **kwargs):
+    _probe(name = name, exec_compatible_with = host_execution_constraints(), **kwargs)
+BZL
+cat > "$work/runtime/BUCK" <<BUCK
+load("@rules//buck2:materialization.bzl", "empty_package_view")
+load(":defs.bzl", "probe")
+
+empty_package_view(
+    name = "package_tree",
+    files = {"package.json": "package.json"},
+    runtime = "@rules//:package_tree_runtime",
+    runtime_entry = "package-tree.ts",
+)
+
+probe(
+    name = "imports",
+    runtime = "@rules//packages/@overeng/buck2-tools:javascript_action_runtime",
+    entry = "probe.ts",
+    forbidden = "$root/.buck2/rules/packages/@overeng/buck2-tools/src/package-command-runner.ts",
+)
+BUCK
+test -r "$root/.buck2/rules/packages/@overeng/buck2-tools/src/package-command-runner.ts"
+(
+  cd "$work"
+  outputs="$(buck2 --isolation-dir consumer-root-contract build --show-full-json-output \
+    --target-platforms rules//buck2/platforms:host_platform \
+    fixture//runtime:package_tree fixture//runtime:imports \
+    rules//packages/@overeng/buck2-tools:package_tree_runtime \
+    rules//packages/@overeng/buck2-tools:javascript_action_runtime)"
+  python3 - "$outputs" "$root" <<'PY'
+import json
+import pathlib
+import stat
+import sys
+
+outputs = json.loads(sys.argv[1])
+root = pathlib.Path(sys.argv[2])
+assert json.loads((pathlib.Path(outputs["fixture//runtime:package_tree"]) / "package.json").read_text()) == {
+    "name": "consumer-runtime-fixture"
+}
+assert json.loads((pathlib.Path(outputs["fixture//runtime:imports"]) / "receipt.json").read_text()) == {
+    "declared": True, "undeclared": False if sys.platform == "linux" else "unsupported"
+}
+runtimes = {
+    "package_tree_runtime": {"package-tree.ts", "real-path.ts"},
+    "javascript_action_runtime": {
+        "javascript-runner.ts", "bun-test-runner.ts", "bun-test-timeout.ts",
+        "bun-test-preload.ts", "test-verdict.ts", "typescript-runner.ts",
+    },
+}
+for target, modules in runtimes.items():
+    staged = pathlib.Path(outputs[f"rules//packages/@overeng/buck2-tools:{target}"])
+    assert {p.name for p in staged.iterdir()} == modules
+    for name in modules:
+        module = staged / name
+        assert stat.S_ISREG(module.lstat().st_mode), module
+        assert module.read_bytes() == (
+            root / ".buck2/rules/packages/@overeng/buck2-tools/src" / name
+        ).read_bytes(), module
+denial = "denied" if sys.platform == "linux" else "unsupported-darwin"
+print(f"EXPORTED_RUNTIME_PROOF_PASSED regular_files=8 package_tree=pass declared_imports=pass undeclared_import={denial}")
+PY
+)
+)
+if "$runtime_only"; then
+  exit 0
+fi
+# Native source builds require an owned capability directory, not a store link.
 cp -R "$root/." "$work/"
 chmod -R u+w "$work"
 cat >> "$work/buck2/toolchains/BUCK" <<'BUCK'
@@ -210,11 +358,19 @@ pnpm_runtime_closure(
 )
 BUCK
 
+# Unconfigured queries traverse every select branch, including Prelude's
+# unreachable config//:none -> toolchains//:cxx_no_default_deps dependency.
+mkdir -p "$work/unconfigured"
+cat > "$work/unconfigured/BUCK" <<'BUCK'
+rust_library(name = "lib")
+BUCK
+
 (
   cd "$work"
   buck2 --isolation-dir consumer-root-contract uquery \
     'set(rules//:package_tree_runtime rules//:package_command_runtime rules//packages/@overeng/buck2-tools:typescript-runner.ts)' >/dev/null
   buck2 --isolation-dir consumer-root-contract uquery 'rules//buck2/dependencies:runtime-closure.ts' >/dev/null
+  buck2 --isolation-dir consumer-root-contract uquery 'deps(fixture//unconfigured:lib)' >/dev/null
   ignored="$(jq -cn --arg root "$work" \
     '["query",$root,{"fields":["name"],"expression":["dirname","buck-out"]}]' \
     | watchman --json-command --output-encoding=json)"
@@ -240,8 +396,18 @@ fn main() {
 RUST
 cat > "$work/rust-fixture/build.rs" <<'RUST'
 fn main() {
+    if std::env::var_os("EXPECT_DECLARED_BUILD_SCRIPT_PATH").is_some() {
+        let path = std::env::var("PATH").expect("declared build-script PATH");
+        assert!(path.split(':').all(|entry| entry.starts_with("/nix/store/")), "{path}");
+        for tool in ["bash", "dirname", "realpath"] {
+            let version = std::process::Command::new(tool)
+                .arg("--version").output().expect("declared build-script tool");
+            assert!(version.status.success(), "{tool}");
+        }
+    }
     // Match rustversion's compiler probe, including its optional Cargo wrapper.
     let rustc = std::env::var_os("RUSTC").expect("RUSTC");
+    assert!(std::env::var_os("RUSTC_WRAPPER").is_none_or(|value| value.is_empty()));
     let wrapper = std::env::var_os("RUSTC_WRAPPER").filter(|value| !value.is_empty());
     let mut command = std::process::Command::new(wrapper.as_ref().unwrap_or(&rustc));
     if wrapper.is_some() {
@@ -260,6 +426,8 @@ name = "consumer-root-rust"
 version = "0.1.0"
 edition = "2021"
 TOML
+mkdir -p "$work/rust-fixture/vendored-manifest"
+cp "$work/rust-fixture/build.rs" "$work/rust-fixture/Cargo.toml" "$work/rust-fixture/vendored-manifest/"
 cat > "$work/rust-fixture/BUCK" <<'BUCK'
 load("@prelude//:prelude.bzl", "native")
 load("@rules//buck2/products:defs.bzl", "build_product")
@@ -267,6 +435,7 @@ load("@rules//buck2/platforms:defs.bzl", "host_platform_label")
 load("@rules//buck2/rust:defs.bzl", "rust_product_executable")
 load("@rules//buck2/rust:defs.bzl", "cargo_build_script")
 load("@rules//buck2/rust:defs.bzl", "buildscript_run")
+load("@prelude//rust:cargo_buildscript.bzl", prelude_buildscript_run = "buildscript_run")
 
 native.rust_binary(
     name = "binary",
@@ -299,6 +468,15 @@ buildscript_run(
     buildscript_rule = ":build-script",
     manifest_dir = ":build-script",
     version = "0.1.0",
+    env = {"EXPECT_DECLARED_BUILD_SCRIPT_PATH": "1"},
+)
+# Reindeer calls Prelude directly, bypassing both first-party wrapper layers.
+prelude_buildscript_run(
+    name = "vendored-build-script-run",
+    package_name = "consumer-root-rust",
+    buildscript_rule = ":build-script-binary",
+    local_manifest_dir = "vendored-manifest",
+    version = "0.1.0",
 )
 
 
@@ -318,18 +496,16 @@ build_product(
 )
 BUCK
 # A fresh isolation captures these deliberately broken wrappers in the daemon.
-# A wrapper returning no version reproduces rustversion's ambient-wrapper failure.
-cat > "$work/ambient-rust-wrapper" <<'SH'
-#!/usr/bin/env bash
-exit 0
-SH
-chmod +x "$work/ambient-rust-wrapper"
+# Missing executables reproduce the dotfiles devenv's unavailable sccache.
 (
   cd "$work"
   buck2 --isolation-dir consumer-root-contract kill >/dev/null 2>&1 || true
-  RUSTC_WRAPPER="$work/ambient-rust-wrapper" \
-    RUSTC_WORKSPACE_WRAPPER="$work/ambient-rust-wrapper" \
-    buck2 --isolation-dir consumer-root-contract build 'fixture//rust-fixture:build-script-run[rustc_flags]' >/dev/null
+  RUSTC_WRAPPER="$work/nonexistent-rust-wrapper" \
+    RUSTC_WORKSPACE_WRAPPER="$work/nonexistent-rust-wrapper" \
+    PATH="$PATH:/undeclared-host-build-script-tools" \
+    buck2 --isolation-dir consumer-root-contract build \
+      'fixture//rust-fixture:build-script-run[rustc_flags]' \
+      'fixture//rust-fixture:vendored-build-script-run[rustc_flags]' >/dev/null
 )
 # The launcher generated by cargo_build_script is executed directly by Prelude.
 # Its shebang must point to a native executable, not to a shell-script wrapper.

@@ -13,14 +13,15 @@
 //! (O_EXCL), so two runs pointed at the same out-dir fail loudly instead of one
 //! silently truncating the other's capture.
 
+use std::fs::File;
+use std::io::Write as _;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, Mutex};
 
 use opentelemetry_proto::tonic::collector::logs::v1::ExportLogsServiceRequest;
 use opentelemetry_proto::tonic::collector::metrics::v1::ExportMetricsServiceRequest;
 use opentelemetry_proto::tonic::collector::trace::v1::ExportTraceServiceRequest;
-use tokio::io::AsyncWriteExt;
-use tokio::sync::Mutex;
 
 /// Why a sink could not be created — surfaced so the CLI can map it to the
 /// right sysexits code (a pre-existing capture file → 74, other IO → 73).
@@ -46,10 +47,28 @@ impl std::fmt::Display for SinkError {
     }
 }
 
-/// One open NDJSON signal file guarded by a mutex.
+/// One open NDJSON signal file. The mutex serializes local writers; the OS lock
+/// also excludes independent `inspect` snapshots during a whole-record append.
 struct SignalFile {
     path: PathBuf,
-    file: Mutex<tokio::fs::File>,
+    file: Arc<Mutex<File>>,
+}
+
+/// Release the advisory lock even when a write fails or its caller is canceled.
+/// Owned by the blocking operation, never by the awaiting receiver future.
+struct ExclusiveLock<'a>(&'a File);
+
+impl<'a> ExclusiveLock<'a> {
+    fn acquire(file: &'a File) -> std::io::Result<Self> {
+        file.lock()?;
+        Ok(Self(file))
+    }
+}
+
+impl Drop for ExclusiveLock<'_> {
+    fn drop(&mut self) {
+        let _ = self.0.unlock();
+    }
 }
 
 impl SignalFile {
@@ -66,7 +85,7 @@ impl SignalFile {
             })?;
         Ok(SignalFile {
             path,
-            file: Mutex::new(file),
+            file: Arc::new(Mutex::new(file.into_std().await)),
         })
     }
 
@@ -74,14 +93,7 @@ impl SignalFile {
     async fn append_line<T: serde::Serialize>(&self, value: &T) -> std::io::Result<()> {
         let mut line = serde_json::to_vec(value).expect("OTLP message serializes");
         line.push(b'\n');
-        let mut f = self.file.lock().await;
-        f.write_all(&line).await?;
-        // `tokio::fs::File` buffers writes — `write_all` alone does not guarantee
-        // the bytes reached the kernel, so an independent reader (or a crash)
-        // before the next flush would not see them. Flush so the data is on the
-        // kernel before we ack (durability-before-ack, R05). This is a flush, not
-        // an fsync: `sync_all` (physical durability) stays deferred to shutdown.
-        f.flush().await
+        self.append_record(line).await
     }
 
     /// Append one pre-built `serde_json::Value` line. Used by the HTTP-JSON
@@ -90,15 +102,35 @@ impl SignalFile {
     async fn append_json(&self, value: &serde_json::Value) -> std::io::Result<()> {
         let mut line = serde_json::to_vec(value).expect("JSON value serializes");
         line.push(b'\n');
-        let mut f = self.file.lock().await;
-        f.write_all(&line).await?;
-        // Flush to the kernel before the ack (see `append_line`).
-        f.flush().await
+        self.append_record(line).await
+    }
+
+    async fn append_record(&self, line: Vec<u8>) -> std::io::Result<()> {
+        let file = Arc::clone(&self.file);
+        tokio::task::spawn_blocking(move || {
+            let file = file
+                .lock()
+                .map_err(|_| std::io::Error::other("capture file mutex poisoned"))?;
+            let _lock = ExclusiveLock::acquire(&file)?;
+            let mut writer = &*file;
+            writer.write_all(&line)?;
+            // Kernel visibility before ack; power-loss durability stays at shutdown.
+            writer.flush()
+        })
+        .await
+        .map_err(std::io::Error::other)?
     }
 
     async fn sync(&self) {
-        let f = self.file.lock().await;
-        let _ = f.sync_all().await;
+        let file = Arc::clone(&self.file);
+        let _ = tokio::task::spawn_blocking(move || {
+            let file = file
+                .lock()
+                .map_err(|_| std::io::Error::other("capture file mutex poisoned"))?;
+            let _lock = ExclusiveLock::acquire(&file)?;
+            file.sync_all()
+        })
+        .await;
     }
 }
 
@@ -260,5 +292,62 @@ impl Sink {
         self.traces.sync().await;
         self.metrics.sync().await;
         self.logs.sync().await;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn failed_append_releases_exclusive_lock() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("traces.ndjson");
+        std::fs::write(&path, "").unwrap();
+        // Advisory locking succeeds, but writing through this descriptor fails.
+        let signal = SignalFile {
+            path: path.clone(),
+            file: Arc::new(Mutex::new(File::open(&path).unwrap())),
+        };
+        assert!(signal.append_record(b"{}\n".to_vec()).await.is_err());
+        let observer = File::open(path).unwrap();
+        observer.try_lock_shared().unwrap();
+    }
+
+    #[tokio::test]
+    async fn canceling_waiter_does_not_unlock_running_append() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("traces.ndjson");
+        let writer = File::create(&path).unwrap();
+        let observer = File::open(&path).unwrap();
+        let (locked_tx, locked_rx) = tokio::sync::oneshot::channel();
+        let (finish_tx, finish_rx) = tokio::sync::oneshot::channel();
+        let (done_tx, done_rx) = tokio::sync::oneshot::channel();
+        let waiter = tokio::spawn(async move {
+            tokio::task::spawn_blocking(move || {
+                let lock = ExclusiveLock::acquire(&writer).unwrap();
+                let mut output = &writer;
+                output.write_all(b"{").unwrap();
+                locked_tx.send(()).unwrap();
+                finish_rx.blocking_recv().unwrap();
+                output.write_all(b"}\n").unwrap();
+                output.flush().unwrap();
+                drop(lock);
+                done_tx.send(()).unwrap();
+            })
+            .await
+            .unwrap();
+        });
+        locked_rx.await.unwrap();
+        waiter.abort();
+        assert!(waiter.await.unwrap_err().is_cancelled());
+        assert!(matches!(
+            observer.try_lock_shared(),
+            Err(std::fs::TryLockError::WouldBlock)
+        ));
+        finish_tx.send(()).unwrap();
+        done_rx.await.unwrap();
+        observer.try_lock_shared().unwrap();
+        assert_eq!(std::fs::read_to_string(path).unwrap(), "{}\n");
     }
 }

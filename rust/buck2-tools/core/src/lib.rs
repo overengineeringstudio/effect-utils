@@ -1,5 +1,3 @@
-pub mod fingerprint;
-
 use base64::{engine::general_purpose::STANDARD, Engine};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};

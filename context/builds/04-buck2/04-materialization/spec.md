@@ -21,12 +21,13 @@ view, and the staleness gate.
 ```text
 translate (genie, freshness-gated)
   pnpm-lock.yaml (+ pnpm-workspace.yaml, patches)
-  -> per package version: fetch target (url, sha256 from generated sidecar)
+  -> per package version: fetch target (canonical url, sha256, size from generated sidecar)
                           extract target (tarball -> package tree artifact)
   -> per importer:        node_modules assembly target
-  -> platform constraints on optional/platform packages (select())
+  -> per-configuration required-edge availability and optional filtering (select())
 
-fetch     download_file, remote-cacheable, network only here (BUILD.BUCK.MAT-R08)
+fetch     native download_file, verified digest/size, deferred materialization;
+          network only here (BUILD.BUCK.MAT-R08); not an RE CAS read
 extract   tar -> package tree, local-materialization-policy (no AC reads/uploads)
 assemble  importer virtual store: .pnpm/<name>@<ver>[_peer-suffix]/node_modules/<name>
           hardlinks from extract artifacts, relative symlinks for edges,
@@ -34,12 +35,24 @@ assemble  importer virtual store: .pnpm/<name>@<ver>[_peer-suffix]/node_modules/
           local-materialization-policy (BUILD.BUCK.MAT-T01); public node_modules output
 ```
 
-Extract, store-entry, store-SCC, store-view, and package-tree rules use the
+Extract, store-entry, store-SCC, store-view, package-tree, and runtime-module rules use the
 default non-remote execution platform, not the cache-admitted platform.
 Their cheap filesystem projections are recomputed locally; declared outputs,
 incremental invalidation, and editor backing-root completeness are unchanged.
 The decision and measured transfer cost are specified by
 [the local materialization policy](../06-reuse-client/spec.md#local-materialization-policy-buildbuckreuse-r08r10).
+
+Standalone pnpm archive acquisition uses one native `download_file` action
+with the canonical registry URL and reviewed SHA-256 and byte size. Buck owns
+verification and deferred materialization; no command fetch branch, runtime
+archive-origin selection, or automatic CAS-to-registry fallback is involved.
+Warm materialized archives need no transfer, but explicit fresh roots still
+download registry bytes. The private CAS and verified seeder are optional
+infrastructure, not archive read-path prerequisites. A mirror or CAS read path
+requires a separate decision
+([0038, Amendment 3](../../.decisions/0038-digest-origins-for-acquisition.md#amendment-3-one-native-download-shape-q58-2026-10-17)).
+Nix-backed builds instead retain the per-digest fixed-output archive projection
+through `nix_store.root`, copying and verifying each archive before extraction.
 
 No package manager executes inside Buck actions. pnpm is the developer-time
 resolver that writes `pnpm-lock.yaml`; the generated sha256 sidecar is derived
@@ -72,6 +85,82 @@ The package-tree API projects declared workspace files into the output for
 cacheable consumers; the editor-surface realization provides BUILD.BUCK.MAT-R03
 live-source links outside the cacheable package tree without weakening
 BUILD.BUCK.MAT-R02.
+
+## Resolver-Context Platform Availability
+
+```text
+own package cpu/os/libc gates
+  -> initial snapshot/importer availability
+  -> required-edge removal to a fixed point (including cycles)
+  -> supported entry/view variants + unsupported-configuration reasons
+  -> configured Buck selection
+       supported: materialize the complete filtered resolver context
+       unsupported: fail before registering actions
+```
+
+This realizes BUILD.BUCK.MAT-R02, BUILD.BUCK.MAT-R07, and
+BUILD.BUCK.MAT-R08 under
+[decision 0040](../../.decisions/0040-required-edge-transitive-platform-availability.md).
+Portability is a property of the complete required resolver context; own
+package gates are only initial constraints. Unsupported configurations are
+representable and rejected when selected; required obligations are never
+omitted to manufacture a supported tree.
+
+The dependency projection evaluates four configurations: `javascript_portable`,
+`linux_aarch64`, `linux_x86_64`, and `macos_aarch64`. The native configurations
+use the tuples in [the platform spec](../02-platforms-toolchains/spec.md#platforms).
+`javascript_portable` requires an ungated package: any cpu, os, or libc
+restriction excludes it, rather than borrowing the generator host's tuple.
+
+Availability is computed over resolved snapshot and importer nodes before
+projecting store edges:
+
+1. Seed each snapshot with the configurations allowed by its package's own
+   metadata gates; seed importers with all four configurations.
+2. For each required resolved dependency, remove a configuration from its
+   owner whenever the dependency is unavailable in that configuration.
+   Required workspace references participate through their importer context
+   when the lockfile represents it; externally declared workspace trees remain
+   first-party Buck dependencies. Peer-suffixed snapshots retain exact resolution.
+3. Propagate removals through required predecessors until no set changes.
+   This descending fixed point preserves a required strongly connected
+   component when every member and external required dependency is available.
+   A restriction in any member or external required dependency propagates
+   through the cycle; traversal order must not affect the result.
+4. Project edges only for surviving owner configurations. A required edge
+   remains present in every such configuration. An optional edge is retained
+   only when its resolved dependency is available there, including that
+   dependency's own required closure; its absence does not remove the owner.
+   Linked and injected optional workspace references use their resolved importer
+   availability when represented in the lockfile. Importer `workspace_trees`
+   and `workspace_dependencies` declarations select only that configuration's
+   surviving edges; an omitted optional workspace must not remain a Buck
+   dependency that triggers analysis of an unavailable workspace closure.
+
+Missing referenced package or snapshot metadata, integrity, or patch metadata remains a
+global generation error, including for an unavailable configuration or an
+optional edge. Platform exclusion is not permission to accept an unresolved
+reference or bypass hash verification.
+
+Store-entry `platforms` records the transitively constrained availability set.
+The normalized projection schema is `effect-utils/buck2-pnpm-store/v2`; adding
+the view availability set changes the versioned metadata and store fingerprint,
+not the identity of unchanged supported view rules.
+Each `PnpmStoreView` independently records `platforms: readonly PnpmPlatform[]`;
+its variants cover supported configurations only. Equal supported projections
+may share a variant. SCC assembly likewise projects only supported member
+contexts; it cannot restore a removed configuration. An empty availability set
+is a valid projection, not a reason to omit the target or fail generation.
+
+Restricted entries and views emit `unavailable_by_platform`, a repository-local
+Starlark attribute mapping all four exact lowercase configuration keys to a
+nonempty diagnostic reason when unavailable and an empty string when supported.
+Unrestricted entries and views omit the attribute, preserving their existing
+generated bytes and identities. Shared rules select the diagnostic for the
+configured platform and fail at the beginning of implementation, before any
+actions are registered. Thus generation of a mixed-platform graph succeeds,
+while selecting an unsupported dependency context fails explicitly rather than
+linking an incomplete tree. Supported, unrelated view bytes remain unchanged.
 
 ## Editor Surface
 
@@ -110,6 +199,12 @@ view digest, exact byte-owned snapshot digest, and deterministic snapshot name.
 Tree digests use the `effect-utils/tree-digest/v1` domain separator, unsigned
 UTF-8 byte ordering, length framing, and fail-closed checks for special or
 concurrently changing files.
+Stability checks retain entry type, device, modification/change times, regular-file
+size, and file/symlink inode identity. Directory inode numbers are excluded:
+[overlayfs inode properties](https://docs.kernel.org/filesystems/overlayfs.html#inode-properties)
+do not guarantee their persistence in every layer configuration. Directory
+content and link targets remain covered by the same tree digest and timestamps;
+the digest format and byte-ownership admission are unchanged.
 
 Before publication, `buck2:editor:authority` compares the canonical admission
 registry with tracked package manifests and a Buck `owner(...)` census. The
@@ -117,9 +212,12 @@ resulting authority file must name identical required and owned package sets;
 every package publication validates it.
 
 Publication holds the exclusive state-root `.publish.lock`, created atomically.
-An existing lock fails immediately and prints the explicit token-gated recovery
-operation. There is no age heuristic, timeout, or automatic lock theft. Under
-the lock, the publisher:
+A positively identified dead same-host holder can be recovered after repeating
+the process-incarnation proof under the host fence. Live publishers, foreign-host
+owners, and ambiguous ownership retain explicit token-gated recovery; lock age
+does not authorize recovery. After acquiring the lock, before any batch worker
+creates a candidate, the publisher reclaims abandoned payloads. Under the lock,
+the publisher:
 
 1. fingerprints each distinct selected dependency view and finite declared root
    once for the admitted state;
@@ -152,7 +250,7 @@ Bootstrap and publication commands submit all selected views in one
 stdin. Request size is not limited by the operating system's per-argument cap.
 The batch acquires each distinct state-root lock before preparing any view and
 holds every lock until all workers have settled. `editorViewPublicationWorkers`
-in the publisher is the single declared resource bound (one); bootstrap and
+in the publisher is the single declared resource bound (four); bootstrap and
 source-test publication both use it. Independent root fingerprints within a
 candidate remain concurrent. Native copy children are awaited asynchronously,
 with at most one per active view. Candidate names are unique per view operation;
@@ -169,6 +267,44 @@ If a legacy root install occupies the first hop, immutable GNU
 retains the exchanged entry under `.legacy/`. A failure before the pointer flip
 leaves the prior current view intact. Snapshot payloads never retain links into
 `buck-out`, whose action directories Buck may delete before rebuilding.
+
+Abandoned `.store/.candidate-*`, interrupted root `.gc-*`, and individual
+unreferenced `.legacy/*` entries are reclaimable payloads, not completed
+generations. Publisher startup reclaims candidates and interrupted garbage under
+the exclusive publication lock. Cleanup carries normal-acquisition or
+proven-dead-owner-recovery provenance and validates the held lock path/token/PID.
+Normal acquisition follows the preceding holder's release; recovery proves the
+preceding holder is dead. Both exclude publisher writes. Missing or mismatched
+lock proof refuses cleanup. Startup also observes readers for candidates and
+interrupted garbage: stale cwd/fd references keep those entries even though they
+were unpublished or had previously crossed deletion commitment.
+Reclamation requires no live reservation and a known pointer inventory proving
+that no pointer reaches the entry. Pointer reachability includes
+root/control symlinks and package `node_modules` links, with both lexical and
+resolved targets retained so dangling or indirect legacy links remain protected.
+The retirement fence repeats identity and reachability checks before renaming
+the entry to a private `.gc-*` name; recursive deletion follows outside the
+metadata fence. An interrupted rename or deletion is resumed by the next lock
+holder. Budget eviction considers these orphans before completed generations.
+Publisher acquisition and budget victim acquisition share the same fenced
+dead-owner recovery helper; budget acquisition never waits for a live holder.
+A budget batch holds its exclusion fence and uses one fresh census and reader
+proof, considering orphans before generations and retiring only enough payloads
+to cover the shortfall. The proof expires after 30 seconds. Each candidate
+rechecks identity and ledger epoch immediately before retirement; failed checks
+skip that candidate without waiting. An expired or insufficient batch starts
+another census and proof. Every committed retirement emits its own deletion
+receipt, followed by a batch summary, even when admission subsequently fails.
+The pre-delete seam is an identity/epoch check, not a reader exclusion: a reader
+arriving after observation need not change either value. Non-blocking exclusive
+reader leases in #1990 must be probed at this seam to close that advisory race;
+a held lease skips the candidate without waiting.
+
+Legacy entries are evaluated independently: a referenced displaced install does
+not preserve unrelated legacy entries. A still-referenced legacy entry is
+adopted with one footprint walk and an immutable-identity sidecar when its bytes
+can be sealed safely. Writable shared inodes are not chmodded through aliases;
+unproven immutability remains conservatively uncached.
 
 Repository tasks configure two completed snapshots **per view**: current and
 previous. For `N` admitted views the shared-store bound is `2 × N`, excluding
@@ -296,6 +432,71 @@ root, and removes it. Missing roots are a no-op; external dependency targets and
 source files are untouched. Exact-token recovery remains required for a stale
 lock. Package first-hop links can remain dangling until the retired worktree is
 removed or publication recreates its root.
+
+Every tool that removes a worktree runs root-scoped `buck2 kill` for each of the
+root's isolations before removal. A Buck daemon's cwd can be the root itself or
+`<root>/buck-out/<isolation>`, so a live daemon holds the worktree for in-use probes.
+Once the directory is renamed or gone the CLI can no longer address it. `worktree:teardown`
+follows this rule. On Linux, `mr store gc` discovers the current user's daemons
+inside an eligible worktree and runs `buck2 --isolation-dir <i> kill` from each
+daemon's project root only after root-scoped status proves the same PID/daemon
+ID and no active commands. This happens under the worktree lock (and lease where
+present), after the path's existing keep/activity checks and before its in-use
+probe or deletion, for cold and ref-mismatch archives, merged-worklog teardown,
+legacy whole-root deletion, and targeted applications. The legacy sweep adds no
+process probe or status reclassification. Receipts record every stop and the
+daemon + forkserver's pre-kill RSS + VmSwap KiB; targeted application errors
+include stopped daemon identities and memory estimates in their message.
+Status/kill failures degrade to unreachable evidence; paths with an existing
+probe still veto held roots. Already-moved archive entries are
+report-only/unreachable, never killed from the new path. Budget and generated
+artifact evictions inside a surviving root do not stop Buck; `mr store fix` is
+unchanged. See `packages/@overeng/megarepo/src/store/store-buck-daemons.ts` and
+`packages/@overeng/megarepo/src/cli/commands/store/mod.ts`.
+
+## Buck Maintenance
+
+```text
+devenv tasks run buck2:maintain
+  -> mr store buck-maintain --config <repo>/buck-maintain.json
+  -> shared store/store-buck-maintain.ts runtime
+  -> owner/activity/blackout checks under the maintenance lease
+  -> native Buck stale clean, optional inactive full clean, and idle daemon kill
+```
+
+`scripts/buck2-daemon-reaper.ts` is a thin runtime adapter, not an independent
+policy implementation. Its former `--buck2`, `--idle-seconds`, and `--root-prefix`
+flags are replaced by `--config`; `--dry-run` reports decisions without mutation.
+The CLI's `--json` emits the complete versioned maintenance receipt.
+
+The neutral version 1 repository configuration scopes roots to the current
+checkout. It sets a soft 2 GiB `buckOut.budgetBytes`, `buckOut.keepSince: "24h"`,
+and `daemon.idleStopAfter: "30m"`. The 30-minute value is **maintenance policy**,
+not a native idle guarantee. The runtime does not set `daemon_idle_timeout_s`:
+command-arrival timeouts are not proof that a build or editor session is idle.
+Native stale clean can retain recent outputs above budget. Full clean requires
+the optional `buckOut.fullCleanWhenInactiveFor` policy and inactive-worktree
+evidence. No maintenance path recursively removes Buck files itself.
+
+Owner scope defaults to the current exact `ST_AGENT`. Configured
+`maintainOwners` entries are exact identities or glob patterns, never permission
+for any arbitrary owner value. Without a seat or configured owners, maintenance
+is report-only. Unowned roots require `maintainUnowned: true`; unknown owner
+evidence is foreign. UTC blackout windows include their start, exclude their
+end, and support midnight wrap. Public configuration has no host-specific roots,
+owner identities, or schedules.
+
+Active streaming commands, including attached `buck2 lsp`, and live Buck client
+processes prevent maintenance. Daemon shutdown uses native, root-scoped Buck
+commands after rechecking activity and identity under the maintenance lease.
+Missing roots and uncertain evidence are report-only. The runtime does not
+signal daemon processes directly.
+
+Accepted residual: Buck has no conditional kill or client-admission API. A new
+client may arrive between the final status/client census and native kill.
+The recheck narrows that window, and detected races are reported; this is not an
+atomic no-new-clients guarantee. The next client invocation can restart the
+daemon. Host scheduling remains host-owned rather than public repository policy.
 
 ## Relationship to Exact Closure Materialization
 

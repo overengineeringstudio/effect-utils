@@ -7,6 +7,7 @@
       "packages/@overeng/effect-distributed-lock",
       "packages/@overeng/effect-rpc-explorer",
       "packages/@overeng/effect-rpc-explorer-react",
+      "packages/@overeng/effect-rpc-observer",
       "packages/@overeng/effect-rust",
       "packages/@overeng/otel-contract",
       "packages/@overeng/stylex-tokens",
@@ -43,6 +44,7 @@
   },
   "dependencies": {
     "@overeng/effect-rpc-explorer": "workspace:^",
+    "@overeng/effect-rpc-observer": "workspace:^",
     "@overeng/stylex-tokens": "workspace:^"
   },
   "devDependencies": {
@@ -57,7 +59,7 @@
     "@vitejs/plugin-react": "6.1.1",
     "@vitest/browser": "5.0.3",
     "@vitest/browser-playwright": "5.0.3",
-    "effect": "4.0.0",
+    "effect": "4.0.3",
     "playwright": "1.63.0",
     "react": "19.2.8",
     "react-aria-components": "1.21.1",
@@ -69,10 +71,10 @@
   },
   "peerDependencies": {
     "@stylexjs/stylex": "^0.19.0",
-    "effect": "^4.0.0",
-    "react": "^19.2.8",
+    "effect": "^4.0.3",
+    "react": "^19.2.3",
     "react-aria-components": "^1.21.1",
-    "react-dom": "^19.2.8"
+    "react-dom": "^19.2.3"
   },
   "publishConfig": {
     "access": "public",

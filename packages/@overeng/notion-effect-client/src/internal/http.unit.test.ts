@@ -1,5 +1,5 @@
 import { Effect, Fiber, Layer, Option, Redacted, Result, Schema, Tracer } from 'effect'
-import { HttpClient, make as makeHttpClient } from 'effect/http/HttpClient'
+import { HttpClient, make as makeHttpClient, TracerHeaderFilter } from 'effect/http/HttpClient'
 import { EncodeError, HttpClientError, TransportError } from 'effect/http/HttpClientError'
 import type * as HttpClientRequest from 'effect/http/HttpClientRequest'
 import { adjust as testClockAdjust } from 'effect/testing/TestClock'
@@ -583,6 +583,43 @@ Vitest.describe('executeRequest retry schedule', () => {
       return { result, retryEvents, responseEvents, calls: call }
     })
 
+  Vitest.it.live(
+    'retries a rate-limited request on the live clock without TestClock adjustment',
+    () =>
+      Effect.gen(function* () {
+        let calls = 0
+        const events: NotionHttpTelemetryEvent[] = []
+        const result = yield* get({ path: '/databases/123', responseSchema: TestSchema }).pipe(
+          Effect.provideService(NotionHttpTelemetry, {
+            report: (event) =>
+              Effect.sync(() => {
+                events.push(event)
+              }),
+          }),
+          Effect.provide(
+            createTestLayer(
+              () => {
+                calls += 1
+                return calls === 1
+                  ? {
+                      status: 429,
+                      body: sampleResponses.error(429, 'rate_limited', 'Rate limited'),
+                      headers: { 'retry-after': '0' },
+                    }
+                  : { status: 200, body: sampleResponses.database }
+              },
+              { ...retryConfig, retryBaseDelay: 1 },
+            ),
+          ),
+        )
+        expect(result.id).toBe(sampleResponses.database.id)
+        expect(calls).toBe(2)
+        expect(events.filter((event) => event._tag === 'retry')).toMatchObject([
+          { status: 429, delayMs: 1, nextAttempt: 1 },
+        ])
+      }),
+  )
+
   Vitest.it.effect(
     'floors exponential backoff with Retry-After (max(backoff, Retry-After)) then succeeds',
     () =>
@@ -776,16 +813,36 @@ Vitest.describe('HttpClient.TracerHeaderFilter span-header allowlist', () => {
     },
   })
 
-  Vitest.it.effect('by default every header name becomes a span attribute (values redacted)', () =>
+  Vitest.it.effect('by default no request or response headers become span attributes', () =>
     Effect.gen(function* () {
       const trace = makeRecordingTracer()
       yield* get({ path: '/databases/123', responseSchema: TestSchema }).pipe(
         Effect.withTracer(trace.tracer),
       )
 
-      // The built-in client span (default SpanNameGenerator) carries ALL header
-      // names as attributes, redacting only default-redacted values.
-      const span = trace.spans.find((candidate) => candidate.name === 'http.client GET')
+      const span = trace.spans.find((candidate) => candidate.name === 'GET')
+      expect(span).toBeDefined()
+      expect(
+        Object.keys(span?.attributes ?? {}).filter(
+          (key) =>
+            key.startsWith('http.request.header.') || key.startsWith('http.response.header.'),
+        ),
+      ).toEqual([])
+      expect(span?.attributes['http.request.method']).toBe('GET')
+      expect(span?.attributes['http.response.status_code']).toBe(200)
+    }).pipe(Effect.provide(createTestLayer(noisyResponse))),
+  )
+
+  Vitest.it.effect('explicit header capture preserves sensitive-value redaction', () =>
+    Effect.gen(function* () {
+      const trace = makeRecordingTracer()
+      yield* get({ path: '/databases/123', responseSchema: TestSchema }).pipe(
+        Effect.withTracer(trace.tracer),
+        Effect.provideService(TracerHeaderFilter, () => true),
+      )
+
+      // Explicitly capture every header; sensitive values must still be redacted.
+      const span = trace.spans.find((candidate) => candidate.name === 'GET')
       expect(span).toBeDefined()
       expect(span?.attributes['http.request.header.authorization']).toBe('<redacted>')
       expect(span?.attributes['http.request.header.notion-version']).toBeDefined()
@@ -802,7 +859,7 @@ Vitest.describe('HttpClient.TracerHeaderFilter span-header allowlist', () => {
         Effect.withTracer(trace.tracer),
       )
 
-      const span = trace.spans.find((candidate) => candidate.name === 'http.client GET')
+      const span = trace.spans.find((candidate) => candidate.name === 'GET')
       expect(span).toBeDefined()
       const headerKeys = Object.keys(span?.attributes ?? {})
         .filter(

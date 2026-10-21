@@ -1,7 +1,17 @@
 {
   "products": [
     {
+      "buildCapabilities": [
+        "action-env",
+        "archive-tool",
+        "buck2-fingerprint",
+        "bun",
+        "effect-tsgo",
+        "product",
+        "rust-shell"
+      ],
       "kind": "package",
+      "linuxBuildCapabilities": ["bubblewrap"],
       "name": "@overeng/agent-session-ingest",
       "outputName": "overeng-agent-session-ingest.tgz",
       "packagePath": "packages/@overeng/agent-session-ingest",
@@ -10,7 +20,17 @@
       "version": "0.1.0"
     },
     {
+      "buildCapabilities": [
+        "action-env",
+        "archive-tool",
+        "buck2-fingerprint",
+        "bun",
+        "effect-tsgo",
+        "product",
+        "rust-shell"
+      ],
       "kind": "package",
+      "linuxBuildCapabilities": ["bubblewrap"],
       "name": "@overeng/ai-gateway-conformance",
       "outputName": "overeng-ai-gateway-conformance.tgz",
       "packagePath": "packages/@overeng/ai-gateway-conformance",
@@ -19,7 +39,36 @@
       "version": "0.1.0"
     },
     {
+      "buildCapabilities": [
+        "action-env",
+        "archive-tool",
+        "buck2-fingerprint",
+        "bun",
+        "effect-tsgo",
+        "product",
+        "rust-shell"
+      ],
       "kind": "package",
+      "linuxBuildCapabilities": ["bubblewrap"],
+      "name": "@overeng/ai-gateway-edge",
+      "outputName": "overeng-ai-gateway-edge.tgz",
+      "packagePath": "packages/@overeng/ai-gateway-edge",
+      "packageTreePath": "packages/@overeng/ai-gateway-edge",
+      "target": "effect_utils//packages/@overeng/ai-gateway-edge:dist-package",
+      "version": "0.1.0"
+    },
+    {
+      "buildCapabilities": [
+        "action-env",
+        "archive-tool",
+        "buck2-fingerprint",
+        "bun",
+        "effect-tsgo",
+        "product",
+        "rust-shell"
+      ],
+      "kind": "package",
+      "linuxBuildCapabilities": ["bubblewrap"],
       "name": "@overeng/content-address",
       "outputName": "overeng-content-address.tgz",
       "packagePath": "packages/@overeng/content-address",
@@ -28,7 +77,36 @@
       "version": "0.1.0"
     },
     {
+      "buildCapabilities": [
+        "action-env",
+        "archive-tool",
+        "buck2-fingerprint",
+        "bun",
+        "effect-tsgo",
+        "product",
+        "rust-shell"
+      ],
       "kind": "package",
+      "linuxBuildCapabilities": ["bubblewrap"],
+      "name": "@overeng/data-graph",
+      "outputName": "overeng-data-graph.tgz",
+      "packagePath": "packages/@overeng/data-graph",
+      "packageTreePath": "packages/@overeng/data-graph",
+      "target": "effect_utils//packages/@overeng/data-graph:dist-package",
+      "version": "0.1.0"
+    },
+    {
+      "buildCapabilities": [
+        "action-env",
+        "archive-tool",
+        "buck2-fingerprint",
+        "bun",
+        "effect-tsgo",
+        "product",
+        "rust-shell"
+      ],
+      "kind": "package",
+      "linuxBuildCapabilities": ["bubblewrap"],
       "name": "@overeng/devbar",
       "outputName": "overeng-devbar.tgz",
       "packagePath": "packages/@overeng/devbar",
@@ -37,7 +115,17 @@
       "version": "0.1.0"
     },
     {
+      "buildCapabilities": [
+        "action-env",
+        "archive-tool",
+        "buck2-fingerprint",
+        "bun",
+        "effect-tsgo",
+        "product",
+        "rust-shell"
+      ],
       "kind": "package",
+      "linuxBuildCapabilities": ["bubblewrap"],
       "name": "@overeng/effect-ai-claude-cli",
       "outputName": "overeng-effect-ai-claude-cli.tgz",
       "packagePath": "packages/@overeng/effect-ai-claude-cli",
@@ -46,7 +134,17 @@
       "version": "0.1.0"
     },
     {
+      "buildCapabilities": [
+        "action-env",
+        "archive-tool",
+        "buck2-fingerprint",
+        "bun",
+        "effect-tsgo",
+        "product",
+        "rust-shell"
+      ],
       "kind": "package",
+      "linuxBuildCapabilities": ["bubblewrap"],
       "name": "@overeng/effect-ai-gateway",
       "outputName": "overeng-effect-ai-gateway.tgz",
       "packagePath": "packages/@overeng/effect-ai-gateway",
@@ -55,7 +153,17 @@
       "version": "0.1.0"
     },
     {
+      "buildCapabilities": [
+        "action-env",
+        "archive-tool",
+        "buck2-fingerprint",
+        "bun",
+        "effect-tsgo",
+        "product",
+        "rust-shell"
+      ],
       "kind": "package",
+      "linuxBuildCapabilities": ["bubblewrap"],
       "name": "@overeng/effect-distributed-lock",
       "outputName": "overeng-effect-distributed-lock.tgz",
       "packagePath": "packages/@overeng/effect-distributed-lock",
@@ -64,7 +172,17 @@
       "version": "0.1.0"
     },
     {
+      "buildCapabilities": [
+        "action-env",
+        "archive-tool",
+        "buck2-fingerprint",
+        "bun",
+        "effect-tsgo",
+        "product",
+        "rust-shell"
+      ],
       "kind": "package",
+      "linuxBuildCapabilities": ["bubblewrap"],
       "name": "@overeng/effect-react",
       "outputName": "overeng-effect-react.tgz",
       "packagePath": "packages/@overeng/effect-react",
@@ -73,7 +191,17 @@
       "version": "0.1.0"
     },
     {
+      "buildCapabilities": [
+        "action-env",
+        "archive-tool",
+        "buck2-fingerprint",
+        "bun",
+        "effect-tsgo",
+        "product",
+        "rust-shell"
+      ],
       "kind": "package",
+      "linuxBuildCapabilities": ["bubblewrap"],
       "name": "@overeng/effect-rpc-explorer",
       "outputName": "overeng-effect-rpc-explorer.tgz",
       "packagePath": "packages/@overeng/effect-rpc-explorer",
@@ -82,7 +210,17 @@
       "version": "0.1.0"
     },
     {
+      "buildCapabilities": [
+        "action-env",
+        "archive-tool",
+        "buck2-fingerprint",
+        "bun",
+        "effect-tsgo",
+        "product",
+        "rust-shell"
+      ],
       "kind": "package",
+      "linuxBuildCapabilities": ["bubblewrap"],
       "name": "@overeng/effect-rpc-explorer-react",
       "outputName": "overeng-effect-rpc-explorer-react.tgz",
       "packagePath": "packages/@overeng/effect-rpc-explorer-react",
@@ -91,7 +229,36 @@
       "version": "0.1.0"
     },
     {
+      "buildCapabilities": [
+        "action-env",
+        "archive-tool",
+        "buck2-fingerprint",
+        "bun",
+        "effect-tsgo",
+        "product",
+        "rust-shell"
+      ],
       "kind": "package",
+      "linuxBuildCapabilities": ["bubblewrap"],
+      "name": "@overeng/effect-rpc-observer",
+      "outputName": "overeng-effect-rpc-observer.tgz",
+      "packagePath": "packages/@overeng/effect-rpc-observer",
+      "packageTreePath": "packages/@overeng/effect-rpc-observer",
+      "target": "effect_utils//packages/@overeng/effect-rpc-observer:dist-package",
+      "version": "0.1.0"
+    },
+    {
+      "buildCapabilities": [
+        "action-env",
+        "archive-tool",
+        "buck2-fingerprint",
+        "bun",
+        "effect-tsgo",
+        "product",
+        "rust-shell"
+      ],
+      "kind": "package",
+      "linuxBuildCapabilities": ["bubblewrap"],
       "name": "@overeng/effect-rust",
       "outputName": "overeng-effect-rust.tgz",
       "packagePath": "packages/@overeng/effect-rust",
@@ -100,7 +267,17 @@
       "version": "0.1.0"
     },
     {
+      "buildCapabilities": [
+        "action-env",
+        "archive-tool",
+        "buck2-fingerprint",
+        "bun",
+        "effect-tsgo",
+        "product",
+        "rust-shell"
+      ],
       "kind": "package",
+      "linuxBuildCapabilities": ["bubblewrap"],
       "name": "@overeng/genie",
       "outputName": "overeng-genie.tgz",
       "packagePath": "packages/@overeng/genie",
@@ -109,7 +286,36 @@
       "version": "0.1.0"
     },
     {
+      "buildCapabilities": [
+        "action-env",
+        "archive-tool",
+        "buck2-fingerprint",
+        "bun",
+        "effect-tsgo",
+        "product",
+        "rust-shell"
+      ],
       "kind": "package",
+      "linuxBuildCapabilities": ["bubblewrap"],
+      "name": "@overeng/meters",
+      "outputName": "overeng-meters.tgz",
+      "packagePath": "packages/@overeng/meters",
+      "packageTreePath": "packages/@overeng/meters",
+      "target": "effect_utils//packages/@overeng/meters:dist-package",
+      "version": "0.1.0"
+    },
+    {
+      "buildCapabilities": [
+        "action-env",
+        "archive-tool",
+        "buck2-fingerprint",
+        "bun",
+        "effect-tsgo",
+        "product",
+        "rust-shell"
+      ],
+      "kind": "package",
+      "linuxBuildCapabilities": ["bubblewrap"],
       "name": "@overeng/notion-core",
       "outputName": "overeng-notion-core.tgz",
       "packagePath": "packages/@overeng/notion-core",
@@ -118,7 +324,17 @@
       "version": "0.1.0"
     },
     {
+      "buildCapabilities": [
+        "action-env",
+        "archive-tool",
+        "buck2-fingerprint",
+        "bun",
+        "effect-tsgo",
+        "product",
+        "rust-shell"
+      ],
       "kind": "package",
+      "linuxBuildCapabilities": ["bubblewrap"],
       "name": "@overeng/notion-effect-client",
       "outputName": "overeng-notion-effect-client.tgz",
       "packagePath": "packages/@overeng/notion-effect-client",
@@ -127,7 +343,17 @@
       "version": "0.1.0"
     },
     {
+      "buildCapabilities": [
+        "action-env",
+        "archive-tool",
+        "buck2-fingerprint",
+        "bun",
+        "effect-tsgo",
+        "product",
+        "rust-shell"
+      ],
       "kind": "package",
+      "linuxBuildCapabilities": ["bubblewrap"],
       "name": "@overeng/notion-effect-schema",
       "outputName": "overeng-notion-effect-schema.tgz",
       "packagePath": "packages/@overeng/notion-effect-schema",
@@ -136,7 +362,17 @@
       "version": "0.1.0"
     },
     {
+      "buildCapabilities": [
+        "action-env",
+        "archive-tool",
+        "buck2-fingerprint",
+        "bun",
+        "effect-tsgo",
+        "product",
+        "rust-shell"
+      ],
       "kind": "package",
+      "linuxBuildCapabilities": ["bubblewrap"],
       "name": "@overeng/notion-md",
       "outputName": "overeng-notion-md.tgz",
       "packagePath": "packages/@overeng/notion-md",
@@ -145,7 +381,17 @@
       "version": "0.1.0"
     },
     {
+      "buildCapabilities": [
+        "action-env",
+        "archive-tool",
+        "buck2-fingerprint",
+        "bun",
+        "effect-tsgo",
+        "product",
+        "rust-shell"
+      ],
       "kind": "package",
+      "linuxBuildCapabilities": ["bubblewrap"],
       "name": "@overeng/notion-property-write",
       "outputName": "overeng-notion-property-write.tgz",
       "packagePath": "packages/@overeng/notion-property-write",
@@ -154,7 +400,17 @@
       "version": "0.1.0"
     },
     {
+      "buildCapabilities": [
+        "action-env",
+        "archive-tool",
+        "buck2-fingerprint",
+        "bun",
+        "effect-tsgo",
+        "product",
+        "rust-shell"
+      ],
       "kind": "package",
+      "linuxBuildCapabilities": ["bubblewrap"],
       "name": "@overeng/notion-react",
       "outputName": "overeng-notion-react.tgz",
       "packagePath": "packages/@overeng/notion-react",
@@ -163,7 +419,17 @@
       "version": "0.1.0"
     },
     {
+      "buildCapabilities": [
+        "action-env",
+        "archive-tool",
+        "buck2-fingerprint",
+        "bun",
+        "effect-tsgo",
+        "product",
+        "rust-shell"
+      ],
       "kind": "package",
+      "linuxBuildCapabilities": ["bubblewrap"],
       "name": "@overeng/otel-contract",
       "outputName": "overeng-otel-contract.tgz",
       "packagePath": "packages/@overeng/otel-contract",
@@ -172,7 +438,17 @@
       "version": "0.1.0"
     },
     {
+      "buildCapabilities": [
+        "action-env",
+        "archive-tool",
+        "buck2-fingerprint",
+        "bun",
+        "effect-tsgo",
+        "product",
+        "rust-shell"
+      ],
       "kind": "package",
+      "linuxBuildCapabilities": ["bubblewrap"],
       "name": "@overeng/outline",
       "outputName": "overeng-outline.tgz",
       "packagePath": "packages/@overeng/outline",
@@ -181,7 +457,17 @@
       "version": "0.1.0"
     },
     {
+      "buildCapabilities": [
+        "action-env",
+        "archive-tool",
+        "buck2-fingerprint",
+        "bun",
+        "effect-tsgo",
+        "product",
+        "rust-shell"
+      ],
       "kind": "package",
+      "linuxBuildCapabilities": ["bubblewrap"],
       "name": "@overeng/restate-effect",
       "outputName": "overeng-restate-effect.tgz",
       "packagePath": "packages/@overeng/restate-effect",
@@ -190,7 +476,36 @@
       "version": "0.1.0"
     },
     {
+      "buildCapabilities": [
+        "action-env",
+        "archive-tool",
+        "buck2-fingerprint",
+        "bun",
+        "effect-tsgo",
+        "product",
+        "rust-shell"
+      ],
       "kind": "package",
+      "linuxBuildCapabilities": ["bubblewrap"],
+      "name": "@overeng/rpc-devtools",
+      "outputName": "overeng-rpc-devtools.tgz",
+      "packagePath": "packages/@overeng/rpc-devtools",
+      "packageTreePath": "packages/@overeng/rpc-devtools",
+      "target": "effect_utils//packages/@overeng/rpc-devtools:dist-package",
+      "version": "0.1.0"
+    },
+    {
+      "buildCapabilities": [
+        "action-env",
+        "archive-tool",
+        "buck2-fingerprint",
+        "bun",
+        "effect-tsgo",
+        "product",
+        "rust-shell"
+      ],
+      "kind": "package",
+      "linuxBuildCapabilities": ["bubblewrap"],
       "name": "@overeng/stylex-tokens",
       "outputName": "overeng-stylex-tokens.tgz",
       "packagePath": "packages/@overeng/stylex-tokens",
@@ -199,7 +514,17 @@
       "version": "0.1.0"
     },
     {
+      "buildCapabilities": [
+        "action-env",
+        "archive-tool",
+        "buck2-fingerprint",
+        "bun",
+        "effect-tsgo",
+        "product",
+        "rust-shell"
+      ],
       "kind": "package",
+      "linuxBuildCapabilities": ["bubblewrap"],
       "name": "@overeng/tui-core",
       "outputName": "overeng-tui-core.tgz",
       "packagePath": "packages/@overeng/tui-core",
@@ -208,7 +533,17 @@
       "version": "0.1.0"
     },
     {
+      "buildCapabilities": [
+        "action-env",
+        "archive-tool",
+        "buck2-fingerprint",
+        "bun",
+        "effect-tsgo",
+        "product",
+        "rust-shell"
+      ],
       "kind": "package",
+      "linuxBuildCapabilities": ["bubblewrap"],
       "name": "@overeng/tui-react",
       "outputName": "overeng-tui-react.tgz",
       "packagePath": "packages/@overeng/tui-react",
@@ -217,7 +552,17 @@
       "version": "0.1.0"
     },
     {
+      "buildCapabilities": [
+        "action-env",
+        "archive-tool",
+        "buck2-fingerprint",
+        "bun",
+        "effect-tsgo",
+        "product",
+        "rust-shell"
+      ],
       "kind": "package",
+      "linuxBuildCapabilities": ["bubblewrap"],
       "name": "@overeng/utils",
       "outputName": "overeng-utils.tgz",
       "packagePath": "packages/@overeng/utils",
@@ -226,7 +571,17 @@
       "version": "0.1.0"
     },
     {
+      "buildCapabilities": [
+        "action-env",
+        "archive-tool",
+        "buck2-fingerprint",
+        "bun",
+        "effect-tsgo",
+        "product",
+        "rust-shell"
+      ],
       "kind": "package",
+      "linuxBuildCapabilities": ["bubblewrap"],
       "name": "@overeng/utils-dev",
       "outputName": "overeng-utils-dev.tgz",
       "packagePath": "packages/@overeng/utils-dev",
@@ -235,7 +590,17 @@
       "version": "0.1.0"
     },
     {
+      "buildCapabilities": [
+        "action-env",
+        "archive-tool",
+        "buck2-fingerprint",
+        "bun",
+        "effect-tsgo",
+        "product",
+        "rust-shell"
+      ],
       "kind": "package",
+      "linuxBuildCapabilities": ["bubblewrap"],
       "name": "@overeng/utils-storybook",
       "outputName": "overeng-utils-storybook.tgz",
       "packagePath": "packages/@overeng/utils-storybook",
@@ -244,7 +609,20 @@
       "version": "0.1.0"
     },
     {
+      "buildCapabilities": ["action-env", "archive-tool", "bun", "rust-shell"],
       "kind": "javascript",
+      "linuxBuildCapabilities": ["bubblewrap"],
+      "name": "ai-gateway-edge",
+      "outputName": "ai-gateway-edge.js",
+      "packagePath": "packages/@overeng/ai-gateway-edge",
+      "packageTreePath": "packages/@overeng/ai-gateway-edge",
+      "target": "effect_utils//packages/@overeng/ai-gateway-edge:ai-gateway-edge-candidate",
+      "version": "0.0.0"
+    },
+    {
+      "buildCapabilities": ["action-env", "archive-tool", "bun", "rust-shell"],
+      "kind": "javascript",
+      "linuxBuildCapabilities": ["bubblewrap"],
       "name": "ci-tools",
       "outputName": "ci-tools.js",
       "packagePath": "packages/@overeng/ci-tools",
@@ -253,7 +631,9 @@
       "version": "0.0.0"
     },
     {
+      "buildCapabilities": ["action-env", "archive-tool", "bun", "rust-shell"],
       "kind": "javascript",
+      "linuxBuildCapabilities": ["bubblewrap"],
       "name": "genie",
       "outputName": "genie.js",
       "packagePath": "packages/@overeng/genie",
@@ -262,7 +642,9 @@
       "version": "0.0.0"
     },
     {
+      "buildCapabilities": ["action-env", "archive-tool", "bun", "rust-shell"],
       "kind": "javascript",
+      "linuxBuildCapabilities": ["bubblewrap"],
       "name": "genie-bootstrap-closure-check",
       "outputName": "genie-bootstrap-closure-check.js",
       "packagePath": "packages/@overeng/genie",
@@ -271,7 +653,9 @@
       "version": "0.0.0"
     },
     {
+      "buildCapabilities": ["action-env", "archive-tool", "bun", "rust-shell"],
       "kind": "javascript",
+      "linuxBuildCapabilities": ["bubblewrap"],
       "name": "gh-ci-utils",
       "outputName": "gh-ci-utils.js",
       "packagePath": "packages/@overeng/gh-ci-utils",
@@ -280,7 +664,9 @@
       "version": "0.0.0"
     },
     {
+      "buildCapabilities": ["action-env", "archive-tool", "bun", "rust-shell"],
       "kind": "javascript",
+      "linuxBuildCapabilities": ["bubblewrap"],
       "name": "megarepo",
       "outputName": "mr.js",
       "packagePath": "packages/@overeng/megarepo",
@@ -289,7 +675,9 @@
       "version": "0.0.0"
     },
     {
+      "buildCapabilities": ["action-env", "archive-tool", "bun", "rust-shell"],
       "kind": "javascript",
+      "linuxBuildCapabilities": ["bubblewrap"],
       "name": "notion-cli",
       "outputName": "notion.js",
       "packagePath": "packages/@overeng/notion-cli",
@@ -298,7 +686,9 @@
       "version": "0.0.0"
     },
     {
+      "buildCapabilities": ["action-env", "archive-tool", "bun", "rust-shell"],
       "kind": "javascript",
+      "linuxBuildCapabilities": ["bubblewrap"],
       "name": "notion-db-runtime",
       "outputName": "notion-db.js",
       "packagePath": "packages/@overeng/notion-cli",
@@ -307,7 +697,9 @@
       "version": "0.0.0"
     },
     {
+      "buildCapabilities": ["action-env", "archive-tool", "bun", "rust-shell"],
       "kind": "javascript",
+      "linuxBuildCapabilities": ["bubblewrap"],
       "name": "notion-md",
       "outputName": "notion-md.js",
       "packagePath": "packages/@overeng/notion-md",
@@ -316,7 +708,9 @@
       "version": "0.0.0"
     },
     {
+      "buildCapabilities": ["action-env", "archive-tool", "bun", "rust-shell"],
       "kind": "javascript",
+      "linuxBuildCapabilities": ["bubblewrap"],
       "name": "npm-release",
       "outputName": "npm-release.js",
       "packagePath": "packages/@overeng/npm-release",
@@ -325,7 +719,9 @@
       "version": "0.0.0"
     },
     {
+      "buildCapabilities": ["action-env", "archive-tool", "bun", "rust-shell"],
       "kind": "javascript",
+      "linuxBuildCapabilities": ["bubblewrap"],
       "name": "oxc-config",
       "outputName": "oxc-config.js",
       "packagePath": "packages/@overeng/oxc-config",
@@ -334,7 +730,9 @@
       "version": "0.0.0"
     },
     {
+      "buildCapabilities": ["action-env", "archive-tool", "bun", "rust-shell"],
       "kind": "javascript",
+      "linuxBuildCapabilities": ["bubblewrap"],
       "name": "oxc-config-stylex-upstream-plugin",
       "outputName": "oxc-config-stylex-upstream-plugin.js",
       "packagePath": "packages/@overeng/oxc-config",
@@ -343,7 +741,9 @@
       "version": "0.0.0"
     },
     {
+      "buildCapabilities": ["action-env", "archive-tool", "bun", "rust-shell"],
       "kind": "javascript",
+      "linuxBuildCapabilities": ["bubblewrap"],
       "name": "tui-stories",
       "outputName": "tui-stories.js",
       "packagePath": "packages/@overeng/tui-stories",

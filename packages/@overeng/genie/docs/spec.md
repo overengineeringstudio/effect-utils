@@ -183,6 +183,10 @@ The invoking workspace remains authoritative across the entire import graph, inc
 
 Source-mode loading supports one workspace per Bun process. Repeated and concurrent loads within that workspace share the resolver. A subsequent load for a different workspace fails before importing its generator with an actionable error instructing the caller to use a separate process; the hook is never silently rebound because Bun also caches transitive modules. Compiled-binary staging and bootstrap-closure traversal are not subject to this process-global hook restriction.
 
+Bun source-mode evaluation requires `BUN_RUNTIME_TRANSPILER_CACHE_PATH=0` (or an empty value) **at process startup**. Bun's disk cache keys source bytes and parser features but can persist absolute imports returned by the resolver without including the workspace lock or member maps in its key. A cache hit skips resolution and can therefore execute another pin. The packaged CLI disables the cache in its launch wrapper; an unwrapped CLI invocation with the variable absent replaces itself once with caching disabled. An explicitly enabled cache is rejected with `GenieRuntimeTranspilerCacheError` before source evaluation. Programmatic callers must launch their Bun process with caching disabled; assigning the variable after startup does not reliably change Bun's memoized cache configuration. Node callers and compiled-binary staging do not use this source-mode cache boundary.
+
+Existing `.pile` entries need not be deleted: the disabled cache does not read them. Disabling caching is scoped to the Genie process and does not change the invoking shell's cache configuration.
+
 The runtime hook and its workspace guard exist only under Bun. Node-based consumers use Node's native loader; they do not register a Bun plugin or retain a runtime resolver workspace. The workspace-aware static resolver and bootstrap-closure APIs remain available under Node.
 
 Genie can resolve `#mr/...` imports without a local `repos/` symlink tree. Missing locked worktrees fail at the locked path rather than silently using host checkout state. Explicit override and fallback source maps remain available for callers supplying source trees.
@@ -381,6 +385,19 @@ sets `GENIE_EXPORT_TYPE_PROOF_COMPILER` to the flake-pinned `tsgo` binary in its
 wrapper. The validator writes a temporary proof
 `tsconfig.json`, invokes the compiler with no emit, reports compiler output as
 Genie validation issues, and removes the temporary config after the proof run.
+
+Graph scanning uses a separate TypeScript 7 API server. Each API operation and
+session close has a 20-second deadline, allowing cold starts without leaving a
+nonresponsive compiler unbounded. Expiry terminates the child with `SIGTERM`,
+escalates to `SIGKILL` after 250 ms, and bounds the final exit join to one second.
+Export validation reports the stalled operation as an analysis validation issue;
+an incomplete scan never produces a successful proof cache entry.
+Owned compiler processes close their transport directly: process exit releases all
+snapshots without sending cleanup RPCs to potentially destroyed stdin. Stdin errors
+remain owned until the stream closes, including asynchronous failures from `end()`.
+Cleanup failures remain attached as causes of the original operation failure,
+preserving its stalled-stage identity. Socket-only sessions still release snapshots
+before independently disposing their transport.
 
 Built-in environment profiles are data, not core behavior. The initial profile
 set covers `isomorphic-es2024`, `node`, `bun`, `browser`, `webworker`,

@@ -1,3 +1,4 @@
+import { EventEmitter } from 'node:events'
 import {
   chmodSync,
   existsSync,
@@ -14,17 +15,20 @@ import {
 } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, relative } from 'node:path'
+import { PassThrough } from 'node:stream'
 
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import {
   copyDeclarationSources,
   formatError,
+  type FingerprintChild,
   hashDeclaredInputRoots,
   linkStagedWorkspaceProjects,
   parseEmitOptions as parseEmit,
   parseTypecheckOptions as parseTypecheck,
   relinkStagedDependencyView,
+  runFingerprintTool,
   stagedEmitPackageRoot,
 } from './typescript-runner.ts'
 
@@ -57,6 +61,98 @@ it('preserves an error message when the runtime stack omits it', () => {
   expect(formatError(error)).toContain(
     'expected declaration entrypoint was not emitted: mod.d.ts\nError',
   )
+})
+
+type FingerprintTestChild = EventEmitter & FingerprintChild
+
+it('bounds root subprocesses to four and continues after a failed fingerprint', async () => {
+  // Only streams and lifecycle events belong to this test; no OS child is started.
+  const makeChild = (): FingerprintTestChild =>
+    Object.assign(new EventEmitter(), { stdout: new PassThrough(), stderr: new PassThrough() })
+  const turns = Array.from({ length: 9 }, () => Promise.withResolvers<FingerprintTestChild>())
+  let spawned = 0
+  const spawnChild = vi.fn(() => {
+    const child = makeChild()
+    turns[spawned]?.resolve(child)
+    spawned += 1
+    return child
+  })
+  const results = Promise.allSettled(
+    turns.map((_, index) =>
+      runFingerprintTool({ tool: fingerprintTool, args: [`/root-${index}`], spawnChild }),
+    ),
+  )
+  for (const [index, turn] of turns.entries()) {
+    const child = await turn.promise
+    expect(spawned).toBeLessThanOrEqual(Math.min(index + 4, turns.length))
+    child.emit('close', index === 0 ? 1 : 0, null)
+  }
+  const settled = await results
+  expect(settled.map((result) => result.status)).toEqual([
+    'rejected',
+    ...Array.from({ length: 8 }, () => 'fulfilled'),
+  ])
+})
+
+it('does not admit queued or new fingerprint children after cancellation', async () => {
+  const cancellation = new AbortController()
+  const children: FingerprintTestChild[] = []
+  const spawnChild = vi.fn(() => {
+    const child = Object.assign(new EventEmitter(), {
+      stdout: new PassThrough(),
+      stderr: new PassThrough(),
+    })
+    children.push(child)
+    return child
+  })
+  const settled = Promise.allSettled(
+    Array.from({ length: 8 }, (_, index) =>
+      runFingerprintTool({
+        tool: fingerprintTool,
+        args: [`/cancel-${index}`],
+        spawnChild,
+        signal: cancellation.signal,
+      }),
+    ),
+  )
+  await Promise.resolve()
+  expect(children).toHaveLength(4)
+  cancellation.abort()
+  for (const child of children) child.emit('close', 1, 'SIGTERM')
+  expect((await settled).every((result) => result.status === 'rejected')).toBe(true)
+  await expect(
+    runFingerprintTool({
+      tool: fingerprintTool,
+      args: ['/cancel-new'],
+      spawnChild,
+      signal: cancellation.signal,
+    }),
+  ).rejects.toThrow('admission closed')
+  expect(spawnChild).toHaveBeenCalledTimes(4)
+})
+
+it('memoizes immutable roots only for identical fingerprint semantics', async () => {
+  const spawnChild = vi.fn(() => {
+    const child = Object.assign(new EventEmitter(), {
+      stdout: new PassThrough(),
+      stderr: new PassThrough(),
+    })
+    queueMicrotask(() => {
+      child.stdout.write('digest immutable\n')
+      child.emit('close', 0, null)
+    })
+    return child
+  })
+  const args = ['/nix/store/test-immutable-fingerprint/root']
+  const first = runFingerprintTool({ tool: fingerprintTool, args, spawnChild })
+  const duplicate = runFingerprintTool({ tool: fingerprintTool, args, spawnChild })
+  expect(duplicate).toBe(first)
+  await first
+  await runFingerprintTool({ tool: fingerprintTool, args: [...args, '--dereference'], spawnChild })
+  expect(spawnChild).toHaveBeenCalledTimes(2)
+  await runFingerprintTool({ tool: fingerprintTool, args: ['/mutable/root'], spawnChild })
+  await runFingerprintTool({ tool: fingerprintTool, args: ['/mutable/root'], spawnChild })
+  expect(spawnChild).toHaveBeenCalledTimes(4)
 })
 
 describe('TypeScript emit declaration command', () => {

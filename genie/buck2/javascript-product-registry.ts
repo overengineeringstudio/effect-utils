@@ -8,6 +8,17 @@ import type { JavaScriptProduct } from './javascript-candidates.ts'
  * drift into separate inventories.
  */
 export const javaScriptProductRegistry = {
+  'packages/@overeng/ai-gateway-edge': [
+    {
+      entrypoint: 'src/cli.ts',
+      kind: 'cli',
+      output: 'ai-gateway-edge.js',
+      productName: 'ai-gateway-edge',
+      runtime: 'bun',
+      smokeArgs: ['--help'],
+      targetName: 'ai-gateway-edge-candidate',
+    },
+  ],
   'packages/@overeng/ci-tools': [
     {
       // In-repo proof of the compiled-executable product kind (context/builds/04-buck2/05-execution).
@@ -26,6 +37,7 @@ export const javaScriptProductRegistry = {
       externalCapabilities: [
         'actionlint',
         'effect-tsgo',
+        'gh',
         'opentui-core-native',
         'oxfmt',
         'typescript-api-server',
@@ -68,6 +80,8 @@ export const javaScriptProductRegistry = {
       kind: 'cli',
       output: 'mr.js',
       productName: 'megarepo',
+      // Common-directory writer locks use Bun's FFI-backed flock implementation.
+      runtime: 'bun',
       smokeArgs: ['--help'],
       targetName: 'megarepo-candidate',
     },
@@ -86,7 +100,7 @@ export const javaScriptProductRegistry = {
       externalCapabilities: ['opentui-core-native'],
       kind: 'cli',
       output: 'notion-db.js',
-      packageTree: '//packages/@overeng/notion-datasource-sync:package_tree',
+      packageTree: '//packages/@overeng/notion-datasource-sync:product_package_tree',
       productName: 'notion-db-runtime',
       smokeArgs: ['--help'],
       smokeRuntime: 'node',

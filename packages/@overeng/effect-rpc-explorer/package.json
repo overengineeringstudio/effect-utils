@@ -5,6 +5,7 @@
     "workspaceClosureDirs": [
       "packages/@overeng/content-address",
       "packages/@overeng/effect-rpc-explorer",
+      "packages/@overeng/effect-rpc-observer",
       "packages/@overeng/effect-rust",
       "packages/@overeng/otel-contract",
       "packages/@overeng/utils-dev"
@@ -21,15 +22,17 @@
     }
   },
   "dependencies": {
+    "@overeng/effect-rpc-observer": "workspace:^",
     "@overeng/otel-contract": "workspace:^"
   },
   "devDependencies": {
-    "effect": "4.0.0",
+    "@effect/vitest": "4.0.3",
+    "effect": "4.0.3",
     "typescript": "7.0.2",
     "vitest": "5.0.3"
   },
   "peerDependencies": {
-    "effect": "^4.0.0"
+    "effect": "^4.0.3"
   },
   "publishConfig": {
     "access": "public",

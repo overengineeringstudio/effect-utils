@@ -1,9 +1,20 @@
 #!/usr/bin/env bash
-set -euo pipefail
+set -Eeuo pipefail
+
+report_failure() {
+  local status="$1"
+  if [[ "$status" != 0 ]]; then
+    printf 'from-source-contract: FAILED (exit %s) at line %s: %s\n' "$status" "$2" "$3" >&2
+  fi
+}
+# ERR retains the command's actual line; LINENO in EXIT alone is always 1.
+trap 'failure_line="$LINENO"; failure_command="$BASH_COMMAND"' ERR
+trap 'report_failure "$?" "${failure_line:-unknown}" "${failure_command:-$BASH_COMMAND}"' EXIT
 
 repo_root="${1:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)}"
 export BUCK2_PRODUCTS_REPO="$repo_root"
 bash "$repo_root/nix/buck2-products/from-source-cores.test.sh" "$repo_root"
+bash "$repo_root/nix/buck2-products/capability-closure.test.sh" "$repo_root"
 contract="$(nix eval --impure --json --expr '
   let
     repo = builtins.toPath (builtins.getEnv "BUCK2_PRODUCTS_REPO");
@@ -11,9 +22,14 @@ contract="$(nix eval --impure --json --expr '
     system = builtins.currentSystem;
     packages = flake.packages.${system};
     product = packages.buck-product-megarepo-from-source;
+    inventory = builtins.fromJSON (builtins.readFile (repo + "/nix/buck2-products/cache-targets.json"));
+    declaration = builtins.head (builtins.filter (entry: entry.name == "megarepo") inventory.products);
   in {
     capabilities = toString product.capabilities;
-    registeredCapabilities = toString packages.buck2-capabilities;
+    registeredCapabilities = toString (packages.buck2-capabilities.selectProduct declaration);
+    requiredCapabilities = product.capabilities.requiredCapabilities;
+    expectedCapabilities = [ "action-env" "archive-tool" "bun" "rust-shell" ]
+      ++ (if builtins.match ".*-linux" system != null then [ "bubblewrap" ] else []);
     pnpmArchives = toString product.pnpmArchives;
     registeredArchives = toString packages.buck2-pnpm-archives;
     hasPreparedDeps = product ? preparedDeps;
@@ -30,7 +46,13 @@ has_standalone_root="$(jq -r .hasStandaloneRoot <<<"$contract")"
 source="$(jq -r .source <<<"$contract")"
 
 [[ "$capabilities" == "$registered_capabilities" ]] || {
-  printf 'megarepo source product did not select the registered capability projection\n' >&2
+  printf 'megarepo source product did not select its declared capability closure\n' >&2
+  exit 1
+}
+# Independently enforce the portable bundle boundary, not only inventory wiring:
+# every required tool is present and unrelated compiler/fingerprint tools are absent.
+jq -e "(.requiredCapabilities | sort) == (.expectedCapabilities | sort)" <<<"$contract" >/dev/null || {
+  printf 'megarepo source product has missing or unrelated build capabilities\n' >&2
   exit 1
 }
 [[ "$pnpm_archives" == "$registered_archives" ]] || {

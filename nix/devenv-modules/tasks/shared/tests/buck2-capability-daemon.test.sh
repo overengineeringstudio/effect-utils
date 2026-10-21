@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
+# This fixture proves publication against a persistent daemon and owns shutdown.
+# Take the wrapper's outer-owner role without changing gate class or cgroup.
+export BUCK2_GATE_WRAPPER_ACTIVE=1
 
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "$TESTS_DIR/../../../../.." && pwd -P)"
@@ -108,7 +111,8 @@ for watcher in "${watchers[@]}"; do
   fixture="$TEMP_ROOT/$watcher"
   isolation="capability-regression-$watcher"
   mkdir -p "$fixture/.buck2"
-  cp "$FIXTURES/BUCK" "$FIXTURES/configured.bzl" "$FIXTURES/rules.bzl" "$fixture/"
+  cp "$FIXTURES/BUCK.template" "$fixture/BUCK"
+  cp "$FIXTURES/configured.bzl" "$FIXTURES/rules.bzl" "$fixture/"
   touch "$fixture/.buckroot"
   cat >"$fixture/.buckconfig" <<CONFIG
 [cells]

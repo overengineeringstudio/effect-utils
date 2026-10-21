@@ -155,19 +155,9 @@ describe('ci-tools deploy vercel live E2E', () => {
         if (failureResult !== undefined) {
           console.error(
             formatLiveDeployFailure({
-              ...failureResult,
+              status: failureResult.status,
               report:
                 existsSync(reportFile) === true ? readFileSync(reportFile, 'utf8') : undefined,
-              secretValues: [
-                process.env.VERCEL_TOKEN,
-                process.env.VERCEL_AUTOMATION_BYPASS_SECRET,
-                process.env.VERCEL_PROJECT_ID,
-                process.env.VERCEL_ORG_ID,
-                process.env.VERCEL_TEAM_ID,
-                process.env.VERCEL_SCOPE,
-                process.env.GITHUB_TOKEN,
-                process.env.GH_TOKEN,
-              ].filter((value): value is string => value !== undefined),
             }),
           )
         }

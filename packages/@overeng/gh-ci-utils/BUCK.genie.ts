@@ -27,7 +27,18 @@ export const buck2TypeScriptAdmission = {
     },
   ],
   authorities: [{ declarationEntrypoint: 'src/mod.d.ts', projectFile: 'tsconfig.json' }],
-  tests: [{ name: 'test', runner: 'vitest' }],
+  tests: [
+    {
+      name: 'test',
+      runner: 'vitest',
+      // App-auth fixtures use the library-owned platform transport against loopback servers.
+      excludes: [
+        'src/node/GitHubClient.integration.test.ts',
+        'src/node/ArtifactTransport.integration.test.ts',
+        'test/GitHubClient.test.ts',
+      ],
+    },
+  ],
 } as const satisfies Buck2TypeScriptAdmission
 
 export default withJavaScriptCandidates({

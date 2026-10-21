@@ -18,7 +18,7 @@ Vitest.describe.skipIf(SKIP_FIXTURE_INTEGRATION)('NotionMarkdown (integration)',
   afterAll(teardownIntegrationFixtures, 60_000)
 
   Vitest.describe('pageToMarkdown', () => {
-    Vitest.it.effect(
+    Vitest.it.live(
       'converts all block types correctly',
       () =>
         Effect.gen(function* () {
@@ -70,7 +70,7 @@ Vitest.describe.skipIf(SKIP_FIXTURE_INTEGRATION)('NotionMarkdown (integration)',
       { timeout: 60000 },
     )
 
-    Vitest.it.effect(
+    Vitest.it.live(
       'converts a page with rich text formatting',
       () =>
         Effect.gen(function* () {
@@ -88,7 +88,7 @@ Vitest.describe.skipIf(SKIP_FIXTURE_INTEGRATION)('NotionMarkdown (integration)',
       { timeout: 60000 },
     )
 
-    Vitest.it.effect(
+    Vitest.it.live(
       'converts nested blocks correctly',
       () =>
         Effect.gen(function* () {
@@ -104,7 +104,7 @@ Vitest.describe.skipIf(SKIP_FIXTURE_INTEGRATION)('NotionMarkdown (integration)',
       { timeout: 60000 },
     )
 
-    Vitest.it.effect(
+    Vitest.it.live(
       'handles empty page',
       () =>
         Effect.gen(function* () {
@@ -117,7 +117,7 @@ Vitest.describe.skipIf(SKIP_FIXTURE_INTEGRATION)('NotionMarkdown (integration)',
       { timeout: 30000 },
     )
 
-    Vitest.it.effect(
+    Vitest.it.live(
       'supports custom transformers with BlockHelpers',
       () =>
         Effect.gen(function* () {

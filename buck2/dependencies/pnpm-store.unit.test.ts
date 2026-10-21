@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto'
 import { readFileSync } from 'node:fs'
+import { gzipSync } from 'node:zlib'
 
 import { describe, expect, it } from 'vitest'
 
@@ -166,8 +167,384 @@ const projectionOf = async (
     metadata,
     fetchArchive: async () => archive,
   })
-  return makePnpmStoreProjection({ metadata, sidecar, workspaceTreeTargets })
+  return makePnpmStoreProjection({
+    metadata,
+    sidecar,
+    ...(workspaceTreeTargets === undefined ? {} : { workspaceTreeTargets }),
+  })
 }
+
+// Match the integrity-verified package.json archive fixture in pnpm-lock tests.
+const nativeEdgeArchive = (() => {
+  const content = Buffer.from(JSON.stringify({ bin: { tool: './bin/tool.js' } }))
+  const header = Buffer.alloc(512)
+  header.write('package/package.json', 0, 'utf8')
+  header.write(`${content.byteLength.toString(8).padStart(11, '0')}\0`, 124, 'ascii')
+  return gzipSync(
+    Buffer.concat([
+      header,
+      content,
+      Buffer.alloc(Math.ceil(content.byteLength / 512) * 512 - content.byteLength),
+      Buffer.alloc(1024),
+    ]),
+  )
+})()
+const nativeEdgeIntegrity = `sha512-${createHash('sha512').update(nativeEdgeArchive).digest('base64')}`
+
+const requiredNativeLock = ({
+  cyclic = false,
+  optional = false,
+  gated = true,
+}: { cyclic?: boolean; optional?: boolean; gated?: boolean } = {}) =>
+  lock({
+    importers: `  packages/app:
+    dependencies:
+      grandparent:
+        specifier: 1.0.0
+        version: 1.0.0
+    optionalDependencies:
+      native:
+        specifier: 1.0.0
+        version: 1.0.0
+  packages/unrelated:
+    dependencies:
+      stable:
+        specifier: 1.0.0
+        version: 1.0.0`,
+    packages: `  grandparent@1.0.0:
+    resolution: {integrity: ${nativeEdgeIntegrity}}
+    hasBin: true
+  parent@1.0.0:
+    resolution: {integrity: ${nativeEdgeIntegrity}}
+    hasBin: true
+  native@1.0.0:
+    resolution: {integrity: ${nativeEdgeIntegrity}}
+    hasBin: true${gated ? '\n    os: [linux]\n    cpu: [arm64, x64]' : ''}
+  stable@1.0.0:
+    resolution: {integrity: ${nativeEdgeIntegrity}}
+    hasBin: true`,
+    snapshots: `  grandparent@1.0.0:
+    dependencies:
+      parent: 1.0.0
+  parent@1.0.0:
+    ${optional ? 'optionalDependencies' : 'dependencies'}:${cyclic ? '\n      grandparent: 1.0.0' : ''}
+      native: 1.0.0
+  native@1.0.0: {}
+  stable@1.0.0: {}`,
+  })
+
+const requiredNativeFixture = async (options?: Parameters<typeof requiredNativeLock>[0]) => {
+  const metadata = translatePnpmLock({ lockfileText: requiredNativeLock(options), workspaceText })
+  const sidecar = await generatePnpmSha256Sidecar({
+    metadata,
+    fetchArchive: async () => nativeEdgeArchive,
+  })
+  return { metadata, sidecar, projection: makePnpmStoreProjection({ metadata, sidecar }) }
+}
+
+const renderedRule = (rendered: string, target: string) =>
+  rendered.split('\n\n').find((block) => block.includes(`    name = "${target}",`))!
+
+describe('required-edge platform availability', () => {
+  const linuxPlatforms = ['linux_aarch64', 'linux_x86_64']
+
+  it('restricts an ungated parent and its grandparent to their required native child', async () => {
+    const { metadata, projection } = await requiredNativeFixture()
+    for (const storeKey of ['parent@1.0.0', 'grandparent@1.0.0']) {
+      expect(
+        packageAllowed({ metadata, packageKey: storeKey, platform: portablePnpmPlatform }),
+      ).toBe(true)
+      const entry = projection.entries.find((candidate) => candidate.storeKey === storeKey)!
+      expect(entry.platforms).toEqual(linuxPlatforms)
+      expect(entry.variants.flatMap((variant) => variant.platforms)).toEqual(linuxPlatforms)
+      expect(entry.variants).toHaveLength(1)
+    }
+    const view = projection.views.find((candidate) => candidate.importer === 'packages/app')!
+    expect(view.platforms).toEqual(linuxPlatforms)
+    expect(view.variants.flatMap((variant) => variant.platforms)).toEqual(linuxPlatforms)
+    for (const platform of ['javascript_portable', 'macos_aarch64'] as const) {
+      expect(view.variants.find((variant) => variant.platforms.includes(platform))).toBeUndefined()
+    }
+  })
+
+  it('retains every required link, closure member, and binary on every supported tuple', async () => {
+    const { projection } = await requiredNativeFixture()
+    const parent = projection.entries.find((entry) => entry.storeKey === 'parent@1.0.0')!
+    const grandparent = projection.entries.find((entry) => entry.storeKey === 'grandparent@1.0.0')!
+    const view = projection.views.find((candidate) => candidate.importer === 'packages/app')!
+    for (const platform of view.platforms) {
+      expect(
+        parent.variants.find((variant) => variant.platforms.includes(platform))!.edges,
+      ).toEqual({
+        native: { kind: 'entry', storeKey: 'native@1.0.0' },
+      })
+      expect(
+        grandparent.variants.find((variant) => variant.platforms.includes(platform))!.edges,
+      ).toEqual({
+        parent: { kind: 'entry', storeKey: 'parent@1.0.0' },
+      })
+      const variant = view.variants.find((candidate) => candidate.platforms.includes(platform))!
+      expect(variant.direct).toEqual({
+        grandparent: { kind: 'entry', storeKey: 'grandparent@1.0.0' },
+        native: { kind: 'entry', storeKey: 'native@1.0.0' },
+      })
+      expect(variant.closure).toEqual(['grandparent@1.0.0', 'native@1.0.0', 'parent@1.0.0'])
+      expect(variant.bins).toEqual({ tool: 'native@1.0.0\tbin/tool.js' })
+    }
+    for (const entry of projection.entries) {
+      expect(entry.bins).toEqual({ tool: 'bin/tool.js' })
+    }
+  })
+
+  it('propagates a required external restriction through all members of a required SCC', async () => {
+    const { projection } = await requiredNativeFixture({ cyclic: true })
+    expect(projection.sccs.map((scc) => scc.members)).toEqual([
+      ['grandparent@1.0.0', 'parent@1.0.0'],
+    ])
+    for (const entry of projection.entries.filter(
+      (candidate) => candidate.sccIndex !== undefined,
+    )) {
+      expect(entry.platforms).toEqual(linuxPlatforms)
+      expect(entry.variants.flatMap((variant) => variant.platforms)).toEqual(linuxPlatforms)
+      expect(Object.keys(entry.variants[0]!.edges)).not.toEqual([])
+    }
+    const rendered = renderPnpmStoreBuck(projection)
+    expect(rendered).toContain('"grandparent@1.0.0\\tparent": "parent@1.0.0"')
+    expect(rendered).toContain('"parent@1.0.0\\tgrandparent": "grandparent@1.0.0"')
+  })
+
+  it('renders explicit rejection metadata for unsupported entry and importer configurations', async () => {
+    const { projection } = await requiredNativeFixture()
+    const rendered = renderPnpmStoreBuck(projection)
+    const restricted = [
+      ...projection.entries.filter((entry) => entry.platforms.length < pnpmPlatforms.length),
+      ...projection.views.filter((view) => view.platforms.length < pnpmPlatforms.length),
+    ]
+    expect(restricted).toHaveLength(4)
+    for (const owner of restricted) {
+      const block = renderedRule(rendered, owner.target)
+      expect(block).toContain('    unavailable_by_platform = {')
+      for (const platform of pnpmPlatforms) {
+        const reason = block.match(
+          new RegExp(`^        "${platform}": ("(?:[^"\\\\]|\\\\.)*"),$`, 'm'),
+        )
+        expect(reason).not.toBeNull()
+        expect(JSON.parse(reason![1]!)).toEqual(
+          owner.platforms.includes(platform) ? '' : expect.stringMatching(/\S/),
+        )
+      }
+    }
+    const stable = projection.entries.find((entry) => entry.storeKey === 'stable@1.0.0')!
+    const unrelated = projection.views.find((view) => view.importer === 'packages/unrelated')!
+    expect(renderedRule(rendered, stable.target)).not.toContain('unavailable_by_platform')
+    expect(renderedRule(rendered, unrelated.target)).not.toContain('unavailable_by_platform')
+  })
+
+  it('keeps optional native edges filtered without restricting their owners or importers', async () => {
+    const { projection } = await requiredNativeFixture({ optional: true })
+    const parent = projection.entries.find((entry) => entry.storeKey === 'parent@1.0.0')!
+    const grandparent = projection.entries.find((entry) => entry.storeKey === 'grandparent@1.0.0')!
+    const view = projection.views.find((candidate) => candidate.importer === 'packages/app')!
+    expect(parent.platforms).toEqual(pnpmPlatforms)
+    expect(grandparent.platforms).toEqual(pnpmPlatforms)
+    expect(view.platforms).toEqual(pnpmPlatforms)
+    for (const platform of pnpmPlatforms) {
+      const variant = view.variants.find((candidate) => candidate.platforms.includes(platform))!
+      const edges = parent.variants.find((candidate) =>
+        candidate.platforms.includes(platform),
+      )!.edges
+      expect(Object.keys(edges)).toEqual(linuxPlatforms.includes(platform) ? ['native'] : [])
+      expect(Object.keys(variant.direct)).toEqual(
+        linuxPlatforms.includes(platform) ? ['grandparent', 'native'] : ['grandparent'],
+      )
+      expect(variant.closure).toEqual(
+        linuxPlatforms.includes(platform)
+          ? ['grandparent@1.0.0', 'native@1.0.0', 'parent@1.0.0']
+          : ['grandparent@1.0.0', 'parent@1.0.0'],
+      )
+      expect(variant.bins).toEqual({
+        tool: `${linuxPlatforms.includes(platform) ? 'native' : 'grandparent'}@1.0.0\tbin/tool.js`,
+      })
+    }
+  })
+
+  it.each(['linked', 'injected'] as const)(
+    'filters an optional %s workspace against its required native closure',
+    async (kind) => {
+      const metadata = translatePnpmLock({
+        workspaceText,
+        lockfileText: lock({
+          importers: `  packages/app:
+    optionalDependencies:
+      workspace-lib:
+        specifier: workspace:*
+        version: ${kind === 'linked' ? 'link:../lib' : 'file:packages/lib'}
+  packages/lib:
+    dependencies:
+      native:
+        specifier: 1.0.0
+        version: 1.0.0`,
+          packages: `  native@1.0.0:
+    resolution: {integrity: ${nativeEdgeIntegrity}}
+    os: [linux]${kind === 'injected' ? '\n  workspace-lib@file:packages/lib:\n    resolution: {directory: packages/lib, type: directory}' : ''}`,
+          snapshots: `  native@1.0.0: {}${kind === 'injected' ? '\n  workspace-lib@file:packages/lib: {}' : ''}`,
+        }),
+      })
+      const sidecar = await generatePnpmSha256Sidecar({
+        metadata,
+        fetchArchive: async () => nativeEdgeArchive,
+      })
+      const projection = makePnpmStoreProjection({ metadata, sidecar })
+      const owner = projection.views.find((view) => view.importer === 'packages/app')!
+      const dependency = projection.views.find((view) => view.importer === 'packages/lib')!
+      const key = workspaceKey('packages/lib')
+      expect(owner.platforms).toEqual(pnpmPlatforms)
+      expect(dependency.platforms).toEqual(linuxPlatforms)
+      for (const platform of pnpmPlatforms) {
+        const direct = owner.variants.find((variant) =>
+          variant.platforms.includes(platform),
+        )!.direct
+        expect(direct).toEqual(
+          linuxPlatforms.includes(platform)
+            ? {
+                'workspace-lib': {
+                  kind: 'workspace',
+                  workspaceKey: key,
+                  workspacePath: 'packages/lib',
+                },
+              }
+            : {},
+        )
+      }
+      const block = renderedRule(renderPnpmStoreBuck(projection), owner.target)
+      expect(block).not.toContain('unavailable_by_platform')
+      for (const field of ['workspace_trees', 'workspace_dependencies']) {
+        const selected = block.split(`${field}_by_platform = {`)[1]!.split('\n    },')[0]!
+        for (const platform of pnpmPlatforms) {
+          const branch = selected.match(
+            new RegExp(`"${platform}": \\{([\\s\\S]*?)\\n        \\},`),
+          )![1]!
+          if (linuxPlatforms.includes(platform)) expect(branch).toContain(key)
+          else expect(branch.trim()).toBe('')
+        }
+      }
+    },
+  )
+
+  it('leaves an unrelated supported importer projection and rendered rule byte-stable', async () => {
+    const before = (await requiredNativeFixture({ gated: false })).projection
+    const after = (await requiredNativeFixture()).projection
+    const beforeView = before.views.find((view) => view.importer === 'packages/unrelated')!
+    const afterView = after.views.find((view) => view.importer === 'packages/unrelated')!
+    expect(afterView).toEqual(beforeView)
+    expect(renderedRule(renderPnpmStoreBuck(after), afterView.target)).toBe(
+      renderedRule(renderPnpmStoreBuck(before), beforeView.target),
+    )
+  })
+
+  it('still rejects missing archive metadata, stale fingerprints, and invalid digests globally', async () => {
+    const { metadata, sidecar } = await requiredNativeFixture()
+    expect(() =>
+      makePnpmStoreProjection({ metadata, sidecar: { ...sidecar, packages: {} } }),
+    ).toThrow(/stale sha256 sidecar package identity set/)
+    expect(() =>
+      makePnpmStoreProjection({
+        metadata,
+        sidecar: { ...sidecar, lockfileFingerprint: `sha256:${'0'.repeat(64)}` },
+      }),
+    ).toThrow(/stale sha256 sidecar lock fingerprint/)
+    expect(() =>
+      makePnpmStoreProjection({
+        metadata,
+        sidecar: {
+          ...sidecar,
+          packages: {
+            ...sidecar.packages,
+            'native@1.0.0': { ...sidecar.packages['native@1.0.0']!, sha256: '0'.repeat(64) },
+          },
+        },
+      }),
+    ).toThrow(/sha256 sidecar fingerprint mismatch/)
+    expect(() =>
+      decodePnpmSha256Sidecar({
+        ...sidecar,
+        packages: {
+          ...sidecar.packages,
+          'native@1.0.0': { ...sidecar.packages['native@1.0.0']!, sha256: 'invalid' },
+        },
+      }),
+    ).toThrow(/must be lowercase sha256/)
+  })
+
+  it.each(['required', 'optional'] as const)(
+    'rejects missing %s snapshot metadata even when the owner is unsupported',
+    async (kind) => {
+      const { metadata, sidecar } = await requiredNativeFixture({ optional: kind === 'optional' })
+      const snapshots = Object.fromEntries(
+        Object.entries(metadata.snapshots).filter(([key]) => key !== 'native@1.0.0'),
+      )
+      expect(() =>
+        makePnpmStoreProjection({ metadata: { ...metadata, snapshots }, sidecar }),
+      ).toThrow(/unknown snapshot native@1.0.0/)
+    },
+  )
+
+  it('keeps a mixed optional SCC available while excluding its gated member on unsupported tuples', async () => {
+    const metadata = translatePnpmLock({
+      lockfileText: requiredNativeLock({ optional: true }).replace(
+        '  native@1.0.0: {}',
+        '  native@1.0.0:\n    dependencies:\n      parent: 1.0.0',
+      ),
+      workspaceText,
+    })
+    const sidecar = await generatePnpmSha256Sidecar({
+      metadata,
+      fetchArchive: async () => nativeEdgeArchive,
+    })
+    const projection = makePnpmStoreProjection({ metadata, sidecar })
+    expect(projection.sccs.map((scc) => scc.members)).toEqual([['native@1.0.0', 'parent@1.0.0']])
+    const native = projection.entries.find((entry) => entry.storeKey === 'native@1.0.0')!
+    const parent = projection.entries.find((entry) => entry.storeKey === 'parent@1.0.0')!
+    expect(native.platforms).toEqual(linuxPlatforms)
+    expect(parent.platforms).toEqual(pnpmPlatforms)
+    const view = projection.views.find((candidate) => candidate.importer === 'packages/app')!
+    expect(view.platforms).toEqual(pnpmPlatforms)
+    for (const platform of pnpmPlatforms) {
+      const variant = view.variants.find((candidate) => candidate.platforms.includes(platform))!
+      expect(variant.closure.includes('native@1.0.0')).toBe(linuxPlatforms.includes(platform))
+      expect(variant.closure).toContain('parent@1.0.0')
+    }
+    const component = renderedRule(renderPnpmStoreBuck(projection), projection.sccs[0]!.target)
+    expect(component).toContain('    members_by_platform = {')
+    expect(component).not.toContain('unavailable_by_platform')
+  })
+
+  it('projects a required closure with no admitted platform without inventing an empty variant', async () => {
+    const metadata = translatePnpmLock({
+      lockfileText: requiredNativeLock().replace('os: [linux]', 'os: [win32]'),
+      workspaceText,
+    })
+    const sidecar = await generatePnpmSha256Sidecar({
+      metadata,
+      fetchArchive: async () => nativeEdgeArchive,
+    })
+    const projection = makePnpmStoreProjection({ metadata, sidecar })
+    const view = projection.views.find((candidate) => candidate.importer === 'packages/app')!
+    expect(view.platforms).toEqual([])
+    expect(view.variants).toEqual([])
+    for (const entry of projection.entries.filter(
+      (candidate) => candidate.packageName !== 'stable',
+    )) {
+      expect(entry.platforms).toEqual([])
+      expect(entry.variants).toEqual([])
+    }
+    const block = renderedRule(renderPnpmStoreBuck(projection), view.target)
+    expect(block).toContain('    unavailable_by_platform = {')
+    for (const platform of pnpmPlatforms) {
+      expect(block).toContain(`has no complete required dependency closure on ${platform}`)
+    }
+  })
+})
 
 describe('normalized store projection', () => {
   it('derives one platform-selected variant set per differing lockfile edge set', async () => {
@@ -312,6 +689,40 @@ describe('normalized store projection', () => {
     }
   })
 
+  it('projects a file snapshot dependency on a workspace importer as a transitive Buck edge', async () => {
+    const fixtureLock = readFileSync(
+      new URL('./fixtures/pnpm-snapshot-link/pnpm-lock.yaml', import.meta.url),
+      'utf8',
+    )
+    const projection = await projectionOf(fixtureLock)
+    const app = projection.views.find((view) => view.importer === 'packages/app')!
+    const consumer = projection.entries.find((entry) => entry.packageName === 'file-consumer')!
+    const libKey = workspaceKey('packages/lib')
+    expect(Object.keys(app.variants[0]!.direct)).toEqual(['file-consumer'])
+    expect(app.variants[0]!.direct['file-consumer']).toEqual({
+      kind: 'entry',
+      storeKey: consumer.storeKey,
+    })
+    expect(app.variants[0]!.closure).toContain(consumer.storeKey)
+    expect(consumer.sourceTree).toBe('//external/file-consumer:package_tree')
+    expect(consumer.variants[0]!.edges['workspace-lib']).toEqual({
+      kind: 'workspace',
+      workspaceKey: libKey,
+      workspacePath: 'packages/lib',
+    })
+    expect(app.workspaceTrees[libKey]).toBe('//packages/lib:package_tree')
+    const rendered = renderPnpmStoreBuck(projection)
+    expect(renderedRule(rendered, consumer.target)).toContain(
+      '"workspace-lib": "//packages/lib:package_tree"',
+    )
+    expect(renderedRule(rendered, consumer.packageTarget)).toContain(
+      'source = "//external/file-consumer:package_tree"',
+    )
+    expect(renderedRule(rendered, app.target)).toContain(
+      `"${libKey}": "//packages/lib:package_tree"`,
+    )
+  })
+
   it('keeps an injected workspace package as an importer workspace edge', async () => {
     // pnpm 12 injects workspace packages by default, so a direct workspace
     // dependency arrives as a `file:<dir>` snapshot instead of a `link:`
@@ -355,7 +766,7 @@ describe('normalized store projection', () => {
   })
 
   it.each(['injected', 'linked'] as const)(
-    'projects an %s frozen source through its declared tree without changing workspace identity',
+    'projects an %s frozen source through its declared tree and dependency context',
     async (kind) => {
       const sourcePath = '.devenv/pnpm-source-inputs/current/repos/sdk/client'
       const sourceTarget = 'pnpm_sources//:sdk_client_package_tree'
@@ -379,20 +790,22 @@ describe('normalized store projection', () => {
       const localKey = workspaceKey('packages/local')
 
       expect(view.workspaceTrees).toEqual({
-        [sourceKey]: sourceTarget,
+        ...(kind === 'linked' ? { [sourceKey]: sourceTarget } : {}),
         [localKey]: '//packages/local:package_tree',
       })
       expect(view.variants).toEqual(ordinary.views[0]!.variants)
-      expect(projected.entries).toEqual(ordinary.entries)
+      expect(projected.entries[0]!.sourceTree).toBe(sourceTarget)
       expect(projected.fingerprint).not.toBe(ordinary.fingerprint)
-      expect(view.variants[0]!.direct['source-lib']).toEqual({
-        kind: 'workspace',
-        workspaceKey: sourceKey,
-        workspacePath: sourcePath,
-      })
+      expect(view.variants[0]!.direct['source-lib']).toEqual(
+        kind === 'linked'
+          ? { kind: 'workspace', workspaceKey: sourceKey, workspacePath: sourcePath }
+          : { kind: 'entry', storeKey: projected.entries[0]!.storeKey },
+      )
 
       const rendered = renderPnpmStoreBuck(projected)
-      expect(rendered).toContain(`"${sourceKey}": "${sourceTarget}"`)
+      expect(rendered).toContain(
+        kind === 'linked' ? `"${sourceKey}": "${sourceTarget}"` : `source = "${sourceTarget}"`,
+      )
       expect(rendered).toContain(`"${localKey}": "//packages/local:package_tree"`)
       expect(rendered).not.toContain(`//${sourcePath}:package_tree`)
       // Matching a live-checkout suffix must not silently replace frozen bytes.
@@ -543,6 +956,7 @@ describe('normalized store projection of the real lockfile', () => {
     // Assert the current lock's exact identities, including peer-qualified
     // packages whose optional native dependency edges vary by platform.
     expect(varying).toEqual([
+      '@number0+iroh@1.1.0',
       '@opentui+core@0.5.11_typescript@7.0.2_web-tree-sitter@0.25.10',
       'esbuild@0.28.2',
       'lightningcss@1.33.0',
@@ -559,10 +973,45 @@ describe('normalized store projection of the real lockfile', () => {
   })
 
   it('declares one entry per snapshot and one view per importer', () => {
-    expect(projection.entries).toHaveLength(731)
-    expect(new Set(projection.entries.map((entry) => entry.storeKey)).size).toBe(731)
+    expect(projection.entries).toHaveLength(743)
+    expect(new Set(projection.entries.map((entry) => entry.storeKey)).size).toBe(743)
     expect(projection.views).toHaveLength(Object.keys(metadata.importers).length)
     expect(computeStoreSccs({ metadata })).toEqual(projection.sccs.map((scc) => scc.members))
+  })
+
+  it('adds source-only and external-only views without changing npm views or external platform graphs', () => {
+    const rendered = renderPnpmStoreBuck(projection)
+    const previous = readFileSync('buck2/dependencies/BUCK', 'utf8')
+    const viewBody = (output: string, target: string): string => {
+      const body = output.split(`pnpm_store_view(\n    name = "${target}",\n`)[1]?.split('\n)\n')[0]
+      if (body === undefined) throw new Error(`missing dependency view ${target}`)
+      return body
+    }
+    const externalGraph = (body: string): string =>
+      body
+        .replace(/    workspace_trees = \{[\s\S]*?\n    \},\n/u, '')
+        .replace(/    workspace_dependencies = \{[\s\S]*?\n    \},\n/u, '')
+    for (const view of projection.views) {
+      const ordinary = viewBody(rendered, view.target)
+      const product = viewBody(rendered, view.target.replace(/^view_/, 'product_view_'))
+      const external = viewBody(rendered, view.target.replace(/^view_/, 'external_view_'))
+      expect(ordinary).toBe(viewBody(previous, view.target))
+      expect(product.replaceAll(':product_package_tree"', ':package_tree"')).toBe(ordinary)
+      expect(externalGraph(product)).toBe(externalGraph(ordinary))
+      expect(externalGraph(external)).toBe(externalGraph(ordinary))
+      expect(external).toContain('    workspace_trees = {\n    },')
+      expect(external).toContain('    workspace_dependencies = {\n    },')
+      expect(external).not.toContain(':package_tree"')
+      expect(external).not.toContain(':product_package_tree"')
+      expect(product).not.toMatch(/": "[^"]+:package_tree"/u)
+    }
+    const genie = projection.views.find((view) => view.importer === 'packages/@overeng/genie')!
+    const externalGenie = viewBody(rendered, genie.target.replace(/^view_/, 'external_view_'))
+    expect(externalGenie).toContain('"typescript": "typescript@7.0.2"')
+    expect(externalGenie).toContain('closure_by_platform = {')
+    for (const platform of pnpmPlatforms) {
+      expect(externalGenie).toContain(`"${platform}": {`)
+    }
   })
 
   it('renders a deterministic declaration whose selects appear only where edges vary', () => {

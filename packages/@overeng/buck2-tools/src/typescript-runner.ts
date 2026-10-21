@@ -19,6 +19,7 @@ import {
 } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
+import type { Readable } from 'node:stream'
 import { fileURLToPath } from 'node:url'
 
 const signalNumbers = {
@@ -222,38 +223,103 @@ const forEachSequential = async <T>(options: {
 const canonicalRoots = (roots: readonly string[]): readonly string[] =>
   [...new Set(roots.map((root) => resolve(root)))].toSorted()
 
-/**
- * Runs the immutable fingerprint executable without blocking the event loop, so concurrent
- * root walks stay parallel. A non-zero exit rejects with the tool's stderr.
- */
-export const runFingerprintTool = ({
+// Match the native host-wide walk cap without spawning one child per root.
+// Each lane advances after failure as well as success.
+const fingerprintWorkers = 4
+const fingerprintQueues = Array.from({ length: fingerprintWorkers }, () => Promise.resolve())
+let nextFingerprintQueue = 0
+const immutableFingerprints = new Map<
+  string,
+  {
+    readonly spawnChild: typeof spawnFingerprintChild
+    readonly result: Promise<string>
+  }
+>()
+
+/** Only the streams and lifecycle events consumed by the fingerprint runner. */
+export type FingerprintChild = {
+  readonly stdout: Readable
+  readonly stderr: Readable
+  on(event: 'error', listener: (error: Error) => void): void
+  on(event: 'close', listener: (code: number | null, signal: NodeJS.Signals | null) => void): void
+}
+
+const spawnFingerprintChild = ({
   tool,
   args,
 }: {
   readonly tool: string
   readonly args: readonly string[]
-}): Promise<string> =>
-  new Promise((resolveOutput, reject) => {
-    const child = spawn(requireFingerprintTool(tool), args, {
-      cwd: '/',
-      env: { PATH: '' },
-      stdio: ['ignore', 'pipe', 'pipe'],
+}): FingerprintChild =>
+  spawn(tool, args, { cwd: '/', env: { PATH: '' }, stdio: ['ignore', 'pipe', 'pipe'] })
+
+const fingerprintAdmission = new AbortController()
+/** Stop queued and future root subprocess admission before termination drains lanes. */
+export const closeFingerprintAdmission = (): void => fingerprintAdmission.abort()
+
+/** Bound subprocess admission; memoize only immutable Nix inputs with identical semantics. */
+export const runFingerprintTool = ({
+  tool,
+  args,
+  spawnChild = spawnFingerprintChild,
+  signal: admissionSignal = fingerprintAdmission.signal,
+}: {
+  readonly tool: string
+  readonly args: readonly string[]
+  readonly signal?: AbortSignal
+  readonly spawnChild?: (options: {
+    readonly tool: string
+    readonly args: readonly string[]
+  }) => FingerprintChild
+}): Promise<string> => {
+  if (admissionSignal.aborted === true)
+    return Promise.reject(new Error('fingerprint admission closed by termination'))
+  const immutable = /^\/nix\/store\/[^/]+(?:\/|$)/u.test(args[0] ?? '')
+  const cacheKey = JSON.stringify([tool, args])
+  if (immutable === true) {
+    const cached = immutableFingerprints.get(cacheKey)
+    if (cached?.spawnChild === spawnChild) return cached.result
+  }
+  const lane = nextFingerprintQueue++ % fingerprintWorkers
+  const result = (fingerprintQueues[lane] ?? Promise.resolve()).then(
+    () =>
+      new Promise<string>((resolveOutput, reject) => {
+        if (admissionSignal.aborted === true) {
+          reject(new Error('fingerprint admission closed by termination'))
+          return
+        }
+        const child = spawnChild({ tool: requireFingerprintTool(tool), args })
+        const stdout: Buffer[] = []
+        const stderr: Buffer[] = []
+        child.stdout.on('data', (chunk: Buffer) => stdout.push(chunk))
+        child.stderr.on('data', (chunk: Buffer) => stderr.push(chunk))
+        child.on('error', reject)
+        child.on('close', (code, signal) => {
+          if (code === 0) resolveOutput(Buffer.concat(stdout).toString('utf8'))
+          else
+            reject(
+              new Error(
+                `fingerprint tool failed for ${args[0] ?? ''} (exit ${code ?? signal}): ${Buffer.concat(stderr).toString('utf8')}`,
+              ),
+            )
+        })
+      }),
+  )
+  // A failed root must not poison later requests, and callers still receive
+  // the original rejection through result.
+  fingerprintQueues[lane] = result.then(
+    () => {},
+    () => {},
+  )
+  if (immutable === true) {
+    immutableFingerprints.set(cacheKey, { spawnChild, result })
+    void result.catch(() => {
+      if (immutableFingerprints.get(cacheKey)?.result === result)
+        immutableFingerprints.delete(cacheKey)
     })
-    const stdout: Buffer[] = []
-    const stderr: Buffer[] = []
-    child.stdout.on('data', (chunk: Buffer) => stdout.push(chunk))
-    child.stderr.on('data', (chunk: Buffer) => stderr.push(chunk))
-    child.on('error', reject)
-    child.on('close', (code, signal) => {
-      if (code === 0) resolveOutput(Buffer.concat(stdout).toString('utf8'))
-      else
-        reject(
-          new Error(
-            `fingerprint tool failed for ${args[0] ?? ''} (exit ${code ?? signal}): ${Buffer.concat(stderr).toString('utf8')}`,
-          ),
-        )
-    })
-  })
+  }
+  return result
+}
 
 /**
  * Hashes each declared root using the pinned Rust CLI. The outer framing preserves the
@@ -346,7 +412,7 @@ const makeTreeRemovable = async (path: string): Promise<void> => {
   }
   if (metadata.isFile() === false)
     fail(`unsupported filesystem entry while cleaning staging: ${path}`)
-  await chmod(path, metadata.mode | 0o600)
+  // Unlinking needs writable parent directories, not writable shared file inodes.
 }
 
 const removeTree = async (path: string): Promise<void> => {
@@ -380,8 +446,13 @@ const prepareStagedOutput = async (options: {
 
   const stagedOutput = join(packageRoot, outDir)
   await removeTree(stagedOutput)
-  await removeTree(output)
   await mkdir(output, { recursive: true })
+  // Preserve the declared output's mount point while removing abandoned readonly trees.
+  await ensureWritableDirectory(output)
+  await forEachSequential({
+    iterator: (await readdir(output)).values(),
+    visit: async (entry) => removeTree(join(output, entry)),
+  })
   await symlink(resolve(output), stagedOutput)
 }
 
@@ -769,6 +840,7 @@ export const runEmit = async (options: EmitOptions): Promise<number> => {
 }
 
 const forwardSignal = (signal: ForwardedSignal): void => {
+  closeFingerprintAdmission()
   forwardedSignal ??= signal
   activeChild?.kill(signalNumbers[signal])
 }

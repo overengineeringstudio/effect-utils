@@ -135,6 +135,32 @@ registration agrees: the branch is registered exactly at `P`, or nowhere while
 as ambiguous rather than shadowed. A member path that is a real directory or
 file rather than a symlink is foreign and refused before replacement.
 
+### Exact-lock tracking selection (MR-R01)
+
+MR-R01's pinned-materialization postcondition governs immutable commit mounts.
+Preserving an author's branch worktree does not exempt the member mount from
+the exact-lock selection rule: when that branch is unsuitable, apply preserves
+it and selects the locked commit rather than leaving a divergent mount.
+
+| Tracking branch state                                        | Member mount                 |
+| ------------------------------------------------------------ | ---------------------------- |
+| Canonical branch identity, clean tree, `HEAD == lock.commit` | `refs/heads/<branch>`        |
+| `HEAD != lock.commit`, including ahead or behind             | `refs/commits/<lock.commit>` |
+| Dirty canonical branch or unproven clean/exact state         | `refs/commits/<lock.commit>` |
+
+Tracking mode is a read-only selection policy, not branch reconciliation.
+`mr apply` and the apply phase of `mr fetch --apply` never checkout, reset, or
+fast-forward canonical branch worktrees. A missing branch worktree may be
+created only from an existing local branch already at the locked commit;
+otherwise the locked commit worktree is materialized directly. Repointing the
+member symlink preserves the original branch's ref, `HEAD`, index, files, and
+uncommitted edits and does not require `--force`. Warm apply reuses the selected
+worktree and converges without canonical mutation authorization.
+
+Readiness reports commit drift or a dirty remote branch mount as apply-needed.
+After fallback, the clean exact-commit mount is ready even when the preserved,
+unmounted canonical branch remains ahead, behind, or dirty.
+
 ### Recursive materialization ownership
 
 ```text
@@ -153,22 +179,101 @@ a second recursive visit to the same physical root is a no-op.
 
 Worktrees that existed before the invocation remain shared, not owned.
 Recursive apply refuses canonical mutations there; freshness is neither
-persisted nor inferred from existence. The exception does not authorize lock
-rewrites, generators' authoring outputs, or a separately invoked nested apply.
+persisted nor inferred from existence. The freshness exception does not authorize
+lock rewrites or generators' authoring outputs.
 
-Consumers prepare the dependency tree through the outer workspace's
-`mr apply --all`. Nested package-install hooks must not independently run
-`mr apply --only` inside canonical member worktrees. A consumer may instead
-check that the already prepared member has the locked commit and fail with
-instructions to prepare it from the owning workspace. Cached preexisting
-canonical worktrees must already have their nested mounts prepared; an
-incomplete shared tree requires an owned workspace or explicit administrative
-repair, not a freshness grant.
+The invoking workspace is the one canonical root an author owns when it is a
+non-default branch worktree (`refs/heads/<branch>` where `<branch>` is not the
+store bare repo's default branch, its `HEAD`): top-level `mr apply` may populate
+its root and `repos/` mounts. File-authoring writes use one author-workspace
+authorization contract: config pin/unpin, `megarepo.lock` updates (including
+`mr fetch --only`), generators, and Nix lock synchronization may write inside a
+proven author workspace. Both the requested output path and its physical
+destination must stay inside that same root. Directory and file aliases escaping
+that root remain refused. This grant never authorizes branch/ref switching or
+destructive canonical Git operations.
+Shared-cache setup uses `mr apply --verify-shared --lock-sync off` to verify
+selected members without running generators or making any writes; missing or
+drifted members require preparation from the owning workspace or an owned worktree.
+The default-branch worktree is the shared consumer cache and stays refused, as does a
+branch root whose default branch cannot be resolved. Ownership is proven offline
+from Git metadata, not from the path suffix: the root must be the top of a
+worktree of the store's `.bare` whose `HEAD` is `refs/heads/<branch>` and which
+sits at exactly `refs/heads/<branch>`; subdirectories of any worktree, detached
+or mismatched worktrees stay refused. The author grant covers only paths
+that physically resolve inside that root; tag worktrees, nested
+megarepos visited by `--all`, and aliases into other store paths stay refused.
+Accepted limitation: mr cannot tell one author's feature branch from
+another's, so any non-default branch worktree used as the invoking root is
+treated as owned (Git does not protect it either).
+
+Top-level `mr apply --lock-sync off` may also prepare an invoking
+`refs/commits/<H>` worktree when Git resolves its worktree root to that exact
+physical root and its `HEAD` to exactly `<H>`. This materialization-only grant
+covers only the root and its own physical `repos/` directory, not lock/config
+writes, generators, branch advancement, or aliases into other trees. Lock sync
+must remain off. It does not grant ownership to preexisting shared nested trees,
+and neither tags nor branch paths gain permission from this commit grant.
+Enabled generators cause `PermissionDenied` before any member mount is changed,
+including when their output directories or files alias external destinations.
+
+Consumers normally prepare the dependency tree through the outer workspace's
+`mr apply --all`. A separately invoked exact-commit apply may prepare its own
+mounts under the top-level grant above; it cannot repair preexisting shared
+trees reached recursively. Package-install hooks may check that an already
+prepared member has the locked commit and fail with instructions to prepare
+it from the invoking workspace. An incomplete shared nested tree requires an
+owned workspace or explicit administrative repair, not a freshness grant.
+
+Local setup that needs nested trees names the members explicitly:
+`mr apply --worktree-mode tracking --commit-members <a,b> --lock-sync off`.
+The listed root members become commit worktrees and are applied recursively;
+everything below them is applied in commit mode, so fresh worktrees carry the
+freshness grant. Unlisted members use the exact-lock tracking selection above
+and are not recursed into. A clean canonical branch exactly at the lock remains
+the co-development mount; divergent or dirty branches are preserved while the
+member mount selects the locked commit. `--only`/`--skip` select root members only;
+the listed member's
+fresh commit subtree is always applied completely or not created at all. A
+nested commit worktree that existed before the invocation is
+accepted only if its locked tree is already mounted; an incomplete one is
+refused as above. The devenv `taskModules.megarepo` option
+`setupCommitMembers` is the intended consumer path: `mr:setup` passes the list.
+Local readiness checks the root with `mr status`, then runs `mr status --all`
+inside each listed, non-skipped member that has its own megarepo configuration,
+including on the outer setup cache-hit path. Unlisted nested trees do not affect
+local readiness because local exec does not prepare them. The option is empty
+by default, leaving `mr:setup` a tracking apply in owned workspaces or read-only
+verification in shared canonical caches (`--verify-shared --lock-sync off`).
+Even with an empty selection, root status runs on outer cache hits: a canonical
+branch can change `HEAD` or become dirty without changing its member symlink.
+
+CI setup (`CI=true`, the same predicate as `--worktree-mode auto`) never uses
+tracking worktrees: `mr:setup` selects `--worktree-mode commit`, and with a
+non-empty `setupCommitMembers` it passes `--commit-all-members`, which selects
+every root member as `--commit-members` would, because `mr status --all`
+readiness inspects every root member's nested tree. The selector is resolved
+inside `mr` from the config, so member names containing commas are not split.
+Readiness and apply then cover the same trees, and a warm rerun accepts the
+prepared commit worktrees instead of refusing them.
 
 `mr store worktree new` creates standalone worktrees only. The composed
 workspace shape — an owned worktree at `P/repos/<owned>`, read-only `cp -a`
 mounts, dist overlays, per-workspace capability projection, and a synthesized
 Buck root — is retired (principal q5, 2026-09-25).
+
+By default, `mr store worktree new` bootstraps a missing bare repository and
+fetches remote refs (including tags). For source-only branch work from objects
+already in the store, use
+`mr store worktree new owner/repo --no-fetch --ref feature/local --base <full-commit-sha>`.
+`--no-fetch` requires an existing bare repository and a full 40-character SHA
+of a commit already present locally; branch names and abbreviated SHAs are
+rejected. It never clones or fetches, including Git's implicit lazy fetching
+from promisor remotes. Missing partial-clone objects fail locally during base
+validation or checkout. Only the requested branch and standalone
+worktree registration are created; existing refs, Git configuration, and
+`FETCH_HEAD` are not refreshed. It does not write megarepo configuration, lock
+files, or composition state.
 
 ## CLI Surface
 

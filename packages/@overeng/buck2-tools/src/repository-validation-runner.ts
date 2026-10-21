@@ -317,8 +317,10 @@ const checkWorkspaceContract = ({
     return name
   })
   const expectedCargoPackages = [
+    'ai-gateway',
     'buck2-archive-tool',
     'buck2-events',
+    'buck2-fingerprint',
     'buck2-product',
     'buck2-tool-core',
     'content-address-contract',
@@ -334,6 +336,8 @@ const checkWorkspaceContract = ({
     'math-interop',
     'otel-scrape',
     'otelite',
+    'pingping',
+    'pingping-netinfo-macos',
   ]
   const cargoPackageNames: string[] = []
   for (const memberPath of cargoMemberPaths) {
@@ -412,6 +416,7 @@ const checkWorkspaceContract = ({
     'rust/buck2-tools/archive-tool',
     'rust/buck2-tools/core',
     'rust/buck2-tools/events',
+    'rust/buck2-tools/fingerprint',
     'rust/buck2-tools/product',
   ]) {
     const buck = readFileSync(path.join(sourceRoot, memberPath, 'BUCK'), 'utf8')
@@ -436,21 +441,45 @@ const checkWorkspaceContract = ({
   const nativeProducts = inventory.products.map((rawEntry, index) => {
     const entry = requireRecord(rawEntry, `native products[${index}]`)
     const name = requireString(entry.name, `native products[${index}].name`)
-    const rust = name === 'otelite' || name === 'otel-scrape'
+    const rust = name === 'otelite' || name === 'otel-scrape' || name === 'pingping'
     requireExactFields({
       value: entry,
       fields: [
+        'buildCapabilities',
         'kind',
+        'linuxBuildCapabilities',
         'name',
         'outputName',
         'sourcePaths',
         'target',
         'version',
         ...(rust === true ? ['cargoWorkspaceRoot'] : []),
+        ...('shellCompletions' in entry ? ['shellCompletions'] : []),
       ],
       subject: `native products[${index}]`,
     })
     const target = requireString(entry.target, `native products[${index}].target`)
+    const buildCapabilities = requireStrings(
+      entry.buildCapabilities,
+      `native products[${index}].buildCapabilities`,
+    )
+    requireUnique(buildCapabilities, `native products[${index}].buildCapabilities`)
+    const linuxBuildCapabilities = requireStrings(
+      entry.linuxBuildCapabilities,
+      `native products[${index}].linuxBuildCapabilities`,
+    )
+    // Pnpm-backed products materialize package trees through sandboxed TS
+    // actions; Cargo products run none. Buck analysis rejects an undeclared set.
+    const tsSandbox = rust === false
+    if (
+      (tsSandbox === true &&
+        (buildCapabilities.includes('bun') === false ||
+          buildCapabilities.includes('rust-shell') === false)) ||
+      linuxBuildCapabilities.join('\0') !== (tsSandbox === true ? 'bubblewrap' : '')
+    )
+      throw new Error(
+        `native products[${index}] must declare exactly the TS sandbox capabilities it uses`,
+      )
     const packagePath = rust === true ? name : 'genie'
     const sourcePaths = requireStrings(entry.sourcePaths, `native products[${index}].sourcePaths`)
     requireUnique(sourcePaths, `native products[${index}].sourcePaths`)
@@ -469,6 +498,8 @@ const checkWorkspaceContract = ({
       entry.outputName !== 'artifact.tar' ||
       entry.version !== '0.0.0' ||
       (rust === true && entry.cargoWorkspaceRoot !== 'rust') ||
+      ('shellCompletions' in entry &&
+        (rust === false || typeof entry.shellCompletions !== 'boolean')) ||
       target !== `effect_utils//packages/@overeng/${packagePath}:${name}-product`
     ) {
       throw new Error(`native products[${index}] does not match its Buck target`)
@@ -478,7 +509,7 @@ const checkWorkspaceContract = ({
   requireUnique(nativeProducts, 'native products')
   if (
     JSON.stringify(sorted(nativeProducts)) !==
-    JSON.stringify(['otel-scrape', 'otelite', 'typescript-api-server'])
+    JSON.stringify(['otel-scrape', 'otelite', 'pingping', 'typescript-api-server'])
   )
     throw new Error('native product target census changed')
 

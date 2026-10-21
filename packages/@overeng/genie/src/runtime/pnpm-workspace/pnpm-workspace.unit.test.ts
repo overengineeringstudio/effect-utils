@@ -4,9 +4,9 @@ import path from 'node:path'
 
 import { describe, expect, it } from 'vitest'
 
-import { packageJson, type GenieContext } from '../mod.ts'
+import { packageJson, workspaceClosureReference, type GenieContext } from '../mod.ts'
 import { defineCatalog } from '../package-json/catalog.ts'
-import type { WorkspacePackage } from '../package-json/mod.ts'
+import type { NamedWorkspacePackageLike, WorkspacePackage } from '../package-json/mod.ts'
 import {
   pnpmWorkspaceYaml,
   projectPnpmPackageClosure,
@@ -50,6 +50,305 @@ const workspace = ({
   repoName,
   memberPath,
   ...(pnpmPackageClosure !== undefined ? { pnpmPackageClosure } : {}),
+})
+
+describe('projected source peer rules', () => {
+  // Same a@0.1.0 / b -> a@^0.1.0 graph as the pnpm file-peer repro.
+  const fixture = ({ version = '0.1.0', range = '^0.1.0', includePeer = true } = {}) => {
+    const a: NamedWorkspacePackageLike = {
+      data: { name: 'a', version },
+      meta: { workspace: { repoName: 'library', memberPath: 'a', deps: [] } },
+    }
+    const b: NamedWorkspacePackageLike = {
+      data: {
+        name: 'b',
+        version: '0.1.0',
+        peerDependencies: { a: range },
+        peerDependenciesMeta: { a: { optional: true } },
+      },
+      meta: {
+        workspace: {
+          repoName: 'library',
+          memberPath: 'b',
+          deps: includePeer === true ? [a] : [],
+        },
+      },
+    }
+    return { a, b }
+  }
+
+  it('validates satisfied peers and emits identity-pinned edge rules alongside overrides', () => {
+    const { b } = fixture()
+    const projection = projectPnpmSourceInputs({ packages: [b], repoName: 'consumer' })
+    expect(projection).toEqual({
+      sourceInputPaths: ['repos/library/a', 'repos/library/b'],
+      overrides: {
+        a: 'file:.devenv/pnpm-source-inputs/current/repos/library/a',
+        b: 'file:.devenv/pnpm-source-inputs/current/repos/library/b',
+      },
+      peerDependencyRules: {
+        allowedVersions: { 'b>a': 'file:.devenv/pnpm-source-inputs/current/repos/library/a' },
+      },
+    })
+    const workspaceFile = pnpmWorkspaceYaml.root({
+      packages: [],
+      repoName: 'consumer',
+      strictPeerDependencies: true,
+      overrides: projection.overrides,
+      peerDependencyRules: projection.peerDependencyRules,
+    })
+    const yaml = workspaceFile.stringify(mockGenieContext)
+    expect(yaml).toContain('strictPeerDependencies: true')
+    expect(yaml).toContain(
+      "overrides:\n  a: 'file:.devenv/pnpm-source-inputs/current/repos/library/a'\n  b: 'file:.devenv/pnpm-source-inputs/current/repos/library/b'",
+    )
+    expect(yaml).toContain(
+      "peerDependencyRules:\n  allowedVersions:\n    b>a: 'file:.devenv/pnpm-source-inputs/current/repos/library/a'",
+    )
+    expect(yaml).not.toContain('allowAny')
+    expect(yaml).not.toContain('ignoreMissing')
+  })
+
+  it('fails closed on an unsatisfied projected peer range', () => {
+    const { b } = fixture({ range: '^0.2.0' })
+    expect(() => projectPnpmSourceInputs({ packages: [b], repoName: 'consumer' })).toThrow(
+      'b peer a ^0.2.0 vs projected 0.1.0',
+    )
+  })
+
+  it('fails closed with the peer edge when the target version is missing', () => {
+    const { a, b } = fixture()
+    delete a.data.version
+    expect(() => projectPnpmSourceInputs({ packages: [b], repoName: 'consumer' })).toThrow(
+      'b peer a ^0.1.0 vs projected (missing version)',
+    )
+  })
+
+  it('validates a required peer also present in dependencies', () => {
+    const { b } = fixture()
+    delete b.data.peerDependenciesMeta
+    b.data.dependencies = { a: 'workspace:^' }
+    expect(
+      projectPnpmSourceInputs({ packages: [b], repoName: 'consumer' }).peerDependencyRules,
+    ).toEqual({
+      allowedVersions: { 'b>a': 'file:.devenv/pnpm-source-inputs/current/repos/library/a' },
+    })
+  })
+
+  it('scopes the allowance to scoped dependent and peer names', () => {
+    const { a, b } = fixture()
+    a.data.name = '@test/a'
+    b.data.name = '@test/b'
+    b.data.peerDependencies = { '@test/a': '^0.1.0' }
+    b.data.peerDependenciesMeta = { '@test/a': { optional: true } }
+    expect(
+      projectPnpmSourceInputs({ packages: [b], repoName: 'consumer' }).peerDependencyRules,
+    ).toEqual({
+      allowedVersions: {
+        '@test/b>@test/a': 'file:.devenv/pnpm-source-inputs/current/repos/library/a',
+      },
+    })
+  })
+
+  it('emits separate sorted allowances for multiple dependents of the same peer', () => {
+    const { a, b } = fixture()
+    const c: NamedWorkspacePackageLike = {
+      data: { name: 'c', version: '0.1.0', peerDependencies: { a: '~0.1.0' } },
+      meta: { workspace: { repoName: 'library', memberPath: 'c', deps: [a] } },
+    }
+    expect(
+      projectPnpmSourceInputs({ packages: [c, b], repoName: 'consumer' }).peerDependencyRules,
+    ).toEqual({
+      allowedVersions: {
+        'b>a': 'file:.devenv/pnpm-source-inputs/current/repos/library/a',
+        'c>a': 'file:.devenv/pnpm-source-inputs/current/repos/library/a',
+      },
+    })
+  })
+
+  it.each([true, false])(
+    'prefers full manifests over closure references independent of order (reference first: %s)',
+    (referenceFirst) => {
+      const { a, b } = fixture()
+      const reference = workspaceClosureReference(b)
+      const packages = referenceFirst === true ? [reference, b, a] : [b, a, reference]
+      expect(projectPnpmSourceInputs({ packages, repoName: 'consumer' })).toEqual(
+        projectPnpmSourceInputs({ packages: [b], repoName: 'consumer' }),
+      )
+      a.data.version = '0.2.0'
+      expect(() => projectPnpmSourceInputs({ packages, repoName: 'consumer' })).toThrow(
+        'b peer a ^0.1.0 vs projected 0.2.0',
+      )
+    },
+  )
+
+  it.each([true, false])(
+    'validates reference-only dependents independent of order (reference first: %s)',
+    (referenceFirst) => {
+      const { a, b } = fixture()
+      const reference = workspaceClosureReference(b)
+      const packages = referenceFirst === true ? [reference, a] : [a, reference]
+      expect(projectPnpmSourceInputs({ packages, repoName: 'consumer' })).toEqual(
+        projectPnpmSourceInputs({ packages: [b], repoName: 'consumer' }),
+      )
+      a.data.version = '0.2.0'
+      expect(() => projectPnpmSourceInputs({ packages, repoName: 'consumer' })).toThrow(
+        'b peer a ^0.1.0 vs projected 0.2.0',
+      )
+    },
+  )
+
+  it('validates a peer mismatch reached exclusively through recursive closure references', () => {
+    const { b } = fixture({ version: '0.2.0' })
+    expect(() =>
+      projectPnpmSourceInputs({
+        packages: [workspaceClosureReference(b)],
+        repoName: 'consumer',
+      }),
+    ).toThrow('b peer a ^0.1.0 vs projected 0.2.0')
+  })
+
+  it('fails closed when a reference-only peer target genuinely has no version', () => {
+    const { a, b } = fixture()
+    delete a.data.version
+    expect(() =>
+      projectPnpmSourceInputs({
+        packages: [workspaceClosureReference(b)],
+        repoName: 'consumer',
+      }),
+    ).toThrow('b peer a ^0.1.0 vs projected (missing version)')
+  })
+
+  it('projects a complete name-only manifest with no peers without requiring a version', () => {
+    const leaf = packageJson(
+      { name: 'leaf' },
+      defineCatalog({}).compose({
+        workspace: { repoName: 'library', memberPath: 'leaf' },
+      }),
+    )
+    expect(leaf.data).toEqual({ name: 'leaf' })
+    expect(projectPnpmSourceInputs({ packages: [leaf], repoName: 'consumer' })).toEqual({
+      sourceInputPaths: ['repos/library/leaf'],
+      overrides: { leaf: 'file:.devenv/pnpm-source-inputs/current/repos/library/leaf' },
+      peerDependencyRules: { allowedVersions: {} },
+    })
+  })
+
+  it('preserves the override closure of a generator with a reference-only storybook dependency', () => {
+    // Mirrors the exported generator package's closure-only storybook edge.
+    // Neither the storybook manifest nor its leaf is separately passed to projection.
+    const catalog = defineCatalog({})
+    const leaf = packageJson(
+      { name: 'leaf' },
+      catalog.compose({ workspace: { repoName: 'library', memberPath: 'leaf' } }),
+    )
+    const storybook = packageJson(
+      { name: 'storybook', version: '0.1.0' },
+      catalog.compose({
+        workspace: { repoName: 'library', memberPath: 'storybook' },
+        dependencies: { workspace: [leaf] },
+        peerDependencies: { external: { react: '^19.0.0' } },
+      }),
+    )
+    const reference = workspaceClosureReference(storybook)
+    const generator = packageJson(
+      { name: 'generator', version: '0.1.0' },
+      catalog.compose({
+        workspace: { repoName: 'library', memberPath: 'generator' },
+        devDependencies: { workspace: [reference] },
+        peerDependencies: { workspace: [reference] },
+      }),
+    )
+    expect(reference.data).toEqual({ name: 'storybook' })
+    expect(Object.keys(reference.meta)).toEqual(['workspace'])
+    expect(JSON.stringify(reference)).not.toContain('peerDependencies')
+    expect(generator.data).toEqual({
+      name: 'generator',
+      version: '0.1.0',
+      devDependencies: { storybook: 'workspace:^' },
+    })
+    const serializedBefore = generator.stringify(mockGenieContext)
+    expect(projectPnpmSourceInputs({ packages: [generator], repoName: 'consumer' })).toEqual({
+      sourceInputPaths: [
+        'repos/library/generator',
+        'repos/library/leaf',
+        'repos/library/storybook',
+      ],
+      overrides: {
+        generator: 'file:.devenv/pnpm-source-inputs/current/repos/library/generator',
+        leaf: 'file:.devenv/pnpm-source-inputs/current/repos/library/leaf',
+        storybook: 'file:.devenv/pnpm-source-inputs/current/repos/library/storybook',
+      },
+      peerDependencyRules: { allowedVersions: {} },
+    })
+    expect(generator.stringify(mockGenieContext)).toBe(serializedBefore)
+  })
+
+  it.each([
+    '~0.1.0',
+    '0.1.0',
+    '>=0.1.0',
+    '>=0.1.0 <0.2.0',
+    '0.1.x',
+    '0.x.x',
+    '0.x',
+    '^0.2.0 || ~0.1.0',
+  ])('validates supported stable range grammar: %s', (range) => {
+    const { b } = fixture({ range })
+    expect(
+      projectPnpmSourceInputs({ packages: [b], repoName: 'consumer' }).peerDependencyRules,
+    ).toEqual({
+      allowedVersions: { 'b>a': 'file:.devenv/pnpm-source-inputs/current/repos/library/a' },
+    })
+  })
+
+  it('rechecks the peer contract when the projected version changes at the same file path', () => {
+    const { a, b } = fixture()
+    expect(
+      projectPnpmSourceInputs({ packages: [b], repoName: 'consumer' }).peerDependencyRules,
+    ).toEqual({
+      allowedVersions: { 'b>a': 'file:.devenv/pnpm-source-inputs/current/repos/library/a' },
+    })
+    a.data.version = '0.2.0'
+    expect(() => projectPnpmSourceInputs({ packages: [b], repoName: 'consumer' })).toThrow(
+      'b peer a ^0.1.0 vs projected 0.2.0',
+    )
+  })
+
+  it('emits no rule for an absent optional peer', () => {
+    const { b } = fixture({ includePeer: false })
+    expect(
+      projectPnpmSourceInputs({ packages: [b], repoName: 'consumer' }).peerDependencyRules,
+    ).toEqual({ allowedVersions: {} })
+  })
+
+  it('emits no rule for a registry peer', () => {
+    const { b } = fixture()
+    b.data.peerDependencies = { registry: '^1.0.0' }
+    expect(
+      projectPnpmSourceInputs({ packages: [b], repoName: 'consumer' }).peerDependencyRules,
+    ).toEqual({ allowedVersions: {} })
+  })
+
+  it.each([
+    { version: '0.1.0-rc.1', range: '^0.1.0' },
+    { version: '0.1.0', range: '^0.1.0-rc.1' },
+    { version: '0.1.0', range: '<=0.2.0' },
+    { version: '0.1.0', range: 'workspace:^0.1.0' },
+    { version: '0.1.0', range: 'file:../a' },
+    { version: '0.1.0', range: '0.1.0 - 0.2.0' },
+    { version: '0.1.0', range: '0.1.x.x' },
+    { version: '0.1.0', range: '^0.1.0 || 1.2.x.x' },
+    { version: '0.1.0', range: '1.2.x.x || ^0.1.0' },
+    { version: '0.1.0', range: '^0.1.0 || file:../a' },
+    { version: '0.1.0+build', range: '^0.1.0' },
+    { version: '0.1.0', range: '^0.1.0 || >=9007199254740992.0.0' },
+  ])('rejects semver syntax the shared checker cannot fully evaluate: %j', (input) => {
+    const { b } = fixture(input)
+    expect(() => projectPnpmSourceInputs({ packages: [b], repoName: 'consumer' })).toThrow(
+      `b peer a ${input.range} vs projected ${input.version}: unsupported semver version or range`,
+    )
+  })
 })
 
 describe('metadata-based workspace projections', () => {
@@ -175,6 +474,7 @@ describe('metadata-based workspace projections', () => {
       overrides: {
         '@foreign/shared': `file:.devenv/pnpm-source-inputs/current/repos/${foreignRepo.repoName}/packages/shared`,
       },
+      peerDependencyRules: { allowedVersions: {} },
     })
   })
 
@@ -439,5 +739,40 @@ describe('root patch coverage validation', () => {
       cwd: repo.repoRoot,
     })
     expect(issues).toEqual([])
+  })
+})
+
+describe('catalog archive peer validation', () => {
+  it.each([
+    ['0.1.0', 0],
+    ['0.2.0', 1],
+  ])('validates archive metadata %s through workspace output', async (version, errors) => {
+    const archive = 'https://example.com/releases/core.tgz'
+    const workspaceFile = pnpmWorkspaceYaml.root({
+      packages: [],
+      repoName: 'example',
+      catalogVersions: { adapter: '1.0.0', core: archive },
+    })
+    const issues = await workspaceFile.validate?.({
+      ...mockGenieContext,
+      io: {
+        fileExists: () => false,
+        readText: (filePath) =>
+          filePath.endsWith('/pnpm-lock.yaml') === true
+            ? [
+                "lockfileVersion: '9.0'",
+                'packages:',
+                "  'adapter@1.0.0':",
+                '    peerDependencies:',
+                '      core: ^0.1.0',
+                `  'core@${archive}':`,
+                `    version: ${version}`,
+              ].join('\n')
+            : undefined,
+      },
+    })
+    expect(issues?.filter((issue) => issue.rule === 'catalog-peer-dep-conflict')).toHaveLength(
+      errors,
+    )
   })
 })

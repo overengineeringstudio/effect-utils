@@ -1,4 +1,6 @@
 #!/usr/bin/env -S bun
+import { dlopen } from 'bun:ffi'
+import { spawnSync } from 'node:child_process'
 import { createHash, randomUUID } from 'node:crypto'
 import {
   appendFileSync,
@@ -9,6 +11,7 @@ import {
   renameSync,
   rmSync,
   writeFileSync,
+  writeSync,
 } from 'node:fs'
 import { homedir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
@@ -18,11 +21,9 @@ import type { CacheAdmissionInvocation } from '../genie/ci-scripts/buck2-cache-e
 import {
   buckConfigValues,
   canonicalCacheAdmissionInvocationId,
-  probeArchiveOrigin,
   probeRemoteCacheCapabilities,
   reconcileStandaloneCachePosture,
   standaloneCachePostureConfig,
-  trustedArchiveOriginFromConfig,
   withoutManagedBlock,
 } from './buck2-cache-posture.ts'
 import {
@@ -166,10 +167,12 @@ const warning = ({
   readonly env: Readonly<Record<string, string | undefined>>
 }): void => {
   failedOpen = true
-  process.stderr.write(`warning: Buck2 ${message}\n`)
-  if (env['GITHUB_ACTIONS'] === 'true')
-    process.stderr.write(`::warning title=Buck2 cache::${message}\n`)
+  writeSync(2, `warning: Buck2 ${message}\n`)
+  if (env['GITHUB_ACTIONS'] === 'true') writeSync(2, `::warning title=Buck2 cache::${message}\n`)
 }
+
+/** Admission probe whose deadline a test can control through `probeDeadlineSignal`. */
+export type AdmissionProbeEndpoint = 'watchman' | 'reapi'
 
 /** Admit the initial file watcher and cache posture before pinned native startup. */
 export const directBuckArguments = async ({
@@ -182,12 +185,15 @@ export const directBuckArguments = async ({
     'buck2-posture-v2',
   ),
   deadlineMs = 2500,
+  probeDeadlineSignal,
 }: {
   readonly args: readonly string[]
   readonly cwd: string
   readonly env: Readonly<Record<string, string | undefined>>
   readonly cacheDirectory?: string
   readonly deadlineMs?: number
+  /** Supply a fresh caller-controlled deadline for each probe; undefined uses the platform timer. */
+  readonly probeDeadlineSignal?: (endpoint: AdmissionProbeEndpoint) => AbortSignal | undefined
 }): Promise<string[]> => {
   admissionExpires = Date.now() + 5000
   failedOpen = false
@@ -204,6 +210,14 @@ export const directBuckArguments = async ({
   const explicitWatcher = buckConfigValues(localWithoutWatcher)['buck2.file_watcher']
   const selectedWatcher = explicitWatcher ?? trackedValues['buck2.file_watcher']
   if (selectedWatcher === 'watchman') {
+    const watchmanProbe = () =>
+      probeWatchman({
+        env,
+        repoRoot: root,
+        deadlineMs,
+        makeDeadlineSignal:
+          probeDeadlineSignal === undefined ? undefined : () => probeDeadlineSignal('watchman'),
+      })
     const available = await cachedProbe({
       cacheDirectory,
       root: realpathSync(root),
@@ -223,10 +237,10 @@ export const directBuckArguments = async ({
         env['LOGNAME'],
         env['WATCHMAN_CONFIG_FILE'],
       ]),
-      probe: () => probeWatchman({ env, repoRoot: root, deadlineMs }),
+      probe: watchmanProbe,
     })
     // Never admit a negative cached outcome, including entries written by an older launcher.
-    if (available === false) await probeWatchman({ env, repoRoot: root, deadlineMs })
+    if (available === false) await watchmanProbe()
     reconcileFileWatcher({
       repoRoot: root,
       provider: explicitWatcher === undefined ? 'watchman' : undefined,
@@ -241,7 +255,6 @@ export const directBuckArguments = async ({
   const base = buckConfigValues(`${tracked}\n${local}`)
   // Unrelated Buck projects do not opt into effect-utils' cache policy.
   if (
-    trackedValues['archive_origin.trusted_url_prefix'] === undefined &&
     base['buck2_re_client.action_cache_address'] === undefined &&
     base['buck2.remote_cache_enabled'] !== 'true'
   )
@@ -271,20 +284,13 @@ export const directBuckArguments = async ({
           if (key.startsWith('buck2_re_client.') === false) cliValues[key] = configValue
     }
   }
-  // Fixed-source builds use Buck's native no-cache flag. Resolve cache selection
-  // before parsing archive trust metadata that cache-less sandboxes never use.
+  // Fixed-source builds use Buck's native no-cache flag.
   const cacheDisabled =
     env['BUCK2_NO_REMOTE_CACHE'] === '1' ||
     configArgs.includes('--no-remote-cache') === true ||
     (cliValues['buck2.remote_cache_enabled'] ?? base['buck2.remote_cache_enabled']) === 'false'
   const postureEnv = cacheDisabled === true ? { ...env, BUCK2_NO_REMOTE_CACHE: '1' } : env
-  const trustedOrigin =
-    cacheDisabled === true ||
-    env['BUCK2_PUBLIC_CACHE_READ_ONLY'] === '1' ||
-    trackedValues['archive_origin.trusted_url_prefix'] === undefined
-      ? undefined
-      : trustedArchiveOriginFromConfig(tracked)
-  const posture = standaloneCachePostureConfig({ current: '', env: postureEnv, trustedOrigin })
+  const posture = standaloneCachePostureConfig({ current: '', env: postureEnv })
   // Native RE client construction ignores CLI config. Writer headers/endpoints must
   // be in the root overlay before daemon startup, including removal on public reads.
   if (
@@ -301,7 +307,6 @@ export const directBuckArguments = async ({
       standaloneCachePostureConfig({
         current: '',
         env: postureEnv,
-        trustedOrigin,
       }),
     )
     Object.assign(values, disabled)
@@ -312,19 +317,17 @@ export const directBuckArguments = async ({
     (_, key: string) => env[key] ?? '',
   )
   const remote = (values['buck2.remote_cache_enabled'] ?? 'true') === 'true'
-  const prefix = values['archive_origin.url_prefix'] ?? ''
   const admission: CacheAdmissionInvocation = {
     invocationId: canonicalCacheAdmissionInvocationId(env['BUCK_WRAPPER_UUID'] ?? randomUUID()),
     admissionFallbacks: { reapi: 0, archiveOrigin: 0 },
     admissionRetrySuccesses: { reapi: 0, archiveOrigin: 0 },
   }
-  // Two sequential, independently bounded attempts: at most 5000 ms per endpoint.
-  // The endpoints run concurrently; no backoff extends the admission budget.
+  // Two sequential, independently bounded attempts: at most 5000 ms.
   const retryProbe = async ({
     endpoint,
     probe,
   }: {
-    readonly endpoint: 'reapi' | 'archiveOrigin'
+    readonly endpoint: 'reapi'
     readonly probe: () => Promise<boolean>
   }): Promise<boolean> => {
     if ((await probe()) === true) return true
@@ -332,10 +335,10 @@ export const directBuckArguments = async ({
     if (available === true) admission.admissionRetrySuccesses[endpoint] = 1
     return available
   }
-  const [remoteAvailable, archiveAvailable] = await Promise.all([
+  const remoteAvailable =
     remote === false
       ? true
-      : cachedProbe({
+      : await cachedProbe({
           cacheDirectory,
           key: JSON.stringify([
             'reapi',
@@ -355,31 +358,21 @@ export const directBuckArguments = async ({
                   header: values['buck2_re_client.http_headers'],
                   env,
                   deadlineMs,
+                  deadlineSignal: probeDeadlineSignal?.('reapi'),
                   onFailure: ({ errorClass, phase, elapsedMs, deadlineMs: probeDeadlineMs }) =>
-                    process.stderr.write(
+                    writeSync(
+                      2,
                       `warning: Buck2 REAPI probe failed: class=${errorClass} phase=${phase} elapsed_ms=${elapsedMs} deadline_ms=${probeDeadlineMs}\n`,
                     ),
                   onConnectionEvent: ({ event, elapsedMs, address, family }) =>
-                    process.stderr.write(
+                    writeSync(
+                      2,
                       `Buck2 REAPI probe: event=${event} elapsed_ms=${elapsedMs} address=${address ?? 'unavailable'} family=${family ?? 'unavailable'}\n`,
                     ),
                 }),
             }),
-        }),
-    prefix === ''
-      ? true
-      : cachedProbe({
-          cacheDirectory,
-          key: JSON.stringify(['archive', prefix]),
-          probe: () =>
-            retryProbe({
-              endpoint: 'archiveOrigin',
-              probe: () => probeArchiveOrigin({ urlPrefix: prefix, deadlineMs }),
-            }),
-        }),
-  ])
+        })
   admission.admissionFallbacks.reapi = remoteAvailable === false ? 1 : 0
-  admission.admissionFallbacks.archiveOrigin = archiveAvailable === false ? 1 : 0
   const evidencePath = env['CI_BUCK2_CACHE_EVIDENCE_PATH']
   if (evidencePath !== undefined && evidencePath !== '') {
     try {
@@ -388,7 +381,7 @@ export const directBuckArguments = async ({
         mode: 0o600,
       })
     } catch {
-      process.stderr.write('warning: Buck2 admission evidence could not be persisted\n')
+      writeSync(2, 'warning: Buck2 admission evidence could not be persisted\n')
     }
   }
   if (remoteAvailable === false) {
@@ -405,26 +398,343 @@ export const directBuckArguments = async ({
       'buck2.allow_cache_uploads': 'false',
     })
   }
-  if (archiveAvailable === false) {
-    warning({
-      message: 'archive origin is unreachable; fetching archives from the registry',
-      env,
-    })
-    Object.assign(overrides, { 'archive_origin.url_prefix': '', 'archive_origin.tier': 'public' })
-  }
   const extra = Object.entries(overrides).flatMap(([key, value]) => ['--config', `${key}=${value}`])
   const before = sentinel === -1 ? [...args] : args.slice(0, sentinel)
   const admitted =
-    remoteAvailable === false || archiveAvailable === false
-      ? before.filter((arg) => arg !== '--reuse-current-config')
-      : before
+    remoteAvailable === false ? before.filter((arg) => arg !== '--reuse-current-config') : before
   return [...admitted, ...extra, ...(sentinel === -1 ? [] : args.slice(sentinel))]
 }
 
+/** Unknown status never grants permission to interrupt a shared daemon. */
+export const gateDaemonStopDecision = ({
+  status,
+  root,
+  isolation,
+}: {
+  readonly status: unknown
+  readonly root: string
+  readonly isolation: string
+}): 'stop' | 'keep-active' | 'keep-unrecognized' => {
+  if (
+    typeof status !== 'object' ||
+    status === null ||
+    'project_root' in status === false ||
+    status.project_root !== root ||
+    'isolation_dir' in status === false ||
+    status.isolation_dir !== isolation ||
+    'active_commands' in status === false ||
+    Array.isArray(status.active_commands) === false
+  )
+    return 'keep-unrecognized'
+  return status.active_commands.length === 0 ? 'stop' : 'keep-active'
+}
+
+/** Compare gate ownership, not action/resource-control child cgroups. */
+export const gateScopeIdentity = (membership: string): string | undefined => {
+  const path = membership
+    .split('\n')
+    .find((line) => line.startsWith('0::'))
+    ?.slice(3)
+  if (path?.startsWith('/') !== true) return undefined
+  const components = path.split('/')
+  const scope = components.findLastIndex(
+    (component) => component.startsWith('gate-slot-') && component.endsWith('.scope'),
+  )
+  return scope === -1 ? undefined : components.slice(0, scope + 1).join('/')
+}
+
+/** Retain unknown ownership; compare determinable unified gate scope owners. */
+export const gateCgroupRelation = ({
+  caller,
+  daemon,
+}: {
+  readonly caller: string
+  readonly daemon: string
+}): 'same' | 'foreign' | 'unknown' => {
+  const callerScope = gateScopeIdentity(caller)
+  if (
+    callerScope === undefined ||
+    daemon.split('\n').some((line) => line.startsWith('0::/')) === false
+  )
+    return 'unknown'
+  // A valid unified path outside any gate scope is determinably foreign.
+  return gateScopeIdentity(daemon) === callerScope ? 'same' : 'foreign'
+}
+
+/**
+ * Pin be6971d4 expands argfiles before clap (buck2_client_ctx/src/argfiles.rs).
+ * Lines are arguments, not shell words; nested paths remain relative to the
+ * invocation cwd. Config only participates in cell-path/fallback resolution,
+ * not the isolation default (buck2/src/lib.rs: BeforeSubcommandOptions).
+ *
+ * Do not execute Python argfiles or consume stdin a second time, and do not
+ * approximate Buck's config-backed cell resolver. Those forms retain daemons.
+ *
+ * RunCommand alone uses trailing_var_arg: a positional executable argument can
+ * start its payload before `--`. Accept only `run TARGET [-- ...]`, with Buck
+ * options before `run`; retain ambiguous run forms rather than model clap.
+ * Test, install and bxl use raw payload arguments separated by `--`.
+ */
+export const resolveGateInvocation = ({
+  args,
+  env,
+  cwd,
+  readArgfile = (path) => {
+    const canonical = realpathSync(path)
+    return {
+      path: canonical,
+      contents: new TextDecoder('utf-8', { fatal: true }).decode(readFileSync(canonical)),
+    }
+  },
+}: {
+  readonly args: readonly string[]
+  readonly env: Readonly<Record<string, string | undefined>>
+  readonly cwd: string
+  readonly readArgfile?: (path: string) => { readonly path: string; readonly contents: string }
+}): { readonly isolation: string; readonly args: readonly string[] } | undefined => {
+  const expanded: string[] = []
+  const active = new Set<string>()
+  const expand = ({
+    input,
+    depth,
+  }: {
+    readonly input: readonly string[]
+    readonly depth: number
+  }): boolean => {
+    if (depth > 64) return false
+    for (let index = 0; index < input.length; index++) {
+      const arg = input[index] ?? ''
+      if (arg.includes('\0') === true) return false
+      if (arg === '--') {
+        expanded.push(...input.slice(index))
+        break
+      }
+      if (arg.startsWith('--#') === true) continue
+      if (arg.startsWith('--flagfile=') === true) return false
+      if (arg !== '--flagfile' && arg.startsWith('@') === false) {
+        expanded.push(arg)
+        continue
+      }
+      const requested = arg === '--flagfile' ? input[++index] : arg.slice(1)
+      if (
+        requested === undefined ||
+        requested === '' ||
+        requested === '-' ||
+        requested.includes('//') === true ||
+        requested.includes('#') === true ||
+        (requested.startsWith('/') === true && resolve(requested) !== requested)
+      )
+        return false
+      // Missing cwd-relative files may use Buck's config-backed cell fallback.
+      // A failed read therefore cannot be interpreted as an empty argfile.
+      const file = readArgfile(resolve(cwd, requested))
+      if (file.path.endsWith('.py') === true || active.has(file.path) === true) return false
+      active.add(file.path)
+      const lines = file.contents.split('\n').map((line) => line.replace(/\r$/u, ''))
+      if (
+        expand({
+          input: lines.filter((line) => line !== ''),
+          depth: depth + 1,
+        }) === false
+      )
+        return false
+      active.delete(file.path)
+    }
+    return true
+  }
+  try {
+    if (expand({ input: args, depth: 0 }) === false) return undefined
+  } catch {
+    return undefined
+  }
+  const sentinel = expanded.indexOf('--')
+  const buckArgs = sentinel === -1 ? expanded : expanded.slice(0, sentinel)
+  const runIndex = buckArgs.indexOf('run')
+  if (
+    runIndex !== -1 &&
+    (buckArgs.length !== runIndex + 2 || buckArgs[runIndex + 1]?.startsWith('-') !== false)
+  )
+    return undefined
+  let isolation = env['BUCK_ISOLATION_DIR'] ?? 'v2'
+  let explicit = false
+  for (let index = 0; index < buckArgs.length; index++) {
+    const arg = buckArgs[index] ?? ''
+    if (arg === '--isolation-dir' || arg.startsWith('--isolation-dir=') === true) {
+      // clap's scalar Set option rejects duplicate occurrences. Never guess
+      // which one would win, including occurrences introduced by nested files.
+      if (explicit === true) return undefined
+      explicit = true
+      isolation = arg === '--isolation-dir' ? (buckArgs[++index] ?? '') : arg.slice(16)
+    } else if (arg.includes('--isolation') === true) return undefined
+  }
+  // Conservative subset of native FileNameBuf validation, including its
+  // reserved output prefix. Unsupported names are retained, never normalized.
+  return /^[A-Za-z0-9._-]+$/u.test(isolation) === true &&
+    isolation !== '.' &&
+    isolation !== '..' &&
+    isolation.startsWith('._buck2') === false
+    ? { isolation, args: buckArgs }
+    : undefined
+}
+
+/** Native status is ExistingOnly: admission and cleanup never spawn a daemon. */
+export const reconcileGateDaemon = ({
+  native,
+  root,
+  args,
+  env,
+  phase,
+}: {
+  readonly native: string
+  readonly root: string
+  readonly args: readonly string[]
+  readonly env: Readonly<Record<string, string | undefined>>
+  readonly phase: 'start' | 'exit'
+}): void => {
+  const invocation = resolveGateInvocation({ args, env, cwd: process.cwd() })
+  if (invocation === undefined) {
+    if (phase === 'start')
+      writeSync(
+        2,
+        'warning: Buck2 gate retained daemon: native isolation could not be determined safely\n',
+      )
+    return
+  }
+  if (skipsWatcherAdmission(invocation.args) === true) return
+  const { isolation } = invocation
+  const globalArgs = ['--isolation-dir', isolation]
+  const options = { cwd: root, env, encoding: 'utf8' as const, timeout: 30000 }
+  const warn = (reason: string): void => {
+    writeSync(2, `warning: Buck2 gate ${phase} retained ${isolation}: ${reason}\n`)
+  }
+  const result = spawnSync(native, [...globalArgs, 'status'], options)
+  if (result.error !== undefined || result.status !== 0) {
+    warn('native status unavailable')
+    return
+  }
+  if (result.stdout.trim() === '') return
+  let status: unknown
+  try {
+    status = JSON.parse(result.stdout)
+  } catch {
+    warn('native status is not JSON')
+    return
+  }
+  const decision = gateDaemonStopDecision({ status, root: realpathSync(root), isolation })
+  if (decision === 'keep-unrecognized') {
+    warn('unrecognized daemon status')
+    return
+  }
+  if (phase === 'start') {
+    if (process.platform !== 'linux') return
+    if (
+      typeof status !== 'object' ||
+      status === null ||
+      'process_info' in status === false ||
+      typeof status.process_info !== 'object' ||
+      status.process_info === null ||
+      'pid' in status.process_info === false ||
+      typeof status.process_info.pid !== 'number' ||
+      Number.isSafeInteger(status.process_info.pid) === false ||
+      status.process_info.pid <= 0
+    ) {
+      warn('unrecognized daemon PID')
+      return
+    }
+    let foreign: string
+    try {
+      foreign = readFileSync(`/proc/${status.process_info.pid}/cgroup`, 'utf8').trim()
+      const caller = readFileSync('/proc/self/cgroup', 'utf8').trim()
+      const relation = gateCgroupRelation({ caller, daemon: foreign })
+      if (relation === 'same') return
+      if (relation === 'unknown') {
+        warn('gate scope ownership unavailable; daemon retained without migration')
+        return
+      }
+    } catch (error) {
+      // A daemon that exited between status and procfs needs no migration.
+      if (error instanceof Error && 'code' in error && error.code === 'ENOENT') return
+      warn('daemon cgroup unavailable')
+      return
+    }
+    if (decision === 'keep-active') {
+      writeSync(
+        2,
+        `warning: Buck2 gate accounting: reusing active daemon in foreign cgroup ${foreign.replaceAll('\n', '; ')}\n`,
+      )
+      return
+    }
+  } else if (decision === 'keep-active') return
+  // Buck has no conditional kill RPC. A client arriving after this idle status
+  // read can still race the kill; never kill a daemon already observed as busy.
+  const stopped = spawnSync(native, [...globalArgs, 'kill'], options)
+  if (stopped.error !== undefined || stopped.status !== 0) {
+    if (phase === 'start') throw new Error('Buck2 gate admission: foreign idle daemon stop failed')
+    warn('native kill failed')
+  }
+}
+
+const warnStdio = (message: string): void => {
+  try {
+    writeSync(2, message)
+  } catch {
+    // Optional protection must still exec with closed or unwritable stderr.
+  }
+}
+
+// Replaced by Nix; source execution receives the same library from devenv.
+declare const BUCK2_STDIO_LIBRARY: string
 if (import.meta.main === true) {
   try {
+    let restoreStdio: (() => void) | undefined
+    try {
+      const symbols = {
+        eu_getfl: { args: ['i32'], returns: 'i32' },
+        eu_setfl: { args: ['i32', 'i32'], returns: 'i32' },
+      } as const
+      const library =
+        typeof BUCK2_STDIO_LIBRARY === 'string'
+          ? BUCK2_STDIO_LIBRARY
+          : process.env['BUCK2_STDIO_LIBRARY']
+      if (library === undefined || library === '')
+        throw new Error('BUCK2_STDIO_LIBRARY does not name the built stdio protection library')
+      const stdio = dlopen(library, symbols)
+      // Darwin exposes kernel-only FWASWRITTEN after writing a descriptor.
+      // F_SETFL cannot undo this bookkeeping; it is not a file status option.
+      const statusMask = process.platform === 'darwin' ? ~0x10000 : -1
+      const flags = [0, 1, 2].map((fd) => stdio.symbols.eu_getfl(fd))
+      restoreStdio = () => {
+        try {
+          for (const [fd, value] of flags.entries()) {
+            // Closed inherited descriptors have no status flags.
+            if (
+              value >= 0 &&
+              (stdio.symbols.eu_setfl(fd, value) !== 0 ||
+                (stdio.symbols.eu_getfl(fd) & statusMask) !== (value & statusMask))
+            )
+              throw new Error(`could not restore inherited fd ${fd} status flags`)
+          }
+        } finally {
+          stdio.close()
+        }
+      }
+    } catch (error) {
+      warnStdio(`warning: Buck2 stdio flag protection unavailable: ${String(error)}\n`)
+    }
     const native = process.argv[2]
     if (native === undefined) throw new Error('expected pinned Buck binary')
+    if (process.argv[3] === '--gate-cleanup' || process.argv[3] === '--gate-admit') {
+      const root = findRoot(process.cwd())
+      if (root !== undefined)
+        reconcileGateDaemon({
+          native,
+          root,
+          args: process.argv.slice(4),
+          env: process.env,
+          phase: process.argv[3] === '--gate-admit' ? 'start' : 'exit',
+        })
+      process.exit(0)
+    }
     const auth = process.env['BUCK2_PRIVATE_CACHE_WRITE_AUTH']
     if (
       auth !== undefined &&
@@ -486,9 +796,16 @@ if (import.meta.main === true) {
     }
     if (process.execve === undefined)
       throw new Error('pinned Buck launcher requires a runtime with process.execve')
+    // Synchronous diagnostics are the primary fix. Native flag restoration is
+    // defence in depth and must not prevent Buck from running.
+    try {
+      restoreStdio?.()
+    } catch (error) {
+      warnStdio(`warning: Buck2 stdio flag restoration failed: ${String(error)}\n`)
+    }
     process.execve(native, [native, ...args], process.env)
   } catch (error) {
-    process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`)
+    writeSync(2, `${error instanceof Error ? error.message : String(error)}\n`)
     process.exitCode = 1
   }
 }

@@ -19,7 +19,7 @@ Vitest.describe.skipIf(SKIP_FIXTURE_INTEGRATION)(
     afterAll(teardownIntegrationFixtures, 60_000)
 
     Vitest.describe('retrieveAllNested', () => {
-      Vitest.it.effect(
+      Vitest.it.live(
         'fetches all nested blocks as flat stream with depth info',
         () =>
           Effect.gen(function* () {
@@ -47,7 +47,7 @@ Vitest.describe.skipIf(SKIP_FIXTURE_INTEGRATION)(
         { timeout: 60000 },
       )
 
-      Vitest.it.effect(
+      Vitest.it.live(
         'respects maxDepth option',
         () =>
           Effect.gen(function* () {
@@ -66,7 +66,7 @@ Vitest.describe.skipIf(SKIP_FIXTURE_INTEGRATION)(
         { timeout: 30000 },
       )
 
-      Vitest.it.effect(
+      Vitest.it.live(
         'includes parentId for nested blocks',
         () =>
           Effect.gen(function* () {
@@ -94,7 +94,7 @@ Vitest.describe.skipIf(SKIP_FIXTURE_INTEGRATION)(
     })
 
     Vitest.describe('retrieveAsTree', () => {
-      Vitest.it.effect(
+      Vitest.it.live(
         'fetches all nested blocks as tree structure',
         () =>
           Effect.gen(function* () {
@@ -115,7 +115,7 @@ Vitest.describe.skipIf(SKIP_FIXTURE_INTEGRATION)(
         { timeout: 60000 },
       )
 
-      Vitest.it.effect(
+      Vitest.it.live(
         'respects maxDepth for tree',
         () =>
           Effect.gen(function* () {
@@ -132,7 +132,7 @@ Vitest.describe.skipIf(SKIP_FIXTURE_INTEGRATION)(
         { timeout: 30000 },
       )
 
-      Vitest.it.effect(
+      Vitest.it.live(
         'includes nested children in tree nodes',
         () =>
           Effect.gen(function* () {
