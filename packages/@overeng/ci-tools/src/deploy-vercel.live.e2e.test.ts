@@ -1,9 +1,11 @@
 import { spawn } from 'node:child_process'
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 
 import { describe, expect, it } from 'vitest'
+
+import { formatLiveDeployFailure, type LiveDeployProcessResult } from './deploy-live-diagnostics.ts'
 
 const repoRoot = resolve(import.meta.dirname, '../../../..')
 const cliPath = join(repoRoot, 'packages/@overeng/ci-tools/bin/ci-tools.ts')
@@ -111,6 +113,7 @@ describe('ci-tools deploy vercel live E2E', () => {
         .slice(0, 24)
       const target = `ci-tools-e2e-${suffix}`
       const marker = `ci-tools-live-vercel-e2e:${runId}:${process.env.GITHUB_RUN_ATTEMPT ?? '0'}`
+      let failureResult: LiveDeployProcessResult | undefined
 
       try {
         mkdirSync(artifactDir, { recursive: true })
@@ -126,6 +129,7 @@ describe('ci-tools deploy vercel live E2E', () => {
           target,
           marker,
         })
+        failureResult = result
         const token = process.env.VERCEL_TOKEN
         const bypassSecret = process.env.VERCEL_AUTOMATION_BYPASS_SECRET
         expect(
@@ -147,6 +151,26 @@ describe('ci-tools deploy vercel live E2E', () => {
           alias: target,
         })
         expect(['succeeded', 'failed']).toContain(record.data?.cleanup)
+      } catch (cause) {
+        if (failureResult !== undefined) {
+          console.error(
+            formatLiveDeployFailure({
+              ...failureResult,
+              report: existsSync(reportFile) === true ? readFileSync(reportFile, 'utf8') : undefined,
+              secretValues: [
+                process.env.VERCEL_TOKEN,
+                process.env.VERCEL_AUTOMATION_BYPASS_SECRET,
+                process.env.VERCEL_PROJECT_ID,
+                process.env.VERCEL_ORG_ID,
+                process.env.VERCEL_TEAM_ID,
+                process.env.VERCEL_SCOPE,
+                process.env.GITHUB_TOKEN,
+                process.env.GH_TOKEN,
+              ].filter((value): value is string => value !== undefined),
+            }),
+          )
+        }
+        throw cause
       } finally {
         rmSync(workspace, { recursive: true, force: true })
       }
