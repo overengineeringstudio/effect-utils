@@ -254,6 +254,11 @@ program.pipe(Effect.provide(backingLayer), Effect.provide(NodeContext.layer), Ef
 - TTL-based expiration handles crashed processes with automatic cleanup
 - File system watching provides push-based notifications when permits are released
 
+The native watcher membership test waits for an observed readiness-probe event
+before creating its assertion files. Starting a watch stream or yielding its
+fiber is not a registration barrier: the platform first performs an asynchronous
+stat. Each assertion file is written once after readiness, without retries.
+
 #### Force Revoke / Lock Stealing
 
 The file-system backing provides additional functions for forcibly revoking locks, useful for recovering from dead processes or administrative intervention:
