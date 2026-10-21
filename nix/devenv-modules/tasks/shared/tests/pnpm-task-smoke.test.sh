@@ -199,6 +199,23 @@ extract_shared_task_script() {
   chmod +x "$output_path"
 }
 
+extract_lockfile_check_script() {
+  nix eval --impure --raw --expr "
+    let
+      flake = builtins.getFlake \"$NIX_FLAKE_REF\";
+      pkgs = import flake.inputs.nixpkgs { system = builtins.currentSystem; };
+      module = (import $ROOT/nix/devenv-modules/tasks/shared/lint-oxc.nix {
+        geniePatterns = [ ];
+        genieCoverageDirs = [ ];
+      }) {
+        pkgs = pkgs // { writeText = name: text: builtins.toFile name text; };
+        lib = pkgs.lib;
+        config.devenv.root = \"$workspace\";
+      };
+    in module.tasks.\"lint:check:lockfile\".exec
+  " > "$1"
+}
+
 rewrite_unrealized_tool_paths() {
   local script_path="$1"
 
@@ -294,6 +311,10 @@ if [ "${1:-}" = "install" ]; then
   printf 'PNPM_STORE_DIR=%s\n' "${PNPM_STORE_DIR:-}" >> "${TEST_PNPM_LOG:?}"
   printf 'PNPM_CONFIG_STORE_DIR=%s\n' "${PNPM_CONFIG_STORE_DIR:-}" >> "${TEST_PNPM_LOG:?}"
   printf 'npm_config_store_dir=%s\n' "${npm_config_store_dir:-}" >> "${TEST_PNPM_LOG:?}"
+  printf 'PNPM_PACKAGE_IMPORT_METHOD=%s\n' "${PNPM_PACKAGE_IMPORT_METHOD:-}" >> "${TEST_PNPM_LOG:?}"
+  if [ "${TEST_PNPM_CAPTURE_STORAGE:-0}" = 1 ]; then
+    exit 77
+  fi
   if [ "${TEST_PNPM_FAIL_NETWORK:-0}" = "1" ]; then
     echo "ERR_PNPM_META_FETCH_FAIL GET https://registry.npmjs.org/demo: request to https://registry.npmjs.org/demo failed, reason: Socket timeout" >&2
     exit 42
@@ -481,6 +502,8 @@ rewrite_unrealized_tool_paths "$tmpdir/pnpm-install-impure-ignore-dep-scripts.ex
 rewrite_unrealized_tool_paths "$tmpdir/pnpm-install-impure-gvs.exec.sh"
 rewrite_unrealized_tool_paths "$tmpdir/test-demo.exec.sh"
 rewrite_unrealized_tool_paths "$tmpdir/storybook-demo.exec.sh"
+extract_lockfile_check_script "$tmpdir/lockfile-check.exec.sh"
+rewrite_unrealized_tool_paths "$tmpdir/lockfile-check.exec.sh"
 
 export PATH="$tmpdir/bin:$PATH"
 export TEST_PNPM_LOG="$tmpdir/pnpm.log"
@@ -493,6 +516,54 @@ unset PNPM_STORE_DIR
 unset PNPM_CONFIG_STORE_DIR
 unset npm_config_store_dir
 
+
+echo "Test: lockfile verification and install independently select the same store"
+for scenario in dev-host github-actions job-local shared-override; do
+  (
+    cd "$workspace"
+    export HOME="$tmpdir/storage-home"
+    export PNPM_HOME="$tmpdir/storage-pnpm-home"
+    export TEST_PNPM_CAPTURE_STORAGE=1 PNPM_MIN_FREE_KIB=0
+    unset GITHUB_ACTIONS PNPM_JOB_LOCAL_STORE PNPM_SHARED_STORE_DIR
+    expected_store="$HOME/.local/share/pnpm/store-shared-v1"
+    case "$scenario" in
+      github-actions)
+        export GITHUB_ACTIONS=true
+        expected_store="$workspace/.devenv/pnpm-store-pure-v1"
+        ;;
+      job-local)
+        export PNPM_JOB_LOCAL_STORE=1
+        expected_store="$workspace/.devenv/pnpm-store-pure-v1"
+        ;;
+      shared-override)
+        export PNPM_SHARED_STORE_DIR="$tmpdir/custom-shared-store"
+        expected_store="$PNPM_SHARED_STORE_DIR"
+        ;;
+    esac
+    for task in pnpm-install lockfile-check; do
+      # Each task is a fresh process, not a child of the install task's exports.
+      export PNPM_STORE_DIR="$tmpdir/stale-override"
+      export PNPM_CONFIG_STORE_DIR="$tmpdir/stale-override"
+      export npm_config_store_dir="$tmpdir/stale-override"
+      export TEST_PNPM_LOG="$tmpdir/$scenario-$task.log"
+      export TEST_FLOCK_LOG="$tmpdir/$scenario-$task.flock.log"
+      set +e
+      bash "$tmpdir/$task.exec.sh"
+      status=$?
+      set -e
+      assert_exit_code 77 "$status" "$scenario/$task reaches pnpm"
+      for key in PNPM_STORE_DIR PNPM_CONFIG_STORE_DIR npm_config_store_dir; do
+        grep -Fxq "$key=$expected_store" "$TEST_PNPM_LOG"
+      done
+      grep -Fxq 'PNPM_PACKAGE_IMPORT_METHOD=auto' "$TEST_PNPM_LOG"
+      grep -Fxq 'flock --shared -w 600 202' "$TEST_FLOCK_LOG"
+    done
+    grep -qF -- "--config.store-dir=$expected_store" "$TEST_PNPM_LOG"
+    grep -qF -- '--config.package-import-method=auto' "$TEST_PNPM_LOG"
+    grep -qF -- '--lockfile-only --frozen-lockfile' "$TEST_PNPM_LOG"
+    echo "  ok: $scenario shares store, import policy, and admission lease"
+  )
+done
 echo "Test -1: lockfile-only mode removes every dependency materialization task"
 assert_json_field \
   "pnpm:dedupe,pnpm:reset-lock-files,pnpm:update" \
