@@ -70,12 +70,22 @@
   # absolute path under passthrough (see cli-guard.nix).
   oxlintPkg ? null,
 }:
-{ lib, pkgs, config, ... }:
+{
+  lib,
+  pkgs,
+  config,
+  ...
+}:
 let
   trace = import ../lib/trace.nix { inherit lib; };
   cliGuard = import ../lib/cli-guard.nix { inherit pkgs; };
   pnpmStorage = import ../lib/pnpm-storage.nix {
-    inherit lib pkgs config globalVirtualStore;
+    inherit
+      lib
+      pkgs
+      config
+      globalVirtualStore
+      ;
   };
   megarepoStoreEnv = builtins.getEnv "MEGAREPO_STORE";
   genieTaskEnv = lib.optionalAttrs (megarepoStoreEnv != "") {

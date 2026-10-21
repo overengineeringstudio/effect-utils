@@ -63,7 +63,13 @@ let
   cliGuard = import ../lib/cli-guard.nix { inherit pkgs; };
   cache = import ../lib/cache.nix { inherit config; };
   pnpmStorage = import ../lib/pnpm-storage.nix {
-    inherit lib pkgs config workspaceRoot globalVirtualStore;
+    inherit
+      lib
+      pkgs
+      config
+      workspaceRoot
+      globalVirtualStore
+      ;
   };
   workspaceCacheName =
     if workspaceRoot == "." then
