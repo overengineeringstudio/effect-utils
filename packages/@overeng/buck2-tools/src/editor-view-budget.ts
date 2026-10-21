@@ -3232,7 +3232,8 @@ export const reserveEditorViewBudget = async ({
         plan = planEviction({
           census,
           blocked,
-          live: new Set(census.generations.map((generation) => generation.key)),
+          // Candidates only: the fenced batch below supplies reader authorization.
+          live: new Set<string>(),
           recencyMs,
           now: roundAtMs,
         })
