@@ -332,6 +332,9 @@ load lease code from an evictable view. Deliberately mapped lease descriptors
 remain in source-reading server/worker descendants; parent death is not release
 while a child retains an open description. Normal and error cleanup closes
 descriptors, never `LOCK_UN`. The unrelated CAS descriptor stays close-on-exec.
+Unvalidated control paths are opened nonblocking and close-on-exec before the
+regular-file and identity checks, so an unsafe FIFO without a writer cannot
+stall reader classification or hold up the host fence.
 The same native package supplies fixed-arity `eu_getfd` and `eu_dupfd_cloexec`
 FFI entrypoints. Variadic libc calls must stay inside C: Darwin arm64 passes
 variadic arguments differently from fixed-arity FFI arguments. The immutable

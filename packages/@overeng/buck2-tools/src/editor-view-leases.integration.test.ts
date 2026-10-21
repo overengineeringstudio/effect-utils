@@ -128,6 +128,21 @@ describe('editor generation native leases (Linux and macOS)', () => {
     `),
   )
 
+  it('a FIFO control without a writer is rejected without blocking', () =>
+    run(`
+      const { editorViewProcessLease, readEditorViewPinRecord } = await import(${JSON.stringify(readersModule)});
+      fs.unlinkSync(control);
+      const { dlopen } = await import('bun:ffi');
+      const libc = dlopen(process.platform === 'darwin' ? '/usr/lib/libSystem.B.dylib' : 'libc.so.6', {
+        mkfifo: { args: ['ptr', 'u32'], returns: 'i32' },
+      });
+      try { assert.equal(libc.symbols.mkfifo(Buffer.from(control + '\\0'), 0o600), 0); }
+      finally { libc.close(); }
+      assert.equal(editorViewProcessLease.probe({ pid: String(process.pid), fd: '0', control }), false);
+      assert.equal(probe(), 'unknown');
+      assert.throws(() => readEditorViewPinRecord({ path: control, name: 'fifo' }), /regular file/);
+    `))
+
   it('an unlocked control fd is not a lease even while another description holds SH', () =>
     run(`
       const { editorViewProcessLease } = await import(${JSON.stringify(readersModule)});

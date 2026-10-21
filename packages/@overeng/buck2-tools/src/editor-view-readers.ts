@@ -1,6 +1,17 @@
 import type { dlopen as openNativeLibrary } from 'bun:ffi'
 import { spawnSync } from 'node:child_process'
-import { lstatSync, readFileSync, readlinkSync, readdirSync, realpathSync, statSync } from 'node:fs'
+import {
+  closeSync,
+  constants,
+  fstatSync,
+  lstatSync,
+  openSync,
+  readFileSync,
+  readlinkSync,
+  readdirSync,
+  realpathSync,
+  statSync,
+} from 'node:fs'
 import { createRequire } from 'node:module'
 import { isAbsolute, join, relative, resolve, sep } from 'node:path'
 import process from 'node:process'
@@ -173,7 +184,23 @@ export const readEditorViewPinRecord = ({
   requireEditorViewPinName(name)
   if (lstatSync(path).isFile() === false)
     throw new Error(`editor view: managed pin must be a regular file: ${path}`)
-  const value: unknown = JSON.parse(readFileSync(path, 'utf8'))
+  const fd = openSync(
+    path,
+    constants.O_RDONLY |
+      constants.O_NONBLOCK |
+      constants.O_NOFOLLOW |
+      (process.platform === 'darwin' ? 0x1000000 : 0x80000),
+  )
+  let value: unknown
+  try {
+    const opened = fstatSync(fd)
+    const named = lstatSync(path)
+    if (opened.isFile() === false || opened.dev !== named.dev || opened.ino !== named.ino)
+      throw new Error(`editor view: managed pin must be a regular file: ${path}`)
+    value = JSON.parse(readFileSync(fd, 'utf8'))
+  } finally {
+    closeSync(fd)
+  }
   if (
     typeof value !== 'object' ||
     value === null ||

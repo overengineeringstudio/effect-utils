@@ -147,7 +147,7 @@ int eu_reader_lease(int pid, int descriptor, const char *path) {
     default: return 0;
   }
 #endif
-  int fd = open(path, O_RDONLY | O_NOFOLLOW | O_CLOEXEC);
+  int fd = open(path, O_RDONLY | O_NONBLOCK | O_NOFOLLOW | O_CLOEXEC);
   if (fd < 0) return 0;
   int result = 0;
   if (fstat(fd, &identity) || lstat(path, &named) ||
