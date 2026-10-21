@@ -73,14 +73,14 @@ Server emits READY, then CAPTURED and a capture byte. The orchestration waits
 for an actual client transition (LIVE, reaped exit, or replacement image's
 EXECED) before releasing the server's CHECK gate. No sleep selects race order.
 
-| Case | Required result |
-| --- | --- |
-| Allowed ad-hoc cdhash, live | Accept |
-| Different ad-hoc cdhash/identifier, live | Reject |
-| Authorized exit after connect, before check | Reject |
-| Authorized exec rejected image before check | Reject, freshness ESRCH |
-| Authorized exec same allowed image before check | Reject, freshness ESRCH |
-| Synthetic same-PID/wrong-incarnation audit token | Reject |
+| Case                                             | Required result         |
+| ------------------------------------------------ | ----------------------- |
+| Allowed ad-hoc cdhash, live                      | Accept                  |
+| Different ad-hoc cdhash/identifier, live         | Reject                  |
+| Authorized exit after connect, before check      | Reject                  |
+| Authorized exec rejected image before check      | Reject, freshness ESRCH |
+| Authorized exec same allowed image before check  | Reject, freshness ESRCH |
+| Synthetic same-PID/wrong-incarnation audit token | Reject                  |
 
 The last case deliberately flips the captured pidversion to represent an old
 incarnation at a still-live PID. It is a bounded **synthetic PID-reuse oracle**,

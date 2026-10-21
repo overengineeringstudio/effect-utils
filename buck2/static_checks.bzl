@@ -6,7 +6,7 @@ load("//buck2/provenance:defs.bzl", "ProductExecutableInfo")
 load("//buck2/toolchains:configured.bzl", "BuckSupportToolInfo")
 load("//buck2/toolchains:defs.bzl", "EffectTsgoToolchainInfo")
 
-STATIC_SOURCE_GLOBS = [
+_STATIC_VISIBLE_SOURCE_GLOBS = [
     "**/*.cjs",
     "**/*.cts",
     "**/*.css",
@@ -35,11 +35,41 @@ STATIC_SOURCE_GLOBS = [
     "**/*.yaml",
     "**/*.yml",
 ]
-STATIC_SOURCE_EXCLUDES = [
+
+# Buck2's glob has no include_dotfiles switch: hidden segments must be explicit.
+_STATIC_SOURCE_PATH_PATTERNS = ["**/*", "**/.*", "**/.*/**/*", "**/.*/**/.*", "**/.*/**/.*/**/*"]
+STATIC_SOURCE_GLOBS = [
+    prefix + pattern.removeprefix("**/*")
+    for prefix in _STATIC_SOURCE_PATH_PATTERNS
+    for pattern in _STATIC_VISIBLE_SOURCE_GLOBS
+]
+_STATIC_SOURCE_EXCLUDES = [
+    "**/.cache/**",
+    "**/.codex/**",
+    "**/.context/**",
+    "**/.devenv/**",
+    "**/.direnv/**",
+    "**/.editor-view/**",
+    "**/.evergreen/**",
+    "**/.git/**",
+    "**/.playwright-cli/**",
+    "**/.playwright-mcp/**",
+    "**/.pnpm-home/**",
+    "**/.pnpm-store/**",
+    "**/.vercel/**",
+    "**/.vitest-attachments/**",
     "**/dist/**",
     "**/node_modules/**",
     "**/storybook-static/**",
     "**/tmp/**",
+]
+# Exclusions need explicit hidden ancestors AND descendants. Otherwise either
+# `.experiments/.devenv/foo.ts` or `.cache/.nested/foo.ts` would bypass them.
+STATIC_SOURCE_EXCLUDES = [
+    prefix + pattern.removeprefix("**/").removesuffix("**") + descendant
+    for prefix in ["**/", "**/.*/**/", "**/.*/**/.*/**/"]
+    for pattern in _STATIC_SOURCE_EXCLUDES
+    for descendant in _STATIC_SOURCE_PATH_PATTERNS
 ]
 
 StaticSourceSetInfo = provider(fields = {
