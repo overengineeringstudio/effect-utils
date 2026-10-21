@@ -69,6 +69,12 @@ const binaryCache = readBinaryCacheDescriptors(
   new URL('../../nix/binary-caches.json', import.meta.url),
 )['overeng-effect-utils']!
 
+const prepareSourceGeneratorDependencyViewsStep = {
+  name: 'Prepare source generator dependency views',
+  env: githubTokenEnv(),
+  run: runDevenvTasksBefore('buck2:editor:bootstrap'),
+} as const
+
 const baseSteps = [
   checkoutStep(),
   installNixStep({ binaryCaches: [binaryCache] }),
@@ -79,11 +85,7 @@ const baseSteps = [
   prepareCiScriptsStep,
   preparePinnedDevenvStep,
   validateNixStoreStep,
-  {
-    name: 'Prepare source generator dependency views',
-    env: githubTokenEnv(),
-    run: runDevenvTasksBefore('buck2:editor:bootstrap'),
-  },
+  prepareSourceGeneratorDependencyViewsStep,
   /**
    * Temporary debug switch for #272 to validate failure-path diagnostics without waiting for a real flake.
    * Remove once #201/#272 are root-caused and diagnostics instrumentation is removed.
@@ -453,29 +455,40 @@ const macosNixSubstituterEnableStep = {
 } as const
 
 /**
- * `--sigs` also prints `ultimate` (locally built) and `ca:` markers; only real signatures
- * make a path substitutable elsewhere. The daemon (root) owns the cache files, so the copy
- * runs as root.
+ * Content-addressed paths (including fixed-output downloads) are self-verifying and do
+ * not need signatures. Input-addressed paths still need an upstream signature; `ultimate`
+ * alone is not sufficient. The daemon owns the cache files, so the copy runs as root.
  */
 const macosNixSubstituterSaveStep = {
-  name: 'Save signed store paths to local Nix substituter',
+  name: 'Save signed and content-addressed store paths to local Nix substituter',
   if: '${{ !cancelled() }}',
   'continue-on-error': true,
   'timeout-minutes': 15,
   run: [
     'set -euo pipefail',
     'started=$SECONDS',
-    'paths="$RUNNER_TEMP/signed-store-paths"',
-    `nix path-info --all --sigs | awk -F'\\t' '{ n = split($2, t, " "); for (i = 1; i <= n; i++) if (t[i] != "ultimate" && t[i] !~ /^ca:/) { print $1; break } }' > "$paths"`,
+    'paths="$RUNNER_TEMP/substitutable-store-paths"',
+    `nix path-info --all --json | jq -r 'to_entries[] | select(((.value.signatures // []) | length > 0) or ((.value.ca // "") | length > 0)) | .key' > "$paths"`,
     `sudo env "PATH=$PATH" nix copy --stdin --to '${macosNixSubstituterUri}?compression=zstd&parallel-compression=true' < "$paths"`,
-    `echo "saved $(wc -l < "$paths") signed paths in $((SECONDS - started))s; cache size $(du -sh '${macosNixSubstituterDir}/' | cut -f1)"`,
+    `echo "saved $(wc -l < "$paths") signed or content-addressed paths in $((SECONDS - started))s; cache size $(du -sh '${macosNixSubstituterDir}/' | cut -f1)"`,
   ].join('\n'),
 } as const
 
 const withMacosNixSubstituter = <TStep>(steps: readonly TStep[]) => {
   const [checkout, ...rest] = steps
   return [checkout!, macosNixSubstituterMountStep, ...rest].flatMap((step) =>
-    step === trustedCachixStep ? [step, macosNixSubstituterEnableStep] : [step],
+    step === trustedCachixStep
+      ? [step, macosNixSubstituterEnableStep]
+      : step === prepareSourceGeneratorDependencyViewsStep
+        ? [
+            step,
+            {
+              ...macosNixSubstituterSaveStep,
+              name: 'Warm local Nix substituter after bootstrap',
+              if: '${{ success() }}',
+            },
+          ]
+        : [step],
   )
 }
 
