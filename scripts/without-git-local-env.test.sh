@@ -5,7 +5,8 @@ root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 # An alternate boundary allows the same regression to demonstrate the unsafe
 # pre-fix behavior using /usr/bin/env, entirely inside disposable repositories.
 boundary="${1:-$root/scripts/without-git-local-env.sh}"
-tmp="$(mktemp -d)"
+mkdir -p "$root/tmp"
+tmp="$(mktemp -d "$root/tmp/git-local-env.XXXXXX")"
 trap 'rm -rf "$tmp"' EXIT
 export GIT_CONFIG_GLOBAL="$tmp/gitconfig" GIT_CONFIG_SYSTEM=/dev/null
 printf '[user]\nname = Fixture\nemail = fixture@example.invalid\n[commit]\ngpgsign = false\n[core]\nhooksPath = /dev/null\n' > "$GIT_CONFIG_GLOBAL"
