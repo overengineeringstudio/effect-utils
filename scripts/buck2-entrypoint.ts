@@ -674,17 +674,18 @@ export const reconcileGateDaemon = ({
   }
 }
 
+const warnStdio = (message: string): void => {
+  try {
+    writeSync(2, message)
+  } catch {
+    // Optional protection must still exec with closed or unwritable stderr.
+  }
+}
+
 // Replaced by the Nix build; source execution uses TinyCC on the physical file.
 declare const BUCK2_STDIO_LIBRARY: string
 if (import.meta.main === true) {
   try {
-    const warnStdio = (message: string): void => {
-      try {
-        writeSync(2, message)
-      } catch {
-        // Optional protection must still exec with closed or unwritable stderr.
-      }
-    }
     let restoreStdio: (() => void) | undefined
     try {
       const symbols = {
