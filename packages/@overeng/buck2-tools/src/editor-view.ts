@@ -32,6 +32,7 @@ import process from 'node:process'
 
 import {
   editorViewHostBudgetBytes,
+  makeEditorViewBudgetCensusSession,
   reserveEditorViewBudget,
   finishEditorViewBudgetReservation,
   cancelEditorViewBudgetReservation,
@@ -39,6 +40,7 @@ import {
   collectEditorViewBudgetFootprints,
   withHostBudgetLock,
   type EditorViewBudgetRoot,
+  type EditorViewBudgetCensusSession,
 } from './editor-view-budget.ts'
 import {
   editorViewPinSchema,
@@ -269,8 +271,18 @@ const runEditorViewMaintenance = async <T>({
   readonly phase: string
   readonly run: () => T | Promise<T>
 }): Promise<T | undefined> => {
+  const reserveStartedAt = phase === 'reserve' ? performance.now() : undefined
   try {
-    return await run()
+    if (reserveStartedAt !== undefined)
+      process.stderr.write(
+        `[editor-view-budget] ${JSON.stringify({ event: 'editor-view.host-budget.reserve-start', editorRoot, atMs: Date.now() })}\n`,
+      )
+    const result = await run()
+    if (reserveStartedAt !== undefined)
+      process.stderr.write(
+        `[editor-view-budget] ${JSON.stringify({ event: 'editor-view.host-budget.reserve-granted', editorRoot, atMs: Date.now(), durationMs: Math.round(performance.now() - reserveStartedAt) })}\n`,
+      )
+    return result
   } catch (error) {
     console.error(
       JSON.stringify({
@@ -2823,22 +2835,34 @@ const publishEditorViewCoordinated = async ({
   coordinator,
   heldStateRoots,
   onContentChanged,
+  budgetCensusSession,
 }: {
   options: EditorViewOptions
   coordinator?: PublicationCoordinator
   heldStateRoots?: ReadonlySet<string>
+  budgetCensusSession?: EditorViewBudgetCensusSession
   onContentChanged: () => void
 }): Promise<EditorViewRecord> => {
   const startedAtMs = performance.timeOrigin + performance.now()
   const phaseTimings: (readonly [name: string, durationMs: number])[] = []
   let phaseName = 'admission'
   let phaseStartedAt = performance.now()
+  let phasesCompleted = false
+  const completePhase = (): void => {
+    const now = performance.now()
+    const durationMs = now - phaseStartedAt
+    phaseTimings.push([phaseName, durationMs])
+    process.stderr.write(
+      `[editor-view-phase] ${JSON.stringify({ package: options.package, phase: phaseName, event: 'complete', durationMs: Math.round(durationMs), elapsedMs: Math.round(performance.timeOrigin + now - startedAtMs) })}\n`,
+    )
+  }
   const enterPhase = (name: string): void => {
-    phaseTimings.push([phaseName, performance.now() - phaseStartedAt])
+    if (phasesCompleted === true) return
+    completePhase()
     phaseName = name
     phaseStartedAt = performance.now()
     process.stderr.write(
-      `[editor-view-phase] ${JSON.stringify({ package: options.package, phase: name, elapsedMs: Math.round(performance.timeOrigin + performance.now() - startedAtMs) })}\n`,
+      `[editor-view-phase] ${JSON.stringify({ package: options.package, phase: name, event: 'enter', elapsedMs: Math.round(performance.timeOrigin + performance.now() - startedAtMs) })}\n`,
     )
   }
   const emitPhaseSpan = ({
@@ -2848,6 +2872,9 @@ const publishEditorViewCoordinated = async ({
     readonly created: boolean
     readonly exitCode: number
   }): void => {
+    if (phasesCompleted === true) return
+    completePhase()
+    phasesCompleted = true
     emitCompletedSpanAsync({
       name: 'editor-view.phases',
       label: `phases ${options.viewName}`,
@@ -3098,12 +3125,14 @@ const publishEditorViewCoordinated = async ({
     } else {
       // Do not let an obsolete current-snapshot scan race snapshot retention below.
       if (currentSnapshotValidation !== undefined) await currentSnapshotValidation.validation
+      enterPhase('reserve')
       const reserved = await runEditorViewMaintenance({
         editorRoot: paths.editorRoot,
         phase: 'reserve',
         run: () =>
           reserveEditorViewBudget({
             contentStore: paths.contentStore,
+            censusSession: budgetCensusSession,
             root: budgetRoot,
             reservationBytes: budgetReservationBytes({
               sources: finite === true ? roots.map((root) => root.source) : [selectedPath],
@@ -3445,6 +3474,7 @@ export const publishEditorViews = async ({
   onPublished?: (record: EditorViewRecord, durationMs: number) => void
 }): Promise<readonly EditorViewRecord[]> => {
   const coordinators = new Map<string, PublicationCoordinator>()
+  const budgetCensusSession = makeEditorViewBudgetCensusSession()
   const workers = new Map<string, PublicationWorkerState>()
   const identities = new Set<string>()
   const results: PromiseSettledResult<EditorViewRecord>[] = []
@@ -3536,6 +3566,7 @@ export const publishEditorViews = async ({
             options: option,
             coordinator,
             heldStateRoots,
+            budgetCensusSession,
             onContentChanged: () => {
               changedStores.add(makePaths(option).contentStore)
             },
