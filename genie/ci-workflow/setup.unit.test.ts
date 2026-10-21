@@ -13,6 +13,7 @@ import buck2TestAuthority from '../../buck2-test-authority.json' with { type: 'j
 import { pipelineIdentityStepName } from '../../packages/@overeng/ci-tools/src/pipeline-job-names.ts'
 import type { GitHubWorkflowArgs } from '../../packages/@overeng/genie/src/runtime/mod.ts'
 import { pipelineCloseJob } from './pipeline-telemetry.ts'
+import { publishedRefIf } from './published-ref.ts'
 import { installNixStep, linuxSandboxPrerequisitesStep, namespaceRunner } from './setup.ts'
 import {
   ciWorkflow as composeCiWorkflow,
@@ -880,5 +881,42 @@ describe('required platform test classification', () => {
     expect(testPlatforms.moduleScripts.darwin.map(({ script }) => script)).toContain(
       'buck2-capability-publish.test.sh',
     )
+  })
+})
+
+describe('published consumer ref', () => {
+  const steps = ciWorkflow.data.jobs['publish-products']!.steps!
+
+  it('advances only main pushes with this SHA marked current by the same run', () => {
+    const advance = steps.find((step) => step.id === 'advance-published-ref')!
+    const token = steps.find((step) => step.id === 'published-ref-token')!
+    expect(advance).toBeDefined()
+    expect(advance.if).toBe(publishedRefIf)
+    expect(token.if).toBe(publishedRefIf)
+    expect(publishedRefIf).toContain("github.event_name == 'push'")
+    expect(publishedRefIf).toContain("github.ref == 'refs/heads/main'")
+    expect(publishedRefIf).toContain('steps.publication-scope.outputs.current-sha == github.sha')
+    expect(publishedRefIf).toContain('steps.product-publication.outputs.current-sha == github.sha')
+    for (const id of ['publication-scope', 'product-publication']) {
+      const producer = steps.find((step) => step.id === id)!
+      const script = producer.run as string
+      const success = script.indexOf('-f context=buck2-products/manifest-current -f state=success')
+      expect(success).toBeGreaterThan(-1)
+      expect(script.indexOf('echo "current-sha=$GITHUB_SHA"', success)).toBeGreaterThan(success)
+      expect(steps.indexOf(producer)).toBeLessThan(steps.indexOf(advance))
+    }
+  })
+
+  it('uses the publisher App and checks ancestry before and after a raced push', () => {
+    const token = steps.find((step) => step.id === 'published-ref-token')!
+    expect(token.with?.['app-id']).toBe('${{ vars.NIX_PUBLISHER_GITHUB_APP_ID }}')
+    const advance = steps.find((step) => step.id === 'advance-published-ref')!
+    expect(advance.env?.GH_TOKEN).toBe('${{ steps.published-ref-token.outputs.token }}')
+    expect(advance.run).toContain('git merge-base --is-ancestor "$old" "$GITHUB_SHA"')
+    expect(advance.run).toContain('git merge-base --is-ancestor "$GITHUB_SHA" "$old"')
+    expect(advance.run).toContain('git merge-base --is-ancestor "$GITHUB_SHA" "$current"')
+    expect(advance.run).toContain('git push origin "$GITHUB_SHA:refs/heads/published"')
+    expect(advance.run).not.toContain('--force')
+    expect(advance.run).toContain('$GITHUB_STEP_SUMMARY')
   })
 })

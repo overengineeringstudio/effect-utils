@@ -3543,6 +3543,7 @@ jobs:
               -f context=buck2-products/manifest-current -f state=success \
               -f description="Publisher manifest-only merge is current" \
               -f target_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+            echo "current-sha=$GITHUB_SHA" >> "$GITHUB_OUTPUT"
           fi
       - name: Install Nix
         uses: DeterminateSystems/determinate-nix-action@v3
@@ -3600,6 +3601,7 @@ jobs:
               -f context=buck2-products/manifest-current -f state=success \
               -f description="Published product manifest is current" \
               -f target_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+            echo "current-sha=$GITHUB_SHA" >> "$GITHUB_OUTPUT"
           else
             comparison=$?
             if [ "$comparison" -ne 1 ]; then
@@ -3615,6 +3617,60 @@ jobs:
               -f description="${description:0:140}" \
               -f target_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
             echo "stale-status=true" >> "$GITHUB_OUTPUT"
+          fi
+      - id: published-ref-token
+        name: Mint publisher GitHub App token for published ref
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ vars.NIX_PUBLISHER_GITHUB_APP_ID }}
+          private-key: ${{ secrets.NIX_PUBLISHER_GITHUB_APP_PRIVATE_KEY }}
+          owner: overengineeringstudio
+          repositories: effect-utils
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && (steps.publication-scope.outputs.current-sha == github.sha || steps.product-publication.outputs.current-sha == github.sha)
+      - id: advance-published-ref
+        name: Advance published ref
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && (steps.publication-scope.outputs.current-sha == github.sha || steps.product-publication.outputs.current-sha == github.sha)
+        env:
+          GITHUB_TOKEN: ${{ steps.published-ref-token.outputs.token }}
+          GH_TOKEN: ${{ steps.published-ref-token.outputs.token }}
+        run: |
+          set -euo pipefail
+          gh auth setup-git
+          git config --local --unset-all http.https://github.com/.extraheader || test "$?" = 5
+          if [ "$(git rev-parse --is-shallow-repository)" = true ]; then
+            git fetch --no-tags --unshallow origin main
+          fi
+          fetch_published() {
+            local result
+            if git ls-remote --exit-code origin refs/heads/published > /dev/null; then
+              git fetch --no-tags origin +refs/heads/published:refs/remotes/origin/published
+              git rev-parse refs/remotes/origin/published
+            else
+              result=$?
+              if [ "$result" -ne 2 ]; then return "$result"; fi
+            fi
+          }
+          old="$(fetch_published)"
+          if [ -n "$old" ]; then
+            if git merge-base --is-ancestor "$GITHUB_SHA" "$old"; then
+              echo "published $old -> $old (already at or ahead of $GITHUB_SHA)" >> "$GITHUB_STEP_SUMMARY"
+              exit 0
+            fi
+            if ! git merge-base --is-ancestor "$old" "$GITHUB_SHA"; then
+              echo "::error::published $old is not an ancestor of $GITHUB_SHA; refusing non-fast-forward update"
+              exit 1
+            fi
+          fi
+          if git push origin "$GITHUB_SHA:refs/heads/published"; then
+            echo "published ${old:-<absent>} -> $GITHUB_SHA" >> "$GITHUB_STEP_SUMMARY"
+          else
+            current="$(fetch_published)"
+            if [ -n "$current" ] && git merge-base --is-ancestor "$GITHUB_SHA" "$current"; then
+              echo "published ${old:-<absent>} -> $current (concurrent run already advanced past $GITHUB_SHA)" >> "$GITHUB_STEP_SUMMARY"
+            else
+              echo "::error::published push rejected and remote is not a descendant of $GITHUB_SHA"
+              exit 1
+            fi
           fi
       - id: publisher-app-config
         name: Check publisher GitHub App configuration
@@ -3662,7 +3718,7 @@ jobs:
               --body 'Updates the generated v2 manifest after the trusted main-branch cache publication job.'
           fi
       - name: Keep interrupted publication pending
-        if: failure() && steps.product-publication.outputs.stale-status != 'true'
+        if: failure() && steps.product-publication.outputs.stale-status != 'true' && steps.publication-scope.outputs.current-sha != github.sha && steps.product-publication.outputs.current-sha != github.sha
         env:
           PUBLICATION_CAUSE: ${{ steps.product-publication.outputs.cause || (steps.product-nix.outcome == 'failure' && 'Nix setup failed') || (steps.product-cachix-cli.outcome == 'failure' && 'Cachix CLI setup failed') || (steps.product-cachix-auth.outcome == 'failure' && 'Cachix authentication failed') || 'Publication network/API or scope error; inspect run' }}
         run: |

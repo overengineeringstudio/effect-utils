@@ -53,6 +53,7 @@ import {
 } from '../../genie/ci-workflow.ts'
 import { withBuck2CacheEvidence } from '../../genie/ci-workflow/buck2-cache-evidence.ts'
 import { withBuck2CachePostures } from '../../genie/ci-workflow/buck2-cache-posture.ts'
+import { publishedRefSteps } from '../../genie/ci-workflow/published-ref.ts'
 import {
   withPipelineTelemetry,
   pipelineCloseJob,
@@ -1117,6 +1118,7 @@ const extraJobs: Record<string, any> = {
           '    -f context=buck2-products/manifest-current -f state=success \\',
           '    -f description="Publisher manifest-only merge is current" \\',
           '    -f target_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"',
+          '  echo "current-sha=$GITHUB_SHA" >> "$GITHUB_OUTPUT"',
           'fi',
         ].join('\n'),
       },
@@ -1162,6 +1164,7 @@ const extraJobs: Record<string, any> = {
               '    -f context=buck2-products/manifest-current -f state=success \\',
               '    -f description="Published product manifest is current" \\',
               '    -f target_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"',
+              '  echo "current-sha=$GITHUB_SHA" >> "$GITHUB_OUTPUT"',
               'else',
               '  comparison=$?',
               '  if [ "$comparison" -ne 1 ]; then',
@@ -1183,6 +1186,7 @@ const extraJobs: Record<string, any> = {
           ),
         },
       }),
+      ...publishedRefSteps,
       {
         id: 'publisher-app-config',
         name: 'Check publisher GitHub App configuration',
@@ -1240,7 +1244,7 @@ const extraJobs: Record<string, any> = {
       },
       {
         name: 'Keep interrupted publication pending',
-        if: "failure() && steps.product-publication.outputs.stale-status != 'true'",
+        if: "failure() && steps.product-publication.outputs.stale-status != 'true' && steps.publication-scope.outputs.current-sha != github.sha && steps.product-publication.outputs.current-sha != github.sha",
         env: {
           PUBLICATION_CAUSE:
             "${{ steps.product-publication.outputs.cause || (steps.product-nix.outcome == 'failure' && 'Nix setup failed') || (steps.product-cachix-cli.outcome == 'failure' && 'Cachix CLI setup failed') || (steps.product-cachix-auth.outcome == 'failure' && 'Cachix authentication failed') || 'Publication network/API or scope error; inspect run' }}",

@@ -86,6 +86,31 @@ tree, or rewritten package rule. Changing later repository metadata does not
 change the identity of an already-published product. The anonymous artifact
 URL is an interoperability path, not a second source of product authority.
 
+### Consumer pin eligibility
+
+```text
+main push -> manifest-current success for that SHA -> fast-forward published
+          -> stale manifest -> publisher manifest PR -> main push
+```
+
+Consumers requiring an always-eligible product manifest track `ref published`
+rather than `ref main`. `main` may be temporarily non-current after a
+product-input merge while its publisher manifest proposal is pending.
+`refs/heads/published` only fast-forwards to main commits whose
+`buck2-products/manifest-current` status succeeded for that exact SHA.
+The main-push publication job uses its own successful status write as the
+eligibility proof; workflow dispatch and pull requests cannot advance the ref.
+If the ref is absent, the same eligible main-push job creates it at its own
+SHA using the App token; no separate human bootstrap push is required.
+
+The publisher GitHub App is the sole creation/update actor. The repository
+ruleset prevents deletion and non-fast-forward updates. Before pushing, the
+job checks that the previous published commit is an ancestor of the candidate.
+A candidate already at or behind the published tip is a successful no-op.
+If a concurrent push wins, a rejected push succeeds only when the newly fetched
+published tip is a descendant of the candidate; divergence fails loudly.
+This ref guarantees manifest eligibility, not success of unrelated CI checks.
+
 ### Consumer from-source identity
 
 Consumer products built from their own repository, rather than imported from
