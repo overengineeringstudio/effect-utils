@@ -5,6 +5,7 @@ import {
   mkdtempSync,
   readFileSync,
   readdirSync,
+  realpathSync,
   rmSync,
   symlinkSync,
   writeFileSync,
@@ -22,7 +23,7 @@ const generatedText = (body: string) =>
   `// Generated file - DO NOT EDIT\n// Source: result.txt.genie.ts\n${body}`
 
 const fixture = () => {
-  const root = mkdtempSync(path.join(os.tmpdir(), 'genie-input-manifest-'))
+  const root = realpathSync(mkdtempSync(path.join(os.tmpdir(), 'genie-input-manifest-')))
   const manifest = path.join(root, 'inputs.manifest')
   mkdirSync(path.join(root, '.git'))
   writeFileSync(path.join(root, 'input.txt'), 'first\n')

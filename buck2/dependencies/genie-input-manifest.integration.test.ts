@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process'
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -15,7 +15,7 @@ const repoContextPath = path.join(
 )
 
 it('regenerates lock-derived output through the real CLI and records the built-in lock reader inputs', () => {
-  const root = mkdtempSync(path.join(os.tmpdir(), 'genie-pnpm-inputs-'))
+  const root = realpathSync(mkdtempSync(path.join(os.tmpdir(), 'genie-pnpm-inputs-')))
   const lockPath = path.join(root, 'pnpm-lock.yaml')
   const manifest = path.join(root, 'inputs.manifest')
   try {
