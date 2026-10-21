@@ -261,6 +261,28 @@ set -e
 assert_exit_code 8 "$exit_code" "HTTP 404 preserves its exit code"
 assert_eq "1" "$(cat "$test_dir/not-found-attempt")" "HTTP 404 is not retried"
 
+echo "Test 4e: does not retry HTTP error 4160 as HTTP 416"
+range_prefix_fixture="$test_dir/range-prefix-fixture.sh"
+cat > "$range_prefix_fixture" <<EOF
+#!/usr/bin/env bash
+set -euo pipefail
+attempt_file="$test_dir/range-prefix-attempt"
+attempt=0
+if [ -f "\$attempt_file" ]; then
+  attempt=\$(cat "\$attempt_file")
+fi
+echo "\$((attempt + 1))" > "\$attempt_file"
+echo "error: unable to download 'https://example.com/archive.tar.xz': HTTP error 4160" >&2
+exit 8
+EOF
+chmod +x "$range_prefix_fixture"
+set +e
+CI_PROGRESS_HEARTBEAT_SECONDS=1 NIX_GC_RACE_MAX_RETRIES=2 run_nix_gc_race_retry "range-prefix-fixture" "$range_prefix_fixture" >/dev/null 2>&1
+exit_code=$?
+set -e
+assert_exit_code 8 "$exit_code" "HTTP error 4160 preserves its exit code"
+assert_eq "1" "$(cat "$test_dir/range-prefix-attempt")" "HTTP error 4160 is not retried"
+
 echo "Test 5: retries missing Nix daemon socket failures without host mutation"
 daemon_fixture="$test_dir/daemon-fixture.sh"
 cat > "$daemon_fixture" <<EOF

@@ -92,10 +92,14 @@ after tests and compiled-product smoke. Both saves use the same incremental
 save retains bootstrap outputs even when later work is cancelled; the final save
 runs only when the job is not cancelled.
 
-The save selects paths with upstream signatures or nonempty content-address
+The save selects roots with upstream signatures or nonempty content-address
 metadata from `nix path-info --all --json`. Fixed-output downloads are
-self-verifying and need no signature; unsigned input-addressed outputs are
-excluded even when marked `ultimate`. Signature enforcement remains enabled.
+self-verifying and need no signature; unsigned input-addressed paths are not
+selected as roots, even when marked `ultimate`. `nix copy` copies each selected
+root's entire closure, so unsigned input-addressed references of a
+content-addressed root can also be written to the volume. Those references
+remain untrusted on substitution: unchanged `require-sigs` enforcement rejects
+unsigned input-addressed paths.
 This cache is a partial bootstrap shield: explicit remote `fetchClosure` sources,
 the pinned devenv resolver's own substituter override, and the Cachix CLI built
 before local enable can still access network caches.

@@ -121,7 +121,7 @@ run_nix_gc_race_retry() {
     printf '%s' "$flattened" | grep -Eq 'error:[[:space:]]*cannot download [^[:space:]]+ from any mirror' && saw_fetch_signature=true || true
     # Nix can resume an already complete body at EOF after an HTTP/2 drop; the server
     # correctly returns 416. No nix.conf setting fixes this resume-at-EOF bug.
-    printf '%s' "$flattened" | grep -Eq "error:[[:space:]]*unable to download '[^']+': HTTP error 416" && saw_fetch_signature=true || true
+    printf '%s' "$flattened" | grep -Eq "error:[[:space:]]*unable to download '[^']+': HTTP error 416([^0-9]|$)" && saw_fetch_signature=true || true
     printf '%s' "$flattened" | grep -Eq "error:[[:space:]]*cannot connect to socket at '/nix/var/nix/daemon-socket/socket'" && saw_daemon_socket_failure=true || true
     rm -f "$log"
 
