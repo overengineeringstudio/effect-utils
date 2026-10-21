@@ -54,13 +54,15 @@ describe('standalone bootstrap sync resolver', () => {
           if (isImportEqualsDeclaration(node) && isExternalModuleReference(node.moduleReference)) {
             const specifier = node.moduleReference.expression
             expect(specifier !== undefined && isStringLiteral(specifier)).toBe(true)
-            if (specifier !== undefined && isStringLiteral(specifier)) specifiers.push(specifier.text)
+            if (specifier !== undefined && isStringLiteral(specifier))
+              specifiers.push(specifier.text)
           }
           if (isImportTypeNode(node)) {
             expect(isLiteralTypeNode(node.argument)).toBe(true)
             if (isLiteralTypeNode(node.argument)) {
               expect(isStringLiteral(node.argument.literal)).toBe(true)
-              if (isStringLiteral(node.argument.literal)) specifiers.push(node.argument.literal.text)
+              if (isStringLiteral(node.argument.literal))
+                specifiers.push(node.argument.literal.text)
             }
           }
           if (
@@ -70,7 +72,8 @@ describe('standalone bootstrap sync resolver', () => {
           ) {
             const [specifier] = node.arguments
             expect(specifier !== undefined && isStringLiteral(specifier)).toBe(true)
-            if (specifier !== undefined && isStringLiteral(specifier)) specifiers.push(specifier.text)
+            if (specifier !== undefined && isStringLiteral(specifier))
+              specifiers.push(specifier.text)
           }
           node.forEachChild((child) => {
             visit(child)
@@ -139,12 +142,15 @@ describe('standalone bootstrap sync resolver', () => {
           workspaceRoot: root,
           fs: inputFileSystem,
         }
-        expect(resolveImportMapSpecifierForImporterSync({ ...options, specifier: '#fixture/mod.ts' })).toBe(
-          path.join(sourceDir, 'mod.ts'),
-        )
-        expect(resolveImportMapSpecifierForImporterSync({ ...options, specifier: '#mr/bootstrap-fixture/mod.ts' })).toBe(
-          path.join(memberDir, 'mod.ts'),
-        )
+        expect(
+          resolveImportMapSpecifierForImporterSync({ ...options, specifier: '#fixture/mod.ts' }),
+        ).toBe(path.join(sourceDir, 'mod.ts'))
+        expect(
+          resolveImportMapSpecifierForImporterSync({
+            ...options,
+            specifier: '#mr/bootstrap-fixture/mod.ts',
+          }),
+        ).toBe(path.join(memberDir, 'mod.ts'))
         for (const consultedPath of [
           path.join(sourceDir, 'package.json'),
           path.join(sourceDir, 'package.json.genie.ts'),
