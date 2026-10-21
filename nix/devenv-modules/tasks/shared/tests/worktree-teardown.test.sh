@@ -235,6 +235,22 @@ mkdir -p "$nested_child/readonly" "$nested_outer/checkout/readonly" \
   "$nested_outer/repos/member/readonly" "$nested_outer/composition/repos/member/readonly"
 printf '{}\n' >"$nested_outer/megarepo.json"
 touch "$nested_outer/composition/megarepo.kdl"
+# Exercise large generated trees on both sides of an ownership boundary, with
+# names that cannot safely pass through line-delimited find output.
+"$BUN" -e '
+  const fs = require("node:fs");
+  const root = process.argv[1];
+  for (const parent of ["node_modules", "checkout/node_modules"]) {
+    for (let i = 0; i < 2048; i++) {
+      const directory = `${root}/${parent}/package ${i}\nfiles`;
+      fs.mkdirSync(directory, { recursive: true });
+      fs.chmodSync(directory, 0o555);
+    }
+    fs.chmodSync(`${root}/${parent}`, 0o555);
+  }
+' "$nested_outer"
+mkdir -p "$nested_outer/bare-boundary/.bare/readonly" "$nested_outer/git-link/readonly"
+ln -s "$TEMP_ROOT/missing-git" "$nested_outer/git-link/.git"
 outer_state="$HOME/.buck/buckd/${nested_outer#/}"
 child_state="$outer_state/nested"
 (cd "$nested_outer" && "$BUCK2" --isolation-dir outer targets //: >/dev/null)
@@ -252,6 +268,9 @@ protected=(
   "$nested_outer/checkout" "$nested_outer/checkout/readonly"
   "$nested_outer/repos" "$nested_outer/repos/member" "$nested_outer/repos/member/readonly"
   "$nested_outer/composition" "$nested_outer/composition/repos/member/readonly"
+  "$nested_outer/bare-boundary" "$nested_outer/bare-boundary/.bare"
+  "$nested_outer/bare-boundary/.bare/readonly"
+  "$nested_outer/git-link" "$nested_outer/git-link/readonly"
 )
 chmod 555 "${protected[@]}"
 for iteration in first second; do
@@ -264,9 +283,22 @@ for iteration in first second; do
   [ "$(cat "$descendant_state/deeper/sentinel")" = untouched ] || fail 'daemon-file-named descendant state changed'
   "$BUN" -e 'const fs=require("node:fs"); for (const path of process.argv.slice(1)) if ((fs.statSync(path).mode & 0o777) !== 0o555) { console.error(path); process.exit(1) }' \
     "${protected[@]}" || fail 'teardown chmodded a nested checkout or megarepo member'
+  "$BUN" -e '
+    const fs = require("node:fs");
+    const root = process.argv[1];
+    for (const [parent, mode] of [["node_modules", 0o755], ["checkout/node_modules", 0o555]]) {
+      for (const name of ["", ...fs.readdirSync(`${root}/${parent}`)]) {
+        const path = `${root}/${parent}/${name}`;
+        if ((fs.statSync(path).mode & 0o777) !== mode) {
+          console.error(`unexpected directory mode: ${JSON.stringify(path)}`);
+          process.exit(1);
+        }
+      }
+    }
+  ' "$nested_outer" || fail 'large generated tree modes violate repository boundaries'
 done
 (cd "$nested_child" && "$BUCK2" --isolation-dir child status >/dev/null)
-echo 'PASS: nested checkout state and live daemon survive both parent teardowns; Git checkout/worktree and megarepo directory modes remain unchanged; escaping and in-base intermediate symlinks are refused'
+echo 'PASS: nested checkout state and live daemon survive both parent teardowns; 4096 generated directories respect Git, dangling .git, .bare and megarepo boundaries; escaping and in-base intermediate symlinks are refused'
 
 # The review collision: the parent isolation name is also the nested checkout's
 # path component. Start the parent first, since native startup rotates its state.

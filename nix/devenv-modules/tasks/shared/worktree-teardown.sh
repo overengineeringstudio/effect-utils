@@ -132,15 +132,31 @@ if [ "${WORKTREE_TEARDOWN_EDITOR_RELEASE:-0}" = 1 ]; then
   DEVENV_TUI=false devenv tasks run buck2:editor:release --mode single
 fi
 
-# Read-only Buck materializations may remain. Nested Git and megarepo ownership
-# boundaries are pruned before chmod, including their root directories.
-find -P "$root" -type d \
-  \( -exec bash -c '
-    directory=$1
-    [ "$directory" != "$2" ] &&
+# Read-only Buck materializations may remain. Walk in this shell so testing
+# ownership boundaries does not start a process for every directory. Do not
+# enqueue symlinks or descend into nested repositories, including their roots.
+directories=( "$root" )
+writable=()
+while [ "${#directories[@]}" -gt 0 ]; do
+  index=$((${#directories[@]} - 1))
+  directory="${directories[$index]}"
+  unset 'directories[index]'
+  if [ "$directory" != "$root" ] &&
     { [ -e "$directory/.git" ] || [ -L "$directory/.git" ] ||
       [ -f "$directory/megarepo.kdl" ] || [ -f "$directory/megarepo.json" ] ||
       [ -d "$directory/.bare" ] ||
       { [ "${directory##*/}" = repos ] &&
-        { [ -f "${directory%/*}/megarepo.kdl" ] || [ -f "${directory%/*}/megarepo.json" ]; }; }; }
-  ' bash {} "$root" \; \) -prune -o -type d -exec chmod u+w -- {} +
+        { [ -f "${directory%/*}/megarepo.kdl" ] || [ -f "${directory%/*}/megarepo.json" ]; }; }; }; then
+    continue
+  fi
+  writable+=( "$directory" )
+  for child in "$directory"/*; do
+    if [ -d "$child" ] && [ ! -L "$child" ]; then directories+=( "$child" ); fi
+  done
+  # Keep chmod calls batched and bounded independently of checkout size.
+  if [ "${#writable[@]}" -eq 256 ]; then
+    chmod u+w -- "${writable[@]}"
+    writable=()
+  fi
+done
+if [ "${#writable[@]}" -gt 0 ]; then chmod u+w -- "${writable[@]}"; fi
