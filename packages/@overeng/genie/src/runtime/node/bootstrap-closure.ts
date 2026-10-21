@@ -44,6 +44,7 @@ import {
   isImportMapSpecifier,
   resolveImportMapSpecifierForImporterSync,
 } from '../../core/import-map/sync-resolver.ts'
+import { inputFileSystem } from './inputs.ts'
 import { runTsFileAnalysis } from './ts-api.ts'
 import type { TsFileAnalysis, TsFileAnalysisSession } from './ts-api.ts'
 
@@ -289,6 +290,7 @@ const resolveFollowableSpecifier = async ({
           specifier: specifier.text,
           importerPath: importerFile,
           workspaceRoot,
+          fs: inputFileSystem,
         })
       : await analysis.resolveModuleSpecifier(specifier)
 

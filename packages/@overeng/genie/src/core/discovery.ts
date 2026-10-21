@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url'
 import { Effect, FileSystem, Option, Path } from 'effect'
 import type { PlatformError } from 'effect/PlatformError'
 
+import { inputFileSystem } from '../runtime/node/inputs.ts'
 import { GenieRuntimeTranspilerCacheError, GenieSourceWorkspaceConflictError } from './errors.ts'
 import { resolveImportMapSpecifierForImporterSync } from './import-map/mod.ts'
 import * as Observability from './observability.ts'
@@ -106,6 +107,7 @@ export const ensureImportMapResolver = Effect.fn('ensureImportMapResolver')(func
           specifier: args.path,
           importerPath,
           workspaceRoot: normalizedWorkspaceRoot,
+          fs: inputFileSystem,
         })
 
         if (resolved === undefined) return undefined

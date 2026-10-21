@@ -7,9 +7,11 @@
  * the public sync API from here for backward compatibility.
  */
 
+import nodeFs from 'node:fs'
 import * as path from 'node:path'
 
-import { inputFileSystem as fs } from '../../runtime/node/inputs.ts'
+/** Inject recorded reads at runtime without adding imports to this standalone bootstrap module. */
+export type ResolverFileSystem = Pick<typeof nodeFs, 'existsSync' | 'readFileSync' | 'realpathSync'>
 
 /** Parsed import map from package.json#imports */
 export type ImportMap = Record<string, string>
@@ -50,7 +52,10 @@ export const parseImportMapFromGenieSource = (sourceContent: string): ImportMap 
 /**
  * Synchronous version of findPackageJsonWithImports for Bun resolver hooks.
  */
-export const findPackageJsonWithImportsSync = (fromPath: string): string | undefined => {
+export const findPackageJsonWithImportsSync = (
+  fromPath: string,
+  fs: ResolverFileSystem = nodeFs,
+): string | undefined => {
   let dir = path.dirname(fromPath)
   const root = path.parse(dir).root
 
@@ -91,7 +96,10 @@ export const findPackageJsonWithImportsSync = (fromPath: string): string | undef
 /**
  * Synchronous import map extraction for resolver hooks.
  */
-export const extractImportMapSync = (packageJsonPath: string): ImportMap => {
+export const extractImportMapSync = (
+  packageJsonPath: string,
+  fs: ResolverFileSystem = nodeFs,
+): ImportMap => {
   if (fs.existsSync(packageJsonPath) === true) {
     try {
       const content = fs.readFileSync(packageJsonPath, 'utf8')
@@ -256,7 +264,7 @@ const deriveStoreWorktreePathFromLockMember = ({
   })
 }
 
-const findRepoRootSync = (fromDirectory: string): string | undefined => {
+const findRepoRootSync = (fromDirectory: string, fs: ResolverFileSystem): string | undefined => {
   let current = path.resolve(fromDirectory)
   let previous = ''
 
@@ -281,12 +289,14 @@ const resolveLocalMegarepoMemberRootSync = ({
   memberName,
   importerPath,
   workspaceRoot,
+  fs,
 }: {
   memberName: string
   importerPath: string
   workspaceRoot?: string | undefined
+  fs: ResolverFileSystem
 }): string | undefined => {
-  const repoRoot = findRepoRootSync(workspaceRoot ?? path.dirname(importerPath))
+  const repoRoot = findRepoRootSync(workspaceRoot ?? path.dirname(importerPath), fs)
   if (repoRoot === undefined) return undefined
 
   const lockPath = path.join(repoRoot, 'megarepo.lock')
@@ -332,10 +342,12 @@ export const resolveMegarepoMemberSpecifierSync = ({
   specifier,
   importerPath,
   workspaceRoot,
+  fs = nodeFs,
 }: {
   specifier: string
   importerPath: string
   workspaceRoot?: string | undefined
+  fs?: ResolverFileSystem
 }): string | undefined => {
   const parsed = parseMemberSpecifier(specifier)
   if (parsed === undefined) {
@@ -352,6 +364,7 @@ export const resolveMegarepoMemberSpecifierSync = ({
     memberName: parsed.memberName,
     importerPath,
     workspaceRoot,
+    fs,
   })
   if (localRoot !== undefined) {
     return joinMemberSubPath({ memberRoot: localRoot, subPath: parsed.subPath })
@@ -420,10 +433,12 @@ export const resolveImportMapSpecifierForImporterSync = ({
   specifier,
   importerPath,
   workspaceRoot,
+  fs = nodeFs,
 }: {
   specifier: string
   importerPath: string
   workspaceRoot?: string | undefined
+  fs?: ResolverFileSystem
 }): string | undefined => {
   if (isImportMapSpecifier(specifier) === false) {
     return undefined
@@ -433,17 +448,18 @@ export const resolveImportMapSpecifierForImporterSync = ({
     specifier,
     importerPath,
     workspaceRoot,
+    fs,
   })
   if (resolvedMegarepoMember !== undefined) {
     return resolvedMegarepoMember
   }
 
-  const packageJsonPath = findPackageJsonWithImportsSync(importerPath)
+  const packageJsonPath = findPackageJsonWithImportsSync(importerPath, fs)
   if (packageJsonPath === undefined) {
     return undefined
   }
 
-  const importMap = extractImportMapSync(packageJsonPath)
+  const importMap = extractImportMapSync(packageJsonPath, fs)
   if (Object.keys(importMap).length === 0) {
     return undefined
   }
