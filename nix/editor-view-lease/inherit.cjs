@@ -50,7 +50,6 @@ const inherit = (options = {}) => {
 if (leases.length > 0) {
   if (typeof Bun !== 'undefined') {
     const { closeSync } = require('node:fs')
-    const { dlopen } = require('bun:ffi')
     if (process.platform !== 'linux' && process.platform !== 'darwin') {
       throw new Error('Editor-view descriptor inheritance requires Linux or macOS')
     }
@@ -60,9 +59,9 @@ if (leases.length > 0) {
         'Editor-view descriptor inheritance requires EDITOR_VIEW_LEASE_LIBRARY to name the absolute packaged native library',
       )
     }
-    const native = dlopen(library, {
-      eu_dupfd_cloexec: { args: ['i32', 'i32'], returns: 'i32' },
-    })
+    // Leaf readers only retain inherited fds. Compiling a Bun FFI binding in
+    // every leaf adds startup work even when no descendant is ever spawned.
+    let native
     for (const method of ['spawn', 'spawnSync']) {
       const original = Bun[method].bind(Bun)
       Bun[method] = (command, options) => {
@@ -71,6 +70,11 @@ if (leases.length > 0) {
         const mapped = inherit({ ...rest, stdio: input.stdio ?? [stdin, stdout, stderr] })
         const temporary = []
         try {
+          if (native === undefined) {
+            native = require('bun:ffi').dlopen(library, {
+              eu_dupfd_cloexec: { args: ['i32', 'i32'], returns: 'i32' },
+            })
+          }
           // Bun applies child stdio file actions in slot order. A caller's
           // "ignore"/IPC slot can close an original lease fd before its later
           // dup action. Copy sources above every target slot first, so no file

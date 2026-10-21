@@ -49,6 +49,28 @@ describe('bootstrap-safe source consumer descriptor handoff', () => {
     expect(release).toContain('${pkgs.bun}/bin/bun')
     expect(release).not.toContain('${sourceBun}/bin/bun')
   })
+  it('leaf readers retain descriptors without compiling an unused native spawn binding', () => {
+    const directory = fixture()
+    const payload = join(directory, 'generation')
+    writeFileSync(payload, 'leaf-generation')
+    const fd = openSync(payload, 'r')
+    try {
+      const result = spawnSync(process.execPath, ['--require', preload, '-e', inheritedRead], {
+        stdio: ['ignore', 'pipe', 'pipe', fd],
+        env: {
+          ...cleanEnvironment(),
+          EDITOR_VIEW_LEASE_FDS: '3',
+          EDITOR_VIEW_LEASE_LIBRARY: join(directory, 'unused-native-library'),
+        },
+        timeout: 10_000,
+      })
+      expect(result.status).toBe(0)
+      expect(result.stderr?.toString()).toBe('')
+      expect(result.stdout?.toString()).toBe('leaf-generation')
+    } finally {
+      closeSync(fd)
+    }
+  })
   for (const runtime of ['node', 'bun']) {
     for (const method of [
       'spawn',

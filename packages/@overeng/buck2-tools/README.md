@@ -302,6 +302,9 @@ The same native package supplies fixed-arity `eu_getfd` and `eu_dupfd_cloexec`
 FFI entrypoints. Variadic libc calls must stay inside C: Darwin arm64 passes
 variadic arguments differently from fixed-arity FFI arguments. The immutable
 library path is inherited even when a child replaces its environment.
+Leaf readers retain their inherited descriptors without loading a native spawn
+binding; the Bun FFI binding is initialized only when that process actually
+spawns a descendant. This avoids unnecessary per-leaf startup compilation.
 Missing controls are backfilled lazily by readers, publishers, or retirement,
 only after generation validation under the owning CAS fence. Creation uses a
 private exclusive regular file in the validated `.leases` directory; existing
