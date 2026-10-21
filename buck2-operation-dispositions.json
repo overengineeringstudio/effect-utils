@@ -159,6 +159,10 @@
       "operation": "lint:check:getflake"
     },
     {
+      "disposition": "outside-by-policy:repository-staging-contract",
+      "operation": "lint:check:standalone-staging"
+    },
+    {
       "disposition": "outside-by-policy:authoring-mutation",
       "operation": "lint:fix"
     },
