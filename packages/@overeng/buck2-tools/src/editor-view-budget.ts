@@ -2246,10 +2246,9 @@ type RetirementBatch = {
   readonly live: ReadonlySet<string>
   readonly proofAtMs: number
   readonly garbage: string[]
-  readonly beforeCandidateRetirement?: (candidate: {
-    readonly key: string
-    readonly dir: string
-  }) => void
+  readonly beforeCandidateRetirement:
+    | ((candidate: { readonly key: string; readonly dir: string }) => void)
+    | undefined
   expired: boolean
 }
 
@@ -2263,7 +2262,7 @@ const checkEditorViewBudgetCandidateBeforeDelete = ({
   readonly candidate: OrphanCandidate
   readonly kind: 'orphan' | 'generation'
   readonly state: BudgetState
-  readonly batch?: RetirementBatch
+  readonly batch?: RetirementBatch | undefined
 }): boolean => {
   batch?.beforeCandidateRetirement?.({ key: candidate.key, dir: candidate.dir })
   if (batch !== undefined && Date.now() - batch.proofAtMs >= retirementProofMaxAgeMs) {
@@ -2298,11 +2297,11 @@ const retireOrphans = async ({
   batch,
 }: {
   readonly editorRoot: string
-  readonly repoRoot?: string
+  readonly repoRoot?: string | undefined
   readonly candidates: readonly OrphanCandidate[]
   readonly censusEpoch?: number
   readonly publisherCleanup?: boolean
-  readonly batch?: RetirementBatch
+  readonly batch?: RetirementBatch | undefined
 }): Promise<Retirement> => {
   const owners = batch === undefined ? budgetProcessOwners() : new Map<number, string>()
   const retired: string[] = []
@@ -2431,7 +2430,7 @@ export const reclaimEditorViewOrphans = async ({
   repoRoot,
 }: {
   readonly editorRoot: string
-  readonly repoRoot?: string
+  readonly repoRoot?: string | undefined
 }): Promise<boolean> => {
   ensureBudgetDirectory()
   const root = resolve(editorRoot)
@@ -2503,7 +2502,7 @@ const retireRoot = async ({
   readonly usedBytes: number
   readonly recencyMs: number
   readonly censusEpoch: number
-  readonly batch?: RetirementBatch
+  readonly batch?: RetirementBatch | undefined
 }): Promise<Retirement> => {
   const orphans = generations.filter((generation) => generation.kind === 'orphan')
   if (orphans.length > 0) {
@@ -3089,7 +3088,6 @@ export const reserveEditorViewBudget = async ({
         const garbage: string[] = []
         const retiredBefore = evicted.length
         const retiredStores = new Set<string>()
-        let proofExpired = false
         const batchStartedAtMs = Date.now()
         try {
           // Acquire every selected publication exclusion before taking the single host fence.
@@ -3153,12 +3151,12 @@ export const reserveEditorViewBudget = async ({
                 }
               }
             } finally {
-              proofExpired = batch.expired
+              if (batch.expired === true) invalidateCensus()
               process.stderr.write(
                 `[editor-view-budget] ${JSON.stringify({
                   event: 'editor-view.host-budget.retirement-batch',
                   evicted: evicted.slice(retiredBefore),
-                  proofExpired,
+                  proofExpired: batch.expired,
                   candidates: candidates.length,
                   durationMs: Date.now() - batchStartedAtMs,
                 })}\n`,
@@ -3176,7 +3174,6 @@ export const reserveEditorViewBudget = async ({
             for (const lock of locks) lock.release()
           }
         }
-        if (proofExpired === true) invalidateCensus()
         if (evicted.length > retiredBefore) {
           // eslint-disable-next-line no-await-in-loop -- Retired payload links free CAS blobs only after collection.
           await collectBudgetContentStores(retiredStores)

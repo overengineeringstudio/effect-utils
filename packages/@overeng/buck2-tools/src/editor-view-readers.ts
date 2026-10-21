@@ -107,7 +107,7 @@ export const referencedEditorViewPaths = ({
   repoRoot,
 }: {
   readonly editorRoot: string
-  readonly repoRoot?: string
+  readonly repoRoot?: string | undefined
 }): ReadonlySet<string> | undefined => {
   const referenced = new Set<string>()
   const pointer = (path: string): void => {
