@@ -16,7 +16,8 @@ pkgs.writeShellApplication {
     if [ -n "''${EDITOR_VIEW_CONTENT_STORE:-}" ]; then
       # Match the source API's lexical resolve of relative overrides, without
       # following a symlink that the native control validation must reject.
-      export EDITOR_VIEW_CONTENT_STORE="$(realpath -m -s "$EDITOR_VIEW_CONTENT_STORE")"
+      EDITOR_VIEW_CONTENT_STORE="$(realpath -m -s "$EDITOR_VIEW_CONTENT_STORE")"
+      export EDITOR_VIEW_CONTENT_STORE
     fi
     export EDITOR_VIEW_LEASE_WORKSPACE_ROOT="$root"
     export EDITOR_VIEW_LEASE_PRELOAD=${preload}
