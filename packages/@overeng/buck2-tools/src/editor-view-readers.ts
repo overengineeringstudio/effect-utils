@@ -595,7 +595,7 @@ export const classifyEditorViewProcessCandidates = ({
       evidence = reason
       holdInode({ number, device })
     },
-    processIds,
+    ...(processIds === undefined ? {} : { processIds }),
   })
   return finish(reasons)
 }
