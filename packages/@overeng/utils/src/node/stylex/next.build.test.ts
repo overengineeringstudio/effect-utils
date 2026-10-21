@@ -232,7 +232,7 @@ const copyFixtureStore = ({ source, destination }: { source: string; destination
   const makeWritable = (path: string) => {
     const metadata = statSync(path)
     chmodSync(path, metadata.mode | 0o200)
-    if (metadata.isDirectory()) {
+    if (metadata.isDirectory() === true) {
       for (const entry of readdirSync(path)) makeWritable(join(path, entry))
     }
   }
