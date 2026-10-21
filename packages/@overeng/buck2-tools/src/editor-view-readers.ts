@@ -385,15 +385,24 @@ type ProcessObserver = {
   readonly inode: (number: string, device: string, reason: string) => void
 }
 
-const processIncarnation = (base: string): string => {
+type ProcessIncarnation = { readonly state: string; readonly startTime: string }
+
+const processIncarnation = (base: string): ProcessIncarnation => {
   const stat = readFileSync(join(base, 'stat'), 'utf8')
-  const start = stat
+  const fields = stat
     .slice(stat.lastIndexOf(')') + 2)
     .trim()
-    .split(/\s+/)[19]
-  if (start === undefined || /^\d+$/.test(start) === false)
-    throw new Error(`invalid process incarnation: ${base}/stat`)
-  return start
+    .split(/\s+/)
+  const state = fields[0]
+  const startTime = fields[19]
+  if (
+    startTime === undefined ||
+    /^\d+$/.test(startTime) === false ||
+    state === undefined ||
+    /^[A-Za-z]$/.test(state) === false
+  )
+    throw new Error(`invalid process incarnation/state: ${base}/stat`)
+  return { state, startTime }
 }
 
 /**
@@ -418,7 +427,7 @@ const scanEditorViewProcesses = (observer: ProcessObserver): readonly string[] =
       if (/^\d+$/.test(pid) === false) continue
       const base = join('/proc', pid)
       const previousReasons = reasons.length
-      let incarnation: string
+      let incarnation: ProcessIncarnation
       try {
         if (lstatSync(base).uid !== uid) {
           // Linux changes /proc ownership for nondumpable same-user processes.
@@ -429,7 +438,19 @@ const scanEditorViewProcesses = (observer: ProcessObserver): readonly string[] =
           if (identity.slice(1).includes(String(uid)) === false) continue
         }
         incarnation = processIncarnation(base)
+        // A zombie/dead task has relinquished mm and fs_struct. Its visible PID
+        // is positive exit evidence, not an opaque live reader.
+        if (incarnation.state === 'Z' || incarnation.state === 'X' || incarnation.state === 'x')
+          continue
       } catch (error) {
+        if (vanished(error) === true) {
+          try {
+            const retry = processIncarnation(base)
+            if (retry.state === 'Z' || retry.state === 'X' || retry.state === 'x') continue
+          } catch (retryError) {
+            if (vanished(retryError) === true) continue
+          }
+        }
         reasons.push(`proc-identity: ${base}: ${failureCode(error)}`)
         unknown++
         continue
@@ -450,7 +471,7 @@ const scanEditorViewProcesses = (observer: ProcessObserver): readonly string[] =
             currentUid: uid,
           }) === true
         ) {
-          if (processIncarnation(base) !== incarnation) {
+          if (processIncarnation(base).startTime !== incarnation.startTime) {
             reasons.push(`proc-incarnation-changed: ${base}; infrastructure identity changed`)
             unknown++
           } else allowlisted++
@@ -460,6 +481,10 @@ const scanEditorViewProcesses = (observer: ProcessObserver): readonly string[] =
         // A failed identity check grants no exemption. Ordinary complete
         // process observation below still determines applicability.
       }
+      // Publish references only after the final incarnation proof: an exited
+      // task no longer holds payloads, even if earlier inspection saw a handle.
+      const paths: [string, string][] = []
+      const inodes: [string, string, string][] = []
       const inspect = ({
         path,
         read,
@@ -475,7 +500,12 @@ const scanEditorViewProcesses = (observer: ProcessObserver): readonly string[] =
       }
       for (const entry of ['cwd', 'root', 'exe']) {
         const path = join(base, entry)
-        inspect({ path, read: () => observer.path(readlinkSync(path), `proc-reference: ${path}`) })
+        inspect({
+          path,
+          read: () => {
+            paths.push([readlinkSync(path), `proc-reference: ${path}`])
+          },
+        })
       }
       const fdDirectory = join(base, 'fd')
       inspect({
@@ -487,11 +517,11 @@ const scanEditorViewProcesses = (observer: ProcessObserver): readonly string[] =
               path,
               read: () => {
                 const target = readlinkSync(path)
-                observer.path(target, `proc-reference: ${path}`)
+                paths.push([target, `proc-reference: ${path}`])
                 if (target.startsWith('/') === false) return
                 const status = statSync(path, { bigint: true })
                 if (status.isFile() === true)
-                  observer.inode(String(status.ino), String(status.dev), `proc-inode: ${path}`)
+                  inodes.push([String(status.ino), String(status.dev), `proc-inode: ${path}`])
               },
             })
           }
@@ -519,7 +549,7 @@ const scanEditorViewProcesses = (observer: ProcessObserver): readonly string[] =
             if (match === null) throw new Error(`incomplete maps record: ${maps}`)
             const [, major, minor, number, path] = match
             if (major === undefined || minor === undefined || number === undefined) continue
-            observer.inode(
+            inodes.push([
               number,
               String(
                 linuxDevice({
@@ -528,8 +558,8 @@ const scanEditorViewProcesses = (observer: ProcessObserver): readonly string[] =
                 }),
               ),
               `proc-mapping: ${maps}`,
-            )
-            if (path?.startsWith('/') === true) observer.path(path, `proc-mapping: ${maps}`)
+            ])
+            if (path?.startsWith('/') === true) paths.push([path, `proc-mapping: ${maps}`])
           }
         },
       })
@@ -539,16 +569,19 @@ const scanEditorViewProcesses = (observer: ProcessObserver): readonly string[] =
         read: () => {
           for (const argument of argumentsObserved ?? readFileSync(cmdline, 'utf8').split('\0'))
             if (argument.startsWith('/') === true)
-              observer.path(argument, `proc-command: ${cmdline}`)
+              paths.push([argument, `proc-command: ${cmdline}`])
         },
       })
       let exited = false
       try {
-        if (processIncarnation(base) !== incarnation) {
+        const current = processIncarnation(base)
+        exited = current.state === 'Z' || current.state === 'X' || current.state === 'x'
+        if (current.startTime !== incarnation.startTime) {
           exited = true
-          reasons.push(
-            `proc-incarnation-changed: ${base}; replacement process not completely observed`,
-          )
+          if (current.state !== 'Z' && current.state !== 'X' && current.state !== 'x')
+            reasons.push(
+              `proc-incarnation-changed: ${base}; replacement process not completely observed`,
+            )
         }
       } catch (error) {
         // A missing fd/cwd is not proof of exit. A missing incarnation is.
@@ -557,10 +590,14 @@ const scanEditorViewProcesses = (observer: ProcessObserver): readonly string[] =
           reasons.push(`proc-incarnation-unavailable: ${base}: ${failureCode(error)}`)
       }
       for (const failure of failures) {
-        if (exited === true && vanished(failure.error) === true) continue
+        if (exited === true) continue
         reasons.push(
           `proc-incomplete: ${failure.path}: ${failureCode(failure.error)}; reachability unknown`,
         )
+      }
+      if (exited === false) {
+        for (const [path, reason] of paths) observer.path(path, reason)
+        for (const [number, device, reason] of inodes) observer.inode(number, device, reason)
       }
       if (reasons.length !== previousReasons) unknown++
     }

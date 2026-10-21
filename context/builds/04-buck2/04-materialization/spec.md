@@ -320,6 +320,10 @@ never its descendants. The rule protects against accidental deletion of a view
 in use, not against a same-user adversary. Census logs report allowlisted and
 unknown process counts. This exemption is Linux-only: failed or incomplete macOS
 `lsof` observations remain unknown.
+Linux stat state and starttime identify an incarnation together. Zombie/dead
+states prove no remaining address space or filesystem handles. Disappearance is
+ignored only after a fresh stat confirms exit; an unobserved live replacement
+remains unknown. This positive exit proof is not a permission-error exemption.
 
 Applicable evidence merges as `held > unknown > clear`. Positive legacy inode
 or pathname references and shared leases hold the generation; incomplete

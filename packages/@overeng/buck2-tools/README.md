@@ -318,6 +318,11 @@ comm and argv shapes for same-user `sshd-session`, `systemd --user`, and `(sd-pa
 Children remain independently scanned, and name-only matches are unknown.
 Permission failures outside that rule, including macOS `lsof` failures, remain
 unknown. Census diagnostics count allowlisted and unknown processes.
+Linux task state and starttime are read together from `/proc/<pid>/stat`.
+Zombie/dead states positively prove that the incarnation has exited and retains
+no address space or filesystem handles. A disappearing process is ignored only
+after a fresh stat confirms exit; a live replacement not completely observed
+still blocks. This is exit evidence, not a permission-error exemption.
 
 Controls are tombstones: retirement, recreation, and explicit root release never
 unlink/recreate their identities. Their inode and metadata usage participates in

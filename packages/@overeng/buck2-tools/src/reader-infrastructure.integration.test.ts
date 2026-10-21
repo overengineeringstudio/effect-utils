@@ -4,10 +4,25 @@ import { mkdtempSync, readFileSync, readlinkSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import { classifyEditorViewProcessCandidates } from './editor-view-readers.ts'
 import { isLinuxReaderInfrastructureIdentity } from './reader-infrastructure.ts'
+
+const nativeFs = { ...process.getBuiltinModule('fs') }
+const scheduling: { beforeReadlink?: (path: unknown) => void } = {}
+// Use the suite's stable forwarding-export convention: Bun caches named native
+// imports, so mutating fs.readlinkSync/syncBuiltinESMExports does not intercept
+// the scanner. This wrapper changes scheduling only; all I/O is genuine.
+vi.mock('node:fs', () => ({
+  ...nativeFs,
+  readlinkSync: new Proxy(nativeFs.readlinkSync, {
+    apply(target, thisArg, args) {
+      scheduling.beforeReadlink?.(args[0])
+      return Reflect.apply(target, thisArg, args)
+    },
+  }),
+}))
 
 const requireHelper = (): string => {
   const helper = process.env.EDITOR_VIEW_READER_INFRASTRUCTURE_TEST_CHILD_BIN
@@ -153,3 +168,115 @@ describe.skipIf(process.platform !== 'linux')(
     )
   },
 )
+
+describe.skipIf(process.platform !== 'linux')('real exited Linux reader processes', () => {
+  it.each(['zombie', 'exit-race'] as const)(
+    'does not add a blocker for a confirmed %s process',
+    async (mode) => {
+      const helper = requireHelper()
+      const root = mkdtempSync(join(tmpdir(), 'editor-reader-exited-'))
+      const parent = spawn(helper, [], {
+        argv0: '(sd-pam)',
+        env: {
+          ...process.env,
+          EDITOR_VIEW_READER_TEST_COMM: '(sd-pam)',
+          EDITOR_VIEW_READER_TEST_MODE: mode,
+        },
+        stdio: ['pipe', 'pipe', 'pipe'],
+      })
+      let childPid: number | undefined
+      let hookTriggered = false
+      let cleanupError: unknown
+      try {
+        childPid = await new Promise<number>((resolve, reject) => {
+          let output = ''
+          let diagnostics = ''
+          parent.stdout.on('data', (chunk: Buffer) => {
+            output += chunk.toString()
+            const match = /^ready ([0-9]+)\n$/.exec(output)
+            if (match?.[1] !== undefined) resolve(Number(match[1]))
+          })
+          parent.stderr.on('data', (chunk: Buffer) => {
+            diagnostics += chunk.toString()
+          })
+          parent.once('error', reject)
+          parent.once('exit', (code, signal) => {
+            reject(new Error(`exited-process fixture failed: ${code}/${signal}: ${diagnostics}`))
+          })
+        })
+        const pid = childPid
+        const base = `/proc/${pid}`
+        expect(readFileSync(join(base, 'comm'), 'utf8').trimEnd()).toBe('exited-reader')
+        if (mode === 'zombie') {
+          const stat = readFileSync(join(base, 'stat'), 'utf8')
+          expect(stat.slice(stat.lastIndexOf(')') + 2).split(' ')[0]).toBe('Z')
+          expect(() => readlinkSync(join(base, 'cwd'))).toThrowError(
+            expect.objectContaining({ code: expect.stringMatching(/^(EACCES|ENOENT)$/) }),
+          )
+        } else {
+          // Only schedule the real exit. Every stat/readlink result still comes
+          // from the kernel; neither permissions nor disappearance is mocked.
+          // The C parent eagerly waitpids, allowing synchronous procfs proof
+          // even while the JS scanner has not returned to its event loop.
+          scheduling.beforeReadlink = (path) => {
+            if (path !== join(base, 'cwd') || hookTriggered === true) return
+            hookTriggered = true
+            process.kill(pid, 'SIGKILL')
+            const deadline = Date.now() + 5_000
+            const pause = new Int32Array(new SharedArrayBuffer(4))
+            for (;;) {
+              try {
+                readFileSync(join(base, 'stat'))
+              } catch (error) {
+                if (error instanceof Error && 'code' in error && error.code === 'ENOENT') break
+                throw error
+              }
+              if (Date.now() >= deadline) throw new Error('native parent did not reap exited child')
+              Atomics.wait(pause, 0, 0, 1)
+            }
+          }
+        }
+        const candidate = {
+          key: 'exited-reader-generation',
+          editorRoot: join(root, '.editor-view'),
+          snapshotRoot: join(root, '.editor-view', '.store', 'default-test'),
+          linkedInodes: [],
+        }
+        const evidence = classifyEditorViewProcessCandidates({ candidates: [candidate] }).get(
+          candidate.key,
+        )
+        expect(evidence).toBeDefined()
+        if (mode === 'exit-race') expect(hookTriggered).toBe(true)
+        expect(
+          evidence?.reasons.filter(
+            (reason) => reason.includes(`${base}/`) || reason.includes(`${base}:`),
+          ),
+        ).toEqual([])
+        if (mode === 'exit-race') {
+          expect(() => readFileSync(join(base, 'stat'))).toThrowError(
+            expect.objectContaining({ code: 'ENOENT' }),
+          )
+        }
+      } finally {
+        delete scheduling.beforeReadlink
+        if (mode === 'exit-race' && childPid !== undefined && hookTriggered === false) {
+          try {
+            process.kill(childPid, 'SIGKILL')
+          } catch (error) {
+            if (!(error instanceof Error && 'code' in error && error.code === 'ESRCH'))
+              cleanupError = error
+          }
+        }
+        // Graceful EOF lets the fixture reap its zombie before exiting.
+        if (parent.exitCode === null && parent.signalCode === null) {
+          const exited = once(parent, 'exit')
+          parent.stdin.end()
+          await exited
+        }
+        rmSync(root, { recursive: true, force: true })
+      }
+      if (cleanupError !== undefined) throw cleanupError
+    },
+    30_000,
+  )
+})

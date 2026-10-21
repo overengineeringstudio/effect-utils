@@ -50,8 +50,8 @@ const candidates = [
 const platform = process.platform
 const uid = process.getuid?.() ?? 1000
 const denied = (code = 'EACCES'): Error => Object.assign(new Error(code), { code })
-const incarnation = (start = '100'): string =>
-  `1 (fixture) S ${Array(18).fill('0').join(' ')} ${start}`
+const incarnation = (start = '100', state = 'S'): string =>
+  `1 (fixture) ${state} ${Array(18).fill('0').join(' ')} ${start}`
 
 beforeEach(() => {
   for (const mock of Object.values(io)) mock.mockReset()
@@ -154,6 +154,48 @@ describe('migration reader evidence', () => {
     expect(classify().get('a')?.state).toBe('unknown')
   })
 
+  it.each(['Z', 'X', 'x'])('recognizes initial %s state as positively exited', (state) => {
+    io.readFileSync.mockImplementation((path: string) =>
+      path.endsWith('/stat') === true ? incarnation('100', state) : '',
+    )
+    expect([...classify().values()].map(({ state: observed }) => observed)).toEqual([
+      'clear',
+      'clear',
+      'clear',
+    ])
+    expect(io.readlinkSync).not.toHaveBeenCalled()
+  })
+
+  it.each(['Z', 'X', 'x'])('excuses vanished links after live process enters %s state', (state) => {
+    let reads = 0
+    io.readFileSync.mockImplementation((path: string) =>
+      path.endsWith('/stat') === true ? incarnation('100', ++reads === 1 ? 'S' : state) : '',
+    )
+    io.readlinkSync.mockImplementation(() => {
+      throw denied('ENOENT')
+    })
+    expect(classify().get('a')?.state).toBe('clear')
+  })
+
+  it('rereads missing initial identity and ignores only a confirmed departed process', () => {
+    io.lstatSync.mockImplementation(() => {
+      throw denied('ENOENT')
+    })
+    io.readFileSync.mockImplementation((path: string) => {
+      if (path.endsWith('/stat') === true) throw denied('ESRCH')
+      return ''
+    })
+    expect(classify().get('a')?.state).toBe('clear')
+    expect(io.readFileSync).toHaveBeenCalledWith('/proc/123/stat', 'utf8')
+    io.readFileSync.mockReturnValue(incarnation())
+    expect(classify().get('a')?.state).toBe('unknown')
+  })
+
+  it('rejects missing or malformed process state rather than assuming exit', () => {
+    io.readFileSync.mockReturnValue(incarnation('100', '?'))
+    expect(classify().get('a')?.state).toBe('unknown')
+  })
+
   it.each(['exit', 'reuse'])('excuses vanished links only after proving incarnation %s', (mode) => {
     let reads = 0
     io.readlinkSync.mockImplementation(() => {
@@ -168,7 +210,7 @@ describe('migration reader evidence', () => {
     expect(classify().get('a')?.state).toBe(mode === 'exit' ? 'clear' : 'unknown')
   })
 
-  it('does not excuse EACCES even when the process subsequently exits', () => {
+  it('discards earlier EACCES after stat proves the process departed', () => {
     let reads = 0
     io.readlinkSync.mockImplementation(() => {
       throw denied()
@@ -178,7 +220,24 @@ describe('migration reader evidence', () => {
       if (++reads === 1) return incarnation()
       throw denied('ENOENT')
     })
-    expect(classify().get('a')?.state).toBe('unknown')
+    expect(classify().get('a')?.state).toBe('clear')
+  })
+
+  it.each(['Z', 'X'])('discards fd EACCES and old references when final state is %s', (state) => {
+    let reads = 0
+    io.readdirSync.mockImplementation((path: string) => (path === '/proc' ? ['123'] : ['4']))
+    io.readFileSync.mockImplementation((path: string) =>
+      path.endsWith('/stat') === true ? incarnation('100', ++reads === 1 ? 'S' : state) : '',
+    )
+    io.readlinkSync.mockImplementation((path: string) => {
+      if (path.endsWith('/fd/4') === true) throw denied()
+      return '/views/.store/a/payload'
+    })
+    expect([...classify().values()].map(({ state: observed }) => observed)).toEqual([
+      'clear',
+      'clear',
+      'clear',
+    ])
   })
 
   it('preserves candidate-specific positive paths while unrelated failures remain unknown', () => {
