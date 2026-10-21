@@ -393,13 +393,17 @@ process.execve(${JSON.stringify(executable)}, [${JSON.stringify(executable)}, ${
         ]
       } else {
         const preload = join(root, 'inject-restore-failure.ts')
-        // Disturb the real inherited fd immediately before protection runs.
-        // The native fcntl then fails with EBADF; no FFI behavior is mocked.
+        // Force a real EBADF during restoration, then reopen stdin only at the
+        // actual exec call: Bun itself rejects closed stdio before execve.
         writeFileSync(
           preload,
-          `import { closeSync } from 'node:fs'
+          `import { closeSync, openSync } from 'node:fs'
 import process from 'node:process'
 const execve = process.execve
+const forwardExecve = (file: string, args: string[], env: Record<string, string>) => {
+  if (openSync('/dev/null', 'r') !== 0) process.exit(73)
+  return execve(file, args, env)
+}
 let injected = false
 Object.defineProperty(process, 'execve', {
   get() {
@@ -407,7 +411,7 @@ Object.defineProperty(process, 'execve', {
       closeSync(0)
       injected = true
     }
-    return execve
+    return forwardExecve
   },
 })
 `,
