@@ -414,7 +414,7 @@ export const acquireEditorViewLease = async ({
           lease.snapshot === undefined ||
           lease.generation === undefined
         )
-          fail(`cannot acquire reader lease: ${lease.reasons.join('; ')}`)
+          return fail(`cannot acquire reader lease: ${lease.reasons.join('; ')}`)
         return {
           fd: lease.fd,
           snapshot: lease.snapshot,

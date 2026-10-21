@@ -18,8 +18,8 @@ export const isLinuxReaderInfrastructureIdentity = ({
   readonly platform: string
   readonly comm: string
   readonly cmdline: readonly string[]
-  readonly uid?: number
-  readonly currentUid?: number
+  readonly uid?: number | undefined
+  readonly currentUid?: number | undefined
 }): boolean => {
   if (platform !== 'linux' || currentUid === undefined) return false
   if (uid !== undefined && uid !== currentUid) return false

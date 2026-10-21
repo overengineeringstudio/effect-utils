@@ -922,9 +922,7 @@ in
   env.EDITOR_VIEW_SOURCE_LAUNCHER = "${sourceLease}/bin/editor-view-source";
   env.EDITOR_VIEW_LEASE_BIN = "${editorViewLease}/bin/editor-view-lease";
   env.EDITOR_VIEW_LEASE_TEST_CHILD_BIN = "${editorViewLease.testHelpers}/bin/editor-view-lease-test-child";
-  env.EDITOR_VIEW_READER_INFRASTRUCTURE_TEST_CHILD_BIN =
-    lib.optionalString pkgs.stdenv.isLinux
-      "${editorViewLease.testHelpers}/bin/editor-view-reader-infrastructure-test-child";
+  env.EDITOR_VIEW_READER_INFRASTRUCTURE_TEST_CHILD_BIN = lib.optionalString pkgs.stdenv.isLinux "${editorViewLease.testHelpers}/bin/editor-view-reader-infrastructure-test-child";
 
   effectUtils.buck2 = {
     eventsPackage = repoPackages.buck2-events;
