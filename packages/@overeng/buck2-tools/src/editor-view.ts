@@ -2477,7 +2477,7 @@ export const releaseEditorViewRoot = async (options: EditorViewOptions): Promise
       await withEditorViewContentStoreLock({
         contentStore: paths.contentStore,
         run: async () => {
-          const generations = pathExists(paths.storeDir) ? readdirSync(paths.storeDir) : []
+          const generations = pathExists(paths.storeDir) === true ? readdirSync(paths.storeDir) : []
           for (const snapshot of generations) {
             if (/^[A-Za-z0-9][A-Za-z0-9_-]*-[0-9a-f]{64}$/.test(snapshot) === false) continue
             ensureEditorViewLeaseControl({ editorRoot: paths.editorRoot, snapshot })
@@ -2495,7 +2495,7 @@ export const releaseEditorViewRoot = async (options: EditorViewOptions): Promise
           for (const name of readdirSync(paths.editorRoot)) {
             if (name === '.leases' || name === '.publish.lock') continue
             const path = join(paths.editorRoot, name)
-            if (lstatSync(path).isDirectory()) makeDirectoriesWritable(path)
+            if (lstatSync(path).isDirectory() === true) makeDirectoriesWritable(path)
             rmSync(path, { recursive: true })
           }
         },
@@ -3354,7 +3354,7 @@ const publishEditorViewCoordinated = async ({
           }
           // Backfill under exclusion, without claiming legacy readers adopted leases.
           for (const name of readdirSync(paths.storeDir))
-            if (/^[A-Za-z0-9][A-Za-z0-9_-]*-[0-9a-f]{64}$/.test(name))
+            if (/^[A-Za-z0-9][A-Za-z0-9_-]*-[0-9a-f]{64}$/.test(name) === true)
               ensureEditorViewLeaseControl({ editorRoot: paths.editorRoot, snapshot: name })
         },
       })

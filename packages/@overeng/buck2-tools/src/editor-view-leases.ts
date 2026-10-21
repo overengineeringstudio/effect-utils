@@ -41,13 +41,18 @@ const fail = (message: string): never => {
 }
 const owned = (status: BigIntStats): boolean =>
   process.getuid !== undefined && status.uid === BigInt(process.getuid())
-const same = (left: BigIntStats, right: BigIntStats): boolean =>
-  left.dev === right.dev && left.ino === right.ino
+const same = ({
+  left,
+  right,
+}: {
+  readonly left: BigIntStats
+  readonly right: BigIntStats
+}): boolean => left.dev === right.dev && left.ino === right.ino
 const privateDirectory = (path: string): BigIntStats => {
   const status = lstatSync(path, { bigint: true })
   if (
-    !status.isDirectory() ||
-    !owned(status) ||
+    status.isDirectory() === false ||
+    owned(status) === false ||
     (status.mode & 0o077n) !== 0n ||
     realpathSync(path) !== path
   )
@@ -68,7 +73,8 @@ export const editorViewLeaseFilesystem = (path: string): 'local' | 'unknown' => 
   }
   const type = Number(statfsSync(path).type) >>> 0
   // ext2/3/4, XFS, Btrfs, tmpfs, ramfs, local OpenZFS. Overlay stays unknown.
-  return [0xef53, 0x58465342, 0x9123683e, 0x01021994, 0x858458f6, 0x2fc12fc1].includes(type)
+  return [0xef53, 0x58465342, 0x9123683e, 0x01021994, 0x858458f6, 0x2fc12fc1].includes(type) ===
+    true
     ? 'local'
     : 'unknown'
 }
@@ -86,11 +92,11 @@ const paths = ({
     generation === '.' ||
     generation === '..' ||
     generation.length === 0 ||
-    (!isAbsolute(snapshot) && generation !== snapshot)
+    (isAbsolute(snapshot) === false && generation !== snapshot)
   )
     fail('invalid generation name')
   const payload = join(root, '.store', generation)
-  if (isAbsolute(snapshot) && resolve(snapshot) !== payload)
+  if (isAbsolute(snapshot) === true && resolve(snapshot) !== payload)
     fail('snapshot is outside the owning root')
   return {
     root,
@@ -100,39 +106,59 @@ const paths = ({
   }
 }
 
-const validateGeneration = (root: string, snapshot: string, requireLocal = true): BigIntStats => {
+const validateGeneration = ({
+  root,
+  snapshot,
+  requireLocal = true,
+}: {
+  readonly root: string
+  readonly snapshot: string
+  readonly requireLocal?: boolean
+}): BigIntStats => {
   if (realpathSync(root) !== root) fail('editor root is not canonical')
   const store = lstatSync(join(root, '.store'), { bigint: true })
   const status = lstatSync(snapshot, { bigint: true })
   if (
-    !store.isDirectory() ||
-    !status.isDirectory() ||
-    !owned(store) ||
-    !owned(status) ||
+    store.isDirectory() === false ||
+    status.isDirectory() === false ||
+    owned(store) === false ||
+    owned(status) === false ||
     realpathSync(snapshot) !== snapshot
   )
     fail('unsafe generation identity')
   if (
-    requireLocal &&
+    requireLocal === true &&
     (editorViewLeaseFilesystem(root) !== 'local' || editorViewLeaseFilesystem(snapshot) !== 'local')
   )
     fail('unknown filesystem semantics')
   return status
 }
 
-const controlIdentity = (control: string, status: BigIntStats): string =>
+const controlIdentity = ({
+  control,
+  status,
+}: {
+  readonly control: string
+  readonly status: BigIntStats
+}): string =>
   `${status.dev}:${status.ino}\n${dirname(dirname(control))}\n${basename(control, '.lock')}\n`
 
-const validateControl = (control: string, fd: number): BigIntStats => {
+const validateControl = ({
+  control,
+  fd,
+}: {
+  readonly control: string
+  readonly fd: number
+}): BigIntStats => {
   privateDirectory(dirname(control))
   const status = fstatSync(fd, { bigint: true })
   const named = lstatSync(control, { bigint: true })
   if (
-    !status.isFile() ||
-    !owned(status) ||
+    status.isFile() === false ||
+    owned(status) === false ||
     status.nlink !== 1n ||
     (status.mode & 0o777n) !== 0o600n ||
-    !same(status, named) ||
+    same({ left: status, right: named }) === false ||
     named.nlink !== 1n ||
     status.size > 8192n
   )
@@ -141,7 +167,7 @@ const validateControl = (control: string, fd: number): BigIntStats => {
   const text = Buffer.alloc(Number(status.size))
   if (
     readSync(fd, text, 0, text.length, 0) !== text.length ||
-    text.toString('utf8') !== controlIdentity(control, status)
+    text.toString('utf8') !== controlIdentity({ control, status })
   )
     fail(`replaced control identity: ${control}`)
   if ((native.symbols.fcntl(fd, 1, 0) & 1) !== 1) fail('lease descriptor must be close-on-exec')
@@ -154,7 +180,7 @@ export const ensureEditorViewLeaseControl = (input: {
   readonly snapshot: string
 }): void => {
   const identity = paths(input)
-  validateGeneration(identity.root, identity.snapshot, false)
+  validateGeneration({ root: identity.root, snapshot: identity.snapshot, requireLocal: false })
   try {
     mkdirSync(dirname(identity.control), { mode: 0o700 })
   } catch (error) {
@@ -185,30 +211,40 @@ export const ensureEditorViewLeaseControl = (input: {
     )
   }
   try {
-    if (created) writeSync(fd, controlIdentity(identity.control, fstatSync(fd, { bigint: true })))
-    validateControl(identity.control, fd)
+    if (created === true)
+      writeSync(
+        fd,
+        controlIdentity({ control: identity.control, status: fstatSync(fd, { bigint: true }) }),
+      )
+    validateControl({ control: identity.control, fd })
   } finally {
     closeSync(fd)
   }
 }
 
+/** Retained exclusive ownership or a fail-closed held/unknown classification for one generation. */
 export type EditorViewLeaseProbe = {
   readonly state: 'clear' | 'held' | 'unknown'
   readonly reasons: readonly string[]
   readonly release: () => void
 }
-const acquire = (
-  input: { readonly editorRoot: string; readonly snapshot: string },
-  exclusive: boolean,
-): EditorViewLeaseProbe & {
+const acquire = ({
+  editorRoot,
+  snapshot,
+  exclusive,
+}: {
+  readonly editorRoot: string
+  readonly snapshot: string
+  readonly exclusive: boolean
+}): EditorViewLeaseProbe & {
   readonly fd?: number
   readonly snapshot?: string
   readonly generation?: string
 } => {
   let fd: number | undefined
   try {
-    const identity = paths(input)
-    const generation = validateGeneration(identity.root, identity.snapshot)
+    const identity = paths({ editorRoot, snapshot })
+    const generation = validateGeneration({ root: identity.root, snapshot: identity.snapshot })
     privateDirectory(dirname(identity.control))
     fd = openSync(
       identity.control,
@@ -217,10 +253,10 @@ const acquire = (
         constants.O_NOFOLLOW |
         (process.platform === 'darwin' ? 0x1000000 : 0x80000),
     )
-    validateControl(identity.control, fd)
+    validateControl({ control: identity.control, fd })
     let result: number
     do {
-      result = native.symbols.flock(fd, (exclusive ? 2 : 1) | 4)
+      result = native.symbols.flock(fd, (exclusive === true ? 2 : 1) | 4)
     } while (result !== 0 && ffiRead.i32(errnoAddress()!) === 4)
     if (result !== 0) {
       const errno = ffiRead.i32(errnoAddress()!)
@@ -232,8 +268,13 @@ const acquire = (
         release: () => {},
       }
     }
-    validateControl(identity.control, fd)
-    if (!same(generation, validateGeneration(identity.root, identity.snapshot)))
+    validateControl({ control: identity.control, fd })
+    if (
+      same({
+        left: generation,
+        right: validateGeneration({ root: identity.root, snapshot: identity.snapshot }),
+      }) === false
+    )
       fail('generation replaced during acquisition')
     const descriptor = fd
     let closed = false
@@ -244,7 +285,7 @@ const acquire = (
       snapshot: identity.snapshot,
       generation: identity.generation,
       release: () => {
-        if (!closed) {
+        if (closed === false) {
           closed = true
           closeSync(descriptor)
         }
@@ -264,7 +305,7 @@ const acquire = (
 export const probeEditorViewLease = (input: {
   readonly editorRoot: string
   readonly snapshot: string
-}): EditorViewLeaseProbe => acquire(input, true)
+}): EditorViewLeaseProbe => acquire({ ...input, exclusive: true })
 
 /** Resolution happens inside the CAS fence, never before it. Closing, not LOCK_UN, releases ownership. */
 export const acquireEditorViewLease = async ({
@@ -286,7 +327,7 @@ export const acquireEditorViewLease = async ({
     return await withEditorViewContentStoreLock({
       contentStore,
       run: async () => {
-        const lease = acquire({ editorRoot, snapshot: await resolveSnapshot() }, false)
+        const lease = acquire({ editorRoot, snapshot: await resolveSnapshot(), exclusive: false })
         retained = lease
         if (
           lease.state !== 'clear' ||

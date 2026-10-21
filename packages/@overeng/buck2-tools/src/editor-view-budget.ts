@@ -73,13 +73,25 @@ export type EditorViewEvictedMarker = {
 export class EditorViewCapacityError extends Error {
   readonly code = 'EDITOR_VIEW_CAPACITY'
 
-  constructor(
-    readonly budgetBytes: number,
-    readonly usedBytes: number,
-    readonly reservationBytes: number,
-    readonly blockedGenerations: number,
-    readonly reasons: readonly string[],
-  ) {
+  readonly budgetBytes: number
+  readonly usedBytes: number
+  readonly reservationBytes: number
+  readonly blockedGenerations: number
+  readonly reasons: readonly string[]
+
+  constructor({
+    budgetBytes,
+    usedBytes,
+    reservationBytes,
+    blockedGenerations,
+    reasons,
+  }: {
+    readonly budgetBytes: number
+    readonly usedBytes: number
+    readonly reservationBytes: number
+    readonly blockedGenerations: number
+    readonly reasons: readonly string[]
+  }) {
     super(
       `editor view host budget: capacity exhausted (${usedBytes} used + ${reservationBytes} requested; ` +
         `${budgetBytes} budget; ${blockedGenerations} protected generations). ` +
@@ -87,6 +99,11 @@ export class EditorViewCapacityError extends Error {
         'Close unmanaged editor sessions and explicitly release idle worktrees or pins, or raise EDITOR_VIEW_HOST_BUDGET_BYTES.',
     )
     this.name = 'EditorViewCapacityError'
+    this.budgetBytes = budgetBytes
+    this.usedBytes = usedBytes
+    this.reservationBytes = reservationBytes
+    this.blockedGenerations = blockedGenerations
+    this.reasons = reasons
   }
 }
 
@@ -2597,11 +2614,11 @@ export const reserveEditorViewBudget = async ({
       const census =
         last?.census ??
         (await takeCensus({ contentStore: store, root, heldEditorRoot, discoverRoots, staged }))
-      const capacityError = new EditorViewCapacityError(
+      const capacityError = new EditorViewCapacityError({
         budgetBytes,
-        census.usedBytes + reservedBytes(readState()),
+        usedBytes: census.usedBytes + reservedBytes(readState()),
         reservationBytes,
-        census.generations.reduce(
+        blockedGenerations: census.generations.reduce(
           (count, generation) =>
             count +
             (generation.kind === 'generation' && evicted.includes(generation.key) === false
@@ -2609,7 +2626,7 @@ export const reserveEditorViewBudget = async ({
               : 0),
           0,
         ),
-        [
+        reasons: [
           ...new Set(
             census.roots.flatMap(
               (view) => editorViewAutomaticEvictionEvidence({ editorRoot: view.key }).reasons,
@@ -2619,7 +2636,7 @@ export const reserveEditorViewBudget = async ({
           'persistent lease-control tombstones retain inode and metadata pressure and must not be unlinked',
           'held leases, pins, recent use, incomplete reader evidence, and contended locks remain protected',
         ],
-      )
+      })
       await withHostBudgetLock(async () => {
         const state = readState()
         state.usage = {

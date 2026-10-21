@@ -119,7 +119,7 @@ describe('editor generation native leases (Linux and macOS)', () => {
     assert.equal(fs.lstatSync(control).ino, inode);
     const reader = await acquire(); assert.equal(probe(), 'held'); reader.release();
     const marker = join(root, 'no-backfill-exec');
-    const rejected = spawnSync(launcher, [...args, '--', ${JSON.stringify(bun)}, '--eval', 'require(\"node:fs\").writeFileSync(' + JSON.stringify(marker) + ', \"bad\")'], { env });
+    const rejected = spawnSync(launcher, [...args, '--', ${JSON.stringify(bun)}, '--eval', 'require("node:fs").writeFileSync(' + JSON.stringify(marker) + ', "bad")'], { env });
     assert.notEqual(rejected.status, 0); assert.equal(fs.existsSync(marker), false);
     fs.writeFileSync(control, 'replaced');
     assert.notEqual(spawnSync(launcher, args, { env }).status, 0);
@@ -246,7 +246,7 @@ describe('editor generation native leases (Linux and macOS)', () => {
     const cold = join(root, 'cold'); fs.mkdirSync(cold);
     const absentStore = join(root, 'absent-cas');
     const env = { ...process.env, EDITOR_VIEW_CONTENT_STORE: absentStore, EDITOR_VIEW_LEASE_EXECUTABLE: '', EDITOR_VIEW_LEASE_FDS: '' };
-    const command = [${JSON.stringify(bun)}, '--eval', 'process.exit(process.env.EDITOR_VIEW_LEASE_ACTIVE === \"1\" ? 0 : 1)'];
+    const command = [${JSON.stringify(bun)}, '--eval', 'process.exit(process.env.EDITOR_VIEW_LEASE_ACTIVE === "1" ? 0 : 1)'];
     const empty = spawnSync(launcher, ['--workspace-root', cold, '--', ...command], { env });
     assert.equal(empty.status, 0); assert.equal(fs.existsSync(absentStore + '.flock'), false);
     const backfill = spawnSync(launcher, ['--workspace-root', cold, '--backfill-controls'], { env });

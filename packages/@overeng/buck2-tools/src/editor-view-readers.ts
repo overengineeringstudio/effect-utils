@@ -176,6 +176,7 @@ export type EditorViewProcessCandidate = {
 }
 
 type ProcessCandidateGroup = { readonly indices: number[]; remaining: number }
+/** Candidate-scoped migration/lease proof and actionable blockers. */
 export type EditorViewReaderEvidence = {
   readonly state: 'clear' | 'held' | 'unknown'
   readonly reasons: readonly string[]
@@ -199,7 +200,6 @@ export const editorViewAutomaticEvictionEvidence = ({
 })
 
 /** Complete applicable migration evidence; held wins over incomplete evidence. */
-
 export const classifyEditorViewProcessCandidates = ({
   candidates,
 }: {
@@ -377,7 +377,13 @@ const scanEditorViewProcesses = (observer: ProcessObserver): readonly string[] =
         continue
       }
       const failures: { readonly path: string; readonly error: unknown }[] = []
-      const inspect = (path: string, read: () => void): void => {
+      const inspect = ({
+        path,
+        read,
+      }: {
+        readonly path: string
+        readonly read: () => void
+      }): void => {
         try {
           read()
         } catch (error) {
@@ -386,47 +392,60 @@ const scanEditorViewProcesses = (observer: ProcessObserver): readonly string[] =
       }
       for (const entry of ['cwd', 'root', 'exe']) {
         const path = join(base, entry)
-        inspect(path, () => observer.path(readlinkSync(path), `proc-reference: ${path}`))
+        inspect({ path, read: () => observer.path(readlinkSync(path), `proc-reference: ${path}`) })
       }
       const fdDirectory = join(base, 'fd')
-      inspect(fdDirectory, () => {
-        for (const descriptor of readdirSync(fdDirectory)) {
-          const path = join(fdDirectory, descriptor)
-          inspect(path, () => {
-            const target = readlinkSync(path)
-            observer.path(target, `proc-reference: ${path}`)
-            if (target.startsWith('/') === false) return
-            const status = statSync(path, { bigint: true })
-            if (status.isFile() === true)
-              observer.inode(String(status.ino), String(status.dev), `proc-inode: ${path}`)
-          })
-        }
+      inspect({
+        path: fdDirectory,
+        read: () => {
+          for (const descriptor of readdirSync(fdDirectory)) {
+            const path = join(fdDirectory, descriptor)
+            inspect({
+              path,
+              read: () => {
+                const target = readlinkSync(path)
+                observer.path(target, `proc-reference: ${path}`)
+                if (target.startsWith('/') === false) return
+                const status = statSync(path, { bigint: true })
+                if (status.isFile() === true)
+                  observer.inode(String(status.ino), String(status.dev), `proc-inode: ${path}`)
+              },
+            })
+          }
+        },
       })
       const maps = join(base, 'maps')
-      inspect(maps, () => {
-        for (const line of readFileSync(maps, 'utf8').split('\n')) {
-          if (line.length === 0) continue
-          const match = /^\S+\s+\S+\s+\S+\s+([0-9a-f]+):([0-9a-f]+)\s+([0-9]+)\s*(.*)$/.exec(line)
-          if (match === null) throw new Error(`incomplete maps record: ${maps}`)
-          const [, major, minor, number, path] = match
-          if (major === undefined || minor === undefined || number === undefined) continue
-          observer.inode(
-            number,
-            String(
-              linuxDevice({
-                major: BigInt(`0x${major}`),
-                minor: BigInt(`0x${minor}`),
-              }),
-            ),
-            `proc-mapping: ${maps}`,
-          )
-          if (path?.startsWith('/') === true) observer.path(path, `proc-mapping: ${maps}`)
-        }
+      inspect({
+        path: maps,
+        read: () => {
+          for (const line of readFileSync(maps, 'utf8').split('\n')) {
+            if (line.length === 0) continue
+            const match = /^\S+\s+\S+\s+\S+\s+([0-9a-f]+):([0-9a-f]+)\s+([0-9]+)\s*(.*)$/.exec(line)
+            if (match === null) throw new Error(`incomplete maps record: ${maps}`)
+            const [, major, minor, number, path] = match
+            if (major === undefined || minor === undefined || number === undefined) continue
+            observer.inode(
+              number,
+              String(
+                linuxDevice({
+                  major: BigInt(`0x${major}`),
+                  minor: BigInt(`0x${minor}`),
+                }),
+              ),
+              `proc-mapping: ${maps}`,
+            )
+            if (path?.startsWith('/') === true) observer.path(path, `proc-mapping: ${maps}`)
+          }
+        },
       })
       const cmdline = join(base, 'cmdline')
-      inspect(cmdline, () => {
-        for (const argument of readFileSync(cmdline, 'utf8').split('\0'))
-          if (argument.startsWith('/') === true) observer.path(argument, `proc-command: ${cmdline}`)
+      inspect({
+        path: cmdline,
+        read: () => {
+          for (const argument of readFileSync(cmdline, 'utf8').split('\0'))
+            if (argument.startsWith('/') === true)
+              observer.path(argument, `proc-command: ${cmdline}`)
+        },
       })
       let exited = false
       try {
@@ -638,7 +657,7 @@ export const measureEditorViewReaders = async ({
   })
   const classified = classifyEditorViewProcessCandidates({ candidates })
   const generations = candidates.map(({ key, editorRoot, snapshotRoot }) => {
-    const root = roots.find((root) => root.editorRoot === editorRoot)
+    const root = roots.find((entry) => entry.editorRoot === editorRoot)
     const legacy: EditorViewReaderEvidence = classified.get(key) ?? {
       state: 'unknown',
       reasons: ['missing-process-classification'],
@@ -698,7 +717,7 @@ export const measureEditorViewReaders = async ({
         observed.state === 'held'
           ? observed
           : { state: 'unknown', reasons: [...observed.reasons, ...root.policy.reasons] }
-      return { ...root, observed, effective, generationCounts }
+      return Object.assign({}, root, { observed, effective, generationCounts })
     }),
     generations,
   }

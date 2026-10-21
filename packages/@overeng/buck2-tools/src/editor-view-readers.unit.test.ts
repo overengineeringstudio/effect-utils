@@ -56,7 +56,7 @@ beforeEach(() => {
   io.readlinkSync.mockReturnValue('/unrelated')
   io.statSync.mockReturnValue({ isFile: () => true, ino: 0n, dev: 0n })
   io.readFileSync.mockImplementation((path: string) =>
-    path.endsWith('/stat') ? incarnation() : '',
+    path.endsWith('/stat') === true ? incarnation() : '',
   )
   io.spawnSync.mockReturnValue({ stdout: '', stderr: '', status: 1, signal: null })
   io.probeEditorViewLease.mockReturnValue({
@@ -118,7 +118,7 @@ describe('migration reader evidence', () => {
       else if (entry === 'maps' || entry === 'cmdline')
         io.readFileSync.mockImplementation((input: string) => {
           if (input === path) throw denied()
-          return input.endsWith('/stat') ? incarnation() : ''
+          return input.endsWith('/stat') === true ? incarnation() : ''
         })
       else
         io.readlinkSync.mockImplementation((input: string) => {
@@ -136,7 +136,7 @@ describe('migration reader evidence', () => {
   it('does not excuse a closed descriptor while its process incarnation remains live', () => {
     io.readdirSync.mockImplementation((path: string) => (path === '/proc' ? ['123'] : ['4']))
     io.readlinkSync.mockImplementation((path: string) => {
-      if (path.endsWith('/fd/4')) throw denied('ENOENT')
+      if (path.endsWith('/fd/4') === true) throw denied('ENOENT')
       return '/unrelated'
     })
     expect(classify().get('a')?.state).toBe('unknown')
@@ -171,7 +171,7 @@ describe('migration reader evidence', () => {
 
   it('preserves candidate-specific positive paths while unrelated failures remain unknown', () => {
     io.readlinkSync.mockImplementation((path: string) => {
-      if (path.endsWith('/cwd')) return '/views/.store/a/node_modules/pkg'
+      if (path.endsWith('/cwd') === true) return '/views/.store/a/node_modules/pkg'
       throw denied()
     })
     const result = classify()
@@ -189,15 +189,15 @@ describe('migration reader evidence', () => {
 
   it('recognizes mapping aliases by inode and rejects malformed maps', () => {
     io.readFileSync.mockImplementation((path: string) =>
-      path.endsWith('/stat')
+      path.endsWith('/stat') === true
         ? incarnation()
-        : path.endsWith('/maps')
+        : path.endsWith('/maps') === true
           ? '100-200 r--p 0000 00:01 42 /alias\n'
           : '',
     )
     expect(classify().get('a')?.state).toBe('held')
     io.readFileSync.mockImplementation((path: string) =>
-      path.endsWith('/stat') ? incarnation() : 'truncated',
+      path.endsWith('/stat') === true ? incarnation() : 'truncated',
     )
     expect(classify().get('a')?.state).toBe('unknown')
   })
@@ -305,7 +305,7 @@ describe('read-only measurement', () => {
     })
     io.lstatSync.mockImplementation((path: string) => ({
       uid,
-      size: path.endsWith('.lock') ? 0 : 4096,
+      size: path.endsWith('.lock') === true ? 0 : 4096,
       blocks: 8,
       isDirectory: () => path.endsWith('.lock') === false,
       isFile: () => path.endsWith('.lock'),
