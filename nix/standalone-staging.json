@@ -1,0 +1,156 @@
+{
+  "sources": [
+    {
+      "initializationError": "",
+      "source": "packages/@overeng/genie/src/core/import-map/sync-resolver.ts",
+      "nix": [
+        "nix/devenv-modules/tasks/shared/pnpm.nix"
+      ],
+      "allowedImports": {}
+    },
+    {
+      "initializationError": "",
+      "source": "nix/devenv-modules/tasks/shared/check-node-modules-projection-health.cjs",
+      "nix": [
+        "nix/devenv-modules/tasks/shared/pnpm.nix"
+      ],
+      "allowedImports": {}
+    },
+    {
+      "initializationError": "usage: stage-pnpm-source-inputs.mjs <check|gc|publish> <workspace> <stage> [source ...]",
+      "source": "nix/devenv-modules/tasks/shared/stage-pnpm-source-inputs.mjs",
+      "nix": [
+        "nix/devenv-modules/tasks/shared/pnpm.nix"
+      ],
+      "allowedImports": {
+        "../../../../packages/@overeng/genie/src/core/import-map/sync-resolver.ts": "packages/@overeng/genie/src/core/import-map/sync-resolver.ts"
+      }
+    },
+    {
+      "initializationError": "",
+      "source": "nix/devenv-modules/tasks/shared/changesets/check-bodies.ts",
+      "nix": [
+        "nix/devenv-modules/tasks/shared/changesets.nix"
+      ],
+      "allowedImports": {}
+    },
+    {
+      "initializationError": "",
+      "source": "scripts/lint-no-tailwind.mjs",
+      "nix": [
+        "nix/devenv-modules/tasks/shared/lint-oxc.nix"
+      ],
+      "allowedImports": {}
+    },
+    {
+      "initializationError": "expected root, workspace, cargo and cargo-home",
+      "source": "scripts/buck2-rust-supply-manifest.ts",
+      "nix": [
+        "nix/devenv-modules/tasks/shared/buck2-rust-deps.nix"
+      ],
+      "allowedImports": {}
+    },
+    {
+      "initializationError": "",
+      "source": "packages/@overeng/megarepo/src/buck2-capabilities/capability-projection.ts",
+      "nix": [
+        "nix/devenv-modules/tasks/shared/tests/buck2-capability-fixture/profiles.nix"
+      ],
+      "allowedImports": {}
+    },
+    {
+      "initializationError": "",
+      "source": "buck2/dependencies/runtime-closure.ts",
+      "nix": [
+        "nix/workspace-tools/lib/javascript-source-import.nix",
+        "nix/workspace-tools/lib/javascript-published-import.nix"
+      ],
+      "allowedImports": {}
+    },
+    {
+      "initializationError": "",
+      "source": "packages/@overeng/pty-effect/test/node-pty-native-hook.ts",
+      "nix": [
+        "devenv.nix"
+      ],
+      "allowedImports": {}
+    }
+  ],
+  "exemptions": [
+    {
+      "source": "packages/@overeng/buck2-tools/src/bun-test-runner.ts",
+      "nix": "devenv.nix",
+      "reason": "Executed from the workspace; the relative shell path is not interpolated into the Nix store."
+    },
+    {
+      "source": "genie/ci-workflow/rust.unit.test.ts",
+      "nix": "devenv.nix",
+      "reason": "Executed from the workspace; the relative shell path is not interpolated into the Nix store."
+    },
+    {
+      "source": "genie/ci-workflow/setup.unit.test.ts",
+      "nix": "devenv.nix",
+      "reason": "Executed from the workspace; the relative shell path is not interpolated into the Nix store."
+    },
+    {
+      "source": "scripts/buck2-entrypoint.integration.test.ts",
+      "nix": "devenv.nix",
+      "reason": "Executed from the workspace; the relative shell path is not interpolated into the Nix store."
+    },
+    {
+      "source": "scripts/buck2-cache-posture.integration.test.ts",
+      "nix": "devenv.nix",
+      "reason": "Executed from the workspace; the relative shell path is not interpolated into the Nix store."
+    },
+    {
+      "source": "scripts/buck2-capability-publish.unit.test.ts",
+      "nix": "devenv.nix",
+      "reason": "Executed from the workspace; the relative shell path is not interpolated into the Nix store."
+    },
+    {
+      "source": "buck2/dependencies/genie-input-manifest.integration.test.ts",
+      "nix": "devenv.nix",
+      "reason": "Executed from the workspace; the relative shell path is not interpolated into the Nix store."
+    },
+    {
+      "source": "scripts/editor-view-authority.unit.test.ts",
+      "nix": "devenv.nix",
+      "reason": "Executed from the workspace; the relative shell path is not interpolated into the Nix store."
+    },
+    {
+      "source": "scripts/buck2-daemon-reaper.integration.test.ts",
+      "nix": "devenv.nix",
+      "reason": "Executed from the workspace; the relative shell path is not interpolated into the Nix store."
+    },
+    {
+      "source": "packages/@overeng/buck2-tools/src/ts-sandbox.integration.test.ts",
+      "nix": "devenv.nix",
+      "reason": "Executed from the workspace; the relative shell path is not interpolated into the Nix store."
+    },
+    {
+      "source": "packages/@overeng/megarepo/src/buck2-capabilities/capability-projection.ts",
+      "nix": "nix/buck2-capabilities.nix",
+      "reason": "Deliberate multi-file source closure, not a standalone store file."
+    },
+    {
+      "source": "scripts/buck2-entrypoint.ts",
+      "nix": "nix/buck2.nix",
+      "reason": "Deliberate multi-file source closure, not a standalone store file."
+    },
+    {
+      "source": "scripts/buck2-cache-posture.ts",
+      "nix": "nix/buck2.nix",
+      "reason": "Deliberate multi-file source closure, not a standalone store file."
+    },
+    {
+      "source": "scripts/buck2-file-watcher.ts",
+      "nix": "nix/buck2.nix",
+      "reason": "Deliberate multi-file source closure, not a standalone store file."
+    },
+    {
+      "source": "buck2/products/vite-runtime-fixture.mjs",
+      "nix": "nix/buck2-products/vite-runtime-fixture.nix",
+      "reason": "Deliberate multi-file source closure, not a standalone store file."
+    }
+  ]
+}

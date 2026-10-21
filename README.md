@@ -29,6 +29,30 @@ pipeline traces, alignment notices and review-request notifications use 4. The r
 PR source-shape check retains delivery priority. Shapes, caches, access controls,
 required checks and workflow frequency are independent of these labels.
 
+## Standalone Nix-staged JavaScript and TypeScript
+
+`devenv tasks run lint:check:standalone-staging` (included in PR `lint:check`)
+checks `nix/standalone-staging.json`. Each standalone source must import only
+Node builtins (with or without the `node:` prefix), including re-exports,
+dynamic imports and `require`. Type-only edges are erased and ignored;
+non-literal runtime module dependencies are rejected. An explicitly rewritten
+edge may name another isolation-checked source; the pnpm source-input stager uses
+this for its store-path rewrite of `sync-resolver.ts`.
+
+Each source is also imported by Node 24 from a fresh directory with no
+`node_modules`, stripping TS types and applying only the declared store-path
+rewrite. CLI entries must reach their exact declared argument-validation error;
+other initialization errors fail. The native hook receives an explicit fixture
+entrypoint for its resolver registration.
+
+The completeness check scans tracked and untracked, non-ignored `*.nix` files for
+literal JS/TS source paths, conservatively including workspace commands and
+multi-file closures. Add each source and its staging Nix file to the central list.
+Non-standalone references require a per-source, per-Nix-file exemption with a
+reason; stale entries fail too. Use literal paths for staging (relative paths or a
+literal suffix concatenated with a repository-root variable), not dynamically
+computed filenames: this is a source-path inventory, not a Nix evaluator.
+
 ## Packages
 
 ### GitHub Actions retained artifacts
