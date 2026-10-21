@@ -57,7 +57,7 @@ import {
   withPipelineTelemetry,
   pipelineCloseJob,
 } from '../../genie/ci-workflow/pipeline-telemetry.ts'
-import { publishedRefSteps } from '../../genie/ci-workflow/published-ref.ts'
+import { publishedRefIf, publishedRefSteps } from '../../genie/ci-workflow/published-ref.ts'
 import type { CoreCIJobName } from '../../genie/ci.ts'
 import { pipelineJobIdentifierSet } from '../../packages/@overeng/ci-tools/src/pipeline-job-names.ts'
 
@@ -1102,6 +1102,50 @@ const extraJobs: Record<string, any> = {
       compiledProductsSmokeStep,
     ],
   },
+  'consumer-smoke': {
+    if: trustedSecretCiIf,
+    'runs-on': namespaceRunner({
+      profile: 'namespace-profile-linux-x86-64',
+      runId: '${{ github.run_id }}',
+      privileged: 'trusted',
+      priority: deliveryJobPriority,
+    }),
+    'timeout-minutes': 10,
+    permissions: { contents: 'read' },
+    defaults: bashShellDefaults,
+    outputs: { 'current-sha': '${{ steps.consumer-smoke.outputs.current-sha }}' },
+    steps: [
+      checkoutStep(),
+      installNixStep({ binaryCaches: [binaryCache] }),
+      linuxSandboxPrerequisitesStep({ privileged: 'trusted' }),
+      prepareCiScriptsStep,
+      preparePinnedDevenvStep,
+      validateNixStoreStep,
+      {
+        id: 'consumer-smoke',
+        name: 'Install an isolated consumer from the candidate checkout',
+        env: githubTokenEnv(),
+        run: [
+          runDevenvTasksBefore('test:consumer-smoke'),
+          'echo "current-sha=$GITHUB_SHA" >> "$GITHUB_OUTPUT"',
+        ].join('\n'),
+      },
+    ],
+  },
+  'promote-published': {
+    needs: ['publish-products', 'consumer-smoke'],
+    if: publishedRefIf,
+    'runs-on': namespaceRunner({
+      profile: 'namespace-profile-linux-x86-64',
+      runId: '${{ github.run_id }}',
+      privileged: 'never',
+      priority: deliveryJobPriority,
+    }),
+    'timeout-minutes': 5,
+    permissions: { contents: 'read' },
+    defaults: bashShellDefaults,
+    steps: [checkoutStep(), ...publishedRefSteps],
+  },
   'publish-products': {
     if: trustedSecretCiIf,
     'runs-on': namespaceRunner({
@@ -1114,6 +1158,10 @@ const extraJobs: Record<string, any> = {
     permissions: { contents: 'read', 'pull-requests': 'read', statuses: 'write' },
     defaults: bashShellDefaults,
     env: githubTokenEnv(),
+    outputs: {
+      'current-sha':
+        '${{ steps.publication-scope.outputs.current-sha || steps.product-publication.outputs.current-sha }}',
+    },
     steps: [
       {
         name: 'Mark product manifest publication pending',
@@ -1228,7 +1276,6 @@ const extraJobs: Record<string, any> = {
           ),
         },
       }),
-      ...publishedRefSteps,
       {
         id: 'publisher-app-config',
         name: 'Check publisher GitHub App configuration',
@@ -1955,6 +2002,13 @@ const productCiJobs: CiWorkflowArgs['jobs'] = {
   },
 }
 
+// Consumer bootstrap must not inherit source-editor setup, and promotion needs no Nix.
+const {
+  'consumer-smoke': consumerSmokeJob,
+  'promote-published': promotePublishedJob,
+  ...instrumentedProductCiJobs
+} = productCiJobs
+
 // oxlint-disable-next-line overeng/exports-first -- generated entrypoint is assembled after its job atoms
 export default ciWorkflow({
   trustTier: 'public',
@@ -2019,7 +2073,9 @@ export default ciWorkflow({
           },
         ],
       },
-      ...withPipelineTelemetry(withBuck2CacheEvidence(productCiJobs)),
+      ...withPipelineTelemetry(withBuck2CacheEvidence(instrumentedProductCiJobs)),
+      'consumer-smoke': consumerSmokeJob!,
+      'promote-published': promotePublishedJob!,
       'pipeline-attempt-close': pipelineCloseJob(productCiJobs),
       'pipeline-traces': pipelineTracesJob,
     },
@@ -2043,6 +2099,8 @@ export default ciWorkflow({
       'test-live-deploy-ci-tools': 'reader',
       'deploy-storybooks': 'reader',
       'publish-products': 'reader',
+      'consumer-smoke': 'reader',
+      'promote-published': 'none',
       'notify-alignment': 'reader',
       'trusted-buck2-remote-cache-proof': 'writer',
       'pr-a-inert-buck': 'none',

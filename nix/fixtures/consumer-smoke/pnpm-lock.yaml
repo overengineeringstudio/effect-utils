@@ -1,0 +1,22 @@
+lockfileVersion: '9.0'
+
+settings:
+  autoInstallPeers: true
+  excludeLinksFromLockfile: false
+
+importers:
+
+  .:
+    dependencies:
+      '@fixture/shared':
+        specifier: file:.devenv/pnpm-source-inputs/current/repos/source/packages/shared
+        version: file:.devenv/pnpm-source-inputs/current/repos/source/packages/shared
+
+packages:
+
+  '@fixture/shared@file:.devenv/pnpm-source-inputs/current/repos/source/packages/shared':
+    resolution: {directory: .devenv/pnpm-source-inputs/current/repos/source/packages/shared, type: directory}
+
+snapshots:
+
+  '@fixture/shared@file:.devenv/pnpm-source-inputs/current/repos/source/packages/shared': {}
