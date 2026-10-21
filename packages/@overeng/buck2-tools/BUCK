@@ -1,3 +1,6 @@
+# Generated file - DO NOT EDIT
+# Source: BUCK.genie.ts
+
 load("//buck2/package_tools.bzl", "package_command_runtime")
 load("//buck2:materialization.bzl", "runtime_modules")
 # Projection source: packages/@overeng/buck2-tools/BUCK.genie.ts
