@@ -115,20 +115,19 @@ const reaches = ({ start, target }) => {
   return visit(start)
 }
 
+const unitExcludedTaskPatterns = [
+  /^storybook(?::|$)/u,
+  /^netlify(?::|$)/u,
+  /^workflow-report(?::|$)/u,
+  /^test:pw(?::|$)/u,
+  /^test:(?:notion-integration|restate-integration)(?::|$)/u,
+  /^test:(?:consumer-smoke|megarepo-cold-gc)(?::|$)/u,
+  /^weaver:live-check(?::|$)/u,
+  /^buck2:editor:publish:(?:batch|consumer|restate-effect|otel-contract|playwright)(?::|$)/u,
+]
+const unitExcludesTask = (name) => unitExcludedTaskPatterns.some((pattern) => pattern.test(name))
 if (ciUnitTest === true) {
-  const forbiddenTaskPatterns = [
-    /^storybook(?::|$)/u,
-    /^netlify(?::|$)/u,
-    /^workflow-report(?::|$)/u,
-    /^test:pw(?::|$)/u,
-    /^test:(?:notion-integration|restate-integration)(?::|$)/u,
-    /^test:(?:consumer-smoke|megarepo-cold-gc)(?::|$)/u,
-    /^weaver:live-check(?::|$)/u,
-    /^buck2:editor:publish:(?:batch|consumer|restate-effect|otel-contract|playwright)(?::|$)/u,
-  ]
-  const forbiddenTasks = [...tasks.keys()].filter((name) =>
-    forbiddenTaskPatterns.some((pattern) => pattern.test(name)),
-  )
+  const forbiddenTasks = [...tasks.keys()].filter(unitExcludesTask)
   ok({
     condition: forbiddenTasks.length === 0,
     name: 'unit profile excludes deploy, browser, live integration and consumer aggregate tasks',
@@ -408,14 +407,12 @@ const buck2TestLaneTaskNames = buck2TestAuthority.lanes.map(({ taskName }) => ta
 const buck2UnboundedTaskNames = buck2TestAuthority.lanes.flatMap(({ unboundedTaskName }) =>
   unboundedTaskName === undefined ? [] : [unboundedTaskName],
 )
+// External source owners in browser/live/empirical families retain their
+// dedicated full-shell jobs, not an execution slot in the unit aggregate.
 const buck2ExternalOwnerTaskNames = [
   ...new Set(buck2TestAuthority.lanes.flatMap(({ sourceOwners }) => Object.values(sourceOwners))),
-]
-// Cold-GC is an explicitly external owner, exercised by its separate empirical
-// job in the full shell rather than by the unit aggregate.
-for (const name of [...buck2UnboundedTaskNames, ...buck2ExternalOwnerTaskNames].filter(
-  (name) => ciUnitTest === false || name !== 'test:megarepo-cold-gc',
-)) {
+].filter((name) => ciUnitTest === false || unitExcludesTask(name) === false)
+for (const name of [...buck2UnboundedTaskNames, ...buck2ExternalOwnerTaskNames]) {
   ok({
     condition: tasks.has(name),
     name: `${name} exists as a source-side test owner`,
