@@ -6,11 +6,35 @@ import { API } from 'typescript/unstable/async'
 import { describe, expect, it } from 'vitest'
 
 import type { ClosableTsApi, JoinableChildProcess } from './ts-api.ts'
-import { closeApi, runTsVirtualProject, TsApiTimeoutError } from './ts-api.ts'
+import { closeApi, runTsFileAnalysis, runTsVirtualProject, TsApiTimeoutError } from './ts-api.ts'
 
 /** A structural stand-in for the spawned child: liveness plus the exit event, no process. */
 const fakeChild = (exitCode: number | null): JoinableChildProcess =>
   Object.assign(new EventEmitter(), { exitCode, kill: () => true })
+
+describe('TypeScript API source-reader launch boundary', () => {
+  it('refuses to construct the API without its packaged descriptor mapper', async () => {
+    const active = process.env.EDITOR_VIEW_LEASE_ACTIVE
+    const preload = process.env.EDITOR_VIEW_LEASE_PRELOAD
+    process.env.EDITOR_VIEW_LEASE_ACTIVE = '1'
+    delete process.env.EDITOR_VIEW_LEASE_PRELOAD
+    try {
+      await expect(
+        runTsFileAnalysis({
+          cwd: process.cwd(),
+          use: () => {
+            throw new Error('An unprotected compiler must never become usable')
+          },
+        }),
+      ).rejects.toThrow('bootstrap-safe editor-view lease preload')
+    } finally {
+      if (active === undefined) delete process.env.EDITOR_VIEW_LEASE_ACTIVE
+      else process.env.EDITOR_VIEW_LEASE_ACTIVE = active
+      if (preload === undefined) delete process.env.EDITOR_VIEW_LEASE_PRELOAD
+      else process.env.EDITOR_VIEW_LEASE_PRELOAD = preload
+    }
+  })
+})
 
 describe('closeApi', () => {
   it('does not resolve until the child has exited', async () => {

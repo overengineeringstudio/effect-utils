@@ -23,6 +23,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 
 import {
   cancelEditorViewBudgetReservation,
+  EditorViewCapacityError,
   editorViewHostBudgetStateDirectory,
   makeEditorViewBudgetCensusSession,
   reserveEditorViewBudget,
@@ -324,7 +325,7 @@ const captureStderr = async <TValue>(run: () => Promise<TValue>) => {
 
 type OverBudgetPublication = {
   readonly event: BudgetEvent
-  readonly record: EditorViewRecord
+  readonly error: EditorViewCapacityError
   readonly message: string
   readonly stderr: string
 }
@@ -335,16 +336,33 @@ const overBudgetPublication = async (
   budgetBytes: number,
 ): Promise<OverBudgetPublication> => {
   let materialized = false
-  const captured = await captureStderr(() =>
-    host.publish(fixture, {
-      hostBudgetBytes: budgetBytes,
-      beforeMaterialize: () => {
-        materialized = true
-      },
-    }),
-  )
-  expect(materialized).toBe(true)
-  expectCurrent(fixture, captured.value)
+  const captured = await captureStderr(async () => {
+    try {
+      await host.publish(fixture, {
+        hostBudgetBytes: budgetBytes,
+        beforeMaterialize: () => {
+          materialized = true
+        },
+      })
+    } catch (error) {
+      if (error instanceof EditorViewCapacityError) return error
+      throw error
+    }
+    throw new Error('over-capacity publication unexpectedly succeeded')
+  })
+  expect(materialized).toBe(false)
+  expect(captured.value).toMatchObject({
+    name: 'EditorViewCapacityError',
+    code: 'EDITOR_VIEW_CAPACITY',
+    budgetBytes,
+  })
+  expect(captured.value.usedBytes + captured.value.reservationBytes).toBeGreaterThan(budgetBytes)
+  expect(captured.value.reservationBytes).toBeGreaterThan(0)
+  expect(captured.value.message).toContain('Nothing further can be safely deleted')
+  expect(captured.value.message).toContain('EDITOR_VIEW_HOST_BUDGET_BYTES')
+  expect(pathExists(join(fixture.editorRoot, fixture.options.viewName))).toBe(false)
+  expect(pathExists(fixture.firstHop)).toBe(false)
+  expect(readBudgetLedger(host).reservations).toEqual([])
   expect(
     readdirSync(join(fixture.editorRoot, '.store')).filter((name) =>
       name.startsWith('.candidate-'),
@@ -358,7 +376,7 @@ const overBudgetPublication = async (
   if (event === undefined) throw new Error('publisher emitted no structured over-budget alert')
   expect(event.budgetBytes).toBe(budgetBytes)
   expect(event.reservationBytes).toBeGreaterThan(0)
-  return { event, record: captured.value, message: event.message, stderr: captured.stderr }
+  return { event, error: captured.value, message: event.message, stderr: captured.stderr }
 }
 
 type BudgetReservation = {
@@ -633,7 +651,7 @@ const expectCurrent = (fixture: Fixture, record: EditorViewRecord): void => {
   expect(pathExists(join(fixture.editorRoot, record.snapshot))).toBe(true)
 }
 
-describe('host budget evicts unreferenced storage before idle current generations', () => {
+describe('host budget preserves unmanaged generations while reclaiming only unreferenced CAS', () => {
   let host: Host
   let oldest: Fixture
   let newer: Fixture
@@ -645,7 +663,6 @@ describe('host budget evicts unreferenced storage before idle current generation
   let newerRecord: EditorViewRecord
   let oldRecord: EditorViewRecord
   let supersededRecord: EditorViewRecord
-  let incomingRecord: EditorViewRecord
   let probe: BudgetEvent
   let unreferencedBudget: number
   let idleBudget: number
@@ -714,47 +731,36 @@ describe('host budget evicts unreferenced storage before idle current generation
       host.age(fixture, record)
   })
 
-  it('reclaims the orphan CAS payload and old generation without evicting any current view', async () => {
-    incomingRecord = await host.publish(incoming, { hostBudgetBytes: unreferencedBudget })
+  it('reclaims orphan CAS storage but rejects rather than deleting an unmanaged old generation', async () => {
+    const rejected = await overBudgetPublication(host, incoming, unreferencedBudget)
+    expect(rejected.error.reasons).toContain('unmanaged-editor-sessions')
+    expect(rejected.error.blockedGenerations).toBeGreaterThanOrEqual(4)
     expect(pathExists(orphanBlob)).toBe(false)
-    expect(pathExists(join(superseded.editorRoot, oldRecord.snapshot))).toBe(false)
+    expect(pathExists(join(superseded.editorRoot, oldRecord.snapshot))).toBe(true)
     expectCurrent(oldest, oldestRecord)
     expectCurrent(newer, newerRecord)
     expectCurrent(superseded, supersededRecord)
-    expectCurrent(incoming, incomingRecord)
   })
 
-  it('next evicts only the least-recently-used quiescent current generation', async () => {
-    await host.publish(nextIncoming, { hostBudgetBytes: idleBudget })
-    expect(pathExists(join(oldest.editorRoot, oldestRecord.snapshot))).toBe(false)
+  it('rejects lower capacity without retiring the least-recently-used current generation', async () => {
+    await overBudgetPublication(host, nextIncoming, idleBudget)
+    expectCurrent(oldest, oldestRecord)
     expectCurrent(newer, newerRecord)
     expectCurrent(superseded, supersededRecord)
-    expectCurrent(incoming, incomingRecord)
+    expect(pathExists(join(superseded.editorRoot, oldRecord.snapshot))).toBe(true)
   })
 
-  it('removes owned current and consumer hops and leaves an actionable eviction marker', () => {
-    // lstat, not existsSync: a dangling symlink must not pass this assertion.
-    expect(pathExists(join(oldest.editorRoot, oldest.options.viewName))).toBe(false)
-    expect(pathExists(oldest.firstHop)).toBe(false)
-    const marker: unknown = JSON.parse(
-      readFileSync(join(oldest.editorRoot, '.evicted-budget-view.json'), 'utf8'),
-    )
-    expect(marker).toEqual({
-      schema: 'effect-utils/editor-view-evicted/v1',
-      snapshot: oldestRecord.snapshot,
-      reason: 'host-budget',
-      budgetBytes: idleBudget,
-      usedBytes: expect.any(Number),
-    })
+  it('preserves owned current and consumer hops without leaving an eviction marker', () => {
+    expectCurrent(oldest, oldestRecord)
+    expect(pathExists(oldest.firstHop)).toBe(true)
+    expect(pathExists(join(oldest.editorRoot, '.evicted-budget-view.json'))).toBe(false)
   })
 
-  it('cleanly republishes the evicted view and explains why publication was necessary', async () => {
+  it('reuses the preserved view under an ample budget without an eviction warning', async () => {
     const captured = await captureStderr(() => host.publish(oldest))
-    expect(captured.stderr).toContain('evicted by host budget')
-    expect(captured.stderr).toContain('republishing')
+    expect(captured.stderr).not.toContain('evicted by host budget')
     expect(captured.value.snapshot).toBe(oldestRecord.snapshot)
     expectCurrent(oldest, captured.value)
-    expect(pathExists(join(oldest.editorRoot, '.evicted-budget-view.json'))).toBe(false)
     expect(
       readFileSync(
         join(oldest.editorRoot, captured.value.snapshot, 'node_modules', 'dep', 'payload.bin'),
@@ -763,7 +769,7 @@ describe('host budget evicts unreferenced storage before idle current generation
   })
 })
 
-describe('host budget alerts while publishing protected managed, live, recent and grace-held footprints', () => {
+describe('host budget rejects capacity while preserving managed, live, recent and grace-held footprints', () => {
   let host: Host
   let pinned: Fixture
   let live: Fixture
@@ -825,11 +831,11 @@ describe('host budget alerts while publishing protected managed, live, recent an
     graceRecord = await host.publish(grace)
   })
 
-  it('publishes through the single protected-overflow pressure API', async () => {
+  it('rejects protected overflow before reserving or materializing incoming bytes', async () => {
     overflow = await recordTelemetry(host.root, () => overBudgetPublication(host, incoming, 1))
   })
 
-  it('preserves all protected readers and emits actionable JSON plus a successful OTEL span', () => {
+  it('preserves protected readers and emits actionable JSON plus an asynchronous OTEL span', () => {
     if (overflow === undefined) throw new Error('protected overflow publication did not complete')
     const captured = overflow
     overBudget = captured.value.event
@@ -838,27 +844,20 @@ describe('host budget alerts while publishing protected managed, live, recent an
     expect(overBudget.topHolders.length).toBeGreaterThanOrEqual(4)
     for (const fixture of [pinned, live, recent, grace]) {
       expect(JSON.stringify(overBudget.topHolders)).toContain(fixture.editorRoot)
-      expect(captured.value.message).toContain(fixture.editorRoot)
     }
     expect(captured.value.message).toContain(String(overBudget.budgetBytes))
     expect(captured.value.message).toContain(String(overBudget.usedBytes))
-    expect(captured.value.message).toContain('Publishing anyway')
+    expect(captured.value.message).not.toContain('Publishing anyway')
+    expect(captured.value.message).toContain('Close unmanaged editor sessions')
+    expect(captured.value.message).toContain('release idle worktrees or pins')
     expectCurrent(pinned, pinnedRecord)
     expectCurrent(live, liveRecord)
     expectCurrent(recent, recentRecord)
     expectCurrent(grace, graceRecord)
     expectRunningReader(reader)
-    expect(
-      readFileSync(
-        join(
-          incoming.editorRoot,
-          captured.value.record.snapshot,
-          'node_modules',
-          'dep',
-          'payload.bin',
-        ),
-      ),
-    ).toEqual(Buffer.alloc(64, 84))
+    expect(captured.value.error.blockedGenerations).toBeGreaterThanOrEqual(4)
+    expect(captured.value.error.reasons).toContain('unmanaged-editor-sessions')
+    expect(readBudgetLedger(host).reservations).toEqual([])
     const warnings = budgetEvents(captured.value.stderr).filter(
       ({ event }) => event === 'editor-view.host-budget.warning',
     )
@@ -875,9 +874,9 @@ describe('host budget alerts while publishing protected managed, live, recent an
       expect.arrayContaining([
         'emit-span',
         'editor-view.host-budget',
-        'exit.code=0',
+        'exit.code=1',
         '--status-code',
-        'ok',
+        'error',
         `editor_view.host_budget.budget_bytes=${overBudget.budgetBytes}`,
         `editor_view.host_budget.used_bytes=${overBudget.usedBytes}`,
         `editor_view.host_budget.protected_bytes=${overBudget.protectedBytes}`,
@@ -911,7 +910,7 @@ describe('host budget alerts while publishing protected managed, live, recent an
   })
 })
 
-describe('concurrent advisory host-budget publication and managed pin admission', () => {
+describe('concurrent bounded host-budget publication and managed pin admission', () => {
   let host: Host
   let pinned: Fixture
   let live: Fixture
@@ -1003,7 +1002,7 @@ describe('concurrent advisory host-budget publication and managed pin admission'
       captureStderr(async () => {
         const publications = contenders.map((fixture) =>
           host.publish(fixture, {
-            hostBudgetBytes: 1,
+            hostBudgetBytes: setupBudgetBytes,
             beforeMaterialize: async () => {
               admitted++
               if (admitted === contenders.length) allAdmitted.resolve()
@@ -1031,9 +1030,9 @@ describe('concurrent advisory host-budget publication and managed pin admission'
     }
   })
 
-  it('sums both stores and held reservations in the one host ledger and over-budget JSON', () => {
+  it('sums both stores and held reservations in one bounded host ledger', () => {
     if (admission === undefined) throw new Error('concurrent admission did not complete')
-    const budgetBytes = 1
+    const budgetBytes = setupBudgetBytes
     const { baseline, admitted, stderr } = admission
     expect(admitted).toBe(2)
     const held = readBudgetLedger(host)
@@ -1056,7 +1055,7 @@ describe('concurrent advisory host-budget publication and managed pin admission'
       expect(reservation.budgetBytes).toBe(budgetBytes)
     }
     const reservedBytes = held.reservations.reduce((sum, { bytes }) => sum + bytes, 0)
-    expect(held.usedBytes + reservedBytes).toBeGreaterThan(budgetBytes)
+    expect(held.usedBytes + reservedBytes).toBeLessThanOrEqual(budgetBytes)
     expect(held.protectedBytes).toBeGreaterThanOrEqual(payloadBytes * 2)
     for (const fixture of contenders)
       expect(pathExists(join(fixture.editorRoot, fixture.options.viewName))).toBe(false)
@@ -1068,29 +1067,7 @@ describe('concurrent advisory host-budget publication and managed pin admission'
     ).toMatchObject({ snapshot: pinnedRecord.snapshot })
     const events = budgetEvents(stderr)
     const overBudget = events.filter(({ event }) => event === 'editor-view.host-budget.over-budget')
-    expect(overBudget).toHaveLength(2)
-    for (const event of overBudget) {
-      expect(event.budgetBytes).toBe(budgetBytes)
-      expect(
-        event.usedBytes + event.reservedBytes + event.pendingEstimateBytes + event.reservationBytes,
-      ).toBeGreaterThan(budgetBytes)
-      expect(event.reservedBytes).toBeGreaterThanOrEqual(0)
-      expect(event.pendingEstimateBytes).toBe(0)
-      expect(event.protectedBytes).toBeGreaterThanOrEqual(payloadBytes * 2)
-    }
-    const smallestReservation = Math.min(...held.reservations.map(({ bytes }) => bytes))
-    expect(
-      Math.max(...overBudget.map(({ reservedBytes }) => reservedBytes)),
-    ).toBeGreaterThanOrEqual(smallestReservation)
-    expect(
-      Math.max(
-        ...overBudget.map(
-          ({ usedBytes, reservedBytes, pendingEstimateBytes }) =>
-            usedBytes + reservedBytes + pendingEstimateBytes,
-        ),
-      ),
-    ).toBeGreaterThanOrEqual(held.usedBytes + smallestReservation)
-    expect(events.some(({ event }) => event === 'editor-view.host-budget.refused')).toBe(false)
+    expect(overBudget).toHaveLength(0)
     reservationsAsserted = true
   })
 
@@ -1128,119 +1105,68 @@ describe('concurrent advisory host-budget publication and managed pin admission'
   })
 })
 
-describe('warm publication wins the census-to-victim-lock race', () => {
-  let host: Host
-  let victim: Fixture
-  let victimRecord: EditorViewRecord
-
-  beforeAll(async () => {
-    host = makeHost()
-    victim = host.fixture('warm-race-victim', 101)
-    victimRecord = await host.publish(victim)
-  })
-  afterAll(async () => {
-    if (host !== undefined) await host.cleanup()
-  })
-
-  it('makes the unchanged current generation eligible in the initial census', () => {
-    host.advance(hostRecencyMs + hostGraceMs + 1)
-    host.age(victim, victimRecord)
-  })
-
-  it('rechecks actual warm last-use after acquiring the victim publication lock', async () => {
-    const incoming = host.fixture('warm-race-incoming', 102, 64)
-    mkdirSync(incoming.editorRoot, { recursive: true })
-    const heldPath = join(incoming.editorRoot, '.publish.lock')
-    mkdirSync(heldPath)
-    writeFileSync(
-      join(heldPath, 'owner.json'),
-      JSON.stringify({
-        schema: 'effect-utils/editor-view-lock/v1',
-        token: 'incoming-owner',
-        pid: process.pid,
-      }),
-    )
-    let warmed = 0
-    let acquired = 0
+describe('unmanaged capacity rejection does not acquire candidate publication locks', () => {
+  it('preserves idle current bytes and permits a later warm publication', async () => {
+    const host = makeHost()
     try {
-      const reservation = await host.track(
-        reserveEditorViewBudget({
-          contentStore: host.contentStore,
-          root: { repoRoot: incoming.root, editorRoot: incoming.editorRoot },
-          heldEditorRoot: incoming.editorRoot,
-          discoverRoots: () => [{ repoRoot: victim.root, editorRoot: victim.editorRoot }],
-          reservationBytes: 1,
-          budgetBytes: 1,
-          tryLockRoot: (root) => {
-            expect(root.editorRoot).toBe(victim.editorRoot)
-            // The synchronous callback completes a real publisher in the window
-            // after census, before this process creates the victim root lock.
-            if (warmed === 0) {
-              host.advance(1_000)
-              const script = [
-                `import { publishEditorView } from ${JSON.stringify(new URL('./editor-view.ts', import.meta.url).href)}`,
-                `Date.now = () => ${Date.now()}`,
-                `const record = await publishEditorView({ ...${JSON.stringify(victim.options)}, beforeMaterialize: () => { throw new Error('expected a real warm publication') } })`,
-                `if (record.snapshot !== ${JSON.stringify(victimRecord.snapshot)}) throw new Error('warm generation changed')`,
-                'process.stdout.write("warm-complete\\n")',
-              ].join('\n')
-              const warm = spawnSync(bun, ['--eval', script], { encoding: 'utf8' })
-              expect(warm.status).toBe(0)
-              const phasePrefix = '[editor-view-phase] '
-              const remainingStderr = warm.stderr
-                .split('\n')
-                .filter((line) => {
-                  if (line.startsWith(phasePrefix) === false) return true
-                  JSON.parse(line.slice(phasePrefix.length))
-                  return false
-                })
-                .join('\n')
-              expect(remainingStderr).toBe('')
-              expect(warm.stdout).toContain('warm-complete\n')
-              warmed++
-            }
-            const path = join(root.editorRoot, '.publish.lock')
-            mkdirSync(path)
-            writeFileSync(
-              join(path, 'owner.json'),
-              JSON.stringify({
-                schema: 'effect-utils/editor-view-lock/v1',
-                token: 'warm-race-owner',
-                pid: process.pid,
-              }),
-            )
-            acquired++
-            return { release: () => rmSync(path, { recursive: true }) }
-          },
+      const victim = host.fixture('warm-race-victim', 101)
+      const incoming = host.fixture('warm-race-incoming', 102, 64)
+      const record = await host.publish(victim)
+      mkdirSync(join(incoming.editorRoot, '.store'), { recursive: true })
+      const heldPath = join(incoming.editorRoot, '.publish.lock')
+      mkdirSync(heldPath)
+      writeFileSync(
+        join(heldPath, 'owner.json'),
+        JSON.stringify({
+          schema: 'effect-utils/editor-view-lock/v1',
+          token: 'incoming-owner',
+          pid: process.pid,
         }),
       )
-      try {
-        expect(warmed).toBe(1)
-        expect(acquired).toBeGreaterThan(0)
-        expectCurrent(victim, victimRecord)
-        expect(pathExists(join(victim.editorRoot, '.evicted-budget-view.json'))).toBe(false)
-      } finally {
-        await host.track(
-          cancelEditorViewBudgetReservation({
+      host.advance(hostRecencyMs + hostGraceMs + 1)
+      host.age(victim, record)
+      let acquired = 0
+      await expect(
+        host.track(
+          reserveEditorViewBudget({
             contentStore: host.contentStore,
-            token: reservation.token,
+            root: { repoRoot: incoming.root, editorRoot: incoming.editorRoot },
+            heldEditorRoot: incoming.editorRoot,
+            discoverRoots: () => [{ repoRoot: victim.root, editorRoot: victim.editorRoot }],
+            reservationBytes: 1,
+            budgetBytes: 1,
+            tryLockRoot: () => {
+              acquired++
+              throw new Error('unmanaged root must not be acquired for eviction')
+            },
           }),
-        )
-      }
+        ),
+      ).rejects.toMatchObject({
+        code: 'EDITOR_VIEW_CAPACITY',
+        blockedGenerations: 1,
+        reasons: expect.arrayContaining(['unmanaged-editor-sessions']),
+      })
+      expect(acquired).toBe(0)
+      expect(readBudgetLedger(host).reservations).toEqual([])
+      expectCurrent(victim, record)
+      const warm = await host.publish(victim, {
+        beforeMaterialize: () => {
+          throw new Error('preserved generation should support warm publication')
+        },
+      })
+      expect(warm.snapshot).toBe(record.snapshot)
+      expectCurrent(victim, warm)
     } finally {
-      rmSync(heldPath, { recursive: true, force: true })
+      await host.cleanup()
     }
   })
 })
 
-describe('publication waits for a live budget eviction, but not stale publisher locks', () => {
+describe('capacity rejection leaves unmanaged publishers available and stale locks explicit', () => {
   let host: Host
   let victim: Fixture
   let incoming: Fixture
   let record: EditorViewRecord
-  let eviction: Promise<EditorViewRecord> | undefined
-  let waiting: Promise<EditorViewRecord> | undefined
-  let releaseEviction: (() => void) | undefined
 
   beforeAll(async () => {
     host = makeHost()
@@ -1257,56 +1183,22 @@ describe('publication waits for a live budget eviction, but not stale publisher 
     host.age(victim, record)
   })
 
-  it('starts an actual publisher while pressure eviction holds its live owner lock', async () => {
-    const entered = Promise.withResolvers<void>()
-    const release = host.gate()
-    releaseEviction = () => release.resolve()
-    eviction = host.publish(incoming, {
-      hostBudgetBytes: 1,
-      beforeBudgetEviction: async () => {
-        entered.resolve()
-        await release.promise
-      },
-    })
-    await Promise.race([
-      entered.promise,
-      eviction.then(() => {
-        throw new Error('pressure publication skipped the victim-lock barrier')
+  it('rejects pressure without entering the victim-lock barrier or blocking warm publication', async () => {
+    let evictionEntered = false
+    await expect(
+      host.publish(incoming, {
+        hostBudgetBytes: 1,
+        beforeBudgetEviction: () => {
+          evictionEntered = true
+        },
       }),
-    ])
-    const lockPath = join(victim.editorRoot, '.publish.lock')
-    const owner = readFileSync(join(lockPath, 'owner.json'), 'utf8')
-    expect(JSON.parse(owner)).toMatchObject({
-      schema: 'effect-utils/editor-view-lock/v1',
-      kind: 'eviction',
-      pid: process.pid,
-      process: expect.any(String),
-    })
-    const attempts = vi.spyOn(Fs, 'mkdirSync')
-    const priorImplementation = attempts.getMockImplementation()
-    try {
-      waiting = host.publish(victim)
-      // publishEditorView reaches its first root-lock attempt synchronously. The
-      // passive spy confirms arrival during the held barrier, without fake control.
-      expect(attempts.mock.calls.some(([path]) => path === lockPath)).toBe(true)
-      expect(readFileSync(join(lockPath, 'owner.json'), 'utf8')).toBe(owner)
-    } finally {
-      attempts.mockRestore()
-      // Preserve another test file's shared vi.fn after Bun restores the spy.
-      if (priorImplementation !== undefined) attempts.mockImplementation(priorImplementation)
-    }
-  })
-
-  it('releases eviction and lets the waiting publisher successfully republish', async () => {
-    if (eviction === undefined || waiting === undefined || releaseEviction === undefined)
-      throw new Error('live eviction contention was not established')
-    releaseEviction()
-    const [incomingRecord, republished] = await Promise.all([eviction, waiting])
-    expectCurrent(incoming, incomingRecord)
-    expectCurrent(victim, republished)
-    expect(republished.snapshot).toBe(record.snapshot)
-    expect(pathExists(join(victim.editorRoot, '.evicted-budget-view.json'))).toBe(false)
+    ).rejects.toBeInstanceOf(EditorViewCapacityError)
+    expect(evictionEntered).toBe(false)
     expect(pathExists(join(victim.editorRoot, '.publish.lock'))).toBe(false)
+    const republished = await host.publish(victim)
+    expect(republished.snapshot).toBe(record.snapshot)
+    expectCurrent(victim, republished)
+    expect(pathExists(join(victim.editorRoot, '.evicted-budget-view.json'))).toBe(false)
   })
 
   it.each([
@@ -1330,7 +1222,7 @@ describe('publication waits for a live budget eviction, but not stale publisher 
   })
 })
 
-describe('host generation footprint sidecars follow coordinated retirement and root release', () => {
+describe('host generation footprint sidecars survive unmanaged pressure and follow explicit root release', () => {
   let host: Host
   let victim: Fixture
   let pressure: Fixture
@@ -1374,35 +1266,28 @@ describe('host generation footprint sidecars follow coordinated retirement and r
     )
   })
 
-  it('retires the obsolete generation and prunes its sidecar in a coordinated census', async () => {
+  it('preserves obsolete generation sidecars when unmanaged capacity is rejected', async () => {
     host.advance(hostRecencyMs + hostGraceMs + 1)
     host.age(victim, oldRecord)
     host.age(victim, currentRecord)
-    // Root recency protects every generation, so expire it completely. The real
-    // managed pin retains only current; the superseded generation is eligible.
-    await host.publish(pressure, {
-      hostBudgetBytes: 1,
-      beforeMaterialize: () => {
-        // Census has retired the old generation; no new footprint has landed yet.
-        const remaining = sidecars()
-        expect(remaining).toHaveLength(sidecarsBeforeRetirement.length - 1)
-        expect(sidecarsBeforeRetirement.filter((name) => remaining.includes(name))).toHaveLength(1)
-      },
-    })
-    expect(pathExists(join(victim.editorRoot, oldRecord.snapshot))).toBe(false)
+    // A pin on current does not make the root managed or permit old-byte deletion.
+    await overBudgetPublication(host, pressure, 1)
+    expect(sidecars()).toEqual(sidecarsBeforeRetirement)
+    expect(pathExists(join(victim.editorRoot, oldRecord.snapshot))).toBe(true)
+    await host.publish(pressure)
     expectCurrent(victim, currentRecord)
     const ledger = readBudgetLedger(host)
     const remaining = sidecars()
     expect(remaining.length).toBe(Object.keys(ledger.generations).length)
-    expect(sidecarsBeforeRetirement.filter((name) => remaining.includes(name))).toHaveLength(1)
+    expect(sidecarsBeforeRetirement.filter((name) => remaining.includes(name))).toHaveLength(2)
     sidecarsBeforeRelease = remaining
   })
 
   it('releases the real root through the production API', async () => {
     await host.track(releaseEditorViewRoot(victim.options))
-    expect(pathExists(victim.editorRoot)).toBe(false)
+    expect(readdirSync(victim.editorRoot)).toEqual(['.leases'])
     const remaining = sidecars()
-    expect(remaining).toHaveLength(sidecarsBeforeRelease.length - 1)
+    expect(remaining).toHaveLength(sidecarsBeforeRelease.length - 2)
     expect(sidecarsBeforeRetirement.some((name) => remaining.includes(name))).toBe(false)
   })
 
@@ -1450,11 +1335,11 @@ describe('host generation footprint sidecars follow coordinated retirement and r
     expect(remaining.length).toBe(Object.keys(ledger.generations).length)
     expect(sidecarsBeforeRetirement.some((name) => remaining.includes(name))).toBe(false)
     expect(sidecarsBeforeRelease.filter((name) => remaining.includes(name))).toHaveLength(1)
-    expect(remaining).toHaveLength(sidecarsBeforeRelease.length - 1)
+    expect(remaining).toHaveLength(sidecarsBeforeRelease.length - 2)
   })
 })
 
-describe('host-budget reader observations keep a fixed candidate set', () => {
+describe('host-budget unmanaged safety does not depend on recency or positive process evidence', () => {
   let host: Host
   let old: Fixture
   let held: Fixture
@@ -1495,43 +1380,23 @@ describe('host-budget reader observations keep a fixed candidate set', () => {
     readerReady = true
   })
 
-  it('never retires a generation whose recency boundary expires during the real process scan', async () => {
+  it('rejects capacity without deleting either idle or boundary generation', async () => {
     if (
       oldRecord === undefined ||
       heldRecord === undefined ||
       reader === undefined ||
       readerReady === false
     )
-      throw new Error('fixed-candidate regression setup did not complete')
-    let crossed = false
-    const scan = fsMocks.readlinkSync.mockImplementation((...args) => {
-      if (crossed === false && /^\/proc\/[0-9]+\/cwd$/.test(String(args[0])) === true) {
-        crossed = true
-        host.advance(2)
-      }
-      return nativeFs.readlinkSync(...args)
-    })
-    const nativeScan = childProcessMocks.spawnSync.mockImplementation((...args) => {
-      if (crossed === false && String(args[0]) === '/usr/sbin/lsof') {
-        crossed = true
-        host.advance(2)
-      }
-      return nativeChildProcess.spawnSync(...args)
-    })
-    try {
-      expectCurrent(incoming, await host.publish(incoming, { hostBudgetBytes: 1 }))
-    } finally {
-      scan.mockReset().mockImplementation(nativeFs.readlinkSync)
-      nativeScan.mockReset().mockImplementation(nativeChildProcess.spawnSync)
-    }
-    expect(crossed).toBe(true)
-    expect(pathExists(join(old.editorRoot, oldRecord.snapshot))).toBe(false)
+      throw new Error('boundary regression setup did not complete')
+    host.advance(2)
+    await overBudgetPublication(host, incoming, 1)
+    expectCurrent(old, oldRecord)
     expectCurrent(held, heldRecord)
     expectRunningReader(reader)
   })
 })
 
-describe('host-budget eviction tolerates teardown of a held victim root', () => {
+describe('host-budget capacity rejection never enters destructive unmanaged-root teardown', () => {
   let host: Host
   let victim: Fixture
   let incoming: Fixture
@@ -1552,60 +1417,40 @@ describe('host-budget eviction tolerates teardown of a held victim root', () => 
     host.age(victim, victimRecord)
   })
 
-  it('reserves and settles incoming bytes when a held victim root disappears', async () => {
+  it('preserves the victim and leaves no admission or settlement after capacity rejection', async () => {
     if (victimRecord === undefined) throw new Error('teardown victim publication did not complete')
     let removed = false
-    let admissionEpoch: number | undefined
-    const captured = await captureStderr(() =>
+    let materialized = false
+    const baseline = readBudgetLedger(host)
+    await expect(
       host.publish(incoming, {
         hostBudgetBytes: 1,
         beforeBudgetEviction: () => {
-          expect(pathExists(join(victim.editorRoot, '.publish.lock'))).toBe(true)
-          removeOwnedTree(victim.editorRoot)
           removed = true
+          removeOwnedTree(victim.editorRoot)
         },
         beforeMaterialize: () => {
-          expect(removed).toBe(true)
-          const admitted = readBudgetLedger(host)
-          expect(admitted.reservations).toHaveLength(1)
-          const reservation = admitted.reservations[0]
-          expect(reservation).toMatchObject({
-            editorRoot: incoming.editorRoot,
-            contentStore: host.contentStore,
-            pid: process.pid,
-            budgetBytes: 1,
-          })
-          expect(reservation?.token.length).toBeGreaterThan(0)
-          expect(reservation?.bytes).toBeGreaterThan(0)
-          admissionEpoch = admitted.epoch
+          materialized = true
         },
       }),
-    )
-    expect(removed).toBe(true)
-    expect(pathExists(victim.editorRoot)).toBe(false)
-    expectCurrent(incoming, captured.value)
+    ).rejects.toBeInstanceOf(EditorViewCapacityError)
+    expect(removed).toBe(false)
+    expect(materialized).toBe(false)
+    expectCurrent(victim, victimRecord)
+    expect(pathExists(join(incoming.editorRoot, incoming.options.viewName))).toBe(false)
     expect(pathExists(join(incoming.editorRoot, '.publish.lock'))).toBe(false)
-    expect(captured.stderr).not.toContain('editor-view.host-budget.maintenance-error')
-    expect(
-      budgetEvents(captured.stderr).filter(
-        ({ event }) => event === 'editor-view.host-budget.over-budget',
-      ),
-    ).toHaveLength(1)
-    const heldEpoch = admissionEpoch
-    if (heldEpoch === undefined) throw new Error('incoming reservation barrier was not reached')
     const finished = readBudgetLedger(host)
     expect(finished.reservations).toEqual([])
-    const settled = finished.journal.filter(({ epoch }) => epoch > heldEpoch)
-    expect(settled).toHaveLength(1)
-    expect(settled[0]?.estimatedBytes).toBeGreaterThan(0)
+    expect(finished.journal.filter(({ epoch }) => epoch > baseline.epoch)).toEqual([])
   })
 })
 
 describe('budget telemetry never waits for exporter delivery', () => {
-  it('finishes real publication with hung exporters, then kills and reaps them', async () => {
+  it('finishes capacity rejection with hung exporters, then kills and reaps them', async () => {
     const host = makeHost()
     try {
       const incoming = host.fixture('hung-exporter-publication', 151, 64)
+      await host.publish(host.fixture('hung-exporter-holder', 150, 64))
       const captured = await recordTelemetry(
         host.root,
         async (children) => {
@@ -1626,7 +1471,7 @@ describe('budget telemetry never waits for exporter delivery', () => {
             expect(status.status).toBe(0)
             expect(status.stdout.trim()).toBe(String(child.pid))
           }
-          expectCurrent(incoming, publication.record)
+          expect(publication.error).toBeInstanceOf(EditorViewCapacityError)
           return publication
         },
         { hangBudget: true },
@@ -1644,8 +1489,8 @@ describe('budget telemetry never waits for exporter delivery', () => {
           expect.arrayContaining([
             'editor-view.host-budget',
             'editor_view.host_budget.event=editor-view.host-budget.over-budget',
-            'exit.code=0',
-            'ok',
+            'exit.code=1',
+            'error',
           ]),
         ]),
       )
@@ -1653,9 +1498,9 @@ describe('budget telemetry never waits for exporter delivery', () => {
         expect.arrayContaining([
           expect.arrayContaining([
             'editor-view.phases',
-            'snapshot.created=true',
-            'exit.code=0',
-            'ok',
+            'snapshot.created=false',
+            'exit.code=1',
+            'error',
           ]),
         ]),
       )
@@ -1724,9 +1569,10 @@ describe('budget telemetry rate limits across publisher processes per host store
     if (firstComplete === false) throw new Error('first rate-limit publication did not complete')
     const captured = await recordTelemetry(host.root, async () => {
       const script = [
+        `import { EditorViewCapacityError } from ${JSON.stringify(new URL('./editor-view-budget.ts', import.meta.url).href)}`,
         `import { publishEditorView } from ${JSON.stringify(new URL('./editor-view.ts', import.meta.url).href)}`,
         `Date.now = () => ${Date.now()}`,
-        `await publishEditorView({ ...${JSON.stringify(second.options)}, hostBudgetBytes: 1 })`,
+        `try { await publishEditorView({ ...${JSON.stringify(second.options)}, hostBudgetBytes: 1 }); throw new Error('unexpected admission') } catch (error) { if (!(error instanceof EditorViewCapacityError)) throw error }`,
       ].join('\n')
       const child = spawnSync(bun, ['--eval', script], { encoding: 'utf8' })
       expect(child.status).toBe(0)
@@ -1785,7 +1631,7 @@ describe('budget telemetry rate limits across publisher processes per host store
   })
 })
 
-describe('budget admission defers reader proof until eviction needs it', () => {
+describe('budget admission separates fitting reservations from unmanaged capacity rejection', () => {
   const readerScans = (): number =>
     fsMocks.readlinkSync.mock.calls.filter(([path]) =>
       /^\/proc\/[0-9]+\/(?:cwd|fd\/)/.test(String(path)),
@@ -1852,51 +1698,58 @@ describe('budget admission defers reader proof until eviction needs it', () => {
     }
   })
 
-  it('scans before eviction and re-proves a reader opened after the victim lock', async () => {
+  it('rejects all-unknown unmanaged candidates at capacity without scanning, deleting, or reserving', async () => {
     const host = makeHost()
     try {
-      const victim = host.fixture('proof-victim', 183)
-      const incoming = host.fixture('proof-incoming', 184, 64)
+      const victim = host.fixture('unknown-victim', 183)
+      const incoming = host.fixture('unknown-incoming', 184, 64)
       const victimRecord = await host.publish(victim)
-      await host.publish(incoming)
+      const incomingRecord = await host.publish(incoming)
       const incomingLock = lockRoot(incoming)
       host.advance(hostRecencyMs + hostGraceMs + 1)
       host.age(victim, victimRecord)
+      host.age(incoming, incomingRecord)
       const scansBefore = readerScans()
-      let reader: Reader | undefined
-      let scansAtLock = 0
-      const reservation = await host.track(
-        reserveEditorViewBudget({
-          contentStore: host.contentStore,
-          root: { repoRoot: incoming.root, editorRoot: incoming.editorRoot },
-          heldEditorRoot: incoming.editorRoot,
-          discoverRoots: () => [{ repoRoot: victim.root, editorRoot: victim.editorRoot }],
-          reservationBytes: 1,
-          budgetBytes: 1,
-          tryLockRoot: (root) => {
-            expect(root.editorRoot).toBe(victim.editorRoot)
-            expect(readerScans()).toBeGreaterThan(scansBefore)
-            return lockRoot(root)
-          },
-          beforeRetireRoot: async () => {
-            scansAtLock = readerScans()
-            if (reader === undefined) {
-              reader = openReader(host, victim, victimRecord, { fromContentStore: true })
-              await reader.ready
-            }
-          },
-        }),
-      )
-      expect(reader).toBeDefined()
-      expect(readerScans()).toBeGreaterThan(scansAtLock)
-      expectCurrent(victim, victimRecord)
-      expect(pathExists(join(victim.editorRoot, '.evicted-budget-view.json'))).toBe(false)
-      if (reader === undefined) throw new Error('eviction never reached its reader barrier')
-      expectRunningReader(reader)
-      await cancelEditorViewBudgetReservation({
-        contentStore: host.contentStore,
-        token: reservation.token,
+      const baseline = readBudgetLedger(host)
+      let lockAttempts = 0
+      let retireAttempts = 0
+      await expect(
+        host.track(
+          reserveEditorViewBudget({
+            contentStore: host.contentStore,
+            root: { repoRoot: incoming.root, editorRoot: incoming.editorRoot },
+            heldEditorRoot: incoming.editorRoot,
+            discoverRoots: () => [{ repoRoot: victim.root, editorRoot: victim.editorRoot }],
+            reservationBytes: 1,
+            budgetBytes: 1,
+            tryLockRoot: () => {
+              lockAttempts++
+              throw new Error('unknown evidence must not authorize eviction')
+            },
+            beforeRetireRoot: () => {
+              retireAttempts++
+            },
+          }),
+        ),
+      ).rejects.toMatchObject({
+        name: 'EditorViewCapacityError',
+        code: 'EDITOR_VIEW_CAPACITY',
+        budgetBytes: 1,
+        usedBytes: expect.any(Number),
+        reservationBytes: 1,
+        blockedGenerations: 2,
+        reasons: expect.arrayContaining(['unmanaged-editor-sessions']),
+        message: expect.stringContaining('Nothing further can be safely deleted'),
       })
+      expect(lockAttempts).toBe(0)
+      expect(retireAttempts).toBe(0)
+      expect(readerScans()).toBe(scansBefore)
+      expectCurrent(victim, victimRecord)
+      expectCurrent(incoming, incomingRecord)
+      expect(pathExists(join(victim.editorRoot, '.evicted-budget-view.json'))).toBe(false)
+      const rejected = readBudgetLedger(host)
+      expect(rejected.reservations).toEqual([])
+      expect(rejected.journal).toEqual(baseline.journal)
       incomingLock.release()
     } finally {
       await host.cleanup()
@@ -1970,7 +1823,7 @@ describe('budget admission defers reader proof until eviction needs it', () => {
     },
   )
 
-  it('shares one near-full census between workers but refreshes after a generation mutation before eviction', async () => {
+  it('shares one near-full census between workers but refreshes a generation mutation before capacity rejection', async () => {
     const host = makeHost()
     try {
       const victim = host.fixture('session-victim', 185)
@@ -2039,29 +1892,29 @@ describe('budget admission defers reader proof until eviction needs it', () => {
       host.age(victim, oldRecord)
       host.age(victim, currentRecord)
       let attemptedEviction = false
-      const pressure = await host.track(
-        reserveEditorViewBudget({
-          ...options,
-          budgetBytes: 1,
-          censusSession,
-          onCensus: () => {
-            censuses++
-          },
-          tryLockRoot: (root) => {
-            attemptedEviction = true
-            expect(censuses).toBeGreaterThan(1)
-            return lockRoot(root)
-          },
-        }),
-      )
-      expect(attemptedEviction).toBe(true)
-      expect(pathExists(join(victim.editorRoot, oldRecord.snapshot))).toBe(false)
+      await expect(
+        host.track(
+          reserveEditorViewBudget({
+            ...options,
+            budgetBytes: 1,
+            censusSession,
+            onCensus: () => {
+              censuses++
+            },
+            tryLockRoot: (root) => {
+              attemptedEviction = true
+              expect(censuses).toBeGreaterThan(1)
+              return lockRoot(root)
+            },
+          }),
+        ),
+      ).rejects.toBeInstanceOf(EditorViewCapacityError)
+      expect(censuses).toBeGreaterThan(1)
+      expect(attemptedEviction).toBe(false)
+      expect(pathExists(join(victim.editorRoot, oldRecord.snapshot))).toBe(true)
       expectCurrent(victim, currentRecord)
       expectRunningReader(reader)
-      await cancelEditorViewBudgetReservation({
-        contentStore: host.contentStore,
-        token: pressure.token,
-      })
+      expect(readBudgetLedger(host).reservations).toEqual([])
       incomingLock.release()
     } finally {
       await host.cleanup()

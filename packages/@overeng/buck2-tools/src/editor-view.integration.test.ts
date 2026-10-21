@@ -1176,7 +1176,7 @@ describe('editor view publisher', () => {
     })
   })
 
-  describe('keeps the current and previous snapshots while preserving in-flight candidates', () => {
+  describe('preserves unmanaged snapshots and in-flight candidates beyond retention', () => {
     let fixture: Fixture
     let oldest: EditorViewRecord
     let inFlight: string
@@ -1215,12 +1215,12 @@ describe('editor view publisher', () => {
       },
     )
 
-    it('retains only current and previous snapshots plus the in-flight candidate', () => {
+    it('retains every unmanaged generation and its rollback metadata', () => {
       expect(revision).toBe(3)
       const snapshots = ownedSnapshots(fixture)
-      expect(snapshots).toHaveLength(2)
+      expect(snapshots).toHaveLength(3)
       expect(snapshots).toContain(currentTarget(fixture).replace('.store/', ''))
-      expect(snapshots).not.toContain(storeName(oldest.snapshot))
+      expect(snapshots).toContain(storeName(oldest.snapshot))
       expect(statSync(inFlight).isDirectory()).toBe(true)
       const retention = JSON.parse(
         readFileSync(
@@ -1228,12 +1228,12 @@ describe('editor view publisher', () => {
           'utf8',
         ),
       ) as { snapshots: readonly string[] }
-      expect(retention.snapshots).toHaveLength(2)
+      expect(retention.snapshots).toHaveLength(3)
       expect(retention.snapshots[0]).toBe(currentTarget(fixture).replace('.store/', ''))
     })
   })
 
-  describe('waits five minutes from supersession before enforcing configured retention', () => {
+  describe('unmanaged root safety outlasts configured retention and supersession grace', () => {
     let fixture: Fixture
     let options: EditorViewOptions
     let oldest: EditorViewRecord
@@ -1263,7 +1263,7 @@ describe('editor view publisher', () => {
       })
     }
 
-    it('enforces retention=3 only after all six generations exceed the grace period', async () => {
+    it('preserves all six generations after grace expires despite retention=3', async () => {
       expect(revision).toBe(6)
       expect(ownedSnapshots(fixture)).toHaveLength(6)
       const oldestRoot = join(fixture.editorRoot, oldest.snapshot)
@@ -1276,9 +1276,9 @@ describe('editor view publisher', () => {
       const current = currentTarget(fixture)
       publication = publishEditorView(options)
       await publication
-      expect(ownedSnapshots(fixture)).toHaveLength(3)
+      expect(ownedSnapshots(fixture)).toHaveLength(6)
       expect(currentTarget(fixture)).toBe(current)
-      expect(ownedSnapshots(fixture)).not.toContain(storeName(oldest.snapshot))
+      expect(ownedSnapshots(fixture)).toContain(storeName(oldest.snapshot))
     })
   })
 
@@ -1336,7 +1336,7 @@ describe('editor view publisher', () => {
       })
     }
 
-    it('collects both reader generations after closing the descriptor and removing the pin', async () => {
+    it('keeps unmanaged generations after closing the descriptor and removing the pin', async () => {
       expect(revision).toBe(5)
       expect(ownedSnapshots(fixture)).toContain(storeName(pinned.snapshot))
       expect(ownedSnapshots(fixture)).toContain(storeName(opened.snapshot))
@@ -1347,9 +1347,9 @@ describe('editor view publisher', () => {
       await operation
       operation = publishEditorView(fixture.options)
       await operation
-      expect(ownedSnapshots(fixture)).toHaveLength(2)
-      expect(ownedSnapshots(fixture)).not.toContain(storeName(pinned.snapshot))
-      expect(ownedSnapshots(fixture)).not.toContain(storeName(opened.snapshot))
+      expect(ownedSnapshots(fixture)).toHaveLength(5)
+      expect(ownedSnapshots(fixture)).toContain(storeName(pinned.snapshot))
+      expect(ownedSnapshots(fixture)).toContain(storeName(opened.snapshot))
     })
   })
 
@@ -1493,7 +1493,7 @@ describe('editor view publisher', () => {
     })
   })
 
-  describe('unpins the last rollback reader through the CLI before collecting its generation', () => {
+  describe('unpins the last rollback reader through the CLI without collecting unmanaged generations', () => {
     let fixture: Fixture
     let first: EditorViewRecord
     let revision = 1
@@ -1544,15 +1544,15 @@ describe('editor view publisher', () => {
       rollbackReaderUnpinned = true
     })
 
-    it('collects the released rollback generation', async () => {
+    it('preserves the released rollback generation under unmanaged root policy', async () => {
       expect(rollbackReaderUnpinned).toBe(true)
       operation = publishEditorView(fixture.options)
       await operation
-      expect(ownedSnapshots(fixture)).not.toContain(storeName(first.snapshot))
+      expect(ownedSnapshots(fixture)).toContain(storeName(first.snapshot))
     })
   })
 
-  describe('rejects pinning a collected rollback generation through the CLI', () => {
+  describe('pins an unmanaged rollback generation beyond the configured retention boundary through the CLI', () => {
     let fixture: Fixture
     let first: EditorViewRecord
     let revision = 1
@@ -1580,18 +1580,23 @@ describe('editor view publisher', () => {
       })
     }
 
-    it('rejects a pin for the collected rollback generation', async () => {
+    it('admits a pin for the preserved rollback generation', async () => {
       expect(revision).toBe(3)
       const pin = runEditorViewCli({
         fixture,
         command: 'pin',
-        flags: ['--name', 'too-late', '--snapshot', first.snapshot],
+        flags: ['--name', 'preserved-rollback', '--snapshot', first.snapshot],
       })
       operation = pin
-      const missing = await pin
-      expect(missing.status).not.toBe(0)
-      expect(missing.stderr).toContain('pin snapshot is missing')
-      expect(existsSync(join(fixture.editorRoot, '.pins', 'too-late.json'))).toBe(false)
+      const pinned = await pin
+      expect({ status: pinned.status, stderr: pinned.stderr }).toEqual({ status: 0, stderr: '' })
+      expect(pinned.stdout).toBe(`pinned editor view preserved-rollback ${first.snapshot}\n`)
+      expect(ownedSnapshots(fixture)).toContain(storeName(first.snapshot))
+      expect(
+        JSON.parse(
+          readFileSync(join(fixture.editorRoot, '.pins', 'preserved-rollback.json'), 'utf8'),
+        ),
+      ).toMatchObject({ name: 'preserved-rollback', snapshot: first.snapshot })
     })
   })
 
@@ -1667,7 +1672,7 @@ describe('editor view publisher', () => {
     })
   })
 
-  describe('winning managed pin versus snapshot retirement', () => {
+  describe('managed pin admission alongside unmanaged snapshot preservation', () => {
     let fixture: Fixture
     let oldest: EditorViewRecord
     let setup: Promise<EditorViewRecord> | undefined
@@ -1692,7 +1697,7 @@ describe('editor view publisher', () => {
       await Promise.allSettled([setup, pin, publication])
       if (fixture !== undefined) cleanup(fixture)
     })
-    it('serializes a winning managed pin with real retirement under the flock', async () => {
+    it('serializes a managed pin with publication under the flock without retiring old bytes', async () => {
       try {
         pin = pinEditorView({
           options: fixture.options,
@@ -1713,7 +1718,7 @@ describe('editor view publisher', () => {
         expect(ownedSnapshots(fixture)).toContain(storeName(oldest.snapshot))
         await unpinEditorView({ options: fixture.options, name: 'racing-reader' })
         await publishEditorView(fixture.options)
-        expect(ownedSnapshots(fixture)).not.toContain(storeName(oldest.snapshot))
+        expect(ownedSnapshots(fixture)).toContain(storeName(oldest.snapshot))
       } finally {
         proceed.resolve()
         await Promise.allSettled([pin, publication])
@@ -1721,15 +1726,11 @@ describe('editor view publisher', () => {
     })
   })
 
-  describe('losing managed pin versus snapshot retirement', () => {
+  describe('unmanaged retention cannot turn a concurrent pin into a dangling registration', () => {
     let fixture: Fixture
     let oldest: EditorViewRecord
     let setup: Promise<EditorViewRecord> | undefined
-    const entered = Promise.withResolvers<void>()
-    const proceed = Promise.withResolvers<void>()
-    const cleanupEntered = Promise.withResolvers<void>()
-    const cleanupProceed = Promise.withResolvers<void>()
-    let pinOutcome: Promise<unknown> | undefined
+    let pin: Promise<EditorViewPinRecord> | undefined
     let publication: Promise<EditorViewRecord> | undefined
     beforeAll(async () => {
       fixture = makeFixture()
@@ -1744,59 +1745,33 @@ describe('editor view publisher', () => {
       })
     }
     afterAll(async () => {
-      proceed.resolve()
-      cleanupProceed.resolve()
-      await Promise.allSettled([setup, pinOutcome, publication])
+      await Promise.allSettled([setup, pin, publication])
       if (fixture !== undefined) cleanup(fixture)
     })
-    it('rejects a losing pin instead of registering a dangling generation', async () => {
-      try {
-        publication = publishEditorView({
-          ...fixture.options,
-          beforeSnapshotRetirement: async () => {
-            entered.resolve()
-            await proceed.promise
-          },
-          beforeSnapshotCleanup: async () => {
-            cleanupEntered.resolve()
-            await cleanupProceed.promise
-          },
-        })
-        await entered.promise
-        // Retirement owns the actual flock after its managed-pin census. Admission
-        // must wait and then recheck existence, not register against the stale name.
-        pinOutcome = pinEditorView({
-          options: fixture.options,
-          name: 'too-late',
-          snapshot: oldest.snapshot,
-        }).then(
-          (value) => value,
-          (error: unknown) => error,
-        )
-        proceed.resolve()
-        await cleanupEntered.promise
-        // The canonical generation has retired, but recursive cleanup is paused.
-        // Admission can acquire the flock now and must reject the hidden name.
-        expect(
-          readdirSync(fixture.editorRoot).some(
-            (name) => name.startsWith('.gc-') === true && name.endsWith(storeName(oldest.snapshot)),
-          ),
-        ).toBe(true)
-        const failure = await pinOutcome
-        expect(failure).toBeInstanceOf(Error)
-        expect(failure instanceof Error ? failure.message : undefined).toContain(
-          'pin snapshot is missing',
-        )
-        expect(ownedSnapshots(fixture)).not.toContain(storeName(oldest.snapshot))
-        expect(existsSync(join(fixture.editorRoot, '.pins', 'too-late.json'))).toBe(false)
-        cleanupProceed.resolve()
-        await publication
-        expect(existsSync(join(fixture.editorRoot, '.publish.lock'))).toBe(false)
-      } finally {
-        proceed.resolve()
-        cleanupProceed.resolve()
-        await Promise.allSettled([pinOutcome, publication])
-      }
+    it('never enters retirement and admits a pin for the preserved old generation', async () => {
+      let retirementEntered = false
+      publication = publishEditorView({
+        ...fixture.options,
+        beforeSnapshotRetirement: () => {
+          retirementEntered = true
+        },
+      })
+      pin = pinEditorView({
+        options: fixture.options,
+        name: 'concurrent-reader',
+        snapshot: oldest.snapshot,
+      })
+      await expect(pin).resolves.toMatchObject({ snapshot: oldest.snapshot })
+      await publication
+      expect(retirementEntered).toBe(false)
+      expect(ownedSnapshots(fixture)).toContain(storeName(oldest.snapshot))
+      expect(readdirSync(fixture.editorRoot).some((name) => name.startsWith('.gc-'))).toBe(false)
+      expect(
+        JSON.parse(
+          readFileSync(join(fixture.editorRoot, '.pins', 'concurrent-reader.json'), 'utf8'),
+        ),
+      ).toMatchObject({ snapshot: oldest.snapshot })
+      expect(existsSync(join(fixture.editorRoot, '.publish.lock'))).toBe(false)
     })
   })
 
@@ -1832,14 +1807,14 @@ describe('editor view publisher', () => {
       })
     }
 
-    it('collects the advisory generation after the shell reader disappears', async () => {
+    it('preserves the unmanaged generation after the shell reader disappears', async () => {
       expect(revision).toBe(3)
       expect(ownedSnapshots(fixture)).toContain(storeName(oldest.snapshot))
       expect(existsSync(join(fixture.editorRoot, '.pins', 'shell-reader.json'))).toBe(false)
       rmSync(link)
       publication = publishEditorView(fixture.options)
       await publication
-      expect(ownedSnapshots(fixture)).not.toContain(storeName(oldest.snapshot))
+      expect(ownedSnapshots(fixture)).toContain(storeName(oldest.snapshot))
     })
   })
 
@@ -1867,7 +1842,7 @@ describe('editor view publisher', () => {
         { encoding: 'utf8' },
       )
       expect({ status: result.status, stderr: result.stderr }).toEqual({ status: 0, stderr: '' })
-      expect(readdirSync(dirname(fixture.editorRoot))).not.toContain('.editor-view')
+      expect(readdirSync(fixture.editorRoot)).toEqual(['.leases'])
       expect(
         readdirSync(dirname(fixture.editorRoot)).filter((name) =>
           name.startsWith('.editor-view.release-'),
@@ -2062,7 +2037,7 @@ describe('editor view publisher', () => {
     })
   })
 
-  describe('shared store bounds for each publishing view', () => {
+  describe('shared store preserves every unmanaged generation for each publishing view', () => {
     let fixture: Fixture
     let options: readonly EditorViewOptions[]
     let publication: Promise<EditorViewRecord> | undefined
@@ -2080,11 +2055,11 @@ describe('editor view publisher', () => {
       if (fixture !== undefined) cleanup(fixture)
     })
 
-    // All three generations and both views still share one real store. Each
-    // publication gets its own guard; completed prevents advancing a failed step.
+    // All three generations and both views still share one real store. No positive
+    // reader evidence is needed for the root-wide unmanaged preservation policy.
     for (const revision of [1, 2, 3]) {
       it.each([0, 1])(
-        `bounds current plus previous at revision ${revision} for view %s`,
+        `preserves all generations at revision ${revision} for view %s`,
         async (index) => {
           expect(completed).toBe((revision - 1) * 2 + index)
           const option = options[index]!
@@ -2099,18 +2074,16 @@ describe('editor view publisher', () => {
           const retained = readdirSync(join(fixture.editorRoot, '.store'))
             .filter((name) => name.startsWith(`${option.viewName}-`))
             .toSorted()
-          expect(retained).toEqual(history.slice(0, 2).toSorted())
+          expect(retained).toEqual(history.toSorted())
           if (index === 1)
-            expect(readdirSync(join(fixture.editorRoot, '.store'))).toHaveLength(
-              revision === 1 ? 2 : 4,
-            )
+            expect(readdirSync(join(fixture.editorRoot, '.store'))).toHaveLength(revision * 2)
           completed += 1
         },
       )
     }
   })
 
-  describe('older generation permission proof at retirement', () => {
+  describe('older generation permission validation does not authorize unmanaged retirement', () => {
     let fixture: Fixture
     let oldestRoot: string
     let privateDirectory: string
@@ -2134,19 +2107,20 @@ describe('editor view publisher', () => {
     it('does not rewalk a protected older generation', () => {
       expect(existsSync(oldestRoot)).toBe(true)
     })
-    it('checks the complete permission proof before retirement', async () => {
+    it('checks the complete permission proof before publishing without deleting old bytes', async () => {
       const previous = currentTarget(fixture)
       writeFileSync(join(fixture.editorInputs, 'install-descriptor.json'), '{"revision":3}\n')
       pending = publishEditorView(fixture.options)
       await expect(pending).rejects.toThrow('snapshot directory is writable')
       expect(existsSync(oldestRoot)).toBe(true)
+      expect(statSync(privateDirectory).mode & 0o777).toBe(0o700)
       expect(currentTarget(fixture)).toBe(previous)
     })
-    it('retires the generation once private directory permissions are restored', async () => {
+    it('still preserves the generation once private directory permissions are restored', async () => {
       chmodSync(privateDirectory, 0o555)
       pending = publishEditorView(fixture.options)
       await pending
-      expect(existsSync(oldestRoot)).toBe(false)
+      expect(existsSync(oldestRoot)).toBe(true)
     })
   })
 
@@ -3265,7 +3239,7 @@ process.stderr.write = (...args) => {
     }
   })
 
-  describe('independent publication, checks, and garbage collection of two package views', () => {
+  describe('independent publication, checks, and unmanaged retention of two package views', () => {
     let first: Fixture
     const secondPackage = 'tui-react'
     let options: readonly EditorViewOptions[]
@@ -3334,20 +3308,23 @@ process.stderr.write = (...args) => {
       )
     }
 
-    it.each([0, 1])('checks bounded retention independently for package view %s', async (index) => {
-      expect(completed).toBe(6)
-      expect(finalChecks).toBe(index)
-      if (index === 0) expect(ownedSnapshots(first)).toHaveLength(2)
-      else
-        expect(
-          readdirSync(join(first.editorRoot, '.store')).filter((name) =>
-            name.startsWith(`${secondPackage}-`),
-          ),
-        ).toHaveLength(2)
-      pending = checkEditorView(currentOptions[index]!)
-      await expect(pending).resolves.toEqual(current[index])
-      finalChecks += 1
-    })
+    it.each([0, 1])(
+      'checks unmanaged preservation independently for package view %s',
+      async (index) => {
+        expect(completed).toBe(6)
+        expect(finalChecks).toBe(index)
+        if (index === 0) expect(ownedSnapshots(first)).toHaveLength(3)
+        else
+          expect(
+            readdirSync(join(first.editorRoot, '.store')).filter((name) =>
+              name.startsWith(`${secondPackage}-`),
+            ),
+          ).toHaveLength(3)
+        pending = checkEditorView(currentOptions[index]!)
+        await expect(pending).resolves.toEqual(current[index])
+        finalChecks += 1
+      },
+    )
   })
 
   describe('snapshot mode repair rejects descriptor races', () => {
@@ -4023,7 +4000,7 @@ describe('budget observations tolerate concurrent reader and worktree teardown',
     })
     let publication: Promise<EditorViewRecord> | undefined
     try {
-      publication = publishEditorView({ ...fixture.options, hostBudgetBytes: 1 })
+      publication = publishEditorView(fixture.options)
       const record = await publication
       expect(removed).toBe(true)
       expect(currentTarget(fixture)).toBe(record.snapshot)
@@ -4054,7 +4031,7 @@ describe('budget observations tolerate concurrent reader and worktree teardown',
     })
     let publication: Promise<EditorViewRecord> | undefined
     try {
-      publication = publishEditorView({ ...fixture.options, hostBudgetBytes: 1 })
+      publication = publishEditorView(fixture.options)
       const record = await publication
       expect(removed).toBe(true)
       expect(currentTarget(fixture)).toBe(record.snapshot)
@@ -4066,7 +4043,7 @@ describe('budget observations tolerate concurrent reader and worktree teardown',
   })
 })
 
-describe('advisory budget failures preserve publication and uncertain readers', () => {
+describe('budget failures reject admission and preserve uncertain readers', () => {
   it.each(['ENOSPC', 'EDQUOT', 'EROFS', 'EACCES'])(
     'propagates publication-lock %s without retrying',
     async (code) => {
@@ -4127,7 +4104,7 @@ describe('advisory budget failures preserve publication and uncertain readers', 
       restoreHostBudget()
     })
 
-    it('logs the unobserved root and publishes without evicting any uncertain generation', async () => {
+    it('propagates discovery uncertainty before admission without evicting any generation', async () => {
       const nativeLstat = nativeFs.lstatSync
       const injected = Object.assign(new Error(`unobserved ${code}`), { code })
       let observations = 0
@@ -4138,31 +4115,31 @@ describe('advisory budget failures preserve publication and uncertain readers', 
         }
         return Reflect.apply(nativeLstat, fs, args) as ReturnType<typeof fs.lstatSync>
       })
-      const log = vi.spyOn(console, 'error').mockImplementation(() => {})
       const clock = vi.spyOn(Date, 'now').mockReturnValue(Date.now() + 25 * 60 * 60 * 1_000)
+      let materialized = false
       try {
-        publication = publishEditorView({ ...incoming.options, hostBudgetBytes: 1 })
-        const record = await publication
+        publication = publishEditorView({
+          ...incoming.options,
+          hostBudgetBytes: 1,
+          beforeMaterialize: () => {
+            materialized = true
+          },
+        })
+        await expect(publication).rejects.toThrow(`unobserved ${code}`)
         expect(observations).toBeGreaterThan(0)
-        expect(currentTarget(incoming)).toBe(record.snapshot)
+        expect(existsSync(join(incoming.editorRoot, incoming.options.viewName))).toBe(false)
         expect(currentTarget(victim)).toBe(held.snapshot)
-        expect(
-          log.mock.calls.some(
-            ([line]) =>
-              String(line).includes('"event":"editor-view.host-budget.unobserved"') &&
-              String(line).includes(`"code":"${code}"`),
-          ),
-        ).toBe(true)
+        expect(materialized).toBe(false)
+        expect(existsSync(join(incoming.editorRoot, '.publish.lock'))).toBe(false)
       } finally {
         if (publication !== undefined) await Promise.allSettled([publication])
         clock.mockRestore()
-        log.mockRestore()
         inspect.mockReset().mockImplementation(nativeFs.lstatSync)
       }
     })
   })
 
-  describe('cleanup after the pointer commit is advisory', () => {
+  describe('unmanaged publication never enters recursive snapshot cleanup', () => {
     let fixture: Fixture
     let publication: Promise<EditorViewRecord> | undefined
     let revision = 0
@@ -4182,7 +4159,7 @@ describe('advisory budget failures preserve publication and uncertain readers', 
         revision = next
       })
     }
-    it('logs cleanup failure and still returns the committed generation', async () => {
+    it('commits the new generation without invoking cleanup of older unmanaged bytes', async () => {
       expect(revision).toBe(2)
       writeFileSync(join(fixture.editorInputs, 'install-descriptor.json'), 'third\n')
       const log = vi.spyOn(console, 'error').mockImplementation(() => {})
@@ -4196,7 +4173,7 @@ describe('advisory budget failures preserve publication and uncertain readers', 
           },
         })
         const record = await publication
-        expect(cleanupEntered).toBe(true)
+        expect(cleanupEntered).toBe(false)
         expect(currentTarget(fixture)).toBe(record.snapshot)
         expect(
           log.mock.calls.some(
@@ -4204,7 +4181,8 @@ describe('advisory budget failures preserve publication and uncertain readers', 
               String(line).includes('"phase":"snapshot-cleanup"') &&
               String(line).includes('injected post-commit cleanup error'),
           ),
-        ).toBe(true)
+        ).toBe(false)
+        expect(ownedSnapshots(fixture)).toHaveLength(3)
       } finally {
         if (publication !== undefined) await Promise.allSettled([publication])
         log.mockRestore()
@@ -4237,7 +4215,7 @@ describe('budget victim teardown after the census', () => {
     cleanup(incoming)
     restoreHostBudget()
   })
-  it('skips a victim removed immediately before acquiring its eviction lock', async () => {
+  it('does not acquire an unmanaged victim eviction lock or invoke destructive teardown', async () => {
     const nativeMkdir = nativeFs.mkdirSync
     let removed = false
     const create = fsMocks.mkdirSync.mockImplementation((...args) => {
@@ -4250,10 +4228,15 @@ describe('budget victim teardown after the census', () => {
     const clock = vi.spyOn(Date, 'now').mockReturnValue(Date.now() + 25 * 60 * 60 * 1_000)
     try {
       publication = publishEditorView({ ...incoming.options, hostBudgetBytes: 1 })
-      const record = await publication
-      expect(removed).toBe(true)
-      expect(currentTarget(incoming)).toBe(record.snapshot)
-      expect(existsSync(victim.root)).toBe(false)
+      await expect(publication).rejects.toMatchObject({
+        name: 'EditorViewCapacityError',
+        code: 'EDITOR_VIEW_CAPACITY',
+        budgetBytes: 1,
+        reasons: expect.arrayContaining(['unmanaged-editor-sessions']),
+      })
+      expect(removed).toBe(false)
+      expect(existsSync(join(incoming.editorRoot, incoming.options.viewName))).toBe(false)
+      expect(existsSync(victim.root)).toBe(true)
     } finally {
       if (publication !== undefined) await Promise.allSettled([publication])
       clock.mockRestore()

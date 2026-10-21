@@ -203,7 +203,10 @@ for pid in "${pids[@]}"; do
   if kill -0 "$pid" 2>/dev/null; then fail "daemon $pid remains live"; fi
 done
 [ ! -e "$state" ] || fail 'root buckd state remains'
-[ ! -e "$worktree/.editor-view" ] || fail 'editor roots remain'
+[ ! -e "$worktree/.editor-view/.store" ] || fail 'editor generations remain'
+[ -d "$worktree/.editor-view/.leases" ] || fail 'persistent lease controls were removed'
+"$BUN" -e 'const fs=require("node:fs"); const root=process.argv[1]; if(fs.readdirSync(root).some(name=>name!==".leases")) process.exit(1); if(fs.readdirSync(root+"/.leases").length===0) process.exit(1)' \
+  "$worktree/.editor-view" || fail 'editor root contains more than persistent lease tombstones'
 for entry in "$cache/$root_hash-"*; do
   if [ -e "$entry" ] || [ -L "$entry" ]; then fail 'root admission entries remain'; fi
 done
@@ -220,7 +223,7 @@ fi
 (cd "$worktree" && WATCHMAN_SOCK="$TEMP_ROOT/missing.sock" "$DEVENV" tasks run worktree:teardown --mode single)
 git -C "$main" worktree remove "$worktree"
 [ ! -e "$worktree" ] || fail 'ordinary git worktree remove failed'
-echo 'PASS: two live Buck isolations stopped; buckd/watch/root caches/editor roots released; second and unreachable-Watchman runs exit 0; unrelated state and file modes preserved; git worktree remove succeeds without chmod'
+echo 'PASS: two live Buck isolations stopped; buckd/watch/root caches/editor generations released; lease tombstones retained; second and unreachable-Watchman runs exit 0; unrelated state and file modes preserved; git worktree remove succeeds without chmod'
 
 # A descendant absolute checkout path shares its parent's buckd namespace, but
 # is not one of the parent's isolations. Exercise Git file/dir boundaries and

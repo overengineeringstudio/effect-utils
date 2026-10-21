@@ -27,7 +27,7 @@ import { fileURLToPath } from 'node:url'
 
 import { describe, expect, it, vi } from 'vitest'
 
-import { observeEditorViewProcessCandidates } from './editor-view-readers.ts'
+import { classifyEditorViewProcessCandidates } from './editor-view-readers.ts'
 import {
   type EditorViewContentSharing,
   collectEditorViewContentStore,
@@ -1406,19 +1406,26 @@ describe.skipIf(process.platform !== 'linux' && process.platform !== 'darwin')(
               await ready.promise
               // cwd-and-fd observes the known path twice in the same census:
               // holding it once must not widen the next reference to its root.
+              const evidence = classifyEditorViewProcessCandidates({
+                candidates: [
+                  { key: 'first', editorRoot, snapshotRoot: first, linkedInodes: [] },
+                  { key: 'second', editorRoot, snapshotRoot: second, linkedInodes: [] },
+                  {
+                    key: 'other',
+                    editorRoot: otherRoot,
+                    snapshotRoot: other,
+                    linkedInodes: [],
+                  },
+                ],
+              })
+              // Host visibility may independently be unknown. Only actual
+              // positive references establish the candidate-scoping assertion.
               expect(
-                observeEditorViewProcessCandidates({
-                  candidates: [
-                    { key: 'first', editorRoot, snapshotRoot: first, linkedInodes: [] },
-                    { key: 'second', editorRoot, snapshotRoot: second, linkedInodes: [] },
-                    {
-                      key: 'other',
-                      editorRoot: otherRoot,
-                      snapshotRoot: other,
-                      linkedInodes: [],
-                    },
-                  ],
-                }),
+                new Set(
+                  [...evidence]
+                    .filter(([, observation]) => observation.state === 'held')
+                    .map(([key]) => key),
+                ),
               ).toEqual(new Set(pathKind === 'known-generation' ? ['first'] : ['first', 'second']))
             } finally {
               if (child.exitCode === null && child.signalCode === null) child.stdin.end('release\n')
