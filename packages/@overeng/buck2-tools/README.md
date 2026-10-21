@@ -258,8 +258,10 @@ Budget discovery and maintenance failures are structured advisory diagnostics:
 uncertain discovery aborts that budget round without eviction, and maintenance
 failure never rejects an otherwise successful publication.
 Reserve start, work reasons, and grant durations use the `[editor-view-budget]`
-prefix and are forwarded live by both single and batch publication. Phase records
-explicitly distinguish entry from completion and include completion durations.
+prefix and are forwarded live by both single and batch publication. Forwarding
+buffers partial stderr lines until their terminating newline, independently of
+child-process chunk boundaries. Phase records explicitly distinguish entry from
+completion and include completion durations.
 Census completion records use `event: "completed"`, `stage`, and monotonic
 `durationMs`, with aggregate counts for root discovery, generation enumeration,
 sidecar reads (hits, misses, bytes), footprint walks on misses (walks, linked
