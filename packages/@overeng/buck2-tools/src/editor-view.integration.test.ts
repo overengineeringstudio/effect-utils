@@ -4586,7 +4586,6 @@ await publishEditorView({
     const pressure = makeFixture()
     const restoreHostBudget = isolateHostBudget()
     const publisher = pausedPublisher({ fixture, hook: 'beforeMaterialize' })
-    let reservation: string | undefined
     let pressureLock: EditorViewBudgetRootLock | undefined
     try {
       await publisher.ready
@@ -4610,26 +4609,22 @@ await publishEditorView({
       const pressureRoot = { repoRoot: pressure.root, editorRoot: pressure.editorRoot }
       pressureLock = await tryAcquireEditorViewBudgetRootLock(pressureRoot)
       expect(pressureLock).toBeDefined()
-      const admitted = await reserveEditorViewBudget({
-        contentStore: fixture.options.contentStore!,
-        root: pressureRoot,
-        heldEditorRoot: pressure.editorRoot,
-        discoverRoots: () => [{ repoRoot: fixture.root, editorRoot: fixture.editorRoot }],
-        tryLockRoot: tryAcquireEditorViewBudgetRootLock,
-        reservationBytes: 1,
-        budgetBytes: 1,
-      })
-      reservation = admitted.token
+      await expect(
+        reserveEditorViewBudget({
+          contentStore: fixture.options.contentStore!,
+          root: pressureRoot,
+          heldEditorRoot: pressure.editorRoot,
+          discoverRoots: () => [{ repoRoot: fixture.root, editorRoot: fixture.editorRoot }],
+          tryLockRoot: tryAcquireEditorViewBudgetRootLock,
+          reservationBytes: 1,
+          budgetBytes: 1,
+        }),
+      ).rejects.toMatchObject({ name: 'EditorViewCapacityError', code: 'EDITOR_VIEW_CAPACITY' })
       expect(existsSync(candidate)).toBe(false)
       expect(existsSync(join(fixture.editorRoot, '.publish.lock'))).toBe(false)
       expect(readdirSync(join(fixture.editorRoot, '.store'))).toEqual([])
     } finally {
       await publisher.kill()
-      if (reservation !== undefined)
-        await cancelEditorViewBudgetReservation({
-          contentStore: fixture.options.contentStore!,
-          token: reservation,
-        })
       pressureLock?.release()
       cleanup(pressure)
       cleanup(fixture)
