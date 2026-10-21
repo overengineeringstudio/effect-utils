@@ -25,8 +25,16 @@ let
     };
     fetcherVersion = 4;
     # Measure with: nix build .#stylex-next-fixture.pnpmDeps --no-link
-    # One normalized, all-platform store hash is shared by every system.
-    hash = "sha256-T9xUm2wJkLHJMfyijPdHlE29jZY7nMy2gu0qhAMtVg0=";
+    # The fetched store is byte-identical across Linux architectures but not
+    # between Linux and Darwin builders, so each system pins its measured hash.
+    hash =
+      {
+        aarch64-darwin = "sha256-T9xUm2wJkLHJMfyijPdHlE29jZY7nMy2gu0qhAMtVg0=";
+        aarch64-linux = "sha256-MnhEfl4qpDX1rSXYpE3kdj9XHd69kqU07pegLCmYnLY=";
+        x86_64-linux = "sha256-MnhEfl4qpDX1rSXYpE3kdj9XHd69kqU07pegLCmYnLY=";
+      }
+      .${pkgs.stdenv.hostPlatform.system}
+        or (throw "stylex-next-fixture: no pinned pnpm store hash for ${pkgs.stdenv.hostPlatform.system}");
     prePnpmInstall = ''
       # fetchPnpmDeps forwards this impure variable as --registry. Pin it here:
       # an unset daemon environment otherwise replaces the derivation value.
