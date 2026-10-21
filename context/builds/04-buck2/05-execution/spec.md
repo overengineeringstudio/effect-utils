@@ -163,7 +163,6 @@ or shared-cache admission. Private mode-0700 staging is removed after success,
 failure, and handled termination signals. Linux retains its existing Bubblewrap
 boundary, which hides undeclared worktree ancestors.
 
-
 Decision authority is the live 2026-10-11 axe record `jd5hbf`,
 `enforce-linux-block-darwin`: enforce Linux containment and block Darwin
 admission, not Darwin execution. Action evidence names `darwin-unsandboxed`
