@@ -507,7 +507,9 @@ export const deployFailureRecord = (opts: {
       target: opts.input.target,
       mode: opts.input.mode,
       errorKind: opts.failure._tag,
-      ...(opts.failure._tag === 'ProviderOperationFailed' ? { operation: opts.failure.operation } : {}),
+      ...(opts.failure._tag === 'ProviderOperationFailed'
+        ? { operation: opts.failure.operation }
+        : {}),
       retryable: deployFailureRetryability(opts.failure),
       attempts: opts.attempts,
       ...(diagnostics === undefined ? {} : { diagnostics }),

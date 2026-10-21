@@ -33,31 +33,34 @@ describe('live deploy failure diagnostics', () => {
     Buffer.from('base64-secret-sentinel').toString('base64'),
     'split-secret\nsentinel',
     'quoted-"secret"-sentinel',
-  ])('omits encoded or split private data without inspecting its representation: %j', (privateValue) => {
-    const input = {
-      status: 1,
-      stdout: privateValue,
-      stderr: privateValue,
-      report: `WORKFLOW_REPORT_V1: ${JSON.stringify({
-        summary: privateValue,
-        links: [{ url: privateValue }],
-        data: {
-          errorKind: 'ProviderOperationFailed',
-          operation: 'deploy',
-          target: privateValue,
-          diagnostics: { stdout: privateValue, stderr: privateValue, code: privateValue },
-        },
-      })}`,
-    }
-    const diagnostic = formatLiveDeployFailure(input)
+  ])(
+    'omits encoded or split private data without inspecting its representation: %j',
+    (privateValue) => {
+      const input = {
+        status: 1,
+        stdout: privateValue,
+        stderr: privateValue,
+        report: `WORKFLOW_REPORT_V1: ${JSON.stringify({
+          summary: privateValue,
+          links: [{ url: privateValue }],
+          data: {
+            errorKind: 'ProviderOperationFailed',
+            operation: 'deploy',
+            target: privateValue,
+            diagnostics: { stdout: privateValue, stderr: privateValue, code: privateValue },
+          },
+        })}`,
+      }
+      const diagnostic = formatLiveDeployFailure(input)
 
-    expect(JSON.parse(diagnostic)).toEqual({
-      exitStatus: 1,
-      errorKind: 'ProviderOperationFailed',
-      operation: 'deploy',
-    })
-    expect(diagnostic).not.toContain(privateValue)
-  })
+      expect(JSON.parse(diagnostic)).toEqual({
+        exitStatus: 1,
+        errorKind: 'ProviderOperationFailed',
+        operation: 'deploy',
+      })
+      expect(diagnostic).not.toContain(privateValue)
+    },
+  )
 
   it.each([
     undefined,
@@ -69,7 +72,9 @@ describe('live deploy failure diagnostics', () => {
     'WORKFLOW_REPORT_V1: {"data":{"errorKind":"c2VjcmV0"}}',
     'WORKFLOW_REPORT_V1: {"data":{"operation":"split-secret\\nsentinel"}}',
   ])('fails closed for absent, malformed or unrecognized report classifications: %j', (report) => {
-    expect(JSON.parse(formatLiveDeployFailure({ status: null, report }))).toEqual({ exitStatus: null })
+    expect(JSON.parse(formatLiveDeployFailure({ status: null, report }))).toEqual({
+      exitStatus: null,
+    })
   })
 
   it.each(['403-secret', '0403', '999', 99, 600, 403.5])(
