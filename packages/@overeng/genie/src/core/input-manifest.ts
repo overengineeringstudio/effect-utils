@@ -9,6 +9,7 @@ import { Effect, Semaphore } from 'effect'
 import {
   beginInputRecording,
   endInputRecording,
+  inputFileSystem,
   inputReadFileSync,
   isInputRecording,
   isInputRecordingComplete,
@@ -70,6 +71,7 @@ export const recordGeneratorSourceGraph = ({
                 specifier,
                 importerPath: sourcePath,
                 workspaceRoot: cwd,
+                fs: inputFileSystem,
               })
             : undefined
       } catch {

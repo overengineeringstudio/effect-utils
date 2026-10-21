@@ -16,6 +16,7 @@ import { pathToFileURL } from 'node:url'
 
 import { Effect, FileSystem, Option } from 'effect'
 
+import { inputFileSystem } from '../../runtime/node/inputs.ts'
 import * as Observability from '../observability.ts'
 import {
   type ImportMap,
@@ -192,6 +193,7 @@ export const resolveImportMapSpecifierForImporter = Effect.fn(
     specifier,
     importerPath,
     workspaceRoot,
+    fs: inputFileSystem,
   })
   if (resolvedMegarepoMember !== undefined) {
     return Option.some(resolvedMegarepoMember)
@@ -272,6 +274,7 @@ export const resolveImportMapsInSource = Effect.fn('resolveImportMapsInSource')(
         specifier,
         importerPath: sourcePath,
         workspaceRoot,
+        fs: inputFileSystem,
       }) ??
       (packageJsonDir === undefined || Object.keys(importMap).length === 0
         ? null
