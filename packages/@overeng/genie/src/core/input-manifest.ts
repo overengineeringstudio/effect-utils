@@ -163,7 +163,7 @@ export const withInputManifest = <TOutput, TError, TRequirements>({
                     `${isInputRecordingComplete() === true ? 'genie-inputs-v1' : 'genie-inputs-incomplete'}\n${[
                       ...inputs,
                     ]
-                      .sort()
+                      .toSorted()
                       .map((input) => `${input}\n`)
                       .join('')}`,
                     { flag: 'wx' },
