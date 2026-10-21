@@ -58,6 +58,8 @@ export const MAIN_ONLY_CI_JOB_NAMES = [
   'test-live-deploy-ci-tools',
   'deploy-storybooks',
   'publish-products',
+  'consumer-smoke',
+  'promote-published',
   'main-source-shape',
 ] as const
 

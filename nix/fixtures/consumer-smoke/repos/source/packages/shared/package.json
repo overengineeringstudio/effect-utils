@@ -1,0 +1,10 @@
+{
+  "$genie": {
+    "source": "package.json.genie.ts",
+    "warning": "DO NOT EDIT - changes will be overwritten"
+  },
+  "name": "@fixture/shared",
+  "version": "1.0.0",
+  "private": true,
+  "main": "index.cjs"
+}
