@@ -27,8 +27,8 @@ const DiagnosticReport = Schema.fromJsonString(
       ),
       diagnostics: Schema.optional(
         Schema.Struct({
-          apiStatus: Schema.optional(Schema.Union([Schema.String, Schema.Number])),
-          httpStatus: Schema.optional(Schema.Union([Schema.String, Schema.Number])),
+          apiStatus: Schema.optional(Schema.Union([Schema.String, Schema.Finite])),
+          httpStatus: Schema.optional(Schema.Union([Schema.String, Schema.Finite])),
         }),
       ),
     }),
@@ -36,10 +36,10 @@ const DiagnosticReport = Schema.fromJsonString(
 )
 
 const httpStatus = (value: unknown) => {
-  const status = typeof value === 'string' && /^[1-5]\d{2}$/u.test(value) ? Number(value) : value
-  return typeof status === 'number' && Number.isInteger(status) && status >= 100 && status <= 599
-    ? status
-    : undefined
+  const status =
+    typeof value === 'string' && /^[1-5]\d{2}$/u.test(value) === true ? Number(value) : value
+  if (typeof status !== 'number' || Number.isInteger(status) === false) return undefined
+  return status >= 100 && status <= 599 ? status : undefined
 }
 
 /** Emit only finite report classifications and numeric statuses, never child output or report text. */
