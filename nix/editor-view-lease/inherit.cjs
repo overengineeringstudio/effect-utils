@@ -38,6 +38,7 @@ const inherit = (options = {}) => {
       // Child env replacement must not silently remove descriptor propagation.
       EDITOR_VIEW_LEASE_ACTIVE: process.env.EDITOR_VIEW_LEASE_ACTIVE,
       EDITOR_VIEW_LEASE_PRELOAD: __filename,
+      EDITOR_VIEW_LEASE_LIBRARY: process.env.EDITOR_VIEW_LEASE_LIBRARY,
       EDITOR_VIEW_LEASE_WORKSPACE_ROOT: process.env.EDITOR_VIEW_LEASE_WORKSPACE_ROOT,
       EDITOR_VIEW_CONTENT_STORE: process.env.EDITOR_VIEW_CONTENT_STORE,
       NODE_OPTIONS: `${options.env?.NODE_OPTIONS ?? ''} --require=${__filename}`,
@@ -53,11 +54,15 @@ if (leases.length > 0) {
     if (process.platform !== 'linux' && process.platform !== 'darwin') {
       throw new Error('Editor-view descriptor inheritance requires Linux or macOS')
     }
-    const native = dlopen(
-      process.platform === 'darwin' ? '/usr/lib/libSystem.B.dylib' : 'libc.so.6',
-      { fcntl: { args: ['i32', 'i32', 'i32'], returns: 'i32' } },
-    )
-    const duplicateCloseOnExec = process.platform === 'darwin' ? 67 : 1030
+    const library = process.env.EDITOR_VIEW_LEASE_LIBRARY
+    if (!library || !require('node:path').isAbsolute(library)) {
+      throw new Error(
+        'Editor-view descriptor inheritance requires EDITOR_VIEW_LEASE_LIBRARY to name the absolute packaged native library',
+      )
+    }
+    const native = dlopen(library, {
+      eu_dupfd_cloexec: { args: ['i32', 'i32'], returns: 'i32' },
+    })
     for (const method of ['spawn', 'spawnSync']) {
       const original = Bun[method].bind(Bun)
       Bun[method] = (command, options) => {
@@ -73,7 +78,7 @@ if (leases.length > 0) {
           const firstLeaseSlot = mapped.stdio.length - leases.length
           const minimum = mapped.stdio.length + (input.ipc ? 1 : 0)
           for (let index = 0; index < leases.length; index++) {
-            const fd = native.symbols.fcntl(leases[index], duplicateCloseOnExec, minimum)
+            const fd = native.symbols.eu_dupfd_cloexec(leases[index], minimum)
             if (fd < 0) throw new Error('Cannot duplicate editor-view lease before spawning child')
             temporary.push(fd)
             mapped.stdio[firstLeaseSlot + index] = fd

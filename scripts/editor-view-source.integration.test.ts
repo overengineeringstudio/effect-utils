@@ -61,11 +61,17 @@ describe('bootstrap-safe source consumer descriptor handoff', () => {
         const executable = runtime === 'bun' ? process.execPath : Bun.which('node')
         if (executable === null)
           throw new Error('Node is required for editor-view source inheritance tests')
+        const library = process.env.EDITOR_VIEW_LEASE_LIBRARY
+        if (library === undefined)
+          throw new Error('EDITOR_VIEW_LEASE_LIBRARY is required for source inheritance tests')
         const directory = fixture()
         const payload = join(directory, 'generation')
         const child = join(directory, 'child.cjs')
         writeFileSync(payload, 'admitted-generation')
-        writeFileSync(child, inheritedRead)
+        writeFileSync(
+          child,
+          `${inheritedRead}; process.stdout.write('\\n' + process.env.EDITOR_VIEW_LEASE_LIBRARY)`,
+        )
         const fd = openSync(payload, 'r')
         const program = `
           const cp = require('node:child_process');
@@ -107,7 +113,7 @@ describe('bootstrap-safe source consumer descriptor handoff', () => {
           expect(result.error).toBeUndefined()
           expect(result.stderr?.toString()).toBe('')
           expect(result.status).toBe(0)
-          expect(result.stdout?.toString()).toBe('admitted-generation')
+          expect(result.stdout?.toString()).toBe(`admitted-generation\n${library}`)
         } finally {
           closeSync(fd)
         }

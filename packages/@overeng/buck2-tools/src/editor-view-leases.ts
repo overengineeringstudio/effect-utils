@@ -18,12 +18,11 @@ import {
 } from 'node:fs'
 import { basename, dirname, isAbsolute, join, resolve } from 'node:path'
 
-import { withEditorViewContentStoreLock } from './editor-view-sharing.ts'
+import { editorViewDescriptorFlags, withEditorViewContentStoreLock } from './editor-view-sharing.ts'
 
 const library = process.platform === 'darwin' ? '/usr/lib/libSystem.B.dylib' : 'libc.so.6'
 const native = dlopen(library, {
   flock: { args: ['i32', 'i32'], returns: 'i32' },
-  fcntl: { args: ['i32', 'i32', 'i32'], returns: 'i32' },
 })
 /* eslint-disable no-underscore-dangle -- Native ABI names. */
 const errnoAddress =
@@ -170,7 +169,9 @@ const validateControl = ({
     text.toString('utf8') !== controlIdentity({ control, status })
   )
     fail(`replaced control identity: ${control}`)
-  if ((native.symbols.fcntl(fd, 1, 0) & 1) !== 1) fail('lease descriptor must be close-on-exec')
+  const descriptorFlags = editorViewDescriptorFlags(fd)
+  if (descriptorFlags < 0 || (descriptorFlags & 1) !== 1)
+    fail('lease descriptor must be close-on-exec')
   return status
 }
 

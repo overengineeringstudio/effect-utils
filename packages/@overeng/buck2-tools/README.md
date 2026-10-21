@@ -298,6 +298,10 @@ load lease code from an evictable view. Deliberately mapped lease descriptors
 remain in source-reading server/worker descendants; parent death is not release
 while a child retains an open description. Normal and error cleanup closes
 descriptors, never `LOCK_UN`. The unrelated CAS descriptor stays close-on-exec.
+The same native package supplies fixed-arity `eu_getfd` and `eu_dupfd_cloexec`
+FFI entrypoints. Variadic libc calls must stay inside C: Darwin arm64 passes
+variadic arguments differently from fixed-arity FFI arguments. The immutable
+library path is inherited even when a child replaces its environment.
 Missing controls are backfilled lazily by readers, publishers, or retirement,
 only after generation validation under the owning CAS fence. Creation uses a
 private exclusive regular file in the validated `.leases` directory; existing

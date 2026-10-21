@@ -17,6 +17,17 @@
 #include <string.h>
 #include <unistd.h>
 
+/* Bun FFI must never call variadic libc entrypoints directly: Darwin arm64
+ * passes variadic arguments on the stack, unlike fixed-arity arguments. */
+int eu_dupfd_cloexec(int fd, int minimum) {
+  return fcntl(fd, F_DUPFD_CLOEXEC, minimum);
+}
+int eu_getfd(int fd) {
+  return fcntl(fd, F_GETFD);
+}
+
+#ifndef EU_LEASE_FFI
+
 /* Independent of Bun, node_modules and every evictable editor generation.
  * Missing controls are lazily created only inside the owning CAS fence.
  * Zero-generation inventory opens and creates no CAS fence. */
@@ -348,3 +359,4 @@ int main(int argc, char **argv) {
   else execvp(argv[command],argv+command);
   die("exec failed",trampolineMode?trampoline:argv[command]);
 }
+#endif

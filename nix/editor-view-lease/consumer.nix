@@ -21,6 +21,7 @@ pkgs.writeShellApplication {
     fi
     export EDITOR_VIEW_LEASE_WORKSPACE_ROOT="$root"
     export EDITOR_VIEW_LEASE_PRELOAD=${preload}
+    export EDITOR_VIEW_LEASE_LIBRARY=${native}/lib/libeditor-view-lease${pkgs.stdenv.hostPlatform.extensions.sharedLibrary}
     export NODE_OPTIONS="''${NODE_OPTIONS:-} --require=${preload}"
     export BUN_OPTIONS="''${BUN_OPTIONS:-} --preload=${preload}"
     exec ${native}/bin/editor-view-lease --workspace-root "$root" -- "$@"
