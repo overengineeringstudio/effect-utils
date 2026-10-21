@@ -34,10 +34,14 @@ const readRecord = (path: string) => {
     .split('\n')
     .find((entry) => entry.startsWith('WORKFLOW_REPORT_V1: '))
   if (line === undefined) throw new Error(`No workflow report record in ${path}`)
-  return JSON.parse(line.slice('WORKFLOW_REPORT_V1: '.length)) as {
-    readonly status: string
-    readonly links?: readonly { readonly url: string }[]
-    readonly data?: Record<string, unknown>
+  try {
+    return JSON.parse(line.slice('WORKFLOW_REPORT_V1: '.length)) as {
+      readonly status: string
+      readonly links?: readonly { readonly url: string }[]
+      readonly data?: Record<string, unknown>
+    }
+  } catch {
+    throw new Error('Workflow report JSON is invalid')
   }
 }
 
@@ -139,18 +143,18 @@ describe('ci-tools deploy vercel live E2E', () => {
           ),
         ).toBe(false)
         expect(result.status).toBe(0)
-        expect(result.stdout).toContain('Vercel deploy URL: https://ci-tools-e2e-')
+        // Predicate assertions prevent Vitest from echoing captured private values.
+        expect(result.stdout.includes('Vercel deploy URL: https://ci-tools-e2e-')).toBe(true)
 
         const record = readRecord(reportFile)
-        expect(record.status).toBe('success')
-        expect(record.links?.[0]?.url).toContain('https://ci-tools-e2e-')
-        expect(record.data).toMatchObject({
-          provider: 'vercel',
-          target,
-          mode: 'prod',
-          alias: target,
-        })
-        expect(['succeeded', 'failed']).toContain(record.data?.cleanup)
+        expect(record.status === 'success').toBe(true)
+        expect(record.links?.[0]?.url.includes('https://ci-tools-e2e-') === true).toBe(true)
+        expect(
+          Object.entries({ provider: 'vercel', target, mode: 'prod', alias: target }).every(
+            ([key, value]) => record.data?.[key] === value,
+          ),
+        ).toBe(true)
+        expect(['succeeded', 'failed'].some((status) => status === record.data?.cleanup)).toBe(true)
       } catch (cause) {
         if (failureResult !== undefined) {
           console.error(
