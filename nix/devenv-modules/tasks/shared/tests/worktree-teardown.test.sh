@@ -263,7 +263,6 @@ chmod 555 "$nested_outer/checkout-other" "$nested_outer/not-a-repo" \
 # Scans must not fail on unreadable nested contents, or omit an unreadable owned
 # directory from chmod. Nested ownership still protects the mode-000 directory.
 mkdir -p "$nested_outer/checkout/unreadable" "$nested_outer/unreadable-owned"
-chmod 000 "$nested_outer/checkout/unreadable" "$nested_outer/unreadable-owned"
 outer_state="$HOME/.buck/buckd/${nested_outer#/}"
 child_state="$outer_state/nested"
 (cd "$nested_outer" && "$BUCK2" --isolation-dir outer targets //: >/dev/null)
@@ -286,6 +285,8 @@ protected=(
   "$nested_outer/git-link" "$nested_outer/git-link/readonly"
 )
 chmod 555 "${protected[@]}"
+# Apply unreadable modes only after notify has registered its fixture watches.
+chmod 000 "$nested_outer/checkout/unreadable" "$nested_outer/unreadable-owned"
 for iteration in first second; do
   (cd "$nested_outer" && "$DEVENV" tasks run worktree:teardown --mode single)
   if kill -0 "$outer_pid" 2>/dev/null; then fail 'outer daemon remains live'; fi
@@ -317,6 +318,9 @@ for iteration in first second; do
 done
 (cd "$nested_child" && "$BUCK2" --isolation-dir child status >/dev/null)
 echo 'PASS: nested checkout state and live daemon survive both parent teardowns; 4096 generated directories and unreadable nested/owned directories respect ownership boundaries; escaping and in-base intermediate symlinks are refused'
+# The unreadable-mode assertions are complete; later scenarios start a fresh
+# notify daemon, which needs readable fixture paths while registering watches.
+chmod 700 "$nested_outer/checkout/unreadable" "$nested_outer/unreadable-owned"
 
 # The review collision: the parent isolation name is also the nested checkout's
 # path component. Start the parent first, since native startup rotates its state.
