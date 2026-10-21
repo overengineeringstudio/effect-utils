@@ -3,6 +3,12 @@ import { lstatSync, readFileSync, readlinkSync, readdirSync, realpathSync, statS
 import { join, relative, resolve, sep } from 'node:path'
 import process from 'node:process'
 
+import { isLinuxReaderInfrastructureIdentity } from './reader-infrastructure.ts'
+
+// Static import cannot work in portable Node consumers: bun:ffi is Bun-only.
+const linuxDescriptorDirectory =
+  typeof Bun !== 'undefined' ? await import('./editor-view-reader-directory.ts') : undefined
+
 const vanished = (error: unknown): boolean =>
   error instanceof Error && 'code' in error && (error.code === 'ENOENT' || error.code === 'ESRCH')
 
@@ -180,24 +186,52 @@ type ProcessCandidateGroup = { readonly indices: number[]; remaining: number }
 export type EditorViewReaderEvidence = {
   readonly state: 'clear' | 'held' | 'unknown'
   readonly reasons: readonly string[]
+  /** False preserves a positive candidate reference without claiming a complete census. */
+  readonly scanComplete?: false
 }
 
 /**
- * Every root is presumed unmanaged until external session integration (#1985)
- * proves otherwise; this is policy, not a scan-detected unmanaged session.
- * Pins and lease-control markers do not establish that invariant.
+ * Root-wide automatic-retirement policy. Callers must supply every immutable
+ * generation in this root, not merely the generations selected for eviction.
+ * Missing inventory/proof is unknown; a lease never overrides legacy evidence.
  */
 export const editorViewAutomaticEvictionEvidence = ({
   editorRoot,
+  candidates,
+  evidence,
 }: {
   readonly editorRoot: string
-}): EditorViewReaderEvidence => ({
-  state: 'unknown',
-  reasons: [
-    'unmanaged-editor-sessions',
-    `unmanaged-editor-sessions: ${editorRoot}; presumed unmanaged sessions, not scan-detected; automatic eviction disabled pending external session integration (#1985)`,
-  ],
-})
+  readonly candidates?: readonly EditorViewProcessCandidate[]
+  readonly evidence?: ReadonlyMap<string, EditorViewReaderEvidence>
+}): EditorViewReaderEvidence => {
+  if (candidates === undefined || evidence === undefined)
+    return { state: 'unknown', reasons: [`root-process-proof-missing: ${editorRoot}`] }
+  const applicable = candidates.filter((candidate) => candidate.editorRoot === editorRoot)
+  if (applicable.length === 0)
+    return { state: 'unknown', reasons: [`root-generation-inventory-empty: ${editorRoot}`] }
+  const proofs: EditorViewReaderEvidence[] = applicable.map(
+    ({ key }) =>
+      evidence.get(key) ?? {
+        state: 'unknown' as const,
+        reasons: [`missing-process-classification: ${key}`],
+      },
+  )
+  if (proofs.some((proof) => proof.state === 'unknown' || proof.scanComplete === false) === true)
+    return {
+      state: 'unknown',
+      reasons: [...new Set(proofs.flatMap((proof) => proof.reasons))],
+    }
+  const held = proofs.filter((proof) => proof.state === 'held')
+  if (held.length !== 0)
+    return {
+      state: 'held',
+      reasons: [
+        `detected-unmanaged-editor-session: ${editorRoot}`,
+        ...new Set(held.flatMap((proof) => proof.reasons)),
+      ],
+    }
+  return { state: 'clear', reasons: [] }
+}
 
 /** Complete applicable migration evidence; held wins over incomplete evidence. */
 export const classifyEditorViewProcessCandidates = ({
@@ -209,10 +243,17 @@ export const classifyEditorViewProcessCandidates = ({
   let evidence = ''
   const finish = (reasons: readonly string[]): ReadonlyMap<string, EditorViewReaderEvidence> =>
     new Map<string, EditorViewReaderEvidence>(
-      candidates.map(({ key }) => [
-        key,
-        held.get(key) ?? { state: reasons.length === 0 ? 'clear' : 'unknown', reasons },
-      ]),
+      candidates.map(({ key }): [string, EditorViewReaderEvidence] => {
+        const positive = held.get(key)
+        return [
+          key,
+          positive === undefined
+            ? { state: reasons.length === 0 ? 'clear' : 'unknown', reasons }
+            : reasons.length === 0
+              ? positive
+              : { ...positive, scanComplete: false, reasons: [...positive.reasons, ...reasons] },
+        ]
+      }),
     )
   if (candidates.length === 0) return finish([])
 
@@ -296,6 +337,11 @@ export const classifyEditorViewProcessCandidates = ({
   const admitPath = (target: string): void => {
     if (target.startsWith('/') === false) return
     const path = target.endsWith(' (deleted)') === true ? target.slice(0, -10) : target
+    // Protocol descriptors are control-plane evidence, not payload reachability.
+    // In particular a SH lease for one generation cannot pin its siblings.
+    for (const root of roots.keys())
+      if (path === join(root, '.leases') || path.startsWith(`${join(root, '.leases')}/`) === true)
+        return
     let ancestor = path
     // Look up ancestors, rather than comparing every observed path to every root.
     for (;;) {
@@ -363,20 +409,57 @@ const scanEditorViewProcesses = (observer: ProcessObserver): readonly string[] =
     try {
       pids = readdirSync('/proc')
     } catch (error) {
+      console.error('editor-view-process-census: allowlisted=0 unknown=1')
       return [`proc-enumeration: /proc: ${failureCode(error)}`]
     }
+    let allowlisted = 0
+    let unknown = 0
     for (const pid of pids) {
       if (/^\d+$/.test(pid) === false) continue
       const base = join('/proc', pid)
+      const previousReasons = reasons.length
       let incarnation: string
       try {
-        if (lstatSync(base).uid !== uid) continue
+        if (lstatSync(base).uid !== uid) {
+          // Linux changes /proc ownership for nondumpable same-user processes.
+          // Its readable status, rather than directory ownership, decides uid.
+          const status = readFileSync(join(base, 'status'), 'utf8')
+          const identity = /^Uid:\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)/m.exec(status)
+          if (identity === null) throw new Error(`missing process uid: ${base}/status`)
+          if (identity.slice(1).includes(String(uid)) === false) continue
+        }
         incarnation = processIncarnation(base)
       } catch (error) {
         reasons.push(`proc-identity: ${base}: ${failureCode(error)}`)
+        unknown++
         continue
       }
       const failures: { readonly path: string; readonly error: unknown }[] = []
+      let argumentsObserved: string[] | undefined
+      try {
+        const comm = readFileSync(join(base, 'comm'), 'utf8').trimEnd()
+        const cmdline = readFileSync(join(base, 'cmdline'), 'utf8').split('\0')
+        while (cmdline.at(-1) === '') cmdline.pop()
+        argumentsObserved = cmdline
+        if (
+          isLinuxReaderInfrastructureIdentity({
+            platform: process.platform,
+            comm,
+            cmdline,
+            uid,
+            currentUid: uid,
+          }) === true
+        ) {
+          if (processIncarnation(base) !== incarnation) {
+            reasons.push(`proc-incarnation-changed: ${base}; infrastructure identity changed`)
+            unknown++
+          } else allowlisted++
+          continue
+        }
+      } catch {
+        // A failed identity check grants no exemption. Ordinary complete
+        // process observation below still determines applicability.
+      }
       const inspect = ({
         path,
         read,
@@ -398,7 +481,7 @@ const scanEditorViewProcesses = (observer: ProcessObserver): readonly string[] =
       inspect({
         path: fdDirectory,
         read: () => {
-          for (const descriptor of readdirSync(fdDirectory)) {
+          const inspectDescriptor = (descriptor: string): void => {
             const path = join(fdDirectory, descriptor)
             inspect({
               path,
@@ -411,6 +494,18 @@ const scanEditorViewProcesses = (observer: ProcessObserver): readonly string[] =
                   observer.inode(String(status.ino), String(status.dev), `proc-inode: ${path}`)
               },
             })
+          }
+          if (pid === String(process.pid)) {
+            // A native handle must stay open: Bun's fs Dir can eagerly close
+            // its enumeration fd even while the JS Dir object remains live.
+            if (linuxDescriptorDirectory === undefined)
+              throw new Error('native self-descriptor observation unavailable')
+            linuxDescriptorDirectory.visitEditorViewProcessDescriptors({
+              path: fdDirectory,
+              visit: inspectDescriptor,
+            })
+          } else {
+            for (const descriptor of readdirSync(fdDirectory)) inspectDescriptor(descriptor)
           }
         },
       })
@@ -442,7 +537,7 @@ const scanEditorViewProcesses = (observer: ProcessObserver): readonly string[] =
       inspect({
         path: cmdline,
         read: () => {
-          for (const argument of readFileSync(cmdline, 'utf8').split('\0'))
+          for (const argument of argumentsObserved ?? readFileSync(cmdline, 'utf8').split('\0'))
             if (argument.startsWith('/') === true)
               observer.path(argument, `proc-command: ${cmdline}`)
         },
@@ -467,7 +562,9 @@ const scanEditorViewProcesses = (observer: ProcessObserver): readonly string[] =
           `proc-incomplete: ${failure.path}: ${failureCode(failure.error)}; reachability unknown`,
         )
       }
+      if (reasons.length !== previousReasons) unknown++
     }
+    console.error(`editor-view-process-census: allowlisted=${allowlisted} unknown=${unknown}`)
     return reasons
   }
   if (process.platform !== 'darwin') return [`unsupported-process-platform: ${process.platform}`]
@@ -570,7 +667,9 @@ export const measureEditorViewReaders = async ({
   readonly automaticEviction: {
     readonly eligibleRoots: number
     readonly noAutomaticEvictionRoots: number
-    readonly presumedUnmanagedRoots: number
+    readonly detectedUnmanagedRoots: number
+    readonly rootCounts: Readonly<Record<'clear' | 'held' | 'unknown', number>>
+    readonly generationCounts: Readonly<Record<'clear' | 'held' | 'unknown', number>>
   }
   readonly roots: readonly {
     readonly editorRoot: string
@@ -587,25 +686,24 @@ export const measureEditorViewReaders = async ({
     readonly editorRoot: string
     readonly snapshotRoot: string
     readonly legacy: EditorViewReaderEvidence
-    readonly lease: EditorViewReaderEvidence
+    readonly lease: EditorViewReaderEvidence & {
+      readonly kind: 'held' | 'no-control' | 'clear' | 'unsafe'
+    }
     readonly observed: EditorViewReaderEvidence
     readonly effective: EditorViewReaderEvidence
   }[]
 }> => {
   // Keep native Bun FFI out of scanner-only imports and portable parser tests.
-  const { probeEditorViewLease } = await import('./editor-view-leases.ts')
+  const { observeEditorViewLeaseForRetirement } = await import('./editor-view-leases.ts')
   const candidates: EditorViewProcessCandidate[] = []
-  const roots = editorRoots.map((input) => {
-    const editorRoot = resolve(input)
+  const inventories = [...new Set(editorRoots.map((input) => resolve(input)))].map((editorRoot) => {
     const reasons: string[] = []
     let leaseControlInodes = 0
     let leaseControlDirectoryInodes = 0
     let leaseControlMetadataBytes = 0
     const controls = join(editorRoot, '.leases')
-    let controlDirectoryObserved = false
     try {
       const directory = lstatSync(controls)
-      controlDirectoryObserved = true
       if (directory.isDirectory() === false)
         throw new Error(`lease controls are not a real directory: ${controls}`)
       leaseControlDirectoryInodes++
@@ -618,7 +716,7 @@ export const measureEditorViewReaders = async ({
         leaseControlMetadataBytes += Math.max(status.size, status.blocks * 512)
       }
     } catch (error) {
-      if (controlDirectoryObserved === true || vanished(error) === false)
+      if (failureCode(error) !== 'ENOENT')
         reasons.push(`lease-control-inventory: ${controls}: ${failureCode(error)}`)
     }
     try {
@@ -648,7 +746,6 @@ export const measureEditorViewReaders = async ({
     }
     return {
       editorRoot,
-      policy: editorViewAutomaticEvictionEvidence({ editorRoot }),
       reasons,
       leaseControlInodes,
       leaseControlDirectoryInodes,
@@ -656,18 +753,29 @@ export const measureEditorViewReaders = async ({
     }
   })
   const classified = classifyEditorViewProcessCandidates({ candidates })
+  const roots = inventories.map((root) =>
+    Object.assign({}, root, {
+      policy: editorViewAutomaticEvictionEvidence({
+        editorRoot: root.editorRoot,
+        candidates,
+        evidence: classified,
+      }),
+    }),
+  )
   const generations = candidates.map(({ key, editorRoot, snapshotRoot }) => {
     const root = roots.find((entry) => entry.editorRoot === editorRoot)
     const legacy: EditorViewReaderEvidence = classified.get(key) ?? {
       state: 'unknown',
       reasons: ['missing-process-classification'],
     }
-    // Diagnostic only: no CAS acquisition/creation. Retirement must repeat this
-    // under its owning CAS fence and retain EX through destructive operations.
-    const probe = probeEditorViewLease({ editorRoot, snapshot: snapshotRoot })
-    let lease: EditorViewReaderEvidence
+    // Diagnostic only: missing controls are conditionally clear because retirement
+    // must backfill them under its owning CAS fence before retaining EX.
+    const probe = observeEditorViewLeaseForRetirement({ editorRoot, snapshot: snapshotRoot })
+    let lease: EditorViewReaderEvidence & {
+      readonly kind: 'held' | 'no-control' | 'clear' | 'unsafe'
+    }
     try {
-      lease = { state: probe.state, reasons: [...probe.reasons] }
+      lease = { state: probe.state, kind: probe.kind, reasons: [...probe.reasons] }
     } finally {
       probe.release()
     }
@@ -684,41 +792,59 @@ export const measureEditorViewReaders = async ({
         ...(root?.reasons ?? []),
       ],
     }
-    const effective: EditorViewReaderEvidence =
-      observed.state === 'held'
-        ? observed
-        : { state: 'unknown', reasons: [...observed.reasons, ...(root?.policy.reasons ?? [])] }
+    const policy = root?.policy ?? { state: 'unknown' as const, reasons: ['missing-root-policy'] }
+    const effective: EditorViewReaderEvidence = {
+      state:
+        observed.state === 'held' || policy.state === 'held'
+          ? 'held'
+          : observed.state === 'unknown' || policy.state === 'unknown'
+            ? 'unknown'
+            : 'clear',
+      reasons: [...new Set([...observed.reasons, ...policy.reasons])],
+    }
     return { editorRoot, snapshotRoot, legacy, lease, observed, effective }
   })
+  const measuredRoots = roots.map((root) => {
+    const generationCounts = { clear: 0, held: 0, unknown: 0 }
+    const reasons = [...root.reasons]
+    for (const generation of generations) {
+      if (generation.editorRoot !== root.editorRoot) continue
+      generationCounts[generation.observed.state]++
+      reasons.push(...generation.observed.reasons)
+    }
+    const observed: EditorViewReaderEvidence = {
+      state:
+        generationCounts.held > 0
+          ? 'held'
+          : generationCounts.unknown > 0 || root.reasons.length > 0
+            ? 'unknown'
+            : 'clear',
+      reasons: [...new Set(reasons)],
+    }
+    const effective: EditorViewReaderEvidence = {
+      state:
+        observed.state === 'held' || root.policy.state === 'held'
+          ? 'held'
+          : observed.state === 'unknown' || root.policy.state === 'unknown'
+            ? 'unknown'
+            : 'clear',
+      reasons: [...new Set([...observed.reasons, ...root.policy.reasons])],
+    }
+    return Object.assign({}, root, { observed, effective, generationCounts })
+  })
+  const rootCounts = { clear: 0, held: 0, unknown: 0 }
+  const generationCounts = { clear: 0, held: 0, unknown: 0 }
+  for (const root of measuredRoots) rootCounts[root.effective.state]++
+  for (const generation of generations) generationCounts[generation.effective.state]++
   return {
     automaticEviction: {
-      eligibleRoots: 0,
-      noAutomaticEvictionRoots: roots.length,
-      presumedUnmanagedRoots: roots.length,
+      eligibleRoots: rootCounts.clear,
+      noAutomaticEvictionRoots: rootCounts.held + rootCounts.unknown,
+      detectedUnmanagedRoots: roots.filter((root) => root.policy.state === 'held').length,
+      rootCounts,
+      generationCounts,
     },
-    roots: roots.map((root) => {
-      const generationCounts = { clear: 0, held: 0, unknown: 0 }
-      const reasons = [...root.reasons]
-      for (const generation of generations) {
-        if (generation.editorRoot !== root.editorRoot) continue
-        generationCounts[generation.observed.state]++
-        reasons.push(...generation.observed.reasons)
-      }
-      const observed: EditorViewReaderEvidence = {
-        state:
-          generationCounts.held > 0
-            ? 'held'
-            : generationCounts.unknown > 0 || root.reasons.length > 0
-              ? 'unknown'
-              : 'clear',
-        reasons: [...new Set(reasons)],
-      }
-      const effective: EditorViewReaderEvidence =
-        observed.state === 'held'
-          ? observed
-          : { state: 'unknown', reasons: [...observed.reasons, ...root.policy.reasons] }
-      return Object.assign({}, root, { observed, effective, generationCounts })
-    }),
+    roots: measuredRoots,
     generations,
   }
 }

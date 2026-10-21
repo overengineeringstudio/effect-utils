@@ -43,15 +43,21 @@ import {
   type EditorViewBudgetRoot,
   type EditorViewBudgetCensusSession,
 } from './editor-view-budget.ts'
-import { ensureEditorViewLeaseControl, probeEditorViewLease } from './editor-view-leases.ts'
+import {
+  ensureEditorViewLeaseControl,
+  probeEditorViewLease,
+  probeEditorViewLeaseUnderFence,
+} from './editor-view-leases.ts'
 import {
   editorViewAutomaticEvictionEvidence,
+  classifyEditorViewProcessCandidates,
   editorViewPinSchema,
   managedEditorViewSnapshots,
   readEditorViewPinRecord,
   referencedEditorSnapshots,
   requireEditorViewPinName,
   type EditorViewPinRecord,
+  type EditorViewProcessCandidate,
 } from './editor-view-readers.ts'
 import {
   collectEditorViewContentStore,
@@ -2066,26 +2072,69 @@ const garbageCollectSnapshots = async ({
   const retired: { readonly snapshotDir: string; readonly garbage: string }[] = []
   const leases: { readonly release: () => void }[] = []
   try {
+    // The publisher holds the root lock. Build the complete immutable inode
+    // inventory outside CAS exclusion, including current and sibling views.
+    const candidates: EditorViewProcessCandidate[] = []
+    const identities = new Map<string, string>()
+    for (const name of readdirSync(paths.storeDir)) {
+      if (/^[A-Za-z0-9][A-Za-z0-9_-]*-[0-9a-f]{64}$/.test(name) === false) continue
+      const snapshotRoot = join(paths.storeDir, name)
+      requireReadOnlySnapshotRoot(snapshotRoot)
+      const status = lstatSync(snapshotRoot, { bigint: true })
+      identities.set(
+        snapshotRoot,
+        `${status.dev}:${status.ino}:${status.mtimeNs}:${status.ctimeNs}`,
+      )
+      const linkedInodes = new Set<string>()
+      const inventory = (directory: string): void => {
+        for (const entry of readdirSync(directory)) {
+          const path = join(directory, entry)
+          const entryStatus = lstatSync(path, { bigint: true })
+          if (entryStatus.isDirectory() === true) inventory(path)
+          else if (entryStatus.isFile() === true)
+            linkedInodes.add(`${entryStatus.dev}:${entryStatus.ino}`)
+        }
+      }
+      inventory(snapshotRoot)
+      candidates.push({
+        key: snapshotRoot,
+        editorRoot: paths.editorRoot,
+        snapshotRoot,
+        linkedInodes,
+      })
+    }
     // The census is advisory and runs outside the flock. Only managed-pin
     // inspection, canonical-name retirement and retention metadata are locked.
     await withEditorViewContentStoreLock({
       contentStore: paths.contentStore,
       run: async () => {
-        // Legacy/unmanaged sessions can open the view after any scan. Until external
-        // integrations own the full lifetime, the entire root is non-evictable.
-        if (editorViewAutomaticEvictionEvidence({ editorRoot: paths.editorRoot }).state !== 'clear')
+        await options.beforeSnapshotRetirement?.()
+        for (const [snapshotRoot, identity] of identities) {
+          const status = lstatSync(snapshotRoot, { bigint: true })
+          if (`${status.dev}:${status.ino}:${status.mtimeNs}:${status.ctimeNs}` !== identity) return
+        }
+        const evidence = classifyEditorViewProcessCandidates({ candidates })
+        if (
+          editorViewAutomaticEvictionEvidence({
+            editorRoot: paths.editorRoot,
+            candidates,
+            evidence,
+          }).state !== 'clear'
+        )
           return
         const referenced = referencedEditorSnapshots(paths)
         const leaseProtected = new Set<string>()
         for (const name of eligible) {
-          const lease = probeEditorViewLease({ editorRoot: paths.editorRoot, snapshot: name })
+          const lease = probeEditorViewLeaseUnderFence({
+            editorRoot: paths.editorRoot,
+            snapshot: name,
+          })
           if (lease.state !== 'clear') {
             leaseProtected.add(name)
             lease.release()
           } else leases.push(lease)
         }
         const pinned = managedEditorViewSnapshots({ editorRoot: paths.editorRoot })
-        await options.beforeSnapshotRetirement?.()
         const keep = ordered.filter(
           (name) =>
             retained.has(name) === true ||

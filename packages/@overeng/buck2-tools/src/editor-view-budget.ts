@@ -23,11 +23,11 @@ import { homedir } from 'node:os'
 import { isAbsolute, join, relative, resolve, sep } from 'node:path'
 import process from 'node:process'
 
-import { probeEditorViewLease } from './editor-view-leases.ts'
+import { probeEditorViewLeaseUnderFence } from './editor-view-leases.ts'
 import {
   editorViewAutomaticEvictionEvidence,
   managedEditorViewSnapshots,
-  observeEditorViewProcessCandidates,
+  classifyEditorViewProcessCandidates,
   type EditorViewProcessCandidate,
 } from './editor-view-readers.ts'
 import {
@@ -1884,7 +1884,6 @@ const planEviction = ({
     const current = generation.root.currents.has(generation.name)
     return (
       generation.kind === 'generation' &&
-      editorViewAutomaticEvictionEvidence({ editorRoot: generation.root.key }).state === 'clear' &&
       generation.root.trusted === true &&
       generation.readOnly === true &&
       generation.identity !== undefined &&
@@ -1945,12 +1944,7 @@ const observeGenerations = (generations: readonly GenerationView[]): ReadonlySet
   const candidates: EditorViewProcessCandidate[] = []
   const protectedGenerations = new Set<string>()
   for (const generation of generations) {
-    if (
-      editorViewAutomaticEvictionEvidence({ editorRoot: generation.root.key }).state !== 'clear'
-    ) {
-      protectedGenerations.add(generation.key)
-      continue
-    }
+    if (generation.kind !== 'generation') continue
     candidates.push({
       key: generation.key,
       editorRoot: generation.root.key,
@@ -1958,8 +1952,21 @@ const observeGenerations = (generations: readonly GenerationView[]): ReadonlySet
       linkedInodes: linkedInodes(generation.linked),
     })
   }
-  for (const key of observeEditorViewProcessCandidates({ candidates }))
-    protectedGenerations.add(key)
+  const evidence = classifyEditorViewProcessCandidates({ candidates })
+  const protectedRoots = new Map<string, boolean>()
+  for (const generation of generations) {
+    let protectedRoot = protectedRoots.get(generation.root.key)
+    if (protectedRoot === undefined) {
+      protectedRoot =
+        editorViewAutomaticEvictionEvidence({
+          editorRoot: generation.root.key,
+          candidates,
+          evidence,
+        }).state !== 'clear'
+      protectedRoots.set(generation.root.key, protectedRoot)
+    }
+    if (protectedRoot === true) protectedGenerations.add(generation.key)
+  }
   return protectedGenerations
 }
 
@@ -2037,6 +2044,7 @@ type Retirement = { readonly retired: readonly string[]; readonly blocked: reado
 const retireRoot = async ({
   root,
   generations,
+  readerGenerations,
   budgetBytes,
   usedBytes,
   recencyMs,
@@ -2044,6 +2052,7 @@ const retireRoot = async ({
 }: {
   readonly root: RootView
   readonly generations: readonly GenerationView[]
+  readonly readerGenerations: readonly GenerationView[]
   readonly budgetBytes: number
   readonly usedBytes: number
   readonly recencyMs: number
@@ -2075,10 +2084,6 @@ const retireRoot = async ({
       await withEditorViewContentStoreLock({
         contentStore: root.contentStore,
         run: async () => {
-          if (editorViewAutomaticEvictionEvidence({ editorRoot: root.key }).state !== 'clear') {
-            blocked.push(...admitted.map(({ generation }) => generation.key))
-            return
-          }
           const state = readState()
           // Journal changes after the fresh census require another admission round.
           if (state.epoch !== censusEpoch) {
@@ -2093,7 +2098,7 @@ const retireRoot = async ({
             return
           }
           // Repeat the full reader proof immediately before retirement under exclusion.
-          const live = observeGenerations(admitted.map(({ generation }) => generation))
+          const live = observeGenerations(readerGenerations)
           const pinned = managedEditorViewSnapshots({ editorRoot: root.key })
           let activeAtMs = 0
           for (const [key, at] of state.lastUse)
@@ -2123,7 +2128,10 @@ const retireRoot = async ({
             }
           }
           for (const { generation, view, firstHop } of admitted) {
-            const lease = probeEditorViewLease({ editorRoot: root.key, snapshot: generation.name })
+            const lease = probeEditorViewLeaseUnderFence({
+              editorRoot: root.key,
+              snapshot: generation.name,
+            })
             if (lease.state !== 'clear') {
               lease.release()
               blocked.push(generation.key)
@@ -2491,12 +2499,12 @@ export const reserveEditorViewBudget = async ({
           invalidateCensus()
           continue
         }
-        // Every plan in this round uses the candidate eligibility observed at this instant.
+        // An unscanned generation is protected for accounting, never presumed clear.
         const roundAtMs = Date.now()
         let plan = planEviction({
           census,
           blocked,
-          live: new Set(),
+          live: new Set(census.generations.map((generation) => generation.key)),
           recencyMs,
           now: roundAtMs,
         })
@@ -2529,7 +2537,7 @@ export const reserveEditorViewBudget = async ({
         plan = planEviction({
           census,
           blocked,
-          live: new Set(),
+          live: new Set(census.generations.map((generation) => generation.key)),
           recencyMs,
           now: roundAtMs,
         })
@@ -2543,7 +2551,7 @@ export const reserveEditorViewBudget = async ({
         plan = planEviction({
           census,
           blocked,
-          live: observeGenerations(plan.order),
+          live: observeGenerations(census.generations),
           recencyMs,
           now: roundAtMs,
         })
@@ -2583,6 +2591,9 @@ export const reserveEditorViewBudget = async ({
             const outcome = await retireRoot({
               root: rootView,
               generations,
+              readerGenerations: census.generations.filter(
+                (generation) => generation.root.key === rootView.key,
+              ),
               budgetBytes,
               usedBytes: census.usedBytes,
               recencyMs,
@@ -2627,11 +2638,7 @@ export const reserveEditorViewBudget = async ({
           0,
         ),
         reasons: [
-          ...new Set(
-            census.roots.flatMap(
-              (view) => editorViewAutomaticEvictionEvidence({ editorRoot: view.key }).reasons,
-            ),
-          ),
+          'reader protection requires complete legacy evidence and an exclusive generation lease',
           ...census.unknown.slice(0, 5),
           'persistent lease-control tombstones retain inode and metadata pressure and must not be unlinked',
           'held leases, pins, recent use, incomplete reader evidence, and contended locks remain protected',

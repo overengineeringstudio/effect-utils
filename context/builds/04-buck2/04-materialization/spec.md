@@ -288,7 +288,11 @@ canonical root, generation name, and inode identity are validated under CAS
 exclusion; readers resolve pointers inside that fence rather than trusting a
 pre-resolved path. Locks use native `flock`; only known local Linux/macOS
 filesystems supply usable evidence. NFS, SMB, unclassified filesystems,
-missing/replaced/unsafe controls, and native errors are unknown.
+replaced/unsafe controls, and native errors are unknown. A missing control is
+`no control (clear under fence)` in read-only planning. Readers, publishers, and
+retirement may safely backfill it only after validating the generation under the
+owning CAS exclusion. Reader acquisition then takes `LOCK_SH`; retirement must
+obtain `LOCK_EX` before deleting payloads. Unsafe existing controls are never repaired.
 
 The launcher leases the generations reachable at launch and keeps those leases for the process lifetime. It does not refresh leases when a pointer moves later.
 The packaged launcher loads no helper from an evictable view. Explicit fd
@@ -298,12 +302,24 @@ description. Cleanup closes descriptors, never `LOCK_UN`; unrelated CAS
 descriptors remain close-on-exec.
 
 A lease alone never makes a root eligible for automatic eviction; the legacy reader scan stays on for every root until #1985.
-Every root is **presumed unmanaged**, not classified unmanaged because a scan
-detected an editor. No managed-only opt-in is exposed. External integration and
-dynamic refresh belong to [#1985](https://github.com/overengineeringstudio/effect-utils/issues/1985);
-until those lifetime boundaries are established, automatic generation eviction
-is disabled root-wide. Launch leases therefore do not claim protection of later
-moving-pointer opens.
+A complete scan with a positive legacy payload/root reference conservatively
+detects an unmanaged session and disables automatic generation eviction
+root-wide. Roots are not presumed unmanaged. Incomplete evidence blocks
+retirement as unknown; only a complete clear scan plus fenced identity/pointer/
+pin/recency checks and an exclusive lease authorizes retirement. No managed-only
+opt-in bypasses legacy evidence. Dynamic refresh and external integration remain
+in [#1985](https://github.com/overengineeringstudio/effect-utils/issues/1985).
+Launch leases do not claim coverage of later moving-pointer opens; external
+readers requiring guaranteed retention must pin before use.
+
+Linux uses one infrastructure identity allowlist in `reader-infrastructure.ts`:
+exact comm plus cmdline shapes for same-user `sshd-session`, the exact systemd
+user executable and `--user` arguments, and `(sd-pam)`. A readable UID must match;
+matching comm alone is insufficient. The exemption applies only to that process,
+never its descendants. The rule protects against accidental deletion of a view
+in use, not against a same-user adversary. Census logs report allowlisted and
+unknown process counts. This exemption is Linux-only: failed or incomplete macOS
+`lsof` observations remain unknown.
 
 Applicable evidence merges as `held > unknown > clear`. Positive legacy inode
 or pathname references and shared leases hold the generation; incomplete

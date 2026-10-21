@@ -194,11 +194,11 @@ Repository tasks configure two snapshots per view; `--snapshot-retention` accept
 2 through 32 and `--snapshot-grace-ms` configures grace. These are eligibility
 policies, not permission to delete. Both retention and host-budget retirement
 also require clear reader evidence and a generation's exclusive lease.
-**All roots are presumed to have unmanaged sessions and therefore disable
-automatic generation eviction root-wide.** This is a conservative policy, not
-a scan-based assertion that an editor was detected. External editor/tsserver
-integration is tracked separately in #1985. A lease or successful census does not
-establish that an uninstrumented reader cannot open an old path later.
+**A complete legacy scan that detects an unmanaged reader disables automatic
+generation eviction for that root.** Roots are not presumed unmanaged. An
+incomplete scan remains unknown and cannot authorize deletion; a clear root still
+requires a fresh fenced proof and exclusive generation lease. Positive legacy
+references are conservatively unmanaged unless reader ownership is proved.
 
 Host-wide admission additionally defaults to **40,000,000,000 bytes** across the
 shared CAS, private snapshot directories and records, source manifests, and
@@ -288,26 +288,32 @@ load lease code from an evictable view. Deliberately mapped lease descriptors
 remain in source-reading server/worker descendants; parent death is not release
 while a child retains an open description. Normal and error cleanup closes
 descriptors, never `LOCK_UN`. The unrelated CAS descriptor stays close-on-exec.
-Publication's native preparation runs `editor-view-lease --workspace-root ROOT
---backfill-controls` before source authority/bootstrap imports, so legacy controls
-can be created without first loading an evictable helper. That explicit mode
-uses an existing safe CAS fence and never replaces a control or claims readers
-are absent. A genuinely cold, zero-generation inventory needs no fence creation.
-Ordinary reader acquisition still rejects missing/unsafe controls.
+Missing controls are backfilled lazily by readers, publishers, or retirement,
+only after generation validation under the owning CAS fence. Creation uses a
+private exclusive regular file in the validated `.leases` directory; existing
+unsafe or replaced controls are never repaired. Readers then acquire a shared
+lease before leaving exclusion. Retirement must obtain an exclusive lease before
+deleting payloads. Read-only planning reports missing controls as
+`no control (clear under fence)`.
 The launcher leases the generations reachable at launch and keeps those leases for the process lifetime. It does not refresh leases when a pointer moves later.
 The admitted set is explicitly passed to source-reading descendants.
 It does not intercept every future filesystem read or freeze moving `node_modules`
-pointers. A later publication can therefore expose another generation to a
-long-lived watcher; its retention is guaranteed by the unmanaged root's
-no-automatic-eviction policy, not by a claim that the old descriptors cover it.
-Complete moving-view refresh and external editor integration must exist before
-any root can be declared managed-only; no marker or elapsed grace opts a root in.
+pointers. Launch descriptors do not cover later moving-pointer opens. Legacy
+reader evidence therefore remains mandatory for every root; external readers
+requiring guaranteed retention must register persistent pins before use. Dynamic
+refresh and external editor/tsserver integration remain in #1985; there is no
+managed-only opt-in that bypasses legacy evidence.
+Linux alone exempts the process identities in `reader-infrastructure.ts`: exact
+comm and argv shapes for same-user `sshd-session`, `systemd --user`, and `(sd-pam)`.
+Children remain independently scanned, and name-only matches are unknown.
+Permission failures outside that rule, including macOS `lsof` failures, remain
+unknown. Census diagnostics count allowlisted and unknown processes.
 
 Controls are tombstones: retirement, recreation, and explicit root release never
 unlink/recreate their identities. Their inode and metadata usage participates in
 host accounting and read-only classification reports. Only known local Linux/macOS
 filesystems admit lease proof; NFS, SMB, unsupported/unknown filesystems, unsafe
-or missing controls, native failures, and incomplete process scans are unknown.
+controls, native failures, and incomplete process scans are unknown.
 Linux retains same-user `/proc` pathname and shared-inode evidence; macOS retains
 `lsof`, including command status and completeness checks. Held wins over unknown,
 and either protects the generation. Legacy scans remain additional evidence,
