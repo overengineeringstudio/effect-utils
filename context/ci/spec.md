@@ -170,6 +170,12 @@ evidence and Buck capabilities remain available where the unit graph requires
 them. Removing a tool from PATH alone does not prove its store bytes disappear:
 retained capabilities or other task references can still retain it.
 
+The profile-aware graph guard validates both declared dependencies and required
+source owners. External browser, live-integration and empirical owners (including
+`test:megarepo-cold-gc`) remain in their dedicated full-shell jobs; the unit
+profile neither schedules them nor requires their task declarations. Reintroduced
+non-unit task families are rejected rather than silently ignored by the guard.
+
 Retained repository shell products are prepublished per platform by the
 protected-main native/compiled publisher. Its `ci-test-shell-products` flake
 aggregate is a cache-publication inventory, not the selector for unit-shell
