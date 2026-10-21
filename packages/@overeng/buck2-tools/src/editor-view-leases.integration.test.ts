@@ -14,6 +14,7 @@ const launcher = requireTool('EDITOR_VIEW_LEASE_BIN')
 const childHelper = requireTool('EDITOR_VIEW_LEASE_TEST_CHILD_BIN')
 const leaseModule = fileURLToPath(new URL('./editor-view-leases.ts', import.meta.url))
 const sharingModule = fileURLToPath(new URL('./editor-view-sharing.ts', import.meta.url))
+const readersModule = fileURLToPath(new URL('./editor-view-readers.ts', import.meta.url))
 
 // Bun is the actual FFI runtime. Vitest itself need not import bun:ffi.
 const run = (body: string): void => {
@@ -68,6 +69,87 @@ const run = (body: string): void => {
 }
 
 describe('editor generation native leases (Linux and macOS)', () => {
+  it('lease implementations release only by closing, never by explicit unlock', () =>
+    run(`
+      for (const source of [
+        ${JSON.stringify(fileURLToPath(new URL('../native/editor-view-lease.c', import.meta.url)))},
+        ${JSON.stringify(fileURLToPath(new URL('../../../../nix/editor-view-lease/inherit.cjs', import.meta.url)))},
+        ${JSON.stringify(leaseModule)},
+      ]) {
+        const text = fs.readFileSync(source, 'utf8');
+        assert.doesNotMatch(text, /\\bflock\\s*\\([^;]*\\bLOCK_UN\\b/);
+        assert.doesNotMatch(text, /\\bflock\\s*\\([^,]+,\\s*8\\s*\\)/);
+      }
+    `))
+
+  it.each(['leased', 'unleased'])(
+    'a real %s payload reader keeps its generation held without misclassifying siblings',
+    (mode) =>
+      run(`
+      const { classifyEditorViewProcessCandidates, editorViewAutomaticEvictionEvidence } = await import(${JSON.stringify(readersModule)});
+      const second = 'default-def';
+      const sibling = join(editorRoot, '.store', second);
+      fs.mkdirSync(sibling);
+      const file = join(payload, 'payload');
+      fs.writeFileSync(file, 'reader payload');
+      const ready = join(root, 'payload-reader-ready');
+      const program = [
+        "const fs = require('node:fs');",
+        "const fd = fs.openSync(process.env.READER_PAYLOAD, 'r');",
+        "fs.writeFileSync(process.env.READER_READY, String(fd));",
+        "process.stdin.resume(); process.stdin.on('data', () => fs.fstatSync(fd));",
+      ].join('\\n');
+      const command = [${JSON.stringify(bun)}, '--eval', program];
+      const child = spawn(${JSON.stringify(mode)} === 'leased' ? launcher : command[0],
+        ${JSON.stringify(mode)} === 'leased'
+          ? ['--content-store', contentStore, '--editor-root', editorRoot, '--', ...command]
+          : command.slice(1), {
+        env: { ...process.env, EDITOR_VIEW_LEASE_EXECUTABLE: '', EDITOR_VIEW_LEASE_FDS: '', READER_PAYLOAD: file, READER_READY: ready },
+        stdio: ['pipe', 'ignore', 'ignore'],
+      });
+      launched.push(child);
+      await waitUntil(() => fs.existsSync(ready));
+      const candidates = [
+        { key: 'A', editorRoot, snapshotRoot: payload, linkedInodes: [] },
+        { key: 'B', editorRoot, snapshotRoot: sibling, linkedInodes: [] },
+      ];
+      const observed = classifyEditorViewProcessCandidates({ candidates, processIds: [process.pid, child.pid] });
+      assert.equal(observed.get('A').state, 'held');
+      assert.equal(observed.get('A').unmanaged, ${JSON.stringify(mode)} !== 'leased');
+      assert.equal(observed.get('B').state, 'clear');
+      const policy = editorViewAutomaticEvictionEvidence({ editorRoot, candidates, evidence: observed });
+      assert.equal(policy.state, ${JSON.stringify(mode)} === 'leased' ? 'clear' : 'held');
+      // B remains lease-evictable only in the leased-reader case. Legacy policy
+      // forbids retiring any sibling when this actual holder has no lease.
+      await fence(async () => {
+        const probe = probeEditorViewLeaseUnderFence({ editorRoot, snapshot: second });
+        try { assert.equal(probe.state, 'clear'); } finally { probe.release(); }
+      });
+    `),
+  )
+
+  it('an unlocked control fd is not a lease even while another description holds SH', () =>
+    run(`
+      const { editorViewProcessLease } = await import(${JSON.stringify(readersModule)});
+      const lease = await acquire();
+      const unrelated = fs.openSync(control, 'r');
+      try {
+        assert.equal(probe(), 'held');
+        assert.equal(editorViewProcessLease.probe({ pid: String(process.pid), fd: String(unrelated), control }), false);
+        assert.equal(editorViewProcessLease.probe({ pid: String(process.pid), fd: '2147483647', control }), false);
+      } finally { fs.closeSync(unrelated); lease.release(); }
+    `))
+
+  it('the host-wide scan never authorizes automatic eviction with unknown reader evidence', () =>
+    run(`
+      const { classifyEditorViewProcessCandidates, editorViewAutomaticEvictionEvidence } = await import(${JSON.stringify(readersModule)});
+      const candidates = [{ key: 'A', editorRoot, snapshotRoot: payload, linkedInodes: [] }];
+      const evidence = classifyEditorViewProcessCandidates({ candidates });
+      const unknown = [...evidence.values()].some(value => value.state === 'unknown' || value.scanComplete === false);
+      const policy = editorViewAutomaticEvictionEvidence({ editorRoot, candidates, evidence });
+      assert.equal(unknown && policy.state === 'clear', false);
+    `))
+
   it('concurrent SH excludes EX; closing one inherited description never unlocks another', () =>
     run(`
     const left = await acquire(); const right = await acquire();

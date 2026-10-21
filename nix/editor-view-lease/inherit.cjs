@@ -21,6 +21,7 @@ const leases = descriptorList(process.env.EDITOR_VIEW_LEASE_FDS)
 // process closes its own descriptors on exit, including after parent SIGKILL.
 const inherit = (options = {}) => {
   if (leases.length === 0) return options
+  const env = options.env ?? process.env
   const requested = options.stdio ?? 'pipe'
   const stdio = Array.isArray(requested) ? [...requested] : [requested, requested, requested]
   while (stdio.length < 3) stdio.push('pipe')
@@ -33,7 +34,7 @@ const inherit = (options = {}) => {
     ...options,
     stdio,
     env: {
-      ...(options.env ?? process.env),
+      ...env,
       EDITOR_VIEW_LEASE_FDS: inherited.join(','),
       // Child env replacement must not silently remove descriptor propagation.
       EDITOR_VIEW_LEASE_ACTIVE: process.env.EDITOR_VIEW_LEASE_ACTIVE,
@@ -41,8 +42,8 @@ const inherit = (options = {}) => {
       EDITOR_VIEW_LEASE_LIBRARY: process.env.EDITOR_VIEW_LEASE_LIBRARY,
       EDITOR_VIEW_LEASE_WORKSPACE_ROOT: process.env.EDITOR_VIEW_LEASE_WORKSPACE_ROOT,
       EDITOR_VIEW_CONTENT_STORE: process.env.EDITOR_VIEW_CONTENT_STORE,
-      NODE_OPTIONS: `${options.env?.NODE_OPTIONS ?? ''} --require=${__filename}`,
-      BUN_OPTIONS: `${options.env?.BUN_OPTIONS ?? ''} --preload=${__filename}`,
+      NODE_OPTIONS: `${env.NODE_OPTIONS ?? ''} --require=${__filename}`,
+      BUN_OPTIONS: `${env.BUN_OPTIONS ?? ''} --preload=${__filename}`,
     },
   }
 }

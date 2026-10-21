@@ -119,6 +119,88 @@ void eu_darwin_log_unknown(int pid, int fd) {
 #endif
 }
 
+/* Match one process's lease description to the persistent control, not merely
+ * an fd pathname or another process's lock. Darwin's FWASLOCKED is sticky:
+ * this proof relies on the lease protocol NEVER explicitly unlocking an fd.
+ * https://github.com/apple-oss-distributions/xnu/blob/main/bsd/kern/kern_descrip.c
+ * (sys_flock); proc_info.c fill_fileinfo exports fg_flag as fi_openflags. */
+int eu_reader_lease(int pid, int descriptor, const char *path) {
+  if (pid <= 0 || descriptor < 0 || !path || path[0] != '/') return 0;
+  char parent[PATH_MAX], canonical[PATH_MAX];
+  size_t length = strlen(path);
+  if (length >= sizeof(parent)) return 0;
+  memcpy(parent, path, length + 1);
+  char *slash = strrchr(parent, '/');
+  if (!slash || !slash[1]) return 0;
+  *slash = '\0';
+  struct stat directory_info, identity, named;
+  if (lstat(parent, &directory_info) || !S_ISDIR(directory_info.st_mode) ||
+      directory_info.st_uid != getuid() || (directory_info.st_mode & 077) ||
+      !realpath(parent, canonical) || strcmp(parent, canonical)) return 0;
+  struct statfs filesystem;
+  if (statfs(parent, &filesystem)) return 0;
+#ifdef __APPLE__
+  if (strcmp(filesystem.f_fstypename, "apfs") && strcmp(filesystem.f_fstypename, "hfs")) return 0;
+#else
+  switch ((uint32_t)filesystem.f_type) {
+    case 0xef53: case 0x58465342: case 0x9123683e: case 0x01021994: case 0x858458f6: case 0x2fc12fc1: break;
+    default: return 0;
+  }
+#endif
+  int fd = open(path, O_RDONLY | O_NOFOLLOW | O_CLOEXEC);
+  if (fd < 0) return 0;
+  int result = 0;
+  if (fstat(fd, &identity) || lstat(path, &named) ||
+      !S_ISREG(identity.st_mode) || identity.st_uid != getuid() ||
+      identity.st_nlink != 1 || (identity.st_mode & 0777) != 0600 ||
+      identity.st_size > 8192 || identity.st_dev != named.st_dev ||
+      identity.st_ino != named.st_ino) goto done;
+#ifdef __APPLE__
+  struct vnode_fdinfo info;
+  if (proc_pidfdinfo(pid, descriptor, PROC_PIDFDVNODEINFO, &info, sizeof(info)) != (int)sizeof(info) ||
+      !(info.pfi.fi_openflags & 0x00004000 /* FWASLOCKED */) ||
+      info.pvi.vi_stat.vst_dev != (uint32_t)identity.st_dev ||
+      info.pvi.vi_stat.vst_ino != (uint64_t)identity.st_ino) goto done;
+#else
+  struct stat reader;
+  char proc_path[128], records[8192];
+  if (snprintf(proc_path, sizeof(proc_path), "/proc/%d/fd/%d", pid, descriptor) >= (int)sizeof(proc_path) ||
+      stat(proc_path, &reader) || reader.st_dev != identity.st_dev ||
+      reader.st_ino != identity.st_ino) goto done;
+  if (snprintf(proc_path, sizeof(proc_path), "/proc/%d/fdinfo/%d", pid, descriptor) >= (int)sizeof(proc_path)) goto done;
+  int information = open(proc_path, O_RDONLY | O_CLOEXEC);
+  if (information < 0) goto done;
+  size_t used = 0;
+  ssize_t bytes = 0;
+  do {
+    bytes = read(information, records + used, sizeof(records) - 1 - used);
+    if (bytes > 0) used += (size_t)bytes;
+  } while ((bytes > 0 && used < sizeof(records) - 1) || (bytes < 0 && errno == EINTR));
+  close(information);
+  if (bytes != 0 || used == sizeof(records) - 1) goto done;
+  records[used] = '\0';
+  int shared = 0;
+  for (char *line = records, *next; line && *line; line = next) {
+    next = strchr(line, '\n');
+    if (next) *next++ = '\0';
+    if (!strncmp(line, "lock:", 5) && strstr(line, " FLOCK ") &&
+        strstr(line, " READ ") && strstr(line, " 0 EOF") && !strstr(line, " -> ")) shared = 1;
+  }
+  if (!shared) goto done;
+#endif
+  /* A successful EX is not reader evidence. Close it, never LOCK_UN. */
+  if (flock(fd, LOCK_EX | LOCK_NB) == 0) goto done;
+  if (errno != EWOULDBLOCK) goto done;
+  if (lstat(path, &named) || named.st_dev != identity.st_dev ||
+      named.st_ino != identity.st_ino || named.st_nlink != 1 ||
+      !S_ISREG(named.st_mode) || named.st_uid != getuid() ||
+      (named.st_mode & 0777) != 0600) goto done;
+  result = 1;
+done:
+  close(fd);
+  return result;
+}
+
 #ifndef EU_LEASE_FFI
 
 /* Independent of Bun, node_modules and every evictable editor generation.

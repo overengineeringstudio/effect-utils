@@ -49,10 +49,50 @@ export const editorViewDarwinDeadVnode: {
   },
 }
 
+let readerLeaseProbe: ((pid: number, fd: number, path: Uint8Array) => number) | undefined
+
+/** Positive description-local proof; a pathname or another process's SH is insufficient. */
+export const editorViewProcessLease = {
+  probe: ({
+    pid,
+    fd,
+    control,
+  }: {
+    readonly pid: string
+    readonly fd: string
+    readonly control: string
+  }): boolean => {
+    if (
+      typeof Bun === 'undefined' ||
+      /^\d+$/.test(pid) === false ||
+      /^\d+$/.test(fd) === false ||
+      Number(pid) <= 0 ||
+      Number(pid) > 0x7fffffff ||
+      Number(fd) > 0x7fffffff
+    )
+      return false
+    try {
+      if (readerLeaseProbe === undefined) {
+        const library = process.env.EDITOR_VIEW_LEASE_LIBRARY
+        if (library === undefined || isAbsolute(library) === false) return false
+        const { dlopen }: { readonly dlopen: typeof openNativeLibrary } = createRequire(
+          import.meta.url,
+        )('bun:ffi')
+        readerLeaseProbe = dlopen(library, {
+          eu_reader_lease: { args: ['i32', 'i32', 'ptr'], returns: 'i32' },
+        }).symbols.eu_reader_lease
+      }
+      return readerLeaseProbe(Number(pid), Number(fd), Buffer.from(`${control}\0`)) === 1
+    } catch {
+      return false
+    }
+  },
+}
+
 let darwinUnknownLogger: ((pid: number, fd: number) => void) | undefined
 
 /** Observations for diagnosis only; logging must never change reader evidence. */
-const logDarwinUnknownRecord = (record: {
+const logUnknownRecord = (record: {
   readonly pid: string | null
   readonly comm: string | null
   readonly fd: string | null
@@ -60,6 +100,7 @@ const logDarwinUnknownRecord = (record: {
   readonly errno: string | number | null
 }): void => {
   console.error(`editor-view-reader-unknown: ${JSON.stringify(record)}`)
+  if (process.platform !== 'darwin') return
   if (record.pid === null || /^\d+$/.test(record.pid) === false || typeof Bun === 'undefined')
     return
   const pid = Number(record.pid)
@@ -84,7 +125,7 @@ const logDarwinUnknownRecord = (record: {
       `editor-view-reader-unknown: ${JSON.stringify({
         ...record,
         call: 'native-diagnostics',
-        errno: failureCode(error),
+        errno: failureErrno(error),
       })}`,
     )
   }
@@ -95,6 +136,14 @@ const vanished = (error: unknown): boolean =>
 
 const failureCode = (error: unknown): string =>
   error instanceof Error && 'code' in error ? String(error.code) : String(error)
+
+const failureErrno = (error: unknown): string | number | null =>
+  typeof error === 'object' &&
+  error !== null &&
+  'code' in error &&
+  (typeof error.code === 'string' || typeof error.code === 'number')
+    ? error.code
+    : null
 
 /** Durable managed-reader contract, separate from advisory shell symlinks. */
 export const editorViewPinSchema = 'effect-utils/editor-view-pin/v1' as const
@@ -347,13 +396,15 @@ export type EditorViewProcessCandidate = {
   readonly linkedInodes: Iterable<string>
 }
 
-type ProcessCandidateGroup = { readonly indices: number[]; remaining: number }
+type ProcessCandidateGroup = { readonly indices: number[] }
 /** Candidate-scoped migration/lease proof and actionable blockers. */
 export type EditorViewReaderEvidence = {
   readonly state: 'clear' | 'held' | 'unknown'
   readonly reasons: readonly string[]
   /** False preserves a positive candidate reference without claiming a complete census. */
   readonly scanComplete?: false
+  /** False only after this referencing process proves its matching generation lease. */
+  readonly unmanaged?: boolean
 }
 
 /**
@@ -387,7 +438,7 @@ export const editorViewAutomaticEvictionEvidence = ({
       state: 'unknown',
       reasons: [...new Set(proofs.flatMap((proof) => proof.reasons))],
     }
-  const held = proofs.filter((proof) => proof.state === 'held')
+  const held = proofs.filter((proof) => proof.state === 'held' && proof.unmanaged !== false)
   if (held.length !== 0)
     return {
       state: 'held',
@@ -402,11 +453,26 @@ export const editorViewAutomaticEvictionEvidence = ({
 /** Complete applicable migration evidence; held wins over incomplete evidence. */
 export const classifyEditorViewProcessCandidates = ({
   candidates,
+  processIds,
 }: {
   readonly candidates: readonly EditorViewProcessCandidate[]
+  /** Real-process integration scope only. Retirement callers MUST omit this. */
+  readonly processIds?: readonly number[]
 }): ReadonlyMap<string, EditorViewReaderEvidence> => {
   const held = new Map<string, EditorViewReaderEvidence>()
   let evidence = ''
+  const processLeases = new Set<string>()
+  const candidateControls = new Map(
+    candidates.map((candidate) => [
+      candidate.key,
+      join(
+        candidate.editorRoot,
+        '.leases',
+        `${candidate.snapshotRoot.slice(candidate.snapshotRoot.lastIndexOf('/') + 1)}.lock`,
+      ),
+    ]),
+  )
+  const controls = new Set(candidateControls.values())
   const finish = (reasons: readonly string[]): ReadonlyMap<string, EditorViewReaderEvidence> =>
     new Map<string, EditorViewReaderEvidence>(
       candidates.map(({ key }): [string, EditorViewReaderEvidence] => {
@@ -423,8 +489,6 @@ export const classifyEditorViewProcessCandidates = ({
     )
   if (candidates.length === 0) return finish([])
 
-  const heldCandidates = new Uint8Array(candidates.length)
-  let remaining = candidates.length
   const roots = new Map<string, ProcessCandidateGroup>()
   const snapshots = new Map<string, ProcessCandidateGroup>()
   // Keep each distinct inode once, with numeric candidate associations rather
@@ -434,18 +498,16 @@ export const classifyEditorViewProcessCandidates = ({
   for (const [index, candidate] of candidates.entries()) {
     let root = roots.get(candidate.editorRoot)
     if (root === undefined) {
-      root = { indices: [], remaining: 0 }
+      root = { indices: [] }
       roots.set(candidate.editorRoot, root)
     }
     root.indices.push(index)
-    root.remaining++
     let snapshot = snapshots.get(candidate.snapshotRoot)
     if (snapshot === undefined) {
-      snapshot = { indices: [], remaining: 0 }
+      snapshot = { indices: [] }
       snapshots.set(candidate.snapshotRoot, snapshot)
     }
     snapshot.indices.push(index)
-    snapshot.remaining++
     for (const inode of candidate.linkedInodes) {
       const separator = inode.indexOf(':')
       const device = inode.slice(0, separator)
@@ -469,18 +531,12 @@ export const classifyEditorViewProcessCandidates = ({
   const hold = (indices: readonly number[] | undefined): void => {
     if (indices === undefined) return
     for (const index of indices) {
-      if (heldCandidates[index] !== 0) continue
       const candidate = candidates[index]
       if (candidate === undefined) continue
-      heldCandidates[index] = 1
-      remaining--
-      held.set(candidate.key, { state: 'held', reasons: [evidence] })
-      const root = roots.get(candidate.editorRoot)
-      if (root !== undefined && --root.remaining === 0) roots.delete(candidate.editorRoot)
-      const snapshot = snapshots.get(candidate.snapshotRoot)
-      // Keep known snapshot identities after holding them: another reference to
-      // the same generation must not be mistaken for an unidentified root path.
-      if (snapshot !== undefined) snapshot.remaining--
+      const unmanaged = processLeases.has(candidateControls.get(candidate.key) ?? '') === false
+      const previous = held.get(candidate.key)
+      if (previous?.unmanaged === true || (previous !== undefined && unmanaged === false)) continue
+      held.set(candidate.key, { state: 'held', reasons: [evidence], unmanaged })
     }
   }
 
@@ -495,9 +551,6 @@ export const classifyEditorViewProcessCandidates = ({
     const indices = devices?.get(device)
     if (devices === undefined || indices === undefined) return
     hold(indices)
-    // Every candidate associated with this observed inode is now held.
-    devices.delete(device)
-    if (devices.size === 0) inodes.delete(number)
   }
 
   const admitPath = (target: string): void => {
@@ -513,17 +566,27 @@ export const classifyEditorViewProcessCandidates = ({
     for (;;) {
       const snapshot = snapshots.get(ancestor)
       if (snapshot !== undefined) {
-        if (snapshot.remaining !== 0) hold(snapshot.indices)
+        hold(snapshot.indices)
         return
       }
       hold(roots.get(ancestor)?.indices)
-      if (remaining === 0 || ancestor === '/') return
+      if (ancestor === '/') return
       const separator = ancestor.lastIndexOf('/')
       ancestor = separator === 0 ? '/' : ancestor.slice(0, separator)
     }
   }
 
   const reasons = scanEditorViewProcesses({
+    beginProcess: ({ pid, descriptors }) => {
+      processLeases.clear()
+      for (const { fd, path } of descriptors) {
+        if (
+          controls.has(path) === true &&
+          editorViewProcessLease.probe({ pid, fd, control: path }) === true
+        )
+          processLeases.add(path)
+      }
+    },
     path: (path, reason) => {
       evidence = reason
       admitPath(path)
@@ -532,6 +595,7 @@ export const classifyEditorViewProcessCandidates = ({
       evidence = reason
       holdInode({ number, device })
     },
+    processIds,
   })
   return finish(reasons)
 }
@@ -549,6 +613,10 @@ export const observeEditorViewProcessCandidates = (options: {
 type ProcessObserver = {
   readonly path: (path: string, reason: string) => void
   readonly inode: (number: string, device: string, reason: string) => void
+  readonly beginProcess?: (input: {
+    readonly pid: string
+    readonly descriptors: readonly { readonly fd: string; readonly path: string }[]
+  }) => void
 }
 
 type ProcessIncarnation = { readonly state: string; readonly startTime: string }
@@ -575,16 +643,43 @@ const processIncarnation = (base: string): ProcessIncarnation => {
  * No namespace/cwd exclusion is sound without complete alias and outside-handle
  * evidence. Thus any unobservable same-user process applies to every root.
  */
-const scanEditorViewProcesses = (observer: ProcessObserver): readonly string[] => {
+const scanEditorViewProcesses = (
+  observer: ProcessObserver & { readonly processIds?: readonly number[] },
+): readonly string[] => {
+  const { processIds } = observer
   const reasons: string[] = []
+  if (
+    processIds?.some((pid) => Number.isInteger(pid) === false || pid <= 0 || pid > 0x7fffffff) ===
+    true
+  ) {
+    logUnknownRecord({
+      pid: null,
+      comm: null,
+      fd: null,
+      call: 'process-enumeration-scope',
+      errno: null,
+    })
+    return ['invalid-process-enumeration-scope']
+  }
+  if (processIds?.length === 0) return []
   const uid = process.getuid?.()
-  if (uid === undefined) return ['process-uid-unavailable']
+  if (uid === undefined) {
+    logUnknownRecord({ pid: null, comm: null, fd: null, call: 'process.getuid', errno: null })
+    return ['process-uid-unavailable']
+  }
   if (process.platform === 'linux') {
     let pids: string[]
     try {
-      pids = readdirSync('/proc')
+      pids = processIds?.map(String) ?? readdirSync('/proc')
     } catch (error) {
       console.error('editor-view-process-census: allowlisted=0 unknown=1')
+      logUnknownRecord({
+        pid: null,
+        comm: null,
+        fd: null,
+        call: 'readdir:/proc',
+        errno: failureErrno(error),
+      })
       return [`proc-enumeration: /proc: ${failureCode(error)}`]
     }
     let allowlisted = 0
@@ -593,16 +688,39 @@ const scanEditorViewProcesses = (observer: ProcessObserver): readonly string[] =
       if (/^\d+$/.test(pid) === false) continue
       const base = join('/proc', pid)
       const previousReasons = reasons.length
+      let commObserved: string | null = null
+      try {
+        commObserved = readFileSync(join(base, 'comm'), 'utf8').trimEnd()
+      } catch {}
+      const logUnknown = ({
+        call,
+        error,
+        fd = null,
+      }: {
+        readonly call: string
+        readonly error?: unknown
+        readonly fd?: string | null
+      }): void =>
+        logUnknownRecord({
+          pid,
+          comm: commObserved,
+          fd,
+          call,
+          errno: failureErrno(error),
+        })
+      let identityCall = `lstat:${base}`
       let incarnation: ProcessIncarnation
       try {
         if (lstatSync(base).uid !== uid) {
           // Linux changes /proc ownership for nondumpable same-user processes.
           // Its readable status, rather than directory ownership, decides uid.
+          identityCall = `readFile:${base}/status`
           const status = readFileSync(join(base, 'status'), 'utf8')
           const identity = /^Uid:\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)/m.exec(status)
           if (identity === null) throw new Error(`missing process uid: ${base}/status`)
           if (identity.slice(1).includes(String(uid)) === false) continue
         }
+        identityCall = `readFile:${base}/stat`
         incarnation = processIncarnation(base)
         // A zombie/dead task has relinquished mm and fs_struct. Its visible PID
         // is positive exit evidence, not an opaque live reader.
@@ -618,13 +736,15 @@ const scanEditorViewProcesses = (observer: ProcessObserver): readonly string[] =
           }
         }
         reasons.push(`proc-identity: ${base}: ${failureCode(error)}`)
+        logUnknown({ call: identityCall, error })
         unknown++
         continue
       }
-      const failures: { readonly path: string; readonly error: unknown }[] = []
+      const failures: { readonly path: string; readonly call: string; readonly error: unknown }[] =
+        []
       let argumentsObserved: string[] | undefined
       try {
-        const comm = readFileSync(join(base, 'comm'), 'utf8').trimEnd()
+        const comm = commObserved ?? readFileSync(join(base, 'comm'), 'utf8').trimEnd()
         const cmdline = readFileSync(join(base, 'cmdline'), 'utf8').split('\0')
         while (cmdline.at(-1) === '') cmdline.pop()
         argumentsObserved = cmdline
@@ -639,6 +759,7 @@ const scanEditorViewProcesses = (observer: ProcessObserver): readonly string[] =
         ) {
           if (processIncarnation(base).startTime !== incarnation.startTime) {
             reasons.push(`proc-incarnation-changed: ${base}; infrastructure identity changed`)
+            logUnknown({ call: `readFile:${base}/stat` })
             unknown++
           } else allowlisted++
           continue
@@ -651,6 +772,8 @@ const scanEditorViewProcesses = (observer: ProcessObserver): readonly string[] =
       // task no longer holds payloads, even if earlier inspection saw a handle.
       const paths: [string, string][] = []
       const inodes: [string, string, string][] = []
+      const descriptors: { readonly fd: string; readonly path: string }[] = []
+      let observationCall = ''
       const inspect = ({
         path,
         read,
@@ -661,7 +784,7 @@ const scanEditorViewProcesses = (observer: ProcessObserver): readonly string[] =
         try {
           read()
         } catch (error) {
-          failures.push({ path, error })
+          failures.push({ path, call: observationCall, error })
         }
       }
       for (const entry of ['cwd', 'root', 'exe']) {
@@ -669,6 +792,7 @@ const scanEditorViewProcesses = (observer: ProcessObserver): readonly string[] =
         inspect({
           path,
           read: () => {
+            observationCall = `readlink:${path}`
             paths.push([readlinkSync(path), `proc-reference: ${path}`])
           },
         })
@@ -682,15 +806,26 @@ const scanEditorViewProcesses = (observer: ProcessObserver): readonly string[] =
             inspect({
               path,
               read: () => {
+                observationCall = `readlink:${path}`
                 const target = readlinkSync(path)
                 paths.push([target, `proc-reference: ${path}`])
+                descriptors.push({ fd: descriptor, path: target })
                 if (target.startsWith('/') === false) return
+                observationCall = `stat:${path}`
                 const status = statSync(path, { bigint: true })
                 if (status.isFile() === true)
                   inodes.push([String(status.ino), String(status.dev), `proc-inode: ${path}`])
               },
             })
+            observationCall =
+              pid === String(process.pid)
+                ? `opendir/readdir:${fdDirectory}`
+                : `readdir:${fdDirectory}`
           }
+          observationCall =
+            pid === String(process.pid)
+              ? `opendir/readdir:${fdDirectory}`
+              : `readdir:${fdDirectory}`
           if (pid === String(process.pid)) {
             // A native handle must stay open: Bun's fs Dir can eagerly close
             // its enumeration fd even while the JS Dir object remains live.
@@ -709,6 +844,7 @@ const scanEditorViewProcesses = (observer: ProcessObserver): readonly string[] =
       inspect({
         path: maps,
         read: () => {
+          observationCall = `readFile:${maps}`
           for (const line of readFileSync(maps, 'utf8').split('\n')) {
             if (line.length === 0) continue
             const match = /^\S+\s+\S+\s+\S+\s+([0-9a-f]+):([0-9a-f]+)\s+([0-9]+)\s*(.*)$/.exec(line)
@@ -733,6 +869,7 @@ const scanEditorViewProcesses = (observer: ProcessObserver): readonly string[] =
       inspect({
         path: cmdline,
         read: () => {
+          observationCall = `readFile:${cmdline}`
           for (const argument of argumentsObserved ?? readFileSync(cmdline, 'utf8').split('\0'))
             if (argument.startsWith('/') === true)
               paths.push([argument, `proc-command: ${cmdline}`])
@@ -744,24 +881,34 @@ const scanEditorViewProcesses = (observer: ProcessObserver): readonly string[] =
         exited = current.state === 'Z' || current.state === 'X' || current.state === 'x'
         if (current.startTime !== incarnation.startTime) {
           exited = true
-          if (current.state !== 'Z' && current.state !== 'X' && current.state !== 'x')
+          if (current.state !== 'Z' && current.state !== 'X' && current.state !== 'x') {
             reasons.push(
               `proc-incarnation-changed: ${base}; replacement process not completely observed`,
             )
+            logUnknown({ call: `readFile:${base}/stat` })
+          }
         }
       } catch (error) {
         // A missing fd/cwd is not proof of exit. A missing incarnation is.
         exited = vanished(error)
-        if (exited === false)
+        if (exited === false) {
           reasons.push(`proc-incarnation-unavailable: ${base}: ${failureCode(error)}`)
+          logUnknown({ call: `readFile:${base}/stat`, error })
+        }
       }
       for (const failure of failures) {
         if (exited === true) continue
         reasons.push(
           `proc-incomplete: ${failure.path}: ${failureCode(failure.error)}; reachability unknown`,
         )
+        logUnknown({
+          call: failure.call,
+          error: failure.error,
+          fd: /\/fd\/(\d+)$/.exec(failure.path)?.[1] ?? null,
+        })
       }
       if (exited === false) {
+        observer.beginProcess?.({ pid, descriptors })
         for (const [path, reason] of paths) observer.path(path, reason)
         for (const [number, device, reason] of inodes) observer.inode(number, device, reason)
       }
@@ -784,7 +931,7 @@ const scanEditorViewProcesses = (observer: ProcessObserver): readonly string[] =
     readonly errno?: string | number | null
   }): void => {
     reasons.push(reason)
-    logDarwinUnknownRecord({
+    logUnknownRecord({
       pid: pid.length === 0 ? null : pid,
       comm: comm.length === 0 ? null : comm,
       fd: descriptor.length === 0 ? null : descriptor,
@@ -794,15 +941,25 @@ const scanEditorViewProcesses = (observer: ProcessObserver): readonly string[] =
   }
   const result = (() => {
     try {
-      return spawnSync('/usr/sbin/lsof', ['-nP', '-FpcuftDin0', '-u', String(uid)], {
-        encoding: 'utf8',
-        maxBuffer: 256 * 1024 * 1024,
-      })
+      return spawnSync(
+        '/usr/sbin/lsof',
+        [
+          '-nP',
+          '-FpcuftDin0',
+          '-u',
+          String(uid),
+          ...(processIds === undefined ? [] : ['-a', '-p', processIds.join(',')]),
+        ],
+        {
+          encoding: 'utf8',
+          maxBuffer: 256 * 1024 * 1024,
+        },
+      )
     } catch (error) {
       unknownRecord({
         reason: `lsof-spawn: ${failureCode(error)}`,
         call: 'lsof.spawn',
-        errno: failureCode(error),
+        errno: failureErrno(error),
       })
       return undefined
     }
@@ -817,7 +974,7 @@ const scanEditorViewProcesses = (observer: ProcessObserver): readonly string[] =
     unknownRecord({
       reason: `lsof-spawn: ${failureCode(result.error)}`,
       call: 'lsof.spawn',
-      errno: failureCode(result.error),
+      errno: failureErrno(result.error),
     })
   if (result.signal !== null)
     unknownRecord({ reason: `lsof-signal: ${result.signal}`, call: 'lsof.signal' })
@@ -843,6 +1000,18 @@ const scanEditorViewProcesses = (observer: ProcessObserver): readonly string[] =
   let device = ''
   let inode = ''
   let path = ''
+  const paths: [string, string][] = []
+  const inodes: [string, string, string][] = []
+  const descriptors: { readonly fd: string; readonly path: string }[] = []
+  const finishProcess = (): void => {
+    observer.beginProcess?.({ pid, descriptors })
+    for (const [observedPath, reason] of paths) observer.path(observedPath, reason)
+    for (const [number, observedDevice, reason] of inodes)
+      observer.inode(number, observedDevice, reason)
+    paths.length = 0
+    inodes.length = 0
+    descriptors.length = 0
+  }
   const admit = (): void => {
     if (descriptor.length === 0) return
     if (userKnown === false) {
@@ -880,7 +1049,7 @@ const scanEditorViewProcesses = (observer: ProcessObserver): readonly string[] =
     }
     if (type !== 'REG' && type !== 'DIR') return
     const reason = `lsof-reference: ${descriptor}: ${path}`
-    observer.path(path, reason)
+    paths.push([path, reason])
     if (type !== 'REG') return
     if (/^0x[0-9a-f]+$/i.test(device) === false || /^\d+$/.test(inode) === false) {
       unknownRecord({
@@ -889,7 +1058,8 @@ const scanEditorViewProcesses = (observer: ProcessObserver): readonly string[] =
       })
       return
     }
-    observer.inode(inode, String(BigInt(device)), reason)
+    inodes.push([inode, String(BigInt(device)), reason])
+    if (/^\d+$/.test(descriptor) === true) descriptors.push({ fd: descriptor, path })
   }
   for (let field of stdout.split('\0')) {
     if (field.startsWith('\n') === true) field = field.slice(1)
@@ -902,6 +1072,7 @@ const scanEditorViewProcesses = (observer: ProcessObserver): readonly string[] =
       inode = ''
       path = ''
       if (identifier === 'p') {
+        finishProcess()
         pid = field.slice(1)
         comm = ''
         processSeen = true
@@ -925,6 +1096,7 @@ const scanEditorViewProcesses = (observer: ProcessObserver): readonly string[] =
       })
   }
   admit()
+  finishProcess()
   if (stdout.length !== 0 && processSeen === false)
     unknownRecord({
       reason: 'lsof-incomplete: no process identity records',

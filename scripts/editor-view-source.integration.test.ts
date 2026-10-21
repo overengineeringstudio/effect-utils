@@ -159,6 +159,80 @@ describe('bootstrap-safe source consumer descriptor handoff', () => {
     }
   }
 
+  for (const runtime of ['node', 'bun']) {
+    it(`${runtime} spawnSync preserves inherited runtime options without an explicit env`, () => {
+      const executable = runtime === 'bun' ? process.execPath : Bun.which('node')
+      if (executable === null)
+        throw new Error('Node is required for editor-view source inheritance tests')
+      const library = process.env.EDITOR_VIEW_LEASE_LIBRARY
+      if (library === undefined)
+        throw new Error('EDITOR_VIEW_LEASE_LIBRARY is required for source inheritance tests')
+      const directory = fixture()
+      const payload = join(directory, 'generation')
+      const runtimeFlag = join(directory, 'runtime-flag.cjs')
+      const child = join(directory, 'child.cjs')
+      writeFileSync(payload, 'admitted-generation')
+      writeFileSync(runtimeFlag, `globalThis.editorViewRuntimeFlag = 'preserved'`)
+      writeFileSync(
+        child,
+        `${inheritedRead}; process.stdout.write('\\n' + JSON.stringify({
+          runtimeFlag: globalThis.editorViewRuntimeFlag,
+          nodeOptions: process.env.NODE_OPTIONS,
+          bunOptions: process.env.BUN_OPTIONS,
+          leaseFds: process.env.EDITOR_VIEW_LEASE_FDS,
+        }))`,
+      )
+      const nodeOptions = `--require=${runtimeFlag}`
+      const bunOptions = `--preload=${runtimeFlag}`
+      const fd = openSync(payload, 'r')
+      try {
+        const result = spawnSync(
+          'env',
+          [
+            '-u',
+            'NODE_OPTIONS',
+            '-u',
+            'BUN_OPTIONS',
+            'EDITOR_VIEW_LEASE_FDS=3',
+            `NODE_OPTIONS=${nodeOptions}`,
+            `BUN_OPTIONS=${bunOptions}`,
+            executable,
+            '--require',
+            preload,
+            '-e',
+            `const result = require('node:child_process').spawnSync(process.execPath, [${JSON.stringify(child)}], {
+              stdio: ['ignore', 'pipe', 'inherit', 'ignore'],
+            }); if (result.error) throw result.error; process.stdout.write(result.stdout); process.exitCode = result.status`,
+          ],
+          {
+            stdio: ['ignore', 'pipe', 'pipe', fd],
+            env: {
+              ...cleanEnvironment(),
+              EDITOR_VIEW_LEASE_FDS: '3',
+              EDITOR_VIEW_LEASE_LIBRARY: library,
+              NODE_OPTIONS: nodeOptions,
+              BUN_OPTIONS: bunOptions,
+            },
+            timeout: 10_000,
+          },
+        )
+        expect(result.error).toBeUndefined()
+        expect(result.stderr?.toString()).toBe('')
+        expect(result.status).toBe(0)
+        const [generation, flags] = result.stdout!.toString().split('\n')
+        expect(generation).toBe('admitted-generation')
+        expect(JSON.parse(flags!)).toEqual({
+          runtimeFlag: 'preserved',
+          nodeOptions: `${nodeOptions} --require=${preload}`,
+          bunOptions: `${bunOptions} --preload=${preload}`,
+          leaseFds: '4',
+        })
+      } finally {
+        closeSync(fd)
+      }
+    })
+  }
+
   it('the actual child retains its descriptor after parent SIGKILL', () => {
     const node = Bun.which('node')
     if (node === null) throw new Error('Node is required for editor-view source inheritance tests')

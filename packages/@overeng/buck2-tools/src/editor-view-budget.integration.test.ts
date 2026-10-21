@@ -15,7 +15,7 @@ import {
   utimesSync,
   writeFileSync,
 } from 'node:fs'
-import type * as Fs from 'node:fs'
+import * as Fs from 'node:fs'
 import { hostname, tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -1252,19 +1252,118 @@ describe('detected unmanaged readers disable eviction for every generation in th
   })
 })
 
-describe('capacity rejection leaves unmanaged publishers available and stale locks explicit', () => {
+describe('warm publication wins the census-to-victim-lock race', () => {
+  let host: Host
+  let victim: Fixture
+  let victimRecord: EditorViewRecord
+
+  beforeAll(async () => {
+    host = makeHost()
+    victim = host.fixture('warm-race-victim', 101)
+    victimRecord = await host.publish(victim)
+  })
+  afterAll(async () => {
+    if (host !== undefined) await host.cleanup()
+  })
+
+  it('makes the unchanged current generation eligible in the initial census', () => {
+    host.advance(hostRecencyMs + hostGraceMs + 1)
+    host.age(victim, victimRecord)
+  })
+
+  it('rechecks actual warm last-use after acquiring the victim publication lock', async () => {
+    const incoming = host.fixture('warm-race-incoming', 102, 64)
+    mkdirSync(incoming.editorRoot, { recursive: true })
+    const heldPath = join(incoming.editorRoot, '.publish.lock')
+    mkdirSync(heldPath)
+    writeFileSync(
+      join(heldPath, 'owner.json'),
+      JSON.stringify({
+        schema: 'effect-utils/editor-view-lock/v1',
+        token: 'incoming-owner',
+        pid: process.pid,
+      }),
+    )
+    let warmed = 0
+    let acquired = 0
+    try {
+      await expect(
+        host.track(
+          reserveEditorViewBudget({
+            contentStore: host.contentStore,
+            root: { repoRoot: incoming.root, editorRoot: incoming.editorRoot },
+            heldEditorRoot: incoming.editorRoot,
+            discoverRoots: () => [{ repoRoot: victim.root, editorRoot: victim.editorRoot }],
+            reservationBytes: 1,
+            budgetBytes: 1,
+            tryLockRoot: (root) => {
+              expect(root.editorRoot).toBe(victim.editorRoot)
+              // Complete a real warm publisher after census, before locking the victim.
+              if (warmed === 0) {
+                host.advance(1_000)
+                const script = [
+                  `import { publishEditorView } from ${JSON.stringify(new URL('./editor-view.ts', import.meta.url).href)}`,
+                  `Date.now = () => ${Date.now()}`,
+                  `const record = await publishEditorView({ ...${JSON.stringify(victim.options)}, beforeMaterialize: () => { throw new Error('expected a real warm publication') } })`,
+                  `if (record.snapshot !== ${JSON.stringify(victimRecord.snapshot)}) throw new Error('warm generation changed')`,
+                  'process.stdout.write("warm-complete\\n")',
+                ].join('\n')
+                const warm = spawnSync(bun, ['--eval', script], { encoding: 'utf8' })
+                expect(warm.status).toBe(0)
+                const phasePrefix = '[editor-view-phase] '
+                const remainingStderr = warm.stderr
+                  .split('\n')
+                  .filter((line) => {
+                    if (line.startsWith(phasePrefix) === false) return true
+                    JSON.parse(line.slice(phasePrefix.length))
+                    return false
+                  })
+                  .join('\n')
+                expect(remainingStderr).toBe('')
+                expect(warm.stdout).toContain('warm-complete\n')
+                warmed++
+              }
+              const path = join(root.editorRoot, '.publish.lock')
+              mkdirSync(path)
+              writeFileSync(
+                join(path, 'owner.json'),
+                JSON.stringify({
+                  schema: 'effect-utils/editor-view-lock/v1',
+                  token: 'warm-race-owner',
+                  pid: process.pid,
+                }),
+              )
+              acquired++
+              return { release: () => rmSync(path, { recursive: true }) }
+            },
+          }),
+        ),
+      ).rejects.toBeInstanceOf(EditorViewCapacityError)
+      expect(warmed).toBe(1)
+      expect(acquired).toBeGreaterThan(0)
+      expect(readBudgetLedger(host).reservations).toEqual([])
+      expectCurrent(victim, victimRecord)
+      expect(pathExists(join(victim.editorRoot, '.evicted-budget-view.json'))).toBe(false)
+    } finally {
+      rmSync(heldPath, { recursive: true, force: true })
+    }
+  })
+})
+
+describe('publication waits for a live budget eviction, but not stale publisher locks', () => {
   let host: Host
   let victim: Fixture
   let incoming: Fixture
   let record: EditorViewRecord
+  let eviction: Promise<EditorViewRecord> | undefined
+  let waiting: Promise<EditorViewRecord> | undefined
+  let releaseEviction: (() => void) | undefined
 
   beforeAll(async () => {
     host = makeHost()
     victim = host.fixture('wait-victim', 111)
     incoming = host.fixture('wait-incoming', 112, 64)
     record = await host.publish(victim)
-    const reader = openReader(host, victim, record)
-    await reader.ready
   })
   afterAll(async () => {
     if (host !== undefined) await host.cleanup()
@@ -1275,22 +1374,65 @@ describe('capacity rejection leaves unmanaged publishers available and stale loc
     host.age(victim, record)
   })
 
-  it('rejects pressure after the victim-lock barrier without blocking warm publication', async () => {
-    let evictionEntered = false
-    await expect(
-      host.publish(incoming, {
-        hostBudgetBytes: 1,
-        beforeBudgetEviction: () => {
-          evictionEntered = true
-        },
+  it('starts an actual publisher while pressure eviction holds its live owner lock', async () => {
+    const entered = Promise.withResolvers<void>()
+    const release = host.gate()
+    releaseEviction = () => release.resolve()
+    eviction = host.publish(incoming, {
+      hostBudgetBytes: 1,
+      beforeBudgetEviction: async () => {
+        entered.resolve()
+        await release.promise
+      },
+    })
+    await Promise.race([
+      entered.promise,
+      eviction.then(() => {
+        throw new Error('pressure publication skipped the victim-lock barrier')
       }),
-    ).rejects.toBeInstanceOf(EditorViewCapacityError)
-    expect(evictionEntered).toBe(true)
-    expect(pathExists(join(victim.editorRoot, '.publish.lock'))).toBe(false)
-    const republished = await host.publish(victim)
-    expect(republished.snapshot).toBe(record.snapshot)
+    ])
+    const lockPath = join(victim.editorRoot, '.publish.lock')
+    const owner = readFileSync(join(lockPath, 'owner.json'), 'utf8')
+    expect(JSON.parse(owner)).toMatchObject({
+      schema: 'effect-utils/editor-view-lock/v1',
+      kind: 'eviction',
+      pid: process.pid,
+      process: expect.any(String),
+    })
+    const attempts = vi.spyOn(Fs, 'mkdirSync')
+    const priorImplementation = attempts.getMockImplementation()
+    try {
+      waiting = host.publish(victim)
+      // The passive spy confirms the real publisher arrives during the held barrier.
+      expect(attempts.mock.calls.some(([path]) => path === lockPath)).toBe(true)
+      expect(readFileSync(join(lockPath, 'owner.json'), 'utf8')).toBe(owner)
+    } finally {
+      attempts.mockRestore()
+      // Preserve another test file's shared vi.fn after Bun restores the spy.
+      if (priorImplementation !== undefined) attempts.mockImplementation(priorImplementation)
+    }
+  })
+
+  it('rejects pressure and lets the overlapping waiting publisher successfully republish', async () => {
+    if (eviction === undefined || waiting === undefined || releaseEviction === undefined)
+      throw new Error('live eviction contention was not established')
+    // Observe rejection without Bun's synchronous rejects matcher waiting before
+    // the same-turn barrier release; the real waiting publisher remains live.
+    const rejected = eviction.then(
+      () => {
+        throw new Error('pressure unexpectedly admitted the publication')
+      },
+      (error: unknown) => error,
+    )
+    releaseEviction()
+    const [error, republished] = await Promise.all([rejected, waiting])
+    expect(error).toBeInstanceOf(EditorViewCapacityError)
+    expect(pathExists(join(incoming.editorRoot, incoming.options.viewName))).toBe(false)
+    expect(readBudgetLedger(host).reservations).toEqual([])
     expectCurrent(victim, republished)
+    expect(republished.snapshot).toBe(record.snapshot)
     expect(pathExists(join(victim.editorRoot, '.evicted-budget-view.json'))).toBe(false)
+    expect(pathExists(join(victim.editorRoot, '.publish.lock'))).toBe(false)
   })
 
   it.each([
@@ -1431,7 +1573,7 @@ describe('host generation footprint sidecars follow clear retirement and explici
   })
 })
 
-describe('host-budget reader observations distinguish clear and detected roots at expired recency', () => {
+describe('host-budget reader observations keep a fixed candidate set', () => {
   let host: Host
   let old: Fixture
   let held: Fixture
@@ -1472,7 +1614,7 @@ describe('host-budget reader observations distinguish clear and detected roots a
     readerReady = true
   })
 
-  it('reclaims the clear root but preserves the detected reader after recency expires', async () => {
+  it('never retires a generation whose recency boundary expires during the real process scan', async () => {
     if (
       oldRecord === undefined ||
       heldRecord === undefined ||
@@ -1480,8 +1622,30 @@ describe('host-budget reader observations distinguish clear and detected roots a
       readerReady === false
     )
       throw new Error('boundary regression setup did not complete')
-    host.advance(2)
-    await overBudgetPublication(host, incoming, 1)
+    let crossed = false
+    const scan = fsMocks.readlinkSync.mockImplementation((...args) => {
+      if (crossed === false && /^\/proc\/[0-9]+\/cwd$/.test(String(args[0])) === true) {
+        crossed = true
+        host.advance(2)
+      }
+      return nativeFs.readlinkSync(...args)
+    })
+    const nativeScan = childProcessMocks.spawnSync.mockImplementation((...args) => {
+      if (crossed === false && String(args[0]) === '/usr/sbin/lsof') {
+        crossed = true
+        host.advance(2)
+      }
+      return nativeChildProcess.spawnSync(...args)
+    })
+    try {
+      await expect(host.publish(incoming, { hostBudgetBytes: 1 })).rejects.toBeInstanceOf(
+        EditorViewCapacityError,
+      )
+    } finally {
+      scan.mockReset().mockImplementation(nativeFs.readlinkSync)
+      nativeScan.mockReset().mockImplementation(nativeChildProcess.spawnSync)
+    }
+    expect(crossed).toBe(true)
     expect(pathExists(join(old.editorRoot, oldRecord.snapshot))).toBe(false)
     expectCurrent(held, heldRecord)
     expectRunningReader(reader)

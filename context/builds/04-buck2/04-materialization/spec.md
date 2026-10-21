@@ -339,19 +339,34 @@ The launcher leases the generations reachable at launch and keeps those leases f
 The packaged launcher loads no helper from an evictable view. Explicit fd
 mappings keep leases in source-reading servers and worker descendants, including
 the Genie TypeScript API child. Parent `SIGKILL` does not release a child's open
-description. Cleanup closes descriptors, never `LOCK_UN`; unrelated CAS
-descriptors remain close-on-exec.
+description. A lease is released only by closing its fd, never by `LOCK_UN`;
+this invariant is checked against the native, TypeScript and inherited-fd code.
+Unrelated CAS descriptors remain close-on-exec.
 
 A lease alone never makes a root eligible for automatic eviction; the legacy reader scan stays on for every root until #1985.
-A complete scan with a positive legacy payload/root reference conservatively
-detects an unmanaged session and disables automatic generation eviction
-root-wide. Roots are not presumed unmanaged. Incomplete evidence blocks
+A complete scan with a positive legacy payload/root reference from a process
+without a proved matching generation lease detects an unmanaged session and
+disables automatic generation eviction root-wide. A leased process still holds
+every generation it references, but does not disable eviction of unrelated
+generations. Roots are not presumed unmanaged. Incomplete evidence blocks
 retirement as unknown; only a complete clear scan plus fenced identity/pointer/
 pin/recency checks and an exclusive lease authorizes retirement. No managed-only
 opt-in bypasses legacy evidence. Dynamic refresh and external integration remain
 in [#1985](https://github.com/overengineeringstudio/effect-utils/issues/1985).
 Launch leases do not claim coverage of later moving-pointer opens; external
 readers requiring guaranteed retention must pin before use.
+
+Per-process lease proof matches the descriptor's device/inode to the validated
+persistent control of the referenced generation and requires a simultaneous
+nonblocking exclusive probe to fail with `EWOULDBLOCK`. Linux additionally
+requires that description's `/proc/<pid>/fdinfo/<fd>` record to show a shared
+`FLOCK READ` lock. Darwin requires `PROC_PIDFDVNODEINFO` to report the matching
+identity and `FWASLOCKED`. This sticky Darwin bit is valid here only because the
+lease protocol never explicitly unlocks: release closes the description.
+Neither a control pathname nor another process's lock is sufficient. Failed
+proof remains unleased (root-wide protection) or unknown, never managed.
+See XNU [`sys_flock`](https://github.com/apple-oss-distributions/xnu/blob/main/bsd/kern/kern_descrip.c)
+and [`fill_fileinfo`](https://github.com/apple-oss-distributions/xnu/blob/main/bsd/kern/proc_info.c).
 
 Linux uses one infrastructure identity allowlist in `reader-infrastructure.ts`:
 exact comm plus cmdline shapes for same-user `sshd-session`, the exact systemd

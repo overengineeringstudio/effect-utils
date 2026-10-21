@@ -354,6 +354,15 @@ reader evidence therefore remains mandatory for every root; external readers
 requiring guaranteed retention must register persistent pins before use. Dynamic
 refresh and external editor/tsserver integration remain in #1985; there is no
 managed-only opt-in that bypasses legacy evidence.
+A positive legacy reference still holds its generation. It disables automatic
+eviction root-wide only when its process has no proved matching generation
+lease. The packaged `eu_reader_lease` helper matches the process fd's device/inode
+to the validated persistent control and requires a simultaneous exclusive probe
+to fail with `EWOULDBLOCK`. Linux also requires that fd's `FLOCK READ` record;
+Darwin requires its vnode info to carry `FWASLOCKED`. The latter sticky bit is
+valid only under the source-tested invariant that lease code never explicitly
+unlocks: release closes the fd. A control pathname or someone else's lock alone
+does not make a process leased. Failed proof grants no exemption.
 Linux alone exempts the process identities in `reader-infrastructure.ts`: exact
 comm and argv shapes for same-user `sshd-session`, `systemd --user`, and `(sd-pam)`.
 Children remain independently scanned, and name-only matches are unknown.
@@ -378,10 +387,11 @@ process or another handle. Positive pathname/device/inode references and all sca
 completeness checks remain in force. The exact `lsof` marker `(revoked)` alone is
 not proof. Diagnostics expose `editor-view-process-census: deadVnode=N unknown=M`,
 where `N` counts proven descriptors and `M` counts unresolved census reasons.
-Every unknown `lsof` record also emits `editor-view-reader-unknown` with its
-observed PID, command name, descriptor, failing observation and errno. Missing
-identity fields and errno not exposed by `lsof` are explicitly `null`, never
-invented. The packaged fixed-arity `eu_darwin_log_unknown` helper emits correlated
+Every unknown Linux identity, observation or enumeration and every unknown
+`lsof` record also emits `editor-view-reader-unknown` with its observed PID,
+command name, descriptor, failing call and errno. Unavailable fields are explicitly
+`null`, never invented. On Darwin the packaged fixed-arity `eu_darwin_log_unknown`
+helper additionally emits correlated
 kernel diagnostics with numeric errno/results for BSD process info before and
 after the query, a bounded descriptor-type sample, and vnode/path-info calls.
 These observations help distinguish an exit race from an inaccessible live

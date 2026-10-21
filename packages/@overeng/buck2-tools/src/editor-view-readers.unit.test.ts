@@ -9,6 +9,7 @@ import {
   classifyEditorViewProcessCandidates,
   editorViewAutomaticEvictionEvidence,
   editorViewDarwinDeadVnode,
+  editorViewProcessLease,
   measureEditorViewReaders,
   observeEditorViewProcessCandidates,
 } from './editor-view-readers.ts'
@@ -20,9 +21,11 @@ const nativeChildProcess = { ...ChildProcess }
 const nativeLeases = { ...Leases }
 const nativeReaderDirectory = { ...ReaderDirectory }
 const nativeDeadVnodeProbe = editorViewDarwinDeadVnode.probe
+const nativeProcessLeaseProbe = editorViewProcessLease.probe
 const io = {
   readdirSync: vi.fn(),
   deadVnodeProbe: vi.spyOn(editorViewDarwinDeadVnode, 'probe'),
+  processLeaseProbe: vi.spyOn(editorViewProcessLease, 'probe'),
   visitEditorViewProcessDescriptors: vi.fn(),
   lstatSync: vi.fn(),
   statSync: vi.fn(),
@@ -59,6 +62,7 @@ const incarnation = (start = '100', state = 'S'): string =>
 beforeEach(() => {
   for (const mock of Object.values(io)) mock.mockReset()
   io.deadVnodeProbe.mockReturnValue(false)
+  io.processLeaseProbe.mockReturnValue(false)
   Object.defineProperty(process, 'platform', { value: 'linux', configurable: true })
   io.readdirSync.mockImplementation((path: string) => (path === '/proc' ? ['123'] : []))
   io.lstatSync.mockReturnValue({ uid })
@@ -88,6 +92,7 @@ afterEach(() => {
   io.realpathSync.mockReset().mockImplementation(nativeFs.realpathSync)
   io.spawnSync.mockReset().mockImplementation(nativeChildProcess.spawnSync)
   io.deadVnodeProbe.mockReset().mockImplementation(nativeDeadVnodeProbe)
+  io.processLeaseProbe.mockReset().mockImplementation(nativeProcessLeaseProbe)
   io.observeEditorViewLeaseForRetirement
     .mockReset()
     .mockImplementation(nativeLeases.observeEditorViewLeaseForRetirement)
@@ -338,6 +343,109 @@ describe('migration reader evidence', () => {
     ).toBe('clear')
   })
 
+  it.each([false, true])(
+    'distinguishes a referencing process with matching lease proof: %s',
+    (leased) => {
+      io.processLeaseProbe.mockReturnValue(leased)
+      io.readdirSync.mockImplementation((path: string) => (path === '/proc' ? ['123'] : ['4', '5']))
+      io.readlinkSync.mockImplementation((path: string) =>
+        path.endsWith('/fd/4') === true
+          ? '/views/.leases/a.lock'
+          : path.endsWith('/fd/5') === true
+            ? '/views/.store/a/payload'
+            : '/unrelated',
+      )
+      const evidence = classify()
+      expect(evidence.get('a')).toMatchObject({ state: 'held', unmanaged: !leased })
+      expect(evidence.get('b')?.state).toBe('clear')
+      expect(
+        editorViewAutomaticEvictionEvidence({ editorRoot: '/views', candidates, evidence }).state,
+      ).toBe(leased === true ? 'clear' : 'held')
+      expect(io.processLeaseProbe).toHaveBeenCalledWith({
+        pid: '123',
+        fd: '4',
+        control: '/views/.leases/a.lock',
+      })
+    },
+  )
+
+  it('an unleased second process overrides an earlier leased reference to the same generation', () => {
+    io.readdirSync.mockImplementation((path: string) =>
+      path === '/proc' ? ['123', '124'] : ['4', '5'],
+    )
+    io.processLeaseProbe.mockImplementation(({ pid }) => pid === '123')
+    io.readlinkSync.mockImplementation((path: string) =>
+      path.endsWith('/fd/4') === true
+        ? '/views/.leases/a.lock'
+        : path.endsWith('/fd/5') === true
+          ? '/views/.store/a/payload'
+          : '/unrelated',
+    )
+    const evidence = classify()
+    expect(evidence.get('a')).toMatchObject({ state: 'held', unmanaged: true })
+    expect(
+      editorViewAutomaticEvictionEvidence({ editorRoot: '/views', candidates, evidence }).state,
+    ).toBe('held')
+  })
+
+  it.each(['enumeration', 'identity', 'observation', 'incarnation'] as const)(
+    'logs structured Linux unknowns at the %s failure site',
+    (site) => {
+      const logged: string[] = []
+      const output = vi
+        .spyOn(console, 'error')
+        .mockImplementation((line) => logged.push(String(line)))
+      try {
+        io.readFileSync.mockImplementation((path: string) =>
+          path.endsWith('/stat') === true ? incarnation() : 'fixture-reader',
+        )
+        if (site === 'enumeration')
+          io.readdirSync.mockImplementation(() => {
+            throw denied('EIO')
+          })
+        if (site === 'identity')
+          io.lstatSync.mockImplementation(() => {
+            throw denied()
+          })
+        if (site === 'observation') {
+          io.readdirSync.mockImplementation((path: string) => (path === '/proc' ? ['123'] : ['4']))
+          io.readlinkSync.mockImplementation((path: string) => {
+            if (path.endsWith('/fd/4') === true) throw denied()
+            return '/unrelated'
+          })
+        }
+        if (site === 'incarnation') {
+          let reads = 0
+          io.readFileSync.mockImplementation((path: string) => {
+            if (path.endsWith('/stat') === false) return 'fixture-reader'
+            if (++reads > 1) throw denied()
+            return incarnation()
+          })
+        }
+        expect(classify().get('a')?.state).toBe('unknown')
+        const records = logged
+          .filter((line) => line.startsWith('editor-view-reader-unknown: '))
+          .map((line) => JSON.parse(line.slice('editor-view-reader-unknown: '.length)))
+        expect(records).toContainEqual({
+          pid: site === 'enumeration' ? null : '123',
+          comm: site === 'enumeration' ? null : 'fixture-reader',
+          fd: site === 'observation' ? '4' : null,
+          call:
+            site === 'enumeration'
+              ? 'readdir:/proc'
+              : site === 'identity'
+                ? 'lstat:/proc/123'
+                : site === 'observation'
+                  ? 'readlink:/proc/123/fd/4'
+                  : 'readFile:/proc/123/stat',
+          errno: site === 'enumeration' ? 'EIO' : 'EACCES',
+        })
+      } finally {
+        output.mockRestore()
+      }
+    },
+  )
+
   it('does not skip nondumpable same-user processes whose proc ownership changed', () => {
     io.lstatSync.mockReturnValue({ uid: uid + 1 })
     io.readFileSync.mockImplementation((path: string) =>
@@ -398,6 +506,27 @@ describe('macOS lsof completeness', () => {
   beforeEach(() =>
     Object.defineProperty(process, 'platform', { value: 'darwin', configurable: true }),
   )
+
+  it('matches Darwin lease descriptors even when the control follows the payload', () => {
+    io.processLeaseProbe.mockReturnValue(true)
+    io.spawnSync.mockReturnValue({
+      stdout: `p123\0u${uid}\0f4\0tREG\0D0x1\0i42\0n/views/.store/a/payload\0\nf5\0tREG\0D0x1\0i99\0n/views/.leases/a.lock\0\n`,
+      stderr: '',
+      status: 0,
+      signal: null,
+    })
+    const evidence = classify()
+    expect(evidence.get('a')).toMatchObject({ state: 'held', unmanaged: false })
+    expect(evidence.get('b')?.state).toBe('clear')
+    expect(
+      editorViewAutomaticEvictionEvidence({ editorRoot: '/views', candidates, evidence }).state,
+    ).toBe('clear')
+    expect(io.processLeaseProbe).toHaveBeenCalledWith({
+      pid: '123',
+      fd: '5',
+      control: '/views/.leases/a.lock',
+    })
+  })
 
   it('accepts documented empty selection without diagnostics', () => {
     expect(classify().get('a')?.state).toBe('clear')
