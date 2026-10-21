@@ -276,7 +276,9 @@ emits a `pointer-inventory` aggregate with root count, entry count, total durati
 and per-root entries/durations. Retirement repeats the selected orphan root's
 reachability proof at its deletion fence.
 Startup cleanup carries normal-acquisition or proven-dead-owner-recovery
-provenance and validates the held lock path, token, and current PID. Normal
+provenance and validates the held lock path, exact per-acquisition token, current
+PID, host, and process-start incarnation (including the Linux boot identity).
+Unknown identities refuse reclamation. Normal
 acquisition follows the previous holder's release; automatic recovery proves
 the previous holder dead. Missing or mismatched proof refuses reclamation.
 Every startup candidate and interrupted `.gc-*` payload also receives a fresh

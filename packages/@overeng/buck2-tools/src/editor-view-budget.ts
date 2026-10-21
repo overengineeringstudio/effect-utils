@@ -19,7 +19,7 @@ import {
   writeFileSync,
 } from 'node:fs'
 import { lstat, readFile, readdir, unlink, writeFile } from 'node:fs/promises'
-import { homedir } from 'node:os'
+import { homedir, hostname } from 'node:os'
 import { isAbsolute, join, relative, resolve, sep } from 'node:path'
 import process from 'node:process'
 
@@ -78,11 +78,16 @@ const holdsPublicationLock = ({
     return false
   try {
     const owner: unknown = JSON.parse(readFileSync(join(proof.path, 'owner.json'), 'utf8'))
+    const incarnation = editorViewStagingCreatorIdentity({ pid: process.pid })
     return (
       isObject(owner) === true &&
       owner.schema === 'effect-utils/editor-view-lock/v1' &&
       owner.token === proof.token &&
-      owner.pid === process.pid
+      owner.pid === process.pid &&
+      owner.host === hostname() &&
+      incarnation !== 'unknown' &&
+      incarnation !== 'dead' &&
+      owner.process === incarnation
     )
   } catch {
     return false

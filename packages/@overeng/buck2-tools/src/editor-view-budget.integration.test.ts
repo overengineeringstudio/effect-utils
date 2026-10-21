@@ -1,6 +1,6 @@
 import { spawn, spawnSync, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import * as ChildProcess from 'node:child_process'
-import { createHash } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import {
   chmodSync,
   lstatSync,
@@ -16,7 +16,7 @@ import {
   writeFileSync,
 } from 'node:fs'
 import * as Fs from 'node:fs'
-import { tmpdir } from 'node:os'
+import { hostname, tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
@@ -29,7 +29,7 @@ import {
   reclaimEditorViewOrphans,
 } from './editor-view-budget.ts'
 import { referencedEditorViewPaths } from './editor-view-readers.ts'
-import { shareSnapshotFiles } from './editor-view-sharing.ts'
+import { editorViewStagingCreatorIdentity, shareSnapshotFiles } from './editor-view-sharing.ts'
 import {
   pinEditorView,
   publishEditorView,
@@ -1817,17 +1817,20 @@ describe('budget telemetry rate limits across publisher processes per host store
 
 const lockRoot = (root: { readonly editorRoot: string }) => {
   const path = join(root.editorRoot, '.publish.lock')
+  const token = randomUUID()
   mkdirSync(path)
   writeFileSync(
     join(path, 'owner.json'),
     JSON.stringify({
       schema: 'effect-utils/editor-view-lock/v1',
-      token: 'admission-test-owner',
+      token,
       pid: process.pid,
+      host: hostname(),
+      process: editorViewStagingCreatorIdentity({ pid: process.pid }),
     }),
   )
   return {
-    publicationLock: { path, token: 'admission-test-owner', acquisition: 'normal' as const },
+    publicationLock: { path, token, acquisition: 'normal' as const },
     release: () => rmSync(path, { recursive: true }),
   }
 }
@@ -2429,6 +2432,61 @@ describe('budget admission defers reader proof until eviction needs it', () => {
 })
 
 describe('orphan retirement under the publication exclusion', () => {
+  it.each(['process-start', 'boot-identity', 'foreign-host', 'missing-identity'])(
+    'refuses copied startup lock ownership with mismatched %s despite the same token and PID',
+    async (mismatch) => {
+      const host = makeHost()
+      try {
+        const fixture = host.fixture('startup-owner-identity', 165, 64)
+        await host.publish(fixture)
+        const candidate = join(fixture.editorRoot, '.store', '.candidate-owner-identity')
+        mkdirSync(candidate)
+        writeFileSync(join(candidate, 'payload.bin'), Buffer.alloc(64, 166))
+        const lock = lockRoot(fixture)
+        try {
+          const ownerPath = join(lock.publicationLock.path, 'owner.json')
+          const original = readFileSync(ownerPath, 'utf8')
+          const owner = JSON.parse(original)
+          if (mismatch === 'foreign-host') owner.host = `${hostname()}-foreign`
+          else if (mismatch === 'missing-identity') delete owner.process
+          else if (mismatch === 'boot-identity' && owner.process.startsWith('linux-') === true) {
+            const [, boot, start] = owner.process.split('-')
+            owner.process = `linux-${boot === '0'.repeat(32) ? '1'.repeat(32) : '0'.repeat(32)}-${start}`
+          } else if (owner.process.startsWith('linux-') === true) {
+            const [, boot, start] = owner.process.split('-')
+            owner.process = `linux-${boot}-${BigInt(start) + 1n}`
+          } else {
+            owner.process = `darwin-${'0'.repeat(64)}`
+          }
+          writeFileSync(ownerPath, JSON.stringify(owner))
+          expect(owner.token).toBe(lock.publicationLock.token)
+          expect(owner.pid).toBe(process.pid)
+          expect(
+            await reclaimEditorViewOrphans({
+              editorRoot: fixture.editorRoot,
+              repoRoot: fixture.root,
+              publicationLock: lock.publicationLock,
+            }),
+          ).toBe(false)
+          expect(pathExists(candidate)).toBe(true)
+          writeFileSync(ownerPath, original)
+          expect(
+            await reclaimEditorViewOrphans({
+              editorRoot: fixture.editorRoot,
+              repoRoot: fixture.root,
+              publicationLock: lock.publicationLock,
+            }),
+          ).toBe(true)
+          expect(pathExists(candidate)).toBe(false)
+        } finally {
+          lock.release()
+        }
+      } finally {
+        await host.cleanup()
+      }
+    },
+  )
+
   it.each(['.store/.candidate-reader-held', '.gc-reader-held'])(
     'keeps startup orphan %s held by a real reader and refuses an invalid lock proof',
     async (snapshot) => {
