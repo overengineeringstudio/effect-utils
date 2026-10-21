@@ -212,9 +212,12 @@ resulting authority file must name identical required and owned package sets;
 every package publication validates it.
 
 Publication holds the exclusive state-root `.publish.lock`, created atomically.
-An existing lock fails immediately and prints the explicit token-gated recovery
-operation. There is no age heuristic, timeout, or automatic lock theft. Under
-the lock, the publisher:
+A positively identified dead same-host holder can be recovered after repeating
+the process-incarnation proof under the host fence. Live publishers, foreign-host
+owners, and ambiguous ownership retain explicit token-gated recovery; lock age
+does not authorize recovery. After acquiring the lock, before any batch worker
+creates a candidate, the publisher reclaims abandoned payloads. Under the lock,
+the publisher:
 
 1. fingerprints each distinct selected dependency view and finite declared root
    once for the admitted state;
@@ -264,6 +267,28 @@ If a legacy root install occupies the first hop, immutable GNU
 retains the exchanged entry under `.legacy/`. A failure before the pointer flip
 leaves the prior current view intact. Snapshot payloads never retain links into
 `buck-out`, whose action directories Buck may delete before rebuilding.
+
+Abandoned `.store/.candidate-*`, interrupted root `.gc-*`, and individual
+unreferenced `.legacy/*` entries are reclaimable payloads, not completed
+generations. Publisher startup reclaims candidates and interrupted garbage under
+the exclusive publication lock: candidates were never published, and `.gc-*`
+entries were already committed to deletion after retention's reader proof.
+Recovery establishes that their previous publisher is dead before reclaiming
+them. Budget and displaced-install retirement retain the existing reader proof.
+Reclamation also requires no live reservation for the root and no pointer
+reaching the entry. Pointer reachability includes
+root/control symlinks and package `node_modules` links, with both lexical and
+resolved targets retained so dangling or indirect legacy links remain protected.
+The retirement fence repeats identity and reachability checks before renaming
+the entry to a private `.gc-*` name; recursive deletion follows outside the
+metadata fence. An interrupted rename or deletion is resumed by the next lock
+holder. Budget eviction considers these orphans before completed generations.
+
+Legacy entries are evaluated independently: a referenced displaced install does
+not preserve unrelated legacy entries. A still-referenced legacy entry is
+adopted with one footprint walk and an immutable-identity sidecar when its bytes
+can be sealed safely. Writable shared inodes are not chmodded through aliases;
+unproven immutability remains conservatively uncached.
 
 Repository tasks configure two completed snapshots **per view**: current and
 previous. For `N` admitted views the shared-store bound is `2 × N`, excluding

@@ -28,6 +28,7 @@ import { fileURLToPath } from 'node:url'
 
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 
+import { cancelEditorViewBudgetReservation, reserveEditorViewBudget } from './editor-view-budget.ts'
 import { managedEditorViewSnapshots, type EditorViewPinRecord } from './editor-view-readers.ts'
 import {
   editorViewStagingCreatorIdentity,
@@ -687,7 +688,7 @@ describe('editor view publisher', () => {
       const before = statSync(recordPath(fixture), { bigint: true }).mtimeNs
       await publishEditorView(fixture.options)
       expect(statSync(recordPath(fixture), { bigint: true }).mtimeNs).toBe(before)
-      expect(readdirSync(join(fixture.editorRoot, '.legacy'))).toEqual(legacyEntries)
+      expect(existsSync(join(fixture.editorRoot, '.legacy', legacyEntries[0]!))).toBe(false)
       await expect(checkEditorView(fixture.options)).resolves.toEqual(record)
     } finally {
       cleanup(fixture)
@@ -1090,7 +1091,7 @@ describe('editor view publisher', () => {
               readdirSync(join(fixture.root, '.editor-view', '.legacy')).filter((name) =>
                 name.startsWith('importer-'),
               ),
-            ).toEqual([retained])
+            ).toEqual([])
           }
         }
       } finally {
@@ -1176,10 +1177,10 @@ describe('editor view publisher', () => {
     })
   })
 
-  describe('keeps the current and previous snapshots while preserving in-flight candidates', () => {
+  describe('keeps current and previous snapshots while reclaiming an unreserved candidate', () => {
     let fixture: Fixture
     let oldest: EditorViewRecord
-    let inFlight: string
+    let abandoned: string
     const pending: Promise<unknown>[] = []
     let revision = 1
 
@@ -1188,8 +1189,8 @@ describe('editor view publisher', () => {
       const publication = publishEditorView(fixture.options)
       pending.push(publication)
       oldest = await publication
-      inFlight = join(fixture.editorRoot, '.store', '.candidate-in-flight')
-      mkdirSync(inFlight)
+      abandoned = join(fixture.editorRoot, '.store', '.candidate-abandoned')
+      mkdirSync(abandoned)
     })
 
     afterAll(async () => {
@@ -1198,7 +1199,7 @@ describe('editor view publisher', () => {
     })
 
     it.each([2, 3])(
-      'publishes generation %s without collecting the in-flight candidate',
+      'publishes generation %s after reclaiming the abandoned candidate',
       async (nextRevision) => {
         expect(revision).toBe(nextRevision - 1)
         writeFileSync(
@@ -1215,13 +1216,13 @@ describe('editor view publisher', () => {
       },
     )
 
-    it('retains only current and previous snapshots plus the in-flight candidate', () => {
+    it('retains only current and previous snapshots, not the abandoned candidate', () => {
       expect(revision).toBe(3)
       const snapshots = ownedSnapshots(fixture)
       expect(snapshots).toHaveLength(2)
       expect(snapshots).toContain(currentTarget(fixture).replace('.store/', ''))
       expect(snapshots).not.toContain(storeName(oldest.snapshot))
-      expect(statSync(inFlight).isDirectory()).toBe(true)
+      expect(existsSync(abandoned)).toBe(false)
       const retention = JSON.parse(
         readFileSync(
           join(fixture.editorRoot, `.retention-${fixture.options.viewName}.json`),
@@ -4409,4 +4410,311 @@ describe('same-host abandoned publication lock recovery', () => {
       }
     },
   )
+})
+
+describe('publication startup orphan reclamation', () => {
+  type PausedPublisher = {
+    readonly child: ChildProcess.ChildProcess
+    readonly ready: Promise<void>
+    readonly kill: () => Promise<void>
+  }
+  /** A real publisher holds its own lock and reservation until the parent kills it. */
+  const pausedPublisher = ({
+    fixture,
+    hook,
+  }: {
+    readonly fixture: Fixture
+    readonly hook: 'beforeMaterialize' | 'beforeSnapshotCleanup'
+  }): PausedPublisher => {
+    const ready = Promise.withResolvers<void>()
+    const closed = Promise.withResolvers<void>()
+    let output = ''
+    let errors = ''
+    const child = ChildProcess.spawn(
+      requireTool('BUN_BIN'),
+      [
+        '--eval',
+        `import { publishEditorView } from ${JSON.stringify(new URL('./editor-view.ts', import.meta.url).href)};
+await publishEditorView({
+  ...${JSON.stringify(fixture.options)},
+  backingRoots: ${JSON.stringify([fixture.nodeModules])},
+  ${hook}: async () => {
+    process.stdout.write("publisher-paused\\n");
+    process.stdin.resume();
+    await Promise.withResolvers().promise;
+  },
+});`,
+      ],
+      { stdio: ['pipe', 'pipe', 'pipe'] },
+    )
+    child.once('error', ready.reject)
+    child.stdout!.on('data', (chunk) => {
+      output += String(chunk)
+      if (output.includes('publisher-paused\n') === true) ready.resolve()
+    })
+    child.stderr!.on('data', (chunk) => {
+      errors += String(chunk)
+    })
+    child.once('close', (code, signal) => {
+      ready.reject(
+        new Error(`publisher exited before its barrier: code=${code} signal=${signal}\n${errors}`),
+      )
+      closed.resolve()
+    })
+    return {
+      child,
+      ready: ready.promise,
+      kill: async () => {
+        if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL')
+        await closed.promise
+      },
+    }
+  }
+
+  it('reclaims a real SIGKILLed publisher candidate before preparing the next candidate', async () => {
+    const fixture = makeFixture()
+    const restoreHostBudget = isolateHostBudget()
+    const publisher = pausedPublisher({ fixture, hook: 'beforeMaterialize' })
+    let publication: Promise<EditorViewRecord> | undefined
+    try {
+      await publisher.ready
+      const candidates = readdirSync(join(fixture.editorRoot, '.store')).filter((name) =>
+        name.startsWith('.candidate-'),
+      )
+      expect(candidates).toHaveLength(1)
+      const abandoned = join(fixture.editorRoot, '.store', candidates[0]!)
+      const owner = JSON.parse(
+        readFileSync(join(fixture.editorRoot, '.publish.lock', 'owner.json'), 'utf8'),
+      )
+      expect(owner.pid).toBe(publisher.child.pid)
+      expect(owner.process).toBe(editorViewStagingCreatorIdentity({ pid: publisher.child.pid! }))
+      await publisher.kill()
+      expect(publisher.child.signalCode).toBe('SIGKILL')
+      expect(existsSync(abandoned)).toBe(true)
+      let prepared = false
+      publication = publishEditorView({
+        ...fixture.options,
+        backingRoots: [fixture.nodeModules],
+        beforeMaterialize: () => {
+          prepared = true
+          expect(existsSync(abandoned)).toBe(false)
+          expect(
+            readdirSync(join(fixture.editorRoot, '.store')).filter((name) =>
+              name.startsWith('.candidate-'),
+            ),
+          ).toHaveLength(1)
+        },
+      })
+      const record = await publication
+      expect(prepared).toBe(true)
+      expect(currentTarget(fixture)).toBe(record.snapshot)
+      expect(existsSync(join(fixture.editorRoot, '.publish.lock'))).toBe(false)
+      await expect(
+        checkEditorView({ ...fixture.options, backingRoots: [fixture.nodeModules] }),
+      ).resolves.toEqual(record)
+    } finally {
+      await publisher.kill()
+      if (publication !== undefined) await Promise.allSettled([publication])
+      cleanup(fixture)
+      restoreHostBudget()
+    }
+  })
+
+  it('excludes a concurrent publisher without touching the live publisher candidate or lock', async () => {
+    const fixture = makeFixture()
+    const restoreHostBudget = isolateHostBudget()
+    const publisher = pausedPublisher({ fixture, hook: 'beforeMaterialize' })
+    try {
+      await publisher.ready
+      const store = join(fixture.editorRoot, '.store')
+      const candidates = readdirSync(store)
+      const ownerPath = join(fixture.editorRoot, '.publish.lock', 'owner.json')
+      const owner = readFileSync(ownerPath, 'utf8')
+      const candidate = join(
+        store,
+        candidates.find((name) => name.startsWith('.candidate-'))!,
+      )
+      const identity = statSync(candidate, { bigint: true })
+      await expect(publishEditorView(fixture.options)).rejects.toThrow('publication lock exists')
+      expect(readFileSync(ownerPath, 'utf8')).toBe(owner)
+      expect(readdirSync(store)).toEqual(candidates)
+      expect(statSync(candidate, { bigint: true }).ino).toBe(identity.ino)
+      expect(() => process.kill(publisher.child.pid!, 0)).not.toThrow()
+    } finally {
+      await publisher.kill()
+      cleanup(fixture)
+      restoreHostBudget()
+    }
+  })
+
+  it('converges after SIGKILL interrupts renamed snapshot garbage cleanup', async () => {
+    const fixture = makeFixture()
+    const restoreHostBudget = isolateHostBudget()
+    const options = { ...fixture.options, backingRoots: [fixture.nodeModules] }
+    let publisher: PausedPublisher | undefined
+    try {
+      await publishEditorView(options)
+      writeFileSync(join(fixture.editorInputs, 'install-descriptor.json'), 'second\n')
+      await publishEditorView(options)
+      writeFileSync(join(fixture.editorInputs, 'install-descriptor.json'), 'third\n')
+      publisher = pausedPublisher({ fixture, hook: 'beforeSnapshotCleanup' })
+      await publisher.ready
+      const garbage = readdirSync(fixture.editorRoot).filter((name) => name.startsWith('.gc-'))
+      expect(garbage.length).toBeGreaterThan(0)
+      const committed = currentTarget(fixture)
+      await publisher.kill()
+      for (const name of garbage) expect(existsSync(join(fixture.editorRoot, name))).toBe(true)
+      const record = await publishEditorView(options)
+      expect(record.snapshot).toBe(committed)
+      expect(readdirSync(fixture.editorRoot).filter((name) => name.startsWith('.gc-'))).toEqual([])
+      await expect(checkEditorView(options)).resolves.toEqual(record)
+    } finally {
+      await publisher?.kill()
+      cleanup(fixture)
+      restoreHostBudget()
+    }
+  })
+
+  it('protects a candidate while its root has a live budget reservation and reclaims it after cancellation', async () => {
+    const fixture = makeFixture()
+    const restoreHostBudget = isolateHostBudget()
+    let token: string | undefined
+    try {
+      const record = await publishEditorView(fixture.options)
+      const root = { repoRoot: fixture.root, editorRoot: fixture.editorRoot }
+      const reservation = await reserveEditorViewBudget({
+        contentStore: fixture.options.contentStore!,
+        root,
+        reservationBytes: 1,
+        heldEditorRoot: fixture.editorRoot,
+        discoverRoots: () => [root],
+        tryLockRoot: () => {
+          throw new Error('a roomy reservation must not try to evict another root')
+        },
+        budgetBytes: fixture.options.hostBudgetBytes!,
+      })
+      token = reservation.token
+      const candidate = join(fixture.editorRoot, '.store', '.candidate-live-reservation')
+      mkdirSync(candidate)
+      const payload = join(candidate, 'partial')
+      writeFileSync(payload, 'in progress\n')
+      const before = statSync(payload, { bigint: true })
+      expect(await publishEditorView(fixture.options)).toEqual(record)
+      expect(readFileSync(payload, 'utf8')).toBe('in progress\n')
+      expect(statSync(payload, { bigint: true }).ino).toBe(before.ino)
+      await cancelEditorViewBudgetReservation({
+        contentStore: fixture.options.contentStore!,
+        token,
+      })
+      token = undefined
+      expect(await publishEditorView(fixture.options)).toEqual(record)
+      expect(existsSync(candidate)).toBe(false)
+    } finally {
+      if (token !== undefined)
+        await cancelEditorViewBudgetReservation({
+          contentStore: fixture.options.contentStore!,
+          token,
+        })
+      cleanup(fixture)
+      restoreHostBudget()
+    }
+  })
+
+  it.each(['candidate', 'gc', 'legacy'] as const)(
+    'preserves pointer-reached %s payload bytes and modes until its reader releases the pointer',
+    async (kind) => {
+      const fixture = makeFixture()
+      const restoreHostBudget = isolateHostBudget()
+      try {
+        const record = await publishEditorView(fixture.options)
+        const retained =
+          kind === 'legacy'
+            ? join(
+                fixture.editorRoot,
+                '.legacy',
+                readdirSync(join(fixture.editorRoot, '.legacy'))[0]!,
+              )
+            : join(
+                fixture.editorRoot,
+                ...(kind === 'candidate' ? ['.store', '.candidate-reader'] : ['.gc-reader']),
+              )
+        if (kind !== 'legacy') mkdirSync(retained)
+        const payload = join(retained, kind === 'legacy' ? 'legacy-root-install' : 'partial')
+        if (kind !== 'legacy') writeFileSync(payload, 'reader-owned bytes\n')
+        chmodSync(payload, 0o444)
+        chmodSync(retained, 0o555)
+        const before = statSync(payload, { bigint: true })
+        const directoryBefore = statSync(retained, { bigint: true })
+        const bytes = readFileSync(payload)
+        const reader = join(fixture.root, 'packages', '@overeng', 'retained-reader')
+        mkdirSync(reader)
+        const pointer = join(reader, 'node_modules')
+        symlinkSync(retained, pointer)
+        expect(await publishEditorView(fixture.options)).toEqual(record)
+        expect(
+          readFileSync(join(pointer, kind === 'legacy' ? 'legacy-root-install' : 'partial')),
+        ).toEqual(bytes)
+        const after = statSync(payload, { bigint: true })
+        expect([after.dev, after.ino, after.mode, after.mtimeNs, after.ctimeNs]).toEqual([
+          before.dev,
+          before.ino,
+          before.mode,
+          before.mtimeNs,
+          before.ctimeNs,
+        ])
+        const directoryAfter = statSync(retained, { bigint: true })
+        expect([directoryAfter.ino, directoryAfter.mode, directoryAfter.ctimeNs]).toEqual([
+          directoryBefore.ino,
+          directoryBefore.mode,
+          directoryBefore.ctimeNs,
+        ])
+        const rootPointer = join(fixture.editorRoot, '.retained-reader')
+        symlinkSync(retained, rootPointer)
+        rmSync(pointer)
+        expect(await publishEditorView(fixture.options)).toEqual(record)
+        expect(readFileSync(payload)).toEqual(bytes)
+        expect(statSync(payload, { bigint: true }).ino).toBe(before.ino)
+        expect(statSync(payload, { bigint: true }).mode).toBe(before.mode)
+        rmSync(rootPointer)
+        expect(await publishEditorView(fixture.options)).toEqual(record)
+        expect(existsSync(retained)).toBe(false)
+        await expect(checkEditorView(fixture.options)).resolves.toEqual(record)
+      } finally {
+        cleanup(fixture)
+        restoreHostBudget()
+      }
+    },
+  )
+
+  it('keeps orphan payloads when a pointer input is unreadable', async () => {
+    const fixture = makeFixture()
+    const restoreHostBudget = isolateHostBudget()
+    try {
+      const record = await publishEditorView(fixture.options)
+      const candidate = join(fixture.editorRoot, '.store', '.candidate-unreadable-reader')
+      mkdirSync(candidate)
+      writeFileSync(join(candidate, 'partial'), 'must remain until pointer inspection succeeds\n')
+      const pointer = join(fixture.editorRoot, '.unreadable-reader')
+      symlinkSync(candidate, pointer)
+      const inspect = fsMocks.lstatSync.mockImplementation((...args) => {
+        if (String(args[0]) === pointer)
+          throw Object.assign(new Error('unreadable orphan pointer'), { code: 'EACCES' })
+        return nativeFs.lstatSync(...args)
+      })
+      try {
+        expect(await publishEditorView(fixture.options)).toEqual(record)
+        expect(readFileSync(join(candidate, 'partial'), 'utf8')).toBe(
+          'must remain until pointer inspection succeeds\n',
+        )
+      } finally {
+        inspect.mockReset().mockImplementation(nativeFs.lstatSync)
+      }
+      rmSync(pointer)
+      expect(await publishEditorView(fixture.options)).toEqual(record)
+      expect(existsSync(candidate)).toBe(false)
+    } finally {
+      cleanup(fixture)
+      restoreHostBudget()
+    }
+  })
 })

@@ -26,6 +26,7 @@ import process from 'node:process'
 import {
   managedEditorViewSnapshots,
   observeEditorViewProcessCandidates,
+  referencedEditorViewPaths,
   type EditorViewProcessCandidate,
 } from './editor-view-readers.ts'
 import {
@@ -315,7 +316,8 @@ const decodeState = ({
       isText(entry.editorRoot) === false ||
       isAbsolute(entry.editorRoot) === false ||
       typeof entry.name !== 'string' ||
-      generationPattern.test(entry.name) === false ||
+      (generationPattern.test(entry.name) === false &&
+        /^\.legacy\/[^/]+$/.test(entry.name) === false) ||
       key !== generationKey({ editorRoot: entry.editorRoot, name: entry.name }) ||
       isText(entry.identity) === false ||
       isCount(entry.ownedBytes) === false ||
@@ -838,6 +840,16 @@ const reclaimDeadReservations = ({
   return reclaimed
 }
 
+/** Requires the host fence; uncertainty about an owner always preserves its reservation. */
+export const hasEditorViewBudgetReservation = ({
+  editorRoot,
+}: {
+  readonly editorRoot: string
+}): boolean =>
+  Array.from(readState().reservations.values()).some(
+    (entry) => entry.editorRoot === resolve(editorRoot),
+  )
+
 const reservedBytes = (state: BudgetState): number =>
   Array.from(state.reservations.values()).reduce((sum, entry) => sum + entry.bytes, 0)
 
@@ -1008,16 +1020,26 @@ const lstatIfPresent = async (path: string): Promise<BigIntStats | undefined> =>
 const walkTree = async ({
   root,
   unknown,
+  seal = false,
 }: {
   readonly root: string
   readonly unknown: string[]
+  readonly seal?: boolean
 }): Promise<TreeFootprint | undefined> => {
   const rootStatus = await lstatIfPresent(root)
   if (rootStatus === undefined) return undefined
+  if (
+    seal === true &&
+    rootStatus.isDirectory() === true &&
+    rootStatus.uid === BigInt(userId()) &&
+    (rootStatus.mode & 0o222n) !== 0n
+  )
+    chmodSync(root, Number(rootStatus.mode & 0o777n & ~0o222n))
   let ownedBytes = 0
   let linkedBytes = 0
   // Unreadable or writable trees are never evictable.
-  let readOnly = rootStatus.isDirectory() === true && (rootStatus.mode & 0o222n) === 0n
+  let readOnly =
+    rootStatus.isDirectory() === true && (seal === true || (rootStatus.mode & 0o222n) === 0n)
   const linked: bigint[] = []
   const admit = (status: BigIntStats): void => {
     const bytes = accountedBytes(status)
@@ -1054,7 +1076,15 @@ const walkTree = async ({
         admit(status)
         if (status.isDirectory() === true) pending.push(path)
         else if (status.isFile() === false && status.isSymbolicLink() === false) readOnly = false
-        if (status.isSymbolicLink() === false && (status.mode & 0o222n) !== 0n) readOnly = false
+        if (status.isSymbolicLink() === false && (status.mode & 0o222n) !== 0n) {
+          if (
+            seal === true &&
+            status.uid === BigInt(userId()) &&
+            (status.isDirectory() === true || (status.isFile() === true && status.nlink === 1n))
+          )
+            chmodSync(path, Number(status.mode & 0o777n & ~0o222n))
+          else readOnly = false
+        }
       }
     }
   }
@@ -1103,6 +1133,43 @@ const generationIdentity = (
   }
 }
 
+/** Legacy imports have no generation record; sealed directory identity owns their sidecar. */
+const cachedTreeIdentity = ({
+  editorRoot,
+  name,
+}: {
+  readonly editorRoot: string
+  readonly name: string
+}) =>
+  name.startsWith('.legacy/') === true
+    ? orphanIdentity({ dir: join(editorRoot, name), immutable: true })
+    : generationIdentity(join(editorRoot, '.store', name))
+
+const orphanIdentity = ({
+  dir,
+  immutable = false,
+}: {
+  readonly dir: string
+  readonly immutable?: boolean
+}) => {
+  try {
+    const status = lstatSync(dir, { bigint: true })
+    if (
+      status.isDirectory() === false ||
+      status.uid !== BigInt(userId()) ||
+      (immutable === true && (status.mode & 0o222n) !== 0n)
+    )
+      return undefined
+    return {
+      identity: `${status.dev}:${status.ino}:${status.mode}:${status.mtimeNs}:${status.ctimeNs}`,
+      mtimeMs: Number(status.mtimeMs),
+    }
+  } catch (error) {
+    if (vanished(error) === true) return undefined
+    throw error
+  }
+}
+
 /** Recognize the owning package of a generation; unknown protocols stay protected. */
 const recordPackage = async ({ dir, name }: { readonly dir: string; readonly name: string }) => {
   try {
@@ -1136,7 +1203,7 @@ const obsoleteGenerationFootprints = (
     if (editorRoot !== undefined && entry.editorRoot !== editorRoot) continue
     try {
       if (
-        generationIdentity(join(entry.editorRoot, '.store', entry.name))?.identity !==
+        cachedTreeIdentity({ editorRoot: entry.editorRoot, name: entry.name })?.identity !==
           entry.identity ||
         lstatSync(join(footprintDirectory(), entry.sidecar)).isFile() === false
       )
@@ -1165,7 +1232,7 @@ const collectObsoleteSidecars = ({
     if (entry === undefined || entry.identity !== previous.identity) continue
     try {
       if (
-        generationIdentity(join(entry.editorRoot, '.store', entry.name))?.identity !==
+        cachedTreeIdentity({ editorRoot: entry.editorRoot, name: entry.name })?.identity !==
           entry.identity ||
         lstatSync(join(footprintDirectory(), entry.sidecar)).isFile() === false
       )
@@ -1318,7 +1385,7 @@ type GenerationView = {
   readonly root: RootView
   readonly name: string
   readonly dir: string
-  readonly kind: 'generation' | 'unmanaged'
+  readonly kind: 'generation' | 'unmanaged' | 'orphan'
   readonly identity: string | undefined
   readonly ownedBytes: number
   readonly linked: Buffer
@@ -1593,15 +1660,83 @@ const takeCensus = async ({
     dir: string
     name: string
   }) => {
-    const footprint = await walkTree({ root: dir, unknown })
+    const pointers =
+      name.startsWith('.legacy/') === true
+        ? referencedEditorViewPaths({ editorRoot: rootView.key, repoRoot: rootView.root.repoRoot })
+        : undefined
+    const reachedLegacy =
+      name.startsWith('.legacy/') === true &&
+      pointers !== undefined &&
+      (Array.from(pointers).some((path) => isWithin({ root: dir, candidate: path })) === true ||
+        observeEditorViewProcessCandidates({
+          candidates: [
+            {
+              key: dir,
+              editorRoot: rootView.key,
+              snapshotRoot: dir,
+              linkedInodes: [],
+            },
+          ],
+        }).has(dir) === true)
+    if (name.startsWith('.legacy/') === true && reachedLegacy === true) {
+      const key = generationKey({ editorRoot: rootView.key, name })
+      const stamp = cachedTreeIdentity({ editorRoot: rootView.key, name })
+      const existing = state.generations.get(key)
+      if (stamp !== undefined && existing?.identity === stamp.identity) {
+        const linked = await readSidecar({ entry: existing })
+        if (linked !== undefined) {
+          cache.set(key, existing)
+          generations.push({
+            key,
+            root: rootView,
+            name,
+            dir,
+            kind: 'orphan',
+            identity: existing.identity,
+            ownedBytes: existing.ownedBytes,
+            linked,
+            readOnly: true,
+            package: undefined,
+            lastUseMs: stamp.mtimeMs,
+          })
+          return
+        }
+      }
+    }
+    const unknownBefore = unknown.length
+    const footprint = await walkTree({
+      root: dir,
+      unknown,
+      seal: reachedLegacy === true && rootView.held === true && rootView.trusted === true,
+    })
     if (footprint === undefined) return
+    const stamp = unknown.length === unknownBefore ? orphanIdentity({ dir }) : undefined
+    if (reachedLegacy === true && footprint.readOnly === true && stamp !== undefined) {
+      const key = generationKey({ editorRoot: rootView.key, name })
+      const sidecar = sidecarName({ key, identity: stamp.identity })
+      await writeSidecar({ staged, name: sidecar, linked: footprint.linked })
+      cache.set(key, {
+        editorRoot: rootView.key,
+        name,
+        identity: stamp.identity,
+        ownedBytes: footprint.ownedBytes,
+        linkedBytes: footprint.linkedBytes,
+        sidecar,
+        readOnly: true,
+      })
+    }
     generations.push({
       key: generationKey({ editorRoot: rootView.key, name }),
       root: rootView,
       name,
       dir,
-      kind: 'unmanaged',
-      identity: undefined,
+      kind:
+        name.startsWith('.store/.candidate-') === true ||
+        name.startsWith('.gc-') === true ||
+        name.startsWith('.legacy/') === true
+          ? 'orphan'
+          : 'unmanaged',
+      identity: stamp?.identity,
       ownedBytes: footprint.ownedBytes,
       linked: footprint.linked,
       readOnly: false,
@@ -1634,7 +1769,11 @@ const takeCensus = async ({
       const path = join(editorRoot, name)
       const status = await lstatIfPresent(path)
       if (status === undefined) continue
-      if (status.isDirectory() === true) await addUnmanaged({ rootView, dir: path, name })
+      if (status.isDirectory() === true && name === '.legacy') {
+        rootBytes.set(editorRoot, (rootBytes.get(editorRoot) ?? 0) + Number(accountedBytes(status)))
+        for (const entry of readdirSync(path))
+          await addUnmanaged({ rootView, dir: join(path, entry), name: `.legacy/${entry}` })
+      } else if (status.isDirectory() === true) await addUnmanaged({ rootView, dir: path, name })
       else
         rootBytes.set(editorRoot, (rootBytes.get(editorRoot) ?? 0) + Number(accountedBytes(status)))
     }
@@ -1840,8 +1979,26 @@ const planEviction = ({
   readonly recencyMs: number
   readonly now: number
 }): Plan => {
+  const pointers = new Map(
+    census.roots.map((root) => [
+      root.key,
+      referencedEditorViewPaths({ editorRoot: root.key, repoRoot: root.root.repoRoot }),
+    ]),
+  )
   const eligible = census.generations.filter((generation) => {
     const current = generation.root.currents.has(generation.name)
+    if (generation.kind === 'orphan')
+      return (
+        generation.root.trusted === true &&
+        generation.identity !== undefined &&
+        blocked.has(generation.key) === false &&
+        live.has(generation.key) === false &&
+        hasEditorViewBudgetReservation({ editorRoot: generation.root.key }) === false &&
+        pointers.get(generation.root.key) !== undefined &&
+        Array.from(pointers.get(generation.root.key) ?? []).some((path) =>
+          isWithin({ root: generation.dir, candidate: path }),
+        ) === false
+      )
     return (
       generation.kind === 'generation' &&
       generation.root.trusted === true &&
@@ -1861,6 +2018,8 @@ const planEviction = ({
     )
   })
   const order = eligible.toSorted((left, right) => {
+    if ((left.kind === 'orphan') !== (right.kind === 'orphan'))
+      return left.kind === 'orphan' ? -1 : 1
     const leftCurrent = left.root.currents.has(left.name) === true ? 1 : 0
     const rightCurrent = right.root.currents.has(right.name) === true ? 1 : 0
     if (leftCurrent !== rightCurrent) return leftCurrent - rightCurrent
@@ -1984,6 +2143,188 @@ const writeMarker = ({
 
 type Retirement = { readonly retired: readonly string[]; readonly blocked: readonly string[] }
 
+type OrphanCandidate = {
+  readonly key: string
+  readonly dir: string
+  readonly identity: string | undefined
+  readonly linked: Buffer
+}
+
+const retireOrphans = async ({
+  editorRoot,
+  repoRoot,
+  candidates,
+  censusEpoch,
+  publisherCleanup = false,
+}: {
+  readonly editorRoot: string
+  readonly repoRoot?: string
+  readonly candidates: readonly OrphanCandidate[]
+  readonly censusEpoch?: number
+  readonly publisherCleanup?: boolean
+}): Promise<Retirement> => {
+  const owners = budgetProcessOwners()
+  const retired: string[] = []
+  const blocked: string[] = []
+  const garbage: string[] = []
+  await withHostBudgetLock(async () => {
+    const state = readState()
+    if (censusEpoch !== undefined && censusEpoch !== state.epoch) return
+    const reclaimed = reclaimDeadReservations({ state, owners })
+    if (reclaimed > 0) writeState(state)
+    if (hasEditorViewBudgetReservation({ editorRoot }) === true) {
+      blocked.push(...candidates.map((candidate) => candidate.key))
+      return
+    }
+    const registered = state.roots.get(editorRoot)
+    const owningRepoRoot = repoRoot ?? registered?.repoRoot
+    const contentStore =
+      registered?.contentStore ??
+      (owningRepoRoot === undefined ? undefined : defaultEditorViewContentStore(owningRepoRoot))
+    if (contentStore === undefined) {
+      blocked.push(...candidates.map((candidate) => candidate.key))
+      return
+    }
+    const retire = async () => {
+      const pointers = referencedEditorViewPaths({
+        editorRoot,
+        repoRoot: repoRoot ?? state.roots.get(editorRoot)?.repoRoot,
+      })
+      if (pointers === undefined) {
+        blocked.push(...candidates.map((candidate) => candidate.key))
+        return
+      }
+      // Startup alone can trust publication exclusion and prior-owner death: candidates
+      // were never published, and .gc payloads already crossed deletion commitment.
+      // Budget victims and retained legacy imports still require the existing reader proof.
+      const readerCandidates =
+        publisherCleanup === true
+          ? candidates.filter(
+              (candidate) =>
+                /^(?:\.store\/\.candidate-[^/]+|\.legacy\/\.candidate-[^/]+|\.gc-[^/]+)$/.test(
+                  relative(editorRoot, candidate.dir),
+                ) === false,
+            )
+          : candidates
+      const live =
+        readerCandidates.length === 0
+          ? new Set<string>()
+          : observeEditorViewProcessCandidates({
+              candidates: readerCandidates.map((candidate) => ({
+                key: candidate.key,
+                editorRoot,
+                snapshotRoot: candidate.dir,
+                linkedInodes: linkedInodes(candidate.linked),
+              })),
+            })
+      for (const candidate of candidates) {
+        if (
+          candidate.identity === undefined ||
+          orphanIdentity({ dir: candidate.dir })?.identity !== candidate.identity ||
+          live.has(candidate.key) === true ||
+          Array.from(pointers).some((path) =>
+            isWithin({ root: candidate.dir, candidate: path }),
+          ) === true
+        ) {
+          blocked.push(candidate.key)
+          continue
+        }
+        const destination = join(editorRoot, `.gc-${randomUUID()}-orphan`)
+        const mode = statSync(candidate.dir).mode & 0o777
+        chmodSync(candidate.dir, mode | 0o200)
+        try {
+          renameSync(candidate.dir, destination)
+        } catch (error) {
+          chmodSync(candidate.dir, mode)
+          throw error
+        }
+        chmodSync(destination, mode)
+        garbage.push(destination)
+        retired.push(candidate.key)
+        state.generations.delete(candidate.key)
+        state.lastUse.delete(candidate.key)
+      }
+      if (retired.length > 0) {
+        state.epoch += 1
+        writeState(state)
+      }
+    }
+    await withEditorViewContentStoreLock({ contentStore, run: retire })
+  })
+  // Failed/interrupted cleanup leaves another recognizable orphan for the next lock owner.
+  for (const directory of garbage) {
+    makeDirectoriesWritable(directory)
+    rmSync(directory, { recursive: true })
+  }
+  return { retired, blocked }
+}
+
+/**
+ * Reconcile abandoned publisher payloads before creating any new candidate.
+ * Caller holds this root's publication lock; recursive work never holds the host fence.
+ */
+export const reclaimEditorViewOrphans = async ({
+  editorRoot,
+  repoRoot,
+}: {
+  readonly editorRoot: string
+  readonly repoRoot?: string
+}): Promise<boolean> => {
+  ensureBudgetDirectory()
+  const root = resolve(editorRoot)
+  const paths: string[] = []
+  for (const name of readdirSync(root)) {
+    const path = join(root, name)
+    if (name.startsWith('.gc-') === true) paths.push(path)
+    else if (name === '.legacy' || name === '.store') {
+      if (lstatSync(path).isDirectory() === false) continue
+      for (const entry of readdirSync(path))
+        if (name === '.legacy' || entry.startsWith('.candidate-') === true)
+          paths.push(join(path, entry))
+    }
+  }
+  const candidates: OrphanCandidate[] = []
+  const pointers = referencedEditorViewPaths({
+    editorRoot: root,
+    repoRoot: repoRoot ?? readState().roots.get(root)?.repoRoot,
+  })
+  for (const dir of paths) {
+    const identity = orphanIdentity({ dir })?.identity
+    if (identity === undefined) continue
+    if (
+      dir.startsWith(join(root, '.legacy') + sep) === true &&
+      relative(join(root, '.legacy'), dir).startsWith('.candidate-') === false &&
+      (pointers === undefined ||
+        Array.from(pointers).some((path) => isWithin({ root: dir, candidate: path })) === true ||
+        observeEditorViewProcessCandidates({
+          candidates: [
+            {
+              key: dir,
+              editorRoot: root,
+              snapshotRoot: dir,
+              linkedInodes: [],
+            },
+          ],
+        }).has(dir) === true)
+    )
+      continue
+    const unknown: string[] = []
+    // eslint-disable-next-line no-await-in-loop -- One payload at a time bounds footprint memory.
+    const footprint = await walkTree({ root: dir, unknown })
+    if (footprint === undefined || unknown.length > 0) continue
+    candidates.push({
+      key: generationKey({ editorRoot: root, name: relative(root, dir) }),
+      dir,
+      identity,
+      linked: footprint.linked,
+    })
+  }
+  return (
+    (await retireOrphans({ editorRoot: root, repoRoot, candidates, publisherCleanup: true }))
+      .retired.length > 0
+  )
+}
+
 const retireRoot = async ({
   root,
   generations,
@@ -1999,6 +2340,29 @@ const retireRoot = async ({
   readonly recencyMs: number
   readonly censusEpoch: number
 }): Promise<Retirement> => {
+  const orphans = generations.filter((generation) => generation.kind === 'orphan')
+  if (orphans.length > 0) {
+    const result = await retireOrphans({
+      editorRoot: root.key,
+      repoRoot: root.root.repoRoot,
+      candidates: orphans,
+      censusEpoch,
+    })
+    const normal = generations.filter((generation) => generation.kind !== 'orphan')
+    if (normal.length === 0) return result
+    const remaining = await retireRoot({
+      root,
+      generations: normal,
+      budgetBytes,
+      usedBytes,
+      recencyMs,
+      censusEpoch: result.retired.length > 0 ? censusEpoch + 1 : censusEpoch,
+    })
+    return {
+      retired: [...result.retired, ...remaining.retired],
+      blocked: [...result.blocked, ...remaining.blocked],
+    }
+  }
   const blocked: string[] = []
   const admitted: { generation: GenerationView; view: string | undefined; firstHop: FirstHop }[] =
     []
@@ -2255,7 +2619,7 @@ export const reserveEditorViewBudget = async ({
           const state = readState()
           for (const [key, entry] of measured.cache)
             if (
-              generationIdentity(join(entry.editorRoot, '.store', entry.name))?.identity ===
+              cachedTreeIdentity({ editorRoot: entry.editorRoot, name: entry.name })?.identity ===
                 entry.identity &&
               installSidecar({ staged, entry }) === true
             )
@@ -2333,7 +2697,7 @@ export const reserveEditorViewBudget = async ({
           }
           for (const [key, entry] of census.cache)
             if (
-              generationIdentity(join(entry.editorRoot, '.store', entry.name))?.identity ===
+              cachedTreeIdentity({ editorRoot: entry.editorRoot, name: entry.name })?.identity ===
                 entry.identity &&
               installSidecar({ staged, entry }) === true
             )
@@ -2519,7 +2883,12 @@ export const reserveEditorViewBudget = async ({
         progress('eviction')
         const needed = freshAdmission.used + reservationBytes - budgetBytes
         const prefix = plan.cumulative.findIndex((freed) => freed >= needed)
-        const selected = plan.order.slice(0, prefix === -1 ? plan.order.length : prefix + 1)
+        const prefixOrder = plan.order.slice(0, prefix === -1 ? plan.order.length : prefix + 1)
+        // Finish orphan reconciliation across every root before considering normal generations.
+        const selected =
+          prefixOrder[0]?.kind === 'orphan'
+            ? prefixOrder.filter((generation) => generation.kind === 'orphan')
+            : prefixOrder
         if (selected.length === 0) break
         const byRoot = new Map<string, GenerationView[]>()
         for (const generation of selected)

@@ -38,6 +38,7 @@ import {
   cancelEditorViewBudgetReservation,
   touchEditorViewBudgetGeneration,
   collectEditorViewBudgetFootprints,
+  reclaimEditorViewOrphans,
   withHostBudgetLock,
   type EditorViewBudgetRoot,
   type EditorViewBudgetCensusSession,
@@ -2247,15 +2248,28 @@ const publicationLockRecoveryReason = (owner: LockOwner): 'dead-pid' | 'reused-p
 const acquirePublicationLock = async ({
   editorRoot,
   recoveryCommand,
+  repoRoot,
 }: {
   readonly editorRoot: string
   readonly recoveryCommand: string
+  readonly repoRoot?: string
 }): Promise<{ readonly path: string; readonly token: string }> => {
   // Wait only for identified live eviction; recover only positively abandoned same-host owners.
   // Ordinary live, foreign-host, legacy, and unreadable owners retain explicit recovery.
   for (;;) {
     try {
-      return acquireLock({ editorRoot, recoveryCommand })
+      const lock = acquireLock({ editorRoot, recoveryCommand })
+      try {
+        // Run once per exclusive root acquisition, before batch workers create
+        // their private candidates. Recovery above only admits proven-dead owners.
+        if (repoRoot !== undefined)
+          // eslint-disable-next-line no-await-in-loop -- Reclaim only after this attempt owns the root lock.
+          await reclaimEditorViewOrphans({ editorRoot, repoRoot })
+        return lock
+      } catch (cleanupError) {
+        releaseLock(lock)
+        throw cleanupError
+      }
     } catch (error) {
       if (
         error instanceof Error === false ||
@@ -2917,6 +2931,7 @@ const publishEditorViewCoordinated = async ({
     coordinator?.lock ??
     (await acquirePublicationLock({
       editorRoot: paths.editorRoot,
+      repoRoot: paths.repoRoot,
       recoveryCommand: `recover-lock --repo-root ${paths.repoRoot} --package ${options.package}`,
     }))
   const importerLocks: { readonly path: string; readonly token: string }[] = []
@@ -2969,6 +2984,7 @@ const publishEditorViewCoordinated = async ({
         // eslint-disable-next-line no-await-in-loop -- State-root locks must be acquired in order.
         const importerLock = await acquirePublicationLock({
           editorRoot,
+          repoRoot: paths.repoRoot,
           recoveryCommand: `recover-lock --repo-root ${paths.repoRoot} --package ${packagePath}`,
         })
         importerLocks.push(importerLock)
@@ -3480,6 +3496,7 @@ export const publishEditorViews = async ({
   const results: PromiseSettledResult<EditorViewRecord>[] = []
   const changedStores = new Set<string>()
   const lockRequests = new Map<string, string>()
+  const lockRepositoryRoots = new Map<string, string>()
   const repositoryRoots = new Set<string>()
   let next = 0
   try {
@@ -3491,6 +3508,7 @@ export const publishEditorViews = async ({
       identities.add(identity)
       ensureRealDirectory({ path: paths.editorRoot, field: 'editor root' })
       ensureRealDirectory({ path: paths.storeDir, field: 'editor snapshot store' })
+      lockRepositoryRoots.set(paths.editorRoot, paths.repoRoot)
       lockRequests.set(
         paths.editorRoot,
         `recover-lock --repo-root ${paths.repoRoot} --package ${option.package}`,
@@ -3506,6 +3524,7 @@ export const publishEditorViews = async ({
         repoRoot: paths.repoRoot,
         packages: authority.requiredPackages,
       })) {
+        lockRepositoryRoots.set(editorRoot, paths.repoRoot)
         if (lockRequests.has(editorRoot) === false)
           lockRequests.set(
             editorRoot,
@@ -3526,6 +3545,7 @@ export const publishEditorViews = async ({
       // eslint-disable-next-line no-await-in-loop -- State-root locks must be acquired in order.
       const lock = await acquirePublicationLock({
         editorRoot,
+        repoRoot: lockRepositoryRoots.get(editorRoot) ?? fail('batch repository root is absent'),
         recoveryCommand: lockRequests.get(editorRoot) ?? fail('batch recovery command is absent'),
       })
       let committed = Promise.resolve()

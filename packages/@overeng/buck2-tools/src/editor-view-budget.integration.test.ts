@@ -26,6 +26,7 @@ import {
   editorViewHostBudgetStateDirectory,
   makeEditorViewBudgetCensusSession,
   reserveEditorViewBudget,
+  reclaimEditorViewOrphans,
 } from './editor-view-budget.ts'
 import { shareSnapshotFiles } from './editor-view-sharing.ts'
 import {
@@ -1785,6 +1786,19 @@ describe('budget telemetry rate limits across publisher processes per host store
   })
 })
 
+const lockRoot = (root: { readonly editorRoot: string }) => {
+  const path = join(root.editorRoot, '.publish.lock')
+  mkdirSync(path)
+  writeFileSync(
+    join(path, 'owner.json'),
+    JSON.stringify({
+      schema: 'effect-utils/editor-view-lock/v1',
+      token: 'admission-test-owner',
+      pid: process.pid,
+    }),
+  )
+  return { release: () => rmSync(path, { recursive: true }) }
+}
 describe('budget admission defers reader proof until eviction needs it', () => {
   const readerScans = (): number =>
     fsMocks.readlinkSync.mock.calls.filter(([path]) =>
@@ -1792,20 +1806,6 @@ describe('budget admission defers reader proof until eviction needs it', () => {
     ).length +
     childProcessMocks.spawnSync.mock.calls.filter(([command]) => command === '/usr/sbin/lsof')
       .length
-
-  const lockRoot = (root: { readonly editorRoot: string }) => {
-    const path = join(root.editorRoot, '.publish.lock')
-    mkdirSync(path)
-    writeFileSync(
-      join(path, 'owner.json'),
-      JSON.stringify({
-        schema: 'effect-utils/editor-view-lock/v1',
-        token: 'admission-test-owner',
-        pid: process.pid,
-      }),
-    )
-    return { release: () => rmSync(path, { recursive: true }) }
-  }
 
   it('admits a footprint above the warning ratio without scanning eligible readers', async () => {
     const host = makeHost()
@@ -2063,6 +2063,144 @@ describe('budget admission defers reader proof until eviction needs it', () => {
         token: pressure.token,
       })
       incomingLock.release()
+    } finally {
+      await host.cleanup()
+    }
+  })
+})
+
+describe('orphan retirement under the publication exclusion', () => {
+  it('preserves reserved and pointer-reached candidates, then converges after release', async () => {
+    const host = makeHost()
+    try {
+      const fixture = host.fixture('orphan-reservation', 61)
+      await host.publish(fixture)
+      const candidate = join(fixture.editorRoot, '.store', '.candidate-abandoned')
+      mkdirSync(candidate)
+      writeFileSync(join(candidate, 'payload.bin'), Buffer.alloc(payloadBytes, 62))
+      const lock = lockRoot({ editorRoot: fixture.editorRoot })
+      if (lock === undefined) throw new Error('fixture root lock unavailable')
+      try {
+        const reservation = await reserveEditorViewBudget({
+          contentStore: host.contentStore,
+          root: { repoRoot: fixture.root, editorRoot: fixture.editorRoot },
+          heldEditorRoot: fixture.editorRoot,
+          discoverRoots: () => [],
+          reservationBytes: 1,
+          budgetBytes: setupBudgetBytes,
+          tryLockRoot: lockRoot,
+        })
+        expect(await reclaimEditorViewOrphans({ editorRoot: fixture.editorRoot })).toBe(false)
+        expect(pathExists(join(candidate, 'payload.bin'))).toBe(true)
+        await cancelEditorViewBudgetReservation({
+          contentStore: host.contentStore,
+          token: reservation.token,
+        })
+        const pointer = join(fixture.editorRoot, 'retained')
+        symlinkSync('.store/.candidate-abandoned', pointer)
+        expect(await reclaimEditorViewOrphans({ editorRoot: fixture.editorRoot })).toBe(false)
+        expect(pathExists(candidate)).toBe(true)
+        rmSync(pointer)
+        expect(await reclaimEditorViewOrphans({ editorRoot: fixture.editorRoot })).toBe(true)
+        expect(pathExists(candidate)).toBe(false)
+        expect(await reclaimEditorViewOrphans({ editorRoot: fixture.editorRoot })).toBe(false)
+      } finally {
+        lock.release()
+      }
+    } finally {
+      await host.cleanup()
+    }
+  })
+
+  it('reclaims candidate, interrupted garbage and unreferenced legacy before generations', async () => {
+    const host = makeHost()
+    try {
+      const fixture = host.fixture('orphan-pressure', 63)
+      const record = await host.publish(fixture)
+      for (const name of [
+        '.store/.candidate-abandoned',
+        '.gc-interrupted',
+        '.legacy/importer-abandoned',
+      ]) {
+        const path = join(fixture.editorRoot, name)
+        mkdirSync(path, { recursive: true })
+        writeFileSync(join(path, 'payload.bin'), Buffer.alloc(payloadBytes, 64))
+      }
+      const reservation = await reserveEditorViewBudget({
+        contentStore: host.contentStore,
+        root: { repoRoot: fixture.root, editorRoot: fixture.editorRoot },
+        heldEditorRoot: fixture.editorRoot,
+        discoverRoots: () => [],
+        reservationBytes: 1,
+        budgetBytes: 1,
+        tryLockRoot: lockRoot,
+      })
+      for (const name of [
+        '.store/.candidate-abandoned',
+        '.gc-interrupted',
+        '.legacy/importer-abandoned',
+      ])
+        expect(pathExists(join(fixture.editorRoot, name))).toBe(false)
+      expectCurrent(fixture, record)
+      await cancelEditorViewBudgetReservation({
+        contentStore: host.contentStore,
+        token: reservation.token,
+      })
+    } finally {
+      await host.cleanup()
+    }
+  })
+
+  it('adopts reached legacy once into immutable sidecars and retires it after its pointer disappears', async () => {
+    const host = makeHost()
+    try {
+      const fixture = host.fixture('legacy-cache', 65)
+      await host.publish(fixture)
+      const legacy = join(fixture.editorRoot, '.legacy', 'retained')
+      mkdirSync(legacy, { recursive: true })
+      writeFileSync(join(legacy, 'payload.bin'), Buffer.alloc(payloadBytes, 66))
+      const pointer = join(fixture.editorRoot, 'legacy-reader')
+      symlinkSync('.legacy/retained', pointer)
+      const options = {
+        contentStore: host.contentStore,
+        root: { repoRoot: fixture.root, editorRoot: fixture.editorRoot },
+        heldEditorRoot: fixture.editorRoot,
+        discoverRoots: () => [],
+        reservationBytes: 1,
+        budgetBytes: setupBudgetBytes,
+        tryLockRoot: lockRoot,
+      }
+      const first = await reserveEditorViewBudget(options)
+      await cancelEditorViewBudgetReservation({
+        contentStore: host.contentStore,
+        token: first.token,
+      })
+      expect(lstatSync(legacy).mode & 0o222).toBe(0)
+      expect(lstatSync(join(legacy, 'payload.bin')).mode & 0o222).toBe(0)
+      const key = `${fixture.editorRoot}\0.legacy/retained`
+      expect(readBudgetLedger(host).generations[key]).toBeDefined()
+      const footprints = join(host.budgetState, 'footprints')
+      const before = readdirSync(footprints).map((name) => [
+        name,
+        lstatSync(join(footprints, name)).ino,
+      ])
+      const second = await reserveEditorViewBudget(options)
+      await cancelEditorViewBudgetReservation({
+        contentStore: host.contentStore,
+        token: second.token,
+      })
+      expect(
+        readdirSync(footprints).map((name) => [name, lstatSync(join(footprints, name)).ino]),
+      ).toEqual(before)
+      rmSync(pointer)
+      const lock = lockRoot(options.root)
+      if (lock === undefined) throw new Error('fixture root lock unavailable')
+      try {
+        expect(await reclaimEditorViewOrphans({ editorRoot: fixture.editorRoot })).toBe(true)
+        expect(pathExists(legacy)).toBe(false)
+      } finally {
+        lock.release()
+      }
     } finally {
       await host.cleanup()
     }
