@@ -9,6 +9,32 @@
     ".tsx": false,
     ".jsx": false
   },
+  "unresolvedStagings": [
+    {
+      "nix": "flake.nix",
+      "operation": "writeTextDir",
+      "argument": "index.js",
+      "reason": "Synthetic native-slot fixture generated inline, not a repository source file."
+    },
+    {
+      "nix": "nix/buck2.nix",
+      "operation": "cp",
+      "argument": "${launcherSource}/buck2-entrypoint.ts",
+      "reason": "Copied together with buck2-cache-posture.ts and buck2-file-watcher.ts into the deliberate launcher closure."
+    },
+    {
+      "nix": "nix/buck2.nix",
+      "operation": "cp",
+      "argument": "${launcherSource}/buck2-cache-posture.ts",
+      "reason": "Copied together with buck2-entrypoint.ts and buck2-file-watcher.ts into the deliberate launcher closure."
+    },
+    {
+      "nix": "nix/buck2.nix",
+      "operation": "cp",
+      "argument": "${launcherSource}/buck2-file-watcher.ts",
+      "reason": "Copied together with buck2-entrypoint.ts and buck2-cache-posture.ts into the deliberate launcher closure."
+    }
+  ],
   "sources": [
     {
       "initializationError": "",

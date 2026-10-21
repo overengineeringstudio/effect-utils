@@ -53,9 +53,13 @@ The completeness check scans tracked and untracked, non-ignored `*.nix` files fo
 literal JS/TS source paths, conservatively including workspace commands and
 multi-file closures. Add each source and its staging Nix file to the central list.
 Non-standalone references require a per-source, per-Nix-file exemption with a
-reason; stale entries fail too. Use literal paths for staging (relative paths or a
-literal suffix concatenated with a repository-root variable), not dynamically
-computed filenames: this is a source-path inventory, not a Nix evaluator.
+reason; stale entries fail too. The scan also inspects extension-bearing arguments
+to `readFile`, `writeText*`, `writeScript*`, `builtins.path`, `copyPathToStore`,
+and shell `cp`/`install`, including interpolation and workspace-relative inputs.
+An argument that cannot be resolved is an error, not a skipped reference:
+`unresolvedStagings` requires its exact Nix file, operation, argument and reason.
+Known repository-root variables are `repoRoot`, `repositoryRoot` and `sourceRoot`.
+Other computed paths require explicit review; this is not a Nix evaluator.
 
 ## Packages
 
