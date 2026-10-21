@@ -51,8 +51,8 @@ overloads and errors and record paths **before** probing, including missing
 optional inputs. `recordInput(path)` explicitly declares a dependency read by
 another API or a subprocess. Recursive `inputReaddirSync` records returned
 paths, including all nested directories; custom walkers must likewise record
-each visited directory. Cache consumers hash file contents, directory entry names/types,
-and missing markers, not just existing files.
+each visited directory. Cache consumers hash canonical resolution identity, file
+contents, directory entry names/types, and missing markers, not just existing files.
 
 The engine also records generator source and transitive relative/`#`-alias
 imports (including helpers and catalogs), bare workspace-package imports after

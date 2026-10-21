@@ -32,10 +32,12 @@ const fixture = () => {
 import { defineRepoContext } from ${JSON.stringify(repoContextPath)}
 import { inputExistsSync, inputReaddirSync, inputStatSync } from ${JSON.stringify(readersPath)}
 const repo = defineRepoContext({ name: 'fixture', importMetaUrl: import.meta.url })
+// Intentionally TS-only generic arrow syntax: the scanner must not parse .ts as TSX.
+const passthrough = <TValue>(value: TValue): TValue => value
 export const read = () => {
   inputReaddirSync(repo.rootPath)
   inputStatSync(repo.resolve('input.txt'))
-  return repo.readText('input.txt') + (inputExistsSync(repo.resolve('optional.txt')) ? repo.readText('optional.txt') : '')
+  return passthrough(repo.readText('input.txt')) + (inputExistsSync(repo.resolve('optional.txt')) ? repo.readText('optional.txt') : '')
 }
 `,
   )

@@ -32,7 +32,10 @@ export const recordGeneratorSourceGraph = ({
   if (isInputRecording() === false) return
   const seen = new Set<string>()
   const recordedScopes = new Set<string>()
-  const transpiler = new Bun.Transpiler({ loader: 'tsx' })
+  const transpilers = {
+    ts: new Bun.Transpiler({ loader: 'ts' }),
+    tsx: new Bun.Transpiler({ loader: 'tsx' }),
+  }
   while (pending.length > 0) {
     const sourcePath = pending.pop()!
     if (seen.has(sourcePath) === true) continue
@@ -49,6 +52,8 @@ export const recordGeneratorSourceGraph = ({
     if (/\.[cm]?[jt]sx?$/.test(sourcePath) === false) continue
     let imports: ReadonlyArray<{ path: string }>
     try {
+      // Generic arrow functions in .ts are ambiguous JSX, while .tsx needs JSX parsing.
+      const transpiler = /\.[jt]sx$/.test(sourcePath) === true ? transpilers.tsx : transpilers.ts
       imports = transpiler.scanImports(inputReadFileSync(sourcePath, 'utf8'))
     } catch {
       // Optional imports keep their runtime semantics, but unknown closure is not cacheable.
