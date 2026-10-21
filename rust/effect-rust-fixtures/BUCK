@@ -2,7 +2,7 @@
 # Source: BUCK.genie.ts
 
 # Projection source: rust/effect-rust-fixtures/BUCK.genie.ts
-# Semantic fingerprint: sha256:6eff648f804dc1cc0c04edc297733510ccea9a25f19333e572ded6bbd04122a4
+# Semantic fingerprint: sha256:bede6f7a84fee64252eba2f510e95ac81557cef54cb5f5a128433e93c38d0098
 # Semantic inputs: rust/effect-rust-fixtures/BUCK.genie.ts
 # Regenerate: devenv tasks run genie:run
 
