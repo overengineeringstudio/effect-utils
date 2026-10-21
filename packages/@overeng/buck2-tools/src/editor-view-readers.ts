@@ -6,9 +6,8 @@ import process from 'node:process'
 const vanished = (error: unknown): boolean =>
   error instanceof Error && 'code' in error && (error.code === 'ENOENT' || error.code === 'ESRCH')
 
-const inaccessibleProcessEntry = (error: unknown): boolean =>
-  vanished(error) === true ||
-  (error instanceof Error && 'code' in error && (error.code === 'EACCES' || error.code === 'EPERM'))
+const failureCode = (error: unknown): string =>
+  error instanceof Error && 'code' in error ? String(error.code) : String(error)
 
 /** Durable managed-reader contract, separate from advisory shell symlinks. */
 export const editorViewPinSchema = 'effect-utils/editor-view-pin/v1' as const
@@ -146,83 +145,9 @@ export const referencedEditorSnapshots = ({
     }
   }
   pins(editorRoot)
-  return observeProcessReferences({ admit, strict: false }) === true ? referenced : undefined
-}
-
-const observeProcessReferences = ({
-  admit,
-  strict,
-}: {
-  readonly admit: (target: string) => void
-  readonly strict: boolean
-}): boolean | undefined => {
-  const ignorable = (error: unknown): boolean =>
-    strict === true ? vanished(error) : inaccessibleProcessEntry(error)
-  if (process.platform === 'linux') {
-    try {
-      for (const pid of readdirSync('/proc')) {
-        if (/^[0-9]+$/.test(pid) === false) continue
-        const directory = join('/proc', pid)
-        try {
-          // Publication is user-owned; only same-user process references are
-          // advisory evidence. Managed pins do not depend on process visibility.
-          if (lstatSync(directory).uid !== process.getuid?.()) continue
-          for (const entry of ['exe', 'cwd', 'root']) {
-            try {
-              admit(readlinkSync(join(directory, entry)))
-            } catch (error) {
-              if (ignorable(error) === false) throw error
-            }
-          }
-          try {
-            for (const fd of readdirSync(join(directory, 'fd'))) {
-              try {
-                admit(readlinkSync(join(directory, 'fd', fd)))
-              } catch (error) {
-                if (ignorable(error) === false) throw error
-              }
-            }
-          } catch (error) {
-            if (ignorable(error) === false) throw error
-          }
-          for (const entry of ['maps', 'cmdline']) {
-            try {
-              const content = readFileSync(join(directory, entry), 'utf8')
-              if (entry === 'maps') {
-                for (const line of content.split('\n')) {
-                  const pathname = /^\S+\s+\S+\s+\S+\s+\S+\s+\S+\s+(\/.*)$/.exec(line)?.[1]
-                  if (pathname !== undefined) admit(pathname)
-                }
-              } else {
-                // A JS process may load its entry point and close that descriptor.
-                for (const argument of content.split('\0'))
-                  if (argument.startsWith('/') === true) admit(argument)
-              }
-            } catch (error) {
-              if (ignorable(error) === false) throw error
-            }
-          }
-        } catch (error) {
-          if (ignorable(error) === false) return undefined
-        }
-      }
-    } catch {
-      return undefined
-    }
-    return true
-  }
-  if (process.platform === 'darwin') {
-    // Native lsof is the macOS kernel-reader interface; no ambient PATH lookup.
-    const result = spawnSync('/usr/sbin/lsof', ['-nP', '-Fn', '-u', String(process.getuid?.())], {
-      encoding: 'utf8',
-      maxBuffer: 64 * 1024 * 1024,
-    })
-    if (result.error !== undefined || (result.status !== 0 && result.status !== 1)) return undefined
-    for (const line of result.stdout.split('\n'))
-      if (line.startsWith('n/') === true) admit(line.slice(1))
-    return true
-  }
-  return undefined
+  return scanEditorViewProcesses({ path: admit, inode: () => {} }).length === 0
+    ? referenced
+    : undefined
 }
 
 /** glibc `makedev` of a /proc maps `major:minor` field, matching `stat().dev`. */
@@ -251,41 +176,53 @@ export type EditorViewProcessCandidate = {
 }
 
 type ProcessCandidateGroup = { readonly indices: number[]; remaining: number }
+export type EditorViewReaderEvidence = {
+  readonly state: 'clear' | 'held' | 'unknown'
+  readonly reasons: readonly string[]
+}
 
 /**
- * Return only candidates positively held by same-user cwd, descriptors or
- * mappings. Known snapshot paths protect only that candidate; all other paths
- * in an editor root, including `.store` and unidentified children, protect every
- * candidate in that root. Shared payload inodes protect every linking candidate,
- * even through a canonical CAS path or external alias.
- *
- * Containment is lexical: this observation never walks symlinks. Uninspectable
- * processes contribute nothing, so managed pins and root recency remain the
- * protection for readers outside the kernel observations available here.
+ * Every root is presumed unmanaged until external session integration (#1985)
+ * proves otherwise; this is policy, not a scan-detected unmanaged session.
+ * Pins and lease-control markers do not establish that invariant.
  */
-export const observeEditorViewProcessCandidates = ({
+export const editorViewAutomaticEvictionEvidence = ({
+  editorRoot,
+}: {
+  readonly editorRoot: string
+}): EditorViewReaderEvidence => ({
+  state: 'unknown',
+  reasons: [
+    'unmanaged-editor-sessions',
+    `unmanaged-editor-sessions: ${editorRoot}; presumed unmanaged sessions, not scan-detected; automatic eviction disabled pending external session integration (#1985)`,
+  ],
+})
+
+/** Complete applicable migration evidence; held wins over incomplete evidence. */
+
+export const classifyEditorViewProcessCandidates = ({
   candidates,
 }: {
   readonly candidates: readonly EditorViewProcessCandidate[]
-}): ReadonlySet<string> => {
-  const held = new Set<string>()
-  const uid = process.getuid?.()
-  if (
-    candidates.length === 0 ||
-    uid === undefined ||
-    (process.platform !== 'linux' && process.platform !== 'darwin')
-  )
-    return held
+}): ReadonlyMap<string, EditorViewReaderEvidence> => {
+  const held = new Map<string, EditorViewReaderEvidence>()
+  let evidence = ''
+  const finish = (reasons: readonly string[]): ReadonlyMap<string, EditorViewReaderEvidence> =>
+    new Map<string, EditorViewReaderEvidence>(
+      candidates.map(({ key }) => [
+        key,
+        held.get(key) ?? { state: reasons.length === 0 ? 'clear' : 'unknown', reasons },
+      ]),
+    )
+  if (candidates.length === 0) return finish([])
 
   const heldCandidates = new Uint8Array(candidates.length)
-  const hasInodes = new Uint8Array(candidates.length)
   let remaining = candidates.length
-  let remainingWithInodes = 0
   const roots = new Map<string, ProcessCandidateGroup>()
   const snapshots = new Map<string, ProcessCandidateGroup>()
   // Keep each distinct inode once, with numeric candidate associations rather
   // than retaining duplicate inode strings or a per-generation reverse index.
-  // Index inode number first so irrelevant mappings need no device conversion.
+  // Index inode number first, then distinguish devices only for matching inodes.
   const inodes = new Map<string, Map<string, number[]>>()
   for (const [index, candidate] of candidates.entries()) {
     let root = roots.get(candidate.editorRoot)
@@ -303,10 +240,6 @@ export const observeEditorViewProcessCandidates = ({
     snapshot.indices.push(index)
     snapshot.remaining++
     for (const inode of candidate.linkedInodes) {
-      if (hasInodes[index] === 0) {
-        hasInodes[index] = 1
-        remainingWithInodes++
-      }
       const separator = inode.indexOf(':')
       const device = inode.slice(0, separator)
       const number = inode.slice(separator + 1)
@@ -334,8 +267,7 @@ export const observeEditorViewProcessCandidates = ({
       if (candidate === undefined) continue
       heldCandidates[index] = 1
       remaining--
-      if (hasInodes[index] === 1) remainingWithInodes--
-      held.add(candidate.key)
+      held.set(candidate.key, { state: 'held', reasons: [evidence] })
       const root = roots.get(candidate.editorRoot)
       if (root !== undefined && --root.remaining === 0) roots.delete(candidate.editorRoot)
       const snapshot = snapshots.get(candidate.snapshotRoot)
@@ -379,129 +311,403 @@ export const observeEditorViewProcessCandidates = ({
     }
   }
 
-  const devices = new Map<string, string>()
+  const reasons = scanEditorViewProcesses({
+    path: (path, reason) => {
+      evidence = reason
+      admitPath(path)
+    },
+    inode: (number, device, reason) => {
+      evidence = reason
+      holdInode({ number, device })
+    },
+  })
+  return finish(reasons)
+}
+
+/** Compatibility API: unknown is blocking, never an absent positive reference. */
+export const observeEditorViewProcessCandidates = (options: {
+  readonly candidates: readonly EditorViewProcessCandidate[]
+}): ReadonlySet<string> =>
+  new Set(
+    [...classifyEditorViewProcessCandidates(options)]
+      .filter(([, evidence]) => evidence.state !== 'clear')
+      .map(([key]) => key),
+  )
+
+type ProcessObserver = {
+  readonly path: (path: string, reason: string) => void
+  readonly inode: (number: string, device: string, reason: string) => void
+}
+
+const processIncarnation = (base: string): string => {
+  const stat = readFileSync(join(base, 'stat'), 'utf8')
+  const start = stat
+    .slice(stat.lastIndexOf(')') + 2)
+    .trim()
+    .split(/\s+/)[19]
+  if (start === undefined || /^\d+$/.test(start) === false)
+    throw new Error(`invalid process incarnation: ${base}/stat`)
+  return start
+}
+
+/**
+ * No namespace/cwd exclusion is sound without complete alias and outside-handle
+ * evidence. Thus any unobservable same-user process applies to every root.
+ */
+const scanEditorViewProcesses = (observer: ProcessObserver): readonly string[] => {
+  const reasons: string[] = []
+  const uid = process.getuid?.()
+  if (uid === undefined) return ['process-uid-unavailable']
   if (process.platform === 'linux') {
-    let pids: string[] = []
+    let pids: string[]
     try {
       pids = readdirSync('/proc')
-    } catch {}
+    } catch (error) {
+      return [`proc-enumeration: /proc: ${failureCode(error)}`]
+    }
     for (const pid of pids) {
-      if (/^[0-9]+$/.test(pid) === false) continue
+      if (/^\d+$/.test(pid) === false) continue
       const base = join('/proc', pid)
+      let incarnation: string
       try {
         if (lstatSync(base).uid !== uid) continue
-      } catch {
+        incarnation = processIncarnation(base)
+      } catch (error) {
+        reasons.push(`proc-identity: ${base}: ${failureCode(error)}`)
         continue
       }
-      try {
-        admitPath(readlinkSync(join(base, 'cwd')))
-      } catch {}
-      if (remaining === 0) return held
-      const fdDirectory = join(base, 'fd')
-      let descriptors: string[] = []
-      try {
-        descriptors = readdirSync(fdDirectory)
-      } catch {}
-      for (const descriptor of descriptors) {
-        const path = join(fdDirectory, descriptor)
+      const failures: { readonly path: string; readonly error: unknown }[] = []
+      const inspect = (path: string, read: () => void): void => {
         try {
-          const target = readlinkSync(path)
-          // Sockets, pipes and anonymous descriptors cannot link payload inodes.
-          if (target.startsWith('/') === false) continue
-          admitPath(target)
-          if (remaining === 0) return held
-          if (remainingWithInodes === 0) continue
-          // Inspect the descriptor, not its pathname: deleted files and external
-          // aliases still hold the same regular inode as a candidate payload.
-          const status = statSync(path, { bigint: true })
-          if (status.isFile() === true)
-            holdInode({ number: String(status.ino), device: String(status.dev) })
-          if (remaining === 0) return held
-        } catch {}
-      }
-      let maps = ''
-      try {
-        maps = readFileSync(join(base, 'maps'), 'utf8')
-      } catch {}
-      for (const line of maps.split('\n')) {
-        const match = /^\S+\s+\S+\s+\S+\s+([0-9a-f]+:[0-9a-f]+)\s+([0-9]+)\s*/.exec(line)
-        if (match === null || match[1] === undefined || match[2] === undefined) continue
-        const linked = remainingWithInodes === 0 ? undefined : inodes.get(match[2])
-        if (linked !== undefined) {
-          const encoded = match[1]
-          let device = devices.get(encoded)
-          if (device === undefined) {
-            const separator = encoded.indexOf(':')
-            device = String(
-              linuxDevice({
-                major: BigInt(`0x${encoded.slice(0, separator)}`),
-                minor: BigInt(`0x${encoded.slice(separator + 1)}`),
-              }),
-            )
-            devices.set(encoded, device)
-          }
-          holdInode({ number: match[2], device })
-          if (remaining === 0) return held
+          read()
+        } catch (error) {
+          failures.push({ path, error })
         }
-        // Anonymous mappings have no pathname; retain no irrelevant host paths.
-        if (line[match[0].length] === '/') admitPath(line.slice(match[0].length))
-        if (remaining === 0) return held
+      }
+      for (const entry of ['cwd', 'root', 'exe']) {
+        const path = join(base, entry)
+        inspect(path, () => observer.path(readlinkSync(path), `proc-reference: ${path}`))
+      }
+      const fdDirectory = join(base, 'fd')
+      inspect(fdDirectory, () => {
+        for (const descriptor of readdirSync(fdDirectory)) {
+          const path = join(fdDirectory, descriptor)
+          inspect(path, () => {
+            const target = readlinkSync(path)
+            observer.path(target, `proc-reference: ${path}`)
+            if (target.startsWith('/') === false) return
+            const status = statSync(path, { bigint: true })
+            if (status.isFile() === true)
+              observer.inode(String(status.ino), String(status.dev), `proc-inode: ${path}`)
+          })
+        }
+      })
+      const maps = join(base, 'maps')
+      inspect(maps, () => {
+        for (const line of readFileSync(maps, 'utf8').split('\n')) {
+          if (line.length === 0) continue
+          const match = /^\S+\s+\S+\s+\S+\s+([0-9a-f]+):([0-9a-f]+)\s+([0-9]+)\s*(.*)$/.exec(line)
+          if (match === null) throw new Error(`incomplete maps record: ${maps}`)
+          const [, major, minor, number, path] = match
+          if (major === undefined || minor === undefined || number === undefined) continue
+          observer.inode(
+            number,
+            String(
+              linuxDevice({
+                major: BigInt(`0x${major}`),
+                minor: BigInt(`0x${minor}`),
+              }),
+            ),
+            `proc-mapping: ${maps}`,
+          )
+          if (path?.startsWith('/') === true) observer.path(path, `proc-mapping: ${maps}`)
+        }
+      })
+      const cmdline = join(base, 'cmdline')
+      inspect(cmdline, () => {
+        for (const argument of readFileSync(cmdline, 'utf8').split('\0'))
+          if (argument.startsWith('/') === true) observer.path(argument, `proc-command: ${cmdline}`)
+      })
+      let exited = false
+      try {
+        if (processIncarnation(base) !== incarnation) {
+          exited = true
+          reasons.push(
+            `proc-incarnation-changed: ${base}; replacement process not completely observed`,
+          )
+        }
+      } catch (error) {
+        // A missing fd/cwd is not proof of exit. A missing incarnation is.
+        exited = vanished(error)
+        if (exited === false)
+          reasons.push(`proc-incarnation-unavailable: ${base}: ${failureCode(error)}`)
+      }
+      for (const failure of failures) {
+        if (exited === true && vanished(failure.error) === true) continue
+        reasons.push(
+          `proc-incomplete: ${failure.path}: ${failureCode(failure.error)}; reachability unknown`,
+        )
       }
     }
-  } else {
-    // Native lsof reports each kernel file's pathname and device/inode together.
-    // Do not stat its name: CAS descriptors can have another hardlink spelling,
-    // and deleted descriptors can have no surviving pathname at all.
-    const user = String(uid)
-    const result = spawnSync('/usr/sbin/lsof', ['-nP', '-FpuftDin0', '-u', user], {
-      encoding: 'utf8',
-      maxBuffer: 256 * 1024 * 1024,
-    })
-    let sameUser = false
-    let descriptor = ''
-    let type = ''
-    let device = ''
-    let inode = ''
-    let path = ''
-    const admitFile = (): void => {
-      if (
-        sameUser === false ||
-        descriptor.length === 0 ||
-        descriptor === 'rtd' ||
-        (type !== 'REG' && type !== 'DIR')
-      )
-        return
-      admitPath(path)
-      if (remaining === 0 || remainingWithInodes === 0 || type !== 'REG') return
-      const linked = inodes.get(inode)
-      if (linked === undefined || /^0x[0-9a-f]+$/i.test(device) === false) return
-      let decoded = devices.get(device)
-      if (decoded === undefined) {
-        decoded = String(BigInt(device))
-        devices.set(device, decoded)
-      }
-      holdInode({ number: inode, device: decoded })
-    }
-    for (let field of result.stdout?.split('\0') ?? []) {
-      // With NUL fields, lsof still separates process/file sets with a newline.
-      if (field.startsWith('\n') === true) field = field.slice(1)
-      const identifier = field[0]
-      if (identifier === 'p' || identifier === 'f') {
-        admitFile()
-        if (remaining === 0) return held
-        descriptor = identifier === 'f' ? field.slice(1) : ''
-        type = ''
-        device = ''
-        inode = ''
-        path = ''
-        if (identifier === 'p') sameUser = false
-      } else if (identifier === 'u') sameUser = field.slice(1) === user
-      else if (identifier === 't') type = field.slice(1)
-      else if (identifier === 'D') device = field.slice(1)
-      else if (identifier === 'i') inode = field.slice(1)
-      else if (identifier === 'n') path = field.slice(1)
-    }
-    admitFile()
+    return reasons
   }
-  return held
+  if (process.platform !== 'darwin') return [`unsupported-process-platform: ${process.platform}`]
+  const result = (() => {
+    try {
+      return spawnSync('/usr/sbin/lsof', ['-nP', '-FpuftDin0', '-u', String(uid)], {
+        encoding: 'utf8',
+        maxBuffer: 256 * 1024 * 1024,
+      })
+    } catch (error) {
+      reasons.push(`lsof-spawn: ${failureCode(error)}`)
+      return undefined
+    }
+  })()
+  if (result === undefined) return reasons
+  const stdout = result.stdout ?? ''
+  const stderr = result.stderr ?? ''
+  if (result.error !== undefined) reasons.push(`lsof-spawn: ${failureCode(result.error)}`)
+  if (result.signal !== null) reasons.push(`lsof-signal: ${result.signal}`)
+  // lsof documents 1 for an empty selection. Accept it only with truly empty
+  // output and no diagnostics; partial/nonempty output is not an empty scan.
+  const empty = result.status === 1 && stdout.length === 0 && stderr.length === 0
+  if (result.status !== 0 && empty === false) reasons.push(`lsof-status: ${result.status}`)
+  if (stderr.length !== 0) reasons.push(`lsof-diagnostics: ${stderr.trim()}`)
+  if (stdout.length !== 0 && stdout.endsWith('\0') === false && stdout.endsWith('\0\n') === false)
+    reasons.push('lsof-incomplete: unterminated field output')
+  if (stdout.length === 0 && result.status === 0)
+    reasons.push('lsof-incomplete: successful scan without any process records')
+  let sameUser = false
+  let userKnown = false
+  let processSeen = false
+  let descriptor = ''
+  let type = ''
+  let device = ''
+  let inode = ''
+  let path = ''
+  const admit = (): void => {
+    if (descriptor.length === 0) return
+    if (userKnown === false) {
+      reasons.push(`lsof-incomplete: missing process uid: ${descriptor}`)
+      return
+    }
+    if (sameUser === false) return
+    if (type.length === 0 || /unknown|UNKN|\?/.test(type) === true) {
+      reasons.push(`lsof-incomplete: missing/unknown file type: ${descriptor}`)
+      return
+    }
+    if (type !== 'REG' && type !== 'DIR') return
+    const reason = `lsof-reference: ${descriptor}: ${path}`
+    observer.path(path, reason)
+    if (type !== 'REG') return
+    if (/^0x[0-9a-f]+$/i.test(device) === false || /^\d+$/.test(inode) === false) {
+      reasons.push(`lsof-incomplete: missing device/inode: ${descriptor}`)
+      return
+    }
+    observer.inode(inode, String(BigInt(device)), reason)
+  }
+  for (let field of stdout.split('\0')) {
+    if (field.startsWith('\n') === true) field = field.slice(1)
+    const identifier = field[0]
+    if (identifier === 'p' || identifier === 'f') {
+      admit()
+      descriptor = identifier === 'f' ? field.slice(1) : ''
+      type = ''
+      device = ''
+      inode = ''
+      path = ''
+      if (identifier === 'p') {
+        processSeen = true
+        if (/^\d+$/.test(field.slice(1)) === false)
+          reasons.push('lsof-incomplete: invalid process id')
+        sameUser = false
+        userKnown = false
+      }
+    } else if (identifier === 'u') {
+      sameUser = field.slice(1) === String(uid)
+      userKnown = /^\d+$/.test(field.slice(1))
+    } else if (identifier === 't') type = field.slice(1)
+    else if (identifier === 'D') device = field.slice(1)
+    else if (identifier === 'i') inode = field.slice(1)
+    else if (identifier === 'n') path = field.slice(1)
+    else if (field.length !== 0) reasons.push(`lsof-incomplete: unexpected field ${identifier}`)
+  }
+  admit()
+  if (stdout.length !== 0 && processSeen === false)
+    reasons.push('lsof-incomplete: no process identity records')
+  return reasons
+}
+
+/**
+ * Read-only host measurement, intentionally separate from eviction policy.
+ * Run: bun packages/@overeng/buck2-tools/src/editor-view-readers.ts ROOT [ROOT...]
+ * No locks, markers, pins or payloads are created or changed.
+ */
+export const measureEditorViewReaders = async ({
+  editorRoots,
+}: {
+  readonly editorRoots: readonly string[]
+}): Promise<{
+  readonly automaticEviction: {
+    readonly eligibleRoots: number
+    readonly noAutomaticEvictionRoots: number
+    readonly presumedUnmanagedRoots: number
+  }
+  readonly roots: readonly {
+    readonly editorRoot: string
+    readonly policy: EditorViewReaderEvidence
+    readonly reasons: readonly string[]
+    readonly observed: EditorViewReaderEvidence
+    readonly effective: EditorViewReaderEvidence
+    readonly generationCounts: Readonly<Record<'clear' | 'held' | 'unknown', number>>
+    readonly leaseControlInodes: number
+    readonly leaseControlDirectoryInodes: number
+    readonly leaseControlMetadataBytes: number
+  }[]
+  readonly generations: readonly {
+    readonly editorRoot: string
+    readonly snapshotRoot: string
+    readonly legacy: EditorViewReaderEvidence
+    readonly lease: EditorViewReaderEvidence
+    readonly observed: EditorViewReaderEvidence
+    readonly effective: EditorViewReaderEvidence
+  }[]
+}> => {
+  // Keep native Bun FFI out of scanner-only imports and portable parser tests.
+  const { probeEditorViewLease } = await import('./editor-view-leases.ts')
+  const candidates: EditorViewProcessCandidate[] = []
+  const roots = editorRoots.map((input) => {
+    const editorRoot = resolve(input)
+    const reasons: string[] = []
+    let leaseControlInodes = 0
+    let leaseControlDirectoryInodes = 0
+    let leaseControlMetadataBytes = 0
+    const controls = join(editorRoot, '.leases')
+    let controlDirectoryObserved = false
+    try {
+      const directory = lstatSync(controls)
+      controlDirectoryObserved = true
+      if (directory.isDirectory() === false)
+        throw new Error(`lease controls are not a real directory: ${controls}`)
+      leaseControlDirectoryInodes++
+      leaseControlMetadataBytes += Math.max(directory.size, directory.blocks * 512)
+      for (const name of readdirSync(controls)) {
+        const status = lstatSync(join(controls, name))
+        if (status.isFile() === false)
+          throw new Error(`unsafe lease control: ${join(controls, name)}`)
+        leaseControlInodes++
+        leaseControlMetadataBytes += Math.max(status.size, status.blocks * 512)
+      }
+    } catch (error) {
+      if (controlDirectoryObserved === true || vanished(error) === false)
+        reasons.push(`lease-control-inventory: ${controls}: ${failureCode(error)}`)
+    }
+    try {
+      const store = join(editorRoot, '.store')
+      for (const name of readdirSync(store)) {
+        if (/^[A-Za-z0-9][A-Za-z0-9_-]{0,63}-[0-9a-f]{64}$/.test(name) === false) continue
+        const snapshotRoot = join(store, name)
+        if (lstatSync(snapshotRoot).isDirectory() === false) continue
+        const linkedInodes = new Set<string>()
+        const walk = (directory: string): void => {
+          for (const entry of readdirSync(directory)) {
+            const path = join(directory, entry)
+            const status = lstatSync(path, { bigint: true })
+            if (status.isDirectory() === true) walk(path)
+            else if (status.isFile() === true) linkedInodes.add(`${status.dev}:${status.ino}`)
+          }
+        }
+        try {
+          walk(snapshotRoot)
+        } catch (error) {
+          reasons.push(`generation-inventory: ${snapshotRoot}: ${failureCode(error)}`)
+        }
+        candidates.push({ key: snapshotRoot, editorRoot, snapshotRoot, linkedInodes })
+      }
+    } catch (error) {
+      reasons.push(`root-inventory: ${editorRoot}: ${failureCode(error)}`)
+    }
+    return {
+      editorRoot,
+      policy: editorViewAutomaticEvictionEvidence({ editorRoot }),
+      reasons,
+      leaseControlInodes,
+      leaseControlDirectoryInodes,
+      leaseControlMetadataBytes,
+    }
+  })
+  const classified = classifyEditorViewProcessCandidates({ candidates })
+  const generations = candidates.map(({ key, editorRoot, snapshotRoot }) => {
+    const root = roots.find((root) => root.editorRoot === editorRoot)
+    const legacy: EditorViewReaderEvidence = classified.get(key) ?? {
+      state: 'unknown',
+      reasons: ['missing-process-classification'],
+    }
+    // Diagnostic only: no CAS acquisition/creation. Retirement must repeat this
+    // under its owning CAS fence and retain EX through destructive operations.
+    const probe = probeEditorViewLease({ editorRoot, snapshot: snapshotRoot })
+    let lease: EditorViewReaderEvidence
+    try {
+      lease = { state: probe.state, reasons: [...probe.reasons] }
+    } finally {
+      probe.release()
+    }
+    const observed: EditorViewReaderEvidence = {
+      state:
+        legacy.state === 'held' || lease.state === 'held'
+          ? 'held'
+          : legacy.state === 'unknown' || lease.state === 'unknown' || root?.reasons.length !== 0
+            ? 'unknown'
+            : 'clear',
+      reasons: [
+        ...legacy.reasons.map((reason) => `legacy: ${reason}`),
+        ...lease.reasons.map((reason) => `lease: ${reason}`),
+        ...(root?.reasons ?? []),
+      ],
+    }
+    const effective: EditorViewReaderEvidence =
+      observed.state === 'held'
+        ? observed
+        : { state: 'unknown', reasons: [...observed.reasons, ...(root?.policy.reasons ?? [])] }
+    return { editorRoot, snapshotRoot, legacy, lease, observed, effective }
+  })
+  return {
+    automaticEviction: {
+      eligibleRoots: 0,
+      noAutomaticEvictionRoots: roots.length,
+      presumedUnmanagedRoots: roots.length,
+    },
+    roots: roots.map((root) => {
+      const generationCounts = { clear: 0, held: 0, unknown: 0 }
+      const reasons = [...root.reasons]
+      for (const generation of generations) {
+        if (generation.editorRoot !== root.editorRoot) continue
+        generationCounts[generation.observed.state]++
+        reasons.push(...generation.observed.reasons)
+      }
+      const observed: EditorViewReaderEvidence = {
+        state:
+          generationCounts.held > 0
+            ? 'held'
+            : generationCounts.unknown > 0 || root.reasons.length > 0
+              ? 'unknown'
+              : 'clear',
+        reasons: [...new Set(reasons)],
+      }
+      const effective: EditorViewReaderEvidence =
+        observed.state === 'held'
+          ? observed
+          : { state: 'unknown', reasons: [...observed.reasons, ...root.policy.reasons] }
+      return { ...root, observed, effective, generationCounts }
+    }),
+    generations,
+  }
+}
+
+if (import.meta.main === true) {
+  const editorRoots = process.argv.slice(2)
+  if (editorRoots.length === 0) {
+    console.error('Usage: bun editor-view-readers.ts EDITOR_ROOT [EDITOR_ROOT...] (read-only)')
+    process.exitCode = 2
+  } else console.log(JSON.stringify(await measureEditorViewReaders({ editorRoots }), undefined, 2))
 }
