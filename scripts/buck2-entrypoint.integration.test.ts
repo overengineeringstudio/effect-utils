@@ -227,6 +227,81 @@ afterEach(async () => {
 })
 
 describe('direct pinned Buck posture', () => {
+  it('preserves inherited stdio flags and complete large stderr after a launcher diagnostic', async () => {
+    const root = fixture()
+    const baseline = join(root, 'stdio-before.json')
+    const observed = join(root, 'stdio-after.json')
+    const childPath = join(root, 'native-stderr.ts')
+    const launcher = join(import.meta.dir, 'buck2-entrypoint.ts')
+    const nativeFlags = `
+import { dlopen } from 'bun:ffi'
+import { writeFileSync, writeSync } from 'node:fs'
+const libc = dlopen(process.platform === 'darwin' ? '/usr/lib/libSystem.B.dylib' : 'libc.so.6', {
+  fcntl: { args: ['i32', 'i32', 'i32'], returns: 'i32' },
+})
+const flags = () => [0, 1, 2].map((fd) => libc.symbols.fcntl(fd, 3, 0))
+`
+    const payloadSize = 2 * 1024 * 1024
+    writeFileSync(
+      childPath,
+      `#!${process.execPath}
+${nativeFlags}
+writeFileSync(${JSON.stringify(observed)}, JSON.stringify(flags()))
+const payload = Buffer.alloc(${payloadSize}, 'x')
+let offset = 0
+while (offset < payload.length) offset += writeSync(2, payload, offset, payload.length - offset)
+writeSync(2, '\\nlarge-stderr-complete\\n')
+`,
+      { mode: 0o700 },
+    )
+    // Establish genuinely blocking inherited descriptors independently of the
+    // test runner's stream implementation, then exec the real launcher.
+    const child = Bun.spawn(
+      [
+        process.execPath,
+        '-e',
+        `${nativeFlags}
+const nonblock = process.platform === 'darwin' ? 4 : 2048
+for (const [fd, value] of flags().entries()) {
+  if (value < 0 || libc.symbols.fcntl(fd, 4, value & ~nonblock) !== 0) process.exit(70)
+}
+writeFileSync(${JSON.stringify(baseline)}, JSON.stringify(flags()))
+process.execve(process.execPath, [process.execPath, ${JSON.stringify(launcher)}, ${JSON.stringify(childPath)}, 'build', '//:app'], process.env)
+`,
+      ],
+      {
+        cwd: root,
+        env: { PATH: process.env['PATH'], HOME: root, XDG_CACHE_HOME: join(root, 'cache') },
+        detached: true,
+        stdin: 'ignore',
+        stdout: 'pipe',
+        stderr: 'pipe',
+      },
+    )
+    launchProcesses.add(child)
+    const reader = child.stderr.getReader()
+    const chunks: Uint8Array[] = []
+    try {
+      for (;;) {
+        const { done, value } = await reader.read()
+        if (done === true) break
+        chunks.push(value)
+        // Deliberately apply backpressure rather than buffering the entire
+        // stream in a fast Response reader.
+        await Bun.sleep(5)
+      }
+    } finally {
+      reader.releaseLock()
+    }
+    const stderr = Buffer.concat(chunks).toString()
+    expect(stderr).toContain('warning: Buck2 REAPI probe failed:')
+    expect(JSON.parse(readFileSync(observed, 'utf8'))).toEqual(
+      JSON.parse(readFileSync(baseline, 'utf8')),
+    )
+    expect(await child.exited).toBe(0)
+    expect(stderr.endsWith(`${'x'.repeat(payloadSize)}\nlarge-stderr-complete\n`)).toBe(true)
+  }, 20000)
+
   for (const scenario of ['healthy', 'retry-success', 'both-fail'] as const) {
     it(`records per-invocation cache admission for ${scenario}`, async () => {
       let requests = 0

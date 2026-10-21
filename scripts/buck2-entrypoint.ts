@@ -1,4 +1,5 @@
 #!/usr/bin/env -S bun
+import { dlopen } from 'bun:ffi'
 import { spawnSync } from 'node:child_process'
 import { createHash, randomUUID } from 'node:crypto'
 import {
@@ -10,6 +11,7 @@ import {
   renameSync,
   rmSync,
   writeFileSync,
+  writeSync,
 } from 'node:fs'
 import { homedir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
@@ -165,9 +167,8 @@ const warning = ({
   readonly env: Readonly<Record<string, string | undefined>>
 }): void => {
   failedOpen = true
-  process.stderr.write(`warning: Buck2 ${message}\n`)
-  if (env['GITHUB_ACTIONS'] === 'true')
-    process.stderr.write(`::warning title=Buck2 cache::${message}\n`)
+  writeSync(2, `warning: Buck2 ${message}\n`)
+  if (env['GITHUB_ACTIONS'] === 'true') writeSync(2, `::warning title=Buck2 cache::${message}\n`)
 }
 
 /** Admission probe whose deadline a test can control through `probeDeadlineSignal`. */
@@ -359,11 +360,13 @@ export const directBuckArguments = async ({
                   deadlineMs,
                   deadlineSignal: probeDeadlineSignal?.('reapi'),
                   onFailure: ({ errorClass, phase, elapsedMs, deadlineMs: probeDeadlineMs }) =>
-                    process.stderr.write(
+                    writeSync(
+                      2,
                       `warning: Buck2 REAPI probe failed: class=${errorClass} phase=${phase} elapsed_ms=${elapsedMs} deadline_ms=${probeDeadlineMs}\n`,
                     ),
                   onConnectionEvent: ({ event, elapsedMs, address, family }) =>
-                    process.stderr.write(
+                    writeSync(
+                      2,
                       `Buck2 REAPI probe: event=${event} elapsed_ms=${elapsedMs} address=${address ?? 'unavailable'} family=${family ?? 'unavailable'}\n`,
                     ),
                 }),
@@ -378,7 +381,7 @@ export const directBuckArguments = async ({
         mode: 0o600,
       })
     } catch {
-      process.stderr.write('warning: Buck2 admission evidence could not be persisted\n')
+      writeSync(2, 'warning: Buck2 admission evidence could not be persisted\n')
     }
   }
   if (remoteAvailable === false) {
@@ -591,7 +594,8 @@ export const reconcileGateDaemon = ({
   const invocation = resolveGateInvocation({ args, env, cwd: process.cwd() })
   if (invocation === undefined) {
     if (phase === 'start')
-      process.stderr.write(
+      writeSync(
+        2,
         'warning: Buck2 gate retained daemon: native isolation could not be determined safely\n',
       )
     return
@@ -601,7 +605,7 @@ export const reconcileGateDaemon = ({
   const globalArgs = ['--isolation-dir', isolation]
   const options = { cwd: root, env, encoding: 'utf8' as const, timeout: 30000 }
   const warn = (reason: string): void => {
-    process.stderr.write(`warning: Buck2 gate ${phase} retained ${isolation}: ${reason}\n`)
+    writeSync(2, `warning: Buck2 gate ${phase} retained ${isolation}: ${reason}\n`)
   }
   const result = spawnSync(native, [...globalArgs, 'status'], options)
   if (result.error !== undefined || result.status !== 0) {
@@ -654,7 +658,8 @@ export const reconcileGateDaemon = ({
       return
     }
     if (decision === 'keep-active') {
-      process.stderr.write(
+      writeSync(
+        2,
         `warning: Buck2 gate accounting: reusing active daemon in foreign cgroup ${foreign.replaceAll('\n', '; ')}\n`,
       )
       return
@@ -671,6 +676,13 @@ export const reconcileGateDaemon = ({
 
 if (import.meta.main === true) {
   try {
+    // Loading libc needs no generated packages or editor materialization. The
+    // watcher already uses this Bun FFI ABI at launcher bootstrap.
+    const libc = dlopen(
+      process.platform === 'darwin' ? '/usr/lib/libSystem.B.dylib' : 'libc.so.6',
+      { fcntl: { args: ['i32', 'i32', 'i32'], returns: 'i32' } },
+    )
+    const stdioFlags = [0, 1, 2].map((fd) => libc.symbols.fcntl(fd, 3, 0))
     const native = process.argv[2]
     if (native === undefined) throw new Error('expected pinned Buck binary')
     if (process.argv[3] === '--gate-cleanup' || process.argv[3] === '--gate-admit') {
@@ -746,9 +758,17 @@ if (import.meta.main === true) {
     }
     if (process.execve === undefined)
       throw new Error('pinned Buck launcher requires a runtime with process.execve')
+    // Bun's process.std{in,out,err} streams can set O_NONBLOCK on the shared
+    // open file description. Preserve the caller's flags, not an assumed
+    // blocking default. Closed inherited descriptors have no flags to restore.
+    for (const [fd, flags] of stdioFlags.entries()) {
+      if (flags >= 0 && libc.symbols.fcntl(fd, 4, flags) !== 0)
+        throw new Error(`Buck2 launcher: could not restore inherited fd ${fd} status flags`)
+    }
+    libc.close()
     process.execve(native, [native, ...args], process.env)
   } catch (error) {
-    process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`)
+    writeSync(2, `${error instanceof Error ? error.message : String(error)}\n`)
     process.exitCode = 1
   }
 }

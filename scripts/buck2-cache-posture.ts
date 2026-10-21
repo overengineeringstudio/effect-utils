@@ -1,6 +1,14 @@
 #!/usr/bin/env -S bun
 import { randomUUID } from 'node:crypto'
-import { existsSync, lstatSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
+import {
+  existsSync,
+  lstatSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  writeFileSync,
+  writeSync,
+} from 'node:fs'
 import { connect, type ClientHttp2Stream } from 'node:http2'
 import { BlockList, isIP } from 'node:net'
 import { resolve } from 'node:path'
@@ -456,6 +464,6 @@ if (import.meta.main === true)
     const repoRoot = process.argv[2] ?? fail('expected repository root argument')
     reconcileStandaloneCachePosture({ repoRoot, env: process.env })
   } catch (error) {
-    process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`)
+    writeSync(2, `${error instanceof Error ? error.message : String(error)}\n`)
     process.exitCode = 1
   }
