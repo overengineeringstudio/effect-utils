@@ -485,18 +485,17 @@ describe('Buck watch reconciliation', () => {
       let publisherCompleted = false
       let running: Promise<void> | undefined
       try {
-        await writeFile(release, '')
+        await runCommand({ command: 'mkfifo', args: [release], cwd: root })
         await writeFile(
           publisher,
           [
-            "import { watch } from 'node:fs'",
-            'const released = Promise.withResolvers()',
-            `const watcher = watch(${JSON.stringify(release)}, () => released.resolve())`,
-            `process.stderr.write('publisher startup\\n')`,
-            `process.stderr.write(${JSON.stringify(diagnostic.slice(0, 12))})`,
-            `setImmediate(() => process.stderr.write(${JSON.stringify(diagnostic.slice(12))}))`,
-            'await released.promise',
-            'watcher.close()',
+            "import { readFileSync, writeSync } from 'node:fs'",
+            // A blocking FIFO read keeps the publisher alive even when the runtime
+            // does not keep fs.watch or an unresolved top-level await alive.
+            `writeSync(2, 'publisher startup\\n')`,
+            `writeSync(2, ${JSON.stringify(diagnostic.slice(0, 12))})`,
+            `writeSync(2, ${JSON.stringify(diagnostic.slice(12))})`,
+            `readFileSync(${JSON.stringify(release)})`,
             `process.stderr.write('[editor-view-timing] {"phase":"editor-view","packagePath":"packages/app","durationMs":12}\\n')`,
           ].join('\n'),
         )
@@ -547,12 +546,7 @@ describe('Buck watch reconciliation', () => {
             },
           },
         })
-        await Promise.race([
-          observed.promise,
-          running.then(() => {
-            throw new Error('publisher completed before emitting its budget diagnostic')
-          }),
-        ])
+        await observed.promise
         expect(publisherCompleted).toBe(false)
         expect(stderr.mock.calls.filter(([line]) => line === diagnostic)).toHaveLength(1)
         await writeFile(release, 'release')
