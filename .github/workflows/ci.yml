@@ -3636,6 +3636,7 @@ jobs:
           GH_TOKEN: ${{ steps.published-ref-token.outputs.token }}
         run: |
           set -euo pipefail
+          source genie/ci-workflow/published-ref-decide.sh
           gh auth setup-git
           git config --local --unset-all http.https://github.com/.extraheader || test "$?" = 5
           if [ "$(git rev-parse --is-shallow-repository)" = true ]; then
@@ -3651,28 +3652,37 @@ jobs:
               if [ "$result" -ne 2 ]; then return "$result"; fi
             fi
           }
-          old="$(fetch_published)"
-          if [ -n "$old" ]; then
-            if git merge-base --is-ancestor "$GITHUB_SHA" "$old"; then
-              echo "published $old -> $old (already at or ahead of $GITHUB_SHA)" >> "$GITHUB_STEP_SUMMARY"
-              exit 0
-            fi
-            if ! git merge-base --is-ancestor "$old" "$GITHUB_SHA"; then
-              echo "::error::published $old is not an ancestor of $GITHUB_SHA; refusing non-fast-forward update"
-              exit 1
-            fi
+          for attempt in 1 2 3; do
+            tip="$(fetch_published)"
+            case "$(decide "$tip" "$GITHUB_SHA")" in
+              noop)
+                echo "published $tip -> $tip (already at or ahead of $GITHUB_SHA)" >> "$GITHUB_STEP_SUMMARY"
+                exit 0
+                ;;
+              create|push)
+                if git push origin "$GITHUB_SHA:refs/heads/published"; then
+                  echo "published ${tip:-<absent>} -> $GITHUB_SHA" >> "$GITHUB_STEP_SUMMARY"
+                  exit 0
+                fi
+                echo "::notice::published push attempt $attempt rejected; refetching before retry"
+                ;;
+              diverged)
+                echo "::error::published $tip is not an ancestor of $GITHUB_SHA; refusing non-fast-forward update"
+                exit 1
+                ;;
+              *)
+                echo "::error::Unable to classify published ancestry"
+                exit 1
+                ;;
+            esac
+          done
+          tip="$(fetch_published)"
+          if [ "$(decide "$tip" "$GITHUB_SHA")" = noop ]; then
+            echo "published $tip -> $tip (concurrent run already advanced past $GITHUB_SHA)" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
           fi
-          if git push origin "$GITHUB_SHA:refs/heads/published"; then
-            echo "published ${old:-<absent>} -> $GITHUB_SHA" >> "$GITHUB_STEP_SUMMARY"
-          else
-            current="$(fetch_published)"
-            if [ -n "$current" ] && git merge-base --is-ancestor "$GITHUB_SHA" "$current"; then
-              echo "published ${old:-<absent>} -> $current (concurrent run already advanced past $GITHUB_SHA)" >> "$GITHUB_STEP_SUMMARY"
-            else
-              echo "::error::published push rejected and remote is not a descendant of $GITHUB_SHA"
-              exit 1
-            fi
-          fi
+          echo "::error::Failed to advance published to $GITHUB_SHA after 3 push attempts"
+          exit 1
       - id: publisher-app-config
         name: Check publisher GitHub App configuration
         if: steps.product-publication.outputs.changed == 'true'

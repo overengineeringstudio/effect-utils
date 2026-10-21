@@ -917,9 +917,9 @@ describe('published consumer ref', () => {
     ])
     const advance = steps.find((step) => step.id === 'advance-published-ref')!
     expect(advance.env?.GH_TOKEN).toBe('${{ steps.published-ref-token.outputs.token }}')
-    expect(advance.run).toContain('git merge-base --is-ancestor "$old" "$GITHUB_SHA"')
-    expect(advance.run).toContain('git merge-base --is-ancestor "$GITHUB_SHA" "$old"')
-    expect(advance.run).toContain('git merge-base --is-ancestor "$GITHUB_SHA" "$current"')
+    expect(advance.run).toContain('source genie/ci-workflow/published-ref-decide.sh')
+    expect(advance.run).toContain('for attempt in 1 2 3; do')
+    expect(advance.run).toContain('case "$(decide "$tip" "$GITHUB_SHA")" in')
     expect(advance.run).toContain('git push origin "$GITHUB_SHA:refs/heads/published"')
     expect(advance.run).not.toContain('--force')
     expect(advance.run).toContain('$GITHUB_STEP_SUMMARY')
