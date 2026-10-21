@@ -102,10 +102,12 @@ grep -F 'CACHIX_AUTH_TOKEN: ${{ secrets.CACHIX_AUTH_TOKEN }}' "$workflow" >/dev/
 publish_job="$(sed -n '/^  publish-products:/,/^  [a-z][a-z0-9-]*:$/p' "$workflow")"
 grep -F 'uses: actions/create-github-app-token@' <<<"$publish_job" >/dev/null
 grep -F 'private-key: ${{ secrets.NIX_PUBLISHER_GITHUB_APP_PRIVATE_KEY }}' <<<"$publish_job" >/dev/null
-# Inspect only workflow/job permissions maps in the generated block-style YAML,
-# not permission-contents inputs passed to actions/create-github-app-token.
+# Inspect only workflow/job permissions maps, not App-token action inputs.
+# Fail closed on non-block forms (including write-all and flow maps), so a
+# generated YAML formatting change cannot silently bypass the scope checks.
 if awk '
   /^[^[:space:]#]/ { workflow_permissions = ($0 ~ /^permissions:/) }
+  workflow_permissions && /^permissions:/ && !/^permissions:[[:space:]]*(#.*)?$/ { found = 1 }
   /^  [a-z][a-z0-9-]*:/ {
     publish_job = ($0 ~ /^  publish-products:/)
     job_permissions = 0
@@ -113,11 +115,12 @@ if awk '
   publish_job && /^    [a-zA-Z-]+:/ {
     job_permissions = ($0 ~ /^    permissions:/)
   }
+  job_permissions && /^    permissions:/ && !/^    permissions:[[:space:]]*(#.*)?$/ { found = 1 }
   workflow_permissions && /^  (contents|pull-requests):[[:space:]]*write([[:space:]]|$)/ { found = 1 }
   job_permissions && /^      (contents|pull-requests):[[:space:]]*write([[:space:]]|$)/ { found = 1 }
   END { exit !found }
 ' "$workflow"; then
-  echo "buck2-cache-products-test: publish-products must not grant contents/pull-requests write scopes to GITHUB_TOKEN" >&2
+  echo "buck2-cache-products-test: publish-products must use block permissions without contents/pull-requests write scopes for GITHUB_TOKEN" >&2
   exit 1
 fi
 if [ "$(grep -c 'NIX_PUBLISHER_GITHUB_APP_PRIVATE_KEY' <<<"$publish_job")" -ne 3 ]; then
