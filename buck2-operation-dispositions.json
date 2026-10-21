@@ -81,9 +81,11 @@
       "operation": "publish-products"
     },
     {
+      "disposition": "outside-by-policy:bootstrap-integration",
       "operation": "consumer-smoke"
     },
     {
+      "disposition": "outside-by-policy:live-publication",
       "operation": "promote-published"
     },
     {
