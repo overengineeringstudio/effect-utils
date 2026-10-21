@@ -222,11 +222,11 @@ infer deployment time: stamp producers own those decisions.
 The `CLIStamp` adapter accepts the existing local/Nix transport without
 changing its established language-independent wire behavior:
 
-| Transport | Machine output | Display time |
-| --------- | -------------- | ------------ |
-| local | `baseVersion+local.rev[.dirty]` | run age, or committed age when supplied |
-| nix | `version+rev[-dirty]` | build age when supplied, otherwise commit age |
-| no valid stamp | `baseVersion` | no invented age |
+| Transport      | Machine output                  | Display time                                  |
+| -------------- | ------------------------------- | --------------------------------------------- |
+| local          | `baseVersion+local.rev[.dirty]` | run age, or committed age when supplied       |
+| nix            | `version+rev[-dirty]`           | build age when supplied, otherwise commit age |
+| no valid stamp | `baseVersion`                   | no invented age                               |
 
 The adapter retains the supplied CLI revision rather than truncating it and
 does not duplicate an existing Nix `-dirty` suffix. Embedded Nix metadata wins
@@ -253,7 +253,6 @@ existing TypeScript formatter; portable goldens do not pin a host calendar day.
 Run `swift test --package-path swift/OverengKit` on macOS or
 `bash swift/OverengKit/test.sh ios 'platform=iOS Simulator,id=<device-UDID>'`
 on an available iOS simulator. Both execute the same bundled corpus.
-
 
 ## Modality Rules
 

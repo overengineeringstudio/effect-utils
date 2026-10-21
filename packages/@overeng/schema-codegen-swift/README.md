@@ -17,7 +17,8 @@ const files = generateSwift({
   options: {
     filename: 'Message.generated.swift',
     moduleName: 'Messages',
-    header: 'Inputs: contracts.ts; schema-codegen{,-swift}/src. Regenerate: devenv tasks run genie:run',
+    header:
+      'Inputs: contracts.ts; schema-codegen{,-swift}/src. Regenerate: devenv tasks run genie:run',
   },
 })
 ```
@@ -84,7 +85,8 @@ export default swiftFile({
   schemas,
   options: {
     filename: 'Message.generated.swift',
-    header: 'Inputs: contracts.ts; pinned schema-codegen compiler/emitter. Regenerate: devenv tasks run genie:run',
+    header:
+      'Inputs: contracts.ts; pinned schema-codegen compiler/emitter. Regenerate: devenv tasks run genie:run',
   },
 })
 ```

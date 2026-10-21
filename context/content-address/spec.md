@@ -105,7 +105,6 @@ For an iOS simulator, use
 `bash swift/OverengKit/test.sh ios 'platform=iOS Simulator,id=<device-UDID>'`;
 the same XCTest target and bundled corpus run on both platforms.
 
-
 ### Byte engine selection
 
 The synchronous descriptor/hash helper signatures remain unchanged. Pure top-level helpers use the JavaScript implementation. Effect store writes and verification honor an optional `ContentAddressEngine` service; absent a layer, they retain the existing JavaScript behavior.
