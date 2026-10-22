@@ -29,6 +29,7 @@ import {
   standaloneCachePostureConfig,
   withoutManagedBlock,
 } from './buck2-cache-posture.ts'
+import { recordCacheEvidenceRedaction } from './buck2-evidence-redaction.ts'
 import {
   probeWatchman,
   reconcileFileWatcher,
@@ -999,6 +1000,7 @@ export const nativeBuildIdArguments = ({
   }
   // Leave malformed caller flags to native clap; never replace or duplicate them.
   if (supplied === true && (suppliedPath === undefined || suppliedPath === '')) return [...args]
+  recordCacheEvidenceRedaction({ env, cwd })
   const path =
     suppliedPath === undefined
       ? resolve(cwd, `${evidencePath}.native-build-ids`, `${buildId}.buck-trace-id`)

@@ -194,8 +194,11 @@ process.exit(0);
       })
       const writerOutput = writer.stdout.getReader()
       let writerText = ''
-      while (writerText.includes('overlay') === false)
-        writerText += new TextDecoder().decode((await writerOutput.read()).value)
+      while (writerText.includes('overlay') === false) {
+        const chunk = await writerOutput.read()
+        expect(chunk.done, 'writer exited before overlay barrier').toBe(false)
+        writerText += new TextDecoder().decode(chunk.value)
+      }
       const writerOverlay = readFileSync(overlay, 'utf8')
       reader = Bun.spawn([process.execPath, worker, 'reader'], {
         stdin: 'pipe',
@@ -207,8 +210,11 @@ process.exit(0);
       // Reader admission has begun, but cannot change the overlay while writer holds the lock.
       expect(readFileSync(overlay, 'utf8')).toBe(writerOverlay)
       writer.stdin.write('initialize\n')
-      while (writerText.includes('admitted') === false)
-        writerText += new TextDecoder().decode((await writerOutput.read()).value)
+      while (writerText.includes('admitted') === false) {
+        const chunk = await writerOutput.read()
+        expect(chunk.done, 'writer exited before recording admission').toBe(false)
+        writerText += new TextDecoder().decode(chunk.value)
+      }
       // The daemon is idle here: the writer's PID reservation protects the pre-exec gap.
       expect(await reader.exited).toBe(1)
       expect(await new Response(reader.stderr).text()).toContain('concurrent launcher')

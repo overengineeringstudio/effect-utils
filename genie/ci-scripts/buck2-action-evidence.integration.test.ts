@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test'
 import { createHash } from 'node:crypto'
-import { mkdir, mkdtemp, rm, symlink, utimes } from 'node:fs/promises'
+import { mkdir, mkdtemp, rm, stat, symlink, utimes } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { gunzipSync } from 'node:zlib'
@@ -98,7 +98,7 @@ const fixtureEnv = {
 }
 
 describe('complete normalized action artifact CLI', () => {
-  it('retains native upload failures across finalization without leaking planted credentials anywhere', async () => {
+  it('retains native upload failures across credential-free collector steps without leaking credentials', async () => {
     const directory = await mkdtemp(join(tmpdir(), 'buck-upload-errors-'))
     try {
       const secret = 'planted-upload-auth-8a12c57f'
@@ -112,6 +112,28 @@ describe('complete normalized action artifact CLI', () => {
         BUCK2_PRIVATE_CACHE_WRITE_BASIC_AUTH: `${secret}-private`,
         CUSTOM_CACHE_AUTH: `${secret}-custom`,
         GITHUB_STEP_SUMMARY: stepSummary,
+      }
+      const producer = Bun.spawn([
+        process.execPath,
+        '--eval',
+        `import { recordCacheEvidenceRedaction } from ${JSON.stringify(new URL('../../scripts/buck2-evidence-redaction.ts', import.meta.url).pathname)}; recordCacheEvidenceRedaction({ env: process.env })`,
+      ], {
+        env: { ...env, CI_BUCK2_CACHE_EVIDENCE_PATH: output },
+        stdout: 'pipe',
+        stderr: 'pipe',
+      })
+      const producerOutput = await Promise.all([
+        new Response(producer.stdout).text(),
+        new Response(producer.stderr).text(),
+      ])
+      expect(await producer.exited).toBe(0)
+      const privateContext = `${output}.redaction-context.jsonl`
+      expect((await stat(privateContext)).mode & 0o777).toBe(0o600)
+      const collectorEnv = {
+        ...env,
+        BUCK2_CACHE_WRITE_BASIC_AUTH: undefined,
+        BUCK2_PRIVATE_CACHE_WRITE_BASIC_AUTH: undefined,
+        CUSTOM_CACHE_AUTH: undefined,
       }
       const native = nativeLog('upload-failure').trim().split('\n')
       const failedUpload = (id: number, error: string, code?: string) =>
@@ -143,13 +165,13 @@ describe('complete normalized action artifact CLI', () => {
           '',
         ].join('\n'),
       )
-      const transcripts: string[] = []
+      const transcripts: string[] = [...producerOutput]
       for (const args of [
         ['--events', events, '--context', 'populate', '--fresh-root'],
         ['--finalize'],
       ]) {
         const child = Bun.spawn([process.execPath, collector, '--output', output, ...args], {
-          env,
+          env: collectorEnv,
           stdout: 'pipe',
           stderr: 'pipe',
         })
@@ -160,6 +182,7 @@ describe('complete normalized action artifact CLI', () => {
         ])
         transcripts.push(stdout, stderr)
         expect(exit).toBe(0)
+        expect(await Bun.file(privateContext).exists()).toBe(args.includes('--finalize') === false)
       }
       const summaryText = await Bun.file(output).text()
       const raw = gunzipSync(
@@ -179,6 +202,7 @@ describe('complete normalized action artifact CLI', () => {
       const allOutput = [
         summaryText,
         raw,
+        Buffer.from(await Bun.file(join(directory, actionsArtifactName)).arrayBuffer()).toString('latin1'),
         await Bun.file(stepSummary).text(),
         ...transcripts,
       ].join('\n')

@@ -479,11 +479,25 @@ an exhaustive failure list. Absence means no diagnostic was collected, including
 retained evidence produced before native upload diagnostics were collected.
 
 Diagnostic strings are sanitized before retention and when decoding retained
-evidence: authorization/API-key/token/password assignments, standalone
-Basic/Bearer credentials, and nonempty configured auth/token/secret/password/
-credential/API-key environment values become `[REDACTED]`. Each sanitized text
-or code is capped at 4096 characters after redaction. Native file/tree digests
-and other upload payloads are not projected.
+evidence: URL userinfo (including percent-encoded credentials), authorization/
+API-key/token/password assignments, standalone Basic/Bearer credentials, and
+nonempty configured auth/token/secret/password/credential/API-key environment
+values become `[REDACTED]`. URL userinfo redaction does not depend on credentials
+being present in the collector environment. Each sanitized text or code is
+capped at 4096 characters after redaction. Native file/tree digests and other
+upload payloads are not projected.
+
+Before admitted native launch, the writer appends its effective
+`BUCK2_CACHE_WRITE_BASIC_AUTH` and `BUCK2_PRIVATE_CACHE_WRITE_BASIC_AUTH` values
+in a single append write to `${CI_BUCK2_CACHE_EVIDENCE_PATH}.redaction-context.jsonl`.
+This is private projection context, not an artifact: a current-user-owned regular
+file with mode `0600`, one link, and no symlink. The collector reads and validates
+it before writing any public output, fails closed on unsafe or malformed context,
+and uses its exact values even when collection runs in a later credential-free
+step. Append collection also sanitizes retained diagnostics. Successful artifact
+and summary finalization removes the private context, including when evidence is
+incomplete; operational failures retain it for retry. Artifact uploads name only
+the exact compact evidence and compressed actions paths, never a sidecar glob.
 
 The projector emits only allowlisted labels, configuration names, native digest
 strings, enum numbers, times, run identity, and sanitized bounded upload

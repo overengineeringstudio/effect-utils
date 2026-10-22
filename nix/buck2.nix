@@ -52,6 +52,7 @@ let
       ../scripts/buck2-entrypoint.ts
       ../scripts/buck2-cache-posture.ts
       ../scripts/buck2-file-watcher.ts
+      ../scripts/buck2-evidence-redaction.ts
       ../scripts/buck2-stdio.c
       ../scripts/buck2-entrypoint.sh
     ];
@@ -82,6 +83,7 @@ pkgs.buck2.overrideAttrs (oldAttrs: {
     cp ${launcherSource}/buck2-entrypoint.ts "$out/libexec/buck2-entrypoint.ts"
     cp ${launcherSource}/buck2-cache-posture.ts "$out/libexec/buck2-cache-posture.ts"
     cp ${launcherSource}/buck2-file-watcher.ts "$out/libexec/buck2-file-watcher.ts"
+    cp ${launcherSource}/buck2-evidence-redaction.ts "$out/libexec/buck2-evidence-redaction.ts"
     ${pkgs.stdenv.cc}/bin/cc ${
       if pkgs.stdenv.hostPlatform.isDarwin then "-dynamiclib" else "-shared -fPIC"
     } \
@@ -96,7 +98,7 @@ pkgs.buck2.overrideAttrs (oldAttrs: {
         --define "BUCK2_STDIO_LIBRARY=\"$out/libexec/libbuck2-stdio${pkgs.stdenv.hostPlatform.extensions.sharedLibrary}\"" \
         --outfile "$out/libexec/buck2-entrypoint"
     )
-    rm "$out/libexec/buck2-entrypoint.ts" "$out/libexec/buck2-cache-posture.ts" "$out/libexec/buck2-file-watcher.ts"
+    rm "$out/libexec/buck2-entrypoint.ts" "$out/libexec/buck2-cache-posture.ts" "$out/libexec/buck2-file-watcher.ts" "$out/libexec/buck2-evidence-redaction.ts"
     substitute ${launcherSource}/buck2-entrypoint.sh "$out/bin/buck2" \
       --replace-fail '@shell@' '${pkgs.runtimeShell}' \
       --replace-fail '@native@' "$out/libexec/buck2" \

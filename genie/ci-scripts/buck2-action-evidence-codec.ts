@@ -105,10 +105,12 @@ const outcome = (value: unknown): CacheOutcome => {
 /** Native RPC diagnostics can echo headers and configured credentials. Redact before retention. */
 export const createUploadDiagnosticSanitizer = (
   env: Readonly<Record<string, string | undefined>> = process.env,
+  redactionValues: readonly string[] = [],
 ): ((value: string) => string) => {
   const secrets = [
-    ...new Set(
-      Object.entries(env)
+    ...new Set([
+      ...redactionValues,
+      ...Object.entries(env)
         .filter(
           ([key, value]) =>
             /auth|token|secret|password|credential|api[_-]?key/i.test(key) === true &&
@@ -116,12 +118,16 @@ export const createUploadDiagnosticSanitizer = (
             value.length > 0,
         )
         .flatMap(([, value]) => (value === undefined ? [] : [value])),
-    ),
+    ]),
   ].toSorted((a, b) => b.length - a.length)
   return (value) => {
     let result = value
     for (const secret of secrets) result = result.replaceAll(secret, '[REDACTED]')
     return result
+      .replace(
+        /(\b[a-z][a-z0-9+.-]*:\/\/)[^\s/?#<>"]*@/gi,
+        '$1[REDACTED]@',
+      )
       .replace(
         /\b(Bearer|Basic)\s+(\[REDACTED\]|"[^"]*"|'[^']*'|[^\s"',;{}()[\]<>]+)/gi,
         '$1 [REDACTED]',

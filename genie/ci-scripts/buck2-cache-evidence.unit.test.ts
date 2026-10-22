@@ -930,6 +930,32 @@ describe('native Buck cache evidence projection', () => {
     }
   })
 
+  it('redacts URL userinfo without configured credentials and preserves noncredential URLs', () => {
+    const sanitize = createUploadDiagnosticSanitizer({})
+    for (const userinfo of [
+      'user:password',
+      'user%40example:pass%3Aword%2Fmore%3F%23',
+      ':password',
+      'user:',
+      'opaque-token',
+      'user:p@ssword',
+      "user:p'ass!$&(),;=word",
+    ]) {
+      for (const scheme of ['https', 'grpc', 'custom+rpc']) {
+        const message = `RPC failed at ${scheme}://${userinfo}@cache.example:443/path?q=1`
+        const result = sanitize(message)
+        expect(result).toBe(`RPC failed at ${scheme}://[REDACTED]@cache.example:443/path?q=1`)
+        expect(sanitize(result)).toBe(result)
+        expect(result).not.toContain(userinfo)
+      }
+    }
+    const ordinary = 'https://cache.example/path?email=user@example.com'
+    expect(sanitize(ordinary)).toBe(ordinary)
+    expect(sanitize(`https://${'x'.repeat(5000)}:password@cache.example`)).toBe(
+      'https://[REDACTED]@cache.example',
+    )
+  })
+
   it('retains each failed native cache upload, not ReUpload metrics or duplicate ends', () => {
     const rows: ActionRecord[] = []
     const projector = createCacheEvidenceProjector({ onAction: (row) => rows.push(row) })
