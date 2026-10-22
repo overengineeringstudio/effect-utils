@@ -3,6 +3,7 @@ import { expect, test } from 'bun:test'
 import ciWorkflow from '../../.github/workflows/ci.yml.genie.ts'
 import empiricalWorkflow from '../../.github/workflows/empirical-proofs.yml.genie.ts'
 import storybookPlaysWorkflow from '../../.github/workflows/storybook-plays.yml.genie.ts'
+import { decodeBinaryCacheDescriptor } from '../../packages/@overeng/genie/src/runtime/github-workflow/binary-cache-descriptor.ts'
 import { EMPIRICAL_PROOF_CI_JOB_NAMES, requiredCIJobs, RUNNER_PROFILES } from '../ci.ts'
 import {
   cachixCliBuildStep,
@@ -15,6 +16,7 @@ import {
   preparePinnedDevenvStep,
   validateNixStoreStep,
 } from '../ci-workflow.ts'
+import { jobCacheDescriptors } from './cache-policy.ts'
 
 const workflow = ciWorkflow.stringify({ cwd: process.cwd(), location: '' })
 const proofWorkflow = empiricalWorkflow.stringify({ cwd: process.cwd(), location: '' })
@@ -358,19 +360,34 @@ test('daily cache join admits only scheduled and manual runs, including branch d
   expect(proofWorkflow).toContain('cron: 17 3 * * *')
 })
 
-test('empirical pinned devenv jobs enable Cachix before entering devenv', () => {
+test('pinned devenv jobs configure a public binary cache before entering devenv', () => {
   const violations: string[] = []
   const cacheStepName = cachixStep({ name: 'overeng-effect-utils' }).name
-  for (const [jobId, job] of Object.entries(empiricalWorkflow.data.jobs)) {
-    const devenvIndex = job.steps.findIndex(
-      (step) =>
-        step.name === preparePinnedDevenvStep.name || step.name === validateNixStoreStep.name,
-    )
-    if (devenvIndex === -1) continue
-    const cliIndex = job.steps.findIndex((step) => step.name === cachixCliBuildStep.name)
-    const cacheIndex = job.steps.findIndex((step) => step.name === cacheStepName)
-    if (!(cliIndex >= 0 && cliIndex < cacheIndex && cacheIndex < devenvIndex)) {
-      violations.push(jobId)
+  for (const [workflowName, generated] of [
+    ['empirical-proofs', empiricalWorkflow],
+    ['ci', ciWorkflow],
+  ] as const) {
+    for (const [jobId, job] of Object.entries(generated.data.jobs)) {
+      const devenvIndex = job.steps.findIndex(
+        (step) =>
+          step.name === preparePinnedDevenvStep.name || step.name === validateNixStoreStep.name,
+      )
+      if (devenvIndex === -1) continue
+      const cliIndex = job.steps.findIndex((step) => step.name === cachixCliBuildStep.name)
+      const cacheIndex = job.steps.findIndex((step) => step.name === cacheStepName)
+      const hasCachixSetup = cliIndex >= 0 && cliIndex < cacheIndex && cacheIndex < devenvIndex
+      const hasInstallerCache = job.steps.slice(0, devenvIndex).some((step) => {
+        if (step.uses !== installNixStep().uses || !(jobCacheDescriptors in step)) return false
+        const descriptors = step[jobCacheDescriptors]
+        return (
+          Array.isArray(descriptors) &&
+          descriptors.some((value) => {
+            const cache = decodeBinaryCacheDescriptor(value)
+            return cache.kind === 'nix-binary' && cache.visibility === 'public'
+          })
+        )
+      })
+      if (!hasCachixSetup && !hasInstallerCache) violations.push(`${workflowName}/${jobId}`)
     }
   }
   expect(violations).toEqual([])

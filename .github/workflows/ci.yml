@@ -3937,6 +3937,20 @@ jobs:
             ${{ runner.os == 'Linux' && 'sandbox-fallback = false' || '' }}
           summarize: true
         timeout-minutes: ${{ runner.os == 'macOS' && 5 || 2 }}
+      - name: Provide cachix CLI from nixpkgs
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          out=$(nix build --no-link --print-out-paths nixpkgs#cachix)
+          echo "$out/bin" >> "$GITHUB_PATH"
+        timeout-minutes: 3
+      - name: Enable Cachix cache
+        uses: cachix/cachix-action@v17
+        with:
+          name: overeng-effect-utils
+          skipPush: true
       - name: Prepare CI helper scripts
         shell: bash
         run: |

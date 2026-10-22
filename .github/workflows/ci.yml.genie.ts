@@ -1411,6 +1411,8 @@ const extraJobs: Record<string, any> = {
     steps: [
       checkoutStep(),
       installNixStep(),
+      cachixCliBuildStep,
+      trustedCachixStep,
       prepareCiScriptsStep,
       preparePinnedDevenvStep,
       validateNixStoreStep,
