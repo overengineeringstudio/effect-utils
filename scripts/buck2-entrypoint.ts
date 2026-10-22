@@ -142,7 +142,7 @@ const cachedProbe = async ({
         diagnostics !== undefined &&
         'failure' in value &&
         typeof value.failure === 'string' &&
-        /^class=[a-z-]+ phase=[a-z]+ elapsed_ms=\d+ deadline_ms=\d+$/u.test(value.failure)
+        /^class=[a-z-]+ phase=[a-z]+ elapsed_ms=\d+ deadline_ms=\d+$/u.test(value.failure) === true
       )
         diagnostics.failure = value.failure
       return value.available
