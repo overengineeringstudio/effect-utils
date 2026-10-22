@@ -33,6 +33,7 @@ import {
   decodeActionArtifact,
   decodeActionExclusionCounts,
   decodeCacheUploadErrors,
+  decodeOutputTinyDigests,
 } from './buck2-action-evidence-codec.ts'
 import {
   actionExclusionReason,
@@ -51,6 +52,7 @@ import {
   type ActionRecord,
   type CacheUploadError,
 } from './buck2-action-evidence.ts'
+import type { OutputTinyDigests } from './buck2-action-evidence.ts'
 
 export const maxCacheEvidenceActions = 64
 export const cacheEvidenceOutcomes = [
@@ -96,6 +98,7 @@ export type CacheAction = {
   executionKind: number
   cacheUploadResult: number
   uploadErrors?: CacheUploadError[]
+  outputTinyDigests?: OutputTinyDigests
 }
 export type CacheInvocation = {
   buildId: string
@@ -585,6 +588,22 @@ export const createCacheEvidenceProjector = ({
     if (category === undefined || target === undefined) missingIdentityCount++
     const actionKind = field({ value: end, key: 'kind' })
     const commandAction = actionKind === 'Run'
+    // Keep native emitted order: sorting/deduplication would destroy per-action output indices.
+    // The emitter omits values without a digest; these are not declared-output/path indices.
+    const nativeOutputs = field({ value: end, key: 'outputs' })
+    const outputTinyDigests =
+      commandAction && cacheUploadResult !== 1 && field({ value: end, key: 'failed' }) !== true &&
+      nativeOutputs !== undefined
+        ? decodeOutputTinyDigests({
+            algorithm: 'buck2-tiny-digest-v1',
+            outputs: Array.isArray(nativeOutputs)
+              ? nativeOutputs.map((output, index) => ({
+                  index,
+                  tinyDigest: field({ value: output, key: 'tiny_digest' }),
+                }))
+              : nativeOutputs,
+          })
+        : undefined
     const row: ActionRecord = {
       type: 'action',
       buildId: safeIdentity({ value: buildId, grammar: /^[a-zA-Z0-9_.-]+$/ }),
@@ -611,6 +630,7 @@ export const createCacheEvidenceProjector = ({
       commandAction,
       ...(uploadErrors === undefined ? {} : { uploadErrors }),
     }
+    if (outputTinyDigests !== undefined) row.outputTinyDigests = outputTinyDigests
     if (
       row.buildId === null ||
       row.completedAt === null ||
@@ -652,6 +672,7 @@ export const createCacheEvidenceProjector = ({
         executionKind,
         cacheUploadResult,
         ...(uploadErrors === undefined ? {} : { uploadErrors }),
+        ...(outputTinyDigests === undefined ? {} : { outputTinyDigests }),
       },
     })
   }
@@ -873,6 +894,8 @@ export const decodeCacheEvidence = (value: unknown): CacheEvidence => {
     }
     const uploadErrors = decodeCacheUploadErrors(field({ value: item, key: 'uploadErrors' }))
     if (uploadErrors !== undefined) action.uploadErrors = uploadErrors
+    const outputTinyDigests = decodeOutputTinyDigests(field({ value: item, key: 'outputTinyDigests' }))
+    if (outputTinyDigests !== undefined) action.outputTinyDigests = outputTinyDigests
     const exclusionReason = field({ value: item, key: 'exclusionReason' })
     if (exclusionReason !== undefined && exclusionReason !== action.exclusionReason)
       throw new Error('Invalid cache evidence exclusion reason')

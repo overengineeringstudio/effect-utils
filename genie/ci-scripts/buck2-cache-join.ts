@@ -66,6 +66,10 @@ export type JoinCounts = {
   avoidable_miss_actions: number
   local_actions: number
   cold_actions: number
+  changed_actions: number
+  noncacheable_actions: number
+  excluded_actions: number
+  upload_failure_actions: number
   evidence_gaps: number
 }
 export type JoinReport = {
@@ -113,6 +117,10 @@ export const aggregate = ({
       avoidable_miss_actions: 0,
       local_actions: 0,
       cold_actions: 0,
+      changed_actions: 0,
+      noncacheable_actions: 0,
+      excluded_actions: 0,
+      upload_failure_actions: 0,
       evidence_gaps: 0,
     })),
   )
@@ -178,8 +186,11 @@ export const aggregate = ({
         row.eligible_actions += result.eligible
         row.remote_hit_actions += result.remoteHits
         row.avoidable_miss_actions += result.eligible - result.remoteHits
-        // Changed digests are cold exact identities, not avoidable misses.
-        row.cold_actions += result.cold + result.changed
+        row.cold_actions += result.cold
+        row.changed_actions += result.changed
+        row.noncacheable_actions += result.noncacheable
+        row.excluded_actions += result.excluded
+        row.upload_failure_actions += result.uploadFailure
         row.evidence_gaps += result.evidenceGap
       }
       const local = new Set<string>()
@@ -222,6 +233,10 @@ const metrics = (report: JoinReport): WindowMetric[] => [
       'avoidable_miss_actions',
       'local_actions',
       'cold_actions',
+      'changed_actions',
+      'noncacheable_actions',
+      'excluded_actions',
+      'upload_failure_actions',
       'evidence_gaps',
     ] as const
   ).map((key) => ({

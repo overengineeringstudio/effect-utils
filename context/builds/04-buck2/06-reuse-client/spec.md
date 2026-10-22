@@ -483,14 +483,42 @@ Upload diagnostics retain only a closed category (`unauthenticated`,
 `permission-denied`, `deadline`, `unavailable`, `resource-exhausted`,
 `invalid-argument`, or `other`) and an optional numeric gRPC code from 0 through 16. Known native enum names and numeric codes map to those numbers; unknown
 codes become `null`. Fixed patterns classify native error text, which is then
-discarded entirely. Decoding historical evidence also discards free-text
-diagnostics. No credential environment or private credential context is needed.
-Native file/tree digests and other upload payloads are not projected.
+discarded entirely. No credential environment or private credential context is
+needed. Other upload payloads are not projected.
+
+Successful command actions that were not uploaded, including failed upload
+attempts, retain optional `outputTinyDigests` in both full rows and compact
+representatives: `{ algorithm: "buck2-tiny-digest-v1", outputs:
+[{ index: 0, tinyDigest: "deadbeef" }] }`. This repository-owned algorithm
+identifier denotes Buck2's **truncated** first four digest bytes (32 bits,
+exactly eight lowercase hexadecimal characters), not a full content digest.
+The pinned implementation is
+[`cas_digest.rs:701–705`](https://github.com/facebook/buck2/blob/be6971d47dcc835b7356e1698b23039ffee4f4c2/app/buck2_common/src/cas_digest.rs#L701-L705).
+All categories are eligible, including `rustc`, `deps`, `cargo_extract`,
+`buildscript`, `rustc_cfg`, and `rust_interop_*`. Uploaded actions, failed
+actions, non-command actions, and logs without native output information omit
+the field; an explicit empty native output list remains an empty list.
+
+Indices are contiguous, zero-based positions in the native emitted output
+list, preserved without sorting or deduplication. The
+[`ActionExecutionEnd` emitter](https://github.com/facebook/buck2/blob/be6971d47dcc835b7356e1698b23039ffee4f4c2/app/buck2_build_api/src/actions/calculation.rs#L466-L475)
+omits outputs without a digest; these indices are not declared-output indices.
+**Output paths and kinds are not included.** Compare only the same native
+action digest, first checking output counts and then corresponding indices.
+Different values establish a difference; equal values are probabilistic
+evidence, not proof of equal full digests. No filesystem hashing, materializing,
+or additional Buck invocation is needed. Old artifacts without this optional
+field remain readable but provide no output determinism evidence.
+
+For approximately 534 actions and three digest-bearing outputs each, this adds
+roughly 0.1 MiB of uncompressed JSON per job (an estimate, not a measurement).
+Growth is linear in emitted output count, including compact representatives;
+the existing 64 MiB full action-payload ceiling still applies.
 
 The projector emits only allowlisted labels, configuration names, native digest
-strings, enum numbers, times, run identity, and closed upload diagnostic
-categories/codes. Other host paths, commands, outputs, host names, environment values,
-and raw error payloads are never copied. Invalid
+strings and output tiny digests, enum numbers, times, run identity, and closed
+upload diagnostic categories/codes. Host paths, environment values, commands,
+output paths/payloads, host names, and raw error payloads are never copied. Invalid
 identity text becomes `null` rather than a lossy replacement key. The
 repository-local mapping identifier has exact case-sensitive spelling and a
 version suffix; unknown versions are rejected, not silently reinterpreted.

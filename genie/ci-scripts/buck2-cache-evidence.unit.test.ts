@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'bun:test'
+import { decodeOutputTinyDigests } from './buck2-action-evidence-codec.ts'
 
 import {
   classifyCacheUploadError,
@@ -182,6 +183,81 @@ describe('native Buck cache evidence projection', () => {
     expect(evidence.archiveOriginFallbacks).toBeUndefined()
     expect(evidence.admissionFallbacks).toEqual({ reapi: 0, archiveOrigin: 0 })
     expect(JSON.stringify(evidence)).not.toContain('PRIVATE')
+  })
+
+  it('retains ordered truncated output evidence for successful non-uploaded commands in every category', () => {
+    const expected = {
+      algorithm: 'buck2-tiny-digest-v1',
+      outputs: [
+        { index: 0, tinyDigest: 'ffffffff' },
+        { index: 1, tinyDigest: '00000000' },
+        { index: 2, tinyDigest: 'ffffffff' },
+      ],
+    }
+    for (const category of ['rustc', 'deps', 'cargo_extract', 'buildscript', 'rustc_cfg',
+      'rust_interop_napi', 'rust_interop_service', 'rust_wasm_guest', 'tsgo_emit']) {
+      for (const uploadResult of [0, 3, 9]) {
+        const rows: ActionRecord[] = []
+        const projector = createCacheEvidenceProjector({ onAction: (row) => rows.push(row) })
+        projector.add(nativeEvent('SpanEnd', actionEnd({
+          name: { category },
+          failed: false,
+          cache_upload_result: uploadResult,
+          outputs: expected.outputs.map((output) => ({ tiny_digest: output.tinyDigest })),
+        })))
+        const summary = projector.finish()
+        expect(rows[0]?.digest).toBe(fixtureDigest)
+        expect(rows[0]?.outputTinyDigests).toEqual(expected)
+        expect(summary.actions[0]?.outputTinyDigests).toEqual(expected)
+        expect(decodeCacheEvidence(summary)).toEqual(summary)
+      }
+    }
+    for (const overrides of [
+      { cache_upload_result: 1 }, { failed: true }, { kind: 'Write' },
+    ]) {
+      const rows: ActionRecord[] = []
+      const projector = createCacheEvidenceProjector({ onAction: (row) => rows.push(row) })
+      projector.add(nativeEvent('SpanEnd', actionEnd({
+        cache_upload_result: 0, outputs: [{ tiny_digest: 'ffffffff' }], ...overrides,
+      })))
+      expect(projector.finish().actions[0]?.outputTinyDigests).toBeUndefined()
+      expect(rows[0]?.outputTinyDigests).toBeUndefined()
+    }
+  })
+
+  it('distinguishes changed output indices across runs with the same action digest', () => {
+    const summaries = [['aaaaaaaa', 'bbbbbbbb'], ['aaaaaaaa', 'cccccccc']].map((digests, run) =>
+      project([nativeEvent('SpanEnd', actionEnd({
+        name: { category: 'rustc' }, cache_upload_result: 0,
+        outputs: digests.map((tiny_digest) => ({ tiny_digest })),
+      }), 1, `run-${run}`)]),
+    )
+    const first = summaries[0]!.actions[0]!
+    const next = summaries[1]!.actions[0]!
+    expect(first.digest).toBe(next.digest)
+    expect(first.outputTinyDigests?.outputs.map((output, index) => ({
+      index, equal: output.tinyDigest === next.outputTinyDigests?.outputs[index]?.tinyDigest,
+    }))).toEqual([{ index: 0, equal: true }, { index: 1, equal: false }])
+    const merged = mergeCacheEvidence({ previous: summaries[0]!, next: summaries[1]! })
+    expect(decodeCacheEvidence(merged).actions.map((action) => action.outputTinyDigests))
+      .toEqual([first.outputTinyDigests, next.outputTinyDigests])
+  })
+
+  it('rejects malformed output evidence without inventing missing native digests', () => {
+    expect(decodeOutputTinyDigests(undefined)).toBeUndefined()
+    expect(decodeOutputTinyDigests({ algorithm: 'buck2-tiny-digest-v1', outputs: [] }))
+      .toEqual({ algorithm: 'buck2-tiny-digest-v1', outputs: [] })
+    for (const value of [
+      { algorithm: 'sha256', outputs: [] },
+      { algorithm: 'buck2-tiny-digest-v1', outputs: null },
+      ...['abc', 'AABBCCDD', 'g'.repeat(8), 'a'.repeat(64), null].map((tinyDigest) => ({
+        algorithm: 'buck2-tiny-digest-v1', outputs: [{ index: 0, tinyDigest }],
+      })),
+      { algorithm: 'buck2-tiny-digest-v1', outputs: [{ index: 1, tinyDigest: 'aaaaaaaa' }] },
+    ]) expect(() => decodeOutputTinyDigests(value)).toThrow()
+    expect(() => project([nativeEvent('SpanEnd', actionEnd({
+      cache_upload_result: 0, outputs: [{ tiny_digest: 'not-a-digest' }],
+    }))])).toThrow()
   })
 
   it('reports every materialization category separately without relabeling native outcomes', () => {
@@ -461,7 +537,7 @@ describe('native Buck cache evidence projection', () => {
           execution_kind: 3,
           cache_upload_result: 8,
           commands: [],
-          outputs: [{ tiny_digest: 'not-an-action-key' }],
+          outputs: [{ tiny_digest: 'deadbeef' }],
         }),
       ),
     ])

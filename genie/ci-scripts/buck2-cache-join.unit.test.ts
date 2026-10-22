@@ -106,7 +106,7 @@ describe('cache join', () => {
     ])
     expect(
       report.counts.find((row) => row.lane === 'main-reader' && row.platform === 'linux'),
-    ).toMatchObject({ eligible_actions: 1, remote_hit_actions: 1, cold_actions: 1 })
+    ).toMatchObject({ eligible_actions: 1, remote_hit_actions: 1, cold_actions: 0, changed_actions: 1 })
     const withoutQueue = reportFor([
       observation(writerFixture(), 'pr'),
       observation(artifactFixture()),
@@ -141,33 +141,45 @@ describe('cache join', () => {
         [
           {
             "avoidable_miss_actions": 1,
+            "changed_actions": 0,
             "cold_actions": 0,
             "eligible_actions": 2,
             "evidence_gaps": 1,
+            "excluded_actions": 1,
             "lane": "main-reader",
             "local_actions": 1,
+            "noncacheable_actions": 0,
             "platform": "linux",
             "remote_hit_actions": 1,
+            "upload_failure_actions": 0,
           },
           {
             "avoidable_miss_actions": 0,
+            "changed_actions": 0,
             "cold_actions": 0,
             "eligible_actions": 1,
             "evidence_gaps": 0,
+            "excluded_actions": 0,
             "lane": "merge_group",
             "local_actions": 0,
+            "noncacheable_actions": 0,
             "platform": "darwin",
             "remote_hit_actions": 1,
+            "upload_failure_actions": 0,
           },
           {
             "avoidable_miss_actions": 0,
+            "changed_actions": 0,
             "cold_actions": 0,
             "eligible_actions": 1,
             "evidence_gaps": 0,
+            "excluded_actions": 0,
             "lane": "pr",
             "local_actions": 0,
+            "noncacheable_actions": 0,
             "platform": "unknown",
             "remote_hit_actions": 1,
+            "upload_failure_actions": 0,
           },
         ]
       `)
@@ -242,6 +254,18 @@ describe('cache join', () => {
         # HELP buck2_cache_lane_cold_actions Window cold actions by cache lane and platform.
         # TYPE buck2_cache_lane_cold_actions gauge
         buck2_cache_lane_cold_actions{repo=\"public/test\",lane=\"main-reader\",platform=\"linux\"} 0 1000000
+        # HELP buck2_cache_lane_changed_actions Window changed actions by cache lane and platform.
+        # TYPE buck2_cache_lane_changed_actions gauge
+        buck2_cache_lane_changed_actions{repo=\"public/test\",lane=\"main-reader\",platform=\"linux\"} 0 1000000
+        # HELP buck2_cache_lane_noncacheable_actions Window noncacheable actions by cache lane and platform.
+        # TYPE buck2_cache_lane_noncacheable_actions gauge
+        buck2_cache_lane_noncacheable_actions{repo=\"public/test\",lane=\"main-reader\",platform=\"linux\"} 0 1000000
+        # HELP buck2_cache_lane_excluded_actions Window excluded actions by cache lane and platform.
+        # TYPE buck2_cache_lane_excluded_actions gauge
+        buck2_cache_lane_excluded_actions{repo=\"public/test\",lane=\"main-reader\",platform=\"linux\"} 0 1000000
+        # HELP buck2_cache_lane_upload_failure_actions Window upload failure actions by cache lane and platform.
+        # TYPE buck2_cache_lane_upload_failure_actions gauge
+        buck2_cache_lane_upload_failure_actions{repo=\"public/test\",lane=\"main-reader\",platform=\"linux\"} 0 1000000
         # HELP buck2_cache_lane_evidence_gaps Window evidence gaps by cache lane and platform.
         # TYPE buck2_cache_lane_evidence_gaps gauge
         buck2_cache_lane_evidence_gaps{repo=\"public/test\",lane=\"main-reader\",platform=\"linux\"} 0 1000000
@@ -275,6 +299,45 @@ describe('cache join', () => {
       previousUtcDay(Date.parse('2026-10-22T00:00:00Z')),
     )
     expect(previousUtcDay(0)).toEqual({ since: -86_400_000, until: 0 })
+  })
+
+  it('exports disjoint cold and changed cohorts and the remaining warm99 counts to OTLP', () => {
+    const report = reportFor([
+      observation(writerFixture(), 'main-writer'),
+      observation(artifactFixture(false, [
+        actionFixture(),
+        actionFixture({ digest: 'feedbeef:12' }),
+        actionFixture({ target: 'test//:cold' }),
+        actionFixture({ target: 'test//:noncacheable', executionKind: 0 }),
+        actionFixture({ category: 'pnpm_extract' }),
+        actionFixture({
+          target: 'test//:failed-upload',
+          executionKind: 1,
+          cacheUploadResult: 9,
+          uploadOutcome: 'failed',
+        }),
+      ])),
+    ])
+    const metrics = renderOtlp(report).resourceMetrics[0]?.scopeMetrics[0]?.metrics
+    for (const [cohort, value] of [
+      ['eligible', 1],
+      ['cold', 2],
+      ['changed', 1],
+      ['noncacheable', 1],
+      ['excluded', 1],
+      ['upload_failure', 1],
+    ] as const) {
+      const metric = metrics?.find((metric) => metric.name === `buck2.cache.lane.${cohort}_actions`)
+      expect(metric?.gauge.dataPoints).toContainEqual({
+        attributes: [
+          { key: 'repo', value: { stringValue: 'public/test' } },
+          { key: 'lane', value: { stringValue: 'main-reader' } },
+          { key: 'platform', value: { stringValue: 'linux' } },
+        ],
+        timeUnixNano: '1000000000000',
+        asDouble: value,
+      })
+    }
   })
 
   it('renders canonical OTLP gauges with the window end as sample timestamp', () => {
