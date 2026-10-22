@@ -727,6 +727,67 @@ console.log(JSON.stringify(outcomes));`,
     ).rejects.toThrow('refusing to publish')
   })
 
+  for (const githubActions of ['true', 'false', undefined]) {
+    it(`annotates writer refusal only in GitHub Actions (${githubActions ?? 'unset'})`, async () => {
+      const root = fixture()
+      const childPath = join(root, 'writer-refusal.ts')
+      writeFileSync(
+        childPath,
+        `
+import { directBuckArguments } from ${JSON.stringify(join(import.meta.dir, 'buck2-entrypoint.ts'))}
+const options = {
+  cwd: ${JSON.stringify(root)},
+  cacheDirectory: ${JSON.stringify(join(root, 'probe-cache'))},
+  args: ['build', '//:app'],
+  env: ${JSON.stringify({
+    GITHUB_ACTIONS: githubActions,
+    BUCK2_PRIVATE_CACHE_WRITE_BASIC_AUTH: 'fixture-secret',
+    BUCK2_PRIVATE_CACHE_ADDRESS: 'grpc://127.0.0.1:1',
+  })},
+}
+for (let attempt = 0; attempt < 2; attempt++) {
+  try {
+    await directBuckArguments(options)
+    throw new Error('writer unexpectedly admitted')
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : error)
+  }
+}
+`,
+      )
+      const child = Bun.spawn([process.execPath, childPath], {
+        cwd: root,
+        stdout: 'pipe',
+        stderr: 'pipe',
+      })
+      const stderr = await new Response(child.stderr).text()
+      expect(await child.exited).toBe(0)
+      const failures = Array.from(
+        stderr.matchAll(
+          /warning: Buck2 REAPI probe failed: (class=\S+ phase=\S+ elapsed_ms=\d+ deadline_ms=2500)/gu,
+        ),
+        (match) => match[1],
+      )
+      expect(failures).toHaveLength(2)
+      const annotations = stderr
+        .split('\n')
+        .filter((line) => line.startsWith('::error title=Buck2 cache writer refused::'))
+      expect(annotations).toEqual(
+        githubActions === 'true'
+          ? Array(2).fill(
+              `::error title=Buck2 cache writer refused::REAPI unreachable (${failures.at(-1)}); refusing to publish without remote cache`,
+            )
+          : [],
+      )
+      expect(
+        stderr.match(
+          /Buck cache writer: REAPI unreachable; refusing to publish without remote cache/gu,
+        ),
+      ).toHaveLength(2)
+      expect(stderr).not.toContain('fixture-secret')
+    })
+  }
+
   it('falls back to local execution without uploads only for an optional writer', async () => {
     const root = fixture()
     const writer = {

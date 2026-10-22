@@ -109,12 +109,14 @@ const cachedProbe = async ({
   probe,
   now = Date.now(),
   root,
+  diagnostics,
 }: {
   readonly key: string
   readonly cacheDirectory: string
   readonly probe: () => Promise<boolean>
   readonly now?: number
   readonly root?: string
+  readonly diagnostics?: { failure?: string }
 }): Promise<boolean> => {
   // Root-keyed watcher admission can be reclaimed without knowing the original
   // environment/config variants. Endpoint admission remains shared across roots.
@@ -136,6 +138,13 @@ const cachedProbe = async ({
       now - value.at < 5000
     ) {
       admissionExpires = Math.min(admissionExpires, value.at + 5000)
+      if (
+        diagnostics !== undefined &&
+        'failure' in value &&
+        typeof value.failure === 'string' &&
+        /^class=[a-z-]+ phase=[a-z]+ elapsed_ms=\d+ deadline_ms=\d+$/u.test(value.failure) === true
+      )
+        diagnostics.failure = value.failure
       return value.available
     }
   } catch {
@@ -145,7 +154,11 @@ const cachedProbe = async ({
   const candidate = `${path}.${randomUUID()}`
   try {
     mkdirSync(cacheDirectory, { recursive: true, mode: 0o700 })
-    writeFileSync(candidate, JSON.stringify({ at: now, available }), { flag: 'wx', mode: 0o600 })
+    writeFileSync(
+      candidate,
+      JSON.stringify({ at: now, available, failure: diagnostics?.failure }),
+      { flag: 'wx', mode: 0o600 },
+    )
     renameSync(candidate, path)
   } catch {
     /* Cache storage is an optimization, never a build prerequisite. */
@@ -335,11 +348,13 @@ export const directBuckArguments = async ({
     if (available === true) admission.admissionRetrySuccesses[endpoint] = 1
     return available
   }
+  const reapiDiagnostics: { failure?: string } = {}
   const remoteAvailable =
     remote === false
       ? true
       : await cachedProbe({
           cacheDirectory,
+          diagnostics: reapiDiagnostics,
           key: JSON.stringify([
             'reapi',
             values['buck2_re_client.action_cache_address'],
@@ -359,11 +374,10 @@ export const directBuckArguments = async ({
                   env,
                   deadlineMs,
                   deadlineSignal: probeDeadlineSignal?.('reapi'),
-                  onFailure: ({ errorClass, phase, elapsedMs, deadlineMs: probeDeadlineMs }) =>
-                    writeSync(
-                      2,
-                      `warning: Buck2 REAPI probe failed: class=${errorClass} phase=${phase} elapsed_ms=${elapsedMs} deadline_ms=${probeDeadlineMs}\n`,
-                    ),
+                  onFailure: ({ errorClass, phase, elapsedMs, deadlineMs: probeDeadlineMs }) => {
+                    reapiDiagnostics.failure = `class=${errorClass} phase=${phase} elapsed_ms=${elapsedMs} deadline_ms=${probeDeadlineMs}`
+                    writeSync(2, `warning: Buck2 REAPI probe failed: ${reapiDiagnostics.failure}\n`)
+                  },
                   onConnectionEvent: ({ event, elapsedMs, address, family }) =>
                     writeSync(
                       2,
@@ -385,10 +399,19 @@ export const directBuckArguments = async ({
     }
   }
   if (remoteAvailable === false) {
-    if (values['buck2.allow_cache_uploads'] === 'true' && env['BUCK2_CACHE_WRITE_OPTIONAL'] !== '1')
+    if (
+      values['buck2.allow_cache_uploads'] === 'true' &&
+      env['BUCK2_CACHE_WRITE_OPTIONAL'] !== '1'
+    ) {
+      if (env['GITHUB_ACTIONS'] === 'true')
+        writeSync(
+          2,
+          `::error title=Buck2 cache writer refused::REAPI unreachable (${reapiDiagnostics.failure ?? 'probe diagnostics unavailable from cached result'}); refusing to publish without remote cache\n`,
+        )
       throw new Error(
         'Buck cache writer: REAPI unreachable; refusing to publish without remote cache',
       )
+    }
     warning({
       message: 'REAPI is unreachable; using local execution without the remote cache',
       env,
