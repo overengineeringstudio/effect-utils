@@ -1029,6 +1029,21 @@ in
   ++ lib.optionals (!ciUnitTest) [
     # devenv serializes every declared task into DEVENV_TASK_FILE. Keep unrelated
     # browser/deploy/live families out of the unit shell at their definitions.
+    {
+      # This regression invokes tasks intentionally absent from the unit shell.
+      # Keep its cheap, provider-free coverage on the full-profile check gates.
+      tasks."test:notion-integration:ci-skip" = {
+        description = "Check Notion integration CI skips without resolving a secret provider";
+        before = [
+          "check:quick"
+          "check:all"
+        ];
+        exec = trace.exec "test:notion-integration:ci-skip" ''
+          root="''${DEVENV_ROOT:-$PWD}"
+          exec ${pkgs.bash}/bin/bash "$root/nix/devenv-modules/tasks/shared/tests/notion-integration-ci.test.sh"
+        '';
+      };
+    }
     # Playwright browser drivers and environment setup
     inputs.playwright.devenvModules.default
     # Live-check e2e (SC-R12): emits registry-conformant OTLP from a first-party site, captures it,

@@ -135,6 +135,46 @@ if (ciUnitTest === true) {
   })
 }
 
+// Catch nested task calls that are invisible to devenv's after/before graph.
+// Keep this cheap: direct `devenv tasks run` lines, literal task names and
+// literal shell arrays (the Notion regression's "${tasks[@]}" shape), not a
+// general shell interpreter. Fixture/stub commands embedded in strings are
+// deliberately outside this scan.
+if (ciUnitTest === true && tasks.has('devenv-modules:test') === true) {
+  const catalog = JSON.parse(readFileSync(`${root}/genie/ci-workflow/test-platforms.json`, 'utf8'))
+  const platform = process.env.EFFECT_UTILS_TEST_PLATFORM
+  const entries =
+    platform === 'darwin'
+      ? catalog.moduleScripts.darwin
+      : [...catalog.moduleScripts.darwin, ...catalog.moduleScripts.neutral]
+  const missingCalls = []
+  for (const { script, fullProfileOnly } of entries) {
+    if (fullProfileOnly === true) continue
+    const source = readFileSync(`${root}/nix/devenv-modules/tasks/shared/tests/${script}`, 'utf8')
+    const arrays = new Map(
+      [...source.matchAll(/^\s*(\w+)=\(\s*\n([\s\S]*?)^\s*\)/gmu)].map((match) => [
+        match[1],
+        match[2],
+      ]),
+    )
+    for (const command of source.matchAll(/^\s*devenv\s+tasks\s+run\b((?:\\\n|[^\n])*)/gmu)) {
+      const argumentsText = command[1].replace(
+        /\$\{(\w+)\[@\]\}/gu,
+        (_, name) => arrays.get(name) ?? '',
+      )
+      for (const name of argumentsText.match(/[\w-]+(?::[\w-]+)+/gu) ?? []) {
+        if (tasks.has(name) === false) missingCalls.push(`${script} -> ${name}`)
+      }
+    }
+  }
+  ok({
+    condition: missingCalls.length === 0,
+    name: 'unit-selected module scripts call only tasks in the unit profile',
+    detail: missingCalls.join(', '),
+  })
+}
+if (process.env.DEVENV_TASK_GRAPH_SCRIPT_CALLS_ONLY === '1') process.exit(0)
+
 for (const name of [
   'check:quick',
   'check:all',
@@ -173,6 +213,15 @@ ok({
   condition: reaches({ start: 'check:quick', target: 'buck2:capabilities:test' }),
   name: 'check:quick exercises real capability publication across long-lived daemons',
 })
+if (ciUnitTest === false) {
+  requireTask('test:notion-integration:ci-skip')
+  for (const checkTask of ['check:quick', 'check:all']) {
+    ok({
+      condition: reaches({ start: checkTask, target: 'test:notion-integration:ci-skip' }),
+      name: `${checkTask} retains full-profile Notion CI-skip coverage`,
+    })
+  }
+}
 for (const name of [
   'ts:check',
   'ts:check:strict',
@@ -867,7 +916,11 @@ for (const { name, scope = name, buildPrefix } of ciUnitTest === true
   : consumerAggregateContracts) {
   const publisher = `buck2:editor:publish:batch:${scope}`
   const standaloneTasks = [...tasks.keys()].filter(
-    (task) => task.startsWith(`${name}:`) && task.slice(name.length + 1).includes(':') === false,
+    (task) =>
+      task.startsWith(`${name}:`) &&
+      task.slice(name.length + 1).includes(':') === false &&
+      // The provider-free shell regression is not a package consumer.
+      task !== 'test:notion-integration:ci-skip',
   )
   const expectedPaths = standaloneTasks.map(
     (task) =>

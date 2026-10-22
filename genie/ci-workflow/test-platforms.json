@@ -439,7 +439,8 @@
       },
       {
         "script": "notion-integration-ci.test.sh",
-        "rationale": "CI/token absence must skip all Notion tasks without provider access; no live integrations or platform-native lifecycle are exercised."
+        "fullProfileOnly": true,
+        "rationale": "CI/token absence must skip all Notion tasks without provider access. Requires the full profile that defines these tasks; also covered by full-profile check:quick/check:all through test:notion-integration:ci-skip, not the narrowed unit lane."
       },
       {
         "script": "observability-capture.test.sh",
