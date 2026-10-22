@@ -14,7 +14,7 @@ const runPolicy = ({
   commit = 'published-commit',
   options = {},
 }: {
-  ref: string
+  ref?: string
   repo?: string
   commit?: string
   options?: DefaultRefPolicyCheckStepOptions
@@ -39,8 +39,11 @@ const runPolicy = ({
       gitCalls.push(args)
       if (args.includes('merge-base')) {
         const branch = args.at(-1)
-        // main-commit is ahead of published: only main contains it.
-        if (commit === 'main-commit' && branch !== 'refs/remotes/origin/main') {
+        // main-commit is ahead of published; unreachable-commit is on neither branch.
+        if (
+          commit === 'unreachable-commit' ||
+          (commit === 'main-commit' && branch !== 'refs/remotes/origin/main')
+        ) {
           throw new Error('commit is not reachable from this branch')
         }
       }
@@ -82,6 +85,21 @@ describe('default-ref policy script', () => {
     expect(result.exitCode).toBe(1)
     expect(result.errors).toContain("default 'published'; accepted refs: published, main")
     expect(result.gitCalls).toHaveLength(0)
+  })
+
+  it.each(['', undefined])('rejects an empty or missing lock ref (%s) with an unreachable commit', (ref) => {
+    const result = runPolicy({
+      ref,
+      commit: 'unreachable-commit',
+      options: { verifyReachable: true },
+    })
+    expect(result.exitCode).toBe(1)
+    expect(result.errors).toContain("uses ref '' in members.ref")
+    expect(result.errors).toContain("default 'published'; accepted refs: published, main")
+  })
+
+  it('rejects empty lock refs even without reachability verification', () => {
+    expect(runPolicy({ ref: '' }).exitCode).toBe(1)
   })
 
   it('keeps other first-party repositories strict and preserves the livestore override', () => {

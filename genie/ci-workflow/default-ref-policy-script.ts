@@ -76,9 +76,10 @@ const parseGithubLikeRef = (value) => {
 }
 
 const addRefViolation = ({ file, repo, ref, field, inputName, memberName }) => {
-  if (!repo || !ref || !isFirstParty(repo)) return
+  if (!repo || !isFirstParty(repo)) return
+  if (!ref && field !== 'members.ref') return
   const expectedRef = expectedRefFor(repo)
-  const normalizedRef = normalizeRef(ref)
+  const normalizedRef = normalizeRef(ref ?? '')
   const acceptedRefs = acceptedRefsFor(repo)
   if (acceptedRefs.includes(normalizedRef)) return
   if (isAllowedLegacyMemberRef({ memberName, ref: normalizedRef })) return

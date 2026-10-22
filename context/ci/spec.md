@@ -350,8 +350,9 @@ The shared `default-ref-policy` defaults `overengineeringstudio/effect-utils` to
 repositories accept only their configured default (`main` unless overridden;
 this repository configures `livestorejs/livestore` as `dev`). A caller's explicit
 `defaultRefs` entry replaces both the built-in default and accepted set for that
-repository. Violations report the default and accepted refs. With
-`verifyReachable`, a locked commit must be reachable from the accepted branch it
+repository. First-party megarepo lock members must declare a nonempty ref; an
+empty or missing ref is a policy violation. Violations report the default and
+accepted refs. With `verifyReachable`, a locked commit must be reachable from the accepted branch it
 actually pins: a `main` pin is checked against `main`, not `published`, and a
 `published` pin against `published`.
 
