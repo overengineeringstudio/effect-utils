@@ -201,6 +201,17 @@ describe('generated CI cache trust behavior', () => {
     expect(workflow.jobs.test?.steps.find(({ name }) => name === 'Unit tests')?.run).toContain(
       'test:run',
     )
+    const macosPosture = workflow.jobs['test-macos']!.steps.find(
+      ({ name }) => name === 'Buck daemon cache posture regressions',
+    )
+    expect(macosPosture).toBeDefined()
+    expect(macosPosture?.if).toBeUndefined()
+    expect(macosPosture?.run).toContain('buck2:cache-posture:test')
+    expect(
+      workflow.jobs.test!.steps.some(
+        ({ name }) => name === 'Buck daemon cache posture regressions',
+      ),
+    ).toBe(false)
   })
 
   it('selects exact focused source files rather than suffix-matching staged Buck copies', async () => {

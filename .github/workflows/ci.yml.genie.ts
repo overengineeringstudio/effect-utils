@@ -566,7 +566,15 @@ const unitTestJob = ({
       ].join('\n'),
     }),
     ...(runner === 'namespace-profile-macos-arm64'
-      ? [buck2TrustedCacheWriterStep(compiledProductsSmokeStep), macosNixSubstituterSaveStep]
+      ? [
+          buck2TrustedCacheWriterStep({
+            name: 'Buck daemon cache posture regressions',
+            env: githubTokenEnv(),
+            run: runDevenvTasksBefore('buck2:cache-posture:test'),
+          }),
+          buck2TrustedCacheWriterStep(compiledProductsSmokeStep),
+          macosNixSubstituterSaveStep,
+        ]
       : []),
     nixDiagnosticsSummaryStep,
     nixDiagnosticsArtifactStep(),
