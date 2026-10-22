@@ -27,7 +27,7 @@ import { mrCommand } from './mod.ts'
 
 /** Set inside the re-entered `unshare` child that owns a private user+mount namespace. */
 const inPartialNamespace = process.env['MEGAREPO_GC_PARTIAL_NAMESPACE'] === '1'
-const NAMESPACE_ARGS = ['--user', '--map-root-user', '--mount']
+const NAMESPACE_ARGS = ['--user', '--map-root-user', '--mount', '--pid', '--fork', '--mount-proc']
 
 const overlayProbeScript = [
   'set -e',
@@ -80,7 +80,14 @@ if (inPartialNamespace === false) {
           'unshare',
           [
             ...NAMESPACE_ARGS,
+            // A readable namespace init reaps orphaned git helpers; Bun does not reap PID 1's
+            // adopted children. Keep host processes outside this process-evidence fixture.
+            'sh',
+            '-c',
+            '"$@" & wait "$!"',
+            'namespace-init',
             process.execPath,
+            '--bun',
             vitestBin,
             'run',
             relative(packageDir, file),

@@ -651,7 +651,8 @@ const readActivityProcess = Effect.fn('store.readActivityProcess')(
   Effect.orElseSucceed(() => undefined),
 )
 
-const readActivityManifest = Effect.fn('store.readActivityManifest')(function* ({
+/** Admit a configured producer's manifest without also requiring a native process snapshot. */
+export const readActivityManifest = Effect.fn('store.readActivityManifest')(function* ({
   fs,
   path,
   producers,

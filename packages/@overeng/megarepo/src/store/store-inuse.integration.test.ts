@@ -24,6 +24,8 @@ import { NodeServices } from '@effect/platform-node'
 import { describe, it } from '@effect/vitest'
 import { Effect, Schema } from 'effect'
 import * as FileSystem from 'effect/FileSystem'
+import { systemError } from 'effect/PlatformError'
+import { ChildProcessSpawner } from 'effect/process/ChildProcessSpawner'
 import { expect } from 'vitest'
 
 import { EffectPath } from '@overeng/effect-path'
@@ -65,12 +67,13 @@ const killHolder = (child: ChildProcess): Promise<void> => {
 /** A holder whose cwd is elsewhere but which keeps `file` open on fd 3. */
 const spawnFdHolder = ({ cwd, file }: { cwd: string; file: string }): Promise<ChildProcess> => {
   const { promise, resolve, reject } = Promise.withResolvers<ChildProcess>()
-  const child = spawn('sh', ['-c', 'exec 3<"$1"; exec sleep 120', 'holder', file], {
+  const child = spawn('sh', ['-c', 'exec 3<"$1"; printf ready; exec sleep 120', 'holder', file], {
     cwd,
-    stdio: 'ignore',
+    stdio: ['ignore', 'pipe', 'ignore'],
   })
-  child.once('spawn', () => resolve(child))
+  child.stdout!.once('data', () => resolve(child))
   child.once('error', reject)
+  child.once('exit', (code) => reject(new Error(`fd holder exited before readiness: ${code}`)))
   return promise
 }
 
@@ -352,6 +355,322 @@ describe.skipIf(supportsProcessCwdProbe === false)('store-inuse native process p
 })
 
 describe.skipIf(process.platform !== 'linux')('store-inuse strict reference probe', () => {
+  for (const scenario of [
+    {
+      name: 'ignores and counts an unreadable foreign process',
+      foreign: true,
+      cwd: '/outside',
+      readableCwd: false,
+      tag: 'free',
+    },
+    {
+      name: 'vetoes a readable foreign cwd despite denied remaining fields',
+      foreign: true,
+      cwd: '/worktree/subdir',
+      readableCwd: true,
+      tag: 'in-use',
+    },
+    {
+      name: 'keeps an own-UID process when lsof fails',
+      foreign: false,
+      cwd: '/outside',
+      readableCwd: false,
+      tag: 'unknown',
+    },
+    {
+      name: 'retains readable own cwd evidence even when lsof fails',
+      foreign: false,
+      cwd: '/worktree',
+      readableCwd: true,
+      tag: 'in-use',
+    },
+  ] as const) {
+    it.effect(
+      `gc-owner ${scenario.name}`,
+      Effect.fnUntraced(function* () {
+        const base = yield* FileSystem.FileSystem
+        const spawner = yield* ChildProcessSpawner
+        const ownUid = process.getuid!()
+        const uid = scenario.foreign === true ? ownUid + 1 : ownUid
+        let lsofPasses = 0
+        const denied = (path: string) =>
+          Effect.fail(
+            systemError({
+              _tag: 'PermissionDenied',
+              module: 'FileSystem',
+              method: 'gc-owner-fixture',
+              pathOrDescriptor: path,
+            }),
+          )
+        const fs: FileSystem.FileSystem = {
+          ...base,
+          realPath: (path) => Effect.succeed(path),
+          readDirectory: (path) =>
+            path === '/proc'
+              ? Effect.succeed(scenario.foreign === true ? ['42'] : ['42', '43'])
+              : denied(path),
+          readFileString: (path) =>
+            path.endsWith('/stat') === true
+              ? Effect.succeed(`42 (holder) S 1 42 42 0 -1 0 ${'0 '.repeat(12)}1234`)
+              : path.endsWith('/status') === true
+                ? Effect.succeed(`Uid:\t${uid}\t${uid}\t${uid}\t${uid}\n`)
+                : denied(path),
+          readLink: (path) =>
+            scenario.readableCwd === true && path.endsWith('/cwd') === true
+              ? Effect.succeed(scenario.cwd)
+              : denied(path),
+        }
+        const result = yield* readWorktreeReferencesInUse({
+          worktreePath: '/worktree',
+          selfPid: 99,
+          scope: 'gc-owner',
+        }).pipe(
+          Effect.provideService(FileSystem.FileSystem, fs),
+          Effect.provideService(ChildProcessSpawner, {
+            ...spawner,
+            spawn: () => {
+              lsofPasses += 1
+              return denied('lsof')
+            },
+          }),
+        )
+        expect(result).toMatchObject({
+          _tag: scenario.tag,
+          ignoredForeignProcesses: scenario.foreign === true ? 1 : 0,
+        })
+        // All incomplete own-UID PIDs share one five-second lsof budget/pass.
+        expect(lsofPasses).toBe(scenario.foreign === true ? 0 : 1)
+        if (result._tag === 'in-use') {
+          expect(result.holder).toEqual({ pid: 42, path: scenario.cwd })
+        }
+        if (result._tag === 'unknown') expect(result.reason).toBe('own-uid-unreadable')
+        // The original scope must remain fail-closed for this exact same fixture.
+        expect(
+          yield* readWorktreeReferencesInUse({
+            worktreePath: '/worktree',
+            selfPid: 99,
+          }).pipe(Effect.provideService(FileSystem.FileSystem, fs)),
+        ).toEqual({
+          _tag: 'unknown',
+          reason: 'inaccessible-process',
+        })
+      }, Effect.provide(NodeServices.layer)),
+    )
+  }
+
+  for (const scenario of [
+    { name: 'exempts only the unreadable user manager', tag: 'free' },
+    { name: 'still vetoes another unreadable own-UID process', otherOwner: true, tag: 'unknown' },
+    { name: 'retains an exempt manager readable cwd', readable: 'cwd', tag: 'in-use' },
+    { name: 'retains an exempt manager readable root', readable: 'root', tag: 'in-use' },
+    { name: 'retains an exempt manager readable descriptor', readable: 'fd', tag: 'in-use' },
+    { name: 'retains an exempt manager readable mapping', readable: 'map', tag: 'in-use' },
+    { name: 'exempts the user-manager PAM child', pamChild: true, tag: 'free' },
+    { name: 'rejects PAM without a verified manager parent', comm: '(sd-pam)', tag: 'unknown' },
+    {
+      name: 'rejects PAM with a non-user-manager parent',
+      pamChild: true,
+      cmdline: 'systemd\0--system\0',
+      tag: 'unknown',
+    },
+    { name: 'exempts an SSH privilege transition', comm: 'sshd-session', parent: 200, tag: 'free' },
+    { name: 'exempts a legacy SSH privilege transition', comm: 'sshd', parent: 200, tag: 'free' },
+    {
+      name: 'retains an SSH transition readable cwd',
+      comm: 'sshd-session',
+      readable: 'cwd',
+      tag: 'in-use',
+    },
+    { name: 'retains a PAM child readable cwd', pamChild: true, pamHolder: true, tag: 'in-use' },
+    { name: 'rejects an unlisted SSH-like process', comm: 'sshd-helper', tag: 'unknown' },
+    {
+      name: 'rejects mixed-UID SSH processes',
+      comm: 'sshd-session',
+      mixedUids: true,
+      tag: 'unknown',
+    },
+    { name: 'counts but does not exempt a foreign manager', foreignUids: true, tag: 'free' },
+    {
+      name: 'counts but does not exempt a foreign SSH transition',
+      comm: 'sshd-session',
+      foreignUids: true,
+      tag: 'free',
+    },
+    { name: 'rejects a different comm', comm: 'systemd-helper', tag: 'unknown' },
+    { name: 'rejects a different parent', parent: 2, tag: 'unknown' },
+    {
+      name: 'rejects a different second argument',
+      cmdline: '/usr/lib/systemd/systemd\0--system\0--user\0',
+      tag: 'unknown',
+    },
+    { name: 'rejects an unreadable command line', deniedCmdline: true, tag: 'unknown' },
+    { name: 'rejects mixed UIDs', mixedUids: true, tag: 'unknown' },
+    { name: 'rejects missing UID evidence', missingUids: true, tag: 'unknown' },
+    { name: 'rejects a recycled manager PID', changedLifetime: true, tag: 'unknown' },
+    { name: 'rejects a changed comm', changedComm: true, tag: 'unknown' },
+    { name: 'rejects a changed parent', changedParent: true, tag: 'unknown' },
+  ] as const) {
+    it.effect(
+      `gc-owner systemd policy ${scenario.name}`,
+      Effect.fnUntraced(function* () {
+        const base = yield* FileSystem.FileSystem
+        const spawner = yield* ChildProcessSpawner
+        const ownUid = process.getuid!()
+        const option: {
+          otherOwner?: boolean
+          pamChild?: boolean
+          pamHolder?: boolean
+          foreignUids?: boolean
+          readable?: string
+          comm?: string
+          parent?: number
+          cmdline?: string
+          deniedCmdline?: boolean
+          mixedUids?: boolean
+          missingUids?: boolean
+          changedLifetime?: boolean
+          changedComm?: boolean
+          changedParent?: boolean
+        } = scenario
+        let statReads = 0
+        let lsofPasses = 0
+        const denied = (path: string) =>
+          Effect.fail(
+            systemError({
+              _tag: 'PermissionDenied',
+              module: 'FileSystem',
+              method: 'systemd-fixture',
+              pathOrDescriptor: path,
+            }),
+          )
+        const fs: FileSystem.FileSystem = {
+          ...base,
+          realPath: (path) => Effect.succeed(path),
+          readDirectory: (path) =>
+            path === '/proc'
+              ? Effect.succeed(
+                  option.otherOwner === true
+                    ? ['42', '43']
+                    : option.pamChild === true
+                      ? ['42', '44']
+                      : ['42'],
+                )
+              : path === '/proc/42/fd' && option.readable === 'fd'
+                ? Effect.succeed(['7'])
+                : denied(path),
+          readFileString: (path) => {
+            const manager = path.startsWith('/proc/42/')
+            if (path.endsWith('/stat') === true) {
+              const after = manager && ++statReads > 1
+              const comm =
+                manager === true
+                  ? after === true && option.changedComm === true
+                    ? 'other'
+                    : (option.comm ?? 'systemd')
+                  : path.startsWith('/proc/44/') === true
+                    ? '(sd-pam)'
+                    : 'holder'
+              const parent =
+                manager === true
+                  ? after === true && option.changedParent === true
+                    ? 2
+                    : (option.parent ?? 1)
+                  : path.startsWith('/proc/44/') === true
+                    ? 42
+                    : 1
+              const startTime = after === true && option.changedLifetime === true ? '5678' : '1234'
+              return Effect.succeed(
+                `42 (${comm}) S ${parent} 42 42 0 -1 0 ${'0 '.repeat(12)}${startTime}`,
+              )
+            }
+            if (path.endsWith('/status') === true) {
+              const uid = option.foreignUids === true ? ownUid + 1 : ownUid
+              return Effect.succeed(
+                option.missingUids === true
+                  ? 'Name:\tsystemd\n'
+                  : `Uid:\t${uid}\t${option.mixedUids === true ? uid + 1 : uid}\t${uid}\t${uid}\nCapEff:\t0000000800000000\n`,
+              )
+            }
+            if (path.endsWith('/cmdline') === true && option.deniedCmdline !== true) {
+              return Effect.succeed(option.cmdline ?? '/usr/lib/systemd/systemd\0--user\0')
+            }
+            if (manager === true && path.endsWith('/maps') === true && option.readable === 'map') {
+              return Effect.succeed('7f01-7f02 r--p 00000000 08:02 99 /worktree/held')
+            }
+            return denied(path)
+          },
+          readLink: (path) =>
+            (path === '/proc/44/cwd' && option.pamHolder === true) ||
+            path === `/proc/42/${option.readable}` ||
+            (path === '/proc/42/fd/7' && option.readable === 'fd')
+              ? Effect.succeed('/worktree/held')
+              : denied(path),
+        }
+        const result = yield* readWorktreeReferencesInUse({
+          worktreePath: '/worktree',
+          selfPid: 99,
+          scope: 'gc-owner',
+        }).pipe(
+          Effect.provideService(FileSystem.FileSystem, fs),
+          Effect.provideService(ChildProcessSpawner, {
+            ...spawner,
+            spawn: () => {
+              lsofPasses += 1
+              return denied('lsof')
+            },
+          }),
+        )
+        const exempt =
+          option.foreignUids !== true && (scenario.tag !== 'unknown' || option.otherOwner === true)
+        expect(result).toMatchObject({
+          _tag: scenario.tag,
+          ignoredForeignProcesses: option.foreignUids === true ? 1 : 0,
+          exemptProcesses:
+            exempt === true
+              ? [
+                  {
+                    pid: 42,
+                    startTime: '1234',
+                    comm: option.comm ?? 'systemd',
+                    rule:
+                      option.comm === 'sshd-session' || option.comm === 'sshd'
+                        ? 'sshd-privilege-transition'
+                        : 'systemd-user-manager',
+                  },
+                  ...(option.pamChild === true
+                    ? [{ pid: 44, startTime: '1234', comm: '(sd-pam)', rule: 'systemd-user-pam' }]
+                    : []),
+                ]
+              : [],
+        })
+        expect(lsofPasses).toBe(
+          scenario.tag === 'unknown' && option.changedLifetime !== true ? 1 : 0,
+        )
+        if (result._tag === 'unknown') expect(result.reason).toBe('own-uid-unreadable')
+        if (result._tag === 'in-use') {
+          expect(result.holder).toEqual({
+            pid: option.pamHolder === true ? 44 : 42,
+            path: '/worktree/held',
+          })
+        }
+        // Neither strict scope is authorized to waive this native unreadability.
+        for (const scope of exempt === true ? (['all-uids', 'own-uid'] as const) : []) {
+          statReads = 0
+          expect(
+            yield* readWorktreeReferencesInUse({
+              worktreePath: '/worktree',
+              selfPid: 99,
+              scope,
+            }).pipe(Effect.provideService(FileSystem.FileSystem, fs)),
+          ).toMatchObject({
+            _tag: 'unknown',
+            reason: 'inaccessible-process',
+          })
+        }
+      }, Effect.provide(NodeServices.layer)),
+    )
+  }
+
   it.effect.skipIf(runsAsRoot === true)(
     'an unreadable process of another owner makes the probe unknown',
     Effect.fnUntraced(

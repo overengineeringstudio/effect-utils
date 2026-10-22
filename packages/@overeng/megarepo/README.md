@@ -201,13 +201,36 @@ Lower-backed overlay directories can reject quarantine rename with `EXDEV` when 
 redirects are disabled. Only that overlay-specific failure permits in-place removal, still
 through pinned directory fds and with mount/inode checks before descent. An observed failure
 after in-place removal starts returns `outcome: "partial"` (`reason: "deletion-partial"`),
-without claiming reclaimed bytes. A fresh plan can retry the remaining root. Abrupt process
-termination cannot emit a receipt; it likewise leaves the remaining root for a fresh plan.
+without claiming reclaimed bytes. Any failure after quarantine rename also returns `partial`,
+with the absolute `.mr-delete-*` directory in `recoverPath` and the native error `code` when
+available. GC never renames a partially deleted tree back: entries may already be gone, and a
+replacement at the original name must not be overwritten. Only fd-pinned directories gain
+missing owner write/execute permission during deletion; files, including CAS hardlinks, retain
+their modes.
 
-Build-output budgets and policy-authorized worklog deletion refuse non-Linux hosts with
-`unsupported-platform`. Existing macOS legacy GC (including dry-run, `--all`, `--force`,
-and whole-worktree teardown) retains its previous recursive path-based removal and its
-pre-existing ancestor-symlink TOCTOU exposure; this behavior is unchanged.
+Deletion attempts append durable JSONL records to `$MEGAREPO_STORE/.state/gc-deletions.jsonl`.
+An intent is fsynced before mutation, followed by an outcome (`removed`, `partial`, or `error`);
+in-use skips record their veto evidence without attempting removal. Records carry a shared
+attempt ID, timestamp, tree path, decision, reason, veto evidence, ignored foreign-process count,
+and any errno/recovery path.
+The history is append-only and GC never compacts it. Abrupt termination may leave only the intent,
+which proves that the attempt began even if stdout was lost.
+
+Legacy and targeted deletion share the process in-use veto: a readable live cwd or open-file
+reference keeps the tree, including active or status-unreadable Buck daemons that remain alive.
+Configured workspace-activity manifests and owner deletion leases also protect legacy GC.
+Linux GC scans readable processes regardless of UID. Unreadable foreign-UID processes are
+counted in `ignoredForeignProcesses`, not treated as holders: store trees belong to the store
+owner and unrelated system services are not expected to work in them. Unreadable owner
+processes require a bounded `lsof` fallback or trusted lifetime-bound manifest coverage;
+otherwise GC keeps with `own-uid-unreadable`. macOS retains the existing bounded `lsof -d cwd`
+probe; a failed probe keeps conservatively. Budget and worklog deletion retain their stricter
+activity contracts and reject non-Linux hosts with `unsupported-platform`.
+Unreadable own-UID privilege-transition processes have a fixed exemption: `systemd --user`
+with parent PID 1, its `(sd-pam)` child, and `sshd-session`/legacy `sshd`. These processes
+are non-dumpable after privilege transitions and keep cwd `/` by design. Receipts retain
+each exemption's PID, start time, command name, and rule in `exemptProcesses`; readable
+references still veto, and their children are checked normally.
 
 `--budgets` itself never removes worktrees or worklogs; budget mode evicts build-output roots
 only. The optional `worklog` field is consumed by default GC teardown (below).
@@ -306,8 +329,8 @@ is absent (for example a daemon started by LSP may stay at the project root).
 `buck2 --isolation-dir <isolation> status` must return the identical PID and daemon ID and an empty
 `active_commands` list before `buck2 --isolation-dir <isolation> kill` runs from that project root.
 Each command has a 30-second deadline. GC never signals a daemon. Active, mismatched, unreadable,
-or unkillable daemons remain for paths with an existing in-use probe to veto; the legacy sweep's
-pre-existing deletion contract is unchanged. This is not atomic with new Buck commands: a command
+or unkillable daemons remain and veto removal, including the legacy sweep.
+This is not atomic with new Buck commands: a command
 can attach between status and kill; the worktree lock/lease only excludes cooperating worktree
 activations, not every Buck client.
 

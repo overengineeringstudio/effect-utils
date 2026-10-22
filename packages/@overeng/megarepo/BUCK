@@ -7,7 +7,7 @@ load("//buck2/products:defs.bzl", "javascript_product")
 # Projection source: packages/@overeng/megarepo/BUCK.genie.ts
 # Projection schema version: 13
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:96eb6d81b03cb2b6e13d316bbee092748ed5bdda0bfefda00c649c16a5ef90a2
+# Semantic fingerprint: sha256:c59a2961b6003ad5ce0d34a2aeb58944bd07ee7060efb9b104db5704e63e1e8f
 # Regenerate: devenv tasks run genie:run
 
 load("//buck2:materialization.bzl", "export_materialization_inputs", "package_view")
@@ -252,6 +252,8 @@ export_materialization_inputs([
     "src/store/store-gc-observations.ts",
     "src/store/store-gc-observations.unit.test.ts",
     "src/store/store-gc-plan-order.unit.test.ts",
+    "src/store/store-gc-receipts.integration.test.ts",
+    "src/store/store-gc-receipts.ts",
     "src/store/store-hygiene.ts",
     "src/store/store-hygiene.unit.test.ts",
     "src/store/store-inuse.integration.test.ts",
@@ -561,6 +563,8 @@ package_view(
         "src/store/store-gc-observations.ts": "src/store/store-gc-observations.ts",
         "src/store/store-gc-observations.unit.test.ts": "src/store/store-gc-observations.unit.test.ts",
         "src/store/store-gc-plan-order.unit.test.ts": "src/store/store-gc-plan-order.unit.test.ts",
+        "src/store/store-gc-receipts.integration.test.ts": "src/store/store-gc-receipts.integration.test.ts",
+        "src/store/store-gc-receipts.ts": "src/store/store-gc-receipts.ts",
         "src/store/store-hygiene.ts": "src/store/store-hygiene.ts",
         "src/store/store-hygiene.unit.test.ts": "src/store/store-hygiene.unit.test.ts",
         "src/store/store-inuse.integration.test.ts": "src/store/store-inuse.integration.test.ts",
@@ -872,6 +876,8 @@ package_view(
         "src/store/store-gc-observations.ts": "src/store/store-gc-observations.ts",
         "src/store/store-gc-observations.unit.test.ts": "src/store/store-gc-observations.unit.test.ts",
         "src/store/store-gc-plan-order.unit.test.ts": "src/store/store-gc-plan-order.unit.test.ts",
+        "src/store/store-gc-receipts.integration.test.ts": "src/store/store-gc-receipts.integration.test.ts",
+        "src/store/store-gc-receipts.ts": "src/store/store-gc-receipts.ts",
         "src/store/store-hygiene.ts": "src/store/store-hygiene.ts",
         "src/store/store-hygiene.unit.test.ts": "src/store/store-hygiene.unit.test.ts",
         "src/store/store-inuse.integration.test.ts": "src/store/store-inuse.integration.test.ts",
@@ -1178,6 +1184,8 @@ package_view(
         "src/store/store-gc-observations.ts": "src/store/store-gc-observations.ts",
         "src/store/store-gc-observations.unit.test.ts": "src/store/store-gc-observations.unit.test.ts",
         "src/store/store-gc-plan-order.unit.test.ts": "src/store/store-gc-plan-order.unit.test.ts",
+        "src/store/store-gc-receipts.integration.test.ts": "src/store/store-gc-receipts.integration.test.ts",
+        "src/store/store-gc-receipts.ts": "src/store/store-gc-receipts.ts",
         "src/store/store-hygiene.ts": "src/store/store-hygiene.ts",
         "src/store/store-hygiene.unit.test.ts": "src/store/store-hygiene.unit.test.ts",
         "src/store/store-inuse.integration.test.ts": "src/store/store-inuse.integration.test.ts",
@@ -1325,10 +1333,12 @@ vitest_test(
         "src/store/store-buck-maintain-safety.integration.test.ts",
         "src/store/store-buck-maintain.integration.test.ts",
         "src/store/store-deletion-lease.integration.test.ts",
+        "src/store/store-gc-receipts.integration.test.ts",
         "src/store/store-hygiene.unit.test.ts",
         "src/store/store-inuse.integration.test.ts",
         "src/store/store-liveness.integration.test.ts",
         "src/store/store-lossless.integration.test.ts",
+        "src/store/store-pinned-deletion.integration.test.ts",
         "src/store/store-workspace-activity.integration.test.ts",
         "src/test-utils/store-setup.integration.test.ts",
     ],
@@ -1364,10 +1374,12 @@ vitest_collect(
         "src/store/store-buck-maintain-safety.integration.test.ts",
         "src/store/store-buck-maintain.integration.test.ts",
         "src/store/store-deletion-lease.integration.test.ts",
+        "src/store/store-gc-receipts.integration.test.ts",
         "src/store/store-hygiene.unit.test.ts",
         "src/store/store-inuse.integration.test.ts",
         "src/store/store-liveness.integration.test.ts",
         "src/store/store-lossless.integration.test.ts",
+        "src/store/store-pinned-deletion.integration.test.ts",
         "src/store/store-workspace-activity.integration.test.ts",
         "src/test-utils/store-setup.integration.test.ts",
     ],
