@@ -5218,7 +5218,10 @@ jobs:
   buck2-cache-join:
     name: ci/buck2-cache-join
     if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
-    runs-on: ubuntu-latest
+    runs-on:
+      [
+        'namespace-profile-linux-x86-64;github.run-id=${{ github.run_id }};container.privileged=true;job.priority=4',
+      ]
     continue-on-error: true
     timeout-minutes: 30
     permissions:
@@ -5301,6 +5304,13 @@ jobs:
           fi
           echo "DEVENV_REV=$DEVENV_REV" >> "$GITHUB_ENV"
           echo "Pinned devenv rev: $DEVENV_REV"
+        shell: bash
+      - name: Resolve devenv
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
+          bash "$__genie_ci_retry_script" 'resolve devenv (devenv.lock)' 'cd "${GITHUB_WORKSPACE:-$PWD}" && '"'"'${{ runner.temp }}/composition-state/ci-runtime/resolve-devenv.sh'"'"' '"'"'devenv.lock'"'"''
         shell: bash
       - name: Prepare source script dependencies
         env:
