@@ -443,6 +443,7 @@ let
   testPublicationPackagePaths = lib.unique (
     editorBootstrapPackagePaths
     ++ lib.optional (selectedTestTask "genie:buck2:test") "."
+    ++ lib.optional (selectedTestTask "buck2:rust:generators:test") "packages/@overeng/effect-rust"
     ++ lib.optional (selectedTestTask "devenv-modules:test") "packages/@overeng/genie"
     ++ lib.optional (
       testPlatform != "darwin"
@@ -1464,6 +1465,7 @@ in
     execIfModified = [
       "buck2/rust/**/*.ts"
       "packages/@overeng/effect-rust/src/**/*.ts"
+      "packages/@overeng/schema-codegen/src/**/*.ts"
       "package.json"
       "pnpm-lock.yaml"
     ];

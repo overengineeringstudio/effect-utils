@@ -600,6 +600,9 @@ const scopedPublisherContracts = {
     ],
     packagePaths: [
       ...bootstrapPackagePaths,
+      ...(sourceTaskSelected('buck2:rust:generators:test') === true
+        ? ['packages/@overeng/effect-rust']
+        : []),
       ...(sourceTaskSelected('devenv-modules:test') === true ? ['packages/@overeng/genie'] : []),
       ...(process.env.EFFECT_UTILS_TEST_PLATFORM !== 'darwin' ||
       platformSuites.moduleScripts.darwin.some(({ script }) =>

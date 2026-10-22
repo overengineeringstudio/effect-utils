@@ -432,6 +432,8 @@ suite, and `buck2:rust:generators:test` covers every test under `buck2/rust/`, i
 the interop service and wasm guest packager integration tests. Both tasks participate
 in `test:run`; the platform-neutral Rust generator suite runs in the Linux CI partition,
 while the Darwin partition retains only host-sensitive suites.
+The shared harness publisher includes `effect-rust` for this generator suite so its
+compiler can resolve the shared `schema-codegen` package from a fresh checkout.
 
 ### Type Checking
 
