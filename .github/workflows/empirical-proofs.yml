@@ -5280,6 +5280,19 @@ jobs:
           PR_NUMBER: ${{ github.event.pull_request.number }}
           PR_FORK: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
         run: bash genie/ci-scripts/evidence-job.sh identity
+      - name: Provide cachix CLI from nixpkgs
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          out=$(nix build --no-link --print-out-paths nixpkgs#cachix)
+          echo "$out/bin" >> "$GITHUB_PATH"
+      - name: Enable Cachix cache
+        uses: cachix/cachix-action@v17
+        with:
+          name: overeng-effect-utils
+          skipPush: true
       - name: Prepare CI helper scripts
         shell: bash
         run: |

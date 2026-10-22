@@ -1,4 +1,6 @@
 import {
+  cachixCliBuildStep,
+  cachixStep,
   ciMeasurementBaselineWorkflowDispatchInputs,
   ciWorkflow,
   checkoutStep,
@@ -85,6 +87,8 @@ export default ciWorkflow({
             checkoutStep(),
             installNixStep(),
             linuxSandboxPrerequisitesStep({ privileged: 'always' }),
+            cachixCliBuildStep,
+            cachixStep({ name: 'overeng-effect-utils' }),
             prepareCiScriptsStep,
             preparePinnedDevenvStep,
             validateNixStoreStep,
