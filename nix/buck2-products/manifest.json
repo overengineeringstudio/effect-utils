@@ -197,17 +197,17 @@
       "version": "0.1.0"
     },
     {
-      "artifactUrl": "https://overeng-effect-utils.cachix.org/serve/3qgcfmddnkyh5pkasnicbkhkgxr4jqwh/overeng-genie.tgz",
+      "artifactUrl": "https://overeng-effect-utils.cachix.org/serve/6hkqsqq7485v2pcqzks6lpwbva0z2pgz/overeng-genie.tgz",
       "name": "@overeng/genie",
       "provenance": {
-        "producerCommit": "0549f2581d85f07d5fa2126daa5b41a240149abf",
-        "productDigest": "768722bf80148291e5bdb39af20654a9526a8f41ee4e8b941a3c1ff98e6c2095",
+        "producerCommit": "25026f18b0c776df7136d6ab4f29ffe32486526f",
+        "productDigest": "344f5501d2435561a811a750dd2d0ec8fb9656891ff565e037dff9bbb18beefa",
         "schema": "effect-utils/buck-product-provenance/v1",
         "target": "effect_utils//packages/@overeng/genie:dist-package"
       },
-      "sha256": "768722bf80148291e5bdb39af20654a9526a8f41ee4e8b941a3c1ff98e6c2095",
-      "size": 775062,
-      "storePath": "/nix/store/3qgcfmddnkyh5pkasnicbkhkgxr4jqwh-overeng-genie-buck2-from-source-0.1.0",
+      "sha256": "344f5501d2435561a811a750dd2d0ec8fb9656891ff565e037dff9bbb18beefa",
+      "size": 775327,
+      "storePath": "/nix/store/6hkqsqq7485v2pcqzks6lpwbva0z2pgz-overeng-genie-buck2-from-source-0.1.0",
       "version": "0.1.0"
     },
     {
@@ -239,17 +239,17 @@
       "version": "0.1.0"
     },
     {
-      "artifactUrl": "https://overeng-effect-utils.cachix.org/serve/w6pq5k9w75hjxpaslfbknypkb3n95z3n/overeng-notion-effect-client.tgz",
+      "artifactUrl": "https://overeng-effect-utils.cachix.org/serve/ldqp1d019rsi6k3grmiazhs91ny5dpmq/overeng-notion-effect-client.tgz",
       "name": "@overeng/notion-effect-client",
       "provenance": {
-        "producerCommit": "9cf644d2c3948ab1c5b64fb7f17d393ede366321",
-        "productDigest": "7c7253a78a069d0aab69bb6a7c591716b811d852ee1081f3b19faec62b85439d",
+        "producerCommit": "4039f053f190fc32d676c2b46506ccbd3c253476",
+        "productDigest": "aa76274940b909130c03af9c09c4a840d2cc3feed974c800e2aa715fb29b9642",
         "schema": "effect-utils/buck-product-provenance/v1",
         "target": "effect_utils//packages/@overeng/notion-effect-client:dist-package"
       },
-      "sha256": "7c7253a78a069d0aab69bb6a7c591716b811d852ee1081f3b19faec62b85439d",
-      "size": 309446,
-      "storePath": "/nix/store/w6pq5k9w75hjxpaslfbknypkb3n95z3n-overeng-notion-effect-client-buck2-from-source-0.1.0",
+      "sha256": "aa76274940b909130c03af9c09c4a840d2cc3feed974c800e2aa715fb29b9642",
+      "size": 310764,
+      "storePath": "/nix/store/ldqp1d019rsi6k3grmiazhs91ny5dpmq-overeng-notion-effect-client-buck2-from-source-0.1.0",
       "version": "0.1.0"
     },
     {
@@ -267,17 +267,17 @@
       "version": "0.1.0"
     },
     {
-      "artifactUrl": "https://overeng-effect-utils.cachix.org/serve/gdf5650vk9kyyakbbj7dc2cpdgm2k3v6/overeng-notion-md.tgz",
+      "artifactUrl": "https://overeng-effect-utils.cachix.org/serve/pb3zwdw6sgw33gzrzx1rrv7jjaavygv1/overeng-notion-md.tgz",
       "name": "@overeng/notion-md",
       "provenance": {
-        "producerCommit": "e23b25e17c33a238db86dbad9f1a5ecf4e9b4e8a",
-        "productDigest": "f4b2078acea2245d301496246ce36f08a94d8ebd37a72cb33837c2b7ddce92fc",
+        "producerCommit": "4039f053f190fc32d676c2b46506ccbd3c253476",
+        "productDigest": "b5519d728f192c0ce0b6131dbad7957d8c6d75d6eda9e41d387899895f5dad3a",
         "schema": "effect-utils/buck-product-provenance/v1",
         "target": "effect_utils//packages/@overeng/notion-md:dist-package"
       },
-      "sha256": "f4b2078acea2245d301496246ce36f08a94d8ebd37a72cb33837c2b7ddce92fc",
-      "size": 562416,
-      "storePath": "/nix/store/gdf5650vk9kyyakbbj7dc2cpdgm2k3v6-overeng-notion-md-buck2-from-source-0.1.0",
+      "sha256": "b5519d728f192c0ce0b6131dbad7957d8c6d75d6eda9e41d387899895f5dad3a",
+      "size": 562511,
+      "storePath": "/nix/store/pb3zwdw6sgw33gzrzx1rrv7jjaavygv1-overeng-notion-md-buck2-from-source-0.1.0",
       "version": "0.1.0"
     },
     {
@@ -407,17 +407,17 @@
       "version": "0.1.0"
     },
     {
-      "artifactUrl": "https://overeng-effect-utils.cachix.org/serve/89cnxjsnnjpp13g5w9v8lrgjv09fvi3p/overeng-utils.tgz",
+      "artifactUrl": "https://overeng-effect-utils.cachix.org/serve/l7rc04ghaanlbw1a39ahq1dfpw1x9mp8/overeng-utils.tgz",
       "name": "@overeng/utils",
       "provenance": {
-        "producerCommit": "f4b5bb3ddb4988951aa2898b22036c5fd00e7b92",
-        "productDigest": "7597d6d62edaf7f14eb0be63731434cef652298286719d0ea826ddc7eae97177",
+        "producerCommit": "642fe83e1cb0c5c01c5e475d2aa87321fee6741f",
+        "productDigest": "bcc48352b22a348eff9fc37895ad02c125d2eb219f60028da6ab12e1c0afe72c",
         "schema": "effect-utils/buck-product-provenance/v1",
         "target": "effect_utils//packages/@overeng/utils:dist-package"
       },
-      "sha256": "7597d6d62edaf7f14eb0be63731434cef652298286719d0ea826ddc7eae97177",
-      "size": 450864,
-      "storePath": "/nix/store/89cnxjsnnjpp13g5w9v8lrgjv09fvi3p-overeng-utils-buck2-from-source-0.1.0",
+      "sha256": "bcc48352b22a348eff9fc37895ad02c125d2eb219f60028da6ab12e1c0afe72c",
+      "size": 451439,
+      "storePath": "/nix/store/l7rc04ghaanlbw1a39ahq1dfpw1x9mp8-overeng-utils-buck2-from-source-0.1.0",
       "version": "0.1.0"
     },
     {
@@ -708,11 +708,11 @@
       "version": "0.0.0"
     },
     {
-      "artifactUrl": "https://overeng-effect-utils.cachix.org/serve/29132vg18cz9a1665c6ivxfdnank4wk2/notion.js",
+      "artifactUrl": "https://overeng-effect-utils.cachix.org/serve/qa2j2fgkcd6pzh990nkfnsga7xihd73r/notion.js",
       "descriptor": {
         "externalCapabilities": [],
         "externalModules": [],
-        "integrity": "sha256-IWIor+P7vLjGxxnm1AWEsCG+z/VDvsE1IbdhjafH7gU=",
+        "integrity": "sha256-UCw0KoD+8wMq+SXaH7JkrLipIdiCGNjbQp6MmFOj7us=",
         "modulePath": "notion.js",
         "platform": {
           "abi": "any",
@@ -730,24 +730,24 @@
         "runtimeContractVersion": "v1",
         "runtimeKind": "node",
         "schema": "effect-utils/javascript-product/v2",
-        "sizeBytes": 3059455,
+        "sizeBytes": 3059664,
         "target": "effect_utils//packages/@overeng/notion-cli:notion-cli-candidate"
       },
-      "descriptorSha256": "67c9e754b884dd15b398e0aaee2085c874d27c9d174c169200e3fd42cbc6f618",
+      "descriptorSha256": "2838ca700d75c4a487b67dfddad50246b3f3bdca1760cf5a06c11039fdd32938",
       "name": "notion-cli",
       "provenance": {
-        "producerCommit": "e23b25e17c33a238db86dbad9f1a5ecf4e9b4e8a",
-        "productDigest": "216228afe3fbbcb8c6c719e6d40584b021becff543bec13521b7618da7c7ee05",
+        "producerCommit": "4039f053f190fc32d676c2b46506ccbd3c253476",
+        "productDigest": "502c342a80fef3032af925da1fb264acb8a921d88218d8db429e8c9853a3eeeb",
         "schema": "effect-utils/buck-product-provenance/v1",
         "target": "effect_utils//packages/@overeng/notion-cli:notion-cli-candidate"
       },
-      "sha256": "216228afe3fbbcb8c6c719e6d40584b021becff543bec13521b7618da7c7ee05",
-      "size": 3059455,
-      "storePath": "/nix/store/29132vg18cz9a1665c6ivxfdnank4wk2-notion-cli-buck2-from-source-0.0.0",
+      "sha256": "502c342a80fef3032af925da1fb264acb8a921d88218d8db429e8c9853a3eeeb",
+      "size": 3059664,
+      "storePath": "/nix/store/qa2j2fgkcd6pzh990nkfnsga7xihd73r-notion-cli-buck2-from-source-0.0.0",
       "version": "0.0.0"
     },
     {
-      "artifactUrl": "https://overeng-effect-utils.cachix.org/serve/faiwxrica5dy21na8sb36qdq50jygwz8/notion-db.js",
+      "artifactUrl": "https://overeng-effect-utils.cachix.org/serve/gvhg90zzymwayj5wq1c39mmvql1p1fvc/notion-db.js",
       "descriptor": {
         "externalCapabilities": [
           "opentui-core-native"
@@ -762,7 +762,7 @@
           "@opentui/core-win32-arm64",
           "@opentui/core-win32-x64"
         ],
-        "integrity": "sha256-flGHlnS1HpQlSCrUzsn5S7gsZAzcx+/Ky8N2WbYF1Oc=",
+        "integrity": "sha256-Iw5pi9Ha7Lq2og78ePCNlhmBqAgczwA+G+7Z25Sgckw=",
         "modulePath": "notion-db.js",
         "platform": {
           "abi": "any",
@@ -780,28 +780,28 @@
         "runtimeContractVersion": "v1",
         "runtimeKind": "node",
         "schema": "effect-utils/javascript-product/v2",
-        "sizeBytes": 5749263,
+        "sizeBytes": 5749476,
         "target": "effect_utils//packages/@overeng/notion-cli:notion-db-candidate"
       },
-      "descriptorSha256": "54f3a52177a51fce71042ac03ee17e9f9120f0fbe37191148eb6836b145a7d18",
+      "descriptorSha256": "06527ac89b43b82ba5e6cd67a97a504d1f94373da7bf066c94bd950764bc424b",
       "name": "notion-db-runtime",
       "provenance": {
-        "producerCommit": "e23b25e17c33a238db86dbad9f1a5ecf4e9b4e8a",
-        "productDigest": "7e51879674b51e9425482ad4cec9f94bb82c640cdcc7efcacbc37659b605d4e7",
+        "producerCommit": "4039f053f190fc32d676c2b46506ccbd3c253476",
+        "productDigest": "230e698bd1daecbab6a20efc78f08d961981a8081ccf003e1beed9db94a0724c",
         "schema": "effect-utils/buck-product-provenance/v1",
         "target": "effect_utils//packages/@overeng/notion-cli:notion-db-candidate"
       },
-      "sha256": "7e51879674b51e9425482ad4cec9f94bb82c640cdcc7efcacbc37659b605d4e7",
-      "size": 5749263,
-      "storePath": "/nix/store/faiwxrica5dy21na8sb36qdq50jygwz8-notion-db-runtime-buck2-from-source-0.0.0",
+      "sha256": "230e698bd1daecbab6a20efc78f08d961981a8081ccf003e1beed9db94a0724c",
+      "size": 5749476,
+      "storePath": "/nix/store/gvhg90zzymwayj5wq1c39mmvql1p1fvc-notion-db-runtime-buck2-from-source-0.0.0",
       "version": "0.0.0"
     },
     {
-      "artifactUrl": "https://overeng-effect-utils.cachix.org/serve/kkq52kbs52z6xsfw088bimxm5nn87kfk/notion-md.js",
+      "artifactUrl": "https://overeng-effect-utils.cachix.org/serve/f7r8zg2l9x0rd4bx797nl1l0x2l7zg8m/notion-md.js",
       "descriptor": {
         "externalCapabilities": [],
         "externalModules": [],
-        "integrity": "sha256-kq+5ol6PW1iO73ItIhZzOpQf68lm7G0KqPIwPxAfZcA=",
+        "integrity": "sha256-vmdpK3Ng2bBAUI1HFt1Ww+N9hCrgpTSAFNTSjbP9LFg=",
         "modulePath": "notion-md.js",
         "platform": {
           "abi": "any",
@@ -819,20 +819,20 @@
         "runtimeContractVersion": "v1",
         "runtimeKind": "node",
         "schema": "effect-utils/javascript-product/v2",
-        "sizeBytes": 1629293,
+        "sizeBytes": 1629506,
         "target": "effect_utils//packages/@overeng/notion-md:notion-md-candidate"
       },
-      "descriptorSha256": "50722b8c3c6754cec9170e6160b6b0078d29af393f014a92526f95c02a460652",
+      "descriptorSha256": "789b963d9503ddcf9a579ee3395681c7944928debfa22892d7998955291c4d93",
       "name": "notion-md",
       "provenance": {
-        "producerCommit": "e23b25e17c33a238db86dbad9f1a5ecf4e9b4e8a",
-        "productDigest": "92afb9a25e8f5b588eef722d2216733a941febc966ec6d0aa8f2303f101f65c0",
+        "producerCommit": "4039f053f190fc32d676c2b46506ccbd3c253476",
+        "productDigest": "be67692b7360d9b040508d4716dd56c3e37d842ae0a5348014d4d28db3fd2c58",
         "schema": "effect-utils/buck-product-provenance/v1",
         "target": "effect_utils//packages/@overeng/notion-md:notion-md-candidate"
       },
-      "sha256": "92afb9a25e8f5b588eef722d2216733a941febc966ec6d0aa8f2303f101f65c0",
-      "size": 1629293,
-      "storePath": "/nix/store/kkq52kbs52z6xsfw088bimxm5nn87kfk-notion-md-buck2-from-source-0.0.0",
+      "sha256": "be67692b7360d9b040508d4716dd56c3e37d842ae0a5348014d4d28db3fd2c58",
+      "size": 1629506,
+      "storePath": "/nix/store/f7r8zg2l9x0rd4bx797nl1l0x2l7zg8m-notion-md-buck2-from-source-0.0.0",
       "version": "0.0.0"
     },
     {
