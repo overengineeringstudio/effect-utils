@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'bun:test'
 import { createHash } from 'node:crypto'
-import { mkdtemp, rm } from 'node:fs/promises'
+import { mkdir, mkdtemp, rm, symlink, utimes } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { gunzipSync } from 'node:zlib'
 
 import { decodeActionArtifact } from './buck2-action-evidence-codec.ts'
@@ -257,7 +257,7 @@ describe('complete normalized action artifact CLI', () => {
         { env: fixtureEnv, stdout: 'ignore', stderr: 'pipe' },
       )
       const error = await new Response(child.stderr).text()
-      expect(await child.exited).toBe(1)
+      expect(await child.exited).toBe(2)
       expect(error).not.toContain('SECRET')
       const raw = gunzipSync(
         new Uint8Array(await Bun.file(join(directory, actionsArtifactName)).arrayBuffer()),
@@ -327,7 +327,7 @@ describe('complete normalized action artifact CLI', () => {
             stderr: 'ignore',
           },
         )
-        expect(await child.exited).toBe(bounds.valid === true ? 0 : 1)
+        expect(await child.exited).toBe(bounds.valid === true ? 0 : 2)
         const full = decodeActionArtifact(
           gunzipSync(await Bun.file(join(directory, actionsArtifactName)).arrayBuffer()).toString(
             'utf8',
@@ -407,6 +407,117 @@ describe('complete normalized action artifact CLI', () => {
     }
   })
 
+  it('requires actual in-window native build IDs before declaring rotated logs', async () => {
+    for (const confirmation of [
+      'confirmed', 'missing', 'stale', 'future', 'mismatched', 'invalid', 'legacy', 'audit',
+    ] as const) {
+      const directory = await mkdtemp(join(tmpdir(), 'buck-actions-rotation-'))
+      try {
+        const output = join(directory, 'buck2-cache-evidence.json')
+        const events = join(directory, 'native.jsonl')
+        const earliest = '2fc13b48-c94a-4a9c-936f-bc24615bc360'
+        const survivor = '51bd392e-1f24-4221-80d3-e76ad36f0b9c'
+        const nativeId = join(directory, 'earliest.buck-trace-id')
+        // The earliest invocation is absent, while the only surviving log has
+        // kind-10 local-cache rows with no digest.
+        await Bun.write(events, nativeLog(survivor, 5, true))
+        if (confirmation !== 'legacy') {
+          const row = JSON.stringify({ buildId: earliest, path: nativeId })
+          await Bun.write(`${output}.native-build-id-paths.jsonl`, `${row}\n${row}\n`)
+        }
+        if (confirmation !== 'missing' && confirmation !== 'legacy') {
+          await Bun.write(nativeId, confirmation === 'mismatched' ? survivor : confirmation === 'invalid' ? 'not-an-id' : `${earliest}\n`)
+          const mtime = confirmation === 'stale' ? 1699999999 : confirmation === 'future' ? 1700000011 : 1700000001
+          await utimes(nativeId, mtime, mtime)
+        }
+        // Denied admissions are never evidence that Buck actually started.
+        await Bun.write(`${output}.admission.jsonl`, `${JSON.stringify({
+          invocationId: earliest,
+          admissionFallbacks: { reapi: 0, archiveOrigin: 0 },
+          admissionRetrySuccesses: { reapi: 0, archiveOrigin: 0 },
+        })}\n`)
+        if (confirmation === 'audit') {
+          const audit = join(directory, 'audit.jsonl')
+          await Bun.write(audit, [
+            event(earliest, 'SpanStart', 1, 1700000000, { Command: {} }),
+            event(earliest, 'SpanEnd', 1, 1700000000, { Command: {} }),
+          ].map((record) => JSON.stringify(record)).join('\n'))
+          const decodedAudit = Bun.spawn([
+            process.execPath, collector, '--events', audit, '--output', output,
+            '--context', 'native-log', '--fresh-root',
+          ], { env: fixtureEnv, stdout: 'ignore', stderr: 'ignore' })
+          expect(await decodedAudit.exited).toBe(0)
+        }
+        const child = Bun.spawn([
+          process.execPath, collector, '--events', events, '--output', output,
+          '--context', 'native-log', '--fresh-root', '--finalize',
+        ], { env: fixtureEnv, stdout: 'ignore', stderr: 'ignore' })
+        expect(await child.exited).toBe(2)
+        const summary: CacheEvidence = await Bun.file(output).json()
+        const full = decodeActionArtifact(
+          gunzipSync(await Bun.file(join(directory, actionsArtifactName)).arrayBuffer()).toString('utf8'),
+        )
+        expect(full.header.complete).toBe(false)
+        expect(summary.actionsArtifact?.complete).toBe(false)
+        expect(full.header.evidenceGaps).toEqual(
+          confirmation === 'confirmed' ? ['native-log-rotated'] : ['fresh-local-cache-action-missing-digest'],
+        )
+        expect(full.header.invocations.find((item) => item.buildId === survivor)?.freshRoot).toBe(confirmation !== 'confirmed')
+        expect(full.actions.every((action) => action.executionKind === 10 && action.digest === null)).toBe(true)
+      } finally {
+        await rm(directory, { recursive: true, force: true })
+      }
+    }
+  })
+
+  it('keeps a written rotated artifact invalid without adding a finalization-failed gap', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'buck-actions-collector-rotation-'))
+    try {
+      const output = join(directory, 'buck2-cache-evidence.json')
+      const actions = join(directory, actionsArtifactName)
+      const events = join(directory, 'native.jsonl')
+      const marker = join(directory, 'start')
+      const earliest = '2fc13b48-c94a-4a9c-936f-bc24615bc360'
+      const survivor = '51bd392e-1f24-4221-80d3-e76ad36f0b9c'
+      const nativeId = join(directory, 'earliest.buck-trace-id')
+      await Bun.write(nativeId, `${earliest}\n`)
+      await utimes(nativeId, 1700000001, 1700000001)
+      await Bun.write(`${output}.native-build-id-paths.jsonl`, `${JSON.stringify({ buildId: earliest, path: nativeId })}\n`)
+      await Bun.write(events, nativeLog(survivor, 5, true))
+      const seed = Bun.spawn([
+        process.execPath, collector, '--events', events, '--output', output,
+        '--context', 'native-log', '--fresh-root',
+      ], { env: fixtureEnv, stdout: 'ignore', stderr: 'ignore' })
+      expect(await seed.exited).toBe(0)
+      await mkdir(join(directory, 'genie'))
+      await symlink(dirname(collector), join(directory, 'genie', 'ci-scripts'), 'dir')
+      await Bun.write(marker, `1700000000000\n${directory}\n1\n`)
+      const child = Bun.spawn(['bash', new URL('./collect-buck2-cache-evidence.sh', import.meta.url).pathname], {
+        cwd: directory,
+        env: {
+          ...fixtureEnv,
+          PATH: `${dirname(process.execPath)}:${process.env.PATH ?? ''}`,
+          CI_BUCK2_CACHE_EVIDENCE_PATH: output,
+          CI_BUCK2_CACHE_ACTIONS_PATH: actions,
+          CI_BUCK2_CACHE_EVIDENCE_START: marker,
+          CI_BUCK2_CACHE_EVIDENCE_DISABLED: '0',
+        },
+        stdout: 'ignore',
+        stderr: 'ignore',
+      })
+      expect(await child.exited).toBe(1)
+      const summary: CacheEvidence = await Bun.file(output).json()
+      const full = decodeActionArtifact(gunzipSync(await Bun.file(actions).arrayBuffer()).toString('utf8'))
+      expect(summary.actionsArtifact?.complete).toBe(false)
+      expect(full.header.complete).toBe(false)
+      expect(full.header.evidenceGaps).toEqual(['native-log-rotated'])
+      expect(full.header.invocations[0]?.freshRoot).toBe(false)
+      expect(full.actions.every((action) => action.executionKind === 10 && action.digest === null)).toBe(true)
+    } finally {
+      await rm(directory, { recursive: true, force: true })
+    }
+  })
+
   it('rejects absent local-action-cache digests in a fresh cache-bearing invocation', async () => {
     const directory = await mkdtemp(join(tmpdir(), 'buck-actions-local-fresh-'))
     try {
@@ -428,7 +539,7 @@ describe('complete normalized action artifact CLI', () => {
         ],
         { env: fixtureEnv, stdout: 'ignore', stderr: 'ignore' },
       )
-      expect(await child.exited).toBe(1)
+      expect(await child.exited).toBe(2)
       const full = decodeActionArtifact(
         gunzipSync(await Bun.file(join(directory, actionsArtifactName)).arrayBuffer()).toString(
           'utf8',

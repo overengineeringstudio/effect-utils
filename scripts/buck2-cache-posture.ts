@@ -146,7 +146,7 @@ export const standaloneCachePostureConfig = ({
   readonly env: Readonly<Record<string, string | undefined>>
 }): string => {
   const withoutManaged = withoutManagedBlock(current)
-  const managed =
+  let managed =
     env['BUCK2_NO_REMOTE_CACHE'] === '1'
       ? NO_REMOTE_CACHE_BLOCK
       : env['BUCK2_PUBLIC_CACHE_READ_ONLY'] === '1'
@@ -156,6 +156,15 @@ export const standaloneCachePostureConfig = ({
           : (env['BUCK2_CACHE_WRITE_BASIC_AUTH'] ?? '') !== ''
             ? PUBLISHER_CACHE_BLOCK
             : DEFAULT_CACHE_BLOCK
+  // Measured CI peak: 58 native-launch admissions; 120 retains twice that volume.
+  // This is Buck's count-only native retention, not a byte bound or a developer default.
+  if (env['GITHUB_ACTIONS'] === 'true' || (env['CI_BUCK2_CACHE_EVIDENCE_PATH'] ?? '') !== '') {
+    const retention = '[buck2]\n  retained_event_logs = 120'
+    managed =
+      managed.includes('[buck2]') === true
+        ? managed.replace('[buck2]', retention)
+        : managed.replace(MANAGED_END, `${retention}\n${MANAGED_END}`)
+  }
   const unmanaged = withoutManaged.content
   return unmanaged === '' ? `${managed}\n` : `${unmanaged}\n\n${managed}\n`
 }

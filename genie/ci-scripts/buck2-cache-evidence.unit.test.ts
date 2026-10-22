@@ -12,6 +12,7 @@ import {
   decodeCacheEvidence,
   disabledCacheEvidence,
   emptyCacheEvidence,
+  finalizeNativeLogFreshness,
   maxCacheEvidenceActions,
   mergeCacheEvidence,
 } from './buck2-cache-evidence.ts'
@@ -718,6 +719,50 @@ describe('native Buck cache evidence projection', () => {
     expect(decoded.counts).toEqual(original.counts)
     expect(decoded.metadata).toEqual({ job: 'writer' })
     expect(JSON.stringify(decoded)).not.toContain('PRIVATE_')
+  })
+
+  it('detects missing confirmed IDs without promoting surviving local-cache invocations', () => {
+    const survivor: ActionInvocation = {
+      buildId: 'survivor',
+      context: 'native-log',
+      freshRoot: true,
+      actionCount: 1,
+      excludedByDesign: { 'local-materialization-policy': 0, 'darwin-unsandboxed': 0 },
+      complete: true,
+      startedAt: 100,
+      completedAt: 200,
+    }
+    expect(finalizeNativeLogFreshness({
+      invocations: [survivor],
+      confirmedBuildIds: new Set(['earliest', 'survivor']),
+    })).toBe(true)
+    expect(survivor.freshRoot).toBe(false)
+  })
+
+  it('compares all decoded IDs, deduplicates invocation IDs and reads legacy evidence without rotation', () => {
+    const invocation: ActionInvocation = {
+      buildId: 'build',
+      context: 'native-log',
+      freshRoot: true,
+      actionCount: 1,
+      excludedByDesign: { 'local-materialization-policy': 0, 'darwin-unsandboxed': 0 },
+      complete: true,
+      startedAt: 100,
+      completedAt: 200,
+    }
+    const invocations = [
+      invocation,
+      { ...invocation },
+      { ...invocation, buildId: 'audit', actionCount: 0, startedAt: 50 },
+    ]
+    expect(finalizeNativeLogFreshness({
+      invocations,
+      confirmedBuildIds: new Set(['audit', 'build']),
+    })).toBe(false)
+    expect(invocation.freshRoot).toBe(true)
+    expect(invocations[2]!.freshRoot).toBe(false)
+    expect(finalizeNativeLogFreshness({ invocations, confirmedBuildIds: new Set() })).toBe(false)
+    expect(invocation.freshRoot).toBe(true)
   })
 
   it('emits every first action end alongside unchanged bounded representatives', () => {

@@ -308,8 +308,9 @@ export const directBuckArguments = async ({
   // be in the root overlay before daemon startup, including removal on public reads.
   if (
     unmanaged.found === true ||
-    Object.keys(buckConfigValues(posture)).some((key) => key.startsWith('buck2_re_client.')) ===
-      true
+    Object.keys(buckConfigValues(posture)).some(
+      (key) => key.startsWith('buck2_re_client.') === true || key === 'buck2.retained_event_logs',
+    ) === true
   )
     reconcileStandaloneCachePosture({ repoRoot: root, env: postureEnv })
   const overrides = buckConfigValues(posture)
@@ -697,6 +698,57 @@ export const reconcileGateDaemon = ({
   }
 }
 
+/**
+ * Register only an admitted native launch. The row is a path to native proof,
+ * not proof itself: collection must confirm its UUID and job-window mtime.
+ */
+export const nativeBuildIdArguments = ({
+  args,
+  cwd,
+  env,
+}: {
+  readonly args: readonly string[]
+  readonly cwd: string
+  readonly env: Readonly<Record<string, string | undefined>>
+}): string[] => {
+  const evidencePath = env['CI_BUCK2_CACHE_EVIDENCE_PATH']
+  if (evidencePath === undefined || evidencePath === '') return [...args]
+  const sentinel = args.indexOf('--')
+  const before = sentinel === -1 ? args : args.slice(0, sentinel)
+  if (
+    findRoot(cwd) === undefined ||
+    skipsWatcherAdmission(before) === true ||
+    before.some((arg) => configCommands[arg] === true) === false
+  )
+    return [...args]
+  const buildId = canonicalCacheAdmissionInvocationId(env['BUCK_WRAPPER_UUID'])
+  let supplied = false
+  let suppliedPath: string | undefined
+  for (let index = 0; index < before.length; index++) {
+    const arg = before[index]
+    if (arg === '--write-build-id') {
+      supplied = true
+      suppliedPath = before[++index]
+    } else if (arg?.startsWith('--write-build-id=') === true) {
+      supplied = true
+      suppliedPath = arg.slice(17)
+    }
+  }
+  // Leave malformed caller flags to native clap; never replace or duplicate them.
+  if (supplied === true && (suppliedPath === undefined || suppliedPath === '')) return [...args]
+  const path =
+    suppliedPath === undefined
+      ? resolve(cwd, `${evidencePath}.native-build-ids`, `${buildId}.buck-trace-id`)
+      : resolve(cwd, suppliedPath)
+  if (suppliedPath === undefined) mkdirSync(dirname(path), { recursive: true, mode: 0o700 })
+  const registry = resolve(cwd, `${evidencePath}.native-build-id-paths.jsonl`)
+  mkdirSync(dirname(registry), { recursive: true, mode: 0o700 })
+  appendFileSync(registry, `${JSON.stringify({ buildId, path })}\n`, { mode: 0o600 })
+  return suppliedPath === undefined
+    ? [...before, '--write-build-id', path, ...(sentinel === -1 ? [] : args.slice(sentinel))]
+    : [...args]
+}
+
 const warnStdio = (message: string): void => {
   try {
     writeSync(2, message)
@@ -774,13 +826,13 @@ if (import.meta.main === true) {
     // Native Buck reads this UUID as its trace/build ID. Preserve OTEL's command identity.
     process.env['BUCK_WRAPPER_UUID'] ??= randomUUID()
     const launchCache = process.argv[3] === '--launch-cache' ? process.argv[4] : undefined
-    const args = await directBuckArguments({
+    const admittedArgs = await directBuckArguments({
       args: process.argv.slice(launchCache === undefined ? 3 : 5),
       cwd: process.cwd(),
       env: process.env,
     })
-    const sentinel = args.indexOf('--')
-    const configArgs = sentinel === -1 ? args : args.slice(0, sentinel)
+    const sentinel = admittedArgs.indexOf('--')
+    const configArgs = sentinel === -1 ? admittedArgs : admittedArgs.slice(0, sentinel)
     const root = findRoot(process.cwd())
     if (root !== undefined && skipsWatcherAdmission(configArgs) === false) {
       const tracked = buckConfigValues(readConfig({ path: join(root, '.buckconfig') }))
@@ -798,6 +850,11 @@ if (import.meta.main === true) {
           provider,
         })
     }
+    const args = nativeBuildIdArguments({
+      args: admittedArgs,
+      cwd: process.cwd(),
+      env: process.env,
+    })
     if (launchCache !== undefined && launchCache !== '' && failedOpen === false) {
       const candidate = `${launchCache}.${randomUUID()}`
       try {
