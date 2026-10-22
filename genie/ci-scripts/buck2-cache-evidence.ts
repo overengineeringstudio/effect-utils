@@ -29,14 +29,10 @@ import { gzipSync, gunzipSync } from 'node:zlib'
 
 import { canonicalCacheAdmissionInvocationId } from '../../scripts/buck2-cache-posture.ts'
 import {
-  readCacheEvidenceRedaction,
-  removeCacheEvidenceRedaction,
-} from '../../scripts/buck2-evidence-redaction.ts'
-import {
-  createUploadDiagnosticSanitizer,
   decodeActionArtifact,
   decodeActionExclusionCounts,
   decodeCacheUploadErrors,
+  sanitizeUploadDiagnostic,
 } from './buck2-action-evidence-codec.ts'
 import {
   actionExclusionReason,
@@ -461,13 +457,11 @@ export const createCacheEvidenceProjector = ({
   onAction,
   onInvocation,
   freshRoot = false,
-  diagnosticRedactionValues = [],
 }: {
   context?: string
   onAction?: (action: ActionRecord) => void
   onInvocation?: (invocation: ActionInvocation) => void
   freshRoot?: boolean
-  diagnosticRedactionValues?: readonly string[]
 } = {}): {
   add: (value: unknown) => void
   finish: () => CacheEvidence
@@ -478,7 +472,6 @@ export const createCacheEvidenceProjector = ({
   const parents = new Map<string, string>()
   const uploadErrorsByAction = new Map<string, CacheUploadError[]>()
   const endedUploads = new Set<string>()
-  const sanitizeUploadDiagnostic = createUploadDiagnosticSanitizer(process.env, diagnosticRedactionValues)
   let invocationStartedAt: number | null = null
   let invocationCompletedAt: number | null = null
   let invalidActionCount = 0
@@ -1075,9 +1068,6 @@ const run = async (): Promise<void> => {
     values['actions-output'] ?? join(dirname(values.output), actionsArtifactName)
   if (basename(actionsOutput) !== actionsArtifactName)
     throw new Error('Action artifact must use the canonical filename')
-  // Validate the private context before reading diagnostics or writing any public output.
-  const diagnosticRedactionValues = readCacheEvidenceRedaction({ evidencePath: values.output })
-  const sanitizeDiagnostic = createUploadDiagnosticSanitizer(process.env, diagnosticRedactionValues)
   let evidence = disabled === true ? disabledCacheEvidence() : emptyCacheEvidence()
   const previousSummary = Bun.file(values.output)
   let previous: CacheEvidence | undefined
@@ -1122,7 +1112,6 @@ const run = async (): Promise<void> => {
     const invocations: ActionInvocation[] = []
     const projector = createCacheEvidenceProjector({
       context: values.context,
-      diagnosticRedactionValues,
       // Native-log candidates resolve by command start time at finalization.
       // Explicit proof contexts own independent wiped roots.
       freshRoot: values['fresh-root'] === true,
@@ -1328,14 +1317,6 @@ const run = async (): Promise<void> => {
     ])
     return a < b ? -1 : a > b ? 1 : 0
   })
-  // Re-sanitize retained rows as well as newly projected diagnostics across append collections.
-  for (const action of [...evidence.actions, ...full.actions]) {
-    for (const diagnostic of action.uploadErrors ?? []) {
-      if (diagnostic.error !== null) diagnostic.error = sanitizeDiagnostic(diagnostic.error)
-      if (diagnostic.reErrorCode !== null)
-        diagnostic.reErrorCode = sanitizeDiagnostic(diagnostic.reErrorCode)
-    }
-  }
   const raw = `${JSON.stringify(header)}\n${full.actions.map((row) => JSON.stringify(row)).join('\n')}${full.actions.length === 0 ? '' : '\n'}`
   const bytes = gzipSync(raw, { level: 9 })
   await Bun.write(actionsOutput, bytes)
@@ -1368,8 +1349,6 @@ const run = async (): Promise<void> => {
       `${previousText}\n### Buck cache admission\n\n| Invocation ID | REAPI fallbacks | Archive fallbacks | REAPI retry successes | Archive retry successes |\n| --- | ---: | ---: | ---: | ---: |\n| Total | ${admission.admissionFallbacks.reapi} | ${admission.admissionFallbacks.archiveOrigin} | ${admission.admissionRetrySuccesses.reapi} | ${admission.admissionRetrySuccesses.archiveOrigin} |\n${rows.join('\n')}\n${acquisitionSummary}`,
     )
   }
-  if (values.finalize === true)
-    removeCacheEvidenceRedaction({ evidencePath: values.output })
   if (values.finalize === true && header.complete === false) {
     console.error('Cache action evidence incomplete; observation is invalid.')
     process.exitCode = 2

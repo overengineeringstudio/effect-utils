@@ -34,9 +34,6 @@ describe('Buck2 cache evidence workflow decorator', () => {
     expect('with' in upload && upload.with?.path).toBe(
       '${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}\n${{ env.CI_BUCK2_CACHE_ACTIONS_PATH }}',
     )
-    // Private credential context must never be swept into an always-on upload.
-    expect('with' in upload && upload.with?.path).not.toContain('*')
-    expect('with' in upload && upload.with?.path).not.toContain('redaction-context')
     expect('with' in upload && upload.with?.['retention-days']).toBe(14)
   })
 

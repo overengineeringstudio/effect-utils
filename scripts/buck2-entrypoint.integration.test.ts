@@ -26,19 +26,11 @@ import {
   nativeBuildIdArguments,
 } from './buck2-entrypoint.ts'
 import * as gateUnitTests from './buck2-entrypoint.unit.test.ts'
-import * as evidenceRedactionTests from './buck2-evidence-redaction.integration.test.ts'
-import { readCacheEvidenceRedaction } from './buck2-evidence-redaction.ts'
 import * as gateIsolationTests from './buck2-gate-isolation.integration.test.ts'
 import * as gateTeardownTests from './buck2-gate-teardown.integration.test.ts'
 
 // Register the lifecycle suites in the existing devenv test entrypoint.
-void [
-  gateUnitTests,
-  gateTeardownTests,
-  gateIsolationTests,
-  daemonPostureTests,
-  evidenceRedactionTests,
-]
+void [gateUnitTests, gateTeardownTests, gateIsolationTests, daemonPostureTests]
 
 const roots: string[] = []
 const launchProcesses = new Set<{ readonly pid: number; readonly exited: Promise<number> }>()
@@ -256,26 +248,6 @@ describe('native build ID registry', () => {
         },
       }),
     ).toThrow()
-  })
-
-  it('projects writer redaction values privately through the admitted native launch path', () => {
-    const root = fixture()
-    const credential = 'planted-step-local-opaque-writer-value'
-    const evidence = join(root, 'relative-evidence.json')
-    const args = nativeBuildIdArguments({
-      args: ['build', '//:app'],
-      cwd: root,
-      env: {
-        CI_BUCK2_CACHE_EVIDENCE_PATH: 'relative-evidence.json',
-        BUCK_WRAPPER_UUID: buildId,
-        BUCK2_CACHE_WRITE_BASIC_AUTH: credential,
-      },
-    })
-    expect(readCacheEvidenceRedaction({ evidencePath: evidence })).toEqual([credential])
-    expect(JSON.stringify(args)).not.toContain(credential)
-    expect(readFileSync(`${evidence}.native-build-id-paths.jsonl`, 'utf8')).not.toContain(
-      credential,
-    )
   })
 
   it('does not register or start a denied cache writer', async () => {

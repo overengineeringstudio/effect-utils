@@ -102,52 +102,25 @@ const outcome = (value: unknown): CacheOutcome => {
       return invalid()
   }
 }
-/** Native RPC diagnostics can echo headers and configured credentials. Redact before retention. */
-export const createUploadDiagnosticSanitizer = (
-  env: Readonly<Record<string, string | undefined>> = process.env,
-  redactionValues: readonly string[] = [],
-): ((value: string) => string) => {
-  const secrets = [
-    ...new Set([
-      ...redactionValues,
-      ...Object.entries(env)
-        .filter(
-          ([key, value]) =>
-            /auth|token|secret|password|credential|api[_-]?key/i.test(key) === true &&
-            value !== undefined &&
-            value.length > 0,
-        )
-        .flatMap(([, value]) => (value === undefined ? [] : [value])),
-    ]),
-  ].toSorted((a, b) => b.length - a.length)
-  return (value) => {
-    let result = value
-    for (const secret of secrets) result = result.replaceAll(secret, '[REDACTED]')
-    return result
-      .replace(
-        /(\b[a-z][a-z0-9+.-]*:\/\/)[^\s/?#<>"]*@/gi,
-        '$1[REDACTED]@',
-      )
-      .replace(
-        /\b(Bearer|Basic)\s+(\[REDACTED\]|"[^"]*"|'[^']*'|[^\s"',;{}()[\]<>]+)/gi,
-        '$1 [REDACTED]',
-      )
-      .replace(
-        /((?:authorization|proxy-authorization|x-api-key|api[_-]?key|access[_-]?token|refresh[_-]?token|password|token)["']?\s*[:=]\s*)(\[REDACTED\]|"[^"]*"|'[^']*'|(?:\[REDACTED\]|[^\r\n,;}\]])+)/gi,
-        '$1[REDACTED]',
-      )
-      .slice(0, 4096)
-  }
-}
+/** Native RPC diagnostics are untrusted; redact structurally without collector credentials. */
+export const sanitizeUploadDiagnostic = (value: string): string =>
+  value
+    .replace(/(\b[a-z][a-z0-9+.-]*:\/\/)[^\s/?#<>"]*@/gi, '$1[REDACTED]@')
+    .replace(
+      /((?:authorization|proxy-authorization|x-api-key|api[_-]?key|access[_-]?token|refresh[_-]?token|password|token)["']?(?:\s*[:=]\s*|\s+))[^\r\n]+/gi,
+      '$1[REDACTED]',
+    )
+    .replace(/\b(Bearer|Basic)\s+[^\r\n]+/gi, '$1 [REDACTED]')
+    .replace(/[a-zA-Z0-9+/_-]{20,}={0,2}/g, '[REDACTED]')
+    .slice(0, 4096)
 
 export const decodeCacheUploadErrors = (value: unknown): CacheUploadError[] | undefined => {
   // Older retained evidence contains no native upload diagnostics.
   if (value === undefined) return undefined
-  const sanitize = createUploadDiagnosticSanitizer()
   return list(value).map((entry) => {
     const diagnostic = (key: string): string | null => {
       const raw = field({ value: entry, key })
-      return raw === null ? null : sanitize(text(raw))
+      return raw === null ? null : sanitizeUploadDiagnostic(text(raw))
     }
     return { error: diagnostic('error'), reErrorCode: diagnostic('reErrorCode') }
   })

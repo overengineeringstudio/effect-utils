@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'bun:test'
 
 import {
-  createUploadDiagnosticSanitizer,
   decodeCacheUploadErrors,
+  sanitizeUploadDiagnostic,
 } from './buck2-action-evidence-codec.ts'
 import {
   darwinUnsandboxedCategories,
@@ -885,75 +885,49 @@ describe('native Buck cache evidence projection', () => {
     expect(invocations[0]!.complete).toBe(false)
   })
 
-  it('redacts auth headers, standalone schemes and configured credentials before capping diagnostics', () => {
-    const secret = 'planted-credential-abcdef'
-    const sanitize = createUploadDiagnosticSanitizer({
-      BUCK2_CACHE_WRITE_BASIC_AUTH: secret,
-      BUCK2_PRIVATE_CACHE_WRITE_BASIC_AUTH: 'private-credential',
-      CUSTOM_AUTHORIZATION: 'custom-credential',
-    })
+  it('structurally redacts credentials without environment matching and caps diagnostics', () => {
     for (const message of [
-      `Authorization: Basic ${secret}`,
-      'authorization: Bearer unconfigured-token',
-      '"Authorization": "Basic unconfigured-token"',
-      "proxy-authorization='Bearer unconfigured-token'",
-      'x-api-key: unconfigured-token',
-      'token=unconfigured-token',
-      'RPC failed with bAsIc unconfigured-token',
-      'RPC failed with BEARER unconfigured-token',
-      `RPC error: ${secret} private-credential custom-credential`,
+      'Authorization: Basic user:pass extra!value',
+      'authorization user:pass extra!value',
+      '"Authorization": "Basic user:pass extra!value"',
+      "proxy-authorization='Bearer user:pass extra!value'",
+      'x-api-key: user:pass extra!value',
+      'token=user:pass extra!value',
+      'RPC failed with bAsIc user:pass extra!value',
+      'RPC failed with BEARER "user:pass extra!value"',
+      `RPC failed: ${Buffer.from('planted-credential-abcdef').toString('base64')}`,
+      `RPC failed: ${'abcdef0123456789'.repeat(2)}`,
     ]) {
-      const result = sanitize(message)
+      const result = sanitizeUploadDiagnostic(message)
       expect(result).toContain('[REDACTED]')
-      expect(sanitize(result)).toBe(result)
-      for (const credential of [secret, 'unconfigured-token', 'private-credential', 'custom-credential'])
+      expect(sanitizeUploadDiagnostic(result)).toBe(result)
+      for (const credential of ['user:pass', 'extra!value', 'planted', 'abcdef0123456789'])
         expect(result).not.toContain(credential)
     }
-    for (const credential of ['user:pass', 'foo%bar', 'malformed!token?', 'quoted token:with%spaces']) {
-      for (const scheme of ['Basic', 'Bearer']) {
-        const value = credential.includes(' ') === true ? `"${credential}"` : credential
-        const result = sanitize(`RPC failed with ${scheme} ${value}`)
-        expect(result).toBe(`RPC failed with ${scheme} [REDACTED]`)
-        expect(sanitize(result)).toBe(result)
-        expect(result).not.toContain(credential)
-      }
+    for (const userinfo of [
+      'user:password',
+      'user%40example:pass%3Aword',
+      'opaque-token',
+      'user:p@ssword',
+    ]) {
+      const result = sanitizeUploadDiagnostic(
+        ['RPC failed at https://', userinfo, '@cache.example/path?q=1'].join(''),
+      )
+      expect(result).toBe('RPC failed at https://[REDACTED]@cache.example/path?q=1')
+      expect(sanitizeUploadDiagnostic(result)).toBe(result)
     }
-    expect(sanitize(`RPC failed: ${'x'.repeat(5000)} ${secret}`)).toHaveLength(4096)
+    const ordinary = 'https://cache.example/path?email=user@example.com'
+    expect(sanitizeUploadDiagnostic(ordinary)).toBe(ordinary)
+    expect(sanitizeUploadDiagnostic(`RPC failed: ${'x.'.repeat(2500)}`)).toHaveLength(4096)
     expect(decodeCacheUploadErrors(undefined)).toBeUndefined()
     expect(
       decodeCacheUploadErrors([
-        { error: 'authorization: Bearer unconfigured-token', reErrorCode: 'Basic unconfigured-token' },
+        { error: 'authorization: Bearer user:pass', reErrorCode: 'Basic user:pass' },
       ]),
     ).toEqual([{ error: 'authorization: [REDACTED]', reErrorCode: 'Basic [REDACTED]' }])
     for (const invalid of [{}, [null], [{ error: 1, reErrorCode: null }]]) {
       expect(() => decodeCacheUploadErrors(invalid)).toThrow()
     }
-  })
-
-  it('redacts URL userinfo without configured credentials and preserves noncredential URLs', () => {
-    const sanitize = createUploadDiagnosticSanitizer({})
-    for (const userinfo of [
-      'user:password',
-      'user%40example:pass%3Aword%2Fmore%3F%23',
-      ':password',
-      'user:',
-      'opaque-token',
-      'user:p@ssword',
-      "user:p'ass!$&(),;=word",
-    ]) {
-      for (const scheme of ['https', 'grpc', 'custom+rpc']) {
-        const message = `RPC failed at ${scheme}://${userinfo}@cache.example:443/path?q=1`
-        const result = sanitize(message)
-        expect(result).toBe(`RPC failed at ${scheme}://[REDACTED]@cache.example:443/path?q=1`)
-        expect(sanitize(result)).toBe(result)
-        expect(result).not.toContain(userinfo)
-      }
-    }
-    const ordinary = 'https://cache.example/path?email=user@example.com'
-    expect(sanitize(ordinary)).toBe(ordinary)
-    expect(sanitize(`https://${'x'.repeat(5000)}:password@cache.example`)).toBe(
-      'https://[REDACTED]@cache.example',
-    )
   })
 
   it('retains each failed native cache upload, not ReUpload metrics or duplicate ends', () => {

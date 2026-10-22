@@ -13,6 +13,7 @@ import { join } from 'node:path'
 
 import {
   cacheDaemonPostureFingerprint,
+  cacheLauncherBirth,
   cacheDaemonRestartDecision,
   admitCacheDaemonCommand,
 } from './buck2-entrypoint.ts'
@@ -57,7 +58,7 @@ describe('daemon RE posture', () => {
     const native = join(root, 'native')
     const state = join(root, 'native-state')
     const calls = join(root, 'calls')
-    const marker = join(root, 'buck-out', '.cache-daemon-posture', 'v2.json')
+    const marker = join(root, 'buck-out', '.cache-daemon-posture', 'root.json')
     try {
       writeFileSync(
         join(root, '.buckconfig'),
@@ -134,9 +135,9 @@ else process.exit(9);
     } finally {
       rmSync(root, { recursive: true, force: true })
     }
-  })
+  }, 15000)
 
-  it('locks overlay selection through startup and refuses a mismatched pending native launch', async () => {
+  it('serializes different isolations and expires a reused PID reservation', async () => {
     const root = mkdtempSync(join(tmpdir(), 'buck2-posture-race-'))
     const native = join(root, 'native')
     const state = join(root, 'daemon.json')
@@ -151,11 +152,11 @@ else process.exit(9);
         native,
         `#!${process.execPath}
 import {appendFileSync,existsSync,readFileSync,writeFileSync,rmSync} from 'node:fs';
-const command=process.argv[4];
+const command=process.argv[4], isolation=process.argv[3], state=${JSON.stringify(state)}+'.'+isolation;
 appendFileSync(${JSON.stringify(calls)},command+'\\n');
-if(command==='status') { if(existsSync(${JSON.stringify(state)})) console.log(readFileSync(${JSON.stringify(state)},'utf8')); }
-else if(command==='kill') rmSync(${JSON.stringify(state)},{force:true});
-else if(command==='audit') writeFileSync(${JSON.stringify(state)},JSON.stringify({project_root:${JSON.stringify(root)},isolation_dir:'v2',active_commands:[],process_info:{pid:process.pid},start_time:'now',startupOverlay:readFileSync(${JSON.stringify(overlay)},'utf8')}));
+if(command==='status') { if(existsSync(state)) console.log(readFileSync(state,'utf8')); }
+else if(command==='kill') rmSync(state,{force:true});
+else if(command==='audit') writeFileSync(state,JSON.stringify({project_root:${JSON.stringify(root)},isolation_dir:isolation,active_commands:[],process_info:{pid:process.pid},start_time:'now',startupOverlay:readFileSync(${JSON.stringify(overlay)},'utf8')}));
 else process.exit(9);
 `,
       )
@@ -172,7 +173,7 @@ const config=writer ? '[buck2]\\nallow_cache_uploads = true\\n[buck2_re_client]\
 console.log('attempting');
 try {
 await admitCacheDaemonCommand({
-native:${JSON.stringify(native)},root:${JSON.stringify(root)},args:['build','//:fixture'],
+native:${JSON.stringify(native)},root:${JSON.stringify(root)},args:['--isolation-dir',writer?'v2':'other','build','//:fixture'],
 env:{...process.env,CI:'1',BUCK2_CACHE_WRITE_BASIC_AUTH:${JSON.stringify(secret)}},
 admit:async (check)=>{
 check?.(values);
@@ -219,13 +220,17 @@ process.exit(0);
       expect(await reader.exited).toBe(1)
       expect(await new Response(reader.stderr).text()).toContain('concurrent launcher')
       expect(readFileSync(overlay, 'utf8')).toBe(writerOverlay)
-      expect(JSON.parse(readFileSync(state, 'utf8')).startupOverlay).toBe(writerOverlay)
+      expect(JSON.parse(readFileSync(`${state}.v2`, 'utf8')).startupOverlay).toBe(writerOverlay)
       expect(readFileSync(calls, 'utf8')).not.toContain('kill')
       const marker = JSON.parse(
-        readFileSync(join(root, 'buck-out', '.cache-daemon-posture', 'v2.json'), 'utf8'),
+        readFileSync(join(root, 'buck-out', '.cache-daemon-posture', 'root.json'), 'utf8'),
       )
       expect(marker.posture).toBe('writer')
-      expect(marker.launches).toContainEqual({ pid: writer.pid, fingerprint: marker.fingerprint })
+      expect(marker.launches).toContainEqual({
+        pid: writer.pid,
+        birth: cacheLauncherBirth(writer.pid),
+        fingerprint: marker.fingerprint,
+      })
       const matching = Bun.spawn([process.execPath, worker, 'matching'], {
         stdin: 'ignore',
         stdout: 'pipe',
@@ -234,6 +239,15 @@ process.exit(0);
       expect(await matching.exited, await new Response(matching.stderr).text()).toBe(0)
       writer.stdin.write('finish\n')
       expect(await writer.exited).toBe(0)
+      // A live reused PID is not the reserved process when its birth identity differs.
+      expect(cacheLauncherBirth(process.ppid)).toBeDefined()
+      marker.launches = [
+        { pid: process.ppid, birth: 'previous-process-birth', fingerprint: 'stale' },
+      ]
+      writeFileSync(
+        join(root, 'buck-out', '.cache-daemon-posture', 'root.json'),
+        JSON.stringify(marker),
+      )
       const after = Bun.spawn([process.execPath, worker, 'reader'], {
         stdin: 'ignore',
         stdout: 'pipe',
@@ -244,7 +258,7 @@ process.exit(0);
         readFileSync(calls, 'utf8')
           .split('\n')
           .filter((line) => line === 'kill'),
-      ).toHaveLength(1)
+      ).toHaveLength(0)
     } finally {
       writer?.kill()
       reader?.kill()

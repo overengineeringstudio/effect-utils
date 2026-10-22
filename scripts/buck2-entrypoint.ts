@@ -29,7 +29,6 @@ import {
   standaloneCachePostureConfig,
   withoutManagedBlock,
 } from './buck2-cache-posture.ts'
-import { recordCacheEvidenceRedaction } from './buck2-evidence-redaction.ts'
 import {
   probeWatchman,
   reconcileFileWatcher,
@@ -766,6 +765,33 @@ const cacheDaemonIdentity = (value: unknown): string | undefined => {
   return JSON.stringify([value.process_info.pid, value.start_time])
 }
 
+/** Exec-stable process identity; a reused PID cannot keep a dead launcher reserved. */
+export const cacheLauncherBirth = (pid: number): string | undefined => {
+  if (process.platform === 'linux') {
+    let stat: string
+    try {
+      stat = readFileSync(`/proc/${pid}/stat`, 'utf8')
+    } catch (error) {
+      if (error instanceof Error && 'code' in error && error.code === 'ENOENT') return undefined
+      throw new Error('Buck2 cache posture: launcher birth identity unavailable')
+    }
+    // comm (field 2) can contain spaces and parentheses; field 22 is 19 after its closing ")".
+    const start = stat.slice(stat.lastIndexOf(')') + 2).split(' ')[19]
+    if (start === undefined || /^\d+$/u.test(start) === false)
+      throw new Error('Buck2 cache posture: malformed launcher birth identity')
+    return `${pid}:${start}`
+  }
+  const result = spawnSync('ps', ['-p', String(pid), '-o', 'lstart='], {
+    encoding: 'utf8',
+    timeout: 1000,
+    env: { ...process.env, LC_ALL: 'C', TZ: 'UTC' },
+  })
+  if (result.status === 1) return undefined
+  if (result.error !== undefined || result.status !== 0 || result.stdout.trim() === '')
+    throw new Error('Buck2 cache posture: launcher birth identity unavailable')
+  return `${pid}:${result.stdout.trim()}`
+}
+
 /**
  * CI step environments can change while Buck's RE client remains daemon-scoped.
  * Bind the admitted posture to the actual daemon identity, not just the last invocation.
@@ -799,14 +825,14 @@ export const admitCacheDaemonCommand = async ({
   const { isolation } = invocation
   const state = join(root, 'buck-out', '.cache-daemon-posture')
   mkdirSync(state, { recursive: true, mode: 0o700 })
-  const marker = join(state, `${isolation}.json`)
+  const marker = join(state, 'root.json')
   const library = dlopen(
     process.platform === 'linux' ? 'libc.so.6' : '/usr/lib/libSystem.B.dylib',
     {
       flock: { args: ['i32', 'i32'], returns: 'i32' },
     },
   )
-  const descriptor = openSync(join(state, `${isolation}.lock`), 'a', 0o600)
+  const descriptor = openSync(join(state, 'root.lock'), 'a', 0o600)
   const options = { cwd: root, env, encoding: 'utf8' as const, timeout: 30000 }
   const call = (command: readonly string[]) => {
     const result = spawnSync(native, ['--isolation-dir', isolation, ...command], {
@@ -849,12 +875,20 @@ export const admitCacheDaemonCommand = async ({
       typeof previous.fingerprint === 'string' &&
       'posture' in previous &&
       (previous.posture === 'writer' || previous.posture === 'reader') &&
-      'daemon' in previous &&
-      typeof previous.daemon === 'string'
+      'daemons' in previous &&
+      typeof previous.daemons === 'object' &&
+      previous.daemons !== null
         ? previous
         : undefined
+    const daemons: Record<string, string> = {}
+    if (record !== undefined)
+      for (const [name, identity] of Object.entries(record.daemons)) {
+        if (typeof identity !== 'string')
+          throw new Error('Buck2 cache posture: malformed daemon identity')
+        daemons[name] = identity
+      }
     const salt = record?.salt ?? randomBytes(32).toString('hex')
-    const launches: { pid: number; fingerprint: string }[] = []
+    const launches: { pid: number; birth: string; fingerprint: string }[] = []
     if (record !== undefined && 'launches' in record) {
       if (Array.isArray(record.launches) === false)
         throw new Error('Buck2 cache posture: malformed launcher reservations')
@@ -867,17 +901,14 @@ export const admitCacheDaemonCommand = async ({
           Number.isSafeInteger(launch.pid) === false ||
           launch.pid <= 0 ||
           'fingerprint' in launch === false ||
-          typeof launch.fingerprint !== 'string'
+          typeof launch.fingerprint !== 'string' ||
+          'birth' in launch === false ||
+          typeof launch.birth !== 'string'
         )
           throw new Error('Buck2 cache posture: malformed launcher reservation')
         if (launch.pid === process.pid) continue
-        try {
-          process.kill(launch.pid, 0)
-        } catch (error) {
-          if (error instanceof Error && 'code' in error && error.code === 'ESRCH') continue
-          // Unknown/permission-denied liveness remains reserved: never steal a launch.
-        }
-        launches.push({ pid: launch.pid, fingerprint: launch.fingerprint })
+        if (cacheLauncherBirth(launch.pid) !== launch.birth) continue
+        launches.push({ pid: launch.pid, birth: launch.birth, fingerprint: launch.fingerprint })
       }
     }
     const observed = status()
@@ -897,7 +928,7 @@ export const admitCacheDaemonCommand = async ({
         observedStop !== 'stop' &&
         (record === undefined ||
           record.fingerprint !== desired ||
-          record.daemon !== cacheDaemonIdentity(observed))
+          daemons[isolation] !== cacheDaemonIdentity(observed))
       )
         throw new Error(
           'Buck2 cache posture: mismatched or unrecorded daemon is busy or unrecognized; refusing to stop it. Retry after concurrent Buck commands finish.',
@@ -926,7 +957,7 @@ export const admitCacheDaemonCommand = async ({
         record !== undefined &&
         record.posture === posture &&
         record.fingerprint === fingerprint &&
-        record.daemon === cacheDaemonIdentity(current),
+        daemons[isolation] === cacheDaemonIdentity(current),
     })
     if (decision === 'refuse')
       throw new Error(
@@ -946,11 +977,20 @@ export const admitCacheDaemonCommand = async ({
     try {
       // execve preserves this PID across the unlock -> native active-command registration gap.
       // The reservation expires when the native client exits, without a lock inherited by buckd.
-      launches.push({ pid: process.pid, fingerprint })
-      writeFileSync(candidate, JSON.stringify({ salt, posture, fingerprint, daemon, launches }), {
-        flag: 'wx',
-        mode: 0o600,
-      })
+      const birth = cacheLauncherBirth(process.pid)
+      if (birth === undefined)
+        throw new Error('Buck2 cache posture: launcher exited during admission')
+      launches.push({ pid: process.pid, birth, fingerprint })
+      const nextDaemons = record?.fingerprint === fingerprint ? daemons : {}
+      nextDaemons[isolation] = daemon
+      writeFileSync(
+        candidate,
+        JSON.stringify({ salt, posture, fingerprint, daemons: nextDaemons, launches }),
+        {
+          flag: 'wx',
+          mode: 0o600,
+        },
+      )
       renameSync(candidate, marker)
     } finally {
       rmSync(candidate, { force: true })
@@ -1000,7 +1040,6 @@ export const nativeBuildIdArguments = ({
   }
   // Leave malformed caller flags to native clap; never replace or duplicate them.
   if (supplied === true && (suppliedPath === undefined || suppliedPath === '')) return [...args]
-  recordCacheEvidenceRedaction({ env, cwd })
   const path =
     suppliedPath === undefined
       ? resolve(cwd, `${evidencePath}.native-build-ids`, `${buildId}.buck-trace-id`)

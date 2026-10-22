@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test'
 import { createHash } from 'node:crypto'
-import { mkdir, mkdtemp, rm, stat, symlink, utimes } from 'node:fs/promises'
+import { mkdir, mkdtemp, rm, symlink, utimes } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { gunzipSync } from 'node:zlib'
@@ -98,42 +98,19 @@ const fixtureEnv = {
 }
 
 describe('complete normalized action artifact CLI', () => {
-  it('retains native upload failures across credential-free collector steps without leaking credentials', async () => {
+  it('retains only sanitized native upload diagnostics with no collector credentials', async () => {
     const directory = await mkdtemp(join(tmpdir(), 'buck-upload-errors-'))
     try {
       const secret = 'planted-upload-auth-8a12c57f'
-      const headerSecret = 'unconfigured-header-64c2e1'
+      const encodedSecret = Buffer.from(secret).toString('base64')
       const events = join(directory, 'native.jsonl')
       const output = join(directory, 'buck2-cache-evidence.json')
       const stepSummary = join(directory, 'step-summary')
-      const env = {
-        ...fixtureEnv,
-        BUCK2_CACHE_WRITE_BASIC_AUTH: secret,
-        BUCK2_PRIVATE_CACHE_WRITE_BASIC_AUTH: `${secret}-private`,
-        CUSTOM_CACHE_AUTH: `${secret}-custom`,
-        GITHUB_STEP_SUMMARY: stepSummary,
-      }
-      const producer = Bun.spawn([
-        process.execPath,
-        '--eval',
-        `import { recordCacheEvidenceRedaction } from ${JSON.stringify(new URL('../../scripts/buck2-evidence-redaction.ts', import.meta.url).pathname)}; recordCacheEvidenceRedaction({ env: process.env })`,
-      ], {
-        env: { ...env, CI_BUCK2_CACHE_EVIDENCE_PATH: output },
-        stdout: 'pipe',
-        stderr: 'pipe',
-      })
-      const producerOutput = await Promise.all([
-        new Response(producer.stdout).text(),
-        new Response(producer.stderr).text(),
-      ])
-      expect(await producer.exited).toBe(0)
-      const privateContext = `${output}.redaction-context.jsonl`
-      expect((await stat(privateContext)).mode & 0o777).toBe(0o600)
       const collectorEnv = {
-        ...env,
+        ...fixtureEnv,
         BUCK2_CACHE_WRITE_BASIC_AUTH: undefined,
         BUCK2_PRIVATE_CACHE_WRITE_BASIC_AUTH: undefined,
-        CUSTOM_CACHE_AUTH: undefined,
+        GITHUB_STEP_SUMMARY: stepSummary,
       }
       const native = nativeLog('upload-failure').trim().split('\n')
       const failedUpload = (id: number, error: string, code?: string) =>
@@ -155,17 +132,20 @@ describe('complete normalized action artifact CLI', () => {
           native[1],
           failedUpload(
             500,
-            `CAS write denied; authorization: Basic ${headerSecret}\n` +
-              `Bearer ${headerSecret}\nraw=${secret} ${secret}-private ${secret}-custom`,
+            [
+              `CAS write denied; authorization: Basic ${encodedSecret}`,
+              ['https://', 'user:', secret, '@cache.example/upload'].join(''),
+              'Bearer user:pass extra!value',
+            ].join('\n'),
             'PERMISSION_DENIED',
           ),
-          failedUpload(501, `connection reset ${'x'.repeat(5000)} ${secret}`, secret),
+          failedUpload(501, `connection reset ${'x.'.repeat(2500)}`, encodedSecret),
           native[2]!.replace('"cache_upload_result":1', '"cache_upload_result":9'),
           JSON.stringify(event('upload-failure', 'SpanEnd', 1, 1700000003, { Command: {} })),
           '',
         ].join('\n'),
       )
-      const transcripts: string[] = [...producerOutput]
+      const transcripts: string[] = []
       for (const args of [
         ['--events', events, '--context', 'populate', '--fresh-root'],
         ['--finalize'],
@@ -182,7 +162,6 @@ describe('complete normalized action artifact CLI', () => {
         ])
         transcripts.push(stdout, stderr)
         expect(exit).toBe(0)
-        expect(await Bun.file(privateContext).exists()).toBe(args.includes('--finalize') === false)
       }
       const summaryText = await Bun.file(output).text()
       const raw = gunzipSync(
@@ -206,7 +185,7 @@ describe('complete normalized action artifact CLI', () => {
         await Bun.file(stepSummary).text(),
         ...transcripts,
       ].join('\n')
-      for (const credential of [secret, headerSecret, 'PRIVATE_FILE'])
+      for (const credential of [secret, encodedSecret, 'user:pass', 'extra!value', 'PRIVATE_FILE'])
         expect(allOutput).not.toContain(credential)
       expect(allOutput).toContain('[REDACTED]')
     } finally {

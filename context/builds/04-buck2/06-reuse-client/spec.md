@@ -23,7 +23,7 @@ do not configure the RE client. Change posture by stopping the daemon and
 starting with the new file and environment ([#1598](https://github.com/overengineeringstudio/effect-utils/pull/1598)).
 
 In CI, the entrypoint admits each command against the running daemon's RE
-posture while holding one project-root/isolation lock from overlay selection
+posture while holding one project-root lock from overlay selection
 through daemon initialization and recording:
 
 ```text
@@ -33,17 +33,18 @@ idle mismatch or unknown prior posture -> restart -> record
 busy mismatch or unrecognized status -> fail closed, leave daemon untouched
 ```
 
-The record is `buck-out/.cache-daemon-posture/<isolation>.json` (mode `0600`).
+The record is `buck-out/.cache-daemon-posture/root.json` (mode `0600`).
 It contains a random per-record HMAC key, the SHA-256 HMAC of the expanded RE
-configuration and writer policy, the daemon PID/start time, and live launcher
-PID/fingerprint reservations, never the credential itself. Credential rotation
-changes the fingerprint; neither the key nor fingerprint is printed.
-A crash-released per-isolation flock is acquired before overlay reconciliation.
+configuration and writer policy, daemon identities keyed by isolation, and live
+launcher PID/birth/fingerprint reservations, never the credential itself.
+Credential rotation changes the fingerprint; neither key nor fingerprint is printed.
+A crash-released root-wide flock is acquired before overlay reconciliation.
 Before changing the overlay, a mismatched live launcher or busy daemon fails
 closed. The launcher reservation is written before releasing that lock:
-`execve` preserves its PID until the native command exits, covering the gap
-before Buck reports an active command without inheriting a lock into buckd.
-Dead reservations are pruned; indeterminate liveness remains reserved.
+`execve` preserves its PID and process birth identity until the native command
+exits, covering the gap before Buck reports an active command without inheriting
+a lock into buckd. Birth is Linux `/proc/<pid>/stat` field 22 or macOS `ps lstart`;
+reused PIDs do not preserve dead reservations. Unknown identity fails closed.
 Matching concurrent launches retain the same overlay and can proceed together.
 Native status uses the existing gate root/isolation/active-command checks.
 Buck has no conditional kill RPC: an unwrapped client can race an idle status
@@ -481,23 +482,10 @@ retained evidence produced before native upload diagnostics were collected.
 Diagnostic strings are sanitized before retention and when decoding retained
 evidence: URL userinfo (including percent-encoded credentials), authorization/
 API-key/token/password assignments, standalone Basic/Bearer credentials, and
-nonempty configured auth/token/secret/password/credential/API-key environment
-values become `[REDACTED]`. URL userinfo redaction does not depend on credentials
-being present in the collector environment. Each sanitized text or code is
-capped at 4096 characters after redaction. Native file/tree digests and other
-upload payloads are not projected.
-
-Before admitted native launch, the writer appends its effective
-`BUCK2_CACHE_WRITE_BASIC_AUTH` and `BUCK2_PRIVATE_CACHE_WRITE_BASIC_AUTH` values
-in a single append write to `${CI_BUCK2_CACHE_EVIDENCE_PATH}.redaction-context.jsonl`.
-This is private projection context, not an artifact: a current-user-owned regular
-file with mode `0600`, one link, and no symlink. The collector reads and validates
-it before writing any public output, fails closed on unsafe or malformed context,
-and uses its exact values even when collection runs in a later credential-free
-step. Append collection also sanitizes retained diagnostics. Successful artifact
-and summary finalization removes the private context, including when evidence is
-incomplete; operational failures retain it for retry. Artifact uploads name only
-the exact compact evidence and compressed actions paths, never a sidecar glob.
+base64/hex-like tokens of at least 20 characters become `[REDACTED]`. Redaction
+does not depend on credentials being present in the collector environment.
+Each sanitized text or code is capped at 4096 characters after redaction.
+Native file/tree digests and other upload payloads are not projected.
 
 The projector emits only allowlisted labels, configuration names, native digest
 strings, enum numbers, times, run identity, and sanitized bounded upload
