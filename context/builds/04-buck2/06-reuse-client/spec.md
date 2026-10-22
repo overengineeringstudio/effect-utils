@@ -439,9 +439,39 @@ native enums, decode/discovery errors, checksum mismatches, and truncated data
 invalidate an observation. Legitimate nondigest non-command actions still
 contribute to omission counters, not a fabricated AC identity.
 
+Successful command actions that were not uploaded, including failed upload
+attempts, retain optional `outputTinyDigests` in both full rows and compact
+representatives: `{ algorithm: "buck2-tiny-digest-v1", outputs:
+[{ index: 0, tinyDigest: "deadbeef" }] }`. This repository-owned algorithm
+identifier denotes Buck2's **truncated** first four digest bytes (32 bits,
+exactly eight lowercase hexadecimal characters), not a full content digest.
+The pinned implementation is
+[`cas_digest.rs:701–705`](https://github.com/facebook/buck2/blob/be6971d47dcc835b7356e1698b23039ffee4f4c2/app/buck2_common/src/cas_digest.rs#L701-L705).
+All categories are eligible, including `rustc`, `deps`, `cargo_extract`,
+`buildscript`, `rustc_cfg`, and `rust_interop_*`. Uploaded actions, failed
+actions, non-command actions, and logs without native output information omit
+the field; an explicit empty native output list remains an empty list.
+
+Indices are contiguous, zero-based positions in the native emitted output
+list, preserved without sorting or deduplication. The
+[`ActionExecutionEnd` emitter](https://github.com/facebook/buck2/blob/be6971d47dcc835b7356e1698b23039ffee4f4c2/app/buck2_build_api/src/actions/calculation.rs#L466-L475)
+omits outputs without a digest; these indices are not declared-output indices.
+**Output paths and kinds are not included.** Compare only the same native
+action digest, first checking output counts and then corresponding indices.
+Different values establish a difference; equal values are probabilistic
+evidence, not proof of equal full digests. No filesystem hashing, materializing,
+or additional Buck invocation is needed. Old artifacts without this optional
+field remain readable but provide no output determinism evidence.
+
+For approximately 534 actions and three digest-bearing outputs each, this adds
+roughly 0.1 MiB of uncompressed JSON per job (an estimate, not a measurement).
+Growth is linear in emitted output count, including compact representatives;
+the existing 64 MiB full action-payload ceiling still applies.
+
 The projector emits only allowlisted labels, configuration names, native digest
-strings, enum numbers, times, and run identity. Host paths, environment values,
-commands, outputs, host names, and raw error payloads are never copied. Invalid
+strings and output tiny digests, enum numbers, times, and run identity. Host
+paths, environment values, commands, output paths/payloads, host names, and
+raw error payloads are never copied. Invalid
 identity text becomes `null` rather than a lossy replacement key. The
 repository-local mapping identifier has exact case-sensitive spelling and a
 version suffix; unknown versions are rejected, not silently reinterpreted.

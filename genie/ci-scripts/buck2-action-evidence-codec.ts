@@ -12,6 +12,7 @@ import {
   type ActionInvocation,
   type ActionRecord,
   type CacheLane,
+  type OutputTinyDigests,
 } from './buck2-action-evidence.ts'
 import type { CacheOutcome } from './buck2-cache-evidence.ts'
 
@@ -101,6 +102,21 @@ const outcome = (value: unknown): CacheOutcome => {
       return invalid()
   }
 }
+/** Optional for retained artifacts/unselected rows; present evidence is strictly decoded. */
+export const decodeOutputTinyDigests = (value: unknown): OutputTinyDigests | undefined => {
+  if (value === undefined) return undefined
+  if (field({ value, key: 'algorithm' }) !== 'buck2-tiny-digest-v1') return invalid()
+  return {
+    algorithm: 'buck2-tiny-digest-v1',
+    outputs: list(field({ value, key: 'outputs' })).map((output, index) => {
+      const tinyDigest = text(field({ value: output, key: 'tinyDigest' }))
+      if (integer(field({ value: output, key: 'index' })) !== index || /^[a-f0-9]{8}$/.test(tinyDigest) === false)
+        return invalid()
+      return { index, tinyDigest }
+    }),
+  }
+}
+
 const decodeAction = (value: unknown): ActionRecord => {
   if (field({ value: value, key: 'type' }) !== 'action') return invalid()
   const uploadOutcome = field({ value: value, key: 'uploadOutcome' })
@@ -150,6 +166,8 @@ const decodeAction = (value: unknown): ActionRecord => {
     uploadCompletedAt: timestamp(field({ value: value, key: 'uploadCompletedAt' })),
     commandAction: boolean(field({ value: value, key: 'commandAction' })),
   }
+  const outputTinyDigests = decodeOutputTinyDigests(field({ value, key: 'outputTinyDigests' }))
+  if (outputTinyDigests !== undefined) action.outputTinyDigests = outputTinyDigests
   const exclusionReason = field({ value: value, key: 'exclusionReason' })
   if (exclusionReason !== undefined && exclusionReason !== action.exclusionReason) return invalid()
   if (

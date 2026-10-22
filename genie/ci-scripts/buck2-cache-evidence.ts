@@ -28,7 +28,11 @@ import { parseArgs } from 'node:util'
 import { gzipSync, gunzipSync } from 'node:zlib'
 
 import { canonicalCacheAdmissionInvocationId } from '../../scripts/buck2-cache-posture.ts'
-import { decodeActionArtifact, decodeActionExclusionCounts } from './buck2-action-evidence-codec.ts'
+import {
+  decodeActionArtifact,
+  decodeActionExclusionCounts,
+  decodeOutputTinyDigests,
+} from './buck2-action-evidence-codec.ts'
 import {
   actionExclusionReason,
   actionExclusionReasons,
@@ -45,6 +49,7 @@ import {
   type ActionInvocation,
   type ActionRecord,
 } from './buck2-action-evidence.ts'
+import type { OutputTinyDigests } from './buck2-action-evidence.ts'
 
 export const maxCacheEvidenceActions = 64
 export const cacheEvidenceOutcomes = [
@@ -89,6 +94,7 @@ export type CacheAction = {
   outcome: CacheOutcome
   executionKind: number
   cacheUploadResult: number
+  outputTinyDigests?: OutputTinyDigests
 }
 export type CacheInvocation = {
   buildId: string
@@ -538,6 +544,22 @@ export const createCacheEvidenceProjector = ({
     if (category === undefined || target === undefined) missingIdentityCount++
     const actionKind = field({ value: end, key: 'kind' })
     const commandAction = actionKind === 'Run'
+    // Keep native emitted order: sorting/deduplication would destroy per-action output indices.
+    // The emitter omits values without a digest; these are not declared-output/path indices.
+    const nativeOutputs = field({ value: end, key: 'outputs' })
+    const outputTinyDigests =
+      commandAction && cacheUploadResult !== 1 && field({ value: end, key: 'failed' }) !== true &&
+      nativeOutputs !== undefined
+        ? decodeOutputTinyDigests({
+            algorithm: 'buck2-tiny-digest-v1',
+            outputs: Array.isArray(nativeOutputs)
+              ? nativeOutputs.map((output, index) => ({
+                  index,
+                  tinyDigest: field({ value: output, key: 'tiny_digest' }),
+                }))
+              : nativeOutputs,
+          })
+        : undefined
     const row: ActionRecord = {
       type: 'action',
       buildId: safeIdentity({ value: buildId, grammar: /^[a-zA-Z0-9_.-]+$/ }),
@@ -563,6 +585,7 @@ export const createCacheEvidenceProjector = ({
       uploadCompletedAt: cacheUploadResult === 1 ? time : null,
       commandAction,
     }
+    if (outputTinyDigests !== undefined) row.outputTinyDigests = outputTinyDigests
     if (
       row.buildId === null ||
       row.completedAt === null ||
@@ -603,6 +626,7 @@ export const createCacheEvidenceProjector = ({
         outcome,
         executionKind,
         cacheUploadResult,
+        ...(outputTinyDigests === undefined ? {} : { outputTinyDigests }),
       },
     })
   }
@@ -822,6 +846,8 @@ export const decodeCacheEvidence = (value: unknown): CacheEvidence => {
       executionKind: count(field({ value: item, key: 'executionKind' })),
       cacheUploadResult: count(field({ value: item, key: 'cacheUploadResult' })),
     }
+    const outputTinyDigests = decodeOutputTinyDigests(field({ value: item, key: 'outputTinyDigests' }))
+    if (outputTinyDigests !== undefined) action.outputTinyDigests = outputTinyDigests
     const exclusionReason = field({ value: item, key: 'exclusionReason' })
     if (exclusionReason !== undefined && exclusionReason !== action.exclusionReason)
       throw new Error('Invalid cache evidence exclusion reason')
