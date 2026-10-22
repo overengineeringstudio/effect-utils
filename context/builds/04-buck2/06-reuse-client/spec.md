@@ -470,6 +470,23 @@ Equality is valid at millisecond precision. Missing or out-of-window bounds reta
 rows only as incomplete evidence and revoke freshness; filesystem mtime cannot
 make an older native invocation part of the current observation.
 
+CI posture sets Buck's native `[buck2] retained_event_logs = 120`; developer
+retention remains unchanged. This limits log count, not bytes or age. The
+evidence-enabled launcher registers `{buildId, path}` JSONL rows in
+`${CI_BUCK2_CACHE_EVIDENCE_PATH}.native-build-id-paths.jsonl` after admission.
+The lowercase hyphenated UUID identifies the actual native `--write-build-id`
+output; a registry row alone does not prove launch. Finalization confirms the
+file's UUID and job-window mtime, then compares confirmed IDs with all decoded
+native invocation IDs, including zero-action commands. A missing confirmed ID
+records `native-log-rotated` and revokes native-log freshness rather than
+promoting a surviving local-cache invocation. Legacy artifacts without this
+registry cannot establish rotation.
+
+Finalization exits `2` when it successfully writes incomplete evidence, and
+`1` on an operational failure. Collection preserves either failure but adds
+`evidence-finalization-failed` only for an operational finalization failure,
+not as a duplicate diagnosis of an already recorded evidence gap.
+
 In-Nix product jobs retain disabled-by-design headers and zero action rows.
 Their reuse metric is Nix substitution, not Buck AC. The daily cache-health
 mission and post-merge proof consume the full contract.

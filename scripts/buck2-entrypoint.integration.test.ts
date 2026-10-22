@@ -19,7 +19,11 @@ import { dirname, join } from 'node:path'
 import { createServer as createTlsServer } from 'node:tls'
 
 import type { CacheAdmissionInvocation } from '../genie/ci-scripts/buck2-cache-evidence.ts'
-import { type AdmissionProbeEndpoint, directBuckArguments } from './buck2-entrypoint.ts'
+import {
+  type AdmissionProbeEndpoint,
+  directBuckArguments,
+  nativeBuildIdArguments,
+} from './buck2-entrypoint.ts'
 import * as gateUnitTests from './buck2-entrypoint.unit.test.ts'
 import * as gateIsolationTests from './buck2-gate-isolation.integration.test.ts'
 import * as gateTeardownTests from './buck2-gate-teardown.integration.test.ts'
@@ -224,6 +228,165 @@ afterEach(async () => {
   }
   launchProcesses.clear()
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true })
+})
+
+describe('native build ID registry', () => {
+  const buildId = '00112233-4455-4677-8899-aabbccddeeff'
+
+  it('fails closed when the native-start registry cannot be persisted', () => {
+    const root = fixture()
+    const blocked = join(root, 'not-a-directory')
+    writeFileSync(blocked, '')
+    expect(() =>
+      nativeBuildIdArguments({
+        args: ['build', '//:app'],
+        cwd: root,
+        env: {
+          CI_BUCK2_CACHE_EVIDENCE_PATH: join(blocked, 'evidence.json'),
+          BUCK_WRAPPER_UUID: buildId,
+        },
+      }),
+    ).toThrow()
+  })
+
+  it('does not register or start a denied cache writer', async () => {
+    const root = fixture()
+    const evidence = join(root, 'evidence.json')
+    const started = join(root, 'native-started')
+    const native = join(root, 'denied-native')
+    writeFileSync(native, `#!/bin/sh\nprintf started > ${JSON.stringify(started)}\n`, { mode: 0o700 })
+    const child = Bun.spawn(
+      [process.execPath, join(import.meta.dir, 'buck2-entrypoint.ts'), native, 'build', '//:app'],
+      {
+        cwd: root,
+        env: {
+          PATH: process.env['PATH'],
+          HOME: root,
+          BUCK_WRAPPER_UUID: buildId,
+          BUCK2_CACHE_WRITE_BASIC_AUTH: 'fixture-secret',
+          CI_BUCK2_CACHE_EVIDENCE_PATH: evidence,
+          BUCK2_STDIO_LIBRARY: process.env['BUCK2_STDIO_LIBRARY'],
+        },
+        stdout: 'pipe',
+        stderr: 'pipe',
+      },
+    )
+    expect(await child.exited).toBe(1)
+    expect(await new Response(child.stderr).text()).toContain('refusing to publish')
+    expect(existsSync(started)).toBe(false)
+    expect(existsSync(`${evidence}.native-build-id-paths.jsonl`)).toBe(false)
+    expect(existsSync(`${evidence}.native-build-ids`)).toBe(false)
+  })
+
+  it('registers native output paths without claiming native startup or writing the ID', async () => {
+    const root = fixture()
+    const evidence = join(root, 'evidence.json')
+    const env = {
+      CI_BUCK2_CACHE_EVIDENCE_PATH: evidence,
+      BUCK_WRAPPER_UUID: buildId.replaceAll('-', '').toUpperCase(),
+      BUCK2_NO_REMOTE_CACHE: '1',
+    }
+    const args = await directBuckArguments({
+      ...options(root),
+      env,
+      args: ['run', '//:app', '--', '--write-build-id=application-argument'],
+    })
+    const result = nativeBuildIdArguments({ args, cwd: root, env })
+    const path = `${evidence}.native-build-ids/${buildId}.buck-trace-id`
+    expect(result.slice(-4)).toEqual([
+      '--write-build-id',
+      path,
+      '--',
+      '--write-build-id=application-argument',
+    ])
+    expect(readFileSync(`${evidence}.native-build-id-paths.jsonl`, 'utf8')).toBe(
+      `${JSON.stringify({ buildId, path })}\n`,
+    )
+    expect(existsSync(path)).toBe(false)
+  })
+
+  for (const flag of [['--write-build-id', 'caller.id'], ['--write-build-id=caller.id']]) {
+    it(`preserves caller native output arguments (${flag.join(' ')})`, () => {
+      const root = fixture()
+      const evidence = join(root, 'evidence.json')
+      const args = ['build', '//:app', ...flag]
+      expect(
+        nativeBuildIdArguments({
+          args,
+          cwd: root,
+          env: { CI_BUCK2_CACHE_EVIDENCE_PATH: evidence, BUCK_WRAPPER_UUID: buildId },
+        }),
+      ).toEqual(args)
+      expect(JSON.parse(readFileSync(`${evidence}.native-build-id-paths.jsonl`, 'utf8'))).toEqual({
+        buildId,
+        path: join(root, 'caller.id'),
+      })
+      expect(existsSync(join(root, 'caller.id'))).toBe(false)
+    })
+  }
+
+  it('does not register rootless, non-config, help or disabled-evidence invocations', () => {
+    const root = fixture()
+    const rootless = mkdtempSync(join(tmpdir(), 'buck-rootless-'))
+    roots.push(rootless)
+    const evidence = join(root, 'evidence.json')
+    for (const invocation of [
+      { cwd: rootless, args: ['build', '//:app'] },
+      { cwd: root, args: ['log', 'show'] },
+      { cwd: root, args: ['build', '--help'] },
+      { cwd: root, args: ['--', 'build'] },
+      { cwd: root, args: ['build', '--write-build-id'] },
+      { cwd: root, args: ['build', '--write-build-id='] },
+    ]) {
+      expect(
+        nativeBuildIdArguments({
+          ...invocation,
+          env: { CI_BUCK2_CACHE_EVIDENCE_PATH: evidence, BUCK_WRAPPER_UUID: buildId },
+        }),
+      ).toEqual(invocation.args)
+    }
+    expect(nativeBuildIdArguments({ args: ['build'], cwd: root, env: {} })).toEqual(['build'])
+    expect(existsSync(`${evidence}.native-build-id-paths.jsonl`)).toBe(false)
+  })
+
+  it('lets native startup produce the registered canonical build ID', async () => {
+    const root = fixture()
+    const evidence = join(root, 'evidence.json')
+    const native = join(root, 'native-build-id')
+    writeFileSync(
+      native,
+      `#!${process.execPath}
+import { writeFileSync } from 'node:fs'
+const args = process.argv.slice(2)
+const path = args[args.indexOf('--write-build-id') + 1]
+writeFileSync(path, process.env.BUCK_WRAPPER_UUID + '\\n')
+`,
+      { mode: 0o700 },
+    )
+    const child = Bun.spawn(
+      [process.execPath, join(import.meta.dir, 'buck2-entrypoint.ts'), native, 'build', '//:app'],
+      {
+        cwd: root,
+        env: {
+          PATH: process.env['PATH'],
+          HOME: root,
+          BUCK2_NO_REMOTE_CACHE: '1',
+          BUCK_WRAPPER_UUID: buildId,
+          CI_BUCK2_CACHE_EVIDENCE_PATH: evidence,
+          BUCK2_STDIO_LIBRARY: process.env['BUCK2_STDIO_LIBRARY'],
+        },
+        stdout: 'pipe',
+        stderr: 'pipe',
+      },
+    )
+    expect({
+      code: await child.exited,
+      stderr: await new Response(child.stderr).text(),
+    }).toMatchObject({ code: 0 })
+    const row = JSON.parse(readFileSync(`${evidence}.native-build-id-paths.jsonl`, 'utf8'))
+    expect(row.buildId).toBe(buildId)
+    expect(readFileSync(row.path, 'utf8').trim()).toBe(buildId)
+  })
 })
 
 describe('direct pinned Buck posture', () => {

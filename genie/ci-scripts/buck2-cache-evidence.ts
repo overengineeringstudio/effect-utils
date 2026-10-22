@@ -11,6 +11,9 @@ import { createHash } from 'node:crypto'
  * UUIDs independently of native logs, retaining denied-writer admissions too.
  * Admission totals are recomputed from retained invocation rows, never incremented
  * from a previous summary. Missing sidecars produce explicit zeros on new evidence.
+ * Finalization confirms native --write-build-id outputs from the separate path
+ * registry before detecting rotation; admission rows never prove native launch.
+ * A written incomplete finalization exits 2; operational failures exit 1.
  *
  * Outcomes use data.proto's numeric enums, not command cache_hit booleans.
  * Digests are the exact native RE ActionCache `hash:size`, NOT output tiny_digest.
@@ -18,6 +21,7 @@ import { createHash } from 'node:crypto'
  * view stays bounded; an optional sink receives every normalized action row.
  */
 import { createReadStream } from 'node:fs'
+import { stat } from 'node:fs/promises'
 import { basename, dirname, join } from 'node:path'
 import { createInterface } from 'node:readline'
 import { parseArgs } from 'node:util'
@@ -916,6 +920,70 @@ const envTime = (key: string): number | null => {
   return Number.isSafeInteger(result) === true ? result : null
 }
 
+/** Resolve freshness only after comparing actual native launches with all decoded IDs. */
+export const finalizeNativeLogFreshness = ({
+  invocations,
+  confirmedBuildIds,
+}: {
+  invocations: ActionInvocation[]
+  confirmedBuildIds: ReadonlySet<string>
+}): boolean => {
+  const decodedIds = new Set(invocations.map((item) => item.buildId))
+  const rotated = [...confirmedBuildIds].some((buildId) => decodedIds.has(buildId) === false)
+  const nativeInvocations = invocations.filter((item) => item.context === 'native-log')
+  // Audits execute no actions and cannot populate the local action cache.
+  const cacheBearingInvocations = nativeInvocations.filter((item) => item.actionCount > 0)
+  const earliest = cacheBearingInvocations.reduce(
+    (minimum, item) => Math.min(minimum, item.startedAt ?? Infinity),
+    Infinity,
+  )
+  const earliestIds = new Set(
+    cacheBearingInvocations.filter((item) => item.startedAt === earliest).map((item) => item.buildId),
+  )
+  for (const invocation of nativeInvocations) {
+    invocation.freshRoot =
+      rotated === false &&
+      invocation.freshRoot === true &&
+      invocation.actionCount > 0 &&
+      earliestIds.size === 1 &&
+      invocation.startedAt === earliest
+  }
+  return rotated
+}
+
+const confirmedNativeBuildIds = async ({
+  output,
+  startedAt,
+  finishedAt,
+}: {
+  output: string
+  startedAt: number | null
+  finishedAt: number | null
+}): Promise<Set<string>> => {
+  const confirmed = new Set<string>()
+  const registry = Bun.file(`${output}.native-build-id-paths.jsonl`)
+  // Legacy retained evidence has no registry and cannot establish rotation.
+  if (startedAt === null || finishedAt === null || (await registry.exists()) === false)
+    return confirmed
+  for (const line of (await registry.text()).split('\n')) {
+    if (line.trim().length === 0) continue
+    const row: unknown = JSON.parse(line)
+    const buildId = canonicalCacheAdmissionInvocationId(field({ value: row, key: 'buildId' }))
+    const path = requiredText(field({ value: row, key: 'path' }))
+    try {
+      const info = await stat(path)
+      if (info.isFile() === false || info.mtimeMs < startedAt || info.mtimeMs > finishedAt) continue
+      const nativeId = canonicalCacheAdmissionInvocationId((await Bun.file(path).text()).trim())
+      if (nativeId === buildId) confirmed.add(buildId)
+    } catch (error) {
+      // A registry row is written before launch. Missing or unconfirmed outputs
+      // do not establish a native invocation, nor do stale files from other jobs.
+      if (error instanceof Error && 'code' in error && error.code !== 'ENOENT') throw error
+    }
+  }
+  return confirmed
+}
+
 const run = async (): Promise<void> => {
   const { values } = parseArgs({
     args: Bun.argv.slice(2),
@@ -1082,23 +1150,6 @@ const run = async (): Promise<void> => {
   }
   const header = full.header
   header.status = evidence.status
-  if (values.finalize === true) {
-    // Audits execute no actions and cannot populate the local action cache.
-    const nativeInvocations = header.invocations.filter((item) => item.context === 'native-log')
-    const cacheBearingInvocations = nativeInvocations.filter((item) => item.actionCount > 0)
-    const earliest = cacheBearingInvocations.reduce(
-      (minimum, item) => Math.min(minimum, item.startedAt ?? Infinity),
-      Infinity,
-    )
-    const tied = cacheBearingInvocations.filter((item) => item.startedAt === earliest).length !== 1
-    for (const invocation of nativeInvocations) {
-      invocation.freshRoot =
-        invocation.freshRoot === true &&
-        invocation.actionCount > 0 &&
-        tied === false &&
-        invocation.startedAt === earliest
-    }
-  }
   header.metadata = {
     repo: safeIdentity({
       value: evidence.metadata.repository,
@@ -1132,6 +1183,13 @@ const run = async (): Promise<void> => {
         : header.metadata.finishedAt,
   }
   if (values.finalize === true) {
+    const confirmedBuildIds = await confirmedNativeBuildIds({
+      output: values.output,
+      startedAt: header.metadata.startedAt,
+      finishedAt: header.metadata.finishedAt,
+    })
+    if (finalizeNativeLogFreshness({ invocations: header.invocations, confirmedBuildIds }) === true)
+      header.evidenceGaps.push('native-log-rotated')
     for (const invocation of header.invocations) {
       if (invocationWithinJobWindow({ invocation, metadata: header.metadata }) === false) {
         invocation.freshRoot = false
@@ -1242,7 +1300,7 @@ const run = async (): Promise<void> => {
   }
   if (values.finalize === true && header.complete === false) {
     console.error('Cache action evidence incomplete; observation is invalid.')
-    process.exitCode = 1
+    process.exitCode = 2
   }
   const inconsistent = evidence.invocations.reduce(
     (total, invocation) =>
@@ -1255,7 +1313,7 @@ const run = async (): Promise<void> => {
     console.error(
       `Cache evidence: ${inconsistent} remote-hit/uploaded action(s) have no native action digest; artifact records inconsistencies.`,
     )
-    process.exitCode = 1
+    process.exitCode = values.finalize === true ? 2 : 1
   }
 }
 

@@ -73,7 +73,7 @@ describe('native cache evidence CLI exit policy', () => {
       )
       await new Response(child.stderr).text()
       // The reduced fixture has no complete command span/artifact metadata.
-      expect(await child.exited).toBe(1)
+      expect(await child.exited).toBe(2)
       const evidence: CacheEvidence = await Bun.file(output).json()
       expect(evidence.admissionFallbacks).toEqual({ reapi: 1, archiveOrigin: 5 })
       expect(evidence.archiveOriginFallbacks).toEqual({
@@ -225,7 +225,7 @@ describe('entrypoint admission sidecar collection', () => {
         stderr: 'pipe',
       })
       await new Response(finalized.stderr).text()
-      expect(await finalized.exited).toBe(1)
+      expect(await finalized.exited).toBe(2)
       const summaryText = await Bun.file(summaryPath).text()
       expect(summaryText).toStartWith('Existing job summary\n')
       expect(summaryText).toContain('| Total | 2 | 1 | 1 | 1 |')
