@@ -42,6 +42,7 @@ import {
   netlifyDeployStep,
   validateNixStoreStep,
   withCiSourceRoot,
+  withGcRaceRetry,
   defaultRefPolicyCheckJob,
   prReviewsResolvedJob,
   prReviewsResolvedJobId,
@@ -1088,15 +1089,18 @@ const extraJobs: Record<string, any> = {
         // run directly because the publisher refuses `pull_request` events by design).
         name: 'Check product publisher, manifest import, and from-source contracts',
         env: githubTokenEnv(),
-        run: withCiSourceRoot(
-          [
-            'set -euo pipefail',
-            '"${DEVENV_BIN:?DEVENV_BIN not set}" shell -- env -u GITHUB_EVENT_NAME bash nix/workspace-tools/lib/tests/buck2-release-products.sh "$PWD"',
-            '"${DEVENV_BIN:?DEVENV_BIN not set}" shell -- bash nix/workspace-tools/lib/tests/javascript-product-import.sh "$PWD"',
-            '"${DEVENV_BIN:?DEVENV_BIN not set}" shell -- bash nix/buck2-products/from-source-contract.test.sh "$PWD"',
-            '"${DEVENV_BIN:?DEVENV_BIN not set}" shell -- bash nix/buck2-products/private-product-tarballs.test.sh "$PWD"',
-          ].join('\n'),
-        ),
+        run: withGcRaceRetry({
+          label: 'product publisher, manifest import, and from-source contracts',
+          command: withCiSourceRoot(
+            [
+              'set -euo pipefail',
+              '"${DEVENV_BIN:?DEVENV_BIN not set}" shell -- env -u GITHUB_EVENT_NAME bash nix/workspace-tools/lib/tests/buck2-release-products.sh "$PWD"',
+              '"${DEVENV_BIN:?DEVENV_BIN not set}" shell -- bash nix/workspace-tools/lib/tests/javascript-product-import.sh "$PWD"',
+              '"${DEVENV_BIN:?DEVENV_BIN not set}" shell -- bash nix/buck2-products/from-source-contract.test.sh "$PWD"',
+              '"${DEVENV_BIN:?DEVENV_BIN not set}" shell -- bash nix/buck2-products/private-product-tarballs.test.sh "$PWD"',
+            ].join('\n'),
+          ),
+        }),
       },
       ...cheapInertBuckSteps,
     ],

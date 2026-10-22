@@ -3343,11 +3343,12 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
-          cd "${GITHUB_WORKSPACE:-$PWD}" && set -euo pipefail
+          __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
+          bash "$__genie_ci_retry_script" 'product publisher, manifest import, and from-source contracts' 'cd "${GITHUB_WORKSPACE:-$PWD}" && set -euo pipefail
           "${DEVENV_BIN:?DEVENV_BIN not set}" shell -- env -u GITHUB_EVENT_NAME bash nix/workspace-tools/lib/tests/buck2-release-products.sh "$PWD"
           "${DEVENV_BIN:?DEVENV_BIN not set}" shell -- bash nix/workspace-tools/lib/tests/javascript-product-import.sh "$PWD"
           "${DEVENV_BIN:?DEVENV_BIN not set}" shell -- bash nix/buck2-products/from-source-contract.test.sh "$PWD"
-          "${DEVENV_BIN:?DEVENV_BIN not set}" shell -- bash nix/buck2-products/private-product-tarballs.test.sh "$PWD"
+          "${DEVENV_BIN:?DEVENV_BIN not set}" shell -- bash nix/buck2-products/private-product-tarballs.test.sh "$PWD"'
       - name: Run focused normalized, projection, and runner tests
         env:
           GITHUB_TOKEN: ${{ github.token }}

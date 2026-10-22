@@ -31,6 +31,17 @@ import {
 } from './shared.ts'
 import testPlatforms from './test-platforms.json' with { type: 'json' }
 
+describe('consumer root contracts', () => {
+  it('runs the product contract suite through the Nix fetch retry wrapper', () => {
+    const step = ciWorkflow.data.jobs['pr-a-inert-buck']!.steps.find(
+      (step) => step.name === 'Check product publisher, manifest import, and from-source contracts',
+    )!
+    expect(step.run).toContain('run-with-nix-gc-race-retry.sh')
+    expect(step.run).toContain('bash "$__genie_ci_retry_script"')
+    expect(step.run).toContain('nix/buck2-products/from-source-contract.test.sh')
+  })
+})
+
 describe('Nix realisation step timeouts', () => {
   it('uses the p95, maximum and noise floor without loosening an existing bound', () => {
     const jobs = withNixRealisationTimeouts(
