@@ -823,7 +823,7 @@ export const cacheLauncherBirth = (pid: number): string | undefined => {
       stat = readFileSync(`/proc/${pid}/stat`, 'utf8')
     } catch (error) {
       if (error instanceof Error && 'code' in error && error.code === 'ENOENT') return undefined
-      throw new Error('Buck2 cache posture: launcher birth identity unavailable')
+      throw new Error('Buck2 cache posture: launcher birth identity unavailable', { cause: error })
     }
     // comm (field 2) can contain spaces and parentheses; field 22 is 19 after its closing ")".
     const start = stat.slice(stat.lastIndexOf(')') + 2).split(' ')[19]
@@ -899,8 +899,8 @@ export const admitCacheDaemonCommand = async ({
     if (output === '') return undefined
     try {
       return JSON.parse(output)
-    } catch {
-      throw new Error('Buck2 cache posture: native daemon status is not JSON')
+    } catch (error) {
+      throw new Error('Buck2 cache posture: native daemon status is not JSON', { cause: error })
     }
   }
   try {
