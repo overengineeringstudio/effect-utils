@@ -3,7 +3,8 @@ import { expect, test } from 'bun:test'
 import ciWorkflow from '../../.github/workflows/ci.yml.genie.ts'
 import empiricalWorkflow from '../../.github/workflows/empirical-proofs.yml.genie.ts'
 import storybookPlaysWorkflow from '../../.github/workflows/storybook-plays.yml.genie.ts'
-import { EMPIRICAL_PROOF_CI_JOB_NAMES, requiredCIJobs } from '../ci.ts'
+import { EMPIRICAL_PROOF_CI_JOB_NAMES, requiredCIJobs, RUNNER_PROFILES } from '../ci.ts'
+import { namespaceLinuxX64PairedPerfRunner } from '../ci-workflow.ts'
 
 const workflow = ciWorkflow.stringify({ cwd: process.cwd(), location: '' })
 const proofWorkflow = empiricalWorkflow.stringify({ cwd: process.cwd(), location: '' })
@@ -296,6 +297,16 @@ test('historical source measurements retain any-ref dispatch backfills', () => {
   }
 })
 
+test('Linux sandbox prerequisites run only on Namespace profiles', () => {
+  const namespaceProfiles: readonly string[] = [...RUNNER_PROFILES, namespaceLinuxX64PairedPerfRunner]
+  for (const job of Object.values(empiricalWorkflow.data.jobs)) {
+    if (!job.steps.some((step) => step.name === 'Log Linux sandbox prerequisites')) continue
+    const runners = job['runs-on']
+    const labels = typeof runners === 'string' ? [runners] : runners
+    expect(labels.some((label) => namespaceProfiles.includes(label.split(';')[0]!))).toBe(true)
+  }
+})
+
 test('daily cache join is isolated from required CI and other empirical jobs', () => {
   const jobId = 'buck2-cache-join'
   const job = empiricalWorkflow.data.jobs[jobId]!
@@ -303,7 +314,6 @@ test('daily cache join is isolated from required CI and other empirical jobs', (
   expect(requiredCIJobs.includes(jobId)).toBe(false)
   expect(requiredCIJobs.includes(job.name ?? jobId)).toBe(false)
   expect(job['continue-on-error']).toBe(true)
-  expect(job['runs-on']).toBe('ubuntu-latest')
   expect(job.needs).toBeUndefined()
   for (const [otherId, otherJob] of Object.entries(empiricalWorkflow.data.jobs)) {
     if (otherId === jobId) continue

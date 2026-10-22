@@ -5218,7 +5218,10 @@ jobs:
   buck2-cache-join:
     name: ci/buck2-cache-join
     if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
-    runs-on: ubuntu-latest
+    runs-on:
+      [
+        'namespace-profile-linux-x86-64;github.run-id=${{ github.run_id }};container.privileged=true;job.priority=4',
+      ]
     continue-on-error: true
     timeout-minutes: 30
     permissions:

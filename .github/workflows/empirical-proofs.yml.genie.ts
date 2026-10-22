@@ -4,6 +4,7 @@ import {
   checkoutStep,
   installNixStep,
   linuxSandboxPrerequisitesStep,
+  namespaceRunner,
   prepareCiScriptsStep,
   preparePinnedDevenvStep,
   runDevenvTasksBefore,
@@ -70,7 +71,12 @@ export default ciWorkflow({
         'buck2-cache-join': {
           name: 'ci/buck2-cache-join',
           if: "${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}",
-          'runs-on': 'ubuntu-latest',
+          'runs-on': namespaceRunner({
+            profile: 'namespace-profile-linux-x86-64',
+            runId: '${{ github.run_id }}',
+            privileged: 'always',
+            priority: 4,
+          }),
           'continue-on-error': true,
           'timeout-minutes': 30,
           permissions: { contents: 'read', actions: 'read', 'id-token': 'write' },
