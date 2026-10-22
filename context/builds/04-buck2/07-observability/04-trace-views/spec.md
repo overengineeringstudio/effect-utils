@@ -210,6 +210,10 @@ evidence is removed on exit.
 | `buck2.cache.lane.avoidable_miss_actions`       | `buck2_cache_lane_avoidable_miss_actions`       | repo, lane, platform |
 | `buck2.cache.lane.local_actions`                | `buck2_cache_lane_local_actions`                | repo, lane, platform |
 | `buck2.cache.lane.cold_actions`                 | `buck2_cache_lane_cold_actions`                 | repo, lane, platform |
+| `buck2.cache.lane.changed_actions`              | `buck2_cache_lane_changed_actions`              | repo, lane, platform |
+| `buck2.cache.lane.noncacheable_actions`         | `buck2_cache_lane_noncacheable_actions`         | repo, lane, platform |
+| `buck2.cache.lane.excluded_actions`             | `buck2_cache_lane_excluded_actions`             | repo, lane, platform |
+| `buck2.cache.lane.upload_failure_actions`       | `buck2_cache_lane_upload_failure_actions`       | repo, lane, platform |
 | `buck2.cache.lane.evidence_gaps`                | `buck2_cache_lane_evidence_gaps`                | repo, lane, platform |
 | `buck2.cache.join.artifacts`                    | `buck2_cache_join_artifacts`                    | repo                 |
 | `buck2.cache.join.runs`                         | `buck2_cache_join_runs`                         | repo                 |
@@ -234,16 +238,43 @@ zero-percent hit rate.
 Preserve raw counts, selection coverage, and evidence gaps alongside ratios;
 intentional sampling is not itself an evidence gap.
 
+Action eligibility coverage is `eligible / (eligible + cold + changed)`,
+distinct from the remote-hit ratio among eligible actions and from run-selection
+coverage. For a selected daily window, compute it without a derived metric:
+
+```promql
+buck2_cache_lane_eligible_actions
+/
+(
+  buck2_cache_lane_eligible_actions
+  + buck2_cache_lane_cold_actions
+  + buck2_cache_lane_changed_actions
+)
+```
+
+The series match on `repo`, `lane`, and `platform`. A zero denominator means
+no measured coverage, not zero coverage. These are window-total gauges; do not
+apply `rate()` or `increase()`. Historical samples that predate
+`changed_actions` do not support this split-cohort query.
+
 - **CE1 Eligibility and counts:** The production warm99 join supplies exact
   identity eligibility: a successful upload by a writer-posture `main-writer`
   or `merge_group` artifact must finish strictly before the fresh reader
   invocation starts. Identity includes category, target, configuration and
-  digest; another digest is cold, not an avoidable miss. Eligible remote hits
+  digest; another digest is `changed`, not an avoidable miss. `cold` counts
+  identities without an earlier exact or base-identity upload; it does not
+  include `changed`. Eligible remote hits
   use the native remote-hit execution kind; avoidable misses are eligible
   minus hits. Local actions count local command execution kinds, including
   successful uploads. Counts deduplicate identities within a reader artifact,
   then sum independent fresh reader artifacts. Replayed invocation evidence
   contributes a gap, not another observation.
+  Noncacheable counts noncommand rows plus deduplicated noncacheable command
+  identities under the warm99 classification. Excluded counts policy-excluded
+  and nonfresh rows. Upload failures count failed-upload rows from the writer
+  and reader evidence evaluated for each reader artifact, so shared writer
+  failures can appear in multiple reader observations. These diagnostic counts
+  and local actions are not extra terms in the coverage denominator.
 - **CE2 Bounded dimensions and incomplete evidence:** `lane` is one of
   `main-reader`, `merge_group`, `pr`, `main-writer`; `platform` is `linux`,
   `darwin`, or `unknown`. An explicit producer-job map assigns platform;
