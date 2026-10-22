@@ -349,6 +349,18 @@ unsafe or replaced controls are never repaired. Readers then acquire a shared
 lease before leaving exclusion. Retirement must obtain an exclusive lease before
 deleting payloads. Read-only planning reports missing controls as
 `no control (clear under fence)`.
+Lease discovery, acquisition, or bookkeeping failures in the native launcher
+degrade to unknown evidence without stopping the target program: its arguments,
+stdio, and exit status remain unchanged. Unsupported filesystems (including
+OverlayFS) are not treated as local and do not gain lease controls or CAS fences.
+This launch availability policy does not authorize deletion: retirement remains
+fail closed on unknown evidence and still requires a validated exclusive lease
+under the owning CAS fence.
+The publication supervisor intentionally closes descriptors outside its own
+admission protocol. It removes inherited lease mappings and the active marker
+from its child's environment; the child source launcher discovers fresh leases.
+It never adds parent leases to `pass_fds`. A stale mapping reaching the native
+launcher is diagnosed as unknown, removed, and never re-exported to descendants.
 The launcher leases the generations reachable at launch and keeps those leases for the process lifetime. It does not refresh leases when a pointer moves later.
 The admitted set is explicitly passed to source-reading descendants.
 It does not intercept every future filesystem read or freeze moving `node_modules`

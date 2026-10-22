@@ -11,6 +11,8 @@ stdenv.mkDerivation {
   buildPhase = ''
     runHook preBuild
     $CC -std=c11 -Wall -Wextra -Werror -O2 editor-view-lease.c -o editor-view-lease
+    $CC -std=c11 -Wall -Wextra -Werror -O2 -DEU_LEASE_TEST_UNKNOWN_FS \
+      editor-view-lease.c -o editor-view-lease-unknown-fs
     $CC -std=c11 -Wall -Wextra -Werror -O2 -DEU_LEASE_FFI -fPIC \
       ${if stdenv.isDarwin then "-dynamiclib" else "-shared"} \
       editor-view-lease.c -o libeditor-view-lease${stdenv.hostPlatform.extensions.sharedLibrary}
@@ -26,6 +28,7 @@ stdenv.mkDerivation {
     install -Dm755 libeditor-view-lease${stdenv.hostPlatform.extensions.sharedLibrary} \
       "$out/lib/libeditor-view-lease${stdenv.hostPlatform.extensions.sharedLibrary}"
     install -Dm755 editor-view-lease-test-child "$testHelpers/bin/editor-view-lease-test-child"
+    install -Dm755 editor-view-lease-unknown-fs "$testHelpers/bin/editor-view-lease-unknown-fs"
     ${lib.optionalString stdenv.isLinux ''
       install -Dm755 editor-view-reader-infrastructure-test-child "$testHelpers/bin/editor-view-reader-infrastructure-test-child"
     ''}

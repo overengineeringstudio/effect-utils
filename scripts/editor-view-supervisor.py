@@ -33,7 +33,13 @@ def supervise(command, deadline, grace, pass_fds=(), waiting_lock=None):
     if sys.platform == "linux":
         if ctypes.CDLL(None, use_errno=True).prctl(36, 1, 0, 0, 0) != 0:
             raise OSError(ctypes.get_errno(), "cannot become publication subreaper")
-    child = subprocess.Popen(command, start_new_session=True, pass_fds=pass_fds)
+    # Popen deliberately closes every descriptor outside this supervisor's
+    # lock/admission protocol. Lease mappings belong to the launching process,
+    # not this new child: its native source launcher must discover fresh leases.
+    child_env = os.environ.copy()
+    child_env.pop("EDITOR_VIEW_LEASE_FDS", None)
+    child_env.pop("EDITOR_VIEW_LEASE_ACTIVE", None)
+    child = subprocess.Popen(command, start_new_session=True, pass_fds=pass_fds, env=child_env)
     interrupted = []
     for sig in (signal.SIGHUP, signal.SIGINT, signal.SIGTERM):
         signal.signal(sig, lambda number, _frame: interrupted.append(number))

@@ -206,10 +206,53 @@ done:
 /* Independent of Bun, node_modules and every evictable editor generation.
  * Missing controls are lazily created only inside the owning CAS fence.
  * Zero-generation inventory opens and creates no CAS fence. */
-static void die(const char *message, const char *path) {
-  fprintf(stderr, "editor-view-lease: %s: %s (%s)\n", message, path, strerror(errno));
+static char **targetArgv;
+static const char *targetProgram;
+static int *ownedFds;
+static size_t ownedCount, ownedCapacity;
+static void executeTarget(void) {
+  execvp(targetProgram,targetArgv);
+  fprintf(stderr,"editor-view-lease: exec failed: %s (%s)\n",targetProgram,strerror(errno));
   exit(1);
 }
+static void die(const char *message, const char *path) {
+  fprintf(stderr, "editor-view-lease: %s: %s (%s); lease state unknown\n", message, path, strerror(errno));
+  if(targetProgram) {
+    for(size_t i=0;i<ownedCount;i++) close(ownedFds[i]);
+    unsetenv("EDITOR_VIEW_LEASE_FDS");
+    unsetenv("EDITOR_VIEW_LEASE_ACTIVE");
+    executeTarget();
+  }
+  exit(1);
+}
+/* Track only launcher-owned descriptors, including directory streams. A
+ * discovery/bookkeeping error must close fences before executing the target. */
+static int ownFd(int fd) {
+  if(fd<0) return fd;
+  if(ownedCount==ownedCapacity) {
+    size_t capacity=ownedCapacity?ownedCapacity*2:16;
+    int *next=realloc(ownedFds,capacity*sizeof(*next));
+    if(!next) { close(fd); die("allocation failure","descriptor bookkeeping"); }
+    ownedFds=next; ownedCapacity=capacity;
+  }
+  ownedFds[ownedCount++]=fd;
+  return fd;
+}
+static void forgetFd(int fd) {
+  for(size_t i=0;i<ownedCount;i++) if(ownedFds[i]==fd) {
+    ownedFds[i]=ownedFds[--ownedCount]; return;
+  }
+}
+static int closeOwned(int fd) { forgetFd(fd); return close(fd); }
+static DIR *openDirectory(const char *path) {
+  DIR *dir=opendir(path);
+  if(dir) ownFd(dirfd(dir));
+  return dir;
+}
+static int closeDirectory(DIR *dir) { forgetFd(dirfd(dir)); return closedir(dir); }
+#define close closeOwned
+#define opendir openDirectory
+#define closedir closeDirectory
 static void pathcat(char out[PATH_MAX], const char *left, const char *right) {
   if (snprintf(out, PATH_MAX, "%s/%s", left, right) >= PATH_MAX) die("path too long", left);
 }
@@ -220,17 +263,24 @@ static void directory(const char *path, int private) {
       (s.st_mode & (private ? 077 : 022)) || !realpath(path, canonical) || strcmp(path, canonical))
     die("unsafe directory", path);
 }
-static void localfs(const char *path) {
+static int localfs(const char *path) {
   struct statfs fs;
-  if (statfs(path, &fs)) die("cannot classify filesystem", path);
-#ifdef __APPLE__
-  if (strcmp(fs.f_fstypename, "apfs") && strcmp(fs.f_fstypename, "hfs")) die("unknown filesystem", path);
+  if(statfs(path,&fs)) {
+    fprintf(stderr,"editor-view-lease: cannot classify filesystem: %s (%s); lease state unknown\n",path,strerror(errno));
+    return 0;
+  }
+#ifdef EU_LEASE_TEST_UNKNOWN_FS
+  fprintf(stderr,"editor-view-lease: unsupported filesystem: %s (f_type=0x794c7630); lease state unknown\n",path);
+  return 0;
+#elif defined(__APPLE__)
+  if(!strcmp(fs.f_fstypename,"apfs") || !strcmp(fs.f_fstypename,"hfs")) return 1;
 #else
   switch ((uint32_t)fs.f_type) {
-    case 0xef53: case 0x58465342: case 0x9123683e: case 0x01021994: case 0x858458f6: case 0x2fc12fc1: break;
-    default: die("unknown filesystem", path);
+    case 0xef53: case 0x58465342: case 0x9123683e: case 0x01021994: case 0x858458f6: case 0x2fc12fc1: return 1;
   }
 #endif
+  fprintf(stderr,"editor-view-lease: unsupported filesystem: %s (f_type=0x%jx); lease state unknown\n",path,(uintmax_t)fs.f_type);
+  return 0;
 }
 static void control(const char *path, int fd) {
   struct stat a, b;
@@ -288,11 +338,11 @@ static void leaseIdentity(const char *path, int fd, const char *root, const char
     die("replaced lease identity",path);
 }
 static void generation(const char *root, const char *name) {
-  localfs(root);
+  if(!localfs(root)) return;
   char store[PATH_MAX], snapshot[PATH_MAX], leaseDir[PATH_MAX], controlPath[PATH_MAX], lockname[PATH_MAX];
   struct stat before, after;
   pathcat(store, root, ".store"); directory(store, 0);
-  pathcat(snapshot, store, name); directory(snapshot, 0); localfs(snapshot);
+  pathcat(snapshot, store, name); directory(snapshot, 0); if(!localfs(snapshot)) return;
   if (lstat(snapshot, &before)) die("generation disappeared", snapshot);
   pathcat(leaseDir, root, ".leases");
   if(mkdir(leaseDir,0700) && errno!=EEXIST) die("cannot create private lease directory",leaseDir);
@@ -300,9 +350,9 @@ static void generation(const char *root, const char *name) {
   if (snprintf(lockname, sizeof(lockname), "%s.lock", name) >= (int)sizeof(lockname)) die("generation too long", name);
   pathcat(controlPath, leaseDir, lockname);
   int created=0;
-  int fd=open(controlPath,O_RDWR|O_NONBLOCK|O_NOFOLLOW|O_CLOEXEC|O_CREAT|O_EXCL,0600);
+  int fd=ownFd(open(controlPath,O_RDWR|O_NONBLOCK|O_NOFOLLOW|O_CLOEXEC|O_CREAT|O_EXCL,0600));
   if(fd>=0) created=1;
-  else if(errno==EEXIST) fd=open(controlPath,O_RDWR|O_NONBLOCK|O_NOFOLLOW|O_CLOEXEC);
+  else if(errno==EEXIST) fd=ownFd(open(controlPath,O_RDWR|O_NONBLOCK|O_NOFOLLOW|O_CLOEXEC));
   if (fd < 0) die("missing lease control", controlPath);
   control(controlPath, fd);
   if(created) {
@@ -353,7 +403,7 @@ static void parentPath(char path[PATH_MAX]) {
   else *slash=0;
 }
 static int textFile(const char *path, char text[PATH_MAX]) {
-  int fd=open(path,O_RDONLY|O_NOFOLLOW|O_CLOEXEC|O_NONBLOCK);
+  int fd=ownFd(open(path,O_RDONLY|O_NOFOLLOW|O_CLOEXEC|O_NONBLOCK));
   if(fd<0) { if(errno==ENOENT) return 0; die("cannot read Git ownership",path); }
   struct stat status;
   if(fstat(fd,&status) || !S_ISREG(status.st_mode) || status.st_size<=0 || status.st_size>=PATH_MAX) die("invalid Git ownership file",path);
@@ -406,6 +456,7 @@ static void owningStore(const char *root, char output[PATH_MAX]) {
 }
 static void editorroot(const char *root) {
   directory(root,0);
+  if(!localfs(root)) return;
   struct stat rootIdentity, admittedRoot;
   if(lstat(root,&rootIdentity)) die("cannot identify editor root",root);
   DIR *dir=opendir(root); if(!dir) die("cannot inventory editor root",root);
@@ -414,7 +465,12 @@ static void editorroot(const char *root) {
     if(entry->d_name[0]=='.') continue;
     char path[PATH_MAX]; struct stat status; pathcat(path,root,entry->d_name);
     if(lstat(path,&status)) die("incomplete editor root inventory",path);
-    if(S_ISLNK(status.st_mode)) published=1;
+    if(S_ISLNK(status.st_mode)) {
+      char target[PATH_MAX];
+      if(!realpath(path,target)) die("cannot resolve view pointer",path);
+      if(!localfs(target)) { closedir(dir); return; }
+      published=1;
+    }
     errno=0;
   }
   if(errno || closedir(dir)) die("incomplete editor root inventory",root);
@@ -422,8 +478,8 @@ static void editorroot(const char *root) {
   char store[PATH_MAX], checked[PATH_MAX], fence[PATH_MAX], parent[PATH_MAX];
   owningStore(root,store);
   if(snprintf(fence,sizeof(fence),"%s.flock",store)>=(int)sizeof(fence)) die("path too long",store);
-  snprintf(parent,sizeof(parent),"%s",store); parentPath(parent); directory(parent,0); localfs(parent);
-  int cas=open(fence,O_RDWR|O_NONBLOCK|O_NOFOLLOW|O_CLOEXEC);
+  snprintf(parent,sizeof(parent),"%s",store); parentPath(parent); directory(parent,0); if(!localfs(parent)) return;
+  int cas=ownFd(open(fence,O_RDWR|O_NONBLOCK|O_NOFOLLOW|O_CLOEXEC));
   if(cas<0) die("missing owning CAS fence",fence);
   control(fence,cas); lockfd(cas,LOCK_EX,fence); control(fence,cas);
   owningStore(root,checked);
@@ -497,29 +553,37 @@ static void discover(int argc, char **argv, int command, int trampolineMode, con
   }
 }
 int main(int argc, char **argv) {
-  defaultCloseOnExec();
   storeOverride=getenv("EDITOR_VIEW_CONTENT_STORE");
   const char *trampoline = getenv("EDITOR_VIEW_LEASE_EXECUTABLE");
   const char *workspaceRoot = getenv("EDITOR_VIEW_LEASE_WORKSPACE_ROOT");
-  int command = 0, trampolineMode = trampoline && *trampoline && workspaceRoot && *workspaceRoot;
+  int command = 0, roots = 0, trampolineMode = trampoline && *trampoline && workspaceRoot && *workspaceRoot;
+  for (int i=1; !trampolineMode && i<argc; i++) {
+    if (!strcmp(argv[i],"--")) { command=i+1; break; }
+    if ((!strcmp(argv[i],"--content-store") || !strcmp(argv[i],"--workspace-root") || !strcmp(argv[i],"--editor-root")) && i+1<argc) {
+      if (!strcmp(argv[i],"--content-store")) storeOverride=argv[i+1];
+      else roots++;
+      if (!strcmp(argv[i],"--workspace-root")) workspaceRoot=argv[i+1];
+      i++;
+    } else die("invalid arguments", argv[i]);
+  }
+  if(!trampolineMode && (!command || command>=argc || !roots))
+    die("root and command required","arguments");
+  targetProgram=trampolineMode?trampoline:argv[command];
+  targetArgv=trampolineMode?argv:argv+command;
+  if(trampolineMode) argv[0]=(char *)trampoline;
+  defaultCloseOnExec();
+  if(workspaceRoot && setenv("EDITOR_VIEW_LEASE_WORKSPACE_ROOT",workspaceRoot,1))
+    die("cannot export workspace",workspaceRoot);
   const char *inherited=getenv("EDITOR_VIEW_LEASE_FDS");
   if(inherited && *inherited) {
     char *copy=strdup(inherited), *cursor=copy, *token;
     if(!copy) die("allocation failure","inherited fds");
     while((token=strsep(&cursor,","))) {
       char *end; long fd=strtol(token,&end,10);
-      if(!*token || *end || fd<3 || fd>INT_MAX || fcntl((int)fd,F_GETFD)<0) die("invalid inherited descriptor",token);
-      retain((int)fd);
+      if(!*token || *end || fd<3 || fd>INT_MAX || fcntl((int)fd,F_GETFD)<0) die("stale inherited lease mapping: invalid descriptor",token);
+      retain(ownFd((int)fd));
     }
     free(copy);
-  }
-  for (int i=1; !trampolineMode && i<argc; i++) {
-    if (!strcmp(argv[i],"--")) { command=i+1; break; }
-    if ((!strcmp(argv[i],"--content-store") || !strcmp(argv[i],"--workspace-root") || !strcmp(argv[i],"--editor-root")) && i+1<argc) {
-      if (!strcmp(argv[i],"--content-store")) storeOverride=argv[i+1];
-      if (!strcmp(argv[i],"--workspace-root") && setenv("EDITOR_VIEW_LEASE_WORKSPACE_ROOT",argv[i+1],1)) die("cannot export workspace",argv[i+1]);
-      i++;
-    } else die("invalid arguments", argv[i]);
   }
   discover(argc,argv,command,trampolineMode,workspaceRoot);
   size_t capacity=count*24+1; char *mapping=calloc(capacity,1); if(!mapping) die("allocation failure","fd mapping");
@@ -530,8 +594,6 @@ int main(int argc, char **argv) {
   }
   if(setenv("EDITOR_VIEW_LEASE_FDS",mapping,1)) die("cannot publish descriptor mapping","exec");
   if(setenv("EDITOR_VIEW_LEASE_ACTIVE","1",1)) die("cannot publish active marker","exec");
-  if(trampolineMode) { argv[0]=(char *)trampoline; execvp(trampoline,argv); }
-  else execvp(argv[command],argv+command);
-  die("exec failed",trampolineMode?trampoline:argv[command]);
+  executeTarget();
 }
 #endif

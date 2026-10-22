@@ -12,6 +12,7 @@ const requireTool = (name: string): string => {
 const bun = requireTool('BUN_BIN')
 const launcher = requireTool('EDITOR_VIEW_LEASE_BIN')
 const childHelper = requireTool('EDITOR_VIEW_LEASE_TEST_CHILD_BIN')
+const unknownFilesystemLauncher = requireTool('EDITOR_VIEW_LEASE_UNKNOWN_FS_BIN')
 const leaseModule = fileURLToPath(new URL('./editor-view-leases.ts', import.meta.url))
 const sharingModule = fileURLToPath(new URL('./editor-view-sharing.ts', import.meta.url))
 const readersModule = fileURLToPath(new URL('./editor-view-readers.ts', import.meta.url))
@@ -28,7 +29,9 @@ const run = (body: string): void => {
     import { setTimeout as delay } from 'node:timers/promises';
     import { acquireEditorViewLease, ensureEditorViewLeaseControl, probeEditorViewLease, probeEditorViewLeaseUnderFence, observeEditorViewLeaseForRetirement, editorViewLeaseFilesystem } from ${JSON.stringify(leaseModule)};
     import { withEditorViewContentStoreLock } from ${JSON.stringify(sharingModule)};
+    import { editorViewAutomaticEvictionEvidence as automaticEvictionEvidence } from ${JSON.stringify(readersModule)};
     const launcher = ${JSON.stringify(launcher)};
+    const unknownFilesystemLauncher = ${JSON.stringify(unknownFilesystemLauncher)};
     const helper = ${JSON.stringify(childHelper)};
     const root = fs.realpathSync(fs.mkdtempSync(join(process.platform === 'linux' ? '/dev/shm' : tmpdir(), 'editor-leases-')));
     const editorRoot = join(root, '.editor-view');
@@ -283,7 +286,7 @@ describe('editor generation native leases (Linux and macOS)', () => {
   )
 
   it.each(['symlink', 'hardlink', 'permissions', 'replacement', 'directory'])(
-    'fails closed for %s controls before importing command source',
+    'unsafe %s controls leave retirement unknown without stopping command startup',
     (unsafe) =>
       run(`
       const unsafe = ${JSON.stringify(unsafe)};
@@ -302,9 +305,18 @@ describe('editor generation native leases (Linux and macOS)', () => {
         const final = probeEditorViewLeaseUnderFence(input);
         assert.equal(final.state, 'unknown'); final.release();
       });
-      const marker = join(root, 'must-not-import');
-      const command = spawnSync(launcher, ['--content-store', contentStore, '--editor-root', editorRoot, '--', ${JSON.stringify(bun)}, '--eval', 'require("node:fs").writeFileSync(' + JSON.stringify(marker) + ', "bad")'], { env: { ...process.env, EDITOR_VIEW_LEASE_EXECUTABLE: '', EDITOR_VIEW_LEASE_FDS: '' } });
-      assert.notEqual(command.status, 0); assert.equal(fs.existsSync(marker), false);
+      const marker = join(root, 'target-ran');
+      const program = [
+        'import { withEditorViewContentStoreLock } from ' + JSON.stringify(${JSON.stringify(sharingModule)}) + ';',
+        'require("node:assert/strict").equal(process.env.EDITOR_VIEW_LEASE_FDS ?? "", "");',
+        'await withEditorViewContentStoreLock({ contentStore: ' + JSON.stringify(contentStore) + ', run: async () => {',
+        '  require("node:fs").writeFileSync(' + JSON.stringify(marker) + ', "ran");',
+        '} });',
+        'process.exit(23);',
+      ].join('\\n');
+      const command = spawnSync(launcher, ['--content-store', contentStore, '--editor-root', editorRoot, '--', ${JSON.stringify(bun)}, '--eval', program], { env: { ...process.env, EDITOR_VIEW_LEASE_EXECUTABLE: '', EDITOR_VIEW_LEASE_FDS: '' }, timeout: 10000 });
+      assert.equal(command.error, undefined); assert.equal(command.status, 23);
+      assert.equal(fs.readFileSync(marker, 'utf8'), 'ran');
     `),
   )
 
@@ -416,7 +428,7 @@ describe('editor generation native leases (Linux and macOS)', () => {
     await waitUntil(() => probe() === 'clear');
   `))
 
-  it('cold inventory executes without creating a CAS fence; published generations require it', () =>
+  it('cold inventory and unavailable CAS fences never stop command startup', () =>
     run(`
     const cold = join(root, 'cold'); fs.mkdirSync(cold);
     const absentStore = join(root, 'absent-cas');
@@ -424,18 +436,89 @@ describe('editor generation native leases (Linux and macOS)', () => {
     const command = [${JSON.stringify(bun)}, '--eval', 'process.exit(process.env.EDITOR_VIEW_LEASE_ACTIVE === "1" ? 0 : 1)'];
     const empty = spawnSync(launcher, ['--workspace-root', cold, '--', ...command], { env });
     assert.equal(empty.status, 0); assert.equal(fs.existsSync(absentStore + '.flock'), false);
-    const published = spawnSync(launcher, ['--editor-root', editorRoot, '--', ...command], { env });
-    assert.notEqual(published.status, 0); assert.equal(fs.existsSync(absentStore + '.flock'), false);
+    const marker = join(root, 'unfenced-target-ran');
+    const program = 'require("node:assert/strict").equal(process.env.EDITOR_VIEW_LEASE_FDS ?? "", ""); require("node:fs").writeFileSync(' + JSON.stringify(marker) + ', "ran"); process.exit(23)';
+    const published = spawnSync(launcher, ['--editor-root', editorRoot, '--', ${JSON.stringify(bun)}, '--eval', program], { env });
+    assert.equal(published.error, undefined); assert.equal(published.status, 23);
+    assert.equal(fs.readFileSync(marker, 'utf8'), 'ran');
+    assert.equal(fs.existsSync(absentStore + '.flock'), false);
   `))
 
-  it('unclassified filesystem cannot authorize a lease probe or command startup', () =>
+  it('stale inherited descriptor bookkeeping never prevents target execution', () =>
+    run(`
+    const program = 'require("node:assert/strict").equal(process.env.EDITOR_VIEW_LEASE_FDS ?? "", ""); process.exit(37)';
+    const result = spawnSync(launcher, [
+      '--content-store', contentStore, '--editor-root', editorRoot,
+      '--', ${JSON.stringify(bun)}, '--eval', program,
+    ], {
+      env: { ...process.env, EDITOR_VIEW_LEASE_EXECUTABLE: '', EDITOR_VIEW_LEASE_FDS: '2147483647' },
+      encoding: 'utf8',
+    });
+    assert.equal(result.error, undefined);
+    assert.equal(result.status, 37);
+    assert.match(result.stderr, /stale inherited lease mapping: invalid descriptor/);
+  `))
+
+  it.each(['--editor-root', '--workspace-root'])(
+    'unknown filesystem discovery preserves the target argv, stdio and exit status: %s',
+    (rootOption) =>
+      run(`
+    fs.rmSync(join(editorRoot, '.leases'), { recursive: true });
+    fs.unlinkSync(contentStore + '.flock');
+    const marker = join(root, 'unknown-filesystem-target-ran');
+    const argv = ['argument with spaces', '', '--literal-option', 'quote"and\\\\backslash'];
+    const program = [
+      'const fs = require("node:fs");',
+      'require("node:assert/strict").equal(process.env.EDITOR_VIEW_LEASE_FDS ?? "", "");',
+      'fs.writeFileSync(' + JSON.stringify(marker) + ', JSON.stringify(process.argv.slice(1)));',
+      'fs.writeSync(1, "stdout:" + fs.readFileSync(0, "utf8"));',
+      'fs.writeSync(2, "stderr:sentinel");',
+      'process.exit(37);',
+    ].join('\\n');
+    const result = spawnSync(unknownFilesystemLauncher, [
+      '--content-store', contentStore, ${JSON.stringify(rootOption)},
+      ${JSON.stringify(rootOption)} === '--editor-root' ? editorRoot : root,
+      '--', ${JSON.stringify(bun)}, '--eval', program, ...argv,
+    ], {
+      env: { ...process.env, EDITOR_VIEW_LEASE_EXECUTABLE: '', EDITOR_VIEW_LEASE_FDS: '' },
+      input: 'sentinel stdin\\n', encoding: 'utf8',
+    });
+    assert.equal(result.error, undefined);
+    assert.equal(result.status, 37); assert.equal(result.signal, null);
+    assert.deepEqual(JSON.parse(fs.readFileSync(marker, 'utf8')), argv);
+    assert.equal(result.stdout, 'stdout:sentinel stdin\\n');
+    assert.match(result.stderr, /stderr:sentinel/);
+    assert.equal(fs.existsSync(control), false);
+    assert.equal(fs.existsSync(join(editorRoot, '.leases')), false);
+    assert.equal(fs.existsSync(contentStore + '.flock'), false);
+    assert.equal(fs.existsSync(payload), true);
+  `),
+  )
+
+  it('unclassified filesystem permits startup but never authorizes retirement', () =>
     run(`
     const unsupported = process.platform === 'linux' ? '/proc' : '/dev';
     assert.equal(editorViewLeaseFilesystem(unsupported), 'unknown');
-    const unknown = probeEditorViewLease({ editorRoot: unsupported, snapshot: 'not-a-generation' });
+    const unsupportedInput = { editorRoot: unsupported, snapshot: 'not-a-generation' };
+    const unknown = probeEditorViewLease(unsupportedInput);
     assert.equal(unknown.state, 'unknown'); unknown.release();
-    const result = spawnSync(launcher, ['--content-store', contentStore, '--editor-root', unsupported, '--', helper, 'hold', join(root, 'unknown')], { env: { ...process.env, EDITOR_VIEW_LEASE_EXECUTABLE: '', EDITOR_VIEW_LEASE_FDS: '' } });
-    assert.notEqual(result.status, 0);
+    const observation = observeEditorViewLeaseForRetirement(unsupportedInput);
+    assert.equal(observation.state, 'unknown'); observation.release();
+    const candidates = [{ key: 'A', editorRoot, snapshotRoot: payload, linkedInodes: [] }];
+    const policy = automaticEvictionEvidence({
+      editorRoot, candidates, evidence: new Map([['A', observation]]),
+    });
+    assert.equal(policy.state, 'unknown');
+    assert.equal(fs.existsSync(payload), true);
+    await fence(async () => {
+      const final = probeEditorViewLeaseUnderFence(unsupportedInput);
+      assert.equal(final.state, 'unknown'); final.release();
+    });
+    const marker = join(root, 'unclassified-target-ran');
+    const program = 'require("node:fs").writeFileSync(' + JSON.stringify(marker) + ', "ran"); process.exit(23)';
+    const result = spawnSync(launcher, ['--content-store', contentStore, '--editor-root', unsupported, '--', ${JSON.stringify(bun)}, '--eval', program], { env: { ...process.env, EDITOR_VIEW_LEASE_EXECUTABLE: '', EDITOR_VIEW_LEASE_FDS: '' } });
+    assert.equal(result.error, undefined); assert.equal(result.status, 23);
+    assert.equal(fs.readFileSync(marker, 'utf8'), 'ran');
   `))
 })
 
