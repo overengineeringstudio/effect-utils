@@ -102,27 +102,63 @@ const outcome = (value: unknown): CacheOutcome => {
       return invalid()
   }
 }
-/** Native RPC diagnostics are untrusted; redact structurally without collector credentials. */
-export const sanitizeUploadDiagnostic = (value: string): string =>
-  value
-    .replace(/(\b[a-z][a-z0-9+.-]*:\/\/)[^\s/?#<>"]*@/gi, '$1[REDACTED]@')
-    .replace(
-      /((?:authorization|proxy-authorization|x-api-key|api[_-]?key|access[_-]?token|refresh[_-]?token|password|token)["']?(?:\s*[:=]\s*|\s+))[^\r\n]+/gi,
-      '$1[REDACTED]',
-    )
-    .replace(/\b(Bearer|Basic)\s+[^\r\n]+/gi, '$1 [REDACTED]')
-    .replace(/[a-zA-Z0-9+/_-]{20,}={0,2}/g, '[REDACTED]')
-    .slice(0, 4096)
+const grpcCodeNames = [
+  'OK', 'CANCELLED', 'UNKNOWN', 'INVALID_ARGUMENT', 'DEADLINE_EXCEEDED', 'NOT_FOUND',
+  'ALREADY_EXISTS', 'PERMISSION_DENIED', 'RESOURCE_EXHAUSTED', 'FAILED_PRECONDITION',
+  'ABORTED', 'OUT_OF_RANGE', 'UNIMPLEMENTED', 'INTERNAL', 'UNAVAILABLE', 'DATA_LOSS',
+  'UNAUTHENTICATED',
+]
+/** Accept only gRPC enum names or status numbers; never retain an arbitrary native string. */
+export const decodeGrpcCode = (value: unknown): number | null => {
+  if (typeof value === 'number')
+    return Number.isInteger(value) === true && value >= 0 && value <= 16 ? value : null
+  if (typeof value !== 'string') return null
+  if (/^(?:[0-9]|1[0-6])$/.test(value) === true) return Number(value)
+  const code = grpcCodeNames.indexOf(value)
+  return code === -1 ? null : code
+}
+
+/** Classify native diagnostics, then discard all free text at the collection boundary. */
+export const classifyCacheUploadError = (error: unknown, code: unknown): CacheUploadError => {
+  const reErrorCode = decodeGrpcCode(code)
+  const message = typeof error === 'string' ? error : ''
+  const category =
+    reErrorCode === 16 || /unauthenticated|authentication failed|invalid credentials/i.test(message)
+      ? 'unauthenticated'
+      : reErrorCode === 7 || /permission.denied|access.denied|write.denied|forbidden/i.test(message)
+        ? 'permission-denied'
+        : reErrorCode === 4 || /deadline|timed? out|timeout/i.test(message)
+          ? 'deadline'
+          : reErrorCode === 14 || /unavailable|connection reset|connection refused/i.test(message)
+            ? 'unavailable'
+            : reErrorCode === 8 || /resource.exhausted|quota exceeded|rate limit/i.test(message)
+              ? 'resource-exhausted'
+              : reErrorCode === 3 || /invalid.argument/i.test(message)
+                ? 'invalid-argument'
+                : 'other'
+  return { category, reErrorCode }
+}
 
 export const decodeCacheUploadErrors = (value: unknown): CacheUploadError[] | undefined => {
-  // Older retained evidence contains no native upload diagnostics.
   if (value === undefined) return undefined
   return list(value).map((entry) => {
-    const diagnostic = (key: string): string | null => {
-      const raw = field({ value: entry, key })
-      return raw === null ? null : sanitizeUploadDiagnostic(text(raw))
+    const category = field({ value: entry, key: 'category' })
+    switch (category) {
+      case undefined: // Historical free-text diagnostics are deliberately discarded.
+      case 'unauthenticated':
+      case 'permission-denied':
+      case 'deadline':
+      case 'unavailable':
+      case 'resource-exhausted':
+      case 'invalid-argument':
+      case 'other':
+        return {
+          category: category ?? 'other',
+          reErrorCode: decodeGrpcCode(field({ value: entry, key: 'reErrorCode' })),
+        }
+      default:
+        return invalid()
     }
-    return { error: diagnostic('error'), reErrorCode: diagnostic('reErrorCode') }
   })
 }
 

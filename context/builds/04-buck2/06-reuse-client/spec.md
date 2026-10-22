@@ -457,7 +457,7 @@ Missing fields remain explicit `null`; they do not suppress a row.
 | Times                 | `startedAt`, `completedAt`, `endTime` (same as completedAt), `uploadCompletedAt`                                                            |
 | `commandAction`       | Native action kind is `Run`; non-command actions are retained but do not form a command-cache denominator                                   |
 | `exclusionReason`     | Repository-owned exact reason `local-materialization-policy` for the policy categories; `null` otherwise                                    |
-| `uploadErrors`        | Optional array of `{ error, reErrorCode }`, one per failed native `CacheUpload` end; unavailable text/code is `null`                        |
+| `uploadErrors`        | Optional array of `{ category, reErrorCode }`, one per failed native `CacheUpload` end; category is closed, gRPC code is 0–16 or `null`     |
 
 All times are integer Unix milliseconds. The pinned log decoder emits native
 timestamps as `[seconds,nanoseconds]`; conversion floors sub-millisecond time.
@@ -479,17 +479,17 @@ carry the same optional `uploadErrors` array; they remain bounded samples, not
 an exhaustive failure list. Absence means no diagnostic was collected, including
 retained evidence produced before native upload diagnostics were collected.
 
-Diagnostic strings are sanitized before retention and when decoding retained
-evidence: URL userinfo (including percent-encoded credentials), authorization/
-API-key/token/password assignments, standalone Basic/Bearer credentials, and
-base64/hex-like tokens of at least 20 characters become `[REDACTED]`. Redaction
-does not depend on credentials being present in the collector environment.
-Each sanitized text or code is capped at 4096 characters after redaction.
+Upload diagnostics retain only a closed category (`unauthenticated`,
+`permission-denied`, `deadline`, `unavailable`, `resource-exhausted`,
+`invalid-argument`, or `other`) and an optional numeric gRPC code from 0 through 16. Known native enum names and numeric codes map to those numbers; unknown
+codes become `null`. Fixed patterns classify native error text, which is then
+discarded entirely. Decoding historical evidence also discards free-text
+diagnostics. No credential environment or private credential context is needed.
 Native file/tree digests and other upload payloads are not projected.
 
 The projector emits only allowlisted labels, configuration names, native digest
-strings, enum numbers, times, run identity, and sanitized bounded upload
-diagnostics. Other host paths, commands, outputs, host names, environment values,
+strings, enum numbers, times, run identity, and closed upload diagnostic
+categories/codes. Other host paths, commands, outputs, host names, environment values,
 and raw error payloads are never copied. Invalid
 identity text becomes `null` rather than a lossy replacement key. The
 repository-local mapping identifier has exact case-sensitive spelling and a

@@ -50,9 +50,16 @@ export const countActionExclusions = (
   return counts
 }
 export type CacheUploadError = {
-  /** Sanitized native CacheUploadEnd.error; null when Buck supplied only a code. */
-  error: string | null
-  reErrorCode: string | null
+  /** Closed classification only: native diagnostic text is never retained. */
+  category:
+    | 'unauthenticated'
+    | 'permission-denied'
+    | 'deadline'
+    | 'unavailable'
+    | 'resource-exhausted'
+    | 'invalid-argument'
+    | 'other'
+  reErrorCode: number | null
 }
 export type ActionRecord = {
   type: 'action'

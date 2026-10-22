@@ -707,7 +707,7 @@ export const reconcileGateDaemon = ({
   }
 }
 
-/** Keyed per-tree digest: neither the credential nor a reusable unsalted digest leaves memory. */
+/** Per-root HMAC: its key and digest persist only in private 0600 state, never the credential. */
 export const cacheDaemonPostureFingerprint = ({
   values,
   env,
@@ -873,8 +873,6 @@ export const admitCacheDaemonCommand = async ({
       typeof previous.salt === 'string' &&
       'fingerprint' in previous &&
       typeof previous.fingerprint === 'string' &&
-      'posture' in previous &&
-      (previous.posture === 'writer' || previous.posture === 'reader') &&
       'daemons' in previous &&
       typeof previous.daemons === 'object' &&
       previous.daemons !== null
@@ -940,7 +938,6 @@ export const admitCacheDaemonCommand = async ({
       `${readConfig({ path: join(root, '.buckconfig') })}\n${readConfig({ path: join(root, '.buckconfig.local') })}`,
     )
     checkPosture(values)
-    const posture = values['buck2.allow_cache_uploads'] === 'true' ? 'writer' : 'reader'
     const fingerprint = cacheDaemonPostureFingerprint({ values, env, salt })
     const current = status()
     const stop = gateDaemonStopDecision({ status: current, root: realpathSync(root), isolation })
@@ -955,7 +952,6 @@ export const admitCacheDaemonCommand = async ({
               : 'unknown',
       matched:
         record !== undefined &&
-        record.posture === posture &&
         record.fingerprint === fingerprint &&
         daemons[isolation] === cacheDaemonIdentity(current),
     })
@@ -985,7 +981,7 @@ export const admitCacheDaemonCommand = async ({
       nextDaemons[isolation] = daemon
       writeFileSync(
         candidate,
-        JSON.stringify({ salt, posture, fingerprint, daemons: nextDaemons, launches }),
+        JSON.stringify({ salt, fingerprint, daemons: nextDaemons, launches }),
         {
           flag: 'wx',
           mode: 0o600,

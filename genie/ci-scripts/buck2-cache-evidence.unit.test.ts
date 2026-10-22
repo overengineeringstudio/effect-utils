@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'bun:test'
 
 import {
+  classifyCacheUploadError,
   decodeCacheUploadErrors,
-  sanitizeUploadDiagnostic,
+  decodeGrpcCode,
 } from './buck2-action-evidence-codec.ts'
 import {
   darwinUnsandboxedCategories,
@@ -885,49 +886,39 @@ describe('native Buck cache evidence projection', () => {
     expect(invocations[0]!.complete).toBe(false)
   })
 
-  it('structurally redacts credentials without environment matching and caps diagnostics', () => {
-    for (const message of [
-      'Authorization: Basic user:pass extra!value',
-      'authorization user:pass extra!value',
-      '"Authorization": "Basic user:pass extra!value"',
-      "proxy-authorization='Bearer user:pass extra!value'",
-      'x-api-key: user:pass extra!value',
-      'token=user:pass extra!value',
-      'RPC failed with bAsIc user:pass extra!value',
-      'RPC failed with BEARER "user:pass extra!value"',
-      `RPC failed: ${Buffer.from('planted-credential-abcdef').toString('base64')}`,
-      `RPC failed: ${'abcdef0123456789'.repeat(2)}`,
+  it('retains only closed upload categories and exact gRPC codes, including historical decoding', () => {
+    for (const [message, category] of [
+      ['invalid credentials', 'unauthenticated'],
+      ['CAS write denied', 'permission-denied'],
+      ['deadline exceeded', 'deadline'],
+      ['connection reset', 'unavailable'],
+      ['quota exceeded', 'resource-exhausted'],
+      ['invalid argument', 'invalid-argument'],
+      ['arbitrary! secret', 'other'],
     ]) {
-      const result = sanitizeUploadDiagnostic(message)
-      expect(result).toContain('[REDACTED]')
-      expect(sanitizeUploadDiagnostic(result)).toBe(result)
-      for (const credential of ['user:pass', 'extra!value', 'planted', 'abcdef0123456789'])
-        expect(result).not.toContain(credential)
+      expect(classifyCacheUploadError(message, 'unknown!code')).toEqual({
+        category,
+        reErrorCode: null,
+      })
     }
-    for (const userinfo of [
-      'user:password',
-      'user%40example:pass%3Aword',
-      'opaque-token',
-      'user:p@ssword',
-    ]) {
-      const result = sanitizeUploadDiagnostic(
-        ['RPC failed at https://', userinfo, '@cache.example/path?q=1'].join(''),
-      )
-      expect(result).toBe('RPC failed at https://[REDACTED]@cache.example/path?q=1')
-      expect(sanitizeUploadDiagnostic(result)).toBe(result)
+    expect(classifyCacheUploadError('', 'PERMISSION_DENIED')).toEqual({
+      category: 'permission-denied',
+      reErrorCode: 7,
+    })
+    for (let code = 0; code <= 16; code++) {
+      expect(decodeGrpcCode(code)).toBe(code)
+      expect(decodeGrpcCode(String(code))).toBe(code)
     }
-    const ordinary = 'https://cache.example/path?email=user@example.com'
-    expect(sanitizeUploadDiagnostic(ordinary)).toBe(ordinary)
-    expect(sanitizeUploadDiagnostic(`RPC failed: ${'x.'.repeat(2500)}`)).toHaveLength(4096)
+    for (const code of [-1, 17, 1.5, '07', 'permission_denied', '7 secret', 'secret!'])
+      expect(decodeGrpcCode(code)).toBeNull()
     expect(decodeCacheUploadErrors(undefined)).toBeUndefined()
     expect(
-      decodeCacheUploadErrors([
-        { error: 'authorization: Bearer user:pass', reErrorCode: 'Basic user:pass' },
-      ]),
-    ).toEqual([{ error: 'authorization: [REDACTED]', reErrorCode: 'Basic [REDACTED]' }])
-    for (const invalid of [{}, [null], [{ error: 1, reErrorCode: null }]]) {
-      expect(() => decodeCacheUploadErrors(invalid)).toThrow()
-    }
+      decodeCacheUploadErrors([{ error: 'historical secret!', reErrorCode: 'secret!' }]),
+    ).toEqual([{ category: 'other', reErrorCode: null }])
+    expect(decodeCacheUploadErrors([{ category: 'deadline', reErrorCode: 4 }])).toEqual([
+      { category: 'deadline', reErrorCode: 4 },
+    ])
+    expect(() => decodeCacheUploadErrors([{ category: 'secret!' }])).toThrow()
   })
 
   it('retains each failed native cache upload, not ReUpload metrics or duplicate ends', () => {
@@ -960,9 +951,9 @@ describe('native Buck cache evidence projection', () => {
     projector.add(nativeEvent('SpanEnd', actionEnd({ cache_upload_result: 9 })))
     const result = projector.finish()
     const expected = [
-      { error: 'CAS write denied', reErrorCode: 'PERMISSION_DENIED' },
-      { error: 'connection reset', reErrorCode: null },
-      { error: null, reErrorCode: null },
+      { category: 'permission-denied', reErrorCode: 7 },
+      { category: 'unavailable', reErrorCode: null },
+      { category: 'other', reErrorCode: null },
     ]
     expect(rows[0]?.uploadErrors).toEqual(expected)
     expect(result.actions[0]?.uploadErrors).toEqual(expected)

@@ -29,10 +29,10 @@ import { gzipSync, gunzipSync } from 'node:zlib'
 
 import { canonicalCacheAdmissionInvocationId } from '../../scripts/buck2-cache-posture.ts'
 import {
+  classifyCacheUploadError,
   decodeActionArtifact,
   decodeActionExclusionCounts,
   decodeCacheUploadErrors,
-  sanitizeUploadDiagnostic,
 } from './buck2-action-evidence-codec.ts'
 import {
   actionExclusionReason,
@@ -516,12 +516,12 @@ export const createCacheEvidenceProjector = ({
         }
         if (owner !== undefined && starts.has(owner) === true) {
           const errors = uploadErrorsByAction.get(owner) ?? []
-          const error = text(field({ value: uploadEnd, key: 'error' }))
-          const code = text(field({ value: uploadEnd, key: 're_error_code' }))
-          errors.push({
-            error: error === undefined ? null : sanitizeUploadDiagnostic(error),
-            reErrorCode: code === undefined ? null : sanitizeUploadDiagnostic(code),
-          })
+          errors.push(
+            classifyCacheUploadError(
+              field({ value: uploadEnd, key: 'error' }),
+              field({ value: uploadEnd, key: 're_error_code' }),
+            ),
+          )
           uploadErrorsByAction.set(owner, errors)
         } else invalidActionCount++
       }

@@ -98,10 +98,10 @@ const fixtureEnv = {
 }
 
 describe('complete normalized action artifact CLI', () => {
-  it('retains only sanitized native upload diagnostics with no collector credentials', async () => {
+  it('discards all native upload free text and unknown codes with no collector credentials', async () => {
     const directory = await mkdtemp(join(tmpdir(), 'buck-upload-errors-'))
     try {
-      const secret = 'planted-upload-auth-8a12c57f'
+      const secret = 'z!q'
       const encodedSecret = Buffer.from(secret).toString('base64')
       const events = join(directory, 'native.jsonl')
       const output = join(directory, 'buck2-cache-evidence.json')
@@ -135,11 +135,12 @@ describe('complete normalized action artifact CLI', () => {
             [
               `CAS write denied; authorization: Basic ${encodedSecret}`,
               ['https://', 'user:', secret, '@cache.example/upload'].join(''),
-              'Bearer user:pass extra!value',
+              `Bearer user:pass extra!value raw=${secret}`,
             ].join('\n'),
             'PERMISSION_DENIED',
           ),
-          failedUpload(501, `connection reset ${'x.'.repeat(2500)}`, encodedSecret),
+          failedUpload(501, `connection reset raw=${secret}`, encodedSecret),
+          failedUpload(502, `arbitrary diagnostic ${secret}`, secret),
           native[2]!.replace('"cache_upload_result":1', '"cache_upload_result":9'),
           JSON.stringify(event('upload-failure', 'SpanEnd', 1, 1700000003, { Command: {} })),
           '',
@@ -172,12 +173,11 @@ describe('complete normalized action artifact CLI', () => {
       expect(full.header.complete).toBe(true)
       expect(full.actions[0]?.uploadOutcome).toBe('failed')
       expect(full.actions[0]?.uploadErrors).toEqual(summary.actions[0]?.uploadErrors)
-      expect(full.actions[0]?.uploadErrors?.[0]).toMatchObject({
-        error: expect.stringContaining('CAS write denied'),
-        reErrorCode: 'PERMISSION_DENIED',
-      })
-      expect(full.actions[0]?.uploadErrors?.[1]?.error).toHaveLength(4096)
-      expect(full.actions[0]?.uploadErrors?.[1]?.reErrorCode).toBe('[REDACTED]')
+      expect(full.actions[0]?.uploadErrors).toEqual([
+        { category: 'permission-denied', reErrorCode: 7 },
+        { category: 'unavailable', reErrorCode: null },
+        { category: 'other', reErrorCode: null },
+      ])
       const allOutput = [
         summaryText,
         raw,
@@ -187,7 +187,6 @@ describe('complete normalized action artifact CLI', () => {
       ].join('\n')
       for (const credential of [secret, encodedSecret, 'user:pass', 'extra!value', 'PRIVATE_FILE'])
         expect(allOutput).not.toContain(credential)
-      expect(allOutput).toContain('[REDACTED]')
     } finally {
       await rm(directory, { recursive: true, force: true })
     }

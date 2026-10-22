@@ -108,7 +108,6 @@ else process.exit(9);
       ).toHaveLength(1)
       const stored = readFileSync(marker, 'utf8')
       expect(stored).not.toContain(secret)
-      expect(JSON.parse(stored).posture).toBe('writer')
       expect(statSync(marker).mode & 0o777).toBe(0o600)
       env.BUCK2_CACHE_WRITE_BASIC_AUTH = 'rotated-planted-credential'
       await reconcile()
@@ -225,7 +224,7 @@ process.exit(0);
       const marker = JSON.parse(
         readFileSync(join(root, 'buck-out', '.cache-daemon-posture', 'root.json'), 'utf8'),
       )
-      expect(marker.posture).toBe('writer')
+      expect(marker.daemons.v2).toBeDefined()
       expect(marker.launches).toContainEqual({
         pid: writer.pid,
         birth: cacheLauncherBirth(writer.pid),
