@@ -55,6 +55,7 @@ rec {
           ((import ./nix/weaver-flake/flake.nix).outputs { inherit nixpkgs; }).packages.${system};
         cliBuildStamp = import ./nix/workspace-tools/lib/cli-build-stamp.nix { inherit pkgs; };
         pnpm = import ./nix/pnpm.nix { inherit pkgs; };
+        stylexNextFixture = import ./nix/stylex-next-fixture.nix { inherit pkgs pnpm; };
         nodePtyNative = import ./nix/node-pty-native.nix { inherit pkgs; };
         providerCliPackages = {
           vercel-cli = import ./nix/provider-clis/vercel-cli { inherit pkgs; };
@@ -210,7 +211,14 @@ rec {
         buck2Capabilities = import ./nix/buck2-capabilities.nix {
           inherit pkgs capabilityPackages;
           src = ./.;
-          extraCapabilities = pkgs.lib.optionalAttrs pkgs.stdenv.hostPlatform.isLinux {
+          extraCapabilities = {
+            stylex-next-fixture = {
+              kind = "directory";
+              package = stylexNextFixture;
+              protocol = "effect-utils/stylex-next-fixture/v1";
+            };
+          }
+          // pkgs.lib.optionalAttrs pkgs.stdenv.hostPlatform.isLinux {
             bubblewrap = {
               kind = "executable";
               package = buck2Bubblewrap;
@@ -350,6 +358,7 @@ rec {
           // {
             buck2-rules = buck2Rules;
             buck2-capabilities = buck2Capabilities;
+            stylex-next-fixture = stylexNextFixture;
             ci-test-shell-products = pkgs.linkFarm "ci-test-shell-products" (
               pkgs.lib.mapAttrsToList (name: path: { inherit name path; }) ciTestShellProducts
             );

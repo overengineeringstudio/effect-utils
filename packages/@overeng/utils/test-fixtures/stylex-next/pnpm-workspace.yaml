@@ -1,0 +1,5 @@
+# Network acquisition is owned by the immutable Nix fixture input.
+# This workspace only realizes host-compatible optional dependencies offline.
+allowBuilds:
+  sharp: false
+ignoreScripts: true
