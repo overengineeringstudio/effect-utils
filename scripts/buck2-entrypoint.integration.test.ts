@@ -254,7 +254,9 @@ describe('native build ID registry', () => {
     const evidence = join(root, 'evidence.json')
     const started = join(root, 'native-started')
     const native = join(root, 'denied-native')
-    writeFileSync(native, `#!/bin/sh\nprintf started > ${JSON.stringify(started)}\n`, { mode: 0o700 })
+    writeFileSync(native, `#!/bin/sh\nprintf started > ${JSON.stringify(started)}\n`, {
+      mode: 0o700,
+    })
     const child = Bun.spawn(
       [process.execPath, join(import.meta.dir, 'buck2-entrypoint.ts'), native, 'build', '//:app'],
       {

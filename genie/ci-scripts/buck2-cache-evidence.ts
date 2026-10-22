@@ -938,7 +938,9 @@ export const finalizeNativeLogFreshness = ({
     Infinity,
   )
   const earliestIds = new Set(
-    cacheBearingInvocations.filter((item) => item.startedAt === earliest).map((item) => item.buildId),
+    cacheBearingInvocations
+      .filter((item) => item.startedAt === earliest)
+      .map((item) => item.buildId),
   )
   for (const invocation of nativeInvocations) {
     invocation.freshRoot =

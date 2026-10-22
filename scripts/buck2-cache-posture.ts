@@ -158,10 +158,7 @@ export const standaloneCachePostureConfig = ({
             : DEFAULT_CACHE_BLOCK
   // Measured CI peak: 58 native-launch admissions; 120 retains twice that volume.
   // This is Buck's count-only native retention, not a byte bound or a developer default.
-  if (
-    env['GITHUB_ACTIONS'] === 'true' ||
-    (env['CI_BUCK2_CACHE_EVIDENCE_PATH'] ?? '') !== ''
-  ) {
+  if (env['GITHUB_ACTIONS'] === 'true' || (env['CI_BUCK2_CACHE_EVIDENCE_PATH'] ?? '') !== '') {
     const retention = '[buck2]\n  retained_event_logs = 120'
     managed =
       managed.includes('[buck2]') === true
