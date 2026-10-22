@@ -817,6 +817,39 @@ jobs:
           unset BUCK2_PUBLIC_CACHE_WRITE_AUTH
           __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
           bash "$__genie_ci_retry_script" 'devenv tasks run genie:check lint:check' 'cd "${GITHUB_WORKSPACE:-$PWD}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false ${PIPELINE_RUN_PREFIX:+$PIPELINE_RUN_PREFIX }"${DEVENV_BIN:?DEVENV_BIN not set}" tasks run genie:check lint:check'
+      - name: Genie projection and CI workflow regression tests
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          BUCK2_PUBLIC_CACHE_WRITE_AUTH: ${{ ((github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'merge_group' && github.event.merge_group.base_ref == 'refs/heads/main' && startsWith(github.ref, 'refs/heads/gh-readonly-queue/main/'))) && secrets.BUCK2_PUBLIC_CACHE_WRITE_AUTH || '' }}
+          PIPELINE_RUN_PREFIX: ${{ format('{0} shell -- otel-span pipeline-run --', env.DEVENV_BIN) }}
+        run: |
+          if [ -n "${BUCK2_PUBLIC_CACHE_WRITE_AUTH:-}" ]; then
+            BUCK2_CACHE_WRITE_BASIC_AUTH="$(printf '%s' "$BUCK2_PUBLIC_CACHE_WRITE_AUTH" | base64 | tr -d '\n')"
+            echo "::add-mask::$BUCK2_CACHE_WRITE_BASIC_AUTH"
+            export BUCK2_CACHE_WRITE_BASIC_AUTH
+          fi
+          unset BUCK2_PUBLIC_CACHE_WRITE_AUTH
+          cd "${GITHUB_WORKSPACE:-$PWD}" && set -euo pipefail
+          "${DEVENV_BIN:?DEVENV_BIN not set}" shell -- bash -euo pipefail -c '
+            prepared=()
+            restore_views() {
+              for package in "${prepared[@]}"; do
+                rm -f "$package/node_modules"
+                backup="$RUNNER_TEMP/genie-pr-${package##*/}-node-modules"
+                if [ -e "$backup" ] || [ -L "$backup" ]; then mv "$backup" "$package/node_modules"; fi
+              done
+            }
+            trap restore_views EXIT
+            for package in . packages/@overeng/megarepo; do
+              if [ "$package" = . ]; then target=//:node_modules; else target=//$package:node_modules; fi
+              modules="$("${BUCK2_BIN:?BUCK2_BIN not set}" build "$target" --show-simple-output)"
+              backup="${RUNNER_TEMP:?RUNNER_TEMP not set}/genie-pr-${package##*/}-node-modules"
+              if [ -e "$package/node_modules" ] || [ -L "$package/node_modules" ]; then mv "$package/node_modules" "$backup"; fi
+              prepared+=("$package")
+              ln -s "$PWD/$modules" "$package/node_modules"
+            done
+            "$DEVENV_BIN" tasks run --mode single genie:buck2:test genie:ci-workflow:test buck2:rust:generators:test
+          '
       - name: Bundle smoke tests
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -846,6 +879,58 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: 'cd "${GITHUB_WORKSPACE:-$PWD}" && bash nix/workspace-tools/lib/tests/downstream-flake-input.sh "$PWD"'
+      - name: Run focused normalized, projection, and runner tests
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          cd "${GITHUB_WORKSPACE:-$PWD}" && set -euo pipefail
+          FINGERPRINT_BIN="$(nix build --no-link --print-out-paths .#buck2-fingerprint)/bin/buck2-fingerprint"
+          export FINGERPRINT_BIN
+          runner_modules="$("${DEVENV_BIN:?DEVENV_BIN not set}" shell -- buck2 build //packages/@overeng/buck2-tools:node_modules --show-simple-output)"
+          package_modules=packages/@overeng/buck2-tools/node_modules
+          if [ -e "$package_modules" ] || [ -L "$package_modules" ]; then mv "$package_modules" "${RUNNER_TEMP:?RUNNER_TEMP not set}/buck2-tools-original-node-modules"; fi
+          ln -s "$PWD/$runner_modules" "$package_modules"
+          "${DEVENV_BIN:?DEVENV_BIN not set}" shell -- bun test \
+            ./genie/buck2/typescript-package-projection.unit.test.ts \
+            ./genie/buck2/javascript-candidates.unit.test.ts \
+            ./packages/@overeng/buck2-tools/src/package-command-runner.unit.test.ts \
+            ./packages/@overeng/buck2-tools/src/javascript-runner.unit.test.ts
+      - name: Reject tracked product and editor payload bytes
+        run: |
+          cd "${GITHUB_WORKSPACE:-$PWD}" && set -euo pipefail
+          tracked_editor=$(git ls-files -- '**/.editor-view/**' '.editor-view/**')
+          tracked_product=$(git ls-files -- 'nix/buck2-products/**' ':(glob,exclude)nix/buck2-products/**/*.nix' | grep -Ev '^nix/buck2-products/(cache-targets\.json|cache-targets\.json\.genie\.ts|capability-closure\.test\.sh|compiled-targets\.json|compiled-targets\.json\.genie\.ts|from-source-contract\.test\.sh|from-source-cores\.test\.sh|manifest\.json|native-targets\.json|native-targets\.json\.genie\.ts|private-product-tarballs\.test\.sh|publish\.sh|targets\.json|targets\.json\.genie\.ts)$' || true)
+          invalid_sources=()
+          while IFS= read -r -d '' path; do
+            case "/$path/" in
+              */buck-out/*|*/.editor-view/*|*/result*/*|*/dist/*|*/node_modules/*|*/storybook-static/*|*/tmp/*|*/target/*|*/.devenv/*) ;;
+              *)
+                if [ "$(git --literal-pathspecs cat-file -s ":$path")" -le 262144 ] && git --literal-pathspecs grep --cached -I --name-only -e '' -- "$path" >/dev/null; then
+                  continue
+                fi
+                ;;
+            esac
+            invalid_sources+=("$path")
+          done < <(git ls-files -z -- ':(glob)nix/buck2-products/**/*.nix')
+          tracked_source=$(printf '%s\n' "${invalid_sources[@]}")
+          if [ -n "$tracked_editor$tracked_product$tracked_source" ]; then
+            printf 'Tracked inert payload bytes are forbidden:\n%s\n%s\n%s\n' "$tracked_editor" "$tracked_product" "$tracked_source" >&2
+            exit 1
+          fi
+      - name: Query and build representative inert Buck targets
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          cd "${GITHUB_WORKSPACE:-$PWD}" && set -euo pipefail
+          "${DEVENV_BIN:?DEVENV_BIN not set}" shell -- bash -euo pipefail -c '
+            cd "${GITHUB_WORKSPACE:?GITHUB_WORKSPACE not set}"
+            buck="${BUCK2_BIN:?BUCK2_BIN not set}"
+            "$buck" query effect_utils//packages/@overeng/ci-tools:ci-tools-candidate
+            "$buck" query effect_utils//:editor_view_inputs
+            "$buck" build \
+              effect_utils//packages/@overeng/ci-tools:ci-tools-candidate \
+              effect_utils//:editor_view_inputs
+          '
       - name: Audit native dependency policy
         shell: bash
         env:
@@ -1522,6 +1607,17 @@ jobs:
         run: |
           __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
           bash "$__genie_ci_retry_script" 'devenv tasks run buck2:editor:bootstrap' 'cd "${GITHUB_WORKSPACE:-$PWD}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false ${PIPELINE_RUN_PREFIX:+$PIPELINE_RUN_PREFIX }"${DEVENV_BIN:?DEVENV_BIN not set}" tasks run buck2:editor:bootstrap'
+      - name: Warm local Nix substituter after bootstrap
+        if: ${{ (success()) && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
+        continue-on-error: true
+        timeout-minutes: 15
+        run: |
+          set -euo pipefail
+          started=$SECONDS
+          paths="$RUNNER_TEMP/substitutable-store-paths"
+          nix path-info --all --json | jq -r 'to_entries[] | select(((.value.signatures // []) | length > 0) or ((.value.ca // "") | length > 0)) | .key' > "$paths"
+          sudo env "PATH=$PATH" nix copy --stdin --to 'file:///Users/runner/.cache/nix-substituter?compression=zstd&parallel-compression=true' < "$paths"
+          echo "saved $(wc -l < "$paths") signed or content-addressed paths in $((SECONDS - started))s; cache size $(du -sh '/Users/runner/.cache/nix-substituter/' | cut -f1)"
       - name: Force diagnostics failure (debug)
         if: ${{ github.event_name == 'workflow_dispatch' && (inputs.debug_force_nix_diagnostics_failure == true || inputs.debug_force_nix_diagnostics_failure == 'true') }}
         shell: bash
@@ -1566,17 +1662,17 @@ jobs:
           fi
           unset BUCK2_PUBLIC_CACHE_WRITE_AUTH
           cd "${GITHUB_WORKSPACE:-$PWD}" && bash genie/ci-scripts/compiled-products.sh
-      - name: Save signed store paths to local Nix substituter
+      - name: Save signed and content-addressed store paths to local Nix substituter
         if: ${{ (!cancelled()) && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
         continue-on-error: true
         timeout-minutes: 15
         run: |
           set -euo pipefail
           started=$SECONDS
-          paths="$RUNNER_TEMP/signed-store-paths"
-          nix path-info --all --sigs | awk -F'\t' '{ n = split($2, t, " "); for (i = 1; i <= n; i++) if (t[i] != "ultimate" && t[i] !~ /^ca:/) { print $1; break } }' > "$paths"
+          paths="$RUNNER_TEMP/substitutable-store-paths"
+          nix path-info --all --json | jq -r 'to_entries[] | select(((.value.signatures // []) | length > 0) or ((.value.ca // "") | length > 0)) | .key' > "$paths"
           sudo env "PATH=$PATH" nix copy --stdin --to 'file:///Users/runner/.cache/nix-substituter?compression=zstd&parallel-compression=true' < "$paths"
-          echo "saved $(wc -l < "$paths") signed paths in $((SECONDS - started))s; cache size $(du -sh '/Users/runner/.cache/nix-substituter/' | cut -f1)"
+          echo "saved $(wc -l < "$paths") signed or content-addressed paths in $((SECONDS - started))s; cache size $(du -sh '/Users/runner/.cache/nix-substituter/' | cut -f1)"
       - name: Nix diagnostics summary
         if: ${{ (failure()) && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
         shell: bash
@@ -3204,22 +3300,6 @@ jobs:
         run: |
           __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
           bash "$__genie_ci_retry_script" 'devenv tasks run nix:flake:eval' 'cd "${GITHUB_WORKSPACE:-$PWD}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false ${PIPELINE_RUN_PREFIX:+$PIPELINE_RUN_PREFIX }"${DEVENV_BIN:?DEVENV_BIN not set}" tasks run nix:flake:eval'
-      - name: Run focused normalized, projection, and runner tests
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        run: |
-          cd "${GITHUB_WORKSPACE:-$PWD}" && set -euo pipefail
-          FINGERPRINT_BIN="$(nix build --no-link --print-out-paths .#buck2-fingerprint)/bin/buck2-fingerprint"
-          export FINGERPRINT_BIN
-          runner_modules="$("${DEVENV_BIN:?DEVENV_BIN not set}" shell -- buck2 build //packages/@overeng/buck2-tools:node_modules --show-simple-output)"
-          package_modules=packages/@overeng/buck2-tools/node_modules
-          if [ -e "$package_modules" ] || [ -L "$package_modules" ]; then mv "$package_modules" "${RUNNER_TEMP:?RUNNER_TEMP not set}/buck2-tools-original-node-modules"; fi
-          ln -s "$PWD/$runner_modules" "$package_modules"
-          "${DEVENV_BIN:?DEVENV_BIN not set}" shell -- bun test \
-            genie/buck2/typescript-package-projection.unit.test.ts \
-            genie/buck2/javascript-candidates.unit.test.ts \
-            packages/@overeng/buck2-tools/src/package-command-runner.unit.test.ts \
-            packages/@overeng/buck2-tools/src/javascript-runner.unit.test.ts
       - name: Check published package runtime imports
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -3233,6 +3313,22 @@ jobs:
           "${DEVENV_BIN:?DEVENV_BIN not set}" shell -- bash nix/workspace-tools/lib/tests/javascript-product-import.sh "$PWD"
           "${DEVENV_BIN:?DEVENV_BIN not set}" shell -- bash nix/buck2-products/from-source-contract.test.sh "$PWD"
           "${DEVENV_BIN:?DEVENV_BIN not set}" shell -- bash nix/buck2-products/private-product-tarballs.test.sh "$PWD"
+      - name: Run focused normalized, projection, and runner tests
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          cd "${GITHUB_WORKSPACE:-$PWD}" && set -euo pipefail
+          FINGERPRINT_BIN="$(nix build --no-link --print-out-paths .#buck2-fingerprint)/bin/buck2-fingerprint"
+          export FINGERPRINT_BIN
+          runner_modules="$("${DEVENV_BIN:?DEVENV_BIN not set}" shell -- buck2 build //packages/@overeng/buck2-tools:node_modules --show-simple-output)"
+          package_modules=packages/@overeng/buck2-tools/node_modules
+          if [ -e "$package_modules" ] || [ -L "$package_modules" ]; then mv "$package_modules" "${RUNNER_TEMP:?RUNNER_TEMP not set}/buck2-tools-original-node-modules"; fi
+          ln -s "$PWD/$runner_modules" "$package_modules"
+          "${DEVENV_BIN:?DEVENV_BIN not set}" shell -- bun test \
+            ./genie/buck2/typescript-package-projection.unit.test.ts \
+            ./genie/buck2/javascript-candidates.unit.test.ts \
+            ./packages/@overeng/buck2-tools/src/package-command-runner.unit.test.ts \
+            ./packages/@overeng/buck2-tools/src/javascript-runner.unit.test.ts
       - name: Reject tracked product and editor payload bytes
         run: |
           cd "${GITHUB_WORKSPACE:-$PWD}" && set -euo pipefail

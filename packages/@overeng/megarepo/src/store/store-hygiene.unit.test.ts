@@ -3,7 +3,7 @@ import * as NodePath from 'node:path'
 import { NodeServices } from '@effect/platform-node'
 import { Effect, Option } from 'effect'
 import * as FileSystem from 'effect/FileSystem'
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { describe, expect, it } from 'vitest'
 
 import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
 
@@ -20,14 +20,6 @@ import {
   type StoreIssue,
 } from './store-hygiene.ts'
 import type { MegarepoStore } from './store.ts'
-const previousAgentPolicyBypass = process.env['AGENT_POLICY_BYPASS']
-beforeAll(() => {
-  process.env['AGENT_POLICY_BYPASS'] = '1'
-})
-afterAll(() => {
-  if (previousAgentPolicyBypass === undefined) delete process.env['AGENT_POLICY_BYPASS']
-  else process.env['AGENT_POLICY_BYPASS'] = previousAgentPolicyBypass
-})
 
 // =============================================================================
 // Test Helpers

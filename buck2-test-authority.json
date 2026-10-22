@@ -69,6 +69,7 @@
       "selectedTestFiles": [
         "src/cli.contract.test.ts",
         "src/deploy-domain.test.ts",
+        "src/deploy-live-diagnostics.unit.test.ts",
         "src/deploy-netlify.e2e.test.ts",
         "src/deploy-netlify.live.e2e.test.ts",
         "src/deploy-vercel.e2e.test.ts",
@@ -88,6 +89,7 @@
       "testFiles": [
         "src/cli.contract.test.ts",
         "src/deploy-domain.test.ts",
+        "src/deploy-live-diagnostics.unit.test.ts",
         "src/deploy-netlify.e2e.test.ts",
         "src/deploy-netlify.live.e2e.test.ts",
         "src/deploy-vercel.e2e.test.ts",
@@ -125,6 +127,7 @@
       "testFiles": [
         "src/cli.contract.test.ts",
         "src/deploy-domain.test.ts",
+        "src/deploy-live-diagnostics.unit.test.ts",
         "src/deploy-netlify.e2e.test.ts",
         "src/deploy-netlify.live.e2e.test.ts",
         "src/deploy-vercel.e2e.test.ts",
@@ -142,6 +145,7 @@
       "unboundedFiles": [
         "src/cli.contract.test.ts",
         "src/deploy-domain.test.ts",
+        "src/deploy-live-diagnostics.unit.test.ts",
         "src/deploy-netlify.e2e.test.ts",
         "src/deploy-netlify.live.e2e.test.ts",
         "src/deploy-vercel.e2e.test.ts",

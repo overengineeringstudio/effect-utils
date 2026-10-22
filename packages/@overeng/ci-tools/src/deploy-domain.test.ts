@@ -231,6 +231,10 @@ describe('deploy workflow report records', () => {
       createdAtUtc: '2026-06-29T08:00:13Z',
     })
     expect(failureWithoutDiagnostics.data).not.toHaveProperty('diagnostics')
+    expect(failureWithoutDiagnostics.data).toMatchObject({
+      errorKind: 'ProviderOperationFailed',
+      operation: 'deploy',
+    })
 
     const skipped = decodeWorkflowReportRecord(
       deploySkippedRecord({

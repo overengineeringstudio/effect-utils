@@ -4,7 +4,7 @@ import { NodeServices } from '@effect/platform-node'
 import { describe, it } from '@effect/vitest'
 import { Effect } from 'effect'
 import * as FileSystem from 'effect/FileSystem'
-import { afterAll, beforeAll, expect } from 'vitest'
+import { expect } from 'vitest'
 
 import { EffectPath } from '@overeng/effect-path'
 
@@ -13,14 +13,6 @@ import { makeCanonicalTempDirectoryScoped } from '../test-utils/temp-root.ts'
 import { resolveStoreBranchWorktree } from './store-branch-worktree.ts'
 
 const GIT_USER = ['-c', 'user.email=test@example.com', '-c', 'user.name=Test User'] as const
-const previousAgentPolicyBypass = process.env['AGENT_POLICY_BYPASS']
-beforeAll(() => {
-  process.env['AGENT_POLICY_BYPASS'] = '1'
-})
-afterAll(() => {
-  if (previousAgentPolicyBypass === undefined) delete process.env['AGENT_POLICY_BYPASS']
-  else process.env['AGENT_POLICY_BYPASS'] = previousAgentPolicyBypass
-})
 
 const git = (cwd: string, ...args: ReadonlyArray<string>) =>
   Git.runCommand({ cwd, args: [...GIT_USER, ...args] })
