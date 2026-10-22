@@ -570,7 +570,7 @@ const unitTestJob = ({
           buck2TrustedCacheWriterStep({
             name: 'Buck daemon cache posture regressions',
             env: githubTokenEnv(),
-            run: runDevenvTasksBefore('buck2:cache-posture:test'),
+            run: runDevenvTasksBefore('buck2:cache-posture:ci-test'),
           }),
           buck2TrustedCacheWriterStep(compiledProductsSmokeStep),
           macosNixSubstituterSaveStep,
@@ -808,7 +808,7 @@ const jobs: Record<CoreCIJobName, CiWorkflowArgs['jobs'][string]> = {
               '    prepared+=("$package")',
               '    ln -s "$PWD/$modules" "$package/node_modules"',
               '  done',
-              '  "$DEVENV_BIN" tasks run --mode single genie:buck2:test genie:ci-workflow:test buck2:rust:generators:test buck2:cache-posture:test',
+              '  "$DEVENV_BIN" tasks run --mode single genie:buck2:test genie:ci-workflow:test buck2:rust:generators:test buck2:cache-posture:ci-test',
               "'",
             ].join('\n'),
           ),

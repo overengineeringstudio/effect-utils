@@ -1381,6 +1381,17 @@ in
     ];
   };
 
+  tasks."buck2:cache-posture:ci-test" = {
+    description = "Exercise hermetic cache posture and daemon RE admission without fleet gate-slot dependencies";
+    exec = trace.exec "buck2:cache-posture:ci-test" ''
+      set -euo pipefail
+      cd "''${DEVENV_ROOT:-$PWD}"
+      exec ${pkgs.bun}/bin/bun ./packages/@overeng/buck2-tools/src/bun-test-runner.ts test \
+        ./scripts/buck2-entrypoint.posture.integration.test.ts \
+        ./scripts/buck2-cache-posture.integration.test.ts
+    '';
+  };
+
   tasks."buck2:capabilities:test" = {
     description = "Check capability migration and same-daemon generation publication with notify and Watchman";
     exec = trace.exec "buck2:capabilities:test" ''

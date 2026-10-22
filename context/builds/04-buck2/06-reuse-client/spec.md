@@ -51,6 +51,13 @@ Buck has no conditional kill RPC: an unwrapped client can race an idle status
 read, but a daemon already observed busy is never killed. CI bypasses the warm
 shell launch cache so every command checks daemon identity and posture.
 
+Linux quality and the macOS test job run `buck2:cache-posture:ci-test`: the
+standalone daemon-posture and cache-posture suites use fake native executables,
+real process-birth identities, and locking, without fleet `gate-slot`.
+`buck2:cache-posture:test` remains the fleet-host suite, including the broader
+entrypoint and gate lifecycle tests; its fail-closed gate-slot requirement is
+unchanged.
+
 ```ini
 # tracked buckconfig: the repository's trust tier, read-only (decision 0033);
 # -c CLI overrides do not reach the RE client
