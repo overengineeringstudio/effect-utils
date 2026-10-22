@@ -183,7 +183,13 @@ evidence decoding establishes a deliberately unassigned lane. Artifact names
 never replace decoded evidence as the eligibility authority.
 
 Collection caps the window at 31 days, 1,000 observed runs, 2,000 selected
-artifacts, 80 MiB per ZIP and 2 GiB downloaded overall. Downloads use at most
+artifacts, 80 MiB per ZIP and 2 GiB of artifact bytes received overall. The
+aggregate byte budget is charged as chunks stream, including partial failed
+attempts and retries, and fails immediately on crossing the cap. Per-response
+byte limits remain independent. ZIP inspection uses platform `unzip`
+(`UNZIP_BIN` override, otherwise on PATH), bounded to 16 entries and 80 MiB
+per decoded member. Only the two exact evidence member names are read to
+stdout; archive-controlled paths are never extracted. Downloads use at most
 two concurrent requests, with 250 ms pacing before each GitHub request. The
 normal daily collection target is at most about 700 GitHub calls; the hard cap is
 800, counting every request attempt, including every retry. Transport failures

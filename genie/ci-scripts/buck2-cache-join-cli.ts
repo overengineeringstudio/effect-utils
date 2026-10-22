@@ -5,16 +5,18 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { parseArgs } from 'node:util'
 
-import { NodeRuntime } from '@effect/platform-node'
-import { Effect, Schema, Stream } from 'effect'
+import { NodeRuntime, NodeServices } from '@effect/platform-node'
+import { Effect, Schema } from 'effect'
 import * as FetchHttpClient from 'effect/http/FetchHttpClient'
 import * as HttpClient from 'effect/http/HttpClient'
 import * as HttpClientRequest from 'effect/http/HttpClientRequest'
-import { fromBufferPromise } from 'yauzl'
+import * as ChildProcess from 'effect/process/ChildProcess'
+import { ChildProcessSpawner } from 'effect/process/ChildProcessSpawner'
 
 import { aggregate, previousUtcDay, renderPrometheus, renderOtlp } from './buck2-cache-join.ts'
 import { decodeEvidence } from './buck2-cache-warm99.ts'
 import { apiBudgetAvailable, artifactCanMatter, classifyRun, selectRuns, type EvidenceRun } from './buck2-cache-join-discovery.ts'
+import { DownloadLimitError, makeDownloadBudget, readBoundedBytes } from './buck2-cache-join-download.ts'
 
 const limits = {
   runs: 1000,
@@ -80,48 +82,37 @@ const readZip = Effect.fn('buck2-cache-join.read-zip')(function* (
   bytes: Uint8Array,
   directory: string,
 ) {
-  return yield* io('Invalid or oversized evidence ZIP', async () => {
-    const zip = await fromBufferPromise(
-      Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength),
-      { lazyEntries: true, autoClose: false, strictFileNames: true, validateEntrySizes: true },
+  const archive = join(directory, 'evidence.zip')
+  yield* io('Cannot write evidence ZIP', () => writeFile(archive, bytes))
+  const spawner = yield* ChildProcessSpawner
+  const unzip = Effect.fn('buck2-cache-join.unzip')(function* (args: string[], maxBytes: number) {
+    const handle = yield* spawner.spawn(
+      ChildProcess.make(process.env.UNZIP_BIN ?? 'unzip', args, { stdout: 'pipe', stderr: 'pipe' }),
     )
-    const members = new Map<string, Buffer>()
-    try {
-      if (zip.entryCount > 16) throw failure('ZIP entry limit exceeded')
-      for await (const entry of zip.eachEntry()) {
-        if (
-          entry.fileName !== 'buck2-cache-evidence.json' &&
-          entry.fileName !== 'buck2-cache-actions.jsonl.gz'
-        )
-          continue
-        if (members.has(entry.fileName) || entry.uncompressedSize > limits.artifactBytes)
-          throw failure('ZIP member limit exceeded')
-        const stream = await zip.openReadStreamPromise(entry)
-        const chunks: Buffer[] = []
-        let total = 0
-        for await (const chunk of stream) {
-          const buffer = Buffer.from(chunk)
-          total += buffer.length
-          if (total > limits.artifactBytes) {
-            stream.destroy()
-            throw failure('ZIP member limit exceeded')
-          }
-          chunks.push(buffer)
-        }
-        const value = Buffer.concat(chunks, total)
-        members.set(entry.fileName, value)
-        // Exact allowlisted names only; never extract caller-controlled paths.
-        await writeFile(join(directory, entry.fileName), value)
-      }
-    } finally {
-      zip.close()
-    }
-    const summary = members.get('buck2-cache-evidence.json')
-    const actions = members.get('buck2-cache-actions.jsonl.gz')
-    if (summary === undefined || actions === undefined)
-      throw failure('Missing evidence ZIP members')
-    return { summary: new TextDecoder('utf-8', { fatal: true }).decode(summary), actions }
+    const [stdout, , exitCode] = yield* Effect.all([
+      readBoundedBytes(handle.stdout, maxBytes).pipe(Effect.mapError((cause) =>
+        cause instanceof DownloadLimitError ? failure(cause.message) : cause)),
+      readBoundedBytes(handle.stderr, 64 * 1024).pipe(Effect.mapError((cause) =>
+        cause instanceof DownloadLimitError ? failure(cause.message) : cause)),
+      handle.exitCode,
+    ], { concurrency: 3 })
+    if (exitCode !== 0) return yield* failure('Invalid evidence ZIP or unavailable platform unzip')
+    return stdout
   })
+  const listing = yield* unzip(['-Z', '-1', archive], 64 * 1024)
+  const names = new TextDecoder('utf-8', { fatal: true }).decode(listing).trimEnd().split('\n')
+  if (names.length > 16) return yield* failure('ZIP entry limit exceeded')
+  const members = new Map<string, Buffer>()
+  for (const name of ['buck2-cache-evidence.json', 'buck2-cache-actions.jsonl.gz']) {
+    if (names.filter((entry) => entry === name).length !== 1)
+      return yield* failure('Missing or duplicate evidence ZIP members')
+    // Read exact allowlisted members to stdout, never extract archive-controlled paths.
+    members.set(name, yield* unzip(['-p', archive, name], limits.artifactBytes))
+  }
+  return {
+    summary: new TextDecoder('utf-8', { fatal: true }).decode(members.get('buck2-cache-evidence.json')!),
+    actions: members.get('buck2-cache-actions.jsonl.gz')!,
+  }
 })
 
 const program = Effect.gen(function* () {
@@ -180,7 +171,7 @@ const program = Effect.gen(function* () {
     return yield* failure('GITHUB_TOKEN is required (GitHub Actions read permission)')
   const started = Date.now()
   let apiCalls = 0
-  let downloadedBytes = 0
+  const downloadBudget = makeDownloadBudget(limits.totalBytes)
   let remaining: number | undefined
   let budgetStopped = false
   let unlabelledEvidenceGaps = 0
@@ -233,19 +224,16 @@ const program = Effect.gen(function* () {
     if (payload.status >= 500) return yield* new RetryError({ message: `Artifact storage returned HTTP ${payload.status}` })
     if (payload.status < 200 || payload.status >= 300)
       return yield* failure(`GitHub artifact/API ${path} returned HTTP ${payload.status}`)
-    const chunks: Uint8Array[] = []
-    let size = 0
-    yield* payload.stream.pipe(
-      Stream.runForEach((chunk) =>
-        Effect.gen(function* () {
-          size += chunk.length
-          if (size > maxBytes) return yield* failure(`Response byte cap exceeded (${maxBytes})`)
-          chunks.push(chunk)
-        }),
+    return yield* readBoundedBytes(
+      payload.stream,
+      maxBytes,
+      path.startsWith('/actions/artifacts/') ? downloadBudget : undefined,
+    ).pipe(
+      Effect.mapError((cause) =>
+        cause instanceof DownloadLimitError ? failure(cause.message)
+          : cause instanceof JoinError ? cause : new RetryError({ message: 'Response transport failed' }),
       ),
-      Effect.mapError((cause) => cause instanceof JoinError ? cause : new RetryError({ message: 'Response transport failed' })),
     )
-    return Buffer.concat(chunks, size)
   })
   const request = Effect.fn('buck2-cache-join.github-request')(function* (path: string, maxBytes: number) {
     for (let attempt = 1; attempt <= 3; attempt++) {
@@ -332,9 +320,6 @@ const program = Effect.gen(function* () {
             `/actions/artifacts/${artifact.id}/zip`,
             limits.artifactBytes,
           )
-          downloadedBytes += bytes.length
-          if (downloadedBytes > limits.totalBytes)
-            return yield* failure(`Total downloaded byte cap hit (${limits.totalBytes})`)
           const directory = yield* io('Cannot create artifact directory', () =>
             mkdtemp(join(root, 'artifact-')),
           )
@@ -419,11 +404,12 @@ const program = Effect.gen(function* () {
       : yield* Schema.encodeEffect(ReportJson)(outputReport)
   process.stdout.write(`${output}${output.endsWith('\n') ? '' : '\n'}`)
   process.stderr.write(
-    `buck2-cache-join: runtime_ms=${Date.now() - started} api_calls=${apiCalls} runs=${runs.size} artifacts=${artifactCount} selected_artifacts=${selected.length} relevant_artifacts=${relevantArtifacts} skipped_expired=${skippedExpired} skipped_by_policy=${skippedByPolicy} budget_stopped=${budgetStopped} remaining=${remaining ?? 'unknown'} downloaded_bytes=${downloadedBytes}\n`,
+    `buck2-cache-join: runtime_ms=${Date.now() - started} api_calls=${apiCalls} runs=${runs.size} artifacts=${artifactCount} selected_artifacts=${selected.length} relevant_artifacts=${relevantArtifacts} skipped_expired=${skippedExpired} skipped_by_policy=${skippedByPolicy} budget_stopped=${budgetStopped} remaining=${remaining ?? 'unknown'} downloaded_bytes=${downloadBudget.bytes}\n`,
   )
 }).pipe(
   Effect.scoped,
   Effect.provide(FetchHttpClient.layer),
+  Effect.provide(NodeServices.layer),
   Effect.timeout('15 minutes'),
   // HttpClient errors carry request headers; never print the token in diagnostics.
   Effect.mapError((cause) =>
