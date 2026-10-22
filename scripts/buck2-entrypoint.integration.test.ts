@@ -780,7 +780,9 @@ for (let attempt = 0; attempt < 2; attempt++) {
           : [],
       )
       expect(
-        stderr.match(/Buck cache writer: REAPI unreachable; refusing to publish without remote cache/gu),
+        stderr.match(
+          /Buck cache writer: REAPI unreachable; refusing to publish without remote cache/gu,
+        ),
       ).toHaveLength(2)
       expect(stderr).not.toContain('fixture-secret')
     })

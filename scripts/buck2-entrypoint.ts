@@ -399,7 +399,10 @@ export const directBuckArguments = async ({
     }
   }
   if (remoteAvailable === false) {
-    if (values['buck2.allow_cache_uploads'] === 'true' && env['BUCK2_CACHE_WRITE_OPTIONAL'] !== '1') {
+    if (
+      values['buck2.allow_cache_uploads'] === 'true' &&
+      env['BUCK2_CACHE_WRITE_OPTIONAL'] !== '1'
+    ) {
       if (env['GITHUB_ACTIONS'] === 'true')
         writeSync(
           2,
