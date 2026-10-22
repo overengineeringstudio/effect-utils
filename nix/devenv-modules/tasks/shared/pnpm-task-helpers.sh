@@ -108,6 +108,20 @@ EOF
   export PNPM_PACKAGE_IMPORT_METHOD="$package_import_method"
 }
 
+acquire_pnpm_materialization_root_lock() {
+  local flock_bin="$1"
+  local lockfile="$2"
+  local timeout_seconds="${3:-600}"
+
+  mkdir -p "$(dirname "$lockfile")"
+  exec 200>"$lockfile"
+  if ! "$flock_bin" -w "$timeout_seconds" 200; then
+    echo "[pnpm] Materialization-root mutation lock timeout after ${timeout_seconds}s: $lockfile" >&2
+    echo "[pnpm] Another managed pnpm mutation may be stuck" >&2
+    return 1
+  fi
+}
+
 acquire_pnpm_store_cache_lease() {
   local flock_bin="$1"
   local mode="$2"

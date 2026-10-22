@@ -10,7 +10,10 @@ import storybookPlaysWorkflow from '../../.github/workflows/storybook-plays.yml.
 import previewBuildWorkflow from '../../.github/workflows/storybook-preview-build.yml.genie.ts'
 import previewDeployWorkflow from '../../.github/workflows/storybook-preview-deploy.yml.genie.ts'
 import buck2TestAuthority from '../../buck2-test-authority.json' with { type: 'json' }
-import { pipelineIdentityStepName } from '../../packages/@overeng/ci-tools/src/pipeline-job-names.ts'
+import {
+  pipelineDevenvStepName,
+  pipelineIdentityStepName,
+} from '../../packages/@overeng/ci-tools/src/pipeline-job-names.ts'
 import type { GitHubWorkflowArgs } from '../../packages/@overeng/genie/src/runtime/mod.ts'
 import { pipelineCloseJob } from './pipeline-telemetry.ts'
 import { publishedRefIf } from './published-ref.ts'
@@ -885,9 +888,16 @@ describe('required platform test classification', () => {
 })
 
 describe('published consumer ref', () => {
-  const steps = ciWorkflow.data.jobs['publish-products']!.steps!
+  const publisher = ciWorkflow.data.jobs['publish-products']!
+  const smoke = ciWorkflow.data.jobs['consumer-smoke']!
+  const promotion = ciWorkflow.data.jobs['promote-published']!
+  const steps = promotion.steps!
 
-  it('advances only main pushes with this SHA marked current by the same run', () => {
+  it('joins independent same-SHA publication and consumer proofs before main-push promotion', () => {
+    expect(promotion.needs).toEqual(['publish-products', 'consumer-smoke'])
+    expect(promotion.if).toBe(publishedRefIf)
+    expect(publisher.needs ?? []).not.toContain('consumer-smoke')
+    expect(publisher.steps!.some((step) => step.id === 'advance-published-ref')).toBe(false)
     const advance = steps.find((step) => step.id === 'advance-published-ref')!
     const token = steps.find((step) => step.id === 'published-ref-token')!
     expect(advance).toBeDefined()
@@ -896,16 +906,44 @@ describe('published consumer ref', () => {
     expect(publishedRefIf).toContain("github.repository == 'overengineeringstudio/effect-utils'")
     expect(publishedRefIf).toContain("github.event_name == 'push'")
     expect(publishedRefIf).toContain("github.ref == 'refs/heads/main'")
-    expect(publishedRefIf).toContain('steps.publication-scope.outputs.current-sha == github.sha')
-    expect(publishedRefIf).toContain('steps.product-publication.outputs.current-sha == github.sha')
+    for (const job of ['publish-products', 'consumer-smoke']) {
+      expect(publishedRefIf).toContain(`needs['${job}'].result == 'success'`)
+      expect(publishedRefIf).toContain(`needs['${job}'].outputs.current-sha == github.sha`)
+    }
+    expect(publisher.outputs?.['current-sha']).toBe(
+      '${{ steps.publication-scope.outputs.current-sha || steps.product-publication.outputs.current-sha }}',
+    )
     for (const id of ['publication-scope', 'product-publication']) {
-      const producer = steps.find((step) => step.id === id)!
+      const producer = publisher.steps!.find((step) => step.id === id)!
       const script = producer.run as string
       const success = script.indexOf('-f context=buck2-products/manifest-current -f state=success')
       expect(success).toBeGreaterThan(-1)
       expect(script.indexOf('echo "current-sha=$GITHUB_SHA"', success)).toBeGreaterThan(success)
-      expect(steps.indexOf(producer)).toBeLessThan(steps.indexOf(advance))
     }
+  })
+
+  it('runs the shared consumer harness without the root shell and emits success only afterward', () => {
+    expect(smoke.if).toBe(publisher.if)
+    expect(smoke['timeout-minutes']).toBe(10)
+    expect(smoke.permissions).toEqual({ contents: 'read' })
+    expect(smoke.outputs?.['current-sha']).toBe('${{ steps.consumer-smoke.outputs.current-sha }}')
+    const smokeStep = smoke.steps!.find((step) => step.id === 'consumer-smoke')!
+    const resolution = smoke.steps!.find((step) => step.name === pipelineDevenvStepName)!
+    expect(resolution).toBeDefined()
+    expect(resolution.run).toContain('resolve-devenv.sh')
+    expect(smoke.steps!.indexOf(resolution)).toBeLessThan(smoke.steps!.indexOf(smokeStep))
+    const command = smokeStep.run as string
+    expect(command).toContain(
+      'bash nix/fixtures/consumer-smoke/run.sh "$PWD" "${DEVENV_BIN:?DEVENV_BIN not set}"',
+    )
+    expect(command).not.toContain('tasks run')
+    expect(command).not.toContain(' shell ')
+    expect(command.indexOf('nix/fixtures/consumer-smoke/run.sh')).toBeLessThan(
+      command.indexOf('echo "current-sha=$GITHUB_SHA"'),
+    )
+    expect(smoke.steps!.some((step) => String(step.run).includes('buck2:editor:bootstrap'))).toBe(false)
+    expect(steps.some((step) => step.uses?.includes('install-nix'))).toBe(false)
+    expect(steps.some((step) => String(step.run).includes('devenv'))).toBe(false)
   })
 
   it('uses the publisher App and checks ancestry before and after a raced push', () => {

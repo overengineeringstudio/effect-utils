@@ -49,6 +49,7 @@ buck-out/
 
 # Direnv
 repos/
+!nix/fixtures/consumer-smoke/repos/
 
 # Devenv
 .devenv/

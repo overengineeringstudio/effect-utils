@@ -1,0 +1,14 @@
+# Generated file - DO NOT EDIT
+# Source: pnpm-workspace.yaml.genie.ts
+
+packages: [.]
+
+allowBuilds: {}
+
+nodeLinker: isolated
+
+enableGlobalVirtualStore: false
+
+ignoreScripts: true
+
+pmOnFail: ignore

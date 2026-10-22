@@ -5,10 +5,10 @@ pkgs.writeShellScript "buck2-runtime-inspect-wasm-guest" ''
   set -euo pipefail
   export LC_ALL=C
 
-  fail() {
-    echo "buck2-runtime-inspect-wasm-guest: FATAL - $*" >&2
-    exit 1
-  }
+  inspector_name=buck2-runtime-inspect-wasm-guest
+  inspection_command=()
+  inspection_label="module"
+  source ${import ./buck2-runtime-inspection-failure.nix { inherit pkgs; }}
 
   [ "$#" -eq 2 ] || fail "usage: $0 DESCRIPTOR_JSON EXTRACTED_ROOT"
   descriptor="$1"
@@ -25,8 +25,9 @@ pkgs.writeShellScript "buck2-runtime-inspect-wasm-guest" ''
   inspect_entrypoint() {
     local relative="$1"
     local module="$root/$relative"
+    local inspection_path="$module"
     [ -f "$module" ] && [ ! -L "$module" ] || fail "entrypoint must be a regular non-symlink file: $relative"
-    ${pkgs.nodejs}/bin/node - "$descriptor" "$module" <<'JS'
+    ${pkgs.nodejs}/bin/node - "$descriptor" "$module" <<'JS' || fail "wasm guest inspection failed: $relative"
   const fs = require('node:fs')
   const descriptor = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'))
   const guestModule = new WebAssembly.Module(fs.readFileSync(process.argv[3]))

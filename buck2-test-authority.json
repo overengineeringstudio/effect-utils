@@ -69,6 +69,7 @@
       "selectedTestFiles": [
         "src/cli.contract.test.ts",
         "src/deploy-domain.test.ts",
+        "src/deploy-live-diagnostics.unit.test.ts",
         "src/deploy-netlify.e2e.test.ts",
         "src/deploy-netlify.live.e2e.test.ts",
         "src/deploy-vercel.e2e.test.ts",
@@ -88,6 +89,7 @@
       "testFiles": [
         "src/cli.contract.test.ts",
         "src/deploy-domain.test.ts",
+        "src/deploy-live-diagnostics.unit.test.ts",
         "src/deploy-netlify.e2e.test.ts",
         "src/deploy-netlify.live.e2e.test.ts",
         "src/deploy-vercel.e2e.test.ts",
@@ -125,6 +127,7 @@
       "testFiles": [
         "src/cli.contract.test.ts",
         "src/deploy-domain.test.ts",
+        "src/deploy-live-diagnostics.unit.test.ts",
         "src/deploy-netlify.e2e.test.ts",
         "src/deploy-netlify.live.e2e.test.ts",
         "src/deploy-vercel.e2e.test.ts",
@@ -142,6 +145,7 @@
       "unboundedFiles": [
         "src/cli.contract.test.ts",
         "src/deploy-domain.test.ts",
+        "src/deploy-live-diagnostics.unit.test.ts",
         "src/deploy-netlify.e2e.test.ts",
         "src/deploy-netlify.live.e2e.test.ts",
         "src/deploy-vercel.e2e.test.ts",
@@ -507,6 +511,7 @@
       "excludes": [
         "src/build/mod.integration.test.ts",
         "src/core/discovery.unit.test.ts",
+        "src/core/import-map/standalone-staging.integration.test.ts",
         "src/runtime/github-workflow/ci-runtime-scripts.unit.test.ts",
         "src/runtime/github-workflow/ci-workflow-helpers.unit.test.ts",
         "src/runtime/package-json/package-json.unit.test.ts",
@@ -526,6 +531,7 @@
         "src/core/generation-locks.integration.test.ts",
         "src/core/generation.unit.test.ts",
         "src/core/import-map/import-map.unit.test.ts",
+        "src/core/import-map/standalone-staging.integration.test.ts",
         "src/core/import-map/sync-resolver.integration.test.ts",
         "src/core/input-manifest.integration.test.ts",
         "src/core/observability.unit.test.ts",
@@ -570,6 +576,7 @@
         "src/core/generation-locks.integration.test.ts",
         "src/core/generation.unit.test.ts",
         "src/core/import-map/import-map.unit.test.ts",
+        "src/core/import-map/standalone-staging.integration.test.ts",
         "src/core/import-map/sync-resolver.integration.test.ts",
         "src/core/input-manifest.integration.test.ts",
         "src/core/observability.unit.test.ts",
@@ -605,6 +612,7 @@
       "unboundedFiles": [
         "src/build/mod.integration.test.ts",
         "src/core/discovery.unit.test.ts",
+        "src/core/import-map/standalone-staging.integration.test.ts",
         "src/runtime/github-workflow/ci-runtime-scripts.unit.test.ts",
         "src/runtime/github-workflow/ci-workflow-helpers.unit.test.ts",
         "src/runtime/package-json/package-json.unit.test.ts",

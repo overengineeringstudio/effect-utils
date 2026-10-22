@@ -9,10 +9,10 @@ pkgs.writeShellScript "buck2-runtime-inspect-elf-static" ''
   set -euo pipefail
   export LC_ALL=C
 
-  fail() {
-    echo "buck2-runtime-inspect-elf-static: FATAL - $*" >&2
-    exit 1
-  }
+  inspector_name=buck2-runtime-inspect-elf-static
+  inspection_command=( ${readelf} -lW )
+  inspection_label="readelf -lW"
+  source ${import ./buck2-runtime-inspection-failure.nix { inherit pkgs; }}
 
   [ "$#" -eq 2 ] || fail "usage: $0 DESCRIPTOR_JSON EXTRACTED_ROOT"
   descriptor="$1"
@@ -28,19 +28,22 @@ pkgs.writeShellScript "buck2-runtime-inspect-elf-static" ''
   inspect_entrypoint() {
     local relative="$1"
     local executable="$root/$relative"
+    local inspection_path="$executable"
     [ -f "$executable" ] && [ ! -L "$executable" ] \
       || fail "entrypoint must be a regular non-symlink file: $relative"
     [ -x "$executable" ] || fail "entrypoint is not executable: $relative"
 
     local actual_class expected_class raw_machine actual_machine expected_machine headers
     actual_class="$(${readelf} --file-header "$executable" \
-      | ${pkgs.gawk}/bin/awk -F: '$1 ~ /^[[:space:]]*Class$/ { sub(/^[[:space:]]+/, "", $2); print $2 }')"
+      | ${pkgs.gawk}/bin/awk -F: '$1 ~ /^[[:space:]]*Class$/ { sub(/^[[:space:]]+/, "", $2); print $2 }')" \
+      || fail "readelf --file-header failed for $relative"
     expected_class="$(${pkgs.jq}/bin/jq -r '.runtime.elfClass' "$descriptor")"
     [ "$actual_class" = "$expected_class" ] \
       || fail "ELF class mismatch for $relative: expected $expected_class, got $actual_class"
 
     raw_machine="$(${readelf} --file-header "$executable" \
-      | ${pkgs.gawk}/bin/awk -F: '$1 ~ /^[[:space:]]*Machine$/ { sub(/^[[:space:]]+/, "", $2); print $2 }')"
+      | ${pkgs.gawk}/bin/awk -F: '$1 ~ /^[[:space:]]*Machine$/ { sub(/^[[:space:]]+/, "", $2); print $2 }')" \
+      || fail "readelf --file-header failed for $relative"
     case "$raw_machine" in
       "Advanced Micro Devices X86-64") actual_machine=x86_64 ;;
       "AArch64") actual_machine=aarch64 ;;
@@ -52,9 +55,9 @@ pkgs.writeShellScript "buck2-runtime-inspect-elf-static" ''
 
     headers="$(${readelf} --program-headers "$executable")" \
       || fail "readelf --program-headers failed for $relative"
-    printf '%s\n' "$headers" | ${pkgs.gnugrep}/bin/grep -Eq '^[[:space:]]*LOAD[[:space:]]' \
+    ${pkgs.gnugrep}/bin/grep -Eq '^[[:space:]]*LOAD[[:space:]]' <<<"$headers" \
       || fail "entrypoint has no loadable ELF segment: $relative"
-    if printf '%s\n' "$headers" | ${pkgs.gnugrep}/bin/grep -Eq '^[[:space:]]*(INTERP|DYNAMIC)[[:space:]]'; then
+    if ${pkgs.gnugrep}/bin/grep -Eq '^[[:space:]]*(INTERP|DYNAMIC)[[:space:]]' <<<"$headers"; then
       fail "entrypoint is not static: $relative"
     fi
   }
