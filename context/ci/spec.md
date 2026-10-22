@@ -84,6 +84,32 @@ behavior is unchanged. Baseline-measurement dispatches still exclude the lane.
 
 Linux `test` and Darwin `test-macos` are physical workflow jobs with static check names `test (namespace-profile-linux-x86-64)` and `test (namespace-profile-macos-arm64)`. Both retain canonical pipeline job `test` with their respective runner dimension, so queue validation and historical trace identities agree. Darwin retains its native/compiled product smoke after unit tests.
 
+Darwin mounts the Namespace cache volume at `/Users/runner/.cache/nix-substituter`
+and enables its `file://` binary cache after `cachix use`, at priority 10. It saves
+immediately after successful source-generator dependency bootstrap, then again
+after tests and compiled-product smoke. Both saves use the same incremental
+`nix copy` script, a 15-minute bound and best-effort failure handling. The early
+save retains bootstrap outputs even when later work is cancelled; the final save
+runs only when the job is not cancelled.
+
+The save selects roots with upstream signatures or nonempty content-address
+metadata from `nix path-info --all --json`. Fixed-output downloads are
+self-verifying and need no signature; unsigned input-addressed paths are not
+selected as roots, even when marked `ultimate`. `nix copy` copies each selected
+root's entire closure, so unsigned input-addressed references of a
+content-addressed root can also be written to the volume. Those references
+remain untrusted on substitution: unchanged `require-sigs` enforcement rejects
+unsigned input-addressed paths.
+This cache is a partial bootstrap shield: explicit remote `fetchClosure` sources,
+the pinned devenv resolver's own substituter override, and the Cachix CLI built
+before local enable can still access network caches.
+
+The bounded Nix retry wrapper treats `error: unable to download '<url>': HTTP
+error 416` as transient: after an HTTP/2 drop, Nix can resume an already complete
+body at EOF and receive a correct range rejection. No `nix.conf` setting fixes
+this resume-at-EOF bug. Other HTTP 4xx failures, including 404, do not match this
+retry signature.
+
 The unit-test step retains non-gating host resource evidence sampled every five
 seconds in `test-resources-*` JSON artifacts. Linux reads `/proc`; Darwin uses
 native `vm_stat`, `sysctl`, and `ps`. Peaks are sampled, not an exhaustive

@@ -7,7 +7,7 @@ load("//buck2/products:defs.bzl", "javascript_product")
 # Projection source: packages/@overeng/megarepo/BUCK.genie.ts
 # Projection schema version: 13
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:d01e2c2374155804b04c06957ab4df7277c8fe0f9ab7acb861562a86fff6e3c2
+# Semantic fingerprint: sha256:41bd10d14508f6a64ff1f6def1fab7cc681e0a2d44dea17e44df0d279f57722c
 # Regenerate: devenv tasks run genie:run
 
 load("//buck2:materialization.bzl", "export_materialization_inputs", "package_view")
@@ -282,6 +282,7 @@ export_materialization_inputs([
     "src/sync/types.ts",
     "src/test-utils/consoleCapture.ts",
     "src/test-utils/git-env-setup.ts",
+    "src/test-utils/git-fixture.ts",
     "src/test-utils/git-writer-lock-worker.ts",
     "src/test-utils/json.ts",
     "src/test-utils/memory-probe.ts",
@@ -590,6 +591,7 @@ package_view(
         "src/sync/types.ts": "src/sync/types.ts",
         "src/test-utils/consoleCapture.ts": "src/test-utils/consoleCapture.ts",
         "src/test-utils/git-env-setup.ts": "src/test-utils/git-env-setup.ts",
+        "src/test-utils/git-fixture.ts": "src/test-utils/git-fixture.ts",
         "src/test-utils/git-writer-lock-worker.ts": "src/test-utils/git-writer-lock-worker.ts",
         "src/test-utils/json.ts": "src/test-utils/json.ts",
         "src/test-utils/memory-probe.ts": "src/test-utils/memory-probe.ts",
@@ -900,6 +902,7 @@ package_view(
         "src/sync/types.ts": "src/sync/types.ts",
         "src/test-utils/consoleCapture.ts": "src/test-utils/consoleCapture.ts",
         "src/test-utils/git-env-setup.ts": "src/test-utils/git-env-setup.ts",
+        "src/test-utils/git-fixture.ts": "src/test-utils/git-fixture.ts",
         "src/test-utils/git-writer-lock-worker.ts": "src/test-utils/git-writer-lock-worker.ts",
         "src/test-utils/json.ts": "src/test-utils/json.ts",
         "src/test-utils/memory-probe.ts": "src/test-utils/memory-probe.ts",
@@ -1205,6 +1208,7 @@ package_view(
         "src/sync/types.ts": "src/sync/types.ts",
         "src/test-utils/consoleCapture.ts": "src/test-utils/consoleCapture.ts",
         "src/test-utils/git-env-setup.ts": "src/test-utils/git-env-setup.ts",
+        "src/test-utils/git-fixture.ts": "src/test-utils/git-fixture.ts",
         "src/test-utils/git-writer-lock-worker.ts": "src/test-utils/git-writer-lock-worker.ts",
         "src/test-utils/json.ts": "src/test-utils/json.ts",
         "src/test-utils/memory-probe.ts": "src/test-utils/memory-probe.ts",
