@@ -883,11 +883,13 @@ own-UID references require bounded `lsof` fallback or admitted exact-lifetime ma
 otherwise GC keeps with `own-uid-unreadable`. macOS retains its bounded `lsof -d cwd` probe,
 keeping on a holder or probe failure. Budget and policy-authorized worklog deletion retain
 their strict activity contracts and explicitly reject non-Linux platforms.
-The fixed own-UID privilege-transition exemptions are `systemd --user` with parent PID 1,
-its `(sd-pam)` child, and `sshd-session`/legacy `sshd`. These non-dumpable processes
-keep cwd `/` by design; `exemptProcesses` records PID, start time, command name, and rule.
-Readable references still veto and children remain checked. No capability-based general
-exemption is allowed.
+The fixed own-UID privilege-transition exemptions require `systemd --user` with parent PID 1
+to match the root system manager's `user@<uid>.service` MainPID and the observed start time.
+Its `(sd-pam)` child must name that verified manager as parent. `sshd-session`/legacy `sshd`
+requires a readable, stable root-owned SSH daemon parent. Mutable comm/argv alone grants
+no exemption. The authority query has a five-second deadline and fails closed.
+`exemptProcesses` records PID, start time, command name, and rule. Readable references
+still veto and children remain checked. No capability-based general exemption is allowed.
 
 #### `mr store activity snapshot`
 

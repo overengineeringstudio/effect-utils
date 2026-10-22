@@ -25,6 +25,7 @@ import { describe, it } from '@effect/vitest'
 import { Effect, Schema } from 'effect'
 import * as FileSystem from 'effect/FileSystem'
 import { systemError } from 'effect/PlatformError'
+import * as ChildProcessCommand from 'effect/process/ChildProcess'
 import { ChildProcessSpawner } from 'effect/process/ChildProcessSpawner'
 import { expect } from 'vitest'
 
@@ -466,6 +467,12 @@ describe.skipIf(process.platform !== 'linux')('store-inuse strict reference prob
     { name: 'retains an exempt manager readable descriptor', readable: 'fd', tag: 'in-use' },
     { name: 'retains an exempt manager readable mapping', readable: 'map', tag: 'in-use' },
     { name: 'exempts the user-manager PAM child', pamChild: true, tag: 'free' },
+    {
+      name: 'rejects a forged manager absent from system unit state',
+      managerPid: 77,
+      tag: 'unknown',
+    },
+    { name: 'rejects unavailable system unit state', managerUnavailable: true, tag: 'unknown' },
     { name: 'rejects PAM without a verified manager parent', comm: '(sd-pam)', tag: 'unknown' },
     {
       name: 'rejects PAM with a non-user-manager parent',
@@ -476,9 +483,31 @@ describe.skipIf(process.platform !== 'linux')('store-inuse strict reference prob
     { name: 'exempts an SSH privilege transition', comm: 'sshd-session', parent: 200, tag: 'free' },
     { name: 'exempts a legacy SSH privilege transition', comm: 'sshd', parent: 200, tag: 'free' },
     {
+      name: 'rejects a spoofed SSH comm with an own-UID parent',
+      comm: 'sshd-session',
+      parent: 200,
+      sshParentOwnUid: true,
+      tag: 'unknown',
+    },
+    {
+      name: 'rejects SSH with unreadable parent evidence',
+      comm: 'sshd-session',
+      parent: 200,
+      sshParentDenied: true,
+      tag: 'unknown',
+    },
+    {
+      name: 'rejects SSH with a non-SSH root parent',
+      comm: 'sshd-session',
+      parent: 200,
+      sshParentComm: 'other',
+      tag: 'unknown',
+    },
+    {
       name: 'retains an SSH transition readable cwd',
       comm: 'sshd-session',
       readable: 'cwd',
+      parent: 200,
       tag: 'in-use',
     },
     { name: 'retains a PAM child readable cwd', pamChild: true, pamHolder: true, tag: 'in-use' },
@@ -510,7 +539,7 @@ describe.skipIf(process.platform !== 'linux')('store-inuse strict reference prob
     { name: 'rejects a changed comm', changedComm: true, tag: 'unknown' },
     { name: 'rejects a changed parent', changedParent: true, tag: 'unknown' },
   ] as const) {
-    it.effect(
+    it.effect.skipIf('sshParentOwnUid' in scenario && runsAsRoot === true)(
       `gc-owner systemd policy ${scenario.name}`,
       Effect.fnUntraced(function* () {
         const base = yield* FileSystem.FileSystem
@@ -531,6 +560,11 @@ describe.skipIf(process.platform !== 'linux')('store-inuse strict reference prob
           changedLifetime?: boolean
           changedComm?: boolean
           changedParent?: boolean
+          sshParentOwnUid?: boolean
+          sshParentDenied?: boolean
+          sshParentComm?: string
+          managerPid?: number
+          managerUnavailable?: boolean
         } = scenario
         let statReads = 0
         let lsofPasses = 0
@@ -545,6 +579,7 @@ describe.skipIf(process.platform !== 'linux')('store-inuse strict reference prob
           )
         const fs: FileSystem.FileSystem = {
           ...base,
+          exists: () => Effect.succeed(true),
           realPath: (path) => Effect.succeed(path),
           readDirectory: (path) =>
             path === '/proc'
@@ -559,6 +594,19 @@ describe.skipIf(process.platform !== 'linux')('store-inuse strict reference prob
                 ? Effect.succeed(['7'])
                 : denied(path),
           readFileString: (path) => {
+            if (path.startsWith('/proc/200/') === true) {
+              if (option.sshParentDenied === true) return denied(path)
+              if (path.endsWith('/stat') === true) {
+                return Effect.succeed(
+                  `200 (${option.sshParentComm ?? 'sshd-session'}) S 1 200 200 0 -1 0 ${'0 '.repeat(12)}1000`,
+                )
+              }
+              if (path.endsWith('/status') === true) {
+                const uid = option.sshParentOwnUid === true ? ownUid : 0
+                return Effect.succeed(`Uid:\t${uid}\t${uid}\t${uid}\t${uid}\n`)
+              }
+              return denied(path)
+            }
             const manager = path.startsWith('/proc/42/')
             if (path.endsWith('/stat') === true) {
               const after = manager && ++statReads > 1
@@ -614,7 +662,17 @@ describe.skipIf(process.platform !== 'linux')('store-inuse strict reference prob
           Effect.provideService(FileSystem.FileSystem, fs),
           Effect.provideService(ChildProcessSpawner, {
             ...spawner,
-            spawn: () => {
+            spawn: (command) => {
+              if (
+                command._tag === 'StandardCommand' &&
+                command.command.endsWith('/systemctl') === true
+              ) {
+                return option.managerUnavailable === true
+                  ? denied('systemctl')
+                  : spawner.spawn(
+                      ChildProcessCommand.make('printf', [`${option.managerPid ?? 42}`]),
+                    )
+              }
               lsofPasses += 1
               return denied('lsof')
             },

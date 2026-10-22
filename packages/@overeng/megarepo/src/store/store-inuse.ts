@@ -210,17 +210,21 @@ const readProcessCwds = (
     return observed.flatMap((entry) => (entry === undefined ? [] : [entry]))
   })
 
-/** Shared bounded lsof execution; callers choose cwd-only or full PID records. */
-const readLsofOutput = Effect.fn('store.readLsofOutput')(function* ({
+/** Bounded native evidence queries; drain both streams and release the child on timeout. */
+const readBoundedProcessOutput = Effect.fn('store.readBoundedProcessOutput')(function* ({
   binary,
   args,
+  env,
 }: {
   binary: string
   args: ReadonlyArray<string>
+  env?: Readonly<Record<string, string>>
 }) {
   const spawner = yield* ChildProcessSpawner
   return yield* Effect.gen(function* () {
-    const handle = yield* spawner.spawn(ChildProcess.make(binary, args))
+    const handle = yield* spawner.spawn(
+      ChildProcess.make(binary, args, env === undefined ? {} : { env, extendEnv: false }),
+    )
     const [stdout, stderr, exitCode] = yield* Effect.all(
       [
         Stream.mkString(Stream.decodeText(handle.stdout)),
@@ -239,7 +243,7 @@ const readDarwinProcessCwds: Effect.Effect<
   never,
   ChildProcessSpawner
 > = Effect.gen(function* () {
-  const output = yield* readLsofOutput({
+  const output = yield* readBoundedProcessOutput({
     binary: '/usr/sbin/lsof',
     args: ['-n', '-P', '-w', '-d', 'cwd', '-FpnR'],
   })
@@ -529,6 +533,31 @@ const readProcessReferencePaths = Effect.fn('store.readProcessReferencePaths')(f
   return { references, complete }
 })
 
+/** Mutable process names only identify an SSH role when its live parent is root-owned SSH. */
+const readSshPrivilegedParent = Effect.fn('store.readSshPrivilegedParent')(function* ({
+  fs,
+  parentPid,
+}: {
+  fs: FileSystem.FileSystem
+  parentPid: number
+}) {
+  const before = yield* procRead(fs.readFileString(`/proc/${parentPid}/stat`))
+  const status = yield* procRead(fs.readFileString(`/proc/${parentPid}/status`))
+  const after = yield* procRead(fs.readFileString(`/proc/${parentPid}/stat`))
+  if (before._tag !== 'value' || after._tag !== 'value' || status._tag !== 'value') return false
+  const parsed = parseProcStat(before.value)
+  const checked = parseProcStat(after.value)
+  const comm = before.value.slice(before.value.indexOf('(') + 1, before.value.lastIndexOf(')'))
+  const checkedComm = after.value.slice(after.value.indexOf('(') + 1, after.value.lastIndexOf(')'))
+  return (
+    parsed?.kernelThread === false &&
+    checked?.startTime === parsed.startTime &&
+    checkedComm === comm &&
+    (comm === 'sshd' || comm === 'sshd-session') &&
+    parseProcUids(status.value)?.every((uid) => uid === 0) === true
+  )
+})
+
 const readProcessEntry = ({
   fs,
   pid,
@@ -590,11 +619,16 @@ const readProcessEntry = ({
         cmdline.value.split('\0')[1] === '--user'
       const allowed =
         stableRole === true ? GC_OWNER_EXEMPTIONS.find((entry) => entry.comm === comm) : undefined
+      const sshParentVerified =
+        allowed?.rule === 'sshd-privilege-transition' && parsed !== undefined
+          ? yield* readSshPrivilegedParent({ fs, parentPid: parsed.parentPid })
+          : false
       const exempt: ExemptProcess | undefined =
         paths.complete === false &&
         allowed !== undefined &&
         parsed !== undefined &&
-        (allowed.rule !== 'systemd-user-manager' || systemdUserManager === true)
+        (allowed.rule !== 'systemd-user-manager' || systemdUserManager === true) &&
+        (allowed.rule !== 'sshd-privilege-transition' || sshParentVerified === true)
           ? { pid, startTime: parsed.startTime, comm: allowed.comm, rule: allowed.rule }
           : undefined
       return {
@@ -673,7 +707,7 @@ const readLsofReferences = Effect.fn('store.readLsofReferences')(function* ({
 }: {
   pids: ReadonlyArray<number>
 }) {
-  const output = yield* readLsofOutput({
+  const output = yield* readBoundedProcessOutput({
     binary: 'lsof',
     args: ['-n', '-P', '-a', '-p', pids.join(','), '-Fpfnt'],
   })
@@ -756,6 +790,7 @@ export const readProcessReferences = ({
       const pid = parsePidField(entry)
       return pid === undefined ? [] : [pid]
     })
+    const spawner = yield* Effect.serviceOption(ChildProcessSpawner)
     const coverageByPid =
       scope !== 'all-uids'
         ? new Map(coveredProcesses?.map((identity) => [identity.pid, identity.startTime]))
@@ -780,14 +815,44 @@ export const readProcessReferences = ({
       if (entry._tag === 'process') processes.push(entry)
     }
     const parentByPid = new Map(processes.map((entry) => [entry.pid, entry.parentPid]))
-    const managerPids = new Set(
-      processes.filter((entry) => entry.systemdUserManager === true).map((entry) => entry.pid),
-    )
+    // Only the root system manager's unit state can authenticate the mutable systemd name/argv.
+    // Resolve once per scan, and bind its MainPID to the lifetime already observed above.
+    let managerIdentity: ProcessIdentity | undefined
+    if (
+      scope === 'gc-owner' &&
+      ownUid !== undefined &&
+      spawner._tag === 'Some' &&
+      processes.some((entry) => entry.systemdUserManager === true) === true
+    ) {
+      const systemctl = yield* fs
+        .exists('/run/current-system/sw/bin/systemctl')
+        .pipe(Effect.orElseSucceed(() => false))
+      const output = yield* readBoundedProcessOutput({
+        binary: systemctl === true ? '/run/current-system/sw/bin/systemctl' : '/usr/bin/systemctl',
+        args: ['--system', 'show', `user@${ownUid}.service`, '--property=MainPID', '--value'],
+        env: { DBUS_SYSTEM_BUS_ADDRESS: 'unix:path=/run/dbus/system_bus_socket', LC_ALL: 'C' },
+      }).pipe(Effect.provideService(ChildProcessSpawner, spawner.value))
+      if (output._tag === 'Some' && output.value.exitCode === 0) {
+        const pid = parsePidField(output.value.stdout.trim())
+        const observed = processes.find(
+          (entry) => entry.pid === pid && entry.systemdUserManager === true,
+        )
+        if (pid !== undefined && observed?.identity !== undefined) {
+          const current = yield* procRead(fs.readFileString(`/proc/${pid}/stat`))
+          const parsed = current._tag === 'value' ? parseProcStat(current.value) : undefined
+          if (parsed?.startTime === observed.identity.startTime) managerIdentity = observed.identity
+        }
+      }
+    }
+    const managerPids = new Set(managerIdentity === undefined ? [] : [managerIdentity.pid])
     const inScope = processes.filter(
       (entry) =>
         hasAncestorInTable({ parentByPid, pid: entry.pid, ancestorPid: selfPid }) === false,
     )
     for (const entry of inScope) {
+      if (entry.exempt?.rule === 'systemd-user-manager' && managerPids.has(entry.pid) === false) {
+        entry.exempt = undefined
+      }
       if (entry.exempt?.rule === 'systemd-user-pam' && managerPids.has(entry.parentPid) === false) {
         entry.exempt = undefined
       }
@@ -805,7 +870,6 @@ export const readProcessReferences = ({
           }
         : {}
     if (scope === 'gc-owner') {
-      const spawner = yield* Effect.serviceOption(ChildProcessSpawner)
       let unreadablePid: number | undefined
       const fallbackPids = inScope
         .filter(

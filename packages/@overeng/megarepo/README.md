@@ -213,8 +213,9 @@ An intent is fsynced before mutation, followed by an outcome (`removed`, `partia
 in-use skips record their veto evidence without attempting removal. Records carry a shared
 attempt ID, timestamp, tree path, decision, reason, veto evidence, ignored foreign-process count,
 and any errno/recovery path.
-The history is append-only and GC never compacts it. Abrupt termination may leave only the intent,
-which proves that the attempt began even if stdout was lost.
+The history is append-only and GC never compacts it, so growth is currently unbounded.
+Crash-safe concurrent-writer retention is tracked in [#2067](https://github.com/overengineeringstudio/effect-utils/issues/2067).
+Abrupt termination may leave only the intent, which proves that the attempt began even if stdout was lost.
 
 Legacy and targeted deletion share the process in-use veto: a readable live cwd or open-file
 reference keeps the tree, including active or status-unreadable Buck daemons that remain alive.
@@ -226,11 +227,21 @@ processes require a bounded `lsof` fallback or trusted lifetime-bound manifest c
 otherwise GC keeps with `own-uid-unreadable`. macOS retains the existing bounded `lsof -d cwd`
 probe; a failed probe keeps conservatively. Budget and worklog deletion retain their stricter
 activity contracts and reject non-Linux hosts with `unsupported-platform`.
-Unreadable own-UID privilege-transition processes have a fixed exemption: `systemd --user`
-with parent PID 1, its `(sd-pam)` child, and `sshd-session`/legacy `sshd`. These processes
-are non-dumpable after privilege transitions and keep cwd `/` by design. Receipts retain
-each exemption's PID, start time, command name, and rule in `exemptProcesses`; readable
-references still veto, and their children are checked normally.
+Unreadable own-UID privilege-transition processes have a fixed exemption. `systemd --user`
+must have parent PID 1 and match the root system manager's `user@<uid>.service` MainPID,
+with the same observed process start time. Its `(sd-pam)` child must name that verified
+manager as parent. `sshd-session`/legacy `sshd` must have a readable, stable root-owned
+`sshd`/`sshd-session` parent. A mutable process name or argv alone grants no exemption.
+The system-manager lookup runs once per scan with a five-second deadline; unavailable
+identity evidence keeps the tree. Receipts retain each exemption's PID, start time, command
+name, and rule in `exemptProcesses`; readable references still veto, and children are checked normally.
+
+Process probing and rename are not atomic. There is no hard maximum probe-to-rename interval:
+receipt fsync and fd-chain setup can intervene, and a new arbitrary holder can start afterwards.
+Locks and leases protect cooperating activators, not arbitrary new process references.
+Non-targeted archive reaping holds the worktree lock but does not take the owner deletion lease;
+plan-bound reaping does. These are residual safety limits, not a guarantee of atomic holder exclusion.
+Lease coverage and final-probe boundary work is tracked in [#2066](https://github.com/overengineeringstudio/effect-utils/issues/2066).
 
 `--budgets` itself never removes worktrees or worklogs; budget mode evicts build-output roots
 only. The optional `worklog` field is consumed by default GC teardown (below).
@@ -319,8 +330,8 @@ On Linux, whole-worktree GC stops the current user's idle Buck2 daemons before r
 removing the root: cold archive, clean ref-mismatch archive, merged-worklog teardown, legacy
 whole-worktree sweep, and their targeted plan applications. The hook runs under the existing
 worktree lock (and deletion lease where present), after the path's existing keep checks and
-immediately before its process-in-use probe or deletion. The legacy sweep retains its existing
-protection checks without adding a process probe or status reclassification.
+immediately before its process-in-use probe or deletion. The legacy sweep uses the shared
+process/activity veto described above as well as its existing protection checks.
 It discovers same-UID Buck daemons in `/proc`, using the same path-containment predicate as the
 existing probes. Isolation comes from daemon argv; the project
 root is its cwd with a trailing `/buck-out/<isolation>` stripped, or the cwd itself when that suffix

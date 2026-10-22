@@ -174,10 +174,13 @@ Configured activity manifests and deletion leases also protect legacy GC. Unread
 foreign-UID processes are counted in receipts rather than blocking owner-store cleanup;
 unreadable owner processes require a bounded `lsof` fallback, otherwise GC keeps with
 `own-uid-unreadable`. macOS retains its existing bounded `lsof -d cwd` probe.
-The fixed own-UID non-dumpable exemption covers `systemd --user` with parent PID 1,
-its `(sd-pam)` child, and `sshd-session`/legacy `sshd`; each exemption is recorded as
-PID, start time, command name, and rule in `exemptProcesses`. Readable references and
-all children remain checked; every other unreadable owner process vetoes.
+The fixed own-UID non-dumpable exemption requires `systemd --user` with parent PID 1
+to match the root system manager's `user@<uid>.service` MainPID and the observed
+process start time. Only its verified `(sd-pam)` child is exempt. `sshd-session`/legacy
+`sshd` requires a readable, stable root-owned SSH daemon parent. Mutable comm/argv
+alone grants no exemption; an unavailable bounded system-manager query keeps the tree.
+Each exemption records PID, start time, command name, and rule in `exemptProcesses`.
+Readable references and all children remain checked; every other unreadable owner process vetoes.
 Read-only snapshot directories are made owner-writable through pinned directory descriptors;
 files and hardlinked CAS blobs are never chmodded.
 
