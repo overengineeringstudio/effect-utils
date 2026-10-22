@@ -860,6 +860,7 @@ describe('native Buck cache evidence projection', () => {
     ]) {
       const result = sanitize(message)
       expect(result).toContain('[REDACTED]')
+      expect(sanitize(result)).toBe(result)
       for (const credential of [secret, 'unconfigured-token', 'private-credential', 'custom-credential'])
         expect(result).not.toContain(credential)
     }
