@@ -5,6 +5,8 @@ import empiricalWorkflow from '../../.github/workflows/empirical-proofs.yml.geni
 import storybookPlaysWorkflow from '../../.github/workflows/storybook-plays.yml.genie.ts'
 import { EMPIRICAL_PROOF_CI_JOB_NAMES, requiredCIJobs, RUNNER_PROFILES } from '../ci.ts'
 import {
+  cachixCliBuildStep,
+  cachixStep,
   checkoutStep,
   installNixStep,
   linuxSandboxPrerequisitesStep,
@@ -354,6 +356,24 @@ test('daily cache join admits only scheduled and manual runs, including branch d
     ).toBe(false)
   }
   expect(proofWorkflow).toContain('cron: 17 3 * * *')
+})
+
+test('empirical pinned devenv jobs enable Cachix before entering devenv', () => {
+  const violations: string[] = []
+  const cacheStepName = cachixStep({ name: 'overeng-effect-utils' }).name
+  for (const [jobId, job] of Object.entries(empiricalWorkflow.data.jobs)) {
+    const devenvIndex = job.steps.findIndex(
+      (step) =>
+        step.name === preparePinnedDevenvStep.name || step.name === validateNixStoreStep.name,
+    )
+    if (devenvIndex === -1) continue
+    const cliIndex = job.steps.findIndex((step) => step.name === cachixCliBuildStep.name)
+    const cacheIndex = job.steps.findIndex((step) => step.name === cacheStepName)
+    if (!(cliIndex >= 0 && cliIndex < cacheIndex && cacheIndex < devenvIndex)) {
+      violations.push(jobId)
+    }
+  }
+  expect(violations).toEqual([])
 })
 
 test('daily cache join initializes pinned devenv before running tasks', () => {
