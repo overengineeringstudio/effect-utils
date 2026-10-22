@@ -447,15 +447,17 @@ describe('editor generation native leases (Linux and macOS)', () => {
   it('stale inherited descriptor bookkeeping never prevents target execution', () =>
     run(`
     const program = 'require("node:assert/strict").equal(process.env.EDITOR_VIEW_LEASE_FDS ?? "", ""); process.exit(37)';
-    const result = spawnSync(launcher, [
+    // Set the fixture mapping after the real leased parent's spawn hook maps its fds.
+    const result = spawnSync('env', [
+      '-u', 'EDITOR_VIEW_LEASE_ACTIVE', 'EDITOR_VIEW_LEASE_FDS=2147483647', launcher,
       '--content-store', contentStore, '--editor-root', editorRoot,
       '--', ${JSON.stringify(bun)}, '--eval', program,
     ], {
-      env: { ...process.env, EDITOR_VIEW_LEASE_EXECUTABLE: '', EDITOR_VIEW_LEASE_FDS: '2147483647' },
+      env: { ...process.env, EDITOR_VIEW_LEASE_EXECUTABLE: '' },
       encoding: 'utf8',
     });
     assert.equal(result.error, undefined);
-    assert.equal(result.status, 37);
+    assert.equal(result.status, 37, result.stderr);
     assert.match(result.stderr, /stale inherited lease mapping: invalid descriptor/);
   `))
 
@@ -475,7 +477,10 @@ describe('editor generation native leases (Linux and macOS)', () => {
       'fs.writeSync(2, "stderr:sentinel");',
       'process.exit(37);',
     ].join('\\n');
-    const result = spawnSync(unknownFilesystemLauncher, [
+    // Clear inherited mappings at the actual exec boundary, not before the
+    // leased parent's hook deliberately adds its own mappings to options.env.
+    const result = spawnSync('env', [
+      '-u', 'EDITOR_VIEW_LEASE_FDS', '-u', 'EDITOR_VIEW_LEASE_ACTIVE', unknownFilesystemLauncher,
       '--content-store', contentStore, ${JSON.stringify(rootOption)},
       ${JSON.stringify(rootOption)} === '--editor-root' ? editorRoot : root,
       '--', ${JSON.stringify(bun)}, '--eval', program, ...argv,
@@ -484,7 +489,7 @@ describe('editor generation native leases (Linux and macOS)', () => {
       input: 'sentinel stdin\\n', encoding: 'utf8',
     });
     assert.equal(result.error, undefined);
-    assert.equal(result.status, 37); assert.equal(result.signal, null);
+    assert.equal(result.status, 37, result.stderr); assert.equal(result.signal, null);
     assert.deepEqual(JSON.parse(fs.readFileSync(marker, 'utf8')), argv);
     assert.equal(result.stdout, 'stdout:sentinel stdin\\n');
     assert.match(result.stderr, /stderr:sentinel/);
