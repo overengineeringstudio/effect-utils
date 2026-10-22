@@ -284,10 +284,9 @@ private final class OnboardingController: NSObject, NSWindowDelegate {
         selected = index
         rows[index].notice = nil
         rowViews[index].scrollToVisible(rowViews[index].bounds)
-        guard openPane(for: index) else {
-            refresh()
-            return
-        }
+        // Settings is a navigation aid, not evidence or a prerequisite. Keep
+        // the fallback notice visible and check even when manual navigation is needed.
+        _ = openPane(for: index)
         // Full check once per row; afterwards only readiness retries, except for
         // categories whose readiness retry is inert by design.
         let prompting = !rows[index].prompted || !rows[index].autoRetries
