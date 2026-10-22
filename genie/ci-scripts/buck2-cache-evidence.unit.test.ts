@@ -732,12 +732,10 @@ describe('native Buck cache evidence projection', () => {
       startedAt: 100,
       completedAt: 200,
     }
-    expect(
-      finalizeNativeLogFreshness({
-        invocations: [survivor],
-        confirmedBuildIds: new Set(['earliest', 'survivor']),
-      }),
-    ).toBe(true)
+    expect(finalizeNativeLogFreshness({
+      invocations: [survivor],
+      confirmedBuildIds: new Set(['earliest', 'survivor']),
+    })).toBe(true)
     expect(survivor.freshRoot).toBe(false)
   })
 
@@ -757,12 +755,10 @@ describe('native Buck cache evidence projection', () => {
       { ...invocation },
       { ...invocation, buildId: 'audit', actionCount: 0, startedAt: 50 },
     ]
-    expect(
-      finalizeNativeLogFreshness({
-        invocations,
-        confirmedBuildIds: new Set(['audit', 'build']),
-      }),
-    ).toBe(false)
+    expect(finalizeNativeLogFreshness({
+      invocations,
+      confirmedBuildIds: new Set(['audit', 'build']),
+    })).toBe(false)
     expect(invocation.freshRoot).toBe(true)
     expect(invocations[2]!.freshRoot).toBe(false)
     expect(finalizeNativeLogFreshness({ invocations, confirmedBuildIds: new Set() })).toBe(false)
