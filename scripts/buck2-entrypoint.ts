@@ -503,6 +503,7 @@ export const resolveGateInvocation = ({
   args,
   env,
   cwd,
+  strictRunArguments = true,
   readArgfile = (path) => {
     const canonical = realpathSync(path)
     return {
@@ -514,6 +515,7 @@ export const resolveGateInvocation = ({
   readonly args: readonly string[]
   readonly env: Readonly<Record<string, string | undefined>>
   readonly cwd: string
+  readonly strictRunArguments?: boolean
   readonly readArgfile?: (path: string) => { readonly path: string; readonly contents: string }
 }): { readonly isolation: string; readonly args: readonly string[] } | undefined => {
   const expanded: string[] = []
@@ -575,6 +577,7 @@ export const resolveGateInvocation = ({
   const buckArgs = sentinel === -1 ? expanded : expanded.slice(0, sentinel)
   const runIndex = buckArgs.indexOf('run')
   if (
+    strictRunArguments === true &&
     runIndex !== -1 &&
     (buckArgs.length !== runIndex + 2 || buckArgs[runIndex + 1]?.startsWith('-') !== false)
   )
@@ -713,14 +716,33 @@ export const nativeBuildIdArguments = ({
 }): string[] => {
   const evidencePath = env['CI_BUCK2_CACHE_EVIDENCE_PATH']
   if (evidencePath === undefined || evidencePath === '') return [...args]
+  const root = findRoot(cwd)
+  const marker = env['CI_BUCK2_CACHE_EVIDENCE_START']
+  if (root === undefined || marker === undefined || marker === '') return [...args]
+  // Match collect-buck2-cache-evidence.sh's marker/recorded_root contract.
+  // Its discovery is limited to the collected root's default-isolation logs.
+  try {
+    const [startedAt, recordedRoot, freshRoot] = readFileSync(resolve(cwd, marker), 'utf8').split(
+      '\n',
+    )
+    if (
+      /^\d+$/u.test(startedAt ?? '') === false ||
+      /^[01]$/u.test(freshRoot ?? '') === false ||
+      recordedRoot === undefined ||
+      realpathSync(root) !== realpathSync(recordedRoot)
+    )
+      return [...args]
+  } catch {
+    return [...args]
+  }
+  // Registration does not stop daemons: preserve ordinary run options accepted
+  // by native clap rather than applying the gate's stricter kill-safety subset.
+  const invocation = resolveGateInvocation({ args, cwd, env, strictRunArguments: false })
+  if (invocation?.isolation !== 'v2') return [...args]
   const sentinel = args.indexOf('--')
   const before = sentinel === -1 ? args : args.slice(0, sentinel)
-  if (
-    findRoot(cwd) === undefined ||
-    skipsWatcherAdmission(before) === true ||
-    before.some((arg) => configCommands[arg] === true) === false
-  )
-    return [...args]
+  if (skipsWatcherAdmission(before) === true) return [...args]
+  if (before.some((arg) => configCommands[arg] === true) === false) return [...args]
   const buildId = canonicalCacheAdmissionInvocationId(env['BUCK_WRAPPER_UUID'])
   let supplied = false
   let suppliedPath: string | undefined
