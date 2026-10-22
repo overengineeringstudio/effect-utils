@@ -174,21 +174,44 @@ collection target on both platforms. Only source-owned baseline reports outside
 the declared Darwin scope are omitted on macOS; bounded or unowned files cannot
 be excluded by that scope. Linux supplies the complete source evidence.
 
-Both required jobs select one CI test shell configuration before the first
-shell evaluation and retain it through telemetry, tests and product smoke.
-This configuration excludes the interactive OTEL Collector/Tempo/Grafana stack
-and its local trace-capture verifier task, which the test graph does not execute.
-It retains the `otelite` native binary used by source tests, `otel-span`,
-`otel-scrape`, native devenv tracing and pipeline evidence.
-The retained repository shell products are prepublished per platform by the
+Both required jobs set `EFFECT_UTILS_CI_TEST=1` at job scope before the first
+shell evaluation and retain it through bootstrap, telemetry, tests and macOS
+product smoke. Only `test` and `test-macos` select this configuration; quality,
+Playwright, standalone Rust, integration and deployment jobs retain the default
+shell. This selector is not a named devenv profile or a bootstrap-only shell.
+
+The unit-test configuration narrows both shell packages and task declarations.
+Unscheduled tasks still contribute their command, status and environment store
+references to devenv's serialized task file, so merely omitting their execution
+does not remove their closure. Published Notion CLI wrappers, deploy/Storybook
+consumers, live integration tasks and interactive observability are excluded
+from the unit shell rather than just left unscheduled. The default developer
+shell keeps those surfaces.
+
+Bootstrap, Genie checks, the selected bounded/source unit-test chains and their
+publication authorities remain available. Source Notion suites remain covered;
+excluding published CLI wrappers does not exclude their source tests. Native
+Restate, `otelite`, `otel-span`, `otel-scrape`, native devenv tracing, pipeline
+evidence and Buck capabilities remain available where the unit graph requires
+them. Removing a tool from PATH alone does not prove its store bytes disappear:
+retained capabilities or other task references can still retain it.
+
+The profile-aware graph guard validates both declared dependencies and required
+source owners. External browser, live-integration and empirical owners (including
+`test:megarepo-cold-gc`) remain in their dedicated full-shell jobs; the unit
+profile neither schedules them nor requires their task declarations. Reintroduced
+non-unit task families are rejected rather than silently ignored by the guard.
+
+Retained repository shell products are prepublished per platform by the
 protected-main native/compiled publisher. Its `ci-test-shell-products` flake
-aggregate contains the exact shell imports and capability outputs, including
-their source bridges and validators. Native recipe identity is scoped to
-declared sources and pinned tools rather than repository HEAD; see the
+aggregate is a cache-publication inventory, not the selector for unit-shell
+packages or tasks. Native recipe identity is scoped to declared sources and
+pinned tools rather than repository HEAD; see the
 [native Nix bridge contract](../builds/05-product-distribution/02-nix-bridge/spec.md#native-products).
-Developer shells keep the local observability surface. Execution
-latency is measured from job `startedAt` to `completedAt`; runner queue wait is
-reported separately and is not part of the execution budget.
+Closure-size claims require measured shell outputs and their dependency paths,
+not package-list changes or task scheduling alone. Execution latency is measured
+from job `startedAt` to `completedAt`; runner queue wait is reported separately
+and is not part of the execution budget.
 
 Successful `devenv-modules:test` scripts emit UTC start/end timestamps on stderr
 with their script basename and phase. Both required jobs retain source Vitest

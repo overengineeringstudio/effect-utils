@@ -385,7 +385,17 @@ script to appear exactly once in `genie/ci-workflow/test-platforms.json`'s
 `moduleScripts` classification. The Nix import and shell dispatcher both reject
 missing, stale, duplicate or overlapping entries before dispatch. Darwin runs
 only Darwin-sensitive scripts; Linux and an unset platform run the complete
-catalog. Platform classification is independent of parallel-safety admission.
+catalog, except entries marked `fullProfileOnly: true` are excluded when
+`EFFECT_UTILS_CI_TEST=1`. In particular, `notion-integration-ci.test.sh` needs
+the full profile's Notion task definitions: full-profile `check:quick` and
+`check:all` run it through `test:notion-integration:ci-skip`, independently of
+the platform-selected module-test aggregate.
+The unit graph guard checks direct `devenv tasks run` lines in unit-selected
+scripts, including literal shell-array task arguments, against evaluated task
+names before executing tests. This cheap scan is not a general shell parser;
+embedded fixture/stub strings and dynamically computed task names are outside
+its scope. Platform/profile classification is independent of parallel-safety
+admission.
 `local/devenv-module-tests.sh` runs selected unaudited and shared-checkout state
 scripts serially before starting a bounded worker pool for explicitly admitted
 scripts. Only admitted scripts are ordered longest-first, with lexical

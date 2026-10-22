@@ -879,6 +879,28 @@ describe('CI execution admission cleanup', () => {
   })
 })
 
+describe('unit-test shell selection', () => {
+  it('selects the narrow shell only at job scope for both required unit-test jobs', () => {
+    const workflow: GitHubWorkflowArgs = ciWorkflow.data
+    expect(workflow.env?.EFFECT_UTILS_CI_TEST).toBeUndefined()
+    expect(
+      Object.entries(workflow.jobs)
+        .filter(([, job]) => job.env?.EFFECT_UTILS_CI_TEST === '1')
+        .map(([jobId]) => jobId)
+        .toSorted(),
+    ).toEqual(['test', 'test-macos'])
+
+    for (const [jobId, job] of Object.entries(workflow.jobs)) {
+      expect(job.env?.EFFECT_UTILS_CI_TEST, jobId).toBe(
+        jobId === 'test' || jobId === 'test-macos' ? '1' : undefined,
+      )
+      for (const step of job.steps) {
+        expect(step.env?.EFFECT_UTILS_CI_TEST, `${jobId}/${step.name ?? step.id}`).toBeUndefined()
+      }
+    }
+  })
+})
+
 describe('required platform test classification', () => {
   it('classifies every aggregate source task exactly once with a rationale', () => {
     const suites = [...testPlatforms.darwin, ...testPlatforms.neutral]
