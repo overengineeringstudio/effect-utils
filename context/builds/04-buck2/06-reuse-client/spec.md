@@ -23,7 +23,8 @@ do not configure the RE client. Change posture by stopping the daemon and
 starting with the new file and environment ([#1598](https://github.com/overengineeringstudio/effect-utils/pull/1598)).
 
 In CI, the entrypoint admits each command against the running daemon's RE
-posture after reconciling the root overlay:
+posture while holding one project-root/isolation lock from overlay selection
+through daemon initialization and recording:
 
 ```text
 no daemon -> start with current environment -> record identity + keyed posture
@@ -34,14 +35,20 @@ busy mismatch or unrecognized status -> fail closed, leave daemon untouched
 
 The record is `buck-out/.cache-daemon-posture/<isolation>.json` (mode `0600`).
 It contains a random per-record HMAC key, the SHA-256 HMAC of the expanded RE
-configuration and writer policy, and the daemon PID/start time, never the
-credential itself. Credential rotation changes the fingerprint; neither the key
-nor fingerprint is printed. A crash-released per-isolation flock serializes
-admission. Native status uses the existing gate root/isolation/active-command
-checks. Buck has no conditional kill RPC: a new client can race an idle status
-read, but a daemon already observed busy is never killed. The caller retries a
-busy mismatch after concurrent commands finish. CI bypasses the warm shell
-launch cache so every command checks the daemon identity and posture.
+configuration and writer policy, the daemon PID/start time, and live launcher
+PID/fingerprint reservations, never the credential itself. Credential rotation
+changes the fingerprint; neither the key nor fingerprint is printed.
+A crash-released per-isolation flock is acquired before overlay reconciliation.
+Before changing the overlay, a mismatched live launcher or busy daemon fails
+closed. The launcher reservation is written before releasing that lock:
+`execve` preserves its PID until the native command exits, covering the gap
+before Buck reports an active command without inheriting a lock into buckd.
+Dead reservations are pruned; indeterminate liveness remains reserved.
+Matching concurrent launches retain the same overlay and can proceed together.
+Native status uses the existing gate root/isolation/active-command checks.
+Buck has no conditional kill RPC: an unwrapped client can race an idle status
+read, but a daemon already observed busy is never killed. CI bypasses the warm
+shell launch cache so every command checks daemon identity and posture.
 
 ```ini
 # tracked buckconfig: the repository's trust tier, read-only (decision 0033);
