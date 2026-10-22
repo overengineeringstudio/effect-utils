@@ -375,6 +375,12 @@ in [#1955](https://github.com/overengineeringstudio/effect-utils/issues/1955).
 
 ## Testing
 
+Git fixtures use the shared `test-utils/git-fixture.ts` helpers and the noncanonical
+`fixture-main` branch when the branch name is incidental. Fixtures that exercise literal
+`main` store paths bootstrap a freshly initialized, empty bare upstream with a full
+commit-SHA refspec, then fetch and attach upstream tracking. They never push `main` again.
+Fixture subprocesses run under the same Git guard as the test runner.
+
 `devenv tasks run test:megarepo` runs the bounded Buck lane and its source integration
 complement. Root script adapter contracts run in `genie:buck2:test`, part of the required
 `test:run` aggregate, without adding scripts to package or Nix closures. The task waits for

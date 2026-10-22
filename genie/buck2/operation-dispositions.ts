@@ -24,6 +24,8 @@ export const developerOperationDispositions = {
   'genie:watch': 'outside-by-policy:long-lived-watcher',
   'lint:check': 'outside-by-policy:includes-stage-zero-freshness',
   'lint:check:getflake': 'buck-pending:static',
+  // Discovers working-tree Nix inputs (including untracked files) and exercises isolated imports.
+  'lint:check:standalone-staging': 'outside-by-policy:repository-staging-contract',
   'lint:fix': 'outside-by-policy:authoring-mutation',
   'nix:buck2-artifact-import:check': 'outside-by-policy:nix-artifact-import-contract',
   'nix:flake:eval': 'outside-by-policy:nix-flake-evaluation',
