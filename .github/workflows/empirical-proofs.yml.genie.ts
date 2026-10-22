@@ -8,6 +8,7 @@ import {
   prepareCiScriptsStep,
   preparePinnedDevenvStep,
   runDevenvTasksBefore,
+  validateNixStoreStep,
   withCiSourceRoot,
   type CiWorkflowArgs,
 } from '../../genie/ci-workflow.ts'
@@ -86,6 +87,7 @@ export default ciWorkflow({
             linuxSandboxPrerequisitesStep({ privileged: 'always' }),
             prepareCiScriptsStep,
             preparePinnedDevenvStep,
+            validateNixStoreStep,
             {
               name: 'Prepare source script dependencies',
               env: { GITHUB_TOKEN: '${{ github.token }}' },

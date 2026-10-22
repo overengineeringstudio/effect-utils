@@ -4,7 +4,15 @@ import ciWorkflow from '../../.github/workflows/ci.yml.genie.ts'
 import empiricalWorkflow from '../../.github/workflows/empirical-proofs.yml.genie.ts'
 import storybookPlaysWorkflow from '../../.github/workflows/storybook-plays.yml.genie.ts'
 import { EMPIRICAL_PROOF_CI_JOB_NAMES, requiredCIJobs, RUNNER_PROFILES } from '../ci.ts'
-import { namespaceLinuxX64PairedPerfRunner } from '../ci-workflow.ts'
+import {
+  checkoutStep,
+  installNixStep,
+  linuxSandboxPrerequisitesStep,
+  namespaceLinuxX64PairedPerfRunner,
+  prepareCiScriptsStep,
+  preparePinnedDevenvStep,
+  validateNixStoreStep,
+} from '../ci-workflow.ts'
 
 const workflow = ciWorkflow.stringify({ cwd: process.cwd(), location: '' })
 const proofWorkflow = empiricalWorkflow.stringify({ cwd: process.cwd(), location: '' })
@@ -346,6 +354,25 @@ test('daily cache join admits only scheduled and manual runs, including branch d
     ).toBe(false)
   }
   expect(proofWorkflow).toContain('cron: 17 3 * * *')
+})
+
+test('daily cache join initializes pinned devenv before running tasks', () => {
+  const steps = empiricalWorkflow.data.jobs['buck2-cache-join']!.steps
+  const setup = [
+    checkoutStep(),
+    installNixStep(),
+    linuxSandboxPrerequisitesStep({ privileged: 'always' }),
+    prepareCiScriptsStep,
+    preparePinnedDevenvStep,
+    validateNixStoreStep,
+  ]
+  const stepIdentity = (step: (typeof steps)[number]) => step.name ?? step.uses
+  const setupIdentities = setup.map(stepIdentity)
+  const setupSteps = steps.filter((step) => setupIdentities.includes(stepIdentity(step)))
+  expect(setupSteps.map(stepIdentity)).toEqual(setupIdentities)
+  const pinnedIndex = steps.findIndex((step) => step.name === preparePinnedDevenvStep.name)
+  expect(steps[pinnedIndex + 1]?.name).toBe(validateNixStoreStep.name)
+  expect(steps[pinnedIndex + 2]?.name).toBe('Prepare source script dependencies')
 })
 
 test('daily cache join has read-only GitHub access and uses the previous-day metrics spool', () => {
