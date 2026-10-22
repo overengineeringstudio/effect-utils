@@ -213,6 +213,10 @@
     {
       "disposition": "outside-by-policy:long-lived-watcher",
       "operation": "test:watch"
+    },
+    {
+      "disposition": "outside-by-policy:host-local-maintenance",
+      "operation": "worktree:teardown"
     }
   ],
   "schemaVersion": 1,
