@@ -574,7 +574,7 @@ export const resolveGateInvocation = ({
     return undefined
   }
   const sentinel = expanded.indexOf('--')
-  const buckArgs = sentinel === -1 ? expanded : expanded.slice(0, sentinel)
+  let buckArgs = sentinel === -1 ? expanded : expanded.slice(0, sentinel)
   const runIndex = buckArgs.indexOf('run')
   if (
     strictRunArguments === true &&
@@ -582,6 +582,53 @@ export const resolveGateInvocation = ({
     (buckArgs.length !== runIndex + 2 || buckArgs[runIndex + 1]?.startsWith('-') !== false)
   )
     return undefined
+  if (strictRunArguments === false && runIndex !== -1) {
+    let targetSeen = false
+    for (let index = runIndex + 1; index < buckArgs.length; index++) {
+      const arg = buckArgs[index] ?? ''
+      if (arg.startsWith('-') === false) {
+        if (targetSeen === true) {
+          // RunCommand's trailing_var_arg starts at the first positional after
+          // TARGET. All remaining words belong to the executable, even flags.
+          buckArgs = buckArgs.slice(0, index)
+          break
+        }
+        targetSeen = true
+      } else if (
+        [
+          '--isolation-dir',
+          '--config',
+          '-c',
+          '--config-file',
+          '--chdir',
+          '--command-args-file',
+          '--write-build-id',
+          '--event-log',
+          '--command-report-path',
+          '--unstable-write-invocation-record',
+          '--target-platforms',
+          '--target-universe',
+          '--fake-host',
+          '--fake-arch',
+          '--fake-xcode-version',
+          '--preemptible',
+          '--exit-when',
+          '--console',
+          '--ui',
+          '--num-threads',
+          '-j',
+        ].includes(arg) === true
+      ) {
+        index++
+      } else if (
+        arg.includes('=') === false &&
+        ['--emit-shell', '--no-event-log', '--reuse-current-config'].includes(arg) === false
+      ) {
+        // Unknown option arity cannot establish the start of a run payload.
+        return undefined
+      }
+    }
+  }
   let isolation = env['BUCK_ISOLATION_DIR'] ?? 'v2'
   let explicit = false
   for (let index = 0; index < buckArgs.length; index++) {
@@ -746,11 +793,11 @@ export const nativeBuildIdArguments = ({
   const buildId = canonicalCacheAdmissionInvocationId(env['BUCK_WRAPPER_UUID'])
   let supplied = false
   let suppliedPath: string | undefined
-  for (let index = 0; index < before.length; index++) {
-    const arg = before[index]
+  for (let index = 0; index < invocation.args.length; index++) {
+    const arg = invocation.args[index]
     if (arg === '--write-build-id') {
       supplied = true
-      suppliedPath = before[++index]
+      suppliedPath = invocation.args[++index]
     } else if (arg?.startsWith('--write-build-id=') === true) {
       supplied = true
       suppliedPath = arg.slice(17)
@@ -766,9 +813,11 @@ export const nativeBuildIdArguments = ({
   const registry = resolve(cwd, `${evidencePath}.native-build-id-paths.jsonl`)
   mkdirSync(dirname(registry), { recursive: true, mode: 0o700 })
   appendFileSync(registry, `${JSON.stringify({ buildId, path })}\n`, { mode: 0o600 })
-  return suppliedPath === undefined
-    ? [...before, '--write-build-id', path, ...(sentinel === -1 ? [] : args.slice(sentinel))]
-    : [...args]
+  if (suppliedPath !== undefined) return [...args]
+  const runIndex = before.indexOf('run')
+  if (runIndex !== -1)
+    return [...before.slice(0, runIndex + 1), '--write-build-id', path, ...args.slice(runIndex + 1)]
+  return [...before, '--write-build-id', path, ...(sentinel === -1 ? [] : args.slice(sentinel))]
 }
 
 const warnStdio = (message: string): void => {

@@ -481,6 +481,11 @@ directory is the default `v2` (implicit or explicit, including
 `started_at`, `recorded_root`, `fresh_root` format. Foreign fixture roots and
 non-default isolations retain their caller flags without registration: the
 collector scans only `.devenv/otel` and `buck-out/v2/log` in the collected root.
+For `run`, isolation resolution stops at `--` or the first executable
+positional argument after the target. Payload flags cannot change the selected
+isolation or supply a native build-ID output. The launcher inserts its native
+build-ID flag before the run target and payload; unknown run-option arities
+leave the invocation unregistered rather than guessing its payload boundary.
 The lowercase hyphenated UUID identifies the actual native `--write-build-id`
 output; a registry row alone does not prove launch. Finalization confirms the
 file's UUID and job-window mtime, then compares confirmed IDs with all decoded

@@ -290,6 +290,46 @@ describe('native build ID registry', () => {
     ).toHaveLength(6)
   })
 
+  it('ignores isolation flags in explicit and implicit run payloads', () => {
+    const root = fixture()
+    const evidence = join(root, 'evidence.json')
+    const env = {
+      CI_BUCK2_CACHE_EVIDENCE_PATH: evidence,
+      CI_BUCK2_CACHE_EVIDENCE_START: join(root, 'evidence-start'),
+      BUCK_WRAPPER_UUID: buildId,
+    }
+    for (const separator of [['--'], ['positional']] as const) {
+      const payload = [...separator, '--isolation-dir=fixture']
+      const args = ['run', '//:app', ...payload]
+      const path = `${evidence}.native-build-ids/${buildId}.buck-trace-id`
+      expect(nativeBuildIdArguments({ args, cwd: root, env })).toEqual([
+        'run',
+        '--write-build-id',
+        path,
+        '//:app',
+        ...payload,
+      ])
+    }
+    rmSync(`${evidence}.native-build-id-paths.jsonl`)
+    rmSync(`${evidence}.native-build-ids`, { recursive: true })
+    for (const separator of [['--'], ['positional']] as const) {
+      for (const args of [
+        ['--isolation-dir=fixture', 'run', '//:app', ...separator, '--isolation-dir=v2'],
+        ['run', '--isolation-dir=fixture', '//:app', ...separator, '--isolation-dir=v2'],
+        ['run', '//:app', ...separator, '--isolation-dir', 'v2'],
+      ]) {
+        expect(
+          nativeBuildIdArguments({
+            args,
+            cwd: root,
+            env: { ...env, BUCK_ISOLATION_DIR: 'fixture' },
+          }),
+        ).toEqual(args)
+      }
+    }
+    expect(existsSync(`${evidence}.native-build-id-paths.jsonl`)).toBe(false)
+  })
+
   it('leaves invocations untouched without a valid collected-root marker', () => {
     const root = fixture()
     const evidence = join(root, 'evidence.json')
@@ -388,12 +428,7 @@ describe('native build ID registry', () => {
     })
     const result = nativeBuildIdArguments({ args, cwd: root, env })
     const path = `${evidence}.native-build-ids/${buildId}.buck-trace-id`
-    expect(result.slice(-4)).toEqual([
-      '--write-build-id',
-      path,
-      '--',
-      '--write-build-id=application-argument',
-    ])
+    expect(result).toEqual(['run', '--write-build-id', path, ...args.slice(1)])
     expect(readFileSync(`${evidence}.native-build-id-paths.jsonl`, 'utf8')).toBe(
       `${JSON.stringify({ buildId, path })}\n`,
     )
