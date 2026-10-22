@@ -144,7 +144,6 @@ export const decodeCacheUploadErrors = (value: unknown): CacheUploadError[] | un
   return list(value).map((entry) => {
     const category = field({ value: entry, key: 'category' })
     switch (category) {
-      case undefined: // Historical free-text diagnostics are deliberately discarded.
       case 'unauthenticated':
       case 'permission-denied':
       case 'deadline':
@@ -153,7 +152,7 @@ export const decodeCacheUploadErrors = (value: unknown): CacheUploadError[] | un
       case 'invalid-argument':
       case 'other':
         return {
-          category: category ?? 'other',
+          category,
           reErrorCode: decodeGrpcCode(field({ value: entry, key: 'reErrorCode' })),
         }
       default:

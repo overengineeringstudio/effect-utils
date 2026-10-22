@@ -886,7 +886,7 @@ describe('native Buck cache evidence projection', () => {
     expect(invocations[0]!.complete).toBe(false)
   })
 
-  it('retains only closed upload categories and exact gRPC codes, including historical decoding', () => {
+  it('retains only closed upload categories and exact gRPC codes', () => {
     for (const [message, category] of [
       ['invalid credentials', 'unauthenticated'],
       ['CAS write denied', 'permission-denied'],
@@ -912,9 +912,7 @@ describe('native Buck cache evidence projection', () => {
     for (const code of [-1, 17, 1.5, '07', 'permission_denied', '7 secret', 'secret!'])
       expect(decodeGrpcCode(code)).toBeNull()
     expect(decodeCacheUploadErrors(undefined)).toBeUndefined()
-    expect(
-      decodeCacheUploadErrors([{ error: 'historical secret!', reErrorCode: 'secret!' }]),
-    ).toEqual([{ category: 'other', reErrorCode: null }])
+    expect(() => decodeCacheUploadErrors([{ reErrorCode: 7 }])).toThrow()
     expect(decodeCacheUploadErrors([{ category: 'deadline', reErrorCode: 4 }])).toEqual([
       { category: 'deadline', reErrorCode: 4 },
     ])
