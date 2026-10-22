@@ -49,6 +49,12 @@ export const countActionExclusions = (
   }
   return counts
 }
+/** Native first four digest bytes, not a full content digest. No paths or kinds are logged. */
+export type OutputTinyDigests = {
+  algorithm: 'buck2-tiny-digest-v1'
+  /** Native emitted order; compare indices only within the same action digest. */
+  outputs: { index: number; tinyDigest: string }[]
+}
 export type ActionRecord = {
   type: 'action'
   buildId: string | null
@@ -69,6 +75,8 @@ export type ActionRecord = {
   /** Action end bounds successful upload completion; never derived from wall_time. */
   uploadCompletedAt: number | null
   commandAction: boolean
+  /** Absent for unselected actions and logs/artifacts without output evidence. */
+  outputTinyDigests?: OutputTinyDigests
 }
 export type ActionInvocation = {
   buildId: string

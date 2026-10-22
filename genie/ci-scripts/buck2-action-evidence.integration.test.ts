@@ -7,7 +7,7 @@ import { gunzipSync } from 'node:zlib'
 
 import { decodeActionArtifact } from './buck2-action-evidence-codec.ts'
 import { actionsArtifactName, localMaterializationCategories } from './buck2-action-evidence.ts'
-import type { CacheEvidence } from './buck2-cache-evidence.ts'
+import { decodeCacheEvidence, type CacheEvidence } from './buck2-cache-evidence.ts'
 import { decodeEvidence } from './buck2-cache-warm99.ts'
 
 const collector = new URL('./buck2-cache-evidence.ts', import.meta.url).pathname
@@ -54,6 +54,7 @@ const nativeLog = (
         ...action,
         execution_kind: localCache === true ? 10 : executionKind,
         cache_upload_result: localCache === true ? 3 : executionKind === 3 ? 0 : 1,
+        outputs: [{ tiny_digest: 'deadbeef' }, { tiny_digest: '01234567' }],
         commands:
           localCache === true
             ? []
@@ -131,6 +132,19 @@ describe('complete normalized action artifact CLI', () => {
       const summary: CacheEvidence = await Bun.file(output).json()
       const bytes = new Uint8Array(await Bun.file(actions).arrayBuffer())
       const full = decodeEvidence({ compressed: bytes, summary, expectedLane: 'main-writer' })
+      const expectedOutputs = {
+        algorithm: 'buck2-tiny-digest-v1',
+        outputs: [{ index: 0, tinyDigest: 'deadbeef' }, { index: 1, tinyDigest: '01234567' }],
+      }
+      expect(full.actions.every((action) =>
+        JSON.stringify(action.outputTinyDigests) === JSON.stringify(expectedOutputs),
+      )).toBe(true)
+      expect(decodeActionArtifact(
+        `${[full.header, ...full.actions].map((row) => JSON.stringify(row)).join('\n')}\n`,
+      )).toEqual(full)
+      expect(decodeCacheEvidence(summary).actions.every((action) =>
+        JSON.stringify(action.outputTinyDigests) === JSON.stringify(expectedOutputs),
+      )).toBe(true)
       expect(summary.actionCount).toBe(100 * (localMaterializationCategories.length + 1))
       expect(summary.actions).toHaveLength(localMaterializationCategories.length + 1)
       expect(summary.counts['remote-hit']).toBe(100 * (localMaterializationCategories.length + 1))
