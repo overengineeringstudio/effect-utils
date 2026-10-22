@@ -133,6 +133,146 @@ is emitted. The resource carries the writer's `host.name`, host-derived
 Backends may promote bounded host resource attributes to labels under their
 own cardinality policy; resource presence alone does not guarantee promotion.
 
+### Cache lane evidence join
+
+```text
+producing workflows → created-bounded run pages → UTC-day/lane run selection
+  → artifacts per selected run → strict evidence → warm99 join → daily gauges
+                                                              ├─ OTLP metric spool
+                                                              └─ Prometheus text
+```
+
+The repository-owned `buck2-cache-join` entrypoint joins retained GitHub CI
+action evidence independently of trace retention. Its canonical metric names
+belong to the repository-local `buck2.cache` namespace; lowercase dotted OTel
+names translate to Prometheus by replacing dots with underscores, with no
+counter suffix because these are gauges.
+
+Run `bun genie/ci-scripts/buck2-cache-join-cli.ts --repo owner/name --since 24h`
+locally with `GITHUB_TOKEN` in the environment (Actions read access). Output
+defaults to Prometheus text; `--format json` emits the same counts as JSON.
+`--until` accepts an ISO-8601 instant or duration; `--previous-utc-day` selects
+the scheduled day window instead of `--since`/`--until`. Discovery lists runs
+only for the evidence-producing workflows `ci.yml`, `empirical-proofs.yml`,
+`storybook-plays.yml`, and `storybook-preview-build.yml`, using
+`GET /repos/{owner}/{repo}/actions/workflows/{workflow_id}/runs` with a bounded
+`created` filter and pagination. The requested run `created_at` interval is
+half-open; inclusive API bounds are filtered back to that exact interval.
+Discovery never uses the repository artifact listing endpoint. The
+`compiled-products.yml` workflow is omitted because its evidence producers
+are deliberately disabled.
+
+Runs are grouped by UTC creation day and discovered lane cohort. Every
+`main-writer` run is selected. The `merge_group` cohort selects at most 50
+runs per UTC day, ordered by numeric run ID; it supplies both writer evidence
+and the R09 reader lane. Each `main-reader` and `pr` cohort selects at most 25
+runs per UTC day, ordered by ascending `created_at` then numeric run ID.
+For a cohort of size `L` and limit `N`, select all if `L <= N`; otherwise select
+indices `floor(i * (L - 1) / (N - 1))` for `i = 0..N-1`.
+This deterministic, evenly spaced sample includes both endpoints; a
+one-element sample selects the first run. Sampling is by run, not artifact or
+job: the `ci.yml` main-writer cohort also retains its reader jobs. Discovered
+cohorts control selection, never strict action eligibility.
+
+Only after run selection does collection paginate
+`GET /repos/{owner}/{repo}/actions/runs/{run_id}/artifacts` for each selected
+run. Expired evidence artifacts are not downloaded and contribute evidence
+gaps. Known artifact names for deliberately disabled lanes are skipped without
+a gap; unknown lane names are downloaded and only dropped after strict
+evidence decoding establishes a deliberately unassigned lane. Artifact names
+never replace decoded evidence as the eligibility authority.
+
+Collection caps the window at 31 days, 1,000 observed runs, 2,000 selected
+artifacts, 80 MiB per ZIP and 2 GiB downloaded overall. Downloads use at most
+two concurrent requests, with 250 ms pacing before each GitHub request. The
+normal daily collection target is at most about 700 GitHub calls; the hard cap is
+800, counting every request attempt, including every retry. Transport failures
+and HTTP 5xx responses receive backoff with at most three attempts total per
+request, not three retries. Every attempt must satisfy the hard cap and the
+remaining-budget floor of 200, reserving headroom for in-flight requests.
+Reaching the API-call cap or remaining-budget floor emits an explicit repo-only
+`buck2.cache.join.evidence_gaps` observation, preserves independent valid
+observations already collected, and reports `budget_stopped` on stderr and
+collection metadata in JSON output; it never presents a partial join as complete.
+Artifact and byte safety caps fail rather than silently truncating. Temporary
+evidence is removed on exit.
+
+| Canonical OTel name                             | Prometheus translation                          | Point labels         |
+| ----------------------------------------------- | ----------------------------------------------- | -------------------- |
+| `buck2.cache.lane.eligible_actions`             | `buck2_cache_lane_eligible_actions`             | repo, lane, platform |
+| `buck2.cache.lane.remote_hit_actions`           | `buck2_cache_lane_remote_hit_actions`           | repo, lane, platform |
+| `buck2.cache.lane.avoidable_miss_actions`       | `buck2_cache_lane_avoidable_miss_actions`       | repo, lane, platform |
+| `buck2.cache.lane.local_actions`                | `buck2_cache_lane_local_actions`                | repo, lane, platform |
+| `buck2.cache.lane.cold_actions`                 | `buck2_cache_lane_cold_actions`                 | repo, lane, platform |
+| `buck2.cache.lane.evidence_gaps`                | `buck2_cache_lane_evidence_gaps`                | repo, lane, platform |
+| `buck2.cache.join.artifacts`                    | `buck2_cache_join_artifacts`                    | repo                 |
+| `buck2.cache.join.runs`                         | `buck2_cache_join_runs`                         | repo                 |
+| `buck2.cache.join.runs_seen`                    | `buck2_cache_join_runs_seen`                    | repo, lane           |
+| `buck2.cache.join.runs_selected`                | `buck2_cache_join_runs_selected`                | repo, lane           |
+| `buck2.cache.join.artifacts_selected`           | `buck2_cache_join_artifacts_selected`           | repo, lane           |
+| `buck2.cache.join.window_end_timestamp_seconds` | `buck2_cache_join_window_end_timestamp_seconds` | repo                 |
+| `buck2.cache.join.evidence_gaps`                | `buck2_cache_join_evidence_gaps`                | repo                 |
+
+CE1 (REUSE-R08) is `avoidable_miss_actions / eligible_actions` per lane.
+CE2 (REUSE-R09) is
+`remote_hit_actions / eligible_actions` for `merge_group` and `pr`; CE3
+(REUSE-R10) is the same ratio for `main-reader`. These are sampled ratios of
+the summed selected action counts, not a mean of per-run percentages or an
+extrapolation to unsampled runs. All main-writer runs and sampled merge-group
+runs supply writer evidence; all sampled cohorts measure only their selected
+runs. With merge-group writers sampled, CE1 avoidable-miss counts are a lower
+bound: omitted writers can hide eligible misses. Eligibility and reported
+ratios are computed against the selected writer cohort, not an inferred full
+population. A zero eligible denominator means no measured rate, not a
+zero-percent hit rate.
+Preserve raw counts, selection coverage, and evidence gaps alongside ratios;
+intentional sampling is not itself an evidence gap.
+
+- **CE1 Eligibility and counts:** The production warm99 join supplies exact
+  identity eligibility: a successful upload by a writer-posture `main-writer`
+  or `merge_group` artifact must finish strictly before the fresh reader
+  invocation starts. Identity includes category, target, configuration and
+  digest; another digest is cold, not an avoidable miss. Eligible remote hits
+  use the native remote-hit execution kind; avoidable misses are eligible
+  minus hits. Local actions count local command execution kinds, including
+  successful uploads. Counts deduplicate identities within a reader artifact,
+  then sum independent fresh reader artifacts. Replayed invocation evidence
+  contributes a gap, not another observation.
+- **CE2 Bounded dimensions and incomplete evidence:** `lane` is one of
+  `main-reader`, `merge_group`, `pr`, `main-writer`; `platform` is `linux`,
+  `darwin`, or `unknown`. An explicit producer-job map assigns platform;
+  unrecognized jobs remain `unknown` rather than guessing from substrings.
+  `repo` is the selected public owner/name. No target, digest, run ID, job
+  name, trace ID, or host appears as a point label. Missing or invalid evidence
+  contributes gaps without invalidating independent valid observations.
+  Deliberately unassigned metadata lanes are ignored. Unassignable gaps appear
+  in the repo-only join gap gauge; assignable gaps appear in lane/platform
+  gauges. `join.runs` counts selected runs; `join.artifacts` counts all
+  evidence-prefix artifacts discovered in those runs before expired/disabled
+  filtering, including evidence that could not be decoded. Per-lane selection
+  gauges use the discovered run cohort, not the decoded evidence lane, with
+  `repo,lane` labels only: `runs_seen` counts runs before sampling,
+  `runs_selected` counts retained runs, and `artifacts_selected` counts
+  downloadable selected artifacts. Action gauges remain attributed by the
+  strictly decoded lane and platform.
+- **CE3 Day and delivery semantics:** Counts, including the per-lane
+  `buck2.cache.join` selection metrics, are UTC-day window-total gauges, not
+  monotonic counters. Previous-day mode selects the previous complete UTC
+  day `[00:00Z, 24:00Z)`, not a rolling 24-hour window. Every OTLP
+  point uses that selected window's exclusive end as `timeUnixNano`, never the
+  execution time. Re-exporting a day therefore addresses the same sample
+  timestamp rather than adding another day's count. These window-total gauges
+  must not be queried with `rate()` or `increase()`. Prometheus text samples
+  carry the same window-end timestamp in milliseconds; HELP and TYPE metadata
+  carry no timestamp. OTLP resources identify
+  `service.name=effect-utils-buck2` and `service.namespace=infra`; the CLI writes
+  the existing pending metric spool format rather than introducing transport.
+  The backend must accept samples at least 27 h old; the reference deployment
+  allows 48 h. Its Mimir `out_of_order_time_window=48h` covers both the
+  scheduled 03:17 UTC export (about 3.3 h after the sample timestamp) and
+  manual previous-day exports (at most 24 h after it); the old-sample rejection
+  limit is higher.
+
 ## Conformance
 
 - Determinism: same local log and sidecar context → byte-identical views.

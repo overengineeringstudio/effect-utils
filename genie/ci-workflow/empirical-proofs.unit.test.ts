@@ -295,3 +295,78 @@ test('historical source measurements retain any-ref dispatch backfills', () => {
     ).toBe(false)
   }
 })
+
+test('daily cache join is isolated from required CI and other empirical jobs', () => {
+  const jobId = 'buck2-cache-join'
+  const job = empiricalWorkflow.data.jobs[jobId]!
+  expect(ciWorkflow.data.jobs[jobId]).toBeUndefined()
+  expect(requiredCIJobs.includes(jobId)).toBe(false)
+  expect(requiredCIJobs.includes(job.name ?? jobId)).toBe(false)
+  expect(job['continue-on-error']).toBe(true)
+  expect(job['runs-on']).toBe('ubuntu-latest')
+  expect(job.needs).toBeUndefined()
+  for (const [otherId, otherJob] of Object.entries(empiricalWorkflow.data.jobs)) {
+    if (otherId === jobId) continue
+    expect(otherJob.steps.some((step) => step.name === 'Require daily cache metrics export')).toBe(
+      false,
+    )
+    const dependencies = otherJob.needs
+    expect(
+      typeof dependencies === 'string' ? dependencies === jobId : dependencies?.includes(jobId),
+    ).not.toBe(true)
+  }
+})
+
+test('daily cache join admits only scheduled and manual runs, including branch dispatches', () => {
+  for (const ref of ['refs/heads/main', 'refs/heads/feature']) {
+    expect(admitted('buck2-cache-join', 'schedule', ref)).toBe(true)
+    expect(admitted('buck2-cache-join', 'workflow_dispatch', ref)).toBe(true)
+    expect(admitted('buck2-cache-join', 'push', ref)).toBe(false)
+  }
+  for (const event of ['pull_request', 'pull_request_target', 'merge_group']) {
+    expect(
+      admitted(
+        'buck2-cache-join',
+        event,
+        'refs/pull/1/merge',
+        'labeled',
+        ['ci:heavy-proofs'],
+        'ci:heavy-proofs',
+      ),
+    ).toBe(false)
+  }
+  expect(proofWorkflow).toContain('cron: 17 3 * * *')
+})
+
+test('daily cache join has read-only GitHub access and uses the previous-day metrics spool', () => {
+  const job = empiricalWorkflow.data.jobs['buck2-cache-join']!
+  expect(job.permissions).toEqual({ contents: 'read', actions: 'read', 'id-token': 'write' })
+  expect(job.env?.BUCK2_PUBLIC_CACHE_READ_ONLY).toBe('1')
+  const join = job.steps.find((step) => step.name === 'Join previous UTC day cache evidence')
+  expect(join?.env?.GITHUB_TOKEN).toBe('${{ github.token }}')
+  expect(join !== undefined && 'run' in join ? join.run : undefined).toContain(
+    '--repo "$GITHUB_REPOSITORY" --previous-utc-day --otlp-spool "$spool/pending"',
+  )
+  expect(JSON.stringify(job).match(/secrets\.[A-Z_]+/g)).toBeNull()
+})
+
+test('daily cache export postcheck follows telemetry export and fails on pending chunks', () => {
+  const steps = empiricalWorkflow.data.jobs['buck2-cache-join']!.steps
+  const exportIndex = steps.findIndex(
+    (step) => typeof step.run === 'string' && step.run.includes('evidence-job.sh export'),
+  )
+  const checkIndex = steps.findIndex((step) => step.name === 'Require daily cache metrics export')
+  expect(exportIndex).toBeGreaterThanOrEqual(0)
+  expect(checkIndex).toBeGreaterThan(exportIndex)
+  const check = steps[checkIndex]!
+  expect(check['continue-on-error']).not.toBe(true)
+  expect(check.if).toBeUndefined()
+  expect('run' in check ? check.run : undefined).toContain(
+    ': "${BUCK2_CACHE_JOIN_PENDING:?join did not declare its metrics spool}"',
+  )
+  expect('run' in check ? check.run : undefined).toContain(
+    'chunks=("$BUCK2_CACHE_JOIN_PENDING"/*.metrics.chunk)',
+  )
+  expect('run' in check ? check.run : undefined).toContain('if (( ${#chunks[@]} != 0 )); then')
+  expect('run' in check ? check.run : undefined).toContain('exit 1')
+})

@@ -1,12 +1,47 @@
 import {
   ciMeasurementBaselineWorkflowDispatchInputs,
   ciWorkflow,
+  checkoutStep,
+  installNixStep,
+  linuxSandboxPrerequisitesStep,
+  prepareCiScriptsStep,
+  preparePinnedDevenvStep,
+  runDevenvTasksBefore,
+  withCiSourceRoot,
   type CiWorkflowArgs,
 } from '../../genie/ci-workflow.ts'
 import { withBuck2CacheEvidence } from '../../genie/ci-workflow/buck2-cache-evidence.ts'
 import { withBuck2CachePostures } from '../../genie/ci-workflow/buck2-cache-posture.ts'
 import { withPipelineTelemetry } from '../../genie/ci-workflow/pipeline-telemetry.ts'
 import { empiricalProofJobs } from './ci.yml.genie.ts'
+
+/** Keep export failures visible on the nonblocking daily job, without changing other jobs. */
+const withCacheJoinExportCheck = (jobs: CiWorkflowArgs['jobs']): CiWorkflowArgs['jobs'] => {
+  const daily = jobs['buck2-cache-join']!
+  return {
+    ...jobs,
+    'buck2-cache-join': {
+      ...daily,
+      steps: [
+        ...daily.steps,
+        {
+          name: 'Require daily cache metrics export',
+          shell: 'bash',
+          run: [
+            'set -euo pipefail',
+            ': "${BUCK2_CACHE_JOIN_PENDING:?join did not declare its metrics spool}"',
+            'shopt -s nullglob',
+            'chunks=("$BUCK2_CACHE_JOIN_PENDING"/*.metrics.chunk)',
+            'if (( ${#chunks[@]} != 0 )); then',
+            '  printf "Unexported cache metrics chunk: %s\\n" "${chunks[@]}" >&2',
+            '  exit 1',
+            'fi',
+          ].join('\n'),
+        },
+      ],
+    },
+  }
+}
 
 export default ciWorkflow({
   trustTier: 'public',
@@ -29,13 +64,58 @@ export default ciWorkflow({
   },
   permissions: { contents: 'read', 'id-token': 'write' },
   jobs: withBuck2CachePostures({
-    jobs: withPipelineTelemetry(withBuck2CacheEvidence(empiricalProofJobs)),
+    jobs: withCacheJoinExportCheck(
+      withPipelineTelemetry({
+        ...withBuck2CacheEvidence(empiricalProofJobs),
+        'buck2-cache-join': {
+          name: 'ci/buck2-cache-join',
+          if: "${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}",
+          'runs-on': 'ubuntu-latest',
+          'continue-on-error': true,
+          'timeout-minutes': 30,
+          permissions: { contents: 'read', actions: 'read', 'id-token': 'write' },
+          steps: [
+            checkoutStep(),
+            installNixStep(),
+            linuxSandboxPrerequisitesStep({ privileged: 'always' }),
+            prepareCiScriptsStep,
+            preparePinnedDevenvStep,
+            {
+              name: 'Prepare source script dependencies',
+              env: { GITHUB_TOKEN: '${{ github.token }}' },
+              run: runDevenvTasksBefore('buck2:editor:bootstrap'),
+            },
+            {
+              name: 'Join previous UTC day cache evidence',
+              shell: 'bash',
+              env: { GITHUB_TOKEN: '${{ github.token }}' },
+              run: withCiSourceRoot(
+                [
+                  'set -euo pipefail',
+                  '"${DEVENV_BIN:?DEVENV_BIN not set}" shell -- bash -euo pipefail -c \'',
+                  '  cd "${GITHUB_WORKSPACE:?}"',
+                  '  args=()',
+                  '  if [ -n "${PIPELINE_MATRIX_RUNNER:-}" ]; then args+=("runner=$PIPELINE_MATRIX_RUNNER"); fi',
+                  '  read -r trace_assignment root_assignment <<< "$(otel-span pipeline-derive "$PIPELINE_RUN_ID" "$PIPELINE_JOB_KEY" "${args[@]}")"',
+                  '  spool="$PWD/.devenv/otel/run-records/${trace_assignment#trace=}-${root_assignment#root=}"',
+                  '  mkdir -p "$spool/spans" "$spool/buck2" "$spool/pending"',
+                  '  printf "BUCK2_CACHE_JOIN_PENDING=%s\\n" "$spool/pending" >> "$GITHUB_ENV"',
+                  '  bun genie/ci-scripts/buck2-cache-join-cli.ts --repo "$GITHUB_REPOSITORY" --previous-utc-day --otlp-spool "$spool/pending"',
+                  "'",
+                ].join('\n'),
+              ),
+            },
+          ],
+        },
+      }),
+    ),
     postures: {
       'bootstrap-cold-proof': 'reader',
       'test-megarepo-cold-gc': 'reader',
       'nix-closure-sizes': 'reader',
       'main-source-shape': 'reader',
       'ci-measurements-report': 'reader',
+      'buck2-cache-join': 'reader',
       'devenv-perf': {
         posture: 'reader',
         disabledWhen:
