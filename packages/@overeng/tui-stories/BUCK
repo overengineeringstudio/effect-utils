@@ -7,7 +7,7 @@ load("//buck2/products:defs.bzl", "javascript_product")
 # Projection source: packages/@overeng/tui-stories/BUCK.genie.ts
 # Projection schema version: 13
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:9714aa82c1c79eb01ccbf88e9c68f86f5de4714972ae500c5eee5720c847a555
+# Semantic fingerprint: sha256:40dd1b0f88ef7d787dab962a354a67b1e6003a07cd8547fc2465557d873b29e2
 # Regenerate: devenv tasks run genie:run
 
 load("//buck2:materialization.bzl", "export_materialization_inputs", "package_view")
@@ -404,6 +404,7 @@ package_view(
         "node_modules/@overeng/megarepo/src/sync/types.ts": "//packages/@overeng/megarepo:src/sync/types.ts",
         "node_modules/@overeng/megarepo/src/test-utils/consoleCapture.ts": "//packages/@overeng/megarepo:src/test-utils/consoleCapture.ts",
         "node_modules/@overeng/megarepo/src/test-utils/git-env-setup.ts": "//packages/@overeng/megarepo:src/test-utils/git-env-setup.ts",
+        "node_modules/@overeng/megarepo/src/test-utils/git-fixture.ts": "//packages/@overeng/megarepo:src/test-utils/git-fixture.ts",
         "node_modules/@overeng/megarepo/src/test-utils/git-writer-lock-worker.ts": "//packages/@overeng/megarepo:src/test-utils/git-writer-lock-worker.ts",
         "node_modules/@overeng/megarepo/src/test-utils/json.ts": "//packages/@overeng/megarepo:src/test-utils/json.ts",
         "node_modules/@overeng/megarepo/src/test-utils/memory-probe.ts": "//packages/@overeng/megarepo:src/test-utils/memory-probe.ts",
@@ -787,6 +788,7 @@ package_view(
         "node_modules/@overeng/megarepo/src/sync/types.ts": "//packages/@overeng/megarepo:src/sync/types.ts",
         "node_modules/@overeng/megarepo/src/test-utils/consoleCapture.ts": "//packages/@overeng/megarepo:src/test-utils/consoleCapture.ts",
         "node_modules/@overeng/megarepo/src/test-utils/git-env-setup.ts": "//packages/@overeng/megarepo:src/test-utils/git-env-setup.ts",
+        "node_modules/@overeng/megarepo/src/test-utils/git-fixture.ts": "//packages/@overeng/megarepo:src/test-utils/git-fixture.ts",
         "node_modules/@overeng/megarepo/src/test-utils/git-writer-lock-worker.ts": "//packages/@overeng/megarepo:src/test-utils/git-writer-lock-worker.ts",
         "node_modules/@overeng/megarepo/src/test-utils/json.ts": "//packages/@overeng/megarepo:src/test-utils/json.ts",
         "node_modules/@overeng/megarepo/src/test-utils/memory-probe.ts": "//packages/@overeng/megarepo:src/test-utils/memory-probe.ts",
@@ -1170,6 +1172,7 @@ package_view(
         "node_modules/@overeng/megarepo/src/sync/types.ts": "//packages/@overeng/megarepo:src/sync/types.ts",
         "node_modules/@overeng/megarepo/src/test-utils/consoleCapture.ts": "//packages/@overeng/megarepo:src/test-utils/consoleCapture.ts",
         "node_modules/@overeng/megarepo/src/test-utils/git-env-setup.ts": "//packages/@overeng/megarepo:src/test-utils/git-env-setup.ts",
+        "node_modules/@overeng/megarepo/src/test-utils/git-fixture.ts": "//packages/@overeng/megarepo:src/test-utils/git-fixture.ts",
         "node_modules/@overeng/megarepo/src/test-utils/git-writer-lock-worker.ts": "//packages/@overeng/megarepo:src/test-utils/git-writer-lock-worker.ts",
         "node_modules/@overeng/megarepo/src/test-utils/json.ts": "//packages/@overeng/megarepo:src/test-utils/json.ts",
         "node_modules/@overeng/megarepo/src/test-utils/memory-probe.ts": "//packages/@overeng/megarepo:src/test-utils/memory-probe.ts",

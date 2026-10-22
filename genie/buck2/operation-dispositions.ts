@@ -37,6 +37,7 @@ export const developerOperationDispositions = {
   'test:run': 'outside-by-policy:aggregate-includes-policy-excluded-tests',
   'test:utils': 'outside-by-policy:aggregate-includes-policy-excluded-tests',
   'test:watch': 'outside-by-policy:long-lived-watcher',
+  'worktree:teardown': 'outside-by-policy:host-local-maintenance',
 } as const satisfies Record<string, OperationDisposition>
 
 export const validationOperationDispositions = {
