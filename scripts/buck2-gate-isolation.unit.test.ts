@@ -77,6 +77,49 @@ it('retains ambiguous run forms instead of selecting an isolation from executabl
     expect(resolveGateInvocation({ args, env: {}, cwd })).toBeUndefined()
 })
 
+it('registration resolves run isolation before explicit or positional executable payloads', () => {
+  for (const payload of [
+    ['--', '--isolation-dir=other'],
+    ['positional', '--isolation-dir=other'],
+  ]) {
+    expect(
+      resolveGateInvocation({
+        args: ['run', '//:target', ...payload],
+        env: {},
+        cwd,
+        strictRunArguments: false,
+      }),
+    ).toEqual({ isolation: 'v2', args: ['run', '//:target'] })
+    expect(
+      resolveGateInvocation({
+        args: ['run', '--chdir', 'directory', '//:target', '--config', 'a.b=c', ...payload],
+        env: { BUCK_ISOLATION_DIR: 'owned' },
+        cwd,
+        strictRunArguments: false,
+      }),
+    ).toEqual({
+      isolation: 'owned',
+      args: ['run', '--chdir', 'directory', '//:target', '--config', 'a.b=c'],
+    })
+    expect(
+      resolveGateInvocation({
+        args: ['--isolation-dir=owned', 'run', '//:target', ...payload],
+        env: {},
+        cwd,
+        strictRunArguments: false,
+      })?.isolation,
+    ).toBe('owned')
+  }
+  expect(
+    resolveGateInvocation({
+      args: ['run', '//:target', '--isolation-dir=owned'],
+      env: {},
+      cwd,
+      strictRunArguments: false,
+    })?.isolation,
+  ).toBe('owned')
+})
+
 it('returns only Buck arguments, preserving the native run/test payload boundary', () => {
   for (const command of ['run', 'test', 'install', 'bxl']) {
     const buckArgs = ['--isolation-dir', 'owned', command, '//:target']
