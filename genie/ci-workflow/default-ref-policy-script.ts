@@ -7,6 +7,7 @@ const cwd = process.cwd()
 const firstPartyOwners = new Set(JSON.parse(process.env.FIRST_PARTY_OWNERS_JSON).map((owner) => owner.toLowerCase()))
 const defaultRef = process.env.DEFAULT_REF || 'main'
 const defaultRefs = new Map(Object.entries(JSON.parse(process.env.DEFAULT_REFS_JSON || '{}')).map(([repo, ref]) => [repo.toLowerCase(), ref]))
+const refPolicies = new Map(Object.entries(JSON.parse(process.env.DEFAULT_REF_POLICIES_JSON || '{}')).map(([repo, policy]) => [repo.toLowerCase(), policy]))
 const verifyReachable = process.env.VERIFY_REACHABLE === '1'
 const allowLegacyMemberCommitRefs = process.env.ALLOW_LEGACY_MEMBER_COMMIT_REFS === '1'
 const violations = []
@@ -15,7 +16,10 @@ const repoKey = (repo) => repo.owner.toLowerCase() + '/' + repo.repo.toLowerCase
 const isFirstParty = (repo) => firstPartyOwners.has(repo.owner.toLowerCase())
 const normalizeGitBranchRefs = process.env.NORMALIZE_GIT_BRANCH_REFS === '1'
 const normalizeRef = (ref) => normalizeGitBranchRefs && ref.startsWith('refs/heads/') ? ref.slice('refs/heads/'.length) : ref
-const expectedRefFor = (repo) => normalizeRef(defaultRefs.get(repoKey(repo)) || defaultRef)
+const expectedRefFor = (repo) => normalizeRef(defaultRefs.get(repoKey(repo)) || refPolicies.get(repoKey(repo))?.defaultRef || defaultRef)
+const acceptedRefsFor = (repo) => defaultRefs.has(repoKey(repo))
+  ? [expectedRefFor(repo)]
+  : (refPolicies.get(repoKey(repo))?.acceptedRefs || [expectedRefFor(repo)]).map(normalizeRef)
 const immutableCommitRef = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/i
 const isAllowedLegacyMemberRef = ({ memberName, ref }) =>
   allowLegacyMemberCommitRefs &&
@@ -72,10 +76,12 @@ const parseGithubLikeRef = (value) => {
 }
 
 const addRefViolation = ({ file, repo, ref, field, inputName, memberName }) => {
-  if (!repo || !ref || !isFirstParty(repo)) return
+  if (!repo || !isFirstParty(repo)) return
+  if (!ref && field !== 'members.ref') return
   const expectedRef = expectedRefFor(repo)
-  const normalizedRef = normalizeRef(ref)
-  if (normalizedRef === expectedRef) return
+  const normalizedRef = normalizeRef(ref ?? '')
+  const acceptedRefs = acceptedRefsFor(repo)
+  if (acceptedRefs.includes(normalizedRef)) return
   if (isAllowedLegacyMemberRef({ memberName, ref: normalizedRef })) return
   violations.push({
     type: 'ref',
@@ -83,6 +89,7 @@ const addRefViolation = ({ file, repo, ref, field, inputName, memberName }) => {
     repo: repoKey(repo),
     ref: normalizedRef,
     expectedRef,
+    acceptedRefs,
     field,
     inputName,
     memberName,
@@ -308,7 +315,8 @@ if (verifyReachable) {
     ) {
       continue
     }
-    const expectedRef = expectedRefFor(repo)
+    const expectedRef = typeof member.ref === 'string' ? normalizeRef(member.ref) : expectedRefFor(repo)
+    if (!acceptedRefsFor(repo).includes(expectedRef)) continue
     const remote = 'https://github.com/' + repo.owner + '/' + repo.repo + '.git'
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'default-ref-policy-'))
     let ok = false
@@ -325,7 +333,7 @@ if (verifyReachable) {
       fs.rmSync(tmp, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 })
     }
     if (!ok) {
-      violations.push({ type: 'reachability', file: 'megarepo.lock', repo: repoKey(repo), rev: member.commit, expectedRef, memberName })
+      violations.push({ type: 'reachability', file: 'megarepo.lock', repo: repoKey(repo), rev: member.commit, expectedRef, defaultRef: expectedRefFor(repo), acceptedRefs: acceptedRefsFor(repo), memberName })
     }
   }
 }
@@ -338,10 +346,10 @@ if (violations.length === 0) {
 console.error('Default ref policy failed:')
 for (const violation of violations) {
   if (violation.type === 'reachability') {
-    console.error('  - ' + violation.file + ': member ' + violation.memberName + ' ' + violation.repo + ' locks ' + violation.rev.slice(0, 12) + " outside '" + violation.expectedRef + "'")
+    console.error('  - ' + violation.file + ': member ' + violation.memberName + ' ' + violation.repo + ' locks ' + violation.rev.slice(0, 12) + " outside '" + violation.expectedRef + "'; default '" + violation.defaultRef + "'; accepted refs: " + violation.acceptedRefs.join(', '))
   } else {
     const name = violation.memberName ? ' member ' + violation.memberName : violation.inputName ? ' input ' + violation.inputName : ''
-    console.error('  - ' + violation.file + ':' + name + ' ' + violation.repo + " uses ref '" + violation.ref + "' in " + violation.field + "; expected '" + violation.expectedRef + "'")
+    console.error('  - ' + violation.file + ':' + name + ' ' + violation.repo + " uses ref '" + violation.ref + "' in " + violation.field + "; default '" + violation.expectedRef + "'; accepted refs: " + violation.acceptedRefs.join(', '))
   }
 }
 console.error('')

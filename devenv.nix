@@ -1347,7 +1347,7 @@ in
       cd "''${DEVENV_ROOT:-$PWD}"
       # `./` makes these exact paths; bare arguments are suffix filters that
       # also match the copies Buck stages under buck-out.
-      ${pkgs.bun}/bin/bun ./packages/@overeng/buck2-tools/src/bun-test-runner.ts test ./genie/ci-workflow/rust.unit.test.ts ./genie/ci-workflow/setup.unit.test.ts ./genie/ci-workflow/nix-substituter.integration.test.ts
+      ${pkgs.bun}/bin/bun ./packages/@overeng/buck2-tools/src/bun-test-runner.ts test ./genie/ci-workflow/default-ref-policy-script.unit.test.ts ./genie/ci-workflow/rust.unit.test.ts ./genie/ci-workflow/setup.unit.test.ts ./genie/ci-workflow/nix-substituter.integration.test.ts
       exec ${pkgs.bash}/bin/bash ./genie/ci-workflow/published-ref-decide.test.sh
     '';
     execIfModified = [
