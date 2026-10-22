@@ -24,7 +24,12 @@ import { parseArgs } from 'node:util'
 import { gzipSync, gunzipSync } from 'node:zlib'
 
 import { canonicalCacheAdmissionInvocationId } from '../../scripts/buck2-cache-posture.ts'
-import { decodeActionArtifact, decodeActionExclusionCounts } from './buck2-action-evidence-codec.ts'
+import {
+  createUploadDiagnosticSanitizer,
+  decodeActionArtifact,
+  decodeActionExclusionCounts,
+  decodeCacheUploadErrors,
+} from './buck2-action-evidence-codec.ts'
 import {
   actionExclusionReason,
   actionExclusionReasons,
@@ -40,6 +45,7 @@ import {
   type ActionArtifact,
   type ActionInvocation,
   type ActionRecord,
+  type CacheUploadError,
 } from './buck2-action-evidence.ts'
 
 export const maxCacheEvidenceActions = 64
@@ -85,6 +91,7 @@ export type CacheAction = {
   outcome: CacheOutcome
   executionKind: number
   cacheUploadResult: number
+  uploadErrors?: CacheUploadError[]
 }
 export type CacheInvocation = {
   buildId: string
@@ -433,6 +440,13 @@ const knownActionKinds: Record<string, true> = {
   CasArtifact: true,
 }
 
+const nativeSpanKey = (value: unknown): string | undefined =>
+  typeof value === 'string'
+    ? value
+    : typeof value === 'number' && Number.isSafeInteger(value) === true
+      ? String(value)
+      : undefined
+
 /** Pure incremental projector: add one decoded JSONL value, finish once. */
 export const createCacheEvidenceProjector = ({
   context,
@@ -451,6 +465,10 @@ export const createCacheEvidenceProjector = ({
   let buildId: string | undefined
   const starts = new Map<string, { identity: Identity; startedAt: number | null }>()
   const ended = new Set<string>()
+  const parents = new Map<string, string>()
+  const uploadErrorsByAction = new Map<string, CacheUploadError[]>()
+  const endedUploads = new Set<string>()
+  const sanitizeUploadDiagnostic = createUploadDiagnosticSanitizer()
   let invocationStartedAt: number | null = null
   let invocationCompletedAt: number | null = null
   let invalidActionCount = 0
@@ -473,18 +491,40 @@ export const createCacheEvidenceProjector = ({
       buildId = traceId
     }
     if (event === undefined) return
-    const spanId = field({ value: event, key: 'span_id' })
     // Large u64 ids must not be rounded into a false start/end pairing.
-    const spanKey =
-      typeof spanId === 'string'
-        ? spanId
-        : typeof spanId === 'number' && Number.isSafeInteger(spanId) === true
-          ? String(spanId)
-          : undefined
+    const spanKey = nativeSpanKey(field({ value: event, key: 'span_id' }))
+    const parentKey = nativeSpanKey(field({ value: event, key: 'parent_id' }))
     const data = field({ value: event, key: 'data' })
     const time = eventTime(event)
     const startData = field({ value: field({ value: data, key: 'SpanStart' }), key: 'data' })
     const endData = field({ value: field({ value: data, key: 'SpanEnd' }), key: 'data' })
+    if (startData !== undefined && spanKey !== undefined && parentKey !== undefined)
+      parents.set(spanKey, parentKey)
+    const uploadEnd = field({ value: endData, key: 'CacheUpload' })
+    if (uploadEnd !== undefined) {
+      if (spanKey !== undefined && endedUploads.has(spanKey) === true) return
+      if (spanKey !== undefined) endedUploads.add(spanKey)
+      if (field({ value: uploadEnd, key: 'success' }) === false) {
+        let owner = parentKey ?? (spanKey === undefined ? undefined : parents.get(spanKey))
+        const visited = new Set<string>()
+        while (owner !== undefined && starts.has(owner) === false && visited.has(owner) === false) {
+          visited.add(owner)
+          owner = parents.get(owner)
+        }
+        if (owner !== undefined && starts.has(owner) === true) {
+          const errors = uploadErrorsByAction.get(owner) ?? []
+          const error = text(field({ value: uploadEnd, key: 'error' }))
+          const code = text(field({ value: uploadEnd, key: 're_error_code' }))
+          errors.push({
+            error: error === undefined ? null : sanitizeUploadDiagnostic(error),
+            reErrorCode: code === undefined ? null : sanitizeUploadDiagnostic(code),
+          })
+          uploadErrorsByAction.set(owner, errors)
+        } else invalidActionCount++
+      }
+      if (spanKey !== undefined) parents.delete(spanKey)
+      return
+    }
     if (field({ value: startData, key: 'Command' }) !== undefined) invocationStartedAt = time
     if (field({ value: endData, key: 'Command' }) !== undefined) invocationCompletedAt = time
     const start = field({
@@ -497,13 +537,21 @@ export const createCacheEvidenceProjector = ({
       value: field({ value: field({ value: data, key: 'SpanEnd' }), key: 'data' }),
       key: 'ActionExecution',
     })
-    if (end === undefined) return
+    if (end === undefined) {
+      if (endData !== undefined && spanKey !== undefined) parents.delete(spanKey)
+      return
+    }
     if (spanKey !== undefined) {
       if (ended.has(spanKey) === true) return
       ended.add(spanKey)
     }
     const fallback = spanKey === undefined ? undefined : starts.get(spanKey)
     if (spanKey !== undefined) starts.delete(spanKey)
+    const uploadErrors = spanKey === undefined ? undefined : uploadErrorsByAction.get(spanKey)
+    if (spanKey !== undefined) {
+      uploadErrorsByAction.delete(spanKey)
+      parents.delete(spanKey)
+    }
     const identity = identityFor(end)
     const category = identity.category ?? fallback?.identity.category
     const target = identity.target ?? fallback?.identity.target
@@ -558,6 +606,7 @@ export const createCacheEvidenceProjector = ({
       endTime: time,
       uploadCompletedAt: cacheUploadResult === 1 ? time : null,
       commandAction,
+      ...(uploadErrors === undefined ? {} : { uploadErrors }),
     }
     if (
       row.buildId === null ||
@@ -599,6 +648,7 @@ export const createCacheEvidenceProjector = ({
         outcome,
         executionKind,
         cacheUploadResult,
+        ...(uploadErrors === undefined ? {} : { uploadErrors }),
       },
     })
   }
@@ -818,6 +868,8 @@ export const decodeCacheEvidence = (value: unknown): CacheEvidence => {
       executionKind: count(field({ value: item, key: 'executionKind' })),
       cacheUploadResult: count(field({ value: item, key: 'cacheUploadResult' })),
     }
+    const uploadErrors = decodeCacheUploadErrors(field({ value: item, key: 'uploadErrors' }))
+    if (uploadErrors !== undefined) action.uploadErrors = uploadErrors
     const exclusionReason = field({ value: item, key: 'exclusionReason' })
     if (exclusionReason !== undefined && exclusionReason !== action.exclusionReason)
       throw new Error('Invalid cache evidence exclusion reason')

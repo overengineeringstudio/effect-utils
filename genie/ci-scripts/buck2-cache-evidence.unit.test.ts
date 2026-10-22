@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'bun:test'
 
 import {
+  createUploadDiagnosticSanitizer,
+  decodeCacheUploadErrors,
+} from './buck2-action-evidence-codec.ts'
+import {
   darwinUnsandboxedCategories,
   localMaterializationCategories,
   type ActionInvocation,
@@ -834,6 +838,91 @@ describe('native Buck cache evidence projection', () => {
     expect(JSON.stringify(rows)).not.toContain('private')
     expect(JSON.stringify(rows)).not.toContain('SECRET')
     expect(invocations[0]!.complete).toBe(false)
+  })
+
+  it('redacts auth headers, standalone schemes and configured credentials before capping diagnostics', () => {
+    const secret = 'planted-credential-abcdef'
+    const sanitize = createUploadDiagnosticSanitizer({
+      BUCK2_CACHE_WRITE_BASIC_AUTH: secret,
+      BUCK2_PRIVATE_CACHE_WRITE_BASIC_AUTH: 'private-credential',
+      CUSTOM_AUTHORIZATION: 'custom-credential',
+    })
+    for (const message of [
+      `Authorization: Basic ${secret}`,
+      'authorization: Bearer unconfigured-token',
+      '"Authorization": "Basic unconfigured-token"',
+      "proxy-authorization='Bearer unconfigured-token'",
+      'x-api-key: unconfigured-token',
+      'token=unconfigured-token',
+      'RPC failed with bAsIc unconfigured-token',
+      'RPC failed with BEARER unconfigured-token',
+      `RPC error: ${secret} private-credential custom-credential`,
+    ]) {
+      const result = sanitize(message)
+      expect(result).toContain('[REDACTED]')
+      for (const credential of [secret, 'unconfigured-token', 'private-credential', 'custom-credential'])
+        expect(result).not.toContain(credential)
+    }
+    for (const credential of ['user:pass', 'foo%bar', 'malformed!token?', 'quoted token:with%spaces']) {
+      for (const scheme of ['Basic', 'Bearer']) {
+        const value = credential.includes(' ') === true ? `"${credential}"` : credential
+        const result = sanitize(`RPC failed with ${scheme} ${value}`)
+        expect(result).toBe(`RPC failed with ${scheme} [REDACTED]`)
+        expect(sanitize(result)).toBe(result)
+        expect(result).not.toContain(credential)
+      }
+    }
+    expect(sanitize(`RPC failed: ${'x'.repeat(5000)} ${secret}`)).toHaveLength(4096)
+    expect(decodeCacheUploadErrors(undefined)).toBeUndefined()
+    expect(
+      decodeCacheUploadErrors([
+        { error: 'authorization: Bearer unconfigured-token', reErrorCode: 'Basic unconfigured-token' },
+      ]),
+    ).toEqual([{ error: 'authorization: [REDACTED]', reErrorCode: 'Basic [REDACTED]' }])
+    for (const invalid of [{}, [null], [{ error: 1, reErrorCode: null }]]) {
+      expect(() => decodeCacheUploadErrors(invalid)).toThrow()
+    }
+  })
+
+  it('retains each failed native cache upload, not ReUpload metrics or duplicate ends', () => {
+    const rows: ActionRecord[] = []
+    const projector = createCacheEvidenceProjector({ onAction: (row) => rows.push(row) })
+    projector.add(nativeEvent('SpanStart', fixtureIdentity))
+    const upload = (
+      spanId: number,
+      data: unknown,
+      parentId = 20181,
+      phase: 'SpanStart' | 'SpanEnd' = 'SpanEnd',
+    ) => ({
+      Event: {
+        trace_id: fixtureBuildId,
+        span_id: spanId,
+        parent_id: parentId,
+        data: { [phase]: { data } },
+      },
+    })
+    const failure = upload(30001, {
+      CacheUpload: { success: false, error: 'CAS write denied', re_error_code: 'PERMISSION_DENIED' },
+    })
+    projector.add(failure)
+    projector.add(failure)
+    projector.add(upload(30002, { ExecutorStage: {} }, 20181, 'SpanStart'))
+    projector.add(upload(30003, { CacheUpload: { success: false, error: 'connection reset' } }, 30002))
+    projector.add(upload(30004, { ReUpload: { bytes_uploaded: 0, error: 'NOT_A_NATIVE_FIELD' } }))
+    projector.add(upload(30005, { CacheUpload: { success: true, error: 'IGNORE_SUCCESS' } }))
+    projector.add(upload(30006, { CacheUpload: { success: false, error: '' } }))
+    projector.add(nativeEvent('SpanEnd', actionEnd({ cache_upload_result: 9 })))
+    const result = projector.finish()
+    const expected = [
+      { error: 'CAS write denied', reErrorCode: 'PERMISSION_DENIED' },
+      { error: 'connection reset', reErrorCode: null },
+      { error: null, reErrorCode: null },
+    ]
+    expect(rows[0]?.uploadErrors).toEqual(expected)
+    expect(result.actions[0]?.uploadErrors).toEqual(expected)
+    expect(decodeCacheEvidence(result).actions[0]?.uploadErrors).toEqual(expected)
+    expect(JSON.stringify({ rows, result })).not.toContain('NOT_A_NATIVE_FIELD')
+    expect(JSON.stringify({ rows, result })).not.toContain('IGNORE_SUCCESS')
   })
 
   it('preserves upload rejection and local-dep-file raw classifications without inventing hits', () => {

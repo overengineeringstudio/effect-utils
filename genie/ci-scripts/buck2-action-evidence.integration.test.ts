@@ -17,10 +17,12 @@ const event = (
   spanId: number,
   seconds: number,
   data: unknown,
+  parentId?: number,
 ) => ({
   Event: {
     trace_id: buildId,
     span_id: spanId,
+    parent_id: parentId,
     timestamp: [seconds, 123456789],
     data: { [phase]: { data } },
   },
@@ -96,6 +98,98 @@ const fixtureEnv = {
 }
 
 describe('complete normalized action artifact CLI', () => {
+  it('retains native upload failures across finalization without leaking planted credentials anywhere', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'buck-upload-errors-'))
+    try {
+      const secret = 'planted-upload-auth-8a12c57f'
+      const headerSecret = 'unconfigured-header-64c2e1'
+      const events = join(directory, 'native.jsonl')
+      const output = join(directory, 'buck2-cache-evidence.json')
+      const stepSummary = join(directory, 'step-summary')
+      const env = {
+        ...fixtureEnv,
+        BUCK2_CACHE_WRITE_BASIC_AUTH: secret,
+        BUCK2_PRIVATE_CACHE_WRITE_BASIC_AUTH: `${secret}-private`,
+        CUSTOM_CACHE_AUTH: `${secret}-custom`,
+        GITHUB_STEP_SUMMARY: stepSummary,
+      }
+      const native = nativeLog('upload-failure').trim().split('\n')
+      const failedUpload = (id: number, error: string, code?: string) =>
+        JSON.stringify(
+          event('upload-failure', 'SpanEnd', id, 1700000002, {
+            CacheUpload: {
+              success: false,
+              error,
+              re_error_code: code,
+              // Payloads other than the diagnostic fields must not escape.
+              file_digests: [`PRIVATE_FILE_${secret}`],
+            },
+          }, 2),
+        )
+      await Bun.write(
+        events,
+        [
+          native[0],
+          native[1],
+          failedUpload(
+            500,
+            `CAS write denied; authorization: Basic ${headerSecret}\n` +
+              `Bearer ${headerSecret}\nraw=${secret} ${secret}-private ${secret}-custom`,
+            'PERMISSION_DENIED',
+          ),
+          failedUpload(501, `connection reset ${'x'.repeat(5000)} ${secret}`, secret),
+          native[2]!.replace('"cache_upload_result":1', '"cache_upload_result":9'),
+          JSON.stringify(event('upload-failure', 'SpanEnd', 1, 1700000003, { Command: {} })),
+          '',
+        ].join('\n'),
+      )
+      const transcripts: string[] = []
+      for (const args of [
+        ['--events', events, '--context', 'populate', '--fresh-root'],
+        ['--finalize'],
+      ]) {
+        const child = Bun.spawn([process.execPath, collector, '--output', output, ...args], {
+          env,
+          stdout: 'pipe',
+          stderr: 'pipe',
+        })
+        const [stdout, stderr, exit] = await Promise.all([
+          new Response(child.stdout).text(),
+          new Response(child.stderr).text(),
+          child.exited,
+        ])
+        transcripts.push(stdout, stderr)
+        expect(exit).toBe(0)
+      }
+      const summaryText = await Bun.file(output).text()
+      const raw = gunzipSync(
+        new Uint8Array(await Bun.file(join(directory, actionsArtifactName)).arrayBuffer()),
+      ).toString('utf8')
+      const full = decodeActionArtifact(raw)
+      const summary: CacheEvidence = JSON.parse(summaryText)
+      expect(full.header.complete).toBe(true)
+      expect(full.actions[0]?.uploadOutcome).toBe('failed')
+      expect(full.actions[0]?.uploadErrors).toEqual(summary.actions[0]?.uploadErrors)
+      expect(full.actions[0]?.uploadErrors?.[0]).toMatchObject({
+        error: expect.stringContaining('CAS write denied'),
+        reErrorCode: 'PERMISSION_DENIED',
+      })
+      expect(full.actions[0]?.uploadErrors?.[1]?.error).toHaveLength(4096)
+      expect(full.actions[0]?.uploadErrors?.[1]?.reErrorCode).toBe('[REDACTED]')
+      const allOutput = [
+        summaryText,
+        raw,
+        await Bun.file(stepSummary).text(),
+        ...transcripts,
+      ].join('\n')
+      for (const credential of [secret, headerSecret, 'PRIVATE_FILE'])
+        expect(allOutput).not.toContain(credential)
+      expect(allOutput).toContain('[REDACTED]')
+    } finally {
+      await rm(directory, { recursive: true, force: true })
+    }
+  })
+
   it('preserves exclusions across bounded append, compressed full rows and evaluator decoding', async () => {
     const directory = await mkdtemp(join(tmpdir(), 'buck-actions-policy-'))
     try {

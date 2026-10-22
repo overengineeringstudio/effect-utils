@@ -49,6 +49,11 @@ export const countActionExclusions = (
   }
   return counts
 }
+export type CacheUploadError = {
+  /** Sanitized native CacheUploadEnd.error; null when Buck supplied only a code. */
+  error: string | null
+  reErrorCode: string | null
+}
 export type ActionRecord = {
   type: 'action'
   buildId: string | null
@@ -63,6 +68,8 @@ export type ActionRecord = {
   outcome: CacheOutcome
   cacheOutcome: CacheOutcome
   uploadOutcome: 'uploaded' | 'failed' | 'not-uploaded'
+  /** One entry per failed native CacheUpload span; absent when none were observed. */
+  uploadErrors?: CacheUploadError[]
   startedAt: number | null
   completedAt: number | null
   endTime: number | null

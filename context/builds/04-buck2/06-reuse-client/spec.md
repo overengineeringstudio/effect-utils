@@ -22,6 +22,27 @@ All client configuration, including the overlay below, must exist in
 do not configure the RE client. Change posture by stopping the daemon and
 starting with the new file and environment ([#1598](https://github.com/overengineeringstudio/effect-utils/pull/1598)).
 
+In CI, the entrypoint admits each command against the running daemon's RE
+posture after reconciling the root overlay:
+
+```text
+no daemon -> start with current environment -> record identity + keyed posture
+matching identity + posture -> reuse (including a busy matching daemon)
+idle mismatch or unknown prior posture -> restart -> record
+busy mismatch or unrecognized status -> fail closed, leave daemon untouched
+```
+
+The record is `buck-out/.cache-daemon-posture/<isolation>.json` (mode `0600`).
+It contains a random per-record HMAC key, the SHA-256 HMAC of the expanded RE
+configuration and writer policy, and the daemon PID/start time, never the
+credential itself. Credential rotation changes the fingerprint; neither the key
+nor fingerprint is printed. A crash-released per-isolation flock serializes
+admission. Native status uses the existing gate root/isolation/active-command
+checks. Buck has no conditional kill RPC: a new client can race an idle status
+read, but a daemon already observed busy is never killed. The caller retries a
+busy mismatch after concurrent commands finish. CI bypasses the warm shell
+launch cache so every command checks the daemon identity and posture.
+
 ```ini
 # tracked buckconfig: the repository's trust tier, read-only (decision 0033);
 # -c CLI overrides do not reach the RE client
@@ -428,6 +449,7 @@ Missing fields remain explicit `null`; they do not suppress a row.
 | Times                 | `startedAt`, `completedAt`, `endTime` (same as completedAt), `uploadCompletedAt`                                                            |
 | `commandAction`       | Native action kind is `Run`; non-command actions are retained but do not form a command-cache denominator                                   |
 | `exclusionReason`     | Repository-owned exact reason `local-materialization-policy` for the policy categories; `null` otherwise                                    |
+| `uploadErrors`        | Optional array of `{ error, reErrorCode }`, one per failed native `CacheUpload` end; unavailable text/code is `null`                        |
 
 All times are integer Unix milliseconds. The pinned log decoder emits native
 timestamps as `[seconds,nanoseconds]`; conversion floors sub-millisecond time.
@@ -439,9 +461,27 @@ native enums, decode/discovery errors, checksum mismatches, and truncated data
 invalidate an observation. Legitimate nondigest non-command actions still
 contribute to omission counters, not a fabricated AC identity.
 
+Failed uploads use the pinned `CacheUploadEnd.error` and optional
+`re_error_code`, not `ReUploadEnd` (which contains transfer metrics only).
+Native span ancestry associates each first upload end with its active action;
+duplicate ends do not duplicate diagnostics. An unpaired failed upload
+invalidates invocation completeness. All failed upload attempts remain in the
+full action row, even when a later attempt succeeds. Compact representatives
+carry the same optional `uploadErrors` array; they remain bounded samples, not
+an exhaustive failure list. Absence means no diagnostic was collected, including
+retained evidence produced before native upload diagnostics were collected.
+
+Diagnostic strings are sanitized before retention and when decoding retained
+evidence: authorization/API-key/token/password assignments, standalone
+Basic/Bearer credentials, and nonempty configured auth/token/secret/password/
+credential/API-key environment values become `[REDACTED]`. Each sanitized text
+or code is capped at 4096 characters after redaction. Native file/tree digests
+and other upload payloads are not projected.
+
 The projector emits only allowlisted labels, configuration names, native digest
-strings, enum numbers, times, and run identity. Host paths, environment values,
-commands, outputs, host names, and raw error payloads are never copied. Invalid
+strings, enum numbers, times, run identity, and sanitized bounded upload
+diagnostics. Other host paths, commands, outputs, host names, environment values,
+and raw error payloads are never copied. Invalid
 identity text becomes `null` rather than a lossy replacement key. The
 repository-local mapping identifier has exact case-sensitive spelling and a
 version suffix; unknown versions are rejected, not silently reinterpreted.

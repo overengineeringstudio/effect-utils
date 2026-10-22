@@ -1,11 +1,14 @@
 #!/usr/bin/env -S bun
 import { dlopen } from 'bun:ffi'
 import { spawnSync } from 'node:child_process'
-import { createHash, randomUUID } from 'node:crypto'
+import { createHash, createHmac, randomBytes, randomUUID } from 'node:crypto'
 import {
   appendFileSync,
+  closeSync,
+  fchmodSync,
   existsSync,
   mkdirSync,
+  openSync,
   readFileSync,
   realpathSync,
   renameSync,
@@ -674,6 +677,194 @@ export const reconcileGateDaemon = ({
   }
 }
 
+/** Keyed per-tree digest: neither the credential nor a reusable unsalted digest leaves memory. */
+export const cacheDaemonPostureFingerprint = ({
+  values,
+  env,
+  salt,
+}: {
+  readonly values: Readonly<Record<string, string>>
+  readonly env: Readonly<Record<string, string | undefined>>
+  readonly salt: string
+}): string =>
+  createHmac('sha256', salt)
+    .update(
+      JSON.stringify(
+        Object.entries(values)
+          .filter(
+            ([key]) => key.startsWith('buck2_re_client.') || key === 'buck2.allow_cache_uploads',
+          )
+          .sort(([left], [right]) => left.localeCompare(right))
+          .map(([key, value]) => [
+            key,
+            value.replace(/\$([A-Z_][A-Z0-9_]*)/gu, (_, name: string) => env[name] ?? ''),
+          ]),
+      ),
+    )
+    .digest('hex')
+
+export const cacheDaemonRestartDecision = ({
+  daemon,
+  matched,
+}: {
+  readonly daemon: 'none' | 'idle' | 'busy' | 'unknown'
+  readonly matched: boolean
+}): 'start' | 'reuse' | 'restart' | 'refuse' =>
+  daemon === 'none'
+    ? 'start'
+    : matched === true
+      ? 'reuse'
+      : daemon === 'idle'
+        ? 'restart'
+        : 'refuse'
+
+/**
+ * CI step environments can change while Buck's RE client remains daemon-scoped.
+ * Bind the admitted posture to the actual daemon identity, not just the last invocation.
+ */
+export const reconcileCacheDaemonPosture = ({
+  native,
+  root,
+  args,
+  env,
+}: {
+  readonly native: string
+  readonly root: string
+  readonly args: readonly string[]
+  readonly env: Readonly<Record<string, string | undefined>>
+}): void => {
+  if (env['CI'] !== '1' && env['CI'] !== 'true') return
+  const values = buckConfigValues(
+    `${readConfig({ path: join(root, '.buckconfig') })}\n${readConfig({ path: join(root, '.buckconfig.local') })}`,
+  )
+  if (
+    values['buck2_re_client.action_cache_address'] === undefined &&
+    values['buck2.remote_cache_enabled'] !== 'true'
+  )
+    return
+  const invocation = resolveGateInvocation({ args, env, cwd: process.cwd() })
+  if (invocation === undefined)
+    throw new Error('Buck2 cache posture: cannot safely determine native isolation in CI')
+  if (skipsWatcherAdmission(invocation.args) === true) return
+  const { isolation } = invocation
+  const state = join(root, 'buck-out', '.cache-daemon-posture')
+  mkdirSync(state, { recursive: true, mode: 0o700 })
+  const marker = join(state, `${isolation}.json`)
+  const library = dlopen(
+    process.platform === 'linux' ? 'libc.so.6' : '/usr/lib/libSystem.B.dylib',
+    {
+      flock: { args: ['i32', 'i32'], returns: 'i32' },
+    },
+  )
+  const descriptor = openSync(join(state, `${isolation}.lock`), 'a', 0o600)
+  const options = { cwd: root, env, encoding: 'utf8' as const, timeout: 30000 }
+  const call = (command: readonly string[]) => {
+    const result = spawnSync(native, ['--isolation-dir', isolation, ...command], {
+      ...options,
+      env: { ...env, BUCK_WRAPPER_UUID: randomUUID() },
+    })
+    // Native stderr can contain RE diagnostics/headers. Never include it in an admission error.
+    if (result.error !== undefined || result.status !== 0)
+      throw new Error('Buck2 cache posture: native daemon admission command failed')
+    return result.stdout.trim()
+  }
+  const status = (): unknown => {
+    const output = call(['status'])
+    if (output === '') return undefined
+    try {
+      return JSON.parse(output)
+    } catch {
+      throw new Error('Buck2 cache posture: native daemon status is not JSON')
+    }
+  }
+  const identity = (value: unknown): string | undefined => {
+    if (
+      typeof value !== 'object' ||
+      value === null ||
+      'process_info' in value === false ||
+      'start_time' in value === false ||
+      typeof value.start_time !== 'string' ||
+      typeof value.process_info !== 'object' ||
+      value.process_info === null ||
+      'pid' in value.process_info === false ||
+      typeof value.process_info.pid !== 'number'
+    )
+      return undefined
+    return JSON.stringify([value.process_info.pid, value.start_time])
+  }
+  try {
+    if (library.symbols.flock(descriptor, 2) !== 0)
+      throw new Error('Buck2 cache posture: admission lock failed')
+    let previous: unknown
+    if (existsSync(marker) === true) {
+      const fd = openSync(marker, 'r')
+      try {
+        fchmodSync(fd, 0o600)
+        previous = JSON.parse(readFileSync(fd, 'utf8'))
+      } finally {
+        closeSync(fd)
+      }
+    }
+    const record =
+      typeof previous === 'object' &&
+      previous !== null &&
+      'salt' in previous &&
+      typeof previous.salt === 'string' &&
+      'fingerprint' in previous &&
+      typeof previous.fingerprint === 'string' &&
+      'daemon' in previous &&
+      typeof previous.daemon === 'string'
+        ? previous
+        : undefined
+    const salt = record?.salt ?? randomBytes(32).toString('hex')
+    const fingerprint = cacheDaemonPostureFingerprint({ values, env, salt })
+    const current = status()
+    const stop = gateDaemonStopDecision({ status: current, root: realpathSync(root), isolation })
+    const decision = cacheDaemonRestartDecision({
+      daemon:
+        current === undefined
+          ? 'none'
+          : stop === 'stop'
+            ? 'idle'
+            : stop === 'keep-active'
+              ? 'busy'
+              : 'unknown',
+      matched:
+        record !== undefined &&
+        record.fingerprint === fingerprint &&
+        record.daemon === identity(current),
+    })
+    if (decision === 'reuse') return
+    if (decision === 'refuse')
+      throw new Error(
+        'Buck2 cache posture: mismatched or unrecorded daemon is busy or unrecognized; refusing to stop it. Retry after concurrent Buck commands finish.',
+      )
+    // Same gate policy: Buck has no conditional kill RPC; never kill a daemon observed busy.
+    if (decision === 'restart') {
+      writeSync(2, 'Buck2 cache posture: restarting idle daemon for changed RE posture\n')
+      call(['kill'])
+    }
+    // Start with the reconciled root overlay and this step's environment before recording identity.
+    call(['audit', 'cell', '--json'])
+    const daemon = identity(status())
+    if (daemon === undefined)
+      throw new Error('Buck2 cache posture: started daemon identity unavailable')
+    const candidate = `${marker}.${randomUUID()}`
+    try {
+      writeFileSync(candidate, JSON.stringify({ salt, fingerprint, daemon }), {
+        flag: 'wx',
+        mode: 0o600,
+      })
+      renameSync(candidate, marker)
+    } finally {
+      rmSync(candidate, { force: true })
+    }
+  } finally {
+    closeSync(descriptor)
+    library.close()
+  }
+}
+
 const warnStdio = (message: string): void => {
   try {
     writeSync(2, message)
@@ -775,6 +966,8 @@ if (import.meta.main === true) {
           provider,
         })
     }
+    if (root !== undefined && skipsWatcherAdmission(configArgs) === false)
+      reconcileCacheDaemonPosture({ native, root, args: configArgs, env: process.env })
     if (launchCache !== undefined && launchCache !== '' && failedOpen === false) {
       const candidate = `${launchCache}.${randomUUID()}`
       try {
