@@ -37,6 +37,7 @@ const fixture = (address = 'grpc://127.0.0.1:1', archive = 'http://127.0.0.1:1/c
   const root = mkdtempSync(join(tmpdir(), 'direct-buck-posture-'))
   roots.push(root)
   writeFileSync(join(root, '.buckroot'), '')
+  writeFileSync(join(root, 'evidence-start'), `1700000000000\n${realpathSync(root)}\n1\n`)
   writeFileSync(
     join(root, '.buckconfig'),
     `[buck2]\nremote_cache_enabled = true\nallow_cache_uploads = false\n[buck2_re_client]\naction_cache_address = ${address}\ninstance_name = fixture\ntls = false\n[archive_origin]\ntrusted_url_prefix = ${archive}\ntrusted_tier = private\n`,
@@ -233,6 +234,135 @@ afterEach(async () => {
 describe('native build ID registry', () => {
   const buildId = '00112233-4455-4677-8899-aabbccddeeff'
 
+  it('does not register a foreign project root or non-default isolation', () => {
+    const root = fixture()
+    const foreign = fixture()
+    const evidence = join(root, 'evidence.json')
+    const env = {
+      CI_BUCK2_CACHE_EVIDENCE_PATH: evidence,
+      CI_BUCK2_CACHE_EVIDENCE_START: join(root, 'evidence-start'),
+      BUCK_WRAPPER_UUID: buildId,
+    }
+    for (const invocation of [
+      { cwd: foreign, args: ['build', '//:app'], env },
+      { cwd: root, args: ['--isolation-dir', 'fixture', 'build', '//:app'], env },
+      { cwd: root, args: ['--isolation-dir=fixture', 'build', '//:app'], env },
+      { cwd: root, args: ['build', '//:app'], env: { ...env, BUCK_ISOLATION_DIR: 'fixture' } },
+      { cwd: foreign, args: ['build', '//:app', '--write-build-id=caller.id'], env },
+      { cwd: root, args: ['--isolation-dir=fixture', 'build', '--write-build-id=caller.id'], env },
+    ]) {
+      expect(nativeBuildIdArguments(invocation)).toEqual(invocation.args)
+    }
+    expect(existsSync(`${evidence}.native-build-id-paths.jsonl`)).toBe(false)
+    expect(existsSync(`${evidence}.native-build-ids`)).toBe(false)
+  })
+
+  it('registers the collected real root with implicit or explicit default isolation', () => {
+    const root = fixture()
+    const cwd = join(root, 'subdirectory')
+    mkdirSync(cwd)
+    const evidence = join(root, 'evidence.json')
+    const env = {
+      CI_BUCK2_CACHE_EVIDENCE_PATH: evidence,
+      CI_BUCK2_CACHE_EVIDENCE_START: join(root, 'evidence-start'),
+      BUCK_WRAPPER_UUID: buildId,
+    }
+    for (const invocation of [
+      { cwd: root, args: ['build', '//:app'], env },
+      { cwd, args: ['build', '//:app'], env },
+      { cwd: root, args: ['--isolation-dir', 'v2', 'build', '//:app'], env },
+      { cwd: root, args: ['--isolation-dir=v2', 'build', '//:app'], env },
+      { cwd: root, args: ['build', '//:app'], env: { ...env, BUCK_ISOLATION_DIR: 'v2' } },
+      {
+        cwd: root,
+        args: ['--isolation-dir=v2', 'build', '//:app'],
+        env: { ...env, BUCK_ISOLATION_DIR: 'fixture' },
+      },
+    ]) {
+      expect(nativeBuildIdArguments(invocation)).toEqual([
+        ...invocation.args,
+        '--write-build-id',
+        `${evidence}.native-build-ids/${buildId}.buck-trace-id`,
+      ])
+    }
+    expect(
+      readFileSync(`${evidence}.native-build-id-paths.jsonl`, 'utf8').trim().split('\n'),
+    ).toHaveLength(6)
+  })
+
+  it('ignores isolation flags in explicit and implicit run payloads', () => {
+    const root = fixture()
+    const evidence = join(root, 'evidence.json')
+    const env = {
+      CI_BUCK2_CACHE_EVIDENCE_PATH: evidence,
+      CI_BUCK2_CACHE_EVIDENCE_START: join(root, 'evidence-start'),
+      BUCK_WRAPPER_UUID: buildId,
+    }
+    for (const separator of [['--'], ['positional']] as const) {
+      const payload = [...separator, '--isolation-dir=fixture']
+      const args = ['run', '//:app', ...payload]
+      const path = `${evidence}.native-build-ids/${buildId}.buck-trace-id`
+      expect(nativeBuildIdArguments({ args, cwd: root, env })).toEqual([
+        'run',
+        '--write-build-id',
+        path,
+        '//:app',
+        ...payload,
+      ])
+    }
+    rmSync(`${evidence}.native-build-id-paths.jsonl`)
+    rmSync(`${evidence}.native-build-ids`, { recursive: true })
+    for (const separator of [['--'], ['positional']] as const) {
+      for (const args of [
+        ['--isolation-dir=fixture', 'run', '//:app', ...separator, '--isolation-dir=v2'],
+        ['run', '--isolation-dir=fixture', '//:app', ...separator, '--isolation-dir=v2'],
+        ['run', '//:app', ...separator, '--isolation-dir', 'v2'],
+      ]) {
+        expect(
+          nativeBuildIdArguments({
+            args,
+            cwd: root,
+            env: { ...env, BUCK_ISOLATION_DIR: 'fixture' },
+          }),
+        ).toEqual(args)
+      }
+    }
+    expect(existsSync(`${evidence}.native-build-id-paths.jsonl`)).toBe(false)
+  })
+
+  it('leaves invocations untouched without a valid collected-root marker', () => {
+    const root = fixture()
+    const evidence = join(root, 'evidence.json')
+    const marker = join(root, 'evidence-start')
+    const args = ['build', '//:app']
+    for (const contents of ['', `invalid\n${root}\n1\n`, `1700000000000\n${root}\ninvalid\n`]) {
+      writeFileSync(marker, contents)
+      expect(
+        nativeBuildIdArguments({
+          args,
+          cwd: root,
+          env: {
+            CI_BUCK2_CACHE_EVIDENCE_PATH: evidence,
+            CI_BUCK2_CACHE_EVIDENCE_START: marker,
+          },
+        }),
+      ).toEqual(args)
+    }
+    for (const markerPath of [undefined, '', join(root, 'missing-marker')]) {
+      expect(
+        nativeBuildIdArguments({
+          args,
+          cwd: root,
+          env: {
+            CI_BUCK2_CACHE_EVIDENCE_PATH: evidence,
+            CI_BUCK2_CACHE_EVIDENCE_START: markerPath,
+          },
+        }),
+      ).toEqual(args)
+    }
+    expect(existsSync(`${evidence}.native-build-id-paths.jsonl`)).toBe(false)
+  })
+
   it('fails closed when the native-start registry cannot be persisted', () => {
     const root = fixture()
     const blocked = join(root, 'not-a-directory')
@@ -243,6 +373,7 @@ describe('native build ID registry', () => {
         cwd: root,
         env: {
           CI_BUCK2_CACHE_EVIDENCE_PATH: join(blocked, 'evidence.json'),
+          CI_BUCK2_CACHE_EVIDENCE_START: join(root, 'evidence-start'),
           BUCK_WRAPPER_UUID: buildId,
         },
       }),
@@ -267,6 +398,7 @@ describe('native build ID registry', () => {
           BUCK_WRAPPER_UUID: buildId,
           BUCK2_CACHE_WRITE_BASIC_AUTH: 'fixture-secret',
           CI_BUCK2_CACHE_EVIDENCE_PATH: evidence,
+          CI_BUCK2_CACHE_EVIDENCE_START: join(root, 'evidence-start'),
           BUCK2_STDIO_LIBRARY: process.env['BUCK2_STDIO_LIBRARY'],
         },
         stdout: 'pipe',
@@ -285,6 +417,7 @@ describe('native build ID registry', () => {
     const evidence = join(root, 'evidence.json')
     const env = {
       CI_BUCK2_CACHE_EVIDENCE_PATH: evidence,
+      CI_BUCK2_CACHE_EVIDENCE_START: join(root, 'evidence-start'),
       BUCK_WRAPPER_UUID: buildId.replaceAll('-', '').toUpperCase(),
       BUCK2_NO_REMOTE_CACHE: '1',
     }
@@ -295,12 +428,7 @@ describe('native build ID registry', () => {
     })
     const result = nativeBuildIdArguments({ args, cwd: root, env })
     const path = `${evidence}.native-build-ids/${buildId}.buck-trace-id`
-    expect(result.slice(-4)).toEqual([
-      '--write-build-id',
-      path,
-      '--',
-      '--write-build-id=application-argument',
-    ])
+    expect(result).toEqual(['run', '--write-build-id', path, ...args.slice(1)])
     expect(readFileSync(`${evidence}.native-build-id-paths.jsonl`, 'utf8')).toBe(
       `${JSON.stringify({ buildId, path })}\n`,
     )
@@ -316,7 +444,11 @@ describe('native build ID registry', () => {
         nativeBuildIdArguments({
           args,
           cwd: root,
-          env: { CI_BUCK2_CACHE_EVIDENCE_PATH: evidence, BUCK_WRAPPER_UUID: buildId },
+          env: {
+            CI_BUCK2_CACHE_EVIDENCE_PATH: evidence,
+            CI_BUCK2_CACHE_EVIDENCE_START: join(root, 'evidence-start'),
+            BUCK_WRAPPER_UUID: buildId,
+          },
         }),
       ).toEqual(args)
       expect(JSON.parse(readFileSync(`${evidence}.native-build-id-paths.jsonl`, 'utf8'))).toEqual({
@@ -343,7 +475,11 @@ describe('native build ID registry', () => {
       expect(
         nativeBuildIdArguments({
           ...invocation,
-          env: { CI_BUCK2_CACHE_EVIDENCE_PATH: evidence, BUCK_WRAPPER_UUID: buildId },
+          env: {
+            CI_BUCK2_CACHE_EVIDENCE_PATH: evidence,
+            CI_BUCK2_CACHE_EVIDENCE_START: join(root, 'evidence-start'),
+            BUCK_WRAPPER_UUID: buildId,
+          },
         }),
       ).toEqual(invocation.args)
     }
@@ -375,6 +511,7 @@ writeFileSync(path, process.env.BUCK_WRAPPER_UUID + '\\n')
           BUCK2_NO_REMOTE_CACHE: '1',
           BUCK_WRAPPER_UUID: buildId,
           CI_BUCK2_CACHE_EVIDENCE_PATH: evidence,
+          CI_BUCK2_CACHE_EVIDENCE_START: join(root, 'evidence-start'),
           BUCK2_STDIO_LIBRARY: process.env['BUCK2_STDIO_LIBRARY'],
         },
         stdout: 'pipe',

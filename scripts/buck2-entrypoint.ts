@@ -503,6 +503,7 @@ export const resolveGateInvocation = ({
   args,
   env,
   cwd,
+  strictRunArguments = true,
   readArgfile = (path) => {
     const canonical = realpathSync(path)
     return {
@@ -514,6 +515,7 @@ export const resolveGateInvocation = ({
   readonly args: readonly string[]
   readonly env: Readonly<Record<string, string | undefined>>
   readonly cwd: string
+  readonly strictRunArguments?: boolean
   readonly readArgfile?: (path: string) => { readonly path: string; readonly contents: string }
 }): { readonly isolation: string; readonly args: readonly string[] } | undefined => {
   const expanded: string[] = []
@@ -572,13 +574,61 @@ export const resolveGateInvocation = ({
     return undefined
   }
   const sentinel = expanded.indexOf('--')
-  const buckArgs = sentinel === -1 ? expanded : expanded.slice(0, sentinel)
+  let buckArgs = sentinel === -1 ? expanded : expanded.slice(0, sentinel)
   const runIndex = buckArgs.indexOf('run')
   if (
+    strictRunArguments === true &&
     runIndex !== -1 &&
     (buckArgs.length !== runIndex + 2 || buckArgs[runIndex + 1]?.startsWith('-') !== false)
   )
     return undefined
+  if (strictRunArguments === false && runIndex !== -1) {
+    let targetSeen = false
+    for (let index = runIndex + 1; index < buckArgs.length; index++) {
+      const arg = buckArgs[index] ?? ''
+      if (arg.startsWith('-') === false) {
+        if (targetSeen === true) {
+          // RunCommand's trailing_var_arg starts at the first positional after
+          // TARGET. All remaining words belong to the executable, even flags.
+          buckArgs = buckArgs.slice(0, index)
+          break
+        }
+        targetSeen = true
+      } else if (
+        [
+          '--isolation-dir',
+          '--config',
+          '-c',
+          '--config-file',
+          '--chdir',
+          '--command-args-file',
+          '--write-build-id',
+          '--event-log',
+          '--command-report-path',
+          '--unstable-write-invocation-record',
+          '--target-platforms',
+          '--target-universe',
+          '--fake-host',
+          '--fake-arch',
+          '--fake-xcode-version',
+          '--preemptible',
+          '--exit-when',
+          '--console',
+          '--ui',
+          '--num-threads',
+          '-j',
+        ].includes(arg) === true
+      ) {
+        index++
+      } else if (
+        arg.includes('=') === false &&
+        ['--emit-shell', '--no-event-log', '--reuse-current-config'].includes(arg) === false
+      ) {
+        // Unknown option arity cannot establish the start of a run payload.
+        return undefined
+      }
+    }
+  }
   let isolation = env['BUCK_ISOLATION_DIR'] ?? 'v2'
   let explicit = false
   for (let index = 0; index < buckArgs.length; index++) {
@@ -713,22 +763,41 @@ export const nativeBuildIdArguments = ({
 }): string[] => {
   const evidencePath = env['CI_BUCK2_CACHE_EVIDENCE_PATH']
   if (evidencePath === undefined || evidencePath === '') return [...args]
+  const root = findRoot(cwd)
+  const marker = env['CI_BUCK2_CACHE_EVIDENCE_START']
+  if (root === undefined || marker === undefined || marker === '') return [...args]
+  // Match collect-buck2-cache-evidence.sh's marker/recorded_root contract.
+  // Its discovery is limited to the collected root's default-isolation logs.
+  try {
+    const [startedAt, recordedRoot, freshRoot] = readFileSync(resolve(cwd, marker), 'utf8').split(
+      '\n',
+    )
+    if (
+      /^\d+$/u.test(startedAt ?? '') === false ||
+      /^[01]$/u.test(freshRoot ?? '') === false ||
+      recordedRoot === undefined ||
+      realpathSync(root) !== realpathSync(recordedRoot)
+    )
+      return [...args]
+  } catch {
+    return [...args]
+  }
+  // Registration does not stop daemons: preserve ordinary run options accepted
+  // by native clap rather than applying the gate's stricter kill-safety subset.
+  const invocation = resolveGateInvocation({ args, cwd, env, strictRunArguments: false })
+  if (invocation?.isolation !== 'v2') return [...args]
   const sentinel = args.indexOf('--')
   const before = sentinel === -1 ? args : args.slice(0, sentinel)
-  if (
-    findRoot(cwd) === undefined ||
-    skipsWatcherAdmission(before) === true ||
-    before.some((arg) => configCommands[arg] === true) === false
-  )
-    return [...args]
+  if (skipsWatcherAdmission(before) === true) return [...args]
+  if (before.some((arg) => configCommands[arg] === true) === false) return [...args]
   const buildId = canonicalCacheAdmissionInvocationId(env['BUCK_WRAPPER_UUID'])
   let supplied = false
   let suppliedPath: string | undefined
-  for (let index = 0; index < before.length; index++) {
-    const arg = before[index]
+  for (let index = 0; index < invocation.args.length; index++) {
+    const arg = invocation.args[index]
     if (arg === '--write-build-id') {
       supplied = true
-      suppliedPath = before[++index]
+      suppliedPath = invocation.args[++index]
     } else if (arg?.startsWith('--write-build-id=') === true) {
       supplied = true
       suppliedPath = arg.slice(17)
@@ -744,9 +813,11 @@ export const nativeBuildIdArguments = ({
   const registry = resolve(cwd, `${evidencePath}.native-build-id-paths.jsonl`)
   mkdirSync(dirname(registry), { recursive: true, mode: 0o700 })
   appendFileSync(registry, `${JSON.stringify({ buildId, path })}\n`, { mode: 0o600 })
-  return suppliedPath === undefined
-    ? [...before, '--write-build-id', path, ...(sentinel === -1 ? [] : args.slice(sentinel))]
-    : [...args]
+  if (suppliedPath !== undefined) return [...args]
+  const runIndex = before.indexOf('run')
+  if (runIndex !== -1)
+    return [...before.slice(0, runIndex + 1), '--write-build-id', path, ...args.slice(runIndex + 1)]
+  return [...before, '--write-build-id', path, ...(sentinel === -1 ? [] : args.slice(sentinel))]
 }
 
 const warnStdio = (message: string): void => {

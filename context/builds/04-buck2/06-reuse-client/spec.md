@@ -473,7 +473,19 @@ make an older native invocation part of the current observation.
 CI posture sets Buck's native `[buck2] retained_event_logs = 120`; developer
 retention remains unchanged. This limits log count, not bytes or age. The
 evidence-enabled launcher registers `{buildId, path}` JSONL rows in
-`${CI_BUCK2_CACHE_EVIDENCE_PATH}.native-build-id-paths.jsonl` after admission.
+`${CI_BUCK2_CACHE_EVIDENCE_PATH}.native-build-id-paths.jsonl` after admission
+only when the invocation's canonical project root matches `recorded_root` in
+the valid `CI_BUCK2_CACHE_EVIDENCE_START` marker and its resolved isolation
+directory is the default `v2` (implicit or explicit, including
+`BUCK_ISOLATION_DIR`). The marker uses the collector's three-line
+`started_at`, `recorded_root`, `fresh_root` format. Foreign fixture roots and
+non-default isolations retain their caller flags without registration: the
+collector scans only `.devenv/otel` and `buck-out/v2/log` in the collected root.
+For `run`, isolation resolution stops at `--` or the first executable
+positional argument after the target. Payload flags cannot change the selected
+isolation or supply a native build-ID output. The launcher inserts its native
+build-ID flag before the run target and payload; unknown run-option arities
+leave the invocation unregistered rather than guessing its payload boundary.
 The lowercase hyphenated UUID identifies the actual native `--write-build-id`
 output; a registry row alone does not prove launch. Finalization confirms the
 file's UUID and job-window mtime, then compares confirmed IDs with all decoded
