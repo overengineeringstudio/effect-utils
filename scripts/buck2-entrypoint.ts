@@ -694,7 +694,7 @@ export const cacheDaemonPostureFingerprint = ({
           .filter(
             ([key]) => key.startsWith('buck2_re_client.') || key === 'buck2.allow_cache_uploads',
           )
-          .sort(([left], [right]) => left.localeCompare(right))
+          .toSorted(([left], [right]) => left.localeCompare(right))
           .map(([key, value]) => [
             key,
             value.replace(/\$([A-Z_][A-Z0-9_]*)/gu, (_, name: string) => env[name] ?? ''),
@@ -703,6 +703,7 @@ export const cacheDaemonPostureFingerprint = ({
     )
     .digest('hex')
 
+/** Reuse proven matching authority; only replace a mismatched daemon observed idle. */
 export const cacheDaemonRestartDecision = ({
   daemon,
   matched,
@@ -717,6 +718,22 @@ export const cacheDaemonRestartDecision = ({
       : daemon === 'idle'
         ? 'restart'
         : 'refuse'
+
+const cacheDaemonIdentity = (value: unknown): string | undefined => {
+  if (
+    typeof value !== 'object' ||
+    value === null ||
+    'process_info' in value === false ||
+    'start_time' in value === false ||
+    typeof value.start_time !== 'string' ||
+    typeof value.process_info !== 'object' ||
+    value.process_info === null ||
+    'pid' in value.process_info === false ||
+    typeof value.process_info.pid !== 'number'
+  )
+    return undefined
+  return JSON.stringify([value.process_info.pid, value.start_time])
+}
 
 /**
  * CI step environments can change while Buck's RE client remains daemon-scoped.
@@ -777,21 +794,6 @@ export const reconcileCacheDaemonPosture = ({
       throw new Error('Buck2 cache posture: native daemon status is not JSON')
     }
   }
-  const identity = (value: unknown): string | undefined => {
-    if (
-      typeof value !== 'object' ||
-      value === null ||
-      'process_info' in value === false ||
-      'start_time' in value === false ||
-      typeof value.start_time !== 'string' ||
-      typeof value.process_info !== 'object' ||
-      value.process_info === null ||
-      'pid' in value.process_info === false ||
-      typeof value.process_info.pid !== 'number'
-    )
-      return undefined
-    return JSON.stringify([value.process_info.pid, value.start_time])
-  }
   try {
     if (library.symbols.flock(descriptor, 2) !== 0)
       throw new Error('Buck2 cache posture: admission lock failed')
@@ -812,11 +814,14 @@ export const reconcileCacheDaemonPosture = ({
       typeof previous.salt === 'string' &&
       'fingerprint' in previous &&
       typeof previous.fingerprint === 'string' &&
+      'posture' in previous &&
+      (previous.posture === 'writer' || previous.posture === 'reader') &&
       'daemon' in previous &&
       typeof previous.daemon === 'string'
         ? previous
         : undefined
     const salt = record?.salt ?? randomBytes(32).toString('hex')
+    const posture = values['buck2.allow_cache_uploads'] === 'true' ? 'writer' : 'reader'
     const fingerprint = cacheDaemonPostureFingerprint({ values, env, salt })
     const current = status()
     const stop = gateDaemonStopDecision({ status: current, root: realpathSync(root), isolation })
@@ -831,8 +836,9 @@ export const reconcileCacheDaemonPosture = ({
               : 'unknown',
       matched:
         record !== undefined &&
+        record.posture === posture &&
         record.fingerprint === fingerprint &&
-        record.daemon === identity(current),
+        record.daemon === cacheDaemonIdentity(current),
     })
     if (decision === 'reuse') return
     if (decision === 'refuse')
@@ -846,12 +852,12 @@ export const reconcileCacheDaemonPosture = ({
     }
     // Start with the reconciled root overlay and this step's environment before recording identity.
     call(['audit', 'cell', '--json'])
-    const daemon = identity(status())
+    const daemon = cacheDaemonIdentity(status())
     if (daemon === undefined)
       throw new Error('Buck2 cache posture: started daemon identity unavailable')
     const candidate = `${marker}.${randomUUID()}`
     try {
-      writeFileSync(candidate, JSON.stringify({ salt, fingerprint, daemon }), {
+      writeFileSync(candidate, JSON.stringify({ salt, posture, fingerprint, daemon }), {
         flag: 'wx',
         mode: 0o600,
       })

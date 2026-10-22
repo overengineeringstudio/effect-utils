@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'bun:test'
-import { chmodSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import {
+  chmodSync,
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -70,6 +78,13 @@ else process.exit(9);
       const env = { ...process.env, CI: '1', BUCK2_CACHE_WRITE_BASIC_AUTH: secret }
       const reconcile = () =>
         reconcileCacheDaemonPosture({ native, root, args: ['build', '//:fixture'], env })
+      reconcileCacheDaemonPosture({
+        native,
+        root,
+        args: ['build', '//:fixture'],
+        env: { ...env, CI: '' },
+      })
+      expect(existsSync(calls)).toBe(false)
       reconcile()
       reconcile()
       expect(
@@ -90,6 +105,7 @@ else process.exit(9);
       ).toHaveLength(1)
       const stored = readFileSync(marker, 'utf8')
       expect(stored).not.toContain(secret)
+      expect(JSON.parse(stored).posture).toBe('writer')
       expect(statSync(marker).mode & 0o777).toBe(0o600)
       env.BUCK2_CACHE_WRITE_BASIC_AUTH = 'rotated-planted-credential'
       reconcile()

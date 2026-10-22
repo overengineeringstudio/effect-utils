@@ -123,12 +123,12 @@ export const createUploadDiagnosticSanitizer = (
     for (const secret of secrets) result = result.replaceAll(secret, '[REDACTED]')
     return result
       .replace(
-        /((?:authorization|proxy-authorization|x-api-key|api[_-]?key|access[_-]?token|refresh[_-]?token|password|token)["']?\s*[:=]\s*)(\[REDACTED\]|"[^"]*"|'[^']*'|[^\r\n,;}\]]+)/gi,
-        '$1[REDACTED]',
-      )
-      .replace(
         /\b(Bearer|Basic)\s+(\[REDACTED\]|"[^"]*"|'[^']*'|[^\s"',;{}()[\]<>]+)/gi,
         '$1 [REDACTED]',
+      )
+      .replace(
+        /((?:authorization|proxy-authorization|x-api-key|api[_-]?key|access[_-]?token|refresh[_-]?token|password|token)["']?\s*[:=]\s*)(\[REDACTED\]|"[^"]*"|'[^']*'|(?:\[REDACTED\]|[^\r\n,;}\]])+)/gi,
+        '$1[REDACTED]',
       )
       .slice(0, 4096)
   }
