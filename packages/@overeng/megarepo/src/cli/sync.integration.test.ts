@@ -30,6 +30,7 @@ import { inspectMemberMount } from '../sync/member-mount.ts'
 import { collectSyncErrors } from '../sync/mod.ts'
 import { MegarepoSyncTree, SyncErrorItem } from '../sync/schema.ts'
 import { makeConsoleCapture } from '../test-utils/consoleCapture.ts'
+import { FIXTURE_BRANCH, pushFixtureBranch } from '../test-utils/git-fixture.ts'
 import { decodeJson, encodeJson } from '../test-utils/json.ts'
 import {
   addCommit,
@@ -1138,23 +1139,23 @@ const createColdCanonicalRecursionFixture = () =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
     const store = yield* createStoreFixture([
-      { host: 'example.com', owner: 'acme', repo: 'child' },
-      { host: 'example.com', owner: 'acme', repo: 'grandchild' },
-      { host: 'example.com', owner: 'acme', repo: 'leaf' },
+      { host: 'example.com', owner: 'acme', repo: 'child', branches: [FIXTURE_BRANCH] },
+      { host: 'example.com', owner: 'acme', repo: 'grandchild', branches: [FIXTURE_BRANCH] },
+      { host: 'example.com', owner: 'acme', repo: 'leaf', branches: [FIXTURE_BRANCH] },
     ])
     const bare = (name: string) => {
       const barePath = store.bareRepoPaths[`example.com/acme/${name}`]
       if (barePath === undefined) throw new Error(`Missing bare repo for ${name}`)
       return barePath
     }
-    const leafCommit = yield* runGitCommand(bare('leaf'), 'rev-parse', 'main')
+    const leafCommit = yield* runGitCommand(bare('leaf'), 'rev-parse', FIXTURE_BRANCH)
     const makeParent = (memberName: string, commit: string) =>
       createWorkspaceWithLock({
-        members: { [memberName]: `https://example.com/acme/${memberName}#main` },
+        members: { [memberName]: `https://example.com/acme/${memberName}#${FIXTURE_BRANCH}` },
         lockEntries: {
           [memberName]: {
             url: `https://example.com/acme/${memberName}`,
-            ref: 'main',
+            ref: FIXTURE_BRANCH,
             commit,
           },
         },
@@ -1166,11 +1167,17 @@ const createColdCanonicalRecursionFixture = () =>
       'push',
       '--force',
       bare('grandchild'),
-      'HEAD:refs/heads/main',
+      `HEAD:refs/heads/${FIXTURE_BRANCH}`,
     )
     const { workspacePath: childSource } = yield* makeParent('grandchild', grandchildCommit)
     const childCommit = yield* runGitCommand(childSource, 'rev-parse', 'HEAD')
-    yield* runGitCommand(childSource, 'push', '--force', bare('child'), 'HEAD:refs/heads/main')
+    yield* runGitCommand(
+      childSource,
+      'push',
+      '--force',
+      bare('child'),
+      `HEAD:refs/heads/${FIXTURE_BRANCH}`,
+    )
     const { workspacePath } = yield* makeParent('child', childCommit)
     const canonicalPath = (name: string, commit: string) =>
       EffectPath.ops.join(
@@ -1206,13 +1213,13 @@ describe('apply --all canonical recursion', () => {
         const fixture = yield* createColdCanonicalRecursionFixture()
         const { workspacePath } = yield* createWorkspaceWithLock({
           members: {
-            left: 'https://example.com/acme/child#main',
+            left: `https://example.com/acme/child#${FIXTURE_BRANCH}`,
             right: fixture.childSource,
           },
           lockEntries: {
             left: {
               url: 'https://example.com/acme/child',
-              ref: 'main',
+              ref: FIXTURE_BRANCH,
               commit: fixture.childCommit,
             },
           },
@@ -1409,11 +1416,11 @@ describe('apply --all canonical recursion', () => {
         const beforeEntries = yield* fs.readDirectory(fixture.childPath)
         const beforeWorktrees = yield* runGitCommand(childBare, 'worktree', 'list', '--porcelain')
         const sharedWorkspace = yield* createWorkspaceWithLock({
-          members: { child: 'https://example.com/acme/child#main' },
+          members: { child: `https://example.com/acme/child#${FIXTURE_BRANCH}` },
           lockEntries: {
             child: {
               url: 'https://example.com/acme/child',
-              ref: 'main',
+              ref: FIXTURE_BRANCH,
               commit: fixture.childCommit,
             },
           },
@@ -1492,18 +1499,33 @@ describe('apply --all canonical recursion', () => {
 const createSetupConsumerFixture = () =>
   Effect.gen(function* () {
     const fixture = yield* createColdCanonicalRecursionFixture()
+    // Tracking-mode cases need branch-attached worktrees at the newly seeded tips.
+    // The shared store fixture starts detached, before the nested config commits.
+    for (const repo of ['child', 'grandchild', 'leaf']) {
+      const worktreePath = fixture.store.worktreePaths[`example.com/acme/${repo}#${FIXTURE_BRANCH}`]
+      if (worktreePath === undefined) throw new Error(`Missing ${repo} tracking worktree`)
+      yield* runGitCommand(worktreePath, 'checkout', FIXTURE_BRANCH)
+    }
     const consumer = yield* createWorkspaceWithLock({
       members: {
-        child: 'https://example.com/acme/child#main',
-        plain: 'https://example.com/acme/leaf#main',
+        child: `https://example.com/acme/child#${FIXTURE_BRANCH}`,
+        plain: `https://example.com/acme/leaf#${FIXTURE_BRANCH}`,
       },
       lockEntries: {
-        child: { url: 'https://example.com/acme/child', ref: 'main', commit: fixture.childCommit },
-        plain: { url: 'https://example.com/acme/leaf', ref: 'main', commit: fixture.leafCommit },
+        child: {
+          url: 'https://example.com/acme/child',
+          ref: FIXTURE_BRANCH,
+          commit: fixture.childCommit,
+        },
+        plain: {
+          url: 'https://example.com/acme/leaf',
+          ref: FIXTURE_BRANCH,
+          commit: fixture.leafCommit,
+        },
       },
     })
-    const headsMain = (repo: string) =>
-      `${fixture.store.storePath}example.com/acme/${repo}/refs/heads/main`
+    const trackingHead = (repo: string) =>
+      `${fixture.store.storePath}example.com/acme/${repo}/refs/heads/${FIXTURE_BRANCH}`
     const env = {
       CI: 'false',
       MEGAREPO_STORE: fixture.store.storePath.slice(0, -1),
@@ -1526,7 +1548,7 @@ const createSetupConsumerFixture = () =>
       )(status.stdout.trim())
       return out.applyNeeded
     })
-    return { ...fixture, consumer, headsMain, env, mount, applyNeeded }
+    return { ...fixture, consumer, trackingHead, env, mount, applyNeeded }
   })
 
 const setupApplyArgs = [
@@ -1552,7 +1574,7 @@ describe('apply --commit-members (mr:setup nested trees)', () => {
         const lockBefore = yield* fs.readFileString(lockPath)
 
         // Without the option, setup is the plain tracking apply: the nested member shares
-        // refs/heads/main, its repos/ never exists, and recursive readiness reports it.
+        // its tracking branch, its repos/ never exists, and recursive readiness reports it.
         const plainSetup = yield* runApplyCommand({
           cwd: consumer.workspacePath,
           args: ['--output', 'json', '--worktree-mode', 'tracking', '--lock-sync', 'off'],
@@ -1560,11 +1582,11 @@ describe('apply --commit-members (mr:setup nested trees)', () => {
         })
         expect(plainSetup.exitCode).toBe(0)
         expect(yield* fs.realPath(mount(consumer.workspacePath, 'child'))).toBe(
-          fixture.headsMain('child'),
+          fixture.trackingHead('child'),
         )
-        expect(yield* fs.exists(`${fixture.headsMain('child')}/repos`)).toBe(false)
+        expect(yield* fs.exists(`${fixture.trackingHead('child')}/repos`)).toBe(false)
         expect(yield* fixture.applyNeeded()).toBe(true)
-        const headsEntries = yield* fs.readDirectory(fixture.headsMain('child'))
+        const headsEntries = yield* fs.readDirectory(fixture.trackingHead('child'))
 
         const result = yield* runApplyCommand({
           cwd: consumer.workspacePath,
@@ -1585,7 +1607,7 @@ describe('apply --commit-members (mr:setup nested trees)', () => {
 
         // Only the listed member switches; the ordinary member stays on its tracking worktree.
         expect(yield* fs.realPath(mount(consumer.workspacePath, 'plain'))).toBe(
-          fixture.headsMain('leaf'),
+          fixture.trackingHead('leaf'),
         )
         const mounts = [
           [consumer.workspacePath, 'child', fixture.childPath, fixture.childCommit],
@@ -1598,8 +1620,8 @@ describe('apply --commit-members (mr:setup nested trees)', () => {
         }
 
         // The shared tracking worktree was not mutated and the lock was not rewritten.
-        expect(yield* fs.readDirectory(fixture.headsMain('child'))).toEqual(headsEntries)
-        expect(yield* fs.exists(`${fixture.headsMain('child')}/repos`)).toBe(false)
+        expect(yield* fs.readDirectory(fixture.trackingHead('child'))).toEqual(headsEntries)
+        expect(yield* fs.exists(`${fixture.trackingHead('child')}/repos`)).toBe(false)
         expect(yield* fs.readFileString(lockPath)).toBe(lockBefore)
         expect(yield* fixture.applyNeeded()).toBe(false)
 
@@ -1678,18 +1700,18 @@ describe('apply --commit-members (mr:setup nested trees)', () => {
         const nestedName = 'child,core'
         const consumer = yield* createWorkspaceWithLock({
           members: {
-            [nestedName]: 'https://example.com/acme/child#main',
-            plain: 'https://example.com/acme/leaf#main',
+            [nestedName]: `https://example.com/acme/child#${FIXTURE_BRANCH}`,
+            plain: `https://example.com/acme/leaf#${FIXTURE_BRANCH}`,
           },
           lockEntries: {
             [nestedName]: {
               url: 'https://example.com/acme/child',
-              ref: 'main',
+              ref: FIXTURE_BRANCH,
               commit: fixture.childCommit,
             },
             plain: {
               url: 'https://example.com/acme/leaf',
-              ref: 'main',
+              ref: FIXTURE_BRANCH,
               commit: fixture.leafCommit,
             },
           },
@@ -1815,7 +1837,7 @@ describe('apply --commit-members (mr:setup nested trees)', () => {
         ).toBe(false)
         expect(yield* fs.exists(fixture.grandchildPath)).toBe(false)
         expect(yield* fs.realPath(fixture.mount(fixture.consumer.workspacePath, 'plain'))).toBe(
-          fixture.headsMain('leaf'),
+          fixture.trackingHead('leaf'),
         )
       },
       Effect.provide(NodeServices.layer),
@@ -2192,9 +2214,7 @@ const createPinnedStaleCommitPullFixture = (options?: { readonly useCommitRef?: 
     )
     yield* fs.makeDirectory(sourceRepoPath, { recursive: true })
     yield* initGitRepo(sourceRepoPath)
-    yield* runGitCommand(sourceRepoPath, 'checkout', '-b', 'main').pipe(
-      Effect.catch(() => Effect.void),
-    )
+    yield* runGitCommand(sourceRepoPath, 'branch', '-M', FIXTURE_BRANCH)
     yield* fs.writeFileString(
       EffectPath.ops.join(sourceRepoPath, EffectPath.unsafe.relativeFile('README.md')),
       '# Initial history\n',
@@ -2206,21 +2226,21 @@ const createPinnedStaleCommitPullFixture = (options?: { readonly useCommitRef?: 
       tmpDir,
       EffectPath.unsafe.relativeDir('remote-repo.git/'),
     )
-    yield* runGitCommand(tmpDir, 'init', '--bare', remoteRepoPath)
+    yield* runGitCommand(tmpDir, 'init', '--bare', '-b', FIXTURE_BRANCH, remoteRepoPath)
     yield* runGitCommand(sourceRepoPath, 'remote', 'add', 'origin', remoteRepoPath)
-    yield* runGitCommand(sourceRepoPath, 'push', '-u', 'origin', 'main')
+    yield* pushFixtureBranch(sourceRepoPath)
 
-    yield* runGitCommand(sourceRepoPath, 'checkout', '--orphan', 'rewritten-main')
+    yield* runGitCommand(sourceRepoPath, 'checkout', '--orphan', `rewritten-${FIXTURE_BRANCH}`)
     yield* runGitCommand(sourceRepoPath, 'rm', '-rf', '.').pipe(Effect.catch(() => Effect.void))
     yield* fs.writeFileString(
       EffectPath.ops.join(sourceRepoPath, EffectPath.unsafe.relativeFile('README.md')),
       '# Rewritten history\n',
     )
     yield* addCommit({ repoPath: sourceRepoPath, message: 'Rewrite history' })
-    yield* runGitCommand(sourceRepoPath, 'branch', '-M', 'main')
-    yield* runGitCommand(sourceRepoPath, 'push', '--force', 'origin', 'main')
+    yield* runGitCommand(sourceRepoPath, 'branch', '-M', FIXTURE_BRANCH)
+    yield* runGitCommand(sourceRepoPath, 'push', '--force', 'origin', FIXTURE_BRANCH)
     const currentCommit = yield* runGitCommand(sourceRepoPath, 'rev-parse', 'HEAD')
-    const memberRef = options?.useCommitRef === true ? staleCommit : 'main'
+    const memberRef = options?.useCommitRef === true ? staleCommit : FIXTURE_BRANCH
     const lockRef = memberRef
     /**
      * The fixture must remove the old object from the remote; otherwise a local clone

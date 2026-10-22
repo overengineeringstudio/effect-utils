@@ -1185,6 +1185,26 @@ in
     NODE_OPTIONS = "--import=${./. + "/packages/@overeng/pty-effect/test/node-pty-native-hook.ts"}";
   };
 
+  tasks."buck2:editor:publish:standalone-staging" = scopedEditorViewPublisher {
+    description = "Publish compiler dependencies for the standalone staging guard";
+    packagePaths = [ "packages/@overeng/genie" ];
+    traceScope = "standalone-staging";
+  };
+
+  # PR lint CI checks every standalone-staged source and inventory completeness.
+  tasks."lint:check:standalone-staging" = {
+    description = "Guard standalone Nix-staged JS/TS sources and inventory completeness";
+    # The AST compiler comes from the scoped Genie projection; the runner uses only builtins.
+    after = [ "buck2:editor:publish:standalone-staging" ];
+    exec = trace.exec "lint:check:standalone-staging" ''
+      set -euo pipefail
+      root="''${DEVENV_ROOT:-$PWD}"
+      cd "$root"
+      exec ${pkgs.bun}/bin/bun "$root/packages/@overeng/buck2-tools/src/bun-test-runner.ts" test "$root/packages/@overeng/genie/src/core/import-map/standalone-staging.integration.test.ts"
+    '';
+    # No cache: a newly staged source must always be discovered.
+  };
+
   tasks."lint:check:format:parity" = {
     description = "Compare Buck and Git formatter sources against exact documented differences";
     after = [ "genie:check" ];
@@ -1215,6 +1235,7 @@ in
     "genie:check"
     "lint:check:no-tailwind"
     "lint:check:getflake"
+    "lint:check:standalone-staging"
   ];
   tasks."lint:check".exec = lib.mkForce (buck2BuildExec {
     name = "lint:check";
@@ -1311,13 +1332,14 @@ in
       cd "''${DEVENV_ROOT:-$PWD}"
       # `./` makes these exact paths; bare arguments are suffix filters that
       # also match the copies Buck stages under buck-out.
-      ${pkgs.bun}/bin/bun ./packages/@overeng/buck2-tools/src/bun-test-runner.ts test ./genie/ci-workflow/rust.unit.test.ts ./genie/ci-workflow/setup.unit.test.ts
+      ${pkgs.bun}/bin/bun ./packages/@overeng/buck2-tools/src/bun-test-runner.ts test ./genie/ci-workflow/rust.unit.test.ts ./genie/ci-workflow/setup.unit.test.ts ./genie/ci-workflow/nix-substituter.integration.test.ts
       exec ${pkgs.bash}/bin/bash ./genie/ci-workflow/published-ref-decide.test.sh
     '';
     execIfModified = [
       "genie/ci-workflow/**/*.ts"
       "genie/ci-workflow/**/*.sh"
       "genie/ci.ts"
+      ".github/workflows/ci.yml.genie.ts"
       "packages/@overeng/genie/src/runtime/**/*.ts"
     ];
   };
@@ -1947,9 +1969,19 @@ in
     '';
   };
 
+  tasks."git-hooks:environment:test" = {
+    description = "Keep fixture Git commands out of the hook caller repository and staged index";
+    exec = trace.exec "git-hooks:environment:test" ''
+      exec ${pkgs.bash}/bin/bash \
+        ${./scripts/without-git-local-env.sh} \
+        ${pkgs.bash}/bin/bash "$DEVENV_ROOT/scripts/without-git-local-env.test.sh"
+    '';
+  };
+
   tasks."check:quick".after = lib.mkForce [
     "buck2:quick"
     "lint:check:format:parity"
+    "lint:check:standalone-staging"
     "buck2:cache-posture:test"
     "buck2:capabilities:test"
     "worktree:teardown:test"
@@ -1957,6 +1989,7 @@ in
     "check:buck2-producer-overlap"
     "nix:check:quick"
     "otel:pipeline-run:test"
+    "git-hooks:environment:test"
   ];
   # Prebuild selected collection products after genie freshness alongside editor publication,
   # then execute the platform's bounded lanes in one Buck test invocation. The per-lane tasks
@@ -2022,7 +2055,7 @@ in
   git-hooks.enable = true;
   git-hooks.hooks.check-quick = {
     enable = true;
-    entry = "DEVENV_TUI=false devenv tasks run check:quick";
+    entry = "${pkgs.bash}/bin/bash ${./scripts/without-git-local-env.sh} env DEVENV_TUI=false devenv tasks run check:quick";
     stages = [ "pre-commit" ];
     always_run = true;
     pass_filenames = false;

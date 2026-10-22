@@ -164,6 +164,60 @@ describe('generated CI cache trust behavior', () => {
     expect(job.env?.BUCK2_CACHE_WRITE_OPTIONAL).toBeUndefined()
   })
 
+  it('executes the cheap source-side Genie suites before enqueueing without removing queue coverage', async () => {
+    const workflow = await readWorkflow()
+    const quality = workflow.jobs.quality!
+    const step = quality.steps.find(
+      ({ name }) => name === 'Genie projection and CI workflow regression tests',
+    )
+    expect(step).toBeDefined()
+    expect(step?.if).toBeUndefined()
+    for (const task of ['genie:buck2:test', 'genie:ci-workflow:test', 'buck2:rust:generators:test'])
+      expect(step?.run).toContain(task)
+    expect(step?.run).toContain('tasks run --mode single')
+    expect(step?.run).toContain('for package in . packages/@overeng/megarepo')
+    expect(step?.run).toContain('target=//:node_modules')
+    for (const [event, ref] of [
+      ['pull_request', 'refs/pull/123/merge'],
+      ['merge_group', 'refs/heads/gh-readonly-queue/main/pr-123'],
+    ] as const)
+      expect(Boolean(evaluate(quality.if!, event, ref))).toBe(true)
+    for (const name of [
+      'Run focused normalized, projection, and runner tests',
+      'Reject tracked product and editor payload bytes',
+      'Query and build representative inert Buck targets',
+    ]) {
+      const prStep = quality.steps.find((step) => step.name === name)
+      const queueStep = workflow.jobs['pr-a-inert-buck']!.steps.find((step) => step.name === name)
+      expect(prStep).toBeDefined()
+      expect(prStep?.if).toBeUndefined()
+      expect(prStep?.run).toBe(queueStep?.run)
+    }
+    expect(workflow.jobs.test?.steps.find(({ name }) => name === 'Unit tests')?.run).toContain(
+      'test:run',
+    )
+  })
+
+  it('selects exact focused source files rather than suffix-matching staged Buck copies', async () => {
+    const workflow = await readWorkflow()
+    const files = [
+      'genie/buck2/typescript-package-projection.unit.test.ts',
+      'genie/buck2/javascript-candidates.unit.test.ts',
+      'packages/@overeng/buck2-tools/src/package-command-runner.unit.test.ts',
+      'packages/@overeng/buck2-tools/src/javascript-runner.unit.test.ts',
+    ]
+    for (const job of [workflow.jobs.quality!, workflow.jobs['pr-a-inert-buck']!]) {
+      const focused = job.steps.find(
+        ({ name }) => name === 'Run focused normalized, projection, and runner tests',
+      )
+      expect(focused).toBeDefined()
+      for (const file of files) {
+        expect(focused?.run).toContain(`./${file}`)
+        expect(focused?.run).not.toContain(`  ${file}`)
+      }
+    }
+  })
+
   it('skips main heavy lanes only for tested trees and still runs queues, publishers and the proof', async () => {
     const workflow = await readWorkflow()
     for (const id of [

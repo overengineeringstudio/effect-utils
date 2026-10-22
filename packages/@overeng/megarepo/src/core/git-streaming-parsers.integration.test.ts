@@ -21,6 +21,7 @@ import { expect } from 'vitest'
 
 import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
 
+import { FIXTURE_BRANCH, initFixtureRepo, pushFixtureBranch } from '../test-utils/git-fixture.ts'
 import * as Git from './git.ts'
 
 const git = (cwd: string, ...args: ReadonlyArray<string>) =>
@@ -44,7 +45,7 @@ describe('streaming git parsers', () => {
       const root = yield* makeRepoDir
       const mainPath = EffectPath.ops.join(root, EffectPath.unsafe.relativeDir('main/'))
       yield* fs.makeDirectory(mainPath, { recursive: true })
-      yield* git(mainPath, 'init', '-q', '-b', 'main')
+      yield* initFixtureRepo(mainPath)
       yield* git(mainPath, 'config', 'user.email', 'test@example.com')
       yield* git(mainPath, 'config', 'user.name', 'Test User')
       yield* git(mainPath, 'config', 'commit.gpgsign', 'false')
@@ -72,10 +73,10 @@ describe('streaming git parsers', () => {
 
       const worktrees = yield* Git.listWorktrees(mainPath)
 
-      // Expect 3 records: the primary (main), the feature branch, and the detached.
+      // Expect 3 records: the primary fixture branch, the feature branch, and the detached.
       expect(worktrees).toHaveLength(3)
       const byBranch = (b: string) => worktrees.find((w) => Option.getOrUndefined(w.branch) === b)
-      expect(byBranch('main')).toBeDefined()
+      expect(byBranch(FIXTURE_BRANCH)).toBeDefined()
       expect(byBranch('feature')).toBeDefined()
       // The detached worktree carries no branch.
       const detached = worktrees.find((w) => Option.isNone(w.branch))
@@ -96,17 +97,17 @@ describe('streaming git parsers', () => {
       const fs = yield* FileSystem.FileSystem
       const root = yield* makeRepoDir
 
-      // A bare "remote" + a clone that pushes `main`, then stacks N local commits.
+      // A bare "remote" + a working repo that pushes the fixture branch, then stacks N local commits.
       const remote = EffectPath.ops.join(root, EffectPath.unsafe.relativeDir('remote.bare/'))
       yield* fs.makeDirectory(remote, { recursive: true })
-      yield* git(remote, 'init', '--bare', '-q', '-b', 'main')
+      yield* git(remote, 'init', '--bare', '-q', '-b', FIXTURE_BRANCH)
 
       const work: AbsoluteDirPath = EffectPath.ops.join(
         root,
         EffectPath.unsafe.relativeDir('work/'),
       )
       yield* fs.makeDirectory(work, { recursive: true })
-      yield* git(work, 'init', '-q', '-b', 'main')
+      yield* initFixtureRepo(work)
       yield* git(work, 'config', 'user.email', 'test@example.com')
       yield* git(work, 'config', 'user.name', 'Test User')
       yield* git(work, 'config', 'commit.gpgsign', 'false')
@@ -117,7 +118,7 @@ describe('streaming git parsers', () => {
       )
       yield* git(work, 'add', '-A')
       yield* git(work, 'commit', '--no-verify', '-m', 'base')
-      yield* git(work, 'push', '-q', '-u', 'origin', 'main')
+      yield* pushFixtureBranch(work)
 
       // Stack N unpushed commits, capturing each SHA in author order. Enough to
       // exercise the streaming line fold across many records; kept modest so the

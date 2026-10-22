@@ -2,6 +2,8 @@
 set -euo pipefail
 
 # Usage: bash run.sh /absolute/candidate/checkout [/absolute/pinned/devenv]
+# Direct execution needs only Nix, Bash, Git, jq, tar and coreutils (CI runner
+# base tools); it must not activate the candidate's root development shell.
 # Fixture assets always come from this harness, including for historical candidates.
 fixture=$(realpath "$(dirname "${BASH_SOURCE[0]}")")
 candidate=${1:?usage: run.sh /absolute/candidate/checkout [/absolute/pinned/devenv]}

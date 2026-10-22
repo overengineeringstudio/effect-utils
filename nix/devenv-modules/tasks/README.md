@@ -117,6 +117,13 @@ for outer tasks that must complete before the nested devenv process can evaluate
 ### Available Modules:
 
 - `check.nix` - Aggregate check tasks (check:quick, check:all, configurable strict typecheck gate)
+  The repository's pre-commit entry launches the entire task graph through
+  `scripts/without-git-local-env.sh`. It removes the variables reported by
+  `git rev-parse --local-env-vars` before starting devenv, so fixture Git
+  commands resolve their own repositories instead of the caller's staged index.
+  This affects only the child task process, not the committing Git process.
+  `git-hooks:environment:test` checks this boundary using disposable repositories
+  and a staged sentinel index; it is part of `check:quick`.
 - `devenv-eval-input-budget.nix` - Per-attribute recursive eval-cache input budget,
   wired into `check:quick` and `check:all` by default
 - `clean.nix` - Clean tasks
@@ -245,7 +252,10 @@ for outer tasks that must complete before the nested devenv process can evaluate
     installs and unknown bridges fail closed.
   - `pnpm-store-gc --git-dir /path/to/repo/.bare --root /path/to/worktree`
     reports historical root-local store retirement in a read-only dry-run.
-    The collector is Linux-only. On other platforms it exits nonzero before
+    The collector supports Linux x86/x86_64 and ARM/aarch64, selecting each
+    architecture's directory and no-follow open flags. Other Linux architectures
+    fail at compile time rather than assuming compatible flags.
+    On other platforms it exits nonzero before
     filesystem input access with `pnpm-store-gc: unsupported platform (Linux only; Darwin census not implemented)`.
     Repeat `--root` for explicitly selected worktrees; there is no fleet traversal.
     It never targets `$HOME/.local/share/pnpm` or `PNPM_SHARED_STORE_DIR`.

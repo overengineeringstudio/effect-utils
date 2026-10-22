@@ -7,10 +7,10 @@ let
   script = pkgs.writeShellScript "buck2-runtime-inspect-mach-o-app-bundle" ''
     set -euo pipefail
     export LC_ALL=C
-    fail() {
-      echo "buck2-runtime-inspect-mach-o-app-bundle: FATAL - $*" >&2
-      exit 1
-    }
+    inspector_name=buck2-runtime-inspect-mach-o-app-bundle
+    inspection_command=( ${pkgs.lib.escapeShellArg inspectionTools.otool.executable} -l )
+    inspection_label="otool -l"
+    source ${import ./buck2-runtime-inspection-failure.nix { inherit pkgs; }}
     [ "$#" -eq 2 ] || fail "usage: $0 DESCRIPTOR_JSON EXTRACTED_ROOT"
     descriptor="$1"
     root="$2"
@@ -22,6 +22,7 @@ let
       || fail "unsupported inspection contract"
     bundle_root="$(${pkgs.jq}/bin/jq -r '.runtime.bundleRoot' "$descriptor")"
     plist="$root/$bundle_root/Contents/Info.plist"
+    inspection_path="$plist"
     [ -f "$plist" ] && [ ! -L "$plist" ] || fail "bundle must contain a regular Contents/Info.plist"
     ${pkgs.gnugrep}/bin/grep -q '^<?xml' "$plist" || fail "bundle Info.plist is not an XML plist"
     temporary="$(${pkgs.coreutils}/bin/mktemp -d)"

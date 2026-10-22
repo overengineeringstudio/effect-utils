@@ -1,9 +1,11 @@
 import { spawn } from 'node:child_process'
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 
 import { describe, expect, it } from 'vitest'
+
+import { formatLiveDeployFailure, type LiveDeployProcessResult } from './deploy-live-diagnostics.ts'
 
 const repoRoot = resolve(import.meta.dirname, '../../../..')
 const cliPath = join(repoRoot, 'packages/@overeng/ci-tools/bin/ci-tools.ts')
@@ -32,10 +34,14 @@ const readRecord = (path: string) => {
     .split('\n')
     .find((entry) => entry.startsWith('WORKFLOW_REPORT_V1: '))
   if (line === undefined) throw new Error(`No workflow report record in ${path}`)
-  return JSON.parse(line.slice('WORKFLOW_REPORT_V1: '.length)) as {
-    readonly status: string
-    readonly links?: readonly { readonly url: string }[]
-    readonly data?: Record<string, unknown>
+  try {
+    return JSON.parse(line.slice('WORKFLOW_REPORT_V1: '.length)) as {
+      readonly status: string
+      readonly links?: readonly { readonly url: string }[]
+      readonly data?: Record<string, unknown>
+    }
+  } catch {
+    throw new Error('Workflow report JSON is invalid')
   }
 }
 
@@ -111,6 +117,7 @@ describe('ci-tools deploy vercel live E2E', () => {
         .slice(0, 24)
       const target = `ci-tools-e2e-${suffix}`
       const marker = `ci-tools-live-vercel-e2e:${runId}:${process.env.GITHUB_RUN_ATTEMPT ?? '0'}`
+      let failureResult: LiveDeployProcessResult | undefined
 
       try {
         mkdirSync(artifactDir, { recursive: true })
@@ -126,6 +133,7 @@ describe('ci-tools deploy vercel live E2E', () => {
           target,
           marker,
         })
+        failureResult = result
         const token = process.env.VERCEL_TOKEN
         const bypassSecret = process.env.VERCEL_AUTOMATION_BYPASS_SECRET
         expect(
@@ -135,18 +143,29 @@ describe('ci-tools deploy vercel live E2E', () => {
           ),
         ).toBe(false)
         expect(result.status).toBe(0)
-        expect(result.stdout).toContain('Vercel deploy URL: https://ci-tools-e2e-')
+        // Predicate assertions prevent Vitest from echoing captured private values.
+        expect(result.stdout.includes('Vercel deploy URL: https://ci-tools-e2e-')).toBe(true)
 
         const record = readRecord(reportFile)
-        expect(record.status).toBe('success')
-        expect(record.links?.[0]?.url).toContain('https://ci-tools-e2e-')
-        expect(record.data).toMatchObject({
-          provider: 'vercel',
-          target,
-          mode: 'prod',
-          alias: target,
-        })
-        expect(['succeeded', 'failed']).toContain(record.data?.cleanup)
+        expect(record.status === 'success').toBe(true)
+        expect(record.links?.[0]?.url.includes('https://ci-tools-e2e-') === true).toBe(true)
+        expect(
+          Object.entries({ provider: 'vercel', target, mode: 'prod', alias: target }).every(
+            ([key, value]) => record.data?.[key] === value,
+          ),
+        ).toBe(true)
+        expect(['succeeded', 'failed'].some((status) => status === record.data?.cleanup)).toBe(true)
+      } catch (cause) {
+        if (failureResult !== undefined) {
+          console.error(
+            formatLiveDeployFailure({
+              status: failureResult.status,
+              report:
+                existsSync(reportFile) === true ? readFileSync(reportFile, 'utf8') : undefined,
+            }),
+          )
+        }
+        throw cause
       } finally {
         rmSync(workspace, { recursive: true, force: true })
       }
