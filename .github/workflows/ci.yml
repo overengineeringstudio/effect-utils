@@ -118,6 +118,7 @@ jobs:
             ${{ runner.os == 'Linux' && 'sandbox = true' || '' }}
             ${{ runner.os == 'Linux' && 'sandbox-fallback = false' || '' }}
           summarize: true
+        timeout-minutes: ${{ runner.os == 'macOS' && 5 || 2 }}
       - id: linux-sandbox-admission
         name: Log Linux sandbox prerequisites
         if: ${{ runner.os == 'Linux' }}
@@ -622,6 +623,7 @@ jobs:
             ${{ runner.os == 'Linux' && 'sandbox = true' || '' }}
             ${{ runner.os == 'Linux' && 'sandbox-fallback = false' || '' }}
           summarize: true
+        timeout-minutes: ${{ runner.os == 'macOS' && 5 || 2 }}
       - id: linux-sandbox-admission
         name: Log Linux sandbox prerequisites
         if: ${{ runner.os == 'Linux' }}
@@ -681,6 +683,7 @@ jobs:
           set -euo pipefail
           out=$(nix build --no-link --print-out-paths nixpkgs#cachix)
           echo "$out/bin" >> "$GITHUB_PATH"
+        timeout-minutes: 3
       - name: Enable Cachix cache
         uses: cachix/cachix-action@v17
         with:
@@ -718,6 +721,7 @@ jobs:
           __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
           bash "$__genie_ci_retry_script" 'resolve devenv (devenv.lock)' 'cd "${GITHUB_WORKSPACE:-$PWD}" && '"'"'${{ runner.temp }}/composition-state/ci-runtime/resolve-devenv.sh'"'"' '"'"'devenv.lock'"'"''
         shell: bash
+        timeout-minutes: ${{ runner.os == 'macOS' && 3 || 6 }}
       - name: Prepare source generator dependency views
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -725,6 +729,7 @@ jobs:
         run: |
           __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
           bash "$__genie_ci_retry_script" 'devenv tasks run buck2:editor:bootstrap' 'cd "${GITHUB_WORKSPACE:-$PWD}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false ${PIPELINE_RUN_PREFIX:+$PIPELINE_RUN_PREFIX }"${DEVENV_BIN:?DEVENV_BIN not set}" tasks run buck2:editor:bootstrap'
+        timeout-minutes: ${{ runner.os == 'macOS' && 25 || 26 }}
       - name: Force diagnostics failure (debug)
         if: ${{ github.event_name == 'workflow_dispatch' && (inputs.debug_force_nix_diagnostics_failure == true || inputs.debug_force_nix_diagnostics_failure == 'true') }}
         shell: bash
@@ -945,6 +950,7 @@ jobs:
             nix run nixpkgs#bun -- "$audit"
             nix run nixpkgs#bun -- test ./genie/ci-scripts/tested-tree.unit.test.ts ./genie/ci-workflow/buck2-cache-posture.unit.test.ts ./genie/ci-workflow/buck2-cache-posture.integration.test.ts
           fi
+        timeout-minutes: 2
       - name: Nix diagnostics summary
         if: ${{ (failure()) && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
         shell: bash
@@ -1150,6 +1156,7 @@ jobs:
             ${{ runner.os == 'Linux' && 'sandbox = true' || '' }}
             ${{ runner.os == 'Linux' && 'sandbox-fallback = false' || '' }}
           summarize: true
+        timeout-minutes: ${{ runner.os == 'macOS' && 5 || 2 }}
       - id: linux-sandbox-admission
         name: Log Linux sandbox prerequisites
         if: ${{ runner.os == 'Linux' }}
@@ -1209,6 +1216,7 @@ jobs:
           set -euo pipefail
           out=$(nix build --no-link --print-out-paths nixpkgs#cachix)
           echo "$out/bin" >> "$GITHUB_PATH"
+        timeout-minutes: 3
       - name: Enable Cachix cache
         uses: cachix/cachix-action@v17
         with:
@@ -1246,6 +1254,7 @@ jobs:
           __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
           bash "$__genie_ci_retry_script" 'resolve devenv (devenv.lock)' 'cd "${GITHUB_WORKSPACE:-$PWD}" && '"'"'${{ runner.temp }}/composition-state/ci-runtime/resolve-devenv.sh'"'"' '"'"'devenv.lock'"'"''
         shell: bash
+        timeout-minutes: ${{ runner.os == 'macOS' && 3 || 6 }}
       - name: Prepare source generator dependency views
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -1253,6 +1262,7 @@ jobs:
         run: |
           __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
           bash "$__genie_ci_retry_script" 'devenv tasks run buck2:editor:bootstrap' 'cd "${GITHUB_WORKSPACE:-$PWD}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false ${PIPELINE_RUN_PREFIX:+$PIPELINE_RUN_PREFIX }"${DEVENV_BIN:?DEVENV_BIN not set}" tasks run buck2:editor:bootstrap'
+        timeout-minutes: ${{ runner.os == 'macOS' && 25 || 26 }}
       - name: Force diagnostics failure (debug)
         if: ${{ github.event_name == 'workflow_dispatch' && (inputs.debug_force_nix_diagnostics_failure == true || inputs.debug_force_nix_diagnostics_failure == 'true') }}
         shell: bash
@@ -1496,6 +1506,7 @@ jobs:
             ${{ runner.os == 'Linux' && 'sandbox = true' || '' }}
             ${{ runner.os == 'Linux' && 'sandbox-fallback = false' || '' }}
           summarize: true
+        timeout-minutes: ${{ runner.os == 'macOS' && 5 || 2 }}
       - id: linux-sandbox-admission
         name: Log Linux sandbox prerequisites
         if: ${{ runner.os == 'Linux' }}
@@ -1555,6 +1566,7 @@ jobs:
           set -euo pipefail
           out=$(nix build --no-link --print-out-paths nixpkgs#cachix)
           echo "$out/bin" >> "$GITHUB_PATH"
+        timeout-minutes: 3
       - name: Enable Cachix cache
         uses: cachix/cachix-action@v17
         with:
@@ -1600,6 +1612,7 @@ jobs:
           __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
           bash "$__genie_ci_retry_script" 'resolve devenv (devenv.lock)' 'cd "${GITHUB_WORKSPACE:-$PWD}" && '"'"'${{ runner.temp }}/composition-state/ci-runtime/resolve-devenv.sh'"'"' '"'"'devenv.lock'"'"''
         shell: bash
+        timeout-minutes: ${{ runner.os == 'macOS' && 3 || 6 }}
       - name: Prepare source generator dependency views
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -1607,6 +1620,7 @@ jobs:
         run: |
           __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
           bash "$__genie_ci_retry_script" 'devenv tasks run buck2:editor:bootstrap' 'cd "${GITHUB_WORKSPACE:-$PWD}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false ${PIPELINE_RUN_PREFIX:+$PIPELINE_RUN_PREFIX }"${DEVENV_BIN:?DEVENV_BIN not set}" tasks run buck2:editor:bootstrap'
+        timeout-minutes: ${{ runner.os == 'macOS' && 25 || 26 }}
       - name: Warm local Nix substituter after bootstrap
         if: ${{ (success()) && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
         continue-on-error: true
@@ -1662,6 +1676,7 @@ jobs:
           fi
           unset BUCK2_PUBLIC_CACHE_WRITE_AUTH
           cd "${GITHUB_WORKSPACE:-$PWD}" && bash genie/ci-scripts/compiled-products.sh
+        timeout-minutes: ${{ runner.os == 'macOS' && 4 || 10 }}
       - name: Save signed and content-addressed store paths to local Nix substituter
         if: ${{ (!cancelled()) && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
         continue-on-error: true
@@ -1866,6 +1881,7 @@ jobs:
             ${{ runner.os == 'Linux' && 'sandbox = true' || '' }}
             ${{ runner.os == 'Linux' && 'sandbox-fallback = false' || '' }}
           summarize: true
+        timeout-minutes: ${{ runner.os == 'macOS' && 5 || 2 }}
       - id: linux-sandbox-admission
         name: Log Linux sandbox prerequisites
         if: ${{ runner.os == 'Linux' }}
@@ -1925,6 +1941,7 @@ jobs:
           set -euo pipefail
           out=$(nix build --no-link --print-out-paths nixpkgs#cachix)
           echo "$out/bin" >> "$GITHUB_PATH"
+        timeout-minutes: 3
       - name: Enable Cachix cache
         uses: cachix/cachix-action@v17
         with:
@@ -1962,6 +1979,7 @@ jobs:
           __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
           bash "$__genie_ci_retry_script" 'resolve devenv (devenv.lock)' 'cd "${GITHUB_WORKSPACE:-$PWD}" && '"'"'${{ runner.temp }}/composition-state/ci-runtime/resolve-devenv.sh'"'"' '"'"'devenv.lock'"'"''
         shell: bash
+        timeout-minutes: ${{ runner.os == 'macOS' && 3 || 6 }}
       - name: Prepare source generator dependency views
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -1969,6 +1987,7 @@ jobs:
         run: |
           __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
           bash "$__genie_ci_retry_script" 'devenv tasks run buck2:editor:bootstrap' 'cd "${GITHUB_WORKSPACE:-$PWD}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false ${PIPELINE_RUN_PREFIX:+$PIPELINE_RUN_PREFIX }"${DEVENV_BIN:?DEVENV_BIN not set}" tasks run buck2:editor:bootstrap'
+        timeout-minutes: ${{ runner.os == 'macOS' && 25 || 26 }}
       - name: Force diagnostics failure (debug)
         if: ${{ github.event_name == 'workflow_dispatch' && (inputs.debug_force_nix_diagnostics_failure == true || inputs.debug_force_nix_diagnostics_failure == 'true') }}
         shell: bash
@@ -2211,6 +2230,7 @@ jobs:
             ${{ runner.os == 'Linux' && 'sandbox = true' || '' }}
             ${{ runner.os == 'Linux' && 'sandbox-fallback = false' || '' }}
           summarize: true
+        timeout-minutes: ${{ runner.os == 'macOS' && 5 || 2 }}
       - id: linux-sandbox-admission
         name: Log Linux sandbox prerequisites
         if: ${{ runner.os == 'Linux' }}
@@ -2270,6 +2290,7 @@ jobs:
           set -euo pipefail
           out=$(nix build --no-link --print-out-paths nixpkgs#cachix)
           echo "$out/bin" >> "$GITHUB_PATH"
+        timeout-minutes: 3
       - name: Enable Cachix cache
         uses: cachix/cachix-action@v17
         with:
@@ -2307,6 +2328,7 @@ jobs:
           __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
           bash "$__genie_ci_retry_script" 'resolve devenv (devenv.lock)' 'cd "${GITHUB_WORKSPACE:-$PWD}" && '"'"'${{ runner.temp }}/composition-state/ci-runtime/resolve-devenv.sh'"'"' '"'"'devenv.lock'"'"''
         shell: bash
+        timeout-minutes: ${{ runner.os == 'macOS' && 3 || 6 }}
       - name: Prepare source generator dependency views
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -2314,6 +2336,7 @@ jobs:
         run: |
           __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
           bash "$__genie_ci_retry_script" 'devenv tasks run buck2:editor:bootstrap' 'cd "${GITHUB_WORKSPACE:-$PWD}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false ${PIPELINE_RUN_PREFIX:+$PIPELINE_RUN_PREFIX }"${DEVENV_BIN:?DEVENV_BIN not set}" tasks run buck2:editor:bootstrap'
+        timeout-minutes: ${{ runner.os == 'macOS' && 25 || 26 }}
       - name: Force diagnostics failure (debug)
         if: ${{ github.event_name == 'workflow_dispatch' && (inputs.debug_force_nix_diagnostics_failure == true || inputs.debug_force_nix_diagnostics_failure == 'true') }}
         shell: bash
@@ -2556,6 +2579,7 @@ jobs:
             ${{ runner.os == 'Linux' && 'sandbox = true' || '' }}
             ${{ runner.os == 'Linux' && 'sandbox-fallback = false' || '' }}
           summarize: true
+        timeout-minutes: ${{ runner.os == 'macOS' && 5 || 2 }}
       - id: linux-sandbox-admission
         name: Log Linux sandbox prerequisites
         if: ${{ runner.os == 'Linux' }}
@@ -2615,6 +2639,7 @@ jobs:
           set -euo pipefail
           out=$(nix build --no-link --print-out-paths nixpkgs#cachix)
           echo "$out/bin" >> "$GITHUB_PATH"
+        timeout-minutes: 3
       - name: Enable Cachix cache
         uses: cachix/cachix-action@v17
         with:
@@ -2652,6 +2677,7 @@ jobs:
           __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
           bash "$__genie_ci_retry_script" 'resolve devenv (devenv.lock)' 'cd "${GITHUB_WORKSPACE:-$PWD}" && '"'"'${{ runner.temp }}/composition-state/ci-runtime/resolve-devenv.sh'"'"' '"'"'devenv.lock'"'"''
         shell: bash
+        timeout-minutes: ${{ runner.os == 'macOS' && 3 || 6 }}
       - name: Prepare source generator dependency views
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -2659,6 +2685,7 @@ jobs:
         run: |
           __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
           bash "$__genie_ci_retry_script" 'devenv tasks run buck2:editor:bootstrap' 'cd "${GITHUB_WORKSPACE:-$PWD}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false ${PIPELINE_RUN_PREFIX:+$PIPELINE_RUN_PREFIX }"${DEVENV_BIN:?DEVENV_BIN not set}" tasks run buck2:editor:bootstrap'
+        timeout-minutes: ${{ runner.os == 'macOS' && 25 || 26 }}
       - name: Force diagnostics failure (debug)
         if: ${{ github.event_name == 'workflow_dispatch' && (inputs.debug_force_nix_diagnostics_failure == true || inputs.debug_force_nix_diagnostics_failure == 'true') }}
         shell: bash
@@ -2874,6 +2901,7 @@ jobs:
             ${{ runner.os == 'Linux' && 'sandbox = true' || '' }}
             ${{ runner.os == 'Linux' && 'sandbox-fallback = false' || '' }}
           summarize: true
+        timeout-minutes: ${{ runner.os == 'macOS' && 5 || 2 }}
       - id: linux-sandbox-admission
         name: Log Linux sandbox prerequisites
         if: ${{ runner.os == 'Linux' }}
@@ -2933,6 +2961,7 @@ jobs:
           set -euo pipefail
           out=$(nix build --no-link --print-out-paths nixpkgs#cachix)
           echo "$out/bin" >> "$GITHUB_PATH"
+        timeout-minutes: 3
       - name: Enable Cachix cache
         uses: cachix/cachix-action@v17
         with:
@@ -2970,6 +2999,7 @@ jobs:
           __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
           bash "$__genie_ci_retry_script" 'resolve devenv (devenv.lock)' 'cd "${GITHUB_WORKSPACE:-$PWD}" && '"'"'${{ runner.temp }}/composition-state/ci-runtime/resolve-devenv.sh'"'"' '"'"'devenv.lock'"'"''
         shell: bash
+        timeout-minutes: ${{ runner.os == 'macOS' && 3 || 6 }}
       - name: Prepare source generator dependency views
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -2977,6 +3007,7 @@ jobs:
         run: |
           __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
           bash "$__genie_ci_retry_script" 'devenv tasks run buck2:editor:bootstrap' 'cd "${GITHUB_WORKSPACE:-$PWD}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false ${PIPELINE_RUN_PREFIX:+$PIPELINE_RUN_PREFIX }"${DEVENV_BIN:?DEVENV_BIN not set}" tasks run buck2:editor:bootstrap'
+        timeout-minutes: ${{ runner.os == 'macOS' && 25 || 26 }}
       - name: Force diagnostics failure (debug)
         if: ${{ github.event_name == 'workflow_dispatch' && (inputs.debug_force_nix_diagnostics_failure == true || inputs.debug_force_nix_diagnostics_failure == 'true') }}
         shell: bash
@@ -3234,6 +3265,7 @@ jobs:
             ${{ runner.os == 'Linux' && 'sandbox = true' || '' }}
             ${{ runner.os == 'Linux' && 'sandbox-fallback = false' || '' }}
           summarize: true
+        timeout-minutes: ${{ runner.os == 'macOS' && 5 || 2 }}
       - name: Provide cachix CLI from nixpkgs
         shell: bash
         env:
@@ -3242,6 +3274,7 @@ jobs:
           set -euo pipefail
           out=$(nix build --no-link --print-out-paths nixpkgs#cachix)
           echo "$out/bin" >> "$GITHUB_PATH"
+        timeout-minutes: 3
       - name: Enable Cachix cache
         uses: cachix/cachix-action@v17
         with:
@@ -3279,6 +3312,7 @@ jobs:
           __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
           bash "$__genie_ci_retry_script" 'resolve devenv (devenv.lock)' 'cd "${GITHUB_WORKSPACE:-$PWD}" && '"'"'${{ runner.temp }}/composition-state/ci-runtime/resolve-devenv.sh'"'"' '"'"'devenv.lock'"'"''
         shell: bash
+        timeout-minutes: ${{ runner.os == 'macOS' && 3 || 6 }}
       - name: Prepare source generator dependency views
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -3286,6 +3320,7 @@ jobs:
         run: |
           __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
           bash "$__genie_ci_retry_script" 'devenv tasks run buck2:editor:bootstrap' 'cd "${GITHUB_WORKSPACE:-$PWD}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false ${PIPELINE_RUN_PREFIX:+$PIPELINE_RUN_PREFIX }"${DEVENV_BIN:?DEVENV_BIN not set}" tasks run buck2:editor:bootstrap'
+        timeout-minutes: ${{ runner.os == 'macOS' && 25 || 26 }}
       - name: Check generated sources
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -3482,6 +3517,7 @@ jobs:
             ${{ runner.os == 'Linux' && 'sandbox = true' || '' }}
             ${{ runner.os == 'Linux' && 'sandbox-fallback = false' || '' }}
           summarize: true
+        timeout-minutes: ${{ runner.os == 'macOS' && 5 || 2 }}
       - name: Build every published from-source product
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -3494,10 +3530,12 @@ jobs:
             product_refs+=(".#buck-product-$safe_name-from-source")
           done
           nix build --no-link --print-build-logs "${product_refs[@]}"
+        timeout-minutes: 17
       - name: Build and smoke native and compiled products
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: 'cd "${GITHUB_WORKSPACE:-$PWD}" && bash genie/ci-scripts/compiled-products.sh'
+        timeout-minutes: ${{ runner.os == 'macOS' && 4 || 10 }}
       - name: Collect Buck2 cache evidence
         if: ${{ always() }}
         shell: bash
@@ -3659,6 +3697,7 @@ jobs:
           summarize: true
         id: product-nix
         if: steps.publication-scope.outputs.publish == 'true'
+        timeout-minutes: ${{ runner.os == 'macOS' && 5 || 2 }}
       - name: Provide cachix CLI from nixpkgs
         shell: bash
         env:
@@ -3669,6 +3708,7 @@ jobs:
           echo "$out/bin" >> "$GITHUB_PATH"
         id: product-cachix-cli
         if: steps.publication-scope.outputs.publish == 'true'
+        timeout-minutes: 3
       - name: Publish to Cachix
         if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && steps.publication-scope.outputs.publish == 'true'
         uses: cachix/cachix-action@v17
@@ -3716,6 +3756,7 @@ jobs:
               -f target_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
             echo "stale-status=true" >> "$GITHUB_OUTPUT"
           fi
+        timeout-minutes: 32
       - id: publisher-app-config
         name: Check publisher GitHub App configuration
         if: steps.product-publication.outputs.changed == 'true'
@@ -3885,6 +3926,7 @@ jobs:
             ${{ runner.os == 'Linux' && 'sandbox = true' || '' }}
             ${{ runner.os == 'Linux' && 'sandbox-fallback = false' || '' }}
           summarize: true
+        timeout-minutes: ${{ runner.os == 'macOS' && 5 || 2 }}
       - name: Prepare CI helper scripts
         shell: bash
         run: |
@@ -3917,6 +3959,7 @@ jobs:
           __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
           bash "$__genie_ci_retry_script" 'resolve devenv (devenv.lock)' 'cd "${GITHUB_WORKSPACE:-$PWD}" && '"'"'${{ runner.temp }}/composition-state/ci-runtime/resolve-devenv.sh'"'"' '"'"'devenv.lock'"'"''
         shell: bash
+        timeout-minutes: ${{ runner.os == 'macOS' && 3 || 6 }}
       - name: Prove fresh-root remote action and test-cache hits
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -4093,6 +4136,7 @@ jobs:
             ${{ runner.os == 'Linux' && 'sandbox = true' || '' }}
             ${{ runner.os == 'Linux' && 'sandbox-fallback = false' || '' }}
           summarize: true
+        timeout-minutes: ${{ runner.os == 'macOS' && 5 || 2 }}
       - id: linux-sandbox-admission
         name: Log Linux sandbox prerequisites
         if: ${{ runner.os == 'Linux' }}
@@ -4328,6 +4372,7 @@ jobs:
 
           cat "$artifact_file"
 
+        timeout-minutes: 2
       - name: 'Upload CI measurements: source-shape'
         if: always()
         uses: actions/upload-artifact@v4
@@ -4412,6 +4457,7 @@ jobs:
             ${{ runner.os == 'Linux' && 'sandbox = true' || '' }}
             ${{ runner.os == 'Linux' && 'sandbox-fallback = false' || '' }}
           summarize: true
+        timeout-minutes: ${{ runner.os == 'macOS' && 5 || 2 }}
       - id: linux-sandbox-admission
         name: Log Linux sandbox prerequisites
         if: ${{ runner.os == 'Linux' }}
@@ -4471,6 +4517,7 @@ jobs:
           set -euo pipefail
           out=$(nix build --no-link --print-out-paths nixpkgs#cachix)
           echo "$out/bin" >> "$GITHUB_PATH"
+        timeout-minutes: 3
       - name: Enable Cachix cache
         uses: cachix/cachix-action@v17
         with:
@@ -4508,6 +4555,7 @@ jobs:
           __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
           bash "$__genie_ci_retry_script" 'resolve devenv (devenv.lock)' 'cd "${GITHUB_WORKSPACE:-$PWD}" && '"'"'${{ runner.temp }}/composition-state/ci-runtime/resolve-devenv.sh'"'"' '"'"'devenv.lock'"'"''
         shell: bash
+        timeout-minutes: ${{ runner.os == 'macOS' && 3 || 6 }}
       - name: Prepare source generator dependency views
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -4515,6 +4563,7 @@ jobs:
         run: |
           __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
           bash "$__genie_ci_retry_script" 'devenv tasks run buck2:editor:bootstrap' 'cd "${GITHUB_WORKSPACE:-$PWD}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false ${PIPELINE_RUN_PREFIX:+$PIPELINE_RUN_PREFIX }"${DEVENV_BIN:?DEVENV_BIN not set}" tasks run buck2:editor:bootstrap'
+        timeout-minutes: ${{ runner.os == 'macOS' && 25 || 26 }}
       - name: Force diagnostics failure (debug)
         if: ${{ github.event_name == 'workflow_dispatch' && (inputs.debug_force_nix_diagnostics_failure == true || inputs.debug_force_nix_diagnostics_failure == 'true') }}
         shell: bash
@@ -4681,6 +4730,7 @@ jobs:
             ${{ runner.os == 'Linux' && 'sandbox = true' || '' }}
             ${{ runner.os == 'Linux' && 'sandbox-fallback = false' || '' }}
           summarize: true
+        timeout-minutes: ${{ runner.os == 'macOS' && 5 || 2 }}
       - id: linux-sandbox-admission
         name: Log Linux sandbox prerequisites
         if: ${{ runner.os == 'Linux' }}
@@ -4740,6 +4790,7 @@ jobs:
           set -euo pipefail
           out=$(nix build --no-link --print-out-paths nixpkgs#cachix)
           echo "$out/bin" >> "$GITHUB_PATH"
+        timeout-minutes: 3
       - name: Enable Cachix cache
         uses: cachix/cachix-action@v17
         with:
@@ -4777,6 +4828,7 @@ jobs:
           __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
           bash "$__genie_ci_retry_script" 'resolve devenv (devenv.lock)' 'cd "${GITHUB_WORKSPACE:-$PWD}" && '"'"'${{ runner.temp }}/composition-state/ci-runtime/resolve-devenv.sh'"'"' '"'"'devenv.lock'"'"''
         shell: bash
+        timeout-minutes: ${{ runner.os == 'macOS' && 3 || 6 }}
       - name: Prepare source generator dependency views
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -4784,6 +4836,7 @@ jobs:
         run: |
           __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
           bash "$__genie_ci_retry_script" 'devenv tasks run buck2:editor:bootstrap' 'cd "${GITHUB_WORKSPACE:-$PWD}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false ${PIPELINE_RUN_PREFIX:+$PIPELINE_RUN_PREFIX }"${DEVENV_BIN:?DEVENV_BIN not set}" tasks run buck2:editor:bootstrap'
+        timeout-minutes: ${{ runner.os == 'macOS' && 25 || 26 }}
       - name: Force diagnostics failure (debug)
         if: ${{ github.event_name == 'workflow_dispatch' && (inputs.debug_force_nix_diagnostics_failure == true || inputs.debug_force_nix_diagnostics_failure == 'true') }}
         shell: bash
@@ -4949,6 +5002,7 @@ jobs:
             ${{ runner.os == 'Linux' && 'sandbox = true' || '' }}
             ${{ runner.os == 'Linux' && 'sandbox-fallback = false' || '' }}
           summarize: true
+        timeout-minutes: ${{ runner.os == 'macOS' && 5 || 2 }}
       - id: linux-sandbox-admission
         name: Log Linux sandbox prerequisites
         if: ${{ runner.os == 'Linux' }}
@@ -5008,6 +5062,7 @@ jobs:
           set -euo pipefail
           out=$(nix build --no-link --print-out-paths nixpkgs#cachix)
           echo "$out/bin" >> "$GITHUB_PATH"
+        timeout-minutes: 3
       - name: Enable Cachix cache
         uses: cachix/cachix-action@v17
         with:
@@ -5045,6 +5100,7 @@ jobs:
           __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
           bash "$__genie_ci_retry_script" 'resolve devenv (devenv.lock)' 'cd "${GITHUB_WORKSPACE:-$PWD}" && '"'"'${{ runner.temp }}/composition-state/ci-runtime/resolve-devenv.sh'"'"' '"'"'devenv.lock'"'"''
         shell: bash
+        timeout-minutes: ${{ runner.os == 'macOS' && 3 || 6 }}
       - name: Prepare source generator dependency views
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -5052,6 +5108,7 @@ jobs:
         run: |
           __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
           bash "$__genie_ci_retry_script" 'devenv tasks run buck2:editor:bootstrap' 'cd "${GITHUB_WORKSPACE:-$PWD}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false ${PIPELINE_RUN_PREFIX:+$PIPELINE_RUN_PREFIX }"${DEVENV_BIN:?DEVENV_BIN not set}" tasks run buck2:editor:bootstrap'
+        timeout-minutes: ${{ runner.os == 'macOS' && 25 || 26 }}
       - name: Force diagnostics failure (debug)
         if: ${{ github.event_name == 'workflow_dispatch' && (inputs.debug_force_nix_diagnostics_failure == true || inputs.debug_force_nix_diagnostics_failure == 'true') }}
         shell: bash
@@ -5107,6 +5164,7 @@ jobs:
           EDITOR_VIEW_PACKAGES='["packages/@overeng/ci-tools"]' DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run buck2:editor:publish
           DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" shell --no-reload -- bun test packages/@overeng/ci-tools/src/deploy-netlify.live.e2e.test.ts
         if: steps.live-netlify-preflight.outputs.run == 'true'
+        timeout-minutes: 56
       - name: Live Vercel ci-tools E2E
         shell: bash
         env:
@@ -5125,6 +5183,7 @@ jobs:
           EDITOR_VIEW_PACKAGES='["packages/@overeng/ci-tools"]' DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run buck2:editor:publish
           DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" shell --no-reload -- bun test packages/@overeng/ci-tools/src/deploy-vercel.live.e2e.test.ts
         if: steps.live-vercel-preflight.outputs.run == 'true'
+        timeout-minutes: 13
       - name: Nix diagnostics summary
         if: ${{ (failure()) && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
         shell: bash
@@ -5262,6 +5321,7 @@ jobs:
             ${{ runner.os == 'Linux' && 'sandbox = true' || '' }}
             ${{ runner.os == 'Linux' && 'sandbox-fallback = false' || '' }}
           summarize: true
+        timeout-minutes: ${{ runner.os == 'macOS' && 5 || 2 }}
       - id: linux-sandbox-admission
         name: Log Linux sandbox prerequisites
         if: ${{ runner.os == 'Linux' }}
@@ -5321,6 +5381,7 @@ jobs:
           set -euo pipefail
           out=$(nix build --no-link --print-out-paths nixpkgs#cachix)
           echo "$out/bin" >> "$GITHUB_PATH"
+        timeout-minutes: 3
       - name: Enable Cachix cache
         uses: cachix/cachix-action@v17
         with:
@@ -5358,6 +5419,7 @@ jobs:
           __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
           bash "$__genie_ci_retry_script" 'resolve devenv (devenv.lock)' 'cd "${GITHUB_WORKSPACE:-$PWD}" && '"'"'${{ runner.temp }}/composition-state/ci-runtime/resolve-devenv.sh'"'"' '"'"'devenv.lock'"'"''
         shell: bash
+        timeout-minutes: ${{ runner.os == 'macOS' && 3 || 6 }}
       - name: Prepare source generator dependency views
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -5365,6 +5427,7 @@ jobs:
         run: |
           __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
           bash "$__genie_ci_retry_script" 'devenv tasks run buck2:editor:bootstrap' 'cd "${GITHUB_WORKSPACE:-$PWD}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false ${PIPELINE_RUN_PREFIX:+$PIPELINE_RUN_PREFIX }"${DEVENV_BIN:?DEVENV_BIN not set}" tasks run buck2:editor:bootstrap'
+        timeout-minutes: ${{ runner.os == 'macOS' && 25 || 26 }}
       - name: Force diagnostics failure (debug)
         if: ${{ github.event_name == 'workflow_dispatch' && (inputs.debug_force_nix_diagnostics_failure == true || inputs.debug_force_nix_diagnostics_failure == 'true') }}
         shell: bash
@@ -5595,110 +5658,6 @@ jobs:
     concurrency:
       group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || 'code') }}-notify-alignment"
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') }}
-  consumer-smoke:
-    if: ${{ (!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') }}
-    runs-on:
-      [
-        "namespace-profile-linux-x86-64;github.run-id=${{ github.run_id }}${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && ';container.privileged=true' || '' }};job.priority=1",
-      ]
-    timeout-minutes: 10
-    permissions:
-      contents: read
-    defaults:
-      run:
-        shell: bash
-    outputs:
-      current-sha: ${{ steps.consumer-smoke.outputs.current-sha }}
-    steps:
-      - id: linux-nix-sandbox-policy
-        name: Disable Linux Nix sandbox fallback
-        if: ${{ runner.os == 'Linux' }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          printf 'NIX_CONFIG<<EOF\n%s\nsandbox = true\nsandbox-fallback = false\nEOF\n' "${NIX_CONFIG:-}" >> "$GITHUB_ENV"
-      - uses: actions/checkout@v6
-        with:
-          persist-credentials: false
-      - name: Install Nix
-        uses: DeterminateSystems/determinate-nix-action@v3
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        with:
-          extra-conf: |
-            experimental-features = nix-command flakes
-            accept-flake-config = true
-            extra-substituters = https://overeng-effect-utils.cachix.org
-            extra-trusted-public-keys = overeng-effect-utils.cachix.org-1:KFmqYNF6Q7ZzVYPl2znpJYZGEolage9YNCA9res6vKc=
-            access-tokens = github.com=${{ github.token }}
-            ${{ runner.os == 'Linux' && 'sandbox = true' || '' }}
-            ${{ runner.os == 'Linux' && 'sandbox-fallback = false' || '' }}
-          summarize: true
-      - id: linux-sandbox-admission
-        name: Log Linux sandbox prerequisites
-        if: ${{ runner.os == 'Linux' }}
-        shell: bash
-        env:
-          BUCK2_TS_PRIVILEGE_ALLOWED: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
-        run: |
-          set -euo pipefail
-          if [ "$BUCK2_TS_PRIVILEGE_ALLOWED" != true ]; then
-            echo "::error::Buck TypeScript lane refused: untrusted pull_request runs on an unprivileged Namespace runner; privileged Nix/Bubblewrap execution is not admitted (fork policy Q49 pending)." >&2
-            exit 1
-          fi
-          nix config show | grep -E '^sandbox'
-          for key in kernel.apparmor_restrict_unprivileged_userns user.max_user_namespaces; do
-            if sysctl "$key"; then :; else printf "Unavailable sysctl: %s\n" "$key"; fi
-          done
-          unshare -Ur true
-          echo "unshare -Ur true: passed"
-      - name: Prepare CI helper scripts
-        shell: bash
-        run: |
-          cd "${GITHUB_WORKSPACE:-$PWD}" && set -euo pipefail
-          scripts_src='genie/ci-scripts'
-          scripts_dst='${{ runner.temp }}/composition-state/ci-runtime'
-          if [ ! -d "$scripts_src" ]; then
-            echo "::error::CI helper script directory is missing: $scripts_src"
-            exit 1
-          fi
-          rm -rf "$scripts_dst"
-          mkdir -p "$scripts_dst"
-          cp -R "$scripts_src/." "$scripts_dst/"
-          rm -f "$scripts_dst"/*.genie.ts
-          chmod +x "$scripts_dst"/*.sh
-      - name: Use pinned devenv from lock
-        run: |
-          cd "${GITHUB_WORKSPACE:-$PWD}" && DEVENV_REV=$(jq -r .nodes.devenv.locked.rev 'devenv.lock')
-          if [ -z "$DEVENV_REV" ] || [ "$DEVENV_REV" = "null" ]; then
-            printf '::error::%s missing .nodes.devenv.locked.rev\n' 'devenv.lock'
-            exit 1
-          fi
-          echo "DEVENV_REV=$DEVENV_REV" >> "$GITHUB_ENV"
-          echo "Pinned devenv rev: $DEVENV_REV"
-        shell: bash
-      - name: Resolve devenv
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        run: |
-          __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
-          bash "$__genie_ci_retry_script" 'resolve devenv (devenv.lock)' 'cd "${GITHUB_WORKSPACE:-$PWD}" && '"'"'${{ runner.temp }}/composition-state/ci-runtime/resolve-devenv.sh'"'"' '"'"'devenv.lock'"'"''
-        shell: bash
-      - id: consumer-smoke
-        name: Install an isolated consumer from the candidate checkout
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        run: |
-          bash nix/fixtures/consumer-smoke/run.sh "$PWD" "${DEVENV_BIN:?DEVENV_BIN not set}"
-          echo "current-sha=$GITHUB_SHA" >> "$GITHUB_OUTPUT"
-    env:
-      FORCE_SETUP: '1'
-      CI: 'true'
-      BUCK2_NO_REMOTE_CACHE: '0'
-      BUCK2_PUBLIC_CACHE_READ_ONLY: '1'
-    concurrency:
-      group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || 'code') }}-consumer-smoke"
-      cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') }}
   promote-published:
     needs: [publish-products, consumer-smoke]
     if: github.repository == 'overengineeringstudio/effect-utils' && github.event_name == 'push' && github.ref == 'refs/heads/main' && needs['publish-products'].result == 'success' && needs['consumer-smoke'].result == 'success' && needs['publish-products'].outputs.current-sha == github.sha && needs['consumer-smoke'].outputs.current-sha == github.sha
@@ -5846,6 +5805,7 @@ jobs:
           extra_nix_config: |
             ${{ runner.os == 'Linux' && 'sandbox = true' || '' }}
             ${{ runner.os == 'Linux' && 'sandbox-fallback = false' || '' }}
+        timeout-minutes: 2
       - if: ${{ always() && env.CI_EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && vars.TS_EVIDENCE_CLIENT_ID != '' && vars.TS_EVIDENCE_AUDIENCE != '' }}
         uses: tailscale/github-action@v4
         continue-on-error: true
@@ -5862,6 +5822,7 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
           OTEL_EXPORTER_OTLP_ENDPOINT: ${{ vars.OTEL_EXPORTER_OTLP_ENDPOINT }}
         run: 'nix shell .#bun .#otel-span .#buck2-events --command bash genie/ci-scripts/evidence-job.sh close || true'
+        timeout-minutes: 6
     concurrency:
       group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || 'code') }}-pipeline-attempt-close"
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') }}
@@ -5901,6 +5862,7 @@ jobs:
             ${{ runner.os == 'Linux' && 'sandbox = true' || '' }}
             ${{ runner.os == 'Linux' && 'sandbox-fallback = false' || '' }}
           summarize: true
+        timeout-minutes: ${{ runner.os == 'macOS' && 5 || 2 }}
       - name: Publish Pipeline traces
         shell: bash
         env:
@@ -5910,6 +5872,7 @@ jobs:
           GRAFANA_BASE_URL: ${{ vars.GRAFANA_BASE_URL }}
           PIPELINE_TRACES_PUBLIC_ASSET_COMMAND: ${{ vars.PIPELINE_TRACES_PUBLIC_ASSET_COMMAND }}
         run: bash genie/ci-scripts/pipeline-traces-report.sh
+        timeout-minutes: 7
     env:
       FORCE_SETUP: '1'
       CI: 'true'
@@ -5917,4 +5880,108 @@ jobs:
       BUCK2_PUBLIC_CACHE_READ_ONLY: '1'
     concurrency:
       group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || 'code') }}-pipeline-traces"
+      cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') }}
+  consumer-smoke:
+    if: ${{ (!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') }}
+    runs-on:
+      [
+        "namespace-profile-linux-x86-64;github.run-id=${{ github.run_id }}${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && ';container.privileged=true' || '' }};job.priority=1",
+      ]
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    defaults:
+      run:
+        shell: bash
+    outputs:
+      current-sha: ${{ steps.consumer-smoke.outputs.current-sha }}
+    steps:
+      - id: linux-nix-sandbox-policy
+        name: Disable Linux Nix sandbox fallback
+        if: ${{ runner.os == 'Linux' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf 'NIX_CONFIG<<EOF\n%s\nsandbox = true\nsandbox-fallback = false\nEOF\n' "${NIX_CONFIG:-}" >> "$GITHUB_ENV"
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Install Nix
+        uses: DeterminateSystems/determinate-nix-action@v3
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        with:
+          extra-conf: |
+            experimental-features = nix-command flakes
+            accept-flake-config = true
+            extra-substituters = https://overeng-effect-utils.cachix.org
+            extra-trusted-public-keys = overeng-effect-utils.cachix.org-1:KFmqYNF6Q7ZzVYPl2znpJYZGEolage9YNCA9res6vKc=
+            access-tokens = github.com=${{ github.token }}
+            ${{ runner.os == 'Linux' && 'sandbox = true' || '' }}
+            ${{ runner.os == 'Linux' && 'sandbox-fallback = false' || '' }}
+          summarize: true
+      - id: linux-sandbox-admission
+        name: Log Linux sandbox prerequisites
+        if: ${{ runner.os == 'Linux' }}
+        shell: bash
+        env:
+          BUCK2_TS_PRIVILEGE_ALLOWED: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+        run: |
+          set -euo pipefail
+          if [ "$BUCK2_TS_PRIVILEGE_ALLOWED" != true ]; then
+            echo "::error::Buck TypeScript lane refused: untrusted pull_request runs on an unprivileged Namespace runner; privileged Nix/Bubblewrap execution is not admitted (fork policy Q49 pending)." >&2
+            exit 1
+          fi
+          nix config show | grep -E '^sandbox'
+          for key in kernel.apparmor_restrict_unprivileged_userns user.max_user_namespaces; do
+            if sysctl "$key"; then :; else printf "Unavailable sysctl: %s\n" "$key"; fi
+          done
+          unshare -Ur true
+          echo "unshare -Ur true: passed"
+      - name: Prepare CI helper scripts
+        shell: bash
+        run: |
+          cd "${GITHUB_WORKSPACE:-$PWD}" && set -euo pipefail
+          scripts_src='genie/ci-scripts'
+          scripts_dst='${{ runner.temp }}/composition-state/ci-runtime'
+          if [ ! -d "$scripts_src" ]; then
+            echo "::error::CI helper script directory is missing: $scripts_src"
+            exit 1
+          fi
+          rm -rf "$scripts_dst"
+          mkdir -p "$scripts_dst"
+          cp -R "$scripts_src/." "$scripts_dst/"
+          rm -f "$scripts_dst"/*.genie.ts
+          chmod +x "$scripts_dst"/*.sh
+      - name: Use pinned devenv from lock
+        run: |
+          cd "${GITHUB_WORKSPACE:-$PWD}" && DEVENV_REV=$(jq -r .nodes.devenv.locked.rev 'devenv.lock')
+          if [ -z "$DEVENV_REV" ] || [ "$DEVENV_REV" = "null" ]; then
+            printf '::error::%s missing .nodes.devenv.locked.rev\n' 'devenv.lock'
+            exit 1
+          fi
+          echo "DEVENV_REV=$DEVENV_REV" >> "$GITHUB_ENV"
+          echo "Pinned devenv rev: $DEVENV_REV"
+        shell: bash
+      - name: Resolve devenv
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
+          bash "$__genie_ci_retry_script" 'resolve devenv (devenv.lock)' 'cd "${GITHUB_WORKSPACE:-$PWD}" && '"'"'${{ runner.temp }}/composition-state/ci-runtime/resolve-devenv.sh'"'"' '"'"'devenv.lock'"'"''
+        shell: bash
+      - id: consumer-smoke
+        name: Install an isolated consumer from the candidate checkout
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          bash nix/fixtures/consumer-smoke/run.sh "$PWD" "${DEVENV_BIN:?DEVENV_BIN not set}"
+          echo "current-sha=$GITHUB_SHA" >> "$GITHUB_OUTPUT"
+    env:
+      FORCE_SETUP: '1'
+      CI: 'true'
+      BUCK2_NO_REMOTE_CACHE: '0'
+      BUCK2_PUBLIC_CACHE_READ_ONLY: '1'
+    concurrency:
+      group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || 'code') }}-consumer-smoke"
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') }}

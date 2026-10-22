@@ -49,6 +49,46 @@ export const bashShellDefaults = {
   run: { shell: 'bash' },
 } as const
 
+type NixRealisationTiming = { readonly p95: number; readonly max: number }
+
+/**
+ * Bound bootstrap at three times p95 or twice the observed maximum, whichever
+ * is larger, with a two-minute floor for runner noise. Repository-specific
+ * measurements belong at the call site. The maximum protects observed cold
+ * paths; the step timer also catches trickles above Nix's low-speed threshold.
+ */
+export const withNixRealisationTimeouts = (
+  jobs: GitHubWorkflowArgs['jobs'],
+  timingsSeconds: Readonly<
+    Record<string, NixRealisationTiming | { readonly Linux: NixRealisationTiming; readonly macOS: NixRealisationTiming }>
+  >,
+): GitHubWorkflowArgs['jobs'] =>
+  Object.fromEntries(
+    Object.entries(jobs).map(([id, job]) => [
+      id,
+      {
+        ...job,
+        steps: job.steps.map((step) => {
+          const measured = step.name === undefined ? undefined : timingsSeconds[step.name]
+          if (measured === undefined) return step
+          const timeout = ({ p95, max }: NixRealisationTiming) => {
+            const minutes = Math.max(2, Math.ceil((3 * p95) / 60), Math.ceil((2 * max) / 60))
+            return typeof step['timeout-minutes'] === 'number'
+              ? Math.min(minutes, step['timeout-minutes'])
+              : minutes
+          }
+          const linux = timeout('p95' in measured ? measured : measured.Linux)
+          const macOS = timeout('p95' in measured ? measured : measured.macOS)
+          return {
+            ...step,
+            'timeout-minutes':
+              linux === macOS ? linux : `\${{ runner.os == 'macOS' && ${macOS} || ${linux} }}`,
+          }
+        }),
+      },
+    ]),
+  )
+
 export type CiTrustTier = 'private' | 'public'
 
 /** Step-local environment for GitHub CLI and authenticated Nix access. */

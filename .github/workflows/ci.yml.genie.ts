@@ -50,6 +50,7 @@ import {
   githubAccessTokenEnv,
   readBinaryCacheDescriptors,
   publisherWriteSecret,
+  withNixRealisationTimeouts,
 } from '../../genie/ci-workflow.ts'
 import { withBuck2CacheEvidence } from '../../genie/ci-workflow/buck2-cache-evidence.ts'
 import { withBuck2CachePostures } from '../../genie/ci-workflow/buck2-cache-posture.ts'
@@ -68,6 +69,26 @@ const trustedCachixStep = cachixStep({ name: 'overeng-effect-utils' })
 const binaryCache = readBinaryCacheDescriptors(
   new URL('../../nix/binary-caches.json', import.meta.url),
 )['overeng-effect-utils']!
+
+// Successful CI runs: latest 30 merge groups, 10 PRs and 10 pushes, excluding
+// incident 39609540541. Seconds, nearest-rank p95 and maximum; see the PR table.
+// These bound bootstrap and explicit Nix builds, not ordinary test workloads.
+const nixRealisationTimingsSeconds = {
+  'Install Nix': { Linux: { p95: 34, max: 57 }, macOS: { p95: 86, max: 91 } },
+  'Provide cachix CLI from nixpkgs': { Linux: { p95: 8, max: 75 }, macOS: { p95: 49, max: 59 } },
+  'Resolve devenv': { Linux: { p95: 61, max: 161 }, macOS: { p95: 55, max: 56 } },
+  'Prepare source generator dependency views': { Linux: { p95: 269, max: 755 }, macOS: { p95: 466, max: 747 } },
+  'Build every published from-source product': { p95: 321, max: 329 },
+  'Build and smoke native and compiled products': { Linux: { p95: 179, max: 280 }, macOS: { p95: 64, max: 74 } },
+  'Publish products': { p95: 630, max: 630 },
+  'Live Netlify ci-tools E2E': { p95: 1111, max: 1111 },
+  'Live Vercel ci-tools E2E': { p95: 256, max: 256 },
+  'Prepare Nix': { p95: 5, max: 8 },
+  'Link started job roots': { p95: 109, max: 112 },
+  'Publish Pipeline traces': { p95: 126, max: 126 },
+  'Audit native dependency policy': { p95: 1, max: 1 },
+  'Measure source shape: effect-utils': { p95: 10, max: 18 },
+} as const
 
 const prepareSourceGeneratorDependencyViewsStep = {
   name: 'Prepare source generator dependency views',
@@ -2061,6 +2082,7 @@ export default ciWorkflow({
   permissions: { contents: 'read', 'id-token': 'write' },
   jobs: withBuck2CachePostures({
     jobs: {
+      ...withNixRealisationTimeouts({
       // API-only control job: no Nix bootstrap, cache evidence, or telemetry adapters.
       'tested-tree': {
         'runs-on': 'ubuntu-latest',
@@ -2089,10 +2111,12 @@ export default ciWorkflow({
         ],
       },
       ...withPipelineTelemetry(withBuck2CacheEvidence(instrumentedProductCiJobs)),
-      'consumer-smoke': consumerSmokeJob!,
       'promote-published': promotePublishedJob!,
       'pipeline-attempt-close': pipelineCloseJob(productCiJobs),
       'pipeline-traces': pipelineTracesJob,
+      }, nixRealisationTimingsSeconds),
+      // Consumer bootstrap policy is managed independently from source-editor setup.
+      'consumer-smoke': consumerSmokeJob!,
     },
     // Protected queue heads and fallback main pushes warm the cache opportunistically.
     // PR jobs never receive writer credentials; the dedicated main proof remains strict.
