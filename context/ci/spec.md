@@ -345,6 +345,16 @@ opaque interpolated feature into a static privilege declaration. An explicit
 Self-hosted, macOS, and jobs without the shared installer keep their existing
 behavior and sandbox policy.
 
+The shared `default-ref-policy` defaults `overengineeringstudio/effect-utils` to
+`published` and explicitly accepts both `published` and `main`. Other first-party
+repositories accept only their configured default (`main` unless overridden;
+this repository configures `livestorejs/livestore` as `dev`). A caller's explicit
+`defaultRefs` entry replaces both the built-in default and accepted set for that
+repository. Violations report the default and accepted refs. With
+`verifyReachable`, a locked commit must be reachable from the accepted branch it
+actually pins: a `main` pin is checked against `main`, not `published`, and a
+`published` pin against `published`.
+
 The source-only `default-ref-policy` job must not evaluate the checkout's flake
 before checking its refs. Genie freezes the root `flake.lock` nixpkgs revision
 and NAR hash into an upstream `github:NixOS/nixpkgs/...#nodejs_24` installable in

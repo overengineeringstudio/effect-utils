@@ -15,6 +15,7 @@ import {
   pipelineIdentityStepName,
 } from '../../packages/@overeng/ci-tools/src/pipeline-job-names.ts'
 import type { GitHubWorkflowArgs } from '../../packages/@overeng/genie/src/runtime/mod.ts'
+import { defaultRefPolicyCheckStep } from './megarepo.ts'
 import { pipelineCloseJob } from './pipeline-telemetry.ts'
 import { publishedRefIf } from './published-ref.ts'
 import { installNixStep, linuxSandboxPrerequisitesStep, namespaceRunner } from './setup.ts'
@@ -1042,5 +1043,25 @@ describe('published consumer ref', () => {
     expect(advance.run).toContain('git push origin "$GITHUB_SHA:refs/heads/published"')
     expect(advance.run).not.toContain('--force')
     expect(advance.run).toContain('$GITHUB_STEP_SUMMARY')
+  })
+})
+
+
+describe('shared default-ref policy configuration', () => {
+  it('defaults effect-utils to published while accepting main', () => {
+    const env = defaultRefPolicyCheckStep().env
+    expect(env.DEFAULT_REF).toBe('main')
+    expect(JSON.parse(env.DEFAULT_REF_POLICIES_JSON)).toEqual({
+      'overengineeringstudio/effect-utils': {
+        defaultRef: 'published',
+        acceptedRefs: ['published', 'main'],
+      },
+    })
+    const job = ciWorkflow.data.jobs['default-ref-policy']!
+    const verdict = job.steps.find((step) => step.id === defaultRefPolicyVerdictStepId)!
+    expect(verdict.env?.DEFAULT_REF_POLICIES_JSON).toBe(env.DEFAULT_REF_POLICIES_JSON)
+    expect(JSON.parse(verdict.env?.DEFAULT_REFS_JSON ?? '{}')).toEqual({
+      'livestorejs/livestore': 'dev',
+    })
   })
 })
