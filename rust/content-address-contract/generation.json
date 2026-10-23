@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "inputFingerprint": "sha256:e5a388748bc8dd6ad566348532ae9585c3e97c170ac1d89cd894bfcf5a115e89",
-  "generatedAt": "2026-10-23T07:01:33.064Z",
+  "inputFingerprint": "sha256:54f8a2b4aaa64d31be173e81dd0402b5b728bcf47d5654b95dd0e9f9e120265c",
+  "generatedAt": "2026-10-23T11:10:51.534Z",
   "runtime": {
     "name": "bun",
     "version": "1.4.2"
@@ -13,7 +13,7 @@
     },
     {
       "path": "packages/@overeng/content-address/src/generate-contract.ts",
-      "sha256": "cd7bf9e8dc24dfb80cd9c0485b0d4c9d07d820beba4c158637d332b03677f696"
+      "sha256": "a0dda3205a08781cf3d393b98ddd86da7ca70242b2f5d5ca53a06ab508e852af"
     },
     {
       "path": "packages/@overeng/content-address/src/schema.ts",
@@ -127,7 +127,7 @@
   "artifacts": [
     {
       "path": "Cargo.toml",
-      "sha256": "b68972607adbd17cd6ed03512058c5e2747d5124cff038bb777a787f95dc638f"
+      "sha256": "59869bb80f5ae0c358511814b253109e0f1d293337cd2c5478638e2a45597161"
     },
     {
       "path": "schema/Codec.json",
@@ -151,7 +151,7 @@
     },
     {
       "path": "src/lib.rs",
-      "sha256": "5da22f1e3060b45c9c1b0c0143956e445b5acb289f6be44c22b3be3bcc88d8df"
+      "sha256": "2608d9496c07f8bc8bed20b00fcab04d5f7981ed0d6e71e7fe3cc3028a8d3b5d"
     }
   ]
 }
