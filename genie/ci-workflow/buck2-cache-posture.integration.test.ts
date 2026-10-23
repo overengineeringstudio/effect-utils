@@ -220,7 +220,7 @@ describe('generated CI cache trust behavior', () => {
     ).toBe(false)
   })
 
-  it('runs buck2-tools only on PRs using the Linux namespace runner and source dependency views', async () => {
+  it('runs buck2-tools and teardown regressions only on PRs using Linux namespace source views', async () => {
     const job = (await readWorkflow()).jobs['pr-buck2-tools']!
     expect(job.name).toBe('pr/buck2-tools')
     expect(requiredCIJobs).not.toContain('pr/buck2-tools')
@@ -235,8 +235,10 @@ describe('generated CI cache trust behavior', () => {
     )
     const step = job.steps.find(({ name }) => name === 'Buck2 tools regression tests')
     expect(step?.if).toBeUndefined()
-    expect(step?.run).toContain('for package in . packages/@overeng/buck2-tools; do')
-    expect(step?.run).toContain('tasks run --mode single test:buck2-tools')
+    expect(step?.run).toContain(
+      'for package in . packages/@overeng/buck2-tools packages/@overeng/genie; do',
+    )
+    expect(step?.run).toContain('tasks run --mode single test:buck2-tools devenv-modules:test')
   })
 
   it('selects exact focused source files rather than suffix-matching staged Buck copies', async () => {

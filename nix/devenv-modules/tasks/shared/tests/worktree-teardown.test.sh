@@ -14,7 +14,11 @@ FINGERPRINT="${FINGERPRINT_BIN:?FINGERPRINT_BIN must name the pinned fingerprint
 CP="${CP_BIN:?CP_BIN must name pinned cp}"
 MV="${MV_BIN:?MV_BIN must name pinned mv}"
 JQ="${JQ_BIN:-$(command -v jq)}"
-TEMP_ROOT="$(mktemp -d)"
+# Match the TypeScript lease fixtures: supported data semantics, not ambient /tmp.
+# The helper throws when neither candidate qualifies; never silently skip teardown.
+fixture_data_root="$("$BUN" -e 'const { editorViewTestDataRoot } = await import(process.argv[1]); console.log(editorViewTestDataRoot())' \
+  "$ROOT/packages/@overeng/buck2-tools/src/editor-view-test-filesystem.ts")"
+TEMP_ROOT="$(mktemp -d "$fixture_data_root/worktree-teardown.XXXXXX")"
 TEMP_ROOT="$(cd "$TEMP_ROOT" && pwd -P)"
 main="$TEMP_ROOT/main"
 worktree="$TEMP_ROOT/retired"

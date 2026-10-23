@@ -760,7 +760,7 @@ jobs:
               done
             }
             trap restore_views EXIT
-            for package in . packages/@overeng/buck2-tools; do
+            for package in . packages/@overeng/buck2-tools packages/@overeng/genie; do
               if [ "$package" = . ]; then target=//:node_modules; else target=//$package:node_modules; fi
               modules="$("${BUCK2_BIN:?BUCK2_BIN not set}" build "$target" --show-simple-output)"
               backup="${RUNNER_TEMP:?RUNNER_TEMP not set}/genie-pr-${package##*/}-node-modules"
@@ -768,7 +768,7 @@ jobs:
               prepared+=("$package")
               ln -s "$PWD/$modules" "$package/node_modules"
             done
-            "$DEVENV_BIN" tasks run --mode single test:buck2-tools
+            "$DEVENV_BIN" tasks run --mode single test:buck2-tools devenv-modules:test
           '
       - name: Nix diagnostics summary
         if: ${{ (failure()) && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}

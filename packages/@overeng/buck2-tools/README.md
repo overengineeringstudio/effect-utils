@@ -8,9 +8,10 @@ to select `os.tmpdir()`, falling back to `/dev/shm` when necessary. They fail
 explicitly if neither supports local lease semantics; OverlayFS remains unknown
 and fail-closed. Editor roots and CAS data share the selected filesystem, while
 executable telemetry helpers stay in `os.tmpdir()` because `/dev/shm` may be
-mounted `noexec`. The full `test:buck2-tools` task also runs in the PR-only
-`pr/buck2-tools` job on the Linux namespace runner, without duplicating the
-merge-group test lane.
+mounted `noexec`. Shell teardown fixtures call the same TypeScript data-root
+selector. The full `test:buck2-tools` and `devenv-modules:test` tasks also run in
+the PR-only `pr/buck2-tools` job on the Linux namespace runner, without duplicating
+the merge-group test lane.
 
 ## Editor publisher
 

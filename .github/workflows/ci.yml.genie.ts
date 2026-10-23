@@ -2054,8 +2054,8 @@ const allCiJobs: Record<string, any> = {
       laneIf: "${{ github.event_name == 'pull_request' }}",
       step: sourceRegressionStep({
         name: 'Buck2 tools regression tests',
-        packages: ['.', 'packages/@overeng/buck2-tools'],
-        tasks: ['test:buck2-tools'],
+        packages: ['.', 'packages/@overeng/buck2-tools', 'packages/@overeng/genie'],
+        tasks: ['test:buck2-tools', 'devenv-modules:test'],
       }),
     }),
   },
