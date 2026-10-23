@@ -343,6 +343,18 @@ description. A lease is released only by closing its fd, never by `LOCK_UN`;
 this invariant is checked against the native, TypeScript and inherited-fd code.
 Unrelated CAS descriptors remain close-on-exec.
 
+Active leased Bun processes also preserve their mapped descriptors across
+`process.execve`: the packaged native helper marks all other descriptors above
+stderr close-on-exec, keeps the lease numbers and open descriptions, and replaces
+the process without reacquisition. This covers Genie's source transpiler-cache
+restart on Linux and macOS; Bun's ordinary `process.execve` closes all descriptors
+above stderr. Failed replacement restores the original descriptor flags and
+reports its errno rather than falling back to an unleased replacement. Any flag
+restoration failure is attached to that error without hiding the exec errno.
+The preload's `bun:ffi` dependency is a runtime builtin,
+loaded only on Bun paths; standalone staging still verifies isolated Node loading
+and rejects unrecognized `bun:` imports.
+
 A lease alone never makes a root eligible for automatic eviction; the legacy reader scan stays on for every root until #1985.
 A complete scan with a positive legacy payload/root reference from a process
 without a proved matching generation lease detects an unmanaged session and

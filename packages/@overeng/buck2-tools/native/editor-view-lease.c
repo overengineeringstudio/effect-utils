@@ -28,6 +28,63 @@ int eu_getfd(int fd) {
   return fcntl(fd, F_GETFD);
 }
 
+/* process.execve closes every descriptor above stderr. A leased Bun process
+ * instead needs POSIX exec semantics for its lease descriptions, without
+ * leaking any other inherited or runtime descriptor into the replacement. */
+int eu_execve(const char *file, char *const argv[], char *const envp[],
+              const int *leases, int count, int restoration[2]) {
+  restoration[0]=-1; restoration[1]=0;
+  for(int i=0;i<count;i++)
+    if(leases[i]<3 || fcntl(leases[i],F_GETFD)<0) return EBADF;
+#ifdef __APPLE__
+  const char *directory="/dev/fd";
+#else
+  const char *directory="/proc/self/fd";
+#endif
+  DIR *dir=opendir(directory);
+  if(!dir) return errno;
+  struct descriptorChange { int fd, flags; };
+  struct descriptorChange *changes=NULL;
+  size_t used=0, capacity=0;
+  struct dirent *entry;
+  int error=0;
+  errno=0;
+  while((entry=readdir(dir))) {
+    char *end;
+    long fd=strtol(entry->d_name,&end,10);
+    if(*entry->d_name && !*end && fd>=3 && fd<=INT_MAX && fd!=dirfd(dir)) {
+      int flags=fcntl((int)fd,F_GETFD);
+      if(flags<0) { error=errno; break; }
+      int leased=0;
+      for(int i=0;i<count;i++) if(leases[i]==fd) { leased=1; break; }
+      int desired=leased?flags&~FD_CLOEXEC:flags|FD_CLOEXEC;
+      if(flags!=desired) {
+        if(used==capacity) {
+          size_t nextCapacity=capacity?capacity*2:16;
+          struct descriptorChange *next=realloc(changes,nextCapacity*sizeof(*changes));
+          if(!next) { error=ENOMEM; break; }
+          changes=next; capacity=nextCapacity;
+        }
+        if(fcntl((int)fd,F_SETFD,desired)) { error=errno; break; }
+        changes[used++]=(struct descriptorChange){(int)fd,flags};
+      }
+    }
+    errno=0;
+  }
+  if(!error) error=errno;
+  if(closedir(dir) && !error) error=errno;
+  if(!error) { execve(file,argv,envp); error=errno; }
+  /* Failed replacement leaves the original process alive. Restore every
+   * changed flag, preserving the exec error and reporting any rollback error. */
+  for(size_t i=used;i>0;i--) {
+    if(fcntl(changes[i-1].fd,F_SETFD,changes[i-1].flags) && !restoration[1]) {
+      restoration[0]=changes[i-1].fd; restoration[1]=errno;
+    }
+  }
+  free(changes);
+  return error;
+}
+
 /* An lsof "(revoked)" name alone is heuristic, never sufficient proof.
  * Confirm the kernel's vnode type and both pathless/pathful ENOENT results.
  * Live APFS unlinked files, removed directories and renamed parents retain
