@@ -351,6 +351,8 @@ restart on Linux and macOS; Bun's ordinary `process.execve` closes all descripto
 above stderr. Failed replacement restores the original descriptor flags and
 reports its errno rather than falling back to an unleased replacement. Any flag
 restoration failure is attached to that error without hiding the exec errno.
+An unrelated descriptor closed by a runtime thread during enumeration is already
+absent and is skipped on `EBADF`; a missing lease descriptor remains an error.
 The preload's `bun:ffi` dependency is a runtime builtin,
 loaded only on Bun paths; standalone staging still verifies isolated Node loading
 and rejects unrecognized `bun:` imports.

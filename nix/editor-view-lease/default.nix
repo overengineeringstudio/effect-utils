@@ -17,10 +17,17 @@ stdenv.mkDerivation {
       ${if stdenv.isDarwin then "-dynamiclib" else "-shared"} \
       editor-view-lease.c -o libeditor-view-lease${stdenv.hostPlatform.extensions.sharedLibrary}
     $CC -std=c11 -Wall -Wextra -Werror -O2 editor-view-lease-test-child.c -o editor-view-lease-test-child
+    $CC -std=c11 -Wall -Wextra -Werror -O2 editor-view-lease-execve-test.c -o editor-view-lease-execve-test
     ${lib.optionalString stdenv.isLinux ''
       $CC -std=c11 -Wall -Wextra -Werror -O2 editor-view-reader-infrastructure-test-child.c -o editor-view-reader-infrastructure-test-child
     ''}
     runHook postBuild
+  '';
+  doCheck = stdenv.buildPlatform.canExecute stdenv.hostPlatform;
+  checkPhase = ''
+    runHook preCheck
+    ./editor-view-lease-execve-test
+    runHook postCheck
   '';
   installPhase = ''
     runHook preInstall

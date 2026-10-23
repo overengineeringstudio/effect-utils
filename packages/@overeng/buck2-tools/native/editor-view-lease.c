@@ -53,10 +53,15 @@ int eu_execve(const char *file, char *const argv[], char *const envp[],
     char *end;
     long fd=strtol(entry->d_name,&end,10);
     if(*entry->d_name && !*end && fd>=3 && fd<=INT_MAX && fd!=dirfd(dir)) {
-      int flags=fcntl((int)fd,F_GETFD);
-      if(flags<0) { error=errno; break; }
       int leased=0;
       for(int i=0;i<count;i++) if(leases[i]==fd) { leased=1; break; }
+      int flags=fcntl((int)fd,F_GETFD);
+      if(flags<0) {
+        /* Runtime threads may close unrelated fds after readdir lists them.
+         * Their absence needs no file action; a missing lease is still fatal. */
+        if(errno==EBADF && !leased) { errno=0; continue; }
+        error=errno; break;
+      }
       int desired=leased?flags&~FD_CLOEXEC:flags|FD_CLOEXEC;
       if(flags!=desired) {
         if(used==capacity) {
@@ -65,7 +70,10 @@ int eu_execve(const char *file, char *const argv[], char *const envp[],
           if(!next) { error=ENOMEM; break; }
           changes=next; capacity=nextCapacity;
         }
-        if(fcntl((int)fd,F_SETFD,desired)) { error=errno; break; }
+        if(fcntl((int)fd,F_SETFD,desired)) {
+          if(errno==EBADF && !leased) { errno=0; continue; }
+          error=errno; break;
+        }
         changes[used++]=(struct descriptorChange){(int)fd,flags};
       }
     }
