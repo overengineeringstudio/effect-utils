@@ -19,6 +19,7 @@ import { dirname, join } from 'node:path'
 import { createServer as createTlsServer } from 'node:tls'
 
 import type { CacheAdmissionInvocation } from '../genie/ci-scripts/buck2-cache-evidence.ts'
+import * as daemonPostureTests from './buck2-entrypoint.posture.integration.test.ts'
 import {
   type AdmissionProbeEndpoint,
   directBuckArguments,
@@ -29,7 +30,7 @@ import * as gateIsolationTests from './buck2-gate-isolation.integration.test.ts'
 import * as gateTeardownTests from './buck2-gate-teardown.integration.test.ts'
 
 // Register the lifecycle suites in the existing devenv test entrypoint.
-void [gateUnitTests, gateTeardownTests, gateIsolationTests]
+void [gateUnitTests, gateTeardownTests, gateIsolationTests, daemonPostureTests]
 
 const roots: string[] = []
 const launchProcesses = new Set<{ readonly pid: number; readonly exited: Promise<number> }>()

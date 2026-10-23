@@ -12,6 +12,7 @@ import {
   type ActionInvocation,
   type ActionRecord,
   type CacheLane,
+  type CacheUploadError,
   type OutputTinyDigests,
 } from './buck2-action-evidence.ts'
 import type { CacheOutcome } from './buck2-cache-evidence.ts'
@@ -102,6 +103,65 @@ const outcome = (value: unknown): CacheOutcome => {
       return invalid()
   }
 }
+const grpcCodeNames = [
+  'OK', 'CANCELLED', 'UNKNOWN', 'INVALID_ARGUMENT', 'DEADLINE_EXCEEDED', 'NOT_FOUND',
+  'ALREADY_EXISTS', 'PERMISSION_DENIED', 'RESOURCE_EXHAUSTED', 'FAILED_PRECONDITION',
+  'ABORTED', 'OUT_OF_RANGE', 'UNIMPLEMENTED', 'INTERNAL', 'UNAVAILABLE', 'DATA_LOSS',
+  'UNAUTHENTICATED',
+]
+/** Accept only gRPC enum names or status numbers; never retain an arbitrary native string. */
+export const decodeGrpcCode = (value: unknown): number | null => {
+  if (typeof value === 'number')
+    return Number.isInteger(value) === true && value >= 0 && value <= 16 ? value : null
+  if (typeof value !== 'string') return null
+  if (/^(?:[0-9]|1[0-6])$/.test(value) === true) return Number(value)
+  const code = grpcCodeNames.indexOf(value)
+  return code === -1 ? null : code
+}
+
+/** Classify native diagnostics, then discard all free text at the collection boundary. */
+export const classifyCacheUploadError = (error: unknown, code: unknown): CacheUploadError => {
+  const reErrorCode = decodeGrpcCode(code)
+  const message = typeof error === 'string' ? error : ''
+  const category =
+    reErrorCode === 16 || /unauthenticated|authentication failed|invalid credentials/i.test(message)
+      ? 'unauthenticated'
+      : reErrorCode === 7 || /permission.denied|access.denied|write.denied|forbidden/i.test(message)
+        ? 'permission-denied'
+        : reErrorCode === 4 || /deadline|timed? out|timeout/i.test(message)
+          ? 'deadline'
+          : reErrorCode === 14 || /unavailable|connection reset|connection refused/i.test(message)
+            ? 'unavailable'
+            : reErrorCode === 8 || /resource.exhausted|quota exceeded|rate limit/i.test(message)
+              ? 'resource-exhausted'
+              : reErrorCode === 3 || /invalid.argument/i.test(message)
+                ? 'invalid-argument'
+                : 'other'
+  return { category, reErrorCode }
+}
+
+export const decodeCacheUploadErrors = (value: unknown): CacheUploadError[] | undefined => {
+  if (value === undefined) return undefined
+  return list(value).map((entry) => {
+    const category = field({ value: entry, key: 'category' })
+    switch (category) {
+      case 'unauthenticated':
+      case 'permission-denied':
+      case 'deadline':
+      case 'unavailable':
+      case 'resource-exhausted':
+      case 'invalid-argument':
+      case 'other':
+        return {
+          category,
+          reErrorCode: decodeGrpcCode(field({ value: entry, key: 'reErrorCode' })),
+        }
+      default:
+        return invalid()
+    }
+  })
+}
+
 /** Optional for retained artifacts/unselected rows; present evidence is strictly decoded. */
 export const decodeOutputTinyDigests = (value: unknown): OutputTinyDigests | undefined => {
   if (value === undefined) return undefined
@@ -166,6 +226,8 @@ const decodeAction = (value: unknown): ActionRecord => {
     uploadCompletedAt: timestamp(field({ value: value, key: 'uploadCompletedAt' })),
     commandAction: boolean(field({ value: value, key: 'commandAction' })),
   }
+  const uploadErrors = decodeCacheUploadErrors(field({ value: value, key: 'uploadErrors' }))
+  if (uploadErrors !== undefined) action.uploadErrors = uploadErrors
   const outputTinyDigests = decodeOutputTinyDigests(field({ value, key: 'outputTinyDigests' }))
   if (outputTinyDigests !== undefined) action.outputTinyDigests = outputTinyDigests
   const exclusionReason = field({ value: value, key: 'exclusionReason' })

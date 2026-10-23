@@ -17,10 +17,12 @@ const event = (
   spanId: number,
   seconds: number,
   data: unknown,
+  parentId?: number,
 ) => ({
   Event: {
     trace_id: buildId,
     span_id: spanId,
+    parent_id: parentId,
     timestamp: [seconds, 123456789],
     data: { [phase]: { data } },
   },
@@ -97,6 +99,110 @@ const fixtureEnv = {
 }
 
 describe('complete normalized action artifact CLI', () => {
+  it('discards all native upload free text and unknown codes with no collector credentials', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'buck-upload-errors-'))
+    try {
+      const secret = 'z!q'
+      const encodedSecret = Buffer.from(secret).toString('base64')
+      const events = join(directory, 'native.jsonl')
+      const output = join(directory, 'buck2-cache-evidence.json')
+      const stepSummary = join(directory, 'step-summary')
+      const collectorEnv = {
+        ...fixtureEnv,
+        BUCK2_CACHE_WRITE_BASIC_AUTH: undefined,
+        BUCK2_PRIVATE_CACHE_WRITE_BASIC_AUTH: undefined,
+        GITHUB_STEP_SUMMARY: stepSummary,
+      }
+      const native = nativeLog('upload-failure').trim().split('\n')
+      const failedUpload = (id: number, error: string, code?: string) =>
+        JSON.stringify(
+          event('upload-failure', 'SpanEnd', id, 1700000002, {
+            CacheUpload: {
+              success: false,
+              error,
+              re_error_code: code,
+              // Payloads other than the diagnostic fields must not escape.
+              file_digests: [`PRIVATE_FILE_${secret}`],
+            },
+          }, 2),
+        )
+      await Bun.write(
+        events,
+        [
+          native[0],
+          native[1],
+          failedUpload(
+            500,
+            [
+              `CAS write denied; authorization: Basic ${encodedSecret}`,
+              ['https://', 'user:', secret, '@cache.example/upload'].join(''),
+              `Bearer user:pass extra!value raw=${secret}`,
+            ].join('\n'),
+            'PERMISSION_DENIED',
+          ),
+          failedUpload(501, `connection reset raw=${secret}`, encodedSecret),
+          failedUpload(502, `arbitrary diagnostic ${secret}`, secret),
+          native[2]!.replace('"cache_upload_result":1', '"cache_upload_result":9'),
+          JSON.stringify(event('upload-failure', 'SpanEnd', 1, 1700000003, { Command: {} })),
+          '',
+        ].join('\n'),
+      )
+      const transcripts: string[] = []
+      for (const args of [
+        ['--events', events, '--context', 'populate', '--fresh-root'],
+        ['--finalize'],
+      ]) {
+        const child = Bun.spawn([process.execPath, collector, '--output', output, ...args], {
+          env: collectorEnv,
+          stdout: 'pipe',
+          stderr: 'pipe',
+        })
+        const [stdout, stderr, exit] = await Promise.all([
+          new Response(child.stdout).text(),
+          new Response(child.stderr).text(),
+          child.exited,
+        ])
+        transcripts.push(stdout, stderr)
+        expect(exit).toBe(0)
+      }
+      const summaryText = await Bun.file(output).text()
+      const raw = gunzipSync(
+        new Uint8Array(await Bun.file(join(directory, actionsArtifactName)).arrayBuffer()),
+      ).toString('utf8')
+      const full = decodeActionArtifact(raw)
+      const summary: CacheEvidence = JSON.parse(summaryText)
+      expect(full.header.complete).toBe(true)
+      expect(full.actions[0]?.uploadOutcome).toBe('failed')
+      expect(full.actions[0]?.uploadErrors).toEqual(summary.actions[0]?.uploadErrors)
+      expect(full.actions[0]?.uploadErrors).toEqual([
+        { category: 'permission-denied', reErrorCode: 7 },
+        { category: 'unavailable', reErrorCode: null },
+        { category: 'other', reErrorCode: null },
+      ])
+      expect(full.actions[0]?.outputTinyDigests).toEqual({
+        algorithm: 'buck2-tiny-digest-v1',
+        outputs: [
+          { index: 0, tinyDigest: 'deadbeef' },
+          { index: 1, tinyDigest: '01234567' },
+        ],
+      })
+      const compactAction = decodeCacheEvidence(summary).actions[0]
+      expect(compactAction?.outputTinyDigests).toEqual(full.actions[0]?.outputTinyDigests)
+      expect(compactAction?.uploadErrors).toEqual(full.actions[0]?.uploadErrors)
+      const allOutput = [
+        summaryText,
+        raw,
+        Buffer.from(await Bun.file(join(directory, actionsArtifactName)).arrayBuffer()).toString('latin1'),
+        await Bun.file(stepSummary).text(),
+        ...transcripts,
+      ].join('\n')
+      for (const credential of [secret, encodedSecret, 'user:pass', 'extra!value', 'PRIVATE_FILE'])
+        expect(allOutput).not.toContain(credential)
+    } finally {
+      await rm(directory, { recursive: true, force: true })
+    }
+  })
+
   it('preserves exclusions across bounded append, compressed full rows and evaluator decoding', async () => {
     const directory = await mkdtemp(join(tmpdir(), 'buck-actions-policy-'))
     try {

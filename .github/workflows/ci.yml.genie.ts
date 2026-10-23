@@ -78,9 +78,15 @@ const nixRealisationTimingsSeconds = {
   'Install Nix': { Linux: { p95: 34, max: 57 }, macOS: { p95: 86, max: 91 } },
   'Provide cachix CLI from nixpkgs': { Linux: { p95: 8, max: 75 }, macOS: { p95: 49, max: 59 } },
   'Resolve devenv': { Linux: { p95: 61, max: 161 }, macOS: { p95: 55, max: 56 } },
-  'Prepare source generator dependency views': { Linux: { p95: 269, max: 755 }, macOS: { p95: 466, max: 747 } },
+  'Prepare source generator dependency views': {
+    Linux: { p95: 269, max: 755 },
+    macOS: { p95: 466, max: 747 },
+  },
   'Build every published from-source product': { p95: 321, max: 329 },
-  'Build and smoke native and compiled products': { Linux: { p95: 179, max: 280 }, macOS: { p95: 64, max: 74 } },
+  'Build and smoke native and compiled products': {
+    Linux: { p95: 179, max: 280 },
+    macOS: { p95: 64, max: 74 },
+  },
   'Publish products': { p95: 630, max: 630 },
   'Live Netlify ci-tools E2E': { p95: 1111, max: 1111 },
   'Live Vercel ci-tools E2E': { p95: 256, max: 256 },
@@ -560,7 +566,15 @@ const unitTestJob = ({
       ].join('\n'),
     }),
     ...(runner === 'namespace-profile-macos-arm64'
-      ? [buck2TrustedCacheWriterStep(compiledProductsSmokeStep), macosNixSubstituterSaveStep]
+      ? [
+          buck2TrustedCacheWriterStep({
+            name: 'Buck daemon cache posture regressions',
+            env: githubTokenEnv(),
+            run: runDevenvTasksBefore('buck2:cache-posture:ci-test'),
+          }),
+          buck2TrustedCacheWriterStep(compiledProductsSmokeStep),
+          macosNixSubstituterSaveStep,
+        ]
       : []),
     nixDiagnosticsSummaryStep,
     nixDiagnosticsArtifactStep(),
@@ -794,7 +808,7 @@ const jobs: Record<CoreCIJobName, CiWorkflowArgs['jobs'][string]> = {
               '    prepared+=("$package")',
               '    ln -s "$PWD/$modules" "$package/node_modules"',
               '  done',
-              '  "$DEVENV_BIN" tasks run --mode single genie:buck2:test genie:ci-workflow:test buck2:rust:generators:test',
+              '  "$DEVENV_BIN" tasks run --mode single genie:buck2:test genie:ci-workflow:test buck2:rust:generators:test buck2:cache-posture:ci-test',
               "'",
             ].join('\n'),
           ),
@@ -2088,39 +2102,42 @@ export default ciWorkflow({
   permissions: { contents: 'read', 'id-token': 'write' },
   jobs: withBuck2CachePostures({
     jobs: {
-      ...withNixRealisationTimeouts({
-      // API-only control job: no Nix bootstrap, cache evidence, or telemetry adapters.
-      'tested-tree': {
-        'runs-on': 'ubuntu-latest',
-        'timeout-minutes': 3,
-        permissions: { contents: 'read', actions: 'read' },
-        outputs: { tested: '${{ steps.lookup.outputs.tested }}' },
-        steps: [
-          {
-            ...checkoutStep(),
-            if: "${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}",
-            with: { 'persist-credentials': false },
+      ...withNixRealisationTimeouts(
+        {
+          // API-only control job: no Nix bootstrap, cache evidence, or telemetry adapters.
+          'tested-tree': {
+            'runs-on': 'ubuntu-latest',
+            'timeout-minutes': 3,
+            permissions: { contents: 'read', actions: 'read' },
+            outputs: { tested: '${{ steps.lookup.outputs.tested }}' },
+            steps: [
+              {
+                ...checkoutStep(),
+                if: "${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}",
+                with: { 'persist-credentials': false },
+              },
+              {
+                uses: 'actions/setup-node@v4',
+                if: "${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}",
+                with: { 'node-version': '24' },
+              },
+              {
+                id: 'lookup',
+                name: 'Find successful queue evidence for pushed tree',
+                if: "${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}",
+                'continue-on-error': true,
+                env: { GH_TOKEN: '${{ github.token }}' },
+                run: 'node genie/ci-scripts/tested-tree.ts',
+              },
+            ],
           },
-          {
-            uses: 'actions/setup-node@v4',
-            if: "${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}",
-            with: { 'node-version': '24' },
-          },
-          {
-            id: 'lookup',
-            name: 'Find successful queue evidence for pushed tree',
-            if: "${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}",
-            'continue-on-error': true,
-            env: { GH_TOKEN: '${{ github.token }}' },
-            run: 'node genie/ci-scripts/tested-tree.ts',
-          },
-        ],
-      },
-      ...withPipelineTelemetry(withBuck2CacheEvidence(instrumentedProductCiJobs)),
-      'promote-published': promotePublishedJob!,
-      'pipeline-attempt-close': pipelineCloseJob(productCiJobs),
-      'pipeline-traces': pipelineTracesJob,
-      }, nixRealisationTimingsSeconds),
+          ...withPipelineTelemetry(withBuck2CacheEvidence(instrumentedProductCiJobs)),
+          'promote-published': promotePublishedJob!,
+          'pipeline-attempt-close': pipelineCloseJob(productCiJobs),
+          'pipeline-traces': pipelineTracesJob,
+        },
+        nixRealisationTimingsSeconds,
+      ),
       // Consumer bootstrap policy is managed independently from source-editor setup.
       'consumer-smoke': consumerSmokeJob!,
     },

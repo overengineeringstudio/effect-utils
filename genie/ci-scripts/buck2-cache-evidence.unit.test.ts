@@ -2,6 +2,11 @@ import { describe, expect, it } from 'bun:test'
 import { decodeOutputTinyDigests } from './buck2-action-evidence-codec.ts'
 
 import {
+  classifyCacheUploadError,
+  decodeCacheUploadErrors,
+  decodeGrpcCode,
+} from './buck2-action-evidence-codec.ts'
+import {
   darwinUnsandboxedCategories,
   localMaterializationCategories,
   type ActionInvocation,
@@ -955,6 +960,80 @@ describe('native Buck cache evidence projection', () => {
     expect(JSON.stringify(rows)).not.toContain('private')
     expect(JSON.stringify(rows)).not.toContain('SECRET')
     expect(invocations[0]!.complete).toBe(false)
+  })
+
+  it('retains only closed upload categories and exact gRPC codes', () => {
+    for (const [message, category] of [
+      ['invalid credentials', 'unauthenticated'],
+      ['CAS write denied', 'permission-denied'],
+      ['deadline exceeded', 'deadline'],
+      ['connection reset', 'unavailable'],
+      ['quota exceeded', 'resource-exhausted'],
+      ['invalid argument', 'invalid-argument'],
+      ['arbitrary! secret', 'other'],
+    ]) {
+      expect(classifyCacheUploadError(message, 'unknown!code')).toEqual({
+        category,
+        reErrorCode: null,
+      })
+    }
+    expect(classifyCacheUploadError('', 'PERMISSION_DENIED')).toEqual({
+      category: 'permission-denied',
+      reErrorCode: 7,
+    })
+    for (let code = 0; code <= 16; code++) {
+      expect(decodeGrpcCode(code)).toBe(code)
+      expect(decodeGrpcCode(String(code))).toBe(code)
+    }
+    for (const code of [-1, 17, 1.5, '07', 'permission_denied', '7 secret', 'secret!'])
+      expect(decodeGrpcCode(code)).toBeNull()
+    expect(decodeCacheUploadErrors(undefined)).toBeUndefined()
+    expect(() => decodeCacheUploadErrors([{ reErrorCode: 7 }])).toThrow()
+    expect(decodeCacheUploadErrors([{ category: 'deadline', reErrorCode: 4 }])).toEqual([
+      { category: 'deadline', reErrorCode: 4 },
+    ])
+    expect(() => decodeCacheUploadErrors([{ category: 'secret!' }])).toThrow()
+  })
+
+  it('retains each failed native cache upload, not ReUpload metrics or duplicate ends', () => {
+    const rows: ActionRecord[] = []
+    const projector = createCacheEvidenceProjector({ onAction: (row) => rows.push(row) })
+    projector.add(nativeEvent('SpanStart', fixtureIdentity))
+    const upload = (
+      spanId: number,
+      data: unknown,
+      parentId = 20181,
+      phase: 'SpanStart' | 'SpanEnd' = 'SpanEnd',
+    ) => ({
+      Event: {
+        trace_id: fixtureBuildId,
+        span_id: spanId,
+        parent_id: parentId,
+        data: { [phase]: { data } },
+      },
+    })
+    const failure = upload(30001, {
+      CacheUpload: { success: false, error: 'CAS write denied', re_error_code: 'PERMISSION_DENIED' },
+    })
+    projector.add(failure)
+    projector.add(failure)
+    projector.add(upload(30002, { ExecutorStage: {} }, 20181, 'SpanStart'))
+    projector.add(upload(30003, { CacheUpload: { success: false, error: 'connection reset' } }, 30002))
+    projector.add(upload(30004, { ReUpload: { bytes_uploaded: 0, error: 'NOT_A_NATIVE_FIELD' } }))
+    projector.add(upload(30005, { CacheUpload: { success: true, error: 'IGNORE_SUCCESS' } }))
+    projector.add(upload(30006, { CacheUpload: { success: false, error: '' } }))
+    projector.add(nativeEvent('SpanEnd', actionEnd({ cache_upload_result: 9 })))
+    const result = projector.finish()
+    const expected = [
+      { category: 'permission-denied', reErrorCode: 7 },
+      { category: 'unavailable', reErrorCode: null },
+      { category: 'other', reErrorCode: null },
+    ]
+    expect(rows[0]?.uploadErrors).toEqual(expected)
+    expect(result.actions[0]?.uploadErrors).toEqual(expected)
+    expect(decodeCacheEvidence(result).actions[0]?.uploadErrors).toEqual(expected)
+    expect(JSON.stringify({ rows, result })).not.toContain('NOT_A_NATIVE_FIELD')
+    expect(JSON.stringify({ rows, result })).not.toContain('IGNORE_SUCCESS')
   })
 
   it('preserves upload rejection and local-dep-file raw classifications without inventing hits', () => {

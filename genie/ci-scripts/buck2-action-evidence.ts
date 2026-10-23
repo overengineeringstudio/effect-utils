@@ -49,6 +49,19 @@ export const countActionExclusions = (
   }
   return counts
 }
+export type CacheUploadError = {
+  /** Closed classification only: native diagnostic text is never retained. */
+  category:
+    | 'unauthenticated'
+    | 'permission-denied'
+    | 'deadline'
+    | 'unavailable'
+    | 'resource-exhausted'
+    | 'invalid-argument'
+    | 'other'
+  reErrorCode: number | null
+}
+
 /** Native first four digest bytes, not a full content digest. No paths or kinds are logged. */
 export type OutputTinyDigests = {
   algorithm: 'buck2-tiny-digest-v1'
@@ -69,6 +82,8 @@ export type ActionRecord = {
   outcome: CacheOutcome
   cacheOutcome: CacheOutcome
   uploadOutcome: 'uploaded' | 'failed' | 'not-uploaded'
+  /** One entry per failed native CacheUpload span; absent when none were observed. */
+  uploadErrors?: CacheUploadError[]
   startedAt: number | null
   completedAt: number | null
   endTime: number | null

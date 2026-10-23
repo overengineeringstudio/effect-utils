@@ -39,7 +39,13 @@ const stopReplayProcesses = async (
         process.kill(-child.pid, 0)
       } catch (error) {
         if (error instanceof Error && 'code' in error && error.code === 'ESRCH') break
-        throw error
+        // Darwin can transiently report EPERM while a killed group is reaping.
+        // This is not proof of absence: keep polling until ESRCH or the deadline.
+        if (
+          process.platform !== 'darwin' ||
+          !(error instanceof Error && 'code' in error && error.code === 'EPERM')
+        )
+          throw error
       }
       if (performance.now() >= deadline) {
         const members: string[] = []
