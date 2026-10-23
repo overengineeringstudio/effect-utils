@@ -12,11 +12,13 @@ import {
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
+import { buckConfigValues, standaloneCachePostureConfig } from './buck2-cache-posture.ts'
 import {
   cacheDaemonPostureFingerprint,
   cacheLauncherBirth,
   cacheDaemonRestartDecision,
   admitCacheDaemonCommand,
+  directBuckArguments,
 } from './buck2-entrypoint.ts'
 
 const secret = 'planted-writer-credential-never-persist'
@@ -26,6 +28,105 @@ const values = {
 }
 
 describe('daemon RE posture', () => {
+  it('preserves absent root/native defaults without enabling reader uploads or headers', () => {
+    const env = {}
+    const salt = 'default-policy-test'
+    expect(cacheDaemonPostureFingerprint({ values: {}, env, salt })).toBe(
+      cacheDaemonPostureFingerprint({
+        values: {
+          'buck2.remote_cache_enabled': 'true',
+          'buck2.allow_cache_uploads': 'true',
+          'buck2.default_allow_cache_upload': 'false',
+          'buck2_re_client.http_headers': '',
+        },
+        env,
+        salt,
+      }),
+    )
+    expect(
+      cacheDaemonPostureFingerprint({
+        values: { 'buck2.allow_cache_uploads': 'false' },
+        env,
+        salt,
+      }),
+    ).not.toBe(cacheDaemonPostureFingerprint({ values: {}, env, salt }))
+  })
+
+  it('snapshots effective reader/optional-writer outage policy and preserves the tracked publisher default', async () => {
+    const tracked = readFileSync(join(import.meta.dir, '..', '.buckconfig'), 'utf8')
+    expect(buckConfigValues(tracked)['buck2.remote_cache_enabled']).toBeUndefined()
+    for (const posture of ['publisher', 'reader-outage', 'optional-writer-outage']) {
+      const root = realpathSync(mkdtempSync(join(tmpdir(), 'buck2-effective-posture-')))
+      try {
+        const native = join(root, 'native')
+        writeFileSync(join(root, '.buckroot'), '')
+        writeFileSync(
+          join(root, '.buckconfig'),
+          posture === 'publisher'
+            ? tracked
+            : tracked.replaceAll(/grpc:\/\/[^\s]+/gu, 'grpc://127.0.0.1:1'),
+        )
+        const env = {
+          ...process.env,
+          CI: '1',
+          BUCK2_CACHE_WRITE_BASIC_AUTH: secret,
+          ...(posture === 'reader-outage' ? { BUCK2_PUBLIC_CACHE_READ_ONLY: '1' } : {}),
+          ...(posture === 'optional-writer-outage' ? { BUCK2_CACHE_WRITE_OPTIONAL: '1' } : {}),
+        }
+        const overlay = standaloneCachePostureConfig({ current: '', env })
+        // Use the production publisher block and the actual tracked config: neither
+        // declares remote_cache_enabled, whose native default is enabled.
+        if (posture === 'publisher')
+          expect(buckConfigValues(overlay)['buck2.remote_cache_enabled']).toBeUndefined()
+        writeFileSync(
+          native,
+          `#!${process.execPath}
+import {existsSync,readFileSync,writeFileSync} from 'node:fs';
+const state=process.cwd()+'/daemon.json';
+if(process.argv[4]==='status') {if(existsSync(state)) console.log(readFileSync(state,'utf8'));}
+else if(process.argv[4]==='audit') writeFileSync(state,JSON.stringify({project_root:process.cwd(),isolation_dir:'v2',active_commands:[],process_info:{pid:process.pid},start_time:'now'}));
+else process.exit(9);
+`,
+        )
+        chmodSync(native, 0o700)
+        const args = await admitCacheDaemonCommand({
+          native,
+          root,
+          args: ['build', '//:fixture'],
+          env,
+          admit: async (beforeCachePosture) => {
+            if (posture !== 'publisher')
+              return directBuckArguments({
+                cwd: root,
+                args: ['build', '//:fixture'],
+                env,
+                cacheDirectory: join(root, 'probe-cache'),
+                deadlineMs: 100,
+                beforeCachePosture,
+              })
+            beforeCachePosture?.(buckConfigValues(`${tracked}\n${overlay}`))
+            writeFileSync(join(root, '.buckconfig.local'), overlay)
+            return ['build', '//:fixture']
+          },
+        })
+        const policy = args[args.lastIndexOf('--config-file') + 1]!
+        const text = readFileSync(policy, 'utf8')
+        const values = buckConfigValues(text)
+        expect(values['buck2.remote_cache_enabled']).toBe(
+          posture === 'publisher' ? 'true' : 'false',
+        )
+        expect(values['buck2.allow_cache_uploads']).toBe(posture === 'publisher' ? 'true' : 'false')
+        expect(values['buck2.default_allow_cache_upload']).toBe(
+          posture === 'reader-outage' ? 'false' : 'true',
+        )
+        expect(text).not.toContain(secret)
+        expect(statSync(policy).mode & 0o777).toBe(0o600)
+      } finally {
+        rmSync(root, { recursive: true, force: true })
+      }
+    }
+  }, 15000)
+
   it('records closed REAPI outage diagnostics, including cached admission failures', async () => {
     const root = mkdtempSync(join(tmpdir(), 'buck2-admission-failure-'))
     try {

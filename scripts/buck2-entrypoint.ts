@@ -214,7 +214,7 @@ export const directBuckArguments = async ({
   readonly deadlineMs?: number
   /** Supply a fresh caller-controlled deadline for each probe; undefined uses the platform timer. */
   readonly probeDeadlineSignal?: (endpoint: AdmissionProbeEndpoint) => AbortSignal | undefined
-  /** Check live launcher reservations before changing the daemon-scoped root overlay. */
+  /** Check before overlay mutation, then publish the effective post-probe invocation policy. */
   readonly beforeCachePosture?: CachePostureCheck
 }): Promise<string[]> => {
   admissionExpires = Date.now() + 5000
@@ -443,7 +443,10 @@ export const directBuckArguments = async ({
       'buck2.remote_cache_enabled': 'false',
       'buck2.allow_cache_uploads': 'false',
     })
+    Object.assign(values, overrides)
   }
+  // Publish the effective invocation policy after probe fallback, not merely the overlay.
+  beforeCachePosture?.(values)
   const extra = Object.entries(overrides).flatMap(([key, value]) => ['--config', `${key}=${value}`])
   const before = sentinel === -1 ? [...args] : args.slice(0, sentinel)
   const admitted =
@@ -770,10 +773,10 @@ export const reconcileGateDaemon = ({
   }
 }
 
-/** Pin every launcher-managed policy key, including reader defaults absent from its overlay. */
+/** Match root policy defaults in buck2/platforms/defs.bzl and native RunActionKnobs. */
 const cacheDaemonPolicy = (values: Readonly<Record<string, string>>): Record<string, string> => ({
-  'buck2.remote_cache_enabled': 'false',
-  'buck2.allow_cache_uploads': 'false',
+  'buck2.remote_cache_enabled': 'true',
+  'buck2.allow_cache_uploads': 'true',
   'buck2.default_allow_cache_upload': 'false',
   'buck2_re_client.http_headers': '',
   ...Object.fromEntries(
@@ -1018,6 +1021,7 @@ export const admitCacheDaemonCommand = async ({
       root: realpathSync(root),
       isolation,
     })
+    let admittedValues: Readonly<Record<string, string>> | undefined
     const checkPosture: CachePostureCheck = (values) => {
       const desired = cacheDaemonPostureFingerprint({ values, env, salt })
       if (
@@ -1040,12 +1044,16 @@ export const admitCacheDaemonCommand = async ({
         throw new Error(
           'Buck2 cache posture: mismatched or unrecorded daemon is busy or unrecognized; refusing to stop it. Retry after concurrent Buck commands finish.',
         )
+      admittedValues = values
     }
     // The lock precedes overlay reconciliation and remains held through daemon initialization.
     const admittedArgs = await admit(checkPosture)
-    const values = buckConfigValues(
-      `${readConfig({ path: join(root, '.buckconfig') })}\n${readConfig({ path: join(root, '.buckconfig.local') })}`,
-    )
+    const values = {
+      ...buckConfigValues(
+        `${readConfig({ path: join(root, '.buckconfig') })}\n${readConfig({ path: join(root, '.buckconfig.local') })}`,
+      ),
+      ...admittedValues,
+    }
     checkPosture(values)
     const fingerprint = cacheDaemonPostureFingerprint({ values, env, salt })
     const current = status()

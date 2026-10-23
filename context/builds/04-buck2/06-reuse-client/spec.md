@@ -60,6 +60,12 @@ defaults for absent writer-only settings. Its filename is isolation-derived,
 not fingerprint-derived, and credential variables remain unexpanded on disk.
 The invocation drops `--reuse-current-config`, which would ignore its policy.
 The shared overlay remains serialized through native daemon startup.
+The snapshot and fingerprint use the effective admitted policy after REAPI
+fallback, not only the root overlay: a failed reader or optional-writer probe
+pins remote caching and uploads off. Absent root `remote_cache_enabled` and
+`allow_cache_uploads` retain the rule policy's `true` defaults; the tracked
+reader's explicit upload prohibition still wins. Absent action-upload default
+remains native `false`, and absent HTTP headers remain empty.
 
 Linux quality and the macOS test job run `buck2:cache-posture:ci-test`: the
 standalone posture suites exercise process-birth identities and locking with
