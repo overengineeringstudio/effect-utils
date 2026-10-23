@@ -49,6 +49,7 @@ const runtimeDeps = catalog.compose({
     ),
   },
   mode: 'install',
+  optionalPeerInstalls: ['@storybook/react-vite', '@vitest/browser-playwright', 'storybook'],
 })
 
 export default packageJson(

@@ -25,6 +25,7 @@ const peerDepNames = [
 
 const composition = catalog.compose({
   mode: 'install',
+  optionalPeerInstalls: ['@storybook/react-vite', '@vitest/browser-playwright', 'storybook'],
   workspace: workspaceMember({ memberPath: 'packages/@overeng/gh-ci-utils' }),
   dependencies: {
     external: catalog.pick('yauzl'),

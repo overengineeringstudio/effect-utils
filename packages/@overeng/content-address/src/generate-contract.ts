@@ -145,8 +145,6 @@ NodeRuntime.runMain(
       'Generated contract; DO NOT EDIT BY HAND.',
       `Provenance: ${contractPath}/${manifestPath}`,
       `Regenerate: ${command}`,
-      `Input fingerprint: ${inputFingerprint}`,
-      `Generated at: ${generatedAt}`,
     ]
     const generated = compile(
       { ContentDescriptor, ContentDigest, MediaType, Codec, NonNegativeInt },
@@ -164,8 +162,8 @@ NodeRuntime.runMain(
     const files: Record<string, string> = Object.fromEntries(
       Object.entries(generated.files).filter(([path]) => path.startsWith('effect/') === false),
     )
-    // JSON Schema cannot carry comments: generation.json owns its provenance.
-    // Rust/TOML use native comments in addition to the enclosing manifest.
+    // Keep volatile input provenance in generation.json, not compiled Rust/Cargo
+    // bytes: dependency-only changes must not invalidate an unchanged contract.
     for (const [path, content] of Object.entries(files)) {
       const prefix =
         path.endsWith('.rs') === true ? '//' : path.endsWith('.toml') === true ? '#' : undefined
