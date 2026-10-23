@@ -214,7 +214,7 @@ export const directBuckArguments = async ({
   readonly deadlineMs?: number
   /** Supply a fresh caller-controlled deadline for each probe; undefined uses the platform timer. */
   readonly probeDeadlineSignal?: (endpoint: AdmissionProbeEndpoint) => AbortSignal | undefined
-  /** Check before overlay mutation, then publish the effective post-probe invocation policy. */
+  /** Check effective post-probe policy before changing the daemon-scoped root overlay. */
   readonly beforeCachePosture?: CachePostureCheck
 }): Promise<string[]> => {
   admissionExpires = Date.now() + 5000
@@ -313,16 +313,6 @@ export const directBuckArguments = async ({
     (cliValues['buck2.remote_cache_enabled'] ?? base['buck2.remote_cache_enabled']) === 'false'
   const postureEnv = cacheDisabled === true ? { ...env, BUCK2_NO_REMOTE_CACHE: '1' } : env
   const posture = standaloneCachePostureConfig({ current: '', env: postureEnv })
-  beforeCachePosture?.({ ...base, ...buckConfigValues(posture) })
-  // Native RE client construction ignores CLI config. Writer headers/endpoints must
-  // be in the root overlay before daemon startup, including removal on public reads.
-  if (
-    unmanaged.found === true ||
-    Object.keys(buckConfigValues(posture)).some(
-      (key) => key.startsWith('buck2_re_client.') === true || key === 'buck2.retained_event_logs',
-    ) === true
-  )
-    reconcileStandaloneCachePosture({ repoRoot: root, env: postureEnv })
   const overrides = buckConfigValues(posture)
   const values = { ...base, ...overrides, ...cliValues }
   for (const key of Object.keys(overrides)) overrides[key] = values[key] ?? ''
@@ -445,8 +435,19 @@ export const directBuckArguments = async ({
     })
     Object.assign(values, overrides)
   }
-  // Publish the effective invocation policy after probe fallback, not merely the overlay.
+  // Probe before comparing reservations: an identical outage launch must compare
+  // its effective fallback, not an optimistic policy it will never execute.
+  // Compare before mutating the shared overlay or starting/stopping any daemon.
   beforeCachePosture?.(values)
+  // Native RE client construction ignores CLI config. Writer headers/endpoints must
+  // be in the root overlay before daemon startup, including removal on public reads.
+  if (
+    unmanaged.found === true ||
+    Object.keys(buckConfigValues(posture)).some(
+      (key) => key.startsWith('buck2_re_client.') === true || key === 'buck2.retained_event_logs',
+    ) === true
+  )
+    reconcileStandaloneCachePosture({ repoRoot: root, env: postureEnv })
   const extra = Object.entries(overrides).flatMap(([key, value]) => ['--config', `${key}=${value}`])
   const before = sentinel === -1 ? [...args] : args.slice(0, sentinel)
   const admitted =

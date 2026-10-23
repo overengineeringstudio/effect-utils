@@ -66,6 +66,10 @@ pins remote caching and uploads off. Absent root `remote_cache_enabled` and
 `allow_cache_uploads` retain the rule policy's `true` defaults; the tracked
 reader's explicit upload prohibition still wins. Absent action-upload default
 remains native `false`, and absent HTTP headers remain empty.
+REAPI probing precedes reservation comparison and overlay mutation while holding
+the startup lock. Identical fallback launchers therefore compare the same
+disabled policy and can proceed concurrently; actual same-daemon policy
+mismatches still refuse before any cache-overlay mutation.
 
 Linux quality and the macOS test job run `buck2:cache-posture:ci-test`: the
 standalone posture suites exercise process-birth identities and locking with

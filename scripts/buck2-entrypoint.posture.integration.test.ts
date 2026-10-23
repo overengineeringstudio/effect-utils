@@ -70,8 +70,12 @@ describe('daemon RE posture', () => {
           ...process.env,
           CI: '1',
           BUCK2_CACHE_WRITE_BASIC_AUTH: secret,
-          ...(posture === 'reader-outage' ? { BUCK2_PUBLIC_CACHE_READ_ONLY: '1' } : {}),
-          ...(posture === 'optional-writer-outage' ? { BUCK2_CACHE_WRITE_OPTIONAL: '1' } : {}),
+          BUCK2_NO_REMOTE_CACHE: '',
+          BUCK2_PRIVATE_CACHE_WRITE_BASIC_AUTH: '',
+          BUCK2_PRIVATE_CACHE_ADDRESS: '',
+          BUCK2_PUBLIC_CACHE_READ_ONLY: posture === 'reader-outage' ? '1' : '',
+          BUCK2_CACHE_WRITE_OPTIONAL: posture === 'optional-writer-outage' ? '1' : '',
+          CI_BUCK2_CACHE_EVIDENCE_PATH: '',
         }
         const overlay = standaloneCachePostureConfig({ current: '', env })
         // Use the production publisher block and the actual tracked config: neither
