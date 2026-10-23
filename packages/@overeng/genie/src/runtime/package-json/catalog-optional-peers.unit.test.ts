@@ -65,10 +65,13 @@ describe('install-mode inherited optional peers', () => {
         optionalPeerInstalls: optIn === true ? ['effect'] : [],
       })
 
-      expect(composed.dependencies).toEqual({
-        [pkg.data.name]: 'workspace:^',
-        ...(installed === true ? { effect: catalog.effect } : {}),
-      })
+      expect(composed.dependencies).toHaveProperty(pkg.data.name, 'workspace:^')
+      expect(Object.keys(composed.dependencies)).toHaveLength(installed === true ? 2 : 1)
+      if (installed === true) {
+        expect(composed.dependencies).toHaveProperty('effect', catalog.effect)
+      } else {
+        expect(composed.dependencies).not.toHaveProperty('effect')
+      }
     }
   })
 
