@@ -44,6 +44,7 @@ const validatePackageRecomposition = (args: {
         isPrivate === true
           ? peer in (args.pkg.dependencies ?? {}) ||
             peer in (args.pkg.devDependencies ?? {}) ||
+            peer in (args.pkg.optionalDependencies ?? {}) ||
             peer in (args.pkg.peerDependencies ?? {})
           : args.pkg.peerDependencies !== undefined && peer in args.pkg.peerDependencies
 
@@ -133,8 +134,8 @@ const validatePackageRecomposition = (args: {
  * Validate that a package properly re-exports peer dependencies and patches from its workspace dependencies.
  *
  * For non-private (library) packages: upstream peer deps must appear in peerDependencies (delta pattern).
- * For private (app) packages: required upstream peers must appear in dependencies, devDependencies, or peerDependencies.
- * Optional upstream peers may be omitted by private packages.
+ * For private (app) packages: required upstream peers must appear in an install bucket or peerDependencies.
+ * Optional upstream peers may be omitted by private packages, but installed peers still require explicit versions.
  * If they are installed locally via dependencies/devDependencies/optionalDependencies, their local install spec must be explicit.
  */
 export const validatePackageRecompositionForPackage = ({

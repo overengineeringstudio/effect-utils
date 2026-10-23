@@ -133,4 +133,38 @@ describe('install-mode inherited optional peers', () => {
       }),
     ).toHaveLength(testCase.issues)
   })
+
+  it('rejects a ranged optional peer installed through optionalDependencies', () => {
+    const packages: PackageInfo[] = [
+      {
+        name: '@test/utils',
+        path: 'packages/utils',
+        peerDependencies: catalog.peers('effect'),
+        peerDependenciesMeta: { effect: { optional: true } },
+      },
+      {
+        name: '@test/app',
+        path: 'packages/app',
+        private: true,
+        dependencies: { '@test/utils': 'workspace:^' },
+        optionalDependencies: { effect: '^2.0.0' },
+      },
+    ]
+
+    const issues = validatePackageRecompositionForPackage({
+      ctx: {
+        location: '.',
+        cwd: '/workspace',
+        workspace: {
+          packages,
+          byName: new Map(packages.map((pkg) => [pkg.name, pkg])),
+        },
+      },
+      pkgName: '@test/app',
+    })
+
+    expect(issues).toHaveLength(1)
+    expect(issues[0]?.rule).toBe('recompose-local-peer-range')
+    expect(issues[0]?.dependency).toBe('effect')
+  })
 })
