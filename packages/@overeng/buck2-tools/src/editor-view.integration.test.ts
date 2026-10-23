@@ -321,7 +321,7 @@ const cleanup = (fixture: Fixture): void => {
 
 it('preserves shared payload modes while unlocking and removing readonly fixture directories', async () => {
   const fixture = makeFixture()
-  const retainedRoot = mkdtempSync(join(tmpdir(), 'editor-view-cleanup-alias-'))
+  const retainedRoot = mkdtempSync(join(editorViewTestDataRoot(), 'editor-view-cleanup-alias-'))
   try {
     const record = await publishEditorView(fixture.options)
     const snapshot = join(fixture.editorRoot, record.snapshot)
