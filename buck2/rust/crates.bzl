@@ -22,10 +22,11 @@ sha256; declared Nix flake sources carry a source-derived archive digest:
     '''
 """
 
+load("//buck2/hermetic.bzl", "hermetic_action", "hermetic_attrs", "hermetic_execution_constraints")
 load("//buck2/platforms:defs.bzl", "cache_guarded_rule")
 load("//buck2/toolchains:defs.bzl", "BunToolchainInfo")
 
-def _crate_archive_impl(ctx):
+def _crate_acquisition_impl(ctx):
     root = read_config("nix_store", "crates_root", "")
     if root == "":
         if len(ctx.attrs.urls) != 1:
@@ -58,13 +59,36 @@ def _crate_archive_impl(ctx):
             local_only = True,
             allow_cache_upload = True,
         )
+    return [DefaultInfo(default_output = archive)]
+
+_crate_acquisition = cache_guarded_rule(
+    impl = _crate_acquisition_impl,
+    attrs = {
+        "sha256": attrs.string(),
+        "source_repo": attrs.option(attrs.string(), default = None),
+        "source_rev": attrs.option(attrs.string(), default = None),
+        "urls": attrs.list(attrs.string(), default = []),
+        "_bun": attrs.default_only(attrs.exec_dep(
+            default = "//buck2/toolchains:bun",
+            providers = [BunToolchainInfo],
+        )),
+        "_nix_archive": attrs.default_only(attrs.source(
+            default = "//buck2/dependencies:nix-archive.ts",
+        )),
+    },
+)
+
+def _crate_archive_impl(ctx):
     out = ctx.actions.declare_output(ctx.attrs.out or ctx.label.name, dir = True)
-    ctx.actions.run(
+    # Acquisition remains a separate, unadmitted target. This action sees only
+    # the verified archive artifact, never the Nix acquisition root or Bun.
+    hermetic_action(
+        ctx,
         cmd_args([
             ctx.attrs._archive_tool[RunInfo],
             ctx.attrs.extract_command,
             "--archive",
-            archive,
+            ctx.attrs.archive,
             "--out",
             out.as_output(),
             "--strip-prefix",
@@ -72,7 +96,6 @@ def _crate_archive_impl(ctx):
         ]),
         category = "cargo_extract",
         identifier = ctx.label.name,
-        allow_cache_upload = True,
     )
     return [DefaultInfo(
         default_output = out,
@@ -84,39 +107,36 @@ def _crate_archive_impl(ctx):
 
 _crate_archive = cache_guarded_rule(
     impl = _crate_archive_impl,
-    attrs = {
+    cache_eligible = lambda ctx: ctx.attrs.extract_command == "extract-crate",
+    attrs = dict(hermetic_attrs(), **{
+        "archive": attrs.source(),
         "extract_command": attrs.enum(["extract-crate", "extract-git-archive"], default = "extract-crate"),
         "out": attrs.option(attrs.string(), default = None),
-        "sha256": attrs.string(),
         "strip_prefix": attrs.string(),
-        "source_repo": attrs.option(attrs.string(), default = None),
-        "source_rev": attrs.option(attrs.string(), default = None),
         "sub_targets": attrs.list(attrs.string(), default = []),
-        "urls": attrs.list(attrs.string(), default = []),
         "_archive_tool": attrs.default_only(attrs.exec_dep(
             default = "//buck2/toolchains:archive_tool",
             providers = [RunInfo],
         )),
-        "_bun": attrs.default_only(attrs.exec_dep(
-            default = "//buck2/toolchains:bun",
-            providers = [BunToolchainInfo],
-        )),
-        "_nix_archive": attrs.default_only(attrs.source(
-            default = "//buck2/dependencies:nix-archive.ts",
-        )),
-    },
+    }),
 )
 
 def crate_archive(name, urls, sha256, strip_prefix, visibility = [], **kwargs):
     """Declares a sha256-pinned crate with hermetic, declared archive-tool extraction."""
     if len(sha256) != 64 or sha256.lower() != sha256:
         fail("crate_archive {} needs a lowercase hex sha256".format(name))
-    _crate_archive(
-        name = name,
+    acquisition = name + "__archive"
+    _crate_acquisition(
+        name = acquisition,
         urls = urls,
         sha256 = sha256,
+    )
+    _crate_archive(
+        name = name,
+        archive = ":" + acquisition,
         strip_prefix = strip_prefix,
         visibility = visibility,
+        exec_compatible_with = hermetic_execution_constraints(kwargs.pop("exec_compatible_with", [])),
         **kwargs
     )
 
@@ -167,16 +187,22 @@ def pinned_git_archive(pins):
                 **kwargs
             )
         else:
+            acquisition = name + "__archive"
+            _crate_acquisition(
+                name = acquisition,
+                sha256 = sha256,
+                source_repo = repo,
+                source_rev = rev,
+            )
             _crate_archive(
                 name = name,
                 extract_command = "extract-git-archive",
                 out = out,
-                sha256 = sha256,
-                source_repo = repo,
-                source_rev = rev,
+                archive = ":" + acquisition,
                 strip_prefix = pin["strip_prefix"],
                 sub_targets = sub_targets,
                 visibility = visibility,
+                **kwargs
             )
 
     return git_archive
