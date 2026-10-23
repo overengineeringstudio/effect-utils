@@ -59,6 +59,8 @@ cat > "$work/.buckconfig" <<'CONFIG'
   file_watcher = notify
   remote_cache_enabled = false
   allow_cache_uploads = false
+[nix_store]
+  crates_root = /nix/store/analysis-only
 CONFIG
 printf '\n[fixture]\n  shell = %s\n  coreutils = %s\n' \
   "$native_shell" "$native_coreutils" >> "$work/.buckconfig"
@@ -73,6 +75,7 @@ load("//buck2/package_tools.bzl", "PackageCommandRuntimeInfo", "package_bin_chec
 load("//buck2/toolchains:configured.bzl", "BuckSupportToolInfo")
 load("//buck2/toolchains:defs.bzl", "BunToolchainInfo", "EffectTsgoToolchainInfo")
 load("//buck2/rust:interop.bzl", "RustInteropProductInfo", "rust_interop_smoke")
+load("//buck2/rust:crates.bzl", "pinned_git_archive")
 load("//buck2/toolchains:ts_sandbox.bzl", "TsSandboxToolchainInfo")
 load("//buck2/hermetic.bzl", "ts_action", "ts_action_attrs")
 load("//buck2/platforms:defs.bzl", "cache_guarded_rule", "ts_action_admission_status", "ts_action_cache_eligible", "ts_action_execution_constraints", "ts_action_policy_attrs")
@@ -229,6 +232,24 @@ def fixture_materialization_cases(suffix, constraints = []):
 
 def fixture_negative_cases(suffix, constraint):
     fixture_materialization_cases(suffix, [constraint])
+    # Git extraction has not supplied the crate lane's no-links/metadata proof.
+    # An extraction-shaped action alone must not grant it cache admission.
+    git_archive = pinned_git_archive({
+        "schema": "effect-utils/buck2-git-archives/v1",
+        "archives": [{
+            "repo": "https://github.com/example/fixture",
+            "rev": "0" * 40,
+            "sha256": "0" * 64,
+            "strip_prefix": "fixture",
+            "url": "https://example.invalid/fixture.tar.gz",
+        }],
+    })
+    git_archive(
+        name = "unadmitted_cargo_git_" + suffix,
+        repo = "https://github.com/example/fixture",
+        rev = "0" * 40,
+        exec_compatible_with = [constraint],
+    )
     vitest_test(
         name = "uncacheable_verdict_" + suffix,
         package_tree = "//:package_tree",
@@ -278,6 +299,7 @@ load("@rules//buck2:javascript.bzl", "vitest_collect")
 load("@rules//buck2:package_tools.bzl", "package_bin_check")
 load("@prelude//:prelude.bzl", "native")
 load("//:rust-action-adapter.bzl", "fixture_rust_adapter")
+load("//buck2/rust:crates.bzl", "crate_archive")
 
 native.export_file(name = "fixture-dependency.txt", visibility = ["PUBLIC"])
 native.export_file(name = "rust-action-adapter.sh", visibility = ["PUBLIC"])
@@ -292,6 +314,12 @@ fixture_ts_policy(name = "ts_policy_default")
 fixture_ts_policy(name = "ts_policy_cache", exec_compatible_with = ["@rules//buck2/platforms:cache_hermetic"])
 fixture_ts_policy_with_helper(name = "ts_policy_helper")
 fixture_ts_output(name = "darwin_fresh_verdict")
+crate_archive(
+    name = "admitted_cargo_extract",
+    urls = ["https://example.invalid/fixture.crate"],
+    sha256 = "0" * 64,
+    strip_prefix = "fixture",
+)
 
 vitest_collect(
     name = "admitted_collect",
@@ -347,6 +375,30 @@ for target in admitted_collect default_uncacheable_collect default_unadmitted_ch
     exit 1
   fi
   printf 'PASS analysis: %s\n' "$target"
+done
+
+# Cargo acquisition must stay denied even though extraction is admitted.
+# Inspect real selected platforms, not source strings or upload bits.
+for row in \
+  'admitted_cargo_extract hermetic' \
+  'admitted_cargo_extract__archive native'; do
+  target="${row%% *}"
+  posture="${row#* }"
+  "$buck" --isolation-dir cache-admission-check audit providers "effect_utils//:$target" > "$work/$target.log" 2>&1
+  "$buck" --isolation-dir cache-admission-check cquery --output-attribute buck.execution_platform \
+    -c buck2.remote_cache_enabled=true -c buck2.allow_cache_uploads=true \
+    "effect_utils//:$target" > "$work/$target.platform.log" 2>&1
+  if [[ "$posture" == hermetic ]]; then
+    expected='exec_(linux_x86_64|linux_aarch64|macos_aarch64)_hermetic'
+  else
+    expected='exec_(linux_x86_64|linux_aarch64|macos_aarch64)([^_[:alnum:]]|$)'
+  fi
+  if ! grep -Eq "$expected" "$work/$target.platform.log"; then
+    cat "$work/$target.platform.log" >&2
+    printf 'Cargo target selected the wrong cache posture: %s\n' "$target" >&2
+    exit 1
+  fi
+  printf 'PASS Cargo %s platform: %s\n' "$posture" "$target"
 done
 
 # Inspect Buck's actual selected execution platform, with root cache policy ON.
@@ -479,7 +531,7 @@ if [[ "$darwin_verdict" != fresh-darwin-verdict ]]; then
 fi
 printf 'PASS fresh Darwin-branch nested verdict: declared output created by shared launcher\n'
 
-for family in uncacheable_verdict uncacheable_collect unadmitted_check unadmitted_interop pnpm_extract pnpm_store_entry pnpm_store_view pnpm_store_scc package_tree legacy_package_tree package_view; do
+for family in uncacheable_verdict uncacheable_collect unadmitted_check unadmitted_interop unadmitted_cargo_git pnpm_extract pnpm_store_entry pnpm_store_view pnpm_store_scc package_tree legacy_package_tree package_view; do
   for spelling in canonical relative alias alias_at; do
     target="${family}_${spelling}"
     if "$buck" --isolation-dir cache-admission-check audit providers "effect_utils//$spelling:$target" > "$work/$target.log" 2>&1; then

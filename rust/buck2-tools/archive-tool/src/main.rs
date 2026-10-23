@@ -3,10 +3,11 @@ use clap::{Args, Parser, Subcommand};
 use flate2::read::GzDecoder;
 use std::{
     collections::HashSet,
-    fs::{self, File, OpenOptions},
+    fs::{self, File, FileTimes, OpenOptions},
     io::{self, Read},
     os::unix::fs::{symlink, PermissionsExt},
     path::{Component, Path, PathBuf},
+    time::SystemTime,
 };
 use tar::Archive;
 
@@ -417,8 +418,32 @@ fn extract_prefixed_archive(
     Ok(())
 }
 
+// Crates cannot contain links. Normalize implicit parents and the output root
+// as well as explicit entries, after all writes have stopped changing mtimes.
+// Archive uid/gid are never applied: files belong to the executor, and REAPI
+// directory trees encode neither ownership nor access/creation timestamps.
+fn normalize_crate_tree(path: &Path) -> io::Result<()> {
+    if path.is_dir() {
+        for entry in fs::read_dir(path)? {
+            normalize_crate_tree(&entry?.path())?;
+        }
+        fs::set_permissions(path, fs::Permissions::from_mode(0o755))?;
+    }
+    File::open(path)?.set_times(
+        FileTimes::new()
+            .set_accessed(SystemTime::UNIX_EPOCH)
+            .set_modified(SystemTime::UNIX_EPOCH),
+    )
+}
+
 fn extract_crate(args: &ExtractCrateArgs) -> ToolResult<()> {
-    extract_prefixed_archive(&args.archive, &args.out, &args.strip_prefix, "crate", false)
+    extract_prefixed_archive(&args.archive, &args.out, &args.strip_prefix, "crate", false)?;
+    normalize_crate_tree(&args.out).map_err(|error| {
+        fail(
+            "BUCK2_ARCHIVE_OUTPUT",
+            format!("could not normalize crate tree metadata: {error}"),
+        )
+    })
 }
 
 fn extract_git_archive(args: &ExtractCrateArgs) -> ToolResult<()> {
@@ -762,6 +787,50 @@ mod tests {
             fs::read(output.join("src/lib.rs")).unwrap(),
             b"pub fn demo() {}\n"
         );
+    }
+
+    #[test]
+    fn normalizes_crate_metadata_including_implicit_directories() {
+        use std::os::unix::fs::MetadataExt;
+
+        let file = tempfile::NamedTempFile::new().unwrap();
+        let encoder = GzEncoder::new(file.reopen().unwrap(), Compression::default());
+        let mut builder = Builder::new(encoder);
+        for (path, mode) in [("demo/src/lib.rs", 0o6640), ("demo/bin/run", 0o6751)] {
+            let mut header = Header::new_gnu();
+            header.set_entry_type(EntryType::Regular);
+            header.set_mode(mode);
+            header.set_uid(12345);
+            header.set_gid(54321);
+            header.set_mtime(1_234_567_890);
+            header.set_size(1);
+            header.set_cksum();
+            builder.append_data(&mut header, path, &b"x"[..]).unwrap();
+        }
+        builder.into_inner().unwrap().finish().unwrap().flush().unwrap();
+        let parent = tempfile::tempdir().unwrap();
+        let output = parent.path().join("out");
+        extract_crate(&ExtractCrateArgs {
+            archive: file.path().to_owned(),
+            out: output.clone(),
+            strip_prefix: "demo".into(),
+        })
+        .unwrap();
+        let owner = fs::metadata(parent.path()).unwrap();
+        for (path, mode) in [
+            ("", 0o755),
+            ("src", 0o755),
+            ("bin", 0o755),
+            ("src/lib.rs", 0o644),
+            ("bin/run", 0o755),
+        ] {
+            let metadata = fs::metadata(output.join(path)).unwrap();
+            assert_eq!(metadata.mode() & 0o7777, mode, "{path}");
+            assert_eq!(metadata.mtime(), 0, "{path}");
+            assert_eq!(metadata.mtime_nsec(), 0, "{path}");
+            assert_eq!(metadata.uid(), owner.uid(), "{path}");
+            assert_eq!(metadata.gid(), owner.gid(), "{path}");
+        }
     }
 
     #[test]

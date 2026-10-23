@@ -433,6 +433,7 @@ scratch config, so package-local startup hooks cannot bypass the runner contract
 | ------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Dependency extraction/store assembly, package-tree projections and runtime-module copies         | Not admitted: the cheap filesystem categories use `local-materialization-policy`, with remote-cache reads and writes disabled despite their declared inputs and scrubbed execution. See [the policy decision](../06-reuse-client/spec.md#local-materialization-policy-buildbuckreuse-r08r10).                                                                                                                                                                  |
 | Declared pnpm runtime closure                                                                    | Admitted: normalized declared read roots, exact runtime tools, no install-time network or ambient tool discovery.                                                                                                                                                                                                                                                                                                                                              |
+| Cargo registry crate extraction (`cargo_extract`)                                                | Admitted: one checksum-verified archive artifact, the projected native archive tool and its capability manifest, declared strip prefix and output directory, and the scrubbed native launcher. Acquisition is a separate unadmitted target; Git archive extraction, Rust compilation and build scripts are not admitted by this rule.                                                                                                                          |
 | TypeScript check/emit                                                                            | Linux only: mandatory `linux-bwrap` boundary over declared source/dependency view, declarations, exact Bun/tsgo closure and arguments. Darwin is local-only, unsandboxed and explicitly excluded as `darwin-unsandboxed`; caller cache constraints cannot override this exclusion.                                                                                                                                                                             |
 | Static formatter/linter, Nix-source and Devenv trace-source checks                               | Admitted: declared source set, configuration, projected native tool and runner; scrubbed outer launcher. Trace-source audit reads only the declared source view; Nix-source mode invokes attested nixfmt/deadnix over explicit files.                                                                                                                                                                                                                          |
 | Weaver registry and version-pin checks                                                           | Admitted: declared registry/model and pin sources, attested Weaver/model locator, and scrubbed Bun launcher; registry copy/rewrite uses executor scratch and invokes only the pinned checker.                                                                                                                                                                                                                                                                  |
@@ -448,6 +449,26 @@ retains the cache-admitted TypeScript platform, while Darwin check/emit uses
 the nonremote platform under `darwin-unsandboxed`. Each macro owns its own
 admission: a verdict hit does not admit its ancestors. This classification
 does not admit native compilation or executable build scripts.
+
+Cargo registry archives use separate acquisition and extraction targets:
+`<crate>__archive` owns the Cargo.lock SHA-256 download or Nix-store
+copy-and-verify action; `<crate>` owns only `cargo_extract`. The extraction
+key includes the acquired archive artifact, not the Nix archive collection,
+Bun acquisition runner or absolute workspace location. The macro preserves
+caller execution constraints and adds the hermetic constraint; rule-owned
+eligibility admits only `extract-crate`, never `extract-git-archive`.
+
+The archive tool copies file bytes without interpreting sources. Crates reject
+links, non-normalized paths, paths outside the declared prefix and unsupported
+entry types. Files normalize to 0644 or 0755 according to the archive executable
+bits; explicit directories, implicit parents and the output root normalize to 0755. A final pass sets access and modification times to the Unix epoch after
+all writes. Archive uid/gid are ignored: files retain executor ownership, which
+REAPI output trees do not serialize. No workspace paths are synthesized into
+output bytes. The launcher has no ambient PATH or HOME; its only temporary
+directory variables are executor-owned, and extraction does not consult them.
+Admission evidence compares actual action digests and output-tree digests
+across fresh checkouts at different absolute paths; changing one archive must
+re-key only its extraction action.
 
 Repository `workspace-contract` and `genie-import-closure` modes are not
 promoted with the source-only checks: the former executes Cargo/Nix through a
