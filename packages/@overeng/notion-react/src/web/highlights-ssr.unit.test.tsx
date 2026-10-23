@@ -19,6 +19,8 @@ describe('server code rendering', () => {
       renderToStaticMarkup(
         <HighlightsRender language={undefined}>{'plain <text>'}</HighlightsRender>,
       ),
-    ).toBe('<pre class="notion-code" data-language="plain text"><code>plain &lt;text&gt;</code></pre>')
+    ).toBe(
+      '<pre class="notion-code" data-language="plain text"><code>plain &lt;text&gt;</code></pre>',
+    )
   })
 })

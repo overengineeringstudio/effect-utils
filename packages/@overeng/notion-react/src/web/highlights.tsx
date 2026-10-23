@@ -39,7 +39,8 @@ export const HighlightsRender = ({
 }) => {
   const code = asPlainText(children)
   const [highlighted, setHighlighted] = useState<
-    { readonly code: string; readonly language: string | undefined; readonly html: string } | undefined
+    | { readonly code: string; readonly language: string | undefined; readonly html: string }
+    | undefined
   >(undefined)
   const html =
     highlighted !== undefined && highlighted.code === code && highlighted.language === language

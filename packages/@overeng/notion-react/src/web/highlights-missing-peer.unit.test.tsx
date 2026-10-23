@@ -17,7 +17,9 @@ it('keeps escaped plain code when the optional peer cannot load', async () => {
   const root = createRoot(container)
   try {
     await act(async () => {
-      root.render(<HighlightsRender language="ts">{'const html = "<tag> & value"'}</HighlightsRender>)
+      root.render(
+        <HighlightsRender language="ts">{'const html = "<tag> & value"'}</HighlightsRender>,
+      )
     })
     await vi.waitFor(() => expect(peerImport).toHaveBeenCalledOnce())
     expect(container.innerHTML).toBe(

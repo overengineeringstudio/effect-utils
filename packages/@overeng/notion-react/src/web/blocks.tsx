@@ -29,8 +29,8 @@ import type {
   ToggleProps,
 } from '../components/props.ts'
 import { useNotionUrl } from '../renderer/url-provider.ts'
-import { KatexRender } from './katex.tsx'
 import { HighlightsRender } from './highlights.tsx'
+import { KatexRender } from './katex.tsx'
 
 /**
  * DOM-rendered mirrors of `../components/blocks.ts`.
