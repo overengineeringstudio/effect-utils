@@ -143,4 +143,39 @@ describe('content-address contract provenance', () => {
       rmSync(root, { recursive: true, force: true })
     }
   }, 30_000)
+
+  it('changes compiled contract bytes after a semantic schema input change', () => {
+    const root = makeFixture()
+    try {
+      succeed(root, [generator])
+      const rust = join(root, contract, 'src/lib.rs')
+      const before = readFileSync(rust, 'utf8')
+      expect(before).not.toContain('pub semantic_control: String,')
+
+      const schemaPath = 'packages/@overeng/content-address/src/schema.ts'
+      const schema = join(root, schemaPath)
+      const source = readFileSync(schema, 'utf8')
+      const changed = source.replace(
+        "export const ContentDescriptor = Schema.TaggedStruct('ContentDescriptor', {",
+        "export const ContentDescriptor = Schema.TaggedStruct('ContentDescriptor', {\n  semanticControl: Schema.String,",
+      )
+      expect(changed).not.toBe(source)
+      writeFileSync(schema, changed)
+
+      const staleInput = run(root, freshnessArgs)
+      expect(staleInput.exitCode).not.toBe(0)
+      expect(staleInput.stderr.toString()).toContain(`input hash mismatch: ${schemaPath}`)
+      expect(run(root, [generator, '--check']).exitCode).not.toBe(0)
+
+      succeed(root, [generator])
+      succeed(root, [generator, '--check'])
+      succeed(root, freshnessArgs)
+      const after = readFileSync(rust, 'utf8')
+      expect(after).not.toBe(before)
+      expect(after).toContain('pub semantic_control: String,')
+      expect(after).toContain('#[serde(rename = "semanticControl",')
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  }, 30_000)
 })
