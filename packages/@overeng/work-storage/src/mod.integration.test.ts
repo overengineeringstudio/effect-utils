@@ -25,10 +25,10 @@ const Fixture = Schema.Struct({
 const { fixtures, neutral } = await Effect.gen(function* () {
   const fs = yield* FileSystem.FileSystem
   return {
-    fixtures: yield* Schema.decodeUnknownEffect(Schema.fromJsonString(Schema.Array(Fixture)))(
+    fixtures: yield* Schema.decodeEffect(Schema.fromJsonString(Schema.Array(Fixture)))(
       yield* fs.readFileString(new URL('../fixtures/conformance.json', import.meta.url).pathname),
     ),
-    neutral: yield* Schema.decodeUnknownEffect(
+    neutral: yield* Schema.decodeEffect(
       Schema.fromJsonString(Schema.Record(Schema.String, Schema.Unknown)),
     )(yield* fs.readFileString(new URL('../protocol.schema.json', import.meta.url).pathname)),
   }
@@ -79,7 +79,7 @@ describe('WorkStorage service and file boundary', () => {
     }),
   )
 
-  it.scoped('reads a manifest through the platform filesystem and builds a Layer', () =>
+  it.effect('reads a manifest through the platform filesystem and builds a Layer', () =>
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem
       const directory = yield* fs.makeTempDirectoryScoped({ prefix: 'work-storage-' })

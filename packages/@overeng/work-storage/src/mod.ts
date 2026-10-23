@@ -75,7 +75,7 @@ export class ManifestReadError extends Schema.TaggedError<ManifestReadError>()(
   'ManifestReadError',
   {
     path: Schema.String,
-    cause: Schema.Defect,
+    cause: Schema.Defect(),
     message: Schema.String,
   },
 ) {}
@@ -87,7 +87,7 @@ const invalid = () =>
   })
 
 export const decodeManifest = Effect.fn('WorkStorage.decodeManifest')(function* (text: string) {
-  return yield* Schema.decodeUnknownEffect(Schema.fromJsonString(Manifest))(text).pipe(
+  return yield* Schema.decodeEffect(Schema.fromJsonString(Manifest))(text).pipe(
     Effect.mapError(invalid),
   )
 })
