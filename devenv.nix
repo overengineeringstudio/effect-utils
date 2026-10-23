@@ -1511,7 +1511,7 @@ in
   };
 
   tasks."test:megarepo-store-gc" = {
-    after = [ "buck2:editor:publish:test:megarepo" ];
+    after = [ "buck2:editor:publish:test:megarepo:unbounded" ];
     description = "Run native store-GC regressions before merge-queue admission";
     cwd = "packages/@overeng/megarepo";
     exec = trace.exec "test:megarepo-store-gc" ''
