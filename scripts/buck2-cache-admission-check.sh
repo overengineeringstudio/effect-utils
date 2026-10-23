@@ -26,6 +26,9 @@ trap cleanup EXIT
 # One Darwin-branch launcher fixture additionally executes pinned host tools to
 # prove that a fresh declared directory exists before a nested verdict is written.
 cp -R "$repo_root/buck2" "$work/buck2"
+# Expose the shipped private acquisition rule only inside this disposable cell:
+# the negative control must request admission for its real ambient-env action.
+printf '\nfixture_unadmitted_crate_acquisition = _crate_acquisition\n' >> "$work/buck2/rust/crates.bzl"
 # Exercise the exact vendored seam without replacing the bundled Prelude used
 # by the existing posture fixtures. git apply selects only its new module.
 git -C / apply --unsafe-paths --include='*/action_adapter.bzl' \
@@ -75,7 +78,7 @@ load("//buck2/package_tools.bzl", "PackageCommandRuntimeInfo", "package_bin_chec
 load("//buck2/toolchains:configured.bzl", "BuckSupportToolInfo")
 load("//buck2/toolchains:defs.bzl", "BunToolchainInfo", "EffectTsgoToolchainInfo")
 load("//buck2/rust:interop.bzl", "RustInteropProductInfo", "rust_interop_smoke")
-load("//buck2/rust:crates.bzl", "pinned_git_archive")
+load("//buck2/rust:crates.bzl", "fixture_unadmitted_crate_acquisition", "pinned_git_archive")
 load("//buck2/toolchains:ts_sandbox.bzl", "TsSandboxToolchainInfo")
 load("//buck2/hermetic.bzl", "ts_action", "ts_action_attrs")
 load("//buck2/platforms:defs.bzl", "cache_guarded_rule", "ts_action_admission_status", "ts_action_cache_eligible", "ts_action_execution_constraints", "ts_action_policy_attrs")
@@ -232,6 +235,11 @@ def fixture_materialization_cases(suffix, constraints = []):
 
 def fixture_negative_cases(suffix, constraint):
     fixture_materialization_cases(suffix, [constraint])
+    fixture_unadmitted_crate_acquisition(
+        name = "unadmitted_cargo_acquisition_" + suffix,
+        sha256 = "0" * 64,
+        exec_compatible_with = [constraint],
+    )
     # Git extraction has not supplied the crate lane's no-links/metadata proof.
     # An extraction-shaped action alone must not grant it cache admission.
     git_archive = pinned_git_archive({
@@ -531,7 +539,7 @@ if [[ "$darwin_verdict" != fresh-darwin-verdict ]]; then
 fi
 printf 'PASS fresh Darwin-branch nested verdict: declared output created by shared launcher\n'
 
-for family in uncacheable_verdict uncacheable_collect unadmitted_check unadmitted_interop unadmitted_cargo_git pnpm_extract pnpm_store_entry pnpm_store_view pnpm_store_scc package_tree legacy_package_tree package_view; do
+for family in uncacheable_verdict uncacheable_collect unadmitted_check unadmitted_interop unadmitted_cargo_acquisition unadmitted_cargo_git pnpm_extract pnpm_store_entry pnpm_store_view pnpm_store_scc package_tree legacy_package_tree package_view; do
   for spelling in canonical relative alias alias_at; do
     target="${family}_${spelling}"
     if "$buck" --isolation-dir cache-admission-check audit providers "effect_utils//$spelling:$target" > "$work/$target.log" 2>&1; then
