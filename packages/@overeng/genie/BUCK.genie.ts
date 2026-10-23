@@ -55,10 +55,14 @@ export const buck2TypeScriptAdmission = {
         'src/core/import-map/standalone-staging.integration.test.ts',
         'src/runtime/github-workflow/ci-runtime-scripts.unit.test.ts',
         'src/runtime/github-workflow/ci-workflow-helpers.unit.test.ts',
+        'src/runtime/package-json/catalog-optional-peers.unit.test.ts',
         'src/runtime/package-json/package-json.unit.test.ts',
         'src/runtime/peer-facade-imports.unit.test.ts',
         'src/runtime/weaver/rust-constants.unit.test.ts',
       ],
+      sourceOwners: {
+        'src/runtime/package-json/catalog-optional-peers.unit.test.ts': 'genie:buck2:test',
+      },
     },
   ],
 } as const satisfies Buck2TypeScriptAdmission
