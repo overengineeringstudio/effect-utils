@@ -74,6 +74,7 @@ export const ciOperationDispositions = {
   'test-integration-restate': 'outside-by-policy:service-integration',
   'test-live-deploy-ci-tools': 'outside-by-policy:live-deployment',
   'test-megarepo-cold-gc': 'outside-by-policy:filesystem-integration',
+  'test-megarepo-store-gc': 'outside-by-policy:filesystem-integration',
   'test-playwright-tui-react': 'outside-by-policy:browser-integration',
   'test-playwright-utils': 'outside-by-policy:browser-integration',
   weaver: 'outside-by-policy:aggregate-includes-change-relative-and-live-integration',

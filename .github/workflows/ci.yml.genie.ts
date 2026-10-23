@@ -897,6 +897,17 @@ const jobs: Record<CoreCIJobName, CiWorkflowArgs['jobs'][string]> = {
       },
     ],
   }),
+  'test-megarepo-store-gc': job({
+    privileged: 'always',
+    priority: deliveryJobPriority,
+    laneIf: "${{ github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch' || github.event_name == 'merge_group' }}",
+    timeoutMinutes: longJobTimeoutMinutes,
+    step: {
+      name: 'Megarepo store-GC regression tests',
+      env: githubTokenEnv(),
+      run: runDevenvTasksBefore('test:megarepo-store-gc'),
+    },
+  }),
   'test-megarepo-cold-gc': job({
     privileged: 'trusted',
     priority: backgroundJobPriority,
@@ -2134,6 +2145,7 @@ export default ciWorkflow({
       'test-macos': 'trusted-writer',
       'test-playwright-utils': 'trusted-writer',
       'test-playwright-tui-react': 'trusted-writer',
+      'test-megarepo-store-gc': 'reader',
       cargo: 'trusted-writer',
       weaver: 'trusted-writer',
       'source-shape': 'reader',

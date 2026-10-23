@@ -24,6 +24,7 @@ export const jobPlatforms: Readonly<Record<string, Platform>> = {
   'test-playwright-utils': 'linux',
   'test-playwright-tui-react': 'linux',
   'test-megarepo-cold-gc': 'linux',
+  'test-megarepo-store-gc': 'linux',
   'bootstrap-cold-proof': 'linux',
   'devenv-perf': 'linux',
   'nix-closure-sizes': 'linux',

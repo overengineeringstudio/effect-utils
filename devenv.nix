@@ -1510,6 +1510,18 @@ in
     '';
   };
 
+  tasks."test:megarepo-store-gc" = {
+    after = [ "buck2:editor:publish:test:megarepo" ];
+    description = "Run native store-GC regressions before merge-queue admission";
+    cwd = "packages/@overeng/megarepo";
+    exec = trace.exec "test:megarepo-store-gc" ''
+      set -euo pipefail
+      source ${lib.escapeShellArg pnpmTaskHelpersScript}
+      ${flakePkgs.bun}/bin/bun ../../../genie/ci-scripts/megarepo-process-diagnostics.mjs
+      ${flakePkgs.bun}/bin/bun --bun "$(resolve_package_bin vitest vitest)" run src/cli/store.integration.test.ts --testTimeout 30000 --hookTimeout 30000
+    '';
+  };
+
   tasks."test:megarepo-cold-gc" = lib.mkIf (!ciUnitTest) {
     after = [ (consumerPublisherName "packages/@overeng/megarepo") ];
     description = "Run fixture-isolated megarepo cold-GC integration tests from the standalone checkout";
