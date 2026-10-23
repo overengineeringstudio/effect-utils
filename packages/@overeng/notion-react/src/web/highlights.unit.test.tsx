@@ -18,17 +18,22 @@ describe('web code highlighting', () => {
       root.render(<HighlightsRender language="ts">{'const answer = 42'}</HighlightsRender>)
     })
     await vi.waitFor(() => expect(container.querySelector('div.notion-code pre')).not.toBeNull())
-    const tokens = Array.from(container.querySelectorAll('code span'))
+    const tokens = Array.from(container.querySelectorAll('pre span'))
     expect(
       tokens.some(
         (token) =>
-          token.textContent === 'const' && token.getAttribute('style')?.includes('#d73a49'),
+          token.textContent?.trim() === 'const' &&
+          token.getAttribute('style')?.toLowerCase().includes('#d73a49'),
       ),
+      container.innerHTML,
     ).toBe(true)
     expect(
       tokens.some(
-        (token) => token.textContent === '42' && token.getAttribute('style')?.includes('#005cc5'),
+        (token) =>
+          token.textContent?.trim() === '42' &&
+          token.getAttribute('style')?.toLowerCase().includes('#005cc5'),
       ),
+      container.innerHTML,
     ).toBe(true)
     expect(container.textContent).toBe('const answer = 42')
   })
