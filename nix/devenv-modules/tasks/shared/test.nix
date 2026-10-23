@@ -135,7 +135,7 @@ let
         )
       ''}
       ${lib.optionalString isolatedProcessTable ''
-        ${pkgs.util-linux}/bin/unshare --user --map-root-user --pid --fork --mount-proc -- \
+        ${pkgs.util-linux}/bin/unshare --user --map-current-user --pid --fork --mount-proc -- \
           ${pkgs.python3}/bin/python3 ${./test-namespace-init.py} \
       ''}"''${_otel_instr[@]}" ${
         lib.optionalString (runtime == "bun") "${pkgs.bun}/bin/bun --bun "

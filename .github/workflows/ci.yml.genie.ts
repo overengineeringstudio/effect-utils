@@ -900,7 +900,7 @@ const jobs: Record<CoreCIJobName, CiWorkflowArgs['jobs'][string]> = {
   'test-megarepo-store-gc': job({
     privileged: 'always',
     priority: deliveryJobPriority,
-    laneIf: "${{ github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch' || github.event_name == 'merge_group' }}",
+    laneIf: `\${{ (${ciMeasurementNotBaselineBackfillPredicate}) && (github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch' || github.event_name == 'merge_group') }}`,
     timeoutMinutes: longJobTimeoutMinutes,
     step: {
       name: 'Megarepo store-GC regression tests',

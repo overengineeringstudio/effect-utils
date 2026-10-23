@@ -5,7 +5,7 @@ import sys
 
 child = os.fork()
 if child == 0:
-    os.execv(sys.argv[1], sys.argv[1:])
+    os.execvp(sys.argv[1], sys.argv[1:])
 while True:
     pid, status = os.wait()
     if pid == child:
