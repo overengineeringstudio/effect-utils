@@ -26,6 +26,55 @@ const values = {
 }
 
 describe('daemon RE posture', () => {
+  it('records closed REAPI outage diagnostics, including cached admission failures', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'buck2-admission-failure-'))
+    try {
+      const evidence = join(root, 'evidence.json')
+      const child = Bun.spawn(
+        [
+          process.execPath,
+          '-e',
+          `
+import {createServer} from 'node:net';
+import {writeFileSync} from 'node:fs';
+import {join} from 'node:path';
+import {directBuckArguments} from ${JSON.stringify(join(import.meta.dir, 'buck2-entrypoint.ts'))};
+const root=${JSON.stringify(root)}, evidence=${JSON.stringify(evidence)};
+const server=createServer();
+await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
+const port=server.address().port;
+await new Promise(resolve=>server.close(resolve));
+writeFileSync(join(root,'.buckroot'),'');
+writeFileSync(join(root,'.buckconfig'),'[buck2]\\nremote_cache_enabled = true\\n[buck2_re_client]\\naction_cache_address = grpc://127.0.0.1:'+port+'\\ntls = false\\n');
+for(let index=0;index<2;index++) await directBuckArguments({
+ cwd:root,args:['build','//:fixture'],deadlineMs:100,
+ cacheDirectory:join(root,'probe-cache'),
+ env:{CI:'1',CI_BUCK2_CACHE_EVIDENCE_PATH:evidence},
+});
+`,
+        ],
+        { stdout: 'pipe', stderr: 'pipe' },
+      )
+      expect(await child.exited, await new Response(child.stderr).text()).toBe(0)
+      const rows = readFileSync(`${evidence}.admission.jsonl`, 'utf8')
+        .trim()
+        .split('\n')
+        .map((line) => JSON.parse(line))
+      expect(rows).toHaveLength(2)
+      expect(rows[0].admissionFallbacks.reapi).toBe(1)
+      expect(rows[0].reapiFailure).toEqual({
+        class: 'tcp',
+        phase: 'tcp',
+        elapsedMs: expect.any(Number),
+        deadlineMs: 100,
+      })
+      expect(rows[1].reapiFailure).toEqual(rows[0].reapiFailure)
+      expect(JSON.stringify(rows)).not.toContain('127.0.0.1')
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
   it('resolves launcher birth identity without relying on PATH', () => {
     const birth = cacheLauncherBirth(process.pid)
     expect(birth).toBeDefined()
