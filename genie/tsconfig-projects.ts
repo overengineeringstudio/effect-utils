@@ -58,6 +58,7 @@ import tuiStoriesTsconfig from '../packages/@overeng/tui-stories/tsconfig.json.g
 import utilsDevTsconfig from '../packages/@overeng/utils-dev/tsconfig.json.genie.ts'
 import utilsStorybookTsconfig from '../packages/@overeng/utils-storybook/tsconfig.json.genie.ts'
 import utilsTsconfig from '../packages/@overeng/utils/tsconfig.json.genie.ts'
+import workStorageTsconfig from '../packages/@overeng/work-storage/tsconfig.json.genie.ts'
 import { authoritativeBuck2TypeScriptProjects } from './buck2/typescript-admissions.ts'
 
 /** Buck targets that own one root TypeScript project's checking and optional declarations. */
@@ -174,6 +175,7 @@ const rootWorkspaceTsconfigProjects = (() => {
     'packages/@overeng/utils': { tsconfig: utilsTsconfig },
     'packages/@overeng/utils-dev': { tsconfig: utilsDevTsconfig },
     'packages/@overeng/utils-storybook': { tsconfig: utilsStorybookTsconfig },
+    'packages/@overeng/work-storage': { tsconfig: workStorageTsconfig },
   }
   const rootWorkspacePackagePaths = rootWorkspacePackages.map(
     (pkg) => pkg.meta.workspace.memberPath,
