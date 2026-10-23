@@ -5,12 +5,15 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { standaloneCachePostureConfig } from '../../scripts/buck2-cache-posture.ts'
+import { requiredCIJobs } from '../ci.ts'
 
 type GeneratedWorkflow = {
   env?: Record<string, string>
   jobs: Record<
     string,
     {
+      name?: string
+      'runs-on'?: string | string[]
       if?: string
       needs?: string[]
       env?: Record<string, string>
@@ -164,7 +167,7 @@ describe('generated CI cache trust behavior', () => {
     expect(job.env?.BUCK2_CACHE_WRITE_OPTIONAL).toBeUndefined()
   })
 
-  it('executes source-side Genie and buck2-tools suites before enqueueing without removing queue coverage', async () => {
+  it('executes the cheap source-side Genie suites before enqueueing without removing queue coverage', async () => {
     const workflow = await readWorkflow()
     const quality = workflow.jobs.quality!
     const step = quality.steps.find(
@@ -177,14 +180,12 @@ describe('generated CI cache trust behavior', () => {
       'genie:ci-workflow:test',
       'buck2:rust:generators:test',
       'buck2:cache-posture:ci-test',
-      'test:buck2-tools',
     ])
       expect(step?.run).toContain(task)
     expect(step?.run).not.toContain('buck2:cache-posture:test')
+    expect(step?.run).not.toContain('test:buck2-tools')
     expect(step?.run).toContain('tasks run --mode single')
-    expect(step?.run).toContain(
-      'for package in . packages/@overeng/megarepo packages/@overeng/buck2-tools; do',
-    )
+    expect(step?.run).toContain('for package in . packages/@overeng/megarepo; do')
     expect(step?.run).toContain('target=//:node_modules')
     for (const [event, ref] of [
       ['pull_request', 'refs/pull/123/merge'],
@@ -217,6 +218,25 @@ describe('generated CI cache trust behavior', () => {
         ({ name }) => name === 'Buck daemon cache posture regressions',
       ),
     ).toBe(false)
+  })
+
+  it('runs buck2-tools only on PRs using the Linux namespace runner and source dependency views', async () => {
+    const job = (await readWorkflow()).jobs['pr-buck2-tools']!
+    expect(job.name).toBe('pr/buck2-tools')
+    expect(requiredCIJobs).not.toContain('pr/buck2-tools')
+    expect(String(job['runs-on'])).toContain('namespace-profile-linux-x86-64')
+    expect(Boolean(evaluate(job.if!, 'pull_request', 'refs/pull/123/merge'))).toBe(true)
+    expect(
+      Boolean(evaluate(job.if!, 'merge_group', 'refs/heads/gh-readonly-queue/main/pr-123')),
+    ).toBe(false)
+    expect(Boolean(evaluate(job.if!, 'push', 'refs/heads/main'))).toBe(false)
+    expect(job.steps.some(({ name }) => name === 'Prepare source generator dependency views')).toBe(
+      true,
+    )
+    const step = job.steps.find(({ name }) => name === 'Buck2 tools regression tests')
+    expect(step?.if).toBeUndefined()
+    expect(step?.run).toContain('for package in . packages/@overeng/buck2-tools; do')
+    expect(step?.run).toContain('tasks run --mode single test:buck2-tools')
   })
 
   it('selects exact focused source files rather than suffix-matching staged Buck copies', async () => {
