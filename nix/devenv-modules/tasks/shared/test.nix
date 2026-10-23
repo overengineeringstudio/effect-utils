@@ -147,7 +147,7 @@ let
         sudo -n -E ${pkgs.coreutils}/bin/env -u EDITOR_VIEW_LEASE_FDS -u EDITOR_VIEW_LEASE_ACTIVE "PATH=$PATH" \
           ${pkgs.util-linux}/bin/unshare --pid --fork --mount-proc -- \
           ${pkgs.python3}/bin/python3 ${./test-namespace-init.py} "$(id -u)" "$(id -g)" \
-      ''}"''${_otel_instr[@]}" ${
+      ''}${lib.optionalString (isolatedProcessTable && sourceLauncher != null) "${sourceLauncher} "}"''${_otel_instr[@]}" ${
         lib.optionalString (runtime == "bun") "${pkgs.bun}/bin/bun --bun "
       }"$(resolve_package_bin vitest vitest)" run --testTimeout 30000 --hookTimeout 30000 "''${_vitest_collection_args[@]}" ${extraArgs}
     '';
