@@ -8,6 +8,8 @@
 # Regenerate: devenv tasks run genie:run
 load("//buck2:weaver.bzl", "weaver_checks")
 load("//buck2:check_aggregate.bzl", "check_aggregate")
+load("@prelude//tests:test_toolchain.bzl", "noop_test_toolchain")
+load("@prelude//toolchains:remote_test_execution.bzl", "remote_test_execution_toolchain")
 load("//buck2:editor_view.bzl", "editor_view_inputs")
 load("@prelude//toolchains:genrule.bzl", "system_genrule_toolchain")
 load("//buck2:static_checks.bzl", "STATIC_SOURCE_EXCLUDES", "STATIC_SOURCE_GLOBS", "static_source_set")
@@ -123,6 +125,9 @@ toolchain_alias(
     visibility = ["PUBLIC"],
 )
 
+# Native rust_test requires both conventional test toolchains for local receipts.
+noop_test_toolchain(name = "test", visibility = ["PUBLIC"])
+remote_test_execution_toolchain(name = "remote_test_execution", visibility = ["PUBLIC"])
 static_source_set(
     name = "nix_sources",
     prefix = "",

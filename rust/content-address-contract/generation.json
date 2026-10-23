@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "inputFingerprint": "sha256:17597c0dd992a28c2067746d75cc6dc84704427ddb33f16c0131ce3ef54a9d94",
-  "generatedAt": "2026-10-23T14:42:36.819Z",
+  "inputFingerprint": "sha256:a1b293718a97bae9912df89a653b76c44bf69d0d029bbe7f4602474de45c7e28",
+  "generatedAt": "2026-10-23T15:10:04.690Z",
   "runtime": {
     "name": "bun",
     "version": "1.4.2"
@@ -117,7 +117,7 @@
     },
     {
       "path": "rust/Cargo.lock",
-      "sha256": "f3a7c40bd5be154f8b2855a22e7af99d230d58792c6e23a05496b71ff7182b21"
+      "sha256": "b29c2a8579fab5fe2b9a2e67b77264633d336081745bc871869a2dfd5e8033b4"
     },
     {
       "path": "rust/Cargo.toml",
