@@ -41,11 +41,12 @@ export const BuckDaemonUnreachable = Schema.TaggedStruct('unreachable', {
 })
 export type BuckDaemonUnreachable = typeof BuckDaemonUnreachable.Type
 
+/** A live daemon whose active work prevented shutdown. */
+export const BuckDaemonKeptActive = Schema.TaggedStruct('kept-active', daemonFields)
+export type BuckDaemonKeptActive = typeof BuckDaemonKeptActive.Type
+
 /** Per-daemon outcome of a teardown shutdown attempt. */
-export type BuckDaemonResult =
-  | BuckDaemonStopped
-  | BuckDaemonUnreachable
-  | ({ readonly _tag: 'kept-active' } & BuckDaemonIdentity)
+export type BuckDaemonResult = BuckDaemonStopped | BuckDaemonUnreachable | BuckDaemonKeptActive
 
 /** Identity of a daemon as seen in `/proc` (argv daemon id + isolation, cwd-derived root). */
 export interface BuckDaemonIdentity {

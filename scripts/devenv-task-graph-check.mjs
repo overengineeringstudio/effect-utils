@@ -643,7 +643,10 @@ const packagePublisherContracts = Object.fromEntries(
       .map(({ taskName, packagePath }) => ({ consumer: taskName, packagePath })),
   ].map(({ consumer, packagePath }) => [
     `buck2:editor:publish:${consumer}`,
-    { consumers: [consumer], packagePaths: [...new Set([...bootstrapPackagePaths, packagePath])] },
+    {
+      consumers: [consumer],
+      packagePaths: [...new Set([...bootstrapPackagePaths, packagePath])],
+    },
   ]),
 )
 

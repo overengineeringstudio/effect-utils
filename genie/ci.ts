@@ -23,6 +23,7 @@ export const CORE_CI_JOB_NAMES = [
   'test-playwright-utils',
   'test-playwright-tui-react',
   'test-megarepo-cold-gc',
+  'test-megarepo-store-gc',
   // Rust lane: delegates build/test/clippy/fmt semantics to devenv task cargo:check.
   'cargo',
   // Additive Weaver semantic-conventions gate (separate lane; degrades if weaver unavailable).

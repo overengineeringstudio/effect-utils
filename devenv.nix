@@ -400,6 +400,9 @@ let
     vitestArgs = lib.concatStringsSep " " (map lib.escapeShellArg lane.unboundedFiles);
     # mr's writer boundary uses Bun FFI, matching its packaged runtime.
     vitestRuntime = if lane.packageName == "megarepo" then "bun" else "node";
+    # Elevated own-real-UID runner helpers correctly veto product GC but are outside
+    # the synthetic fixture world. Isolate tests rather than weaken that policy.
+    vitestIsolatedProcessTable = ciUnitTest && lane.packageName == "megarepo" && pkgs.stdenv.isLinux;
     after = lane.unboundedAfter;
   }) (builtins.filter (lane: lane.unboundedFiles != [ ]) buck2TestLanes);
   allSourceTestPackages = sourceOnlyTestPackages ++ unboundedTestPackages;
@@ -1519,6 +1522,11 @@ in
       bash ${lib.escapeShellArg "${config.devenv.root}/nix/fixtures/consumer-smoke/run.sh"} \
         "''${CONSUMER_SMOKE_CANDIDATE:-${config.devenv.root}}"
     '';
+  };
+
+  tasks."test:megarepo-store-gc" = {
+    after = [ "test:megarepo:unbounded" ];
+    description = "Prove the complete Linux native megarepo complement before queue admission";
   };
 
   tasks."test:megarepo-cold-gc" = lib.mkIf (!ciUnitTest) {
