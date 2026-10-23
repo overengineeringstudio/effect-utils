@@ -91,6 +91,21 @@ describe('WorkStorage service and file boundary', () => {
       }).pipe(Effect.provide(WorkStorage.layerFile(path, observed)))
       expect(result).toBe('/factory/state/demo')
       expect(yield* fs.readFileString(path)).toBe(encodeJson(example))
+      const bytes = new TextEncoder().encode(encodeJson(example))
+      bytes[encodeJson(example).indexOf('fixture-volume')] = 0xff
+      for (const malformed of [
+        bytes,
+        new Uint8Array([0xef, 0xbb, 0xbf, ...new TextEncoder().encode(encodeJson(example))]),
+      ]) {
+        yield* fs.writeFile(path, malformed)
+        const invalid = yield* readManifest(path).pipe(
+          Effect.map(() => 'unexpected-success'),
+          Effect.catch((error) =>
+            Effect.succeed(error._tag === 'StorageError' ? error.code : error._tag),
+          ),
+        )
+        expect(invalid).toBe('InvalidManifest')
+      }
       const missing = yield* readManifest(`${directory}/absent.json`).pipe(
         Effect.map(() => 'unexpected-success'),
         Effect.catch((error) => Effect.succeed(error._tag)),

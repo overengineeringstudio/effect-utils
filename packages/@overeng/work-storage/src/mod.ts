@@ -92,9 +92,12 @@ export const decodeManifest = Effect.fn('WorkStorage.decodeManifest')(function* 
   )
 })
 
+// Preserve a BOM so JSON decoding rejects it, matching Rust's strict UTF-8 reader.
+const manifestUtf8 = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true })
+
 export const readManifest = Effect.fn('WorkStorage.readManifest')(function* (path: string) {
   const fs = yield* FileSystem.FileSystem
-  const text = yield* fs.readFileString(path).pipe(
+  const bytes = yield* fs.readFile(path).pipe(
     Effect.mapError(
       (cause) =>
         new ManifestReadError({
@@ -104,6 +107,10 @@ export const readManifest = Effect.fn('WorkStorage.readManifest')(function* (pat
         }),
     ),
   )
+  const text = yield* Effect.try({
+    try: () => manifestUtf8.decode(bytes),
+    catch: invalid,
+  })
   return yield* decodeManifest(text)
 })
 

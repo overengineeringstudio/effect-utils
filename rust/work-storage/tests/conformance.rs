@@ -127,6 +127,9 @@ fn file_entrypoint_reads_only_manifest_and_preserves_io_errors() {
     assert!(matches!(read_manifest(&path), Err(ReadManifestError::InvalidManifest)));
     std::fs::write(&path, [0xff]).unwrap();
     assert!(matches!(read_manifest(&path), Err(ReadManifestError::InvalidManifest)));
+    let with_bom = [vec![0xef, 0xbb, 0xbf], request["manifest"].to_string().into_bytes()].concat();
+    std::fs::write(&path, with_bom).unwrap();
+    assert!(matches!(read_manifest(&path), Err(ReadManifestError::InvalidManifest)));
     let error = read_manifest(directory.join("absent.json")).unwrap_err();
     match error {
         ReadManifestError::Io(error) => assert_eq!(error.kind(), std::io::ErrorKind::NotFound),
