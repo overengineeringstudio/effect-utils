@@ -63,6 +63,7 @@ type ComposeArgs<
   TDevDependenciesExternal extends CatalogInput,
   TPeerDependenciesWorkspace extends readonly WorkspacePackageLike[],
   TPeerDependenciesExternal extends CatalogInput,
+  TCatalog extends CatalogInput,
 > = {
   workspace: WorkspaceIdentity
   dependencies?: DependencyBucket<TDependenciesWorkspace, TDependenciesExternal>
@@ -70,9 +71,14 @@ type ComposeArgs<
   peerDependencies?: DependencyBucket<TPeerDependenciesWorkspace, TPeerDependenciesExternal>
   /**
    * `manifest`: compose only direct workspace deps + external deps.
-   * `install`: also install inherited peer deps of workspace packages using explicit catalog versions.
+   * `install`: also install inherited required peers of workspace packages using explicit catalog versions.
    */
   mode?: 'manifest' | 'install'
+  /**
+   * In `install` mode, also install these inherited optional peers using catalog
+   * versions. Other optional peers are skipped, including during transitive traversal.
+   */
+  optionalPeerInstalls?: readonly Extract<keyof TCatalog, string>[]
 }
 
 type ComposeResult<
@@ -153,8 +159,9 @@ export type Catalog<T extends CatalogInput = CatalogInput> = Readonly<T> & {
    * In `manifest` mode, only direct workspace deps are emitted as `workspace:*`
    * and imported workspace peer contracts are recomposed into emitted
    * `peerDependencies`.
-   * In `install` mode, inherited peer deps from workspace packages are also
-   * installed explicitly using catalog versions.
+   * In `install` mode, inherited required peers from workspace packages are also
+   * installed explicitly using catalog versions. Optional peers are skipped unless
+   * named in `optionalPeerInstalls`.
    */
   compose<
     const TDependenciesWorkspace extends readonly WorkspacePackageLike[],
@@ -170,7 +177,8 @@ export type Catalog<T extends CatalogInput = CatalogInput> = Readonly<T> & {
       TDevDependenciesWorkspace,
       TDevDependenciesExternal,
       TPeerDependenciesWorkspace,
-      TPeerDependenciesExternal
+      TPeerDependenciesExternal,
+      T
     >,
   ): ComposeResult<
     TDependenciesWorkspace,
@@ -257,11 +265,13 @@ const collectInheritedPeerInstalls = ({
   packages,
   catalog,
   workspaceDepNames,
+  optionalPeerInstalls,
   visited = new Set<string>(),
 }: PeerPackagesArgs<readonly WorkspacePackageLike[]> & {
   catalog: CatalogInput
   /** Names of packages already listed as explicit workspace deps — skip these from inherited peer resolution */
   workspaceDepNames: ReadonlySet<string>
+  optionalPeerInstalls: ReadonlySet<string>
   visited?: Set<string>
 }) => {
   const installs = new Map<string, string>()
@@ -275,6 +285,11 @@ const collectInheritedPeerInstalls = ({
       Object.fromEntries(
         Object.keys(pkg.data.peerDependencies ?? {})
           .filter((name) => workspaceDepNames.has(name) === false)
+          .filter(
+            (name) =>
+              pkg.data.peerDependenciesMeta?.[name]?.optional !== true ||
+              optionalPeerInstalls.has(name) === true,
+          )
           .map((name) => {
             const version = catalog[name]
             if (typeof version !== 'string') {
@@ -295,6 +310,7 @@ const collectInheritedPeerInstalls = ({
       packages: pkg.meta.workspace.deps,
       catalog,
       workspaceDepNames,
+      optionalPeerInstalls,
       visited,
     })) {
       installs.set(name, version)
@@ -308,11 +324,16 @@ const resolveInheritedPeerInstalls = <T extends CatalogInput>({
   catalog,
   packages,
   workspaceDepNames,
+  optionalPeerInstalls,
 }: {
   catalog: T
   packages: readonly WorkspacePackageLike[]
   workspaceDepNames: ReadonlySet<string>
-}) => Object.fromEntries(collectInheritedPeerInstalls({ packages, catalog, workspaceDepNames }))
+  optionalPeerInstalls: ReadonlySet<string>
+}) =>
+  Object.fromEntries(
+    collectInheritedPeerInstalls({ packages, catalog, workspaceDepNames, optionalPeerInstalls }),
+  )
 
 const resolvePeerDependencies = <
   TWorkspace extends readonly WorkspacePackageLike[],
@@ -385,13 +406,15 @@ const createComposeFn =
     devDependencies,
     peerDependencies,
     mode = 'manifest',
+    optionalPeerInstalls = [],
   }: ComposeArgs<
     TDependenciesWorkspace,
     TDependenciesExternal,
     TDevDependenciesWorkspace,
     TDevDependenciesExternal,
     TPeerDependenciesWorkspace,
-    TPeerDependenciesExternal
+    TPeerDependenciesExternal,
+    T
   >): ComposeResult<
     TDependenciesWorkspace,
     TDependenciesExternal,
@@ -473,6 +496,7 @@ const createComposeFn =
             catalog,
             packages: [...runtimeWorkspace, ...supportWorkspace, ...peerWorkspace],
             workspaceDepNames: allWorkspaceDepNames,
+            optionalPeerInstalls: new Set(optionalPeerInstalls),
           })
         : {}
     const peerDependencyEntries = resolvePeerDependencies({
