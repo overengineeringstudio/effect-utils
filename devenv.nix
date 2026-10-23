@@ -402,7 +402,7 @@ let
     vitestRuntime = if lane.packageName == "megarepo" then "bun" else "node";
     # Elevated own-real-UID runner helpers correctly veto product GC but are outside
     # the synthetic fixture world. Isolate tests rather than weaken that policy.
-    vitestIsolatedProcessTable = lane.packageName == "megarepo" && pkgs.stdenv.isLinux;
+    vitestIsolatedProcessTable = ciUnitTest && lane.packageName == "megarepo" && pkgs.stdenv.isLinux;
     after = lane.unboundedAfter;
   }) (builtins.filter (lane: lane.unboundedFiles != [ ]) buck2TestLanes);
   allSourceTestPackages = sourceOnlyTestPackages ++ unboundedTestPackages;
@@ -1514,20 +1514,8 @@ in
   };
 
   tasks."test:megarepo-store-gc" = {
-    after = [ "buck2:editor:publish:test:megarepo:unbounded" ];
-    description = "Run native store-GC regressions before merge-queue admission";
-    cwd = "packages/@overeng/megarepo";
-    exec = trace.exec "test:megarepo-store-gc" ''
-      set -euo pipefail
-      source ${lib.escapeShellArg pnpmTaskHelpersScript}
-      ${trace.instr {
-        adapter = "vitest";
-        name = "test:megarepo-store-gc";
-      }}
-      ${pkgs.util-linux}/bin/unshare --user --map-current-user --pid --fork --mount-proc -- \
-        ${pkgs.python3}/bin/python3 ${./nix/devenv-modules/tasks/shared/test-namespace-init.py} \
-        "''${_otel_instr[@]}" ${flakePkgs.bun}/bin/bun --bun "$(resolve_package_bin vitest vitest)" run src/cli/store.integration.test.ts src/cli/store-gc-generated.integration.test.ts src/cli/store-gc-otel.integration.test.ts src/store/store-liveness.integration.test.ts --testTimeout 30000 --hookTimeout 30000 --reporter=default --reporter=json --outputFile.json="''${DEVENV_ROOT:-$PWD/../../..}/tmp/ci-megarepo-store-gc.vitest.json"
-    '';
+    after = [ "test:megarepo:unbounded" ];
+    description = "Prove the complete Linux native megarepo complement before queue admission";
   };
 
   tasks."test:megarepo-cold-gc" = lib.mkIf (!ciUnitTest) {

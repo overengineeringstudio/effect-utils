@@ -903,15 +903,19 @@ const jobs: Record<CoreCIJobName, CiWorkflowArgs['jobs'][string]> = {
     laneIf: `\${{ (${ciMeasurementNotBaselineBackfillPredicate}) && (github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch' || github.event_name == 'merge_group') }}`,
     timeoutMinutes: longJobTimeoutMinutes,
     step: {
-      name: 'Megarepo store-GC regression tests',
-      env: githubTokenEnv(),
+      name: 'Complete native megarepo regression tests',
+      env: {
+        ...githubTokenEnv(),
+        EFFECT_UTILS_CI_TEST: '1',
+        EFFECT_UTILS_TEST_PLATFORM: 'linux',
+      },
       run: runDevenvTasksBefore('test:megarepo-store-gc'),
     },
     afterSteps: [
       {
-        name: 'Store-GC test receipt',
+        name: 'Complete native megarepo test receipt',
         if: '${{ always() }}',
-        run: 'cat tmp/ci-megarepo-store-gc.vitest.json',
+        run: 'cat tmp/otel-scrape/summaries/test-megarepo-unbounded.vitest.json',
       },
     ],
   }),

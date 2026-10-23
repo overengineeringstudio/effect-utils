@@ -644,10 +644,7 @@ const packagePublisherContracts = Object.fromEntries(
   ].map(({ consumer, packagePath }) => [
     `buck2:editor:publish:${consumer}`,
     {
-      consumers: [
-        consumer,
-        ...(consumer === 'test:megarepo:unbounded' ? ['test:megarepo-store-gc'] : []),
-      ],
+      consumers: [consumer],
       packagePaths: [...new Set([...bootstrapPackagePaths, packagePath])],
     },
   ]),
