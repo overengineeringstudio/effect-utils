@@ -84,14 +84,34 @@ Use:
 
 Use `mode: 'manifest'` for normal package manifest composition.
 Use `mode: 'install'` for private/app-style install composition when inherited
-peer dependencies from imported workspace packages should also be installed
-explicitly from the catalog. `peerDependencies` are the semantic source of
-truth for these inherited installs; no extra install metadata is needed.
+required peer dependencies from imported workspace packages should also be
+installed explicitly from the catalog. This applies to direct and transitive
+workspace packages in all composition buckets. A peer is optional only when its
+package declares `peerDependenciesMeta[name].optional === true`; optional peers
+are skipped by default and do not need a catalog version.
+Private app packages may omit optional upstream peers during recomposition
+validation. Library packages still re-export upstream peer contracts and their
+optional metadata.
 
-When `mode: 'install'` is enabled, inherited peer installs come from the
-composed workspace packages' `peerDependencies` plus any explicit
-`peerDependencies.external` entries. Avoid manually spreading imported
-packages' `data.peerDependencies` into emitted dependency buckets.
+Use `optionalPeerInstalls` to opt selected inherited optional peers into
+installation. Names are checked against the catalog's keys, and versions come
+from the catalog, just like required peer installs:
+
+```ts
+const composition = catalog.compose({
+  workspace,
+  dependencies: { workspace: [rendererPkg] },
+  mode: 'install',
+  optionalPeerInstalls: ['@pierre/highlights'],
+})
+```
+
+The opt-in affects only inherited installs in `install` mode; it does not add
+unrelated catalog entries or change the imported package's peer contract.
+Explicit `dependencies.external` / `devDependencies.external` selections remain
+installed even if an imported package marks that peer optional.
+Avoid manually spreading imported packages' `data.peerDependencies` into emitted
+dependency buckets.
 
 Pass `dependencies.external` / `devDependencies.external` as the result of
 `catalog.pick(...)`, not as catalog keys. Keep package-level composition on the
