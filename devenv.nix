@@ -1537,11 +1537,13 @@ in
     exec = trace.exec "test:megarepo-cold-gc" ''
       set -euo pipefail
       source ${lib.escapeShellArg pnpmTaskHelpersScript}
+      report_dir="''${DEVENV_ROOT:-$PWD}/tmp/otel-scrape/summaries"
+      mkdir -p "$report_dir"
       ${lib.optionalString isolateMegarepoGcTests ''
         sudo -n -E ${pkgs.coreutils}/bin/env "PATH=$PATH" \
           ${pkgs.util-linux}/bin/unshare --pid --fork --mount-proc -- \
           ${pkgs.python3}/bin/python3 ${./nix/devenv-modules/tasks/shared/test-namespace-init.py} "$(id -u)" "$(id -g)" \
-      ''}${flakePkgs.bun}/bin/bun --bun "$(resolve_package_bin vitest vitest)" run src/cli/store-gc-cold.integration.test.ts --reporter verbose --testTimeout 240000
+      ''}${flakePkgs.bun}/bin/bun --bun "$(resolve_package_bin vitest vitest)" run src/cli/store-gc-cold.integration.test.ts --reporter verbose --reporter json "--outputFile.json=$report_dir/test-megarepo-cold-gc.vitest.json" --testTimeout 240000
     '';
     execIfModified = [
       "packages/@overeng/megarepo/src/**/*.ts"

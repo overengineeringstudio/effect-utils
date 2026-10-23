@@ -945,6 +945,13 @@ const jobs: Record<CoreCIJobName, CiWorkflowArgs['jobs'][string]> = {
       env: githubTokenEnv(),
       run: runDevenvTasksBefore('test:megarepo-cold-gc'),
     },
+    afterSteps: [
+      {
+        name: 'Cold-GC per-test receipt',
+        if: '${{ always() }}',
+        run: `jq -e '{numTotalTests, numPassedTests, numFailedTests, numPendingTests, success, testResults: [.testResults[] | {name, status, assertionResults: [.assertionResults[] | {fullName, status}]}]} | select(.success and .numTotalTests > 0)' tmp/otel-scrape/summaries/test-megarepo-cold-gc.vitest.json`,
+      },
+    ],
   }),
 
   cargo: job({
