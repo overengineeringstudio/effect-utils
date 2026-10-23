@@ -1486,6 +1486,9 @@
         "src/test/integration/e2e/sub-pages.e2e.test.tsx",
         "src/test/mock-client.unit.test.ts",
         "src/test/regression/sync-perf.regression.unit.test.tsx",
+        "src/web/highlights-missing-peer.unit.test.tsx",
+        "src/web/highlights-ssr.unit.test.tsx",
+        "src/web/highlights.unit.test.tsx",
         "src/web/toggle.unit.test.tsx"
       ],
       "sourceOwners": {
@@ -1536,6 +1539,9 @@
         "src/test/integration/e2e/sub-pages.e2e.test.tsx",
         "src/test/mock-client.unit.test.ts",
         "src/test/regression/sync-perf.regression.unit.test.tsx",
+        "src/web/highlights-missing-peer.unit.test.tsx",
+        "src/web/highlights-ssr.unit.test.tsx",
+        "src/web/highlights.unit.test.tsx",
         "src/web/toggle.unit.test.tsx"
       ],
       "unboundedAfter": [],
