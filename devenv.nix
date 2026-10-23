@@ -31,6 +31,7 @@ let
   currentSystem = pkgs.stdenv.hostPlatform.system;
   # Unit jobs retain their source-test/bootstrap closure, not interactive or deploy tools.
   ciUnitTest = builtins.getEnv "EFFECT_UTILS_CI_TEST" == "1";
+  isolateMegarepoGcTests = (ciUnitTest || builtins.getEnv "CI" == "true") && pkgs.stdenv.isLinux;
   testPlatform = builtins.getEnv "EFFECT_UTILS_TEST_PLATFORM";
   testPlatforms = builtins.fromJSON (builtins.readFile ./genie/ci-workflow/test-platforms.json);
   testScheduling = builtins.fromJSON (builtins.readFile ./genie/ci-workflow/test-scheduling.json);
@@ -402,7 +403,7 @@ let
     vitestRuntime = if lane.packageName == "megarepo" then "bun" else "node";
     # Elevated own-real-UID runner helpers correctly veto product GC but are outside
     # the synthetic fixture world. Isolate tests rather than weaken that policy.
-    vitestIsolatedProcessTable = ciUnitTest && lane.packageName == "megarepo" && pkgs.stdenv.isLinux;
+    vitestIsolatedProcessTable = isolateMegarepoGcTests && lane.packageName == "megarepo";
     after = lane.unboundedAfter;
   }) (builtins.filter (lane: lane.unboundedFiles != [ ]) buck2TestLanes);
   allSourceTestPackages = sourceOnlyTestPackages ++ unboundedTestPackages;
@@ -1536,7 +1537,11 @@ in
     exec = trace.exec "test:megarepo-cold-gc" ''
       set -euo pipefail
       source ${lib.escapeShellArg pnpmTaskHelpersScript}
-      ${flakePkgs.bun}/bin/bun --bun "$(resolve_package_bin vitest vitest)" run src/cli/store-gc-cold.integration.test.ts --reporter verbose --testTimeout 240000
+      ${lib.optionalString isolateMegarepoGcTests ''
+        sudo -n -E ${pkgs.coreutils}/bin/env "PATH=$PATH" \
+          ${pkgs.util-linux}/bin/unshare --pid --fork --mount-proc -- \
+          ${pkgs.python3}/bin/python3 ${./nix/devenv-modules/tasks/shared/test-namespace-init.py} "$(id -u)" "$(id -g)" \
+      ''}${flakePkgs.bun}/bin/bun --bun "$(resolve_package_bin vitest vitest)" run src/cli/store-gc-cold.integration.test.ts --reporter verbose --testTimeout 240000
     '';
     execIfModified = [
       "packages/@overeng/megarepo/src/**/*.ts"
