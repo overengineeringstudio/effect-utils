@@ -1488,7 +1488,7 @@ in
   # Like genie:buck2:test, these Bun suites live outside the package test census.
   # Keep them beside the generators and include their source task in test:run.
   tasks."buck2:rust:generators:test" = {
-    description = "Run the Rust interop service and wasm guest generator integration tests";
+    description = "Run the Rust contract, interop service and wasm guest generator integration tests";
     after = [ "buck2:editor:publish:test" ];
     exec = trace.exec "buck2:rust:generators:test" ''
       set -euo pipefail
@@ -1499,6 +1499,11 @@ in
     execIfModified = [
       "buck2/rust/**/*.ts"
       "packages/@overeng/effect-rust/src/**/*.ts"
+      "packages/@overeng/content-address/src/generate-contract.ts"
+      "packages/@overeng/content-address/src/schema.ts"
+      "rust/content-address-contract/**"
+      "rust/buck2-tools/core/cargo-buck2-package-projection.ts"
+      "genie/buck2/mod.ts"
       "package.json"
       "pnpm-lock.yaml"
     ];
