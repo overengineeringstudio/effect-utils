@@ -61,6 +61,12 @@ describe('root Buck aggregate projection', () => {
     expect(output).toContain('name = "editor_view_inputs"')
     expect(output).toContain('name = "static_sources"')
     expect(output).toContain('name = "cxx_no_default_deps",\n    actual = "//buck2/toolchains:cxx"')
+    expect(output).toContain(
+      'load("@prelude//toolchains:remote_test_execution.bzl", "remote_test_execution_toolchain")',
+    )
+    expect(output).toContain(
+      'remote_test_execution_toolchain(name = "test", visibility = ["PUBLIC"])',
+    )
     expect(output).toContain('name = "quick"')
     expect(output).toContain('name = "all"')
     expect(output).toContain('check_aggregate(')
