@@ -19,8 +19,17 @@ describe('web code highlighting', () => {
     })
     await vi.waitFor(() => expect(container.querySelector('div.notion-code pre')).not.toBeNull())
     const tokens = Array.from(container.querySelectorAll('code span'))
-    expect(tokens.some((token) => token.textContent === 'const' && token.getAttribute('style')?.includes('#d73a49'))).toBe(true)
-    expect(tokens.some((token) => token.textContent === '42' && token.getAttribute('style')?.includes('#005cc5'))).toBe(true)
+    expect(
+      tokens.some(
+        (token) =>
+          token.textContent === 'const' && token.getAttribute('style')?.includes('#d73a49'),
+      ),
+    ).toBe(true)
+    expect(
+      tokens.some(
+        (token) => token.textContent === '42' && token.getAttribute('style')?.includes('#005cc5'),
+      ),
+    ).toBe(true)
     expect(container.textContent).toBe('const answer = 42')
   })
 
@@ -48,7 +57,12 @@ describe('web code highlighting', () => {
 
   it('preserves nested React children instead of flattening them', async () => {
     await act(async () => {
-      root.render(<HighlightsRender language="ts"><strong>const</strong>{' answer = 42'}</HighlightsRender>)
+      root.render(
+        <HighlightsRender language="ts">
+          <strong>const</strong>
+          {' answer = 42'}
+        </HighlightsRender>,
+      )
     })
     expect(container.innerHTML).toBe(
       '<pre class="notion-code" data-language="ts"><code><strong>const</strong> answer = 42</code></pre>',
