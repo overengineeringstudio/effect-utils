@@ -73,7 +73,7 @@ describe('WorkStorage service and file boundary', () => {
       const result = yield* Effect.gen(function* () {
         const storage = yield* WorkStorage
         return { path: yield* storage.role('state'), environment: storage.environment }
-      }).pipe(Effect.provide(WorkStorage.layer(example, observed)))
+      }).pipe(Effect.provide(WorkStorage.layer({ manifest: example, observed })))
       expect(result).toEqual({ path: '/factory/state/demo', environment: example.environment })
       expect(process.env.XDG_STATE_HOME).toBe(prior)
     }),

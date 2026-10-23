@@ -307,8 +307,8 @@ empty, dot, parent, NUL and trailing-slash segments are rejected, not normalized
 Environment values are opaque strings. Unknown object fields are additive and
 ignored; unknown role keys and unsupported versions are rejected.
 
-In Effect, provide `WorkStorage.layer(manifest, observed)` or
-`WorkStorage.layerFile(manifestPath, observed)` and call `storage.role(purpose)`.
+In Effect, provide `WorkStorage.layer({ manifest, observed })` or
+`WorkStorage.layerFile({ path: manifestPath, observed })` and call `storage.role(purpose)`.
 `layerFile` requires the platform `FileSystem` service. The service also exposes
 the decoded `manifest` and `environment`; `readManifest`, `decodeManifest`,
 `admit`, and `resolveRequest` expose the same boundaries without global state.
