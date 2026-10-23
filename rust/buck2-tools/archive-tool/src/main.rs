@@ -807,7 +807,13 @@ mod tests {
             header.set_cksum();
             builder.append_data(&mut header, path, &b"x"[..]).unwrap();
         }
-        builder.into_inner().unwrap().finish().unwrap().flush().unwrap();
+        builder
+            .into_inner()
+            .unwrap()
+            .finish()
+            .unwrap()
+            .flush()
+            .unwrap();
         let parent = tempfile::tempdir().unwrap();
         let output = parent.path().join("out");
         extract_crate(&ExtractCrateArgs {
