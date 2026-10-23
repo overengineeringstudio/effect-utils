@@ -47,6 +47,8 @@ const makeFixture = (): string => {
     'packages/@overeng/effect-rust/package.json',
     generator,
     'packages/@overeng/content-address/src/schema.ts',
+    'packages/@overeng/work-storage/protocol.schema.json',
+    'packages/@overeng/work-storage/fixtures/conformance.json',
     'rust',
     ...cargoBuck2WorkspaceMemberPaths.filter((path) => !path.startsWith('rust/')),
   ])
