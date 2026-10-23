@@ -38,7 +38,7 @@ describe('web code highlighting', () => {
       root.render(<HighlightsRender language="kdl">{'node <tag> & "value"'}</HighlightsRender>)
     })
     expect(container.innerHTML).toMatchInlineSnapshot(
-      `"<pre class=\"notion-code\" data-language=\"kdl\"><code>node &lt;tag&gt; &amp; \"value\"</code></pre>"`,
+      `"<pre class="notion-code" data-language="kdl"><code>node &lt;tag&gt; &amp; "value"</code></pre>"`,
     )
   })
 
