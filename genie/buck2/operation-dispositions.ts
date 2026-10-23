@@ -62,6 +62,7 @@ export const ciOperationDispositions = {
   'main-source-shape': 'outside-by-policy:ci-measurement-with-run-timestamp',
   'nix-closure-sizes': 'outside-by-policy:nix-realization',
   'notify-alignment': 'outside-by-policy:ci-control-plane',
+  'pr-buck2-tools': 'outside-by-policy:filesystem-integration',
   'pr-reviews-resolved': 'outside-by-policy:github-review-thread-gate',
   // This control-plane job mutates a live GitHub ref; it has no build action.
   'promote-published': 'outside-by-policy:live-publication',

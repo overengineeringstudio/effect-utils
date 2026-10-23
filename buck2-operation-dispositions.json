@@ -103,6 +103,10 @@
     {
       "disposition": "outside-by-policy:ci-control-plane",
       "operation": "notify-alignment"
+    },
+    {
+      "disposition": "outside-by-policy:filesystem-integration",
+      "operation": "pr-buck2-tools"
     }
   ],
   "developerOperations": [
