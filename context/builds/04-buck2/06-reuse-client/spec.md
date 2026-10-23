@@ -58,6 +58,15 @@ real process-birth identities, and locking, without fleet `gate-slot`.
 entrypoint and gate lifecycle tests; its fail-closed gate-slot requirement is
 unchanged.
 
+Cache-less commands (`BUCK2_NO_REMOTE_CACHE=1` or native `--no-remote-cache`)
+retain the fixed-source/offline posture contract: they remove the RE client
+configuration before startup. A test that needs this posture concurrently with
+ordinary writers owns a separate project root, not just a daemon isolation,
+because the overlay is root-wide. The TypeScript emit/publication regression
+copies tracked source inputs without `buck-out`, links only host capabilities
+and live editor views, and stops its own daemons before removing that root.
+Editor publication remains in the original root with its inherited posture.
+
 ```ini
 # tracked buckconfig: the repository's trust tier, read-only (decision 0033);
 # -c CLI overrides do not reach the RE client

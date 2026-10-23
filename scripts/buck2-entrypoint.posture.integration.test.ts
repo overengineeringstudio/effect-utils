@@ -136,8 +136,9 @@ else process.exit(9);
     }
   }, 15000)
 
-  it('serializes different isolations and expires a reused PID reservation', async () => {
+  it('refuses different postures in one root, admits them in separate roots and expires a reused PID', async () => {
     const root = mkdtempSync(join(tmpdir(), 'buck2-posture-race-'))
+    const separateRoot = mkdtempSync(join(tmpdir(), 'buck2-posture-separate-'))
     const native = join(root, 'native')
     const state = join(root, 'daemon.json')
     const overlay = join(root, '.buckconfig.local')
@@ -147,15 +148,16 @@ else process.exit(9);
     let reader: Bun.Subprocess<'pipe', 'pipe', 'pipe'> | undefined
     try {
       writeFileSync(join(root, '.buckconfig'), '[buck2]\nremote_cache_enabled = true\n')
+      writeFileSync(join(separateRoot, '.buckconfig'), '[buck2]\nremote_cache_enabled = true\n')
       writeFileSync(
         native,
         `#!${process.execPath}
 import {appendFileSync,existsSync,readFileSync,writeFileSync,rmSync} from 'node:fs';
-const command=process.argv[4], isolation=process.argv[3], state=${JSON.stringify(state)}+'.'+isolation;
+const command=process.argv[4], isolation=process.argv[3], state=process.cwd()+'/daemon.json.'+isolation;
 appendFileSync(${JSON.stringify(calls)},command+'\\n');
 if(command==='status') { if(existsSync(state)) console.log(readFileSync(state,'utf8')); }
 else if(command==='kill') rmSync(state,{force:true});
-else if(command==='audit') writeFileSync(state,JSON.stringify({project_root:${JSON.stringify(root)},isolation_dir:isolation,active_commands:[],process_info:{pid:process.pid},start_time:'now',startupOverlay:readFileSync(${JSON.stringify(overlay)},'utf8')}));
+else if(command==='audit') writeFileSync(state,JSON.stringify({project_root:process.cwd(),isolation_dir:isolation,active_commands:[],process_info:{pid:process.pid},start_time:'now',startupOverlay:readFileSync(process.cwd()+'/.buckconfig.local','utf8')}));
 else process.exit(9);
 `,
       )
@@ -166,17 +168,18 @@ else process.exit(9);
 import {once} from 'node:events';
 import {admitCacheDaemonCommand} from ${JSON.stringify(join(import.meta.dir, 'buck2-entrypoint.ts'))};
 const mode=process.argv[2];
+const root=process.argv[3]??${JSON.stringify(root)};
 const writer=mode!=='reader';
 const values=writer ? ${JSON.stringify(values)} : {'buck2.allow_cache_uploads':'false'};
 const config=writer ? '[buck2]\\nallow_cache_uploads = true\\n[buck2_re_client]\\nhttp_headers = authorization: Basic $BUCK2_CACHE_WRITE_BASIC_AUTH\\n' : '[buck2]\\nallow_cache_uploads = false\\n';
 console.log('attempting');
 try {
 await admitCacheDaemonCommand({
-native:${JSON.stringify(native)},root:${JSON.stringify(root)},args:['--isolation-dir',writer?'v2':'other','build','//:fixture'],
+native:${JSON.stringify(native)},root,args:['--isolation-dir',writer?'v2':'other','build','//:fixture'],
 env:{...process.env,CI:'1',BUCK2_CACHE_WRITE_BASIC_AUTH:${JSON.stringify(secret)}},
 admit:async (check)=>{
 check?.(values);
-writeFileSync(${JSON.stringify(overlay)},config);
+writeFileSync(root+'/.buckconfig.local',config);
 if(mode==='writer') { console.log('overlay'); await once(process.stdin,'data'); }
 return ['build','//:fixture'];
 }
@@ -221,6 +224,14 @@ process.exit(0);
       expect(readFileSync(overlay, 'utf8')).toBe(writerOverlay)
       expect(JSON.parse(readFileSync(`${state}.v2`, 'utf8')).startupOverlay).toBe(writerOverlay)
       expect(readFileSync(calls, 'utf8')).not.toContain('kill')
+      const separate = Bun.spawn([process.execPath, worker, 'reader', separateRoot], {
+        stdin: 'ignore',
+        stdout: 'pipe',
+        stderr: 'pipe',
+      })
+      expect(await separate.exited, await new Response(separate.stderr).text()).toBe(0)
+      expect(readFileSync(overlay, 'utf8')).toBe(writerOverlay)
+      expect(readFileSync(calls, 'utf8')).not.toContain('kill')
       const marker = JSON.parse(
         readFileSync(join(root, 'buck-out', '.cache-daemon-posture', 'root.json'), 'utf8'),
       )
@@ -264,6 +275,84 @@ process.exit(0);
       if (writer !== undefined) await writer.exited
       if (reader !== undefined) await reader.exited
       rmSync(root, { recursive: true, force: true })
+      rmSync(separateRoot, { recursive: true, force: true })
     }
   }, 15000)
+})
+
+it('keeps toolchain cache-less emits in an owned root and publication in the inherited root', async () => {
+  const fixture = mkdtempSync(join(tmpdir(), 'buck2-toolchain-orchestration-'))
+  const script = join(fixture, 'orchestration.ts')
+  const native = `
+import {expect} from 'bun:test';
+import {appendFileSync,existsSync,mkdirSync,writeFileSync} from 'node:fs';
+import {basename,join} from 'node:path';
+const source=process.env.TOOLCHAIN_FIXTURE_SOURCE, cwd=process.cwd();
+const command=basename(process.argv[1]), args=process.argv.slice(2);
+if(command==='git') { process.stdout.write('package.json\\0.buckroot\\0.buckconfig\\0'); process.exit(0); }
+appendFileSync(process.env.TOOLCHAIN_FIXTURE_CALLS,JSON.stringify({command,args,cwd})+'\\n');
+if(command==='devenv') {
+  expect(cwd).toBe(source);
+  expect(process.env.BUCK2_NO_REMOTE_CACHE).toBe('0');
+  writeFileSync(join(source,'node_modules/@types/bun/index.d.ts'),'after');
+} else {
+  expect(command).toBe('mock-buck');
+  expect(cwd).not.toBe(source);
+  expect(process.env.BUCK2_NO_REMOTE_CACHE).toBe('1');
+  expect(existsSync(join(cwd,'.buckroot'))).toBe(true);
+  if(args.includes('build')) {
+    expect(args).toContain('--local-only');
+    expect(args).toContain('--no-remote-cache');
+    mkdirSync(join(cwd,'dist'),{recursive:true});
+    writeFileSync(join(cwd,'dist/out.js'),'stable');
+    console.log(JSON.stringify({'effect_utils//packages/@overeng/utils:dist':'dist'}));
+  } else expect(args.at(-1)).toBe('kill');
+}
+`
+  try {
+    writeFileSync(
+      script,
+      `
+import {expect} from 'bun:test';
+import {chmodSync,cpSync,existsSync,mkdirSync,readFileSync,writeFileSync} from 'node:fs';
+import {join} from 'node:path';
+const source=join(${JSON.stringify(fixture)},'source'), bin=join(${JSON.stringify(fixture)},'bin');
+mkdirSync(join(source,'genie/buck2'),{recursive:true});
+mkdirSync(join(source,'.buck2/capabilities'),{recursive:true});
+mkdirSync(join(source,'node_modules/@types/bun'),{recursive:true});
+mkdirSync(join(source,'node_modules/vitest'),{recursive:true});
+mkdirSync(bin);
+writeFileSync(join(source,'node_modules/vitest/package.json'),JSON.stringify({name:'vitest',type:'module',exports:'./index.ts'}));
+writeFileSync(join(source,'node_modules/vitest/index.ts'),"export {expect} from 'bun:test'; export const it=(_name,run)=>run();");
+writeFileSync(join(source,'node_modules/@types/bun/index.d.ts'),'before');
+for(const path of ['package.json','.buckroot','.buckconfig']) writeFileSync(join(source,path),'');
+for(const command of ['git','mock-buck','devenv']) {
+  const path=join(bin,command);
+  writeFileSync(path,'#!'+process.execPath+'\\n'+${JSON.stringify(native)});
+  chmodSync(path,0o700);
+}
+const test=join(source,'genie/buck2/typescript-toolchain.integration.test.ts');
+cpSync(${JSON.stringify(join(import.meta.dir, '../genie/buck2/typescript-toolchain.integration.test.ts'))},test);
+process.env.PATH=bin+':'+process.env.PATH;
+process.env.BUCK2_BIN=join(bin,'mock-buck');
+process.env.TOOLCHAIN_FIXTURE_SOURCE=source;
+process.env.TOOLCHAIN_FIXTURE_CALLS=join(${JSON.stringify(fixture)},'calls');
+// The module is created at runtime in an isolated fixture with its own test adapter.
+await import(test);
+const calls=readFileSync(process.env.TOOLCHAIN_FIXTURE_CALLS,'utf8').trim().split('\\n').map(JSON.parse);
+expect(calls.filter(call=>call.command==='devenv')).toHaveLength(1);
+expect(calls.filter(call=>call.args.includes('build'))).toHaveLength(2);
+expect(calls.filter(call=>call.args.at(-1)==='kill')).toHaveLength(2);
+for(const call of calls.filter(call=>call.command==='mock-buck')) expect(existsSync(call.cwd)).toBe(false);
+`,
+    )
+    const child = Bun.spawn([process.execPath, script], {
+      env: { ...process.env, BUCK2_NO_REMOTE_CACHE: '0' },
+      stdout: 'pipe',
+      stderr: 'pipe',
+    })
+    expect(await child.exited, await new Response(child.stderr).text()).toBe(0)
+  } finally {
+    rmSync(fixture, { recursive: true, force: true })
+  }
 })
