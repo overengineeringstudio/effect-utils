@@ -897,28 +897,30 @@ const jobs: Record<CoreCIJobName, CiWorkflowArgs['jobs'][string]> = {
       },
     ],
   }),
-  'test-megarepo-store-gc': job({
-    privileged: 'always',
-    priority: deliveryJobPriority,
-    laneIf: `\${{ (${ciMeasurementNotBaselineBackfillPredicate}) && (github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch' || github.event_name == 'merge_group') }}`,
-    timeoutMinutes: longJobTimeoutMinutes,
-    step: {
-      name: 'Complete native megarepo regression tests',
-      env: {
-        ...githubTokenEnv(),
-        EFFECT_UTILS_CI_TEST: '1',
-        EFFECT_UTILS_TEST_PLATFORM: 'linux',
+  'test-megarepo-store-gc': {
+    ...job({
+      privileged: 'always',
+      priority: deliveryJobPriority,
+      laneIf: `\${{ (${ciMeasurementNotBaselineBackfillPredicate}) && (github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch' || github.event_name == 'merge_group') }}`,
+      timeoutMinutes: longJobTimeoutMinutes,
+      step: {
+        name: 'Complete native megarepo regression tests',
+        env: githubTokenEnv(),
+        run: runDevenvTasksBefore('test:megarepo-store-gc'),
       },
-      run: runDevenvTasksBefore('test:megarepo-store-gc'),
+      afterSteps: [
+        {
+          name: 'Complete native megarepo test receipt',
+          if: '${{ always() }}',
+          run: 'cat tmp/otel-scrape/summaries/test-megarepo-unbounded.vitest.json',
+        },
+      ],
+    }),
+    env: {
+      EFFECT_UTILS_CI_TEST: '1',
+      EFFECT_UTILS_TEST_PLATFORM: 'linux',
     },
-    afterSteps: [
-      {
-        name: 'Complete native megarepo test receipt',
-        if: '${{ always() }}',
-        run: 'cat tmp/otel-scrape/summaries/test-megarepo-unbounded.vitest.json',
-      },
-    ],
-  }),
+  },
   'test-megarepo-cold-gc': job({
     privileged: 'trusted',
     priority: backgroundJobPriority,

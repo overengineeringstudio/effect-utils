@@ -892,7 +892,7 @@ describe('CI execution admission cleanup', () => {
 })
 
 describe('unit-test shell selection', () => {
-  it('selects the narrow shell only at job scope for both required unit-test jobs', () => {
+  it('selects the narrow shell only at job scope for required unit-test jobs', () => {
     const workflow: GitHubWorkflowArgs = ciWorkflow.data
     expect(workflow.env?.EFFECT_UTILS_CI_TEST).toBeUndefined()
     expect(
@@ -900,11 +900,11 @@ describe('unit-test shell selection', () => {
         .filter(([, job]) => job.env?.EFFECT_UTILS_CI_TEST === '1')
         .map(([jobId]) => jobId)
         .toSorted(),
-    ).toEqual(['test', 'test-macos'])
+    ).toEqual(['test', 'test-macos', 'test-megarepo-store-gc'])
 
     for (const [jobId, job] of Object.entries(workflow.jobs)) {
       expect(job.env?.EFFECT_UTILS_CI_TEST, jobId).toBe(
-        jobId === 'test' || jobId === 'test-macos' ? '1' : undefined,
+        ['test', 'test-macos', 'test-megarepo-store-gc'].includes(jobId) ? '1' : undefined,
       )
       for (const step of job.steps) {
         expect(step.env?.EFFECT_UTILS_CI_TEST, `${jobId}/${step.name ?? step.id}`).toBeUndefined()
