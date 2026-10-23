@@ -16,6 +16,9 @@ const unknownFilesystemLauncher = requireTool('EDITOR_VIEW_LEASE_UNKNOWN_FS_BIN'
 const leaseModule = fileURLToPath(new URL('./editor-view-leases.ts', import.meta.url))
 const sharingModule = fileURLToPath(new URL('./editor-view-sharing.ts', import.meta.url))
 const readersModule = fileURLToPath(new URL('./editor-view-readers.ts', import.meta.url))
+const testFilesystemModule = fileURLToPath(
+  new URL('./editor-view-test-filesystem.ts', import.meta.url),
+)
 
 // Bun is the actual FFI runtime. Vitest itself need not import bun:ffi.
 const run = (body: string): void => {
@@ -23,7 +26,7 @@ const run = (body: string): void => {
     import assert from 'node:assert/strict';
     import * as fs from 'node:fs';
     import { isAbsolute, join } from 'node:path';
-    import { tmpdir } from 'node:os';
+    import { editorViewTestDataRoot } from ${JSON.stringify(testFilesystemModule)};
     import { spawn, spawnSync } from 'node:child_process';
     import { once } from 'node:events';
     import { setTimeout as delay } from 'node:timers/promises';
@@ -33,7 +36,7 @@ const run = (body: string): void => {
     const launcher = ${JSON.stringify(launcher)};
     const unknownFilesystemLauncher = ${JSON.stringify(unknownFilesystemLauncher)};
     const helper = ${JSON.stringify(childHelper)};
-    const root = fs.realpathSync(fs.mkdtempSync(join(process.platform === 'linux' ? '/dev/shm' : tmpdir(), 'editor-leases-')));
+    const root = fs.realpathSync(fs.mkdtempSync(join(editorViewTestDataRoot(), 'editor-leases-')));
     const editorRoot = join(root, '.editor-view');
     const contentStore = join(root, 'cas', 'v1');
     fs.mkdirSync(contentStore, { recursive: true });

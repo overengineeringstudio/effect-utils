@@ -38,6 +38,7 @@ import {
   editorViewStagingCreatorIdentity,
   readEditorViewSourceManifest,
 } from './editor-view-sharing.ts'
+import { editorViewTestDataRoot } from './editor-view-test-filesystem.ts'
 import {
   scopeEditorViewTestProcesses,
   trackEditorViewTestSpawn,
@@ -130,7 +131,7 @@ beforeAll(() => {
   delete process.env.TRACEPARENT
   delete process.env.OTEL_TASK_TRACEPARENT
   integrationBudgetState = realpathSync(
-    mkdtempSync(join(tmpdir(), 'editor-view-test-host-budget-')),
+    mkdtempSync(join(editorViewTestDataRoot(), 'editor-view-test-host-budget-')),
   )
   process.env.EDITOR_VIEW_HOST_BUDGET_STATE = integrationBudgetState
 })
@@ -239,7 +240,7 @@ const runEditorViewCli = async ({
 
 /** One package view fixture; `packageName` also names the published editor view. */
 const makeFixture = ({ packageName = 'tui-core' }: { packageName?: string } = {}): Fixture => {
-  const root = realpathSync(mkdtempSync(join(tmpdir(), 'editor-view-integration-')))
+  const root = realpathSync(mkdtempSync(join(editorViewTestDataRoot(), 'editor-view-integration-')))
   const packagePath = `packages/@overeng/${packageName}`
   const packageDir = join(root, 'packages', '@overeng', packageName)
   const editorRoot = join(root, 'packages', '.editor-view')
@@ -465,7 +466,8 @@ const withPublisherTelemetry = async <TValue>(
   run: (children: readonly ChildProcess.ChildProcess[]) => Promise<TValue>,
   { hang = false }: { readonly hang?: boolean } = {},
 ) => {
-  const bin = join(fixture.root, 'record-otel-span')
+  const executableRoot = mkdtempSync(join(tmpdir(), 'editor-view-telemetry-'))
+  const bin = join(executableRoot, 'record-otel-span')
   const capture = join(fixture.root, 'otel-spans.txt')
   writeFileSync(
     bin,
@@ -526,6 +528,7 @@ const withPublisherTelemetry = async <TValue>(
     for (const [key, value] of Object.entries(saved))
       if (value === undefined) delete process.env[key]
       else process.env[key] = value
+    rmSync(executableRoot, { recursive: true, force: true })
   }
 }
 

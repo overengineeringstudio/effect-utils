@@ -164,7 +164,7 @@ describe('generated CI cache trust behavior', () => {
     expect(job.env?.BUCK2_CACHE_WRITE_OPTIONAL).toBeUndefined()
   })
 
-  it('executes the cheap source-side Genie suites before enqueueing without removing queue coverage', async () => {
+  it('executes source-side Genie and buck2-tools suites before enqueueing without removing queue coverage', async () => {
     const workflow = await readWorkflow()
     const quality = workflow.jobs.quality!
     const step = quality.steps.find(
@@ -177,11 +177,14 @@ describe('generated CI cache trust behavior', () => {
       'genie:ci-workflow:test',
       'buck2:rust:generators:test',
       'buck2:cache-posture:ci-test',
+      'test:buck2-tools',
     ])
       expect(step?.run).toContain(task)
     expect(step?.run).not.toContain('buck2:cache-posture:test')
     expect(step?.run).toContain('tasks run --mode single')
-    expect(step?.run).toContain('for package in . packages/@overeng/megarepo')
+    expect(step?.run).toContain(
+      'for package in . packages/@overeng/megarepo packages/@overeng/buck2-tools; do',
+    )
     expect(step?.run).toContain('target=//:node_modules')
     for (const [event, ref] of [
       ['pull_request', 'refs/pull/123/merge'],

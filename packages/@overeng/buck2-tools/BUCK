@@ -6,7 +6,7 @@ load("//buck2:materialization.bzl", "runtime_modules")
 # Projection source: packages/@overeng/buck2-tools/BUCK.genie.ts
 # Projection schema version: 13
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:95372d9be0beee3c128e4aafd30ba3a6eac767c05333b41833ea8bf54224c725
+# Semantic fingerprint: sha256:4d6bba4b9039382e8c33e20deb8797cae4a2326791d15248776dcce99bbbac8b
 # Regenerate: devenv tasks run genie:run
 
 load("//buck2:materialization.bzl", "export_materialization_inputs", "package_view")
@@ -41,6 +41,7 @@ export_materialization_inputs([
     "src/editor-view-readers.unit.test.ts",
     "src/editor-view-sharing.integration.test.ts",
     "src/editor-view-sharing.ts",
+    "src/editor-view-test-filesystem.ts",
     "src/editor-view-test-processes.ts",
     "src/editor-view.integration.test.ts",
     "src/editor-view.ts",
@@ -137,6 +138,7 @@ package_view(
         "src/editor-view-readers.unit.test.ts": "src/editor-view-readers.unit.test.ts",
         "src/editor-view-sharing.integration.test.ts": "src/editor-view-sharing.integration.test.ts",
         "src/editor-view-sharing.ts": "src/editor-view-sharing.ts",
+        "src/editor-view-test-filesystem.ts": "src/editor-view-test-filesystem.ts",
         "src/editor-view-test-processes.ts": "src/editor-view-test-processes.ts",
         "src/editor-view.integration.test.ts": "src/editor-view.integration.test.ts",
         "src/editor-view.ts": "src/editor-view.ts",
@@ -211,6 +213,7 @@ package_view(
         "src/editor-view-readers.unit.test.ts": "src/editor-view-readers.unit.test.ts",
         "src/editor-view-sharing.integration.test.ts": "src/editor-view-sharing.integration.test.ts",
         "src/editor-view-sharing.ts": "src/editor-view-sharing.ts",
+        "src/editor-view-test-filesystem.ts": "src/editor-view-test-filesystem.ts",
         "src/editor-view-test-processes.ts": "src/editor-view-test-processes.ts",
         "src/editor-view.integration.test.ts": "src/editor-view.integration.test.ts",
         "src/editor-view.ts": "src/editor-view.ts",

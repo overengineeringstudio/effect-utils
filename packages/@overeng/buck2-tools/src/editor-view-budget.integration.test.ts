@@ -31,6 +31,7 @@ import {
 } from './editor-view-budget.ts'
 import { referencedEditorViewPaths as referencedEditorViewPathsUnscoped } from './editor-view-readers.ts'
 import { editorViewStagingCreatorIdentity, shareSnapshotFiles } from './editor-view-sharing.ts'
+import { editorViewTestDataRoot } from './editor-view-test-filesystem.ts'
 import {
   scopeEditorViewTestProcesses,
   trackEditorViewTestSpawn,
@@ -186,7 +187,7 @@ afterEach(async () => {
 })
 
 const makeHost = ({ drainAfterEach = false }: { readonly drainAfterEach?: boolean } = {}): Host => {
-  const root = realpathSync(mkdtempSync(join(tmpdir(), 'editor-view-host-budget-')))
+  const root = realpathSync(mkdtempSync(join(editorViewTestDataRoot(), 'editor-view-host-budget-')))
   const contentStore = join(root, 'shared-content', 'v1')
   const budgetState = join(root, 'host-budget')
   const savedBudgetState = process.env.EDITOR_VIEW_HOST_BUDGET_STATE
@@ -664,7 +665,8 @@ const recordTelemetry = async <TValue>(
   run: (children: readonly ChildProcess.ChildProcess[]) => Promise<TValue>,
   { hangBudget = false }: { readonly hangBudget?: boolean } = {},
 ) => {
-  const bin = join(root, 'record-otel-span')
+  const executableRoot = mkdtempSync(join(tmpdir(), 'editor-view-budget-telemetry-'))
+  const bin = join(executableRoot, 'record-otel-span')
   const capture = join(root, 'otel-spans.jsonl')
   writeFileSync(
     bin,
@@ -727,6 +729,7 @@ const recordTelemetry = async <TValue>(
       if (value === undefined) delete process.env[key]
       else process.env[key] = value
     }
+    rmSync(executableRoot, { recursive: true, force: true })
   }
 }
 

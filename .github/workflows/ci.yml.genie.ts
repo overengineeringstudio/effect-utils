@@ -784,7 +784,7 @@ const jobs: Record<CoreCIJobName, CiWorkflowArgs['jobs'][string]> = {
           name: 'Genie projection and CI workflow regression tests',
           env: githubTokenEnv(),
           // test:run publishes every source-test editor view. These suites need only
-          // the root generator closure and Megarepo's root-adapter dependencies.
+          // the root generator, Megarepo adapter, and buck2-tools dependency closures.
           // Build/link those exact Buck views, as the focused runner proof does,
           // then execute the unchanged full tasks without the aggregate installers.
           run: withCiSourceRoot(
@@ -800,7 +800,7 @@ const jobs: Record<CoreCIJobName, CiWorkflowArgs['jobs'][string]> = {
               '    done',
               '  }',
               '  trap restore_views EXIT',
-              '  for package in . packages/@overeng/megarepo; do',
+              '  for package in . packages/@overeng/megarepo packages/@overeng/buck2-tools; do',
               '    if [ "$package" = . ]; then target=//:node_modules; else target=//$package:node_modules; fi',
               '    modules="$("${BUCK2_BIN:?BUCK2_BIN not set}" build "$target" --show-simple-output)"',
               '    backup="${RUNNER_TEMP:?RUNNER_TEMP not set}/genie-pr-${package##*/}-node-modules"',
@@ -808,7 +808,7 @@ const jobs: Record<CoreCIJobName, CiWorkflowArgs['jobs'][string]> = {
               '    prepared+=("$package")',
               '    ln -s "$PWD/$modules" "$package/node_modules"',
               '  done',
-              '  "$DEVENV_BIN" tasks run --mode single genie:buck2:test genie:ci-workflow:test buck2:rust:generators:test buck2:cache-posture:ci-test',
+              '  "$DEVENV_BIN" tasks run --mode single genie:buck2:test genie:ci-workflow:test buck2:rust:generators:test buck2:cache-posture:ci-test test:buck2-tools',
               "'",
             ].join('\n'),
           ),

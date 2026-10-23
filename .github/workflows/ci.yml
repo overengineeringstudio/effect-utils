@@ -854,7 +854,7 @@ jobs:
               done
             }
             trap restore_views EXIT
-            for package in . packages/@overeng/megarepo; do
+            for package in . packages/@overeng/megarepo packages/@overeng/buck2-tools; do
               if [ "$package" = . ]; then target=//:node_modules; else target=//$package:node_modules; fi
               modules="$("${BUCK2_BIN:?BUCK2_BIN not set}" build "$target" --show-simple-output)"
               backup="${RUNNER_TEMP:?RUNNER_TEMP not set}/genie-pr-${package##*/}-node-modules"
@@ -862,7 +862,7 @@ jobs:
               prepared+=("$package")
               ln -s "$PWD/$modules" "$package/node_modules"
             done
-            "$DEVENV_BIN" tasks run --mode single genie:buck2:test genie:ci-workflow:test buck2:rust:generators:test buck2:cache-posture:ci-test
+            "$DEVENV_BIN" tasks run --mode single genie:buck2:test genie:ci-workflow:test buck2:rust:generators:test buck2:cache-posture:ci-test test:buck2-tools
           '
       - name: Bundle smoke tests
         env:

@@ -3,6 +3,14 @@
 Repository-owned TypeScript helpers for Buck dependency materialization,
 TypeScript execution, and workspace editor views.
 
+Lease retirement integration fixtures use the production filesystem classifier
+to select `os.tmpdir()`, falling back to `/dev/shm` when necessary. They fail
+explicitly if neither supports local lease semantics; OverlayFS remains unknown
+and fail-closed. Editor roots and CAS data share the selected filesystem, while
+executable telemetry helpers stay in `os.tmpdir()` because `/dev/shm` may be
+mounted `noexec`. The full `test:buck2-tools` task also runs in PR `pr/quality`
+on the Linux namespace runner.
+
 ## Editor publisher
 
 `src/editor-view.ts` atomically publishes and checks one dependency view.
