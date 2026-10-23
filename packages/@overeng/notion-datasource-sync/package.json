@@ -155,7 +155,7 @@
     "@effect/vitest": "4.0.3",
     "@opentui/core": "0.5.11",
     "@opentui/react": "0.5.11",
-    "@playwright/test": "1.63.0",
+    "@playwright/test": "1.64.1",
     "@storybook/react": "10.6.0",
     "@storybook/react-vite": "10.6.0",
     "@types/node": "26.5.0",
@@ -172,7 +172,7 @@
   "peerDependencies": {
     "@effect/opentelemetry": "^4.0.3",
     "@effect/platform-node": "^4.0.3",
-    "@playwright/test": "^1.63.0",
+    "@playwright/test": "^1.64.1",
     "effect": "^4.0.3"
   },
   "engines": {

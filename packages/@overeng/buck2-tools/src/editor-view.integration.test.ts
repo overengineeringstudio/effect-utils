@@ -4758,71 +4758,115 @@ await editorViewProcessTestScope.run(() => [process.pid, ...${JSON.stringify([..
     }
   })
 
-  it.each(['candidate', 'gc', 'legacy'] as const)(
-    'preserves pointer-reached %s payload bytes and modes until its reader releases the pointer',
-    async (kind) => {
-      const fixture = makeFixture()
-      const restoreHostBudget = isolateHostBudget()
-      try {
-        const record = await publishEditorView(fixture.options)
-        const retained =
-          kind === 'legacy'
-            ? join(
-                fixture.editorRoot,
-                '.legacy',
-                readdirSync(join(fixture.editorRoot, '.legacy'))[0]!,
-              )
-            : join(
-                fixture.editorRoot,
-                ...(kind === 'candidate' ? ['.store', '.candidate-reader'] : ['.gc-reader']),
-              )
-        if (kind !== 'legacy') mkdirSync(retained)
-        const payload = join(retained, kind === 'legacy' ? 'legacy-root-install' : 'partial')
-        if (kind !== 'legacy') writeFileSync(payload, 'reader-owned bytes\n')
-        chmodSync(payload, 0o444)
-        chmodSync(retained, 0o555)
-        const before = statSync(payload, { bigint: true })
-        const directoryBefore = statSync(retained, { bigint: true })
-        const bytes = readFileSync(payload)
-        const reader = join(fixture.root, 'packages', '@overeng', 'retained-reader')
-        mkdirSync(reader)
-        const pointer = join(reader, 'node_modules')
-        symlinkSync(retained, pointer)
-        expect(await publishEditorView(fixture.options)).toEqual(record)
-        expect(
-          readFileSync(join(pointer, kind === 'legacy' ? 'legacy-root-install' : 'partial')),
-        ).toEqual(bytes)
-        const after = statSync(payload, { bigint: true })
-        expect([after.dev, after.ino, after.mode, after.mtimeNs, after.ctimeNs]).toEqual([
-          before.dev,
-          before.ino,
-          before.mode,
-          before.mtimeNs,
-          before.ctimeNs,
-        ])
-        const directoryAfter = statSync(retained, { bigint: true })
-        expect([directoryAfter.ino, directoryAfter.mode, directoryAfter.ctimeNs]).toEqual([
-          directoryBefore.ino,
-          directoryBefore.mode,
-          directoryBefore.ctimeNs,
-        ])
-        const rootPointer = join(fixture.editorRoot, '.retained-reader')
-        symlinkSync(retained, rootPointer)
-        rmSync(pointer)
-        expect(await publishEditorView(fixture.options)).toEqual(record)
-        expect(readFileSync(payload)).toEqual(bytes)
-        expect(statSync(payload, { bigint: true }).ino).toBe(before.ino)
-        expect(statSync(payload, { bigint: true }).mode).toBe(before.mode)
-        rmSync(rootPointer)
-        expect(await publishEditorView(fixture.options)).toEqual(record)
-        expect(existsSync(retained)).toBe(false)
-        await expect(checkEditorView(fixture.options)).resolves.toEqual(record)
-      } finally {
-        cleanup(fixture)
-        restoreHostBudget()
-      }
-    },
-  )
+  for (const kind of ['candidate', 'gc', 'legacy'] as const) {
+    describe(`preserves pointer-reached ${kind} payload bytes and modes until its reader releases the pointer`, () => {
+      let fixture: Fixture
+      let restoreHostBudget: () => void
+      let record: EditorViewRecord
+      let retained: string
+      let payload: string
+      let pointer: string
+      let rootPointer: string
+      let before: fs.BigIntStats
+      let directoryBefore: fs.BigIntStats
+      let bytes: Buffer
+      let pending: Promise<void> = Promise.resolve()
+
+      beforeAll(() => {
+        fixture = makeFixture()
+        restoreHostBudget = isolateHostBudget()
+      })
+      afterAll(async () => {
+        // Keep the fixture alive through a timed-out phase, including its assertions.
+        await Promise.allSettled([pending])
+        if (fixture !== undefined) cleanup(fixture)
+        restoreHostBudget?.()
+      })
+
+      it('prepares the retained payload', () => {
+        pending = pending.then(async () => {
+          record = await publishEditorView(fixture.options)
+          retained =
+            kind === 'legacy'
+              ? join(
+                  fixture.editorRoot,
+                  '.legacy',
+                  readdirSync(join(fixture.editorRoot, '.legacy'))[0]!,
+                )
+              : join(
+                  fixture.editorRoot,
+                  ...(kind === 'candidate' ? ['.store', '.candidate-reader'] : ['.gc-reader']),
+                )
+          if (kind !== 'legacy') mkdirSync(retained)
+          payload = join(retained, kind === 'legacy' ? 'legacy-root-install' : 'partial')
+          if (kind !== 'legacy') writeFileSync(payload, 'reader-owned bytes\n')
+          chmodSync(payload, 0o444)
+          chmodSync(retained, 0o555)
+          before = statSync(payload, { bigint: true })
+          directoryBefore = statSync(retained, { bigint: true })
+          bytes = readFileSync(payload)
+          const reader = join(fixture.root, 'packages', '@overeng', 'retained-reader')
+          mkdirSync(reader)
+          pointer = join(reader, 'node_modules')
+          rootPointer = join(fixture.editorRoot, '.retained-reader')
+        })
+        return pending
+      })
+
+      it('preserves bytes and metadata while the package pointer reaches the payload', () => {
+        pending = pending.then(async () => {
+          symlinkSync(retained, pointer)
+          expect(await publishEditorView(fixture.options)).toEqual(record)
+          expect(
+            readFileSync(join(pointer, kind === 'legacy' ? 'legacy-root-install' : 'partial')),
+          ).toEqual(bytes)
+          const after = statSync(payload, { bigint: true })
+          expect([after.dev, after.ino, after.mode, after.mtimeNs, after.ctimeNs]).toEqual([
+            before.dev,
+            before.ino,
+            before.mode,
+            before.mtimeNs,
+            before.ctimeNs,
+          ])
+          const directoryAfter = statSync(retained, { bigint: true })
+          expect([directoryAfter.ino, directoryAfter.mode, directoryAfter.ctimeNs]).toEqual([
+            directoryBefore.ino,
+            directoryBefore.mode,
+            directoryBefore.ctimeNs,
+          ])
+        })
+        return pending
+      })
+
+      it('preserves the payload after the reader moves to a root pointer', () => {
+        pending = pending.then(async () => {
+          symlinkSync(retained, rootPointer)
+          rmSync(pointer)
+          expect(await publishEditorView(fixture.options)).toEqual(record)
+          expect(readFileSync(payload)).toEqual(bytes)
+          expect(statSync(payload, { bigint: true }).ino).toBe(before.ino)
+          expect(statSync(payload, { bigint: true }).mode).toBe(before.mode)
+        })
+        return pending
+      })
+
+      it('reclaims the payload after the reader releases its final pointer', () => {
+        pending = pending.then(async () => {
+          rmSync(rootPointer)
+          expect(await publishEditorView(fixture.options)).toEqual(record)
+          expect(existsSync(retained)).toBe(false)
+        })
+        return pending
+      })
+
+      it('checks the published view after reclamation', () => {
+        pending = pending.then(async () => {
+          await expect(checkEditorView(fixture.options)).resolves.toEqual(record)
+        })
+        return pending
+      })
+    })
+  }
 
   it('keeps orphan payloads when a pointer input is unreadable', async () => {
     const fixture = makeFixture()

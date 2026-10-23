@@ -7,7 +7,7 @@ load("//buck2/products:defs.bzl", "javascript_product")
 # Projection source: packages/@overeng/tui-stories/BUCK.genie.ts
 # Projection schema version: 13
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:353e475f0b596c2ee4f3b103bef7a597f6f21b83105633b31e19761a6136cffa
+# Semantic fingerprint: sha256:15fab9972d83fd9146787275f742ca27351a865b7b6cafb6c019275a9cdb11ca
 # Regenerate: devenv tasks run genie:run
 
 load("//buck2:materialization.bzl", "export_materialization_inputs", "package_view")
@@ -374,6 +374,8 @@ package_view(
         "node_modules/@overeng/megarepo/src/store/store-gc-observations.ts": "//packages/@overeng/megarepo:src/store/store-gc-observations.ts",
         "node_modules/@overeng/megarepo/src/store/store-gc-observations.unit.test.ts": "//packages/@overeng/megarepo:src/store/store-gc-observations.unit.test.ts",
         "node_modules/@overeng/megarepo/src/store/store-gc-plan-order.unit.test.ts": "//packages/@overeng/megarepo:src/store/store-gc-plan-order.unit.test.ts",
+        "node_modules/@overeng/megarepo/src/store/store-gc-receipts.integration.test.ts": "//packages/@overeng/megarepo:src/store/store-gc-receipts.integration.test.ts",
+        "node_modules/@overeng/megarepo/src/store/store-gc-receipts.ts": "//packages/@overeng/megarepo:src/store/store-gc-receipts.ts",
         "node_modules/@overeng/megarepo/src/store/store-hygiene.ts": "//packages/@overeng/megarepo:src/store/store-hygiene.ts",
         "node_modules/@overeng/megarepo/src/store/store-hygiene.unit.test.ts": "//packages/@overeng/megarepo:src/store/store-hygiene.unit.test.ts",
         "node_modules/@overeng/megarepo/src/store/store-inuse.integration.test.ts": "//packages/@overeng/megarepo:src/store/store-inuse.integration.test.ts",
@@ -758,6 +760,8 @@ package_view(
         "node_modules/@overeng/megarepo/src/store/store-gc-observations.ts": "//packages/@overeng/megarepo:src/store/store-gc-observations.ts",
         "node_modules/@overeng/megarepo/src/store/store-gc-observations.unit.test.ts": "//packages/@overeng/megarepo:src/store/store-gc-observations.unit.test.ts",
         "node_modules/@overeng/megarepo/src/store/store-gc-plan-order.unit.test.ts": "//packages/@overeng/megarepo:src/store/store-gc-plan-order.unit.test.ts",
+        "node_modules/@overeng/megarepo/src/store/store-gc-receipts.integration.test.ts": "//packages/@overeng/megarepo:src/store/store-gc-receipts.integration.test.ts",
+        "node_modules/@overeng/megarepo/src/store/store-gc-receipts.ts": "//packages/@overeng/megarepo:src/store/store-gc-receipts.ts",
         "node_modules/@overeng/megarepo/src/store/store-hygiene.ts": "//packages/@overeng/megarepo:src/store/store-hygiene.ts",
         "node_modules/@overeng/megarepo/src/store/store-hygiene.unit.test.ts": "//packages/@overeng/megarepo:src/store/store-hygiene.unit.test.ts",
         "node_modules/@overeng/megarepo/src/store/store-inuse.integration.test.ts": "//packages/@overeng/megarepo:src/store/store-inuse.integration.test.ts",
@@ -1142,6 +1146,8 @@ package_view(
         "node_modules/@overeng/megarepo/src/store/store-gc-observations.ts": "//packages/@overeng/megarepo:src/store/store-gc-observations.ts",
         "node_modules/@overeng/megarepo/src/store/store-gc-observations.unit.test.ts": "//packages/@overeng/megarepo:src/store/store-gc-observations.unit.test.ts",
         "node_modules/@overeng/megarepo/src/store/store-gc-plan-order.unit.test.ts": "//packages/@overeng/megarepo:src/store/store-gc-plan-order.unit.test.ts",
+        "node_modules/@overeng/megarepo/src/store/store-gc-receipts.integration.test.ts": "//packages/@overeng/megarepo:src/store/store-gc-receipts.integration.test.ts",
+        "node_modules/@overeng/megarepo/src/store/store-gc-receipts.ts": "//packages/@overeng/megarepo:src/store/store-gc-receipts.ts",
         "node_modules/@overeng/megarepo/src/store/store-hygiene.ts": "//packages/@overeng/megarepo:src/store/store-hygiene.ts",
         "node_modules/@overeng/megarepo/src/store/store-hygiene.unit.test.ts": "//packages/@overeng/megarepo:src/store/store-hygiene.unit.test.ts",
         "node_modules/@overeng/megarepo/src/store/store-inuse.integration.test.ts": "//packages/@overeng/megarepo:src/store/store-inuse.integration.test.ts",

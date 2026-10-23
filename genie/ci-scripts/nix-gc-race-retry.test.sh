@@ -283,6 +283,56 @@ set -e
 assert_exit_code 8 "$exit_code" "HTTP error 4160 preserves its exit code"
 assert_eq "1" "$(cat "$test_dir/range-prefix-attempt")" "HTTP error 4160 is not retried"
 
+echo "Test 4f: retries the observed Cachix narinfo HTTP 409 failure"
+narinfo_fixture="$test_dir/narinfo-fixture.sh"
+cat > "$narinfo_fixture" <<EOF
+#!/usr/bin/env bash
+set -euo pipefail
+attempt_file="$test_dir/narinfo-attempt"
+attempt=0
+if [ -f "\$attempt_file" ]; then
+  attempt=\$(cat "\$attempt_file")
+fi
+attempt=\$((attempt + 1))
+echo "\$attempt" > "\$attempt_file"
+if [ "\$attempt" -eq 1 ]; then
+  echo "2026-10-22T03:00:54.0004493Z error: unable to download 'https://overeng-effect-utils.cachix.org/r7js5dssbhmm3kknmm60b81gpbq801q3.narinfo': HTTP error 409" >&2
+  exit 1
+fi
+echo "narinfo download recovered"
+EOF
+chmod +x "$narinfo_fixture"
+CI_PROGRESS_HEARTBEAT_SECONDS=1 NIX_GC_RACE_MAX_RETRIES=2 run_nix_gc_race_retry "narinfo-fixture" "$narinfo_fixture" >/dev/null
+assert_eq "2" "$(cat "$test_dir/narinfo-attempt")" "narinfo HTTP 409 retry count"
+
+echo "Test 4g: does not retry HTTP 4090 or HTTP 409 on non-narinfo paths"
+for failure in narinfo-prefix non-narinfo; do
+  case "$failure" in
+    narinfo-prefix) url="https://example.com/path.narinfo"; status=4090 ;;
+    non-narinfo) url="https://example.com/archive.tar.xz"; status=409 ;;
+  esac
+  conflict_fixture="$test_dir/$failure-fixture.sh"
+  cat > "$conflict_fixture" <<EOF
+#!/usr/bin/env bash
+set -euo pipefail
+attempt_file="$test_dir/$failure-attempt"
+attempt=0
+if [ -f "\$attempt_file" ]; then
+  attempt=\$(cat "\$attempt_file")
+fi
+echo "\$((attempt + 1))" > "\$attempt_file"
+echo "error: unable to download '$url': HTTP error $status" >&2
+exit 8
+EOF
+  chmod +x "$conflict_fixture"
+  set +e
+  CI_PROGRESS_HEARTBEAT_SECONDS=1 NIX_GC_RACE_MAX_RETRIES=2 run_nix_gc_race_retry "$failure-fixture" "$conflict_fixture" >/dev/null 2>&1
+  exit_code=$?
+  set -e
+  assert_exit_code 8 "$exit_code" "$failure preserves its exit code"
+  assert_eq "1" "$(cat "$test_dir/$failure-attempt")" "$failure is not retried"
+done
+
 echo "Test 5: retries missing Nix daemon socket failures without host mutation"
 daemon_fixture="$test_dir/daemon-fixture.sh"
 cat > "$daemon_fixture" <<EOF

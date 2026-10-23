@@ -42,6 +42,7 @@ import {
   netlifyDeployStep,
   validateNixStoreStep,
   withCiSourceRoot,
+  withGcRaceRetry,
   defaultRefPolicyCheckJob,
   prReviewsResolvedJob,
   prReviewsResolvedJobId,
@@ -50,6 +51,7 @@ import {
   githubAccessTokenEnv,
   readBinaryCacheDescriptors,
   publisherWriteSecret,
+  withNixRealisationTimeouts,
 } from '../../genie/ci-workflow.ts'
 import { withBuck2CacheEvidence } from '../../genie/ci-workflow/buck2-cache-evidence.ts'
 import { withBuck2CachePostures } from '../../genie/ci-workflow/buck2-cache-posture.ts'
@@ -68,6 +70,32 @@ const trustedCachixStep = cachixStep({ name: 'overeng-effect-utils' })
 const binaryCache = readBinaryCacheDescriptors(
   new URL('../../nix/binary-caches.json', import.meta.url),
 )['overeng-effect-utils']!
+
+// Successful CI runs: latest 30 merge groups, 10 PRs and 10 pushes, excluding
+// incident 39609540541. Seconds, nearest-rank p95 and maximum; see the PR table.
+// These bound bootstrap and explicit Nix builds, not ordinary test workloads.
+const nixRealisationTimingsSeconds = {
+  'Install Nix': { Linux: { p95: 34, max: 57 }, macOS: { p95: 86, max: 91 } },
+  'Provide cachix CLI from nixpkgs': { Linux: { p95: 8, max: 75 }, macOS: { p95: 49, max: 59 } },
+  'Resolve devenv': { Linux: { p95: 61, max: 161 }, macOS: { p95: 55, max: 56 } },
+  'Prepare source generator dependency views': {
+    Linux: { p95: 269, max: 755 },
+    macOS: { p95: 466, max: 747 },
+  },
+  'Build every published from-source product': { p95: 321, max: 329 },
+  'Build and smoke native and compiled products': {
+    Linux: { p95: 179, max: 280 },
+    macOS: { p95: 64, max: 74 },
+  },
+  'Publish products': { p95: 630, max: 630 },
+  'Live Netlify ci-tools E2E': { p95: 1111, max: 1111 },
+  'Live Vercel ci-tools E2E': { p95: 256, max: 256 },
+  'Prepare Nix': { p95: 5, max: 8 },
+  'Link started job roots': { p95: 109, max: 112 },
+  'Publish Pipeline traces': { p95: 126, max: 126 },
+  'Audit native dependency policy': { p95: 1, max: 1 },
+  'Measure source shape: effect-utils': { p95: 10, max: 18 },
+} as const
 
 const prepareSourceGeneratorDependencyViewsStep = {
   name: 'Prepare source generator dependency views',
@@ -538,7 +566,15 @@ const unitTestJob = ({
       ].join('\n'),
     }),
     ...(runner === 'namespace-profile-macos-arm64'
-      ? [buck2TrustedCacheWriterStep(compiledProductsSmokeStep), macosNixSubstituterSaveStep]
+      ? [
+          buck2TrustedCacheWriterStep({
+            name: 'Buck daemon cache posture regressions',
+            env: githubTokenEnv(),
+            run: runDevenvTasksBefore('buck2:cache-posture:ci-test'),
+          }),
+          buck2TrustedCacheWriterStep(compiledProductsSmokeStep),
+          macosNixSubstituterSaveStep,
+        ]
       : []),
     nixDiagnosticsSummaryStep,
     nixDiagnosticsArtifactStep(),
@@ -772,7 +808,7 @@ const jobs: Record<CoreCIJobName, CiWorkflowArgs['jobs'][string]> = {
               '    prepared+=("$package")',
               '    ln -s "$PWD/$modules" "$package/node_modules"',
               '  done',
-              '  "$DEVENV_BIN" tasks run --mode single genie:buck2:test genie:ci-workflow:test buck2:rust:generators:test',
+              '  "$DEVENV_BIN" tasks run --mode single genie:buck2:test genie:ci-workflow:test buck2:rust:generators:test buck2:cache-posture:ci-test',
               "'",
             ].join('\n'),
           ),
@@ -875,6 +911,30 @@ const jobs: Record<CoreCIJobName, CiWorkflowArgs['jobs'][string]> = {
       },
     ],
   }),
+  'test-megarepo-store-gc': {
+    ...job({
+      privileged: 'always',
+      priority: deliveryJobPriority,
+      laneIf: `\${{ (${ciMeasurementNotBaselineBackfillPredicate}) && (github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch' || github.event_name == 'merge_group') }}`,
+      timeoutMinutes: longJobTimeoutMinutes,
+      step: {
+        name: 'Complete native megarepo regression tests',
+        env: githubTokenEnv(),
+        run: runDevenvTasksBefore('test:megarepo-store-gc'),
+      },
+      afterSteps: [
+        {
+          name: 'Complete native megarepo test receipt',
+          if: '${{ always() }}',
+          run: `jq -e '{numTotalTests, numPassedTests, numFailedTests, numPendingTests, success, testResults: [.testResults[] | {name, status, assertionResults: [.assertionResults[] | {fullName, status}]}]} | select(.success and .numTotalTests > 0)' tmp/otel-scrape/summaries/test-megarepo-unbounded.vitest.json`,
+        },
+      ],
+    }),
+    env: {
+      EFFECT_UTILS_CI_TEST: '1',
+      EFFECT_UTILS_TEST_PLATFORM: 'linux',
+    },
+  },
   'test-megarepo-cold-gc': job({
     privileged: 'trusted',
     priority: backgroundJobPriority,
@@ -885,6 +945,13 @@ const jobs: Record<CoreCIJobName, CiWorkflowArgs['jobs'][string]> = {
       env: githubTokenEnv(),
       run: runDevenvTasksBefore('test:megarepo-cold-gc'),
     },
+    afterSteps: [
+      {
+        name: 'Cold-GC per-test receipt',
+        if: '${{ always() }}',
+        run: `jq -e '{numTotalTests, numPassedTests, numFailedTests, numPendingTests, success, testResults: [.testResults[] | {name, status, assertionResults: [.assertionResults[] | {fullName, status}]}]} | select(.success and .numTotalTests > 0)' tmp/otel-scrape/summaries/test-megarepo-cold-gc.vitest.json`,
+      },
+    ],
   }),
 
   cargo: job({
@@ -1067,15 +1134,18 @@ const extraJobs: Record<string, any> = {
         // run directly because the publisher refuses `pull_request` events by design).
         name: 'Check product publisher, manifest import, and from-source contracts',
         env: githubTokenEnv(),
-        run: withCiSourceRoot(
-          [
-            'set -euo pipefail',
-            '"${DEVENV_BIN:?DEVENV_BIN not set}" shell -- env -u GITHUB_EVENT_NAME bash nix/workspace-tools/lib/tests/buck2-release-products.sh "$PWD"',
-            '"${DEVENV_BIN:?DEVENV_BIN not set}" shell -- bash nix/workspace-tools/lib/tests/javascript-product-import.sh "$PWD"',
-            '"${DEVENV_BIN:?DEVENV_BIN not set}" shell -- bash nix/buck2-products/from-source-contract.test.sh "$PWD"',
-            '"${DEVENV_BIN:?DEVENV_BIN not set}" shell -- bash nix/buck2-products/private-product-tarballs.test.sh "$PWD"',
-          ].join('\n'),
-        ),
+        run: withGcRaceRetry({
+          label: 'product publisher, manifest import, and from-source contracts',
+          command: withCiSourceRoot(
+            [
+              'set -euo pipefail',
+              '"${DEVENV_BIN:?DEVENV_BIN not set}" shell -- env -u GITHUB_EVENT_NAME bash nix/workspace-tools/lib/tests/buck2-release-products.sh "$PWD"',
+              '"${DEVENV_BIN:?DEVENV_BIN not set}" shell -- bash nix/workspace-tools/lib/tests/javascript-product-import.sh "$PWD"',
+              '"${DEVENV_BIN:?DEVENV_BIN not set}" shell -- bash nix/buck2-products/from-source-contract.test.sh "$PWD"',
+              '"${DEVENV_BIN:?DEVENV_BIN not set}" shell -- bash nix/buck2-products/private-product-tarballs.test.sh "$PWD"',
+            ].join('\n'),
+          ),
+        }),
       },
       ...cheapInertBuckSteps,
     ],
@@ -1386,6 +1456,8 @@ const extraJobs: Record<string, any> = {
     steps: [
       checkoutStep(),
       installNixStep(),
+      cachixCliBuildStep,
+      trustedCachixStep,
       prepareCiScriptsStep,
       preparePinnedDevenvStep,
       validateNixStoreStep,
@@ -2061,38 +2133,44 @@ export default ciWorkflow({
   permissions: { contents: 'read', 'id-token': 'write' },
   jobs: withBuck2CachePostures({
     jobs: {
-      // API-only control job: no Nix bootstrap, cache evidence, or telemetry adapters.
-      'tested-tree': {
-        'runs-on': 'ubuntu-latest',
-        'timeout-minutes': 3,
-        permissions: { contents: 'read', actions: 'read' },
-        outputs: { tested: '${{ steps.lookup.outputs.tested }}' },
-        steps: [
-          {
-            ...checkoutStep(),
-            if: "${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}",
-            with: { 'persist-credentials': false },
+      ...withNixRealisationTimeouts(
+        {
+          // API-only control job: no Nix bootstrap, cache evidence, or telemetry adapters.
+          'tested-tree': {
+            'runs-on': 'ubuntu-latest',
+            'timeout-minutes': 3,
+            permissions: { contents: 'read', actions: 'read' },
+            outputs: { tested: '${{ steps.lookup.outputs.tested }}' },
+            steps: [
+              {
+                ...checkoutStep(),
+                if: "${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}",
+                with: { 'persist-credentials': false },
+              },
+              {
+                uses: 'actions/setup-node@v4',
+                if: "${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}",
+                with: { 'node-version': '24' },
+              },
+              {
+                id: 'lookup',
+                name: 'Find successful queue evidence for pushed tree',
+                if: "${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}",
+                'continue-on-error': true,
+                env: { GH_TOKEN: '${{ github.token }}' },
+                run: 'node genie/ci-scripts/tested-tree.ts',
+              },
+            ],
           },
-          {
-            uses: 'actions/setup-node@v4',
-            if: "${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}",
-            with: { 'node-version': '24' },
-          },
-          {
-            id: 'lookup',
-            name: 'Find successful queue evidence for pushed tree',
-            if: "${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}",
-            'continue-on-error': true,
-            env: { GH_TOKEN: '${{ github.token }}' },
-            run: 'node genie/ci-scripts/tested-tree.ts',
-          },
-        ],
-      },
-      ...withPipelineTelemetry(withBuck2CacheEvidence(instrumentedProductCiJobs)),
+          ...withPipelineTelemetry(withBuck2CacheEvidence(instrumentedProductCiJobs)),
+          'promote-published': promotePublishedJob!,
+          'pipeline-attempt-close': pipelineCloseJob(productCiJobs),
+          'pipeline-traces': pipelineTracesJob,
+        },
+        nixRealisationTimingsSeconds,
+      ),
+      // Consumer bootstrap policy is managed independently from source-editor setup.
       'consumer-smoke': consumerSmokeJob!,
-      'promote-published': promotePublishedJob!,
-      'pipeline-attempt-close': pipelineCloseJob(productCiJobs),
-      'pipeline-traces': pipelineTracesJob,
     },
     // Protected queue heads and fallback main pushes warm the cache opportunistically.
     // PR jobs never receive writer credentials; the dedicated main proof remains strict.
@@ -2104,6 +2182,7 @@ export default ciWorkflow({
       'test-macos': 'trusted-writer',
       'test-playwright-utils': 'trusted-writer',
       'test-playwright-tui-react': 'trusted-writer',
+      'test-megarepo-store-gc': 'reader',
       cargo: 'trusted-writer',
       weaver: 'trusted-writer',
       'source-shape': 'reader',

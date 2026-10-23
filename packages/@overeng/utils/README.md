@@ -193,6 +193,21 @@ remaining TS/JSX. Next 16 defaults to Turbopack for both `next dev` and
 `next build`; run both with `--webpack`. Turbopack is unsupported because it
 does not invoke this webpack hook, leaving StyleX calls uncompiled.
 
+The Next/Vite parity build test stays in the hermetic Buck unit lane. Its
+`STYLEX_NEXT_FIXTURE` input is the immutable `stylex-next-fixture` Nix package:
+the manifest derives dependency pins from this package's Genie source, and the
+fixture's committed lock owns transitive resolution. Registry acquisition happens
+when Nix realizes the fixed-output store, not while the test runs. Each invocation
+copies that seed into a fresh writable store and performs a frozen, offline
+install; neither a warm host cache nor registry availability is required.
+
+When dependency pins change, regenerate
+`test-fixtures/stylex-next/package.json`, refresh that fixture's lock with the
+pinned pnpm, and update the measured `pnpmDeps` hash in
+[`nix/stylex-next-fixture.nix`](../../../nix/stylex-next-fixture.nix).
+`nix build .#stylex-next-fixture.pnpmDeps` measures the normalized all-platform
+store; the test only realizes host-compatible optional dependencies.
+
 ## Features
 
 ### Key Features

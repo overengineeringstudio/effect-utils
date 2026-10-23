@@ -146,7 +146,7 @@ export const standaloneCachePostureConfig = ({
   readonly env: Readonly<Record<string, string | undefined>>
 }): string => {
   const withoutManaged = withoutManagedBlock(current)
-  const managed =
+  let managed =
     env['BUCK2_NO_REMOTE_CACHE'] === '1'
       ? NO_REMOTE_CACHE_BLOCK
       : env['BUCK2_PUBLIC_CACHE_READ_ONLY'] === '1'
@@ -156,6 +156,15 @@ export const standaloneCachePostureConfig = ({
           : (env['BUCK2_CACHE_WRITE_BASIC_AUTH'] ?? '') !== ''
             ? PUBLISHER_CACHE_BLOCK
             : DEFAULT_CACHE_BLOCK
+  // Measured CI peak: 58 native-launch admissions; 120 retains twice that volume.
+  // This is Buck's count-only native retention, not a byte bound or a developer default.
+  if (env['GITHUB_ACTIONS'] === 'true' || (env['CI_BUCK2_CACHE_EVIDENCE_PATH'] ?? '') !== '') {
+    const retention = '[buck2]\n  retained_event_logs = 120'
+    managed =
+      managed.includes('[buck2]') === true
+        ? managed.replace('[buck2]', retention)
+        : managed.replace(MANAGED_END, `${retention}\n${MANAGED_END}`)
+  }
   const unmanaged = withoutManaged.content
   return unmanaged === '' ? `${managed}\n` : `${unmanaged}\n\n${managed}\n`
 }
@@ -184,22 +193,54 @@ export const reconcileStandaloneCachePosture = ({
   }
 }
 
-/** Fixed categories, timings, and redacted socket facts are safe for public CI. */
-export type RemoteCacheProbeFailure = {
-  readonly errorClass:
-    | 'configuration'
-    | 'dns'
-    | 'tcp'
-    | 'tls'
-    | 'transport'
-    | 'deadline'
-    | 'auth'
-    | 'http'
-    | 'grpc'
-    | 'protocol'
-  readonly phase: 'configuration' | 'dns' | 'tcp' | 'tls' | 'response'
+const remoteCacheProbeErrorClasses = [
+  'configuration',
+  'dns',
+  'tcp',
+  'tls',
+  'transport',
+  'deadline',
+  'auth',
+  'http',
+  'grpc',
+  'protocol',
+] as const
+const remoteCacheProbePhases = ['configuration', 'dns', 'tcp', 'tls', 'response'] as const
+
+/** Fixed categories and timings only; never server text, addresses or credentials. */
+export type ReapiAdmissionFailure = {
+  readonly class: (typeof remoteCacheProbeErrorClasses)[number]
+  readonly phase: (typeof remoteCacheProbePhases)[number]
   readonly elapsedMs: number
   readonly deadlineMs: number
+}
+/** Probe callback shape; admission artifacts rename errorClass to class. */
+export type RemoteCacheProbeFailure = Omit<ReapiAdmissionFailure, 'class'> & {
+  readonly errorClass: ReapiAdmissionFailure['class']
+}
+
+/** Decode only the closed, credential-free admission diagnostic contract. */
+export const decodeReapiAdmissionFailure = (value: unknown): ReapiAdmissionFailure => {
+  if (typeof value !== 'object' || value === null || Array.isArray(value) === true)
+    throw new Error('Invalid REAPI admission failure')
+  const errorClass = remoteCacheProbeErrorClasses.find(
+    (item) => 'class' in value && item === value.class,
+  )
+  const phase = remoteCacheProbePhases.find((item) => 'phase' in value && item === value.phase)
+  if (
+    errorClass === undefined ||
+    phase === undefined ||
+    !('elapsedMs' in value) ||
+    typeof value.elapsedMs !== 'number' ||
+    Number.isSafeInteger(value.elapsedMs) === false ||
+    value.elapsedMs < 0 ||
+    !('deadlineMs' in value) ||
+    typeof value.deadlineMs !== 'number' ||
+    Number.isSafeInteger(value.deadlineMs) === false ||
+    value.deadlineMs < 0
+  )
+    throw new Error('Invalid REAPI admission failure')
+  return { class: errorClass, phase, elapsedMs: value.elapsedMs, deadlineMs: value.deadlineMs }
 }
 
 /** Actual socket setup milestones with public-only addresses and monotonic timing. */

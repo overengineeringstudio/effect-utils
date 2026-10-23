@@ -1,6 +1,6 @@
 import { describe, expect, it } from '@effect/vitest'
 
-import { canonicalizeBlockMarkdown } from './canonical-markdown.ts'
+import { canonicalizeBlockMarkdown, canonicalizeSemanticMarkdown } from './canonical-markdown.ts'
 
 describe('canonicalizeBlockMarkdown', () => {
   it('unwraps soft-wrapped paragraph lines into one logical line', () => {
@@ -113,4 +113,27 @@ describe('canonicalizeBlockMarkdown', () => {
     expect(canonicalizeBlockMarkdown(once)).toBe(once)
     expect(once).toBe('- a\n- b\n\nAfter.\n')
   })
+})
+
+describe('canonicalizeSemanticMarkdown', () => {
+  it.each([
+    ['shrunk input (#2045)', '\u0000\u0000\u0001*\u0007*', '\uFFFD\uFFFD\uFFFD_\uFFFD_\n'],
+    ['control before emphasis', '\u0001*x*', '\uFFFD_x_\n'],
+    ['control inside emphasis', 'x*\u0007*', '&#x78;_\uFFFD_\n'],
+    ['DEL before punctuation emphasis', '\u007f*.*', '\uFFFD\\*.\\*\n'],
+    ['C1 controls around emphasis', '\u0080*\u009f*', '\uFFFD_\uFFFD_\n'],
+  ])('is idempotent with %s', (_label, input, expected) => {
+    const once = canonicalizeSemanticMarkdown(input)
+    expect(once).toBe(expected)
+    expect(canonicalizeSemanticMarkdown(once)).toBe(once)
+  })
+
+  it.each(['`\u0001\u0007`', '```\n\u0001\u0007\n```'])(
+    'preserves controls in code (%#)',
+    (input) => {
+      const once = canonicalizeSemanticMarkdown(input)
+      expect(once).toContain('\u0001\u0007')
+      expect(canonicalizeSemanticMarkdown(once)).toBe(once)
+    },
+  )
 })

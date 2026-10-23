@@ -29,8 +29,9 @@ let
     '';
     builtins.getFlake "git+file://${toString ./.}";
   currentSystem = pkgs.stdenv.hostPlatform.system;
-  # Required CI tests do not run the interactive trace-capture verifier.
+  # Unit jobs retain their source-test/bootstrap closure, not interactive or deploy tools.
   ciUnitTest = builtins.getEnv "EFFECT_UTILS_CI_TEST" == "1";
+  isolateMegarepoGcTests = (ciUnitTest || builtins.getEnv "CI" == "true") && pkgs.stdenv.isLinux;
   testPlatform = builtins.getEnv "EFFECT_UTILS_TEST_PLATFORM";
   testPlatforms = builtins.fromJSON (builtins.readFile ./genie/ci-workflow/test-platforms.json);
   testScheduling = builtins.fromJSON (builtins.readFile ./genie/ci-workflow/test-scheduling.json);
@@ -130,9 +131,6 @@ let
   };
   sourceBun = pkgs.writeShellScriptBin "bun" ''
     exec ${sourceLease}/bin/editor-view-source ${pkgs.bun}/bin/bun "$@"
-  '';
-  sourceExec = script: ''
-    exec ${sourceLease}/bin/editor-view-source ${pkgs.writeShellScript "editor-view-source-command" script}
   '';
 
   # Keep library configuration environment-driven; resolve local credentials at
@@ -416,6 +414,9 @@ let
     vitestArgs = lib.concatStringsSep " " (map lib.escapeShellArg lane.unboundedFiles);
     # mr's writer boundary uses Bun FFI, matching its packaged runtime.
     vitestRuntime = if lane.packageName == "megarepo" then "bun" else "node";
+    # Elevated own-real-UID runner helpers correctly veto product GC but are outside
+    # the synthetic fixture world. Isolate tests rather than weaken that policy.
+    vitestIsolatedProcessTable = isolateMegarepoGcTests && lane.packageName == "megarepo";
     after = lane.unboundedAfter;
   }) (builtins.filter (lane: lane.unboundedFiles != [ ]) buck2TestLanes);
   allSourceTestPackages = sourceOnlyTestPackages ++ unboundedTestPackages;
@@ -939,8 +940,6 @@ in
     })
     # gh:apply-labels / gh:check-labels — reconcile .github/labels.json with live labels
     (import ./nix/devenv-modules/gh-labels.nix { repo = "overengineeringstudio/effect-utils"; })
-    # Playwright browser drivers and environment setup
-    inputs.playwright.devenvModules.default
     # Shared task modules
     taskModules.genie
     (taskModules.megarepo {
@@ -971,14 +970,6 @@ in
     (taskModules.weaver-diff { })
     { tasks."check:all".after = [ "weaver:diff" ]; }
     { tasks."check:all".after = [ "nix:flake:eval" ]; }
-    # Live-check e2e (SC-R12): emits registry-conformant OTLP from a first-party site, captures it,
-    # and asserts `weaver registry live-check` accepts it (exit 0). Runs the scoped vitest e2e with
-    # the hermetic weaver + semconv-model on env; degrades to a warning if weaver is unavailable.
-    # Defined here so the CI `weaver` lane can invoke it, but deliberately NOT wired into `check:all`:
-    # unlike the deterministic check/diff runs, this is a subprocess e2e (spawns otelite, binds an
-    # ephemeral port, depends on export-flush timing), so it lives in CI rather than gating every
-    # local `check:all` on capture reliability.
-    (taskModules.weaver-live-check { installTask = "buck2:editor:publish:otel-contract"; })
     (taskModules.clean { packages = allPackages; })
     # Pnpm remains only as a lockfile authoring tool. It cannot materialize a
     # workspace dependency graph or publish node_modules.
@@ -991,28 +982,6 @@ in
     # Source-side Vitest is now only what Buck does not execute: packages outside the Buck
     # test registry and each admitted lane's exact excluded files. Retained JSON therefore
     # exists exactly where the baseline gate still needs a source report.
-    (taskModules.test-playwright {
-      sourceLauncher = "${sourceLease}/bin/editor-view-source";
-      playwrightPkg = inputs.playwright.packages.${currentSystem}.playwright;
-      installTask = "buck2:editor:publish:playwright";
-      # Launch the CLI through @playwright/test so the runner and test imports
-      # share one module instance inside the Buck editor dependency view.
-      playwrightBin = "node_modules/@playwright/test/cli.js";
-      packages = [
-        {
-          path = "packages/@overeng/utils";
-          name = "utils";
-        }
-        {
-          path = "packages/@overeng/tui-react";
-          name = "tui-react";
-        }
-        {
-          path = "packages/@overeng/meters";
-          name = "meters";
-        }
-      ];
-    })
     (taskModules.test {
       sourceLauncher = "${sourceLease}/bin/editor-view-source";
       installTask = "buck2:editor:publish:test";
@@ -1039,6 +1008,100 @@ in
         ) standaloneTestPublicationPackages
       );
     }
+    (taskModules.lint-oxc {
+      oxlintPkg = oxlintWithPlugins;
+      lintPaths = [
+        "packages"
+        "scripts"
+        "context"
+      ];
+      # Match both repo-root and nested Genie sources explicitly, then compose
+      # the same repository-specific semantic inputs used by the warm-state
+      # fingerprint. This is freshness scheduling, not output admission.
+      geniePatterns = [
+        "*.genie.ts"
+        "**/*.genie.ts"
+      ]
+      ++ genieExtraInputGlobs;
+      genieCoverageDirs = [ "packages" ];
+      # Type correctness is owned by the Buck aggregate; lint stays a syntax and
+      # source-policy pass instead of reconstructing a second root TS solution.
+      # Warning cleanup is complete, so any lint warning fails both CI and the
+      # local pre-commit gate.
+      denyWarnings = true;
+    })
+    # Setup task (auto-runs in enterShell)
+    # Context example tasks
+    taskModules.context
+    (taskModules.setup {
+      # Repository mutation is explicit. Shell entry activates only the Nix
+      # environment, so its latency and availability are independent of Buck,
+      # pnpm, Genie, megarepo state, and the repository revision.
+      runOnEnterShell = false;
+      requiredTasks = [ ];
+      # Reuse the Genie semantic-input SSOT in the cheap Git-index outer
+      # fingerprint so a warm shell cannot bypass projection invalidation.
+      extraFingerprintGlobs = genieExtraInputGlobs;
+      # Shell entry must not publish editor views. Materialization is explicit.
+      optionalTasks = [ ];
+      completionsCliNames = [
+        "genie"
+        "mr"
+      ];
+    })
+    (taskModules.secretspec { })
+    taskModules.devenv-module-tests
+  ]
+  ++ lib.optionals (!ciUnitTest) [
+    # devenv serializes every declared task into DEVENV_TASK_FILE. Keep unrelated
+    # browser/deploy/live families out of the unit shell at their definitions.
+    {
+      # This regression invokes tasks intentionally absent from the unit shell.
+      # Keep its cheap, provider-free coverage on the full-profile check gates.
+      tasks."test:notion-integration:ci-skip" = {
+        description = "Check Notion integration CI skips without resolving a secret provider";
+        before = [
+          "check:quick"
+          "check:all"
+        ];
+        exec = trace.exec "test:notion-integration:ci-skip" ''
+          root="''${DEVENV_ROOT:-$PWD}"
+          exec ${pkgs.bash}/bin/bash "$root/nix/devenv-modules/tasks/shared/tests/notion-integration-ci.test.sh"
+        '';
+      };
+    }
+    # Playwright browser drivers and environment setup
+    inputs.playwright.devenvModules.default
+    # Live-check e2e (SC-R12): emits registry-conformant OTLP from a first-party site, captures it,
+    # and asserts `weaver registry live-check` accepts it (exit 0). Runs the scoped vitest e2e with
+    # the hermetic weaver + semconv-model on env; degrades to a warning if weaver is unavailable.
+    # Defined here so the CI `weaver` lane can invoke it, but deliberately NOT wired into `check:all`:
+    # unlike the deterministic check/diff runs, this is a subprocess e2e (spawns otelite, binds an
+    # ephemeral port, depends on export-flush timing), so it lives in CI rather than gating every
+    # local `check:all` on capture reliability.
+    (taskModules.weaver-live-check { installTask = "buck2:editor:publish:otel-contract"; })
+    (taskModules.test-playwright {
+      sourceLauncher = "${sourceLease}/bin/editor-view-source";
+      playwrightPkg = inputs.playwright.packages.${currentSystem}.playwright;
+      installTask = "buck2:editor:publish:playwright";
+      # Launch the CLI through @playwright/test so the runner and test imports
+      # share one module instance inside the Buck editor dependency view.
+      playwrightBin = "node_modules/@playwright/test/cli.js";
+      packages = [
+        {
+          path = "packages/@overeng/utils";
+          name = "utils";
+        }
+        {
+          path = "packages/@overeng/tui-react";
+          name = "tui-react";
+        }
+        {
+          path = "packages/@overeng/meters";
+          name = "meters";
+        }
+      ];
+    })
     {
       tasks = lib.listToAttrs (
         map (
@@ -1085,55 +1148,10 @@ in
     # a deploy is skipped. Use the hermetic package instead of relying on an
     # ambient source-workspace node_modules projection.
     (taskModules.workflow-report { ciToolsBin = "${ciToolsCli}/bin/ci-tools"; })
-    (taskModules.lint-oxc {
-      oxlintPkg = oxlintWithPlugins;
-      lintPaths = [
-        "packages"
-        "scripts"
-        "context"
-      ];
-      # Match both repo-root and nested Genie sources explicitly, then compose
-      # the same repository-specific semantic inputs used by the warm-state
-      # fingerprint. This is freshness scheduling, not output admission.
-      geniePatterns = [
-        "*.genie.ts"
-        "**/*.genie.ts"
-      ]
-      ++ genieExtraInputGlobs;
-      genieCoverageDirs = [ "packages" ];
-      # Type correctness is owned by the Buck aggregate; lint stays a syntax and
-      # source-policy pass instead of reconstructing a second root TS solution.
-      # Warning cleanup is complete, so any lint warning fails both CI and the
-      # local pre-commit gate.
-      denyWarnings = true;
-    })
-    # Setup task (auto-runs in enterShell)
-    # Context example tasks
-    taskModules.context
-    (taskModules.setup {
-      # Repository mutation is explicit. Shell entry activates only the Nix
-      # environment, so its latency and availability are independent of Buck,
-      # pnpm, Genie, megarepo state, and the repository revision.
-      runOnEnterShell = false;
-      requiredTasks = [ ];
-      # Reuse the Genie semantic-input SSOT in the cheap Git-index outer
-      # fingerprint so a warm shell cannot bypass projection invalidation.
-      extraFingerprintGlobs = genieExtraInputGlobs;
-      # Shell entry must not publish editor views. Materialization is explicit.
-      optionalTasks = [ ];
-      completionsCliNames = [
-        "genie"
-        "mr"
-      ];
-    })
-    (taskModules.secretspec { })
-    taskModules.devenv-module-tests
     # Notion integration tests (requires NOTION_API_TOKEN)
     ./nix/devenv-modules/tasks/local/notion-integration-test.nix
     # Restate integration tests (native restate-server via RESTATE_SERVER_BIN)
     ./nix/devenv-modules/tasks/local/restate-integration-test.nix
-  ]
-  ++ lib.optionals (!ciUnitTest) [
     # OpenTelemetry observability stack (Collector + Tempo + Grafana)
     (import ./nix/devenv-modules/otel.nix { traceShellEntry = false; })
     # Hermetic native-devenv + effect-utils task-tree capture. Ambient mode
@@ -1198,8 +1216,12 @@ in
     JQ_BIN = "${pkgs.jq}/bin/jq";
     FINGERPRINT_BIN = "${repoFlake.packages.${currentSystem}.buck2-fingerprint}/bin/buck2-fingerprint";
   };
-  tasks."test:restate-integration".after = lib.mkForce [ "buck2:editor:publish:restate-effect" ];
-  tasks."weaver:live-check".after = lib.mkForce [ "buck2:editor:publish:otel-contract" ];
+  tasks."test:restate-integration" = lib.mkIf (!ciUnitTest) {
+    after = lib.mkForce [ "buck2:editor:publish:restate-effect" ];
+  };
+  tasks."weaver:live-check" = lib.mkIf (!ciUnitTest) {
+    after = lib.mkForce [ "buck2:editor:publish:otel-contract" ];
+  };
   tasks."test:pty-effect:unbounded".env = {
     NODE_PTY_NATIVE_PACKAGE = "${nodePtyNative}/node_modules/node-pty";
     NODE_OPTIONS = "--import=${./. + "/packages/@overeng/pty-effect/test/node-pty-native-hook.ts"}";
@@ -1269,6 +1291,7 @@ in
     repoPackages.buck2-archive-tool
     pkgs.nodejs_24
     pkgs.bun
+    pkgs.unzip # Platform ZIP reader for the bounded cache evidence join.
     pkgs.typescript
     pkgs.flock # Cross-process locking for setup tasks (see setup.nix)
     # Buck's admitted event backend; avoids pnpm alias staleness and whole-tree
@@ -1276,10 +1299,6 @@ in
     pkgs.watchman
     # restate-server (+ restate CLI) on $PATH for restate-effect integration tests.
     restate
-    # Use the packaged wrapper so `notion db ...` runs on Node 24 with node:sqlite.
-    (notionWithSecrets "notion" repoPackages.notion-cli)
-    (notionWithSecrets "notion-md" repoPackages.notion-md)
-    # Rust binaries on PATH for local smoke tests and downstream wrappers.
     # Retained source suites execute this native capture binary on both platforms.
     # The protected-main publisher retains this exact import (and the other
     # repository shell tools) through .#ci-test-shell-products on each platform.
@@ -1290,18 +1309,23 @@ in
     buck2Machine
     repoPackages.buck2-product
     cliBuildStamp.package
-    ciToolsCli
-    ghCiUtilsCli
-    tuiStoriesCli
-    # Rust toolchain for the standalone Rust crates.
-    # Stage-zero Nix providers use pkgs.rustPlatform; local validation keeps
-    # cargo/clippy/rustfmt/rust-analyzer aligned with nixpkgs' stable Rust.
+    # Source generators invoke rustfmt and module tests compile Rust fixtures.
+    # Keep the shared toolchain aligned with nixpkgs' stage-zero providers.
     pkgs.cargo
     pkgs.rustc
     pkgs.clippy
     pkgs.reindeer
     pkgs.rustfmt
     pkgs.rust-analyzer
+  ]
+  ++ lib.optionals (!ciUnitTest) [
+    # Use the packaged wrapper so `notion db ...` runs on Node 24 with node:sqlite.
+    (notionWithSecrets "notion" repoPackages.notion-cli)
+    (notionWithSecrets "notion-md" repoPackages.notion-md)
+    # Rust binaries on PATH for local smoke tests and downstream wrappers.
+    ciToolsCli
+    ghCiUtilsCli
+    tuiStoriesCli
   ]
   ++ lib.optional ciUnitTest otelSpan;
 
@@ -1345,18 +1369,19 @@ in
   );
 
   tasks."genie:ci-workflow:test" = {
-    description = "Run bootstrap-safe genie CI workflow helper tests (runner labels, plain-flake Rust jobs)";
+    description = "Run bootstrap-safe CI workflow helpers and strict Buck cache evidence joins";
     exec = trace.exec "genie:ci-workflow:test" ''
       set -euo pipefail
       cd "''${DEVENV_ROOT:-$PWD}"
       # `./` makes these exact paths; bare arguments are suffix filters that
       # also match the copies Buck stages under buck-out.
-      ${sourceBun}/bin/bun ./packages/@overeng/buck2-tools/src/bun-test-runner.ts test ./genie/ci-workflow/rust.unit.test.ts ./genie/ci-workflow/setup.unit.test.ts ./genie/ci-workflow/nix-substituter.integration.test.ts
+      ${sourceBun}/bin/bun ./packages/@overeng/buck2-tools/src/bun-test-runner.ts test ./genie/ci-workflow/default-ref-policy-script.unit.test.ts ./genie/ci-workflow/rust.unit.test.ts ./genie/ci-workflow/setup.unit.test.ts ./genie/ci-workflow/nix-substituter.integration.test.ts ./genie/ci-workflow/empirical-proofs.unit.test.ts ./genie/ci-scripts/buck2-cache-join.unit.test.ts ./genie/ci-scripts/buck2-cache-join-discovery.unit.test.ts ./genie/ci-scripts/buck2-cache-join-download.unit.test.ts ./genie/ci-scripts/buck2-cache-warm99.unit.test.ts ./genie/ci-scripts/buck2-cache-warm99.integration.test.ts
       exec ${pkgs.bash}/bin/bash ./genie/ci-workflow/published-ref-decide.test.sh
     '';
     execIfModified = [
       "genie/ci-workflow/**/*.ts"
       "genie/ci-workflow/**/*.sh"
+      "genie/ci-scripts/buck2-cache-*.ts"
       "genie/ci.ts"
       ".github/workflows/ci.yml.genie.ts"
       "packages/@overeng/genie/src/runtime/**/*.ts"
@@ -1381,6 +1406,17 @@ in
       "genie/ci-scripts/buck2-action-evidence.ts"
       "scripts/buck2-file-watcher.*"
     ];
+  };
+
+  tasks."buck2:cache-posture:ci-test" = {
+    description = "Exercise hermetic cache posture and daemon RE admission without fleet gate-slot dependencies";
+    exec = trace.exec "buck2:cache-posture:ci-test" ''
+      set -euo pipefail
+      cd "''${DEVENV_ROOT:-$PWD}"
+      exec ${sourceBun}/bin/bun ./packages/@overeng/buck2-tools/src/bun-test-runner.ts test \
+        ./scripts/buck2-entrypoint.posture.integration.test.ts \
+        ./scripts/buck2-cache-posture.integration.test.ts
+    '';
   };
 
   tasks."buck2:capabilities:test" = {
@@ -1505,7 +1541,7 @@ in
     '';
   };
 
-  tasks."test:consumer-smoke" = {
+  tasks."test:consumer-smoke" = lib.mkIf (!ciUnitTest) {
     description = "Install a fixture consumer through the candidate's standalone-staged pnpm module";
     exec = trace.exec "test:consumer-smoke" ''
       set -euo pipefail
@@ -1514,15 +1550,26 @@ in
     '';
   };
 
-  tasks."test:megarepo-cold-gc" = {
+  tasks."test:megarepo-store-gc" = {
+    after = [ "test:megarepo:unbounded" ];
+    description = "Prove the complete Linux native megarepo complement before queue admission";
+  };
+
+  tasks."test:megarepo-cold-gc" = lib.mkIf (!ciUnitTest) {
     after = [ (consumerPublisherName "packages/@overeng/megarepo") ];
     description = "Run fixture-isolated megarepo cold-GC integration tests from the standalone checkout";
     cwd = "packages/@overeng/megarepo";
-    exec = trace.exec "test:megarepo-cold-gc" (sourceExec ''
+    exec = trace.exec "test:megarepo-cold-gc" ''
       set -euo pipefail
       source ${lib.escapeShellArg pnpmTaskHelpersScript}
-      ${pkgs.bun}/bin/bun --bun "$(resolve_package_bin vitest vitest)" run src/cli/store-gc-cold.integration.test.ts --reporter verbose --testTimeout 240000
-    '');
+      report_dir="''${DEVENV_ROOT:-$PWD}/tmp/otel-scrape/summaries"
+      mkdir -p "$report_dir"
+      ${lib.optionalString isolateMegarepoGcTests ''
+        sudo -n -E ${pkgs.coreutils}/bin/env -u EDITOR_VIEW_LEASE_FDS -u EDITOR_VIEW_LEASE_ACTIVE "PATH=$PATH" \
+          ${pkgs.util-linux}/bin/unshare --pid --fork --mount-proc -- \
+          ${pkgs.python3}/bin/python3 ${./nix/devenv-modules/tasks/shared/test-namespace-init.py} "$(id -u)" "$(id -g)" \
+      ''}${flakePkgs.bun}/bin/bun --bun "$(resolve_package_bin vitest vitest)" run src/cli/store-gc-cold.integration.test.ts --reporter verbose --reporter json "--outputFile.json=$report_dir/test-megarepo-cold-gc.vitest.json" --testTimeout 240000
+    '';
     execIfModified = [
       "packages/@overeng/megarepo/src/**/*.ts"
       "packages/@overeng/megarepo/src/**/*.tsx"
@@ -1792,19 +1839,19 @@ in
     traceScope = "generators";
   };
 
-  tasks."buck2:editor:publish:restate-effect" = scopedEditorViewPublisher {
+  tasks."buck2:editor:publish:restate-effect" = lib.mkIf (!ciUnitTest) (scopedEditorViewPublisher {
     description = "Atomically publish the Restate integration editor dependency view";
     packagePaths = [ "packages/@overeng/restate-effect" ];
     traceScope = "restate-effect";
-  };
+  });
 
-  tasks."buck2:editor:publish:otel-contract" = scopedEditorViewPublisher {
+  tasks."buck2:editor:publish:otel-contract" = lib.mkIf (!ciUnitTest) (scopedEditorViewPublisher {
     description = "Atomically publish the Weaver live-check editor dependency view";
     packagePaths = [ "packages/@overeng/otel-contract" ];
     traceScope = "otel-contract";
-  };
+  });
 
-  tasks."buck2:editor:publish:playwright" = scopedEditorViewPublisher {
+  tasks."buck2:editor:publish:playwright" = lib.mkIf (!ciUnitTest) (scopedEditorViewPublisher {
     description = "Atomically publish the shared Playwright editor dependency views";
     packagePaths = [
       "packages/@overeng/meters"
@@ -1812,7 +1859,7 @@ in
       "packages/@overeng/utils"
     ];
     traceScope = "playwright";
-  };
+  });
 
   tasks."buck2:editor:publish:test" = scopedEditorViewPublisher {
     description = "Publish only the shared source-test harness dependency views";

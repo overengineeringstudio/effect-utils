@@ -7,7 +7,11 @@
 
 import { Schema } from 'effect'
 
-import { BuckDaemonStopped, BuckDaemonUnreachable } from '../../../store/store-buck-daemons.ts'
+import {
+  BuckDaemonKeptActive,
+  BuckDaemonStopped,
+  BuckDaemonUnreachable,
+} from '../../../store/store-buck-daemons.ts'
 
 // =============================================================================
 // Common Types
@@ -67,8 +71,10 @@ export const StoreGcResult = Schema.Struct({
    * Distinct from `message` (free-form detail); `reason` is the stable tag.
    */
   reason: Schema.optional(Schema.String),
-  /** For `archived`: the `.archive/` location the worktree was moved to (recovery hint). */
+  /** Recovery location for an archive or a partially deleted quarantine. */
   recoverPath: Schema.optional(Schema.String),
+  /** Native filesystem error code when deletion failed. */
+  code: Schema.optional(Schema.String),
   /** For ref-mismatch archives: the branch implied by the store path. */
   pathRef: Schema.optional(Schema.String),
   /** For ref-mismatch archives: the branch actually checked out in the worktree. */
@@ -93,6 +99,8 @@ export const StoreGcResult = Schema.Struct({
   buckDaemonsStopped: Schema.optional(Schema.Array(BuckDaemonStopped)),
   /** Daemons that GC could not address (archived roots are always report-only). */
   buckDaemonsUnreachable: Schema.optional(Schema.Array(BuckDaemonUnreachable)),
+  /** Live daemons whose active work vetoed teardown. */
+  buckDaemonsKeptActive: Schema.optional(Schema.Array(BuckDaemonKeptActive)),
 })
 
 /** Inferred type for a store GC result. */

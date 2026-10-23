@@ -59,6 +59,20 @@ const foldHardBreaks: () => (tree: unknown) => void = () => (tree) => {
   )
 }
 
+/*
+ * Attention serialization can encode adjacent text as numeric references.
+ * CommonMark decodes references to C0/C1 controls as U+FFFD, even though raw
+ * controls survive parsing. Normalize text to that same value before emitting
+ * references, so the semantic form does not change on its next parse. Keep
+ * code and other non-text nodes verbatim.
+ */
+const normalizeTextControls: () => (tree: unknown) => void = () => (tree) => {
+  visit(tree as never, 'text', (node: { value: string }) => {
+    // oxlint-disable-next-line no-control-regex -- Match the controls rejected by CommonMark numeric references.
+    node.value = node.value.replace(/[\u0000-\u0008\u000b\u000e-\u001f\u007f-\u009f]/gu, '\uFFFD')
+  })
+}
+
 /** Normalize common code-fence language aliases to their long names. */
 const normalizeCodeLanguages: () => (tree: unknown) => void = () => (tree) => {
   visit(tree as never, 'code', (node: { lang?: string | null }) => {
@@ -118,6 +132,7 @@ const semanticProcessor = unified()
   .use(notionMarkdownGfm)
   .use(unwrapSoftBreaks)
   .use(foldHardBreaks)
+  .use(normalizeTextControls)
   .use(normalizeCodeLanguages)
   .use(forceTightLists)
   .use(normalizeOrderedListStarts)
@@ -169,8 +184,9 @@ export const canonicalizeBlockMarkdown = (markdown: string): string => {
  * bytes. It starts from the same parser/stringifier policy as
  * {@link canonicalizeBlockMarkdown}, then folds Notion round-trip cosmetics that
  * do not change the visible body: hard-break spelling and common code-fence
- * language aliases, plus ordered-list start ordinals. Use this for
- * equality/hash oracles, not for writing a body back to disk.
+ * language aliases, plus ordered-list start ordinals. Text controls normalize
+ * to the replacement character used when parsing their numeric references.
+ * Use this for equality/hash oracles, not for writing a body back to disk.
  */
 export const canonicalizeSemanticMarkdown = (markdown: string): string => {
   const rendered = semanticProcessor.processSync(normalizeMarkdownInput(markdown)).toString()

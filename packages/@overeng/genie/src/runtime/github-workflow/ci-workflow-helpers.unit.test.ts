@@ -993,6 +993,16 @@ printf '%s\\n' "$NIX_OUTPUT"
     expect(megarepoTaskModuleSource).not.toContain('.value.members[].name')
   })
 
+  it('keeps shared repository policies and branch-specific reachability in the trust gate', () => {
+    expect(ciWorkflowSource).toContain('DEFAULT_REF_POLICIES_JSON')
+    expect(ciWorkflowSource).toContain("defaultRef: 'published'")
+    expect(ciWorkflowSource).toContain("acceptedRefs: ['published', 'main']")
+    expect(defaultRefPolicySource).toContain('acceptedRefsFor(repo).includes(expectedRef)')
+    expect(defaultRefPolicySource).toContain(
+      "typeof member.ref === 'string' ? normalizeRef(member.ref)",
+    )
+  })
+
   it('keeps the source-policy trust gate available before composition', () => {
     expect(defaultRefPolicySource).toContain('NORMALIZE_GIT_BRANCH_REFS')
     expect(defaultRefPolicySource).toContain("ref.startsWith('refs/heads/')")

@@ -37,6 +37,7 @@ export const developerOperationDispositions = {
   'test:run': 'outside-by-policy:aggregate-includes-policy-excluded-tests',
   'test:utils': 'outside-by-policy:aggregate-includes-policy-excluded-tests',
   'test:watch': 'outside-by-policy:long-lived-watcher',
+  'worktree:teardown': 'outside-by-policy:host-local-maintenance',
 } as const satisfies Record<string, OperationDisposition>
 
 export const validationOperationDispositions = {
@@ -73,6 +74,7 @@ export const ciOperationDispositions = {
   'test-integration-restate': 'outside-by-policy:service-integration',
   'test-live-deploy-ci-tools': 'outside-by-policy:live-deployment',
   'test-megarepo-cold-gc': 'outside-by-policy:filesystem-integration',
+  'test-megarepo-store-gc': 'outside-by-policy:filesystem-integration',
   'test-playwright-tui-react': 'outside-by-policy:browser-integration',
   'test-playwright-utils': 'outside-by-policy:browser-integration',
   weaver: 'outside-by-policy:aggregate-includes-change-relative-and-live-integration',

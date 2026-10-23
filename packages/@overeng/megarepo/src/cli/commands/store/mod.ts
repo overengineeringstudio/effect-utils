@@ -44,6 +44,7 @@ import {
 import {
   findWorktreeBuckDaemons,
   stopWorktreeBuckDaemons,
+  type BuckDaemonKeptActive,
   type BuckDaemonStopped,
   type BuckDaemonUnreachable,
 } from '../../../store/store-buck-daemons.ts'
@@ -66,8 +67,18 @@ import {
   readObservationLedger,
   recordObservations,
 } from '../../../store/store-gc-observations.ts'
+import {
+  recordGcDeletion,
+  withGcDeletionReceipt,
+  withGcPinnedDeletion,
+} from '../../../store/store-gc-receipts.ts'
 import { validateStoreMembers, fixStoreIssues } from '../../../store/store-hygiene.ts'
-import { readWorktreeInUse, type InUseHolder } from '../../../store/store-inuse.ts'
+import {
+  readWorktreeInUse,
+  readWorktreeReferencesInUse,
+  type ExemptProcess,
+  type InUseHolder,
+} from '../../../store/store-inuse.ts'
 import {
   collectStoreLiveSet,
   isPathProtected,
@@ -80,7 +91,6 @@ import {
   captureDeletionIdentity,
   PinnedDeletionError,
   storeDeletionPlatform,
-  withPinnedDeletion,
   type DeletionIdentity,
 } from '../../../store/store-pinned-deletion.ts'
 import {
@@ -93,6 +103,7 @@ import {
   captureProcessActivityManifest,
   encodeWorkspaceActivityManifest,
   isWorkspaceActive,
+  readActivityManifest,
   readWorkspaceActivity,
   readBudgetWorkspaceActivity,
   readBudgetWorktreeInUse,
@@ -1010,12 +1021,17 @@ interface NamedWorktreeTarget {
   readonly worktree: CollectedWorktree
 }
 
-/**
- * In-place overlay removal already started at the original path. The receipt
- * must say so: the remainder stays in the store for a later plan to observe.
- */
+/** Deletion already mutated the original tree or moved it into quarantine. */
 const isPartialDeletion = (error: unknown): error is PinnedDeletionError =>
   error instanceof PinnedDeletionError && error.partial === true
+
+const deletionRecovery = (error: unknown): { recoverPath?: string; code?: string } =>
+  error instanceof PinnedDeletionError
+    ? {
+        ...(error.recoverPath === undefined ? {} : { recoverPath: error.recoverPath }),
+        ...(error.code === undefined ? {} : { code: error.code }),
+      }
+    : {}
 
 /**
  * Build a `StoreGcResult` for a cold-path outcome.
@@ -1031,6 +1047,7 @@ const coldResult = ({
   reason,
   message,
   recoverPath,
+  code,
   pathRef,
   actualHeadBranch,
   worklogBytesRemoved,
@@ -1043,6 +1060,7 @@ const coldResult = ({
   reason?: string | undefined
   message?: string | undefined
   recoverPath?: string | undefined
+  code?: string | undefined
   pathRef?: string | undefined
   actualHeadBranch?: string | undefined
   worklogBytesRemoved?: number | undefined
@@ -1058,6 +1076,7 @@ const coldResult = ({
   ...(reason !== undefined ? { reason } : {}),
   ...(message !== undefined ? { message } : {}),
   ...(recoverPath !== undefined ? { recoverPath } : {}),
+  ...(code !== undefined ? { code } : {}),
   ...(pathRef !== undefined ? { pathRef } : {}),
   ...(actualHeadBranch !== undefined ? { actualHeadBranch } : {}),
   ...(worklogBytesRemoved !== undefined ? { worklogBytesRemoved } : {}),
@@ -1068,6 +1087,7 @@ const coldResult = ({
 interface BuckDaemonReceipt {
   readonly buckDaemonsStopped: ReadonlyArray<BuckDaemonStopped>
   readonly buckDaemonsUnreachable: ReadonlyArray<BuckDaemonUnreachable>
+  readonly buckDaemonsKeptActive: ReadonlyArray<BuckDaemonKeptActive>
 }
 
 /** Preserve every shutdown even if the following veto or mutation keeps/fails. */
@@ -1082,8 +1102,28 @@ const readBuckDaemonReceipt = Effect.fn('store.readBuckDaemonReceipt')(function*
   return {
     buckDaemonsStopped: results.filter((result) => result._tag === 'stopped'),
     buckDaemonsUnreachable: results.filter((result) => result._tag === 'unreachable'),
+    buckDaemonsKeptActive: results.filter((result) => result._tag === 'kept-active'),
   }
 })
+
+type DeletionVeto = InUseHolder & {
+  readonly reason?: string
+  readonly ignoredForeignProcesses?: number
+  readonly exemptProcesses?: ReadonlyArray<ExemptProcess>
+}
+
+/** Shutdown receipts are authority: a live daemon not proven stopped always keeps its tree. */
+const buckDaemonVeto = (receipt?: BuckDaemonReceipt): DeletionVeto | undefined => {
+  const daemon = receipt?.buckDaemonsUnreachable[0] ?? receipt?.buckDaemonsKeptActive[0]
+  if (daemon === undefined) return undefined
+  return {
+    pid: daemon.pid,
+    path: daemon.path,
+    reason: `Buck daemon pid ${daemon.pid} keeps the worktree (${
+      daemon._tag === 'unreachable' ? daemon.reason : 'active'
+    })`,
+  }
+}
 
 /**
  * Re-derive a fresh live set under lock for the veto re-check (invariant 1).
@@ -1117,26 +1157,94 @@ const reReconcileLiveSet = ({
  * `isPathProtected` only answers "is this worktree in some workspace's
  * reconciled manifest", and the deletion lease only answers "did an activation
  * announce itself". This answers the independent question neither covers: is a
- * live OS process working inside the directory right now. Returns the holder
- * when the site must KEEP; `undefined` when it is safe to proceed. An
- * unprobeable host (`unknown`) is reported as a holder, so in doubt we keep.
+ * live OS process working inside the directory right now. Configured activity
+ * manifests independently veto deletion; without one the native owner probe
+ * remains sufficient. Unreadable foreign services are counted, not vetoes.
  */
-const inUseVeto = ({
+const inUseVeto = Effect.fn('store.inUseVeto')(function* ({
+  storeBasePath,
   worktreePath,
+  deletionPath = worktreePath,
+  buckReceipt,
+  onProbe,
 }: {
+  storeBasePath: AbsoluteDirPath
   worktreePath: AbsoluteDirPath | string
-}): Effect.Effect<InUseHolder | undefined, never, FileSystem.FileSystem | ChildProcessSpawner> =>
-  Effect.gen(function* () {
-    const result = yield* readWorktreeInUse({ worktreePath })
-    if (result._tag === 'free') return undefined
-    return result._tag === 'in-use' ? result.holder : { pid: -1, path: `unknown: ${result.reason}` }
+  deletionPath?: string
+  buckReceipt?: BuckDaemonReceipt | undefined
+  onProbe?: (ignoredForeignProcesses: number, exemptProcesses: ReadonlyArray<ExemptProcess>) => void
+}) {
+  const fs = yield* FileSystem.FileSystem
+  const config = yield* loadStoreGcConfig({ storeBasePath })
+  const canonicalWorktree = yield* canonicalizeOwnerPath(worktreePath)
+  const manifestPath = config.generatedArtifacts.manifestPath
+  const activity =
+    manifestPath === undefined
+      ? undefined
+      : yield* readActivityManifest({
+          fs,
+          path: manifestPath,
+          producers: config.generatedArtifacts.agentLivenessProducers ?? [],
+        }).pipe(Effect.orElseSucceed(() => undefined))
+  const activityVeto: DeletionVeto | undefined =
+    manifestPath !== undefined && activity === undefined
+      ? { pid: -1, path: canonicalWorktree, reason: 'configured activity manifest is unavailable' }
+      : activity !== undefined && isWorkspaceActive({ activity, canonicalWorktree }) === true
+        ? {
+            pid: -1,
+            path: canonicalWorktree,
+            reason: 'workspace activity manifest reports activity',
+          }
+        : undefined
+  const daemon = buckDaemonVeto(buckReceipt) ?? activityVeto
+  const cwd =
+    daemon === undefined
+      ? yield* readWorktreeInUse({ worktreePath })
+      : { _tag: 'in-use' as const, holder: daemon }
+  const coverage = activity?.processCoverage
+  const coveredProcesses =
+    coverage?.roots.some(
+      (root) =>
+        canonicalWorktree === root || canonicalWorktree.startsWith(`${root.replace(/\/+$/, '')}/`),
+    ) === true
+      ? coverage.processIdentities
+      : undefined
+  const result =
+    cwd._tag === 'in-use' || process.platform === 'darwin'
+      ? { ...cwd, ignoredForeignProcesses: 0, exemptProcesses: [] }
+      : yield* readWorktreeReferencesInUse({
+          worktreePath,
+          scope: 'gc-owner',
+          coveredProcesses,
+        })
+  const ignoredForeignProcesses = result.ignoredForeignProcesses ?? 0
+  const exemptProcesses = result.exemptProcesses ?? []
+  onProbe?.(ignoredForeignProcesses, exemptProcesses)
+  if (result._tag === 'free') return undefined
+  const holder: DeletionVeto = {
+    ...(result._tag === 'in-use' ? result.holder : { pid: -1, path: `unknown: ${result.reason}` }),
+    ignoredForeignProcesses,
+    exemptProcesses,
+  }
+  yield* recordGcDeletion({
+    storeBasePath,
+    path: deletionPath,
+    phase: 'outcome',
+    decision: 'skipped-in-use',
+    reason: inUseMessage(holder),
+    vetoEvidence: [holder],
+    ignoredForeignProcesses,
+    exemptProcesses,
   })
+  return holder
+})
 
 /** Render an in-use holder as the free-form `message` detail of a kept result. */
-const inUseMessage = (holder: InUseHolder): string =>
-  holder.pid >= 0
-    ? `live process pid ${holder.pid} has its cwd inside the worktree (${holder.path})`
-    : `in-use state could not be determined, kept conservatively (${holder.path})`
+const inUseMessage = (holder: DeletionVeto): string =>
+  holder.reason ??
+  (holder.pid >= 0
+    ? `live process pid ${holder.pid} references the worktree (${holder.path})`
+    : `in-use state could not be determined, kept conservatively (${holder.path})`)
 
 /** Worklog teardown authority resolved from the strict build-output budgets policy. */
 interface WorklogTeardownPolicy {
@@ -1543,7 +1651,11 @@ const coldReclaimRepo = ({
             worktree.path,
             yield* readBuckDaemonReceipt({ worktreePath: worktree.path }),
           )
-          const refMismatchHolder = yield* inUseVeto({ worktreePath: worktree.path })
+          const refMismatchHolder = yield* inUseVeto({
+            storeBasePath: store.basePath,
+            worktreePath: worktree.path,
+            buckReceipt: buckReceipts.get(worktree.path),
+          })
           if (refMismatchHolder !== undefined) {
             return { _tag: 'kept-in-use' as const, holder: refMismatchHolder }
           }
@@ -1748,11 +1860,22 @@ const coldReclaimRepo = ({
               worktreePath: canonicalWorktree,
               activity,
             })
-            if (references._tag !== 'free') {
-              const holder =
-                references._tag === 'in-use'
+            const holder =
+              buckDaemonVeto(buckReceipts.get(worktree.path)) ??
+              (references._tag === 'free'
+                ? undefined
+                : references._tag === 'in-use'
                   ? references.holder
-                  : { pid: -1, path: `unknown: ${references.reason}` }
+                  : { pid: -1, path: `unknown: ${references.reason}` })
+            if (holder !== undefined) {
+              yield* recordGcDeletion({
+                storeBasePath: store.basePath,
+                path: worktree.path,
+                phase: 'outcome',
+                decision: 'skipped-in-use',
+                reason: inUseMessage(holder),
+                vetoEvidence: [holder],
+              })
               return { _tag: 'kept-in-use' as const, holder }
             }
             const freshActivity = yield* readBudgetWorkspaceActivity({
@@ -1769,7 +1892,7 @@ const coldReclaimRepo = ({
             }
             // Quarantine only after every predicate passes. Git's recursive
             // worktree remove re-resolves ancestors, so it must not delete here.
-            yield* withPinnedDeletion({ rootPath: store.basePath, path: worktree.path, identity })
+            yield* withGcPinnedDeletion({ rootPath: store.basePath, path: worktree.path, identity })
             const pruneWarning = yield* Git.pruneWorktrees(bareRepoPath).pipe(
               Effect.as(undefined),
               Effect.catch((error) =>
@@ -1803,6 +1926,7 @@ const coldReclaimRepo = ({
                 _tag: 'error' as const,
                 message: error instanceof Error === true ? error.message : String(error),
                 partial: isPartialDeletion(error),
+                recovery: deletionRecovery(error),
               }),
             ),
           )
@@ -1830,6 +1954,7 @@ const coldReclaimRepo = ({
                   ? { outcome: 'partial' as const, reason: 'deletion-partial' }
                   : { reason: 'merged-worklog-teardown' }),
                 message: teardown.message,
+                ...teardown.recovery,
                 ...policyReceipt,
               }),
             )
@@ -1865,7 +1990,11 @@ const coldReclaimRepo = ({
           worktree.path,
           yield* readBuckDaemonReceipt({ worktreePath: worktree.path }),
         )
-        const archiveHolder = yield* inUseVeto({ worktreePath: worktree.path })
+        const archiveHolder = yield* inUseVeto({
+          storeBasePath: store.basePath,
+          worktreePath: worktree.path,
+          buckReceipt: buckReceipts.get(worktree.path),
+        })
         if (archiveHolder !== undefined) {
           return { _tag: 'kept-in-use' as const, holder: archiveHolder }
         }
@@ -1971,11 +2100,28 @@ const coldReclaimRepo = ({
           entry.path,
           yield* readBuckDaemonReceipt({ worktreePath: entry.path, archived: true }),
         )
-        const reapHolder = yield* inUseVeto({ worktreePath: entry.path })
+        let ignoredForeignProcesses = 0
+        let exemptProcesses: ReadonlyArray<ExemptProcess> = []
+        const reapHolder = yield* inUseVeto({
+          storeBasePath: store.basePath,
+          worktreePath: entry.path,
+          buckReceipt: buckReceipts.get(entry.path),
+          onProbe: (count, exemptions) => {
+            ignoredForeignProcesses = count
+            exemptProcesses = exemptions
+          },
+        })
         if (reapHolder !== undefined) {
           return { _tag: 'kept-in-use' as const, holder: reapHolder }
         }
-        yield* reapArchive({ bareRepoPath, path: entry.path })
+        yield* withGcDeletionReceipt({
+          storeBasePath: store.basePath,
+          path: entry.path,
+          reason: 'archive-retention',
+          ignoredForeignProcesses,
+          exemptProcesses,
+          effect: reapArchive({ bareRepoPath, path: entry.path }),
+        })
         return { _tag: 'reaped' as const }
       })
       const reapOutcome = yield* (
@@ -2523,6 +2669,16 @@ const storeGcCommand = Cli.Command.make(
           const { worktree } = decision
 
           if (decision.action === 'skipped_in_use') {
+            if (planningOnly === false) {
+              yield* recordGcDeletion({
+                storeBasePath: store.basePath,
+                path: worktree.path,
+                phase: 'outcome',
+                decision: 'skipped-in-use',
+                reason: decision.message ?? 'worktree is protected',
+                vetoEvidence: [],
+              })
+            }
             return {
               repo: repoRelativePath,
               ref: worktree.ref,
@@ -2575,6 +2731,9 @@ const storeGcCommand = Cli.Command.make(
 
           let buckReceipt: BuckDaemonReceipt | undefined
           if (planningOnly === false) {
+            const leaseOwnerPath = yield* canonicalizeOwnerPath(worktree.path)
+            let ignoredForeignProcesses = 0
+            let exemptProcesses: ReadonlyArray<ExemptProcess> = []
             const removeResult = yield* storeLock
               .withWorktreeLock(worktree.path)(
                 Effect.gen(function* () {
@@ -2585,9 +2744,29 @@ const storeGcCommand = Cli.Command.make(
                     all,
                   })
                   if (removalPolicy.isProtected === true) {
+                    yield* recordGcDeletion({
+                      storeBasePath: store.basePath,
+                      path: worktree.path,
+                      phase: 'outcome',
+                      decision: 'skipped-in-use',
+                      reason: removalPolicy.message ?? 'worktree became protected',
+                      vetoEvidence: [],
+                    })
                     return { _tag: 'skipped_live' as const, message: removalPolicy.message }
                   }
                   buckReceipt = yield* readBuckDaemonReceipt({ worktreePath: worktree.path })
+                  const holder = yield* inUseVeto({
+                    storeBasePath: store.basePath,
+                    worktreePath: worktree.path,
+                    buckReceipt,
+                    onProbe: (count, exemptions) => {
+                      ignoredForeignProcesses = count
+                      exemptProcesses = exemptions
+                    },
+                  })
+                  if (holder !== undefined) {
+                    return { _tag: 'skipped_live' as const, message: inUseMessage(holder) }
+                  }
 
                   if (platform === 'linux') {
                     if (decision.identity === undefined) {
@@ -2595,16 +2774,44 @@ const storeGcCommand = Cli.Command.make(
                         message: 'candidate deletion identity is unavailable',
                       })
                     }
-                    yield* withPinnedDeletion({
+                    yield* withGcPinnedDeletion({
                       rootPath: store.basePath,
                       path: worktree.path,
                       identity: decision.identity,
+                      ignoredForeignProcesses,
+                      exemptProcesses,
                     })
                   } else {
-                    yield* fs.remove(worktree.path, { recursive: true })
+                    yield* withGcDeletionReceipt({
+                      storeBasePath: store.basePath,
+                      path: worktree.path,
+                      reason: 'gc',
+                      ignoredForeignProcesses,
+                      exemptProcesses,
+                      effect: fs.remove(worktree.path, { recursive: true }),
+                    })
                   }
                   return { _tag: 'removed' as const }
-                }),
+                }).pipe(
+                  withDeletionLease({
+                    storeBasePath: store.basePath,
+                    ownerPath: leaseOwnerPath,
+                    now: yield* Clock.currentTimeMillis,
+                  }),
+                  Effect.catchTag('DeletionLeaseUnavailableError', (error) =>
+                    Effect.gen(function* () {
+                      yield* recordGcDeletion({
+                        storeBasePath: store.basePath,
+                        path: worktree.path,
+                        phase: 'outcome',
+                        decision: 'skipped-in-use',
+                        reason: error.message,
+                        vetoEvidence: [],
+                      })
+                      return { _tag: 'skipped_live' as const, message: error.message }
+                    }),
+                  ),
+                ),
               )
               .pipe(
                 Effect.catch((error) =>
@@ -2612,6 +2819,7 @@ const storeGcCommand = Cli.Command.make(
                     _tag: 'error' as const,
                     message: error instanceof Error === true ? error.message : String(error),
                     partial: isPartialDeletion(error),
+                    recovery: deletionRecovery(error),
                   }),
                 ),
               )
@@ -2636,6 +2844,7 @@ const storeGcCommand = Cli.Command.make(
                 path: worktree.path,
                 status: 'error',
                 ...buckReceipt,
+                ...removeResult.recovery,
                 ...(removeResult.partial === true
                   ? { outcome: 'partial' as const, reason: 'deletion-partial' }
                   : {}),
@@ -2978,7 +3187,17 @@ const storeGcCommand = Cli.Command.make(
                     message: 'candidate contains tracked files or its index could not be read',
                   })
                 }
-                const holder = yield* inUseVeto({ worktreePath: canonicalOwner })
+                let ignoredForeignProcesses = 0
+                let exemptProcesses: ReadonlyArray<ExemptProcess> = []
+                const holder = yield* inUseVeto({
+                  storeBasePath: store.basePath,
+                  worktreePath: canonicalOwner,
+                  deletionPath: freshCandidate.path,
+                  onProbe: (count, exemptions) => {
+                    ignoredForeignProcesses = count
+                    exemptProcesses = exemptions
+                  },
+                })
                 if (holder !== undefined) {
                   return yield* new StoreCommandError({ message: inUseMessage(holder) })
                 }
@@ -2988,10 +3207,12 @@ const storeGcCommand = Cli.Command.make(
                       message: 'candidate deletion identity is unavailable',
                     })
                   }
-                  const partial = yield* withPinnedDeletion({
+                  const partial = yield* withGcPinnedDeletion({
                     rootPath: store.basePath,
                     path: freshCandidate.path,
                     identity,
+                    ignoredForeignProcesses,
+                    exemptProcesses,
                   }).pipe(
                     Effect.as(undefined),
                     Effect.catchIf(isPartialDeletion, (error) => Effect.succeed(error)),
@@ -3003,10 +3224,18 @@ const storeGcCommand = Cli.Command.make(
                       outcome: 'partial' as const,
                       reason: 'deletion-partial',
                       message: partial.message,
+                      ...deletionRecovery(partial),
                     }
                   }
                 } else {
-                  yield* fs.remove(freshCandidate.path, { recursive: true })
+                  yield* withGcDeletionReceipt({
+                    storeBasePath: store.basePath,
+                    path: freshCandidate.path,
+                    reason: 'generated-artifact',
+                    ignoredForeignProcesses,
+                    exemptProcesses,
+                    effect: fs.remove(freshCandidate.path, { recursive: true }),
+                  })
                 }
                 return { ...freshCandidate, outcome: 'deleted' as const }
               }).pipe(
@@ -3328,7 +3557,17 @@ const storeGcCommand = Cli.Command.make(
                   })
                 }
                 buckReceipt = yield* readBuckDaemonReceipt({ worktreePath: candidate.path })
-                const holder = yield* inUseVeto({ worktreePath: candidate.path })
+                let ignoredForeignProcesses = 0
+                let exemptProcesses: ReadonlyArray<ExemptProcess> = []
+                const holder = yield* inUseVeto({
+                  storeBasePath: store.basePath,
+                  worktreePath: candidate.path,
+                  buckReceipt,
+                  onProbe: (count, exemptions) => {
+                    ignoredForeignProcesses = count
+                    exemptProcesses = exemptions
+                  },
+                })
                 if (holder !== undefined) {
                   return yield* new StoreCommandError({
                     message: `candidate is in use: ${inUseMessage(holder)}`,
@@ -3340,10 +3579,12 @@ const storeGcCommand = Cli.Command.make(
                       message: 'candidate deletion identity is unavailable',
                     })
                   }
-                  const partial = yield* withPinnedDeletion({
+                  const partial = yield* withGcPinnedDeletion({
                     rootPath: store.basePath,
                     path: candidate.path,
                     identity,
+                    ignoredForeignProcesses,
+                    exemptProcesses,
                   }).pipe(
                     Effect.as(undefined),
                     Effect.catchIf(isPartialDeletion, (error) => Effect.succeed(error)),
@@ -3356,10 +3597,18 @@ const storeGcCommand = Cli.Command.make(
                       outcome: 'partial' as const,
                       reason: 'deletion-partial',
                       message: partial.message,
+                      ...deletionRecovery(partial),
                     }
                   }
                 } else {
-                  yield* fs.remove(candidate.path, { recursive: true })
+                  yield* withGcDeletionReceipt({
+                    storeBasePath: store.basePath,
+                    path: candidate.path,
+                    reason: 'gc',
+                    ignoredForeignProcesses,
+                    exemptProcesses,
+                    effect: fs.remove(candidate.path, { recursive: true }),
+                  })
                 }
                 const pruneWarning = yield* Git.pruneWorktrees(owner.bareRepoPath).pipe(
                   Effect.as(undefined),
@@ -3423,6 +3672,9 @@ const storeGcCommand = Cli.Command.make(
                 ),
                 buckDaemonsUnreachable: appliedResults.flatMap(
                   (result) => result.buckDaemonsUnreachable ?? [],
+                ),
+                buckDaemonsKeptActive: appliedResults.flatMap(
+                  (result) => result.buckDaemonsKeptActive ?? [],
                 ),
               }
               // Merged-worklog teardown may stop mid-removal; its partial receipt

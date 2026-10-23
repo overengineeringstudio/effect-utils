@@ -21,6 +21,7 @@ export const pipelineJobIds = [
   'test-playwright-utils',
   'test-playwright-tui-react',
   'test-megarepo-cold-gc',
+  'test-megarepo-store-gc',
   'cargo',
   'weaver',
   'bootstrap-cold-proof',

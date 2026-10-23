@@ -3,7 +3,20 @@ import { expect, test } from 'bun:test'
 import ciWorkflow from '../../.github/workflows/ci.yml.genie.ts'
 import empiricalWorkflow from '../../.github/workflows/empirical-proofs.yml.genie.ts'
 import storybookPlaysWorkflow from '../../.github/workflows/storybook-plays.yml.genie.ts'
-import { EMPIRICAL_PROOF_CI_JOB_NAMES, requiredCIJobs } from '../ci.ts'
+import { decodeBinaryCacheDescriptor } from '../../packages/@overeng/genie/src/runtime/github-workflow/binary-cache-descriptor.ts'
+import { EMPIRICAL_PROOF_CI_JOB_NAMES, requiredCIJobs, RUNNER_PROFILES } from '../ci.ts'
+import {
+  cachixCliBuildStep,
+  cachixStep,
+  checkoutStep,
+  installNixStep,
+  linuxSandboxPrerequisitesStep,
+  namespaceLinuxX64PairedPerfRunner,
+  prepareCiScriptsStep,
+  preparePinnedDevenvStep,
+  validateNixStoreStep,
+} from '../ci-workflow.ts'
+import { jobCacheDescriptors } from './cache-policy.ts'
 
 const workflow = ciWorkflow.stringify({ cwd: process.cwd(), location: '' })
 const proofWorkflow = empiricalWorkflow.stringify({ cwd: process.cwd(), location: '' })
@@ -294,4 +307,140 @@ test('historical source measurements retain any-ref dispatch backfills', () => {
       admitted(jobId, 'workflow_dispatch', 'refs/heads/main', '', [], '', 'historical-sha'),
     ).toBe(false)
   }
+})
+
+test('Linux sandbox prerequisites run only on Namespace profiles', () => {
+  const namespaceProfiles: readonly string[] = [...RUNNER_PROFILES, namespaceLinuxX64PairedPerfRunner]
+  for (const job of Object.values(empiricalWorkflow.data.jobs)) {
+    if (!job.steps.some((step) => step.name === 'Log Linux sandbox prerequisites')) continue
+    const runners = job['runs-on']
+    const labels = typeof runners === 'string' ? [runners] : runners
+    expect(labels.some((label) => namespaceProfiles.includes(label.split(';')[0]!))).toBe(true)
+  }
+})
+
+test('daily cache join is isolated from required CI and other empirical jobs', () => {
+  const jobId = 'buck2-cache-join'
+  const job = empiricalWorkflow.data.jobs[jobId]!
+  expect(ciWorkflow.data.jobs[jobId]).toBeUndefined()
+  expect(requiredCIJobs.includes(jobId)).toBe(false)
+  expect(requiredCIJobs.includes(job.name ?? jobId)).toBe(false)
+  expect(job['continue-on-error']).toBe(true)
+  expect(job.needs).toBeUndefined()
+  for (const [otherId, otherJob] of Object.entries(empiricalWorkflow.data.jobs)) {
+    if (otherId === jobId) continue
+    expect(otherJob.steps.some((step) => step.name === 'Require daily cache metrics export')).toBe(
+      false,
+    )
+    const dependencies = otherJob.needs
+    expect(
+      typeof dependencies === 'string' ? dependencies === jobId : dependencies?.includes(jobId),
+    ).not.toBe(true)
+  }
+})
+
+test('daily cache join admits only scheduled and manual runs, including branch dispatches', () => {
+  for (const ref of ['refs/heads/main', 'refs/heads/feature']) {
+    expect(admitted('buck2-cache-join', 'schedule', ref)).toBe(true)
+    expect(admitted('buck2-cache-join', 'workflow_dispatch', ref)).toBe(true)
+    expect(admitted('buck2-cache-join', 'push', ref)).toBe(false)
+  }
+  for (const event of ['pull_request', 'pull_request_target', 'merge_group']) {
+    expect(
+      admitted(
+        'buck2-cache-join',
+        event,
+        'refs/pull/1/merge',
+        'labeled',
+        ['ci:heavy-proofs'],
+        'ci:heavy-proofs',
+      ),
+    ).toBe(false)
+  }
+  expect(proofWorkflow).toContain('cron: 17 3 * * *')
+})
+
+test('pinned devenv jobs configure a public binary cache before entering devenv', () => {
+  const violations: string[] = []
+  const cacheStepName = cachixStep({ name: 'overeng-effect-utils' }).name
+  for (const [workflowName, generated] of [
+    ['empirical-proofs', empiricalWorkflow],
+    ['ci', ciWorkflow],
+  ] as const) {
+    for (const [jobId, job] of Object.entries(generated.data.jobs)) {
+      const devenvIndex = job.steps.findIndex(
+        (step) =>
+          step.name === preparePinnedDevenvStep.name || step.name === validateNixStoreStep.name,
+      )
+      if (devenvIndex === -1) continue
+      const cliIndex = job.steps.findIndex((step) => step.name === cachixCliBuildStep.name)
+      const cacheIndex = job.steps.findIndex((step) => step.name === cacheStepName)
+      const hasCachixSetup = cliIndex >= 0 && cliIndex < cacheIndex && cacheIndex < devenvIndex
+      const hasInstallerCache = job.steps.slice(0, devenvIndex).some((step) => {
+        if (step.uses !== installNixStep().uses || !(jobCacheDescriptors in step)) return false
+        const descriptors = step[jobCacheDescriptors]
+        return (
+          Array.isArray(descriptors) &&
+          descriptors.some((value) => {
+            const cache = decodeBinaryCacheDescriptor(value)
+            return cache.kind === 'nix-binary' && cache.visibility === 'public'
+          })
+        )
+      })
+      if (!hasCachixSetup && !hasInstallerCache) violations.push(`${workflowName}/${jobId}`)
+    }
+  }
+  expect(violations).toEqual([])
+})
+
+test('daily cache join initializes pinned devenv before running tasks', () => {
+  const steps = empiricalWorkflow.data.jobs['buck2-cache-join']!.steps
+  const setup = [
+    checkoutStep(),
+    installNixStep(),
+    linuxSandboxPrerequisitesStep({ privileged: 'always' }),
+    prepareCiScriptsStep,
+    preparePinnedDevenvStep,
+    validateNixStoreStep,
+  ]
+  const stepIdentity = (step: (typeof steps)[number]) => step.name ?? step.uses
+  const setupIdentities = setup.map(stepIdentity)
+  const setupSteps = steps.filter((step) => setupIdentities.includes(stepIdentity(step)))
+  expect(setupSteps.map(stepIdentity)).toEqual(setupIdentities)
+  const pinnedIndex = steps.findIndex((step) => step.name === preparePinnedDevenvStep.name)
+  expect(steps[pinnedIndex + 1]?.name).toBe(validateNixStoreStep.name)
+  expect(steps[pinnedIndex + 2]?.name).toBe('Prepare source script dependencies')
+})
+
+test('daily cache join has read-only GitHub access and uses the previous-day metrics spool', () => {
+  const job = empiricalWorkflow.data.jobs['buck2-cache-join']!
+  expect(job.permissions).toEqual({ contents: 'read', actions: 'read', 'id-token': 'write' })
+  expect(job.env?.BUCK2_PUBLIC_CACHE_READ_ONLY).toBe('1')
+  const join = job.steps.find((step) => step.name === 'Join previous UTC day cache evidence')
+  expect(join?.env?.GITHUB_TOKEN).toBe('${{ github.token }}')
+  expect(join !== undefined && 'run' in join ? join.run : undefined).toContain(
+    '--repo "$GITHUB_REPOSITORY" --previous-utc-day --otlp-spool "$spool/pending"',
+  )
+  expect(JSON.stringify(job).match(/secrets\.[A-Z_]+/g)).toBeNull()
+})
+
+test('daily cache export postcheck follows telemetry export and fails on pending chunks', () => {
+  const steps = empiricalWorkflow.data.jobs['buck2-cache-join']!.steps
+  const exportIndex = steps.findIndex(
+    (step) => typeof step.run === 'string' && step.run.includes('evidence-job.sh export'),
+  )
+  const checkIndex = steps.findIndex((step) => step.name === 'Require daily cache metrics export')
+  expect(exportIndex).toBeGreaterThanOrEqual(0)
+  expect(checkIndex).toBeGreaterThan(exportIndex)
+  const check = steps[checkIndex]!
+  expect(check['continue-on-error']).not.toBe(true)
+  expect(check.if).toBeUndefined()
+  expect('run' in check ? check.run : undefined).toContain(
+    ': "${BUCK2_CACHE_JOIN_PENDING:?join did not declare its metrics spool}"',
+  )
+  expect('run' in check ? check.run : undefined).toContain(
+    'chunks=("$BUCK2_CACHE_JOIN_PENDING"/*.metrics.chunk)',
+  )
+  expect('run' in check ? check.run : undefined).toContain('if (( ${#chunks[@]} != 0 )); then')
+  expect('run' in check ? check.run : undefined).toContain('exit 1')
 })

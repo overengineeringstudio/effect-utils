@@ -362,7 +362,7 @@ export const catalog = defineCatalog({
   'acorn-walk': '8.3.5',
   // TypeScript 7 removed its classic in-process JSONC helper; this is VS Code's zero-dependency parser.
   'jsonc-parser': '3.3.1',
-  '@playwright/test': '1.63.0',
+  '@playwright/test': '1.64.1',
   vite: '8.2.2',
   vitest: '5.0.3',
   // Same version `@vitest/browser` pins exactly, so the story gate and the
@@ -465,7 +465,7 @@ export const catalog = defineCatalog({
    */
   '@vitest/browser': '5.0.3',
   '@vitest/browser-playwright': '5.0.3',
-  playwright: '1.63.0',
+  playwright: '1.64.1',
 
   // xterm (terminal emulator for browser/testing)
   '@xterm/xterm': '6.0.0',

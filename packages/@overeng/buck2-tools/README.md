@@ -776,6 +776,12 @@ deadlines and record each case's base. Expanded case titles and nested parameter
 suites retain their own deadlines in JUnit classification. Hooks, assertions,
 callbacks and exit statuses remain native; no tests are retried.
 
+Pointer-reached orphan reclamation scenarios guard initial publication, each reader
+pointer transition, and the final fingerprint check separately. Their fixture teardown
+awaits the complete in-flight phase (including assertions) before deleting the fixture
+or restoring the host-budget environment; later phases depend on the preceding phase
+settling successfully.
+
 The wrapper requests Bun's JUnit reporter and leaves console output untouched.
 After the child exits, it samples host load and Linux memory PSI and emits one
 `test-timeout-under-load` line for each JUnit `TimeoutError`, including the test
