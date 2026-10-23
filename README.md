@@ -245,6 +245,10 @@ schema-first `OtelMetric` contracts, preserving their exported metric identities
 - **OTEL spans** - Automatic tracing with cross-process trace propagation
 - **Test helpers** - `withTestCtx` for automatic layer provision in Playwright tests
 
+The devenv browser packages come from [`nix/playwright-flake`](./nix/playwright-flake).
+Its Linux aarch64 Chromium override fixes the upstream Vulkan-loader replacement to use
+`chrome-linux-arm64`; Linux x86_64 retains the upstream `chrome-linux64` derivation.
+
 ### Peer-to-peer QUIC
 
 Effect 4 bindings for authenticated peer-to-peer QUIC and schema-framed messages
