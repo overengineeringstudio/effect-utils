@@ -97,12 +97,14 @@ each as `_background`.
 
 ## Syntax highlighting and math
 
-Code blocks render through [`shiki`](https://shiki.matsu.io) and
-equations through [`katex`](https://katex.org). Both are optional peer
-dependencies — skip installing them if you don't render those blocks.
+Code blocks render through
+[`@pierre/highlights`](https://www.npmjs.com/package/@pierre/highlights)
+(0.2.0) and equations through [`katex`](https://katex.org). Both are optional
+peer dependencies — skip installing them if you don't render those blocks.
 
-The first `<Code language="...">` in a tree lazy-loads the Shiki
-highlighter for that language. Equations lazy-load KaTeX's bundle.
+Code highlighting uses the `githubLight` theme. Unsupported languages fall
+back to plain text rather than failing the preview. Equations lazy-load
+KaTeX's bundle.
 
 ## When to import what
 

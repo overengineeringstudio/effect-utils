@@ -23,9 +23,11 @@ pnpm add @overeng/notion-react effect @effect/platform \
          @overeng/notion-effect-client react react-reconciler
 ```
 
-`katex` and `shiki` are optional peer dependencies — install them only
-if you render math equations or syntax-highlighted code in the web
-preview. KaTeX 0.18 depends on `commander` 15, whose `engines` field
+`katex` and `@pierre/highlights` (0.2.0) are optional peer dependencies —
+install them only if you render math equations or syntax-highlighted code
+in the web preview. Code highlighting uses the `githubLight` theme;
+unsupported languages render as plain text. KaTeX 0.18 depends on `commander`
+15, whose `engines` field
 advertises Node >= 22.12. That is an install-time advisory, not a
 runtime requirement: npm-family installers may warn about it (and will
 fail only under `engine-strict`), Bun ignores `engines` entirely, and

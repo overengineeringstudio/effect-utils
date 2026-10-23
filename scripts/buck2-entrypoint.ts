@@ -24,6 +24,7 @@ import type { CacheAdmissionInvocation } from '../genie/ci-scripts/buck2-cache-e
 import {
   buckConfigValues,
   canonicalCacheAdmissionInvocationId,
+  decodeReapiAdmissionFailure,
   probeRemoteCacheCapabilities,
   reconcileStandaloneCachePosture,
   standaloneCachePostureConfig,
@@ -397,6 +398,18 @@ export const directBuckArguments = async ({
             }),
         })
   admission.admissionFallbacks.reapi = remoteAvailable === false ? 1 : 0
+  if (remoteAvailable === false && reapiDiagnostics.failure !== undefined) {
+    const failure = /^class=([a-z-]+) phase=([a-z]+) elapsed_ms=(\d+) deadline_ms=(\d+)$/u.exec(
+      reapiDiagnostics.failure,
+    )
+    if (failure !== null)
+      admission.reapiFailure = decodeReapiAdmissionFailure({
+        class: failure[1],
+        phase: failure[2],
+        elapsedMs: Number(failure[3]),
+        deadlineMs: Number(failure[4]),
+      })
+  }
   const evidencePath = env['CI_BUCK2_CACHE_EVIDENCE_PATH']
   if (evidencePath !== undefined && evidencePath !== '') {
     try {

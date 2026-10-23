@@ -27,7 +27,11 @@ import { createInterface } from 'node:readline'
 import { parseArgs } from 'node:util'
 import { gzipSync, gunzipSync } from 'node:zlib'
 
-import { canonicalCacheAdmissionInvocationId } from '../../scripts/buck2-cache-posture.ts'
+import {
+  canonicalCacheAdmissionInvocationId,
+  decodeReapiAdmissionFailure,
+  type ReapiAdmissionFailure,
+} from '../../scripts/buck2-cache-posture.ts'
 import {
   classifyCacheUploadError,
   decodeActionArtifact,
@@ -70,6 +74,7 @@ export type CacheAdmissionInvocation = {
   invocationId: string
   admissionFallbacks: { reapi: number; archiveOrigin: number }
   admissionRetrySuccesses: { reapi: number; archiveOrigin: number }
+  reapiFailure?: ReapiAdmissionFailure
 }
 // Historical command diagnostics remain readable; native downloads emit none.
 const archiveOriginFallbackReasons = [
@@ -80,10 +85,15 @@ const archiveOriginFallbackReasons = [
 ] as const
 type ArchiveOriginFallbackReason = (typeof archiveOriginFallbackReasons)[number]
 type ArchiveOriginFallbackCounts = Record<ArchiveOriginFallbackReason, number>
+type ReapiFailureCounts = (Pick<ReapiAdmissionFailure, 'class' | 'phase'> & {
+  count: number
+  maxElapsedMs: number
+})[]
 type CacheAdmissionEvidence = {
   admissionFallbacks: CacheAdmissionInvocation['admissionFallbacks']
   admissionRetrySuccesses: CacheAdmissionInvocation['admissionRetrySuccesses']
   admissionInvocations: CacheAdmissionInvocation[]
+  reapiFailures: ReapiFailureCounts
   archiveOriginFallbacks?: ArchiveOriginFallbackCounts
 }
 export type CacheAction = {
@@ -123,6 +133,7 @@ export type CacheEvidence = {
   admissionFallbacks?: CacheAdmissionInvocation['admissionFallbacks']
   admissionRetrySuccesses?: CacheAdmissionInvocation['admissionRetrySuccesses']
   admissionInvocations?: CacheAdmissionInvocation[]
+  reapiFailures?: ReapiFailureCounts
   archiveOriginFallbacks?: ArchiveOriginFallbackCounts
   reason?: string
   metadata: Record<string, string>
@@ -162,6 +173,7 @@ const zeroAdmissionEvidence = (): CacheAdmissionEvidence => ({
   admissionFallbacks: { reapi: 0, archiveOrigin: 0 },
   admissionRetrySuccesses: { reapi: 0, archiveOrigin: 0 },
   admissionInvocations: [],
+  reapiFailures: [],
 })
 const decodeAdmissionCounters = (
   value: unknown,
@@ -179,7 +191,13 @@ export const decodeCacheAdmissionInvocation = (value: unknown): CacheAdmissionIn
     if (admissionFallbacks[endpoint] + admissionRetrySuccesses[endpoint] > 1)
       throw new Error('Invalid cache admission invocation counters')
   }
-  return { invocationId, admissionFallbacks, admissionRetrySuccesses }
+  const failure = field({ value, key: 'reapiFailure' })
+  if (failure !== undefined && admissionFallbacks.reapi !== 1)
+    throw new Error('REAPI failure requires an admission fallback')
+  return {
+    invocationId, admissionFallbacks, admissionRetrySuccesses,
+    ...(failure === undefined ? {} : { reapiFailure: decodeReapiAdmissionFailure(failure) }),
+  }
 }
 const collectAdmissionInvocations = (
   invocations: CacheAdmissionInvocation[],
@@ -198,6 +216,20 @@ const collectAdmissionInvocations = (
     for (const endpoint of admissionEndpoints) {
       result.admissionFallbacks[endpoint] += invocation.admissionFallbacks[endpoint]
       result.admissionRetrySuccesses[endpoint] += invocation.admissionRetrySuccesses[endpoint]
+    }
+    if (invocation.reapiFailure !== undefined) {
+      const failure = invocation.reapiFailure
+      const group = result.reapiFailures.find(
+        (item) => item.class === failure.class && item.phase === failure.phase,
+      )
+      if (group === undefined)
+        result.reapiFailures.push({
+          class: failure.class, phase: failure.phase, count: 1, maxElapsedMs: failure.elapsedMs,
+        })
+      else {
+        group.count++
+        group.maxElapsedMs = Math.max(group.maxElapsedMs, failure.elapsedMs)
+      }
     }
   }
   return result
@@ -305,6 +337,9 @@ export const decodeCacheAdmissionEvidence = (value: unknown): CacheAdmissionEvid
     }
     result[key] = decoded
   }
+  const failures = field({ value, key: 'reapiFailures' })
+  if (failures !== undefined && JSON.stringify(failures) !== JSON.stringify(result.reapiFailures))
+    throw new Error('REAPI failure aggregate mismatch')
   const archiveCounts = field({ value, key: 'archiveOriginFallbacks' })
   if (archiveCounts !== undefined) {
     const decoded = decodeArchiveOriginFallbacks(archiveCounts)

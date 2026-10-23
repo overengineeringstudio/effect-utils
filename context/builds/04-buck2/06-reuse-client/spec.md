@@ -399,6 +399,18 @@ JSONL row to `${CI_BUCK2_CACHE_EVIDENCE_PATH}.admission.jsonl`, with the authori
 }
 ```
 
+An REAPI fallback may include `reapiFailure: { class, phase, elapsedMs, deadlineMs }`,
+including when admission reuses a cached negative probe. `class` is one of
+`configuration`, `dns`, `tcp`, `tls`, `transport`, `deadline`, `auth`, `http`,
+`grpc`, or `protocol`; `phase` is `configuration`, `dns`, `tcp`, `tls`, or
+`response`. Timings are nonnegative safe-integer milliseconds. Unknown categories
+or invalid timings reject the row. No free error text, address, host, or credential
+is retained. Older rows without this optional field remain valid.
+The summary's `reapiFailures` array groups deduplicated diagnostic-bearing rows
+by class/phase, retaining `count` and `maxElapsedMs` per pair. Missing historical
+diagnostics do not imply a zero failure count. Retained aggregate fields must
+agree with their invocation rows.
+
 `invocationId` uses `BUCK_WRAPPER_UUID`: the entrypoint preserves an existing
 caller/OTel UUID or generates a random UUID when absent, and passes it to native
 Buck as its trace ID. It therefore joins directly to native `buildId` when Buck

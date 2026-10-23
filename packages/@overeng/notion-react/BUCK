@@ -4,7 +4,7 @@
 # Projection source: packages/@overeng/notion-react/BUCK.genie.ts
 # Projection schema version: 13
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:786a166c338564b9d09cb60a272197c214f675c3b137c66bbc2a9752d7dc76ba
+# Semantic fingerprint: sha256:8d92a085cef49b6461d8e274c76f4da291cdf0e43cbf3924534ee2984345c8e8
 # Regenerate: devenv tasks run genie:run
 
 load("//buck2:materialization.bzl", "export_materialization_inputs", "package_view")
@@ -116,6 +116,10 @@ export_materialization_inputs([
     "src/web/demo/modern-tabs.stories.tsx",
     "src/web/demo/placeholders.stories.tsx",
     "src/web/demo/toc.stories.tsx",
+    "src/web/highlights-missing-peer.unit.test.tsx",
+    "src/web/highlights-ssr.unit.test.tsx",
+    "src/web/highlights.tsx",
+    "src/web/highlights.unit.test.tsx",
     "src/web/inline.stories.tsx",
     "src/web/inline.tsx",
     "src/web/katex.css",
@@ -123,7 +127,6 @@ export_materialization_inputs([
     "src/web/media.stories.tsx",
     "src/web/mod.ts",
     "src/web/pages.stories.tsx",
-    "src/web/shiki.tsx",
     "src/web/styles.css",
     "src/web/subpages.stories.tsx",
     "src/web/toggle.unit.test.tsx",
@@ -264,6 +267,10 @@ package_view(
         "src/web/demo/modern-tabs.stories.tsx": "src/web/demo/modern-tabs.stories.tsx",
         "src/web/demo/placeholders.stories.tsx": "src/web/demo/placeholders.stories.tsx",
         "src/web/demo/toc.stories.tsx": "src/web/demo/toc.stories.tsx",
+        "src/web/highlights-missing-peer.unit.test.tsx": "src/web/highlights-missing-peer.unit.test.tsx",
+        "src/web/highlights-ssr.unit.test.tsx": "src/web/highlights-ssr.unit.test.tsx",
+        "src/web/highlights.tsx": "src/web/highlights.tsx",
+        "src/web/highlights.unit.test.tsx": "src/web/highlights.unit.test.tsx",
         "src/web/inline.stories.tsx": "src/web/inline.stories.tsx",
         "src/web/inline.tsx": "src/web/inline.tsx",
         "src/web/katex.css": "src/web/katex.css",
@@ -271,7 +278,6 @@ package_view(
         "src/web/media.stories.tsx": "src/web/media.stories.tsx",
         "src/web/mod.ts": "src/web/mod.ts",
         "src/web/pages.stories.tsx": "src/web/pages.stories.tsx",
-        "src/web/shiki.tsx": "src/web/shiki.tsx",
         "src/web/styles.css": "src/web/styles.css",
         "src/web/subpages.stories.tsx": "src/web/subpages.stories.tsx",
         "src/web/toggle.unit.test.tsx": "src/web/toggle.unit.test.tsx",
@@ -402,6 +408,10 @@ package_view(
         "src/web/demo/modern-tabs.stories.tsx": "src/web/demo/modern-tabs.stories.tsx",
         "src/web/demo/placeholders.stories.tsx": "src/web/demo/placeholders.stories.tsx",
         "src/web/demo/toc.stories.tsx": "src/web/demo/toc.stories.tsx",
+        "src/web/highlights-missing-peer.unit.test.tsx": "src/web/highlights-missing-peer.unit.test.tsx",
+        "src/web/highlights-ssr.unit.test.tsx": "src/web/highlights-ssr.unit.test.tsx",
+        "src/web/highlights.tsx": "src/web/highlights.tsx",
+        "src/web/highlights.unit.test.tsx": "src/web/highlights.unit.test.tsx",
         "src/web/inline.stories.tsx": "src/web/inline.stories.tsx",
         "src/web/inline.tsx": "src/web/inline.tsx",
         "src/web/katex.css": "src/web/katex.css",
@@ -409,7 +419,6 @@ package_view(
         "src/web/media.stories.tsx": "src/web/media.stories.tsx",
         "src/web/mod.ts": "src/web/mod.ts",
         "src/web/pages.stories.tsx": "src/web/pages.stories.tsx",
-        "src/web/shiki.tsx": "src/web/shiki.tsx",
         "src/web/styles.css": "src/web/styles.css",
         "src/web/subpages.stories.tsx": "src/web/subpages.stories.tsx",
         "src/web/toggle.unit.test.tsx": "src/web/toggle.unit.test.tsx",
@@ -536,6 +545,10 @@ package_view(
         "src/web/demo/modern-tabs.stories.tsx": "src/web/demo/modern-tabs.stories.tsx",
         "src/web/demo/placeholders.stories.tsx": "src/web/demo/placeholders.stories.tsx",
         "src/web/demo/toc.stories.tsx": "src/web/demo/toc.stories.tsx",
+        "src/web/highlights-missing-peer.unit.test.tsx": "src/web/highlights-missing-peer.unit.test.tsx",
+        "src/web/highlights-ssr.unit.test.tsx": "src/web/highlights-ssr.unit.test.tsx",
+        "src/web/highlights.tsx": "src/web/highlights.tsx",
+        "src/web/highlights.unit.test.tsx": "src/web/highlights.unit.test.tsx",
         "src/web/inline.stories.tsx": "src/web/inline.stories.tsx",
         "src/web/inline.tsx": "src/web/inline.tsx",
         "src/web/katex.css": "src/web/katex.css",
@@ -543,7 +556,6 @@ package_view(
         "src/web/media.stories.tsx": "src/web/media.stories.tsx",
         "src/web/mod.ts": "src/web/mod.ts",
         "src/web/pages.stories.tsx": "src/web/pages.stories.tsx",
-        "src/web/shiki.tsx": "src/web/shiki.tsx",
         "src/web/styles.css": "src/web/styles.css",
         "src/web/subpages.stories.tsx": "src/web/subpages.stories.tsx",
         "src/web/toggle.unit.test.tsx": "src/web/toggle.unit.test.tsx",

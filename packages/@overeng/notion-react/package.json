@@ -90,6 +90,7 @@
     "@overeng/notion-md": "workspace:^",
     "@overeng/utils-dev": "workspace:^",
     "@overeng/utils-storybook": "workspace:^",
+    "@pierre/highlights": "0.2.0",
     "@storybook/react": "10.6.0",
     "@storybook/react-vite": "10.6.0",
     "@types/node": "26.5.0",
@@ -97,11 +98,11 @@
     "@types/react-dom": "19.2.7",
     "@types/react-reconciler": "0.33.0",
     "effect": "4.0.3",
+    "happy-dom": "20.14.0",
     "katex": "0.18.7",
     "react": "19.2.8",
     "react-dom": "19.2.8",
     "react-reconciler": "0.33.0",
-    "shiki": "4.4.3",
     "storybook": "10.6.0",
     "typescript": "7.0.2",
     "vite": "8.2.2",
@@ -109,11 +110,11 @@
   },
   "peerDependencies": {
     "@opentelemetry/api": "^1.9.1",
+    "@pierre/highlights": "^0.2.0",
     "effect": "^4.0.3",
     "katex": "^0.18.7",
     "react": "^19.2.8",
-    "react-reconciler": "^0.33.0",
-    "shiki": "^4.4.3"
+    "react-reconciler": "^0.33.0"
   },
   "peerDependenciesMeta": {
     "@opentelemetry/api": {
@@ -122,7 +123,7 @@
     "katex": {
       "optional": true
     },
-    "shiki": {
+    "@pierre/highlights": {
       "optional": true
     }
   },

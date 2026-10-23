@@ -181,11 +181,13 @@ describe('entrypoint admission sidecar collection', () => {
           invocationId: '2fc13b48-c94a-4a9c-936f-bc24615bc360',
           admissionFallbacks: { reapi: 1, archiveOrigin: 0 },
           admissionRetrySuccesses: { reapi: 0, archiveOrigin: 1 },
+          reapiFailure: { class: 'deadline', phase: 'tls', elapsedMs: 2501, deadlineMs: 2500 },
         },
         {
           invocationId: 'c568610f-0ddf-40c5-99df-d178142b9dad',
           admissionFallbacks: { reapi: 1, archiveOrigin: 1 },
           admissionRetrySuccesses: { reapi: 0, archiveOrigin: 0 },
+          reapiFailure: { class: 'deadline', phase: 'tls', elapsedMs: 2510, deadlineMs: 2500 },
         },
         {
           invocationId: 'bd999eb2-5b8b-4828-a19a-95bddfb2b27e',
@@ -204,6 +206,9 @@ describe('entrypoint admission sidecar collection', () => {
         expect(evidence.admissionInvocations).toEqual(rows)
         expect(evidence.admissionFallbacks).toEqual({ reapi: 2, archiveOrigin: 1 })
         expect(evidence.admissionRetrySuccesses).toEqual({ reapi: 0, archiveOrigin: 1 })
+        expect(evidence.reapiFailures).toEqual([
+          { class: 'deadline', phase: 'tls', count: 2, maxElapsedMs: 2510 },
+        ])
       }
       await rm(`${output}.admission.jsonl`)
       expect((await collect()).admissionInvocations).toEqual(rows)
