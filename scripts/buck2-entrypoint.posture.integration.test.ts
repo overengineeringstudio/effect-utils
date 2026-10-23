@@ -4,6 +4,7 @@ import {
   existsSync,
   mkdtempSync,
   readFileSync,
+  realpathSync,
   rmSync,
   statSync,
   writeFileSync,
@@ -30,8 +31,10 @@ describe('daemon RE posture', () => {
     expect(birth).toBeDefined()
     const path = process.env['PATH']
     try {
-      process.env['PATH'] = ''
-      expect(cacheLauncherBirth(process.pid)).toBe(birth)
+      for (const restricted of ['', '/nonexistent']) {
+        process.env['PATH'] = restricted
+        expect(cacheLauncherBirth(process.pid)).toBe(birth)
+      }
     } finally {
       if (path === undefined) delete process.env['PATH']
       else process.env['PATH'] = path
@@ -67,7 +70,7 @@ describe('daemon RE posture', () => {
   })
 
   it('reconciles reader to writer and rotated auth once, persists only private keyed state and fails closed while busy', async () => {
-    const root = mkdtempSync(join(tmpdir(), 'buck2-daemon-posture-'))
+    const root = realpathSync(mkdtempSync(join(tmpdir(), 'buck2-daemon-posture-')))
     const native = join(root, 'native')
     const state = join(root, 'native-state')
     const calls = join(root, 'calls')

@@ -831,7 +831,8 @@ export const cacheLauncherBirth = (pid: number): string | undefined => {
       throw new Error('Buck2 cache posture: malformed launcher birth identity')
     return `${pid}:${start}`
   }
-  // Collection launchers may have a tool-only PATH without macOS system binaries.
+  // devenv.nix's buck2UnitTestExec replaces PATH with coreutils + watchman.
+  // Collection prebuild inherits it, so Darwin's system ps must be absolute.
   const ps = process.platform === 'darwin' ? '/bin/ps' : 'ps'
   const result = spawnSync(ps, ['-p', String(pid), '-o', 'lstart='], {
     encoding: 'utf8',
