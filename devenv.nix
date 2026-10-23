@@ -1522,7 +1522,7 @@ in
       source ${lib.escapeShellArg pnpmTaskHelpersScript}
       ${pkgs.util-linux}/bin/unshare --user --map-root-user --pid --fork --mount-proc -- \
         ${pkgs.python3}/bin/python3 ${./nix/devenv-modules/tasks/shared/test-namespace-init.py} \
-        ${flakePkgs.bun}/bin/bun --bun "$(resolve_package_bin vitest vitest)" run src/cli/store.integration.test.ts --testTimeout 30000 --hookTimeout 30000 --reporter=default --reporter=json --outputFile.json="''${DEVENV_ROOT:-$PWD/../../..}/tmp/ci-megarepo-store-gc.vitest.json"
+        ${flakePkgs.bun}/bin/bun --bun "$(resolve_package_bin vitest vitest)" run src/cli/store.integration.test.ts src/cli/store-gc-generated.integration.test.ts src/cli/store-gc-otel.integration.test.ts --testTimeout 30000 --hookTimeout 30000 --reporter=default --reporter=json --outputFile.json="''${DEVENV_ROOT:-$PWD/../../..}/tmp/ci-megarepo-store-gc.vitest.json"
     '';
   };
 
