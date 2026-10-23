@@ -912,7 +912,7 @@ const jobs: Record<CoreCIJobName, CiWorkflowArgs['jobs'][string]> = {
         {
           name: 'Complete native megarepo test receipt',
           if: '${{ always() }}',
-          run: 'cat tmp/otel-scrape/summaries/test-megarepo-unbounded.vitest.json',
+          run: `jq -e '{numTotalTests, numPassedTests, numFailedTests, numPendingTests, success, testResults: [.testResults[] | {name, status, assertionResults: [.assertionResults[] | {fullName, status}]}]} | select(.success and .numTotalTests > 0)' tmp/otel-scrape/summaries/test-megarepo-unbounded.vitest.json`,
         },
       ],
     }),
