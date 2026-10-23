@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'bun:test'
 
+import type { PackageInfo } from '../../validation/mod.ts'
 import { defineCatalog } from './catalog.ts'
 import { packageJson } from './mod.ts'
+import { validatePackageRecompositionForPackage } from './validators/recompose.ts'
 
 const catalog = defineCatalog({ effect: '3.19.14' })
 const repo = { repoName: 'test-repo' }
@@ -95,5 +97,40 @@ describe('install-mode inherited optional peers', () => {
         mode: 'install',
       }).dependencies,
     ).toEqual({ '@test/utils': 'workspace:^' })
+  })
+
+  it.each([
+    { optional: true, private: true, issues: 0 },
+    { optional: false, private: true, issues: 1 },
+    { optional: true, private: false, issues: 1 },
+  ])('validates an omitted peer (optional=$optional, private=$private)', (testCase) => {
+    const packages: PackageInfo[] = [
+      {
+        name: '@test/utils',
+        path: 'packages/utils',
+        peerDependencies: catalog.peers('effect'),
+        peerDependenciesMeta: { effect: { optional: testCase.optional } },
+      },
+      {
+        name: '@test/app',
+        path: 'packages/app',
+        private: testCase.private,
+        dependencies: { '@test/utils': 'workspace:^' },
+      },
+    ]
+
+    expect(
+      validatePackageRecompositionForPackage({
+        ctx: {
+          location: '.',
+          cwd: '/workspace',
+          workspace: {
+            packages,
+            byName: new Map(packages.map((pkg) => [pkg.name, pkg])),
+          },
+        },
+        pkgName: '@test/app',
+      }),
+    ).toHaveLength(testCase.issues)
   })
 })

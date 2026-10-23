@@ -89,6 +89,9 @@ installed explicitly from the catalog. This applies to direct and transitive
 workspace packages in all composition buckets. A peer is optional only when its
 package declares `peerDependenciesMeta[name].optional === true`; optional peers
 are skipped by default and do not need a catalog version.
+Private app packages may omit optional upstream peers during recomposition
+validation. Library packages still re-export upstream peer contracts and their
+optional metadata.
 
 Use `optionalPeerInstalls` to opt selected inherited optional peers into
 installation. Names are checked against the catalog's keys, and versions come
