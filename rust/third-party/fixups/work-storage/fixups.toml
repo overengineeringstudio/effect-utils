@@ -1,0 +1,3 @@
+# First-party build-script execution is owned by rust/work-storage/BUCK.genie.ts,
+# which stages the normative schema and corpus from their source package.
+buildscript.run = false
