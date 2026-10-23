@@ -48,10 +48,9 @@ const runtimeDeps = catalog.compose({
         'typescript',
         'vite',
         'vitest',
-        // Next.js fixture for the `./node/stylex/next` adapter's build test:
-        // the fixture app assembles its node_modules by symlinking from this
-        // package's installed graph. The app, not the shared catalog, selects
-        // its own Next.js version.
+        // Both the immutable Next fixture manifest and the Vite parity path
+        // derive their adapter dependency pins from this package's graph.
+        // The app, not the shared catalog, selects its own Next.js version.
         'babel-loader',
         '@babel/core',
         '@stylexjs/babel-plugin',

@@ -36,6 +36,9 @@ export const buck2TypeScriptAdmission = {
     {
       name: 'test',
       runner: 'vitest',
+      directoryInputs: {
+        STYLEX_NEXT_FIXTURE: '//buck2/toolchains:stylex_next_fixture',
+      },
       tools: {
         BUN_BIN: '//buck2/toolchains:tool_bun',
         NODE_BIN: '//buck2/toolchains:tool_node',

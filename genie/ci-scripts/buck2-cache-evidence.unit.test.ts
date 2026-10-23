@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'bun:test'
+import { decodeOutputTinyDigests } from './buck2-action-evidence-codec.ts'
 
+import {
+  classifyCacheUploadError,
+  decodeCacheUploadErrors,
+  decodeGrpcCode,
+} from './buck2-action-evidence-codec.ts'
 import {
   darwinUnsandboxedCategories,
   localMaterializationCategories,
@@ -12,6 +18,7 @@ import {
   decodeCacheEvidence,
   disabledCacheEvidence,
   emptyCacheEvidence,
+  finalizeNativeLogFreshness,
   maxCacheEvidenceActions,
   mergeCacheEvidence,
 } from './buck2-cache-evidence.ts'
@@ -176,6 +183,81 @@ describe('native Buck cache evidence projection', () => {
     expect(evidence.archiveOriginFallbacks).toBeUndefined()
     expect(evidence.admissionFallbacks).toEqual({ reapi: 0, archiveOrigin: 0 })
     expect(JSON.stringify(evidence)).not.toContain('PRIVATE')
+  })
+
+  it('retains ordered truncated output evidence for successful non-uploaded commands in every category', () => {
+    const expected = {
+      algorithm: 'buck2-tiny-digest-v1',
+      outputs: [
+        { index: 0, tinyDigest: 'ffffffff' },
+        { index: 1, tinyDigest: '00000000' },
+        { index: 2, tinyDigest: 'ffffffff' },
+      ],
+    }
+    for (const category of ['rustc', 'deps', 'cargo_extract', 'buildscript', 'rustc_cfg',
+      'rust_interop_napi', 'rust_interop_service', 'rust_wasm_guest', 'tsgo_emit']) {
+      for (const uploadResult of [0, 3, 9]) {
+        const rows: ActionRecord[] = []
+        const projector = createCacheEvidenceProjector({ onAction: (row) => rows.push(row) })
+        projector.add(nativeEvent('SpanEnd', actionEnd({
+          name: { category },
+          failed: false,
+          cache_upload_result: uploadResult,
+          outputs: expected.outputs.map((output) => ({ tiny_digest: output.tinyDigest })),
+        })))
+        const summary = projector.finish()
+        expect(rows[0]?.digest).toBe(fixtureDigest)
+        expect(rows[0]?.outputTinyDigests).toEqual(expected)
+        expect(summary.actions[0]?.outputTinyDigests).toEqual(expected)
+        expect(decodeCacheEvidence(summary)).toEqual(summary)
+      }
+    }
+    for (const overrides of [
+      { cache_upload_result: 1 }, { failed: true }, { kind: 'Write' },
+    ]) {
+      const rows: ActionRecord[] = []
+      const projector = createCacheEvidenceProjector({ onAction: (row) => rows.push(row) })
+      projector.add(nativeEvent('SpanEnd', actionEnd({
+        cache_upload_result: 0, outputs: [{ tiny_digest: 'ffffffff' }], ...overrides,
+      })))
+      expect(projector.finish().actions[0]?.outputTinyDigests).toBeUndefined()
+      expect(rows[0]?.outputTinyDigests).toBeUndefined()
+    }
+  })
+
+  it('distinguishes changed output indices across runs with the same action digest', () => {
+    const summaries = [['aaaaaaaa', 'bbbbbbbb'], ['aaaaaaaa', 'cccccccc']].map((digests, run) =>
+      project([nativeEvent('SpanEnd', actionEnd({
+        name: { category: 'rustc' }, cache_upload_result: 0,
+        outputs: digests.map((tiny_digest) => ({ tiny_digest })),
+      }), 1, `run-${run}`)]),
+    )
+    const first = summaries[0]!.actions[0]!
+    const next = summaries[1]!.actions[0]!
+    expect(first.digest).toBe(next.digest)
+    expect(first.outputTinyDigests?.outputs.map((output, index) => ({
+      index, equal: output.tinyDigest === next.outputTinyDigests?.outputs[index]?.tinyDigest,
+    }))).toEqual([{ index: 0, equal: true }, { index: 1, equal: false }])
+    const merged = mergeCacheEvidence({ previous: summaries[0]!, next: summaries[1]! })
+    expect(decodeCacheEvidence(merged).actions.map((action) => action.outputTinyDigests))
+      .toEqual([first.outputTinyDigests, next.outputTinyDigests])
+  })
+
+  it('rejects malformed output evidence without inventing missing native digests', () => {
+    expect(decodeOutputTinyDigests(undefined)).toBeUndefined()
+    expect(decodeOutputTinyDigests({ algorithm: 'buck2-tiny-digest-v1', outputs: [] }))
+      .toEqual({ algorithm: 'buck2-tiny-digest-v1', outputs: [] })
+    for (const value of [
+      { algorithm: 'sha256', outputs: [] },
+      { algorithm: 'buck2-tiny-digest-v1', outputs: null },
+      ...['abc', 'AABBCCDD', 'g'.repeat(8), 'a'.repeat(64), null].map((tinyDigest) => ({
+        algorithm: 'buck2-tiny-digest-v1', outputs: [{ index: 0, tinyDigest }],
+      })),
+      { algorithm: 'buck2-tiny-digest-v1', outputs: [{ index: 1, tinyDigest: 'aaaaaaaa' }] },
+    ]) expect(() => decodeOutputTinyDigests(value)).toThrow()
+    expect(() => project([nativeEvent('SpanEnd', actionEnd({
+      cache_upload_result: 0, outputs: [{ tiny_digest: 'not-a-digest' }],
+    }))])).toThrow()
   })
 
   it('reports every materialization category separately without relabeling native outcomes', () => {
@@ -455,7 +537,7 @@ describe('native Buck cache evidence projection', () => {
           execution_kind: 3,
           cache_upload_result: 8,
           commands: [],
-          outputs: [{ tiny_digest: 'not-an-action-key' }],
+          outputs: [{ tiny_digest: 'deadbeef' }],
         }),
       ),
     ])
@@ -720,6 +802,50 @@ describe('native Buck cache evidence projection', () => {
     expect(JSON.stringify(decoded)).not.toContain('PRIVATE_')
   })
 
+  it('detects missing confirmed IDs without promoting surviving local-cache invocations', () => {
+    const survivor: ActionInvocation = {
+      buildId: 'survivor',
+      context: 'native-log',
+      freshRoot: true,
+      actionCount: 1,
+      excludedByDesign: { 'local-materialization-policy': 0, 'darwin-unsandboxed': 0 },
+      complete: true,
+      startedAt: 100,
+      completedAt: 200,
+    }
+    expect(finalizeNativeLogFreshness({
+      invocations: [survivor],
+      confirmedBuildIds: new Set(['earliest', 'survivor']),
+    })).toBe(true)
+    expect(survivor.freshRoot).toBe(false)
+  })
+
+  it('compares all decoded IDs, deduplicates invocation IDs and reads legacy evidence without rotation', () => {
+    const invocation: ActionInvocation = {
+      buildId: 'build',
+      context: 'native-log',
+      freshRoot: true,
+      actionCount: 1,
+      excludedByDesign: { 'local-materialization-policy': 0, 'darwin-unsandboxed': 0 },
+      complete: true,
+      startedAt: 100,
+      completedAt: 200,
+    }
+    const invocations = [
+      invocation,
+      { ...invocation },
+      { ...invocation, buildId: 'audit', actionCount: 0, startedAt: 50 },
+    ]
+    expect(finalizeNativeLogFreshness({
+      invocations,
+      confirmedBuildIds: new Set(['audit', 'build']),
+    })).toBe(false)
+    expect(invocation.freshRoot).toBe(true)
+    expect(invocations[2]!.freshRoot).toBe(false)
+    expect(finalizeNativeLogFreshness({ invocations, confirmedBuildIds: new Set() })).toBe(false)
+    expect(invocation.freshRoot).toBe(true)
+  })
+
   it('emits every first action end alongside unchanged bounded representatives', () => {
     const rows: ActionRecord[] = []
     const invocations: ActionInvocation[] = []
@@ -834,6 +960,80 @@ describe('native Buck cache evidence projection', () => {
     expect(JSON.stringify(rows)).not.toContain('private')
     expect(JSON.stringify(rows)).not.toContain('SECRET')
     expect(invocations[0]!.complete).toBe(false)
+  })
+
+  it('retains only closed upload categories and exact gRPC codes', () => {
+    for (const [message, category] of [
+      ['invalid credentials', 'unauthenticated'],
+      ['CAS write denied', 'permission-denied'],
+      ['deadline exceeded', 'deadline'],
+      ['connection reset', 'unavailable'],
+      ['quota exceeded', 'resource-exhausted'],
+      ['invalid argument', 'invalid-argument'],
+      ['arbitrary! secret', 'other'],
+    ]) {
+      expect(classifyCacheUploadError(message, 'unknown!code')).toEqual({
+        category,
+        reErrorCode: null,
+      })
+    }
+    expect(classifyCacheUploadError('', 'PERMISSION_DENIED')).toEqual({
+      category: 'permission-denied',
+      reErrorCode: 7,
+    })
+    for (let code = 0; code <= 16; code++) {
+      expect(decodeGrpcCode(code)).toBe(code)
+      expect(decodeGrpcCode(String(code))).toBe(code)
+    }
+    for (const code of [-1, 17, 1.5, '07', 'permission_denied', '7 secret', 'secret!'])
+      expect(decodeGrpcCode(code)).toBeNull()
+    expect(decodeCacheUploadErrors(undefined)).toBeUndefined()
+    expect(() => decodeCacheUploadErrors([{ reErrorCode: 7 }])).toThrow()
+    expect(decodeCacheUploadErrors([{ category: 'deadline', reErrorCode: 4 }])).toEqual([
+      { category: 'deadline', reErrorCode: 4 },
+    ])
+    expect(() => decodeCacheUploadErrors([{ category: 'secret!' }])).toThrow()
+  })
+
+  it('retains each failed native cache upload, not ReUpload metrics or duplicate ends', () => {
+    const rows: ActionRecord[] = []
+    const projector = createCacheEvidenceProjector({ onAction: (row) => rows.push(row) })
+    projector.add(nativeEvent('SpanStart', fixtureIdentity))
+    const upload = (
+      spanId: number,
+      data: unknown,
+      parentId = 20181,
+      phase: 'SpanStart' | 'SpanEnd' = 'SpanEnd',
+    ) => ({
+      Event: {
+        trace_id: fixtureBuildId,
+        span_id: spanId,
+        parent_id: parentId,
+        data: { [phase]: { data } },
+      },
+    })
+    const failure = upload(30001, {
+      CacheUpload: { success: false, error: 'CAS write denied', re_error_code: 'PERMISSION_DENIED' },
+    })
+    projector.add(failure)
+    projector.add(failure)
+    projector.add(upload(30002, { ExecutorStage: {} }, 20181, 'SpanStart'))
+    projector.add(upload(30003, { CacheUpload: { success: false, error: 'connection reset' } }, 30002))
+    projector.add(upload(30004, { ReUpload: { bytes_uploaded: 0, error: 'NOT_A_NATIVE_FIELD' } }))
+    projector.add(upload(30005, { CacheUpload: { success: true, error: 'IGNORE_SUCCESS' } }))
+    projector.add(upload(30006, { CacheUpload: { success: false, error: '' } }))
+    projector.add(nativeEvent('SpanEnd', actionEnd({ cache_upload_result: 9 })))
+    const result = projector.finish()
+    const expected = [
+      { category: 'permission-denied', reErrorCode: 7 },
+      { category: 'unavailable', reErrorCode: null },
+      { category: 'other', reErrorCode: null },
+    ]
+    expect(rows[0]?.uploadErrors).toEqual(expected)
+    expect(result.actions[0]?.uploadErrors).toEqual(expected)
+    expect(decodeCacheEvidence(result).actions[0]?.uploadErrors).toEqual(expected)
+    expect(JSON.stringify({ rows, result })).not.toContain('NOT_A_NATIVE_FIELD')
+    expect(JSON.stringify({ rows, result })).not.toContain('IGNORE_SUCCESS')
   })
 
   it('preserves upload rejection and local-dep-file raw classifications without inventing hits', () => {

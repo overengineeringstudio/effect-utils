@@ -44,8 +44,9 @@ if [ "$window_valid" = 0 ]; then
 fi
 
 # A later CI_SOURCE_ROOT redirect or a different canonical root cannot inherit freshness.
-# Every native log is a candidate fresh invocation; the projector picks the earliest
-# native CommandStart at --finalize and marks later invocations freshRoot=false.
+# Every native log is a candidate fresh invocation; the projector confirms native
+# build-ID outputs, rejects rotated evidence, then picks the earliest cache-bearing
+# CommandStart at --finalize and marks later invocations freshRoot=false.
 fresh_args=()
 if [ "$window_valid" = 1 ] && [ "$fresh_root" = 1 ] && [ "$recorded_root" = "$(pwd -P)" ]; then
   fresh_args=(--fresh-root)
@@ -91,7 +92,12 @@ finalize_args=(--finalize)
 if [ -n "$last_gap" ]; then
   finalize_args+=(--evidence-gap "$last_gap")
 fi
-if ! bun "$projector" "${args[@]}" "${finalize_args[@]}" 2>/dev/null; then
+bun "$projector" "${args[@]}" "${finalize_args[@]}" 2>/dev/null
+finalize_status=$?
+if [ "$finalize_status" = 2 ]; then
+  # The invalid artifact was written successfully; do not invent an I/O failure.
+  failed=1
+elif [ "$finalize_status" != 0 ]; then
   record_gap evidence-finalization-failed
 fi
 exit "$failed"

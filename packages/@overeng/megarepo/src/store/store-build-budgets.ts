@@ -15,6 +15,7 @@ import {
   deletionLeasePath,
   withDeletionLease,
 } from './store-deletion-lease.ts'
+import { recordGcDeletion, withGcPinnedDeletion } from './store-gc-receipts.ts'
 import { isInsideWorktree, readProcessReferences } from './store-inuse.ts'
 import { isPathProtected, type StoreLiveSet } from './store-liveness.ts'
 import {
@@ -22,7 +23,6 @@ import {
   PinnedDeletionError,
   readDirectoryEvidence,
   storeDeletionPlatform,
-  withPinnedDeletion,
   type DeletionIdentity,
   type DirectoryEvidence,
 } from './store-pinned-deletion.ts'
@@ -114,6 +114,9 @@ export const BudgetCandidate = Schema.Struct({
   fingerprint: Schema.String,
   outcome: Schema.Literals(['would-delete', 'keep', 'unknown', 'deleted', 'partial']),
   reason: BudgetReason,
+  recoverPath: Schema.optional(Schema.String),
+  code: Schema.optional(Schema.String),
+  message: Schema.optional(Schema.String),
 }).annotate({ identifier: 'Megarepo.BuildOutputBudgetCandidate' })
 export type BudgetCandidate = typeof BudgetCandidate.Type
 type MutableCandidate = { -readonly [TKey in keyof BudgetCandidate]: BudgetCandidate[TKey] }
@@ -781,7 +784,7 @@ export const applyBuildOutputBudgetCandidate = Effect.fn('store.applyBuildOutput
         (row) => row.path === candidate.path && row.outcome === 'would-delete',
       )
       if (current === undefined) return yield* fail('Budget candidate no longer eligible')
-      const removal = yield* withPinnedDeletion({
+      const removal = yield* withGcPinnedDeletion({
         rootPath: deletionRoot,
         path: current.path,
         identity,
@@ -837,8 +840,20 @@ export const applyBuildOutputBudgetCandidate = Effect.fn('store.applyBuildOutput
               worktreePath: ownerDir,
               activity: finalActivity,
             })
-            if (processState._tag !== 'free')
+            if (processState._tag !== 'free') {
+              yield* recordGcDeletion({
+                storeBasePath,
+                path: current.path,
+                phase: 'outcome',
+                decision: 'skipped-in-use',
+                reason: 'Candidate process liveness is live or unknown',
+                vetoEvidence:
+                  processState._tag === 'in-use'
+                    ? [processState.holder]
+                    : [{ pid: -1, path: `unknown: ${processState.reason}` }],
+              })
               return yield* fail('Candidate process liveness is live or unknown')
+            }
           }),
       }).pipe(Effect.result)
       if (removal._tag === 'Failure') {
@@ -854,6 +869,11 @@ export const applyBuildOutputBudgetCandidate = Effect.fn('store.applyBuildOutput
                 reclaimableBytes: 0,
                 outcome: 'partial' as const,
                 reason: 'deletion-partial' as const,
+                message: removal.failure.message,
+                ...(removal.failure.recoverPath === undefined
+                  ? {}
+                  : { recoverPath: removal.failure.recoverPath }),
+                ...(removal.failure.code === undefined ? {} : { code: removal.failure.code }),
               },
             ],
             classes: {

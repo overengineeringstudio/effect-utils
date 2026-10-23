@@ -142,7 +142,7 @@ export const decodeEvidence = ({
 }: {
   compressed: Uint8Array
   summary: unknown
-  expectedLane: CacheLane
+  expectedLane?: CacheLane
 }): ActionArtifact => {
   decodeCacheAdmissionEvidence(summary)
   const metadata = field({ value: summary, key: 'actionsArtifact' })
@@ -183,7 +183,7 @@ export const decodeEvidence = ({
   if (dropped !== undefined && integer(dropped) !== 0) return invalid()
   if (
     field({ value: summary, key: 'status' }) !== artifact.header.status ||
-    artifact.header.metadata.lane !== expectedLane
+    (expectedLane !== undefined && artifact.header.metadata.lane !== expectedLane)
   )
     return invalid()
   const counts = field({ value: summary, key: 'counts' })
@@ -237,7 +237,7 @@ export const decodeEvidence = ({
   }
   return artifact
 }
-const identity = (action: ActionRecord): string | undefined =>
+export const identity = (action: ActionRecord): string | undefined =>
   action.category !== null &&
   action.target !== null &&
   action.configuration !== null &&
@@ -246,7 +246,7 @@ const identity = (action: ActionRecord): string | undefined =>
     : undefined
 const baseIdentity = (action: ActionRecord): string =>
   JSON.stringify([action.category, action.target, action.configuration])
-const completeArtifact = ({
+export const completeArtifact = ({
   artifact,
   writer,
 }: {

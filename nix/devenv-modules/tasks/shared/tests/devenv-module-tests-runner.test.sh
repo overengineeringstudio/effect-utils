@@ -233,6 +233,29 @@ for platform in darwin linux ""; do
 done
 printf 'PASS: Darwin selects only Darwin scripts; Linux and empty select every script\n'
 
+# Full-profile tests retain their classification/census, but never enter either
+# unit-profile scheduler queue. The full profile still runs them on Linux.
+"$TEST_JQ" '.neutral[1].fullProfileOnly = true' "$selection_fixture/platforms.json" \
+  > "$selection_fixture/profile-platforms.json"
+for profile in 0 1; do
+  rm -f "$selection_fixture/state/"*.test.sh
+  EFFECT_UTILS_CI_TEST="$profile" RUNNER_SELECTION_STATE="$selection_fixture/state" \
+    MODULE_TEST_PLATFORM=linux MODULE_TEST_PLATFORMS="$selection_fixture/profile-platforms.json" \
+    MODULE_TEST_WEIGHTS=/dev/null \
+    "$TEST_BASH" "$RUNNER" "$selection_fixture/tests" \
+    >"$selection_fixture/stdout" 2>"$selection_fixture/stderr"
+  [ -f "$selection_fixture/state/buck2-capability-publish.test.sh" ] \
+    || fail "$profile: unit-compatible neutral test was dropped"
+  if [ "$profile" = 1 ]; then
+    [ ! -f "$selection_fixture/state/neutral-serial.test.sh" ] \
+      || fail 'unit profile ran a full-profile-only script'
+  else
+    [ -f "$selection_fixture/state/neutral-serial.test.sh" ] \
+      || fail 'full profile dropped a full-profile-only script'
+  fi
+done
+printf 'PASS: full-profile-only scripts run in full profile, not unit profile\n'
+
 for defect in unclassified stale overlap duplicate missing-rationale missing-catalog invalid-platform; do
   case "$defect" in
     unclassified) filter='.neutral |= .[1:]' ;;

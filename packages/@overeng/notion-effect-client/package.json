@@ -35,7 +35,7 @@
     "@overeng/notion-effect-schema": "workspace:^",
     "@overeng/otel-contract": "workspace:^",
     "@overeng/utils": "workspace:^",
-    "@playwright/test": "1.63.0",
+    "@playwright/test": "1.64.1",
     "effect": "4.0.3",
     "mdast-util-gfm-strikethrough": "2.0.0",
     "mdast-util-gfm-table": "2.0.0",

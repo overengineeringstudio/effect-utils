@@ -76,6 +76,76 @@ describe.skipIf(process.platform !== 'linux' || inOverlayNamespace)('store pinne
   )
 
   it.effect(
+    'reports a native failure after rename as partial and retains the recoverable quarantine',
+    Effect.fnUntraced(
+      function* () {
+        // tmpfs guarantees rename rather than overlayfs's in-place EXDEV fallback.
+        const { fs, rootPath, path } = yield* fixtureIn('/dev/shm')
+        const identity = yield* captureDeletionIdentity({ rootPath, path })
+        let quarantine: string | undefined
+        const result = yield* withPinnedDeletion({
+          rootPath,
+          path,
+          identity,
+          afterQuarantine: (recoverPath) => {
+            quarantine = recoverPath
+            // A real, deterministic native ENOENT while the target is already quarantined.
+            lstatSync(`${recoverPath}/missing`)
+          },
+        }).pipe(Effect.result)
+        expect(result._tag).toBe('Failure')
+        if (result._tag !== 'Failure') return
+        expect(result.failure).toBeInstanceOf(PinnedDeletionError)
+        expect(result.failure.partial).toBe(true)
+        expect(result.failure.code).toBe('ENOENT')
+        expect(result.failure.cause).toMatchObject({ code: 'ENOENT' })
+        expect(result.failure.recoverPath).toBe(quarantine)
+        expect(quarantine?.startsWith(`${rootPath}/owner/.mr-delete-`)).toBe(true)
+        expect(result.failure.message).not.toContain('refusing removal')
+        expect(yield* fs.exists(path)).toBe(false)
+        expect(yield* fs.readFileString(`${quarantine}/target/nested/deeper/artifact`)).toBe(
+          'original artifact',
+        )
+        expect(yield* fs.readDirectory(`${rootPath}/owner`)).toEqual([
+          quarantine?.split('/').at(-1),
+        ])
+      },
+      Effect.provide(NodeServices.layer),
+      Effect.scoped,
+    ),
+  )
+
+  it.effect(
+    'removes readonly nested directories without changing hardlinked CAS file modes',
+    Effect.fnUntraced(
+      function* () {
+        const { fs, base, rootPath, path } = yield* fixture
+        const casPath = `${base}/cas-artifact`
+        const linkedPath = `${path}/nested/deeper/cas-artifact`
+        yield* fs.writeFileString(casPath, 'shared CAS content', { mode: 0o444 })
+        yield* fs.link(casPath, linkedPath)
+        const original = lstatSync(casPath)
+        expect(original.mode & 0o777).toBe(0o444)
+        expect(lstatSync(linkedPath).ino).toBe(original.ino)
+        for (const directory of [`${path}/nested/deeper`, `${path}/nested`, path]) {
+          yield* fs.chmod(directory, 0o555)
+        }
+        const identity = yield* captureDeletionIdentity({ rootPath, path })
+        yield* withPinnedDeletion({ rootPath, path, identity })
+        expect(yield* fs.exists(path)).toBe(false)
+        expect(yield* fs.readDirectory(`${rootPath}/owner`)).toEqual([])
+        expect(yield* fs.readFileString(casPath)).toBe('shared CAS content')
+        const remaining = lstatSync(casPath)
+        expect(remaining.mode).toBe(original.mode)
+        expect(remaining.ino).toBe(original.ino)
+        expect(remaining.nlink).toBe(1)
+      },
+      Effect.provide(NodeServices.layer),
+      Effect.scoped,
+    ),
+  )
+
+  it.effect(
     'allows mounted ancestors above an admitted tmpfs root and unlinks cross-device symlinks',
     Effect.fnUntraced(
       function* () {
@@ -428,7 +498,7 @@ const overlayFixture = Effect.gen(function* () {
   yield* fs.writeFileString(`${lower}/${output}/lower-only/inner/file`, 'lower file')
   yield* fs.writeFileString(`${lower}/${output}/lower-file`, 'lower file')
   yield* fs.writeFileString(`${lower}/admitted/owner/sibling`, 'keep sibling')
-  // Name the removable sibling before the mount point in native readdir's ordering.
+  // Keep a removable sibling alongside the inner mount; native traversal order is unspecified.
   yield* fs.makeDirectory(`${lower}/admitted/owner/partial/mnt`, { recursive: true })
   yield* fs.makeDirectory(`${upper}/admitted/owner/partial`, { recursive: true })
   yield* fs.writeFileString(`${upper}/admitted/owner/partial/000-sibling`, 'removable sibling')
@@ -628,7 +698,7 @@ describe.skipIf(inOverlayNamespace === false)(
     )
 
     it.effect(
-      'reports partial in-place overlay removal after unlinking a sibling and refusing an inner mount',
+      'reports partial in-place overlay traversal when refusing an inner mount',
       Effect.fnUntraced(
         function* () {
           const { fs, rootPath } = yield* overlayFixture
@@ -636,13 +706,14 @@ describe.skipIf(inOverlayNamespace === false)(
           const mounted = `${path}/mnt`
           yield* mountScoped(['-t', 'tmpfs', 'inner', mounted])
           yield* fs.writeFileString(`${mounted}/sentinel`, 'mounted survives')
-          expect(yield* fs.readDirectory(path)).toEqual(['000-sibling', 'mnt'])
+          expect((yield* fs.readDirectory(path)).toSorted()).toEqual(['000-sibling', 'mnt'])
           const identity = yield* captureDeletionIdentity({ rootPath, path })
           const result = yield* withPinnedDeletion({ rootPath, path, identity }).pipe(Effect.result)
           expect(result._tag).toBe('Failure')
           expect(result._tag === 'Failure' && result.failure).toBeInstanceOf(PinnedDeletionError)
           expect(result._tag === 'Failure' && result.failure.partial).toBe(true)
-          expect(yield* fs.exists(`${path}/000-sibling`)).toBe(false)
+          // Native readdir order is unspecified: the sibling may or may not be removed first.
+          expect(yield* fs.exists(path)).toBe(true)
           expect(yield* fs.readFileString(`${mounted}/sentinel`)).toBe('mounted survives')
         },
         Effect.provide(NodeServices.layer),
@@ -665,7 +736,7 @@ describe.skipIf(inOverlayNamespace === false)(
       },
       {
         label: 'a tmpfs inside a non-overlay target',
-        partial: undefined,
+        partial: true,
         setup: Effect.gen(function* () {
           const { fs, rootPath, path } = yield* fixture
           const mounted = `${path}/nested`
@@ -677,7 +748,7 @@ describe.skipIf(inOverlayNamespace === false)(
       {
         // A same-filesystem bind mount keeps st_dev; only the mount ID reveals the boundary.
         label: 'a same-filesystem bind mount inside a non-overlay target',
-        partial: undefined,
+        partial: true,
         setup: Effect.gen(function* () {
           const { fs, base, rootPath, path } = yield* fixture
           const source = `${base}/bind-source`

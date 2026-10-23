@@ -7,7 +7,7 @@ input. The runner hashes all declared inputs before and after execution.
 load("//buck2:hermetic.bzl", "hermetic_action", "hermetic_attrs", "hermetic_bun_command", "hermetic_execution_constraints")
 load("//buck2/materialization.bzl", "PackageTreeInfo")
 load("//buck2/platforms:defs.bzl", "cache_guarded_rule", "root_allow_cache_uploads", "root_remote_cache_enabled")
-load("//buck2/toolchains:configured.bzl", "BuckSupportToolInfo")
+load("//buck2/toolchains:configured.bzl", "BuckStoreDirectoryInfo", "BuckSupportToolInfo")
 load("//buck2/toolchains:defs.bzl", "EffectTsgoToolchainInfo")
 
 
@@ -54,6 +54,15 @@ def _configured_args(ctx, command, positional):
         args.add("--env", name, ctx.attrs.env[name])
     for name in sorted(ctx.attrs.external_inputs.keys()):
         args.add("--input", name, ctx.attrs.external_inputs[name])
+    for name in sorted(ctx.attrs.directory_inputs.keys()):
+        directory = ctx.attrs.directory_inputs[name][BuckStoreDirectoryInfo]
+        args.add("--external-path", name, directory.store_path)
+        # Both the immutable bytes and their attestation participate in the action
+        # key. The runner also fingerprints the manifest and complete read closure.
+        args.add(cmd_args(hidden = [directory.directory, directory.manifest]))
+        args.add("--read-root", directory.manifest)
+        for root in directory.closure_store_paths:
+            args.add("--read-root", root)
     for name in sorted(ctx.attrs.configured_external_inputs.keys()):
         value = ctx.attrs.configured_external_inputs[name]
         if not value:
@@ -97,6 +106,11 @@ bun_executable = cache_guarded_rule(
         "env": attrs.dict(key = attrs.string(), value = attrs.string(), default = {}),
         "external_inputs": attrs.dict(key = attrs.string(), value = attrs.source(), default = {}),
         "configured_external_inputs": attrs.dict(key = attrs.string(), value = attrs.string(), default = {}),
+        "directory_inputs": attrs.dict(
+            key = attrs.string(),
+            value = attrs.exec_dep(providers = [BuckStoreDirectoryInfo]),
+            default = {},
+        ),
         "tools": attrs.dict(
             key = attrs.string(),
             value = attrs.exec_dep(providers = [BuckSupportToolInfo]),
@@ -214,6 +228,11 @@ _TEST_ATTRS = {
     "env": attrs.dict(key = attrs.string(), value = attrs.string(), default = {"CI": "true"}),
     "external_inputs": attrs.dict(key = attrs.string(), value = attrs.source(), default = {}),
     "configured_external_inputs": attrs.dict(key = attrs.string(), value = attrs.string(), default = {}),
+    "directory_inputs": attrs.dict(
+        key = attrs.string(),
+        value = attrs.exec_dep(providers = [BuckStoreDirectoryInfo]),
+        default = {},
+    ),
     "tools": attrs.dict(
         key = attrs.string(),
         value = attrs.exec_dep(providers = [BuckSupportToolInfo]),

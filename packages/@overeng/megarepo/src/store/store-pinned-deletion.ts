@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto'
 import {
   closeSync,
   constants,
+  fchmodSync,
   fstatSync,
   lstatSync,
   mkdirSync,
@@ -58,10 +59,9 @@ export type DeletionIdentity = typeof DeletionIdentity.Type
 
 /**
  * Missing, replaced, unsupported, or unreadable deletion evidence always refuses removal.
- * partial is set only when in-place overlay removal already started at the original path, so
- * some entries there may be gone and a later plan must observe the remainder. Without partial,
- * the original path is untouched or the target was renamed into a quarantine that keeps any
- * remaining data out of the store path.
+ * partial marks any failure after quarantine rename or after in-place overlay removal starts.
+ * recoverPath names the quarantine directory retaining any remaining data; partial in-place
+ * failures instead leave the remainder at path. Neither case is safe to treat as untouched.
  */
 export class PinnedDeletionError extends Schema.TaggedError<PinnedDeletionError>()(
   'PinnedDeletionError',
@@ -70,6 +70,8 @@ export class PinnedDeletionError extends Schema.TaggedError<PinnedDeletionError>
     message: Schema.String,
     cause: Schema.optional(Schema.Defect()),
     partial: Schema.optional(Schema.Literal(true)),
+    recoverPath: Schema.optional(Schema.String),
+    code: Schema.optional(Schema.String),
   },
 ) {}
 
@@ -100,24 +102,28 @@ export const captureDeletionIdentity = Effect.fn('store.captureDeletionIdentity'
  * beforeRemove runs with every ancestor pinned, immediately before the final chain check/quarantine;
  * it also supplies the deterministic real-filesystem race seam without a production hook flag.
  * Linux /proc/self/fd is required. Other platforms and unavailable evidence fail closed.
+ * afterQuarantine is a synchronous real-filesystem race seam, called after rename and before
+ * recursive removal. It must not yield: the native boundary keeps the pinned fds held throughout.
  */
 export const withPinnedDeletion = <TError = never, TRequirements = never>({
   rootPath,
   path,
   identity,
   beforeRemove,
+  afterQuarantine,
 }: {
   rootPath: string
   path: string
   identity: DeletionIdentity
   beforeRemove?: () => Effect.Effect<void, TError, TRequirements>
+  afterQuarantine?: (recoverPath: string) => void
 }): Effect.Effect<void, PinnedDeletionError | TError, TRequirements> =>
   Effect.acquireUseRelease(
     native({ path, operation: () => pinChain({ rootPath, path, identity }) }),
     (chain) =>
       Effect.gen(function* () {
         if (beforeRemove !== undefined) yield* beforeRemove()
-        yield* native({ path, operation: () => quarantineAndRemove(chain) })
+        yield* native({ path, operation: () => quarantineAndRemove({ chain, afterQuarantine }) })
       }),
     (chain) => Effect.sync(() => closeChain(chain)),
   )
@@ -366,6 +372,9 @@ const removeDirectoryContents = ({
   path: string
   mountId: string
 }): void => {
+  // Only mutate the held directory inode, never files: store files may be CAS hardlinks.
+  const mode = fstatSync(fd).mode
+  if ((mode & 0o300) !== 0o300) fchmodSync(fd, mode | 0o300)
   for (const name of readdirSync(fdPath(fd))) {
     const anchoredPath = `${fdPath(fd)}/${name}`
     const childPath = `${path}/${name}`
@@ -409,16 +418,42 @@ const removeDirectoryContents = ({
     }
   }
 }
-const quarantineAndRemove = (chain: readonly PinnedDirectory[]): void => {
+const quarantineAndRemove = ({
+  chain,
+  afterQuarantine,
+}: {
+  chain: readonly PinnedDirectory[]
+  afterQuarantine?: ((recoverPath: string) => void) | undefined
+}): void => {
   const target = chain.at(-1)!
   const parent = chain.at(-2)!
   const targetPath = target.path
   const targetEntry = `${fdPath(parent.fd)}/${basename(targetPath)}`
-  const quarantinePath = `${fdPath(parent.fd)}/.mr-delete-${randomUUID()}`
+  const quarantineName = `.mr-delete-${randomUUID()}`
+  const quarantinePath = `${fdPath(parent.fd)}/${quarantineName}`
+  const recoverPath = `${parent.path}/${quarantineName}`
   mkdirSync(quarantinePath, { mode: 0o700 })
   let quarantineFd: number | undefined
   let quarantined = false
   let quarantineRemoved = false
+  let removalStarted = false
+  const deletionFailure = (cause: unknown): unknown => {
+    if (quarantined === false && removalStarted === false) return cause
+    return new PinnedDeletionError({
+      path: cause instanceof PinnedDeletionError ? cause.path : targetPath,
+      message:
+        quarantined === true
+          ? `Quarantined deletion failed; remaining data is retained at ${recoverPath}`
+          : 'In-place overlay deletion failed after removal started',
+      cause,
+      partial: true,
+      ...(quarantined === true ? { recoverPath } : {}),
+      ...(cause instanceof Error && 'code' in cause && typeof cause.code === 'string'
+        ? { code: cause.code }
+        : {}),
+    })
+  }
+  let failure: { cause: unknown } | undefined
   try {
     const quarantineInfo = lstatSync(quarantinePath, { bigint: true })
     const quarantinePinned = { dev: quarantineInfo.dev, ino: quarantineInfo.ino }
@@ -429,6 +464,10 @@ const quarantineAndRemove = (chain: readonly PinnedDirectory[]): void => {
       pinned: quarantinePinned,
     })
     verifyChain(chain)
+    // Moving a directory between parents can require owner write permission on that directory.
+    // Change only the verified, held target inode; CAS-linked files are never chmodded.
+    const targetMode = fstatSync(target.fd).mode
+    if ((targetMode & 0o300) !== 0o300) fchmodSync(target.fd, targetMode | 0o300)
     const quarantinedPath = `${fdPath(quarantineFd)}/target`
     let removalEntry = quarantinedPath
     try {
@@ -442,6 +481,7 @@ const quarantineAndRemove = (chain: readonly PinnedDirectory[]): void => {
       if (target.overlay === false || exdev === false) throw cause
       removalEntry = targetEntry
     }
+    if (quarantined === true) afterQuarantine?.(recoverPath)
     // A leaf replaced between the final check and rename is kept in quarantine, never removed.
     // Overlay copy-up on rename keeps the held inode, so the fd-observed identity stays valid.
     assertPinnedDirectory({
@@ -449,28 +489,14 @@ const quarantineAndRemove = (chain: readonly PinnedDirectory[]): void => {
       info: lstatSync(removalEntry, { bigint: true }),
       pinned: target,
     })
-    try {
-      removeDirectoryContents({ fd: target.fd, path: targetPath, mountId: target.mountId })
-      assertPinnedDirectory({
-        path: targetPath,
-        info: lstatSync(removalEntry, { bigint: true }),
-        pinned: target,
-      })
-      rmdirSync(removalEntry)
-    } catch (cause) {
-      if (removalEntry === quarantinedPath) throw cause
-      // In-place traversal may already have removed entries at the original path.
-      throw new PinnedDeletionError({
-        path: cause instanceof PinnedDeletionError ? cause.path : targetPath,
-        message:
-          cause instanceof PinnedDeletionError
-            ? cause.message
-            : 'In-place overlay deletion failed after removal started; refusing further removal',
-        cause,
-        partial: true,
-      })
-    }
-    quarantined = false
+    removalStarted = true
+    removeDirectoryContents({ fd: target.fd, path: targetPath, mountId: target.mountId })
+    assertPinnedDirectory({
+      path: targetPath,
+      info: lstatSync(removalEntry, { bigint: true }),
+      pinned: target,
+    })
+    rmdirSync(removalEntry)
     assertPinnedDirectory({
       path: quarantinePath,
       info: lstatSync(quarantinePath, { bigint: true }),
@@ -478,8 +504,18 @@ const quarantineAndRemove = (chain: readonly PinnedDirectory[]): void => {
     })
     rmdirSync(quarantinePath)
     quarantineRemoved = true
+  } catch (cause) {
+    // Do not restore a quarantined target: recursive deletion may have removed entries, and
+    // even before traversal there is no atomic no-replace rename to safely restore its name.
+    failure = { cause }
   } finally {
-    if (quarantineFd !== undefined) closeSync(quarantineFd)
+    if (quarantineFd !== undefined) {
+      try {
+        closeSync(quarantineFd)
+      } catch (cause) {
+        failure ??= { cause }
+      }
+    }
     // Failed post-rename evidence deliberately leaves the quarantined data intact.
     if (quarantined === false && quarantineRemoved === false) {
       try {
@@ -489,4 +525,5 @@ const quarantineAndRemove = (chain: readonly PinnedDirectory[]): void => {
       }
     }
   }
+  if (failure !== undefined) throw deletionFailure(failure.cause)
 }

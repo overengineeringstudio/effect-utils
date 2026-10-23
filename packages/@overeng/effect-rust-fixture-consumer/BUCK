@@ -6,7 +6,7 @@ load("//buck2/rust:interop.bzl", "rust_interop_consumer_smoke")
 # Projection source: packages/@overeng/effect-rust-fixture-consumer/BUCK.genie.ts
 # Projection schema version: 13
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:7fcf43c57e43a942fad18d2d7868e72442c7b8322e626d9e1b8ff07dc00bb75e
+# Semantic fingerprint: sha256:17ba5fd3473ab5a31f2273838a92479c4bbf5a27dc4df5e4a3cf9b896945eac6
 # Regenerate: devenv tasks run genie:run
 
 load("//buck2:materialization.bzl", "export_materialization_inputs", "package_view")

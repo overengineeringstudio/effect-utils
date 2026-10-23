@@ -11,6 +11,9 @@ import { createHash } from 'node:crypto'
  * UUIDs independently of native logs, retaining denied-writer admissions too.
  * Admission totals are recomputed from retained invocation rows, never incremented
  * from a previous summary. Missing sidecars produce explicit zeros on new evidence.
+ * Finalization confirms native --write-build-id outputs from the separate path
+ * registry before detecting rotation; admission rows never prove native launch.
+ * A written incomplete finalization exits 2; operational failures exit 1.
  *
  * Outcomes use data.proto's numeric enums, not command cache_hit booleans.
  * Digests are the exact native RE ActionCache `hash:size`, NOT output tiny_digest.
@@ -18,13 +21,20 @@ import { createHash } from 'node:crypto'
  * view stays bounded; an optional sink receives every normalized action row.
  */
 import { createReadStream } from 'node:fs'
+import { stat } from 'node:fs/promises'
 import { basename, dirname, join } from 'node:path'
 import { createInterface } from 'node:readline'
 import { parseArgs } from 'node:util'
 import { gzipSync, gunzipSync } from 'node:zlib'
 
 import { canonicalCacheAdmissionInvocationId } from '../../scripts/buck2-cache-posture.ts'
-import { decodeActionArtifact, decodeActionExclusionCounts } from './buck2-action-evidence-codec.ts'
+import {
+  classifyCacheUploadError,
+  decodeActionArtifact,
+  decodeActionExclusionCounts,
+  decodeCacheUploadErrors,
+  decodeOutputTinyDigests,
+} from './buck2-action-evidence-codec.ts'
 import {
   actionExclusionReason,
   actionExclusionReasons,
@@ -40,7 +50,9 @@ import {
   type ActionArtifact,
   type ActionInvocation,
   type ActionRecord,
+  type CacheUploadError,
 } from './buck2-action-evidence.ts'
+import type { OutputTinyDigests } from './buck2-action-evidence.ts'
 
 export const maxCacheEvidenceActions = 64
 export const cacheEvidenceOutcomes = [
@@ -85,6 +97,8 @@ export type CacheAction = {
   outcome: CacheOutcome
   executionKind: number
   cacheUploadResult: number
+  uploadErrors?: CacheUploadError[]
+  outputTinyDigests?: OutputTinyDigests
 }
 export type CacheInvocation = {
   buildId: string
@@ -433,6 +447,13 @@ const knownActionKinds: Record<string, true> = {
   CasArtifact: true,
 }
 
+const nativeSpanKey = (value: unknown): string | undefined =>
+  typeof value === 'string'
+    ? value
+    : typeof value === 'number' && Number.isSafeInteger(value) === true
+      ? String(value)
+      : undefined
+
 /** Pure incremental projector: add one decoded JSONL value, finish once. */
 export const createCacheEvidenceProjector = ({
   context,
@@ -451,6 +472,9 @@ export const createCacheEvidenceProjector = ({
   let buildId: string | undefined
   const starts = new Map<string, { identity: Identity; startedAt: number | null }>()
   const ended = new Set<string>()
+  const parents = new Map<string, string>()
+  const uploadErrorsByAction = new Map<string, CacheUploadError[]>()
+  const endedUploads = new Set<string>()
   let invocationStartedAt: number | null = null
   let invocationCompletedAt: number | null = null
   let invalidActionCount = 0
@@ -473,18 +497,40 @@ export const createCacheEvidenceProjector = ({
       buildId = traceId
     }
     if (event === undefined) return
-    const spanId = field({ value: event, key: 'span_id' })
     // Large u64 ids must not be rounded into a false start/end pairing.
-    const spanKey =
-      typeof spanId === 'string'
-        ? spanId
-        : typeof spanId === 'number' && Number.isSafeInteger(spanId) === true
-          ? String(spanId)
-          : undefined
+    const spanKey = nativeSpanKey(field({ value: event, key: 'span_id' }))
+    const parentKey = nativeSpanKey(field({ value: event, key: 'parent_id' }))
     const data = field({ value: event, key: 'data' })
     const time = eventTime(event)
     const startData = field({ value: field({ value: data, key: 'SpanStart' }), key: 'data' })
     const endData = field({ value: field({ value: data, key: 'SpanEnd' }), key: 'data' })
+    if (startData !== undefined && spanKey !== undefined && parentKey !== undefined)
+      parents.set(spanKey, parentKey)
+    const uploadEnd = field({ value: endData, key: 'CacheUpload' })
+    if (uploadEnd !== undefined) {
+      if (spanKey !== undefined && endedUploads.has(spanKey) === true) return
+      if (spanKey !== undefined) endedUploads.add(spanKey)
+      if (field({ value: uploadEnd, key: 'success' }) === false) {
+        let owner = parentKey ?? (spanKey === undefined ? undefined : parents.get(spanKey))
+        const visited = new Set<string>()
+        while (owner !== undefined && starts.has(owner) === false && visited.has(owner) === false) {
+          visited.add(owner)
+          owner = parents.get(owner)
+        }
+        if (owner !== undefined && starts.has(owner) === true) {
+          const errors = uploadErrorsByAction.get(owner) ?? []
+          errors.push(
+            classifyCacheUploadError(
+              field({ value: uploadEnd, key: 'error' }),
+              field({ value: uploadEnd, key: 're_error_code' }),
+            ),
+          )
+          uploadErrorsByAction.set(owner, errors)
+        } else invalidActionCount++
+      }
+      if (spanKey !== undefined) parents.delete(spanKey)
+      return
+    }
     if (field({ value: startData, key: 'Command' }) !== undefined) invocationStartedAt = time
     if (field({ value: endData, key: 'Command' }) !== undefined) invocationCompletedAt = time
     const start = field({
@@ -497,13 +543,21 @@ export const createCacheEvidenceProjector = ({
       value: field({ value: field({ value: data, key: 'SpanEnd' }), key: 'data' }),
       key: 'ActionExecution',
     })
-    if (end === undefined) return
+    if (end === undefined) {
+      if (endData !== undefined && spanKey !== undefined) parents.delete(spanKey)
+      return
+    }
     if (spanKey !== undefined) {
       if (ended.has(spanKey) === true) return
       ended.add(spanKey)
     }
     const fallback = spanKey === undefined ? undefined : starts.get(spanKey)
     if (spanKey !== undefined) starts.delete(spanKey)
+    const uploadErrors = spanKey === undefined ? undefined : uploadErrorsByAction.get(spanKey)
+    if (spanKey !== undefined) {
+      uploadErrorsByAction.delete(spanKey)
+      parents.delete(spanKey)
+    }
     const identity = identityFor(end)
     const category = identity.category ?? fallback?.identity.category
     const target = identity.target ?? fallback?.identity.target
@@ -534,6 +588,22 @@ export const createCacheEvidenceProjector = ({
     if (category === undefined || target === undefined) missingIdentityCount++
     const actionKind = field({ value: end, key: 'kind' })
     const commandAction = actionKind === 'Run'
+    // Keep native emitted order: sorting/deduplication would destroy per-action output indices.
+    // The emitter omits values without a digest; these are not declared-output/path indices.
+    const nativeOutputs = field({ value: end, key: 'outputs' })
+    const outputTinyDigests =
+      commandAction && cacheUploadResult !== 1 && field({ value: end, key: 'failed' }) !== true &&
+      nativeOutputs !== undefined
+        ? decodeOutputTinyDigests({
+            algorithm: 'buck2-tiny-digest-v1',
+            outputs: Array.isArray(nativeOutputs)
+              ? nativeOutputs.map((output, index) => ({
+                  index,
+                  tinyDigest: field({ value: output, key: 'tiny_digest' }),
+                }))
+              : nativeOutputs,
+          })
+        : undefined
     const row: ActionRecord = {
       type: 'action',
       buildId: safeIdentity({ value: buildId, grammar: /^[a-zA-Z0-9_.-]+$/ }),
@@ -558,7 +628,9 @@ export const createCacheEvidenceProjector = ({
       endTime: time,
       uploadCompletedAt: cacheUploadResult === 1 ? time : null,
       commandAction,
+      ...(uploadErrors === undefined ? {} : { uploadErrors }),
     }
+    if (outputTinyDigests !== undefined) row.outputTinyDigests = outputTinyDigests
     if (
       row.buildId === null ||
       row.completedAt === null ||
@@ -599,6 +671,8 @@ export const createCacheEvidenceProjector = ({
         outcome,
         executionKind,
         cacheUploadResult,
+        ...(uploadErrors === undefined ? {} : { uploadErrors }),
+        ...(outputTinyDigests === undefined ? {} : { outputTinyDigests }),
       },
     })
   }
@@ -818,6 +892,10 @@ export const decodeCacheEvidence = (value: unknown): CacheEvidence => {
       executionKind: count(field({ value: item, key: 'executionKind' })),
       cacheUploadResult: count(field({ value: item, key: 'cacheUploadResult' })),
     }
+    const uploadErrors = decodeCacheUploadErrors(field({ value: item, key: 'uploadErrors' }))
+    if (uploadErrors !== undefined) action.uploadErrors = uploadErrors
+    const outputTinyDigests = decodeOutputTinyDigests(field({ value: item, key: 'outputTinyDigests' }))
+    if (outputTinyDigests !== undefined) action.outputTinyDigests = outputTinyDigests
     const exclusionReason = field({ value: item, key: 'exclusionReason' })
     if (exclusionReason !== undefined && exclusionReason !== action.exclusionReason)
       throw new Error('Invalid cache evidence exclusion reason')
@@ -914,6 +992,70 @@ const envTime = (key: string): number | null => {
   if (value === undefined || /^[0-9]{1,16}$/.test(value) === false) return null
   const result = Number(value)
   return Number.isSafeInteger(result) === true ? result : null
+}
+
+/** Resolve freshness only after comparing actual native launches with all decoded IDs. */
+export const finalizeNativeLogFreshness = ({
+  invocations,
+  confirmedBuildIds,
+}: {
+  invocations: ActionInvocation[]
+  confirmedBuildIds: ReadonlySet<string>
+}): boolean => {
+  const decodedIds = new Set(invocations.map((item) => item.buildId))
+  const rotated = [...confirmedBuildIds].some((buildId) => decodedIds.has(buildId) === false)
+  const nativeInvocations = invocations.filter((item) => item.context === 'native-log')
+  // Audits execute no actions and cannot populate the local action cache.
+  const cacheBearingInvocations = nativeInvocations.filter((item) => item.actionCount > 0)
+  const earliest = cacheBearingInvocations.reduce(
+    (minimum, item) => Math.min(minimum, item.startedAt ?? Infinity),
+    Infinity,
+  )
+  const earliestIds = new Set(
+    cacheBearingInvocations.filter((item) => item.startedAt === earliest).map((item) => item.buildId),
+  )
+  for (const invocation of nativeInvocations) {
+    invocation.freshRoot =
+      rotated === false &&
+      invocation.freshRoot === true &&
+      invocation.actionCount > 0 &&
+      earliestIds.size === 1 &&
+      invocation.startedAt === earliest
+  }
+  return rotated
+}
+
+const confirmedNativeBuildIds = async ({
+  output,
+  startedAt,
+  finishedAt,
+}: {
+  output: string
+  startedAt: number | null
+  finishedAt: number | null
+}): Promise<Set<string>> => {
+  const confirmed = new Set<string>()
+  const registry = Bun.file(`${output}.native-build-id-paths.jsonl`)
+  // Legacy retained evidence has no registry and cannot establish rotation.
+  if (startedAt === null || finishedAt === null || (await registry.exists()) === false)
+    return confirmed
+  for (const line of (await registry.text()).split('\n')) {
+    if (line.trim().length === 0) continue
+    const row: unknown = JSON.parse(line)
+    const buildId = canonicalCacheAdmissionInvocationId(field({ value: row, key: 'buildId' }))
+    const path = requiredText(field({ value: row, key: 'path' }))
+    try {
+      const info = await stat(path)
+      if (info.isFile() === false || info.mtimeMs < startedAt || info.mtimeMs > finishedAt) continue
+      const nativeId = canonicalCacheAdmissionInvocationId((await Bun.file(path).text()).trim())
+      if (nativeId === buildId) confirmed.add(buildId)
+    } catch (error) {
+      // A registry row is written before launch. Missing or unconfirmed outputs
+      // do not establish a native invocation, nor do stale files from other jobs.
+      if (error instanceof Error && 'code' in error && error.code !== 'ENOENT') throw error
+    }
+  }
+  return confirmed
 }
 
 const run = async (): Promise<void> => {
@@ -1082,23 +1224,6 @@ const run = async (): Promise<void> => {
   }
   const header = full.header
   header.status = evidence.status
-  if (values.finalize === true) {
-    // Audits execute no actions and cannot populate the local action cache.
-    const nativeInvocations = header.invocations.filter((item) => item.context === 'native-log')
-    const cacheBearingInvocations = nativeInvocations.filter((item) => item.actionCount > 0)
-    const earliest = cacheBearingInvocations.reduce(
-      (minimum, item) => Math.min(minimum, item.startedAt ?? Infinity),
-      Infinity,
-    )
-    const tied = cacheBearingInvocations.filter((item) => item.startedAt === earliest).length !== 1
-    for (const invocation of nativeInvocations) {
-      invocation.freshRoot =
-        invocation.freshRoot === true &&
-        invocation.actionCount > 0 &&
-        tied === false &&
-        invocation.startedAt === earliest
-    }
-  }
   header.metadata = {
     repo: safeIdentity({
       value: evidence.metadata.repository,
@@ -1132,6 +1257,13 @@ const run = async (): Promise<void> => {
         : header.metadata.finishedAt,
   }
   if (values.finalize === true) {
+    const confirmedBuildIds = await confirmedNativeBuildIds({
+      output: values.output,
+      startedAt: header.metadata.startedAt,
+      finishedAt: header.metadata.finishedAt,
+    })
+    if (finalizeNativeLogFreshness({ invocations: header.invocations, confirmedBuildIds }) === true)
+      header.evidenceGaps.push('native-log-rotated')
     for (const invocation of header.invocations) {
       if (invocationWithinJobWindow({ invocation, metadata: header.metadata }) === false) {
         invocation.freshRoot = false
@@ -1242,7 +1374,7 @@ const run = async (): Promise<void> => {
   }
   if (values.finalize === true && header.complete === false) {
     console.error('Cache action evidence incomplete; observation is invalid.')
-    process.exitCode = 1
+    process.exitCode = 2
   }
   const inconsistent = evidence.invocations.reduce(
     (total, invocation) =>
@@ -1255,7 +1387,7 @@ const run = async (): Promise<void> => {
     console.error(
       `Cache evidence: ${inconsistent} remote-hit/uploaded action(s) have no native action digest; artifact records inconsistencies.`,
     )
-    process.exitCode = 1
+    process.exitCode = values.finalize === true ? 2 : 1
   }
 }
 

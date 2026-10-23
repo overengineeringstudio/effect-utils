@@ -2,7 +2,7 @@ load("@capabilities//:defs.bzl", "CAPABILITIES", "GENERATION")
 load("//buck2/platforms:defs.bzl", "host_platform_label")
 load("//buck2/toolchains:defs.bzl", "bun_toolchain", "configured_rust_toolchain", "effect_tsgo_toolchain", "host_rust_target_triple", "nix_go_bootstrap_toolchain", "nix_python_bootstrap_toolchain")
 load("//buck2/rust:toolchains.bzl", "native_rust_toolchains")
-load(":configured.bzl", "support_tool")
+load(":configured.bzl", "store_directory", "support_tool")
 load(":provider_identity_fixture.bzl", "cross_cell_product_identity")
 load(":ts_sandbox.bzl", "ts_sandbox_toolchain")
 
@@ -61,6 +61,14 @@ support_tool(
     name = "tool_pnpm",
     protocol = "pnpm/pnpm/v12.7.0",
     tool_id = "pnpm",
+    visibility = ["PUBLIC"],
+)
+
+# Offline fixture installs read a declared immutable, lockfile-pinned pnpm store.
+store_directory(
+    name = "stylex_next_fixture",
+    protocol = "effect-utils/stylex-next-fixture/v1",
+    input_id = "stylex-next-fixture",
     visibility = ["PUBLIC"],
 )
 

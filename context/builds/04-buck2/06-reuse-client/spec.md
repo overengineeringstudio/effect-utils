@@ -22,6 +22,51 @@ All client configuration, including the overlay below, must exist in
 do not configure the RE client. Change posture by stopping the daemon and
 starting with the new file and environment ([#1598](https://github.com/overengineeringstudio/effect-utils/pull/1598)).
 
+In CI, the entrypoint admits each command against the running daemon's RE
+posture while holding one project-root lock from overlay selection
+through daemon initialization and recording:
+
+```text
+no daemon -> start with current environment -> record identity + keyed posture
+matching identity + posture -> reuse (including a busy matching daemon)
+idle mismatch or unknown prior posture -> restart -> record
+busy mismatch or unrecognized status -> fail closed, leave daemon untouched
+```
+
+The record is `buck-out/.cache-daemon-posture/root.json` (mode `0600`).
+It contains a random per-record HMAC key, the SHA-256 HMAC of the expanded RE
+configuration and writer policy, daemon identities keyed by isolation, and live
+launcher PID/birth/fingerprint reservations, never the credential itself.
+Credential rotation changes the fingerprint; neither key nor fingerprint is printed.
+A crash-released root-wide flock is acquired before overlay reconciliation.
+Before changing the overlay, a mismatched live launcher or busy daemon fails
+closed. The launcher reservation is written before releasing that lock:
+`execve` preserves its PID and process birth identity until the native command
+exits, covering the gap before Buck reports an active command without inheriting
+a lock into buckd. Birth is Linux `/proc/<pid>/stat` field 22 or macOS `ps lstart`;
+reused PIDs do not preserve dead reservations. Unknown identity fails closed.
+Matching concurrent launches retain the same overlay and can proceed together.
+Native status uses the existing gate root/isolation/active-command checks.
+Buck has no conditional kill RPC: an unwrapped client can race an idle status
+read, but a daemon already observed busy is never killed. CI bypasses the warm
+shell launch cache so every command checks daemon identity and posture.
+
+Linux quality and the macOS test job run `buck2:cache-posture:ci-test`: the
+standalone daemon-posture and cache-posture suites use fake native executables,
+real process-birth identities, and locking, without fleet `gate-slot`.
+`buck2:cache-posture:test` remains the fleet-host suite, including the broader
+entrypoint and gate lifecycle tests; its fail-closed gate-slot requirement is
+unchanged.
+
+Cache-less commands (`BUCK2_NO_REMOTE_CACHE=1` or native `--no-remote-cache`)
+retain the fixed-source/offline posture contract: they remove the RE client
+configuration before startup. A test that needs this posture concurrently with
+ordinary writers owns a separate project root, not just a daemon isolation,
+because the overlay is root-wide. The TypeScript emit/publication regression
+copies tracked source inputs without `buck-out`, links only host capabilities
+and live editor views, and stops its own daemons before removing that root.
+Editor publication remains in the original root with its inherited posture.
+
 ```ini
 # tracked buckconfig: the repository's trust tier, read-only (decision 0033);
 # -c CLI overrides do not reach the RE client
@@ -428,6 +473,7 @@ Missing fields remain explicit `null`; they do not suppress a row.
 | Times                 | `startedAt`, `completedAt`, `endTime` (same as completedAt), `uploadCompletedAt`                                                            |
 | `commandAction`       | Native action kind is `Run`; non-command actions are retained but do not form a command-cache denominator                                   |
 | `exclusionReason`     | Repository-owned exact reason `local-materialization-policy` for the policy categories; `null` otherwise                                    |
+| `uploadErrors`        | Optional array of `{ category, reErrorCode }`, one per failed native `CacheUpload` end; category is closed, gRPC code is 0–16 or `null`     |
 
 All times are integer Unix milliseconds. The pinned log decoder emits native
 timestamps as `[seconds,nanoseconds]`; conversion floors sub-millisecond time.
@@ -439,9 +485,56 @@ native enums, decode/discovery errors, checksum mismatches, and truncated data
 invalidate an observation. Legitimate nondigest non-command actions still
 contribute to omission counters, not a fabricated AC identity.
 
+Failed uploads use the pinned `CacheUploadEnd.error` and optional
+`re_error_code`, not `ReUploadEnd` (which contains transfer metrics only).
+Native span ancestry associates each first upload end with its active action;
+duplicate ends do not duplicate diagnostics. An unpaired failed upload
+invalidates invocation completeness. All failed upload attempts remain in the
+full action row, even when a later attempt succeeds. Compact representatives
+carry the same optional `uploadErrors` array; they remain bounded samples, not
+an exhaustive failure list. Absence means no diagnostic was collected, including
+retained evidence produced before native upload diagnostics were collected.
+
+Upload diagnostics retain only a closed category (`unauthenticated`,
+`permission-denied`, `deadline`, `unavailable`, `resource-exhausted`,
+`invalid-argument`, or `other`) and an optional numeric gRPC code from 0 through 16. Known native enum names and numeric codes map to those numbers; unknown
+codes become `null`. Fixed patterns classify native error text, which is then
+discarded entirely. No credential environment or private credential context is
+needed. Other upload payloads are not projected.
+
+Successful command actions that were not uploaded, including failed upload
+attempts, retain optional `outputTinyDigests` in both full rows and compact
+representatives: `{ algorithm: "buck2-tiny-digest-v1", outputs:
+[{ index: 0, tinyDigest: "deadbeef" }] }`. This repository-owned algorithm
+identifier denotes Buck2's **truncated** first four digest bytes (32 bits,
+exactly eight lowercase hexadecimal characters), not a full content digest.
+The pinned implementation is
+[`cas_digest.rs:701–705`](https://github.com/facebook/buck2/blob/be6971d47dcc835b7356e1698b23039ffee4f4c2/app/buck2_common/src/cas_digest.rs#L701-L705).
+All categories are eligible, including `rustc`, `deps`, `cargo_extract`,
+`buildscript`, `rustc_cfg`, and `rust_interop_*`. Uploaded actions, failed
+actions, non-command actions, and logs without native output information omit
+the field; an explicit empty native output list remains an empty list.
+
+Indices are contiguous, zero-based positions in the native emitted output
+list, preserved without sorting or deduplication. The
+[`ActionExecutionEnd` emitter](https://github.com/facebook/buck2/blob/be6971d47dcc835b7356e1698b23039ffee4f4c2/app/buck2_build_api/src/actions/calculation.rs#L466-L475)
+omits outputs without a digest; these indices are not declared-output indices.
+**Output paths and kinds are not included.** Compare only the same native
+action digest, first checking output counts and then corresponding indices.
+Different values establish a difference; equal values are probabilistic
+evidence, not proof of equal full digests. No filesystem hashing, materializing,
+or additional Buck invocation is needed. Old artifacts without this optional
+field remain readable but provide no output determinism evidence.
+
+For approximately 534 actions and three digest-bearing outputs each, this adds
+roughly 0.1 MiB of uncompressed JSON per job (an estimate, not a measurement).
+Growth is linear in emitted output count, including compact representatives;
+the existing 64 MiB full action-payload ceiling still applies.
+
 The projector emits only allowlisted labels, configuration names, native digest
-strings, enum numbers, times, and run identity. Host paths, environment values,
-commands, outputs, host names, and raw error payloads are never copied. Invalid
+strings and output tiny digests, enum numbers, times, run identity, and closed
+upload diagnostic categories/codes. Host paths, environment values, commands,
+output paths/payloads, host names, and raw error payloads are never copied. Invalid
 identity text becomes `null` rather than a lossy replacement key. The
 repository-local mapping identifier has exact case-sensitive spelling and a
 version suffix; unknown versions are rejected, not silently reinterpreted.
@@ -469,6 +562,35 @@ Every retained invocation must satisfy the native-time enclosure
 Equality is valid at millisecond precision. Missing or out-of-window bounds retain
 rows only as incomplete evidence and revoke freshness; filesystem mtime cannot
 make an older native invocation part of the current observation.
+
+CI posture sets Buck's native `[buck2] retained_event_logs = 120`; developer
+retention remains unchanged. This limits log count, not bytes or age. The
+evidence-enabled launcher registers `{buildId, path}` JSONL rows in
+`${CI_BUCK2_CACHE_EVIDENCE_PATH}.native-build-id-paths.jsonl` after admission
+only when the invocation's canonical project root matches `recorded_root` in
+the valid `CI_BUCK2_CACHE_EVIDENCE_START` marker and its resolved isolation
+directory is the default `v2` (implicit or explicit, including
+`BUCK_ISOLATION_DIR`). The marker uses the collector's three-line
+`started_at`, `recorded_root`, `fresh_root` format. Foreign fixture roots and
+non-default isolations retain their caller flags without registration: the
+collector scans only `.devenv/otel` and `buck-out/v2/log` in the collected root.
+For `run`, isolation resolution stops at `--` or the first executable
+positional argument after the target. Payload flags cannot change the selected
+isolation or supply a native build-ID output. The launcher inserts its native
+build-ID flag before the run target and payload; unknown run-option arities
+leave the invocation unregistered rather than guessing its payload boundary.
+The lowercase hyphenated UUID identifies the actual native `--write-build-id`
+output; a registry row alone does not prove launch. Finalization confirms the
+file's UUID and job-window mtime, then compares confirmed IDs with all decoded
+native invocation IDs, including zero-action commands. A missing confirmed ID
+records `native-log-rotated` and revokes native-log freshness rather than
+promoting a surviving local-cache invocation. Legacy artifacts without this
+registry cannot establish rotation.
+
+Finalization exits `2` when it successfully writes incomplete evidence, and
+`1` on an operational failure. Collection preserves either failure but adds
+`evidence-finalization-failed` only for an operational finalization failure,
+not as a duplicate diagnosis of an already recorded evidence gap.
 
 In-Nix product jobs retain disabled-by-design headers and zero action rows.
 Their reuse metric is Nix substitution, not Buck AC. The daily cache-health

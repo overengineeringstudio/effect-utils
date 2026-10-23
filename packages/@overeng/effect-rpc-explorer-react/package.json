@@ -61,7 +61,7 @@
     "@vitest/browser": "5.0.3",
     "@vitest/browser-playwright": "5.0.3",
     "effect": "4.0.3",
-    "playwright": "1.63.0",
+    "playwright": "1.64.1",
     "react": "19.2.8",
     "react-aria-components": "1.21.1",
     "react-dom": "19.2.8",

@@ -54,7 +54,7 @@
     "@opentelemetry/sdk-trace-web": "2.11.0",
     "@opentelemetry/semantic-conventions": "1.43.0",
     "@overeng/utils-dev": "workspace:^",
-    "@playwright/test": "1.63.0",
+    "@playwright/test": "1.64.1",
     "@restatedev/restate-sdk-opentelemetry": "1.17.0",
     "@storybook/react-vite": "10.6.0",
     "@types/node": "26.5.0",

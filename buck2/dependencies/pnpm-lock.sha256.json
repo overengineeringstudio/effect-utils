@@ -1,6 +1,6 @@
 {
   "schema": "effect-utils/buck2-pnpm-sha256/v2",
-  "lockfileFingerprint": "sha256:cb580637fa3ac831ce6548cf440d7bc5833ec4a04bcd85bad737a0dce1ddbc3a",
+  "lockfileFingerprint": "sha256:db2a22a04cb542446eee2fd701be68a9c6258f63a9ab1c846e390e1ae162c0ce",
   "packages": {
     "@adobe/css-tools@4.5.0": {
       "bins": {},
@@ -2112,16 +2112,16 @@
       "sha256": "3f5bd44c36cb74795ac290e82662fcdf176bb70923bb0813b111d227a7228e3b",
       "sizeBytes": 5977465
     },
-    "@playwright/test@1.63.0": {
+    "@playwright/test@1.64.1": {
       "bins": {
         "playwright": "cli.js"
       },
       "classification": "public",
-      "integrity": "sha512-oxMK4vllB9RK5NQ2l1pq1IfOf2AvnEuj/vYGDj0H2nMtmtZpKtCwt/l00GEO6xjGfpBNAvjovvYdCm50dRQkpQ==",
-      "packageIdentity": "@playwright/test@1.63.0",
-      "registryUrl": "https://registry.npmjs.org/@playwright/test/-/test-1.63.0.tgz",
-      "sha256": "fc594f36b7b4aafece614ec6852ad728423215a76edd0a2a1821bb0c49539c4e",
-      "sizeBytes": 8749
+      "integrity": "sha512-IaYGml/nSOiZWROfPtuIL7neuu9qDOZ3TNvNljUIrhDMxiGTgPjzj/g9p9RxpS2tSepPDRY+UwAaEeiKtUvIAg==",
+      "packageIdentity": "@playwright/test@1.64.1",
+      "registryUrl": "https://registry.npmjs.org/@playwright/test/-/test-1.64.1.tgz",
+      "sha256": "9bc8fb4bf5c8f395c1c6b6999e5480607a5aaaead17e9fe6e58181002b4086e3",
+      "sizeBytes": 8748
     },
     "@polka/url@1.0.0-next.29": {
       "bins": {},
@@ -5667,27 +5667,27 @@
       "sha256": "697b463be3cdbd9ffc8f4194fd5019a69ddf95875fb703d78b2b115cc9e740a8",
       "sizeBytes": 24326
     },
-    "playwright-core@1.63.0": {
+    "playwright-core@1.64.1": {
       "bins": {
         "playwright-core": "cli.js"
       },
       "classification": "public",
-      "integrity": "sha512-rYCsBF/M5HjUch52bbtVONEFjv6Xu8sm8h72dNlR5bzIE1fvC/bxgspzkjSfU+MweEMmPM8KJebG6nnyxo5mCg==",
-      "packageIdentity": "playwright-core@1.63.0",
-      "registryUrl": "https://registry.npmjs.org/playwright-core/-/playwright-core-1.63.0.tgz",
-      "sha256": "208593d4e1bcd8f8fe5f869cad1cc332dc7f1d70dc1d58c102dc3ac36e30f26c",
-      "sizeBytes": 3123044
+      "integrity": "sha512-BC4s8y6SEVA6Q1rSxZTto8hI1KUI3xXlHGZgvGqP4IqPdI/a6FX9H29IDNz7vKo9l21b6LfYosScPL6M3xxyDQ==",
+      "packageIdentity": "playwright-core@1.64.1",
+      "registryUrl": "https://registry.npmjs.org/playwright-core/-/playwright-core-1.64.1.tgz",
+      "sha256": "3af03703c967c95037454f2283f709d53ce804a4776d4219d319f5bbcc2a0185",
+      "sizeBytes": 3172161
     },
-    "playwright@1.63.0": {
+    "playwright@1.64.1": {
       "bins": {
         "playwright": "cli.js"
       },
       "classification": "public",
-      "integrity": "sha512-+7ziBLidS4NaNCdt57SUDT+wYmmd5fmiQejUic/kb+YsYSCPyOOE9sebzMjNmQrsnNpDJqd4WHvV/8lfKfUDUg==",
-      "packageIdentity": "playwright@1.63.0",
-      "registryUrl": "https://registry.npmjs.org/playwright/-/playwright-1.63.0.tgz",
-      "sha256": "195a5ee9bfed7c6e9c03965950e32e5e4dbedaa02e740e5a530eb4b87dae050c",
-      "sizeBytes": 899597
+      "integrity": "sha512-HCrVhHr5QQuwYoswEUGTb7gGp522yflbv/ST8nF4sFWGuLjQCt17Q/EubpGGSNKYn1tsTCPZxqHhHCfVURu7UA==",
+      "packageIdentity": "playwright@1.64.1",
+      "registryUrl": "https://registry.npmjs.org/playwright/-/playwright-1.64.1.tgz",
+      "sha256": "36ba838d2d55c44fafcff89f919b5d7bc829209318076578ee2bc7cb5687fd57",
+      "sizeBytes": 905535
     },
     "pngjs@7.0.0": {
       "bins": {},
@@ -6793,5 +6793,5 @@
   "source": "pnpm-lock.yaml",
   "generator": "buck2/dependencies/pnpm-lock.sha256.json.genie.ts",
   "regenerate": "devenv tasks run genie:run",
-  "fingerprint": "sha256:376b0fbdf9822266a27170b3d6e0509339aa59b766d8cfe0cf8e0e01c568c800"
+  "fingerprint": "sha256:79e327533eb0672826b19f3794dca59cbbde52891da584351252ac26c55fcdb1"
 }
