@@ -831,7 +831,9 @@ export const cacheLauncherBirth = (pid: number): string | undefined => {
       throw new Error('Buck2 cache posture: malformed launcher birth identity')
     return `${pid}:${start}`
   }
-  const result = spawnSync('ps', ['-p', String(pid), '-o', 'lstart='], {
+  // Collection launchers may have a tool-only PATH without macOS system binaries.
+  const ps = process.platform === 'darwin' ? '/bin/ps' : 'ps'
+  const result = spawnSync(ps, ['-p', String(pid), '-o', 'lstart='], {
     encoding: 'utf8',
     timeout: 1000,
     env: { ...process.env, LC_ALL: 'C', TZ: 'UTC' },

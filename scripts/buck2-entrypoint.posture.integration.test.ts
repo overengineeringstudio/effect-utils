@@ -25,6 +25,19 @@ const values = {
 }
 
 describe('daemon RE posture', () => {
+  it('resolves launcher birth identity without relying on PATH', () => {
+    const birth = cacheLauncherBirth(process.pid)
+    expect(birth).toBeDefined()
+    const path = process.env['PATH']
+    try {
+      process.env['PATH'] = ''
+      expect(cacheLauncherBirth(process.pid)).toBe(birth)
+    } finally {
+      if (path === undefined) delete process.env['PATH']
+      else process.env['PATH'] = path
+    }
+  })
+
   it('compares keyed fingerprints, including credential rotation and reader transitions', () => {
     const env = { BUCK2_CACHE_WRITE_BASIC_AUTH: secret }
     const fingerprint = cacheDaemonPostureFingerprint({ values, env, salt: 'first-salt' })
