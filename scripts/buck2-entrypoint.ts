@@ -530,6 +530,7 @@ export const resolveGateInvocation = ({
   env,
   cwd,
   strictRunArguments = true,
+  includePayload = false,
   readArgfile = (path) => {
     const canonical = realpathSync(path)
     return {
@@ -542,8 +543,15 @@ export const resolveGateInvocation = ({
   readonly env: Readonly<Record<string, string | undefined>>
   readonly cwd: string
   readonly strictRunArguments?: boolean
+  readonly includePayload?: boolean
   readonly readArgfile?: (path: string) => { readonly path: string; readonly contents: string }
-}): { readonly isolation: string; readonly args: readonly string[] } | undefined => {
+}):
+  | {
+      readonly isolation: string
+      readonly args: readonly string[]
+      readonly nativeArgumentCount?: number
+    }
+  | undefined => {
   const expanded: string[] = []
   const active = new Set<string>()
   const expand = ({
@@ -673,8 +681,53 @@ export const resolveGateInvocation = ({
     isolation !== '.' &&
     isolation !== '..' &&
     isolation.startsWith('._buck2') === false
-    ? { isolation, args: buckArgs }
+    ? includePayload === true
+      ? { isolation, args: expanded, nativeArgumentCount: buckArgs.length }
+      : { isolation, args: buckArgs }
     : undefined
+}
+
+/** Pin policy in the expanded native argv, never in executable/test/BXL payload. */
+export const cacheDaemonPolicyArguments = ({
+  args,
+  policy,
+  cwd,
+  env,
+}: {
+  readonly args: readonly string[]
+  readonly policy: string
+  readonly cwd: string
+  readonly env: Readonly<Record<string, string | undefined>>
+}): string[] => {
+  const invocation = resolveGateInvocation({
+    args,
+    cwd,
+    env,
+    strictRunArguments: false,
+    includePayload: true,
+  })
+  if (invocation === undefined)
+    throw new Error(
+      'Buck2 cache posture: cannot safely resolve native arguments or argfiles; refusing unpinned invocation',
+    )
+  const nativeArgumentCount = invocation.nativeArgumentCount ?? invocation.args.length
+  const pinnedArgs = invocation.args.filter(
+    (arg, index) => arg !== '--reuse-current-config' || index >= nativeArgumentCount,
+  )
+  const sentinel = pinnedArgs.indexOf('--')
+  const run = pinnedArgs.indexOf('run')
+  const insertion =
+    run !== -1 && (sentinel === -1 || run < sentinel)
+      ? run + 1
+      : sentinel === -1
+        ? pinnedArgs.length
+        : sentinel
+  return [
+    ...pinnedArgs.slice(0, insertion),
+    '--config-file',
+    policy,
+    ...pinnedArgs.slice(insertion),
+  ]
 }
 
 /** Native status is ExistingOnly: admission and cleanup never spawn a daemon. */
@@ -906,7 +959,7 @@ export const admitCacheDaemonCommand = async ({
     return admit()
   const invocation = resolveGateInvocation({ args, env, cwd: process.cwd() })
   if (invocation === undefined)
-    throw new Error('Buck2 cache posture: cannot safely determine native isolation in CI')
+    throw new Error('Buck2 cache posture: cannot safely resolve native isolation or argfiles in CI')
   if (skipsWatcherAdmission(invocation.args) === true) return admit()
   const { isolation } = invocation
   const state = join(root, 'buck-out', '.cache-daemon-posture')
@@ -1121,26 +1174,9 @@ export const admitCacheDaemonCommand = async ({
     } finally {
       rmSync(policyCandidate, { force: true })
     }
-    // --reuse-current-config would explicitly ignore this invocation's policy.
-    const originalSentinel = admittedArgs.indexOf('--')
-    const pinnedArgs = admittedArgs.filter(
-      (arg, index) =>
-        arg !== '--reuse-current-config' || (originalSentinel !== -1 && index > originalSentinel),
-    )
-    const sentinel = pinnedArgs.indexOf('--')
-    const run = pinnedArgs.indexOf('run')
-    const insertion =
-      run !== -1 && (sentinel === -1 || run < sentinel)
-        ? run + 1
-        : sentinel === -1
-          ? pinnedArgs.length
-          : sentinel
-    return [
-      ...pinnedArgs.slice(0, insertion),
-      '--config-file',
-      policy,
-      ...pinnedArgs.slice(insertion),
-    ]
+    // Expand once and execute the resulting argv, so Buck cannot later move our
+    // policy behind a separator introduced by a nested user argfile.
+    return cacheDaemonPolicyArguments({ args: admittedArgs, policy, cwd: process.cwd(), env })
   } finally {
     closeSync(descriptor)
     library.close()

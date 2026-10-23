@@ -19,6 +19,7 @@ import {
   cacheDaemonRestartDecision,
   admitCacheDaemonCommand,
   directBuckArguments,
+  cacheDaemonPolicyArguments,
 } from './buck2-entrypoint.ts'
 
 const secret = 'planted-writer-credential-never-persist'
@@ -28,6 +29,67 @@ const values = {
 }
 
 describe('daemon RE posture', () => {
+  it('pins before direct and nested argfile payloads and refuses unresolved argfiles', () => {
+    const cwd = mkdtempSync(join(tmpdir(), 'buck2-policy-argfiles-'))
+    try {
+      const pin = (args: readonly string[]) =>
+        cacheDaemonPolicyArguments({
+          args,
+          cwd,
+          env: {},
+          policy: join(cwd, 'policy.buckconfig'),
+        })
+      for (const command of ['run', 'test', 'bxl']) {
+        const input = [
+          command,
+          '//:fixture',
+          '--',
+          '--reuse-current-config',
+          '@payload',
+          '--flagfile',
+          'literal',
+        ]
+        const direct = pin(input)
+        expect(direct.indexOf('--config-file')).toBeLessThan(direct.indexOf('--'))
+        expect(direct.slice(direct.indexOf('--'))).toEqual(input.slice(2))
+        writeFileSync(join(cwd, 'inner'), `${input.join('\n')}\n`)
+        writeFileSync(join(cwd, 'outer'), '--flagfile\ninner\n')
+        expect(pin(['@outer'])).toEqual(direct)
+        expect(pin(['--flagfile', 'outer'])).toEqual(direct)
+        // Native resumes expansion in an outer frame after an inner separator.
+        writeFileSync(join(cwd, 'tail'), 'expanded-payload\n')
+        expect(pin(['@outer', '@tail']).at(-1)).toBe('expanded-payload')
+      }
+      expect(
+        pin([
+          '--reuse-current-config',
+          'test',
+          '//:fixture',
+          '--',
+          '--reuse-current-config',
+        ]).filter((arg) => arg === '--reuse-current-config'),
+      ).toHaveLength(1)
+      expect(pin(['run', '//:fixture', 'payload', '--reuse-current-config']).slice(-2)).toEqual([
+        'payload',
+        '--reuse-current-config',
+      ])
+      writeFileSync(join(cwd, 'cycle'), '@cycle\n')
+      writeFileSync(join(cwd, 'script.py'), 'never execute this')
+      for (const args of [
+        ['@missing'],
+        ['@cycle'],
+        ['@script.py'],
+        ['@-'],
+        ['--flagfile=outer'],
+        ['--flagfile'],
+        ['@cell//flags'],
+      ])
+        expect(() => pin(args)).toThrow('cannot safely resolve native arguments or argfiles')
+    } finally {
+      rmSync(cwd, { recursive: true, force: true })
+    }
+  })
+
   it('preserves absent root/native defaults without enabling reader uploads or headers', () => {
     const env = {}
     const salt = 'default-policy-test'

@@ -58,7 +58,13 @@ the native invocation. It pins RE client settings, upload permission, default
 action-upload permission and remote-cache enablement, including explicit reader
 defaults for absent writer-only settings. Its filename is isolation-derived,
 not fingerprint-derived, and credential variables remain unexpanded on disk.
-The invocation drops `--reuse-current-config`, which would ignore its policy.
+The invocation expands readable text `@argfile` and `--flagfile PATH` inputs,
+including nesting, with pinned Buck's line/cwd/separator semantics. It inserts
+the policy before the first expanded `--` (and before a `run` target), then
+executes that expanded argv. Native `--reuse-current-config` is removed only
+before the payload boundary; executable, test and BXL payloads remain intact.
+Unreadable, cyclic, stdin, Python, cell-resolved or unsupported argfile forms
+fail closed rather than risk an unpinned invocation.
 The shared overlay remains serialized through native daemon startup.
 The snapshot and fingerprint use the effective admitted policy after REAPI
 fallback, not only the root overlay: a failed reader or optional-writer probe

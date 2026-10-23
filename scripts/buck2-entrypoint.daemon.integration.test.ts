@@ -53,22 +53,27 @@ const [root,isolation,posture,hold]=process.argv.slice(2);
 const fallback=posture==='fallback';
 const env={...process.env,CI:'1',BUCK2_NO_REMOTE_CACHE:'',BUCK2_PUBLIC_CACHE_READ_ONLY:fallback?'1':'',BUCK2_PRIVATE_CACHE_WRITE_BASIC_AUTH:'',BUCK2_PRIVATE_CACHE_ADDRESS:'',BUCK2_CACHE_WRITE_BASIC_AUTH:'',BUCK2_CACHE_WRITE_OPTIONAL:'',CI_BUCK2_CACHE_EVIDENCE_PATH:''};
 const values={'buck2.remote_cache_enabled':'true','buck2.allow_cache_uploads':posture,...(posture==='true'?{'buck2.default_allow_cache_upload':'true','buck2_re_client.http_headers':'authorization: Basic $BUCK2_CACHE_WRITE_BASIC_AUTH'}:{})};
+const auditArgs=posture==='true'?['@'+root+'/'+isolation+'.outer']:['audit','config','--json'];
+if(posture==='true') {
+ writeFileSync(root+'/'+isolation+'.inner','audit\\nconfig\\n--json\\n--\\nbuck2.allow_cache_uploads\\nbuck2.default_allow_cache_upload\\nbuck2_re_client.http_headers\\n');
+ writeFileSync(root+'/'+isolation+'.outer','--flagfile\\n'+root+'/'+isolation+'.inner\\n');
+}
 try {
  const args=await admitCacheDaemonCommand({native:${JSON.stringify(native)},root,
-  args:['--isolation-dir',isolation,'audit','config','--json'],env,
+  args:['--isolation-dir',isolation,...auditArgs],env,
   admit:async check=>{
    if(fallback) {
     const admitted=await directBuckArguments({cwd:root,args:['build','//:fixture'],env,cacheDirectory:root+'/probe-cache',deadlineMs:100,beforeCachePosture:check});
     return ['audit','config','--json',...admitted.slice(2)];
    }
-   check?.(values);writeFileSync(root+'/.buckconfig.local','[buck2]\\nallow_cache_uploads = '+posture+'\\n'+(posture==='true'?'default_allow_cache_upload = true\\n[buck2_re_client]\\nhttp_headers = authorization: Basic $BUCK2_CACHE_WRITE_BASIC_AUTH\\n':''));return ['audit','config','--json'];
+   check?.(values);writeFileSync(root+'/.buckconfig.local','[buck2]\\nallow_cache_uploads = '+posture+'\\n'+(posture==='true'?'default_allow_cache_upload = true\\n[buck2_re_client]\\nhttp_headers = authorization: Basic $BUCK2_CACHE_WRITE_BASIC_AUTH\\n':''));return auditArgs;
   }
  });
  console.log('admitted');
  if(hold==='true') await once(process.stdin,'data');
  const {spawnSync}=await import('node:child_process');
  if(hold==='true' && !fallback) {
-  const unpinned=spawnSync(${JSON.stringify(native)},['--isolation-dir',isolation,'audit','config','--json'],{cwd:root,encoding:'utf8'});
+  const unpinned=spawnSync(${JSON.stringify(native)},['--isolation-dir',isolation,...auditArgs],{cwd:root,encoding:'utf8'});
   if(unpinned.status!==0 || JSON.parse(unpinned.stdout)['buck2.allow_cache_uploads']!=='false') throw new Error('shared-overlay control did not observe B');
  }
  const result=spawnSync(${JSON.stringify(native)},['--isolation-dir',isolation,...args],{cwd:root,encoding:'utf8'});
