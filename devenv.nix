@@ -400,6 +400,9 @@ let
     vitestArgs = lib.concatStringsSep " " (map lib.escapeShellArg lane.unboundedFiles);
     # mr's writer boundary uses Bun FFI, matching its packaged runtime.
     vitestRuntime = if lane.packageName == "megarepo" then "bun" else "node";
+    # Elevated own-real-UID runner helpers correctly veto product GC but are outside
+    # the synthetic fixture world. Isolate tests rather than weaken that policy.
+    vitestIsolatedProcessTable = lane.packageName == "megarepo" && pkgs.stdenv.isLinux;
     after = lane.unboundedAfter;
   }) (builtins.filter (lane: lane.unboundedFiles != [ ]) buck2TestLanes);
   allSourceTestPackages = sourceOnlyTestPackages ++ unboundedTestPackages;
@@ -1517,8 +1520,9 @@ in
     exec = trace.exec "test:megarepo-store-gc" ''
       set -euo pipefail
       source ${lib.escapeShellArg pnpmTaskHelpersScript}
-      ${flakePkgs.bun}/bin/bun ../../../genie/ci-scripts/megarepo-process-diagnostics.mjs
-      ${flakePkgs.bun}/bin/bun --bun "$(resolve_package_bin vitest vitest)" run src/cli/store.integration.test.ts --testTimeout 30000 --hookTimeout 30000
+      ${pkgs.util-linux}/bin/unshare --user --map-root-user --pid --fork --mount-proc -- \
+        ${pkgs.python3}/bin/python3 ${./nix/devenv-modules/tasks/shared/test-namespace-init.py} \
+        ${flakePkgs.bun}/bin/bun --bun "$(resolve_package_bin vitest vitest)" run src/cli/store.integration.test.ts --testTimeout 30000 --hookTimeout 30000
     '';
   };
 

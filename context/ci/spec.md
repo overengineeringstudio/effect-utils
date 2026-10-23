@@ -41,6 +41,8 @@ A **lane** is one workflow job (or a job matrix) with one declared cadence and o
 
 - Quality and source-policy lanes give PR feedback and run again on the merge group's combined head.
 - Heavy unit, browser, Rust, Weaver, Restate, from-source product, inert-admission, and Storybook-play lanes run only for `merge_group`; they are not duplicated on ordinary PR pushes or main pushes.
+- The focused Linux `test-megarepo-store-gc` lane runs on PRs, merge groups and explicit dispatches. It executes the native store integration regressions before queue admission; the full native megarepo complement remains in the heavy unit lane.
+  Both this lane and the full Linux native megarepo complement use a private user/PID namespace with a readable init reaper. Elevated runner helpers (for example a `sudo` process with real UID equal to the runner and effective UID 0) intentionally veto GC on a real host. They are outside synthetic test worlds, so isolation removes environmental evidence without granting new runtime exemptions. The reaper prevents orphaned git helpers from becoming unknown zombie evidence.
 - Main-only lanes run only after changes reach `main` or through an authorized dispatch.
 - `bootstrap-cold-proof`, `test-megarepo-cold-gc`, and `nix-closure-sizes` run in Empirical Proofs on trusted main push, nightly, or main dispatch, and on PRs carrying `ci:heavy-proofs`; their PR variants have no writer credentials.
 - `devenv-perf` is dispatch-only. It has no pull-request label coupling and does not run on the schedule.

@@ -35,6 +35,7 @@
 #   - optional `after = [ ... ]` for package-specific prerequisites
 #   - optional `installTask` overriding the default installer in direct and aggregate execution
 #   - optional `vitestRuntime = "bun"` when tests use Bun-native APIs (default: node)
+#   - optional `vitestIsolatedProcessTable = true` for Linux native process-evidence fixtures
 #
 # Provides:
 #   - test:run - Run all tests
@@ -114,6 +115,7 @@ let
       name,
       extraArgs ? "",
       runtime ? "node",
+      isolatedProcessTable ? false,
     }:
     ''
       set -euo pipefail
@@ -132,7 +134,10 @@ let
           "--outputFile.json=$_vitest_collection_dir/${taskFileStem name}.vitest.json"
         )
       ''}
-      "''${_otel_instr[@]}" ${
+      ${lib.optionalString isolatedProcessTable ''
+        ${pkgs.util-linux}/bin/unshare --user --map-root-user --pid --fork --mount-proc -- \
+          ${pkgs.python3}/bin/python3 ${./test-namespace-init.py} \
+      ''}"''${_otel_instr[@]}" ${
         lib.optionalString (runtime == "bun") "${pkgs.bun}/bin/bun --bun "
       }"$(resolve_package_bin vitest vitest)" run --testTimeout 30000 --hookTimeout 30000 "''${_vitest_collection_args[@]}" ${extraArgs}
     '';
@@ -196,6 +201,7 @@ let
         name = "test:${pkg.name}";
         extraArgs = pkg.vitestArgs or "";
         runtime = pkg.vitestRuntime or "node";
+        isolatedProcessTable = pkg.vitestIsolatedProcessTable or false;
       });
       cwd = pkg.path;
       execIfModified = [
