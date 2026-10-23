@@ -19,7 +19,6 @@ native.rust_test(
         ":lib",
         "//rust/third-party:serde",
         "//rust/third-party:serde_json",
-        "//rust/third-party:tempfile",
     ],
     env = {
         "OUT_DIR": "$(location :work-storage-build-script-run[out_dir])",

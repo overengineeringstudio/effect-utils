@@ -111,8 +111,14 @@ fn exported_schema_is_the_normative_manifest_contract() {
 
 #[test]
 fn file_entrypoint_reads_only_manifest_and_preserves_io_errors() {
-    let directory = tempfile::tempdir().unwrap();
-    let path = directory.path().join("manifest.json");
+    let nonce = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    let directory = std::env::temp_dir()
+        .join(format!("work-storage-conformance-{}-{nonce}", std::process::id()));
+    std::fs::create_dir(&directory).unwrap();
+    let path = directory.join("manifest.json");
     let request = &cases()[0].request;
     std::fs::write(&path, request["manifest"].to_string()).unwrap();
     let manifest = read_manifest(&path).unwrap();
@@ -121,9 +127,10 @@ fn file_entrypoint_reads_only_manifest_and_preserves_io_errors() {
     assert!(matches!(read_manifest(&path), Err(ReadManifestError::InvalidManifest)));
     std::fs::write(&path, [0xff]).unwrap();
     assert!(matches!(read_manifest(&path), Err(ReadManifestError::InvalidManifest)));
-    let error = read_manifest(directory.path().join("absent.json")).unwrap_err();
+    let error = read_manifest(directory.join("absent.json")).unwrap_err();
     match error {
         ReadManifestError::Io(error) => assert_eq!(error.kind(), std::io::ErrorKind::NotFound),
         ReadManifestError::InvalidManifest => panic!("missing manifest must preserve I/O failure"),
     }
+    std::fs::remove_dir_all(directory).unwrap();
 }
