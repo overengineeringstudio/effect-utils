@@ -41,6 +41,16 @@ const productDigest = (root: string): string => {
   return hash.digest('hex')
 }
 
+// Keep nested cleanup outside the test callback: Bun's Vitest compatibility
+// fails to register this test when its callback contains the nested finalizer.
+const cleanupRoot = (root: string, stopDaemons: () => void): void => {
+  try {
+    stopDaemons()
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+}
+
 it('keeps real Buck emit identical after publishing the editor test dependency views', () => {
   const buck = process.env['BUCK2_BIN']
   if (buck === undefined) throw new Error('BUCK2_BIN is required for the real toolchain regression')
@@ -119,10 +129,8 @@ it('keeps real Buck emit identical after publishing the editor test dependency v
     expect(realpathSync(rootTypes)).not.toBe(rootTypes)
     expect(emit(publishedIsolation)).toBe(before)
   } finally {
-    try {
+    cleanupRoot(root, () => {
       for (const isolation of isolations) run(buck, ['--isolation-dir', isolation, 'kill'])
-    } finally {
-      rmSync(root, { recursive: true, force: true })
-    }
+    })
   }
 }, 1_800_000)
