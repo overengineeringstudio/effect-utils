@@ -1390,8 +1390,10 @@ in
     exec = trace.exec "buck2:cache-posture:ci-test" ''
       set -euo pipefail
       cd "''${DEVENV_ROOT:-$PWD}"
+      export BUCK2_NATIVE_BIN=${buck2Machine}/libexec/buck2
       exec ${pkgs.bun}/bin/bun ./packages/@overeng/buck2-tools/src/bun-test-runner.ts test \
         ./scripts/buck2-entrypoint.posture.integration.test.ts \
+        ./scripts/buck2-entrypoint.daemon.integration.test.ts \
         ./scripts/buck2-cache-posture.integration.test.ts
     '';
   };

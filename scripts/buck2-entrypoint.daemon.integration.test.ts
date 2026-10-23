@@ -1,0 +1,106 @@
+import { expect, it } from 'bun:test'
+import { spawnSync } from 'node:child_process'
+import { mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+
+it('scopes concurrent posture reservations to real Buck roots and daemon isolations', async () => {
+  const native = process.env['BUCK2_NATIVE_BIN']
+  if (native === undefined)
+    throw new Error('BUCK2_NATIVE_BIN is required for real daemon regression')
+  const roots = [
+    realpathSync(mkdtempSync(join(tmpdir(), 'buck2-real-posture-'))),
+    realpathSync(mkdtempSync(join(tmpdir(), 'buck2-real-separate-'))),
+  ]
+  const root = roots[0]!
+  const separate = roots[1]!
+  const worker = join(root, 'launcher.ts')
+  const children: Bun.Subprocess<'pipe', 'pipe', 'pipe'>[] = []
+  const launch = (cwd: string, isolation: string, posture: string, hold = false) => {
+    const child = Bun.spawn([process.execPath, worker, cwd, isolation, posture, String(hold)], {
+      stdin: 'pipe',
+      stdout: 'pipe',
+      stderr: 'pipe',
+    })
+    children.push(child)
+    return child
+  }
+  const status = () => {
+    const result = spawnSync(native, ['--isolation-dir', 'writer', 'status'], {
+      cwd: root,
+      encoding: 'utf8',
+    })
+    expect(result.status, result.stderr).toBe(0)
+    return JSON.parse(result.stdout).process_info.pid
+  }
+  try {
+    for (const cwd of roots) {
+      writeFileSync(join(cwd, '.buckroot'), '')
+      writeFileSync(
+        join(cwd, '.buckconfig'),
+        '[cells]\nfixture = .\n[buck2]\nremote_cache_enabled = true\n',
+      )
+    }
+    // The worker is ordinary launcher code, never a copied/imported test module.
+    // Native status, startup audit, daemon identity and cleanup all use real Buck.
+    writeFileSync(
+      worker,
+      `
+import {writeFileSync} from 'node:fs';
+import {once} from 'node:events';
+import {admitCacheDaemonCommand} from ${JSON.stringify(join(import.meta.dir, 'buck2-entrypoint.ts'))};
+const [root,isolation,posture,hold]=process.argv.slice(2);
+const values={'buck2.remote_cache_enabled':'true','buck2.allow_cache_uploads':posture,...(posture==='true'?{'buck2.default_allow_cache_upload':'true','buck2_re_client.http_headers':'authorization: Basic $BUCK2_CACHE_WRITE_BASIC_AUTH'}:{})};
+try {
+ const args=await admitCacheDaemonCommand({native:${JSON.stringify(native)},root,
+  args:['--isolation-dir',isolation,'audit','config','--json'],env:{...process.env,CI:'1'},
+  admit:async check=>{check?.(values);writeFileSync(root+'/.buckconfig.local','[buck2]\\nallow_cache_uploads = '+posture+'\\n'+(posture==='true'?'default_allow_cache_upload = true\\n[buck2_re_client]\\nhttp_headers = authorization: Basic $BUCK2_CACHE_WRITE_BASIC_AUTH\\n':''));return ['audit','config','--json'];}
+ });
+ console.log('admitted');
+ if(hold==='true') await once(process.stdin,'data');
+ const {spawnSync}=await import('node:child_process');
+ if(hold==='true') {
+  const unpinned=spawnSync(${JSON.stringify(native)},['--isolation-dir',isolation,'audit','config','--json'],{cwd:root,encoding:'utf8'});
+  if(unpinned.status!==0 || JSON.parse(unpinned.stdout)['buck2.allow_cache_uploads']!=='false') throw new Error('shared-overlay control did not observe B');
+ }
+ const result=spawnSync(${JSON.stringify(native)},['--isolation-dir',isolation,...args],{cwd:root,encoding:'utf8'});
+ if(result.status!==0) throw new Error('native audit failed');
+ const config=JSON.parse(result.stdout);
+ if(config['buck2.allow_cache_uploads']!==posture || config['buck2.default_allow_cache_upload']!==posture ||
+   config['buck2_re_client.http_headers']!==(posture==='true'?'authorization: Basic $BUCK2_CACHE_WRITE_BASIC_AUTH':'')) throw new Error('native audit policy changed');
+ process.exit(0);
+} catch(error) {console.error(error.message);process.exitCode=1;}
+`,
+    )
+    const writer = launch(root, 'writer', 'true', true)
+    const ready = await writer.stdout.getReader().read()
+    expect(new TextDecoder().decode(ready.value)).toContain('admitted')
+    const writerPid = status()
+    const otherIsolation = launch(root, 'reader', 'false')
+    expect(await otherIsolation.exited, await new Response(otherIsolation.stderr).text()).toBe(0)
+    const otherRoot = launch(separate, 'writer', 'false')
+    expect(await otherRoot.exited, await new Response(otherRoot.stderr).text()).toBe(0)
+    const sameDaemon = launch(root, 'writer', 'false')
+    expect(await sameDaemon.exited).toBe(1)
+    expect(await new Response(sameDaemon.stderr).text()).toContain('concurrent launcher')
+    // B has replaced the root-wide overlay. A must still execute with its own policy.
+    writer.stdin.write('finish\n')
+    expect(await writer.exited, await new Response(writer.stderr).text()).toBe(0)
+    const matching = launch(root, 'writer', 'true')
+    expect(await matching.exited, await new Response(matching.stderr).text()).toBe(0)
+    expect(status()).toBe(writerPid)
+  } finally {
+    for (const child of children) child.kill()
+    await Promise.all(children.map((child) => child.exited))
+    for (const cwd of roots) {
+      for (const isolation of ['writer', 'reader']) {
+        const killed = spawnSync(native, ['--isolation-dir', isolation, 'kill'], {
+          cwd,
+          encoding: 'utf8',
+        })
+        expect(killed.status, killed.stderr).toBe(0)
+      }
+      rmSync(cwd, { recursive: true, force: true })
+    }
+  }
+}, 15000)

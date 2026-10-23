@@ -201,7 +201,7 @@ else process.exit(9);
     }
   }, 15000)
 
-  it('refuses different postures in one root, admits them in separate roots and expires a reused PID', async () => {
+  it('refuses different postures on one daemon, admits other roots/isolations and expires a reused PID', async () => {
     const root = mkdtempSync(join(tmpdir(), 'buck2-posture-race-'))
     const separateRoot = mkdtempSync(join(tmpdir(), 'buck2-posture-separate-'))
     const native = join(root, 'native')
@@ -234,16 +234,17 @@ import {once} from 'node:events';
 import {admitCacheDaemonCommand} from ${JSON.stringify(join(import.meta.dir, 'buck2-entrypoint.ts'))};
 const mode=process.argv[2];
 const root=process.argv[3]??${JSON.stringify(root)};
+const isolation=process.argv[4]??'v2';
 const writer=mode!=='reader';
 const values=writer ? ${JSON.stringify(values)} : {'buck2.allow_cache_uploads':'false'};
 const config=writer ? '[buck2]\\nallow_cache_uploads = true\\n[buck2_re_client]\\nhttp_headers = authorization: Basic $BUCK2_CACHE_WRITE_BASIC_AUTH\\n' : '[buck2]\\nallow_cache_uploads = false\\n';
 console.log('attempting');
 try {
 await admitCacheDaemonCommand({
-native:${JSON.stringify(native)},root,args:['--isolation-dir',writer?'v2':'other','build','//:fixture'],
+native:${JSON.stringify(native)},root,args:['--isolation-dir',isolation,'build','//:fixture'],
 env:{...process.env,CI:'1',BUCK2_CACHE_WRITE_BASIC_AUTH:${JSON.stringify(secret)}},
 admit:async (check)=>{
-check?.(values);
+check?.({'buck2.remote_cache_enabled':'true',...values});
 writeFileSync(root+'/.buckconfig.local',config);
 if(mode==='writer') { console.log('overlay'); await once(process.stdin,'data'); }
 return ['build','//:fixture'];
@@ -297,6 +298,14 @@ process.exit(0);
       expect(await separate.exited, await new Response(separate.stderr).text()).toBe(0)
       expect(readFileSync(overlay, 'utf8')).toBe(writerOverlay)
       expect(readFileSync(calls, 'utf8')).not.toContain('kill')
+      const otherIsolation = Bun.spawn([process.execPath, worker, 'reader', root, 'other'], {
+        stdin: 'ignore',
+        stdout: 'pipe',
+        stderr: 'pipe',
+      })
+      expect(await otherIsolation.exited, await new Response(otherIsolation.stderr).text()).toBe(0)
+      expect(JSON.parse(readFileSync(`${state}.v2`, 'utf8')).startupOverlay).toBe(writerOverlay)
+      expect(readFileSync(calls, 'utf8')).not.toContain('kill')
       const marker = JSON.parse(
         readFileSync(join(root, 'buck-out', '.cache-daemon-posture', 'root.json'), 'utf8'),
       )
@@ -304,7 +313,8 @@ process.exit(0);
       expect(marker.launches).toContainEqual({
         pid: writer.pid,
         birth: cacheLauncherBirth(writer.pid),
-        fingerprint: marker.fingerprint,
+        fingerprint: marker.daemons.v2.fingerprint,
+        isolation: 'v2',
       })
       const matching = Bun.spawn([process.execPath, worker, 'matching'], {
         stdin: 'ignore',
@@ -323,7 +333,7 @@ process.exit(0);
         join(root, 'buck-out', '.cache-daemon-posture', 'root.json'),
         JSON.stringify(marker),
       )
-      const after = Bun.spawn([process.execPath, worker, 'reader'], {
+      const after = Bun.spawn([process.execPath, worker, 'reader', root, 'other'], {
         stdin: 'ignore',
         stdout: 'pipe',
         stderr: 'pipe',

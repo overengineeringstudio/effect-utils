@@ -34,26 +34,38 @@ busy mismatch or unrecognized status -> fail closed, leave daemon untouched
 ```
 
 The record is `buck-out/.cache-daemon-posture/root.json` (mode `0600`).
-It contains a random per-record HMAC key, the SHA-256 HMAC of the expanded RE
-configuration and writer policy, daemon identities keyed by isolation, and live
-launcher PID/birth/fingerprint reservations, never the credential itself.
+It contains a random per-record HMAC key, daemon identities and SHA-256 HMACs
+of expanded RE configuration and writer policy keyed by isolation, and live
+launcher PID/birth/fingerprint/isolation reservations, never the credential itself.
 Credential rotation changes the fingerprint; neither key nor fingerprint is printed.
 A crash-released root-wide flock is acquired before overlay reconciliation.
-Before changing the overlay, a mismatched live launcher or busy daemon fails
-closed. The launcher reservation is written before releasing that lock:
+Before changing the overlay, a mismatched live launcher or busy daemon in the
+same isolation fails closed. Legacy live reservations without isolation retain
+root-wide protection until exit. The launcher reservation is written before releasing that lock:
 `execve` preserves its PID and process birth identity until the native command
 exits, covering the gap before Buck reports an active command without inheriting
 a lock into buckd. Birth is Linux `/proc/<pid>/stat` field 22 or macOS `ps lstart`;
 reused PIDs do not preserve dead reservations. Unknown identity fails closed.
-Matching concurrent launches retain the same overlay and can proceed together.
+Matching concurrent launches and differently postured daemon isolations can proceed together.
 Native status uses the existing gate root/isolation/active-command checks.
 Buck has no conditional kill RPC: an unwrapped client can race an idle status
 read, but a daemon already observed busy is never killed. CI bypasses the warm
 shell launch cache so every command checks daemon identity and posture.
 
+Because Buck rereads root-wide configuration per command, admission also writes
+a private `0600` per-isolation policy file and passes it with `--config-file` to
+the native invocation. It pins RE client settings, upload permission, default
+action-upload permission and remote-cache enablement, including explicit reader
+defaults for absent writer-only settings. Its filename is isolation-derived,
+not fingerprint-derived, and credential variables remain unexpanded on disk.
+The invocation drops `--reuse-current-config`, which would ignore its policy.
+The shared overlay remains serialized through native daemon startup.
+
 Linux quality and the macOS test job run `buck2:cache-posture:ci-test`: the
-standalone daemon-posture and cache-posture suites use fake native executables,
-real process-birth identities, and locking, without fleet `gate-slot`.
+standalone posture suites exercise process-birth identities and locking with
+fake natives, and a real-native regression checks different roots/isolations,
+same-daemon refusal, and A's next `audit config` after B changes the shared overlay,
+without fleet `gate-slot` or building actions.
 `buck2:cache-posture:test` remains the fleet-host suite, including the broader
 entrypoint and gate lifecycle tests; its fail-closed gate-slot requirement is
 unchanged.
@@ -61,8 +73,8 @@ unchanged.
 Cache-less commands (`BUCK2_NO_REMOTE_CACHE=1` or native `--no-remote-cache`)
 retain the fixed-source/offline posture contract: they remove the RE client
 configuration before startup. A test that needs this posture concurrently with
-ordinary writers owns a separate project root, not just a daemon isolation,
-because the overlay is root-wide. The TypeScript emit/publication regression
+ordinary writers owns a separate project root or daemon isolation. The existing
+TypeScript emit/publication regression retains its separate project root and
 copies tracked source inputs without `buck-out`, links only host capabilities
 and live editor views, and stops its own daemons before removing that root.
 Editor publication remains in the original root with its inherited posture.

@@ -770,6 +770,25 @@ export const reconcileGateDaemon = ({
   }
 }
 
+/** Pin every launcher-managed policy key, including reader defaults absent from its overlay. */
+const cacheDaemonPolicy = (values: Readonly<Record<string, string>>): Record<string, string> => ({
+  'buck2.remote_cache_enabled': 'false',
+  'buck2.allow_cache_uploads': 'false',
+  'buck2.default_allow_cache_upload': 'false',
+  'buck2_re_client.http_headers': '',
+  ...Object.fromEntries(
+    Object.entries(values).filter(
+      ([key]) =>
+        key.startsWith('buck2_re_client.') ||
+        [
+          'buck2.remote_cache_enabled',
+          'buck2.allow_cache_uploads',
+          'buck2.default_allow_cache_upload',
+        ].includes(key),
+    ),
+  ),
+})
+
 /** Per-root HMAC: its key and digest persist only in private 0600 state, never the credential. */
 export const cacheDaemonPostureFingerprint = ({
   values,
@@ -783,10 +802,7 @@ export const cacheDaemonPostureFingerprint = ({
   createHmac('sha256', salt)
     .update(
       JSON.stringify(
-        Object.entries(values)
-          .filter(
-            ([key]) => key.startsWith('buck2_re_client.') || key === 'buck2.allow_cache_uploads',
-          )
+        Object.entries(cacheDaemonPolicy(values))
           .toSorted(([left], [right]) => left.localeCompare(right))
           .map(([key, value]) => [
             key,
@@ -937,22 +953,34 @@ export const admitCacheDaemonCommand = async ({
       previous !== null &&
       'salt' in previous &&
       typeof previous.salt === 'string' &&
-      'fingerprint' in previous &&
-      typeof previous.fingerprint === 'string' &&
       'daemons' in previous &&
       typeof previous.daemons === 'object' &&
       previous.daemons !== null
         ? previous
         : undefined
-    const daemons: Record<string, string> = {}
+    const daemons: Record<string, { fingerprint: string; identity: string }> = {}
     if (record !== undefined)
       for (const [name, identity] of Object.entries(record.daemons)) {
-        if (typeof identity !== 'string')
-          throw new Error('Buck2 cache posture: malformed daemon identity')
-        daemons[name] = identity
+        // Older records shared one fingerprint across every isolation.
+        if (
+          typeof identity === 'string' &&
+          'fingerprint' in record &&
+          typeof record.fingerprint === 'string'
+        )
+          daemons[name] = { fingerprint: record.fingerprint, identity }
+        else if (
+          typeof identity === 'object' &&
+          identity !== null &&
+          'fingerprint' in identity &&
+          typeof identity.fingerprint === 'string' &&
+          'identity' in identity &&
+          typeof identity.identity === 'string'
+        )
+          daemons[name] = { fingerprint: identity.fingerprint, identity: identity.identity }
+        else throw new Error('Buck2 cache posture: malformed daemon identity')
       }
     const salt = record?.salt ?? randomBytes(32).toString('hex')
-    const launches: { pid: number; birth: string; fingerprint: string }[] = []
+    const launches: { pid: number; birth: string; fingerprint: string; isolation?: string }[] = []
     if (record !== undefined && 'launches' in record) {
       if (Array.isArray(record.launches) === false)
         throw new Error('Buck2 cache posture: malformed launcher reservations')
@@ -972,7 +1000,16 @@ export const admitCacheDaemonCommand = async ({
           throw new Error('Buck2 cache posture: malformed launcher reservation')
         if (launch.pid === process.pid) continue
         if (cacheLauncherBirth(launch.pid) !== launch.birth) continue
-        launches.push({ pid: launch.pid, birth: launch.birth, fingerprint: launch.fingerprint })
+        const scope = 'isolation' in launch ? launch.isolation : undefined
+        if (scope !== undefined && typeof scope !== 'string')
+          throw new Error('Buck2 cache posture: malformed launcher isolation')
+        // Legacy live leases have unknown scope; retain their conservative protection.
+        launches.push({
+          pid: launch.pid,
+          birth: launch.birth,
+          fingerprint: launch.fingerprint,
+          ...(scope === undefined ? {} : { isolation: scope }),
+        })
       }
     }
     const observed = status()
@@ -983,7 +1020,13 @@ export const admitCacheDaemonCommand = async ({
     })
     const checkPosture: CachePostureCheck = (values) => {
       const desired = cacheDaemonPostureFingerprint({ values, env, salt })
-      if (launches.some((launch) => launch.fingerprint !== desired) === true)
+      if (
+        launches.some(
+          (launch) =>
+            (launch.isolation === undefined || launch.isolation === isolation) &&
+            launch.fingerprint !== desired,
+        ) === true
+      )
         throw new Error(
           'Buck2 cache posture: concurrent launcher has a different RE posture; refusing to change its overlay or stop its daemon. Retry after it exits.',
         )
@@ -991,8 +1034,8 @@ export const admitCacheDaemonCommand = async ({
         observed !== undefined &&
         observedStop !== 'stop' &&
         (record === undefined ||
-          record.fingerprint !== desired ||
-          daemons[isolation] !== cacheDaemonIdentity(observed))
+          daemons[isolation]?.fingerprint !== desired ||
+          daemons[isolation]?.identity !== cacheDaemonIdentity(observed))
       )
         throw new Error(
           'Buck2 cache posture: mismatched or unrecorded daemon is busy or unrecognized; refusing to stop it. Retry after concurrent Buck commands finish.',
@@ -1018,8 +1061,8 @@ export const admitCacheDaemonCommand = async ({
               : 'unknown',
       matched:
         record !== undefined &&
-        record.fingerprint === fingerprint &&
-        daemons[isolation] === cacheDaemonIdentity(current),
+        daemons[isolation]?.fingerprint === fingerprint &&
+        daemons[isolation]?.identity === cacheDaemonIdentity(current),
     })
     if (decision === 'refuse')
       throw new Error(
@@ -1042,22 +1085,53 @@ export const admitCacheDaemonCommand = async ({
       const birth = cacheLauncherBirth(process.pid)
       if (birth === undefined)
         throw new Error('Buck2 cache posture: launcher exited during admission')
-      launches.push({ pid: process.pid, birth, fingerprint })
-      const nextDaemons = record?.fingerprint === fingerprint ? daemons : {}
-      nextDaemons[isolation] = daemon
-      writeFileSync(
-        candidate,
-        JSON.stringify({ salt, fingerprint, daemons: nextDaemons, launches }),
-        {
-          flag: 'wx',
-          mode: 0o600,
-        },
-      )
+      launches.push({ pid: process.pid, birth, fingerprint, isolation })
+      daemons[isolation] = { fingerprint, identity: daemon }
+      writeFileSync(candidate, JSON.stringify({ salt, daemons, launches }), {
+        flag: 'wx',
+        mode: 0o600,
+      })
       renameSync(candidate, marker)
     } finally {
       rmSync(candidate, { force: true })
     }
-    return admittedArgs
+    // Buck rereads the shared overlay per command. Pin this daemon's policy in a
+    // private invocation file so another isolation's next startup cannot change it.
+    // The filename is isolation-derived, never a credential-derived fingerprint.
+    const policy = join(state, `${createHash('sha256').update(isolation).digest('hex')}.buckconfig`)
+    const policyText = Object.entries(cacheDaemonPolicy(values))
+      .map(([key, value]) => {
+        const dot = key.indexOf('.')
+        return `[${key.slice(0, dot)}]\n${key.slice(dot + 1)} = ${value}\n`
+      })
+      .join('')
+    const policyCandidate = `${policy}.${randomUUID()}`
+    try {
+      writeFileSync(policyCandidate, policyText, { mode: 0o600, flag: 'wx' })
+      renameSync(policyCandidate, policy)
+    } finally {
+      rmSync(policyCandidate, { force: true })
+    }
+    // --reuse-current-config would explicitly ignore this invocation's policy.
+    const originalSentinel = admittedArgs.indexOf('--')
+    const pinnedArgs = admittedArgs.filter(
+      (arg, index) =>
+        arg !== '--reuse-current-config' || (originalSentinel !== -1 && index > originalSentinel),
+    )
+    const sentinel = pinnedArgs.indexOf('--')
+    const run = pinnedArgs.indexOf('run')
+    const insertion =
+      run !== -1 && (sentinel === -1 || run < sentinel)
+        ? run + 1
+        : sentinel === -1
+          ? pinnedArgs.length
+          : sentinel
+    return [
+      ...pinnedArgs.slice(0, insertion),
+      '--config-file',
+      policy,
+      ...pinnedArgs.slice(insertion),
+    ]
   } finally {
     closeSync(descriptor)
     library.close()
