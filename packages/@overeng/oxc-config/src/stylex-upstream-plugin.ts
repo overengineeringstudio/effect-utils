@@ -11,10 +11,11 @@
  * upstream ships no `meta.name`, so oxlint would derive the namespace from the
  * bare specifier `@stylexjs/eslint-plugin`, and a bare specifier only resolves
  * from the *root* `node_modules`. This repo's root `package.json` is a pure
- * workspace aggregate and cannot carry a dependency, so the plugin lives where it
- * belongs — a devDependency of this package, the one that owns lint config — and
- * this module supplies the namespace explicitly. `jsPlugins` then references a
- * path inside the workspace, exactly like `./mod.ts` does.
+ * workspace aggregate and cannot carry a dependency, so the plugin is a runtime
+ * dependency of this package: consumer worktrees load this shim through their
+ * StyleX `jsPlugins` entry and need its upstream import installed. This module
+ * supplies the namespace explicitly, and `jsPlugins` references a path inside
+ * the workspace, exactly like `./mod.ts` does.
  *
  * Which rules are enabled, and the two measured configuration constraints, live
  * in `genie/oxlint-base.ts` (`stylexOxlintRules`).

@@ -21,10 +21,10 @@ import {
 
 const deps = catalog.compose({
   workspace: workspaceMember({ memberPath: 'packages/@overeng/oxc-config' }),
+  dependencies: { external: catalog.pick('@stylexjs/eslint-plugin') },
   devDependencies: {
     external: {
       ...catalog.pick(
-        '@stylexjs/eslint-plugin',
         '@typescript-eslint/parser',
         '@typescript-eslint/rule-tester',
         '@typescript-eslint/utils',
