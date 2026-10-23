@@ -56,3 +56,16 @@ pnpm --filter @overeng/notion-react storybook`}</Code>
     </Page>
   ),
 }
+
+/** Compare the githubLight palette with the escaped unsupported-language fallback. */
+export const AllStates: Story = {
+  render: () => (
+    <Page>
+      <Heading1>Code highlighting and plain fallback</Heading1>
+      <Heading2>TypeScript — githubLight</Heading2>
+      <Code language="ts">{'const answer = 42'}</Code>
+      <Heading2>KDL — unsupported language, plain text</Heading2>
+      <Code language="kdl">{'node <tag> & "value"'}</Code>
+    </Page>
+  ),
+}

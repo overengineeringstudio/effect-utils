@@ -324,7 +324,7 @@ export const catalog = defineCatalog({
 
   // Notion rendering (optional peer deps)
   katex: '0.18.7',
-  shiki: '4.4.3',
+  '@pierre/highlights': '0.2.0',
 
   // Markdown (notion-md canonical markdown pipeline)
   'mdast-util-gfm-strikethrough': '2.0.0',

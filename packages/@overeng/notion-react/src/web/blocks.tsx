@@ -30,7 +30,7 @@ import type {
 } from '../components/props.ts'
 import { useNotionUrl } from '../renderer/url-provider.ts'
 import { KatexRender } from './katex.tsx'
-import { ShikiRender } from './shiki.tsx'
+import { HighlightsRender } from './highlights.tsx'
 
 /**
  * DOM-rendered mirrors of `../components/blocks.ts`.
@@ -309,7 +309,7 @@ export const Toggle = ({ children, title, defaultOpen }: ToggleProps) => (
 )
 
 export const Code = ({ children, language }: CodeProps) => (
-  <ShikiRender language={language}>{children}</ShikiRender>
+  <HighlightsRender language={language}>{children}</HighlightsRender>
 )
 
 export const Quote = ({ children }: QuoteProps) => (
