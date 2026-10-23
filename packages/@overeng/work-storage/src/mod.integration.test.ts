@@ -88,7 +88,7 @@ describe('WorkStorage service and file boundary', () => {
       const result = yield* Effect.gen(function* () {
         const storage = yield* WorkStorage
         return yield* storage.role('state')
-      }).pipe(Effect.provide(WorkStorage.layerFile(path, observed)))
+      }).pipe(Effect.provide(WorkStorage.layerFile({ path, observed })))
       expect(result).toBe('/factory/state/demo')
       expect(yield* fs.readFileString(path)).toBe(encodeJson(example))
       const bytes = new TextEncoder().encode(encodeJson(example))

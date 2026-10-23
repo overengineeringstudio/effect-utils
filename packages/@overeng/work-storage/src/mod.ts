@@ -29,6 +29,7 @@ const Paths = Schema.Record(Schema.String, CanonicalPath).check(
   Schema.makeFilter((paths) => Object.keys(paths).every(Schema.is(Purpose))),
 )
 
+/** The portable v1 manifest shape; the neutral JSON Schema remains normative. */
 export const Manifest = Schema.Struct({
   version: Schema.Literal(1),
   app: Schema.String.check(Schema.isPattern(/^[a-z][a-z0-9-]*$(?![\s\S])/)),
@@ -49,6 +50,7 @@ export const Observation = Schema.Struct({
 }).annotate({ identifier: 'WorkStorage.Observation' })
 export type Observation = typeof Observation.Type
 
+/** A manifest, its gated observation, and the purpose to resolve. */
 export const Request = Schema.Struct({
   manifest: Manifest,
   observed: Observation,
@@ -56,6 +58,7 @@ export const Request = Schema.Struct({
 }).annotate({ identifier: 'WorkStorage.Request' })
 export type Request = typeof Request.Type
 
+/** The closed set of portable protocol error codes. */
 export const ErrorCode = Schema.Literals([
   'InvalidManifest',
   'FactoryAbsent',
@@ -65,6 +68,7 @@ export const ErrorCode = Schema.Literals([
 ])
 export type ErrorCode = typeof ErrorCode.Type
 
+/** The single portable protocol error tag carrying one of the five codes. */
 export class StorageError extends Schema.TaggedError<StorageError>()('StorageError', {
   code: ErrorCode,
   message: Schema.String,
@@ -86,6 +90,7 @@ const invalid = () =>
     message: 'Invalid work-storage v1 manifest or observation',
   })
 
+/** Decode manifest JSON text, rejecting any non-manifest shape. */
 export const decodeManifest = Effect.fn('WorkStorage.decodeManifest')(function* (text: string) {
   return yield* Schema.decodeEffect(Schema.fromJsonString(Manifest))(text).pipe(
     Effect.mapError(invalid),
@@ -95,6 +100,7 @@ export const decodeManifest = Effect.fn('WorkStorage.decodeManifest')(function* 
 // Preserve a BOM so JSON decoding rejects it, matching Rust's strict UTF-8 reader.
 const manifestUtf8 = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true })
 
+/** Read and strictly decode a manifest file, preserving I/O failures. */
 export const readManifest = Effect.fn('WorkStorage.readManifest')(function* (path: string) {
   const fs = yield* FileSystem.FileSystem
   const bytes = yield* fs.readFile(path).pipe(
@@ -114,6 +120,7 @@ export const readManifest = Effect.fn('WorkStorage.readManifest')(function* (pat
   return yield* decodeManifest(text)
 })
 
+/** Validate a manifest and observation, then apply admission precedence. */
 export const admit = Effect.fn('WorkStorage.admit')(function* (
   manifest: unknown,
   observed: unknown,
@@ -134,6 +141,7 @@ export const admit = Effect.fn('WorkStorage.admit')(function* (
   return decoded.manifest
 })
 
+/** Admitted manifest view: declared roles and opaque environment values. */
 export interface WorkStorageService {
   readonly manifest: Manifest
   readonly environment: Manifest['environment']
@@ -163,10 +171,10 @@ const make = (manifest: Manifest): WorkStorageService => ({
 export class WorkStorage extends Context.Service<WorkStorage, WorkStorageService>()(
   '@overeng/work-storage/WorkStorage',
 ) {
-  static readonly layer = (manifest: unknown, observed: unknown) =>
+  static readonly layer = ({ manifest, observed }: { manifest: unknown; observed: unknown }) =>
     Layer.effect(WorkStorage, admit(manifest, observed).pipe(Effect.map(make)))
 
-  static readonly layerFile = (path: string, observed: unknown) =>
+  static readonly layerFile = ({ path, observed }: { path: string; observed: unknown }) =>
     Layer.effect(
       WorkStorage,
       readManifest(path).pipe(
@@ -182,5 +190,7 @@ export const resolveRequest = Effect.fn('WorkStorage.resolveRequest')(function* 
   return yield* Effect.gen(function* () {
     const storage = yield* WorkStorage
     return yield* storage.role(request.purpose)
-  }).pipe(Effect.provide(WorkStorage.layer(request.manifest, request.observed)))
+  }).pipe(
+    Effect.provide(WorkStorage.layer({ manifest: request.manifest, observed: request.observed })),
+  )
 })
