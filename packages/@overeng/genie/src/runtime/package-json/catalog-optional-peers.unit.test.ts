@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test'
 
-import type { PackageInfo } from '../../validation/mod.ts'
+import type { PackageInfo } from '../../common/types.ts'
 import { defineCatalog } from './catalog.ts'
 import { packageJson } from './mod.ts'
 import { validatePackageRecompositionForPackage } from './validators/recompose.ts'
