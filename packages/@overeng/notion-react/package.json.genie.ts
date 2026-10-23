@@ -16,7 +16,7 @@ import utilsDevPkg from '../utils-dev/package.json.genie.ts'
 import utilsStorybookPkg from '../utils-storybook/package.json.genie.ts'
 
 const peerDepNames = ['effect', 'react', 'react-reconciler'] as const
-const optionalPeerDepNames = ['@opentelemetry/api', 'katex', 'shiki'] as const
+const optionalPeerDepNames = ['@opentelemetry/api', 'katex', '@pierre/highlights'] as const
 
 const workspaceDeps = catalog.compose({
   workspace: workspaceMember({ memberPath: 'packages/@overeng/notion-react' }),
@@ -36,6 +36,7 @@ const workspaceDeps = catalog.compose({
         '@types/react',
         '@types/react-dom',
         '@types/react-reconciler',
+        'happy-dom',
         'react-dom',
         'storybook',
         'typescript',
@@ -119,7 +120,7 @@ export default packageJson(
     peerDependenciesMeta: {
       '@opentelemetry/api': { optional: true },
       katex: { optional: true },
-      shiki: { optional: true },
+      '@pierre/highlights': { optional: true },
     },
     scripts: {
       storybook: 'storybook dev -p 6014',

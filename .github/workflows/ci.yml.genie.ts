@@ -813,6 +813,13 @@ const jobs: Record<CoreCIJobName, CiWorkflowArgs['jobs'][string]> = {
             ].join('\n'),
           ),
         }),
+        // The aggregate unit jobs are queue/main-only; keep web highlighting and SSR
+        // regressions in the required PR lane through the existing package task.
+        buck2TrustedCacheWriterStep({
+          name: 'Notion React unit tests',
+          env: githubTokenEnv(),
+          run: runDevenvTasksBefore('test:notion-react'),
+        }),
         buck2TrustedCacheWriterStep({
           name: 'Bundle smoke tests',
           env: githubTokenEnv(),
