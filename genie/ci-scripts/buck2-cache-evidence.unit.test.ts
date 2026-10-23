@@ -15,6 +15,7 @@ import {
 import {
   createCacheEvidenceProjector,
   decodeCacheAdmissionEvidence,
+  decodeCacheAdmissionInvocation,
   decodeCacheEvidence,
   disabledCacheEvidence,
   emptyCacheEvidence,
@@ -1103,6 +1104,38 @@ describe('native Buck cache evidence projection', () => {
 })
 
 describe('cache admission evidence schema', () => {
+  it('decodes bounded failure categories, rejects unknown values and preserves legacy rows', () => {
+    const row = {
+      invocationId: '2fc13b48-c94a-4a9c-936f-bc24615bc360',
+      admissionFallbacks: { reapi: 1, archiveOrigin: 0 },
+      admissionRetrySuccesses: { reapi: 0, archiveOrigin: 0 },
+    }
+    expect(decodeCacheAdmissionInvocation(row)).toEqual(row)
+    const failure = { class: 'deadline', phase: 'tls', elapsedMs: 2510, deadlineMs: 2500 }
+    expect(decodeCacheAdmissionInvocation({ ...row, reapiFailure: failure }).reapiFailure).toEqual(failure)
+    for (const invalid of [
+      { ...failure, class: 'private-host.example' },
+      { ...failure, phase: 'unknown' },
+      { ...failure, elapsedMs: -1 },
+      { ...failure, deadlineMs: Infinity },
+      { ...failure, elapsedMs: 1.5 },
+      null,
+    ])
+      expect(() => decodeCacheAdmissionInvocation({ ...row, reapiFailure: invalid })).toThrow()
+    expect(() => decodeCacheAdmissionInvocation({
+      ...row, admissionFallbacks: { reapi: 0, archiveOrigin: 0 }, reapiFailure: failure,
+    })).toThrow()
+    const rows = [
+      { ...row, reapiFailure: failure },
+      { ...row, invocationId: 'c568610f-0ddf-40c5-99df-d178142b9dad', reapiFailure: { ...failure, elapsedMs: 2600 } },
+    ]
+    const evidence = decodeCacheAdmissionEvidence({ admissionInvocations: rows })
+    expect(evidence.reapiFailures).toEqual([{ class: 'deadline', phase: 'tls', count: 2, maxElapsedMs: 2600 }])
+    expect(decodeCacheAdmissionEvidence(evidence).reapiFailures).toEqual(evidence.reapiFailures)
+    expect(() => decodeCacheAdmissionEvidence({ ...evidence, reapiFailures: [] })).toThrow()
+    expect(decodeCacheAdmissionEvidence({ admissionInvocations: [row] }).reapiFailures).toEqual([])
+  })
+
   it('normalizes retained summaries to explicit zero admission evidence', () => {
     const { admissionFallbacks, admissionRetrySuccesses, admissionInvocations, ...legacy } =
       emptyCacheEvidence()

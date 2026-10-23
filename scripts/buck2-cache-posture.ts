@@ -193,22 +193,54 @@ export const reconcileStandaloneCachePosture = ({
   }
 }
 
-/** Fixed categories, timings, and redacted socket facts are safe for public CI. */
-export type RemoteCacheProbeFailure = {
-  readonly errorClass:
-    | 'configuration'
-    | 'dns'
-    | 'tcp'
-    | 'tls'
-    | 'transport'
-    | 'deadline'
-    | 'auth'
-    | 'http'
-    | 'grpc'
-    | 'protocol'
-  readonly phase: 'configuration' | 'dns' | 'tcp' | 'tls' | 'response'
+const remoteCacheProbeErrorClasses = [
+  'configuration',
+  'dns',
+  'tcp',
+  'tls',
+  'transport',
+  'deadline',
+  'auth',
+  'http',
+  'grpc',
+  'protocol',
+] as const
+const remoteCacheProbePhases = ['configuration', 'dns', 'tcp', 'tls', 'response'] as const
+
+/** Fixed categories and timings only; never server text, addresses or credentials. */
+export type ReapiAdmissionFailure = {
+  readonly class: (typeof remoteCacheProbeErrorClasses)[number]
+  readonly phase: (typeof remoteCacheProbePhases)[number]
   readonly elapsedMs: number
   readonly deadlineMs: number
+}
+/** Probe callback shape; admission artifacts rename errorClass to class. */
+export type RemoteCacheProbeFailure = Omit<ReapiAdmissionFailure, 'class'> & {
+  readonly errorClass: ReapiAdmissionFailure['class']
+}
+
+/** Decode only the closed, credential-free admission diagnostic contract. */
+export const decodeReapiAdmissionFailure = (value: unknown): ReapiAdmissionFailure => {
+  if (typeof value !== 'object' || value === null || Array.isArray(value) === true)
+    throw new Error('Invalid REAPI admission failure')
+  const errorClass = remoteCacheProbeErrorClasses.find(
+    (item) => 'class' in value && item === value.class,
+  )
+  const phase = remoteCacheProbePhases.find((item) => 'phase' in value && item === value.phase)
+  if (
+    errorClass === undefined ||
+    phase === undefined ||
+    !('elapsedMs' in value) ||
+    typeof value.elapsedMs !== 'number' ||
+    Number.isSafeInteger(value.elapsedMs) === false ||
+    value.elapsedMs < 0 ||
+    !('deadlineMs' in value) ||
+    typeof value.deadlineMs !== 'number' ||
+    Number.isSafeInteger(value.deadlineMs) === false ||
+    value.deadlineMs < 0
+  )
+    throw new Error('Invalid REAPI admission failure')
+  return { class: errorClass, phase, elapsedMs: value.elapsedMs, deadlineMs: value.deadlineMs }
 }
 
 /** Actual socket setup milestones with public-only addresses and monotonic timing. */
