@@ -65,13 +65,13 @@ export const ErrorCode = Schema.Literals([
 ])
 export type ErrorCode = typeof ErrorCode.Type
 
-export class StorageError extends Schema.TaggedErrorClass<StorageError>()('StorageError', {
+export class StorageError extends Schema.TaggedError<StorageError>()('StorageError', {
   code: ErrorCode,
   message: Schema.String,
 }) {}
 
 /** IO errors remain distinct from the five portable protocol errors. */
-export class ManifestReadError extends Schema.TaggedErrorClass<ManifestReadError>()(
+export class ManifestReadError extends Schema.TaggedError<ManifestReadError>()(
   'ManifestReadError',
   {
     path: Schema.String,
