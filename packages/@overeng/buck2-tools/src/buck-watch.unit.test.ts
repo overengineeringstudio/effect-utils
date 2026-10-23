@@ -466,6 +466,111 @@ describe('Buck watch reconciliation', () => {
     }
   })
 
+  it.each([false, true])(
+    'forwards budget diagnostics before the publisher exits (batch=%s)',
+    async (batchPublication) => {
+      const root = await mkdtemp(join(tmpdir(), 'buck-watch-budget-'))
+      const release = join(root, 'release')
+      const publisher = join(root, 'publisher.mjs')
+      const manifest = join(root, 'editor-inputs.json')
+      const diagnostic = '[editor-view-budget] {"event":"working","reason":"census"}\n'
+      const observed = Promise.withResolvers<void>()
+      const shutdown = new AbortController()
+      const stderr = vi.spyOn(process.stderr, 'write').mockImplementation((line) => {
+        // Wait for the assertion's exact condition, not an unrelated raw stderr newline.
+        if (line === diagnostic) observed.resolve()
+        return true
+      })
+      const onTiming = vi.fn()
+      let publisherCompleted = false
+      let running: Promise<void> | undefined
+      try {
+        await runCommand({ command: 'mkfifo', args: [release], cwd: root })
+        await writeFile(
+          publisher,
+          [
+            "import { closeSync, openSync, readSync, writeSync } from 'node:fs'",
+            // A blocking FIFO read keeps the publisher alive even when the runtime
+            // does not keep fs.watch or an unresolved top-level await alive.
+            `writeSync(2, 'publisher startup\\n')`,
+            `writeSync(2, ${JSON.stringify(diagnostic.slice(0, 12))})`,
+            `writeSync(2, ${JSON.stringify(diagnostic.slice(12))})`,
+            `const release = openSync(${JSON.stringify(release)}, 'r')`,
+            'readSync(release, Buffer.alloc(1), 0, 1, null)',
+            'closeSync(release)',
+            `process.stderr.write('[editor-view-timing] {"phase":"editor-view","packagePath":"packages/app","durationMs":12}\\n')`,
+          ].join('\n'),
+        )
+        await writeFile(
+          manifest,
+          JSON.stringify({
+            schema: 'effect-utils/editor-view-inputs/v1',
+            editorInputs: 'buck-out/app/node_modules',
+            packageTree: 'buck-out/app/package_tree',
+            readRoots: ['buck-out/app/package_tree'],
+          }),
+        )
+        running = reconcileBuckViews({
+          request: {
+            packagePaths: ['packages/app'],
+            changedPaths: [],
+            buildTargets: ['//packages/app:editor_view_inputs'],
+          },
+          options: {
+            plan,
+            mode: 'publish',
+            batchPublication,
+            repoRoot: root,
+            workspaceRoot: root,
+            buck2: '/tools/buck2',
+            editorViewCommand: [process.execPath, publisher],
+            workspaceAuthority: '/repo/authority.json',
+            cp: '/tools/cp',
+            mv: '/tools/mv',
+            fingerprintTool: '/tools/buck2-fingerprint',
+            snapshotRetention: 3,
+            onTiming,
+            run: async (invocation) => {
+              if (invocation.command === '/tools/buck2')
+                return { stdout: `//packages/app:editor_view_inputs ${manifest}\n`, stderr: '' }
+              try {
+                return await runCommand({
+                  ...invocation,
+                  signal: shutdown.signal,
+                  onStderr: (chunk) => {
+                    // Force every possible character boundary, even if the OS coalesces writes.
+                    for (const character of chunk) invocation.onStderr?.(character)
+                  },
+                })
+              } finally {
+                publisherCompleted = true
+              }
+            },
+          },
+        })
+        await observed.promise
+        expect(publisherCompleted).toBe(false)
+        expect(stderr.mock.calls.filter(([line]) => line === diagnostic)).toHaveLength(1)
+        writeFileSync(release, 'x')
+        await running
+        expect(publisherCompleted).toBe(true)
+        expect(onTiming).toHaveBeenCalledWith({
+          phase: 'editor-view',
+          packagePath: 'packages/app',
+          durationMs: batchPublication === true ? 12 : expect.any(Number),
+        })
+        expect(stderr.mock.calls.filter(([line]) => line === diagnostic)).toHaveLength(
+          batchPublication === true ? 2 : 1,
+        )
+      } finally {
+        shutdown.abort()
+        await running?.catch(() => undefined)
+        stderr.mockRestore()
+        await rm(root, { recursive: true, force: true })
+      }
+    },
+  )
+
   it('emits command spans for the build and each publication without wrapping commands', async () => {
     const root = await mkdtemp(join(tmpdir(), 'buck-watch-'))
     const otelDirectory = mkdtempSync(join(tmpdir(), 'otel-span-cli-'))

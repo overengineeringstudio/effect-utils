@@ -577,7 +577,11 @@ export const reconcileBuckViews = async ({
     const lines = pendingDiagnostics.split('\n')
     pendingDiagnostics = lines.pop() ?? ''
     for (const line of lines)
-      if (line.startsWith('[editor-view-phase] ') === true) process.stderr.write(`${line}\n`)
+      if (
+        line.startsWith('[editor-view-phase] ') === true ||
+        line.startsWith('[editor-view-budget] ') === true
+      )
+        process.stderr.write(`${line}\n`)
   }
   const buildStartedAt = performance.now()
   // Telemetry is best effort: the real Buck command runs unwrapped and its exit

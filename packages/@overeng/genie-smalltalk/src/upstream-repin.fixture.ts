@@ -2,7 +2,7 @@ import { emit, mission, person } from './mod.ts'
 
 /** Synthetic public fixture; independent KDL exercises the same bounded waiting graph. */
 export const upstreamRepinKdl = `version 2
-mission "example/upstream-repin" report-to="agent/example/owner" state="ready" timeout="720h" {
+mission "example/upstream-repin" report-to="agent/example/owner" state="ready" timeout="30d" {
   goal "Wait for upstream readiness, then update and verify the selected revision."
   constraint "Only modify the selected worktree."
   constraint "Do not merge or deploy."
@@ -17,7 +17,7 @@ mission "example/upstream-repin" report-to="agent/example/owner" state="ready" t
       time-limit "3m"
     }
   }
-  loop "await-upstream" timeout="720h" {
+  loop "await-upstream" timeout="30d" {
     depends-on { step "install-gate" completed; }
     max-rounds 100
     until {

@@ -1,4 +1,3 @@
-import { existsSync, readdirSync } from 'node:fs'
 import path from 'node:path'
 import process from 'node:process'
 
@@ -7,6 +6,10 @@ import {
   createGenieOutput,
   type GenieOutput,
 } from '../../packages/@overeng/genie/src/runtime/core.ts'
+import {
+  inputExistsSync as existsSync,
+  inputReaddirSync as readdirSync,
+} from '../../packages/@overeng/genie/src/runtime/node/inputs.ts'
 import type { PackageJsonData } from '../../packages/@overeng/genie/src/runtime/package-json/mod.ts'
 import { buck2SemanticFingerprint, renderBuck2Visibility } from './mod.ts'
 import { packageTreeRuntime, stagedModuleName } from './runtime-modules.ts'
@@ -246,6 +249,9 @@ const collectUnsupportedAttributes: Readonly<Record<string, true>> = {
 /** Attested support tool in the hub toolchains package; the runner never resolves from PATH. */
 export type Buck2TestToolLabel = `//buck2/toolchains:${string}`
 
+/** Attested immutable directory exposed by a store_directory target in the hub. */
+export type Buck2TestDirectoryLabel = `//buck2/toolchains:${string}`
+
 type Buck2TypeScriptPackageTestTargetBase = {
   /** Target name inside the package; the first declared lane must be `test`. */
   readonly name: string
@@ -268,6 +274,8 @@ type Buck2TypeScriptPackageTestTargetBase = {
   readonly configuredExternalInputs?: readonly string[]
   /** Environment name to attested support tool; the tool's store path lands on PATH. */
   readonly tools?: Readonly<Record<string, Buck2TestToolLabel>>
+  /** Environment name to a declared immutable directory, including its attestation. */
+  readonly directoryInputs?: Readonly<Record<string, Buck2TestDirectoryLabel>>
   /**
    * Ambient environment names the lane reads. Their values are outside the action identity,
    * so a lane that inherits any of them must also declare itself uncacheable.
@@ -412,6 +420,13 @@ const projectTestTarget = ({
     }
     return [name, label] as const
   })
+  const directoryInputs = sortedEntries(target.directoryInputs ?? {}).map(([name, label]) => {
+    requireEnvironmentName({ field: 'test directory input name', value: name })
+    if (/^\/\/buck2\/toolchains:[A-Za-z0-9_][A-Za-z0-9_.-]*$/.test(label) === false) {
+      throw new Error(`Test directory input ${name} must be an attested store directory: ${label}`)
+    }
+    return [name, label] as const
+  })
   const env = sortedEntries(target.env ?? {}).map(([name, value]) => {
     requireEnvironmentName({ field: 'test env name', value: name })
     if (value.startsWith('$') === true) {
@@ -525,6 +540,12 @@ const projectTestTarget = ({
             ),
           }),
     ],
+    [
+      'directory_inputs',
+      directoryInputs.length === 0
+        ? undefined
+        : renderMap({ name: 'directory_inputs', entries: directoryInputs }),
+    ],
     ['env', env.length === 0 ? undefined : renderMap({ name: 'env', entries: env })],
     [
       'excludes',
@@ -622,6 +643,7 @@ const projectTestTarget = ({
       collectName,
       configInputs,
       configuredInputKeys,
+      directoryInputs,
       env,
       excludes,
       externalInputs,
@@ -953,8 +975,8 @@ export const buck2TypeScriptPackageProjection = ({
     const owner =
       directory === packagePath ||
       directory === '.' ||
-      existsSync(path.join(process.cwd(), directory, 'BUCK')) ||
-      existsSync(path.join(process.cwd(), directory, 'BUCK.genie.ts'))
+      existsSync(path.join(process.cwd(), directory, 'BUCK')) === true ||
+      existsSync(path.join(process.cwd(), directory, 'BUCK.genie.ts')) === true
         ? directory
         : sourceOwner(path.posix.dirname(directory))
     sourceOwners.set(directory, owner)
@@ -1236,6 +1258,12 @@ export const buck2TypeScriptPackageProjection = ({
     semanticData: data,
   })
 
+  const projectFiles = [...new Set(projectAuthorities.map(({ projectFile }) => projectFile))]
+  const projectFileLines =
+    projectFiles.length === 1 && projectFiles[0] === 'tsconfig.json'
+      ? []
+      : [`    project_files = [${projectFiles.map(starlarkString).join(', ')}],`]
+
   const renderTypecheckTarget = ({
     name,
     targetProjectFile,
@@ -1381,6 +1409,7 @@ export const buck2TypeScriptPackageProjection = ({
         entries: workspaceDependencyViewEntries,
       }),
       '    strip_project_references = True,',
+      ...projectFileLines,
       `    runtime = ${starlarkString(data.packageTreeRuntime)},`,
       `    runtime_entry = ${starlarkString(runtimeEntry)},`,
       renderBuck2Visibility({ visibility }),
@@ -1401,6 +1430,7 @@ export const buck2TypeScriptPackageProjection = ({
         entries: productWorkspaceDependencyViewEntries,
       }),
       '    strip_project_references = True,',
+      ...projectFileLines,
       `    runtime = ${starlarkString(data.packageTreeRuntime)},`,
       `    runtime_entry = ${starlarkString(runtimeEntry)},`,
       renderBuck2Visibility({ visibility }),
@@ -1420,6 +1450,7 @@ export const buck2TypeScriptPackageProjection = ({
               entries: workspaceDependencyViewEntries,
             }),
             '    strip_project_references = True,',
+            ...projectFileLines,
             `    runtime = ${starlarkString(packageTreeRuntime.label)},`,
             `    runtime_entry = ${starlarkString(runtimeEntry)},`,
             renderBuck2Visibility({ visibility }),

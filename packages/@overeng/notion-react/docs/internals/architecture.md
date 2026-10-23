@@ -111,15 +111,16 @@ Return: `SyncResult { appends, updates, removes, inserts, fallbackReason? }`.
         |
         +--> react + react-reconciler        Rendering
         |
-        +--> shiki (optional peer)           Code highlighting in web preview
+        +--> @pierre/highlights (optional peer) Code highlighting in web preview
         |
         +--> katex (optional peer)           Math rendering in web preview
 ```
 
 All four packages in the first three rows are **required** peer
-dependencies; the library refuses to run without them. `shiki` and
-`katex` are **optional** — only the web preview needs them, and only
-for code blocks / equations respectively.
+dependencies; the library refuses to run without them. `@pierre/highlights`
+(0.2.0) and `katex` are **optional** — only the web preview needs them,
+and only for code blocks / equations respectively. Code highlighting uses
+`githubLight`, with plain-text fallback for unsupported languages.
 
 ## See also
 

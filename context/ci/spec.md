@@ -41,6 +41,9 @@ A **lane** is one workflow job (or a job matrix) with one declared cadence and o
 
 - Quality and source-policy lanes give PR feedback and run again on the merge group's combined head.
 - Heavy unit, browser, Rust, Weaver, Restate, from-source product, inert-admission, and Storybook-play lanes run only for `merge_group`; they are not duplicated on ordinary PR pushes or main pushes.
+- The Linux `test-megarepo-store-gc` lane runs on PRs, merge groups and explicit non-backfill dispatches. It executes the complete native megarepo complement, using the exact `test:megarepo:unbounded` task used by the heavy unit lane, and retains its per-test JSON receipt before queue admission.
+  Both CI invocations use a private PID/mount namespace with a root-owned init reaper. The test child drops supplementary groups and returns to the original non-root UID/GID before exec, preserving mode-000 denial tests. PID 1 remains genuinely foreign-owned and unreadable so strict all-UID evidence tests retain their required negative case. Elevated runner helpers (for example `sudo` with real UID equal to the runner and effective UID 0) intentionally veto GC on a real host. They are outside synthetic test worlds, so isolation removes environmental evidence without granting runtime exemptions. The reaper prevents adopted git-helper zombies from creating unknown own-UID evidence. Outside CI, native tests run in the caller's host process environment.
+  This Linux isolation applies in both narrow unit and full CI profiles: the Empirical Proofs cold-GC task uses the same reaper and ordinary-UID child, and any full-profile native complement invocation is isolated too. It does not depend on `EFFECT_UTILS_CI_TEST` being set.
 - Main-only lanes run only after changes reach `main` or through an authorized dispatch.
 - `bootstrap-cold-proof`, `test-megarepo-cold-gc`, and `nix-closure-sizes` run in Empirical Proofs on trusted main push, nightly, or main dispatch, and on PRs carrying `ci:heavy-proofs`; their PR variants have no writer credentials.
 - `devenv-perf` is dispatch-only. It has no pull-request label coupling and does not run on the schedule.
@@ -83,6 +86,32 @@ behavior is unchanged. Baseline-measurement dispatches still exclude the lane.
 `.github/repo-settings.json.genie.ts` derives the repository ruleset directly from `requiredCIJobs` (the expanded `REQUIRED_CI_JOB_NAMES` plus `STANDALONE_REQUIRED_CI_JOB_NAMES`). The same ruleset requires GitHub's native merge queue with `SQUASH`, `ALLGREEN`, build concurrency one, merge limit one, and a 180-minute check-response timeout. Required contexts are unchanged by the queue cutover: a PR's skipped heavy checks permit queue admission, not direct merge; the native queue must obtain successful real heavy-job results on its synthetic combined head. There are no admission labels, sentinel successes, or per-PR heavy cohorts.
 
 Linux `test` and Darwin `test-macos` are physical workflow jobs with static check names `test (namespace-profile-linux-x86-64)` and `test (namespace-profile-macos-arm64)`. Both retain canonical pipeline job `test` with their respective runner dimension, so queue validation and historical trace identities agree. Darwin retains its native/compiled product smoke after unit tests.
+
+Darwin mounts the Namespace cache volume at `/Users/runner/.cache/nix-substituter`
+and enables its `file://` binary cache after `cachix use`, at priority 10. It saves
+immediately after successful source-generator dependency bootstrap, then again
+after tests and compiled-product smoke. Both saves use the same incremental
+`nix copy` script, a 15-minute bound and best-effort failure handling. The early
+save retains bootstrap outputs even when later work is cancelled; the final save
+runs only when the job is not cancelled.
+
+The save selects roots with upstream signatures or nonempty content-address
+metadata from `nix path-info --all --json`. Fixed-output downloads are
+self-verifying and need no signature; unsigned input-addressed paths are not
+selected as roots, even when marked `ultimate`. `nix copy` copies each selected
+root's entire closure, so unsigned input-addressed references of a
+content-addressed root can also be written to the volume. Those references
+remain untrusted on substitution: unchanged `require-sigs` enforcement rejects
+unsigned input-addressed paths.
+This cache is a partial bootstrap shield: explicit remote `fetchClosure` sources,
+the pinned devenv resolver's own substituter override, and the Cachix CLI built
+before local enable can still access network caches.
+
+The bounded Nix retry wrapper treats `error: unable to download '<url>': HTTP
+error 416` as transient: after an HTTP/2 drop, Nix can resume an already complete
+body at EOF and receive a correct range rejection. No `nix.conf` setting fixes
+this resume-at-EOF bug. Other HTTP 4xx failures, including 404, do not match this
+retry signature.
 
 The unit-test step retains non-gating host resource evidence sampled every five
 seconds in `test-resources-*` JSON artifacts. Linux reads `/proc`; Darwin uses
@@ -148,21 +177,44 @@ collection target on both platforms. Only source-owned baseline reports outside
 the declared Darwin scope are omitted on macOS; bounded or unowned files cannot
 be excluded by that scope. Linux supplies the complete source evidence.
 
-Both required jobs select one CI test shell configuration before the first
-shell evaluation and retain it through telemetry, tests and product smoke.
-This configuration excludes the interactive OTEL Collector/Tempo/Grafana stack
-and its local trace-capture verifier task, which the test graph does not execute.
-It retains the `otelite` native binary used by source tests, `otel-span`,
-`otel-scrape`, native devenv tracing and pipeline evidence.
-The retained repository shell products are prepublished per platform by the
+Both required jobs set `EFFECT_UTILS_CI_TEST=1` at job scope before the first
+shell evaluation and retain it through bootstrap, telemetry, tests and macOS
+product smoke. Only `test` and `test-macos` select this configuration; quality,
+Playwright, standalone Rust, integration and deployment jobs retain the default
+shell. This selector is not a named devenv profile or a bootstrap-only shell.
+
+The unit-test configuration narrows both shell packages and task declarations.
+Unscheduled tasks still contribute their command, status and environment store
+references to devenv's serialized task file, so merely omitting their execution
+does not remove their closure. Published Notion CLI wrappers, deploy/Storybook
+consumers, live integration tasks and interactive observability are excluded
+from the unit shell rather than just left unscheduled. The default developer
+shell keeps those surfaces.
+
+Bootstrap, Genie checks, the selected bounded/source unit-test chains and their
+publication authorities remain available. Source Notion suites remain covered;
+excluding published CLI wrappers does not exclude their source tests. Native
+Restate, `otelite`, `otel-span`, `otel-scrape`, native devenv tracing, pipeline
+evidence and Buck capabilities remain available where the unit graph requires
+them. Removing a tool from PATH alone does not prove its store bytes disappear:
+retained capabilities or other task references can still retain it.
+
+The profile-aware graph guard validates both declared dependencies and required
+source owners. External browser, live-integration and empirical owners (including
+`test:megarepo-cold-gc`) remain in their dedicated full-shell jobs; the unit
+profile neither schedules them nor requires their task declarations. Reintroduced
+non-unit task families are rejected rather than silently ignored by the guard.
+
+Retained repository shell products are prepublished per platform by the
 protected-main native/compiled publisher. Its `ci-test-shell-products` flake
-aggregate contains the exact shell imports and capability outputs, including
-their source bridges and validators. Native recipe identity is scoped to
-declared sources and pinned tools rather than repository HEAD; see the
+aggregate is a cache-publication inventory, not the selector for unit-shell
+packages or tasks. Native recipe identity is scoped to declared sources and
+pinned tools rather than repository HEAD; see the
 [native Nix bridge contract](../builds/05-product-distribution/02-nix-bridge/spec.md#native-products).
-Developer shells keep the local observability surface. Execution
-latency is measured from job `startedAt` to `completedAt`; runner queue wait is
-reported separately and is not part of the execution budget.
+Closure-size claims require measured shell outputs and their dependency paths,
+not package-list changes or task scheduling alone. Execution latency is measured
+from job `startedAt` to `completedAt`; runner queue wait is reported separately
+and is not part of the execution budget.
 
 Successful `devenv-modules:test` scripts emit UTC start/end timestamps on stderr
 with their script basename and phase. Both required jobs retain source Vitest
@@ -295,6 +347,17 @@ opaque interpolated feature into a static privilege declaration. An explicit
 `self-hosted` selector constrains the entire job, including dynamic selectors.
 Self-hosted, macOS, and jobs without the shared installer keep their existing
 behavior and sandbox policy.
+
+The shared `default-ref-policy` defaults `overengineeringstudio/effect-utils` to
+`published` and explicitly accepts both `published` and `main`. Other first-party
+repositories accept only their configured default (`main` unless overridden;
+this repository configures `livestorejs/livestore` as `dev`). A caller's explicit
+`defaultRefs` entry replaces both the built-in default and accepted set for that
+repository. First-party megarepo lock members must declare a nonempty ref; an
+empty or missing ref is a policy violation. Violations report the default and
+accepted refs. With `verifyReachable`, a locked commit must be reachable from the accepted branch it
+actually pins: a `main` pin is checked against `main`, not `published`, and a
+`published` pin against `published`.
 
 The source-only `default-ref-policy` job must not evaluate the checkout's flake
 before checking its refs. Genie freezes the root `flake.lock` nixpkgs revision

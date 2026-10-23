@@ -193,6 +193,21 @@ remaining TS/JSX. Next 16 defaults to Turbopack for both `next dev` and
 `next build`; run both with `--webpack`. Turbopack is unsupported because it
 does not invoke this webpack hook, leaving StyleX calls uncompiled.
 
+The Next/Vite parity build test stays in the hermetic Buck unit lane. Its
+`STYLEX_NEXT_FIXTURE` input is the immutable `stylex-next-fixture` Nix package:
+the manifest derives dependency pins from this package's Genie source, and the
+fixture's committed lock owns transitive resolution. Registry acquisition happens
+when Nix realizes the fixed-output store, not while the test runs. Each invocation
+copies that seed into a fresh writable store and performs a frozen, offline
+install; neither a warm host cache nor registry availability is required.
+
+When dependency pins change, regenerate
+`test-fixtures/stylex-next/package.json`, refresh that fixture's lock with the
+pinned pnpm, and update the measured `pnpmDeps` hash in
+[`nix/stylex-next-fixture.nix`](../../../nix/stylex-next-fixture.nix).
+`nix build .#stylex-next-fixture.pnpmDeps` measures the normalized all-platform
+store; the test only realizes host-compatible optional dependencies.
+
 ## Features
 
 ### Key Features
@@ -253,6 +268,11 @@ program.pipe(Effect.provide(backingLayer), Effect.provide(NodeContext.layer), Ef
 - Lock files are written atomically using write-to-temp-then-rename
 - TTL-based expiration handles crashed processes with automatic cleanup
 - File system watching provides push-based notifications when permits are released
+
+The native watcher membership test waits for an observed readiness-probe event
+before creating its assertion files. Starting a watch stream or yielding its
+fiber is not a registration barrier: the platform first performs an asynchronous
+stat. Each assertion file is written once after readiness, without retries.
 
 #### Force Revoke / Lock Stealing
 

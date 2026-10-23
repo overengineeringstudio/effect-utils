@@ -122,6 +122,10 @@ _store_directory = cache_guarded_rule(
 def store_directory(name, protocol, input_id, **kwargs):
     """Expose one consumer-owned immutable Nix directory to Buck actions."""
     platform = host_capability_platform()
+    # Scoped product profiles omit test-only data, just as they omit tools.
+    # Requesting an undeclared directory still fails analysis: no target exists.
+    if input_id not in CAPABILITIES.get(platform, {}):
+        return
     metadata = CAPABILITIES[platform][input_id]
     store_path = metadata.get("directoryStorePath")
     closure = metadata.get("closureStorePaths")

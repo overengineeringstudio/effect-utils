@@ -11,7 +11,7 @@ import { fileURLToPath } from 'node:url'
 
 import { NodeServices } from '@effect/platform-node'
 import { describe, it } from '@effect/vitest'
-import { Cause, Effect, Exit, Logger, Option, Schema } from 'effect'
+import { Cause, Clock, Effect, Exit, Logger, Option, Schema } from 'effect'
 import * as Cli from 'effect/cli'
 import * as FileSystem from 'effect/FileSystem'
 import { expect } from 'vitest'
@@ -28,6 +28,10 @@ import {
   deletionLeasePath,
   releaseDeletionLease,
 } from '../store/store-deletion-lease.ts'
+import {
+  GC_DELETION_RECEIPTS_RELATIVE_PATH,
+  GcDeletionReceipt,
+} from '../store/store-gc-receipts.ts'
 import { refreshWorkspaceRegistry } from '../store/store-liveness.ts'
 import { StoreDeletionPlatform } from '../store/store-pinned-deletion.ts'
 import {
@@ -57,6 +61,9 @@ const StoreGcJsonOutput = Schema.Struct({
       status: Schema.String,
       message: Schema.optional(Schema.String),
       reason: Schema.optional(Schema.String),
+      buckDaemonsUnreachable: Schema.optional(
+        Schema.Array(Schema.Struct({ pid: Schema.Int, reason: Schema.String })),
+      ),
     }),
   ),
   censusStatus: Schema.optional(Schema.Literals(['complete', 'unknown'])),
@@ -949,6 +956,20 @@ describe('mr store lease', () => {
         })
         expect(refused.exitCode).toBe(1)
         expect(yield* fs.exists(candidate)).toBe(true)
+        const legacy = yield* runMrCommand({
+          cwd,
+          command: ['store', 'gc', '--output', 'json'],
+          env: { MEGAREPO_STORE: storePath },
+        })
+        expect(legacy.exitCode, `${legacy.stdout}\n${legacy.failure}`).toBe(0)
+        expect(
+          findGcResult(
+            decodeStoreGcJsonOutput(legacy.stdout).results,
+            'github.com/test-owner/leased-worktree-repo/',
+            commit,
+          )?.status,
+        ).toBe('skipped_in_use')
+        expect(yield* fs.exists(candidate)).toBe(true)
 
         yield* releaseDeletionLease(held)
         const applied = yield* runMrCommand({
@@ -1044,6 +1065,196 @@ describe('mr store lease', () => {
       Effect.scoped,
     ),
   )
+
+  for (const reference of ['cwd', 'open-file', 'unreadable-daemon'] as const) {
+    it.effect.skipIf(process.platform !== 'linux')(
+      `legacy GC skips a live ${reference} holder without a deletion lease`,
+      Effect.fnUntraced(
+        function* () {
+          const fs = yield* FileSystem.FileSystem
+          const commit = '1234567890abcdef1234567890abcdef12345678'
+          const { storePath, worktreePaths } = yield* createStoreFixture([
+            {
+              host: 'github.com',
+              owner: 'test-owner',
+              repo: 'legacy-inuse',
+              branches: ['main'],
+              commits: [commit],
+            },
+          ])
+          const candidate = worktreePaths[`github.com/test-owner/legacy-inuse#${commit}`]!
+          const outside = yield* fs.makeTempDirectoryScoped()
+          // A copied shell supplies a real /proc/<pid>/exe ending in buck2.
+          // Its receipt is deliberately unreadable; no real daemon or kill is needed.
+          const binary = reference === 'unreadable-daemon' ? `${outside}/buck2` : '/bin/sh'
+          if (reference === 'unreadable-daemon') {
+            yield* fs.copyFile('/bin/sh', binary)
+            yield* fs.chmod(binary, 0o755)
+          }
+          const heldPath = `${candidate}README.md`
+          const holder = yield* Effect.acquireRelease(
+            Effect.promise(
+              () =>
+                new Promise<ChildProcess>((resolve, reject) => {
+                  const child = spawn(
+                    binary,
+                    [
+                      '-c',
+                      reference === 'open-file'
+                        ? 'exec 3<"$1"; printf ready; read input'
+                        : 'printf ready; read input',
+                      'daemon',
+                      ...(reference === 'open-file'
+                        ? [heldPath]
+                        : ['--isolation-dir', 'gc-test', '--daemon-id', 'unreadable']),
+                    ],
+                    { cwd: reference === 'open-file' ? outside : candidate, stdio: 'pipe' },
+                  )
+                  child.once('error', reject)
+                  child.stdout!.once('data', () => resolve(child))
+                  child.once('exit', (code) => reject(new Error(`holder exited early: ${code}`)))
+                }),
+            ),
+            (child) =>
+              Effect.promise(
+                () =>
+                  new Promise<void>((resolve) => {
+                    if (child.exitCode !== null || child.signalCode !== null) return resolve()
+                    child.once('exit', () => resolve())
+                    child.kill('SIGKILL')
+                  }),
+              ),
+          )
+          const result = spawnSync(
+            'bun',
+            [
+              fileURLToPath(new URL('../../bin/mr.ts', import.meta.url)),
+              'store',
+              'gc',
+              '--output',
+              'json',
+            ],
+            {
+              cwd: outside,
+              encoding: 'utf8',
+              env: {
+                ...process.env,
+                MEGAREPO_STORE: storePath,
+                MEGAREPO_GC_BUCK2_BIN: '/bin/false',
+                NO_COLOR: '1',
+              },
+            },
+          )
+          expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(0)
+          const entry = findGcResult(
+            decodeStoreGcJsonOutput(result.stdout).results,
+            'github.com/test-owner/legacy-inuse/',
+            commit,
+          )
+          expect(entry?.status).toBe('skipped_in_use')
+          expect(entry?.message).toContain(`pid ${holder.pid}`)
+          if (reference === 'unreadable-daemon') {
+            expect(entry?.buckDaemonsUnreachable).toEqual([
+              expect.objectContaining({ pid: holder.pid, reason: 'status-unreadable' }),
+            ])
+          }
+          expect(yield* fs.exists(candidate)).toBe(true)
+          const receipts = (yield* fs.readFileString(
+            `${storePath}${GC_DELETION_RECEIPTS_RELATIVE_PATH}`,
+          ))
+            .trim()
+            .split('\n')
+            .map((line) => Schema.decodeSync(Schema.fromJsonString(GcDeletionReceipt))(line))
+          expect(
+            receipts.some(
+              (receipt) => receipt.path === candidate && receipt.decision === 'skipped-in-use',
+            ),
+          ).toBe(true)
+        },
+        Effect.provide(NodeServices.layer),
+        Effect.scoped,
+      ),
+    )
+  }
+
+  for (const manifestState of ['active', 'unavailable'] as const) {
+    it.effect(
+      `legacy GC keeps an owner with ${manifestState} configured activity evidence`,
+      Effect.fnUntraced(
+        function* () {
+          const fs = yield* FileSystem.FileSystem
+          const commit = 'abcdefabcdefabcdefabcdefabcdefabcdefabcd'
+          const { storePath, worktreePaths } = yield* createStoreFixture([
+            {
+              host: 'github.com',
+              owner: 'test-owner',
+              repo: 'legacy-activity',
+              branches: ['main'],
+              commits: [commit],
+            },
+          ])
+          const candidate = worktreePaths[`github.com/test-owner/legacy-activity#${commit}`]!
+          const outside = EffectPath.unsafe.absoluteDir(`${yield* fs.makeTempDirectoryScoped()}/`)
+          const manifestPath = `${outside}activity.json`
+          yield* fs.makeDirectory(`${storePath}.state`, { recursive: true })
+          yield* fs.writeFileString(
+            `${storePath}.state/gc-config.json`,
+            encodeJson({
+              generatedArtifacts: {
+                manifestPath,
+                agentLivenessProducers: ['legacy-test'],
+                builtin: false,
+              },
+            }),
+          )
+          if (manifestState === 'active') {
+            const now = yield* Clock.currentTimeMillis
+            yield* fs.writeFileString(
+              manifestPath,
+              encodeJson({
+                schemaVersion: WORKSPACE_ACTIVITY_V2_SCHEMA,
+                producer: { name: 'legacy-test', version: '1' },
+                epoch: { host: hostname(), snapshotId: 'legacy-activity', storeIndex: 1 },
+                capturedAt: new Date(now).toISOString(),
+                expiresAt: new Date(now + 60_000).toISOString(),
+                complete: true,
+                errors: [],
+                claims: [
+                  {
+                    workspace: yield* fs.realPath(candidate),
+                    sources: ['st3-seat'],
+                    agents: ['active-agent'],
+                    activeRuntimeIds: ['active-runtime'],
+                    active: true,
+                  },
+                ],
+              }),
+            )
+          }
+          const result = yield* runMrCommand({
+            cwd: outside,
+            command: ['store', 'gc', '--output', 'json'],
+            env: { MEGAREPO_STORE: storePath },
+          })
+          expect(result.exitCode, `${result.stdout}\n${result.failure}`).toBe(0)
+          const entry = findGcResult(
+            decodeStoreGcJsonOutput(result.stdout).results,
+            'github.com/test-owner/legacy-activity/',
+            commit,
+          )
+          expect(entry?.status).toBe('skipped_in_use')
+          expect(entry?.message).toContain(
+            manifestState === 'active'
+              ? 'workspace activity manifest reports activity'
+              : 'configured activity manifest is unavailable',
+          )
+          expect(yield* fs.exists(candidate)).toBe(true)
+        },
+        Effect.provide(NodeServices.layer),
+        Effect.scoped,
+      ),
+    )
+  }
 })
 
 describe('store discovery is bounded to the layout', () => {

@@ -7,6 +7,7 @@ import { join, resolve } from 'node:path'
 
 import { localMaterializationCategories } from '../genie/ci-scripts/buck2-action-evidence.ts'
 import {
+  buckConfigValues,
   probeRemoteCacheCapabilities,
   publicProbeAddress,
   type RemoteCacheProbeConnectionEvent,
@@ -38,7 +39,13 @@ const stopReplayProcesses = async (
         process.kill(-child.pid, 0)
       } catch (error) {
         if (error instanceof Error && 'code' in error && error.code === 'ESRCH') break
-        throw error
+        // Darwin can transiently report EPERM while a killed group is reaping.
+        // This is not proof of absence: keep polling until ESRCH or the deadline.
+        if (
+          process.platform !== 'darwin' ||
+          !(error instanceof Error && 'code' in error && error.code === 'EPERM')
+        )
+          throw error
       }
       if (performance.now() >= deadline) {
         const members: string[] = []
@@ -110,6 +117,32 @@ describe('replay subprocess cleanup', () => {
 })
 
 describe('standalone Buck cache posture', () => {
+  it('sets native count-only event-log retention only in CI or an evidence context', () => {
+    const current = '[buck2]\n  retained_event_logs = 7\n[developer]\n  keep = yes\n'
+    for (const env of [
+      { GITHUB_ACTIONS: 'true' },
+      { CI_BUCK2_CACHE_EVIDENCE_PATH: '/ci/evidence.json' },
+      { GITHUB_ACTIONS: 'true', BUCK2_NO_REMOTE_CACHE: '1' },
+      { GITHUB_ACTIONS: 'true', BUCK2_PUBLIC_CACHE_READ_ONLY: '1' },
+    ]) {
+      const ci = standaloneCachePostureConfig({ current, env })
+      const values = buckConfigValues(ci)
+      expect(values['buck2.retained_event_logs']).toBe('120')
+      expect(ci.startsWith(current.trimEnd())).toBe(true)
+      expect(ci).not.toContain('retained_event_log_bytes')
+      const developer = standaloneCachePostureConfig({ current: ci, env: {} })
+      expect(buckConfigValues(developer)['buck2.retained_event_logs']).toBe('7')
+      expect(developer.startsWith(current.trimEnd())).toBe(true)
+    }
+    for (const env of [{}, { GITHUB_ACTIONS: 'false' }, { CI_BUCK2_CACHE_EVIDENCE_PATH: '' }]) {
+      expect(
+        buckConfigValues(standaloneCachePostureConfig({ current: '', env }))[
+          'buck2.retained_event_logs'
+        ],
+      ).toBeUndefined()
+    }
+  })
+
   it('disables remote cache only for the exact opt-out without selecting an archive origin', () => {
     expect(
       standaloneCachePostureConfig({

@@ -903,7 +903,7 @@ describe('normalized store projection of the real lockfile', () => {
         'storybook@10.6.0_@types+react-dom@19.2.7_@types+react@19.2.18_@types+react@19.2.18_prettier@3.9.6_react_da9aab27e30e1021',
       ],
       [
-        '@vitest+browser-playwright@5.0.3_playwright@1.63.0_vite@8.2.2_@types+node@26.5.0_esbuild@0.28.2_jiti@2.7.0_vitest@5.0.3',
+        '@vitest+browser-playwright@5.0.3_playwright@1.64.1_vite@8.2.2_@types+node@26.5.0_esbuild@0.28.2_jiti@2.7.0_vitest@5.0.3',
         '@vitest+browser@5.0.3_vite@8.2.2_@types+node@26.5.0_esbuild@0.28.2_jiti@2.7.0_vitest@5.0.3',
         '@vitest+ui@5.0.3_vitest@5.0.3',
         'vitest@5.0.3_@opentelemetry+api@1.9.1_@types+node@26.5.0_@vitest+browser-playwright@5.0.3_@vitest+ui@5._1c9a61b8ae5e04be',
@@ -960,7 +960,7 @@ describe('normalized store projection of the real lockfile', () => {
       '@opentui+core@0.5.11_typescript@7.0.2_web-tree-sitter@0.25.10',
       'esbuild@0.28.2',
       'lightningcss@1.33.0',
-      'next@16.2.6_@babel+core@7.29.7_@opentelemetry+api@1.9.1_@playwright+test@1.63.0_react-dom@19.2.8_react@_d75b6ba524ebce45',
+      'next@16.2.6_@babel+core@7.29.7_@opentelemetry+api@1.9.1_@playwright+test@1.64.1_react-dom@19.2.8_react@_e7c28ad1302b021a',
       'oxc-parser@0.127.0',
       'oxc-resolver@11.21.2',
       'oxlint-tsgolint@7.0.2001',

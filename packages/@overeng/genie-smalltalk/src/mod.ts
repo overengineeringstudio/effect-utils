@@ -28,6 +28,57 @@ import {
   templateText,
   utf8ByteLength,
 } from './run-values.ts'
+import {
+  LaunchSchema,
+  TimingSchema,
+  ReviewSchema,
+  DurationSchema as Duration,
+  NonNegativeDurationSchema as NonNegativeDuration,
+  launchReferences,
+  lowerDuration,
+  lowerInstant,
+  lowerReview,
+  reviewReferences,
+  PinnedDocumentReferenceSchema,
+  DocumentReferenceSchema,
+  FullSubject,
+  type Launch,
+  type Review,
+} from './values.ts'
+export {
+  Launch,
+  Timing,
+  Review,
+  LaunchSchema,
+  TimingSchema,
+  ReviewSchema,
+  DurationSchema,
+  NonNegativeDurationSchema,
+  InstantSchema,
+  normalizeDuration,
+  normalizeInstant,
+  lowerDuration,
+  lowerInstant,
+  lowerLaunch,
+  lowerTiming,
+  lowerReview,
+} from './values.ts'
+export type {
+  LaunchInput,
+  LaunchOptions,
+  TimingInput,
+  CalendarInput,
+  ReviewSubjectInput,
+  DurationInput,
+  InstantInput,
+} from './values.ts'
+export {
+  CalendarTimeSchema,
+  IanaTimezoneSchema,
+  CalendarDaysSchema,
+  DocumentReferenceSchema,
+  PinnedDocumentReferenceSchema,
+} from './values.ts'
 export { childMission, doc, input, pr, product, runId, t } from './run-values.ts'
 export type {
   ChildMission,
@@ -53,6 +104,8 @@ export type Node = {
   readonly children?: readonly Node[]
 }
 
+const immutableNodes = new WeakSet<Node>()
+
 /** Builds a KDL node; omitted args and props are empty. */
 export const node = ({
   name,
@@ -64,7 +117,22 @@ export const node = ({
   readonly args?: readonly Value[]
   readonly props?: Readonly<Record<string, Value>>
   readonly children?: readonly Node[]
-}): Node => ({ name, args, props, ...(children === undefined ? {} : { children }) })
+}): Node => {
+  const value = Object.freeze({
+    name,
+    args: Object.freeze([...args]),
+    props: Object.freeze({ ...props }),
+    ...(children === undefined
+      ? {}
+      : {
+          children: Object.freeze(
+            children.map((child) => (immutableNodes.has(child) === true ? child : node(child))),
+          ),
+        }),
+  })
+  immutableNodes.add(value)
+  return value
+}
 
 const renderValue = (value: Value): string => {
   if (typeof value === 'string') return JSON.stringify(value)
@@ -159,65 +227,6 @@ const MissionId = Schema.String.pipe(
   Schema.brand('MissionId'),
 )
 
-const durationScale = { ms: 1n, s: 1000n, m: 60000n, h: 3600000n, d: 86400000n } as const
-const maxDurationMillis = 18446744073709551615n
-
-const Duration = Schema.String.pipe(
-  Schema.refine(
-    (s): s is string => {
-      const match = /^(\d+)(ms|s|m|h|d)$/u.exec(s)
-      if (match === null) return false
-      const millis = BigInt(match[1]!) * durationScale[match[2] as keyof typeof durationScale]
-      return millis > 0n && millis <= maxDurationMillis
-    },
-    { message: 'invalid positive st duration' },
-  ),
-  Schema.brand('Duration'),
-)
-
-const UtcAnchor = Schema.String.pipe(
-  Schema.refine(
-    (s): s is string =>
-      /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d+)?Z$/u.test(s) === true &&
-      Number.isFinite(Date.parse(s)) === true &&
-      new Date(s).toISOString().slice(0, 19) === s.slice(0, 19),
-    { message: 'invalid UTC anchor' },
-  ),
-  Schema.brand('UtcAnchor'),
-)
-
-/** A local 24-hour calendar time, without a weekday or UTC offset. */
-export const CalendarTimeSchema = Schema.String.pipe(
-  Schema.refine((s): s is string => /^(?:[01]\d|2[0-3]):[0-5]\d$/u.test(s), {
-    message: 'calendar at must be a valid 24-hour HH:MM',
-  }),
-  Schema.brand('CalendarTime'),
-  Schema.annotate({ identifier: 'St.CalendarTime' }),
-)
-
-/** A named IANA timezone; st validates against its bundled chrono-tz data at publication. */
-export const IanaTimezoneSchema = Schema.String.pipe(
-  Schema.refine(
-    (s): s is string => {
-      if (/^[A-Za-z][A-Za-z0-9._+-]*(?:\/[A-Za-z0-9._+-]+)*$/u.test(s) === false) return false
-      try {
-        Intl.DateTimeFormat(undefined, { timeZone: s })
-        return true
-      } catch {
-        return false
-      }
-    },
-    { message: 'unknown IANA timezone' },
-  ),
-  Schema.brand('IanaTimezone'),
-  Schema.annotate({ identifier: 'St.IanaTimezone' }),
-)
-
-/** st supports one weekly day, not a set of days. */
-export const CalendarDaysSchema = Schema.Tuple([
-  Schema.Literals(['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']),
-]).annotate({ identifier: 'St.CalendarDays' })
-
 const Revision = Schema.String.pipe(
   Schema.refine(
     (s): s is string => {
@@ -242,22 +251,13 @@ const AgentTaskFields = Schema.Struct({
   id: LocalId,
   host: Schema.optionalKey(Text),
   workspace: Schema.optionalKey(Text),
-  command: Schema.optionalKey(Text),
-  argv: Schema.optionalKey(Schema.Array(Text)),
-}).pipe(
-  Schema.refine(
-    (t): t is typeof t => Number(t.command !== undefined) + Number(t.argv !== undefined) === 1,
-    {
-      message: 'task needs exactly one launch form',
-    },
-  ),
-)
+  launch: LaunchSchema,
+})
 
 const AgentTask = Schema.declare<typeof AgentTaskFields.Encoded>(
   (input): input is typeof AgentTaskFields.Encoded =>
     Schema.is(AgentTaskFields)(input) === true &&
-    Reflect.ownKeys(input).every((key) => Object.hasOwn(AgentTaskFields.schema.fields, key)) ===
-      true,
+    Reflect.ownKeys(input).every((key) => Object.hasOwn(AgentTaskFields.fields, key)) === true,
 ).annotate({ identifier: 'St.AgentTask' })
 
 const RenderOperation = Schema.Struct({
@@ -327,7 +327,7 @@ export type PersonReference = typeof PersonReferenceSchema.Type
 
 /** References a named person; it is attribution, not a person credential. */
 export const person = (subject: `person/${string}`): PersonReference =>
-  decode({ schema: PersonReferenceSchema, input: { kind: 'person', subject } })
+  Object.freeze(decode({ schema: PersonReferenceSchema, input: { kind: 'person', subject } }))
 
 const AgentSchemaFields = Schema.Struct({
   id: SubjectId,
@@ -351,8 +351,14 @@ const AgentSchemaFields = Schema.Struct({
   restart: Schema.optionalKey(Restart),
   rollout: Schema.optionalKey(Schema.Literal('manual')),
   shutdownTimeout: Schema.optionalKey(Duration),
-  command: Schema.optionalKey(Text),
-  argv: Schema.optionalKey(Schema.Array(Text)),
+  launch: Schema.optionalKey(
+    LaunchSchema.pipe(
+      Schema.refine(
+        (launch): launch is typeof launch => launch.cwd === undefined && launch.unset === undefined,
+        { message: 'root agent launches do not support cwd or unset; use child tasks instead' },
+      ),
+    ),
+  ),
   env: Schema.optionalKey(Env),
   render: Schema.optionalKey(Schema.Array(RenderOperation)),
   harness: Schema.optionalKey(Schema.Union([OmpSchema, CodexSchema])),
@@ -374,10 +380,8 @@ const isValidAgent = (a: typeof AgentSchemaFields.Type): boolean =>
     a.harness.resume === undefined ||
     a.env?.ST3_NATIVE_RESUME_SESSION === undefined ||
     a.env.ST3_NATIVE_RESUME_SESSION === a.harness.resume.session) &&
-  Number(a.command !== undefined) +
-    Number(a.argv !== undefined) +
-    Number(a.harness !== undefined) <=
-    1 &&
+  Number(a.launch !== undefined) + Number(a.harness !== undefined) <= 1 &&
+  (a.launch === undefined || a.env === undefined) &&
   (a.env === undefined ||
     Object.keys(a.env).every((key) => /^[A-Za-z_][A-Za-z0-9_]*$/u.test(key) === true) === true) &&
   (a.render === undefined || a.render.length > 0) &&
@@ -402,37 +406,7 @@ const isAgentDeclaration = (input: unknown): input is typeof AgentSchema.Type =>
 }
 
 const GateName = Text.pipe(Schema.refine((s): s is string => utf8ByteLength(s) <= 160))
-const validName = ({
-  value: s,
-  full,
-}: {
-  readonly value: string
-  readonly full: boolean
-}): boolean =>
-  s.length > 0 &&
-  s.length <= 512 &&
-  /^[A-Za-z0-9][A-Za-z0-9._@/-]*$/u.test(s) === true &&
-  s.split('/').every((part) => part !== '' && part !== '..') === true &&
-  (full === false || s.includes('/') === true)
-const validSubject = (s: string): boolean => {
-  if (/^\$\{[A-Za-z0-9_.-]*\}$/u.test(s) === true) return true
-  const concrete = s.replace(/\$\{[^}]*\}/gu, 'x')
-  if (concrete.includes('${') === true) return false
-  if (concrete.startsWith('file/') === true) {
-    const colon = concrete.indexOf(':')
-    const host = concrete.slice(5, colon)
-    const path = concrete.slice(colon + 1)
-    return (
-      colon > 5 &&
-      validName({ value: host, full: false }) === true &&
-      path.startsWith('/') === true &&
-      path.includes('/../') === false &&
-      path.endsWith('/..') === false
-    )
-  }
-  return validName({ value: concrete, full: true })
-}
-const FullSubject = Text.pipe(Schema.refine((s): s is string => validSubject(s)))
+const validSubject = Schema.is(FullSubject)
 const Goal = Schema.Union([
   Text,
   Schema.NonEmptyArray(Text).pipe(
@@ -446,10 +420,6 @@ const Goal = Schema.Union([
     encode: SchemaGetter.transform((value) => value),
   }),
 )
-const NonNegativeDuration = Schema.Union([
-  Duration,
-  Schema.Literals(['0ms', '0s', '0m', '0h', '0d']),
-])
 
 const reservedGateEnvNames: Readonly<Record<string, true>> = {
   ST_MISSION: true,
@@ -477,28 +447,6 @@ const reservedGateEnvNames: Readonly<Record<string, true>> = {
 const DocumentHash = Schema.String.pipe(
   Schema.refine((s): s is string => /^[0-9a-fA-F]{64}$/u.test(s)),
 )
-/** A document gate may wait for a name or an immutable version. */
-export const DocumentReferenceSchema = Text.pipe(
-  Schema.refine((s): s is string => {
-    if (s.startsWith('doc/') === false) return false
-    if (s.includes('${') === true) return true
-    const at = s.lastIndexOf('@')
-    const name = at < 0 ? s : s.slice(0, at)
-    return (
-      name.length > 4 &&
-      name.includes('..') === false &&
-      name.endsWith('/') === false &&
-      (at < 0 || /^[0-9a-fA-F]{64}$/u.test(s.slice(at + 1)) === true)
-    )
-  }),
-).annotate({ identifier: 'St.DocumentReference' })
-
-/** Step documents always pin an exact immutable version. */
-export const PinnedDocumentReferenceSchema = DocumentReferenceSchema.pipe(
-  Schema.refine(
-    (s): s is string => s.includes('${') === false && /@[0-9a-fA-F]{64}$/u.test(s) === true,
-  ),
-).annotate({ identifier: 'St.PinnedDocumentReference' })
 
 /** A native graph-field predicate; the former nested field form is not accepted. */
 export const FieldGateSchema = Schema.Struct({
@@ -533,9 +481,10 @@ export const HumanGateSchema = Schema.Struct({
   mode: Schema.optionalKey(Schema.Literals(['approve', 'feedback'])),
   question: Schema.optionalKey(Text),
   review: Schema.optionalKey(
-    Schema.Array(Text).pipe(
+    Schema.Array(ReviewSchema).pipe(
       Schema.refine(
-        (targets): targets is typeof targets => new Set(targets).size === targets.length,
+        (targets): targets is typeof targets =>
+          new Set(targets.map(lowerReview)).size === targets.length,
         {
           message: 'human gate review targets must be unique',
         },
@@ -628,7 +577,7 @@ export const ExecSchema = Schema.Struct({
   id: LocalId,
   host: Text,
   workspace: Text,
-  command: Text,
+  launch: LaunchSchema,
   restart: Restart,
 }).annotate({ identifier: 'St.Exec' })
 
@@ -902,33 +851,13 @@ export const WorkSchema = Schema.Struct({ mission: ScheduledMission, workspace: 
   identifier: 'St.Work',
 })
 
-const scheduleFields = {
+/** A native schedule with one normalized timing value. */
+export const ScheduleSchema = Schema.Struct({
   id: LocalId,
   host: Schema.Literal('local'),
-  catchUp: Schema.Literal('latest'),
   work: WorkSchema,
-}
-
-/** An elapsed-time interval; omitted tags preserve existing every/anchor declarations. */
-export const EveryScheduleSchema = Schema.Struct({
-  ...scheduleFields,
-  _tag: Schema.optionalKey(Schema.Literal('every')),
-  every: Duration,
-  anchor: UtcAnchor,
-}).annotate({ identifier: 'St.EverySchedule' })
-
-/** A daily or single-weekday wall-clock schedule in an explicit IANA timezone. */
-export const CalendarScheduleSchema = Schema.TaggedStruct('calendar', {
-  ...scheduleFields,
-  at: CalendarTimeSchema,
-  timezone: IanaTimezoneSchema,
-  days: Schema.optionalKey(CalendarDaysSchema),
-}).annotate({ identifier: 'St.CalendarSchedule' })
-
-/** A recurring schedule with latest-only catch-up. */
-export const ScheduleSchema = Schema.Union([EveryScheduleSchema, CalendarScheduleSchema]).annotate({
-  identifier: 'St.Schedule',
-})
+  timing: TimingSchema,
+}).annotate({ identifier: 'St.Schedule' })
 
 /**
  * Reference an imported agent declaration without copying its launch configuration.
@@ -960,6 +889,7 @@ export const MissionSchema = Schema.Struct({
   timeout: Schema.optionalKey(Duration),
   stalledAfter: Schema.optionalKey(Duration),
   reportStalls: Schema.optionalKey(Schema.Boolean),
+  reportCompleted: Schema.optionalKey(Schema.Boolean),
   goal: Goal,
   gates: Schema.optionalKey(
     Gates.pipe(
@@ -969,6 +899,33 @@ export const MissionSchema = Schema.Struct({
     ),
   ),
   constraints: Schema.optionalKey(Schema.Array(Text)),
+  lanes: Schema.optionalKey(
+    Schema.Array(
+      Schema.Struct({
+        name: LocalId,
+        entries: Schema.optionalKey(
+          Schema.String.pipe(
+            Schema.refine((value): value is string => value.endsWith('/'), {
+              message: 'lane entries must end with /',
+            }),
+          ),
+        ),
+        approver: Schema.optionalKey(
+          Schema.String.pipe(
+            Schema.refine((value): value is string => value.startsWith('person/'), {
+              message: 'lane approver must start with person/',
+            }),
+          ),
+        ),
+      }),
+    ).pipe(
+      Schema.refine(
+        (lanes): lanes is typeof lanes =>
+          new Set(lanes.map((lane) => lane.name)).size === lanes.length,
+        { message: 'lane names must be unique within a mission' },
+      ),
+    ),
+  ),
   steps: Schema.Array(Schema.Union([StepSchema, LoopSchema])),
   completion: Schema.optionalKey(CompletionSchema),
   finally: Schema.optionalKey(Schema.NonEmptyArray(StepSchema)),
@@ -999,10 +956,12 @@ export const omp = ({
   readonly effort: (typeof OmpSchema.Encoded)['effort']
   readonly resume?: typeof OmpResumeSchema.Encoded
 }): typeof OmpSchema.Type =>
-  decode({
-    schema: OmpSchema,
-    input: { kind: 'omp', model, effort, ...(resume === undefined ? {} : { resume }) },
-  })
+  snapshotComposition(
+    decode({
+      schema: OmpSchema,
+      input: { kind: 'omp', model, effort, ...(resume === undefined ? {} : { resume }) },
+    }),
+  )
 
 /** Decodes and renders a resource node. */
 export const resource = (input: typeof ResourceSchema.Encoded): Node => {
@@ -1036,7 +995,7 @@ export const observer = (input: typeof ObserverSchema.Encoded): Node => {
       child({ name: 'provider', value: o.provider }),
       child({ name: 'locator', value: o.locator }),
       ...o.fields.map((field) => child({ name: 'field', value: field })),
-      ...optionalChild({ name: 'every', value: o.every }),
+      ...optionalChild({ name: 'every', value: nativeDuration(o.every) }),
     ],
   })
 }
@@ -1078,6 +1037,27 @@ const ownedDeclarationNodes = (input: {
   ...(input.subscriptions ?? []).map(subscription),
 ]
 
+const nativeDuration = (value: string | undefined): string | undefined =>
+  value === undefined ? undefined : lowerDuration(value)
+
+const launchNodes = (launch: Launch): readonly Node[] => [
+  launch._tag === 'Argv'
+    ? node({ name: 'argv', args: launch.argv })
+    : child({ name: 'command', value: launch.command }),
+  ...optionalChild({ name: 'cwd', value: launch.cwd }),
+  ...(launch.env === undefined
+    ? []
+    : [
+        block({
+          name: 'env',
+          children: Object.entries(launch.env)
+            .toSorted(([a], [b]) => a.localeCompare(b, 'en'))
+            .map(([name, value]) => child({ name, value })),
+        }),
+      ]),
+  ...(launch.unset === undefined ? [] : [node({ name: 'unset', args: launch.unset })]),
+]
+
 /** Decodes and renders a schedule node. */
 export const schedule = (input: typeof ScheduleSchema.Encoded): Node => {
   const s = decode({ schema: ScheduleSchema, input })
@@ -1086,21 +1066,29 @@ export const schedule = (input: typeof ScheduleSchema.Encoded): Node => {
     args: [s.id],
     children: [
       child({ name: 'host', value: s.host }),
-      ...(s._tag === 'calendar'
+      ...(s.timing._tag === 'Calendar'
         ? [
             block({
               name: 'calendar',
               children: [
                 child({
                   name: 'at',
-                  value: s.days === undefined ? s.at : `${s.days[0]} ${s.at}`,
+                  value:
+                    s.timing.days === undefined
+                      ? s.timing.at
+                      : `${s.timing.days[0]} ${s.timing.at}`,
                 }),
-                child({ name: 'timezone', value: s.timezone }),
+                child({ name: 'timezone', value: s.timing.timezone }),
               ],
             }),
           ]
-        : [child({ name: 'every', value: s.every }), child({ name: 'anchor', value: s.anchor })]),
-      child({ name: 'catch-up', value: s.catchUp }),
+        : s.timing._tag === 'At'
+          ? [child({ name: 'at', value: lowerInstant(s.timing.at) })]
+          : [
+              child({ name: 'every', value: lowerDuration(s.timing.every) }),
+              child({ name: 'anchor', value: lowerInstant(s.timing.anchor) }),
+            ]),
+      ...(s.timing._tag === 'At' ? [] : [child({ name: 'catch-up', value: 'latest' })]),
       block({
         name: 'work',
         children: [
@@ -1126,7 +1114,7 @@ const lowerGate = (input: typeof GateSchema.Encoded): Node => {
       children: [
         child({ name: 'reviewer', value: g.reviewer.subject }),
         ...optionalChild({ name: 'question', value: g.question }),
-        ...(g.review ?? []).map((target) => child({ name: 'review', value: target })),
+        ...(g.review ?? []).map((target) => child({ name: 'review', value: lowerReview(target) })),
       ],
     })
   }
@@ -1163,7 +1151,7 @@ const lowerGate = (input: typeof GateSchema.Encoded): Node => {
         ? [
             ...optionalChild({ name: 'host', value: g.host }),
             ...optionalChild({ name: 'workspace', value: g.workspace }),
-            ...optionalChild({ name: 'time-limit', value: g.timeLimit }),
+            ...optionalChild({ name: 'time-limit', value: nativeDuration(g.timeLimit) }),
             ...(g.kind === 'exec' && g.env !== undefined
               ? [
                   block({
@@ -1198,8 +1186,9 @@ const withReferences = <TGate extends object>({
   readonly value: TGate
   readonly references: readonly RunReference[]
 }): TGate => {
-  gateReferences.set(value, references)
-  return value
+  const snapshot = snapshotComposition(value)
+  gateReferences.set(snapshot, Object.freeze([...references]))
+  return snapshot
 }
 type AuthoredText = string | TextTemplate
 type AuthoredGoal = AuthoredText | readonly [AuthoredText, ...AuthoredText[]]
@@ -1274,7 +1263,7 @@ const executionReferences = (options: ExecutionOptions): readonly RunReference[]
 const human = (
   input: Named<Omit<HumanGate, 'kind' | 'review' | 'question'>> & {
     readonly question?: AuthoredText
-    readonly review?: readonly ReviewTarget[]
+    readonly review?: readonly Review[]
   },
 ): HumanGate => {
   const { review, question, ...rest } = input
@@ -1289,12 +1278,14 @@ const human = (
       }),
       kind: 'human',
       ...(questionText === undefined ? {} : { question: questionText }),
-      ...(review === undefined ? {} : { review: review.map(targetText) }),
+      ...(review === undefined
+        ? {}
+        : { review: review.map((target) => decode({ schema: ReviewSchema, input: target })) }),
     },
     references: [
       ...referencesInName(input),
       ...(question === undefined ? [] : referencesInText(question)),
-      ...(review ?? []).flatMap(targetReferences),
+      ...(review ?? []).flatMap(reviewReferences),
     ],
   })
 }
@@ -1612,7 +1603,7 @@ const lowerStep = (input: typeof StepSchema.Encoded): Node => {
         children: [
           child({ name: 'host', value: s.exec.host }),
           child({ name: 'workspace', value: s.exec.workspace }),
-          child({ name: 'command', value: s.exec.command }),
+          ...launchNodes(s.exec.launch),
           child({ name: 'restart', value: s.exec.restart }),
         ],
       }),
@@ -1625,14 +1616,14 @@ const lowerStep = (input: typeof StepSchema.Encoded): Node => {
         name: 'retry',
         children: [
           child({ name: 'attempts', value: s.retry.attempts }),
-          ...optionalChild({ name: 'backoff', value: s.retry.backoff }),
+          ...optionalChild({ name: 'backoff', value: nativeDuration(s.retry.backoff) }),
         ],
       }),
     )
   return node({
     name: 'step',
     args: [s.id],
-    props: s.timeout === undefined ? {} : { timeout: s.timeout },
+    props: s.timeout === undefined ? {} : { timeout: lowerDuration(s.timeout) },
     children,
   })
 }
@@ -1667,10 +1658,9 @@ type StepDependencyInput<TMission extends string> =
   | typeof DependencyItem.Encoded
   | StepDependency<NoInfer<TMission>>
   | StepHandle<NoInfer<TMission>>
-type AuthoredExec = Omit<typeof ExecSchema.Encoded, 'host' | 'workspace' | 'command'> & {
+type AuthoredExec = Omit<typeof ExecSchema.Encoded, 'host' | 'workspace'> & {
   readonly host: AuthoredText
   readonly workspace: AuthoredText
-  readonly command: AuthoredText
 }
 type AuthoredStep = Omit<typeof StepSchema.Encoded, 'goal' | 'exec'> & {
   readonly goal?: AuthoredGoal
@@ -1681,8 +1671,8 @@ type FailureExhaustion = Extract<Exhaustion, { readonly outcome: 'fail' }>
 /** A loop retains authored native text until mission assembly. */
 export type LoopInput = Omit<typeof LoopSchema.Encoded, 'round' | 'onExhausted'> & {
   readonly round: Omit<typeof RoundSchema.Encoded, 'steps' | 'finally'> & {
-    readonly steps: readonly AuthoredStep[]
-    readonly finally?: readonly [AuthoredStep, ...AuthoredStep[]]
+    readonly steps: readonly (AuthoredStep | StepHandle)[]
+    readonly finally?: readonly [AuthoredStep | StepHandle, ...(AuthoredStep | StepHandle)[]]
   }
   readonly onExhausted?:
     | Extract<Exhaustion, { readonly outcome: 'succeed' }>
@@ -1726,6 +1716,85 @@ export type MissionInput<TMission extends string> = Omit<
   )[]
 }
 
+/** Snapshot plain authoring data, but never copy identities used by provenance WeakMaps. */
+const snapshotComposition = <T>(input: T): T => {
+  const copies = new WeakMap<object, object>()
+  const snapshot = (value: unknown): unknown => {
+    if (typeof value !== 'object' || value === null) return value
+    const prototype = Object.getPrototypeOf(value)
+    if (
+      (prototype !== Object.prototype && prototype !== null && Array.isArray(value) === false) ||
+      Object.getOwnPropertySymbols(value).length > 0 ||
+      gateReferences.has(value) === true ||
+      templateReferences(value).length > 0 ||
+      ('_tag' in value &&
+        (((value._tag === 'Argv' || value._tag === 'Shell') &&
+          launchReferences(value as Launch).length > 0) ||
+          ((value._tag === 'Subject' || value._tag === 'File' || value._tag === 'PinnedDocument') &&
+            reviewReferences(value as Review).length > 0))) ||
+      ('kind' in value &&
+        (value.kind === 'template' ||
+          (value.kind === 'document' && !('name' in value)) ||
+          value.kind === 'child-mission' ||
+          value.kind === 'context' ||
+          value.kind === 'pull-request')) ||
+      ('_tag' in value && (value._tag === 'SubjectRef' || value._tag === 'PinnedMissionRef'))
+    )
+      return value
+    const existing = copies.get(value)
+    if (existing !== undefined) return existing
+    const copy: object = Array.isArray(value) === true ? [] : Object.create(prototype)
+    copies.set(value, copy)
+    for (const [key, nested] of Object.entries(value))
+      Object.defineProperty(copy, key, {
+        value: snapshot(nested),
+        enumerable: true,
+        configurable: true,
+        writable: true,
+      })
+    return Object.freeze(copy)
+  }
+  return snapshot(input) as T
+}
+
+/** Immutable reusable graph fragments retain the exact scoped handle objects. */
+export const Fragment = {
+  steps: <const TSteps extends MissionInput<string>['steps']>(...steps: TSteps): Readonly<TSteps> =>
+    snapshotComposition(steps),
+}
+
+const immutableMission = <const TMission extends string>(
+  input: MissionInput<TMission>,
+): MissionInput<TMission> => snapshotComposition(input)
+
+/** Pure composition; references are checked by the single mission assembly boundary. */
+export const Mission = {
+  make: immutableMission,
+  withSteps: <const TMission extends string>({
+    mission: input,
+    steps,
+  }: {
+    readonly mission: MissionInput<TMission>
+    readonly steps: MissionInput<NoInfer<TMission>>['steps']
+  }): MissionInput<TMission> => immutableMission({ ...input, steps: [...input.steps, ...steps] }),
+  withFinally: <const TMission extends string>({
+    mission: input,
+    steps,
+  }: {
+    readonly mission: MissionInput<TMission>
+    readonly steps: NonNullable<MissionInput<NoInfer<TMission>>['finally']>
+  }): MissionInput<TMission> =>
+    immutableMission({
+      ...input,
+      finally: [...(input.finally ?? []), ...steps],
+    }),
+}
+
+/** A round fragment snapshots both phases without replacing scoped handles. */
+export const Round = {
+  make: (input: LoopInput['round']): LoopInput['round'] => snapshotComposition(input),
+}
+
 const stepData = new WeakMap<
   object,
   {
@@ -1747,7 +1816,7 @@ const stepDependency = <TMission extends string>({
 }: {
   readonly handle: StepHandle<TMission>
   readonly state: StepDependency['state']
-}): StepDependency<TMission> => ({ [dependencyBrand]: true, handle, state })
+}): StepDependency<TMission> => Object.freeze({ [dependencyBrand]: true as const, handle, state })
 /** Wait for a step to complete successfully. */
 export const completed = <TMission extends string>(
   handle: StepHandle<TMission>,
@@ -1804,7 +1873,9 @@ export function step(input: StepInput<string>): StepHandle {
           : [],
   )
   const seenProducts = new Set<ProductHandle>()
-  const products = produces === undefined || isChildMission(produces) === true ? {} : produces
+  const products = Object.freeze({
+    ...(produces === undefined || isChildMission(produces) === true ? {} : produces),
+  })
   const materializedProducts = Object.entries(products).map(([name, value]) => {
     Schema.decodeSync(LocalId)(name)
     if (productOwners.has(value) === true)
@@ -1889,7 +1960,7 @@ export function step(input: StepInput<string>): StepHandle {
     ],
     ...(missionOutput === undefined ? {} : { missionOutput }),
   })
-  return handle
+  return Object.freeze(handle)
 }
 
 const dependenciesNode = (dependencies: readonly (typeof DependsOnSchema.Encoded)[]): Node =>
@@ -1912,7 +1983,6 @@ const authoredExecWire = (value: AuthoredExec): typeof ExecSchema.Encoded => ({
   ...value,
   host: templateText(value.host),
   workspace: templateText(value.workspace),
-  command: templateText(value.command),
 })
 const authoredStepReferences = (
   value: Pick<AuthoredStep, 'goal' | 'exec' | 'gates'>,
@@ -1929,10 +1999,11 @@ const authoredStepReferences = (
     : [
         ...referencesInText(value.exec.host),
         ...referencesInText(value.exec.workspace),
-        ...referencesInText(value.exec.command),
+        ...launchReferences(value.exec.launch),
       ]),
 ]
-const authoredStepWire = (value: AuthoredStep): typeof StepSchema.Encoded => {
+const authoredStepWire = (value: AuthoredStep | StepHandle): typeof StepSchema.Encoded => {
+  if (isStepHandle(value) === true) return stepData.get(value)!.wire
   const { goal, exec: stepExec, ...rest } = value
   let wireGoal: typeof Goal.Encoded | undefined
   if (goal !== undefined) {
@@ -1982,13 +2053,16 @@ const authoredLoopWire = (value: LoopInput): typeof LoopSchema.Encoded => {
 
 /** Lowers a loop and its explicitly completed round mission. */
 export const loop = (input: LoopInput): Node => {
-  if (loopReferences(input).length > 0)
+  if (
+    loopReferences(input).length > 0 ||
+    [...input.round.steps, ...(input.round.finally ?? [])].some(isStepHandle) === true
+  )
     throw new TypeError('Typed references in loops require mission assembly')
   const l = decode({ schema: LoopSchema, input: authoredLoopWire(input) })
   return node({
     name: 'loop',
     args: [l.id],
-    props: l.timeout === undefined ? {} : { timeout: l.timeout },
+    props: l.timeout === undefined ? {} : { timeout: lowerDuration(l.timeout) },
     children: [
       ...(l.dependsOn === undefined ? [] : [dependenciesNode(l.dependsOn)]),
       child({ name: 'max-rounds', value: l.maxRounds }),
@@ -2037,11 +2111,20 @@ export const loop = (input: LoopInput): Node => {
 
 const referencesInGates = (
   gates: readonly (typeof GateSchema.Encoded)[] = [],
-): readonly RunReference[] => gates.flatMap((value) => gateReferences.get(value) ?? [])
+): readonly RunReference[] =>
+  gates.flatMap(
+    (value) =>
+      gateReferences.get(value) ??
+      (value.kind === 'human' ? (value.review ?? []).flatMap(reviewReferences) : []),
+  )
 const loopReferences = (input: LoopInput): readonly RunReference[] => [
   ...referencesInGates(input.until),
-  ...input.round.steps.flatMap(authoredStepReferences),
-  ...(input.round.finally ?? []).flatMap(authoredStepReferences),
+  ...input.round.steps.flatMap((value) =>
+    isStepHandle(value) === true ? stepData.get(value)!.references : authoredStepReferences(value),
+  ),
+  ...(input.round.finally ?? []).flatMap((value) =>
+    isStepHandle(value) === true ? stepData.get(value)!.references : authoredStepReferences(value),
+  ),
   ...(input.onExhausted?.outcome !== 'fail' || input.onExhausted.attention === undefined
     ? []
     : referencesInText(input.onExhausted.attention.title)),
@@ -2050,7 +2133,16 @@ const loopReferences = (input: LoopInput): readonly RunReference[] => [
 const assembleMission = <const TMission extends string>(
   input: MissionInput<TMission>,
 ): typeof MissionSchema.Type => {
-  const allHandles = [...input.steps, ...(input.finally ?? [])].filter(isStepHandle)
+  const phases: readonly (readonly object[])[] = [
+    input.steps,
+    input.finally ?? [],
+    ...input.steps.flatMap((value) =>
+      'round' in value ? [value.round.steps, value.round.finally ?? []] : [],
+    ),
+  ]
+  const allHandles = phases.flatMap((phase) => phase.filter(isStepHandle))
+  if (new Set(allHandles).size !== allHandles.length)
+    throw new TypeError('A step handle can occur in only one mission phase')
   const referenced = [
     ...referencesInGates(input.gates),
     ...(typeof input.goal === 'string' || 'kind' in input.goal ? [input.goal] : input.goal).flatMap(
@@ -2074,6 +2166,48 @@ const assembleMission = <const TMission extends string>(
       throw new TypeError('Product reference belongs to a step outside this mission')
     }
   }
+  // A loop round is its own native mission. Equal IDs or membership in the
+  // outer declaration must not let an attempt-bound product escape that scope.
+  const validateProductScope = ({
+    references,
+    handles,
+  }: {
+    readonly references: readonly RunReference[]
+    readonly handles: readonly object[]
+  }): void => {
+    for (const ref of references) {
+      if (isInputHandle(ref) === false && handles.includes(productOwners.get(ref)!) === false)
+        throw new TypeError('Product reference belongs to a step outside this mission scope')
+    }
+  }
+  const outerSteps = [...input.steps, ...(input.finally ?? [])]
+  const outerHandles = outerSteps.filter(isStepHandle)
+  validateProductScope({
+    references: [
+      ...referencesInGates(input.gates),
+      ...(typeof input.goal === 'string' || 'kind' in input.goal
+        ? [input.goal]
+        : input.goal
+      ).flatMap(referencesInText),
+      ...(input.constraints ?? []).flatMap(referencesInText),
+      ...outerSteps.flatMap((value) =>
+        isStepHandle(value) === true
+          ? stepData.get(value)!.references
+          : 'round' in value
+            ? []
+            : authoredStepReferences(value),
+      ),
+    ],
+    handles: outerHandles,
+  })
+  for (const value of input.steps) {
+    if ('round' in value) {
+      validateProductScope({
+        references: loopReferences(value),
+        handles: [...value.round.steps, ...(value.round.finally ?? [])].filter(isStepHandle),
+      })
+    }
+  }
   for (const handle of allHandles) {
     const data = stepData.get(handle)!
     if (data.missionId !== undefined && data.missionId !== input.id) {
@@ -2085,9 +2219,7 @@ const assembleMission = <const TMission extends string>(
     if (owner !== undefined && owner !== input.id) {
       throw new TypeError(`Step ${data.wire.id} already belongs to mission ${owner}`)
     }
-    const normalPhase: readonly object[] = input.steps
-    const phase: readonly object[] =
-      normalPhase.includes(handle) === true ? input.steps : (input.finally ?? [])
+    const phase = phases.find((candidate) => candidate.includes(handle))!
     if (data.missionOutput !== undefined && phase.includes(data.missionOutput) === false)
       throw new TypeError('Mission output producer is not a handle in the same mission phase')
     for (const dependency of data.dependencies) {
@@ -2202,9 +2334,10 @@ export const mission = <const TMission extends string>(input: MissionInput<TMiss
     props: {
       state: m.state,
       'report-to': `agent/${m.reportTo.id}`,
-      ...(m.timeout === undefined ? {} : { timeout: m.timeout }),
-      ...(m.stalledAfter === undefined ? {} : { 'stalled-after': m.stalledAfter }),
+      ...(m.timeout === undefined ? {} : { timeout: lowerDuration(m.timeout) }),
+      ...(m.stalledAfter === undefined ? {} : { 'stalled-after': lowerDuration(m.stalledAfter) }),
       ...(m.reportStalls === undefined ? {} : { 'report-stalls': m.reportStalls }),
+      ...(m.reportCompleted === undefined ? {} : { 'report-completed': m.reportCompleted }),
     },
     children: [
       ...(m.inputs ?? []).map((value) =>
@@ -2226,6 +2359,16 @@ export const mission = <const TMission extends string>(input: MissionInput<TMiss
       ...ownedDeclarationNodes(m),
       ...(m.schedule === undefined ? [] : [schedule(m.schedule)]),
       ...(m.completion === undefined ? [] : [completion(m.completion)]),
+      ...(m.lanes ?? []).map((lane) =>
+        node({
+          name: 'lane',
+          args: [lane.name],
+          children: [
+            ...optionalChild({ name: 'entries', value: lane.entries }),
+            ...optionalChild({ name: 'approver', value: lane.approver }),
+          ],
+        }),
+      ),
       ...m.steps.map((s) => ('maxRounds' in s ? loop(s) : lowerStep(s))),
       ...(m.finally === undefined
         ? []
@@ -2250,8 +2393,7 @@ const taskNode = ({
     children: [
       ...optionalChild({ name: 'host', value: task.host }),
       ...optionalChild({ name: 'workspace', value: task.workspace }),
-      ...optionalChild({ name: 'command', value: task.command }),
-      ...(task.argv === undefined ? [] : [node({ name: 'argv', args: task.argv })]),
+      ...launchNodes(task.launch),
     ],
   })
 
@@ -2301,10 +2443,9 @@ export const agent = (input: typeof AgentSchema.Encoded): Node => {
   children.push(
     ...optionalChild({ name: 'restart', value: a.restart }),
     ...optionalChild({ name: 'rollout', value: a.rollout }),
-    ...optionalChild({ name: 'shutdown-timeout', value: a.shutdownTimeout }),
-    ...optionalChild({ name: 'command', value: a.command }),
+    ...optionalChild({ name: 'shutdown-timeout', value: nativeDuration(a.shutdownTimeout) }),
   )
-  if (a.argv !== undefined) children.push(node({ name: 'argv', args: a.argv }))
+  if (a.launch !== undefined) children.push(...launchNodes(a.launch))
   const env = { ...a.env }
   if (a.harness?.kind === 'codex' && a.harness.resume !== undefined) {
     env.ST3_NATIVE_RESUME_SESSION = a.harness.resume.session

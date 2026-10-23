@@ -29,6 +29,48 @@ pipeline traces, alignment notices and review-request notifications use 4. The r
 PR source-shape check retains delivery priority. Shapes, caches, access controls,
 required checks and workflow frequency are independent of these labels.
 
+## Standalone Nix-staged JavaScript and TypeScript
+
+`devenv tasks run lint:check:standalone-staging` (included in PR `lint:check`)
+checks `nix/standalone-staging.json`. Each standalone source must import only
+Node builtins (with or without the `node:` prefix), including re-exports,
+dynamic imports and `require`. Whole-declaration `import type` / `export type`
+edges are erased and ignored. Inline-only `import { type X }` still resolves its
+module under Node's type stripping, so it is checked as a runtime edge (even
+though Bun elides it). This matches the repository's `verbatimModuleSyntax`
+policy and the isolated Node proof. Non-literal runtime dependencies are rejected.
+An explicitly rewritten
+edge may name another isolation-checked source; the pnpm source-input stager uses
+this for its store-path rewrite of `sync-resolver.ts`.
+Import-form fixtures run both runtimes explicitly (`NODE_BIN` / `BUN_BIN`, or
+`node` / `bun` on the task PATH), independently of the test runner's host runtime.
+
+Each source is also imported by Node 24 from a fresh directory with no
+`node_modules`, stripping TS types and applying only the declared store-path
+rewrite. CLI entries must reach their exact declared argument-validation error;
+other initialization errors fail. The native hook receives an explicit fixture
+entrypoint for its resolver registration.
+The inventory's `extensions` map is the single extension authority shared by the
+Nix scanner and isolation checks. A `true` value permits isolated Node imports;
+`false` keeps JSX/TSX visible to the scanner but rejects standalone entries with
+an explicit unsupported-extension diagnostic instead of silently skipping them.
+
+The completeness check scans every position in tracked and untracked, non-ignored
+`*.nix` files for JS/TS filename references, including comments, strings,
+interpolation, shell code, globs and output names. It does not parse staging
+constructs. Every file containing such a reference must have a `nixFiles` entry:
+`stages: true` requires at least one isolation-checked source; otherwise
+`noStandaloneStaging` requires a one-line reason (workspace execution, deliberate
+closure, fixture, build rules, or non-source names). Each listed source must still
+appear as a path/reference fragment in its declared Nix file. Stale source and
+file classifications fail.
+
+This part-1 gate is deliberately file-level: a new staging inside an already
+classified file, including a `noStandaloneStaging` file, is not detected.
+Extensions assembled by computation, such as `"x." + "ts"`, also evade the token
+scan. The consumer lane in #1994 part 2 is the backstop and gates `published`;
+this part-1 inventory guard does not replace that consumer proof.
+
 ## Packages
 
 ### GitHub Actions retained artifacts
@@ -336,6 +378,28 @@ Only immutable Nix-store inputs are memoized, keyed by the tool and complete
 fingerprint arguments; mutable Buck outputs are always re-proven. Phase diagnostics
 are written as work advances, with phase spans on completion, failure, and SIGTERM.
 
+### Maintain Buck Outputs and Idle Daemons
+
+```bash
+devenv tasks run buck2:maintain
+# Preview the same repository policy and inspect its complete receipt:
+mr store buck-maintain --config ./buck-maintain.json --dry-run --json
+```
+
+`buck-maintain.json` contains neutral defaults for the current checkout: a soft
+2 GiB output budget, 24-hour recent-output retention, and a 30-minute idle-daemon
+**policy**. Maintenance uses native Buck clean/kill commands only; the budget is
+not a hard disk limit. It does not configure `daemon_idle_timeout_s`.
+By default only the current `ST_AGENT` owner is eligible, unowned worktrees are
+excluded, and no seat or explicit owner configuration means report-only.
+Active commands (including LSP) and live Buck clients prevent maintenance.
+The legacy `scripts/buck2-daemon-reaper.ts` entrypoint delegates to the same
+runtime; the independent reaper policy and its old flags are removed. Use
+`--config` to configure policy and `--dry-run` to preview it. See
+[the command reference](packages/@overeng/megarepo/docs/commands.md#mr-store-buck-maintain)
+for ownership, blackout windows, native cleanup, and the remaining client-arrival
+race between final activity recheck and kill.
+
 ### Check All TypeScript Projects
 
 ```bash
@@ -439,6 +503,8 @@ and toolchain capabilities; no rule interprets the header as a dependency manife
 cache key. Rules that explicitly stage a `BUCK` file still hash its complete bytes.
 
 ### Consumer Buck Roots
+
+Consumers needing an always-eligible product manifest should pin `ref published`, not `ref main`; see the [consumer pin contract](./context/builds/05-product-distribution/02-nix-bridge/spec.md#consumer-pin-eligibility).
 
 `mkConsumerBuckRoot` accepts the named `watcherPolicy` argument. Its default,
 `"mutable-checkout"`, emits `file_watcher = watchman` and retains fail-closed
@@ -615,6 +681,73 @@ and other worktrees and isolations are never stopped. Failed stops prevent
 startup and do not record successful migration. Maintenance `kill`, `status`,
 and `log` commands bypass Watchman admission so diagnosis and shutdown remain
 available during an outage.
+
+When `GATE_SLOT_CLASS` is set, the packaged wrapper owns gated admission and
+teardown for the selected project/isolation. On Linux it compares native
+`buck2 status` plus `/proc/<buck2d pid>/cgroup` with the caller's own cgroup.
+Ownership is the nearest `gate-slot-*.scope` ancestor of the unified cgroup
+path: parent, nested action and sibling cgroups inside that scope are reused.
+An idle foreign daemon is stopped before the client runs, so its replacement
+and local actions inherit the job's lane limits and accounting. A daemon with
+a valid unified path outside any gate scope is foreign to a known caller gate
+scope. Missing unified membership or an unknown caller scope instead retains
+the daemon with a warning, never guessing permission to migrate it.
+A foreign daemon with active clients is retained and reused with exactly one
+stderr accounting warning naming its foreign cgroup; moving or interrupting
+another build/editor client is unsafe.
+The selected isolation follows the pinned native CLI/environment default and
+plain `@file`/`--flagfile` expansion, including nested files relative to the
+invocation directory. Python/stdin argfiles, config-backed cell-path fallback
+and other unresolved forms fail closed: one warning and no lifecycle status
+or kill calls, rather than guessing the unrelated default `v2` daemon.
+Only Buck arguments before the expanded `--` separator determine lifecycle
+identity and help/version bypass; executable payload such as `-- --help` does
+not bypass cleanup. Native `run` also accepts separator-free trailing payload,
+which can contain isolation-looking options. Lifecycle resolution conservatively
+supports `run TARGET [-- payload]` with Buck options before `run`; other run
+forms retain daemons with the same fail-closed warning rather than guessing
+where Buck options end.
+
+An outer shell installs EXIT/INT/TERM/HUP traps and waits for its native client.
+At exit it invokes native `buck2 kill` only when a fresh status identifies the
+selected daemon and reports zero active commands, even if this invocation
+started it. Busy status quietly retains the daemon; unavailable/malformed status
+warns and never authorizes a kill. Cleanup preserves ordinary numeric exits;
+after a wrapper INT/TERM/HUP it restores the default disposition and re-raises
+the signal, so parents observe signal termination rather than an explicit
+128+N exit. `kill`, `status`, and `log` remain diagnostic/lifecycle commands and
+bypass both gated admission and teardown.
+Signals already ignored on entry to Bash remain ignored as POSIX requires;
+the wrapper does not override that inherited caller policy.
+An injected `BASH_ENV` that replaces Bash's `kill` builtin with an external
+command can instead make Bash translate its self-SIGINT into numeric exit 130
+(128+N); the agent command guard is one such environment. Native signal tests
+use the packaged interpreter without `BASH_ENV` and assert default SIGINT
+disposition before delivery.
+
+Outside gate-slot, native warm-daemon behavior and the admitted-argument fast
+path are unchanged. A nested wrapper inherits the outer wrapper's cleanup
+ownership rather than stopping the daemon beneath its caller. No daemon memory
+cap or separate daemon unit is installed. At the pinned Buck2 revision,
+resource control places actions in a daemon-owned reusable cgroup pool;
+the public client protocol has no per-command caller-cgroup destination.
+Moving the daemon alone therefore moves local build work out of gate-slot's
+limits, while a daemon-unit memory cap would cap compiler/test actions too.
+
+Buck's kill RPC has no conditional-idle form. At both **start** (foreign idle
+daemon migration) and **exit** (idle teardown), a new client can arrive between
+the final empty-active-commands status read and `buck2 kill`, and be interrupted.
+Wrapper exit teardown and `mr store buck-maintain` can both observe the same
+idle daemon in that window and send duplicate native kill RPCs; native kill is
+not serialized between those independent owners. Either observer can also
+race a new client arriving after its last idle check. Maintenance invokes the
+native executable, so it does not recursively trigger wrapper teardown.
+An already observed active client is never deliberately killed. Reusing a
+foreign busy daemon leaves an explicitly logged accounting gap for that
+invocation, and retaining a busy daemon at exit may keep its original job scope
+alive. Independent idle-daemon maintenance remains the backstop for this
+conservative concurrent-client case.
+
 The existing explicit local `[buck2] file_watcher = notify` choice is retained
 for deliberate non-agent use, but is unsafe for agent builds: completed source
 writes can race notify's unsynchronized callback buffer and produce stale

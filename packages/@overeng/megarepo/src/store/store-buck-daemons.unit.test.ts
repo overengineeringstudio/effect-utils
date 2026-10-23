@@ -2,6 +2,8 @@ import { describe, it } from '@effect/vitest'
 import { expect } from 'vitest'
 
 import {
+  buckClientHoldsWorktree,
+  buckClientProjectRoot,
   buckProcessMemoryKiB,
   decideBuckDaemon,
   recognizeBuckDaemon,
@@ -92,6 +94,116 @@ describe('Buck2 worktree shutdown policy', () => {
         worktreePath: '/scratch/root',
       }),
     ).toBe(false)
+  })
+
+  it('does not hold an unrelated project using the same default isolation', () => {
+    expect(
+      buckClientHoldsWorktree({
+        cwd: '/scratch/unrelated/packages/app',
+        root: '/scratch/unrelated',
+        isolation: 'v2',
+        worktree: '/scratch/root',
+        daemons: [{ ...daemon, isolation: 'v2' }],
+      }),
+    ).toBe(false)
+  })
+
+  it('requires both project root and isolation for clients outside the worktree gate', () => {
+    for (const [root, isolation, expected] of [
+      [daemon.root, 'editor', true],
+      [daemon.root, 'v2', false],
+      ['/scratch/unrelated', 'editor', false],
+    ] as const) {
+      expect(
+        buckClientHoldsWorktree({
+          cwd: '/scratch/outside',
+          root,
+          isolation,
+          worktree: '/scratch/root',
+          daemons: [daemon],
+        }),
+      ).toBe(expected)
+    }
+  })
+
+  it('preserves the client cwd worktree gate regardless of daemon identity', () => {
+    expect(
+      buckClientHoldsWorktree({
+        cwd: '/scratch/root/packages/app',
+        root: '/scratch/other',
+        isolation: 'different',
+        worktree: '/scratch/root',
+        daemons: [daemon],
+      }),
+    ).toBe(true)
+  })
+
+  it('fails closed when client root or isolation cannot be established', () => {
+    for (const [root, isolation] of [
+      [undefined, 'editor'],
+      ['/scratch/unrelated', undefined],
+    ] as const) {
+      expect(
+        buckClientHoldsWorktree({
+          cwd: '/scratch/outside',
+          root,
+          isolation,
+          worktree: '/scratch/root',
+          daemons: [daemon],
+        }),
+      ).toBe(true)
+    }
+  })
+
+  it('resolves nested cwd to the outermost config up to the buckroot boundary', () => {
+    const root = buckClientProjectRoot({
+      ancestors: [
+        { path: '/scratch/root/packages/app', buckconfig: false, buckroot: false },
+        { path: '/scratch/root/packages', buckconfig: true, buckroot: false },
+        { path: '/scratch/root', buckconfig: true, buckroot: true },
+        { path: '/scratch', buckconfig: true, buckroot: false },
+      ],
+      homeDirectory: '/home/user',
+    })
+    expect(root).toBe(daemon.root)
+    expect(
+      buckClientHoldsWorktree({
+        cwd: '/scratch/outside',
+        root,
+        isolation: 'editor',
+        worktree: '/scratch/root',
+        daemons: [daemon],
+      }),
+    ).toBe(true)
+  })
+
+  it('does not mistake a nested buckroot or HOME config override for the outer project', () => {
+    expect(
+      buckClientProjectRoot({
+        ancestors: [
+          { path: '/scratch/root/nested/app', buckconfig: false, buckroot: false },
+          { path: '/scratch/root/nested', buckconfig: true, buckroot: true },
+          { path: '/scratch/root', buckconfig: true, buckroot: true },
+        ],
+        homeDirectory: '/home/user',
+      }),
+    ).toBe('/scratch/root/nested')
+    expect(
+      buckClientProjectRoot({
+        ancestors: [
+          { path: '/home/user/project', buckconfig: true, buckroot: false },
+          { path: '/home/user', buckconfig: true, buckroot: false },
+          { path: '/home', buckconfig: true, buckroot: false },
+        ],
+        homeDirectory: '/home/user',
+      }),
+    ).toBe('/home/user/project')
+    expect(
+      buckClientProjectRoot({
+        ancestors: [{ path: '/scratch/no-config', buckconfig: false, buckroot: true }],
+        homeDirectory: '/home/user',
+      }),
+    ).toBeUndefined()
   })
 
   it('stops only the identical idle daemon', () => {

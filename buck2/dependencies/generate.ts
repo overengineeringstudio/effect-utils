@@ -1,5 +1,8 @@
-import { existsSync, readFileSync } from 'node:fs'
-
+import {
+  inputExistsSync as existsSync,
+  inputReadFileSync as readFileSync,
+  recordInput,
+} from '../../packages/@overeng/genie/src/runtime/node/inputs.ts'
 import { defineRepoContext } from '../../packages/@overeng/genie/src/runtime/repo-context/mod.ts'
 import {
   decodePnpmSha256Sidecar,
@@ -34,6 +37,7 @@ let loaded: RealPnpmLockData | undefined
  */
 export const loadRealPnpmLockData = (): RealPnpmLockData => {
   if (loaded !== undefined) return loaded
+  recordInput(repo.resolve('buck2/dependencies/generate-sidecar.ts'))
   const metadata = translatePnpmLock({
     lockfileText: repo.readText('pnpm-lock.yaml'),
     workspaceText: repo.readText('pnpm-workspace.yaml'),

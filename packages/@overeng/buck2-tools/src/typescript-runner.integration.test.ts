@@ -1,21 +1,23 @@
 import {
   chmodSync,
   existsSync,
+  linkSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
   readdirSync,
+  realpathSync,
   rmSync,
   statSync,
   symlinkSync,
   writeFileSync,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 
 import { expect, it } from 'vitest'
 
-import { copyWritableTree, runEmit } from './typescript-runner.ts'
+import { copyWritableTree, darwinEmitCommand, runEmit } from './typescript-runner.ts'
 
 it('creates removable scratch copies of immutable inputs without following symlinks', async () => {
   const root = mkdtempSync(join(tmpdir(), 'typescript-scratch-copy-'))
@@ -56,7 +58,7 @@ it.each([
   'preserves output lifecycle and input fingerprints: $mutation (pre-existing root: $preExistingOutput)',
   async ({ mutation, preExistingOutput }) => {
     const root = mkdtempSync(join(tmpdir(), 'typescript-emit-invariant-'))
-    const artifactRoot = join(root, 'artifacts')
+    const artifactRoot = join(root, 'buck-out', 'artifacts')
     const packageTree = join(artifactRoot, 'owner', '__package_tree__', 'package_tree')
     const siblingTree = join(artifactRoot, 'sibling', '__package_tree__', 'package_tree')
     const output = join(root, 'output')
@@ -68,10 +70,19 @@ it.each([
       writeFileSync(join(tree, 'tsconfig.json'), '{"compilerOptions":{"noEmit":true}}\n')
     }
     const abandoned = join(output, '.abandoned')
+    const retained = join(root, 'retained.d.ts')
+    const retainedExecutable = join(root, 'retained-executable')
+    writeFileSync(retained, 'stale declaration\n')
+    writeFileSync(retainedExecutable, '#!/bin/sh\n')
+    chmodSync(retained, 0o444)
+    chmodSync(retainedExecutable, 0o555)
+    const retainedMode = statSync(retained).mode
+    const executableMode = statSync(retainedExecutable).mode
     if (preExistingOutput === true) {
       mkdirSync(abandoned, { recursive: true })
-      writeFileSync(join(abandoned, 'old.d.ts'), 'stale declaration\n')
-      chmodSync(join(abandoned, 'old.d.ts'), 0o444)
+      linkSync(retained, join(abandoned, 'old.d.ts'))
+      linkSync(retainedExecutable, join(output, 'old-executable'))
+      symlinkSync(retained, join(output, 'retained-link'))
       symlinkSync(packageTree, join(output, 'dependency'))
       symlinkSync('missing', join(output, 'dangling'))
       chmodSync(abandoned, 0o555)
@@ -115,12 +126,121 @@ it.each([
       if (preExistingOutput === true) expect(statSync(output).ino).toBe(outputInode)
       expect(readdirSync(output).toSorted()).toEqual(['mod.d.ts', 'mutation.txt'])
       expect(statSync(packageTree).mode).toBe(packageMode)
+      // Output cleanup must unlink aliases without chmodding their retained inodes.
+      expect(statSync(retained).mode).toBe(retainedMode)
+      expect(statSync(retainedExecutable).mode).toBe(executableMode)
       for (const tree of [packageTree, siblingTree])
         expect(readFileSync(join(tree, 'src', 'mod.ts'), 'utf8')).toBe('export const value = 1\n')
     } finally {
       // Restore permissions even when an assertion fails before the runner prepares output.
       if (existsSync(output) === true) chmodSync(output, 0o755)
       if (existsSync(abandoned) === true) chmodSync(abandoned, 0o755)
+      rmSync(root, { recursive: true, force: true })
+    }
+  },
+)
+
+it('removes the private emit stage after compiler failure without changing immutable inputs', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'typescript-failed-cleanup-'))
+  const packageTree = join(root, 'buck-out', 'package')
+  const dependency = join(root, 'dependency')
+  const output = join(root, 'output')
+  const compiler = join(root, 'tsgo')
+  mkdirSync(packageTree, { recursive: true })
+  mkdirSync(join(dependency, 'nested'), { recursive: true })
+  writeFileSync(join(dependency, 'nested', 'index.d.ts'), 'export type Value = true\n')
+  symlinkSync(dependency, join(packageTree, 'node_modules'))
+  writeFileSync(join(packageTree, 'tsconfig.json'), '{}\n')
+  writeFileSync(
+    compiler,
+    `#!${process.execPath}\n` +
+      `import { statSync, writeFileSync } from 'node:fs';\n` +
+      `import { dirname, join } from 'node:path';\n` +
+      `const stage = dirname(process.cwd());\n` +
+      `const output = process.argv[process.argv.indexOf('--outDir') + 1];\n` +
+      `writeFileSync(join(output, 'stage.json'), JSON.stringify({ stage, mode: statSync(stage).mode & 0o777 }));\n` +
+      `process.exit(17);\n`,
+  )
+  chmodSync(compiler, 0o755)
+  chmodSync(join(dependency, 'nested', 'index.d.ts'), 0o444)
+  chmodSync(join(dependency, 'nested'), 0o555)
+  chmodSync(dependency, 0o555)
+  const fingerprintTool = process.env['FINGERPRINT_BIN'] ?? ''
+  if (fingerprintTool === '') throw new Error('declared test tool is unavailable: FINGERPRINT_BIN')
+  try {
+    const status = await runEmit({
+      declarationEntrypoint: undefined,
+      declarationSources: [],
+      outDir: 'dist',
+      output,
+      packageTree,
+      fingerprintTool,
+      readRoots: [dependency],
+      project: 'tsconfig.json',
+      tsgo: compiler,
+    })
+    const receipt = JSON.parse(readFileSync(join(output, 'stage.json'), 'utf8')) as {
+      stage: string
+      mode: number
+    }
+    expect(status).toBe(17)
+    expect(receipt.mode).toBe(0o700)
+    expect(existsSync(receipt.stage)).toBe(false)
+    expect(statSync(dependency).mode & 0o777).toBe(0o555)
+    expect(statSync(join(dependency, 'nested', 'index.d.ts')).mode & 0o777).toBe(0o444)
+  } finally {
+    chmodSync(dependency, 0o755)
+    chmodSync(join(dependency, 'nested'), 0o755)
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
+it('denies every canonical Buck ancestor while retaining declared artifact reads', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'typescript-profile-'))
+  const buckOut = join(root, 'physical', 'buck-out')
+  const alias = join(root, 'alias')
+  mkdirSync(buckOut, { recursive: true })
+  symlinkSync(buckOut, alias)
+  try {
+    const command = await darwinEmitCommand({ argv: ['/compiler'], buckOut: alias })
+    expect(command[0]).toBe('/usr/bin/sandbox-exec')
+    const profile = command[2]!
+    let ancestor = dirname(realpathSync(buckOut))
+    for (;;) {
+      expect(profile).toContain(`(subpath ${JSON.stringify(join(ancestor, 'node_modules'))})`)
+      for (const name of ['package.json', 'tsconfig.json', 'jsconfig.json'])
+        expect(profile).toContain(`(literal ${JSON.stringify(join(ancestor, name))})`)
+      const parent = dirname(ancestor)
+      if (parent === ancestor) break
+      ancestor = parent
+    }
+    expect(profile).not.toContain(JSON.stringify(join(realpathSync(buckOut), 'node_modules')))
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
+it.skipIf(process.platform !== 'darwin')(
+  'fails closed when sandbox-exec is missing or rejects its profile',
+  async () => {
+    const root = mkdtempSync(join(tmpdir(), 'typescript-sandbox-failure-'))
+    const buckOut = join(root, 'buck-out')
+    const receipt = join(root, 'compiler-ran')
+    mkdirSync(buckOut)
+    try {
+      const command = await darwinEmitCommand({
+        argv: [process.execPath, '-e', `await Bun.write(${JSON.stringify(receipt)}, 'ran')`],
+        buckOut,
+      })
+      expect(() => Bun.spawn([join(root, 'missing-sandbox-exec'), ...command.slice(1)])).toThrow()
+      expect(existsSync(receipt)).toBe(false)
+      const invalidProfile = Bun.spawn(
+        [command[0]!, '-p', '(invalid profile', ...command.slice(3)],
+        { stdout: 'pipe', stderr: 'pipe' },
+      )
+      expect(await invalidProfile.exited).not.toBe(0)
+      expect(existsSync(receipt)).toBe(false)
+    } finally {
       rmSync(root, { recursive: true, force: true })
     }
   },

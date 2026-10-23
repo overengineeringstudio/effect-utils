@@ -17,7 +17,12 @@ import { type GenieEvent, GenieEventBus } from '../core/events.ts'
 export type { GenieGenerateResult } from '../core/core.ts'
 export type { GenieSummary } from '../core/schema.ts'
 export type { GenerateSuccess } from '../core/types.ts'
-export { GenieCheckError, GenieGenerationFailedError, GenieImportError } from '../core/errors.ts'
+export {
+  GenieCheckError,
+  GenieGenerationFailedError,
+  GenieImportError,
+  GenieRuntimeTranspilerCacheError,
+} from '../core/errors.ts'
 export { type GenieEvent, GenieEventBus } from '../core/events.ts'
 
 // ---------------------------------------------------------------------------

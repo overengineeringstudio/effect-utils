@@ -412,7 +412,7 @@ const makeTreeRemovable = async (path: string): Promise<void> => {
   }
   if (metadata.isFile() === false)
     fail(`unsupported filesystem entry while cleaning staging: ${path}`)
-  await chmod(path, metadata.mode | 0o600)
+  // Unlinking needs writable parent directories, not writable shared file inodes.
 }
 
 const removeTree = async (path: string): Promise<void> => {
@@ -457,14 +457,8 @@ const prepareStagedOutput = async (options: {
 }
 
 /**
- * Rebinds declared dependency links after copying a package tree into the
- * system temp directory.
- *
- * A package tree either links its complete `node_modules` boundary or projects
- * first-hop dependency links around workspace declaration overlays. Copying
- * either relative link shape verbatim changes its destination, so every link
- * that resolves outside the source package tree is rebound to the declared
- * artifact before TypeScript reads the staging tree.
+ * Linux's Bubblewrap boundary hides undeclared ancestors. Rebind its writable
+ * package copy to the declared immutable dependency artifacts without cloning them.
  */
 export const relinkStagedDependencyView = async (options: {
   readonly packageTree: string
@@ -535,14 +529,7 @@ export const stagedEmitPackageRoot = (options: {
   return join(options.stagingRoot, ...Array(depth).fill('workspace'), 'package')
 }
 
-/**
- * Recreates the relative workspace topology around an emit staging directory.
- *
- * Generated TypeScript project references preserve source-relative paths such
- * as `../effect-path`. Each declared sibling is copied into that position so
- * its generated config can opt into declaration emit locally; the immutable
- * Buck input remains untouched.
- */
+/** Recreate source-relative workspace references inside Linux's writable stage. */
 export const linkStagedWorkspaceProjects = async (options: {
   readonly packageTree: string
   readonly readRoots: readonly string[]
@@ -551,7 +538,6 @@ export const linkStagedWorkspaceProjects = async (options: {
 }): Promise<void> => {
   const packageArtifactDirectory = packageTreeArtifactDirectory(options.packageTree)
   if (packageArtifactDirectory === undefined) return
-
   await forEachSequential({
     iterator: options.readRoots.values(),
     visit: async (readRoot) => {
@@ -561,7 +547,6 @@ export const linkStagedWorkspaceProjects = async (options: {
         resolve(readRoot) === resolve(options.packageTree)
       )
         return
-
       const projectPath = relative(packageArtifactDirectory, siblingArtifactDirectory)
       const destination = resolve(options.stagedPackageRoot, projectPath)
       const fromStagingRoot = relative(options.stagingRoot, destination)
@@ -569,9 +554,8 @@ export const linkStagedWorkspaceProjects = async (options: {
         isAbsolute(fromStagingRoot) === true ||
         fromStagingRoot === '..' ||
         fromStagingRoot.startsWith(`..${sep}`) === true
-      ) {
+      )
         fail(`workspace project escapes emit staging root: ${projectPath}`)
-      }
       await mkdir(dirname(destination), { recursive: true })
       await copyWritableTree({ source: readRoot, destination })
       await relinkStagedDependencyView({
@@ -580,18 +564,38 @@ export const linkStagedWorkspaceProjects = async (options: {
       })
       const configPath = join(destination, 'tsconfig.json')
       if ((await pathExists(configPath)) === false) return
-
       const config = Bun.JSONC.parse(await readFile(configPath, 'utf8')) as {
         compilerOptions?: Record<string, unknown>
       }
       if (config.compilerOptions === undefined || config.compilerOptions.noEmit !== true) return
-
       const metadata = await lstat(configPath)
       await chmod(configPath, metadata.mode | 0o200)
       config.compilerOptions.noEmit = false
       await writeFile(configPath, `${JSON.stringify(config, undefined, 2)}\n`)
     },
   })
+}
+
+/**
+ * Deny ancestor lookup fallback without hiding declared Buck inputs. Resolve
+ * buck-out first: TypeScript visits physical ancestors after realpathing imports.
+ */
+export const darwinEmitCommand = async (options: {
+  readonly argv: readonly string[]
+  readonly buckOut: string
+}): Promise<readonly string[]> => {
+  const rules = ['(version 1)', '(allow default)']
+  let ancestor = dirname(await realpath(options.buckOut))
+  for (;;) {
+    rules.push(`(deny file-read* (subpath ${JSON.stringify(join(ancestor, 'node_modules'))}))`)
+    for (const name of ['package.json', 'tsconfig.json', 'jsconfig.json'])
+      rules.push(`(deny file-read* (literal ${JSON.stringify(join(ancestor, name))}))`)
+    const parent = dirname(ancestor)
+    if (parent === ancestor) break
+    ancestor = parent
+  }
+  // No fallback: spawn failure or profile rejection must fail the action.
+  return ['/usr/bin/sandbox-exec', '-p', rules.join('\n'), ...options.argv]
 }
 
 /** Copies only the explicitly action-keyed declaration sources into an emitted dist. */
@@ -664,12 +668,25 @@ const validateOutput = async (options: {
   await visit(output)
 }
 
+/** Locate the artifact boundary from the declared input, never the caller's cwd. */
+const emitBuckOut = (path: string): string => {
+  if (basename(path) === 'buck-out') return path
+  const parent = dirname(path)
+  if (parent === path) return fail(`emit input is not below buck-out: ${path}`)
+  return emitBuckOut(parent)
+}
+
 const runTsgo = async (options: {
   readonly argv: readonly string[]
   readonly cwd: string
+  readonly darwinBuckOut?: string | undefined
 }): Promise<number> => {
   if (forwardedSignal !== undefined) return 128 + signalNumbers[forwardedSignal]
-  const child = Bun.spawn([...options.argv], {
+  const argv =
+    options.darwinBuckOut !== undefined
+      ? await darwinEmitCommand({ argv: options.argv, buckOut: options.darwinBuckOut })
+      : options.argv
+  const child = Bun.spawn([...argv], {
     cwd: options.cwd,
     env: { ...process.env, PATH: '' },
     stdin: 'ignore',
@@ -745,7 +762,10 @@ export const runEmit = async (options: EmitOptions): Promise<number> => {
     roots: readRoots,
     fingerprintTool: options.fingerprintTool,
   })
-  const stagingRoot = await mkdtemp(join(tmpdir(), 'tsgo-emit-'))
+  // Buck overrides TMPDIR with worktree-local action scratch on Darwin. Keep
+  // resolution outside that hierarchy even when the inherited TMPDIR is local.
+  const temporaryDirectory = process.platform === 'darwin' ? '/private/tmp' : tmpdir()
+  const stagingRoot = await mkdtemp(join(temporaryDirectory, 'tsgo-emit-'))
   let status = 1
   let primaryError: unknown
 
@@ -788,6 +808,7 @@ export const runEmit = async (options: EmitOptions): Promise<number> => {
         '--pretty',
         'false',
       ],
+      darwinBuckOut: process.platform === 'darwin' ? emitBuckOut(packageTree) : undefined,
       cwd: packageRoot,
     })
     const stagedAfter = await hashDeclaredInputRoots({
@@ -825,7 +846,8 @@ export const runEmit = async (options: EmitOptions): Promise<number> => {
 
   let cleanupError: unknown
   try {
-    await rm(stagingRoot, { force: true, recursive: true })
+    if (process.platform === 'darwin' && primaryError !== undefined) await removeTree(stagingRoot)
+    else await rm(stagingRoot, { force: true, recursive: true })
   } catch (error) {
     cleanupError = error
   }

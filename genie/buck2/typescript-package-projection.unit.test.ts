@@ -646,12 +646,55 @@ describe('declared-closure package projection', () => {
     expect(output).toContain('    declaration_entrypoint = "src/tokens.stylex.d.ts",')
   })
 
+  it('preserves the legacy default-authority action argv byte for byte', () => {
+    const output = buck2TypeScriptPackageProjection({
+      ...buck2TypeScriptAdmissions.stylexTokens,
+      authorities: [{ projectFile: 'tsconfig.json' }],
+    }).stringify(genieContext)
+    expect(output).not.toContain('    project_files = ')
+
+    const materialization = readFileSync('buck2/materialization.bzl', 'utf8')
+    const referenceArguments = materialization
+      .split('    if ctx.attrs.strip_project_references:\n')[1]
+      ?.split('    _add_mapped_sources(args, "--file", ctx.attrs.files)\n')[0]
+    // Snapshot the actual Starlark command assembly: default authorities execute only
+    // the legacy args.add, with every new argument guarded behind the non-default list.
+    expect(referenceArguments).toBe(
+      '        args.add("--strip-project-references", "true")\n' +
+        '        # Preserve the existing action argv/cache key for default authorities.\n' +
+        '        if ctx.attrs.project_files != ["tsconfig.json"]:\n' +
+        '            for project in ctx.attrs.project_files:\n' +
+        '                _require_relative_path(project, "authority project")\n' +
+        '                args.add("--project", project)\n',
+    )
+    expect(materialization).toContain(
+      '"project_files": attrs.list(attrs.string(), default = ["tsconfig.json"]),',
+    )
+  })
+
+  it('strips the named authority used by both typecheck and emit', () => {
+    const output = buck2TypeScriptPackageProjection({
+      ...buck2TypeScriptAdmissions.stylexTokens,
+      authorities: [{ projectFile: 'tsconfig.typecheck.json' }],
+    }).stringify(genieContext)
+
+    expect(output.match(/    project = "tsconfig.typecheck.json",/gu)).toHaveLength(2)
+    for (const tree of ['package_tree', 'product_package_tree']) {
+      const target = output.split(`    name = "${tree}",\n`)[1]?.split('\n)\n')[0]
+      expect(target).toContain('    project_files = ["tsconfig.typecheck.json"],')
+      expect(target).toContain('"tsconfig.typecheck.json": "tsconfig.typecheck.json",')
+    }
+  })
+
   it('projects an additional no-emit project under its own typecheck target', () => {
     const output = outputsByAdmission.reactInspector
 
     expect(output).toContain('    name = "strict_consumer_typecheck",')
     expect(output).toContain('    project = "tsconfig.strict-consumer.json",')
     expect(output.split('    name = "dist",')).toHaveLength(2)
+    expect(output).toContain(
+      '    project_files = ["tsconfig.json", "tsconfig.strict-consumer.json"],',
+    )
   })
 
   it('refuses an unnamed additional authority project', () => {
@@ -917,6 +960,76 @@ describe('declared test lanes', () => {
     ).toThrow('requires provider-backed external inputs')
   })
 
+  it('projects attested directory inputs into both cacheable Vitest targets', () => {
+    const output = outputsByAdmission.utils
+    for (const rule of ['vitest_test', 'vitest_collect']) {
+      const block = output.split(`\n${rule}(\n`)[1]?.split('\n)\n')[0] ?? ''
+      expect(block).toContain('    directory_inputs = {')
+      expect(block).toContain(
+        '        "STYLEX_NEXT_FIXTURE": "//buck2/toolchains:stylex_next_fixture",',
+      )
+      expect(block).not.toContain('configured_external_inputs')
+      expect(block).not.toContain('inherited_env')
+      expect(block).not.toContain('cacheable = False')
+    }
+  })
+
+  it('rejects malformed directory input names and target labels before generation', () => {
+    expect(() =>
+      buck2TypeScriptPackageProjection({
+        ...kdlAdmissionWithoutTests,
+        tests: [
+          {
+            name: 'test',
+            runner: 'vitest',
+            directoryInputs: { 'fixture-path': '//buck2/toolchains:stylex_next_fixture' },
+          },
+        ],
+      }).stringify(genieContext),
+    ).toThrow('test directory input name must be an upper-case environment name')
+    for (const label of ['//buck2/toolchains:', '//buck2/toolchains:../fixture'] as const) {
+      expect(() =>
+        buck2TypeScriptPackageProjection({
+          ...kdlAdmissionWithoutTests,
+          tests: [{ name: 'test', runner: 'vitest', directoryInputs: { FIXTURE: label } }],
+        }).stringify(genieContext),
+      ).toThrow('must be an attested store directory')
+    }
+  })
+
+  it('carries directory target identity into the semantic fingerprint', () => {
+    const project = (label: `//buck2/toolchains:${string}`): string =>
+      buck2TypeScriptPackageProjection({
+        ...kdlAdmissionWithoutTests,
+        tests: [{ name: 'test', runner: 'vitest', directoryInputs: { FIXTURE: label } }],
+      })
+        .stringify(genieContext)
+        .split('# Semantic fingerprint: ')[1]
+        ?.split('\n')[0] ?? ''
+    expect(project('//buck2/toolchains:fixture_a')).not.toBe(
+      project('//buck2/toolchains:fixture_b'),
+    )
+  })
+
+  it('binds directory bytes and manifests to the JavaScript action and read identity', () => {
+    const rules = readFileSync('buck2/javascript.bzl', 'utf8')
+    expect(rules).toContain('value = attrs.exec_dep(providers = [BuckStoreDirectoryInfo])')
+    expect(rules).toContain('directory = ctx.attrs.directory_inputs[name][BuckStoreDirectoryInfo]')
+    expect(rules).toContain('args.add("--external-path", name, directory.store_path)')
+    expect(rules).toContain('cmd_args(hidden = [directory.directory, directory.manifest])')
+    expect(rules).toContain('args.add("--read-root", directory.manifest)')
+    expect(rules).toContain('for root in directory.closure_store_paths:')
+    const toolchains = readFileSync('buck2/toolchains/BUCK', 'utf8')
+    expect(toolchains).toContain(
+      [
+        'store_directory(',
+        '    name = "stylex_next_fixture",',
+        '    protocol = "effect-utils/stylex-next-fixture/v1",',
+        '    input_id = "stylex-next-fixture",',
+      ].join('\n'),
+    )
+  })
+
   it('projects the node Vitest runtime only with its attested executable', () => {
     expect(outputsByAdmission.notionDatasourceSync).toContain('    vitest_runtime = "node",')
     expect(outputsByAdmission.notionDatasourceSync).toContain(
@@ -1024,6 +1137,7 @@ describe('derived test collection targets', () => {
           vitestRuntime: 'node',
           staticCollection: true,
           tools: { NODE_BIN: '//buck2/toolchains:tool_node' },
+          directoryInputs: { FIXTURE: '//buck2/toolchains:stylex_next_fixture' },
           writableDirectories: { KDL_WORKSPACE: 'kdl' },
         },
       ],
@@ -1035,6 +1149,7 @@ describe('derived test collection targets', () => {
     expect(collectBlock).toContain('        "src/mod.test.ts",')
     expect(collectBlock).toContain('        "local-only",')
     expect(collectBlock).toContain('        "NODE_BIN": "//buck2/toolchains:tool_node",')
+    expect(collectBlock).toContain('        "FIXTURE": "//buck2/toolchains:stylex_next_fixture",')
     expect(collectBlock).toContain('    vitest_runtime = "node",')
     expect(collectBlock).toContain('    static_parse = True,')
     expect(collectBlock).toContain('        "KDL_WORKSPACE": "kdl",')

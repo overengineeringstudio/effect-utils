@@ -168,6 +168,131 @@ Every plan-bound deletion — generated artifact, whole worktree, archive reap �
 additionally holds the lease for its owner path, so an activation wrapped in
 `mr store lease` can never be overtaken.
 
+Legacy and targeted deletion both keep trees referenced by readable live processes (cwd or
+open files), including active Buck daemons and live daemons whose status cannot be read.
+Configured activity manifests and deletion leases also protect legacy GC. Unreadable
+foreign-UID processes are counted in receipts rather than blocking owner-store cleanup;
+unreadable owner processes require a bounded `lsof` fallback, otherwise GC keeps with
+`own-uid-unreadable`. macOS retains its existing bounded `lsof -d cwd` probe.
+The fixed own-UID non-dumpable exemption requires `systemd --user` with parent PID 1
+to match the root system manager's `user@<uid>.service` MainPID and the observed
+process start time. Only its verified `(sd-pam)` child is exempt. `sshd-session`/legacy
+`sshd` requires a readable, stable root-owned SSH daemon parent. Mutable comm/argv
+alone grants no exemption; an unavailable bounded system-manager query keeps the tree.
+Each exemption records PID, start time, command name, and rule in `exemptProcesses`.
+Readable references and all children remain checked; every other unreadable owner process vetoes.
+Read-only snapshot directories are made owner-writable through pinned directory descriptors;
+files and hardlinked CAS blobs are never chmodded.
+
+Durable intent/outcome receipts are appended to `$MEGAREPO_STORE/.state/gc-deletions.jsonl`,
+independently of stdout. Each record includes time, path, decision, reason, veto evidence,
+ignored foreign-process count, and any errno or recovery path. A post-quarantine failure reports
+`outcome: "partial"` with
+`recoverPath` pointing to the `.mr-delete-*` directory and native `code` when available; no
+rename-back rollback can restore data that recursive deletion may already have removed.
+
+### `mr store buck-maintain`
+
+```bash
+mr store buck-maintain [--config <path>] [--dry-run] [--json]
+```
+
+Maintains Buck outputs and idle daemons using the shared maintenance runtime.
+`--dry-run` reports decisions without cleaning or stopping daemons; `--json`
+prints the complete versioned receipt, including per-worktree decisions and the
+summary. Normal output summarizes actions and skipped worktrees.
+
+The version 1 JSON configuration declares `worktreeRoots`, `buckOut`, `daemon`,
+optional `maintainOwners`, and `maintainUnowned`. Roots are resolved relative to
+the configuration file. The neutral repository configuration is:
+
+```json
+{
+  "version": 1,
+  "worktreeRoots": ["."],
+  "buckOut": { "budgetBytes": 2147483648, "keepSince": "24h" },
+  "daemon": { "idleStopAfter": "30m" },
+  "maintainUnowned": false
+}
+```
+
+The 2 GiB output budget is **per worktree**, not a store-wide quota, and **soft**:
+native Buck stale cleaning preserves recent outputs (`keepSince`, default `24h`)
+and may leave usage above budget. Cleanup uses Buck's native clean commands only,
+never recursive filesystem deletion.
+Optional `buckOut.fullCleanWhenInactiveFor` permits a full native clean only
+after complete inactivity evidence: Git HEAD/index/reflog, the `buck-out` parent,
+and every isolation's event logs and daemon-state directories must all have known
+timestamps older than policy, with no current daemon, client, claim or holder.
+Removing an isolation refreshes its parent and restarts the interval even when
+another complete old isolation survives. An unreadable parent is unknown.
+Inactivity means no work, not continuous process absence: a daemon killed
+recently after ten idle days may qualify if all activity timestamps remain old.
+A recent command event log or daemon-state mutation restarts the interval.
+Missing Git activity is `git-activity-unknown`; existing output with missing or
+partial isolation/log/daemon history is `inactivity-unknown`, including history
+removed by a previous clean or daemon exit. No persistent inactivity marker is
+created. A worktree with no `buck-out` is a `no-buck-out` no-op, not unknown.
+Symlinked output roots, isolations or history directories are protective
+`output-activity-unknown` skips. Ownership paths are compared by physical
+canonical path; unresolvable claim paths remain protective foreign evidence.
+Git lock checks inspect direct `*.lock` entries in git-only worktree admin
+directories, Git-admin filename patterns in the common directory, and Git's
+`refs/` namespace. Foreign common-directory tool locks do not veto maintenance.
+They never walk objects, other worktree admin directories, reflogs, caches or
+unrelated checkouts under the shared Git directory.
+
+The default `daemon.idleStopAfter` of **30 minutes is maintenance policy**, not a
+Buck guarantee or `daemon_idle_timeout_s` setting. Active streaming commands,
+including attached LSP sessions, and live Buck client processes prevent
+maintenance. The final activity/client recheck runs under the maintenance lease.
+Buck does not offer conditional kill: a client can still arrive after that
+recheck and before the native kill, and detected races are reported.
+Configured blackout windows use UTC, include their start, exclude their end,
+and can wrap midnight.
+
+Discovery rejects symlink descendants and never escapes configured canonical
+roots. Maintenance requires the worktree itself to be Buck's resolved project
+root. Git's worktree lock, operation state and known Git lock paths veto
+maintenance, even when stale. Cheap skip gates run before output
+accounting; skipped worktrees have null byte counts. Accounting and isolation
+enumeration finish before the lease-protected final recheck, repeated immediately
+before each native action.
+
+Process claims in workspace-activity manifests may include additive `processes`
+attribution: PID, kernel start time, and executable class. Existing manifests
+still parse, but unattributed or mixed claims remain active. A daemon-only claim
+is waived only after every attributed daemon/forkserver lifetime is verified
+against live `/proc` evidence. Consumers must deploy the updated process
+snapshot producer before daemon-stop takes effect on hosts using these
+manifests. The same rule protects stale cleaning of daemon-bearing worktrees;
+output trimming in daemon-free worktrees does not depend on this rollout.
+
+Receipts distinguish `holder-live` (a proven live process reference) from
+`holder-census-incomplete` (absence cannot be proven). On hosts where other-UID
+or root processes are unreadable, configure the existing store GC
+`generatedArtifacts.manifestPath` and admitted producer names with the host's
+fresh trusted all-UID workspace-activity snapshot. Without that coverage,
+maintenance remains conservative rather than assuming those processes are idle.
+Each daemon receipt includes its own outcome (`not-attempted`, `would-stop`,
+`stopped`, `kept-active` or `unreachable`) and optional reason. A successful stop
+removes only that exact lifetime from the expected census; newly arriving
+daemons veto subsequent actions. Native clean/kill failures produce a nonzero
+CLI exit status after the complete receipt for every worktree is emitted.
+
+Owner scope defaults to the current exact `ST_AGENT` identity. Explicit
+`maintainOwners` entries select exact identities or glob patterns; they do not
+mean “any owner value.” Without either a current seat or configured owners the
+command is report-only. `maintainUnowned: true` admits only worktrees positively
+proven to have no owner evidence. Unknown or partial ownership remains foreign;
+the option never overrides a known foreign owner. Evidence from processes and
+claims is merged and retained through the final recheck, never overwritten by
+an empty or less complete source. Ownership is never inferred from the calling
+seat. Shared task/configuration contains no machine-specific roots or identities.
+Native ST3 seat claims are captured authoritatively alongside manifests, including
+waiting or remote seats with no local holder. Unknown native claim coverage is
+`seat-claims-incomplete`, never evidence that a worktree is unowned.
+
 ### `mr store lock`
 
 ```bash

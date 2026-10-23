@@ -45,6 +45,9 @@
             "context": "test-playwright-tui-react"
           },
           {
+            "context": "test-megarepo-store-gc"
+          },
+          {
             "context": "cargo"
           },
           {

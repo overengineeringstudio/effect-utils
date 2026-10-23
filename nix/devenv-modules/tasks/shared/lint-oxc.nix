@@ -59,6 +59,8 @@
   # Whether to treat warnings as errors. Set to false for repos with many
   # existing warnings that can't be fixed immediately.
   denyWarnings ? true,
+  # Match the pnpm module's opt-in when using a global virtual store.
+  globalVirtualStore ? false,
   # Real derivation/path backing the formatter guard. Defaults to pkgs.oxfmt but
   # stays injectable so module tests can prove absolute-path execution without
   # depending on PATH shadowing.
@@ -68,10 +70,23 @@
   # absolute path under passthrough (see cli-guard.nix).
   oxlintPkg ? null,
 }:
-{ lib, pkgs, ... }:
+{
+  lib,
+  pkgs,
+  config,
+  ...
+}:
 let
   trace = import ../lib/trace.nix { inherit lib; };
   cliGuard = import ../lib/cli-guard.nix { inherit pkgs; };
+  pnpmStorage = import ../lib/pnpm-storage.nix {
+    inherit
+      lib
+      pkgs
+      config
+      globalVirtualStore
+      ;
+  };
   megarepoStoreEnv = builtins.getEnv "MEGAREPO_STORE";
   genieTaskEnv = lib.optionalAttrs (megarepoStoreEnv != "") {
     MEGAREPO_STORE = megarepoStoreEnv;
@@ -360,10 +375,12 @@ let
       after = [ "pnpm:install" ];
       exec = trace.exec "lint:check:lockfile" ''
         set -euo pipefail
-        store_dir="''${npm_config_store_dir:-''${PNPM_CONFIG_STORE_DIR:-''${PNPM_STORE_DIR:-$PWD/.devenv/pnpm-store}}}"
-        export PNPM_STORE_DIR="$store_dir"
-        export PNPM_CONFIG_STORE_DIR="$store_dir"
-        export npm_config_store_dir="$store_dir"
+        source ${lib.escapeShellArg pnpmStorage.helpersScript}
+        ${pnpmStorage.configure}
+        ${pnpmStorage.acquireRootLock}
+        # Verification can touch the Store Cache too; keep maintenance excluded
+        # without serializing independent installs and checks.
+        acquire_pnpm_store_cache_lease ${lib.escapeShellArg "${pkgs.flock}/bin/flock"} shared "$npm_config_store_dir" 600
         # Validate without rewriting node_modules while concurrent checks read it.
         pnpm install \
           --lockfile-only \
@@ -373,7 +390,8 @@ let
           --config.verify-store-integrity=true \
           --config.strict-store-pkg-content-check=true \
           --pm-on-fail=ignore \
-          --config.store-dir="$store_dir"
+          --config.store-dir="$npm_config_store_dir" \
+          --config.package-import-method="$PNPM_PACKAGE_IMPORT_METHOD"
       '';
     };
     "lint:check:no-tailwind" = {

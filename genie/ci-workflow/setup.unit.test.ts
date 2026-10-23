@@ -10,9 +10,14 @@ import storybookPlaysWorkflow from '../../.github/workflows/storybook-plays.yml.
 import previewBuildWorkflow from '../../.github/workflows/storybook-preview-build.yml.genie.ts'
 import previewDeployWorkflow from '../../.github/workflows/storybook-preview-deploy.yml.genie.ts'
 import buck2TestAuthority from '../../buck2-test-authority.json' with { type: 'json' }
-import { pipelineIdentityStepName } from '../../packages/@overeng/ci-tools/src/pipeline-job-names.ts'
+import {
+  pipelineDevenvStepName,
+  pipelineIdentityStepName,
+} from '../../packages/@overeng/ci-tools/src/pipeline-job-names.ts'
 import type { GitHubWorkflowArgs } from '../../packages/@overeng/genie/src/runtime/mod.ts'
+import { defaultRefPolicyCheckStep } from './megarepo.ts'
 import { pipelineCloseJob } from './pipeline-telemetry.ts'
+import { publishedRefIf } from './published-ref.ts'
 import { installNixStep, linuxSandboxPrerequisitesStep, namespaceRunner } from './setup.ts'
 import {
   ciWorkflow as composeCiWorkflow,
@@ -23,8 +28,78 @@ import {
   linuxNixSandboxFallbackConf,
   linuxNixSandboxFallbackStep,
   namespacePrivilegeTrustedPredicate,
+  withNixRealisationTimeouts,
 } from './shared.ts'
 import testPlatforms from './test-platforms.json' with { type: 'json' }
+
+describe('consumer root contracts', () => {
+  it('runs the product contract suite through the Nix fetch retry wrapper', () => {
+    const step = ciWorkflow.data.jobs['pr-a-inert-buck']!.steps.find(
+      (step) => step.name === 'Check product publisher, manifest import, and from-source contracts',
+    )!
+    expect(step.run).toContain('run-with-nix-gc-race-retry.sh')
+    expect(step.run).toContain('bash "$__genie_ci_retry_script"')
+    expect(step.run).toContain('nix/buck2-products/from-source-contract.test.sh')
+  })
+})
+
+describe('Nix realisation step timeouts', () => {
+  it('uses the p95, maximum and noise floor without loosening an existing bound', () => {
+    const jobs = withNixRealisationTimeouts(
+      {
+        setup: {
+          'runs-on': 'ubuntu-latest',
+          'timeout-minutes': 90,
+          steps: [
+            { name: 'Substitute', run: 'nix build .#tool' },
+            { name: 'Already bounded', run: 'nix build .#tool', 'timeout-minutes': 2 },
+            { name: 'Unrelated', run: 'echo done' },
+            { name: 'Noise floor', run: 'nix build .#small' },
+          ],
+        },
+      },
+      {
+        Substitute: { Linux: { p95: 21, max: 150 }, macOS: { p95: 101, max: 110 } },
+        'Already bounded': { p95: 100, max: 200 },
+        'Noise floor': { p95: 1, max: 2 },
+      },
+    )
+    expect(jobs.setup!['timeout-minutes']).toBe(90)
+    expect(jobs.setup!.steps[0]!['timeout-minutes']).toBe(
+      "${{ runner.os == 'macOS' && 6 || 5 }}",
+    )
+    expect(jobs.setup!.steps[1]!['timeout-minutes']).toBe(2)
+    expect(jobs.setup!.steps[2]!['timeout-minutes']).toBeUndefined()
+    expect(jobs.setup!.steps[3]!['timeout-minutes']).toBe(2)
+  })
+
+  it('bounds every product bootstrap on Linux and macOS but leaves consumer policy alone', () => {
+    const expected = {
+      'Install Nix': "${{ runner.os == 'macOS' && 5 || 2 }}",
+      'Provide cachix CLI from nixpkgs': 3,
+      'Resolve devenv': "${{ runner.os == 'macOS' && 3 || 6 }}",
+      'Prepare source generator dependency views': "${{ runner.os == 'macOS' && 25 || 26 }}",
+    }
+    for (const [id, job] of Object.entries(ciWorkflow.data.jobs)) {
+      if (id === 'consumer-smoke') continue
+      for (const step of job.steps) {
+        if (step.name !== undefined && Object.hasOwn(expected, step.name)) {
+          expect(step['timeout-minutes']).toBe(expected[step.name as keyof typeof expected])
+        }
+      }
+    }
+    expect(
+      ciWorkflow.data.jobs['consumer-smoke']!.steps.find((step) => step.name === 'Resolve devenv')![
+        'timeout-minutes'
+      ],
+    ).toBeUndefined()
+    expect(
+      ciWorkflow.data.jobs['build-products']!.steps.find(
+        (step) => step.name === 'Build every published from-source product',
+      )!['timeout-minutes'],
+    ).toBe(17)
+  })
+})
 
 describe('namespaceRunner', () => {
   const linux = 'namespace-profile-linux-x86-64'
@@ -816,6 +891,28 @@ describe('CI execution admission cleanup', () => {
   })
 })
 
+describe('unit-test shell selection', () => {
+  it('selects the narrow shell only at job scope for required unit-test jobs', () => {
+    const workflow: GitHubWorkflowArgs = ciWorkflow.data
+    expect(workflow.env?.EFFECT_UTILS_CI_TEST).toBeUndefined()
+    expect(
+      Object.entries(workflow.jobs)
+        .filter(([, job]) => job.env?.EFFECT_UTILS_CI_TEST === '1')
+        .map(([jobId]) => jobId)
+        .toSorted(),
+    ).toEqual(['test', 'test-macos', 'test-megarepo-store-gc'])
+
+    for (const [jobId, job] of Object.entries(workflow.jobs)) {
+      expect(job.env?.EFFECT_UTILS_CI_TEST, jobId).toBe(
+        ['test', 'test-macos', 'test-megarepo-store-gc'].includes(jobId) ? '1' : undefined,
+      )
+      for (const step of job.steps) {
+        expect(step.env?.EFFECT_UTILS_CI_TEST, `${jobId}/${step.name ?? step.id}`).toBeUndefined()
+      }
+    }
+  })
+})
+
 describe('required platform test classification', () => {
   it('classifies every aggregate source task exactly once with a rationale', () => {
     const suites = [...testPlatforms.darwin, ...testPlatforms.neutral]
@@ -880,5 +977,102 @@ describe('required platform test classification', () => {
     expect(testPlatforms.moduleScripts.darwin.map(({ script }) => script)).toContain(
       'buck2-capability-publish.test.sh',
     )
+  })
+})
+
+describe('published consumer ref', () => {
+  const publisher = ciWorkflow.data.jobs['publish-products']!
+  const smoke = ciWorkflow.data.jobs['consumer-smoke']!
+  const promotion = ciWorkflow.data.jobs['promote-published']!
+  const steps = promotion.steps!
+
+  it('joins independent same-SHA publication and consumer proofs before main-push promotion', () => {
+    expect(promotion.needs).toEqual(['publish-products', 'consumer-smoke'])
+    expect(promotion.if).toBe(publishedRefIf)
+    expect(publisher.needs ?? []).not.toContain('consumer-smoke')
+    expect(publisher.steps!.some((step) => step.id === 'advance-published-ref')).toBe(false)
+    const advance = steps.find((step) => step.id === 'advance-published-ref')!
+    const token = steps.find((step) => step.id === 'published-ref-token')!
+    expect(advance).toBeDefined()
+    expect(advance.if).toBe(publishedRefIf)
+    expect(token.if).toBe(publishedRefIf)
+    expect(publishedRefIf).toContain("github.repository == 'overengineeringstudio/effect-utils'")
+    expect(publishedRefIf).toContain("github.event_name == 'push'")
+    expect(publishedRefIf).toContain("github.ref == 'refs/heads/main'")
+    for (const job of ['publish-products', 'consumer-smoke']) {
+      expect(publishedRefIf).toContain(`needs['${job}'].result == 'success'`)
+      expect(publishedRefIf).toContain(`needs['${job}'].outputs.current-sha == github.sha`)
+    }
+    expect(publisher.outputs?.['current-sha']).toBe(
+      '${{ steps.publication-scope.outputs.current-sha || steps.product-publication.outputs.current-sha }}',
+    )
+    for (const id of ['publication-scope', 'product-publication']) {
+      const producer = publisher.steps!.find((step) => step.id === id)!
+      const script = producer.run as string
+      const success = script.indexOf('-f context=buck2-products/manifest-current -f state=success')
+      expect(success).toBeGreaterThan(-1)
+      expect(script.indexOf('echo "current-sha=$GITHUB_SHA"', success)).toBeGreaterThan(success)
+    }
+  })
+
+  it('runs the shared consumer harness without the root shell and emits success only afterward', () => {
+    expect(smoke.if).toBe(publisher.if)
+    expect(smoke['timeout-minutes']).toBe(10)
+    expect(smoke.permissions).toEqual({ contents: 'read' })
+    expect(smoke.outputs?.['current-sha']).toBe('${{ steps.consumer-smoke.outputs.current-sha }}')
+    const smokeStep = smoke.steps!.find((step) => step.id === 'consumer-smoke')!
+    const resolution = smoke.steps!.find((step) => step.name === pipelineDevenvStepName)!
+    expect(resolution).toBeDefined()
+    expect(resolution.run).toContain('resolve-devenv.sh')
+    expect(smoke.steps!.indexOf(resolution)).toBeLessThan(smoke.steps!.indexOf(smokeStep))
+    const command = smokeStep.run as string
+    expect(command).toContain(
+      'bash nix/fixtures/consumer-smoke/run.sh "$PWD" "${DEVENV_BIN:?DEVENV_BIN not set}"',
+    )
+    expect(command).not.toContain('tasks run')
+    expect(command).not.toContain(' shell ')
+    expect(command.indexOf('nix/fixtures/consumer-smoke/run.sh')).toBeLessThan(
+      command.indexOf('echo "current-sha=$GITHUB_SHA"'),
+    )
+    expect(smoke.steps!.some((step) => String(step.run).includes('buck2:editor:bootstrap'))).toBe(false)
+    expect(steps.some((step) => step.uses?.includes('install-nix'))).toBe(false)
+    expect(steps.some((step) => String(step.run).includes('devenv'))).toBe(false)
+  })
+
+  it('uses the publisher App and checks ancestry before and after a raced push', () => {
+    const token = steps.find((step) => step.id === 'published-ref-token')!
+    expect(token.with?.['app-id']).toBe('${{ vars.NIX_PUBLISHER_GITHUB_APP_ID }}')
+    expect(token.with?.['permission-contents']).toBe('write')
+    expect(Object.keys(token.with ?? {}).filter((key) => key.startsWith('permission-'))).toEqual([
+      'permission-contents',
+    ])
+    const advance = steps.find((step) => step.id === 'advance-published-ref')!
+    expect(advance.env?.GH_TOKEN).toBe('${{ steps.published-ref-token.outputs.token }}')
+    expect(advance.run).toContain('source genie/ci-workflow/published-ref-decide.sh')
+    expect(advance.run).toContain('for attempt in 1 2 3; do')
+    expect(advance.run).toContain('case "$(decide "$tip" "$GITHUB_SHA")" in')
+    expect(advance.run).toContain('git push origin "$GITHUB_SHA:refs/heads/published"')
+    expect(advance.run).not.toContain('--force')
+    expect(advance.run).toContain('$GITHUB_STEP_SUMMARY')
+  })
+})
+
+
+describe('shared default-ref policy configuration', () => {
+  it('defaults effect-utils to published while accepting main', () => {
+    const env = defaultRefPolicyCheckStep().env
+    expect(env.DEFAULT_REF).toBe('main')
+    expect(JSON.parse(env.DEFAULT_REF_POLICIES_JSON)).toEqual({
+      'overengineeringstudio/effect-utils': {
+        defaultRef: 'published',
+        acceptedRefs: ['published', 'main'],
+      },
+    })
+    const job = ciWorkflow.data.jobs['default-ref-policy']!
+    const verdict = job.steps.find((step) => step.id === defaultRefPolicyVerdictStepId)!
+    expect(verdict.env?.DEFAULT_REF_POLICIES_JSON).toBe(env.DEFAULT_REF_POLICIES_JSON)
+    expect(JSON.parse(verdict.env?.DEFAULT_REFS_JSON ?? '{}')).toEqual({
+      'livestorejs/livestore': 'dev',
+    })
   })
 })

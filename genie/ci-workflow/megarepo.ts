@@ -1,5 +1,4 @@
-import { readFileSync } from 'node:fs'
-
+import { inputReadFileSync as readFileSync } from '../../packages/@overeng/genie/src/runtime/node/inputs.ts'
 import { defaultRefPolicyCheckScript } from './default-ref-policy-script.ts'
 import { defaultRefPolicyVerdictStepId, githubTokenEnv, shellSingleQuote } from './shared.ts'
 
@@ -165,6 +164,7 @@ nix run "github:overengineeringstudio/effect-utils/$EU_REV#megarepo" -- apply --
 export type DefaultRefPolicyCheckStepOptions = {
   readonly firstPartyOwners?: readonly string[]
   readonly defaultRef?: string
+  /** Each entry replaces both the built-in default and accepted refs for that repository. */
   readonly defaultRefs?: Readonly<Record<string, string>>
   readonly verifyReachable?: boolean
   readonly normalizeGitBranchRefs?: boolean
@@ -176,13 +176,22 @@ export type DefaultRefPolicyCheckStepOptions = {
   readonly allowLegacyMemberCommitRefs?: boolean
 }
 
+/** Repository-specific defaults shared by every consumer of the policy step. */
+export const firstPartyDefaultRefPolicies: Readonly<
+  Record<string, { readonly defaultRef: string; readonly acceptedRefs: readonly string[] }>
+> = {
+  'overengineeringstudio/effect-utils': {
+    defaultRef: 'published',
+    acceptedRefs: ['published', 'main'],
+  },
+}
+
 // Freeze the upstream tool source into the generated workflow. The trust gate
 // must not evaluate the checkout's flake (or fetch its inputs) before checking refs.
 const defaultRefPolicyNixpkgs: { rev: string; narHash: string } = JSON.parse(
   readFileSync(new URL('../../flake.lock', import.meta.url), 'utf8'),
 ).nodes.nixpkgs.locked
-const defaultRefPolicyNodeInstallable =
-  `github:NixOS/nixpkgs/${defaultRefPolicyNixpkgs.rev}?narHash=${encodeURIComponent(defaultRefPolicyNixpkgs.narHash)}#nodejs_24`
+const defaultRefPolicyNodeInstallable = `github:NixOS/nixpkgs/${defaultRefPolicyNixpkgs.rev}?narHash=${encodeURIComponent(defaultRefPolicyNixpkgs.narHash)}#nodejs_24`
 
 /** Fail before composition when first-party megarepo/flake/devenv inputs target non-default refs. */
 export const defaultRefPolicyCheckStep = (opts: DefaultRefPolicyCheckStepOptions = {}) => ({
@@ -195,6 +204,7 @@ export const defaultRefPolicyCheckStep = (opts: DefaultRefPolicyCheckStepOptions
     ),
     DEFAULT_REF: opts.defaultRef ?? 'main',
     DEFAULT_REFS_JSON: JSON.stringify(opts.defaultRefs ?? {}),
+    DEFAULT_REF_POLICIES_JSON: JSON.stringify(firstPartyDefaultRefPolicies),
     VERIFY_REACHABLE: opts.verifyReachable === true ? '1' : '0',
     NORMALIZE_GIT_BRANCH_REFS: opts.normalizeGitBranchRefs === true ? '1' : '0',
     ALLOW_LEGACY_MEMBER_COMMIT_REFS: opts.allowLegacyMemberCommitRefs === true ? '1' : '0',

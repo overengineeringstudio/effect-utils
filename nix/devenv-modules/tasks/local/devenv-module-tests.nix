@@ -30,7 +30,8 @@ let
     && builtins.isString entry.script
     && entry ? rationale
     && builtins.isString entry.rationale
-    && builtins.match ".*[^[:space:]].*" entry.rationale != null;
+    && builtins.match ".*[^[:space:]].*" entry.rationale != null
+    && (!(entry ? fullProfileOnly) || builtins.isBool entry.fullProfileOnly);
   validPlatforms =
     builtins.isAttrs moduleScriptPlatforms
     &&

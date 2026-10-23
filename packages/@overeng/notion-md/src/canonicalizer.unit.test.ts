@@ -52,6 +52,7 @@ const samples = [
   'a\n\n---\n\nb',
   '| a | b |\n|---|---|\n| 1 | 2 |',
   'Plain paragraph that\nsoft-wraps across lines.',
+  '\u0000\u0000\u0001*\u0007*', // #2045: controls encoded beside emphasis must stabilize.
 ]
 
 describe('canonicalize — normal form', () => {

@@ -11,6 +11,7 @@ import { ChildProcessSpawner } from 'effect/process/ChildProcessSpawner'
 import { MR_VERSION } from '../core/version.ts'
 import {
   isInsideWorktree,
+  parseProcStat,
   readProcessReferences,
   readWorktreeReferencesInUse,
   type InUseResult,
@@ -27,6 +28,15 @@ export interface WorkspaceActivityEpoch {
 /** Canonical workspace paths protected by observed agents and retained PTY records. */
 export interface WorkspaceActivity {
   readonly activePaths: ReadonlySet<string>
+  /**
+   * Complete native seat ownership, including non-running and remote seats.
+   * Missing claims mean coverage is unknown; a successful native capture always
+   * includes this array, even when the projection has no current owners.
+   */
+  readonly ownerClaims?: ReadonlyArray<{
+    readonly workspace: string
+    readonly agents: ReadonlyArray<string>
+  }>
   /**
    * Kernel-reported process cwd/root/fd/map paths. These only protect a
    * worktree that contains them: a process rooted at `/` owns no worktree.
@@ -64,7 +74,7 @@ const Sync = Schema.Struct({
   ),
 })
 const AgentPage = Schema.Struct({
-  api_version: Schema.Literal('st3.client.v0'),
+  api_version: Schema.Literals(['st3.client.v0', 'fractal.client.v0']),
   snapshot: Snapshot,
   value: Schema.Struct({
     kind: Schema.Literal('page'),
@@ -91,7 +101,8 @@ const Subject = Schema.Struct({
     ),
   }),
 }).annotate({ identifier: 'StoreWorkspaceActivity.Subject' })
-const PtySessions = Schema.Array(
+/** Native `pty list --json --tags` projection, shared with subprocess fixtures. */
+export const PtySessions = Schema.Array(
   Schema.Struct({
     name: NonEmpty,
     status: Schema.Literals(['running', 'exited', 'vanished']),
@@ -329,14 +340,15 @@ export const readWorkspaceActivity: (options: {
             ) {
               return Effect.fail(unavailable('Activity subject is missing or ambiguous'))
             }
-            return Effect.succeed(result.status.subjects[0].actual)
+            return Effect.succeed({ agent: agent.id, actual: result.status.subjects[0].actual })
           }),
         ),
       { concurrency: 8 },
     )
     // true means local evidence requires the path; false is foreign-only.
     const rawPaths = new Map<string, boolean>()
-    for (const actual of subjects) {
+    const rawOwnerAgents = new Map<string, Set<string>>()
+    for (const { agent, actual } of subjects) {
       if (actual === null) return yield* unavailable('Activity subject has no actual observation')
       // `terminal` means a terminal exists, NOT that the process has exited.
       // stopped/exited are final runtime states; waiting/idle/suspended and
@@ -353,6 +365,9 @@ export const readWorkspaceActivity: (options: {
       const actualHost =
         actual.host.startsWith('host/') === true ? actual.host : `host/${actual.host}`
       rawPaths.set(actual.workspace, actualHost === host || rawPaths.get(actual.workspace) === true)
+      const owners = rawOwnerAgents.get(actual.workspace) ?? new Set<string>()
+      owners.add(agent)
+      rawOwnerAgents.set(actual.workspace, owners)
     }
     const sessions = yield* commandJson({
       command: ptyBinary,
@@ -378,30 +393,39 @@ export const readWorkspaceActivity: (options: {
     const paths = yield* Effect.forEach(
       rawPaths,
       ([path, required]) =>
-        fs
-          .realPath(path)
-          .pipe(
-            Effect.catch((error) =>
-              required === true
-                ? Effect.fail(error)
-                : fs
-                    .exists(path)
-                    .pipe(
-                      Effect.flatMap((exists) =>
-                        exists === true ? Effect.fail(error) : Effect.void,
-                      ),
+        fs.realPath(path).pipe(
+          Effect.catch((error) =>
+            required === true
+              ? Effect.fail(error)
+              : fs
+                  .exists(path)
+                  .pipe(
+                    Effect.flatMap((exists) =>
+                      exists === true ? Effect.fail(error) : Effect.void,
                     ),
-            ),
+                  ),
           ),
+          Effect.map((canonical) => ({ path, canonical })),
+        ),
       { concurrency: 8 },
     )
     const activePaths = new Set<string>()
-    for (const path of paths) {
-      if (path === undefined) continue
-      if (isAbsolute(path) === false) return yield* unavailable('Noncanonical workspace path')
-      activePaths.add(path)
+    const canonicalOwners = new Map<string, Set<string>>()
+    for (const { path, canonical } of paths) {
+      if (canonical === undefined) continue
+      if (isAbsolute(canonical) === false) return yield* unavailable('Noncanonical workspace path')
+      activePaths.add(canonical)
+      const ownerAgents = rawOwnerAgents.get(path)
+      if (ownerAgents === undefined) continue
+      const owners = canonicalOwners.get(canonical) ?? new Set<string>()
+      for (const agent of ownerAgents) owners.add(agent)
+      canonicalOwners.set(canonical, owners)
     }
-    return { activePaths, epoch: { host } }
+    const ownerClaims = Array.from(canonicalOwners, ([workspace, agentIds]) => ({
+      workspace,
+      agents: Array.from(agentIds),
+    }))
+    return { activePaths, ownerClaims, epoch: { host } }
   })
   return yield* read.pipe(
     Effect.timeout(CAPTURE_TIMEOUT_MS),
@@ -422,6 +446,14 @@ export const PROCESS_SNAPSHOT_PRODUCER = 'mr-process'
 export const WORKSPACE_ACTIVITY_MAX_TTL_MS = 5 * 60 * 1000
 
 const MANIFEST_BYTES = 4 * 1024 * 1024
+
+/** Additive process attribution: old snapshots omit it and continue to protect their paths. */
+const ActivityProcess = Schema.Struct({
+  pid: Schema.Int.check(Schema.isGreaterThan(0)),
+  startTime: NonEmpty.check(Schema.makeFilter((value) => /^[0-9]+$/.test(value))),
+  executableClass: Schema.Literals(['buck2-daemon', 'buck2-forkserver', 'other']),
+})
+export type WorkspaceActivityProcess = typeof ActivityProcess.Type
 
 const ActivityManifest = Schema.Struct({
   schemaVersion: Schema.Literal(WORKSPACE_ACTIVITY_V2_SCHEMA),
@@ -454,6 +486,7 @@ const ActivityManifest = Schema.Struct({
       agents: Schema.Array(NonEmpty),
       activeRuntimeIds: Schema.Array(NonEmpty),
       active: Schema.Boolean,
+      processes: Schema.optionalKey(Schema.Array(ActivityProcess)),
     }),
   ),
 }).annotate({ identifier: 'StoreWorkspaceActivity.ActivityManifest' })
@@ -492,6 +525,11 @@ export interface BudgetWorkspaceActivityEpoch extends WorkspaceActivityEpoch {
 /** Activity whose epoch identifies the admitted producer snapshot. */
 export interface BudgetWorkspaceActivity extends WorkspaceActivity {
   readonly epoch: BudgetWorkspaceActivityEpoch
+  /** Seat ownership is retained even for inactive claims; activity remains a separate gate. */
+  readonly ownerClaims?: ReadonlyArray<{
+    readonly workspace: string
+    readonly agents: ReadonlyArray<string>
+  }>
   /**
    * Present only for an admitted, unexpired root-controlled `all-uids` manifest:
    * foreign uids inside `roots` are covered by its claims. The owner's fresh
@@ -560,14 +598,70 @@ const isRootControlledDirectory = ({ fs, path }: { fs: FileSystem.FileSystem; pa
     }
   })
 
-const readActivityManifest = Effect.fn('store.readActivityManifest')(function* ({
+/** Only a fully attributed, daemon-only process claim can be waived for maintenance. */
+export const canIgnoreActivityProcessClaim = ({
+  claim,
+  ignored,
+  observed,
+}: {
+  claim: {
+    readonly sources: ReadonlyArray<string>
+    readonly processes?: ReadonlyArray<WorkspaceActivityProcess>
+  }
+  ignored: ReadonlyArray<ProcessIdentity>
+  observed: ReadonlyArray<WorkspaceActivityProcess>
+}): boolean => {
+  if (claim.sources.length === 0 || claim.sources.some((source) => source !== 'process') === true)
+    return false
+  if (claim.processes === undefined || claim.processes.length === 0) return false
+  return claim.processes.every(
+    (process) =>
+      process.executableClass !== 'other' &&
+      ignored.some(
+        (identity) => identity.pid === process.pid && identity.startTime === process.startTime,
+      ) === true &&
+      observed.some(
+        (live) =>
+          live.pid === process.pid &&
+          live.startTime === process.startTime &&
+          live.executableClass === process.executableClass,
+      ),
+  )
+}
+
+/** Read executable class across one kernel process lifetime; uncertainty never grants an exemption. */
+const readActivityProcess = Effect.fn('store.readActivityProcess')(
+  function* ({ fs, pid }: { fs: FileSystem.FileSystem; pid: number }) {
+    const before = parseProcStat(yield* fs.readFileString(`/proc/${pid}/stat`))
+    const executable = yield* fs.readLink(`/proc/${pid}/exe`)
+    const argv = (yield* fs.readFileString(`/proc/${pid}/cmdline`)).split('\0')
+    const after = parseProcStat(yield* fs.readFileString(`/proc/${pid}/stat`))
+    if (before === undefined || after === undefined || before.startTime !== after.startTime)
+      return undefined
+    const executableClass: WorkspaceActivityProcess['executableClass'] =
+      executable.endsWith('/buck2') === false
+        ? 'other'
+        : argv.includes('daemon') === true && argv.includes('--daemon-id') === true
+          ? 'buck2-daemon'
+          : argv[1] === 'forkserver'
+            ? 'buck2-forkserver'
+            : 'other'
+    return { pid, startTime: after.startTime, executableClass }
+  },
+  Effect.orElseSucceed(() => undefined),
+)
+
+/** Admit a configured producer's manifest without also requiring a native process snapshot. */
+export const readActivityManifest = Effect.fn('store.readActivityManifest')(function* ({
   fs,
   path,
   producers,
+  ignoredProcesses,
 }: {
   fs: FileSystem.FileSystem
   path: string
   producers: ReadonlyArray<string>
+  ignoredProcesses?: ReadonlyArray<ProcessIdentity> | undefined
 }) {
   const info = yield* fs.stat(path)
   if (info.type !== 'File' || Number(info.size) > MANIFEST_BYTES) {
@@ -637,6 +731,9 @@ const readActivityManifest = Effect.fn('store.readActivityManifest')(function* (
   }
   const activePaths = new Set<string>()
   const processPaths = new Set<string>()
+  const observed = (yield* Effect.forEach(ignoredProcesses ?? [], (identity) =>
+    readActivityProcess({ fs, pid: identity.pid }),
+  )).filter((entry): entry is WorkspaceActivityProcess => entry !== undefined)
   for (const claim of manifest.claims) {
     if (claim.sources.length === 0) return yield* unavailable('Activity claim has no source')
     if (claim.active === false) continue
@@ -644,6 +741,10 @@ const readActivityManifest = Effect.fn('store.readActivityManifest')(function* (
     if (canonical === 'noncanonical') return yield* unavailable('Activity claim is noncanonical')
     // A deleted workspace has nothing left to protect.
     if (canonical === 'missing') continue
+    if (
+      canIgnoreActivityProcessClaim({ claim, ignored: ignoredProcesses ?? [], observed }) === true
+    )
+      continue
     // A process reference only holds the worktree containing it; agent and
     // PTY workspaces also protect the composed roots above them.
     if (claim.sources.every((source) => source === 'process') === true) processPaths.add(canonical)
@@ -653,6 +754,9 @@ const readActivityManifest = Effect.fn('store.readActivityManifest')(function* (
     activePaths,
     processPaths,
     processCoverage,
+    ownerClaims: manifest.claims
+      .filter((claim) => claim.sources.includes('st3-seat'))
+      .map((claim) => ({ workspace: claim.workspace, agents: claim.agents })),
     epoch: {
       host: epochHost,
       producer: manifest.producer.name,
@@ -773,9 +877,11 @@ export const readBudgetWorkspaceActivity: (options: {
   readonly admittedEpoch?: BudgetWorkspaceActivityEpoch | undefined
   /** Only the matched own-UID process lifetime is omitted from the local scan, never manifest claims. */
   readonly ignoredOwnProcesses?: ReadonlyArray<ProcessIdentity> | undefined
+  /** Only wholly attributed native daemon claims may be waived after a live identity re-check. */
+  readonly ignoredManifestProcesses?: ReadonlyArray<ProcessIdentity> | undefined
 }) => Effect.Effect<BudgetWorkspaceActivity | undefined, never, ChildProcessSpawner> = Effect.fn(
   'store.readBudgetWorkspaceActivity',
-)(function* ({ fs, config, admittedEpoch, ignoredOwnProcesses }) {
+)(function* ({ fs, config, admittedEpoch, ignoredOwnProcesses, ignoredManifestProcesses }) {
   const builtin = config.builtin ?? true
   if (config.manifestPath === undefined && builtin === false) return undefined
   const read = Effect.gen(function* () {
@@ -786,6 +892,7 @@ export const readBudgetWorkspaceActivity: (options: {
             fs,
             path: config.manifestPath,
             producers: config.agentLivenessProducers ?? [],
+            ignoredProcesses: ignoredManifestProcesses,
           })
     const own =
       manifest?.processCoverage !== undefined
@@ -807,6 +914,7 @@ export const readBudgetWorkspaceActivity: (options: {
               activePaths: new Set([...manifest.activePaths, ...own.activePaths]),
               processPaths: new Set([...manifest.processPaths, ...own.processPaths]),
               processCoverage: manifest.processCoverage,
+              ownerClaims: manifest.ownerClaims,
               epoch: manifest.epoch,
             }
     if (activity === undefined) return undefined
@@ -837,9 +945,11 @@ export const readBudgetWorkspaceActivity: (options: {
 export const readBudgetWorktreeInUse = ({
   worktreePath,
   activity,
+  ignoredProcesses,
 }: {
   worktreePath: string
   activity: BudgetWorkspaceActivity | undefined
+  ignoredProcesses?: ReadonlyArray<ProcessIdentity> | undefined
 }): Effect.Effect<InUseResult, never, FileSystem.FileSystem> =>
   Effect.gen(function* () {
     const coverage = activity?.processCoverage
@@ -852,6 +962,7 @@ export const readBudgetWorktreeInUse = ({
       worktreePath,
       scope: covered === true ? 'own-uid' : 'all-uids',
       coveredProcesses: covered === true ? coverage?.processIdentities : undefined,
+      ignoredProcesses,
     })
   })
 
@@ -881,7 +992,7 @@ export const captureProcessActivityManifest = Effect.fn('store.captureProcessAct
     }
     if (roots.length === 0) errors.push('no store roots')
     const scan = yield* readProcessReferences({ fs, selfPid: process.pid, scope: 'all-uids' })
-    const workspaces = new Set<string>()
+    const workspaces = new Map<string, Set<number>>()
     if (scan._tag === 'unknown') {
       errors.push(
         `process scan is ${scan.reason}${scan.pid === undefined ? '' : ` (pid ${scan.pid})`}`,
@@ -896,7 +1007,23 @@ export const captureProcessActivityManifest = Effect.fn('store.captureProcessAct
           roots.some((root) => isInsideWorktree({ candidate: workspace, worktreePath: root })) ===
           true
         ) {
-          workspaces.add(workspace)
+          const pids = workspaces.get(workspace) ?? new Set<number>()
+          pids.add(reference.pid)
+          workspaces.set(workspace, pids)
+        }
+      }
+    }
+    const attributed = new Map<number, WorkspaceActivityProcess>()
+    if (scan._tag === 'complete') {
+      const candidatePids = new Set<number>()
+      for (const pids of workspaces.values()) {
+        for (const pid of pids) candidatePids.add(pid)
+      }
+      for (const identity of scan.processIdentities) {
+        if (candidatePids.has(identity.pid) === false) continue
+        const observed = yield* readActivityProcess({ fs, pid: identity.pid })
+        if (observed !== undefined && observed.startTime === identity.startTime) {
+          attributed.set(identity.pid, observed)
         }
       }
     }
@@ -911,13 +1038,24 @@ export const captureProcessActivityManifest = Effect.fn('store.captureProcessAct
       processCoverage: 'all-uids',
       processRoots: roots,
       processIdentities: scan._tag === 'complete' ? scan.processIdentities : [],
-      claims: [...workspaces].toSorted().map((workspace) => ({
-        workspace,
-        sources: ['process'] as const,
-        agents: [],
-        activeRuntimeIds: [],
-        active: true,
-      })),
+      claims: [...workspaces.keys()].toSorted().map((workspace) => {
+        const pids = [...(workspaces.get(workspace) ?? [])].toSorted((a, b) => a - b)
+        const processes = pids.flatMap((pid) => {
+          const process = attributed.get(pid)
+          return process === undefined ? [] : [process]
+        })
+        const claim = {
+          workspace,
+          sources: ['process'] as const,
+          agents: [],
+          activeRuntimeIds: [],
+          active: true,
+        }
+        // Never emit partial attribution: a missing contributor must keep the whole claim.
+        return processes.length === pids.length && processes.length > 0
+          ? Object.assign(claim, { processes })
+          : claim
+      }),
     }
     return manifest
   },

@@ -13,7 +13,7 @@ import { fileURLToPath } from 'node:url'
 
 import { NodeServices } from '@effect/platform-node'
 import { describe, it } from '@effect/vitest'
-import { Effect } from 'effect'
+import { Effect, Schema } from 'effect'
 import * as FileSystem from 'effect/FileSystem'
 import { expect } from 'vitest'
 
@@ -21,17 +21,22 @@ import { decodeJson, encodeJson } from '../test-utils/mod.ts'
 import { parseProcStat, type ProcessIdentity } from './store-inuse.ts'
 import {
   PROCESS_SNAPSHOT_PRODUCER,
+  PtySessions,
   WORKSPACE_ACTIVITY_V2_SCHEMA,
   captureProcessActivityManifest,
   isWorkspaceActive,
   readBudgetWorkspaceActivity,
   readBudgetWorktreeInUse,
+  readWorkspaceActivity,
   writeWorkspaceActivityManifest,
   type BudgetActivityConfig,
 } from './store-workspace-activity.ts'
 
 const PRODUCER = 'acceptance-fixture'
 const runsAsRoot = process.getuid?.() === 0
+const ptyProbe = spawnSync('pty', ['--version'], { stdio: 'ignore', timeout: 10_000 })
+const ptyMissing =
+  ptyProbe.error !== undefined && 'code' in ptyProbe.error && ptyProbe.error.code === 'ENOENT'
 
 const manifest = ({
   workspace,
@@ -409,6 +414,213 @@ const retainExitedPty = Effect.fnUntraced(function* ({ id, cwd }: { id: string; 
       expect.arrayContaining([expect.objectContaining({ name: id, status: 'exited', cwd })]),
     )
   })
+})
+
+/** The exact list projection consumed by PtySessions in store-workspace-activity.ts. */
+const withPtyProjection = Effect.fnUntraced(function* ({
+  fs,
+  root,
+  sessions,
+}: {
+  fs: FileSystem.FileSystem
+  root: string
+  sessions: typeof PtySessions.Type
+}) {
+  const binary = `${root}/pty-fixture`
+  const projection = yield* Schema.encodeEffect(Schema.fromJsonString(PtySessions))(sessions)
+  yield* fs.writeFileString(`${binary}.json`, projection)
+  yield* fs.writeFileString(
+    binary,
+    `#!/bin/sh
+[ "$*" = "list --json --tags" ] || exit 1
+cat "$0.json"
+`,
+  )
+  yield* fs.chmod(binary, 0o700)
+  yield* Effect.acquireRelease(
+    Effect.sync(() => {
+      const previous = process.env['MEGAREPO_GC_PTY_BIN']
+      process.env['MEGAREPO_GC_PTY_BIN'] = binary
+      return previous
+    }),
+    (previous) =>
+      Effect.sync(() => {
+        if (previous === undefined) delete process.env['MEGAREPO_GC_PTY_BIN']
+        else process.env['MEGAREPO_GC_PTY_BIN'] = previous
+      }),
+  )
+  return binary
+})
+
+/** Real subprocess protocol boundary, with scoped native projection payloads. */
+const withNativeProjection = Effect.fnUntraced(function* ({
+  fs,
+  root,
+  subjects,
+}: {
+  fs: FileSystem.FileSystem
+  root: string
+  subjects: Readonly<
+    Record<
+      string,
+      {
+        status: string
+        workspace?: string
+        host?: string
+      } | null
+    >
+  >
+}) {
+  const binary = `${root}/st3-fixture`
+  yield* fs.writeFileString(
+    `${root}/st3-page.json`,
+    encodeJson({
+      api_version: 'st3.client.v0',
+      snapshot: {
+        id: 'native-fixture',
+        host_id: `host/${hostname()}`,
+        created_at: '2020-01-01T00:00:00.000Z',
+        store_index: 1,
+      },
+      value: {
+        kind: 'page',
+        collection: 'agents',
+        items: Object.keys(subjects).map((id) => ({ id })),
+        page: { has_more: false, next_cursor: null },
+      },
+    }),
+  )
+  for (const [id, actual] of Object.entries(subjects)) {
+    yield* fs.writeFileString(
+      `${root}/st3-${id}.json`,
+      encodeJson({ status: { store_index: 1, subjects: [{ subject: id, actual }] } }),
+    )
+  }
+  yield* fs.writeFileString(
+    binary,
+    `#!/bin/sh
+case "$1 $2" in
+  "agents ls") cat "$(dirname "$0")/st3-page.json" ;;
+  "subject show") cat "$(dirname "$0")/st3-$3.json" ;;
+  *) exit 1 ;;
+esac
+`,
+  )
+  yield* fs.chmod(binary, 0o700)
+  yield* Effect.acquireRelease(
+    Effect.sync(() => {
+      const previous = process.env['MEGAREPO_GC_ST3_BIN']
+      process.env['MEGAREPO_GC_ST3_BIN'] = binary
+      return previous
+    }),
+    (previous) =>
+      Effect.sync(() => {
+        if (previous === undefined) delete process.env['MEGAREPO_GC_ST3_BIN']
+        else process.env['MEGAREPO_GC_ST3_BIN'] = previous
+      }),
+  )
+  return binary
+})
+
+describe('readWorkspaceActivity native ownership', () => {
+  for (const capture of ['fixture', 'real'] as const) {
+    it.live.skipIf(capture === 'real' && ptyMissing)(
+      `canonicalizes current local and remote seat owners without making retained PTYs seat owners (${capture} PTY capture)`,
+      Effect.fnUntraced(
+        function* () {
+          const { fs, root, workspace } = yield* fixture
+          const alias = `${root}/workspace-alias`
+          const ptyWorkspace = `${root}/pty-workspace`
+          yield* fs.symlink(workspace, alias)
+          yield* fs.makeDirectory(ptyWorkspace)
+          if (capture === 'real') {
+            expect(
+              ptyProbe.error,
+              'pty --version must fail only when absent from PATH',
+            ).toBeUndefined()
+            expect(ptyProbe.signal).toBeNull()
+            expect(ptyProbe.status).toBe(0)
+            yield* withRealPty({ fs, root })
+            yield* retainExitedPty({ id: 'native-owner-retained', cwd: ptyWorkspace })
+          } else {
+            yield* withPtyProjection({
+              fs,
+              root,
+              sessions: [
+                { name: 'native-owner-retained', status: 'exited', pid: null, cwd: ptyWorkspace },
+              ],
+            })
+          }
+          const statuses = ['running', 'waiting', 'idle', 'suspended', 'future-status']
+          yield* withNativeProjection({
+            fs,
+            root,
+            subjects: {
+              ...Object.fromEntries(
+                statuses.map((status) => [
+                  `agent-${status}`,
+                  {
+                    status,
+                    workspace: alias,
+                    host: status === 'running' ? hostname() : 'host/remote-fixture',
+                  },
+                ]),
+              ),
+              'agent-stopped': { status: 'stopped' },
+              'agent-exited': { status: 'exited' },
+              'agent-absent-remote': {
+                status: 'waiting',
+                workspace: `${root}/absent-remote`,
+                host: 'host/remote-fixture',
+              },
+            },
+          })
+          const activity = yield* readWorkspaceActivity({ fs })
+          expect(activity).toBeDefined()
+          expect(activity?.ownerClaims).toEqual([
+            {
+              workspace,
+              agents: statuses.map((status) => `agent-${status}`),
+            },
+          ])
+          expect(activity?.activePaths).toEqual(new Set([workspace, ptyWorkspace]))
+        },
+        Effect.provide(NodeServices.layer),
+        Effect.scoped,
+      ),
+    )
+  }
+
+  it.live(
+    'reports complete empty ownership for a successful empty native projection',
+    Effect.fnUntraced(
+      function* () {
+        const { fs, root } = yield* fixture
+        yield* withPtyProjection({ fs, root, sessions: [] })
+        yield* withNativeProjection({ fs, root, subjects: {} })
+        const activity = yield* readWorkspaceActivity({ fs })
+        expect(activity?.ownerClaims).toEqual([])
+        expect(activity?.activePaths).toEqual(new Set())
+      },
+      Effect.provide(NodeServices.layer),
+      Effect.scoped,
+    ),
+  )
+
+  it.live(
+    'keeps unavailable native capture unknown instead of reporting empty ownership',
+    Effect.fnUntraced(
+      function* () {
+        const { fs, root } = yield* fixture
+        yield* withNativeProjection({ fs, root, subjects: {} })
+        const binary = yield* withPtyProjection({ fs, root, sessions: [] })
+        yield* fs.remove(binary)
+        expect(yield* readWorkspaceActivity({ fs })).toBeUndefined()
+      },
+      Effect.provide(NodeServices.layer),
+      Effect.scoped,
+    ),
+  )
 })
 
 describe('readBudgetWorkspaceActivity manifest admission', () => {

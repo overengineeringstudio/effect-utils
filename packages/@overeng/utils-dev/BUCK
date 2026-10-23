@@ -4,7 +4,7 @@
 # Projection source: packages/@overeng/utils-dev/BUCK.genie.ts
 # Projection schema version: 13
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:7baa6a5b0fd2210ec9eb6ba7443793ef6e903f762d86acedfad4f239874cbce2
+# Semantic fingerprint: sha256:fe07a3021dd764b4ecc6cb1709d64ff2eb01ec5c48e5282d9df9757468d623ef
 # Regenerate: devenv tasks run genie:run
 
 load("//buck2:materialization.bzl", "export_materialization_inputs", "package_view")

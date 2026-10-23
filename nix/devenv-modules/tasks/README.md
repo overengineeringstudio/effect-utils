@@ -38,6 +38,11 @@ Explicit `GENIE_MEMBER_OVERRIDE_MAP` overrides have the same precedence as
 genie imports. Materialize pinned sources with
 `mr apply --worktree-mode commit --lock-sync off` before staging.
 
+`mr:lock-sync-check` matches named Nix lock inputs to their exact same-repository
+megarepo members. An unnamed input is accepted when its revision matches any
+member of that repository, including several members at the same revision.
+If none match, it reports `no-declared-revision`.
+
 The check module also exports `config.effectUtils.buck2.aggregateExec`, taking
 a task name and a list of Buck2 arguments (including the subcommand). Existing
 consumers of `tasks/shared/check.nix` need no additional import:
@@ -112,6 +117,13 @@ for outer tasks that must complete before the nested devenv process can evaluate
 ### Available Modules:
 
 - `check.nix` - Aggregate check tasks (check:quick, check:all, configurable strict typecheck gate)
+  The repository's pre-commit entry launches the entire task graph through
+  `scripts/without-git-local-env.sh`. It removes the variables reported by
+  `git rev-parse --local-env-vars` before starting devenv, so fixture Git
+  commands resolve their own repositories instead of the caller's staged index.
+  This affects only the child task process, not the committing Git process.
+  `git-hooks:environment:test` checks this boundary using disposable repositories
+  and a staged sentinel index; it is part of `check:quick`.
 - `devenv-eval-input-budget.nix` - Per-attribute recursive eval-cache input budget,
   wired into `check:quick` and `check:all` by default
 - `clean.nix` - Clean tasks
@@ -119,8 +131,12 @@ for outer tasks that must complete before the nested devenv process can evaluate
   removal; inherited by setup, check, clean, and worktree-guard imports. Stops
   every root-owned Buck isolation, releases reachable Watchman and root-keyed
   admission state, calls `buck2:editor:release` when defined, and makes real
-  directories owner-writable. Never auto-scheduled; indirect Nix gcroots are
-  left to become dangling and be pruned by Nix GC.
+  directories owner-writable using NUL-delimited find scans and a sorted streaming
+  ownership-prefix filter before batched chmod. It never follows symlinks or
+  chmods nested Git/megarepo ownership boundaries. Both scans prune unreadable
+  directories; owned unreadable roots still receive owner-write permission.
+  Never auto-scheduled; indirect Nix gcroots are left to become dangling and be
+  pruned by Nix GC.
   Its live shell fixture also runs through `devenv-modules:test`; the repository's
   aggregate runner supplies pinned fingerprint, copy, move, and JSON tools rather
   than relying on a developer's ambient tool-input environment. The fixture uses
@@ -236,7 +252,10 @@ for outer tasks that must complete before the nested devenv process can evaluate
     installs and unknown bridges fail closed.
   - `pnpm-store-gc --git-dir /path/to/repo/.bare --root /path/to/worktree`
     reports historical root-local store retirement in a read-only dry-run.
-    The collector is Linux-only. On other platforms it exits nonzero before
+    The collector supports Linux x86/x86_64 and ARM/aarch64, selecting each
+    architecture's directory and no-follow open flags. Other Linux architectures
+    fail at compile time rather than assuming compatible flags.
+    On other platforms it exits nonzero before
     filesystem input access with `pnpm-store-gc: unsupported platform (Linux only; Darwin census not implemented)`.
     Repeat `--root` for explicitly selected worktrees; there is no fleet traversal.
     It never targets `$HOME/.local/share/pnpm` or `PNPM_SHARED_STORE_DIR`.
@@ -366,7 +385,17 @@ script to appear exactly once in `genie/ci-workflow/test-platforms.json`'s
 `moduleScripts` classification. The Nix import and shell dispatcher both reject
 missing, stale, duplicate or overlapping entries before dispatch. Darwin runs
 only Darwin-sensitive scripts; Linux and an unset platform run the complete
-catalog. Platform classification is independent of parallel-safety admission.
+catalog, except entries marked `fullProfileOnly: true` are excluded when
+`EFFECT_UTILS_CI_TEST=1`. In particular, `notion-integration-ci.test.sh` needs
+the full profile's Notion task definitions: full-profile `check:quick` and
+`check:all` run it through `test:notion-integration:ci-skip`, independently of
+the platform-selected module-test aggregate.
+The unit graph guard checks direct `devenv tasks run` lines in unit-selected
+scripts, including literal shell-array task arguments, against evaluated task
+names before executing tests. This cheap scan is not a general shell parser;
+embedded fixture/stub strings and dynamically computed task names are outside
+its scope. Platform/profile classification is independent of parallel-safety
+admission.
 `local/devenv-module-tests.sh` runs selected unaudited and shared-checkout state
 scripts serially before starting a bounded worker pool for explicitly admitted
 scripts. Only admitted scripts are ordered longest-first, with lexical

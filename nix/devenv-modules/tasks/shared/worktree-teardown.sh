@@ -132,15 +132,35 @@ if [ "${WORKTREE_TEARDOWN_EDITOR_RELEASE:-0}" = 1 ]; then
   DEVENV_TUI=false devenv tasks run buck2:editor:release --mode single
 fi
 
-# Read-only Buck materializations may remain. Nested Git and megarepo ownership
-# boundaries are pruned before chmod, including their root directories.
-find -P "$root" -type d \
-  \( -exec bash -c '
-    directory=$1
-    [ "$directory" != "$2" ] &&
-    { [ -e "$directory/.git" ] || [ -L "$directory/.git" ] ||
-      [ -f "$directory/megarepo.kdl" ] || [ -f "$directory/megarepo.json" ] ||
-      [ -d "$directory/.bare" ] ||
-      { [ "${directory##*/}" = repos ] &&
-        { [ -f "${directory%/*}/megarepo.kdl" ] || [ -f "${directory%/*}/megarepo.json" ]; }; }; }
-  ' bash {} "$root" \; \) -prune -o -type d -exec chmod u+w -- {} +
+# Find ownership markers separately from directories: no shell/stat tests per
+# directory. Encode boundaries as "path/" and directories as "path//"; sorting
+# puts each boundary before its root and descendants, even for newline names.
+# The streaming filter prunes whole ownership prefixes before batched chmod.
+{
+  # Use fixed relative names to exempt the worktree's own markers, without
+  # interpreting glob characters that may occur in its canonical root path.
+  # Unreadable directories cannot expose markers or descendants: prune them in
+  # both scans, but still emit owned unreadable roots for chmod below.
+  find -P . \
+    \( ! -path './.git' ! -path './.bare' \
+      ! -path './megarepo.kdl' ! -path './megarepo.json' \
+      \( -name .git -o \( -name .bare -xtype d \) -o \
+        \( \( -name megarepo.kdl -o -name megarepo.json \) -xtype f \) \) \
+      -printf '%h/\0' \) , \( -type d ! -readable -prune \)
+  if [ -f "$root/megarepo.kdl" ] || [ -f "$root/megarepo.json" ]; then
+    printf './repos/\0'
+  fi
+  find -P . -type d ! -readable -printf '%p//\0' -prune -o \
+    -type d -printf '%p//\0'
+} | LC_ALL=C sort -zu | awk '
+  BEGIN { RS = "\0"; ORS = "\0" }
+  {
+    if (protected != "" && index($0, protected) == 1) next
+    protected = ""
+    if (substr($0, length($0) - 1) == "//") {
+      print substr($0, 1, length($0) - 2)
+    } else {
+      protected = $0
+    }
+  }
+' | xargs -0 -r chmod u+w --

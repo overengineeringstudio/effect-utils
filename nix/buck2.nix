@@ -52,6 +52,7 @@ let
       ../scripts/buck2-entrypoint.ts
       ../scripts/buck2-cache-posture.ts
       ../scripts/buck2-file-watcher.ts
+      ../scripts/buck2-stdio.c
       ../scripts/buck2-entrypoint.sh
     ];
   };
@@ -72,6 +73,7 @@ pkgs.buck2.overrideAttrs (oldAttrs: {
       hash = platform.starlarkFmtHash;
     })
   ];
+  nativeBuildInputs = (oldAttrs.nativeBuildInputs or [ ]) ++ [ pkgs.stdenv.cc ];
   # Stripping a compiled Bun executable removes its embedded JavaScript payload.
   dontStrip = true;
   postInstall = (oldAttrs.postInstall or "") + ''
@@ -80,12 +82,18 @@ pkgs.buck2.overrideAttrs (oldAttrs: {
     cp ${launcherSource}/buck2-entrypoint.ts "$out/libexec/buck2-entrypoint.ts"
     cp ${launcherSource}/buck2-cache-posture.ts "$out/libexec/buck2-cache-posture.ts"
     cp ${launcherSource}/buck2-file-watcher.ts "$out/libexec/buck2-file-watcher.ts"
+    ${pkgs.stdenv.cc}/bin/cc ${
+      if pkgs.stdenv.hostPlatform.isDarwin then "-dynamiclib" else "-shared -fPIC"
+    } \
+      ${launcherSource}/buck2-stdio.c \
+      -o "$out/libexec/libbuck2-stdio${pkgs.stdenv.hostPlatform.extensions.sharedLibrary}"
     # Darwin clonefile preserves Bun's read-only store mode. Its copy fallback
     # uses TMPDIR, so compiling there would reopen the same clone with O_EXCL.
     # Keep the compile working directory distinct from TMPDIR.
     (
       cd "$(mktemp -d "$TMPDIR/buck2-launcher.XXXXXX")"
       ${pkgs.bun}/bin/bun build --compile "$out/libexec/buck2-entrypoint.ts" \
+        --define "BUCK2_STDIO_LIBRARY=\"$out/libexec/libbuck2-stdio${pkgs.stdenv.hostPlatform.extensions.sharedLibrary}\"" \
         --outfile "$out/libexec/buck2-entrypoint"
     )
     rm "$out/libexec/buck2-entrypoint.ts" "$out/libexec/buck2-cache-posture.ts" "$out/libexec/buck2-file-watcher.ts"

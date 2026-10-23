@@ -1,11 +1,14 @@
 import { spawnSync } from 'node:child_process'
 import {
+  chmodSync,
+  constants,
   cpSync,
   mkdirSync,
   mkdtempSync,
   readdirSync,
   readFileSync,
   realpathSync,
+  statSync,
   rmSync,
   symlinkSync,
   writeFileSync,
@@ -25,9 +28,9 @@ import { createStylexVitePlugins } from './mod.js'
  * invariant the shared options object exists for — the class names are
  * identical to what the Vite/Babel path produces for the same token source.
  *
- * The fixture is materialized at run time and its `node_modules` is assembled
- * by symlinking from this package's installed graph, following the
- * installed-consumer pattern in `mod.installed-consumer.test.ts` (#1167).
+ * Next receives a real, root-local install from a declared immutable fixture
+ * store. Registry acquisition belongs to its Nix input, never to this test.
+ * Vite uses the installed-consumer symlink pattern (#1167).
  */
 const packageRoot = fileURLToPath(new URL('../../..', import.meta.url))
 
@@ -189,10 +192,9 @@ const viteIndexHtml = [
 ].join('\n')
 
 /**
- * Where the fixture's dependencies symlink from. Overridable so an
- * alternative Next major (15.5 vs 16) can be proven without changing the
- * pinned devDependencies — the adapter supports both and the fixture
- * auto-detects which `--webpack` flag the installed major needs.
+ * Where Vite's dependency graph comes from. An alternative Next major can be
+ * proven with matching STYLEX_NEXT_FIXTURE and STYLEX_NEXT_FIXTURE_DEPS inputs;
+ * the adapter auto-detects which `--webpack` flag the installed major needs.
  */
 const fixtureDependencyRoot =
   process.env.STYLEX_NEXT_FIXTURE_DEPS ?? join(packageRoot, 'node_modules')
@@ -224,59 +226,76 @@ const linkAdapterPackage = (consumerRoot: string) => {
   )
 }
 
+/** A writable store per fixture keeps pnpm's derived index out of the immutable input. */
+const copyFixtureStore = ({ source, destination }: { source: string; destination: string }) => {
+  cpSync(source, destination, { recursive: true, mode: constants.COPYFILE_FICLONE })
+  const makeWritable = (path: string) => {
+    const metadata = statSync(path)
+    chmodSync(path, metadata.mode | 0o200)
+    if (metadata.isDirectory() === true) {
+      for (const entry of readdirSync(path)) makeWritable(join(path, entry))
+    }
+  }
+  makeWritable(destination)
+}
+
 /**
- * Installs the Next fixture's dependencies from the registry. A real install,
- * not symlinks: Next 16's build spawns static-generation workers and traces
- * outputs through node_modules, and a symlinked topology whose targets live
- * outside the app root makes the first (cold) build exit 1 with no
- * diagnostics — reproduced with no StyleX and no webpack hook at all. The
- * versions come from this package's installed graph, so the pins under test
- * stay owned by the genie catalog.
+ * Next workers trace dependencies through node_modules, so they need a real
+ * in-root install rather than links to an external graph. A frozen offline
+ * install from the declared seed proves that topology without registry access.
  */
-const installFixtureDependencies = (fixtureRoot: string) => {
-  writeFileSync(
-    join(fixtureRoot, 'package.json'),
-    `${JSON.stringify(
-      {
-        name: 'fixture-next',
-        private: true,
-        packageManager: 'pnpm@12.7.0',
-        dependencies: {
-          next: installedVersion('next'),
-          react: installedVersion('react'),
-          'react-dom': installedVersion('react-dom'),
-          '@stylexjs/stylex': installedVersion('@stylexjs/stylex'),
-          postcss: installedVersion('postcss'),
-        },
-        devDependencies: {
-          // Next's dependency check requires the classic typescript package
-          // layout (`lib/typescript.js`), which the catalog's native TS 7
-          // package no longer ships — the fixture type-checks for real with
-          // the classic compiler.
-          typescript: '5.9.3',
-          '@types/react': installedVersion('@types/react'),
-          '@types/node': installedVersion('@types/node'),
-          'babel-loader': installedVersion('babel-loader'),
-          '@stylexjs/babel-plugin': installedVersion('@stylexjs/babel-plugin'),
-          '@stylexjs/postcss-plugin': installedVersion('@stylexjs/postcss-plugin'),
-        },
-      },
-      null,
-      2,
-    )}\n`,
-  )
-  // sharp (next's optional image dependency) ships an install script; pnpm
-  // refuses undecided build scripts, and the fixture needs none of them.
-  writeFileSync(join(fixtureRoot, 'pnpm-workspace.yaml'), 'allowBuilds:\n  sharp: false\n')
+const installFixtureDependencies = ({
+  fixtureRoot,
+  storeRoot,
+}: {
+  fixtureRoot: string
+  storeRoot: string
+}) => {
+  const input = process.env.STYLEX_NEXT_FIXTURE
+  if (input === undefined || input === '') {
+    throw new Error('fixture pnpm install requires the declared STYLEX_NEXT_FIXTURE input')
+  }
+  for (const name of ['package.json', 'pnpm-lock.yaml', 'pnpm-workspace.yaml']) {
+    cpSync(join(input, name), join(fixtureRoot, name))
+  }
+  const manifest = JSON.parse(readFileSync(join(fixtureRoot, 'package.json'), 'utf8')) as {
+    dependencies: Record<string, string>
+    devDependencies: Record<string, string>
+  }
+  for (const [name, version] of Object.entries({
+    ...manifest.dependencies,
+    ...manifest.devDependencies,
+  })) {
+    // The fixture deliberately uses classic TS; every adapter dependency stays
+    // pinned to the owner's installed graph and its catalog authority.
+    if (name !== 'typescript')
+      expect(version, `fixture dependency ${name}`).toBe(installedVersion(name))
+  }
+  copyFixtureStore({ source: join(input, 'store'), destination: storeRoot })
   const pnpm = process.env.PNPM_BIN
   if (pnpm === undefined || pnpm === '') {
     throw new Error('fixture pnpm install requires the declared PNPM_BIN tool')
   }
-  const install = runFixtureCommand(pnpm, ['install'], {
-    cwd: fixtureRoot,
-    timeout: INSTALL_TIMEOUT_MS,
-    label: 'fixture pnpm install',
-  })
+  const install = runFixtureCommand(
+    pnpm,
+    [
+      'install',
+      '--offline',
+      '--frozen-lockfile',
+      '--ignore-scripts',
+      `--store-dir=${storeRoot}`,
+      '--config.package-import-method=copy',
+      '--config.enable-global-virtual-store=false',
+      // The release-age policy needs registry metadata the content store does
+      // not carry; the hash-pinned Nix fixture already fixed the package set.
+      '--config.minimum-release-age=0',
+    ],
+    {
+      cwd: fixtureRoot,
+      timeout: INSTALL_TIMEOUT_MS,
+      label: 'fixture offline pnpm install',
+    },
+  )
   expect({ status: install.status, stderr: install.stderr }, 'fixture pnpm install failed').toEqual(
     { status: 0, stderr: '' },
   )
@@ -313,9 +332,10 @@ it(
   async () => {
     const nextRoot = mkdtempSync(join(tmpdir(), 'overeng-stylex-next-build-'))
     const viteRoot = mkdtempSync(join(tmpdir(), 'overeng-stylex-next-vite-'))
+    const nextStore = mkdtempSync(join(tmpdir(), 'overeng-stylex-next-store-'))
     try {
       // --- the Next fixture -------------------------------------------------
-      installFixtureDependencies(nextRoot)
+      installFixtureDependencies({ fixtureRoot: nextRoot, storeRoot: nextStore })
       mkdirSync(join(nextRoot, 'src', 'app'), { recursive: true })
       mkdirSync(join(nextRoot, 'src', 'styles'), { recursive: true })
       writeFileSync(join(nextRoot, 'stylex.mjs'), sharedAdapterModule)
@@ -426,6 +446,7 @@ it(
     } finally {
       rmSync(nextRoot, { recursive: true, force: true })
       rmSync(viteRoot, { recursive: true, force: true })
+      rmSync(nextStore, { recursive: true, force: true })
     }
   },
 )

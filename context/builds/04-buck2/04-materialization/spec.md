@@ -212,9 +212,12 @@ resulting authority file must name identical required and owned package sets;
 every package publication validates it.
 
 Publication holds the exclusive state-root `.publish.lock`, created atomically.
-An existing lock fails immediately and prints the explicit token-gated recovery
-operation. There is no age heuristic, timeout, or automatic lock theft. Under
-the lock, the publisher:
+A positively identified dead same-host holder can be recovered after repeating
+the process-incarnation proof under the host fence. Live publishers, foreign-host
+owners, and ambiguous ownership retain explicit token-gated recovery; lock age
+does not authorize recovery. After acquiring the lock, before any batch worker
+creates a candidate, the publisher reclaims abandoned payloads. Under the lock,
+the publisher:
 
 1. fingerprints each distinct selected dependency view and finite declared root
    once for the admitted state;
@@ -264,6 +267,44 @@ If a legacy root install occupies the first hop, immutable GNU
 retains the exchanged entry under `.legacy/`. A failure before the pointer flip
 leaves the prior current view intact. Snapshot payloads never retain links into
 `buck-out`, whose action directories Buck may delete before rebuilding.
+
+Abandoned `.store/.candidate-*`, interrupted root `.gc-*`, and individual
+unreferenced `.legacy/*` entries are reclaimable payloads, not completed
+generations. Publisher startup reclaims candidates and interrupted garbage under
+the exclusive publication lock. Cleanup carries normal-acquisition or
+proven-dead-owner-recovery provenance and validates the held lock path/token/PID.
+Normal acquisition follows the preceding holder's release; recovery proves the
+preceding holder is dead. Both exclude publisher writes. Missing or mismatched
+lock proof refuses cleanup. Startup also observes readers for candidates and
+interrupted garbage: stale cwd/fd references keep those entries even though they
+were unpublished or had previously crossed deletion commitment.
+Reclamation requires no live reservation and a known pointer inventory proving
+that no pointer reaches the entry. Pointer reachability includes
+root/control symlinks and package `node_modules` links, with both lexical and
+resolved targets retained so dangling or indirect legacy links remain protected.
+The retirement fence repeats identity and reachability checks before renaming
+the entry to a private `.gc-*` name; recursive deletion follows outside the
+metadata fence. An interrupted rename or deletion is resumed by the next lock
+holder. Budget eviction considers these orphans before completed generations.
+Publisher acquisition and budget victim acquisition share the same fenced
+dead-owner recovery helper; budget acquisition never waits for a live holder.
+A budget batch holds its exclusion fence and uses one fresh census and reader
+proof, considering orphans before generations and retiring only enough payloads
+to cover the shortfall. The proof expires after 30 seconds. Each candidate
+rechecks identity and ledger epoch immediately before retirement; failed checks
+skip that candidate without waiting. An expired or insufficient batch starts
+another census and proof. Every committed retirement emits its own deletion
+receipt, followed by a batch summary, even when admission subsequently fails.
+The pre-delete seam is an identity/epoch check, not a reader exclusion: a reader
+arriving after observation need not change either value. Non-blocking exclusive
+reader leases in #1990 must be probed at this seam to close that advisory race;
+a held lease skips the candidate without waiting.
+
+Legacy entries are evaluated independently: a referenced displaced install does
+not preserve unrelated legacy entries. A still-referenced legacy entry is
+adopted with one footprint walk and an immutable-identity sidecar when its bytes
+can be sealed safely. Writable shared inodes are not chmodded through aliases;
+unproven immutability remains conservatively uncached.
 
 Repository tasks configure two completed snapshots **per view**: current and
 previous. For `N` admitted views the shared-store bound is `2 × N`, excluding
@@ -413,56 +454,49 @@ artifact evictions inside a surviving root do not stop Buck; `mr store fix` is
 unchanged. See `packages/@overeng/megarepo/src/store/store-buck-daemons.ts` and
 `packages/@overeng/megarepo/src/cli/commands/store/mod.ts`.
 
-## Idle Daemon Reaping
+## Buck Maintenance
 
 ```text
-scripts/buck2-daemon-reaper.ts --buck2 <raw buck2> [--idle-seconds 10800]
-  -> the user's live daemon processes: argv daemon id + isolation, cwd <root>[/buck-out/<i>]
-  -> per daemon: root gone           -> report-gone (pid, daemon id, root, RSS + swap)
-                 status fails/differs -> keep-unreachable (reason)
-                 active command      -> keep-active
-                 idle < threshold    -> keep-recent
-                 idle >= threshold   -> recheck from root -> buck2 --isolation-dir <i> kill
+devenv tasks run buck2:maintain
+  -> mr store buck-maintain --config <repo>/buck-maintain.json
+  -> shared store/store-buck-maintain.ts runtime
+  -> owner/activity/blackout checks under the maintenance lease
+  -> native Buck stale clean, optional inactive full clean, and idle daemon kill
 ```
 
-The pinned `[buck2] daemon_idle_timeout_s` counts command arrivals rather than
-running work, so it can stop a build that runs longer than the timeout or an
-attached `buck2 lsp`. It stays at Buck's default; the reaper owns idle exit.
-Daemons are found from `/proc` rather than `buck2 status --all`, which probes
-every historical `~/.buck/buckd` entry and stalled past a 180 s test timeout on a busy host.
-Each daemon's status is read from its own root with a 30 s timeout and must
-report the same pid and daemon id; anything else keeps the daemon.
-Idle time runs from the later of the daemon's `start_time` and the newest event-log
-file under `<root>/buck-out/<isolation>/log`, where every streamed command writes its
-event log. `buck2 status` writes no event log, and `buck2 kill` only adds a
-directory there. A daemon reporting any
-`active_commands` entry, which includes an attached editor session, is kept
-regardless of age. Memory is sampled first; the final status read from the
-daemon's root, together with the newest event-log write, is then immediately
-followed by `buck2 kill`. The kill is aborted on a changed daemon id or pid, a
-new command, or an event-log write since the deciding observation. After the
-kill, an exited pid other than the observed one, or an event log written during
-the kill, is reported loudly as `raced`.
+`scripts/buck2-daemon-reaper.ts` is a thin runtime adapter, not an independent
+policy implementation. Its former `--buck2`, `--idle-seconds`, and `--root-prefix`
+flags are replaced by `--config`; `--dry-run` reports decisions without mutation.
+The CLI's `--json` emits the complete versioned maintenance receipt.
 
-Accepted residual: `buck2 kill` has no conditional form and the daemon has no
-admission API, so a client cannot make the idle check and the shutdown atomic.
-A command that starts within the sub-second window between the final read and
-the kill, after at least three hours of idleness, fails loudly with the daemon
-killed; the next client invocation restarts the daemon. Buck2's state is
-crash-consistent, so the residual is a visible failed command, never silent
-corruption. `mr store gc`'s teardown stop uses the same order, the same residual
-and a `raced` receipt field; its window follows the retiring worktree's keep
-checks instead of the three-hour threshold.
+The neutral version 1 repository configuration scopes roots to the current
+checkout. It sets a soft 2 GiB `buckOut.budgetBytes`, `buckOut.keepSince: "24h"`,
+and `daemon.idleStopAfter: "30m"`. The 30-minute value is **maintenance policy**,
+not a native idle guarantee. The runtime does not set `daemon_idle_timeout_s`:
+command-arrival timeouts are not proof that a build or editor session is idle.
+Native stale clean can retain recent outputs above budget. Full clean requires
+the optional `buckOut.fullCleanWhenInactiveFor` policy and inactive-worktree
+evidence. No maintenance path recursively removes Buck files itself.
 
-The reaper never signals a process. A daemon whose root no longer exists is
-report-only. The default threshold of three hours outlasts an agent's usual
-pause between commands on one worktree, so active worktrees keep a warm daemon;
-a longer pause only costs a cold daemon start on the next command. A merged or
-abandoned worktree's daemon is stopped at most one run interval after its last
-command plus the threshold.
-`--root-prefix` limits a run to roots under the given prefixes, and `--dry-run`
-prints decisions without stopping anything. Host scheduling belongs to the host
-configuration; the script holds no state between runs.
+Owner scope defaults to the current exact `ST_AGENT`. Configured
+`maintainOwners` entries are exact identities or glob patterns, never permission
+for any arbitrary owner value. Without a seat or configured owners, maintenance
+is report-only. Unowned roots require `maintainUnowned: true`; unknown owner
+evidence is foreign. UTC blackout windows include their start, exclude their
+end, and support midnight wrap. Public configuration has no host-specific roots,
+owner identities, or schedules.
+
+Active streaming commands, including attached `buck2 lsp`, and live Buck client
+processes prevent maintenance. Daemon shutdown uses native, root-scoped Buck
+commands after rechecking activity and identity under the maintenance lease.
+Missing roots and uncertain evidence are report-only. The runtime does not
+signal daemon processes directly.
+
+Accepted residual: Buck has no conditional kill or client-admission API. A new
+client may arrive between the final status/client census and native kill.
+The recheck narrows that window, and detected races are reported; this is not an
+atomic no-new-clients guarantee. The next client invocation can restart the
+daemon. Host scheduling remains host-owned rather than public repository policy.
 
 ## Relationship to Exact Closure Materialization
 

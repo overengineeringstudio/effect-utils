@@ -11,6 +11,7 @@ export const developerOperationDispositions = {
   'buck2:editor:materialize': 'outside-by-policy:authoring-mutation',
   'buck2:editor:publish': 'outside-by-policy:workspace-publication',
   'buck2:editor:publish:all': 'outside-by-policy:workspace-publication',
+  'buck2:maintain': 'outside-by-policy:host-local-maintenance',
   'buck2:providers:check': 'buck-owned',
   'buck2:quick': 'buck-owned',
   'buck2:rust:generators:test': 'outside-by-policy:workspace-publication',
@@ -23,6 +24,8 @@ export const developerOperationDispositions = {
   'genie:watch': 'outside-by-policy:long-lived-watcher',
   'lint:check': 'outside-by-policy:includes-stage-zero-freshness',
   'lint:check:getflake': 'buck-pending:static',
+  // Discovers working-tree Nix inputs (including untracked files) and exercises isolated imports.
+  'lint:check:standalone-staging': 'outside-by-policy:repository-staging-contract',
   'lint:fix': 'outside-by-policy:authoring-mutation',
   'nix:buck2-artifact-import:check': 'outside-by-policy:nix-artifact-import-contract',
   'nix:flake:eval': 'outside-by-policy:nix-flake-evaluation',
@@ -34,6 +37,7 @@ export const developerOperationDispositions = {
   'test:run': 'outside-by-policy:aggregate-includes-policy-excluded-tests',
   'test:utils': 'outside-by-policy:aggregate-includes-policy-excluded-tests',
   'test:watch': 'outside-by-policy:long-lived-watcher',
+  'worktree:teardown': 'outside-by-policy:host-local-maintenance',
 } as const satisfies Record<string, OperationDisposition>
 
 export const validationOperationDispositions = {
@@ -50,6 +54,8 @@ export const ciOperationDispositions = {
   'build-products': 'outside-by-policy:nix-realization',
   cargo: 'outside-by-policy:aggregate-includes-rust-quality-gates',
   'ci-measurements-report': 'outside-by-policy:ci-control-plane',
+  // The fixture crosses the Nix/devenv/pnpm bootstrap boundary, outside a Buck action.
+  'consumer-smoke': 'outside-by-policy:bootstrap-integration',
   'default-ref-policy': 'outside-by-policy:pre-composition-trust-gate',
   'deploy-storybooks': 'outside-by-policy:live-deployment',
   'devenv-perf': 'outside-by-policy:operator-benchmark',
@@ -57,6 +63,8 @@ export const ciOperationDispositions = {
   'nix-closure-sizes': 'outside-by-policy:nix-realization',
   'notify-alignment': 'outside-by-policy:ci-control-plane',
   'pr-reviews-resolved': 'outside-by-policy:github-review-thread-gate',
+  // This control-plane job mutates a live GitHub ref; it has no build action.
+  'promote-published': 'outside-by-policy:live-publication',
   'publish-products': 'outside-by-policy:live-publication',
   quality: 'outside-by-policy:aggregate-includes-stage-zero-freshness-and-native-policy',
   'source-shape': 'outside-by-policy:ci-measurement-with-run-timestamp',
@@ -66,6 +74,7 @@ export const ciOperationDispositions = {
   'test-integration-restate': 'outside-by-policy:service-integration',
   'test-live-deploy-ci-tools': 'outside-by-policy:live-deployment',
   'test-megarepo-cold-gc': 'outside-by-policy:filesystem-integration',
+  'test-megarepo-store-gc': 'outside-by-policy:filesystem-integration',
   'test-playwright-tui-react': 'outside-by-policy:browser-integration',
   'test-playwright-utils': 'outside-by-policy:browser-integration',
   weaver: 'outside-by-policy:aggregate-includes-change-relative-and-live-integration',

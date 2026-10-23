@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
+# This fixture proves publication against a persistent daemon and owns shutdown.
+# Take the wrapper's outer-owner role without changing gate class or cgroup.
+export BUCK2_GATE_WRAPPER_ACTIVE=1
 
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "$TESTS_DIR/../../../../.." && pwd -P)"

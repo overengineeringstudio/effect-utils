@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, setSystemTime } from 'bun:test'
-import { createHash } from 'node:crypto'
+import { spawn } from 'node:child_process'
+import { createHash, randomUUID } from 'node:crypto'
 import {
   chmodSync,
   existsSync,
@@ -13,12 +14,23 @@ import {
   writeFileSync,
 } from 'node:fs'
 import { createServer, type ServerHttp2Stream } from 'node:http2'
-import { getPriority, tmpdir } from 'node:os'
+import { getPriority, homedir, tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { createServer as createTlsServer } from 'node:tls'
 
 import type { CacheAdmissionInvocation } from '../genie/ci-scripts/buck2-cache-evidence.ts'
-import { type AdmissionProbeEndpoint, directBuckArguments } from './buck2-entrypoint.ts'
+import * as daemonPostureTests from './buck2-entrypoint.posture.integration.test.ts'
+import {
+  type AdmissionProbeEndpoint,
+  directBuckArguments,
+  nativeBuildIdArguments,
+} from './buck2-entrypoint.ts'
+import * as gateUnitTests from './buck2-entrypoint.unit.test.ts'
+import * as gateIsolationTests from './buck2-gate-isolation.integration.test.ts'
+import * as gateTeardownTests from './buck2-gate-teardown.integration.test.ts'
+
+// Register the lifecycle suites in the existing devenv test entrypoint.
+void [gateUnitTests, gateTeardownTests, gateIsolationTests, daemonPostureTests]
 
 const roots: string[] = []
 const launchProcesses = new Set<{ readonly pid: number; readonly exited: Promise<number> }>()
@@ -26,6 +38,7 @@ const fixture = (address = 'grpc://127.0.0.1:1', archive = 'http://127.0.0.1:1/c
   const root = mkdtempSync(join(tmpdir(), 'direct-buck-posture-'))
   roots.push(root)
   writeFileSync(join(root, '.buckroot'), '')
+  writeFileSync(join(root, 'evidence-start'), `1700000000000\n${realpathSync(root)}\n1\n`)
   writeFileSync(
     join(root, '.buckconfig'),
     `[buck2]\nremote_cache_enabled = true\nallow_cache_uploads = false\n[buck2_re_client]\naction_cache_address = ${address}\ninstance_name = fixture\ntls = false\n[archive_origin]\ntrusted_url_prefix = ${archive}\ntrusted_tier = private\n`,
@@ -139,7 +152,7 @@ await new Promise<void>((resolve) => process.stdin.once('data', () => resolve())
   }
   const child = Bun.spawn([process.execPath, '--preload', preload, ...args], {
     cwd: root,
-    env,
+    env: { ...env, BUCK2_STDIO_LIBRARY: process.env['BUCK2_STDIO_LIBRARY'] },
     detached: true,
     stdin: 'pipe',
     stdout: 'pipe',
@@ -219,7 +232,524 @@ afterEach(async () => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true })
 })
 
+describe('native build ID registry', () => {
+  const buildId = '00112233-4455-4677-8899-aabbccddeeff'
+
+  it('does not register a foreign project root or non-default isolation', () => {
+    const root = fixture()
+    const foreign = fixture()
+    const evidence = join(root, 'evidence.json')
+    const env = {
+      CI_BUCK2_CACHE_EVIDENCE_PATH: evidence,
+      CI_BUCK2_CACHE_EVIDENCE_START: join(root, 'evidence-start'),
+      BUCK_WRAPPER_UUID: buildId,
+    }
+    for (const invocation of [
+      { cwd: foreign, args: ['build', '//:app'], env },
+      { cwd: root, args: ['--isolation-dir', 'fixture', 'build', '//:app'], env },
+      { cwd: root, args: ['--isolation-dir=fixture', 'build', '//:app'], env },
+      { cwd: root, args: ['build', '//:app'], env: { ...env, BUCK_ISOLATION_DIR: 'fixture' } },
+      { cwd: foreign, args: ['build', '//:app', '--write-build-id=caller.id'], env },
+      { cwd: root, args: ['--isolation-dir=fixture', 'build', '--write-build-id=caller.id'], env },
+    ]) {
+      expect(nativeBuildIdArguments(invocation)).toEqual(invocation.args)
+    }
+    expect(existsSync(`${evidence}.native-build-id-paths.jsonl`)).toBe(false)
+    expect(existsSync(`${evidence}.native-build-ids`)).toBe(false)
+  })
+
+  it('registers the collected real root with implicit or explicit default isolation', () => {
+    const root = fixture()
+    const cwd = join(root, 'subdirectory')
+    mkdirSync(cwd)
+    const evidence = join(root, 'evidence.json')
+    const env = {
+      CI_BUCK2_CACHE_EVIDENCE_PATH: evidence,
+      CI_BUCK2_CACHE_EVIDENCE_START: join(root, 'evidence-start'),
+      BUCK_WRAPPER_UUID: buildId,
+    }
+    for (const invocation of [
+      { cwd: root, args: ['build', '//:app'], env },
+      { cwd, args: ['build', '//:app'], env },
+      { cwd: root, args: ['--isolation-dir', 'v2', 'build', '//:app'], env },
+      { cwd: root, args: ['--isolation-dir=v2', 'build', '//:app'], env },
+      { cwd: root, args: ['build', '//:app'], env: { ...env, BUCK_ISOLATION_DIR: 'v2' } },
+      {
+        cwd: root,
+        args: ['--isolation-dir=v2', 'build', '//:app'],
+        env: { ...env, BUCK_ISOLATION_DIR: 'fixture' },
+      },
+    ]) {
+      expect(nativeBuildIdArguments(invocation)).toEqual([
+        ...invocation.args,
+        '--write-build-id',
+        `${evidence}.native-build-ids/${buildId}.buck-trace-id`,
+      ])
+    }
+    expect(
+      readFileSync(`${evidence}.native-build-id-paths.jsonl`, 'utf8').trim().split('\n'),
+    ).toHaveLength(6)
+  })
+
+  it('ignores isolation flags in explicit and implicit run payloads', () => {
+    const root = fixture()
+    const evidence = join(root, 'evidence.json')
+    const env = {
+      CI_BUCK2_CACHE_EVIDENCE_PATH: evidence,
+      CI_BUCK2_CACHE_EVIDENCE_START: join(root, 'evidence-start'),
+      BUCK_WRAPPER_UUID: buildId,
+    }
+    for (const separator of [['--'], ['positional']] as const) {
+      const payload = [...separator, '--isolation-dir=fixture']
+      const args = ['run', '//:app', ...payload]
+      const path = `${evidence}.native-build-ids/${buildId}.buck-trace-id`
+      expect(nativeBuildIdArguments({ args, cwd: root, env })).toEqual([
+        'run',
+        '--write-build-id',
+        path,
+        '//:app',
+        ...payload,
+      ])
+    }
+    rmSync(`${evidence}.native-build-id-paths.jsonl`)
+    rmSync(`${evidence}.native-build-ids`, { recursive: true })
+    for (const separator of [['--'], ['positional']] as const) {
+      for (const args of [
+        ['--isolation-dir=fixture', 'run', '//:app', ...separator, '--isolation-dir=v2'],
+        ['run', '--isolation-dir=fixture', '//:app', ...separator, '--isolation-dir=v2'],
+        ['run', '//:app', ...separator, '--isolation-dir', 'v2'],
+      ]) {
+        expect(
+          nativeBuildIdArguments({
+            args,
+            cwd: root,
+            env: { ...env, BUCK_ISOLATION_DIR: 'fixture' },
+          }),
+        ).toEqual(args)
+      }
+    }
+    expect(existsSync(`${evidence}.native-build-id-paths.jsonl`)).toBe(false)
+  })
+
+  it('leaves invocations untouched without a valid collected-root marker', () => {
+    const root = fixture()
+    const evidence = join(root, 'evidence.json')
+    const marker = join(root, 'evidence-start')
+    const args = ['build', '//:app']
+    for (const contents of ['', `invalid\n${root}\n1\n`, `1700000000000\n${root}\ninvalid\n`]) {
+      writeFileSync(marker, contents)
+      expect(
+        nativeBuildIdArguments({
+          args,
+          cwd: root,
+          env: {
+            CI_BUCK2_CACHE_EVIDENCE_PATH: evidence,
+            CI_BUCK2_CACHE_EVIDENCE_START: marker,
+          },
+        }),
+      ).toEqual(args)
+    }
+    for (const markerPath of [undefined, '', join(root, 'missing-marker')]) {
+      expect(
+        nativeBuildIdArguments({
+          args,
+          cwd: root,
+          env: {
+            CI_BUCK2_CACHE_EVIDENCE_PATH: evidence,
+            CI_BUCK2_CACHE_EVIDENCE_START: markerPath,
+          },
+        }),
+      ).toEqual(args)
+    }
+    expect(existsSync(`${evidence}.native-build-id-paths.jsonl`)).toBe(false)
+  })
+
+  it('fails closed when the native-start registry cannot be persisted', () => {
+    const root = fixture()
+    const blocked = join(root, 'not-a-directory')
+    writeFileSync(blocked, '')
+    expect(() =>
+      nativeBuildIdArguments({
+        args: ['build', '//:app'],
+        cwd: root,
+        env: {
+          CI_BUCK2_CACHE_EVIDENCE_PATH: join(blocked, 'evidence.json'),
+          CI_BUCK2_CACHE_EVIDENCE_START: join(root, 'evidence-start'),
+          BUCK_WRAPPER_UUID: buildId,
+        },
+      }),
+    ).toThrow()
+  })
+
+  it('does not register or start a denied cache writer', async () => {
+    const root = fixture()
+    const evidence = join(root, 'evidence.json')
+    const started = join(root, 'native-started')
+    const native = join(root, 'denied-native')
+    writeFileSync(native, `#!/bin/sh\nprintf started > ${JSON.stringify(started)}\n`, {
+      mode: 0o700,
+    })
+    const child = Bun.spawn(
+      [process.execPath, join(import.meta.dir, 'buck2-entrypoint.ts'), native, 'build', '//:app'],
+      {
+        cwd: root,
+        env: {
+          PATH: process.env['PATH'],
+          HOME: root,
+          BUCK_WRAPPER_UUID: buildId,
+          BUCK2_CACHE_WRITE_BASIC_AUTH: 'fixture-secret',
+          CI_BUCK2_CACHE_EVIDENCE_PATH: evidence,
+          CI_BUCK2_CACHE_EVIDENCE_START: join(root, 'evidence-start'),
+          BUCK2_STDIO_LIBRARY: process.env['BUCK2_STDIO_LIBRARY'],
+        },
+        stdout: 'pipe',
+        stderr: 'pipe',
+      },
+    )
+    expect(await child.exited).toBe(1)
+    expect(await new Response(child.stderr).text()).toContain('refusing to publish')
+    expect(existsSync(started)).toBe(false)
+    expect(existsSync(`${evidence}.native-build-id-paths.jsonl`)).toBe(false)
+    expect(existsSync(`${evidence}.native-build-ids`)).toBe(false)
+  })
+
+  it('registers native output paths without claiming native startup or writing the ID', async () => {
+    const root = fixture()
+    const evidence = join(root, 'evidence.json')
+    const env = {
+      CI_BUCK2_CACHE_EVIDENCE_PATH: evidence,
+      CI_BUCK2_CACHE_EVIDENCE_START: join(root, 'evidence-start'),
+      BUCK_WRAPPER_UUID: buildId.replaceAll('-', '').toUpperCase(),
+      BUCK2_NO_REMOTE_CACHE: '1',
+    }
+    const args = await directBuckArguments({
+      ...options(root),
+      env,
+      args: ['run', '//:app', '--', '--write-build-id=application-argument'],
+    })
+    const result = nativeBuildIdArguments({ args, cwd: root, env })
+    const path = `${evidence}.native-build-ids/${buildId}.buck-trace-id`
+    expect(result).toEqual(['run', '--write-build-id', path, ...args.slice(1)])
+    expect(readFileSync(`${evidence}.native-build-id-paths.jsonl`, 'utf8')).toBe(
+      `${JSON.stringify({ buildId, path })}\n`,
+    )
+    expect(existsSync(path)).toBe(false)
+  })
+
+  for (const flag of [['--write-build-id', 'caller.id'], ['--write-build-id=caller.id']]) {
+    it(`preserves caller native output arguments (${flag.join(' ')})`, () => {
+      const root = fixture()
+      const evidence = join(root, 'evidence.json')
+      const args = ['build', '//:app', ...flag]
+      expect(
+        nativeBuildIdArguments({
+          args,
+          cwd: root,
+          env: {
+            CI_BUCK2_CACHE_EVIDENCE_PATH: evidence,
+            CI_BUCK2_CACHE_EVIDENCE_START: join(root, 'evidence-start'),
+            BUCK_WRAPPER_UUID: buildId,
+          },
+        }),
+      ).toEqual(args)
+      expect(JSON.parse(readFileSync(`${evidence}.native-build-id-paths.jsonl`, 'utf8'))).toEqual({
+        buildId,
+        path: join(root, 'caller.id'),
+      })
+      expect(existsSync(join(root, 'caller.id'))).toBe(false)
+    })
+  }
+
+  it('does not register rootless, non-config, help or disabled-evidence invocations', () => {
+    const root = fixture()
+    const rootless = mkdtempSync(join(tmpdir(), 'buck-rootless-'))
+    roots.push(rootless)
+    const evidence = join(root, 'evidence.json')
+    for (const invocation of [
+      { cwd: rootless, args: ['build', '//:app'] },
+      { cwd: root, args: ['log', 'show'] },
+      { cwd: root, args: ['build', '--help'] },
+      { cwd: root, args: ['--', 'build'] },
+      { cwd: root, args: ['build', '--write-build-id'] },
+      { cwd: root, args: ['build', '--write-build-id='] },
+    ]) {
+      expect(
+        nativeBuildIdArguments({
+          ...invocation,
+          env: {
+            CI_BUCK2_CACHE_EVIDENCE_PATH: evidence,
+            CI_BUCK2_CACHE_EVIDENCE_START: join(root, 'evidence-start'),
+            BUCK_WRAPPER_UUID: buildId,
+          },
+        }),
+      ).toEqual(invocation.args)
+    }
+    expect(nativeBuildIdArguments({ args: ['build'], cwd: root, env: {} })).toEqual(['build'])
+    expect(existsSync(`${evidence}.native-build-id-paths.jsonl`)).toBe(false)
+  })
+
+  it('lets native startup produce the registered canonical build ID', async () => {
+    const root = fixture()
+    const evidence = join(root, 'evidence.json')
+    const native = join(root, 'native-build-id')
+    writeFileSync(
+      native,
+      `#!${process.execPath}
+import { writeFileSync } from 'node:fs'
+const args = process.argv.slice(2)
+const path = args[args.indexOf('--write-build-id') + 1]
+writeFileSync(path, process.env.BUCK_WRAPPER_UUID + '\\n')
+`,
+      { mode: 0o700 },
+    )
+    const child = Bun.spawn(
+      [process.execPath, join(import.meta.dir, 'buck2-entrypoint.ts'), native, 'build', '//:app'],
+      {
+        cwd: root,
+        env: {
+          PATH: process.env['PATH'],
+          HOME: root,
+          BUCK2_NO_REMOTE_CACHE: '1',
+          BUCK_WRAPPER_UUID: buildId,
+          CI_BUCK2_CACHE_EVIDENCE_PATH: evidence,
+          CI_BUCK2_CACHE_EVIDENCE_START: join(root, 'evidence-start'),
+          BUCK2_STDIO_LIBRARY: process.env['BUCK2_STDIO_LIBRARY'],
+        },
+        stdout: 'pipe',
+        stderr: 'pipe',
+      },
+    )
+    expect({
+      code: await child.exited,
+      stderr: await new Response(child.stderr).text(),
+    }).toMatchObject({ code: 0 })
+    const row = JSON.parse(readFileSync(`${evidence}.native-build-id-paths.jsonl`, 'utf8'))
+    expect(row.buildId).toBe(buildId)
+    expect(readFileSync(row.path, 'utf8').trim()).toBe(buildId)
+  })
+})
+
 describe('direct pinned Buck posture', () => {
+  for (const mode of ['source', 'compiled', 'missing-shim'] as const) {
+    it(`preserves inherited stdio flags and complete large stderr after a launcher diagnostic (${mode})`, async () => {
+      const root = fixture()
+      const baseline = join(root, 'stdio-before.json')
+      const observed = join(root, 'stdio-after.json')
+      const childPath = join(root, 'native-stderr.ts')
+      const launcher = join(import.meta.dir, 'buck2-entrypoint.ts')
+      const library = process.env['BUCK2_STDIO_LIBRARY']
+      expect(library).toBeDefined()
+      const executable = mode === 'source' ? process.execPath : join(root, 'compiled-launcher')
+      const launcherArgs = mode === 'source' ? [launcher] : []
+      if (mode !== 'source') {
+        const build = Bun.spawnSync(
+          [
+            process.execPath,
+            'build',
+            '--compile',
+            launcher,
+            '--define',
+            `BUCK2_STDIO_LIBRARY=${JSON.stringify(mode === 'missing-shim' ? join(root, 'absent-shim') : library)}`,
+            '--outfile',
+            executable,
+          ],
+          { cwd: root, stdout: 'pipe', stderr: 'pipe' },
+        )
+        expect({ code: build.exitCode, stderr: build.stderr.toString() }).toMatchObject({ code: 0 })
+      }
+      const nativeFlags = `
+import { dlopen } from 'bun:ffi'
+import { writeFileSync, writeSync } from 'node:fs'
+const stdio = dlopen(${JSON.stringify(library)}, {
+  eu_getfl: { args: ['i32'], returns: 'i32' },
+  eu_setfl: { args: ['i32', 'i32'], returns: 'i32' },
+})
+const flags = () => [0, 1, 2].map((fd) => stdio.symbols.eu_getfl(fd))
+`
+      const payloadSize = 2 * 1024 * 1024
+      writeFileSync(
+        childPath,
+        `#!${process.execPath}
+${nativeFlags}
+writeFileSync(${JSON.stringify(observed)}, JSON.stringify(flags()))
+const payload = Buffer.alloc(${payloadSize}, 'x')
+let offset = 0
+while (offset < payload.length) offset += writeSync(2, payload, offset, payload.length - offset)
+writeSync(2, '\\nlarge-stderr-complete\\n')
+`,
+        { mode: 0o700 },
+      )
+      // Establish genuinely blocking inherited descriptors independently of the
+      // test runner's stream implementation, then exec the real launcher.
+      const child = Bun.spawn(
+        [
+          process.execPath,
+          '-e',
+          `${nativeFlags}
+const nonblock = process.platform === 'darwin' ? 4 : 2048
+for (const [fd, value] of flags().entries()) {
+  if (value < 0 || stdio.symbols.eu_setfl(fd, value & ~nonblock) !== 0) process.exit(70)
+}
+writeFileSync(${JSON.stringify(baseline)}, JSON.stringify(flags()))
+// Exercise the native ABI with an actual flag transition, not a no-op restore.
+const blocking = flags()
+for (const [fd, value] of blocking.entries()) {
+  if (stdio.symbols.eu_setfl(fd, value | nonblock) !== 0) process.exit(71)
+  if (stdio.symbols.eu_getfl(fd) !== (value | nonblock)) process.exit(72)
+  if (stdio.symbols.eu_setfl(fd, value) !== 0 || stdio.symbols.eu_getfl(fd) !== value) process.exit(73)
+}
+process.execve(${JSON.stringify(executable)}, [${JSON.stringify(executable)}, ...${JSON.stringify(launcherArgs)}, ${JSON.stringify(childPath)}, 'build', '//:app'], process.env)
+`,
+        ],
+        {
+          cwd: root,
+          env: {
+            PATH: process.env['PATH'],
+            HOME: root,
+            XDG_CACHE_HOME: join(root, 'cache'),
+            BUCK2_STDIO_LIBRARY: library,
+          },
+          detached: true,
+          stdin: 'ignore',
+          stdout: 'pipe',
+          stderr: 'pipe',
+        },
+      )
+      launchProcesses.add(child)
+      const reader = child.stderr.getReader()
+      const chunks: Uint8Array[] = []
+      try {
+        for (;;) {
+          const { done, value } = await reader.read()
+          if (done === true) break
+          chunks.push(value)
+          // Deliberately apply backpressure rather than buffering the entire
+          // stream in a fast Response reader.
+          await Bun.sleep(5)
+        }
+      } finally {
+        reader.releaseLock()
+      }
+      const stderr = Buffer.concat(chunks).toString()
+      expect(stderr).toContain('warning: Buck2 REAPI probe failed:')
+      if (mode === 'missing-shim') {
+        expect(stderr.split('warning: Buck2 stdio flag protection unavailable:')).toHaveLength(2)
+      } else {
+        expect(stderr.includes('warning: Buck2 stdio flag')).toBe(false)
+      }
+      // Darwin F_GETFL also exposes kernel FWASWRITTEN bookkeeping after the
+      // warning. It is not a status option and cannot be cleared by F_SETFL.
+      const statusMask = process.platform === 'darwin' ? ~0x10000 : -1
+      expect(
+        JSON.parse(readFileSync(observed, 'utf8')).map((value: number) => value & statusMask),
+      ).toEqual(
+        JSON.parse(readFileSync(baseline, 'utf8')).map((value: number) => value & statusMask),
+      )
+      expect(await child.exited).toBe(0)
+      expect(stderr.endsWith(`${'x'.repeat(payloadSize)}\nlarge-stderr-complete\n`)).toBe(true)
+    }, 20000)
+  }
+
+  for (const scenario of ['unwritable-stderr', 'restore-failure'] as const) {
+    it(`still execs with complete child output after stdio protection ${scenario}`, async () => {
+      const root = fixture()
+      const launcher = join(import.meta.dir, 'buck2-entrypoint.ts')
+      const native = join(root, 'native-stdout.ts')
+      const payloadSize = 256 * 1024
+      writeFileSync(
+        native,
+        `#!${process.execPath}
+import { writeSync } from 'node:fs'
+const payload = Buffer.alloc(${payloadSize}, 'y')
+let offset = 0
+while (offset < payload.length) offset += writeSync(1, payload, offset, payload.length - offset)
+writeSync(1, '\\nchild-executed\\n')
+`,
+        { mode: 0o700 },
+      )
+      let command: string[]
+      if (scenario === 'unwritable-stderr') {
+        const executable = join(root, 'missing-protection-launcher')
+        const build = Bun.spawnSync(
+          [
+            process.execPath,
+            'build',
+            '--compile',
+            launcher,
+            '--define',
+            `BUCK2_STDIO_LIBRARY=${JSON.stringify(join(root, 'absent-shim'))}`,
+            '--outfile',
+            executable,
+          ],
+          { cwd: root, stdout: 'pipe', stderr: 'pipe' },
+        )
+        expect({ code: build.exitCode, stderr: build.stderr.toString() }).toMatchObject({ code: 0 })
+        command = [
+          process.execPath,
+          '-e',
+          `import { closeSync, openSync } from 'node:fs'
+// Bun itself cannot exec with a closed fd2, even without a launcher. Keep
+// fd2 present but read-only so the optional warning genuinely gets EBADF.
+closeSync(2)
+if (openSync('/dev/null', 'r') !== 2) process.exit(71)
+process.execve(${JSON.stringify(executable)}, [${JSON.stringify(executable)}, ${JSON.stringify(native)}, '--version'], process.env)`,
+        ]
+      } else {
+        const preload = join(root, 'inject-restore-failure.ts')
+        // Force a real EBADF during restoration, then reopen stdin only at the
+        // actual exec call: Bun itself rejects closed stdio before execve.
+        writeFileSync(
+          preload,
+          `import { closeSync, openSync } from 'node:fs'
+import process from 'node:process'
+const execve = process.execve
+const forwardExecve = (file: string, args: string[], env: Record<string, string>) => {
+  if (openSync('/dev/null', 'r') !== 0) process.exit(73)
+  return execve(file, args, env)
+}
+let injected = false
+Object.defineProperty(process, 'execve', {
+  get() {
+    if (injected === false) {
+      closeSync(0)
+      injected = true
+    }
+    return forwardExecve
+  },
+})
+`,
+        )
+        command = [process.execPath, '--preload', preload, launcher, native, '--version']
+      }
+      const child = Bun.spawn(command, {
+        cwd: root,
+        env: {
+          PATH: process.env['PATH'],
+          HOME: root,
+          BUCK2_STDIO_LIBRARY: process.env['BUCK2_STDIO_LIBRARY'],
+        },
+        detached: true,
+        stdin: 'ignore',
+        stdout: 'pipe',
+        stderr: 'pipe',
+      })
+      launchProcesses.add(child)
+      const [stdout, stderr, code] = await Promise.all([
+        new Response(child.stdout).text(),
+        new Response(child.stderr).text(),
+        child.exited,
+      ])
+      expect(code).toBe(0)
+      expect(stdout).toBe(`${'y'.repeat(payloadSize)}\nchild-executed\n`)
+      if (scenario === 'restore-failure') {
+        expect(stderr.split('warning: Buck2 stdio flag restoration failed:')).toHaveLength(2)
+        expect(stderr).not.toContain('warning: Buck2 stdio flag protection unavailable:')
+      } else {
+        expect(stderr).toBe('')
+      }
+    }, 20000)
+  }
+
   for (const scenario of ['healthy', 'retry-success', 'both-fail'] as const) {
     it(`records per-invocation cache admission for ${scenario}`, async () => {
       let requests = 0
@@ -499,6 +1029,67 @@ console.log(JSON.stringify(outcomes));`,
       }),
     ).rejects.toThrow('refusing to publish')
   })
+
+  for (const githubActions of ['true', 'false', undefined]) {
+    it(`annotates writer refusal only in GitHub Actions (${githubActions ?? 'unset'})`, async () => {
+      const root = fixture()
+      const childPath = join(root, 'writer-refusal.ts')
+      writeFileSync(
+        childPath,
+        `
+import { directBuckArguments } from ${JSON.stringify(join(import.meta.dir, 'buck2-entrypoint.ts'))}
+const options = {
+  cwd: ${JSON.stringify(root)},
+  cacheDirectory: ${JSON.stringify(join(root, 'probe-cache'))},
+  args: ['build', '//:app'],
+  env: ${JSON.stringify({
+    GITHUB_ACTIONS: githubActions,
+    BUCK2_PRIVATE_CACHE_WRITE_BASIC_AUTH: 'fixture-secret',
+    BUCK2_PRIVATE_CACHE_ADDRESS: 'grpc://127.0.0.1:1',
+  })},
+}
+for (let attempt = 0; attempt < 2; attempt++) {
+  try {
+    await directBuckArguments(options)
+    throw new Error('writer unexpectedly admitted')
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : error)
+  }
+}
+`,
+      )
+      const child = Bun.spawn([process.execPath, childPath], {
+        cwd: root,
+        stdout: 'pipe',
+        stderr: 'pipe',
+      })
+      const stderr = await new Response(child.stderr).text()
+      expect(await child.exited).toBe(0)
+      const failures = Array.from(
+        stderr.matchAll(
+          /warning: Buck2 REAPI probe failed: (class=\S+ phase=\S+ elapsed_ms=\d+ deadline_ms=2500)/gu,
+        ),
+        (match) => match[1],
+      )
+      expect(failures).toHaveLength(2)
+      const annotations = stderr
+        .split('\n')
+        .filter((line) => line.startsWith('::error title=Buck2 cache writer refused::'))
+      expect(annotations).toEqual(
+        githubActions === 'true'
+          ? Array(2).fill(
+              `::error title=Buck2 cache writer refused::REAPI unreachable (${failures.at(-1)}); refusing to publish without remote cache`,
+            )
+          : [],
+      )
+      expect(
+        stderr.match(
+          /Buck cache writer: REAPI unreachable; refusing to publish without remote cache/gu,
+        ),
+      ).toHaveLength(2)
+      expect(stderr).not.toContain('fixture-secret')
+    })
+  }
 
   it('falls back to local execution without uploads only for an optional writer', async () => {
     const root = fixture()
@@ -1298,4 +1889,364 @@ printf 'native build\\n'
       })
     })
   }
+})
+
+// These platform processes expose no awaitable state event to a non-parent.
+// Fake time cannot advance systemd teardown or a native daemon's startup.
+const waitForGateCondition = async (description: string, condition: () => boolean) => {
+  const deadline = Date.now() + 30000
+  while (condition() === false) {
+    if (Date.now() > deadline) throw new Error(`timed out waiting for ${description}`)
+    await Bun.sleep(25)
+  }
+}
+
+describe('gate wrapper EXIT and signal traps', () => {
+  for (const signal of ['EXIT', 'EXIT130', 'SIGINT', 'SIGTERM', 'SIGHUP'] as const) {
+    it(`preserves ${signal} status and cleans only the selected isolation`, async () => {
+      const root = fixture()
+      const packaged = process.env['BUCK2_BIN'] ?? Bun.which('buck2')
+      if (packaged === null || packaged === undefined)
+        throw new Error('pinned buck2 wrapper required')
+      // PATH may contain a process-wrapping Bash shim; use the actual
+      // interpreter selected by the packaged production wrapper.
+      const bash = /^#!(\/\S+)\n/u.exec(readFileSync(packaged, 'utf8'))?.[1]
+      if (bash === undefined) throw new Error('expected pinned Buck wrapper interpreter')
+      writeFileSync(join(root, '.buckconfig'), '[cells]\nroot = .\n')
+      const native = join(root, 'native')
+      const launcher = join(root, 'launcher')
+      const wrapper = join(root, 'buck2')
+      const ready = join(root, 'ready')
+      const started = join(root, 'started')
+      const killed = join(root, 'killed')
+      const received = join(root, 'received')
+      const stopped = join(root, 'stopped')
+      const signaled = signal !== 'EXIT' && signal !== 'EXIT130'
+      writeFileSync(
+        native,
+        `#!${process.execPath}
+import { appendFileSync, existsSync, writeFileSync } from 'node:fs'
+const args = process.argv.slice(2)
+if (args.at(-1) === 'status') {
+  if (existsSync(${JSON.stringify(started)})) console.log(JSON.stringify({project_root: ${JSON.stringify(realpathSync(root))}, isolation_dir: 'owned', active_commands: [], process_info: {pid: process.ppid}}))
+} else if (args.at(-1) === 'kill') {
+  if (${JSON.stringify(signaled)} && !existsSync(${JSON.stringify(stopped)})) appendFileSync(${JSON.stringify(killed)}, 'native still busy\\n')
+  appendFileSync(${JSON.stringify(killed)}, args.join(' ') + '\\n')
+} else if (${JSON.stringify(signaled)} === false) {
+  writeFileSync(${JSON.stringify(started)}, 'started')
+  process.exit(${signal === 'EXIT130' ? 130 : 23})
+} else {
+  writeFileSync(${JSON.stringify(started)}, 'started')
+  const released = Promise.withResolvers()
+  process.stdin.once('data', released.resolve)
+  for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP']) process.on(signal, async () => {
+    appendFileSync(${JSON.stringify(received)}, signal + '\\n')
+    await released.promise
+    writeFileSync(${JSON.stringify(stopped)}, 'stopped')
+    process.exit(0)
+  })
+  await Bun.write(${JSON.stringify(ready)}, 'ready')
+  process.stdin.resume()
+  await Promise.withResolvers().promise
+}
+`,
+        { mode: 0o700 },
+      )
+      writeFileSync(
+        launcher,
+        `#!${bash}\nexec '${process.execPath}' '${join(import.meta.dir, 'buck2-entrypoint.ts')}' "$@"\n`,
+        { mode: 0o700 },
+      )
+      writeFileSync(
+        wrapper,
+        readFileSync(join(import.meta.dir, 'buck2-entrypoint.sh'), 'utf8')
+          .replaceAll('@shell@', bash)
+          .replaceAll('@native@', native)
+          .replaceAll('@launcher@', launcher)
+          .replaceAll('@sha256@', Bun.which('sha256sum') ?? 'false'),
+        { mode: 0o700 },
+      )
+      // node:child_process exposes the parent's raw wait distinction rather
+      // than flattening signal death to the shell-style numeric 128+signal.
+      const env = process.platform === 'linux' ? Bun.which('env') : undefined
+      if (env === null) throw new Error('GNU env required to reset inherited SIGINT')
+      const args = [wrapper, '--isolation-dir', 'owned', 'build', '//:fixture']
+      const command = env ?? wrapper
+      const commandArgs =
+        env === undefined ? args.slice(1) : ['--default-signal=INT', '--', ...args]
+      const child = spawn(command, commandArgs, {
+        cwd: root,
+        detached: true,
+        env: {
+          ...process.env,
+          BASH_ENV: undefined,
+          GATE_SLOT_CLASS: 'heavy',
+          BUCK2_GATE_WRAPPER_ACTIVE: undefined,
+        },
+        stdio: ['pipe', 'pipe', 'pipe'],
+      })
+      let stderr = ''
+      child.stderr.on('data', (chunk) => {
+        stderr += chunk.toString()
+      })
+      child.stdout.resume()
+      const completion = Promise.withResolvers<{ code: number | null; signal: string | null }>()
+      child.once('error', completion.reject)
+      child.once('close', (code, signal) => completion.resolve({ code, signal }))
+      const exited = completion.promise
+      if (child.pid === undefined) throw new Error('gate wrapper did not spawn')
+      launchProcesses.add({ pid: child.pid, exited: exited.then(({ code }) => code ?? 0) })
+      if (signaled === true) {
+        await waitForGateCondition('fake native signal readiness', () => existsSync(ready))
+        if (process.platform === 'linux') {
+          expect(realpathSync(`/proc/${child.pid}/exe`)).toBe(realpathSync(bash))
+          const wrapperEnv = readFileSync(`/proc/${child.pid}/environ`, 'utf8').split('\0')
+          expect(wrapperEnv.some((entry) => entry.startsWith('BASH_ENV='))).toBe(false)
+          const ignored = /^SigIgn:\s*([0-9a-f]+)$/imu.exec(
+            readFileSync(`/proc/${child.pid}/status`, 'utf8'),
+          )?.[1]
+          if (ignored === undefined) throw new Error('missing wrapper SigIgn mask')
+          expect(BigInt(`0x${ignored}`) & 2n).toBe(0n)
+        }
+        child.kill(signal)
+        await waitForGateCondition('forwarded native signal', () => existsSync(received))
+        // A second delivery while the native is draining must neither bypass
+        // its wait nor trigger a second daemon cleanup.
+        child.kill(signal)
+        child.stdin.write('release\n')
+      }
+      const result = await exited
+      expect(result, stderr).toEqual({
+        code: signaled === true ? null : signal === 'EXIT130' ? 130 : 23,
+        signal: signaled === true ? signal : null,
+      })
+      expect(child.signalCode).toBe(signaled === true ? signal : null)
+      expect(readFileSync(killed, 'utf8')).toBe('--isolation-dir owned kill\n')
+      if (signaled === true) {
+        expect(readFileSync(received, 'utf8')).toBe(`${signal}\n`)
+        expect(readFileSync(stopped, 'utf8')).toBe('stopped')
+      }
+      child.stdin.end()
+    }, 60000)
+  }
+})
+
+describe('Linux gate daemon lifecycle', () => {
+  const manager =
+    process.platform === 'linux' && Bun.which('systemctl') !== null
+      ? Bun.spawnSync(['systemctl', '--user', 'show-environment'], {
+          stdout: 'pipe',
+          stderr: 'pipe',
+        })
+      : { exitCode: 1, stderr: Buffer.from('ENOENT: systemctl --user unavailable') }
+  const unavailable = process.platform !== 'linux' || manager.exitCode !== 0
+  const reason =
+    process.platform !== 'linux'
+      ? `platform ${process.platform} has no Linux user manager`
+      : manager.stderr.toString()
+  if (unavailable === true) {
+    it('asserts the reason for skipping the native user-manager proof', () => {
+      expect(reason.length).toBeGreaterThan(0)
+      if (process.platform === 'linux')
+        expect(reason).toMatch(
+          /not found|ENOENT|Failed to connect|No such file|No medium|not been booted/iu,
+        )
+      console.error(`SKIP buck2 gate scope: ${reason.trim()}`)
+    })
+  }
+  it.skipIf(unavailable)(
+    'keeps daemon/forkserver in the job scope, ends that scope, and retains an active concurrent client',
+    async () => {
+      const wrapper = process.env['BUCK2_BIN'] ?? Bun.which('buck2')
+      if (wrapper === null || wrapper === undefined)
+        throw new Error('pinned buck2 wrapper required')
+      const native = join(dirname(dirname(realpathSync(wrapper))), 'libexec', 'buck2')
+      expect(existsSync(native)).toBe(true)
+      const root = realpathSync(mkdtempSync(join(tmpdir(), 'buck2-gate-lifecycle-')))
+      writeFileSync(join(root, '.buckroot'), '')
+      writeFileSync(
+        join(root, '.buckconfig'),
+        '[cells]\nroot = .\n[buck2]\nfile_watcher = fs_hash_crawler\n',
+      )
+      const isolation = `gate-${randomUUID()}`
+      const job = `gate-slot-buck2-test-${randomUUID()}.scope`
+      const env = { ...process.env, GATE_SLOT_CLASS: 'heavy', BUCK2_GATE_WRAPPER_ACTIVE: undefined }
+      const ungated = { ...env, GATE_SLOT_CLASS: '' }
+      const command = (argv: string[]) =>
+        Bun.spawnSync(argv, { cwd: root, env: ungated, stdout: 'pipe', stderr: 'pipe' })
+      const status = () => {
+        const result = command([native, '--isolation-dir', isolation, 'status'])
+        if (result.exitCode !== 0) throw new Error(result.stderr.toString())
+        return result.stdout.length === 0 ? undefined : JSON.parse(result.stdout.toString())
+      }
+      let client: Bun.Subprocess<'pipe', 'pipe', 'pipe'> | undefined
+      let peer: Bun.Subprocess<'pipe', 'pipe', 'pipe'> | undefined
+      try {
+        expect(command([native, '--isolation-dir', isolation, 'server']).exitCode).toBe(0)
+        const foreignIdlePid = status().process_info.pid
+        client = Bun.spawn(
+          [
+            'systemd-run',
+            '--user',
+            '--scope',
+            '--quiet',
+            `--unit=${job}`,
+            '--',
+            wrapper,
+            '--isolation-dir',
+            isolation,
+            'lsp',
+          ],
+          { cwd: root, env, stdin: 'pipe', stdout: 'pipe', stderr: 'pipe' },
+        )
+        const clientStderr = new Response(client.stderr).text()
+        const clientStdout = new Response(client.stdout).text()
+        await waitForGateCondition(
+          'gated LSP client',
+          () => (status()?.active_commands.length ?? 0) > 0,
+        )
+        const daemon = status()
+        expect(daemon.process_info.pid).not.toBe(foreignIdlePid)
+        expect(existsSync(`/proc/${foreignIdlePid}`)).toBe(false)
+        expect(readFileSync(`/proc/${daemon.process_info.pid}/cgroup`, 'utf8')).toContain(`/${job}`)
+        expect(readFileSync(`/proc/${daemon.forkserver_pid}/cgroup`, 'utf8')).toContain(`/${job}`)
+        console.log(command(['systemctl', '--user', 'status', job]).stdout.toString())
+        client.stdin.end()
+        expect(await client.exited, await clientStderr).toBe(0)
+        await clientStdout
+        expect(status()).toBeUndefined()
+        await waitForGateCondition(
+          'empty job scope removal',
+          () =>
+            command(['systemctl', '--user', 'show', job, '-p', 'LoadState', '--value'])
+              .stdout.toString()
+              .trim() === 'not-found',
+        )
+        console.log(`job scope ended and daemon stopped: ${job}`)
+
+        const sameJob = `gate-slot-buck2-test-same-${randomUUID()}.scope`
+        const sameStatus = join(root, 'same-scope-status.json')
+        const sameScript = join(root, 'same-scope.sh')
+        writeFileSync(
+          sameScript,
+          `#!${Bun.which('bash')}
+set -e
+'${native}' --isolation-dir '${isolation}' server --status > '${sameStatus}'
+exec '${wrapper}' --isolation-dir '${isolation}' lsp
+`,
+          { mode: 0o700 },
+        )
+        client = Bun.spawn(
+          ['systemd-run', '--user', '--scope', '--quiet', `--unit=${sameJob}`, '--', sameScript],
+          { cwd: root, env, stdin: 'pipe', stdout: 'pipe', stderr: 'pipe' },
+        )
+        const sameStderr = new Response(client.stderr).text()
+        const sameStdout = new Response(client.stdout).text()
+        await waitForGateCondition(
+          'same-scope LSP attachment',
+          () => (status()?.active_commands.length ?? 0) > 0,
+        )
+        expect(status().process_info.pid).toBe(
+          JSON.parse(readFileSync(sameStatus, 'utf8')).process_info.pid,
+        )
+        expect(readFileSync(`/proc/${status().process_info.pid}/cgroup`, 'utf8')).toContain(
+          `/${sameJob}`,
+        )
+        client.stdin.end()
+        expect(await client.exited, await sameStderr).toBe(0)
+        await sameStdout
+        expect(status()).toBeUndefined()
+        await waitForGateCondition(
+          'same-scope job removal',
+          () =>
+            command(['systemctl', '--user', 'show', sameJob, '-p', 'LoadState', '--value'])
+              .stdout.toString()
+              .trim() === 'not-found',
+        )
+        console.log(
+          'same-scope daemon reused without a restart; idle exit teardown removed its job scope',
+        )
+
+        // Quantify native cold startup separately from cached build work.
+        const cold: number[] = []
+        const warm: number[] = []
+        for (let index = 0; index < 3; index++) {
+          let pid: number | undefined
+          for (const measurements of [cold, warm]) {
+            const start = performance.now()
+            const result = command([wrapper, '--isolation-dir', isolation, 'server'])
+            expect(result.exitCode, result.stderr.toString()).toBe(0)
+            measurements.push(performance.now() - start)
+            const currentPid = status().process_info.pid
+            if (pid !== undefined) expect(currentPid).toBe(pid)
+            pid = currentPid
+          }
+          expect(command([native, '--isolation-dir', isolation, 'kill']).exitCode).toBe(0)
+        }
+        console.log(`cold/warm wrapper server milliseconds: ${JSON.stringify({ cold, warm })}`)
+
+        peer = Bun.spawn([native, '--isolation-dir', isolation, 'lsp'], {
+          cwd: root,
+          env: ungated,
+          stdin: 'pipe',
+          stdout: 'pipe',
+          stderr: 'pipe',
+        })
+        const peerStderr = new Response(peer.stderr).text()
+        const peerStdout = new Response(peer.stdout).text()
+        await waitForGateCondition(
+          'concurrent peer attachment',
+          () => (status()?.active_commands.length ?? 0) > 0,
+        )
+        const before = status().process_info.pid
+        const foreignBusyCgroup = readFileSync(`/proc/${before}/cgroup`, 'utf8').trim()
+        const busyJob = `gate-slot-buck2-test-busy-${randomUUID()}.scope`
+        const gated = Bun.spawnSync(
+          [
+            'systemd-run',
+            '--user',
+            '--scope',
+            '--quiet',
+            `--unit=${busyJob}`,
+            '--',
+            wrapper,
+            '--isolation-dir',
+            isolation,
+            'server',
+          ],
+          {
+            cwd: root,
+            env,
+            stdout: 'pipe',
+            stderr: 'pipe',
+          },
+        )
+        expect(gated.exitCode, gated.stderr.toString()).toBe(0)
+        const warnings = gated.stderr
+          .toString()
+          .split('\n')
+          .filter((line) => line.startsWith('warning: Buck2 gate'))
+        expect(warnings).toHaveLength(1)
+        expect(warnings[0]).toContain(
+          `reusing active daemon in foreign cgroup ${foreignBusyCgroup}`,
+        )
+        expect(status().process_info.pid).toBe(before)
+        expect(peer.exitCode).toBeNull()
+        peer.stdin.end()
+        expect(await peer.exited, await peerStderr).toBe(0)
+        await peerStdout
+        console.log('active concurrent client retained; ungated daemon remains warm')
+      } finally {
+        client?.stdin.end()
+        peer?.stdin.end()
+        if (client !== undefined) await client.exited
+        if (peer !== undefined) await peer.exited
+        const stopped = command([native, '--isolation-dir', isolation, 'kill'])
+        expect(stopped.exitCode, stopped.stderr.toString()).toBe(0)
+        rmSync(root, { recursive: true, force: true })
+        rmSync(join(homedir(), '.buck', 'buckd', root.slice(1)), { recursive: true, force: true })
+      }
+    },
+    180000,
+  )
 })

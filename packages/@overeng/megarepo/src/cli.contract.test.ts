@@ -138,4 +138,71 @@ describe('megarepo CLI contract baselines (status/signal invariant, prose owner-
       stderr,
     })
   })
+
+  describe('mr maintenance receipts', () => {
+    it.each(['clean-failed', 'kill-failed', 'daemon-changed'] as const)(
+      'prints the complete mr maintenance receipt before returning the exit status for %s',
+      (reason) => {
+        const receipt = {
+          version: 1,
+          dryRun: false,
+          entries: [
+            {
+              worktree: '/fixture/failed',
+              action: reason === 'clean-failed' ? 'clean-stale' : 'none',
+              reason,
+              bytesBefore: 8192,
+              bytesAfter: 8192,
+              daemon:
+                reason === 'kill-failed'
+                  ? [{ pid: 123, isolation: 'v2', outcome: 'unreachable', reason }]
+                  : [],
+              ownerEvidence: [],
+            },
+            {
+              worktree: '/fixture/later-worktree',
+              action: 'none',
+              reason: 'within-budget',
+              bytesBefore: 8192,
+              bytesAfter: 8192,
+              daemon: [],
+              ownerEvidence: [],
+            },
+          ],
+          summary: {
+            worktrees: 2,
+            actions: reason === 'clean-failed' ? 1 : 0,
+            skipped: reason === 'clean-failed' ? 1 : 2,
+          },
+        }
+        // Keep this a CLI contract test: substitute only the runner's completed
+        // receipt. Native failures and continued discovery are covered by the
+        // maintenance integration tests; the real CLI owns rendering and exit.
+        const entrypoint = cliPath
+        const args = ['store', 'buck-maintain', '--json']
+        const bootstrap = `
+        import { mock } from 'bun:test'
+        import { Effect } from ${JSON.stringify(import.meta.resolve('effect'))}
+        const runner = await import(${JSON.stringify(fileURLToPath(new URL('./store/store-buck-maintain.ts', import.meta.url)))})
+        mock.module(${JSON.stringify(fileURLToPath(new URL('./store/store-buck-maintain.ts', import.meta.url)))}, () => ({
+          ...runner,
+          runBuckMaintain: () => Effect.succeed(${JSON.stringify(receipt)}),
+        }))
+        process.argv = ['bun', ${JSON.stringify(entrypoint)}, ...${JSON.stringify(args)}]
+        // Test module-loading boundary: load the CLI only after installing its runner fixture.
+        await import(${JSON.stringify(entrypoint)})
+      `
+        const result = spawnSync('bun', ['--eval', bootstrap], {
+          encoding: 'utf8',
+          env: { ...process.env, NO_COLOR: '1' },
+        })
+        expect(result.signal).toBeNull()
+        expect(result.status, result.stderr).toBe(reason === 'daemon-changed' ? 0 : 1)
+        expect(result.stdout, result.stderr).not.toBe('')
+        expect(JSON.parse(result.stdout)).toEqual(receipt)
+        if (reason !== 'daemon-changed')
+          expect(normalizeOutput(result.stderr)).toContain('BuckMaintainCommandFailed')
+      },
+    )
+  })
 })

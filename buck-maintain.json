@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "worktreeRoots": ["."],
+  "buckOut": {
+    "budgetBytes": 2147483648,
+    "keepSince": "24h"
+  },
+  "daemon": {
+    "idleStopAfter": "30m"
+  },
+  "maintainUnowned": false
+}

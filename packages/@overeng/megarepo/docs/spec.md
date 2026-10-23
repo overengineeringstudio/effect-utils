@@ -867,9 +867,29 @@ Overlay-only `EXDEV` on quarantine rename (lower-backed directory, redirects dis
 permits in-place removal solely through pinned fds. A caught failure after that removal starts
 returns `outcome: "partial"` with `reason: "deletion-partial"` and no claimed reclaimed bytes.
 The next complete plan retries the remaining root, never using recursive path-based removal.
-An abrupt process termination cannot publish a receipt and also leaves the remainder in place.
-Legacy non-Linux GC and whole-worktree teardown retain their previous recursive
-path-based removal, including its pre-existing ancestor-symlink TOCTOU exposure.
+Every GC deletion appends and fsyncs an intent before mutation and an outcome afterwards to
+`$STORE/.state/gc-deletions.jsonl`; in-use skips append their veto evidence. The versioned,
+append-only records include attempt ID, time, path, decision, reason, veto evidence, ignored
+foreign-process count, and any errno/recovery path. Abrupt termination may leave only the intent.
+Any failure after quarantine rename is partial, with the `.mr-delete-*` directory in
+`recoverPath` and native `code` when available. No rename-back is attempted: deletion may have
+removed entries and restoring the name must not overwrite a replacement. Pinned directories
+alone gain missing owner write/execute bits; file/CAS-hardlink modes remain unchanged.
+Legacy and targeted deletion share the readable cwd/open-reference veto. Active or unreadable
+Buck daemons veto removal; configured activity manifests and owner deletion leases protect
+legacy GC too. Linux GC counts unreadable foreign-UID processes in `ignoredForeignProcesses`
+instead of vetoing: foreign services are not expected to work in store-owner trees. Unreadable
+own-UID references require bounded `lsof` fallback or admitted exact-lifetime manifest coverage;
+otherwise GC keeps with `own-uid-unreadable`. macOS retains its bounded `lsof -d cwd` probe,
+keeping on a holder or probe failure. Budget and policy-authorized worklog deletion retain
+their strict activity contracts and explicitly reject non-Linux platforms.
+The fixed own-UID privilege-transition exemptions require `systemd --user` with parent PID 1
+to match the root system manager's `user@<uid>.service` MainPID and the observed start time.
+Its `(sd-pam)` child must name that verified manager as parent. `sshd-session`/legacy `sshd`
+requires a readable, stable root-owned SSH daemon parent. Mutable comm/argv alone grants
+no exemption. The authority query has a five-second deadline and fails closed.
+`exemptProcesses` records PID, start time, command name, and rule. Readable references
+still veto and children remain checked. No capability-based general exemption is allowed.
 
 #### `mr store activity snapshot`
 

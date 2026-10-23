@@ -215,6 +215,13 @@ metadata; this is conservative accounting, not compressed physical ZFS usage.
 This ledger owns last-use, reservations, and rebuildable inode-footprint caches;
 it is not a disposable payload shard. Obsolete footprint sidecars are reclaimed
 with the corresponding generation's cached identity.
+Batch publication shares one in-flight census across workers and admission retries.
+Reuse is keyed by host ledger, root identity, and content store; a worker missing
+from the measured roots/stores takes a fresh census before admission.
+Every fit decision still reads outstanding reservations and later publication
+estimates under the host ledger flock. Collection, eviction, or a stale journal
+invalidates the shared census. Fitting reservations do not scan live readers,
+including above the 80% warning threshold.
 
 Under pressure, unreferenced CAS payloads and unused old generations are reclaimed
 first, then least-recently-used current generations outside the five-minute grace.
@@ -227,12 +234,22 @@ The ordinary current-plus-previous policy is not an unconditional guarantee unde
 pressure: pin a generation when it must remain available. Idle-current eviction
 removes both the owned consumer hop and current pointer, records an eviction marker,
 and the next explicit publication explains the eviction and cleanly republishes.
-Each eviction round fixes one eligibility timestamp before observing readers,
-including the fallback when a concurrent reservation consumes headroom. Crossing
-grace or recency during the process scan cannot add an unobserved victim; a later
-round observes newly eligible generations before retiring them. Retirement also
-rechecks last-use and publication timestamps after acquiring the victim root lock
-and CAS flock, so a newly used view cannot be evicted from an older census.
+An eviction plan always retakes the census instead of trusting shared accounting.
+Retirement takes one fresh reader proof under the host ledger fence after acquiring
+the selected publication exclusions. Eligibility stays fixed at the round's initial
+timestamp and refreshed plans may select only reader-observed keys. A pointer
+removed during locking cannot expose an unobserved orphan to deletion. The
+per-candidate pre-delete seam independently rejects unobserved keys.
+Reader-protected accounting is refreshed even if a journal epoch mismatch skips
+the batch, including the final round before forced advisory admission. Retirement
+then checks the epoch and each immutable generation identity under the host/CAS
+fences. As with footprint sidecars, payload immutability is required.
+Without reader leases the pre-delete seam checks identity/epoch, not exclusion
+of late readers. **#1990 MUST add the non-blocking exclusive lease probe in this
+seam** and skip a held candidate. A reader opened after the advisory proof can
+otherwise leave identity and epoch unchanged.
+Retirement also rechecks last-use and publication timestamps, so newly used views
+cannot be evicted from an older plan.
 Vanished victims are skipped even if teardown removes a held eviction lock.
 Active eviction locks are explicitly marked with process-incarnation
 identity; a publisher waits for that live maintenance operation rather than
@@ -243,6 +260,30 @@ recovery only on the recorded host; recovery is serialized by the host coordinat
 logged. Live publishers, foreign hosts, unknown identities, unreadable owners,
 and legacy records without host evidence still require explicit recovery.
 
+Orphan reachability includes package `node_modules` symlinks under hidden directories,
+`repos`, `dist`, `result`, and `buck-out`, not just ordinary source directories.
+The package inventory walks real directories without following directory symlinks.
+It prunes real `node_modules` payloads, Git metadata, and editor roots' payload
+stores (their control pointers have a separate inventory), but inspects each
+entry before pruning so package `node_modules` symlinks remain visible.
+The package walk is bounded to 200,000 entries. Unreadable or oversized inventories
+are unknown and keep orphan payloads, never evidence that pointers are absent.
+Only candidate-bearing roots request this inventory: census adoption does so
+for actual `.legacy` entries, and eviction planning does so lazily for potentially
+eligible orphans. Ordinary generation-only roots never trigger a package walk.
+Each census/planning invocation caches at most one inventory per such root and
+emits a `pointer-inventory` aggregate with root count, entry count, total duration,
+and per-root entries/durations. Retirement repeats the selected orphan root's
+reachability proof at its deletion fence.
+Startup cleanup carries normal-acquisition or proven-dead-owner-recovery
+provenance and validates the held lock path, exact per-acquisition token, current
+PID, host, and process-start incarnation (including the Linux boot identity).
+Unknown identities refuse reclamation. Normal
+acquisition follows the previous holder's release; automatic recovery proves
+the previous holder dead. Missing or mismatched proof refuses reclamation.
+Every startup candidate and interrupted `.gc-*` payload also receives a fresh
+reader observation, preserving stale cwd/fd holders as well as pointer targets.
+
 If protected usage prevents reaching the budget, publication **continues** and
 emits a structured `over-budget` event with budget, use, and top holders.
 **No command fails because of the budget**, including explicit
@@ -250,6 +291,19 @@ emits a structured `over-budget` event with budget, use, and top holders.
 Budget discovery and maintenance failures are structured advisory diagnostics:
 uncertain discovery aborts that budget round without eviction, and maintenance
 failure never rejects an otherwise successful publication.
+Reserve start, work reasons, and grant durations use the `[editor-view-budget]`
+prefix and are forwarded live by both single and batch publication. Forwarding
+buffers partial stderr lines until their terminating newline, independently of
+child-process chunk boundaries. Phase records explicitly distinguish entry from
+completion and include completion durations.
+Census completion records use `event: "completed"`, `stage`, and monotonic
+`durationMs`, with aggregate counts for root discovery, generation enumeration,
+sidecar reads (hits, misses, bytes), footprint walks on misses (walks, linked
+bytes), sidecar staging, CAS accounting, linked-inode merge (entries and distinct
+entries), sidecar installation, and fenced admission. Enumeration time excludes
+the separately measured reads, walks, and staging; records are per census or
+admission attempt, never per generation. Installation and admission durations
+include waiting for the host ledger fence.
 The `editor-view.host-budget` OpenTelemetry span records over-budget publication
 and the protected-share early warning at 80%. Budget, publication, phase, and
 watch-build spans share deferred, fire-and-forget, drop-on-full delivery, with at
@@ -430,9 +484,27 @@ payload inodes.
 ### Recovering a chmod-poisoned shared store
 
 Cleanup must unlock **directories only**, never recursively chmod payload files:
-snapshot payloads are hardlinked into the CAS and other worktrees. A writable
-blob is rejected even when its bytes happen to match its address. Do not bypass
-this check with a blanket chmod or a private-copy fallback.
+snapshot payloads are hardlinked into the CAS and other worktrees. Snapshot
+prepare and verification first validate the complete payload byte digest. When
+regular payload files have writable-mode drift, repair repeats the canonical
+TypeScript aggregate hash through `O_RDONLY | O_NOFOLLOW | O_NONBLOCK` descriptors,
+recording each candidate's inode identity and SHA-256 while its bytes feed that
+aggregate. Only a matching secondary aggregate authorizes mode repair; private
+source-stat hints are not authority, and legacy snapshots without hints remain
+supported. All candidate digests must participate in the matching aggregate before
+any mode changes. Repair uses bounded descriptor counts: it reopens one candidate
+at a time, checks its inode and SHA-256 again, then removes write bits through that
+matching descriptor. It rehashes the same descriptor after chmod with strict
+before/after metadata checks; a mismatch restores its prior mode through that
+descriptor and fails. Each rehash reads at most the initial descriptor size and
+rejects short reads or growth. A later inode failure leaves already proven inodes
+protected; only the mismatched inode retains or regains its prior mode, and the
+snapshot verification still fails closed. The `[editor-view-mode-drift]` stderr record reports the
+repaired inode count and up to five sample paths; hardlinked aliases are repaired
+together. A byte mismatch during aggregate verification fails before changing any
+file mode. Writable directories and private metadata
+remain errors. Direct CAS admission still rejects writable blobs; do not bypass
+its checks with a blanket chmod or a private-copy fallback.
 
 An initial read-only census requires no quiescence acknowledgement and does not
 create a flock, normalize directories, or change any inode:
@@ -536,6 +608,13 @@ exactly one override. Entry matching resolves symlinks while preserving hardlink
 names, so macOS file-descriptor path ambiguity cannot select a source outside the
 portable farm or skip the entry override.
 
+CommonJS `__dirname`/`__filename` normalization and farm containment assertions
+use the same name-preserving symlink resolution: raw `realpathSync` on macOS can
+report the original source name for a hardlinked farm file. Canonicalization
+resolves existing files through their symlink chains and retains missing suffixes
+below the deepest existing ancestor. A descriptor-reported hardlink alias is not
+evidence of an escape; an actual symlink to a source outside the farm is rejected.
+
 Non-bundle package execution (`exec`, `check`, `native-check`, and `build-dir`)
 still requires an explicitly declared immutable `/nix/store/.../bin/buck2-fingerprint`
 executable and fingerprints its declared read roots before and after the child
@@ -590,6 +669,12 @@ registration, including parameterized tests and modifiers, to scale explicit
 deadlines and record each case's base. Expanded case titles and nested parameterized
 suites retain their own deadlines in JUnit classification. Hooks, assertions,
 callbacks and exit statuses remain native; no tests are retried.
+
+Pointer-reached orphan reclamation scenarios guard initial publication, each reader
+pointer transition, and the final fingerprint check separately. Their fixture teardown
+awaits the complete in-flight phase (including assertions) before deleting the fixture
+or restoring the host-budget environment; later phases depend on the preceding phase
+settling successfully.
 
 The wrapper requests Bun's JUnit reporter and leaves console output untouched.
 After the child exits, it samples host load and Linux memory PSI and emits one

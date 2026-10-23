@@ -29,6 +29,14 @@ export class GenieSourceWorkspaceConflictError extends Schema.TaggedError<GenieS
   },
 ) {}
 
+/** Bun's content-keyed cache does not include the source resolver's pinned inputs. */
+export class GenieRuntimeTranspilerCacheError extends Schema.TaggedError<GenieRuntimeTranspilerCacheError>()(
+  'GenieRuntimeTranspilerCacheError',
+  {
+    message: Schema.String,
+  },
+) {}
+
 /** Error when generated file content doesn't match (in check mode) */
 export class GenieCheckError extends Schema.TaggedError<GenieCheckError>()('GenieCheckError', {
   targetFilePath: Schema.String,

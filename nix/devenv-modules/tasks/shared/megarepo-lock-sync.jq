@@ -52,13 +52,13 @@ def repo_key($node):
     }
   else
     [$candidates[] | select(.rev == $input.rev)] as $matches |
-    select($matches | length != 1) |
+    select($matches | length == 0) |
     {
       member: ($candidates | map(.name) | join(",")),
       input: $input.name,
       expected: ($candidates | map(.rev) | unique | join(",")),
       actual: $input.rev,
-      reason: (if $matches | length == 0 then "no-declared-revision" else "ambiguous-revision" end)
+      reason: "no-declared-revision"
     }
   end
 ]

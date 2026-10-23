@@ -81,7 +81,11 @@ run_proof_command() {
   if "$buck" log show --recent 0 > "$evidence"; then
     capture_cache_evidence "$evidence" "$context"
   else
-    echo "::warning::Buck2 native event log unavailable for $context" >&2
+    if [ "$status" -eq 0 ]; then
+      echo "::warning::Buck2 native event log unavailable for $context" >&2
+    else
+      echo "::notice::Buck2 native event log unavailable for $context (follow-on: the Buck command failed before writing a log)" >&2
+    fi
     if [ -n "${CI_BUCK2_CACHE_EVIDENCE_PATH:-}" ]; then
       bun "$source_root/genie/ci-scripts/buck2-cache-evidence.ts" \
         --output "$CI_BUCK2_CACHE_EVIDENCE_PATH" --evidence-gap proof-native-log-unavailable || true

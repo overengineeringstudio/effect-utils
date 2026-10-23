@@ -86,6 +86,97 @@ tree, or rewritten package rule. Changing later repository metadata does not
 change the identity of an already-published product. The anonymous artifact
 URL is an interoperability path, not a second source of product authority.
 
+### Consumer pin eligibility
+
+```text
+trusted main push -> publish-products -> same-SHA manifest-current output --+
+                  -> consumer-smoke  -> successful consumer SHA output ---+
+                                                                         |
+                                           promote-published <------------+
+                                             -> fast-forward published
+stale manifest -> publisher manifest PR -> main push
+```
+
+Consumers requiring an always-eligible product manifest track `ref published`
+rather than `ref main`. `main` may be temporarily non-current after a
+product-input merge while its publisher manifest proposal is pending.
+`refs/heads/published` only fast-forwards to main commits whose
+`buck2-products/manifest-current` status and consumer smoke both succeeded for
+that exact SHA. The `promote-published` job declares
+`needs: [publish-products, consumer-smoke]`; it performs no Nix evaluation or
+build. Before advancing the ref, it checks the publisher's manifest-current
+output identifies its own candidate SHA and the successful consumer job's SHA
+output identifies that same SHA. A status from another commit cannot satisfy
+either gate.
+
+Ref creation and advancement remain restricted to main-push runs in the
+upstream repository. Workflow dispatch and pull requests cannot advance the
+ref. If the ref is absent, the eligible promotion job creates it at its own
+SHA using the App token; no separate human bootstrap push is required.
+Promotion requests only `contents: write` for that token. Consumer failure
+blocks promotion, never product publication or manifest-current reporting:
+`publish-products` does not depend on `consumer-smoke`.
+
+The publisher GitHub App is the sole creation/update actor. The writers
+ruleset restricts creation and updates, with only that App allowed to bypass.
+A separate history ruleset blocks deletion and non-fast-forward updates
+without any bypass actors, including the App. History protection does not
+restrict initial ref creation; the App bypasses only the writers ruleset.
+See [GitHub's ruleset semantics](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/available-rules-for-rulesets).
+
+Before each of at most three push attempts, the job refetches the tip.
+An absent tip permits creation; an ancestor tip permits a fast-forward push.
+A candidate already at or behind the published tip is a successful no-op.
+A rejected push retries this comparison, so an intervening ancestor can still
+be advanced. Divergence fails loudly, as does exhausting the push attempts
+without observing the candidate or a descendant at the published tip.
+This ref guarantees manifest eligibility and consumer smoke admission, not
+success of unrelated CI checks.
+
+### Consumer smoke fixture
+
+```text
+test:consumer-smoke(candidate checkout)
+  -> fresh realpath temporary Git consumer
+  -> exact candidate effect-utils Nix input
+  -> shared pnpm:install
+  -> source staging + staged resolver sentinel checks
+  -> successful candidate SHA
+```
+
+The dedicated `consumer-smoke` CI job runs on trusted main pushes and manual
+dispatch on a Linux x86 Namespace runner, with a 10-minute timeout. It invokes
+the shared fixture runner directly with the resolved lock-pinned devenv binary,
+without evaluating or realizing the repository root's development shell.
+The local `test:consumer-smoke` task invokes that same runner.
+The timeout is a bound on execution, not a measured runtime guarantee.
+
+The root task calls the fixture runner with a candidate checkout argument.
+It defaults to the current root; `CONSUMER_SMOKE_CANDIDATE` selects another
+checkout for historical reproduction. The runner snapshots that checkout's
+Git-tracked working-tree files, including uncommitted tracked edits, and binds
+the consumer's effect-utils path input to that snapshot. Ignored build and
+editor state never enters the Nix source input. It never fetches a separate
+branch or registry revision. The root task has no Buck or editor bootstrap
+dependency.
+
+Each invocation copies the fixture into a fresh temporary directory, resolves
+its real path, and initializes it as a Git repository. Consumer install,
+staging, and sentinel state are fresh on every invocation; cached tools and
+Nix inputs may remain warm. The fixture has no package-registry dependency.
+It genuinely runs the shared `pnpm:install` task with
+`sourceInputPaths = [ "repos/source/packages/shared" ]` and exercises the staged
+resolver. Success requires the actual install to succeed and subsequent
+checks to confirm both source staging and resolver sentinel behavior; a
+standalone staging command or sentinel alone is not an install proof.
+Any failed install or check exits nonzero. The successful consumer SHA output
+is emitted only after these checks complete.
+
+The repository root uses `materialize = false`, so a successful root install
+does not exercise consumer source staging. This separate fixture supplies
+that coverage and is a mandatory publication gate, not an optional substitute
+for root checks.
+
 ### Consumer from-source identity
 
 Consumer products built from their own repository, rather than imported from

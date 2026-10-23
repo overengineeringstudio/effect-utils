@@ -57,7 +57,8 @@ if [ -z "${MODULE_TEST_PLATFORMS:-}" ] || [ ! -f "$MODULE_TEST_PLATFORMS" ]; the
   exit 1
 fi
 selected_names="$(printf '%s\0' "${all_tests[@]}" |
-  "$TEST_JQ" -Rrs --arg platform "$test_platform" --slurpfile catalogs "$MODULE_TEST_PLATFORMS" '
+  "$TEST_JQ" -Rrs --arg platform "$test_platform" --arg unit "${EFFECT_UTILS_CI_TEST:-}" \
+    --slurpfile catalogs "$MODULE_TEST_PLATFORMS" '
     split("\u0000") | map(select(length > 0)) | sort as $discovered |
     if ($catalogs | length) != 1 then error("Expected one module script classification")
     else $catalogs[0] as $catalog |
@@ -68,13 +69,14 @@ selected_names="$(printf '%s\0' "${all_tests[@]}" |
       else ($catalog.darwin + $catalog.neutral) as $entries |
         if ($entries | all(.[];
           type == "object" and (.script | type) == "string" and
-          (.rationale | type) == "string" and (.rationale | test("\\S"))
+          (.rationale | type) == "string" and (.rationale | test("\\S")) and
+          ((has("fullProfileOnly") | not) or (.fullProfileOnly | type) == "boolean")
         ) | not) then error("Expected module script entries with scripts and rationales")
         else ($entries | map(.script) | sort) as $classified |
           if $classified != $discovered or ($classified | unique | length) != ($classified | length) then
             error("Module script platforms must classify every discovered *.test.sh exactly once")
-          elif $platform == "darwin" then $catalog.darwin | map(.script) | sort | .[]
-          else $discovered[]
+          else (if $platform == "darwin" then $catalog.darwin else $entries end) |
+            map(select($unit != "1" or .fullProfileOnly != true)) | map(.script) | sort | .[]
           end
         end
       end

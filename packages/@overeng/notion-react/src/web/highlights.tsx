@@ -1,15 +1,15 @@
 import { Children, useEffect, useState, type ReactNode } from 'react'
 
 /**
- * Shiki renderer — dynamic-imports `shiki` so the ~1.1mb engine + grammars
- * only load when the first code block mounts. Peer dep is marked optional
- * in package.json; consumers opt in by installing `shiki`.
+ * Highlights renderer — dynamic-imports the engine and theme so they only
+ * load when the first code block mounts. Peer dep is marked optional in
+ * package.json; consumers opt in by installing `@pierre/highlights`.
  *
  * SSR + unresolved-import fallback: render `<pre><code>` with the raw
- * source, matching the pre-shiki baseline. Once the import resolves and
+ * source. Once the import resolves and
  * `codeToHtml` returns, React swaps in the themed HTML.
  *
- * Only strings go through shiki — if `children` contains nested React
+ * Only strings go through Highlights — if `children` contains nested React
  * elements (rare for code blocks, but possible when the host projects
  * rich_text annotations), we keep the fallback output to avoid losing
  * structure.
@@ -30,7 +30,7 @@ const asPlainText = (children: ReactNode): string | undefined => {
   return ok ? parts.join('') : undefined
 }
 
-export const ShikiRender = ({
+export const HighlightsRender = ({
   children,
   language,
 }: {
@@ -38,18 +38,24 @@ export const ShikiRender = ({
   readonly language: string | undefined
 }) => {
   const code = asPlainText(children)
-  const [html, setHtml] = useState<string | undefined>(undefined)
+  const [highlighted, setHighlighted] = useState<
+    | { readonly code: string; readonly language: string | undefined; readonly html: string }
+    | undefined
+  >(undefined)
+  const html =
+    highlighted !== undefined && highlighted.code === code && highlighted.language === language
+      ? highlighted.html
+      : undefined
 
   useEffect(() => {
     if (code === undefined) return
     let cancelled = false
-    import('shiki')
-      .then(async (mod) => {
-        const out = await mod.codeToHtml(code, {
-          lang: language ?? 'text',
-          theme: 'github-light',
-        })
-        if (!cancelled) setHtml(out)
+    Promise.all([import('@pierre/highlights'), import('@pierre/highlights/themes')])
+      .then(([mod, { githubLight }]) => {
+        const lang = language ?? 'text'
+        if (!mod.isSupportedLanguage(lang)) return
+        const out = new TextDecoder().decode(mod.codeToHtml(code, { lang, theme: githubLight }))
+        if (!cancelled) setHighlighted({ code, language, html: out })
       })
       .catch(() => {
         /* peer or grammar not available → keep plain fallback */

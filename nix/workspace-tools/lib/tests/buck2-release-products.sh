@@ -96,16 +96,37 @@ grep -F 'env -u CACHIX_AUTH_TOKEN curl -fsS "$artifact_url"' "$publisher" >/dev/
 grep -F 'P1 cache publisher (decision 0037)' "$publisher" >/dev/null
 grep -F 'publish-products:' "$workflow" >/dev/null
 grep -F 'CACHIX_AUTH_TOKEN: ${{ secrets.CACHIX_AUTH_TOKEN }}' "$workflow" >/dev/null
-# The manifest PR is opened with the publisher GitHub App token; the job token stays read-only.
+# The manifest PR and published ref use the publisher GitHub App token. Only
+# GITHUB_TOKEN contents/pull-requests grants are forbidden; statuses and OIDC
+# permissions remain available for publication evidence.
 publish_job="$(sed -n '/^  publish-products:/,/^  [a-z][a-z0-9-]*:$/p' "$workflow")"
+promotion_job="$(sed -n '/^  promote-published:/,/^  [a-z][a-z0-9-]*:$/p' "$workflow")"
 grep -F 'uses: actions/create-github-app-token@' <<<"$publish_job" >/dev/null
 grep -F 'private-key: ${{ secrets.NIX_PUBLISHER_GITHUB_APP_PRIVATE_KEY }}' <<<"$publish_job" >/dev/null
-if grep -E 'pull-requests: write|contents: write' <<<"$publish_job" >/dev/null; then
-  echo "buck2-cache-products-test: publish-products must not grant write scopes to GITHUB_TOKEN" >&2
+grep -F 'uses: actions/create-github-app-token@' <<<"$promotion_job" >/dev/null
+grep -F 'private-key: ${{ secrets.NIX_PUBLISHER_GITHUB_APP_PRIVATE_KEY }}' <<<"$promotion_job" >/dev/null
+# Parse the actual workflow/job permissions, independent of YAML formatting and
+# separate from permission-contents inputs to actions/create-github-app-token.
+if ! bun -e 'console.log(JSON.stringify(Bun.YAML.parse(await Bun.file(process.argv[1]).text())))' "$workflow" |
+  jq -e '
+    [.permissions, .jobs["publish-products"].permissions, .jobs["promote-published"].permissions] |
+    all(
+      if type == "object" then
+        .contents != "write" and .["pull-requests"] != "write"
+      else
+        . == null or . == "read-all"
+      end
+    )
+  ' >/dev/null; then
+  echo "buck2-cache-products-test: publication jobs must not grant contents/pull-requests write scopes to GITHUB_TOKEN" >&2
   exit 1
 fi
-if [ "$(grep -c 'NIX_PUBLISHER_GITHUB_APP_PRIVATE_KEY' <<<"$publish_job")" -ne 2 ]; then
-  echo "buck2-cache-products-test: the publisher App key must reach only the token-minting step (and the presence check)" >&2
+# Publication mints the manifest PR token and checks secret presence; the
+# independently gated promotion job now owns the second token-minting step.
+if [ "$(grep -c 'NIX_PUBLISHER_GITHUB_APP_PRIVATE_KEY' <<<"$publish_job")" -ne 2 ] ||
+  [ "$(grep -c 'NIX_PUBLISHER_GITHUB_APP_PRIVATE_KEY' <<<"$promotion_job")" -ne 1 ] ||
+  [ "$(grep -c 'NIX_PUBLISHER_GITHUB_APP_PRIVATE_KEY' "$workflow")" -ne 3 ]; then
+  echo "buck2-cache-products-test: the publisher App key must reach only each job's token-minting step and the publisher presence check" >&2
   exit 1
 fi
 grep -F 'nix/buck2-products/publish.sh --proposal "$proposal"' "$workflow" >/dev/null
