@@ -9,6 +9,13 @@ export default pnpmWorkspaceYaml.root({
   catalogVersions: catalog,
   catalogDuplicateExceptions: [
     {
+      package: 'ajv',
+      versions: ['8.20.0', '6.15.0'],
+      reason:
+        'work-storage conformance uses AJV 8 for JSON Schema 2020-12; ESLint and @typescript-eslint/rule-tester require the incompatible AJV 6 API',
+      issue: '#1952',
+    },
+    {
       package: 'typescript',
       // Two cohorts, both intentional and both present in the lock at this
       // commit: production compiles with the catalog's TypeScript 7, and
