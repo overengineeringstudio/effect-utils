@@ -17,7 +17,7 @@ import {
   utimes,
   writeFile,
 } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
+import { tmpdir, userInfo } from 'node:os'
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import type { Readable } from 'node:stream'
 import { fileURLToPath } from 'node:url'
@@ -629,11 +629,48 @@ const isEditorViewPath = (path: string): boolean =>
     .split(sep)
     .some((component) => component === '.editor-view' || component === '.editor-view-content')
 
+/** Multi-user Darwin builder accounts are resolved by the OS, never environment variables. */
+export const assertDarwinNixBuildUser = async (): Promise<void> => {
+  // userInfo uses getpwuid for the effective uid. A fabricated HOME/USER cannot
+  // turn an interactive session or a single-user Nix build into a build user.
+  const user = userInfo()
+  if (
+    process.platform !== 'darwin' ||
+    user.uid === 0 ||
+    user.uid !== process.geteuid?.() ||
+    /^_nixbld[1-9]\d*$/u.test(user.username) === false
+  )
+    fail(
+      'nix-build-sandbox requires a Darwin multi-user Nix build user; single-user builds are unsupported',
+    )
+  // Darwin's native id resolves the effective primary gid through getgrgid.
+  // No shell, PATH search, or caller-provided user/group name is involved.
+  const group = Bun.spawn(['/usr/bin/id', '-gn'], {
+    env: {},
+    stdin: 'ignore',
+    stdout: 'pipe',
+    stderr: 'pipe',
+  })
+  const name = (await Bun.readableStreamToText(group.stdout)).trim()
+  if ((await group.exited) !== 0 || name !== 'nixbld')
+    fail('nix-build-sandbox requires membership in the nixbld primary group')
+}
+
 /**
- * Nix already owns the Darwin sandbox. Its clean-source preflight plus these
+ * Nix owns the Darwin derivation boundary. Its clean-source preflight plus these
  * runtime checks exclude editor roots without attempting a forbidden nest.
  */
 export const assertNixEmitIsolation = async (options: {
+  readonly buckOut: string
+  readonly readRoots: readonly string[]
+  readonly stagingRoot: string
+}): Promise<void> => {
+  await assertDarwinNixBuildUser()
+  await assertNixEmitInputBoundary(options)
+}
+
+/** Filesystem seam; production Nix emit always checks the effective build user first. */
+export const assertNixEmitInputBoundary = async (options: {
   readonly buckOut: string
   readonly readRoots: readonly string[]
   readonly stagingRoot: string
@@ -643,8 +680,17 @@ export const assertNixEmitIsolation = async (options: {
   if (options.readRoots.length === 0) fail('Nix emit requires declared read roots')
   const buildTop = environment.NIX_BUILD_TOP
   if (buildTop === undefined || isAbsolute(buildTop) === false)
-    fail('nix-build-sandbox requires an absolute NIX_BUILD_TOP')
+    return fail('nix-build-sandbox requires an absolute NIX_BUILD_TOP')
   const top = await realpath(buildTop)
+  const source = environment.NIX_BUILD_SOURCE
+  if (source === undefined || source.startsWith('/nix/store/') === false)
+    return fail('nix-build-sandbox requires a projected /nix/store source')
+  const sourceRoot = await realpath(source)
+  if (
+    sourceRoot.startsWith('/nix/store/') === false ||
+    (await lstat(sourceRoot)).isDirectory() === false
+  )
+    fail('nix-build-sandbox requires an immutable source directory')
   const belowBuildTop = (path: string): boolean => path.startsWith(`${top}${sep}`)
   const home = environment.HOME
   if (
@@ -656,6 +702,8 @@ export const assertNixEmitIsolation = async (options: {
   const buckOut = await realpath(options.buckOut)
   if (belowBuildTop(buckOut) === false)
     fail('nix-build-sandbox requires buck-out inside NIX_BUILD_TOP')
+  if (belowBuildTop(dirname(buckOut)) === false)
+    fail('nix-build-sandbox requires a source root inside NIX_BUILD_TOP')
   const stagingRoot = await realpath(options.stagingRoot)
   if (belowBuildTop(stagingRoot) === false)
     fail('nix-build-sandbox requires staging inside NIX_BUILD_TOP')

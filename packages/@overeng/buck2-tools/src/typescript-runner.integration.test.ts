@@ -18,7 +18,7 @@ import { dirname, join } from 'node:path'
 import { expect, it } from 'vitest'
 
 import {
-  assertNixEmitIsolation,
+  assertNixEmitInputBoundary,
   copyWritableTree,
   darwinEmitCommand,
   runEmit,
@@ -251,6 +251,18 @@ it.skipIf(process.platform !== 'darwin')(
   },
 )
 
+it('rejects a declared Nix isolation mode for a non-build-user process', async () => {
+  await expect(
+    darwinEmitCommand({
+      argv: ['/compiler'],
+      buckOut: '/fabricated-nix-build/source/buck-out',
+      isolation: 'nix-build-sandbox',
+      readRoots: ['/fabricated-nix-build/input'],
+      stagingRoot: '/fabricated-nix-build/stage',
+    }),
+  ).rejects.toThrow('Darwin multi-user Nix build user')
+})
+
 it.each(['.editor-view', '.editor-view-content'])(
   'fails closed outside a clean declared Nix build and rejects reachable %s trees',
   async (editorDirectory) => {
@@ -266,43 +278,53 @@ it.each(['.editor-view', '.editor-view-content'])(
       stagingRoot,
       // Treat the process temp directory as the builder's private root. The host
       // may legitimately have unrelated configuration there (outside source).
-      environment: { NIX_BUILD_TOP: tmpdir(), HOME: home },
+      environment: {
+        NIX_BUILD_TOP: tmpdir(),
+        NIX_BUILD_SOURCE: dirname(dirname(process.execPath)),
+        HOME: home,
+      },
     }
     try {
-      await expect(assertNixEmitIsolation(options)).resolves.toBeUndefined()
-      await expect(assertNixEmitIsolation({ ...options, environment: {} })).rejects.toThrow(
+      await expect(assertNixEmitInputBoundary(options)).resolves.toBeUndefined()
+      await expect(
+        assertNixEmitInputBoundary({
+          ...options,
+          environment: { ...options.environment, NIX_BUILD_SOURCE: root },
+        }),
+      ).rejects.toThrow('projected /nix/store source')
+      await expect(assertNixEmitInputBoundary({ ...options, environment: {} })).rejects.toThrow(
         'NIX_BUILD_TOP',
       )
       await expect(
-        assertNixEmitIsolation({
+        assertNixEmitInputBoundary({
           ...options,
-          environment: { NIX_BUILD_TOP: root, HOME: tmpdir() },
+          environment: { ...options.environment, NIX_BUILD_TOP: root, HOME: tmpdir() },
         }),
       ).rejects.toThrow('Nix build HOME')
       await expect(
-        assertNixEmitIsolation({
+        assertNixEmitInputBoundary({
           ...options,
-          environment: { NIX_BUILD_TOP: home, HOME: '/homeless-shelter' },
+          environment: { ...options.environment, NIX_BUILD_TOP: home, HOME: '/homeless-shelter' },
         }),
       ).rejects.toThrow('buck-out inside NIX_BUILD_TOP')
-      await expect(assertNixEmitIsolation({ ...options, readRoots: [] })).rejects.toThrow(
+      await expect(assertNixEmitInputBoundary({ ...options, readRoots: [] })).rejects.toThrow(
         'declared read roots',
       )
       const editor = join(root, editorDirectory, 'types')
       mkdirSync(editor, { recursive: true })
       symlinkSync(editor, join(input, 'ambient-types'))
-      await expect(assertNixEmitIsolation(options)).rejects.toThrow('editor view is reachable')
+      await expect(assertNixEmitInputBoundary(options)).rejects.toThrow('editor view is reachable')
       rmSync(join(input, 'ambient-types'))
       rmSync(join(root, editorDirectory), { recursive: true })
       symlinkSync(input, join(input, 'cycle'))
-      await expect(assertNixEmitIsolation(options)).resolves.toBeUndefined()
+      await expect(assertNixEmitInputBoundary(options)).resolves.toBeUndefined()
       symlinkSync('/etc', join(input, 'outside-build'))
-      await expect(assertNixEmitIsolation(options)).rejects.toThrow(
+      await expect(assertNixEmitInputBoundary(options)).rejects.toThrow(
         'escapes the build and store roots',
       )
       rmSync(join(input, 'outside-build'))
       symlinkSync(input, join(root, 'source', 'node_modules'))
-      await expect(assertNixEmitIsolation(options)).rejects.toThrow(
+      await expect(assertNixEmitInputBoundary(options)).rejects.toThrow(
         'ancestor contains editor lookup',
       )
     } finally {
@@ -329,7 +351,7 @@ it.skipIf(process.platform !== 'darwin')(
       expect(command[0]).toBe('/usr/bin/sandbox-exec')
       const child = Bun.spawn([...command], { stdout: 'pipe', stderr: 'pipe' })
       expect(await child.exited).not.toBe(0)
-      expect(await new Response(child.stdout).text()).toBe('')
+      expect(await Bun.readableStreamToText(child.stdout)).toBe('')
     } finally {
       rmSync(root, { recursive: true, force: true })
     }

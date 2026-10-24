@@ -45,7 +45,7 @@ def hermetic_action(ctx, arguments, env = {}, cacheable = True, inherit_nix_buil
         tool.store_path,
         "--coreutils-prog=env",
         "-S",
-        "-i BUCK_SCRATCH_PATH=${BUCK_SCRATCH_PATH} TMPDIR=${TMPDIR}" + (" NIX_BUILD_TOP=${NIX_BUILD_TOP} HOME=${HOME}" if inherit_nix_build_environment else ""),
+        "-i BUCK_SCRATCH_PATH=${BUCK_SCRATCH_PATH} TMPDIR=${TMPDIR}" + (" NIX_BUILD_TOP=${NIX_BUILD_TOP} NIX_BUILD_SOURCE=${src} HOME=${HOME}" if inherit_nix_build_environment else ""),
         "LC_ALL=C",
         "TZ=UTC",
     ], hidden = [tool.executable, tool.manifest])

@@ -167,11 +167,16 @@ The Nix from-source product wrapper explicitly declares
 `sandbox` setting: Darwin derivation execution can reject nested sandbox-exec
 even with Nix sandboxing disabled. The wrapper rejects `.editor-view` trees in
 its projected source, following symlinks rather than assuming every supplied
-store source is clean. Only the declared mode forwards `NIX_BUILD_TOP` and
-`HOME` through the scrubbed Darwin action environment. The runner requires
-canonical `buck-out` and HOME under the build top (or the standard
-`/homeless-shelter` HOME), rejects input links escaping the build/store roots
-or reaching editor views, and rejects ancestor editor lookup roots. Unknown
+store source is clean. Only the declared mode forwards `NIX_BUILD_TOP`,
+`NIX_BUILD_SOURCE` (the builder's immutable `src`), and `HOME` through the
+scrubbed Darwin action environment. The runner first requires the effective
+OS-resolved user to be a non-root `_nixbldN` account with primary group
+`nixbld`; caller-controlled environment cannot substitute for these native
+account/group lookups. Single-user Nix builds fail closed. It then requires
+an immutable store source projection, canonical source/artifact/staging roots
+under the build top, and a build-local or standard `/homeless-shelter` HOME.
+It rejects input links escaping the build/store roots or reaching editor
+views, and rejects ancestor editor lookup roots. Unknown
 modes and failed assertions fail the action before invoking tsgo. There is no
 environment-selected mode and no retry after sandbox failure.
 
@@ -180,6 +185,11 @@ and runner changes invalidate dependent action digests. Neither mode grants
 containment or shared-cache admission. Private mode-0700 staging is removed
 after success, failure, and handled termination signals. Linux retains its
 existing Bubblewrap boundary, which hides undeclared worktree ancestors.
+
+The macOS test lane exercises a real content-address from-source Nix product
+on merge-group runs. Its regression proof explicitly uses `sandbox = false`
+and prints the runner's configured default; the derivation-user guard remains
+mandatory regardless of that setting.
 
 Decision authority is the live 2026-10-11 axe record `jd5hbf`,
 `enforce-linux-block-darwin`: enforce Linux containment and block Darwin
