@@ -61,9 +61,13 @@ export const withBuck2CacheEvidence = (
             path: [
               '${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}',
               '${{ env.CI_BUCK2_CACHE_ACTIONS_PATH }}',
+              '${{ env.CI_BUCK2_CACHE_WARM99_PATH }}',
+              '${{ env.CI_BUCK2_CACHE_PROOF_MANIFEST_PATH }}',
+              '${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}.shard-index.json',
+              '${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}.shards/*.json',
             ].join('\n'),
             'if-no-files-found': 'warn',
-            'retention-days': 14,
+            'retention-days': 90,
           },
         },
       )
@@ -75,6 +79,9 @@ export const withBuck2CacheEvidence = (
             ...job.env,
             CI_BUCK2_CACHE_EVIDENCE_PATH: '${{ github.workspace }}/tmp/buck2-cache-evidence.json',
             CI_BUCK2_CACHE_ACTIONS_PATH: '${{ github.workspace }}/tmp/buck2-cache-actions.jsonl.gz',
+            CI_BUCK2_CACHE_WARM99_PATH: '${{ github.workspace }}/tmp/buck2-cache-warm99.json',
+            CI_BUCK2_CACHE_PROOF_MANIFEST_PATH:
+              '${{ github.workspace }}/tmp/buck2-cache-proof-manifest.json',
             CI_BUCK2_CACHE_EVIDENCE_START: '${{ github.workspace }}/tmp/buck2-cache-evidence-start',
             CI_BUCK2_CACHE_EVIDENCE_JOB: jobId,
             CI_BUCK2_CACHE_EVIDENCE_HEAD_SHA:

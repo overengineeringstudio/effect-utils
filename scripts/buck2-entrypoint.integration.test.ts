@@ -10,6 +10,7 @@ import {
   realpathSync,
   readdirSync,
   rmSync,
+  symlinkSync,
   watch,
   writeFileSync,
 } from 'node:fs'
@@ -430,9 +431,12 @@ describe('native build ID registry', () => {
     const result = nativeBuildIdArguments({ args, cwd: root, env })
     const path = `${evidence}.native-build-ids/${buildId}.buck-trace-id`
     expect(result).toEqual(['run', '--write-build-id', path, ...args.slice(1)])
-    expect(readFileSync(`${evidence}.native-build-id-paths.jsonl`, 'utf8')).toBe(
-      `${JSON.stringify({ buildId, path })}\n`,
-    )
+    expect(JSON.parse(readFileSync(`${evidence}.native-build-id-paths.jsonl`, 'utf8'))).toEqual({
+      buildId,
+      path,
+      startedAt: expect.any(Number),
+      priorMtimeMs: null,
+    })
     expect(existsSync(path)).toBe(false)
   })
 
@@ -455,6 +459,8 @@ describe('native build ID registry', () => {
       expect(JSON.parse(readFileSync(`${evidence}.native-build-id-paths.jsonl`, 'utf8'))).toEqual({
         buildId,
         path: join(root, 'caller.id'),
+        startedAt: expect.any(Number),
+        priorMtimeMs: null,
       })
       expect(existsSync(join(root, 'caller.id'))).toBe(false)
     })
@@ -492,6 +498,8 @@ describe('native build ID registry', () => {
     const root = fixture()
     const evidence = join(root, 'evidence.json')
     const native = join(root, 'native-build-id')
+    symlinkSync(join(import.meta.dir, '../genie'), join(root, 'genie'), 'dir')
+    symlinkSync(import.meta.dir, join(root, 'scripts'), 'dir')
     writeFileSync(
       native,
       `#!${process.execPath}
@@ -499,6 +507,9 @@ import { writeFileSync } from 'node:fs'
 const args = process.argv.slice(2)
 const path = args[args.indexOf('--write-build-id') + 1]
 writeFileSync(path, process.env.BUCK_WRAPPER_UUID + '\\n')
+const sink = args[args.indexOf('--event-log') + 1]
+const event = (phase) => ({ Event: { trace_id: process.env.BUCK_WRAPPER_UUID, span_id: 1, timestamp: [Math.floor(Date.now()/1000), 0], data: { [phase]: { data: { Command: {} } } } } })
+writeFileSync(sink, [event('SpanStart'), event('SpanEnd')].map(JSON.stringify).join('\\n') + '\\n')
 `,
       { mode: 0o700 },
     )

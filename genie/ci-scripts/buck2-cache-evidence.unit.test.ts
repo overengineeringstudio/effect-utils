@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test'
-import { decodeOutputTinyDigests } from './buck2-action-evidence-codec.ts'
 
+import { decodeOutputTinyDigests } from './buck2-action-evidence-codec.ts'
 import {
   classifyCacheUploadError,
   decodeCacheUploadErrors,
@@ -195,17 +195,31 @@ describe('native Buck cache evidence projection', () => {
         { index: 2, tinyDigest: 'ffffffff' },
       ],
     }
-    for (const category of ['rustc', 'deps', 'cargo_extract', 'buildscript', 'rustc_cfg',
-      'rust_interop_napi', 'rust_interop_service', 'rust_wasm_guest', 'tsgo_emit']) {
+    for (const category of [
+      'rustc',
+      'deps',
+      'cargo_extract',
+      'buildscript',
+      'rustc_cfg',
+      'rust_interop_napi',
+      'rust_interop_service',
+      'rust_wasm_guest',
+      'tsgo_emit',
+    ]) {
       for (const uploadResult of [0, 3, 9]) {
         const rows: ActionRecord[] = []
         const projector = createCacheEvidenceProjector({ onAction: (row) => rows.push(row) })
-        projector.add(nativeEvent('SpanEnd', actionEnd({
-          name: { category },
-          failed: false,
-          cache_upload_result: uploadResult,
-          outputs: expected.outputs.map((output) => ({ tiny_digest: output.tinyDigest })),
-        })))
+        projector.add(
+          nativeEvent(
+            'SpanEnd',
+            actionEnd({
+              name: { category },
+              failed: false,
+              cache_upload_result: uploadResult,
+              outputs: expected.outputs.map((output) => ({ tiny_digest: output.tinyDigest })),
+            }),
+          ),
+        )
         const summary = projector.finish()
         expect(rows[0]?.digest).toBe(fixtureDigest)
         expect(rows[0]?.outputTinyDigests).toEqual(expected)
@@ -213,52 +227,88 @@ describe('native Buck cache evidence projection', () => {
         expect(decodeCacheEvidence(summary)).toEqual(summary)
       }
     }
-    for (const overrides of [
-      { cache_upload_result: 1 }, { failed: true }, { kind: 'Write' },
-    ]) {
+    for (const overrides of [{ cache_upload_result: 1 }, { failed: true }, { kind: 'Write' }]) {
       const rows: ActionRecord[] = []
       const projector = createCacheEvidenceProjector({ onAction: (row) => rows.push(row) })
-      projector.add(nativeEvent('SpanEnd', actionEnd({
-        cache_upload_result: 0, outputs: [{ tiny_digest: 'ffffffff' }], ...overrides,
-      })))
+      projector.add(
+        nativeEvent(
+          'SpanEnd',
+          actionEnd({
+            cache_upload_result: 0,
+            outputs: [{ tiny_digest: 'ffffffff' }],
+            ...overrides,
+          }),
+        ),
+      )
       expect(projector.finish().actions[0]?.outputTinyDigests).toBeUndefined()
       expect(rows[0]?.outputTinyDigests).toBeUndefined()
     }
   })
 
   it('distinguishes changed output indices across runs with the same action digest', () => {
-    const summaries = [['aaaaaaaa', 'bbbbbbbb'], ['aaaaaaaa', 'cccccccc']].map((digests, run) =>
-      project([nativeEvent('SpanEnd', actionEnd({
-        name: { category: 'rustc' }, cache_upload_result: 0,
-        outputs: digests.map((tiny_digest) => ({ tiny_digest })),
-      }), 1, `run-${run}`)]),
+    const summaries = [
+      ['aaaaaaaa', 'bbbbbbbb'],
+      ['aaaaaaaa', 'cccccccc'],
+    ].map((digests, run) =>
+      project([
+        nativeEvent(
+          'SpanEnd',
+          actionEnd({
+            name: { category: 'rustc' },
+            cache_upload_result: 0,
+            outputs: digests.map((tiny_digest) => ({ tiny_digest })),
+          }),
+          1,
+          `run-${run}`,
+        ),
+      ]),
     )
     const first = summaries[0]!.actions[0]!
     const next = summaries[1]!.actions[0]!
     expect(first.digest).toBe(next.digest)
-    expect(first.outputTinyDigests?.outputs.map((output, index) => ({
-      index, equal: output.tinyDigest === next.outputTinyDigests?.outputs[index]?.tinyDigest,
-    }))).toEqual([{ index: 0, equal: true }, { index: 1, equal: false }])
+    expect(
+      first.outputTinyDigests?.outputs.map((output, index) => ({
+        index,
+        equal: output.tinyDigest === next.outputTinyDigests?.outputs[index]?.tinyDigest,
+      })),
+    ).toEqual([
+      { index: 0, equal: true },
+      { index: 1, equal: false },
+    ])
     const merged = mergeCacheEvidence({ previous: summaries[0]!, next: summaries[1]! })
-    expect(decodeCacheEvidence(merged).actions.map((action) => action.outputTinyDigests))
-      .toEqual([first.outputTinyDigests, next.outputTinyDigests])
+    expect(decodeCacheEvidence(merged).actions.map((action) => action.outputTinyDigests)).toEqual([
+      first.outputTinyDigests,
+      next.outputTinyDigests,
+    ])
   })
 
   it('rejects malformed output evidence without inventing missing native digests', () => {
     expect(decodeOutputTinyDigests(undefined)).toBeUndefined()
-    expect(decodeOutputTinyDigests({ algorithm: 'buck2-tiny-digest-v1', outputs: [] }))
-      .toEqual({ algorithm: 'buck2-tiny-digest-v1', outputs: [] })
+    expect(decodeOutputTinyDigests({ algorithm: 'buck2-tiny-digest-v1', outputs: [] })).toEqual({
+      algorithm: 'buck2-tiny-digest-v1',
+      outputs: [],
+    })
     for (const value of [
       { algorithm: 'sha256', outputs: [] },
       { algorithm: 'buck2-tiny-digest-v1', outputs: null },
       ...['abc', 'AABBCCDD', 'g'.repeat(8), 'a'.repeat(64), null].map((tinyDigest) => ({
-        algorithm: 'buck2-tiny-digest-v1', outputs: [{ index: 0, tinyDigest }],
+        algorithm: 'buck2-tiny-digest-v1',
+        outputs: [{ index: 0, tinyDigest }],
       })),
       { algorithm: 'buck2-tiny-digest-v1', outputs: [{ index: 1, tinyDigest: 'aaaaaaaa' }] },
-    ]) expect(() => decodeOutputTinyDigests(value)).toThrow()
-    expect(() => project([nativeEvent('SpanEnd', actionEnd({
-      cache_upload_result: 0, outputs: [{ tiny_digest: 'not-a-digest' }],
-    }))])).toThrow()
+    ])
+      expect(() => decodeOutputTinyDigests(value)).toThrow()
+    expect(() =>
+      project([
+        nativeEvent(
+          'SpanEnd',
+          actionEnd({
+            cache_upload_result: 0,
+            outputs: [{ tiny_digest: 'not-a-digest' }],
+          }),
+        ),
+      ]),
+    ).toThrow()
   })
 
   it('reports every materialization category separately without relabeling native outcomes', () => {
@@ -728,7 +778,7 @@ describe('native Buck cache evidence projection', () => {
                 command_kind: {
                   command: {
                     OmittedLocalCommand: {
-                      action_digest: `digest-${String(index).padStart(3, '0')}:142`,
+                      action_digest: `${index.toString(16).padStart(64, '0')}:142`,
                     },
                   },
                 },
@@ -745,7 +795,7 @@ describe('native Buck cache evidence projection', () => {
       'repository_validation',
       'second_family',
     ])
-    expect(result.actions[0]!.digest).toBe('digest-000:142')
+    expect(result.actions[0]!.digest).toBe(`${'0'.repeat(64)}:142`)
     expect(result.counts.uploaded).toBe(101)
     expect(result.droppedActionCount).toBe(99)
   })
@@ -814,10 +864,12 @@ describe('native Buck cache evidence projection', () => {
       startedAt: 100,
       completedAt: 200,
     }
-    expect(finalizeNativeLogFreshness({
-      invocations: [survivor],
-      confirmedBuildIds: new Set(['earliest', 'survivor']),
-    })).toBe(true)
+    expect(
+      finalizeNativeLogFreshness({
+        invocations: [survivor],
+        confirmedBuildIds: new Set(['earliest', 'survivor']),
+      }),
+    ).toBe(true)
     expect(survivor.freshRoot).toBe(false)
   })
 
@@ -837,10 +889,12 @@ describe('native Buck cache evidence projection', () => {
       { ...invocation },
       { ...invocation, buildId: 'audit', actionCount: 0, startedAt: 50 },
     ]
-    expect(finalizeNativeLogFreshness({
-      invocations,
-      confirmedBuildIds: new Set(['audit', 'build']),
-    })).toBe(false)
+    expect(
+      finalizeNativeLogFreshness({
+        invocations,
+        confirmedBuildIds: new Set(['audit', 'build']),
+      }),
+    ).toBe(false)
     expect(invocation.freshRoot).toBe(true)
     expect(invocations[2]!.freshRoot).toBe(false)
     expect(finalizeNativeLogFreshness({ invocations, confirmedBuildIds: new Set() })).toBe(false)
@@ -1014,12 +1068,18 @@ describe('native Buck cache evidence projection', () => {
       },
     })
     const failure = upload(30001, {
-      CacheUpload: { success: false, error: 'CAS write denied', re_error_code: 'PERMISSION_DENIED' },
+      CacheUpload: {
+        success: false,
+        error: 'CAS write denied',
+        re_error_code: 'PERMISSION_DENIED',
+      },
     })
     projector.add(failure)
     projector.add(failure)
     projector.add(upload(30002, { ExecutorStage: {} }, 20181, 'SpanStart'))
-    projector.add(upload(30003, { CacheUpload: { success: false, error: 'connection reset' } }, 30002))
+    projector.add(
+      upload(30003, { CacheUpload: { success: false, error: 'connection reset' } }, 30002),
+    )
     projector.add(upload(30004, { ReUpload: { bytes_uploaded: 0, error: 'NOT_A_NATIVE_FIELD' } }))
     projector.add(upload(30005, { CacheUpload: { success: true, error: 'IGNORE_SUCCESS' } }))
     projector.add(upload(30006, { CacheUpload: { success: false, error: '' } }))
@@ -1112,7 +1172,9 @@ describe('cache admission evidence schema', () => {
     }
     expect(decodeCacheAdmissionInvocation(row)).toEqual(row)
     const failure = { class: 'deadline', phase: 'tls', elapsedMs: 2510, deadlineMs: 2500 }
-    expect(decodeCacheAdmissionInvocation({ ...row, reapiFailure: failure }).reapiFailure).toEqual(failure)
+    expect(decodeCacheAdmissionInvocation({ ...row, reapiFailure: failure }).reapiFailure).toEqual(
+      failure,
+    )
     for (const invalid of [
       { ...failure, class: 'private-host.example' },
       { ...failure, phase: 'unknown' },
@@ -1122,15 +1184,25 @@ describe('cache admission evidence schema', () => {
       null,
     ])
       expect(() => decodeCacheAdmissionInvocation({ ...row, reapiFailure: invalid })).toThrow()
-    expect(() => decodeCacheAdmissionInvocation({
-      ...row, admissionFallbacks: { reapi: 0, archiveOrigin: 0 }, reapiFailure: failure,
-    })).toThrow()
+    expect(() =>
+      decodeCacheAdmissionInvocation({
+        ...row,
+        admissionFallbacks: { reapi: 0, archiveOrigin: 0 },
+        reapiFailure: failure,
+      }),
+    ).toThrow()
     const rows = [
       { ...row, reapiFailure: failure },
-      { ...row, invocationId: 'c568610f-0ddf-40c5-99df-d178142b9dad', reapiFailure: { ...failure, elapsedMs: 2600 } },
+      {
+        ...row,
+        invocationId: 'c568610f-0ddf-40c5-99df-d178142b9dad',
+        reapiFailure: { ...failure, elapsedMs: 2600 },
+      },
     ]
     const evidence = decodeCacheAdmissionEvidence({ admissionInvocations: rows })
-    expect(evidence.reapiFailures).toEqual([{ class: 'deadline', phase: 'tls', count: 2, maxElapsedMs: 2600 }])
+    expect(evidence.reapiFailures).toEqual([
+      { class: 'deadline', phase: 'tls', count: 2, maxElapsedMs: 2600 },
+    ])
     expect(decodeCacheAdmissionEvidence(evidence).reapiFailures).toEqual(evidence.reapiFailures)
     expect(() => decodeCacheAdmissionEvidence({ ...evidence, reapiFailures: [] })).toThrow()
     expect(decodeCacheAdmissionEvidence({ admissionInvocations: [row] }).reapiFailures).toEqual([])

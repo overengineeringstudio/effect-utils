@@ -45,11 +45,11 @@ A failed decode or export never changes the Buck result (BUILD.BUCK.OBS-R01–R0
 ### CI action-cache evidence
 
 ```text
-Buck native event log -> `buck2 log show` -> bounded JSON projection -> job artifact
+Buck per-command event sink -> sanitized atomic shards -> reconciled job/proof artifact
 ```
 
 Buck-capable public CI jobs retain `buck2-cache-evidence-<job>[-<matrix-index>]-<attempt>`
-artifacts for 14 days, independently of OTLP delivery. Schema version 1 includes
+artifacts for 90 days, independently of OTLP delivery. Schema version 1 includes
 repository, run, attempt, job, head revision and public-cache posture metadata;
 per-invocation build IDs and complete outcome counts; and at most 64 representative
 action rows across the invocations. Each row carries native category, target,
@@ -60,13 +60,15 @@ The projector uses numeric native execution/upload enums: action-cache execution
 `remote-hit`; a successful cache upload is `uploaded`; local execution, local cache,
 remote execution and remote dep-file hits remain distinct. Omitted rows and missing
 command digests are counted explicitly. Each new invocation includes `noDigestReasons`,
-an outcome-keyed count of actions with no native RE digest; local-cache and other
-nondigest native outcomes are informational and do not fail collection. Only a
-`remote-hit` or `uploaded` action without its RE digest is an inconsistency that
-fails collection after writing the artifact. Older schema-1 artifacts may omit
+an outcome-keyed count of actions with no native RE digest. Legitimate non-command
+omissions remain informational. Every new command identity needs its native
+digest; only a proven same-root configured-key repetition of native kind `10`
+may be excluded without one. Missing identity evidence fails closed under the
+[warm99 contract](../06-reuse-client/spec.md#per-lane-warm99-evaluation).
+Older schema-1 artifacts may omit
 `noDigestReasons`; absence means reasons are unavailable, not zero omissions.
-Duplicate logs of one native build ID do not double-count actions. The trusted
-populate/replay proof captures each context before its native logs are removed,
+Duplicate logs of one native build ID do not double-count actions. Per-command
+sanitized shards preserve each proof context independently of rotating Buck logs,
 including failed Buck commands before returning their original exit status.
 Uploads, hits and failed invocations remain in one job artifact.
 

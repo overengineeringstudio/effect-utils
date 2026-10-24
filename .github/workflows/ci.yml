@@ -557,8 +557,12 @@ jobs:
           path: |
             ${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}
             ${{ env.CI_BUCK2_CACHE_ACTIONS_PATH }}
+            ${{ env.CI_BUCK2_CACHE_WARM99_PATH }}
+            ${{ env.CI_BUCK2_CACHE_PROOF_MANIFEST_PATH }}
+            ${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}.shard-index.json
+            ${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}.shards/*.json
           if-no-files-found: warn
-          retention-days: 14
+          retention-days: 90
       - if: ${{ (always() && env.CI_EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && vars.TS_EVIDENCE_CLIENT_ID != '' && vars.TS_EVIDENCE_AUDIENCE != '') && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success') && steps.default-ref-policy-verdict.outcome == 'success') }}
         uses: tailscale/github-action@v4
         continue-on-error: true
@@ -580,6 +584,8 @@ jobs:
       BUCK2_PUBLIC_CACHE_READ_ONLY: '1'
       CI_BUCK2_CACHE_EVIDENCE_PATH: '${{ github.workspace }}/tmp/buck2-cache-evidence.json'
       CI_BUCK2_CACHE_ACTIONS_PATH: '${{ github.workspace }}/tmp/buck2-cache-actions.jsonl.gz'
+      CI_BUCK2_CACHE_WARM99_PATH: '${{ github.workspace }}/tmp/buck2-cache-warm99.json'
+      CI_BUCK2_CACHE_PROOF_MANIFEST_PATH: '${{ github.workspace }}/tmp/buck2-cache-proof-manifest.json'
       CI_BUCK2_CACHE_EVIDENCE_START: '${{ github.workspace }}/tmp/buck2-cache-evidence-start'
       CI_BUCK2_CACHE_EVIDENCE_JOB: default-ref-policy
       CI_BUCK2_CACHE_EVIDENCE_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
@@ -838,8 +844,12 @@ jobs:
           path: |
             ${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}
             ${{ env.CI_BUCK2_CACHE_ACTIONS_PATH }}
+            ${{ env.CI_BUCK2_CACHE_WARM99_PATH }}
+            ${{ env.CI_BUCK2_CACHE_PROOF_MANIFEST_PATH }}
+            ${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}.shard-index.json
+            ${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}.shards/*.json
           if-no-files-found: warn
-          retention-days: 14
+          retention-days: 90
       - if: ${{ (always() && env.CI_EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && vars.TS_EVIDENCE_CLIENT_ID != '' && vars.TS_EVIDENCE_AUDIENCE != '') && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
         uses: tailscale/github-action@v4
         continue-on-error: true
@@ -861,6 +871,8 @@ jobs:
       BUCK2_PUBLIC_CACHE_READ_ONLY: '1'
       CI_BUCK2_CACHE_EVIDENCE_PATH: '${{ github.workspace }}/tmp/buck2-cache-evidence.json'
       CI_BUCK2_CACHE_ACTIONS_PATH: '${{ github.workspace }}/tmp/buck2-cache-actions.jsonl.gz'
+      CI_BUCK2_CACHE_WARM99_PATH: '${{ github.workspace }}/tmp/buck2-cache-warm99.json'
+      CI_BUCK2_CACHE_PROOF_MANIFEST_PATH: '${{ github.workspace }}/tmp/buck2-cache-proof-manifest.json'
       CI_BUCK2_CACHE_EVIDENCE_START: '${{ github.workspace }}/tmp/buck2-cache-evidence-start'
       CI_BUCK2_CACHE_EVIDENCE_JOB: pr-buck2-tools
       CI_BUCK2_CACHE_EVIDENCE_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
@@ -1191,7 +1203,7 @@ jobs:
       - name: Native cache evidence regressions
         env:
           GITHUB_TOKEN: ${{ github.token }}
-        run: 'cd "${GITHUB_WORKSPACE:-$PWD}" && nix shell .#bun --command bun test ./genie/ci-scripts/buck2-cache-evidence.unit.test.ts ./genie/ci-scripts/buck2-cache-evidence.integration.test.ts ./genie/ci-scripts/buck2-action-evidence.integration.test.ts ./genie/ci-scripts/buck2-cache-warm99.unit.test.ts ./genie/ci-scripts/buck2-cache-warm99.integration.test.ts ./genie/ci-workflow/buck2-cache-evidence.unit.test.ts ./genie/ci-workflow/buck2-cache-posture.integration.test.ts'
+        run: 'cd "${GITHUB_WORKSPACE:-$PWD}" && nix shell .#bun --command bun test ./genie/ci-scripts/buck2-cache-evidence.unit.test.ts ./genie/ci-scripts/buck2-cache-evidence.integration.test.ts ./genie/ci-scripts/buck2-action-evidence.integration.test.ts ./genie/ci-scripts/buck2-cache-warm99.unit.test.ts ./genie/ci-scripts/buck2-cache-warm99.integration.test.ts ./genie/ci-scripts/buck2-cache-proof-reports.integration.test.ts ./genie/ci-scripts/buck2-cache-proof-history.unit.test.ts ./genie/ci-scripts/buck2-cache-shards.integration.test.ts ./genie/ci-scripts/buck2-cache-join.unit.test.ts ./genie/ci-scripts/buck2-cache-join-discovery.unit.test.ts ./genie/ci-scripts/buck2-cache-join-download.unit.test.ts ./genie/ci-workflow/buck2-cache-evidence.unit.test.ts ./genie/ci-workflow/buck2-cache-posture.integration.test.ts'
       - name: Downstream flake-input regression
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -1372,8 +1384,12 @@ jobs:
           path: |
             ${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}
             ${{ env.CI_BUCK2_CACHE_ACTIONS_PATH }}
+            ${{ env.CI_BUCK2_CACHE_WARM99_PATH }}
+            ${{ env.CI_BUCK2_CACHE_PROOF_MANIFEST_PATH }}
+            ${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}.shard-index.json
+            ${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}.shards/*.json
           if-no-files-found: warn
-          retention-days: 14
+          retention-days: 90
       - if: ${{ (always() && env.CI_EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && vars.TS_EVIDENCE_CLIENT_ID != '' && vars.TS_EVIDENCE_AUDIENCE != '') && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
         uses: tailscale/github-action@v4
         continue-on-error: true
@@ -1396,6 +1412,8 @@ jobs:
       BUCK2_PUBLIC_CACHE_READ_ONLY: ${{ ((github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'merge_group' && github.event.merge_group.base_ref == 'refs/heads/main' && startsWith(github.ref, 'refs/heads/gh-readonly-queue/main/'))) && '0' || '1' }}
       CI_BUCK2_CACHE_EVIDENCE_PATH: '${{ github.workspace }}/tmp/buck2-cache-evidence.json'
       CI_BUCK2_CACHE_ACTIONS_PATH: '${{ github.workspace }}/tmp/buck2-cache-actions.jsonl.gz'
+      CI_BUCK2_CACHE_WARM99_PATH: '${{ github.workspace }}/tmp/buck2-cache-warm99.json'
+      CI_BUCK2_CACHE_PROOF_MANIFEST_PATH: '${{ github.workspace }}/tmp/buck2-cache-proof-manifest.json'
       CI_BUCK2_CACHE_EVIDENCE_START: '${{ github.workspace }}/tmp/buck2-cache-evidence-start'
       CI_BUCK2_CACHE_EVIDENCE_JOB: quality
       CI_BUCK2_CACHE_EVIDENCE_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
@@ -1429,6 +1447,8 @@ jobs:
       EFFECT_UTILS_TEST_PLATFORM: linux
       CI_BUCK2_CACHE_EVIDENCE_PATH: '${{ github.workspace }}/tmp/buck2-cache-evidence.json'
       CI_BUCK2_CACHE_ACTIONS_PATH: '${{ github.workspace }}/tmp/buck2-cache-actions.jsonl.gz'
+      CI_BUCK2_CACHE_WARM99_PATH: '${{ github.workspace }}/tmp/buck2-cache-warm99.json'
+      CI_BUCK2_CACHE_PROOF_MANIFEST_PATH: '${{ github.workspace }}/tmp/buck2-cache-proof-manifest.json'
       CI_BUCK2_CACHE_EVIDENCE_START: '${{ github.workspace }}/tmp/buck2-cache-evidence-start'
       CI_BUCK2_CACHE_EVIDENCE_JOB: test
       CI_BUCK2_CACHE_EVIDENCE_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
@@ -1734,8 +1754,12 @@ jobs:
           path: |
             ${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}
             ${{ env.CI_BUCK2_CACHE_ACTIONS_PATH }}
+            ${{ env.CI_BUCK2_CACHE_WARM99_PATH }}
+            ${{ env.CI_BUCK2_CACHE_PROOF_MANIFEST_PATH }}
+            ${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}.shard-index.json
+            ${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}.shards/*.json
           if-no-files-found: warn
-          retention-days: 14
+          retention-days: 90
       - if: ${{ (always() && env.CI_EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && vars.TS_EVIDENCE_CLIENT_ID != '' && vars.TS_EVIDENCE_AUDIENCE != '') && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
         uses: tailscale/github-action@v4
         continue-on-error: true
@@ -1774,6 +1798,8 @@ jobs:
       EFFECT_UTILS_TEST_PLATFORM: darwin
       CI_BUCK2_CACHE_EVIDENCE_PATH: '${{ github.workspace }}/tmp/buck2-cache-evidence.json'
       CI_BUCK2_CACHE_ACTIONS_PATH: '${{ github.workspace }}/tmp/buck2-cache-actions.jsonl.gz'
+      CI_BUCK2_CACHE_WARM99_PATH: '${{ github.workspace }}/tmp/buck2-cache-warm99.json'
+      CI_BUCK2_CACHE_PROOF_MANIFEST_PATH: '${{ github.workspace }}/tmp/buck2-cache-proof-manifest.json'
       CI_BUCK2_CACHE_EVIDENCE_START: '${{ github.workspace }}/tmp/buck2-cache-evidence-start'
       CI_BUCK2_CACHE_EVIDENCE_JOB: test-macos
       CI_BUCK2_CACHE_EVIDENCE_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
@@ -2149,8 +2175,12 @@ jobs:
           path: |
             ${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}
             ${{ env.CI_BUCK2_CACHE_ACTIONS_PATH }}
+            ${{ env.CI_BUCK2_CACHE_WARM99_PATH }}
+            ${{ env.CI_BUCK2_CACHE_PROOF_MANIFEST_PATH }}
+            ${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}.shard-index.json
+            ${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}.shards/*.json
           if-no-files-found: warn
-          retention-days: 14
+          retention-days: 90
       - if: ${{ (always() && env.CI_EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && vars.TS_EVIDENCE_CLIENT_ID != '' && vars.TS_EVIDENCE_AUDIENCE != '') && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
         uses: tailscale/github-action@v4
         continue-on-error: true
@@ -2485,8 +2515,12 @@ jobs:
           path: |
             ${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}
             ${{ env.CI_BUCK2_CACHE_ACTIONS_PATH }}
+            ${{ env.CI_BUCK2_CACHE_WARM99_PATH }}
+            ${{ env.CI_BUCK2_CACHE_PROOF_MANIFEST_PATH }}
+            ${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}.shard-index.json
+            ${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}.shards/*.json
           if-no-files-found: warn
-          retention-days: 14
+          retention-days: 90
       - if: ${{ (always() && env.CI_EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && vars.TS_EVIDENCE_CLIENT_ID != '' && vars.TS_EVIDENCE_AUDIENCE != '') && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
         uses: tailscale/github-action@v4
         continue-on-error: true
@@ -2508,6 +2542,8 @@ jobs:
       BUCK2_PUBLIC_CACHE_READ_ONLY: ${{ ((github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'merge_group' && github.event.merge_group.base_ref == 'refs/heads/main' && startsWith(github.ref, 'refs/heads/gh-readonly-queue/main/'))) && '0' || '1' }}
       CI_BUCK2_CACHE_EVIDENCE_PATH: '${{ github.workspace }}/tmp/buck2-cache-evidence.json'
       CI_BUCK2_CACHE_ACTIONS_PATH: '${{ github.workspace }}/tmp/buck2-cache-actions.jsonl.gz'
+      CI_BUCK2_CACHE_WARM99_PATH: '${{ github.workspace }}/tmp/buck2-cache-warm99.json'
+      CI_BUCK2_CACHE_PROOF_MANIFEST_PATH: '${{ github.workspace }}/tmp/buck2-cache-proof-manifest.json'
       CI_BUCK2_CACHE_EVIDENCE_START: '${{ github.workspace }}/tmp/buck2-cache-evidence-start'
       CI_BUCK2_CACHE_EVIDENCE_JOB: test-playwright-utils
       CI_BUCK2_CACHE_EVIDENCE_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
@@ -2834,8 +2870,12 @@ jobs:
           path: |
             ${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}
             ${{ env.CI_BUCK2_CACHE_ACTIONS_PATH }}
+            ${{ env.CI_BUCK2_CACHE_WARM99_PATH }}
+            ${{ env.CI_BUCK2_CACHE_PROOF_MANIFEST_PATH }}
+            ${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}.shard-index.json
+            ${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}.shards/*.json
           if-no-files-found: warn
-          retention-days: 14
+          retention-days: 90
       - if: ${{ (always() && env.CI_EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && vars.TS_EVIDENCE_CLIENT_ID != '' && vars.TS_EVIDENCE_AUDIENCE != '') && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
         uses: tailscale/github-action@v4
         continue-on-error: true
@@ -2857,6 +2897,8 @@ jobs:
       BUCK2_PUBLIC_CACHE_READ_ONLY: ${{ ((github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'merge_group' && github.event.merge_group.base_ref == 'refs/heads/main' && startsWith(github.ref, 'refs/heads/gh-readonly-queue/main/'))) && '0' || '1' }}
       CI_BUCK2_CACHE_EVIDENCE_PATH: '${{ github.workspace }}/tmp/buck2-cache-evidence.json'
       CI_BUCK2_CACHE_ACTIONS_PATH: '${{ github.workspace }}/tmp/buck2-cache-actions.jsonl.gz'
+      CI_BUCK2_CACHE_WARM99_PATH: '${{ github.workspace }}/tmp/buck2-cache-warm99.json'
+      CI_BUCK2_CACHE_PROOF_MANIFEST_PATH: '${{ github.workspace }}/tmp/buck2-cache-proof-manifest.json'
       CI_BUCK2_CACHE_EVIDENCE_START: '${{ github.workspace }}/tmp/buck2-cache-evidence-start'
       CI_BUCK2_CACHE_EVIDENCE_JOB: test-playwright-tui-react
       CI_BUCK2_CACHE_EVIDENCE_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
@@ -3151,8 +3193,12 @@ jobs:
           path: |
             ${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}
             ${{ env.CI_BUCK2_CACHE_ACTIONS_PATH }}
+            ${{ env.CI_BUCK2_CACHE_WARM99_PATH }}
+            ${{ env.CI_BUCK2_CACHE_PROOF_MANIFEST_PATH }}
+            ${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}.shard-index.json
+            ${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}.shards/*.json
           if-no-files-found: warn
-          retention-days: 14
+          retention-days: 90
       - if: ${{ (always() && env.CI_EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && vars.TS_EVIDENCE_CLIENT_ID != '' && vars.TS_EVIDENCE_AUDIENCE != '') && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
         uses: tailscale/github-action@v4
         continue-on-error: true
@@ -3176,6 +3222,8 @@ jobs:
       EFFECT_UTILS_TEST_PLATFORM: linux
       CI_BUCK2_CACHE_EVIDENCE_PATH: '${{ github.workspace }}/tmp/buck2-cache-evidence.json'
       CI_BUCK2_CACHE_ACTIONS_PATH: '${{ github.workspace }}/tmp/buck2-cache-actions.jsonl.gz'
+      CI_BUCK2_CACHE_WARM99_PATH: '${{ github.workspace }}/tmp/buck2-cache-warm99.json'
+      CI_BUCK2_CACHE_PROOF_MANIFEST_PATH: '${{ github.workspace }}/tmp/buck2-cache-proof-manifest.json'
       CI_BUCK2_CACHE_EVIDENCE_START: '${{ github.workspace }}/tmp/buck2-cache-evidence-start'
       CI_BUCK2_CACHE_EVIDENCE_JOB: test-megarepo-store-gc
       CI_BUCK2_CACHE_EVIDENCE_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
@@ -3474,8 +3522,12 @@ jobs:
           path: |
             ${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}
             ${{ env.CI_BUCK2_CACHE_ACTIONS_PATH }}
+            ${{ env.CI_BUCK2_CACHE_WARM99_PATH }}
+            ${{ env.CI_BUCK2_CACHE_PROOF_MANIFEST_PATH }}
+            ${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}.shard-index.json
+            ${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}.shards/*.json
           if-no-files-found: warn
-          retention-days: 14
+          retention-days: 90
       - if: ${{ (always() && env.CI_EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && vars.TS_EVIDENCE_CLIENT_ID != '' && vars.TS_EVIDENCE_AUDIENCE != '') && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
         uses: tailscale/github-action@v4
         continue-on-error: true
@@ -3497,6 +3549,8 @@ jobs:
       BUCK2_PUBLIC_CACHE_READ_ONLY: ${{ ((github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'merge_group' && github.event.merge_group.base_ref == 'refs/heads/main' && startsWith(github.ref, 'refs/heads/gh-readonly-queue/main/'))) && '0' || '1' }}
       CI_BUCK2_CACHE_EVIDENCE_PATH: '${{ github.workspace }}/tmp/buck2-cache-evidence.json'
       CI_BUCK2_CACHE_ACTIONS_PATH: '${{ github.workspace }}/tmp/buck2-cache-actions.jsonl.gz'
+      CI_BUCK2_CACHE_WARM99_PATH: '${{ github.workspace }}/tmp/buck2-cache-warm99.json'
+      CI_BUCK2_CACHE_PROOF_MANIFEST_PATH: '${{ github.workspace }}/tmp/buck2-cache-proof-manifest.json'
       CI_BUCK2_CACHE_EVIDENCE_START: '${{ github.workspace }}/tmp/buck2-cache-evidence-start'
       CI_BUCK2_CACHE_EVIDENCE_JOB: cargo
       CI_BUCK2_CACHE_EVIDENCE_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
@@ -3803,8 +3857,12 @@ jobs:
           path: |
             ${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}
             ${{ env.CI_BUCK2_CACHE_ACTIONS_PATH }}
+            ${{ env.CI_BUCK2_CACHE_WARM99_PATH }}
+            ${{ env.CI_BUCK2_CACHE_PROOF_MANIFEST_PATH }}
+            ${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}.shard-index.json
+            ${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}.shards/*.json
           if-no-files-found: warn
-          retention-days: 14
+          retention-days: 90
       - if: ${{ (always() && env.CI_EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && vars.TS_EVIDENCE_CLIENT_ID != '' && vars.TS_EVIDENCE_AUDIENCE != '') && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
         uses: tailscale/github-action@v4
         continue-on-error: true
@@ -3826,6 +3884,8 @@ jobs:
       BUCK2_PUBLIC_CACHE_READ_ONLY: ${{ ((github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'merge_group' && github.event.merge_group.base_ref == 'refs/heads/main' && startsWith(github.ref, 'refs/heads/gh-readonly-queue/main/'))) && '0' || '1' }}
       CI_BUCK2_CACHE_EVIDENCE_PATH: '${{ github.workspace }}/tmp/buck2-cache-evidence.json'
       CI_BUCK2_CACHE_ACTIONS_PATH: '${{ github.workspace }}/tmp/buck2-cache-actions.jsonl.gz'
+      CI_BUCK2_CACHE_WARM99_PATH: '${{ github.workspace }}/tmp/buck2-cache-warm99.json'
+      CI_BUCK2_CACHE_PROOF_MANIFEST_PATH: '${{ github.workspace }}/tmp/buck2-cache-proof-manifest.json'
       CI_BUCK2_CACHE_EVIDENCE_START: '${{ github.workspace }}/tmp/buck2-cache-evidence-start'
       CI_BUCK2_CACHE_EVIDENCE_JOB: weaver
       CI_BUCK2_CACHE_EVIDENCE_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
@@ -3859,6 +3919,8 @@ jobs:
       BUCK2_PUBLIC_CACHE_READ_ONLY: '1'
       CI_BUCK2_CACHE_EVIDENCE_PATH: '${{ github.workspace }}/tmp/buck2-cache-evidence.json'
       CI_BUCK2_CACHE_ACTIONS_PATH: '${{ github.workspace }}/tmp/buck2-cache-actions.jsonl.gz'
+      CI_BUCK2_CACHE_WARM99_PATH: '${{ github.workspace }}/tmp/buck2-cache-warm99.json'
+      CI_BUCK2_CACHE_PROOF_MANIFEST_PATH: '${{ github.workspace }}/tmp/buck2-cache-proof-manifest.json'
       CI_BUCK2_CACHE_EVIDENCE_START: '${{ github.workspace }}/tmp/buck2-cache-evidence-start'
       CI_BUCK2_CACHE_EVIDENCE_JOB: pr-a-inert-buck
       CI_BUCK2_CACHE_EVIDENCE_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
@@ -4071,8 +4133,12 @@ jobs:
           path: |
             ${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}
             ${{ env.CI_BUCK2_CACHE_ACTIONS_PATH }}
+            ${{ env.CI_BUCK2_CACHE_WARM99_PATH }}
+            ${{ env.CI_BUCK2_CACHE_PROOF_MANIFEST_PATH }}
+            ${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}.shard-index.json
+            ${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}.shards/*.json
           if-no-files-found: warn
-          retention-days: 14
+          retention-days: 90
       - if: ${{ always() && env.CI_EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && vars.TS_EVIDENCE_CLIENT_ID != '' && vars.TS_EVIDENCE_AUDIENCE != '' }}
         uses: tailscale/github-action@v4
         continue-on-error: true
@@ -4112,6 +4178,8 @@ jobs:
       GITHUB_TOKEN: ${{ github.token }}
       CI_BUCK2_CACHE_EVIDENCE_PATH: '${{ github.workspace }}/tmp/buck2-cache-evidence.json'
       CI_BUCK2_CACHE_ACTIONS_PATH: '${{ github.workspace }}/tmp/buck2-cache-actions.jsonl.gz'
+      CI_BUCK2_CACHE_WARM99_PATH: '${{ github.workspace }}/tmp/buck2-cache-warm99.json'
+      CI_BUCK2_CACHE_PROOF_MANIFEST_PATH: '${{ github.workspace }}/tmp/buck2-cache-proof-manifest.json'
       CI_BUCK2_CACHE_EVIDENCE_START: '${{ github.workspace }}/tmp/buck2-cache-evidence-start'
       CI_BUCK2_CACHE_EVIDENCE_JOB: build-products
       CI_BUCK2_CACHE_EVIDENCE_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
@@ -4207,8 +4275,12 @@ jobs:
           path: |
             ${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}
             ${{ env.CI_BUCK2_CACHE_ACTIONS_PATH }}
+            ${{ env.CI_BUCK2_CACHE_WARM99_PATH }}
+            ${{ env.CI_BUCK2_CACHE_PROOF_MANIFEST_PATH }}
+            ${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}.shard-index.json
+            ${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}.shards/*.json
           if-no-files-found: warn
-          retention-days: 14
+          retention-days: 90
       - if: ${{ always() && env.CI_EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && vars.TS_EVIDENCE_CLIENT_ID != '' && vars.TS_EVIDENCE_AUDIENCE != '' }}
         uses: tailscale/github-action@v4
         continue-on-error: true
@@ -4249,6 +4321,8 @@ jobs:
       GITHUB_TOKEN: ${{ github.token }}
       CI_BUCK2_CACHE_EVIDENCE_PATH: '${{ github.workspace }}/tmp/buck2-cache-evidence.json'
       CI_BUCK2_CACHE_ACTIONS_PATH: '${{ github.workspace }}/tmp/buck2-cache-actions.jsonl.gz'
+      CI_BUCK2_CACHE_WARM99_PATH: '${{ github.workspace }}/tmp/buck2-cache-warm99.json'
+      CI_BUCK2_CACHE_PROOF_MANIFEST_PATH: '${{ github.workspace }}/tmp/buck2-cache-proof-manifest.json'
       CI_BUCK2_CACHE_EVIDENCE_START: '${{ github.workspace }}/tmp/buck2-cache-evidence-start'
       CI_BUCK2_CACHE_EVIDENCE_JOB: publish-products
       CI_BUCK2_CACHE_EVIDENCE_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
@@ -4482,8 +4556,12 @@ jobs:
           path: |
             ${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}
             ${{ env.CI_BUCK2_CACHE_ACTIONS_PATH }}
+            ${{ env.CI_BUCK2_CACHE_WARM99_PATH }}
+            ${{ env.CI_BUCK2_CACHE_PROOF_MANIFEST_PATH }}
+            ${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}.shard-index.json
+            ${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}.shards/*.json
           if-no-files-found: warn
-          retention-days: 14
+          retention-days: 90
       - if: ${{ always() && env.CI_EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && vars.TS_EVIDENCE_CLIENT_ID != '' && vars.TS_EVIDENCE_AUDIENCE != '' }}
         uses: tailscale/github-action@v4
         continue-on-error: true
@@ -4521,6 +4599,8 @@ jobs:
       BUCK2_PUBLIC_CACHE_READ_ONLY: '0'
       CI_BUCK2_CACHE_EVIDENCE_PATH: '${{ github.workspace }}/tmp/buck2-cache-evidence.json'
       CI_BUCK2_CACHE_ACTIONS_PATH: '${{ github.workspace }}/tmp/buck2-cache-actions.jsonl.gz'
+      CI_BUCK2_CACHE_WARM99_PATH: '${{ github.workspace }}/tmp/buck2-cache-warm99.json'
+      CI_BUCK2_CACHE_PROOF_MANIFEST_PATH: '${{ github.workspace }}/tmp/buck2-cache-proof-manifest.json'
       CI_BUCK2_CACHE_EVIDENCE_START: '${{ github.workspace }}/tmp/buck2-cache-evidence-start'
       CI_BUCK2_CACHE_EVIDENCE_JOB: trusted-buck2-remote-cache-proof
       CI_BUCK2_CACHE_EVIDENCE_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
@@ -4661,8 +4741,12 @@ jobs:
           path: |
             ${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}
             ${{ env.CI_BUCK2_CACHE_ACTIONS_PATH }}
+            ${{ env.CI_BUCK2_CACHE_WARM99_PATH }}
+            ${{ env.CI_BUCK2_CACHE_PROOF_MANIFEST_PATH }}
+            ${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}.shard-index.json
+            ${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}.shards/*.json
           if-no-files-found: warn
-          retention-days: 14
+          retention-days: 90
       - if: ${{ always() && env.CI_EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && vars.TS_EVIDENCE_CLIENT_ID != '' && vars.TS_EVIDENCE_AUDIENCE != '' }}
         uses: tailscale/github-action@v4
         continue-on-error: true
@@ -4773,6 +4857,8 @@ jobs:
       CI_MEASUREMENT_ALLOW_PROBE_FAILURES: ${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && '1' || '' }}
       CI_BUCK2_CACHE_EVIDENCE_PATH: '${{ github.workspace }}/tmp/buck2-cache-evidence.json'
       CI_BUCK2_CACHE_ACTIONS_PATH: '${{ github.workspace }}/tmp/buck2-cache-actions.jsonl.gz'
+      CI_BUCK2_CACHE_WARM99_PATH: '${{ github.workspace }}/tmp/buck2-cache-warm99.json'
+      CI_BUCK2_CACHE_PROOF_MANIFEST_PATH: '${{ github.workspace }}/tmp/buck2-cache-proof-manifest.json'
       CI_BUCK2_CACHE_EVIDENCE_START: '${{ github.workspace }}/tmp/buck2-cache-evidence-start'
       CI_BUCK2_CACHE_EVIDENCE_JOB: source-shape
       CI_BUCK2_CACHE_EVIDENCE_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
@@ -5068,8 +5154,12 @@ jobs:
           path: |
             ${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}
             ${{ env.CI_BUCK2_CACHE_ACTIONS_PATH }}
+            ${{ env.CI_BUCK2_CACHE_WARM99_PATH }}
+            ${{ env.CI_BUCK2_CACHE_PROOF_MANIFEST_PATH }}
+            ${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}.shard-index.json
+            ${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}.shards/*.json
           if-no-files-found: warn
-          retention-days: 14
+          retention-days: 90
       - if: ${{ (always() && env.CI_EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && vars.TS_EVIDENCE_CLIENT_ID != '' && vars.TS_EVIDENCE_AUDIENCE != '') && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
         uses: tailscale/github-action@v4
         continue-on-error: true
@@ -5324,8 +5414,12 @@ jobs:
           path: |
             ${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}
             ${{ env.CI_BUCK2_CACHE_ACTIONS_PATH }}
+            ${{ env.CI_BUCK2_CACHE_WARM99_PATH }}
+            ${{ env.CI_BUCK2_CACHE_PROOF_MANIFEST_PATH }}
+            ${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}.shard-index.json
+            ${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}.shards/*.json
           if-no-files-found: warn
-          retention-days: 14
+          retention-days: 90
       - if: ${{ (always() && env.CI_EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && vars.TS_EVIDENCE_CLIENT_ID != '' && vars.TS_EVIDENCE_AUDIENCE != '') && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
         uses: tailscale/github-action@v4
         continue-on-error: true
@@ -5347,6 +5441,8 @@ jobs:
       BUCK2_PUBLIC_CACHE_READ_ONLY: '1'
       CI_BUCK2_CACHE_EVIDENCE_PATH: '${{ github.workspace }}/tmp/buck2-cache-evidence.json'
       CI_BUCK2_CACHE_ACTIONS_PATH: '${{ github.workspace }}/tmp/buck2-cache-actions.jsonl.gz'
+      CI_BUCK2_CACHE_WARM99_PATH: '${{ github.workspace }}/tmp/buck2-cache-warm99.json'
+      CI_BUCK2_CACHE_PROOF_MANIFEST_PATH: '${{ github.workspace }}/tmp/buck2-cache-proof-manifest.json'
       CI_BUCK2_CACHE_EVIDENCE_START: '${{ github.workspace }}/tmp/buck2-cache-evidence-start'
       CI_BUCK2_CACHE_EVIDENCE_JOB: test-integration-notion
       CI_BUCK2_CACHE_EVIDENCE_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
@@ -5599,8 +5695,12 @@ jobs:
           path: |
             ${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}
             ${{ env.CI_BUCK2_CACHE_ACTIONS_PATH }}
+            ${{ env.CI_BUCK2_CACHE_WARM99_PATH }}
+            ${{ env.CI_BUCK2_CACHE_PROOF_MANIFEST_PATH }}
+            ${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}.shard-index.json
+            ${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}.shards/*.json
           if-no-files-found: warn
-          retention-days: 14
+          retention-days: 90
       - if: ${{ (always() && env.CI_EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && vars.TS_EVIDENCE_CLIENT_ID != '' && vars.TS_EVIDENCE_AUDIENCE != '') && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
         uses: tailscale/github-action@v4
         continue-on-error: true
@@ -5622,6 +5722,8 @@ jobs:
       BUCK2_PUBLIC_CACHE_READ_ONLY: ${{ ((github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'merge_group' && github.event.merge_group.base_ref == 'refs/heads/main' && startsWith(github.ref, 'refs/heads/gh-readonly-queue/main/'))) && '0' || '1' }}
       CI_BUCK2_CACHE_EVIDENCE_PATH: '${{ github.workspace }}/tmp/buck2-cache-evidence.json'
       CI_BUCK2_CACHE_ACTIONS_PATH: '${{ github.workspace }}/tmp/buck2-cache-actions.jsonl.gz'
+      CI_BUCK2_CACHE_WARM99_PATH: '${{ github.workspace }}/tmp/buck2-cache-warm99.json'
+      CI_BUCK2_CACHE_PROOF_MANIFEST_PATH: '${{ github.workspace }}/tmp/buck2-cache-proof-manifest.json'
       CI_BUCK2_CACHE_EVIDENCE_START: '${{ github.workspace }}/tmp/buck2-cache-evidence-start'
       CI_BUCK2_CACHE_EVIDENCE_JOB: test-integration-restate
       CI_BUCK2_CACHE_EVIDENCE_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
@@ -5919,8 +6021,12 @@ jobs:
           path: |
             ${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}
             ${{ env.CI_BUCK2_CACHE_ACTIONS_PATH }}
+            ${{ env.CI_BUCK2_CACHE_WARM99_PATH }}
+            ${{ env.CI_BUCK2_CACHE_PROOF_MANIFEST_PATH }}
+            ${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}.shard-index.json
+            ${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}.shards/*.json
           if-no-files-found: warn
-          retention-days: 14
+          retention-days: 90
       - if: ${{ (always() && env.CI_EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && vars.TS_EVIDENCE_CLIENT_ID != '' && vars.TS_EVIDENCE_AUDIENCE != '') && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
         uses: tailscale/github-action@v4
         continue-on-error: true
@@ -5942,6 +6048,8 @@ jobs:
       BUCK2_PUBLIC_CACHE_READ_ONLY: '1'
       CI_BUCK2_CACHE_EVIDENCE_PATH: '${{ github.workspace }}/tmp/buck2-cache-evidence.json'
       CI_BUCK2_CACHE_ACTIONS_PATH: '${{ github.workspace }}/tmp/buck2-cache-actions.jsonl.gz'
+      CI_BUCK2_CACHE_WARM99_PATH: '${{ github.workspace }}/tmp/buck2-cache-warm99.json'
+      CI_BUCK2_CACHE_PROOF_MANIFEST_PATH: '${{ github.workspace }}/tmp/buck2-cache-proof-manifest.json'
       CI_BUCK2_CACHE_EVIDENCE_START: '${{ github.workspace }}/tmp/buck2-cache-evidence-start'
       CI_BUCK2_CACHE_EVIDENCE_JOB: test-live-deploy-ci-tools
       CI_BUCK2_CACHE_EVIDENCE_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
@@ -6260,8 +6368,12 @@ jobs:
           path: |
             ${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}
             ${{ env.CI_BUCK2_CACHE_ACTIONS_PATH }}
+            ${{ env.CI_BUCK2_CACHE_WARM99_PATH }}
+            ${{ env.CI_BUCK2_CACHE_PROOF_MANIFEST_PATH }}
+            ${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}.shard-index.json
+            ${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}.shards/*.json
           if-no-files-found: warn
-          retention-days: 14
+          retention-days: 90
       - if: ${{ (always() && env.CI_EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && vars.TS_EVIDENCE_CLIENT_ID != '' && vars.TS_EVIDENCE_AUDIENCE != '') && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
         uses: tailscale/github-action@v4
         continue-on-error: true
@@ -6283,6 +6395,8 @@ jobs:
       BUCK2_PUBLIC_CACHE_READ_ONLY: '1'
       CI_BUCK2_CACHE_EVIDENCE_PATH: '${{ github.workspace }}/tmp/buck2-cache-evidence.json'
       CI_BUCK2_CACHE_ACTIONS_PATH: '${{ github.workspace }}/tmp/buck2-cache-actions.jsonl.gz'
+      CI_BUCK2_CACHE_WARM99_PATH: '${{ github.workspace }}/tmp/buck2-cache-warm99.json'
+      CI_BUCK2_CACHE_PROOF_MANIFEST_PATH: '${{ github.workspace }}/tmp/buck2-cache-proof-manifest.json'
       CI_BUCK2_CACHE_EVIDENCE_START: '${{ github.workspace }}/tmp/buck2-cache-evidence-start'
       CI_BUCK2_CACHE_EVIDENCE_JOB: deploy-storybooks
       CI_BUCK2_CACHE_EVIDENCE_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}

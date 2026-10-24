@@ -8,15 +8,17 @@ import {
   fchmodSync,
   existsSync,
   mkdirSync,
+  mkdtempSync,
   openSync,
   readFileSync,
   realpathSync,
   renameSync,
   rmSync,
+  statSync,
   writeFileSync,
   writeSync,
 } from 'node:fs'
-import { homedir } from 'node:os'
+import { homedir, tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import process from 'node:process'
 
@@ -1247,12 +1249,147 @@ export const nativeBuildIdArguments = ({
   if (suppliedPath === undefined) mkdirSync(dirname(path), { recursive: true, mode: 0o700 })
   const registry = resolve(cwd, `${evidencePath}.native-build-id-paths.jsonl`)
   mkdirSync(dirname(registry), { recursive: true, mode: 0o700 })
-  appendFileSync(registry, `${JSON.stringify({ buildId, path })}\n`, { mode: 0o600 })
+  let priorMtimeMs: number | null = null
+  try {
+    priorMtimeMs = statSync(path).mtimeMs
+  } catch (error) {
+    if (!(error instanceof Error) || !('code' in error) || error.code !== 'ENOENT') throw error
+  }
+  appendFileSync(
+    registry,
+    `${JSON.stringify({ buildId, path, startedAt: Date.now(), priorMtimeMs })}\n`,
+    { mode: 0o600 },
+  )
   if (suppliedPath !== undefined) return [...args]
   const runIndex = before.indexOf('run')
   if (runIndex !== -1)
     return [...before.slice(0, runIndex + 1), '--write-build-id', path, ...args.slice(runIndex + 1)]
   return [...before, '--write-build-id', path, ...(sentinel === -1 ? [] : args.slice(sentinel))]
+}
+
+/** Capture through Buck's supported extra sink, not its rotating log directory.
+ * FIFO raw events are private and never persisted or uploaded. The collector
+ * atomically publishes a sanitized shard; a killed collector leaves a registry gap.
+ */
+export const runNativeWithEvidence = async ({
+  native,
+  args,
+  root,
+}: {
+  native: string
+  args: string[]
+  root: string | undefined
+}): Promise<boolean> => {
+  const output = process.env.CI_BUCK2_CACHE_EVIDENCE_PATH
+  const wrapperId = process.env.BUCK_WRAPPER_UUID
+  if (output === undefined || root === undefined || wrapperId === undefined) return false
+  const buildId = canonicalCacheAdmissionInvocationId(wrapperId)
+  try {
+    const rows = readFileSync(`${output}.native-build-id-paths.jsonl`, 'utf8').trim().split('\n')
+    if (rows.some((line) => JSON.parse(line).buildId === buildId) === false) return false
+  } catch {
+    return false
+  }
+  const sentinel = args.indexOf('--')
+  const before = sentinel === -1 ? args : args.slice(0, sentinel)
+  // A caller-owned sink cannot be silently stolen; reconciliation reports its gap.
+  if (
+    before.some(
+      (arg) => arg === '--event-log' || arg.startsWith('--event-log=') || arg === '--no-event-log',
+    ) === true
+  )
+    return false
+  const directory = mkdtempSync(join(tmpdir(), 'buck2-evidence-'))
+  const sink = join(directory, 'native.json-lines')
+  let keeper: number | undefined
+  let reapCollector: (() => Promise<void>) | undefined
+  let reapNative: (() => Promise<void>) | undefined
+  try {
+    const fifo = spawnSync('mkfifo', ['-m', '600', sink], { stdio: 'ignore' })
+    if (fifo.status !== 0) throw new Error('Cannot create private evidence FIFO')
+    keeper = openSync(sink, 'r+')
+    const marker = process.env.CI_BUCK2_CACHE_EVIDENCE_START
+    const fresh = marker !== undefined && readFileSync(marker, 'utf8').split('\n')[2] === '1'
+    const bun = process.env.BUN_BIN ?? Bun.which('bun')
+    if (bun === undefined || bun === null) throw new Error('Evidence collection requires Bun')
+    const collector = Bun.spawn(
+      [
+        bun,
+        join(root, 'genie/ci-scripts/buck2-cache-evidence.ts'),
+        '--output',
+        output,
+        '--write-shard',
+        sink,
+        '--shard-build-id',
+        buildId,
+        '--root-id',
+        createHash('sha256').update(realpathSync(root)).digest('hex'),
+        ...(fresh === true ? ['--fresh-root'] : []),
+      ],
+      { stdin: 'ignore', stdout: 'pipe', stderr: 'ignore' },
+    )
+    reapCollector = async () => {
+      if (collector.exitCode === null) collector.kill('SIGKILL')
+      await collector.exited
+    }
+    const ready = await collector.stdout.getReader().read()
+    if (ready.done === true || new TextDecoder().decode(ready.value).trim() !== 'ready')
+      throw new Error('Evidence collector did not open its sink')
+    const commandIndex = before.findIndex((arg) => configCommands[arg] === true)
+    const nativeArgs = [
+      ...args.slice(0, commandIndex + 1),
+      '--event-log',
+      sink,
+      ...args.slice(commandIndex + 1),
+    ]
+    const child = Bun.spawn([native, ...nativeArgs], {
+      stdin: 'inherit',
+      stdout: 'inherit',
+      stderr: 'inherit',
+      env: process.env,
+    })
+    reapNative = async () => {
+      if (child.exitCode === null) child.kill('SIGKILL')
+      await child.exited
+    }
+    const onInt = () => child.kill('SIGINT')
+    const onTerm = () => child.kill('SIGTERM')
+    const onHup = () => child.kill('SIGHUP')
+    process.on('SIGINT', onInt)
+    process.on('SIGTERM', onTerm)
+    process.on('SIGHUP', onHup)
+    let status: number
+    try {
+      const finished = await Promise.race([
+        child.exited.then((exitCode) => ({ source: 'native' as const, exitCode })),
+        collector.exited.then((exitCode) => ({ source: 'collector' as const, exitCode })),
+      ])
+      if (finished.source === 'collector') child.kill('SIGTERM')
+      status = await child.exited
+    } finally {
+      closeSync(keeper)
+      keeper = undefined
+      process.off('SIGINT', onInt)
+      process.off('SIGTERM', onTerm)
+      process.off('SIGHUP', onHup)
+    }
+    await collector.exited
+    const completion = `${output}.native-build-ids/${buildId}.exit.json`
+    mkdirSync(dirname(completion), { recursive: true, mode: 0o700 })
+    writeFileSync(
+      `${completion}.pending`,
+      `${JSON.stringify({ buildId, exitCode: status, finishedAt: Date.now() })}\n`,
+      { mode: 0o600 },
+    )
+    renameSync(`${completion}.pending`, completion)
+    process.exitCode = status
+    return true
+  } finally {
+    if (keeper !== undefined) closeSync(keeper)
+    await reapNative?.()
+    await reapCollector?.()
+    rmSync(directory, { recursive: true, force: true })
+  }
 }
 
 const warnStdio = (message: string): void => {
@@ -1404,6 +1541,7 @@ if (import.meta.main === true) {
     } catch (error) {
       warnStdio(`warning: Buck2 stdio flag restoration failed: ${String(error)}\n`)
     }
+    if ((await runNativeWithEvidence({ native, args, root })) === true) process.exit()
     process.execve(native, [native, ...args], process.env)
   } catch (error) {
     writeSync(2, `${error instanceof Error ? error.message : String(error)}\n`)

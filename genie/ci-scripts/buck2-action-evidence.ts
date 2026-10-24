@@ -73,6 +73,8 @@ export type ActionRecord = {
   buildId: string | null
   context: string | null
   category: string | null
+  /** Native protobuf empty string is known; absent/null historical identity is not. */
+  identifier?: string | null
   target: string | null
   exclusionReason: ActionExclusionReason | null
   configuration: string | null
@@ -95,6 +97,8 @@ export type ActionRecord = {
 }
 export type ActionInvocation = {
   buildId: string
+  /** Opaque canonical-root scope; never a host path. */
+  rootId?: string
   context: string | null
   startedAt: number | null
   completedAt: number | null

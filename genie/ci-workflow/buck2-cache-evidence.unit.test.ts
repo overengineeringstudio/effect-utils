@@ -32,9 +32,17 @@ describe('Buck2 cache evidence workflow decorator', () => {
     const upload = job.steps[4]!
     expect(upload.if).toBe('${{ always() }}')
     expect('with' in upload && upload.with?.path).toBe(
-      '${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}\n${{ env.CI_BUCK2_CACHE_ACTIONS_PATH }}',
+      [
+        '${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}',
+        '${{ env.CI_BUCK2_CACHE_ACTIONS_PATH }}',
+        '${{ env.CI_BUCK2_CACHE_WARM99_PATH }}',
+        '${{ env.CI_BUCK2_CACHE_PROOF_MANIFEST_PATH }}',
+        '${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}.shard-index.json',
+        '${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}.shards/*.json',
+      ].join('\n'),
     )
-    expect('with' in upload && upload.with?.['retention-days']).toBe(14)
+    expect('with' in upload && upload.with?.path).not.toContain('native-build-id-paths')
+    expect('with' in upload && upload.with?.['retention-days']).toBe(90)
   })
 
   it('keeps jobs without checkout untouched', () => {

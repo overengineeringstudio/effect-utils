@@ -525,7 +525,7 @@ describe('generated CI cache trust behavior', () => {
     }
   })
 
-  it('uploads both native evidence artifacts for every decorated workflow job', async () => {
+  it('uploads full native evidence and sanitized proof artifacts for every decorated workflow job', async () => {
     for (const filename of [
       'ci.yml',
       'compiled-products.yml',
@@ -546,9 +546,16 @@ describe('generated CI cache trust behavior', () => {
         expect(uploads).toHaveLength(1)
         expect(uploads[0]?.if).toBe('${{ always() }}')
         expect(String(uploads[0]?.with?.path).trimEnd()).toBe(
-          '${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}\n${{ env.CI_BUCK2_CACHE_ACTIONS_PATH }}',
+          [
+            '${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}',
+            '${{ env.CI_BUCK2_CACHE_ACTIONS_PATH }}',
+            '${{ env.CI_BUCK2_CACHE_WARM99_PATH }}',
+            '${{ env.CI_BUCK2_CACHE_PROOF_MANIFEST_PATH }}',
+            '${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}.shard-index.json',
+            '${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}.shards/*.json',
+          ].join('\n'),
         )
-        expect(uploads[0]?.with?.['retention-days']).toBe(14)
+        expect(uploads[0]?.with?.['retention-days']).toBe(90)
       }
     }
   })

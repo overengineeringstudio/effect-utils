@@ -4,7 +4,6 @@ import ciWorkflow from '../../.github/workflows/ci.yml.genie.ts'
 import empiricalWorkflow from '../../.github/workflows/empirical-proofs.yml.genie.ts'
 import storybookPlaysWorkflow from '../../.github/workflows/storybook-plays.yml.genie.ts'
 import { decodeBinaryCacheDescriptor } from '../../packages/@overeng/genie/src/runtime/github-workflow/binary-cache-descriptor.ts'
-import { EMPIRICAL_PROOF_CI_JOB_NAMES, requiredCIJobs, RUNNER_PROFILES } from '../ci.ts'
 import {
   cachixCliBuildStep,
   cachixStep,
@@ -16,6 +15,7 @@ import {
   preparePinnedDevenvStep,
   validateNixStoreStep,
 } from '../ci-workflow.ts'
+import { EMPIRICAL_PROOF_CI_JOB_NAMES, requiredCIJobs, RUNNER_PROFILES } from '../ci.ts'
 import { jobCacheDescriptors } from './cache-policy.ts'
 
 const workflow = ciWorkflow.stringify({ cwd: process.cwd(), location: '' })
@@ -310,12 +310,12 @@ test('historical source measurements retain any-ref dispatch backfills', () => {
 })
 
 test('Linux sandbox prerequisites run only on Namespace profiles', () => {
-  const namespaceProfiles: readonly string[] = [...RUNNER_PROFILES, namespaceLinuxX64PairedPerfRunner]
+  const namespaceProfiles = new Set<string>([...RUNNER_PROFILES, namespaceLinuxX64PairedPerfRunner])
   for (const job of Object.values(empiricalWorkflow.data.jobs)) {
-    if (!job.steps.some((step) => step.name === 'Log Linux sandbox prerequisites')) continue
+    if (job.steps.some((step) => step.name === 'Log Linux sandbox prerequisites') !== true) continue
     const runners = job['runs-on']
     const labels = typeof runners === 'string' ? [runners] : runners
-    expect(labels.some((label) => namespaceProfiles.includes(label.split(';')[0]!))).toBe(true)
+    expect(labels.some((label) => namespaceProfiles.has(label.split(';')[0]!))).toBe(true)
   }
 })
 
@@ -422,6 +422,24 @@ test('daily cache join has read-only GitHub access and uses the previous-day met
     '--repo "$GITHUB_REPOSITORY" --previous-utc-day --otlp-spool "$spool/pending"',
   )
   expect(JSON.stringify(job).match(/secrets\.[A-Z_]+/g)).toBeNull()
+})
+
+test('daily warm99 proof retains authoritative history and full observations for ninety days', () => {
+  const job = empiricalWorkflow.data.jobs['buck2-cache-join']!
+  const join = job.steps.find((step) => step.name === 'Join previous UTC day cache evidence')
+  expect(join !== undefined && 'run' in join ? join.run : undefined).toContain(
+    '--proof-directory "$GITHUB_WORKSPACE/tmp/buck2-cache-history-proof"',
+  )
+  const upload = job.steps.find(
+    (step) => step.name === 'Upload authoritative Buck2 warm99 proof observations',
+  )
+  expect(upload?.if).toBe('${{ always() }}')
+  expect(upload !== undefined && 'with' in upload ? upload.with?.path : undefined).toBe(
+    '${{ github.workspace }}/tmp/buck2-cache-history-proof',
+  )
+  expect(
+    upload !== undefined && 'with' in upload ? upload.with?.['retention-days'] : undefined,
+  ).toBe(90)
 })
 
 test('daily cache export postcheck follows telemetry export and fails on pending chunks', () => {

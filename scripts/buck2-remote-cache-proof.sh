@@ -59,50 +59,53 @@ test_red_evidence="${RUNNER_TEMP:?RUNNER_TEMP not set}/buck2-test-cache-proof-re
 test_source_backup="${RUNNER_TEMP:?RUNNER_TEMP not set}/buck2-test-cache-proof-source.ts"
 descriptor_a="${RUNNER_TEMP:?RUNNER_TEMP not set}/buck2-product-descriptor-a.json"
 descriptor_b="${RUNNER_TEMP:?RUNNER_TEMP not set}/buck2-product-descriptor-b.json"
-trap 'if [ -f "$test_source_backup" ]; then cp "$test_source_backup" "$test_proof_source"; fi; rm -f "$evidence_a" "$test_evidence_a" "$evidence_b" "$test_evidence_b" "$test_evidence_c" "$test_red_evidence" "$test_source_backup" "$descriptor_a" "$descriptor_b"; if [ -d "$context_b" ]; then (cd "$context_b" && "$buck" kill); fi; rm -rf "$context_b"' EXIT
+descriptor_evidence="${RUNNER_TEMP:?RUNNER_TEMP not set}/buck2-descriptor-cache-events.jsonl"
+cleanup_proof() {
+  if [ -f "$test_source_backup" ]; then cp "$test_source_backup" "$test_proof_source"; fi
+  rm -f "$test_source_backup" "$descriptor_a" "$descriptor_b"
+  for file in "$evidence_a" "$test_evidence_a" "$evidence_b" "$test_evidence_b" "$test_evidence_c" "$test_red_evidence" "$descriptor_evidence"; do
+    rm -f "$file" "$file.json-lines" "$file.buck-trace-id"
+  done
+  if [ -d "$context_b" ]; then (cd "$context_b" && "$buck" kill); fi
+  rm -rf "$context_b"
+}
+trap cleanup_proof EXIT
 
-# Preserve action keys/outcomes before each proof context's native logs are removed.
-# Local invocations without a CI artifact declaration retain the existing proof flow.
-capture_cache_evidence() {
+# Use Buck's supported extra sink outside rotation for every deliberately included
+# root. The private raw temporary is retained only for the assertions below; only
+# sanitized atomically finalized shards enter the uploaded artifact.
+run_proof_command() {
+  local evidence="$1" context="$2" status=0 build_id native_id root_id
+  local projector="$source_root/genie/ci-scripts/buck2-cache-evidence.ts"
+  shift 2
+  build_id="$(bun -e 'console.log(crypto.randomUUID())')"
+  root_id="$proof_root_id"
+  native_id="${evidence}.buck-trace-id"
+  if [ -n "${CI_BUCK2_CACHE_EVIDENCE_PATH:-}" ]; then
+    native_id="$(bun "$projector" --output "$CI_BUCK2_CACHE_EVIDENCE_PATH" --register-native "$build_id")"
+  fi
+  : > "${evidence}.json-lines"
+  BUCK_WRAPPER_UUID="$build_id" CI_BUCK2_CACHE_EVIDENCE_PATH="" \
+    "$buck" "$@" --event-log "${evidence}.json-lines" --write-build-id "$native_id" || status=$?
+  mv "${evidence}.json-lines" "$evidence"
   if [ -n "${CI_BUCK2_CACHE_EVIDENCE_PATH:-}" ]; then
     local fresh=()
-    case "$2" in proof-a-build|proof-b-build) fresh=(--fresh-root);; esac
-    if ! bun "$source_root/genie/ci-scripts/buck2-cache-evidence.ts" \
-      --events "$1" --output "$CI_BUCK2_CACHE_EVIDENCE_PATH" --context "$2" "${fresh[@]}"; then
-      echo "::warning::Buck2 cache evidence capture failed for $2" >&2
-      bun "$source_root/genie/ci-scripts/buck2-cache-evidence.ts" \
-        --output "$CI_BUCK2_CACHE_EVIDENCE_PATH" --evidence-gap proof-evidence-capture-failed || true
+    case "$context" in proof-a-build|proof-b-build) fresh=(--fresh-root);; esac
+    if ! bun "$projector" --output "$CI_BUCK2_CACHE_EVIDENCE_PATH" \
+      --write-shard "$evidence" --shard-build-id "$build_id" --native-exit-code "$status" \
+      --context "$context" --root-id "$root_id" "${fresh[@]}" >/dev/null; then
+      bun "$projector" --output "$CI_BUCK2_CACHE_EVIDENCE_PATH" --evidence-gap proof-evidence-capture-failed || true
+      if [ "$status" -eq 0 ]; then return 1; fi
     fi
-  fi
-}
-
-# A failed Buck command still has diagnostic native evidence. Capture it before
-# returning its original status, so EXIT cleanup cannot erase a failed replay.
-run_proof_command() {
-  local evidence="$1" context="$2" status=0
-  shift 2
-  "$buck" "$@" || status=$?
-  if "$buck" log show --recent 0 > "$evidence"; then
-    capture_cache_evidence "$evidence" "$context"
-  else
-    if [ "$status" -eq 0 ]; then
-      echo "::warning::Buck2 native event log unavailable for $context" >&2
-    else
-      echo "::notice::Buck2 native event log unavailable for $context (follow-on: the Buck command failed before writing a log)" >&2
-    fi
-    if [ -n "${CI_BUCK2_CACHE_EVIDENCE_PATH:-}" ]; then
-      bun "$source_root/genie/ci-scripts/buck2-cache-evidence.ts" \
-        --output "$CI_BUCK2_CACHE_EVIDENCE_PATH" --evidence-gap proof-native-log-unavailable || true
-    fi
-    if [ "$status" -eq 0 ]; then return 1; fi
   fi
   return "$status"
 }
 
 # Context A executes locally and uploads run-unique source inputs.
-# `log show --recent` uses zero-based history; 0 is the command just run.
+# Every explicit cold root receives a new opaque incarnation token.
 "$buck" kill
 rm -rf buck-out
+proof_root_id="$(bun -e 'import {createHash} from "node:crypto"; console.log(createHash("sha256").update(crypto.randomUUID()).digest("hex"))')"
 run_proof_command "$evidence_a" proof-a-build build --local-only "$target"
 if ! jq -e --argjson local "$ACTION_EXECUTION_KIND_LOCAL" --argjson uploaded "$UPLOAD_RESULT_UPLOADED" 'select(.Event.data.SpanEnd.data.ActionExecution as $action | $action.execution_kind == $local and $action.cache_upload_result == $uploaded)' "$evidence_a" >/dev/null; then
   echo '::error::Context A did not report a successful upload for a locally executed action'
@@ -112,7 +115,7 @@ if ! jq -e --argjson local "$ACTION_EXECUTION_KIND_LOCAL" --argjson uploaded "$U
   echo '::error::Context A did not execute and upload the product descriptor action'
   exit 1
 fi
-descriptor_path="$("$buck" build --local-only --show-full-json-output "${target}[descriptor]" | jq -r 'to_entries[0].value')"
+descriptor_path="$(run_proof_command "$descriptor_evidence" proof-a-descriptor build --local-only --show-full-json-output "${target}[descriptor]" | jq -r 'to_entries[0].value')"
 cp "$descriptor_path" "$descriptor_a"
 run_proof_command "$test_evidence_a" proof-a-test test --target-platforms effect_utils//buck2/platforms:host_platform --local-only "$test_target"
 if ! jq -e --argjson local "$ACTION_EXECUTION_KIND_LOCAL" --argjson uploaded "$UPLOAD_RESULT_UPLOADED" 'select(.Event.data.SpanEnd.data.ActionExecution as $action | $action.name.category == "unit_test_verdict" and $action.execution_kind == $local and $action.cache_upload_result == $uploaded)' "$test_evidence_a" >/dev/null; then
@@ -168,9 +171,10 @@ grep -Fq 'allow_cache_uploads = false' .buckconfig.local || { echo '::error::rea
 if grep -Fq 'http_headers' .buckconfig.local; then echo '::error::reader cache inherited publisher auth'; exit 1; fi
 
 # Cache-eligible build actions must hit remotely; materialization stays local by policy.
+proof_root_id="$(bun -e 'import {createHash} from "node:crypto"; console.log(createHash("sha256").update(crypto.randomUUID()).digest("hex"))')"
 run_proof_command "$evidence_b" proof-b-build build --local-only "$target"
 assert_context_b_build "$evidence_b"
-descriptor_path="$("$buck" build --local-only --show-full-json-output "${target}[descriptor]" | jq -r 'to_entries[0].value')"
+descriptor_path="$(run_proof_command "$descriptor_evidence" proof-b-descriptor build --local-only --show-full-json-output "${target}[descriptor]" | jq -r 'to_entries[0].value')"
 cp "$descriptor_path" "$descriptor_b"
 if ! cmp -s "$descriptor_a" "$descriptor_b"; then
   echo '::error::Product descriptor bytes differ between independent roots'
