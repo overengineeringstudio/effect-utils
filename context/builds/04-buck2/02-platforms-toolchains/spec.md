@@ -142,6 +142,9 @@ removed before reference validation. This recovery covers reference sets,
 recency receipts, the definition map and migration marker; other reference
 entries remain hard errors. Tool directories use whole-directory renames,
 and Nix owns GC-root registration, so neither uses this candidate-file format.
+The real-filesystem/Nix recovery regression runs without Buck builds through
+`buck2:capabilities:recovery-test` in the PR-only `pr/buck2-tools` lane, and
+through the complete `buck2:capabilities:test` task.
 
 Retention keeps the three most recently published generations, including the
 current one, only at a daemon-free publication boundary. The publisher checks

@@ -221,7 +221,7 @@ describe('generated CI cache trust behavior', () => {
     ).toBe(false)
   })
 
-  it('runs tools, teardown and native capability identity regressions only on PRs using Linux source views', async () => {
+  it('runs tools, teardown and native capability identity/recovery regressions only on PRs using Linux source views', async () => {
     const workflow = await readWorkflow()
     const job = workflow.jobs['pr-buck2-tools']!
     expect(job.name).toBe('pr/buck2-tools')
@@ -241,11 +241,16 @@ describe('generated CI cache trust behavior', () => {
       'for package in . packages/@overeng/buck2-tools packages/@overeng/genie; do',
     )
     expect(step?.run).toContain(
-      'tasks run --mode single test:buck2-tools devenv-modules:test buck2:capabilities:identity-proof',
+      'tasks run --mode single test:buck2-tools devenv-modules:test buck2:capabilities:identity-proof buck2:capabilities:recovery-test',
     )
     expect(
       workflow.jobs.quality!.steps.some(({ run }) =>
         run?.includes('buck2:capabilities:identity-proof'),
+      ),
+    ).toBe(false)
+    expect(
+      workflow.jobs.quality!.steps.some(({ run }) =>
+        run?.includes('buck2:capabilities:recovery-test'),
       ),
     ).toBe(false)
   })

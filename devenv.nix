@@ -1440,6 +1440,16 @@ in
     '';
   };
 
+  tasks."buck2:capabilities:recovery-test" = {
+    description = "Check interrupted capability atomic-write recovery without Buck builds";
+    exec = trace.exec "buck2:capabilities:recovery-test" ''
+      set -euo pipefail
+      cd "''${DEVENV_ROOT:-$PWD}"
+      export NIX_STORE_BIN=${pkgs.nix}/bin/nix-store
+      exec ${sourceBun}/bin/bun ./packages/@overeng/buck2-tools/src/bun-test-runner.ts test ./scripts/buck2-capability-publish.integration.test.ts
+    '';
+  };
+
   tasks."buck2:capabilities:identity-proof" = {
     description = "Prove native per-tool RE action identity and executable dependency isolation in a disposable graph";
     exec = trace.exec "buck2:capabilities:identity-proof" ''
