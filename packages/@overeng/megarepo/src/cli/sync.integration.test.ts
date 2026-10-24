@@ -3599,7 +3599,10 @@ describe('nested megarepo.lock sync scope', () => {
             MEGAREPO_ALLOW_CANONICAL_MUTATION: '1',
           },
         })
-        expect(result.exitCode).toBe(0)
+        expect(
+          result.exitCode,
+          `mr fetch --apply failed\nstdout:\n${result.stdout}\nstderr:\n${result.stderr}`,
+        ).toBe(0)
 
         const afterNestedLockOpt = yield* readLockFile(nestedLockPath)
         expect(Option.isSome(afterNestedLockOpt)).toBe(true)
