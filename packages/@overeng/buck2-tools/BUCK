@@ -6,7 +6,7 @@ load("//buck2:materialization.bzl", "runtime_modules")
 # Projection source: packages/@overeng/buck2-tools/BUCK.genie.ts
 # Projection schema version: 13
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:4d6bba4b9039382e8c33e20deb8797cae4a2326791d15248776dcce99bbbac8b
+# Semantic fingerprint: sha256:fe9bc5e2b408f4fa156dcf281dfc0c93b4ac84d9156d75af1793dc11213cadbb
 # Regenerate: devenv tasks run genie:run
 
 load("//buck2:materialization.bzl", "export_materialization_inputs", "package_view")
@@ -50,6 +50,8 @@ export_materialization_inputs([
     "src/javascript-runner.integration.test.ts",
     "src/javascript-runner.ts",
     "src/javascript-runner.unit.test.ts",
+    "src/materialization-archives.integration.test.ts",
+    "src/materialization-archives.ts",
     "src/mod.ts",
     "src/otel-span-cli.ts",
     "src/otel-span-cli.unit.test.ts",
@@ -147,6 +149,8 @@ package_view(
         "src/javascript-runner.integration.test.ts": "src/javascript-runner.integration.test.ts",
         "src/javascript-runner.ts": "src/javascript-runner.ts",
         "src/javascript-runner.unit.test.ts": "src/javascript-runner.unit.test.ts",
+        "src/materialization-archives.integration.test.ts": "src/materialization-archives.integration.test.ts",
+        "src/materialization-archives.ts": "src/materialization-archives.ts",
         "src/mod.ts": "src/mod.ts",
         "src/otel-span-cli.ts": "src/otel-span-cli.ts",
         "src/otel-span-cli.unit.test.ts": "src/otel-span-cli.unit.test.ts",
@@ -222,6 +226,8 @@ package_view(
         "src/javascript-runner.integration.test.ts": "src/javascript-runner.integration.test.ts",
         "src/javascript-runner.ts": "src/javascript-runner.ts",
         "src/javascript-runner.unit.test.ts": "src/javascript-runner.unit.test.ts",
+        "src/materialization-archives.integration.test.ts": "src/materialization-archives.integration.test.ts",
+        "src/materialization-archives.ts": "src/materialization-archives.ts",
         "src/mod.ts": "src/mod.ts",
         "src/otel-span-cli.ts": "src/otel-span-cli.ts",
         "src/otel-span-cli.unit.test.ts": "src/otel-span-cli.unit.test.ts",
