@@ -313,6 +313,16 @@ Recovery MUST be explicit and **quiesced across all readers/writers and aliases*
 
 The APFS prototype eliminated actual extraction and download work but did not improve elapsed time: the controlled legacy run took **45.9 s**, the first warm replay **118.6 s**, and the settled warm replay **53.8 s**. The settled run used metadata proofs for all 250 recipes, yet installation still required **25,983 per-file clones** of **510,611,609 bytes**. Native evidence retained identical RE action digests for all **272 downstream consumers** in cold and warm comparisons. These are prototype observations, not acceptance results.
 
+Measured **2026-10-24**, comparing the slice 2 prototype at
+`46b29545fb52b644e5b742fe28dfc87d8f65265e` with the slice 1 baseline
+([#2101](https://github.com/overengineeringstudio/effect-utils/pull/2101)) at
+`1cda58b4067211b1b3eebc0fd5960d242375fed6`, in the same controlled capability
+profile. The primary run receipt records both revisions and the **45.942 s**
+baseline; the settled prototype summary records **53.784 s**. Its replay receipts
+record the **25,983 clones / 510,611,609 bytes**, and native consumer-action proof
+records the **272 unchanged downstream digests**. These measurements describe this
+revision pair, not the default capability profile or a later implementation.
+
 Profiling identified per-file clone/open/identity work, rather than proof-file reads or leases, as the dominant replay cost. A two-generation reproduction also showed that adding shared payload pins and removing private extraction links changes ctime and invalidates recipe proofs. On non-reflink ext4, ordinary-file hardlinks remain prohibited; replay would copy and hash approximately 510.6 MB rather than decode approximately 135.8 MB of archives, with no measured ext4 win.
 
 **Decision:** park extraction replay. Recursive tree clone is rejected, not a pending prototype. Reopening requires the upstream [facebook/buck2#1590](https://github.com/facebook/buck2/issues/1590) fix to enter the repository's Buck pin, followed by a separately proved ext4 ordinary-file hardlink mode and renewed acceptance measurements. Archive acquisition in #2101 remains independent.
