@@ -11,8 +11,7 @@ export const publicArchiveUrl = ({ url, location }: { url: string; location: str
     return invalidOrigin(location)
   }
   const approved =
-    (parsed.hostname === 'registry.npmjs.org' &&
-      url.startsWith('https://registry.npmjs.org/')) ||
+    (parsed.hostname === 'registry.npmjs.org' && url.startsWith('https://registry.npmjs.org/')) ||
     (parsed.hostname === 'overeng-effect-utils.cachix.org' &&
       url.startsWith('https://overeng-effect-utils.cachix.org/serve/'))
   if (
@@ -27,6 +26,7 @@ export const publicArchiveUrl = ({ url, location }: { url: string; location: str
   return url
 }
 
+/** Resolves one redirect hop and applies the same reviewed public-origin policy. */
 export const publicArchiveRedirectUrl = ({
   from,
   redirect,

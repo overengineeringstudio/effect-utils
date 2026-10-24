@@ -42,7 +42,7 @@ runtime_modules(
     name = "shared_archive_runtime",
     srcs = {
         "buck2/dependencies/shared-archive.ts": ":shared-archive.ts",
-        "buck2/dependencies/public-archive-origin.ts": ":public-archive-origin.ts",
+        "packages/@overeng/buck2-tools/src/public-archive-origin.ts": "//packages/@overeng/buck2-tools:src/public-archive-origin.ts",
         "packages/@overeng/buck2-tools/src/materialization-archives.ts": "//packages/@overeng/buck2-tools:src/materialization-archives.ts",
         "packages/@overeng/buck2-tools/src/editor-view-sharing.ts": "//packages/@overeng/buck2-tools:src/editor-view-sharing.ts",
         "packages/@overeng/buck2-tools/src/editor-view-leases.ts": "//packages/@overeng/buck2-tools:src/editor-view-leases.ts",

@@ -57,7 +57,7 @@ let
       (../packages + "/@overeng/buck2-tools/src/materialization-archives.ts")
       (../packages + "/@overeng/buck2-tools/src/editor-view-sharing.ts")
       (../packages + "/@overeng/buck2-tools/src/editor-view-leases.ts")
-      ../buck2/dependencies/public-archive-origin.ts
+      (../packages + "/@overeng/buck2-tools/src/public-archive-origin.ts")
     ];
   };
 in

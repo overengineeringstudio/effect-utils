@@ -10,6 +10,7 @@ export default tsconfigJson({
     ...baseTsconfigCompilerOptions,
     ...packageTsconfigCompilerOptions,
     ...nodeTypes,
+    lib: ['ES2024', 'DOM', 'DOM.Iterable', 'DOM.AsyncIterable'],
     types: ['node', 'bun'],
     noEmit: true,
   },

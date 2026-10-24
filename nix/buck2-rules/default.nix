@@ -105,22 +105,42 @@ pkgs.runCommand "buck2-rules"
     )
 
     export_file(
-        name = "public-archive-origin.ts",
-        src = "public-archive-origin.ts",
+        name = "runtime-closure.ts",
+        src = "runtime-closure.ts",
+        visibility = ["PUBLIC"],
+    )
+    load("//buck2:materialization.bzl", "runtime_modules")
+
+    export_file(
+        name = "shared-archive.ts",
+        src = "shared-archive.ts",
         visibility = ["PUBLIC"],
     )
 
-    export_file(
-        name = "runtime-closure.ts",
-        src = "runtime-closure.ts",
+    runtime_modules(
+        name = "shared_archive_runtime",
+        srcs = {
+            "buck2/dependencies/shared-archive.ts": ":shared-archive.ts",
+            "packages/@overeng/buck2-tools/src/public-archive-origin.ts": "//packages/@overeng/buck2-tools:src/public-archive-origin.ts",
+            "packages/@overeng/buck2-tools/src/materialization-archives.ts": "//packages/@overeng/buck2-tools:src/materialization-archives.ts",
+            "packages/@overeng/buck2-tools/src/editor-view-sharing.ts": "//packages/@overeng/buck2-tools:src/editor-view-sharing.ts",
+            "packages/@overeng/buck2-tools/src/editor-view-leases.ts": "//packages/@overeng/buck2-tools:src/editor-view-leases.ts",
+        },
         visibility = ["PUBLIC"],
     )
     BUCK
     mkdir -p "$out/packages/@overeng/buck2-tools"
     cat > "$out/packages/@overeng/buck2-tools/BUCK" <<'BUCK'
     load("//buck2/package_tools.bzl", "package_command_runtime")
-    load("//buck2:materialization.bzl", "runtime_modules")
+    load("//buck2:materialization.bzl", "export_materialization_inputs", "runtime_modules")
 
+
+    export_materialization_inputs([
+        "src/editor-view-leases.ts",
+        "src/editor-view-sharing.ts",
+        "src/materialization-archives.ts",
+        "src/public-archive-origin.ts",
+    ])
 
     runtime_modules(
         name = "package_tree_runtime",

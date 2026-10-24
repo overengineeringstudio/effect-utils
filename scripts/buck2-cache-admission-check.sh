@@ -300,18 +300,6 @@ load("//:fixture.bzl", "fixture_dependency")
 fixture_dependency(name = "javascript_action_runtime", visibility = ["PUBLIC"])
 fixture_dependency(name = "package_command_runtime", visibility = ["PUBLIC"])
 BUCK
-# Acquisition remains native in this fixture. Its analysis-only dependency
-# provider must not resolve the production shared runtime's source exports.
-cat > "$work/buck2/dependencies/BUCK" <<'BUCK'
-load("//:fixture.bzl", "fixture_dependency")
-load("//buck2:materialization.bzl", "export_materialization_inputs")
-
-export_materialization_inputs(
-    glob(["*.ts", "fixtures/**"], exclude = ["assemble-store.ts"]) + ["BUCK", "pnpm-lock.sha256.json"],
-)
-
-fixture_dependency(name = "shared_archive_runtime", visibility = ["PUBLIC"])
-BUCK
 cat > "$work/BUCK" <<'BUCK'
 load("//:fixture.bzl", "fixture_dependency", "fixture_materialization_cases", "fixture_ts_output", "fixture_ts_policy", "fixture_ts_policy_with_helper")
 load("//buck2:typescript.bzl", "tsgo_emit")

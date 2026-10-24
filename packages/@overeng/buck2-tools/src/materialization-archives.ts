@@ -14,10 +14,6 @@ import { copyFile, lstat, open, readdir, rename, rmdir, unlink, writeFile } from
 import { dirname, join, resolve } from 'node:path'
 
 import {
-  publicArchiveRedirectUrl,
-  publicArchiveUrl,
-} from '../../../../buck2/dependencies/public-archive-origin.ts'
-import {
   acquireExistingEditorViewLeaseUnderFence,
   editorViewLeaseFilesystem,
   ensureEditorViewLeaseControl,
@@ -34,6 +30,7 @@ import {
   withEditorViewContentStoreLock,
 } from './editor-view-sharing.ts'
 import type { EditorViewContentCensus } from './editor-view-sharing.ts'
+import { publicArchiveRedirectUrl, publicArchiveUrl } from './public-archive-origin.ts'
 
 const fail = (message: string): never => {
   throw new Error(`Buck archive sharing: ${message}`)
@@ -155,7 +152,8 @@ const lockArchive = async ({
     )
       fail('unsafe download control')
     while (native.symbols.flock(file.fd, 2 | 4) !== 0) {
-      const code = ffiRead.i32(errno())
+      const address = errno() ?? fail('digest flock errno pointer unavailable')
+      const code = ffiRead.i32(address)
       if (code !== 11 && code !== 35) fail(`digest flock failed: ${code}`)
       if (wait === false) {
         await file.close()
@@ -170,15 +168,109 @@ const lockArchive = async ({
   }
 }
 
+const sameArchiveIdentity = ({ left, right }: { left: BigIntStats; right: BigIntStats }): boolean =>
+  left.dev === right.dev &&
+  left.ino === right.ino &&
+  left.size === right.size &&
+  left.mode === right.mode &&
+  left.uid === right.uid &&
+  left.ctimeNs === right.ctimeNs
+
+const archiveProof = ({
+  status,
+  digest,
+  size,
+}: {
+  status: BigIntStats
+  digest: string
+  size: number
+}): string =>
+  `${JSON.stringify([
+    'effect-utils/buck-materialization-archive-proof/v1',
+    digest,
+    size,
+    String(status.dev),
+    String(status.ino),
+    String(status.mode),
+    String(status.uid),
+    String(status.ctimeNs),
+  ])}\n`
+
+const readArchiveProof = async (path: string): Promise<string | undefined> => {
+  let file
+  try {
+    file = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK)
+  } catch (error) {
+    if (absent(error) === true) return undefined
+    throw error
+  }
+  try {
+    const before = await file.stat({ bigint: true })
+    if (
+      before.isFile() === false ||
+      before.uid !== BigInt(process.getuid!()) ||
+      (before.mode & 0o7777n) !== 0o600n ||
+      before.nlink !== 1n ||
+      before.size > 4096n
+    )
+      fail('unsafe archive verification proof')
+    const proof = await file.readFile({ encoding: 'utf8' })
+    const after = await file.stat({ bigint: true })
+    if (
+      sameArchiveIdentity({ left: before, right: after }) === false ||
+      sameArchiveIdentity({ left: after, right: await lstat(path, { bigint: true }) }) === false
+    )
+      fail('archive verification proof changed while reading')
+    return proof
+  } finally {
+    await file.close()
+  }
+}
+
+const removeArchiveProofs = async (directory: string): Promise<void> => {
+  for (const name of ['verification.json', 'verification.pending']) {
+    const path = join(directory, name)
+    if ((await readArchiveProof(path)) !== undefined) await unlink(path)
+  }
+}
+
+const publishArchiveProof = async ({
+  path,
+  proof,
+}: {
+  path: string
+  proof: string
+}): Promise<void> => {
+  const pending = join(dirname(path), 'verification.pending')
+  if ((await readArchiveProof(pending)) !== undefined) await unlink(pending)
+  const file = await open(
+    pending,
+    constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW,
+    0o600,
+  )
+  try {
+    await file.writeFile(proof)
+    await file.sync()
+  } finally {
+    await file.close()
+  }
+  await rename(pending, path)
+  await syncDirectory(dirname(path))
+}
+
 const verifyArchive = async ({
   path,
   digest,
   size,
+  proofPath,
+  verifyDigest = true,
 }: {
   path: string
   digest: string
   size: number
-}): Promise<void> => {
+  proofPath?: string
+  verifyDigest?: boolean
+}): Promise<{ status: BigIntStats; digestVerified: boolean }> => {
   const file = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK)
   try {
     const before = await file.stat({ bigint: true })
@@ -186,23 +278,27 @@ const verifyArchive = async ({
       before.isFile() === false ||
       before.uid !== BigInt(process.getuid!()) ||
       before.size !== BigInt(size) ||
-      (before.mode & 0o777n) !== 0o444n
+      (before.mode & 0o7777n) !== 0o444n
     )
       fail('archive mode, owner or size mismatch')
-    const hash = createHash('sha256')
-    for await (const chunk of file.createReadStream({ autoClose: false })) hash.update(chunk)
+    const expectedProof = archiveProof({ status: before, digest, size })
+    const proof = proofPath === undefined ? undefined : await readArchiveProof(proofPath)
+    const digestVerified = verifyDigest === true && proof !== expectedProof
+    if (digestVerified === true) {
+      const hash = createHash('sha256')
+      for await (const chunk of file.createReadStream({ autoClose: false })) hash.update(chunk)
+      if (hash.digest('hex') !== digest) fail('archive content or identity mismatch')
+    }
     const after = await file.stat({ bigint: true })
     const named = await lstat(path, { bigint: true })
     if (
-      hash.digest('hex') !== digest ||
-      before.ino !== named.ino ||
-      before.dev !== named.dev ||
-      before.size !== after.size ||
-      before.mtimeNs !== after.mtimeNs ||
-      before.mode !== after.mode ||
-      (before.ctimeNs !== after.ctimeNs && before.nlink === 1n && after.nlink === 1n)
+      sameArchiveIdentity({ left: before, right: after }) === false ||
+      sameArchiveIdentity({ left: after, right: named }) === false
     )
       fail('archive content or identity mismatch')
+    if (proofPath !== undefined && digestVerified === true)
+      await publishArchiveProof({ path: proofPath, proof: expectedProof })
+    return { status: after, digestVerified }
   } finally {
     await file.close()
   }
@@ -371,6 +467,7 @@ const reclaimRetiredArchive = async ({
     }
     await rmdir(pins)
   }
+  await removeArchiveProofs(garbage)
   await rmdir(garbage)
 }
 
@@ -449,6 +546,7 @@ export const maintainArchiveContent = async ({
               await rename(snapshot, garbage)
               await unlink(join(garbage, 'pins', `${entry.digest}-0444`))
               await rmdir(join(garbage, 'pins'))
+              await removeArchiveProofs(garbage)
               await rmdir(garbage)
             } finally {
               lease.release()
@@ -527,6 +625,7 @@ export const acquireSharedArchive = async ({
   clonedBytes: number
   cacheHit: boolean
   copyReason: string | undefined
+  sourceVerification: 'publication' | 'rehash' | 'metadata-proof'
   timingsMs: Record<string, number>
 }> => {
   const timingsMs: Record<string, number> = {}
@@ -557,6 +656,7 @@ export const acquireSharedArchive = async ({
   let copyReason: string | undefined
   let stage: string | undefined
   let published = false
+  let sourceDigestVerified = false
   let lease: { readonly release: () => void } | undefined
   try {
     if (existsSync(snapshot) === false) {
@@ -572,6 +672,7 @@ export const acquireSharedArchive = async ({
           await unlink(join(abandoned, 'pins', file))
         }
         await rmdir(join(abandoned, 'pins'))
+        await removeArchiveProofs(abandoned)
         await rmdir(abandoned)
       }
     }
@@ -585,7 +686,12 @@ export const acquireSharedArchive = async ({
         downloadedBytes = await downloadArchive({ url, digest, size, path: pin, fetchResponse })
         await shareSnapshotFiles({ candidate: stage, contentStore })
       }
-      await verifyArchive({ path: pin, digest: digest, size: size })
+      await verifyArchive({
+        path: pin,
+        digest,
+        size,
+        proofPath: join(stage, 'verification.json'),
+      })
       await syncDirectory(join(contentStore, digest.slice(0, 2)))
       await syncDirectory(join(stage, 'pins'))
       await syncDirectory(stage)
@@ -607,10 +713,16 @@ export const acquireSharedArchive = async ({
     lease = acquireExistingEditorViewLeaseUnderFence({ editorRoot: metadata, snapshot })
     phase('lease')
     const pin = join(snapshot, 'pins', pinName)
-    await verifyArchive({ path: pin, digest: digest, size: size })
+    const verified = await verifyArchive({
+      path: pin,
+      digest,
+      size,
+      proofPath: join(snapshot, 'verification.json'),
+    })
+    sourceDigestVerified = verified.digestVerified
     // A generation must retain the canonical CAS inode, not a private lookalike.
     const blob = await lstat(join(contentStore, digest.slice(0, 2), pinName), { bigint: true })
-    const pinned = await lstat(pin, { bigint: true })
+    const pinned = verified.status
     if (blob.ino !== pinned.ino || blob.dev !== pinned.dev || blob.nlink < 2n)
       fail('archive pin is not the canonical CAS inode')
     phase('pinVerification')
@@ -620,20 +732,43 @@ export const acquireSharedArchive = async ({
         await copyFile(pin, temporary, constants.COPYFILE_EXCL | constants.COPYFILE_FICLONE_FORCE)
         clonedBytes = size
       } catch (error) {
-        if (
-          (error instanceof Error &&
-            'code' in error &&
-            ['ENOTSUP', 'EOPNOTSUPP', 'EXDEV', 'EINVAL', 'ENOSYS'].includes(String(error.code)) ===
-              true) === false
-        )
+        if (error instanceof Error === false || 'code' in error === false) throw error
+        const code = String(error.code)
+        if (['ENOTSUP', 'EOPNOTSUPP', 'EXDEV', 'EINVAL', 'ENOSYS'].includes(code) === false)
           throw error
-        copyReason = String(error.code)
+        copyReason = code
         await copyFile(pin, temporary, constants.COPYFILE_EXCL)
       }
-      await verifyArchive({ path: temporary, digest: digest, size: size })
-      const copied = await lstat(temporary, { bigint: true })
+      const { status: copied } = await verifyArchive({
+        path: temporary,
+        digest,
+        size,
+        verifyDigest: clonedBytes === 0,
+      })
       if (copied.ino === pinned.ino && copied.dev === pinned.dev)
         fail('ordinary output must not share CAS inode')
+      if (
+        sameArchiveIdentity({ left: pinned, right: await lstat(pin, { bigint: true }) }) === false
+      ) {
+        const refreshed = await verifyArchive({
+          path: pin,
+          digest,
+          size,
+          proofPath: join(snapshot, 'verification.json'),
+        })
+        const currentBlob = await lstat(join(contentStore, digest.slice(0, 2), pinName), {
+          bigint: true,
+        })
+        if (
+          currentBlob.ino !== refreshed.status.ino ||
+          currentBlob.dev !== refreshed.status.dev ||
+          currentBlob.nlink < 2n
+        )
+          fail('archive pin is not the canonical CAS inode')
+        sourceDigestVerified = true
+        // A concurrent source change also revokes the clone's metadata-only proof.
+        await verifyArchive({ path: temporary, digest, size })
+      }
       await rename(temporary, output)
     } finally {
       await unlink(temporary).catch((error: unknown) => {
@@ -649,6 +784,12 @@ export const acquireSharedArchive = async ({
       clonedBytes,
       cacheHit: downloadedBytes === 0,
       copyReason,
+      sourceVerification:
+        published === true
+          ? 'publication'
+          : sourceDigestVerified === true
+            ? 'rehash'
+            : 'metadata-proof',
       timingsMs,
     }
   } finally {
@@ -661,6 +802,7 @@ export const acquireSharedArchive = async ({
           if (absent(error) === false) throw error
         })
         await rmdir(join(stage, 'pins'))
+        await removeArchiveProofs(stage)
         await rmdir(stage)
       }
     } finally {

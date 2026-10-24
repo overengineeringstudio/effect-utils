@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto'
 import {
   chmodSync,
   existsSync,
+  linkSync,
   lstatSync,
   mkdirSync,
   mkdtempSync,
@@ -224,6 +225,62 @@ describe('host-local registry archives', () => {
       }),
     )
   })
+
+  it.each(['write-with-restored-mtime', 'chmod-roundtrip', 'new-pin'] as const)(
+    'revalidates the publication ctime proof after %s',
+    async (change) => {
+      await withFixture(async (root, contentStore) =>
+        withRegistry(async (fetchResponse, requests) => {
+          const acquire = (name: string) =>
+            acquireSharedArchive({
+              contentStore,
+              highWaterBytes,
+              url,
+              digest,
+              size: bytes.length,
+              output: join(root, name),
+              fetchResponse,
+            })
+          expect((await acquire('seed')).sourceVerification).toBe('publication')
+          const blob = join(contentStore, digest.slice(0, 2), `${digest}-0444`)
+          const fixedTime = new Date('2020-01-01T00:00:00.000Z')
+          utimesSync(blob, fixedTime, fixedTime)
+          expect((await acquire('normalized-time')).sourceVerification).toBe('rehash')
+          expect((await acquire('warm')).sourceVerification).toBe('metadata-proof')
+          const before = lstatSync(blob, { bigint: true })
+          const proof = join(
+            `${contentStore}.buck-materialization-v1`,
+            '.store',
+            `archive-${digest}`,
+            'verification.json',
+          )
+          const previousProof = readFileSync(proof, 'utf8')
+          if (change === 'new-pin') linkSync(blob, join(root, 'another-pin'))
+          else {
+            chmodSync(blob, 0o644)
+            if (change === 'write-with-restored-mtime') {
+              writeFileSync(blob, Buffer.alloc(bytes.length))
+              utimesSync(blob, fixedTime, fixedTime)
+            }
+            chmodSync(blob, 0o444)
+          }
+          expect(lstatSync(blob, { bigint: true }).mtimeNs).toBe(before.mtimeNs)
+          expect(lstatSync(blob, { bigint: true }).ctimeNs).not.toBe(before.ctimeNs)
+          if (change === 'write-with-restored-mtime') {
+            await expect(acquire('changed')).rejects.toThrow('content or identity mismatch')
+            expect(existsSync(join(root, 'changed'))).toBe(false)
+            expect(readFileSync(proof, 'utf8')).toBe(previousProof)
+          } else {
+            expect((await acquire('changed')).sourceVerification).toBe('rehash')
+            expect(readFileSync(proof, 'utf8')).not.toBe(previousProof)
+            expect((await acquire('refreshed')).sourceVerification).toBe('metadata-proof')
+            expect(readFileSync(join(root, 'refreshed'))).toEqual(bytes)
+          }
+          expect(requests()).toBe(1)
+        }),
+      )
+    },
+  )
 
   it.each(['digest', 'size', 'writable', 'symlink'] as const)(
     'rejects %s corruption instead of silently fetching',

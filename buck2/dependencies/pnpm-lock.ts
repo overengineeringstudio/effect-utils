@@ -3,11 +3,14 @@ import path from 'node:path'
 
 import { buck2SemanticFingerprint } from '../../genie/buck2/mod.ts'
 import {
+  publicArchiveRedirectUrl,
+  publicArchiveUrl,
+} from '../../packages/@overeng/buck2-tools/src/public-archive-origin.ts'
+import {
   inputExistsSync as existsSync,
   inputReadFileSync as readFileSync,
 } from '../../packages/@overeng/genie/src/runtime/node/inputs.ts'
 import { defineRepoContext } from '../../packages/@overeng/genie/src/runtime/repo-context/mod.ts'
-import { publicArchiveRedirectUrl, publicArchiveUrl } from './public-archive-origin.ts'
 
 const repo = defineRepoContext({ name: 'effect-utils', importMetaUrl: import.meta.url })
 
@@ -1181,10 +1184,11 @@ export const generatePnpmSha256Sidecar = async ({
   fetchResponse = fetch,
   fetchArchive = async (url) => {
     let current = url
+    /* eslint-disable no-await-in-loop -- Each redirect response determines the next validated public origin. */
     for (let redirects = 0; redirects <= 3; redirects += 1) {
       publicArchiveUrl({ url: current, location: 'archive download URL' })
       const response = await fetchResponse(current, { redirect: 'manual' })
-      if ([301, 302, 303, 307, 308].includes(response.status)) {
+      if ([301, 302, 303, 307, 308].includes(response.status) === true) {
         current = publicArchiveRedirectUrl({
           from: current,
           redirect: response.headers.get('location'),
@@ -1195,6 +1199,7 @@ export const generatePnpmSha256Sidecar = async ({
         return fail(`archive download failed (${response.status}) for ${current}`)
       return new Uint8Array(await response.arrayBuffer())
     }
+    /* eslint-enable no-await-in-loop */
     return fail(`archive download exceeded 3 redirects for ${url}`)
   },
   readProductTarball = async (relativePath) =>
@@ -1237,8 +1242,8 @@ export const generatePnpmSha256Sidecar = async ({
         ? isProduct === true && cached.productTarball === packageMetadata.url
         : isProduct === false &&
           cached.registryUrl === packageMetadata.url &&
-          cached.classification === 'public') &&
-      Number.isSafeInteger(cached.sizeBytes) &&
+          cached.classification === 'public') === true &&
+      Number.isSafeInteger(cached.sizeBytes) === true &&
       cached.sizeBytes > 0 &&
       sha256Pattern.test(cached.sha256) === true &&
       (packageMetadata.hasBin === false || Object.keys(cached.bins).length > 0)
