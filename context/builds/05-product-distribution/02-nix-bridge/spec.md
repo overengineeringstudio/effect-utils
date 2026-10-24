@@ -86,6 +86,37 @@ tree, or rewritten package rule. Changing later repository metadata does not
 change the identity of an already-published product. The anonymous artifact
 URL is an interoperability path, not a second source of product authority.
 
+### pnpm package dependency closure
+
+Published `@overeng/*` `.tgz` products are not transitively self-contained.
+Packing writes internal dependencies as ordinary semver ranges
+(`workspace:^` becomes `^<version>`), not artifact URLs or bundled dependencies.
+These packages are not published to the npm registry; their internal ranges
+resolve only through consumer-root overrides.
+
+The supported consumer mechanism is the genie consumer projection: it derives
+root-owned pnpm overrides for the whole transitive `@overeng/*` dependency
+closure from the pinned producer manifest, mapping each public package to its
+`artifactUrl`. Private products use the staged `file:` tarballs described below.
+The consumer lock records the resolved tarballs and integrity. A direct URL pin
+alone does not supply dependency resolution: a standalone install without the
+closure overrides is unsupported and fails with a registry 404 for an unresolved
+internal dependency (`ERR_PNPM_FETCH_404`).
+
+This qualifies the pnpm recipe in
+[decision 0037, clause 4](../../.decisions/0037-nix-substitution-is-the-distribution-layer.md#decision):
+the URL plus integrity identifies one public product, not its dependency closure.
+The ordinary-version packing contract in
+[decision 0034](../../.decisions/0034-artifact-default-composition-no-registry.md#required-publication-contract)
+does not imply registry availability.
+
+Pack-time URL rewriting is not the alternative: pnpm's `blockExoticSubdeps`
+rejects transitive exotic sources, and embedding dependency URLs would propagate
+dependency digest changes into dependent archive digests. Bundling would likewise
+copy shared dependencies into each product and couple their bytes and digests.
+Consumer-root overrides instead select shared dependency artifacts in one place
+without rewriting or bundling them into every dependent package.
+
 ### Consumer pin eligibility
 
 ```text
