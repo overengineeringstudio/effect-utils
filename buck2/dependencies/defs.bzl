@@ -211,7 +211,7 @@ def _fetch_impl(ctx):
             ctx,
             cmd_args([
                 hermetic_bun_command(ctx, ctx.attrs._bun[BunToolchainInfo].executable),
-                ctx.attrs._shared_archive,
+                ctx.attrs._shared_archive_runtime[DefaultInfo].default_outputs[0].project("buck2/dependencies/shared-archive.ts"),
                 "--content-store", _shared_archive_store(),
                 "--high-water-bytes", read_config("buck_materialization", "high_water_bytes", "4294967296"),
                 "--url", ctx.attrs.url,
@@ -219,7 +219,7 @@ def _fetch_impl(ctx):
                 "--size", str(ctx.attrs.size_bytes),
                 "--output", out.as_output(),
                 "--receipt", receipt.as_output(),
-            ], hidden = ctx.attrs._sharing_sources),
+            ]),
             env = {"EDITOR_VIEW_LEASE_LIBRARY": read_config("buck_materialization", "lease_library", "")},
             category = "pnpm_archive",
             identifier = ctx.attrs.name,
@@ -270,15 +270,9 @@ _fetch = cache_guarded_rule(
         "_nix_archive": attrs.default_only(attrs.source(
             default = "//buck2/dependencies:nix-archive.ts",
         )),
-        "_shared_archive": attrs.default_only(attrs.source(
-            default = "//buck2/dependencies:shared-archive.ts",
+        "_shared_archive_runtime": attrs.default_only(attrs.dep(
+            default = "//buck2/dependencies:shared_archive_runtime",
         )),
-        "_sharing_sources": attrs.default_only(attrs.list(attrs.source(), default = [
-            "//packages/@overeng/buck2-tools:src/materialization-archives.ts",
-            "//packages/@overeng/buck2-tools:src/editor-view-sharing.ts",
-            "//packages/@overeng/buck2-tools:src/editor-view-leases.ts",
-            "//buck2/dependencies:public-archive-origin.ts",
-        ])),
     }),
 )
 
