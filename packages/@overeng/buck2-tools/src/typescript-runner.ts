@@ -624,6 +624,11 @@ export const darwinEmitCommand = async (options: {
   return ['/usr/bin/sandbox-exec', '-p', rules.join('\n'), ...options.argv]
 }
 
+const isEditorViewPath = (path: string): boolean =>
+  path
+    .split(sep)
+    .some((component) => component === '.editor-view' || component === '.editor-view-content')
+
 /**
  * Nix already owns the Darwin sandbox. Its clean-source preflight plus these
  * runtime checks exclude editor roots without attempting a forbidden nest.
@@ -644,18 +649,22 @@ export const assertNixEmitIsolation = async (options: {
   const home = environment.HOME
   if (
     home === undefined ||
+    isAbsolute(home) === false ||
     (home !== '/homeless-shelter' && belowBuildTop(await realpath(home)) === false)
   )
     fail('nix-build-sandbox requires a Nix build HOME')
   const buckOut = await realpath(options.buckOut)
   if (belowBuildTop(buckOut) === false)
     fail('nix-build-sandbox requires buck-out inside NIX_BUILD_TOP')
+  const stagingRoot = await realpath(options.stagingRoot)
+  if (belowBuildTop(stagingRoot) === false)
+    fail('nix-build-sandbox requires staging inside NIX_BUILD_TOP')
   const visited = new Set<string>()
   const visit = async (path: string): Promise<void> => {
-    if (path.split(sep).includes('.editor-view') === true)
+    if (isEditorViewPath(path) === true)
       fail(`editor view is reachable from Nix emit inputs: ${path}`)
     const physical = await realpath(path)
-    if (physical.split(sep).includes('.editor-view') === true)
+    if (isEditorViewPath(physical) === true)
       fail(`editor view is reachable from Nix emit inputs: ${physical}`)
     if (belowBuildTop(physical) === false && physical.startsWith('/nix/store/') === false)
       fail(`Nix emit input escapes the build and store roots: ${physical}`)
@@ -670,10 +679,11 @@ export const assertNixEmitIsolation = async (options: {
     }
   }
   await forEachSequential({ iterator: options.readRoots.values(), visit })
+  await visit(stagingRoot)
   // TypeScript can climb from realpathed declarations and scratch configs.
   // Unlike the normal sandbox, reject rather than hide ancestor dependencies.
   const checkAncestors = async (ancestor: string): Promise<void> => {
-    const names = ['node_modules', '.editor-view']
+    const names = ['node_modules', '.editor-view', '.editor-view-content']
     if (ancestor !== top && belowBuildTop(ancestor) === false)
       names.push('package.json', 'tsconfig.json', 'jsconfig.json')
     await forEachSequential({

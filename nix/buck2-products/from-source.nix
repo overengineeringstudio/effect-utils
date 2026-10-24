@@ -226,7 +226,7 @@ let
         # Store projections are not assumed to be editor-free: callers may
         # supply repositorySource. Check links as well as directory entries
         # before Buck materializes any action inputs.
-        editor_view="$(find -L . -name .editor-view -print -quit)"
+        editor_view="$(find -L . \( -name .editor-view -o -name .editor-view-content \) -print -quit)"
         if [ -n "$editor_view" ]; then
           echo 'buck2-products: editor views are forbidden in Nix product sources' >&2
           exit 1
