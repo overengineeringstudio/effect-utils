@@ -502,7 +502,15 @@ export const acquireSharedArchive = async ({
   clonedBytes: number
   cacheHit: boolean
   copyReason: string | undefined
+  timingsMs: Record<string, number>
 }> => {
+  const timingsMs: Record<string, number> = {}
+  let previous = performance.now()
+  const phase = (name: string): void => {
+    const now = performance.now()
+    timingsMs[name] = now - previous
+    previous = now
+  }
   publicArchiveUrl({ url, location: 'archive acquisition URL' })
   if (Number.isSafeInteger(highWaterBytes) === false || highWaterBytes <= 0)
     fail('invalid high water')
@@ -512,8 +520,10 @@ export const acquireSharedArchive = async ({
   if (editorViewLeaseFilesystem(parent) !== 'local') fail('filesystem no longer admitted')
   ownedDirectory(parent)
   const metadata = initializeMetadata(contentStore)
+  phase('admission')
   const lock =
     (await lockArchive({ metadata: metadata, digest: digest })) ?? fail('download lock unavailable')
+  phase('digestLock')
   const generation = `archive-${digest}`
   const snapshot = join(metadata, '.store', generation)
   const pinName = `${digest}-0444`
@@ -537,6 +547,7 @@ export const acquireSharedArchive = async ({
       await rmdir(join(abandoned, 'pins'))
       await rmdir(abandoned)
     }
+    phase('stagingRecovery')
     if (existsSync(snapshot) === false) {
       stage = join(metadata, '.staging', `${digest}-${randomUUID()}`)
       mkdirSync(join(stage, 'pins'), { recursive: true, mode: 0o700 })
@@ -561,11 +572,13 @@ export const acquireSharedArchive = async ({
         },
       })
     }
+    phase('publication')
     lease = await acquireEditorViewLease({
       editorRoot: metadata,
       contentStore,
       resolveSnapshot: () => snapshot,
     })
+    phase('lease')
     const pin = join(snapshot, 'pins', pinName)
     await verifyArchive({ path: pin, digest: digest, size: size })
     // A generation must retain the canonical CAS inode, not a private lookalike.
@@ -573,6 +586,7 @@ export const acquireSharedArchive = async ({
     const pinned = await lstat(pin, { bigint: true })
     if (blob.ino !== pinned.ino || blob.dev !== pinned.dev || blob.nlink < 2n)
       fail('archive pin is not the canonical CAS inode')
+    phase('pinVerification')
     const temporary = join(dirname(resolve(output)), `.archive-${randomUUID()}`)
     try {
       try {
@@ -599,13 +613,16 @@ export const acquireSharedArchive = async ({
         if (absent(error) === false) throw error
       })
     }
+    phase('privateOutput')
     await recordMaterializationContentUse({ contentStore: contentStore, keys: [pinName] })
+    phase('accessHint')
     return {
       downloadedBytes,
       copiedBytes: clonedBytes === 0 ? size : 0,
       clonedBytes,
       cacheHit: downloadedBytes === 0,
       copyReason,
+      timingsMs,
     }
   } finally {
     try {
@@ -622,7 +639,9 @@ export const acquireSharedArchive = async ({
     } finally {
       await lock.close()
     }
+    phase('release')
     const pressure = await maintainArchiveContent({ contentStore, highWaterBytes })
     process.stderr.write(`[buck-materialization-pressure] ${JSON.stringify(pressure)}\n`)
+    phase('maintenance')
   }
 }
