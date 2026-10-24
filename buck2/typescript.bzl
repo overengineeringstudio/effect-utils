@@ -125,6 +125,10 @@ def _tsgo_emit_impl(ctx):
     fingerprint = ctx.attrs._fingerprint_tool[BuckSupportToolInfo]
     args.add("--fingerprint-tool", fingerprint.store_path)
     args.add(cmd_args(hidden = [fingerprint.executable, fingerprint.manifest]))
+    isolation = ctx.attrs._darwin_emit_isolation
+    if isolation not in ["sandbox-exec", "nix-build-sandbox"]:
+        fail("Unknown Darwin emit isolation mode: {}".format(isolation))
+    args.add("--darwin-isolation", isolation)
     for read_root in package_tree.read_roots:
         args.add("--read-root", read_root)
     for declaration_path in sorted(ctx.attrs.declaration_sources.keys()):
@@ -144,6 +148,7 @@ def _tsgo_emit_impl(ctx):
         category = "tsgo_emit",
         identifier = ctx.attrs.name,
         local_only = True,
+        inherit_nix_build_environment = isolation == "nix-build-sandbox",
     )
     return [
         DefaultInfo(default_output = directory),
@@ -158,6 +163,9 @@ _tsgo_emit = cache_guarded_rule(
     cache_eligible = ts_action_cache_eligible,
     impl = _tsgo_emit_impl,
     attrs = dict(ts_action_attrs(), **{
+        "_darwin_emit_isolation": attrs.default_only(attrs.string(
+            default = read_root_config("typescript", "darwin_emit_isolation", "sandbox-exec"),
+        )),
         "package_tree": attrs.dep(providers = [PackageTreeInfo]),
         "project": attrs.string(default = "tsconfig.json"),
         "out_dir": attrs.string(default = "dist"),

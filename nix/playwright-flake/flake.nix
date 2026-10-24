@@ -30,6 +30,8 @@
                 upstream.components.chromium.overrideAttrs (old: {
                   # Upstream installs the arm64 archive under chrome-linux-arm64,
                   # but its Vulkan fixup still uses the x86_64 directory.
+                  # Remove this override once https://github.com/pietdevries94/playwright-web-flake/pull/39
+                  # is merged and the input is bumped.
                   postFixup =
                     lib.replaceStrings [ "$out/chrome-linux64" ] [ "$out/chrome-linux-arm64" ]
                       old.postFixup;
