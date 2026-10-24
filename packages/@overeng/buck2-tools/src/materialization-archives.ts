@@ -479,6 +479,31 @@ export const maintainArchiveContent = async ({
   }
 }
 
+/** One nonblocking, rate-bounded census after insertion; cache hits never scan C. */
+const maintainAfterArchivePublication = async ({
+  contentStore,
+  metadata,
+  highWaterBytes,
+}: {
+  contentStore: string
+  metadata: string
+  highWaterBytes: number
+}): Promise<void> => {
+  const lock = await lockArchive({ metadata, digest: 'maintenance', wait: false })
+  if (lock === undefined) return
+  try {
+    const previous = await lock.stat()
+    const elapsed = Date.now() - previous.mtimeMs
+    if (previous.size !== 0 && elapsed >= 0 && elapsed < 30_000) return
+    const pressure = await maintainArchiveContent({ contentStore, highWaterBytes })
+    process.stderr.write(`[buck-materialization-pressure] ${JSON.stringify(pressure)}\n`)
+    await lock.truncate(0)
+    await lock.writeFile(`${Date.now()}\n`)
+  } finally {
+    await lock.close()
+  }
+}
+
 /** One public registry acquisition. Outputs are always independent from readonly CAS inodes. */
 export const acquireSharedArchive = async ({
   contentStore,
@@ -531,21 +556,24 @@ export const acquireSharedArchive = async ({
   let clonedBytes = 0
   let copyReason: string | undefined
   let stage: string | undefined
+  let published = false
   let lease: { readonly release: () => void } | undefined
   try {
-    // Digest exclusion proves these private leftovers have no live publisher.
-    for (const name of await readdir(join(metadata, '.staging'))) {
-      if (name.startsWith(`${digest}-`) === false) continue
-      if (new RegExp(`^${digest}-[a-f0-9-]{36}$`).test(name) === false)
-        fail('unknown archive staging entry')
-      const abandoned = join(metadata, '.staging', name)
-      ownedDirectory(abandoned)
-      for (const file of await readdir(join(abandoned, 'pins'))) {
-        if (file !== pinName) fail('unknown staged pin')
-        await unlink(join(abandoned, 'pins', file))
+    if (existsSync(snapshot) === false) {
+      // Digest exclusion proves these private leftovers have no live publisher.
+      for (const name of await readdir(join(metadata, '.staging'))) {
+        if (name.startsWith(`${digest}-`) === false) continue
+        if (new RegExp(`^${digest}-[a-f0-9-]{36}$`).test(name) === false)
+          fail('unknown archive staging entry')
+        const abandoned = join(metadata, '.staging', name)
+        ownedDirectory(abandoned)
+        for (const file of await readdir(join(abandoned, 'pins'))) {
+          if (file !== pinName) fail('unknown staged pin')
+          await unlink(join(abandoned, 'pins', file))
+        }
+        await rmdir(join(abandoned, 'pins'))
+        await rmdir(abandoned)
       }
-      await rmdir(join(abandoned, 'pins'))
-      await rmdir(abandoned)
     }
     phase('stagingRecovery')
     if (existsSync(snapshot) === false) {
@@ -571,6 +599,7 @@ export const acquireSharedArchive = async ({
           await syncDirectory(join(metadata, '.store'))
         },
       })
+      published = true
     }
     phase('publication')
     lease = await acquireEditorViewLease({
@@ -640,8 +669,8 @@ export const acquireSharedArchive = async ({
       await lock.close()
     }
     phase('release')
-    const pressure = await maintainArchiveContent({ contentStore, highWaterBytes })
-    process.stderr.write(`[buck-materialization-pressure] ${JSON.stringify(pressure)}\n`)
+    if (published === true)
+      await maintainAfterArchivePublication({ contentStore, metadata, highWaterBytes })
     phase('maintenance')
   }
 }

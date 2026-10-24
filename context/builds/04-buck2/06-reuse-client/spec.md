@@ -362,10 +362,16 @@ filesystems likewise select native acquisition without creating shared state.
 runner; `materialization-archives.ts` owns acquisition, archive pins and pressure
 maintenance, using `editor-view-sharing.ts` for all CAS publication/deletion.
 Its `[buck-materialization-archive]` receipt reports `downloadedBytes`,
-`copiedBytes`, `clonedBytes`, `cacheHit` and the private-copy reason; these
-helper counters are distinct from native action counts. Pressure receipts
-include allocated CAS payload, separately allocated metadata and their combined
-total, preserving the exact `referenced-bytes-over-cap` signal.
+`copiedBytes`, `clonedBytes`, `cacheHit`, the private-copy reason and `timingsMs`
+for admission, digest exclusion, staging recovery, publication, lease acquisition,
+pin verification, output installation, access hints, release and maintenance;
+these helper counters are distinct from native action counts. Cache hits never
+census the store. New archive-generation publications attempt one nonblocking
+maintenance control, rate-bounded to one completed census per 30 seconds; held
+controls skip opportunistic maintenance without delaying unrelated digests.
+Explicit `maintainArchiveContent` remains unbounded by that scheduling hint.
+Pressure receipts include allocated CAS payload, separately allocated metadata
+and their combined total, preserving the exact `referenced-bytes-over-cap` signal.
 
 #### Filesystems, leases and collection (BUILD.BUCK.REUSE-R07; E04/E05)
 

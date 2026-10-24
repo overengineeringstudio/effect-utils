@@ -141,6 +141,63 @@ describe('host-local registry archives', () => {
     })
   })
 
+  it('rate-bounds insertion maintenance and never opens its control on an archive hit', async () => {
+    await withFixture(async (root, contentStore) =>
+      withRegistry(async (fetchResponse) => {
+        await acquireSharedArchive({
+          contentStore,
+          highWaterBytes,
+          url,
+          digest,
+          size: bytes.length,
+          output: join(root, 'first'),
+          fetchResponse,
+        })
+        const control = join(
+          `${contentStore}.buck-materialization-v1`,
+          '.downloads',
+          'maintenance.lock',
+        )
+        const recent = new Date(Date.now() - 1000)
+        utimesSync(control, recent, recent)
+        const previous = lstatSync(control).mtimeMs
+        const other = Buffer.from('another already verified editor payload')
+        const seed = join(root, 'editor')
+        mkdirSync(seed)
+        writeFileSync(join(seed, 'payload'), other)
+        await shareSnapshotFiles({ candidate: seed, contentStore })
+        await acquireSharedArchive({
+          contentStore,
+          highWaterBytes,
+          url,
+          digest: createHash('sha256').update(other).digest('hex'),
+          size: other.length,
+          output: join(root, 'second'),
+          fetchResponse,
+        })
+        expect(lstatSync(control).mtimeMs).toBe(previous)
+        // The hit must not even validate/open the unrelated maintenance control.
+        chmodSync(control, 0o644)
+        // Nor may a hit enumerate recovery staging, even for its own digest.
+        writeFileSync(
+          join(`${contentStore}.buck-materialization-v1`, '.staging', `${digest}-invalid-stage`),
+          'unrelated recovery evidence',
+        )
+        const hit = await acquireSharedArchive({
+          contentStore,
+          highWaterBytes,
+          url,
+          digest,
+          size: bytes.length,
+          output: join(root, 'hit'),
+          fetchResponse,
+        })
+        expect(hit.downloadedBytes).toBe(0)
+        expect(readFileSync(join(root, 'hit'))).toEqual(bytes)
+      }),
+    )
+  })
+
   it.each(['digest', 'size', 'writable', 'symlink'] as const)(
     'rejects %s corruption instead of silently fetching',
     async (kind) => {
