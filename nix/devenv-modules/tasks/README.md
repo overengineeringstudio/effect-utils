@@ -363,7 +363,7 @@ for outer tasks that must complete before the nested devenv process can evaluate
     The invoking process environment is inherited by build hooks; deployment
     `env` overrides apply only to deploy, not to the preceding build.
   - Uses `ci-tools deploy cloudflare-workers --target NAME --worker-name WORKER
-    --config PATH --cwd DIR --mode prod|pr --wrangler-bin BIN`; PR mode requires
+--config PATH --cwd DIR --mode prod|pr --wrangler-bin BIN`; PR mode requires
     `--pr N`.
     Repeat `--production-domain HOST` for expected production hostnames.
     Custom-domain desired state belongs in Wrangler configuration, not in an
@@ -407,6 +407,7 @@ for outer tasks that must complete before the nested devenv process can evaluate
     Same-repository PR code must be trusted by the repository's access policy.
     Report collection, rendering, and managed PR comment publication reuse the
     workflow-report tasks; the comment job receives no Cloudflare job env.
+
   - Cloudflare Workers live E2E is intentionally not exercised by this
     integration. No live deploy/domain validation is claimed. See the
     [provider specification](../../../context/ci-tools/spec.md#cloudflare-workers-provider)

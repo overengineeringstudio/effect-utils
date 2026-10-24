@@ -140,9 +140,7 @@ type DeployInputV1 = {
     }
   }
   readonly providerConfig:
-    | NetlifyProviderConfig
-    | VercelProviderConfig
-    | CloudflareWorkersProviderConfig
+    NetlifyProviderConfig | VercelProviderConfig | CloudflareWorkersProviderConfig
 }
 ```
 
