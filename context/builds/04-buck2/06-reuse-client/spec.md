@@ -365,8 +365,11 @@ Its `[buck-materialization-archive]` receipt reports `downloadedBytes`,
 `copiedBytes`, `clonedBytes`, `cacheHit`, the private-copy reason and `timingsMs`
 for admission, digest exclusion, staging recovery, publication, lease acquisition,
 pin verification, output installation, access hints, release and maintenance;
-these helper counters are distinct from native action counts. Cache hits never
-census the store. New archive-generation publications attempt one nonblocking
+these helper counters are distinct from native action counts. Archive hits open
+the mandatory existing validated SH lease under per-digest exclusion respected by
+every archive publisher and retirer; they neither take the global CAS fence nor
+census the store. Generic editor reader acquisition retains its CAS fence.
+New archive-generation publications attempt one nonblocking
 maintenance control, rate-bounded to one completed census per 30 seconds; held
 controls skip opportunistic maintenance without delaying unrelated digests.
 Explicit `maintainArchiveContent` remains unbounded by that scheduling hint.

@@ -18,7 +18,7 @@ import {
   publicArchiveUrl,
 } from '../../../../buck2/dependencies/public-archive-origin.ts'
 import {
-  acquireEditorViewLease,
+  acquireExistingEditorViewLeaseUnderFence,
   editorViewLeaseFilesystem,
   ensureEditorViewLeaseControl,
   probeEditorViewLeaseUnderFence,
@@ -602,11 +602,9 @@ export const acquireSharedArchive = async ({
       published = true
     }
     phase('publication')
-    lease = await acquireEditorViewLease({
-      editorRoot: metadata,
-      contentStore,
-      resolveSnapshot: () => snapshot,
-    })
+    // Every archive publisher and retirer holds this same digest exclusion.
+    // The published control is mandatory; hits need no global CAS fence.
+    lease = acquireExistingEditorViewLeaseUnderFence({ editorRoot: metadata, snapshot })
     phase('lease')
     const pin = join(snapshot, 'pins', pinName)
     await verifyArchive({ path: pin, digest: digest, size: size })

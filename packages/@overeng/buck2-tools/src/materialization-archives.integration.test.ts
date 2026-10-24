@@ -23,6 +23,7 @@ import {
   collectEditorViewContentStore,
   editorViewContentStoreCensus,
   shareSnapshotFiles,
+  withEditorViewContentStoreLock,
 } from './editor-view-sharing.ts'
 import { editorViewTestDataRoot } from './editor-view-test-filesystem.ts'
 import {
@@ -139,6 +140,32 @@ describe('host-local registry archives', () => {
       expect(receipt.downloadedBytes).toBe(0)
       expect(readFileSync(join(root, 'output'))).toEqual(bytes)
     })
+  })
+
+  it('completes an archive hit while an unrelated CAS metadata fence is held', async () => {
+    await withFixture(async (root, contentStore) =>
+      withRegistry(async (fetchResponse) => {
+        const acquire = (name: string) =>
+          acquireSharedArchive({
+            contentStore,
+            highWaterBytes,
+            url,
+            digest,
+            size: bytes.length,
+            output: join(root, name),
+            fetchResponse,
+          })
+        await acquire('seed')
+        await withEditorViewContentStoreLock({
+          contentStore,
+          run: async () => {
+            const hit = await acquire('hit')
+            expect(hit.downloadedBytes).toBe(0)
+            expect(readFileSync(join(root, 'hit'))).toEqual(bytes)
+          },
+        })
+      }),
+    )
   })
 
   it('rate-bounds insertion maintenance and never opens its control on an archive hit', async () => {
