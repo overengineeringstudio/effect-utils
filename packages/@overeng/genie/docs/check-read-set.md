@@ -47,7 +47,7 @@ The recording MUST retain file content observations, explicit absences, sorted d
 
 `complete:true` requires successful capture of the entire influencing closure and no reason occurrences. Capture completeness and check success are separate fields: reuse additionally requires a successful check; a fully observed failed check is still nonreusable and does not need a fictitious capability reason. Ordinary unrestricted generators/transitive helpers MUST default to `unknown-capability` until their closure is accounted for; absence of grep hits is not proof. A raw operation already present in the recording need not be a bypass, but a partial wrapper MUST NOT certify uncovered operations. All influencing bypasses MUST be reported, not only the first failure.
 
-Each occurrence MUST include `code`, operation/detail, source module and file:line when available, and the sorted explicit list of affected generator paths. Shared engine observations apply to every affected generator; import/helper observations propagate to all importing generators; validator observations propagate to every generator whose result they validate. If attribution is uncertain, list every discovered generator and add `unknown-capability`. The per-repo report MUST expand those lists to concrete paths, group by code/source, and include occurrence counts. It MUST distinguish observed bypasses from conservatively unproven capabilities. Incomplete-but-successful checks publish this report; they are not reusable passes.
+Each occurrence MUST include `code`, operation/detail, source module and file:line when available, and the sorted explicit list of affected generator paths. Shared engine observations apply to every affected generator; import/helper observations propagate to all importing generators; validator observations propagate to every generator whose result they validate. If attribution is uncertain, list every discovered generator and add `unknown-capability`. The per-repo report MUST expand those lists to concrete paths, group by code/source, and include occurrence counts. It MUST distinguish observed bypasses from conservatively unproven capabilities. Incomplete-but-successful checks publish this report; affected generators are not reusable passes.
 
 ## Inventory mapped to reasons
 
@@ -145,6 +145,12 @@ type Reason = {
   generators: By
   evidence: 'observed' | 'unproven'
 }
+type GeneratorResult = {
+  generator: Generator
+  target: Path
+  module: Identity
+  outputDigest: Digest
+}
 type ReadSet = {
   schema: 'genie-check-read-set'
   schemaVersion: 1
@@ -154,6 +160,7 @@ type ReadSet = {
   repoRoot: Path
   argv: string[]
   generators: By
+  generatorResults: GeneratorResult[]
   platform: { os: string; arch: string }
   genie: Identity
   bun: Identity
@@ -202,20 +209,35 @@ Resolution `candidates` retains actual search-priority order; each reference MUS
 
 For reasons, `source.module` is a repo-relative source path or a dependency module specifier, `line` is a positive 1-based line or `null` if unavailable, and `operation`/`detail` contain non-secret diagnostics. A report uses the same reasons, source locations, and expanded `generators` lists as the artifact. `complete` MUST equal `reasons.length === 0`; it does not imply `checkSucceeded`. Unsupported observations and provenance gaps add their own reason, never disappear during serialization.
 
-Capture begins before the first influencing read and ends after validators. Hash consumed bytes and check stability, not merely a later census. Exclude output destinations/temporary paths from discovery and self-recording. Publish with same-directory temporary files and atomic rename. For a failed check, remove a stale successful artifact before returning or replace it with `checkSucceeded:false`; publication faults are `capture-error` and MUST NOT create reusable success. If no valid artifact can be written, fail output publication and leave no reusable previous artifact. The same run identifier in the legacy metadata companion gates pairing; the consumer reads both and rejects mismatched IDs.
+Capture begins before the first influencing read and ends after validators. Hash consumed bytes and check stability, not merely a later census. Exclude output destinations/temporary paths from discovery and self-recording. Publish with same-directory temporary files and atomic rename. A failed check MUST NOT store a result or artifact and MUST remove any stale successful artifact before returning; its reason report MAY still be published. Publication faults are `capture-error` and MUST NOT create reusable success. If no valid artifact can be written, fail output publication and leave no reusable previous artifact. The same run identifier in the legacy metadata companion gates pairing; the consumer reads both and rejects mismatched IDs.
 
-Producer and consumer independently validate the exact schema, ordering, unique keys, referenced paths, digest formulas, reason/complete invariant, and identities. Producer also requires stable consumed observations. Consumer reuse requires `checkSucceeded:true`, `complete:true`, an eligible same-run artifact, matching intended argv/root/platform/genie/Bun/tool identities, current env digests, file bytes/absences, directory digests, cwd, links, stat values, and every resolution dependency. Validation itself MUST observe stable state; a changed/uncertain/unreadable observation is a miss. Unsupported versions/classes, malformed/truncated/missing/stale artifacts, or discarded observation classes are a miss. On a miss, execute the real check. This specifies a validation algorithm, not a consumer-specific cache implementation.
+Producer and consumer independently validate the exact schema, ordering, unique keys, referenced paths, digest formulas, reason/complete invariant, and identities. Producer also requires stable consumed observations. Reuse requires `checkSucceeded:true`, an eligible same-run artifact, and matching intended argv/root; completeness, identities, and observations are then checked per generator as below. Validation itself MUST observe stable state; a changed/uncertain/unreadable observation is a miss. Unsupported versions/classes, malformed/truncated/missing/stale artifacts, or discarded observation classes are a miss. On a miss, re-run the affected generator; invalid invocation-wide evidence re-runs every generator. This specifies a validation algorithm, not a consumer-specific cache implementation.
 
-## Opt-out cost and acceptance plan
+### Per-generator reuse
+
+The reuse unit MUST be one generator invocation for one target, identified by `GeneratorResult.generator` and `target`. `generatorResults` MUST contain exactly one entry per such pair, sorted uniquely by the UTF-8 bytes of JCS of that pair. `module` records the generator module's identity by bytes, including its influencing module closure; `outputDigest` is the digest of the successfully checked generated bytes. Each unit's read set is the observations attributed to its generator by `by`, including shared engine and validator observations. It MUST include the target file itself. Reads of other generators' outputs MUST be recorded as explicit file-observation edges attributed to the reading generator, referencing the producing generator's target. These edges MUST NOT imply or introduce execution ordering.
+
+Per-generator identity MUST consist of the genie build identity, generator module identity, platform/Bun identities, and only that generator's own environment observations (including shared observations attributed to it). An unrelated generator's module or environment change MUST NOT by itself invalidate this identity; influencing tool identities remain recorded observations.
+
+A generator MUST pass by reuse only when all three conditions hold:
+
+1. Its recorded read set is complete: no reason occurrence names that generator, and its entire influencing closure is recorded. An incomplete read set MUST always re-run that generator and MUST NEVER be reused, even when all recorded observations match.
+2. Every recorded observation in that read set, including its identity and explicit output-read edges, equals the current observation under the validation algorithms above.
+3. The current target file digest equals its recorded `outputDigest`.
+
+If any condition fails, that generator MUST re-run. Invocation-wide `complete:false` does not prevent reuse of another generator whose own read set is complete. The invocation MUST retain one check result, combining reused and re-run generators under the unchanged validation policy. One failed generator MUST fail that check; no failed result is stored. A newly published artifact MUST describe the current invocation, including revalidated observations for reused generators, not splice evidence from another run.
+
+## Opt-out cost and acceptance
 
 With neither `--read-set` nor `GENIE_INPUT_MANIFEST` requested, the recording layer MUST NOT be installed: no recorder/state allocation, new source scan, hashing, directory census, or artifact IO. Dispatch MUST choose the existing uninstrumented check before creating recorder/services. With only the legacy environment output requested, retain its explicit path-recording cost but add no read-set hashing; both requested outputs use one recorder. This qualification preserves the existing opt-in feature rather than silently disabling it.
 
 Required acceptance tests:
 
-1. A closed, fully recorded fixture produces `complete:true`; unchanged inputs may be reused. Mutate exactly one class per case: transitive import, runtime/validator-only file, absent file becoming present, directory entry added, entry removed, env value/unset/empty, genie build identity with unchanged semver, Bun/tool/platform identity, cwd, member symlink/resolution alternative, and generated target bytes. Each mutation MUST force a real check.
+1. A closed, fully recorded fixture produces `complete:true`; unchanged inputs may be reused. Mutate exactly one class per case: transitive import, runtime/validator-only file, absent file becoming present, directory entry added, entry removed, env value/unset/empty, genie build identity with unchanged semver, Bun/tool/platform identity, cwd, member symlink/resolution alternative, and generated target bytes. Each mutation MUST force the affected generator to re-run.
 2. Exercise every enum reason, including direct fs, raw realpath, `Bun.file`, unknown reads, arbitrary child/network/native capability and dynamic import fixtures. Require the correct code, source, and expanded affected-generator list; unknown capability MUST never yield complete proof. Concurrent/conflicting reads and injected capture/publication failures MUST fail closed. No containment is added to make these tests pass.
 3. Request both outputs in ONE check. Assert shared invocation ID, identical completeness decision, and exact equality of legacy path lines to the read-set file/dir path union, including absences. Test failure/incomplete output and mismatched-run rejection. Assert only one recording is installed.
-4. Verify producer and consumer rejection of malformed/truncated/missing/unsupported/failed/incomplete/stale evidence and unsupported observation classes. Test per-repo reports for shared helpers, validator propagation, conservative unknown attribution, and all bypasses reported together.
-5. Opt-out structural tests MUST prove no recorder installation and no hashing when neither output is requested. Measure `genie --check` WITHOUT the flag and with the legacy env unset, before/after the implementation: same fixed clean source/tool/input state, normal admission, at least three interleaved pairs warm and cold-ish, wall and process user+sys CPU, medians/spread and concurrent-holder receipts. Prespecify noise from interleaved baseline/baseline controls; the unflagged change MUST remain within that measured noise, not claim literal zero elapsed difference. A repeatable regression blocks acceptance.
+4. Verify producer and consumer rejection of malformed/truncated/missing/unsupported/failed/stale evidence and unsupported observation classes; incomplete evidence MUST prevent reuse of each affected generator. Test per-repo reports for shared helpers, validator propagation, conservative unknown attribution, and all bypasses reported together.
+5. Per-generator mutation tests MUST independently falsify each reuse condition: introduce an incompleteness reason while keeping recorded observations and target bytes unchanged; change one recorded observation while retaining completeness and target bytes; and change the target digest while retaining the other observations. Each MUST re-run the affected generator rather than reuse it. An unaffected complete generator MUST remain reusable in the same invocation, including when its peer is incomplete. Also test mixed reused/re-run results, explicit reads of another generator's output without implicit ordering, generator-local module/env identity changes, and one failed generator failing the combined check with no failed result stored.
+6. Opt-out structural tests MUST prove no recorder installation and no hashing when neither output is requested. Measure `genie --check` WITHOUT the flag and with the legacy env unset, before/after the implementation: same fixed clean source/tool/input state, normal admission, at least three interleaved pairs warm and cold-ish, wall and process user+sys CPU, medians/spread and concurrent-holder receipts. Prespecify noise from interleaved baseline/baseline controls; the unflagged change MUST remain within that measured noise, not claim literal zero elapsed difference. A repeatable regression blocks acceptance.
 
 Conformance requires the acceptance evidence above; the specification itself is not evidence that recording or reuse is implemented.
