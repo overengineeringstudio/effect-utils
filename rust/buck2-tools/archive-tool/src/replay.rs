@@ -492,7 +492,12 @@ fn ctime_ns(meta: &Metadata) -> i128 {
 }
 // As with git's racy index, equality is not evidence that the source predates
 // verification. Cross-device clocks cannot establish this ordering either.
-fn metadata_proof_is_fresh(source_dev: u64, source_ctime: i128, proof_dev: u64, proof_ctime: i128) -> bool {
+fn metadata_proof_is_fresh(
+    source_dev: u64,
+    source_ctime: i128,
+    proof_dev: u64,
+    proof_ctime: i128,
+) -> bool {
     source_dev == proof_dev && source_ctime < proof_ctime
 }
 fn source_predates_proof(source: &Metadata, proof: &Metadata) -> bool {
@@ -509,7 +514,8 @@ fn validate_generation(store: &Path, generation: &Path, recipe: &Recipe) -> Tool
     let (manifest_bytes, manifest_meta) = read_bounded(&manifest_path, 0o444, false)?;
     let manifest: Manifest = decode(&manifest_bytes)?;
     let blobs = manifest.validate(recipe)?;
-    let (proof_bytes, proof_meta) = read_bounded(&generation.join("verification.json"), 0o600, true)?;
+    let (proof_bytes, proof_meta) =
+        read_bounded(&generation.join("verification.json"), 0o600, true)?;
     let proof: Proof = decode(&proof_bytes)?;
     let mut canonical = json(&proof)?;
     canonical.push(b'\n');

@@ -344,7 +344,6 @@ const expectPrivateReplay = ({ output, snapshot }: { output: string; snapshot: s
 // tuples. This makes the metadata-warm assertion independent of clock resolution.
 const establishNonRacyProof = async (fixture: RecipeFixture): Promise<void> => {
   const path = join(fixture.snapshot, 'verification.json')
-  const established = readFileSync(path)
   const sources = [
     join(fixture.snapshot, 'manifest.json'),
     ...readdirSync(join(fixture.snapshot, 'pins')).map((name) =>
@@ -363,10 +362,9 @@ const establishNonRacyProof = async (fixture: RecipeFixture): Promise<void> => {
       return
     if (Date.now() > deadline)
       throw new Error('fixture filesystem did not establish a strictly newer proof')
-    // Real filesystem ctime granularity is the condition under test; a fake
-    // clock cannot advance kernel inode metadata.
-    await Bun.sleep(2)
-    writeFileSync(path, established)
+    // Exercise real re-verification/atomic refresh, never manufacture tuples
+    // or sleep to conceal a racy proof. The strict comparison has pure unit coverage.
+    await verifyMaterializationRecipe(fixture)
   }
 }
 
@@ -509,7 +507,6 @@ describe(
             if (lstatSync(pin, { bigint: true }).ctimeNs > proofStatus.ctimeNs) break
             if (Date.now() > deadline)
               throw new Error('fixture source ctime did not advance beyond proof')
-            await Bun.sleep(2)
           } while (lstatSync(pin, { bigint: true }).ctimeNs <= proofStatus.ctimeNs)
           expect(lstatSync(pin, { bigint: true }).ctimeNs).toBeGreaterThan(proofStatus.ctimeNs)
           if (client === 'TypeScript') await verifyMaterializationRecipe(fixture)

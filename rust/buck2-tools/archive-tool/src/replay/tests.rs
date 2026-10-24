@@ -177,9 +177,14 @@ impl Fixture {
         loop {
             let valid = self.validate().unwrap();
             assert!(!valid.mismatch);
-            if !valid.racy { return; }
-            assert!(Instant::now() < deadline, "fixture filesystem clock did not advance");
-            std::thread::sleep(std::time::Duration::from_millis(2));
+            if !valid.racy {
+                return;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "fixture filesystem clock did not advance"
+            );
+            std::thread::yield_now();
             self.replace_proof(&self.proof());
         }
     }
@@ -584,7 +589,7 @@ fn racy_postverification_sources_require_private_output_digest_checks() {
     fs::set_permissions(&f.pin, fs::Permissions::from_mode(0o444)).unwrap();
     // Model an unchanged source tuple on a coarse clock after TS verification:
     // the tuple still claims the established payload digest, not these bytes.
-    let expected_digest = valid.proof.2[0].1.0.clone();
+    let expected_digest = valid.proof.2[0].1 .0.clone();
     valid.proof.2[0].1 = tuple(&expected_digest, &fs::metadata(&f.pin).unwrap());
     valid.racy = true;
     assert!(install(&valid, &f.generation, &f.args.out).is_err());
