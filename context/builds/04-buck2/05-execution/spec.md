@@ -12,7 +12,8 @@ Draft.
 verdicts and hermetic-lane admission.
 
 **Does not define:** [platforms/tools](../02-platforms-toolchains/spec.md),
-[materialization](../04-materialization/spec.md), [reuse](../06-reuse-client/spec.md)
+[materialization](../04-materialization/spec.md),
+[reuse, including host-local materialization](../06-reuse-client/spec.md#host-local-materialization-reuse-lever-5a)
 or [product import](../../05-product-distribution/02-nix-bridge/spec.md).
 
 ## TypeScript Actions
@@ -481,8 +482,10 @@ target's other actions. Rust build scripts remain host-dependent and denied.
 Hash-and-size-validated pnpm archive acquisition is separate from offline
 extraction and command-action cache admission. Standalone builds register
 native `download_file` with the canonical registry URL, reviewed SHA-256 and
-byte size; Buck verifies the output and owns deferred materialization. There
-is no runtime CAS fetch command or automatic origin fallback. Nix-backed
+byte size; Buck verifies the output and owns deferred materialization.
+The [host-local materialization contract](../06-reuse-client/spec.md#host-local-materialization-reuse-lever-5a)
+defines the declared local acquisition-helper replacement and its private
+fallback; it does not authorize automatic origin substitution. Nix-backed
 acquisition retains the explicit immutable store root and copy-and-verify
 action: complete import sources and projected Bun participate in its action
 key, and launchers clear env, dotenv/preloads and implicit installation.

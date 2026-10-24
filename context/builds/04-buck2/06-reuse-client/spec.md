@@ -221,6 +221,211 @@ Native outcomes remain intact, but policy-excluded actions are reported
 separately and never enter R08 avoidable-execution candidates or warm99's
 eligible-hit/miss denominator, even when historical rows show remote hits.
 
+### Host-local materialization reuse (lever 5a)
+
+This section specifies host-local sibling-worktree reuse under [Reuse Requirements](./requirements.md), especially BUILD.BUCK.REUSE-R03, BUILD.BUCK.REUSE-R05, BUILD.BUCK.REUSE-R07 and BUILD.BUCK.REUSE-T01.
+**Design GO:** recommendation B approved 2026-10-24 by Deps Manager (`2078027ff9057be8`) and effect-utils-manager (`edec825400cf32d5`); implementation and performance remain unverified. Inference notes identify unestablished conclusions; accepted initial budgets are not benchmark results.
+Scope: registered sibling worktrees on the same host/user. Excludes lever 5b's missing arm64 CI writer, remote expanded-tree caching, pnpm GVS implementation, cross-host sharing and automatic retirement of buck-out/editor generations.
+The execution/materialization specs link to this contract rather than duplicating its store, lifetime and GC rules.
+
+#### Evidence and constraints
+
+| Evidence                                                                                                                                                                      | Established result                                                                                                                                                                                                                                                                                                                                                                |
+| ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| E01: supplied baseline, Linux arm64 ext4 dev host, main `54eec832`                                                                                                            | main `54eec832`; Linux arm64/ext4 without reflink; target `//packages/@overeng/notion-effect-client:typecheck`; W1/W2 each 522 local materialization actions, +841–844 MB buck-out, 137,330,301 B archive downloads, 14.6–14.8 s cold invocation. Counts: extract 249, entry 241, view 9, package-tree 9, SCC 3, runtime-module 2. Nine additional local TS actions belong to 5b. |
+| E02: `buck2/dependencies/defs.bzl:187-207,245-276`; `assemble-store.ts:95-163`                                                                                                | Archives are SHA256/size pinned. Extraction is offline/nonremote. Store entry/SCC assembly already hardlinks declared Buck package files within a root; this is not a proposal to fix per-importer copying.                                                                                                                                                                       |
+| E03: reuse `spec.md:159-226`; evidence classifier `genie/ci-scripts/buck2-action-evidence.ts:9-18`                                                                            | Six categories stay excluded from remote reuse; 322 extracts produced 29,423 files/646,157,901 B in the documented lane. Local 7.062 s versus all-hit 1071.022 s motivates retaining local projections. Deferred materialization already defaults on; exported backing roots remain required.                                                                                     |
+| E04: `editor-view-sharing.ts:200-226,509-577,590-666,1374-1440`                                                                                                               | Existing same-user SHA256+mode CAS, readonly 0444/0555 blobs, shared Git-common-dir resolver, crash-released flock, guarded hashing, nlink==1 collector with locked recheck.                                                                                                                                                                                                      |
+| E05: `editor-view-leases.ts:63-80,180-236,309-340,393-445`                                                                                                                    | Local-filesystem allowlist; OverlayFS unknown. SH reader acquisition and retained EX retirement under CAS fence; persistent control identities; unsafe/unknown never authorizes retirement. Current source also admits local OpenZFS/HFS/ramfs, not merely the initially listed filesystems.                                                                                      |
+| E06: `rust/buck2-tools/archive-tool/src/main.rs:114-185,310-359,710-721`                                                                                                      | Normalized extraction, path checks and ordered patches; ordinary extraction files initially writable, executable status retained.                                                                                                                                                                                                                                                 |
+| E07: [Store Authority](../../../dependency-materialization/04-store-authority/spec.md#placement), `nix/devenv-modules/tasks/shared/pnpm-task-helpers.sh`; Deps Manager review | pnpm 12.7/v11 has mutable owner-writable CAS, build-mutated GVS slots, explicit prune/nlink protection, unstable SQLite-WAL/msgpackr index and explicit shared/job-local path policy.                                                                                                                                                                                             |
+| E08: `buck2/materialization.bzl:40-62,88-176`; `package-tree.ts:278-307,475-523`; `buck2/hermetic.bzl:145-214`                                                                | Runtime copies are explicit; package sources clone/copy; package projection is sandboxed on Linux. CAS must not become an ambient sandbox input.                                                                                                                                                                                                                                  |
+
+Repository citations E02–E08 mean origin/main **54eec832845f0f15065520834802a1244d66b6ae**, paths under `packages/@overeng/buck2-tools/src/` unless qualified.
+E01 is supplied benchmark evidence, not independently rerun; a supplied 14-worktree survey is ~1.6 GB/built root, 18.5 GB total, no cross-root hardlink sharing.
+The existing host-selected pnpm store is owned exclusively by pnpm and selected by `PNPM_SHARED_STORE_DIR`; lever 4 reuses it without migration/layout-version change, with GVS graph slots under `v11/links`. Unset-variable fallback follows the [Store Authority placement contract](../../../dependency-materialization/04-store-authority/spec.md#placement).
+
+#### Architecture and ownership (BUILD.BUCK.REUSE-R05/R07; BUILD.BUCK.REUSE-T01)
+
+```text
+lock/sidecar + declared archive/patch/tool inputs (authority)
+  -> Buck acquisition/extraction/projection helpers (owner: Buck tools)
+      -> existing editor-view file CAS (one owner/collector; shared payload bytes)
+      -> adjacent recipe metadata + reader controls (Buck-owned disposable hints)
+      -> each root's declared buck-out outputs (links or private clones/copies)
+pnpm -> PNPM_SHARED_STORE_DIR + globalVirtualStore (owner: Deps Manager; untouched)
+```
+
+**Recommendation B:** extend the existing Buck/editor-view content service, not pnpm's store.
+There is exactly one pnpm CAS/GVS owner (Deps Manager), and exactly one owner of the existing Buck file CAS (Buck tools/editor-view machinery).
+Do not create another pnpm store, peer-resolution database, `node_modules` installation authority, or package-manager invocation.
+Buck's generic file CAS contains immutable derived build bytes, including already-normalized/patched files; the authored lock/sidecar and declared tools remain authoritative.
+**Durable boundary (DQ05, approved):** Buck never reads/links pnpm's index or CAS, including indirect GVS access. Any future lever proposing a pnpm-index reader requires a new Deps Manager review; this approval does not authorize it.
+There is **no** cross-pnpm/Buck physical deduplication claim: the same dependency may occupy both authorities once. Measure those bytes honestly.
+Deps Manager approved recommendation B on **2026-10-24**, message `2078027ff9057be8`, conditional on megarepo-local placement, the high-water/LRU policy below, and combined incremental-host-byte reporting in [schickling/dotfiles#7407](https://github.com/schickling/dotfiles/issues/7407) verification.
+
+| Alternative                                                                                   | Disposition                                                                                                                                                                                                                                |
+| --------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Read pnpm CAS directly                                                                        | Reject for this lever: requires version-pinned WAL/msgpackr reader or another package index; writable pnpm inodes cannot join the readonly Buck CAS. Copying them does not solve ext4 root growth. Never link GVS slots or chmod pnpm CAS. |
+| Existing generic Buck file CAS                                                                | Approved: existing lifetime/integrity/GC mechanisms, no pnpm-internal API, dedup across editor and Buck views. Ordinary outputs initially clone/copy; no repository-pinned Buck patch.                                                     |
+| Separate Buck package store/daemon                                                            | Reject: parallel owner/collector and a second package-shaped layer without benefit over existing file CAS.                                                                                                                                 |
+| Expanded trees in remote cache                                                                | Reject: contradicts measured output economics/E03.                                                                                                                                                                                         |
+| Clonefile/reflink where possible, verified copies otherwise                                   | Approved initial ordinary-file strategy; ext4 without reflink reports bytes without a byte target until an upstream-fixed release is pinned.                                                                                               |
+| Hardlink writable 0644 Buck outputs; mark ordinary files executable; relink after Buck hashes | Reject: weakens integrity, changes executable semantics, or races Buck's state.                                                                                                                                                            |
+
+#### Native Buck safety gate (BUILD.BUCK.REUSE-R05/R07)
+
+```text
+UNMODIFIED PIN: CAS 0444 --hardlink--> buck-out --Buck normalization--> SAME INODE 0644
+CURRENT 0555:   CAS 0555 --hardlink--> buck-out --OR 0444-----------> SAME INODE 0555
+FIXED RELEASE: CAS 0444 --hardlink--> buck-out --Buck hashing-------> SAME INODE 0444
+```
+
+**Unmodified pinned Buck is NOT safe for ordinary-file CAS hardlinks.**
+`nix/buck2.nix:13-18` pins release 2026-09-01, upstream commit `be6971d47dcc835b7356e1698b23039ffee4f4c2`.
+Upstream [`app/buck2_execute/src/entry.rs:76-103,280-291`](https://github.com/facebook/buck2/blob/be6971d47dcc835b7356e1698b23039ffee4f4c2/app/buck2_execute/src/entry.rs#L76-L103) computes `mode | (is_directory ? 0755 : any_execute_bit ? 0444 : 0644)` and normalizes before hashing. Thus regular **0555 OR 0444 = 0555**, with no chmod when unchanged; ordinary **0444 OR 0644 = 0644**.
+**DQ06 resolved:** submit the upstream readonly-preservation PR now; **no repository-pinned patch or Buck source builds** (the three-platform prebuilt-release distribution remains authoritative). Until a fixed upstream release is pinned, ordinary files MUST use clonefile/reflink where available, otherwise verified independent copies. Executable 0555 files MAY be hardlinked on admitted same-device filesystems.
+Enabling executable hardlinks requires a test proving the same CAS/output inode remains **0555 after real Buck finalization**, with unchanged content; source inspection alone is not that test.
+Ordinary-file hardlink mode is deferred until the upstream fix enters the pin and is enabled in a separate small PR with equivalent 0444/finalization proof. Never mark an ordinary file executable to bypass normalization.
+
+Helpers MUST never write/chmod/utime a linked payload; apply patches/transforms to private staging before CAS admission. CAS modes are canonical 0444 or 0555; independent buck-out copies may receive Buck's normal 0644 mode without changing C.
+Directories and symlinks remain root-owned metadata. Rebuilds replace/unlink output pathnames, never reopen linked files for writing.
+Upstream [`local.rs:891-990`](https://github.com/facebook/buck2/blob/be6971d47dcc835b7356e1698b23039ffee4f4c2/app/buck2_execute_impl/src/executors/local.rs#L891-L990) hashes disk outputs then declares them existing; SHA256/size/executable identity, not inode/nlink, must remain the same for warm/cold/fallback results.
+[`clean_output_paths.rs:61-70`](https://github.com/facebook/buck2/blob/be6971d47dcc835b7356e1698b23039ffee4f4c2/app/buck2_execute/src/execute/clean_output_paths.rs#L61-L70) removes previous outputs; Unix [`fs_util.rs:308-317,500-523`](https://github.com/facebook/buck2/blob/be6971d47dcc835b7356e1698b23039ffee4f4c2/app/buck2_fs/src/fs_util.rs#L308-L317) unlinks, without file chmod. [`clean.rs:247-268,650-691`](https://github.com/facebook/buck2/blob/be6971d47dcc835b7356e1698b23039ffee4f4c2/app/buck2_client/src/commands/clean.rs#L247-L268) kills the root daemon and removes root paths, not the external CAS.
+Inference: These paths support unlink-safe lifetime for admitted executable hardlinks now and ordinary hardlinks after the fixed release; end-to-end proof remains a release gate, not a blanket claim about every Buck feature.
+Keep deferred materialization and all `read_roots`/`other_outputs` declarations. Host cache presence never stands in for a declared/materialized artifact. `buck2 clean` may lower nlink but cannot delete siblings' content.
+
+#### Threat model and incident recovery (BUILD.BUCK.REUSE-R05/R07)
+
+```text
+chmod/write through ANY CAS hardlink -> shared inode -> every worktree/editor/cache reader
+mode/digest alarm -> incident -> quiesce -> hash-verified mode repair OR quarantine
+```
+
+The boundary is same-user host-local build content, not protection against malicious code running as that user or root. Readonly mode is an operating contract: any hardlink carries a **host-wide blast radius** if a tool/user chmods or writes through any alias, including editor snapshots and current executable-only links.
+Manager-reported incident, **2026-10-24**: `chmod -R u+w` on a worktree after failed teardown made approximately **28.8k shared blobs 0644**. Inode tracing found editor-view backing links, not buck-out; this incident is separate from the independently proven Buck normalization issue.
+Never recursively chmod a worktree containing shared content to make teardown succeed. Cleanup may change only proven private directory modes and unlink owned payload pathnames; writable build scratch must use independent inodes.
+Collector/admission mode checks detect noncanonical 0444/0555 state, stop trusting affected content and report an **incident**, not an eviction miss; every link acquisition also verifies digest/size/mode with existing guarded inode proof.
+Recovery MUST be explicit and **quiesced across all readers/writers and aliases**, with no automatic repair during a build. Hash each affected inode; if SHA256 matches its address, restore mode from the validated `-0444`/`-0555` suffix. Otherwise quarantine, **never delete**, preserve the bad inode/evidence, and invalidate/rebuild affected derived views before resuming. Restoring one mode without quiescence does not revoke an existing writable descriptor.
+
+#### Data and publication contract (BUILD.BUCK.REUSE-R05/R07)
+
+```text
+C = defaultEditorViewContentStore(root)       # unchanged resolver/override
+C/<hh>/<sha256>-(0444|0555)                   # EXISTING file CAS format
+M = C + '.buck-materialization-v1'           # adjacent metadata, NEVER inside C
+M/.store/recipe-<recipeSha256>/manifest.json  # immutable recipe generation
+M/.store/recipe-<recipeSha256>/pins/<blobKey>  # one hardlink per distinct payload
+M/.leases/recipe-<recipeSha256>.lock          # persistent reader control
+```
+
+Buck tools owns M and calls the existing CAS service for C; one CAS flock/collector, no independent blob deletion code.
+M uses the existing per-generation lease primitive/control validation, with its own explicit root inventory; it is NOT silently added to editor publication or editor budget's eviction scan.
+Each recipe publication/retirement has a crash-released per-recipe flock; ordering is recipe lock -> CAS metadata fence -> generation lease. Never hold CAS lock across network, extraction or full hashing.
+Recipe key = SHA256 of canonical UTF-8 JSON array `["effect-utils/buck-materialization-recipe/v1", toolClosureDigest, archiveSha256, stripPrefix, orderedPatchSha256s]` (no whitespace; lowercase hex; declared capability closure digest includes tool/protocol changes).
+Only extraction recipes are cached as whole trees; entries/SCC/views continue to derive peer/workspace edges from declared Buck graph inputs in each root. Thus no root-specific absolute paths or peer graph are stored in a package cache.
+Manifest schema: `{"schema":"effect-utils/buck-materialization-tree/v1","recipe":<full recipe array>,"entries":[...]}`.
+Entries, sorted by UTF-8 path bytes, are exactly `{"path":p,"file":{"sha256":h,"size":n,"mode":"0444"|"0555"}}`, `{"path":p,"directory":true}`, or `{"path":p,"symlink":relativeTarget}`; one entry per path, explicit directories, empty tree rejected.
+Paths are normalized relative UTF-8, no empty/dot/dotdot components, backslash, NUL/control bytes, duplicate paths, or traversal through a symlink. Symlinks must resolve inside the extraction tree under existing archive validation.
+Repository-private `effect-utils/` schemas are owned by Buck tools, case-sensitive exact v1 identifiers; hashes are 64 lowercase hex digits, mode is not inferred from filenames. Unknown version/fields or key/recipe disagreement invalidate reuse (no best-effort decode). Example valid blob: `ab/ab<62 lowercase hex digits>-0444`; `AB…`, `-0644`, and `../x` are invalid.
+Breaking formats get new versioned namespaces; all state is disposable, no in-place migration or pnpm index mirror.
+
+1. Acquire/verify the declared archive (next section); compute the extraction recipe from declared inputs.
+2. Hit: acquire a SH generation lease under C's fence, validate manifest/key, verify each selected blob's digest/size/mode/owner/inode with no-follow descriptors and before/after identity checks; materialize into private output staging using the file-mode/filesystem strategy below. Fence source-pin/link changes with CAS GC; retain source pins/lease through clones/copies.
+3. Miss: extract and patch with the existing attested archive tool into private staging; normalize privately; admit verified files through C's existing publication protocol, then materialize outputs with the same strategy. A warm replay never decodes the archive, even when copying ordinary payload bytes.
+4. Publish generation manifest and distinct-blob pins atomically only when complete; concurrent identical writers accept a verified winner. Fsync payloads/manifest and parent directory before success; incomplete staging is never a hit. Hash outside the lock, recheck verified inode identity under it.
+5. Atomically promote root-local staging to the declared Buck output; retain the SH generation lease until output references are installed. On partial failure unlink only private staging; return a miss if a concurrent collection removed the recipe before acquisition.
+6. Existing entry/SCC assembly may retain its within-root hardlinks to declared private extraction outputs; these are not CAS aliases. Any direct CAS reference follows the executable/ordinary strategy below; never chmod a CAS-linked inode. Root-specific symlinks are regenerated exactly as today.
+7. Package-tree actions keep Linux sandboxing and existing declared inputs. A trusted outer materialization finalizer handles their completed outputs **after** sandbox exit and **before** Buck hashing; it verifies byte identity and applies the same safe CAS-to-output strategy, never exposes C to the sandbox. Small source/transform/runtime copies remain explicit; do not copy then deduplicate an entire warm dependency tree.
+
+#### Shared archive acquisition (BUILD.BUCK.REUSE-R05/R07)
+
+```text
+expected (sha256,size) -> C blob hit -> verified output reference
+                      -> miss -> HTTPS fetch -> private temp -> verify -> atomic admission
+```
+
+Owner is the same Buck content service, not pnpm. Store archives as ordinary 0444 file blobs in C; expected SHA256 is already the CAS address, so no URL-to-package index is needed.
+For public registry archives, replace native per-root `download_file` with a local nonremote acquisition helper; retain current sidecar SHA256 and positive size checks and HTTPS URL restrictions. Root outputs remain declared `package.tgz` artifacts.
+Before network, validate a digest/size hit under the same admission/lifetime protocol; a miss downloads once into a private no-follow/exclusive temp, verifies full digest/size, then atomically publishes. Coalesce concurrent downloads with a crash-released digest lock outside CAS exclusion; recheck after acquiring it.
+Digest mismatch or untrusted/writable existing blob is an integrity error, not a silent overwrite or cache miss. Never cache credentials or use URL spelling as identity. Different bytes cannot share an integrity key.
+Private `file:` products and declared Nix archive roots retain their existing **Nix-only** acquisition authority; never use this cache to substitute for a missing private capability.
+Retain each archive through a generic `M/.store/archive-<sha256>/pins/<sha256>-0444` generation, with the same SH/EX controls and publication/retirement fence as recipe generations; the name, verified digest and expected declared size suffice, with no package index. This pin is required because ordinary buck-out copies do not retain the CAS inode.
+Hold its SH lease through output clone/copy/link completion; pressure maintenance may retire only unleased archive generations and then collect nlink==1 blobs. A cache-empty host downloads once; an intact warm archive generation yields zero network bytes, while eviction yields a normal miss.
+
+#### Filesystems, leases and collection (BUILD.BUCK.REUSE-R07; E04/E05)
+
+| Condition                                                                   | Required behavior                                                                                                                                                          |
+| --------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Admitted local FS, same device, current pin, regular executable 0555        | MAY hardlink only after the real Buck-finalization mode-preservation test passes.                                                                                          |
+| Ordinary 0444, current pin                                                  | Clonefile/reflink to independent inode where supported, otherwise verified private copy; host cache remains enabled, so archive extraction/download reuse is retained.     |
+| Admitted local FS, same device, upstream-fixed pin and separate enabling PR | MAY hardlink ordinary 0444 after equivalent finalization proof; executable semantics stay unchanged.                                                                       |
+| EXDEV, no clone support, or link-count limit                                | Verified private copy; no per-device replica store. Record reason/bytes; ext4 without reflink has reporting-only byte budgets until fixed pin.                             |
+| Unknown FS (including OverlayFS) or unsupported platform                    | Disable host CAS use, publication and automatic collection for that invocation; run existing private extraction/acquisition/copy path. Unknown does NOT authorize cleanup. |
+| Unsafe ownership/path, corrupt content/control, digest drift                | Fail integrity admission; do not “fallback” past corruption. Separate explicit quiesced repair from build execution.                                                       |
+
+“Fail closed” preserves #1990's destructive-retirement boundary: unknown lease evidence never authorizes deleting a generation. Copy fallback means **not entering** the sharing subsystem, not treating unknown locks/nlink as safe. Existing editor-view leases remain independently fail-closed; this does not make editor publication succeed on unsupported filesystems.
+For admitted local C but EXDEV output, hold a source lease/pin through the copy; after it completes the private output needs no CAS lease. Do not collect C unless its own filesystem is positively admitted local.
+M's explicit maintenance retires only SH-unleased generations with retained EX, under recipe/C fences; rename to private garbage while fenced, unlink its pins afterward, preserve lease-control tombstones forever. Unknown/held means retain.
+Extend **the existing** `collectEditorViewContentStore` with the high-water/LRU candidate selection below, not a second collector: validate candidate digest/ownership/mode, delete only nlink==1, recheck unchanged inode+nlink under C flock. Existing editor generations, M pins and any buck-out hardlink all count equally. Explicit full collection remains available; automatic pressure passes stop at the high-water mark.
+
+##### Capacity policy (DQ05 approval condition)
+
+```text
+above high water -> retire unleased recipe pins -> LRU of validated nlink==1 blobs
+still above due to references -> referenced-bytes-over-cap -> report/alert; retain
+```
+
+C and adjacent M MUST live on the existing megarepo filesystem, using the Git-common-dir resolver; an override must remain on that filesystem. No standalone-home fallback store is authorized for this host-sharing mode.
+Declare the high-water mark centrally in the Buck tools content-service configuration: `EDITOR_VIEW_CONTENT_STORE_HIGH_WATER_BYTES`, a positive decimal byte count, default **4294967296 (4 GiB)**. The host's shared environment may override it; all editor/Buck publishers and maintenance resolve the same C-scoped value, never a per-worktree quota.
+This is a high-water trigger, NOT a hard allocation/build-admission limit. On publication completion and each host maintenance pass, census C's unique allocated blob bytes; report M's metadata/control/pin-directory allocation separately and in the combined host total.
+If above the mark, first retire eligible unleased M recipe/archive generations under their existing EX/fences, releasing only their cache pins, then select unreferenced blobs by oldest successful-use time until at/below the mark or no eligible blob remains.
+Record LRU access hints outside readonly C payloads, in M's atomic replaceable metadata, at successful acquisition/publication; never utime/chmod linked blobs. Missing hints sort oldest; hints rank candidates but never authorize deletion. Recheck validated inode identity and **nlink==1** under the existing collector fence before each unlink.
+Referenced blobs (including buck-out/editor links and retained/leased recipe pins) are **not evictable**. If their allocated bytes exceed the mark, emit/report the exact state `referenced-bytes-over-cap` with cap, total, referenced and reclaimable bytes; host maintenance alerts on that state. Do not delete referenced content, fail a build, or weaken leases to enforce the cap.
+Publish the pressure receipt with [schickling/dotfiles#7407](https://github.com/schickling/dotfiles/issues/7407) verification and host maintenance output; the signal is operational pressure, not an integrity failure. Inability to inspect safely remains fail-closed for deletion.
+Evicted/missing recipe generations or payloads are a normal recipe miss: discard the reusable hint and reconstruct from declared archive/patch/tool inputs. Never hand Buck a partial replay. Digest mismatch or writable/unsafe content remains an integrity error, not an eviction miss.
+A buck-out file itself needs no process lease: it is an actual hardlink, not an external symlink. Editor readers retain their existing generation SH leases; CAS GC never retires editor or buck-out roots.
+Crashes release flock/SH via descriptor close; linked outputs/pins survive and keep bytes alive. Reuse the existing process-incarnation staging cleanup/dirty-store repair; never age-delete a live/unknown generation. A missing whole cache is rebuildable; malformed partial state is not trusted.
+Before enabling sharing on a host with writable legacy CAS blobs, the quiesced digest-verified repair/quarantine procedure above is required; never repair by chmodding live linked payloads or deleting mismatched blobs.
+
+#### Acceptance and measurement (BUILD.BUCK.REUSE-R03/R07; accepted initial, unmeasured budgets)
+
+```text
+W1 populates new cache -> new W2/W3 roots, same inputs/host -> compare incremental host cost
+```
+
+Correct [schickling/dotfiles#7407](https://github.com/schickling/dotfiles/issues/7407)'s metric: **zero repeated archive extraction/download work**, NOT near-zero native local action count. Low payload-write/allocation targets apply only to ordinary-hardlink mode or clone-capable filesystems; current ordinary-copy ext4 reports bytes without that target.
+All 522 actions may still execute: 249 extraction helpers become verified tree replays (ordinary files clone/copy initially), entry/SCC/view remain metadata projections, nine package trees and two runtime copies remain. No action suppression or exclusion relabeling is a success criterion.
+Keep native category counts separate from helper counters: recipe hits/misses, actual archive decodes/patch runs, bytes downloaded, payload bytes newly written to buck-out/C, cloned/linked/copied files, reason-coded fallbacks, and materialization critical-path wall time (not summed overlapping action durations).
+
+| Same-input sibling replay metric                                     | Supplied baseline                                       | Initial accepted target (DQ07)                                                                                                                                          |
+| -------------------------------------------------------------------- | ------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Actual archive extraction/patch executions                           | 249/root                                                | **0/root** when W1's recipe generations remain intact                                                                                                                   |
+| Registry archive bytes downloaded                                    | 137,330,301/root                                        | **0/root** on intact warm cache                                                                                                                                         |
+| Physical growth of union of all roots' buck-out + C + M + pnpm store | +841–844 MB/root (buck-out only measured)               | **<=100 MiB/root only in ordinary-hardlink mode or clone-capable FS**; ext4 without reflink reports bytes without target until upstream-fixed pin; pnpm delta remains 0 |
+| Materialization payload bytes newly written (not hashed/read/linked) | Not separately instrumented                             | **<=20 MiB/root only in ordinary-hardlink mode or clone-capable FS**; ordinary-copy ext4 reports actual bytes without target                                            |
+| Cache-empty W1 physical union growth                                 | +841–844 MB buck-out; external-store delta not measured | Report archive+expanded CAS, metadata/pins and buck-out union, including unavoidable ordinary-copy duplication; no initial W1 byte target                               |
+| Full cold-root target elapsed, same nine TS actions                  | 14.6–14.8 s                                             | **<=12 s median over five fresh roots**; report all runs and materialization critical-path time separately                                                              |
+| Native local materialization actions                                 | 522                                                     | Report unchanged count honestly; no numeric reduction required                                                                                                          |
+
+These are accepted **initial budgets, not measured speedups**. Inference: Warm tree replay removes decompression, but ordinary-copy ext4 still writes package payloads; process startup, repeated hashing and nine TS actions may dominate. A missed applicable budget requires an explicit evidence-backed manager decision: no silent target adjustment or attribution to 5b.
+Use the exact target/revision/platform and comparable unloaded conditions from E01; five independent fresh-root replays, cold daemon/root state, warm shared cache, retain W1, no intervening explicit collection; publish all five times and median, current cache/tool identities and native logs. Do not call this cold-disk/page-cache evidence.
+Measure allocated blocks once per `(st_dev,st_ino)` over the complete union, not a sum of separate `du` invocations; publish apparent bytes and nlink/inode samples separately. For APFS clones report allocation with clone-aware evidence or label physical savings unmeasured. Count writes separately from allocation.
+After removing W1, W2 must still typecheck/read complete content. After all roots/M pins/editor generations release, explicit collection must reclaim only unreferenced blobs. Concurrent publication/GC, crash mid-publication, changed archive/patch/tool/mode, corrupt blob, EXDEV, OverlayFS, clean/stale clean, and deferred final-output materialization are mandatory correctness cases.
+
+#### CI posture and cutover
+
+Host sharing is disabled by default in GHA and `PNPM_JOB_LOCAL_STORE=1` jobs, including OverlayFS; use current declared archive acquisition/extraction and sandboxed projections, with no host-cache scan or global pnpm store access. `CI=true` alone is not pnpm's job-local-store selector (E07).
+Known-local CI can opt in only after explicit owner policy and the same native/FS/integrity gates; correctness must not depend on a prepopulated cache.
+Keep remote category exclusions and consumer cache policy unchanged. Update generated rule declarations through their generator, never hand-edit generated `buck2/dependencies/BUCK` (source header at :1-7).
+Cut over all affected acquisition/extraction/projection callers to the single shared helper; keep fallback as an explicit execution mode, not a competing legacy store. No migration of pnpm state or existing editor generation identities.
+
+#### Resolved design decisions
+
+- **BUILD.BUCK.REUSE-DQ05 Store boundary / Deps Manager (resolved):** Recommendation B approved **2026-10-24**, message `2078027ff9057be8`: existing generic Buck CAS is not a second pnpm store. Conditions are megarepo-filesystem placement, declared high-water/LRU of nlink==1 blobs only with reported/alerted referenced-over-cap state, durable no-pnpm-index/CAS boundary, and combined incremental host bytes per new worktree in [schickling/dotfiles#7407](https://github.com/schickling/dotfiles/issues/7407) verification.
+- **BUILD.BUCK.REUSE-DQ06 Native safety (resolved):** effect-utils-manager GO **2026-10-24**, message `edec825400cf32d5`: upstream readonly-preservation PR now; no repository-pinned patch/source builds. Current ordinary files clone/reflink or private-copy; 0555 MAY hardlink only after finalization test. Ordinary hardlinks require an upstream-fixed pin and separate small enabling PR.
+- **BUILD.BUCK.REUSE-DQ07 Budgets (resolved):** Same manager GO: hard warm-sibling targets are 0 archive extractions, 0 downloaded archive bytes and median <=12 s over five fresh roots. <=20 MiB writes/<=100 MiB growth apply only to ordinary-hardlink mode or clone-capable FS; ext4 without reflink reports bytes without target until fixed pin. Budgets are initial; misses require explicit evidence-backed decision.
+
 ### Direct Invocation Admission (BUILD.BUCK.REUSE-R04)
 
 ```text
