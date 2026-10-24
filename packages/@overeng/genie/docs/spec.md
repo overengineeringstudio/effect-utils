@@ -33,6 +33,9 @@ The package-level context and current module-boundary docs remain:
 - [../src/build/README.md](../src/build/README.md)
 - [../src/runtime/README.md](../src/runtime/README.md)
 
+The optional check-evidence contract is specified in
+[check-read-set.md](./check-read-set.md) (Draft). It defines fail-closed read-set
+recording and validation without changing generation or check semantics.
 Subsystems (own VRS, nested):
 
 - [generators/](./generators/spec.md) — the shared contract for genie **generators**:
