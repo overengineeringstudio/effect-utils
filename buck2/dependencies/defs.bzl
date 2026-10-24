@@ -183,11 +183,19 @@ def _record(value, field):
     _require_portable_path(parts[1], "{} name".format(field))
     return parts
 
+def _shared_archive_store():
+    # Only the entrypoint's positive host admission selects this local action.
+    # Empty/unsupported/CI environments retain native Deferred downloads.
+    if read_config("buck_materialization", "lease_library", "") == "":
+        return ""
+    return read_config("buck_materialization", "content_store", "")
+
 def _fetch_impl(ctx):
     _require_sha256(ctx.attrs.sha256)
     _require_size(ctx.attrs.size_bytes)
     _require_url(ctx.attrs.url)
     archive_root = read_config("nix_store", "root", "")
+    receipts = []
     if _is_product_tarball(ctx.attrs.url):
         # Private products are Nix capabilities (decision 0037): their bytes come only
         # from a Nix-realized archive tree, never from a registry, CAS, or credential.
@@ -195,7 +203,30 @@ def _fetch_impl(ctx):
             archive_root = read_config("nix_store", "product_root", "")
         if archive_root == "":
             fail("private product {} needs nix_store.root or nix_store.product_root".format(ctx.attrs.url))
-    if archive_root == "":
+    if archive_root == "" and _shared_archive_store() != "":
+        out = ctx.actions.declare_output("package.tgz")
+        receipt = ctx.actions.declare_output("archive-acquisition.json")
+        receipts.append(receipt)
+        hermetic_action(
+            ctx,
+            cmd_args([
+                hermetic_bun_command(ctx, ctx.attrs._bun[BunToolchainInfo].executable),
+                ctx.attrs._shared_archive_runtime[DefaultInfo].default_outputs[0].project("buck2/dependencies/shared-archive.ts"),
+                "--content-store", _shared_archive_store(),
+                "--high-water-bytes", read_config("buck_materialization", "high_water_bytes", "4294967296"),
+                "--url", ctx.attrs.url,
+                "--sha256", ctx.attrs.sha256,
+                "--size", str(ctx.attrs.size_bytes),
+                "--output", out.as_output(),
+                "--receipt", receipt.as_output(),
+            ]),
+            env = {"EDITOR_VIEW_LEASE_LIBRARY": read_config("buck_materialization", "lease_library", "")},
+            category = "pnpm_archive",
+            identifier = ctx.attrs.name,
+            local_only = True,
+            cacheable = False,
+        )
+    elif archive_root == "":
         out = ctx.actions.download_file(
             "package.tgz",
             ctx.attrs.url,
@@ -223,7 +254,7 @@ def _fetch_impl(ctx):
             identifier = ctx.attrs.name,
             local_only = True,
         )
-    return [DefaultInfo(default_output = out)]
+    return [DefaultInfo(default_output = out, other_outputs = receipts)]
 
 _fetch = cache_guarded_rule(
     cache_eligible = lambda ctx: True,
@@ -239,6 +270,9 @@ _fetch = cache_guarded_rule(
         "_nix_archive": attrs.default_only(attrs.source(
             default = "//buck2/dependencies:nix-archive.ts",
         )),
+        "_shared_archive_runtime": attrs.default_only(
+            attrs.dep(default = "//buck2/dependencies:shared_archive_runtime") if _shared_archive_store() != "" else attrs.option(attrs.dep(), default = None),
+        ),
     }),
 )
 
@@ -322,7 +356,7 @@ def pnpm_package(name, package_name, url, sha256, size_bytes, bins = {}, patches
         sha256 = sha256,
         size_bytes = size_bytes,
         url = url,
-        exec_compatible_with = hermetic_execution_constraints(),
+        exec_compatible_with = [] if _shared_archive_store() != "" else hermetic_execution_constraints(),
         visibility = [],
     )
     _extract(

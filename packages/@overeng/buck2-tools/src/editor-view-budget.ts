@@ -1534,7 +1534,7 @@ const inspectRoot = ({
     const sameStore =
       held === true ||
       registered === true ||
-      resolve(defaultEditorViewContentStore(repoRoot)) === resolve(contentStore)
+      resolve(defaultEditorViewContentStore({ repoRoot: repoRoot })) === resolve(contentStore)
     return {
       exists: true,
       trusted:
@@ -2494,7 +2494,9 @@ const retireOrphans = async ({
     const owningRepoRoot = repoRoot ?? registered?.repoRoot
     const contentStore =
       registered?.contentStore ??
-      (owningRepoRoot === undefined ? undefined : defaultEditorViewContentStore(owningRepoRoot))
+      (owningRepoRoot === undefined
+        ? undefined
+        : defaultEditorViewContentStore({ repoRoot: owningRepoRoot }))
     if (contentStore === undefined) {
       blocked.push(...candidates.map((candidate) => candidate.key))
       return

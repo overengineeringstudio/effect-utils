@@ -1647,8 +1647,8 @@ describe('default editor-view content store', () => {
       writeFileSync(join(secondGit, 'commondir'), `${common}\n`)
       const expected = join(project, '.editor-view-content', 'v1')
       withContentStoreEnv(undefined, () => {
-        expect(defaultEditorViewContentStore(first)).toBe(expected)
-        expect(defaultEditorViewContentStore(second)).toBe(expected)
+        expect(defaultEditorViewContentStore({ repoRoot: first })).toBe(expected)
+        expect(defaultEditorViewContentStore({ repoRoot: second })).toBe(expected)
       })
       expect(exists(join(root, '.editor-view-content')) === true).toBe(false)
       expect(exists(expected) === true).toBe(false)
@@ -1660,7 +1660,7 @@ describe('default editor-view content store', () => {
       const repository = candidate('repository')
       candidate('repository', '.git')
       withContentStoreEnv(undefined, () => {
-        expect(defaultEditorViewContentStore(repository)).toBe(
+        expect(defaultEditorViewContentStore({ repoRoot: repository })).toBe(
           join(repository, '.editor-view-content', 'v1'),
         )
       })
@@ -1673,7 +1673,7 @@ describe('default editor-view content store', () => {
       const override = join(root, 'overridden-content', 'v1')
       const previous = process.env.EDITOR_VIEW_CONTENT_STORE
       withContentStoreEnv(override, () => {
-        expect(defaultEditorViewContentStore(repository)).toBe(override)
+        expect(defaultEditorViewContentStore({ repoRoot: repository })).toBe(override)
       })
       expect(process.env.EDITOR_VIEW_CONTENT_STORE).toBe(previous)
       expect(exists(override) === true).toBe(false)
@@ -1684,7 +1684,7 @@ describe('default editor-view content store', () => {
     await withStore(async ({ candidate }) => {
       const repository = candidate('not-git')
       withContentStoreEnv(undefined, () => {
-        expect(defaultEditorViewContentStore(repository)).toBe(
+        expect(defaultEditorViewContentStore({ repoRoot: repository })).toBe(
           join(homedir(), '.cache', 'effect-utils', 'editor-view-content', 'v1'),
         )
       })

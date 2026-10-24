@@ -47,13 +47,17 @@ let
     release.platforms.${system}
       or (throw "Buck2 release ${release.version} does not support ${system}");
   launcherSource = pkgs.lib.fileset.toSource {
-    root = ../scripts;
+    root = ./..;
     fileset = pkgs.lib.fileset.unions [
       ../scripts/buck2-entrypoint.ts
       ../scripts/buck2-cache-posture.ts
       ../scripts/buck2-file-watcher.ts
       ../scripts/buck2-stdio.c
       ../scripts/buck2-entrypoint.sh
+      (../packages + "/@overeng/buck2-tools/src/materialization-archives.ts")
+      (../packages + "/@overeng/buck2-tools/src/editor-view-sharing.ts")
+      (../packages + "/@overeng/buck2-tools/src/editor-view-leases.ts")
+      (../packages + "/@overeng/buck2-tools/src/public-archive-origin.ts")
     ];
   };
 in
@@ -79,25 +83,21 @@ pkgs.buck2.overrideAttrs (oldAttrs: {
   postInstall = (oldAttrs.postInstall or "") + ''
     mkdir -p "$out/libexec"
     mv "$out/bin/buck2" "$out/libexec/buck2"
-    cp ${launcherSource}/buck2-entrypoint.ts "$out/libexec/buck2-entrypoint.ts"
-    cp ${launcherSource}/buck2-cache-posture.ts "$out/libexec/buck2-cache-posture.ts"
-    cp ${launcherSource}/buck2-file-watcher.ts "$out/libexec/buck2-file-watcher.ts"
     ${pkgs.stdenv.cc}/bin/cc ${
       if pkgs.stdenv.hostPlatform.isDarwin then "-dynamiclib" else "-shared -fPIC"
     } \
-      ${launcherSource}/buck2-stdio.c \
+      ${launcherSource}/scripts/buck2-stdio.c \
       -o "$out/libexec/libbuck2-stdio${pkgs.stdenv.hostPlatform.extensions.sharedLibrary}"
     # Darwin clonefile preserves Bun's read-only store mode. Its copy fallback
     # uses TMPDIR, so compiling there would reopen the same clone with O_EXCL.
     # Keep the compile working directory distinct from TMPDIR.
     (
       cd "$(mktemp -d "$TMPDIR/buck2-launcher.XXXXXX")"
-      ${pkgs.bun}/bin/bun build --compile "$out/libexec/buck2-entrypoint.ts" \
+      ${pkgs.bun}/bin/bun build --compile ${launcherSource}/scripts/buck2-entrypoint.ts \
         --define "BUCK2_STDIO_LIBRARY=\"$out/libexec/libbuck2-stdio${pkgs.stdenv.hostPlatform.extensions.sharedLibrary}\"" \
         --outfile "$out/libexec/buck2-entrypoint"
     )
-    rm "$out/libexec/buck2-entrypoint.ts" "$out/libexec/buck2-cache-posture.ts" "$out/libexec/buck2-file-watcher.ts"
-    substitute ${launcherSource}/buck2-entrypoint.sh "$out/bin/buck2" \
+    substitute ${launcherSource}/scripts/buck2-entrypoint.sh "$out/bin/buck2" \
       --replace-fail '@shell@' '${pkgs.runtimeShell}' \
       --replace-fail '@native@' "$out/libexec/buck2" \
       --replace-fail '@launcher@' "$out/libexec/buck2-entrypoint" \

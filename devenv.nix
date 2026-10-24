@@ -1363,6 +1363,14 @@ in
         repoFlake.packages.${currentSystem}.buck2-fingerprint
       }/bin/buck2-fingerprint
       ${tsSandboxTestEnvironment}
+      # Analyze both rule branches in the PR-side lane without executing downloads.
+      # CI admission normally disables sharing, which hid the non-None option default.
+      cd "$root"
+      ${buck2Machine}/libexec/buck2 cquery \
+        //packages/@overeng/notion-effect-client:typecheck \
+        -c "buck_materialization.content_store=$root/.devenv/shared-archive-analysis-content" \
+        -c "buck_materialization.lease_library=$EDITOR_VIEW_LEASE_LIBRARY" \
+        >/dev/null
       cd "$root/packages/@overeng/buck2-tools"
       exec ${sourceBun}/bin/bun "$root/packages/@overeng/buck2-tools/src/bun-test-runner.ts" test src/*.test.ts
     ''

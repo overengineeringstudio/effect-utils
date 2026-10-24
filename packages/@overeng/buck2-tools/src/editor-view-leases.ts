@@ -309,10 +309,10 @@ export const probeEditorViewLease = (input: {
 }): EditorViewLeaseProbe => acquire({ ...input, exclusive: true })
 
 /**
- * Retirement admission only. Caller MUST hold the owning CAS fence: readers can
- * acquire only an existing validated control under that same fence, so absence
- * permits lazy creation before the exclusive probe. Existing unsafe controls
- * are never repaired or replaced. Retain a clear handle through retirement.
+ * Retirement admission only. Caller MUST hold the owning CAS fence. Readers
+ * must be excluded by that fence or an outer generation-specific fence that
+ * every publisher/retirer also retains. Absence permits lazy control creation.
+ * Existing unsafe controls are never repaired/replaced; retain EX through retirement.
  */
 export const probeEditorViewLeaseUnderFence = (input: {
   readonly editorRoot: string
@@ -383,6 +383,38 @@ export const observeEditorViewLeaseForRetirement = (input: {
   }
 }
 
+/**
+ * Opens only an existing validated SH control. Caller MUST retain either CAS
+ * exclusion or generation-specific exclusion respected by every publisher and
+ * retirer until this acquisition completes. Never creates/migrates controls.
+ */
+export const acquireExistingEditorViewLeaseUnderFence = (input: {
+  readonly editorRoot: string
+  readonly snapshot: string
+}): {
+  readonly fd: number
+  readonly snapshot: string
+  readonly generation: string
+  readonly release: () => void
+} => {
+  const lease = acquire({ ...input, exclusive: false })
+  if (
+    lease.state !== 'clear' ||
+    lease.fd === undefined ||
+    lease.snapshot === undefined ||
+    lease.generation === undefined
+  ) {
+    lease.release()
+    return fail(`cannot acquire reader lease: ${lease.reasons.join('; ')}`)
+  }
+  return {
+    fd: lease.fd,
+    snapshot: lease.snapshot,
+    generation: lease.generation,
+    release: lease.release,
+  }
+}
+
 /** Resolution happens inside the CAS fence, never before it. Closing, not LOCK_UN, releases ownership. */
 export const acquireEditorViewLease = async ({
   editorRoot,
@@ -398,7 +430,7 @@ export const acquireEditorViewLease = async ({
   readonly generation: string
   readonly release: () => void
 }> => {
-  let retained: EditorViewLeaseProbe | undefined
+  let retained: { readonly release: () => void } | undefined
   try {
     return await withEditorViewContentStoreLock({
       contentStore,
@@ -407,21 +439,9 @@ export const acquireEditorViewLease = async ({
         const identity = paths({ editorRoot, snapshot })
         validateGeneration({ root: identity.root, snapshot: identity.snapshot })
         ensureEditorViewLeaseControl({ editorRoot, snapshot })
-        const lease = acquire({ editorRoot, snapshot, exclusive: false })
+        const lease = acquireExistingEditorViewLeaseUnderFence({ editorRoot, snapshot })
         retained = lease
-        if (
-          lease.state !== 'clear' ||
-          lease.fd === undefined ||
-          lease.snapshot === undefined ||
-          lease.generation === undefined
-        )
-          return fail(`cannot acquire reader lease: ${lease.reasons.join('; ')}`)
-        return {
-          fd: lease.fd,
-          snapshot: lease.snapshot,
-          generation: lease.generation,
-          release: lease.release,
-        }
+        return lease
       },
     })
   } catch (error) {
