@@ -143,20 +143,18 @@ schema.
   projection installer are load-bearing after the collapse, not deletable — the
   honest restatement is "three producers, two tool sets, two digests" becoming
   "one producer plus one atomic installer, one tool set, one digest".
-- Adding the two new tools changes `GENERATION`, and `support_tool` builds its
-  input label from the whole-projection generation, so every action that consumes
-  any capability artifact re-keys once. Land this before a consumer repo starts
-  reading the shared cache and expect one cold run.
+- The original whole-projection labels caused every capability-consuming action
+  to re-key when any tool changed. Amendment 2 replaces that coupling; adopting
+  the new artifact namespace still requires one scheduled cold run.
 - The deleted script's `--check` mode was the fail-closed gate for "raw `buck2`
   in a worktree that never had `mr apply`". mr already exports the replacement
   predicate (`checkCompositionCapabilityProjection`); giving it a CLI surface and
   wiring it into the root `buck2` wrapper is open follow-up work. Under
   [decision 0027](./0027-composed-default-worktrees.md) every worktree has had
   `mr apply`, so this is a guard-rail, not a correctness hole.
-- Open, not settled here: whether the capability label should be keyed per tool
-  by its own `contentDigest` instead of by whole-projection `GENERATION`, and
-  whether the remaining top-level `rust-*`/`archive-tool`/`product` capabilities
-  should also move under named authorities.
+- Per-tool capability identity is settled by Amendment 2 below. Whether the
+  remaining top-level `rust-*`/`archive-tool`/`product` capabilities should also
+  move under named authorities remains separate from artifact identity.
 
 ## Amendment 1 — Nix Owns The Capability Projection
 
@@ -185,3 +183,37 @@ load-bearing consumers and verifiers. The legacy resolver projection path stays
 available only through the absence of `MR_CAPABILITY_PROJECTION` until
 composition adoption reaches L3; it is not used by the standalone or composed
 effect-utils paths.
+
+## Amendment 2 — Per-Tool Artifact Identity
+
+Accepted 2026-10-24 for capability action-key isolation.
+
+Capability artifacts use
+`capabilities//tools/<platform>/<toolId>/<sha256(manifest.json)>`.
+The hash covers the exact generated manifest bytes, including the trailing
+newline: executable contents alone (`contentDigest`) would omit the runtime
+closure, protocol, store path and platform contract. A change to any of those
+must invalidate users of that capability. `GENERATION` remains the
+whole-projection analysis-consistency gate checked by `require_capability`; it
+does not appear in action artifact paths or execution inputs.
+
+A single-tool change therefore re-keys its users, not independent hermetic
+actions. The action-env capability remains an intentional input of every
+hermetic action, so changing it re-keys all such actions. Bun, tsgo, Rust, Go and
+Python toolchains also identify executables through their existing immutable
+Nix store-path arguments; this amendment does not replace those contracts.
+
+The publisher retains generation-to-tool references and their Nix GC roots.
+Shared tool directories are collected only when no retained generation refers
+to them and the conservative native-daemon lease check permits pruning. A live
+or uncertain daemon lease retains all potentially referenced generations and
+tools, regardless of publication age or count.
+
+`devenv tasks run buck2:capabilities:identity-proof --mode single` exercises
+native action digests and undeclared sibling-tool execution in the PR-only
+`pr/buck2-tools` lane. The trusted main-push remote-cache proof runs the same
+script with mandatory remote hits for stable keys; it adds only writer/remote
+admission, not different identity assertions.
+
+The namespace cutover requires one cold run, scheduled outside the busy queue
+window rather than as part of this change's deployment.

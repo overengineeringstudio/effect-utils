@@ -37,6 +37,10 @@ fi
 bun scripts/buck2-cache-posture.ts "$source_root"
 grep -Fq 'allow_cache_uploads = true' .buckconfig.local || { echo '::error::publisher cache posture was not selected'; exit 1; }
 buck="${BUCK2_BIN:?BUCK2_BIN not set}"
+# Reuse the trusted writer admission to prime the tiny identity graph, then
+# require unchanged users to hit remotely after each cold local materializer.
+# Bound added runtime independently of the larger product/test cache proof.
+timeout 60 bash "$source_root/scripts/buck2-capability-identity-proof.sh" --require-remote-hits
 context_b="${RUNNER_TEMP:?RUNNER_TEMP not set}/buck2-remote-cache-proof-context-b"
 target='effect_utils//packages/@overeng/ci-tools:ci-tools-candidate'
 test_target='effect_utils//packages/@overeng/content-address:test'

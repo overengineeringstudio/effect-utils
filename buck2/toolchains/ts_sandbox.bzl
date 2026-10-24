@@ -60,7 +60,7 @@ def ts_sandbox_toolchain(name, **kwargs):
         metadata = require_capability(CAPABILITIES, GENERATION, platform, tool_id)
         closures[tool_id] = require_capability_closure(CAPABILITIES, GENERATION, platform, tool_id)
         executables[tool_id] = metadata["executableStorePath"]
-        capability = "capabilities//generations/{}/{}/{}".format(GENERATION, platform, tool_id)
+        capability = "capabilities//tools/{}/{}/{}".format(platform, tool_id, metadata["manifestDigest"])
         if tool_id == "bun":
             bun_inputs.extend([capability + ":executable", capability + ":manifest"])
         else:

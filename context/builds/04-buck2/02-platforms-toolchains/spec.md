@@ -109,12 +109,15 @@ required to remain shorter than 100 bytes, independent of inherited `TMPDIR`,
 so Darwin's 104-byte Unix socket path limit is respected.
 
 Publishers serialize through an operating-system file lock on
-`.buck2/capabilities.lock`. They install each complete generation before
-atomically replacing `defs.bzl` on the same filesystem. Migration from an
-existing root symlink prepares a complete real cell and atomically exchanges
-the two entries; readers never encounter a deleted live root. Generation BUCK
-and manifest files are real files. Executable and directory links retain their
-per-tool Nix targets, so action inputs do not acquire an aggregate profile hash.
+`.buck2/capabilities.lock`. They install complete immutable tool directories at
+`tools/<platform>/<toolId>/<manifestDigest>` before atomically replacing
+`defs.bzl` on the same filesystem. The digest hashes the exact manifest JSON
+bytes, including the trailing newline; unchanged tools reuse their directories.
+Migration from an existing root symlink prepares a complete real cell and
+atomically exchanges the two entries; readers never encounter a deleted live
+root. BUCK and manifest files are real files. Executable and directory links
+retain their per-tool Nix targets, so action inputs acquire neither a generation
+identity nor an aggregate profile hash.
 
 The one-time symlink-to-directory transition changes native watch topology.
 After publishing the complete real cell, the publisher explicitly invokes
@@ -128,7 +131,24 @@ publication. Steady-state publication never stops a daemon.
 Each retained generation has a registered indirect Nix GC root under
 `.buck2/capability-roots/`, pointing to its aggregate profile. This retains the
 profile and its complete referenced tool closures even after the activating
-shell's profile changes.
+shell's profile changes. Its sorted, deduplicated array of relative tool
+directory paths is stored in `.buck2/capability-references/<generation>.json`;
+numeric recency receipts remain in `.buck2/capability-publications/`. Neither
+reference sets nor receipts are action inputs. Roots and reference sets are
+persisted before the watched definition map is selected.
+When retrying a legacy symlink migration, an existing generation root is
+authoritative: it may already point to the tools-layout profile even while
+the live cell still points to the old layout. Migration never repoints that
+root to the legacy profile; committed tool references must remain restorable.
+Under the exclusive publication lock, abandoned regular-file atomic-write
+candidates matching the publisher's exact `.<UUID-v4>.candidate` name are
+removed before reference validation. This recovery covers reference sets,
+recency receipts, the definition map and migration marker; other reference
+entries remain hard errors. Tool directories use whole-directory renames,
+and Nix owns GC-root registration, so neither uses this candidate-file format.
+The real-filesystem/Nix recovery regression runs without Buck builds through
+`buck2:capabilities:recovery-test` in the PR-only `pr/buck2-tools` lane, and
+through the complete `buck2:capabilities:test` task.
 
 Retention keeps the three most recently published generations, including the
 current one, only at a daemon-free publication boundary. The publisher checks
@@ -138,12 +158,21 @@ ambiguous state defers pruning and retains all generations and their GC roots.
 An idle daemon may still reference an arbitrarily old generation, so age or
 count alone is not permission to prune. The bound is restored on a later
 daemon-free publication; pruning never stops a daemon.
-Pruning atomically detaches a generation into `.buck2/capability-trash/` before
-recursively deleting it. The detached tree remains a retry marker until its old
-GC root and publication receipt are removed; the next publication completes
-interrupted cleanup before installing incoming generations. Cleanup restores
-owner-write permission on detached directories without following tool links.
-A partial deletion can never occupy a recognized `generations/<generation>` identity.
+Only tool directories unreferenced by every retained generation are collected.
+Legacy `generations/<generation>` trees and roots remain available through the
+same retention and daemon-lease boundary, so cutover never deletes a live
+daemon's old action paths. Pruning atomically detaches complete tool or legacy
+generation directories into `.buck2/capability-trash/<uuid>.pruned` before
+recursive deletion. Reference sets, receipts, and GC roots are removed only
+after their unretained directories are detached. A retry restores missing
+referenced tool directories from rooted profiles before considering pruning,
+and collects orphan roots left after interrupted reference deletion.
+Cleanup restores owner-write permission without following tool links.
+Partial deletion never occupies a recognized immutable tool identity.
+The native daemon regression publishes beyond the retention bound while the
+same Buck daemon remains live, proves the old tool and GC root survive, then
+stops that daemon through Buck's lifecycle API and proves collection on the
+next publication. A shared tool's manifest inode remains unchanged.
 
 ## Darwin Capability
 

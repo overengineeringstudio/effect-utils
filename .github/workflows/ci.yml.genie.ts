@@ -2063,7 +2063,12 @@ const allCiJobs: Record<string, any> = {
       step: sourceRegressionStep({
         name: 'Buck2 tools regression tests',
         packages: ['.', 'packages/@overeng/buck2-tools', 'packages/@overeng/genie'],
-        tasks: ['test:buck2-tools', 'devenv-modules:test'],
+        tasks: [
+          'test:buck2-tools',
+          'devenv-modules:test',
+          'buck2:capabilities:identity-proof',
+          'buck2:capabilities:recovery-test',
+        ],
       }),
     }),
   },

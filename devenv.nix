@@ -1431,11 +1431,36 @@ in
       export NIX_STORE_BIN=${pkgs.nix}/bin/nix-store
       export NIX_FLAKE_REF="git+file://$PWD?shallow=1"
       export PATH=${lib.makeBinPath [ pkgs.watchman ]}:$PATH
-      ${sourceBun}/bin/bun ./packages/@overeng/buck2-tools/src/bun-test-runner.ts test ./scripts/buck2-capability-publish.unit.test.ts
+      ${sourceBun}/bin/bun ./packages/@overeng/buck2-tools/src/bun-test-runner.ts test ./scripts/buck2-capability-publish.unit.test.ts ./scripts/buck2-capability-projection.unit.test.ts
+      ${sourceBun}/bin/bun ./packages/@overeng/buck2-tools/src/bun-test-runner.ts test ./scripts/buck2-capability-publish.integration.test.ts
       ${pkgs.bash}/bin/bash \
         nix/devenv-modules/tasks/shared/tests/buck2-capability-publish.test.sh
       exec ${pkgs.bash}/bin/bash \
         nix/devenv-modules/tasks/shared/tests/buck2-capability-daemon.test.sh
+    '';
+  };
+
+  tasks."buck2:capabilities:recovery-test" = {
+    description = "Check interrupted capability atomic-write recovery without Buck builds";
+    exec = trace.exec "buck2:capabilities:recovery-test" ''
+      set -euo pipefail
+      cd "''${DEVENV_ROOT:-$PWD}"
+      export NIX_STORE_BIN=${pkgs.nix}/bin/nix-store
+      exec ${sourceBun}/bin/bun ./packages/@overeng/buck2-tools/src/bun-test-runner.ts test ./scripts/buck2-capability-publish.integration.test.ts
+    '';
+  };
+
+  tasks."buck2:capabilities:identity-proof" = {
+    description = "Prove native per-tool RE action identity and executable dependency isolation in a disposable graph";
+    exec = trace.exec "buck2:capabilities:identity-proof" ''
+      set -euo pipefail
+      root="''${DEVENV_ROOT:-$PWD}"
+      cd "$root"
+      ${publishBuckCapabilities}
+      export BUN_BIN=${sourceBun}/bin/bun
+      export BUCK2_NATIVE_BIN=${buck2Machine}/libexec/buck2
+      ${sourceBun}/bin/bun ./packages/@overeng/buck2-tools/src/bun-test-runner.ts test ./scripts/buck2-capability-identity-proof.unit.test.ts
+      exec ${pkgs.coreutils}/bin/timeout 60 ${pkgs.bash}/bin/bash scripts/buck2-capability-identity-proof.sh
     '';
   };
 

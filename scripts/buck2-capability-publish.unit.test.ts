@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'bun:test'
 
-import { capabilityGeneration, retainedCapabilityGenerations } from './buck2-capability-publish.ts'
+import {
+  capabilityGeneration,
+  capabilityReferences,
+  retainedCapabilityGenerations,
+  retainedCapabilityTools,
+} from './buck2-capability-publish.ts'
 
 const a = 'a'.repeat(64)
 const b = 'b'.repeat(64)
@@ -73,5 +78,62 @@ describe('daemon-free capability retention', () => {
         current: d,
       }),
     ]).toEqual([d, a, b])
+  })
+})
+
+describe('per-tool publication references', () => {
+  const archiveA = `tools/x86_64-linux/archive-tool/${a}`
+  const archiveB = `tools/x86_64-linux/archive-tool/${b}`
+  const directory = `tools/x86_64-linux/support-directory/${c}`
+
+  it('canonicalizes duplicate references without introducing generation paths', () => {
+    expect(capabilityReferences([directory, archiveA, archiveA])).toEqual([archiveA, directory])
+  })
+
+  it('accepts the authoritative capability token alphabet for tool IDs', () => {
+    const reference = `tools/x86_64-linux/Archive.Tool_2+native-tool/${a}`
+    expect(capabilityReferences([reference])).toEqual([reference])
+  })
+
+  it.each([
+    undefined,
+    {},
+    ['generations/' + a],
+    [`tools/x86_64-linux/../${a}`],
+    [`tools/x86_64-linux/./${a}`],
+    [`tools/x86_64-linux/archive-tool/${a}/executable`],
+    [`tools/x86_64-linux/archive-tool/${'A'.repeat(64)}`],
+    [42],
+  ])('rejects malformed or unsafe reference sets', (value) => {
+    expect(() => capabilityReferences(value)).toThrow('Invalid capability tool reference set')
+  })
+
+  it('retains shared tool identities until every retaining generation is gone', () => {
+    const references = new Map([
+      [a, [archiveA, directory]],
+      [b, [archiveB, directory]],
+      [c, [archiveB, directory]],
+    ])
+    expect([...retainedCapabilityTools({ references, retained: new Set([b, c]) })]).toEqual([
+      archiveB,
+      directory,
+    ])
+    expect([...retainedCapabilityTools({ references, retained: new Set([a, b]) })]).toEqual([
+      archiveA,
+      directory,
+      archiveB,
+    ])
+  })
+
+  it('allows legacy generations with no new-layout action references', () => {
+    expect([
+      ...retainedCapabilityTools({
+        references: new Map([
+          [a, []],
+          [b, [archiveB]],
+        ]),
+        retained: new Set([a]),
+      }),
+    ]).toEqual([])
   })
 })

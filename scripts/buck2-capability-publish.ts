@@ -1,6 +1,6 @@
 import { dlopen } from 'bun:ffi'
 import { spawnSync } from 'node:child_process'
-import { randomUUID } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import type { Stats } from 'node:fs'
 import {
   chmodSync,
@@ -131,8 +131,25 @@ const atomicWrite = ({
   }
 }
 
+/** Only the exclusive publisher lock makes an interrupted atomic write abandoned. */
+const cleanupAtomicWriteCandidates = (directory: string): void => {
+  for (const name of readdirSync(directory)) {
+    if (
+      /^\.[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\.candidate$/u.test(
+        name,
+      ) === false
+    )
+      continue
+    const path = join(directory, name)
+    if (lstatSync(path).isFile() === false)
+      throw new Error(`Invalid abandoned capability atomic-write candidate: ${path}`)
+    rmSync(path)
+  }
+}
+
 const generationNames = (cell: string): string[] => {
   const directory = join(cell, 'generations')
+  if (statIfPresent(directory) === undefined) return []
   if (lstatSync(directory).isDirectory() === false)
     throw new Error(`Capability generations must be a real directory: ${directory}`)
   return readdirSync(directory)
@@ -145,6 +162,42 @@ const generationNames = (cell: string): string[] => {
         throw new Error(`Invalid immutable capability generation: ${generation}`)
       return generation
     })
+}
+
+/** References are publication metadata, never Buck action inputs. */
+export const capabilityReferences = (value: unknown): readonly string[] => {
+  if (
+    Array.isArray(value) === false ||
+    value.some(
+      (path: unknown) =>
+        typeof path !== 'string' ||
+        /^tools\/[a-z0-9][a-z0-9_-]*\/[A-Za-z0-9][A-Za-z0-9._+-]*\/[0-9a-f]{64}$/u.test(path) ===
+          false,
+    ) === true
+  )
+    throw new Error('Invalid capability tool reference set')
+  return [...new Set<string>(value)].toSorted()
+}
+
+/** Union the action tool identities referenced by retained publication generations. */
+export const retainedCapabilityTools = ({
+  references,
+  retained,
+}: {
+  readonly references: ReadonlyMap<string, readonly string[]>
+  readonly retained: ReadonlySet<string>
+}): ReadonlySet<string> =>
+  new Set([...retained].flatMap((generation) => references.get(generation) ?? []))
+
+const toolReferences = (cell: string): readonly string[] => {
+  const tools = join(cell, 'tools')
+  if (statIfPresent(tools) === undefined) return []
+  const references: string[] = []
+  for (const platform of readdirSync(tools).toSorted())
+    for (const tool of readdirSync(join(tools, platform)).toSorted())
+      for (const digest of readdirSync(join(tools, platform, tool)).toSorted())
+        references.push(`tools/${platform}/${tool}/${digest}`)
+  return capabilityReferences(references)
 }
 
 /** Copy metadata, not tool closures. Links stay exact absolute per-tool Nix paths. */
@@ -315,27 +368,8 @@ const makePrunedDirectoriesWritable = (path: string): void => {
   for (const name of readdirSync(path)) makePrunedDirectoriesWritable(join(path, name))
 }
 
-const cleanupPrunedGenerations = ({
-  trash,
-  cell,
-  roots,
-  receipts,
-}: {
-  readonly trash: string
-  readonly cell: string
-  readonly roots: string
-  readonly receipts: string
-}): void => {
+const cleanupPrunedTrees = (trash: string): void => {
   for (const name of readdirSync(trash)) {
-    const generation = name.slice(0, 64)
-    if (generationPattern.test(generation) === false || name[64] !== '.')
-      throw new Error(`Invalid detached capability generation: ${name}`)
-    // Keep the detached tree as the retry marker until its old metadata is gone.
-    // A newly published live generation, if present, owns its own root and receipt.
-    if (statIfPresent(join(cell, 'generations', generation)) === undefined) {
-      rmSync(join(roots, generation), { force: true })
-      rmSync(join(receipts, `${generation}.json`), { force: true })
-    }
     makePrunedDirectoriesWritable(join(trash, name))
     rmSync(join(trash, name), { recursive: true, force: true })
   }
@@ -370,89 +404,149 @@ export const publishCapabilities = ({
   const candidate = join(buckDirectory, `capabilities.candidate.${randomUUID()}`)
   try {
     native.acquire(descriptor)
+    cleanupAtomicWriteCandidates(buckDirectory)
     const incoming = realpathSync(profile)
     const defs = readFileSync(join(incoming, 'defs.bzl'))
     const generation = capabilityGeneration(defs.toString('utf8'))
-    const incomingGenerations = generationNames(incoming)
-    if (incomingGenerations.includes(generation) === false)
-      throw new Error(`Capability definitions refer to missing generation ${generation}`)
+    const incomingTools = toolReferences(incoming)
     const cell = join(buckDirectory, 'capabilities')
     const roots = join(buckDirectory, 'capability-roots')
     const receipts = join(buckDirectory, 'capability-publications')
+    const referencesDirectory = join(buckDirectory, 'capability-references')
     const trash = join(buckDirectory, 'capability-trash')
-    mkdirSync(trash, { recursive: true })
-    mkdirSync(roots, { recursive: true })
+    for (const directory of [roots, receipts, referencesDirectory, trash])
+      mkdirSync(directory, { recursive: true })
+    for (const directory of [receipts, referencesDirectory]) cleanupAtomicWriteCandidates(directory)
+    const referencePath = (name: string): string => join(referencesDirectory, `${name}.json`)
+    const references = new Map<string, readonly string[]>()
+    for (const name of readdirSync(referencesDirectory)) {
+      const identity = name.slice(0, -5)
+      if (name.endsWith('.json') === false || generationPattern.test(identity) === false)
+        throw new Error(`Invalid capability reference identity: ${name}`)
+      references.set(
+        identity,
+        capabilityReferences(JSON.parse(readFileSync(referencePath(identity), 'utf8'))),
+      )
+    }
     const migrationMarker = join(buckDirectory, 'capabilities.migration')
-    mkdirSync(receipts, { recursive: true })
     const existing = statIfPresent(cell)
     const migrating = existing?.isSymbolicLink() === true
     if (existing !== undefined && migrating === false && existing.isDirectory() === false)
       throw new Error(`Capability cell must be a real directory or legacy profile symlink: ${cell}`)
+    if (existing?.isDirectory() === true) cleanupAtomicWriteCandidates(cell)
     const workingCell = existing === undefined || migrating === true ? candidate : cell
-    if (workingCell === candidate) {
-      mkdirSync(candidate)
-      mkdirSync(join(candidate, 'generations'))
-      if (migrating === true) {
-        const previousProfile = realpathSync(cell)
-        for (const previous of generationNames(previousProfile)) {
-          // Root every old generation before the live symlink can be exchanged.
-          rootGeneration({ nixStore, root: join(roots, previous), profile: previousProfile })
-          copyGeneration({
-            source: join(previousProfile, 'generations', previous),
-            destination: join(candidate, 'generations', previous),
-          })
-        }
-        copyFileSync(join(previousProfile, 'BUCK'), join(candidate, 'BUCK'))
-        copyFileSync(join(previousProfile, 'defs.bzl'), join(candidate, 'defs.bzl'))
+    if (migrating === true) {
+      const previousProfile = realpathSync(cell)
+      const previousCurrent = capabilityGeneration(
+        readFileSync(join(previousProfile, 'defs.bzl'), 'utf8'),
+      )
+      // Root legacy paths only when unrooted. An interrupted same-generation
+      // upgrade may already have committed a tools-layout root and references
+      // while the live cell still points at the legacy profile. Never regress
+      // that authoritative root: retained-tool restoration below needs it.
+      for (const previous of new Set([previousCurrent, ...generationNames(previousProfile)])) {
+        const previousRoot = join(roots, previous)
+        if (statIfPresent(previousRoot) === undefined)
+          rootGeneration({ nixStore, root: previousRoot, profile: previousProfile })
       }
-    }
-    cleanupPrunedGenerations({ trash, cell: workingCell, roots, receipts })
+      copyGeneration({ source: previousProfile, destination: candidate })
+    } else if (workingCell === candidate) mkdirSync(candidate)
     if (existing !== undefined) {
       const previousCurrent = capabilityGeneration(
         readFileSync(join(workingCell, 'defs.bzl'), 'utf8'),
       )
-      const previousGenerations = generationNames(workingCell)
-      if (previousGenerations.includes(previousCurrent) === false)
-        throw new Error(
-          `Previous capability definitions refer to missing generation ${previousCurrent}`,
-        )
+      for (const previous of generationNames(workingCell)) {
+        // Legacy action paths remain intact until retention AND the daemon lease
+        // permit their removal; their profile roots continue protecting closures.
+        if (references.has(previous) === false) references.set(previous, [])
+      }
+      if (references.has(previousCurrent) === false)
+        references.set(previousCurrent, toolReferences(workingCell))
+      for (const [previous, tools] of references) {
+        if (statIfPresent(referencePath(previous)) === undefined)
+          atomicWrite({ path: referencePath(previous), bytes: `${JSON.stringify(tools)}\n` })
+      }
       const latest = Math.max(
         0,
-        ...previousGenerations.map((name) => publicationSequence(join(receipts, `${name}.json`))),
+        ...[...references.keys()].map((name) =>
+          publicationSequence(join(receipts, `${name}.json`)),
+        ),
       )
       const currentReceipt = join(receipts, `${previousCurrent}.json`)
-      // Recover a crash after defs rename but before its receipt, using the
-      // selected defs as authority. Also assigns the legacy current its recency.
+      // Selected defs recover a crash between pointer publication and receipt.
       if (latest === 0 || publicationSequence(currentReceipt) !== latest) {
         if (Number.isSafeInteger(latest + 1) === false)
           throw new Error('Capability publication sequence exhausted')
         atomicWrite({ path: currentReceipt, bytes: `${latest + 1}\n` })
       }
     }
-    // Restore/check indirect registration for all retained profiles before any pruning.
-    for (const previous of generationNames(workingCell)) {
-      const rootPath = join(roots, previous)
-      if (statIfPresent(rootPath)?.isSymbolicLink() !== true)
-        throw new Error(`Retained capability generation has no Nix GC root: ${previous}`)
-      rootGeneration({ nixStore, root: rootPath, profile: realpathSync(rootPath) })
-    }
-    for (const next of incomingGenerations) {
-      const source = join(incoming, 'generations', next)
-      const destination = join(workingCell, 'generations', next)
+    const installTool = ({
+      sourceProfile,
+      tool,
+    }: {
+      readonly sourceProfile: string
+      readonly tool: string
+    }): void => {
+      const source = join(sourceProfile, tool)
+      const destination = join(workingCell, tool)
+      const digest = tool.split('/').at(-1)
+      if (
+        createHash('sha256')
+          .update(readFileSync(join(source, 'manifest.json')))
+          .digest('hex') !== digest
+      )
+        throw new Error(`Capability manifest digest does not match tool path: ${tool}`)
       if (statIfPresent(destination) !== undefined) {
         if (equalGeneration({ left: source, right: destination }) === false)
-          throw new Error(`Immutable capability generation has changed contents: ${next}`)
+          throw new Error(`Immutable capability tool has changed contents: ${tool}`)
       } else {
-        rootGeneration({ nixStore, root: join(roots, next), profile: incoming })
-        const generationCandidate = join(workingCell, `generation.candidate-${randomUUID()}`)
+        mkdirSync(dirname(destination), { recursive: true })
+        const toolCandidate = join(buckDirectory, `tool.candidate-${randomUUID()}`)
         try {
-          copyGeneration({ source, destination: generationCandidate })
-          renameSync(generationCandidate, destination)
+          copyGeneration({ source, destination: toolCandidate })
+          renameSync(toolCandidate, destination)
         } finally {
-          rmSync(generationCandidate, { recursive: true, force: true })
+          rmSync(toolCandidate, { recursive: true, force: true })
         }
       }
     }
+    for (const [previous, tools] of references) {
+      const rootPath = join(roots, previous)
+      if (statIfPresent(rootPath)?.isSymbolicLink() !== true)
+        throw new Error(`Retained capability generation has no Nix GC root: ${previous}`)
+      const previousProfile = realpathSync(rootPath)
+      rootGeneration({ nixStore, root: rootPath, profile: previousProfile })
+      for (const tool of tools) installTool({ sourceProfile: previousProfile, tool })
+    }
+    const previousReferences = references.get(generation)
+    const legacyGeneration = join(workingCell, 'generations', generation)
+    const upgradingLegacy =
+      previousReferences?.length === 0 && statIfPresent(legacyGeneration)?.isDirectory() === true
+    if (upgradingLegacy === true) {
+      // Layout alone does not change GENERATION. Verify the old per-tool
+      // inputs before filling its reference set and moving its profile root.
+      for (const tool of incomingTools) {
+        const [, platform, toolId] = tool.split('/')
+        if (
+          equalGeneration({
+            left: join(legacyGeneration, platform!, toolId!),
+            right: join(incoming, tool),
+          }) === false
+        )
+          throw new Error(`Immutable capability generation has changed references: ${generation}`)
+      }
+    } else if (
+      previousReferences !== undefined &&
+      JSON.stringify(previousReferences) !== JSON.stringify(incomingTools)
+    ) {
+      throw new Error(`Immutable capability generation has changed references: ${generation}`)
+    }
+    if (upgradingLegacy === true || statIfPresent(join(roots, generation)) === undefined)
+      rootGeneration({ nixStore, root: join(roots, generation), profile: incoming })
+    for (const tool of incomingTools) installTool({ sourceProfile: incoming, tool })
+    references.set(generation, incomingTools)
+    // Persist roots and references before the watched pointer, including on crash.
+    atomicWrite({ path: referencePath(generation), bytes: `${JSON.stringify(incomingTools)}\n` })
     const rootBuck = readFileSync(join(incoming, 'BUCK'))
     if (statIfPresent(join(workingCell, 'BUCK')) === undefined)
       writeFileSync(join(workingCell, 'BUCK'), rootBuck, { flag: 'wx' })
@@ -477,7 +571,7 @@ export const publishCapabilities = ({
     if (statIfPresent(migrationMarker) !== undefined) {
       rmSync(migrationMarker)
     }
-    const publications = generationNames(cell).map((name) => ({
+    const publications = [...references.keys()].map((name) => ({
       generation: name,
       sequence: publicationSequence(join(receipts, `${name}.json`)),
     }))
@@ -491,17 +585,31 @@ export const publishCapabilities = ({
       (absoluteRoot !== projectRoot && capabilityPruningDeferred({ root: absoluteRoot }))
     const retained = retainedCapabilityGenerations({ publications, current: generation })
     if (pruningDeferred === false) {
-      for (const previous of publications) {
-        if (retained.has(previous.generation) === true) continue
-        // Detach atomically before recursive deletion: a crash must never leave
-        // a partial tree under a recognized immutable generation identity.
-        renameSync(
-          join(cell, 'generations', previous.generation),
-          join(trash, `${previous.generation}.${randomUUID()}`),
-        )
+      const retainedTools = retainedCapabilityTools({ references, retained })
+      const detach = (path: string): void => {
+        if (statIfPresent(path) !== undefined)
+          renameSync(path, join(trash, `${randomUUID()}.pruned`))
+      }
+      // Detach whole immutable directories before deleting any metadata.
+      for (const tool of toolReferences(cell))
+        if (retainedTools.has(tool) === false) detach(join(cell, tool))
+      for (const previous of generationNames(cell))
+        if (retained.has(previous) === false) detach(join(cell, 'generations', previous))
+      cleanupPrunedTrees(trash)
+      for (const previous of references.keys()) {
+        if (retained.has(previous) === true) continue
+        rmSync(referencePath(previous), { force: true })
+        rmSync(join(receipts, `${previous}.json`), { force: true })
+        rmSync(join(roots, previous), { force: true })
+      }
+      // Recover a crash after reference deletion but before root/receipt removal.
+      for (const previous of readdirSync(roots)) {
+        if (generationPattern.test(previous) === true && retained.has(previous) === false) {
+          rmSync(join(roots, previous), { force: true })
+          rmSync(join(receipts, `${previous}.json`), { force: true })
+        }
       }
     }
-    cleanupPrunedGenerations({ trash, cell, roots, receipts })
     return {
       generation,
       retainedCount: pruningDeferred === true ? publications.length : retained.size,

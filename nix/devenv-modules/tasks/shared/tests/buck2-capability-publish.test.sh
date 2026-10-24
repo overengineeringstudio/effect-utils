@@ -70,7 +70,7 @@ retain_failure_evidence() {
         const cell = path.join(source, ".buck2", "capabilities");
         cells.push({
           fixture: name,
-          generations: fs.readdirSync(path.join(cell, "generations")),
+          generations: fs.readdirSync(path.join(source, ".buck2", "capability-references")),
           definitions: fs.readFileSync(path.join(cell, "defs.bzl"), "utf8"),
         });
       });
@@ -164,6 +164,12 @@ PLATFORM="$(jq -er '.platform' "$profiles_file")"
 versions=(one two three four five)
 profile() { jq -er --arg version "$1" '.profiles[$version]' "$profiles_file"; }
 generation() { "$BUN" -e 'console.log(require("fs").readFileSync(process.argv[1], "utf8").match(/^GENERATION = "([0-9a-f]{64})"$/m)[1])' "$1/defs.bzl"; }
+tool_directory() { printf '%s\n' "$1/tools/$PLATFORM/$2/"*; }
+published_tool_directory() {
+  local source
+  source="$(tool_directory "$(profile "$2")" "$3")"
+  printf '%s/.buck2/capabilities/tools/%s/%s/%s\n' "$1" "$PLATFORM" "$3" "${source##*/}"
+}
 publish() {
   HOME="$TEST_HOME" "$BUN" "$ROOT/scripts/buck2-capability-publish.ts" --root "$1" --profile "$(profile "$2")" --nix-store "${3:-$NIX_STORE_COMMAND}"
 }
@@ -182,7 +188,7 @@ assert_retained() {
     const path = require("path");
     const root = process.argv[1];
     const count = Number(process.argv[2]);
-    const names = fs.readdirSync(path.join(root, "generations"));
+    const names = fs.readdirSync(path.join(root, "..", "capability-references")).map((name) => name.replace(/\.json$/, ""));
     const current = fs.readFileSync(path.join(root, "defs.bzl"), "utf8").match(/^GENERATION = "([0-9a-f]{64})"$/m)[1];
     if (names.length !== count || !names.includes(current) || names.some((name) => !/^[0-9a-f]{64}$/.test(name))) {
       fs.writeFileSync(path.join(process.argv[3], "failed-generation-assertion.json"), JSON.stringify({
@@ -194,18 +200,19 @@ assert_retained() {
   for version in "${versions[@]}"; do
     target="$(profile "$version")"
     gen="$(generation "$target")"
-    directory="$root/.buck2/capabilities/generations/$gen"
+    directory="$(published_tool_directory "$root" "$version" archive-tool)"
     root_link="$root/.buck2/capability-roots/$gen"
     "$NIX_STORE_COMMAND" --query --roots "$target" >"$TEMP_ROOT/gc-roots"
-    if [ -d "$directory" ]; then
+    if [ -f "$root/.buck2/capability-references/$gen.json" ]; then
       [ "$(readlink "$root_link")" = "$target" ] || fail "retained generation $gen lost its profile root"
       grep -Fq -- "$root_link" "$TEMP_ROOT/gc-roots" || fail "retained generation $gen is not registered with the real Nix GC"
-      manifest="$directory/$PLATFORM/archive-tool/manifest.json"
+      manifest="$directory/manifest.json"
       expected="$(jq -er '.executableStorePath' "$manifest")"
-      [ "$(readlink "$directory/$PLATFORM/archive-tool/executable")" = "$expected" ] || fail "executable link was rewritten through aggregate output"
+      [ "$(readlink "$directory/executable")" = "$expected" ] || fail "executable link was rewritten through aggregate output"
       case "$expected" in /nix/store/*buck2-capabilities*) fail "input uses aggregate projection" ;; /nix/store/*) ;; *) fail "input is not an absolute tool store path" ;; esac
-      expected="$(jq -er '.directoryStorePath' "$directory/$PLATFORM/support-directory/manifest.json")"
-      [ "$(readlink "$directory/$PLATFORM/support-directory/directory")" = "$expected" ] || fail "directory link no longer names its exact store input"
+      directory="$(published_tool_directory "$root" "$version" support-directory)"
+      expected="$(jq -er '.directoryStorePath' "$directory/manifest.json")"
+      [ "$(readlink "$directory/directory")" = "$expected" ] || fail "directory link no longer names its exact store input"
     else
       [ ! -e "$root_link" ] && [ ! -L "$root_link" ] || fail "pruned generation still has its indirect root"
       if grep -Fq -- "$root_link" "$TEMP_ROOT/gc-roots"; then fail "Nix still considers the pruned fixture root live"; fi
@@ -240,12 +247,11 @@ publish "$live" three >"$TEMP_ROOT/daemon-free.json"
 assert_result "$TEMP_ROOT/daemon-free.json" three 3 false
 assert_retained "$live" 3
 for version in one two three; do
-  [ -d "$live/.buck2/capabilities/generations/$(generation "$(profile "$version")")" ] || fail "daemon-free pruning ignored last-publication recency"
+  [ -f "$live/.buck2/capability-references/$(generation "$(profile "$version")").json" ] || fail "daemon-free pruning ignored last-publication recency"
 done
 
-# Simulate interruption after atomic prune detachment, at each metadata cleanup
-# boundary, leaving partially deleted trees. Republishing that identity must
-# install the complete immutable tree rather than diagnose immutable corruption.
+# Simulate interruption after tool detachment and after reference retirement.
+# Republishing must restore complete referenced tool trees from rooted profiles.
 prune_crash="$TEMP_ROOT/prune-crash"
 mkdir -p "$prune_crash" "$(state_root "$prune_crash")/live"
 printf '%s\n' "$$" >"$(state_root "$prune_crash")/live/buckd.pid"
@@ -254,16 +260,18 @@ for version in "${versions[@]}"; do
 done
 rm -rf "$(state_root "$prune_crash")"
 mkdir -p "$prune_crash/.buck2/capability-trash"
+detached_count=0
 for version in one two three; do
   detached_generation="$(generation "$(profile "$version")")"
-  detached="$prune_crash/.buck2/capability-trash/$detached_generation.interrupted-$version"
-  mv "$prune_crash/.buck2/capabilities/generations/$detached_generation" "$detached"
-  rm -f "$detached/$PLATFORM/archive-tool/manifest.json"
+  detached_count=$((detached_count + 1))
+  detached="$prune_crash/.buck2/capability-trash/00000000-0000-0000-0000-00000000000$detached_count.pruned"
+  mv "$(published_tool_directory "$prune_crash" "$version" archive-tool)" "$detached"
+  rm -f "$detached/manifest.json"
   # Partial detached trees may contain read-only Nix metadata and directories.
   # Do not follow the per-tool links into the immutable Nix store.
   find "$detached" \( -type d -o -type f \) -exec chmod a-w {} +
   if [ "$version" != one ]; then
-    rm "$prune_crash/.buck2/capability-roots/$detached_generation"
+    rm "$prune_crash/.buck2/capability-references/$detached_generation.json"
   fi
   if [ "$version" = three ]; then
     rm "$prune_crash/.buck2/capability-publications/$detached_generation.json"
@@ -272,14 +280,14 @@ done
 publish "$prune_crash" one >"$TEMP_ROOT/prune-crash-recovery.json"
 assert_result "$TEMP_ROOT/prune-crash-recovery.json" one 3 false
 assert_retained "$prune_crash" 3
-[ -f "$prune_crash/.buck2/capabilities/generations/$(generation "$(profile one)")/$PLATFORM/archive-tool/manifest.json" ] || fail "prune recovery did not restore the republished generation"
+[ -f "$(published_tool_directory "$prune_crash" one archive-tool)/manifest.json" ] || fail "prune recovery did not restore the republished tool"
 [ -z "$(find "$prune_crash/.buck2/capability-trash" -mindepth 1 -print -quit)" ] || fail "publication left interrupted prune trash"
 for version in two three; do
   detached_generation="$(generation "$(profile "$version")")"
   [ ! -e "$prune_crash/.buck2/capability-publications/$detached_generation.json" ] || fail "prune recovery left an orphan receipt"
 done
 
-# Migration preserves both real generation trees and their per-tool links.
+# Migration preserves reference sets and direct per-tool links.
 migration="$TEMP_ROOT/migration"
 mkdir -p "$migration/.buck2"
 ln -s "$(profile one)" "$migration/.buck2/capabilities"
@@ -292,6 +300,30 @@ inode_after="$($BUN -e 'console.log(require("fs").lstatSync(process.argv[1]).ino
 [ "$inode_before" = "$inode_after" ] || fail "steady publication replaced the stable cell directory"
 assert_result "$TEMP_ROOT/republication.json" one 2 false
 assert_retained "$migration" 2
+
+# The old and new layouts intentionally have the same analysis GENERATION.
+# Reconstruct an already-published legacy real cell with a registered profile
+# root, then upgrade that exact tool set without deleting leased old paths.
+legacy="$TEMP_ROOT/legacy-layout"
+mkdir -p "$legacy"
+publish "$legacy" one >"$TEMP_ROOT/legacy-initial.json"
+legacy_generation="$(generation "$(profile one)")"
+legacy_directory="$legacy/.buck2/capabilities/generations/$legacy_generation/$PLATFORM"
+mkdir -p "$legacy_directory" "$(state_root "$legacy")/legacy"
+printf '%s\n' "$$" >"$(state_root "$legacy")/legacy/buckd.pid"
+for tool in archive-tool support-directory; do
+  mv "$(published_tool_directory "$legacy" one "$tool")" "$legacy_directory/$tool"
+done
+rm "$legacy/.buck2/capability-references/$legacy_generation.json"
+publish "$legacy" one >"$TEMP_ROOT/legacy-upgrade.json"
+assert_result "$TEMP_ROOT/legacy-upgrade.json" one 1 true
+assert_retained "$legacy" 1
+for tool in archive-tool support-directory; do
+  [ -f "$legacy_directory/$tool/manifest.json" ] || fail "same-generation upgrade removed a leased legacy path"
+done
+jq -e 'length == 2 and all(.[]; startswith("tools/"))' \
+  "$legacy/.buck2/capability-references/$legacy_generation.json" >/dev/null || fail "same-generation upgrade did not install tool references"
+rm -rf "$(state_root "$legacy")"
 
 # A real nix-store delegation barrier makes competing CLI processes overlap
 # while the first production publisher is known to hold its native flock.
@@ -372,14 +404,14 @@ assert_retained "$crash" 1
 exec 8>&-
 
 # Corruption cannot silently change immutable contents or select new defs.
-corrupt_generation="$(generation "$(profile one)")"
 cp "$migration/.buck2/capabilities/defs.bzl" "$TEMP_ROOT/defs-before-corruption"
-chmod u+w "$migration/.buck2/capabilities/generations/$corrupt_generation/$PLATFORM/archive-tool/manifest.json"
-printf '{"corrupt":true}\n' >"$migration/.buck2/capabilities/generations/$corrupt_generation/$PLATFORM/archive-tool/manifest.json"
+corrupt_manifest="$(published_tool_directory "$migration" one archive-tool)/manifest.json"
+chmod u+w "$corrupt_manifest"
+printf '{"corrupt":true}\n' >"$corrupt_manifest"
 corruption_exit=0
 publish "$migration" one >"$TEMP_ROOT/corrupt.stdout" 2>"$TEMP_ROOT/corrupt.stderr" || corruption_exit=$?
-[ "$corruption_exit" -ne 0 ] || fail "publisher accepted changed contents under an existing generation identity"
-grep -Fq 'Immutable capability generation has changed contents' "$TEMP_ROOT/corrupt.stderr" || fail "generation corruption was not diagnosed"
+[ "$corruption_exit" -ne 0 ] || fail "publisher accepted changed contents under an existing tool identity"
+grep -Fq 'Immutable capability tool has changed contents' "$TEMP_ROOT/corrupt.stderr" || fail "tool corruption was not diagnosed"
 cmp -s "$TEMP_ROOT/defs-before-corruption" "$migration/.buck2/capabilities/defs.bzl" || fail "failed corrupt publication changed selected defs"
 
 jq -nc '{test:"publisher-contracts",concurrentPublishers:5,nativeFlock:true,crashReleasedLock:true,interruptedPruneRecovery:true,readOnlyPruneRecovery:true,liveRetainedCount:5,unknownStateDeferred:true,daemonFreeRetainedCount:3,migratedSymlink:true,registeredNixGCRoots:true,immutableCorruptionRejected:true}'

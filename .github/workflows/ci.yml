@@ -768,7 +768,7 @@ jobs:
               prepared+=("$package")
               ln -s "$PWD/$modules" "$package/node_modules"
             done
-            "$DEVENV_BIN" tasks run --mode single test:buck2-tools devenv-modules:test
+            "$DEVENV_BIN" tasks run --mode single test:buck2-tools devenv-modules:test buck2:capabilities:identity-proof buck2:capabilities:recovery-test
           '
       - name: Nix diagnostics summary
         if: ${{ (failure()) && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
