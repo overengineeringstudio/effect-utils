@@ -200,17 +200,18 @@ const pinCiJobReapiProbe = async ({
   readonly admission: CacheAdmissionInvocation
   readonly probe: (fresh: boolean) => Promise<boolean>
 }): Promise<boolean> => {
+  if (env['CI'] !== '1' && env['CI'] !== 'true') return probe(false)
+  const instance = env['BUCK2_CI_JOB_INSTANCE']
+  if (instance === undefined || instance === '') {
+    // Unconfigured workflows retain the pre-pinning probe policy, never a shared
+    // matrix-child pin or a new admission refusal. Evidence names this explicitly.
+    admission.reapiDecision = 'unpinned-missing-job-instance'
+    return probe(false)
+  }
   const run = env['GITHUB_RUN_ID']
   const job = env['GITHUB_JOB']
-  if (
-    (env['CI'] !== '1' && env['CI'] !== 'true') ||
-    run === undefined ||
-    run === '' ||
-    job === undefined ||
-    job === ''
-  )
-    return probe(false)
-  const scope = JSON.stringify([run, env['GITHUB_RUN_ATTEMPT'] ?? '1', job])
+  if (run === undefined || run === '' || job === undefined || job === '') return probe(false)
+  const scope = JSON.stringify([run, env['GITHUB_RUN_ATTEMPT'] ?? '1', job, instance])
   const directory = join(root, 'buck-out', '.cache-daemon-posture')
   mkdirSync(directory, { recursive: true, mode: 0o700 })
   const path = join(directory, `reapi-job-${createHash('sha256').update(scope).digest('hex')}.json`)

@@ -73,13 +73,20 @@ pins remote caching and uploads off. Absent root `remote_cache_enabled` and
 reader's explicit upload prohibition still wins. Absent action-upload default
 remains native `false`, and absent HTTP headers remain empty.
 REAPI admission precedes reservation comparison and overlay mutation while holding
-the startup lock. In CI with a GitHub job identity, the first fresh probe result
-is pinned per canonical project root and `(GITHUB_RUN_ID, GITHUB_RUN_ATTEMPT,
-GITHUB_JOB)`. Later launches with the same endpoint/auth identity retain that
-availability decision even if the endpoint recovers. Each distinct job gets a
-fresh probe; local invocations without that CI identity retain the bounded
-five-second probe cache. Explicit cache-less requests remain explicit policy
-changes, not a probe result.
+the startup lock. In CI with a GitHub job-instance identity, the first fresh
+probe result is pinned per canonical project root and `(GITHUB_RUN_ID,
+GITHUB_RUN_ATTEMPT, GITHUB_JOB, BUCK2_CI_JOB_INSTANCE)`. Composed workflows
+initialize `BUCK2_CI_JOB_INSTANCE` once during inline job bootstrap, immediately
+after the Linux sandbox policy and before checkout or Buck, using a random nonce
+persisted through `GITHUB_ENV`, so even sequential matrix children on the same
+runner/root receive distinct identities. Later launches in that instance with
+the same endpoint/auth identity retain its availability decision even if the
+endpoint recovers. Each distinct job instance gets a fresh probe. Unconfigured
+CI jobs without the instance identity retain the bounded five-second probe
+cache, recorded as `unpinned-missing-job-instance` in admission evidence; they
+neither share matrix-parent pins nor acquire a new admission refusal. Local
+invocations retain their existing probe cache. Explicit cache-less requests
+remain explicit policy changes, not a probe result.
 
 The decision file is `buck-out/.cache-daemon-posture/reapi-job-<job-hash>.json`
 (`0600`), written atomically under the root lock. Endpoint/auth identities are

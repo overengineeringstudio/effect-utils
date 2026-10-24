@@ -68,7 +68,7 @@ import {once} from 'node:events';
 import {admitCacheDaemonCommand,directBuckArguments} from ${JSON.stringify(join(import.meta.dir, 'buck2-entrypoint.ts'))};
 const [root,isolation,posture,hold,job]=process.argv.slice(2);
 const fallback=posture==='fallback'||posture==='online';
-const env={...process.env,CI:'1',GITHUB_RUN_ID:job?'2112-run':'',GITHUB_RUN_ATTEMPT:'1',GITHUB_JOB:job||'test',GITHUB_STEP_SUMMARY:job?root+'/summary':'',BUCK2_NO_REMOTE_CACHE:'',BUCK2_PUBLIC_CACHE_READ_ONLY:fallback?'1':'',BUCK2_PRIVATE_CACHE_WRITE_BASIC_AUTH:'',BUCK2_PRIVATE_CACHE_ADDRESS:'',BUCK2_CACHE_WRITE_BASIC_AUTH:'',BUCK2_CACHE_WRITE_OPTIONAL:'',CI_BUCK2_CACHE_EVIDENCE_PATH:job?root+'/admission':''};
+const env={...process.env,CI:'1',GITHUB_ACTIONS:'true',GITHUB_RUN_ID:'2112-run',GITHUB_RUN_ATTEMPT:'1',GITHUB_JOB:'matrix-test',BUCK2_CI_JOB_INSTANCE:job==='missing'?'':job,GITHUB_STEP_SUMMARY:job?root+'/summary':'',BUCK2_NO_REMOTE_CACHE:'',BUCK2_PUBLIC_CACHE_READ_ONLY:fallback?'1':'',BUCK2_PRIVATE_CACHE_WRITE_BASIC_AUTH:'',BUCK2_PRIVATE_CACHE_ADDRESS:'',BUCK2_CACHE_WRITE_BASIC_AUTH:'',BUCK2_CACHE_WRITE_OPTIONAL:'',CI_BUCK2_CACHE_EVIDENCE_PATH:job?root+'/admission':''};
 const values={'buck2.remote_cache_enabled':'true','buck2.allow_cache_uploads':posture,...(posture==='true'?{'buck2.default_allow_cache_upload':'true','buck2_re_client.http_headers':'authorization: Basic $BUCK2_CACHE_WRITE_BASIC_AUTH'}:{})};
 const auditArgs=posture==='true'?['@'+root+'/'+isolation+'.outer']:['audit','config','--json'];
 if(posture==='true') {
@@ -201,11 +201,26 @@ try {
     expect(decisions[1].admissionFallbacks.reapi).toBe(1)
     expect(decisions[2].admissionFallbacks.reapi).toBe(0)
     const state = join(separate, 'buck-out', '.cache-daemon-posture')
+    expect(readdirSync(state).filter((file) => file.startsWith('reapi-job-'))).toHaveLength(2)
     for (const file of readdirSync(state).filter((file) => file.startsWith('reapi-job-')))
       expect(statSync(join(state, file)).mode & 0o777).toBe(0o600)
     const newJob = launch(separate, 'reader', 'online', false, '2112-job-B')
     expect(await newJob.exited, await new Response(newJob.stderr).text()).toBe(0)
     expect(requests).toBe(4)
+    // A sequential matrix child on this same runner/root must probe independently,
+    // although run, attempt and GITHUB_JOB are identical to both prior children.
+    const sequentialChild = launch(separate, 'reader', 'online', false, '2112-job-C')
+    expect(await sequentialChild.exited, await new Response(sequentialChild.stderr).text()).toBe(0)
+    expect(requests).toBe(5)
+    expect(readdirSync(state).filter((file) => file.startsWith('reapi-job-'))).toHaveLength(3)
+    const unconfigured = launch(separate, 'reader', 'online', false, 'missing')
+    expect(await unconfigured.exited, await new Response(unconfigured.stderr).text()).toBe(0)
+    expect(requests).toBe(5) // Missing identity preserves the short-lived probe cache.
+    const lastAdmission = JSON.parse(
+      readFileSync(join(separate, 'admission.admission.jsonl'), 'utf8').trim().split('\n').at(-1)!,
+    )
+    expect(lastAdmission.reapiDecision).toBe('unpinned-missing-job-instance')
+    expect(readdirSync(state).filter((file) => file.startsWith('reapi-job-'))).toHaveLength(3)
   } finally {
     for (const session of sessions) session.destroy()
     if (grpc.listening === true) grpc.close()

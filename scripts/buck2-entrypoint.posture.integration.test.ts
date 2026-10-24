@@ -137,6 +137,7 @@ describe('daemon RE posture', () => {
           GITHUB_RUN_ID: 'posture-fixture-run',
           GITHUB_RUN_ATTEMPT: '1',
           GITHUB_JOB: 'posture-fixture',
+          BUCK2_CI_JOB_INSTANCE: 'posture-fixture-instance',
           GITHUB_STEP_SUMMARY: join(root, 'summary'),
           BUCK2_CACHE_WRITE_BASIC_AUTH: secret,
           BUCK2_NO_REMOTE_CACHE: '',

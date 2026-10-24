@@ -75,7 +75,7 @@ export type CacheAdmissionInvocation = {
   admissionFallbacks: { reapi: number; archiveOrigin: number }
   admissionRetrySuccesses: { reapi: number; archiveOrigin: number }
   reapiFailure?: ReapiAdmissionFailure
-  reapiDecision?: 'first-probe-for-ci-job' | 'pinned-from-first-probe'
+  reapiDecision?: 'first-probe-for-ci-job' | 'pinned-from-first-probe' | 'unpinned-missing-job-instance'
 }
 // Historical command diagnostics remain readable; native downloads emit none.
 const archiveOriginFallbackReasons = [
@@ -196,7 +196,7 @@ export const decodeCacheAdmissionInvocation = (value: unknown): CacheAdmissionIn
   if (failure !== undefined && admissionFallbacks.reapi !== 1)
     throw new Error('REAPI failure requires an admission fallback')
   const decision = field({ value, key: 'reapiDecision' })
-  if (decision !== undefined && decision !== 'first-probe-for-ci-job' && decision !== 'pinned-from-first-probe')
+  if (decision !== undefined && decision !== 'first-probe-for-ci-job' && decision !== 'pinned-from-first-probe' && decision !== 'unpinned-missing-job-instance')
     throw new Error('Invalid REAPI job decision source')
   return {
     invocationId, admissionFallbacks, admissionRetrySuccesses,

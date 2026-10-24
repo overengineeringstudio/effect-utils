@@ -60,7 +60,11 @@ type NixRealisationTiming = { readonly p95: number; readonly max: number }
 export const withNixRealisationTimeouts = (
   jobs: GitHubWorkflowArgs['jobs'],
   timingsSeconds: Readonly<
-    Record<string, NixRealisationTiming | { readonly Linux: NixRealisationTiming; readonly macOS: NixRealisationTiming }>
+    Record<
+      string,
+      | NixRealisationTiming
+      | { readonly Linux: NixRealisationTiming; readonly macOS: NixRealisationTiming }
+    >
   >,
 ): GitHubWorkflowArgs['jobs'] =>
   Object.fromEntries(
@@ -459,6 +463,15 @@ export const withCiAdmissionCleanup = (steps: CiJobSteps): CiJobSteps => {
   })
 }
 
+export const buck2CiJobInstanceStep = {
+  id: 'buck2-ci-job-instance',
+  name: 'Initialize Buck2 CI job instance',
+  shell: 'bash',
+  // A fresh nonce, not the matrix parent ID or runner name: sequential
+  // matrix children may reuse the same runner and checkout directory.
+  run: `printf 'BUCK2_CI_JOB_INSTANCE=%s\\n' "$(od -An -N32 -tx1 /dev/urandom | tr -d ' \\n')" >> "$GITHUB_ENV"`,
+} as const
+
 const withStandardCIEnv = ({
   jobs,
   trustTier,
@@ -477,6 +490,7 @@ const withStandardCIEnv = ({
         },
         steps: withCiAdmissionCleanup([
           linuxNixSandboxFallbackStep,
+          buck2CiJobInstanceStep,
           ...job.steps.filter((step) => step.id !== linuxNixSandboxFallbackStep.id),
         ]),
       },
