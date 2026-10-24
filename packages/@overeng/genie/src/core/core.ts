@@ -21,6 +21,7 @@ import {
   generateFile,
   type LoadedGenieFile,
   isTdzError,
+  makeOxfmtFormatter,
 } from './generation.ts'
 import { recordGeneratorSourceGraph, withInputManifest } from './input-manifest.ts'
 import * as Observability from './observability.ts'
@@ -494,15 +495,20 @@ export const checkAll = ({
       })
     })
 
+    const formatter = yield* makeOxfmtFormatter({ configPath: oxfmtConfigPath })
+
     const checkResult = yield* Effect.forEach(
       genieFiles,
       (genieFilePath) =>
         Effect.gen(function* () {
           yield* emit({ _tag: 'FileStarted', path: genieFilePath })
 
-          const result = yield* checkFileDetailed({ genieFilePath, cwd, oxfmtConfigPath }).pipe(
-            Effect.result,
-          )
+          const result = yield* checkFileDetailed({
+            genieFilePath,
+            cwd,
+            oxfmtConfigPath,
+            formatter,
+          }).pipe(Effect.result)
 
           if (result._tag === 'Success') {
             yield* completeFile({

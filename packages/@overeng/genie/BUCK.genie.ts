@@ -46,6 +46,7 @@ export const buck2TypeScriptAdmission = {
       tools: {
         BUN_BIN: '//buck2/toolchains:tool_bun',
         NODE_BIN: '//buck2/toolchains:tool_node',
+        OXFMT_BIN: '//buck2/toolchains:tool_oxfmt',
       },
       vitestRuntime: 'node',
       excludes: [

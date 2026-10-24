@@ -689,6 +689,57 @@ describe('normalized store projection', () => {
     }
   })
 
+  it('keeps shared cyclic closures platform-specific and root bins importer-specific', async () => {
+    const project = async (gated: boolean) => {
+      const metadata = translatePnpmLock({
+        lockfileText: requiredNativeLock({ cyclic: true, optional: true, gated }).replace(
+          '      stable:',
+          '      grandparent:',
+        ),
+        workspaceText,
+      })
+      const sidecar = await generatePnpmSha256Sidecar({
+        metadata,
+        fetchArchive: async () => nativeEdgeArchive,
+      })
+      return makePnpmStoreProjection({ metadata, sidecar })
+    }
+    const gated = await project(true)
+    const ungated = await project(false)
+    const gatedAgain = await project(true)
+    expect(gatedAgain).toEqual(gated)
+    expect(renderPnpmStoreBuck(gatedAgain)).toBe(renderPnpmStoreBuck(gated))
+
+    for (const [projection, restricted] of [
+      [gated, true],
+      [ungated, false],
+    ] as const) {
+      const app = projection.views.find((view) => view.importer === 'packages/app')!
+      const shared = projection.views.find((view) => view.importer === 'packages/unrelated')!
+      expect(app.platforms).toEqual(pnpmPlatforms)
+      expect(shared.platforms).toEqual(pnpmPlatforms)
+      for (const platform of pnpmPlatforms) {
+        const nativeAvailable = restricted === false || platform.startsWith('linux_')
+        const appVariant = app.variants.find((variant) => variant.platforms.includes(platform))!
+        const sharedVariant = shared.variants.find((variant) =>
+          variant.platforms.includes(platform),
+        )!
+        const closure = [
+          'grandparent@1.0.0',
+          ...(nativeAvailable ? ['native@1.0.0'] : []),
+          'parent@1.0.0',
+        ]
+        expect(appVariant.closure).toEqual(closure)
+        expect(sharedVariant.closure).toEqual(closure)
+        expect(appVariant.bins).toEqual({
+          tool: `${nativeAvailable ? 'native' : 'grandparent'}@1.0.0\tbin/tool.js`,
+        })
+        // A transitive bin never competes with the shared importer's direct bin.
+        expect(sharedVariant.bins).toEqual({ tool: 'grandparent@1.0.0\tbin/tool.js' })
+      }
+    }
+  })
+
   it('projects a file snapshot dependency on a workspace importer as a transitive Buck edge', async () => {
     const fixtureLock = readFileSync(
       new URL('./fixtures/pnpm-snapshot-link/pnpm-lock.yaml', import.meta.url),
