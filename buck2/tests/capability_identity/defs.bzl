@@ -17,6 +17,7 @@ def _probe_impl(ctx):
 
 
 probe = cache_guarded_rule(
+    cache_eligible = lambda ctx: True,
     impl = _probe_impl,
     attrs = dict(hermetic_attrs(), **{
         "dependency": attrs.option(attrs.exec_dep(providers = [BuckSupportToolInfo]), default = None),

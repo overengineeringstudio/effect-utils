@@ -34,7 +34,15 @@ trap cleanup EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
 cp -R "$source_root/buck2" "$fixture/buck2"
-cp "$source_root/.buckconfig" "$fixture/.buckconfig"
+# Watcher selection is daemon-startup configuration, not a build-time -c override.
+# This tiny disposable tree needs no host Watchman service or startup handshake.
+while IFS= read -r line; do
+  if [ "$line" = '  file_watcher = watchman' ]; then
+    printf '%s\n' '  file_watcher = notify'
+  else
+    printf '%s\n' "$line"
+  fi
+done <"$source_root/.buckconfig" >"$fixture/.buckconfig"
 # Reuse the selected reader/writer admission, including trusted RE configuration.
 if [ -f "$source_root/.buckconfig.local" ]; then cp "$source_root/.buckconfig.local" "$fixture/.buckconfig.local"; fi
 touch "$fixture/.buckroot"
