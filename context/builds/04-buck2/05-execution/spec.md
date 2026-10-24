@@ -536,3 +536,163 @@ are not promoted merely because they use the same runner.
   undeclared reads. Darwin TS admission remains unsupported under the named
   `darwin-unsandboxed` exclusion. Unlisted and host-dependent actions remain
   default-deny.
+
+### BUILD.BUCK.EXEC-DQ03 Rust build-script containment
+
+**Open; manager GO required before implementation.** This question refines
+BUILD.BUCK.EXEC-R06–R10: can Cargo build-script execution be admitted without
+ambient host inputs or root-dependent keys? This proposal grants no admission,
+changes no rules, and does not widen the default-off Rust adapter. Build scripts
+remain denied independently of any rustc/dependency admission.
+
+The proposed cohort is **Linux x86_64 native execution and native target only**.
+macOS/Darwin, other architectures, and cross-compilation (including wasm32)
+are out of scope. A Linux host executing a wasm32-configured build script does
+not make that action a member of the native cohort.
+
+```text
+declared crate/manifest/env + attested tools + containment policy
+    -> contained build script
+    -> declared OUT_DIR tree + validated Cargo directive artifact
+    -> declared rustc cfg/env and native link inputs
+private scratch -> discarded; undeclared access -> failure, never admission
+```
+
+#### Options and recommendation
+
+| Option                                                           | Benefit                                                                           | Cost / decision                                                                                                   |
+| ---------------------------------------------------------------- | --------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| Keep all build scripts denied                                    | No new trust boundary or protocol translation                                     | Safe baseline; leaves their actions outside shared-cache admission                                                |
+| Admit reviewed scripts through one strict Linux boundary         | Preserves crate-authored generation and compiler probes; one enforceable contract | **Recommended**, per configured crate allowlist only after containment, directive translation, and two-root proof |
+| Replace each script with checked-in/generated Buck configuration | Removes execution for simple cfg selection                                        | Per-crate maintenance and parity burden; consider individually, not a generic silent replacement                  |
+
+Environment scrubbing alone, output fingerprinting alone, or trusting
+`rerun-if-*` as an access policy are not viable admission options. The manager
+must approve the recommended boundary, initial crate/configuration allowlist,
+and proof criteria before implementation starts. Resolving this DQ requires
+that GO and evidence satisfying the criteria below; merging this draft is not GO.
+
+#### Proposed access boundary
+
+| Resource    | Allowed access and declaration                                                                                                                                                                                                                                                                                                         |
+| ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Reads       | Read-only crate sources, `Cargo.toml`/declared manifest tree, explicitly declared dependency artifacts, declared environment values (including explicit absence), and the exact attested toolchain/sysroot closure. No workspace ancestor, home, host config, whole store, or implicit system include/library directories              |
+| Writes      | Declared `OUT_DIR` only for published files; action-private scratch for disposable probe intermediates. Crate sources and manifests stay read-only; scratch is not a downstream output                                                                                                                                                 |
+| Execution   | Build-script executable and explicitly attested rustc, cc, assembler, archiver, linker and necessary launcher tools only. No ambient PATH, arbitrary executable from a source/output/scratch directory, shell discovery, or ambient wrapper. An action-owned PATH, if a helper requires one, contains only the explicit tool allowlist |
+| Network     | No network, including local host services; downloads belong to separate checksum-pinned acquisition actions                                                                                                                                                                                                                            |
+| Enforcement | Mandatory Linux containment for the script and every descendant; no fallback. Exact read mounts alone do not establish exec restrictions: the mechanism must enforce the executable allowlist and detect prohibited attempts even when the script catches an error                                                                     |
+
+Attesting a closure permits reading required runtime libraries, not executing
+every utility in that closure. Failed undeclared reads, execs or network attempts
+invalidate the action even if a probe suppresses the error and exits zero.
+Absence tests are inputs too: a permitted missing file or environment variable
+must have an explicit declared absence; an arbitrary failed lookup is not
+permission to probe host state. Private `/tmp`, minimal `/dev` and namespaced
+`/proc` follow the shared Linux boundary; wall clock, entropy and host identity
+cannot influence successful published bytes.
+
+#### Cargo-to-Buck mapping
+
+| Cargo surface                                                                                 | Proposed Buck contract                                                                                                                                                                                                                                                                                                                         |
+| --------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `OUT_DIR`                                                                                     | One declared output directory per configured invocation, presented at a root-independent action-local path. Generated source, headers and libraries are tree members; downstream consumers depend on that artifact, not a discovered host path                                                                                                 |
+| `CARGO_MANIFEST_DIR` and `CARGO_*`                                                            | A stable read-only manifest-tree path; package metadata, selected features, target cfg, profile and version values derived from declared configuration/manifest/toolchain. Include `HOST`, `TARGET`, `RUSTC`, flags and any admitted non-Cargo env in the keyed environment manifest. No inherited env; unset and empty remain distinguishable |
+| `cargo:rustc-cfg`, `cargo:rustc-check-cfg`                                                    | Parse into a declared, versioned directive artifact consumed as explicit downstream compiler arguments. Preserve semantic order; reject malformed or unsupported directives rather than dropping them                                                                                                                                          |
+| `cargo:rustc-env`                                                                             | Validated name/value records in the directive artifact; downstream rustc receives only those declared values. Reject executor-root paths; path-bearing values must use the stable logical output/manifest namespace                                                                                                                            |
+| `cargo:rustc-link-lib`, `cargo:rustc-link-search`, `cargo:rustc-link-arg` and scoped variants | Typed, ordered link records, with search roots resolving only to `OUT_DIR` artifacts or declared attested native dependencies/sysroot. Flags cannot introduce undeclared response files, plugins, scripts, paths or tools. Downstream link actions declare the complete library/header/tool closure                                            |
+| `cargo:rerun-if-changed`                                                                      | Validate every path against the predeclared input tree, relative to the manifest root. Directories require their full declared contents; symlink escape and undeclared paths fail. These records never expand access or replace Buck input hashing; absent directives conservatively retain the complete declared crate tree                   |
+| `cargo:rerun-if-env-changed`                                                                  | Validate the name against the keyed environment manifest, including declared absence. No dynamic read of daemon/host env and no late key amendment                                                                                                                                                                                             |
+| `cargo::` syntax, metadata and diagnostics                                                    | Normalize the supported double-colon spelling through the same parser. Declared `links` metadata/`DEP_*` propagation, if needed, uses typed dependency artifacts. Warnings remain diagnostics; explicit error directives fail. Unknown semantic directives fail closed until specified                                                         |
+
+Build-script stdout is an input to a checked Cargo compatibility parser, not a
+new verdict protocol. The action succeeds only after the parser validates all
+records and required outputs. Its parser version, sandbox policy, executable
+allowlist, env manifest and output schema participate in the action key.
+
+Native `cc` builds require declared C/assembly sources, headers, compiler,
+archiver, linker, flags and sysroot, with intermediates restricted to scratch
+or `OUT_DIR`. `pkg-config` is denied unless its executable, `.pc` files,
+search paths and referenced headers/libraries are all attested inputs and its
+output resolves only within that closure. System libraries are explicit
+toolchain/sysroot dependencies, never discoveries from `/usr`, host linker
+config or an installed package database. No script in the observed inventory
+below invokes cc or pkg-config; that is not authority to admit other graph
+members that do.
+
+#### Read-only inventory evidence
+
+The [third-party BUCK declarations at inventory revision
+9af34ef56ffc13232e0083c15241811a4930d41c](https://github.com/overengineeringstudio/effect-utils/blob/9af34ef56ffc13232e0083c15241811a4930d41c/rust/third-party/BUCK)
+contain **27 distinct build-script targets**, routed through
+[`buildscript_run`](../../../../buck2/rust/defs.bzl).
+The complete `category=buildscript` action stream for
+[CI run 40062520038](https://github.com/overengineeringstudio/effect-utils/actions/runs/40062520038),
+quality lane, contains **24 configured occurrences of 13 crates**, not 24 unique
+crate scripts. The table inventories all 24 occurrences; E = Linux x86_64 exec
+configuration, N = Linux x86_64 native target, W = Linux-hosted wasm32 target.
+E/N/W identify distinct configured invocations, not three copies of every crate.
+W rows are evidence only, excluded from the proposed native cohort.
+
+Classification comes from read-only inspection of the pinned crate `build.rs`
+(or `build/build.rs` for rustversion), including helper calls; it is not a
+containment proof. “Probes env” includes target/feature/compiler queries, not
+just reads of arbitrary inherited environment.
+
+| Crate / pinned version      | Configurations (occurrences) | Classification                                                     | Source behavior relevant to containment                                                                                                        |
+| --------------------------- | ---------------------------- | ------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| borsh 1.8.1                 | N, W (2)                     | Probes env                                                         | `cfg_aliases` derives cfg from declared target/features                                                                                        |
+| libc 0.2.186                | N (1)                        | Probes env                                                         | Target/unstable-env selection, rustc version; non-Linux branches can execute host utilities and are not admitted                               |
+| napi 3.13.0                 | N (1)                        | Probes env                                                         | Target OS/env selects cfg; WASI branch is outside cohort                                                                                       |
+| num-traits 0.2.19           | N, W (2)                     | Probes env                                                         | `autocfg` compiles rustc feature probes and selects cfg                                                                                        |
+| proc-macro2 1.0.107         | E (1)                        | Probes env                                                         | rustc version and source probes, bootstrap/wrapper/flag env, temporary probe outputs                                                           |
+| ref-cast 1.0.27             | N, W (2)                     | Pure codegen + probes env                                          | Writes `private.rs` under OUT_DIR; rustc version selects cfg                                                                                   |
+| rustversion 1.0.23          | E (1)                        | Pure codegen + probes env                                          | Executes rustc version query, writes `version.expr`, reads HOST/wrapper env                                                                    |
+| serde 1.0.229               | N, W (2)                     | Pure codegen + probes env                                          | Writes versioned `private.rs`; rustc version selects cfg                                                                                       |
+| serde_core 1.0.229          | E, N, W (3)                  | Pure codegen + probes env                                          | Writes `private.rs`; rustc version and target select cfg                                                                                       |
+| serde_json 1.0.151          | E, N, W (3)                  | Probes env                                                         | Target architecture/pointer width selects arithmetic cfg                                                                                       |
+| wasm-bindgen 0.2.127        | W (1)                        | Probes env                                                         | Target features and compile-time rustversion selection; excluded cross target                                                                  |
+| wasm-bindgen-shared 0.2.127 | E, W (2)                     | Pure codegen + probes env/host VCS                                 | Hashes declared `src/lib.rs`; attempts ambient `git rev-parse HEAD` for WBG_VERSION. Fails proposed exec policy even if missing git is ignored |
+| zmij 1.0.23                 | E, N, W (3)                  | Probes env                                                         | Executes rustc version query; OPT_LEVEL selects cfg                                                                                            |
+| **Total**                   | **24**                       | **No cc or network invocation identified in these script sources** | Static inspection is not proof of absence of network/undeclared access in descendants                                                          |
+
+The other 14 declared scripts are ahash, icu_normalizer_data,
+icu_properties_data, memoffset, mime_guess, nix, objc2, parking_lot_core,
+ring, rustix, rustls, signal-hook, thiserror and unicode-general-category.
+They are not part of these 24 observed occurrences and receive no implied
+admission. In particular, ring and signal-hook contain `cc::Build` calls;
+the native-library contract cannot be omitted merely because these targets
+are absent from this lane's observed action stream.
+
+#### Fail-closed and proof gate
+
+Admission requires all of:
+
+1. Deny and report undeclared reads/exec/network, input mutation, output escape,
+   undeclared `rerun-if-*` paths/env, unsupported directives and malformed/missing
+   outputs. No uncontained retry or automatic broadening of inputs. The ambient
+   git attempt in wasm-bindgen-shared requires a separately reviewed semantic
+   change or explicit exclusion, not hiding the executable and accepting its
+   fallback.
+2. Prove deterministic output with independent uncached executions, repeated
+   at two fresh roots with different absolute checkout and scratch locations.
+   Compare actual Buck action identities, complete OUT_DIR tree digests,
+   directive artifacts and downstream compiler/link identities. Root relocation
+   must not change keys or bytes; nondeterministic output blocks admission.
+   Retain output order where link semantics require it, rather than sorting away
+   a real difference.
+3. Show relevant source/manifest/env/toolchain changes re-key the right actions;
+   irrelevant host env/files and root relocation do not. Include declared
+   absence/presence controls and adversarial read, exec, network, symlink and
+   rerun-directive cases, including suppressed-error probes.
+4. Prove semantic parity with existing generated source/cfg/env/link outputs
+   for each allowlisted crate/configuration, plus a representative real failure.
+   Successful codegen alone cannot admit its compiler, parser or link ancestors.
+5. Publish sanitized per-job action-identity evidence and two fresh-root reader
+   observations under the [reuse-client warm99 contract](../06-reuse-client/spec.md).
+   Count only identities successfully uploaded by a trusted writer before the
+   reader started; every eligible occurrence must hit. Report this cohort
+   separately from the lane-wide ≥99% target: adding admission does not establish
+   that target, and the 24 raw misses are not themselves its eligible denominator.
+
+Until the manager GO and these proofs exist, the current default-deny
+build-script policy remains authoritative.
