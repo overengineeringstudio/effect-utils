@@ -74,6 +74,13 @@ const SyncJsonOutput = Schema.Struct({
 
 const decodeSyncJsonOutput = Schema.decodeUnknownSync(Schema.fromJsonString(SyncJsonOutput))
 
+const diagnosticTail = (output: string) => {
+  const limit = 4000
+  return output.length > limit
+    ? `…[truncated ${output.length - limit} chars]\n${output.slice(-limit)}`
+    : output
+}
+
 /** Run an `mr` CLI command and capture output. */
 const runMrCommand = ({
   cwd,
@@ -3599,7 +3606,10 @@ describe('nested megarepo.lock sync scope', () => {
             MEGAREPO_ALLOW_CANONICAL_MUTATION: '1',
           },
         })
-        expect(result.exitCode).toBe(0)
+        expect(
+          result.exitCode,
+          `mr fetch --apply failed\nstdout:\n${diagnosticTail(result.stdout)}\nstderr:\n${diagnosticTail(result.stderr)}`,
+        ).toBe(0)
 
         const afterNestedLockOpt = yield* readLockFile(nestedLockPath)
         expect(Option.isSome(afterNestedLockOpt)).toBe(true)
