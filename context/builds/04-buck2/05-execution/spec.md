@@ -153,16 +153,43 @@ from shared cache by `local-materialization-policy` even when sandboxed.
 
 Darwin emit resolution is isolated independently of containment admission. The
 runner preserves writable package staging and links to declared dependency
-artifacts, then wraps only tsgo in `/usr/bin/sandbox-exec`. Its allow-default
+artifacts. The default `typescript.darwin_emit_isolation = sandbox-exec`
+wraps only tsgo in `/usr/bin/sandbox-exec`. Its allow-default
 profile denies reads of `node_modules` subtrees and literal `package.json`,
 `tsconfig.json`, and `jsconfig.json` files at every ancestor of canonical
 `buck-out`, from the physical worktree root through `/`. Imported declarations
 cannot discover published editor dependencies by climbing out of Buck artifacts.
 Missing sandbox-exec or profile rejection fails the action without an
-unsandboxed fallback. This narrow read-deny boundary does not grant containment
-or shared-cache admission. Private mode-0700 staging is removed after success,
-failure, and handled termination signals. Linux retains its existing Bubblewrap
-boundary, which hides undeclared worktree ancestors.
+unsandboxed fallback.
+
+The Nix from-source product wrapper explicitly declares
+`typescript.darwin_emit_isolation = nix-build-sandbox`, independent of Nix's
+`sandbox` setting: Darwin derivation execution can reject nested sandbox-exec
+even with Nix sandboxing disabled. The wrapper rejects `.editor-view` trees in
+its projected source, following symlinks rather than assuming every supplied
+store source is clean. Only the declared mode forwards `NIX_BUILD_TOP`,
+`NIX_BUILD_SOURCE` (the builder's immutable `src`), and `HOME` through the
+scrubbed Darwin action environment. The runner first requires the effective
+OS-resolved user to be a non-root `_nixbldN` account with primary group
+`nixbld`; caller-controlled environment cannot substitute for these native
+account/group lookups. Single-user Nix builds fail closed. It then requires
+an immutable store source projection, canonical source/artifact/staging roots
+under the build top, and a build-local or standard `/homeless-shelter` HOME.
+It rejects input links escaping the build/store roots or reaching editor
+views, and rejects ancestor editor lookup roots. Unknown
+modes and failed assertions fail the action before invoking tsgo. There is no
+environment-selected mode and no retry after sandbox failure.
+
+The mode is an action argument: changing it changes the emit action identity,
+and runner changes invalidate dependent action digests. Neither mode grants
+containment or shared-cache admission. Private mode-0700 staging is removed
+after success, failure, and handled termination signals. Linux retains its
+existing Bubblewrap boundary, which hides undeclared worktree ancestors.
+
+The macOS test lane exercises a real content-address from-source Nix product
+on merge-group runs. Its regression proof explicitly uses `sandbox = false`
+and prints the runner's configured default; the derivation-user guard remains
+mandatory regardless of that setting.
 
 Decision authority is the live 2026-10-11 axe record `jd5hbf`,
 `enforce-linux-block-darwin`: enforce Linux containment and block Darwin

@@ -41,6 +41,7 @@ type TypecheckOptions = {
 
 type EmitOptions = {
   readonly declarationEntrypoint: string | undefined
+  readonly darwinIsolation?: DarwinEmitIsolation
   readonly declarationSources: readonly string[]
   readonly outDir: string
   readonly output: string
@@ -118,11 +119,20 @@ export const requireFingerprintTool = (value: string): string =>
     ? value
     : fail(`fingerprint tool must be an immutable /nix/store executable: ${value}`)
 
+type DarwinEmitIsolation = 'sandbox-exec' | 'nix-build-sandbox'
+
+/** The environment never selects a mode; only the declared action argument does. */
+export const parseDarwinEmitIsolation = (value: string): DarwinEmitIsolation =>
+  value === 'sandbox-exec' || value === 'nix-build-sandbox'
+    ? value
+    : fail(`unknown Darwin emit isolation mode: ${value}`)
+
 const parseReadRoots = (options: {
   readonly args: readonly string[]
   readonly command: string
   readonly from: number
   readonly declarationSources?: string[]
+  readonly emitIsolation?: { value: DarwinEmitIsolation }
 }): { readonly readRoots: readonly string[]; readonly fingerprintTool: string } => {
   const roots: string[] = []
   let fingerprintTool: string | undefined
@@ -144,6 +154,8 @@ const parseReadRoots = (options: {
     } else if (flag === '--fingerprint-tool') {
       if (fingerprintTool !== undefined) fail(`duplicate --fingerprint-tool for ${options.command}`)
       fingerprintTool = requireFingerprintTool(value)
+    } else if (flag === '--darwin-isolation' && options.emitIsolation !== undefined) {
+      options.emitIsolation.value = parseDarwinEmitIsolation(value)
     } else fail(`unexpected ${options.command} argument: ${flag}`)
   }
   return {
@@ -172,16 +184,19 @@ export const parseTypecheckOptions = (args: readonly string[]): TypecheckOptions
 export const parseEmitOptions = (args: readonly string[]): EmitOptions => {
   requireMinimumArgumentCount({ args, command: 'emit', count: 6 })
   const declarationSources: string[] = []
+  const emitIsolation: { value: DarwinEmitIsolation } = { value: 'sandbox-exec' }
   const declared = parseReadRoots({
     args,
     command: 'emit',
     from: 6,
     declarationSources,
+    emitIsolation,
   })
   return {
     tsgo: requireTsgo(requireArgument({ args, index: 0, name: 'tsgo' })),
     packageTree: requireArgument({ args, index: 1, name: 'package tree' }),
     ...declared,
+    darwinIsolation: emitIsolation.value,
     project: requireNormalizedRelativePath({
       name: 'project',
       value: requireArgument({ args, index: 2, name: 'project' }),
@@ -583,7 +598,18 @@ export const linkStagedWorkspaceProjects = async (options: {
 export const darwinEmitCommand = async (options: {
   readonly argv: readonly string[]
   readonly buckOut: string
+  readonly isolation?: DarwinEmitIsolation | undefined
+  readonly readRoots?: readonly string[] | undefined
+  readonly stagingRoot?: string | undefined
 }): Promise<readonly string[]> => {
+  if (options.isolation === 'nix-build-sandbox') {
+    await assertNixEmitIsolation({
+      buckOut: options.buckOut,
+      readRoots: options.readRoots ?? [],
+      stagingRoot: options.stagingRoot ?? fail('Nix emit requires a staging root'),
+    })
+    return options.argv
+  }
   const rules = ['(version 1)', '(allow default)']
   let ancestor = dirname(await realpath(options.buckOut))
   for (;;) {
@@ -596,6 +622,135 @@ export const darwinEmitCommand = async (options: {
   }
   // No fallback: spawn failure or profile rejection must fail the action.
   return ['/usr/bin/sandbox-exec', '-p', rules.join('\n'), ...options.argv]
+}
+
+const isEditorViewPath = (path: string): boolean =>
+  path
+    .split(sep)
+    .some((component) => component === '.editor-view' || component === '.editor-view-content')
+
+/** Native id uses getpwuid/getgrgid; Bun's userInfo can return "unknown" for build users. */
+const darwinIdentityName = async (selector: '-un' | '-gn'): Promise<string> => {
+  const child = Bun.spawn(['/usr/bin/id', selector], {
+    env: {},
+    stdin: 'ignore',
+    stdout: 'pipe',
+    stderr: 'pipe',
+  })
+  const name = (await Bun.readableStreamToText(child.stdout)).trim()
+  if ((await child.exited) !== 0) return fail('cannot resolve the native Darwin build identity')
+  return name
+}
+
+/** Multi-user Darwin builder accounts are resolved by the OS, never environment variables. */
+export const assertDarwinNixBuildUser = async (): Promise<void> => {
+  const uid = process.geteuid?.()
+  if (
+    process.platform !== 'darwin' ||
+    uid === undefined ||
+    uid <= 0 ||
+    /^_nixbld[1-9]\d*$/u.test(await darwinIdentityName('-un')) === false
+  )
+    fail(
+      'nix-build-sandbox requires a Darwin multi-user Nix build user; single-user builds are unsupported',
+    )
+  // Fixed system binary, empty environment, no shell or caller-provided names.
+  if ((await darwinIdentityName('-gn')) !== 'nixbld')
+    fail('nix-build-sandbox requires membership in the nixbld primary group')
+}
+
+/**
+ * Nix owns the Darwin derivation boundary. Its clean-source preflight plus these
+ * runtime checks exclude editor roots without attempting a forbidden nest.
+ */
+export const assertNixEmitIsolation = async (options: {
+  readonly buckOut: string
+  readonly readRoots: readonly string[]
+  readonly stagingRoot: string
+}): Promise<void> => {
+  await assertDarwinNixBuildUser()
+  await assertNixEmitInputBoundary(options)
+}
+
+/** Filesystem seam; production Nix emit always checks the effective build user first. */
+export const assertNixEmitInputBoundary = async (options: {
+  readonly buckOut: string
+  readonly readRoots: readonly string[]
+  readonly stagingRoot: string
+  readonly environment?: NodeJS.ProcessEnv
+}): Promise<void> => {
+  const environment = options.environment ?? process.env
+  if (options.readRoots.length === 0) fail('Nix emit requires declared read roots')
+  const buildTop = environment.NIX_BUILD_TOP
+  if (buildTop === undefined || isAbsolute(buildTop) === false)
+    return fail('nix-build-sandbox requires an absolute NIX_BUILD_TOP')
+  const top = await realpath(buildTop)
+  const source = environment.NIX_BUILD_SOURCE
+  if (source === undefined || source.startsWith('/nix/store/') === false)
+    return fail('nix-build-sandbox requires a projected /nix/store source')
+  const sourceRoot = await realpath(source)
+  if (
+    sourceRoot.startsWith('/nix/store/') === false ||
+    (await lstat(sourceRoot)).isDirectory() === false
+  )
+    fail('nix-build-sandbox requires an immutable source directory')
+  const belowBuildTop = (path: string): boolean => path.startsWith(`${top}${sep}`)
+  const home = environment.HOME
+  if (
+    home === undefined ||
+    isAbsolute(home) === false ||
+    (home !== '/homeless-shelter' && belowBuildTop(await realpath(home)) === false)
+  )
+    fail('nix-build-sandbox requires a Nix build HOME')
+  const buckOut = await realpath(options.buckOut)
+  if (belowBuildTop(buckOut) === false)
+    fail('nix-build-sandbox requires buck-out inside NIX_BUILD_TOP')
+  if (belowBuildTop(dirname(buckOut)) === false)
+    fail('nix-build-sandbox requires a source root inside NIX_BUILD_TOP')
+  const stagingRoot = await realpath(options.stagingRoot)
+  if (belowBuildTop(stagingRoot) === false)
+    fail('nix-build-sandbox requires staging inside NIX_BUILD_TOP')
+  const visited = new Set<string>()
+  const visit = async (path: string): Promise<void> => {
+    if (isEditorViewPath(path) === true)
+      fail(`editor view is reachable from Nix emit inputs: ${path}`)
+    const physical = await realpath(path)
+    if (isEditorViewPath(physical) === true)
+      fail(`editor view is reachable from Nix emit inputs: ${physical}`)
+    if (belowBuildTop(physical) === false && physical.startsWith('/nix/store/') === false)
+      fail(`Nix emit input escapes the build and store roots: ${physical}`)
+    if (visited.has(physical) === true) return
+    visited.add(physical)
+    const metadata = await lstat(physical)
+    if (metadata.isDirectory() === true) {
+      await forEachSequential({
+        iterator: (await readdir(physical)).values(),
+        visit: async (child) => visit(join(physical, child)),
+      })
+    }
+  }
+  await forEachSequential({ iterator: options.readRoots.values(), visit })
+  await visit(stagingRoot)
+  // TypeScript can climb from realpathed declarations and scratch configs.
+  // Unlike the normal sandbox, reject rather than hide ancestor dependencies.
+  const checkAncestors = async (ancestor: string): Promise<void> => {
+    const names = ['node_modules', '.editor-view', '.editor-view-content']
+    if (ancestor !== top && belowBuildTop(ancestor) === false)
+      names.push('package.json', 'tsconfig.json', 'jsconfig.json')
+    await forEachSequential({
+      iterator: names.values(),
+      visit: async (name) => {
+        if ((await pathExists(join(ancestor, name))) === true)
+          fail(
+            `Nix emit ancestor contains editor lookup roots or undeclared configuration: ${join(ancestor, name)}`,
+          )
+      },
+    })
+    const parent = dirname(ancestor)
+    if (parent !== ancestor) await checkAncestors(parent)
+  }
+  await checkAncestors(dirname(buckOut))
+  await checkAncestors(await realpath(options.stagingRoot))
 }
 
 /** Copies only the explicitly action-keyed declaration sources into an emitted dist. */
@@ -680,11 +835,20 @@ const runTsgo = async (options: {
   readonly argv: readonly string[]
   readonly cwd: string
   readonly darwinBuckOut?: string | undefined
+  readonly darwinIsolation?: DarwinEmitIsolation | undefined
+  readonly readRoots?: readonly string[] | undefined
+  readonly stagingRoot?: string | undefined
 }): Promise<number> => {
   if (forwardedSignal !== undefined) return 128 + signalNumbers[forwardedSignal]
   const argv =
     options.darwinBuckOut !== undefined
-      ? await darwinEmitCommand({ argv: options.argv, buckOut: options.darwinBuckOut })
+      ? await darwinEmitCommand({
+          argv: options.argv,
+          buckOut: options.darwinBuckOut,
+          isolation: options.darwinIsolation,
+          readRoots: options.readRoots,
+          stagingRoot: options.stagingRoot,
+        })
       : options.argv
   const child = Bun.spawn([...argv], {
     cwd: options.cwd,
@@ -762,9 +926,14 @@ export const runEmit = async (options: EmitOptions): Promise<number> => {
     roots: readRoots,
     fingerprintTool: options.fingerprintTool,
   })
-  // Buck overrides TMPDIR with worktree-local action scratch on Darwin. Keep
-  // resolution outside that hierarchy even when the inherited TMPDIR is local.
-  const temporaryDirectory = process.platform === 'darwin' ? '/private/tmp' : tmpdir()
+  // Normal Darwin staging avoids the editor hierarchy. Nix mode keeps scratch
+  // inside the declared build root and validates it before compiler execution.
+  const temporaryDirectory =
+    process.platform === 'darwin'
+      ? options.darwinIsolation === 'nix-build-sandbox'
+        ? (process.env.NIX_BUILD_TOP ?? fail('nix-build-sandbox requires NIX_BUILD_TOP'))
+        : '/private/tmp'
+      : tmpdir()
   const stagingRoot = await mkdtemp(join(temporaryDirectory, 'tsgo-emit-'))
   let status = 1
   let primaryError: unknown
@@ -809,6 +978,9 @@ export const runEmit = async (options: EmitOptions): Promise<number> => {
         'false',
       ],
       darwinBuckOut: process.platform === 'darwin' ? emitBuckOut(packageTree) : undefined,
+      darwinIsolation: options.darwinIsolation,
+      readRoots,
+      stagingRoot,
       cwd: packageRoot,
     })
     const stagedAfter = await hashDeclaredInputRoots({

@@ -2003,6 +2003,14 @@ jobs:
           unset BUCK2_PUBLIC_CACHE_WRITE_AUTH
           cd "${GITHUB_WORKSPACE:-$PWD}" && bash genie/ci-scripts/compiled-products.sh
         timeout-minutes: ${{ runner.os == 'macOS' && 4 || 10 }}
+      - name: Build Darwin Nix TypeScript product
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          cd "${GITHUB_WORKSPACE:-$PWD}" && set -euo pipefail
+          echo "Runner default Nix sandbox setting:"
+          nix config show sandbox
+          nix build .#buck-product-overeng-content-address-from-source --no-link --print-build-logs --option sandbox false
       - name: Save signed and content-addressed store paths to local Nix substituter
         if: ${{ (!cancelled()) && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
         continue-on-error: true

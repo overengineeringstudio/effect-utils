@@ -217,7 +217,21 @@ let
       cat >> .buckconfig.local <<'BUCKLOCAL'
       [buck2]
         file_watcher = ${watcherPolicies.immutable-input}
+      ${lib.optionalString pkgs.stdenv.hostPlatform.isDarwin ''
+        [typescript]
+          darwin_emit_isolation = nix-build-sandbox
+      ''}
       BUCKLOCAL
+      ${lib.optionalString pkgs.stdenv.hostPlatform.isDarwin ''
+        # Store projections are not assumed to be editor-free: callers may
+        # supply repositorySource. Check links as well as directory entries
+        # before Buck materializes any action inputs.
+        editor_view="$(find -L . \( -name .editor-view -o -name .editor-view-content \) -print -quit)"
+        if [ -n "$editor_view" ]; then
+          echo 'buck2-products: editor views are forbidden in Nix product sources' >&2
+          exit 1
+        fi
+      ''}
       ${lib.optionalString (cargoWorkspaceRoot != null) ''
         # Consumer roots carry the already-patched local prelude from
         # buck2-rules. Only the producer's bundled external prelude needs
