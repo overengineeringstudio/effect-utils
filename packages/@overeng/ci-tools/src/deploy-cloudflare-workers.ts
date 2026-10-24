@@ -115,7 +115,7 @@ const lookupCloudflareWorker = Effect.fn('ci-tools.deploy.cloudflare-workers.loo
         response.status === 429 || response.status >= 500,
         response.status,
       )
-    yield* Schema.decodeUnknownEffect(
+    yield* Schema.decodeEffect(
       Schema.fromJsonString(
         Schema.Struct({
           success: Schema.Literal(true),
@@ -138,7 +138,7 @@ const lookupCloudflareWorker = Effect.fn('ci-tools.deploy.cloudflare-workers.loo
 export const runCloudflareWorkersDeploy = Effect.fn('ci-tools.deploy.cloudflare-workers')(
   function* (options: CloudflareWorkersDeployCommandOptions) {
     const startedAtUtc = new Date().toISOString()
-    const input = yield* Schema.decodeUnknownEffect(DeployInputV1)({
+    const input = yield* Schema.decodeEffect(DeployInputV1)({
       _tag: 'DeployInput',
       schemaVersion: 1,
       provider: 'cloudflare-workers',
@@ -285,7 +285,7 @@ export const runCloudflareWorkersDeploy = Effect.fn('ci-tools.deploy.cloudflare-
       const text = yield* fs.readFileString(outputFile).pipe(Effect.mapError(invalid))
       const records = yield* Effect.forEach(
         text.split('\n').filter((line) => line.trim() !== ''),
-        (line) => Schema.decodeUnknownEffect(JsonLine)(line).pipe(Effect.mapError(invalid)),
+        (line) => Schema.decodeEffect(JsonLine)(line).pipe(Effect.mapError(invalid)),
       )
       const matching = records.filter(
         (record) =>

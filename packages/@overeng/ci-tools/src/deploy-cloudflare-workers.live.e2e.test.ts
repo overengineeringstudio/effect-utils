@@ -1,6 +1,6 @@
 import { NodeServices } from '@effect/platform-node'
 import { describe, it } from '@effect/vitest'
-import { Effect, FileSystem, Schema } from 'effect'
+import { Effect, FileSystem, Layer, Schema } from 'effect'
 import * as FetchHttpClient from 'effect/http/FetchHttpClient'
 import { expect } from 'vitest'
 
@@ -32,14 +32,15 @@ describe('Cloudflare Workers live deployment', () => {
         const runId = crypto.randomUUID()
         const marker = `ci-tools-live-workers-e2e:${runId}`
         const previewAlias = `${reservedAliasPrefix}-${runId.slice(0, 8)}`
-        const json = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown))
+        const json = Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown))
+        const markerJson = yield* json(marker)
         yield* fs.writeFileString(
           `${cwd}/worker.js`,
-          `export default { fetch() { return new Response(${json(marker)}, { headers: { 'content-type': 'text/plain' } }) } }`,
+          `export default { fetch() { return new Response(${markerJson}, { headers: { 'content-type': 'text/plain' } }) } }`,
         )
         yield* fs.writeFileString(
           `${cwd}/wrangler.json`,
-          json({
+          yield* json({
             name: workerName,
             main: 'worker.js',
             compatibility_date: '2026-01-01',
@@ -78,8 +79,7 @@ describe('Cloudflare Workers live deployment', () => {
         expect(report.includes(`"cleanup":"${result.cleanup?.status}"`)).toBe(true)
       }).pipe(
         Effect.scoped,
-        Effect.provide(NodeServices.layer),
-        Effect.provide(FetchHttpClient.layer),
+        Effect.provide(Layer.mergeAll(NodeServices.layer, FetchHttpClient.layer)),
       ),
     { timeout: 180_000 },
   )

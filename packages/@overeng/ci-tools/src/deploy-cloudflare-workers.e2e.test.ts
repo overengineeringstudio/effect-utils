@@ -21,6 +21,8 @@ const token = 'workers-token-redaction-sentinel'
 const account = 'fixture-account'
 const shellQuote = (value: string) => `'${value.replaceAll("'", "'\\''")}'`
 const json = <TSchema extends Schema.Top>(schema: TSchema) => Schema.fromJsonString(schema)
+const encodeJson = Schema.encodeSync(json(Schema.Unknown))
+const encodeArgs = Schema.encodeSync(json(Schema.Array(Schema.String)))
 const reportSchema = json(
   Schema.Struct({ status: Schema.String, data: Schema.Record(Schema.String, Schema.Unknown) }),
 )
@@ -96,7 +98,7 @@ const fixture = Effect.fn('test.workers.task-fixture')(function* (
           : 404
     response.writeHead(status, { 'content-type': 'application/json', connection: 'close' })
     response.end(
-      JSON.stringify(
+      encodeJson(
         status === 200
           ? { success: true, result: {} }
           : { success: false, errors: [{ code: status, message: token }] },
@@ -136,10 +138,10 @@ const fixture = Effect.fn('test.workers.task-fixture')(function* (
   yield* writeExecutable(
     cli,
     `#!/usr/bin/env bun
-await Bun.write(${JSON.stringify(cliLog)}, JSON.stringify(process.argv.slice(2)))
+await Bun.write(${encodeJson(cliLog)}, JSON.stringify(process.argv.slice(2)))
 import { appendFileSync } from 'node:fs'
-appendFileSync(${JSON.stringify(log)}, 'cli\\n')
-const child = Bun.spawn(['bun', ${JSON.stringify(cliPath)}, ...process.argv.slice(2), ...(process.env.TEST_EXTRA_ARGS ? JSON.parse(process.env.TEST_EXTRA_ARGS) : [])], {stdin:'inherit', stdout:'inherit', stderr:'inherit', env:process.env})
+appendFileSync(${encodeJson(log)}, 'cli\\n')
+const child = Bun.spawn(['bun', ${encodeJson(cliPath)}, ...process.argv.slice(2), ...(process.env.TEST_EXTRA_ARGS ? JSON.parse(process.env.TEST_EXTRA_ARGS) : [])], {stdin:'inherit', stdout:'inherit', stderr:'inherit', env:process.env})
 process.exit(await child.exited)
 `,
   )
@@ -147,9 +149,9 @@ process.exit(await child.exited)
     wrangler,
     `#!/usr/bin/env bun
 import { appendFileSync } from 'node:fs'
-appendFileSync(${JSON.stringify(log)}, 'wrangler\\n')
+appendFileSync(${encodeJson(log)}, 'wrangler\\n')
 const args = process.argv.slice(2)
-await Bun.write(${JSON.stringify(wranglerLog)}, JSON.stringify({args, cwd:process.cwd(), token:process.env.CLOUDFLARE_API_TOKEN, account:process.env.CLOUDFLARE_ACCOUNT_ID, consumer:process.env.CONSUMER_BUILD_VALUE, override:process.env.DEPLOY_OVERRIDE, built:await Bun.file('built.txt').text()}))
+await Bun.write(${encodeJson(wranglerLog)}, JSON.stringify({args, cwd:process.cwd(), token:process.env.CLOUDFLARE_API_TOKEN, account:process.env.CLOUDFLARE_ACCOUNT_ID, consumer:process.env.CONSUMER_BUILD_VALUE, override:process.env.DEPLOY_OVERRIDE, built:await Bun.file('built.txt').text()}))
 if (process.env.FAKE_WRANGLER_MODE === 'failure') {
   console.log(process.env.CLOUDFLARE_API_TOKEN)
   console.error(process.env.CLOUDFLARE_API_TOKEN)
@@ -173,7 +175,7 @@ await Bun.write(process.env.WRANGLER_OUTPUT_FILE_PATH, output + '\\n')
   )
   const build = `set -euo pipefail\nprintf 'build\\n' >> ${shellQuote(log)}\nif [ "\${FAIL_BUILD:-}" = yes ]; then exit 23; fi\nprintf '%s' "$CONSUMER_BUILD_VALUE" > ${shellQuote(join(app, 'built.txt'))}`
   const nixString = (value: string) =>
-    `(builtins.fromJSON ${JSON.stringify(JSON.stringify(value)).replaceAll('${', '\\${')})`
+    `(builtins.fromJSON ${encodeJson(encodeJson(value)).replaceAll('${', '\\${')})`
   const expression = `let
       flake = builtins.getFlake ${nixString(process.env.NIX_FLAKE_REF ?? `git+file://${repoRoot}?shallow=1`)};
       pkgs = import flake.inputs.nixpkgs { system = builtins.currentSystem; };
@@ -206,7 +208,7 @@ await Bun.write(process.env.WRANGLER_OUTPUT_FILE_PATH, output + '\\n')
     cwd: root,
   })
   expect(evaluated.status, evaluated.stderr).toBe(0)
-  const tasks = yield* Schema.decodeUnknownEffect(tasksSchema)(evaluated.stdout)
+  const tasks = yield* Schema.decodeEffect(tasksSchema)(evaluated.stdout)
   expect(tasks['cloudflare-workers:deploy:demo']?.after).toEqual(['consumer:build'])
   const scripts: string[] = []
   const orderedTasks: string[] = []
@@ -252,7 +254,7 @@ await Bun.write(process.env.WRANGLER_OUTPUT_FILE_PATH, output + '\\n')
         CONSUMER_BUILD_VALUE: 'consumer-secret-passthrough',
         DEPLOY_OVERRIDE: 'inherited',
         FAKE_WRANGLER_MODE: opts.wranglerMode ?? 'ok',
-        DEVENV_TASK_INPUT: JSON.stringify(input),
+        DEVENV_TASK_INPUT: encodeJson(input),
         DEVENV_TASK_OUTPUT_FILE: taskOutput,
         WORKFLOW_REPORT_OUTPUT_FILE: report,
         GITHUB_OUTPUT: githubOutput,
@@ -267,9 +269,7 @@ await Bun.write(process.env.WRANGLER_OUTPUT_FILE_PATH, output + '\\n')
     const text = yield* fs.readFileString(report)
     const lines = text.split('\n').filter((line) => line.startsWith('WORKFLOW_REPORT_V1: '))
     expect(lines).toHaveLength(1)
-    return yield* Schema.decodeUnknownEffect(reportSchema)(
-      lines[0]!.slice('WORKFLOW_REPORT_V1: '.length),
-    )
+    return yield* Schema.decodeEffect(reportSchema)(lines[0]!.slice('WORKFLOW_REPORT_V1: '.length))
   })
   return {
     fs,
@@ -309,7 +309,7 @@ describe('Cloudflare Workers Nix task launcher + real CLI', () => {
               auth: `Bearer ${token}`,
             },
           ])
-          const invocation = yield* Schema.decodeUnknownEffect(
+          const invocation = yield* Schema.decodeEffect(
             json(
               Schema.Struct({
                 args: Schema.Array(Schema.String),
@@ -442,7 +442,7 @@ describe('Cloudflare Workers Nix task launcher + real CLI', () => {
         const result = yield* f.run(
           { type: 'pr', pr: 7 },
           {
-            TEST_EXTRA_ARGS: JSON.stringify([
+            TEST_EXTRA_ARGS: encodeArgs([
               '--preview-alias',
               'pr-7',
               '--e2e-allow-shared-project',
@@ -478,7 +478,7 @@ describe('Cloudflare Workers Nix task launcher + real CLI', () => {
           const result = yield* f.run(
             { type: 'pr', pr: 7 },
             {
-              TEST_EXTRA_ARGS: JSON.stringify([
+              TEST_EXTRA_ARGS: encodeArgs([
                 '--preview-alias',
                 'ci-tools-e2e-7',
                 '--e2e-allow-shared-project',
@@ -582,13 +582,13 @@ describe('Cloudflare Workers shared-project marker verification and cleanup', ()
                 return HttpClientResponse.fromWeb(
                   request,
                   new Response(
-                    JSON.stringify(cleanupStatus === 200 ? { success: true } : { success: false }),
+                    encodeJson(cleanupStatus === 200 ? { success: true } : { success: false }),
                     { status: cleanupStatus, headers: { 'content-type': 'application/json' } },
                   ),
                 )
               }),
             )
-            const deploy = yield* Schema.decodeUnknownEffect(DeployResultV1)({
+            const deploy = yield* Schema.decodeEffect(DeployResultV1)({
               _tag: 'DeployResult',
               schemaVersion: 1,
               provider: 'cloudflare-workers',

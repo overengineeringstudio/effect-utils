@@ -45,7 +45,7 @@ const cleanupVersion = Effect.fn('ci-tools.deploy.cloudflare-workers.cleanup')(f
     } satisfies CleanupResult
   }
   const body = yield* response.text
-  const decoded = Schema.decodeUnknownResult(CleanupEnvelope)(body)
+  const decoded = Schema.decodeResult(CleanupEnvelope)(body)
   return {
     _tag: 'CleanupResult',
     status: Result.isSuccess(decoded) === true ? 'succeeded' : 'failed',

@@ -38,7 +38,8 @@ let
       import (root + "/nix/provider-clis/wrangler") { inherit pkgs; }
     else
       wranglerPkg;
-  resolvedWranglerBin = if wranglerBin == null then "${defaultWranglerPkg}/bin/wrangler" else wranglerBin;
+  resolvedWranglerBin =
+    if wranglerBin == null then "${defaultWranglerPkg}/bin/wrangler" else wranglerBin;
 
   mkDeployTask =
     deployment:
