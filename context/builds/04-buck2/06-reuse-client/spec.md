@@ -842,7 +842,9 @@ three-line `started_at`, `recorded_root`, `fresh_root` start marker and its defa
 inherit the marker. Deliberate two-root proof commands explicitly register their
 own root scopes and sinks. `run` option parsing stops before executable payload
 arguments; payload flags cannot change capture ownership or the native build-ID
-output. Unknown option arities are not guessed.
+output. The extra event-log option is placed after the leaf command, including
+nested commands such as `audit providers`, but before any executable-payload
+sentinel. Unknown option arities are not guessed.
 
 The private native build-ID registry records expected commands before launch.
 The finalizer reconciles expected registrations, native `--write-build-id` UUID

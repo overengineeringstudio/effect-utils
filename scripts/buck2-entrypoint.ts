@@ -1353,12 +1353,13 @@ export const runNativeWithEvidence = async ({
     const ready = await collector.stdout.getReader().read()
     if (ready.done === true || new TextDecoder().decode(ready.value).trim() !== 'ready')
       throw new Error('Evidence collector did not open its sink')
-    const commandIndex = before.findIndex((arg) => configCommands[arg] === true)
+    // Common event-log options belong to the leaf command (e.g. audit providers),
+    // but never to run/BXL executable payload following the sentinel.
     const nativeArgs = [
-      ...args.slice(0, commandIndex + 1),
+      ...before,
       '--event-log',
       sink,
-      ...args.slice(commandIndex + 1),
+      ...(sentinel === -1 ? [] : args.slice(sentinel)),
     ]
     const child = Bun.spawn([native, ...nativeArgs], {
       stdin: 'inherit',

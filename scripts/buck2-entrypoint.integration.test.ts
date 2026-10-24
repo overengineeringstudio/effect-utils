@@ -254,55 +254,64 @@ describe('native build ID registry', () => {
     expect(() => createPrivateEvidenceSink(sink)).toThrow('Cannot create private evidence FIFO')
   })
 
-  it('collects a real zero-action sink with no Bun utility on PATH', async () => {
-    const root = fixture()
-    const evidence = join(root, 'evidence.json')
-    symlinkSync(new URL('../genie', import.meta.url).pathname, join(root, 'genie'))
-    const native = join(root, 'native')
-    const event = (phase: string) => ({
-      Event: {
-        trace_id: buildId,
-        span_id: 1,
-        timestamp: [Math.floor(Date.now() / 1000), 0],
-        data: { [phase]: { data: { Command: {} } } },
-      },
-    })
-    const events =
-      [{ trace_id: buildId }, event('SpanStart'), event('SpanEnd')]
-        .map((value) => JSON.stringify(value))
-        .join('\n') + '\n'
-    writeFileSync(
-      native,
-      `#!${process.execPath}\nconst args = process.argv.slice(2); await Bun.write(args[args.indexOf('--event-log') + 1], ${JSON.stringify(events)});\n`,
-      { mode: 0o700 },
-    )
-    const env = {
-      CI_BUCK2_CACHE_EVIDENCE_PATH: evidence,
-      CI_BUCK2_CACHE_EVIDENCE_START: join(root, 'evidence-start'),
-      BUCK_WRAPPER_UUID: buildId,
-    }
-    const args = nativeBuildIdArguments({ cwd: root, args: ['build', '//:empty'], env })
-    const previous = Object.fromEntries(
-      [...Object.keys(env), 'PATH', 'BUN_BIN'].map((key) => [key, process.env[key]]),
-    )
-    const exitCode = process.exitCode
-    try {
-      Object.assign(process.env, env)
-      process.env.PATH = join(root, 'no-host-utilities')
-      delete process.env.BUN_BIN
-      expect(await runNativeWithEvidence({ native, args, root })).toBe(true)
-      expect(process.exitCode).toBe(0)
-      const shard = JSON.parse(readFileSync(join(`${evidence}.shards`, `${buildId}.json`), 'utf8'))
-      expect(shard.complete).toBe(true)
-      expect(JSON.parse(shard.artifact.trim()).actionCount).toBe(0)
-    } finally {
-      process.exitCode = exitCode
-      for (const [key, value] of Object.entries(previous)) {
-        if (value === undefined) delete process.env[key]
-        else process.env[key] = value
+  it.each([
+    { requested: ['build', '//:empty'] },
+    { requested: ['audit', 'providers', '//:empty'] },
+    { requested: ['run', '//:empty', '--', '--payload'] },
+  ])(
+    'collects a real leaf-command sink with no Bun utility on PATH: $requested',
+    async ({ requested }) => {
+      const root = fixture()
+      const evidence = join(root, 'evidence.json')
+      symlinkSync(new URL('../genie', import.meta.url).pathname, join(root, 'genie'))
+      const native = join(root, 'native')
+      const event = (phase: string) => ({
+        Event: {
+          trace_id: buildId,
+          span_id: 1,
+          timestamp: [Math.floor(Date.now() / 1000), 0],
+          data: { [phase]: { data: { Command: {} } } },
+        },
+      })
+      const events =
+        [{ trace_id: buildId }, event('SpanStart'), event('SpanEnd')]
+          .map((value) => JSON.stringify(value))
+          .join('\n') + '\n'
+      writeFileSync(
+        native,
+        `#!${process.execPath}\nconst args = process.argv.slice(2); const sink = args.indexOf('--event-log'); if (args.includes('audit') && sink < args.indexOf('providers')) process.exit(17); if (args.includes('--') && sink > args.indexOf('--')) process.exit(18); await Bun.write(args[sink + 1], ${JSON.stringify(events)});\n`,
+        { mode: 0o700 },
+      )
+      const env = {
+        CI_BUCK2_CACHE_EVIDENCE_PATH: evidence,
+        CI_BUCK2_CACHE_EVIDENCE_START: join(root, 'evidence-start'),
+        BUCK_WRAPPER_UUID: buildId,
       }
-    }
-  })
+      const args = nativeBuildIdArguments({ cwd: root, args: requested, env })
+      const previous = Object.fromEntries(
+        [...Object.keys(env), 'PATH', 'BUN_BIN'].map((key) => [key, process.env[key]]),
+      )
+      const exitCode = process.exitCode
+      try {
+        Object.assign(process.env, env)
+        process.env.PATH = join(root, 'no-host-utilities')
+        delete process.env.BUN_BIN
+        expect(await runNativeWithEvidence({ native, args, root })).toBe(true)
+        expect(process.exitCode).toBe(0)
+        const shard = JSON.parse(
+          readFileSync(join(`${evidence}.shards`, `${buildId}.json`), 'utf8'),
+        )
+        expect(shard.complete).toBe(true)
+        expect(JSON.parse(shard.artifact.trim()).actionCount).toBe(0)
+      } finally {
+        process.exitCode = exitCode
+        for (const [key, value] of Object.entries(previous)) {
+          if (value === undefined) delete process.env[key]
+          else process.env[key] = value
+        }
+      }
+    },
+  )
 
   it('does not register a foreign project root or non-default isolation', () => {
     const root = fixture()
