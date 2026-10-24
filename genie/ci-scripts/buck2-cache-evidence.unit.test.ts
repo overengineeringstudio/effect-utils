@@ -1113,6 +1113,9 @@ describe('cache admission evidence schema', () => {
     expect(decodeCacheAdmissionInvocation(row)).toEqual(row)
     const failure = { class: 'deadline', phase: 'tls', elapsedMs: 2510, deadlineMs: 2500 }
     expect(decodeCacheAdmissionInvocation({ ...row, reapiFailure: failure }).reapiFailure).toEqual(failure)
+    for (const reapiDecision of ['first-probe-for-ci-job', 'pinned-from-first-probe', 'unpinned-missing-job-instance'])
+      expect(decodeCacheAdmissionInvocation({ ...row, reapiDecision }).reapiDecision).toBe(reapiDecision)
+    expect(() => decodeCacheAdmissionInvocation({ ...row, reapiDecision: 'planted-secret' })).toThrow()
     for (const invalid of [
       { ...failure, class: 'private-host.example' },
       { ...failure, phase: 'unknown' },

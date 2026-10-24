@@ -20,6 +20,7 @@ import { pipelineCloseJob } from './pipeline-telemetry.ts'
 import { publishedRefIf } from './published-ref.ts'
 import { installNixStep, linuxSandboxPrerequisitesStep, namespaceRunner } from './setup.ts'
 import {
+  buck2CiJobInstanceStep,
   ciWorkflow as composeCiWorkflow,
   ciJobAdmission,
   defaultRefPolicyVerdictStepId,
@@ -65,9 +66,7 @@ describe('Nix realisation step timeouts', () => {
       },
     )
     expect(jobs.setup!['timeout-minutes']).toBe(90)
-    expect(jobs.setup!.steps[0]!['timeout-minutes']).toBe(
-      "${{ runner.os == 'macOS' && 6 || 5 }}",
-    )
+    expect(jobs.setup!.steps[0]!['timeout-minutes']).toBe("${{ runner.os == 'macOS' && 6 || 5 }}")
     expect(jobs.setup!.steps[1]!['timeout-minutes']).toBe(2)
     expect(jobs.setup!.steps[2]!['timeout-minutes']).toBeUndefined()
     expect(jobs.setup!.steps[3]!['timeout-minutes']).toBe(2)
@@ -647,6 +646,7 @@ describe('Linux Nix sandbox fallback', () => {
     const inlineSetupScripts: Record<string, true> = {
       [linuxNixSandboxFallbackStep.run]: true,
       [linuxSandboxPrerequisitesStep({ privileged: 'trusted' }).run]: true,
+      [buck2CiJobInstanceStep.run]: true,
     }
     for (const [index, step] of job.steps.entries()) {
       if (index < verdict) {
@@ -891,6 +891,31 @@ describe('CI execution admission cleanup', () => {
   })
 })
 
+describe('Buck2 CI job instance projection', () => {
+  it('initializes a fresh instance before any Buck-running job steps', () => {
+    for (const definition of [
+      ciWorkflow,
+      compiledWorkflow,
+      empiricalWorkflow,
+      storybookPlaysWorkflow,
+      previewBuildWorkflow,
+      previewDeployWorkflow,
+      autoReviewWorkflow,
+    ]) {
+      const workflow: GitHubWorkflowArgs = definition.data
+      for (const [jobId, job] of Object.entries(workflow.jobs)) {
+        if (job.env?.BUCK2_NO_REMOTE_CACHE !== '0') continue
+        const initializers = job.steps.filter((step) => step.id === 'buck2-ci-job-instance')
+        expect(initializers, jobId).toHaveLength(1)
+        expect(job.steps[1], jobId).toBe(initializers[0]!)
+        expect(initializers[0]!.run, jobId).toContain('BUCK2_CI_JOB_INSTANCE=%s')
+        expect(initializers[0]!.run, jobId).toContain('/dev/urandom')
+        expect(initializers[0]!.run, jobId).toContain('>> "$GITHUB_ENV"')
+      }
+    }
+  })
+})
+
 describe('unit-test shell selection', () => {
   it('selects the narrow shell only at job scope for required unit-test jobs', () => {
     const workflow: GitHubWorkflowArgs = ciWorkflow.data
@@ -1034,7 +1059,9 @@ describe('published consumer ref', () => {
     expect(command.indexOf('nix/fixtures/consumer-smoke/run.sh')).toBeLessThan(
       command.indexOf('echo "current-sha=$GITHUB_SHA"'),
     )
-    expect(smoke.steps!.some((step) => String(step.run).includes('buck2:editor:bootstrap'))).toBe(false)
+    expect(smoke.steps!.some((step) => String(step.run).includes('buck2:editor:bootstrap'))).toBe(
+      false,
+    )
     expect(steps.some((step) => step.uses?.includes('install-nix'))).toBe(false)
     expect(steps.some((step) => String(step.run).includes('devenv'))).toBe(false)
   })
@@ -1056,7 +1083,6 @@ describe('published consumer ref', () => {
     expect(advance.run).toContain('$GITHUB_STEP_SUMMARY')
   })
 })
-
 
 describe('shared default-ref policy configuration', () => {
   it('defaults effect-utils to published while accepting main', () => {

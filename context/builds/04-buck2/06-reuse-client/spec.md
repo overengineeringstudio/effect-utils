@@ -72,10 +72,36 @@ pins remote caching and uploads off. Absent root `remote_cache_enabled` and
 `allow_cache_uploads` retain the rule policy's `true` defaults; the tracked
 reader's explicit upload prohibition still wins. Absent action-upload default
 remains native `false`, and absent HTTP headers remain empty.
-REAPI probing precedes reservation comparison and overlay mutation while holding
-the startup lock. Identical fallback launchers therefore compare the same
-disabled policy and can proceed concurrently; actual same-daemon policy
-mismatches still refuse before any cache-overlay mutation.
+REAPI admission precedes reservation comparison and overlay mutation while holding
+the startup lock. In CI with a GitHub job-instance identity, the first fresh
+probe result is pinned per canonical project root and `(GITHUB_RUN_ID,
+GITHUB_RUN_ATTEMPT, GITHUB_JOB, BUCK2_CI_JOB_INSTANCE)`. Composed workflows
+initialize `BUCK2_CI_JOB_INSTANCE` once during inline job bootstrap, immediately
+after the Linux sandbox policy and before checkout or Buck, using a random nonce
+persisted through `GITHUB_ENV`, so even sequential matrix children on the same
+runner/root receive distinct identities. Later launches in that instance with
+the same endpoint/auth identity retain its availability decision even if the
+endpoint recovers. Each distinct job instance gets a fresh probe. Unconfigured
+CI jobs without the instance identity retain the bounded five-second probe
+cache, recorded as `unpinned-missing-job-instance` in admission evidence; they
+neither share matrix-parent pins nor acquire a new admission refusal. Local
+invocations retain their existing probe cache. Explicit cache-less requests
+remain explicit policy changes, not a probe result.
+
+The decision file is `buck-out/.cache-daemon-posture/reapi-job-<job-hash>.json`
+(`0600`), written atomically under the root lock. Endpoint/auth identities are
+HMACs with a private persisted random key, never raw credentials; filenames
+contain only a job-identity hash. Different credentials remain distinct and
+cannot silently replace a live daemon's authority. Actual same-daemon policy
+mismatches still refuse. A conflicting lease is checked for liveness again
+after the awaited probe so an already-exited client cannot cause refusal.
+
+A first-probe fallback visibly warns on stderr with its bounded diagnostic
+reason and appends a GitHub step-summary entry when `GITHUB_STEP_SUMMARY` is set.
+This explicitly announces that the job retains local execution even after
+recovery. Admission evidence records `reapiDecision` as
+`first-probe-for-ci-job` or `pinned-from-first-probe`, retaining the original
+bounded failure reason on pinned fallback invocations.
 
 Linux quality and the macOS test job run `buck2:cache-posture:ci-test`: the
 standalone posture suites exercise process-birth identities and locking with
