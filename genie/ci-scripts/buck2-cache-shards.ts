@@ -270,6 +270,7 @@ export const reconcileNativeShards = async ({ output }: { output: string }) => {
           end.finishedAt < row.startedAt
         )
           throw new Error('Invalid command completion')
+        if (end.sourceComplete === false) evidenceGaps.push('native-event-source-incomplete')
         command.finishedAt = end.finishedAt
         command.exitCode = end.exitCode
       } catch {

@@ -263,7 +263,14 @@ describe('rotation-independent native evidence shards', () => {
   }, 15000)
 
   it('fails closed on collector crash, truncated registry/shard, missing native output, and an unregistered native invocation', async () => {
-    for (const failure of ['crash', 'registry', 'shard', 'native-id', 'unregistered'] as const) {
+    for (const failure of [
+      'crash',
+      'registry',
+      'shard',
+      'native-id',
+      'decoder',
+      'unregistered',
+    ] as const) {
       const directory = await mkdtemp(join(tmpdir(), 'buck-shard-gap-'))
       try {
         const output = join(directory, 'evidence.json')
@@ -280,7 +287,16 @@ describe('rotation-independent native evidence shards', () => {
           await truncate(join(`${output}.shards`, `${buildId}.json`), 100)
         else if (failure === 'native-id')
           await rm(join(`${output}.native-build-ids`, `${buildId}.buck-trace-id`))
-        else
+        else if (failure === 'decoder') {
+          const completion = join(`${output}.native-build-ids`, `${buildId}.exit.json`)
+          await Bun.write(
+            completion,
+            JSON.stringify({
+              ...(await Bun.file(completion).json()),
+              sourceComplete: false,
+            }),
+          )
+        } else
           await Bun.write(
             join(`${output}.native-build-ids`, `${buildIdFor(99)}.buck-trace-id`),
             buildIdFor(99),

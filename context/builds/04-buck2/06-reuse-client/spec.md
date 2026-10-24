@@ -863,6 +863,14 @@ Raw events are not retained in public artifacts. A bounded sanitized
 per-build-ID shard is atomically finalized only after native command completion.
 The launcher waits for collection before returning the original command status.
 Crashes, truncation, missing command end, overflow, or unresolved IDs remain gaps.
+An existing caller-owned extra sink, such as the aggregate task's OTEL
+`.pb.zst` file, is preserved rather than replaced. Immediately after native
+completion, the pinned native `log show` decoder reads that exact file into the
+same private projector, before the launcher returns control to its owner.
+No rotating-log discovery or `--recent` lookup participates. Missing/truncated
+caller files or failed decoding remain gaps, even if a decoder emitted a complete
+prefix; native command status is preserved. Raw ownership, retention, and OTEL
+ingestion stay with the caller.
 
 Automatic capture is admitted only for the canonical tracked root in the
 three-line `started_at`, `recorded_root`, `fresh_root` start marker and its default

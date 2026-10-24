@@ -1311,18 +1311,23 @@ export const runNativeWithEvidence = async ({
   }
   const sentinel = args.indexOf('--')
   const before = sentinel === -1 ? args : args.slice(0, sentinel)
-  // A caller-owned sink cannot be silently stolen; reconciliation reports its gap.
-  if (
-    before.some(
-      (arg) => arg === '--event-log' || arg.startsWith('--event-log=') || arg === '--no-event-log',
-    ) === true
+  if (before.includes('--no-event-log') === true) return false
+  const callerSinkIndex = before.findIndex(
+    (arg) => arg === '--event-log' || arg.startsWith('--event-log='),
   )
-    return false
+  const callerSink =
+    callerSinkIndex === -1
+      ? undefined
+      : before[callerSinkIndex] === '--event-log'
+        ? before[callerSinkIndex + 1]
+        : before[callerSinkIndex]?.slice('--event-log='.length)
+  if (callerSinkIndex !== -1 && (callerSink === undefined || callerSink === '')) return false
   const directory = mkdtempSync(join(tmpdir(), 'buck2-evidence-'))
   const sink = join(directory, 'native.json-lines')
   let keeper: number | undefined
   let reapCollector: (() => Promise<void>) | undefined
   let reapNative: (() => Promise<void>) | undefined
+  let reapDecoder: (() => Promise<void>) | undefined
   try {
     createPrivateEvidenceSink(sink)
     keeper = openSync(sink, 'r+')
@@ -1355,12 +1360,10 @@ export const runNativeWithEvidence = async ({
       throw new Error('Evidence collector did not open its sink')
     // Common event-log options belong to the leaf command (e.g. audit providers),
     // but never to run/BXL executable payload following the sentinel.
-    const nativeArgs = [
-      ...before,
-      '--event-log',
-      sink,
-      ...(sentinel === -1 ? [] : args.slice(sentinel)),
-    ]
+    const nativeArgs =
+      callerSink === undefined
+        ? [...before, '--event-log', sink, ...(sentinel === -1 ? [] : args.slice(sentinel))]
+        : args
     const child = Bun.spawn([native, ...nativeArgs], {
       stdin: 'inherit',
       stdout: 'inherit',
@@ -1378,6 +1381,7 @@ export const runNativeWithEvidence = async ({
     process.on('SIGTERM', onTerm)
     process.on('SIGHUP', onHup)
     let status: number
+    let sourceComplete = true
     try {
       const finished = await Promise.race([
         child.exited.then((exitCode) => ({ source: 'native' as const, exitCode })),
@@ -1385,6 +1389,23 @@ export const runNativeWithEvidence = async ({
       ])
       if (finished.source === 'collector') child.kill('SIGTERM')
       status = await child.exited
+      if (callerSink !== undefined) {
+        // Preserve the caller's OTEL/profiling sink and decode that exact file,
+        // outside native rotation. Never rediscover it through --recent.
+        const decoder = Bun.spawn([native, 'log', 'show', resolve(callerSink)], {
+          stdin: 'ignore',
+          stdout: keeper,
+          stderr: 'ignore',
+          env: process.env,
+        })
+        reapDecoder = async () => {
+          if (decoder.exitCode === null) decoder.kill('SIGKILL')
+          await decoder.exited
+        }
+        await Promise.race([decoder.exited, collector.exited])
+        if (decoder.exitCode === null) decoder.kill('SIGKILL')
+        sourceComplete = (await decoder.exited) === 0
+      }
     } finally {
       closeSync(keeper)
       keeper = undefined
@@ -1397,7 +1418,7 @@ export const runNativeWithEvidence = async ({
     mkdirSync(dirname(completion), { recursive: true, mode: 0o700 })
     writeFileSync(
       `${completion}.pending`,
-      `${JSON.stringify({ buildId, exitCode: status, finishedAt: Date.now() })}\n`,
+      `${JSON.stringify({ buildId, exitCode: status, sourceComplete, finishedAt: Date.now() })}\n`,
       { mode: 0o600 },
     )
     renameSync(`${completion}.pending`, completion)
@@ -1406,6 +1427,7 @@ export const runNativeWithEvidence = async ({
   } finally {
     if (keeper !== undefined) closeSync(keeper)
     await reapNative?.()
+    await reapDecoder?.()
     await reapCollector?.()
     rmSync(directory, { recursive: true, force: true })
   }

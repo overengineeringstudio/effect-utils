@@ -258,6 +258,8 @@ describe('native build ID registry', () => {
     { requested: ['build', '//:empty'] },
     { requested: ['audit', 'providers', '//:empty'] },
     { requested: ['run', '//:empty', '--', '--payload'] },
+    { requested: ['build', '//:empty', '--event-log', 'CALLER_SINK'] },
+    { requested: ['build', '//:empty', '--event-log=CALLER_SINK'] },
   ])(
     'collects a real leaf-command sink with no Bun utility on PATH: $requested',
     async ({ requested }) => {
@@ -279,7 +281,7 @@ describe('native build ID registry', () => {
           .join('\n') + '\n'
       writeFileSync(
         native,
-        `#!${process.execPath}\nconst args = process.argv.slice(2); const sink = args.indexOf('--event-log'); if (args.includes('audit') && sink < args.indexOf('providers')) process.exit(17); if (args.includes('--') && sink > args.indexOf('--')) process.exit(18); await Bun.write(args[sink + 1], ${JSON.stringify(events)});\n`,
+        `#!${process.execPath}\nconst args = process.argv.slice(2); if (args[0] === 'log') { process.stdout.write(await Bun.file(args[2]).text()); process.exit(0); } const sink = args.findIndex(arg => arg === '--event-log' || arg.startsWith('--event-log=')); if (args.includes('audit') && sink < args.indexOf('providers')) process.exit(17); if (args.includes('--') && sink > args.indexOf('--')) process.exit(18); await Bun.write(args[sink].includes('=') ? args[sink].slice('--event-log='.length) : args[sink + 1], ${JSON.stringify(events)});\n`,
         { mode: 0o700 },
       )
       const env = {
@@ -287,7 +289,11 @@ describe('native build ID registry', () => {
         CI_BUCK2_CACHE_EVIDENCE_START: join(root, 'evidence-start'),
         BUCK_WRAPPER_UUID: buildId,
       }
-      const args = nativeBuildIdArguments({ cwd: root, args: requested, env })
+      const args = nativeBuildIdArguments({
+        cwd: root,
+        args: requested.map((arg) => arg.replace('CALLER_SINK', join(root, 'caller.pb.zst'))),
+        env,
+      })
       const previous = Object.fromEntries(
         [...Object.keys(env), 'PATH', 'BUN_BIN'].map((key) => [key, process.env[key]]),
       )
@@ -303,6 +309,8 @@ describe('native build ID registry', () => {
         )
         expect(shard.complete).toBe(true)
         expect(JSON.parse(shard.artifact.trim()).actionCount).toBe(0)
+        if (requested.some((arg) => arg.includes('CALLER_SINK')) === true)
+          expect(readFileSync(join(root, 'caller.pb.zst'), 'utf8')).toBe(events)
       } finally {
         process.exitCode = exitCode
         for (const [key, value] of Object.entries(previous)) {
