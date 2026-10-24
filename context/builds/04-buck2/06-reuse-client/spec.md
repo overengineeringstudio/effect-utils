@@ -311,7 +311,7 @@ Recovery MUST be explicit and **quiesced across all readers/writers and aliases*
 #### Data and publication contract (BUILD.BUCK.REUSE-R05/R07)
 
 ```text
-C = defaultEditorViewContentStore(root)       # unchanged resolver/override
+C = defaultEditorViewContentStore({repoRoot: root}) # existing resolver/override
 C/<hh>/<sha256>-(0444|0555)                   # EXISTING file CAS format
 M = C + '.buck-materialization-v1'           # adjacent metadata, NEVER inside C
 M/.store/recipe-<recipeSha256>/manifest.json  # immutable recipe generation
@@ -352,6 +352,20 @@ Digest mismatch or untrusted/writable existing blob is an integrity error, not a
 Private `file:` products and declared Nix archive roots retain their existing **Nix-only** acquisition authority; never use this cache to substitute for a missing private capability.
 Retain each archive through a generic `M/.store/archive-<sha256>/pins/<sha256>-0444` generation, with the same SH/EX controls and publication/retirement fence as recipe generations; the name, verified digest and expected declared size suffice, with no package index. This pin is required because ordinary buck-out copies do not retain the CAS inode.
 Hold its SH lease through output clone/copy/link completion; pressure maintenance may retire only unleased archive generations and then collect nlink==1 blobs. A cache-empty host downloads once; an intact warm archive generation yields zero network bytes, while eviction yields a normal miss.
+
+The direct Buck entrypoint resolves host admission before analysis and projects
+`buck_materialization.content_store`, `high_water_bytes` and `lease_library`.
+`BUCK2_HOST_MATERIALIZATION=0` selects the existing native Deferred acquisition;
+CI, unregistered/job-local roots, missing packaged lease support and unknown
+filesystems likewise select native acquisition without creating shared state.
+`buck2/dependencies/shared-archive.ts` is the local nonremote `pnpm_archive`
+runner; `materialization-archives.ts` owns acquisition, archive pins and pressure
+maintenance, using `editor-view-sharing.ts` for all CAS publication/deletion.
+Its `[buck-materialization-archive]` receipt reports `downloadedBytes`,
+`copiedBytes`, `clonedBytes`, `cacheHit` and the private-copy reason; these
+helper counters are distinct from native action counts. Pressure receipts
+include allocated CAS payload, separately allocated metadata and their combined
+total, preserving the exact `referenced-bytes-over-cap` signal.
 
 #### Filesystems, leases and collection (BUILD.BUCK.REUSE-R07; E04/E05)
 

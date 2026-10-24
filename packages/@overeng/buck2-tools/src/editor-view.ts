@@ -48,6 +48,7 @@ import {
 } from './editor-view-budget.ts'
 import {
   ensureEditorViewLeaseControl,
+  editorViewLeaseFilesystem,
   probeEditorViewLease,
   probeEditorViewLeaseUnderFence,
 } from './editor-view-leases.ts'
@@ -68,6 +69,7 @@ import {
   inspectEditorViewContentStore,
   editorViewStagingCreatorIdentity,
   defaultEditorViewContentStore,
+  editorViewContentStoreHighWaterBytes,
   editorViewGitCommonDirectory,
   withEditorViewContentStoreLock,
   shareSnapshotFiles,
@@ -77,6 +79,10 @@ import {
   reuseEditorViewSourceFiles,
   type EditorViewSourceFile,
 } from './editor-view-sharing.ts'
+import {
+  maintainArchiveContent,
+  recordMaterializationContentUse,
+} from './materialization-archives.ts'
 import { emitCompletedSpanAsync, type OtelSpanAttribute } from './otel-span-cli.ts'
 import { canonicalizeParent, canonicalizePath, realpathThroughName } from './real-path.ts'
 import { closeFingerprintAdmission, runFingerprintTool } from './typescript-runner.ts'
@@ -1011,7 +1017,7 @@ const makePaths = (options: EditorViewOptions): ViewPaths => {
       `consumer cache must be inside the repository and outside package and snapshot views: ${consumerCache}`,
     )
   const contentStore = canonicalizeParent(
-    resolve(options.contentStore ?? defaultEditorViewContentStore(repoRoot)),
+    resolve(options.contentStore ?? defaultEditorViewContentStore({ repoRoot: repoRoot })),
   )
   if (
     isWithin({ root: editorRoot, candidate: contentStore }) === true ||
@@ -3463,6 +3469,7 @@ const publishEditorViewCoordinated = async ({
       created = true
       onContentChanged()
       const sharedCandidate = candidate
+      const usedContent = new Set<string>()
       const sharing = await shareSnapshotFiles({
         candidate,
         contentStore: paths.contentStore,
@@ -3473,6 +3480,7 @@ const publishEditorViewCoordinated = async ({
               candidateFiles: materializedRoots.sourceFiles.keys(),
             }),
         onSharedFile: (file) => {
+          usedContent.add(`${file.digest}-${file.mode === 0o444 ? '0444' : '0555'}`)
           if (materializedRoots === undefined) return
           const source = materializedRoots.sourceFiles.get(file.path)
           if (source !== undefined)
@@ -3492,6 +3500,18 @@ const publishEditorViewCoordinated = async ({
         )
       if (sharing.copiedFiles > 0)
         process.stderr.write(`[editor-view-content] ${JSON.stringify(sharing)}\n`)
+      if (editorViewLeaseFilesystem(paths.contentStore) === 'local') {
+        await recordMaterializationContentUse({
+          contentStore: paths.contentStore,
+          keys: usedContent,
+        })
+        const pressure = await maintainArchiveContent({
+          contentStore: paths.contentStore,
+          highWaterBytes: editorViewContentStoreHighWaterBytes(),
+        })
+        if (pressure.state === 'referenced-bytes-over-cap')
+          process.stderr.write(`[buck-materialization-pressure] ${JSON.stringify(pressure)}\n`)
+      }
     }
     if (created === true) {
       enterPhase('harden')

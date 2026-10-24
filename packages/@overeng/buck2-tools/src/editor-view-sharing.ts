@@ -220,8 +220,14 @@ export const editorViewGitCommonDirectory = (repoRoot: string): string | undefin
 }
 
 /** Resolve the host-local content store shared by registered Git worktrees. */
-export const defaultEditorViewContentStore = (repoRoot: string): string => {
-  const override = process.env.EDITOR_VIEW_CONTENT_STORE
+export const defaultEditorViewContentStore = ({
+  repoRoot,
+  env = process.env,
+}: {
+  readonly repoRoot: string
+  readonly env?: Readonly<Record<string, string | undefined>>
+}): string => {
+  const override = env['EDITOR_VIEW_CONTENT_STORE']
   if (override !== undefined) {
     if (override.length === 0) fail('EDITOR_VIEW_CONTENT_STORE must not be empty')
     return resolve(override)
@@ -230,6 +236,16 @@ export const defaultEditorViewContentStore = (repoRoot: string): string => {
   return commonDirectory === undefined
     ? join(homedir(), '.cache', 'effect-utils', 'editor-view-content', 'v1')
     : join(dirname(commonDirectory), '.editor-view-content', 'v1')
+}
+
+/** One host content-service high-water trigger, never a per-worktree quota. */
+export const editorViewContentStoreHighWaterBytes = (
+  env: Readonly<Record<string, string | undefined>> = process.env,
+): number => {
+  const value = env['EDITOR_VIEW_CONTENT_STORE_HIGH_WATER_BYTES'] ?? '4294967296'
+  if (/^[1-9][0-9]*$/.test(value) === false || Number.isSafeInteger(Number(value)) === false)
+    fail('EDITOR_VIEW_CONTENT_STORE_HIGH_WATER_BYTES must be a positive decimal safe byte count')
+  return Number(value)
 }
 
 const lockPath = (contentStore: string): string => `${contentStore}.flock`
@@ -765,6 +781,41 @@ const validateBlob = async ({
   if (actual === undefined) return undefined
   if (actual !== digest) fail(`blob content does not match its address: ${path}`)
   return status
+}
+
+/**
+ * Verify outside exclusion, then install a lifetime pin under the existing CAS
+ * fence. The caller owns the private destination and must retain it while reading.
+ */
+export const pinEditorViewContent = async ({
+  contentStore,
+  digest,
+  size,
+  destination,
+}: {
+  readonly contentStore: string
+  readonly digest: string
+  readonly size: number
+  readonly destination: string
+}): Promise<boolean> => {
+  if (/^[a-f0-9]{64}$/.test(digest) === false || Number.isSafeInteger(size) === false || size <= 0)
+    fail('invalid content identity')
+  const path = join(contentStore, digest.slice(0, 2), `${digest}-0444`)
+  const status = await validateBlob({ contentStore, path, digest, mode: 0o444 })
+  if (status === undefined) return false
+  if (status.size !== BigInt(size)) fail(`blob size does not match its declaration: ${path}`)
+  return withStoreLock({
+    contentStore,
+    run: async () => {
+      const current = await statusIfPresent(path)
+      if (current === undefined) return false
+      requireBlob({ path, status: current, mode: 0o444 })
+      if (unchanged({ left: status, right: current }) === false)
+        fail(`blob changed before pinning: ${path}`)
+      await link(path, destination)
+      return true
+    },
+  })
 }
 
 type PreparedFile = {
@@ -1592,6 +1643,7 @@ export const collectEditorViewContentStore = async (options: {
   readonly contentStore: string
   readonly afterStoreLock?: () => void | Promise<void>
   readonly afterStoreLockContended?: () => void | Promise<void>
+  readonly pressure?: { readonly highWaterBytes: number; readonly accessDirectory: string }
 }): Promise<{ removedBlobs: number; removedBytes: number }> => {
   try {
     return await collectContentStore(options)
@@ -1606,16 +1658,71 @@ export const collectEditorViewContentStore = async (options: {
   }
 }
 
+/** Allocated canonical payload bytes, counted once per CAS address. */
+export type EditorViewContentCensus = {
+  readonly totalBytes: number
+  readonly referencedBytes: number
+  readonly reclaimableBytes: number
+}
+
+/** A mode alarm records the same incident as explicit collection. */
+export const editorViewContentStoreCensus = async (
+  contentStore: string,
+): Promise<EditorViewContentCensus> => {
+  try {
+    return await censusContentStore(contentStore)
+  } catch (error) {
+    if (error instanceof WritableBlobTrustError) {
+      try {
+        await recordContentStoreIncident(resolve(contentStore))
+      } catch {
+        /* Preserve admission failure. */
+      }
+    }
+    throw error
+  }
+}
+
+/* eslint-disable no-await-in-loop -- Census streams one shard at a time without retaining payload-sized work queues. */
+const censusContentStore = async (contentStore: string): Promise<EditorViewContentCensus> => {
+  const result = { totalBytes: 0, referencedBytes: 0, reclaimableBytes: 0 }
+  if ((await validateDirectory({ path: contentStore, contentStore })) === undefined) return result
+  for (const shard of await readdir(contentStore, { withFileTypes: true })) {
+    if (shard.name === stagingDirectoryName) continue
+    if (shardPattern.test(shard.name) === false || shard.isDirectory() === false)
+      fail('unsafe census shard')
+    const directory = join(contentStore, shard.name)
+    await validateDirectory({ path: directory, contentStore })
+    for (const name of await readdir(directory)) {
+      if (temporaryPattern.test(name) === true) continue
+      const match = blobNamePattern.exec(name)
+      if (match === null || match[1]?.slice(0, 2) !== shard.name) fail('unsafe census blob')
+      const path = join(directory, name)
+      const status = await statusIfPresent(path)
+      if (status === undefined) continue
+      requireBlob({ path, status, mode: match![2] === '0444' ? 0o444 : 0o555 })
+      const bytes = Number(status.blocks) * 512
+      result.totalBytes += bytes
+      if (status.nlink === 1n) result.reclaimableBytes += bytes
+      else result.referencedBytes += bytes
+    }
+  }
+  return result
+}
+/* eslint-enable no-await-in-loop */
+
 /* eslint-disable no-await-in-loop -- Each bounded deletion rechecks its inode and link count under the publisher's metadata lock. */
 /** Delete only validated real blobs with no snapshot/control hardlink remaining. */
 const collectContentStore = async ({
   contentStore,
   afterStoreLock,
   afterStoreLockContended,
+  pressure,
 }: {
   readonly contentStore: string
   readonly afterStoreLock?: () => void | Promise<void>
   readonly afterStoreLockContended?: () => void | Promise<void>
+  readonly pressure?: { readonly highWaterBytes: number; readonly accessDirectory: string }
 }): Promise<{ removedBlobs: number; removedBytes: number }> => {
   const store = resolve(contentStore)
   const result = { removedBlobs: 0, removedBytes: 0 }
@@ -1630,6 +1737,13 @@ const collectContentStore = async ({
     run: async () => undefined,
   })
   let candidates: CollectionCandidate[] = []
+  let remaining =
+    pressure === undefined
+      ? Number.POSITIVE_INFINITY
+      : Math.max(
+          0,
+          (await editorViewContentStoreCensus(store)).totalBytes - pressure.highWaterBytes,
+        )
   const flush = async (): Promise<void> => {
     if (candidates.length === 0) return
     await withStoreLock({
@@ -1638,6 +1752,7 @@ const collectContentStore = async ({
       afterStoreLockContended,
       run: async (directories) => {
         for (const candidate of candidates) {
+          if (remaining <= 0) break
           const shard = await shardDirectory({
             contentStore: store,
             shard: candidate.digest.slice(0, 2),
@@ -1657,12 +1772,25 @@ const collectContentStore = async ({
           await unlink(candidate.path)
           result.removedBlobs += 1
           result.removedBytes += Number(current.size)
+          remaining -= Number(current.blocks) * 512
         }
       },
     })
     candidates = []
   }
+  const ordered: { candidate: CollectionCandidate; lastUse: number }[] = []
   for await (const candidate of collectionCandidates(store)) {
+    if (pressure === undefined) {
+      candidates.push(candidate)
+      if (candidates.length === batchSize) await flush()
+    } else {
+      const hint = await statusIfPresent(join(pressure.accessDirectory, basename(candidate.path)))
+      ordered.push({ candidate, lastUse: Number(hint?.mtimeNs ?? 0n) })
+    }
+  }
+  ordered.sort((left, right) => left.lastUse - right.lastUse)
+  for (const { candidate } of ordered) {
+    if (remaining <= 0) break
     candidates.push(candidate)
     if (candidates.length === batchSize) await flush()
   }

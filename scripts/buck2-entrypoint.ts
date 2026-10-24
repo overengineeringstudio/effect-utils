@@ -21,6 +21,7 @@ import { dirname, join, resolve } from 'node:path'
 import process from 'node:process'
 
 import type { CacheAdmissionInvocation } from '../genie/ci-scripts/buck2-cache-evidence.ts'
+import { archiveSharingAdmission } from '../packages/@overeng/buck2-tools/src/materialization-archives.ts'
 import {
   buckConfigValues,
   canonicalCacheAdmissionInvocationId,
@@ -449,6 +450,15 @@ export const directBuckArguments = async ({
   )
     reconcileStandaloneCachePosture({ repoRoot: root, env: postureEnv })
   const extra = Object.entries(overrides).flatMap(([key, value]) => ['--config', `${key}=${value}`])
+  const sharing = archiveSharingAdmission({ repoRoot: root, env })
+  extra.push(
+    '--config',
+    `buck_materialization.content_store=${sharing?.contentStore ?? ''}`,
+    '--config',
+    `buck_materialization.high_water_bytes=${sharing?.highWaterBytes ?? 4294967296}`,
+    '--config',
+    `buck_materialization.lease_library=${sharing === undefined ? '' : (env['EDITOR_VIEW_LEASE_LIBRARY'] ?? '')}`,
+  )
   const before = sentinel === -1 ? [...args] : args.slice(0, sentinel)
   const admitted =
     remoteAvailable === false ? before.filter((arg) => arg !== '--reuse-current-config') : before
