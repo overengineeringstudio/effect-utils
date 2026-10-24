@@ -1963,6 +1963,93 @@ describe('editor view publisher', () => {
     }
   })
 
+  it.each([0o500, 0o555])(
+    'releases a hardened editor root and lease parent mode %s without chmodding shared bytes',
+    async (leaseMode) => {
+      const fixture = makeFixture()
+      try {
+        const record = await publishEditorView(fixture.options)
+        const payload = join(fixture.editorRoot, record.snapshot, 'node_modules', 'dep', 'index.js')
+        const retained = join(fixture.root, 'retained-payload')
+        linkSync(payload, retained)
+        const digest = createHash('sha256').update(readFileSync(payload)).digest('hex')
+        const blob = join(fixture.options.contentStore!, digest.slice(0, 2), `${digest}-0444`)
+        const shared = lstatSync(blob, { bigint: true })
+        expect(shared.nlink).toBeGreaterThan(1n)
+        expect(shared.mode & 0o777n).toBe(0o444n)
+        expect(lstatSync(retained, { bigint: true }).ino).toBe(shared.ino)
+        const leaseDirectory = join(fixture.editorRoot, '.leases')
+        const control = join(leaseDirectory, `${storeName(record.snapshot)}.lock`)
+        const controlBefore = lstatSync(control, { bigint: true })
+        chmodSync(leaseDirectory, leaseMode)
+        chmodSync(fixture.editorRoot, 0o555)
+
+        await releaseEditorViewRoot(fixture.options)
+
+        expect(readdirSync(fixture.editorRoot)).toEqual(['.leases'])
+        expect(lstatSync(fixture.editorRoot).mode & 0o777).toBe(0o755)
+        expect(lstatSync(leaseDirectory).mode & 0o777).toBe(0o700)
+        const controlAfter = lstatSync(control, { bigint: true })
+        expect([controlAfter.dev, controlAfter.ino, controlAfter.mode]).toEqual([
+          controlBefore.dev,
+          controlBefore.ino,
+          controlBefore.mode,
+        ])
+        for (const path of [retained, blob]) {
+          const status = lstatSync(path, { bigint: true })
+          expect([status.dev, status.ino]).toEqual([shared.dev, shared.ino])
+          expect(status.nlink).toBeGreaterThan(1n)
+          expect(status.mode & 0o777n).toBe(0o444n)
+        }
+      } finally {
+        cleanup(fixture)
+      }
+    },
+  )
+
+  it('refuses release permission normalization for a foreign-owned editor root', async () => {
+    const fixture = makeFixture()
+    try {
+      const record = await publishEditorView(fixture.options)
+      chmodSync(fixture.editorRoot, 0o555)
+      const owner = lstatSync(fixture.editorRoot).uid
+      const uid = vi.spyOn(process, 'getuid').mockReturnValue(owner + 1)
+      try {
+        await expect(releaseEditorViewRoot(fixture.options)).rejects.toThrow(
+          'unsafe release directory',
+        )
+        expect(lstatSync(fixture.editorRoot).mode & 0o777).toBe(0o555)
+        expect(existsSync(join(fixture.editorRoot, record.snapshot))).toBe(true)
+        expect(existsSync(join(fixture.editorRoot, '.publish.lock'))).toBe(false)
+      } finally {
+        uid.mockRestore()
+      }
+    } finally {
+      cleanup(fixture)
+    }
+  })
+
+  it('refuses release permission normalization through a symlinked lease parent', async () => {
+    const fixture = makeFixture()
+    try {
+      const record = await publishEditorView(fixture.options)
+      const leaseDirectory = join(fixture.editorRoot, '.leases')
+      const retained = join(fixture.root, 'retained-leases')
+      nativeFs.renameSync(leaseDirectory, retained)
+      chmodSync(retained, 0o500)
+      symlinkSync(retained, leaseDirectory)
+      chmodSync(fixture.editorRoot, 0o555)
+      await expect(releaseEditorViewRoot(fixture.options)).rejects.toThrow(
+        'unsafe release directory',
+      )
+      expect(lstatSync(retained).mode & 0o777).toBe(0o500)
+      expect(existsSync(join(fixture.editorRoot, record.snapshot))).toBe(true)
+      expect(existsSync(join(fixture.editorRoot, '.publish.lock'))).toBe(false)
+    } finally {
+      cleanup(fixture)
+    }
+  })
+
   describe('refuses teardown while a publisher lock exists without unlocking payload directories', () => {
     let fixture: Fixture
     let record: EditorViewRecord
@@ -1992,6 +2079,7 @@ describe('editor view publisher', () => {
           pid: process.pid,
         }),
       )
+      chmodSync(fixture.editorRoot, 0o555)
       const release = releaseEditorViewRoot(fixture.options)
       pending.push(release)
       await expect(release).rejects.toThrow('publication lock exists')

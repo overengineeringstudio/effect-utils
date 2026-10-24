@@ -599,6 +599,18 @@ payload inodes.
 
 ### Recovering a chmod-poisoned shared store
 
+When collection encounters a writable blob, it keeps refusing the store and emits
+`editor-view.content-store.integrity-incident` with a writable-blob count and
+`alertPath`. The sibling `<content-store>.incident.json` receipt records the
+first unresolved incident's observation time, metadata-only count, bounded
+examples, and explicit quiesced repair command. Repeated failures reuse that
+receipt rather than scanning the whole store for every package; its count is an
+observation, not a live metric. Incident reporting never hashes or changes
+payload files. Only a successful digest-verified repair with a clean final census
+and an absent or empty quarantine directory clears the receipt. Every remaining
+quarantine entry is unresolved, including entries from earlier repair runs;
+repair records their `unresolvedQuarantineCount` in the retained incident receipt.
+
 Cleanup must unlock **directories only**, never recursively chmod payload files:
 snapshot payloads are hardlinked into the CAS and other worktrees. Snapshot
 prepare and verification first validate the complete payload byte digest. When
@@ -659,9 +671,12 @@ quarantine paths and actual digest; any quarantine makes the CLI exit nonzero.
 Linked snapshots still hold the corrupted, untrusted inode: retire those
 snapshots using directory-only unlock/unlink and republish their views from
 admitted sources before restarting readers. Keep quarantine evidence until the
-incident is understood. After a matching-only repair, rerun bootstrap and the
-normal quick gate before resuming work. Never run repair against a shared live
-store without coordinating its users.
+incident is understood, then explicitly remove the reviewed entries after
+retiring their corrupt snapshot aliases. Repair never removes quarantine evidence
+or assumes a previously quarantined inode was fixed merely because the remaining
+CAS is clean. Rerun quiesced repair after resolving those entries to clear the
+incident receipt, then rerun bootstrap and the normal quick gate before resuming
+work. Never run repair against a shared live store without coordinating its users.
 
 The dirty byte provides **process-crash recovery, not power-loss durability**:
 metadata/control writes are not fsync-ordered for machine or filesystem failure.
@@ -680,6 +695,14 @@ remaining directories owner-writable without following symlinks or chmodding
 files. Then leave its working directory and use ordinary `git worktree remove`
 from another worktree. Teardown is offline and idempotent, does not delete
 tracked files, and does not decide whether a checkout is eligible for removal.
+
+If teardown fails, fix its reported error and rerun it; do not fall back to
+`chmod -R` or `rm -rf` on the worktree. Snapshot files are hardlinks to the
+host-shared store, so a recursive permission change also makes other worktrees'
+payloads writable. Use the quiesced, digest-verified repair procedure above if
+that happens. Explicit release can restore owner permissions on its verified
+private editor-root and lease-control directories even when those directories
+were hardened; it never restores write permission on payload files.
 
 Buck's absolute-path state hierarchy can contain descendant checkouts, even
 inside a directory with direct daemon files identifying this checkout's isolation.

@@ -2,6 +2,15 @@
 set -euo pipefail
 shopt -s dotglob nullglob
 
+# A failed teardown is not permission to mutate shared snapshot payload inodes.
+trap 'status=$?; if [ "$status" -ne 0 ]; then
+  printf "%s\n" \
+    "worktree:teardown: failed; fix the reported error and rerun worktree:teardown." \
+    "Never fall back to chmod -R or rm -rf on a worktree: recursive permission changes corrupt the hardlinked shared content store." \
+    "If shared blobs were made writable, stop all editor-view readers/writers, then run:" \
+    "bun packages/@overeng/buck2-tools/src/editor-view.ts repair-content --repo-root <repo> --quiesced true" >&2
+fi' EXIT
+
 # Resolve the checkout itself, not the caller's subdirectory or a logical symlink.
 root="$(git -C "${DEVENV_ROOT:-$PWD}" rev-parse --show-toplevel)"
 root="$(realpath "$root")"
