@@ -1,4 +1,5 @@
 import type { GitHubWorkflowArgs } from '../../packages/@overeng/genie/src/runtime/mod.ts'
+import { coreProofDisabledJobIds } from './buck2-cache-proof-policy.ts'
 import { ciJobAdmission, withCiAdmissionCleanup } from './shared.ts'
 
 /** Retain compact and complete native cache evidence independently of tailnet/OTLP delivery. */
@@ -7,6 +8,8 @@ export const withBuck2CacheEvidence = (
 ): GitHubWorkflowArgs['jobs'] =>
   Object.fromEntries(
     Object.entries(jobs).map(([jobId, job]) => {
+      if (coreProofDisabledJobIds[jobId] === true)
+        return [jobId, { ...job, env: { ...job.env, CI_BUCK2_CACHE_EVIDENCE_DISABLED: '1' } }]
       const steps = [...job.steps]
       const checkout = steps.findLastIndex(
         (step) => 'uses' in step && step.uses.startsWith('actions/checkout@'),
@@ -86,16 +89,7 @@ export const withBuck2CacheEvidence = (
             CI_BUCK2_CACHE_EVIDENCE_JOB: jobId,
             CI_BUCK2_CACHE_EVIDENCE_HEAD_SHA:
               '${{ github.event.pull_request.head.sha || github.sha }}',
-            CI_BUCK2_CACHE_EVIDENCE_DISABLED:
-              [
-                'build-products',
-                'publish-products',
-                'publish-compiled-products',
-                'cargo',
-                'default-ref-policy',
-              ].includes(jobId) === true
-                ? '1'
-                : '0',
+            CI_BUCK2_CACHE_EVIDENCE_DISABLED: '0',
           },
           steps: withCiAdmissionCleanup(steps),
         },

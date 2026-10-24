@@ -446,8 +446,8 @@ describe('warm99 identity acceptance', () => {
       }
       const report = evaluateWarm99({ manifest: manifest, loaded: loaded })
       expect(report.lanes[0]?.observations[0]).toMatchObject({
-        eligible: 1,
-        remoteHits: start === 50 ? 1 : 0,
+        eligible: start === 50 ? 1 : 2,
+        remoteHits: 1,
         cold: start === 50 ? 1 : 0,
       })
       expect(report.accepted).toBe(start === 50)
@@ -692,9 +692,97 @@ describe('warm99 identity acceptance', () => {
     }
     expect(evaluateWarm99({ manifest, loaded }).lanes[0]?.observations[0]).toMatchObject({
       complete: true,
-      eligible: 1,
-      remoteHits: 0,
+      eligible: 2,
+      remoteHits: 1,
       excluded: 0,
+    })
+  })
+  it('preserves a 198/200 threshold across roots and scopes all diagnostic counts', () => {
+    const manifest = manifestFixture()
+    const loaded = loadedFixture(manifest)
+    for (const item of loaded) {
+      item.writers = [
+        artifactFixture(true, [
+          ...Array.from({ length: 100 }, (_, index) =>
+            actionFixture({
+              target: `test//:action-${index}`,
+              uploadOutcome: 'uploaded',
+              uploadCompletedAt: 100,
+              startedAt: 10,
+              completedAt: 100,
+            }),
+          ),
+          actionFixture({
+            target: 'test//:changed',
+            uploadOutcome: 'uploaded',
+            uploadCompletedAt: 100,
+            startedAt: 10,
+            completedAt: 100,
+          }),
+        ]),
+      ]
+      const perRoot = Array.from({ length: 2 }, (_, root) => [
+        ...Array.from({ length: 100 }, (_, index) =>
+          actionFixture({
+            target: `test//:action-${index}`,
+            buildId: root === 0 ? 'build' : 'second-root',
+            executionKind: root === 1 && index < 2 ? 1 : 3,
+          }),
+        ),
+        actionFixture({ target: 'test//:cold', buildId: root === 0 ? 'build' : 'second-root' }),
+        actionFixture({
+          target: 'test//:changed',
+          digest: 'changed:1',
+          buildId: root === 0 ? 'build' : 'second-root',
+        }),
+        actionFixture({
+          target: 'test//:noncacheable',
+          executionKind: 0,
+          buildId: root === 0 ? 'build' : 'second-root',
+        }),
+      ])
+      const reader = artifactFixture(false, perRoot.flat())
+      const first = reader.header.invocations[0]!
+      first.rootId = 'a'.repeat(64)
+      first.actionCount = perRoot[0]!.length
+      for (const action of reader.actions)
+        if (action.buildId === 'second-root') action.buildId = `${first.buildId}-second-root`
+      reader.header.invocations.push({
+        ...first,
+        buildId: `${first.buildId}-second-root`,
+        rootId: 'b'.repeat(64),
+      })
+      item.readers = [reader]
+    }
+    const report = evaluateWarm99({ manifest, loaded })
+    expect(report.accepted).toBe(true)
+    expect(report.lanes[0]?.observations[0]).toMatchObject({
+      complete: true,
+      eligible: 200,
+      remoteHits: 198,
+      hitRate: 0.99,
+      meetsThreshold: true,
+      cold: 2,
+      changed: 2,
+      noncacheable: 2,
+      excluded: 0,
+    })
+  })
+  it('keeps same-path roots in distinct reader artifacts independent', () => {
+    const manifest = manifestFixture()
+    for (const observation of manifest.observations)
+      observation.readers.push({
+        lane: 'main-reader',
+        summary: 'second-job.json',
+        actions: 'second-job.gz',
+      })
+    const loaded = loadedFixture(manifest)
+    for (const item of loaded)
+      for (const reader of item.readers) reader!.header.invocations[0]!.rootId = 'a'.repeat(64)
+    expect(evaluateWarm99({ manifest, loaded }).lanes[0]?.observations[0]).toMatchObject({
+      complete: true,
+      eligible: 2,
+      remoteHits: 2,
     })
   })
   it('missing digest, metadata, nonfresh invocation, and missing reader invalidate', () => {

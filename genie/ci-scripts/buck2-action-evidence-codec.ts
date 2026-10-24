@@ -221,7 +221,7 @@ const decodeAction = (value: unknown): ActionRecord => {
               ? ''
               : nullableText({
                   value: field({ value, key: 'identifier' }),
-                  grammar: /^[a-zA-Z0-9_.@+-][a-zA-Z0-9_./@+:-]*$/,
+                  grammar: /^identifier-sha256-v1:[a-f0-9]{64}$/,
                 }),
         }),
     exclusionReason: actionExclusionReason(

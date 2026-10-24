@@ -73,7 +73,7 @@ export type ActionRecord = {
   buildId: string | null
   context: string | null
   category: string | null
-  /** Native protobuf empty string is known; absent/null historical identity is not. */
+  /** Nonempty native names are domain-separated opaque hashes; '' is known protobuf default. */
   identifier?: string | null
   target: string | null
   exclusionReason: ActionExclusionReason | null

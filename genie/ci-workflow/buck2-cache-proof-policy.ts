@@ -1,5 +1,27 @@
 import type { Buck2CachePosture } from './buck2-cache-posture.ts'
 
+/**
+ * These jobs deliberately execute no checkout-native Buck actions. Nix product
+ * builds have their own nested build roots and are not native proof producers.
+ * Share this declaration with generation and expected historical membership:
+ * absence of an artifact is never evidence that a job was proof-disabled.
+ */
+export const coreProofDisabledJobIds: Readonly<Record<string, true>> = {
+  'build-products': true,
+  'publish-products': true,
+  'publish-compiled-products': true,
+  cargo: true,
+  'default-ref-policy': true,
+  'source-shape': true,
+  'main-source-shape': true,
+  'ci-measurements-report': true,
+  'notify-alignment': true,
+  'tested-tree': true,
+  'pr-reviews-resolved': true,
+  'promote-published': true,
+  'pr-a-inert-buck': true,
+}
+
 /** Shared by CI declaration and historical proof membership; missing artifacts cannot reveal posture. */
 export const coreCachePostures = {
   'default-ref-policy': 'reader',
@@ -13,7 +35,7 @@ export const coreCachePostures = {
   'test-megarepo-store-gc': 'reader',
   cargo: 'trusted-writer',
   weaver: 'trusted-writer',
-  'source-shape': 'reader',
+  'source-shape': 'none',
   'test-integration-restate': 'trusted-writer',
   'build-products': 'reader',
   'pr-reviews-resolved': 'reader',

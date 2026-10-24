@@ -136,8 +136,8 @@ export default ciWorkflow({
       'bootstrap-cold-proof': 'reader',
       'test-megarepo-cold-gc': 'reader',
       'nix-closure-sizes': 'reader',
-      'main-source-shape': 'reader',
-      'ci-measurements-report': 'reader',
+      'main-source-shape': 'none',
+      'ci-measurements-report': 'none',
       'buck2-cache-join': 'reader',
       'devenv-perf': {
         posture: 'reader',

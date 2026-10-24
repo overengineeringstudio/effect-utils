@@ -748,17 +748,17 @@ Missing fields remain explicit `null`; they do not suppress a row.
 | `invocations`           | Native `buildId`, `context`, command `startedAt`/`completedAt`, `freshRoot`, optional sanitized `rootId`, `actionCount`, `excludedByDesign`, and `complete` |
 | `excludedByDesign`      | Reason-keyed counts, including `local-materialization-policy`; independent of native outcome counts                                                         |
 
-| Action field          | Contract                                                                                                                                                   |
-| --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `type`                | `"action"`                                                                                                                                                 |
-| Identity              | `buildId`, `context`, `category`, `target`, full `configuration`, exact native AC `digest` (`hash:size`)                                                   |
-| Configured action key | Optional sanitized native `identifier`; together with `target` (owner), `category`, and `configuration`, identifies local dep-file reuse; not an RE digest |
-| Native classification | Integer `executionKind` and `cacheUploadResult`, retained even when the normalized outcome overrides the kind                                              |
-| Outcomes              | `outcome` and `cacheOutcome` use the named compact mapping; `uploadOutcome` is `uploaded`, `failed` (native values 9–15), or `not-uploaded`                |
-| Times                 | `startedAt`, `completedAt`, `endTime` (same as completedAt), `uploadCompletedAt`                                                                           |
-| `commandAction`       | Native action kind is `Run`; non-command actions are retained but do not form a command-cache denominator                                                  |
-| `exclusionReason`     | Repository-owned exact reason `local-materialization-policy` for the policy categories; `null` otherwise                                                   |
-| `uploadErrors`        | Optional array of `{ category, reErrorCode }`, one per failed native `CacheUpload` end; category is closed, gRPC code is 0–16 or `null`                    |
+| Action field          | Contract                                                                                                                                                                       |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `type`                | `"action"`                                                                                                                                                                     |
+| Identity              | `buildId`, `context`, `category`, `target`, full `configuration`, exact native AC `digest` (`hash:size`)                                                                       |
+| Configured action key | Optional opaque `identifier` hash (or known empty protobuf default); with `target` (owner), `category`, and `configuration`, identifies local dep-file reuse; not an RE digest |
+| Native classification | Integer `executionKind` and `cacheUploadResult`, retained even when the normalized outcome overrides the kind                                                                  |
+| Outcomes              | `outcome` and `cacheOutcome` use the named compact mapping; `uploadOutcome` is `uploaded`, `failed` (native values 9–15), or `not-uploaded`                                    |
+| Times                 | `startedAt`, `completedAt`, `endTime` (same as completedAt), `uploadCompletedAt`                                                                                               |
+| `commandAction`       | Native action kind is `Run`; non-command actions are retained but do not form a command-cache denominator                                                                      |
+| `exclusionReason`     | Repository-owned exact reason `local-materialization-policy` for the policy categories; `null` otherwise                                                                       |
+| `uploadErrors`        | Optional array of `{ category, reErrorCode }`, one per failed native `CacheUpload` end; category is closed, gRPC code is 0–16 or `null`                                        |
 
 All times are integer Unix milliseconds. The pinned log decoder emits native
 timestamps as `[seconds,nanoseconds]`; conversion floors sub-millisecond time.
@@ -823,6 +823,13 @@ output paths/payloads, host names, and raw error payloads are never copied. Inva
 identity text becomes `null` rather than a lossy replacement key. The
 repository-local mapping identifier has exact case-sensitive spelling and a
 version suffix; unknown versions are rejected, not silently reinterpreted.
+Every nonempty native action identifier is published only as
+`identifier-sha256-v1:<64 lowercase hex>`, hashing the UTF-8 domain separator
+`effect-utils/buck2-action-identifier/v1` followed by NUL and the original UTF-8
+identifier. Relative paths, drive-letter paths, hostnames, and environment-like
+values are never emitted as identifier text. The known empty protobuf default
+remains `""`; absent/unknown remains absent or `null`. The decoder rejects raw
+nonempty identifiers rather than republishing historical private text.
 In particular, compact `uploaded` takes precedence over execution kind, and
 kind `7` maps to `local-cache`; consumers retain raw enums so that they need not
 call local-dep-file reuse a remote hit.
@@ -900,16 +907,21 @@ and successful upload-before-reader references to the warm99 report. A per-job
 report without historical writers/readers is explicitly incomplete, not a
 passing substitute for two observations. The daily join supplies explicit
 historical run/job membership from workflow jobs, retaining missing/expired
-evidence as gaps rather than discovering only successful uploads.
+evidence as gaps rather than discovering only successful uploads. Latest retained
+attempt is selected per expected job, including every matrix occurrence; a rerun
+of failed jobs does not discard successful jobs' older-attempt evidence.
 
 Finalization exits `2` when it successfully writes incomplete evidence, and
 `1` on an operational failure. Collection preserves either failure but adds
 `evidence-finalization-failed` only for an operational finalization failure,
 not as a duplicate diagnosis of an already recorded evidence gap.
 
-In-Nix product jobs retain disabled-by-design headers and zero action rows.
-Their reuse metric is Nix substitution, not Buck AC. The daily cache-health
-mission and post-merge proof consume the full contract.
+Jobs explicitly declared proof-disabled because they execute no checkout-native
+Buck (including source-shape and in-Nix product jobs) emit no native-proof start,
+collection, or upload steps and never enter the expected native cohort.
+Their Nix reuse metric, where applicable, is substitution, not Buck AC.
+Retained historical in-Nix headers remain disabled-by-design with zero actions.
+The daily cache-health mission and post-merge proof consume the full contract.
 See [observability](../07-observability/spec.md#ci-action-cache-evidence) for
 the legacy compact outcome classes and missing-evidence counters.
 
@@ -976,6 +988,10 @@ a reader artifact must attest that it began without prior native state.
 Sanitized invocation `rootId` is an opaque 64-character lowercase hexadecimal
 scope for explicit multi-root proofs; it contains no host path. A retained
 single-root artifact without `rootId` has one legacy scope.
+All eligible, cold, changed, and noncacheable counting keys retain both reader
+artifact and root scope. Distinct fresh roots, including the same checkout path
+in separate jobs, do not deduplicate each other's identities: 100 eligible
+identities per root with two misses in one root yield 198/200, not 98/100.
 Multiple fresh roots without unambiguous scope are an evidence gap. Command rows
 are ordered by their native start timestamps before deduplication. Zero-action
 audits do not consume freshness. In particular, a new

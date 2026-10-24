@@ -6,13 +6,25 @@ import type { ArtifactReference, WarmManifest } from './buck2-cache-warm99.ts'
 export type HistorySource = {
   id: number
   runId: number
+  runAttempt: number
   lane: CacheLane
   job: string
   trustedWriter: boolean
   startedAt: number | null
   finishedAt: number | null
 }
-export type ExpectedHistoryJob = { runId: number; job: string }
+/** `filter=latest` preserves each matrix job's own attempt, not the run-wide maximum. */
+export type ExpectedHistoryJob = { runId: number; job: string; runAttempt: number }
+const matchesExpectedHistoryJob = ({
+  source,
+  expected,
+}: {
+  source: ExpectedHistoryJob
+  expected: ExpectedHistoryJob
+}): boolean =>
+  source.runId === expected.runId &&
+  source.job === expected.job &&
+  source.runAttempt === expected.runAttempt
 /** Discovery's approximate q33 run classification is not a native job posture. */
 export const proofReaderLane = (run: EvidenceRun): CacheLane | undefined => {
   if (run.workflow !== 'ci.yml') return undefined
@@ -69,6 +81,9 @@ export const planProofHistory = ({
   const relevantRuns = selectProofRelevantRuns(runs)
   const enabledLanes = [...new Set(expectedLanes)]
   const evidenceGaps: string[] = []
+  const expectedSources = sources.filter((source) =>
+    expectedJobs.some((job) => matchesExpectedHistoryJob({ source, expected: job })),
+  )
   const observations = [0, 1].map((index) => {
     const chosen = enabledLanes.flatMap((lane) => {
       const chronological = readers
@@ -84,7 +99,7 @@ export const planProofHistory = ({
       }
       return [run]
     })
-    const readerSources = sources
+    const readerSources = expectedSources
       .filter((source) =>
         chosen.some((run) => run.id === source.runId && source.lane === proofReaderLane(run)),
       )
@@ -99,8 +114,11 @@ export const planProofHistory = ({
       if (expected.length === 0) evidenceGaps.push('expected-reader-jobs-unavailable')
       for (const [position, job] of expected.entries()) {
         if (
-          readerSources.filter((source) => source.runId === run.id && source.job === job.job)
-            .length > expected.slice(0, position).filter((item) => item.job === job.job).length
+          readerSources.filter((source) => matchesExpectedHistoryJob({ source, expected: job }))
+            .length >
+          expected
+            .slice(0, position)
+            .filter((item) => matchesExpectedHistoryJob({ source: item, expected: job })).length
         )
           continue
         evidenceGaps.push('expected-reader-job-evidence-unavailable')
@@ -120,7 +138,7 @@ export const planProofHistory = ({
         : chosen.length > 0
           ? Math.min(...chosen.map((run) => Date.parse(run.created_at)))
           : -Infinity
-    const writerSources = sources
+    const writerSources = expectedSources
       .filter(
         (source) =>
           relevantRuns.some((run) => run.id === source.runId) &&
@@ -140,7 +158,9 @@ export const planProofHistory = ({
         (job) => job.runId === run.id && coreWriterJobIds.has(job.job) === true,
       )
       for (const [position, job] of expected.entries()) {
-        const known = sources.filter((source) => source.runId === run.id && source.job === job.job)
+        const known = expectedSources.filter((source) =>
+          matchesExpectedHistoryJob({ source, expected: job }),
+        )
         if (
           known.length > 0 &&
           known.every(
@@ -153,8 +173,11 @@ export const planProofHistory = ({
         )
           continue
         if (
-          writerSources.filter((source) => source.runId === run.id && source.job === job.job)
-            .length > expected.slice(0, position).filter((item) => item.job === job.job).length
+          writerSources.filter((source) => matchesExpectedHistoryJob({ source, expected: job }))
+            .length >
+          expected
+            .slice(0, position)
+            .filter((item) => matchesExpectedHistoryJob({ source: item, expected: job })).length
         )
           continue
         evidenceGaps.push('expected-writer-job-evidence-unavailable')

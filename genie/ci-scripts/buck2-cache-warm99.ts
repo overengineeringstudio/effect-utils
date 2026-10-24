@@ -550,7 +550,7 @@ export const evaluateWarm99 = ({
             result.evidenceGap++
             continue
           }
-          const occurrence = JSON.stringify([rootScope(invocation.rootId), key])
+          const occurrence = JSON.stringify([ids[0], rootScope(invocation.rootId), key])
           if (seenIdentities.has(occurrence) === true) {
             result.excluded++
             continue
@@ -560,13 +560,13 @@ export const evaluateWarm99 = ({
           const noncacheable =
             action.executionKind === 0 || action.executionKind === 4 || action.executionKind === 6
           if (eligible === true) {
-            outcomes.set(key, action.executionKind === 3 && (outcomes.get(key) ?? true) === true)
+            outcomes.set(occurrence, action.executionKind === 3)
           } else if ((uploadedBases.get(baseIdentity(action)) ?? Infinity) < invocation.startedAt) {
-            changedIdentities.add(key)
+            changedIdentities.add(occurrence)
           } else if (noncacheable === true) {
-            noncacheableIdentities.add(key)
+            noncacheableIdentities.add(occurrence)
           } else {
-            cold.add(key)
+            cold.add(occurrence)
           }
         }
       }

@@ -1720,7 +1720,7 @@ const extraJobs: Record<string, any> = {
       failureReminderStep,
     ],
   },
-  // Checkout exemption: source-shape measures actions-checkout bytes only; it runs no devenv/Buck.
+  // Checkout/native-proof exemption: measures checkout bytes only, with no devenv/Buck execution.
   'source-shape': {
     'runs-on': namespaceRunner({
       profile: 'namespace-profile-linux-x86-64',

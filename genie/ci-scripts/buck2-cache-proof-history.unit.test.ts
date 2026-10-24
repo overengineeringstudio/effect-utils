@@ -36,14 +36,15 @@ describe('authoritative proof history planning', () => {
     const planned = planProofHistory({
       runs: [run(1, 'push', 'ci.yml'), run(2), run(3)],
       expectedJobs: [
-        { runId: 1, job: 'quality' },
-        { runId: 2, job: 'reader' },
-        { runId: 3, job: 'reader' },
+        { runId: 1, job: 'quality', runAttempt: 1 },
+        { runId: 2, job: 'reader', runAttempt: 1 },
+        { runId: 3, job: 'reader', runAttempt: 1 },
       ],
       sources: [
         {
           id: 101,
           runId: 1,
+          runAttempt: 1,
           lane: 'main-writer',
           job: 'quality',
           trustedWriter: true,
@@ -53,6 +54,7 @@ describe('authoritative proof history planning', () => {
         {
           id: 102,
           runId: 2,
+          runAttempt: 1,
           lane: 'main-reader',
           job: 'reader',
           trustedWriter: false,
@@ -79,6 +81,7 @@ describe('authoritative proof history planning', () => {
         {
           id: 103,
           runId: 3,
+          runAttempt: 1,
           lane: 'main-reader',
           job: 'reader',
           trustedWriter: false,
@@ -86,7 +89,7 @@ describe('authoritative proof history planning', () => {
           finishedAt: 3100,
         },
       ],
-      expectedJobs: [{ runId: 3, job: 'reader' }],
+      expectedJobs: [{ runId: 3, job: 'reader', runAttempt: 1 }],
     })
     expect(planned.manifest.observations[0]!.readers).toEqual([])
     expect(planned.manifest.observations[1]!.readers).toHaveLength(1)
@@ -96,7 +99,7 @@ describe('authoritative proof history planning', () => {
     const planned = planProofHistory({
       runs: [run(1, 'push', 'ci.yml'), run(2), run(3)],
       sources: [],
-      expectedJobs: [{ runId: 1, job: 'quality' }],
+      expectedJobs: [{ runId: 1, job: 'quality', runAttempt: 1 }],
     })
     expect(planned.manifest.observations[0]!.writers[0]!.actions).toBe('missing/writer-1-0.gz')
     expect(planned.evidenceGaps).toContain('expected-writer-job-evidence-unavailable')
@@ -106,15 +109,16 @@ describe('authoritative proof history planning', () => {
       expectedLanes: ['main-reader'],
       runs: [run(1, 'merge_group', 'ci.yml'), run(2), run(3)],
       expectedJobs: [
-        { runId: 1, job: 'store-gc' },
-        { runId: 2, job: 'reader' },
-        { runId: 3, job: 'reader' },
-        { runId: 1, job: 'quality' },
+        { runId: 1, job: 'store-gc', runAttempt: 1 },
+        { runId: 2, job: 'reader', runAttempt: 1 },
+        { runId: 3, job: 'reader', runAttempt: 1 },
+        { runId: 1, job: 'quality', runAttempt: 1 },
       ],
       sources: [
         {
           id: 101,
           runId: 1,
+          runAttempt: 1,
           lane: 'merge_group',
           job: 'store-gc',
           trustedWriter: false,
@@ -124,6 +128,7 @@ describe('authoritative proof history planning', () => {
         {
           id: 102,
           runId: 2,
+          runAttempt: 1,
           lane: 'main-reader',
           job: 'reader',
           trustedWriter: false,
@@ -133,6 +138,7 @@ describe('authoritative proof history planning', () => {
         {
           id: 103,
           runId: 3,
+          runAttempt: 1,
           lane: 'main-reader',
           job: 'reader',
           trustedWriter: false,
@@ -142,6 +148,7 @@ describe('authoritative proof history planning', () => {
         {
           id: 104,
           runId: 1,
+          runAttempt: 1,
           lane: 'merge_group',
           job: 'quality',
           trustedWriter: true,
@@ -155,5 +162,59 @@ describe('authoritative proof history planning', () => {
       [],
     ])
     expect(planned.evidenceGaps).toEqual([])
+  })
+  it('preserves non-rerun successes and mixed-attempt matrix multiplicity', () => {
+    const expectedJobs = [
+      { runId: 1, job: 'quality', runAttempt: 1 },
+      { runId: 1, job: 'quality', runAttempt: 2 },
+      { runId: 2, job: 'reader', runAttempt: 1 },
+      { runId: 2, job: 'matrix', runAttempt: 1 },
+      { runId: 2, job: 'matrix', runAttempt: 2 },
+      { runId: 2, job: 'matrix', runAttempt: 2 },
+      { runId: 3, job: 'reader', runAttempt: 1 },
+    ]
+    const sources = expectedJobs.map((job, index) => ({
+      ...job,
+      id: 100 + index,
+      lane: job.runId === 1 ? ('main-writer' as const) : ('main-reader' as const),
+      trustedWriter: job.runId === 1,
+      startedAt: job.runId * 1000,
+      finishedAt: job.runId * 1000 + 100,
+    }))
+    const planned = planProofHistory({
+      expectedLanes: ['main-reader'],
+      runs: [run(1), run(2), run(3)],
+      expectedJobs,
+      sources,
+    })
+    expect(planned.evidenceGaps).toEqual([])
+    expect(planned.manifest.observations[0]!.readers.map((source) => source.actions)).toEqual(
+      sources.slice(2, 6).map((source) => `sources/${source.id}/buck2-cache-actions.jsonl.gz`),
+    )
+    expect(planned.manifest.observations.map((observation) => observation.writers.length)).toEqual([
+      2, 2,
+    ])
+
+    // An extra old-attempt upload cannot replace a missing latest matrix instance.
+    const missingMatrix = planProofHistory({
+      expectedLanes: ['main-reader'],
+      runs: [run(1), run(2), run(3)],
+      expectedJobs,
+      sources: [...sources.filter((source) => source.id !== 105), { ...sources[3]!, id: 200 }],
+    })
+    expect(missingMatrix.evidenceGaps).toContain('expected-reader-job-evidence-unavailable')
+    expect(missingMatrix.manifest.observations[0]!.readers.at(-1)!.actions).toBe('missing/2-3.gz')
+
+    // A stale writer with the wrong attempt must not mask its missing rerun evidence.
+    const missingWriter = planProofHistory({
+      expectedLanes: ['main-reader'],
+      runs: [run(1), run(2), run(3)],
+      expectedJobs,
+      sources: [...sources.filter((source) => source.id !== 101), { ...sources[0]!, id: 201 }],
+    })
+    expect(missingWriter.evidenceGaps).toContain('expected-writer-job-evidence-unavailable')
+    expect(missingWriter.manifest.observations[0]!.writers.at(-1)!.actions).toBe(
+      'missing/writer-1-1.gz',
+    )
   })
 })

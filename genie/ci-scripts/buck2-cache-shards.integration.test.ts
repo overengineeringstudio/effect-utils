@@ -409,7 +409,14 @@ describe('rotation-independent native evidence shards', () => {
     }
   }, 15000)
 
-  it('rejects private absolute-path identifiers rather than persisting their raw native values', async () => {
+  it.each([
+    '..',
+    `/private/${canary}`,
+    `../../private/${canary}`,
+    `C:/Users/alice/${canary}`,
+    `${canary}.internal.example`,
+    `TOKEN_${canary}`,
+  ])('publishes only an opaque configured-identifier hash for %s', async (identifier) => {
     const directory = await mkdtemp(join(tmpdir(), 'buck-shard-canary-'))
     try {
       const output = join(directory, 'evidence.json')
@@ -417,12 +424,26 @@ describe('rotation-independent native evidence shards', () => {
       await prepare({
         output,
         buildId,
-        raw: nativeEvents({ buildId, identifier: `/private/${canary}` }),
+        raw: nativeEvents({ buildId, identifier }),
         events: join(directory, 'events.json-lines'),
       })
       const body = await Bun.file(join(`${output}.shards`, `${buildId}.json`)).text()
       expect(body).not.toContain(canary)
-      expect(decodeActionArtifact(JSON.parse(body).artifact).actions[0]?.identifier).toBe(null)
+      const decoded = decodeActionArtifact(JSON.parse(body).artifact)
+      expect(decoded.actions[0]?.identifier).toBe(
+        `identifier-sha256-v1:${createHash('sha256')
+          .update('effect-utils/buck2-action-identifier/v1\0')
+          .update(identifier)
+          .digest('hex')}`,
+      )
+      const lines = JSON.parse(body)
+        .artifact.trim()
+        .split('\n')
+        .map((line: string) => JSON.parse(line))
+      lines[1].identifier = identifier
+      expect(() =>
+        decodeActionArtifact(lines.map((line: unknown) => JSON.stringify(line)).join('\n') + '\n'),
+      ).toThrow()
     } finally {
       await rm(directory, { recursive: true, force: true })
     }

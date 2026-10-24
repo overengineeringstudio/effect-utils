@@ -13,6 +13,7 @@ import * as HttpClientRequest from 'effect/http/HttpClientRequest'
 import * as ChildProcess from 'effect/process/ChildProcess'
 import { ChildProcessSpawner } from 'effect/process/ChildProcessSpawner'
 
+import { coreProofDisabledJobIds } from '../ci-workflow/buck2-cache-proof-policy.ts'
 import {
   apiBudgetAvailable,
   artifactCanMatter,
@@ -368,10 +369,8 @@ const program = Effect.gen(function* () {
   const proofDirectory =
     options['proof-directory'] === undefined ? undefined : resolve(options['proof-directory'])
   const proofRelevantRuns = selectProofRelevantRuns(discovered)
-  const proofRunIds = new Set(proofRelevantRuns.map((run) => run.id))
   const expectedJobs: ExpectedHistoryJob[] = []
   const proofCollectionGaps: string[] = []
-  const proofAttempts = new Map<number, number>()
   if (proofDirectory !== undefined) {
     yield* io('Cannot create proof directory', () => mkdir(proofDirectory, { recursive: true }))
     for (const run of proofRelevantRuns) {
@@ -385,27 +384,20 @@ const program = Effect.gen(function* () {
         }
         for (const job of result.success.jobs) {
           if (job.conclusion === null) proofCollectionGaps.push('workflow-job-not-complete')
-          proofAttempts.set(run.id, Math.max(proofAttempts.get(run.id) ?? 0, job.run_attempt))
           const id = (job.name.startsWith('ci/') === true ? job.name.slice(3) : job.name).split(
             ' (',
           )[0]!
           if (
             job.conclusion === 'skipped' ||
             job.steps.some((step) => step.name === 'Start Buck2 cache evidence window') !== true ||
-            [
-              'cargo',
-              'default-ref-policy',
-              'build-products',
-              'publish-products',
-              'publish-compiled-products',
-            ].includes(id) === true
+            coreProofDisabledJobIds[id] === true
           )
             continue
           if (/^[a-zA-Z0-9_.:-]{1,96}$/.test(id) !== true || expectedJobs.length >= 128) {
             proofCollectionGaps.push('job-discovery-bound-or-identity-gap')
             continue
           }
-          expectedJobs.push({ runId: run.id, job: id })
+          expectedJobs.push({ runId: run.id, job: id, runAttempt: job.run_attempt })
         }
         if (result.success.jobs.length < 100) break
         if (page === 10) proofCollectionGaps.push('job-discovery-page-cap')
@@ -496,11 +488,13 @@ const program = Effect.gen(function* () {
               evidence.header.metadata.repo === repo &&
               evidence.header.metadata.runId === String(artifact.workflow_run.id)
             ) {
-              const wanted = proofRunIds.has(artifact.workflow_run.id)
-              const attempt = proofAttempts.get(artifact.workflow_run.id)
               if (
-                wanted === true &&
-                (attempt === undefined || evidence.header.metadata.runAttempt === String(attempt))
+                expectedJobs.some(
+                  (job) =>
+                    job.runId === artifact.workflow_run.id &&
+                    job.job === evidence.header.metadata.job &&
+                    String(job.runAttempt) === evidence.header.metadata.runAttempt,
+                ) === true
               ) {
                 const size = Buffer.byteLength(files.summary) + files.actions.length
                 if (historySources.length >= 128 || retainedProofBytes + size > 128 * 1024 * 1024)
@@ -522,6 +516,7 @@ const program = Effect.gen(function* () {
                   historySources.push({
                     id: artifact.id,
                     runId: artifact.workflow_run.id,
+                    runAttempt: Number(evidence.header.metadata.runAttempt),
                     lane,
                     job: evidence.header.metadata.job,
                     trustedWriter: evidence.header.metadata.posture === 'writer',

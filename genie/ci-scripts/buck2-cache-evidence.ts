@@ -661,10 +661,10 @@ export const createCacheEvidenceProjector = ({
           : nativeIdentifier === undefined || nativeIdentifier === ''
             ? ''
             : typeof nativeIdentifier === 'string'
-              ? safeIdentity({
-                  value: nativeIdentifier,
-                  grammar: /^[a-zA-Z0-9_.@+-][a-zA-Z0-9_./@+:-]*$/,
-                })
+              ? `identifier-sha256-v1:${createHash('sha256')
+                  .update('effect-utils/buck2-action-identifier/v1\0')
+                  .update(nativeIdentifier)
+                  .digest('hex')}`
               : null,
       exclusionReason,
       target: safeIdentity({ value: target, grammar: labelGrammar }),
