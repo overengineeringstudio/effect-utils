@@ -4,6 +4,7 @@ import { closeSync, openSync } from 'node:fs'
 import { appendFile, mkdir, mkdtemp, readdir, rm, truncate, utimes } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { gunzipSync } from 'node:zlib'
 
 import { decodeActionArtifact } from './buck2-action-evidence-codec.ts'
 import {
@@ -160,6 +161,7 @@ describe('rotation-independent native evidence shards', () => {
               GITHUB_RUN_ID: '123',
               GITHUB_RUN_ATTEMPT: '1',
               CI_BUCK2_CACHE_EVIDENCE_JOB: 'quality',
+              CI_BUCK2_CACHE_EVIDENCE_JOB_NAME: 'quality (namespace-profile-linux-x86-64)',
               CI_BUCK2_CACHE_EVIDENCE_HEAD_SHA: 'a'.repeat(40),
               GITHUB_EVENT_NAME: 'push',
               GITHUB_REF: 'refs/heads/main',
@@ -190,6 +192,15 @@ describe('rotation-independent native evidence shards', () => {
         )
       }
       const finalizedBefore = await finalize()
+      const actionHeader = JSON.parse(
+        gunzipSync(finalizedBefore[1]!).toString('utf8').split('\n')[0]!,
+      )
+      expect(actionHeader.metadata.cell).toBe(
+        `job-cell-sha256-v1:${createHash('sha256')
+          .update('effect-utils/buck2-proof-job-cell/v1\0')
+          .update('quality (namespace-profile-linux-x86-64)')
+          .digest('hex')}`,
+      )
       await rm(join(directory, 'buck-out'), { recursive: true, force: true })
       await rm(sinks, { recursive: true, force: true })
       const after = await reconcileNativeShards({ output })

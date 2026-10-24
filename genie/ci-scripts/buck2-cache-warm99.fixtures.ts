@@ -57,6 +57,7 @@ export const artifactFixture = (writer = false, input = [actionFixture()]): Acti
         runId: '1',
         runAttempt: '1',
         job: 'test',
+        cell: null,
         lane: writer ? 'main-writer' : 'main-reader',
         headSha: 'a'.repeat(40),
         posture: writer ? 'writer' : 'read-only',

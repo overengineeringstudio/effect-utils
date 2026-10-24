@@ -14,6 +14,8 @@ describe('Buck2 cache evidence workflow decorator', () => {
     })
     const job = jobs.quality!
     expect(job.env?.CI_SOURCE_ROOT).toBe('/redirected/root')
+    expect(job.env?.CI_BUCK2_CACHE_EVIDENCE_JOB_NAME).toBe('quality')
+    expect(job.name).toBeUndefined()
     expect(job.env?.CI_BUCK2_CACHE_ACTIONS_PATH).toBe(
       '${{ github.workspace }}/tmp/buck2-cache-actions.jsonl.gz',
     )
@@ -61,11 +63,41 @@ describe('Buck2 cache evidence workflow decorator', () => {
     })
     const job = jobs.test!
     expect(job.env?.CI_BUCK2_CACHE_EVIDENCE_DISABLED).toBe('0')
+    expect(job.name).toBeUndefined()
+    expect(job.env?.CI_BUCK2_CACHE_EVIDENCE_JOB_NAME).toBe('test (${{ matrix.system }})')
     const upload = job.steps.at(-1)!
     expect('with' in upload && upload.with?.name).toBe(
       'buck2-cache-evidence-test-${{ strategy.job-index }}-${{ github.run_attempt }}',
     )
     expect('with' in upload && upload.with?.path).toContain('CI_BUCK2_CACHE_ACTIONS_PATH')
+  })
+
+  it('preserves explicit required-check names and ordered default matrix names', () => {
+    const jobs = withBuck2CacheEvidence({
+      test: {
+        name: 'test (${{ matrix.runner }})',
+        'runs-on': 'ubuntu-latest',
+        strategy: { matrix: { runner: ['linux', 'macos'] } },
+        steps: [{ uses: 'actions/checkout@v4' }],
+      },
+      multi: {
+        'runs-on': 'ubuntu-latest',
+        strategy: { matrix: { runner: ['linux'], version: ['22'] } },
+        steps: [{ uses: 'actions/checkout@v4' }],
+      },
+      dynamic: {
+        'runs-on': 'ubuntu-latest',
+        strategy: { matrix: '${{ fromJSON(needs.plan.outputs.matrix) }}' },
+        steps: [{ uses: 'actions/checkout@v4' }],
+      },
+    })
+    expect(jobs.test!.name).toBe('test (${{ matrix.runner }})')
+    expect(jobs.test!.env?.CI_BUCK2_CACHE_EVIDENCE_JOB_NAME).toBe(jobs.test!.name)
+    expect(jobs.multi!.name).toBeUndefined()
+    expect(jobs.multi!.env?.CI_BUCK2_CACHE_EVIDENCE_JOB_NAME).toBe(
+      'multi (${{ matrix.runner }}, ${{ matrix.version }})',
+    )
+    expect(jobs.dynamic!.env?.CI_BUCK2_CACHE_EVIDENCE_JOB_NAME).toBeUndefined()
   })
 
   it('does not start or upload native proof for deliberately non-native jobs', () => {

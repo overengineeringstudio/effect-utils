@@ -825,6 +825,7 @@ jobs:
       CI_BUCK2_CACHE_PROOF_MANIFEST_PATH: '${{ github.workspace }}/tmp/buck2-cache-proof-manifest.json'
       CI_BUCK2_CACHE_EVIDENCE_START: '${{ github.workspace }}/tmp/buck2-cache-evidence-start'
       CI_BUCK2_CACHE_EVIDENCE_JOB: pr-buck2-tools
+      CI_BUCK2_CACHE_EVIDENCE_JOB_NAME: pr/buck2-tools
       CI_BUCK2_CACHE_EVIDENCE_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
       CI_BUCK2_CACHE_EVIDENCE_DISABLED: '0'
       CI_EVIDENCE_MODE: ${{ vars.CI_EVIDENCE_MODE }}
@@ -1366,6 +1367,7 @@ jobs:
       CI_BUCK2_CACHE_PROOF_MANIFEST_PATH: '${{ github.workspace }}/tmp/buck2-cache-proof-manifest.json'
       CI_BUCK2_CACHE_EVIDENCE_START: '${{ github.workspace }}/tmp/buck2-cache-evidence-start'
       CI_BUCK2_CACHE_EVIDENCE_JOB: quality
+      CI_BUCK2_CACHE_EVIDENCE_JOB_NAME: pr/quality
       CI_BUCK2_CACHE_EVIDENCE_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
       CI_BUCK2_CACHE_EVIDENCE_DISABLED: '0'
       CI_EVIDENCE_MODE: ${{ vars.CI_EVIDENCE_MODE }}
@@ -1401,6 +1403,7 @@ jobs:
       CI_BUCK2_CACHE_PROOF_MANIFEST_PATH: '${{ github.workspace }}/tmp/buck2-cache-proof-manifest.json'
       CI_BUCK2_CACHE_EVIDENCE_START: '${{ github.workspace }}/tmp/buck2-cache-evidence-start'
       CI_BUCK2_CACHE_EVIDENCE_JOB: test
+      CI_BUCK2_CACHE_EVIDENCE_JOB_NAME: test (namespace-profile-linux-x86-64)
       CI_BUCK2_CACHE_EVIDENCE_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
       CI_BUCK2_CACHE_EVIDENCE_DISABLED: '0'
       CI_EVIDENCE_MODE: ${{ vars.CI_EVIDENCE_MODE }}
@@ -1752,6 +1755,7 @@ jobs:
       CI_BUCK2_CACHE_PROOF_MANIFEST_PATH: '${{ github.workspace }}/tmp/buck2-cache-proof-manifest.json'
       CI_BUCK2_CACHE_EVIDENCE_START: '${{ github.workspace }}/tmp/buck2-cache-evidence-start'
       CI_BUCK2_CACHE_EVIDENCE_JOB: test-macos
+      CI_BUCK2_CACHE_EVIDENCE_JOB_NAME: test (namespace-profile-macos-arm64)
       CI_BUCK2_CACHE_EVIDENCE_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
       CI_BUCK2_CACHE_EVIDENCE_DISABLED: '0'
       CI_EVIDENCE_MODE: ${{ vars.CI_EVIDENCE_MODE }}
@@ -2496,6 +2500,7 @@ jobs:
       CI_BUCK2_CACHE_PROOF_MANIFEST_PATH: '${{ github.workspace }}/tmp/buck2-cache-proof-manifest.json'
       CI_BUCK2_CACHE_EVIDENCE_START: '${{ github.workspace }}/tmp/buck2-cache-evidence-start'
       CI_BUCK2_CACHE_EVIDENCE_JOB: test-playwright-utils
+      CI_BUCK2_CACHE_EVIDENCE_JOB_NAME: test-playwright-utils
       CI_BUCK2_CACHE_EVIDENCE_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
       CI_BUCK2_CACHE_EVIDENCE_DISABLED: '0'
       CI_EVIDENCE_MODE: ${{ vars.CI_EVIDENCE_MODE }}
@@ -2851,6 +2856,7 @@ jobs:
       CI_BUCK2_CACHE_PROOF_MANIFEST_PATH: '${{ github.workspace }}/tmp/buck2-cache-proof-manifest.json'
       CI_BUCK2_CACHE_EVIDENCE_START: '${{ github.workspace }}/tmp/buck2-cache-evidence-start'
       CI_BUCK2_CACHE_EVIDENCE_JOB: test-playwright-tui-react
+      CI_BUCK2_CACHE_EVIDENCE_JOB_NAME: test-playwright-tui-react
       CI_BUCK2_CACHE_EVIDENCE_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
       CI_BUCK2_CACHE_EVIDENCE_DISABLED: '0'
       CI_EVIDENCE_MODE: ${{ vars.CI_EVIDENCE_MODE }}
@@ -3176,6 +3182,7 @@ jobs:
       CI_BUCK2_CACHE_PROOF_MANIFEST_PATH: '${{ github.workspace }}/tmp/buck2-cache-proof-manifest.json'
       CI_BUCK2_CACHE_EVIDENCE_START: '${{ github.workspace }}/tmp/buck2-cache-evidence-start'
       CI_BUCK2_CACHE_EVIDENCE_JOB: test-megarepo-store-gc
+      CI_BUCK2_CACHE_EVIDENCE_JOB_NAME: test-megarepo-store-gc
       CI_BUCK2_CACHE_EVIDENCE_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
       CI_BUCK2_CACHE_EVIDENCE_DISABLED: '0'
       CI_EVIDENCE_MODE: ${{ vars.CI_EVIDENCE_MODE }}
@@ -3788,6 +3795,7 @@ jobs:
       CI_BUCK2_CACHE_PROOF_MANIFEST_PATH: '${{ github.workspace }}/tmp/buck2-cache-proof-manifest.json'
       CI_BUCK2_CACHE_EVIDENCE_START: '${{ github.workspace }}/tmp/buck2-cache-evidence-start'
       CI_BUCK2_CACHE_EVIDENCE_JOB: weaver
+      CI_BUCK2_CACHE_EVIDENCE_JOB_NAME: weaver
       CI_BUCK2_CACHE_EVIDENCE_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
       CI_BUCK2_CACHE_EVIDENCE_DISABLED: '0'
       CI_EVIDENCE_MODE: ${{ vars.CI_EVIDENCE_MODE }}
@@ -4353,6 +4361,7 @@ jobs:
       CI_BUCK2_CACHE_PROOF_MANIFEST_PATH: '${{ github.workspace }}/tmp/buck2-cache-proof-manifest.json'
       CI_BUCK2_CACHE_EVIDENCE_START: '${{ github.workspace }}/tmp/buck2-cache-evidence-start'
       CI_BUCK2_CACHE_EVIDENCE_JOB: trusted-buck2-remote-cache-proof
+      CI_BUCK2_CACHE_EVIDENCE_JOB_NAME: trusted-buck2-remote-cache-proof
       CI_BUCK2_CACHE_EVIDENCE_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
       CI_BUCK2_CACHE_EVIDENCE_DISABLED: '0'
       CI_EVIDENCE_MODE: ${{ vars.CI_EVIDENCE_MODE }}
@@ -5146,6 +5155,7 @@ jobs:
       CI_BUCK2_CACHE_PROOF_MANIFEST_PATH: '${{ github.workspace }}/tmp/buck2-cache-proof-manifest.json'
       CI_BUCK2_CACHE_EVIDENCE_START: '${{ github.workspace }}/tmp/buck2-cache-evidence-start'
       CI_BUCK2_CACHE_EVIDENCE_JOB: test-integration-notion
+      CI_BUCK2_CACHE_EVIDENCE_JOB_NAME: test-integration-notion
       CI_BUCK2_CACHE_EVIDENCE_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
       CI_BUCK2_CACHE_EVIDENCE_DISABLED: '0'
       CI_EVIDENCE_MODE: ${{ vars.CI_EVIDENCE_MODE }}
@@ -5427,6 +5437,7 @@ jobs:
       CI_BUCK2_CACHE_PROOF_MANIFEST_PATH: '${{ github.workspace }}/tmp/buck2-cache-proof-manifest.json'
       CI_BUCK2_CACHE_EVIDENCE_START: '${{ github.workspace }}/tmp/buck2-cache-evidence-start'
       CI_BUCK2_CACHE_EVIDENCE_JOB: test-integration-restate
+      CI_BUCK2_CACHE_EVIDENCE_JOB_NAME: test-integration-restate
       CI_BUCK2_CACHE_EVIDENCE_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
       CI_BUCK2_CACHE_EVIDENCE_DISABLED: '0'
       CI_EVIDENCE_MODE: ${{ vars.CI_EVIDENCE_MODE }}
@@ -5753,6 +5764,7 @@ jobs:
       CI_BUCK2_CACHE_PROOF_MANIFEST_PATH: '${{ github.workspace }}/tmp/buck2-cache-proof-manifest.json'
       CI_BUCK2_CACHE_EVIDENCE_START: '${{ github.workspace }}/tmp/buck2-cache-evidence-start'
       CI_BUCK2_CACHE_EVIDENCE_JOB: test-live-deploy-ci-tools
+      CI_BUCK2_CACHE_EVIDENCE_JOB_NAME: test-live-deploy-ci-tools
       CI_BUCK2_CACHE_EVIDENCE_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
       CI_BUCK2_CACHE_EVIDENCE_DISABLED: '0'
       CI_EVIDENCE_MODE: ${{ vars.CI_EVIDENCE_MODE }}
@@ -6100,6 +6112,7 @@ jobs:
       CI_BUCK2_CACHE_PROOF_MANIFEST_PATH: '${{ github.workspace }}/tmp/buck2-cache-proof-manifest.json'
       CI_BUCK2_CACHE_EVIDENCE_START: '${{ github.workspace }}/tmp/buck2-cache-evidence-start'
       CI_BUCK2_CACHE_EVIDENCE_JOB: deploy-storybooks
+      CI_BUCK2_CACHE_EVIDENCE_JOB_NAME: deploy-storybooks
       CI_BUCK2_CACHE_EVIDENCE_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
       CI_BUCK2_CACHE_EVIDENCE_DISABLED: '0'
       CI_EVIDENCE_MODE: ${{ vars.CI_EVIDENCE_MODE }}

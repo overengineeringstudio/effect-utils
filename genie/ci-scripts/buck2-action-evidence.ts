@@ -1,4 +1,13 @@
+import { createHash } from 'node:crypto'
+
 import type { CacheOutcome } from './buck2-cache-evidence.ts'
+
+/** Opaque identity of the unchanged GitHub job display name, including matrix values. */
+export const proofJobCell = (displayName: string): string =>
+  `job-cell-sha256-v1:${createHash('sha256')
+    .update('effect-utils/buck2-proof-job-cell/v1\0')
+    .update(displayName)
+    .digest('hex')}`
 
 /** Repository-owned wire mapping; raw enums remain authoritative for alternate consumers. */
 export const cacheOutcomeMapping = 'effect-utils/compact-cache-outcome/v1' as const
@@ -116,6 +125,8 @@ export type ActionArtifactHeader = {
     runId: string | null
     runAttempt: string | null
     job: string | null
+    /** Missing in historical artifacts; never matches a discovered cell. */
+    cell?: string | null
     lane: CacheLane | null
     headSha: string | null
     posture: 'read-only' | 'writer' | 'disabled-by-design'

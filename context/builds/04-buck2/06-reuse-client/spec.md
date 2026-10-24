@@ -908,8 +908,15 @@ report without historical writers/readers is explicitly incomplete, not a
 passing substitute for two observations. The daily join supplies explicit
 historical run/job membership from workflow jobs, retaining missing/expired
 evidence as gaps rather than discovering only successful uploads. Latest retained
-attempt is selected per expected job, including every matrix occurrence; a rerun
-of failed jobs does not discard successful jobs' older-attempt evidence.
+attempt is selected per expected job and matrix cell; a rerun of failed jobs
+does not discard successful jobs' older-attempt evidence. Membership matches
+run ID, base job, cell, and attempt exactly: stale evidence from a rerun cell
+cannot replace a missing sibling cell. The cell is a domain-separated SHA-256
+token of the existing full GitHub job display name (including matrix values);
+required-check display names are never changed. Unknown historical cell
+identity and ambiguous discovered display names fail closed. The sanitized
+manifest preserves each expected job's attempt and cell even if its evidence
+reference is unavailable.
 
 Finalization exits `2` when it successfully writes incomplete evidence, and
 `1` on an operational failure. Collection preserves either failure but adds

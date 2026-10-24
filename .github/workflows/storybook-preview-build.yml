@@ -95,6 +95,7 @@ jobs:
       CI_BUCK2_CACHE_PROOF_MANIFEST_PATH: '${{ github.workspace }}/tmp/buck2-cache-proof-manifest.json'
       CI_BUCK2_CACHE_EVIDENCE_START: '${{ github.workspace }}/tmp/buck2-cache-evidence-start'
       CI_BUCK2_CACHE_EVIDENCE_JOB: build-storybooks
+      CI_BUCK2_CACHE_EVIDENCE_JOB_NAME: build-storybooks
       CI_BUCK2_CACHE_EVIDENCE_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
       CI_BUCK2_CACHE_EVIDENCE_DISABLED: '0'
     steps:

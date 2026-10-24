@@ -331,6 +331,13 @@ export const decodeActionArtifact = (raw: string): ActionArtifact => {
         value: field({ value: metadata, key: 'job' }),
         grammar: /^[a-zA-Z0-9_.-]+$/,
       }),
+      cell:
+        field({ value: metadata, key: 'cell' }) === undefined
+          ? null
+          : nullableText({
+              value: field({ value: metadata, key: 'cell' }),
+              grammar: /^job-cell-sha256-v1:[a-f0-9]{64}$/,
+            }),
       lane: rawLane === null ? null : lane(rawLane),
       headSha: nullableText({
         value: field({ value: metadata, key: 'headSha' }),

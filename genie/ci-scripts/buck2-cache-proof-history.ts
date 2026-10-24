@@ -9,12 +9,13 @@ export type HistorySource = {
   runAttempt: number
   lane: CacheLane
   job: string
+  cell: string
   trustedWriter: boolean
   startedAt: number | null
   finishedAt: number | null
 }
-/** `filter=latest` preserves each matrix job's own attempt, not the run-wide maximum. */
-export type ExpectedHistoryJob = { runId: number; job: string; runAttempt: number }
+/** `filter=latest` preserves each display-name cell's own attempt, not the run-wide maximum. */
+export type ExpectedHistoryJob = { runId: number; job: string; cell: string; runAttempt: number }
 const matchesExpectedHistoryJob = ({
   source,
   expected,
@@ -24,6 +25,7 @@ const matchesExpectedHistoryJob = ({
 }): boolean =>
   source.runId === expected.runId &&
   source.job === expected.job &&
+  source.cell === expected.cell &&
   source.runAttempt === expected.runAttempt
 /** Discovery's approximate q33 run classification is not a native job posture. */
 export const proofReaderLane = (run: EvidenceRun): CacheLane | undefined => {

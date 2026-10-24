@@ -7,6 +7,7 @@ import {
   type ActionArtifact,
   type CacheLane,
 } from './buck2-action-evidence.ts'
+import type { ExpectedHistoryJob } from './buck2-cache-proof-history.ts'
 import {
   completeArtifact,
   decodeEvidence,
@@ -53,6 +54,7 @@ type ProofReference = {
     runId: string | null
     runAttempt: string | null
     job: string | null
+    cell: string | null
     headSha: string | null
     startedAt: number | null
     finishedAt: number | null
@@ -88,7 +90,7 @@ export const writeBuck2CacheProofReports = async ({
   shardIndexPath?: string
   manifestPath?: string
   collectionEvidenceGaps?: readonly string[]
-  expectedJobs?: readonly { runId: number; job: string }[]
+  expectedJobs?: readonly ExpectedHistoryJob[]
   nixSubstitutionObserved?: boolean
 }): Promise<void> => {
   const root = dirname(resolve(summaryPath))
@@ -243,6 +245,7 @@ export const writeBuck2CacheProofReports = async ({
         runId: safeToken(metadata.runId),
         runAttempt: safeToken(metadata.runAttempt),
         job: safeToken(metadata.job),
+        cell: safeToken(metadata.cell),
         headSha:
           metadata.headSha !== null && /^[a-f0-9]{40,64}$/.test(metadata.headSha) === true
             ? metadata.headSha
@@ -453,9 +456,13 @@ export const writeBuck2CacheProofReports = async ({
       sha256: sha256(warmBytes),
       bytes: Buffer.byteLength(warmBytes),
     },
+    // Keep discovery's required identity even when the corresponding evidence cannot be loaded.
     discoveredExpectedJobs: expectedJobs.slice(0, 128).map((job) => ({
       runId: Number.isSafeInteger(job.runId) === true && job.runId > 0 ? job.runId : null,
       job: safeToken(job.job),
+      runAttempt:
+        Number.isSafeInteger(job.runAttempt) === true && job.runAttempt > 0 ? job.runAttempt : null,
+      cell: safeToken(job.cell),
     })),
     evidenceGaps:
       disabled === true

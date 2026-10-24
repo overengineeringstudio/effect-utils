@@ -48,6 +48,7 @@ import {
   invocationWithinJobWindow,
   maxActionArtifactBytes,
   outcomeFor,
+  proofJobCell,
   zeroActionExclusionCounts,
   type ActionExclusionCounts,
   type ActionExclusionReason,
@@ -1360,6 +1361,10 @@ const run = async (): Promise<void> => {
     runId: safeIdentity({ value: evidence.metadata.runId, grammar: /^[0-9]+$/ }),
     runAttempt: safeIdentity({ value: evidence.metadata.runAttempt, grammar: /^[0-9]+$/ }),
     job: safeIdentity({ value: evidence.metadata.job, grammar: /^[a-zA-Z0-9_.-]+$/ }),
+    cell:
+      process.env.CI_BUCK2_CACHE_EVIDENCE_JOB_NAME === undefined
+        ? null
+        : proofJobCell(process.env.CI_BUCK2_CACHE_EVIDENCE_JOB_NAME),
     lane:
       process.env.GITHUB_EVENT_NAME === 'merge_group'
         ? 'merge_group'

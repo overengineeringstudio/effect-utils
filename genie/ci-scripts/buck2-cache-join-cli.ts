@@ -14,6 +14,7 @@ import * as ChildProcess from 'effect/process/ChildProcess'
 import { ChildProcessSpawner } from 'effect/process/ChildProcessSpawner'
 
 import { coreProofDisabledJobIds } from '../ci-workflow/buck2-cache-proof-policy.ts'
+import { proofJobCell } from './buck2-action-evidence.ts'
 import {
   apiBudgetAvailable,
   artifactCanMatter,
@@ -397,7 +398,13 @@ const program = Effect.gen(function* () {
             proofCollectionGaps.push('job-discovery-bound-or-identity-gap')
             continue
           }
-          expectedJobs.push({ runId: run.id, job: id, runAttempt: job.run_attempt })
+          const cell = proofJobCell(job.name)
+          if (
+            expectedJobs.some((expected) => expected.runId === run.id && expected.cell === cell) ===
+            true
+          )
+            proofCollectionGaps.push('job-discovery-ambiguous-cell')
+          expectedJobs.push({ runId: run.id, job: id, runAttempt: job.run_attempt, cell })
         }
         if (result.success.jobs.length < 100) break
         if (page === 10) proofCollectionGaps.push('job-discovery-page-cap')
@@ -493,13 +500,18 @@ const program = Effect.gen(function* () {
                   (job) =>
                     job.runId === artifact.workflow_run.id &&
                     job.job === evidence.header.metadata.job &&
-                    String(job.runAttempt) === evidence.header.metadata.runAttempt,
+                    String(job.runAttempt) === evidence.header.metadata.runAttempt &&
+                    job.cell === evidence.header.metadata.cell,
                 ) === true
               ) {
                 const size = Buffer.byteLength(files.summary) + files.actions.length
                 if (historySources.length >= 128 || retainedProofBytes + size > 128 * 1024 * 1024)
                   proofCollectionGaps.push('proof-retention-bound-exceeded')
-                else if (evidence.header.metadata.job !== null) {
+                else if (
+                  evidence.header.metadata.job !== null &&
+                  evidence.header.metadata.cell !== null &&
+                  evidence.header.metadata.cell !== undefined
+                ) {
                   retainedProofBytes += size
                   const destination = join(proofDirectory, 'sources', String(artifact.id))
                   yield* io('Cannot retain authoritative proof source', async () => {
@@ -519,6 +531,7 @@ const program = Effect.gen(function* () {
                     runAttempt: Number(evidence.header.metadata.runAttempt),
                     lane,
                     job: evidence.header.metadata.job,
+                    cell: evidence.header.metadata.cell,
                     trustedWriter: evidence.header.metadata.posture === 'writer',
                     startedAt:
                       nativeStarts.length > 0

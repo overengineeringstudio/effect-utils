@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 import type { ActionArtifact } from './buck2-action-evidence.ts'
+import type { ExpectedHistoryJob } from './buck2-cache-proof-history.ts'
 import {
   proofManifestName,
   warm99ReportName,
@@ -97,6 +98,89 @@ describe('proof report publication', () => {
     await Bun.write(join(options.root, manifest.observations[1]!.readers[0]!.actions), 'corrupt')
     await writeBuck2CacheProofReports({ ...options, manifestPath })
     expect((await Bun.file(join(options.root, warm99ReportName)).json()).accepted).toBe(false)
+  })
+
+  it('preserves discovered mixed cell attempts when an authoritative reference is missing', async () => {
+    const options = await setup()
+    const manifest = manifestFixture()
+    const loaded = loadedFixture(manifest)
+    const expectedJobs: ExpectedHistoryJob[] = [
+      { runId: 10, job: 'quality', cell: `job-cell-sha256-v1:${'a'.repeat(64)}`, runAttempt: 1 },
+      { runId: 10, job: 'quality', cell: `job-cell-sha256-v1:${'b'.repeat(64)}`, runAttempt: 2 },
+      { runId: 11, job: 'reader', cell: `job-cell-sha256-v1:${'c'.repeat(64)}`, runAttempt: 1 },
+      { runId: 11, job: 'reader', cell: `job-cell-sha256-v1:${'d'.repeat(64)}`, runAttempt: 2 },
+    ]
+    for (const [index, item] of loaded.entries()) {
+      const writer = item.writers[0]!
+      const writerJob = expectedJobs[index]!
+      Object.assign(writer.header.metadata, {
+        ...writerJob,
+        runId: String(writerJob.runId),
+        runAttempt: String(writerJob.runAttempt),
+      })
+      await put(
+        join(options.root, item.observation.writers[0]!.summary),
+        join(options.root, item.observation.writers[0]!.actions),
+        writer,
+      )
+      if (index === 0) {
+        const reader = item.readers[0]!
+        const readerJob = expectedJobs[2]!
+        Object.assign(reader.header.metadata, {
+          ...readerJob,
+          runId: String(readerJob.runId),
+          runAttempt: String(readerJob.runAttempt),
+        })
+        await put(
+          join(options.root, item.observation.readers[0]!.summary),
+          join(options.root, item.observation.readers[0]!.actions),
+          reader,
+        )
+      }
+    }
+    await put(options.summaryPath, options.actionsPath, artifactFixture())
+    const manifestPath = join(options.root, 'history.json')
+    await Bun.write(manifestPath, JSON.stringify(manifest))
+    await writeBuck2CacheProofReports({ ...options, manifestPath, expectedJobs })
+    const proof = await Bun.file(join(options.root, proofManifestName)).json()
+    expect(proof.accepted).toBe(false)
+    expect(proof.discoveredExpectedJobs).toEqual(expectedJobs)
+    expect(proof.references).toHaveLength(4)
+    expect(proof.references[0].metadata).toMatchObject({
+      runId: '10',
+      job: 'quality',
+      runAttempt: '1',
+      cell: expectedJobs[0]!.cell,
+    })
+    expect(proof.references[2].metadata).toMatchObject({
+      runId: '10',
+      job: 'quality',
+      runAttempt: '2',
+      cell: expectedJobs[1]!.cell,
+    })
+    expect(proof.references[3].metadata).toBeNull()
+    expect(proof.references[3].gap).toBe('unavailable-or-invalid-evidence')
+    expect(proof.evidenceGaps).toContain('reference-4:unavailable-or-invalid-evidence')
+    expect(proof.discoveredExpectedJobs[3]).toEqual(expectedJobs[3])
+    expect(JSON.stringify(proof)).not.toContain(options.root)
+  })
+
+  it('sanitizes discovered attempt and cell fields without dropping required keys', async () => {
+    const options = await setup()
+    await put(options.summaryPath, options.actionsPath, artifactFixture())
+    await writeBuck2CacheProofReports({
+      ...options,
+      expectedJobs: [
+        { runId: 1, job: 'reader', cell: 'private/path', runAttempt: 0 },
+        { runId: 2, job: 'reader', cell: 'singleton', runAttempt: Number.NaN },
+      ],
+    })
+    const proof = await Bun.file(join(options.root, proofManifestName)).json()
+    expect(proof.discoveredExpectedJobs).toEqual([
+      { runId: 1, job: 'reader', cell: null, runAttempt: null },
+      { runId: 2, job: 'reader', cell: 'singleton', runAttempt: null },
+    ])
+    expect(JSON.stringify(proof)).not.toContain('private/path')
   })
 
   it('reports invalid current evidence without leaking paths or diagnostics', async () => {

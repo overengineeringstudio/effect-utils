@@ -36,9 +36,9 @@ describe('authoritative proof history planning', () => {
     const planned = planProofHistory({
       runs: [run(1, 'push', 'ci.yml'), run(2), run(3)],
       expectedJobs: [
-        { runId: 1, job: 'quality', runAttempt: 1 },
-        { runId: 2, job: 'reader', runAttempt: 1 },
-        { runId: 3, job: 'reader', runAttempt: 1 },
+        { runId: 1, job: 'quality', cell: 'singleton', runAttempt: 1 },
+        { runId: 2, job: 'reader', cell: 'singleton', runAttempt: 1 },
+        { runId: 3, job: 'reader', cell: 'singleton', runAttempt: 1 },
       ],
       sources: [
         {
@@ -47,6 +47,7 @@ describe('authoritative proof history planning', () => {
           runAttempt: 1,
           lane: 'main-writer',
           job: 'quality',
+          cell: 'singleton',
           trustedWriter: true,
           startedAt: 1000,
           finishedAt: 1100,
@@ -57,6 +58,7 @@ describe('authoritative proof history planning', () => {
           runAttempt: 1,
           lane: 'main-reader',
           job: 'reader',
+          cell: 'singleton',
           trustedWriter: false,
           startedAt: 2000,
           finishedAt: 2100,
@@ -84,12 +86,13 @@ describe('authoritative proof history planning', () => {
           runAttempt: 1,
           lane: 'main-reader',
           job: 'reader',
+          cell: 'singleton',
           trustedWriter: false,
           startedAt: 3000,
           finishedAt: 3100,
         },
       ],
-      expectedJobs: [{ runId: 3, job: 'reader', runAttempt: 1 }],
+      expectedJobs: [{ runId: 3, job: 'reader', cell: 'singleton', runAttempt: 1 }],
     })
     expect(planned.manifest.observations[0]!.readers).toEqual([])
     expect(planned.manifest.observations[1]!.readers).toHaveLength(1)
@@ -99,7 +102,7 @@ describe('authoritative proof history planning', () => {
     const planned = planProofHistory({
       runs: [run(1, 'push', 'ci.yml'), run(2), run(3)],
       sources: [],
-      expectedJobs: [{ runId: 1, job: 'quality', runAttempt: 1 }],
+      expectedJobs: [{ runId: 1, job: 'quality', cell: 'singleton', runAttempt: 1 }],
     })
     expect(planned.manifest.observations[0]!.writers[0]!.actions).toBe('missing/writer-1-0.gz')
     expect(planned.evidenceGaps).toContain('expected-writer-job-evidence-unavailable')
@@ -109,10 +112,10 @@ describe('authoritative proof history planning', () => {
       expectedLanes: ['main-reader'],
       runs: [run(1, 'merge_group', 'ci.yml'), run(2), run(3)],
       expectedJobs: [
-        { runId: 1, job: 'store-gc', runAttempt: 1 },
-        { runId: 2, job: 'reader', runAttempt: 1 },
-        { runId: 3, job: 'reader', runAttempt: 1 },
-        { runId: 1, job: 'quality', runAttempt: 1 },
+        { runId: 1, job: 'store-gc', cell: 'singleton', runAttempt: 1 },
+        { runId: 2, job: 'reader', cell: 'singleton', runAttempt: 1 },
+        { runId: 3, job: 'reader', cell: 'singleton', runAttempt: 1 },
+        { runId: 1, job: 'quality', cell: 'singleton', runAttempt: 1 },
       ],
       sources: [
         {
@@ -121,6 +124,7 @@ describe('authoritative proof history planning', () => {
           runAttempt: 1,
           lane: 'merge_group',
           job: 'store-gc',
+          cell: 'singleton',
           trustedWriter: false,
           startedAt: 1000,
           finishedAt: 1100,
@@ -131,6 +135,7 @@ describe('authoritative proof history planning', () => {
           runAttempt: 1,
           lane: 'main-reader',
           job: 'reader',
+          cell: 'singleton',
           trustedWriter: false,
           startedAt: 2000,
           finishedAt: 2100,
@@ -141,6 +146,7 @@ describe('authoritative proof history planning', () => {
           runAttempt: 1,
           lane: 'main-reader',
           job: 'reader',
+          cell: 'singleton',
           trustedWriter: false,
           startedAt: 3000,
           finishedAt: 3100,
@@ -151,6 +157,7 @@ describe('authoritative proof history planning', () => {
           runAttempt: 1,
           lane: 'merge_group',
           job: 'quality',
+          cell: 'singleton',
           trustedWriter: true,
           startedAt: 4000,
           finishedAt: 4100,
@@ -165,13 +172,13 @@ describe('authoritative proof history planning', () => {
   })
   it('preserves non-rerun successes and mixed-attempt matrix multiplicity', () => {
     const expectedJobs = [
-      { runId: 1, job: 'quality', runAttempt: 1 },
-      { runId: 1, job: 'quality', runAttempt: 2 },
-      { runId: 2, job: 'reader', runAttempt: 1 },
-      { runId: 2, job: 'matrix', runAttempt: 1 },
-      { runId: 2, job: 'matrix', runAttempt: 2 },
-      { runId: 2, job: 'matrix', runAttempt: 2 },
-      { runId: 3, job: 'reader', runAttempt: 1 },
+      { runId: 1, job: 'quality', cell: 'cell-0', runAttempt: 1 },
+      { runId: 1, job: 'quality', cell: 'cell-1', runAttempt: 2 },
+      { runId: 2, job: 'reader', cell: 'singleton', runAttempt: 1 },
+      { runId: 2, job: 'matrix', cell: 'cell-0', runAttempt: 1 },
+      { runId: 2, job: 'matrix', cell: 'cell-1', runAttempt: 2 },
+      { runId: 2, job: 'matrix', cell: 'cell-2', runAttempt: 2 },
+      { runId: 3, job: 'reader', cell: 'singleton', runAttempt: 1 },
     ]
     const sources = expectedJobs.map((job, index) => ({
       ...job,
@@ -216,5 +223,63 @@ describe('authoritative proof history planning', () => {
     expect(missingWriter.manifest.observations[0]!.writers.at(-1)!.actions).toBe(
       'missing/writer-1-1.gz',
     )
+  })
+  it('never substitutes a stale sibling cell for missing reader or writer evidence', () => {
+    for (const writer of [false, true]) {
+      const runId = writer === true ? 1 : 2
+      const job = writer === true ? 'quality' : 'matrix'
+      const expectedJobs = [
+        { runId, job, cell: 'cell-0', runAttempt: 1 },
+        { runId, job, cell: 'cell-1', runAttempt: 2 },
+      ]
+      const sources = expectedJobs.map((expected, index) => ({
+        ...expected,
+        id: 100 + index,
+        lane: writer === true ? ('main-writer' as const) : ('main-reader' as const),
+        trustedWriter: writer,
+        startedAt: runId * 1000,
+        finishedAt: runId * 1000 + 100,
+      }))
+      const staleSibling = { ...sources[1]!, id: 200, runAttempt: 1 }
+      const plan = (includeFirstCell: boolean) =>
+        planProofHistory({
+          expectedLanes: ['main-reader'],
+          runs: [run(1), run(2), run(3)],
+          expectedJobs,
+          sources: [...(includeFirstCell === true ? [sources[0]!] : []), staleSibling, sources[1]!],
+        })
+
+      // A@1 missing, B@1 stale, B@2 current: B@1 cannot fill A@1.
+      const missing = plan(false)
+      const missingRefs =
+        writer === true
+          ? missing.manifest.observations[0]!.writers
+          : missing.manifest.observations[0]!.readers
+      expect(missingRefs.map((ref) => ref.actions)).toEqual([
+        'sources/101/buck2-cache-actions.jsonl.gz',
+        writer === true ? 'missing/writer-1-0.gz' : 'missing/2-0.gz',
+      ])
+      expect(missing.evidenceGaps).toContain(
+        writer === true
+          ? 'expected-writer-job-evidence-unavailable'
+          : 'expected-reader-job-evidence-unavailable',
+      )
+
+      // Even when A@1 exists, B@1 is not a discovered latest cell.
+      const present = plan(true)
+      const presentRefs =
+        writer === true
+          ? present.manifest.observations[0]!.writers
+          : present.manifest.observations[0]!.readers
+      expect(presentRefs.map((ref) => ref.actions)).toEqual([
+        'sources/100/buck2-cache-actions.jsonl.gz',
+        'sources/101/buck2-cache-actions.jsonl.gz',
+      ])
+      expect(present.evidenceGaps).not.toContain(
+        writer === true
+          ? 'expected-writer-job-evidence-unavailable'
+          : 'expected-reader-job-evidence-unavailable',
+      )
+    }
   })
 })

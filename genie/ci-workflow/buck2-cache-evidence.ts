@@ -2,6 +2,29 @@ import type { GitHubWorkflowArgs } from '../../packages/@overeng/genie/src/runti
 import { coreProofDisabledJobIds } from './buck2-cache-proof-policy.ts'
 import { ciJobAdmission, withCiAdmissionCleanup } from './shared.ts'
 
+/** Mirror GitHub's existing default name; never rename required status checks. */
+const evidenceJobDisplayName = ({
+  jobId,
+  job,
+}: {
+  jobId: string
+  job: GitHubWorkflowArgs['jobs'][string]
+}): string | undefined => {
+  if (job.name !== undefined) return job.name
+  if (job.strategy === undefined || !('matrix' in job.strategy)) return jobId
+  const matrix = job.strategy.matrix
+  // Dynamic/include-only matrices have no statically established axis order.
+  // Leave their identity unknown rather than accepting a guessed matrix cell.
+  if (typeof matrix !== 'object' || matrix === null) return undefined
+  const axes = Object.keys(matrix).filter((axis) => axis !== 'include' && axis !== 'exclude')
+  if (
+    axes.length === 0 ||
+    axes.some((axis) => /^[a-zA-Z_][a-zA-Z0-9_]*$/.test(axis) !== true) === true
+  )
+    return undefined
+  return `${jobId} (${axes.map((axis) => `\${{ matrix.${axis} }}`).join(', ')})`
+}
+
 /** Retain compact and complete native cache evidence independently of tailnet/OTLP delivery. */
 export const withBuck2CacheEvidence = (
   jobs: GitHubWorkflowArgs['jobs'],
@@ -87,6 +110,7 @@ export const withBuck2CacheEvidence = (
               '${{ github.workspace }}/tmp/buck2-cache-proof-manifest.json',
             CI_BUCK2_CACHE_EVIDENCE_START: '${{ github.workspace }}/tmp/buck2-cache-evidence-start',
             CI_BUCK2_CACHE_EVIDENCE_JOB: jobId,
+            CI_BUCK2_CACHE_EVIDENCE_JOB_NAME: evidenceJobDisplayName({ jobId, job }),
             CI_BUCK2_CACHE_EVIDENCE_HEAD_SHA:
               '${{ github.event.pull_request.head.sha || github.sha }}',
             CI_BUCK2_CACHE_EVIDENCE_DISABLED: '0',

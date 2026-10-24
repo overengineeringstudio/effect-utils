@@ -122,6 +122,7 @@ const fixtureEnv = {
   GITHUB_RUN_ID: '123',
   GITHUB_RUN_ATTEMPT: '1',
   CI_BUCK2_CACHE_EVIDENCE_JOB: 'quality',
+  CI_BUCK2_CACHE_EVIDENCE_JOB_NAME: 'quality',
   CI_BUCK2_CACHE_EVIDENCE_HEAD_SHA: 'a'.repeat(40),
   GITHUB_EVENT_NAME: 'push',
   GITHUB_REF: 'refs/heads/main',
