@@ -3607,18 +3607,20 @@ describe('nested megarepo.lock sync scope', () => {
                   Effect.gen(function* () {
                     interleaved = true
                     yield* Deferred.await(siblingCreated)
-                    return yield* Effect.fail(error)
+                    return yield* error
                   }),
               ),
             ),
           makeDirectory: (target, options) =>
-            fs.makeDirectory(target, options).pipe(
-              Effect.tap(() =>
-                target === commitsPath
-                  ? Deferred.succeed(siblingCreated, undefined)
-                  : Effect.void,
+            fs
+              .makeDirectory(target, options)
+              .pipe(
+                Effect.tap(() =>
+                  target === commitsPath
+                    ? Deferred.succeed(siblingCreated, undefined)
+                    : Effect.void,
+                ),
               ),
-            ),
         }
         const result = yield* Effect.gen(function* () {
           const storeLock = yield* StoreLock

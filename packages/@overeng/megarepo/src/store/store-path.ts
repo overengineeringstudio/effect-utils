@@ -88,8 +88,12 @@ const resolvePhysicalMutationPath = (
             cause,
           }),
       })
+      if (isLink === false) {
+        current = candidate
+        continue
+      }
       // A dangling symlink still determines where a later mkdir/write will go.
-      const link = yield* (isLink === true ? fs.readLink(candidate) : Effect.void).pipe(
+      const link = yield* fs.readLink(candidate).pipe(
         Effect.catchIf(
           (error) => error.reason._tag === 'NotFound',
           () => Effect.void,
