@@ -17,7 +17,12 @@ import { dirname, join } from 'node:path'
 
 import { expect, it } from 'vitest'
 
-import { copyWritableTree, darwinEmitCommand, runEmit } from './typescript-runner.ts'
+import {
+  assertNixEmitIsolation,
+  copyWritableTree,
+  darwinEmitCommand,
+  runEmit,
+} from './typescript-runner.ts'
 
 it('creates removable scratch copies of immutable inputs without following symlinks', async () => {
   const root = mkdtempSync(join(tmpdir(), 'typescript-scratch-copy-'))
@@ -240,6 +245,79 @@ it.skipIf(process.platform !== 'darwin')(
       )
       expect(await invalidProfile.exited).not.toBe(0)
       expect(existsSync(receipt)).toBe(false)
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  },
+)
+
+it('fails closed outside a clean declared Nix build and rejects reachable editor views', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'typescript-nix-isolation-'))
+  const buckOut = join(root, 'source', 'buck-out')
+  const input = join(buckOut, 'input')
+  const stagingRoot = join(root, 'stage')
+  const home = join(root, 'home')
+  for (const path of [input, stagingRoot, home]) mkdirSync(path, { recursive: true })
+  const options = {
+    buckOut,
+    readRoots: [input],
+    stagingRoot,
+    environment: { NIX_BUILD_TOP: root, HOME: home },
+  }
+  try {
+    await expect(assertNixEmitIsolation(options)).resolves.toBeUndefined()
+    await expect(assertNixEmitIsolation({ ...options, environment: {} })).rejects.toThrow(
+      'NIX_BUILD_TOP',
+    )
+    await expect(
+      assertNixEmitIsolation({
+        ...options,
+        environment: { NIX_BUILD_TOP: root, HOME: tmpdir() },
+      }),
+    ).rejects.toThrow('Nix build HOME')
+    await expect(
+      assertNixEmitIsolation({
+        ...options,
+        environment: { NIX_BUILD_TOP: home, HOME: '/homeless-shelter' },
+      }),
+    ).rejects.toThrow('buck-out inside NIX_BUILD_TOP')
+    await expect(assertNixEmitIsolation({ ...options, readRoots: [] })).rejects.toThrow(
+      'declared read roots',
+    )
+    const editor = join(root, '.editor-view', 'types')
+    mkdirSync(editor, { recursive: true })
+    symlinkSync(editor, join(input, 'ambient-types'))
+    await expect(assertNixEmitIsolation(options)).rejects.toThrow('editor view is reachable')
+    rmSync(join(input, 'ambient-types'))
+    rmSync(join(root, '.editor-view'), { recursive: true })
+    symlinkSync(input, join(input, 'cycle'))
+    await expect(assertNixEmitIsolation(options)).resolves.toBeUndefined()
+    symlinkSync(input, join(root, 'source', 'node_modules'))
+    await expect(assertNixEmitIsolation(options)).rejects.toThrow('ancestor contains editor lookup')
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
+it.skipIf(process.platform !== 'darwin')(
+  'enforces the default Darwin sandbox read denial',
+  async () => {
+    const root = mkdtempSync(join(tmpdir(), 'typescript-default-sandbox-'))
+    const buckOut = join(root, 'buck-out')
+    const editor = join(root, '.editor-view')
+    mkdirSync(buckOut)
+    mkdirSync(editor)
+    writeFileSync(join(editor, 'ambient.d.ts'), 'declare const editorAmbient: true')
+    symlinkSync(editor, join(root, 'node_modules'))
+    try {
+      const command = await darwinEmitCommand({
+        buckOut,
+        argv: ['/bin/cat', join(root, 'node_modules', 'ambient.d.ts')],
+      })
+      expect(command[0]).toBe('/usr/bin/sandbox-exec')
+      const child = Bun.spawn([...command], { stdout: 'pipe', stderr: 'pipe' })
+      expect(await child.exited).not.toBe(0)
+      expect(await new Response(child.stdout).text()).toBe('')
     } finally {
       rmSync(root, { recursive: true, force: true })
     }

@@ -37,7 +37,7 @@ def hermetic_bun_command(ctx, executable, config_name = "runner-bunfig.toml", sa
     ])
 
 
-def hermetic_action(ctx, arguments, env = {}, cacheable = True, **kwargs):
+def hermetic_action(ctx, arguments, env = {}, cacheable = True, inherit_nix_build_environment = False, **kwargs):
     tool = ctx.attrs._action_env[BuckSupportToolInfo]
     # GNU env expands only these executor-owned variables before -i. No shell
     # runs first (BASH_ENV/NODE_OPTIONS/etc must not affect the launcher).
@@ -45,7 +45,7 @@ def hermetic_action(ctx, arguments, env = {}, cacheable = True, **kwargs):
         tool.store_path,
         "--coreutils-prog=env",
         "-S",
-        "-i BUCK_SCRATCH_PATH=${BUCK_SCRATCH_PATH} TMPDIR=${TMPDIR}",
+        "-i BUCK_SCRATCH_PATH=${BUCK_SCRATCH_PATH} TMPDIR=${TMPDIR}" + (" NIX_BUILD_TOP=${NIX_BUILD_TOP} HOME=${HOME}" if inherit_nix_build_environment else ""),
         "LC_ALL=C",
         "TZ=UTC",
     ], hidden = [tool.executable, tool.manifest])
@@ -120,7 +120,7 @@ def ts_action(ctx, arguments, inputs, outputs, tool_closures = {}, tool_inputs =
     )
 
 
-def hermetic_sandboxed_action(ctx, sandbox, tool_closures, arguments, inputs, outputs, tool_inputs = [], cacheable = True, **kwargs):
+def hermetic_sandboxed_action(ctx, sandbox, tool_closures, arguments, inputs, outputs, tool_inputs = [], cacheable = True, inherit_nix_build_environment = False, **kwargs):
     """Runs admitted directory-output actions with exactly the supplied closures.
 
     Each closure must be attested by the caller's toolchain dependencies; their
@@ -143,7 +143,7 @@ def hermetic_sandboxed_action(ctx, sandbox, tool_closures, arguments, inputs, ou
             inputs + tool_inputs,
             outputs,
         )
-        hermetic_action(ctx, command, cacheable = False, **kwargs)
+        hermetic_action(ctx, command, cacheable = False, inherit_nix_build_environment = inherit_nix_build_environment, **kwargs)
         return
     if not sandbox.bubblewrap:
         fail("Sandbox: declared Bubblewrap capability missing; unsandboxed execution is forbidden")

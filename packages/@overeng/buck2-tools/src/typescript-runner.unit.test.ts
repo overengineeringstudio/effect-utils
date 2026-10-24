@@ -63,6 +63,34 @@ it('preserves an error message when the runtime stack omits it', () => {
   )
 })
 
+it('requires an explicit declared argument to select Nix Darwin isolation', () => {
+  const args = [
+    '/nix/store/toolchain/bin/tsgo',
+    '/package-tree',
+    'tsconfig.json',
+    'dist',
+    '',
+    '/output',
+  ]
+  expect(parseEmitOptions(args).darwinIsolation).toBe('sandbox-exec')
+  expect(
+    parseEmitOptions([...args, '--darwin-isolation', 'nix-build-sandbox']).darwinIsolation,
+  ).toBe('nix-build-sandbox')
+  expect(() => parseEmitOptions([...args, '--darwin-isolation', 'auto'])).toThrow(
+    'unknown Darwin emit isolation mode',
+  )
+  expect(() =>
+    parseTypecheckOptions([
+      '/nix/store/toolchain/bin/tsgo',
+      '/package-tree',
+      'tsconfig.json',
+      '/output',
+      '--darwin-isolation',
+      'nix-build-sandbox',
+    ]),
+  ).toThrow('unexpected typecheck argument')
+})
+
 type FingerprintTestChild = EventEmitter & FingerprintChild
 
 it('bounds root subprocesses to four and continues after a failed fingerprint', async () => {
