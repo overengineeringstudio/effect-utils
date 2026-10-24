@@ -124,8 +124,15 @@ impl TryFrom<Object<ManifestWire>> for Manifest {
 
     fn try_from(Object(wire): Object<ManifestWire>) -> Result<Self, Self::Error> {
         // JSON Schema integer semantics include numeric spellings such as 1.0.
-        let valid_app = wire.app.as_bytes().first().is_some_and(u8::is_ascii_lowercase)
-            && wire.app.bytes().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == b'-');
+        let valid_app = wire
+            .app
+            .as_bytes()
+            .first()
+            .is_some_and(u8::is_ascii_lowercase)
+            && wire
+                .app
+                .bytes()
+                .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == b'-');
         if wire.version.as_f64() != Some(1.0)
             || !valid_app
             || !canonical_path(&wire.provider.root)
@@ -208,7 +215,11 @@ struct RequestWire {
 
 impl From<Object<RequestWire>> for Request {
     fn from(Object(wire): Object<RequestWire>) -> Self {
-        Self { manifest: wire.manifest, observed: wire.observed, purpose: wire.purpose }
+        Self {
+            manifest: wire.manifest,
+            observed: wire.observed,
+            purpose: wire.purpose,
+        }
     }
 }
 
@@ -300,7 +311,11 @@ impl WorkStorage {
     /// # Errors
     /// Returns `UndeclaredPurpose` if this manifest does not declare the role.
     pub fn role(&self, purpose: Purpose) -> Result<&str, StorageError> {
-        self.0.paths.get(&purpose).map(String::as_str).ok_or(StorageError::UndeclaredPurpose)
+        self.0
+            .paths
+            .get(&purpose)
+            .map(String::as_str)
+            .ok_or(StorageError::UndeclaredPurpose)
     }
 
     /// Resolves a wire role name after factory admission.
@@ -329,7 +344,11 @@ impl WorkStorage {
 pub fn resolve_request(request: Request) -> Result<String, StorageError> {
     let mut storage = WorkStorage::admit(request.manifest, &request.observed)?;
     let purpose = request.purpose.parse::<Purpose>()?;
-    storage.0.paths.remove(&purpose).ok_or(StorageError::UndeclaredPurpose)
+    storage
+        .0
+        .paths
+        .remove(&purpose)
+        .ok_or(StorageError::UndeclaredPurpose)
 }
 
 /// Decodes the entire request before admission and returns the portable wire response.
