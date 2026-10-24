@@ -65,9 +65,7 @@ describe('Nix realisation step timeouts', () => {
       },
     )
     expect(jobs.setup!['timeout-minutes']).toBe(90)
-    expect(jobs.setup!.steps[0]!['timeout-minutes']).toBe(
-      "${{ runner.os == 'macOS' && 6 || 5 }}",
-    )
+    expect(jobs.setup!.steps[0]!['timeout-minutes']).toBe("${{ runner.os == 'macOS' && 6 || 5 }}")
     expect(jobs.setup!.steps[1]!['timeout-minutes']).toBe(2)
     expect(jobs.setup!.steps[2]!['timeout-minutes']).toBeUndefined()
     expect(jobs.setup!.steps[3]!['timeout-minutes']).toBe(2)
@@ -664,11 +662,13 @@ describe('Linux Nix sandbox fallback', () => {
         )
       }
     }
-    for (const name of ['Start Buck2 cache evidence window', pipelineIdentityStepName]) {
-      // Every checkout-dependent wrapper must attach after, not ahead of, admission.
-      const step = job.steps.findIndex((entry) => entry.name === name)
-      expect(step, name).toBeGreaterThan(verdict)
-    }
+    // Proof-disabled policy jobs retain pipeline identity after admission, but
+    // must not add a native-evidence window for commands they never execute.
+    const identity = job.steps.findIndex((entry) => entry.name === pipelineIdentityStepName)
+    expect(identity).toBeGreaterThan(verdict)
+    expect(job.steps.some((entry) => entry.name === 'Start Buck2 cache evidence window')).toBe(
+      false,
+    )
   })
 
   it('denies pipeline close local-flake execution on forks and failed source admission', () => {
@@ -793,7 +793,6 @@ describe('CI execution admission cleanup', () => {
       'build-products': 'job',
       'publish-products': 'job',
       'trusted-buck2-remote-cache-proof': 'job',
-      'publish-compiled-products': 'job',
       'ci-measurements-report': 'job',
       'pipeline-attempt-close': 'step',
     }
@@ -806,6 +805,9 @@ describe('CI execution admission cleanup', () => {
             /\b(?:always|failure|cancelled|success)\s*\(/.test(step.if ?? '') &&
             (step.run !== undefined || step.uses?.startsWith('./')),
         )
+        // This Nix-only publisher's former cleanup was solely native-proof
+        // collection; proof-disabled jobs must not recreate that local execution.
+        if (jobId === 'publish-compiled-products') expect(cleanup).toHaveLength(0)
         if (cleanup.length === 0) continue
         expect(independentRoutes[jobId], jobId).toBeDefined()
         seen.add(jobId)
@@ -1034,7 +1036,9 @@ describe('published consumer ref', () => {
     expect(command.indexOf('nix/fixtures/consumer-smoke/run.sh')).toBeLessThan(
       command.indexOf('echo "current-sha=$GITHUB_SHA"'),
     )
-    expect(smoke.steps!.some((step) => String(step.run).includes('buck2:editor:bootstrap'))).toBe(false)
+    expect(smoke.steps!.some((step) => String(step.run).includes('buck2:editor:bootstrap'))).toBe(
+      false,
+    )
     expect(steps.some((step) => step.uses?.includes('install-nix'))).toBe(false)
     expect(steps.some((step) => String(step.run).includes('devenv'))).toBe(false)
   })
@@ -1056,7 +1060,6 @@ describe('published consumer ref', () => {
     expect(advance.run).toContain('$GITHUB_STEP_SUMMARY')
   })
 })
-
 
 describe('shared default-ref policy configuration', () => {
   it('defaults effect-utils to published while accepting main', () => {
