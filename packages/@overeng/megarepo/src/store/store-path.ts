@@ -65,8 +65,31 @@ const resolvePhysicalMutationPath = (
         current = resolved
         continue
       }
+      // realPath may have missed a directory that another member has now created.
+      // Inspect the entry itself before readLink: EINVAL is not a missing link.
+      const isLink = yield* Effect.tryPromise({
+        try: async () => {
+          try {
+            return (await lstat(candidate)).isSymbolicLink()
+          } catch (cause) {
+            if (cause instanceof Error && 'code' in cause && cause.code === 'ENOENT') {
+              return false
+            }
+            throw cause
+          }
+        },
+        catch: (cause) =>
+          systemError({
+            _tag: 'Unknown',
+            module: 'megarepo',
+            method: 'resolvePhysicalMutationPath',
+            pathOrDescriptor: candidate,
+            description: 'Cannot inspect a physical store path component',
+            cause,
+          }),
+      })
       // A dangling symlink still determines where a later mkdir/write will go.
-      const link = yield* fs.readLink(candidate).pipe(
+      const link = yield* (isLink === true ? fs.readLink(candidate) : Effect.void).pipe(
         Effect.catchIf(
           (error) => error.reason._tag === 'NotFound',
           () => Effect.void,
