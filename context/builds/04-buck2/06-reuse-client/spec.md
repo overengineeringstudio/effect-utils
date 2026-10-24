@@ -828,7 +828,8 @@ retention remains unchanged. This is a native log-count limit, not the proof
 retention mechanism. Evidence-enabled commands use the pinned Buck
 `--event-log` extra sink outside the rotating log directory, with its supported
 `.json-lines` encoding. A private FIFO feeds the existing allowlisted incremental
-projector; raw events are not retained in public artifacts. A bounded sanitized
+projector; its mode-0600 sink is created through the platform syscall, independent
+of host command lookup. Raw events are not retained in public artifacts. A bounded sanitized
 per-build-ID shard is atomically finalized only after native command completion.
 The launcher waits for collection before returning the original command status.
 Crashes, truncation, missing command end, overflow, or unresolved IDs remain gaps.

@@ -1,5 +1,5 @@
 #!/usr/bin/env -S bun
-import { dlopen } from 'bun:ffi'
+import { dlopen, ptr } from 'bun:ffi'
 import { spawnSync } from 'node:child_process'
 import { createHash, createHmac, randomBytes, randomUUID } from 'node:crypto'
 import {
@@ -1267,6 +1267,21 @@ export const nativeBuildIdArguments = ({
   return [...before, '--write-build-id', path, ...(sentinel === -1 ? [] : args.slice(sentinel))]
 }
 
+/** Use the platform syscall: capture must not depend on a host mkfifo utility. */
+export const createPrivateEvidenceSink = (path: string): void => {
+  const library = dlopen(
+    process.platform === 'linux' ? 'libc.so.6' : '/usr/lib/libSystem.B.dylib',
+    { mkfifo: { args: ['ptr', 'u32'], returns: 'i32' } },
+  )
+  try {
+    const encoded = Buffer.from(`${path}\0`)
+    if (library.symbols.mkfifo(ptr(encoded), 0o600) !== 0)
+      throw new Error('Cannot create private evidence FIFO')
+  } finally {
+    library.close()
+  }
+}
+
 /** Capture through Buck's supported extra sink, not its rotating log directory.
  * FIFO raw events are private and never persisted or uploaded. The collector
  * atomically publishes a sanitized shard; a killed collector leaves a registry gap.
@@ -1305,8 +1320,7 @@ export const runNativeWithEvidence = async ({
   let reapCollector: (() => Promise<void>) | undefined
   let reapNative: (() => Promise<void>) | undefined
   try {
-    const fifo = spawnSync('mkfifo', ['-m', '600', sink], { stdio: 'ignore' })
-    if (fifo.status !== 0) throw new Error('Cannot create private evidence FIFO')
+    createPrivateEvidenceSink(sink)
     keeper = openSync(sink, 'r+')
     const marker = process.env.CI_BUCK2_CACHE_EVIDENCE_START
     const fresh = marker !== undefined && readFileSync(marker, 'utf8').split('\n')[2] === '1'

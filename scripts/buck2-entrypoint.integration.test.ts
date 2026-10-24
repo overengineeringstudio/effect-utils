@@ -10,6 +10,7 @@ import {
   realpathSync,
   readdirSync,
   rmSync,
+  statSync,
   symlinkSync,
   watch,
   writeFileSync,
@@ -23,6 +24,7 @@ import type { CacheAdmissionInvocation } from '../genie/ci-scripts/buck2-cache-e
 import * as daemonPostureTests from './buck2-entrypoint.posture.integration.test.ts'
 import {
   type AdmissionProbeEndpoint,
+  createPrivateEvidenceSink,
   directBuckArguments,
   nativeBuildIdArguments,
 } from './buck2-entrypoint.ts'
@@ -235,6 +237,21 @@ afterEach(async () => {
 
 describe('native build ID registry', () => {
   const buildId = '00112233-4455-4677-8899-aabbccddeeff'
+  it('creates a private native FIFO without depending on the host command path', () => {
+    const root = fixture()
+    const sink = join(root, 'native.json-lines')
+    const previousPath = process.env.PATH
+    try {
+      process.env.PATH = join(root, 'no-host-utilities')
+      createPrivateEvidenceSink(sink)
+    } finally {
+      if (previousPath === undefined) delete process.env.PATH
+      else process.env.PATH = previousPath
+    }
+    expect(statSync(sink).isFIFO()).toBe(true)
+    expect(statSync(sink).mode & 0o777).toBe(0o600)
+    expect(() => createPrivateEvidenceSink(sink)).toThrow('Cannot create private evidence FIFO')
+  })
 
   it('does not register a foreign project root or non-default isolation', () => {
     const root = fixture()
