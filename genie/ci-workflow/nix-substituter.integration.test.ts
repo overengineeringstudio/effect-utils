@@ -71,3 +71,14 @@ test('the actual save filter includes unsigned content-addressed paths but not u
     '/nix/store/text',
   ])
 })
+
+test('proves a real Darwin Nix TypeScript product in the merge-group macOS lane', () => {
+  const job = ciWorkflow.data.jobs['test-macos']!
+  expect(job.if).toContain("github.event_name == 'merge_group'")
+  const step = job.steps.find(
+    (candidate) => candidate.name === 'Build Darwin Nix TypeScript product',
+  )
+  expect(step?.run).toContain('nix config show sandbox')
+  expect(step?.run).toContain('nix build .#buck-product-overeng-content-address-from-source')
+  expect(step?.run).toContain('--option sandbox false')
+})

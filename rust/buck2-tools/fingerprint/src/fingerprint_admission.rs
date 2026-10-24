@@ -11,8 +11,12 @@ const FINGERPRINT_WALK_LIMIT: usize = 4;
 // Deliberately independent of TMPDIR, user, worktree and executable store path.
 const HOST_LOCK_DIRECTORY: &str = "/tmp/effect-utils-buck2-fingerprint-v1";
 
-pub(crate) fn acquire() -> io::Result<File> {
-    acquire_at(Path::new(HOST_LOCK_DIRECTORY))
+fn admission_directory(directory: Option<&Path>) -> &Path {
+    directory.unwrap_or_else(|| Path::new(HOST_LOCK_DIRECTORY))
+}
+
+pub(crate) fn acquire(directory: Option<&Path>) -> io::Result<File> {
+    acquire_at(admission_directory(directory))
         .map_err(|error| io::Error::new(error.kind(), format!("fingerprint admission: {error}")))
 }
 
@@ -309,6 +313,24 @@ mod tests {
             lock_file(&directory, "slot-0").unwrap().try_lock(),
             Err(TryLockError::WouldBlock)
         ));
+    }
+
+    #[test]
+    fn default_admission_remains_host_wide() {
+        assert_eq!(admission_directory(None), Path::new(HOST_LOCK_DIRECTORY));
+        let isolated = Path::new("/isolated-fixture/fingerprint-admission");
+        assert_eq!(admission_directory(Some(isolated)), isolated);
+    }
+
+    #[test]
+    fn isolated_admission_domains_do_not_share_capacity() {
+        let root = tempfile::tempdir().unwrap();
+        let first = root.path().join("first");
+        let second = root.path().join("second");
+        let _permits = (0..FINGERPRINT_WALK_LIMIT)
+            .map(|_| acquire(Some(&first)).unwrap())
+            .collect::<Vec<_>>();
+        let _isolated = acquire(Some(&second)).unwrap();
     }
 
     #[test]

@@ -383,13 +383,16 @@ fn real_directory(path: &Path, label: &str) -> io::Result<PathBuf> {
     fs::canonicalize(path)
 }
 
+/// `admission_directory` selects an isolated admission domain for tests and
+/// isolated fixtures. Production callers must leave it unset.
 pub fn fingerprint(
     tree: &Path,
     dereference: bool,
     backing_roots: &[PathBuf],
     link_owners: &[LinkOwner],
+    admission_directory: Option<&Path>,
 ) -> io::Result<Fingerprints> {
-    let _permit = crate::fingerprint_admission::acquire()?;
+    let _permit = crate::fingerprint_admission::acquire(admission_directory)?;
     let root = real_directory(tree, "tree input")?;
     let backing = backing_roots
         .iter()
@@ -517,7 +520,7 @@ fn visit_input(root: &Path, path: &Path, hash: &mut Sha256, buffer: &mut [u8]) -
 }
 
 pub fn fingerprint_input_root(root: &Path) -> io::Result<String> {
-    let _permit = crate::fingerprint_admission::acquire()?;
+    let _permit = crate::fingerprint_admission::acquire(None)?;
     let mut hash = Sha256::new();
     let mut buffer = Box::new([0u8; 131072]);
     visit_input(root, root, &mut hash, &mut *buffer)?;

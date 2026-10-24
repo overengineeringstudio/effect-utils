@@ -573,6 +573,20 @@ const unitTestJob = ({
             run: runDevenvTasksBefore('buck2:cache-posture:ci-test'),
           }),
           buck2TrustedCacheWriterStep(compiledProductsSmokeStep),
+          {
+            name: 'Build Darwin Nix TypeScript product',
+            env: githubTokenEnv(),
+            run: withCiSourceRoot(
+              [
+                'set -euo pipefail',
+                'echo "Runner default Nix sandbox setting:"',
+                'nix config show sandbox',
+                // Exercise the derivation boundary even where the runner cannot
+                // start Buck inside a second, fully enabled Nix sandbox.
+                'nix build .#buck-product-overeng-content-address-from-source --no-link --print-build-logs --option sandbox false',
+              ].join('\n'),
+            ),
+          },
           macosNixSubstituterSaveStep,
         ]
       : []),
