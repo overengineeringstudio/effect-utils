@@ -615,9 +615,10 @@ or `OUT_DIR`. `pkg-config` is denied unless its executable, `.pc` files,
 search paths and referenced headers/libraries are all attested inputs and its
 output resolves only within that closure. System libraries are explicit
 toolchain/sysroot dependencies, never discoveries from `/usr`, host linker
-config or an installed package database. No script in the observed inventory
-below invokes cc or pkg-config; that is not authority to admit other graph
-members that do.
+config or an installed package database. libc's script attempts ambient `emcc`
+even for native Linux, so it is explicitly excluded below; no successful native
+C compilation is inferred from that probe. Other graph members with `cc` builds
+still require their own declared native-library closure.
 
 #### Read-only inventory evidence
 
@@ -636,24 +637,39 @@ W rows are evidence only, excluded from the proposed native cohort.
 Classification comes from read-only inspection of the pinned crate `build.rs`
 (or `build/build.rs` for rustversion), including helper calls; it is not a
 containment proof. “Probes env” includes target/feature/compiler queries, not
-just reads of arbitrary inherited environment.
+just reads of arbitrary inherited environment. A mechanical source scan used
+`Command::new`, `std::process`, `cc::Build`, `autocfg`, `RUSTC`,
+`RUSTC_WRAPPER`, and `env::var`/`env::var_os` of `CC` over all 13 script
+entrypoints and their identified process-launching helpers. Source citations
+below are `crate-version/path:line` within the pinned extracted crate archive,
+not machine-local paths. “None” means no runtime spawn identified in that
+entrypoint/helper path, not a general transitive containment proof.
 
-| Crate / pinned version      | Configurations (occurrences) | Classification                                                     | Source behavior relevant to containment                                                                                                        |
-| --------------------------- | ---------------------------- | ------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------- |
-| borsh 1.8.1                 | N, W (2)                     | Probes env                                                         | `cfg_aliases` derives cfg from declared target/features                                                                                        |
-| libc 0.2.186                | N (1)                        | Probes env                                                         | Target/unstable-env selection, rustc version; non-Linux branches can execute host utilities and are not admitted                               |
-| napi 3.13.0                 | N (1)                        | Probes env                                                         | Target OS/env selects cfg; WASI branch is outside cohort                                                                                       |
-| num-traits 0.2.19           | N, W (2)                     | Probes env                                                         | `autocfg` compiles rustc feature probes and selects cfg                                                                                        |
-| proc-macro2 1.0.107         | E (1)                        | Probes env                                                         | rustc version and source probes, bootstrap/wrapper/flag env, temporary probe outputs                                                           |
-| ref-cast 1.0.27             | N, W (2)                     | Pure codegen + probes env                                          | Writes `private.rs` under OUT_DIR; rustc version selects cfg                                                                                   |
-| rustversion 1.0.23          | E (1)                        | Pure codegen + probes env                                          | Executes rustc version query, writes `version.expr`, reads HOST/wrapper env                                                                    |
-| serde 1.0.229               | N, W (2)                     | Pure codegen + probes env                                          | Writes versioned `private.rs`; rustc version selects cfg                                                                                       |
-| serde_core 1.0.229          | E, N, W (3)                  | Pure codegen + probes env                                          | Writes `private.rs`; rustc version and target select cfg                                                                                       |
-| serde_json 1.0.151          | E, N, W (3)                  | Probes env                                                         | Target architecture/pointer width selects arithmetic cfg                                                                                       |
-| wasm-bindgen 0.2.127        | W (1)                        | Probes env                                                         | Target features and compile-time rustversion selection; excluded cross target                                                                  |
-| wasm-bindgen-shared 0.2.127 | E, W (2)                     | Pure codegen + probes env/host VCS                                 | Hashes declared `src/lib.rs`; attempts ambient `git rev-parse HEAD` for WBG_VERSION. Fails proposed exec policy even if missing git is ignored |
-| zmij 1.0.23                 | E, N, W (3)                  | Probes env                                                         | Executes rustc version query; OPT_LEVEL selects cfg                                                                                            |
-| **Total**                   | **24**                       | **No cc or network invocation identified in these script sources** | Static inspection is not proof of absence of network/undeclared access in descendants                                                          |
+| Crate / pinned version      | Configurations (occurrences) | Classification / generated output                  | Executed binaries and source evidence                                                                                                                                                                                                  |
+| --------------------------- | ---------------------------- | -------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| borsh 1.8.1                 | N, W (2)                     | Probes env; cfg aliases                            | None: `borsh-1.8.1/build.rs:1–7` calls `cfg_aliases`; scan of pinned `cfg_aliases-0.2.2/src/lib.rs` found no process-launch patterns                                                                                                   |
+| libc 0.2.186                | N (1)                        | Probes env/compiler; **excluded**                  | `RUSTC` or `RUSTC_WRAPPER` (`libc-0.2.186/build.rs:199–215`); ambient `emcc -dumpversion` (`:291–298`), unconditionally called at `:100`, including native Linux; `freebsd-version` (`:273`) if LIBC_CI selects the branch at `:84–85` |
+| napi 3.13.0                 | N (1)                        | Probes env; target cfg                             | None on Linux: `napi-3.13.0/build.rs:15–22`; calls `napi_build::setup` only for Windows GNU. Pinned helper has rustc spawns in `napi-build-2.5.0/src/wasi.rs:10,211`, not a Linux script call path                                     |
+| num-traits 0.2.19           | N, W (2)                     | Probes env/compiler; cfg                           | rustc, optionally through `RUSTC_WRAPPER`/`RUSTC_WORKSPACE_WRAPPER`: `num-traits-0.2.19/build.rs:2–4` calls autocfg; `autocfg-1.5.1/src/rustc.rs:19–34,55–63` constructs compiler/version commands                                     |
+| proc-macro2 1.0.107         | E (1)                        | Probes env/compiler; scratch probe outputs         | `RUSTC`, optionally through `RUSTC_WRAPPER`/`RUSTC_WORKSPACE_WRAPPER`: `proc-macro2-1.0.107/build.rs:168–190` compiler probe, `:249–250` version query                                                                                 |
+| ref-cast 1.0.27             | N, W (2)                     | Pure codegen + probes env/compiler; `private.rs`   | `RUSTC --version`: `ref-cast-1.0.27/build.rs:42–43`                                                                                                                                                                                    |
+| rustversion 1.0.23          | E (1)                        | Pure codegen + probes env/compiler; `version.expr` | `RUSTC` (fallback `rustc`) or `RUSTC_WRAPPER`, with compiler-driver retries: `rustversion-1.0.23/build/build.rs:21–38`                                                                                                                 |
+| serde 1.0.229               | N, W (2)                     | Pure codegen + probes env/compiler; `private.rs`   | `RUSTC --version`: `serde-1.0.229/build.rs:61–62`                                                                                                                                                                                      |
+| serde_core 1.0.229          | E, N, W (3)                  | Pure codegen + probes env/compiler; `private.rs`   | `RUSTC --version`: `serde_core-1.0.229/build.rs:105–106`                                                                                                                                                                               |
+| serde_json 1.0.151          | E, N, W (3)                  | Probes env; arithmetic cfg                         | None: target architecture/pointer-width selection in `serde_json-1.0.151/build.rs:1–30`                                                                                                                                                |
+| wasm-bindgen 0.2.127        | W (1)                        | Probes env; target cfg; excluded cross target      | None at script runtime: `wasm-bindgen-0.2.127/build.rs:1–49`. `rustversion::cfg!` is compile-time macro selection; rustversion's separate script/compiler query is inventoried above                                                   |
+| wasm-bindgen-shared 0.2.127 | E, W (2)                     | Pure codegen + probes env/host VCS; schema hash    | Ambient `git rev-parse HEAD`: `wasm-bindgen-shared-0.2.127/build.rs:10–14`; fails exec policy even if missing git is ignored                                                                                                           |
+| zmij 1.0.23                 | E, N, W (3)                  | Probes env/compiler; OPT_LEVEL cfg                 | `RUSTC --version`: `zmij-1.0.23/build.rs:30–31`                                                                                                                                                                                        |
+| **Total**                   | **24**                       | **Includes ambient emcc and git attempts**         | Compiler wrappers must be declared/attested or explicitly absent; no network behavior is certified by this scan                                                                                                                        |
+
+**libc is excluded from the proposed initial admission allowlist.** Its
+`emcc_version_code()` call is not target-guarded: a native Linux invocation
+attempts `emcc` and can emit `emscripten_old_stat_abi` based on its result
+(`libc-0.2.186/build.rs:100–104,291–298`). Hiding emcc and accepting the
+script's ignored lookup error would contradict the fail-closed contract.
+This proposal does not add declared-negative-exec semantics or attest emcc
+just to make that probe run. Any later libc admission requires a separately
+reviewed semantic change and output-parity/containment proof, with manager GO.
 
 The other 14 declared scripts are ahash, icu_normalizer_data,
 icu_properties_data, memoffset, mime_guess, nix, objc2, parking_lot_core,
