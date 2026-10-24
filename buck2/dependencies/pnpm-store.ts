@@ -830,6 +830,12 @@ export const makePnpmStoreProjection = ({
 
   const entries: PnpmStoreEntry[] = []
   const entryByStoreKey = new Map<string, PnpmStoreEntry>()
+  // Variant edges are immutable for this projection. Share their ordered
+  // traversal across every importer and platform that selects the variant.
+  const orderedEdgesByPlatform = new Map<PnpmPlatform, Map<string, readonly PnpmStoreEdge[]>>(
+    pnpmPlatforms.map((platform) => [platform, new Map()]),
+  )
+  const orderedBinsByStoreKey = new Map<string, readonly (readonly [string, string])[]>()
   for (const snapshotKey of snapshotKeys) {
     const snapshot = metadata.snapshots[snapshotKey]!
     const packageMetadata = metadata.packages[snapshot.package]!
@@ -847,15 +853,17 @@ export const makePnpmStoreProjection = ({
     const sourcePath = packageMetadata.workspacePath
     if (packageMetadata.resolution === 'workspace' && sourcePath === undefined)
       return fail(`workspace package ${snapshot.package} has no path`)
-    const workspaceTrees = Object.fromEntries(
-      variants.flatMap((variant) =>
-        sortedEntries(variant.edges).flatMap(([, edge]) =>
-          edge.kind === 'workspace'
-            ? [[edge.workspaceKey, workspaceTreeTarget(edge.workspacePath)]]
-            : [],
-        ),
-      ),
-    )
+    const workspaceTrees: Record<string, string> = {}
+    for (const variant of variants) {
+      const orderedEdges = sortedEntries(variant.edges).map(([, edge]) => edge)
+      for (const platform of variant.platforms) {
+        orderedEdgesByPlatform.get(platform)!.set(storeKey, orderedEdges)
+      }
+      for (const edge of orderedEdges) {
+        if (edge.kind === 'workspace')
+          workspaceTrees[edge.workspaceKey] = workspaceTreeTarget(edge.workspacePath)
+      }
+    }
     const entry: PnpmStoreEntry = {
       bins: sidecar.packages[snapshot.package]?.bins ?? {},
       packageKey: snapshot.package,
@@ -882,12 +890,11 @@ export const makePnpmStoreProjection = ({
   }: {
     platform: PnpmPlatform
     storeKey: string
-  }): PnpmStoreEdgeSet => {
-    const entry = entryByStoreKey.get(storeKey)
-    if (entry === undefined) return fail(`unknown store entry ${storeKey}`)
-    const variant = entry.variants.find((candidate) => candidate.platforms.includes(platform))
-    if (variant === undefined) return fail(`entry ${storeKey} is absent on ${platform}`)
-    return variant.edges
+  }): readonly PnpmStoreEdge[] => {
+    const edges = orderedEdgesByPlatform.get(platform)!.get(storeKey)
+    if (edges !== undefined) return edges
+    if (entryByStoreKey.has(storeKey) === false) return fail(`unknown store entry ${storeKey}`)
+    return fail(`entry ${storeKey} is absent on ${platform}`)
   }
 
   const views = Object.keys(metadata.importers)
@@ -904,10 +911,11 @@ export const makePnpmStoreProjection = ({
         platforms,
         project: (platform) => {
           const direct = importerEdges({ availability, importer, metadata, platform })
+          const orderedDirect = sortedEntries(direct).map(([, edge]) => edge)
           const closure = new Set<string>()
           const pending: string[] = []
-          const enqueue = (edges: PnpmStoreEdgeSet): void => {
-            for (const [, edge] of sortedEntries(edges)) {
+          const enqueue = (edges: readonly PnpmStoreEdge[]): void => {
+            for (const edge of edges) {
               if (edge.kind === 'workspace') {
                 workspaceTrees[edge.workspaceKey] = workspaceTreeTarget(edge.workspacePath)
                 continue
@@ -917,15 +925,19 @@ export const makePnpmStoreProjection = ({
               pending.push(edge.storeKey)
             }
           }
-          enqueue(direct)
+          enqueue(orderedDirect)
           while (pending.length > 0) {
             enqueue(edgesFor({ platform, storeKey: pending.pop()! }))
           }
           const bins: Record<string, string> = {}
-          for (const [, edge] of sortedEntries(direct)) {
+          for (const edge of orderedDirect) {
             if (edge.kind !== 'entry') continue
-            const entry = entryByStoreKey.get(edge.storeKey)!
-            for (const [binName, executable] of sortedEntries(entry.bins)) {
+            let orderedBins = orderedBinsByStoreKey.get(edge.storeKey)
+            if (orderedBins === undefined) {
+              orderedBins = sortedEntries(entryByStoreKey.get(edge.storeKey)!.bins)
+              orderedBinsByStoreKey.set(edge.storeKey, orderedBins)
+            }
+            for (const [binName, executable] of orderedBins) {
               const record = `${edge.storeKey}\t${executable}`
               const existing = bins[binName]
               if (

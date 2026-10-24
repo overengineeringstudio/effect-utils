@@ -3583,6 +3583,87 @@ describe('nested megarepo.lock sync scope', () => {
   )
 
   it.effect(
+    'applies shared-URL refs when a sibling creates the commit namespace during path resolution',
+    Effect.fnUntraced(
+      function* () {
+        const fs = yield* FileSystem.FileSystem
+        const { parentPath, storePath, mainCommit, devCommit } =
+          yield* createNestedMegarepoLockRefMatchFixture()
+        const commitsPath = `${storePath}example.com/acme/shared/refs/commits`
+        const siblingCreated = yield* Deferred.make<void>()
+        let interleaved = false
+        // Keep all I/O real: pause the first failed lookup until the other member's
+        // exclusive mkdir has published the shared namespace.
+        const controlledFs: FileSystem.FileSystem = {
+          ...fs,
+          realPath: (target) =>
+            fs.realPath(target).pipe(
+              Effect.catchIf(
+                (error) =>
+                  error.reason._tag === 'NotFound' &&
+                  target === commitsPath &&
+                  interleaved === false,
+                (error) =>
+                  Effect.gen(function* () {
+                    interleaved = true
+                    yield* Deferred.await(siblingCreated)
+                    return yield* error
+                  }),
+              ),
+            ),
+          makeDirectory: (target, options) =>
+            fs
+              .makeDirectory(target, options)
+              .pipe(
+                Effect.tap(() =>
+                  target === commitsPath
+                    ? Deferred.succeed(siblingCreated, undefined)
+                    : Effect.void,
+                ),
+              ),
+        }
+        const result = yield* Effect.gen(function* () {
+          const storeLock = yield* StoreLock
+          return yield* syncMegarepo({
+            megarepoRoot: parentPath,
+            options: {
+              mode: 'apply',
+              dryRun: false,
+              force: false,
+              all: false,
+              only: ['shared-main', 'shared-dev'],
+              skip: undefined,
+              gitProtocol: 'https',
+              createBranches: false,
+              commitMode: true,
+              lockSyncMode: 'off',
+            },
+          }).pipe(
+            Effect.provideService(StoreLock, {
+              ...storeLock,
+              withWorktreeLock: (key) => (effect) =>
+                storeLock.withWorktreeLock(key)(
+                  effect.pipe(Effect.provideService(FileSystem.FileSystem, controlledFs)),
+                ),
+            }),
+          )
+        }).pipe(Effect.provide(makeStoreLayer({ basePath: storePath })))
+        expect(interleaved).toBe(true)
+        expect(collectSyncErrors(result)).toEqual([])
+        expect(yield* fs.realPath(`${parentPath}repos/shared-main`)).toBe(
+          `${commitsPath}/${mainCommit}`,
+        )
+        expect(yield* fs.realPath(`${parentPath}repos/shared-dev`)).toBe(
+          `${commitsPath}/${devCommit}`,
+        )
+      },
+      Effect.provide(NodeServices.layer),
+      Effect.scoped,
+    ),
+    { timeout: 15_000 },
+  )
+
+  it.effect(
     'should match nested megarepo.lock entries by ref when URL is shared across refs',
     Effect.fnUntraced(
       function* () {

@@ -96,6 +96,21 @@ describe('makeStoreDirectory', () => {
     )
   })
 
+  test('resolves dangling aliases before creating their physical namespace', async () => {
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem
+        const root = yield* fs.realPath(yield* fs.makeTempDirectoryScoped())
+        const physical = `${root}/physical`
+        yield* fs.symlink('physical/child', `${root}/alias`)
+        yield* makeStoreDirectory(`${root}/alias/../refs/commits`)
+        expect(yield* fs.exists(`${physical}/refs/commits`)).toBe(true)
+        expect(yield* fs.exists(`${root}/refs`)).toBe(false)
+        expect(yield* fs.readLink(`${root}/alias`)).toBe('physical/child')
+      }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+    )
+  })
+
   test('refuses a newly created component replaced by a symlink without chmodding its target', async () => {
     await Effect.runPromise(
       Effect.gen(function* () {

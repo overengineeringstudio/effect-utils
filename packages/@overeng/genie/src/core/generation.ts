@@ -705,6 +705,33 @@ const loadOxfmtConfig = Effect.fn('loadOxfmtConfig')(function* ({
   return Option.some(config)
 })
 
+/** Formats one target file; falls back to the unformatted content on formatter errors so a check reports drift instead of failing. */
+export type OxfmtFormatter = (options: {
+  targetFilePath: string
+  content: string
+}) => Effect.Effect<string, never, FileSystem.FileSystem | CommandExecutor.ChildProcessSpawner>
+
+/**
+ * Reuse successful config preflight as a snapshot within one read-only check invocation.
+ * Concurrent callers share one attempt, but failures expire immediately so later files retry.
+ * Keep the CLI in charge of actual formatting/config resolution, and create this inside the
+ * invocation (never a watch loop). Generation does not share this preflight because it can
+ * rewrite the config during the run.
+ */
+export const makeOxfmtFormatter = Effect.fn('makeOxfmtFormatter')(function* ({
+  configPath,
+}: {
+  configPath: Option.Option<string>
+}) {
+  const cachedConfig = yield* Effect.cachedWithTTL(loadOxfmtConfig({ configPath }), (exit) =>
+    Exit.isSuccess(exit) === true ? Infinity : 0,
+  )
+  const loadConfig = cachedConfig.pipe(Effect.result)
+  const format: OxfmtFormatter = ({ targetFilePath, content }) =>
+    formatWithOxfmt({ targetFilePath, content, configPath, loadConfig })
+  return format
+})
+
 /**
  * Get the appropriate header comment for a generated file based on its extension.
  *
@@ -806,10 +833,16 @@ const formatWithOxfmt = Effect.fn('formatWithOxfmt')(function* ({
   targetFilePath,
   content,
   configPath,
+  loadConfig = loadOxfmtConfig({ configPath }).pipe(Effect.result),
 }: {
   targetFilePath: string
   content: string
   configPath: Option.Option<string>
+  loadConfig?: Effect.Effect<
+    Result.Result<Option.Option<OxfmtConfig>, PlatformError | InvalidOxfmtConfigError>,
+    never,
+    FileSystem.FileSystem
+  >
 }) {
   yield* Observability.annotateOxfmt({
     targetFilePath,
@@ -821,7 +854,7 @@ const formatWithOxfmt = Effect.fn('formatWithOxfmt')(function* ({
     return content
   }
 
-  const optionsResult = yield* loadOxfmtConfig({ configPath }).pipe(Effect.result)
+  const optionsResult = yield* loadConfig
   if (Result.isFailure(optionsResult) === true) {
     return content
   }
@@ -1019,11 +1052,13 @@ export const getExpectedContent = Effect.fn('getExpectedContent')(function* ({
   cwd,
   oxfmtConfigPath,
   loadedGenieFile,
+  formatter,
 }: {
   genieFilePath: string
   cwd: string
   oxfmtConfigPath: Option.Option<string>
   loadedGenieFile?: LoadedGenieFile
+  formatter?: OxfmtFormatter | undefined
 }) {
   yield* Observability.annotateFile({
     label: Observability.relativePath({
@@ -1041,11 +1076,9 @@ export const getExpectedContent = Effect.fn('getExpectedContent')(function* ({
   const rawContent = loaded.output.stringify(loaded.ctx)
 
   const header = getHeaderComment({ targetFilePath, sourceFile })
-  const formattedContent = yield* formatWithOxfmt({
-    targetFilePath,
-    content: rawContent,
-    configPath: oxfmtConfigPath,
-  })
+  const formattedContent = yield* formatter === undefined
+    ? formatWithOxfmt({ targetFilePath, content: rawContent, configPath: oxfmtConfigPath })
+    : formatter({ targetFilePath, content: rawContent })
 
   return {
     targetFilePath,
@@ -1294,10 +1327,12 @@ export const checkFileDetailed = ({
   genieFilePath,
   cwd,
   oxfmtConfigPath,
+  formatter,
 }: {
   genieFilePath: string
   cwd: string
   oxfmtConfigPath: Option.Option<string>
+  formatter?: OxfmtFormatter
 }): Effect.Effect<
   { targetFilePath: string; loadedGenieFile: LoadedGenieFile },
   GenieCheckError | GenieImportError | GenieRuntimeTranspilerCacheError | PlatformError,
@@ -1311,6 +1346,7 @@ export const checkFileDetailed = ({
       cwd,
       oxfmtConfigPath,
       loadedGenieFile,
+      formatter,
     })
 
     const fileExists = yield* fs.exists(targetFilePath)

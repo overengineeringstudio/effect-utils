@@ -84,6 +84,15 @@ devenv tasks run genie:check
 devenv tasks run genie:watch
 ```
 
+Check mode shares a lazy formatter-config preflight across supported output files within
+one invocation. A successful preflight is retained as an invocation-local snapshot;
+failures are not memoized, so a later file retries after a config repair. Concurrent
+callers share the same in-flight attempt. Each file still uses the same oxfmt CLI and
+filepath-specific configuration. The preflight is recreated on the next check; generation
+keeps fresh config reads because it may generate the formatter configuration itself.
+Dependency-store projections likewise
+reuse ordered edges and binary entries only within a single projection computation.
+
 Or use the `genie` binary directly for additional options:
 
 ```bash
