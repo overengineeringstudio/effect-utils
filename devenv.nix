@@ -1377,11 +1377,9 @@ in
         local selected="" candidate
         for candidate in ${buck2Capabilities}/tools/*/"$1"/*/manifest.json; do
           [ -f "$candidate" ] || continue
-          if ${pkgs.jq}/bin/jq -e --arg platform ${lib.escapeShellArg currentSystem} \
-            '.executionPlatform == $platform' "$candidate" >/dev/null; then
-            [ -z "$selected" ] || { echo "Ambiguous replay capability: $1" >&2; return 1; }
-            selected="$candidate"
-          fi
+          # The producer projects exactly one host platform per profile.
+          [ -z "$selected" ] || { echo "Ambiguous replay capability: $1" >&2; return 1; }
+          selected="$candidate"
         done
         [ -n "$selected" ] || { echo "Missing replay capability: $1" >&2; return 1; }
         printf '%s\n' "$selected"
