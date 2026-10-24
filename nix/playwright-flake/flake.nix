@@ -25,9 +25,19 @@
           pkgs = nixpkgs.legacyPackages.${system};
           upstream = playwright-web-flake.packages.${system}.playwright-driver;
           components = upstream.components // {
-            chromium = pkgs.callPackage ./chromium-darwin.nix {
-              chromium = upstream.components.chromium;
-            };
+            chromium =
+              if system == "aarch64-linux" then
+                upstream.components.chromium.overrideAttrs (old: {
+                  # Upstream installs the arm64 archive under chrome-linux-arm64,
+                  # but its Vulkan fixup still uses the x86_64 directory.
+                  postFixup =
+                    lib.replaceStrings [ "$out/chrome-linux64" ] [ "$out/chrome-linux-arm64" ]
+                      old.postFixup;
+                })
+              else
+                pkgs.callPackage ./chromium-darwin.nix {
+                  chromium = upstream.components.chromium;
+                };
           };
           selectBrowsers = lib.makeOverridable (
             {
@@ -61,7 +71,7 @@
             )
           );
         in
-        if !pkgs.stdenv.hostPlatform.isDarwin then
+        if !pkgs.stdenv.hostPlatform.isDarwin && system != "aarch64-linux" then
           upstream
         else
           upstream.overrideAttrs {
