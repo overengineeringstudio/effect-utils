@@ -197,17 +197,17 @@
       "version": "0.1.0"
     },
     {
-      "artifactUrl": "https://overeng-effect-utils.cachix.org/serve/mxi95ri87i43ajnbglhp036ccwzpaa98/overeng-genie.tgz",
+      "artifactUrl": "https://overeng-effect-utils.cachix.org/serve/x9l95mxjnsg3b261pn0p89vpr29y2dc0/overeng-genie.tgz",
       "name": "@overeng/genie",
       "provenance": {
-        "producerCommit": "56d1c47a82d8cb4bec6316066fa2afab63a50d7c",
-        "productDigest": "cf0ef373742c2d5b420d4f1b8a8f84137eff40faf7ab80e30e8ed28cf3b4556e",
+        "producerCommit": "e4b651b85ce305a542e55f66af62c6009ae0ee2c",
+        "productDigest": "806c620d1e2e0021e95ba3a2da138b659ef5ca315a72017ea5a2a366bd0dc6f2",
         "schema": "effect-utils/buck-product-provenance/v1",
         "target": "effect_utils//packages/@overeng/genie:dist-package"
       },
-      "sha256": "cf0ef373742c2d5b420d4f1b8a8f84137eff40faf7ab80e30e8ed28cf3b4556e",
-      "size": 781230,
-      "storePath": "/nix/store/mxi95ri87i43ajnbglhp036ccwzpaa98-overeng-genie-buck2-from-source-0.1.0",
+      "sha256": "806c620d1e2e0021e95ba3a2da138b659ef5ca315a72017ea5a2a366bd0dc6f2",
+      "size": 786625,
+      "storePath": "/nix/store/x9l95mxjnsg3b261pn0p89vpr29y2dc0-overeng-genie-buck2-from-source-0.1.0",
       "version": "0.1.0"
     },
     {
@@ -527,7 +527,7 @@
       "version": "0.0.0"
     },
     {
-      "artifactUrl": "https://overeng-effect-utils.cachix.org/serve/lz39a1305gd3rp4gx2k8g9pf0raqz8xr/genie.js",
+      "artifactUrl": "https://overeng-effect-utils.cachix.org/serve/lr1wbr44kqnjb8v37rg6v1l7ddvji3fg/genie.js",
       "descriptor": {
         "externalCapabilities": [
           "actionlint",
@@ -547,7 +547,7 @@
           "@opentui/core-win32-arm64",
           "@opentui/core-win32-x64"
         ],
-        "integrity": "sha256-Eb98jZXDVxY7QYpG60RvfRyZ91ZzcXl9QJgDbb1iSQQ=",
+        "integrity": "sha256-YeXSqyaO2yIyGorQtcbAWVaifwMDRcCfdqhBqqZttSg=",
         "modulePath": "genie.js",
         "platform": {
           "abi": "any",
@@ -565,20 +565,20 @@
         "runtimeContractVersion": "v1",
         "runtimeKind": "bun",
         "schema": "effect-utils/javascript-product/v2",
-        "sizeBytes": 6391138,
+        "sizeBytes": 6391793,
         "target": "effect_utils//packages/@overeng/genie:genie-candidate"
       },
-      "descriptorSha256": "d581959b0298c95253bc99d4b51dfc40a825b29eeeba5d85426ff797a1ebf5b2",
+      "descriptorSha256": "96b37229fe3c9d261c34a8d34e16c96dcbaa83e72d883e9cb8dc531ac9473a50",
       "name": "genie",
       "provenance": {
-        "producerCommit": "56d1c47a82d8cb4bec6316066fa2afab63a50d7c",
-        "productDigest": "11bf7c8d95c357163b418a46eb446f7d1c99f7567371797d4098036dbd624904",
+        "producerCommit": "e4b651b85ce305a542e55f66af62c6009ae0ee2c",
+        "productDigest": "61e5d2ab268edb22321a8ad0b5c6c05956a27f030345c09f76a841aaa66db528",
         "schema": "effect-utils/buck-product-provenance/v1",
         "target": "effect_utils//packages/@overeng/genie:genie-candidate"
       },
-      "sha256": "11bf7c8d95c357163b418a46eb446f7d1c99f7567371797d4098036dbd624904",
-      "size": 6391138,
-      "storePath": "/nix/store/lz39a1305gd3rp4gx2k8g9pf0raqz8xr-genie-buck2-from-source-0.0.0",
+      "sha256": "61e5d2ab268edb22321a8ad0b5c6c05956a27f030345c09f76a841aaa66db528",
+      "size": 6391793,
+      "storePath": "/nix/store/lr1wbr44kqnjb8v37rg6v1l7ddvji3fg-genie-buck2-from-source-0.0.0",
       "version": "0.0.0"
     },
     {
