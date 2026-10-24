@@ -248,11 +248,11 @@ The existing host-selected pnpm store is owned exclusively by pnpm and selected 
 #### Architecture and ownership (BUILD.BUCK.REUSE-R05/R07; BUILD.BUCK.REUSE-T01)
 
 ```text
-lock/sidecar + declared archive/patch/tool inputs (authority)
-  -> Buck acquisition/extraction/projection helpers (owner: Buck tools)
-      -> existing editor-view file CAS (one owner/collector; shared payload bytes)
-      -> adjacent recipe metadata + reader controls (Buck-owned disposable hints)
-      -> each root's declared buck-out outputs (links or private clones/copies)
+lock/sidecar + declared archive/tool inputs (authority)
+  -> Buck archive acquisition helper (owner: Buck tools; #2101 in progress)
+      -> existing editor-view file CAS (one owner/collector; shared archive bytes)
+      -> adjacent archive metadata + reader controls (Buck-owned disposable hints)
+      -> each root's declared archive output (private clone/copy)
 pnpm -> PNPM_SHARED_STORE_DIR + globalVirtualStore (owner: Deps Manager; untouched)
 ```
 
@@ -260,6 +260,7 @@ pnpm -> PNPM_SHARED_STORE_DIR + globalVirtualStore (owner: Deps Manager; untouch
 There is exactly one pnpm CAS/GVS owner (Deps Manager), and exactly one owner of the existing Buck file CAS (Buck tools/editor-view machinery).
 Do not create another pnpm store, peer-resolution database, `node_modules` installation authority, or package-manager invocation.
 Buck's generic file CAS contains immutable derived build bytes, including already-normalized/patched files; the authored lock/sidecar and declared tools remain authoritative.
+Shared expanded package payloads, extraction/projection helpers using recipe metadata, and recipe-generation maintenance belong only to the parked DQ08 context below; they are not part of the active archive-acquisition design.
 **Durable boundary (DQ05, approved):** Buck never reads/links pnpm's index or CAS, including indirect GVS access. Any future lever proposing a pnpm-index reader requires a new Deps Manager review; this approval does not authorize it.
 There is **no** cross-pnpm/Buck physical deduplication claim: the same dependency may occupy both authorities once. Measure those bytes honestly.
 Deps Manager approved recommendation B on **2026-10-24**, message `2078027ff9057be8`, conditional on megarepo-local placement, the high-water/LRU policy below, and combined incremental-host-byte reporting in [schickling/dotfiles#7407](https://github.com/schickling/dotfiles/issues/7407) verification.
@@ -350,6 +351,8 @@ Breaking formats get new versioned namespaces; all state is disposable, no in-pl
 
 #### Shared archive acquisition (BUILD.BUCK.REUSE-R05/R07)
 
+Archive acquisition is independent of the parked recipe protocol: C is the existing editor-view file CAS, resolved by the content service; M is its adjacent Buck-owned archive metadata/control namespace, never inside C. Archive generations and their leases/pins below do not require recipe manifests, expanded trees, or a recipe-aware maintenance scanner.
+
 ```text
 expected (sha256,size) -> C blob hit -> verified output reference
                       -> miss -> HTTPS fetch -> private temp -> verify -> atomic admission
@@ -360,7 +363,7 @@ For public registry archives, replace native per-root `download_file` with a loc
 Before network, validate a digest/size hit under the same admission/lifetime protocol; a miss downloads once into a private no-follow/exclusive temp, verifies full digest/size, then atomically publishes. Coalesce concurrent downloads with a crash-released digest lock outside CAS exclusion; recheck after acquiring it.
 Digest mismatch or untrusted/writable existing blob is an integrity error, not a silent overwrite or cache miss. Never cache credentials or use URL spelling as identity. Different bytes cannot share an integrity key.
 Private `file:` products and declared Nix archive roots retain their existing **Nix-only** acquisition authority; never use this cache to substitute for a missing private capability.
-Retain each archive through a generic `M/.store/archive-<sha256>/pins/<sha256>-0444` generation, with the same SH/EX controls and publication/retirement fence as recipe generations; the name, verified digest and expected declared size suffice, with no package index. This pin is required because ordinary buck-out copies do not retain the CAS inode.
+Retain each archive through a generic `M/.store/archive-<sha256>/pins/<sha256>-0444` generation; the name, verified digest and expected declared size suffice, with no package index. Archive generations use persistent, validated reader controls independently of any extraction recipe: readers retain SH through output installation; publication and retirement use generation exclusion plus the C fence, with retirement retaining nonblocking EX until its pins are removed. This pin is required because ordinary buck-out copies do not retain the CAS inode. Recipe-generation controls remain parked under DQ08.
 Hold its SH lease through output clone/copy/link completion; pressure maintenance may retire only unleased archive generations and then collect nlink==1 blobs. A cache-empty host downloads once; an intact warm archive generation yields zero network bytes, while eviction yields a normal miss.
 
 #### Filesystems, leases and collection (BUILD.BUCK.REUSE-R07; E04/E05)
@@ -376,25 +379,25 @@ Hold its SH lease through output clone/copy/link completion; pressure maintenanc
 
 “Fail closed” preserves #1990's destructive-retirement boundary: unknown lease evidence never authorizes deleting a generation. Copy fallback means **not entering** the sharing subsystem, not treating unknown locks/nlink as safe. Existing editor-view leases remain independently fail-closed; this does not make editor publication succeed on unsupported filesystems.
 For admitted local C but EXDEV output, hold a source lease/pin through the copy; after it completes the private output needs no CAS lease. Do not collect C unless its own filesystem is positively admitted local.
-M's explicit maintenance retires only SH-unleased generations with retained EX, under recipe/C fences; rename to private garbage while fenced, unlink its pins afterward, preserve lease-control tombstones forever. Unknown/held means retain.
+M's explicit maintenance retires only SH-unleased **archive generations** with retained EX, under archive-generation/C fences; rename to private garbage while fenced, unlink its pins afterward, preserve lease-control tombstones forever. Unknown/held means retain. Recipe-generation retirement and mixed archive/recipe maintenance dispatch are not active behavior; they require a DQ08 reopening.
 Extend **the existing** `collectEditorViewContentStore` with the high-water/LRU candidate selection below, not a second collector: validate candidate digest/ownership/mode, delete only nlink==1, recheck unchanged inode+nlink under C flock. Existing editor generations, M pins and any buck-out hardlink all count equally. Explicit full collection remains available; automatic pressure passes stop at the high-water mark.
 
 ##### Capacity policy (DQ05 approval condition)
 
 ```text
-above high water -> retire unleased recipe pins -> LRU of validated nlink==1 blobs
+above high water -> retire unleased archive pins -> LRU of validated nlink==1 blobs
 still above due to references -> referenced-bytes-over-cap -> report/alert; retain
 ```
 
 C and adjacent M MUST live on the existing megarepo filesystem, using the Git-common-dir resolver; an override must remain on that filesystem. No standalone-home fallback store is authorized for this host-sharing mode.
 Declare the high-water mark centrally in the Buck tools content-service configuration: `EDITOR_VIEW_CONTENT_STORE_HIGH_WATER_BYTES`, a positive decimal byte count, default **4294967296 (4 GiB)**. The host's shared environment may override it; all editor/Buck publishers and maintenance resolve the same C-scoped value, never a per-worktree quota.
 This is a high-water trigger, NOT a hard allocation/build-admission limit. On publication completion and each host maintenance pass, census C's unique allocated blob bytes; report M's metadata/control/pin-directory allocation separately and in the combined host total.
-If above the mark, first retire eligible unleased M recipe/archive generations under their existing EX/fences, releasing only their cache pins, then select unreferenced blobs by oldest successful-use time until at/below the mark or no eligible blob remains.
+If above the mark, first retire eligible unleased M archive generations under their EX/fences, releasing only their cache pins, then select unreferenced blobs by oldest successful-use time until at/below the mark or no eligible blob remains. Extending this retirement to extraction recipe generations is parked under DQ08.
 Record LRU access hints outside readonly C payloads, in M's atomic replaceable metadata, at successful acquisition/publication; never utime/chmod linked blobs. Missing hints sort oldest; hints rank candidates but never authorize deletion. Recheck validated inode identity and **nlink==1** under the existing collector fence before each unlink.
-Referenced blobs (including buck-out/editor links and retained/leased recipe pins) are **not evictable**. If their allocated bytes exceed the mark, emit/report the exact state `referenced-bytes-over-cap` with cap, total, referenced and reclaimable bytes; host maintenance alerts on that state. Do not delete referenced content, fail a build, or weaken leases to enforce the cap.
+Referenced blobs (including buck-out/editor links and retained/leased archive pins) are **not evictable**. If their allocated bytes exceed the mark, emit/report the exact state `referenced-bytes-over-cap` with cap, total, referenced and reclaimable bytes; host maintenance alerts on that state. Do not delete referenced content, fail a build, or weaken leases to enforce the cap.
 Publish the pressure receipt with [schickling/dotfiles#7407](https://github.com/schickling/dotfiles/issues/7407) verification and host maintenance output; the signal is operational pressure, not an integrity failure. Inability to inspect safely remains fail-closed for deletion.
-Evicted/missing recipe generations or payloads are a normal recipe miss: discard the reusable hint and reconstruct from declared archive/patch/tool inputs. Never hand Buck a partial replay. Digest mismatch or writable/unsafe content remains an integrity error, not an eviction miss.
-A buck-out file itself needs no process lease: it is an actual hardlink, not an external symlink. Editor readers retain their existing generation SH leases; CAS GC never retires editor or buck-out roots.
+Evicted/missing archive generations or payloads are a normal acquisition miss: fetch and verify the declared archive through the acquisition contract, never substitute another origin. Digest mismatch or writable/unsafe content remains an integrity error, not an eviction miss. Reconstruction of expanded package trees from a recipe miss, and the obligation never to return a partial replay, apply only if DQ08 reopens.
+A private cloned/copied buck-out archive needs no continuing source lease after installation. Existing admitted hardlinked outputs remain actual references, not external symlinks; CAS GC never retires editor or buck-out roots. Hardlinked replay outputs are parked under DQ08 and its native safety gate.
 Crashes release flock/SH via descriptor close; linked outputs/pins survive and keep bytes alive. Reuse the existing process-incarnation staging cleanup/dirty-store repair; never age-delete a live/unknown generation. A missing whole cache is rebuildable; malformed partial state is not trusted.
 Before enabling sharing on a host with writable legacy CAS blobs, the quiesced digest-verified repair/quarantine procedure above is required; never repair by chmodding live linked payloads or deleting mismatched blobs.
 
@@ -406,9 +409,9 @@ W1 populates new cache -> new W2/W3 roots, same inputs/host -> compare increment
 
 Correct [schickling/dotfiles#7407](https://github.com/schickling/dotfiles/issues/7407)'s metric: **zero downloaded archive bytes per intact warm sibling** is lever 5a's acquisition target. **Zero actual archive extraction/patch executions applies only when extraction replay is active**; replay is currently parked under DQ08. Low payload-write/allocation budgets remain conditional on ordinary-hardlink mode or clone-capable filesystems; ordinary-copy ext4 reports bytes without those targets.
 Native local action counts are not success criteria. Extraction and metadata projections may still execute; a future replay must report actual work rather than claim action suppression or relabel exclusions.
-Keep native category counts separate from helper counters: recipe hits/misses, actual archive decodes/patch runs, bytes downloaded, payload bytes newly written to buck-out/C, cloned/linked/copied files, reason-coded fallbacks, and materialization critical-path wall time (not summed overlapping action durations).
+Keep native category counts separate from helper counters: archive hits/misses, actual archive decodes/patch runs, bytes downloaded, payload bytes newly written to buck-out/C, cloned/linked/copied files, reason-coded fallbacks, and materialization critical-path wall time (not summed overlapping action durations). Recipe hit/miss counters apply only if DQ08 reopens.
 
-| Same-input sibling replay metric                                     | Supplied baseline                                       | Initial accepted target (DQ07)                                                                                                                                          |
+| Same-input fresh-sibling metric                                      | Supplied baseline                                       | Initial accepted target (DQ07)                                                                                                                                          |
 | -------------------------------------------------------------------- | ------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Actual archive extraction/patch executions                           | 249/root                                                | **0/root only when extraction replay is active** and W1's recipe generations remain intact; currently parked under DQ08                                                 |
 | Registry archive bytes downloaded                                    | 137,330,301/root                                        | **0/root** on intact warm cache                                                                                                                                         |
@@ -421,7 +424,7 @@ Keep native category counts separate from helper counters: recipe hits/misses, a
 The **overall <=12 s median over five fresh roots remains the goal**, not a lever 5a acceptance target or a measured speedup. The completed fresh-root action-category breakdown selects store-entry projection and the serial TS emit chain as the performance drivers; DQ07 records the chosen levers and platform limits. Conditional byte budgets above remain initial budgets, not established savings.
 For that overall goal, use the exact target/revision/platform and comparable unloaded conditions from E01; five independent fresh roots, cold daemon/root state, warm applicable shared cache, retain W1, no intervening explicit collection; publish all five times and median, current cache/tool identities and native logs. Do not call this cold-disk/page-cache evidence. Replay-specific acceptance applies only after DQ08 is reopened.
 Measure allocated blocks once per `(st_dev,st_ino)` over the complete union, not a sum of separate `du` invocations; publish apparent bytes and nlink/inode samples separately. For APFS clones report allocation with clone-aware evidence or label physical savings unmeasured. Count writes separately from allocation.
-After removing W1, W2 must still typecheck/read complete content. After all roots/M pins/editor generations release, explicit collection must reclaim only unreferenced blobs. Concurrent publication/GC, crash mid-publication, changed archive/patch/tool/mode, corrupt blob, EXDEV, OverlayFS, clean/stale clean, and deferred final-output materialization are mandatory correctness cases.
+After removing W1, W2 must still typecheck/read complete content. After all roots/M archive pins/editor generations release, explicit collection must reclaim only unreferenced blobs. Concurrent publication/GC, crash mid-publication, changed archive/tool/mode, corrupt blob, EXDEV, OverlayFS, clean/stale clean, and deferred final-output materialization are mandatory acquisition correctness cases. Changed patches and recipe-generation pin/reconstruction cases additionally apply only if DQ08 reopens.
 
 #### CI posture and cutover
 
