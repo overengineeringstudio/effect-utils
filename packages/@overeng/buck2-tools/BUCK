@@ -6,7 +6,7 @@ load("//buck2:materialization.bzl", "runtime_modules")
 # Projection source: packages/@overeng/buck2-tools/BUCK.genie.ts
 # Projection schema version: 13
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:cbccb4b12aa3a12e25ce5d360337b669a76aec9cdf7668b7e86b654323f49b3c
+# Semantic fingerprint: sha256:33fd7311ebcc3cede84479bd2fcbc8aa385d9f9406b3c35b400187f8f0d9f8d5
 # Regenerate: devenv tasks run genie:run
 
 load("//buck2:materialization.bzl", "export_materialization_inputs", "package_view")
@@ -53,6 +53,7 @@ export_materialization_inputs([
     "src/materialization-archives.integration.test.ts",
     "src/materialization-archives.ts",
     "src/materialization-metadata.ts",
+    "src/materialization-recipes-test-native.ts",
     "src/materialization-recipes.integration.test.ts",
     "src/materialization-recipes.ts",
     "src/materialization-recipes.unit.test.ts",
@@ -157,6 +158,7 @@ package_view(
         "src/materialization-archives.integration.test.ts": "src/materialization-archives.integration.test.ts",
         "src/materialization-archives.ts": "src/materialization-archives.ts",
         "src/materialization-metadata.ts": "src/materialization-metadata.ts",
+        "src/materialization-recipes-test-native.ts": "src/materialization-recipes-test-native.ts",
         "src/materialization-recipes.integration.test.ts": "src/materialization-recipes.integration.test.ts",
         "src/materialization-recipes.ts": "src/materialization-recipes.ts",
         "src/materialization-recipes.unit.test.ts": "src/materialization-recipes.unit.test.ts",
@@ -239,6 +241,7 @@ package_view(
         "src/materialization-archives.integration.test.ts": "src/materialization-archives.integration.test.ts",
         "src/materialization-archives.ts": "src/materialization-archives.ts",
         "src/materialization-metadata.ts": "src/materialization-metadata.ts",
+        "src/materialization-recipes-test-native.ts": "src/materialization-recipes-test-native.ts",
         "src/materialization-recipes.integration.test.ts": "src/materialization-recipes.integration.test.ts",
         "src/materialization-recipes.ts": "src/materialization-recipes.ts",
         "src/materialization-recipes.unit.test.ts": "src/materialization-recipes.unit.test.ts",
