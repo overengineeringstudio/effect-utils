@@ -1395,8 +1395,10 @@ in
     exec = trace.exec "buck2:cache-posture:ci-test" ''
       set -euo pipefail
       cd "''${DEVENV_ROOT:-$PWD}"
+      export BUCK2_NATIVE_BIN=${buck2Machine}/libexec/buck2
       exec ${pkgs.bun}/bin/bun ./packages/@overeng/buck2-tools/src/bun-test-runner.ts test \
         ./scripts/buck2-entrypoint.posture.integration.test.ts \
+        ./scripts/buck2-entrypoint.daemon.integration.test.ts \
         ./scripts/buck2-cache-posture.integration.test.ts
     '';
   };
@@ -1473,7 +1475,7 @@ in
       cd "''${DEVENV_ROOT:-$PWD}"
       # An explicit directory preserves recursive discovery without matching
       # the copies Buck stages under buck-out, like genie:ci-workflow:test.
-      exec ${pkgs.bun}/bin/bun ./packages/@overeng/buck2-tools/src/bun-test-runner.ts test ./genie/buck2/ ./buck2/dependencies/genie-input-manifest.integration.test.ts ./scripts/editor-view-authority.unit.test.ts ./scripts/buck2-daemon-reaper.integration.test.ts
+      exec ${pkgs.bun}/bin/bun ./packages/@overeng/buck2-tools/src/bun-test-runner.ts test ./genie/buck2/ ./packages/@overeng/genie/src/runtime/package-json/catalog-optional-peers.unit.test.ts ./buck2/dependencies/genie-input-manifest.integration.test.ts ./scripts/editor-view-authority.unit.test.ts ./scripts/buck2-daemon-reaper.integration.test.ts
     '';
     execIfModified = [
       "BUCK"
@@ -1493,7 +1495,7 @@ in
   # Like genie:buck2:test, these Bun suites live outside the package test census.
   # Keep them beside the generators and include their source task in test:run.
   tasks."buck2:rust:generators:test" = {
-    description = "Run the Rust interop service and wasm guest generator integration tests";
+    description = "Run the Rust contract, interop service and wasm guest generator integration tests";
     after = [ "buck2:editor:publish:test" ];
     exec = trace.exec "buck2:rust:generators:test" ''
       set -euo pipefail
@@ -1505,6 +1507,11 @@ in
       "buck2/rust/**/*.ts"
       "packages/@overeng/effect-rust/src/**/*.ts"
       "packages/@overeng/schema-codegen/src/**/*.ts"
+      "packages/@overeng/content-address/src/generate-contract.ts"
+      "packages/@overeng/content-address/src/schema.ts"
+      "rust/content-address-contract/**"
+      "rust/buck2-tools/core/cargo-buck2-package-projection.ts"
+      "genie/buck2/mod.ts"
       "package.json"
       "pnpm-lock.yaml"
     ];

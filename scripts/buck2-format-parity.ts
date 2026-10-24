@@ -41,9 +41,13 @@ const git = new Set(
     ),
   ].filter((file) => admitted(file) && existsSync(path.join(root, file))),
 )
+// This read-only query runs alongside editor publication in check:quick. Its
+// gate cleanup must not stop the publisher's daemon in the default isolation.
 const buckInputs: unknown = JSON.parse(
   run([
     'buck2',
+    '--isolation-dir',
+    'format-parity',
     'uquery',
     'inputs(filter(":static_sources$", deps(//buck2/static:check_format)))',
     '--output-format',
