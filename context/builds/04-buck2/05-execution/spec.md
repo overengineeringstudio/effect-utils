@@ -512,9 +512,10 @@ or its private fallback is selected, standalone builds register native
 `download_file` with the canonical registry URL, reviewed SHA-256 and
 byte size; Buck verifies the output and owns deferred materialization.
 The [host-local materialization contract](../06-reuse-client/spec.md#host-local-materialization-reuse-lever-5a)
-defines the declared local acquisition-helper replacement and its private
-fallback; it does not authorize automatic origin substitution. Nix-backed
-acquisition retains the explicit immutable store root and copy-and-verify
+defines the declared local archive-acquisition helper and its private fallback;
+extraction replay is parked under its open DQ08, not an active execution path.
+Neither authorizes automatic origin substitution. Nix-backed acquisition retains
+the explicit immutable store root and copy-and-verify
 action: complete import sources and projected Bun participate in its action
 key, and launchers clear env, dotenv/preloads and implicit installation.
 Endpoint availability can fail a required download but cannot alter a
