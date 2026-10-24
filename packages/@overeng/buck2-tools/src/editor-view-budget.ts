@@ -23,8 +23,11 @@ import { homedir, hostname } from 'node:os'
 import { isAbsolute, join, relative, resolve, sep } from 'node:path'
 import process from 'node:process'
 
+import { probeEditorViewLeaseUnderFence } from './editor-view-leases.ts'
 import {
+  editorViewAutomaticEvictionEvidence,
   managedEditorViewSnapshots,
+  classifyEditorViewProcessCandidates,
   observeEditorViewProcessCandidates,
   referencedEditorViewPaths,
   type EditorViewProcessCandidate,
@@ -103,6 +106,44 @@ export type EditorViewEvictedMarker = {
   readonly reason: 'host-budget'
   readonly budgetBytes: number
   readonly usedBytes: number
+}
+
+/** Admission cannot safely reclaim enough space; publication has not been authorized. */
+export class EditorViewCapacityError extends Error {
+  readonly code = 'EDITOR_VIEW_CAPACITY'
+
+  readonly budgetBytes: number
+  readonly usedBytes: number
+  readonly reservationBytes: number
+  readonly blockedGenerations: number
+  readonly reasons: readonly string[]
+
+  constructor({
+    budgetBytes,
+    usedBytes,
+    reservationBytes,
+    blockedGenerations,
+    reasons,
+  }: {
+    readonly budgetBytes: number
+    readonly usedBytes: number
+    readonly reservationBytes: number
+    readonly blockedGenerations: number
+    readonly reasons: readonly string[]
+  }) {
+    super(
+      `editor view host budget: capacity exhausted (${usedBytes} used + ${reservationBytes} requested; ` +
+        `${budgetBytes} budget; ${blockedGenerations} protected generations). ` +
+        `${reasons.slice(0, 8).join('; ')}. Nothing further can be safely deleted. ` +
+        'Close unmanaged editor sessions and explicitly release idle worktrees or pins, or raise EDITOR_VIEW_HOST_BUDGET_BYTES.',
+    )
+    this.name = 'EditorViewCapacityError'
+    this.budgetBytes = budgetBytes
+    this.usedBytes = usedBytes
+    this.reservationBytes = reservationBytes
+    this.blockedGenerations = blockedGenerations
+    this.reasons = reasons
+  }
 }
 
 const defaultBudgetBytes = 40_000_000_000
@@ -2238,18 +2279,41 @@ const linkedInodes = function* (linked: Buffer): Generator<string> {
     yield `${linked.readBigUInt64LE(offset)}:${linked.readBigUInt64LE(offset + 8)}`
 }
 
-/** Build only the candidates whose eligibility can still be changed by a positive reference. */
+/** Positive readers and incomplete migration evidence both protect a candidate. */
 const observeGenerations = (generations: readonly GenerationView[]): ReadonlySet<string> => {
   const candidates: EditorViewProcessCandidate[] = []
+  const generationCandidates: EditorViewProcessCandidate[] = []
+  const protectedGenerations = new Set<string>()
   for (const generation of generations) {
-    candidates.push({
+    const candidate = {
       key: generation.key,
       editorRoot: generation.root.key,
       snapshotRoot: generation.dir,
       linkedInodes: linkedInodes(generation.linked),
-    })
+    }
+    candidates.push(candidate)
+    if (generation.kind === 'generation') generationCandidates.push(candidate)
   }
-  return observeEditorViewProcessCandidates({ candidates })
+  const evidence = classifyEditorViewProcessCandidates({ candidates })
+  const protectedRoots = new Map<string, boolean>()
+  for (const generation of generations) {
+    if (generation.kind === 'orphan') {
+      if (evidence.get(generation.key)?.state !== 'clear') protectedGenerations.add(generation.key)
+      continue
+    }
+    let protectedRoot = protectedRoots.get(generation.root.key)
+    if (protectedRoot === undefined) {
+      protectedRoot =
+        editorViewAutomaticEvictionEvidence({
+          editorRoot: generation.root.key,
+          candidates: generationCandidates,
+          evidence,
+        }).state !== 'clear'
+      protectedRoots.set(generation.root.key, protectedRoot)
+    }
+    if (protectedRoot === true) protectedGenerations.add(generation.key)
+  }
+  return protectedGenerations
 }
 
 type FirstHop = { readonly path: string; readonly target: string } | 'absent' | 'protect'
@@ -2331,6 +2395,7 @@ type RetirementBatch = {
   readonly observed: ReadonlySet<string>
   readonly proofAtMs: number
   readonly garbage: string[]
+  readonly leases: { readonly release: () => void }[]
   readonly beforeCandidateRetirement:
     | ((candidate: { readonly key: string; readonly dir: string }) => void)
     | undefined
@@ -2338,22 +2403,25 @@ type RetirementBatch = {
 }
 
 /**
- * #1990 MUST add its non-blocking exclusive lease probe in this seam and skip
- * held candidates. Without leases this is an identity/epoch check, bounded by
- * observed membership/proof age; it cannot exclude readers arriving after proof.
- * Host/root fences are held: the future lease probe must never wait here.
+ * Root/host/CAS fences are held. Fresh nonblocking EX ownership excludes managed
+ * generation readers until the cleanup owner closes its retained descriptors.
+ * Orphans were never published to the launcher and require no lease control.
  */
-const checkEditorViewBudgetCandidateBeforeDelete = ({
-  candidate,
-  kind,
-  state,
-  batch,
-}: {
-  readonly candidate: OrphanCandidate
-  readonly kind: 'orphan' | 'generation'
-  readonly state: BudgetState
-  readonly batch?: RetirementBatch | undefined
-}): boolean => {
+const checkEditorViewBudgetCandidateBeforeDelete = (
+  options: {
+    readonly candidate: OrphanCandidate
+    readonly state: BudgetState
+    readonly batch?: RetirementBatch | undefined
+  } & (
+    | { readonly kind: 'orphan' }
+    | {
+        readonly kind: 'generation'
+        readonly editorRoot: string
+        readonly leases: { readonly release: () => void }[]
+      }
+  ),
+): boolean => {
+  const { candidate, kind, state, batch } = options
   if (batch !== undefined && batch.observed.has(candidate.key) === false) return false
   batch?.beforeCandidateRetirement?.({ key: candidate.key, dir: candidate.dir })
   if (batch !== undefined && Date.now() - batch.proofAtMs >= retirementProofMaxAgeMs) {
@@ -2364,12 +2432,25 @@ const checkEditorViewBudgetCandidateBeforeDelete = ({
     kind === 'orphan'
       ? orphanIdentity({ dir: candidate.dir })?.identity
       : generationIdentity(candidate.dir)?.identity
-  return (
-    candidate.identity !== undefined &&
-    identity === candidate.identity &&
-    readState().epoch === state.epoch &&
-    batch?.live.has(candidate.key) !== true
+  if (
+    candidate.identity === undefined ||
+    identity !== candidate.identity ||
+    readState().epoch !== state.epoch ||
+    batch?.live.has(candidate.key) === true
   )
+    return false
+  if (options.kind === 'generation') {
+    const lease = probeEditorViewLeaseUnderFence({
+      editorRoot: options.editorRoot,
+      snapshot: candidate.dir,
+    })
+    if (lease.state !== 'clear') {
+      lease.release()
+      return false
+    }
+    options.leases.push(lease)
+  }
+  return true
 }
 
 type OrphanCandidate = {
@@ -2594,6 +2675,7 @@ export const reclaimEditorViewOrphans = async ({
 const retireRoot = async ({
   root,
   generations,
+  readerGenerations,
   budgetBytes,
   usedBytes,
   recencyMs,
@@ -2602,6 +2684,7 @@ const retireRoot = async ({
 }: {
   readonly root: RootView
   readonly generations: readonly GenerationView[]
+  readonly readerGenerations: readonly GenerationView[]
   readonly budgetBytes: number
   readonly usedBytes: number
   readonly recencyMs: number
@@ -2622,6 +2705,7 @@ const retireRoot = async ({
     const remaining = await retireRoot({
       root,
       generations: normal,
+      readerGenerations,
       budgetBytes,
       usedBytes,
       recencyMs,
@@ -2652,6 +2736,7 @@ const retireRoot = async ({
   if (admitted.length === 0) return { retired: [], blocked }
   const token = randomUUID()
   const garbage: string[] = batch?.garbage ?? []
+  const leases: { readonly release: () => void }[] = batch?.leases ?? []
   const retired: string[] = []
   const transaction = async () => {
     await withEditorViewContentStoreLock({
@@ -2659,9 +2744,7 @@ const retireRoot = async ({
       run: async () => {
         const state = batch?.state ?? readState()
         // Journal changes after the fresh census require another admission round.
-        if (batch === undefined && state.epoch !== censusEpoch) {
-          return
-        }
+        if (batch === undefined && state.epoch !== censusEpoch) return
         const registration = state.roots.get(root.key)
         if (
           registration?.contentStore !== root.contentStore ||
@@ -2670,7 +2753,8 @@ const retireRoot = async ({
           blocked.push(...admitted.map(({ generation }) => generation.key))
           return
         }
-        const live = batch?.live ?? observeGenerations(admitted.map(({ generation }) => generation))
+        // Legacy evidence covers every generation of the root, not only selected victims.
+        const live = batch?.live ?? observeGenerations(readerGenerations)
         const pinned = managedEditorViewSnapshots({ editorRoot: root.key })
         let activeAtMs = 0
         for (const [key, at] of state.lastUse)
@@ -2718,6 +2802,8 @@ const retireRoot = async ({
             checkEditorViewBudgetCandidateBeforeDelete({
               candidate: generation,
               kind: 'generation',
+              editorRoot: root.key,
+              leases,
               state,
               batch,
             }) === false
@@ -2796,14 +2882,22 @@ const retireRoot = async ({
       },
     })
   }
-  if (batch === undefined) await withHostBudgetLock(transaction)
-  else await transaction()
-  // Directory-only unlock of private retired trees; payload inodes are never chmodded.
-  for (const path of batch === undefined ? garbage : []) {
-    makeDirectoriesWritable(path)
-    rmSync(path, { recursive: true })
+  try {
+    try {
+      if (batch === undefined) await withHostBudgetLock(transaction)
+      else await transaction()
+    } finally {
+      // Batch cleanup owns shared probes; local cleanup runs even after a failed transaction.
+      for (const path of batch === undefined ? garbage : []) {
+        makeDirectoriesWritable(path)
+        rmSync(path, { recursive: true })
+      }
+    }
+    return { retired, blocked }
+  } finally {
+    // Close only: never LOCK_UN an open description inherited by another process.
+    if (batch === undefined) for (const lease of leases) lease.release()
   }
-  return { retired, blocked }
 }
 
 // ---------------------------------------------------------------------------
@@ -2949,16 +3043,8 @@ export const reserveEditorViewBudget = async ({
         censusSession.pending.set(ledger, pending)
         return pending
       }
-      /** One short flock transaction: reconcile the ledger, then reserve if it fits (or when forced). */
-      const admit = async ({
-        census,
-        plan,
-        force,
-      }: {
-        readonly census: Census
-        readonly plan: Plan
-        readonly force: boolean
-      }) => {
+      /** One short flock transaction: reconcile the ledger, then reserve only if it fits. */
+      const admit = async ({ census, plan }: { readonly census: Census; readonly plan: Plan }) => {
         const admissionStarted = performance.now()
         const owners = budgetProcessOwners()
         const obsolete = obsoleteGenerationFootprints()
@@ -3014,8 +3100,7 @@ export const reserveEditorViewBudget = async ({
             protectedBytes: plan.protectedBytes,
             measuredAtMs: census.measuredAtMs,
           }
-          const admitted =
-            force === true || (stale === false && used + reservationBytes <= budgetBytes)
+          const admitted = stale === false && used + reservationBytes <= budgetBytes
           if (admitted === true) {
             state.reservations.set(token, {
               token,
@@ -3036,27 +3121,7 @@ export const reserveEditorViewBudget = async ({
             topHolders: census.topHolders,
             startedAtMs,
           })
-          if (admitted === true && force === true)
-            signal({
-              state,
-              contentStore: store,
-              event: {
-                event: 'editor-view.host-budget.over-budget',
-                budgetBytes,
-                usedBytes: census.usedBytes,
-                protectedBytes: plan.protectedBytes,
-                reservedBytes: reserved,
-                pendingEstimateBytes: pending,
-                reservationBytes,
-                topHolders: census.topHolders,
-                evicted,
-                ...(census.unknown.length > 0 ? { unaccounted: census.unknown } : {}),
-                message: `editor views exceed the host budget: ${census.usedBytes} of ${budgetBytes} bytes measured (${plan.protectedBytes} protected: pinned, open by a process, within ${graceMs / 60_000}min grace, root used within ${recencyMs}ms, or lock contended) plus ${reserved} reserved and ${pending} estimated since the census, before admitting ${reservationBytes}${census.unknown.length > 0 ? `; ${census.unknown.length} unreadable path(s) uncounted` : ''}; evicted ${evicted.length} generation(s); top holders: ${formatHolders(census.topHolders)}. Publishing anyway; release idle worktrees or pins, or raise EDITOR_VIEW_HOST_BUDGET_BYTES.`,
-              },
-              startedAtMs,
-              exitCode: 0,
-            })
-          else if (admitted === true && evicted.length > 0)
+          if (admitted === true && evicted.length > 0)
             signal({
               state,
               contentStore: store,
@@ -3129,18 +3194,18 @@ export const reserveEditorViewBudget = async ({
           invalidateCensus()
           continue
         }
-        // Every plan in this round uses the candidate eligibility observed at this instant.
+        // An unscanned generation is protected for accounting, never presumed clear.
         const roundAtMs = Date.now()
         let plan = planEviction({
           census,
           blocked,
-          live: new Set(),
+          live: new Set(census.generations.map((generation) => generation.key)),
           recencyMs,
           now: roundAtMs,
         })
         last = { census, plan }
         // eslint-disable-next-line no-await-in-loop -- Admission is a single short flock transaction per round.
-        const admission = await admit({ census, plan, force: false })
+        const admission = await admit({ census, plan })
         if (admission.admitted === true) {
           return { token }
         }
@@ -3167,14 +3232,15 @@ export const reserveEditorViewBudget = async ({
         plan = planEviction({
           census,
           blocked,
-          live: new Set(),
+          // Candidates only: the fenced batch below supplies reader authorization.
+          live: new Set<string>(),
           recencyMs,
           now: roundAtMs,
         })
         last = { census, plan }
         // Recheck fit with the fresh accounting before paying for reader observation.
         // eslint-disable-next-line no-await-in-loop -- The journal fence precedes any retirement.
-        const freshAdmission = await admit({ census, plan, force: false })
+        const freshAdmission = await admit({ census, plan })
         if (freshAdmission.admitted === true) return { token }
         if (freshAdmission.stale === true) continue
         if (collected === false && census.unreferencedCasBytes > 0) {
@@ -3190,6 +3256,7 @@ export const reserveEditorViewBudget = async ({
         const locks: EditorViewBudgetRootLock[] = []
         const available = new Set<string>()
         const garbage: string[] = []
+        const leases: { readonly release: () => void }[] = []
         const retiredBefore = evicted.length
         const retiredStores = new Set<string>()
         const batchStartedAtMs = Date.now()
@@ -3214,10 +3281,10 @@ export const reserveEditorViewBudget = async ({
           await withHostBudgetLock(async () => {
             const state = readState()
             const proofAtMs = Date.now()
-            // Observe every planned key, including contended roots, before an
-            // epoch mismatch can skip retirement and force advisory admission.
+            // Observe the full root generation inventories, including unselected
+            // generations, before fencing the selected candidate membership.
             const candidates = plan.order
-            const live = observeGenerations(candidates)
+            const live = observeGenerations(census.generations)
             const observed = new Set(candidates.map((generation) => generation.key))
             // Freeze time AND reader-observed membership: pointer removal may
             // expose an orphan even without time advancing during the proof.
@@ -3230,6 +3297,7 @@ export const reserveEditorViewBudget = async ({
               observed,
               proofAtMs,
               garbage,
+              leases,
               beforeCandidateRetirement,
               expired: false,
             }
@@ -3247,6 +3315,7 @@ export const reserveEditorViewBudget = async ({
                   const outcome = await retireRoot({
                     root: generation.root,
                     generations: [generation],
+                    readerGenerations: census.generations,
                     budgetBytes,
                     usedBytes: census.usedBytes,
                     recencyMs,
@@ -3282,6 +3351,8 @@ export const reserveEditorViewBudget = async ({
               rmSync(directory, { recursive: true })
             }
           } finally {
+            // Shared batch probes outlive every per-root transaction and its payload cleanup.
+            for (const lease of leases) lease.release()
             for (const lock of locks) lock.release()
           }
         }
@@ -3292,14 +3363,67 @@ export const reserveEditorViewBudget = async ({
           invalidateCensus()
         }
       }
-      // Advisory budget: protected bytes do not fit, so record the overrun and publish anyway.
+      // Reader uncertainty is a retention boundary, never permission to force admission.
       const census =
         last?.census ??
         (await takeCensus({ contentStore: store, root, heldEditorRoot, discoverRoots, staged }))
-      const plan =
-        last?.plan ?? planEviction({ census, blocked, live: new Set(), recencyMs, now: Date.now() })
-      await admit({ census, plan, force: true })
-      return { token }
+      const capacityError = new EditorViewCapacityError({
+        budgetBytes,
+        usedBytes: census.usedBytes + reservedBytes(readState()),
+        reservationBytes,
+        blockedGenerations: census.generations.reduce(
+          (count, generation) =>
+            count +
+            (generation.kind === 'generation' && evicted.includes(generation.key) === false
+              ? 1
+              : 0),
+          0,
+        ),
+        reasons: [
+          'reader protection requires complete legacy evidence and an exclusive generation lease',
+          ...census.unknown.slice(0, 5),
+          'persistent lease-control tombstones retain inode and metadata pressure and must not be unlinked',
+          'held leases, pins, recent use, incomplete reader evidence, and contended locks remain protected',
+        ],
+      })
+      await withHostBudgetLock(async () => {
+        const state = readState()
+        state.usage = {
+          usedBytes: census.usedBytes,
+          protectedBytes: last?.plan.protectedBytes ?? census.usedBytes,
+          measuredAtMs: census.measuredAtMs,
+        }
+        updateWarning({
+          state,
+          contentStore: store,
+          budgetBytes,
+          topHolders: census.topHolders,
+          startedAtMs,
+        })
+        signal({
+          state,
+          contentStore: store,
+          event: {
+            event: 'editor-view.host-budget.over-budget',
+            budgetBytes,
+            usedBytes: census.usedBytes,
+            protectedBytes: last?.plan.protectedBytes ?? census.usedBytes,
+            reservedBytes: reservedBytes(state),
+            pendingEstimateBytes: state.journal
+              .filter((entry) => entry.epoch > census.epoch)
+              .reduce((sum, entry) => sum + entry.estimatedBytes, 0),
+            reservationBytes,
+            topHolders: census.topHolders,
+            evicted,
+            ...(census.unknown.length > 0 ? { unaccounted: census.unknown } : {}),
+            message: capacityError.message,
+          },
+          startedAtMs,
+          exitCode: 1,
+        })
+        writeState(state)
+      })
+      throw capacityError
     },
   })
 }

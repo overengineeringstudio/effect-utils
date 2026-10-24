@@ -30,7 +30,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest
 
 import {
   cancelEditorViewBudgetReservation,
-  reserveEditorViewBudget,
+  reserveEditorViewBudget as reserveEditorViewBudgetUnscoped,
   type EditorViewBudgetRootLock,
 } from './editor-view-budget.ts'
 import { managedEditorViewSnapshots, type EditorViewPinRecord } from './editor-view-readers.ts'
@@ -38,16 +38,21 @@ import {
   editorViewStagingCreatorIdentity,
   readEditorViewSourceManifest,
 } from './editor-view-sharing.ts'
+import { editorViewTestDataRoot } from './editor-view-test-filesystem.ts'
+import {
+  scopeEditorViewTestProcesses,
+  trackEditorViewTestSpawn,
+} from './editor-view-test-processes.ts'
 import {
   canonicalTreeFingerprint,
   canonicalTreeFingerprintWithResolvedLinks,
   checkEditorView,
   editorViewPublicationWorkers,
   pinEditorView,
-  publishEditorView,
-  publishEditorViews,
+  publishEditorView as publishEditorViewUnscoped,
+  publishEditorViews as publishEditorViewsUnscoped,
   recoverEditorViewLock,
-  releaseEditorViewRoot,
+  releaseEditorViewRoot as releaseEditorViewRootUnscoped,
   unpinEditorView,
   verifyEditorViewSnapshot,
   tryAcquireEditorViewBudgetRootLock,
@@ -60,7 +65,26 @@ import * as fingerprintRunner from './typescript-runner.ts'
 
 // Namespace-property spies do not replace Bun's native named-import bindings.
 // Capture native functions, then register stable mocked exports for fault injection.
-const nativeFs = { ...fs }
+const nativeFs = { ...process.getBuiltinModule('fs') }
+// Scope every retirement entrypoint to real fixture PIDs on Linux and macOS.
+// Host-wide fail-closed policy has one explicit native-lease integration case.
+const fixtureProcessIds = new Set([process.pid])
+const publishEditorView = scopeEditorViewTestProcesses({
+  processIds: fixtureProcessIds,
+  operation: publishEditorViewUnscoped,
+})
+const publishEditorViews = scopeEditorViewTestProcesses({
+  processIds: fixtureProcessIds,
+  operation: publishEditorViewsUnscoped,
+})
+const reserveEditorViewBudget = scopeEditorViewTestProcesses({
+  processIds: fixtureProcessIds,
+  operation: reserveEditorViewBudgetUnscoped,
+})
+const releaseEditorViewRoot = scopeEditorViewTestProcesses({
+  processIds: fixtureProcessIds,
+  operation: releaseEditorViewRootUnscoped,
+})
 const fsMocks = {
   openSync: vi.fn(nativeFs.openSync),
   fchmodSync: vi.fn(nativeFs.fchmodSync),
@@ -72,7 +96,13 @@ const fsMocks = {
   realpathSync: vi.fn(nativeFs.realpathSync),
 }
 vi.mock('node:fs', () => ({ ...nativeFs, ...fsMocks }))
-const nativeChildProcess = { ...ChildProcess }
+const nativeChildProcess = {
+  ...ChildProcess,
+  spawn: trackEditorViewTestSpawn({
+    processIds: fixtureProcessIds,
+    spawnProcess: ChildProcess.spawn,
+  }),
+}
 const childProcessMocks = { spawn: vi.fn(nativeChildProcess.spawn) }
 vi.mock('node:child_process', () => ({ ...nativeChildProcess, ...childProcessMocks }))
 
@@ -96,15 +126,17 @@ const savedIntegrationTraceContext = {
   OTEL_TASK_TRACEPARENT: process.env.OTEL_TASK_TRACEPARENT,
 }
 beforeAll(() => {
+  fsMocks.readdirSync.mockImplementation(nativeFs.readdirSync)
   // Unrelated publications must not consume the shared exporter bound from CI's ambient trace.
   delete process.env.TRACEPARENT
   delete process.env.OTEL_TASK_TRACEPARENT
   integrationBudgetState = realpathSync(
-    mkdtempSync(join(tmpdir(), 'editor-view-test-host-budget-')),
+    mkdtempSync(join(editorViewTestDataRoot(), 'editor-view-test-host-budget-')),
   )
   process.env.EDITOR_VIEW_HOST_BUDGET_STATE = integrationBudgetState
 })
 afterAll(() => {
+  fsMocks.readdirSync.mockReset().mockImplementation(nativeFs.readdirSync)
   for (const [key, value] of Object.entries(savedIntegrationTraceContext))
     if (value === undefined) delete process.env[key]
     else process.env[key] = value
@@ -153,6 +185,7 @@ afterEach(async () => {
       if (!(error instanceof Error && 'code' in error && error.code === 'ESRCH')) throw error
     }
     await child.exited
+    fixtureProcessIds.delete(child.pid)
     editorCliProcesses.delete(child)
   }
   fsMocks.openSync.mockReset().mockImplementation(nativeFs.openSync)
@@ -191,6 +224,7 @@ const runEditorViewCli = async ({
     { stdin: 'ignore', stdout: 'pipe', stderr: 'pipe', detached: true },
   )
   editorCliProcesses.add(child)
+  fixtureProcessIds.add(child.pid)
   try {
     const [status, stdout, stderr] = await Promise.all([
       child.exited,
@@ -199,13 +233,14 @@ const runEditorViewCli = async ({
     ])
     return { status, stdout, stderr }
   } finally {
+    fixtureProcessIds.delete(child.pid)
     editorCliProcesses.delete(child)
   }
 }
 
 /** One package view fixture; `packageName` also names the published editor view. */
 const makeFixture = ({ packageName = 'tui-core' }: { packageName?: string } = {}): Fixture => {
-  const root = realpathSync(mkdtempSync(join(tmpdir(), 'editor-view-integration-')))
+  const root = realpathSync(mkdtempSync(join(editorViewTestDataRoot(), 'editor-view-integration-')))
   const packagePath = `packages/@overeng/${packageName}`
   const packageDir = join(root, 'packages', '@overeng', packageName)
   const editorRoot = join(root, 'packages', '.editor-view')
@@ -286,7 +321,7 @@ const cleanup = (fixture: Fixture): void => {
 
 it('preserves shared payload modes while unlocking and removing readonly fixture directories', async () => {
   const fixture = makeFixture()
-  const retainedRoot = mkdtempSync(join(tmpdir(), 'editor-view-cleanup-alias-'))
+  const retainedRoot = mkdtempSync(join(editorViewTestDataRoot(), 'editor-view-cleanup-alias-'))
   try {
     const record = await publishEditorView(fixture.options)
     const snapshot = join(fixture.editorRoot, record.snapshot)
@@ -431,7 +466,8 @@ const withPublisherTelemetry = async <TValue>(
   run: (children: readonly ChildProcess.ChildProcess[]) => Promise<TValue>,
   { hang = false }: { readonly hang?: boolean } = {},
 ) => {
-  const bin = join(fixture.root, 'record-otel-span')
+  const executableRoot = mkdtempSync(join(tmpdir(), 'editor-view-telemetry-'))
+  const bin = join(executableRoot, 'record-otel-span')
   const capture = join(fixture.root, 'otel-spans.txt')
   writeFileSync(
     bin,
@@ -492,6 +528,7 @@ const withPublisherTelemetry = async <TValue>(
     for (const [key, value] of Object.entries(saved))
       if (value === undefined) delete process.env[key]
       else process.env[key] = value
+    rmSync(executableRoot, { recursive: true, force: true })
   }
 }
 
@@ -1339,6 +1376,9 @@ describe('editor view publisher', () => {
         revision = nextRevision
         expect(ownedSnapshots(fixture)).toContain(storeName(pinned.snapshot))
         expect(ownedSnapshots(fixture)).toContain(storeName(opened.snapshot))
+        // One detected unleased descriptor disables automatic eviction root-wide,
+        // including generations that neither the descriptor nor the pin names.
+        expect(ownedSnapshots(fixture)).toHaveLength(nextRevision)
       })
     }
 
@@ -1358,6 +1398,42 @@ describe('editor view publisher', () => {
       expect(ownedSnapshots(fixture)).not.toContain(storeName(opened.snapshot))
     })
   })
+
+  it.skipIf(process.platform !== 'linux')(
+    'preserves all local generations on an unknown scan and collects only after a complete clear scan',
+    async () => {
+      const fixture = makeFixture()
+      let publication: Promise<EditorViewRecord> | undefined
+      try {
+        for (const revision of [1, 2]) {
+          writeFileSync(join(fixture.editorInputs, 'install-descriptor.json'), `${revision}\n`)
+          publication = publishEditorView(fixture.options)
+          await publication
+        }
+        let scans = 0
+        fsMocks.lstatSync.mockImplementation((...args) => {
+          if (String(args[0]) === `/proc/${process.pid}`) {
+            scans++
+            throw Object.assign(new Error('unobserved fixture process'), { code: 'EACCES' })
+          }
+          return nativeFs.lstatSync(...args)
+        })
+        writeFileSync(join(fixture.editorInputs, 'install-descriptor.json'), 'third\n')
+        publication = publishEditorView(fixture.options)
+        await publication
+        expect(scans).toBeGreaterThan(0)
+        expect(ownedSnapshots(fixture)).toHaveLength(3)
+        fsMocks.lstatSync.mockReset().mockImplementation(nativeFs.lstatSync)
+        publication = publishEditorView(fixture.options)
+        await publication
+        expect(ownedSnapshots(fixture)).toHaveLength(2)
+      } finally {
+        if (publication !== undefined) await Promise.allSettled([publication])
+        fsMocks.lstatSync.mockReset().mockImplementation(nativeFs.lstatSync)
+        cleanup(fixture)
+      }
+    },
+  )
 
   it('pins the current generation through the CLI', async () => {
     const fixture = makeFixture()
@@ -1698,7 +1774,7 @@ describe('editor view publisher', () => {
       await Promise.allSettled([setup, pin, publication])
       if (fixture !== undefined) cleanup(fixture)
     })
-    it('serializes a winning managed pin with real retirement under the flock', async () => {
+    it('serializes a managed pin with real retirement under the flock', async () => {
       try {
         pin = pinEditorView({
           options: fixture.options,
@@ -1873,7 +1949,7 @@ describe('editor view publisher', () => {
         { encoding: 'utf8' },
       )
       expect({ status: result.status, stderr: result.stderr }).toEqual({ status: 0, stderr: '' })
-      expect(readdirSync(dirname(fixture.editorRoot))).not.toContain('.editor-view')
+      expect(readdirSync(fixture.editorRoot)).toEqual(['.leases'])
       expect(
         readdirSync(dirname(fixture.editorRoot)).filter((name) =>
           name.startsWith('.editor-view.release-'),
@@ -2933,7 +3009,9 @@ describe('editor view publisher', () => {
       const preload = join(fixture.root, 'interrupt-publication.ts')
       writeFileSync(
         preload,
-        `const write = process.stderr.write.bind(process.stderr)
+        `import { editorViewProcessTestScope } from ${JSON.stringify(new URL('./editor-view-readers.ts', import.meta.url).href)}
+editorViewProcessTestScope.enterWith(() => [process.pid, ...${JSON.stringify([...fixtureProcessIds])}])
+const write = process.stderr.write.bind(process.stderr)
 process.stderr.write = (...args) => {
   const result = write(...args)
   if (String(args[0]).includes('"phase":"fingerprint","event":"enter"'))
@@ -2968,12 +3046,14 @@ process.stderr.write = (...args) => {
         { stdin: 'ignore', stdout: 'pipe', stderr: 'pipe', detached: true },
       )
       editorCliProcesses.add(child)
+      fixtureProcessIds.add(child.pid)
       const [status, , stderr] = await Promise.all([
         child.exited,
         Bun.readableStreamToText(child.stdout),
         Bun.readableStreamToText(child.stderr),
       ])
       editorCliProcesses.delete(child)
+      fixtureProcessIds.delete(child.pid)
       expect(status).not.toBe(0)
       expectCompletedPublicationPhases(stderr, 'interrupted')
     } finally {
@@ -4029,7 +4109,7 @@ describe('budget observations tolerate concurrent reader and worktree teardown',
     })
     let publication: Promise<EditorViewRecord> | undefined
     try {
-      publication = publishEditorView({ ...fixture.options, hostBudgetBytes: 1 })
+      publication = publishEditorView(fixture.options)
       const record = await publication
       expect(removed).toBe(true)
       expect(currentTarget(fixture)).toBe(record.snapshot)
@@ -4060,7 +4140,7 @@ describe('budget observations tolerate concurrent reader and worktree teardown',
     })
     let publication: Promise<EditorViewRecord> | undefined
     try {
-      publication = publishEditorView({ ...fixture.options, hostBudgetBytes: 1 })
+      publication = publishEditorView(fixture.options)
       const record = await publication
       expect(removed).toBe(true)
       expect(currentTarget(fixture)).toBe(record.snapshot)
@@ -4072,7 +4152,7 @@ describe('budget observations tolerate concurrent reader and worktree teardown',
   })
 })
 
-describe('advisory budget failures preserve publication and uncertain readers', () => {
+describe('budget failures reject admission and preserve uncertain readers', () => {
   it.each(['ENOSPC', 'EDQUOT', 'EROFS', 'EACCES'])(
     'propagates publication-lock %s without retrying',
     async (code) => {
@@ -4133,7 +4213,7 @@ describe('advisory budget failures preserve publication and uncertain readers', 
       restoreHostBudget()
     })
 
-    it('logs the unobserved root and publishes without evicting any uncertain generation', async () => {
+    it('propagates discovery uncertainty before admission without evicting any generation', async () => {
       const nativeLstat = nativeFs.lstatSync
       const injected = Object.assign(new Error(`unobserved ${code}`), { code })
       let observations = 0
@@ -4144,25 +4224,25 @@ describe('advisory budget failures preserve publication and uncertain readers', 
         }
         return Reflect.apply(nativeLstat, fs, args) as ReturnType<typeof fs.lstatSync>
       })
-      const log = vi.spyOn(console, 'error').mockImplementation(() => {})
       const clock = vi.spyOn(Date, 'now').mockReturnValue(Date.now() + 25 * 60 * 60 * 1_000)
+      let materialized = false
       try {
-        publication = publishEditorView({ ...incoming.options, hostBudgetBytes: 1 })
-        const record = await publication
+        publication = publishEditorView({
+          ...incoming.options,
+          hostBudgetBytes: 1,
+          beforeMaterialize: () => {
+            materialized = true
+          },
+        })
+        await expect(publication).rejects.toThrow(`unobserved ${code}`)
         expect(observations).toBeGreaterThan(0)
-        expect(currentTarget(incoming)).toBe(record.snapshot)
+        expect(existsSync(join(incoming.editorRoot, incoming.options.viewName))).toBe(false)
         expect(currentTarget(victim)).toBe(held.snapshot)
-        expect(
-          log.mock.calls.some(
-            ([line]) =>
-              String(line).includes('"event":"editor-view.host-budget.unobserved"') &&
-              String(line).includes(`"code":"${code}"`),
-          ),
-        ).toBe(true)
+        expect(materialized).toBe(false)
+        expect(existsSync(join(incoming.editorRoot, '.publish.lock'))).toBe(false)
       } finally {
         if (publication !== undefined) await Promise.allSettled([publication])
         clock.mockRestore()
-        log.mockRestore()
         inspect.mockReset().mockImplementation(nativeFs.lstatSync)
       }
     })
@@ -4243,7 +4323,7 @@ describe('budget victim teardown after the census', () => {
     cleanup(incoming)
     restoreHostBudget()
   })
-  it('skips a victim removed immediately before acquiring its eviction lock', async () => {
+  it('skips a clear victim removed immediately before acquiring its eviction fence', async () => {
     const nativeMkdir = nativeFs.mkdirSync
     let removed = false
     const create = fsMocks.mkdirSync.mockImplementation((...args) => {
@@ -4256,9 +4336,13 @@ describe('budget victim teardown after the census', () => {
     const clock = vi.spyOn(Date, 'now').mockReturnValue(Date.now() + 25 * 60 * 60 * 1_000)
     try {
       publication = publishEditorView({ ...incoming.options, hostBudgetBytes: 1 })
-      const record = await publication
+      await expect(publication).rejects.toMatchObject({
+        name: 'EditorViewCapacityError',
+        code: 'EDITOR_VIEW_CAPACITY',
+        budgetBytes: 1,
+      })
       expect(removed).toBe(true)
-      expect(currentTarget(incoming)).toBe(record.snapshot)
+      expect(existsSync(join(incoming.editorRoot, incoming.options.viewName))).toBe(false)
       expect(existsSync(victim.root)).toBe(false)
     } finally {
       if (publication !== undefined) await Promise.allSettled([publication])
@@ -4440,7 +4524,8 @@ describe('publication startup orphan reclamation', () => {
       [
         '--eval',
         `import { publishEditorView } from ${JSON.stringify(new URL('./editor-view.ts', import.meta.url).href)};
-await publishEditorView({
+import { editorViewProcessTestScope } from ${JSON.stringify(new URL('./editor-view-readers.ts', import.meta.url).href)};
+await editorViewProcessTestScope.run(() => [process.pid, ...${JSON.stringify([...fixtureProcessIds])}], async () => publishEditorView({
   ...${JSON.stringify(fixture.options)},
   backingRoots: ${JSON.stringify([fixture.nodeModules])},
   ${hook}: async () => {
@@ -4448,7 +4533,7 @@ await publishEditorView({
     process.stdin.resume();
     await Promise.withResolvers().promise;
   },
-});`,
+}));`,
       ],
       { stdio: ['pipe', 'pipe', 'pipe'] },
     )
@@ -4530,7 +4615,6 @@ await publishEditorView({
     const pressure = makeFixture()
     const restoreHostBudget = isolateHostBudget()
     const publisher = pausedPublisher({ fixture, hook: 'beforeMaterialize' })
-    let reservation: string | undefined
     let pressureLock: EditorViewBudgetRootLock | undefined
     try {
       await publisher.ready
@@ -4554,26 +4638,22 @@ await publishEditorView({
       const pressureRoot = { repoRoot: pressure.root, editorRoot: pressure.editorRoot }
       pressureLock = await tryAcquireEditorViewBudgetRootLock(pressureRoot)
       expect(pressureLock).toBeDefined()
-      const admitted = await reserveEditorViewBudget({
-        contentStore: fixture.options.contentStore!,
-        root: pressureRoot,
-        heldEditorRoot: pressure.editorRoot,
-        discoverRoots: () => [{ repoRoot: fixture.root, editorRoot: fixture.editorRoot }],
-        tryLockRoot: tryAcquireEditorViewBudgetRootLock,
-        reservationBytes: 1,
-        budgetBytes: 1,
-      })
-      reservation = admitted.token
+      await expect(
+        reserveEditorViewBudget({
+          contentStore: fixture.options.contentStore!,
+          root: pressureRoot,
+          heldEditorRoot: pressure.editorRoot,
+          discoverRoots: () => [{ repoRoot: fixture.root, editorRoot: fixture.editorRoot }],
+          tryLockRoot: tryAcquireEditorViewBudgetRootLock,
+          reservationBytes: 1,
+          budgetBytes: 1,
+        }),
+      ).rejects.toMatchObject({ name: 'EditorViewCapacityError', code: 'EDITOR_VIEW_CAPACITY' })
       expect(existsSync(candidate)).toBe(false)
       expect(existsSync(join(fixture.editorRoot, '.publish.lock'))).toBe(false)
       expect(readdirSync(join(fixture.editorRoot, '.store'))).toEqual([])
     } finally {
       await publisher.kill()
-      if (reservation !== undefined)
-        await cancelEditorViewBudgetReservation({
-          contentStore: fixture.options.contentStore!,
-          token: reservation,
-        })
       pressureLock?.release()
       cleanup(pressure)
       cleanup(fixture)

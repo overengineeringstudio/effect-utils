@@ -22,6 +22,49 @@ def load_supervisor():
 
 
 class PublicationSupervisorTest(unittest.TestCase):
+    def test_descriptor_boundary_drops_mappings_but_parent_lease_remains_held(self):
+        with tempfile.TemporaryDirectory() as scratch:
+            control = Path(scratch) / "reader.lock"
+            supervisor = str(Path(__file__).with_name("editor-view-supervisor.py"))
+            fixture = r'''
+import errno, fcntl, os, sys
+assert "EDITOR_VIEW_LEASE_FDS" not in os.environ
+assert "EDITOR_VIEW_LEASE_ACTIVE" not in os.environ
+with open(sys.argv[1], "a") as probe:
+    try:
+        fcntl.flock(probe, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        pass
+    else:
+        raise AssertionError("parent lease was released")
+try:
+    inherited = os.fstat(int(sys.argv[2]))
+except OSError as error:
+    assert error.errno == errno.EBADF
+else:
+    assert inherited.st_ino != int(sys.argv[3]), "closed lease was passed through"
+print("fresh-discovery-required")
+'''
+            with control.open("a") as holder:
+                fcntl.flock(holder, fcntl.LOCK_SH)
+                env = {
+                    **os.environ,
+                    "EDITOR_VIEW_LEASE_FDS": str(holder.fileno()),
+                    "EDITOR_VIEW_LEASE_ACTIVE": "1",
+                }
+                for admission in ([], ["--lock", str(Path(scratch) / "publication.lock")]):
+                    result = subprocess.run(
+                        [sys.executable, supervisor, "5", "0.1", *admission,
+                         sys.executable, "-c", fixture, str(control),
+                         str(holder.fileno()), str(os.fstat(holder.fileno()).st_ino)],
+                        env=env, pass_fds=(holder.fileno(),),
+                        capture_output=True, text=True, timeout=10,
+                    )
+                    self.assertEqual(result.returncode, 0, result.stderr)
+                    self.assertEqual(result.stdout.strip(), "fresh-discovery-required")
+            with control.open("a") as released:
+                fcntl.flock(released, fcntl.LOCK_EX | fcntl.LOCK_NB)
+
     def test_serializes_scoped_publishers_and_releases_after_exit(self):
         with tempfile.TemporaryDirectory() as scratch:
             lock = Path(scratch) / "publication.lock"

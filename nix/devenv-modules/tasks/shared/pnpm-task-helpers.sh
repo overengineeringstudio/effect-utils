@@ -458,6 +458,17 @@ EOF
 }
 
 run_package_bin() {
+  # Resolution itself reads package manifests through node_modules. Enter the
+  # packaged lease launcher before resolving the bin, not only before exec.
+  if [ -n "${EDITOR_VIEW_SOURCE_LAUNCHER:-}" ]; then
+    "$EDITOR_VIEW_SOURCE_LAUNCHER" bash -c '
+      source "$1"
+      shift
+      unset EDITOR_VIEW_SOURCE_LAUNCHER
+      run_package_bin "$@"
+    ' editor-view-package-bin "${BASH_SOURCE[0]}" "$@"
+    return $?
+  fi
   local package_name="$1"
   local bin_name="${2:-$1}"
   shift 2

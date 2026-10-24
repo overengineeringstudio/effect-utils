@@ -356,6 +356,7 @@ rec {
           // buckCompiledProducts
           // capabilityPackages
           // {
+            editor-view-lease = pkgs.callPackage ./nix/editor-view-lease { };
             buck2-rules = buck2Rules;
             buck2-capabilities = buck2Capabilities;
             stylex-next-fixture = stylexNextFixture;

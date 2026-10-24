@@ -76,6 +76,9 @@
     "nix/devenv-modules/tasks/shared/weaver-live-check.nix": {
       "noStandaloneStaging": "workspace: The integration test runs from its workspace package."
     },
+    "nix/editor-view-lease/consumer.nix": {
+      "stages": true
+    },
     "nix/oxlint-npm.nix": {
       "noStandaloneStaging": "not-a-source: JavaScript paths name outputs of already-built plugin products."
     },
@@ -105,6 +108,12 @@
     }
   },
   "sources": [
+    {
+      "initializationError": "",
+      "source": "nix/editor-view-lease/inherit.cjs",
+      "nix": ["nix/editor-view-lease/consumer.nix"],
+      "allowedImports": {}
+    },
     {
       "initializationError": "",
       "source": "packages/@overeng/genie/src/core/import-map/sync-resolver.ts",

@@ -2,7 +2,7 @@
   "baselineRun": 37886131764,
   "workers": 4,
   "sourceTaskSeconds": {
-    "test:buck2-tools": 11,
+    "test:buck2-tools": 44,
     "test:ci-tools:unbounded": 7,
     "test:ci-tools:test_pipeline_report_local_api:unbounded": 7,
     "test:genie:unbounded": 8,

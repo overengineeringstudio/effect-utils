@@ -5,12 +5,15 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { standaloneCachePostureConfig } from '../../scripts/buck2-cache-posture.ts'
+import { requiredCIJobs } from '../ci.ts'
 
 type GeneratedWorkflow = {
   env?: Record<string, string>
   jobs: Record<
     string,
     {
+      name?: string
+      'runs-on'?: string | string[]
       if?: string
       needs?: string[]
       env?: Record<string, string>
@@ -181,8 +184,9 @@ describe('generated CI cache trust behavior', () => {
     ])
       expect(step?.run).toContain(task)
     expect(step?.run).not.toContain('buck2:cache-posture:test')
+    expect(step?.run).not.toContain('test:buck2-tools')
     expect(step?.run).toContain('tasks run --mode single')
-    expect(step?.run).toContain('for package in . packages/@overeng/megarepo')
+    expect(step?.run).toContain('for package in . packages/@overeng/megarepo; do')
     expect(step?.run).toContain('target=//:node_modules')
     for (const [event, ref] of [
       ['pull_request', 'refs/pull/123/merge'],
@@ -215,6 +219,27 @@ describe('generated CI cache trust behavior', () => {
         ({ name }) => name === 'Buck daemon cache posture regressions',
       ),
     ).toBe(false)
+  })
+
+  it('runs buck2-tools and teardown regressions only on PRs using Linux namespace source views', async () => {
+    const job = (await readWorkflow()).jobs['pr-buck2-tools']!
+    expect(job.name).toBe('pr/buck2-tools')
+    expect(requiredCIJobs).not.toContain('pr/buck2-tools')
+    expect(String(job['runs-on'])).toContain('namespace-profile-linux-x86-64')
+    expect(Boolean(evaluate(job.if!, 'pull_request', 'refs/pull/123/merge'))).toBe(true)
+    expect(
+      Boolean(evaluate(job.if!, 'merge_group', 'refs/heads/gh-readonly-queue/main/pr-123')),
+    ).toBe(false)
+    expect(Boolean(evaluate(job.if!, 'push', 'refs/heads/main'))).toBe(false)
+    expect(job.steps.some(({ name }) => name === 'Prepare source generator dependency views')).toBe(
+      true,
+    )
+    const step = job.steps.find(({ name }) => name === 'Buck2 tools regression tests')
+    expect(step?.if).toBeUndefined()
+    expect(step?.run).toContain(
+      'for package in . packages/@overeng/buck2-tools packages/@overeng/genie; do',
+    )
+    expect(step?.run).toContain('tasks run --mode single test:buck2-tools devenv-modules:test')
   })
 
   it('runs archive-tool Cargo regressions on PRs without duplicating queue Cargo coverage', async () => {

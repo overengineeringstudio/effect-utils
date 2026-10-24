@@ -718,6 +718,45 @@ const cheapInertBuckSteps = [
   },
 ]
 
+/** Prepare only each source suite's dependency views, restoring them even on failure. */
+const sourceRegressionStep = ({
+  name,
+  packages,
+  tasks,
+}: {
+  name: string
+  packages: readonly string[]
+  tasks: readonly string[]
+}) => ({
+  name,
+  env: githubTokenEnv(),
+  run: withCiSourceRoot(
+    [
+      'set -euo pipefail',
+      '"${DEVENV_BIN:?DEVENV_BIN not set}" shell -- bash -euo pipefail -c \'',
+      '  prepared=()',
+      '  restore_views() {',
+      '    for package in "${prepared[@]}"; do',
+      '      rm -f "$package/node_modules"',
+      '      backup="$RUNNER_TEMP/genie-pr-${package##*/}-node-modules"',
+      '      if [ -e "$backup" ] || [ -L "$backup" ]; then mv "$backup" "$package/node_modules"; fi',
+      '    done',
+      '  }',
+      '  trap restore_views EXIT',
+      `  for package in ${packages.join(' ')}; do`,
+      '    if [ "$package" = . ]; then target=//:node_modules; else target=//$package:node_modules; fi',
+      '    modules="$("${BUCK2_BIN:?BUCK2_BIN not set}" build "$target" --show-simple-output)"',
+      '    backup="${RUNNER_TEMP:?RUNNER_TEMP not set}/genie-pr-${package##*/}-node-modules"',
+      '    if [ -e "$package/node_modules" ] || [ -L "$package/node_modules" ]; then mv "$package/node_modules" "$backup"; fi',
+      '    prepared+=("$package")',
+      '    ln -s "$PWD/$modules" "$package/node_modules"',
+      '  done',
+      `  "$DEVENV_BIN" tasks run --mode single ${tasks.join(' ')}`,
+      "'",
+    ].join('\n'),
+  ),
+})
+
 // Core product jobs keyed by the shared Genie CI source of truth.
 const jobs: Record<CoreCIJobName, CiWorkflowArgs['jobs'][string]> = {
   // Share one Linux bootstrap across the four quality invariants.
@@ -788,39 +827,19 @@ const jobs: Record<CoreCIJobName, CiWorkflowArgs['jobs'][string]> = {
         }),
         // Keep these source-side contract suites on the PR path as well as test:run:
         // generator freshness and Buck type checking do not execute their assertions.
-        buck2TrustedCacheWriterStep({
-          name: 'Genie projection and CI workflow regression tests',
-          env: githubTokenEnv(),
-          // test:run publishes every source-test editor view. These suites need only
-          // the root generator closure and Megarepo's root-adapter dependencies.
-          // Build/link those exact Buck views, as the focused runner proof does,
-          // then execute the unchanged full tasks without the aggregate installers.
-          run: withCiSourceRoot(
-            [
-              'set -euo pipefail',
-              '"${DEVENV_BIN:?DEVENV_BIN not set}" shell -- bash -euo pipefail -c \'',
-              '  prepared=()',
-              '  restore_views() {',
-              '    for package in "${prepared[@]}"; do',
-              '      rm -f "$package/node_modules"',
-              '      backup="$RUNNER_TEMP/genie-pr-${package##*/}-node-modules"',
-              '      if [ -e "$backup" ] || [ -L "$backup" ]; then mv "$backup" "$package/node_modules"; fi',
-              '    done',
-              '  }',
-              '  trap restore_views EXIT',
-              '  for package in . packages/@overeng/megarepo; do',
-              '    if [ "$package" = . ]; then target=//:node_modules; else target=//$package:node_modules; fi',
-              '    modules="$("${BUCK2_BIN:?BUCK2_BIN not set}" build "$target" --show-simple-output)"',
-              '    backup="${RUNNER_TEMP:?RUNNER_TEMP not set}/genie-pr-${package##*/}-node-modules"',
-              '    if [ -e "$package/node_modules" ] || [ -L "$package/node_modules" ]; then mv "$package/node_modules" "$backup"; fi',
-              '    prepared+=("$package")',
-              '    ln -s "$PWD/$modules" "$package/node_modules"',
-              '  done',
-              '  "$DEVENV_BIN" tasks run --mode single genie:buck2:test genie:ci-workflow:test buck2:rust:generators:test buck2:cache-posture:ci-test',
-              "'",
-            ].join('\n'),
-          ),
-        }),
+        buck2TrustedCacheWriterStep(
+          sourceRegressionStep({
+            name: 'Genie projection and CI workflow regression tests',
+            // test:run publishes all views; these suites need only these exact closures.
+            packages: ['.', 'packages/@overeng/megarepo'],
+            tasks: [
+              'genie:buck2:test',
+              'genie:ci-workflow:test',
+              'buck2:rust:generators:test',
+              'buck2:cache-posture:ci-test',
+            ],
+          }),
+        ),
         // The aggregate unit jobs are queue/main-only; keep web highlighting and SSR
         // regressions in the required PR lane through the existing package task.
         buck2TrustedCacheWriterStep({
@@ -2035,6 +2054,19 @@ const allCiJobs: Record<string, any> = {
       preSteps: [linuxSandboxPrerequisitesStep({ privileged: 'trusted' })],
     }),
   },
+  'pr-buck2-tools': {
+    name: 'pr/buck2-tools',
+    ...job({
+      privileged: 'trusted',
+      priority: deliveryJobPriority,
+      laneIf: "${{ github.event_name == 'pull_request' }}",
+      step: sourceRegressionStep({
+        name: 'Buck2 tools regression tests',
+        packages: ['.', 'packages/@overeng/buck2-tools', 'packages/@overeng/genie'],
+        tasks: ['test:buck2-tools', 'devenv-modules:test'],
+      }),
+    }),
+  },
   ...withCiOtelCapture(jobs),
   ...extraJobs,
   ...deployJobs,
@@ -2193,6 +2225,7 @@ export default ciWorkflow({
       'default-ref-policy': 'reader',
       'tested-tree': 'reader',
       quality: 'trusted-writer',
+      'pr-buck2-tools': 'reader',
       test: 'trusted-writer',
       'test-macos': 'trusted-writer',
       'test-playwright-utils': 'trusted-writer',

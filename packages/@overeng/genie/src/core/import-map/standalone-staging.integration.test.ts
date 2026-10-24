@@ -124,6 +124,12 @@ const assertIsolatableExtension = (source: string): void => {
   ).toBe(true)
 }
 
+// bun:ffi is provided by Bun, not node_modules. Keep this exact rather than
+// accepting arbitrary bun: specifiers. The isolated Node load below still
+// requires Bun-only imports to stay off the Node initialization path.
+const isRuntimeBuiltin = (specifier: string): boolean =>
+  isBuiltin(specifier) || specifier === 'bun:ffi'
+
 const runtimeSpecifiers = (sourceFile: Node, source: string): string[] => {
   const specifiers: string[] = []
   const record = (node: Node | undefined): void => {
@@ -174,6 +180,20 @@ const runtimeSpecifiers = (sourceFile: Node, source: string): string[] => {
 }
 
 describe('standalone Nix-staged JS/TS sources (issue #1994)', () => {
+  it.each([
+    ['node:fs', true],
+    ['fs', true],
+    ['bun:ffi', true],
+    ['bun:missing', false],
+    ['some-package', false],
+    ['./sibling.ts', false],
+  ] as const)(
+    'classifies runtime builtin %s without admitting unstaged packages',
+    (specifier, builtin) => {
+      expect(isRuntimeBuiltin(specifier)).toBe(builtin)
+    },
+  )
+
   for (const fixture of [
     {
       name: 'whole type import',
@@ -329,7 +349,7 @@ describe('standalone Nix-staged JS/TS sources (issue #1994)', () => {
   })
 
   for (const entry of inventory.sources) {
-    it(`${entry.source} imports only Node builtins or explicitly staged edges`, async () => {
+    it(`${entry.source} imports only runtime builtins or explicitly staged edges`, async () => {
       assertIsolatableExtension(entry.source)
       const source = path.join(root, entry.source)
       await runTsFileAnalysis({
@@ -343,7 +363,7 @@ describe('standalone Nix-staged JS/TS sources (issue #1994)', () => {
           const allowed = entry.allowedImports
           expect(
             specifiers.filter(
-              (specifier) => !isBuiltin(specifier) && !Object.hasOwn(allowed, specifier),
+              (specifier) => !isRuntimeBuiltin(specifier) && !Object.hasOwn(allowed, specifier),
             ),
             entry.source,
           ).toEqual([])

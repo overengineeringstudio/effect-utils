@@ -234,7 +234,6 @@ const libcPath =
       : fail(`flock content stores require Linux or macOS: ${process.platform}`)
 const libc = dlopen(libcPath, {
   flock: { args: ['i32', 'i32'], returns: 'i32' },
-  fcntl: { args: ['i32', 'i32', 'i32'], returns: 'i32' },
 })
 /* eslint-disable no-underscore-dangle -- These exported errno symbol names are fixed by the native libc ABI. */
 const errnoAddress =
@@ -243,6 +242,22 @@ const errnoAddress =
     : dlopen(libcPath, { __errno_location: { args: [], returns: 'ptr' } }).symbols.__errno_location
 /* eslint-enable no-underscore-dangle */
 const closeOnExec = process.platform === 'darwin' ? 0x1000000 : 0x80000
+
+let getDescriptorFlags: ((fd: number) => number) | undefined
+/** Load the packaged fixed-arity ABI only when a lease/control descriptor needs it. */
+export const editorViewDescriptorFlags = (fd: number): number => {
+  if (getDescriptorFlags === undefined) {
+    const library = process.env.EDITOR_VIEW_LEASE_LIBRARY
+    if (library === undefined || isAbsolute(library) === false)
+      fail(
+        'EDITOR_VIEW_LEASE_LIBRARY must name the absolute packaged native library; enter the repository development environment',
+      )
+    getDescriptorFlags = dlopen(library, {
+      eu_getfd: { args: ['i32'], returns: 'i32' },
+    }).symbols.eu_getfd
+  }
+  return getDescriptorFlags(fd)
+}
 
 /* eslint-disable no-await-in-loop -- The kernel lock arbitrates ownership; the delay only avoids busy-waiting and lets same-process holders finish. */
 const acquireLock = async ({
@@ -269,7 +284,7 @@ const acquireLock = async ({
       status.size > 1n
     )
       fail(`flock control must be a private same-user regular file: ${path}`)
-    const descriptorFlags = libc.symbols.fcntl(file.fd, 1, 0)
+    const descriptorFlags = editorViewDescriptorFlags(file.fd)
     if (descriptorFlags < 0 || (descriptorFlags & 1) !== 1)
       fail(`flock control descriptor is not close-on-exec: ${path}`)
     let contended = false

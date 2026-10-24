@@ -121,6 +121,17 @@ let
   # outputs, and CI therefore run the same content-addressed bytes, so a task
   # cannot pass locally against a source tree and fail against the product.
   repoPackages = repoFlake.packages.${currentSystem};
+  # This launcher and its builtin-only preload live in the Nix store, never in
+  # the evictable dependency graph. Conservatively retain every published
+  # workspace generation before source/bootstrap reads and in spawned children.
+  editorViewLease = pkgs.callPackage ./nix/editor-view-lease/default.nix { };
+  sourceLease = import ./nix/editor-view-lease/consumer.nix {
+    inherit pkgs;
+    native = editorViewLease;
+  };
+  sourceBun = pkgs.writeShellScriptBin "bun" ''
+    exec ${sourceLease}/bin/editor-view-source ${pkgs.bun}/bin/bun "$@"
+  '';
 
   # Keep library configuration environment-driven; resolve local credentials at
   # the devenv executable boundary, without changing packaged/CI entrypoints.
@@ -142,7 +153,9 @@ let
   # as `*Pkg` reals to the task modules instead of also being top-level profile
   # providers (which would collide with the guards in buildEnv). See cli-guard.nix.
   pnpmPkg = repoPackages.pnpm;
-  genieCli = repoPackages.genie;
+  genieCli = pkgs.writeShellScriptBin "genie" ''
+    exec ${sourceLease}/bin/editor-view-source ${repoPackages.genie}/bin/genie "$@"
+  '';
   mrCli = repoPackages.megarepo;
   ciToolsCli = repoPackages.ci-tools;
   tuiStoriesCli = repoPackages.tui-stories;
@@ -477,7 +490,7 @@ let
     }
   '';
   publishBuckCapabilities = ''
-    ${pkgs.bun}/bin/bun "$root/scripts/buck2-capability-publish.ts" \
+    ${sourceBun}/bin/bun "$root/scripts/buck2-capability-publish.ts" \
       --root "$root" --profile ${buck2Capabilities} \
       --nix-store ${pkgs.nix}/bin/nix-store --buck2 "$BUCK2_BIN" >&2
   '';
@@ -519,7 +532,7 @@ let
       }
       ${publishBuckCapabilities}
       ${lib.optionalString prebuildCollection ''
-        ${pkgs.bun}/bin/bun "$root/packages/@overeng/utils-dev/src/check-baseline-test-collection.ts" \
+        ${sourceBun}/bin/bun "$root/packages/@overeng/utils-dev/src/check-baseline-test-collection.ts" \
           --root "$root" \
           --buck2 "$BUCK2_BIN" \
           --buck2-cwd "$root" \
@@ -859,7 +872,7 @@ let
         if deadlineSeconds == null then "none" else toString deadlineSeconds
       } 5 \
         --lock "$root/.devenv/editor-view-publication.lock" \
-        ${pkgs.bun}/bin/bun "$root/scripts/editor-view-authority.ts" ${mode} \
+        ${sourceBun}/bin/bun "$root/scripts/editor-view-authority.ts" ${mode} \
         --repo-root "$root" \
         --workspace-root "$root" \
         --cell effect_utils \
@@ -906,6 +919,14 @@ let
     };
 in
 {
+  # Shared source tasks lease before resolving their package binary.
+  env.EDITOR_VIEW_SOURCE_LAUNCHER = "${sourceLease}/bin/editor-view-source";
+  env.EDITOR_VIEW_LEASE_BIN = "${editorViewLease}/bin/editor-view-lease";
+  env.EDITOR_VIEW_LEASE_LIBRARY = "${editorViewLease}/lib/libeditor-view-lease${pkgs.stdenv.hostPlatform.extensions.sharedLibrary}";
+  env.EDITOR_VIEW_LEASE_TEST_CHILD_BIN = "${editorViewLease.testHelpers}/bin/editor-view-lease-test-child";
+  env.EDITOR_VIEW_LEASE_UNKNOWN_FS_BIN = "${editorViewLease.testHelpers}/bin/editor-view-lease-unknown-fs";
+  env.EDITOR_VIEW_READER_INFRASTRUCTURE_TEST_CHILD_BIN = lib.optionalString pkgs.stdenv.isLinux "${editorViewLease.testHelpers}/bin/editor-view-reader-infrastructure-test-child";
+
   effectUtils.buck2 = {
     eventsPackage = repoPackages.buck2-events;
     prepare = publishBuckCapabilities;
@@ -962,6 +983,7 @@ in
     # test registry and each admitted lane's exact excluded files. Retained JSON therefore
     # exists exactly where the baseline gate still needs a source report.
     (taskModules.test {
+      sourceLauncher = "${sourceLease}/bin/editor-view-source";
       installTask = "buck2:editor:publish:test";
       packages = map (
         pkg: pkg // { installTask = testPackagePublisherName pkg.name; }
@@ -1059,6 +1081,7 @@ in
     # local `check:all` on capture reliability.
     (taskModules.weaver-live-check { installTask = "buck2:editor:publish:otel-contract"; })
     (taskModules.test-playwright {
+      sourceLauncher = "${sourceLease}/bin/editor-view-source";
       playwrightPkg = inputs.playwright.packages.${currentSystem}.playwright;
       installTask = "buck2:editor:publish:playwright";
       # Launch the CLI through @playwright/test so the runner and test imports
@@ -1341,7 +1364,7 @@ in
       }/bin/buck2-fingerprint
       ${tsSandboxTestEnvironment}
       cd "$root/packages/@overeng/buck2-tools"
-      exec ${pkgs.bun}/bin/bun "$root/packages/@overeng/buck2-tools/src/bun-test-runner.ts" test src/*.test.ts
+      exec ${sourceBun}/bin/bun "$root/packages/@overeng/buck2-tools/src/bun-test-runner.ts" test src/*.test.ts
     ''
   );
 
@@ -1352,7 +1375,7 @@ in
       cd "''${DEVENV_ROOT:-$PWD}"
       # `./` makes these exact paths; bare arguments are suffix filters that
       # also match the copies Buck stages under buck-out.
-      ${pkgs.bun}/bin/bun ./packages/@overeng/buck2-tools/src/bun-test-runner.ts test ./genie/ci-workflow/default-ref-policy-script.unit.test.ts ./genie/ci-workflow/rust.unit.test.ts ./genie/ci-workflow/setup.unit.test.ts ./genie/ci-workflow/nix-substituter.integration.test.ts ./genie/ci-workflow/empirical-proofs.unit.test.ts ./genie/ci-scripts/buck2-cache-join.unit.test.ts ./genie/ci-scripts/buck2-cache-join-discovery.unit.test.ts ./genie/ci-scripts/buck2-cache-join-download.unit.test.ts ./genie/ci-scripts/buck2-cache-warm99.unit.test.ts ./genie/ci-scripts/buck2-cache-warm99.integration.test.ts
+      ${sourceBun}/bin/bun ./packages/@overeng/buck2-tools/src/bun-test-runner.ts test ./genie/ci-workflow/default-ref-policy-script.unit.test.ts ./genie/ci-workflow/rust.unit.test.ts ./genie/ci-workflow/setup.unit.test.ts ./genie/ci-workflow/nix-substituter.integration.test.ts ./genie/ci-workflow/empirical-proofs.unit.test.ts ./genie/ci-scripts/buck2-cache-join.unit.test.ts ./genie/ci-scripts/buck2-cache-join-discovery.unit.test.ts ./genie/ci-scripts/buck2-cache-join-download.unit.test.ts ./genie/ci-scripts/buck2-cache-warm99.unit.test.ts ./genie/ci-scripts/buck2-cache-warm99.integration.test.ts
       exec ${pkgs.bash}/bin/bash ./genie/ci-workflow/published-ref-decide.test.sh
     '';
     execIfModified = [
@@ -1370,7 +1393,7 @@ in
     exec = trace.exec "buck2:cache-posture:test" ''
       set -euo pipefail
       cd "''${DEVENV_ROOT:-$PWD}"
-      exec ${pkgs.bun}/bin/bun ./packages/@overeng/buck2-tools/src/bun-test-runner.ts test \
+      exec ${sourceBun}/bin/bun ./packages/@overeng/buck2-tools/src/bun-test-runner.ts test \
         ./scripts/buck2-entrypoint.integration.test.ts \
         ./scripts/buck2-cache-posture.integration.test.ts
     '';
@@ -1391,7 +1414,7 @@ in
       set -euo pipefail
       cd "''${DEVENV_ROOT:-$PWD}"
       export BUCK2_NATIVE_BIN=${buck2Machine}/libexec/buck2
-      exec ${pkgs.bun}/bin/bun ./packages/@overeng/buck2-tools/src/bun-test-runner.ts test \
+      exec ${sourceBun}/bin/bun ./packages/@overeng/buck2-tools/src/bun-test-runner.ts test \
         ./scripts/buck2-entrypoint.posture.integration.test.ts \
         ./scripts/buck2-entrypoint.daemon.integration.test.ts \
         ./scripts/buck2-cache-posture.integration.test.ts
@@ -1408,7 +1431,7 @@ in
       export NIX_STORE_BIN=${pkgs.nix}/bin/nix-store
       export NIX_FLAKE_REF="git+file://$PWD?shallow=1"
       export PATH=${lib.makeBinPath [ pkgs.watchman ]}:$PATH
-      ${pkgs.bun}/bin/bun ./packages/@overeng/buck2-tools/src/bun-test-runner.ts test ./scripts/buck2-capability-publish.unit.test.ts
+      ${sourceBun}/bin/bun ./packages/@overeng/buck2-tools/src/bun-test-runner.ts test ./scripts/buck2-capability-publish.unit.test.ts
       ${pkgs.bash}/bin/bash \
         nix/devenv-modules/tasks/shared/tests/buck2-capability-publish.test.sh
       exec ${pkgs.bash}/bin/bash \
@@ -1470,7 +1493,7 @@ in
       cd "''${DEVENV_ROOT:-$PWD}"
       # An explicit directory preserves recursive discovery without matching
       # the copies Buck stages under buck-out, like genie:ci-workflow:test.
-      exec ${pkgs.bun}/bin/bun ./packages/@overeng/buck2-tools/src/bun-test-runner.ts test ./genie/buck2/ ./packages/@overeng/genie/src/runtime/package-json/catalog-optional-peers.unit.test.ts ./buck2/dependencies/genie-input-manifest.integration.test.ts ./scripts/editor-view-authority.unit.test.ts ./scripts/buck2-daemon-reaper.integration.test.ts
+      exec ${sourceBun}/bin/bun ./packages/@overeng/buck2-tools/src/bun-test-runner.ts test ./genie/buck2/ ./packages/@overeng/genie/src/runtime/package-json/catalog-optional-peers.unit.test.ts ./buck2/dependencies/genie-input-manifest.integration.test.ts ./scripts/editor-view-authority.unit.test.ts ./scripts/editor-view-source.integration.test.ts ./scripts/buck2-daemon-reaper.integration.test.ts
     '';
     execIfModified = [
       "BUCK"
@@ -1481,6 +1504,8 @@ in
       "genie/ci-workflow/test-scheduling.json"
       "scripts/editor-view-authority.ts"
       "scripts/editor-view-authority.unit.test.ts"
+      "scripts/editor-view-source.integration.test.ts"
+      "nix/editor-view-lease/*"
       "scripts/buck2-daemon-reaper.*"
       "rust/buck2-tools/core/cargo-buck2-package-projection.ts"
       "packages/@overeng/buck2-tools/src/**/*.ts"
@@ -1496,7 +1521,7 @@ in
       set -euo pipefail
       cd "''${DEVENV_ROOT:-$PWD}"
       export PATH=${lib.makeBinPath [ pkgs.gnutar ]}:$PATH
-      exec ${pkgs.bun}/bin/bun test ./buck2/rust/
+      exec ${sourceBun}/bin/bun test ./buck2/rust/
     '';
     execIfModified = [
       "buck2/rust/**/*.ts"
@@ -1547,7 +1572,7 @@ in
       report_dir="''${DEVENV_ROOT:-$PWD}/tmp/otel-scrape/summaries"
       mkdir -p "$report_dir"
       ${lib.optionalString isolateMegarepoGcTests ''
-        sudo -n -E ${pkgs.coreutils}/bin/env "PATH=$PATH" \
+        sudo -n -E ${pkgs.coreutils}/bin/env -u EDITOR_VIEW_LEASE_FDS -u EDITOR_VIEW_LEASE_ACTIVE "PATH=$PATH" \
           ${pkgs.util-linux}/bin/unshare --pid --fork --mount-proc -- \
           ${pkgs.python3}/bin/python3 ${./nix/devenv-modules/tasks/shared/test-namespace-init.py} "$(id -u)" "$(id -g)" \
       ''}${flakePkgs.bun}/bin/bun --bun "$(resolve_package_bin vitest vitest)" run src/cli/store-gc-cold.integration.test.ts --reporter verbose --reporter json "--outputFile.json=$report_dir/test-megarepo-cold-gc.vitest.json" --testTimeout 240000
@@ -1577,7 +1602,7 @@ in
         cd rust
         cargo test --locked --package 'buck2-*'
       )
-      ${pkgs.bun}/bin/bun ./packages/@overeng/buck2-tools/src/bun-test-runner.ts test buck2/swift/compile.unit.test.ts
+      ${sourceBun}/bin/bun ./packages/@overeng/buck2-tools/src/bun-test-runner.ts test buck2/swift/compile.unit.test.ts
     '';
   };
 
@@ -1625,7 +1650,7 @@ in
     after = [ "genie:check" ];
     exec = trace.exec "buck2:archives:seed" ''
       set -euo pipefail
-      exec ${pkgs.bun}/bin/bun buck2/dependencies/seed-archives.ts
+      exec ${sourceBun}/bin/bun buck2/dependencies/seed-archives.ts
     '';
   };
 
@@ -1705,9 +1730,9 @@ in
     after = lib.mkForce [ "genie:check" ];
     exec = trace.exec "buck2:nix-bridge:check" ''
       set -euo pipefail
-      BUCK2_PRODUCTS_BUN=${pkgs.bun}/bin/bun \
+      BUCK2_PRODUCTS_BUN=${sourceBun}/bin/bun \
         ${pkgs.bash}/bin/bash nix/buck2-products/from-source-contract.test.sh "$PWD"
-      BUCK2_PRODUCTS_BUN=${pkgs.bun}/bin/bun \
+      BUCK2_PRODUCTS_BUN=${sourceBun}/bin/bun \
         ${pkgs.bash}/bin/bash nix/buck2-products/private-product-tarballs.test.sh "$PWD"
       exec ${pkgs.bash}/bin/bash nix/workspace-tools/lib/tests/buck2-release-products.sh "$PWD"
     '';
@@ -1727,7 +1752,7 @@ in
     exec = trace.exec "genie:editor-view-closure:check" ''
       set -euo pipefail
       root="''${DEVENV_ROOT:-$PWD}"
-      exec ${repoPackages.genie-bootstrap-closure-check}/bin/genie-bootstrap-closure-check \
+      exec ${sourceLease}/bin/editor-view-source ${repoPackages.genie-bootstrap-closure-check}/bin/genie-bootstrap-closure-check \
         --root "$root" \
         --editor-view-root-package-path ${lib.escapeShellArg editorBootstrapRootPackagePath} \
         --editor-view-package-paths ${lib.escapeShellArg (builtins.toJSON editorBootstrapPackagePaths)}
@@ -1752,7 +1777,7 @@ in
     exec = trace.exec "content-address:contract:generate" ''
       set -euo pipefail
       root="''${DEVENV_ROOT:-$PWD}"
-      exec ${pkgs.bun}/bin/bun "$root/packages/@overeng/content-address/src/generate-contract.ts"
+      exec ${sourceBun}/bin/bun "$root/packages/@overeng/content-address/src/generate-contract.ts"
     '';
   };
 
@@ -1769,7 +1794,7 @@ in
         "$root/rust/content-address-contract/generation.json" \
         "$root/rust/content-address-contract/src/lib.rs" \
         "$root/rust/content-address-contract/schema/"*.json
-      exec ${pkgs.bun}/bin/bun "$root/packages/@overeng/content-address/src/generate-contract.ts" --check
+      exec ${sourceBun}/bin/bun "$root/packages/@overeng/content-address/src/generate-contract.ts" --check
     '';
   };
 
@@ -1863,7 +1888,7 @@ in
       root="''${DEVENV_ROOT:-$PWD}"
       package="''${EDITOR_VIEW_PACKAGE:?set EDITOR_VIEW_PACKAGE to a workspace package path}"
       token="''${EDITOR_VIEW_LOCK_TOKEN:?set EDITOR_VIEW_LOCK_TOKEN to the owner token printed by publish}"
-      ${pkgs.bun}/bin/bun "$root/packages/@overeng/buck2-tools/src/editor-view.ts" recover-lock \
+      ${sourceBun}/bin/bun "$root/packages/@overeng/buck2-tools/src/editor-view.ts" recover-lock \
         --repo-root "$root" \
         --package "$package" \
         --token "$token"
@@ -1875,6 +1900,8 @@ in
     exec = trace.exec "buck2:editor:release" ''
       set -euo pipefail
       root="''${DEVENV_ROOT:-$PWD}"
+      # Release imports only bootstrap-safe worktree source. A sourceBun reader
+      # lease would conflict with this command's own exclusive retirement probe.
       for package in ${lib.concatStringsSep " " (map lib.escapeShellArg ([ "." ] ++ allPackages))}; do
         ${pkgs.bun}/bin/bun "$root/packages/@overeng/buck2-tools/src/editor-view.ts" release \
           --repo-root "$root" --package "$package"
@@ -1901,7 +1928,7 @@ in
         echo "buck2:typescript:materialize-dist requires a standalone Buck root" >&2
         exit "$identity_status"
       }
-      exec ${pkgs.bun}/bin/bun "$root/genie/buck2/typescript-authority-runtime.ts" \
+      exec ${sourceBun}/bin/bun "$root/genie/buck2/typescript-authority-runtime.ts" \
         materialize-dist "$root" "$workspace_root" "$BUCK2_BIN" \
         ${pkgs.coreutils}/bin/mv ${pkgs.coreutils}/bin/chmod
     '';
@@ -1924,7 +1951,7 @@ in
     exec = trace.exec "check:buck2-producer-overlap" ''
       set -euo pipefail
       root="''${DEVENV_ROOT:-$PWD}"
-      exec ${pkgs.bun}/bin/bun "$root/genie/buck2/producer-overlap.ts" check \
+      exec ${sourceBun}/bin/bun "$root/genie/buck2/producer-overlap.ts" check \
         "$root/.devenv/gc/task-config-devenv-config-task-config"
     '';
   };
@@ -1948,7 +1975,7 @@ in
       root="''${DEVENV_ROOT:-$PWD}"
       ${lib.optionalString flakePkgs.stdenv.hostPlatform.isLinux ''
         ${tsSandboxTestEnvironment}
-        exec ${pkgs.bun}/bin/bun test \
+        exec ${sourceBun}/bin/bun test \
           ./packages/@overeng/buck2-tools/src/ts-sandbox.integration.test.ts
       ''}
       ${lib.optionalString flakePkgs.stdenv.hostPlatform.isDarwin ''
@@ -2075,7 +2102,7 @@ in
           pkgs.watchman
         ]
       }
-      exec ${pkgs.bun}/bin/bun "$root/packages/@overeng/utils-dev/src/check-baseline-test-collection.ts" \
+      exec ${sourceBun}/bin/bun "$root/packages/@overeng/utils-dev/src/check-baseline-test-collection.ts" \
         --root "$root" \
         --buck2 "$BUCK2_BIN" \
         --buck2-cwd "$root" \

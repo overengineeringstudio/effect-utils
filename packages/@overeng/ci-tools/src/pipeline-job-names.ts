@@ -18,6 +18,7 @@ export const pipelineJobIds = [
   'default-ref-policy',
   'tested-tree',
   'quality',
+  'pr-buck2-tools',
   'test-playwright-utils',
   'test-playwright-tui-react',
   'test-megarepo-cold-gc',
@@ -64,11 +65,13 @@ export const pipelineJobIdentityResolver = (workflow: {
       name:
         job === 'quality'
           ? 'pr/quality'
-          : job === 'ci-measurements-report'
-            ? 'ci/measurements-report'
-            : job === 'main-source-shape'
-              ? 'main/source-shape'
-              : job,
+          : job === 'pr-buck2-tools'
+            ? 'pr/buck2-tools'
+            : job === 'ci-measurements-report'
+              ? 'ci/measurements-report'
+              : job === 'main-source-shape'
+                ? 'main/source-shape'
+                : job,
       identity: { job, dimensions: {} },
     })),
     ...workflow.runnerProfiles.map((runner) => ({

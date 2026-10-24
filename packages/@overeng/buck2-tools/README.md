@@ -3,6 +3,16 @@
 Repository-owned TypeScript helpers for Buck dependency materialization,
 TypeScript execution, and workspace editor views.
 
+Lease retirement integration fixtures use the production filesystem classifier
+to select `os.tmpdir()`, falling back to `/dev/shm` when necessary. They fail
+explicitly if neither supports local lease semantics; OverlayFS remains unknown
+and fail-closed. Editor roots and CAS data share the selected filesystem, while
+executable telemetry helpers stay in `os.tmpdir()` because `/dev/shm` may be
+mounted `noexec`. Shell teardown fixtures call the same TypeScript data-root
+selector. The full `test:buck2-tools` and `devenv-modules:test` tasks also run in
+the PR-only `pr/buck2-tools` job on the Linux namespace runner, without duplicating
+the merge-group test lane.
+
 ## Editor publisher
 
 `src/editor-view.ts` atomically publishes and checks one dependency view.
@@ -188,15 +198,17 @@ stability signal. In particular, overlayfs without persistent inode mapping can
 reassign a directory inode on cache eviction without changing its contents or
 other metadata. Byte digests, link-target checks, and byte-ownership proofs are
 unchanged.
-Normal per-view retention keeps the current generation plus the configured
-number of previous generations, a **five-minute grace period from supersession**,
-and any **managed reader pins**. Repository tasks retain current plus one previous
-generation (two snapshots per view), not two snapshots for the entire shared store.
-The publisher's `--snapshot-retention` option configures that total (2 through 32);
-`--snapshot-grace-ms` configures the grace. A snapshot root's modification time is
-lifecycle metadata recording its last supersession, not content identity. Sibling
-views and in-flight candidates are never pruned. Retention runs on publication,
-not on an idle-worktree background collector.
+Normal per-view retention selects the current generation plus the configured
+number of previous generations and a **five-minute grace period from supersession**.
+Repository tasks configure two snapshots per view; `--snapshot-retention` accepts
+2 through 32 and `--snapshot-grace-ms` configures grace. These are eligibility
+policies, not permission to delete. Both retention and host-budget retirement
+also require clear reader evidence and a generation's exclusive lease.
+**A complete legacy scan that detects an unmanaged reader disables automatic
+generation eviction for that root.** Roots are not presumed unmanaged. An
+incomplete scan remains unknown and cannot authorize deletion; a clear root still
+requires a fresh fenced proof and exclusive generation lease. Positive legacy
+references are conservatively unmanaged unless reader ownership is proved.
 
 Host-wide admission additionally defaults to **40,000,000,000 bytes** across the
 shared CAS, private snapshot directories and records, source manifests, and
@@ -223,33 +235,28 @@ estimates under the host ledger flock. Collection, eviction, or a stale journal
 invalidates the shared census. Fitting reservations do not scan live readers,
 including above the 80% warning threshold.
 
-Under pressure, unreferenced CAS payloads and unused old generations are reclaimed
-first, then least-recently-used current generations outside the five-minute grace.
-Managed pins, positive cwd/fd/maps references inside the view root or its CAS
-payload, and publication/use within the last 24 hours protect a view.
-`EDITOR_VIEW_HOST_RECENCY_MS` configures that recency window in milliseconds.
-Worktree-only process references and inaccessible `/proc` entries do not by
-themselves protect a view; durable recency is the conservative stand-in.
-The ordinary current-plus-previous policy is not an unconditional guarantee under host
-pressure: pin a generation when it must remain available. Idle-current eviction
-removes both the owned consumer hop and current pointer, records an eviction marker,
-and the next explicit publication explains the eviction and cleanly republishes.
-An eviction plan always retakes the census instead of trusting shared accounting.
-Retirement takes one fresh reader proof under the host ledger fence after acquiring
-the selected publication exclusions. Eligibility stays fixed at the round's initial
-timestamp and refreshed plans may select only reader-observed keys. A pointer
-removed during locking cannot expose an unobserved orphan to deletion. The
-per-candidate pre-delete seam independently rejects unobserved keys.
-Reader-protected accounting is refreshed even if a journal epoch mismatch skips
-the batch, including the final round before forced advisory admission. Retirement
-then checks the epoch and each immutable generation identity under the host/CAS
-fences. As with footprint sidecars, payload immutability is required.
-Without reader leases the pre-delete seam checks identity/epoch, not exclusion
-of late readers. **#1990 MUST add the non-blocking exclusive lease probe in this
-seam** and skip a held candidate. A reader opened after the advisory proof can
-otherwise leave identity and epoch unchanged.
-Retirement also rechecks last-use and publication timestamps, so newly used views
-cannot be evicted from an older plan.
+Under pressure, unreferenced CAS-only payloads are reclaimed first. Generation
+eviction requires complete applicable legacy reader evidence and a nonblocking
+exclusive generation lease. Pins, held leases, positive legacy references,
+incomplete evidence, recency, and grace protect candidates.
+`EDITOR_VIEW_HOST_RECENCY_MS` configures the default 24-hour recency window.
+Inaccessible same-user `/proc` observations are **unknown**, not evidence of
+inactivity; another namespace or an outside cwd does not prove that a process
+cannot reach a view through aliases or retained directory handles.
+Only clear candidates may enter a destructive plan. Before retirement the
+census is retaken, then journal epoch, generation identity, pointers, pins,
+reader evidence, recency, and lease identity are rechecked under root → host →
+owning-CAS exclusion. Eligibility stays fixed at the round's initial timestamp
+and refreshed plans may select only reader-observed keys. A pointer removed
+during locking cannot expose an unobserved orphan to deletion. The per-candidate
+pre-delete seam independently rejects unobserved keys and takes a nonblocking
+exclusive generation lease; held candidates are skipped, never waited on.
+Exclusive leases remain open through rename and actual payload cleanup,
+including deferred shared-batch cleanup; cleanup failures close descriptors
+without explicitly unlocking shared inherited descriptions.
+Reader-protected accounting is refreshed even if an epoch mismatch skips a
+batch. Retirement rechecks last-use and publication timestamps, so newly used
+views cannot be evicted from an older plan. Payload immutability is required.
 Vanished victims are skipped even if teardown removes a held eviction lock.
 Active eviction locks are explicitly marked with process-incarnation
 identity; a publisher waits for that live maintenance operation rather than
@@ -278,19 +285,20 @@ reachability proof at its deletion fence.
 Startup cleanup carries normal-acquisition or proven-dead-owner-recovery
 provenance and validates the held lock path, exact per-acquisition token, current
 PID, host, and process-start incarnation (including the Linux boot identity).
-Unknown identities refuse reclamation. Normal
-acquisition follows the previous holder's release; automatic recovery proves
-the previous holder dead. Missing or mismatched proof refuses reclamation.
-Every startup candidate and interrupted `.gc-*` payload also receives a fresh
-reader observation, preserving stale cwd/fd holders as well as pointer targets.
+Unknown identities refuse reclamation. Normal acquisition follows the previous
+holder's release; automatic recovery proves the previous holder dead. Missing or
+mismatched proof refuses reclamation. Every startup candidate and interrupted
+`.gc-*` payload also receives a fresh reader observation, preserving stale cwd/fd
+holders as well as pointer targets.
 
-If protected usage prevents reaching the budget, publication **continues** and
-emits a structured `over-budget` event with budget, use, and top holders.
-**No command fails because of the budget**, including explicit
-`buck2:editor:materialize`, scoped publication, Genie freshness, and `check:quick`.
-Budget discovery and maintenance failures are structured advisory diagnostics:
-uncertain discovery aborts that budget round without eviction, and maintenance
-failure never rejects an otherwise successful publication.
+If protected or unknown usage prevents admission, publication fails **before
+materialization** with `EditorViewCapacityError` (`EDITOR_VIEW_CAPACITY`).
+This replaces the previous force-admit/publish-anyway fallback. The bounded
+diagnostic reports budget, measured and requested bytes, protected generation
+count, and actionable blockers; it deletes no unknown candidate. Explicitly stop
+unmanaged sessions and release idle worktrees/pins, or deliberately raise
+`EDITOR_VIEW_HOST_BUDGET_BYTES`. Admission/discovery failures are not swallowed.
+Post-commit maintenance failures remain advisory and do not undo a valid view.
 Reserve start, work reasons, and grant durations use the `[editor-view-budget]`
 prefix and are forwarded live by both single and batch publication. Forwarding
 buffers partial stderr lines until their terminating newline, independently of
@@ -304,8 +312,9 @@ entries), sidecar installation, and fenced admission. Enumeration time excludes
 the separately measured reads, walks, and staging; records are per census or
 admission attempt, never per generation. Installation and admission durations
 include waiting for the host ledger fence.
-The `editor-view.host-budget` OpenTelemetry span records over-budget publication
-and the protected-share early warning at 80%. Budget, publication, phase, and
+The structured `over-budget` event and `editor-view.host-budget` span record
+rejected admission with nonzero exit status, alongside the protected-share
+early warning at 80%. Budget, publication, phase, and
 watch-build spans share deferred, fire-and-forget, drop-on-full delivery, with at
 most four queued/running exporters per process. Hung exporters are killed after
 one second and keep their slots until reaped; publication and watch cycles never
@@ -319,23 +328,130 @@ are durable and appear on the next admitted span as
 `editor_view.host_budget.suppressed_events`; synchronous structured logs remain
 unsuppressed and include `otelSuppressedEvents`. Existing ledgers without delivery
 state retain their roots, reservations, and last-use history.
-This is a pressure-driven idle/stale retention budget, not a hard cap on actively
-protected bytes. Release readers or
-unused views, or deliberately increase the byte limit; do not remove persistent
-flock or reservation control files. Older publishers on other refs do not
-participate in the protocol and must be quiesced or upgraded for coordinated
-accounting and eviction.
+The admission limit does not revoke existing reader protection. Release readers
+and explicitly retire unused views, or increase the limit; never remove persistent
+flock controls to manufacture capacity. Older publishers on other refs must be
+quiesced or upgraded before using coordinated accounting and eviction.
 
-The kernel census and shell-created symlinks are **advisory observations only**,
-not guaranteed reader registration: a reference can appear after inspection,
-process permissions can hide it, and editors can cache paths after closing files.
-Linux observes same-user `/proc` executable, working-directory, descriptor,
-mapped-file, and entry-point references; macOS uses native `lsof`. Local snapshot
-retention matches observed pathnames: a shared payload hardlink may be reported
-under another generation or the content store instead of the path used to open it.
-Observed references and state-root symlink targets defer retirement, and an
-unavailable inventory backend defers collection. None of those observations
-replaces a managed pin for a reader that requires guaranteed retention.
+Each generation owns a private persistent sibling control at
+`<editorRoot>/.leases/<generation>.lock`. Publication/backfill creates and
+validates it under CAS exclusion. Readers resolve the generation and validate
+its control inode **inside that fence**, acquire `flock(LOCK_SH)`, and only then
+read/import sources. The packaged native launcher is bootstrap-safe: it does not
+load lease code from an evictable view. Deliberately mapped lease descriptors
+remain in source-reading server/worker descendants; parent death is not release
+while a child retains an open description. Normal and error cleanup closes
+descriptors, never `LOCK_UN`. The unrelated CAS descriptor stays close-on-exec.
+Unvalidated control paths are opened nonblocking and close-on-exec before the
+regular-file and identity checks, so an unsafe FIFO without a writer cannot
+stall reader classification or hold up the host fence.
+The same native package supplies fixed-arity `eu_getfd` and `eu_dupfd_cloexec`
+FFI entrypoints. Variadic libc calls must stay inside C: Darwin arm64 passes
+variadic arguments differently from fixed-arity FFI arguments. The immutable
+library path is inherited even when a child replaces its environment.
+Leaf readers retain their inherited descriptors without loading a native spawn
+binding; the Bun FFI binding is initialized only when that process actually
+spawns a descendant. This avoids unnecessary per-leaf startup compilation.
+Missing controls are backfilled lazily by readers, publishers, or retirement,
+only after generation validation under the owning CAS fence. Creation uses a
+private exclusive regular file in the validated `.leases` directory; existing
+unsafe or replaced controls are never repaired. Readers then acquire a shared
+lease before leaving exclusion. Retirement must obtain an exclusive lease before
+deleting payloads. Read-only planning reports missing controls as
+`no control (clear under fence)`.
+Lease discovery, acquisition, or bookkeeping failures in the native launcher
+degrade to unknown evidence without stopping the target program: its arguments,
+stdio, and exit status remain unchanged. Unsupported filesystems (including
+OverlayFS) are not treated as local and do not gain lease controls or CAS fences.
+This launch availability policy does not authorize deletion: retirement remains
+fail closed on unknown evidence and still requires a validated exclusive lease
+under the owning CAS fence.
+The publication supervisor intentionally closes descriptors outside its own
+admission protocol. It removes inherited lease mappings and the active marker
+from its child's environment; the child source launcher discovers fresh leases.
+It never adds parent leases to `pass_fds`. A stale mapping reaching the native
+launcher is diagnosed as unknown, removed, and never re-exported to descendants.
+The launcher leases the generations reachable at launch and keeps those leases for the process lifetime. It does not refresh leases when a pointer moves later.
+The admitted set is explicitly passed to source-reading descendants.
+It does not intercept every future filesystem read or freeze moving `node_modules`
+pointers. Launch descriptors do not cover later moving-pointer opens. Legacy
+reader evidence therefore remains mandatory for every root; external readers
+requiring guaranteed retention must register persistent pins before use. Dynamic
+refresh and external editor/tsserver integration remain in #1985; there is no
+managed-only opt-in that bypasses legacy evidence.
+A positive legacy reference still holds its generation. It disables automatic
+eviction root-wide only when its process has no proved matching generation
+lease. The packaged `eu_reader_lease` helper matches the process fd's device/inode
+to the validated persistent control and requires a simultaneous exclusive probe
+to fail with `EWOULDBLOCK`. Linux also requires that fd's `FLOCK READ` record;
+Darwin requires its vnode info to carry `FWASLOCKED`. The latter sticky bit is
+valid only under the source-tested invariant that lease code never explicitly
+unlocks: release closes the fd. A control pathname or someone else's lock alone
+does not make a process leased. Failed proof grants no exemption.
+Linux alone exempts the process identities in `reader-infrastructure.ts`: exact
+comm and argv shapes for same-user `sshd-session`, `systemd --user`, and `(sd-pam)`.
+Children remain independently scanned, and name-only matches are unknown.
+Permission failures outside that rule, including macOS `lsof` failures, remain
+unknown. Linux census diagnostics count allowlisted and unknown processes.
+Linux task state and starttime are read together from `/proc/<pid>/stat`.
+Zombie/dead states positively prove that the incarnation has exited and retains
+no address space or filesystem handles. A disappearing process is ignored only
+after a fresh stat confirms exit; a live replacement not completely observed
+still blocks. This is exit evidence, not a permission-error exemption.
+
+Retirement integration fixtures scope enumeration to their test process and real
+spawned readers/publishers, including inside publisher children. A contextual
+test dependency refreshes the fixture PID inventory for each scan; Linux `/proc`
+and macOS libproc/`lsof` observations and fail-closed decisions are unchanged.
+The native-lease suite retains one explicit host-wide fail-closed scan.
+Production always enumerates all processes: neither environment variables nor
+CLI flags can install the test enumeration context.
+
+On macOS, an `lsof` descriptor with missing/unknown type may be excluded only by
+the packaged fixed-arity `int eu_darwin_dead_vnode(int pid, int fd)` helper.
+The census probes only numeric process IDs and numeric descriptors. The helper
+returns `1` only when `PROC_PIDLISTFDS` confirms that this exact descriptor is
+`PROX_FDTYPE_VNODE` and **both** `PROC_PIDFDVNODEINFO` and
+`PROC_PIDFDVNODEPATHINFO` return zero with `errno == ENOENT`. Every other result,
+missing helper/library, or helper failure leaves that record unknown. The library
+is loaded lazily from the absolute packaged `EDITOR_VIEW_LEASE_LIBRARY` path;
+the Linux helper returns zero. A proof excludes only that descriptor, never its
+process or another handle. Positive pathname/device/inode references and all scan
+completeness checks remain in force. The exact `lsof` marker `(revoked)` alone is
+not proof. Diagnostics expose `editor-view-process-census: deadVnode=N unknown=M`,
+where `N` counts proven descriptors and `M` counts unresolved census reasons.
+Every unknown Linux identity, observation or enumeration and every unknown
+`lsof` record also emits `editor-view-reader-unknown` with its observed PID,
+command name, descriptor, failing call and errno. Unavailable fields are explicitly
+`null`, never invented. On Darwin the packaged fixed-arity `eu_darwin_log_unknown`
+helper additionally emits correlated
+kernel diagnostics with numeric errno/results for BSD process info before and
+after the query, a bounded descriptor-type sample, and vnode/path-info calls.
+These observations help distinguish an exit race from an inaccessible live
+process; they never change classification or authorize retirement.
+
+This narrow rule follows the Darwin vnode-query implementation in
+[XNU `proc_info.c`](https://github.com/apple-oss-distributions/xnu/blob/main/bsd/kern/proc_info.c#L2555-L2608):
+the queries acquire the vnode with `vnode_getwithvid`, then obtain vnode metadata
+through `fill_vnodeinfo`/`vn_stat`. The affected Watchman process had 68 descriptors
+listed as VNODE for which both queries failed with ENOENT. In an owned same-volume
+APFS experiment, an open-and-unlinked file, an open-and-removed directory, and a
+renamed view parent all retained successful vnode-info and vnode-path-info queries
+with device/inode identities; open-file reads still succeeded. Force-unmounting
+the owned APFS disk image instead produced paired ENOENT and file reads failed
+with EIO. These observations support this specific paired-query, confirmed-VNODE
+rule, not a general claim that ENOENT or an unlinked pathname proves a dead handle.
+Routine tests do not mount or unmount devices.
+
+Controls are tombstones: retirement, recreation, and explicit root release never
+unlink/recreate their identities. Their inode and metadata usage participates in
+host accounting and read-only classification reports. Only known local Linux/macOS
+filesystems admit lease proof; NFS, SMB, unsupported/unknown filesystems, unsafe
+controls, native failures, and incomplete process scans are unknown.
+Linux retains same-user `/proc` pathname and shared-inode evidence; macOS retains
+`lsof`, including command status and completeness checks. Held wins over unknown,
+and either protects the generation. Legacy scans remain additional evidence,
+not a substitute for complete managed lifetimes or root-wide no-eviction.
 Retention reuses the selected generation's full validation from the same publication.
 Older protected generations receive only ownership and root-permission checks;
 their complete permission proof runs outside the CAS flock before publishing the
@@ -377,8 +493,8 @@ fails instead of creating a dangling registration, even while private retired-tr
 cleanup is still running. Cleanup failure rehardens owned directories outside the
 flock before reacquiring it to restore any remaining canonical generations. Pin operations
 take only the CAS flock, while publishers keep their explicit-token publication
-lock and acquire CAS afterward; no path inverts that lock order. A later publication
-collects unpinned generations once their retention and grace protection expire.
+lock and acquire CAS afterward; no path inverts that lock order. Unpinning removes
+only that explicit retention reason; it does not opt an unmanaged root into eviction.
 
 Snapshots deliberately own their Buck artifact bytes and remain usable after
 `buck-out` is removed. Copies use reflinks when supported. New candidates share

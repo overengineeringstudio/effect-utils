@@ -83,7 +83,11 @@ export const EMPIRICAL_PROOF_CI_JOB_NAMES = [
 ] as const
 
 /** Workflow jobs that intentionally do not block merging. */
-export const advisoryCIJobNames = ['ci-measurements-report', 'notify-alignment'] as const
+export const advisoryCIJobNames = [
+  'ci-measurements-report',
+  'notify-alignment',
+  'pr-buck2-tools',
+] as const
 
 /** CI job keys emitted by the generated workflow. */
 export const CI_JOB_NAMES = [
@@ -125,6 +129,7 @@ export const STANDALONE_REQUIRED_CI_JOB_NAMES = ['test-storybook-plays'] as cons
 /** GitHub status-check context names emitted by a workflow job key. */
 export const ciJobCheckContexts = (jobName: CIJobName) => {
   if (jobName === 'quality') return ['pr/quality']
+  if (jobName === 'pr-buck2-tools') return ['pr/buck2-tools']
   if (jobName === 'test') return ['test (namespace-profile-linux-x86-64)']
   if (jobName === 'test-macos') return ['test (namespace-profile-macos-arm64)']
   if (jobName === 'main-source-shape') return ['main/source-shape']
