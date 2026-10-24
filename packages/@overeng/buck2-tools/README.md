@@ -172,6 +172,15 @@ share the same inodes without granting payloads permission to replace them.
 Other mount namespaces must likewise expose this host directory; old tool
 versions do not participate. Coordination errors fail closed before walking.
 
+The native CLI's explicit `--admission-directory` option and the publisher API's
+`admissionDirectory` parameter select an **isolated admission domain** for tests
+and isolated fixtures. Production callers must not set them: the default remains
+the host-wide directory above, with no environment or config override. Host-budget
+integration fixtures share one private four-slot domain per fixture host, so
+their policy races cannot queue behind unrelated production fingerprint walks.
+Their hashing, filesystem copies, process evidence, and five-second deadlines
+remain real and unchanged.
+
 The coordination directory is deliberately **outside the action digest**. It
 controls scheduling only: file contents are neither read as fingerprint inputs
 nor written into digests or action outputs. Every admitted walk still hashes

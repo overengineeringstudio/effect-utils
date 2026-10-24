@@ -253,6 +253,8 @@ const makeHost = ({ drainAfterEach = false }: { readonly drainAfterEach?: boolea
         cp,
         mv,
         fingerprintTool,
+        // Budget policy races must not queue behind unrelated host-wide tree walks.
+        admissionDirectory: join(root, 'fingerprint-admission'),
         contentStore: store,
         hostBudgetBytes: setupBudgetBytes,
         snapshotRetention: 32,
@@ -738,6 +740,37 @@ const expectCurrent = (fixture: Fixture, record: EditorViewRecord): void => {
   expect(readlinkSync(fixture.firstHop)).toBe('../../.editor-view/budget-view/node_modules')
   expect(pathExists(join(fixture.editorRoot, record.snapshot))).toBe(true)
 }
+
+describe('host-budget fixture fingerprint admission', () => {
+  it('uses the fixture domain for both cold and warm native fingerprints', async () => {
+    const host = makeHost()
+    try {
+      const fixture = host.fixture('isolated-fingerprints', 99, 64)
+      const started = childProcessMocks.spawn.mock.calls.length
+      const record = await host.publish(fixture)
+      expect((await host.publish(fixture)).snapshot).toBe(record.snapshot)
+      const directory = join(host.root, 'fingerprint-admission')
+      expect(readdirSync(directory).sort()).toEqual([
+        'admission',
+        'slot-0',
+        'slot-1',
+        'slot-2',
+        'slot-3',
+      ])
+      const fingerprints = childProcessMocks.spawn.mock.calls
+        .slice(started)
+        .filter(([tool]) => tool === fingerprintTool)
+      expect(fingerprints.length).toBeGreaterThan(0)
+      for (const [, args] of fingerprints) {
+        const flag = args?.indexOf('--admission-directory') ?? -1
+        expect(flag).toBeGreaterThan(0)
+        expect(args?.[flag + 1]).toBe(directory)
+      }
+    } finally {
+      await host.cleanup()
+    }
+  })
+})
 
 describe('host budget reclaims clear-root storage before idle current generations', () => {
   let host: Host
