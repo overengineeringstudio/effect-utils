@@ -329,8 +329,9 @@ const downloadArchive = async ({
       current = publicArchiveRedirectUrl({ from: current, redirect: location })
       continue
     }
-    if (response.ok === false || response.body === null)
-      fail(`archive HTTP status ${response.status}`)
+    const body = response.body
+    if (response.ok === false || body === null)
+      return fail(`archive HTTP status ${response.status}`)
     const file = await open(
       path,
       constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW,
@@ -339,7 +340,7 @@ const downloadArchive = async ({
     let bytes = 0
     const hash = createHash('sha256')
     try {
-      for await (const chunk of response.body) {
+      for await (const chunk of body) {
         bytes += chunk.byteLength
         if (bytes > size) fail('download exceeds declared size')
         hash.update(chunk)
@@ -352,7 +353,7 @@ const downloadArchive = async ({
       return bytes
     } finally {
       await file.close()
-      await response.body.cancel().catch(() => undefined)
+      await body.cancel().catch(() => undefined)
     }
   }
   return fail('archive redirect limit exceeded')
