@@ -17,7 +17,7 @@ import {
   utimes,
   writeFile,
 } from 'node:fs/promises'
-import { tmpdir, userInfo } from 'node:os'
+import { tmpdir } from 'node:os'
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import type { Readable } from 'node:stream'
 import { fileURLToPath } from 'node:url'
@@ -629,30 +629,33 @@ const isEditorViewPath = (path: string): boolean =>
     .split(sep)
     .some((component) => component === '.editor-view' || component === '.editor-view-content')
 
-/** Multi-user Darwin builder accounts are resolved by the OS, never environment variables. */
-export const assertDarwinNixBuildUser = async (): Promise<void> => {
-  // userInfo uses getpwuid for the effective uid. A fabricated HOME/USER cannot
-  // turn an interactive session or a single-user Nix build into a build user.
-  const user = userInfo()
-  if (
-    process.platform !== 'darwin' ||
-    user.uid === 0 ||
-    user.uid !== process.geteuid?.() ||
-    /^_nixbld[1-9]\d*$/u.test(user.username) === false
-  )
-    fail(
-      'nix-build-sandbox requires a Darwin multi-user Nix build user; single-user builds are unsupported',
-    )
-  // Darwin's native id resolves the effective primary gid through getgrgid.
-  // No shell, PATH search, or caller-provided user/group name is involved.
-  const group = Bun.spawn(['/usr/bin/id', '-gn'], {
+/** Native id uses getpwuid/getgrgid; Bun's userInfo can return "unknown" for build users. */
+const darwinIdentityName = async (selector: '-un' | '-gn'): Promise<string> => {
+  const child = Bun.spawn(['/usr/bin/id', selector], {
     env: {},
     stdin: 'ignore',
     stdout: 'pipe',
     stderr: 'pipe',
   })
-  const name = (await Bun.readableStreamToText(group.stdout)).trim()
-  if ((await group.exited) !== 0 || name !== 'nixbld')
+  const name = (await Bun.readableStreamToText(child.stdout)).trim()
+  if ((await child.exited) !== 0) return fail('cannot resolve the native Darwin build identity')
+  return name
+}
+
+/** Multi-user Darwin builder accounts are resolved by the OS, never environment variables. */
+export const assertDarwinNixBuildUser = async (): Promise<void> => {
+  const uid = process.geteuid?.()
+  if (
+    process.platform !== 'darwin' ||
+    uid === undefined ||
+    uid <= 0 ||
+    /^_nixbld[1-9]\d*$/u.test(await darwinIdentityName('-un')) === false
+  )
+    fail(
+      'nix-build-sandbox requires a Darwin multi-user Nix build user; single-user builds are unsupported',
+    )
+  // Fixed system binary, empty environment, no shell or caller-provided names.
+  if ((await darwinIdentityName('-gn')) !== 'nixbld')
     fail('nix-build-sandbox requires membership in the nixbld primary group')
 }
 
