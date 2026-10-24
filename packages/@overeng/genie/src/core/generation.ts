@@ -705,6 +705,7 @@ const loadOxfmtConfig = Effect.fn('loadOxfmtConfig')(function* ({
   return Option.some(config)
 })
 
+/** Formats one target file; falls back to the unformatted content on formatter errors so a check reports drift instead of failing. */
 export type OxfmtFormatter = (options: {
   targetFilePath: string
   content: string
