@@ -555,11 +555,11 @@ export const acquireSharedArchive = async ({
         contentStore,
         run: async () => {
           await rename(ready, snapshot)
+          stage = undefined
           ensureEditorViewLeaseControl({ editorRoot: metadata, snapshot })
           await syncDirectory(join(metadata, '.store'))
         },
       })
-      stage = undefined
     }
     lease = await acquireEditorViewLease({
       editorRoot: metadata,
@@ -608,17 +608,20 @@ export const acquireSharedArchive = async ({
       copyReason,
     }
   } finally {
-    lease?.release()
-    if (stage !== undefined) {
-      // Only our unpublished private staging is eligible; never chmod payloads.
-      const pin = join(stage, 'pins', pinName)
-      await unlink(pin).catch((error: unknown) => {
-        if (absent(error) === false) throw error
-      })
-      await rmdir(join(stage, 'pins'))
-      await rmdir(stage)
+    try {
+      lease?.release()
+      if (stage !== undefined) {
+        // Only our unpublished private staging is eligible; never chmod payloads.
+        const pin = join(stage, 'pins', pinName)
+        await unlink(pin).catch((error: unknown) => {
+          if (absent(error) === false) throw error
+        })
+        await rmdir(join(stage, 'pins'))
+        await rmdir(stage)
+      }
+    } finally {
+      await lock.close()
     }
-    await lock.close()
     const pressure = await maintainArchiveContent({ contentStore, highWaterBytes })
     process.stderr.write(`[buck-materialization-pressure] ${JSON.stringify(pressure)}\n`)
   }

@@ -221,6 +221,31 @@ describe('host-local registry archives', () => {
     )
   })
 
+  it('preserves a published generation and releases digest exclusion when its control is corrupt', async () => {
+    await withFixture(async (root, contentStore) =>
+      withRegistry(async (fetchResponse, requests) => {
+        const metadata = `${contentStore}.buck-materialization-v1`
+        mkdirSync(join(metadata, '.leases'), { recursive: true, mode: 0o700 })
+        writeFileSync(join(metadata, '.leases', `archive-${digest}.lock`), 'bad', { mode: 0o600 })
+        const options = {
+          contentStore,
+          highWaterBytes,
+          url,
+          digest,
+          size: bytes.length,
+          output: join(root, 'output'),
+          fetchResponse,
+        }
+        await expect(acquireSharedArchive(options)).rejects.toThrow('control identity')
+        await expect(acquireSharedArchive(options)).rejects.toThrow('control identity')
+        expect(requests()).toBe(1)
+        expect(
+          readFileSync(join(metadata, '.store', `archive-${digest}`, 'pins', `${digest}-0444`)),
+        ).toEqual(bytes)
+      }),
+    )
+  })
+
   it('retains leased archives over cap, then retires unleased pins with persistent controls', async () => {
     await withFixture(async (root, contentStore) =>
       withRegistry(async (fetchResponse) => {
