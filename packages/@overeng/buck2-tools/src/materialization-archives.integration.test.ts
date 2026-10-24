@@ -17,7 +17,7 @@ import {
 } from 'node:fs'
 import { join } from 'node:path'
 
-import { describe, expect, it } from 'vitest'
+import { afterAll, describe, expect, it } from 'vitest'
 
 import { acquireEditorViewLease } from './editor-view-leases.ts'
 import {
@@ -38,6 +38,12 @@ const bytes = Buffer.from('archive fixture payload\n'.repeat(400))
 const digest = createHash('sha256').update(bytes).digest('hex')
 const url = 'https://registry.npmjs.org/fixture/-/fixture-1.0.0.tgz'
 const highWaterBytes = 4 * 1024 ** 3
+const strictWarmReceiptCounts = { metadataProof: 0, rehash: 0 }
+afterAll(() => {
+  console.info(
+    `[archive-proof-regression] strict warm receipts ${JSON.stringify(strictWarmReceiptCounts)}`,
+  )
+})
 const removeFixture = (root: string): void => {
   const unlock = (path: string): void => {
     if (lstatSync(path).isDirectory() === false) return
@@ -266,9 +272,11 @@ describe('host-local registry archives', () => {
               source: lstatSync(blob, { bigint: true }),
               proof: lstatSync(proof, { bigint: true }),
             })
-            expect((await acquire(name)).sourceVerification).toBe(
-              nonRacy === true ? 'metadata-proof' : 'rehash',
-            )
+            const receipt = await acquire(name)
+            expect(receipt.sourceVerification).toBe(nonRacy === true ? 'metadata-proof' : 'rehash')
+            if (receipt.sourceVerification === 'metadata-proof')
+              strictWarmReceiptCounts.metadataProof++
+            else if (receipt.sourceVerification === 'rehash') strictWarmReceiptCounts.rehash++
           }
           await expectWarm('warm')
           const before = lstatSync(blob, { bigint: true })
