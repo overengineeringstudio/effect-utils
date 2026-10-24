@@ -4,7 +4,7 @@
 # Projection source: rust/buck2-tools/archive-tool/BUCK.genie.ts
 # Projection schema version: 1
 # Projection generator: effect-utils/rust/cargo-buck2-package-projection
-# Semantic fingerprint: sha256:6bae4fb152f322123a5a266b780f73802190053409942b7c2aa7a7d6ffd019a5
+# Semantic fingerprint: sha256:01caac716c16dc2017b0544184e5e620b0b97eaf47c609ffa3f64bcd97eaf0f3
 # Semantic inputs: genie/buck2/mod.ts, packages/@overeng/otel-scrape/Cargo.toml, packages/@overeng/otelite/Cargo.toml, packages/@overeng/pingping/Cargo.toml, packages/@overeng/pingping/crates/netinfo-macos/Cargo.toml, rust/Cargo.lock, rust/Cargo.toml, rust/ai-gateway/Cargo.toml, rust/buck2-tools/archive-tool/BUCK.genie.ts, rust/buck2-tools/archive-tool/Cargo.toml, rust/buck2-tools/archive-tool/src/**/*.rs, rust/buck2-tools/archive-tool/tests/**/*.rs, rust/buck2-tools/core/Cargo.toml, rust/buck2-tools/core/cargo-buck2-package-projection.ts, rust/buck2-tools/events/Cargo.toml, rust/buck2-tools/fingerprint/Cargo.toml, rust/buck2-tools/product/Cargo.toml, rust/content-address-contract/Cargo.toml, rust/content-address-core/Cargo.toml, rust/content-address-interop/Cargo.toml, rust/effect-rust-fixtures/hash-core/Cargo.toml, rust/effect-rust-fixtures/hash-interop/Cargo.toml, rust/effect-rust-fixtures/math-core/Cargo.toml, rust/effect-rust-fixtures/math-interop/Cargo.toml, rust/effect-rust-fixtures/napi-adapter/Cargo.toml, rust/effect-rust-fixtures/wasm-adapter/Cargo.toml, rust/effect-rust-macros/Cargo.toml, rust/effect-rust/Cargo.toml, rust/reindeer.toml, rust/third-party/BUCK, rust/work-storage/Cargo.toml
 # Regenerate: devenv tasks run genie:run
 
@@ -18,6 +18,8 @@ static_source_set(
         "BUCK.genie.ts",
         "Cargo.toml",
         "src/main.rs",
+        "src/replay.rs",
+        "src/replay/tests.rs",
     ] + glob(["rust-toolchain.toml"]),
     visibility = ["PUBLIC"],
 )
@@ -28,12 +30,19 @@ native.rust_binary(
     crate_root = "src/main.rs",
     srcs = [
         "src/main.rs",
+        "src/replay.rs",
+        "src/replay/tests.rs",
     ],
     deps = [
         "//rust/buck2-tools/core:lib",
         "//rust/third-party:clap",
         "//rust/third-party:flate2",
+        "//rust/third-party:libc",
+        "//rust/third-party:serde",
+        "//rust/third-party:serde_json",
+        "//rust/third-party:sha2",
         "//rust/third-party:tar",
+        "//rust/third-party:tempfile",
     ],
     edition = "2021",
     env = {

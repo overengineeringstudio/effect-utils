@@ -331,6 +331,10 @@ dependencies = [
  "buck2-tool-core",
  "clap",
  "flate2",
+ "libc",
+ "serde",
+ "serde_json",
+ "sha2",
  "tar",
  "tempfile",
 ]

@@ -117,12 +117,34 @@ pkgs.runCommand "buck2-rules"
         visibility = ["PUBLIC"],
     )
 
+    export_file(
+        name = "shared-recipe.ts",
+        src = "shared-recipe.ts",
+        visibility = ["PUBLIC"],
+    )
+
     runtime_modules(
         name = "shared_archive_runtime",
         srcs = {
             "buck2/dependencies/shared-archive.ts": ":shared-archive.ts",
             "packages/@overeng/buck2-tools/src/public-archive-origin.ts": "//packages/@overeng/buck2-tools:src/public-archive-origin.ts",
             "packages/@overeng/buck2-tools/src/materialization-archives.ts": "//packages/@overeng/buck2-tools:src/materialization-archives.ts",
+            "packages/@overeng/buck2-tools/src/materialization-metadata.ts": "//packages/@overeng/buck2-tools:src/materialization-metadata.ts",
+            "packages/@overeng/buck2-tools/src/materialization-recipes.ts": "//packages/@overeng/buck2-tools:src/materialization-recipes.ts",
+            "packages/@overeng/buck2-tools/src/editor-view-sharing.ts": "//packages/@overeng/buck2-tools:src/editor-view-sharing.ts",
+            "packages/@overeng/buck2-tools/src/editor-view-leases.ts": "//packages/@overeng/buck2-tools:src/editor-view-leases.ts",
+        },
+        visibility = ["PUBLIC"],
+    )
+
+    runtime_modules(
+        name = "shared_recipe_runtime",
+        srcs = {
+            "buck2/dependencies/shared-recipe.ts": ":shared-recipe.ts",
+            "packages/@overeng/buck2-tools/src/public-archive-origin.ts": "//packages/@overeng/buck2-tools:src/public-archive-origin.ts",
+            "packages/@overeng/buck2-tools/src/materialization-archives.ts": "//packages/@overeng/buck2-tools:src/materialization-archives.ts",
+            "packages/@overeng/buck2-tools/src/materialization-metadata.ts": "//packages/@overeng/buck2-tools:src/materialization-metadata.ts",
+            "packages/@overeng/buck2-tools/src/materialization-recipes.ts": "//packages/@overeng/buck2-tools:src/materialization-recipes.ts",
             "packages/@overeng/buck2-tools/src/editor-view-sharing.ts": "//packages/@overeng/buck2-tools:src/editor-view-sharing.ts",
             "packages/@overeng/buck2-tools/src/editor-view-leases.ts": "//packages/@overeng/buck2-tools:src/editor-view-leases.ts",
         },
@@ -139,6 +161,8 @@ pkgs.runCommand "buck2-rules"
         "src/editor-view-leases.ts",
         "src/editor-view-sharing.ts",
         "src/materialization-archives.ts",
+        "src/materialization-metadata.ts",
+        "src/materialization-recipes.ts",
         "src/public-archive-origin.ts",
     ])
 

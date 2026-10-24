@@ -1,5 +1,4 @@
 /* eslint-disable no-await-in-loop -- Transfers stream through bounded buffers; digest exclusion, lease fences and filesystem walks must settle in order. */
-import { dlopen, read as ffiRead } from 'bun:ffi'
 import { createHash, randomUUID } from 'node:crypto'
 import {
   constants,
@@ -31,13 +30,18 @@ import {
   withEditorViewContentStoreLock,
 } from './editor-view-sharing.ts'
 import type { EditorViewContentCensus } from './editor-view-sharing.ts'
+import {
+  initializeMaterializationMetadata,
+  lockMaterialization,
+  syncMaterializationDirectory,
+} from './materialization-metadata.ts'
+import { retireMaterializationRecipe } from './materialization-recipes.ts'
 import { publicArchiveRedirectUrl, publicArchiveUrl } from './public-archive-origin.ts'
 
 const fail = (message: string): never => {
   throw new Error(`Buck archive sharing: ${message}`)
 }
 const digestPattern = /^[a-f0-9]{64}$/
-const archivePattern = /^archive-([a-f0-9]{64})$/
 const absent = (error: unknown): boolean =>
   error instanceof Error && 'code' in error && error.code === 'ENOENT'
 const ownedDirectory = (path: string): BigIntStats => {
@@ -104,69 +108,6 @@ export const archiveSharingAdmission = ({
   )
     return undefined
   return { contentStore, highWaterBytes: editorViewContentStoreHighWaterBytes(env) }
-}
-
-const library = process.platform === 'darwin' ? '/usr/lib/libSystem.B.dylib' : 'libc.so.6'
-const native = dlopen(library, { flock: { args: ['i32', 'i32'], returns: 'i32' } })
-/* eslint-disable no-underscore-dangle -- Native libc ABI. */
-const errno =
-  process.platform === 'darwin'
-    ? dlopen(library, { __error: { args: [], returns: 'ptr' } }).symbols.__error
-    : dlopen(library, { __errno_location: { args: [], returns: 'ptr' } }).symbols.__errno_location
-/* eslint-enable no-underscore-dangle */
-const closeOnExec = process.platform === 'darwin' ? 0x1000000 : 0x80000
-
-/** Digest locks are outside CAS exclusion and release on crash/descriptor close. */
-const lockArchive = async ({
-  metadata,
-  digest,
-  wait = true,
-}: {
-  metadata: string
-  digest: string
-  wait?: boolean
-}) => {
-  const locks = join(metadata, '.downloads')
-  mkdirSync(locks, { mode: 0o700, recursive: true })
-  ownedDirectory(metadata)
-  ownedDirectory(locks)
-  const path = join(locks, `${digest}.lock`)
-  const file = await open(
-    path,
-    constants.O_RDWR |
-      constants.O_CREAT |
-      constants.O_NOFOLLOW |
-      constants.O_NONBLOCK |
-      closeOnExec,
-    0o600,
-  )
-  try {
-    const before = await file.stat({ bigint: true })
-    const named = await lstat(path, { bigint: true })
-    if (
-      before.isFile() === false ||
-      before.uid !== BigInt(process.getuid!()) ||
-      before.nlink !== 1n ||
-      (before.mode & 0o777n) !== 0o600n ||
-      before.ino !== named.ino ||
-      before.dev !== named.dev
-    )
-      fail('unsafe download control')
-    while (native.symbols.flock(file.fd, 2 | 4) !== 0) {
-      const address = errno() ?? fail('digest flock errno pointer unavailable')
-      const code = ffiRead.i32(address)
-      if (code !== 11 && code !== 35) fail(`digest flock failed: ${code}`)
-      if (wait === false) {
-        await file.close()
-        return undefined
-      }
-      await Bun.sleep(10)
-    }
-    return file
-  } catch (error) {
-    await file.close()
-    throw error
-  }
 }
 
 const sameArchiveIdentity = ({ left, right }: { left: BigIntStats; right: BigIntStats }): boolean =>
@@ -258,7 +199,7 @@ const publishArchiveProof = async ({
     await file.close()
   }
   await rename(pending, path)
-  await syncDirectory(dirname(path))
+  await syncMaterializationDirectory(dirname(path))
 }
 
 const verifyArchive = async ({
@@ -366,34 +307,6 @@ const downloadArchive = async ({
   return fail('archive redirect limit exceeded')
 }
 
-const syncDirectory = async (path: string): Promise<void> => {
-  const directory = await open(
-    path,
-    constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW,
-  )
-  try {
-    await directory.sync()
-  } finally {
-    await directory.close()
-  }
-}
-const metadataRoot = (contentStore: string): string => `${contentStore}.buck-materialization-v1`
-
-const initializeMetadata = (contentStore: string): string => {
-  const metadata = metadataRoot(contentStore)
-  for (const directory of [
-    metadata,
-    join(metadata, '.store'),
-    join(metadata, '.staging'),
-    join(metadata, '.garbage'),
-    join(metadata, '.access'),
-  ]) {
-    mkdirSync(directory, { mode: 0o700, recursive: true })
-    ownedDirectory(directory)
-  }
-  return metadata
-}
-
 const metadataAllocatedBytes = async (root: string): Promise<number> => {
   let total = 0
   try {
@@ -427,9 +340,10 @@ export const recordMaterializationContentUse = async ({
   contentStore: string
   keys: Iterable<string>
 }): Promise<void> => {
-  const metadata = initializeMetadata(contentStore)
+  const metadata = initializeMaterializationMetadata(contentStore)
   for (const key of new Set(keys)) {
-    if (/^[a-f0-9]{64}-(0444|0555)$/.test(key) === false) fail('invalid access hint key')
+    if (/^(?:[a-f0-9]{64}-(0444|0555)|recipe-[a-f0-9]{64})$/.test(key) === false)
+      fail('invalid access hint key')
     const temporary = join(metadata, '.access', `.${key}-${randomUUID()}`)
     await writeFile(temporary, `${Date.now()}\n`, { mode: 0o600, flag: 'wx' })
     await rename(temporary, join(metadata, '.access', key))
@@ -491,12 +405,33 @@ export const maintainArchiveContent = async ({
     fail('invalid high water')
   if (editorViewLeaseFilesystem(nearestParent(contentStore)) !== 'local')
     fail('unknown maintenance filesystem')
-  const metadata = initializeMetadata(contentStore)
+  const metadata = initializeMaterializationMetadata(contentStore)
   for (const name of await readdir(join(metadata, '.garbage'))) {
+    const recipe = /^recipe-([a-f0-9]{64})-[a-f0-9-]{36}$/.exec(name)
+    if (recipe !== null) {
+      const lock = await lockMaterialization({
+        metadata,
+        digest: recipe[1]!,
+        kind: 'recipe',
+        wait: false,
+      })
+      if (lock === undefined) continue
+      try {
+        await retireMaterializationRecipe({
+          contentStore,
+          metadata,
+          generation: `recipe-${recipe[1]!}`,
+          garbageName: name,
+        })
+      } finally {
+        await lock.close()
+      }
+      continue
+    }
     const match = /^archive-([a-f0-9]{64})-[a-f0-9-]{36}$/.exec(name)
     if (match === null) fail('unknown retired archive generation')
     const digest = match![1]!
-    const lock = await lockArchive({ metadata: metadata, digest: digest, wait: false })
+    const lock = await lockMaterialization({ metadata: metadata, digest: digest, wait: false })
     if (lock === undefined) continue
     try {
       await reclaimRetiredArchive({
@@ -509,58 +444,84 @@ export const maintainArchiveContent = async ({
       await lock.close()
     }
   }
+  const inventory = await readdir(join(metadata, '.store'))
+  for (const generation of inventory) {
+    if (/^(archive|recipe)-[a-f0-9]{64}$/.test(generation) === false)
+      fail('unknown materialization generation')
+  }
   const initial = await editorViewContentStoreCensus(contentStore)
   if (initial.totalBytes > highWaterBytes) {
-    const generations = await readdir(join(metadata, '.store'))
-    const ordered: { generation: string; digest: string; used: number }[] = []
+    const generations = inventory
+    const ordered: {
+      generation: string
+      digest: string
+      kind: 'archive' | 'recipe'
+      used: number
+    }[] = []
     for (const generation of generations) {
-      const match = archivePattern.exec(generation)
-      if (match === null) fail('unknown archive generation')
-      const digest = match![1]!
+      const match = /^(archive|recipe)-([a-f0-9]{64})$/.exec(generation)
+      if (match === null) fail('unknown materialization generation')
+      const kind = match![1] === 'recipe' ? 'recipe' : 'archive'
+      const digest = match![2]!
       let used = 0
       try {
-        used = (await lstat(join(metadata, '.access', `${digest}-0444`))).mtimeMs
+        used = (
+          await lstat(join(metadata, '.access', kind === 'recipe' ? generation : `${digest}-0444`))
+        ).mtimeMs
       } catch (error) {
         if (absent(error) === false) throw error
       }
-      ordered.push({ generation, digest, used })
+      ordered.push({ generation, digest, kind, used })
     }
     ordered.sort((left, right) => left.used - right.used)
     for (const entry of ordered) {
       if ((await editorViewContentStoreCensus(contentStore)).totalBytes <= highWaterBytes) break
-      const lock = await lockArchive({ metadata: metadata, digest: entry.digest, wait: false })
+      const lock = await lockMaterialization({
+        metadata,
+        digest: entry.digest,
+        kind: entry.kind,
+        wait: false,
+      })
       if (lock === undefined) continue
       const snapshot = join(metadata, '.store', entry.generation)
       try {
         if (existsSync(snapshot) === false) continue
-        ownedDirectory(snapshot)
-        ownedDirectory(join(snapshot, 'pins'))
-        const pin = join(snapshot, 'pins', `${entry.digest}-0444`)
-        if ((await readdir(join(snapshot, 'pins'))).join() !== `${entry.digest}-0444`)
-          fail('malformed archive pins')
-        await verifyArchive({
-          path: pin,
-          digest: entry.digest,
-          size: Number((await lstat(pin)).size),
-        })
-        await withEditorViewContentStoreLock({
-          contentStore,
-          run: async () => {
-            if (existsSync(snapshot) === false) return
-            const lease = probeEditorViewLeaseUnderFence({ editorRoot: metadata, snapshot })
-            try {
-              if (lease.state !== 'clear') return
-              const garbage = join(metadata, '.garbage', `${entry.generation}-${randomUUID()}`)
-              await rename(snapshot, garbage)
-              await unlink(join(garbage, 'pins', `${entry.digest}-0444`))
-              await rmdir(join(garbage, 'pins'))
-              await removeArchiveProofs(garbage)
-              await rmdir(garbage)
-            } finally {
-              lease.release()
-            }
-          },
-        })
+        if (entry.kind === 'recipe') {
+          await retireMaterializationRecipe({
+            contentStore,
+            metadata,
+            generation: entry.generation,
+          })
+        } else {
+          ownedDirectory(snapshot)
+          ownedDirectory(join(snapshot, 'pins'))
+          const pin = join(snapshot, 'pins', `${entry.digest}-0444`)
+          if ((await readdir(join(snapshot, 'pins'))).join() !== `${entry.digest}-0444`)
+            fail('malformed archive pins')
+          await verifyArchive({
+            path: pin,
+            digest: entry.digest,
+            size: Number((await lstat(pin)).size),
+          })
+          await withEditorViewContentStoreLock({
+            contentStore,
+            run: async () => {
+              if (existsSync(snapshot) === false) return
+              const lease = probeEditorViewLeaseUnderFence({ editorRoot: metadata, snapshot })
+              try {
+                if (lease.state !== 'clear') return
+                const garbage = join(metadata, '.garbage', `${entry.generation}-${randomUUID()}`)
+                await rename(snapshot, garbage)
+                await unlink(join(garbage, 'pins', `${entry.digest}-0444`))
+                await rmdir(join(garbage, 'pins'))
+                await removeArchiveProofs(garbage)
+                await rmdir(garbage)
+              } finally {
+                lease.release()
+              }
+            },
+          })
+        }
       } finally {
         await lock.close()
       }
@@ -586,7 +547,7 @@ export const maintainArchiveContent = async ({
 }
 
 /** One nonblocking, rate-bounded census after insertion; cache hits never scan C. */
-const maintainAfterArchivePublication = async ({
+export const maintainAfterMaterializationPublication = async ({
   contentStore,
   metadata,
   highWaterBytes,
@@ -595,7 +556,7 @@ const maintainAfterArchivePublication = async ({
   metadata: string
   highWaterBytes: number
 }): Promise<void> => {
-  const lock = await lockArchive({ metadata, digest: 'maintenance', wait: false })
+  const lock = await lockMaterialization({ metadata, digest: 'maintenance', wait: false })
   if (lock === undefined) return
   try {
     const previous = await lock.stat()
@@ -651,10 +612,11 @@ export const acquireSharedArchive = async ({
   const parent = nearestParent(contentStore)
   if (editorViewLeaseFilesystem(parent) !== 'local') fail('filesystem no longer admitted')
   ownedDirectory(parent)
-  const metadata = initializeMetadata(contentStore)
+  const metadata = initializeMaterializationMetadata(contentStore)
   phase('admission')
   const lock =
-    (await lockArchive({ metadata: metadata, digest: digest })) ?? fail('download lock unavailable')
+    (await lockMaterialization({ metadata: metadata, digest: digest })) ??
+    fail('download lock unavailable')
   phase('digestLock')
   const generation = `archive-${digest}`
   const snapshot = join(metadata, '.store', generation)
@@ -700,9 +662,9 @@ export const acquireSharedArchive = async ({
         size,
         proofPath: join(stage, 'verification.json'),
       })
-      await syncDirectory(join(contentStore, digest.slice(0, 2)))
-      await syncDirectory(join(stage, 'pins'))
-      await syncDirectory(stage)
+      await syncMaterializationDirectory(join(contentStore, digest.slice(0, 2)))
+      await syncMaterializationDirectory(join(stage, 'pins'))
+      await syncMaterializationDirectory(stage)
       const ready = stage
       await withEditorViewContentStoreLock({
         contentStore,
@@ -710,7 +672,7 @@ export const acquireSharedArchive = async ({
           await rename(ready, snapshot)
           stage = undefined
           ensureEditorViewLeaseControl({ editorRoot: metadata, snapshot })
-          await syncDirectory(join(metadata, '.store'))
+          await syncMaterializationDirectory(join(metadata, '.store'))
         },
       })
       published = true
@@ -818,7 +780,7 @@ export const acquireSharedArchive = async ({
     }
     phase('release')
     if (published === true)
-      await maintainAfterArchivePublication({ contentStore, metadata, highWaterBytes })
+      await maintainAfterMaterializationPublication({ contentStore, metadata, highWaterBytes })
     phase('maintenance')
   }
 }

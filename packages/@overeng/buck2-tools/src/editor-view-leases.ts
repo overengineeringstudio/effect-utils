@@ -8,6 +8,7 @@ import {
   closeSync,
   constants,
   fstatSync,
+  fsyncSync,
   lstatSync,
   mkdirSync,
   openSync,
@@ -179,9 +180,14 @@ const validateControl = ({
 export const ensureEditorViewLeaseControl = (input: {
   readonly editorRoot: string
   readonly snapshot: string
+  readonly generationDirectory?: string
 }): void => {
   const identity = paths(input)
-  validateGeneration({ root: identity.root, snapshot: identity.snapshot, requireLocal: false })
+  validateGeneration({
+    root: identity.root,
+    snapshot: input.generationDirectory ?? identity.snapshot,
+    requireLocal: false,
+  })
   try {
     mkdirSync(dirname(identity.control), { mode: 0o700 })
   } catch (error) {
@@ -218,6 +224,16 @@ export const ensureEditorViewLeaseControl = (input: {
         controlIdentity({ control: identity.control, status: fstatSync(fd, { bigint: true }) }),
       )
     validateControl({ control: identity.control, fd })
+    fsyncSync(fd)
+    const directory = openSync(
+      dirname(identity.control),
+      constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW,
+    )
+    try {
+      fsyncSync(directory)
+    } finally {
+      closeSync(directory)
+    }
   } finally {
     closeSync(fd)
   }
@@ -233,10 +249,12 @@ const acquire = ({
   editorRoot,
   snapshot,
   exclusive,
+  generationDirectory,
 }: {
   readonly editorRoot: string
   readonly snapshot: string
   readonly exclusive: boolean
+  readonly generationDirectory?: string
 }): EditorViewLeaseProbe & {
   readonly fd?: number
   readonly snapshot?: string
@@ -245,7 +263,8 @@ const acquire = ({
   let fd: number | undefined
   try {
     const identity = paths({ editorRoot, snapshot })
-    const generation = validateGeneration({ root: identity.root, snapshot: identity.snapshot })
+    const payload = generationDirectory ?? identity.snapshot
+    const generation = validateGeneration({ root: identity.root, snapshot: payload })
     privateDirectory(dirname(identity.control))
     fd = openSync(
       identity.control,
@@ -273,7 +292,7 @@ const acquire = ({
     if (
       same({
         left: generation,
-        right: validateGeneration({ root: identity.root, snapshot: identity.snapshot }),
+        right: validateGeneration({ root: identity.root, snapshot: payload }),
       }) === false
     )
       fail('generation replaced during acquisition')
@@ -306,6 +325,7 @@ const acquire = ({
 export const probeEditorViewLease = (input: {
   readonly editorRoot: string
   readonly snapshot: string
+  readonly generationDirectory?: string
 }): EditorViewLeaseProbe => acquire({ ...input, exclusive: true })
 
 /**

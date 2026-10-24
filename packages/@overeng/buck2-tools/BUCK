@@ -6,7 +6,7 @@ load("//buck2:materialization.bzl", "runtime_modules")
 # Projection source: packages/@overeng/buck2-tools/BUCK.genie.ts
 # Projection schema version: 13
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:431559dd377b12fe583f3911ea3d442ae68cc648b16396f85d1480757a07de43
+# Semantic fingerprint: sha256:cbccb4b12aa3a12e25ce5d360337b669a76aec9cdf7668b7e86b654323f49b3c
 # Regenerate: devenv tasks run genie:run
 
 load("//buck2:materialization.bzl", "export_materialization_inputs", "package_view")
@@ -52,6 +52,10 @@ export_materialization_inputs([
     "src/javascript-runner.unit.test.ts",
     "src/materialization-archives.integration.test.ts",
     "src/materialization-archives.ts",
+    "src/materialization-metadata.ts",
+    "src/materialization-recipes.integration.test.ts",
+    "src/materialization-recipes.ts",
+    "src/materialization-recipes.unit.test.ts",
     "src/mod.ts",
     "src/otel-span-cli.ts",
     "src/otel-span-cli.unit.test.ts",
@@ -152,6 +156,10 @@ package_view(
         "src/javascript-runner.unit.test.ts": "src/javascript-runner.unit.test.ts",
         "src/materialization-archives.integration.test.ts": "src/materialization-archives.integration.test.ts",
         "src/materialization-archives.ts": "src/materialization-archives.ts",
+        "src/materialization-metadata.ts": "src/materialization-metadata.ts",
+        "src/materialization-recipes.integration.test.ts": "src/materialization-recipes.integration.test.ts",
+        "src/materialization-recipes.ts": "src/materialization-recipes.ts",
+        "src/materialization-recipes.unit.test.ts": "src/materialization-recipes.unit.test.ts",
         "src/mod.ts": "src/mod.ts",
         "src/otel-span-cli.ts": "src/otel-span-cli.ts",
         "src/otel-span-cli.unit.test.ts": "src/otel-span-cli.unit.test.ts",
@@ -230,6 +238,10 @@ package_view(
         "src/javascript-runner.unit.test.ts": "src/javascript-runner.unit.test.ts",
         "src/materialization-archives.integration.test.ts": "src/materialization-archives.integration.test.ts",
         "src/materialization-archives.ts": "src/materialization-archives.ts",
+        "src/materialization-metadata.ts": "src/materialization-metadata.ts",
+        "src/materialization-recipes.integration.test.ts": "src/materialization-recipes.integration.test.ts",
+        "src/materialization-recipes.ts": "src/materialization-recipes.ts",
+        "src/materialization-recipes.unit.test.ts": "src/materialization-recipes.unit.test.ts",
         "src/mod.ts": "src/mod.ts",
         "src/otel-span-cli.ts": "src/otel-span-cli.ts",
         "src/otel-span-cli.unit.test.ts": "src/otel-span-cli.unit.test.ts",

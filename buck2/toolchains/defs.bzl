@@ -169,6 +169,7 @@ def configured_rust_toolchain(
 BunToolchainInfo = provider(fields = {
     "executable": str,
     "identity": str,
+    "manifest": Artifact,
 })
 
 def _require_nix_store_binary(executable, binary, tool):
@@ -235,6 +236,7 @@ def _bun_toolchain_impl(ctx):
         BunToolchainInfo(
             executable = ctx.attrs.executable,
             identity = ctx.attrs.executable,
+            manifest = ctx.attrs.manifest,
         ),
     ]
 
@@ -242,6 +244,7 @@ _bun_toolchain = cache_guarded_rule(
     impl = _bun_toolchain_impl,
     attrs = {
         "executable": attrs.string(),
+        "manifest": attrs.source(),
     },
 )
 
@@ -252,11 +255,13 @@ def bun_toolchain(name, capabilities, generation, **kwargs):
     platform = host_capability_platform()
     if "bun" not in capabilities.get(platform, {}):
         return
-    executable = require_capability(capabilities, generation, platform, "bun")["executableStorePath"]
+    capability = require_capability(capabilities, generation, platform, "bun")
+    executable = capability["executableStorePath"]
     _require_nix_store_binary(executable, "bun", "Bun")
     _bun_toolchain(
         name = name,
         executable = executable,
+        manifest = "capabilities//tools/{}/bun/{}:manifest".format(platform, capability["manifestDigest"]),
         exec_compatible_with = host_execution_constraints(),
         **kwargs
     )

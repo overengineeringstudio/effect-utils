@@ -1,3 +1,5 @@
+mod replay;
+
 use buck2_tool_core::{normalized_relative, verify_execution_capability, ToolError, ToolResult};
 use clap::{Args, Parser, Subcommand};
 use flate2::read::GzDecoder;
@@ -53,6 +55,8 @@ struct ExtractNpmArgs {
     strip_prefix: String,
     #[arg(long = "patch")]
     patches: Vec<PathBuf>,
+    #[command(flatten)]
+    replay: replay::ReplayArgs,
 }
 
 fn fail(code: &'static str, message: impl Into<String>) -> ToolError {
@@ -732,7 +736,14 @@ fn run() -> ToolResult<()> {
     match cli.command {
         Command::Crate(args) => extract_crate(&args),
         Command::GitArchive(args) => extract_git_archive(&args),
-        Command::Npm(args) => extract_npm(&args),
+        Command::Npm(args) => {
+            if args.replay.enabled() {
+                replay::extract(&args, &cli.capability_manifest)
+            } else {
+                args.replay.require_disabled()?;
+                extract_npm(&args)
+            }
+        }
     }
 }
 
@@ -974,6 +985,7 @@ mod tests {
             out: output.clone(),
             patches: vec![patch.path().to_owned()],
             strip_prefix: "deep-eql".into(),
+            replay: replay::ReplayArgs::default(),
         })
         .unwrap();
         assert_eq!(
@@ -1014,6 +1026,7 @@ mod tests {
             out: output_parent.path().join("out"),
             strip_prefix: "package".into(),
             patches: Vec::new(),
+            replay: replay::ReplayArgs::default(),
         })
         .unwrap_err();
         assert_eq!(error.code, "BUCK2_ARCHIVE_PATH");
@@ -1047,6 +1060,7 @@ mod tests {
             out: output_parent.path().join("out"),
             patches: Vec::new(),
             strip_prefix: "package".into(),
+            replay: replay::ReplayArgs::default(),
         })
         .unwrap_err();
         assert_eq!(error.code, "BUCK2_ARCHIVE_LINK");

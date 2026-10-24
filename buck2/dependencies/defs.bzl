@@ -51,6 +51,7 @@ without a complete required closure. It is checked before any assembly action.
 load("//buck2:hermetic.bzl", "hermetic_action", "hermetic_attrs", "hermetic_bun_command", "hermetic_execution_constraints")
 load("//buck2/platforms:defs.bzl", "cache_guarded_rule")
 load("//buck2/toolchains:defs.bzl", "BunToolchainInfo")
+load("//buck2/toolchains:configured.bzl", "BuckSupportToolInfo")
 
 PnpmPackageInfo = provider(fields = {
     "bins": provider_field(dict[str, str]),
@@ -297,13 +298,37 @@ def _extract_impl(ctx):
     ])
     for patch in ctx.attrs.patches:
         args.add("--patch", patch)
+    sharing = _shared_archive_store() != ""
+    if sharing:
+        runtime = ctx.attrs._shared_recipe_runtime[DefaultInfo].default_outputs[0]
+        closure_inputs = ctx.actions.write_json(
+            "replay-tool-inputs.json",
+            {
+                "schema": "effect-utils/buck-materialization-tool-inputs/v1",
+                "nativeManifest": ctx.attrs._archive_tool[BuckSupportToolInfo].manifest,
+                "bunManifest": ctx.attrs._bun[BunToolchainInfo].manifest,
+                "publisherRuntime": runtime,
+            },
+            with_inputs = True,
+        )
+        args.add(
+            "--content-store", _shared_archive_store(),
+            "--high-water-bytes", read_config("buck_materialization", "high_water_bytes", "4294967296"),
+            "--archive-sha256", ctx.attrs.archive_sha256,
+            "--tool-closure-inputs", closure_inputs,
+            "--publisher-bun", ctx.attrs._bun[BunToolchainInfo].executable,
+            "--publisher-bun-config", ctx.actions.write("publisher-bunfig.toml", ""),
+            "--publisher-entry", runtime.project("buck2/dependencies/shared-recipe.ts"),
+            "--receipt", ctx.actions.declare_output("extraction-replay.json").as_output(),
+        )
     hermetic_action(
         ctx,
         args,
-        category = "pnpm_extract",
+        category = "pnpm_replay" if sharing else "pnpm_extract",
         identifier = ctx.attrs.name,
         cacheable = False,
         local_only = True,
+        env = {"EDITOR_VIEW_LEASE_LIBRARY": read_config("buck_materialization", "lease_library", "")} if sharing else {},
     )
     for name, entrypoint in ctx.attrs.bins.items():
         _require_portable_path(name, "package bin name")
@@ -317,9 +342,17 @@ _extract = cache_guarded_rule(
     impl = _extract_impl,
     attrs = dict(hermetic_attrs(), **{
         "archive": attrs.source(),
+        "archive_sha256": attrs.string(),
         "bins": attrs.dict(key = attrs.string(), value = attrs.string(), default = {}),
         "package_name": attrs.string(),
         "patches": attrs.list(attrs.source(), default = []),
+        "_bun": attrs.default_only(attrs.exec_dep(
+            default = "//buck2/toolchains:bun",
+            providers = [BunToolchainInfo],
+        )),
+        "_shared_recipe_runtime": attrs.default_only(
+            attrs.dep(default = "//buck2/dependencies:shared_recipe_runtime") if _shared_archive_store() != "" else attrs.option(attrs.dep(), default = None),
+        ),
         "_archive_tool": attrs.default_only(attrs.exec_dep(
             default = "//buck2/toolchains:archive_tool",
             providers = [RunInfo],
@@ -362,6 +395,7 @@ def pnpm_package(name, package_name, url, sha256, size_bytes, bins = {}, patches
     _extract(
         name = name,
         archive = ":{}".format(fetch_name),
+        archive_sha256 = sha256,
         bins = bins,
         package_name = package_name,
         patches = patches,
