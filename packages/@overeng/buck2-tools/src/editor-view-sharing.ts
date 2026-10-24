@@ -40,6 +40,15 @@ export type EditorViewSourceFile = {
 }
 /** Encode source metadata, omitting ctime only for immutable shared inodes. */
 export const editorViewSourceKey = (status: BigIntStats): string => verificationKey(status)
+/** Reject same-tick or cross-filesystem proofs, following the racy-index rule. */
+export const immutableContentProofIsNonRacy = ({
+  source,
+  proof,
+}: {
+  readonly source: Pick<BigIntStats, 'dev' | 'ctimeNs'>
+  readonly proof: Pick<BigIntStats, 'dev' | 'ctimeNs'>
+}): boolean => source.dev === proof.dev && source.ctimeNs < proof.ctimeNs
+
 /** Read validated source hints; every reuse still requires the full payload proof. */
 export const readEditorViewSourceManifest = (path: string): Map<string, EditorViewSourceFile> => {
   let raw: unknown

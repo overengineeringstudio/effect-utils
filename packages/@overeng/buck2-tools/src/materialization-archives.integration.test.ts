@@ -23,6 +23,7 @@ import { acquireEditorViewLease } from './editor-view-leases.ts'
 import {
   collectEditorViewContentStore,
   editorViewContentStoreCensus,
+  immutableContentProofIsNonRacy,
   shareSnapshotFiles,
   withEditorViewContentStoreLock,
 } from './editor-view-sharing.ts'
@@ -86,6 +87,14 @@ const withRegistry = async (
 }
 
 describe('host-local registry archives', () => {
+  it('trusts only strictly older source timestamps on the proof filesystem', () => {
+    const source = { dev: 1n, ctimeNs: 20n }
+    expect(immutableContentProofIsNonRacy({ source, proof: { dev: 1n, ctimeNs: 21n } })).toBe(true)
+    expect(immutableContentProofIsNonRacy({ source, proof: { dev: 1n, ctimeNs: 20n } })).toBe(false)
+    expect(immutableContentProofIsNonRacy({ source, proof: { dev: 1n, ctimeNs: 19n } })).toBe(false)
+    expect(immutableContentProofIsNonRacy({ source, proof: { dev: 2n, ctimeNs: 21n } })).toBe(false)
+  })
+
   it('downloads once across concurrent roots and keeps Buck outputs independent of CAS', async () => {
     await withFixture(async (root, contentStore) =>
       withRegistry(async (fetchResponse, requests) => {

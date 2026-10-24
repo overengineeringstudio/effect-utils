@@ -25,6 +25,7 @@ import {
   editorViewContentStoreCensus,
   editorViewContentStoreHighWaterBytes,
   editorViewGitCommonDirectory,
+  immutableContentProofIsNonRacy,
   pinEditorViewContent,
   shareSnapshotFiles,
   withEditorViewContentStoreLock,
@@ -196,7 +197,9 @@ const archiveProof = ({
     String(status.ctimeNs),
   ])}\n`
 
-const readArchiveProof = async (path: string): Promise<string | undefined> => {
+const readArchiveProof = async (
+  path: string,
+): Promise<{ proof: string; status: BigIntStats } | undefined> => {
   let file
   try {
     file = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK)
@@ -221,7 +224,7 @@ const readArchiveProof = async (path: string): Promise<string | undefined> => {
       sameArchiveIdentity({ left: after, right: await lstat(path, { bigint: true }) }) === false
     )
       fail('archive verification proof changed while reading')
-    return proof
+    return { proof, status: after }
   } finally {
     await file.close()
   }
@@ -283,7 +286,11 @@ const verifyArchive = async ({
       fail('archive mode, owner or size mismatch')
     const expectedProof = archiveProof({ status: before, digest, size })
     const proof = proofPath === undefined ? undefined : await readArchiveProof(proofPath)
-    const digestVerified = verifyDigest === true && proof !== expectedProof
+    const digestVerified =
+      verifyDigest === true &&
+      (proof === undefined ||
+        proof.proof !== expectedProof ||
+        immutableContentProofIsNonRacy({ source: before, proof: proof.status }) === false)
     if (digestVerified === true) {
       const hash = createHash('sha256')
       for await (const chunk of file.createReadStream({ autoClose: false })) hash.update(chunk)
@@ -744,7 +751,7 @@ export const acquireSharedArchive = async ({
         path: temporary,
         digest,
         size,
-        verifyDigest: clonedBytes === 0,
+        verifyDigest: clonedBytes === 0 || verified.digestVerified === true,
       })
       if (copied.ino === pinned.ino && copied.dev === pinned.dev)
         fail('ordinary output must not share CAS inode')
