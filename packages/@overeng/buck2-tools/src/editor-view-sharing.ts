@@ -1399,6 +1399,8 @@ type ContentStoreIncident = {
   readonly writableBlobCount: number
   readonly examplePaths: readonly string[]
   readonly repairCommand: string
+  /** Populated by explicit repair; absence means quarantine has not been counted. */
+  readonly unresolvedQuarantineCount?: number
 }
 const incidentPath = (contentStore: string): string => `${contentStore}.incident.json`
 const shellQuote = (value: string): string => `'${value.replaceAll("'", "'\\''")}'`
@@ -1483,6 +1485,13 @@ const readContentStoreIncident = async (
     )
       return fail(`invalid integrity incident receipt: ${path}`)
     if (
+      'unresolvedQuarantineCount' in raw &&
+      (typeof raw.unresolvedQuarantineCount !== 'number' ||
+        Number.isSafeInteger(raw.unresolvedQuarantineCount) === false ||
+        raw.unresolvedQuarantineCount < 0)
+    )
+      return fail(`invalid integrity incident quarantine count: ${path}`)
+    if (
       unchanged({ left: status, right: await file.stat({ bigint: true }) }) === false ||
       unchanged({ left: status, right: await lstat(path, { bigint: true }) }) === false
     )
@@ -1493,10 +1502,50 @@ const readContentStoreIncident = async (
       writableBlobCount: raw.writableBlobCount,
       examplePaths: raw.examplePaths,
       repairCommand: raw.repairCommand,
+      ...('unresolvedQuarantineCount' in raw && typeof raw.unresolvedQuarantineCount === 'number'
+        ? { unresolvedQuarantineCount: raw.unresolvedQuarantineCount }
+        : {}),
     }
   } finally {
     await file.close()
   }
+}
+
+const writeContentStoreIncident = async ({
+  contentStore,
+  receipt,
+}: {
+  readonly contentStore: string
+  readonly receipt: ContentStoreIncident
+}): Promise<void> => {
+  const temporary = `${incidentPath(contentStore)}.tmp-${randomUUID()}`
+  const file = await open(
+    temporary,
+    constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW,
+    0o600,
+  )
+  try {
+    await file.writeFile(`${JSON.stringify(receipt)}\n`)
+    await file.sync()
+    await rename(temporary, incidentPath(contentStore))
+  } finally {
+    await file.close()
+    await unlinkIfPresent(temporary)
+  }
+}
+
+/** Every remaining quarantine entry is unresolved; only explicit operator removal resolves it. */
+const unresolvedQuarantineCount = async (contentStore: string): Promise<number> => {
+  const path = `${contentStore}.quarantine`
+  const status = await statusIfPresent(path)
+  if (status === undefined) return 0
+  await requireRealDirectory({ path, status })
+  requireOwned({ path, status })
+  if (permissions(status) !== 0o700n) fail(`quarantine directory must have mode 0700: ${path}`)
+  const count = (await readdir(path)).length
+  if (unchanged({ left: status, right: await lstat(path, { bigint: true }) }) === false)
+    fail(`quarantine directory changed during census: ${path}`)
+  return count
 }
 
 const recordContentStoreIncident = async (contentStore: string): Promise<void> => {
@@ -1523,20 +1572,7 @@ const recordContentStoreIncident = async (contentStore: string): Promise<void> =
           '--quiesced true',
         ].join(' '),
       }
-      const temporary = `${incidentPath(contentStore)}.tmp-${randomUUID()}`
-      const file = await open(
-        temporary,
-        constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW,
-        0o600,
-      )
-      try {
-        await file.writeFile(`${JSON.stringify(receipt)}\n`)
-        await file.sync()
-        await rename(temporary, incidentPath(contentStore))
-      } finally {
-        await file.close()
-        await unlinkIfPresent(temporary)
-      }
+      await writeContentStoreIncident({ contentStore, receipt })
     }
     process.stderr.write(
       `${JSON.stringify({
@@ -1797,13 +1833,17 @@ export const repairEditorViewContentStore = async ({
   const store = resolve(contentStore)
   const lock = await acquireLock({ contentStore: store })
   try {
-    if (
-      result.mismatchedBlobs.length === 0 &&
-      (await readContentStoreIncident(store)) !== undefined
-    ) {
+    const receipt = await readContentStoreIncident(store)
+    if (receipt !== undefined) {
       const census = await writableBlobCensus(store)
       if (census.writableBlobCount !== 0) fail('content repair left writable shared blob inodes')
-      await unlink(incidentPath(store))
+      const count = await unresolvedQuarantineCount(store)
+      if (result.mismatchedBlobs.length === 0 && count === 0) await unlink(incidentPath(store))
+      else
+        await writeContentStoreIncident({
+          contentStore: store,
+          receipt: { ...receipt, unresolvedQuarantineCount: count },
+        })
     }
   } finally {
     await lock.close()

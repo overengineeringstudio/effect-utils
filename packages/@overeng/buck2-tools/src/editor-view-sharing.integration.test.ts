@@ -971,6 +971,21 @@ describe('host-wide editor snapshot content store', () => {
       expectReadonlyStore(contentStore)
       expectIdleStoreLock(contentStore)
       expect(exists(`${contentStore}.incident.json`)).toBe(true)
+      const receipt = JSON.parse(readFileSync(`${contentStore}.incident.json`, 'utf8'))
+      expect(receipt.unresolvedQuarantineCount).toBe(1)
+      const second = await repairEditorViewContentStore({ contentStore, quiesced: true })
+      expect(second.mismatchedBlobs).toEqual([])
+      expect(second.quarantined).toEqual([])
+      expect(JSON.parse(readFileSync(`${contentStore}.incident.json`, 'utf8'))).toEqual(receipt)
+      expect(inode(quarantined.quarantine)).toBe(inode(data))
+      expect(readFileSync(data, 'utf8')).toBe('corrupted data')
+      expect(mode(data)).toBe(0o644)
+      // Resolution is explicit: retire the corrupt alias and remove reviewed
+      // quarantine evidence. An otherwise clean repair must not do either.
+      rmSync(data)
+      rmSync(quarantined.quarantine)
+      await repairEditorViewContentStore({ contentStore, quiesced: true })
+      expect(exists(`${contentStore}.incident.json`)).toBe(false)
     })
   })
 

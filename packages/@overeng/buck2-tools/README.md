@@ -607,7 +607,9 @@ examples, and explicit quiesced repair command. Repeated failures reuse that
 receipt rather than scanning the whole store for every package; its count is an
 observation, not a live metric. Incident reporting never hashes or changes
 payload files. Only a successful digest-verified repair with a clean final census
-and no quarantined mismatches clears the receipt.
+and an absent or empty quarantine directory clears the receipt. Every remaining
+quarantine entry is unresolved, including entries from earlier repair runs;
+repair records their `unresolvedQuarantineCount` in the retained incident receipt.
 
 Cleanup must unlock **directories only**, never recursively chmod payload files:
 snapshot payloads are hardlinked into the CAS and other worktrees. Snapshot
@@ -669,9 +671,12 @@ quarantine paths and actual digest; any quarantine makes the CLI exit nonzero.
 Linked snapshots still hold the corrupted, untrusted inode: retire those
 snapshots using directory-only unlock/unlink and republish their views from
 admitted sources before restarting readers. Keep quarantine evidence until the
-incident is understood. After a matching-only repair, rerun bootstrap and the
-normal quick gate before resuming work. Never run repair against a shared live
-store without coordinating its users.
+incident is understood, then explicitly remove the reviewed entries after
+retiring their corrupt snapshot aliases. Repair never removes quarantine evidence
+or assumes a previously quarantined inode was fixed merely because the remaining
+CAS is clean. Rerun quiesced repair after resolving those entries to clear the
+incident receipt, then rerun bootstrap and the normal quick gate before resuming
+work. Never run repair against a shared live store without coordinating its users.
 
 The dirty byte provides **process-crash recovery, not power-loss durability**:
 metadata/control writes are not fsync-ordered for machine or filesystem failure.
