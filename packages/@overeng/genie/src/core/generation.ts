@@ -711,16 +711,21 @@ export type OxfmtFormatter = (options: {
 }) => Effect.Effect<string, never, FileSystem.FileSystem | CommandExecutor.ChildProcessSpawner>
 
 /**
- * Reuse the config preflight within one read-only check invocation. Keep the CLI in charge of
- * actual formatting/config resolution, and create this inside the invocation (never a watch loop).
- * Generation does not share this preflight because it can rewrite the config during the run.
+ * Reuse successful config preflight as a snapshot within one read-only check invocation.
+ * Concurrent callers share one attempt, but failures expire immediately so later files retry.
+ * Keep the CLI in charge of actual formatting/config resolution, and create this inside the
+ * invocation (never a watch loop). Generation does not share this preflight because it can
+ * rewrite the config during the run.
  */
 export const makeOxfmtFormatter = Effect.fn('makeOxfmtFormatter')(function* ({
   configPath,
 }: {
   configPath: Option.Option<string>
 }) {
-  const loadConfig = yield* Effect.cached(loadOxfmtConfig({ configPath }).pipe(Effect.result))
+  const cachedConfig = yield* Effect.cachedWithTTL(loadOxfmtConfig({ configPath }), (exit) =>
+    Exit.isSuccess(exit) === true ? Infinity : 0,
+  )
+  const loadConfig = cachedConfig.pipe(Effect.result)
   const format: OxfmtFormatter = ({ targetFilePath, content }) =>
     formatWithOxfmt({ targetFilePath, content, configPath, loadConfig })
   return format

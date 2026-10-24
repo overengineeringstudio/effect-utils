@@ -81,6 +81,41 @@ describe('per-check formatter config reuse', () => {
     }).pipe(withFormatterTest),
   )
 
+  for (const initialConfig of ['invalid', 'missing'] as const) {
+    it.effect(`retries ${initialConfig} config after repair within the same check`, () =>
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem
+        const root = yield* fs.makeTempDirectoryScoped({ prefix: 'genie-formatter-' })
+        const configPath = `${root}/oxfmt.json`
+        if (initialConfig === 'invalid') yield* fs.writeFileString(configPath, 'not json')
+        let reads = 0
+        const countedFs = {
+          ...fs,
+          readFileString: (...args: Parameters<typeof fs.readFileString>) => {
+            if (args[0] === configPath) reads += 1
+            return fs.readFileString(...args)
+          },
+        }
+        const formatter = yield* makeOxfmtFormatter({ configPath: Option.some(configPath) })
+        const content = '{"value":1}'
+        expect(
+          yield* formatter({ targetFilePath: `${root}/first.json`, content }).pipe(
+            Effect.provideService(FileSystem.FileSystem, countedFs),
+          ),
+        ).toBe(content)
+        yield* fs.writeFileString(configPath, '{"printWidth":1,"tabWidth":4}')
+        for (const file of ['second.json', 'third.json']) {
+          expect(
+            yield* formatter({ targetFilePath: `${root}/${file}`, content }).pipe(
+              Effect.provideService(FileSystem.FileSystem, countedFs),
+            ),
+          ).toBe('{\n    "value": 1\n}\n')
+        }
+        expect(reads).toBe(2)
+      }).pipe(withFormatterTest),
+    )
+  }
+
   it.effect('does not read config for unsupported targets', () =>
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem
