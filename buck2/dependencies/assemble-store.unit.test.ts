@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, mock, spyOn } from 'bun:test'
 import {
   chmodSync,
+  Dirent,
   existsSync,
   linkSync,
   lstatSync,
@@ -210,6 +211,116 @@ describe('normalized store entry assembly', () => {
     await expect(assembling).rejects.toBe(first)
     expect(active).toBe(0)
     expect(admitted).toBe(32)
+    expect(existsSync(output)).toBe(false)
+    expect((await readdir(root)).filter((name) => name.startsWith('entry.stage-'))).toEqual([])
+  })
+
+  it.each(['file', 'directory'] as const)(
+    'stops admission when a leaf fails during awaited %s type discovery',
+    async (kind) => {
+      const root = makeRoot()
+      const source = makePackage({
+        name: 'discovery-race',
+        root,
+        files: { 'a-first': 'a' },
+      })
+      const discovering = join(source, 'b-discovery')
+      if (kind === 'file') writeFileSync(discovering, 'b')
+      else mkdirSync(discovering)
+      // Model an unknown extraction Dirent, which must use the lstat fallback.
+      const isDirectory = Dirent.prototype.isDirectory
+      const isFile = Dirent.prototype.isFile
+      spyOn(Dirent.prototype, 'isDirectory').mockImplementation(function (this: Dirent) {
+        return this.name === 'b-discovery' ? false : isDirectory.call(this)
+      })
+      spyOn(Dirent.prototype, 'isFile').mockImplementation(function (this: Dirent) {
+        return this.name === 'b-discovery' ? false : isFile.call(this)
+      })
+      const firstLink = Promise.withResolvers<void>()
+      const failure = new Error('leaf failed while type discovery was suspended')
+      const links = spyOn(fs, 'link').mockImplementation(() => firstLink.promise)
+      const copies = spyOn(fs, 'copyFile')
+      const directories = spyOn(fs, 'mkdir')
+      const symlinks = spyOn(fs, 'symlink')
+      const publish = spyOn(fs, 'rename')
+      spyOn(fs, 'lstat').mockImplementation(async (path) => {
+        if (path === discovering) {
+          firstLink.reject(failure)
+          const turn = Promise.withResolvers<void>()
+          setImmediate(turn.resolve)
+          await turn.promise
+        }
+        return lstatSync(path)
+      })
+      const output = join(root, 'entry')
+      await expect(
+        assembleStoreEntry({
+          bins: [],
+          dependencies: [],
+          workspaceLinks: [],
+          packageName: 'discovery-race',
+          packageTree: source,
+          output,
+        }),
+      ).rejects.toBe(failure)
+      expect(links).toHaveBeenCalledTimes(1)
+      expect(copies).not.toHaveBeenCalled()
+      expect(directories).toHaveBeenCalledTimes(2) // staging and package root only
+      expect(symlinks).not.toHaveBeenCalled()
+      expect(publish).not.toHaveBeenCalled()
+      expect(existsSync(output)).toBe(false)
+      expect((await readdir(root)).filter((name) => name.startsWith('entry.stage-'))).toEqual([])
+    },
+  )
+
+  it('does not admit later EXDEV copies after an earlier fallback copy fails', async () => {
+    const root = makeRoot()
+    const source = makePackage({
+      name: 'fallback-race',
+      root,
+      files: { 'a-first': 'a', 'b-second': 'b', 'c-third': 'c' },
+    })
+    const exdev = Object.assign(new Error('cross-device link'), { code: 'EXDEV' })
+    const second = Promise.withResolvers<void>()
+    const third = Promise.withResolvers<void>()
+    const admitted = Promise.withResolvers<void>()
+    let linkCount = 0
+    const links = spyOn(fs, 'link').mockImplementation(() => {
+      linkCount++
+      if (linkCount === 1) return Promise.reject(exdev)
+      if (linkCount === 2) return second.promise
+      admitted.resolve()
+      return third.promise
+    })
+    const failure = new Error('first fallback copy failed')
+    const copies = spyOn(fs, 'copyFile').mockImplementation(async () => {
+      await admitted.promise
+      // Let the failed copy latch abort before the other link results arrive.
+      setImmediate(() => {
+        second.reject(exdev)
+        third.reject(exdev)
+      })
+      throw failure
+    })
+    const directories = spyOn(fs, 'mkdir')
+    const symlinks = spyOn(fs, 'symlink')
+    const publish = spyOn(fs, 'rename')
+    const output = join(root, 'entry')
+    await expect(
+      assembleStoreEntry({
+        bins: [],
+        dependencies: [],
+        workspaceLinks: [],
+        packageName: 'fallback-race',
+        packageTree: source,
+        output,
+      }),
+    ).rejects.toBe(failure)
+    expect(links).toHaveBeenCalledTimes(3)
+    expect(copies).toHaveBeenCalledTimes(1)
+    expect(directories).toHaveBeenCalledTimes(2)
+    expect(symlinks).not.toHaveBeenCalled()
+    expect(publish).not.toHaveBeenCalled()
     expect(existsSync(output)).toBe(false)
     expect((await readdir(root)).filter((name) => name.startsWith('entry.stage-'))).toEqual([])
   })

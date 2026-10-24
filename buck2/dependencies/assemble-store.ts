@@ -114,6 +114,8 @@ export type TreeMaterialization = 'hardlink' | 'copy'
  * Hardlinks run in byte-ordered batches of at most 32. A failed batch is fully
  * drained before staging cleanup and reports its first error in traversal order;
  * no later batch or metadata link can make a failed entry appear complete.
+ * Every awaited discovery boundary rechecks abort before admitting filesystem
+ * work. EXDEV fallbacks also stop admission without replacing the real error.
  */
 const materializeTree = async ({
   materialization,
@@ -130,6 +132,15 @@ const materializeTree = async ({
 
   const pending: Promise<void>[] = []
   let leafFailed = false
+  let firstFailure: unknown
+  const recordFailure = (error: unknown): never => {
+    if (leafFailed === false) firstFailure = error
+    leafFailed = true
+    throw error
+  }
+  const abortIfFailed = (): void => {
+    if (leafFailed === true) throw firstFailure
+  }
   const flush = async (): Promise<void> => {
     const results = await Promise.allSettled(pending.splice(0))
     for (const result of results) {
@@ -146,90 +157,115 @@ const materializeTree = async ({
     readonly currentDestination: string
     readonly entry?: Dirent
   }): Promise<void> => {
-    if (leafFailed === true) await flush()
-    const metadata =
-      materialization === 'hardlink' &&
-      entry !== undefined &&
-      (entry.isDirectory() === true || entry.isFile() === true || entry.isSymbolicLink() === true)
-        ? entry
-        : await lstat(currentSource)
-    if (metadata.isDirectory() === true) {
-      await mkdir(currentDestination, { recursive: currentSource === sourceRoot })
-      const entries = (await readdir(currentSource, { withFileTypes: true })).toSorted(
-        (left, right) => Buffer.from(left.name).compare(Buffer.from(right.name)),
-      )
-      for (const child of entries) {
-        await visit({
-          currentSource: join(currentSource, child.name),
-          currentDestination: join(currentDestination, child.name),
-          entry: child,
-        })
-      }
-      return
-    }
-    if (metadata.isFile() === true) {
-      if (materialization === 'copy') {
-        await copyFile(currentSource, currentDestination)
-        // `copyFile` carries the source mode, so a 0444 store file would land
-        // read-only. Add owner write and keep every other declared bit.
-        // Overrides always use lstat above rather than Dirent-only typing.
-        if (!('mode' in metadata)) fail(`source file has no mode: ${currentSource}`)
-        await chmod(currentDestination, (metadata.mode & 0o7777) | 0o200)
+    try {
+      abortIfFailed()
+      const metadata =
+        materialization === 'hardlink' &&
+        entry !== undefined &&
+        (entry.isDirectory() === true || entry.isFile() === true || entry.isSymbolicLink() === true)
+          ? entry
+          : await lstat(currentSource)
+      abortIfFailed()
+      if (metadata.isDirectory() === true) {
+        await mkdir(currentDestination, { recursive: currentSource === sourceRoot })
+        abortIfFailed()
+        const entries = (await readdir(currentSource, { withFileTypes: true })).toSorted(
+          (left, right) => Buffer.from(left.name).compare(Buffer.from(right.name)),
+        )
+        abortIfFailed()
+        for (const child of entries) {
+          await visit({
+            currentSource: join(currentSource, child.name),
+            currentDestination: join(currentDestination, child.name),
+            entry: child,
+          })
+          abortIfFailed()
+        }
         return
       }
-      pending.push(
-        link(currentSource, currentDestination)
-          .catch(async (error: unknown) => {
-            if (!(error instanceof Error) || !('code' in error) || error.code !== 'EXDEV')
-              throw error
-            await copyFile(currentSource, currentDestination)
-          })
-          .catch((error: unknown) => {
-            leafFailed = true
-            throw error
-          }),
-      )
-      // Attach rejection handlers in this turn, before traversal can await I/O.
-      void pending[pending.length - 1]!.catch(() => {})
-      if (pending.length === 32) await flush()
-      return
-    }
-    await flush()
-    if (metadata.isSymbolicLink() === true) {
-      const target = await readlink(currentSource)
-      if (isAbsolute(target) === true)
-        fail(`source symlink has an absolute target: ${currentSource} -> ${target}`)
-      if (
-        isInside({ root: sourceRoot, candidate: resolve(dirname(currentSource), target) }) === false
-      )
-        fail(`source symlink target escapes its declared tree: ${currentSource} -> ${target}`)
-      let canonicalTarget: string
-      try {
-        canonicalTarget = await realpath(currentSource)
-      } catch (error) {
-        if (error instanceof Error && 'code' in error) {
-          if (error.code === 'ELOOP')
-            fail(`source symlink target is cyclic: ${currentSource} -> ${target}`)
-          if (error.code === 'ENOENT' || error.code === 'ENOTDIR')
-            fail(`source symlink target is dangling: ${currentSource} -> ${target}`)
+      if (metadata.isFile() === true) {
+        if (materialization === 'copy') {
+          await copyFile(currentSource, currentDestination)
+          abortIfFailed()
+          // `copyFile` carries the source mode, so a 0444 store file would land
+          // read-only. Add owner write and keep every other declared bit.
+          // Overrides always use lstat above rather than Dirent-only typing.
+          if (!('mode' in metadata)) fail(`source file has no mode: ${currentSource}`)
+          await chmod(currentDestination, (metadata.mode & 0o7777) | 0o200)
+          abortIfFailed()
+          return
         }
-        throw error
-      }
-      if (isInside({ root: sourceRoot, candidate: canonicalTarget }) === false)
-        fail(
-          `source symlink chained target escapes its declared tree: ${currentSource} -> ${target}`,
+        pending.push(
+          link(currentSource, currentDestination).catch(async (error: unknown) => {
+            if (!(error instanceof Error) || !('code' in error) || error.code !== 'EXDEV')
+              recordFailure(error)
+            // This task is already in pending: do not flush it from its own
+            // fallback. Complete it without copying; flush reports the real error.
+            if (leafFailed === true) return
+            try {
+              await copyFile(currentSource, currentDestination)
+            } catch (copyError) {
+              recordFailure(copyError)
+            }
+          }),
         )
-      await symlink(target, currentDestination)
-      return
+        // Attach rejection handlers in this turn, before traversal can await I/O.
+        void pending[pending.length - 1]!.catch(() => {})
+        if (pending.length === 32) await flush()
+        abortIfFailed()
+        return
+      }
+      await flush()
+      abortIfFailed()
+      if (metadata.isSymbolicLink() === true) {
+        const target = await readlink(currentSource)
+        abortIfFailed()
+        if (isAbsolute(target) === true)
+          fail(`source symlink has an absolute target: ${currentSource} -> ${target}`)
+        if (
+          isInside({ root: sourceRoot, candidate: resolve(dirname(currentSource), target) }) ===
+          false
+        )
+          fail(`source symlink target escapes its declared tree: ${currentSource} -> ${target}`)
+        let canonicalTarget: string
+        try {
+          canonicalTarget = await realpath(currentSource)
+          abortIfFailed()
+        } catch (error) {
+          if (error instanceof Error && 'code' in error) {
+            if (error.code === 'ELOOP')
+              fail(`source symlink target is cyclic: ${currentSource} -> ${target}`)
+            if (error.code === 'ENOENT' || error.code === 'ENOTDIR')
+              fail(`source symlink target is dangling: ${currentSource} -> ${target}`)
+          }
+          throw error
+        }
+        if (isInside({ root: sourceRoot, candidate: canonicalTarget }) === false)
+          fail(
+            `source symlink chained target escapes its declared tree: ${currentSource} -> ${target}`,
+          )
+        await symlink(target, currentDestination)
+        abortIfFailed()
+        return
+      }
+      fail(`source tree contains an unsupported entry: ${currentSource}`)
+    } catch (error) {
+      // Latch discovery/directory failures here, before unwinding recursion:
+      // already-admitted EXDEV tasks must not start copies during that unwind.
+      recordFailure(error)
     }
-    fail(`source tree contains an unsupported entry: ${currentSource}`)
   }
 
   try {
     await visit({ currentSource: sourceRoot, currentDestination: destination })
+    abortIfFailed()
     await flush()
   } catch (error) {
     // A traversal error must not race outstanding writes against rm(stage).
+    if (leafFailed === false) {
+      firstFailure = error
+      leafFailed = true
+    }
     await flush()
     throw error
   }
