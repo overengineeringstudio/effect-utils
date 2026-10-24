@@ -9,8 +9,10 @@
   anticipates the Phase-4 whole-workspace closure; the admitted two-package
   surface measured only 71 MiB per run (CI run #5142), so refinement is
   correctly deferred until Phase 4 makes the cost real.
-- Blocker: deliberately deferred — start with registry downloads per run and
-  refine later (q4, 2026-08-30).
+- Blocker: registry downloads remain the disabled/private-fallback path
+  (q4, 2026-08-30). The admitted same-host exception is owned by the
+  [host-local materialization contract](../06-reuse-client/spec.md#host-local-materialization-reuse-lever-5a),
+  not this deferred remote/CI artifact-cache question.
 - Lane (ratified 2026-09-01): a tailnet read-only cache lane — bazel-remote
   alerting first, then an ephemeral-tailscale spike on a CI runner, then the
   lane with fail-open fallback. The GH-artifact fetch/extract-subtree cache

@@ -673,12 +673,18 @@ summary, not uploaded as a separate raw artifact. Collector finalization writes
 fallback counts and invocation IDs to `GITHUB_STEP_SUMMARY`; the existing stderr
 warning remains available at invocation time.
 
-Standalone pnpm acquisition uses native Deferred download actions rather than
-`pnpm_archive` commands. These actions verify the canonical registry download
-against its declared SHA-256 and byte size; they are not RE CAS reads or
-command-action cache hits. Warm materialized archives need no transfer, while
-explicit fresh roots still fetch registry bytes. Extraction and assembly remain
-under the local materialization policy above.
+When host sharing is disabled or its private fallback is selected, standalone
+pnpm acquisition uses native Deferred download actions rather than `pnpm_archive`
+commands. These actions verify the canonical registry download against its
+declared SHA-256 and byte size; they are not RE CAS reads or command-action cache
+hits. Warm materialized archives need no transfer, while fresh roots on that
+native path fetch registry bytes.
+The [host-local materialization contract](#host-local-materialization-reuse-lever-5a)
+defines the admitted local-helper exception: intact warm archive/recipe generations
+allow zero downloads and archive decodes in fresh sibling roots. Report its
+recipe hits/misses, actual extraction/download work and bytes separately from
+native action counts; a host-cache hit is not a remote command-action cache hit.
+Extraction and assembly retain the local materialization policy above.
 
 Historical archive-command evidence can contain `archive-origin-fallback`
 diagnostics with reasons `not-found`, `headers-timeout`, `connection-error`,

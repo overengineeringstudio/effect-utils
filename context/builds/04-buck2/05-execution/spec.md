@@ -480,8 +480,9 @@ the target also owns native compilation; a copy action alone cannot admit its
 target's other actions. Rust build scripts remain host-dependent and denied.
 
 Hash-and-size-validated pnpm archive acquisition is separate from offline
-extraction and command-action cache admission. Standalone builds register
-native `download_file` with the canonical registry URL, reviewed SHA-256 and
+extraction and command-action cache admission. When host sharing is disabled
+or its private fallback is selected, standalone builds register native
+`download_file` with the canonical registry URL, reviewed SHA-256 and
 byte size; Buck verifies the output and owns deferred materialization.
 The [host-local materialization contract](../06-reuse-client/spec.md#host-local-materialization-reuse-lever-5a)
 defines the declared local acquisition-helper replacement and its private
