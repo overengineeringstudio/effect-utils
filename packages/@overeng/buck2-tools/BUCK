@@ -6,7 +6,7 @@ load("//buck2:materialization.bzl", "runtime_modules")
 # Projection source: packages/@overeng/buck2-tools/BUCK.genie.ts
 # Projection schema version: 13
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:fe9bc5e2b408f4fa156dcf281dfc0c93b4ac84d9156d75af1793dc11213cadbb
+# Semantic fingerprint: sha256:431559dd377b12fe583f3911ea3d442ae68cc648b16396f85d1480757a07de43
 # Regenerate: devenv tasks run genie:run
 
 load("//buck2:materialization.bzl", "export_materialization_inputs", "package_view")
@@ -63,6 +63,7 @@ export_materialization_inputs([
     "src/package-command-runner.unit.test.ts",
     "src/package-tree.ts",
     "src/package-tree.unit.test.ts",
+    "src/public-archive-origin.ts",
     "src/reader-infrastructure.integration.test.ts",
     "src/reader-infrastructure.ts",
     "src/reader-infrastructure.unit.test.ts",
@@ -162,6 +163,7 @@ package_view(
         "src/package-command-runner.unit.test.ts": "src/package-command-runner.unit.test.ts",
         "src/package-tree.ts": "src/package-tree.ts",
         "src/package-tree.unit.test.ts": "src/package-tree.unit.test.ts",
+        "src/public-archive-origin.ts": "src/public-archive-origin.ts",
         "src/reader-infrastructure.integration.test.ts": "src/reader-infrastructure.integration.test.ts",
         "src/reader-infrastructure.ts": "src/reader-infrastructure.ts",
         "src/reader-infrastructure.unit.test.ts": "src/reader-infrastructure.unit.test.ts",
@@ -239,6 +241,7 @@ package_view(
         "src/package-command-runner.unit.test.ts": "src/package-command-runner.unit.test.ts",
         "src/package-tree.ts": "src/package-tree.ts",
         "src/package-tree.unit.test.ts": "src/package-tree.unit.test.ts",
+        "src/public-archive-origin.ts": "src/public-archive-origin.ts",
         "src/reader-infrastructure.integration.test.ts": "src/reader-infrastructure.integration.test.ts",
         "src/reader-infrastructure.ts": "src/reader-infrastructure.ts",
         "src/reader-infrastructure.unit.test.ts": "src/reader-infrastructure.unit.test.ts",
