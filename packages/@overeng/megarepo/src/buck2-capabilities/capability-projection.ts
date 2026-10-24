@@ -105,6 +105,10 @@ export const capabilityRootBuckBytes = '# Generated from exact Nix realizations.
 const manifestBytes = (manifest: CapabilityProjectionManifest): string =>
   `${JSON.stringify(manifest)}\n`
 
+/** Artifact identity includes the complete per-tool contract, never its generation. */
+export const capabilityManifestDigest = (manifest: CapabilityProjectionManifest): string =>
+  createHash('sha256').update(manifestBytes(manifest)).digest('hex')
+
 /** Computes the stable generation identity for an ordered capability file set. */
 export const computeCapabilityProjectionGeneration = (
   files: ReadonlyArray<{ readonly path: string; readonly bytes: string }>,
@@ -136,14 +140,14 @@ export const renderCapabilityProjectionDefs = ({
         manifest.runtimeContract === 'immutable-directory/v1'
           ? `"directoryStorePath": "${manifest.directoryStorePath}"`
           : `"executableStorePath": "${manifest.executableStorePath}"`
-      return `    "${manifest.toolId}": {"generation": "${generation}", "contentDigest": "${manifest.contentDigest}", "closureIdentity": "${manifest.closureIdentity}", ${pathField}, "closureStorePaths": [${manifest.closureStorePaths.map((path) => `"${path}"`).join(', ')}]},`
+      return `    "${manifest.toolId}": {"generation": "${generation}", "manifestDigest": "${capabilityManifestDigest(manifest)}", "contentDigest": "${manifest.contentDigest}", "closureIdentity": "${manifest.closureIdentity}", ${pathField}, "closureStorePaths": [${manifest.closureStorePaths.map((path) => `"${path}"`).join(', ')}]},`
     }),
     '  },',
     '}',
     '',
   ].join('\n')
 
-/** Materializes one immutable generation of resolved capabilities. */
+/** Materializes immutable per-tool artifacts and the current analysis generation. */
 export const projectResolvedCapabilities = async ({
   projectionPath,
   platform,
@@ -167,12 +171,16 @@ export const projectResolvedCapabilities = async ({
     { path: `${platform}/${manifest.toolId}/manifest.json`, bytes: manifestBytes(manifest) },
   ])
   const generation = computeCapabilityProjectionGeneration(files)
-  const generationRoot = NodePath.join(projectionPath, 'generations', generation, platform)
-  await mkdir(generationRoot, { recursive: true })
   await Promise.all(
     manifests.map(async (manifest) => {
-      const directory = NodePath.join(generationRoot, manifest.toolId)
-      await mkdir(directory)
+      const directory = NodePath.join(
+        projectionPath,
+        'tools',
+        platform,
+        manifest.toolId,
+        capabilityManifestDigest(manifest),
+      )
+      await mkdir(directory, { recursive: true })
       if (manifest.runtimeContract === 'immutable-directory/v1') {
         await symlink(manifest.directoryStorePath, NodePath.join(directory, 'directory'))
       } else {

@@ -69,6 +69,7 @@ profiles_file="$("$NIX" build --impure --no-link --print-out-paths --expr '
   in import (builtins.toPath (builtins.getEnv "CAPABILITY_FIXTURE_NIX")) {
     inherit pkgs;
     repoRoot = builtins.toPath (builtins.getEnv "CAPABILITY_FIXTURE_ROOT");
+    versions = [ "one" "two" "three" "four" "five" ];
   }
 ')"
 PROFILE_ONE="$(jq -er '.profiles.one' "$profiles_file")"
@@ -78,17 +79,25 @@ generation() { "$BUN" -e 'console.log(require("fs").readFileSync(process.argv[1]
 GEN_ONE="$(generation "$PROFILE_ONE")"
 GEN_TWO="$(generation "$PROFILE_TWO")"
 [ "$GEN_ONE" != "$GEN_TWO" ] || fail "fixture did not produce two genuine generations"
+tool_directory() {
+  local cell="$1" gen="$2" tool="$3" selected digest manifest
+  if [ "$gen" = "$GEN_ONE" ]; then selected="$PROFILE_ONE"; else selected="$PROFILE_TWO"; fi
+  for manifest in "$selected/tools/$PLATFORM/$tool/"*/manifest.json; do
+    digest="$(basename "$(dirname "$manifest")")"
+  done
+  printf '%s/tools/%s/%s/%s\n' "$cell" "$PLATFORM" "$tool" "$digest"
+}
 
 assert_store_input() {
   local cell="$1" gen="$2" tool target manifest expected
   for tool in archive-tool support-directory; do
-    manifest="$cell/generations/$gen/$PLATFORM/$tool/manifest.json"
+    manifest="$(tool_directory "$cell" "$gen" "$tool")/manifest.json"
     if [ "$tool" = archive-tool ]; then
       expected="$(jq -er '.executableStorePath' "$manifest")"
-      target="$(readlink "$cell/generations/$gen/$PLATFORM/$tool/executable")"
+      target="$(readlink "$(tool_directory "$cell" "$gen" "$tool")/executable")"
     else
       expected="$(jq -er '.directoryStorePath' "$manifest")"
-      target="$(readlink "$cell/generations/$gen/$PLATFORM/$tool/directory")"
+      target="$(readlink "$(tool_directory "$cell" "$gen" "$tool")/directory")"
     fi
     [ "$target" = "$expected" ] || fail "$tool input does not point directly to its declared store path"
     case "$target" in /nix/store/*) ;; *) fail "$tool input is not a Nix store path: $target" ;; esac
@@ -208,7 +217,7 @@ CONFIG
     [ "$(cat "$output/payload.txt")" = "$payload" ] || fail "$watcher/$phase did not rerun extraction"
     [ "$(cat "$output/support.txt")" = 'immutable directory input' ] || fail "$watcher/$phase lost directory input"
     if [ "$version" = one ]; then selected_profile="$PROFILE_ONE"; selected_gen="$GEN_ONE"; else selected_profile="$PROFILE_TWO"; selected_gen="$GEN_TWO"; fi
-    manifest="$selected_profile/generations/$selected_gen/$PLATFORM/archive-tool/manifest.json"
+    manifest="$(tool_directory "$selected_profile" "$selected_gen" archive-tool)/manifest.json"
     [ "$(cat "$output/executable-store-path.txt")" = "$(jq -er '.executableStorePath' "$manifest")" ] || fail "$watcher/$phase consumed stale executable manifest"
     [ "$(cat "$output/closure-identity.txt")" = "$(jq -er '.closureIdentity' "$manifest")" ] || fail "$watcher/$phase consumed stale tool closure identity"
     case "$(cat "$output/executable-store-path.txt")" in *buck2-capabilities*) fail "action consumed aggregate projection path" ;; esac
@@ -224,7 +233,7 @@ CONFIG
     action_manifest="$(jq -er '.[2]' <<<"$argv")"
     case "$executable" in /*) ;; *) executable="$fixture/$executable" ;; esac
     case "$action_manifest" in /*) ;; *) action_manifest="$fixture/$action_manifest" ;; esac
-    source_manifest="$fixture/.buck2/capabilities/generations/$selected_gen/$PLATFORM/archive-tool/manifest.json"
+    source_manifest="$(tool_directory "$fixture/.buck2/capabilities" "$selected_gen" archive-tool)/manifest.json"
     expected="$(jq -er '.executableStorePath' "$source_manifest")"
     [ -L "$executable" ] || fail "$watcher/$phase materialized executable is not a preserved input symlink"
     target="$(readlink "$executable")"
@@ -294,10 +303,11 @@ CONFIG
   assert_native_log after
   if [ "$PUBLISHER" = legacy ]; then
     [ "$after_exit" -ne 0 ] || fail "$watcher legacy counterexample unexpectedly passed"
-    grep -Fq -- "$GEN_ONE" "$fixture/after.events" || fail "legacy failure did not reference old generation"
+    old_digest="$(basename "$(tool_directory "$PROFILE_ONE" "$GEN_ONE" archive-tool)")"
+    grep -Fq -- "$old_digest" "$fixture/after.events" || fail "legacy failure did not reference old tool identity"
     grep -Eq 'Failed to spawn a process|No such file or directory|ENOENT' "$fixture/after.stderr" "$fixture/after.events" || fail "legacy failure was not the stale executable spawn failure"
-    materialized="$(jq -r '.Event.data.SpanStart.data.ExecutorStage.stage.Local.stage.Execute.command.argv[0]? // empty' "$fixture/after.events" | grep -F "/$GEN_ONE/" | grep '/executable$')"
-    [ -n "$materialized" ] || fail "legacy log did not expose old-generation executable input"
+    materialized="$(jq -r '.Event.data.SpanStart.data.ExecutorStage.stage.Local.stage.Execute.command.argv[0]? // empty' "$fixture/after.events" | grep -F "/$old_digest/" | grep '/executable$')"
+    [ -n "$materialized" ] || fail "legacy log did not expose old-tool executable input"
     enoent_exit=0
     (cd "$fixture" && env "$materialized") >"$fixture/enoent.stdout" 2>"$fixture/enoent.stderr" || enoent_exit=$?
     [ "$enoent_exit" = 127 ] || fail "old-generation executable did not fail with native env ENOENT"
@@ -323,6 +333,31 @@ CONFIG
     grep -Fq -- 'capabilities//defs.bzl' "$fixture/steady.events" || fail "$watcher steady rotation did not report watched defs.bzl change"
     assert_gc_root "$fixture" "$GEN_ONE" "$PROFILE_ONE"
     assert_gc_root "$fixture" "$GEN_TWO" "$PROFILE_TWO"
+    # A real native daemon, not a fabricated PID, holds an old action identity
+    # beyond the three-generation retention window.
+    old_tool="$(tool_directory "$fixture/.buck2/capabilities" "$GEN_ONE" archive-tool)"
+    shared_tool="$(tool_directory "$fixture/.buck2/capabilities" "$GEN_ONE" support-directory)"
+    shared_inode="$(stat -c %i "$shared_tool/manifest.json" 2>/dev/null || stat -f %i "$shared_tool/manifest.json")"
+    for version in two three four five; do
+      next_profile="$(jq -er --arg version "$version" '.profiles[$version]' "$profiles_file")"
+      HOME="$TEST_HOME" "$BUN" "$ROOT/scripts/buck2-capability-publish.ts" --root "$fixture" --profile "$next_profile" --nix-store "$NIX_STORE_COMMAND" --buck2 "$BUCK2" >"$fixture/retention-$version.json"
+      jq -e '.pruningDeferred == true and .migrationDaemonStops == []' "$fixture/retention-$version.json" >/dev/null || fail "live native daemon did not defer pruning"
+    done
+    [ -f "$old_tool/manifest.json" ] || fail "publication pruned a daemon-leased tool beyond retention"
+    assert_gc_root "$fixture" "$GEN_ONE" "$PROFILE_ONE"
+    buck status >"$fixture/retention.status"
+    [ "$(jq -er '.daemon_constraints.daemon_id' "$fixture/retention.status")" = "$daemon_uuid" ] || fail "retention publication replaced the live daemon"
+    buck kill
+    # The alternate migration daemon was stopped through the native API above.
+    HOME="$TEST_HOME" "$BUN" "$ROOT/scripts/buck2-capability-publish.ts" --root "$fixture" --profile "$next_profile" --nix-store "$NIX_STORE_COMMAND" --buck2 "$BUCK2" >"$fixture/collected.json"
+    jq -e '.pruningDeferred == false and .retainedCount == 3' "$fixture/collected.json" >/dev/null || fail "stopped native daemon did not release pruning"
+    [ ! -e "$old_tool" ] || fail "unreferenced old tool was not collected after daemon shutdown"
+    [ ! -L "$fixture/.buck2/capability-roots/$GEN_ONE" ] || fail "collected generation kept its GC root"
+    [ ! -f "$fixture/.buck2/capability-references/$GEN_ONE.json" ] || fail "collected generation kept its reference set"
+    [ -f "$shared_tool/manifest.json" ] || fail "pruning removed a tool shared by retained generations"
+    [ "$(stat -c %i "$shared_tool/manifest.json" 2>/dev/null || stat -f %i "$shared_tool/manifest.json")" = "$shared_inode" ] || fail "shared immutable tool was recopied"
+    jq -nc --arg watcher "$watcher" --arg uuid "$daemon_uuid" --arg oldTool "$old_tool" \
+      '{evidence:"native-daemon-tool-retention",watcher:$watcher,daemonUUID:$uuid,oldTool:$oldTool,survivedBeyondRetention:true,collectedAfterNativeStop:true}'
     jq -nc --arg watcher "$watcher" --arg oldUUID "$migrated_uuid" --arg uuid "$daemon_uuid" --arg before "$GEN_ONE" --arg after "$GEN_TWO" '{publisher:"production",watcher:$watcher,migratedDaemonUUID:$oldUUID,daemonUUID:$uuid,beforeGeneration:$before,afterGeneration:$after,migrationExit:0,steadyRotationExit:0,retainedCount:2,pruningDeferred:true,migrationDaemonStops:2,steadyDaemonStops:0}'
   fi
 done

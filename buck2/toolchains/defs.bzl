@@ -64,6 +64,8 @@ def require_capability(capabilities, generation, platform, tool_id):
         fail("generated {} capability has a non-Nix closure identity".format(tool_id))
     if len(metadata["contentDigest"]) != 64:
         fail("generated {} capability has an invalid content digest".format(tool_id))
+    if len(metadata.get("manifestDigest", "")) != 64:
+        fail("generated {} capability has an invalid manifest digest".format(tool_id))
     return metadata
 
 def require_capability_closure(capabilities, generation, platform, tool_id):
@@ -312,7 +314,7 @@ def effect_tsgo_toolchain(name, capabilities, generation, runner, **kwargs):
     )["executableStorePath"]
     _require_nix_store_binary(bun, "bun", "Bun")
     _require_nix_store_binary(executable, "tsgo", "effect-tsgo")
-    capability = "capabilities//generations/{}/{}/effect-tsgo".format(generation, platform)
+    capability = "capabilities//tools/{}/effect-tsgo/{}".format(platform, capabilities[platform]["effect-tsgo"]["manifestDigest"])
     _effect_tsgo_toolchain(
         name = name,
         bun = bun,

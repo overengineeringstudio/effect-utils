@@ -1,8 +1,8 @@
 """Attested executor capabilities provisioned by the activated Nix profile."""
 
-load("@capabilities//:defs.bzl", "CAPABILITIES")
+load("@capabilities//:defs.bzl", "CAPABILITIES", "GENERATION")
 load("//buck2/platforms:defs.bzl", "cache_guarded_rule", "host_execution_constraints")
-load("//buck2/toolchains:defs.bzl", "host_capability_platform", "validated_capability_closure")
+load("//buck2/toolchains:defs.bzl", "host_capability_platform", "require_capability", "validated_capability_closure")
 
 BuckSupportToolInfo = provider(fields = {
     "content_digest": str,
@@ -65,8 +65,8 @@ def support_tool(name, protocol, tool_id, **kwargs):
     # A rule that requests one of these absent targets fails Buck analysis.
     if tool_id not in CAPABILITIES.get(platform, {}):
         return
-    metadata = CAPABILITIES[platform][tool_id]
-    capability = "capabilities//generations/{}/{}/{}".format(metadata["generation"], platform, tool_id)
+    metadata = require_capability(CAPABILITIES, GENERATION, platform, tool_id)
+    capability = "capabilities//tools/{}/{}/{}".format(platform, tool_id, metadata["manifestDigest"])
     _support_tool(
         name = name,
         content_digest = metadata["contentDigest"],
@@ -133,6 +133,10 @@ def store_directory(name, protocol, input_id, **kwargs):
         fail("store_directory {} needs a normalized immutable directory path".format(input_id))
     if metadata.get("generation") == None or not metadata.get("contentDigest"):
         fail("store_directory {} needs a generation and content digest".format(input_id))
+    if metadata["generation"] != GENERATION:
+        fail("generated {} capability belongs to a stale generation".format(input_id))
+    if len(metadata.get("manifestDigest", "")) != 64:
+        fail("generated {} capability has an invalid manifest digest".format(input_id))
     if metadata.get("closureIdentity") != store_path or not closure or store_path not in closure:
         fail("store_directory {} needs the declared closure of its directory".format(input_id))
     if closure != sorted({path: None for path in closure}):
@@ -140,7 +144,7 @@ def store_directory(name, protocol, input_id, **kwargs):
     for path in closure:
         if not path.startswith("/nix/store/") or path.count("/") != 3:
             fail("store_directory {} has a non-normalized closure path".format(input_id))
-    capability = "capabilities//generations/{}/{}/{}".format(metadata["generation"], platform, input_id)
+    capability = "capabilities//tools/{}/{}/{}".format(platform, input_id, metadata["manifestDigest"])
     _store_directory(
         name = name,
         closure_identity = metadata["closureIdentity"],

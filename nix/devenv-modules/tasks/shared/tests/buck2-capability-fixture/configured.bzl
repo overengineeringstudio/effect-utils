@@ -1,4 +1,4 @@
-"""Same generation-labelled executable/manifest boundary as production support_tool."""
+"""Same per-tool executable/manifest boundary as production support_tool."""
 
 load("@capabilities//:defs.bzl", "CAPABILITIES")
 
@@ -20,7 +20,7 @@ _support_tool = rule(
 def support_tool(name):
     platform = read_root_config("fixture", "platform")
     metadata = CAPABILITIES[platform]["archive-tool"]
-    package = "capabilities//generations/{}/{}/archive-tool".format(metadata["generation"], platform)
+    package = "capabilities//tools/{}/archive-tool/{}".format(platform, metadata["manifestDigest"])
     _support_tool(
         name = name,
         executable = package + ":executable",
@@ -31,4 +31,4 @@ def support_tool(name):
 def support_directory():
     platform = read_root_config("fixture", "platform")
     metadata = CAPABILITIES[platform]["support-directory"]
-    return "capabilities//generations/{}/{}/support-directory:directory".format(metadata["generation"], platform)
+    return "capabilities//tools/{}/support-directory/{}:directory".format(platform, metadata["manifestDigest"])
