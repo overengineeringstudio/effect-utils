@@ -599,6 +599,16 @@ payload inodes.
 
 ### Recovering a chmod-poisoned shared store
 
+When collection encounters a writable blob, it keeps refusing the store and emits
+`editor-view.content-store.integrity-incident` with a writable-blob count and
+`alertPath`. The sibling `<content-store>.incident.json` receipt records the
+first unresolved incident's observation time, metadata-only count, bounded
+examples, and explicit quiesced repair command. Repeated failures reuse that
+receipt rather than scanning the whole store for every package; its count is an
+observation, not a live metric. Incident reporting never hashes or changes
+payload files. Only a successful digest-verified repair with a clean final census
+and no quarantined mismatches clears the receipt.
+
 Cleanup must unlock **directories only**, never recursively chmod payload files:
 snapshot payloads are hardlinked into the CAS and other worktrees. Snapshot
 prepare and verification first validate the complete payload byte digest. When
@@ -680,6 +690,14 @@ remaining directories owner-writable without following symlinks or chmodding
 files. Then leave its working directory and use ordinary `git worktree remove`
 from another worktree. Teardown is offline and idempotent, does not delete
 tracked files, and does not decide whether a checkout is eligible for removal.
+
+If teardown fails, fix its reported error and rerun it; do not fall back to
+`chmod -R` or `rm -rf` on the worktree. Snapshot files are hardlinks to the
+host-shared store, so a recursive permission change also makes other worktrees'
+payloads writable. Use the quiesced, digest-verified repair procedure above if
+that happens. Explicit release can restore owner permissions on its verified
+private editor-root and lease-control directories even when those directories
+were hardened; it never restores write permission on payload files.
 
 Buck's absolute-path state hierarchy can contain descendant checkouts, even
 inside a directory with direct daemon files identifying this checkout's isolation.

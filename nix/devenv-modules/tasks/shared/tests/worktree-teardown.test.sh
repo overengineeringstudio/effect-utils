@@ -348,6 +348,8 @@ for iteration in first second; do
   fi
   "$BUN" -e 'if (!require("node:fs").readFileSync(process.argv[1], "utf8").includes("refusing ambiguous Buck isolation content")) process.exit(1)' \
     "$TEMP_ROOT/collision-refusal.log" || fail 'collision refusal lacks a clear diagnostic'
+  "$BUN" -e 'const text=require("node:fs").readFileSync(process.argv[1], "utf8"); for (const expected of ["fix the reported error and rerun worktree:teardown", "Never fall back to chmod -R or rm -rf", "repair-content --repo-root <repo> --quiesced true"]) if (!text.includes(expected)) process.exit(1)' \
+    "$TEMP_ROOT/collision-refusal.log" || fail 'collision refusal lacks safe recovery guidance'
   [ "$(cat "$child_state/buckd.pid")" = "$collision_parent_pid" ] || fail 'ambiguous parent metadata changed'
   [ "$(cat "$child_state/child/buckd.pid")" = "$child_pid" ] || fail 'colliding nested metadata changed'
   kill -0 "$collision_parent_pid" && kill -0 "$child_pid" || fail 'collision refusal stopped a daemon'

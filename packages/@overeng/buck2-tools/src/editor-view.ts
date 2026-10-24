@@ -2584,6 +2584,50 @@ export const unpinEditorView = async ({
   })
 }
 
+/** Explicit teardown may restore access to owned directories, never shared payload inodes. */
+const normalizeReleaseDirectoryPermissions = ({
+  path,
+  privateControl = false,
+}: {
+  readonly path: string
+  readonly privateControl?: boolean
+}): void => {
+  const before = lstatSync(path, { bigint: true })
+  if (
+    before.isDirectory() === false ||
+    process.getuid === undefined ||
+    before.uid !== BigInt(process.getuid()) ||
+    (before.mode & 0o022n) !== 0n ||
+    realpathSync(path) !== path
+  )
+    fail(`unsafe release directory: ${path}`)
+  const descriptor = openSync(
+    path,
+    constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW,
+  )
+  try {
+    const opened = fstatSync(descriptor, { bigint: true })
+    const named = lstatSync(path, { bigint: true })
+    if (
+      opened.isDirectory() === false ||
+      opened.dev !== before.dev ||
+      opened.ino !== before.ino ||
+      opened.uid !== before.uid ||
+      opened.mode !== before.mode ||
+      named.dev !== opened.dev ||
+      named.ino !== opened.ino ||
+      named.uid !== opened.uid ||
+      named.mode !== opened.mode ||
+      realpathSync(path) !== path
+    )
+      fail(`release directory changed before permission normalization: ${path}`)
+    const mode = privateControl === true ? 0o700 : Number(opened.mode & 0o777n) | 0o700
+    if (Number(opened.mode & 0o777n) !== mode) fchmodSync(descriptor, mode)
+  } finally {
+    closeSync(descriptor)
+  }
+}
+
 /**
  * Tear down the package's shared editor root before removing a retired worktree.
  * This is explicit teardown, not GC: callers must first stop editor/build users.
@@ -2594,6 +2638,7 @@ export const releaseEditorViewRoot = async (options: EditorViewOptions): Promise
     requireDirectory({ path: paths.editorRoot, field: 'editor root' })
     if (realpathSync(paths.editorRoot) !== paths.editorRoot)
       fail(`editor root must not contain symbolic links: ${paths.editorRoot}`)
+    normalizeReleaseDirectoryPermissions({ path: paths.editorRoot })
     const lock = await acquirePublicationLock({
       editorRoot: paths.editorRoot,
       recoveryCommand: `recover-lock --repo-root ${paths.repoRoot} --package ${options.package}`,
@@ -2603,6 +2648,9 @@ export const releaseEditorViewRoot = async (options: EditorViewOptions): Promise
       await withEditorViewContentStoreLock({
         contentStore: paths.contentStore,
         run: async () => {
+          const leaseDirectory = join(paths.editorRoot, '.leases')
+          if (pathExists(leaseDirectory) === true)
+            normalizeReleaseDirectoryPermissions({ path: leaseDirectory, privateControl: true })
           const generations = pathExists(paths.storeDir) === true ? readdirSync(paths.storeDir) : []
           for (const snapshot of generations) {
             if (/^[A-Za-z0-9][A-Za-z0-9_-]*-[0-9a-f]{64}$/.test(snapshot) === false) continue

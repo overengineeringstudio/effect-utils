@@ -737,6 +737,166 @@ describe('host-wide editor snapshot content store', () => {
     })
   })
 
+  it('does not read incident receipts or add a census to healthy collection', async () => {
+    await withStore(async ({ root, contentStore, candidate }) => {
+      const directory = candidate('snapshot')
+      payload(directory, 'data', 'healthy linked data')
+      await shareSnapshotFiles({ candidate: directory, contentStore })
+      const blob = blobPath(contentStore, 'healthy linked data')
+      const target = payload(root, 'untouched-incident-target', 'not a receipt')
+      symlinkSync(target, `${contentStore}.incident.json`)
+      const readdir = vi.spyOn(fsPromises, 'readdir')
+      try {
+        expect(await collectEditorViewContentStore({ contentStore })).toEqual({
+          removedBlobs: 0,
+          removedBytes: 0,
+        })
+        expect(readdir.mock.calls.filter(([path]) => String(path) === dirname(blob))).toHaveLength(
+          1,
+        )
+      } finally {
+        readdir.mockRestore()
+      }
+      expect(readFileSync(target, 'utf8')).toBe('not a receipt')
+      expect(lstatSync(`${contentStore}.incident.json`).isSymbolicLink()).toBe(true)
+      expectReadonlyStore(contentStore)
+    })
+  })
+
+  it('records a bounded first-observed metadata-only incident and reuses it on repeated refusals', async () => {
+    await withStore(async ({ contentStore, candidate }) => {
+      const directory = candidate('snapshot')
+      const bytes = Array.from({ length: 12 }, (_, index) => `incident payload ${index}`)
+      for (const [index, value] of bytes.entries()) payload(directory, `file-${index}`, value)
+      await shareSnapshotFiles({ candidate: directory, contentStore })
+      const blobs = bytes.map((value) => blobPath(contentStore, value))
+      for (const blob of blobs) chmodSync(blob, 0o644)
+      const before = blobs.map((blob) => lstatSync(blob, { bigint: true }))
+      const originalOpen = fsPromises.open
+      const openedPayloads: string[] = []
+      const open = vi.spyOn(fsPromises, 'open').mockImplementation(async (...args) => {
+        if (typeof args[0] === 'string' && blobs.includes(args[0]) === true)
+          openedPayloads.push(args[0])
+        return originalOpen(...args)
+      })
+      const stderr = vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
+      try {
+        await expect(collectEditorViewContentStore({ contentStore })).rejects.toMatchObject({
+          name: 'WritableBlobTrustError',
+        })
+        const alertPath = `${contentStore}.incident.json`
+        const receiptBytes = readFileSync(alertPath, 'utf8')
+        const receipt = JSON.parse(receiptBytes)
+        expect(receipt).toMatchObject({
+          schema: 'editor-view.content-store.integrity-incident.v1',
+          writableBlobCount: 12,
+        })
+        expect(Number.isFinite(Date.parse(receipt.observedAt))).toBe(true)
+        expect(receipt.examplePaths).toHaveLength(8)
+        expect(receipt.examplePaths.every((path: string) => blobs.includes(path))).toBe(true)
+        expect(receipt.repairCommand).toContain('repair-content --repo-root')
+        expect(receipt.repairCommand).toContain(`--content-store '${contentStore}'`)
+        expect(receipt.repairCommand).toContain('--quiesced true')
+        expect(mode(alertPath)).toBe(0o600)
+        expect(lstatSync(alertPath).nlink).toBe(1)
+        expect(lstatSync(alertPath).uid).toBe(process.getuid?.())
+        expect(stderr).toHaveBeenCalledWith(
+          `${JSON.stringify({
+            event: 'editor-view.content-store.integrity-incident',
+            writableBlobCount: 12,
+            observedAt: receipt.observedAt,
+            alertPath,
+          })}\n`,
+        )
+        // A subsequent failure must not recensus every shard. It still performs
+        // the collector's normal bounded admission before refusing the first blob.
+        const readdir = vi.spyOn(fsPromises, 'readdir')
+        try {
+          await expect(collectEditorViewContentStore({ contentStore })).rejects.toThrow(
+            'writable blob is not trusted',
+          )
+          const scannedShards = new Set(
+            readdir.mock.calls
+              .map(([path]) => String(path))
+              .filter((path) => blobs.some((blob) => dirname(blob) === path)),
+          )
+          expect(scannedShards.size).toBe(1)
+        } finally {
+          readdir.mockRestore()
+        }
+        expect(readFileSync(alertPath, 'utf8')).toBe(receiptBytes)
+        expect(openedPayloads).toEqual([])
+        for (const [index, blob] of blobs.entries()) {
+          expect(lstatSync(blob, { bigint: true })).toEqual(before[index])
+          expect(readFileSync(blob, 'utf8')).toBe(bytes[index])
+        }
+      } finally {
+        open.mockRestore()
+        stderr.mockRestore()
+      }
+      expect(
+        (await repairEditorViewContentStore({ contentStore, quiesced: true })).repairedBlobs,
+      ).toBe(12)
+      expect(exists(`${contentStore}.incident.json`)).toBe(false)
+      expectReadonlyStore(contentStore)
+    })
+  })
+
+  it('reports writable blobs rejected during the initial dirty-store repair', async () => {
+    await withStore(async ({ contentStore, candidate }) => {
+      const directory = candidate('snapshot')
+      payload(directory, 'data', 'dirty incident')
+      await shareSnapshotFiles({ candidate: directory, contentStore })
+      const blob = blobPath(contentStore, 'dirty incident')
+      chmodSync(blob, 0o644)
+      writeFileSync(`${contentStore}.flock`, '1')
+      let entered = false
+      await expect(
+        collectEditorViewContentStore({
+          contentStore,
+          afterStoreLock: () => {
+            entered = true
+          },
+        }),
+      ).rejects.toThrow('writable blob is not trusted')
+      expect(entered).toBe(false)
+      expect(JSON.parse(readFileSync(`${contentStore}.incident.json`, 'utf8'))).toMatchObject({
+        writableBlobCount: 1,
+        examplePaths: [blob],
+      })
+      expect(mode(blob)).toBe(0o644)
+    })
+  })
+
+  it.each(['symlink', 'hardlink', 'public'] as const)(
+    'does not write through or replace an unsafe %s incident receipt',
+    async (kind) => {
+      await withStore(async ({ root, contentStore, candidate }) => {
+        const directory = candidate('snapshot')
+        payload(directory, 'data', 'unsafe receipt')
+        await shareSnapshotFiles({ candidate: directory, contentStore })
+        const blob = blobPath(contentStore, 'unsafe receipt')
+        chmodSync(blob, 0o644)
+        const target = payload(root, 'receipt-target', 'do not overwrite', 0o600)
+        const alertPath = `${contentStore}.incident.json`
+        if (kind === 'symlink') symlinkSync(target, alertPath)
+        else if (kind === 'hardlink') linkSync(target, alertPath)
+        else {
+          writeFileSync(alertPath, 'do not overwrite', { mode: 0o644 })
+          chmodSync(alertPath, 0o644)
+        }
+        const before = lstatSync(alertPath, { bigint: true })
+        await expect(collectEditorViewContentStore({ contentStore })).rejects.toMatchObject({
+          name: 'WritableBlobTrustError',
+        })
+        expect(lstatSync(alertPath, { bigint: true })).toEqual(before)
+        expect(readFileSync(target, 'utf8')).toBe('do not overwrite')
+        expect(readFileSync(alertPath, 'utf8')).toBe('do not overwrite')
+        expect(mode(blob)).toBe(0o644)
+      })
+    },
+  )
+
   it('repairs archive chmod poisoning of shared data and executable blobs only after hashing their addresses', async () => {
     await withStore(async ({ root, contentStore, candidate }) => {
       const directory = candidate('worktree')
@@ -758,6 +918,9 @@ describe('host-wide editor snapshot content store', () => {
       await expect(collectEditorViewContentStore({ contentStore })).rejects.toThrow(
         'writable blob is not trusted',
       )
+      expect(JSON.parse(readFileSync(`${contentStore}.incident.json`, 'utf8'))).toMatchObject({
+        writableBlobCount: 2,
+      })
       expect(await repairEditorViewContentStore({ contentStore, quiesced: true })).toEqual({
         repairedBlobs: 2,
         verifiedBlobs: 2,
@@ -766,6 +929,7 @@ describe('host-wide editor snapshot content store', () => {
         mismatchedBlobs: [],
         quarantined: [],
       })
+      expect(exists(`${contentStore}.incident.json`)).toBe(false)
       expect(inode(data)).toBe(originalInode)
       expect(mode(data)).toBe(0o444)
       expect(mode(executable)).toBe(0o555)
@@ -790,6 +954,10 @@ describe('host-wide editor snapshot content store', () => {
       const blob = blobPath(contentStore, 'original data')
       chmodSync(data, 0o644)
       writeFileSync(data, 'corrupted data')
+      await expect(collectEditorViewContentStore({ contentStore })).rejects.toThrow(
+        'writable blob is not trusted',
+      )
+      expect(exists(`${contentStore}.incident.json`)).toBe(true)
       const result = await repairEditorViewContentStore({ contentStore, quiesced: true })
       expect(result.repairedBlobs).toBe(0)
       expect(result.quarantined).toHaveLength(1)
@@ -802,6 +970,7 @@ describe('host-wide editor snapshot content store', () => {
       expect(mode(data)).toBe(0o644)
       expectReadonlyStore(contentStore)
       expectIdleStoreLock(contentStore)
+      expect(exists(`${contentStore}.incident.json`)).toBe(true)
     })
   })
 
@@ -811,6 +980,10 @@ describe('host-wide editor snapshot content store', () => {
       const data = payload(directory, 'data', 'cli recovery')
       await shareSnapshotFiles({ candidate: directory, contentStore })
       chmodSync(data, 0o644)
+      await expect(collectEditorViewContentStore({ contentStore })).rejects.toThrow(
+        'writable blob is not trusted',
+      )
+      const receipt = readFileSync(`${contentStore}.incident.json`, 'utf8')
       const args = [
         fileURLToPath(new URL('./editor-view.ts', import.meta.url)),
         'repair-content',
@@ -823,18 +996,21 @@ describe('host-wide editor snapshot content store', () => {
       expect(refused.status).not.toBe(0)
       expect(refused.stderr).toContain('repair-content requires --quiesced true')
       expect(mode(data)).toBe(0o644)
+      expect(readFileSync(`${contentStore}.incident.json`, 'utf8')).toBe(receipt)
       const dryRun = spawnSync(bun, [...args, '--dry-run', 'true'], { encoding: 'utf8' })
       expect(dryRun.status).toBe(0)
       expect(dryRun.stdout).toContain('"verifiedBlobs":1')
       expect(dryRun.stdout).toContain('"writableBlobs":1')
       expect(dryRun.stdout).toContain('"repairedBlobs":0')
       expect(mode(data)).toBe(0o644)
+      expect(readFileSync(`${contentStore}.incident.json`, 'utf8')).toBe(receipt)
       const repaired = spawnSync(bun, [...args, '--quiesced', 'true'], { encoding: 'utf8' })
       expect(repaired.status).toBe(0)
       expect(repaired.stdout).toContain('"repairedBlobs":1')
       expect(repaired.stdout).toContain('"checkedBlobInodes":1')
       expect(repaired.stdout).toContain('"writableBlobs":0')
       expect(mode(data)).toBe(0o444)
+      expect(exists(`${contentStore}.incident.json`)).toBe(false)
     })
   })
 
@@ -852,6 +1028,7 @@ describe('host-wide editor snapshot content store', () => {
       expect(entered).toBe(false)
       expect(exists(contentStore) === true).toBe(false)
       expect(exists(`${contentStore}.flock`) === true).toBe(false)
+      expect(exists(`${contentStore}.incident.json`)).toBe(false)
     })
   })
 
@@ -869,6 +1046,7 @@ describe('host-wide editor snapshot content store', () => {
         const before = lstatSync(blob, { bigint: true })
         const bytesBefore = readFileSync(blob, 'utf8')
         await expect(collectEditorViewContentStore({ contentStore })).rejects.toThrow()
+        expect(exists(`${contentStore}.incident.json`)).toBe(kind === 'writable')
         const after = lstatSync(blob, { bigint: true })
         expect(after.ino).toBe(before.ino)
         expect(after.mode).toBe(before.mode)

@@ -23,6 +23,7 @@ import {
 import { homedir } from 'node:os'
 import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path'
 import { setTimeout } from 'node:timers/promises'
+import { fileURLToPath } from 'node:url'
 
 const batchSize = 128
 const blobNamePattern = /^([a-f0-9]{64})-(0444|0555)$/
@@ -158,6 +159,15 @@ const requireRealDirectory = async ({
     fail(`directory must be canonical and real, without symbolic links: ${path}`)
 }
 
+class WritableBlobTrustError extends Error {
+  constructor(path: string) {
+    super(
+      `editor view sharing: writable blob is not trusted: ${path}; stop all editor-view readers/writers, then run editor-view.ts repair-content --repo-root <repo> --quiesced true`,
+    )
+    this.name = 'WritableBlobTrustError'
+  }
+}
+
 const requireBlob = ({
   path,
   status,
@@ -170,10 +180,7 @@ const requireBlob = ({
   if (status.isFile() === false)
     fail(`blob must be a real regular file, not a symbolic link: ${path}`)
   requireOwned({ path: path, status: status })
-  if ((status.mode & 0o222n) !== 0n)
-    fail(
-      `writable blob is not trusted: ${path}; stop all editor-view readers/writers, then run editor-view.ts repair-content --repo-root <repo> --quiesced true`,
-    )
+  if ((status.mode & 0o222n) !== 0n) throw new WritableBlobTrustError(path)
   if (permissions(status) !== BigInt(mode)) fail(`blob mode does not match its address: ${path}`)
 }
 
@@ -1384,9 +1391,188 @@ const collectionCandidates = async function* (
 }
 /* eslint-enable no-await-in-loop */
 
+const incidentExampleLimit = 8
+type ContentStoreIncident = {
+  readonly schema: 'editor-view.content-store.integrity-incident.v1'
+  /** First-observed metadata census, not a continuously refreshed inventory. */
+  readonly observedAt: string
+  readonly writableBlobCount: number
+  readonly examplePaths: readonly string[]
+  readonly repairCommand: string
+}
+const incidentPath = (contentStore: string): string => `${contentStore}.incident.json`
+const shellQuote = (value: string): string => `'${value.replaceAll("'", "'\\''")}'`
+
+/* eslint-disable no-await-in-loop -- An incident census reads metadata only, one shard at a time. */
+const writableBlobCensus = async (
+  contentStore: string,
+): Promise<{ writableBlobCount: number; examplePaths: string[] }> => {
+  const result: { writableBlobCount: number; examplePaths: string[] } = {
+    writableBlobCount: 0,
+    examplePaths: [],
+  }
+  const rootStatus = await lstat(contentStore, { bigint: true })
+  await requireRealDirectory({ path: contentStore, status: rootStatus })
+  requireOwned({ path: contentStore, status: rootStatus })
+  for (const shard of await readdir(contentStore, { withFileTypes: true })) {
+    if (shardPattern.test(shard.name) === false || shard.isDirectory() === false) continue
+    const directory = join(contentStore, shard.name)
+    const directoryStatus = await lstat(directory, { bigint: true })
+    await requireRealDirectory({ path: directory, status: directoryStatus })
+    requireOwned({ path: directory, status: directoryStatus })
+    for (const entry of await readdir(directory)) {
+      const address = blobNamePattern.exec(entry)
+      if (address === null || address[1]?.slice(0, 2) !== shard.name) continue
+      const path = join(directory, entry)
+      const status = await statusIfPresent(path)
+      if (status === undefined || status.isFile() === false || status.uid !== userId()) continue
+      if ((status.mode & 0o222n) === 0n) continue
+      result.writableBlobCount += 1
+      if (result.examplePaths.length < incidentExampleLimit) result.examplePaths.push(path)
+    }
+  }
+  return result
+}
+/* eslint-enable no-await-in-loop */
+
+const readContentStoreIncident = async (
+  contentStore: string,
+): Promise<ContentStoreIncident | undefined> => {
+  const path = incidentPath(contentStore)
+  const status = await statusIfPresent(path)
+  if (status === undefined) return undefined
+  requireOwned({ path, status })
+  if (
+    status.isFile() === false ||
+    permissions(status) !== 0o600n ||
+    status.nlink !== 1n ||
+    status.size > 64n * 1024n
+  )
+    fail(`integrity incident receipt must be a private same-user regular file: ${path}`)
+  const file = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW)
+  try {
+    if (unchanged({ left: status, right: await file.stat({ bigint: true }) }) === false)
+      fail(`integrity incident receipt changed while opening: ${path}`)
+    const raw: unknown = JSON.parse(await file.readFile('utf8'))
+    if (
+      typeof raw !== 'object' ||
+      raw === null ||
+      !('schema' in raw) ||
+      raw.schema !== 'editor-view.content-store.integrity-incident.v1' ||
+      !('observedAt' in raw) ||
+      typeof raw.observedAt !== 'string' ||
+      Number.isFinite(Date.parse(raw.observedAt)) === false ||
+      !('writableBlobCount' in raw) ||
+      typeof raw.writableBlobCount !== 'number' ||
+      Number.isSafeInteger(raw.writableBlobCount) === false ||
+      raw.writableBlobCount < 1 ||
+      !('examplePaths' in raw) ||
+      Array.isArray(raw.examplePaths) === false ||
+      raw.examplePaths.length > incidentExampleLimit ||
+      raw.examplePaths.some((example: unknown) => {
+        if (typeof example !== 'string') return true
+        const shard = basename(dirname(example))
+        return (
+          dirname(dirname(example)) !== contentStore ||
+          shardPattern.test(shard) === false ||
+          blobNamePattern.exec(basename(example))?.[1]?.slice(0, 2) !== shard
+        )
+      }) === true ||
+      !('repairCommand' in raw) ||
+      typeof raw.repairCommand !== 'string'
+    )
+      return fail(`invalid integrity incident receipt: ${path}`)
+    if (
+      unchanged({ left: status, right: await file.stat({ bigint: true }) }) === false ||
+      unchanged({ left: status, right: await lstat(path, { bigint: true }) }) === false
+    )
+      fail(`integrity incident receipt changed while reading: ${path}`)
+    return {
+      schema: raw.schema,
+      observedAt: raw.observedAt,
+      writableBlobCount: raw.writableBlobCount,
+      examplePaths: raw.examplePaths,
+      repairCommand: raw.repairCommand,
+    }
+  } finally {
+    await file.close()
+  }
+}
+
+const recordContentStoreIncident = async (contentStore: string): Promise<void> => {
+  await ensureParent({ contentStore, create: false })
+  // Do not invoke crash repair here: that is precisely what may have rejected
+  // the writable inode. The existing flock serializes receipt creation/clearing.
+  const lock = await acquireLock({ contentStore })
+  try {
+    let receipt = await readContentStoreIncident(contentStore)
+    if (receipt === undefined) {
+      const census = await writableBlobCensus(contentStore)
+      if (census.writableBlobCount === 0) return
+      receipt = {
+        schema: 'editor-view.content-store.integrity-incident.v1',
+        observedAt: new Date().toISOString(),
+        ...census,
+        repairCommand: [
+          'bun',
+          shellQuote(fileURLToPath(new URL('./editor-view.ts', import.meta.url))),
+          'repair-content --repo-root',
+          shellQuote(process.cwd()),
+          '--content-store',
+          shellQuote(contentStore),
+          '--quiesced true',
+        ].join(' '),
+      }
+      const temporary = `${incidentPath(contentStore)}.tmp-${randomUUID()}`
+      const file = await open(
+        temporary,
+        constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW,
+        0o600,
+      )
+      try {
+        await file.writeFile(`${JSON.stringify(receipt)}\n`)
+        await file.sync()
+        await rename(temporary, incidentPath(contentStore))
+      } finally {
+        await file.close()
+        await unlinkIfPresent(temporary)
+      }
+    }
+    process.stderr.write(
+      `${JSON.stringify({
+        event: 'editor-view.content-store.integrity-incident',
+        writableBlobCount: receipt.writableBlobCount,
+        observedAt: receipt.observedAt,
+        alertPath: incidentPath(contentStore),
+      })}\n`,
+    )
+  } finally {
+    await lock.close()
+  }
+}
+
+/** Report only writable-blob trust failures, preserving the original rejection. */
+export const collectEditorViewContentStore = async (options: {
+  readonly contentStore: string
+  readonly afterStoreLock?: () => void | Promise<void>
+  readonly afterStoreLockContended?: () => void | Promise<void>
+}): Promise<{ removedBlobs: number; removedBytes: number }> => {
+  try {
+    return await collectContentStore(options)
+  } catch (error) {
+    if (!(error instanceof WritableBlobTrustError)) throw error
+    try {
+      await recordContentStoreIncident(resolve(options.contentStore))
+    } catch {
+      // Unsafe diagnostics must never replace the original trust rejection.
+    }
+    throw error
+  }
+}
+
 /* eslint-disable no-await-in-loop -- Each bounded deletion rechecks its inode and link count under the publisher's metadata lock. */
 /** Delete only validated real blobs with no snapshot/control hardlink remaining. */
-export const collectEditorViewContentStore = async ({
+const collectContentStore = async ({
   contentStore,
   afterStoreLock,
   afterStoreLockContended,
@@ -1606,6 +1792,22 @@ export const repairEditorViewContentStore = async ({
       result.checkedBlobInodes = census.checkedBlobInodes
     },
   })
+  // Clear only after the complete repair transaction succeeded, and recheck
+  // under exclusion so receipt reuse cannot race a new writable observation.
+  const store = resolve(contentStore)
+  const lock = await acquireLock({ contentStore: store })
+  try {
+    if (
+      result.mismatchedBlobs.length === 0 &&
+      (await readContentStoreIncident(store)) !== undefined
+    ) {
+      const census = await writableBlobCensus(store)
+      if (census.writableBlobCount !== 0) fail('content repair left writable shared blob inodes')
+      await unlink(incidentPath(store))
+    }
+  } finally {
+    await lock.close()
+  }
   return result
 }
 
