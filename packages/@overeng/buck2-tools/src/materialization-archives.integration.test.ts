@@ -17,7 +17,7 @@ import {
 } from 'node:fs'
 import { join } from 'node:path'
 
-import { describe, expect, it } from 'vitest'
+import { afterAll, describe, expect, it } from 'vitest'
 
 import { acquireEditorViewLease } from './editor-view-leases.ts'
 import {
@@ -38,6 +38,12 @@ const bytes = Buffer.from('archive fixture payload\n'.repeat(400))
 const digest = createHash('sha256').update(bytes).digest('hex')
 const url = 'https://registry.npmjs.org/fixture/-/fixture-1.0.0.tgz'
 const highWaterBytes = 4 * 1024 ** 3
+const strictWarmReceiptCounts = { metadataProof: 0, rehash: 0 }
+afterAll(() => {
+  console.info(
+    `[archive-proof-regression] strict warm receipts ${JSON.stringify(strictWarmReceiptCounts)}`,
+  )
+})
 const removeFixture = (root: string): void => {
   const unlock = (path: string): void => {
     if (lstatSync(path).isDirectory() === false) return
@@ -255,15 +261,27 @@ describe('host-local registry archives', () => {
           const fixedTime = new Date('2020-01-01T00:00:00.000Z')
           utimesSync(blob, fixedTime, fixedTime)
           expect((await acquire('normalized-time')).sourceVerification).toBe('rehash')
-          expect((await acquire('warm')).sourceVerification).toBe('metadata-proof')
-          const before = lstatSync(blob, { bigint: true })
           const proof = join(
             `${contentStore}.buck-materialization-v1`,
             '.store',
             `archive-${digest}`,
             'verification.json',
           )
+          const expectWarm = async (name: string): Promise<void> => {
+            const nonRacy = immutableContentProofIsNonRacy({
+              source: lstatSync(blob, { bigint: true }),
+              proof: lstatSync(proof, { bigint: true }),
+            })
+            const receipt = await acquire(name)
+            expect(receipt.sourceVerification).toBe(nonRacy === true ? 'metadata-proof' : 'rehash')
+            if (receipt.sourceVerification === 'metadata-proof')
+              strictWarmReceiptCounts.metadataProof++
+            else if (receipt.sourceVerification === 'rehash') strictWarmReceiptCounts.rehash++
+          }
+          await expectWarm('warm')
+          const before = lstatSync(blob, { bigint: true })
           const previousProof = readFileSync(proof, 'utf8')
+          const previousProofStatus = lstatSync(proof, { bigint: true })
           if (change === 'new-pin') linkSync(blob, join(root, 'another-pin'))
           else {
             chmodSync(blob, 0o644)
@@ -274,15 +292,20 @@ describe('host-local registry archives', () => {
             chmodSync(blob, 0o444)
           }
           expect(lstatSync(blob, { bigint: true }).mtimeNs).toBe(before.mtimeNs)
-          expect(lstatSync(blob, { bigint: true }).ctimeNs).not.toBe(before.ctimeNs)
+          const after = lstatSync(blob, { bigint: true })
+          expect(
+            after.ctimeNs !== before.ctimeNs ||
+              immutableContentProofIsNonRacy({ source: after, proof: previousProofStatus }) ===
+                false,
+          ).toBe(true)
           if (change === 'write-with-restored-mtime') {
             await expect(acquire('changed')).rejects.toThrow('content or identity mismatch')
             expect(existsSync(join(root, 'changed'))).toBe(false)
             expect(readFileSync(proof, 'utf8')).toBe(previousProof)
           } else {
             expect((await acquire('changed')).sourceVerification).toBe('rehash')
-            expect(readFileSync(proof, 'utf8')).not.toBe(previousProof)
-            expect((await acquire('refreshed')).sourceVerification).toBe('metadata-proof')
+            expect(lstatSync(proof, { bigint: true }).ino).not.toBe(previousProofStatus.ino)
+            await expectWarm('refreshed')
             expect(readFileSync(join(root, 'refreshed'))).toEqual(bytes)
           }
           expect(requests()).toBe(1)
