@@ -1,6 +1,6 @@
 {
   "schema": "effect-utils/buck2-pnpm-sha256/v2",
-  "lockfileFingerprint": "sha256:64f64f153d947739c3b8fb9d4c9a2ba1e28fab6759e871498fb5f2a6ebde552a",
+  "lockfileFingerprint": "sha256:a366f241fc6d7c283f96d2bffcd7536c70be6dacbe8d09132e1b239d4621fecf",
   "packages": {
     "@adobe/css-tools@4.5.0": {
       "bins": {},
@@ -3430,6 +3430,15 @@
       "sha256": "f52192ad895dee468f1d1d5bf8972f7114e2459ff126632a1963e7bd2a38ed0a",
       "sizeBytes": 202724
     },
+    "ajv@8.20.0": {
+      "bins": {},
+      "classification": "public",
+      "integrity": "sha512-Thbli+OlOj+iMPYFBVBfJ3OmCAnaSyNn4M1vz9T6Gka5Jt9ba/HIR56joy65tY6kx/FCF5VXNB819Y7/GUrBGA==",
+      "packageIdentity": "ajv@8.20.0",
+      "registryUrl": "https://registry.npmjs.org/ajv/-/ajv-8.20.0.tgz",
+      "sha256": "b2f0b3a893bbb8cc5efb6814f08b1499e19e31d5dd73683f5893382f48f6e7b3",
+      "sizeBytes": 217611
+    },
     "ansi-regex@5.0.1": {
       "bins": {},
       "classification": "public",
@@ -4215,6 +4224,15 @@
       "sha256": "bb4b50306b8b0f048475efddae11810e245937dca8ae85498ab4a171697bbf3c",
       "sizeBytes": 3699
     },
+    "fast-uri@3.1.9": {
+      "bins": {},
+      "classification": "public",
+      "integrity": "sha512-hS/0Wt3Ya043oKXs0sIxrMpKQITXhMLIrVAKKXi4gozGC9v7YRWVnXIZzjNPTO02M9BdxLCWqK1yRXgNziVyJQ==",
+      "packageIdentity": "fast-uri@3.1.9",
+      "registryUrl": "https://registry.npmjs.org/fast-uri/-/fast-uri-3.1.9.tgz",
+      "sha256": "4f5a67f7b61110aae7b3ad38e806627f5712f4c150bd38eb804a562e69a9ee5e",
+      "sizeBytes": 50086
+    },
     "fastq@1.20.3": {
       "bins": {},
       "classification": "public",
@@ -4631,6 +4649,15 @@
       "registryUrl": "https://registry.npmjs.org/json-schema-traverse/-/json-schema-traverse-0.4.1.tgz",
       "sha256": "f735add93641842e13096c8b3239f54e9b0b10e8ffd8a377400f4d61eabec065",
       "sizeBytes": 5141
+    },
+    "json-schema-traverse@1.0.0": {
+      "bins": {},
+      "classification": "public",
+      "integrity": "sha512-NM8/P9n3XjXhIZn1lLhkFaACTOURQXjWhV4BA/RnOv8xvgqtqpAX9IO4mRQxSx1Rlo4tqzeqb0sOlruaOy3dug==",
+      "packageIdentity": "json-schema-traverse@1.0.0",
+      "registryUrl": "https://registry.npmjs.org/json-schema-traverse/-/json-schema-traverse-1.0.0.tgz",
+      "sha256": "023222622df29fc274bde5d3590e47aa1d4a8e3c1d6e2aba029948ed79799b21",
+      "sizeBytes": 6074
     },
     "json-stable-stringify-without-jsonify@1.0.1": {
       "bins": {},
@@ -5754,6 +5781,15 @@
       "sha256": "b2190b6baf1b5e6e1b36f23c24c1658f2dab1a4315370435530cd8f78c390175",
       "sizeBytes": 6678
     },
+    "require-from-string@2.0.2": {
+      "bins": {},
+      "classification": "public",
+      "integrity": "sha512-Xf0nWe6RseziFMu+Ap9biiUbmplq6S9/p+7w7YXP/JBHhrUDDUhwa+vANyubuqfZWTveU//DYVGsDG7RKL/vEw==",
+      "packageIdentity": "require-from-string@2.0.2",
+      "registryUrl": "https://registry.npmjs.org/require-from-string/-/require-from-string-2.0.2.tgz",
+      "sha256": "cb694a4965908f7775a0c757f00cf4e624d193cd71d77988fbcca0f597b88d82",
+      "sizeBytes": 1816
+    },
     "resolve@1.22.12": {
       "bins": {
         "resolve": "bin/resolve"
@@ -6541,5 +6577,5 @@
   "source": "pnpm-lock.yaml",
   "generator": "buck2/dependencies/pnpm-lock.sha256.json.genie.ts",
   "regenerate": "devenv tasks run genie:run",
-  "fingerprint": "sha256:7e495850775c43d0e7c5d9e09d19454ef4f1692485c18fdb8ebcaa8fbdc464f1"
+  "fingerprint": "sha256:eba4760084556da8037c3a2ec769d82b9788e4af6998cda565846e3964848832"
 }

@@ -2857,6 +2857,7 @@ const effectUtilsWorkspaceMemberManifestPaths = [
   'rust/content-address-core/Cargo.toml',
   'rust/content-address-contract/Cargo.toml',
   'rust/content-address-interop/Cargo.toml',
+  'rust/work-storage/Cargo.toml',
 ] as const
 
 /** Repository-relative paths of effect-utils Cargo workspace members governed by the projection. */

@@ -22,6 +22,7 @@ members = [
   "content-address-core",
   "content-address-contract",
   "content-address-interop",
+  "work-storage",
 ]
 
 [workspace.package]

@@ -21,6 +21,7 @@ const fixtureTypecheckTarget = '//rust/effect-rust-fixtures:typecheck' as const
 const fullAuthorityTargets = [
   '//buck2/toolchains:archive_tool',
   '//buck2/toolchains:product_tool',
+  '//rust/work-storage:conformance-receipt',
   ...['wasm-adapter:wasm', 'napi-adapter:napi', 'app:app'].flatMap((product) =>
     ['node', 'bun'].map((runtime) => `//rust/effect-rust-fixtures/${product}-smoke-${runtime}`),
   ),
@@ -113,7 +114,12 @@ export const rootBuckAggregateProjection = (): GenieOutput<RootBuckAggregatePlan
         `# Regenerate: ${regenerationCommand}`,
         weaverRootBuckLoad,
         aggregateRootBuckLoad,
+        'load("@prelude//tests:test_toolchain.bzl", "noop_test_toolchain")',
+        'load("@prelude//toolchains:remote_test_execution.bzl", "remote_test_execution_toolchain")',
         rootBuckBase,
+        '# Native rust_test requires both conventional test toolchains for local receipts.',
+        'noop_test_toolchain(name = "test", visibility = ["PUBLIC"])',
+        'remote_test_execution_toolchain(name = "remote_test_execution", visibility = ["PUBLIC"])',
         rootValidationSources,
         '',
         weaverRootBuckTargets,

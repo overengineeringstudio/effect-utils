@@ -58,6 +58,7 @@ packages:
   - packages/@overeng/utils
   - packages/@overeng/utils-dev
   - packages/@overeng/utils-storybook
+  - packages/@overeng/work-storage
 
 overrides:
   '@effect/platform-node-shared': 4.0.3

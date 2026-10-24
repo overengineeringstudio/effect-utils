@@ -295,6 +295,38 @@ freshness lane) runs `content-address:contract:check`, which uses that same runt
 and requires byte-identical regeneration of the committed contract and provenance.
 The check restores checkout read-only permissions without rewriting any bytes.
 
+### Work storage contract
+
+[`@overeng/work-storage`](./packages/@overeng/work-storage) and the
+[`work-storage` Rust crate](./rust/work-storage) read the same portable manifest.
+The versioned [JSON Schema](./packages/@overeng/work-storage/protocol.schema.json)
+and [shared fixtures](./packages/@overeng/work-storage/fixtures/conformance.json)
+are normative; neither language adapter generates or overrides the contract.
+
+The manifest declares `version: 1`, an application identifier, provider
+`{ kind, root, identity }`, a partial role-to-path map (`state`, `cache`, `data`,
+`runtime`, `checkouts`, `credentials`), and an environment string map. Provider
+roots and role paths are canonical absolute POSIX paths: `/` is allowed, but
+empty, dot, parent, NUL and trailing-slash segments are rejected, not normalized.
+Environment values are opaque strings. Unknown object fields are additive and
+ignored; unknown role keys and unsupported versions are rejected.
+
+In Effect, provide `WorkStorage.layer({ manifest, observed })` or
+`WorkStorage.layerFile({ path: manifestPath, observed })` and call `storage.role(purpose)`.
+`layerFile` requires the platform `FileSystem` service. The service also exposes
+the decoded `manifest` and `environment`; `readManifest`, `decodeManifest`,
+`admit`, and `resolveRequest` expose the same boundaries without global state.
+The package exports `./protocol.schema.json` and `./fixtures/conformance.json`
+for compilers and other readers.
+
+The gated launcher supplies `{ present, identity }`; readers do not mount,
+probe readiness, create directories, mutate process environment, or fall back
+to alternate storage. After input validation, failure precedence is
+`FactoryAbsent` → `IdentityMismatch` → `UnknownPurpose` → `UndeclaredPurpose`.
+`InvalidManifest` covers invalid wire inputs; file IO failures remain a separate
+typed error. Provider admission is a launch-time observation, not a promise of
+continuous mount liveness or proof that a supplied observation is trustworthy.
+
 ## Quick Start
 
 ### Enter the dev shell

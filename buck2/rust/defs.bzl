@@ -154,3 +154,20 @@ cargo_build_script = cache_guarded_rule(
     },
     doc = "A first-party Cargo build script run with CARGO_MANIFEST_DIR in its repository-relative layout.",
 )
+
+def _rust_test_receipt_impl(ctx):
+    verdict = ctx.actions.declare_output("tests.log")
+    command = cmd_args(ctx.attrs.test[RunInfo], "--logfile", verdict.as_output())
+    ctx.actions.run(command, category = "rust_test_receipt", local_only = True)
+    return [
+        DefaultInfo(default_output = verdict),
+        ctx.attrs.test[RunInfo],
+        ctx.attrs.test[ExternalRunnerTestInfo],
+    ]
+
+rust_test_receipt = cache_guarded_rule(
+    impl = _rust_test_receipt_impl,
+    attrs = {
+        "test": attrs.exec_dep(providers = [RunInfo, ExternalRunnerTestInfo]),
+    },
+)
