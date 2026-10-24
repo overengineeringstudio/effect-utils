@@ -94,6 +94,7 @@ pkgs.buck2.overrideAttrs (oldAttrs: {
       cd "$(mktemp -d "$TMPDIR/buck2-launcher.XXXXXX")"
       ${pkgs.bun}/bin/bun build --compile "$out/libexec/buck2-entrypoint.ts" \
         --define "BUCK2_STDIO_LIBRARY=\"$out/libexec/libbuck2-stdio${pkgs.stdenv.hostPlatform.extensions.sharedLibrary}\"" \
+        --define "BUCK2_EVIDENCE_BUN_BINARY=\"${pkgs.bun}/bin/bun\"" \
         --outfile "$out/libexec/buck2-entrypoint"
     )
     rm "$out/libexec/buck2-entrypoint.ts" "$out/libexec/buck2-cache-posture.ts" "$out/libexec/buck2-file-watcher.ts"

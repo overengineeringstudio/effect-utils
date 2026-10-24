@@ -1282,6 +1282,10 @@ export const createPrivateEvidenceSink = (path: string): void => {
   }
 }
 
+// Compiled launchers cannot reuse process.execPath as a source interpreter.
+// Pin the same Bun used by the Nix build; source execution already runs in Bun.
+declare const BUCK2_EVIDENCE_BUN_BINARY: string
+
 /** Capture through Buck's supported extra sink, not its rotating log directory.
  * FIFO raw events are private and never persisted or uploaded. The collector
  * atomically publishes a sanitized shard; a killed collector leaves a registry gap.
@@ -1324,8 +1328,8 @@ export const runNativeWithEvidence = async ({
     keeper = openSync(sink, 'r+')
     const marker = process.env.CI_BUCK2_CACHE_EVIDENCE_START
     const fresh = marker !== undefined && readFileSync(marker, 'utf8').split('\n')[2] === '1'
-    const bun = process.env.BUN_BIN ?? Bun.which('bun')
-    if (bun === undefined || bun === null) throw new Error('Evidence collection requires Bun')
+    const bun =
+      typeof BUCK2_EVIDENCE_BUN_BINARY === 'string' ? BUCK2_EVIDENCE_BUN_BINARY : process.execPath
     const collector = Bun.spawn(
       [
         bun,
