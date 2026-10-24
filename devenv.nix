@@ -1432,6 +1432,7 @@ in
       export NIX_FLAKE_REF="git+file://$PWD?shallow=1"
       export PATH=${lib.makeBinPath [ pkgs.watchman ]}:$PATH
       ${sourceBun}/bin/bun ./packages/@overeng/buck2-tools/src/bun-test-runner.ts test ./scripts/buck2-capability-publish.unit.test.ts ./scripts/buck2-capability-projection.unit.test.ts
+      ${sourceBun}/bin/bun ./packages/@overeng/buck2-tools/src/bun-test-runner.ts test ./scripts/buck2-capability-publish.integration.test.ts
       ${pkgs.bash}/bin/bash \
         nix/devenv-modules/tasks/shared/tests/buck2-capability-publish.test.sh
       exec ${pkgs.bash}/bin/bash \

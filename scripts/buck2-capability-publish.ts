@@ -131,6 +131,22 @@ const atomicWrite = ({
   }
 }
 
+/** Only the exclusive publisher lock makes an interrupted atomic write abandoned. */
+const cleanupAtomicWriteCandidates = (directory: string): void => {
+  for (const name of readdirSync(directory)) {
+    if (
+      /^\.[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\.candidate$/u.test(
+        name,
+      ) === false
+    )
+      continue
+    const path = join(directory, name)
+    if (lstatSync(path).isFile() === false)
+      throw new Error(`Invalid abandoned capability atomic-write candidate: ${path}`)
+    rmSync(path)
+  }
+}
+
 const generationNames = (cell: string): string[] => {
   const directory = join(cell, 'generations')
   if (statIfPresent(directory) === undefined) return []
@@ -388,6 +404,7 @@ export const publishCapabilities = ({
   const candidate = join(buckDirectory, `capabilities.candidate.${randomUUID()}`)
   try {
     native.acquire(descriptor)
+    cleanupAtomicWriteCandidates(buckDirectory)
     const incoming = realpathSync(profile)
     const defs = readFileSync(join(incoming, 'defs.bzl'))
     const generation = capabilityGeneration(defs.toString('utf8'))
@@ -399,6 +416,7 @@ export const publishCapabilities = ({
     const trash = join(buckDirectory, 'capability-trash')
     for (const directory of [roots, receipts, referencesDirectory, trash])
       mkdirSync(directory, { recursive: true })
+    for (const directory of [receipts, referencesDirectory]) cleanupAtomicWriteCandidates(directory)
     const referencePath = (name: string): string => join(referencesDirectory, `${name}.json`)
     const references = new Map<string, readonly string[]>()
     for (const name of readdirSync(referencesDirectory)) {
@@ -415,6 +433,7 @@ export const publishCapabilities = ({
     const migrating = existing?.isSymbolicLink() === true
     if (existing !== undefined && migrating === false && existing.isDirectory() === false)
       throw new Error(`Capability cell must be a real directory or legacy profile symlink: ${cell}`)
+    if (existing?.isDirectory() === true) cleanupAtomicWriteCandidates(cell)
     const workingCell = existing === undefined || migrating === true ? candidate : cell
     if (migrating === true) {
       const previousProfile = realpathSync(cell)
