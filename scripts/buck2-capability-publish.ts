@@ -440,9 +440,15 @@ export const publishCapabilities = ({
       const previousCurrent = capabilityGeneration(
         readFileSync(join(previousProfile, 'defs.bzl'), 'utf8'),
       )
-      // Preserve every old path before exchanging the watch topology.
-      for (const previous of new Set([previousCurrent, ...generationNames(previousProfile)]))
-        rootGeneration({ nixStore, root: join(roots, previous), profile: previousProfile })
+      // Root legacy paths only when unrooted. An interrupted same-generation
+      // upgrade may already have committed a tools-layout root and references
+      // while the live cell still points at the legacy profile. Never regress
+      // that authoritative root: retained-tool restoration below needs it.
+      for (const previous of new Set([previousCurrent, ...generationNames(previousProfile)])) {
+        const previousRoot = join(roots, previous)
+        if (statIfPresent(previousRoot) === undefined)
+          rootGeneration({ nixStore, root: previousRoot, profile: previousProfile })
+      }
       copyGeneration({ source: previousProfile, destination: candidate })
     } else if (workingCell === candidate) mkdirSync(candidate)
     if (existing !== undefined) {

@@ -136,6 +136,10 @@ directory paths is stored in `.buck2/capability-references/<generation>.json`;
 numeric recency receipts remain in `.buck2/capability-publications/`. Neither
 reference sets nor receipts are action inputs. Roots and reference sets are
 persisted before the watched definition map is selected.
+When retrying a legacy symlink migration, an existing generation root is
+authoritative: it may already point to the tools-layout profile even while
+the live cell still points to the old layout. Migration never repoints that
+root to the legacy profile; committed tool references must remain restorable.
 Under the exclusive publication lock, abandoned regular-file atomic-write
 candidates matching the publisher's exact `.<UUID-v4>.candidate` name are
 removed before reference validation. This recovery covers reference sets,

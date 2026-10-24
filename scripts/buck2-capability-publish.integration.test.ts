@@ -2,10 +2,13 @@ import { afterEach, describe, expect, it } from 'bun:test'
 import { spawnSync } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import {
+  cpSync,
   existsSync,
+  lstatSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  realpathSync,
   rmSync,
   symlinkSync,
   writeFileSync,
@@ -21,6 +24,8 @@ const temporaryRoots: string[] = []
 type PublicationFixture = {
   readonly root: string
   readonly profile: string
+  readonly generation: string
+  readonly tool: string
   readonly references: string
 }
 
@@ -68,10 +73,14 @@ const preparePublication = async (): Promise<PublicationFixture> => {
   })
   const profile = addToStore(projection)
   publishCapabilities({ root, profile, nixStore })
+  const references = join(root, '.buck2', 'capability-references', `${generation}.json`)
+  const tools: readonly string[] = JSON.parse(readFileSync(references, 'utf8'))
   return {
     root,
     profile,
-    references: join(root, '.buck2', 'capability-references', `${generation}.json`),
+    generation,
+    tool: tools[0]!,
+    references,
   }
 }
 
@@ -121,4 +130,98 @@ describe('publisher interrupted atomic-write recovery', () => {
     expect(existsSync(candidate)).toBe(true)
     expect(readFileSync(references).equals(committed)).toBe(true)
   })
+})
+
+describe('same-generation legacy symlink migration recovery', () => {
+  it.each(['upgraded-root', 'committed-references', 'migration-marker', 'daemon-stop'])(
+    'restores tools after abort at %s without regressing the upgraded GC root',
+    async (boundary) => {
+      const { root, profile, generation, tool, references } = await preparePublication()
+      const buck = join(root, '.buck2')
+      const cell = join(buck, 'capabilities')
+      const rooted = join(buck, 'capability-roots', generation)
+      const legacy = join(root, '..', 'legacy')
+      const legacyTool = join(legacy, 'generations', generation, ...tool.split('/').slice(1, -1))
+      mkdirSync(legacyTool, { recursive: true })
+      cpSync(join(profile, tool), legacyTool, { recursive: true, dereference: false })
+      cpSync(join(profile, 'defs.bzl'), join(legacy, 'defs.bzl'))
+      cpSync(join(profile, 'BUCK'), join(legacy, 'BUCK'))
+      const legacyProfile = addToStore(legacy)
+      rmSync(cell, { recursive: true })
+      symlinkSync(legacyProfile, cell)
+      rmSync(rooted)
+      const legacyRoot = spawnSync(
+        nixStore,
+        ['--realise', '--add-root', rooted, '--indirect', legacyProfile],
+        { encoding: 'utf8' },
+      )
+      expect(legacyRoot.status).toBe(0)
+      rmSync(references)
+      rmSync(join(buck, 'capability-publications', `${generation}.json`))
+
+      const marker = join(buck, 'capabilities.migration')
+      if (boundary === 'upgraded-root') {
+        // Run the real Nix operation, then report failure immediately after it
+        // upgrades the root, before tool installation or reference publication.
+        const wrapper = join(root, '..', 'abort-after-root')
+        writeFileSync(
+          wrapper,
+          `#!/bin/sh\n${JSON.stringify(nixStore)} "$@" || exit "$?"\nfor arg do\n  if [ "$arg" = ${JSON.stringify(profile)} ]; then exit 73; fi\ndone\n`,
+          { mode: 0o755 },
+        )
+        expect(() => publishCapabilities({ root, profile, nixStore: wrapper })).toThrow(
+          'Nix rooting failed',
+        )
+        expect(JSON.parse(readFileSync(references, 'utf8'))).toEqual([])
+      } else {
+        // An unreplaceable marker aborts after roots, tools and references have
+        // committed, but before the atomic cell exchange.
+        mkdirSync(marker)
+        expect(() => publishCapabilities({ root, profile, nixStore })).toThrow()
+        expect(JSON.parse(readFileSync(references, 'utf8'))).toEqual([tool])
+        rmSync(marker, { recursive: true })
+        if (boundary === 'migration-marker') writeFileSync(marker, 'symlink-to-directory\n')
+      }
+      expect(lstatSync(cell).isSymbolicLink()).toBe(true)
+      expect(realpathSync(rooted)).toBe(profile)
+      expect(existsSync(join(cell, tool))).toBe(false)
+      if (boundary === 'daemon-stop') {
+        // Abort after the exchange and defs publication at the lifecycle stop.
+        // Isolate Buck's state in HOME; no actual Buck process is started.
+        const home = join(root, '..', 'home')
+        mkdirSync(join(home, '.buck', 'buckd', realpathSync(root).replace(/^\//u, ''), 'fixture'), {
+          recursive: true,
+        })
+        const failStop = join(root, '..', 'fail-stop')
+        writeFileSync(failStop, '#!/bin/sh\nexit 73\n', { mode: 0o755 })
+        const aborted = spawnSync(
+          process.execPath,
+          [
+            join(import.meta.dir, 'buck2-capability-publish.ts'),
+            '--root',
+            root,
+            '--profile',
+            profile,
+            '--nix-store',
+            nixStore,
+            '--buck2',
+            failStop,
+          ],
+          { encoding: 'utf8', env: { ...process.env, HOME: home } },
+        )
+        expect(aborted.status).not.toBe(0)
+        expect(aborted.stderr).toContain('Buck daemon stop failed during capability cell migration')
+        expect(lstatSync(cell).isDirectory()).toBe(true)
+        expect(existsSync(marker)).toBe(true)
+      }
+      expect(publishCapabilities({ root, profile, nixStore }).generation).toBe(generation)
+      expect(lstatSync(cell).isDirectory()).toBe(true)
+      expect(realpathSync(rooted)).toBe(profile)
+      expect(readFileSync(join(cell, tool, 'manifest.json'))).toEqual(
+        readFileSync(join(profile, tool, 'manifest.json')),
+      )
+      expect(existsSync(marker)).toBe(false)
+      expect(publishCapabilities({ root, profile, nixStore }).generation).toBe(generation)
+    },
+  )
 })
