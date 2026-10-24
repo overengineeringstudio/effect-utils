@@ -271,7 +271,7 @@ _fetch = cache_guarded_rule(
             default = "//buck2/dependencies:nix-archive.ts",
         )),
         "_shared_archive_runtime": attrs.default_only(
-            attrs.dep(default = "//buck2/dependencies:shared_archive_runtime") if _shared_archive_store() != "" else attrs.option(attrs.dep()),
+            attrs.dep(default = "//buck2/dependencies:shared_archive_runtime") if _shared_archive_store() != "" else attrs.option(attrs.dep(), default = None),
         ),
     }),
 )
