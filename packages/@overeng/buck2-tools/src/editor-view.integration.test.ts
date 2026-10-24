@@ -3935,11 +3935,18 @@ process.stderr.write = (...args) => {
 
   it('refuses garbage collection when snapshot ownership is ambiguous', async () => {
     const fixture = makeFixture()
+    const options = {
+      ...fixture.options,
+      // Only the tiny fixture tree is relevant to ownership refusal, not a workspace closure.
+      backingRoots: [fixture.nodeModules],
+      // As in the host-budget fixtures, unrelated host fingerprints must not consume this guard.
+      admissionDirectory: join(fixture.root, 'fingerprint-admission'),
+    }
     try {
-      await publishEditorView(fixture.options)
+      await publishEditorView(options)
       const current = currentTarget(fixture)
       mkdirSync(join(fixture.editorRoot, '.store', 'unowned'))
-      await expect(publishEditorView(fixture.options)).rejects.toThrow(
+      await expect(publishEditorView(options)).rejects.toThrow(
         'snapshot store contains an ambiguously owned entry',
       )
       expect(currentTarget(fixture)).toBe(current)

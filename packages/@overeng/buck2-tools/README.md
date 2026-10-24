@@ -180,6 +180,9 @@ integration fixtures share one private four-slot domain per fixture host, so
 their policy races cannot queue behind unrelated production fingerprint walks.
 Their hashing, filesystem copies, process evidence, and five-second deadlines
 remain real and unchanged.
+The ambiguous-snapshot-ownership GC regression likewise declares only its tiny
+fixture dependency root and uses a private admission domain. Both publications,
+the GC-refusal assertion, phase-duration logs, and the default deadline remain real.
 
 The coordination directory is deliberately **outside the action digest**. It
 controls scheduling only: file contents are neither read as fingerprint inputs
