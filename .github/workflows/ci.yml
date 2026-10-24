@@ -1041,6 +1041,11 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
           MANIFEST_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
         run: 'cd "${GITHUB_WORKSPACE:-$PWD}" && bash genie/ci-scripts/buck2-manifest-inventory.sh'
+      - name: Cargo archive-tool regression tests
+        if: ${{ github.event_name == 'pull_request' }}
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: 'cd "${GITHUB_WORKSPACE:-$PWD}" && "${DEVENV_BIN:?DEVENV_BIN not set}" shell -- cargo test --locked --manifest-path rust/Cargo.toml --package buck2-archive-tool'
       - name: Check shared megarepo task flags against the published CLI
         env:
           GITHUB_TOKEN: ${{ github.token }}

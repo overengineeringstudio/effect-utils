@@ -778,6 +778,14 @@ const jobs: Record<CoreCIJobName, CiWorkflowArgs['jobs'][string]> = {
           run: withCiSourceRoot('bash genie/ci-scripts/buck2-manifest-inventory.sh'),
         },
         {
+          name: 'Cargo archive-tool regression tests',
+          if: "${{ github.event_name == 'pull_request' }}",
+          env: githubTokenEnv(),
+          run: withCiSourceRoot(
+            '"${DEVENV_BIN:?DEVENV_BIN not set}" shell -- cargo test --locked --manifest-path rust/Cargo.toml --package buck2-archive-tool',
+          ),
+        },
+        {
           name: 'Check shared megarepo task flags against the published CLI',
           env: githubTokenEnv(),
           run: withCiSourceRoot(

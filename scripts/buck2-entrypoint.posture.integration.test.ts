@@ -12,11 +12,14 @@ import {
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
+import { buckConfigValues, standaloneCachePostureConfig } from './buck2-cache-posture.ts'
 import {
   cacheDaemonPostureFingerprint,
   cacheLauncherBirth,
   cacheDaemonRestartDecision,
   admitCacheDaemonCommand,
+  directBuckArguments,
+  cacheDaemonPolicyArguments,
 } from './buck2-entrypoint.ts'
 
 const secret = 'planted-writer-credential-never-persist'
@@ -26,6 +29,170 @@ const values = {
 }
 
 describe('daemon RE posture', () => {
+  it('pins before direct and nested argfile payloads and refuses unresolved argfiles', () => {
+    const cwd = mkdtempSync(join(tmpdir(), 'buck2-policy-argfiles-'))
+    try {
+      const pin = (args: readonly string[]) =>
+        cacheDaemonPolicyArguments({
+          args,
+          cwd,
+          env: {},
+          policy: join(cwd, 'policy.buckconfig'),
+        })
+      for (const command of ['run', 'test', 'bxl']) {
+        const input = [
+          command,
+          '//:fixture',
+          '--',
+          '--reuse-current-config',
+          '@payload',
+          '--flagfile',
+          'literal',
+        ]
+        const direct = pin(input)
+        expect(direct.indexOf('--config-file')).toBeLessThan(direct.indexOf('--'))
+        expect(direct.slice(direct.indexOf('--'))).toEqual(input.slice(2))
+        writeFileSync(join(cwd, 'inner'), `${input.join('\n')}\n`)
+        writeFileSync(join(cwd, 'outer'), '--flagfile\ninner\n')
+        expect(pin(['@outer'])).toEqual(direct)
+        expect(pin(['--flagfile', 'outer'])).toEqual(direct)
+        // Native resumes expansion in an outer frame after an inner separator.
+        writeFileSync(join(cwd, 'tail'), 'expanded-payload\n')
+        expect(pin(['@outer', '@tail']).at(-1)).toBe('expanded-payload')
+      }
+      expect(
+        pin([
+          '--reuse-current-config',
+          'test',
+          '//:fixture',
+          '--',
+          '--reuse-current-config',
+        ]).filter((arg) => arg === '--reuse-current-config'),
+      ).toHaveLength(1)
+      expect(pin(['run', '//:fixture', 'payload', '--reuse-current-config']).slice(-2)).toEqual([
+        'payload',
+        '--reuse-current-config',
+      ])
+      writeFileSync(join(cwd, 'cycle'), '@cycle\n')
+      writeFileSync(join(cwd, 'script.py'), 'never execute this')
+      for (const args of [
+        ['@missing'],
+        ['@cycle'],
+        ['@script.py'],
+        ['@-'],
+        ['--flagfile=outer'],
+        ['--flagfile'],
+        ['@cell//flags'],
+      ])
+        expect(() => pin(args)).toThrow('cannot safely resolve native arguments or argfiles')
+    } finally {
+      rmSync(cwd, { recursive: true, force: true })
+    }
+  })
+
+  it('preserves absent root/native defaults without enabling reader uploads or headers', () => {
+    const env = {}
+    const salt = 'default-policy-test'
+    expect(cacheDaemonPostureFingerprint({ values: {}, env, salt })).toBe(
+      cacheDaemonPostureFingerprint({
+        values: {
+          'buck2.remote_cache_enabled': 'true',
+          'buck2.allow_cache_uploads': 'true',
+          'buck2.default_allow_cache_upload': 'false',
+          'buck2_re_client.http_headers': '',
+        },
+        env,
+        salt,
+      }),
+    )
+    expect(
+      cacheDaemonPostureFingerprint({
+        values: { 'buck2.allow_cache_uploads': 'false' },
+        env,
+        salt,
+      }),
+    ).not.toBe(cacheDaemonPostureFingerprint({ values: {}, env, salt }))
+  })
+
+  it('snapshots effective reader/optional-writer outage policy and preserves the tracked publisher default', async () => {
+    const tracked = readFileSync(join(import.meta.dir, '..', '.buckconfig'), 'utf8')
+    expect(buckConfigValues(tracked)['buck2.remote_cache_enabled']).toBeUndefined()
+    for (const posture of ['publisher', 'reader-outage', 'optional-writer-outage']) {
+      const root = realpathSync(mkdtempSync(join(tmpdir(), 'buck2-effective-posture-')))
+      try {
+        const native = join(root, 'native')
+        writeFileSync(join(root, '.buckroot'), '')
+        writeFileSync(
+          join(root, '.buckconfig'),
+          posture === 'publisher'
+            ? tracked
+            : tracked.replaceAll(/grpc:\/\/[^\s]+/gu, 'grpc://127.0.0.1:1'),
+        )
+        const env = {
+          ...process.env,
+          CI: '1',
+          BUCK2_CACHE_WRITE_BASIC_AUTH: secret,
+          BUCK2_NO_REMOTE_CACHE: '',
+          BUCK2_PRIVATE_CACHE_WRITE_BASIC_AUTH: '',
+          BUCK2_PRIVATE_CACHE_ADDRESS: '',
+          BUCK2_PUBLIC_CACHE_READ_ONLY: posture === 'reader-outage' ? '1' : '',
+          BUCK2_CACHE_WRITE_OPTIONAL: posture === 'optional-writer-outage' ? '1' : '',
+          CI_BUCK2_CACHE_EVIDENCE_PATH: '',
+        }
+        const overlay = standaloneCachePostureConfig({ current: '', env })
+        // Use the production publisher block and the actual tracked config: neither
+        // declares remote_cache_enabled, whose native default is enabled.
+        if (posture === 'publisher')
+          expect(buckConfigValues(overlay)['buck2.remote_cache_enabled']).toBeUndefined()
+        writeFileSync(
+          native,
+          `#!${process.execPath}
+import {existsSync,readFileSync,writeFileSync} from 'node:fs';
+const state=process.cwd()+'/daemon.json';
+if(process.argv[4]==='status') {if(existsSync(state)) console.log(readFileSync(state,'utf8'));}
+else if(process.argv[4]==='audit') writeFileSync(state,JSON.stringify({project_root:process.cwd(),isolation_dir:'v2',active_commands:[],process_info:{pid:process.pid},start_time:'now'}));
+else process.exit(9);
+`,
+        )
+        chmodSync(native, 0o700)
+        const args = await admitCacheDaemonCommand({
+          native,
+          root,
+          args: ['build', '//:fixture'],
+          env,
+          admit: async (beforeCachePosture) => {
+            if (posture !== 'publisher')
+              return directBuckArguments({
+                cwd: root,
+                args: ['build', '//:fixture'],
+                env,
+                cacheDirectory: join(root, 'probe-cache'),
+                deadlineMs: 100,
+                beforeCachePosture,
+              })
+            beforeCachePosture?.(buckConfigValues(`${tracked}\n${overlay}`))
+            writeFileSync(join(root, '.buckconfig.local'), overlay)
+            return ['build', '//:fixture']
+          },
+        })
+        const policy = args[args.lastIndexOf('--config-file') + 1]!
+        const text = readFileSync(policy, 'utf8')
+        const values = buckConfigValues(text)
+        expect(values['buck2.remote_cache_enabled']).toBe(
+          posture === 'publisher' ? 'true' : 'false',
+        )
+        expect(values['buck2.allow_cache_uploads']).toBe(posture === 'publisher' ? 'true' : 'false')
+        expect(values['buck2.default_allow_cache_upload']).toBe(
+          posture === 'reader-outage' ? 'false' : 'true',
+        )
+        expect(text).not.toContain(secret)
+        expect(statSync(policy).mode & 0o777).toBe(0o600)
+      } finally {
+        rmSync(root, { recursive: true, force: true })
+      }
+    }
+  }, 15000)
+
   it('records closed REAPI outage diagnostics, including cached admission failures', async () => {
     const root = mkdtempSync(join(tmpdir(), 'buck2-admission-failure-'))
     try {
@@ -201,7 +368,7 @@ else process.exit(9);
     }
   }, 15000)
 
-  it('refuses different postures in one root, admits them in separate roots and expires a reused PID', async () => {
+  it('refuses different postures on one daemon, admits other roots/isolations and expires a reused PID', async () => {
     const root = mkdtempSync(join(tmpdir(), 'buck2-posture-race-'))
     const separateRoot = mkdtempSync(join(tmpdir(), 'buck2-posture-separate-'))
     const native = join(root, 'native')
@@ -234,16 +401,17 @@ import {once} from 'node:events';
 import {admitCacheDaemonCommand} from ${JSON.stringify(join(import.meta.dir, 'buck2-entrypoint.ts'))};
 const mode=process.argv[2];
 const root=process.argv[3]??${JSON.stringify(root)};
+const isolation=process.argv[4]??'v2';
 const writer=mode!=='reader';
 const values=writer ? ${JSON.stringify(values)} : {'buck2.allow_cache_uploads':'false'};
 const config=writer ? '[buck2]\\nallow_cache_uploads = true\\n[buck2_re_client]\\nhttp_headers = authorization: Basic $BUCK2_CACHE_WRITE_BASIC_AUTH\\n' : '[buck2]\\nallow_cache_uploads = false\\n';
 console.log('attempting');
 try {
 await admitCacheDaemonCommand({
-native:${JSON.stringify(native)},root,args:['--isolation-dir',writer?'v2':'other','build','//:fixture'],
+native:${JSON.stringify(native)},root,args:['--isolation-dir',isolation,'build','//:fixture'],
 env:{...process.env,CI:'1',BUCK2_CACHE_WRITE_BASIC_AUTH:${JSON.stringify(secret)}},
 admit:async (check)=>{
-check?.(values);
+check?.({'buck2.remote_cache_enabled':'true',...values});
 writeFileSync(root+'/.buckconfig.local',config);
 if(mode==='writer') { console.log('overlay'); await once(process.stdin,'data'); }
 return ['build','//:fixture'];
@@ -297,6 +465,14 @@ process.exit(0);
       expect(await separate.exited, await new Response(separate.stderr).text()).toBe(0)
       expect(readFileSync(overlay, 'utf8')).toBe(writerOverlay)
       expect(readFileSync(calls, 'utf8')).not.toContain('kill')
+      const otherIsolation = Bun.spawn([process.execPath, worker, 'reader', root, 'other'], {
+        stdin: 'ignore',
+        stdout: 'pipe',
+        stderr: 'pipe',
+      })
+      expect(await otherIsolation.exited, await new Response(otherIsolation.stderr).text()).toBe(0)
+      expect(JSON.parse(readFileSync(`${state}.v2`, 'utf8')).startupOverlay).toBe(writerOverlay)
+      expect(readFileSync(calls, 'utf8')).not.toContain('kill')
       const marker = JSON.parse(
         readFileSync(join(root, 'buck-out', '.cache-daemon-posture', 'root.json'), 'utf8'),
       )
@@ -304,7 +480,8 @@ process.exit(0);
       expect(marker.launches).toContainEqual({
         pid: writer.pid,
         birth: cacheLauncherBirth(writer.pid),
-        fingerprint: marker.fingerprint,
+        fingerprint: marker.daemons.v2.fingerprint,
+        isolation: 'v2',
       })
       const matching = Bun.spawn([process.execPath, worker, 'matching'], {
         stdin: 'ignore',
@@ -323,7 +500,7 @@ process.exit(0);
         join(root, 'buck-out', '.cache-daemon-posture', 'root.json'),
         JSON.stringify(marker),
       )
-      const after = Bun.spawn([process.execPath, worker, 'reader'], {
+      const after = Bun.spawn([process.execPath, worker, 'reader', root, 'other'], {
         stdin: 'ignore',
         stdout: 'pipe',
         stderr: 'pipe',

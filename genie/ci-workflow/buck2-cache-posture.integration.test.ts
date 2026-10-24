@@ -22,6 +22,7 @@ type GeneratedWorkflow = {
         uses?: string
         if?: string
         env?: Record<string, string>
+        'continue-on-error'?: boolean
         run?: string
         with?: Record<string, string | number>
       }>
@@ -239,6 +240,23 @@ describe('generated CI cache trust behavior', () => {
       'for package in . packages/@overeng/buck2-tools packages/@overeng/genie; do',
     )
     expect(step?.run).toContain('tasks run --mode single test:buck2-tools devenv-modules:test')
+  })
+
+  it('runs archive-tool Cargo regressions on PRs without duplicating queue Cargo coverage', async () => {
+    const workflow = await readWorkflow()
+    const quality = workflow.jobs.quality!
+    const step = quality.steps.find(({ name }) => name === 'Cargo archive-tool regression tests')
+    expect(step).toBeDefined()
+    expect(step?.run).toContain(
+      '"${DEVENV_BIN:?DEVENV_BIN not set}" shell -- cargo test --locked --manifest-path rust/Cargo.toml --package buck2-archive-tool',
+    )
+    expect(step?.if).toBe("${{ github.event_name == 'pull_request' }}")
+    expect(step?.['continue-on-error']).toBeUndefined()
+    expect(Boolean(evaluate(quality.if!, 'pull_request', 'refs/pull/123/merge'))).toBe(true)
+    expect(Boolean(evaluate(step!.if!, 'pull_request', 'refs/pull/123/merge'))).toBe(true)
+    expect(
+      Boolean(evaluate(step!.if!, 'merge_group', 'refs/heads/gh-readonly-queue/main/pr-123')),
+    ).toBe(false)
   })
 
   it('selects exact focused source files rather than suffix-matching staged Buck copies', async () => {

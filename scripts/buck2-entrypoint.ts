@@ -214,7 +214,7 @@ export const directBuckArguments = async ({
   readonly deadlineMs?: number
   /** Supply a fresh caller-controlled deadline for each probe; undefined uses the platform timer. */
   readonly probeDeadlineSignal?: (endpoint: AdmissionProbeEndpoint) => AbortSignal | undefined
-  /** Check live launcher reservations before changing the daemon-scoped root overlay. */
+  /** Check effective post-probe policy before changing the daemon-scoped root overlay. */
   readonly beforeCachePosture?: CachePostureCheck
 }): Promise<string[]> => {
   admissionExpires = Date.now() + 5000
@@ -313,16 +313,6 @@ export const directBuckArguments = async ({
     (cliValues['buck2.remote_cache_enabled'] ?? base['buck2.remote_cache_enabled']) === 'false'
   const postureEnv = cacheDisabled === true ? { ...env, BUCK2_NO_REMOTE_CACHE: '1' } : env
   const posture = standaloneCachePostureConfig({ current: '', env: postureEnv })
-  beforeCachePosture?.({ ...base, ...buckConfigValues(posture) })
-  // Native RE client construction ignores CLI config. Writer headers/endpoints must
-  // be in the root overlay before daemon startup, including removal on public reads.
-  if (
-    unmanaged.found === true ||
-    Object.keys(buckConfigValues(posture)).some(
-      (key) => key.startsWith('buck2_re_client.') === true || key === 'buck2.retained_event_logs',
-    ) === true
-  )
-    reconcileStandaloneCachePosture({ repoRoot: root, env: postureEnv })
   const overrides = buckConfigValues(posture)
   const values = { ...base, ...overrides, ...cliValues }
   for (const key of Object.keys(overrides)) overrides[key] = values[key] ?? ''
@@ -443,7 +433,21 @@ export const directBuckArguments = async ({
       'buck2.remote_cache_enabled': 'false',
       'buck2.allow_cache_uploads': 'false',
     })
+    Object.assign(values, overrides)
   }
+  // Probe before comparing reservations: an identical outage launch must compare
+  // its effective fallback, not an optimistic policy it will never execute.
+  // Compare before mutating the shared overlay or starting/stopping any daemon.
+  beforeCachePosture?.(values)
+  // Native RE client construction ignores CLI config. Writer headers/endpoints must
+  // be in the root overlay before daemon startup, including removal on public reads.
+  if (
+    unmanaged.found === true ||
+    Object.keys(buckConfigValues(posture)).some(
+      (key) => key.startsWith('buck2_re_client.') === true || key === 'buck2.retained_event_logs',
+    ) === true
+  )
+    reconcileStandaloneCachePosture({ repoRoot: root, env: postureEnv })
   const extra = Object.entries(overrides).flatMap(([key, value]) => ['--config', `${key}=${value}`])
   const before = sentinel === -1 ? [...args] : args.slice(0, sentinel)
   const admitted =
@@ -526,6 +530,7 @@ export const resolveGateInvocation = ({
   env,
   cwd,
   strictRunArguments = true,
+  includePayload = false,
   readArgfile = (path) => {
     const canonical = realpathSync(path)
     return {
@@ -538,8 +543,15 @@ export const resolveGateInvocation = ({
   readonly env: Readonly<Record<string, string | undefined>>
   readonly cwd: string
   readonly strictRunArguments?: boolean
+  readonly includePayload?: boolean
   readonly readArgfile?: (path: string) => { readonly path: string; readonly contents: string }
-}): { readonly isolation: string; readonly args: readonly string[] } | undefined => {
+}):
+  | {
+      readonly isolation: string
+      readonly args: readonly string[]
+      readonly nativeArgumentCount?: number
+    }
+  | undefined => {
   const expanded: string[] = []
   const active = new Set<string>()
   const expand = ({
@@ -669,8 +681,53 @@ export const resolveGateInvocation = ({
     isolation !== '.' &&
     isolation !== '..' &&
     isolation.startsWith('._buck2') === false
-    ? { isolation, args: buckArgs }
+    ? includePayload === true
+      ? { isolation, args: expanded, nativeArgumentCount: buckArgs.length }
+      : { isolation, args: buckArgs }
     : undefined
+}
+
+/** Pin policy in the expanded native argv, never in executable/test/BXL payload. */
+export const cacheDaemonPolicyArguments = ({
+  args,
+  policy,
+  cwd,
+  env,
+}: {
+  readonly args: readonly string[]
+  readonly policy: string
+  readonly cwd: string
+  readonly env: Readonly<Record<string, string | undefined>>
+}): string[] => {
+  const invocation = resolveGateInvocation({
+    args,
+    cwd,
+    env,
+    strictRunArguments: false,
+    includePayload: true,
+  })
+  if (invocation === undefined)
+    throw new Error(
+      'Buck2 cache posture: cannot safely resolve native arguments or argfiles; refusing unpinned invocation',
+    )
+  const nativeArgumentCount = invocation.nativeArgumentCount ?? invocation.args.length
+  const pinnedArgs = invocation.args.filter(
+    (arg, index) => arg !== '--reuse-current-config' || index >= nativeArgumentCount,
+  )
+  const sentinel = pinnedArgs.indexOf('--')
+  const run = pinnedArgs.indexOf('run')
+  const insertion =
+    run !== -1 && (sentinel === -1 || run < sentinel)
+      ? run + 1
+      : sentinel === -1
+        ? pinnedArgs.length
+        : sentinel
+  return [
+    ...pinnedArgs.slice(0, insertion),
+    '--config-file',
+    policy,
+    ...pinnedArgs.slice(insertion),
+  ]
 }
 
 /** Native status is ExistingOnly: admission and cleanup never spawn a daemon. */
@@ -770,6 +827,25 @@ export const reconcileGateDaemon = ({
   }
 }
 
+/** Match root policy defaults in buck2/platforms/defs.bzl and native RunActionKnobs. */
+const cacheDaemonPolicy = (values: Readonly<Record<string, string>>): Record<string, string> => ({
+  'buck2.remote_cache_enabled': 'true',
+  'buck2.allow_cache_uploads': 'true',
+  'buck2.default_allow_cache_upload': 'false',
+  'buck2_re_client.http_headers': '',
+  ...Object.fromEntries(
+    Object.entries(values).filter(
+      ([key]) =>
+        key.startsWith('buck2_re_client.') ||
+        [
+          'buck2.remote_cache_enabled',
+          'buck2.allow_cache_uploads',
+          'buck2.default_allow_cache_upload',
+        ].includes(key),
+    ),
+  ),
+})
+
 /** Per-root HMAC: its key and digest persist only in private 0600 state, never the credential. */
 export const cacheDaemonPostureFingerprint = ({
   values,
@@ -783,10 +859,7 @@ export const cacheDaemonPostureFingerprint = ({
   createHmac('sha256', salt)
     .update(
       JSON.stringify(
-        Object.entries(values)
-          .filter(
-            ([key]) => key.startsWith('buck2_re_client.') || key === 'buck2.allow_cache_uploads',
-          )
+        Object.entries(cacheDaemonPolicy(values))
           .toSorted(([left], [right]) => left.localeCompare(right))
           .map(([key, value]) => [
             key,
@@ -886,7 +959,7 @@ export const admitCacheDaemonCommand = async ({
     return admit()
   const invocation = resolveGateInvocation({ args, env, cwd: process.cwd() })
   if (invocation === undefined)
-    throw new Error('Buck2 cache posture: cannot safely determine native isolation in CI')
+    throw new Error('Buck2 cache posture: cannot safely resolve native isolation or argfiles in CI')
   if (skipsWatcherAdmission(invocation.args) === true) return admit()
   const { isolation } = invocation
   const state = join(root, 'buck-out', '.cache-daemon-posture')
@@ -937,22 +1010,34 @@ export const admitCacheDaemonCommand = async ({
       previous !== null &&
       'salt' in previous &&
       typeof previous.salt === 'string' &&
-      'fingerprint' in previous &&
-      typeof previous.fingerprint === 'string' &&
       'daemons' in previous &&
       typeof previous.daemons === 'object' &&
       previous.daemons !== null
         ? previous
         : undefined
-    const daemons: Record<string, string> = {}
+    const daemons: Record<string, { fingerprint: string; identity: string }> = {}
     if (record !== undefined)
       for (const [name, identity] of Object.entries(record.daemons)) {
-        if (typeof identity !== 'string')
-          throw new Error('Buck2 cache posture: malformed daemon identity')
-        daemons[name] = identity
+        // Older records shared one fingerprint across every isolation.
+        if (
+          typeof identity === 'string' &&
+          'fingerprint' in record &&
+          typeof record.fingerprint === 'string'
+        )
+          daemons[name] = { fingerprint: record.fingerprint, identity }
+        else if (
+          typeof identity === 'object' &&
+          identity !== null &&
+          'fingerprint' in identity &&
+          typeof identity.fingerprint === 'string' &&
+          'identity' in identity &&
+          typeof identity.identity === 'string'
+        )
+          daemons[name] = { fingerprint: identity.fingerprint, identity: identity.identity }
+        else throw new Error('Buck2 cache posture: malformed daemon identity')
       }
     const salt = record?.salt ?? randomBytes(32).toString('hex')
-    const launches: { pid: number; birth: string; fingerprint: string }[] = []
+    const launches: { pid: number; birth: string; fingerprint: string; isolation?: string }[] = []
     if (record !== undefined && 'launches' in record) {
       if (Array.isArray(record.launches) === false)
         throw new Error('Buck2 cache posture: malformed launcher reservations')
@@ -972,7 +1057,16 @@ export const admitCacheDaemonCommand = async ({
           throw new Error('Buck2 cache posture: malformed launcher reservation')
         if (launch.pid === process.pid) continue
         if (cacheLauncherBirth(launch.pid) !== launch.birth) continue
-        launches.push({ pid: launch.pid, birth: launch.birth, fingerprint: launch.fingerprint })
+        const scope = 'isolation' in launch ? launch.isolation : undefined
+        if (scope !== undefined && typeof scope !== 'string')
+          throw new Error('Buck2 cache posture: malformed launcher isolation')
+        // Legacy live leases have unknown scope; retain their conservative protection.
+        launches.push({
+          pid: launch.pid,
+          birth: launch.birth,
+          fingerprint: launch.fingerprint,
+          ...(scope === undefined ? {} : { isolation: scope }),
+        })
       }
     }
     const observed = status()
@@ -981,9 +1075,16 @@ export const admitCacheDaemonCommand = async ({
       root: realpathSync(root),
       isolation,
     })
+    let admittedValues: Readonly<Record<string, string>> | undefined
     const checkPosture: CachePostureCheck = (values) => {
       const desired = cacheDaemonPostureFingerprint({ values, env, salt })
-      if (launches.some((launch) => launch.fingerprint !== desired) === true)
+      if (
+        launches.some(
+          (launch) =>
+            (launch.isolation === undefined || launch.isolation === isolation) &&
+            launch.fingerprint !== desired,
+        ) === true
+      )
         throw new Error(
           'Buck2 cache posture: concurrent launcher has a different RE posture; refusing to change its overlay or stop its daemon. Retry after it exits.',
         )
@@ -991,18 +1092,22 @@ export const admitCacheDaemonCommand = async ({
         observed !== undefined &&
         observedStop !== 'stop' &&
         (record === undefined ||
-          record.fingerprint !== desired ||
-          daemons[isolation] !== cacheDaemonIdentity(observed))
+          daemons[isolation]?.fingerprint !== desired ||
+          daemons[isolation]?.identity !== cacheDaemonIdentity(observed))
       )
         throw new Error(
           'Buck2 cache posture: mismatched or unrecorded daemon is busy or unrecognized; refusing to stop it. Retry after concurrent Buck commands finish.',
         )
+      admittedValues = values
     }
     // The lock precedes overlay reconciliation and remains held through daemon initialization.
     const admittedArgs = await admit(checkPosture)
-    const values = buckConfigValues(
-      `${readConfig({ path: join(root, '.buckconfig') })}\n${readConfig({ path: join(root, '.buckconfig.local') })}`,
-    )
+    const values = {
+      ...buckConfigValues(
+        `${readConfig({ path: join(root, '.buckconfig') })}\n${readConfig({ path: join(root, '.buckconfig.local') })}`,
+      ),
+      ...admittedValues,
+    }
     checkPosture(values)
     const fingerprint = cacheDaemonPostureFingerprint({ values, env, salt })
     const current = status()
@@ -1018,8 +1123,8 @@ export const admitCacheDaemonCommand = async ({
               : 'unknown',
       matched:
         record !== undefined &&
-        record.fingerprint === fingerprint &&
-        daemons[isolation] === cacheDaemonIdentity(current),
+        daemons[isolation]?.fingerprint === fingerprint &&
+        daemons[isolation]?.identity === cacheDaemonIdentity(current),
     })
     if (decision === 'refuse')
       throw new Error(
@@ -1042,22 +1147,36 @@ export const admitCacheDaemonCommand = async ({
       const birth = cacheLauncherBirth(process.pid)
       if (birth === undefined)
         throw new Error('Buck2 cache posture: launcher exited during admission')
-      launches.push({ pid: process.pid, birth, fingerprint })
-      const nextDaemons = record?.fingerprint === fingerprint ? daemons : {}
-      nextDaemons[isolation] = daemon
-      writeFileSync(
-        candidate,
-        JSON.stringify({ salt, fingerprint, daemons: nextDaemons, launches }),
-        {
-          flag: 'wx',
-          mode: 0o600,
-        },
-      )
+      launches.push({ pid: process.pid, birth, fingerprint, isolation })
+      daemons[isolation] = { fingerprint, identity: daemon }
+      writeFileSync(candidate, JSON.stringify({ salt, daemons, launches }), {
+        flag: 'wx',
+        mode: 0o600,
+      })
       renameSync(candidate, marker)
     } finally {
       rmSync(candidate, { force: true })
     }
-    return admittedArgs
+    // Buck rereads the shared overlay per command. Pin this daemon's policy in a
+    // private invocation file so another isolation's next startup cannot change it.
+    // The filename is isolation-derived, never a credential-derived fingerprint.
+    const policy = join(state, `${createHash('sha256').update(isolation).digest('hex')}.buckconfig`)
+    const policyText = Object.entries(cacheDaemonPolicy(values))
+      .map(([key, value]) => {
+        const dot = key.indexOf('.')
+        return `[${key.slice(0, dot)}]\n${key.slice(dot + 1)} = ${value}\n`
+      })
+      .join('')
+    const policyCandidate = `${policy}.${randomUUID()}`
+    try {
+      writeFileSync(policyCandidate, policyText, { mode: 0o600, flag: 'wx' })
+      renameSync(policyCandidate, policy)
+    } finally {
+      rmSync(policyCandidate, { force: true })
+    }
+    // Expand once and execute the resulting argv, so Buck cannot later move our
+    // policy behind a separator introduced by a nested user argfile.
+    return cacheDaemonPolicyArguments({ args: admittedArgs, policy, cwd: process.cwd(), env })
   } finally {
     closeSync(descriptor)
     library.close()
