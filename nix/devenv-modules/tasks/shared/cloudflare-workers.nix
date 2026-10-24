@@ -5,6 +5,7 @@
 #     ciToolsBin = "${inputs.effect-utils.packages.${pkgs.system}.ci-tools}/bin/ci-tools";
 #     deployments = [ {
 #       name = "example";
+#       workerName = "example-worker";
 #       config = "wrangler.jsonc"; # Relative to cwd (or an absolute path).
 #       cwd = "apps/example"; # Relative to the devenv task working directory.
 #       productionDomains = [ "example.com" ];
@@ -26,6 +27,7 @@
   wranglerBin ? null,
   authTokenEnv ? "CLOUDFLARE_API_TOKEN",
   accountIdEnv ? "CLOUDFLARE_ACCOUNT_ID",
+  cloudflareApiBaseUrl ? "https://api.cloudflare.com/client/v4",
 }:
 { lib, pkgs, ... }:
 let
@@ -42,6 +44,7 @@ let
     deployment:
     let
       name = deployment.name;
+      workerName = deployment.workerName;
       config = deployment.config;
       cwd = deployment.cwd or ".";
       productionDomains = deployment.productionDomains or [ ];
@@ -73,11 +76,13 @@ let
           args=(
             deploy cloudflare-workers
             --target ${lib.escapeShellArg name}
+            --worker-name ${lib.escapeShellArg workerName}
             --config ${lib.escapeShellArg config}
             --cwd ${lib.escapeShellArg cwd}
             --mode "$deploy_type"
             --auth-token-env ${lib.escapeShellArg authTokenEnv}
             --account-id-env ${lib.escapeShellArg accountIdEnv}
+            --cloudflare-api-base-url ${lib.escapeShellArg cloudflareApiBaseUrl}
             --wrangler-bin ${lib.escapeShellArg resolvedWranglerBin}
           )
           if [ "$deploy_type" = "pr" ]; then

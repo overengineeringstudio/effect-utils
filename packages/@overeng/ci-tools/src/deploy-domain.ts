@@ -122,6 +122,7 @@ export const CloudflareWorkersProviderConfig = Schema.TaggedStruct(
   'CloudflareWorkersProviderConfig',
   {
     config: NonEmptyTrimmedString,
+    workerName: DeployAlias,
     accountIdEnv: EnvVarName,
     authTokenEnv: EnvVarName,
   },

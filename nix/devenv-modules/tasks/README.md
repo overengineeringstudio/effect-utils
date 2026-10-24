@@ -354,20 +354,26 @@ for outer tasks that must complete before the nested devenv process can evaluate
 - `cloudflare-workers.nix` - Consumer-built Cloudflare Workers deployments
   - Provides `cloudflare-workers:deploy` and
     `cloudflare-workers:deploy:<target>`. Deployment configuration declares
-    `name`, `config`, `cwd`, and `productionDomains`; `afterTask` points to the
-    consumer-owned build prerequisite. `config` is resolved relative to `cwd`.
-    Supply `ciToolsBin`; select Wrangler with `wranglerPkg` or `wranglerBin`
-    when overriding the module default.
+    required `name`, `workerName`, and `config`, plus optional `cwd` and
+    `productionDomains`; `afterTask` points to the consumer-owned build
+    prerequisite. `workerName` identifies the existing Worker script for the
+    API lookup before Wrangler and is passed to Wrangler as `--name`.
+    `config` is resolved relative to `cwd`. Supply `ciToolsBin`; select Wrangler
+    with `wranglerPkg` or `wranglerBin` when overriding the module default.
     The invoking process environment is inherited by build hooks; deployment
     `env` overrides apply only to deploy, not to the preceding build.
-  - Uses `ci-tools deploy cloudflare-workers --target NAME --config PATH
-    --cwd DIR --mode prod|pr --wrangler-bin BIN`; PR mode requires `--pr N`.
+  - Uses `ci-tools deploy cloudflare-workers --target NAME --worker-name WORKER
+    --config PATH --cwd DIR --mode prod|pr --wrangler-bin BIN`; PR mode requires
+    `--pr N`.
     Repeat `--production-domain HOST` for expected production hostnames.
     Custom-domain desired state belongs in Wrangler configuration, not in an
     additional domain API reconciler.
   - `--auth-token-env` defaults to `CLOUDFLARE_API_TOKEN`;
     `--account-id-env` defaults to `CLOUDFLARE_ACCOUNT_ID`. Pass environment
     variable names, not credential values, through configuration.
+    Module option `cloudflareApiBaseUrl` forwards `--cloudflare-api-base-url`
+    and defaults to `https://api.cloudflare.com/client/v4`; override it for a
+    fake provider endpoint in integration tests.
   - Production uses Wrangler deploy; PR mode uploads a Worker version and
     reports its stable preview alias and immutable preview URL.
   - Worker code and Wrangler configuration are executable inputs. Never use a

@@ -3,13 +3,20 @@ import { spawnSync } from 'node:child_process'
 import { join, resolve } from 'node:path'
 
 import { Effect, FileSystem, Schema } from 'effect'
+import * as HttpClient from 'effect/http/HttpClient'
+import * as HttpClientRequest from 'effect/http/HttpClientRequest'
 
+import { verifyAndCleanupCloudflareWorkers } from './deploy-cloudflare-workers-live.ts'
 import {
   DeployInputV1,
   DeployResultV1,
   InvalidProviderOutput,
   MissingAuth,
   ProviderOperationFailed,
+  ProviderProjectLookupFailed,
+  Unauthorized,
+  UnsafeE2EAlias,
+  VerificationFailed,
   deployFailureRecord,
   deploySuccessRecord,
 } from './deploy-domain.ts'
@@ -23,6 +30,13 @@ export type CloudflareWorkersDeployCommandOptions = {
   readonly target: string
   readonly config: string
   readonly cwd: string
+  readonly workerName: string
+  readonly cloudflareApiBaseUrl?: string | undefined
+  readonly previewAlias?: string | undefined
+  readonly e2eAllowSharedProject?: boolean | undefined
+  readonly e2eReservedAliasPrefix?: string | undefined
+  readonly e2eVerifyPath?: string | undefined
+  readonly e2eVerifyText?: string | undefined
   readonly mode: 'prod' | 'pr'
   readonly pr?: number | undefined
   readonly productionDomains: readonly string[]
@@ -51,6 +65,75 @@ const WranglerUploadOutput = Schema.Struct({
 const WranglerOutput = Schema.Union([WranglerDeployOutput, WranglerUploadOutput])
 const JsonLine = Schema.fromJsonString(Schema.Unknown)
 
+const lookupCloudflareWorker = Effect.fn('ci-tools.deploy.cloudflare-workers.lookup')(
+  function* (opts: {
+    readonly target: string
+    readonly workerName: string
+    readonly accountId: string
+    readonly authToken: string
+    readonly apiBaseUrl: string
+  }) {
+    const client = yield* HttpClient.HttpClient
+    const lookupFailure = (message: string, transient: boolean, status?: number) =>
+      new ProviderProjectLookupFailed({
+        provider: 'cloudflare-workers',
+        target: opts.target,
+        transient,
+        message,
+        diagnostics: status === undefined ? undefined : { apiStatus: String(status) },
+      })
+    const response = yield* client
+      .execute(
+        HttpClientRequest.get(
+          `${opts.apiBaseUrl.replace(/\/+$/u, '')}/accounts/${encodeURIComponent(opts.accountId)}/workers/scripts/${encodeURIComponent(opts.workerName)}/settings`,
+        ).pipe(HttpClientRequest.setHeader('Authorization', `Bearer ${opts.authToken}`)),
+      )
+      .pipe(
+        Effect.flatMap((httpResponse) =>
+          httpResponse.text.pipe(Effect.map((text) => ({ status: httpResponse.status, text }))),
+        ),
+        Effect.mapError(() =>
+          lookupFailure('Cloudflare Worker lookup could not reach the provider API', true),
+        ),
+      )
+    if (response.status === 401 || response.status === 403)
+      return yield* new Unauthorized({
+        provider: 'cloudflare-workers',
+        target: opts.target,
+        message: 'Cloudflare API rejected deploy credentials',
+        diagnostics: { apiStatus: String(response.status) },
+      })
+    if (response.status === 404)
+      return yield* lookupFailure(
+        'Cloudflare Worker was not found in the configured account',
+        false,
+        response.status,
+      )
+    if (response.status < 200 || response.status >= 300)
+      return yield* lookupFailure(
+        'Cloudflare Worker lookup failed',
+        response.status === 429 || response.status >= 500,
+        response.status,
+      )
+    yield* Schema.decodeUnknownEffect(
+      Schema.fromJsonString(
+        Schema.Struct({
+          success: Schema.Literal(true),
+          result: Schema.Record(Schema.String, Schema.Unknown),
+        }),
+      ),
+    )(response.text).pipe(
+      Effect.mapError(() =>
+        lookupFailure(
+          'Cloudflare Worker lookup returned an invalid response',
+          false,
+          response.status,
+        ),
+      ),
+    )
+  },
+)
+
 /** Deploy an explicitly configured Worker, retaining credentials only in the subprocess environment. */
 export const runCloudflareWorkersDeploy = Effect.fn('ci-tools.deploy.cloudflare-workers')(
   function* (options: CloudflareWorkersDeployCommandOptions) {
@@ -63,11 +146,32 @@ export const runCloudflareWorkersDeploy = Effect.fn('ci-tools.deploy.cloudflare-
       mode: options.mode,
       artifactDir: options.cwd,
       pr: options.pr,
-      alias: options.mode === 'pr' && options.pr !== undefined ? `pr-${options.pr}` : undefined,
+      alias:
+        options.mode === 'pr' && options.pr !== undefined
+          ? (options.previewAlias ?? `pr-${options.pr}`)
+          : undefined,
       productionDomains: options.mode === 'prod' ? options.productionDomains : [],
+      e2e:
+        options.e2eAllowSharedProject === true
+          ? {
+              _tag: 'DeployE2EConfig',
+              enabled: true,
+              allowSharedProject: true,
+              reservedAliasPrefix: options.e2eReservedAliasPrefix ?? 'ci-tools-e2e',
+              verifyContent:
+                options.e2eVerifyPath === undefined || options.e2eVerifyText === undefined
+                  ? undefined
+                  : {
+                      _tag: 'DeployVerifyContent',
+                      path: options.e2eVerifyPath,
+                      expectedText: options.e2eVerifyText,
+                    },
+            }
+          : undefined,
       providerConfig: {
         _tag: 'CloudflareWorkersProviderConfig',
         config: options.config,
+        workerName: options.workerName,
         accountIdEnv: options.accountIdEnv,
         authTokenEnv: options.authTokenEnv,
       },
@@ -92,18 +196,55 @@ export const runCloudflareWorkersDeploy = Effect.fn('ci-tools.deploy.cloudflare-
         return yield* failure('Workers PR deploy requires --pr')
       const token = process.env[options.authTokenEnv]
       const accountId = process.env[options.accountIdEnv]
-      for (const [envVar, value] of [
-        [options.authTokenEnv, token],
-        [options.accountIdEnv, accountId],
-      ] as const) {
-        if (value === undefined || value.trim() === '')
-          return yield* new MissingAuth({
+      if (token === undefined || token.trim() === '')
+        return yield* new MissingAuth({
+          provider: 'cloudflare-workers',
+          target: options.target,
+          envVar: options.authTokenEnv,
+          message: 'Cloudflare token environment variable is missing',
+        })
+      if (accountId === undefined || accountId.trim() === '')
+        return yield* new MissingAuth({
+          provider: 'cloudflare-workers',
+          target: options.target,
+          envVar: options.accountIdEnv,
+          message: 'Cloudflare account environment variable is missing',
+        })
+      if (options.e2eAllowSharedProject === true) {
+        if (options.e2eReservedAliasPrefix === undefined) {
+          return yield* failure('Workers live E2E requires an explicit reserved alias namespace')
+        }
+        const prefix = options.e2eReservedAliasPrefix
+        if (
+          options.mode !== 'pr' ||
+          input.alias === undefined ||
+          input.alias.startsWith(`${prefix}-`) === false
+        ) {
+          return yield* new UnsafeE2EAlias({
             provider: 'cloudflare-workers',
             target: options.target,
-            envVar,
-            message: 'Cloudflare credential environment variable is missing',
+            alias: input.alias ?? options.target,
+            reservedAliasPrefix: prefix,
+            message: 'Workers live E2E requires a PR preview alias in the reserved namespace',
           })
+        }
+        if (options.e2eVerifyPath === undefined || options.e2eVerifyText === undefined) {
+          return yield* failure('Workers live E2E requires marker verification path and text')
+        }
+      } else if (
+        options.e2eVerifyPath !== undefined ||
+        options.e2eVerifyText !== undefined ||
+        options.e2eReservedAliasPrefix !== undefined
+      ) {
+        return yield* failure('Workers live E2E requires explicit shared-project mode')
       }
+      yield* lookupCloudflareWorker({
+        target: options.target,
+        workerName: options.workerName,
+        accountId,
+        authToken: token,
+        apiBaseUrl: options.cloudflareApiBaseUrl ?? 'https://api.cloudflare.com/client/v4',
+      })
       const fs = yield* FileSystem.FileSystem
       const temp = yield* fs.makeTempDirectoryScoped({ prefix: 'ci-tools-wrangler-' })
       const outputFile = join(temp, 'output.jsonl')
@@ -114,9 +255,11 @@ export const runCloudflareWorkersDeploy = Effect.fn('ci-tools.deploy.cloudflare-
             [
               ...(options.mode === 'prod'
                 ? ['deploy']
-                : ['versions', 'upload', '--preview-alias', `pr-${options.pr}`]),
+                : ['versions', 'upload', '--preview-alias', input.alias ?? `pr-${options.pr}`]),
               '--config',
               resolve(options.cwd, options.config),
+              '--name',
+              options.workerName,
             ],
             {
               cwd: options.cwd,
@@ -184,7 +327,7 @@ export const runCloudflareWorkersDeploy = Effect.fn('ci-tools.deploy.cloudflare-
           'Wrangler deployment did not report every configured production domain',
         )
       }
-      return yield* Schema.decodeUnknownEffect(DeployResultV1)({
+      const result = yield* Schema.decodeUnknownEffect(DeployResultV1)({
         _tag: 'DeployResult',
         schemaVersion: 1,
         provider: 'cloudflare-workers',
@@ -199,12 +342,32 @@ export const runCloudflareWorkersDeploy = Effect.fn('ci-tools.deploy.cloudflare-
         endedAtUtc: new Date().toISOString(),
         attempts: 1,
       }).pipe(Effect.mapError(invalid))
+      if (
+        options.e2eAllowSharedProject === true &&
+        options.e2eVerifyPath !== undefined &&
+        options.e2eVerifyText !== undefined
+      ) {
+        return yield* verifyAndCleanupCloudflareWorkers({
+          result,
+          workerName: options.workerName,
+          accountId,
+          authToken: token,
+          apiBaseUrl: options.cloudflareApiBaseUrl ?? 'https://api.cloudflare.com/client/v4',
+          verifyPath: options.e2eVerifyPath,
+          expectedText: options.e2eVerifyText,
+        })
+      }
+      return result
     }).pipe(
       Effect.scoped,
       Effect.mapError((error) =>
         error instanceof MissingAuth ||
         error instanceof ProviderOperationFailed ||
-        error instanceof InvalidProviderOutput
+        error instanceof InvalidProviderOutput ||
+        error instanceof ProviderProjectLookupFailed ||
+        error instanceof Unauthorized ||
+        error instanceof UnsafeE2EAlias ||
+        error instanceof VerificationFailed
           ? error
           : failure('Could not read or prepare Wrangler deployment output'),
       ),

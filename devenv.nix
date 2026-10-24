@@ -1216,6 +1216,12 @@ in
     JQ_BIN = "${pkgs.jq}/bin/jq";
     FINGERPRINT_BIN = "${repoFlake.packages.${currentSystem}.buck2-fingerprint}/bin/buck2-fingerprint";
   };
+  # The source deploy complement evaluates real Nix task launchers against fake
+  # providers; pin its evaluator and jq instead of relying on host PATH tools.
+  tasks."test:ci-tools:unbounded".env = {
+    NIX_INSTANTIATE_BIN = "${pkgs.nix}/bin/nix-instantiate";
+    JQ_BIN = "${pkgs.jq}/bin/jq";
+  };
   tasks."test:restate-integration" = lib.mkIf (!ciUnitTest) {
     after = lib.mkForce [ "buck2:editor:publish:restate-effect" ];
   };

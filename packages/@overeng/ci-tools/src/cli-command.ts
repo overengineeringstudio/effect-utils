@@ -636,6 +636,34 @@ const cloudflareWorkersDeployCommand = Command.make(
   'cloudflare-workers',
   {
     target: nonEmptyTextOption({ name: 'target', description: 'Stable Worker deployment target' }),
+    workerName: nonEmptyTextOption({
+      name: 'worker-name',
+      description: 'Existing Cloudflare Worker name for API lookup and upload',
+    }),
+    cloudflareApiBaseUrl: Options.String('cloudflare-api-base-url').pipe(
+      Options.withDescription('Cloudflare API base URL'),
+      Options.withDefault('https://api.cloudflare.com/client/v4'),
+    ),
+    previewAlias: Options.String('preview-alias').pipe(
+      Options.withDescription('Optional preview alias; PR default is pr-<n>'),
+      Options.optional,
+    ),
+    e2eAllowSharedProject: Options.Boolean('e2e-allow-shared-project').pipe(
+      Options.withDescription('Explicitly enable shared-project live E2E guardrails and cleanup'),
+      Options.withDefault(false),
+    ),
+    e2eReservedAliasPrefix: Options.String('e2e-reserved-alias-prefix').pipe(
+      Options.withDescription('Required live E2E preview namespace'),
+      Options.optional,
+    ),
+    e2eVerifyPath: Options.String('e2e-verify-path').pipe(
+      Options.withDescription('Live marker verification path'),
+      Options.optional,
+    ),
+    e2eVerifyText: Options.String('e2e-verify-text').pipe(
+      Options.withDescription('Expected uploaded marker content'),
+      Options.optional,
+    ),
     config: nonEmptyTextOption({
       name: 'config',
       description: 'Wrangler config path relative to cwd',
@@ -685,6 +713,10 @@ const cloudflareWorkersDeployCommand = Command.make(
     runCloudflareWorkersDeploy({
       ...opts,
       pr: optionToUndefined(opts.pr),
+      previewAlias: optionToUndefined(opts.previewAlias),
+      e2eReservedAliasPrefix: optionToUndefined(opts.e2eReservedAliasPrefix),
+      e2eVerifyPath: optionToUndefined(opts.e2eVerifyPath),
+      e2eVerifyText: optionToUndefined(opts.e2eVerifyText),
       productionDomains: opts.productionDomain,
       workflowReportOutputFile: optionToUndefined(opts.workflowReportOutputFile),
       githubOutputFile: optionToUndefined(opts.githubOutputFile),

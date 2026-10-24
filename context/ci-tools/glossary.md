@@ -30,9 +30,9 @@ because direct API implementation would be less reliable or too costly.
 and task boundary against fake providers without external provider network
 dependencies.
 
-**Live E2E:** An end-to-end test that uses real Netlify or Vercel credentials
-and projects, deploys a local static fixture, verifies the served result, and
-records cleanup status.
+**Live E2E:** An end-to-end test that uses real Netlify, Vercel, or Cloudflare
+Workers credentials and projects, deploys a local artifact, verifies its marker
+over HTTP at the final deploy URL, and records best-effort cleanup status.
 
 **Shared provider project:** A real provider project also used for normal
 preview surfaces. CI-tools E2E may use it only with explicit shared-project
@@ -49,7 +49,14 @@ consumer-built Worker output using the consumer's configuration and working
 directory. Production deployment and PR version upload are distinct modes.
 
 **Worker preview alias:** The stable review URL returned by Wrangler for a
-version upload, distinct from that version's immutable preview URL.
+version upload, distinct from that version's immutable preview URL. Ordinary PR
+uploads use `pr-N`; shared-project live E2E requires an explicitly reserved,
+unique alias before upload and does not move production traffic.
+
+**Worker version cleanup:** Best-effort deletion of only the exact version UUID
+returned by the live upload, scoped to the supplied account and Worker name.
+The beta API accepts the Worker name as its Worker identifier. Cleanup status is
+recorded even when marker verification fails and never replaces that failure.
 
 **Trusted deploy job:** A credential-bearing job admitted only for a main
 branch push or a same-repository pull request. Fork pull requests and
