@@ -1,20 +1,24 @@
+import { afterEach, describe, expect, it, mock, spyOn } from 'bun:test'
 import {
   chmodSync,
+  existsSync,
+  linkSync,
+  lstatSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
   readlinkSync,
+  realpathSync,
   rmSync,
   statSync,
   symlinkSync,
   writeFileSync,
 } from 'node:fs'
-import { lstat, readdir, readlink, rename } from 'node:fs/promises'
+import * as fs from 'node:fs/promises'
+import { readdir, readlink, rename } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
 import { isAbsolute, join } from 'node:path'
-
-import { afterEach, describe, expect, it } from 'vitest'
 
 import {
   assembleStoreEntry,
@@ -26,11 +30,12 @@ import {
 const scratch: string[] = []
 
 afterEach(() => {
+  mock.restore()
   for (const directory of scratch.splice(0)) rmSync(directory, { recursive: true, force: true })
 })
 
 const makeRoot = (): string => {
-  const root = mkdtempSync(join(tmpdir(), 'pnpm-store-'))
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'pnpm-store-')))
   scratch.push(root)
   return root
 }
@@ -59,8 +64,8 @@ const census = async (root: string): Promise<TreeCensus> => {
   const files: string[] = []
   const links: string[] = []
   const visit = async (directory: string, prefix: string): Promise<void> => {
-    for (const entry of (await readdir(directory, { withFileTypes: true })).toSorted((left, right) =>
-      left.name < right.name ? -1 : 1,
+    for (const entry of (await readdir(directory, { withFileTypes: true })).toSorted(
+      (left, right) => (left.name < right.name ? -1 : 1),
     )) {
       const path = join(directory, entry.name)
       const display = prefix === '' ? entry.name : `${prefix}/${entry.name}`
@@ -80,6 +85,135 @@ const census = async (root: string): Promise<TreeCensus> => {
 }
 
 describe('normalized store entry assembly', () => {
+  it('preserves source inode sharing, executable modes, and directory symlinks without traversing them', async () => {
+    const root = makeRoot()
+    const source = makePackage({ name: 'linked', root, files: { 'nested/run': 'run' } })
+    chmodSync(join(source, 'nested/run'), 0o751)
+    linkSync(join(source, 'nested/run'), join(source, 'alias'))
+    symlinkSync('nested', join(source, 'directory-link'))
+    const output = join(root, 'entry')
+    await assembleStoreEntry({
+      bins: [],
+      dependencies: [],
+      workspaceLinks: [],
+      packageName: 'linked',
+      packageTree: source,
+      output,
+    })
+    const projected = join(output, 'node_modules/linked')
+    expect(statSync(join(projected, 'nested/run')).ino).toBe(
+      statSync(join(source, 'nested/run')).ino,
+    )
+    expect(statSync(join(projected, 'alias')).ino).toBe(statSync(join(source, 'nested/run')).ino)
+    expect(statSync(join(projected, 'nested/run')).mode & 0o7777).toBe(0o751)
+    expect(lstatSync(join(projected, 'directory-link')).isSymbolicLink()).toBe(true)
+    expect(readlinkSync(join(projected, 'directory-link'))).toBe('nested')
+  })
+
+  it('bounds hardlinks to 32 and creates each package directory only once', async () => {
+    const root = makeRoot()
+    const source = makePackage({
+      name: 'many',
+      root,
+      files: Object.fromEntries(Array.from({ length: 97 }, (_, index) => [`nested/${index}`, 'x'])),
+    })
+    let active = 0
+    let maximum = 0
+    let release!: () => void
+    let started!: () => void
+    const gate = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const full = new Promise<void>((resolve) => {
+      started = resolve
+    })
+    spyOn(fs, 'link').mockImplementation(async (...args) => {
+      active++
+      maximum = Math.max(maximum, active)
+      if (active === 32) started()
+      try {
+        await gate
+        linkSync(...args)
+      } finally {
+        active--
+      }
+    })
+    const directories = spyOn(fs, 'mkdir')
+    const output = join(root, 'entry')
+    const assembling = assembleStoreEntry({
+      bins: [],
+      dependencies: [],
+      workspaceLinks: [],
+      packageName: 'many',
+      packageTree: source,
+      output,
+    })
+    await full
+    expect(existsSync(output)).toBe(false)
+    release()
+    await assembling
+    expect(maximum).toBe(32)
+    expect(active).toBe(0)
+    const created = directories.mock.calls.map(([path]) => String(path))
+    expect(new Set(created).size).toBe(created.length)
+    expect(created).toHaveLength(3) // staging, package root (with ancestors), nested
+  })
+
+  it('drains a failed batch, reports its byte-first error, and never publishes or starts later files', async () => {
+    const root = makeRoot()
+    const source = makePackage({
+      name: 'failure',
+      root,
+      files: Object.fromEntries(
+        Array.from({ length: 96 }, (_, index) => [String(index).padStart(3, '0'), 'x']),
+      ),
+    })
+    let release!: () => void
+    let started!: () => void
+    const gate = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const full = new Promise<void>((resolve) => {
+      started = resolve
+    })
+    let admitted = 0
+    let active = 0
+    const first = new Error('first byte-ordered failure')
+    spyOn(fs, 'link').mockImplementation(async (...args) => {
+      const index = admitted++
+      active++
+      if (admitted === 32) started()
+      try {
+        if (index === 1) {
+          await full
+          throw new Error('later failure resolves sooner')
+        }
+        await gate
+        if (index === 0) throw first
+        linkSync(...args)
+      } finally {
+        active--
+      }
+    })
+    const output = join(root, 'entry')
+    const assembling = assembleStoreEntry({
+      bins: [],
+      dependencies: [],
+      workspaceLinks: [],
+      packageName: 'failure',
+      packageTree: source,
+      output,
+    })
+    await full
+    expect(existsSync(output)).toBe(false)
+    release()
+    await expect(assembling).rejects.toBe(first)
+    expect(active).toBe(0)
+    expect(admitted).toBe(32)
+    expect(existsSync(output)).toBe(false)
+    expect((await readdir(root)).filter((name) => name.startsWith('entry.stage-'))).toEqual([])
+  })
+
   it('resolves a dependency from inside its package through a literal node_modules ancestor', async () => {
     const root = makeRoot()
     const leftPackage = makePackage({ name: 'left', root })
@@ -88,18 +222,24 @@ describe('normalized store entry assembly', () => {
     const leftEntry = join(root, 'entries', 'left')
     mkdirSync(join(root, 'entries'), { recursive: true })
 
-    await assembleStoreEntry({ workspaceLinks: [], bins: [],
-    dependencies: [],
-    output: rightEntry,
-    packageName: 'right',
-    packageTree: rightPackage, })
-    await assembleStoreEntry({ workspaceLinks: [], bins: [],
-    dependencies: [
-      { entryDir: join(rightEntry, 'node_modules'), name: 'right', packageName: 'right' },
-    ],
-    output: leftEntry,
-    packageName: 'left',
-    packageTree: leftPackage, })
+    await assembleStoreEntry({
+      workspaceLinks: [],
+      bins: [],
+      dependencies: [],
+      output: rightEntry,
+      packageName: 'right',
+      packageTree: rightPackage,
+    })
+    await assembleStoreEntry({
+      workspaceLinks: [],
+      bins: [],
+      dependencies: [
+        { entryDir: join(rightEntry, 'node_modules'), name: 'right', packageName: 'right' },
+      ],
+      output: leftEntry,
+      packageName: 'left',
+      packageTree: leftPackage,
+    })
 
     const { files, links } = await census(leftEntry)
     expect(files).toEqual(['node_modules/left/index.js'])
@@ -119,11 +259,17 @@ describe('normalized store entry assembly', () => {
     const workspace = makePackage({ name: 'workspace-lib', root })
     const output = join(root, 'entry')
     await runStoreAssemblyCli([
-      '--mode', 'entry',
-      '--output', output,
-      '--package-name', 'file-consumer',
-      '--package-tree', consumer,
-      '--workspace-link', 'workspace-lib', workspace,
+      '--mode',
+      'entry',
+      '--output',
+      output,
+      '--package-name',
+      'file-consumer',
+      '--package-tree',
+      consumer,
+      '--workspace-link',
+      'workspace-lib',
+      workspace,
     ])
     const requireFromConsumer = createRequire(
       join(output, 'node_modules', 'file-consumer', 'index.js'),
@@ -138,18 +284,24 @@ describe('normalized store entry assembly', () => {
     const rightEntry = join(root, 'entries', 'right')
     const leftEntry = join(root, 'entries', 'left')
     mkdirSync(join(root, 'entries'), { recursive: true })
-    await assembleStoreEntry({ workspaceLinks: [], bins: [],
-    dependencies: [],
-    output: rightEntry,
-    packageName: 'right',
-    packageTree: makePackage({ name: 'right', root }), })
-    await assembleStoreEntry({ workspaceLinks: [], bins: [],
-    dependencies: [
-      { entryDir: join(rightEntry, 'node_modules'), name: 'right', packageName: 'right' },
-    ],
-    output: leftEntry,
-    packageName: 'left',
-    packageTree: makePackage({ name: 'left', root }), })
+    await assembleStoreEntry({
+      workspaceLinks: [],
+      bins: [],
+      dependencies: [],
+      output: rightEntry,
+      packageName: 'right',
+      packageTree: makePackage({ name: 'right', root }),
+    })
+    await assembleStoreEntry({
+      workspaceLinks: [],
+      bins: [],
+      dependencies: [
+        { entryDir: join(rightEntry, 'node_modules'), name: 'right', packageName: 'right' },
+      ],
+      output: leftEntry,
+      packageName: 'left',
+      packageTree: makePackage({ name: 'left', root }),
+    })
 
     const moved = join(makeRoot(), 'relocated')
     await rename(join(root, 'entries'), moved).catch(() => {
@@ -162,24 +314,30 @@ describe('normalized store entry assembly', () => {
   it('rejects a dependency name that traverses out of the entry', async () => {
     const root = makeRoot()
     await expect(
-      assembleStoreEntry({ workspaceLinks: [], bins: [],
-      dependencies: [
-        { entryDir: join(root, 'archives'), name: '../escape', packageName: 'right' },
-      ],
-      output: join(root, 'entry'),
-      packageName: 'left',
-      packageTree: makePackage({ name: 'left', root }), }),
+      assembleStoreEntry({
+        workspaceLinks: [],
+        bins: [],
+        dependencies: [
+          { entryDir: join(root, 'archives'), name: '../escape', packageName: 'right' },
+        ],
+        output: join(root, 'entry'),
+        packageName: 'left',
+        packageTree: makePackage({ name: 'left', root }),
+      }),
     ).rejects.toThrow(/dependency name must be normalized/)
   })
 
   it('rejects an undeclared dependency tree instead of materializing a dangling link', async () => {
     const root = makeRoot()
     await expect(
-      assembleStoreEntry({ workspaceLinks: [], bins: [],
-      dependencies: [{ entryDir: join(root, 'missing'), name: 'right', packageName: 'right' }],
-      output: join(root, 'entry'),
-      packageName: 'left',
-      packageTree: makePackage({ name: 'left', root }), }),
+      assembleStoreEntry({
+        workspaceLinks: [],
+        bins: [],
+        dependencies: [{ entryDir: join(root, 'missing'), name: 'right', packageName: 'right' }],
+        output: join(root, 'entry'),
+        packageName: 'left',
+        packageTree: makePackage({ name: 'left', root }),
+      }),
     ).rejects.toThrow(/names undeclared tree/)
   })
 
@@ -188,22 +346,28 @@ describe('normalized store entry assembly', () => {
     const dangling = makePackage({ name: 'dangling', root })
     symlinkSync('missing', join(dangling, 'link'))
     await expect(
-      assembleStoreEntry({ workspaceLinks: [], bins: [],
-      dependencies: [],
-      output: join(root, 'dangling-entry'),
-      packageName: 'dangling',
-      packageTree: dangling, }),
+      assembleStoreEntry({
+        workspaceLinks: [],
+        bins: [],
+        dependencies: [],
+        output: join(root, 'dangling-entry'),
+        packageName: 'dangling',
+        packageTree: dangling,
+      }),
     ).rejects.toThrow(/source symlink target is dangling/)
 
     const cyclic = makePackage({ name: 'cyclic', root })
     symlinkSync('cycle-b', join(cyclic, 'cycle-a'))
     symlinkSync('cycle-a', join(cyclic, 'cycle-b'))
     await expect(
-      assembleStoreEntry({ workspaceLinks: [], bins: [],
-      dependencies: [],
-      output: join(root, 'cyclic-entry'),
-      packageName: 'cyclic',
-      packageTree: cyclic, }),
+      assembleStoreEntry({
+        workspaceLinks: [],
+        bins: [],
+        dependencies: [],
+        output: join(root, 'cyclic-entry'),
+        packageName: 'cyclic',
+        packageTree: cyclic,
+      }),
     ).rejects.toThrow(/source symlink target is cyclic/)
   })
 
@@ -212,13 +376,14 @@ describe('normalized store entry assembly', () => {
     const declaredEntry = join(root, 'declared-entry')
     mkdirSync(declaredEntry, { recursive: true })
     await expect(
-      assembleStoreEntry({ workspaceLinks: [], bins: [],
-      dependencies: [
-        { entryDir: declaredEntry, name: 'missing', packageName: 'missing' },
-      ],
-      output: join(root, 'entry'),
-      packageName: 'left',
-      packageTree: makePackage({ name: 'left', root }), }),
+      assembleStoreEntry({
+        workspaceLinks: [],
+        bins: [],
+        dependencies: [{ entryDir: declaredEntry, name: 'missing', packageName: 'missing' }],
+        output: join(root, 'entry'),
+        packageName: 'left',
+        packageTree: makePackage({ name: 'left', root }),
+      }),
     ).rejects.toThrow(/link target is dangling/)
   })
 
@@ -231,13 +396,14 @@ describe('normalized store entry assembly', () => {
     symlinkSync(outside, join(declaredEntry, 'escaped'))
 
     await expect(
-      assembleStoreEntry({ workspaceLinks: [], bins: [],
-      dependencies: [
-        { entryDir: declaredEntry, name: 'escaped', packageName: 'escaped' },
-      ],
-      output: join(root, 'entry'),
-      packageName: 'left',
-      packageTree: makePackage({ name: 'left', root }), }),
+      assembleStoreEntry({
+        workspaceLinks: [],
+        bins: [],
+        dependencies: [{ entryDir: declaredEntry, name: 'escaped', packageName: 'escaped' }],
+        output: join(root, 'entry'),
+        packageName: 'left',
+        packageTree: makePackage({ name: 'left', root }),
+      }),
     ).rejects.toThrow(/canonically escapes its declared tree/)
   })
 
@@ -249,11 +415,14 @@ describe('normalized store entry assembly', () => {
     symlinkSync('../../outside.txt', join(packageTree, 'z-redirect'))
 
     await expect(
-      assembleStoreEntry({ workspaceLinks: [], bins: [],
-      dependencies: [],
-      output: join(root, 'escaping-entry'),
-      packageName: 'escaping',
-      packageTree, }),
+      assembleStoreEntry({
+        workspaceLinks: [],
+        bins: [],
+        dependencies: [],
+        output: join(root, 'escaping-entry'),
+        packageName: 'escaping',
+        packageTree,
+      }),
     ).rejects.toThrow(/chained target escapes its declared tree/)
   })
 })
@@ -268,7 +437,11 @@ describe('strongly connected component assembly', () => {
       { name: 'left', sourceStoreKey: 'right@1.0.0', targetStoreKey: 'left@1.0.0' },
     ],
     members: [
-      { packageName: 'left', packageTree: makePackage({ name: 'left', root }), storeKey: 'left@1.0.0' },
+      {
+        packageName: 'left',
+        packageTree: makePackage({ name: 'left', root }),
+        storeKey: 'left@1.0.0',
+      },
       {
         packageName: 'right',
         packageTree: makePackage({ name: 'right', root }),
@@ -288,10 +461,7 @@ describe('strongly connected component assembly', () => {
       'left@1.0.0/node_modules/left/index.js',
       'right@1.0.0/node_modules/right/index.js',
     ])
-    expect(links).toEqual([
-      'left@1.0.0/node_modules/right',
-      'right@1.0.0/node_modules/left',
-    ])
+    expect(links).toEqual(['left@1.0.0/node_modules/right', 'right@1.0.0/node_modules/left'])
     expect(await readlink(join(options.output, 'left@1.0.0', 'node_modules', 'right'))).toBe(
       '../../right@1.0.0/node_modules/right',
     )
@@ -345,15 +515,18 @@ describe('importer dependency view assembly', () => {
     const root = makeRoot()
     const entry = join(root, 'entries', 'left')
     mkdirSync(join(root, 'entries'), { recursive: true })
-    await assembleStoreEntry({ workspaceLinks: [], bins: [],
-    dependencies: [],
-    output: entry,
-    packageName: 'left',
-    packageTree: makePackage({
-      files: { 'bin/cli.js': '#!/usr/bin/env node\n', 'index.js': 'x\n' },
-      name: 'left',
-      root,
-    }), })
+    await assembleStoreEntry({
+      workspaceLinks: [],
+      bins: [],
+      dependencies: [],
+      output: entry,
+      packageName: 'left',
+      packageTree: makePackage({
+        files: { 'bin/cli.js': '#!/usr/bin/env node\n', 'index.js': 'x\n' },
+        name: 'left',
+        root,
+      }),
+    })
     const workspace = join(root, 'workspace')
     mkdirSync(workspace, { recursive: true })
     writeFileSync(join(workspace, 'package.json'), '{"name":"@overeng/lib"}\n')
@@ -393,11 +566,14 @@ describe('importer dependency view assembly', () => {
   it('rejects two dependencies claiming the same first hop', async () => {
     const root = makeRoot()
     const entry = join(root, 'entry')
-    await assembleStoreEntry({ workspaceLinks: [], bins: [],
-    dependencies: [],
-    output: entry,
-    packageName: 'left',
-    packageTree: makePackage({ name: 'left', root }), })
+    await assembleStoreEntry({
+      workspaceLinks: [],
+      bins: [],
+      dependencies: [],
+      output: entry,
+      packageName: 'left',
+      packageTree: makePackage({ name: 'left', root }),
+    })
     await expect(
       assembleStoreView({
         bins: [],
@@ -552,7 +728,14 @@ describe('store assembly command line', () => {
       ]),
     ).rejects.toThrow(/--package-tree and --package-override are mutually exclusive/)
     await expect(
-      runStoreAssemblyCli(['--mode', 'entry', '--output', join(root, 'none'), '--package-name', 'left']),
+      runStoreAssemblyCli([
+        '--mode',
+        'entry',
+        '--output',
+        join(root, 'none'),
+        '--package-name',
+        'left',
+      ]),
     ).rejects.toThrow(/missing --package-tree/)
   })
 

@@ -20,6 +20,7 @@
  * This module is the sole pnpm materialization runner: the normalized store
  * replaced the per-importer closure assembly outright.
  */
+import type { Dirent } from 'node:fs'
 import {
   chmod,
   copyFile,
@@ -55,7 +56,9 @@ const assertPortablePath = ({
     fail(`${field} must be a non-empty portable relative path: ${JSON.stringify(value)}`)
   }
   if (
-    value.split('/').some((component) => component === '' || component === '.' || component === '..')
+    value
+      .split('/')
+      .some((component) => component === '' || component === '.' || component === '..')
   ) {
     fail(`${field} must be normalized: ${JSON.stringify(value)}`)
   }
@@ -103,7 +106,15 @@ const isInside = ({
  */
 export type TreeMaterialization = 'hardlink' | 'copy'
 
-/** Copies one declared tree, preserving contained links. */
+/**
+ * Copies one declared tree, preserving contained links. Buck-owned extraction
+ * trees are immutable during an action, so their Dirents can supply types
+ * without following links. Overrides retain lstat, including their file modes.
+ *
+ * Hardlinks run in byte-ordered batches of at most 32. A failed batch is fully
+ * drained before staging cleanup and reports its first error in traversal order;
+ * no later batch or metadata link can make a failed entry appear complete.
+ */
 const materializeTree = async ({
   materialization,
   source,
@@ -117,49 +128,80 @@ const materializeTree = async ({
   if ((await lstat(sourceRoot)).isDirectory() === false)
     fail(`source tree is not a directory: ${source}`)
 
+  const pending: Promise<void>[] = []
+  let leafFailed = false
+  const flush = async (): Promise<void> => {
+    const results = await Promise.allSettled(pending.splice(0))
+    for (const result of results) {
+      if (result.status === 'rejected') throw result.reason
+    }
+  }
+
   const visit = async ({
     currentSource,
     currentDestination,
+    entry,
   }: {
     readonly currentSource: string
     readonly currentDestination: string
+    readonly entry?: Dirent
   }): Promise<void> => {
-    const metadata = await lstat(currentSource)
+    if (leafFailed === true) await flush()
+    const metadata =
+      materialization === 'hardlink' &&
+      entry !== undefined &&
+      (entry.isDirectory() === true || entry.isFile() === true || entry.isSymbolicLink() === true)
+        ? entry
+        : await lstat(currentSource)
     if (metadata.isDirectory() === true) {
-      await mkdir(currentDestination, { recursive: true })
-      const entries = (await readdir(currentSource)).toSorted((left, right) =>
-        Buffer.from(left).compare(Buffer.from(right)),
+      await mkdir(currentDestination, { recursive: currentSource === sourceRoot })
+      const entries = (await readdir(currentSource, { withFileTypes: true })).toSorted(
+        (left, right) => Buffer.from(left.name).compare(Buffer.from(right.name)),
       )
-      for (const entry of entries) {
+      for (const child of entries) {
         await visit({
-          currentSource: join(currentSource, entry),
-          currentDestination: join(currentDestination, entry),
+          currentSource: join(currentSource, child.name),
+          currentDestination: join(currentDestination, child.name),
+          entry: child,
         })
       }
       return
     }
-    await mkdir(dirname(currentDestination), { recursive: true })
     if (metadata.isFile() === true) {
       if (materialization === 'copy') {
         await copyFile(currentSource, currentDestination)
         // `copyFile` carries the source mode, so a 0444 store file would land
         // read-only. Add owner write and keep every other declared bit.
+        // Overrides always use lstat above rather than Dirent-only typing.
+        if (!('mode' in metadata)) fail(`source file has no mode: ${currentSource}`)
         await chmod(currentDestination, (metadata.mode & 0o7777) | 0o200)
         return
       }
-      try {
-        await link(currentSource, currentDestination)
-      } catch (error) {
-        if (!(error instanceof Error) || !('code' in error) || error.code !== 'EXDEV') throw error
-        await copyFile(currentSource, currentDestination)
-      }
+      pending.push(
+        link(currentSource, currentDestination)
+          .catch(async (error: unknown) => {
+            if (!(error instanceof Error) || !('code' in error) || error.code !== 'EXDEV')
+              throw error
+            await copyFile(currentSource, currentDestination)
+          })
+          .catch((error: unknown) => {
+            leafFailed = true
+            throw error
+          }),
+      )
+      // Attach rejection handlers in this turn, before traversal can await I/O.
+      void pending[pending.length - 1]!.catch(() => {})
+      if (pending.length === 32) await flush()
       return
     }
+    await flush()
     if (metadata.isSymbolicLink() === true) {
       const target = await readlink(currentSource)
       if (isAbsolute(target) === true)
         fail(`source symlink has an absolute target: ${currentSource} -> ${target}`)
-      if (isInside({ root: sourceRoot, candidate: resolve(dirname(currentSource), target) }) === false)
+      if (
+        isInside({ root: sourceRoot, candidate: resolve(dirname(currentSource), target) }) === false
+      )
         fail(`source symlink target escapes its declared tree: ${currentSource} -> ${target}`)
       let canonicalTarget: string
       try {
@@ -174,14 +216,23 @@ const materializeTree = async ({
         throw error
       }
       if (isInside({ root: sourceRoot, candidate: canonicalTarget }) === false)
-        fail(`source symlink chained target escapes its declared tree: ${currentSource} -> ${target}`)
+        fail(
+          `source symlink chained target escapes its declared tree: ${currentSource} -> ${target}`,
+        )
       await symlink(target, currentDestination)
       return
     }
     fail(`source tree contains an unsupported entry: ${currentSource}`)
   }
 
-  await visit({ currentSource: sourceRoot, currentDestination: destination })
+  try {
+    await visit({ currentSource: sourceRoot, currentDestination: destination })
+    await flush()
+  } catch (error) {
+    // A traversal error must not race outstanding writes against rm(stage).
+    await flush()
+    throw error
+  }
 }
 /**
  * Creates one relative symlink and proves its target exists within its declared
@@ -406,8 +457,7 @@ export const assembleStoreScc = async (options: SccOptions): Promise<void> => {
   for (const member of options.members) {
     assertStoreKey({ value: member.storeKey, field: 'member key' })
     assertPortablePath({ value: member.packageName, field: 'member package name' })
-    if (members.has(member.storeKey) === true)
-      fail(`duplicate member namespace ${member.storeKey}`)
+    if (members.has(member.storeKey) === true) fail(`duplicate member namespace ${member.storeKey}`)
     members.set(member.storeKey, member)
   }
   if (members.size < 1) fail('a component must declare at least one member')
@@ -433,8 +483,14 @@ export const assembleStoreScc = async (options: SccOptions): Promise<void> => {
       }
       for (const edge of options.internal) {
         assertPortablePath({ value: edge.name, field: 'component edge name' })
-        const source = requireMember({ field: 'component edge source', storeKey: edge.sourceStoreKey })
-        const target = requireMember({ field: 'component edge target', storeKey: edge.targetStoreKey })
+        const source = requireMember({
+          field: 'component edge source',
+          storeKey: edge.sourceStoreKey,
+        })
+        const target = requireMember({
+          field: 'component edge target',
+          storeKey: edge.targetStoreKey,
+        })
         await addRelativeLink({
           containedIn: stage,
           linkPath: join(memberNodeModules({ root: stage, storeKey: source.storeKey }), edge.name),
@@ -463,8 +519,14 @@ export const assembleStoreScc = async (options: SccOptions): Promise<void> => {
       for (const bin of options.bins) {
         assertPortablePath({ value: bin.name, field: 'component bin name' })
         assertPortablePath({ value: bin.executable, field: 'component bin executable' })
-        const source = requireMember({ field: 'component bin source', storeKey: bin.sourceStoreKey })
-        const target = requireMember({ field: 'component bin target', storeKey: bin.targetStoreKey })
+        const source = requireMember({
+          field: 'component bin source',
+          storeKey: bin.sourceStoreKey,
+        })
+        const target = requireMember({
+          field: 'component bin target',
+          storeKey: bin.targetStoreKey,
+        })
         await addRelativeLink({
           containedIn: stage,
           linkPath: join(
@@ -631,7 +693,7 @@ export const runStoreAssemblyCli = async (args: readonly string[]): Promise<void
   const memberBins: SccBinEdge[] = []
   const memberExternalBins: SccExternalBinEdge[] = []
 
-  for (let index = 0; index < args.length; ) {
+  for (let index = 0; index < args.length;) {
     const flag = args[index]
     const take = (count: number): readonly string[] => {
       const values = takeArguments({ args, count, flag: flag ?? '', index })
