@@ -1,6 +1,7 @@
 import { Schema } from 'effect'
 
-import * as EffectRust from '../../schema/effect-rust.ts'
+import * as EffectRust from '@overeng/schema-codegen/annotations'
+
 import type { Vector } from '../mod.ts'
 
 /** Non-primitive intervals exercise independent storage selection and validation. */

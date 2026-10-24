@@ -19,7 +19,13 @@ export const buck2TypeScriptAdmission = {
       distTarget: '//packages/@overeng/utils-dev:dist',
     },
   ],
-  authorities: [{ declarationEntrypoint: 'src/mod.d.ts', projectFile: 'tsconfig.json' }],
+  authorities: [
+    {
+      declarationEntrypoint: 'src/mod.d.ts',
+      projectFile: 'tsconfig.json',
+      projectInputs: ['src/fixtures/canonical-goldens.json'],
+    },
+  ],
   tests: [
     {
       name: 'test',

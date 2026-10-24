@@ -13,6 +13,7 @@
       "packages/@overeng/otel-browser",
       "packages/@overeng/otel-contract",
       "packages/@overeng/rpc-devtools",
+      "packages/@overeng/schema-codegen",
       "packages/@overeng/stylex-tokens",
       "packages/@overeng/utils",
       "packages/@overeng/utils-dev",

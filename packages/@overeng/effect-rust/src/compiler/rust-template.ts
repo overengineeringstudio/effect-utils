@@ -1,4 +1,4 @@
-import type { Width } from './ir.ts'
+import type { Width } from '@overeng/schema-codegen'
 
 /** Internal support requirements of the emitted contract definitions. */
 export interface RustSupportFeatures {

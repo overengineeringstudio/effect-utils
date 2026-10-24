@@ -2,8 +2,9 @@ import { describe, it } from '@effect/vitest'
 import { Schema } from 'effect'
 import { expect } from 'vitest'
 
+import * as EffectRust from '@overeng/schema-codegen/annotations'
+
 import * as ContractJson from '../schema/contract-json.ts'
-import * as EffectRust from '../schema/effect-rust.ts'
 import { canonicalJson, parseJson } from '../schema/json.ts'
 import { boundedContracts, boundedVectors } from './fixtures/bounded-contracts.ts'
 import { contracts } from './fixtures/contracts.ts'

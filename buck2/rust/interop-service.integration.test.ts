@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, it } from 'bun:test'
 import { existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
-import { join, resolve } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 
 import { Effect } from 'effect'
 
@@ -94,10 +95,13 @@ describe('interop service inline contracts', () => {
     expect(result.exitCode).toBe(0)
     mkdirSync(join(root, 'node_modules', '@overeng'), { recursive: true })
     symlinkSync(compiler, join(root, 'node_modules', '@overeng', 'effect-rust'))
-    symlinkSync(
-      resolve(import.meta.dir, '../../node_modules/effect'),
-      join(root, 'node_modules', 'effect'),
-    )
+    // One physical effect copy: the compiler package tree's own resolution.
+    // Scoped harness publications materialize per-package node_modules, so the
+    // repository root copy can differ from the compiler tree's copy.
+    let effectPackage = dirname(require.resolve('effect', { paths: [compiler] }))
+    while (existsSync(join(effectPackage, 'package.json')) === false)
+      effectPackage = dirname(effectPackage)
+    symlinkSync(effectPackage, join(root, 'node_modules', 'effect'))
     // The generated package lives at a fresh runtime-selected fixture path.
     const { makeFixture } = await import(join(output, 'service.ts'))
     const value = await Effect.runPromise(

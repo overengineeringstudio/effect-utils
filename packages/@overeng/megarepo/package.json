@@ -11,6 +11,7 @@
       "packages/@overeng/kdl-effect",
       "packages/@overeng/megarepo",
       "packages/@overeng/otel-contract",
+      "packages/@overeng/schema-codegen",
       "packages/@overeng/tui-core",
       "packages/@overeng/tui-react",
       "packages/@overeng/utils",

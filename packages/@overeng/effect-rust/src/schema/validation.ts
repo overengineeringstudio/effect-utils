@@ -1,6 +1,7 @@
 import { Schema, SchemaAST } from 'effect'
 
-import { excess, width } from './effect-rust.ts'
+import { excess, width } from '@overeng/schema-codegen/annotations'
+
 import { JsonError, JsonNumber } from './json.ts'
 
 const needsPreparation = (root: SchemaAST.AST): boolean => {

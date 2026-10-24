@@ -200,6 +200,14 @@
         "rationale": "effect-rust bounded parsing, schema, API, rendering or build-contract assertions; no Darwin-specific host lifecycle regression. Host-sensitive source complements are classified independently."
       },
       {
+        "task": "test:schema-codegen",
+        "rationale": "Shared schema lowering and IR contracts are platform-neutral; native Swift compilation is exercised separately."
+      },
+      {
+        "task": "test:schema-codegen-swift",
+        "rationale": "Pure Swift source emission contracts are platform-neutral; generated Swift fixtures are compiled separately on macOS and iOS Simulator."
+      },
+      {
         "task": "test:effect-schema-form-aria",
         "rationale": "effect-schema-form-aria bounded parsing, schema, API, rendering or build-contract assertions; no Darwin-specific host lifecycle regression. Host-sensitive source complements are classified independently."
       },

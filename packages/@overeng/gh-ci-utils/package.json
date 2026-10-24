@@ -9,6 +9,7 @@
       "packages/@overeng/effect-rust",
       "packages/@overeng/gh-ci-utils",
       "packages/@overeng/otel-contract",
+      "packages/@overeng/schema-codegen",
       "packages/@overeng/tui-core",
       "packages/@overeng/tui-react",
       "packages/@overeng/utils",

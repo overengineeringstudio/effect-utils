@@ -56,5 +56,8 @@
   "include": [
     "src/**/*"
   ],
+  "exclude": [
+    "src/**/*.genie.ts"
+  ],
   "references": []
 }

@@ -7,10 +7,14 @@ import {
   workspaceMember,
   type PackageJsonInputData,
 } from '../../../genie/internal.ts'
+import schemaCodegenPkg from '../schema-codegen/package.json.genie.ts'
 
 const workspaceDeps = catalog.compose({
   workspace: workspaceMember({ memberPath: 'packages/@overeng/effect-rust' }),
-  dependencies: { external: catalog.pick('effect') },
+  dependencies: {
+    workspace: [schemaCodegenPkg],
+    external: catalog.pick('effect'),
+  },
   devDependencies: {
     external: catalog.pick('@effect/vitest', '@types/node', 'typescript', 'vitest'),
   },

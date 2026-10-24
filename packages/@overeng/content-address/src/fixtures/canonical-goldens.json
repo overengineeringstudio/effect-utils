@@ -1,0 +1,209 @@
+{
+  "version": 1,
+  "cases": [
+    {
+      "name": "producer-apple-on-device",
+      "inputJSON": "{\"_tag\":\"apple-on-device\",\"model\":\"Apple Foundation Models\",\"osVersion\":\"27.0\"}",
+      "canonicalJSON": "{\"_tag\":\"apple-on-device\",\"model\":\"Apple Foundation Models\",\"osVersion\":\"27.0\"}",
+      "sha256": "sha256:99b48817a4387f9eded7686265afd6828d7fb450ff3d496a6da67cc297e27f2a"
+    },
+    {
+      "name": "producer-server-local",
+      "inputJSON": "{\"_tag\":\"server-local\",\"runtime\":\"llama.cpp\",\"model\":\"synthetic-de-en\",\"weightsDigest\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"quantization\":\"Q4_K_M\"}",
+      "canonicalJSON": "{\"_tag\":\"server-local\",\"model\":\"synthetic-de-en\",\"quantization\":\"Q4_K_M\",\"runtime\":\"llama.cpp\",\"weightsDigest\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}",
+      "sha256": "sha256:6ea2d5b5de94182faf3e741b88b8c4d8427febcb108d7e7a5b09a3885956031a"
+    },
+    {
+      "name": "producer-cloud-api",
+      "inputJSON": "{\"_tag\":\"cloud-api\",\"provider\":\"synthetic\",\"model\":\"de-en\",\"modelVersion\":\"2026-10-21\"}",
+      "canonicalJSON": "{\"_tag\":\"cloud-api\",\"model\":\"de-en\",\"modelVersion\":\"2026-10-21\",\"provider\":\"synthetic\"}",
+      "sha256": "sha256:4cdee800302397f9848542462b8a2681f1d3651480cc43bd2fff87fe483fbfcd"
+    },
+    {
+      "name": "producer-asr-sfspeech",
+      "inputJSON": "{\"_tag\":\"asr-sfspeech\",\"locale\":\"de-DE\",\"osVersion\":\"27.0\"}",
+      "canonicalJSON": "{\"_tag\":\"asr-sfspeech\",\"locale\":\"de-DE\",\"osVersion\":\"27.0\"}",
+      "sha256": "sha256:7b27878178263d6d7e878a5b2cbdb0615654221a6fefaf79f73fe62cc75272cd"
+    },
+    {
+      "name": "producer-asr-whisper-cpp",
+      "inputJSON": "{\"_tag\":\"asr-whisper-cpp\",\"version\":\"1.8.0\",\"model\":\"tiny\",\"weightsDigest\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\"}",
+      "canonicalJSON": "{\"_tag\":\"asr-whisper-cpp\",\"model\":\"tiny\",\"version\":\"1.8.0\",\"weightsDigest\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\"}",
+      "sha256": "sha256:e1e4ab4d2b3ed7592cb12dfd1a43452511a3e9f58f6581daf74da624ac80f97d"
+    },
+    {
+      "name": "transcript-german-unicode",
+      "inputJSON": "{\"version\":1,\"locale\":\"de-DE\",\"segments\":[{\"startMs\":0,\"endMs\":1200,\"text\":\"Grüße aus Köln: „Öl & Straße“ / café ☕ 🎙️\"},{\"startMs\":1200,\"endMs\":9007199254740991,\"text\":\"Zeile\\nTab\\tZitat \\\" und Backslash \\\\; é ≠ é.\"}]}",
+      "canonicalJSON": "{\"locale\":\"de-DE\",\"segments\":[{\"endMs\":1200,\"startMs\":0,\"text\":\"Grüße aus Köln: „Öl & Straße“ / café ☕ 🎙️\"},{\"endMs\":9007199254740991,\"startMs\":1200,\"text\":\"Zeile\\nTab\\tZitat \\\" und Backslash \\\\; é ≠ é.\"}],\"version\":1}",
+      "sha256": "sha256:7383552583e6488b4b30ba1d0f281018c651c62c3be21c56a66044b7328ea971"
+    },
+    {
+      "name": "recipe",
+      "inputJSON": "{\"version\":1,\"kind\":\"summary-short\",\"inputDigest\":\"7383552583e6488b4b30ba1d0f281018c651c62c3be21c56a66044b7328ea971\",\"producer\":{\"_tag\":\"server-local\",\"runtime\":\"llama.cpp\",\"model\":\"synthetic-de-en\",\"weightsDigest\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"quantization\":\"Q4_K_M\"},\"promptDigest\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"parametersDigest\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"outputSchema\":\"example.derivation.text.v1\",\"locale\":\"de-DE\"}",
+      "canonicalJSON": "{\"inputDigest\":\"7383552583e6488b4b30ba1d0f281018c651c62c3be21c56a66044b7328ea971\",\"kind\":\"summary-short\",\"locale\":\"de-DE\",\"outputSchema\":\"example.derivation.text.v1\",\"parametersDigest\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"producer\":{\"_tag\":\"server-local\",\"model\":\"synthetic-de-en\",\"quantization\":\"Q4_K_M\",\"runtime\":\"llama.cpp\",\"weightsDigest\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"},\"promptDigest\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"version\":1}",
+      "sha256": "sha256:056d41966b836b9661a04d9037ed6872f7753171b41f65d42d966e3d286e828d"
+    },
+    {
+      "name": "output-escaping",
+      "inputJSON": "{\"version\":1,\"kind\":\"summary-short\",\"locale\":\"de-DE\",\"text\":\"Überblick: \\\"Straße\\\" / Köln.\\nNächster Schritt\\tprüfen.\\r\\b\\f\\u0000\\u001f\"}",
+      "canonicalJSON": "{\"kind\":\"summary-short\",\"locale\":\"de-DE\",\"text\":\"Überblick: \\\"Straße\\\" / Köln.\\nNächster Schritt\\tprüfen.\\r\\b\\f\\u0000\\u001f\",\"version\":1}",
+      "sha256": "sha256:1cf0370866b873292dc66da2e7c3d89a3d8a4db5ba39890a2c9f74e6dd58d3f7"
+    },
+    {
+      "name": "attempt-success-optional-present",
+      "inputJSON": "{\"version\":1,\"id\":\"synthetic-attempt-1\",\"recipeDigest\":\"c9b275846f5d1901df6e464639a8dcade742b153ea527eed40480fc70f3fe824\",\"producer\":{\"_tag\":\"server-local\",\"runtime\":\"llama.cpp\",\"model\":\"synthetic-de-en\",\"weightsDigest\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"quantization\":\"Q4_K_M\"},\"startedAtMs\":0,\"latencyMs\":9007199254740991,\"outcome\":\"success\",\"outputDigest\":\"1cf0370866b873292dc66da2e7c3d89a3d8a4db5ba39890a2c9f74e6dd58d3f7\"}",
+      "canonicalJSON": "{\"id\":\"synthetic-attempt-1\",\"latencyMs\":9007199254740991,\"outcome\":\"success\",\"outputDigest\":\"1cf0370866b873292dc66da2e7c3d89a3d8a4db5ba39890a2c9f74e6dd58d3f7\",\"producer\":{\"_tag\":\"server-local\",\"model\":\"synthetic-de-en\",\"quantization\":\"Q4_K_M\",\"runtime\":\"llama.cpp\",\"weightsDigest\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"},\"recipeDigest\":\"c9b275846f5d1901df6e464639a8dcade742b153ea527eed40480fc70f3fe824\",\"startedAtMs\":0,\"version\":1}",
+      "sha256": "sha256:ab825ee85a5ff6336fea7991c4afff14d47c69a221030b1978c6f4f71ae7a944"
+    },
+    {
+      "name": "attempt-unavailable-optional-absent",
+      "inputJSON": "{\"version\":1,\"id\":\"synthetic-attempt-2\",\"recipeDigest\":\"c9b275846f5d1901df6e464639a8dcade742b153ea527eed40480fc70f3fe824\",\"producer\":{\"_tag\":\"apple-on-device\",\"model\":\"Apple Foundation Models\",\"osVersion\":\"27.0\"},\"startedAtMs\":9007199254740991,\"latencyMs\":0,\"outcome\":\"unavailable\"}",
+      "canonicalJSON": "{\"id\":\"synthetic-attempt-2\",\"latencyMs\":0,\"outcome\":\"unavailable\",\"producer\":{\"_tag\":\"apple-on-device\",\"model\":\"Apple Foundation Models\",\"osVersion\":\"27.0\"},\"recipeDigest\":\"c9b275846f5d1901df6e464639a8dcade742b153ea527eed40480fc70f3fe824\",\"startedAtMs\":9007199254740991,\"version\":1}",
+      "sha256": "sha256:0052c01edae24f882c0d7c9dea84e35e1978aac834fbc366abddcf95fcc1e425"
+    },
+    {
+      "name": "attempt-refusal-error-code",
+      "inputJSON": "{\"version\":1,\"id\":\"synthetic-attempt-3\",\"recipeDigest\":\"c9b275846f5d1901df6e464639a8dcade742b153ea527eed40480fc70f3fe824\",\"producer\":{\"_tag\":\"cloud-api\",\"provider\":\"synthetic\",\"model\":\"de-en\",\"modelVersion\":\"2026-10-21\"},\"startedAtMs\":42,\"latencyMs\":1,\"outcome\":\"refusal\",\"errorCode\":\"synthetic-refusal\"}",
+      "canonicalJSON": "{\"errorCode\":\"synthetic-refusal\",\"id\":\"synthetic-attempt-3\",\"latencyMs\":1,\"outcome\":\"refusal\",\"producer\":{\"_tag\":\"cloud-api\",\"model\":\"de-en\",\"modelVersion\":\"2026-10-21\",\"provider\":\"synthetic\"},\"recipeDigest\":\"c9b275846f5d1901df6e464639a8dcade742b153ea527eed40480fc70f3fe824\",\"startedAtMs\":42,\"version\":1}",
+      "sha256": "sha256:b9ad64efb9a3c80d0d1b75fad101c854ff2a079f6d8f576bfabde890ae7919e4"
+    },
+    {
+      "name": "selection-optional-absent",
+      "inputJSON": "{\"version\":1,\"recordingId\":\"synthetic-aufnahme-ä\",\"kind\":\"summary-short\",\"inputDigest\":\"7383552583e6488b4b30ba1d0f281018c651c62c3be21c56a66044b7328ea971\",\"outputDigest\":\"1cf0370866b873292dc66da2e7c3d89a3d8a4db5ba39890a2c9f74e6dd58d3f7\",\"attemptDigest\":\"ab825ee85a5ff6336fea7991c4afff14d47c69a221030b1978c6f4f71ae7a944\",\"policy\":\"synthetic-explicit\",\"selectedAtMs\":9007199254740991}",
+      "canonicalJSON": "{\"attemptDigest\":\"ab825ee85a5ff6336fea7991c4afff14d47c69a221030b1978c6f4f71ae7a944\",\"inputDigest\":\"7383552583e6488b4b30ba1d0f281018c651c62c3be21c56a66044b7328ea971\",\"kind\":\"summary-short\",\"outputDigest\":\"1cf0370866b873292dc66da2e7c3d89a3d8a4db5ba39890a2c9f74e6dd58d3f7\",\"policy\":\"synthetic-explicit\",\"recordingId\":\"synthetic-aufnahme-ä\",\"selectedAtMs\":9007199254740991,\"version\":1}",
+      "sha256": "sha256:5265ff48e58fd055ddf9d694629f6657997054f9228b4353b15e69b49bc1c9bc"
+    },
+    {
+      "name": "selection-predecessor-present",
+      "inputJSON": "{\"version\":1,\"recordingId\":\"synthetic-aufnahme-ä\",\"kind\":\"summary-short\",\"inputDigest\":\"7383552583e6488b4b30ba1d0f281018c651c62c3be21c56a66044b7328ea971\",\"outputDigest\":\"1cf0370866b873292dc66da2e7c3d89a3d8a4db5ba39890a2c9f74e6dd58d3f7\",\"attemptDigest\":\"ab825ee85a5ff6336fea7991c4afff14d47c69a221030b1978c6f4f71ae7a944\",\"policy\":\"synthetic-explicit\",\"selectedAtMs\":9007199254740991,\"predecessorDigest\":\"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\"}",
+      "canonicalJSON": "{\"attemptDigest\":\"ab825ee85a5ff6336fea7991c4afff14d47c69a221030b1978c6f4f71ae7a944\",\"inputDigest\":\"7383552583e6488b4b30ba1d0f281018c651c62c3be21c56a66044b7328ea971\",\"kind\":\"summary-short\",\"outputDigest\":\"1cf0370866b873292dc66da2e7c3d89a3d8a4db5ba39890a2c9f74e6dd58d3f7\",\"policy\":\"synthetic-explicit\",\"predecessorDigest\":\"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\",\"recordingId\":\"synthetic-aufnahme-ä\",\"selectedAtMs\":9007199254740991,\"version\":1}",
+      "sha256": "sha256:86c5f44491e0326650bda36ddcfb31fedca206b96a7327985d1817e2e6dfbe10"
+    },
+    {
+      "name": "canonical-primitives-boundaries",
+      "inputJSON": "{\"negative\":-9007199254740991,\"positive\":9007199254740991,\"zero\":0,\"null\":null,\"boolean\":true,\"array\":[\"ä\",false,null,1],\"nested\":{\"z\":1,\"a\":2}}",
+      "canonicalJSON": "{\"array\":[\"ä\",false,null,1],\"boolean\":true,\"negative\":-9007199254740991,\"nested\":{\"a\":2,\"z\":1},\"null\":null,\"positive\":9007199254740991,\"zero\":0}",
+      "sha256": "sha256:04a7420348f8c24a963c402525c07a99342cedda2be520e48645ba21b75af4d9"
+    },
+    {
+      "name": "prompt-asset-german",
+      "inputJSON": "{\"version\":1,\"template\":\"Fasse den synthetischen Text zusammen.\\nKeine Fakten erfinden: „Straße“ / café ☕.\"}",
+      "canonicalJSON": "{\"template\":\"Fasse den synthetischen Text zusammen.\\nKeine Fakten erfinden: „Straße“ / café ☕.\",\"version\":1}",
+      "sha256": "sha256:26692b1b02098dbb5a6d8b7ec81ce231050ac992064f51f55c95946a4bee66e6"
+    },
+    {
+      "name": "parameters-asset-minimal",
+      "inputJSON": "{\"version\":1,\"maxOutputTokens\":0}",
+      "canonicalJSON": "{\"maxOutputTokens\":0,\"version\":1}",
+      "sha256": "sha256:7556d39d56e4942df620c5a4994878af123c012c2fdb55712e47b6d95c7cc3f8"
+    },
+    {
+      "name": "parameters-asset-all-optionals",
+      "inputJSON": "{\"version\":1,\"maxOutputTokens\":9007199254740991,\"temperatureMilli\":0,\"inputTokenBudget\":9007199254740991,\"notesOutputTokens\":100,\"contextReserve\":200,\"maximumReductionRounds\":3,\"conservativeBytesPerToken\":4}",
+      "canonicalJSON": "{\"conservativeBytesPerToken\":4,\"contextReserve\":200,\"inputTokenBudget\":9007199254740991,\"maxOutputTokens\":9007199254740991,\"maximumReductionRounds\":3,\"notesOutputTokens\":100,\"temperatureMilli\":0,\"version\":1}",
+      "sha256": "sha256:67c745d960b3f9e5915d15dacd1aab9dcb85a9d62260a9d52fe8f0c704ca0102"
+    },
+    {
+      "name": "producer-cloud-api-optionals",
+      "inputJSON": "{\"_tag\":\"cloud-api\",\"provider\":\"synthetic\",\"model\":\"de-en\",\"modelVersion\":\"2026-10-21\",\"endpoint\":\"https://synthetic.invalid/v1\",\"region\":\"eu-central-1\"}",
+      "canonicalJSON": "{\"_tag\":\"cloud-api\",\"endpoint\":\"https://synthetic.invalid/v1\",\"model\":\"de-en\",\"modelVersion\":\"2026-10-21\",\"provider\":\"synthetic\",\"region\":\"eu-central-1\"}",
+      "sha256": "sha256:c49176191f64bf7392289d907fb797974e9461016f2964893c9d328ae5499a18"
+    },
+    {
+      "name": "recipe-provider-policy",
+      "inputJSON": "{\"version\":1,\"kind\":\"summary-short\",\"inputDigest\":\"7383552583e6488b4b30ba1d0f281018c651c62c3be21c56a66044b7328ea971\",\"producer\":{\"_tag\":\"cloud-api\",\"provider\":\"synthetic\",\"model\":\"de-en\",\"modelVersion\":\"2026-10-21\",\"endpoint\":\"https://synthetic.invalid/v1\",\"region\":\"eu-central-1\"},\"promptDigest\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"parametersDigest\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"outputSchema\":\"example.derivation.text.v1\",\"locale\":\"de-DE\",\"providerPolicyDigest\":\"dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd\"}",
+      "canonicalJSON": "{\"inputDigest\":\"7383552583e6488b4b30ba1d0f281018c651c62c3be21c56a66044b7328ea971\",\"kind\":\"summary-short\",\"locale\":\"de-DE\",\"outputSchema\":\"example.derivation.text.v1\",\"parametersDigest\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"producer\":{\"_tag\":\"cloud-api\",\"endpoint\":\"https://synthetic.invalid/v1\",\"model\":\"de-en\",\"modelVersion\":\"2026-10-21\",\"provider\":\"synthetic\",\"region\":\"eu-central-1\"},\"promptDigest\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"providerPolicyDigest\":\"dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd\",\"version\":1}",
+      "sha256": "sha256:ac23b06570c833ee642617b0418da450d01939543d3bcc9b70af6dbddbec7dc0"
+    },
+    {
+      "name": "attempt-all-optionals",
+      "inputJSON": "{\"version\":1,\"id\":\"synthetic-attempt-1\",\"recipeDigest\":\"3d95b32fc6a28ac30ec4e80113ebf3069ddcce4b0b04ee8642fb0748c0c9c1a2\",\"producer\":{\"_tag\":\"cloud-api\",\"provider\":\"synthetic\",\"model\":\"de-en\",\"modelVersion\":\"2026-10-21\",\"endpoint\":\"https://synthetic.invalid/v1\",\"region\":\"eu-central-1\"},\"startedAtMs\":0,\"latencyMs\":9007199254740991,\"outcome\":\"success\",\"outputDigest\":\"1cf0370866b873292dc66da2e7c3d89a3d8a4db5ba39890a2c9f74e6dd58d3f7\",\"usage\":{\"inputTokens\":9007199254740991,\"outputTokens\":0},\"observedModelVersion\":\"synthetic-2026-10\",\"machineVersion\":\"synthetic-machine-v1\"}",
+      "canonicalJSON": "{\"id\":\"synthetic-attempt-1\",\"latencyMs\":9007199254740991,\"machineVersion\":\"synthetic-machine-v1\",\"observedModelVersion\":\"synthetic-2026-10\",\"outcome\":\"success\",\"outputDigest\":\"1cf0370866b873292dc66da2e7c3d89a3d8a4db5ba39890a2c9f74e6dd58d3f7\",\"producer\":{\"_tag\":\"cloud-api\",\"endpoint\":\"https://synthetic.invalid/v1\",\"model\":\"de-en\",\"modelVersion\":\"2026-10-21\",\"provider\":\"synthetic\",\"region\":\"eu-central-1\"},\"recipeDigest\":\"3d95b32fc6a28ac30ec4e80113ebf3069ddcce4b0b04ee8642fb0748c0c9c1a2\",\"startedAtMs\":0,\"usage\":{\"inputTokens\":9007199254740991,\"outputTokens\":0},\"version\":1}",
+      "sha256": "sha256:04269839780de9731fa998ec60437982d80e1ab6c9149e863405a34cf20f261a"
+    },
+    {
+      "name": "selection-human-override",
+      "inputJSON": "{\"version\":1,\"recordingId\":\"synthetic-aufnahme-ä\",\"kind\":\"summary-short\",\"inputDigest\":\"7383552583e6488b4b30ba1d0f281018c651c62c3be21c56a66044b7328ea971\",\"outputDigest\":\"1cf0370866b873292dc66da2e7c3d89a3d8a4db5ba39890a2c9f74e6dd58d3f7\",\"attemptDigest\":\"ab825ee85a5ff6336fea7991c4afff14d47c69a221030b1978c6f4f71ae7a944\",\"policy\":\"synthetic-explicit\",\"selectedAtMs\":9007199254740991,\"humanOverride\":true,\"predecessorDigest\":\"eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee\"}",
+      "canonicalJSON": "{\"attemptDigest\":\"ab825ee85a5ff6336fea7991c4afff14d47c69a221030b1978c6f4f71ae7a944\",\"humanOverride\":true,\"inputDigest\":\"7383552583e6488b4b30ba1d0f281018c651c62c3be21c56a66044b7328ea971\",\"kind\":\"summary-short\",\"outputDigest\":\"1cf0370866b873292dc66da2e7c3d89a3d8a4db5ba39890a2c9f74e6dd58d3f7\",\"policy\":\"synthetic-explicit\",\"predecessorDigest\":\"eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee\",\"recordingId\":\"synthetic-aufnahme-ä\",\"selectedAtMs\":9007199254740991,\"version\":1}",
+      "sha256": "sha256:1dba9949cc2fd8c17d628a0127d047ec8eeb21db06d882c66088c7bdfff7f783"
+    },
+    {
+      "name": "utf16-key-order",
+      "inputJSON": "{\"\":1,\"😀\":2,\"a\":3,\"B\":4}",
+      "canonicalJSON": "{\"B\":4,\"a\":3,\"😀\":2,\"\":1}",
+      "sha256": "sha256:52decf9ff1c550c07fc5ab7efca98e02d40b0f3c569397c5bc91b0a36beb2af9"
+    },
+    {
+      "name": "normalization-distinct-keys",
+      "inputJSON": "{\"é\":1,\"é\":2}",
+      "canonicalJSON": "{\"é\":2,\"é\":1}",
+      "sha256": "sha256:a7962fb10dc1255be368ece9c22b2256605921dc6d0a8c9409d3ee406bcb86e5"
+    },
+    {
+      "name": "negative-zero",
+      "inputJSON": "[-0,0,-0.0]",
+      "canonicalJSON": "[0,0,0]",
+      "sha256": "sha256:2a08979e8002252124e861b2816490b04fe03b6b779f9287fb7c25652bbc4052"
+    },
+    {
+      "name": "number-thresholds",
+      "inputJSON": "[1e-7,1e-6,1e20,1e21,1e23,0.000001234,1000000000000000100]",
+      "canonicalJSON": "[1e-7,0.000001,100000000000000000000,1e+21,1e+23,0.000001234,1000000000000000100]",
+      "sha256": "sha256:1ddfa9493e60efb9c19310ef19e03271269509b098f312f11b7909644f87d136"
+    },
+    {
+      "name": "number-rounding",
+      "inputJSON": "[333333333.33333329,1.2345678901234567,5e-324,1.7976931348623157e308,9007199254740992]",
+      "canonicalJSON": "[333333333.3333333,1.2345678901234567,5e-324,1.7976931348623157e+308,9007199254740992]",
+      "sha256": "sha256:69e9be90aa4818e0a75449e2114ff309ff128d920193eb33b6d8ad7981ccf25c"
+    },
+    {
+      "name": "lone-surrogates",
+      "inputJSON": "[\"\\ud800\",\"\\udc00\",{\"\\ud800\":\"x\"}]",
+      "canonicalJSON": "[\"\\ud800\",\"\\udc00\",{\"\\ud800\":\"x\"}]",
+      "sha256": "sha256:d4d4655d61cda20e7212f14891480abba0183fb4823f79dfd402cf4a48373f85"
+    },
+    {
+      "name": "all-key-order-not-tag-first",
+      "inputJSON": "{\"_tag\":\"Example\",\"!\":1,\"nested\":{\"z\":0,\"_tag\":\"Nested\",\"A\":2}}",
+      "canonicalJSON": "{\"!\":1,\"_tag\":\"Example\",\"nested\":{\"A\":2,\"_tag\":\"Nested\",\"z\":0}}",
+      "sha256": "sha256:1eeec25105f3005107715e243304e0b49727e122d805dc34fa9ed39571aba77d"
+    },
+    {
+      "name": "explicit-null",
+      "inputJSON": "{\"present\":null}",
+      "canonicalJSON": "{\"present\":null}",
+      "sha256": "sha256:924c481da1aca4bbd856f20e4aaef20f67c34fccd0b5e27cb2647b8c45ee21ac"
+    },
+    {
+      "name": "absent-key",
+      "inputJSON": "{}",
+      "canonicalJSON": "{}",
+      "sha256": "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+    },
+    {
+      "name": "line-separators-slash",
+      "inputJSON": "[\"/\",\" \",\" \"]",
+      "canonicalJSON": "[\"/\",\" \",\" \"]",
+      "sha256": "sha256:6f43812bee40a42e354a4264464ba0dcd9be2ccfd2cf2856ba9dc10dbf19c1a1"
+    },
+    {
+      "name": "duplicate-last-wins",
+      "inputJSON": "{\"a\":1,\"a\":2}",
+      "canonicalJSON": "{\"a\":2}",
+      "sha256": "sha256:7e8059f495589fcd981232cc11d00b00da3802c01d688fa1cf1f6bed6e5bb33c"
+    },
+    {
+      "name": "overflow-number",
+      "inputJSON": "[1e400,-1e400]",
+      "canonicalJSON": "[null,null]",
+      "sha256": "sha256:95cb9b4f84ceff132cc7a875d8c192bf4997016a939ee64141c1fd628c0e8738"
+    },
+    {
+      "name": "empty-scalars",
+      "inputJSON": "[null,false,true,\"\",[],{}]",
+      "canonicalJSON": "[null,false,true,\"\",[],{}]",
+      "sha256": "sha256:1de40f97cc25bdd92bbb55063046a9e5c245f48c82cf3288ed3c98b3b68d7e47"
+    }
+  ]
+}

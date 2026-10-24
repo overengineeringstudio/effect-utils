@@ -49,6 +49,8 @@ import ptyEffectPkg from './packages/@overeng/pty-effect/package.json.genie.ts'
 import reactInspectorPkg from './packages/@overeng/react-inspector/package.json.genie.ts'
 import restateEffectPkg from './packages/@overeng/restate-effect/package.json.genie.ts'
 import rpcDevtoolsPkg from './packages/@overeng/rpc-devtools/package.json.genie.ts'
+import schemaCodegenSwiftPkg from './packages/@overeng/schema-codegen-swift/package.json.genie.ts'
+import schemaCodegenPkg from './packages/@overeng/schema-codegen/package.json.genie.ts'
 import stylexTokensPkg from './packages/@overeng/stylex-tokens/package.json.genie.ts'
 import tuiCorePkg from './packages/@overeng/tui-core/package.json.genie.ts'
 import tuiReactPkg from './packages/@overeng/tui-react/package.json.genie.ts'
@@ -82,6 +84,8 @@ export const rootWorkspacePackages = [
   effectRpcTanstackPkg,
   effectRustPkg,
   effectRustFixtureConsumerPkg,
+  schemaCodegenPkg,
+  schemaCodegenSwiftPkg,
   effectSchemaFormAriaPkg,
   effectSchemaFormPkg,
   geniePkg,

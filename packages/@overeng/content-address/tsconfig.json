@@ -55,6 +55,9 @@
   "include": [
     "src/**/*"
   ],
+  "exclude": [
+    "src/**/*.genie.ts"
+  ],
   "references": [
     {
       "path": "../effect-rust"

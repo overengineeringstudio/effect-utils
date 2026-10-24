@@ -1,0 +1,187 @@
+# Generated file - DO NOT EDIT
+# Source: BUCK.genie.ts
+
+# Projection source: packages/@overeng/schema-codegen-swift/BUCK.genie.ts
+# Projection schema version: 13
+# Projection generator: effect-utils/genie/buck2-typescript-package-projection
+# Semantic fingerprint: sha256:08fc0f1144e8e1fcacd489c87b3c04bfbfd442d4422a41703284d90798db3e4a
+# Regenerate: devenv tasks run genie:run
+
+load("//buck2:materialization.bzl", "export_materialization_inputs", "package_view")
+load("//buck2:editor_view.bzl", "editor_view_inputs")
+load("//buck2:static_checks.bzl", "STATIC_SOURCE_EXCLUDES", "STATIC_SOURCE_GLOBS", "static_source_set")
+load("//buck2:javascript.bzl", "vitest_collect", "vitest_test")
+load("//buck2:typescript.bzl", "tsgo_emit", "tsgo_typecheck")
+load("//buck2:package_tools.bzl", "npm_package_archive")
+
+export_file(
+    name = "package.json",
+    src = "package.json",
+    visibility = ["PUBLIC"],
+)
+
+export_materialization_inputs([
+    "src/fixtures/contracts.ts",
+    "src/fixtures/swift/Sources/GeneratedContracts/Contracts.swift.genie.ts",
+    "src/fixtures/swift/Sources/GeneratedContracts/Secondary.swift.genie.ts",
+    "src/genie.ts",
+    "src/mod.ts",
+    "src/mod.unit.test.ts",
+])
+
+static_source_set(
+    name = "static_sources",
+    node_modules = ":node_modules",
+    prefix = "packages/@overeng/schema-codegen-swift",
+    srcs = ["BUCK"] + glob(STATIC_SOURCE_GLOBS, exclude = STATIC_SOURCE_EXCLUDES),
+    visibility = ["PUBLIC"],
+)
+
+static_source_set(
+    name = "repository_validation_sources",
+    prefix = "packages/@overeng/schema-codegen-swift",
+    srcs = ["BUCK", "package.json", "tsconfig.json"] + glob(["**/*.genie.ts"]),
+    visibility = ["PUBLIC"],
+)
+
+static_source_set(
+    name = "nix_sources",
+    prefix = "packages/@overeng/schema-codegen-swift",
+    srcs = glob(["**/*.nix"]),
+    visibility = ["PUBLIC"],
+)
+
+alias(
+    name = "node_modules",
+    actual = "//buck2/dependencies:view_packages_overeng_schema_codegen_swift_b78dd9bcfa9a",
+    visibility = ["PUBLIC"],
+)
+
+alias(
+    name = "editor_inputs",
+    actual = ":node_modules",
+    visibility = ["PUBLIC"],
+)
+
+package_view(
+    name = "package_tree",
+    dependency_view = "//buck2/dependencies:view_packages_overeng_schema_codegen_swift_b78dd9bcfa9a",
+    files = {
+        "package.json": "package.json",
+        "src/fixtures/contracts.ts": "src/fixtures/contracts.ts",
+        "src/fixtures/swift/Sources/GeneratedContracts/Contracts.swift.genie.ts": "src/fixtures/swift/Sources/GeneratedContracts/Contracts.swift.genie.ts",
+        "src/fixtures/swift/Sources/GeneratedContracts/Secondary.swift.genie.ts": "src/fixtures/swift/Sources/GeneratedContracts/Secondary.swift.genie.ts",
+        "src/genie.ts": "src/genie.ts",
+        "src/mod.ts": "src/mod.ts",
+        "src/mod.unit.test.ts": "src/mod.unit.test.ts",
+        "tsconfig.json": "tsconfig.json",
+    },
+    workspace_dist = {
+    },
+    generated_dependencies = {
+    },
+    workspace_dependency_views = {
+    },
+    strip_project_references = True,
+    runtime = "//packages/@overeng/buck2-tools:package_tree_runtime",
+    runtime_entry = "package-tree.ts",
+    visibility = ["PUBLIC"],
+)
+
+package_view(
+    name = "product_package_tree",
+    dependency_view = "//buck2/dependencies:product_view_packages_overeng_schema_codegen_swift_b78dd9bcfa9a",
+    files = {
+        "package.json": "package.json",
+        "src/fixtures/contracts.ts": "src/fixtures/contracts.ts",
+        "src/fixtures/swift/Sources/GeneratedContracts/Contracts.swift.genie.ts": "src/fixtures/swift/Sources/GeneratedContracts/Contracts.swift.genie.ts",
+        "src/fixtures/swift/Sources/GeneratedContracts/Secondary.swift.genie.ts": "src/fixtures/swift/Sources/GeneratedContracts/Secondary.swift.genie.ts",
+        "src/genie.ts": "src/genie.ts",
+        "src/mod.ts": "src/mod.ts",
+        "src/mod.unit.test.ts": "src/mod.unit.test.ts",
+        "tsconfig.json": "tsconfig.json",
+    },
+    workspace_dist = {
+    },
+    generated_dependencies = {
+    },
+    workspace_dependency_views = {
+    },
+    strip_project_references = True,
+    runtime = "//packages/@overeng/buck2-tools:package_tree_runtime",
+    runtime_entry = "package-tree.ts",
+    visibility = ["PUBLIC"],
+)
+
+package_view(
+    name = "test_package_tree",
+    dependency_view = "//buck2/dependencies:view_packages_overeng_schema_codegen_swift_b78dd9bcfa9a",
+    files = {
+        "package.json": "package.json",
+        "src/fixtures/contracts.ts": "src/fixtures/contracts.ts",
+        "src/fixtures/swift/Sources/GeneratedContracts/Contracts.swift.genie.ts": "src/fixtures/swift/Sources/GeneratedContracts/Contracts.swift.genie.ts",
+        "src/fixtures/swift/Sources/GeneratedContracts/Secondary.swift.genie.ts": "src/fixtures/swift/Sources/GeneratedContracts/Secondary.swift.genie.ts",
+        "src/genie.ts": "src/genie.ts",
+        "src/mod.ts": "src/mod.ts",
+        "src/mod.unit.test.ts": "src/mod.unit.test.ts",
+        "tsconfig.json": "tsconfig.json",
+        "vitest.config.ts": "vitest.config.ts",
+    },
+    workspace_dist = {
+    },
+    generated_dependencies = {
+    },
+    workspace_dependency_views = {
+    },
+    strip_project_references = True,
+    runtime = "//packages/@overeng/buck2-tools:package_tree_runtime",
+    runtime_entry = "package-tree.ts",
+    visibility = ["PUBLIC"],
+)
+
+editor_view_inputs(
+    name = "editor_view_inputs",
+    editor_inputs = ":editor_inputs",
+    package_tree = ":package_tree",
+    visibility = ["PUBLIC"],
+)
+
+tsgo_typecheck(
+    name = "typecheck",
+    package_tree = ":package_tree",
+    visibility = ["PUBLIC"],
+)
+
+tsgo_emit(
+    name = "dist",
+    package_tree = ":package_tree",
+    declaration_sources = {
+    },
+    declaration_entrypoint = "src/mod.d.ts",
+    visibility = ["PUBLIC"],
+)
+
+npm_package_archive(
+    name = "dist-package",
+    package_tree = ":package_tree",
+    dist = ":dist",
+    typecheck = ":typecheck",
+    workspace_manifests = [
+        "//packages/@overeng/genie:package.json",
+        "//packages/@overeng/schema-codegen:package.json",
+    ],
+    output = "overeng-schema-codegen-swift.tgz",
+    visibility = ["PUBLIC"],
+)
+
+vitest_test(
+    name = "test",
+    package_tree = ":test_package_tree",
+    visibility = ["PUBLIC"],
+)
+
+vitest_collect(
+    name = "test_collect",
+    package_tree = ":test_package_tree",
+    visibility = ["PUBLIC"],
+)

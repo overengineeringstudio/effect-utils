@@ -42,15 +42,17 @@ import notionMdTsconfig from '../packages/@overeng/notion-md/tsconfig.json.genie
 import notionPropertyWriteTsconfig from '../packages/@overeng/notion-property-write/tsconfig.json.genie.ts'
 import notionReactTsconfig from '../packages/@overeng/notion-react/tsconfig.json.genie.ts'
 import npmReleaseTsconfig from '../packages/@overeng/npm-release/tsconfig.json.genie.ts'
-import outlineTsconfig from '../packages/@overeng/outline/tsconfig.json.genie.ts'
 import otelBrowserTsconfig from '../packages/@overeng/otel-browser/tsconfig.json.genie.ts'
 import otelContractTsconfig from '../packages/@overeng/otel-contract/tsconfig.json.genie.ts'
+import outlineTsconfig from '../packages/@overeng/outline/tsconfig.json.genie.ts'
 import oxcConfigTsconfig from '../packages/@overeng/oxc-config/tsconfig.json.genie.ts'
 import ptyEffectTsconfig from '../packages/@overeng/pty-effect/tsconfig.json.genie.ts'
 import reactInspectorTsconfig from '../packages/@overeng/react-inspector/tsconfig.json.genie.ts'
 import reactInspectorStrictConsumerTsconfig from '../packages/@overeng/react-inspector/tsconfig.strict-consumer.json.genie.ts'
 import restateEffectTsconfig from '../packages/@overeng/restate-effect/tsconfig.json.genie.ts'
 import rpcDevtoolsTsconfig from '../packages/@overeng/rpc-devtools/tsconfig.json.genie.ts'
+import schemaCodegenSwiftTsconfig from '../packages/@overeng/schema-codegen-swift/tsconfig.json.genie.ts'
+import schemaCodegenTsconfig from '../packages/@overeng/schema-codegen/tsconfig.json.genie.ts'
 import stylexTokensTsconfig from '../packages/@overeng/stylex-tokens/tsconfig.json.genie.ts'
 import tuiCoreTsconfig from '../packages/@overeng/tui-core/tsconfig.json.genie.ts'
 import tuiReactTsconfig from '../packages/@overeng/tui-react/tsconfig.json.genie.ts'
@@ -142,7 +144,11 @@ const rootWorkspaceTsconfigProjects = (() => {
       tsconfig: effectRpcTanstackBasicTsconfig,
     },
     'packages/@overeng/effect-rust': { tsconfig: effectRustTsconfig },
-    'packages/@overeng/effect-rust-fixture-consumer': { tsconfig: effectRustFixtureConsumerTsconfig },
+    'packages/@overeng/effect-rust-fixture-consumer': {
+      tsconfig: effectRustFixtureConsumerTsconfig,
+    },
+    'packages/@overeng/schema-codegen': { tsconfig: schemaCodegenTsconfig },
+    'packages/@overeng/schema-codegen-swift': { tsconfig: schemaCodegenSwiftTsconfig },
     'packages/@overeng/effect-schema-form': { tsconfig: effectSchemaFormTsconfig },
     'packages/@overeng/effect-schema-form-aria': { tsconfig: effectSchemaFormAriaTsconfig },
     'packages/@overeng/genie': { tsconfig: genieTsconfig },

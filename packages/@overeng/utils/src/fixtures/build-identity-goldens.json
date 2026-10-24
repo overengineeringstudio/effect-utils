@@ -1,0 +1,330 @@
+{
+  "now": 1800000000,
+  "identities": [
+    {
+      "stamp": {
+        "baseVersion": "0.1.0",
+        "rev": "7d5211e123456789",
+        "dirty": false,
+        "sourceKind": "nix",
+        "commitTs": 1799654400
+      },
+      "machineVersion": "0.1.0+7d5211e",
+      "displayVersion": "0.1.0+7d5211e — committed 4 days ago",
+      "short": "7d5211e · 4d",
+      "details": [
+        {
+          "label": "displayVersion",
+          "value": "0.1.0+7d5211e — committed 4 days ago"
+        },
+        {
+          "label": "machineVersion",
+          "value": "0.1.0+7d5211e"
+        }
+      ]
+    },
+    {
+      "stamp": {
+        "baseVersion": "0.1.0",
+        "rev": "7d5211e123456789",
+        "dirty": true,
+        "sourceKind": "nix",
+        "commitTs": 1799654400
+      },
+      "machineVersion": "0.1.0+7d5211e-dirty",
+      "displayVersion": "0.1.0+7d5211e-dirty — committed 4 days ago, with uncommitted changes",
+      "short": "7d5211e* · 4d",
+      "details": [
+        {
+          "label": "displayVersion",
+          "value": "0.1.0+7d5211e-dirty — committed 4 days ago, with uncommitted changes"
+        },
+        {
+          "label": "machineVersion",
+          "value": "0.1.0+7d5211e-dirty"
+        }
+      ]
+    },
+    {
+      "stamp": {
+        "baseVersion": "0.1.0",
+        "rev": "a7647bb123",
+        "dirty": false,
+        "sourceKind": "local",
+        "commitTs": 1799989200,
+        "buildTs": 1799999280
+      },
+      "machineVersion": "0.1.0+a7647bb",
+      "displayVersion": "0.1.0+a7647bb — committed 3 hours ago",
+      "short": "a7647bb · 3h",
+      "details": [
+        {
+          "label": "displayVersion",
+          "value": "0.1.0+a7647bb — committed 3 hours ago"
+        },
+        {
+          "label": "machineVersion",
+          "value": "0.1.0+a7647bb"
+        },
+        {
+          "label": "deployed",
+          "value": "12m ago"
+        }
+      ]
+    },
+    {
+      "stamp": {
+        "baseVersion": "0.1.0",
+        "rev": "a7647bb123",
+        "dirty": true,
+        "sourceKind": "local",
+        "commitTs": 1799827200
+      },
+      "machineVersion": "0.1.0+a7647bb-dirty",
+      "displayVersion": "0.1.0+a7647bb-dirty — committed 2 days ago, with uncommitted changes",
+      "short": "a7647bb* · 2d",
+      "details": [
+        {
+          "label": "displayVersion",
+          "value": "0.1.0+a7647bb-dirty — committed 2 days ago, with uncommitted changes"
+        },
+        {
+          "label": "machineVersion",
+          "value": "0.1.0+a7647bb-dirty"
+        }
+      ]
+    },
+    {
+      "stamp": {
+        "baseVersion": "0.1.0",
+        "rev": "7d5211e",
+        "dirty": false,
+        "sourceKind": "local",
+        "buildTs": 1799999700
+      },
+      "machineVersion": "0.1.0+7d5211e",
+      "displayVersion": "0.1.0 — running from local source (7d5211e, 5 min ago)",
+      "short": "7d5211e · n/a",
+      "details": [
+        {
+          "label": "displayVersion",
+          "value": "0.1.0 — running from local source (7d5211e, 5 min ago)"
+        },
+        {
+          "label": "machineVersion",
+          "value": "0.1.0+7d5211e"
+        },
+        {
+          "label": "deployed",
+          "value": "5m ago"
+        }
+      ]
+    },
+    {
+      "stamp": {
+        "baseVersion": "0.1.0",
+        "dirty": true,
+        "sourceKind": "local",
+        "buildTs": 1800000000
+      },
+      "machineVersion": "0.1.0-dirty",
+      "displayVersion": "0.1.0 — running from local source (n/a, just now), with uncommitted changes",
+      "short": "n/a* · n/a",
+      "details": [
+        {
+          "label": "displayVersion",
+          "value": "0.1.0 — running from local source (n/a, just now), with uncommitted changes"
+        },
+        {
+          "label": "machineVersion",
+          "value": "0.1.0-dirty"
+        },
+        {
+          "label": "deployed",
+          "value": "0s ago"
+        }
+      ]
+    }
+  ],
+  "relativeTimes": [
+    {
+      "elapsed": 0,
+      "value": "0s"
+    },
+    {
+      "elapsed": 59.9,
+      "value": "59s"
+    },
+    {
+      "elapsed": 60,
+      "value": "1m"
+    },
+    {
+      "elapsed": 3599,
+      "value": "59m"
+    },
+    {
+      "elapsed": 3600,
+      "value": "1h"
+    },
+    {
+      "elapsed": 86399,
+      "value": "23h"
+    },
+    {
+      "elapsed": 86400,
+      "value": "1d"
+    },
+    {
+      "elapsed": 2591999,
+      "value": "29d"
+    },
+    {
+      "elapsed": 2592000,
+      "value": "1mo"
+    },
+    {
+      "elapsed": 31535999,
+      "value": "12mo"
+    },
+    {
+      "elapsed": 31536000,
+      "value": "1y"
+    },
+    {
+      "elapsed": 63072000,
+      "value": "2y"
+    },
+    {
+      "elapsed": -3600,
+      "value": "0s"
+    }
+  ],
+  "version": 1,
+  "longRelativeTimes": [
+    {
+      "elapsed": 59,
+      "value": "just now"
+    },
+    {
+      "elapsed": 60,
+      "value": "1 min ago"
+    },
+    {
+      "elapsed": 3600,
+      "value": "1 hour ago"
+    },
+    {
+      "elapsed": 7200,
+      "value": "2 hours ago"
+    },
+    {
+      "elapsed": 86400,
+      "value": "1 day ago"
+    },
+    {
+      "elapsed": 172800,
+      "value": "2 days ago"
+    },
+    {
+      "elapsed": 604800,
+      "value": "1 week ago"
+    },
+    {
+      "elapsed": 1209600,
+      "value": "2 weeks ago"
+    }
+  ],
+  "suppliedIdentity": {
+    "identity": {
+      "displayVersion": "Product release display",
+      "machineVersion": "2.0.0+exact",
+      "dirty": true,
+      "rev": "abcdef0123456789",
+      "buildTs": 1799999280
+    },
+    "short": "abcdef0* · n/a",
+    "details": [
+      {
+        "label": "displayVersion",
+        "value": "Product release display"
+      },
+      {
+        "label": "machineVersion",
+        "value": "2.0.0+exact"
+      },
+      {
+        "label": "deployed",
+        "value": "12m ago"
+      }
+    ]
+  },
+  "cliCases": [
+    {
+      "name": "package-fallback",
+      "baseVersion": "1.0",
+      "buildStamp": "__CLI_BUILD_STAMP__",
+      "environment": {},
+      "machineVersion": "1.0",
+      "displayVersion": "1.0"
+    },
+    {
+      "name": "local-run-age",
+      "baseVersion": "1.0",
+      "buildStamp": "__CLI_BUILD_STAMP__",
+      "environment": {
+        "CLI_BUILD_STAMP": "{\"type\":\"local\",\"rev\":\"abc1234\",\"ts\":1799999700,\"dirty\":false}"
+      },
+      "machineVersion": "1.0+local.abc1234",
+      "displayVersion": "1.0 — running from local source (abc1234, 5 min ago)"
+    },
+    {
+      "name": "local-commit-age",
+      "baseVersion": "1.0",
+      "buildStamp": "",
+      "environment": {
+        "CLI_BUILD_STAMP": "{\"type\":\"local\",\"rev\":\"abc1234\",\"ts\":1800000000,\"commitTs\":1799827200,\"dirty\":true}"
+      },
+      "machineVersion": "1.0+local.abc1234.dirty",
+      "displayVersion": "1.0 — running from local source (abc1234, committed 2 days ago, with uncommitted changes)"
+    },
+    {
+      "name": "embedded-nix-precedence",
+      "baseVersion": "ignored",
+      "buildStamp": "{\"type\":\"nix\",\"version\":\"1.0\",\"rev\":\"abc1234\",\"commitTs\":1799827200,\"dirty\":false}",
+      "environment": {
+        "CLI_BUILD_STAMP": "{\"type\":\"local\",\"rev\":\"other\",\"ts\":1800000000,\"dirty\":true}"
+      },
+      "machineVersion": "1.0+abc1234",
+      "displayVersion": "1.0+abc1234 — committed 2 days ago"
+    },
+    {
+      "name": "nix-build-age",
+      "baseVersion": "ignored",
+      "buildStamp": "",
+      "environment": {
+        "CLI_BUILD_STAMP": "{\"type\":\"nix\",\"version\":\"1.0\",\"rev\":\"abc1234-dirty\",\"commitTs\":1799827200,\"buildTs\":1799999700,\"dirty\":true}"
+      },
+      "machineVersion": "1.0+abc1234-dirty",
+      "displayVersion": "1.0+abc1234-dirty — built 5 min ago, with uncommitted changes"
+    },
+    {
+      "name": "invalid-stamp-fallback",
+      "baseVersion": "1.0",
+      "buildStamp": "not-json",
+      "environment": {
+        "CLI_BUILD_STAMP": "{\"type\":\"local\"}"
+      },
+      "machineVersion": "1.0",
+      "displayVersion": "1.0"
+    },
+    {
+      "name": "embedded-local-is-not-runtime",
+      "baseVersion": "1.0",
+      "buildStamp": "{\"type\":\"local\",\"rev\":\"abc1234\",\"ts\":1800000000,\"dirty\":true}",
+      "environment": {},
+      "machineVersion": "1.0",
+      "displayVersion": "1.0"
+    }
+  ]
+}

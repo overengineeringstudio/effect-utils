@@ -166,11 +166,11 @@
       "packageName": "content-address",
       "packagePath": "packages/@overeng/content-address",
       "runner": "vitest",
-      "selectedTestFiles": ["src/mod.unit.test.ts"],
+      "selectedTestFiles": ["src/canonical-goldens.unit.test.ts", "src/mod.unit.test.ts"],
       "sourceOwners": {},
       "target": "effect_utils//packages/@overeng/content-address:test",
       "taskName": "test:content-address",
-      "testFiles": ["src/mod.unit.test.ts"],
+      "testFiles": ["src/canonical-goldens.unit.test.ts", "src/mod.unit.test.ts"],
       "unboundedAfter": [],
       "unboundedFiles": []
     },
@@ -417,6 +417,7 @@
       "packagePath": "packages/@overeng/effect-rust",
       "runner": "vitest",
       "selectedTestFiles": [
+        "src/compiler/compiler-output.unit.test.ts",
         "src/compiler/compiler.unit.test.ts",
         "src/compiler/import-rust.unit.test.ts",
         "src/compiler/optional-omission.unit.test.ts",
@@ -431,6 +432,7 @@
       "target": "effect_utils//packages/@overeng/effect-rust:test",
       "taskName": "test:effect-rust",
       "testFiles": [
+        "src/compiler/compiler-output.unit.test.ts",
         "src/compiler/compiler.unit.test.ts",
         "src/compiler/import-rust.unit.test.ts",
         "src/compiler/optional-omission.unit.test.ts",
@@ -1932,6 +1934,34 @@
       "unboundedFiles": []
     },
     {
+      "collectionTarget": "effect_utils//packages/@overeng/schema-codegen-swift:test_collect",
+      "excludes": [],
+      "packageName": "schema-codegen-swift",
+      "packagePath": "packages/@overeng/schema-codegen-swift",
+      "runner": "vitest",
+      "selectedTestFiles": ["src/mod.unit.test.ts"],
+      "sourceOwners": {},
+      "target": "effect_utils//packages/@overeng/schema-codegen-swift:test",
+      "taskName": "test:schema-codegen-swift",
+      "testFiles": ["src/mod.unit.test.ts"],
+      "unboundedAfter": [],
+      "unboundedFiles": []
+    },
+    {
+      "collectionTarget": "effect_utils//packages/@overeng/schema-codegen:test_collect",
+      "excludes": [],
+      "packageName": "schema-codegen",
+      "packagePath": "packages/@overeng/schema-codegen",
+      "runner": "vitest",
+      "selectedTestFiles": ["src/lower.unit.test.ts"],
+      "sourceOwners": {},
+      "target": "effect_utils//packages/@overeng/schema-codegen:test",
+      "taskName": "test:schema-codegen",
+      "testFiles": ["src/lower.unit.test.ts"],
+      "unboundedAfter": [],
+      "unboundedFiles": []
+    },
+    {
       "collectionTarget": "effect_utils//packages/@overeng/tui-core:test_collect",
       "excludes": [],
       "packageName": "tui-core",
@@ -2153,6 +2183,7 @@
       "selectedTestFiles": [
         "src/browser/__tests__/BroadcastLogger.pw.test.ts",
         "src/browser/base64.unit.test.ts",
+        "src/build-identity-goldens.unit.test.ts",
         "src/build-identity.unit.test.ts",
         "src/isomorphic/ScopeDebugger.unit.test.ts",
         "src/isomorphic/hash.unit.test.ts",
@@ -2191,6 +2222,7 @@
       "testFiles": [
         "src/browser/__tests__/BroadcastLogger.pw.test.ts",
         "src/browser/base64.unit.test.ts",
+        "src/build-identity-goldens.unit.test.ts",
         "src/build-identity.unit.test.ts",
         "src/isomorphic/ScopeDebugger.unit.test.ts",
         "src/isomorphic/hash.unit.test.ts",

@@ -4,7 +4,7 @@
 # Projection source: BUCK.genie.ts
 # Projection schema version: 1
 # Projection generator: effect-utils/genie/buck2-root-aggregate-projection
-# Semantic fingerprint: sha256:300aad6e219d97dc5d38b6adcb7f36bd189894708e5b9710a746207012401b36
+# Semantic fingerprint: sha256:e8916cf94208490c25e3db50d47cb8b92a442d67855cf2d8f41acc158e2d0f27
 # Regenerate: devenv tasks run genie:run
 load("//buck2:weaver.bzl", "weaver_checks")
 load("//buck2:check_aggregate.bzl", "check_aggregate")
@@ -196,6 +196,8 @@ check_aggregate(
         "//packages/@overeng/effect-rpc-tanstack/examples/basic:typecheck",
         "//packages/@overeng/effect-rust:typecheck",
         "//packages/@overeng/effect-rust-fixture-consumer:typecheck",
+        "//packages/@overeng/schema-codegen:typecheck",
+        "//packages/@overeng/schema-codegen-swift:typecheck",
         "//packages/@overeng/effect-schema-form:typecheck",
         "//packages/@overeng/effect-schema-form-aria:typecheck",
         "//packages/@overeng/genie:typecheck",
@@ -263,6 +265,8 @@ check_aggregate(
         "//packages/@overeng/effect-rpc-tanstack:dist",
         "//packages/@overeng/effect-rust:dist",
         "//packages/@overeng/effect-rust-fixture-consumer:dist",
+        "//packages/@overeng/schema-codegen:dist",
+        "//packages/@overeng/schema-codegen-swift:dist",
         "//packages/@overeng/effect-schema-form:dist",
         "//packages/@overeng/effect-schema-form-aria:dist",
         "//packages/@overeng/genie:dist",
@@ -339,6 +343,8 @@ check_aggregate(
         "effect_utils//packages/@overeng/react-inspector:test",
         "effect_utils//packages/@overeng/restate-effect:test",
         "effect_utils//packages/@overeng/rpc-devtools:test",
+        "effect_utils//packages/@overeng/schema-codegen-swift:test",
+        "effect_utils//packages/@overeng/schema-codegen:test",
         "effect_utils//packages/@overeng/tui-core:test",
         "effect_utils//packages/@overeng/tui-react:test",
         "effect_utils//packages/@overeng/tui-stories:test",

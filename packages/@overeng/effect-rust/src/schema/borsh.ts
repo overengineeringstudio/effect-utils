@@ -1,7 +1,8 @@
 import { DateTime, type Schema } from 'effect'
 
-import type { ContractIR, Definition, Type, Width } from '../compiler/ir.ts'
-import { lower } from '../compiler/lower.ts'
+import type { ContractIR, Definition, Type, Width } from '@overeng/schema-codegen'
+import { lower } from '@overeng/schema-codegen'
+
 import { valueCodec } from './contract-json.ts'
 import { scalarString } from './json.ts'
 import { decode as decodeSchema, encode as encodeSchema } from './validation.ts'
@@ -188,6 +189,8 @@ export const makeIRCodec = (
     const write = ({ node, value, depth }: { node: Type; value: unknown; depth: number }): void => {
       if (depth > 128) throw new FrameError(size, 'Maximum Borsh nesting depth 128 exceeded')
       switch (node.kind) {
+        case 'f64':
+          throw new FrameError(size, 'binary64 is not admitted by the Rust frame profile')
         case 'ref': {
           const target = ir.defs[node.name]
           if (target === undefined) throw new FrameError(size, `Unknown definition ${node.name}`)
@@ -347,6 +350,8 @@ export const makeIRCodec = (
     const read = ({ node, depth }: { node: Type; depth: number }): unknown => {
       if (depth > 128) throw new FrameError(cursor, 'Maximum Borsh nesting depth 128 exceeded')
       switch (node.kind) {
+        case 'f64':
+          throw new FrameError(cursor, 'binary64 is not admitted by the Rust frame profile')
         case 'ref': {
           const target = ir.defs[node.name]
           if (target === undefined) throw new FrameError(cursor, `Unknown definition ${node.name}`)

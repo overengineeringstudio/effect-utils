@@ -24,6 +24,7 @@ const source = required('--source')
 const output = required('--output')
 const compiler = required('--compiler')
 const runtimeDist = required('--runtime-dist')
+const schemaCodegenDist = required('--schema-codegen-dist')
 const tsgo = required('--tsgo')
 await cp(source, output, { recursive: true })
 const view = join(output, '.compile')
@@ -47,6 +48,27 @@ await writeFile(
         default: './dist/src/runtime/interop.js',
       },
       './schema': { types: './dist/src/schema/mod.d.ts', default: './dist/src/schema/mod.js' },
+    },
+  }),
+)
+// The runtime's declarations re-export the shared schema-codegen core.
+await mkdir(join(view, 'node_modules', '@overeng', 'schema-codegen'), { recursive: true })
+await symlink(
+  schemaCodegenDist,
+  join(view, 'node_modules', '@overeng', 'schema-codegen', 'dist'),
+  'dir',
+)
+await writeFile(
+  join(view, 'node_modules', '@overeng', 'schema-codegen', 'package.json'),
+  JSON.stringify({
+    name: '@overeng/schema-codegen',
+    type: 'module',
+    exports: {
+      '.': { types: './dist/src/mod.d.ts', default: './dist/src/mod.js' },
+      './annotations': {
+        types: './dist/src/annotations.d.ts',
+        default: './dist/src/annotations.js',
+      },
     },
   }),
 )
@@ -82,7 +104,12 @@ await Promise.all(
   }),
 )
 await Promise.all(
-  ['wasm/web/load.d.ts', 'wasm/web/inline-load.d.ts', 'wasm/workerd-load.d.ts', 'native/load.d.cts'].map(async (declaration) => {
+  [
+    'wasm/web/load.d.ts',
+    'wasm/web/inline-load.d.ts',
+    'wasm/workerd-load.d.ts',
+    'native/load.d.cts',
+  ].map(async (declaration) => {
     const file = join(output, 'dist', declaration)
     if (existsSync(file) === false) return
     await writeFile(file, (await readFile(file, 'utf8')).replaceAll('service.ts', 'service.js'))

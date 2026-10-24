@@ -8,6 +8,7 @@
       "packages/@overeng/effect-rpc-observer",
       "packages/@overeng/effect-rust",
       "packages/@overeng/otel-contract",
+      "packages/@overeng/schema-codegen",
       "packages/@overeng/utils-dev"
     ]
   },

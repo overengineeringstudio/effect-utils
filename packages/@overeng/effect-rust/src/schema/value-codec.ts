@@ -1,8 +1,9 @@
 import { Schema, SchemaAST } from 'effect'
 
-import { lower } from '../compiler/lower.ts'
+import { lower } from '@overeng/schema-codegen'
+import { isTimestampAST, validTimestampMillis } from '@overeng/schema-codegen'
+
 import { scalarString } from './json.ts'
-import { isTimestampAST, validTimestampMillis } from './timestamp.ts'
 
 /** Derives only admitted leaves; metadata never makes an arbitrary transformation portable. */
 export const makeValueCodec = <TSchema extends Schema.ConstraintCodec<unknown>>({

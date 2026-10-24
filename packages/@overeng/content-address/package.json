@@ -5,6 +5,7 @@
     "workspaceClosureDirs": [
       "packages/@overeng/content-address",
       "packages/@overeng/effect-rust",
+      "packages/@overeng/schema-codegen",
       "packages/@overeng/utils-dev"
     ]
   },

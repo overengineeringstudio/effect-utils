@@ -3,7 +3,8 @@
     "source": "package.json.genie.ts",
     "warning": "DO NOT EDIT - changes will be overwritten",
     "workspaceClosureDirs": [
-      "packages/@overeng/effect-rust"
+      "packages/@overeng/effect-rust",
+      "packages/@overeng/schema-codegen"
     ]
   },
   "name": "@overeng/effect-rust",
@@ -29,6 +30,7 @@
     }
   },
   "dependencies": {
+    "@overeng/schema-codegen": "workspace:^",
     "effect": "4.0.3"
   },
   "devDependencies": {

@@ -4,7 +4,7 @@
 # Projection source: packages/@overeng/content-address/BUCK.genie.ts
 # Projection schema version: 13
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:c05bce37f5f23a23ed0b3df4de50e9bfb739cda0c29341b0b49150c3f816361d
+# Semantic fingerprint: sha256:1e3c7b8a32ef960c424cd5845dbbdc0c84767cd27b0c6643db8fe075b9080ee7
 # Regenerate: devenv tasks run genie:run
 
 load("//buck2:materialization.bzl", "export_materialization_inputs", "package_view")
@@ -22,7 +22,10 @@ export_file(
 
 export_materialization_inputs([
     "src/bytes.ts",
+    "src/canonical-goldens.unit.test.ts",
     "src/engine.ts",
+    "src/fixtures/canonical-goldens.json",
+    "src/fixtures/canonical-goldens.json.genie.ts",
     "src/generate-contract.ts",
     "src/mod.ts",
     "src/mod.unit.test.ts",
@@ -70,7 +73,10 @@ package_view(
     files = {
         "package.json": "package.json",
         "src/bytes.ts": "src/bytes.ts",
+        "src/canonical-goldens.unit.test.ts": "src/canonical-goldens.unit.test.ts",
         "src/engine.ts": "src/engine.ts",
+        "src/fixtures/canonical-goldens.json": "src/fixtures/canonical-goldens.json",
+        "src/fixtures/canonical-goldens.json.genie.ts": "src/fixtures/canonical-goldens.json.genie.ts",
         "src/generate-contract.ts": "src/generate-contract.ts",
         "src/mod.ts": "src/mod.ts",
         "src/mod.unit.test.ts": "src/mod.unit.test.ts",
@@ -102,7 +108,10 @@ package_view(
     files = {
         "package.json": "package.json",
         "src/bytes.ts": "src/bytes.ts",
+        "src/canonical-goldens.unit.test.ts": "src/canonical-goldens.unit.test.ts",
         "src/engine.ts": "src/engine.ts",
+        "src/fixtures/canonical-goldens.json": "src/fixtures/canonical-goldens.json",
+        "src/fixtures/canonical-goldens.json.genie.ts": "src/fixtures/canonical-goldens.json.genie.ts",
         "src/generate-contract.ts": "src/generate-contract.ts",
         "src/mod.ts": "src/mod.ts",
         "src/mod.unit.test.ts": "src/mod.unit.test.ts",
@@ -132,7 +141,10 @@ package_view(
     files = {
         "package.json": "package.json",
         "src/bytes.ts": "src/bytes.ts",
+        "src/canonical-goldens.unit.test.ts": "src/canonical-goldens.unit.test.ts",
         "src/engine.ts": "src/engine.ts",
+        "src/fixtures/canonical-goldens.json": "src/fixtures/canonical-goldens.json",
+        "src/fixtures/canonical-goldens.json.genie.ts": "src/fixtures/canonical-goldens.json.genie.ts",
         "src/generate-contract.ts": "src/generate-contract.ts",
         "src/mod.ts": "src/mod.ts",
         "src/mod.unit.test.ts": "src/mod.unit.test.ts",

@@ -460,6 +460,7 @@ let
   testPublicationPackagePaths = lib.unique (
     editorBootstrapPackagePaths
     ++ lib.optional (selectedTestTask "genie:buck2:test") "."
+    ++ lib.optional (selectedTestTask "buck2:rust:generators:test") "packages/@overeng/effect-rust"
     ++ lib.optional (selectedTestTask "devenv-modules:test") "packages/@overeng/genie"
     ++ lib.optional (
       testPlatform != "darwin"
@@ -799,6 +800,8 @@ let
     "packages/**/.storybook/**"
     "packages/@overeng/buck2-tools/src/**/*.ts"
     "packages/@overeng/megarepo/src/buck2-manifest.ts"
+    "packages/@overeng/schema-codegen/src/**/*.ts"
+    "packages/@overeng/schema-codegen-swift/src/**/*.ts"
     "packages/@overeng/tui-core/src/**/*.ts"
     "packages/@overeng/tui-core/src/**/*.tsx"
     "packages/@overeng/tui-core/src/**/*.cts"
@@ -837,6 +840,8 @@ let
   editorBootstrapPackagePaths = [
     "."
     "packages/@overeng/otel-contract"
+    "packages/@overeng/schema-codegen"
+    "packages/@overeng/schema-codegen-swift"
   ];
   buck2AggregateExec = config.effectUtils.buck2.aggregateExec;
   editorViewExec =
@@ -1526,6 +1531,7 @@ in
     execIfModified = [
       "buck2/rust/**/*.ts"
       "packages/@overeng/effect-rust/src/**/*.ts"
+      "packages/@overeng/schema-codegen/src/**/*.ts"
       "packages/@overeng/content-address/src/generate-contract.ts"
       "packages/@overeng/content-address/src/schema.ts"
       "rust/content-address-contract/**"

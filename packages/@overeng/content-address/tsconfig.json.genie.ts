@@ -13,5 +13,6 @@ export default tsconfigJson({
     noEmit: true,
   },
   include: ['src/**/*'],
+  exclude: ['src/**/*.genie.ts'],
   references: [{ path: '../effect-rust' }],
 } satisfies TSConfigArgs)

@@ -4,7 +4,7 @@
 # Projection source: packages/@overeng/effect-rust/BUCK.genie.ts
 # Projection schema version: 13
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:b769a66261f2afdefdfab363a5ef86fd0b8d2ce7401e1436cd74105a6cd50578
+# Semantic fingerprint: sha256:3f646ff72eeb3a896a77a7d22993b36e73492b87401016bc61c45e2e6a48f355
 # Regenerate: devenv tasks run genie:run
 
 load("//buck2:materialization.bzl", "export_materialization_inputs", "package_view")
@@ -21,6 +21,7 @@ export_file(
 )
 
 export_materialization_inputs([
+    "src/compiler/compiler-output.unit.test.ts",
     "src/compiler/compiler.unit.test.ts",
     "src/compiler/fixtures/bounded-contracts.ts",
     "src/compiler/fixtures/contracts.ts",
@@ -102,6 +103,7 @@ package_view(
     dependency_view = "//buck2/dependencies:view_packages_overeng_effect_rust_c20e5aed8413",
     files = {
         "package.json": "package.json",
+        "src/compiler/compiler-output.unit.test.ts": "src/compiler/compiler-output.unit.test.ts",
         "src/compiler/compiler.unit.test.ts": "src/compiler/compiler.unit.test.ts",
         "src/compiler/fixtures/bounded-contracts.ts": "src/compiler/fixtures/bounded-contracts.ts",
         "src/compiler/fixtures/contracts.ts": "src/compiler/fixtures/contracts.ts",
@@ -145,10 +147,13 @@ package_view(
         "tsconfig.json": "tsconfig.json",
     },
     workspace_dist = {
+        "node_modules/@overeng/schema-codegen/dist": "//packages/@overeng/schema-codegen:dist",
+        "node_modules/@overeng/schema-codegen/package.json": "//packages/@overeng/schema-codegen:package.json",
     },
     generated_dependencies = {
     },
     workspace_dependency_views = {
+        "node_modules/@overeng/schema-codegen/node_modules": "//packages/@overeng/schema-codegen:package_tree",
     },
     strip_project_references = True,
     runtime = "//packages/@overeng/buck2-tools:package_tree_runtime",
@@ -161,6 +166,7 @@ package_view(
     dependency_view = "//buck2/dependencies:product_view_packages_overeng_effect_rust_c20e5aed8413",
     files = {
         "package.json": "package.json",
+        "src/compiler/compiler-output.unit.test.ts": "src/compiler/compiler-output.unit.test.ts",
         "src/compiler/compiler.unit.test.ts": "src/compiler/compiler.unit.test.ts",
         "src/compiler/fixtures/bounded-contracts.ts": "src/compiler/fixtures/bounded-contracts.ts",
         "src/compiler/fixtures/contracts.ts": "src/compiler/fixtures/contracts.ts",
@@ -204,10 +210,12 @@ package_view(
         "tsconfig.json": "tsconfig.json",
     },
     workspace_dist = {
+        "node_modules/@overeng/schema-codegen/package.json": "//packages/@overeng/schema-codegen:package.json",
     },
     generated_dependencies = {
     },
     workspace_dependency_views = {
+        "node_modules/@overeng/schema-codegen/node_modules": "//packages/@overeng/schema-codegen:product_package_tree",
     },
     strip_project_references = True,
     runtime = "//packages/@overeng/buck2-tools:package_tree_runtime",
@@ -220,6 +228,7 @@ package_view(
     dependency_view = "//buck2/dependencies:view_packages_overeng_effect_rust_c20e5aed8413",
     files = {
         "package.json": "package.json",
+        "src/compiler/compiler-output.unit.test.ts": "src/compiler/compiler-output.unit.test.ts",
         "src/compiler/compiler.unit.test.ts": "src/compiler/compiler.unit.test.ts",
         "src/compiler/fixtures/bounded-contracts.ts": "src/compiler/fixtures/bounded-contracts.ts",
         "src/compiler/fixtures/contracts.ts": "src/compiler/fixtures/contracts.ts",
@@ -264,10 +273,13 @@ package_view(
         "vitest.config.ts": "vitest.config.ts",
     },
     workspace_dist = {
+        "node_modules/@overeng/schema-codegen/dist": "//packages/@overeng/schema-codegen:dist",
+        "node_modules/@overeng/schema-codegen/package.json": "//packages/@overeng/schema-codegen:package.json",
     },
     generated_dependencies = {
     },
     workspace_dependency_views = {
+        "node_modules/@overeng/schema-codegen/node_modules": "//packages/@overeng/schema-codegen:package_tree",
     },
     strip_project_references = True,
     runtime = "//packages/@overeng/buck2-tools:package_tree_runtime",
@@ -303,6 +315,7 @@ npm_package_archive(
     dist = ":dist",
     typecheck = ":typecheck",
     workspace_manifests = [
+        "//packages/@overeng/schema-codegen:package.json",
     ],
     output = "overeng-effect-rust.tgz",
     visibility = ["PUBLIC"],

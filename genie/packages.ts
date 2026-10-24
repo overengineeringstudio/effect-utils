@@ -53,6 +53,8 @@ export const internalPackages = [
   'pty-effect',
   'react-inspector',
   'restate-effect',
+  'schema-codegen',
+  'schema-codegen-swift',
   'tui-core',
   'tui-react',
   'tui-stories',

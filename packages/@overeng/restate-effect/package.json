@@ -8,6 +8,7 @@
       "packages/@overeng/effect-rust",
       "packages/@overeng/otel-contract",
       "packages/@overeng/restate-effect",
+      "packages/@overeng/schema-codegen",
       "packages/@overeng/utils",
       "packages/@overeng/utils-dev"
     ]

@@ -216,6 +216,7 @@ def _service_impl(ctx):
         "--output", package.as_output(),
         "--compiler", compiler.default_outputs[0],
         "--runtime-dist", runtime_dist,
+        "--schema-codegen-dist", ctx.attrs.schema_codegen_dist[DefaultInfo].default_outputs[0],
         "--tsgo", tsgo.executable,
     ], hidden = dependencies.read_roots), category = "rust_interop_service_package", local_only = True)
     return [
@@ -230,6 +231,7 @@ _rust_interop_service = cache_guarded_rule(impl = _service_impl, attrs = {
     "napi": attrs.option(attrs.dep(providers = [RustInteropProductInfo]), default = None),
     "compiler": attrs.dep(providers = [DefaultInfo]),
     "runtime_dist": attrs.dep(default = "//packages/@overeng/effect-rust:dist"),
+    "schema_codegen_dist": attrs.dep(default = "//packages/@overeng/schema-codegen:dist"),
     "_tsgo": attrs.default_only(attrs.exec_dep(default = "//buck2/toolchains:effect_tsgo", providers = [EffectTsgoToolchainInfo])),
     "_package_generator": attrs.default_only(attrs.source(default = "//buck2/rust:interop-service-package.ts")),
     "_bun": attrs.default_only(attrs.exec_dep(default = "//buck2/toolchains:bun", providers = [BunToolchainInfo])),
@@ -365,6 +367,11 @@ def _service_smoke_impl(ctx):
         "type": "module",
         "exports": {".": "./dist/src/mod.js", "./runtime": "./dist/src/runtime/interop.js", "./schema": "./dist/src/schema/mod.js", "./compiler": "./dist/src/compiler/mod.js"},
     })
+    schema_codegen_manifest = ctx.actions.write_json("schema-codegen-package.json", {
+        "name": "@overeng/schema-codegen",
+        "type": "module",
+        "exports": {".": "./dist/src/mod.js", "./annotations": "./dist/src/annotations.js"},
+    })
     tree = ctx.actions.copied_dir("fixture", {
         "service": service,
         "service-smoke.ts": ctx.attrs.script,
@@ -373,6 +380,8 @@ def _service_smoke_impl(ctx):
         "node_modules/effect": dependencies.node_modules.project("effect"),
         "node_modules/@overeng/effect-rust/package.json": runtime_manifest,
         "node_modules/@overeng/effect-rust/dist": runtime_dist,
+        "node_modules/@overeng/schema-codegen/package.json": schema_codegen_manifest,
+        "node_modules/@overeng/schema-codegen/dist": ctx.attrs.schema_codegen_dist[DefaultInfo].default_outputs[0],
     })
     if ctx.attrs.runtime == "bun":
         executable = ctx.attrs._bun[BunToolchainInfo].executable
@@ -392,6 +401,7 @@ rust_interop_service_smoke = cache_guarded_rule(impl = _service_smoke_impl, attr
     "service": attrs.dep(),
     "compiler": attrs.dep(default = "//packages/@overeng/effect-rust:package_tree"),
     "runtime_dist": attrs.dep(default = "//packages/@overeng/effect-rust:dist"),
+    "schema_codegen_dist": attrs.dep(default = "//packages/@overeng/schema-codegen:dist"),
     "runtime": attrs.enum(["node", "bun"], default = "node"),
     "script": attrs.source(),
     "scheduler_script": attrs.source(),

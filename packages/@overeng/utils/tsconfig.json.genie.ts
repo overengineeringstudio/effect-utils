@@ -17,5 +17,6 @@ export default tsconfigJson({
     noEmit: true,
   },
   include: ['src/**/*'],
+  exclude: ['src/**/*.genie.ts'],
   references: [],
 } satisfies TSConfigArgs)

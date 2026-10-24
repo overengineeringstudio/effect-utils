@@ -4,7 +4,8 @@
     "warning": "DO NOT EDIT - changes will be overwritten",
     "workspaceClosureDirs": [
       "packages/@overeng/effect-rust",
-      "packages/@overeng/effect-rust-fixture-consumer"
+      "packages/@overeng/effect-rust-fixture-consumer",
+      "packages/@overeng/schema-codegen"
     ]
   },
   "name": "@overeng/effect-rust-fixture-consumer",

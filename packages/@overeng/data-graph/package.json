@@ -6,6 +6,7 @@
       "packages/@overeng/content-address",
       "packages/@overeng/data-graph",
       "packages/@overeng/effect-rust",
+      "packages/@overeng/schema-codegen",
       "packages/@overeng/utils-dev"
     ]
   },

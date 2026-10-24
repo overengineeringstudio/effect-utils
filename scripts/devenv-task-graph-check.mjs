@@ -557,7 +557,12 @@ const sourceTaskSelected = (name) =>
 const allDirectSourceTestTasks = [
   ...new Set([...directSourceTestTasks, ...buck2UnboundedTaskNames]),
 ]
-const bootstrapPackagePaths = ['.', 'packages/@overeng/otel-contract']
+const bootstrapPackagePaths = [
+  '.',
+  'packages/@overeng/otel-contract',
+  'packages/@overeng/schema-codegen',
+  'packages/@overeng/schema-codegen-swift',
+]
 ok({
   condition: sourceTestTasks.length > 0,
   name: `${sourceTestAggregate} schedules source test tasks through independent chains`,
@@ -680,6 +685,9 @@ const scopedPublisherContracts = {
     ],
     packagePaths: [
       ...bootstrapPackagePaths,
+      ...(sourceTaskSelected('buck2:rust:generators:test') === true
+        ? ['packages/@overeng/effect-rust']
+        : []),
       ...(sourceTaskSelected('devenv-modules:test') === true ? ['packages/@overeng/genie'] : []),
       ...(process.env.EFFECT_UTILS_TEST_PLATFORM !== 'darwin' ||
       platformSuites.moduleScripts.darwin.some(({ script }) =>

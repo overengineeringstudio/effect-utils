@@ -9,6 +9,7 @@
       "packages/@overeng/effect-schema-form",
       "packages/@overeng/effect-schema-form-aria",
       "packages/@overeng/otel-contract",
+      "packages/@overeng/schema-codegen",
       "packages/@overeng/stylex-tokens",
       "packages/@overeng/utils",
       "packages/@overeng/utils-dev",

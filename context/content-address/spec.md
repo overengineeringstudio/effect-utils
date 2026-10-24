@@ -49,6 +49,62 @@ Canonical JSON descriptors hash the canonical UTF-8 JSON bytes and stamp `codec:
 
 Descriptor APIs are the base layer. They may be used independently when a caller only needs stable identity or verification.
 
+### Portable canonical JSON
+
+```text
+schema encoder -> JSON wire value -> UTF-16-key canonical JSON -> UTF-8 -> SHA-256
+                                          |
+                      contract-owned data-only JSON goldens
+                              /                       \
+                     TypeScript bytes.ts       Swift ContentAddress
+```
+
+Object keys sort recursively by unsigned UTF-16 code units, including `_tag`;
+this is **not** the effect-rust discriminator-first protocol. Arrays retain
+their order. Strings retain exact Unicode (no normalization), emit literal
+slashes and non-ASCII characters, and use ECMAScript JSON escaping for quotes,
+backslashes, controls and lone surrogates. Canonically equivalent Unicode keys
+remain distinct. Numbers use ECMAScript binary64 JSON spelling: negative zero
+is `0`, shortest round-tripping decimals use fixed notation from `1e-6` through
+values below `1e21`, and exponential notation has no leading exponent zero.
+Non-finite numbers serialize as `null`, matching `JSON.stringify`.
+
+The JSON-data domain is portable. TypeScript additionally supports its existing
+schema-encoded `toJSON` values and represents a remaining `undefined` value as
+the JSON string `"[undefined]"`; it does not omit such object fields at the
+canonicalizer layer. Omission therefore belongs to the schema encoder, not the
+byte engine. A stricter derivation profile that omits undefined keys, rejects
+fractions/unsafe integers and rejects lone surrogates agrees on the shared
+well-formed safe-integer JSON domain, but is not the same input-admission
+contract. Its unprefixed hex hashes also differ from public `sha256:` digests.
+
+`swift/OverengKit` provides the `ContentAddress` SwiftPM product on macOS 13+
+and iOS 16+. Its `Encodable` entry points first use the supplied `JSONEncoder`;
+its `fromJSON` entry points preserve exact UTF-16 string/key identity rather
+than going through Swift's normalization-aware string dictionary equality.
+JSON text decoding uses last-exact-key-wins semantics, matching `JSON.parse`;
+consumers requiring duplicate-key rejection must enforce that wire policy
+before canonicalization.
+
+The contract owns
+[`content-address.json`](../../swift/OverengKit/Tests/OverengKitTests/Goldens/content-address.json).
+This data-only corpus covers synthetic records, nested tagged values, Unicode,
+escaping, integer boundaries, binary64 spelling, null/absence, UTF-16 ordering
+and normalization-distinct keys. The TypeScript
+`canonical-goldens.unit.test.ts` and Swift `ContentAddressTests` assert exact
+UTF-8 bytes and full prefixed digests against that single authority. TypeScript
+imports its package-local `src/fixtures/canonical-goldens.json`, a byte-identical
+Genie projection authored by the adjacent `.json.genie.ts`, so Buck inputs stay
+package-local. Regenerate with `devenv tasks run genie:run`; `genie:check` owns
+freshness. The projection's authoring file records provenance rather than adding
+metadata to the shared JSON. Expected values are committed data, never computed
+by either test implementation; edit only the SwiftPM authority, not projections.
+
+Run package tests on macOS with `swift test --package-path swift/OverengKit`.
+For an iOS simulator, use
+`bash swift/OverengKit/test.sh ios 'platform=iOS Simulator,id=<device-UDID>'`;
+the same XCTest target and bundled corpus run on both platforms.
+
 ### Byte engine selection
 
 The synchronous descriptor/hash helper signatures remain unchanged. Pure top-level helpers use the JavaScript implementation. Effect store writes and verification honor an optional `ContentAddressEngine` service; absent a layer, they retain the existing JavaScript behavior.
