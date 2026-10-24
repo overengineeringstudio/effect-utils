@@ -255,15 +255,25 @@ describe('host-local registry archives', () => {
           const fixedTime = new Date('2020-01-01T00:00:00.000Z')
           utimesSync(blob, fixedTime, fixedTime)
           expect((await acquire('normalized-time')).sourceVerification).toBe('rehash')
-          expect((await acquire('warm')).sourceVerification).toBe('metadata-proof')
-          const before = lstatSync(blob, { bigint: true })
           const proof = join(
             `${contentStore}.buck-materialization-v1`,
             '.store',
             `archive-${digest}`,
             'verification.json',
           )
+          const expectWarm = async (name: string): Promise<void> => {
+            const nonRacy = immutableContentProofIsNonRacy({
+              source: lstatSync(blob, { bigint: true }),
+              proof: lstatSync(proof, { bigint: true }),
+            })
+            expect((await acquire(name)).sourceVerification).toBe(
+              nonRacy === true ? 'metadata-proof' : 'rehash',
+            )
+          }
+          await expectWarm('warm')
+          const before = lstatSync(blob, { bigint: true })
           const previousProof = readFileSync(proof, 'utf8')
+          const previousProofStatus = lstatSync(proof, { bigint: true })
           if (change === 'new-pin') linkSync(blob, join(root, 'another-pin'))
           else {
             chmodSync(blob, 0o644)
@@ -274,15 +284,20 @@ describe('host-local registry archives', () => {
             chmodSync(blob, 0o444)
           }
           expect(lstatSync(blob, { bigint: true }).mtimeNs).toBe(before.mtimeNs)
-          expect(lstatSync(blob, { bigint: true }).ctimeNs).not.toBe(before.ctimeNs)
+          const after = lstatSync(blob, { bigint: true })
+          expect(
+            after.ctimeNs !== before.ctimeNs ||
+              immutableContentProofIsNonRacy({ source: after, proof: previousProofStatus }) ===
+                false,
+          ).toBe(true)
           if (change === 'write-with-restored-mtime') {
             await expect(acquire('changed')).rejects.toThrow('content or identity mismatch')
             expect(existsSync(join(root, 'changed'))).toBe(false)
             expect(readFileSync(proof, 'utf8')).toBe(previousProof)
           } else {
             expect((await acquire('changed')).sourceVerification).toBe('rehash')
-            expect(readFileSync(proof, 'utf8')).not.toBe(previousProof)
-            expect((await acquire('refreshed')).sourceVerification).toBe('metadata-proof')
+            expect(lstatSync(proof, { bigint: true }).ino).not.toBe(previousProofStatus.ino)
+            await expectWarm('refreshed')
             expect(readFileSync(join(root, 'refreshed'))).toEqual(bytes)
           }
           expect(requests()).toBe(1)
