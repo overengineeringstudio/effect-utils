@@ -21,7 +21,7 @@ probe = cache_guarded_rule(
     attrs = dict(hermetic_attrs(), **{
         "dependency": attrs.option(attrs.exec_dep(providers = [BuckSupportToolInfo]), default = None),
         "mode": attrs.string(),
-        "script": attrs.source(default = "probe.js"),
+        "script": attrs.source(),
         "tool": attrs.exec_dep(providers = [BuckSupportToolInfo]),
     }),
 )
@@ -32,6 +32,7 @@ def identity_probe(name, tool, mode, dependency = None):
         name = name,
         tool = tool,
         mode = mode,
+        script = "probe.js",
         dependency = dependency,
         exec_compatible_with = hermetic_execution_constraints(),
     )
