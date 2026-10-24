@@ -8,7 +8,7 @@ load("//buck2/products:defs.bzl", "build_product", "bun_compiled_product_executa
 # Projection source: packages/@overeng/ci-tools/BUCK.genie.ts
 # Projection schema version: 13
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:8aa1dda5362cce9a7db1d67de443d6ef7f7094e1ca43331455d111fc349300f9
+# Semantic fingerprint: sha256:369b0c5322a6541c0f6226c28c743ab9ccba711949c8465526e51235428f44e3
 # Regenerate: devenv tasks run genie:run
 
 load("//buck2:materialization.bzl", "export_materialization_inputs", "package_view")
@@ -28,6 +28,9 @@ export_materialization_inputs([
     "bin/ci-tools.ts",
     "src/cli-command.ts",
     "src/cli.contract.test.ts",
+    "src/deploy-cloudflare-workers.e2e.test.ts",
+    "src/deploy-cloudflare-workers.live.e2e.test.ts",
+    "src/deploy-cloudflare-workers.ts",
     "src/deploy-domain.contract.ts",
     "src/deploy-domain.test.ts",
     "src/deploy-domain.ts",
@@ -100,6 +103,9 @@ package_view(
         "package.json": "package.json",
         "src/cli-command.ts": "src/cli-command.ts",
         "src/cli.contract.test.ts": "src/cli.contract.test.ts",
+        "src/deploy-cloudflare-workers.e2e.test.ts": "src/deploy-cloudflare-workers.e2e.test.ts",
+        "src/deploy-cloudflare-workers.live.e2e.test.ts": "src/deploy-cloudflare-workers.live.e2e.test.ts",
+        "src/deploy-cloudflare-workers.ts": "src/deploy-cloudflare-workers.ts",
         "src/deploy-domain.contract.ts": "src/deploy-domain.contract.ts",
         "src/deploy-domain.test.ts": "src/deploy-domain.test.ts",
         "src/deploy-domain.ts": "src/deploy-domain.ts",
@@ -159,6 +165,9 @@ package_view(
         "package.json": "package.json",
         "src/cli-command.ts": "src/cli-command.ts",
         "src/cli.contract.test.ts": "src/cli.contract.test.ts",
+        "src/deploy-cloudflare-workers.e2e.test.ts": "src/deploy-cloudflare-workers.e2e.test.ts",
+        "src/deploy-cloudflare-workers.live.e2e.test.ts": "src/deploy-cloudflare-workers.live.e2e.test.ts",
+        "src/deploy-cloudflare-workers.ts": "src/deploy-cloudflare-workers.ts",
         "src/deploy-domain.contract.ts": "src/deploy-domain.contract.ts",
         "src/deploy-domain.test.ts": "src/deploy-domain.test.ts",
         "src/deploy-domain.ts": "src/deploy-domain.ts",
@@ -216,6 +225,9 @@ package_view(
         "src/__snapshots__/pipeline-report.unit.test.ts.snap": "src/__snapshots__/pipeline-report.unit.test.ts.snap",
         "src/cli-command.ts": "src/cli-command.ts",
         "src/cli.contract.test.ts": "src/cli.contract.test.ts",
+        "src/deploy-cloudflare-workers.e2e.test.ts": "src/deploy-cloudflare-workers.e2e.test.ts",
+        "src/deploy-cloudflare-workers.live.e2e.test.ts": "src/deploy-cloudflare-workers.live.e2e.test.ts",
+        "src/deploy-cloudflare-workers.ts": "src/deploy-cloudflare-workers.ts",
         "src/deploy-domain.contract.ts": "src/deploy-domain.contract.ts",
         "src/deploy-domain.test.ts": "src/deploy-domain.test.ts",
         "src/deploy-domain.ts": "src/deploy-domain.ts",

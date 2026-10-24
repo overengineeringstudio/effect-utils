@@ -16,8 +16,8 @@ entry means, never which targets are in it.
 without failing the job. Always announced, so it stays distinguishable from a
 genuine pass.
 
-**Deploy preview:** A deployed static artifact produced by local repository
-tasks and uploaded to a provider for review.
+**Deploy preview:** A deployed artifact or executable Worker version produced
+from local repository inputs and published to a provider for review.
 
 **Provider adapter:** The `ci-tools` module that translates the typed deploy
 domain model into provider-specific API or CLI operations.
@@ -43,3 +43,19 @@ requires before live E2E may deploy to a shared provider project.
 
 **Thin launcher:** A generated workflow step or Nix task that preserves a stable
 entrypoint but delegates behavior to `ci-tools`.
+
+**Cloudflare Workers deployment:** A Wrangler-backed publication of
+consumer-built Worker output using the consumer's configuration and working
+directory. Production deployment and PR version upload are distinct modes.
+
+**Worker preview alias:** The stable review URL returned by Wrangler for a
+version upload, distinct from that version's immutable preview URL.
+
+**Trusted deploy job:** A credential-bearing job admitted only for a main
+branch push or a same-repository pull request. Fork pull requests and
+`pull_request_target` are excluded before any step executes.
+
+**Executable-code trust boundary:** The boundary crossed when build scripts,
+Worker code, or Wrangler configuration execute with deployment credentials.
+An artifact-only upload policy for static sites does not establish trust for
+executable Workers.

@@ -6,6 +6,7 @@ import { dirname } from 'node:path'
 import { Effect, Option } from 'effect'
 import { Command, Flag as Options } from 'effect/cli'
 
+import { runCloudflareWorkersDeploy } from './deploy-cloudflare-workers.ts'
 import { runNetlifyDeploy } from './deploy-netlify.ts'
 import { runVercelDeploy } from './deploy-vercel.ts'
 import {
@@ -631,6 +632,67 @@ const vercelDeployCommand = Command.make(
     }),
 ).pipe(Command.withDescription('Deploy a local static directory to Vercel'))
 
+const cloudflareWorkersDeployCommand = Command.make(
+  'cloudflare-workers',
+  {
+    target: nonEmptyTextOption({ name: 'target', description: 'Stable Worker deployment target' }),
+    config: nonEmptyTextOption({
+      name: 'config',
+      description: 'Wrangler config path relative to cwd',
+    }),
+    cwd: Options.String('cwd').pipe(
+      Options.withDescription('Consumer Worker directory'),
+      Options.withDefault('.'),
+    ),
+    mode: Options.Literals('mode', ['prod', 'pr']).pipe(
+      Options.withDescription('Deploy production or upload a PR version'),
+    ),
+    pr: Options.Int('pr').pipe(Options.withDescription('Pull request number'), Options.optional),
+    productionDomain: Options.String('production-domain').pipe(
+      Options.withDescription('Expected custom domain configured in Wrangler (repeatable)'),
+      Options.atLeast(0),
+    ),
+    wranglerBin: Options.String('wrangler-bin').pipe(
+      Options.withDescription('Wrangler executable'),
+      Options.withDefault('wrangler'),
+    ),
+    authTokenEnv: Options.String('auth-token-env').pipe(
+      Options.withDescription('Token environment variable name'),
+      Options.withDefault('CLOUDFLARE_API_TOKEN'),
+    ),
+    accountIdEnv: Options.String('account-id-env').pipe(
+      Options.withDescription('Account environment variable name'),
+      Options.withDefault('CLOUDFLARE_ACCOUNT_ID'),
+    ),
+    workflowReportOutputFile: Options.String('workflow-report-output-file').pipe(
+      Options.withDescription('Workflow report JSONL output'),
+      Options.optional,
+    ),
+    githubOutputFile: Options.String('github-output-file').pipe(
+      Options.withDescription('GitHub Actions output file'),
+      Options.optional,
+    ),
+    githubEnvFile: Options.String('github-env-file').pipe(
+      Options.withDescription('GitHub Actions environment file'),
+      Options.optional,
+    ),
+    urlEnvKey: Options.String('url-env-key').pipe(
+      Options.withDescription('Final URL environment key'),
+      Options.optional,
+    ),
+  },
+  (opts) =>
+    runCloudflareWorkersDeploy({
+      ...opts,
+      pr: optionToUndefined(opts.pr),
+      productionDomains: opts.productionDomain,
+      workflowReportOutputFile: optionToUndefined(opts.workflowReportOutputFile),
+      githubOutputFile: optionToUndefined(opts.githubOutputFile),
+      githubEnvFile: optionToUndefined(opts.githubEnvFile),
+      urlEnvKey: optionToUndefined(opts.urlEnvKey),
+    }),
+).pipe(Command.withDescription('Deploy Worker code and assets with Wrangler'))
+
 const readLedger = (path: string) => {
   if (existsSync(path) === false) throw new Error(`quarantine ledger does not exist: ${path}`)
   return decodeQuarantineLedgerJson(readFileSync(path, 'utf8'))
@@ -718,7 +780,11 @@ export const quarantineCommand = Command.make('quarantine').pipe(
 
 /** CLI command for deploy preview provider operations. */
 export const deployCommand = Command.make('deploy').pipe(
-  Command.withSubcommands([netlifyDeployCommand, vercelDeployCommand]),
+  Command.withSubcommands([
+    netlifyDeployCommand,
+    vercelDeployCommand,
+    cloudflareWorkersDeployCommand,
+  ]),
   Command.withDescription('Deploy preview provider operations'),
 )
 

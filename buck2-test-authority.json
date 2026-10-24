@@ -68,6 +68,8 @@
       "runner": "vitest",
       "selectedTestFiles": [
         "src/cli.contract.test.ts",
+        "src/deploy-cloudflare-workers.e2e.test.ts",
+        "src/deploy-cloudflare-workers.live.e2e.test.ts",
         "src/deploy-domain.test.ts",
         "src/deploy-live-diagnostics.unit.test.ts",
         "src/deploy-netlify.e2e.test.ts",
@@ -88,6 +90,8 @@
       "taskName": "test:ci-tools",
       "testFiles": [
         "src/cli.contract.test.ts",
+        "src/deploy-cloudflare-workers.e2e.test.ts",
+        "src/deploy-cloudflare-workers.live.e2e.test.ts",
         "src/deploy-domain.test.ts",
         "src/deploy-live-diagnostics.unit.test.ts",
         "src/deploy-netlify.e2e.test.ts",
@@ -126,6 +130,8 @@
       "taskName": "test:ci-tools:test_pipeline_report_local_api",
       "testFiles": [
         "src/cli.contract.test.ts",
+        "src/deploy-cloudflare-workers.e2e.test.ts",
+        "src/deploy-cloudflare-workers.live.e2e.test.ts",
         "src/deploy-domain.test.ts",
         "src/deploy-live-diagnostics.unit.test.ts",
         "src/deploy-netlify.e2e.test.ts",
@@ -144,6 +150,8 @@
       "unboundedAfter": [],
       "unboundedFiles": [
         "src/cli.contract.test.ts",
+        "src/deploy-cloudflare-workers.e2e.test.ts",
+        "src/deploy-cloudflare-workers.live.e2e.test.ts",
         "src/deploy-domain.test.ts",
         "src/deploy-live-diagnostics.unit.test.ts",
         "src/deploy-netlify.e2e.test.ts",
