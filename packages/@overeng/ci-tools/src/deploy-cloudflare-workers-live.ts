@@ -2,12 +2,18 @@ import { Effect, Result, Schema } from 'effect'
 import * as HttpClient from 'effect/http/HttpClient'
 import * as HttpClientRequest from 'effect/http/HttpClientRequest'
 
-import { type CleanupResult, type DeployResultV1, VerificationFailed } from './deploy-domain.ts'
+import {
+  type CleanupResult,
+  type DeployResultV1,
+  InvalidProviderOutput,
+  ProviderOperationFailed,
+  VerificationFailed,
+} from './deploy-domain.ts'
 
 const CleanupEnvelope = Schema.fromJsonString(Schema.Struct({ success: Schema.Literal(true) }))
 
 const cleanupVersion = Effect.fn('ci-tools.deploy.cloudflare-workers.cleanup')(function* (opts: {
-  readonly result: DeployResultV1
+  readonly versionId: string
   readonly workerName: string
   readonly accountId: string
   readonly authToken: string
@@ -15,10 +21,8 @@ const cleanupVersion = Effect.fn('ci-tools.deploy.cloudflare-workers.cleanup')(f
 }) {
   // Never accept the API's "latest" or abbreviated UUID selectors for destructive cleanup.
   if (
-    opts.result.deployId === undefined ||
-    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu.test(
-      opts.result.deployId,
-    ) === false
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu.test(opts.versionId) ===
+    false
   ) {
     return {
       _tag: 'CleanupResult',
@@ -27,7 +31,7 @@ const cleanupVersion = Effect.fn('ci-tools.deploy.cloudflare-workers.cleanup')(f
     } satisfies CleanupResult
   }
   const client = yield* HttpClient.HttpClient
-  const path = `/accounts/${encodeURIComponent(opts.accountId)}/workers/workers/${encodeURIComponent(opts.workerName)}/versions/${encodeURIComponent(opts.result.deployId)}`
+  const path = `/accounts/${encodeURIComponent(opts.accountId)}/workers/workers/${encodeURIComponent(opts.workerName)}/versions/${encodeURIComponent(opts.versionId)}`
   const response = yield* client.execute(
     HttpClientRequest.delete(`${opts.apiBaseUrl.replace(/\/+$/u, '')}${path}`).pipe(
       HttpClientRequest.setHeader('Authorization', `Bearer ${opts.authToken}`),
@@ -52,11 +56,12 @@ const cleanupVersion = Effect.fn('ci-tools.deploy.cloudflare-workers.cleanup')(f
   } satisfies CleanupResult
 })
 
-/** Verify the uploaded marker over HTTP, then record best-effort cleanup of that exact version. */
+/** Own every post-upload validation and verification path once the exact version UUID is known. */
 export const verifyAndCleanupCloudflareWorkers = Effect.fn(
   'ci-tools.deploy.cloudflare-workers.live',
 )(function* (opts: {
-  readonly result: DeployResultV1
+  readonly complete: Effect.Effect<DeployResultV1, InvalidProviderOutput | ProviderOperationFailed>
+  readonly versionId: string
   readonly workerName: string
   readonly accountId: string
   readonly authToken: string
@@ -70,44 +75,47 @@ export const verifyAndCleanupCloudflareWorkers = Effect.fn(
     message: 'Worker version cleanup has not run',
   }
   const verify = Effect.gen(function* () {
+    const result = yield* opts.complete
     const client = yield* HttpClient.HttpClient
-    const response = yield* client.execute(
-      HttpClientRequest.get(new URL(opts.verifyPath, opts.result.finalUrl).toString()),
-    )
-    const text = yield* response.text
+    const response = yield* client
+      .execute(HttpClientRequest.get(new URL(opts.verifyPath, result.finalUrl).toString()))
+      .pipe(
+        Effect.flatMap((httpResponse) =>
+          httpResponse.text.pipe(Effect.map((text) => ({ status: httpResponse.status, text }))),
+        ),
+        Effect.mapError(
+          () =>
+            new VerificationFailed({
+              provider: 'cloudflare-workers',
+              target: result.target,
+              finalUrl: result.finalUrl,
+              transient: true,
+              message: 'Worker live marker HTTP request failed',
+            }),
+        ),
+      )
     if (response.status < 200 || response.status >= 300) {
       return yield* new VerificationFailed({
         provider: 'cloudflare-workers',
-        target: opts.result.target,
-        finalUrl: opts.result.finalUrl,
+        target: result.target,
+        finalUrl: result.finalUrl,
         transient: response.status >= 500,
         message: `Worker live marker verification returned HTTP ${response.status}`,
         diagnostics: { httpStatus: String(response.status) },
       })
     }
-    if (text.includes(opts.expectedText) === false) {
+    if (response.text.includes(opts.expectedText) === false) {
       return yield* new VerificationFailed({
         provider: 'cloudflare-workers',
-        target: opts.result.target,
-        finalUrl: opts.result.finalUrl,
+        target: result.target,
+        finalUrl: result.finalUrl,
         transient: false,
         message: 'Worker live marker text from the uploaded artifact was not served',
       })
     }
-  }).pipe(
-    Effect.catchTag('HttpClientError', () =>
-      Effect.fail(
-        new VerificationFailed({
-          provider: 'cloudflare-workers',
-          target: opts.result.target,
-          finalUrl: opts.result.finalUrl,
-          transient: true,
-          message: 'Worker live marker HTTP request failed',
-        }),
-      ),
-    ),
-  )
-  yield* verify.pipe(
+    return result
+  })
+  const result = yield* verify.pipe(
     Effect.onExit(() =>
       cleanupVersion(opts).pipe(
         Effect.timeout('30 seconds'),
@@ -118,26 +126,28 @@ export const verifyAndCleanupCloudflareWorkers = Effect.fn(
             message: 'Worker version cleanup request failed',
           } satisfies CleanupResult),
         ),
-        Effect.tap((result) =>
+        Effect.tap((cleanupResult) =>
           Effect.sync(() => {
-            cleanup = result
+            cleanup = cleanupResult
           }),
         ),
       ),
     ),
-    Effect.catchTag('VerificationFailed', (failure) =>
-      Effect.fail(
-        new VerificationFailed({
-          ...failure,
-          message: failure.message,
-          diagnostics: {
-            ...failure.diagnostics,
-            cleanupStatus: cleanup.status,
-            ...(cleanup.message === undefined ? {} : { cleanupMessage: cleanup.message }),
-          },
-        }),
-      ),
-    ),
+    Effect.mapError((failure) => {
+      const diagnostics = {
+        ...failure.diagnostics,
+        cleanupStatus: cleanup.status,
+        ...(cleanup.message === undefined ? {} : { cleanupMessage: cleanup.message }),
+      }
+      switch (failure._tag) {
+        case 'InvalidProviderOutput':
+          return new InvalidProviderOutput({ ...failure, message: failure.message, diagnostics })
+        case 'ProviderOperationFailed':
+          return new ProviderOperationFailed({ ...failure, message: failure.message, diagnostics })
+        case 'VerificationFailed':
+          return new VerificationFailed({ ...failure, message: failure.message, diagnostics })
+      }
+    }),
   )
-  return { ...opts.result, cleanup } satisfies DeployResultV1
+  return { ...result, cleanup } satisfies DeployResultV1
 })

@@ -67,7 +67,11 @@ const runProcess = Effect.fn('test.workers.run-process')(function* (opts: {
 // then launch its exec scripts. Dependencies come from the evaluated `after`
 // graph, not a copy of the module's deploy command or a direct adapter call.
 const fixture = Effect.fn('test.workers.task-fixture')(function* (
-  opts: { readonly apiStatus?: number; readonly wranglerMode?: string } = {},
+  opts: {
+    readonly apiStatus?: number
+    readonly wranglerMode?: string
+    readonly cleanupStatus?: number
+  } = {},
 ) {
   const fs = yield* FileSystem.FileSystem
   const root = yield* fs.makeTempDirectoryScoped({ prefix: 'ci-tools-workers-task-' })
@@ -85,7 +89,11 @@ const fixture = Effect.fn('test.workers.task-fixture')(function* (
     const status =
       request.url === `/accounts/${account}/workers/scripts/fixture-worker/settings`
         ? (opts.apiStatus ?? 200)
-        : 404
+        : request.method === 'DELETE' &&
+            request.url ===
+              `/accounts/${account}/workers/workers/fixture-worker/versions/${versionId}`
+          ? (opts.cleanupStatus ?? 200)
+          : 404
     response.writeHead(status, { 'content-type': 'application/json', connection: 'close' })
     response.end(
       JSON.stringify(
@@ -150,6 +158,7 @@ if (process.env.FAKE_WRANGLER_MODE === 'failure') {
 const record = args[0] === 'deploy'
   ? {type:'deploy', version:1, version_id:'${versionId}', targets:['example.com (custom domain)', 'schedule: * * * * *']}
   : {type:'version-upload', version:1, version_id:'${versionId}', preview_url:'https://11111111-demo.test.workers.dev', preview_alias_url:'https://pr-7-demo.test.workers.dev'}
+if (process.env.FAKE_WRANGLER_MODE === 'invalid-url') record.preview_url = 'http://insecure.example.test'
 const output = process.env.FAKE_WRANGLER_MODE === 'invalid-json' ? '{invalid ' + process.env.CLOUDFLARE_API_TOKEN : process.env.FAKE_WRANGLER_MODE === 'invalid-record' ? JSON.stringify({type:record.type, version:1, version_id:process.env.CLOUDFLARE_API_TOKEN}) : JSON.stringify(record)
 await Bun.write(process.env.WRANGLER_OUTPUT_FILE_PATH, output + '\\n')
 `,
@@ -460,6 +469,54 @@ describe('Cloudflare Workers Nix task launcher + real CLI', () => {
     120_000,
   )
 
+  for (const cleanupStatus of [200, 503]) {
+    it.effect(
+      `cleans uploaded version after invalid preview URL when cleanup returns ${cleanupStatus}`,
+      () =>
+        Effect.gen(function* () {
+          const f = yield* fixture({ wranglerMode: 'invalid-url', cleanupStatus })
+          const result = yield* f.run(
+            { type: 'pr', pr: 7 },
+            {
+              TEST_EXTRA_ARGS: JSON.stringify([
+                '--preview-alias',
+                'ci-tools-e2e-7',
+                '--e2e-allow-shared-project',
+                '--e2e-reserved-alias-prefix',
+                'ci-tools-e2e',
+                '--e2e-verify-path',
+                '/marker',
+                '--e2e-verify-text',
+                'fixture-marker',
+              ]),
+            },
+          )
+          expect(result.status).not.toBe(0)
+          expect(yield* f.fs.exists(f.wranglerLog)).toBe(true)
+          expect(f.requests.map(({ method, url }) => ({ method, url }))).toEqual([
+            { method: 'GET', url: `/accounts/${account}/workers/scripts/fixture-worker/settings` },
+            {
+              method: 'DELETE',
+              url: `/accounts/${account}/workers/workers/fixture-worker/versions/${versionId}`,
+            },
+          ])
+          expect(yield* f.readReport).toMatchObject({
+            status: 'failure',
+            data: {
+              errorKind: 'InvalidProviderOutput',
+              diagnostics: {
+                cleanupStatus: cleanupStatus === 200 ? 'succeeded' : 'failed',
+              },
+            },
+          })
+          expect(
+            `${result.stdout}${result.stderr}${yield* f.fs.readFileString(f.report)}`,
+          ).not.toContain(token)
+        }).pipe(withRuntime),
+      120_000,
+    )
+  }
+
   it.effect(
     'records missing consumer credentials without reaching the provider',
     () =>
@@ -547,7 +604,8 @@ describe('Cloudflare Workers shared-project marker verification and cleanup', ()
               attempts: 1,
             })
             const outcome = yield* verifyAndCleanupCloudflareWorkers({
-              result: deploy,
+              complete: Effect.succeed(deploy),
+              versionId,
               workerName: 'fixture-worker',
               accountId: account,
               authToken: token,

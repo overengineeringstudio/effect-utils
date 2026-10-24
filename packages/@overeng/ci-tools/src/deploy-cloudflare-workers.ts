@@ -295,60 +295,68 @@ export const runCloudflareWorkersDeploy = Effect.fn('ci-tools.deploy.cloudflare-
           record.type === (options.mode === 'prod' ? 'deploy' : 'version-upload'),
       )
       if (matching.length !== 1) return yield* invalid()
-      const output = yield* Schema.decodeUnknownEffect(WranglerOutput)(matching[0]).pipe(
-        Effect.mapError(invalid),
-      )
-      // Wrangler renders custom domains as "host (custom domain ...)" in targets.
-      // Other targets can be schedules/queue consumers; they are not deployment URLs.
-      const urls =
-        output.type === 'deploy'
-          ? output.targets.flatMap((target) => {
-              const host = target.split(' ')[0] ?? ''
-              if (target.startsWith('https://') === true) return [host]
-              if (
-                target.includes(' (custom domain') === true &&
-                /^[a-z0-9.-]+$/u.test(host) === true
-              )
-                return [`https://${host}`]
-              return []
-            })
-          : [output.preview_alias_url]
-      const finalUrl =
-        options.mode === 'prod' && options.productionDomains.length > 0
-          ? `https://${options.productionDomains[0]}`
-          : urls[0]
-      // Custom domains are configured by Wrangler, not inferred from input or assigned separately.
-      if (
-        options.mode === 'prod' &&
-        options.productionDomains.some((domain) => urls.includes(`https://${domain}`) === false) ===
-          true
-      ) {
-        return yield* failure(
-          'Wrangler deployment did not report every configured production domain',
+      const uploaded = yield* Schema.decodeUnknownEffect(
+        Schema.Struct({ version_id: Schema.String.check(Schema.isUUID()) }),
+      )(matching[0]).pipe(Effect.mapError(invalid))
+      const complete = Effect.gen(function* () {
+        const output = yield* Schema.decodeUnknownEffect(WranglerOutput)(matching[0]).pipe(
+          Effect.mapError(invalid),
         )
-      }
-      const result = yield* Schema.decodeUnknownEffect(DeployResultV1)({
-        _tag: 'DeployResult',
-        schemaVersion: 1,
-        provider: 'cloudflare-workers',
-        target: options.target,
-        mode: options.mode,
-        deployId: output.version_id,
-        rawDeployUrl: output.type === 'version-upload' ? output.preview_url : urls[0],
-        finalUrl,
-        alias: input.alias,
-        productionDomains: input.productionDomains,
-        startedAtUtc,
-        endedAtUtc: new Date().toISOString(),
-        attempts: 1,
-      }).pipe(Effect.mapError(invalid))
+        // Wrangler renders custom domains as "host (custom domain ...)" in targets.
+        // Other targets can be schedules/queue consumers; they are not deployment URLs.
+        const urls =
+          output.type === 'deploy'
+            ? output.targets.flatMap((target) => {
+                const host = target.split(' ')[0] ?? ''
+                if (target.startsWith('https://') === true) return [host]
+                if (
+                  target.includes(' (custom domain') === true &&
+                  /^[a-z0-9.-]+$/u.test(host) === true
+                )
+                  return [`https://${host}`]
+                return []
+              })
+            : [output.preview_alias_url]
+        const finalUrl =
+          options.mode === 'prod' && options.productionDomains.length > 0
+            ? `https://${options.productionDomains[0]}`
+            : urls[0]
+        // Custom domains are configured by Wrangler, not inferred from input or assigned separately.
+        if (
+          options.mode === 'prod' &&
+          options.productionDomains.some(
+            (domain) => urls.includes(`https://${domain}`) === false,
+          ) === true
+        ) {
+          return yield* failure(
+            'Wrangler deployment did not report every configured production domain',
+          )
+        }
+        const result = yield* Schema.decodeUnknownEffect(DeployResultV1)({
+          _tag: 'DeployResult',
+          schemaVersion: 1,
+          provider: 'cloudflare-workers',
+          target: options.target,
+          mode: options.mode,
+          deployId: output.version_id,
+          rawDeployUrl: output.type === 'version-upload' ? output.preview_url : urls[0],
+          finalUrl,
+          alias: input.alias,
+          productionDomains: input.productionDomains,
+          startedAtUtc,
+          endedAtUtc: new Date().toISOString(),
+          attempts: 1,
+        }).pipe(Effect.mapError(invalid))
+        return result
+      })
       if (
         options.e2eAllowSharedProject === true &&
         options.e2eVerifyPath !== undefined &&
         options.e2eVerifyText !== undefined
       ) {
         return yield* verifyAndCleanupCloudflareWorkers({
-          result,
+          complete,
+          versionId: uploaded.version_id,
           workerName: options.workerName,
           accountId,
           authToken: token,
@@ -357,7 +365,7 @@ export const runCloudflareWorkersDeploy = Effect.fn('ci-tools.deploy.cloudflare-
           expectedText: options.e2eVerifyText,
         })
       }
-      return result
+      return yield* complete
     }).pipe(
       Effect.scoped,
       Effect.mapError((error) =>

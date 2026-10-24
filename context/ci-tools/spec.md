@@ -449,16 +449,17 @@ path on the final preview alias URL and requires a successful HTTP response
 containing that local artifact's marker. An HTTP or content failure is
 `VerificationFailed`, not a successful upload-only test.
 
-Cleanup runs after verification, including verification failure, and deletes
-only the exact uploaded version UUID. The
+Once the upload record supplies an exact version UUID, cleanup owns every
+subsequent output decode, URL validation, and marker-verification path,
+including failures before a valid deploy result exists. It deletes only that UUID. The
 [Cloudflare beta version-delete API](https://developers.cloudflare.com/api/resources/workers/subresources/beta/subresources/workers/subresources/versions/methods/delete/)
 accepts a Worker ID or name at
 `DELETE /accounts/{account}/workers/workers/{worker}/versions/{version}`.
 Cleanup never deletes the Worker, changes production traffic, or uses `latest`
 or an abbreviated UUID selector. A missing exact UUID records skipped cleanup.
 HTTP/API/transport cleanup failures are best effort: successful verification
-still returns its typed `CleanupResult`, and a `VerificationFailed` retains
-its original classification with cleanup status in diagnostics. Cleanup failure
+still returns its typed `CleanupResult`, and post-upload output or verification
+failures retain their original classification with cleanup status in diagnostics. Cleanup failure
 must not replace the original deploy or verification failure.
 
 Requirement trace: R02, R06, R07, R08, R12, R15, R17, R18, R19, R20, R21, R22,
