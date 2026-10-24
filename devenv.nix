@@ -1371,6 +1371,28 @@ in
         -c "buck_materialization.content_store=$root/.devenv/shared-archive-analysis-content" \
         -c "buck_materialization.lease_library=$EDITOR_VIEW_LEASE_LIBRARY" \
         >/dev/null
+      # Cross-client proofs execute the real attested native reader and the same
+      # declared publisher closure as extraction actions, including in PR CI.
+      replay_manifest() {
+        local selected="" candidate
+        for candidate in ${buck2Capabilities}/tools/*/"$1"/*/manifest.json; do
+          [ -f "$candidate" ] || continue
+          # The producer projects exactly one host platform per profile.
+          [ -z "$selected" ] || { echo "Ambiguous replay capability: $1" >&2; return 1; }
+          selected="$candidate"
+        done
+        [ -n "$selected" ] || { echo "Missing replay capability: $1" >&2; return 1; }
+        printf '%s\n' "$selected"
+      }
+      export BUCK2_ARCHIVE_TOOL_CAPABILITY_MANIFEST="$(replay_manifest archive-tool)"
+      export BUCK2_ARCHIVE_TOOL_BIN="$(${pkgs.jq}/bin/jq -er .executableStorePath "$BUCK2_ARCHIVE_TOOL_CAPABILITY_MANIFEST")"
+      export BUCK2_REPLAY_BUN_CAPABILITY_MANIFEST="$(replay_manifest bun)"
+      export BUCK2_REPLAY_BUN_BIN="$(${pkgs.jq}/bin/jq -er .executableStorePath "$BUCK2_REPLAY_BUN_CAPABILITY_MANIFEST")"
+      replay_runtime="$("$BUCK2_BIN" build \
+        //buck2/dependencies:shared_recipe_runtime --show-full-json-output)"
+      export BUCK2_REPLAY_PUBLISHER_RUNTIME="$(printf '%s' "$replay_runtime" | \
+        ${pkgs.jq}/bin/jq -er 'if length == 1 then .[] else error("Expected one publisher runtime") end')"
+      export BUCK2_REPLAY_PUBLISHER_ENTRY="$BUCK2_REPLAY_PUBLISHER_RUNTIME/buck2/dependencies/shared-recipe.ts"
       cd "$root/packages/@overeng/buck2-tools"
       exec ${sourceBun}/bin/bun "$root/packages/@overeng/buck2-tools/src/bun-test-runner.ts" test src/*.test.ts
     ''

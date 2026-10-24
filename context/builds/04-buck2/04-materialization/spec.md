@@ -28,7 +28,7 @@ translate (genie, freshness-gated)
 
 fetch     host-sharing helper when admitted; native download_file when disabled/fallback;
           verified digest/size; network only here (BUILD.BUCK.MAT-R08); not an RE CAS read
-extract   verified host recipe replay or tar -> package tree;
+extract   declared tar + ordered patches -> package tree; host recipe replay parked (DQ08);
           local-materialization-policy (no AC reads/uploads)
 assemble  importer virtual store: .pnpm/<name>@<ver>[_peer-suffix]/node_modules/<name>
           hardlinks from extract artifacts, relative symlinks for edges,
@@ -38,9 +38,9 @@ assemble  importer virtual store: .pnpm/<name>@<ver>[_peer-suffix]/node_modules/
 
 Extract, store-entry, store-SCC, store-view, package-tree, and runtime-module rules use the
 default non-remote execution platform, not the cache-admitted platform.
-Their cheap filesystem projections execute locally, with host recipe replay
-where admitted below; declared outputs, incremental invalidation, and editor
-backing-root completeness are unchanged.
+Their cheap filesystem projections execute locally; declared outputs, incremental
+invalidation, and editor backing-root completeness are unchanged. Host extraction
+replay is parked, not an active replacement for archive decoding.
 The decision and measured transfer cost are specified by
 [the local materialization policy](../06-reuse-client/spec.md#local-materialization-policy-buildbuckreuse-r08r10).
 
@@ -53,10 +53,12 @@ Warm materialized archives need no transfer, but fresh roots on this path
 download registry bytes
 ([0038, Amendment 3](../../.decisions/0038-digest-origins-for-acquisition.md#amendment-3-one-native-download-shape-q58-2026-10-17)).
 The [host-local materialization contract](../06-reuse-client/spec.md#host-local-materialization-reuse-lever-5a)
-defines the admitted exception: its declared local helper reuses verified host
-archive blobs and extraction recipes, downloading/decoding only on cache misses.
-Its integrity, filesystem, lifetime and fallback gates apply unchanged; an intact
-warm host cache permits zero archive downloads/extractions in a fresh sibling root.
+defines the admitted archive-acquisition exception: its declared local helper
+reuses verified host archive blobs, downloading only on cache misses. An intact
+warm archive cache permits zero downloaded archive bytes in a fresh sibling root.
+Extraction replay and its zero-extraction target are parked under that contract's
+open DQ08; its recipe-generation/proof amendments are not the active design.
+The archive helper's integrity, filesystem, lifetime and fallback gates remain.
 Remote CAS/mirror infrastructure and its verified seeder remain optional, not
 archive read-path prerequisites; this exception does not authorize other origins.
 Nix-backed builds instead retain the per-digest fixed-output archive projection

@@ -201,7 +201,7 @@ pub fn io_error(code: &'static str, context: &str, error: io::Error) -> ToolErro
 }
 
 pub fn sha256_bytes(value: &[u8]) -> String {
-    hex(&Sha256::digest(value))
+    lowercase_hex(&Sha256::digest(value))
 }
 
 pub fn sha256_file(path: &Path) -> ToolResult<String> {
@@ -223,10 +223,11 @@ pub fn sha256_file(path: &Path) -> ToolResult<String> {
         }
         digest.update(&buffer[..read]);
     }
-    Ok(hex(&digest.finalize()))
+    Ok(lowercase_hex(&digest.finalize()))
 }
 
-fn hex(bytes: &[u8]) -> String {
+/// Encode bytes as lowercase hexadecimal with one output allocation.
+pub fn lowercase_hex(bytes: &[u8]) -> String {
     const DIGITS: &[u8; 16] = b"0123456789abcdef";
     let mut encoded = String::with_capacity(bytes.len() * 2);
     for byte in bytes {

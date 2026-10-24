@@ -55,6 +55,8 @@ let
       ../scripts/buck2-stdio.c
       ../scripts/buck2-entrypoint.sh
       (../packages + "/@overeng/buck2-tools/src/materialization-archives.ts")
+      (../packages + "/@overeng/buck2-tools/src/materialization-metadata.ts")
+      (../packages + "/@overeng/buck2-tools/src/materialization-recipes.ts")
       (../packages + "/@overeng/buck2-tools/src/editor-view-sharing.ts")
       (../packages + "/@overeng/buck2-tools/src/editor-view-leases.ts")
       (../packages + "/@overeng/buck2-tools/src/public-archive-origin.ts")

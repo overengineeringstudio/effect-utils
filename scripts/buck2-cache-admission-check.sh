@@ -137,7 +137,7 @@ def _dependency_impl(ctx):
         PnpmDeclaredClosureInfo(manifest = artifact, node_modules = artifact, read_roots = [], toolchain_identity = "analysis-only"),
         PackageCommandRuntimeInfo(runtime = artifact, read_roots = []),
         RustInteropProductInfo(package = artifact, kind = "wasm"),
-        BunToolchainInfo(executable = "/analysis-only/bin/bun", identity = "analysis-only"),
+        BunToolchainInfo(executable = "/analysis-only/bin/bun", identity = "analysis-only", manifest = artifact),
         EffectTsgoToolchainInfo(
             bun = "/analysis-only/bin/bun",
             closure_paths = ["/analysis-only"],
