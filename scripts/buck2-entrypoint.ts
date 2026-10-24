@@ -114,6 +114,7 @@ const cachedProbe = async ({
   now = Date.now(),
   root,
   diagnostics,
+  reuse = true,
 }: {
   readonly key: string
   readonly cacheDirectory: string
@@ -121,6 +122,7 @@ const cachedProbe = async ({
   readonly now?: number
   readonly root?: string
   readonly diagnostics?: { failure?: string }
+  readonly reuse?: boolean
 }): Promise<boolean> => {
   // Root-keyed watcher admission can be reclaimed without knowing the original
   // environment/config variants. Endpoint admission remains shared across roots.
@@ -129,30 +131,33 @@ const cachedProbe = async ({
     cacheDirectory,
     `${prefix}${createHash('sha256').update(key).digest('hex')}.json`,
   )
-  try {
-    const value: unknown = JSON.parse(readFileSync(path, 'utf8'))
-    if (
-      typeof value === 'object' &&
-      value !== null &&
-      'at' in value &&
-      'available' in value &&
-      typeof value.at === 'number' &&
-      typeof value.available === 'boolean' &&
-      now >= value.at &&
-      now - value.at < 5000
-    ) {
-      admissionExpires = Math.min(admissionExpires, value.at + 5000)
+  if (reuse === true) {
+    try {
+      const value: unknown = JSON.parse(readFileSync(path, 'utf8'))
       if (
-        diagnostics !== undefined &&
-        'failure' in value &&
-        typeof value.failure === 'string' &&
-        /^class=[a-z-]+ phase=[a-z]+ elapsed_ms=\d+ deadline_ms=\d+$/u.test(value.failure) === true
-      )
-        diagnostics.failure = value.failure
-      return value.available
+        typeof value === 'object' &&
+        value !== null &&
+        'at' in value &&
+        'available' in value &&
+        typeof value.at === 'number' &&
+        typeof value.available === 'boolean' &&
+        now >= value.at &&
+        now - value.at < 5000
+      ) {
+        admissionExpires = Math.min(admissionExpires, value.at + 5000)
+        if (
+          diagnostics !== undefined &&
+          'failure' in value &&
+          typeof value.failure === 'string' &&
+          /^class=[a-z-]+ phase=[a-z]+ elapsed_ms=\d+ deadline_ms=\d+$/u.test(value.failure) ===
+            true
+        )
+          diagnostics.failure = value.failure
+        return value.available
+      }
+    } catch {
+      /* Missing or stale cache entries are probed again. */
     }
-  } catch {
-    /* Missing or stale cache entries are probed again. */
   }
   const available = await probe()
   const candidate = `${path}.${randomUUID()}`
@@ -172,6 +177,115 @@ const cachedProbe = async ({
     } catch {
       /* An inaccessible cache directory must not turn cleanup into a build failure. */
     }
+  }
+  return available
+}
+
+/**
+ * Called under CI's root admission lock. Availability is a job decision, not
+ * a per-launch policy input: a later fast probe cannot invalidate live leases.
+ */
+const pinCiJobReapiProbe = async ({
+  root,
+  env,
+  key,
+  diagnostics,
+  admission,
+  probe,
+}: {
+  readonly root: string
+  readonly env: Readonly<Record<string, string | undefined>>
+  readonly key: string
+  readonly diagnostics: { failure?: string }
+  readonly admission: CacheAdmissionInvocation
+  readonly probe: (fresh: boolean) => Promise<boolean>
+}): Promise<boolean> => {
+  const run = env['GITHUB_RUN_ID']
+  const job = env['GITHUB_JOB']
+  if (
+    (env['CI'] !== '1' && env['CI'] !== 'true') ||
+    run === undefined ||
+    run === '' ||
+    job === undefined ||
+    job === ''
+  )
+    return probe(false)
+  const scope = JSON.stringify([run, env['GITHUB_RUN_ATTEMPT'] ?? '1', job])
+  const directory = join(root, 'buck-out', '.cache-daemon-posture')
+  mkdirSync(directory, { recursive: true, mode: 0o700 })
+  const path = join(directory, `reapi-job-${createHash('sha256').update(scope).digest('hex')}.json`)
+  const failurePattern = /^class=[a-z-]+ phase=[a-z]+ elapsed_ms=\d+ deadline_ms=\d+$/u
+  let salt = randomBytes(32).toString('hex')
+  const decisions: Record<string, { available: boolean; failure?: string }> = {}
+  if (existsSync(path) === true) {
+    const fd = openSync(path, 'r')
+    let saved: unknown
+    try {
+      fchmodSync(fd, 0o600)
+      saved = JSON.parse(readFileSync(fd, 'utf8'))
+    } finally {
+      closeSync(fd)
+    }
+    if (
+      typeof saved !== 'object' ||
+      saved === null ||
+      !('salt' in saved) ||
+      typeof saved.salt !== 'string' ||
+      !('decisions' in saved) ||
+      typeof saved.decisions !== 'object' ||
+      saved.decisions === null
+    )
+      throw new Error('Buck2 cache posture: malformed CI job probe decision')
+    salt = saved.salt
+    for (const [fingerprint, decision] of Object.entries(saved.decisions)) {
+      if (
+        /^[a-f0-9]{64}$/u.test(fingerprint) === false ||
+        typeof decision !== 'object' ||
+        decision === null ||
+        !('available' in decision) ||
+        typeof decision.available !== 'boolean' ||
+        ('failure' in decision &&
+          (typeof decision.failure !== 'string' || failurePattern.test(decision.failure) === false))
+      )
+        throw new Error('Buck2 cache posture: malformed CI job probe decision')
+      decisions[fingerprint] = {
+        available: decision.available,
+        ...('failure' in decision ? { failure: decision.failure as string } : {}),
+      }
+    }
+  }
+  // A private persisted key protects endpoint/auth identity; neither it nor its
+  // digest is printed or used in a filename. Credential changes remain distinct.
+  const fingerprint = createHmac('sha256', salt).update(key).digest('hex')
+  const previous = decisions[fingerprint]
+  if (previous !== undefined) {
+    admission.reapiDecision = 'pinned-from-first-probe'
+    diagnostics.failure = previous.failure
+    return previous.available
+  }
+  const available = await probe(true)
+  admission.reapiDecision = 'first-probe-for-ci-job'
+  const failure = diagnostics.failure
+  decisions[fingerprint] = { available, ...(failure === undefined ? {} : { failure }) }
+  if (available === false) {
+    const reason = failure ?? 'REAPI unavailable'
+    writeSync(
+      2,
+      `warning: Buck2 CI job remote cache pinned to local fallback from first probe (${reason}); subsequent launches keep this posture for the job\n`,
+    )
+    const summary = env['GITHUB_STEP_SUMMARY']
+    if (summary !== undefined && summary !== '')
+      appendFileSync(
+        summary,
+        `\n### Buck2 remote-cache admission\n\n**Pinned from first probe: local fallback for this CI job.** Reason: \`${reason}\`. Later launches retain this decision even if the endpoint recovers.\n`,
+      )
+  }
+  const candidate = `${path}.${randomUUID()}`
+  try {
+    writeFileSync(candidate, JSON.stringify({ salt, decisions }), { mode: 0o600, flag: 'wx' })
+    renameSync(candidate, path)
+  } finally {
+    rmSync(candidate, { force: true })
   }
   return available
 }
@@ -350,40 +464,58 @@ export const directBuckArguments = async ({
     return available
   }
   const reapiDiagnostics: { failure?: string } = {}
+  const reapiKey = JSON.stringify([
+    'reapi',
+    values['buck2_re_client.action_cache_address'],
+    values['buck2_re_client.instance_name'],
+    values['buck2_re_client.tls'],
+    header,
+  ])
   const remoteAvailable =
     remote === false
       ? true
-      : await cachedProbe({
-          cacheDirectory,
+      : await pinCiJobReapiProbe({
+          root,
+          env,
+          key: reapiKey,
           diagnostics: reapiDiagnostics,
-          key: JSON.stringify([
-            'reapi',
-            values['buck2_re_client.action_cache_address'],
-            values['buck2_re_client.instance_name'],
-            values['buck2_re_client.tls'],
-            header,
-          ]),
-          probe: () =>
-            retryProbe({
-              endpoint: 'reapi',
+          admission,
+          probe: (fresh) =>
+            cachedProbe({
+              reuse: !fresh,
+              cacheDirectory,
+              diagnostics: reapiDiagnostics,
+              key: reapiKey,
               probe: () =>
-                probeRemoteCacheCapabilities({
-                  address: values['buck2_re_client.action_cache_address'],
-                  instanceName: values['buck2_re_client.instance_name'] ?? '',
-                  tls: values['buck2_re_client.tls'] !== 'false',
-                  header: values['buck2_re_client.http_headers'],
-                  env,
-                  deadlineMs,
-                  deadlineSignal: probeDeadlineSignal?.('reapi'),
-                  onFailure: ({ errorClass, phase, elapsedMs, deadlineMs: probeDeadlineMs }) => {
-                    reapiDiagnostics.failure = `class=${errorClass} phase=${phase} elapsed_ms=${elapsedMs} deadline_ms=${probeDeadlineMs}`
-                    writeSync(2, `warning: Buck2 REAPI probe failed: ${reapiDiagnostics.failure}\n`)
-                  },
-                  onConnectionEvent: ({ event, elapsedMs, address, family }) =>
-                    writeSync(
-                      2,
-                      `Buck2 REAPI probe: event=${event} elapsed_ms=${elapsedMs} address=${address ?? 'unavailable'} family=${family ?? 'unavailable'}\n`,
-                    ),
+                retryProbe({
+                  endpoint: 'reapi',
+                  probe: () =>
+                    probeRemoteCacheCapabilities({
+                      address: values['buck2_re_client.action_cache_address'],
+                      instanceName: values['buck2_re_client.instance_name'] ?? '',
+                      tls: values['buck2_re_client.tls'] !== 'false',
+                      header: values['buck2_re_client.http_headers'],
+                      env,
+                      deadlineMs,
+                      deadlineSignal: probeDeadlineSignal?.('reapi'),
+                      onFailure: ({
+                        errorClass,
+                        phase,
+                        elapsedMs,
+                        deadlineMs: probeDeadlineMs,
+                      }) => {
+                        reapiDiagnostics.failure = `class=${errorClass} phase=${phase} elapsed_ms=${elapsedMs} deadline_ms=${probeDeadlineMs}`
+                        writeSync(
+                          2,
+                          `warning: Buck2 REAPI probe failed: ${reapiDiagnostics.failure}\n`,
+                        )
+                      },
+                      onConnectionEvent: ({ event, elapsedMs, address, family }) =>
+                        writeSync(
+                          2,
+                          `Buck2 REAPI probe: event=${event} elapsed_ms=${elapsedMs} address=${address ?? 'unavailable'} family=${family ?? 'unavailable'}\n`,
+                        ),
+                    }),
                 }),
             }),
         })
@@ -1082,7 +1214,8 @@ export const admitCacheDaemonCommand = async ({
         launches.some(
           (launch) =>
             (launch.isolation === undefined || launch.isolation === isolation) &&
-            launch.fingerprint !== desired,
+            launch.fingerprint !== desired &&
+            cacheLauncherBirth(launch.pid) === launch.birth,
         ) === true
       )
         throw new Error(

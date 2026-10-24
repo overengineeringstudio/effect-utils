@@ -5,6 +5,7 @@ import {
   mkdtempSync,
   readFileSync,
   realpathSync,
+  readdirSync,
   rmSync,
   statSync,
   writeFileSync,
@@ -128,9 +129,15 @@ describe('daemon RE posture', () => {
             ? tracked
             : tracked.replaceAll(/grpc:\/\/[^\s]+/gu, 'grpc://127.0.0.1:1'),
         )
+        // This fixture tests RE policy, not the machine's shared Watchman service.
+        writeFileSync(join(root, '.buckconfig.local'), '[buck2]\nfile_watcher = fs_hash_crawler\n')
         const env = {
           ...process.env,
           CI: '1',
+          GITHUB_RUN_ID: 'posture-fixture-run',
+          GITHUB_RUN_ATTEMPT: '1',
+          GITHUB_JOB: 'posture-fixture',
+          GITHUB_STEP_SUMMARY: join(root, 'summary'),
           BUCK2_CACHE_WRITE_BASIC_AUTH: secret,
           BUCK2_NO_REMOTE_CACHE: '',
           BUCK2_PRIVATE_CACHE_WRITE_BASIC_AUTH: '',
@@ -186,6 +193,14 @@ else process.exit(9);
           posture === 'reader-outage' ? 'false' : 'true',
         )
         expect(text).not.toContain(secret)
+        if (posture !== 'publisher') {
+          const state = join(root, 'buck-out', '.cache-daemon-posture')
+          const pin = readdirSync(state).find((file) => file.startsWith('reapi-job-'))!
+          const saved = readFileSync(join(state, pin), 'utf8')
+          expect(saved).not.toContain(secret)
+          expect(Object.keys(JSON.parse(saved).decisions)[0]).toMatch(/^[a-f0-9]{64}$/u)
+          expect(statSync(join(state, pin)).mode & 0o777).toBe(0o600)
+        }
         expect(statSync(policy).mode & 0o777).toBe(0o600)
       } finally {
         rmSync(root, { recursive: true, force: true })

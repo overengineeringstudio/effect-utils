@@ -1,8 +1,19 @@
 import { expect, it } from 'bun:test'
 import { spawnSync } from 'node:child_process'
-import { mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
+import {
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  readdirSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs'
+import { createServer, type ServerHttp2Session } from 'node:http2'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+
+import { probeRemoteCacheCapabilities } from './buck2-cache-posture.ts'
 
 it('scopes concurrent posture reservations to real Buck roots and daemon isolations', async () => {
   const native = process.env['BUCK2_NATIVE_BIN']
@@ -16,12 +27,18 @@ it('scopes concurrent posture reservations to real Buck roots and daemon isolati
   const separate = roots[1]!
   const worker = join(root, 'launcher.ts')
   const children: Bun.Subprocess<'pipe', 'pipe', 'pipe'>[] = []
-  const launch = (cwd: string, isolation: string, posture: string, hold = false) => {
-    const child = Bun.spawn([process.execPath, worker, cwd, isolation, posture, String(hold)], {
-      stdin: 'pipe',
-      stdout: 'pipe',
-      stderr: 'pipe',
-    })
+  const grpc = createServer()
+  const sessions = new Set<ServerHttp2Session>()
+  grpc.on('session', (session) => sessions.add(session))
+  const launch = (cwd: string, isolation: string, posture: string, hold = false, job = '') => {
+    const child = Bun.spawn(
+      [process.execPath, worker, cwd, isolation, posture, String(hold), job],
+      {
+        stdin: 'pipe',
+        stdout: 'pipe',
+        stderr: 'pipe',
+      },
+    )
     children.push(child)
     return child
   }
@@ -49,9 +66,9 @@ it('scopes concurrent posture reservations to real Buck roots and daemon isolati
 import {writeFileSync} from 'node:fs';
 import {once} from 'node:events';
 import {admitCacheDaemonCommand,directBuckArguments} from ${JSON.stringify(join(import.meta.dir, 'buck2-entrypoint.ts'))};
-const [root,isolation,posture,hold]=process.argv.slice(2);
-const fallback=posture==='fallback';
-const env={...process.env,CI:'1',BUCK2_NO_REMOTE_CACHE:'',BUCK2_PUBLIC_CACHE_READ_ONLY:fallback?'1':'',BUCK2_PRIVATE_CACHE_WRITE_BASIC_AUTH:'',BUCK2_PRIVATE_CACHE_ADDRESS:'',BUCK2_CACHE_WRITE_BASIC_AUTH:'',BUCK2_CACHE_WRITE_OPTIONAL:'',CI_BUCK2_CACHE_EVIDENCE_PATH:''};
+const [root,isolation,posture,hold,job]=process.argv.slice(2);
+const fallback=posture==='fallback'||posture==='online';
+const env={...process.env,CI:'1',GITHUB_RUN_ID:job?'2112-run':'',GITHUB_RUN_ATTEMPT:'1',GITHUB_JOB:job||'test',GITHUB_STEP_SUMMARY:job?root+'/summary':'',BUCK2_NO_REMOTE_CACHE:'',BUCK2_PUBLIC_CACHE_READ_ONLY:fallback?'1':'',BUCK2_PRIVATE_CACHE_WRITE_BASIC_AUTH:'',BUCK2_PRIVATE_CACHE_ADDRESS:'',BUCK2_CACHE_WRITE_BASIC_AUTH:'',BUCK2_CACHE_WRITE_OPTIONAL:'',CI_BUCK2_CACHE_EVIDENCE_PATH:job?root+'/admission':''};
 const values={'buck2.remote_cache_enabled':'true','buck2.allow_cache_uploads':posture,...(posture==='true'?{'buck2.default_allow_cache_upload':'true','buck2_re_client.http_headers':'authorization: Basic $BUCK2_CACHE_WRITE_BASIC_AUTH'}:{})};
 const auditArgs=posture==='true'?['@'+root+'/'+isolation+'.outer']:['audit','config','--json'];
 if(posture==='true') {
@@ -80,7 +97,7 @@ try {
  if(result.status!==0) throw new Error('native audit failed');
  const config=JSON.parse(result.stdout);
  const expected=fallback?'false':posture;
- if((fallback && config['buck2.remote_cache_enabled']!=='false') || config['buck2.allow_cache_uploads']!==expected || config['buck2.default_allow_cache_upload']!==expected ||
+ if((fallback && config['buck2.remote_cache_enabled']!==(posture==='online'?'true':'false')) || config['buck2.allow_cache_uploads']!==expected || config['buck2.default_allow_cache_upload']!==expected ||
    config['buck2_re_client.http_headers']!==(posture==='true'?'authorization: Basic $BUCK2_CACHE_WRITE_BASIC_AUTH':'')) throw new Error('native audit policy changed');
  process.exit(0);
 } catch(error) {console.error(error.message);process.exitCode=1;}
@@ -118,7 +135,80 @@ try {
     ).toBe(0)
     fallback.stdin.write('finish\n')
     expect(await fallback.exited, await new Response(fallback.stderr).text()).toBe(0)
+    // The observed incident: timeout -> live fallback lease -> recovered endpoint.
+    let healthy = false
+    let requests = 0
+    grpc.on('stream', (stream) => {
+      requests++
+      stream.on('data', () => {})
+      stream.on('end', () => {
+        if (healthy === true) {
+          stream.respond({ ':status': 200, 'content-type': 'application/grpc', 'grpc-status': '0' })
+          stream.end(Buffer.from([0, 0, 0, 0, 0]))
+        }
+      })
+    })
+    await new Promise<void>((resolve) => grpc.listen(0, '127.0.0.1', resolve))
+    const address = grpc.address()
+    if (address === null || typeof address === 'string')
+      throw new Error('fixture address unavailable')
+    const endpoint = `grpc://127.0.0.1:${address.port}`
+    writeFileSync(
+      join(separate, '.buckconfig'),
+      `[cells]\nfixture = .\n[buck2]\nremote_cache_enabled = true\n[buck2_re_client]\naction_cache_address = ${endpoint}\ncas_address = ${endpoint}\nengine_address = ${endpoint}\ntls = false\n`,
+    )
+    const pinned = launch(separate, 'reader', 'fallback', true, '2112-job-A')
+    expect(new TextDecoder().decode((await pinned.stdout.getReader().read()).value)).toContain(
+      'admitted',
+    )
+    expect(requests).toBe(2)
+    healthy = true
+    expect(
+      await probeRemoteCacheCapabilities({
+        address: endpoint,
+        instanceName: '',
+        header: undefined,
+        tls: false,
+        env: {},
+        deadlineMs: 1000,
+      }),
+    ).toBe(true)
+    // Evict the short-lived optimization without touching the authoritative job pin.
+    rmSync(join(separate, 'probe-cache'), { recursive: true, force: true })
+    const recovered = launch(separate, 'reader', 'fallback', false, '2112-job-A')
+    expect(await recovered.exited, await new Response(recovered.stderr).text()).toBe(0)
+    expect(requests).toBe(3) // The control succeeded; B did not select a new posture.
+    const foreignJob = launch(separate, 'reader', 'online', false, '2112-job-B')
+    expect(await foreignJob.exited).toBe(1)
+    expect(await new Response(foreignJob.stderr).text()).toContain('concurrent launcher')
+    expect(requests).toBe(4) // A different job gets its own fresh successful probe.
+    pinned.stdin.write('finish\n')
+    expect(await pinned.exited).toBe(0)
+    const notice = await new Response(pinned.stderr).text()
+    expect(notice).toContain('pinned to local fallback from first probe')
+    expect(notice).toContain('class=deadline')
+    const summary = readFileSync(join(separate, 'summary'), 'utf8')
+    expect(summary).toContain('Pinned from first probe: local fallback for this CI job')
+    expect(summary).toContain('class=deadline')
+    expect(summary.match(/Pinned from first probe/gu)).toHaveLength(1)
+    const decisions = readFileSync(join(separate, 'admission.admission.jsonl'), 'utf8')
+      .trim()
+      .split('\n')
+      .map((line) => JSON.parse(line))
+    expect(decisions[0].reapiDecision).toBe('first-probe-for-ci-job')
+    expect(decisions[0].reapiFailure.class).toBe('deadline')
+    expect(decisions[1].reapiDecision).toBe('pinned-from-first-probe')
+    expect(decisions[1].admissionFallbacks.reapi).toBe(1)
+    expect(decisions[2].admissionFallbacks.reapi).toBe(0)
+    const state = join(separate, 'buck-out', '.cache-daemon-posture')
+    for (const file of readdirSync(state).filter((file) => file.startsWith('reapi-job-')))
+      expect(statSync(join(state, file)).mode & 0o777).toBe(0o600)
+    const newJob = launch(separate, 'reader', 'online', false, '2112-job-B')
+    expect(await newJob.exited, await new Response(newJob.stderr).text()).toBe(0)
+    expect(requests).toBe(4)
   } finally {
+    for (const session of sessions) session.destroy()
+    if (grpc.listening === true) grpc.close()
     for (const child of children) child.kill()
     await Promise.all(children.map((child) => child.exited))
     for (const cwd of roots) {
