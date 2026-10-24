@@ -25,9 +25,17 @@
           pkgs = nixpkgs.legacyPackages.${system};
           upstream = playwright-web-flake.packages.${system}.playwright-driver;
           components = upstream.components // {
-            chromium = pkgs.callPackage ./chromium-darwin.nix {
-              chromium = upstream.components.chromium;
-            };
+            chromium =
+              if system == "aarch64-linux" then
+                upstream.components.chromium.overrideAttrs (old: {
+                  # Upstream's postFixup still hardcodes the x86_64 archive directory.
+                  # https://github.com/pietdevries94/playwright-web-flake/blob/0f950bf6/playwright-driver/chromium.nix#L119-L123
+                  postFixup = lib.replaceStrings [ "chrome-linux64" ] [ "chrome-linux-arm64" ] old.postFixup;
+                })
+              else
+                pkgs.callPackage ./chromium-darwin.nix {
+                  chromium = upstream.components.chromium;
+                };
           };
           selectBrowsers = lib.makeOverridable (
             {
@@ -61,7 +69,7 @@
             )
           );
         in
-        if !pkgs.stdenv.hostPlatform.isDarwin then
+        if system == "x86_64-linux" then
           upstream
         else
           upstream.overrideAttrs {
