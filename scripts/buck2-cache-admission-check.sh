@@ -304,6 +304,11 @@ BUCK
 # provider must not resolve the production shared runtime's source exports.
 cat > "$work/buck2/dependencies/BUCK" <<'BUCK'
 load("//:fixture.bzl", "fixture_dependency")
+load("//buck2:materialization.bzl", "export_materialization_inputs")
+
+export_materialization_inputs(
+    glob(["*.ts", "fixtures/**"], exclude = ["assemble-store.ts"]) + ["BUCK", "pnpm-lock.sha256.json"],
+)
 
 fixture_dependency(name = "shared_archive_runtime", visibility = ["PUBLIC"])
 BUCK
