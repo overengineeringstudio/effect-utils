@@ -245,6 +245,8 @@ for outer tasks that must complete before the nested devenv process can evaluate
     `links/` graph. This overrides workspace GVS without relaxing offline,
     frozen-lockfile, or frozen-store policy. Only these read-only installs lose
     cross-root graph reuse; normal writable installs still use GVS.
+    Stale projections are still purged, but rematerialization omits `--force`,
+    which pnpm rejects with a frozen store.
   - Install, update, dedupe, status, doctor, and shell setup share the selected
     policy. Readiness receipts include effective GVS/store policy. Health and
     projection fingerprints visit only this root's reachable shared instances,

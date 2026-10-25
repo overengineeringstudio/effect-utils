@@ -85,4 +85,22 @@ for name in first second ci local; do
   echo "$name: effective projection and runtime import passed"
 done
 
+# Reproduce an offline reader switching an existing GVS projection to a local
+# one. This also exercises stale-projection repair: --force is incompatible
+# with frozenStore even after the old node_modules has been purged.
+export XDG_CONFIG_HOME="$tmpdir/frozen-xdg"
+mkdir -p "$XDG_CONFIG_HOME/pnpm"
+printf 'offline: true\nfrozenLockfile: true\nfrozenStore: true\n' > "$XDG_CONFIG_HOME/pnpm/config.yaml"
+extract_script "$tmpdir/first" true exec
+extract_script "$tmpdir/first" true status
+bash "$tmpdir/true-exec-install.sh"
+bash "$tmpdir/true-status-install.sh"
+target="$(realpath "$tmpdir/first/node_modules/gvs-fixture")"
+case "$target" in "$tmpdir/first/node_modules/.pnpm/"*) ;; *) echo "Expected frozen root-local projection: $target"; exit 1 ;; esac
+test "$(jq -r .storeDir "$tmpdir/first/node_modules/.modules.yaml")" = "$PNPM_SHARED_STORE_DIR/v11"
+test -d "$first_target"
+(cd "$tmpdir/first"; node -e 'if (require("gvs-fixture") !== 42) process.exit(1)')
+(cd "$tmpdir/second"; node -e 'if (require("gvs-fixture") !== 42) process.exit(1)')
+echo 'frozen-store: existing GVS root rematerialized locally from the shared CAS'
+
 echo 'All real pnpm GVS integration tests passed'
