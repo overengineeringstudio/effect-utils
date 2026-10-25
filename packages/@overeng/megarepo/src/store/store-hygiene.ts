@@ -36,6 +36,7 @@ export type StoreIssueType =
   | 'broken_worktree'
   | 'missing_bare'
   | 'missing_fetch_refspec'
+  | 'missing_origin'
   | 'dirty'
   | 'unpushed'
   | 'orphaned'
@@ -145,15 +146,23 @@ export const validateStoreMembers = ({
         continue
       }
 
-      if ((yield* Git.hasBareOriginFetchRefspec({ repoPath: bareRepoPath })) === false) {
+      const configIssue = yield* Git.getBareOriginConfigIssue({ repoPath: bareRepoPath })
+      if (configIssue !== undefined) {
         issues.push({
           severity: 'error',
-          type: 'missing_fetch_refspec',
+          type: configIssue,
           memberName,
           message:
-            'bare repo is missing remote.origin.fetch; fetch cannot update remote-tracking refs',
-          fix: "run 'mr store fix' to configure the bare repo fetch refspec",
-          meta: { _tag: 'missing_fetch_refspec', bareRepoPath },
+            configIssue === 'missing_origin'
+              ? 'bare repo has no origin remote URL'
+              : 'bare repo is missing remote.origin.fetch; fetch cannot update remote-tracking refs',
+          fix:
+            configIssue === 'missing_origin'
+              ? 'configure the bare repo origin remote URL before running mr store fix'
+              : "run 'mr store fix' to configure the bare repo fetch refspec",
+          ...(configIssue === 'missing_fetch_refspec'
+            ? { meta: { _tag: 'missing_fetch_refspec' as const, bareRepoPath } }
+            : {}),
         })
       }
 

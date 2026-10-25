@@ -113,7 +113,6 @@ export const StoreWorktreeIssue = Schema.Struct({
     'unpushed',
     'ref_mismatch',
     'missing_bare',
-    'missing_fetch_refspec',
     'broken_worktree',
     'orphaned',
   ]),
@@ -135,6 +134,16 @@ export const StoreWorktreeStatus = Schema.Struct({
 
 /** Inferred type for a worktree's status. */
 export type StoreWorktreeStatus = Schema.Schema.Type<typeof StoreWorktreeStatus>
+
+/** Repository config issues exist even when no worktrees have been materialized. */
+export const StoreRepoIssue = Schema.Struct({
+  repo: Schema.String,
+  path: Schema.String,
+  type: Schema.Literals(['missing_origin', 'missing_fetch_refspec']),
+  severity: Schema.Literals(['error']),
+  message: Schema.String,
+})
+export type StoreRepoIssue = typeof StoreRepoIssue.Type
 
 /** Schema for warnings shown before garbage collection (e.g., not in megarepo). */
 export const StoreGcWarning = Schema.Struct({
@@ -166,6 +175,7 @@ export const StoreStatusState = Schema.TaggedStruct('Status', {
   worktreeCount: Schema.Finite,
   diskUsage: Schema.optional(Schema.String),
   worktrees: Schema.Array(StoreWorktreeStatus),
+  repoIssues: Schema.Array(StoreRepoIssue),
 })
 
 /**
@@ -327,6 +337,7 @@ export const StoreAction = Schema.Union([
     worktreeCount: Schema.Finite,
     diskUsage: Schema.optional(Schema.String),
     worktrees: Schema.Array(StoreWorktreeStatus),
+    repoIssues: Schema.Array(StoreRepoIssue),
   }),
   Schema.TaggedStruct('SetFetch', {
     basePath: Schema.String,
@@ -405,6 +416,7 @@ export const storeReducer = ({
         worktreeCount: action.worktreeCount,
         diskUsage: action.diskUsage,
         worktrees: action.worktrees,
+        repoIssues: action.repoIssues,
       }
     case 'SetFetch':
       return {

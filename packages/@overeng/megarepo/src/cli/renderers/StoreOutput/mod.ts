@@ -18,6 +18,7 @@ export {
   StoreFixResult,
   StoreErrorState,
   StoreRepo,
+  StoreRepoIssue,
   StoreFetchResult,
   StoreGcResult,
   StoreGcResultStatus,

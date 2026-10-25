@@ -15,12 +15,17 @@ import { makeStoreLayer, Store } from './store.ts'
 
 const makeFixture = Effect.gen(function* () {
   const fixture = yield* createStoreFixture([
-    { host: 'github.com', owner: 'test', repo: 'repo', branches: ['main'] },
+    { host: 'github.com', owner: 'test', repo: 'repo', branches: ['main'], withRemote: true },
   ])
   const bare = fixture.bareRepoPaths['github.com/test/repo']!
+  yield* Git.runCommand({
+    cwd: bare,
+    args: ['config', '--local', '--unset-all', 'remote.origin.fetch'],
+  })
   const worktree = fixture.worktreePaths['github.com/test/repo#main']!
   const commit = yield* Git.getCurrentCommit(worktree)
   // The shared fixture uses detached worktrees; this fixture models a healthy branch worktree.
+  yield* Git.runCommand({ cwd: bare, args: ['update-ref', 'refs/heads/main', commit] })
   yield* Git.runCommand({ cwd: worktree, args: ['symbolic-ref', 'HEAD', 'refs/heads/main'] })
   yield* Git.runCommand({ cwd: bare, args: ['update-ref', 'refs/remotes/origin/main', commit] })
   yield* Git.runCommand({ cwd: bare, args: ['update-ref', 'refs/heads/preserved', commit] })
@@ -100,6 +105,44 @@ describe('bare store fetch refspec hygiene', () => {
         ).toEqual([])
       }).pipe(Effect.provide(makeStoreLayer({ basePath: fixture.storePath })))
     }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+  )
+
+  it.effect(
+    'reports missing origin and refuses config-only repair without inventing a remote',
+    () =>
+      Effect.gen(function* () {
+        const { bare, config, lockFile, fixture } = yield* makeFixture
+        const fs = yield* FileSystem.FileSystem
+        yield* Git.runCommand({
+          cwd: bare,
+          args: ['config', '--local', '--unset-all', 'remote.origin.url'],
+        })
+        const before = yield* fs.readFileString(`${bare}config`)
+        const refsBefore = yield* Git.runCommand({ cwd: bare, args: ['for-each-ref'] })
+        const worktreesBefore = yield* Git.runCommand({
+          cwd: bare,
+          args: ['worktree', 'list', '--porcelain'],
+        })
+        yield* Effect.gen(function* () {
+          const store = yield* Store
+          const issues = yield* validateStoreMembers({
+            memberNames: ['repo'],
+            config,
+            lockFile,
+            store,
+          })
+          expect(issues.filter((issue) => issue.type === 'missing_origin')).toHaveLength(1)
+          expect(issues.some((issue) => issue.type === 'missing_fetch_refspec')).toBe(false)
+          expect((yield* fixStoreIssues({ issues, store }))[0]?.status).toBe('skipped')
+        }).pipe(Effect.provide(makeStoreLayer({ basePath: fixture.storePath })))
+        const error = yield* Git.repairBareOriginFetchRefspec({ repoPath: bare }).pipe(Effect.flip)
+        expect(error._tag).toBe('BareOriginMissingError')
+        expect(yield* fs.readFileString(`${bare}config`)).toBe(before)
+        expect(yield* Git.runCommand({ cwd: bare, args: ['for-each-ref'] })).toBe(refsBefore)
+        expect(
+          yield* Git.runCommand({ cwd: bare, args: ['worktree', 'list', '--porcelain'] }),
+        ).toBe(worktreesBefore)
+      }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
   )
 
   it.effect('preserves existing custom and multivalued fetch configuration', () =>
