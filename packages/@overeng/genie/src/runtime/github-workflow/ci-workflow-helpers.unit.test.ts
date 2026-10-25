@@ -2091,8 +2091,12 @@ describe('Cloudflare Workers trusted deployment jobs', () => {
           import {
             cloudflareWorkersDeployJobs,
             cloudflareWorkersTrustedJobCondition,
+            cloudflareWorkersTrustedJobConditionFor,
           } from './genie/deploy-preview/cloudflare-workers.ts'
 
+          assert.equal(typeof cloudflareWorkersTrustedJobCondition, 'string')
+          assert.equal(cloudflareWorkersTrustedJobCondition, cloudflareWorkersTrustedJobConditionFor())
+          assert.equal(cloudflareWorkersTrustedJobCondition, "(github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)")
           const jobs = cloudflareWorkersDeployJobs({
             targets: [{ name: 'web' }],
             runner: ['ubuntu-latest'],
@@ -2140,6 +2144,73 @@ describe('Cloudflare Workers trusted deployment jobs', () => {
           const collector = comment.steps.find((step) => step.env?.WORKFLOW_REPORT_INPUT_PATHS_JSON)
           assert.ok(JSON.parse(collector.env.WORKFLOW_REPORT_INPUT_PATHS_JSON)[0].endsWith('/cloudflare-workers-inputs/cloudflare-workers-WEB.jsonl'))
           assert.equal(comment.steps[0].run, 'report setup')
+        `,
+      ],
+      { cwd: ciWorkflowModuleRoot, encoding: 'utf8' },
+    )
+    expect(fixture.status, fixture.stderr).toBe(0)
+  })
+
+  it('allows only declared main-ref dispatches, with production concurrency and no payload inputs', () => {
+    const fixture = spawnSync(
+      'bun',
+      [
+        '-e',
+        `
+          import assert from 'node:assert/strict'
+          import { cloudflareWorkersDeployJobs, cloudflareWorkersDeployTriggers } from './genie/deploy-preview/cloudflare-workers.ts'
+          import { githubWorkflow } from './packages/@overeng/genie/src/runtime/mod.ts'
+
+          const options = {
+            targets: [{ name: 'web' }], runner: ['ubuntu-latest'],
+            baseSteps: [{ run: 'consumer setup' }], env: {},
+            includeComment: false,
+            runDevenvTasksBefore: (...args) => args.join(' '),
+          }
+          assert.equal(cloudflareWorkersDeployTriggers().repository_dispatch, undefined)
+          assert.equal(cloudflareWorkersDeployTriggers({ dispatchTypes: [] }).repository_dispatch, undefined)
+          for (const type of ['', ' ', '*', 'docs-*', 'docs?', '[docs]', 42, null]) {
+            assert.throws(() => cloudflareWorkersDeployTriggers({ dispatchTypes: [type] }), /dispatchTypes/)
+            assert.throws(() => cloudflareWorkersDeployJobs({ ...options, dispatchTypes: [type] }), /dispatchTypes/)
+          }
+          for (const mainBranch of ['main', 'release']) {
+            const events = { mainBranch, dispatchTypes: ['docs-changed', 'content-changed'] }
+            const on = cloudflareWorkersDeployTriggers(events)
+            assert.deepEqual(on.repository_dispatch, { types: events.dispatchTypes })
+            assert.deepEqual(on.push, { branches: [mainBranch] })
+            const jobs = cloudflareWorkersDeployJobs({ ...options, ...events })
+            const deploy = jobs['deploy-web']
+            const allowed = Function('github', 'return (' + deploy.if + ')')
+            const event = (name, ref, action, head = '') => ({
+              event_name: name, ref, repository: 'example/repo',
+              event: { action, pull_request: { number: 42, head: { repo: { full_name: head } } } },
+            })
+            for (const action of events.dispatchTypes) {
+              assert.equal(allowed(event('repository_dispatch', 'refs/heads/' + mainBranch, action)), true)
+            }
+            assert.equal(allowed(event('repository_dispatch', 'refs/heads/' + mainBranch, 'unknown')), false)
+            assert.equal(allowed(event('repository_dispatch', 'refs/heads/feature', 'docs-changed')), false)
+            assert.equal(allowed(event('push', 'refs/heads/' + mainBranch, '')), true)
+            assert.equal(allowed(event('pull_request', 'refs/pull/42/merge', '', 'example/repo')), true)
+            assert.equal(allowed(event('pull_request', 'refs/pull/42/merge', '', 'fork/repo')), false)
+            assert.equal(allowed(event('pull_request_target', 'refs/heads/' + mainBranch, '', 'example/repo')), false)
+            const disabled = cloudflareWorkersDeployJobs(options)['deploy-web']
+            assert.equal(Function('github', 'return (' + disabled.if + ')')(event('repository_dispatch', 'refs/heads/main', 'docs-changed')), false)
+            const restricted = cloudflareWorkersDeployJobs({ ...options, ...events, deployCondition: 'false' })['deploy-web']
+            assert.equal(Function('github', 'return (' + restricted.if + ')')(event('repository_dispatch', 'refs/heads/' + mainBranch, 'docs-changed')), false)
+            const widened = cloudflareWorkersDeployJobs({ ...options, ...events, deployCondition: 'true' })['deploy-web']
+            assert.equal(Function('github', 'return (' + widened.if + ')')(event('repository_dispatch', 'refs/heads/' + mainBranch, 'unknown')), false)
+            const groupExpression = deploy.concurrency.group.match(/\\$\\{\\{ (github.event_name.*?) \\}\\}/)[1]
+            const group = Function('github', 'format', 'return (' + groupExpression + ')')
+            assert.equal(group(event('push', 'refs/heads/' + mainBranch, '')), group(event('repository_dispatch', 'refs/heads/' + mainBranch, 'docs-changed')))
+            assert.notEqual(group(event('pull_request', 'refs/pull/42/merge', '', 'example/repo'), (_, n) => 'pr-' + n), 'prod')
+            const launcher = deploy.steps.find((step) => step.id === 'deploy').run
+            assert.ok(launcher.includes('if [ "\${{ github.event_name }}" = "pull_request" ]; then'))
+            assert.ok(launcher.includes('else\\n  cloudflare-workers:deploy:web --show-output --input type=prod'))
+            const yaml = githubWorkflow({ name: 'Deploy', on, jobs }).stringify({ location: '.github/workflows/deploy.yml', cwd: process.cwd() })
+            assert.equal(yaml.includes('client_payload'), false)
+            assert.ok(yaml.includes('repository_dispatch:'))
+          }
         `,
       ],
       { cwd: ciWorkflowModuleRoot, encoding: 'utf8' },

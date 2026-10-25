@@ -14,9 +14,57 @@ type WorkflowJob = GitHubWorkflowArgs['jobs'][string]
 type WorkflowStep = WorkflowJob['steps'][number]
 type RunTasksBefore = (...tasks: [string, ...string[]]) => string
 
-/** Never widen this predicate: Wrangler configuration and Worker code are executable inputs. */
-export const cloudflareWorkersTrustedJobCondition =
-  "(github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)"
+type CloudflareWorkersEvents = {
+  readonly mainBranch?: string
+  readonly dispatchTypes?: readonly string[]
+}
+
+const expressionString = (value: string): string => `'${value.replaceAll("'", "''")}'`
+
+const dispatchTypes = (opts: CloudflareWorkersEvents): readonly string[] => {
+  const types = opts.dispatchTypes ?? []
+  if (
+    types.some(
+      (type) =>
+        typeof type !== 'string' || type.trim().length === 0 || /[*?[\]]/.test(type) === true,
+    ) === true
+  ) {
+    throw new Error('dispatchTypes must contain non-empty event types without wildcards')
+  }
+  return types
+}
+
+/** Dispatch requires repository write access and executes default-branch code. */
+export const cloudflareWorkersDeployTriggers = (
+  opts: CloudflareWorkersEvents = {},
+): GitHubWorkflowArgs['on'] => {
+  const types = dispatchTypes(opts)
+  return {
+    push: { branches: [opts.mainBranch ?? 'main'] },
+    pull_request: {},
+    ...(types.length === 0 ? {} : { repository_dispatch: { types: [...types] } }),
+  }
+}
+
+/** Consumers may restrict, but never replace, this executable-code trust boundary. */
+export const cloudflareWorkersTrustedJobConditionFor = (
+  opts: CloudflareWorkersEvents = {},
+): string => {
+  const mainRef = expressionString(`refs/heads/${opts.mainBranch ?? 'main'}`)
+  const types = dispatchTypes(opts)
+  return [
+    `(github.event_name == 'push' && github.ref == ${mainRef})`,
+    "(github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)",
+    ...(types.length === 0
+      ? []
+      : [
+          `(github.event_name == 'repository_dispatch' && github.ref == ${mainRef} && (${types.map((type) => `github.event.action == ${expressionString(type)}`).join(' || ')}))`,
+        ]),
+  ].join(' || ')
+}
+
+/** Default main-push / same-repository PR predicate, without dispatch admission. */
+export const cloudflareWorkersTrustedJobCondition = cloudflareWorkersTrustedJobConditionFor()
 
 export type CloudflareWorkersTarget = {
   readonly name: string
@@ -58,23 +106,25 @@ export const cloudflareWorkersDeployStep = (opts: {
  * pull_request_target never start these jobs or receive their job environment.
  * The caller configures targets/build prerequisites in the reusable Nix module.
  */
-export const cloudflareWorkersDeployJobs = (opts: {
-  readonly targets: readonly CloudflareWorkersTarget[]
-  readonly runner: readonly string[]
-  readonly baseSteps: readonly WorkflowStep[]
-  readonly env: Record<string, string>
-  readonly needs?: readonly string[]
-  /** Additional restriction, ANDed with the non-overridable trust boundary. No ${{ }} wrapper. */
-  readonly deployCondition?: string
-  readonly includeComment?: boolean
-  readonly commentTitle?: string
-  readonly noRecordsMessage?: string
-  readonly commentRunner?: readonly string[]
-  /** Checkout/setup steps for workflow-report tasks; do not attach Cloudflare credentials here. */
-  readonly commentBaseSteps?: readonly WorkflowStep[]
-  readonly runDevenvTasksBefore: RunTasksBefore
-}): GitHubWorkflowArgs['jobs'] => {
-  const trustCondition = `(${cloudflareWorkersTrustedJobCondition})`
+export const cloudflareWorkersDeployJobs = (
+  opts: CloudflareWorkersEvents & {
+    readonly targets: readonly CloudflareWorkersTarget[]
+    readonly runner: readonly string[]
+    readonly baseSteps: readonly WorkflowStep[]
+    readonly env: Record<string, string>
+    readonly needs?: readonly string[]
+    /** Additional restriction, ANDed with the non-overridable trust boundary. No ${{ }} wrapper. */
+    readonly deployCondition?: string
+    readonly includeComment?: boolean
+    readonly commentTitle?: string
+    readonly noRecordsMessage?: string
+    readonly commentRunner?: readonly string[]
+    /** Checkout/setup steps for workflow-report tasks; do not attach Cloudflare credentials here. */
+    readonly commentBaseSteps?: readonly WorkflowStep[]
+    readonly runDevenvTasksBefore: RunTasksBefore
+  },
+): GitHubWorkflowArgs['jobs'] => {
+  const trustCondition = `(${cloudflareWorkersTrustedJobConditionFor(opts)})`
   const jobs: GitHubWorkflowArgs['jobs'] = Object.fromEntries(
     opts.targets.map((target): [string, WorkflowJob] => [
       `deploy-${target.name}`,
@@ -86,6 +136,10 @@ export const cloudflareWorkersDeployJobs = (opts: {
             : `${trustCondition} && (${opts.deployCondition})`,
         'runs-on': [...opts.runner],
         permissions: { contents: 'read' },
+        concurrency: {
+          group: `cloudflare-workers-\${{ github.workflow }}-${target.name}-\${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || 'prod' }}`,
+          'cancel-in-progress': false,
+        },
         env: { ...opts.env },
         outputs: {
           final_url: '${{ steps.deploy.outputs.final_url }}',
