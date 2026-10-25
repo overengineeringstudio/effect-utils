@@ -6,7 +6,7 @@ import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 
 import { NodeServices } from '@effect/platform-node'
-import { Effect } from 'effect'
+import { Effect, Schema } from 'effect'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 import {
@@ -552,6 +552,71 @@ describe('source import resolver workspace isolation', () => {
 })
 
 describe('compiled binary import graph staging', () => {
+  it('uses only the main async source reader when staging with recording off', async () => {
+    const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'genie-staging-unrecorded-'))
+    const entryPath = path.join(tempRoot, 'config.genie.ts')
+    const runnerPath = path.join(
+      process.cwd(),
+      `.genie-staging-unrecorded-runner-${Date.now().toString()}.ts`,
+    )
+    try {
+      await writeFile(entryPath, `export default { value: 'plain' }\n`)
+      await writeFile(
+        runnerPath,
+        [
+          `import { spyOn } from 'bun:test'`,
+          `import * as syncFs from 'node:fs'`,
+          `import nodeFs from 'node:fs/promises'`,
+          `import { NodeServices } from '@effect/platform-node'`,
+          `import { Effect } from 'effect'`,
+          `import * as inputs from './src/runtime/node/inputs.ts'`,
+          `import { stageCompiledBinaryImportGraph } from './src/core/generation.ts'`,
+          `const entryPath = process.argv[2]!`,
+          `if (inputs.isInputRecording()) throw new Error('Expected recording off')`,
+          `const recordedRead = spyOn(inputs, 'inputReadFileSync')`,
+          `const record = spyOn(inputs, 'recordInput')`,
+          `const syncRead = spyOn(syncFs, 'readFileSync')`,
+          `const asyncRead = spyOn(nodeFs, 'readFile')`,
+          `const staged = await Effect.runPromise(stageCompiledBinaryImportGraph({ entryPath }).pipe(Effect.provide(NodeServices.layer)))`,
+          `try {`,
+          `  console.log(JSON.stringify({`,
+          `    recordedReads: recordedRead.mock.calls.length,`,
+          `    recordCalls: record.mock.calls.length,`,
+          `    syncSourceReads: syncRead.mock.calls.filter(([input]) => input === entryPath).length,`,
+          `    asyncSourceReads: asyncRead.mock.calls.filter(([input, encoding]) => input === entryPath && encoding === 'utf8').length,`,
+          `  }))`,
+          `} finally {`,
+          `  recordedRead.mockRestore(); record.mockRestore(); syncRead.mockRestore(); asyncRead.mockRestore()`,
+          `  await nodeFs.rm(staged.tempRoot, { recursive: true, force: true })`,
+          `}`,
+        ].join('\n'),
+      )
+      const output = execFileSync('bun', [runnerPath, entryPath], {
+        encoding: 'utf8',
+        env: { ...process.env, GENIE_INPUT_MANIFEST: undefined },
+      })
+      const result = Schema.decodeUnknownSync(
+        Schema.Struct({
+          recordedReads: Schema.Finite,
+          recordCalls: Schema.Finite,
+          syncSourceReads: Schema.Finite,
+          asyncSourceReads: Schema.Finite,
+        }),
+      )(JSON.parse(output))
+      expect(result).toMatchObject({
+        recordedReads: 0,
+        recordCalls: 0,
+        syncSourceReads: 0,
+      })
+      expect(result.asyncSourceReads).toBeGreaterThan(0)
+    } finally {
+      await Promise.all([
+        rm(runnerPath, { force: true }),
+        rm(tempRoot, { recursive: true, force: true }),
+      ])
+    }
+  }, 120_000)
+
   it('leaves an entry-level non-analyzable #mr import to the absolute-path rewrite', async () => {
     const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'genie-staging-json-member-'))
     const memberRoot = path.join(tempRoot, 'members/json-member')

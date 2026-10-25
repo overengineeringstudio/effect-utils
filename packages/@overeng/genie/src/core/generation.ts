@@ -407,7 +407,10 @@ const stageGraphWithinRoot = ({
         stagedPaths.set(sourcePath, stagePath)
 
         const sourceCode = yield* Effect.tryPromise({
-          try: async () => inputReadFileSync(sourcePath, 'utf8'),
+          try: () =>
+            isInputRecording() === true
+              ? Promise.resolve(inputReadFileSync(sourcePath, 'utf8'))
+              : nodeFs.readFile(sourcePath, 'utf8'),
           catch: (error) =>
             new GenieImportError({
               genieFilePath: entryPath,
