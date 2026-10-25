@@ -239,8 +239,11 @@ for outer tasks that must complete before the nested devenv process can evaluate
     set `PNPM_JOB_LOCAL_STORE=1` to obtain that isolation. Fixed-output preparation
     stays root-local and GVS-disabled.
   - Effective `frozenStore: true` policy also disables GVS, but retains the shared
-    CAS selected above. The selector reads `pnpm config get frozen-store` in the
-    Materialization Root, including the caller's isolated `XDG_CONFIG_HOME`.
+    CAS selected above. The selector reads `pnpm config get frozen-store` using
+    the absolute native `pnpmPkg` binary (the repository pin when unspecified),
+    in the Materialization Root with the caller's isolated `XDG_CONFIG_HOME`.
+    Policy reads never depend on PATH or task guard passthrough, including
+    interactive shell entry.
     Both storage selection and stale-projection repair include configuration
     overrides from `installFlags` in that query. An explicit writable override
     (`--frozen-store=false` or `--no-frozen-store`) therefore retains GVS even

@@ -6,8 +6,13 @@
   workspaceRoot ? ".",
   globalVirtualStore ? false,
   installFlags ? [ ],
+  pnpmPkg ? null,
 }:
 let
+  # Shell entry has no task guard passthrough; policy reads must use the native
+  # binary directly, just like callers with an explicitly supplied runtime pin.
+  pnpm = if pnpmPkg != null then pnpmPkg else import ../../../pnpm.nix { inherit pkgs; };
+  pnpmBin = if lib.isDerivation pnpm then lib.getExe' pnpm "pnpm" else toString pnpm;
   workspaceCacheName = builtins.replaceStrings [ "/" "." ] [ "-" "_" ] workspaceRoot;
   cache = import ./cache.nix { inherit config; };
   cacheRoot = cache.mkCachePath (
@@ -20,6 +25,7 @@ let
     + lib.optionalString (workspaceRoot != ".") "/${workspaceCacheName}";
 in
 {
+  inherit pnpmBin;
   helpersScript = pkgs.writeText "pnpm-task-helpers.sh" (
     builtins.readFile ../shared/pnpm-task-helpers.sh
   );
@@ -36,6 +42,7 @@ in
       ${lib.escapeShellArg jobLocalPnpmStoreDir} \
       ${lib.boolToString pkgs.stdenv.hostPlatform.isLinux} \
       ${lib.boolToString globalVirtualStore} \
+      ${lib.escapeShellArg pnpmBin} \
       ${lib.escapeShellArgs installFlags}
   '';
 }

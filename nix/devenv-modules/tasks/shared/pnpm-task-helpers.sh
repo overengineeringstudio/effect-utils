@@ -17,6 +17,8 @@ pnpm_use_job_local_store() {
 }
 
 pnpm_frozen_store_policy() {
+  local pnpm_bin="$1"
+  shift
   local -a config_args=()
   local frozen_store_flag=false
   # `config get` accepts configuration overrides, but not install-only options
@@ -42,7 +44,7 @@ pnpm_frozen_store_policy() {
     shift
   done
   local policy
-  if policy="$(pnpm config get frozen-store "${config_args[@]}")"; then
+  if policy="$("$pnpm_bin" config get frozen-store "${config_args[@]}")"; then
     if [ "$frozen_store_flag" = true ] && [ "$policy" != true ] && [ "$policy" != false ]; then
       # A frozen-store override without a resolved boolean is unsafe
       # to treat as writable, including forms this native version ignores.
@@ -68,7 +70,8 @@ configure_pnpm_storage() {
   local job_local_store="$3"
   local host_is_linux="$4"
   local global_virtual_store="$5"
-  shift 5
+  local pnpm_bin="$6"
+  shift 6
   local store_dir
   local package_import_method="auto"
 
@@ -82,7 +85,7 @@ configure_pnpm_storage() {
   else
     if [ "$global_virtual_store" = true ]; then
       local frozen_store
-      frozen_store="$(cd "$materialization_root" && pnpm_frozen_store_policy "$@")" || return
+      frozen_store="$(cd "$materialization_root" && pnpm_frozen_store_policy "$pnpm_bin" "$@")" || return
       # GVS puts dependency builds in the shared store. A frozen store can only
       # supply the CAS; builds must stay in this root's writable virtual store.
       if [ "$frozen_store" != true ]; then

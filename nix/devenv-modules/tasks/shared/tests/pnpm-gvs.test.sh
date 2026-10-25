@@ -20,6 +20,17 @@ pnpm_bin="${REAL_PNPM_BIN:-$(nix build --impure --no-link --print-out-paths --ex
 ln -s "$pnpm_bin" "$tmpdir/bin/pnpm"
 export PATH="$tmpdir/bin:$PATH"
 
+# Shell entry runs without task guard passthrough. Keep a real guard first on
+# PATH there to prove policy reads bypass it via the supplied native pin.
+guard_bin="$(nix build --impure --no-link --print-out-paths --expr "
+  let flake = builtins.getFlake \"$NIX_FLAKE_REF\";
+      pkgs = import flake.inputs.nixpkgs { system = builtins.currentSystem; };
+  in (import $ROOT/nix/devenv-modules/tasks/lib/cli-guard.nix { inherit pkgs; }).mkCliGuard {
+    cli = \"pnpm\"; realBin = \"$pnpm_bin\";
+    tasks = [ { task = \"pnpm:install\"; } ];
+  }
+")/bin"
+
 extract_script() {
   local root="$1" mode="$2" attr="$3" task="${4:-pnpm:install}"
   local install_flags="${5:-[ ]}"
@@ -28,14 +39,31 @@ extract_script() {
       pkgs = import flake.inputs.nixpkgs { system = builtins.currentSystem; };
       module = (import $ROOT/nix/devenv-modules/tasks/shared/pnpm.nix {
         packages = [ \".\" ]; globalVirtualStore = $mode;
+        pnpmPkg = \"$pnpm_bin\";
         installFlags = $install_flags;
       }) {
         pkgs = pkgs // { writeText = name: text: builtins.toFile name text; };
         lib = pkgs.lib; config.devenv.root = \"$root\";
       };
-    in module.tasks.\"$task\".$attr
+    in if \"$attr\" == \"enterShell\" then module.enterShell.content else module.tasks.\"$task\".$attr
   " | jq -r . > "$tmpdir/$mode-$attr-${task##*:}.sh"
 }
+
+check_guarded_shell_policy() (
+  local root="$1" expected_gvs="$2"
+  extract_script "$root" true enterShell
+  export PATH="$guard_bin:$PATH"
+  unset DEVENV_TASK_PASSTHROUGH
+  cd "$root"
+  if pnpm config get frozen-store >/dev/null 2>&1; then
+    echo 'Expected the ambient task guard to reject direct shell invocation'
+    exit 1
+  fi
+  source "$tmpdir/true-enterShell-install.sh"
+  test "$PNPM_CONFIG_ENABLE_GLOBAL_VIRTUAL_STORE" = "$expected_gvs"
+  test "$PNPM_STORE_DIR" = "$PNPM_SHARED_STORE_DIR"
+  echo "guarded enterShell: GVS=$expected_gvs; native policy probe bypassed guard without passthrough"
+)
 
 for name in first second ci local; do
   root="$tmpdir/$name"
@@ -55,6 +83,7 @@ for name in first second ci local; do
   export PNPM_CONFIG_ENABLE_GLOBAL_VIRTUAL_STORE=true
   bash "$tmpdir/$mode-exec-install.sh"
   bash "$tmpdir/$mode-status-install.sh"
+  if [ "$name" = first ]; then check_guarded_shell_policy "$root" true; fi
   DEVENV_SETUP_OUTER_CACHE_HIT=1 bash "$tmpdir/$mode-status-install.sh"
   if [ "$name" = first ]; then
     extract_script "$root" false status
@@ -93,6 +122,7 @@ done
 export XDG_CONFIG_HOME="$tmpdir/frozen-xdg"
 mkdir -p "$XDG_CONFIG_HOME/pnpm"
 printf 'offline: true\nfrozenLockfile: true\nfrozenStore: true\n' > "$XDG_CONFIG_HOME/pnpm/config.yaml"
+check_guarded_shell_policy "$tmpdir/first" false
 extract_script "$tmpdir/first" true exec
 extract_script "$tmpdir/first" true status
 bash "$tmpdir/true-exec-install.sh"

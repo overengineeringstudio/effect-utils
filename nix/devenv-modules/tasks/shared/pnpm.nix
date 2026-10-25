@@ -70,6 +70,7 @@ let
       workspaceRoot
       globalVirtualStore
       installFlags
+      pnpmPkg
       ;
   };
   workspaceCacheName =
@@ -622,7 +623,7 @@ let
 
         # The stale projection is already purged. Frozen stores can rematerialize
         # it from the CAS, but pnpm rejects --force with read-only store policy.
-        if [ "$_force_install" = true ] && [ "$(pnpm_frozen_store_policy ${installFlagsString})" != true ]; then
+        if [ "$_force_install" = true ] && [ "$(pnpm_frozen_store_policy ${lib.escapeShellArg pnpmStorage.pnpmBin} ${installFlagsString})" != true ]; then
           run_pnpm_install --force
         else
           run_pnpm_install
