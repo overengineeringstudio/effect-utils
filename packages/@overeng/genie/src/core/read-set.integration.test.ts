@@ -661,4 +661,62 @@ describe('check read-set recording', () => {
       }),
     60_000,
   )
+
+  it.effect(
+    'invocation-local caches preserve inventory and symlink conflicts instead of reusing stale evidence',
+    () =>
+      Effect.sync(() => {
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), 'genie-cache-stability-'))
+        const directory = path.join(root, 'inventory')
+        const link = path.join(root, 'link')
+        try {
+          fs.mkdirSync(directory)
+          fs.writeFileSync(path.join(directory, 'entry'), 'first')
+          fs.writeFileSync(path.join(root, 'a'), 'same')
+          fs.writeFileSync(path.join(root, 'b'), 'same')
+          fs.symlinkSync('a', link)
+          beginInputRecording({ digests: true })
+          inputReaddirSync(directory)
+          inputReaddirSync(directory)
+          const firstInventory = getInputRecording()!.evidence!.directories.get(directory)
+          fs.unlinkSync(path.join(directory, 'entry'))
+          fs.mkdirSync(path.join(directory, 'entry'))
+          inputReaddirSync(directory)
+          expect(getInputRecording()!.evidence!.directories.get(directory)).toEqual(firstInventory)
+          expect(
+            getInputRecording()!.reasons.some((reason) => reason.code === 'unstable-observation'),
+          ).toBe(true)
+          expect(inputRealpathSync(link)).toBe(path.join(root, 'a'))
+          expect(inputRealpathSync(link)).toBe(path.join(root, 'a'))
+          fs.unlinkSync(link)
+          fs.symlinkSync('b', link)
+          expect(inputRealpathSync(link)).toBe(path.join(root, 'b'))
+          expect(getInputRecording()!.evidence!.symlinks.get(link)).toMatchObject({
+            state: 'present',
+            target: 'a',
+          })
+          expect(
+            getInputRecording()!.reasons.some(
+              (reason) => reason.code === 'unstable-observation' && reason.detail.includes(link),
+            ),
+          ).toBe(true)
+          endInputRecording()
+          beginInputRecording({ digests: true })
+          inputReaddirSync(directory)
+          inputRealpathSync(link)
+          expect(getInputRecording()!.evidence!.directories.get(directory)).toMatchObject({
+            state: 'present',
+            entries: [{ name: 'entry', type: 'directory' }],
+          })
+          expect(getInputRecording()!.evidence!.symlinks.get(link)).toMatchObject({
+            state: 'present',
+            target: 'b',
+          })
+          expect(getInputRecording()!.reasons).toEqual([])
+        } finally {
+          endInputRecording()
+          fs.rmSync(root, { recursive: true, force: true })
+        }
+      }),
+  )
 })

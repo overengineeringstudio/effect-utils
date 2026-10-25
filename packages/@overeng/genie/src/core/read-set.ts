@@ -187,9 +187,9 @@ const sorted = <TValue>({
   values: Iterable<TValue>
   key: (value: TValue) => unknown
 }): TValue[] =>
-  [...values].toSorted((left, right) =>
-    compareUtf8(canonicalJson(key(left)), canonicalJson(key(right))),
-  )
+  Array.from(values, (value) => ({ value, key: Buffer.from(canonicalJson(key(value))) }))
+    .toSorted((left, right) => Buffer.compare(left.key, right.key))
+    .map(({ value }) => value)
 const unique = (values: readonly string[]): boolean =>
   values.every((value, index) => index === 0 || compareUtf8(values[index - 1]!, value) < 0)
 const ordered = <TValue>({
@@ -211,8 +211,9 @@ export const validateReadSet = (input: unknown): ReadSet => {
   canonicalJson(result) // Reject non-Unicode strings, including nested diagnostics.
   assert(result.complete === (result.reasons.length === 0))
   assert(unique(result.generators))
+  const generators = new Set(result.generators)
   const attribution = (by: readonly string[]): void => {
-    assert(unique(by) && by.every((generator) => result.generators.includes(generator)))
+    assert(unique(by) && by.every((generator) => generators.has(generator)))
     assert(result.generators.length === 0 || by.length > 0)
   }
   for (const observations of [result.files, result.directories, result.symlinks]) {
@@ -241,17 +242,28 @@ export const validateReadSet = (input: unknown): ReadSet => {
   )
   identity(result.genie)
   identity(result.bun)
+  const files = new Set<string>()
+  const presentFiles = new Map<string, Extract<ReadSet['files'][number], { state: 'present' }>>()
+  for (const file of result.files) {
+    files.add(file.path)
+    if (file.state === 'present') presentFiles.set(file.path, file)
+  }
+  const directories = new Set(result.directories.map((directory) => directory.path))
+  const environment = new Set(result.environment.map((entry) => entry.name))
+  const targetGenerators = new Map<string, Set<string>>()
   for (const generator of result.generatorResults) {
-    assert(result.generators.includes(generator.generator))
+    assert(generators.has(generator.generator))
     identity(generator.module)
+    const target = presentFiles.get(generator.target)
+    let attributedGenerators = targetGenerators.get(generator.target)
+    if (target !== undefined && attributedGenerators === undefined) {
+      attributedGenerators = new Set(target.by)
+      targetGenerators.set(generator.target, attributedGenerators)
+    }
     assert(
-      result.files.some(
-        (file) =>
-          file.path === generator.target &&
-          file.state === 'present' &&
-          file.digest === generator.outputDigest &&
-          file.by.includes(generator.generator),
-      ),
+      target !== undefined &&
+        target.digest === generator.outputDigest &&
+        attributedGenerators?.has(generator.generator) === true,
     )
   }
   for (const directory of result.directories)
@@ -267,29 +279,16 @@ export const validateReadSet = (input: unknown): ReadSet => {
   assert(ordered({ values: result.reasons, key: (reason) => reason }))
   for (const reason of result.reasons) attribution(reason.generators)
   for (const resolution of result.resolutions) {
-    assert(
-      result.files.some((file) => file.path === resolution.importer && file.state === 'present'),
-    )
+    assert(presentFiles.has(resolution.importer))
     if (resolution.outcome.kind === 'file') {
       const { lexical, physical } = resolution.outcome
-      assert(
-        [lexical, physical].every((inputPath) =>
-          result.files.some((file) => file.path === inputPath && file.state === 'present'),
-        ),
-      )
+      assert(presentFiles.has(lexical) && presentFiles.has(physical))
     } else if (resolution.outcome.kind === 'builtin')
       assert(resolution.outcome.name.startsWith('node:') && isBuiltin(resolution.outcome.name))
     for (const candidate of resolution.candidates)
-      assert(
-        (candidate.kind === 'file' ? result.files : result.directories).some(
-          (entry) => entry.path === candidate.path,
-        ),
-      )
+      assert((candidate.kind === 'file' ? files : directories).has(candidate.path))
     assert(
-      unique(resolution.contextEnv) &&
-        resolution.contextEnv.every((name) =>
-          result.environment.some((entry) => entry.name === name),
-        ),
+      unique(resolution.contextEnv) && resolution.contextEnv.every((name) => environment.has(name)),
     )
     assert(ordered({ values: resolution.resolverCode, key: (file) => file.path }))
   }

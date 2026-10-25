@@ -3,12 +3,16 @@ import { Effect } from 'effect'
 import { expect } from 'vitest'
 
 import {
+  addReason,
   canonicalJson,
   digestBytes,
   directoryDigest,
   environmentDigest,
+  makeInputRecording,
   reasonCodes,
+  retainObservation,
 } from '../runtime/node/input-observations.ts'
+import type { FileObservation, InputReason } from '../runtime/node/input-observations.ts'
 import { validateReadSet, validateReadSetPair } from './read-set.ts'
 
 const fixture = () => ({
@@ -191,5 +195,73 @@ describe('read-set schema and canonical encodings', () => {
       }
       expect(validateReadSet({ ...fixture(), checkSucceeded: false }).complete).toBe(true)
     }),
+  )
+
+  it.effect(
+    'deduplicates canonical reasons once per invocation without coalescing attribution or source',
+    () =>
+      Effect.sync(() => {
+        const recording = makeInputRecording()
+        const reason: InputReason = {
+          code: 'unknown-capability',
+          operation: 'closure',
+          detail: 'Unaccounted closure',
+          source: { module: 'helper.ts', line: null },
+          generators: ['a.genie.ts'],
+          evidence: 'unproven',
+        }
+        addReason({ recording, reason })
+        addReason({ recording, reason: { ...reason, source: { line: null, module: 'helper.ts' } } })
+        addReason({ recording, reason: { ...reason, generators: ['b.genie.ts'] } })
+        addReason({ recording, reason: { ...reason, source: { module: 'other.ts', line: null } } })
+        expect(recording.reasons).toHaveLength(3)
+        expect(recording.reasons[0]).toEqual(reason)
+        expect(recording.evidence).toBeUndefined()
+        const next = makeInputRecording()
+        addReason({ recording: next, reason })
+        expect(next.reasons).toEqual([reason])
+      }),
+  )
+
+  it.effect(
+    'cached payloads merge attribution but retain first evidence and conflicts across repeated reads',
+    () =>
+      Effect.sync(() => {
+        const recording = makeInputRecording({ digests: true })
+        const map = recording.evidence!.files
+        const observation: FileObservation = {
+          path: '/fixture/input',
+          by: ['b.genie.ts'],
+          state: 'present',
+          digest: digestBytes('first'),
+          byteLength: 5,
+        }
+        retainObservation({ recording, map, key: observation.path, observation })
+        retainObservation({
+          recording,
+          map,
+          key: observation.path,
+          observation: { ...observation, by: ['a.genie.ts'] },
+        })
+        retainObservation({
+          recording,
+          map,
+          key: observation.path,
+          observation: { ...observation, by: ['a.genie.ts'] },
+        })
+        expect(map.get(observation.path)?.by).toEqual(['a.genie.ts', 'b.genie.ts'])
+        retainObservation({
+          recording,
+          map,
+          key: observation.path,
+          observation: { ...observation, digest: digestBytes('other') },
+        })
+        expect(map.get(observation.path)).toMatchObject({
+          digest: digestBytes('first'),
+          by: ['a.genie.ts', 'b.genie.ts'],
+        })
+        expect(recording.reasons.map((reason) => reason.code)).toEqual(['unstable-observation'])
+        expect(makeInputRecording({ digests: true }).evidence!.files.size).toBe(0)
+      }),
   )
 })

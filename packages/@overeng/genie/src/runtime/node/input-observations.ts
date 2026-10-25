@@ -163,6 +163,7 @@ export type InputRecording = {
   paths: Set<string>
   generators: readonly string[]
   reasons: InputReason[]
+  reasonKeys: Set<string>
   excluded: ReadonlySet<string>
   evidence?: {
     invocationId: string
@@ -175,6 +176,18 @@ export type InputRecording = {
     stats: Map<string, StatObservation>
     generatorResults: Map<string, GeneratorResult>
     resolutions: Map<string, ResolutionObservation>
+    payloadEncodings: WeakMap<Attributed, string>
+    prefixes: Map<string, readonly string[]>
+    symlinkTargets: Map<string, { stat: fs.BigIntStats; target: string }>
+    inventories: Map<
+      string,
+      {
+        stat: fs.BigIntStats
+        names: Buffer[]
+        rawEntries: { name: string; type: EntryType }[]
+        observation: DirectoryObservation & { state: 'present' }
+      }
+    >
     genieVersion?: string
   }
 }
@@ -186,6 +199,7 @@ export const makeInputRecording = ({
   paths: new Set(),
   generators: [],
   reasons: [],
+  reasonKeys: new Set(),
   excluded: new Set(exclude.map((input) => path.resolve(input))),
   ...(digests === true
     ? {
@@ -200,6 +214,10 @@ export const makeInputRecording = ({
           stats: new Map(),
           generatorResults: new Map(),
           resolutions: new Map(),
+          payloadEncodings: new WeakMap(),
+          prefixes: new Map(),
+          symlinkTargets: new Map(),
+          inventories: new Map(),
         },
       }
     : {}),
@@ -212,8 +230,11 @@ export const addReason = ({
   recording: InputRecording
   reason: InputReason
 }): void => {
-  if (recording.reasons.some((other) => canonicalJson(other) === canonicalJson(reason)) === false)
+  const key = canonicalJson(reason)
+  if (recording.reasonKeys.has(key) === false) {
+    recording.reasonKeys.add(key)
     recording.reasons.push(reason)
+  }
 }
 /** Mark a capture operation as unable to retain exact input evidence. */
 export const captureFault = ({
@@ -236,6 +257,21 @@ export const captureFault = ({
       evidence: 'observed',
     },
   })
+const observationEncoding = ({
+  recording,
+  observation,
+}: {
+  recording: InputRecording
+  observation: Attributed
+}): string => {
+  const cache = recording.evidence?.payloadEncodings
+  const cached = cache?.get(observation)
+  if (cached !== undefined) return cached
+  const encoded = canonicalJson({ ...observation, by: [] })
+  cache?.set(observation, encoded)
+  return encoded
+}
+
 /** Merge attribution for stable observations and report conflicting evidence. */
 export const retainObservation = <TObservation extends Attributed>({
   recording,
@@ -249,9 +285,10 @@ export const retainObservation = <TObservation extends Attributed>({
   observation: TObservation
 }): void => {
   const previous = map.get(key)
+  const encoded = observationEncoding({ recording, observation })
   if (
     previous !== undefined &&
-    canonicalJson({ ...previous, by: [] }) !== canonicalJson({ ...observation, by: [] })
+    observationEncoding({ recording, observation: previous }) !== encoded
   ) {
     addReason({
       recording: recording,
@@ -266,16 +303,38 @@ export const retainObservation = <TObservation extends Attributed>({
     })
     return
   }
-  map.set(
-    key,
+  const retained =
     previous === undefined
       ? observation
       : {
           ...observation,
           by: [...new Set([...previous.by, ...observation.by])].toSorted(compareUtf8),
-        },
-  )
+        }
+  recording.evidence?.payloadEncodings.set(retained, encoded)
+  map.set(key, retained)
 }
+
+// Ignore access time for directory reads, which can themselves update it.
+const sameMetadata = ({
+  before,
+  after,
+}: {
+  before: fs.BigIntStats
+  after: fs.BigIntStats
+}): boolean =>
+  before.dev === after.dev &&
+  before.ino === after.ino &&
+  before.mode === after.mode &&
+  before.nlink === after.nlink &&
+  before.uid === after.uid &&
+  before.gid === after.gid &&
+  before.rdev === after.rdev &&
+  before.size === after.size &&
+  before.blksize === after.blksize &&
+  before.blocks === after.blocks &&
+  before.mtimeNs === after.mtimeNs &&
+  before.ctimeNs === after.ctimeNs &&
+  before.birthtimeNs === after.birthtimeNs
 
 /** Capture before consumption; wrappers also retain the bytes actually returned by reads. */
 export const capturePath = ({
@@ -299,16 +358,37 @@ export const capturePath = ({
   if (evidence === undefined) return
   try {
     // Every traversed link matters, not only a link at the final path.
-    const parsed = path.parse(input)
-    let prefix = parsed.root
-    for (const segment of input.slice(parsed.root.length).split(path.sep)) {
-      prefix = path.join(prefix, segment)
-      const entry = fs.lstatSync(prefix)
+    let prefixes = evidence.prefixes.get(input)
+    if (prefixes === undefined) {
+      const parsed = path.parse(input)
+      let prefix = parsed.root
+      prefixes = input
+        .slice(parsed.root.length)
+        .split(path.sep)
+        .map((segment) => {
+          prefix = path.join(prefix, segment)
+          return prefix
+        })
+      evidence.prefixes.set(input, prefixes)
+    }
+    for (const prefix of prefixes) {
+      const entry = fs.lstatSync(prefix, { bigint: true })
       if (entry.isSymbolicLink() === true) {
-        const bytes = fs.readlinkSync(prefix, { encoding: 'buffer' })
-        const target = bytes.toString('utf8')
-        if (Buffer.from(target).equals(bytes) === false)
-          throw new Error('Non-Unicode symlink target')
+        const cached = evidence.symlinkTargets.get(prefix)
+        let target: string
+        if (
+          cached !== undefined &&
+          sameMetadata({ before: cached.stat, after: entry }) === true &&
+          cached.stat.atimeNs === entry.atimeNs
+        ) {
+          target = cached.target
+        } else {
+          const bytes = fs.readlinkSync(prefix, { encoding: 'buffer' })
+          target = bytes.toString('utf8')
+          if (Buffer.from(target).equals(bytes) === false)
+            throw new Error('Non-Unicode symlink target')
+          evidence.symlinkTargets.set(prefix, { stat: entry, target })
+        }
         retainObservation({
           recording: recording,
           map: evidence.symlinks,
@@ -379,30 +459,56 @@ export const capturePath = ({
       try {
         // Read raw names separately from types: Bun ignores withFileTypes when encoding is buffer.
         // lstat preserves symlink identity, while the byte round-trip still rejects invalid UTF-8.
-        const entries = fs
-          .readdirSync(input, { encoding: 'buffer' })
-          .map((bytes) => {
-            const name = bytes.toString('utf8')
-            if (Buffer.from(name).equals(bytes) === false || name.isWellFormed() === false)
-              throw new Error('Non-Unicode directory name')
-            return { name, type: entryType(fs.lstatSync(path.join(input, name))) }
-          })
-          .toSorted((left, right) => compareUtf8(left.name, right.name))
+        const names = fs.readdirSync(input, { encoding: 'buffer' })
+        const cached = evidence.inventories.get(input)
+        const reusable =
+          cached !== undefined &&
+          sameMetadata({ before: cached.stat, after: stat }) === true &&
+          names.length === cached.names.length &&
+          names.every((bytes, index) => bytes.equals(cached.names[index]!) === true)
+        let unchangedTypes = reusable
+        const rawEntries = names.map((bytes, index) => {
+          const previous = reusable === true ? cached.rawEntries[index] : undefined
+          const name = previous?.name ?? bytes.toString('utf8')
+          if (
+            previous === undefined &&
+            (Buffer.from(name).equals(bytes) === false || name.isWellFormed() === false)
+          )
+            throw new Error('Non-Unicode directory name')
+          // Keep fresh child lstats in enumeration order, including on cache hits.
+          const type = entryType(fs.lstatSync(path.join(input, name)))
+          if (previous !== undefined && previous.type === type) return previous
+          unchangedTypes = false
+          return { name, type }
+        })
+        const after = fs.statSync(input, { bigint: true })
+        if (sameMetadata({ before: stat, after }) === false)
+          throw new Error('Directory changed while enumerated')
+        const entries =
+          unchangedTypes === true && cached !== undefined
+            ? cached.observation.entries
+            : rawEntries.toSorted((left, right) => compareUtf8(left.name, right.name))
+        const observation =
+          unchangedTypes === true && cached !== undefined
+            ? cached.observation
+            : {
+                path: input,
+                by: [],
+                state: 'present' as const,
+                entries,
+                digest: directoryDigest(entries),
+              }
+        evidence.inventories.set(input, { stat: after, names, rawEntries, observation })
         retainObservation({
           recording: recording,
           map: evidence.directories,
           key: input,
-          observation: {
-            path: input,
-            by: [],
-            state: 'present',
-            entries,
-            digest: directoryDigest(entries),
-          },
+          observation,
         })
       } catch {
         // A missing listed child is not evidence that the parent directory is absent.
         evidence.directories.delete(input)
+        evidence.inventories.delete(input)
         captureFault({
           recording: recording,
           operation: `inspect directory inventory: ${input}`,

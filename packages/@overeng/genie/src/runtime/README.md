@@ -87,3 +87,8 @@ are explicitly unproven; every unaccounted module also receives its own
 `unknown-capability` occurrence. Runtime import and validation semantics are
 unchanged. Each session starts fresh; evidence is never assembled from a previous
 recording or reused module-initialization history.
+Within one session, canonical reason/payload keys and decoded prefix, symlink,
+and inventory data are cached to avoid repeated serialization and allocation.
+Caches do not replace fresh filesystem observations or final stability checks:
+directory readers still enumerate raw names and inspect child types, and
+traversed prefixes still receive fresh metadata checks.
