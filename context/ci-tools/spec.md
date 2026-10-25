@@ -13,7 +13,7 @@ This spec defines:
 
 - the `@overeng/ci-tools` package and CLI identity
 - deploy preview input, result, and failure modeling
-- Netlify and Vercel provider adapter boundaries
+- Netlify, Vercel, and Cloudflare Workers provider adapter boundaries
 - workflow-report record emission for success, failure, and skipped deploys
 - deploy task output emitted through `DEVENV_TASK_OUTPUT_FILE`
 - OTEL span shape for deploy operations
@@ -27,8 +27,7 @@ Subsystems, each with its own requirements and spec:
 
 This spec does not define:
 
-- the Netlify or Vercel provider API protocols beyond the adapter operations
-  used by this package
+- provider API protocols beyond the adapter operations used by this package
 - provider project identifiers or secret values
 - Storybook build behavior, except that Storybook output is a local artifact
   consumed by deploy previews
@@ -51,7 +50,8 @@ ci-tools Effect CLI
   └─ deploy commands
        ├─ deploy core: schemas, errors, retry, telemetry, records
        ├─ Netlify provider adapter
-       └─ Vercel provider adapter
+       ├─ Vercel provider adapter
+       └─ Cloudflare Workers provider adapter
              │
              ├─ provider APIs where stable
              └─ provider CLIs where upload/deploy semantics are safer to reuse
@@ -90,6 +90,7 @@ ci-tools workflow-report find-comment ...
 
 ci-tools deploy netlify ...
 ci-tools deploy vercel ...
+ci-tools deploy cloudflare-workers ...
 ```
 
 Workflow-report commands preserve the current behavior: collecting marked
@@ -119,7 +120,7 @@ Requirement trace: R09, R10, R11, R12.
 type DeployInputV1 = {
   readonly _tag: 'DeployInput'
   readonly schemaVersion: 1
-  readonly provider: 'netlify' | 'vercel'
+  readonly provider: 'netlify' | 'vercel' | 'cloudflare-workers'
   readonly target: string
   readonly displayName?: string
   readonly mode: 'prod' | 'pr' | 'draft' | 'preview'
@@ -138,7 +139,8 @@ type DeployInputV1 = {
       readonly expectedText: string
     }
   }
-  readonly providerConfig: NetlifyProviderConfig | VercelProviderConfig
+  readonly providerConfig:
+    NetlifyProviderConfig | VercelProviderConfig | CloudflareWorkersProviderConfig
 }
 ```
 
@@ -146,13 +148,21 @@ Provider config contains only non-secret identifiers and environment variable
 names for secrets. Secret values are resolved at the process edge and redacted
 from records, logs, and telemetry.
 
+For Workers, `artifactDir` carries the consumer's `cwd`, not a static upload
+directory. `CloudflareWorkersProviderConfig` is a tagged config containing
+`config` (a non-empty Wrangler configuration path), `workerName` (the configured
+Worker's exact name), `accountIdEnv`, and `authTokenEnv` (environment variable
+names). The result's optional `deployId`
+contains the uploaded/deployed Worker version UUID and is also exposed as
+`DEPLOY_ID` in task output and `deployId` in report data when present.
+
 ### Deploy Result
 
 ```ts
 type DeployResultV1 = {
   readonly _tag: 'DeployResult'
   readonly schemaVersion: 1
-  readonly provider: 'netlify' | 'vercel'
+  readonly provider: 'netlify' | 'vercel' | 'cloudflare-workers'
   readonly target: string
   readonly mode: string
   readonly deployId?: string
@@ -319,6 +329,140 @@ assigned.
 
 Requirement trace: R13, R14, R15, R16, R17.
 
+## Cloudflare Workers Provider
+
+```
+consumer build -> Wrangler config + local output
+  -> cloudflare-workers:deploy:<target> -> ci-tools deploy cloudflare-workers
+       ├─ prod: Wrangler deploy with config-owned custom domains
+       └─ pr: Wrangler version upload with stable and immutable preview URLs
+  -> workflow-report record -> managed PR comment / job summary
+```
+
+The consumer owns the application build and its environment. `ci-tools` invokes
+Wrangler deploy/version upload without orchestrating a separate application
+build. Wrangler can still bundle code or execute configuration-defined build
+commands; this is part of the executable-code trust boundary, not a sandbox.
+Pass the already prepared Wrangler configuration and working directory:
+
+```sh
+ci-tools deploy cloudflare-workers \
+  --target web \
+  --worker-name web \
+  --config dist/wrangler.json \
+  --cwd apps/web \
+  --mode prod \
+  --production-domain app.example.com \
+  --wrangler-bin wrangler
+
+ci-tools deploy cloudflare-workers \
+  --target web \
+  --worker-name web \
+  --config dist/wrangler.json \
+  --cwd apps/web \
+  --mode pr --pr 42 \
+  --wrangler-bin wrangler
+```
+
+`--production-domain HOST` is repeatable and declares expected/report hostnames,
+not desired state for a separate domain API. Production domain ownership lives
+in the Wrangler configuration; Wrangler reconciles it during deploy, and
+`ci-tools` verifies that Wrangler output contains the expected hosts. PR
+versions do not take over production routes: the stable `preview_alias_url`
+is the final URL and the immutable `preview_url` is the raw deployment URL.
+Credentials are inherited from the invoking environment:
+`--auth-token-env` defaults to
+`CLOUDFLARE_API_TOKEN`, and `--account-id-env` defaults to
+`CLOUDFLARE_ACCOUNT_ID`. These options name environment variables, never secret
+values. Use an account-scoped token with only the Worker and domain/zone
+permissions required by the configured deployment.
+
+`--worker-name` is required and must match the consumer's Wrangler configuration.
+Before invoking Wrangler, the adapter performs an authenticated
+`GET /accounts/{account}/workers/scripts/{worker}/settings` lookup.
+`--cloudflare-api-base-url` defaults to `https://api.cloudflare.com/client/v4`;
+the override permits hermetic provider tests. HTTP 401/403 is `Unauthorized`;
+404 and other lookup API failures are `ProviderProjectLookupFailed`, with
+429/5xx and transport failures marked transient. Response bodies and credentials are not diagnostics.
+
+The reusable `cloudflare-workers.nix` task module owns deployment configuration
+(`name`, `workerName`, `config`, `cwd`, and `productionDomains`) and the consumer build
+prerequisite through `afterTask`. It exposes `cloudflare-workers:deploy` and
+`cloudflare-workers:deploy:<target>`, accepting `type=prod|pr` and `pr=N` for
+PR mode. The aggregate and per-target tasks inherit the build environment.
+
+### Executable-code trust boundary
+
+Worker code, Wrangler configuration, build scripts, and configuration loading
+are executable inputs, not safe static upload artifacts. Separating an
+untrusted build from a credentialed Wrangler invocation does not make an
+untrusted Worker deployment safe.
+
+`genie/deploy-preview/cloudflare-workers.ts` exports
+`cloudflareWorkersDeployJobs`, which guards the **entire job** before checkout,
+build prerequisites, or credential-bearing environment variables are available.
+Its non-overridable event predicate admits only pushes to `refs/heads/main` and
+`pull_request` events whose head repository equals `github.repository`.
+Fork PRs, `pull_request_target`, and all other event types are excluded.
+`deployCondition` can restrict this predicate but cannot widen it.
+
+The consumer supplies job-local credentials through `env`, setup steps through
+`baseSteps`, and the existing `runDevenvTasksBefore` callback. Do not put
+Cloudflare credentials in workflow-global environment variables. Same-repository
+PR authors are explicitly trusted to execute code with these credentials; use
+repository permissions and environment approval policies accordingly.
+The low-level `cloudflareWorkersDeployStep` is only a launcher and does not
+replace the job helper's trust boundary.
+
+The helper's report job uses the existing collector, comment-body renderer,
+and publisher, with managed state `cloudflare-workers-deploy-preview`.
+It has the same event trust predicate, separate GitHub comment permissions,
+and no Cloudflare job environment. Consumers provide trusted checkout/setup
+steps via `commentBaseSteps` (defaulting to `baseSteps`). Deploy jobs upload
+their JSONL reports with `actions/upload-artifact@v4`, including after deploy
+failure. The comment job downloads and merges these artifacts before collection;
+separate runners need not share report files. Production runs publish a summary;
+trusted PR runs maintain the managed preview comment.
+
+### Live E2E guardrails, marker verification, and cleanup
+
+The opt-in live test remains skipped unless
+`CI_TOOLS_CLOUDFLARE_WORKERS_LIVE=1`. It separately requires
+`CI_TOOLS_CLOUDFLARE_WORKERS_ALLOW_SHARED_PROJECT=1`, a Worker name in
+`CI_TOOLS_CLOUDFLARE_WORKERS_WORKER_NAME`, and an explicitly reserved namespace
+in `CI_TOOLS_CLOUDFLARE_WORKERS_RESERVED_ALIAS_PREFIX` (for example,
+`ci-tools-e2e`). Credentials come only from `CLOUDFLARE_API_TOKEN` and
+`CLOUDFLARE_ACCOUNT_ID`; `CI_TOOLS_LIVE_WRANGLER_BIN` optionally selects Wrangler.
+No live provider identifiers belong in the repository.
+
+Shared-project E2E is PR/version-upload only, never production deployment.
+`--e2e-allow-shared-project` requires `--e2e-reserved-alias-prefix`,
+`--e2e-verify-path`, and `--e2e-verify-text`. The explicit `--preview-alias`
+must start with that namespace before any upload; ordinary PR deployments
+default to `pr-N`. The test chooses a unique reserved alias and writes a local
+Worker module returning a unique marker, plus its Wrangler configuration.
+
+After upload, the adapter uses Effect `HttpClient` to fetch the verification
+path on the final preview alias URL and requires a successful HTTP response
+containing that local artifact's marker. An HTTP or content failure is
+`VerificationFailed`, not a successful upload-only test.
+
+Once the upload record supplies an exact version UUID, cleanup owns every
+subsequent output decode, URL validation, and marker-verification path,
+including failures before a valid deploy result exists. It deletes only that UUID. The
+[Cloudflare beta version-delete API](https://developers.cloudflare.com/api/resources/workers/subresources/beta/subresources/workers/subresources/versions/methods/delete/)
+accepts a Worker ID or name at
+`DELETE /accounts/{account}/workers/workers/{worker}/versions/{version}`.
+Cleanup never deletes the Worker, changes production traffic, or uses `latest`
+or an abbreviated UUID selector. A missing exact UUID records skipped cleanup.
+HTTP/API/transport cleanup failures are best effort: successful verification
+still returns its typed `CleanupResult`, and post-upload output or verification
+failures retain their original classification with cleanup status in diagnostics. Cleanup failure
+must not replace the original deploy or verification failure.
+
+Requirement trace: R02, R06, R07, R08, R12, R15, R17, R18, R19, R20, R21, R22,
+R23, R24.
+
 ## Retryability Policy
 
 Retry is based on typed error tags, not raw exit codes.
@@ -448,7 +592,19 @@ Vercel prebuilt-output delegation.
 Normal CI also runs non-required live Netlify and Vercel E2E jobs when secrets
 are available.
 
-Live E2E flow:
+Cloudflare Workers live E2E is opt-in and skipped by default. This integration
+does not claim a live deployment was exercised. Set
+`CI_TOOLS_CLOUDFLARE_WORKERS_LIVE=1` and provide
+`CI_TOOLS_CLOUDFLARE_WORKERS_CONFIG` for an explicitly authorized,
+disposable Worker configuration; the opt-in suite accepts
+`CI_TOOLS_CLOUDFLARE_WORKERS_CWD` and `CI_TOOLS_LIVE_WRANGLER_BIN` overrides.
+It uploads only a PR
+version (`pr-999999`), never deploys production, and does not delete uploaded
+versions. The consumer owns disposal of that Worker. Hermetic provider coverage
+is the default boundary. The Netlify/Vercel shared-static-project E2E permission
+does not authorize deploying executable Workers or mutating their domains.
+
+Netlify/Vercel live E2E flow:
 
 1. create a tiny local static directory containing run id, provider, target, and
    timestamp
@@ -485,6 +641,8 @@ Nix task modules keep existing task names:
 netlify:deploy
 netlify:deploy:<target>
 vercel:deploy:<target>
+cloudflare-workers:deploy
+cloudflare-workers:deploy:<target>
 ```
 
 Those tasks become thin launchers that serialize configured provider inputs and

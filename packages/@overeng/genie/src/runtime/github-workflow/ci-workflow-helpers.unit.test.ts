@@ -2079,3 +2079,71 @@ describe('effect-utils standalone CI root', () => {
     expect(generatedCiWorkflowYamlSource).not.toContain('.#oxc-config-plugin-pnpm-deps')
   })
 })
+
+describe('Cloudflare Workers trusted deployment jobs', () => {
+  it('keeps credential execution job-gated and transports reports between runners', () => {
+    const fixture = spawnSync(
+      'bun',
+      [
+        '-e',
+        `
+          import assert from 'node:assert/strict'
+          import {
+            cloudflareWorkersDeployJobs,
+            cloudflareWorkersTrustedJobCondition,
+          } from './genie/deploy-preview/cloudflare-workers.ts'
+
+          const jobs = cloudflareWorkersDeployJobs({
+            targets: [{ name: 'web' }],
+            runner: ['ubuntu-latest'],
+            baseSteps: [{ run: 'consumer setup' }],
+            commentBaseSteps: [{ run: 'report setup' }],
+            env: { CLOUDFLARE_API_TOKEN: 'token-expression', CLOUDFLARE_ACCOUNT_ID: 'account-expression' },
+            deployCondition: 'false',
+            runDevenvTasksBefore: (...args) => args.join(' '),
+          })
+          const deploy = jobs['deploy-web']
+          const comment = jobs['post-cloudflare-workers-deploy-comment']
+          assert.equal(deploy.if, '(' + cloudflareWorkersTrustedJobCondition + ') && (false)')
+          assert.equal(deploy.env.CLOUDFLARE_API_TOKEN, 'token-expression')
+          assert.equal(comment.env, undefined)
+          assert.equal(comment.permissions['pull-requests'], 'write')
+          assert.equal(deploy.permissions['pull-requests'], undefined)
+          assert.ok(comment.if.includes(cloudflareWorkersTrustedJobCondition))
+
+          for (const [event, ref, head, expected] of [
+            ['push', 'refs/heads/main', '', true],
+            ['push', 'refs/heads/feature', '', false],
+            ['pull_request', 'refs/pull/42/merge', 'example/repo', true],
+            ['pull_request', 'refs/pull/42/merge', 'fork/repo', false],
+            ['pull_request_target', 'refs/heads/main', 'example/repo', false],
+            ['pull_request_target', 'refs/heads/main', 'fork/repo', false],
+            ['workflow_dispatch', 'refs/heads/main', '', false],
+          ]) {
+            const github = {
+              event_name: event, ref, repository: 'example/repo',
+              event: { pull_request: { head: { repo: { full_name: head } } } },
+            }
+            assert.equal(Function('github', 'return (' + cloudflareWorkersTrustedJobCondition + ')')(github), expected)
+            assert.equal(Function('github', 'return (' + deploy.if + ')')(github), false)
+          }
+
+          const launcher = deploy.steps.find((step) => step.id === 'deploy')
+          assert.ok(launcher.run.includes('cloudflare-workers:deploy:web --show-output --input type=pr'))
+          assert.ok(launcher.run.includes('--input type=prod'))
+          const upload = deploy.steps.find((step) => step.uses === 'actions/upload-artifact@v4')
+          assert.equal(upload.if, 'always()')
+          assert.equal(upload.with.name, 'cloudflare-workers-report-web')
+          const download = comment.steps.find((step) => step.uses === 'actions/download-artifact@v4')
+          assert.equal(download.with.pattern, 'cloudflare-workers-report-*')
+          assert.equal(download.with['merge-multiple'], true)
+          const collector = comment.steps.find((step) => step.env?.WORKFLOW_REPORT_INPUT_PATHS_JSON)
+          assert.ok(JSON.parse(collector.env.WORKFLOW_REPORT_INPUT_PATHS_JSON)[0].endsWith('/cloudflare-workers-inputs/cloudflare-workers-WEB.jsonl'))
+          assert.equal(comment.steps[0].run, 'report setup')
+        `,
+      ],
+      { cwd: ciWorkflowModuleRoot, encoding: 'utf8' },
+    )
+    expect(fixture.status, fixture.stderr).toBe(0)
+  })
+})

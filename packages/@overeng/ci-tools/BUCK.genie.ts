@@ -41,6 +41,8 @@ export const buck2TypeScriptAdmission = {
         'src/deploy-netlify.live.e2e.test.ts',
         'src/deploy-vercel.e2e.test.ts',
         'src/deploy-vercel.live.e2e.test.ts',
+        'src/deploy-cloudflare-workers.e2e.test.ts',
+        'src/deploy-cloudflare-workers.live.e2e.test.ts',
         'src/pipeline-report.integration.test.ts',
         'src/workflow-report.e2e.test.ts',
       ],
