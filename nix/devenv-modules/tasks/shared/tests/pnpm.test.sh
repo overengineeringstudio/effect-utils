@@ -694,6 +694,7 @@ echo "Test 34h: CI alone retains shared storage while runner identity or opt-in 
   job_store="$test_dir/store-selection-job"
   isolated_home="$test_dir/store-selection-home"
   mkdir -p "$storage_root"
+  printf '{"private":true,"packageManager":"pnpm@12.7.0"}\n' > "$storage_root/package.json"
   export HOME="$isolated_home"
 
   for scenario in ci-only github-actions opt-in neither false-flags; do
@@ -755,6 +756,7 @@ echo "Test 34g: GVS opt-in selects the complete standard store and clears local 
   storage_root="$test_dir/gvs-storage-root"
   isolated_home="$test_dir/gvs-storage-home"
   mkdir -p "$storage_root"
+  printf '{"private":true,"packageManager":"pnpm@12.7.0"}\n' > "$storage_root/package.json"
   export HOME="$isolated_home"
   unset CI PNPM_SHARED_STORE_DIR
   export PNPM_CONFIG_VIRTUAL_STORE_DIR=node_modules/.pnpm
@@ -769,13 +771,14 @@ echo "Test 34g: GVS opt-in selects the complete standard store and clears local 
   assert_eq "node_modules/.pnpm" "$PNPM_CONFIG_VIRTUAL_STORE_DIR" "non-opted roots retain a local projection"
 )
 
-echo "Test 34h: effective frozen-store policy keeps the shared CAS and uses a writable local projection"
+echo "Test 34i: effective frozen-store policy keeps the shared CAS and uses a writable local projection"
 (
   storage_root="$test_dir/frozen-storage-root"
   isolated_home="$test_dir/frozen-storage-home"
   shared_store="$test_dir/frozen-shared-store"
   job_store="$test_dir/frozen-job-store"
   mkdir -p "$storage_root" "$isolated_home/xdg/pnpm"
+  printf '{"private":true,"packageManager":"pnpm@12.7.0"}\n' > "$storage_root/package.json"
   export HOME="$isolated_home" XDG_CONFIG_HOME="$isolated_home/xdg"
   export PNPM_SHARED_STORE_DIR="$shared_store"
   unset CI GITHUB_ACTIONS PNPM_JOB_LOCAL_STORE
