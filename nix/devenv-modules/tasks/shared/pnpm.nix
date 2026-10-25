@@ -412,7 +412,7 @@ let
       ''}
 
       if [ -z "''${CI:-}" ]; then
-        pnpm "''${install_args[@]}"
+        "$PNPM_NATIVE_BIN" "''${install_args[@]}"
         return
       fi
 
@@ -432,7 +432,7 @@ let
         # so teardown pressure does not fail otherwise-complete installs.
         export NODE_OPTIONS="''${NODE_OPTIONS:+$NODE_OPTIONS }--max-old-space-size=1536"
       ''}
-      pnpm "''${install_args[@]}" > "$log_file" 2>&1
+      "$PNPM_NATIVE_BIN" "''${install_args[@]}" > "$log_file" 2>&1
       rc="$?"
       set -e
       if [ "$rc" -eq 0 ]; then
@@ -623,7 +623,7 @@ let
 
         # The stale projection is already purged. Frozen stores can rematerialize
         # it from the CAS, but pnpm rejects --force with read-only store policy.
-        if [ "$_force_install" = true ] && [ "$(pnpm_frozen_store_policy ${lib.escapeShellArg pnpmStorage.pnpmBin} ${installFlagsString})" != true ]; then
+        if [ "$_force_install" = true ] && [ "$(pnpm_frozen_store_policy "$PNPM_NATIVE_BIN" ${installFlagsString})" != true ]; then
           run_pnpm_install --force
         else
           run_pnpm_install

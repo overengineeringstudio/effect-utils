@@ -34,12 +34,13 @@ guard_bin="$(nix build --impure --no-link --print-out-paths --expr "
 extract_script() {
   local root="$1" mode="$2" attr="$3" task="${4:-pnpm:install}"
   local install_flags="${5:-[ ]}"
+  local pnpm_pkg_expr="${6:-\"$pnpm_bin\"}"
   nix-instantiate --eval --read-write-mode --strict --json --expr "
     let flake = builtins.getFlake \"$NIX_FLAKE_REF\";
       pkgs = import flake.inputs.nixpkgs { system = builtins.currentSystem; };
       module = (import $ROOT/nix/devenv-modules/tasks/shared/pnpm.nix {
         packages = [ \".\" ]; globalVirtualStore = $mode;
-        pnpmPkg = \"$pnpm_bin\";
+        pnpmPkg = $pnpm_pkg_expr;
         installFlags = $install_flags;
       }) {
         pkgs = pkgs // { writeText = name: text: builtins.toFile name text; };
@@ -114,6 +115,51 @@ for name in first second ci local; do
     if [ "$name" = first ]; then first_target="$target"; else test "$target" = "$first_target"; fi
   fi
   echo "$name: effective projection and runtime import passed"
+done
+
+# The guard, shell probe and installer must agree even without pnpmPkg.
+# Record real dispatches while keeping the guard first on PATH.
+for dispatch_mode in explicit omitted; do
+  (
+    root="$tmpdir/dispatch-$dispatch_mode"
+    mkdir -p "$root" "$root/native"
+    cp "$tmpdir/first/package.json" "$tmpdir/first/pnpm-workspace.yaml" "$tmpdir/first/pnpm-lock.yaml" "$root/"
+    printf '{}\n' > "$root/pnpm-install-contract.json"
+    recording_bin="$root/native/pnpm"
+    cat > "$recording_bin" <<EOF
+#!/usr/bin/env bash
+printf '%s\\t%s\\n' "\$0" "\${1-}" >> "\$PNPM_EXEC_LOG"
+exec "$pnpm_bin" "\$@"
+EOF
+    chmod +x "$recording_bin"
+    pnpm_pkg_expr=null
+    if [ "$dispatch_mode" = explicit ]; then pnpm_pkg_expr="\"$recording_bin\""; fi
+    dispatch_guard="$(nix build --impure --no-link --print-out-paths --expr "
+      let flake = builtins.getFlake \"$NIX_FLAKE_REF\";
+          pkgs = import flake.inputs.nixpkgs { system = builtins.currentSystem; };
+      in (import $ROOT/nix/devenv-modules/tasks/lib/cli-guard.nix { inherit pkgs; }).mkCliGuard {
+        cli = \"pnpm\"; realBin = $pnpm_pkg_expr;
+        tasks = [ { task = \"pnpm:install\"; } ];
+      }
+    ")/bin"
+    export PATH="$dispatch_guard:$root/native:$PATH"
+    export PNPM_EXEC_LOG="$root/dispatch.log"
+    unset DEVENV_TASK_PASSTHROUGH
+    extract_script "$root" true enterShell pnpm:install '[ ]' "$pnpm_pkg_expr"
+    extract_script "$root" true exec pnpm:install '[ ]' "$pnpm_pkg_expr"
+    cd "$root"
+    source "$tmpdir/true-enterShell-install.sh"
+    test "$PNPM_NATIVE_BIN" = "$recording_bin"
+    test "$PNPM_CONFIG_ENABLE_GLOBAL_VIRTUAL_STORE" = true
+    bash "$tmpdir/true-exec-install.sh"
+    DEVENV_TASK_PASSTHROUGH=1 pnpm --version
+    node - "$PNPM_EXEC_LOG" "$recording_bin" <<'NODE'
+const fs = require('node:fs')
+const rows = fs.readFileSync(process.argv[2], 'utf8').trim().split('\n').map(line => line.split('\t'))
+if (rows.some(([path]) => path !== process.argv[3]) || !['config', 'install', '--version'].every(command => rows.some(([,arg]) => arg === command))) process.exit(1)
+NODE
+    echo "$dispatch_mode pnpmPkg: guard, policy probe and install dispatched the same absolute binary"
+  )
 done
 
 # Reproduce an offline reader switching an existing GVS projection to a local

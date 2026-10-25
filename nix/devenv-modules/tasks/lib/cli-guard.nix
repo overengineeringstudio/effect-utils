@@ -70,6 +70,36 @@ let
     else
       toString realBin;
 
+  # Shared dispatch resolution for guards and callers that need the same native
+  # binary without opting into task passthrough. Always returns an absolute path.
+  resolveCliBin =
+    { cli, realBin ? null }:
+    let
+      realPath = resolveRealBin cli realBin;
+    in
+    if realPath != null then
+      ''_real=${lib.escapeShellArg realPath}''
+    else
+      ''
+        _real=""
+        IFS=: read -ra _dirs <<< "$PATH"
+        for _d in "''${_dirs[@]}"; do
+          [ -z "$_d" ] && continue
+          _resolved="$(cd "$_d" 2>/dev/null && pwd -P)" || continue
+          if [ -x "$_resolved/${cli}" ]; then
+            if grep -q '^# cli-guard-wrapper:${cli}$' "$_resolved/${cli}" 2>/dev/null; then
+              continue
+            fi
+            _real="$_resolved/${cli}"
+            break
+          fi
+        done
+        if [ -z "$_real" ]; then
+          echo "cli-guard: '${cli}' not found on PATH (after removing guard)" >&2
+          exit 127
+        fi
+      '';
+
   # Build a single guard wrapper script for one CLI
   mkCliGuard =
     {
@@ -87,34 +117,10 @@ let
           ''printf "  ${desc}  devenv tasks run ${t.task}\n\n" >&2''
         ) tasks
       );
-      realPath = resolveRealBin cli realBin;
-      # When the real binary is known, exec it by absolute store path. See the
-      # header comment for why PATH-grep cannot work once the guard owns the name.
-      passthroughBody =
-        if realPath != null then
-          ''exec ${lib.escapeShellArg realPath} "$@"''
-        else
-          ''
-            _self="$(cd "''${0%/*}" && pwd -P)"
-            _real=""
-            IFS=: read -ra _dirs <<< "$PATH"
-            for _d in "''${_dirs[@]}"; do
-              [ -z "$_d" ] && continue
-              _resolved="$(cd "$_d" 2>/dev/null && pwd -P)" || continue
-              [ "$_resolved" = "$_self" ] && continue
-              if [ -x "$_d/${cli}" ]; then
-                if grep -q '^# cli-guard-wrapper:${cli}$' "$_d/${cli}" 2>/dev/null; then
-                  continue
-                fi
-                _real="$_d/${cli}"
-                break
-              fi
-            done
-            if [ -z "$_real" ]; then
-              echo "cli-guard: '${cli}' not found on PATH (after removing guard)" >&2
-              exit 127
-            fi
-            exec "$_real" "$@"'';
+      passthroughBody = ''
+        ${resolveCliBin { inherit cli realBin; }}
+        exec "$_real" "$@"
+      '';
     in
     pkgs.writeShellScriptBin cli ''
       # cli-guard-wrapper:${cli}
@@ -204,5 +210,5 @@ let
 
 in
 {
-  inherit mkCliGuard fromTasks stripGuards;
+  inherit mkCliGuard fromTasks stripGuards resolveCliBin;
 }
