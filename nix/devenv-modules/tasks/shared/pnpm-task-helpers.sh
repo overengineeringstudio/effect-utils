@@ -22,17 +22,21 @@ pnpm_frozen_store_policy() {
   # `config get` accepts configuration overrides, but not install-only options
   # such as --lockfile-only. Let pnpm resolve precedence and boolean spellings.
   while [ "$#" -gt 0 ]; do
-    case "$1" in
-      --*frozen-store*)
+    # Match option names only, never substrings in filter/path argument values.
+    case "${1%%=*}" in
+      --frozen-store | --no-frozen-store | --config.frozen-store)
         config_args+=("$1")
         frozen_store_flag=true
         ;;
-      --config.* | --dir=* | -C?* | --ignore-workspace)
+      --config.* | -C?* | --ignore-workspace)
         config_args+=("$1")
         ;;
       --dir | -C)
-        config_args+=("$1" "${2-}")
-        shift
+        config_args+=("$1")
+        if [ "$1" = "${1%%=*}" ]; then
+          config_args+=("${2-}")
+          shift
+        fi
         ;;
     esac
     shift
@@ -40,7 +44,7 @@ pnpm_frozen_store_policy() {
   local policy
   if policy="$(pnpm config get frozen-store "${config_args[@]}")"; then
     if [ "$frozen_store_flag" = true ] && [ "$policy" != true ] && [ "$policy" != false ]; then
-      # A frozen-store-looking override without a resolved boolean is unsafe
+      # A frozen-store override without a resolved boolean is unsafe
       # to treat as writable, including forms this native version ignores.
       printf 'true\n'
     else
