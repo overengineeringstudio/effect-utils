@@ -952,7 +952,7 @@ echo "Test 35b: GitHub Actions forces its declared job-local store"
   export npm_config_store_dir="$test_dir/runner-shared-store"
   export PNPM_CONFIG_ENABLE_GLOBAL_VIRTUAL_STORE=true
   export npm_config_enable_global_virtual_store=true
-  configure_pnpm_storage node "$storage_root" "$job_store" true true
+  configure_pnpm_storage node "$storage_root" "$job_store" true true "$pnpm_bin"
   assert_eq "$job_store" "$npm_config_store_dir" "CI store authority remains job-local"
   assert_eq "auto" "$PNPM_PACKAGE_IMPORT_METHOD" "CI uses the same native import policy"
   assert_eq "false" "$PNPM_CONFIG_ENABLE_GLOBAL_VIRTUAL_STORE" "CI overrides an inherited GVS opt-in"
