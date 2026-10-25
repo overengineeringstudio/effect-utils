@@ -34,9 +34,15 @@ configure_pnpm_storage() {
     store_dir="$job_local_store"
   else
     if [ "$global_virtual_store" = true ]; then
-      export PNPM_CONFIG_ENABLE_GLOBAL_VIRTUAL_STORE=true
-      export npm_config_enable_global_virtual_store=true
-      unset PNPM_CONFIG_VIRTUAL_STORE_DIR npm_config_virtual_store_dir
+      local frozen_store
+      frozen_store="$(cd "$materialization_root" && pnpm config get frozen-store)" || return
+      # GVS puts dependency builds in the shared store. A frozen store can only
+      # supply the CAS; builds must stay in this root's writable virtual store.
+      if [ "$frozen_store" != true ]; then
+        export PNPM_CONFIG_ENABLE_GLOBAL_VIRTUAL_STORE=true
+        export npm_config_enable_global_virtual_store=true
+        unset PNPM_CONFIG_VIRTUAL_STORE_DIR npm_config_virtual_store_dir
+      fi
     fi
     if [ -n "${PNPM_SHARED_STORE_DIR:-}" ]; then
       store_dir="$PNPM_SHARED_STORE_DIR"

@@ -769,6 +769,50 @@ echo "Test 34g: GVS opt-in selects the complete standard store and clears local 
   assert_eq "node_modules/.pnpm" "$PNPM_CONFIG_VIRTUAL_STORE_DIR" "non-opted roots retain a local projection"
 )
 
+echo "Test 34h: effective frozen-store policy keeps the shared CAS and uses a writable local projection"
+(
+  storage_root="$test_dir/frozen-storage-root"
+  isolated_home="$test_dir/frozen-storage-home"
+  shared_store="$test_dir/frozen-shared-store"
+  job_store="$test_dir/frozen-job-store"
+  mkdir -p "$storage_root" "$isolated_home/xdg/pnpm"
+  export HOME="$isolated_home" XDG_CONFIG_HOME="$isolated_home/xdg"
+  export PNPM_SHARED_STORE_DIR="$shared_store"
+  unset CI GITHUB_ACTIONS PNPM_JOB_LOCAL_STORE
+  # This is the read-only install policy used by offline projection callers.
+  printf 'offline: true\nfrozenLockfile: true\nfrozenStore: true\n' > "$XDG_CONFIG_HOME/pnpm/config.yaml"
+  printf 'enableGlobalVirtualStore: true\n' > "$storage_root/pnpm-workspace.yaml"
+  configure_pnpm_storage node "$storage_root" "$job_store" true true
+  assert_eq "$shared_store" "$PNPM_STORE_DIR" "frozen store retains the shared CAS"
+  assert_eq "false" "$PNPM_CONFIG_ENABLE_GLOBAL_VIRTUAL_STORE" "frozen store disables GVS"
+  assert_eq "false" "$npm_config_enable_global_virtual_store" "npm alias agrees"
+  assert_eq "node_modules/.pnpm" "$PNPM_CONFIG_VIRTUAL_STORE_DIR" "builds remain in the materialization root"
+  assert_eq "true" "$(cd "$storage_root" && pnpm config get frozen-store)" "read-only policy is not relaxed"
+  assert_eq "false" "$(cd "$storage_root" && pnpm config get enable-global-virtual-store)" "selector overrides workspace GVS"
+  test ! -e "$job_store"
+
+  # The default shared CAS must not change just because its projection is local.
+  unset PNPM_SHARED_STORE_DIR
+  configure_pnpm_storage node "$storage_root" "$job_store" true true
+  assert_eq "$HOME/.local/share/pnpm/store" "$PNPM_STORE_DIR" "frozen policy preserves the GVS default CAS"
+  for mode in github-actions fixed-output-job-local; do
+    unset GITHUB_ACTIONS PNPM_JOB_LOCAL_STORE
+    case "$mode" in
+      github-actions) export GITHUB_ACTIONS=true ;;
+      fixed-output-job-local) export PNPM_JOB_LOCAL_STORE=1 ;;
+    esac
+    configure_pnpm_storage node "$storage_root" "$job_store" true true
+    assert_eq "$job_store" "$PNPM_STORE_DIR" "$mode keeps its job-local CAS"
+    assert_eq "false" "$PNPM_CONFIG_ENABLE_GLOBAL_VIRTUAL_STORE" "$mode keeps GVS disabled"
+  done
+
+  unset GITHUB_ACTIONS PNPM_JOB_LOCAL_STORE
+  printf 'frozenStore: false\n' > "$XDG_CONFIG_HOME/pnpm/config.yaml"
+  configure_pnpm_storage node "$storage_root" "$job_store" true true
+  assert_eq "true" "$PNPM_CONFIG_ENABLE_GLOBAL_VIRTUAL_STORE" "writable installs still use GVS"
+  test -z "${PNPM_CONFIG_VIRTUAL_STORE_DIR+x}"
+)
+
 echo "Test 34c: a preexisting external files bridge fails closed"
 (
   storage_root="$test_dir/bridged-storage-root"

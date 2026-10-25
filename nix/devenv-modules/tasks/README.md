@@ -238,6 +238,13 @@ for outer tasks that must complete before the nested devenv process can evaluate
     opt-ins) and uses the job-local store and projection. Other CI runners must
     set `PNPM_JOB_LOCAL_STORE=1` to obtain that isolation. Fixed-output preparation
     stays root-local and GVS-disabled.
+  - Effective `frozenStore: true` policy also disables GVS, but retains the shared
+    CAS selected above. The selector reads `pnpm config get frozen-store` in the
+    Materialization Root, including the caller's isolated `XDG_CONFIG_HOME`.
+    Builds run in writable `node_modules/.pnpm`, not the read-only shared
+    `links/` graph. This overrides workspace GVS without relaxing offline,
+    frozen-lockfile, or frozen-store policy. Only these read-only installs lose
+    cross-root graph reuse; normal writable installs still use GVS.
   - Install, update, dedupe, status, doctor, and shell setup share the selected
     policy. Readiness receipts include effective GVS/store policy. Health and
     projection fingerprints visit only this root's reachable shared instances,
