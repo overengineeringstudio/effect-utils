@@ -151,11 +151,12 @@ export const capturePath = (recording: InputRecording, input: string): void => {
       if (['dev', 'ino', 'size', 'mtimeNs', 'ctimeNs'].some((key) => Reflect.get(stat, key) !== Reflect.get(after, key))) addReason(recording, { code: 'unstable-observation', operation: 'readFile', detail: `File changed while consumed: ${input}`, source: { module: '@overeng/genie/src/runtime/node/input-observations.ts', line: null }, generators: [], evidence: 'observed' })
       retainObservation(recording, evidence.files, input, { path: input, by: [], state: 'present', digest: digestBytes(bytes), byteLength: bytes.byteLength })
     } else if (stat.isDirectory()) {
-      // Buffer names let us reject invalid UTF-8 rather than silently replacing it.
-      const entries = fs.readdirSync(input, { withFileTypes: true, encoding: 'buffer' }).map((entry) => {
-        const name = entry.name.toString('utf8')
-        if (Buffer.from(name).equals(entry.name) === false || name.isWellFormed() === false) throw new Error('Non-Unicode directory name')
-        return { name, type: entryType(entry) }
+      // Read raw names separately from types: Bun ignores withFileTypes when encoding is buffer.
+      // lstat preserves symlink identity, while the byte round-trip still rejects invalid UTF-8.
+      const entries = fs.readdirSync(input, { encoding: 'buffer' }).map((bytes) => {
+        const name = bytes.toString('utf8')
+        if (Buffer.from(name).equals(bytes) === false || name.isWellFormed() === false) throw new Error('Non-Unicode directory name')
+        return { name, type: entryType(fs.lstatSync(path.join(input, name))) }
       }).sort((left, right) => compareUtf8(left.name, right.name))
       retainObservation(recording, evidence.directories, input, { path: input, by: [], state: 'present', entries, digest: directoryDigest(entries) })
     } else {

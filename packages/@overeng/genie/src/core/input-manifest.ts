@@ -347,7 +347,6 @@ export const withInputManifest = <TOutput, TError, TRequirements>({
       failedCount: 1, message: `Failed to publish generator input evidence: ${String(cause)}`, files: [],
     })
   }
-  if (new Set(destinations).size !== destinations.length) return Effect.fail(failure('Output destinations must be distinct'))
   const publishPrivate = Effect.fn('genie/publishInputEvidence')(function* (output: string, content: string, invocationId: string) {
     const temporary = `${output}.${invocationId}.tmp`
     yield* Effect.tryPromise(async () => {
@@ -367,6 +366,8 @@ export const withInputManifest = <TOutput, TError, TRequirements>({
     Effect.acquireUseRelease(
       discard.pipe(
         Effect.andThen(Effect.gen(function* () {
+          // Even invalid output combinations must discard only their requested artifacts and companions.
+          if (new Set(destinations).size !== destinations.length) return yield* failure('Output destinations must be distinct')
           beginInputRecording({ digests: readSet !== undefined, exclude: destinations })
           if (readSet === undefined) return undefined
           const api = yield* Effect.tryPromise({ try: () => import('./read-set.ts'), catch: failure })

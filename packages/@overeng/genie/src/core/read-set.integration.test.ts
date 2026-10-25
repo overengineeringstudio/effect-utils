@@ -38,8 +38,8 @@ export const read = () => {
 }
 `)
   for (const name of ['one', 'two']) fs.writeFileSync(path.join(root, `${name}.txt.genie.ts`), `import { read } from './shared.ts'\nexport default { data: {}, stringify: read }\n`)
-  const run = (args: string[], legacy = true) => spawnSync('bun', [cliPath, '--cwd', root, '--json', ...args], {
-    cwd: root, encoding: 'utf8', env: { ...process.env, GENIE_INPUT_MANIFEST: legacy ? manifest : '', XDG_STATE_HOME: path.join(root, 'state') },
+  const run = (args: string[], legacy = true, manifestPath = manifest) => spawnSync('bun', [cliPath, '--cwd', root, '--json', ...args], {
+    cwd: root, encoding: 'utf8', env: { ...process.env, GENIE_INPUT_MANIFEST: legacy ? manifestPath : '', XDG_STATE_HOME: path.join(root, 'state') },
   })
   const generate = run(['--writeable'], false)
   expect(generate.status, generate.stdout + generate.stderr).toBe(0)
@@ -94,6 +94,51 @@ describe('check read-set recording', () => {
       fs.rmSync(root, { recursive: true, force: true })
     }
   }))
+
+  it.effect('captures read-only directory inventories exactly under Bun and rejects non-Unicode names', () => Effect.sync(() => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'genie-readonly-observations-'))
+    const directory = path.join(root, 'dependency')
+    const empty = path.join(directory, 'empty')
+    try {
+      fs.mkdirSync(empty, { recursive: true })
+      fs.writeFileSync(path.join(directory, '.git'), 'gitdir: ../worktrees/dependency\n')
+      fs.writeFileSync(path.join(directory, 'input.txt'), 'bytes')
+      fs.symlinkSync('missing', path.join(directory, 'link'))
+      fs.chmodSync(empty, 0o555)
+      fs.chmodSync(directory, 0o555)
+      const observationsPath = fileURLToPath(new URL('../runtime/node/input-observations.ts', import.meta.url))
+      const result = spawnSync('bun', ['-e', `
+        import assert from 'node:assert/strict'
+        import * as fs from 'node:fs'
+        import path from 'node:path'
+        import { makeInputRecording, capturePath, directoryDigest } from ${JSON.stringify(observationsPath)}
+        const directory = process.argv[1]
+        const recording = makeInputRecording({ digests: true })
+        capturePath(recording, directory)
+        capturePath(recording, path.join(directory, 'empty'))
+        const entries = [
+          { name: '.git', type: 'file' }, { name: 'empty', type: 'directory' },
+          { name: 'input.txt', type: 'file' }, { name: 'link', type: 'symlink' },
+        ]
+        assert.deepEqual(recording.evidence.directories.get(directory), {
+          path: directory, by: [], state: 'present', entries, digest: directoryDigest(entries),
+        })
+        assert.deepEqual(recording.evidence.directories.get(path.join(directory, 'empty')).entries, [])
+        assert.deepEqual(recording.reasons, [])
+        fs.chmodSync(directory, 0o755)
+        fs.writeFileSync(Buffer.concat([Buffer.from(directory + path.sep), Buffer.from([0xff])]), '')
+        const invalid = makeInputRecording({ digests: true })
+        capturePath(invalid, directory)
+        assert.equal(invalid.evidence.directories.has(directory), false)
+        assert.equal(invalid.reasons.some(reason => reason.code === 'capture-error'), true)
+      `, directory], { encoding: 'utf8' })
+      expect(result.status, result.stdout + result.stderr).toBe(0)
+    } finally {
+      fs.chmodSync(directory, 0o755)
+      fs.chmodSync(empty, 0o755)
+      fs.rmSync(root, { recursive: true, force: true })
+    }
+  }), 60_000)
 
   it.effect('distinguishes ENOTDIR from ENOENT and fails closed on capture errors', () => Effect.sync(() => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'genie-observation-errors-'))
@@ -172,6 +217,30 @@ describe('check read-set recording', () => {
       for (const file of [artifact, manifest, `${manifest}.meta.json`, `${artifact}.reasons.json`]) expect(fs.existsSync(file)).toBe(false)
     } finally { fs.rmSync(root, { recursive: true, force: true }) }
   }), 60_000)
+
+  for (const collision of ['same output', 'manifest at read-set companion', 'read-set at manifest companion']) {
+    it.effect(`removes stale artifacts after a collision: ${collision}`, () => Effect.sync(() => {
+      const { root, artifact, manifest, run } = fixture()
+      const readSetPath = collision === 'read-set at manifest companion' ? `${manifest}.meta.json` : artifact
+      const manifestPath = collision === 'same output' ? artifact
+        : collision === 'manifest at read-set companion' ? `${artifact}.reasons.json` : manifest
+      const outputs = [readSetPath, `${readSetPath}.reasons.json`, manifestPath, `${manifestPath}.meta.json`]
+      const unrelated = `${readSetPath}.reasons.json.meta.json.reasons.json`
+      try {
+        const first = run(['--check', '--read-set', readSetPath], false)
+        expect(first.status, first.stdout + first.stderr).toBe(0)
+        expect(fs.existsSync(readSetPath)).toBe(true)
+        expect(fs.existsSync(`${readSetPath}.reasons.json`)).toBe(true)
+        fs.writeFileSync(unrelated, 'not a requested output or companion')
+        const failed = run(['--check', '--read-set', readSetPath], true, manifestPath)
+        expect(failed.status).not.toBe(0)
+        expect(failed.stdout + failed.stderr).toContain('Output destinations must be distinct')
+        for (const file of outputs) expect(fs.existsSync(file)).toBe(false)
+        expect(fs.readFileSync(unrelated, 'utf8')).toBe('not a requested output or companion')
+        expect(fs.readFileSync(path.join(root, 'runtime.txt'), 'utf8')).toBe('input\n')
+      } finally { fs.rmSync(root, { recursive: true, force: true }) }
+    }), 60_000)
+  }
 
   it.effect('fails publication without retaining earlier evidence or temporary files', () => Effect.sync(() => {
     const { root, artifact, manifest, run } = fixture()
