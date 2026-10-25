@@ -260,6 +260,14 @@ echo ""
 test_dir="$(mktemp -d)"
 trap 'rm -rf "$test_dir"' EXIT
 
+# Config-policy fixtures exercise native pnpm, not the ambient task CLI guard
+# or a developer's managed wrapper. Keep the provider aligned with the GVS suite.
+NIX_FLAKE_REF="${NIX_FLAKE_REF:-git+file://$ROOT?shallow=1}"
+pnpm_bin="${REAL_PNPM_BIN:-$(nix build --impure --no-link --print-out-paths --expr "let flake = builtins.getFlake \"$NIX_FLAKE_REF\"; pkgs = import flake.inputs.nixpkgs { system = builtins.currentSystem; }; in import $ROOT/nix/pnpm.nix { inherit pkgs; }")/bin/pnpm}"
+mkdir -p "$test_dir/bin"
+ln -s "$pnpm_bin" "$test_dir/bin/pnpm"
+export PATH="$test_dir/bin:$PATH"
+
 echo "Test 5: ensure_local_pnpm_home_default sets a workspace-local default"
 (
   unset PNPM_HOME
@@ -694,8 +702,6 @@ echo "Test 34h: CI alone retains shared storage while runner identity or opt-in 
   job_store="$test_dir/store-selection-job"
   isolated_home="$test_dir/store-selection-home"
   mkdir -p "$storage_root"
-  printf '{"private":true,"packageManager":"pnpm@12.7.0"}\n' > "$storage_root/package.json"
-  git -C "$storage_root" init -q
   export HOME="$isolated_home"
 
   for scenario in ci-only github-actions opt-in neither false-flags; do
@@ -757,8 +763,6 @@ echo "Test 34g: GVS opt-in selects the complete standard store and clears local 
   storage_root="$test_dir/gvs-storage-root"
   isolated_home="$test_dir/gvs-storage-home"
   mkdir -p "$storage_root"
-  printf '{"private":true,"packageManager":"pnpm@12.7.0"}\n' > "$storage_root/package.json"
-  git -C "$storage_root" init -q
   export HOME="$isolated_home"
   unset CI PNPM_SHARED_STORE_DIR
   export PNPM_CONFIG_VIRTUAL_STORE_DIR=node_modules/.pnpm
@@ -780,8 +784,6 @@ echo "Test 34i: effective frozen-store policy keeps the shared CAS and uses a wr
   shared_store="$test_dir/frozen-shared-store"
   job_store="$test_dir/frozen-job-store"
   mkdir -p "$storage_root" "$isolated_home/xdg/pnpm"
-  printf '{"private":true,"packageManager":"pnpm@12.7.0"}\n' > "$storage_root/package.json"
-  git -C "$storage_root" init -q
   export HOME="$isolated_home" XDG_CONFIG_HOME="$isolated_home/xdg"
   export PNPM_SHARED_STORE_DIR="$shared_store"
   unset CI GITHUB_ACTIONS PNPM_JOB_LOCAL_STORE
