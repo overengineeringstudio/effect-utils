@@ -13,7 +13,15 @@ type SourceModule =
 const moduleNode = (module: string, children: Array<string> = []): SourceModule => ({
   module,
   children,
-  reasons: [],
+  reasons: [
+    {
+      code: 'unknown-capability',
+      operation: 'fixture-capability',
+      detail: 'Unaccounted fixture capability.',
+      source: { module, line: 1 },
+      evidence: 'unproven',
+    },
+  ],
 })
 
 const entries = [
@@ -44,24 +52,18 @@ describe('source closure accounting', () => {
     ])
   })
 
-  it('keeps an unrestricted module incomplete even with no visible bypasses', () => {
-    const reasons = accountSourceGraph({
-      entries: [{ module: 'plain.genie.ts', generator: 'plain.genie.ts' }],
-      graph: new Map([['plain.genie.ts', moduleNode('plain.genie.ts')]]),
-    })
-    expect(reasons).toEqual([
-      {
-        code: 'unknown-capability',
-        operation: 'module-closure',
-        detail: 'Unrestricted module input closure is not accounted for.',
-        source: { module: 'plain.genie.ts', line: null },
-        evidence: 'unproven',
-        generators: ['plain.genie.ts'],
-      },
-    ])
+  it('accepts an analyzed module without unaccounted capabilities', () => {
+    const node = moduleNode('plain.genie.ts')
+    node.reasons = []
+    expect(
+      accountSourceGraph({
+        entries: [{ module: 'plain.genie.ts', generator: 'plain.genie.ts' }],
+        graph: new Map([['plain.genie.ts', node]]),
+      }),
+    ).toEqual([])
   })
 
-  it('retains every capability occurrence and its origin alongside conservative unknown', () => {
+  it('retains every capability occurrence and its origin without a blanket reason', () => {
     const shared = moduleNode('shared.ts')
     shared.reasons = [
       {
@@ -88,12 +90,8 @@ describe('source closure accounting', () => {
         ['shared.ts', shared],
       ]),
     }).filter((reason) => reason.source.module === 'shared.ts')
-    expect(reasons.map((reason) => reason.code)).toEqual([
-      'unknown-capability',
-      'unmediated-fs',
-      'ambient-env',
-    ])
-    expect(reasons.map((reason) => reason.source.line)).toEqual([null, 3, 4])
+    expect(reasons.map((reason) => reason.code)).toEqual(['unmediated-fs', 'ambient-env'])
+    expect(reasons.map((reason) => reason.source.line)).toEqual([3, 4])
     expect(reasons.every((reason) => reason.evidence === 'unproven')).toBe(true)
     for (const reason of reasons) expect(reason.generators).toEqual(['a.genie.ts', 'b.genie.ts'])
   })

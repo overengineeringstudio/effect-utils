@@ -3,11 +3,15 @@ import { realpathSync } from 'node:fs'
 import fs from 'node:fs/promises'
 import { isBuiltin } from 'node:module'
 import path from 'node:path'
-import { pathToFileURL } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 
 import { Effect, Exit, Schema, Semaphore } from 'effect'
 
-import { canonicalJson, compareUtf8 } from '../runtime/node/input-observations.ts'
+import {
+  canonicalJson,
+  compareUtf8,
+  isCanonicalNodeBuiltin,
+} from '../runtime/node/input-observations.ts'
 import type { InputReason } from '../runtime/node/input-observations.ts'
 import {
   beginInputRecording,
@@ -24,6 +28,11 @@ import {
   recordInputResolution,
   setInputGenerators,
 } from '../runtime/node/inputs.ts'
+import type {
+  ClosureAnalyzer,
+  createClosureAnalyzer,
+  matchDependencyAllowlist,
+} from './closure-analyzer.ts'
 import { GenieGenerationFailedError } from './errors.ts'
 import { resolveImportMapSpecifierForImporterSync } from './import-map/sync-resolver.ts'
 
@@ -34,6 +43,8 @@ type SourceModule = {
   module: string
   children: Array<string>
   reasons: Array<SourceReason>
+  legacyChildren?: Array<string>
+  legacyFailure?: boolean
 }
 
 /** Expand callers over cached edges, including cycles, without rereading source bytes. */
@@ -60,314 +71,440 @@ export const accountSourceGraph = ({
   for (const [key, node] of graph) {
     const generators = [...(callers.get(key) ?? [])].toSorted(compareUtf8)
     if (generators.length === 0) continue
-    reasons.push({
-      code: 'unknown-capability',
-      operation: 'module-closure',
-      detail: 'Unrestricted module input closure is not accounted for.',
-      source: { module: node.module, line: null },
-      evidence: 'unproven',
-      generators,
-    })
     for (const reason of node.reasons) reasons.push({ ...reason, generators })
   }
   return reasons
 }
 
-/** Presence is not execution: these diagnostics never account for a module's closure. */
-const sourceCapabilities = ({
-  source,
-  module,
-}: {
-  source: string
-  module: string
-}): Array<SourceReason> => {
-  const reasons: Array<SourceReason> = []
-  // Skip comments and quoted/generated text, notably shell commands emitted into YAML.
-  // This is only a diagnostic inventory, not a purity analyzer; unknown remains mandatory.
-  const tokens =
-    /\/\/[^\n]*|\/\*[\s\S]*?\*\/|'(?:\\[\s\S]|[^'\\])*'|"(?:\\[\s\S]|[^"\\])*"|`(?:\\[\s\S]|[^`\\])*`|\b(?:Bun\s*\.\s*(?:file|spawnSync|spawn|connect|listen|dlopen)|process\s*\.\s*(?:env|cwd|platform|arch|dlopen)|Deno\s*\.\s*\w+|globalThis\s*\[|realpathSync|realpath|fetch|WebSocket|XMLHttpRequest|import\s*\(|require\s*\(|import\s*\.\s*meta\s*\.\s*resolve|Date\s*\.\s*now|Math\s*\.\s*random|eval\s*\(|Function\s*\()/g
-  for (const match of source.matchAll(tokens)) {
-    const operation = match[0]
-    if (/^(?:\/|'|"|`)/.test(operation) === true) continue
-    const code: SourceReason['code'] =
-      /^Bun\s*\.\s*file$/.test(operation) === true
-        ? 'unmediated-fs'
-        : operation.startsWith('realpath') === true
-          ? 'unmediated-realpath'
-          : /^Bun\s*\.\s*spawn/.test(operation) === true
-            ? 'subprocess'
-            : /^(?:fetch|WebSocket|XMLHttpRequest|Bun\s*\.\s*(?:connect|listen))$/.test(
-                  operation,
-                ) === true
-              ? 'network'
-              : operation.endsWith('dlopen') === true
-                ? 'native-addon'
-                : /^process\s*\./.test(operation) === true
-                  ? 'ambient-env'
-                  : /^(?:import|require)/.test(operation) === true
-                    ? 'dynamic-import'
-                    : 'unknown-capability'
-    reasons.push({
-      code,
-      operation: operation.replace(/\s+/g, ''),
-      detail: 'Static capability presence; execution and influencing inputs are unproven.',
-      source: { module, line: source.slice(0, match.index).split('\n').length },
-      evidence: 'unproven',
-    })
-  }
-  return reasons
+type AnalysisApi = {
+  createClosureAnalyzer: typeof createClosureAnalyzer
+  matchDependencyAllowlist: typeof matchDependencyAllowlist
 }
-
+/** The parser/cache is not loaded for ordinary checks or legacy manifest recording. */
+const readSetAnalysis = (): AnalysisApi => require('./closure-analyzer.ts')
 /** Record and attribute the source graph even when Bun has cached imported modules. */
-export const recordGeneratorSourceGraph = ({
+export const recordGeneratorSourceGraph = async ({
   entries,
   cwd,
 }: {
   entries: ReadonlyArray<string>
   cwd: string
-}): void => {
+}): Promise<void> => {
   if (isInputRecording() === false) return
   const relative = (sourcePath: string): string =>
     path.relative(cwd, sourcePath).split(path.sep).join('/')
   const sourceEntries = entries.map((entry) => path.resolve(cwd, entry))
   const generators = sourceEntries.map(relative).toSorted(compareUtf8)
   setInputGenerators(generators)
-  const pending = [...sourceEntries]
+  const engineMode = getInputRecording()?.evidence?.engineMode
+  const accountEngine = isReadSetRecording() === true && engineMode !== undefined
+  if (accountEngine === true && engineMode !== 'source') {
+    for (const [operation, module] of [
+      ['engine-analysis-unavailable', '@overeng/genie'],
+      ['validator-analysis-unavailable', '@overeng/genie/src/core/validation.ts'],
+    ])
+      recordInputReason({
+        code: 'unknown-capability',
+        operation: operation!,
+        detail: `Engine execution mode ${engineMode} has no proven source closure for data-capability accounting.`,
+        source: { module: module!, line: null },
+        evidence: 'unproven',
+        generators,
+      })
+  }
+  const engineEntries =
+    accountEngine === true && engineMode === 'source'
+      ? ['../../bin/genie.tsx', './core.ts', './generation.ts', './validation.ts'].map((entry) =>
+          fileURLToPath(new URL(entry, import.meta.url)),
+        )
+      : []
+  const accountingEntries = [
+    ...sourceEntries.map((module) => ({ module, generator: relative(module) })),
+    ...engineEntries.flatMap((module) => generators.map((generator) => ({ module, generator }))),
+  ]
+  const pending = [...sourceEntries, ...engineEntries]
   const graph = new Map<string, SourceModule>()
   const opaqueModules = new Set<string>()
   const recordedScopes = new Set<string>()
-  const packageNames = new Map<string, string>()
-  const decodePackageName = Schema.decodeUnknownSync(
-    Schema.fromJsonString(Schema.Struct({ name: Schema.String })),
-  )
+  const packageMetadata =
+    isReadSetRecording() === true
+      ? new Map<string, { name: string; version?: string }>()
+      : undefined
+  const decodePackageMetadata =
+    isReadSetRecording() === true
+      ? Schema.decodeUnknownSync(
+          Schema.fromJsonString(
+            Schema.Struct({
+              name: Schema.String,
+              version: Schema.optionalKey(Schema.String),
+            }),
+          ),
+        )
+      : undefined
+  let lockPackages: Readonly<Record<string, { resolution?: { integrity?: string } }>> | undefined
+  if (isReadSetRecording() === true) {
+    const decodeLock = Schema.decodeUnknownSync(
+      Schema.Struct({
+        packages: Schema.Record(
+          Schema.String,
+          Schema.Struct({
+            resolution: Schema.optionalKey(
+              Schema.Struct({
+                integrity: Schema.optionalKey(Schema.String),
+              }),
+            ),
+          }),
+        ),
+      }),
+    )
+    try {
+      lockPackages = decodeLock(
+        Bun.YAML.parse(inputReadFileSync(path.join(cwd, 'pnpm-lock.yaml'), 'utf8')),
+      ).packages
+    } catch {
+      // A missing/unrecognized integrity can never match an approval.
+    }
+  }
   const transpilers = {
     ts: new Bun.Transpiler({ loader: 'ts' }),
     tsx: new Bun.Transpiler({ loader: 'tsx' }),
   }
-  while (pending.length > 0) {
-    const sourcePath = pending.pop()!
-    if (graph.has(sourcePath) === true) continue
-    let module = path.isAbsolute(sourcePath) === true ? relative(sourcePath) : sourcePath
-    const node: SourceModule = { module, children: [], reasons: [] }
-    graph.set(sourcePath, node)
-    const reason = ({
-      code,
-      operation,
-      detail,
-      line = null,
-    }: Omit<SourceReason, 'source' | 'evidence'> & { line?: number | null }): void => {
-      node.reasons.push({
+  let analysisApi: AnalysisApi | undefined
+  let analyzer: ClosureAnalyzer | undefined
+  const analysisFailure = (): void =>
+    recordInputReason({
+      code: 'unknown-capability',
+      operation: 'analysis-unavailable',
+      detail: 'Static closure analyzer lifecycle failed; legacy scanning remains independent.',
+      source: { module: '@overeng/genie', line: null },
+      evidence: 'unproven',
+      generators,
+    })
+  if (isReadSetRecording() === true) {
+    try {
+      analysisApi = readSetAnalysis()
+      analyzer = analysisApi.createClosureAnalyzer({ cwd })
+    } catch {
+      analysisFailure()
+    }
+  }
+  const reviewedBoundaries =
+    isReadSetRecording() === true
+      ? [
+          '../runtime/node/inputs.ts',
+          '../runtime/node/input-observations.ts',
+          './input-manifest.ts',
+          './read-set.ts',
+          './closure-analyzer.ts',
+          './engine-inputs.ts',
+        ].map((entry) => fileURLToPath(new URL(entry, import.meta.url)))
+      : undefined
+  try {
+    while (pending.length > 0) {
+      const sourcePath = pending.pop()!
+      if (graph.has(sourcePath) === true) continue
+      let module = path.isAbsolute(sourcePath) === true ? relative(sourcePath) : sourcePath
+      const node: SourceModule = { module, children: [], reasons: [], legacyChildren: [] }
+      graph.set(sourcePath, node)
+      const reason = ({
         code,
         operation,
         detail,
-        source: { module, line },
-        evidence: 'unproven',
-      })
-    }
-    if (opaqueModules.has(sourcePath) === true || path.isAbsolute(sourcePath) === false) continue
-    recordInput(sourcePath)
-    let scope = path.dirname(sourcePath)
-    while (true) {
-      if (recordedScopes.has(scope) === false) {
-        recordedScopes.add(scope)
-        const packagePath = path.join(scope, 'package.json')
-        recordInput(packagePath)
-        if (isReadSetRecording() === true) {
-          try {
-            packageNames.set(scope, decodePackageName(inputReadFileSync(packagePath, 'utf8')).name)
-          } catch {
-            /* Missing/unnamed scopes remain recorded inputs. */
-          }
-        }
-      }
-      if (module.startsWith('../') === true && packageNames.has(scope) === true) {
-        module = `${packageNames.get(scope)!}/${path.relative(scope, sourcePath).split(path.sep).join('/')}`
-        node.module = module
-      }
-      const parent = path.dirname(scope)
-      if (parent === scope) break
-      scope = parent
-    }
-    if (module.startsWith('../') === true) {
-      module = pathToFileURL(sourcePath).href
-      node.module = module
-    }
-    if (/\.[cm]?[jt]sx?$/.test(sourcePath) === false) {
-      if (sourcePath.endsWith('.node') === true) {
-        reason({
-          code: 'native-addon',
-          operation: 'native-module',
-          detail: 'Native module input capabilities are unproven.',
+        line = null,
+      }: Omit<SourceReason, 'source' | 'evidence'> & { line?: number | null }): void => {
+        node.reasons.push({
+          code,
+          operation,
+          detail,
+          source: { module, line },
+          evidence: 'unproven',
         })
       }
-      continue
-    }
-    let imports: ReadonlyArray<{ path: string; line: number | null }>
-    try {
-      const source = inputReadFileSync(sourcePath, 'utf8')
-      if (isReadSetRecording() === true)
-        node.reasons.push(...sourceCapabilities({ source: source, module: module }))
-      // Generic arrow functions in .ts are ambiguous JSX, while .tsx needs JSX parsing.
-      const transpiler = /\.[jt]sx$/.test(sourcePath) === true ? transpilers.tsx : transpilers.ts
-      imports = transpiler.scanImports(source).map((entry) => {
-        // Bun does not expose import offsets. Only use an unambiguous literal location.
-        const offset = source.indexOf(entry.path)
-        const line =
-          offset >= 0 && offset === source.lastIndexOf(entry.path)
-            ? source.slice(0, offset).split('\n').length
-            : null
-        return { path: entry.path, line }
-      })
-    } catch {
-      markInputRecordingIncomplete()
-      reason({
-        code: 'unknown-capability',
-        operation: 'source-scan',
-        detail: 'Source could not be read or scanned.',
-      })
-      continue
-    }
-    for (const { path: specifier, line } of imports) {
-      if (specifier.endsWith('.node') === true) {
+      if (opaqueModules.has(sourcePath) === true || path.isAbsolute(sourcePath) === false) {
         reason({
-          code: 'native-addon',
-          operation: 'native-module-import',
-          detail: 'Native module capability is unproven.',
-          line: line,
-        })
-      }
-      if (isBuiltin(specifier) === true) {
-        const builtin = specifier.replace(/^node:/, '')
-        if (
-          isReadSetRecording() === true &&
-          specifier !== 'bun' &&
-          specifier.startsWith('bun:') === false
-        )
-          recordInputResolution({
-            importer: sourcePath,
-            specifier,
-            outcome: { kind: 'builtin', name: `node:${builtin}` },
-          })
-        const code =
-          /^(?:fs|fs\/promises)$/.test(builtin) === true
-            ? 'unmediated-fs'
-            : /^(?:child_process|worker_threads|cluster)$/.test(builtin) === true
-              ? 'subprocess'
-              : /^(?:net|http|https|http2|tls|dgram|dns|dns\/promises)$/.test(builtin) === true
-                ? 'network'
-                : /^(?:process|os)$/.test(builtin) === true
-                  ? 'ambient-env'
-                  : 'unknown-capability'
-        reason({
-          code: code,
-          operation: `import:${specifier}`,
-          detail: 'Builtin capability imported; execution and inputs are unproven.',
-          line: line,
+          code: 'unknown-capability',
+          operation: 'module-closure',
+          detail: 'Runtime module bytes are unavailable for analysis.',
         })
         continue
       }
-      let mapped: string | undefined
+      recordInput(sourcePath)
+      let scope = path.dirname(sourcePath)
+      let dependency: { name: string; version?: string } | undefined
+      let dependencyScope: string | undefined
+      while (true) {
+        if (recordedScopes.has(scope) === false) {
+          recordedScopes.add(scope)
+          const packagePath = path.join(scope, 'package.json')
+          recordInput(packagePath)
+          if (packageMetadata !== undefined && decodePackageMetadata !== undefined) {
+            try {
+              packageMetadata.set(
+                scope,
+                decodePackageMetadata(inputReadFileSync(packagePath, 'utf8')),
+              )
+            } catch {
+              /* Missing/unnamed scopes remain recorded inputs. */
+            }
+          }
+        }
+        if (dependency === undefined && packageMetadata?.has(scope) === true) {
+          dependency = packageMetadata.get(scope)
+          dependencyScope = scope
+        }
+        if (module.startsWith('../') === true && packageMetadata?.has(scope) === true) {
+          module = `${packageMetadata.get(scope)!.name}/${path.relative(scope, sourcePath).split(path.sep).join('/')}`
+          node.module = module
+        }
+        const parent = path.dirname(scope)
+        if (parent === scope) break
+        scope = parent
+      }
+      if (module.startsWith('../') === true) {
+        module = pathToFileURL(sourcePath).href
+        node.module = module
+      }
+      if (/\.[cm]?[jt]sx?$/.test(sourcePath) === false) {
+        if (sourcePath.endsWith('.node') === true) {
+          reason({
+            code: 'native-addon',
+            operation: 'native-module',
+            detail: 'Native module input capabilities are unproven.',
+          })
+        }
+        continue
+      }
+      let source: string
+      let imports: ReadonlyArray<{ path: string; line: number | null }>
+      const legacySpecifiers = new Set<string>()
       try {
-        mapped =
-          specifier.startsWith('#') === true
-            ? resolveImportMapSpecifierForImporterSync({
-                specifier,
-                importerPath: sourcePath,
-                workspaceRoot: cwd,
-                fs: inputFileSystem,
-              })
-            : undefined
+        source = inputReadFileSync(sourcePath, 'utf8')
+        const transpiler = /\.[jt]sx$/.test(sourcePath) === true ? transpilers.tsx : transpilers.ts
+        imports = transpiler.scanImports(source).map((entry) => ({ path: entry.path, line: null }))
+        for (const entry of imports) legacySpecifiers.add(entry.path)
       } catch {
-        markInputRecordingIncomplete()
+        node.legacyFailure = true
         reason({
           code: 'unknown-capability',
-          operation: 'import-map-resolution',
-          detail: 'Import-map resolution closure is unknown.',
-          line: line,
+          operation: 'source-scan',
+          detail: 'Source could not be read or scanned.',
         })
+        continue
+      }
+      try {
+        if (analyzer !== undefined) {
+          // Graph discovery and native-session snapshots mutate shared state in dependency order.
+          // oxlint-disable-next-line no-await-in-loop
+          const analysis = await analyzer.analyze({ source, filename: sourcePath })
+          if (
+            analysis.reasons.every(
+              (capability) => capability.operation !== 'analysis-unavailable',
+            ) === true
+          )
+            imports = analysis.imports
+          const integrity =
+            dependency?.version === undefined
+              ? undefined
+              : lockPackages?.[`${dependency.name}@${dependency.version}`]?.resolution?.integrity
+          const observed = getInputRecording()?.evidence?.files.get(sourcePath)
+          const approved =
+            dependency?.version !== undefined &&
+            integrity !== undefined &&
+            dependencyScope !== undefined &&
+            observed?.state === 'present' &&
+            analysisApi?.matchDependencyAllowlist({
+              identity: {
+                name: dependency.name,
+                version: dependency.version,
+                integrity,
+                files: [
+                  {
+                    path: path.relative(dependencyScope, sourcePath).split(path.sep).join('/'),
+                    digest: observed.digest.slice('sha256:'.length),
+                  },
+                ],
+              },
+            }) !== undefined
+          for (const capability of analysis.reasons) {
+            if (
+              capability.operation === 'analysis-unavailable' ||
+              (approved === false && reviewedBoundaries?.includes(sourcePath) !== true)
+            )
+              reason({ code: 'unknown-capability', ...capability })
+          }
+        }
+      } catch {
+        reason({
+          code: 'unknown-capability',
+          operation: 'analysis-unavailable',
+          detail: 'Static closure analysis failed; legacy source scanning succeeded.',
+        })
+      }
+      for (const { path: specifier, line } of imports) {
+        if (specifier.endsWith('.node') === true) {
+          reason({
+            code: 'native-addon',
+            operation: 'native-module-import',
+            detail: 'Native module capability is unproven.',
+            line: line,
+          })
+        }
+        if (isBuiltin(specifier) === true) {
+          const builtin = specifier.replace(/^node:/, '')
+          if (isReadSetRecording() === true && isCanonicalNodeBuiltin(`node:${builtin}`) === true)
+            recordInputResolution({
+              importer: sourcePath,
+              specifier,
+              outcome: { kind: 'builtin', name: `node:${builtin}` },
+            })
+          else if (isReadSetRecording() === true)
+            reason({
+              code: 'unknown-capability',
+              operation: `runtime-builtin:${specifier}`,
+              detail:
+                'This runtime builtin has no supported canonical Node resolution observation.',
+              line,
+            })
+          continue
+        }
+        let mapped: string | undefined
+        try {
+          mapped =
+            specifier.startsWith('#') === true
+              ? resolveImportMapSpecifierForImporterSync({
+                  specifier,
+                  importerPath: sourcePath,
+                  workspaceRoot: cwd,
+                  fs: inputFileSystem,
+                })
+              : undefined
+        } catch {
+          if (legacySpecifiers.has(specifier) === true) node.legacyFailure = true
+          reason({
+            code: 'unknown-capability',
+            operation: 'import-map-resolution',
+            detail: 'Import-map resolution closure is unknown.',
+            line: line,
+          })
+          reason({
+            code: 'dynamic-import',
+            operation: `resolve:${specifier}`,
+            detail: 'Import-map resolution could not be recorded.',
+            line: line,
+          })
+          continue
+        }
+        const base = mapped ?? specifier
+        if (
+          base.startsWith('.') === false &&
+          base.startsWith('#') === false &&
+          path.isAbsolute(base) === false
+        ) {
+          const packageName = base
+            .split('/')
+            .slice(0, base.startsWith('@') === true ? 2 : 1)
+            .join('/')
+          let directory = path.dirname(sourcePath)
+          while (true) {
+            recordInput(path.join(directory, 'node_modules', packageName))
+            recordInput(path.join(directory, 'node_modules', packageName, 'package.json'))
+            const parent = path.dirname(directory)
+            if (parent === directory) break
+            directory = parent
+          }
+        }
+        // Retain the existing candidate-directory observations in the same scan.
+        if (base.startsWith('.') === true || path.isAbsolute(base) === true) {
+          const absolute = path.resolve(path.dirname(sourcePath), base)
+          recordInput(path.dirname(absolute))
+          recordInput(absolute)
+        }
         reason({
           code: 'dynamic-import',
           operation: `resolve:${specifier}`,
-          detail: 'Import-map resolution could not be recorded.',
+          detail: 'Resolver alternatives and influencing context are unproven.',
           line: line,
         })
-        continue
-      }
-      const base = mapped ?? specifier
-      if (
-        base.startsWith('.') === false &&
-        base.startsWith('#') === false &&
-        path.isAbsolute(base) === false
-      ) {
-        const packageName = base
-          .split('/')
-          .slice(0, base.startsWith('@') === true ? 2 : 1)
-          .join('/')
-        let directory = path.dirname(sourcePath)
-        while (true) {
-          recordInput(path.join(directory, 'node_modules', packageName))
-          recordInput(path.join(directory, 'node_modules', packageName, 'package.json'))
-          const parent = path.dirname(directory)
-          if (parent === directory) break
-          directory = parent
-        }
-      }
-      // Retain the existing candidate-directory observations in the same scan.
-      if (base.startsWith('.') === true || path.isAbsolute(base) === true) {
-        const absolute = path.resolve(path.dirname(sourcePath), base)
-        recordInput(path.dirname(absolute))
-        recordInput(absolute)
-      }
-      reason({
-        code: 'dynamic-import',
-        operation: `resolve:${specifier}`,
-        detail: 'Resolver alternatives and influencing context are unproven.',
-        line: line,
-      })
-      reason({
-        code: 'unmediated-realpath',
-        operation: `realpath:${specifier}`,
-        detail: 'Source resolution uses raw physical-path lookup.',
-        line: line,
-      })
-      let resolved: string
-      let canonical: string
-      try {
-        resolved = Bun.resolveSync(base, path.dirname(sourcePath))
-        canonical = realpathSync(resolved)
-      } catch {
-        markInputRecordingIncomplete()
         reason({
-          code: 'unknown-capability',
-          operation: `resolve:${specifier}`,
-          detail: 'Optional import target and resolution closure are unknown.',
+          code: 'unmediated-realpath',
+          operation: `realpath:${specifier}`,
+          detail: 'Source resolution uses raw physical-path lookup.',
           line: line,
         })
-        continue
+        let resolved: string
+        let canonical: string
+        try {
+          resolved = Bun.resolveSync(base, path.dirname(sourcePath))
+          canonical = realpathSync(resolved)
+        } catch {
+          if (legacySpecifiers.has(specifier) === true) node.legacyFailure = true
+          reason({
+            code: 'unknown-capability',
+            operation: `resolve:${specifier}`,
+            detail: 'Optional import target and resolution closure are unknown.',
+            line: line,
+          })
+          continue
+        }
+        if (isReadSetRecording() === true)
+          recordInputResolution({
+            importer: sourcePath,
+            specifier,
+            outcome: { kind: 'file', lexical: resolved, physical: canonical },
+          })
+        // The read-set accounts for installed runtime code too; the legacy scan stays opaque.
+        const child =
+          isReadSetRecording() === false &&
+          canonical.includes(`${path.sep}node_modules${path.sep}`) === true
+            ? specifier
+            : canonical
+        if (child === canonical) recordInput(resolved)
+        else opaqueModules.add(child)
+        node.children.push(child)
+        if (
+          legacySpecifiers.has(specifier) === true &&
+          canonical.includes(`${path.sep}node_modules${path.sep}`) === false
+        )
+          node.legacyChildren!.push(child)
+        pending.push(child)
       }
-      if (isReadSetRecording() === true)
-        recordInputResolution({
-          importer: sourcePath,
-          specifier,
-          outcome: { kind: 'file', lexical: resolved, physical: canonical },
-        })
-      // Installed dependencies remain opaque; attribute their unaccounted closure by specifier.
-      const child =
-        canonical.includes(`${path.sep}node_modules${path.sep}`) === true ? specifier : canonical
-      if (child === canonical) {
-        recordInput(resolved)
-      } else {
-        opaqueModules.add(child)
-      }
-      node.children.push(child)
-      pending.push(child)
     }
-  }
-  for (const reason of accountSourceGraph({
-    entries: sourceEntries.map((module) => ({ module, generator: relative(module) })),
-    graph: graph,
-  })) {
-    recordInputReason(reason)
+    // Additional engine/dependency analysis cannot change the legacy generation-cache contract.
+    const legacyPending = [...sourceEntries]
+    const legacyVisited = new Set<string>()
+    while (legacyPending.length > 0) {
+      const module = legacyPending.pop()!
+      if (legacyVisited.has(module) === true) continue
+      legacyVisited.add(module)
+      const node = graph.get(module)
+      if (node?.legacyFailure === true) markInputRecordingIncomplete()
+      for (const child of node?.legacyChildren ?? []) legacyPending.push(child)
+    }
+    if (engineEntries.length > 0) {
+      // Match publication's lazy opt-in boundary: ordinary/legacy recording never loads schemas.
+      const { recordEngineIdentityFiles } = await import('./read-set.ts')
+      const engineClosure = new Set<string>()
+      const enginePending = [...engineEntries]
+      while (enginePending.length > 0) {
+        const module = enginePending.pop()!
+        if (engineClosure.has(module) === true) continue
+        engineClosure.add(module)
+        for (const child of graph.get(module)?.children ?? []) enginePending.push(child)
+      }
+      recordEngineIdentityFiles([...engineClosure].filter((module) => path.isAbsolute(module)))
+    }
+    for (const reason of accountSourceGraph({
+      entries: accountingEntries,
+      graph: graph,
+    })) {
+      recordInputReason(reason)
+    }
+  } finally {
+    try {
+      await analyzer?.close()
+    } catch {
+      analysisFailure()
+    }
   }
 }
 

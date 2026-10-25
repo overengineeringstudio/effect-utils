@@ -8,12 +8,46 @@ import {
   digestBytes,
   directoryDigest,
   environmentDigest,
+  isCanonicalNodeBuiltin,
   makeInputRecording,
   reasonCodes,
   retainObservation,
 } from '../runtime/node/input-observations.ts'
 import type { FileObservation, InputReason } from '../runtime/node/input-observations.ts'
-import { validateReadSet, validateReadSetPair } from './read-set.ts'
+import { classifyEngineExecution, validateReadSet, validateReadSetPair } from './read-set.ts'
+
+describe('engine execution form classification', () => {
+  it('requires positive source layout and package evidence and fails closed for other forms', () => {
+    const source = {
+      entrypoint: '/fixture/genie/bin/genie.tsx',
+      modulePath: '/fixture/genie/src/core/read-set.ts',
+      packagePresent: true,
+    }
+    expect(classifyEngineExecution(source)).toBe('source')
+    expect(classifyEngineExecution({ ...source, packagePresent: false })).toBe('unrecognized')
+    expect(classifyEngineExecution({ ...source, entrypoint: '/elsewhere/entry.ts' })).toBe(
+      'unrecognized',
+    )
+    expect(
+      classifyEngineExecution({
+        entrypoint: '/fixture/libexec/genie.js',
+        modulePath: '/fixture/libexec/genie.js',
+        packagePresent: false,
+      }),
+    ).toBe('bundle')
+    expect(
+      classifyEngineExecution({
+        entrypoint: '/$bunfs/root/genie',
+        modulePath: '/$bunfs/root/genie',
+        packagePresent: false,
+      }),
+    ).toBe('compiled')
+    expect(classifyEngineExecution({ ...source, entrypoint: undefined })).toBe('unrecognized')
+    expect(
+      classifyEngineExecution({ ...source, modulePath: '/fixture/unknown-layout/read-set.ts' }),
+    ).toBe('unrecognized')
+  })
+})
 
 const fixture = () => ({
   schema: 'genie-check-read-set',
@@ -41,6 +75,37 @@ const fixture = () => ({
 })
 
 describe('read-set schema and canonical encodings', () => {
+  it('shares a closed canonical builtin vocabulary independent of runtime aliases', () => {
+    const artifact = (name: string) => ({
+      ...fixture(),
+      files: [
+        {
+          path: '/fixture/importer.ts',
+          by: [],
+          state: 'present',
+          digest: digestBytes('import'),
+          byteLength: 6,
+        },
+      ],
+      resolutions: [
+        {
+          importer: '/fixture/importer.ts',
+          specifier: name,
+          outcome: { kind: 'builtin', name },
+          by: [],
+          candidates: [],
+          contextEnv: [],
+          resolverCode: [],
+        },
+      ],
+    })
+    expect(isCanonicalNodeBuiltin('node:fs')).toBe(true)
+    expect(() => validateReadSet(artifact('node:fs'))).not.toThrow()
+    // A future runtime may resolve this name as builtin; the artifact contract must not.
+    const syntheticRuntimeBuiltin = 'node:synthetic-runtime-only-builtin'
+    expect(isCanonicalNodeBuiltin(syntheticRuntimeBuiltin)).toBe(false)
+    expect(() => validateReadSet(artifact(syntheticRuntimeBuiltin))).toThrow()
+  })
   it.effect('encodes JCS key order and the specified directory/environment formulas', () =>
     Effect.sync(() => {
       expect(canonicalJson({ z: 1, a: { b: 'value', a: [] } })).toBe(
@@ -265,6 +330,37 @@ describe('read-set schema and canonical encodings', () => {
       }),
   )
 
+  it('keeps invocation-wide attribution dominant in every stable observation merge order', () => {
+    for (const { first, second, expected } of [
+      { first: [], second: ['a.genie.ts'], expected: [] },
+      { first: ['a.genie.ts'], second: [], expected: [] },
+      { first: [], second: [], expected: [] },
+      {
+        first: ['b.genie.ts'],
+        second: ['a.genie.ts', 'b.genie.ts'],
+        expected: ['a.genie.ts', 'b.genie.ts'],
+      },
+    ]) {
+      const recording = makeInputRecording({ digests: true })
+      const map = recording.evidence!.files
+      const observation: FileObservation = {
+        path: '/fixture/input',
+        by: first,
+        state: 'present',
+        digest: digestBytes('same'),
+        byteLength: 4,
+      }
+      retainObservation({ recording, map, key: observation.path, observation })
+      retainObservation({
+        recording,
+        map,
+        key: observation.path,
+        observation: { ...observation, by: second },
+      })
+      expect(map.get(observation.path)?.by).toEqual(expected)
+      expect(recording.reasons).toEqual([])
+    }
+  })
   it.effect(
     'cached payloads merge attribution but retain first evidence and conflicts across repeated reads',
     () =>

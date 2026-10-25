@@ -4,12 +4,14 @@ import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
+import { NodeServices } from '@effect/platform-node'
 import { describe, it } from '@effect/vitest'
-import { Effect, Schema } from 'effect'
+import { Effect, FileSystem, Schema } from 'effect'
 import { expect } from 'vitest'
 
 import {
   canonicalJson,
+  digestBytes,
   directoryDigest,
   environmentDigest,
   reasonCodes,
@@ -25,16 +27,34 @@ import {
   inputStatSync,
   isInputRecording,
   recordInput,
+  recordInputCwd,
   recordInputEnvironment,
 } from '../runtime/node/inputs.ts'
+import { findGenieFiles } from './discovery.ts'
+import { auditEngineFileSystem } from './engine-inputs.ts'
 import { withInputManifest } from './input-manifest.ts'
-import { ReadSetSchema, validateReadSet, validateReadSetPair } from './read-set.ts'
+import {
+  ReadSetSchema,
+  recordEngineIdentityFiles,
+  validateReadSet,
+  validateReadSetPair,
+} from './read-set.ts'
 
 const cliPath = fileURLToPath(new URL('../../bin/genie.tsx', import.meta.url))
 const readersPath = fileURLToPath(new URL('../runtime/node/inputs.ts', import.meta.url))
 const decode = Schema.decodeSync(Schema.fromJsonString(ReadSetSchema), {
   onExcessProperty: 'error',
 })
+const decodeBundleIdentity = Schema.decodeSync(
+  Schema.fromJsonString(
+    Schema.Struct({
+      mode: Schema.Literal('bundle'),
+      files: ReadSetSchema.fields.files,
+      reasons: ReadSetSchema.fields.reasons,
+      runtime: Schema.String,
+    }),
+  ),
+)
 const decodeMetadata = Schema.decodeSync(
   Schema.fromJsonString(
     Schema.Struct({
@@ -122,6 +142,227 @@ export const read = () => {
 }
 
 describe('check read-set recording', () => {
+  it.effect(
+    'records bundled engine bytes separately from the Bun runtime and fails closed for analysis',
+    () =>
+      Effect.sync(() => {
+        const root = fs.realpathSync(
+          fs.mkdtempSync(path.join(os.tmpdir(), 'genie-bundle-identity-')),
+        )
+        try {
+          const entry = path.join(root, 'entry.ts')
+          const bundle = path.join(root, 'genie.js')
+          const readSetPath = fileURLToPath(new URL('./read-set.ts', import.meta.url))
+          const scannerPath = fileURLToPath(new URL('./input-manifest.ts', import.meta.url))
+          fs.writeFileSync(
+            entry,
+            `
+import { Effect } from ${canonicalJson(fileURLToPath(import.meta.resolve('effect')))}
+import { initializeReadSet } from ${canonicalJson(readSetPath)}
+import { recordGeneratorSourceGraph } from ${canonicalJson(scannerPath)}
+import { beginInputRecording, getInputRecording, endInputRecording } from ${canonicalJson(readersPath)}
+beginInputRecording({ digests: true })
+await Effect.runPromise(initializeReadSet(process.cwd()))
+await recordGeneratorSourceGraph({ entries: [], cwd: process.cwd() })
+const recording = getInputRecording()
+console.log(JSON.stringify({
+  mode: recording.evidence.engineMode,
+  files: [...recording.evidence.files.values()],
+  reasons: recording.reasons,
+  runtime: process.execPath,
+}))
+endInputRecording()
+`,
+          )
+          const built = spawnSync('bun', ['build', '--target=bun', '--outfile', bundle, entry], {
+            encoding: 'utf8',
+          })
+          expect(built.status, built.stdout + built.stderr).toBe(0)
+          const executed = spawnSync('bun', [bundle], { cwd: root, encoding: 'utf8' })
+          expect(executed.status, executed.stdout + executed.stderr).toBe(0)
+          const observed = decodeBundleIdentity(executed.stdout.trim())
+          expect(observed.files).toContainEqual(
+            expect.objectContaining({ path: bundle, digest: digestBytes(fs.readFileSync(bundle)) }),
+          )
+          expect(observed.files).toContainEqual(
+            expect.objectContaining({
+              path: observed.runtime,
+              digest: digestBytes(fs.readFileSync(observed.runtime)),
+            }),
+          )
+          for (const operation of ['engine-analysis-unavailable', 'validator-analysis-unavailable'])
+            expect(observed.reasons).toContainEqual(
+              expect.objectContaining({ code: 'unknown-capability', operation }),
+            )
+        } finally {
+          fs.rmSync(root, { recursive: true, force: true })
+        }
+      }),
+    60_000,
+  )
+  it.effect(
+    'retains an unknown runtime descriptor read for every generator in the published artifact',
+    () =>
+      Effect.sync(() => {
+        const { root, artifact, run } = fixture()
+        try {
+          fs.writeFileSync(
+            path.join(root, 'shared.ts'),
+            `
+import { openSync, closeSync } from 'node:fs'
+import { inputReadFileSync } from ${canonicalJson(readersPath)}
+export const read = () => {
+  const descriptor = openSync(${canonicalJson(path.join(root, 'runtime.txt'))}, 'r')
+  try { return inputReadFileSync(descriptor, 'utf8') }
+  finally { closeSync(descriptor) }
+}
+`,
+          )
+          const checked = run(['--check', '--read-set', artifact])
+          expect(checked.status, checked.stdout + checked.stderr).toBe(0)
+          const evidence = validateReadSet(decode(fs.readFileSync(artifact, 'utf8')))
+          expect(evidence.reasons).toContainEqual(
+            expect.objectContaining({
+              code: 'unknown-capability',
+              operation: 'readFileSync(fd)',
+              evidence: 'observed',
+              generators: ['one.txt.genie.ts', 'two.txt.genie.ts'],
+            }),
+          )
+          expect(
+            evidence.files.find((file) => file.path === path.join(root, 'one.txt.genie.ts'))?.by,
+          ).toEqual(['one.txt.genie.ts', 'two.txt.genie.ts'])
+          expect(evidence.complete).toBe(false)
+        } finally {
+          fs.rmSync(root, { recursive: true, force: true })
+        }
+      }),
+    120_000,
+  )
+  it.effect('binds engine identity to bytes rather than a non-store executable path', () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem
+      const root = yield* fs.makeTempDirectoryScoped()
+      const first = path.join(root, 'runtime-a')
+      const second = path.join(root, 'runtime-b')
+      yield* fs.writeFileString(first, 'binary-a')
+      yield* fs.writeFileString(second, 'binary-a')
+      beginInputRecording({ digests: true })
+      try {
+        recordEngineIdentityFiles([first, second])
+        const observations = getInputRecording()!.evidence!.files
+        const before = observations.get(first)
+        expect(before).toMatchObject({ path: first, digest: digestBytes('binary-a') })
+        expect(observations.get(second)).toMatchObject({
+          path: second,
+          digest: digestBytes('binary-a'),
+        })
+        endInputRecording()
+        yield* fs.writeFileString(first, 'binary-b')
+        beginInputRecording({ digests: true })
+        recordEngineIdentityFiles([first, second])
+        const changed = getInputRecording()!.evidence!.files
+        expect(changed.get(first)).toMatchObject({
+          path: first,
+          digest: digestBytes('binary-b'),
+        })
+        expect(changed.get(first)).not.toEqual(before)
+        expect(changed.get(second)).toMatchObject({
+          path: second,
+          digest: digestBytes('binary-a'),
+        })
+      } finally {
+        endInputRecording()
+      }
+    }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+  )
+
+  it.effect('reports an actual unrecorded engine read with its engine source location', () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem
+      const root = yield* fs.makeTempDirectoryScoped()
+      const input = path.join(root, 'engine-input.txt')
+      yield* fs.writeFileString(input, 'engine data')
+      beginInputRecording({ digests: true })
+      try {
+        recordEngineIdentityFiles([fileURLToPath(import.meta.url)])
+        const engineFs = auditEngineFileSystem({
+          fs,
+          source: { module: '@overeng/genie/src/core/read-set.integration.test.ts', line: null },
+        })
+        expect(yield* engineFs.readFileString(input)).toBe('engine data')
+        const reasons = getInputRecording()!.reasons
+        expect(reasons).toHaveLength(1)
+        expect(reasons[0]).toMatchObject({
+          code: 'unmediated-fs',
+          operation: 'engine FileSystem.readFileString',
+          source: { module: '@overeng/genie/src/core/read-set.integration.test.ts' },
+          evidence: 'observed',
+        })
+        expect(reasons[0]!.source.line).toBeGreaterThan(0)
+        recordInput(input)
+        expect(yield* engineFs.readFileString(input)).toBe('engine data')
+        expect(reasons).toHaveLength(1)
+      } finally {
+        endInputRecording()
+      }
+    }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+  )
+
+  it.effect(
+    'attributes discovery source bytes only to the generator consuming that projection',
+    () =>
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem
+        const root = yield* fs.makeTempDirectoryScoped()
+        const one = 'one.txt.genie.ts'
+        const two = 'two.txt.genie.ts'
+        yield* fs.writeFileString(path.join(root, one), 'export default "one"')
+        yield* fs.writeFileString(path.join(root, two), 'export default "two"')
+        yield* fs.writeFileString(path.join(root, 'unrelated.txt'), 'not a discovery input')
+        beginInputRecording({ digests: true })
+        recordInputCwd(root)
+        try {
+          expect((yield* findGenieFiles(root)).toSorted()).toEqual([one, two])
+          const recording = getInputRecording()!
+          expect(recording.evidence!.files.get(path.join(root, one))).toMatchObject({
+            state: 'present',
+            by: [one],
+            byteLength: Buffer.byteLength('export default "one"'),
+          })
+          expect(recording.evidence!.files.get(path.join(root, two))).toMatchObject({
+            state: 'present',
+            by: [two],
+            byteLength: Buffer.byteLength('export default "two"'),
+          })
+          expect(recording.evidence!.files.has(path.join(root, 'unrelated.txt'))).toBe(false)
+          expect(recording.evidence!.directories.size).toBe(0)
+          expect(recording.paths.has(root)).toBe(false)
+          expect([...recording.paths].toSorted()).toEqual(
+            [
+              ...recording.evidence!.files.keys(),
+              ...recording.evidence!.directories.keys(),
+            ].toSorted(),
+          )
+          expect(recording.reasons.some((reason) => reason.operation === 'git discovery')).toBe(
+            false,
+          )
+          const before = recording.evidence!.files.get(path.join(root, one))!
+          const peerBefore = recording.evidence!.files.get(path.join(root, two))!
+          yield* fs.writeFileString(path.join(root, two), 'export default "changed peer"')
+          endInputRecording()
+          beginInputRecording({ digests: true })
+          yield* findGenieFiles(root)
+          const next = getInputRecording()!.evidence!
+          expect(next.files.get(path.join(root, one))).toEqual(before)
+          expect(next.files.get(path.join(root, two))).not.toEqual(peerBefore)
+          expect(next.files.get(path.join(root, two))!.by).toEqual([two])
+        } finally {
+          endInputRecording()
+        }
+      }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+  )
+
   it.effect(
     'dispatches the original effect without installing a recorder when outputs are absent',
     () =>
@@ -577,10 +818,15 @@ describe('check read-set recording', () => {
           ).toMatchObject({ state: 'absent' })
           expect(
             readSet.reasons.find(
+              (reason) => reason.code === 'dynamic-import' && reason.source.module === 'shared.ts',
+            ),
+          ).toMatchObject({ generators: ['one.txt.genie.ts', 'two.txt.genie.ts'] })
+          expect(
+            readSet.reasons.some(
               (reason) =>
                 reason.code === 'unknown-capability' && reason.source.module === 'shared.ts',
             ),
-          ).toMatchObject({ generators: ['one.txt.genie.ts', 'two.txt.genie.ts'] })
+          ).toBe(false)
           expect(
             readSet.resolutions.find(
               (entry) =>
@@ -616,7 +862,7 @@ describe('check read-set recording', () => {
           )
           expect(
             report.groups.find(
-              (group) => group.code === 'unknown-capability' && group.source.module === 'shared.ts',
+              (group) => group.code === 'dynamic-import' && group.source.module === 'shared.ts',
             ),
           ).toMatchObject({
             generators: ['one.txt.genie.ts', 'two.txt.genie.ts'],

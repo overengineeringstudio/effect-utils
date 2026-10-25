@@ -7,9 +7,10 @@ import type { PlatformError } from 'effect/PlatformError'
 
 import {
   inputFileSystem,
-  isInputRecording,
+  isReadSetRecording,
+  recordDiscoveredGenerator,
   recordInput,
-  recordInputReason,
+  recordInputEnvironment,
 } from '../runtime/node/inputs.ts'
 import { GenieRuntimeTranspilerCacheError, GenieSourceWorkspaceConflictError } from './errors.ts'
 import { resolveImportMapSpecifierForImporterSync } from './import-map/mod.ts'
@@ -78,8 +79,8 @@ export const ensureImportMapResolver = Effect.fn('ensureImportMapResolver')(func
   // Compiled graphs carry their own workspace context and do not use the process-global hook.
   if (isCompiledBinary() === true) return
   if (
-    process.env.BUN_RUNTIME_TRANSPILER_CACHE_PATH !== '0' &&
-    process.env.BUN_RUNTIME_TRANSPILER_CACHE_PATH !== ''
+    recordInputEnvironment('BUN_RUNTIME_TRANSPILER_CACHE_PATH') !== '0' &&
+    recordInputEnvironment('BUN_RUNTIME_TRANSPILER_CACHE_PATH') !== ''
   ) {
     return yield* new GenieRuntimeTranspilerCacheError({
       message:
@@ -158,15 +159,6 @@ const gitListGenieFiles = ({
 
 const discoverGitGenieFiles = ({ cwd }: { cwd: string }): Array<string> | undefined => {
   try {
-    if (isInputRecording() === true)
-      recordInputReason({
-        code: 'subprocess',
-        operation: 'git discovery',
-        detail: 'Git discovery executes with an unaccounted repository/configuration closure',
-        source: { module: '@overeng/genie/src/core/discovery.ts', line: null },
-        generators: [],
-        evidence: 'observed',
-      })
     execFileSync('git', ['-C', cwd, 'rev-parse', '--is-inside-work-tree'], {
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'ignore'],
@@ -246,7 +238,7 @@ export const findGenieFiles = Effect.fn('discovery/findGenieFiles')(function* (d
 
   const walk: (currentDir: string) => Effect.Effect<string[], PlatformError> = Effect.fnUntraced(
     function* (currentDir: string) {
-      recordInput(currentDir)
+      if (isReadSetRecording() === false) recordInput(currentDir)
       const entries = yield* fs.readDirectory(currentDir)
       const results: string[] = []
 
@@ -317,6 +309,8 @@ export const findGenieFiles = Effect.fn('discovery/findGenieFiles')(function* (d
   for (const warning of warnings) {
     yield* Effect.logWarning(warning)
   }
+
+  for (const generator of uniqueFiles) recordDiscoveredGenerator({ root: rootDir, generator })
 
   return uniqueFiles
 })

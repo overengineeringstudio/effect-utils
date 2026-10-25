@@ -422,7 +422,7 @@ describe('historical input manifest completeness parity', () => {
       source: "import { spawnSync } from 'node:child_process'\nexport const run = spawnSync\n",
       imports: {},
       legacyComplete: true,
-      operation: 'import:node:child_process',
+      operation: undefined,
     },
   ]
   for (const { name, source, imports, legacyComplete, operation } of cases) {
@@ -446,8 +446,8 @@ import { recordGeneratorSourceGraph, withInputManifest } from ${canonicalJson(sc
 import { getInputRecording } from ${canonicalJson(readersPath)}
 await Effect.runPromise(withInputManifest({
   complete: true,
-  effect: Effect.sync(() => {
-    recordGeneratorSourceGraph({ entries: [${canonicalJson(entry)}], cwd: process.cwd() })
+  effect: Effect.promise(async () => {
+    await recordGeneratorSourceGraph({ entries: [${canonicalJson(entry)}], cwd: process.cwd() })
     console.log(JSON.stringify(getInputRecording().reasons))
   }),
 }))
@@ -469,16 +469,10 @@ await Effect.runPromise(withInputManifest({
               digestEvidence: false,
             })
             const reasons = decodeReasons(result.stdout.trim())
-            expect(reasons).toContainEqual(
-              expect.objectContaining({ operation, evidence: 'unproven' }),
-            )
-            expect(reasons).toContainEqual(
-              expect.objectContaining({
-                code: 'unknown-capability',
-                operation: 'module-closure',
-                evidence: 'unproven',
-              }),
-            )
+            if (operation !== undefined)
+              expect(reasons).toContainEqual(
+                expect.objectContaining({ operation, evidence: 'unproven' }),
+              )
           } finally {
             rmSync(root, { recursive: true, force: true })
           }
@@ -511,7 +505,7 @@ await Effect.runPromise(withInputManifest({
           expect(evidence.reasons).toContainEqual(
             expect.objectContaining({
               code: 'unknown-capability',
-              operation: 'module-closure',
+              operation: 'capability-import',
               evidence: 'unproven',
             }),
           )
@@ -519,7 +513,8 @@ await Effect.runPromise(withInputManifest({
           rmSync(root, { recursive: true, force: true })
         }
       }),
-    60_000,
+    // The paired capture includes the complete engine and dependency closure.
+    120_000,
   )
 })
 
@@ -879,13 +874,14 @@ export default {
           rmSync(root, { recursive: true, force: true })
         }
       }),
-    60_000,
+    // Three complete engine/dependency closure captures, not three standalone module scans.
+    180_000,
   )
 })
 
 describe('real source capability occurrence evidence', () => {
   effectIt.effect(
-    'scans real shared source for every closed reason code without executing hazardous capabilities',
+    'reports AST denials and observed capture faults without claiming hazardous execution',
     () =>
       Effect.sync(() => {
         const root = realpathSync(mkdtempSync(path.join(os.tmpdir(), 'genie-capability-source-')))
@@ -930,7 +926,7 @@ import { canonicalJson } from ${canonicalJson(fileURLToPath(new URL('../runtime/
 import { writeFileSync } from 'node:fs'
 const root = process.argv[1]
 beginInputRecording({ digests: true })
-recordGeneratorSourceGraph({ entries: ${canonicalJson(generators)}, cwd: root })
+await recordGeneratorSourceGraph({ entries: ${canonicalJson(generators)}, cwd: root })
 const input = root + '/conflicting.txt'
 writeFileSync(input, 'before')
 recordInput(input)
@@ -949,23 +945,28 @@ endInputRecording()
           )
           expect(result.status, result.stdout + result.stderr).toBe(0)
           const reasons = decodeReasons(result.stdout.trim())
-          expect([...new Set(reasons.map((reason) => reason.code))].toSorted()).toEqual(
-            [...reasonCodes].toSorted(),
-          )
+          for (const reason of reasons) expect(reasonCodes).toContain(reason.code)
+          for (const code of [
+            'unknown-capability',
+            'dynamic-import',
+            'unmediated-realpath',
+            'native-addon',
+            'unstable-observation',
+            'capture-error',
+          ])
+            expect(reasons.some((reason) => reason.code === code)).toBe(true)
           const occurrences = [
-            { code: 'unmediated-fs', operation: 'import:node:fs', line: 1 },
-            { code: 'unmediated-fs', operation: 'Bun.file', line: 14 },
-            { code: 'unmediated-realpath', operation: 'realpathSync', line: 7 },
-            { code: 'subprocess', operation: 'import:node:child_process', line: 3 },
-            { code: 'subprocess', operation: 'Bun.spawnSync', line: 9 },
-            { code: 'network', operation: 'import:node:https', line: 4 },
-            { code: 'network', operation: 'fetch', line: 11 },
-            { code: 'ambient-env', operation: 'process.env', line: 8 },
-            { code: 'dynamic-import', operation: 'import(', line: 10 },
+            { code: 'unknown-capability', operation: 'capability-import', line: 1 },
+            { code: 'unknown-capability', operation: 'ambient-access', line: 14 },
+            { code: 'unknown-capability', operation: 'capability-import', line: 3 },
+            { code: 'unknown-capability', operation: 'ambient-access', line: 9 },
+            { code: 'unknown-capability', operation: 'capability-import', line: 4 },
+            { code: 'unknown-capability', operation: 'unknown-global', line: 11 },
+            { code: 'unknown-capability', operation: 'ambient-access', line: 8 },
+            { code: 'dynamic-import', operation: 'resolve:./optional.ts', line: 10 },
             { code: 'native-addon', operation: 'native-module-import', line: 5 },
-            { code: 'native-addon', operation: 'process.dlopen', line: 12 },
-            { code: 'unknown-capability', operation: 'Date.now', line: 13 },
-            { code: 'unknown-capability', operation: 'module-closure', line: null },
+            { code: 'unknown-capability', operation: 'ambient-access', line: 12 },
+            { code: 'unknown-capability', operation: 'unknown-global', line: 13 },
           ]
           for (const { code, operation, line } of occurrences) {
             expect(reasons).toContainEqual(
@@ -1014,4 +1015,131 @@ endInputRecording()
       }),
     60_000,
   )
+})
+
+describe('analyzer isolation and compiled fallback', () => {
+  for (const mode of [
+    'throwing-analyzer',
+    'startup-failure',
+    'shutdown-failure',
+    'legacy-only',
+    'compiled',
+    'bundle',
+    'unrecognized',
+  ] as const) {
+    it(`fails closed without changing the legacy decision: ${mode}`, () => {
+      const root = realpathSync(mkdtempSync(path.join(os.tmpdir(), 'genie-analyzer-isolation-')))
+      try {
+        writeFileSync(path.join(root, 'one.genie.ts'), 'export default {}\n')
+        const scannerPath = fileURLToPath(new URL('./input-manifest.ts', import.meta.url))
+        const analyzerPath = fileURLToPath(new URL('./closure-analyzer.ts', import.meta.url))
+        const result = spawnSync(
+          'bun',
+          [
+            '-e',
+            `
+import { mock } from 'bun:test'
+import { Schema } from 'effect'
+import { beginInputRecording, endInputRecording, getInputRecording, inputReadFileSync, isInputRecordingComplete } from ${canonicalJson(readersPath)}
+const mode = ${canonicalJson(mode)}
+mock.module(${canonicalJson(analyzerPath)}, () => ({
+  createClosureAnalyzer: () => {
+    if (mode === 'legacy-only') throw new Error('Legacy recording loaded the analyzer')
+    if (mode === 'startup-failure') throw new Error('Injected startup failure')
+    return {
+      analyze: async () => {
+        if (mode !== 'shutdown-failure') throw new Error('Injected analyzer failure')
+        return { imports: [], reasons: [] }
+      },
+      close: async () => { if (mode === 'shutdown-failure') throw new Error('Injected shutdown failure') },
+    }
+  },
+  matchDependencyAllowlist: () => undefined,
+}))
+let lockDecoders = 0
+let readSetSchemas = 0
+const originalStruct = Schema.Struct
+const originalRecord = Schema.Record
+const originalEffect = { ...require('effect') }
+// The analyzer's lock schema is the only Record schema built during this scan.
+mock.module('effect', () => ({
+  ...originalEffect,
+  Schema: {
+    ...Schema,
+    Record: (...args) => { lockDecoders++; return originalRecord(...args) },
+    Struct: (fields) => {
+      if ('generatorResults' in fields && 'envSalt' in fields && 'resolutions' in fields) readSetSchemas++
+      return originalStruct(fields)
+    },
+  },
+}))
+// Dynamic loading installs module-boundary faults before importing the scanner.
+const { recordGeneratorSourceGraph } = await import(${canonicalJson(scannerPath)})
+beginInputRecording({ digests: mode !== 'legacy-only' })
+const recording = getInputRecording()
+if (['compiled', 'bundle', 'unrecognized'].includes(mode)) {
+  recording.evidence.genieVersion = 'fixture'
+  recording.evidence.engineMode = mode
+}
+lockDecoders = 0
+await recordGeneratorSourceGraph({ entries: ['one.genie.ts'], cwd: process.cwd() })
+if (['compiled', 'bundle', 'unrecognized'].includes(mode)) {
+  // Unknown runtime descriptor provenance cannot be narrowed to a source-graph consumer.
+  try { inputReadFileSync(-1) } catch {}
+}
+console.log(JSON.stringify({ complete: isInputRecordingComplete(), reasons: recording.reasons, lockDecoders, readSetSchemas }))
+endInputRecording()
+`,
+          ],
+          { cwd: root, encoding: 'utf8' },
+        )
+        expect(result.status, result.stdout + result.stderr).toBe(0)
+        const decode = Schema.decodeSync(
+          Schema.fromJsonString(
+            Schema.Struct({
+              complete: Schema.Boolean,
+              reasons: ReadSetSchema.fields.reasons,
+              lockDecoders: Schema.Finite,
+              readSetSchemas: Schema.Finite,
+            }),
+          ),
+        )
+        const observed = decode(result.stdout.trim())
+        expect(observed.complete).toBe(true)
+        if (mode === 'legacy-only') {
+          expect(observed.lockDecoders).toBe(0)
+          expect(observed.readSetSchemas).toBe(0)
+          expect(observed.reasons).toEqual([])
+        } else {
+          expect(observed.reasons).toContainEqual(
+            expect.objectContaining({ operation: 'analysis-unavailable' }),
+          )
+        }
+        if (mode === 'compiled' || mode === 'bundle' || mode === 'unrecognized') {
+          expect(observed.reasons).toContainEqual(
+            expect.objectContaining({
+              code: 'unknown-capability',
+              operation: 'readFileSync(fd)',
+              evidence: 'observed',
+              generators: [],
+            }),
+          )
+          for (const operation of [
+            'engine-analysis-unavailable',
+            'validator-analysis-unavailable',
+          ]) {
+            expect(observed.reasons).toContainEqual(
+              expect.objectContaining({
+                code: 'unknown-capability',
+                operation,
+                generators: ['one.genie.ts'],
+              }),
+            )
+          }
+        }
+      } finally {
+        rmSync(root, { recursive: true, force: true })
+      }
+    })
+  }
 })

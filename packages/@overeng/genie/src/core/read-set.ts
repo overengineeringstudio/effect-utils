@@ -1,5 +1,3 @@
-import * as fs from 'node:fs'
-import { isBuiltin } from 'node:module'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -11,16 +9,19 @@ import {
   canonicalJson,
   compareUtf8,
   directoryDigest,
+  isCanonicalNodeBuiltin,
   reasonCodes,
 } from '../runtime/node/input-observations.ts'
 import type { InputRecording } from '../runtime/node/input-observations.ts'
 import {
   getInputRecording,
+  inputExistsSync,
+  inputReadFileSync,
   inputStatSync,
   recordInput,
   recordInputCwd,
   recordInputEnvironment,
-  recordInputReason,
+  recordInputPathIdentity,
 } from '../runtime/node/inputs.ts'
 
 const Digest = Schema.String.check(Schema.isPattern(/^sha256:[0-9a-f]{64}$/))
@@ -284,7 +285,7 @@ export const validateReadSet = (input: unknown): ReadSet => {
       const { lexical, physical } = resolution.outcome
       assert(presentFiles.has(lexical) && presentFiles.has(physical))
     } else if (resolution.outcome.kind === 'builtin')
-      assert(resolution.outcome.name.startsWith('node:') && isBuiltin(resolution.outcome.name))
+      assert(isCanonicalNodeBuiltin(resolution.outcome.name))
     for (const candidate of resolution.candidates)
       assert((candidate.kind === 'file' ? files : directories).has(candidate.path))
     assert(
@@ -328,36 +329,79 @@ export const validateReadSetPair = ({
   return result
 }
 
-const compiled = process.argv[1]?.includes('/$bunfs/') === true
+const compiled =
+  process.argv[1]?.includes('/$bunfs/') === true || import.meta.url.includes('/$bunfs/') === true
 const enginePath = compiled === true ? process.execPath : fileURLToPath(import.meta.url)
 const packagePath =
-  compiled === true ? undefined : fileURLToPath(new URL('../../package.json', import.meta.url))
-/** Begin before discovery. Opaque engine/tool closures remain explicit blockers. */
+  enginePath.endsWith('/src/core/read-set.ts') === true
+    ? fileURLToPath(new URL('../../package.json', import.meta.url))
+    : undefined
+const engineIdentityFiles = new Set([enginePath])
+
+/** Positively recognize source layout; every other execution form remains fail-closed. */
+export const classifyEngineExecution = ({
+  entrypoint,
+  modulePath,
+  packagePresent,
+}: {
+  entrypoint: string | undefined
+  modulePath: string
+  packagePresent: boolean
+}): 'source' | 'bundle' | 'compiled' | 'unrecognized' => {
+  if (entrypoint?.includes('/$bunfs/') === true || modulePath.includes('/$bunfs/') === true)
+    return 'compiled'
+  if (entrypoint === undefined) return 'unrecognized'
+  if (modulePath.endsWith('/src/core/read-set.ts') === true && packagePresent === true) {
+    const packageRoot = path.resolve(path.dirname(modulePath), '../..')
+    const relativeEntry = path.relative(packageRoot, path.resolve(entrypoint))
+    if (
+      (relativeEntry.startsWith('bin/') === true || relativeEntry.startsWith('src/') === true) &&
+      /\.tsx?$/.test(relativeEntry) === true
+    )
+      return 'source'
+  }
+  if (/\.[cm]?js$/.test(modulePath) === true && path.resolve(entrypoint) === modulePath)
+    return 'bundle'
+  return 'unrecognized'
+}
+
+/**
+ * Register code reached by the shared module graph, not a second source census.
+ * Identity trust never grants a data capability to the registered modules.
+ */
+export const recordEngineIdentityFiles = (files: readonly string[]): void => {
+  if (getInputRecording()?.evidence === undefined) return
+  for (const input of files) {
+    const absolute = path.resolve(input)
+    if (absolute !== process.execPath || engineIdentityFiles.has(absolute) === false)
+      recordInput(absolute)
+    engineIdentityFiles.add(absolute)
+  }
+}
+/** Begin before discovery; engine and runtime code are trusted only by identity. */
 export const initializeReadSet = Effect.fn('genie/initializeReadSet')(function* (cwd: string) {
   const evidence = getInputRecording()?.evidence
   if (evidence === undefined) return
+  evidence.engineMode = classifyEngineExecution({
+    entrypoint: process.argv[1],
+    modulePath: fileURLToPath(import.meta.url),
+    packagePresent: packagePath !== undefined && inputExistsSync(packagePath) === true,
+  })
   recordInputCwd(cwd)
   recordInputCwd(process.cwd())
+  engineIdentityFiles.clear()
+  engineIdentityFiles.add(enginePath)
   recordInput(enginePath)
   if (packagePath !== undefined) recordInput(packagePath)
-  recordInput(process.execPath)
+  if (process.execPath !== enginePath) recordInput(process.execPath)
   const version = yield* Effect.serviceOption(CliVersion)
   if (Option.isSome(version) === true) evidence.genieVersion = version.value.version
   else if (packagePath !== undefined) {
-    const raw = yield* Effect.try(() => fs.readFileSync(packagePath, 'utf8'))
+    const raw = yield* Effect.try(() => inputReadFileSync(packagePath, 'utf8'))
     evidence.genieVersion = (yield* Schema.decodeEffect(
       Schema.fromJsonString(Schema.Struct({ version: Schema.String })),
     )(raw)).version
   }
-  for (const module of ['@overeng/genie', 'bun:runtime'])
-    recordInputReason({
-      code: 'unknown-capability',
-      operation: 'component identity closure',
-      detail: 'The complete influencing engine/runtime closure is not yet accounted for',
-      source: { module, line: null },
-      generators: [],
-      evidence: 'unproven',
-    })
 })
 
 /** Build and validate a read-set from the evidence retained by an invocation. */
@@ -374,12 +418,9 @@ export const buildReadSet = ({
   if (evidence === undefined) throw new Error('Read-set digest recording was not installed')
   // Revalidate consumed evidence without replacing earlier observations. This is a
   // stability check over the original keys, not a post-run dependency census.
-  for (const input of new Set([
-    ...evidence.files.keys(),
-    ...evidence.directories.keys(),
-    ...evidence.symlinks.keys(),
-  ]))
+  for (const input of new Set([...evidence.files.keys(), ...evidence.directories.keys()]))
     recordInput(input)
+  for (const input of evidence.symlinks.keys()) recordInputPathIdentity(input)
   for (const name of evidence.environment.keys()) recordInputEnvironment(name)
   for (const observedCwd of evidence.cwd.values()) recordInputCwd(observedCwd.lexical)
   for (const stat of evidence.stats.values()) {
@@ -423,7 +464,10 @@ export const buildReadSet = ({
       key: (result) => [result.generator, result.target],
     }),
     platform: { os: process.platform, arch: process.arch },
-    genie: { version, files: [codeFile(enginePath)] },
+    genie: {
+      version,
+      files: sorted({ values: [...engineIdentityFiles].map(codeFile), key: (file) => file.path }),
+    },
     bun: { version: Bun.version, files: [codeFile(process.execPath)] },
     envSalt: evidence.envSalt,
     files: attributed({ values: evidence.files.values(), key: (item) => item.path }),

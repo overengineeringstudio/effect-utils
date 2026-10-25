@@ -13,6 +13,7 @@ export const buck2TypeScriptAdmission = {
   packagePath: 'packages/@overeng/genie',
   projectionSource: 'packages/@overeng/genie/BUCK.genie.ts',
   sourceRoots: ['src', 'bin'],
+  runtimeFiles: ['src/core/closure-dependency-allowlist.json'],
   workspaceSiblings: [
     {
       packageName: '@overeng/otel-contract',

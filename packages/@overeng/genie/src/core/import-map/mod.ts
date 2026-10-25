@@ -17,6 +17,7 @@ import { pathToFileURL } from 'node:url'
 import { Effect, FileSystem, Option } from 'effect'
 
 import { inputFileSystem } from '../../runtime/node/inputs.ts'
+import { inputEngineFileSystem } from '../engine-inputs.ts'
 import * as Observability from '../observability.ts'
 import {
   type ImportMap,
@@ -45,7 +46,10 @@ export const findNearestPackageJson = Effect.fn('findNearestPackageJson')(functi
   fromPath: string,
 ) {
   yield* Observability.annotatePath({ label: 'package.json', path: fromPath })
-  const effectFs = yield* FileSystem.FileSystem
+  const effectFs = inputEngineFileSystem({
+    fs: yield* FileSystem.FileSystem,
+    source: { module: '@overeng/genie/src/core/import-map/mod.ts', line: null },
+  })
   let dir = path.dirname(fromPath)
   const root = path.parse(dir).root
 
@@ -72,7 +76,10 @@ export const findPackageJsonWithImports = Effect.fn('findPackageJsonWithImports'
   fromPath: string,
 ) {
   yield* Observability.annotatePath({ label: 'imports', path: fromPath })
-  const effectFs = yield* FileSystem.FileSystem
+  const effectFs = inputEngineFileSystem({
+    fs: yield* FileSystem.FileSystem,
+    source: { module: '@overeng/genie/src/core/import-map/mod.ts', line: null },
+  })
   let dir = path.dirname(fromPath)
   const root = path.parse(dir).root
 
@@ -130,7 +137,10 @@ export const findPackageJsonWithImports = Effect.fn('findPackageJsonWithImports'
  */
 export const extractImportMap = Effect.fn('extractImportMap')(function* (packageJsonPath: string) {
   yield* Observability.annotatePath({ label: 'import-map', path: packageJsonPath })
-  const effectFs = yield* FileSystem.FileSystem
+  const effectFs = inputEngineFileSystem({
+    fs: yield* FileSystem.FileSystem,
+    source: { module: '@overeng/genie/src/core/import-map/mod.ts', line: null },
+  })
 
   // First try the generated package.json
   const pkgExists = yield* effectFs.exists(packageJsonPath).pipe(Effect.orElseSucceed(() => false))

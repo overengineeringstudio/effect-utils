@@ -35,6 +35,8 @@ import type { GenieOutput } from '../runtime/mod.ts'
 import {
   getInputRecording,
   inputFileSystem,
+  inputReadFileSync,
+  recordInputEnvironment,
   isInputRecording,
   isReadSetRecording,
   recordGeneratorResult,
@@ -45,6 +47,7 @@ import { isAnalyzableSourcePath, runTsFileAnalysis } from '../runtime/node/ts-ap
 import type { TsFileAnalysisSession } from '../runtime/node/ts-api.ts'
 import { CatalogConflictError } from '../runtime/package-json/catalog.ts'
 import { ensureImportMapResolver, isCompiledBinary } from './discovery.ts'
+import { inputEngineFileSystem } from './engine-inputs.ts'
 import {
   GenieCheckError,
   GenieFileError,
@@ -404,7 +407,7 @@ const stageGraphWithinRoot = ({
         stagedPaths.set(sourcePath, stagePath)
 
         const sourceCode = yield* Effect.tryPromise({
-          try: () => nodeFs.readFile(sourcePath, 'utf8'),
+          try: async () => inputReadFileSync(sourcePath, 'utf8'),
           catch: (error) =>
             new GenieImportError({
               genieFilePath: entryPath,
@@ -700,7 +703,10 @@ const loadOxfmtConfig = Effect.fn('loadOxfmtConfig')(function* ({
     return Option.none()
   }
 
-  const fs = yield* FileSystem.FileSystem
+  const fs = inputEngineFileSystem({
+    fs: yield* FileSystem.FileSystem,
+    source: { module: '@overeng/genie/src/core/generation.ts', line: null },
+  })
   recordInput(configPath.value)
   const raw = yield* fs.readFileString(configPath.value)
   const config = yield* Effect.try({
@@ -925,7 +931,10 @@ const findRepoRoot = Effect.fn('findRepoRoot')(function* ({
     return cached
   }
 
-  const fs = yield* FileSystem.FileSystem
+  const fs = inputEngineFileSystem({
+    fs: yield* FileSystem.FileSystem,
+    source: { module: '@overeng/genie/src/core/generation.ts', line: null },
+  })
   let current = startDir
   let last = ''
 
@@ -1145,7 +1154,10 @@ const atomicWriteFile = ({
   mode?: number
 }) =>
   Effect.gen(function* () {
-    const fs = yield* FileSystem.FileSystem
+    const fs = inputEngineFileSystem({
+      fs: yield* FileSystem.FileSystem,
+      source: { module: '@overeng/genie/src/core/generation.ts', line: null },
+    })
     const tempPath = `${targetFilePath}.genie.tmp`
 
     // Make target writable if it exists (for read-only files)
@@ -1168,7 +1180,10 @@ const atomicWriteFile = ({
     Effect.catch((error) =>
       Effect.gen(function* () {
         // Clean up temp file on failure
-        const fs = yield* FileSystem.FileSystem
+        const fs = inputEngineFileSystem({
+          fs: yield* FileSystem.FileSystem,
+          source: { module: '@overeng/genie/src/core/generation.ts', line: null },
+        })
         const tempPath = `${targetFilePath}.genie.tmp`
         yield* fs.remove(tempPath, { force: true }).pipe(Effect.ignore)
         return yield* error
@@ -1191,7 +1206,7 @@ const withTargetLock = Effect.fn('genie/withTargetLock')(function* <E>({
 }) {
   yield* Observability.annotateTargetLock({ cwd, targetFilePath })
   // User-owned state keeps locks outside source roots and avoids shared /tmp UID conflicts.
-  const configuredStateHome = process.env.XDG_STATE_HOME
+  const configuredStateHome = recordInputEnvironment('XDG_STATE_HOME')
   const stateHome =
     configuredStateHome !== undefined && path.isAbsolute(configuredStateHome) === true
       ? configuredStateHome
@@ -1227,7 +1242,10 @@ export const generateFile = ({
   FileSystem.FileSystem | CommandExecutor.ChildProcessSpawner | Path.Path
 > =>
   Effect.gen(function* () {
-    const fs = yield* FileSystem.FileSystem
+    const fs = inputEngineFileSystem({
+      fs: yield* FileSystem.FileSystem,
+      source: { module: '@overeng/genie/src/core/generation.ts', line: null },
+    })
     const targetFilePath = genieFilePath.replace('.genie.ts', '')
     const targetDir = path.dirname(targetFilePath)
 
@@ -1359,7 +1377,10 @@ export const checkFileDetailed = ({
   FileSystem.FileSystem | CommandExecutor.ChildProcessSpawner
 > =>
   Effect.gen(function* () {
-    const fs = yield* FileSystem.FileSystem
+    const fs = inputEngineFileSystem({
+      fs: yield* FileSystem.FileSystem,
+      source: { module: '@overeng/genie/src/core/generation.ts', line: null },
+    })
     const loadedGenieFile = yield* loadGenieFile({ genieFilePath, cwd })
     const { targetFilePath, content: expectedContent } = yield* getExpectedContent({
       genieFilePath,

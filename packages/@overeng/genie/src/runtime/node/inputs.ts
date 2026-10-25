@@ -88,6 +88,32 @@ export const recordInput = (input: fs.PathLike): void => {
   const normalized = normalizeInputPath({ recording: recording, input: input })
   if (normalized !== undefined) capturePath({ recording: recording, input: normalized })
 }
+
+/** Observe path identity and traversed links without consuming directory contents. */
+export const recordInputPathIdentity = (input: fs.PathLike): void => {
+  const recording = globalState[state]
+  if (recording === undefined) return
+  const normalized = normalizeInputPath({ recording, input })
+  if (normalized !== undefined) capturePath({ recording, input: normalized, contents: false })
+}
+
+/** Discovery is a projection: retain only a selected generator's source bytes. */
+export const recordDiscoveredGenerator = ({
+  root,
+  generator,
+}: {
+  root: string
+  generator: string
+}): void => {
+  const recording = globalState[state]
+  if (recording?.evidence === undefined) return
+  const input = path.resolve(root, generator)
+  recordInput(input)
+  const observation = recording.evidence.files.get(input)
+  if (observation !== undefined)
+    recording.evidence.files.set(input, { ...observation, by: [generator] })
+}
+
 /** No state, hashing, or filesystem work exists until an output requests a session. */
 export const beginInputRecording = (
   options: { digests?: boolean; exclude?: readonly string[] } = {},
@@ -139,7 +165,7 @@ export const recordInputCwd = (cwd: string): void => {
   if (recording === undefined || evidence === undefined) return
   try {
     const lexical = path.resolve(cwd)
-    recordInput(lexical)
+    recordInputPathIdentity(lexical)
     retainObservation({
       recording: recording,
       map: evidence.cwd,
@@ -171,6 +197,13 @@ export const recordGeneratorResult = ({
   if (recording === undefined || evidence === undefined) return
   try {
     recordInput(target)
+    const targetPath = path.resolve(target)
+    const targetObservation = evidence.files.get(targetPath)
+    if (targetObservation !== undefined)
+      evidence.files.set(targetPath, {
+        ...targetObservation,
+        by: [...new Set([...targetObservation.by, generator])].toSorted(compareUtf8),
+      })
     const result: GeneratorResult = {
       generator,
       target: path.resolve(target),
@@ -507,6 +540,7 @@ export const inputRealpathSync: typeof fs.realpathSync = new Proxy(fs.realpathSy
 })
 /** Observed filesystem operations supplied to module resolution. */
 export const inputFileSystem = {
+  readEnvironment: recordInputEnvironment,
   realpathSync: inputRealpathSync,
   readFileSync: inputReadFileSync,
   existsSync: inputExistsSync,

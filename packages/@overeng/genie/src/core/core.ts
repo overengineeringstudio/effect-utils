@@ -233,15 +233,16 @@ export const generateAll = ({
     }
     if (Option.isSome(oxfmtConfigPath) === true) recordInput(oxfmtConfigPath.value)
     const genieFiles = yield* discoverAndValidate(cwd, phase)
-    yield* Effect.try({
-      try: () => recordGeneratorSourceGraph({ entries: genieFiles, cwd }),
-      catch: (cause) =>
-        new GenieGenerationFailedError({
-          failedCount: 1,
-          message: `Failed to record generator source inputs: ${String(cause)}`,
-          files: [],
-        }),
-    })
+    if (isInputRecording() === true)
+      yield* Effect.tryPromise({
+        try: () => recordGeneratorSourceGraph({ entries: genieFiles, cwd }),
+        catch: (cause) =>
+          new GenieGenerationFailedError({
+            failedCount: 1,
+            message: `Failed to record generator source inputs: ${String(cause)}`,
+            files: [],
+          }),
+      })
 
     if (genieFiles.length === 0) {
       const summary = computeSummary({ successes: [], failedCount: 0 })
@@ -457,7 +458,8 @@ export const checkAll = ({
       if (Option.isSome(oxfmtConfigPath) === true) recordInput(oxfmtConfigPath.value)
     }
     const genieFiles = yield* discoverAndValidate(cwd, phase)
-    if (isInputRecording() === true) recordGeneratorSourceGraph({ entries: genieFiles, cwd })
+    if (isInputRecording() === true)
+      yield* Effect.promise(() => recordGeneratorSourceGraph({ entries: genieFiles, cwd }))
 
     if (genieFiles.length === 0) {
       yield* emit({ _tag: 'Complete', summary: computeSummary({ successes: [], failedCount: 0 }) })

@@ -4,9 +4,11 @@ import { parse } from 'jsonc-parser'
 import type { ParseError } from 'jsonc-parser'
 
 import type { GenieContext, GenieJsoncParser } from '../runtime/mod.ts'
+import { recordInputEnvironment } from '../runtime/node/inputs.ts'
 import { nodeGenieIO, runActionlint } from '../runtime/node/mod.ts'
 import { nodePackageJsonValidationRuntime } from '../runtime/package-json/node/export-environments.ts'
 import { formatValidationIssues, type ValidationIssue } from '../runtime/package-json/validation.ts'
+import { inputEngineFileSystem } from './engine-inputs.ts'
 
 /**
  * Engine-side JSONC parser injected as the {@link GenieContext.parseJsonc} capability. TypeScript 7
@@ -32,7 +34,8 @@ export const runGenieValidation = ({
   cwd,
   genieFiles,
   preloadedFiles,
-  requirePackageJsonValidate = process.env.GENIE_REQUIRE_PACKAGE_JSON_VALIDATE === '1',
+  requirePackageJsonValidate = recordInputEnvironment('GENIE_REQUIRE_PACKAGE_JSON_VALIDATE') ===
+    '1',
 }: {
   cwd: string
   genieFiles?: ReadonlyArray<string>
@@ -50,7 +53,10 @@ export const runGenieValidation = ({
       ...(genieFiles === undefined ? {} : { fileCount: genieFiles.length }),
       ...(preloadedFiles === undefined ? {} : { preloadedFileCount: preloadedFiles.length }),
     })
-    const fs = yield* FileSystem.FileSystem
+    const fs = inputEngineFileSystem({
+      fs: yield* FileSystem.FileSystem,
+      source: { module: '@overeng/genie/src/core/validation.ts', line: null },
+    })
     const pathService = yield* Path.Path
     const workspaceProvider = yield* resolveWorkspaceProvider({ cwd })
     const packageJsonContext = yield* buildPackageJsonValidationContext({ cwd, workspaceProvider })

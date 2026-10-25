@@ -11,7 +11,12 @@ import nodeFs from 'node:fs'
 import * as path from 'node:path'
 
 /** Inject recorded reads at runtime without adding imports to this standalone bootstrap module. */
-export type ResolverFileSystem = Pick<typeof nodeFs, 'existsSync' | 'readFileSync' | 'realpathSync'>
+export type ResolverFileSystem = Pick<
+  typeof nodeFs,
+  'existsSync' | 'readFileSync' | 'realpathSync'
+> & {
+  readEnvironment?: (name: string) => string | undefined
+}
 
 /** Parsed import map from package.json#imports */
 export type ImportMap = Record<string, string>
@@ -222,15 +227,27 @@ const joinMemberSubPath = ({
   subPath: string
 }): string => (subPath.length === 0 ? memberRoot : path.join(memberRoot, subPath))
 
-const getMegarepoStoreBasePath = (): string =>
-  process.env.MEGAREPO_STORE ?? path.join(process.env.HOME ?? '~', '.megarepo')
+const resolverEnvironment = ({
+  fs,
+  name,
+}: {
+  fs: ResolverFileSystem
+  name: string
+}): string | undefined =>
+  fs.readEnvironment === undefined ? process.env[name] : fs.readEnvironment(name)
+
+const getMegarepoStoreBasePath = (fs: ResolverFileSystem): string =>
+  resolverEnvironment({ fs, name: 'MEGAREPO_STORE' }) ??
+  path.join(resolverEnvironment({ fs, name: 'HOME' }) ?? '~', '.megarepo')
 
 const deriveStoreWorktreePath = ({
   selector,
   url,
+  fs,
 }: {
   selector: string
   url: string
+  fs: ResolverFileSystem
 }): string | undefined => {
   const normalizedUrl = url.replace(/^https?:\/\//, '')
   const [host, owner, repo] = normalizedUrl.split('/')
@@ -247,7 +264,7 @@ const deriveStoreWorktreePath = ({
 
   const refType = classifyMegarepoRef(selector)
   return path.join(
-    getMegarepoStoreBasePath(),
+    getMegarepoStoreBasePath(fs),
     host,
     owner,
     repo,
@@ -259,14 +276,17 @@ const deriveStoreWorktreePath = ({
 
 const deriveStoreWorktreePathFromLockMember = ({
   member,
+  fs,
 }: {
   member: MegarepoLockMember
+  fs: ResolverFileSystem
 }): string | undefined => {
   // A declared commit is authoritative even when it has not been materialized. Falling back to
   // a branch checkout would silently replace locked source with mutable host state.
   return deriveStoreWorktreePath({
     selector: member.commit !== undefined && member.commit.length > 0 ? member.commit : member.ref,
     url: member.url,
+    fs,
   })
 }
 
@@ -320,7 +340,7 @@ const resolveLocalMegarepoMemberRootSync = ({
     const lock = parseMegarepoLockContent(lockContent)
     const lockMember = lock.members?.[memberName]
     if (lockMember !== undefined) {
-      const derivedPath = deriveStoreWorktreePathFromLockMember({ member: lockMember })
+      const derivedPath = deriveStoreWorktreePathFromLockMember({ member: lockMember, fs })
       if (derivedPath !== undefined) {
         const selectedCommit =
           lockMember.commit !== undefined && lockMember.commit.length > 0
@@ -369,7 +389,9 @@ export const resolveMegarepoMemberSpecifierSync = ({
     return undefined
   }
 
-  const overrideMap = parseMemberSourceMap(process.env[GENIE_MEMBER_OVERRIDE_MAP_ENV])
+  const overrideMap = parseMemberSourceMap(
+    resolverEnvironment({ fs, name: GENIE_MEMBER_OVERRIDE_MAP_ENV }),
+  )
   const overrideRoot = overrideMap[parsed.memberName]
   if (overrideRoot !== undefined) {
     return joinMemberSubPath({ memberRoot: overrideRoot, subPath: parsed.subPath })
@@ -385,7 +407,9 @@ export const resolveMegarepoMemberSpecifierSync = ({
     return joinMemberSubPath({ memberRoot: localRoot, subPath: parsed.subPath })
   }
 
-  const sourceMap = parseMemberSourceMap(process.env[GENIE_MEMBER_SOURCE_MAP_ENV])
+  const sourceMap = parseMemberSourceMap(
+    resolverEnvironment({ fs, name: GENIE_MEMBER_SOURCE_MAP_ENV }),
+  )
   const sourceRoot = sourceMap[parsed.memberName]
   if (sourceRoot !== undefined) {
     return joinMemberSubPath({ memberRoot: sourceRoot, subPath: parsed.subPath })

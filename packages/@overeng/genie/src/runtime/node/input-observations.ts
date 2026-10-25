@@ -2,6 +2,90 @@ import { createHash, randomBytes, randomUUID } from 'node:crypto'
 import * as fs from 'node:fs'
 import path from 'node:path'
 
+/**
+ * Artifact builtin vocabulary, independent of the producer's runtime aliases.
+ * Both recording and validation use this closed set; unknown future builtins fail closed.
+ */
+export const isCanonicalNodeBuiltin = (name: string): boolean => {
+  switch (name) {
+    case 'node:_http_agent':
+    case 'node:_http_client':
+    case 'node:_http_common':
+    case 'node:_http_incoming':
+    case 'node:_http_outgoing':
+    case 'node:_http_server':
+    case 'node:_stream_duplex':
+    case 'node:_stream_passthrough':
+    case 'node:_stream_readable':
+    case 'node:_stream_transform':
+    case 'node:_stream_wrap':
+    case 'node:_stream_writable':
+    case 'node:_tls_common':
+    case 'node:_tls_wrap':
+    case 'node:assert':
+    case 'node:assert/strict':
+    case 'node:async_hooks':
+    case 'node:buffer':
+    case 'node:child_process':
+    case 'node:cluster':
+    case 'node:console':
+    case 'node:constants':
+    case 'node:crypto':
+    case 'node:dgram':
+    case 'node:diagnostics_channel':
+    case 'node:dns':
+    case 'node:dns/promises':
+    case 'node:domain':
+    case 'node:events':
+    case 'node:fs':
+    case 'node:fs/promises':
+    case 'node:http':
+    case 'node:http2':
+    case 'node:https':
+    case 'node:inspector':
+    case 'node:inspector/promises':
+    case 'node:module':
+    case 'node:net':
+    case 'node:os':
+    case 'node:path':
+    case 'node:path/posix':
+    case 'node:path/win32':
+    case 'node:perf_hooks':
+    case 'node:process':
+    case 'node:punycode':
+    case 'node:querystring':
+    case 'node:readline':
+    case 'node:readline/promises':
+    case 'node:repl':
+    case 'node:sea':
+    case 'node:sqlite':
+    case 'node:stream':
+    case 'node:stream/consumers':
+    case 'node:stream/promises':
+    case 'node:stream/web':
+    case 'node:string_decoder':
+    case 'node:sys':
+    case 'node:test':
+    case 'node:test/reporters':
+    case 'node:timers':
+    case 'node:timers/promises':
+    case 'node:tls':
+    case 'node:trace_events':
+    case 'node:tty':
+    case 'node:url':
+    case 'node:util':
+    case 'node:util/types':
+    case 'node:v8':
+    case 'node:vm':
+    case 'node:wasi':
+    case 'node:worker_threads':
+    case 'node:zlib':
+      return true
+    default:
+      return false
+  }
+}
+
 /** Stable reasons why a recorded input closure cannot be proven complete. */
 export const reasonCodes = [
   'unmediated-fs',
@@ -190,6 +274,7 @@ export type InputRecording = {
       }
     >
     genieVersion?: string
+    engineMode?: 'source' | 'bundle' | 'compiled' | 'unrecognized'
   }
 }
 /** Create a recording, optionally retaining digest-backed read-set evidence. */
@@ -305,13 +390,19 @@ export const retainObservation = <TObservation extends Attributed>({
     })
     return
   }
-  const retained =
+  const attribution: { _tag: 'all' } | { _tag: 'generators'; ids: readonly string[] } | undefined =
     previous === undefined
+      ? undefined
+      : previous.by.length === 0 || observation.by.length === 0
+        ? { _tag: 'all' }
+        : {
+            _tag: 'generators',
+            ids: [...new Set([...previous.by, ...observation.by])].toSorted(compareUtf8),
+          }
+  const retained =
+    attribution === undefined
       ? observation
-      : {
-          ...observation,
-          by: [...new Set([...previous.by, ...observation.by])].toSorted(compareUtf8),
-        }
+      : { ...observation, by: attribution._tag === 'all' ? [] : attribution.ids }
   recording.evidence?.payloadEncodings.set(retained, encoded)
   map.set(key, retained)
 }
@@ -342,9 +433,11 @@ const sameMetadata = ({
 export const capturePath = ({
   recording,
   input,
+  contents = true,
 }: {
   recording: InputRecording
   input: string
+  contents?: boolean
 }): void => {
   if (recording.excluded.has(input) === true) return
   if (input.isWellFormed() === false) {
@@ -355,7 +448,9 @@ export const capturePath = ({
     })
     return
   }
-  recording.paths.add(input)
+  // Identity-only observations have no file/directory entry and therefore must
+  // not introduce a path into the paired legacy manifest.
+  if (contents === true) recording.paths.add(input)
   const evidence = recording.evidence
   if (evidence === undefined) return
   try {
@@ -410,6 +505,7 @@ export const capturePath = ({
           },
         })
     }
+    if (contents === false) return
     const stat = fs.statSync(input, { bigint: true })
     if (
       (evidence.files.get(input)?.state === 'present' && stat.isFile() === false) ||
@@ -533,6 +629,14 @@ export const capturePath = ({
       })
     }
   } catch (cause) {
+    if (contents === false) {
+      captureFault({
+        recording,
+        operation: `inspect path identity: ${input}`,
+        module: '@overeng/genie/src/runtime/node/input-observations.ts',
+      })
+      return
+    }
     const missing = missingObservation(cause)
     if (missing === undefined)
       captureFault({
