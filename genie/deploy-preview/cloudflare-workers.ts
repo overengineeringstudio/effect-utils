@@ -47,7 +47,7 @@ export const cloudflareWorkersDeployTriggers = (
 }
 
 /** Consumers may restrict, but never replace, this executable-code trust boundary. */
-export const cloudflareWorkersTrustedJobCondition = (
+export const cloudflareWorkersTrustedJobConditionFor = (
   opts: CloudflareWorkersEvents = {},
 ): string => {
   const mainRef = expressionString(`refs/heads/${opts.mainBranch ?? 'main'}`)
@@ -62,6 +62,9 @@ export const cloudflareWorkersTrustedJobCondition = (
         ]),
   ].join(' || ')
 }
+
+/** Default main-push / same-repository PR predicate, without dispatch admission. */
+export const cloudflareWorkersTrustedJobCondition = cloudflareWorkersTrustedJobConditionFor()
 
 export type CloudflareWorkersTarget = {
   readonly name: string
@@ -121,7 +124,7 @@ export const cloudflareWorkersDeployJobs = (
     readonly runDevenvTasksBefore: RunTasksBefore
   },
 ): GitHubWorkflowArgs['jobs'] => {
-  const trustCondition = `(${cloudflareWorkersTrustedJobCondition(opts)})`
+  const trustCondition = `(${cloudflareWorkersTrustedJobConditionFor(opts)})`
   const jobs: GitHubWorkflowArgs['jobs'] = Object.fromEntries(
     opts.targets.map((target): [string, WorkflowJob] => [
       `deploy-${target.name}`,

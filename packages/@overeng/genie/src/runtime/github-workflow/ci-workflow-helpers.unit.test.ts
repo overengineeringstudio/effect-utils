@@ -2091,8 +2091,12 @@ describe('Cloudflare Workers trusted deployment jobs', () => {
           import {
             cloudflareWorkersDeployJobs,
             cloudflareWorkersTrustedJobCondition,
+            cloudflareWorkersTrustedJobConditionFor,
           } from './genie/deploy-preview/cloudflare-workers.ts'
 
+          assert.equal(typeof cloudflareWorkersTrustedJobCondition, 'string')
+          assert.equal(cloudflareWorkersTrustedJobCondition, cloudflareWorkersTrustedJobConditionFor())
+          assert.equal(cloudflareWorkersTrustedJobCondition, "(github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)")
           const jobs = cloudflareWorkersDeployJobs({
             targets: [{ name: 'web' }],
             runner: ['ubuntu-latest'],
@@ -2104,12 +2108,12 @@ describe('Cloudflare Workers trusted deployment jobs', () => {
           })
           const deploy = jobs['deploy-web']
           const comment = jobs['post-cloudflare-workers-deploy-comment']
-          assert.equal(deploy.if, '(' + cloudflareWorkersTrustedJobCondition() + ') && (false)')
+          assert.equal(deploy.if, '(' + cloudflareWorkersTrustedJobCondition + ') && (false)')
           assert.equal(deploy.env.CLOUDFLARE_API_TOKEN, 'token-expression')
           assert.equal(comment.env, undefined)
           assert.equal(comment.permissions['pull-requests'], 'write')
           assert.equal(deploy.permissions['pull-requests'], undefined)
-          assert.ok(comment.if.includes(cloudflareWorkersTrustedJobCondition()))
+          assert.ok(comment.if.includes(cloudflareWorkersTrustedJobCondition))
 
           for (const [event, ref, head, expected] of [
             ['push', 'refs/heads/main', '', true],
@@ -2124,7 +2128,7 @@ describe('Cloudflare Workers trusted deployment jobs', () => {
               event_name: event, ref, repository: 'example/repo',
               event: { pull_request: { head: { repo: { full_name: head } } } },
             }
-            assert.equal(Function('github', 'return (' + cloudflareWorkersTrustedJobCondition() + ')')(github), expected)
+            assert.equal(Function('github', 'return (' + cloudflareWorkersTrustedJobCondition + ')')(github), expected)
             assert.equal(Function('github', 'return (' + deploy.if + ')')(github), false)
           }
 

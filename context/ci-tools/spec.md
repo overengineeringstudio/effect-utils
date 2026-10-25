@@ -408,6 +408,10 @@ is in the explicitly declared `dispatchTypes` list and whose `github.ref` equals
 the main branch ref. Fork PRs, `pull_request_target`, undeclared dispatch types,
 and all other event types are excluded. `deployCondition` can restrict this
 predicate but cannot widen it.
+`cloudflareWorkersTrustedJobCondition` is the default string predicate (main
+pushes and same-repository PRs, without dispatch admission).
+`cloudflareWorkersTrustedJobConditionFor(options)` returns the predicate for
+configured event options; its default output equals the string export.
 
 `cloudflareWorkersDeployTriggers({ mainBranch, dispatchTypes })` supplies the
 workflow `on` fragment for main pushes, PRs, and optional repository dispatches.
