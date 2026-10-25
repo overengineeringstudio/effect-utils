@@ -241,6 +241,10 @@ for outer tasks that must complete before the nested devenv process can evaluate
   - Effective `frozenStore: true` policy also disables GVS, but retains the shared
     CAS selected above. The selector reads `pnpm config get frozen-store` in the
     Materialization Root, including the caller's isolated `XDG_CONFIG_HOME`.
+    Both storage selection and stale-projection repair include configuration
+    overrides from `installFlags` in that query. An explicit writable override
+    (`--frozen-store=false` or `--no-frozen-store`) therefore retains GVS even
+    under globally frozen policy.
     Builds run in writable `node_modules/.pnpm`, not the read-only shared
     `links/` graph. This overrides workspace GVS without relaxing offline,
     frozen-lockfile, or frozen-store policy. Only these read-only installs lose

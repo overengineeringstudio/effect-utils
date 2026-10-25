@@ -22,11 +22,13 @@ export PATH="$tmpdir/bin:$PATH"
 
 extract_script() {
   local root="$1" mode="$2" attr="$3" task="${4:-pnpm:install}"
+  local install_flags="${5:-[ ]}"
   nix-instantiate --eval --read-write-mode --strict --json --expr "
     let flake = builtins.getFlake \"$NIX_FLAKE_REF\";
       pkgs = import flake.inputs.nixpkgs { system = builtins.currentSystem; };
       module = (import $ROOT/nix/devenv-modules/tasks/shared/pnpm.nix {
         packages = [ \".\" ]; globalVirtualStore = $mode;
+        installFlags = $install_flags;
       }) {
         pkgs = pkgs // { writeText = name: text: builtins.toFile name text; };
         lib = pkgs.lib; config.devenv.root = \"$root\";
@@ -102,5 +104,20 @@ test -d "$first_target"
 (cd "$tmpdir/first"; node -e 'if (require("gvs-fixture") !== 42) process.exit(1)')
 (cd "$tmpdir/second"; node -e 'if (require("gvs-fixture") !== 42) process.exit(1)')
 echo 'frozen-store: existing GVS root rematerialized locally from the shared CAS'
+
+# The same root must return to GVS when per-install policy explicitly allows
+# writes, even while its global configuration remains frozen.
+extract_script "$tmpdir/first" true exec pnpm:install '[ "--frozen-store=false" ]'
+extract_script "$tmpdir/first" true status pnpm:install '[ "--frozen-store=false" ]'
+if DEVENV_SETUP_OUTER_CACHE_HIT=1 bash "$tmpdir/true-status-install.sh"; then
+  echo 'Writable override incorrectly reused the frozen local projection receipt'
+  exit 1
+fi
+bash "$tmpdir/true-exec-install.sh"
+bash "$tmpdir/true-status-install.sh"
+test "$(realpath "$tmpdir/first/node_modules/gvs-fixture")" = "$first_target"
+(cd "$tmpdir/first"; node -e 'if (require("gvs-fixture") !== 42) process.exit(1)')
+(cd "$tmpdir/second"; node -e 'if (require("gvs-fixture") !== 42) process.exit(1)')
+echo 'writable override: frozen local root returned to the shared GVS graph'
 
 echo 'All real pnpm GVS integration tests passed'

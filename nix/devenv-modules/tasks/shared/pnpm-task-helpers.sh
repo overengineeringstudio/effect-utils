@@ -16,12 +16,33 @@ pnpm_use_job_local_store() {
   [ "${GITHUB_ACTIONS:-}" = true ] || [ "${PNPM_JOB_LOCAL_STORE:-}" = 1 ]
 }
 
+pnpm_frozen_store_policy() {
+  local -a config_args=()
+  # `config get` accepts configuration overrides, but not install-only options
+  # such as --lockfile-only. Let pnpm resolve precedence and boolean spellings.
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --frozen-store | --no-frozen-store | --frozen-store=* | --config.* | \
+      --dir=* | -C?* | --ignore-workspace)
+        config_args+=("$1")
+        ;;
+      --dir | -C)
+        config_args+=("$1" "${2-}")
+        shift
+        ;;
+    esac
+    shift
+  done
+  pnpm config get frozen-store "${config_args[@]}"
+}
+
 configure_pnpm_storage() {
   local node_bin="$1"
   local materialization_root="$2"
   local job_local_store="$3"
   local host_is_linux="$4"
   local global_virtual_store="$5"
+  shift 5
   local store_dir
   local package_import_method="auto"
 
@@ -35,7 +56,7 @@ configure_pnpm_storage() {
   else
     if [ "$global_virtual_store" = true ]; then
       local frozen_store
-      frozen_store="$(cd "$materialization_root" && pnpm config get frozen-store)" || return
+      frozen_store="$(cd "$materialization_root" && pnpm_frozen_store_policy "$@")" || return
       # GVS puts dependency builds in the shared store. A frozen store can only
       # supply the CAS; builds must stay in this root's writable virtual store.
       if [ "$frozen_store" != true ]; then

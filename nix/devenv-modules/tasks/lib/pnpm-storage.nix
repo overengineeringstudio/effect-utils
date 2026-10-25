@@ -5,6 +5,7 @@
   config,
   workspaceRoot ? ".",
   globalVirtualStore ? false,
+  installFlags ? [ ],
 }:
 let
   workspaceCacheName = builtins.replaceStrings [ "/" "." ] [ "-" "_" ] workspaceRoot;
@@ -34,6 +35,7 @@ in
       ${lib.escapeShellArg workspaceRootAbs} \
       ${lib.escapeShellArg jobLocalPnpmStoreDir} \
       ${lib.boolToString pkgs.stdenv.hostPlatform.isLinux} \
-      ${lib.boolToString globalVirtualStore}
+      ${lib.boolToString globalVirtualStore} \
+      ${lib.escapeShellArgs installFlags}
   '';
 }

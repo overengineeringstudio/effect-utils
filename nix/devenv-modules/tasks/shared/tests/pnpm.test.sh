@@ -797,6 +797,14 @@ echo "Test 34i: effective frozen-store policy keeps the shared CAS and uses a wr
   assert_eq "false" "$(cd "$storage_root" && pnpm config get enable-global-virtual-store)" "selector overrides workspace GVS"
   test ! -e "$job_store"
 
+  for writable_flag in --frozen-store=false --no-frozen-store --config.frozen-store=false; do
+    configure_pnpm_storage node "$storage_root" "$job_store" true true --lockfile-only "$writable_flag"
+    assert_eq "$shared_store" "$PNPM_STORE_DIR" "$writable_flag retains the shared CAS"
+    assert_eq "true" "$PNPM_CONFIG_ENABLE_GLOBAL_VIRTUAL_STORE" "$writable_flag overrides global frozen policy"
+    test -z "${PNPM_CONFIG_VIRTUAL_STORE_DIR+x}"
+    assert_eq "false" "$(cd "$storage_root" && pnpm_frozen_store_policy --lockfile-only "$writable_flag")" "probe ignores install-only flags"
+  done
+
   # The default shared CAS must not change just because its projection is local.
   unset PNPM_SHARED_STORE_DIR
   configure_pnpm_storage node "$storage_root" "$job_store" true true
@@ -817,6 +825,8 @@ echo "Test 34i: effective frozen-store policy keeps the shared CAS and uses a wr
   configure_pnpm_storage node "$storage_root" "$job_store" true true
   assert_eq "true" "$PNPM_CONFIG_ENABLE_GLOBAL_VIRTUAL_STORE" "writable installs still use GVS"
   test -z "${PNPM_CONFIG_VIRTUAL_STORE_DIR+x}"
+  configure_pnpm_storage node "$storage_root" "$job_store" true true --frozen-store
+  assert_eq "false" "$PNPM_CONFIG_ENABLE_GLOBAL_VIRTUAL_STORE" "install flags can also enable frozen policy"
 )
 
 echo "Test 34c: a preexisting external files bridge fails closed"
