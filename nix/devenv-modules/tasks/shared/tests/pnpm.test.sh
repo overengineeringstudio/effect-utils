@@ -827,6 +827,12 @@ echo "Test 34i: effective frozen-store policy keeps the shared CAS and uses a wr
   test -z "${PNPM_CONFIG_VIRTUAL_STORE_DIR+x}"
   configure_pnpm_storage node "$storage_root" "$job_store" true true --frozen-store
   assert_eq "false" "$PNPM_CONFIG_ENABLE_GLOBAL_VIRTUAL_STORE" "install flags can also enable frozen policy"
+  for frozen_flag in --no-frozen-store=false --frozen-store-unknown; do
+    configure_pnpm_storage node "$storage_root" "$job_store" true true "$frozen_flag"
+    assert_eq "false" "$PNPM_CONFIG_ENABLE_GLOBAL_VIRTUAL_STORE" "$frozen_flag selects the read-only-safe projection"
+    assert_eq "node_modules/.pnpm" "$PNPM_CONFIG_VIRTUAL_STORE_DIR" "$frozen_flag keeps builds local"
+    assert_eq "true" "$(cd "$storage_root" && pnpm_frozen_store_policy "$frozen_flag")" "$frozen_flag also suppresses force"
+  done
 )
 
 echo "Test 34c: a preexisting external files bridge fails closed"

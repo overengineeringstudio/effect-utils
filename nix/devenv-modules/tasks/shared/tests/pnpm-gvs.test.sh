@@ -120,4 +120,16 @@ test "$(realpath "$tmpdir/first/node_modules/gvs-fixture")" = "$first_target"
 (cd "$tmpdir/second"; node -e 'if (require("gvs-fixture") !== 42) process.exit(1)')
 echo 'writable override: frozen local root returned to the shared GVS graph'
 
+# Native install accepts double negation even where config get cannot parse it.
+# The probe must conservatively select frozen policy, not silently drop the flag.
+printf 'offline: true\nfrozenLockfile: true\nfrozenStore: false\n' > "$XDG_CONFIG_HOME/pnpm/config.yaml"
+extract_script "$tmpdir/first" true exec pnpm:install '[ "--no-frozen-store=false" ]'
+extract_script "$tmpdir/first" true status pnpm:install '[ "--no-frozen-store=false" ]'
+bash "$tmpdir/true-exec-install.sh"
+bash "$tmpdir/true-status-install.sh"
+target="$(realpath "$tmpdir/first/node_modules/gvs-fixture")"
+case "$target" in "$tmpdir/first/node_modules/.pnpm/"*) ;; *) echo "Expected double-negative frozen projection: $target"; exit 1 ;; esac
+(cd "$tmpdir/second"; node -e 'if (require("gvs-fixture") !== 42) process.exit(1)')
+echo 'double-negative frozen policy: root-local projection and sibling runtime passed'
+
 echo 'All real pnpm GVS integration tests passed'

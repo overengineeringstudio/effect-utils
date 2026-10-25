@@ -18,12 +18,16 @@ pnpm_use_job_local_store() {
 
 pnpm_frozen_store_policy() {
   local -a config_args=()
+  local frozen_store_flag=false
   # `config get` accepts configuration overrides, but not install-only options
   # such as --lockfile-only. Let pnpm resolve precedence and boolean spellings.
   while [ "$#" -gt 0 ]; do
     case "$1" in
-      --frozen-store | --no-frozen-store | --frozen-store=* | --config.* | \
-      --dir=* | -C?* | --ignore-workspace)
+      --*frozen-store*)
+        config_args+=("$1")
+        frozen_store_flag=true
+        ;;
+      --config.* | --dir=* | -C?* | --ignore-workspace)
         config_args+=("$1")
         ;;
       --dir | -C)
@@ -33,7 +37,25 @@ pnpm_frozen_store_policy() {
     esac
     shift
   done
-  pnpm config get frozen-store "${config_args[@]}"
+  local policy
+  if policy="$(pnpm config get frozen-store "${config_args[@]}")"; then
+    if [ "$frozen_store_flag" = true ] && [ "$policy" != true ] && [ "$policy" != false ]; then
+      # A frozen-store-looking override without a resolved boolean is unsafe
+      # to treat as writable, including forms this native version ignores.
+      printf 'true\n'
+    else
+      printf '%s\n' "$policy"
+    fi
+  else
+    local status=$?
+    if [ "$frozen_store_flag" = true ]; then
+      # Keep parser diagnostics, but choose the read-only-safe projection when
+      # config get cannot resolve an install flag (for example double negation).
+      printf 'true\n'
+    else
+      return "$status"
+    fi
+  fi
 }
 
 configure_pnpm_storage() {
