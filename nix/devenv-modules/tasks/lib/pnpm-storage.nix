@@ -5,8 +5,11 @@
   config,
   workspaceRoot ? ".",
   globalVirtualStore ? false,
+  installFlags ? [ ],
+  pnpmPkg ? null,
 }:
 let
+  cliGuard = import ./cli-guard.nix { inherit pkgs; };
   workspaceCacheName = builtins.replaceStrings [ "/" "." ] [ "-" "_" ] workspaceRoot;
   cache = import ./cache.nix { inherit config; };
   cacheRoot = cache.mkCachePath (
@@ -29,11 +32,18 @@ in
       600
   '';
   configure = ''
+    ${cliGuard.resolveCliBin {
+      cli = "pnpm";
+      realBin = pnpmPkg;
+    }}
+    PNPM_NATIVE_BIN="$_real"
     configure_pnpm_storage \
       ${lib.escapeShellArg "${pkgs.nodejs}/bin/node"} \
       ${lib.escapeShellArg workspaceRootAbs} \
       ${lib.escapeShellArg jobLocalPnpmStoreDir} \
       ${lib.boolToString pkgs.stdenv.hostPlatform.isLinux} \
-      ${lib.boolToString globalVirtualStore}
+      ${lib.boolToString globalVirtualStore} \
+      "$PNPM_NATIVE_BIN" \
+      ${lib.escapeShellArgs installFlags}
   '';
 }

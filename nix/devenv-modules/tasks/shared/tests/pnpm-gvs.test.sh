@@ -20,20 +20,51 @@ pnpm_bin="${REAL_PNPM_BIN:-$(nix build --impure --no-link --print-out-paths --ex
 ln -s "$pnpm_bin" "$tmpdir/bin/pnpm"
 export PATH="$tmpdir/bin:$PATH"
 
+# Shell entry runs without task guard passthrough. Keep a real guard first on
+# PATH there to prove policy reads bypass it via the supplied native pin.
+guard_bin="$(nix build --impure --no-link --print-out-paths --expr "
+  let flake = builtins.getFlake \"$NIX_FLAKE_REF\";
+      pkgs = import flake.inputs.nixpkgs { system = builtins.currentSystem; };
+  in (import $ROOT/nix/devenv-modules/tasks/lib/cli-guard.nix { inherit pkgs; }).mkCliGuard {
+    cli = \"pnpm\"; realBin = \"$pnpm_bin\";
+    tasks = [ { task = \"pnpm:install\"; } ];
+  }
+")/bin"
+
 extract_script() {
   local root="$1" mode="$2" attr="$3" task="${4:-pnpm:install}"
+  local install_flags="${5:-[ ]}"
+  local pnpm_pkg_expr="${6:-\"$pnpm_bin\"}"
   nix-instantiate --eval --read-write-mode --strict --json --expr "
     let flake = builtins.getFlake \"$NIX_FLAKE_REF\";
       pkgs = import flake.inputs.nixpkgs { system = builtins.currentSystem; };
       module = (import $ROOT/nix/devenv-modules/tasks/shared/pnpm.nix {
         packages = [ \".\" ]; globalVirtualStore = $mode;
+        pnpmPkg = $pnpm_pkg_expr;
+        installFlags = $install_flags;
       }) {
         pkgs = pkgs // { writeText = name: text: builtins.toFile name text; };
         lib = pkgs.lib; config.devenv.root = \"$root\";
       };
-    in module.tasks.\"$task\".$attr
+    in if \"$attr\" == \"enterShell\" then module.enterShell.content else module.tasks.\"$task\".$attr
   " | jq -r . > "$tmpdir/$mode-$attr-${task##*:}.sh"
 }
+
+check_guarded_shell_policy() (
+  local root="$1" expected_gvs="$2"
+  extract_script "$root" true enterShell
+  export PATH="$guard_bin:$PATH"
+  unset DEVENV_TASK_PASSTHROUGH
+  cd "$root"
+  if pnpm config get frozen-store >/dev/null 2>&1; then
+    echo 'Expected the ambient task guard to reject direct shell invocation'
+    exit 1
+  fi
+  source "$tmpdir/true-enterShell-install.sh"
+  test "$PNPM_CONFIG_ENABLE_GLOBAL_VIRTUAL_STORE" = "$expected_gvs"
+  test "$PNPM_STORE_DIR" = "$PNPM_SHARED_STORE_DIR"
+  echo "guarded enterShell: GVS=$expected_gvs; native policy probe bypassed guard without passthrough"
+)
 
 for name in first second ci local; do
   root="$tmpdir/$name"
@@ -53,6 +84,7 @@ for name in first second ci local; do
   export PNPM_CONFIG_ENABLE_GLOBAL_VIRTUAL_STORE=true
   bash "$tmpdir/$mode-exec-install.sh"
   bash "$tmpdir/$mode-status-install.sh"
+  if [ "$name" = first ]; then check_guarded_shell_policy "$root" true; fi
   DEVENV_SETUP_OUTER_CACHE_HIT=1 bash "$tmpdir/$mode-status-install.sh"
   if [ "$name" = first ]; then
     extract_script "$root" false status
@@ -84,5 +116,96 @@ for name in first second ci local; do
   fi
   echo "$name: effective projection and runtime import passed"
 done
+
+# The guard, shell probe and installer must agree even without pnpmPkg.
+# Record real dispatches while keeping the guard first on PATH.
+for dispatch_mode in explicit omitted; do
+  (
+    root="$tmpdir/dispatch-$dispatch_mode"
+    mkdir -p "$root" "$root/native"
+    cp "$tmpdir/first/package.json" "$tmpdir/first/pnpm-workspace.yaml" "$tmpdir/first/pnpm-lock.yaml" "$root/"
+    printf '{}\n' > "$root/pnpm-install-contract.json"
+    recording_bin="$root/native/pnpm"
+    cat > "$recording_bin" <<EOF
+#!/usr/bin/env bash
+printf '%s\\t%s\\n' "\$0" "\${1-}" >> "\$PNPM_EXEC_LOG"
+exec "$pnpm_bin" "\$@"
+EOF
+    chmod +x "$recording_bin"
+    pnpm_pkg_expr=null
+    if [ "$dispatch_mode" = explicit ]; then pnpm_pkg_expr="\"$recording_bin\""; fi
+    dispatch_guard="$(nix build --impure --no-link --print-out-paths --expr "
+      let flake = builtins.getFlake \"$NIX_FLAKE_REF\";
+          pkgs = import flake.inputs.nixpkgs { system = builtins.currentSystem; };
+      in (import $ROOT/nix/devenv-modules/tasks/lib/cli-guard.nix { inherit pkgs; }).mkCliGuard {
+        cli = \"pnpm\"; realBin = $pnpm_pkg_expr;
+        tasks = [ { task = \"pnpm:install\"; } ];
+      }
+    ")/bin"
+    export PATH="$dispatch_guard:$root/native:$PATH"
+    export PNPM_EXEC_LOG="$root/dispatch.log"
+    unset DEVENV_TASK_PASSTHROUGH
+    extract_script "$root" true enterShell pnpm:install '[ ]' "$pnpm_pkg_expr"
+    extract_script "$root" true exec pnpm:install '[ ]' "$pnpm_pkg_expr"
+    cd "$root"
+    source "$tmpdir/true-enterShell-install.sh"
+    test "$PNPM_NATIVE_BIN" = "$recording_bin"
+    test "$PNPM_CONFIG_ENABLE_GLOBAL_VIRTUAL_STORE" = true
+    bash "$tmpdir/true-exec-install.sh"
+    DEVENV_TASK_PASSTHROUGH=1 pnpm --version
+    node - "$PNPM_EXEC_LOG" "$recording_bin" <<'NODE'
+const fs = require('node:fs')
+const rows = fs.readFileSync(process.argv[2], 'utf8').trim().split('\n').map(line => line.split('\t'))
+if (rows.some(([path]) => path !== process.argv[3]) || !['config', 'install', '--version'].every(command => rows.some(([,arg]) => arg === command))) process.exit(1)
+NODE
+    echo "$dispatch_mode pnpmPkg: guard, policy probe and install dispatched the same absolute binary"
+  )
+done
+
+# Reproduce an offline reader switching an existing GVS projection to a local
+# one. This also exercises stale-projection repair: --force is incompatible
+# with frozenStore even after the old node_modules has been purged.
+export XDG_CONFIG_HOME="$tmpdir/frozen-xdg"
+mkdir -p "$XDG_CONFIG_HOME/pnpm"
+printf 'offline: true\nfrozenLockfile: true\nfrozenStore: true\n' > "$XDG_CONFIG_HOME/pnpm/config.yaml"
+check_guarded_shell_policy "$tmpdir/first" false
+extract_script "$tmpdir/first" true exec
+extract_script "$tmpdir/first" true status
+bash "$tmpdir/true-exec-install.sh"
+bash "$tmpdir/true-status-install.sh"
+target="$(realpath "$tmpdir/first/node_modules/gvs-fixture")"
+case "$target" in "$tmpdir/first/node_modules/.pnpm/"*) ;; *) echo "Expected frozen root-local projection: $target"; exit 1 ;; esac
+test "$(jq -r .storeDir "$tmpdir/first/node_modules/.modules.yaml")" = "$PNPM_SHARED_STORE_DIR/v11"
+test -d "$first_target"
+(cd "$tmpdir/first"; node -e 'if (require("gvs-fixture") !== 42) process.exit(1)')
+(cd "$tmpdir/second"; node -e 'if (require("gvs-fixture") !== 42) process.exit(1)')
+echo 'frozen-store: existing GVS root rematerialized locally from the shared CAS'
+
+# The same root must return to GVS when per-install policy explicitly allows
+# writes, even while its global configuration remains frozen.
+extract_script "$tmpdir/first" true exec pnpm:install '[ "--frozen-store=false" ]'
+extract_script "$tmpdir/first" true status pnpm:install '[ "--frozen-store=false" ]'
+if DEVENV_SETUP_OUTER_CACHE_HIT=1 bash "$tmpdir/true-status-install.sh"; then
+  echo 'Writable override incorrectly reused the frozen local projection receipt'
+  exit 1
+fi
+bash "$tmpdir/true-exec-install.sh"
+bash "$tmpdir/true-status-install.sh"
+test "$(realpath "$tmpdir/first/node_modules/gvs-fixture")" = "$first_target"
+(cd "$tmpdir/first"; node -e 'if (require("gvs-fixture") !== 42) process.exit(1)')
+(cd "$tmpdir/second"; node -e 'if (require("gvs-fixture") !== 42) process.exit(1)')
+echo 'writable override: frozen local root returned to the shared GVS graph'
+
+# Native install accepts double negation even where config get cannot parse it.
+# The probe must conservatively select frozen policy, not silently drop the flag.
+printf 'offline: true\nfrozenLockfile: true\nfrozenStore: false\n' > "$XDG_CONFIG_HOME/pnpm/config.yaml"
+extract_script "$tmpdir/first" true exec pnpm:install '[ "--no-frozen-store=false" ]'
+extract_script "$tmpdir/first" true status pnpm:install '[ "--no-frozen-store=false" ]'
+bash "$tmpdir/true-exec-install.sh"
+bash "$tmpdir/true-status-install.sh"
+target="$(realpath "$tmpdir/first/node_modules/gvs-fixture")"
+case "$target" in "$tmpdir/first/node_modules/.pnpm/"*) ;; *) echo "Expected double-negative frozen projection: $target"; exit 1 ;; esac
+(cd "$tmpdir/second"; node -e 'if (require("gvs-fixture") !== 42) process.exit(1)')
+echo 'double-negative frozen policy: root-local projection and sibling runtime passed'
 
 echo 'All real pnpm GVS integration tests passed'

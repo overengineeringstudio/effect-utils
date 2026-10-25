@@ -260,6 +260,14 @@ echo ""
 test_dir="$(mktemp -d)"
 trap 'rm -rf "$test_dir"' EXIT
 
+# Config-policy fixtures exercise native pnpm, not the ambient task CLI guard
+# or a developer's managed wrapper. Keep the provider aligned with the GVS suite.
+NIX_FLAKE_REF="${NIX_FLAKE_REF:-git+file://$ROOT?shallow=1}"
+pnpm_bin="${REAL_PNPM_BIN:-$(nix build --impure --no-link --print-out-paths --expr "let flake = builtins.getFlake \"$NIX_FLAKE_REF\"; pkgs = import flake.inputs.nixpkgs { system = builtins.currentSystem; }; in import $ROOT/nix/pnpm.nix { inherit pkgs; }")/bin/pnpm}"
+mkdir -p "$test_dir/bin"
+ln -s "$pnpm_bin" "$test_dir/bin/pnpm"
+export PATH="$test_dir/bin:$PATH"
+
 echo "Test 5: ensure_local_pnpm_home_default sets a workspace-local default"
 (
   unset PNPM_HOME
@@ -680,7 +688,7 @@ echo "Test 34: Linux shared storage selects one full store and automatic zero-co
   unset CI PNPM_STORE_DIR PNPM_CONFIG_STORE_DIR npm_config_store_dir
   export PNPM_SHARED_STORE_DIR="$shared_store"
   export PNPM_MIN_FREE_KIB=0
-  configure_pnpm_storage node "$storage_root" "$test_dir/job-store" true false
+  configure_pnpm_storage node "$storage_root" "$test_dir/job-store" true false "$pnpm_bin"
   assert_eq "$shared_store" "$npm_config_store_dir" "local roots select the host-owned full store"
   assert_eq "auto" "$PNPM_PACKAGE_IMPORT_METHOD" "Linux delegates safe zero-copy selection to pnpm"
   test -d "$shared_store/v11/files"
@@ -718,7 +726,7 @@ echo "Test 34h: CI alone retains shared storage while runner identity or opt-in 
       if [ "$expected_store" != "$job_store" ]; then
         expected_store="$selected_shared_store"
       fi
-      configure_pnpm_storage node "$storage_root" "$job_store" true false
+      configure_pnpm_storage node "$storage_root" "$job_store" true false "$pnpm_bin"
       assert_eq "$expected_store" "$PNPM_STORE_DIR" "$scenario/$shared_policy selects the declared store"
       assert_eq "$expected_store" "$PNPM_CONFIG_STORE_DIR" "$scenario/$shared_policy agrees with pnpm's config"
       assert_eq "$expected_store" "$npm_config_store_dir" "$scenario/$shared_policy agrees with npm's config"
@@ -729,7 +737,7 @@ echo "Test 34h: CI alone retains shared storage while runner identity or opt-in 
 
   unset GITHUB_ACTIONS PNPM_JOB_LOCAL_STORE
   export CI=1 PNPM_SHARED_STORE_DIR="$shared_store"
-  configure_pnpm_storage node "$storage_root" "$job_store" true true
+  configure_pnpm_storage node "$storage_root" "$job_store" true true "$pnpm_bin"
   assert_eq "$shared_store" "$npm_config_store_dir" "CI alone retains the opted-in shared GVS store"
   assert_eq "true" "$PNPM_CONFIG_ENABLE_GLOBAL_VIRTUAL_STORE" "CI alone does not disable the local GVS opt-in"
 )
@@ -743,7 +751,7 @@ echo "Test 34b: historical shared-files pools stay outside the managed store"
   printf 'historical\n' > "$historical_pool/sentinel"
   export HOME="$isolated_home"
   unset CI PNPM_SHARED_STORE_DIR PNPM_SHARED_FILES_DIR PNPM_STORE_DIR PNPM_CONFIG_STORE_DIR npm_config_store_dir
-  configure_pnpm_storage node "$storage_root" "$test_dir/job-store" true false
+  configure_pnpm_storage node "$storage_root" "$test_dir/job-store" true false "$pnpm_bin"
   assert_eq "$isolated_home/.local/share/pnpm/store-shared-v1" "$npm_config_store_dir" "default local store uses its fresh namespace"
   test -d "$npm_config_store_dir/v11/files"
   test ! -L "$npm_config_store_dir/v11/files"
@@ -759,14 +767,78 @@ echo "Test 34g: GVS opt-in selects the complete standard store and clears local 
   unset CI PNPM_SHARED_STORE_DIR
   export PNPM_CONFIG_VIRTUAL_STORE_DIR=node_modules/.pnpm
   export npm_config_virtual_store_dir=node_modules/.pnpm
-  configure_pnpm_storage node "$storage_root" "$test_dir/job-store" true true
+  configure_pnpm_storage node "$storage_root" "$test_dir/job-store" true true "$pnpm_bin"
   assert_eq "$isolated_home/.local/share/pnpm/store" "$npm_config_store_dir" "GVS selects the standard complete store"
   assert_eq "true" "$PNPM_CONFIG_ENABLE_GLOBAL_VIRTUAL_STORE" "GVS uses the effective pnpm environment key"
   test -z "${PNPM_CONFIG_VIRTUAL_STORE_DIR+x}"
   test -z "${npm_config_virtual_store_dir+x}"
-  configure_pnpm_storage node "$storage_root" "$test_dir/job-store" true false
+  configure_pnpm_storage node "$storage_root" "$test_dir/job-store" true false "$pnpm_bin"
   assert_eq "false" "$PNPM_CONFIG_ENABLE_GLOBAL_VIRTUAL_STORE" "non-opted roots disable inherited GVS"
   assert_eq "node_modules/.pnpm" "$PNPM_CONFIG_VIRTUAL_STORE_DIR" "non-opted roots retain a local projection"
+)
+
+echo "Test 34i: effective frozen-store policy keeps the shared CAS and uses a writable local projection"
+(
+  storage_root="$test_dir/frozen-storage-root"
+  isolated_home="$test_dir/frozen-storage-home"
+  shared_store="$test_dir/frozen-shared-store"
+  job_store="$test_dir/frozen-job-store"
+  mkdir -p "$storage_root" "$isolated_home/xdg/pnpm"
+  export HOME="$isolated_home" XDG_CONFIG_HOME="$isolated_home/xdg"
+  export PNPM_SHARED_STORE_DIR="$shared_store"
+  unset CI GITHUB_ACTIONS PNPM_JOB_LOCAL_STORE
+  # This is the read-only install policy used by offline projection callers.
+  printf 'offline: true\nfrozenLockfile: true\nfrozenStore: true\n' > "$XDG_CONFIG_HOME/pnpm/config.yaml"
+  printf 'enableGlobalVirtualStore: true\n' > "$storage_root/pnpm-workspace.yaml"
+  configure_pnpm_storage node "$storage_root" "$job_store" true true "$pnpm_bin"
+  assert_eq "$shared_store" "$PNPM_STORE_DIR" "frozen store retains the shared CAS"
+  assert_eq "false" "$PNPM_CONFIG_ENABLE_GLOBAL_VIRTUAL_STORE" "frozen store disables GVS"
+  assert_eq "false" "$npm_config_enable_global_virtual_store" "npm alias agrees"
+  assert_eq "node_modules/.pnpm" "$PNPM_CONFIG_VIRTUAL_STORE_DIR" "builds remain in the materialization root"
+  assert_eq "true" "$(cd "$storage_root" && pnpm config get frozen-store)" "read-only policy is not relaxed"
+  assert_eq "false" "$(cd "$storage_root" && pnpm config get enable-global-virtual-store)" "selector overrides workspace GVS"
+  test ! -e "$job_store"
+
+  for writable_flag in --frozen-store=false --no-frozen-store --config.frozen-store=false; do
+    configure_pnpm_storage node "$storage_root" "$job_store" true true "$pnpm_bin" --lockfile-only "$writable_flag"
+    assert_eq "$shared_store" "$PNPM_STORE_DIR" "$writable_flag retains the shared CAS"
+    assert_eq "true" "$PNPM_CONFIG_ENABLE_GLOBAL_VIRTUAL_STORE" "$writable_flag overrides global frozen policy"
+    test -z "${PNPM_CONFIG_VIRTUAL_STORE_DIR+x}"
+    assert_eq "false" "$(cd "$storage_root" && pnpm_frozen_store_policy "$pnpm_bin" --lockfile-only "$writable_flag")" "probe ignores install-only flags"
+  done
+
+  # The default shared CAS must not change just because its projection is local.
+  unset PNPM_SHARED_STORE_DIR
+  configure_pnpm_storage node "$storage_root" "$job_store" true true "$pnpm_bin"
+  assert_eq "$HOME/.local/share/pnpm/store" "$PNPM_STORE_DIR" "frozen policy preserves the GVS default CAS"
+  for mode in github-actions fixed-output-job-local; do
+    unset GITHUB_ACTIONS PNPM_JOB_LOCAL_STORE
+    case "$mode" in
+      github-actions) export GITHUB_ACTIONS=true ;;
+      fixed-output-job-local) export PNPM_JOB_LOCAL_STORE=1 ;;
+    esac
+    configure_pnpm_storage node "$storage_root" "$job_store" true true "$pnpm_bin"
+    assert_eq "$job_store" "$PNPM_STORE_DIR" "$mode keeps its job-local CAS"
+    assert_eq "false" "$PNPM_CONFIG_ENABLE_GLOBAL_VIRTUAL_STORE" "$mode keeps GVS disabled"
+  done
+
+  unset GITHUB_ACTIONS PNPM_JOB_LOCAL_STORE
+  printf 'frozenStore: false\n' > "$XDG_CONFIG_HOME/pnpm/config.yaml"
+  configure_pnpm_storage node "$storage_root" "$job_store" true true "$pnpm_bin"
+  assert_eq "true" "$PNPM_CONFIG_ENABLE_GLOBAL_VIRTUAL_STORE" "writable installs still use GVS"
+  test -z "${PNPM_CONFIG_VIRTUAL_STORE_DIR+x}"
+  configure_pnpm_storage node "$storage_root" "$job_store" true true "$pnpm_bin" --filter=./frozen-store-workspace
+  assert_eq "true" "$PNPM_CONFIG_ENABLE_GLOBAL_VIRTUAL_STORE" "frozen-store in an equals-form filter value does not select frozen policy"
+  configure_pnpm_storage node "$storage_root" "$job_store" true true "$pnpm_bin" --filter ./frozen-store-workspace
+  assert_eq "true" "$PNPM_CONFIG_ENABLE_GLOBAL_VIRTUAL_STORE" "frozen-store in a separate filter value does not select frozen policy"
+  configure_pnpm_storage node "$storage_root" "$job_store" true true "$pnpm_bin" --frozen-store
+  assert_eq "false" "$PNPM_CONFIG_ENABLE_GLOBAL_VIRTUAL_STORE" "install flags can also enable frozen policy"
+  for frozen_flag in --no-frozen-store=false --frozen-store=unknown; do
+    configure_pnpm_storage node "$storage_root" "$job_store" true true "$pnpm_bin" "$frozen_flag"
+    assert_eq "false" "$PNPM_CONFIG_ENABLE_GLOBAL_VIRTUAL_STORE" "$frozen_flag selects the read-only-safe projection"
+    assert_eq "node_modules/.pnpm" "$PNPM_CONFIG_VIRTUAL_STORE_DIR" "$frozen_flag keeps builds local"
+    assert_eq "true" "$(cd "$storage_root" && pnpm_frozen_store_policy "$pnpm_bin" "$frozen_flag")" "$frozen_flag also suppresses force"
+  done
 )
 
 echo "Test 34c: a preexisting external files bridge fails closed"
@@ -780,7 +852,7 @@ echo "Test 34c: a preexisting external files bridge fails closed"
   export HOME="$isolated_home"
   unset CI PNPM_SHARED_STORE_DIR PNPM_SHARED_FILES_DIR PNPM_STORE_DIR PNPM_CONFIG_STORE_DIR npm_config_store_dir
   set +e
-  output="$(set -e; configure_pnpm_storage node "$storage_root" "$test_dir/job-store" true false 2>&1)"
+  output="$(set -e; configure_pnpm_storage node "$storage_root" "$test_dir/job-store" true false "$pnpm_bin" 2>&1)"
   exit_code=$?
   set -e
   assert_exit_code 1 "$exit_code" "preexisting external Store Cache bridge should fail before pnpm runs"
@@ -799,7 +871,7 @@ echo "Test 34d: a preexisting external store-version bridge fails before mutatio
   export HOME="$isolated_home"
   unset CI PNPM_SHARED_STORE_DIR PNPM_SHARED_FILES_DIR PNPM_STORE_DIR PNPM_CONFIG_STORE_DIR npm_config_store_dir
   set +e
-  output="$(set -e; configure_pnpm_storage node "$storage_root" "$test_dir/job-store" true false 2>&1)"
+  output="$(set -e; configure_pnpm_storage node "$storage_root" "$test_dir/job-store" true false "$pnpm_bin" 2>&1)"
   exit_code=$?
   set -e
   assert_exit_code 1 "$exit_code" "external Store Cache version bridge should fail before creating files"
@@ -856,7 +928,7 @@ if [ -d /dev/shm ] && [ "$(stat -c '%d' /dev/shm)" != "$(stat -c '%d' "$test_dir
     export PNPM_SHARED_STORE_DIR="$cross_device_store"
     export PNPM_MIN_FREE_KIB=0
     set +e
-    output="$(set -e; configure_pnpm_storage node "$storage_root" "$test_dir/job-store" true false 2>&1)"
+    output="$(set -e; configure_pnpm_storage node "$storage_root" "$test_dir/job-store" true false "$pnpm_bin" 2>&1)"
     exit_code=$?
     set -e
     assert_exit_code 1 "$exit_code" "cross-device zero-copy storage should fail before pnpm runs"
@@ -880,7 +952,7 @@ echo "Test 35b: GitHub Actions forces its declared job-local store"
   export npm_config_store_dir="$test_dir/runner-shared-store"
   export PNPM_CONFIG_ENABLE_GLOBAL_VIRTUAL_STORE=true
   export npm_config_enable_global_virtual_store=true
-  configure_pnpm_storage node "$storage_root" "$job_store" true true
+  configure_pnpm_storage node "$storage_root" "$job_store" true true "$pnpm_bin"
   assert_eq "$job_store" "$npm_config_store_dir" "CI store authority remains job-local"
   assert_eq "auto" "$PNPM_PACKAGE_IMPORT_METHOD" "CI uses the same native import policy"
   assert_eq "false" "$PNPM_CONFIG_ENABLE_GLOBAL_VIRTUAL_STORE" "CI overrides an inherited GVS opt-in"
