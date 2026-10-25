@@ -67,7 +67,7 @@ export const matchDependencyAllowlist = ({
   )
 
 /** Bump whenever classification or parsing changes. Cache entries contain no caller filenames. */
-export const closureAnalyzerVersion = '1'
+export const closureAnalyzerVersion = '2'
 
 const memoryCache = new Map<string, ClosureModuleAnalysis>()
 const builtins = new Set(builtinModules.map((name) => name.replace(/^node:/, '')))
@@ -132,6 +132,97 @@ const pureGlobals: Readonly<Record<string, true>> = Object.fromEntries(
     'decodeURIComponent',
   ].map((name) => [name, true as const]),
 )
+
+// Ambient globals themselves must never escape as values. Only these reviewed static
+// members produce plain data or preserve already-audited arguments; inherited members
+// (especially valueOf), prototypes, descriptors, and future APIs stay unproven.
+const pureGlobalMembers: Readonly<Record<string, readonly string[]>> = {
+  Object: [
+    'keys',
+    'entries',
+    'values',
+    'fromEntries',
+    'freeze',
+    'seal',
+    'preventExtensions',
+    'assign',
+    'hasOwn',
+    'is',
+    'isExtensible',
+    'isFrozen',
+    'isSealed',
+  ],
+  Array: ['isArray', 'from', 'of'],
+  String: ['fromCharCode', 'fromCodePoint', 'raw'],
+  Number: [
+    'isFinite',
+    'isInteger',
+    'isNaN',
+    'isSafeInteger',
+    'parseFloat',
+    'parseInt',
+    'EPSILON',
+    'MAX_SAFE_INTEGER',
+    'MAX_VALUE',
+    'MIN_SAFE_INTEGER',
+    'MIN_VALUE',
+    'NaN',
+    'NEGATIVE_INFINITY',
+    'POSITIVE_INFINITY',
+  ],
+  BigInt: ['asIntN', 'asUintN'],
+  JSON: ['parse', 'stringify'],
+  Math: [
+    'abs',
+    'acos',
+    'acosh',
+    'asin',
+    'asinh',
+    'atan',
+    'atan2',
+    'atanh',
+    'cbrt',
+    'ceil',
+    'clz32',
+    'cos',
+    'cosh',
+    'exp',
+    'expm1',
+    'floor',
+    'fround',
+    'hypot',
+    'imul',
+    'log',
+    'log10',
+    'log1p',
+    'log2',
+    'max',
+    'min',
+    'pow',
+    'round',
+    'sign',
+    'sin',
+    'sinh',
+    'sqrt',
+    'tan',
+    'tanh',
+    'trunc',
+    'E',
+    'LN10',
+    'LN2',
+    'LOG10E',
+    'LOG2E',
+    'PI',
+    'SQRT1_2',
+    'SQRT2',
+  ],
+  ArrayBuffer: ['isView'],
+}
+const primitiveGlobals: Readonly<Record<string, true>> = {
+  undefined: true,
+  NaN: true,
+  Infinity: true,
+}
 
 // Explicit syntax inventory: new compiler syntax remains unproven until reviewed here.
 const supportedSyntax: Readonly<Record<string, true>> = Object.fromEntries(
@@ -275,6 +366,14 @@ const scopeDeclarations = (node: Node): ReadonlySet<string> => {
   if (ts.isCatchClause(node) === true && node.variableDeclaration !== undefined)
     addBindings({ target: declarations, name: node.variableDeclaration.name })
   const collect = (child: Node): void => {
+    // Erased imports cannot shadow an unresolved runtime identifier, including
+    // namespace/default bindings nested inside a whole type-only clause.
+    if (
+      (ts.isImportClause(child) === true && child.phaseModifier === ts.SyntaxKind.TypeKeyword) ||
+      (ts.isImportSpecifier(child) === true && child.isTypeOnly === true) ||
+      (ts.isImportEqualsDeclaration(child) === true && child.isTypeOnly === true)
+    )
+      return
     if (
       (ts.isFunctionDeclaration(child) === true ||
         ts.isClassDeclaration(child) === true ||
@@ -612,21 +711,14 @@ export const analyzeClosureAst = ({
       classifyProperty({ node: node, property: property })
       if (
         ts.isIdentifier(root) === true &&
-        ((root.text === 'Math' && property === 'random') ||
-          root.text === 'Date' ||
-          (root.text === 'Symbol' && property === 'for') ||
-          (root.text === 'Object' &&
-            [
-              'getPrototypeOf',
-              'setPrototypeOf',
-              'getOwnPropertyDescriptor',
-              'getOwnPropertyDescriptors',
-            ].includes(property ?? '') === true))
+        (root.text === 'Date' ||
+          (pureGlobals[root.text] === true &&
+            pureGlobalMembers[root.text]?.includes(property ?? '') !== true))
       ) {
         reason({
           node: node,
           operation: 'ambient-state',
-          detail: 'Ambient state or reflective access is not accounted for.',
+          detail: 'Unreviewed ambient builtin member access is not accounted for.',
         })
       }
       if (root.kind === ts.SyntaxKind.MetaProperty) {
@@ -683,9 +775,16 @@ export const analyzeClosureAst = ({
               detail: `${name} may expose ambient capabilities.`,
             })
         } else if (
-          ['Math', 'Object', 'Symbol'].includes(name) === true &&
+          pureGlobals[name] === true &&
+          primitiveGlobals[name] !== true &&
           (parent === undefined ||
-            !(ts.isPropertyAccessExpression(parent) === true && parent.expression === node))
+            !(
+              (ts.isPropertyAccessExpression(parent) === true && parent.expression === node) ||
+              ((ts.isCallExpression(parent) === true || ts.isNewExpression(parent) === true) &&
+                parent.expression === node &&
+                name !== 'Math' &&
+                name !== 'JSON')
+            ))
         ) {
           reason({
             node: node,

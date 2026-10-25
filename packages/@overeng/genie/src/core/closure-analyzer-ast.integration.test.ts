@@ -68,6 +68,27 @@ const mutations = [
   ],
   ['aliased randomness', 'const math = Math; math.random()', 'ambient-reference'],
   [
+    'boxed Object constructor escape',
+    "const O = Object.valueOf() as typeof Object; O.getOwnPropertyDescriptor(O.getPrototypeOf(Array),'constructor')!.value('return process.env.SECRET')()",
+    'ambient-state',
+  ],
+  ['boxed Math randomness', 'Math.valueOf().random()', 'ambient-state'],
+  ['builtin prototype', 'Array.prototype', 'ambient-state'],
+  ['builtin descriptor', 'Object.getOwnPropertyDescriptor({}, "value")', 'ambient-state'],
+  ['builtin constructor member', 'Array.constructor("return process")()', 'ambient-state'],
+  ['Reflect access', 'Reflect.getPrototypeOf(Array)', 'unknown-global'],
+  ['unreviewed builtin member', 'Object.futureAmbientCapability()', 'ambient-state'],
+  ['boxed scalar constructor', 'Number.valueOf()', 'ambient-state'],
+  ['boxed collection constructor', 'Map.valueOf()', 'ambient-state'],
+  ['boxed function global', 'parseInt.valueOf()', 'ambient-state'],
+  ['aliased array constructor', 'const A = Array; A.valueOf()', 'ambient-reference'],
+  ['aliased number constructor', 'const N = Number; N.valueOf()', 'ambient-reference'],
+  ['aliased collection constructor', 'const M = Map; M.valueOf()', 'ambient-reference'],
+  ['aliased JSON registry', 'const J = JSON; J.valueOf()', 'ambient-reference'],
+  ['aliased function global', 'const parse = parseInt; parse.valueOf()', 'ambient-reference'],
+  ['destructured builtin alias', 'const { valueOf } = Array; valueOf()', 'ambient-reference'],
+  ['wrapped builtin alias', 'const A = (Array as typeof Array); A.valueOf()', 'ambient-reference'],
+  [
     'destructured constructor',
     'const { constructor: F } = () => {}; F("return process")()',
     'reflection',
@@ -169,6 +190,65 @@ describe('static native closure analysis', () => {
       export const result = JSON.stringify({ text, values })
     `),
     ).toEqual({ imports: [], reasons: [] })
+  })
+
+  it('allows reviewed builtin members and direct construction without exposing ambient globals', async () => {
+    expect(
+      await analyze(`
+      const source = { value: 1 }
+      const copy = Object.assign({}, source)
+      Object.freeze(copy)
+      const keys = Object.keys(copy)
+      const entries = Object.entries(copy)
+      const values = Object.values(copy)
+      const score = Math.max(Math.min(Math.floor(2.5), 4), 1)
+      const array = Array.isArray(values)
+      const map = new Map([['key', score]])
+      const number = Number('2')
+      const parsed = parseInt('10', 10)
+      const text = JSON.stringify({ keys, entries, values, score, array, number, parsed })
+      export const result = { text, map, missing: undefined, infinity: Infinity, nan: NaN }
+    `),
+    ).toEqual({ imports: [], reasons: [] })
+  })
+
+  it.each([
+    ['whole named clause', 'import type { fetch } from "./types.ts"'],
+    ['whole default clause', 'import type fetch from "./types.ts"'],
+    ['whole namespace clause', 'import type * as fetch from "./types.ts"'],
+    ['individual specifier', 'import { type fetch } from "./types.ts"'],
+    ['renamed specifier', 'import { type Reader as fetch } from "./types.ts"'],
+    ['type-only import equals', 'import type fetch = require("./types.ts")'],
+  ])('does not register a runtime binding for a %s', async (_name, declaration) => {
+    const analysis = await analyze(`${declaration}\nfetch("https://example.invalid")`)
+    expect(analysis.imports).toEqual([])
+    expect(analysis.reasons).toContainEqual({
+      operation: 'unknown-global',
+      detail: 'Unresolved runtime identifier fetch.',
+      line: 2,
+    })
+  })
+
+  it('keeps only runtime bindings from mixed imports', async () => {
+    const analysis = await analyze(`
+      import defaultReader, { type Reader as missingReader, read } from "./mixed.ts"
+      import * as readers from "./namespace.ts"
+      import alias = require("./alias.ts")
+      defaultReader(); read(); readers.read(); alias.read()
+      missingReader()
+    `)
+    expect(analysis.imports.map((edge) => edge.path)).toEqual([
+      './mixed.ts',
+      './namespace.ts',
+      './alias.ts',
+    ])
+    expect(analysis.reasons).toEqual([
+      {
+        operation: 'unknown-global',
+        detail: 'Unresolved runtime identifier missingReader.',
+        line: 6,
+      },
+    ])
   })
 
   it('retains runtime edges and excludes every type-only import/re-export form', async () => {
