@@ -401,10 +401,27 @@ untrusted Worker deployment safe.
 `genie/deploy-preview/cloudflare-workers.ts` exports
 `cloudflareWorkersDeployJobs`, which guards the **entire job** before checkout,
 build prerequisites, or credential-bearing environment variables are available.
-Its non-overridable event predicate admits only pushes to `refs/heads/main` and
-`pull_request` events whose head repository equals `github.repository`.
-Fork PRs, `pull_request_target`, and all other event types are excluded.
-`deployCondition` can restrict this predicate but cannot widen it.
+Its non-overridable event predicate admits pushes to the main branch
+(`mainBranch`, default `main`), `pull_request` events whose head repository equals
+`github.repository`, and `repository_dispatch` events whose `github.event.action`
+is in the explicitly declared `dispatchTypes` list and whose `github.ref` equals
+the main branch ref. Fork PRs, `pull_request_target`, undeclared dispatch types,
+and all other event types are excluded. `deployCondition` can restrict this
+predicate but cannot widen it.
+
+`cloudflareWorkersDeployTriggers({ mainBranch, dispatchTypes })` supplies the
+workflow `on` fragment for main pushes, PRs, and optional repository dispatches.
+It emits `repository_dispatch: { types: [...] }` only for a non-empty list.
+Dispatch types must be non-empty strings without wildcards; both the trigger
+and job helpers validate them. Pass the same event options to both helpers.
+Adding a trigger manually does not admit dispatches without declared types in
+the job helper.
+
+Repository dispatch requires a repository-write token, the same trust level as
+a main push, and runs default-branch code. Dispatch runs use production deploy
+mode, never PR mode. The helpers do not read `client_payload` in conditions,
+environment variables, or commands. Dispatches and main pushes share a
+per-target production concurrency group; PRs use separate per-PR groups.
 
 The consumer supplies job-local credentials through `env`, setup steps through
 `baseSteps`, and the existing `runDevenvTasksBefore` callback. Do not put
