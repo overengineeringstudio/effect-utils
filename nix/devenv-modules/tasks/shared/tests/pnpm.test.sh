@@ -695,6 +695,7 @@ echo "Test 34h: CI alone retains shared storage while runner identity or opt-in 
   isolated_home="$test_dir/store-selection-home"
   mkdir -p "$storage_root"
   printf '{"private":true,"packageManager":"pnpm@12.7.0"}\n' > "$storage_root/package.json"
+  git -C "$storage_root" init -q
   export HOME="$isolated_home"
 
   for scenario in ci-only github-actions opt-in neither false-flags; do
@@ -757,6 +758,7 @@ echo "Test 34g: GVS opt-in selects the complete standard store and clears local 
   isolated_home="$test_dir/gvs-storage-home"
   mkdir -p "$storage_root"
   printf '{"private":true,"packageManager":"pnpm@12.7.0"}\n' > "$storage_root/package.json"
+  git -C "$storage_root" init -q
   export HOME="$isolated_home"
   unset CI PNPM_SHARED_STORE_DIR
   export PNPM_CONFIG_VIRTUAL_STORE_DIR=node_modules/.pnpm
@@ -779,6 +781,7 @@ echo "Test 34i: effective frozen-store policy keeps the shared CAS and uses a wr
   job_store="$test_dir/frozen-job-store"
   mkdir -p "$storage_root" "$isolated_home/xdg/pnpm"
   printf '{"private":true,"packageManager":"pnpm@12.7.0"}\n' > "$storage_root/package.json"
+  git -C "$storage_root" init -q
   export HOME="$isolated_home" XDG_CONFIG_HOME="$isolated_home/xdg"
   export PNPM_SHARED_STORE_DIR="$shared_store"
   unset CI GITHUB_ACTIONS PNPM_JOB_LOCAL_STORE
