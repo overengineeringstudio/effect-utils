@@ -14,7 +14,7 @@ Containment, sandboxing, subprocess confinement, and generator restructuring are
 
 ## One recording and its projections
 
-Extend the existing recording boundary in `src/runtime/node/inputs.ts` and `src/core/input-manifest.ts`; paths below starting `src/` are relative to `packages/@overeng/genie`. There MUST NOT be a second recorder or an independent import/path scan for the new artifact.
+Extend the existing recording boundary in `src/runtime/node/inputs.ts` and `src/core/input-manifest.ts`; paths below starting `src/` are relative to `packages/@overeng/genie`. There MUST NOT be a second recorder or an independent import/path census for the new artifact. The static whole-closure analyzer specified below MUST establish capability accounting, not serve as a second observation recorder.
 
 ```text
 discovery → imports/execution → render/compare → validators
@@ -24,9 +24,13 @@ discovery → imports/execution → render/compare → validators
                     └─ GENIE_INPUT_MANIFEST + same-run metadata
 ```
 
-The recording MUST retain file content observations, explicit absences, sorted directory inventories (names AND types, including empty directories), existence/type/stat observations that affect results, symlink/resolution observations, environment observations, and provenance. Imported files, non-import runtime reads, ignored/discovery inputs, workspace/lock/patch data, generated targets, and validator inputs are all inputs. Import metafiles alone are insufficient.
+The recording MUST retain file content observations, explicit absences, sorted directory inventories (names AND types, including empty directories), existence/type/stat observations that affect results, symlink/resolution observations, environment observations, and provenance. Imported files, non-import runtime reads, consumed discovery projections, workspace/lock/patch data, generated targets, and validator inputs are all inputs. Import metafiles alone are insufficient.
 
 `GENIE_INPUT_MANIFEST` MUST become a projection of this same recording: its normalized path set MUST equal exactly the union of the read-set's file-entry and directory-entry paths, including absence entries. Its existing complete/incomplete header MUST reflect the same completeness decision; it is not independently reusable proof. Both outputs MUST carry a shared invocation identifier (legacy text may use a same-run metadata companion without changing its path-line grammar). No output may be assembled from another run or from a second post-run census. When only the legacy output is requested, the shared recorder MAY operate in path-only mode; that mode MUST NOT claim to have produced digest evidence.
+
+### Discovery projection
+
+Discovery MUST be recorded as an engine observation of its output: the set of genie source paths found, plus their bytes. A generator MUST depend only on the parts of that projection it consumes, normally its own source/target paths; an unrelated discovery result MUST NOT invalidate it. A generator that actually reads the full tracked-file list MUST receive that list as a recorded observation. HEAD and index digests MAY appear in diagnostics, but MUST NOT appear in the reuse key. Discovery's implementation inputs MUST NOT become invocation-wide reuse dependencies merely because the engine used them to compute the projection; all other engine I/O on a generator's behalf remains subject to the mediation requirements below.
 
 ## Closed incompleteness vocabulary
 
@@ -45,9 +49,38 @@ The recording MUST retain file content observations, explicit absences, sorted d
 | `capture-error`        | Recording, digesting, attribution, or artifact publication fails.                                                                                                                     |
 | `unknown-capability`   | An unknown read, unrestricted module/hook with unproven input closure, or another influencing capability not classified above; includes clock/random inputs unless proven irrelevant. |
 
-`complete:true` requires successful capture of the entire influencing closure and no reason occurrences. Capture completeness and check success are separate fields: reuse additionally requires a successful check; a fully observed failed check is still nonreusable and does not need a fictitious capability reason. Ordinary unrestricted generators/transitive helpers MUST default to `unknown-capability` until their closure is accounted for; absence of grep hits is not proof. A raw operation already present in the recording need not be a bypass, but a partial wrapper MUST NOT certify uncovered operations. All influencing bypasses MUST be reported, not only the first failure.
+`complete:true` requires successful accounting of the entire influencing code closure, capture of all influencing data observations, and no reason occurrences. Capture completeness and check success are separate fields: reuse additionally requires a successful check; a fully observed failed check is still nonreusable and does not need a fictitious capability reason. Ordinary unrestricted generators/transitive helpers MUST default to `unknown-capability` until their closure is accounted for; absence of grep hits is not proof. A raw operation already present in the recording need not be a bypass, but a partial wrapper MUST NOT certify uncovered operations. All influencing bypasses MUST be reported, not only the first failure.
 
 Each occurrence MUST include `code`, operation/detail, source module and file:line when available, and the sorted explicit list of affected generator paths. Shared engine observations apply to every affected generator; import/helper observations propagate to all importing generators; validator observations propagate to every generator whose result they validate. If attribution is uncertain, list every discovered generator and add `unknown-capability`. The per-repo report MUST expand those lists to concrete paths, group by code/source, and include occurrence counts. It MUST distinguish observed bypasses from conservatively unproven capabilities. Incomplete-but-successful checks publish this report; affected generators are not reusable passes.
+
+## Static whole-closure accounting
+
+Capability accounting MUST use static whole-closure analysis based on an AST (oxc or the TypeScript compiler API), not regex or absence of grep hits. The analyzer MUST fail closed: any construct or capability it cannot classify MUST produce `unknown-capability` for the affected generators. The runtime module closure MUST include re-exports and side-effect imports and MUST exclude type-only imports. `src/core/validation.ts` MUST be analyzed like any other module; validator code and callbacks MUST NOT receive a blanket exemption.
+
+Outside the trusted engine code and reviewed dependency entries defined below, the analyzer MUST deny the following capabilities and constructs, producing `unknown-capability` for every affected generator. It MUST apply these same rules to `src/core/validation.ts`, without an engine-code exemption:
+
+- Capability imports, including `fs`, `child_process`, `net`, and `worker_threads` (including their `node:` forms).
+- `Bun.spawn` and `Bun.file`.
+- `process.env` access outside the genie environment API.
+- Non-literal dynamic import.
+- `eval`.
+- `new Function` and `Function(...)`.
+- `require` with a non-literal argument.
+- `createRequire`.
+- Computed property access on `globalThis`, `process`, `Bun`, or `Deno`.
+- `with`.
+- `import.meta.resolve` with a non-literal argument.
+- WASM or native addon loading.
+
+Static denial MUST NOT replace or suppress separately observed bypass reasons from the closed vocabulary. Mediated, recorded genie APIs are accounted boundaries, not evidence that arbitrary callers or other operations in their closure are safe.
+
+The dependency allowlist MUST be a checked-in data file keyed by package name, exact version, and lockfile integrity, with a reason for each entry. Changes MUST receive owner review through CODEOWNERS or the existing review path. An integrity change MUST automatically de-list the entry: the previous approval MUST NOT match the changed package. An allowlist entry accounts for reviewed code only; it MUST NOT exempt influencing data reads from recording.
+
+The genie engine and Bun MUST be trusted by identity for their code only: a change to either MUST invalidate every generator through per-generator identity. That trust MUST NOT cover data they touch on a generator's behalf. Every engine I/O operation for a generator MUST go through mediated, recorded APIs. An unmediated engine read of filesystem data, environment, or subprocess inputs on a generator's path MUST remain an incompleteness reason with an engine source location, even when engine identity is known. This code trust MUST NOT exempt `src/core/validation.ts` from analysis.
+
+Analysis results MUST be cached by module byte digest plus analyzer version. The analyzer MUST add no cost when `--read-set` is unset and MUST stay cheap on warm runs; its cost MUST be included in the read-set overhead measurements below.
+
+Mutation tests MUST cover each deny-list item and an allowlisted package whose integrity changes. Each mutation MUST produce `unknown-capability` for exactly the affected generators while unaffected peers remain accounted. A separate test MUST make the engine read an unrecorded input on a generator's behalf and require an incompleteness reason with the engine source location; trusted engine identity MUST NOT hide that read.
 
 ## Inventory mapped to reasons
 
@@ -83,6 +116,10 @@ type Digest = string // exactly "sha256:" plus 64 lowercase hexadecimal characte
 type Path = string // absolute native-platform path, normalized with path.resolve
 type Generator = string // repo-relative path, "/" separators, no "." or ".." segments
 type By = Generator[] // sorted unique affected generator paths
+type RepoPath = string // nonempty repo-relative path, "/" separators, no "." or ".." segments
+type DiscoveryObservation =
+  | { kind: 'source-membership'; path: RepoPath; present: boolean; digest: Digest; by: By }
+  | { kind: 'source-set' | 'tracked-files'; paths: RepoPath[]; digest: Digest; by: By }
 type EntryType =
   'file' | 'directory' | 'symlink' | 'socket' | 'fifo' | 'character-device' | 'block-device'
 type Missing = { state: 'absent'; error: 'ENOENT' | 'ENOTDIR' }
@@ -167,6 +204,7 @@ type ReadSet = {
   envSalt: string
   files: FileObservation[]
   directories: DirectoryObservation[]
+  discovery: DiscoveryObservation[]
   environment: EnvObservation[]
   cwd: CwdObservation[]
   symlinks: SymlinkObservation[]
@@ -180,6 +218,24 @@ type ReadSet = {
 `invocationId` is a lowercase canonical RFC 4122 UUIDv4. `argv` is the exact ordered effective genie check arguments, with `--read-set` and its destination removed; the consumer MUST compare it to its intended invocation. `platform.os`/`arch` equal Bun's `process.platform`/`process.arch`. `genie.version` is the full semantic version, `bun.version` is `Bun.version`; identity files are nonempty and include every executable, entry bundle, or loaded code/config file capable of changing that component's behavior. Their digests are over raw bytes. A dirty build cannot substitute a revision string for this list. Missing/unknown identity closure is `unknown-capability`, not a weaker identity. Each external tool lists the executable AND its wrapper/interpreter/module code closure; its ancillary inputs remain ordinary observations. `version:null` means unavailable; a non-null version is the tool descriptor's exact version string, compared to the consumer's current descriptor without executing arbitrary artifact-provided commands.
 
 `By` lists MUST contain only entries of top-level `generators`. Empty attribution is permitted only if no generators were discovered; unknown attribution otherwise expands to every discovered generator. Present files are regular files after following symlinks; a wrong-type probe is represented by a stat observation, not fabricated absence. `Missing` records an actual failed operation and its exact error; `ENOENT` and `ENOTDIR` are distinct and must be reproduced during validation. Other IO failures are `capture-error`. An unconstrained existence probe of an absent path adds BOTH absent file and absent directory entries; a typed probe adds the applicable entry. Every directory/name and string is losslessly representable Unicode; non-UTF-8 names or unknown entry types make capture incomplete instead of being replaced or normalized.
+
+### Discovery observation encoding and validation
+
+`discovery` is a REQUIRED schemaVersion-1 field, including when empty; only the three `DiscoveryObservation.kind` values above are accepted. The discovered genie source path set MUST be represented by the present `source-membership` observations: their path union MUST equal top-level `generators`. Each generator MUST record membership observations for its own source and target paths, attributed through `by` to that generator, with `present` stating whether the path belongs to the discovered source set (not whether it exists on disk). Additional consumed membership queries MUST likewise be recorded. Discovered source bytes MUST be recorded in `files`, attributed to generators consuming them; discovery membership is not a substitute for file-content evidence.
+
+A generator consuming the whole discovered source set MUST additionally record a `source-set` observation containing that set. A generator consuming the whole tracked-file list MUST record a `tracked-files` observation containing that list, even for paths that are not genie sources. Each list observation's `by` MUST name exactly its consuming generators. Generators consuming only membership projections MUST NOT inherit either full-list digest. The same discovery output MAY thus be recorded as separate membership and full-list observations without making the full list an invocation-wide reuse dependency.
+
+All discovery paths MUST be losslessly representable Unicode, relative to `repoRoot`, with no leading slash, empty segments, backslash separators, NUL, or normalization of name bytes. List `paths` MUST be unique and sorted by lexicographic comparison of their unsigned UTF-8 bytes, shorter prefix first. With `JCS` and `UTF8` as defined below, digest inputs MUST be exactly:
+
+- `source-membership`: `"sha256:" + lowercaseHex(SHA256(UTF8("genie-discovery-membership-v1\n") || UTF8(JCS([path, present]))))`.
+- `source-set`: `"sha256:" + lowercaseHex(SHA256(UTF8("genie-discovery-sources-v1\n") || UTF8(JCS(paths))))`.
+- `tracked-files`: `"sha256:" + lowercaseHex(SHA256(UTF8("genie-discovery-tracked-v1\n") || UTF8(JCS(paths))))`.
+
+Each prefix ends with exactly one LF byte (`0a`); JCS text has no trailing newline. Producer and consumer MUST validate canonical paths, ordering, uniqueness, attribution, and each stored digest against its stored payload. Discovery observations MUST be deduplicated by `[kind,path]` for memberships and `[kind]` for lists, merging `by` for equal payloads; unequal payloads at one key MUST produce `unstable-observation`. They MUST sort by the UTF-8 bytes of JCS of those identity keys, like other observation arrays.
+
+Before reusing a generator, the consumer MUST re-run discovery with the intended invocation's discovery semantics, recompute the membership projections and any full lists that generator consumed, and compare their canonical payloads and digests with the recorded observations. It MUST also validate the recorded source bytes using the file-observation algorithm. A mismatch MUST re-run each affected generator; new generators MUST run rather than reuse a nonexistent result. Discovery failure, unreadable output, or unstable discovery MUST fail closed: no affected generator may pass by reuse, and producer capture failures MUST yield `capture-error` (or `unstable-observation` for conflicting outputs), never complete evidence.
+
+Tracking or untracking a file MUST change the `tracked-files` observation whenever it changes that list, even if file bytes and directory inventories are unchanged. The same rule applies to source-membership or source-set observations when discovery membership changes. The consumer MUST obtain current tracking/discovery output, not infer it from filesystem bytes or inventories. HEAD and index digests MUST remain diagnostics only and MUST NOT be substituted for these projection observations or included in reuse keys.
 
 ### Directory inventory digest
 
@@ -221,7 +277,7 @@ Per-generator identity MUST consist of the genie build identity, generator modul
 
 A generator MUST pass by reuse only when all three conditions hold:
 
-1. Its recorded read set is complete: no reason occurrence names that generator, and its entire influencing closure is recorded. An incomplete read set MUST always re-run that generator and MUST NEVER be reused, even when all recorded observations match.
+1. Its recorded read set is complete: no reason occurrence names that generator, its entire influencing code closure is accounted for, and all influencing data observations are recorded. An incomplete read set MUST always re-run that generator and MUST NEVER be reused, even when all recorded observations match.
 2. Every recorded observation in that read set, including its identity and explicit output-read edges, equals the current observation under the validation algorithms above.
 3. The current target file digest equals its recorded `outputDigest`.
 
@@ -230,6 +286,8 @@ If any condition fails, that generator MUST re-run. Invocation-wide `complete:fa
 ## Opt-out cost and acceptance
 
 With neither `--read-set` nor `GENIE_INPUT_MANIFEST` requested, the recording layer MUST NOT be installed: no recorder/state allocation, new source scan, hashing, directory census, or artifact IO. Dispatch MUST choose the existing uninstrumented check before creating recorder/services. With only the legacy environment output requested, retain its explicit path-recording cost but add no read-set hashing; both requested outputs use one recorder. This qualification preserves the existing opt-in feature rather than silently disabling it.
+
+With `--read-set` enabled, a warm run MUST have a lower median wall time than plain `genie:check`, measured against a prespecified noise baseline using the same fixed source/tool/input state and interleaved runs. Until this gate is met, the flag MUST remain opt-in and CI MUST NOT enable it. Overhead measurements MUST break down recorder cost (hashing, wrapper overhead, and directory inventories) and analyzer cost, including warm-cache behavior.
 
 Required acceptance tests:
 
