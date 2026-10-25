@@ -40,18 +40,23 @@ absolute input paths. Its first line preserves the existing generation-cache
 decision: `genie-inputs-incomplete` after source scan/read failures, import-map
 resolution failures, or unresolved imports; otherwise `genie-inputs-v1`.
 This legacy decision does not certify the influencing closure and MUST NOT be
-used as read-set reuse evidence. Unrestricted generators, helpers, dependencies,
-and engine/validator capabilities still make the read-set conservatively
-incomplete without disabling the legacy generation cache.
+used as read-set reuse evidence. Static AST analysis accounts for generator,
+helper, dependency, and validator code; unaccounted capabilities and unrecorded
+engine I/O still make the read-set incomplete without disabling the legacy
+generation cache.
 
 `genie --check --read-set FILE` additionally records schema-1 observations and
 publishes private (`0600`) JSON evidence. `FILE.reasons.json` contains the same
 reason occurrences, source modules/packages, and expanded affected-generator
 lists, plus `groups` keyed by reason code and exact source location with
 `occurrences` counts and unique affected generators. The artifact contains
-successful per-target results; it does **not** enable reuse yet. Closure
-certification, consumer current-state validation, and per-generator reuse are
-not implemented in this recording slice.
+successful per-target results; it does **not** enable reuse. Runtime imports,
+re-exports, and side-effect imports participate in static closure accounting;
+type-only imports do not. Analysis results are cached by source bytes and
+analyzer version. Dependency code approvals match exact package names,
+versions, and lockfile integrities and never approve unrecorded data reads.
+Consumer current-state validation and per-generator reuse are separate from
+closure accounting.
 
 Both requested outputs are projections of one invocation's recording.
 `GENIE_INPUT_MANIFEST.meta.json` (where the environment variable's value is the
