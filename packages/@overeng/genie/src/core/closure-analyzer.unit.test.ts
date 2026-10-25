@@ -152,7 +152,7 @@ describe('compiler availability boundary', () => {
           },
         ])
       } finally {
-        await analyzer.close()
+        await expect(analyzer.close()).rejects.toThrow('Server unavailable')
       }
     }
     expect(acquisitions).toBe(2)

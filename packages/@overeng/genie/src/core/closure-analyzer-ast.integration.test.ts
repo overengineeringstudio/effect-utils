@@ -192,6 +192,63 @@ describe('static native closure analysis', () => {
     ).toEqual({ imports: [], reasons: [] })
   })
 
+  it.each([
+    ['block', '{ var local = 1 }'],
+    ['for loop', 'for (var local = 0; local < 1; local++) {}'],
+    ['for-in loop', 'for (var local in { key: 1 }) {}'],
+    ['for-of loop', 'for (var local of [1]) {}'],
+    ['try block', 'try { var local = 1 } catch {}'],
+    ['catch block', 'try { throw 1 } catch (error) { var local = error }'],
+    ['finally block', 'try {} finally { var local = 1 }'],
+  ])('hoists var from a %s into source and function scopes', async (_name, declaration) => {
+    for (const source of [
+      `${declaration}; local`,
+      `function read() { ${declaration}; return local }; read()`,
+    ])
+      expect(await analyze(source)).toEqual({ imports: [], reasons: [] })
+  })
+
+  it.each([
+    ['let block', '{ let hidden = 1 }'],
+    ['const block', '{ const hidden = 1 }'],
+    ['class block', '{ class hidden {} }'],
+    ['let loop', 'for (let hidden of [1]) {}'],
+    ['nested function', 'function inner() { { var hidden = 1 } }'],
+    ['nested arrow', 'const inner = () => { var hidden = 1 }'],
+    ['class method', 'class Inner { read() { var hidden = 1 } }'],
+    ['class static block', 'class Inner { static { var hidden = 1 } }'],
+    ['strict block function', '"use strict"; { function hidden() {} }'],
+    ['module block function', 'export {}; { function hidden() {} }'],
+    [
+      'strict function body',
+      'function inner() { "use strict"; { function hidden() {} }; hidden() }',
+    ],
+    [
+      'strict enclosing function',
+      'function inner() { "use strict"; function nested() { { function hidden() {} }; hidden() } }',
+    ],
+  ])('does not leak bindings from a %s', async (_name, declaration) => {
+    const source =
+      declaration.includes('; hidden()') === true ? declaration : `${declaration}; hidden`
+    expect((await analyze(source)).reasons).toContainEqual(
+      expect.objectContaining({
+        operation: 'unknown-global',
+        detail: 'Unresolved runtime identifier hidden.',
+      }),
+    )
+  })
+
+  it('hoists sloppy block function declarations without exposing their local vars', async () => {
+    expect(
+      await analyze('{ function local() { var privateValue = 1; return privateValue } }; local()'),
+    ).toEqual({ imports: [], reasons: [] })
+    expect(
+      await analyze(
+        'function read() { { function local() { return 1 } }; return local() }; read()',
+      ),
+    ).toEqual({ imports: [], reasons: [] })
+  })
+
   it('allows reviewed builtin members and direct construction without exposing ambient globals', async () => {
     expect(
       await analyze(`

@@ -118,3 +118,93 @@ describe('persistent closure analysis cache', () => {
     }
   })
 })
+
+describe('native compiler adapter lifecycle failures', () => {
+  it.each(['shutdown', 'startup'] as const)(
+    'reports %s failure through close and the source graph without unhandled rejections',
+    (mode) => {
+      const root = mkdtempSync(path.join(os.tmpdir(), 'genie-closure-lifecycle-'))
+      const scannerFile = fileURLToPath(new URL('./input-manifest.ts', import.meta.url))
+      const readersFile = fileURLToPath(new URL('../runtime/node/inputs.ts', import.meta.url))
+      try {
+        writeFileSync(path.join(root, 'entry.genie.ts'), 'export default {}\n')
+        const result = spawnSync(
+          'bun',
+          [
+            '--no-install',
+            '-e',
+            `
+import { mock } from 'bun:test'
+import { setImmediate as nextTurn } from 'node:timers/promises'
+const mode = ${JSON.stringify(mode)}
+const unhandled = []
+process.on('unhandledRejection', error => unhandled.push(String(error)))
+let closes = 0
+// Inject only the native API session. runTsFileAnalysis, createClosureAnalyzer,
+// and the source graph retain their real acquisition and cleanup implementations.
+mock.module(Bun.resolveSync('typescript/unstable/async', ${JSON.stringify(path.dirname(analyzerFile))}), () => ({
+  API: class {
+    async updateSnapshot() {
+      if (mode === 'startup') throw new Error('Injected compiler startup failure')
+      return {
+        getDefaultProjectForFile: async () => undefined,
+        dispose: async () => {},
+      }
+    }
+    async close() {
+      closes++
+      throw new Error('Injected compiler cleanup failure')
+    }
+  },
+}))
+// Import after injection: static loading would bind the real native API first.
+const { createClosureAnalyzer } = await import(${JSON.stringify(analyzerFile)})
+const analyzer = createClosureAnalyzer({ cwd: process.cwd(), cacheDirectory: false })
+await analyzer.analyze({ source: 'export default {}\\n', filename: 'entry.genie.ts' })
+// Allow an early startup rejection to reach the host before close observes it.
+await nextTurn()
+let closeError
+try { await analyzer.close() } catch (error) { closeError = error.message }
+const { beginInputRecording, endInputRecording, getInputRecording, isInputRecordingComplete } =
+  await import(${JSON.stringify(readersFile)})
+const { recordGeneratorSourceGraph } = await import(${JSON.stringify(scannerFile)})
+beginInputRecording({ digests: true })
+await recordGeneratorSourceGraph({ entries: ['entry.genie.ts'], cwd: process.cwd() })
+const recording = getInputRecording()
+const complete = isInputRecordingComplete()
+endInputRecording()
+await nextTurn()
+console.log(JSON.stringify({ closeError, closes, complete, reasons: recording.reasons, unhandled }))
+`,
+          ],
+          {
+            cwd: root,
+            encoding: 'utf8',
+            timeout: 30_000,
+            env: { ...process.env, XDG_CACHE_HOME: path.join(root, 'cache') },
+          },
+        )
+        expect(result.error).toBeUndefined()
+        expect(result.status, result.stderr + result.stdout).toBe(0)
+        expect(JSON.parse(result.stdout)).toMatchObject({
+          closeError:
+            mode === 'startup'
+              ? 'Injected compiler startup failure'
+              : 'Injected compiler cleanup failure',
+          closes: 2,
+          complete: true,
+          reasons: expect.arrayContaining([
+            expect.objectContaining({
+              operation: 'analysis-unavailable',
+              detail:
+                'Static closure analyzer lifecycle failed; legacy scanning remains independent.',
+            }),
+          ]),
+          unhandled: [],
+        })
+      } finally {
+        rmSync(root, { recursive: true, force: true })
+      }
+    },
+  )
+})

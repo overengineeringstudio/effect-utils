@@ -67,7 +67,7 @@ export const matchDependencyAllowlist = ({
   )
 
 /** Bump whenever classification or parsing changes. Cache entries contain no caller filenames. */
-export const closureAnalyzerVersion = '2'
+export const closureAnalyzerVersion = '3'
 
 const memoryCache = new Map<string, ClosureModuleAnalysis>()
 const builtins = new Set(builtinModules.map((name) => name.replace(/^node:/, '')))
@@ -350,8 +350,14 @@ const addBindings = ({ target, name }: { target: Set<string>; name: BindingName 
     }
 }
 
-/** Hoisting is collected per lexical scope, never across sibling blocks or functions. */
-const scopeDeclarations = (node: Node): ReadonlySet<string> => {
+/** Lexical bindings stay local; var and sloppy block functions belong to the variable scope. */
+const scopeDeclarations = ({
+  node,
+  strict,
+}: {
+  node: Node
+  strict: boolean
+}): ReadonlySet<string> => {
   const declarations = new Set<string>()
   if (ts.isFunctionLikeDeclaration(node) === true) {
     for (const parameter of node.parameters)
@@ -383,7 +389,12 @@ const scopeDeclarations = (node: Node): ReadonlySet<string> => {
       ts.isIdentifier(child.name) === true
     )
       declarations.add(child.name.text)
-    if (isScopeBoundary(child) === true) return
+    if (
+      isScopeBoundary(child) === true ||
+      ts.isClassDeclaration(child) === true ||
+      ts.isClassExpression(child) === true
+    )
+      return
     if (
       ts.isImportSpecifier(child) === true ||
       ts.isNamespaceImport(child) === true ||
@@ -403,6 +414,39 @@ const scopeDeclarations = (node: Node): ReadonlySet<string> => {
     collect(child)
     return undefined
   })
+  if (ts.isSourceFile(node) === true || ts.isFunctionLikeDeclaration(node) === true) {
+    const collectHoisted = (child: Node): void => {
+      if (ts.isFunctionLikeDeclaration(child) === true) {
+        if (
+          strict === false &&
+          ts.isFunctionDeclaration(child) === true &&
+          child.name !== undefined
+        )
+          declarations.add(child.name.text)
+        return
+      }
+      if (
+        ts.isClassDeclaration(child) === true ||
+        ts.isClassExpression(child) === true ||
+        ts.isModuleDeclaration(child) === true
+      )
+        return
+      if (
+        ts.isVariableDeclarationList(child) === true &&
+        (child.flags & ts.NodeFlags.BlockScoped) === 0
+      )
+        for (const declaration of child.declarations)
+          addBindings({ target: declarations, name: declaration.name })
+      child.forEachChild((nested) => {
+        collectHoisted(nested)
+        return undefined
+      })
+    }
+    node.forEachChild((child) => {
+      collectHoisted(child)
+      return undefined
+    })
+  }
   return declarations
 }
 
@@ -532,9 +576,11 @@ export const analyzeClosureAst = ({
   const visit = ({
     node,
     scopes,
+    strictScope,
   }: {
     node: Node
     scopes: readonly ReadonlySet<string>[]
+    strictScope: boolean
   }): void => {
     if ((node.flags & ts.NodeFlags.ThisNodeHasError) !== 0)
       reason({
@@ -549,8 +595,24 @@ export const analyzeClosureAst = ({
       ts.isTypeAliasDeclaration(node) === true
     )
       return
+    let nextStrict = strictScope || ts.isClassDeclaration(node) || ts.isClassExpression(node)
+    if (
+      ts.isFunctionLikeDeclaration(node) === true &&
+      node.body !== undefined &&
+      ts.isBlock(node.body) === true
+    )
+      for (const statement of node.body.statements) {
+        if (
+          ts.isExpressionStatement(statement) === false ||
+          ts.isStringLiteral(statement.expression) === false
+        )
+          break
+        if (statement.expression.text === 'use strict') nextStrict = true
+      }
     const nextScopes =
-      isScopeBoundary(node) === true ? [...scopes, scopeDeclarations(node)] : scopes
+      isScopeBoundary(node) === true
+        ? [...scopes, scopeDeclarations({ node, strict: nextStrict })]
+        : scopes
     if (node.kind === ts.SyntaxKind.DeclareKeyword) {
       reason({
         node: node,
@@ -831,11 +893,11 @@ export const analyzeClosureAst = ({
         return undefined
       if (ts.isHeritageClause(child) === true && child.token === ts.SyntaxKind.ImplementsKeyword)
         return undefined
-      visit({ node: child, scopes: nextScopes })
+      visit({ node: child, scopes: nextScopes, strictScope: nextStrict })
       return undefined
     })
   }
-  visit({ node: file, scopes: [] })
+  visit({ node: file, scopes: [], strictScope: strict })
   return { imports, reasons }
 }
 
@@ -909,12 +971,12 @@ export const createClosureAnalyzer = ({
         ready.resolve(value)
         await done.promise
       },
-    }).then(
-      () => undefined,
-      (error: unknown) => {
-        ready.reject(error)
-      },
-    )
+    }).then(() => undefined)
+    // Observe startup failure immediately without consuming the lifetime rejection:
+    // close() must still report a failed compiler shutdown after ready has resolved.
+    void lifetime.catch((error: unknown) => {
+      ready.reject(error)
+    })
     return session
   }
   return {
