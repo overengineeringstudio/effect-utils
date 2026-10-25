@@ -116,6 +116,10 @@ type Digest = string // exactly "sha256:" plus 64 lowercase hexadecimal characte
 type Path = string // absolute native-platform path, normalized with path.resolve
 type Generator = string // repo-relative path, "/" separators, no "." or ".." segments
 type By = Generator[] // sorted unique affected generator paths
+type RepoPath = string // nonempty repo-relative path, "/" separators, no "." or ".." segments
+type DiscoveryObservation =
+  | { kind: 'source-membership'; path: RepoPath; present: boolean; digest: Digest; by: By }
+  | { kind: 'source-set' | 'tracked-files'; paths: RepoPath[]; digest: Digest; by: By }
 type EntryType =
   'file' | 'directory' | 'symlink' | 'socket' | 'fifo' | 'character-device' | 'block-device'
 type Missing = { state: 'absent'; error: 'ENOENT' | 'ENOTDIR' }
@@ -200,6 +204,7 @@ type ReadSet = {
   envSalt: string
   files: FileObservation[]
   directories: DirectoryObservation[]
+  discovery: DiscoveryObservation[]
   environment: EnvObservation[]
   cwd: CwdObservation[]
   symlinks: SymlinkObservation[]
@@ -213,6 +218,24 @@ type ReadSet = {
 `invocationId` is a lowercase canonical RFC 4122 UUIDv4. `argv` is the exact ordered effective genie check arguments, with `--read-set` and its destination removed; the consumer MUST compare it to its intended invocation. `platform.os`/`arch` equal Bun's `process.platform`/`process.arch`. `genie.version` is the full semantic version, `bun.version` is `Bun.version`; identity files are nonempty and include every executable, entry bundle, or loaded code/config file capable of changing that component's behavior. Their digests are over raw bytes. A dirty build cannot substitute a revision string for this list. Missing/unknown identity closure is `unknown-capability`, not a weaker identity. Each external tool lists the executable AND its wrapper/interpreter/module code closure; its ancillary inputs remain ordinary observations. `version:null` means unavailable; a non-null version is the tool descriptor's exact version string, compared to the consumer's current descriptor without executing arbitrary artifact-provided commands.
 
 `By` lists MUST contain only entries of top-level `generators`. Empty attribution is permitted only if no generators were discovered; unknown attribution otherwise expands to every discovered generator. Present files are regular files after following symlinks; a wrong-type probe is represented by a stat observation, not fabricated absence. `Missing` records an actual failed operation and its exact error; `ENOENT` and `ENOTDIR` are distinct and must be reproduced during validation. Other IO failures are `capture-error`. An unconstrained existence probe of an absent path adds BOTH absent file and absent directory entries; a typed probe adds the applicable entry. Every directory/name and string is losslessly representable Unicode; non-UTF-8 names or unknown entry types make capture incomplete instead of being replaced or normalized.
+
+### Discovery observation encoding and validation
+
+`discovery` is a REQUIRED schemaVersion-1 field, including when empty; only the three `DiscoveryObservation.kind` values above are accepted. The discovered genie source path set MUST be represented by the present `source-membership` observations: their path union MUST equal top-level `generators`. Each generator MUST record membership observations for its own source and target paths, attributed through `by` to that generator, with `present` stating whether the path belongs to the discovered source set (not whether it exists on disk). Additional consumed membership queries MUST likewise be recorded. Discovered source bytes MUST be recorded in `files`, attributed to generators consuming them; discovery membership is not a substitute for file-content evidence.
+
+A generator consuming the whole discovered source set MUST additionally record a `source-set` observation containing that set. A generator consuming the whole tracked-file list MUST record a `tracked-files` observation containing that list, even for paths that are not genie sources. Each list observation's `by` MUST name exactly its consuming generators. Generators consuming only membership projections MUST NOT inherit either full-list digest. The same discovery output MAY thus be recorded as separate membership and full-list observations without making the full list an invocation-wide reuse dependency.
+
+All discovery paths MUST be losslessly representable Unicode, relative to `repoRoot`, with no leading slash, empty segments, backslash separators, NUL, or normalization of name bytes. List `paths` MUST be unique and sorted by lexicographic comparison of their unsigned UTF-8 bytes, shorter prefix first. With `JCS` and `UTF8` as defined below, digest inputs MUST be exactly:
+
+- `source-membership`: `"sha256:" + lowercaseHex(SHA256(UTF8("genie-discovery-membership-v1\n") || UTF8(JCS([path, present]))))`.
+- `source-set`: `"sha256:" + lowercaseHex(SHA256(UTF8("genie-discovery-sources-v1\n") || UTF8(JCS(paths))))`.
+- `tracked-files`: `"sha256:" + lowercaseHex(SHA256(UTF8("genie-discovery-tracked-v1\n") || UTF8(JCS(paths))))`.
+
+Each prefix ends with exactly one LF byte (`0a`); JCS text has no trailing newline. Producer and consumer MUST validate canonical paths, ordering, uniqueness, attribution, and each stored digest against its stored payload. Discovery observations MUST be deduplicated by `[kind,path]` for memberships and `[kind]` for lists, merging `by` for equal payloads; unequal payloads at one key MUST produce `unstable-observation`. They MUST sort by the UTF-8 bytes of JCS of those identity keys, like other observation arrays.
+
+Before reusing a generator, the consumer MUST re-run discovery with the intended invocation's discovery semantics, recompute the membership projections and any full lists that generator consumed, and compare their canonical payloads and digests with the recorded observations. It MUST also validate the recorded source bytes using the file-observation algorithm. A mismatch MUST re-run each affected generator; new generators MUST run rather than reuse a nonexistent result. Discovery failure, unreadable output, or unstable discovery MUST fail closed: no affected generator may pass by reuse, and producer capture failures MUST yield `capture-error` (or `unstable-observation` for conflicting outputs), never complete evidence.
+
+Tracking or untracking a file MUST change the `tracked-files` observation whenever it changes that list, even if file bytes and directory inventories are unchanged. The same rule applies to source-membership or source-set observations when discovery membership changes. The consumer MUST obtain current tracking/discovery output, not infer it from filesystem bytes or inventories. HEAD and index digests MUST remain diagnostics only and MUST NOT be substituted for these projection observations or included in reuse keys.
 
 ### Directory inventory digest
 
