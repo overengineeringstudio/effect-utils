@@ -151,14 +151,20 @@ export const capturePath = (recording: InputRecording, input: string): void => {
       if (['dev', 'ino', 'size', 'mtimeNs', 'ctimeNs'].some((key) => Reflect.get(stat, key) !== Reflect.get(after, key))) addReason(recording, { code: 'unstable-observation', operation: 'readFile', detail: `File changed while consumed: ${input}`, source: { module: '@overeng/genie/src/runtime/node/input-observations.ts', line: null }, generators: [], evidence: 'observed' })
       retainObservation(recording, evidence.files, input, { path: input, by: [], state: 'present', digest: digestBytes(bytes), byteLength: bytes.byteLength })
     } else if (stat.isDirectory()) {
-      // Read raw names separately from types: Bun ignores withFileTypes when encoding is buffer.
-      // lstat preserves symlink identity, while the byte round-trip still rejects invalid UTF-8.
-      const entries = fs.readdirSync(input, { encoding: 'buffer' }).map((bytes) => {
-        const name = bytes.toString('utf8')
-        if (Buffer.from(name).equals(bytes) === false || name.isWellFormed() === false) throw new Error('Non-Unicode directory name')
-        return { name, type: entryType(fs.lstatSync(path.join(input, name))) }
-      }).sort((left, right) => compareUtf8(left.name, right.name))
-      retainObservation(recording, evidence.directories, input, { path: input, by: [], state: 'present', entries, digest: directoryDigest(entries) })
+      try {
+        // Read raw names separately from types: Bun ignores withFileTypes when encoding is buffer.
+        // lstat preserves symlink identity, while the byte round-trip still rejects invalid UTF-8.
+        const entries = fs.readdirSync(input, { encoding: 'buffer' }).map((bytes) => {
+          const name = bytes.toString('utf8')
+          if (Buffer.from(name).equals(bytes) === false || name.isWellFormed() === false) throw new Error('Non-Unicode directory name')
+          return { name, type: entryType(fs.lstatSync(path.join(input, name))) }
+        }).sort((left, right) => compareUtf8(left.name, right.name))
+        retainObservation(recording, evidence.directories, input, { path: input, by: [], state: 'present', entries, digest: directoryDigest(entries) })
+      } catch {
+        // A missing listed child is not evidence that the parent directory is absent.
+        evidence.directories.delete(input)
+        captureFault(recording, `inspect directory inventory: ${input}`, '@overeng/genie/src/runtime/node/input-observations.ts')
+      }
     } else {
       retainObservation(recording, evidence.stats, canonicalJson([input, true]), { path: input, followSymlinks: true, by: [], state: 'present', type: entryType(stat), values: statValues(stat) })
     }

@@ -140,6 +140,40 @@ describe('check read-set recording', () => {
     }
   }), 60_000)
 
+  it.effect('fails closed when a listed child disappears before its type is observed', () => Effect.sync(() => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'genie-directory-race-'))
+    try {
+      fs.writeFileSync(path.join(root, 'child'), 'bytes')
+      const observationsUrl = new URL('../runtime/node/input-observations.ts', import.meta.url).href
+      const result = spawnSync(process.execPath, ['--input-type=module', '-e', `
+        import assert from 'node:assert/strict'
+        import fs from 'node:fs'
+        import { syncBuiltinESMExports } from 'node:module'
+        import path from 'node:path'
+        import { makeInputRecording, capturePath } from ${JSON.stringify(observationsUrl)}
+        const directory = process.argv[1]
+        const recording = makeInputRecording({ digests: true })
+        capturePath(recording, directory)
+        assert.equal(recording.evidence.directories.get(directory).state, 'present')
+        const readdir = fs.readdirSync
+        fs.readdirSync = new Proxy(readdir, {
+          apply(target, receiver, args) {
+            const entries = Reflect.apply(target, receiver, args)
+            if (args[0] === directory) fs.unlinkSync(path.join(directory, 'child'))
+            return entries
+          },
+        })
+        syncBuiltinESMExports()
+        capturePath(recording, directory)
+        assert.equal(fs.existsSync(directory), true)
+        assert.equal(recording.evidence.directories.has(directory), false)
+        assert.equal(recording.evidence.files.has(directory), false)
+        assert.equal(recording.reasons.some(reason => reason.code === 'capture-error'), true)
+      `, root], { encoding: 'utf8' })
+      expect(result.status, result.stdout + result.stderr).toBe(0)
+    } finally { fs.rmSync(root, { recursive: true, force: true }) }
+  }), 60_000)
+
   it.effect('distinguishes ENOTDIR from ENOENT and fails closed on capture errors', () => Effect.sync(() => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'genie-observation-errors-'))
     try {
