@@ -54,6 +54,7 @@ let
         set -euo pipefail
         ${pkgs.iproute2}/bin/ip link set lo up
         export PLAYWRIGHT_NETWORK_ISOLATED=1
+        echo "Playwright network isolation on: loopback-only Linux network namespace" >&2
         exec ${runTests}
       '';
       isolateNetwork = pkg.isolateNetwork or false;
