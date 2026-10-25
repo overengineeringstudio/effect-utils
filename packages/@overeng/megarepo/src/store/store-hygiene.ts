@@ -35,6 +35,8 @@ export type StoreIssueType =
   | 'ref_mismatch'
   | 'broken_worktree'
   | 'missing_bare'
+  | 'missing_fetch_refspec'
+  | 'missing_origin'
   | 'dirty'
   | 'unpushed'
   | 'orphaned'
@@ -66,6 +68,7 @@ export type StoreIssueMeta =
       readonly source: MemberSource
     }
   | { readonly _tag: 'missing_bare'; readonly source: MemberSource }
+  | { readonly _tag: 'missing_fetch_refspec'; readonly bareRepoPath: string }
 
 // =============================================================================
 // Store Hygiene Error
@@ -99,6 +102,7 @@ export class StoreHygieneError extends Schema.TaggedError<StoreHygieneError>()(
  * - `ref_mismatch` (error): worktree HEAD branch doesn't match expected ref
  * - `broken_worktree` (error): .git file in worktree is broken or missing
  * - `missing_bare` (error): bare repo doesn't exist but is expected
+ * - `missing_fetch_refspec` (error): bare repo has no remote.origin.fetch config
  * - `dirty` (warning): worktree has uncommitted changes
  * - `unpushed` (warning): worktree has unpushed commits
  */
@@ -112,7 +116,7 @@ export const validateStoreMembers = ({
   config: MegarepoConfig
   lockFile: LockFile
   store: MegarepoStore
-}): Effect.Effect<StoreIssue[], PlatformError, FileSystem.FileSystem | ChildProcessSpawner> =>
+}) =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
     const issues: StoreIssue[] = []
@@ -140,6 +144,26 @@ export const validateStoreMembers = ({
           meta: { _tag: 'missing_bare', source },
         })
         continue
+      }
+
+      const configIssue = yield* Git.getBareOriginConfigIssue({ repoPath: bareRepoPath })
+      if (configIssue !== undefined) {
+        issues.push({
+          severity: 'error',
+          type: configIssue,
+          memberName,
+          message:
+            configIssue === 'missing_origin'
+              ? 'bare repo has no origin remote URL'
+              : 'bare repo is missing remote.origin.fetch; fetch cannot update remote-tracking refs',
+          fix:
+            configIssue === 'missing_origin'
+              ? 'configure the bare repo origin remote URL before running mr store fix'
+              : "run 'mr store fix' to configure the bare repo fetch refspec",
+          ...(configIssue === 'missing_fetch_refspec'
+            ? { meta: { _tag: 'missing_fetch_refspec' as const, bareRepoPath } }
+            : {}),
+        })
       }
 
       // Check both the branch worktree (refs/heads/<ref>/) and the commit worktree
@@ -289,11 +313,7 @@ export const runPreflightChecks = ({
   config: MegarepoConfig
   lockFile: LockFile
   store: MegarepoStore
-}): Effect.Effect<
-  void,
-  StoreHygieneError | PlatformError,
-  FileSystem.FileSystem | ChildProcessSpawner
-> =>
+}) =>
   Effect.gen(function* () {
     const issues = yield* validateStoreMembers({
       memberNames,
@@ -364,6 +384,7 @@ export interface FixResult {
  * - `ref_mismatch`: checkout the expected branch in the worktree
  * - `broken_worktree`: remove and recreate the worktree
  * - `missing_bare`: clone the bare repo
+ * - `missing_fetch_refspec`: add the missing bare repo fetch config key
  */
 export const fixStoreIssues = ({
   issues,
@@ -383,6 +404,48 @@ export const fixStoreIssues = ({
       if (issue.severity !== 'error') continue
 
       switch (issue.type) {
+        case 'missing_fetch_refspec': {
+          if (issue.meta?._tag !== 'missing_fetch_refspec') {
+            results.push({
+              memberName: issue.memberName,
+              issueType: issue.type,
+              status: 'skipped',
+              message: 'missing metadata for fix',
+            })
+            break
+          }
+          if (dryRun === true) {
+            results.push({
+              memberName: issue.memberName,
+              issueType: issue.type,
+              status: 'skipped',
+              message: 'would add remote.origin.fetch to bare repo config',
+            })
+            break
+          }
+          yield* Git.repairBareOriginFetchRefspec({ repoPath: issue.meta.bareRepoPath }).pipe(
+            Effect.match({
+              onSuccess: (changed) =>
+                results.push({
+                  memberName: issue.memberName,
+                  issueType: issue.type,
+                  status: changed === true ? 'fixed' : 'skipped',
+                  message:
+                    changed === true
+                      ? 'configured bare repo remote.origin.fetch'
+                      : 'bare repo remote.origin.fetch is already configured',
+                }),
+              onFailure: (error) =>
+                results.push({
+                  memberName: issue.memberName,
+                  issueType: issue.type,
+                  status: 'error',
+                  message: `failed to configure bare repo remote.origin.fetch: ${error.message}`,
+                }),
+            }),
+          )
+          break
+        }
         case 'ref_mismatch': {
           if (issue.meta?._tag !== 'ref_mismatch') {
             results.push({

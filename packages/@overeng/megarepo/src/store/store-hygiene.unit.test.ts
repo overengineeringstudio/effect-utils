@@ -200,10 +200,15 @@ describe('store-hygiene', () => {
             myrepo: { ref: 'v1.0.0', commit: 'a'.repeat(40) },
           })
 
-          // Create bare repo dir and .git file so validation gets past missing_bare/broken_worktree checks
+          // Use a real bare repo so config health checks can inspect it.
           const bareRepoPath = `${basePath}github.com/owner/myrepo/.bare/`
           const worktreePath = `${basePath}github.com/owner/myrepo/refs/heads/v1.0.0/`
           yield* fs.makeDirectory(bareRepoPath, { recursive: true })
+          yield* Git.runCommand({ cwd: bareRepoPath, args: ['init', '--bare'] })
+          yield* Git.runCommand({
+            cwd: bareRepoPath,
+            args: ['config', 'remote.origin.fetch', Git.bareOriginFetchRefspec],
+          })
           yield* fs.makeDirectory(worktreePath, { recursive: true })
           yield* fs.writeFileString(`${worktreePath}.git`, 'gitdir: ../../../.bare')
 

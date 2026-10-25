@@ -132,6 +132,56 @@ const runMrCommand = ({
     }
   }).pipe(Effect.scoped)
 
+describe('mr store status bare repository health', () => {
+  for (const refsState of ['absent', 'empty'] as const) {
+    it.effect(`reports bare config issues with ${refsState} refs and no worktrees`, () =>
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem
+        const { storePath, bareRepoPaths } = yield* createStoreFixture([
+          { host: 'github.com', owner: 'test', repo: 'legacy', branches: [], withRemote: true },
+        ])
+        const bare = bareRepoPaths['github.com/test/legacy']!
+        yield* Git.runCommand({
+          cwd: bare,
+          args: ['config', '--local', '--unset-all', 'remote.origin.fetch'],
+        })
+        if (refsState === 'absent') {
+          yield* fs.remove(`${storePath}github.com/test/legacy/refs`, { recursive: true })
+        }
+        for (const missingOrigin of [false, true]) {
+          if (missingOrigin === true) {
+            yield* Git.runCommand({
+              cwd: bare,
+              args: ['config', '--local', '--unset-all', 'remote.origin.url'],
+            })
+          }
+          const result = yield* runMrCommand({
+            cwd: storePath,
+            command: ['store', 'status', '--output', 'json'],
+            env: { MEGAREPO_STORE: storePath },
+          })
+          expect(result.exitCode, result.failure).toBe(0)
+          const status = yield* Schema.decodeUnknownEffect(
+            Schema.Struct({
+              worktreeCount: Schema.Finite,
+              worktrees: Schema.Array(Schema.Unknown),
+              repoIssues: Schema.Array(Schema.Struct({ type: Schema.String, repo: Schema.String })),
+            }),
+          )(decodeJson(result.stdout))
+          expect(status.worktreeCount).toBe(0)
+          expect(status.worktrees).toEqual([])
+          expect(status.repoIssues).toEqual([
+            {
+              type: missingOrigin === true ? 'missing_origin' : 'missing_fetch_refspec',
+              repo: 'github.com/test/legacy/',
+            },
+          ])
+        }
+      }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+    )
+  }
+})
+
 describe('mr store gc', () => {
   it.effect(
     'completes gc and reports foreign files at every enumeration level without deleting them',

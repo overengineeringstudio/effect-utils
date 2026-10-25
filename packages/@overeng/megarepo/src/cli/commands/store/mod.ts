@@ -132,6 +132,7 @@ import { StoreApp, StoreView } from '../../renderers/StoreOutput/mod.ts'
 import type {
   StoreAction,
   StoreGcResult,
+  StoreRepoIssue,
   StoreWorktreeStatus,
   StoreWorktreeIssue,
 } from '../../renderers/StoreOutput/mod.ts'
@@ -2221,13 +2222,32 @@ const storeStatusCommand = Cli.Command.make('status', { output: outputOption }, 
               EffectPath.unsafe.relativeDir('.bare/'),
             )
             const bareExists = yield* fs.exists(bareRepoPath)
+            const configIssue =
+              bareExists === true
+                ? yield* Git.getBareOriginConfigIssue({ repoPath: bareRepoPath })
+                : undefined
+            const repoIssues: StoreRepoIssue[] =
+              configIssue === undefined
+                ? []
+                : [
+                    {
+                      repo: repo.relativePath,
+                      path: bareRepoPath,
+                      type: configIssue,
+                      severity: 'error',
+                      message:
+                        configIssue === 'missing_origin'
+                          ? 'bare repo has no origin remote URL; configure origin before repairing its fetch refspec'
+                          : 'bare repo is missing remote.origin.fetch; run mr store fix',
+                    },
+                  ]
 
             const refsDir = EffectPath.ops.join(
               repo.fullPath,
               EffectPath.unsafe.relativeDir('refs/'),
             )
             const refsExists = yield* fs.exists(refsDir)
-            if (refsExists === false) return []
+            if (refsExists === false) return { worktrees: [], repoIssues }
 
             // Reuse the bounded, source-of-truth-guarded collector (same path gc
             // uses) so a broken worktree never makes the walk enumerate its entire
@@ -2239,7 +2259,7 @@ const storeStatusCommand = Cli.Command.make('status', { output: outputOption }, 
             })
 
             // Analyze all worktrees for this repo in parallel
-            return yield* Effect.forEach(
+            const worktrees = yield* Effect.forEach(
               allWorktrees,
               ({ path: worktreePath, ref: expectedRef, refType: refTypeDir, broken }) =>
                 Effect.gen(function* () {
@@ -2326,11 +2346,13 @@ const storeStatusCommand = Cli.Command.make('status', { output: outputOption }, 
                 }),
               { concurrency: 8 },
             )
+            return { worktrees, repoIssues }
           }),
         { concurrency: 8 },
       )
 
-      const worktreeStatuses = repoResults.flat()
+      const worktreeStatuses = repoResults.flatMap((result) => result.worktrees)
+      const repoIssues = repoResults.flatMap((result) => result.repoIssues)
       const totalWorktreeCount = worktreeStatuses.length
 
       // Use TuiApp for output
@@ -2342,6 +2364,7 @@ const storeStatusCommand = Cli.Command.make('status', { output: outputOption }, 
           repoCount: repos.length,
           worktreeCount: totalWorktreeCount,
           worktrees: worktreeStatuses,
+          repoIssues,
         },
       })
     }).pipe(

@@ -9,7 +9,7 @@ import type { Stats } from 'node:fs'
 import { link, lstat, open, readFile, rename, unlink } from 'node:fs/promises'
 import * as NodePath from 'node:path'
 
-import { Duration, Effect, Option, Schedule, Sink, Stream } from 'effect'
+import { Duration, Effect, Option, Schedule, Schema, Sink, Stream } from 'effect'
 
 import { startGitWriterProcess, withGitWriterLock } from '../store/git-writer-lock.ts'
 import * as Observability from './observability.ts'
@@ -781,6 +781,79 @@ export const listRefShortNames = (args: { bareRepoPath: string; namespace: 'head
 // Bare Repo Operations
 // =============================================================================
 
+/** Branch refspec shared by new stores and repairs of existing stores. */
+export const bareOriginFetchRefspec = '+refs/heads/*:refs/remotes/origin/*'
+
+/** Check only the store's own config; inherited config does not initialize a store. */
+export const hasBareOriginFetchRefspec = Effect.fn('git/has-bare-origin-fetch-refspec')(function* ({
+  repoPath,
+}: {
+  repoPath: string
+}) {
+  return yield* runGitCommand({
+    args: ['config', '--local', '--get-all', 'remote.origin.fetch'],
+    cwd: repoPath,
+  }).pipe(
+    Effect.map(() => true),
+    Effect.catchTag('GitCommandError', (error) =>
+      error.exitCode === 1 && error.stderr === '' ? Effect.succeed(false) : Effect.fail(error),
+    ),
+  )
+})
+
+/** Missing origin is diagnosed separately; a refspec cannot repair its URL. */
+export class BareOriginMissingError extends Schema.TaggedError<BareOriginMissingError>()(
+  'BareOriginMissingError',
+  { repoPath: Schema.String, message: Schema.String },
+) {}
+
+/** Inspect store-local origin configuration independently of linked worktrees. */
+export const getBareOriginConfigIssue = Effect.fn('git/bare-origin-config-issue')(function* ({
+  repoPath,
+}: {
+  repoPath: string
+}) {
+  const origin = yield* runGitCommand({
+    args: ['config', '--local', '--get', 'remote.origin.url'],
+    cwd: repoPath,
+  }).pipe(
+    Effect.catchTag('GitCommandError', (error) =>
+      error.exitCode === 1 && error.stderr === '' ? Effect.succeed('') : Effect.fail(error),
+    ),
+  )
+  if (origin === '') return 'missing_origin' as const
+  if ((yield* hasBareOriginFetchRefspec({ repoPath })) === false) {
+    return 'missing_fetch_refspec' as const
+  }
+  return undefined
+})
+
+/** Add only a missing fetch config key, without fetching or modifying refs/worktrees. */
+export const repairBareOriginFetchRefspec = ({ repoPath }: { repoPath: string }) =>
+  Effect.gen(function* () {
+    // Recheck under the writer lock so repeated/concurrent repairs are no-ops.
+    const issue = yield* getBareOriginConfigIssue({ repoPath })
+    if (issue === 'missing_origin') {
+      return yield* new BareOriginMissingError({
+        repoPath,
+        message:
+          'bare repo has no origin remote URL; configure origin before repairing its fetch refspec',
+      })
+    }
+    if (issue === undefined) return false
+    yield* runGitCommand({
+      args: ['config', '--local', '--add', 'remote.origin.fetch', bareOriginFetchRefspec],
+      cwd: repoPath,
+    })
+    return true
+  }).pipe(
+    withGitWriterLock({ path: repoPath }),
+    Observability.withRepoPathSpan({
+      name: 'git/repair-bare-origin-fetch-refspec',
+      path: repoPath,
+    }),
+  )
+
 /**
  * Clone a repository as a bare repo.
  * Configures fetch refspec so remote tracking refs are created on fetch.
@@ -815,7 +888,7 @@ export const cloneBare = (args: { url: string; targetPath: string }) =>
     }
     // Complete initialization even if a previous holder died after cloning.
     yield* runGitCommand({
-      args: ['config', 'remote.origin.fetch', '+refs/heads/*:refs/remotes/origin/*'],
+      args: ['config', 'remote.origin.fetch', bareOriginFetchRefspec],
       cwd: args.targetPath,
     })
     return exists === false

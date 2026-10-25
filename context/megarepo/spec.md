@@ -99,6 +99,19 @@ semver-like pattern (bare or prefixed) ⇒ tag; otherwise branch.
 
 ### Store liveness, hygiene, and GC
 
+`mr store status` reports bare-store configuration issues once per repository
+in `repoIssues`, independently of whether any worktrees or store `refs/`
+directory exist. Member pre-flight hygiene checks report the same issues.
+`missing_origin` means the bare store has no local `remote.origin.url`;
+operators must configure the URL explicitly, and `mr store fix` skips it.
+`missing_fetch_refspec` means origin exists but has no local
+`remote.origin.fetch` key. `mr store fix` adds
+`+refs/heads/*:refs/remotes/origin/*` only when that key is absent and origin
+still exists, rechecking both under the store's Git writer lock. Existing fetch
+configuration is preserved. Repair is idempotent and does not fetch, prune,
+modify refs, or touch linked worktrees; `--dry-run` reports the proposed config
+change only.
+
 The store is shared across every megarepo on the host, so reclamation is
 governed by cross-workspace evidence rather than by any single workspace's
 view. Each workspace publishes its `livePaths` into the liveness registry at
