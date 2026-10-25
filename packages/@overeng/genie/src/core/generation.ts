@@ -32,7 +32,7 @@ import { DistributedSemaphore } from '@overeng/utils/lock'
 import { FileSystemBacking } from '@overeng/utils/node'
 
 import type { GenieOutput } from '../runtime/mod.ts'
-import { inputFileSystem } from '../runtime/node/inputs.ts'
+import { getInputRecording, inputFileSystem, isInputRecording, isReadSetRecording, recordGeneratorResult, recordInput, recordInputReason } from '../runtime/node/inputs.ts'
 import { isAnalyzableSourcePath, runTsFileAnalysis } from '../runtime/node/ts-api.ts'
 import type { TsFileAnalysisSession } from '../runtime/node/ts-api.ts'
 import { CatalogConflictError } from '../runtime/package-json/catalog.ts'
@@ -693,6 +693,7 @@ const loadOxfmtConfig = Effect.fn('loadOxfmtConfig')(function* ({
   }
 
   const fs = yield* FileSystem.FileSystem
+  recordInput(configPath.value)
   const raw = yield* fs.readFileString(configPath.value)
   const config = yield* Effect.try({
     try: () => decodeOxfmtConfig(raw) as OxfmtConfig,
@@ -865,6 +866,13 @@ const formatWithOxfmt = Effect.fn('formatWithOxfmt')(function* ({
   })
 
   const result = yield* Effect.gen(function* () {
+    if (isInputRecording()) recordInputReason({
+      code: 'subprocess', operation: 'oxfmt',
+      detail: 'Formatter execution has an unaccounted executable and input closure',
+      source: { module: '@overeng/genie/src/core/generation.ts', line: null },
+      generators: getInputRecording()!.generators.filter((generator) => targetFilePath.endsWith(path.sep + generator.replace('.genie.ts', ''))),
+      evidence: 'observed',
+    })
     const spawner = yield* CommandExecutor.ChildProcessSpawner
     return yield* spawner.string(
       Command.make('oxfmt', args, {
@@ -1349,6 +1357,7 @@ export const checkFileDetailed = ({
       formatter,
     })
 
+    recordInput(targetFilePath)
     const fileExists = yield* fs.exists(targetFilePath)
     if (fileExists === false) {
       return yield* new GenieCheckError({
@@ -1358,6 +1367,7 @@ export const checkFileDetailed = ({
     }
 
     const actualContent = yield* fs.readFileString(targetFilePath)
+    recordInput(targetFilePath)
 
     if (actualContent !== expectedContent) {
       return yield* new GenieCheckError({
@@ -1366,6 +1376,9 @@ export const checkFileDetailed = ({
       })
     }
 
+    if (isReadSetRecording()) recordGeneratorResult(
+      path.relative(cwd, genieFilePath).split(path.sep).join('/'), targetFilePath, [genieFilePath], expectedContent,
+    )
     return { targetFilePath, loadedGenieFile }
   }).pipe(
     Observability.withFileSpan({

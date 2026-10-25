@@ -69,7 +69,7 @@ describe('generator input manifests', () => {
       const first = run()
       expect(first.status, first.stdout + first.stderr).toBe(0)
       const lines = readFileSync(manifest, 'utf8').trimEnd().split('\n')
-      expect(lines[0]).toBe('genie-inputs-v1')
+      expect(lines[0]).toBe('genie-inputs-incomplete')
       expect(lines.slice(1)).toEqual([...new Set(lines.slice(1))].sort())
       expect(lines.slice(1).every((input) => path.isAbsolute(input))).toBe(true)
       for (const input of [
@@ -119,9 +119,9 @@ describe('generator input manifests', () => {
         )
         const first = run()
         expect(first.status, first.stdout + first.stderr).toBe(0)
-        expect(readFileSync(manifest, 'utf8').split('\n')[0]).toBe('genie-inputs-v1')
-        // The task hashes these recorded directory entries, so adding JSX must miss
-        // the warm cache even though the previously resolved TypeScript is unchanged.
+        expect(readFileSync(manifest, 'utf8').split('\n')[0]).toBe('genie-inputs-incomplete')
+        // Directory observations include newly introduced resolution alternatives;
+        // unrestricted source closures nevertheless remain conservatively incomplete.
         expect(readFileSync(manifest, 'utf8').split('\n')).toContain(directory)
         expect(readFileSync(path.join(root, 'result.txt'), 'utf8')).toBe(
           generatedText('typescript\n'),
@@ -234,7 +234,7 @@ export default { data: {}, stringify: () => value + '\\n' }
         writeFileSync(optional, "export const value = 'present'\n")
         const present = run()
         expect(present.status, present.stdout + present.stderr).toBe(0)
-        expect(readFileSync(manifest, 'utf8').split('\n')[0]).toBe('genie-inputs-v1')
+        expect(readFileSync(manifest, 'utf8').split('\n')[0]).toBe('genie-inputs-incomplete')
         expect(readFileSync(manifest, 'utf8').split('\n')).toContain(optional)
         expect(readFileSync(path.join(root, 'result.txt'), 'utf8')).toBe(generatedText('present\n'))
       } finally {
@@ -280,7 +280,7 @@ export default { data: {}, stringify: () => value + '\\n' }
       const present = run()
       expect(present.status, present.stdout + present.stderr).toBe(0)
       const inputs = readFileSync(manifest, 'utf8').split('\n')
-      expect(inputs[0]).toBe('genie-inputs-v1')
+      expect(inputs[0]).toBe('genie-inputs-incomplete')
       expect(inputs).toContain(optional)
       expect(readFileSync(path.join(root, 'result.txt'), 'utf8')).toBe(generatedText('present\n'))
     } finally {
@@ -301,7 +301,7 @@ export default { data: {}, stringify: () => value + '\\n' }
       const first = run()
       expect(first.status, first.stdout + first.stderr).toBe(0)
       const firstInputs = readFileSync(manifest, 'utf8').split('\n')
-      expect(firstInputs[0]).toBe('genie-inputs-v1')
+      expect(firstInputs[0]).toBe('genie-inputs-incomplete')
       expect(firstInputs).toContain(packages)
       expect(firstInputs).toContain(firstDirectory)
       expect(firstInputs).toContain(firstManifest)
@@ -315,7 +315,7 @@ export default { data: {}, stringify: () => value + '\\n' }
       const second = run()
       expect(second.status, second.stdout + second.stderr).toBe(0)
       const secondInputs = readFileSync(manifest, 'utf8').split('\n')
-      expect(secondInputs[0]).toBe('genie-inputs-v1')
+      expect(secondInputs[0]).toBe('genie-inputs-incomplete')
       for (const input of [
         packages,
         firstDirectory,
@@ -345,7 +345,7 @@ export default { data: {}, stringify: () => value + '\\n' }
       }
       writeFileSync(path.join(root, 'result.txt.genie.ts'), "throw new Error('fixture failed')\n")
       expect(run().status).not.toBe(0)
-      expect(readFileSync(manifest, 'utf8')).toBe('previous successful manifest\n')
+      expect(existsSync(manifest)).toBe(false)
       expect(readdirSync(root).some((name) => name.endsWith('.tmp'))).toBe(false)
     } finally {
       rmSync(root, { recursive: true, force: true })

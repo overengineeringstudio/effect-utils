@@ -8,7 +8,7 @@ import type * as CommandExecutor from 'effect/process/ChildProcessSpawner'
 
 import { assertNever } from '@overeng/utils'
 
-import { recordInput } from '../runtime/node/inputs.ts'
+import { isInputRecording, recordInput, recordInputCwd, recordInputReason } from '../runtime/node/inputs.ts'
 import { formatValidationIssues } from '../runtime/package-json/validation.ts'
 import { findGenieFiles } from './discovery.ts'
 import { GenieGenerationFailedError } from './errors.ts'
@@ -50,6 +50,7 @@ export const resolveOxfmtConfigPath = Effect.fn('resolveOxfmtConfigPath')(functi
   const fs = yield* FileSystem.FileSystem
   for (const conventionPath of OXFMT_CONFIG_CONVENTION_PATHS) {
     const fullPath = path.join(cwd, conventionPath)
+    recordInput(fullPath)
     if ((yield* fs.exists(fullPath)) === true) return Option.some(fullPath)
   }
   return Option.none()
@@ -93,6 +94,11 @@ export type CoreCheckOptions = {
   oxfmtConfigPath: Option.Option<string>
   /** When set, restrict the check to generators declaring this phase (R31). Absent ⇒ all phases. */
   phase?: GeneratorPhase | undefined
+  /** Private successful-check evidence destination. */
+  readSet?: string | undefined
+  argv?: readonly string[] | undefined
+  /** The CLI can own capture before its cwd/config resolution. */
+  recordingInstalled?: boolean | undefined
 }
 
 /** Aggregate result of a full generation run including per-file outcomes and summary counts. */
@@ -407,6 +413,9 @@ export const checkAll = ({
   cwd,
   oxfmtConfigPath,
   phase,
+  readSet,
+  argv = [],
+  recordingInstalled = false,
 }: CoreCheckOptions): Effect.Effect<
   void,
   GenieGenerationFailedError | PlatformError,
@@ -428,7 +437,14 @@ export const checkAll = ({
       concurrency: checkConcurrency,
     })
 
+    if (isInputRecording()) {
+      recordInputCwd(cwd)
+      oxfmtConfigPath = yield* resolveOxfmtConfigPath({ explicitPath: oxfmtConfigPath, cwd })
+      for (const input of ['megarepo.lock', 'flake.lock', 'pnpm-lock.yaml', 'pnpm-workspace.yaml', 'package.json', ...OXFMT_CONFIG_CONVENTION_PATHS]) recordInput(path.join(cwd, input))
+      if (Option.isSome(oxfmtConfigPath)) recordInput(oxfmtConfigPath.value)
+    }
     const genieFiles = yield* discoverAndValidate(cwd, phase)
+    if (isInputRecording()) recordGeneratorSourceGraph({ entries: genieFiles, cwd })
 
     if (genieFiles.length === 0) {
       yield* emit({ _tag: 'Complete', summary: computeSummary({ successes: [], failedCount: 0 }) })
@@ -503,6 +519,7 @@ export const checkAll = ({
         Effect.gen(function* () {
           yield* emit({ _tag: 'FileStarted', path: genieFilePath })
 
+          recordInput(genieFilePath.replace('.genie.ts', ''))
           const result = yield* checkFileDetailed({
             genieFilePath,
             cwd,
@@ -621,6 +638,11 @@ export const checkAll = ({
       })
       .map((result) => result.loadedGenieFile)
 
+    if (isInputRecording()) recordInputReason({
+      code: 'unknown-capability', operation: 'validation closure',
+      detail: 'Shared validator input capabilities are not yet accounted for',
+      source: { module: '@overeng/genie/src/core/validation.ts', line: null }, generators: [], evidence: 'unproven',
+    })
     yield* runValidationOrFail({ cwd, genieFiles, preloadedFiles })
 
     const summary: GenieSummary = {
@@ -632,6 +654,11 @@ export const checkAll = ({
     }
     yield* emit({ _tag: 'Complete', summary })
   }).pipe(
+    (effect) => recordingInstalled ? effect : withInputManifest({
+      effect,
+      complete: phase === undefined,
+      ...(readSet === undefined ? {} : { readSet: { path: readSet, cwd, argv } }),
+    }),
     Observability.withCommandSpan({
       label: 'check',
       cwd,

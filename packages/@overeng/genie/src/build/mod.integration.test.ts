@@ -111,6 +111,60 @@ Vitest.describe('genie cli', () => {
     }
   })
 
+  for (const inlineDestination of [false, true]) {
+    Vitest.it.effect(
+      `writes check evidence to a new path with ${inlineDestination ? 'inline' : 'separate'} read-set arguments`,
+      Effect.fnUntraced(
+        function* () {
+          yield* withTestEnv((env) =>
+            Effect.gen(function* () {
+              yield* env.writeFile({
+                path: 'message.txt.genie.ts',
+                content: `export default { data: 'hello', stringify: () => 'hello\\n' }`,
+              })
+              expect((yield* runGenie(env, [])).exitCode).toBe(0)
+
+              const fs = yield* FileSystem.FileSystem
+              const path = yield* Path.Path
+              const destination = path.join(env.root, 'read-set.json')
+              expect(yield* fs.exists(destination)).toBe(false)
+              const readSetArgs = inlineDestination
+                ? [`--read-set=${destination}`]
+                : ['--read-set', destination]
+              const { exitCode } = yield* runGenie(env, [
+                '--check',
+                ...readSetArgs,
+                '--output',
+                'json',
+              ])
+              expect(exitCode).toBe(0)
+
+              const artifact = yield* Schema.decodeEffect(
+                Schema.fromJsonString(
+                  Schema.Struct({
+                    schema: Schema.Literal('genie-check-read-set'),
+                    argv: Schema.Array(Schema.String),
+                    checkSucceeded: Schema.Boolean,
+                  }),
+                ),
+              )(yield* fs.readFileString(destination))
+              expect(artifact.checkSucceeded).toBe(true)
+              expect(artifact.argv).toEqual([
+                '--cwd',
+                env.root,
+                '--check',
+                '--output',
+                'json',
+              ])
+            }),
+          )
+        },
+        Effect.provide(TestLayer),
+        Effect.scoped,
+      ),
+    )
+  }
+
   Vitest.it.effect(
     'generates a Watchman configuration that strict JSON consumers can read',
     Effect.fnUntraced(
