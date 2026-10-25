@@ -3,7 +3,7 @@ import { Effect } from 'effect'
 import { expect } from 'vitest'
 
 import { canonicalJson, digestBytes, directoryDigest, environmentDigest, reasonCodes } from '../runtime/node/input-observations.ts'
-import { validateReadSet } from './read-set.ts'
+import { validateReadSet, validateReadSetPair } from './read-set.ts'
 
 const fixture = () => ({
   schema: 'genie-check-read-set', schemaVersion: 1,
@@ -46,6 +46,45 @@ describe('read-set schema and canonical encodings', () => {
     const { argv: _, ...missing } = fixture()
     expect(() => validateReadSet(missing)).toThrow()
     expect(() => validateReadSet(undefined)).toThrow()
+  }))
+
+  it.effect('requires the represented generator set, not just the number of distinct target pairs', () => Effect.sync(() => {
+    const generators = ['a.genie.ts', 'b.genie.ts']
+    const targets = ['/fixture/a.txt', '/fixture/b.txt']
+    const outputDigest = digestBytes('output')
+    const input = {
+      ...fixture(),
+      generators,
+      generatorResults: generators.map((generator, index) => ({
+        generator, target: targets[index]!, module: fixture().genie, outputDigest,
+      })),
+      files: targets.map((target) => ({
+        path: target, by: generators, state: 'present', digest: outputDigest, byteLength: 6,
+      })),
+    }
+    expect(validateReadSet(input).generatorResults).toHaveLength(2)
+    // Same count, unique [generator,target] pairs and valid target evidence, but no B result.
+    const duplicate = {
+      ...input,
+      generatorResults: input.generatorResults.map((entry) => Object.assign({}, entry, { generator: 'a.genie.ts' })),
+    }
+    expect(() => validateReadSet(duplicate)).toThrow()
+  }))
+
+  it.effect('rejects metadata with a different run or incompatible projection without claiming current-state validation', () => Effect.sync(() => {
+    const readSet = fixture()
+    const metadata = {
+      schema: 'genie-input-manifest-metadata', schemaVersion: 1,
+      invocationId: readSet.invocationId, complete: readSet.complete, digestEvidence: true,
+    }
+    expect(validateReadSetPair({ readSet, metadata }).invocationId).toBe(readSet.invocationId)
+    for (const invalid of [
+      { ...metadata, invocationId: '22345678-1234-4123-8123-123456789abc' },
+      { ...metadata, complete: false },
+      { ...metadata, digestEvidence: false },
+      { ...metadata, schemaVersion: 2 },
+      { ...metadata, extra: true },
+    ]) expect(() => validateReadSetPair({ readSet, metadata: invalid })).toThrow()
   }))
 
   it.effect('retains every closed reason code and separates completeness from check success', () => Effect.sync(() => {

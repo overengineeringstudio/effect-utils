@@ -24,6 +24,7 @@ import {
 import { GenieGenerationFailedError } from './errors.ts'
 import { resolveImportMapSpecifierForImporterSync } from './import-map/sync-resolver.ts'
 import { canonicalJson, compareUtf8 } from '../runtime/node/input-observations.ts'
+import type { InputReason } from '../runtime/node/input-observations.ts'
 
 const recordingPermit = Semaphore.makeUnsafe(1)
 
@@ -297,6 +298,34 @@ export const recordGeneratorSourceGraph = ({
   }
 }
 
+/** Group diagnostic occurrences by reason code and exact source, retaining affected generators. */
+export const summarizeInputReasons = (reasons: readonly InputReason[]): Array<{
+  code: InputReason['code']
+  source: InputReason['source']
+  occurrences: number
+  generators: string[]
+}> => {
+  const groups = new Map<string, {
+    code: InputReason['code']
+    source: InputReason['source']
+    occurrences: number
+    generators: Set<string>
+  }>()
+  for (const reason of reasons) {
+    const key = canonicalJson([reason.code, reason.source])
+    const group = groups.get(key) ?? { code: reason.code, source: reason.source, occurrences: 0, generators: new Set<string>() }
+    group.occurrences++
+    for (const generator of reason.generators) group.generators.add(generator)
+    groups.set(key, group)
+  }
+  return [...groups].toSorted(([left], [right]) => compareUtf8(left, right)).map(([, group]) => ({
+    code: group.code,
+    source: group.source,
+    occurrences: group.occurrences,
+    generators: [...group.generators].toSorted(compareUtf8),
+  }))
+}
+
 const failure = (cause: unknown) => {
   recordInputReason({
     code: 'capture-error', operation: 'publish input evidence',
@@ -374,7 +403,7 @@ export const withInputManifest = <TOutput, TError, TRequirements>({
             yield* publishPrivate(readSetPath, `${canonicalJson(artifact)}\n`, invocationId).pipe(Effect.mapError(failure))
             yield* publishPrivate(reportPath!, `${canonicalJson({
               schema: 'genie-check-read-set-reasons', schemaVersion: 1, invocationId,
-              complete: artifact.complete, reasons: artifact.reasons,
+              complete: artifact.complete, reasons: artifact.reasons, groups: summarizeInputReasons(artifact.reasons),
             })}\n`, invocationId).pipe(Effect.mapError(failure))
           }
           if (manifestPath !== undefined) {

@@ -101,6 +101,8 @@ export const validateReadSet = (input: unknown): ReadSet => {
   for (const observations of [result.environment, result.cwd, result.stats, result.resolutions, result.tools]) for (const observation of observations) attribution(observation.by)
   assert(ordered({ values: result.generatorResults, key: (item) => [item.generator, item.target] }))
   assert(result.generatorResults.length === result.generators.length)
+  const representedGenerators = new Set(result.generatorResults.map((entry) => entry.generator))
+  assert(representedGenerators.size === result.generators.length && result.generators.every((generator) => representedGenerators.has(generator)))
   identity(result.genie)
   identity(result.bun)
   for (const generator of result.generatorResults) {
@@ -129,6 +131,22 @@ export const validateReadSet = (input: unknown): ReadSet => {
     assert(ordered({ values: tool.files, key: (file) => file.path }))
     assert(tool.files.some((file) => file.path === tool.executable))
   }
+  return result
+}
+
+const InputManifestMetadata = Schema.Struct({
+  schema: Schema.Literal('genie-input-manifest-metadata'),
+  schemaVersion: Schema.Literal(1),
+  invocationId: ReadSetSchema.fields.invocationId,
+  complete: Schema.Boolean,
+  digestEvidence: Schema.Boolean,
+})
+
+/** Validate paired output provenance only; this does not validate current inputs or authorize reuse. */
+export const validateReadSetPair = ({ readSet, metadata }: { readSet: unknown; metadata: unknown }): ReadSet => {
+  const result = validateReadSet(readSet)
+  const companion = Schema.decodeUnknownSync(InputManifestMetadata, { onExcessProperty: 'error' })(metadata)
+  assert(companion.invocationId === result.invocationId && companion.complete === result.complete && companion.digestEvidence === true)
   return result
 }
 

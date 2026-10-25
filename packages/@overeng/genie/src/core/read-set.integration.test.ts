@@ -8,20 +8,30 @@ import { describe, it } from '@effect/vitest'
 import { Effect, Schema } from 'effect'
 import { expect } from 'vitest'
 
-import { canonicalJson, directoryDigest, environmentDigest } from '../runtime/node/input-observations.ts'
+import { canonicalJson, directoryDigest, environmentDigest, reasonCodes } from '../runtime/node/input-observations.ts'
 import {
   beginInputRecording, endInputRecording, getInputRecording, inputExistsSync, inputReadFileSync,
   inputReaddirSync, inputRealpathSync, inputStatSync, isInputRecording, recordInput,
   recordInputEnvironment,
 } from '../runtime/node/inputs.ts'
 import { withInputManifest } from './input-manifest.ts'
-import { ReadSetSchema, validateReadSet } from './read-set.ts'
+import { ReadSetSchema, validateReadSet, validateReadSetPair } from './read-set.ts'
 
 const cliPath = fileURLToPath(new URL('../../bin/genie.tsx', import.meta.url))
 const readersPath = fileURLToPath(new URL('../runtime/node/inputs.ts', import.meta.url))
 const decode = Schema.decodeSync(Schema.fromJsonString(ReadSetSchema), { onExcessProperty: 'error' })
-const decodeMetadata = Schema.decodeSync(Schema.fromJsonString(Schema.Struct({ invocationId: Schema.String, complete: Schema.Boolean, digestEvidence: Schema.Boolean })))
-const decodeReport = Schema.decodeSync(Schema.fromJsonString(Schema.Struct({ invocationId: Schema.String, reasons: ReadSetSchema.fields.reasons })))
+const decodeMetadata = Schema.decodeSync(Schema.fromJsonString(Schema.Struct({
+  schema: Schema.Literal('genie-input-manifest-metadata'), schemaVersion: Schema.Literal(1),
+  invocationId: Schema.String, complete: Schema.Boolean, digestEvidence: Schema.Boolean,
+})))
+const decodeReport = Schema.decodeSync(Schema.fromJsonString(Schema.Struct({
+  invocationId: Schema.String, reasons: ReadSetSchema.fields.reasons,
+  groups: Schema.Array(Schema.Struct({
+    code: Schema.Literals(reasonCodes),
+    source: Schema.Struct({ module: Schema.String, line: Schema.NullOr(Schema.Int.check(Schema.isGreaterThanOrEqualTo(1))) }),
+    occurrences: Schema.Int.check(Schema.isGreaterThanOrEqualTo(1)), generators: Schema.Array(Schema.String),
+  })),
+})))
 const fixture = () => {
   const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'genie-read-set-')))
   const artifact = path.join(root, 'evidence.json')
@@ -94,6 +104,85 @@ describe('check read-set recording', () => {
       fs.rmSync(root, { recursive: true, force: true })
     }
   }))
+
+  it.effect('preserves numeric, bigint, and missing stat results while recording exact metadata', () => Effect.sync(() => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'genie-stat-semantics-'))
+    try {
+      const input = path.join(root, 'input')
+      fs.writeFileSync(input, 'bytes')
+      beginInputRecording({ digests: true })
+      const numeric = inputStatSync(input)
+      const exact = inputStatSync(input, { bigint: true })
+      expect(numeric).toEqual(fs.statSync(input))
+      expect(exact).toEqual(fs.statSync(input, { bigint: true }))
+      expect(typeof numeric.size).toBe('number')
+      expect(typeof exact.size).toBe('bigint')
+      const absent = path.join(root, 'absent')
+      expect(inputStatSync(absent, { throwIfNoEntry: false })).toBeUndefined()
+      expect(inputStatSync(absent, { bigint: true, throwIfNoEntry: false })).toBeUndefined()
+      expect(() => inputStatSync(absent)).toThrow(expect.objectContaining({ code: 'ENOENT' }))
+      expect(() => inputStatSync(path.join(input, 'child'))).toThrow(expect.objectContaining({ code: 'ENOTDIR' }))
+      expect(inputStatSync(path.join(input, 'child'), { throwIfNoEntry: false })).toBeUndefined()
+      expect(getInputRecording()!.evidence!.stats.get(canonicalJson([input, true]))).toMatchObject({
+        state: 'present', values: { size: '5', mtimeNs: exact.mtimeNs.toString(), ctimeNs: exact.ctimeNs.toString() },
+      })
+      expect(getInputRecording()!.evidence!.stats.get(canonicalJson([absent, true]))).toMatchObject({ state: 'absent', error: 'ENOENT' })
+      expect(getInputRecording()!.reasons).toEqual([])
+    } finally {
+      endInputRecording()
+      fs.rmSync(root, { recursive: true, force: true })
+    }
+  }))
+
+  it.effect('retains a consumed stat disagreement when the original state is restored before revalidation', () => Effect.sync(() => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'genie-stat-race-'))
+    try {
+      fs.writeFileSync(path.join(root, 'input'), 'original')
+      fs.writeFileSync(path.join(root, 'changed'), 'changed and longer')
+      const readersUrl = new URL('../runtime/node/inputs.ts', import.meta.url).href
+      const result = spawnSync(process.execPath, ['--input-type=module', '-e', `
+        import assert from 'node:assert/strict'
+        import fs from 'node:fs'
+        import { syncBuiltinESMExports } from 'node:module'
+        import path from 'node:path'
+        const input = path.join(process.argv[1], 'input')
+        const changed = path.join(process.argv[1], 'changed')
+        const stat = fs.statSync
+        const consumed = { bigint: false, throwIfNoEntry: false }
+        const originalError = Object.assign(new Error('original stat failure'), { code: 'EACCES' })
+        let outcome = 'changed'
+        let returned
+        fs.statSync = new Proxy(stat, {
+          apply(target, receiver, args) {
+            if (args[0] === input && args[1] === consumed) {
+              if (outcome === 'error') throw originalError
+              returned = outcome === 'missing' ? undefined : Reflect.apply(target, receiver, [changed, args[1]])
+              return returned
+            }
+            return Reflect.apply(target, receiver, args)
+          },
+        })
+        syncBuiltinESMExports()
+        // Import after patching: this regression intentionally exercises the
+        // module-loading boundary so the wrapper captures the controlled target.
+        const { beginInputRecording, endInputRecording, getInputRecording, inputStatSync } = await import(${canonicalJson(readersUrl)})
+        for (const bigint of [false, true]) {
+          consumed.bigint = bigint
+          for (const nextOutcome of ['changed', 'missing', 'error']) {
+            outcome = nextOutcome
+            beginInputRecording({ digests: true })
+            if (outcome === 'error') assert.throws(() => inputStatSync(input, consumed), error => error === originalError)
+            else assert.equal(inputStatSync(input, consumed), returned)
+            // Every probe, including a second complete observation, sees A again.
+            assert.equal(inputStatSync(input, { bigint }).size, stat(input, { bigint }).size)
+            assert.equal(getInputRecording().reasons.some(reason => reason.code === 'unstable-observation' && reason.operation === 'statSync'), true)
+            endInputRecording()
+          }
+        }
+      `, root], { encoding: 'utf8' })
+      expect(result.status, result.stdout + result.stderr).toBe(0)
+    } finally { fs.rmSync(root, { recursive: true, force: true }) }
+  }), 60_000)
 
   it.effect('captures read-only directory inventories exactly under Bun and rejects non-Unicode names', () => Effect.sync(() => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'genie-readonly-observations-'))
@@ -235,8 +324,29 @@ describe('check read-set recording', () => {
       expect(metadata).toMatchObject({ invocationId: readSet.invocationId, complete: readSet.complete, digestEvidence: true })
       const report = decodeReport(fs.readFileSync(`${artifact}.reasons.json`, 'utf8'))
       expect(report).toMatchObject({ invocationId: readSet.invocationId, reasons: readSet.reasons })
+      expect(report.groups.reduce((count, group) => count + group.occurrences, 0)).toBe(report.reasons.length)
+      expect(report.groups.find((group) => group.code === 'unknown-capability' && group.source.module === 'shared.ts')).toMatchObject({
+        generators: ['one.txt.genie.ts', 'two.txt.genie.ts'],
+      })
       for (const file of [artifact, manifest, `${manifest}.meta.json`, `${artifact}.reasons.json`]) expect(fs.statSync(file).mode & 0o777).toBe(0o600)
       expect(fs.readdirSync(root).some((name) => name.endsWith('.tmp'))).toBe(false)
+    } finally { fs.rmSync(root, { recursive: true, force: true }) }
+  }), 60_000)
+
+  it.effect('rejects metadata from a previous real check while accepting the current recording pair', () => Effect.sync(() => {
+    const { root, artifact, manifest, run } = fixture()
+    try {
+      const first = run(['--check', '--read-set', artifact])
+      expect(first.status, first.stdout + first.stderr).toBe(0)
+      const oldMetadata = decodeMetadata(fs.readFileSync(`${manifest}.meta.json`, 'utf8'))
+      const second = run(['--check', '--read-set', artifact])
+      expect(second.status, second.stdout + second.stderr).toBe(0)
+      const readSet = decode(fs.readFileSync(artifact, 'utf8'))
+      const metadata = decodeMetadata(fs.readFileSync(`${manifest}.meta.json`, 'utf8'))
+      expect(readSet.invocationId).not.toBe(oldMetadata.invocationId)
+      expect(() => validateReadSetPair({ readSet, metadata: oldMetadata })).toThrow()
+      expect(validateReadSetPair({ readSet, metadata })).toEqual(readSet)
+      expect(readSet.complete).toBe(false)
     } finally { fs.rmSync(root, { recursive: true, force: true }) }
   }), 60_000)
 

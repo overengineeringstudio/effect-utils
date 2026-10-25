@@ -46,18 +46,22 @@ proof.
 `genie --check --read-set FILE` additionally records schema-1 observations and
 publishes private (`0600`) JSON evidence. `FILE.reasons.json` contains the same
 reason occurrences, source modules/packages, and expanded affected-generator
-lists, suitable for grouping blockers by reason and package. The artifact
-contains successful per-target results; it does **not** enable reuse yet.
-Closure certification, independent consumer validation, and per-generator reuse
-are not implemented in this recording slice.
+lists, plus `groups` keyed by reason code and exact source location with
+`occurrences` counts and unique affected generators. The artifact contains
+successful per-target results; it does **not** enable reuse yet. Closure
+certification, consumer current-state validation, and per-generator reuse are
+not implemented in this recording slice.
 
 Both requested outputs are projections of one invocation's recording.
 `GENIE_INPUT_MANIFEST.meta.json` (where the environment variable's value is the
 manifest filename) carries the invocation ID, completeness, and whether digest
 evidence was requested. The legacy path set equals the file/directory path
-union in the read-set, including observed absences. Consumers must reject
-mismatched invocation IDs and incomplete evidence. Failed checks/publication
-remove stale evidence rather than leaving a previous successful result behind.
+union in the read-set, including observed absences. The internal
+`validateReadSetPair` helper rejects mismatched invocation IDs, completeness,
+or path-only metadata; it validates artifact structure and same-run provenance,
+not current filesystem/environment state or reuse eligibility. Failed
+checks/publication remove stale evidence rather than leaving a previous
+successful result behind.
 Partial/dry runs do not request a recording. Without either output, no recording
 state, source scan, hashing, or artifact IO is installed. Legacy-only recording
 collects paths and reasons, not digest evidence.
@@ -65,8 +69,11 @@ collects paths and reasons, not digest evidence.
 For generator filesystem reads use `defineRepoContext().readText/readJson`,
 or the Node-only `@overeng/genie/node` exports `inputReadFileSync`,
 `inputExistsSync`, `inputStatSync`, `inputReaddirSync`, and
-`inputRealpathSync`. These retain Node's overloads and errors and record inputs
-before consumption, including missing optional paths. `recordInputEnvironment`
+`inputRealpathSync`. These retain Node's overloads and errors and associate
+consumed observations with stability checks, including missing optional paths.
+Stat recording cross-checks the metadata returned to the caller against exact
+bigint evidence; disagreement remains incomplete even if state is restored.
+`recordInputEnvironment`
 returns the consumed environment value but records only its presence and a
 freshly salted digest, never plaintext. `recordInput(path)` declares a dependency
 consumed by another API. Recursive directory readers retain nested inventories,

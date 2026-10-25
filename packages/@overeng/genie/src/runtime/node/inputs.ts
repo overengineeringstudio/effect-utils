@@ -169,25 +169,87 @@ export const inputExistsSync: typeof fs.existsSync = new Proxy(fs.existsSync, {
     return Reflect.apply(target, receiver, args)
   },
 })
+
+type StatSample = { state: 'present'; stat: fs.Stats | fs.BigIntStats } | { state: 'absent'; error: 'ENOENT' | 'ENOTDIR' } | undefined
+const fingerprint = (observation: StatSample) => observation?.state === 'present'
+  ? canonicalJson({ type: entryType(observation.stat), values: Object.fromEntries(
+    ['dev', 'ino', 'mode', 'nlink', 'uid', 'gid', 'rdev', 'size', 'blksize', 'blocks',
+      ...(typeof observation.stat.size === 'bigint' ? ['atimeNs', 'mtimeNs', 'ctimeNs', 'birthtimeNs'] : ['atimeMs', 'mtimeMs', 'ctimeMs', 'birthtimeMs']),
+    ].map((key) => [key, String(Reflect.get(observation.stat, key))]),
+  ) })
+  : canonicalJson(observation ?? null)
+
 /** Node-compatible stat calls that retain followed-path metadata. */
 export const inputStatSync: typeof fs.statSync = new Proxy(fs.statSync, {
   apply: (target, receiver, args: Parameters<typeof fs.statSync>) => {
     const recording = globalState[state]
-    if (recording?.evidence === undefined) recordInput(args[0])
-    else {
-      const input = normalizeInputPath({ recording: recording, input: args[0] })
-      if (input === undefined) return Reflect.apply(target, receiver, args)
-      recording.paths.add(input)
+    if (recording?.evidence === undefined) {
+      recordInput(args[0])
+      return Reflect.apply(target, receiver, args)
+    }
+    const input = normalizeInputPath({ recording: recording, input: args[0] })
+    if (input === undefined) return Reflect.apply(target, receiver, args)
+    recording.paths.add(input)
+    const sample = ({ bigint }: { bigint: boolean }) => {
       try {
-        const stat = fs.statSync(args[0], { bigint: true })
-        retainObservation({ recording: recording, map: recording.evidence.stats, key: canonicalJson([input, true]), observation: { path: input, followSymlinks: true, by: [], state: 'present', type: entryType(stat), values: statValues(stat) } })
+        const stat = Reflect.apply(target, receiver, [args[0], { bigint, throwIfNoEntry: true }])
+        if (stat === undefined) throw new Error('Exact stat probe returned no result')
+        return { state: 'present' as const, stat }
       } catch (cause) {
         const missing = missingObservation(cause)
         if (missing === undefined) captureFault({ recording: recording, operation: 'statSync', module: '@overeng/genie/src/runtime/node/inputs.ts' })
-        else retainObservation({ recording: recording, map: recording.evidence.stats, key: canonicalJson([input, true]), observation: { path: input, followSymlinks: true, by: [], ...missing } })
+        return missing
       }
     }
-    return Reflect.apply(target, receiver, args)
+    const bigint = args[1]?.bigint === true
+    const before = sample({ bigint: true })
+    const numericBefore = bigint === false ? sample({ bigint: false }) : undefined
+    let result: fs.Stats | fs.BigIntStats | undefined
+    let callerError: unknown
+    let threw = false
+    try { result = Reflect.apply(target, receiver, args) } catch (cause) {
+      callerError = cause
+      threw = true
+    }
+    // Compare the consumed result, not just probes: an A -> B -> A race must
+    // remain incomplete even when later revalidation sees the original state.
+    try {
+      const numericAfter = bigint === false ? sample({ bigint: false }) : undefined
+      const after = sample({ bigint: true })
+      const consumed = result === undefined
+        ? threw === true ? missingObservation(callerError) : before?.state === 'absent' ? before : undefined
+        : { state: 'present' as const, stat: result }
+      let stable = before !== undefined && after !== undefined && fingerprint(before) === fingerprint(after)
+      if (bigint === true) stable = stable === true && fingerprint(consumed) === fingerprint(before)
+      else {
+        stable = stable === true && numericBefore !== undefined && numericAfter !== undefined
+          && fingerprint(consumed) === fingerprint(numericBefore) && fingerprint(consumed) === fingerprint(numericAfter)
+        if (result !== undefined && before?.state === 'present') {
+          // Only exact probes supply nanoseconds. Never invent ns by multiplying
+          // the caller's rounded milliseconds; compare their numeric projections.
+          for (const [key, value] of Object.entries(statValues(before.stat as fs.BigIntStats))) {
+            const exact = BigInt(value)
+            if (key.endsWith('Ns') === true) {
+              const milliseconds: unknown = Reflect.get(result, `${key.slice(0, -2)}Ms`)
+              stable = stable === true && (milliseconds === Number(exact) / 1_000_000
+                || milliseconds === Number(exact / 1_000_000n) + Number(exact % 1_000_000n) / 1_000_000
+                || milliseconds === Number(exact / 1_000_000_000n) * 1_000 + Number(exact % 1_000_000_000n) / 1_000_000)
+            } else stable = stable === true && Number.isSafeInteger(Number(exact)) === true && Reflect.get(result, key) === Number(exact)
+          }
+        }
+      }
+      if (stable === false) recordInputReason({
+        code: 'unstable-observation', operation: 'statSync', detail: `Stat result disagreed with surrounding observations: ${input}`,
+        source: { module: '@overeng/genie/src/runtime/node/inputs.ts', line: null }, generators: [], evidence: 'observed',
+      })
+      const exact = bigint === true ? consumed : before
+      if (exact?.state === 'present') retainObservation({ recording: recording, map: recording.evidence.stats, key: canonicalJson([input, true]), observation: {
+        path: input, followSymlinks: true, by: [], state: 'present', type: entryType(exact.stat), values: statValues(exact.stat as fs.BigIntStats),
+      } })
+      else if (exact?.state === 'absent') retainObservation({ recording: recording, map: recording.evidence.stats, key: canonicalJson([input, true]), observation: { path: input, followSymlinks: true, by: [], ...exact } })
+    } catch { captureFault({ recording: recording, operation: 'associate consumed stat', module: '@overeng/genie/src/runtime/node/inputs.ts' }) }
+    if (threw === true) throw callerError
+    return result
   },
 })
 /** Node-compatible directory reads that retain directory input evidence. */

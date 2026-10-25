@@ -1,6 +1,9 @@
-import { describe, expect, it } from 'vitest'
+import { describe, it } from '@effect/vitest'
+import { Effect } from 'effect'
+import { expect } from 'vitest'
 
-import { accountSourceGraph } from './input-manifest.ts'
+import type { InputReason } from '../runtime/node/input-observations.ts'
+import { accountSourceGraph, summarizeInputReasons } from './input-manifest.ts'
 
 type SourceModule = Parameters<typeof accountSourceGraph>[0]['graph'] extends ReadonlyMap<string, infer TModule>
   ? TModule
@@ -102,4 +105,25 @@ describe('source closure accounting', () => {
       evidence: 'unproven',
     })
   })
+
+  it.effect('groups occurrence counts by code and exact source without dropping per-generator attribution', () => Effect.sync(() => {
+    const reason: InputReason = {
+      code: 'ambient-env', operation: 'process.env', detail: 'Unproven capability.',
+      source: { module: 'shared.ts', line: 3 }, evidence: 'unproven', generators: ['a.genie.ts'],
+    }
+    const groups = summarizeInputReasons([
+      reason,
+      { ...reason, operation: 'process.cwd', generators: ['b.genie.ts'] },
+      { ...reason, code: 'unknown-capability', generators: ['a.genie.ts', 'b.genie.ts'] },
+      { ...reason, source: { module: 'shared.ts', line: 4 } },
+      { ...reason, source: { module: 'dependency/subpath', line: null } },
+    ])
+    expect(groups).toHaveLength(4)
+    expect(groups.find((group) => group.code === 'ambient-env' && group.source.module === 'shared.ts' && group.source.line === 3)).toEqual({
+      code: 'ambient-env', source: { module: 'shared.ts', line: 3 },
+      occurrences: 2, generators: ['a.genie.ts', 'b.genie.ts'],
+    })
+    expect(groups.reduce((count, group) => count + group.occurrences, 0)).toBe(5)
+    expect(summarizeInputReasons([])).toEqual([])
+  }))
 })
