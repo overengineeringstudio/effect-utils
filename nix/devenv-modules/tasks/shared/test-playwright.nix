@@ -16,6 +16,8 @@
 # Provides:
 #   - test:pw:run - Run all playwright tests
 #   - test:pw:<name> - Run playwright tests for specific package
+#   - Per-package isolateNetwork = true confines localhost-only suites to a
+#     Linux user/network namespace when the host permits unprivileged namespaces.
 {
   packages,
   installTask ? "pnpm:install",
@@ -41,21 +43,53 @@ let
         exec ${sourceLauncher} ${pkgs.writeShellScript "leased-playwright-test" script}
       '';
 
-  mkTestTask = pkg: {
-    "test:pw:${pkg.name}" = {
-      description = "Run playwright tests for ${pkg.name}";
-      # Storybook and Vite otherwise discover caches below node_modules inside
-      # the immutable Buck editor view and fail before Playwright can start.
-      # Same per-checkout location as the storybook task module.
-      exec = trace.exec "test:pw:${pkg.name}" (leaseSource ''
-        export CACHE_DIR=${lib.escapeShellArg "${config.devenv.root}/.devenv/storybook-cache/${pkg.name}"}
-        export VITE_CACHE_DIR=${lib.escapeShellArg "${config.devenv.root}/.devenv/vite-cache/${pkg.name}"}
+  mkTestTask =
+    pkg:
+    let
+      runTests = pkgs.writeShellScript "playwright-${pkg.name}" ''
+        set -euo pipefail
         ${playwrightBin} test
-      '');
-      cwd = pkg.path;
-      after = [ installTask ];
+      '';
+      isolatedTests = pkgs.writeShellScript "playwright-${pkg.name}-network" ''
+        set -euo pipefail
+        ${pkgs.iproute2}/bin/ip link set lo up
+        export PLAYWRIGHT_NETWORK_ISOLATED=1
+        echo "Playwright network isolation on: loopback-only Linux network namespace" >&2
+        exec ${runTests}
+      '';
+      isolateNetwork = pkg.isolateNetwork or false;
+    in
+    {
+      "test:pw:${pkg.name}" = {
+        description = "Run playwright tests for ${pkg.name}";
+        # Storybook and Vite otherwise discover caches below node_modules inside
+        # the immutable Buck editor view and fail before Playwright can start.
+        # Same per-checkout location as the storybook task module.
+        exec = trace.exec "test:pw:${pkg.name}" (leaseSource ''
+          export CACHE_DIR=${lib.escapeShellArg "${config.devenv.root}/.devenv/storybook-cache/${pkg.name}"}
+          export VITE_CACHE_DIR=${lib.escapeShellArg "${config.devenv.root}/.devenv/vite-cache/${pkg.name}"}
+          ${
+            if isolateNetwork then
+              if pkgs.stdenv.hostPlatform.isLinux then
+                ''
+                  if ${pkgs.util-linux}/bin/unshare -Urn true 2>/dev/null; then
+                    exec ${pkgs.util-linux}/bin/unshare -Urn ${isolatedTests}
+                  fi
+                  echo "Playwright network isolation off: unprivileged user/network namespaces unavailable" >&2
+                ''
+              else
+                ''
+                  echo "Playwright network isolation off: supported only on Linux" >&2
+                ''
+            else
+              ""
+          }
+          exec ${runTests}
+        '');
+        cwd = pkg.path;
+        after = [ installTask ];
+      };
     };
-  };
 
   guardedTasks = {
     "test:pw:run" = {
