@@ -5,9 +5,10 @@ import { expect } from 'vitest'
 import type { InputReason } from '../runtime/node/input-observations.ts'
 import { accountSourceGraph, summarizeInputReasons } from './input-manifest.ts'
 
-type SourceModule = Parameters<typeof accountSourceGraph>[0]['graph'] extends ReadonlyMap<string, infer TModule>
-  ? TModule
-  : never
+type SourceModule =
+  Parameters<typeof accountSourceGraph>[0]['graph'] extends ReadonlyMap<string, infer TModule>
+    ? TModule
+    : never
 
 const moduleNode = (module: string, children: Array<string> = []): SourceModule => ({
   module,
@@ -44,7 +45,10 @@ describe('source closure accounting', () => {
   })
 
   it('keeps an unrestricted module incomplete even with no visible bypasses', () => {
-    const reasons = accountSourceGraph({ entries: [{ module: 'plain.genie.ts', generator: 'plain.genie.ts' }], graph: new Map([['plain.genie.ts', moduleNode('plain.genie.ts')]]) })
+    const reasons = accountSourceGraph({
+      entries: [{ module: 'plain.genie.ts', generator: 'plain.genie.ts' }],
+      graph: new Map([['plain.genie.ts', moduleNode('plain.genie.ts')]]),
+    })
     expect(reasons).toEqual([
       {
         code: 'unknown-capability',
@@ -75,12 +79,15 @@ describe('source closure accounting', () => {
         evidence: 'unproven',
       },
     ]
-    const reasons = accountSourceGraph({ entries: entries, graph: new Map([
-      ['a.genie.ts', moduleNode('a.genie.ts', ['shared.ts'])],
-      ['b.genie.ts', moduleNode('b.genie.ts', ['shared.ts'])],
-      ['other.genie.ts', moduleNode('other.genie.ts')],
-      ['shared.ts', shared],
-    ]) }).filter((reason) => reason.source.module === 'shared.ts')
+    const reasons = accountSourceGraph({
+      entries: entries,
+      graph: new Map([
+        ['a.genie.ts', moduleNode('a.genie.ts', ['shared.ts'])],
+        ['b.genie.ts', moduleNode('b.genie.ts', ['shared.ts'])],
+        ['other.genie.ts', moduleNode('other.genie.ts')],
+        ['shared.ts', shared],
+      ]),
+    }).filter((reason) => reason.source.module === 'shared.ts')
     expect(reasons.map((reason) => reason.code)).toEqual([
       'unknown-capability',
       'unmediated-fs',
@@ -92,13 +99,16 @@ describe('source closure accounting', () => {
   })
 
   it('names opaque dependencies and expands their exact affected generators', () => {
-    const reasons = accountSourceGraph({ entries: entries, graph: new Map([
-      ['a.genie.ts', moduleNode('a.genie.ts', ['dependency/subpath'])],
-      ['b.genie.ts', moduleNode('b.genie.ts', ['shared.ts'])],
-      ['shared.ts', moduleNode('shared.ts', ['dependency/subpath'])],
-      ['dependency/subpath', moduleNode('dependency/subpath')],
-      ['other.genie.ts', moduleNode('other.genie.ts')],
-    ]) })
+    const reasons = accountSourceGraph({
+      entries: entries,
+      graph: new Map([
+        ['a.genie.ts', moduleNode('a.genie.ts', ['dependency/subpath'])],
+        ['b.genie.ts', moduleNode('b.genie.ts', ['shared.ts'])],
+        ['shared.ts', moduleNode('shared.ts', ['dependency/subpath'])],
+        ['dependency/subpath', moduleNode('dependency/subpath')],
+        ['other.genie.ts', moduleNode('other.genie.ts')],
+      ]),
+    })
     expect(reasons.find((reason) => reason.source.module === 'dependency/subpath')).toMatchObject({
       code: 'unknown-capability',
       generators: ['a.genie.ts', 'b.genie.ts'],
@@ -106,24 +116,41 @@ describe('source closure accounting', () => {
     })
   })
 
-  it.effect('groups occurrence counts by code and exact source without dropping per-generator attribution', () => Effect.sync(() => {
-    const reason: InputReason = {
-      code: 'ambient-env', operation: 'process.env', detail: 'Unproven capability.',
-      source: { module: 'shared.ts', line: 3 }, evidence: 'unproven', generators: ['a.genie.ts'],
-    }
-    const groups = summarizeInputReasons([
-      reason,
-      { ...reason, operation: 'process.cwd', generators: ['b.genie.ts'] },
-      { ...reason, code: 'unknown-capability', generators: ['a.genie.ts', 'b.genie.ts'] },
-      { ...reason, source: { module: 'shared.ts', line: 4 } },
-      { ...reason, source: { module: 'dependency/subpath', line: null } },
-    ])
-    expect(groups).toHaveLength(4)
-    expect(groups.find((group) => group.code === 'ambient-env' && group.source.module === 'shared.ts' && group.source.line === 3)).toEqual({
-      code: 'ambient-env', source: { module: 'shared.ts', line: 3 },
-      occurrences: 2, generators: ['a.genie.ts', 'b.genie.ts'],
-    })
-    expect(groups.reduce((count, group) => count + group.occurrences, 0)).toBe(5)
-    expect(summarizeInputReasons([])).toEqual([])
-  }))
+  it.effect(
+    'groups occurrence counts by code and exact source without dropping per-generator attribution',
+    () =>
+      Effect.sync(() => {
+        const reason: InputReason = {
+          code: 'ambient-env',
+          operation: 'process.env',
+          detail: 'Unproven capability.',
+          source: { module: 'shared.ts', line: 3 },
+          evidence: 'unproven',
+          generators: ['a.genie.ts'],
+        }
+        const groups = summarizeInputReasons([
+          reason,
+          { ...reason, operation: 'process.cwd', generators: ['b.genie.ts'] },
+          { ...reason, code: 'unknown-capability', generators: ['a.genie.ts', 'b.genie.ts'] },
+          { ...reason, source: { module: 'shared.ts', line: 4 } },
+          { ...reason, source: { module: 'dependency/subpath', line: null } },
+        ])
+        expect(groups).toHaveLength(4)
+        expect(
+          groups.find(
+            (group) =>
+              group.code === 'ambient-env' &&
+              group.source.module === 'shared.ts' &&
+              group.source.line === 3,
+          ),
+        ).toEqual({
+          code: 'ambient-env',
+          source: { module: 'shared.ts', line: 3 },
+          occurrences: 2,
+          generators: ['a.genie.ts', 'b.genie.ts'],
+        })
+        expect(groups.reduce((count, group) => count + group.occurrences, 0)).toBe(5)
+        expect(summarizeInputReasons([])).toEqual([])
+      }),
+  )
 })

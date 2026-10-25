@@ -187,7 +187,9 @@ export const genieCommand = Cli.Command.make(
       Cli.Flag.withDefault(false),
     ),
     readSet: Cli.Flag.String('read-set').pipe(
-      Cli.Flag.withDescription('Write check read-set evidence to this path (requires a full --check)'),
+      Cli.Flag.withDescription(
+        'Write check read-set evidence to this path (requires a full --check)',
+      ),
       Cli.Flag.optional,
     ),
     dryRun: Cli.Flag.Boolean('dry-run').pipe(
@@ -214,11 +216,27 @@ export const genieCommand = Cli.Command.make(
     ),
     output: outputOption,
   },
-  ({ cwd, writeable, watch, check, readSet, dryRun, deferValidation, phase, oxfmtConfig, output }) => {
+  ({
+    cwd,
+    writeable,
+    watch,
+    check,
+    readSet,
+    dryRun,
+    deferValidation,
+    phase,
+    oxfmtConfig,
+    output,
+  }) => {
     const cliMode = watch ? 'watch' : check ? 'check' : dryRun ? 'dry-run' : 'generate'
     const selectedPhase: GeneratorPhase | undefined = Option.getOrUndefined(phase)
-    const recordedCheck = check && !watch && !dryRun && Option.isNone(phase) &&
-      (Option.isSome(readSet) || (process.env.GENIE_INPUT_MANIFEST !== undefined && process.env.GENIE_INPUT_MANIFEST !== ''))
+    const recordedCheck =
+      check &&
+      !watch &&
+      !dryRun &&
+      Option.isNone(phase) &&
+      (Option.isSome(readSet) ||
+        (process.env.GENIE_INPUT_MANIFEST !== undefined && process.env.GENIE_INPUT_MANIFEST !== ''))
     const handler = Effect.gen(function* () {
       if (Option.isSome(readSet) && (!check || watch || dryRun || Option.isSome(phase))) {
         return yield* new Cli.CliError.InvalidValue({
@@ -240,13 +258,12 @@ export const genieCommand = Cli.Command.make(
       const resolvedCwd = yield* fs.realPath(inputCwd).pipe(Effect.orElseSucceed(() => inputCwd))
 
       // Recorded checks discover implicit formatter configuration inside checkAll's recording.
-      const oxfmtConfigPath =
-        recordedCheck
-          ? oxfmtConfig
-          : yield* resolveOxfmtConfigPath({
-              explicitPath: oxfmtConfig,
-              cwd: resolvedCwd,
-            })
+      const oxfmtConfigPath = recordedCheck
+        ? oxfmtConfig
+        : yield* resolveOxfmtConfigPath({
+            explicitPath: oxfmtConfig,
+            cwd: resolvedCwd,
+          })
 
       // Determine mode
       const mode: GenieMode = check ? 'check' : dryRun ? 'dry-run' : 'generate'
@@ -406,8 +423,11 @@ export const genieCommand = Cli.Command.make(
         }
       }
       return yield* withInputManifest({
-        effect: handler, complete: true,
-        ...(Option.isSome(readSet) ? { readSet: { path: readSet.value, cwd: inputCwd, argv } } : {}),
+        effect: handler,
+        complete: true,
+        ...(Option.isSome(readSet)
+          ? { readSet: { path: readSet.value, cwd: inputCwd, argv } }
+          : {}),
       })
     })
   },

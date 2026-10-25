@@ -32,7 +32,15 @@ import { DistributedSemaphore } from '@overeng/utils/lock'
 import { FileSystemBacking } from '@overeng/utils/node'
 
 import type { GenieOutput } from '../runtime/mod.ts'
-import { getInputRecording, inputFileSystem, isInputRecording, isReadSetRecording, recordGeneratorResult, recordInput, recordInputReason } from '../runtime/node/inputs.ts'
+import {
+  getInputRecording,
+  inputFileSystem,
+  isInputRecording,
+  isReadSetRecording,
+  recordGeneratorResult,
+  recordInput,
+  recordInputReason,
+} from '../runtime/node/inputs.ts'
 import { isAnalyzableSourcePath, runTsFileAnalysis } from '../runtime/node/ts-api.ts'
 import type { TsFileAnalysisSession } from '../runtime/node/ts-api.ts'
 import { CatalogConflictError } from '../runtime/package-json/catalog.ts'
@@ -866,13 +874,17 @@ const formatWithOxfmt = Effect.fn('formatWithOxfmt')(function* ({
   })
 
   const result = yield* Effect.gen(function* () {
-    if (isInputRecording() === true) recordInputReason({
-      code: 'subprocess', operation: 'oxfmt',
-      detail: 'Formatter execution has an unaccounted executable and input closure',
-      source: { module: '@overeng/genie/src/core/generation.ts', line: null },
-      generators: getInputRecording()!.generators.filter((generator) => targetFilePath.endsWith(path.sep + generator.replace('.genie.ts', ''))),
-      evidence: 'observed',
-    })
+    if (isInputRecording() === true)
+      recordInputReason({
+        code: 'subprocess',
+        operation: 'oxfmt',
+        detail: 'Formatter execution has an unaccounted executable and input closure',
+        source: { module: '@overeng/genie/src/core/generation.ts', line: null },
+        generators: getInputRecording()!.generators.filter((generator) =>
+          targetFilePath.endsWith(path.sep + generator.replace('.genie.ts', '')),
+        ),
+        evidence: 'observed',
+      })
     const spawner = yield* CommandExecutor.ChildProcessSpawner
     return yield* spawner.string(
       Command.make('oxfmt', args, {
@@ -1376,7 +1388,13 @@ export const checkFileDetailed = ({
       })
     }
 
-    if (isReadSetRecording() === true) recordGeneratorResult({ generator: path.relative(cwd, genieFilePath).split(path.sep).join('/'), target: targetFilePath, moduleFiles: [genieFilePath], checkedContent: expectedContent })
+    if (isReadSetRecording() === true)
+      recordGeneratorResult({
+        generator: path.relative(cwd, genieFilePath).split(path.sep).join('/'),
+        target: targetFilePath,
+        moduleFiles: [genieFilePath],
+        checkedContent: expectedContent,
+      })
     return { targetFilePath, loadedGenieFile }
   }).pipe(
     Observability.withFileSpan({

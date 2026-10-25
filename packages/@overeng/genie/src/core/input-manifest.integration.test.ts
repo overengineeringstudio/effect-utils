@@ -19,10 +19,17 @@ import { Effect, Schema } from 'effect'
 import { describe, expect, it } from 'vitest'
 
 import {
-  canonicalJson, digestBytes, environmentDigest, reasonCodes,
+  canonicalJson,
+  digestBytes,
+  environmentDigest,
+  reasonCodes,
 } from '../runtime/node/input-observations.ts'
 import {
-  beginInputRecording, endInputRecording, getInputRecording, recordInput, recordInputCwd,
+  beginInputRecording,
+  endInputRecording,
+  getInputRecording,
+  recordInput,
+  recordInputCwd,
   recordInputEnvironment,
 } from '../runtime/node/inputs.ts'
 import { ReadSetSchema, validateReadSet } from './read-set.ts'
@@ -386,243 +393,387 @@ describe('recording-only mutation matrix', () => {
     return { root, capture }
   }
 
-  effectIt.effect('transitive imported helper bytes change the recorded file digest', () => Effect.sync(() => {
-    const { root, capture } = recordingFixture()
-    try {
-      const helper = path.join(root, 'transitive.ts')
-      writeFileSync(helper, "export const value = 'first\\n'\n")
-      writeFileSync(path.join(root, 'helper.ts'), "export { value } from './transitive.ts'\n")
-      writeFileSync(path.join(root, 'result.txt.genie.ts'), "import { value } from './helper.ts'\nexport default { data: {}, stringify: () => value }\n")
-      const first = capture()
-      writeFileSync(helper, "export const value = 'second\\n'\n")
-      const second = capture()
-      expect(first.files.find((entry) => entry.path === helper)).toMatchObject({
-        state: 'present', digest: digestBytes("export const value = 'first\\n'\n"), by: ['result.txt.genie.ts'],
-      })
-      expect(second.files.find((entry) => entry.path === helper)).toMatchObject({
-        state: 'present', digest: digestBytes(readFileSync(helper)), by: ['result.txt.genie.ts'],
-      })
-      expect(second.files.find((entry) => entry.path === helper)).not.toEqual(first.files.find((entry) => entry.path === helper))
-    } finally { rmSync(root, { recursive: true, force: true }) }
-  }), 60_000)
+  effectIt.effect(
+    'transitive imported helper bytes change the recorded file digest',
+    () =>
+      Effect.sync(() => {
+        const { root, capture } = recordingFixture()
+        try {
+          const helper = path.join(root, 'transitive.ts')
+          writeFileSync(helper, "export const value = 'first\\n'\n")
+          writeFileSync(path.join(root, 'helper.ts'), "export { value } from './transitive.ts'\n")
+          writeFileSync(
+            path.join(root, 'result.txt.genie.ts'),
+            "import { value } from './helper.ts'\nexport default { data: {}, stringify: () => value }\n",
+          )
+          const first = capture()
+          writeFileSync(helper, "export const value = 'second\\n'\n")
+          const second = capture()
+          expect(first.files.find((entry) => entry.path === helper)).toMatchObject({
+            state: 'present',
+            digest: digestBytes("export const value = 'first\\n'\n"),
+            by: ['result.txt.genie.ts'],
+          })
+          expect(second.files.find((entry) => entry.path === helper)).toMatchObject({
+            state: 'present',
+            digest: digestBytes(readFileSync(helper)),
+            by: ['result.txt.genie.ts'],
+          })
+          expect(second.files.find((entry) => entry.path === helper)).not.toEqual(
+            first.files.find((entry) => entry.path === helper),
+          )
+        } finally {
+          rmSync(root, { recursive: true, force: true })
+        }
+      }),
+    60_000,
+  )
 
-  effectIt.effect('validator-only mediated input bytes change evidence without changing outputDigest', () => Effect.sync(() => {
-    const { root, capture } = recordingFixture()
-    try {
-      const input = path.join(root, 'validator-only.txt')
-      writeFileSync(input, 'first validation input')
-      writeFileSync(path.join(root, 'result.txt.genie.ts'), `
+  effectIt.effect(
+    'validator-only mediated input bytes change evidence without changing outputDigest',
+    () =>
+      Effect.sync(() => {
+        const { root, capture } = recordingFixture()
+        try {
+          const input = path.join(root, 'validator-only.txt')
+          writeFileSync(input, 'first validation input')
+          writeFileSync(
+            path.join(root, 'result.txt.genie.ts'),
+            `
 import { inputReadFileSync } from ${canonicalJson(readersPath)}
 export default {
   data: {}, stringify: () => 'constant\\n',
   validate: () => { inputReadFileSync(${canonicalJson(input)}, 'utf8'); return [] },
 }
-`)
-      const first = capture()
-      writeFileSync(input, 'second validation input')
-      const second = capture()
-      expect(first.files.find((entry) => entry.path === input)).toMatchObject({
-        state: 'present', digest: digestBytes('first validation input'), by: ['result.txt.genie.ts'],
-      })
-      expect(second.files.find((entry) => entry.path === input)).toMatchObject({
-        state: 'present', digest: digestBytes('second validation input'), by: ['result.txt.genie.ts'],
-      })
-      expect(second.generatorResults[0]!.outputDigest).toBe(first.generatorResults[0]!.outputDigest)
-      expect(second.reasons.some((reason) => reason.code === 'unknown-capability')).toBe(true)
-    } finally { rmSync(root, { recursive: true, force: true }) }
-  }), 60_000)
+`,
+          )
+          const first = capture()
+          writeFileSync(input, 'second validation input')
+          const second = capture()
+          expect(first.files.find((entry) => entry.path === input)).toMatchObject({
+            state: 'present',
+            digest: digestBytes('first validation input'),
+            by: ['result.txt.genie.ts'],
+          })
+          expect(second.files.find((entry) => entry.path === input)).toMatchObject({
+            state: 'present',
+            digest: digestBytes('second validation input'),
+            by: ['result.txt.genie.ts'],
+          })
+          expect(second.generatorResults[0]!.outputDigest).toBe(
+            first.generatorResults[0]!.outputDigest,
+          )
+          expect(second.reasons.some((reason) => reason.code === 'unknown-capability')).toBe(true)
+        } finally {
+          rmSync(root, { recursive: true, force: true })
+        }
+      }),
+    60_000,
+  )
 
-  effectIt.effect('absent→present and directory add/remove each change their own observations', () => Effect.sync(() => {
-    const root = realpathSync(mkdtempSync(path.join(os.tmpdir(), 'genie-mutation-')))
-    const input = path.join(root, 'optional.txt')
-    const capture = () => {
-      beginInputRecording({ digests: true })
-      recordInput(input)
-      recordInput(root)
-      const evidence = getInputRecording()!.evidence!
-      const result = { file: evidence.files.get(input), directory: evidence.directories.get(root) }
-      endInputRecording()
-      return result
-    }
-    try {
-      const absent = capture()
-      expect(absent.file).toMatchObject({ state: 'absent', error: 'ENOENT' })
-      expect(absent.directory).toMatchObject({ state: 'present', entries: [] })
-      writeFileSync(input, 'present')
-      const present = capture()
-      expect(present.file).toMatchObject({ state: 'present', digest: digestBytes('present') })
-      expect(present.directory).toMatchObject({ entries: [{ name: 'optional.txt', type: 'file' }] })
-      expect(present.directory).not.toEqual(absent.directory)
-      rmSync(input)
-      const removed = capture()
-      expect(removed.directory).toEqual(absent.directory)
-      expect(removed.directory).not.toEqual(present.directory)
-      expect(removed.file).toEqual(absent.file)
-    } finally {
-      endInputRecording()
-      rmSync(root, { recursive: true, force: true })
-    }
-  }))
+  effectIt.effect(
+    'absent→present and directory add/remove each change their own observations',
+    () =>
+      Effect.sync(() => {
+        const root = realpathSync(mkdtempSync(path.join(os.tmpdir(), 'genie-mutation-')))
+        const input = path.join(root, 'optional.txt')
+        const capture = () => {
+          beginInputRecording({ digests: true })
+          recordInput(input)
+          recordInput(root)
+          const evidence = getInputRecording()!.evidence!
+          const result = {
+            file: evidence.files.get(input),
+            directory: evidence.directories.get(root),
+          }
+          endInputRecording()
+          return result
+        }
+        try {
+          const absent = capture()
+          expect(absent.file).toMatchObject({ state: 'absent', error: 'ENOENT' })
+          expect(absent.directory).toMatchObject({ state: 'present', entries: [] })
+          writeFileSync(input, 'present')
+          const present = capture()
+          expect(present.file).toMatchObject({ state: 'present', digest: digestBytes('present') })
+          expect(present.directory).toMatchObject({
+            entries: [{ name: 'optional.txt', type: 'file' }],
+          })
+          expect(present.directory).not.toEqual(absent.directory)
+          rmSync(input)
+          const removed = capture()
+          expect(removed.directory).toEqual(absent.directory)
+          expect(removed.directory).not.toEqual(present.directory)
+          expect(removed.file).toEqual(absent.file)
+        } finally {
+          endInputRecording()
+          rmSync(root, { recursive: true, force: true })
+        }
+      }),
+  )
 
-  effectIt.effect('environment value/unset/empty comparisons use the same artifact salt', () => Effect.sync(() => {
-    const name = 'GENIE_MUTATION_MATRIX_VALUE'
-    const previous = process.env[name]
-    const capture = (value: string | undefined) => {
-      if (value === undefined) delete process.env[name]
-      else process.env[name] = value
-      beginInputRecording({ digests: true })
-      expect(recordInputEnvironment(name)).toBe(value)
-      const evidence = getInputRecording()!.evidence!
-      const result = { salt: evidence.envSalt, observation: evidence.environment.get(name) }
-      endInputRecording()
-      return result
-    }
-    try {
-      const first = capture('first')
-      const second = capture('second')
-      const unset = capture(undefined)
-      const empty = capture('')
-      expect(first.salt).not.toBe(second.salt)
-      expect(first.observation).toMatchObject({ present: true, digest: environmentDigest({ salt: first.salt, name, value: 'first' }) })
-      expect(second.observation).toMatchObject({ present: true, digest: environmentDigest({ salt: second.salt, name, value: 'second' }) })
-      // A cross-invocation digest inequality alone would only demonstrate salt rotation.
-      expect(environmentDigest({ salt: first.salt, name, value: 'second' })).not.toBe(
-        environmentDigest({ salt: first.salt, name, value: 'first' }),
-      )
-      expect(unset.observation).toEqual({ name, by: [], present: false })
-      expect(empty.observation).toEqual({ name, by: [], present: true, digest: environmentDigest({ salt: empty.salt, name, value: '' }) })
-      expect(environmentDigest({ salt: first.salt, name, value: '' })).not.toBe(
-        environmentDigest({ salt: first.salt, name, value: 'first' }),
-      )
-    } finally {
-      endInputRecording()
-      if (previous === undefined) delete process.env[name]
-      else process.env[name] = previous
-    }
-  }))
-
-  effectIt.effect('cwd lexical aliases and physical symlink retargeting remain distinct evidence', () => Effect.sync(() => {
-    const root = realpathSync(mkdtempSync(path.join(os.tmpdir(), 'genie-cwd-mutation-')))
-    const first = path.join(root, 'first')
-    const second = path.join(root, 'second')
-    const alias = path.join(root, 'alias')
-    const capture = (cwd: string) => {
-      beginInputRecording({ digests: true })
-      recordInputCwd(cwd)
-      const evidence = getInputRecording()!.evidence!
-      const result = { cwd: evidence.cwd.get(cwd), link: evidence.symlinks.get(alias) }
-      endInputRecording()
-      return result
-    }
-    try {
-      mkdirSync(first)
-      mkdirSync(second)
-      symlinkSync(first, alias, 'dir')
-      const direct = capture(first)
-      const linked = capture(alias)
-      expect(direct.cwd).toEqual({ lexical: first, physical: first, by: [] })
-      expect(linked.cwd).toEqual({ lexical: alias, physical: first, by: [] })
-      expect(linked.link).toMatchObject({ target: first })
-      rmSync(alias)
-      symlinkSync(second, alias, 'dir')
-      const retargeted = capture(alias)
-      expect(retargeted.cwd).toEqual({ lexical: alias, physical: second, by: [] })
-      expect(retargeted.link).toMatchObject({ target: second })
-      expect(retargeted.link).not.toEqual(linked.link)
-    } finally {
-      endInputRecording()
-      rmSync(root, { recursive: true, force: true })
-    }
-  }))
-
-  effectIt.effect('resolution alternatives change the recorded outcome and searched directory inventory', () => Effect.sync(() => {
-    const { root, capture } = recordingFixture()
-    try {
-      const sources = path.join(root, 'sources')
-      mkdirSync(sources)
-      writeFileSync(path.join(sources, 'helper.ts'), "export const value = 'typescript\\n'\n")
-      const importer = path.join(root, 'result.txt.genie.ts')
-      writeFileSync(importer, "import { value } from './sources/helper'\nexport default { data: {}, stringify: () => value }\n")
-      const first = capture()
-      writeFileSync(path.join(sources, 'helper.jsx'), "export const value = 'jsx\\n'\n")
-      const second = capture()
-      expect(first.resolutions.find((entry) => entry.importer === importer && entry.specifier === './sources/helper')).toMatchObject({ outcome: { kind: 'file', lexical: path.join(sources, 'helper.ts'), physical: path.join(sources, 'helper.ts') } })
-      expect(second.resolutions.find((entry) => entry.importer === importer && entry.specifier === './sources/helper')).toMatchObject({ outcome: { kind: 'file', lexical: path.join(sources, 'helper.jsx'), physical: path.join(sources, 'helper.jsx') } })
-      expect(second.directories.find((entry) => entry.path === sources)).not.toEqual(first.directories.find((entry) => entry.path === sources))
-      expect(first.directories.find((entry) => entry.path === sources)).toMatchObject({ state: 'present', entries: [{ name: 'helper.ts', type: 'file' }] })
-      expect(second.directories.find((entry) => entry.path === sources)).toMatchObject({ state: 'present', entries: [{ name: 'helper.jsx', type: 'file' }, { name: 'helper.ts', type: 'file' }] })
-    } finally { rmSync(root, { recursive: true, force: true }) }
-  }), 60_000)
-
-  effectIt.effect('actual component identities/platform and generated target bytes have honest producer evidence', () => Effect.sync(() => {
-    const { root, capture } = recordingFixture()
-    try {
-      const first = capture()
-      expect(first.platform).toEqual({ os: process.platform, arch: process.arch })
-      for (const identity of [first.genie, first.bun, first.generatorResults[0]!.module]) {
-        expect(identity.files.length).toBeGreaterThan(0)
-        for (const file of identity.files) expect(file.digest).toBe(digestBytes(readFileSync(file.path)))
+  effectIt.effect('environment value/unset/empty comparisons use the same artifact salt', () =>
+    Effect.sync(() => {
+      const name = 'GENIE_MUTATION_MATRIX_VALUE'
+      const previous = process.env[name]
+      const capture = (value: string | undefined) => {
+        if (value === undefined) delete process.env[name]
+        else process.env[name] = value
+        beginInputRecording({ digests: true })
+        expect(recordInputEnvironment(name)).toBe(value)
+        const evidence = getInputRecording()!.evidence!
+        const result = { salt: evidence.envSalt, observation: evidence.environment.get(name) }
+        endInputRecording()
+        return result
       }
-      // Intent comparisons only: schema acceptance is NOT current-platform validation.
-      const intendedPlatform = { ...first.platform, arch: `${first.platform.arch}-different-intent` }
-      expect(first.platform).not.toEqual(intendedPlatform)
-      expect(validateReadSet({ ...first, platform: intendedPlatform }).platform).toEqual(intendedPlatform)
-      const intendedIdentity = { ...first.bun, version: `${first.bun.version}-different-intent` }
-      expect(first.bun).not.toEqual(intendedIdentity)
-      expect(validateReadSet({ ...first, bun: intendedIdentity }).bun).toEqual(intendedIdentity)
-      const target = path.join(root, 'result.txt')
-      expect(first.generatorResults[0]!.outputDigest).toBe(digestBytes(readFileSync(target)))
-      writeFileSync(path.join(root, 'input.txt'), 'changed generated bytes\n')
-      const second = capture()
-      expect(first.files.find((entry) => entry.path === path.join(root, 'input.txt'))).toMatchObject({ state: 'present', digest: digestBytes('first\n') })
-      expect(second.files.find((entry) => entry.path === path.join(root, 'input.txt'))).toMatchObject({ state: 'present', digest: digestBytes('changed generated bytes\n') })
-      expect(second.generatorResults[0]!.outputDigest).toBe(digestBytes(readFileSync(target)))
-      expect(second.generatorResults[0]!.outputDigest).not.toBe(first.generatorResults[0]!.outputDigest)
-      expect(second.files.find((entry) => entry.path === target)).toMatchObject({
-        state: 'present', digest: second.generatorResults[0]!.outputDigest,
-      })
-      const generator = path.join(root, 'result.txt.genie.ts')
-      const beforeIdentityMutation = readFileSync(generator, 'utf8')
-      writeFileSync(generator, `${beforeIdentityMutation}\n// Identity-only source byte mutation.\n`)
-      const identityMutation = capture()
-      expect(identityMutation.generatorResults[0]!.module.files).not.toEqual(second.generatorResults[0]!.module.files)
-      expect(identityMutation.generatorResults[0]!.module.files).toContainEqual({
-        path: generator, digest: digestBytes(readFileSync(generator)),
-      })
-      expect(identityMutation.generatorResults[0]!.outputDigest).toBe(second.generatorResults[0]!.outputDigest)
-      expect(identityMutation.genie).toEqual(second.genie)
-      expect(identityMutation.bun).toEqual(second.bun)
-    } finally { rmSync(root, { recursive: true, force: true }) }
-  }), 60_000)
+      try {
+        const first = capture('first')
+        const second = capture('second')
+        const unset = capture(undefined)
+        const empty = capture('')
+        expect(first.salt).not.toBe(second.salt)
+        expect(first.observation).toMatchObject({
+          present: true,
+          digest: environmentDigest({ salt: first.salt, name, value: 'first' }),
+        })
+        expect(second.observation).toMatchObject({
+          present: true,
+          digest: environmentDigest({ salt: second.salt, name, value: 'second' }),
+        })
+        // A cross-invocation digest inequality alone would only demonstrate salt rotation.
+        expect(environmentDigest({ salt: first.salt, name, value: 'second' })).not.toBe(
+          environmentDigest({ salt: first.salt, name, value: 'first' }),
+        )
+        expect(unset.observation).toEqual({ name, by: [], present: false })
+        expect(empty.observation).toEqual({
+          name,
+          by: [],
+          present: true,
+          digest: environmentDigest({ salt: empty.salt, name, value: '' }),
+        })
+        expect(environmentDigest({ salt: first.salt, name, value: '' })).not.toBe(
+          environmentDigest({ salt: first.salt, name, value: 'first' }),
+        )
+      } finally {
+        endInputRecording()
+        if (previous === undefined) delete process.env[name]
+        else process.env[name] = previous
+      }
+    }),
+  )
+
+  effectIt.effect(
+    'cwd lexical aliases and physical symlink retargeting remain distinct evidence',
+    () =>
+      Effect.sync(() => {
+        const root = realpathSync(mkdtempSync(path.join(os.tmpdir(), 'genie-cwd-mutation-')))
+        const first = path.join(root, 'first')
+        const second = path.join(root, 'second')
+        const alias = path.join(root, 'alias')
+        const capture = (cwd: string) => {
+          beginInputRecording({ digests: true })
+          recordInputCwd(cwd)
+          const evidence = getInputRecording()!.evidence!
+          const result = { cwd: evidence.cwd.get(cwd), link: evidence.symlinks.get(alias) }
+          endInputRecording()
+          return result
+        }
+        try {
+          mkdirSync(first)
+          mkdirSync(second)
+          symlinkSync(first, alias, 'dir')
+          const direct = capture(first)
+          const linked = capture(alias)
+          expect(direct.cwd).toEqual({ lexical: first, physical: first, by: [] })
+          expect(linked.cwd).toEqual({ lexical: alias, physical: first, by: [] })
+          expect(linked.link).toMatchObject({ target: first })
+          rmSync(alias)
+          symlinkSync(second, alias, 'dir')
+          const retargeted = capture(alias)
+          expect(retargeted.cwd).toEqual({ lexical: alias, physical: second, by: [] })
+          expect(retargeted.link).toMatchObject({ target: second })
+          expect(retargeted.link).not.toEqual(linked.link)
+        } finally {
+          endInputRecording()
+          rmSync(root, { recursive: true, force: true })
+        }
+      }),
+  )
+
+  effectIt.effect(
+    'resolution alternatives change the recorded outcome and searched directory inventory',
+    () =>
+      Effect.sync(() => {
+        const { root, capture } = recordingFixture()
+        try {
+          const sources = path.join(root, 'sources')
+          mkdirSync(sources)
+          writeFileSync(path.join(sources, 'helper.ts'), "export const value = 'typescript\\n'\n")
+          const importer = path.join(root, 'result.txt.genie.ts')
+          writeFileSync(
+            importer,
+            "import { value } from './sources/helper'\nexport default { data: {}, stringify: () => value }\n",
+          )
+          const first = capture()
+          writeFileSync(path.join(sources, 'helper.jsx'), "export const value = 'jsx\\n'\n")
+          const second = capture()
+          expect(
+            first.resolutions.find(
+              (entry) => entry.importer === importer && entry.specifier === './sources/helper',
+            ),
+          ).toMatchObject({
+            outcome: {
+              kind: 'file',
+              lexical: path.join(sources, 'helper.ts'),
+              physical: path.join(sources, 'helper.ts'),
+            },
+          })
+          expect(
+            second.resolutions.find(
+              (entry) => entry.importer === importer && entry.specifier === './sources/helper',
+            ),
+          ).toMatchObject({
+            outcome: {
+              kind: 'file',
+              lexical: path.join(sources, 'helper.jsx'),
+              physical: path.join(sources, 'helper.jsx'),
+            },
+          })
+          expect(second.directories.find((entry) => entry.path === sources)).not.toEqual(
+            first.directories.find((entry) => entry.path === sources),
+          )
+          expect(first.directories.find((entry) => entry.path === sources)).toMatchObject({
+            state: 'present',
+            entries: [{ name: 'helper.ts', type: 'file' }],
+          })
+          expect(second.directories.find((entry) => entry.path === sources)).toMatchObject({
+            state: 'present',
+            entries: [
+              { name: 'helper.jsx', type: 'file' },
+              { name: 'helper.ts', type: 'file' },
+            ],
+          })
+        } finally {
+          rmSync(root, { recursive: true, force: true })
+        }
+      }),
+    60_000,
+  )
+
+  effectIt.effect(
+    'actual component identities/platform and generated target bytes have honest producer evidence',
+    () =>
+      Effect.sync(() => {
+        const { root, capture } = recordingFixture()
+        try {
+          const first = capture()
+          expect(first.platform).toEqual({ os: process.platform, arch: process.arch })
+          for (const identity of [first.genie, first.bun, first.generatorResults[0]!.module]) {
+            expect(identity.files.length).toBeGreaterThan(0)
+            for (const file of identity.files)
+              expect(file.digest).toBe(digestBytes(readFileSync(file.path)))
+          }
+          // Intent comparisons only: schema acceptance is NOT current-platform validation.
+          const intendedPlatform = {
+            ...first.platform,
+            arch: `${first.platform.arch}-different-intent`,
+          }
+          expect(first.platform).not.toEqual(intendedPlatform)
+          expect(validateReadSet({ ...first, platform: intendedPlatform }).platform).toEqual(
+            intendedPlatform,
+          )
+          const intendedIdentity = {
+            ...first.bun,
+            version: `${first.bun.version}-different-intent`,
+          }
+          expect(first.bun).not.toEqual(intendedIdentity)
+          expect(validateReadSet({ ...first, bun: intendedIdentity }).bun).toEqual(intendedIdentity)
+          const target = path.join(root, 'result.txt')
+          expect(first.generatorResults[0]!.outputDigest).toBe(digestBytes(readFileSync(target)))
+          writeFileSync(path.join(root, 'input.txt'), 'changed generated bytes\n')
+          const second = capture()
+          expect(
+            first.files.find((entry) => entry.path === path.join(root, 'input.txt')),
+          ).toMatchObject({ state: 'present', digest: digestBytes('first\n') })
+          expect(
+            second.files.find((entry) => entry.path === path.join(root, 'input.txt')),
+          ).toMatchObject({ state: 'present', digest: digestBytes('changed generated bytes\n') })
+          expect(second.generatorResults[0]!.outputDigest).toBe(digestBytes(readFileSync(target)))
+          expect(second.generatorResults[0]!.outputDigest).not.toBe(
+            first.generatorResults[0]!.outputDigest,
+          )
+          expect(second.files.find((entry) => entry.path === target)).toMatchObject({
+            state: 'present',
+            digest: second.generatorResults[0]!.outputDigest,
+          })
+          const generator = path.join(root, 'result.txt.genie.ts')
+          const beforeIdentityMutation = readFileSync(generator, 'utf8')
+          writeFileSync(
+            generator,
+            `${beforeIdentityMutation}\n// Identity-only source byte mutation.\n`,
+          )
+          const identityMutation = capture()
+          expect(identityMutation.generatorResults[0]!.module.files).not.toEqual(
+            second.generatorResults[0]!.module.files,
+          )
+          expect(identityMutation.generatorResults[0]!.module.files).toContainEqual({
+            path: generator,
+            digest: digestBytes(readFileSync(generator)),
+          })
+          expect(identityMutation.generatorResults[0]!.outputDigest).toBe(
+            second.generatorResults[0]!.outputDigest,
+          )
+          expect(identityMutation.genie).toEqual(second.genie)
+          expect(identityMutation.bun).toEqual(second.bun)
+        } finally {
+          rmSync(root, { recursive: true, force: true })
+        }
+      }),
+    60_000,
+  )
 })
 
 describe('real source capability occurrence evidence', () => {
-  effectIt.effect('scans real shared source for every closed reason code without executing hazardous capabilities', () => Effect.sync(() => {
-    const root = realpathSync(mkdtempSync(path.join(os.tmpdir(), 'genie-capability-source-')))
-    const scannerPath = fileURLToPath(new URL('./input-manifest.ts', import.meta.url))
-    try {
-      const source = [
-        "import { realpathSync } from 'node:fs'",
-        '// Source inventory only; hazards are never imported or called.',
-        "import * as childProcess from 'node:child_process'",
-        "import * as network from 'node:https'",
-        "import addon from './fixture.node'",
-        'export const hazards = () => {',
-        '  realpathSync(".")',
-        '  process.env.GENIE_CAPABILITY_FIXTURE',
-        '  Bun.spawnSync(["never-executed"])',
-        '  import("./optional.ts")',
-        '  fetch("https://example.invalid/never-executed")',
-        '  process.dlopen({}, "./never-executed.node")',
-        '  Date.now()',
-        '  Bun.file("./never-read")',
-        '}',
-      ].join('\n')
-      writeFileSync(path.join(root, 'capabilities.ts'), source)
-      writeFileSync(path.join(root, 'fixture.node'), 'not an executable addon; scanner presence only')
-      const generators = ['one.txt.genie.ts', 'two.txt.genie.ts']
-      for (const generator of generators) writeFileSync(path.join(root, generator), "import './capabilities.ts'\nexport default {}\n")
-      const result = spawnSync('bun', ['-e', `
+  effectIt.effect(
+    'scans real shared source for every closed reason code without executing hazardous capabilities',
+    () =>
+      Effect.sync(() => {
+        const root = realpathSync(mkdtempSync(path.join(os.tmpdir(), 'genie-capability-source-')))
+        const scannerPath = fileURLToPath(new URL('./input-manifest.ts', import.meta.url))
+        try {
+          const source = [
+            "import { realpathSync } from 'node:fs'",
+            '// Source inventory only; hazards are never imported or called.',
+            "import * as childProcess from 'node:child_process'",
+            "import * as network from 'node:https'",
+            "import addon from './fixture.node'",
+            'export const hazards = () => {',
+            '  realpathSync(".")',
+            '  process.env.GENIE_CAPABILITY_FIXTURE',
+            '  Bun.spawnSync(["never-executed"])',
+            '  import("./optional.ts")',
+            '  fetch("https://example.invalid/never-executed")',
+            '  process.dlopen({}, "./never-executed.node")',
+            '  Date.now()',
+            '  Bun.file("./never-read")',
+            '}',
+          ].join('\n')
+          writeFileSync(path.join(root, 'capabilities.ts'), source)
+          writeFileSync(
+            path.join(root, 'fixture.node'),
+            'not an executable addon; scanner presence only',
+          )
+          const generators = ['one.txt.genie.ts', 'two.txt.genie.ts']
+          for (const generator of generators)
+            writeFileSync(
+              path.join(root, generator),
+              "import './capabilities.ts'\nexport default {}\n",
+            )
+          const result = spawnSync(
+            'bun',
+            [
+              '-e',
+              `
 import { beginInputRecording, endInputRecording, getInputRecording, recordInput } from ${canonicalJson(readersPath)}
 import { recordGeneratorSourceGraph } from ${canonicalJson(scannerPath)}
 import { canonicalJson } from ${canonicalJson(fileURLToPath(new URL('../runtime/node/input-observations.ts', import.meta.url)))}
@@ -641,44 +792,76 @@ console.log(canonicalJson(recording.reasons.map(reason => ({
   ...reason, generators: reason.generators.length === 0 ? recording.generators : reason.generators,
 }))))
 endInputRecording()
-`, root], { encoding: 'utf8', cwd: root })
-      expect(result.status, result.stdout + result.stderr).toBe(0)
-      const reasons = decodeReasons(result.stdout.trim())
-      expect([...new Set(reasons.map((reason) => reason.code))].toSorted()).toEqual([...reasonCodes].toSorted())
-      const occurrences = [
-        { code: 'unmediated-fs', operation: 'import:node:fs', line: 1 },
-        { code: 'unmediated-fs', operation: 'Bun.file', line: 14 },
-        { code: 'unmediated-realpath', operation: 'realpathSync', line: 7 },
-        { code: 'subprocess', operation: 'import:node:child_process', line: 3 },
-        { code: 'subprocess', operation: 'Bun.spawnSync', line: 9 },
-        { code: 'network', operation: 'import:node:https', line: 4 },
-        { code: 'network', operation: 'fetch', line: 11 },
-        { code: 'ambient-env', operation: 'process.env', line: 8 },
-        { code: 'dynamic-import', operation: 'import(', line: 10 },
-        { code: 'native-addon', operation: 'native-module-import', line: 5 },
-        { code: 'native-addon', operation: 'process.dlopen', line: 12 },
-        { code: 'unknown-capability', operation: 'Date.now', line: 13 },
-        { code: 'unknown-capability', operation: 'module-closure', line: null },
-      ]
-      for (const { code, operation, line } of occurrences) {
-        expect(reasons).toContainEqual(expect.objectContaining({
-          code, operation, source: { module: 'capabilities.ts', line },
-          generators, evidence: 'unproven',
-        }))
-      }
-      expect(reasons).toContainEqual(expect.objectContaining({
-        code: 'native-addon', operation: 'native-module',
-        source: { module: 'fixture.node', line: null }, generators, evidence: 'unproven',
-      }))
-      for (const code of ['unstable-observation', 'capture-error']) {
-        expect(reasons).toContainEqual(expect.objectContaining({
-          code, generators, evidence: 'observed',
-          source: { module: '@overeng/genie/src/runtime/node/input-observations.ts', line: null },
-        }))
-      }
-      expect(reasons.filter((reason) => reason.evidence === 'observed').every((reason) =>
-        reason.code === 'unstable-observation' || reason.code === 'capture-error',
-      )).toBe(true)
-    } finally { rmSync(root, { recursive: true, force: true }) }
-  }), 60_000)
+`,
+              root,
+            ],
+            { encoding: 'utf8', cwd: root },
+          )
+          expect(result.status, result.stdout + result.stderr).toBe(0)
+          const reasons = decodeReasons(result.stdout.trim())
+          expect([...new Set(reasons.map((reason) => reason.code))].toSorted()).toEqual(
+            [...reasonCodes].toSorted(),
+          )
+          const occurrences = [
+            { code: 'unmediated-fs', operation: 'import:node:fs', line: 1 },
+            { code: 'unmediated-fs', operation: 'Bun.file', line: 14 },
+            { code: 'unmediated-realpath', operation: 'realpathSync', line: 7 },
+            { code: 'subprocess', operation: 'import:node:child_process', line: 3 },
+            { code: 'subprocess', operation: 'Bun.spawnSync', line: 9 },
+            { code: 'network', operation: 'import:node:https', line: 4 },
+            { code: 'network', operation: 'fetch', line: 11 },
+            { code: 'ambient-env', operation: 'process.env', line: 8 },
+            { code: 'dynamic-import', operation: 'import(', line: 10 },
+            { code: 'native-addon', operation: 'native-module-import', line: 5 },
+            { code: 'native-addon', operation: 'process.dlopen', line: 12 },
+            { code: 'unknown-capability', operation: 'Date.now', line: 13 },
+            { code: 'unknown-capability', operation: 'module-closure', line: null },
+          ]
+          for (const { code, operation, line } of occurrences) {
+            expect(reasons).toContainEqual(
+              expect.objectContaining({
+                code,
+                operation,
+                source: { module: 'capabilities.ts', line },
+                generators,
+                evidence: 'unproven',
+              }),
+            )
+          }
+          expect(reasons).toContainEqual(
+            expect.objectContaining({
+              code: 'native-addon',
+              operation: 'native-module',
+              source: { module: 'fixture.node', line: null },
+              generators,
+              evidence: 'unproven',
+            }),
+          )
+          for (const code of ['unstable-observation', 'capture-error']) {
+            expect(reasons).toContainEqual(
+              expect.objectContaining({
+                code,
+                generators,
+                evidence: 'observed',
+                source: {
+                  module: '@overeng/genie/src/runtime/node/input-observations.ts',
+                  line: null,
+                },
+              }),
+            )
+          }
+          expect(
+            reasons
+              .filter((reason) => reason.evidence === 'observed')
+              .every(
+                (reason) =>
+                  reason.code === 'unstable-observation' || reason.code === 'capture-error',
+              ),
+          ).toBe(true)
+        } finally {
+          rmSync(root, { recursive: true, force: true })
+        }
+      }),
+    60_000,
+  )
 })

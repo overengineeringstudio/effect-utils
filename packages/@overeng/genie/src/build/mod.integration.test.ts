@@ -149,13 +149,7 @@ Vitest.describe('genie cli', () => {
                 ),
               )(yield* fs.readFileString(destination))
               expect(artifact.checkSucceeded).toBe(true)
-              expect(artifact.argv).toEqual([
-                '--cwd',
-                env.root,
-                '--check',
-                '--output',
-                'json',
-              ])
+              expect(artifact.argv).toEqual(['--cwd', env.root, '--check', '--output', 'json'])
             }),
           )
         },
