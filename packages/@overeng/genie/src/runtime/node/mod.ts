@@ -19,6 +19,8 @@ export {
   inputExistsSync,
   inputStatSync,
   inputReaddirSync,
+  inputRealpathSync,
+  recordInputEnvironment,
 } from './inputs.ts'
 
 export {

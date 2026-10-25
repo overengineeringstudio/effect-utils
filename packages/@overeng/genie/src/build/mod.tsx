@@ -22,6 +22,7 @@ import { findGenieFiles } from '../core/discovery.ts'
 import { GenieGenerationFailedError } from '../core/errors.ts'
 import { type GenieEvent, GenieEventBus } from '../core/events.ts'
 import { generateFile } from '../core/generation.ts'
+import { withInputManifest } from '../core/input-manifest.ts'
 import { withCliModeSpan } from '../core/observability.ts'
 import { GENERATOR_PHASES, type GeneratorPhase } from '../core/phase.ts'
 import {
@@ -185,6 +186,12 @@ export const genieCommand = Cli.Command.make(
       Cli.Flag.withDescription('Check if generated files are up to date (for CI)'),
       Cli.Flag.withDefault(false),
     ),
+    readSet: Cli.Flag.String('read-set').pipe(
+      Cli.Flag.withDescription(
+        'Write check read-set evidence to this path (requires a full --check)',
+      ),
+      Cli.Flag.optional,
+    ),
     dryRun: Cli.Flag.Boolean('dry-run').pipe(
       Cli.Flag.withDescription('Preview changes without writing files'),
       Cli.Flag.withDefault(false),
@@ -209,10 +216,36 @@ export const genieCommand = Cli.Command.make(
     ),
     output: outputOption,
   },
-  ({ cwd, writeable, watch, check, dryRun, deferValidation, phase, oxfmtConfig, output }) => {
+  ({
+    cwd,
+    writeable,
+    watch,
+    check,
+    readSet,
+    dryRun,
+    deferValidation,
+    phase,
+    oxfmtConfig,
+    output,
+  }) => {
     const cliMode = watch ? 'watch' : check ? 'check' : dryRun ? 'dry-run' : 'generate'
     const selectedPhase: GeneratorPhase | undefined = Option.getOrUndefined(phase)
+    const recordedCheck =
+      check &&
+      !watch &&
+      !dryRun &&
+      Option.isNone(phase) &&
+      (Option.isSome(readSet) ||
+        (process.env.GENIE_INPUT_MANIFEST !== undefined && process.env.GENIE_INPUT_MANIFEST !== ''))
     const handler = Effect.gen(function* () {
+      if (Option.isSome(readSet) && (!check || watch || dryRun || Option.isSome(phase))) {
+        return yield* new Cli.CliError.InvalidValue({
+          option: 'read-set',
+          value: readSet.value,
+          expected: 'use --read-set only with --check, without --watch, --dry-run, or --phase',
+          kind: 'flag',
+        })
+      }
       const outputMode = yield* resolveOutputOption(output)
       const fs = yield* FileSystem.FileSystem
       const readOnly = !writeable
@@ -224,11 +257,13 @@ export const genieCommand = Cli.Command.make(
        */
       const resolvedCwd = yield* fs.realPath(inputCwd).pipe(Effect.orElseSucceed(() => inputCwd))
 
-      // Resolve oxfmt config path
-      const oxfmtConfigPath = yield* resolveOxfmtConfigPath({
-        explicitPath: oxfmtConfig,
-        cwd: resolvedCwd,
-      })
+      // Recorded checks discover implicit formatter configuration inside checkAll's recording.
+      const oxfmtConfigPath = recordedCheck
+        ? oxfmtConfig
+        : yield* resolveOxfmtConfigPath({
+            explicitPath: oxfmtConfig,
+            cwd: resolvedCwd,
+          })
 
       // Determine mode
       const mode: GenieMode = check ? 'check' : dryRun ? 'dry-run' : 'generate'
@@ -290,7 +325,13 @@ export const genieCommand = Cli.Command.make(
 
               yield* Effect.gen(function* () {
                 if (check) {
-                  yield* checkAll({ cwd: resolvedCwd, oxfmtConfigPath, phase: selectedPhase }).pipe(
+                  // The CLI owns the recording so cwd resolution is inside its boundary.
+                  yield* checkAll({
+                    cwd: resolvedCwd,
+                    oxfmtConfigPath,
+                    phase: selectedPhase,
+                    recordingInstalled: recordedCheck,
+                  }).pipe(
                     Effect.provideService(GenieEventBus, bus),
                     Effect.catchTag('GenieGenerationFailedError', (error) =>
                       syncStateFromGenerationError(error).pipe(Effect.andThen(Effect.fail(error))),
@@ -368,6 +409,26 @@ export const genieCommand = Cli.Command.make(
       ).pipe(Effect.provide(outputModeLayer(outputMode)))
     }).pipe(withCliModeSpan(cliMode))
 
-    return handler
+    if (!recordedCheck) return handler
+    return Effect.gen(function* () {
+      const currentWorkingDirectory = yield* CurrentWorkingDirectory
+      const inputCwd = path.isAbsolute(cwd) ? cwd : path.resolve(currentWorkingDirectory, cwd)
+      const argv: string[] = []
+      if (Option.isSome(readSet)) {
+        const actualArgv = process.argv.slice(2)
+        for (let index = 0; index < actualArgv.length; index++) {
+          const argument = actualArgv[index]!
+          if (argument === '--read-set') index++
+          else if (!argument.startsWith('--read-set=')) argv.push(argument)
+        }
+      }
+      return yield* withInputManifest({
+        effect: handler,
+        complete: true,
+        ...(Option.isSome(readSet)
+          ? { readSet: { path: readSet.value, cwd: inputCwd, argv } }
+          : {}),
+      })
+    })
   },
 ).pipe(Cli.Command.withSubcommands([githubSettingsCommand]))
