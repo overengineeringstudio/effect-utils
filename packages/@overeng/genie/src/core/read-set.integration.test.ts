@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url'
 
 import { NodeServices } from '@effect/platform-node'
 import { describe, it } from '@effect/vitest'
-import { Effect, FileSystem, Schema } from 'effect'
+import { ByteSize, Effect, Exit, FileSystem, Schema } from 'effect'
 import { expect } from 'vitest'
 
 import {
@@ -31,7 +31,7 @@ import {
   recordInputEnvironment,
 } from '../runtime/node/inputs.ts'
 import { findGenieFiles } from './discovery.ts'
-import { auditEngineFileSystem } from './engine-inputs.ts'
+import { auditEngineFileSystem, inputEngineFileSystem } from './engine-inputs.ts'
 import { withInputManifest } from './input-manifest.ts'
 import {
   ReadSetSchema,
@@ -271,6 +271,140 @@ export const read = () => {
           path: second,
           digest: digestBytes('binary-a'),
         })
+      } finally {
+        endInputRecording()
+      }
+    }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+  )
+
+  it.effect('records engine outcomes when lazy filesystem effects run, not when constructed', () =>
+    Effect.gen(function* () {
+      const service = yield* FileSystem.FileSystem
+      const root = yield* service.makeTempDirectoryScoped()
+      const input = path.join(root, 'input')
+      const directory = path.join(root, 'directory')
+      const statInput = path.join(root, 'stat')
+      fs.writeFileSync(input, 'before')
+      fs.writeFileSync(statInput, 'before')
+      fs.mkdirSync(directory)
+      beginInputRecording({ digests: true })
+      try {
+        const engine = inputEngineFileSystem({
+          fs: service,
+          source: { module: '@overeng/genie/src/core/read-set.integration.test.ts', line: null },
+        })
+        const exists = engine.exists(input)
+        const names = engine.readDirectory(directory)
+        const stat = engine.stat(statInput)
+        expect(getInputRecording()!.paths.size).toBe(0)
+        fs.unlinkSync(input)
+        fs.writeFileSync(path.join(directory, 'after'), 'new')
+        fs.writeFileSync(statInput, 'changed after effect construction')
+        expect(yield* exists).toBe(false)
+        expect(yield* names).toEqual(['after'])
+        const info = yield* stat
+        const evidence = getInputRecording()!.evidence!
+        expect(evidence.files.get(input)).toMatchObject({ state: 'absent', error: 'ENOENT' })
+        expect(evidence.directories.get(directory)).toMatchObject({
+          state: 'present',
+          entries: [{ name: 'after', type: 'file' }],
+        })
+        expect(evidence.stats.get(canonicalJson([statInput, true]))).toMatchObject({
+          state: 'present',
+          values: { size: String(ByteSize.toBigInt(info.size)) },
+        })
+        const target = path.join(root, 'target')
+        const link = path.join(root, 'link')
+        fs.writeFileSync(target, 'target')
+        if (trySymlink({ target: statInput, link }) === true) {
+          const readLink = engine.readLink(link)
+          const realPath = engine.realPath(link)
+          fs.unlinkSync(link)
+          fs.symlinkSync(target, link)
+          expect(yield* readLink).toBe(target)
+          expect(yield* realPath).toBe(fs.realpathSync(target))
+          expect(evidence.symlinks.get(link)).toMatchObject({ state: 'present', target })
+        }
+        expect(getInputRecording()!.reasons).toEqual([])
+      } finally {
+        endInputRecording()
+      }
+    }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+  )
+
+  it.effect('retains failures actually consumed by lazy engine filesystem effects', () =>
+    Effect.gen(function* () {
+      const service = yield* FileSystem.FileSystem
+      const root = yield* service.makeTempDirectoryScoped()
+      const directory = path.join(root, 'directory')
+      const input = path.join(root, 'input')
+      fs.mkdirSync(directory)
+      fs.writeFileSync(input, 'before')
+      beginInputRecording({ digests: true })
+      try {
+        const engine = inputEngineFileSystem({
+          fs: service,
+          source: { module: '@overeng/genie/src/core/read-set.integration.test.ts', line: null },
+        })
+        const readDirectory = engine.readDirectory(directory)
+        const readLink = engine.readLink(input)
+        const realPath = engine.realPath(input)
+        const stat = engine.stat(input)
+        const readFile = engine.readFile(input)
+        const readFileString = engine.readFileString(input)
+        expect(getInputRecording()!.paths.size).toBe(0)
+        fs.rmdirSync(directory)
+        fs.unlinkSync(input)
+        expect(Exit.isFailure(yield* Effect.exit(readDirectory))).toBe(true)
+        expect(Exit.isFailure(yield* Effect.exit(readLink))).toBe(true)
+        expect(Exit.isFailure(yield* Effect.exit(realPath))).toBe(true)
+        expect(Exit.isFailure(yield* Effect.exit(stat))).toBe(true)
+        expect(Exit.isFailure(yield* Effect.exit(readFile))).toBe(true)
+        expect(Exit.isFailure(yield* Effect.exit(readFileString))).toBe(true)
+        const evidence = getInputRecording()!.evidence!
+        expect(evidence.directories.get(directory)).toMatchObject({
+          state: 'absent',
+          error: 'ENOENT',
+        })
+        expect(evidence.symlinks.get(input)).toMatchObject({ state: 'absent', error: 'ENOENT' })
+        expect(evidence.files.get(input)).toMatchObject({ state: 'absent', error: 'ENOENT' })
+        expect(evidence.stats.get(canonicalJson([input, true]))).toMatchObject({
+          state: 'absent',
+          error: 'ENOENT',
+        })
+      } finally {
+        endInputRecording()
+      }
+    }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+  )
+
+  it.effect('fails closed if a consumed engine outcome changes before post-read enrichment', () =>
+    Effect.gen(function* () {
+      const service = yield* FileSystem.FileSystem
+      const root = yield* service.makeTempDirectoryScoped()
+      const input = path.join(root, 'input')
+      fs.writeFileSync(input, 'present at consumption')
+      beginInputRecording({ digests: true })
+      try {
+        const engine = inputEngineFileSystem({
+          fs: {
+            ...service,
+            exists: () =>
+              Effect.sync(() => {
+                fs.unlinkSync(input)
+                return true
+              }),
+          },
+          source: { module: '@overeng/genie/src/core/read-set.integration.test.ts', line: null },
+        })
+        expect(yield* engine.exists(input)).toBe(true)
+        expect(getInputRecording()!.reasons).toContainEqual(
+          expect.objectContaining({
+            code: 'unstable-observation',
+            operation: 'engine FileSystem.exists',
+            evidence: 'observed',
+          }),
+        )
       } finally {
         endInputRecording()
       }
