@@ -2221,6 +2221,9 @@ const storeStatusCommand = Cli.Command.make('status', { output: outputOption }, 
               EffectPath.unsafe.relativeDir('.bare/'),
             )
             const bareExists = yield* fs.exists(bareRepoPath)
+            const missingFetchRefspec =
+              bareExists === true &&
+              (yield* Git.hasBareOriginFetchRefspec({ repoPath: bareRepoPath })) === false
 
             const refsDir = EffectPath.ops.join(
               repo.fullPath,
@@ -2250,6 +2253,13 @@ const storeStatusCommand = Cli.Command.make('status', { output: outputOption }, 
                       type: 'missing_bare',
                       severity: 'error',
                       message: '.bare/ directory not found',
+                    })
+                  }
+                  if (missingFetchRefspec === true) {
+                    issues.push({
+                      type: 'missing_fetch_refspec',
+                      severity: 'error',
+                      message: 'bare repo is missing remote.origin.fetch',
                     })
                   }
 

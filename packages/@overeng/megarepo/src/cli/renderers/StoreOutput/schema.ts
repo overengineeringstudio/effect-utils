@@ -113,6 +113,7 @@ export const StoreWorktreeIssue = Schema.Struct({
     'unpushed',
     'ref_mismatch',
     'missing_bare',
+    'missing_fetch_refspec',
     'broken_worktree',
     'orphaned',
   ]),

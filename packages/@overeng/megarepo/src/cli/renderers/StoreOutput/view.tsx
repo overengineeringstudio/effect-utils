@@ -304,6 +304,11 @@ const getIssueHint = ({
         fix: 'mr store gc',
         explanation: 'remove unrooted commit worktrees',
       }
+    case 'missing_fetch_refspec':
+      return {
+        fix: 'mr store fix',
+        explanation: 'configure the bare repo fetch refspec without changing refs or worktrees',
+      }
     case 'missing_bare':
     case 'broken_worktree':
       return {

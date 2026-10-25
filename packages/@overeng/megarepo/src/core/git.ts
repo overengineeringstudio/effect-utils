@@ -781,6 +781,44 @@ export const listRefShortNames = (args: { bareRepoPath: string; namespace: 'head
 // Bare Repo Operations
 // =============================================================================
 
+/** Branch refspec shared by new stores and repairs of existing stores. */
+export const bareOriginFetchRefspec = '+refs/heads/*:refs/remotes/origin/*'
+
+/** Check only the store's own config; inherited config does not initialize a store. */
+export const hasBareOriginFetchRefspec = Effect.fn('git/has-bare-origin-fetch-refspec')(function* ({
+  repoPath,
+}: {
+  repoPath: string
+}) {
+  return yield* runGitCommand({
+    args: ['config', '--local', '--get-all', 'remote.origin.fetch'],
+    cwd: repoPath,
+  }).pipe(
+    Effect.map(() => true),
+    Effect.catchTag('GitCommandError', (error) =>
+      error.exitCode === 1 && error.stderr === '' ? Effect.succeed(false) : Effect.fail(error),
+    ),
+  )
+})
+
+/** Add only a missing fetch config key, without fetching or modifying refs/worktrees. */
+export const repairBareOriginFetchRefspec = ({ repoPath }: { repoPath: string }) =>
+  Effect.gen(function* () {
+    // Recheck under the writer lock so repeated/concurrent repairs are no-ops.
+    if ((yield* hasBareOriginFetchRefspec({ repoPath })) === true) return false
+    yield* runGitCommand({
+      args: ['config', '--local', '--add', 'remote.origin.fetch', bareOriginFetchRefspec],
+      cwd: repoPath,
+    })
+    return true
+  }).pipe(
+    withGitWriterLock({ path: repoPath }),
+    Observability.withRepoPathSpan({
+      name: 'git/repair-bare-origin-fetch-refspec',
+      path: repoPath,
+    }),
+  )
+
 /**
  * Clone a repository as a bare repo.
  * Configures fetch refspec so remote tracking refs are created on fetch.
@@ -815,7 +853,7 @@ export const cloneBare = (args: { url: string; targetPath: string }) =>
     }
     // Complete initialization even if a previous holder died after cloning.
     yield* runGitCommand({
-      args: ['config', 'remote.origin.fetch', '+refs/heads/*:refs/remotes/origin/*'],
+      args: ['config', 'remote.origin.fetch', bareOriginFetchRefspec],
       cwd: args.targetPath,
     })
     return exists === false
