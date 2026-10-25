@@ -1091,10 +1091,12 @@ in
         {
           path = "packages/@overeng/utils";
           name = "utils";
+          isolateNetwork = true;
         }
         {
           path = "packages/@overeng/tui-react";
           name = "tui-react";
+          isolateNetwork = true;
         }
         {
           path = "packages/@overeng/meters";

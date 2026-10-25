@@ -491,6 +491,10 @@
         "rationale": "Generated task flags/cache/error-policy contracts with fake pnpm and no-op flock. Darwin teardown cases explicitly override isDarwin and synthesize exits 134/137, so Linux exercises the same Darwin policy."
       },
       {
+        "script": "playwright-network-isolation.test.sh",
+        "rationale": "Linux namespace contract proves the task can reach its local HTTP server but has no non-loopback route; unsupported platforms explicitly report the unsandboxed fallback."
+      },
+      {
         "script": "secretspec-native-tasks.test.sh",
         "rationale": "Nix task argv/environment and resolution-count contracts with a stub SecretSpec; no real provider/native authentication operation."
       },

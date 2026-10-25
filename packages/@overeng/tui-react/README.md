@@ -237,6 +237,14 @@ Failed tests retain a Playwright trace, screenshot, and error context in
 Open a downloaded trace with `playwright show-trace <path>/trace.zip` to inspect
 the preview DOM, browser console, and network requests.
 
+The localhost-only TUI React and utils suites opt into a Linux network namespace
+through the shared Playwright task's per-package `isolateNetwork` option. The
+browser and web server share an isolated loopback interface, so unrelated CI
+runner interface changes cannot abort module requests with `ERR_NETWORK_CHANGED`.
+External networking is unavailable inside these suites. On macOS or when Linux
+unprivileged user/network namespaces are unavailable, the task logs that isolation
+is off and runs with the host network.
+
 Both the TUI React and utils Playwright CI jobs also capture
 `network/runner-network.log` (initial interfaces, addresses, routes, and timestamped
 netlink changes) and `network/chromium-netlog.json` (Chromium's Default capture
