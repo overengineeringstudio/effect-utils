@@ -2,7 +2,7 @@
 # Source: attributes.yaml.genie.ts
 
 # registry-source: genie/weaver-registry/registry.ts
-# fingerprint: sha256:c1cf74c7acc4cbb27e8b1f6225561d8a47da240b31fd75158e477dc4d0e15d22
+# fingerprint: sha256:76bf73cdf35538aa35e529ce1eb1f898abafa1e2895afc25f2bbf70967a73b7a
 # regen: devenv tasks run genie:run
 groups:
   - id: registry.acme
@@ -280,11 +280,15 @@ groups:
               value: vercel
               brief: Vercel.
               stability: development
+            - id: cloudflare-workers
+              value: cloudflare-workers
+              brief: Cloudflare Workers.
+              stability: development
         stability: development
         brief: Deploy provider a run targets.
         annotations:
           overeng_policy:
-            cardinality: low
+            cardinality: bounded
       - id: ci_tools.deploy.run_id
         type: string
         stability: development

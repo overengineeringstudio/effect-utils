@@ -351,6 +351,67 @@ for outer tasks that must complete before the nested devenv process can evaluate
   - Build-mode tasks pass root-directory/build-env config to `ci-tools`; `ci-tools`
     owns `vercel pull`, `vercel build`, prebuilt output validation, deploy,
     aliasing, workflow-report records, and GitHub outputs.
+- `cloudflare-workers.nix` - Consumer-built Cloudflare Workers deployments
+  - Provides `cloudflare-workers:deploy` and
+    `cloudflare-workers:deploy:<target>`. Deployment configuration declares
+    required `name`, `workerName`, and `config`, plus optional `cwd` and
+    `productionDomains`; `afterTask` points to the consumer-owned build
+    prerequisite. `workerName` identifies the existing Worker script for the
+    API lookup before Wrangler and is passed to Wrangler as `--name`.
+    `config` is resolved relative to `cwd`. Supply `ciToolsBin`; select Wrangler
+    with `wranglerPkg` or `wranglerBin` when overriding the module default.
+    The invoking process environment is inherited by build hooks; deployment
+    `env` overrides apply only to deploy, not to the preceding build.
+  - Uses `ci-tools deploy cloudflare-workers --target NAME --worker-name WORKER
+--config PATH --cwd DIR --mode prod|pr --wrangler-bin BIN`; PR mode requires
+    `--pr N`.
+    Repeat `--production-domain HOST` for expected production hostnames.
+    Custom-domain desired state belongs in Wrangler configuration, not in an
+    additional domain API reconciler.
+  - `--auth-token-env` defaults to `CLOUDFLARE_API_TOKEN`;
+    `--account-id-env` defaults to `CLOUDFLARE_ACCOUNT_ID`. Pass environment
+    variable names, not credential values, through configuration.
+    Module option `cloudflareApiBaseUrl` forwards `--cloudflare-api-base-url`
+    and defaults to `https://api.cloudflare.com/client/v4`; override it for a
+    fake provider endpoint in integration tests.
+  - Production uses Wrangler deploy; PR mode uploads a Worker version and
+    reports its stable preview alias and immutable preview URL.
+  - Worker code and Wrangler configuration are executable inputs. Never use a
+    fork PR or `pull_request_target` job with these credentials, even when the
+    build was performed separately.
+  - Use the reusable Genie job helper, rather than guarding only the deploy
+    step:
+
+    ```ts
+    import { cloudflareWorkersDeployJobs } from './genie/deploy-preview/cloudflare-workers.ts'
+
+    const deployJobs = cloudflareWorkersDeployJobs({
+      targets: [{ name: 'web' }],
+      runner: ['ubuntu-latest'],
+      baseSteps: checkoutAndSetupSteps,
+      commentBaseSteps: checkoutAndSetupSteps,
+      env: {
+        CLOUDFLARE_API_TOKEN: '${{ secrets.CLOUDFLARE_API_TOKEN }}',
+        CLOUDFLARE_ACCOUNT_ID: '${{ secrets.CLOUDFLARE_ACCOUNT_ID }}',
+      },
+      runDevenvTasksBefore,
+    })
+    ```
+
+    `checkoutAndSetupSteps` and `runDevenvTasksBefore` are consumer workflow
+    setup inputs. Spread `deployJobs` into the workflow's jobs and configure
+    the matching Nix deployment target. The helper admits only main pushes and
+    same-repository PRs at the **job boundary**; optional `deployCondition`
+    further restricts access and cannot replace that predicate. Credentials
+    stay in the deploy job environment, not the workflow-global environment.
+    Same-repository PR code must be trusted by the repository's access policy.
+    Report collection, rendering, and managed PR comment publication reuse the
+    workflow-report tasks; the comment job receives no Cloudflare job env.
+
+  - Cloudflare Workers live E2E is intentionally not exercised by this
+    integration. No live deploy/domain validation is claimed. See the
+    [provider specification](../../../context/ci-tools/spec.md#cloudflare-workers-provider)
+    for the executable-code trust boundary and live-test authorization scope.
 - `workflow-report.nix` - Workflow-report tasks
   - Provides `workflow-report:collect-bundle`,
     `workflow-report:render-comment-body`, and `workflow-report:publish`.
