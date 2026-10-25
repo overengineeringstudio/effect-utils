@@ -303,7 +303,8 @@ const InputManifestMetadata = Schema.Struct({
   schema: Schema.Literal('genie-input-manifest-metadata'),
   schemaVersion: Schema.Literal(1),
   invocationId: ReadSetSchema.fields.invocationId,
-  complete: Schema.Boolean,
+  legacyComplete: Schema.Boolean,
+  readSetComplete: Schema.NullOr(Schema.Boolean),
   digestEvidence: Schema.Boolean,
 })
 
@@ -321,7 +322,7 @@ export const validateReadSetPair = ({
   )
   assert(
     companion.invocationId === result.invocationId &&
-      companion.complete === result.complete &&
+      companion.readSetComplete === result.complete &&
       companion.digestEvidence === true,
   )
   return result

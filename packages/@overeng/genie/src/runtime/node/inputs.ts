@@ -43,18 +43,13 @@ export const setInputGenerators = (generators: readonly string[]): void => {
   const recording = globalState[state]
   if (recording !== undefined) recording.generators = [...new Set(generators)].toSorted(compareUtf8)
 }
-/** Mark the active session's source closure as unproven. */
-export const markInputRecordingIncomplete = (): void =>
-  recordInputReason({
-    code: 'unknown-capability',
-    operation: 'source closure',
-    detail: 'The influencing source closure is not accounted for',
-    source: { module: '@overeng/genie/src/core/input-manifest.ts', line: null },
-    generators: [],
-    evidence: 'unproven',
-  })
-/** Whether the active recording has no incompleteness reasons. */
-export const isInputRecordingComplete = (): boolean => globalState[state]?.reasons.length === 0
+/** Preserve the legacy generation-cache decision when source scanning or resolution fails. */
+export const markInputRecordingIncomplete = (): void => {
+  const recording = globalState[state]
+  if (recording !== undefined) recording.legacyComplete = false
+}
+/** Whether the active session meets the legacy generation-cache completeness decision. */
+export const isInputRecordingComplete = (): boolean => globalState[state]?.legacyComplete === true
 
 const normalizeInputPath = ({
   recording,

@@ -35,6 +35,7 @@ import {
 import { ReadSetSchema, validateReadSet } from './read-set.ts'
 
 const decodeReasons = Schema.decodeSync(Schema.fromJsonString(ReadSetSchema.fields.reasons))
+const decodeRecordedReadSet = Schema.decodeSync(Schema.fromJsonString(ReadSetSchema))
 
 const cliPath = fileURLToPath(new URL('../../bin/genie.tsx', import.meta.url))
 const readersPath = fileURLToPath(new URL('../runtime/node/inputs.ts', import.meta.url))
@@ -89,7 +90,7 @@ describe('generator input manifests', () => {
       const first = run()
       expect(first.status, first.stdout + first.stderr).toBe(0)
       const lines = readFileSync(manifest, 'utf8').trimEnd().split('\n')
-      expect(lines[0]).toBe('genie-inputs-incomplete')
+      expect(lines[0]).toBe('genie-inputs-v1')
       expect(lines.slice(1)).toEqual([...new Set(lines.slice(1))].sort())
       expect(lines.slice(1).every((input) => path.isAbsolute(input))).toBe(true)
       for (const input of [
@@ -139,9 +140,9 @@ describe('generator input manifests', () => {
         )
         const first = run()
         expect(first.status, first.stdout + first.stderr).toBe(0)
-        expect(readFileSync(manifest, 'utf8').split('\n')[0]).toBe('genie-inputs-incomplete')
+        expect(readFileSync(manifest, 'utf8').split('\n')[0]).toBe('genie-inputs-v1')
         // Directory observations include newly introduced resolution alternatives;
-        // unrestricted source closures nevertheless remain conservatively incomplete.
+        // read-set conservatism does not change legacy source-scan completeness.
         expect(readFileSync(manifest, 'utf8').split('\n')).toContain(directory)
         expect(readFileSync(path.join(root, 'result.txt'), 'utf8')).toBe(
           generatedText('typescript\n'),
@@ -254,7 +255,7 @@ export default { data: {}, stringify: () => value + '\\n' }
         writeFileSync(optional, "export const value = 'present'\n")
         const present = run()
         expect(present.status, present.stdout + present.stderr).toBe(0)
-        expect(readFileSync(manifest, 'utf8').split('\n')[0]).toBe('genie-inputs-incomplete')
+        expect(readFileSync(manifest, 'utf8').split('\n')[0]).toBe('genie-inputs-v1')
         expect(readFileSync(manifest, 'utf8').split('\n')).toContain(optional)
         expect(readFileSync(path.join(root, 'result.txt'), 'utf8')).toBe(generatedText('present\n'))
       } finally {
@@ -300,7 +301,7 @@ export default { data: {}, stringify: () => value + '\\n' }
       const present = run()
       expect(present.status, present.stdout + present.stderr).toBe(0)
       const inputs = readFileSync(manifest, 'utf8').split('\n')
-      expect(inputs[0]).toBe('genie-inputs-incomplete')
+      expect(inputs[0]).toBe('genie-inputs-v1')
       expect(inputs).toContain(optional)
       expect(readFileSync(path.join(root, 'result.txt'), 'utf8')).toBe(generatedText('present\n'))
     } finally {
@@ -321,7 +322,7 @@ export default { data: {}, stringify: () => value + '\\n' }
       const first = run()
       expect(first.status, first.stdout + first.stderr).toBe(0)
       const firstInputs = readFileSync(manifest, 'utf8').split('\n')
-      expect(firstInputs[0]).toBe('genie-inputs-incomplete')
+      expect(firstInputs[0]).toBe('genie-inputs-v1')
       expect(firstInputs).toContain(packages)
       expect(firstInputs).toContain(firstDirectory)
       expect(firstInputs).toContain(firstManifest)
@@ -335,7 +336,7 @@ export default { data: {}, stringify: () => value + '\\n' }
       const second = run()
       expect(second.status, second.stdout + second.stderr).toBe(0)
       const secondInputs = readFileSync(manifest, 'utf8').split('\n')
-      expect(secondInputs[0]).toBe('genie-inputs-incomplete')
+      expect(secondInputs[0]).toBe('genie-inputs-v1')
       for (const input of [
         packages,
         firstDirectory,
@@ -371,6 +372,155 @@ export default { data: {}, stringify: () => value + '\\n' }
       rmSync(root, { recursive: true, force: true })
     }
   }, 60_000)
+})
+
+describe('historical input manifest completeness parity', () => {
+  const scannerPath = fileURLToPath(new URL('./input-manifest.ts', import.meta.url))
+  const decodeMetadata = Schema.decodeSync(
+    Schema.fromJsonString(
+      Schema.Struct({
+        schema: Schema.Literal('genie-input-manifest-metadata'),
+        schemaVersion: Schema.Literal(1),
+        invocationId: Schema.String,
+        legacyComplete: Schema.Boolean,
+        readSetComplete: Schema.NullOr(Schema.Boolean),
+        digestEvidence: Schema.Boolean,
+      }),
+    ),
+  )
+  const cases = [
+    {
+      name: 'source read failure',
+      source: undefined,
+      imports: {},
+      legacyComplete: false,
+      operation: 'source-scan',
+    },
+    {
+      name: 'source scan failure',
+      source: 'export const value = "unterminated\n',
+      imports: {},
+      legacyComplete: false,
+      operation: 'source-scan',
+    },
+    {
+      name: 'import-map resolution failure',
+      source: "import '#broken'\nexport default {}\n",
+      imports: { '#broken': 42 },
+      legacyComplete: false,
+      operation: 'import-map-resolution',
+    },
+    {
+      name: 'unresolved optional import',
+      source: "try { await import('./optional.ts') } catch {}\nexport default {}\n",
+      imports: {},
+      legacyComplete: false,
+      operation: 'resolve:./optional.ts',
+    },
+    {
+      name: 'successful scan with unproven subprocess capability',
+      source: "import { spawnSync } from 'node:child_process'\nexport const run = spawnSync\n",
+      imports: {},
+      legacyComplete: true,
+      operation: 'import:node:child_process',
+    },
+  ]
+  for (const { name, source, imports, legacyComplete, operation } of cases) {
+    effectIt.effect(
+      `preserves the historical header for ${name}`,
+      () =>
+        Effect.sync(() => {
+          const { root, manifest } = fixture()
+          try {
+            const entry = 'parity.ts'
+            if (source !== undefined) writeFileSync(path.join(root, entry), source)
+            writeFileSync(path.join(root, 'package.json'), canonicalJson({ imports }))
+            // Scan only: malformed, missing, and unresolvable sources must never be imported.
+            const result = spawnSync(
+              'bun',
+              [
+                '-e',
+                `
+import { Effect } from ${canonicalJson(import.meta.resolve('effect'))}
+import { recordGeneratorSourceGraph, withInputManifest } from ${canonicalJson(scannerPath)}
+import { getInputRecording } from ${canonicalJson(readersPath)}
+await Effect.runPromise(withInputManifest({
+  complete: true,
+  effect: Effect.sync(() => {
+    recordGeneratorSourceGraph({ entries: [${canonicalJson(entry)}], cwd: process.cwd() })
+    console.log(JSON.stringify(getInputRecording().reasons))
+  }),
+}))
+`,
+              ],
+              {
+                cwd: root,
+                encoding: 'utf8',
+                env: { ...process.env, GENIE_INPUT_MANIFEST: manifest },
+              },
+            )
+            expect(result.status, result.stdout + result.stderr).toBe(0)
+            expect(readFileSync(manifest, 'utf8').split('\n')[0]).toBe(
+              legacyComplete === true ? 'genie-inputs-v1' : 'genie-inputs-incomplete',
+            )
+            expect(decodeMetadata(readFileSync(`${manifest}.meta.json`, 'utf8'))).toMatchObject({
+              legacyComplete,
+              readSetComplete: null,
+              digestEvidence: false,
+            })
+            const reasons = decodeReasons(result.stdout.trim())
+            expect(reasons).toContainEqual(
+              expect.objectContaining({ operation, evidence: 'unproven' }),
+            )
+            expect(reasons).toContainEqual(
+              expect.objectContaining({
+                code: 'unknown-capability',
+                operation: 'module-closure',
+                evidence: 'unproven',
+              }),
+            )
+          } finally {
+            rmSync(root, { recursive: true, force: true })
+          }
+        }),
+      60_000,
+    )
+  }
+
+  effectIt.effect(
+    'publishes a historically complete mediated generation paired with an incomplete read-set',
+    () =>
+      Effect.sync(() => {
+        const { root, manifest, run } = fixture()
+        try {
+          const generated = run()
+          expect(generated.status, generated.stdout + generated.stderr).toBe(0)
+          const artifact = path.join(root, 'paired.read-set.json')
+          const checked = run(['--check', '--read-set', artifact])
+          expect(checked.status, checked.stdout + checked.stderr).toBe(0)
+          const evidence = validateReadSet(decodeRecordedReadSet(readFileSync(artifact, 'utf8')))
+          const metadata = decodeMetadata(readFileSync(`${manifest}.meta.json`, 'utf8'))
+          expect(readFileSync(manifest, 'utf8').split('\n')[0]).toBe('genie-inputs-v1')
+          expect(metadata).toMatchObject({
+            invocationId: evidence.invocationId,
+            legacyComplete: true,
+            readSetComplete: false,
+            digestEvidence: true,
+          })
+          expect(evidence.complete).toBe(false)
+          expect(evidence.reasons).toContainEqual(
+            expect.objectContaining({
+              code: 'unknown-capability',
+              operation: 'module-closure',
+              evidence: 'unproven',
+            }),
+          )
+        } finally {
+          rmSync(root, { recursive: true, force: true })
+        }
+      }),
+    60_000,
+  )
 })
 
 // Producer evidence only: none of these comparisons validates current state for a

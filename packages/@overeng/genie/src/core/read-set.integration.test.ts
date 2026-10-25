@@ -41,7 +41,8 @@ const decodeMetadata = Schema.decodeSync(
       schema: Schema.Literal('genie-input-manifest-metadata'),
       schemaVersion: Schema.Literal(1),
       invocationId: Schema.String,
-      complete: Schema.Boolean,
+      legacyComplete: Schema.Boolean,
+      readSetComplete: Schema.NullOr(Schema.Boolean),
       digestEvidence: Schema.Boolean,
     }),
   ),
@@ -477,7 +478,7 @@ describe('check read-set recording', () => {
             readSet.generatorResults.every((entry) => entry.outputDigest.startsWith('sha256:')),
           ).toBe(true)
           const lines = fs.readFileSync(manifest, 'utf8').trimEnd().split('\n')
-          expect(lines[0]).toBe('genie-inputs-incomplete')
+          expect(lines[0]).toBe('genie-inputs-v1')
           expect(lines.slice(1).sort()).toEqual(
             [
               ...new Set([...readSet.files, ...readSet.directories].map((entry) => entry.path)),
@@ -513,7 +514,8 @@ describe('check read-set recording', () => {
           const metadata = decodeMetadata(fs.readFileSync(`${manifest}.meta.json`, 'utf8'))
           expect(metadata).toMatchObject({
             invocationId: readSet.invocationId,
-            complete: readSet.complete,
+            legacyComplete: true,
+            readSetComplete: readSet.complete,
             digestEvidence: true,
           })
           const report = decodeReport(fs.readFileSync(`${artifact}.reasons.json`, 'utf8'))
@@ -563,6 +565,14 @@ describe('check read-set recording', () => {
           expect(() => validateReadSetPair({ readSet, metadata: oldMetadata })).toThrow()
           expect(validateReadSetPair({ readSet, metadata })).toEqual(readSet)
           expect(readSet.complete).toBe(false)
+          expect(metadata.legacyComplete).toBe(true)
+          expect(metadata.readSetComplete).toBe(false)
+          expect(() =>
+            validateReadSetPair({ readSet, metadata: { ...metadata, readSetComplete: true } }),
+          ).toThrow()
+          expect(() =>
+            validateReadSetPair({ readSet, metadata: { ...metadata, readSetComplete: null } }),
+          ).toThrow()
         } finally {
           fs.rmSync(root, { recursive: true, force: true })
         }

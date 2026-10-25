@@ -164,6 +164,7 @@ export type InputRecording = {
   generators: readonly string[]
   reasons: InputReason[]
   reasonKeys: Set<string>
+  legacyComplete: boolean
   excluded: ReadonlySet<string>
   evidence?: {
     invocationId: string
@@ -200,6 +201,7 @@ export const makeInputRecording = ({
   generators: [],
   reasons: [],
   reasonKeys: new Set(),
+  legacyComplete: true,
   excluded: new Set(exclude.map((input) => path.resolve(input))),
   ...(digests === true
     ? {

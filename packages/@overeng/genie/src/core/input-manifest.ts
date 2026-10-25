@@ -18,6 +18,7 @@ import {
   isInputRecording,
   isInputRecordingComplete,
   isReadSetRecording,
+  markInputRecordingIncomplete,
   recordInput,
   recordInputReason,
   recordInputResolution,
@@ -218,6 +219,7 @@ export const recordGeneratorSourceGraph = ({
         return { path: entry.path, line }
       })
     } catch {
+      markInputRecordingIncomplete()
       reason({
         code: 'unknown-capability',
         operation: 'source-scan',
@@ -276,6 +278,7 @@ export const recordGeneratorSourceGraph = ({
               })
             : undefined
       } catch {
+        markInputRecordingIncomplete()
         reason({
           code: 'unknown-capability',
           operation: 'import-map-resolution',
@@ -333,6 +336,7 @@ export const recordGeneratorSourceGraph = ({
         resolved = Bun.resolveSync(base, path.dirname(sourcePath))
         canonical = realpathSync(resolved)
       } catch {
+        markInputRecordingIncomplete()
         reason({
           code: 'unknown-capability',
           operation: `resolve:${specifier}`,
@@ -550,7 +554,8 @@ export const withInputManifest = <TOutput, TError, TRequirements>({
                     schema: 'genie-input-manifest-metadata',
                     schemaVersion: 1,
                     invocationId,
-                    complete: recordingComplete,
+                    legacyComplete: recordingComplete,
+                    readSetComplete: artifact?.complete ?? null,
                     digestEvidence: artifact !== undefined,
                   })}\n`,
                   invocationId,

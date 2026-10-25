@@ -36,12 +36,13 @@ know about `packageJson(...)`.
 
 With `GENIE_INPUT_MANIFEST` set, a successful full generation or check (all
 phases, validation enabled, not a dry run) atomically publishes sorted unique
-absolute input paths. Its first line is `genie-inputs-v1` only when the entire
-influencing closure is accounted for; otherwise it is
-`genie-inputs-incomplete`. Unrestricted generators, transitive helpers, installed
-dependencies, and shared engine/validator capabilities currently remain
-conservatively incomplete. A completed static import scan is not a completeness
-proof.
+absolute input paths. Its first line preserves the existing generation-cache
+decision: `genie-inputs-incomplete` after source scan/read failures, import-map
+resolution failures, or unresolved imports; otherwise `genie-inputs-v1`.
+This legacy decision does not certify the influencing closure and MUST NOT be
+used as read-set reuse evidence. Unrestricted generators, helpers, dependencies,
+and engine/validator capabilities still make the read-set conservatively
+incomplete without disabling the legacy generation cache.
 
 `genie --check --read-set FILE` additionally records schema-1 observations and
 publishes private (`0600`) JSON evidence. `FILE.reasons.json` contains the same
@@ -54,12 +55,14 @@ not implemented in this recording slice.
 
 Both requested outputs are projections of one invocation's recording.
 `GENIE_INPUT_MANIFEST.meta.json` (where the environment variable's value is the
-manifest filename) carries the invocation ID, completeness, and whether digest
-evidence was requested. The legacy path set equals the file/directory path
-union in the read-set, including observed absences. The internal
-`validateReadSetPair` helper rejects mismatched invocation IDs, completeness,
-or path-only metadata; it validates artifact structure and same-run provenance,
-not current filesystem/environment state or reuse eligibility. Failed
+manifest filename) carries the invocation ID, `legacyComplete` (matching the
+header), `readSetComplete` (matching the artifact, or `null` in path-only mode),
+and whether digest evidence was requested. The legacy path set equals the
+file/directory path union in the read-set, including observed absences. The
+internal `validateReadSetPair` helper rejects mismatched invocation IDs or
+read-set completeness and path-only metadata; it deliberately allows a complete
+legacy cache decision alongside an incomplete read-set. It validates artifact
+structure and same-run provenance, not current state or reuse eligibility. Failed
 checks/publication remove stale evidence rather than leaving a previous
 successful result behind.
 Partial/dry runs do not request a recording. Without either output, no recording

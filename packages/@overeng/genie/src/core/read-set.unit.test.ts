@@ -158,19 +158,61 @@ describe('read-set schema and canonical encodings', () => {
           schema: 'genie-input-manifest-metadata',
           schemaVersion: 1,
           invocationId: readSet.invocationId,
-          complete: readSet.complete,
+          legacyComplete: true,
+          readSetComplete: readSet.complete,
           digestEvidence: true,
         }
         expect(validateReadSetPair({ readSet, metadata }).invocationId).toBe(readSet.invocationId)
         for (const invalid of [
           { ...metadata, invocationId: '22345678-1234-4123-8123-123456789abc' },
-          { ...metadata, complete: false },
+          { ...metadata, readSetComplete: false },
+          { ...metadata, readSetComplete: null },
+          {
+            schema: metadata.schema,
+            schemaVersion: metadata.schemaVersion,
+            invocationId: metadata.invocationId,
+            legacyComplete: true,
+            digestEvidence: true,
+          },
+          { ...metadata, legacyComplete: undefined },
+          { ...metadata, complete: true },
           { ...metadata, digestEvidence: false },
           { ...metadata, schemaVersion: 2 },
           { ...metadata, extra: true },
         ])
           expect(() => validateReadSetPair({ readSet, metadata: invalid })).toThrow()
       }),
+  )
+
+  it.effect('accepts legacy completeness independently of conservative read-set completeness', () =>
+    Effect.sync(() => {
+      const readSet = {
+        ...fixture(),
+        complete: false,
+        reasons: [
+          {
+            code: 'unknown-capability',
+            operation: 'fixture capability',
+            detail: '',
+            source: { module: 'fixture/helper.ts', line: 1 },
+            generators: [],
+            evidence: 'unproven',
+          },
+        ],
+      }
+      const metadata = {
+        schema: 'genie-input-manifest-metadata',
+        schemaVersion: 1,
+        invocationId: readSet.invocationId,
+        legacyComplete: true,
+        readSetComplete: false,
+        digestEvidence: true,
+      }
+      expect(validateReadSetPair({ readSet, metadata })).toEqual(readSet)
+      expect(() =>
+        validateReadSetPair({ readSet, metadata: { ...metadata, readSetComplete: true } }),
+      ).toThrow()
+    }),
   )
 
   it.effect('retains every closed reason code and separates completeness from check success', () =>
