@@ -12,34 +12,40 @@ import type { GeneratorResult, InputReason, InputRecording, ResolutionObservatio
 // recorder through the process global, not module identity. The engine serializes sessions.
 const state = Symbol.for('@overeng/genie/input-recorder')
 const globalState = globalThis as typeof globalThis & { [state]?: InputRecording }
+/** Return the active process-wide input recording, if any. */
 export const getInputRecording = (): InputRecording | undefined => globalState[state]
+/** Whether an input recording session is active. */
 export const isInputRecording = (): boolean => globalState[state] !== undefined
+/** Whether the active session captures read-set evidence. */
 export const isReadSetRecording = (): boolean => globalState[state]?.evidence !== undefined
+/** Retain a reason that prevents proving the input closure complete. */
 export const recordInputReason = (reason: InputReason): void => {
   const recording = globalState[state]
-  if (recording !== undefined) addReason(recording, reason)
+  if (recording !== undefined) addReason({ recording: recording, reason: reason })
 }
 /** Unknown attribution is expanded after discovery, never silently discarded. */
 export const setInputGenerators = (generators: readonly string[]): void => {
   const recording = globalState[state]
-  if (recording !== undefined) recording.generators = [...new Set(generators)].sort(compareUtf8)
+  if (recording !== undefined) recording.generators = [...new Set(generators)].toSorted(compareUtf8)
 }
+/** Mark the active session's source closure as unproven. */
 export const markInputRecordingIncomplete = (): void => recordInputReason({
   code: 'unknown-capability', operation: 'source closure', detail: 'The influencing source closure is not accounted for',
   source: { module: '@overeng/genie/src/core/input-manifest.ts', line: null }, generators: [], evidence: 'unproven',
 })
+/** Whether the active recording has no incompleteness reasons. */
 export const isInputRecordingComplete = (): boolean => globalState[state]?.reasons.length === 0
 
-const normalizeInputPath = (recording: InputRecording, input: fs.PathLike): string | undefined => {
+const normalizeInputPath = ({ recording, input }: { recording: InputRecording; input: fs.PathLike }): string | undefined => {
   try {
     const value = input instanceof URL ? fileURLToPath(input) : input.toString()
-    if (!value.isWellFormed() || (Buffer.isBuffer(input) && !Buffer.from(value).equals(input))) {
-      captureFault(recording, 'normalize non-Unicode input path', '@overeng/genie/src/runtime/node/inputs.ts')
+    if (value.isWellFormed() === false || (Buffer.isBuffer(input) === true && Buffer.from(value).equals(input) === false)) {
+      captureFault({ recording: recording, operation: 'normalize non-Unicode input path', module: '@overeng/genie/src/runtime/node/inputs.ts' })
       return undefined
     }
     return path.resolve(value)
   } catch {
-    captureFault(recording, 'normalize input path', '@overeng/genie/src/runtime/node/inputs.ts')
+    captureFault({ recording: recording, operation: 'normalize input path', module: '@overeng/genie/src/runtime/node/inputs.ts' })
     return undefined
   }
 }
@@ -47,8 +53,8 @@ const normalizeInputPath = (recording: InputRecording, input: fs.PathLike): stri
 export const recordInput = (input: fs.PathLike): void => {
   const recording = globalState[state]
   if (recording === undefined) return
-  const normalized = normalizeInputPath(recording, input)
-  if (normalized !== undefined) capturePath(recording, normalized)
+  const normalized = normalizeInputPath({ recording: recording, input: input })
+  if (normalized !== undefined) capturePath({ recording: recording, input: normalized })
 }
 /** No state, hashing, or filesystem work exists until an output requests a session. */
 export const beginInputRecording = (options: { digests?: boolean; exclude?: readonly string[] } = {}): Set<string> => {
@@ -56,21 +62,24 @@ export const beginInputRecording = (options: { digests?: boolean; exclude?: read
   globalState[state] = recording
   return recording.paths
 }
+/** Release the active process-wide input recording. */
 export const endInputRecording = (): void => { delete globalState[state] }
 
+/** Read an environment variable and retain its salted presence/value evidence. */
 export const recordInputEnvironment = (name: string): string | undefined => {
   const value = process.env[name]
   const recording = globalState[state]
   const evidence = recording?.evidence
   if (recording !== undefined && evidence !== undefined) {
     try {
-      retainObservation(recording, evidence.environment, name, value === undefined
+      retainObservation({ recording: recording, map: evidence.environment, key: name, observation: value === undefined
         ? { name, by: [], present: false }
-        : { name, by: [], present: true, digest: environmentDigest(evidence.envSalt, name, value) })
-    } catch { captureFault(recording, 'read environment', '@overeng/genie/src/runtime/node/inputs.ts') }
+        : { name, by: [], present: true, digest: environmentDigest({ salt: evidence.envSalt, name: name, value: value }) } })
+    } catch { captureFault({ recording: recording, operation: 'read environment', module: '@overeng/genie/src/runtime/node/inputs.ts' }) }
   }
   return value
 }
+/** Retain the lexical and physical working-directory identities. */
 export const recordInputCwd = (cwd: string): void => {
   const recording = globalState[state]
   const evidence = recording?.evidence
@@ -78,10 +87,16 @@ export const recordInputCwd = (cwd: string): void => {
   try {
     const lexical = path.resolve(cwd)
     recordInput(lexical)
-    retainObservation(recording, evidence.cwd, lexical, { lexical, physical: fs.realpathSync(lexical), by: [] })
-  } catch { captureFault(recording, 'read cwd', '@overeng/genie/src/runtime/node/inputs.ts') }
+    retainObservation({ recording: recording, map: evidence.cwd, key: lexical, observation: { lexical, physical: fs.realpathSync(lexical), by: [] } })
+  } catch { captureFault({ recording: recording, operation: 'read cwd', module: '@overeng/genie/src/runtime/node/inputs.ts' }) }
 }
-export const recordGeneratorResult = (generator: string, target: string, moduleFiles: readonly string[], checkedContent: string): void => {
+/** Retain a generator's source identity and checked output digest. */
+export const recordGeneratorResult = ({ generator, target, moduleFiles, checkedContent }: {
+  generator: string
+  target: string
+  moduleFiles: readonly string[]
+  checkedContent: string
+}): void => {
   const recording = globalState[state]
   const evidence = recording?.evidence
   if (recording === undefined || evidence === undefined) return
@@ -89,7 +104,7 @@ export const recordGeneratorResult = (generator: string, target: string, moduleF
     recordInput(target)
     const result: GeneratorResult = {
       generator, target: path.resolve(target),
-      module: { version: '', files: [...new Set(moduleFiles)].sort((left, right) => compareUtf8(canonicalJson(left), canonicalJson(right))).map((file) => {
+      module: { version: '', files: [...new Set(moduleFiles)].toSorted((left, right) => compareUtf8(canonicalJson(left), canonicalJson(right))).map((file) => {
         const observation = evidence.files.get(file)
         if (observation?.state !== 'present') throw new Error('Generator source bytes were not recorded')
         return { path: file, digest: observation.digest }
@@ -97,7 +112,7 @@ export const recordGeneratorResult = (generator: string, target: string, moduleF
       outputDigest: digestBytes(checkedContent),
     }
     evidence.generatorResults.set(canonicalJson([generator, result.target]), result)
-  } catch { captureFault(recording, 'record checked output', '@overeng/genie/src/runtime/node/inputs.ts') }
+  } catch { captureFault({ recording: recording, operation: 'record checked output', module: '@overeng/genie/src/runtime/node/inputs.ts' }) }
 }
 
 /** Retain the observed outcome; unmediated resolver alternatives remain explicit reasons. */
@@ -109,16 +124,17 @@ export const recordInputResolution = ({ importer, specifier, outcome }: Pick<Res
     recordInput(outcome.lexical)
     recordInput(outcome.physical)
   }
-  retainObservation(recording, evidence.resolutions, canonicalJson([importer, specifier]), {
+  retainObservation({ recording: recording, map: evidence.resolutions, key: canonicalJson([importer, specifier]), observation: {
     importer, specifier, outcome, by: [], candidates: [], contextEnv: [], resolverCode: [],
-  })
+  } })
 }
 
 // Proxies preserve Node overloads, return values, and original IO errors.
+/** Node-compatible file reads that retain consumed input evidence. */
 export const inputReadFileSync: typeof fs.readFileSync = new Proxy(fs.readFileSync, {
   apply: (target, receiver, args: Parameters<typeof fs.readFileSync>) => {
     if (typeof args[0] !== 'number') recordInput(args[0])
-    else if (isInputRecording()) recordInputReason({ code: 'unknown-capability', operation: 'readFileSync(fd)', detail: 'File descriptor origin is not modeled', source: { module: '@overeng/genie/src/runtime/node/inputs.ts', line: null }, generators: [], evidence: 'observed' })
+    else if (isInputRecording() === true) recordInputReason({ code: 'unknown-capability', operation: 'readFileSync(fd)', detail: 'File descriptor origin is not modeled', source: { module: '@overeng/genie/src/runtime/node/inputs.ts', line: null }, generators: [], evidence: 'observed' })
     const recording = globalState[state]
     let before: fs.BigIntStats | undefined
     if (recording?.evidence !== undefined && typeof args[0] !== 'number') {
@@ -126,64 +142,67 @@ export const inputReadFileSync: typeof fs.readFileSync = new Proxy(fs.readFileSy
     }
     let result: string | Buffer
     try { result = Reflect.apply(target, receiver, args) } catch (cause) {
-      if (recording?.evidence !== undefined && missingObservation(cause) === undefined) captureFault(recording, 'readFileSync', '@overeng/genie/src/runtime/node/inputs.ts')
+      if (recording?.evidence !== undefined && missingObservation(cause) === undefined) captureFault({ recording: recording, operation: 'readFileSync', module: '@overeng/genie/src/runtime/node/inputs.ts' })
       throw cause
     }
     if (recording?.evidence !== undefined && typeof args[0] !== 'number') {
-      const input = normalizeInputPath(recording, args[0])
+      const input = normalizeInputPath({ recording: recording, input: args[0] })
       if (input === undefined) return result
       // A decoded string can be lossy; compare raw bytes captured around the read too.
-      if (Buffer.isBuffer(result)) retainObservation(recording, recording.evidence.files, input, { path: input, by: [], state: 'present', digest: digestBytes(result), byteLength: result.byteLength })
+      if (Buffer.isBuffer(result) === true) retainObservation({ recording: recording, map: recording.evidence.files, key: input, observation: { path: input, by: [], state: 'present', digest: digestBytes(result), byteLength: result.byteLength } })
       recordInput(args[0])
       try {
         const after = fs.statSync(args[0], { bigint: true })
-        if (before === undefined || ['dev', 'ino', 'size', 'mtimeNs', 'ctimeNs'].some((key) => Reflect.get(before!, key) !== Reflect.get(after, key))) recordInputReason({
+        if (before === undefined || ['dev', 'ino', 'size', 'mtimeNs', 'ctimeNs'].some((key) => Reflect.get(before!, key) !== Reflect.get(after, key)) === true) recordInputReason({
           code: 'unstable-observation', operation: 'readFileSync', detail: `File state changed around the consumed read: ${input}`,
           source: { module: '@overeng/genie/src/runtime/node/inputs.ts', line: null }, generators: [], evidence: 'observed',
         })
-      } catch { captureFault(recording, 'associate consumed file bytes', '@overeng/genie/src/runtime/node/inputs.ts') }
+      } catch { captureFault({ recording: recording, operation: 'associate consumed file bytes', module: '@overeng/genie/src/runtime/node/inputs.ts' }) }
     }
     return result
   },
 })
+/** Node-compatible existence checks that retain input observations. */
 export const inputExistsSync: typeof fs.existsSync = new Proxy(fs.existsSync, {
   apply: (target, receiver, args: Parameters<typeof fs.existsSync>) => {
     recordInput(args[0])
     return Reflect.apply(target, receiver, args)
   },
 })
+/** Node-compatible stat calls that retain followed-path metadata. */
 export const inputStatSync: typeof fs.statSync = new Proxy(fs.statSync, {
   apply: (target, receiver, args: Parameters<typeof fs.statSync>) => {
     const recording = globalState[state]
     if (recording?.evidence === undefined) recordInput(args[0])
     else {
-      const input = normalizeInputPath(recording, args[0])
+      const input = normalizeInputPath({ recording: recording, input: args[0] })
       if (input === undefined) return Reflect.apply(target, receiver, args)
       recording.paths.add(input)
       try {
         const stat = fs.statSync(args[0], { bigint: true })
-        retainObservation(recording, recording.evidence.stats, canonicalJson([input, true]), { path: input, followSymlinks: true, by: [], state: 'present', type: entryType(stat), values: statValues(stat) })
+        retainObservation({ recording: recording, map: recording.evidence.stats, key: canonicalJson([input, true]), observation: { path: input, followSymlinks: true, by: [], state: 'present', type: entryType(stat), values: statValues(stat) } })
       } catch (cause) {
         const missing = missingObservation(cause)
-        if (missing === undefined) captureFault(recording, 'statSync', '@overeng/genie/src/runtime/node/inputs.ts')
-        else retainObservation(recording, recording.evidence.stats, canonicalJson([input, true]), { path: input, followSymlinks: true, by: [], ...missing })
+        if (missing === undefined) captureFault({ recording: recording, operation: 'statSync', module: '@overeng/genie/src/runtime/node/inputs.ts' })
+        else retainObservation({ recording: recording, map: recording.evidence.stats, key: canonicalJson([input, true]), observation: { path: input, followSymlinks: true, by: [], ...missing } })
       }
     }
     return Reflect.apply(target, receiver, args)
   },
 })
+/** Node-compatible directory reads that retain directory input evidence. */
 export const inputReaddirSync: typeof fs.readdirSync = new Proxy(fs.readdirSync, {
   apply: (target, receiver, args: Parameters<typeof fs.readdirSync>) => {
     recordInput(args[0])
     const entries: Array<string | Buffer | fs.Dirent<string | Buffer>> = Reflect.apply(target, receiver, args)
     const options = args[1]
-    if (isInputRecording() && typeof options === 'object' && options !== null && options.recursive === true) {
-      const root = normalizeInputPath(globalState[state]!, args[0])
+    if (isInputRecording() === true && typeof options === 'object' && options !== null && options.recursive === true) {
+      const root = normalizeInputPath({ recording: globalState[state]!, input: args[0] })
       if (root === undefined) return entries
-      for (const entry of entries) recordInput(typeof entry === 'string' || Buffer.isBuffer(entry)
+      for (const entry of entries) recordInput(typeof entry === 'string' || Buffer.isBuffer(entry) === true
         ? path.resolve(root, entry.toString()) : path.resolve(entry.parentPath, entry.name.toString()))
     }
-    if (isReadSetRecording()) recordInput(args[0])
+    if (isReadSetRecording() === true) recordInput(args[0])
     return entries
   },
 })
@@ -194,6 +213,7 @@ export const inputRealpathSync: typeof fs.realpathSync = new Proxy(fs.realpathSy
     return Reflect.apply(target, receiver, args)
   },
 })
+/** Observed filesystem operations supplied to module resolution. */
 export const inputFileSystem = {
   realpathSync: inputRealpathSync,
   readFileSync: inputReadFileSync,

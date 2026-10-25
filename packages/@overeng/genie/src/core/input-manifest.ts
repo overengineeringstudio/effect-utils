@@ -35,10 +35,13 @@ type SourceModule = {
 }
 
 /** Expand callers over cached edges, including cycles, without rereading source bytes. */
-export const accountSourceGraph = (
-  entries: ReadonlyArray<{ module: string; generator: string }>,
-  graph: ReadonlyMap<string, SourceModule>,
-): Array<Parameters<typeof recordInputReason>[0]> => {
+export const accountSourceGraph = ({
+  entries,
+  graph,
+}: {
+  entries: ReadonlyArray<{ module: string; generator: string }>
+  graph: ReadonlyMap<string, SourceModule>
+}): Array<Parameters<typeof recordInputReason>[0]> => {
   const callers = new Map<string, Set<string>>()
   const pending = [...entries]
   while (pending.length > 0) {
@@ -53,7 +56,7 @@ export const accountSourceGraph = (
   }
   const reasons: Array<Parameters<typeof recordInputReason>[0]> = []
   for (const [key, node] of graph) {
-    const generators = [...(callers.get(key) ?? [])].sort(compareUtf8)
+    const generators = [...(callers.get(key) ?? [])].toSorted(compareUtf8)
     if (generators.length === 0) continue
     reasons.push({
       code: 'unknown-capability',
@@ -69,7 +72,7 @@ export const accountSourceGraph = (
 }
 
 /** Presence is not execution: these diagnostics never account for a module's closure. */
-const sourceCapabilities = (source: string, module: string): Array<SourceReason> => {
+const sourceCapabilities = ({ source, module }: { source: string; module: string }): Array<SourceReason> => {
   const reasons: Array<SourceReason> = []
   // Skip comments and quoted/generated text, notably shell commands emitted into YAML.
   // This is only a diagnostic inventory, not a purity analyzer; unknown remains mandatory.
@@ -81,7 +84,7 @@ const sourceCapabilities = (source: string, module: string): Array<SourceReason>
     const code: SourceReason['code'] =
       /^Bun\s*\.\s*file$/.test(operation) === true
         ? 'unmediated-fs'
-        : /^realpath/.test(operation) === true
+        : operation.startsWith('realpath') === true
           ? 'unmediated-realpath'
           : /^Bun\s*\.\s*spawn/.test(operation) === true
             ? 'subprocess'
@@ -89,7 +92,7 @@ const sourceCapabilities = (source: string, module: string): Array<SourceReason>
                   operation,
                 ) === true
               ? 'network'
-              : /dlopen$/.test(operation) === true
+              : operation.endsWith('dlopen') === true
                 ? 'native-addon'
                 : /^process\s*\./.test(operation) === true
                   ? 'ambient-env'
@@ -119,7 +122,7 @@ export const recordGeneratorSourceGraph = ({
   const relative = (sourcePath: string): string =>
     path.relative(cwd, sourcePath).split(path.sep).join('/')
   const sourceEntries = entries.map((entry) => path.resolve(cwd, entry))
-  const generators = sourceEntries.map(relative).sort(compareUtf8)
+  const generators = sourceEntries.map(relative).toSorted(compareUtf8)
   setInputGenerators(generators)
   const pending = [...sourceEntries]
   const graph = new Map<string, SourceModule>()
@@ -137,12 +140,12 @@ export const recordGeneratorSourceGraph = ({
     let module = path.isAbsolute(sourcePath) === true ? relative(sourcePath) : sourcePath
     const node: SourceModule = { module, children: [], reasons: [] }
     graph.set(sourcePath, node)
-    const reason = (
-      code: SourceReason['code'],
-      operation: string,
-      detail: string,
-      line: number | null = null,
-    ): void => {
+    const reason = ({
+      code,
+      operation,
+      detail,
+      line = null,
+    }: Omit<SourceReason, 'source' | 'evidence'> & { line?: number | null }): void => {
       node.reasons.push({
         code,
         operation,
@@ -159,11 +162,11 @@ export const recordGeneratorSourceGraph = ({
         recordedScopes.add(scope)
         const packagePath = path.join(scope, 'package.json')
         recordInput(packagePath)
-        if (isReadSetRecording()) {
+        if (isReadSetRecording() === true) {
           try { packageNames.set(scope, decodePackageName(inputReadFileSync(packagePath, 'utf8')).name) } catch { /* Missing/unnamed scopes remain recorded inputs. */ }
         }
       }
-      if (module.startsWith('../') && packageNames.has(scope)) {
+      if (module.startsWith('../') === true && packageNames.has(scope) === true) {
         module = `${packageNames.get(scope)!}/${path.relative(scope, sourcePath).split(path.sep).join('/')}`
         node.module = module
       }
@@ -171,20 +174,20 @@ export const recordGeneratorSourceGraph = ({
       if (parent === scope) break
       scope = parent
     }
-    if (module.startsWith('../')) {
+    if (module.startsWith('../') === true) {
       module = pathToFileURL(sourcePath).href
       node.module = module
     }
     if (/\.[cm]?[jt]sx?$/.test(sourcePath) === false) {
       if (sourcePath.endsWith('.node') === true) {
-        reason('native-addon', 'native-module', 'Native module input capabilities are unproven.')
+        reason({ code: 'native-addon', operation: 'native-module', detail: 'Native module input capabilities are unproven.' })
       }
       continue
     }
     let imports: ReadonlyArray<{ path: string; line: number | null }>
     try {
       const source = inputReadFileSync(sourcePath, 'utf8')
-      if (isReadSetRecording() === true) node.reasons.push(...sourceCapabilities(source, module))
+      if (isReadSetRecording() === true) node.reasons.push(...sourceCapabilities({ source: source, module: module }))
       // Generic arrow functions in .ts are ambiguous JSX, while .tsx needs JSX parsing.
       const transpiler = /\.[jt]sx$/.test(sourcePath) === true ? transpilers.tsx : transpilers.ts
       imports = transpiler.scanImports(source).map((entry) => {
@@ -197,16 +200,16 @@ export const recordGeneratorSourceGraph = ({
         return { path: entry.path, line }
       })
     } catch {
-      reason('unknown-capability', 'source-scan', 'Source could not be read or scanned.')
+      reason({ code: 'unknown-capability', operation: 'source-scan', detail: 'Source could not be read or scanned.' })
       continue
     }
     for (const { path: specifier, line } of imports) {
       if (specifier.endsWith('.node') === true) {
-        reason('native-addon', 'native-module-import', 'Native module capability is unproven.', line)
+        reason({ code: 'native-addon', operation: 'native-module-import', detail: 'Native module capability is unproven.', line: line })
       }
       if (isBuiltin(specifier) === true) {
         const builtin = specifier.replace(/^node:/, '')
-        if (isReadSetRecording() && specifier !== 'bun' && !specifier.startsWith('bun:')) recordInputResolution({
+        if (isReadSetRecording() === true && specifier !== 'bun' && specifier.startsWith('bun:') === false) recordInputResolution({
           importer: sourcePath, specifier, outcome: { kind: 'builtin', name: `node:${builtin}` },
         })
         const code =
@@ -219,12 +222,7 @@ export const recordGeneratorSourceGraph = ({
                 : /^(?:process|os)$/.test(builtin) === true
                   ? 'ambient-env'
                   : 'unknown-capability'
-        reason(
-          code,
-          `import:${specifier}`,
-          'Builtin capability imported; execution and inputs are unproven.',
-          line,
-        )
+        reason({ code: code, operation: `import:${specifier}`, detail: 'Builtin capability imported; execution and inputs are unproven.', line: line })
         continue
       }
       let mapped: string | undefined
@@ -239,8 +237,8 @@ export const recordGeneratorSourceGraph = ({
               })
             : undefined
       } catch {
-        reason('unknown-capability', 'import-map-resolution', 'Import-map resolution closure is unknown.', line)
-        reason('dynamic-import', `resolve:${specifier}`, 'Import-map resolution could not be recorded.', line)
+        reason({ code: 'unknown-capability', operation: 'import-map-resolution', detail: 'Import-map resolution closure is unknown.', line: line })
+        reason({ code: 'dynamic-import', operation: `resolve:${specifier}`, detail: 'Import-map resolution could not be recorded.', line: line })
         continue
       }
       const base = mapped ?? specifier
@@ -268,33 +266,18 @@ export const recordGeneratorSourceGraph = ({
         recordInput(path.dirname(absolute))
         recordInput(absolute)
       }
-      reason(
-        'dynamic-import',
-        `resolve:${specifier}`,
-        'Resolver alternatives and influencing context are unproven.',
-        line,
-      )
-      reason(
-        'unmediated-realpath',
-        `realpath:${specifier}`,
-        'Source resolution uses raw physical-path lookup.',
-        line,
-      )
+      reason({ code: 'dynamic-import', operation: `resolve:${specifier}`, detail: 'Resolver alternatives and influencing context are unproven.', line: line })
+      reason({ code: 'unmediated-realpath', operation: `realpath:${specifier}`, detail: 'Source resolution uses raw physical-path lookup.', line: line })
       let resolved: string
       let canonical: string
       try {
         resolved = Bun.resolveSync(base, path.dirname(sourcePath))
         canonical = realpathSync(resolved)
       } catch {
-        reason(
-          'unknown-capability',
-          `resolve:${specifier}`,
-          'Optional import target and resolution closure are unknown.',
-          line,
-        )
+        reason({ code: 'unknown-capability', operation: `resolve:${specifier}`, detail: 'Optional import target and resolution closure are unknown.', line: line })
         continue
       }
-      if (isReadSetRecording()) recordInputResolution({
+      if (isReadSetRecording() === true) recordInputResolution({
         importer: sourcePath, specifier, outcome: { kind: 'file', lexical: resolved, physical: canonical },
       })
       // Installed dependencies remain opaque; attribute their unaccounted closure by specifier.
@@ -309,12 +292,20 @@ export const recordGeneratorSourceGraph = ({
       pending.push(child)
     }
   }
-  for (const reason of accountSourceGraph(
-    sourceEntries.map((module) => ({ module, generator: relative(module) })),
-    graph,
-  )) {
+  for (const reason of accountSourceGraph({ entries: sourceEntries.map((module) => ({ module, generator: relative(module) })), graph: graph })) {
     recordInputReason(reason)
   }
+}
+
+const failure = (cause: unknown) => {
+  recordInputReason({
+    code: 'capture-error', operation: 'publish input evidence',
+    detail: 'Input evidence publication failed',
+    source: { module: '@overeng/genie/src/core/input-manifest.ts', line: null }, generators: [], evidence: 'observed',
+  })
+  return new GenieGenerationFailedError({
+    failedCount: 1, message: `Failed to publish generator input evidence: ${String(cause)}`, files: [],
+  })
 }
 
 /**
@@ -337,16 +328,6 @@ export const withInputManifest = <TOutput, TError, TRequirements>({
   const metadataPath = manifestPath === undefined ? undefined : `${manifestPath}.meta.json`
   const reportPath = readSetPath === undefined ? undefined : `${readSetPath}.reasons.json`
   const destinations = [manifestPath, readSetPath, metadataPath, reportPath].filter((value): value is string => value !== undefined)
-  const failure = (cause: unknown) => {
-    recordInputReason({
-      code: 'capture-error', operation: 'publish input evidence',
-      detail: 'Input evidence publication failed',
-      source: { module: '@overeng/genie/src/core/input-manifest.ts', line: null }, generators: [], evidence: 'observed',
-    })
-    return new GenieGenerationFailedError({
-      failedCount: 1, message: `Failed to publish generator input evidence: ${String(cause)}`, files: [],
-    })
-  }
   const publishPrivate = Effect.fn('genie/publishInputEvidence')(function* (output: string, content: string, invocationId: string) {
     const temporary = `${output}.${invocationId}.tmp`
     yield* Effect.tryPromise(async () => {
@@ -374,21 +355,21 @@ export const withInputManifest = <TOutput, TError, TRequirements>({
           yield* api.initializeReadSet(readSet.cwd).pipe(Effect.mapError(failure))
           return api
         })),
-        Effect.onExit((exit) => Exit.isFailure(exit) ? Effect.sync(endInputRecording) : Effect.void),
+        Effect.onExit((exit) => Exit.isFailure(exit) === true ? Effect.sync(endInputRecording) : Effect.void),
       ),
       (api) => effect.pipe(
         Effect.tap(() => Effect.gen(function* () {
           const recording = getInputRecording()!
           const artifact = readSet === undefined ? undefined : yield* Effect.try({
-            try: () => api!.buildReadSet(recording, readSet.cwd, readSet.argv),
+            try: () => api!.buildReadSet({ recording, cwd: readSet.cwd, argv: readSet.argv }),
             catch: failure,
           })
           const invocationId = artifact?.invocationId ?? randomUUID()
-          const complete = isInputRecordingComplete()
+          const recordingComplete = isInputRecordingComplete()
           const inputs = artifact === undefined
-            ? [...recording.paths].sort(compareUtf8)
-            : [...new Set([...artifact.files, ...artifact.directories].map((entry) => entry.path))].sort(compareUtf8)
-          if (manifestPath !== undefined && inputs.some((input) => /[\r\n]/.test(input))) return yield* failure('Generator input paths cannot contain newlines')
+            ? [...recording.paths].toSorted(compareUtf8)
+            : [...new Set([...artifact.files, ...artifact.directories].map((entry) => entry.path))].toSorted(compareUtf8)
+          if (manifestPath !== undefined && inputs.some((input) => /[\r\n]/.test(input)) === true) return yield* failure('Generator input paths cannot contain newlines')
           if (artifact !== undefined && readSetPath !== undefined) {
             yield* publishPrivate(readSetPath, `${canonicalJson(artifact)}\n`, invocationId).pipe(Effect.mapError(failure))
             yield* publishPrivate(reportPath!, `${canonicalJson({
@@ -397,14 +378,14 @@ export const withInputManifest = <TOutput, TError, TRequirements>({
             })}\n`, invocationId).pipe(Effect.mapError(failure))
           }
           if (manifestPath !== undefined) {
-            yield* publishPrivate(manifestPath, `${complete ? 'genie-inputs-v1' : 'genie-inputs-incomplete'}\n${inputs.map((input) => `${input}\n`).join('')}`, invocationId).pipe(Effect.mapError(failure))
+            yield* publishPrivate(manifestPath, `${recordingComplete === true ? 'genie-inputs-v1' : 'genie-inputs-incomplete'}\n${inputs.map((input) => `${input}\n`).join('')}`, invocationId).pipe(Effect.mapError(failure))
             yield* publishPrivate(metadataPath!, `${canonicalJson({
-              schema: 'genie-input-manifest-metadata', schemaVersion: 1, invocationId, complete,
+              schema: 'genie-input-manifest-metadata', schemaVersion: 1, invocationId, complete: recordingComplete,
               digestEvidence: artifact !== undefined,
             })}\n`, invocationId).pipe(Effect.mapError(failure))
           }
         })),
-        Effect.onExit((exit) => Exit.isFailure(exit) ? discard : Effect.void),
+        Effect.onExit((exit) => Exit.isFailure(exit) === true ? discard : Effect.void),
       ),
       () => Effect.sync(endInputRecording),
     ),

@@ -866,7 +866,7 @@ const formatWithOxfmt = Effect.fn('formatWithOxfmt')(function* ({
   })
 
   const result = yield* Effect.gen(function* () {
-    if (isInputRecording()) recordInputReason({
+    if (isInputRecording() === true) recordInputReason({
       code: 'subprocess', operation: 'oxfmt',
       detail: 'Formatter execution has an unaccounted executable and input closure',
       source: { module: '@overeng/genie/src/core/generation.ts', line: null },
@@ -1376,9 +1376,7 @@ export const checkFileDetailed = ({
       })
     }
 
-    if (isReadSetRecording()) recordGeneratorResult(
-      path.relative(cwd, genieFilePath).split(path.sep).join('/'), targetFilePath, [genieFilePath], expectedContent,
-    )
+    if (isReadSetRecording() === true) recordGeneratorResult({ generator: path.relative(cwd, genieFilePath).split(path.sep).join('/'), target: targetFilePath, moduleFiles: [genieFilePath], checkedContent: expectedContent })
     return { targetFilePath, loadedGenieFile }
   }).pipe(
     Observability.withFileSpan({

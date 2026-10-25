@@ -20,7 +20,7 @@ describe('read-set schema and canonical encodings', () => {
   it.effect('encodes JCS key order and the specified directory/environment formulas', () => Effect.sync(() => {
     expect(canonicalJson({ z: 1, a: { b: 'value', a: [] } })).toBe('{"a":{"a":[],"b":"value"},"z":1}')
     expect(directoryDigest([])).toBe(digestBytes('genie-directory-v1\n[]'))
-    expect(environmentDigest('0'.repeat(64), 'NAME', '')).toBe(digestBytes(`["genie-env-v1","${'0'.repeat(64)}","NAME",""]`))
+    expect(environmentDigest({ salt: '0'.repeat(64), name: 'NAME', value: '' })).toBe(digestBytes(`["genie-env-v1","${'0'.repeat(64)}","NAME",""]`))
     expect(() => canonicalJson('\ud800')).toThrow()
     expect(validateReadSet(fixture()).complete).toBe(true)
   }))

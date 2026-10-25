@@ -52,6 +52,7 @@ const Resolution = Schema.Struct({
     Schema.Struct({ kind: Schema.Literal('missing') }),
   ]), candidates: Schema.Array(Ref), contextEnv: Schema.Array(Schema.String), resolverCode: Schema.Array(CodeFile),
 })
+/** Validated evidence format emitted by a recorded Genie check. */
 export const ReadSetSchema = Schema.Struct({
   schema: Schema.Literal('genie-check-read-set'), schemaVersion: Schema.Literal(1),
   invocationId: Schema.String.check(Schema.isPattern(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/)),
@@ -70,16 +71,18 @@ export const ReadSetSchema = Schema.Struct({
     generators: By, evidence: Schema.Literals(['observed', 'unproven']),
   })),
 }).annotate({ identifier: 'Genie.CheckReadSet' })
+/** Evidence collected during a recorded Genie check. */
 export type ReadSet = typeof ReadSetSchema.Type
 
-const sorted = <T>(values: Iterable<T>, key: (value: T) => unknown): T[] => [...values].sort((left, right) => compareUtf8(canonicalJson(key(left)), canonicalJson(key(right))))
+const sorted = <TValue>({ values, key }: { values: Iterable<TValue>; key: (value: TValue) => unknown }): TValue[] => [...values].toSorted((left, right) => compareUtf8(canonicalJson(key(left)), canonicalJson(key(right))))
 const unique = (values: readonly string[]): boolean => values.every((value, index) => index === 0 || compareUtf8(values[index - 1]!, value) < 0)
-const ordered = <T>(values: readonly T[], key: (value: T) => unknown): boolean => unique(values.map((value) => canonicalJson(key(value))))
+const ordered = <TValue>({ values, key }: { values: readonly TValue[]; key: (value: TValue) => unknown }): boolean => unique(values.map((value) => canonicalJson(key(value))))
+const assert = (condition: boolean): void => { if (condition === false) throw new Error('Inconsistent genie read-set evidence') }
+const identity = (value: ReadSet['genie']): void => { assert(ordered({ values: value.files, key: (file) => file.path })) }
 /** Strict producer validation. Consumers must independently validate before considering reuse. */
 export const validateReadSet = (input: unknown): ReadSet => {
   const result = Schema.decodeUnknownSync(ReadSetSchema, { onExcessProperty: 'error' })(input)
   canonicalJson(result) // Reject non-Unicode strings, including nested diagnostics.
-  const assert = (condition: boolean): void => { if (!condition) throw new Error('Inconsistent genie read-set evidence') }
   assert(result.complete === (result.reasons.length === 0))
   assert(unique(result.generators))
   const attribution = (by: readonly string[]): void => {
@@ -87,18 +90,17 @@ export const validateReadSet = (input: unknown): ReadSet => {
     assert(result.generators.length === 0 || by.length > 0)
   }
   for (const observations of [result.files, result.directories, result.symlinks]) {
-    assert(ordered<{ path: string }>(observations, (item) => item.path))
+    assert(ordered<{ path: string }>({ values: observations, key: (item) => item.path }))
     for (const observation of observations) attribution(observation.by)
   }
-  assert(ordered(result.environment, (item) => item.name))
-  assert(ordered(result.cwd, (item) => item.lexical))
-  assert(ordered(result.stats, (item) => [item.path, item.followSymlinks]))
-  assert(ordered(result.resolutions, (item) => [item.importer, item.specifier]))
-  assert(ordered(result.tools, (item) => item.name))
+  assert(ordered({ values: result.environment, key: (item) => item.name }))
+  assert(ordered({ values: result.cwd, key: (item) => item.lexical }))
+  assert(ordered({ values: result.stats, key: (item) => [item.path, item.followSymlinks] }))
+  assert(ordered({ values: result.resolutions, key: (item) => [item.importer, item.specifier] }))
+  assert(ordered({ values: result.tools, key: (item) => item.name }))
   for (const observations of [result.environment, result.cwd, result.stats, result.resolutions, result.tools]) for (const observation of observations) attribution(observation.by)
-  assert(ordered(result.generatorResults, (item) => [item.generator, item.target]))
+  assert(ordered({ values: result.generatorResults, key: (item) => [item.generator, item.target] }))
   assert(result.generatorResults.length === result.generators.length)
-  const identity = (value: ReadSet['genie']): void => { assert(ordered(value.files, (file) => file.path)) }
   identity(result.genie)
   identity(result.bun)
   for (const generator of result.generatorResults) {
@@ -111,28 +113,28 @@ export const validateReadSet = (input: unknown): ReadSet => {
     assert(directory.entries.every(({ name }) => name !== '' && name !== '.' && name !== '..' && !/[\\/\0]/.test(name)))
     assert(directoryDigest([...directory.entries]) === directory.digest)
   }
-  assert(ordered(result.reasons, (reason) => reason))
+  assert(ordered({ values: result.reasons, key: (reason) => reason }))
   for (const reason of result.reasons) attribution(reason.generators)
   for (const resolution of result.resolutions) {
     assert(result.files.some((file) => file.path === resolution.importer && file.state === 'present'))
     if (resolution.outcome.kind === 'file') {
       const { lexical, physical } = resolution.outcome
-      assert([lexical, physical].every((input) => result.files.some((file) => file.path === input && file.state === 'present')))
+      assert([lexical, physical].every((inputPath) => result.files.some((file) => file.path === inputPath && file.state === 'present')))
     } else if (resolution.outcome.kind === 'builtin') assert(resolution.outcome.name.startsWith('node:') && isBuiltin(resolution.outcome.name))
     for (const candidate of resolution.candidates) assert((candidate.kind === 'file' ? result.files : result.directories).some((entry) => entry.path === candidate.path))
     assert(unique(resolution.contextEnv) && resolution.contextEnv.every((name) => result.environment.some((entry) => entry.name === name)))
-    assert(ordered(resolution.resolverCode, (file) => file.path))
+    assert(ordered({ values: resolution.resolverCode, key: (file) => file.path }))
   }
   for (const tool of result.tools) {
-    assert(ordered(tool.files, (file) => file.path))
+    assert(ordered({ values: tool.files, key: (file) => file.path }))
     assert(tool.files.some((file) => file.path === tool.executable))
   }
   return result
 }
 
 const compiled = process.argv[1]?.includes('/$bunfs/') === true
-const enginePath = compiled ? process.execPath : fileURLToPath(import.meta.url)
-const packagePath = compiled ? undefined : fileURLToPath(new URL('../../package.json', import.meta.url))
+const enginePath = compiled === true ? process.execPath : fileURLToPath(import.meta.url)
+const packagePath = compiled === true ? undefined : fileURLToPath(new URL('../../package.json', import.meta.url))
 /** Begin before discovery. Opaque engine/tool closures remain explicit blockers. */
 export const initializeReadSet = Effect.fn('genie/initializeReadSet')(function* (cwd: string) {
   const evidence = getInputRecording()?.evidence
@@ -143,7 +145,7 @@ export const initializeReadSet = Effect.fn('genie/initializeReadSet')(function* 
   if (packagePath !== undefined) recordInput(packagePath)
   recordInput(process.execPath)
   const version = yield* Effect.serviceOption(CliVersion)
-  if (Option.isSome(version)) evidence.genieVersion = version.value.version
+  if (Option.isSome(version) === true) evidence.genieVersion = version.value.version
   else if (packagePath !== undefined) {
     const raw = yield* Effect.try(() => fs.readFileSync(packagePath, 'utf8'))
     evidence.genieVersion = (yield* Schema.decodeEffect(
@@ -153,19 +155,20 @@ export const initializeReadSet = Effect.fn('genie/initializeReadSet')(function* 
   for (const module of ['@overeng/genie', 'bun:runtime']) recordInputReason({ code: 'unknown-capability', operation: 'component identity closure', detail: 'The complete influencing engine/runtime closure is not yet accounted for', source: { module, line: null }, generators: [], evidence: 'unproven' })
 })
 
-export const buildReadSet = (recording: InputRecording, cwd: string, argv: readonly string[]): ReadSet => {
+/** Build and validate a read-set from the evidence retained by an invocation. */
+export const buildReadSet = ({ recording, cwd, argv }: { recording: InputRecording; cwd: string; argv: readonly string[] }): ReadSet => {
   const evidence = recording.evidence
   if (evidence === undefined) throw new Error('Read-set digest recording was not installed')
   // Revalidate consumed evidence without replacing earlier observations. This is a
   // stability check over the original keys, not a post-run dependency census.
   for (const input of new Set([...evidence.files.keys(), ...evidence.directories.keys(), ...evidence.symlinks.keys()])) recordInput(input)
   for (const name of evidence.environment.keys()) recordInputEnvironment(name)
-  for (const cwd of evidence.cwd.values()) recordInputCwd(cwd.lexical)
+  for (const observedCwd of evidence.cwd.values()) recordInputCwd(observedCwd.lexical)
   for (const stat of evidence.stats.values()) {
     try { inputStatSync(stat.path) } catch { /* The reader retains the exact failed observation. */ }
   }
-  const by = (values: readonly string[]): readonly string[] => values.length === 0 ? recording.generators : [...new Set(values)].sort(compareUtf8)
-  const attributed = <T extends { by: readonly string[] }>(values: Iterable<T>, key: (value: T) => unknown) => sorted([...values].map((value) => ({ ...value, by: by(value.by) })), key)
+  const by = (values: readonly string[]): readonly string[] => values.length === 0 ? recording.generators : [...new Set(values)].toSorted(compareUtf8)
+  const attributed = <TValue extends { by: readonly string[] }>({ values, key }: { values: Iterable<TValue>; key: (value: TValue) => unknown }) => sorted({ values: [...values].map((value) => Object.assign({}, value, { by: by(value.by) })), key })
   const codeFile = (input: string) => {
     const observed = evidence.files.get(input)
     if (observed?.state !== 'present') throw new Error('Missing component identity bytes')
@@ -176,13 +179,13 @@ export const buildReadSet = (recording: InputRecording, cwd: string, argv: reado
   return validateReadSet({
     schema: 'genie-check-read-set', schemaVersion: 1, invocationId: evidence.invocationId, checkSucceeded: true,
     complete: recording.reasons.length === 0, repoRoot: path.resolve(cwd), argv: [...argv], generators: recording.generators,
-    generatorResults: sorted(evidence.generatorResults.values(), (result) => [result.generator, result.target]),
+    generatorResults: sorted({ values: evidence.generatorResults.values(), key: (result) => [result.generator, result.target] }),
     platform: { os: process.platform, arch: process.arch }, genie: { version, files: [codeFile(enginePath)] },
     bun: { version: Bun.version, files: [codeFile(process.execPath)] }, envSalt: evidence.envSalt,
-    files: attributed(evidence.files.values(), (item) => item.path), directories: attributed(evidence.directories.values(), (item) => item.path),
-    environment: attributed(evidence.environment.values(), (item) => item.name), cwd: attributed(evidence.cwd.values(), (item) => item.lexical),
-    symlinks: attributed(evidence.symlinks.values(), (item) => item.path), stats: attributed(evidence.stats.values(), (item) => [item.path, item.followSymlinks]),
-    resolutions: attributed(evidence.resolutions.values(), (item) => [item.importer, item.specifier]), tools: [],
-    reasons: sorted(recording.reasons.map((reason) => ({ ...reason, generators: by(reason.generators) })), (reason) => reason),
+    files: attributed({ values: evidence.files.values(), key: (item) => item.path }), directories: attributed({ values: evidence.directories.values(), key: (item) => item.path }),
+    environment: attributed({ values: evidence.environment.values(), key: (item) => item.name }), cwd: attributed({ values: evidence.cwd.values(), key: (item) => item.lexical }),
+    symlinks: attributed({ values: evidence.symlinks.values(), key: (item) => item.path }), stats: attributed({ values: evidence.stats.values(), key: (item) => [item.path, item.followSymlinks] }),
+    resolutions: attributed({ values: evidence.resolutions.values(), key: (item) => [item.importer, item.specifier] }), tools: [],
+    reasons: sorted({ values: recording.reasons.map((reason) => Object.assign({}, reason, { generators: by(reason.generators) })), key: (reason) => reason }),
   })
 }

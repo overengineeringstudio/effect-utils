@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import { accountSourceGraph } from './input-manifest.ts'
 
-type SourceModule = Parameters<typeof accountSourceGraph>[1] extends ReadonlyMap<string, infer TModule>
+type SourceModule = Parameters<typeof accountSourceGraph>[0]['graph'] extends ReadonlyMap<string, infer TModule>
   ? TModule
   : never
 
@@ -28,7 +28,7 @@ describe('source closure accounting', () => {
       ['leaf.ts', moduleNode('leaf.ts', ['shared.ts'])],
       ['other.genie.ts', moduleNode('other.genie.ts')],
     ])
-    const reasons = accountSourceGraph(entries, graph)
+    const reasons = accountSourceGraph({ entries: entries, graph: graph })
     for (const module of ['shared.ts', 'leaf.ts']) {
       expect(reasons.find((reason) => reason.source.module === module)?.generators).toEqual([
         'a.genie.ts',
@@ -41,10 +41,7 @@ describe('source closure accounting', () => {
   })
 
   it('keeps an unrestricted module incomplete even with no visible bypasses', () => {
-    const reasons = accountSourceGraph(
-      [{ module: 'plain.genie.ts', generator: 'plain.genie.ts' }],
-      new Map([['plain.genie.ts', moduleNode('plain.genie.ts')]]),
-    )
+    const reasons = accountSourceGraph({ entries: [{ module: 'plain.genie.ts', generator: 'plain.genie.ts' }], graph: new Map([['plain.genie.ts', moduleNode('plain.genie.ts')]]) })
     expect(reasons).toEqual([
       {
         code: 'unknown-capability',
@@ -75,15 +72,12 @@ describe('source closure accounting', () => {
         evidence: 'unproven',
       },
     ]
-    const reasons = accountSourceGraph(
-      entries,
-      new Map([
-        ['a.genie.ts', moduleNode('a.genie.ts', ['shared.ts'])],
-        ['b.genie.ts', moduleNode('b.genie.ts', ['shared.ts'])],
-        ['other.genie.ts', moduleNode('other.genie.ts')],
-        ['shared.ts', shared],
-      ]),
-    ).filter((reason) => reason.source.module === 'shared.ts')
+    const reasons = accountSourceGraph({ entries: entries, graph: new Map([
+      ['a.genie.ts', moduleNode('a.genie.ts', ['shared.ts'])],
+      ['b.genie.ts', moduleNode('b.genie.ts', ['shared.ts'])],
+      ['other.genie.ts', moduleNode('other.genie.ts')],
+      ['shared.ts', shared],
+    ]) }).filter((reason) => reason.source.module === 'shared.ts')
     expect(reasons.map((reason) => reason.code)).toEqual([
       'unknown-capability',
       'unmediated-fs',
@@ -95,16 +89,13 @@ describe('source closure accounting', () => {
   })
 
   it('names opaque dependencies and expands their exact affected generators', () => {
-    const reasons = accountSourceGraph(
-      entries,
-      new Map([
-        ['a.genie.ts', moduleNode('a.genie.ts', ['dependency/subpath'])],
-        ['b.genie.ts', moduleNode('b.genie.ts', ['shared.ts'])],
-        ['shared.ts', moduleNode('shared.ts', ['dependency/subpath'])],
-        ['dependency/subpath', moduleNode('dependency/subpath')],
-        ['other.genie.ts', moduleNode('other.genie.ts')],
-      ]),
-    )
+    const reasons = accountSourceGraph({ entries: entries, graph: new Map([
+      ['a.genie.ts', moduleNode('a.genie.ts', ['dependency/subpath'])],
+      ['b.genie.ts', moduleNode('b.genie.ts', ['shared.ts'])],
+      ['shared.ts', moduleNode('shared.ts', ['dependency/subpath'])],
+      ['dependency/subpath', moduleNode('dependency/subpath')],
+      ['other.genie.ts', moduleNode('other.genie.ts')],
+    ]) })
     expect(reasons.find((reason) => reason.source.module === 'dependency/subpath')).toMatchObject({
       code: 'unknown-capability',
       generators: ['a.genie.ts', 'b.genie.ts'],

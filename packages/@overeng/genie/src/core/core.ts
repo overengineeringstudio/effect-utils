@@ -437,14 +437,14 @@ export const checkAll = ({
       concurrency: checkConcurrency,
     })
 
-    if (isInputRecording()) {
+    if (isInputRecording() === true) {
       recordInputCwd(cwd)
       oxfmtConfigPath = yield* resolveOxfmtConfigPath({ explicitPath: oxfmtConfigPath, cwd })
       for (const input of ['megarepo.lock', 'flake.lock', 'pnpm-lock.yaml', 'pnpm-workspace.yaml', 'package.json', ...OXFMT_CONFIG_CONVENTION_PATHS]) recordInput(path.join(cwd, input))
-      if (Option.isSome(oxfmtConfigPath)) recordInput(oxfmtConfigPath.value)
+      if (Option.isSome(oxfmtConfigPath) === true) recordInput(oxfmtConfigPath.value)
     }
     const genieFiles = yield* discoverAndValidate(cwd, phase)
-    if (isInputRecording()) recordGeneratorSourceGraph({ entries: genieFiles, cwd })
+    if (isInputRecording() === true) recordGeneratorSourceGraph({ entries: genieFiles, cwd })
 
     if (genieFiles.length === 0) {
       yield* emit({ _tag: 'Complete', summary: computeSummary({ successes: [], failedCount: 0 }) })
@@ -638,7 +638,7 @@ export const checkAll = ({
       })
       .map((result) => result.loadedGenieFile)
 
-    if (isInputRecording()) recordInputReason({
+    if (isInputRecording() === true) recordInputReason({
       code: 'unknown-capability', operation: 'validation closure',
       detail: 'Shared validator input capabilities are not yet accounted for',
       source: { module: '@overeng/genie/src/core/validation.ts', line: null }, generators: [], evidence: 'unproven',
@@ -654,7 +654,7 @@ export const checkAll = ({
     }
     yield* emit({ _tag: 'Complete', summary })
   }).pipe(
-    (effect) => recordingInstalled ? effect : withInputManifest({
+    (effect) => recordingInstalled === true ? effect : withInputManifest({
       effect,
       complete: phase === undefined,
       ...(readSet === undefined ? {} : { readSet: { path: readSet, cwd, argv } }),

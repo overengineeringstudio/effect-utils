@@ -39,7 +39,7 @@ export const read = () => {
 `)
   for (const name of ['one', 'two']) fs.writeFileSync(path.join(root, `${name}.txt.genie.ts`), `import { read } from './shared.ts'\nexport default { data: {}, stringify: read }\n`)
   const run = (args: string[], legacy = true, manifestPath = manifest) => spawnSync('bun', [cliPath, '--cwd', root, '--json', ...args], {
-    cwd: root, encoding: 'utf8', env: { ...process.env, GENIE_INPUT_MANIFEST: legacy ? manifestPath : '', XDG_STATE_HOME: path.join(root, 'state') },
+    cwd: root, encoding: 'utf8', env: { ...process.env, GENIE_INPUT_MANIFEST: legacy === true ? manifestPath : '', XDG_STATE_HOME: path.join(root, 'state') },
   })
   const generate = run(['--writeable'], false)
   expect(generate.status, generate.stdout + generate.stderr).toBe(0)
@@ -111,11 +111,11 @@ describe('check read-set recording', () => {
         import assert from 'node:assert/strict'
         import * as fs from 'node:fs'
         import path from 'node:path'
-        import { makeInputRecording, capturePath, directoryDigest } from ${JSON.stringify(observationsPath)}
+        import { makeInputRecording, capturePath, directoryDigest } from ${canonicalJson(observationsPath)}
         const directory = process.argv[1]
         const recording = makeInputRecording({ digests: true })
-        capturePath(recording, directory)
-        capturePath(recording, path.join(directory, 'empty'))
+        capturePath({ recording, input: directory })
+        capturePath({ recording, input: path.join(directory, 'empty') })
         const entries = [
           { name: '.git', type: 'file' }, { name: 'empty', type: 'directory' },
           { name: 'input.txt', type: 'file' }, { name: 'link', type: 'symlink' },
@@ -128,7 +128,7 @@ describe('check read-set recording', () => {
         fs.chmodSync(directory, 0o755)
         fs.writeFileSync(Buffer.concat([Buffer.from(directory + path.sep), Buffer.from([0xff])]), '')
         const invalid = makeInputRecording({ digests: true })
-        capturePath(invalid, directory)
+        capturePath({ recording: invalid, input: directory })
         assert.equal(invalid.evidence.directories.has(directory), false)
         assert.equal(invalid.reasons.some(reason => reason.code === 'capture-error'), true)
       `, directory], { encoding: 'utf8' })
@@ -150,10 +150,10 @@ describe('check read-set recording', () => {
         import fs from 'node:fs'
         import { syncBuiltinESMExports } from 'node:module'
         import path from 'node:path'
-        import { makeInputRecording, capturePath } from ${JSON.stringify(observationsUrl)}
+        import { makeInputRecording, capturePath } from ${canonicalJson(observationsUrl)}
         const directory = process.argv[1]
         const recording = makeInputRecording({ digests: true })
-        capturePath(recording, directory)
+        capturePath({ recording, input: directory })
         assert.equal(recording.evidence.directories.get(directory).state, 'present')
         const readdir = fs.readdirSync
         fs.readdirSync = new Proxy(readdir, {
@@ -164,7 +164,7 @@ describe('check read-set recording', () => {
           },
         })
         syncBuiltinESMExports()
-        capturePath(recording, directory)
+        capturePath({ recording, input: directory })
         assert.equal(fs.existsSync(directory), true)
         assert.equal(recording.evidence.directories.has(directory), false)
         assert.equal(recording.evidence.files.has(directory), false)
@@ -201,7 +201,7 @@ describe('check read-set recording', () => {
         const evidence = getInputRecording()!.evidence!
         expect(evidence.environment.get(name)).toEqual(value === undefined
           ? { name, by: [], present: false }
-          : { name, by: [], present: true, digest: environmentDigest(evidence.envSalt, name, value) })
+          : { name, by: [], present: true, digest: environmentDigest({ salt: evidence.envSalt, name: name, value: value }) })
         expect(canonicalJson([...evidence.environment.values()])).not.toContain('private fixture value')
         endInputRecording()
       }

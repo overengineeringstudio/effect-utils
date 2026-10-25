@@ -153,7 +153,7 @@ const gitListGenieFiles = ({
 
 const discoverGitGenieFiles = ({ cwd }: { cwd: string }): Array<string> | undefined => {
   try {
-    if (isInputRecording()) recordInputReason({
+    if (isInputRecording() === true) recordInputReason({
       code: 'subprocess', operation: 'git discovery',
       detail: 'Git discovery executes with an unaccounted repository/configuration closure',
       source: { module: '@overeng/genie/src/core/discovery.ts', line: null }, generators: [], evidence: 'observed',
