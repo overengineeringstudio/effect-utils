@@ -21,6 +21,7 @@ import {
   parseSourceString,
   writeMegarepoConfig,
 } from '../core/config.ts'
+import { cloneBare } from '../core/git.ts'
 import {
   createLockedMember,
   LOCK_FILE_NAME,
@@ -118,7 +119,7 @@ const createCanonicalTestSetup = (branch: 'main' | 'team/feature') =>
     const memberCommit = yield* runGitCommand(memberSeed, 'rev-parse', 'HEAD')
     const memberRepo = `${tmpDir}member-store/github.com/test-owner/test-repo`
     yield* fs.makeDirectory(memberRepo, { recursive: true })
-    yield* runGitCommand(tmpDir, 'clone', '--bare', memberSeed, `${memberRepo}/.bare`)
+    yield* cloneBare({ url: memberSeed, targetPath: `${memberRepo}/.bare` })
     const memberBranchPath = EffectPath.unsafe.absoluteDir(`${memberRepo}/refs/heads/main/`)
     yield* runGitCommand(
       tmpDir,
