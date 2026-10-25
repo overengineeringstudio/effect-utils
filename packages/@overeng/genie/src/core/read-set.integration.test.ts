@@ -66,6 +66,23 @@ const decodeReport = Schema.decodeSync(
     }),
   ),
 )
+// Some filesystems or sandbox policies do not support creating symlinks.
+// Keep the independent inventory assertions running when that capability is absent.
+const trySymlink = ({ target, link }: { target: string; link: string }) => {
+  try {
+    fs.symlinkSync(target, link)
+    return true
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      'code' in error &&
+      ['EACCES', 'EPERM', 'ENOSYS', 'ENOTSUP', 'EOPNOTSUPP'].includes(String(error.code)) === true
+    )
+      return false
+    throw error
+  }
+}
+
 const fixture = () => {
   const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'genie-read-set-')))
   const artifact = path.join(root, 'evidence.json')
@@ -128,17 +145,22 @@ describe('check read-set recording', () => {
 
   it.effect('retains bytes, typed inventories, absences, exact stat and symlink inputs', () =>
     Effect.sync(() => {
-      const root = fs.mkdtempSync(path.join(os.tmpdir(), 'genie-observations-'))
+      const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'genie-observations-')))
       try {
         fs.mkdirSync(path.join(root, 'empty'))
         fs.writeFileSync(path.join(root, 'input'), 'bytes')
-        fs.symlinkSync('input', path.join(root, 'link'))
+        const hasSymlink = trySymlink({ target: 'input', link: path.join(root, 'link') })
         beginInputRecording({ digests: true })
         expect(inputReadFileSync(path.join(root, 'input'), 'utf8')).toBe('bytes')
         expect(inputExistsSync(path.join(root, 'absent'))).toBe(false)
         inputReaddirSync(path.join(root, 'empty'))
         inputStatSync(path.join(root, 'input'))
-        inputRealpathSync(path.join(root, 'link'))
+        if (hasSymlink === true) {
+          expect(fs.readlinkSync(path.join(root, 'link'))).toBe('input')
+          expect(inputRealpathSync(path.join(root, 'link'))).toBe(
+            fs.realpathSync(path.join(root, 'input')),
+          )
+        }
         const evidence = getInputRecording()!.evidence!
         expect(evidence.files.get(path.join(root, 'input'))).toMatchObject({
           state: 'present',
@@ -162,10 +184,11 @@ describe('check read-set recording', () => {
           followSymlinks: true,
           values: { size: '5' },
         })
-        expect(evidence.symlinks.get(path.join(root, 'link'))).toMatchObject({
-          state: 'present',
-          target: 'input',
-        })
+        if (hasSymlink === true)
+          expect(evidence.symlinks.get(path.join(root, 'link'))).toMatchObject({
+            state: 'present',
+            target: fs.readlinkSync(path.join(root, 'link')),
+          })
         fs.writeFileSync(path.join(root, 'input'), 'changed')
         inputReadFileSync(path.join(root, 'input'))
         expect(
@@ -185,7 +208,9 @@ describe('check read-set recording', () => {
     'preserves numeric, bigint, and missing stat results while recording exact metadata',
     () =>
       Effect.sync(() => {
-        const root = fs.mkdtempSync(path.join(os.tmpdir(), 'genie-stat-semantics-'))
+        const root = fs.realpathSync(
+          fs.mkdtempSync(path.join(os.tmpdir(), 'genie-stat-semantics-')),
+        )
         try {
           const input = path.join(root, 'input')
           fs.writeFileSync(input, 'bytes')
@@ -231,7 +256,7 @@ describe('check read-set recording', () => {
     'retains a consumed stat disagreement when the original state is restored before revalidation',
     () =>
       Effect.sync(() => {
-        const root = fs.mkdtempSync(path.join(os.tmpdir(), 'genie-stat-race-'))
+        const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'genie-stat-race-')))
         try {
           fs.writeFileSync(path.join(root, 'input'), 'original')
           fs.writeFileSync(path.join(root, 'changed'), 'changed and longer')
@@ -294,17 +319,19 @@ describe('check read-set recording', () => {
   )
 
   it.effect(
-    'captures read-only directory inventories exactly under Bun and rejects non-Unicode names',
+    'captures read-only inventories under Bun whether non-Unicode names are supported or rejected',
     () =>
       Effect.sync(() => {
-        const root = fs.mkdtempSync(path.join(os.tmpdir(), 'genie-readonly-observations-'))
+        const root = fs.realpathSync(
+          fs.mkdtempSync(path.join(os.tmpdir(), 'genie-readonly-observations-')),
+        )
         const directory = path.join(root, 'dependency')
         const empty = path.join(directory, 'empty')
         try {
           fs.mkdirSync(empty, { recursive: true })
           fs.writeFileSync(path.join(directory, '.git'), 'gitdir: ../worktrees/dependency\n')
           fs.writeFileSync(path.join(directory, 'input.txt'), 'bytes')
-          fs.symlinkSync('missing', path.join(directory, 'link'))
+          const hasSymlink = trySymlink({ target: 'missing', link: path.join(directory, 'link') })
           fs.chmodSync(empty, 0o555)
           fs.chmodSync(directory, 0o555)
           const observationsPath = fileURLToPath(
@@ -320,26 +347,83 @@ describe('check read-set recording', () => {
         import path from 'node:path'
         import { makeInputRecording, capturePath, directoryDigest } from ${canonicalJson(observationsPath)}
         const directory = process.argv[1]
+        const hasSymlink = process.argv[2] === 'true'
+        // chmod alone does not prove access is denied: root can bypass mode bits.
+        const probe = path.join(directory, 'permission-probe')
+        let writeDenied = false
+        try {
+          fs.writeFileSync(probe, 'probe')
+        } catch (error) {
+          assert.equal(['EACCES', 'EPERM'].includes(error.code), true)
+          writeDenied = true
+        }
+        if (writeDenied === true) {
+          assert.equal(fs.existsSync(probe), false)
+        } else {
+          assert.equal(fs.readFileSync(probe, 'utf8'), 'probe')
+          fs.unlinkSync(probe)
+        }
+        assert.equal(fs.existsSync(probe), false)
+        assert.equal(fs.statSync(directory).mode & 0o777, 0o555)
+        assert.equal(fs.statSync(path.join(directory, 'empty')).mode & 0o777, 0o555)
         const recording = makeInputRecording({ digests: true })
         capturePath({ recording, input: directory })
         capturePath({ recording, input: path.join(directory, 'empty') })
         const entries = [
           { name: '.git', type: 'file' }, { name: 'empty', type: 'directory' },
-          { name: 'input.txt', type: 'file' }, { name: 'link', type: 'symlink' },
+          { name: 'input.txt', type: 'file' },
+          ...(hasSymlink === true ? [{ name: 'link', type: 'symlink' }] : []),
         ]
         assert.deepEqual(recording.evidence.directories.get(directory), {
           path: directory, by: [], state: 'present', entries, digest: directoryDigest(entries),
         })
         assert.deepEqual(recording.evidence.directories.get(path.join(directory, 'empty')).entries, [])
         assert.deepEqual(recording.reasons, [])
+        if (hasSymlink === true) {
+          const link = path.join(directory, 'link')
+          assert.equal(fs.readlinkSync(link), 'missing')
+          assert.throws(() => fs.realpathSync(link), { code: 'ENOENT' })
+          capturePath({ recording, input: link })
+          assert.deepEqual(recording.evidence.symlinks.get(link), {
+            path: link, by: [], state: 'present', target: fs.readlinkSync(link),
+          })
+          assert.deepEqual(recording.reasons, [])
+        }
+        assert.equal(fs.statSync(directory).mode & 0o777, 0o555)
+        assert.equal(fs.statSync(path.join(directory, 'empty')).mode & 0o777, 0o555)
+        // Probe raw names only after every normal read-only assertion has run.
         fs.chmodSync(directory, 0o755)
-        fs.writeFileSync(Buffer.concat([Buffer.from(directory + path.sep), Buffer.from([0xff])]), '')
-        const invalid = makeInputRecording({ digests: true })
-        capturePath({ recording: invalid, input: directory })
-        assert.equal(invalid.evidence.directories.has(directory), false)
-        assert.equal(invalid.reasons.some(reason => reason.code === 'capture-error'), true)
+        const invalidName = Buffer.from([0xff])
+        const invalidPath = Buffer.concat([Buffer.from(directory + path.sep), invalidName])
+        let rejectsInvalidName = false
+        try {
+          fs.writeFileSync(invalidPath, '')
+        } catch (error) {
+          assert.equal(error.code, 'EILSEQ')
+          rejectsInvalidName = true
+        }
+        const rawEntries = fs.readdirSync(directory, { encoding: 'buffer' })
+        if (rejectsInvalidName === true) {
+          // APFS rejects this filename at creation, rather than at capture.
+          assert.equal(rawEntries.some(name => name.equals(invalidName)), false)
+          assert.deepEqual(
+            rawEntries.map(name => name.toString('hex')).sort(),
+            entries.map(entry => Buffer.from(entry.name).toString('hex')).sort(),
+          )
+          const valid = makeInputRecording({ digests: true })
+          capturePath({ recording: valid, input: directory })
+          assert.deepEqual(valid.evidence.directories.get(directory).entries, entries)
+          assert.deepEqual(valid.reasons, [])
+        } else {
+          assert.equal(rawEntries.some(name => name.equals(invalidName)), true)
+          const invalid = makeInputRecording({ digests: true })
+          capturePath({ recording: invalid, input: directory })
+          assert.equal(invalid.evidence.directories.has(directory), false)
+          assert.equal(invalid.reasons.some(reason => reason.code === 'capture-error'), true)
+        }
       `,
               directory,
+              String(hasSymlink),
             ],
             { encoding: 'utf8' },
           )
@@ -357,7 +441,9 @@ describe('check read-set recording', () => {
     'fails closed when a listed child disappears before its type is observed',
     () =>
       Effect.sync(() => {
-        const root = fs.mkdtempSync(path.join(os.tmpdir(), 'genie-directory-race-'))
+        const root = fs.realpathSync(
+          fs.mkdtempSync(path.join(os.tmpdir(), 'genie-directory-race-')),
+        )
         try {
           fs.writeFileSync(path.join(root, 'child'), 'bytes')
           const observationsUrl = new URL('../runtime/node/input-observations.ts', import.meta.url)
@@ -406,7 +492,9 @@ describe('check read-set recording', () => {
 
   it.effect('distinguishes ENOTDIR from ENOENT and fails closed on capture errors', () =>
     Effect.sync(() => {
-      const root = fs.mkdtempSync(path.join(os.tmpdir(), 'genie-observation-errors-'))
+      const root = fs.realpathSync(
+        fs.mkdtempSync(path.join(os.tmpdir(), 'genie-observation-errors-')),
+      )
       try {
         fs.writeFileSync(path.join(root, 'file'), '')
         beginInputRecording({ digests: true })
@@ -676,7 +764,9 @@ describe('check read-set recording', () => {
     'invocation-local caches preserve inventory and symlink conflicts instead of reusing stale evidence',
     () =>
       Effect.sync(() => {
-        const root = fs.mkdtempSync(path.join(os.tmpdir(), 'genie-cache-stability-'))
+        const root = fs.realpathSync(
+          fs.mkdtempSync(path.join(os.tmpdir(), 'genie-cache-stability-')),
+        )
         const directory = path.join(root, 'inventory')
         const link = path.join(root, 'link')
         try {
@@ -684,7 +774,7 @@ describe('check read-set recording', () => {
           fs.writeFileSync(path.join(directory, 'entry'), 'first')
           fs.writeFileSync(path.join(root, 'a'), 'same')
           fs.writeFileSync(path.join(root, 'b'), 'same')
-          fs.symlinkSync('a', link)
+          const hasSymlink = trySymlink({ target: 'a', link })
           beginInputRecording({ digests: true })
           inputReaddirSync(directory)
           inputReaddirSync(directory)
@@ -696,32 +786,37 @@ describe('check read-set recording', () => {
           expect(
             getInputRecording()!.reasons.some((reason) => reason.code === 'unstable-observation'),
           ).toBe(true)
-          expect(inputRealpathSync(link)).toBe(path.join(root, 'a'))
-          expect(inputRealpathSync(link)).toBe(path.join(root, 'a'))
-          fs.unlinkSync(link)
-          fs.symlinkSync('b', link)
-          expect(inputRealpathSync(link)).toBe(path.join(root, 'b'))
-          expect(getInputRecording()!.evidence!.symlinks.get(link)).toMatchObject({
-            state: 'present',
-            target: 'a',
-          })
-          expect(
-            getInputRecording()!.reasons.some(
-              (reason) => reason.code === 'unstable-observation' && reason.detail.includes(link),
-            ),
-          ).toBe(true)
+          if (hasSymlink === true) {
+            expect(fs.readlinkSync(link)).toBe('a')
+            expect(inputRealpathSync(link)).toBe(fs.realpathSync(path.join(root, 'a')))
+            expect(inputRealpathSync(link)).toBe(fs.realpathSync(path.join(root, 'a')))
+            fs.unlinkSync(link)
+            fs.symlinkSync('b', link)
+            expect(fs.readlinkSync(link)).toBe('b')
+            expect(inputRealpathSync(link)).toBe(fs.realpathSync(path.join(root, 'b')))
+            expect(getInputRecording()!.evidence!.symlinks.get(link)).toMatchObject({
+              state: 'present',
+              target: 'a',
+            })
+            expect(
+              getInputRecording()!.reasons.some(
+                (reason) => reason.code === 'unstable-observation' && reason.detail.includes(link),
+              ),
+            ).toBe(true)
+          }
           endInputRecording()
           beginInputRecording({ digests: true })
           inputReaddirSync(directory)
-          inputRealpathSync(link)
+          if (hasSymlink === true) inputRealpathSync(link)
           expect(getInputRecording()!.evidence!.directories.get(directory)).toMatchObject({
             state: 'present',
             entries: [{ name: 'entry', type: 'directory' }],
           })
-          expect(getInputRecording()!.evidence!.symlinks.get(link)).toMatchObject({
-            state: 'present',
-            target: 'b',
-          })
+          if (hasSymlink === true)
+            expect(getInputRecording()!.evidence!.symlinks.get(link)).toMatchObject({
+              state: 'present',
+              target: fs.readlinkSync(link),
+            })
           expect(getInputRecording()!.reasons).toEqual([])
         } finally {
           endInputRecording()
