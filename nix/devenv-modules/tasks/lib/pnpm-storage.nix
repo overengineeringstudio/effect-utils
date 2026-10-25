@@ -32,7 +32,10 @@ in
       600
   '';
   configure = ''
-    ${cliGuard.resolveCliBin { cli = "pnpm"; realBin = pnpmPkg; }}
+    ${cliGuard.resolveCliBin {
+      cli = "pnpm";
+      realBin = pnpmPkg;
+    }}
     PNPM_NATIVE_BIN="$_real"
     configure_pnpm_storage \
       ${lib.escapeShellArg "${pkgs.nodejs}/bin/node"} \

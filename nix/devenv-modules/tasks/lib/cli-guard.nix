@@ -73,12 +73,15 @@ let
   # Shared dispatch resolution for guards and callers that need the same native
   # binary without opting into task passthrough. Always returns an absolute path.
   resolveCliBin =
-    { cli, realBin ? null }:
+    {
+      cli,
+      realBin ? null,
+    }:
     let
       realPath = resolveRealBin cli realBin;
     in
     if realPath != null then
-      ''_real=${lib.escapeShellArg realPath}''
+      "_real=${lib.escapeShellArg realPath}"
     else
       ''
         _real=""
@@ -210,5 +213,10 @@ let
 
 in
 {
-  inherit mkCliGuard fromTasks stripGuards resolveCliBin;
+  inherit
+    mkCliGuard
+    fromTasks
+    stripGuards
+    resolveCliBin
+    ;
 }
