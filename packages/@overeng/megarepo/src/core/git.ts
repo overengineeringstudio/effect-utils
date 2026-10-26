@@ -990,7 +990,7 @@ export const fetchPullRequestHeads = (args: { repoPath: string; remote?: string 
   Effect.gen(function* () {
     const remote = args.remote ?? 'origin'
     yield* runGitCommandWithRetry({
-      args: ['fetch', remote, '+refs/pull/*/head:refs/remotes/origin/pr/*'],
+      args: ['fetch', '--no-tags', remote, '+refs/pull/*/head:refs/remotes/origin/pr/*'],
       cwd: args.repoPath,
     })
   }).pipe(

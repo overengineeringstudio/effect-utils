@@ -65,11 +65,15 @@ describe('store fetch', () => {
     'many-tags fetch does not request all tags',
     () =>
       Effect.gen(function* () {
-        const { bare, commitB } = yield* fixture
+        const { upstream, bare, commitB } = yield* fixture
 
         yield* Git.fetchBare({ repoPath: bare, refs: ['main'] })
 
         expect(yield* git(bare, 'rev-parse', 'refs/remotes/origin/main')).toBe(commitB)
+        expect(yield* tagCount(bare)).toBe(0)
+        yield* git(upstream, 'update-ref', 'refs/pull/1/head', commitB)
+        yield* Git.fetchPullRequestHeads({ repoPath: bare })
+        expect(yield* git(bare, 'rev-parse', 'refs/remotes/origin/pr/1')).toBe(commitB)
         expect(yield* tagCount(bare)).toBe(0)
       }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
     30_000,
