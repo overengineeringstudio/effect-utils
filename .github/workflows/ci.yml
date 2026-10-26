@@ -64,6 +64,9 @@ jobs:
         name: Initialize Buck2 CI job instance
         shell: bash
         run: printf 'BUCK2_CI_JOB_INSTANCE=%s\n' "$(od -An -N32 -tx1 /dev/urandom | tr -d ' \n')" >> "$GITHUB_ENV"
+      - name: Isolate job Git configuration
+        shell: bash
+        run: echo "GIT_CONFIG_GLOBAL=$RUNNER_TEMP/gitconfig" >> "$GITHUB_ENV"
       - uses: actions/checkout@v6
         with:
           persist-credentials: false
@@ -6436,6 +6439,9 @@ jobs:
         name: Initialize Buck2 CI job instance
         shell: bash
         run: printf 'BUCK2_CI_JOB_INSTANCE=%s\n' "$(od -An -N32 -tx1 /dev/urandom | tr -d ' \n')" >> "$GITHUB_ENV"
+      - name: Isolate job Git configuration
+        shell: bash
+        run: echo "GIT_CONFIG_GLOBAL=$RUNNER_TEMP/gitconfig" >> "$GITHUB_ENV"
       - uses: actions/checkout@v6
         with:
           persist-credentials: false
@@ -6563,6 +6569,9 @@ jobs:
         name: Initialize Buck2 CI job instance
         shell: bash
         run: printf 'BUCK2_CI_JOB_INSTANCE=%s\n' "$(od -An -N32 -tx1 /dev/urandom | tr -d ' \n')" >> "$GITHUB_ENV"
+      - name: Isolate job Git configuration
+        shell: bash
+        run: echo "GIT_CONFIG_GLOBAL=$RUNNER_TEMP/gitconfig" >> "$GITHUB_ENV"
       - uses: actions/checkout@v6
         with:
           persist-credentials: false
@@ -6573,14 +6582,6 @@ jobs:
             ${{ runner.os == 'Linux' && 'sandbox = true' || '' }}
             ${{ runner.os == 'Linux' && 'sandbox-fallback = false' || '' }}
         timeout-minutes: 2
-      - if: ${{ always() && env.CI_EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && vars.TS_EVIDENCE_CLIENT_ID != '' && vars.TS_EVIDENCE_AUDIENCE != '' }}
-        uses: tailscale/github-action@v4
-        continue-on-error: true
-        with:
-          oauth-client-id: ${{ vars.TS_EVIDENCE_CLIENT_ID }}
-          audience: ${{ vars.TS_EVIDENCE_AUDIENCE }}
-          tags: 'tag:ci-buck2-evidence'
-          args: --accept-dns=true
       - name: Link started job roots
         if: ${{ always() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && needs.default-ref-policy.result == 'success' }}
         shell: bash

@@ -71,6 +71,12 @@ import { sameRepoPullRequestGuard } from '../../packages/@overeng/genie/src/runt
 const workflowReportFlakeRef =
   "github:${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name || github.repository }}/${{ github.event_name == 'pull_request' && github.head_ref || github.ref_name }}#ci-tools"
 
+const fleetGitConfigStep = {
+  name: 'Isolate job Git configuration',
+  shell: 'bash',
+  run: 'echo "GIT_CONFIG_GLOBAL=$RUNNER_TEMP/gitconfig" >> "$GITHUB_ENV"',
+} as const
+
 const trustedCachixStep = cachixStep({ name: 'overeng-effect-utils' })
 const binaryCache = readBinaryCacheDescriptors(
   new URL('../../nix/binary-caches.json', import.meta.url),
@@ -1278,6 +1284,7 @@ const extraJobs: Record<string, any> = {
     permissions: { contents: 'read' },
     defaults: bashShellDefaults,
     steps: [
+      fleetGitConfigStep,
       checkoutStep(),
       ...publishedRefSteps.map((step) =>
         'run' in step
@@ -2186,6 +2193,11 @@ const {
   ...instrumentedProductCiJobs
 } = productCiJobs
 
+const fleetPipelineCloseJob = pipelineCloseJob({
+  jobs: productCiJobs,
+  runsOn: linuxX64Runner,
+})
+
 // oxlint-disable-next-line overeng/exports-first -- generated entrypoint is assembled after its job atoms
 export default ciWorkflow({
   policy: effectUtilsWorkflowPolicy('ci.yml'),
@@ -2234,6 +2246,7 @@ export default ciWorkflow({
             permissions: { contents: 'read', actions: 'read' },
             outputs: { tested: '${{ steps.lookup.outputs.tested }}' },
             steps: [
+              fleetGitConfigStep,
               {
                 ...checkoutStep(),
                 if: "${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}",
@@ -2257,10 +2270,14 @@ export default ciWorkflow({
           ...withPipelineTelemetry(withBuck2CacheEvidence(instrumentedProductCiJobs)),
           'promote-published': promotePublishedJob!,
           'pipeline-attempt-close': {
-            ...pipelineCloseJob({
-              jobs: productCiJobs,
-              runsOn: linuxX64Runner,
-            }),
+            ...fleetPipelineCloseJob,
+            // Fleet runners already reach the collector through host tailnet networking.
+            steps: [
+              fleetGitConfigStep,
+              ...fleetPipelineCloseJob.steps.filter(
+                (step) => step.uses !== 'tailscale/github-action@v4',
+              ),
+            ],
             if: `\${{ always() && (${sameRepoPullRequestGuard()}) }}`,
           },
           'pipeline-traces': pipelineTracesJob,
