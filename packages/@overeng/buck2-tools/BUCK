@@ -6,7 +6,7 @@ load("//buck2:materialization.bzl", "runtime_modules")
 # Projection source: packages/@overeng/buck2-tools/BUCK.genie.ts
 # Projection schema version: 13
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:4d6bba4b9039382e8c33e20deb8797cae4a2326791d15248776dcce99bbbac8b
+# Semantic fingerprint: sha256:4d99618c9c24e44ee42df8d7af7585a6080daad663ece8adf617dbe27b0615de
 # Regenerate: devenv tasks run genie:run
 
 load("//buck2:materialization.bzl", "export_materialization_inputs", "package_view")
@@ -36,6 +36,8 @@ export_materialization_inputs([
     "src/editor-view-budget.ts",
     "src/editor-view-leases.integration.test.ts",
     "src/editor-view-leases.ts",
+    "src/editor-view-lifecycle.integration.test.ts",
+    "src/editor-view-lifecycle.ts",
     "src/editor-view-reader-directory.ts",
     "src/editor-view-readers.ts",
     "src/editor-view-readers.unit.test.ts",
@@ -133,6 +135,8 @@ package_view(
         "src/editor-view-budget.ts": "src/editor-view-budget.ts",
         "src/editor-view-leases.integration.test.ts": "src/editor-view-leases.integration.test.ts",
         "src/editor-view-leases.ts": "src/editor-view-leases.ts",
+        "src/editor-view-lifecycle.integration.test.ts": "src/editor-view-lifecycle.integration.test.ts",
+        "src/editor-view-lifecycle.ts": "src/editor-view-lifecycle.ts",
         "src/editor-view-reader-directory.ts": "src/editor-view-reader-directory.ts",
         "src/editor-view-readers.ts": "src/editor-view-readers.ts",
         "src/editor-view-readers.unit.test.ts": "src/editor-view-readers.unit.test.ts",
@@ -208,6 +212,8 @@ package_view(
         "src/editor-view-budget.ts": "src/editor-view-budget.ts",
         "src/editor-view-leases.integration.test.ts": "src/editor-view-leases.integration.test.ts",
         "src/editor-view-leases.ts": "src/editor-view-leases.ts",
+        "src/editor-view-lifecycle.integration.test.ts": "src/editor-view-lifecycle.integration.test.ts",
+        "src/editor-view-lifecycle.ts": "src/editor-view-lifecycle.ts",
         "src/editor-view-reader-directory.ts": "src/editor-view-reader-directory.ts",
         "src/editor-view-readers.ts": "src/editor-view-readers.ts",
         "src/editor-view-readers.unit.test.ts": "src/editor-view-readers.unit.test.ts",

@@ -93,6 +93,7 @@ export const buck2TypeScriptAdmission = {
         'src/store/store-lossless.integration.test.ts',
         'src/store/store-pinned-deletion.integration.test.ts',
         'src/store/store-workspace-activity.integration.test.ts',
+        'src/store/store-worktree-remove.integration.test.ts',
         'src/test-utils/store-setup.integration.test.ts',
       ],
       sourceOwners: {

@@ -116,6 +116,7 @@ import {
   type ColdWorktreeDecision,
 } from '../../../store/store-worktree-policy.ts'
 import { classifyStoreWorktreePolicy } from '../../../store/store-worktree-policy.ts'
+import { removeStoreWorktree } from '../../../store/store-worktree-remove.ts'
 import { isStoreDirectory, Store, StoreLayer } from '../../../store/store.ts'
 import { getCloneUrl } from '../../../sync/mod.ts'
 import {
@@ -4476,9 +4477,33 @@ const storeWorktreeNewCommand = Cli.Command.make(
     ),
 ).pipe(Cli.Command.withDescription('Create a new worktree in the store'))
 
+/** Scoped removal deliberately leaves editor/build teardown to its owner. */
+const storeWorktreeRemoveCommand = Cli.Command.make(
+  'rm',
+  {
+    path: Cli.Argument.String('path').pipe(
+      Cli.Argument.withDescription('Exact store worktree path'),
+    ),
+    discardChanges: Cli.Flag.Boolean('discard-changes').pipe(
+      Cli.Flag.withDescription('Explicitly discard uncommitted and untracked changes'),
+      Cli.Flag.withDefault(false),
+    ),
+    allowUnpushed: Cli.Flag.Boolean('allow-unpushed').pipe(
+      Cli.Flag.withDescription('Allow removing a worktree whose HEAD is not on any remote'),
+      Cli.Flag.withDefault(false),
+    ),
+  },
+  ({ path, discardChanges, allowUnpushed }) =>
+    Effect.gen(function* () {
+      const store = yield* Store
+      const result = yield* removeStoreWorktree({ store, path, discardChanges, allowUnpushed })
+      yield* Console.log(`Removed store worktree: ${result.path}`)
+    }).pipe(Effect.provide(StoreLayer)),
+).pipe(Cli.Command.withDescription('Remove one retired store worktree after worktree:teardown'))
+
 /** Worktree subcommand group */
 const storeWorktreeCommand = Cli.Command.make('worktree', {}).pipe(
-  Cli.Command.withSubcommands([storeWorktreeNewCommand]),
+  Cli.Command.withSubcommands([storeWorktreeNewCommand, storeWorktreeRemoveCommand]),
   Cli.Command.withDescription('Manage worktrees in the store'),
 )
 

@@ -28,11 +28,19 @@ export default packageJson(
         { types: './dist/src/mod.d.ts', default: './src/mod.ts' },
         { environment: 'node' },
       ),
+      './editor-view-lifecycle': exportEntry(
+        {
+          types: './dist/src/editor-view-lifecycle.d.ts',
+          default: './src/editor-view-lifecycle.ts',
+        },
+        { environment: 'node' },
+      ),
     },
     publishConfig: {
       access: 'public',
       exports: {
         '.': publishedSourceExport('mod'),
+        './editor-view-lifecycle': publishedSourceExport('editor-view-lifecycle'),
       },
     },
   } satisfies PackageJsonInputData,

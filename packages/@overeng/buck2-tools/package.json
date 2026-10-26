@@ -15,6 +15,10 @@
     ".": {
       "types": "./dist/src/mod.d.ts",
       "default": "./src/mod.ts"
+    },
+    "./editor-view-lifecycle": {
+      "types": "./dist/src/editor-view-lifecycle.d.ts",
+      "default": "./src/editor-view-lifecycle.ts"
     }
   },
   "dependencies": {
@@ -34,6 +38,10 @@
       ".": {
         "types": "./dist/src/mod.d.ts",
         "default": "./dist/src/mod.js"
+      },
+      "./editor-view-lifecycle": {
+        "types": "./dist/src/editor-view-lifecycle.d.ts",
+        "default": "./dist/src/editor-view-lifecycle.js"
       }
     }
   }
