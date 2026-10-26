@@ -393,9 +393,11 @@ describe('Linux Nix sandbox fallback', () => {
       `'${privileged}' || '${unprivileged}'`,
       `'${unprivileged}' || '${privileged}'`,
     ])
-      expect(() => sandboxWorkflow(`\${{ inputs.fast && ${branches} }}`)).toThrow(/lacks container/)
+      expect(() => sandboxWorkflow(`\${{ github.run_attempt == 1 && ${branches} }}`)).toThrow(
+        /lacks container/,
+      )
     expect(() =>
-      sandboxWorkflow(`\${{ inputs.fast && '${privileged}' || 'ubuntu-latest' }}`),
+      sandboxWorkflow(`\${{ github.run_attempt == 1 && '${privileged}' || 'ubuntu-latest' }}`),
     ).not.toThrow()
     expect(() =>
       sandboxWorkflow(
@@ -408,7 +410,7 @@ describe('Linux Nix sandbox fallback', () => {
     for (const expression of [
       '${{ matrix.runner }}',
       "${{ format('namespace-profile-{0};container.privileged=true', matrix.platform) }}",
-      "${{ inputs.fast && matrix.runner || 'ubuntu-latest' }}",
+      "${{ github.run_attempt == 1 && matrix.runner || 'ubuntu-latest' }}",
     ]) {
       expect(() => sandboxWorkflow(expression)).toThrow(
         /cannot statically determine.*linuxNixSandboxCapabilities/,
@@ -464,21 +466,21 @@ describe('Linux Nix sandbox fallback', () => {
     expect(() =>
       sandboxWorkflow([
         machine,
-        `\${{ inputs.fast && '${privileged}' || '${privileged};github.run-id=42' }}`,
+        `\${{ github.run_attempt == 1 && '${privileged}' || '${privileged};github.run-id=42' }}`,
       ]),
     ).not.toThrow()
     for (const branches of [
       `'${privileged}' || 'namespace-features:container.privileged=false'`,
       `'namespace-features:container.privileged=false' || '${privileged}'`,
     ]) {
-      expect(() => sandboxWorkflow([machine, `\${{ inputs.fast && ${branches} }}`])).toThrow(
-        /lacks container/,
-      )
+      expect(() =>
+        sandboxWorkflow([machine, `\${{ github.run_attempt == 1 && ${branches} }}`]),
+      ).toThrow(/lacks container/)
     }
     expect(() =>
       sandboxWorkflow([
-        `\${{ inputs.fast && '${machine}' || 'ubuntu-latest' }}`,
-        `\${{ inputs.fast && '${privileged}' || '${privileged};github.run-id=42' }}`,
+        `\${{ github.run_attempt == 1 && '${machine}' || 'ubuntu-latest' }}`,
+        `\${{ github.run_attempt == 1 && '${privileged}' || '${privileged};github.run-id=42' }}`,
       ]),
     ).not.toThrow()
   })
@@ -518,16 +520,19 @@ describe('Linux Nix sandbox fallback', () => {
     const machine = 'nscloud-ubuntu-24.04-amd64-16x64-with-features'
     for (const feature of [
       'namespace-features:container.privileged=false',
-      "${{ inputs.fast && 'namespace-features:container.privileged=true' || 'namespace-features:container.privileged=false' }}",
+      "${{ github.run_attempt == 1 && 'namespace-features:container.privileged=true' || 'namespace-features:container.privileged=false' }}",
       'namespace-features:github.run-id=42',
     ])
       expect(() =>
         sandboxWorkflow([machine, feature, '${{ matrix.extraLabel }}'], { build: 'supported' }),
       ).toThrow(/container\.privileged/)
     expect(() =>
-      sandboxWorkflow("${{ inputs.fast && 'namespace-profile-linux-x86-64' || matrix.runner }}", {
-        build: 'supported',
-      }),
+      sandboxWorkflow(
+        "${{ github.run_attempt == 1 && 'namespace-profile-linux-x86-64' || matrix.runner }}",
+        {
+          build: 'supported',
+        },
+      ),
     ).toThrow(/lacks container/)
   })
 

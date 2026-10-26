@@ -14,6 +14,7 @@ export type WorkflowPolicyRule =
   | 'runner-fallback'
   | 'runner-label-mix'
   | 'fleet-pr-without-same-repo-guard'
+  | 'fork-controlled-runner'
 
 /** Stable, exact identity for an observed violation and its report-mode ledger entry. */
 export type WorkflowPolicyViolation = {
@@ -103,6 +104,7 @@ const rules: readonly WorkflowPolicyRule[] = [
   'runner-fallback',
   'runner-label-mix',
   'fleet-pr-without-same-repo-guard',
+  'fork-controlled-runner',
 ]
 const neverExceptable: Partial<Record<WorkflowPolicyRule, true>> = {
   'hosted-runner': true,
@@ -114,22 +116,34 @@ const neverExceptable: Partial<Record<WorkflowPolicyRule, true>> = {
   'runner-fallback': true,
   'runner-label-mix': true,
   'fleet-pr-without-same-repo-guard': true,
+  'fork-controlled-runner': true,
 }
 
-const forkCodeEvents: Readonly<Record<string, true>> = {
-  pull_request: true,
-  pull_request_review: true,
-  pull_request_review_comment: true,
-  workflow_run: true,
-  issue_comment: true,
-}
+const guardEvents = {
+  trusted: ['push', 'merge_group', 'schedule', 'workflow_dispatch'],
+  pullRequest: ['pull_request', 'pull_request_review', 'pull_request_review_comment'],
+  upstreamRun: ['workflow_run'],
+  inheritedOrDenied: ['workflow_call', 'issue_comment'],
+} as const
+const forkCodeEvents: Readonly<Record<string, true>> = Object.fromEntries(
+  [...guardEvents.pullRequest, ...guardEvents.upstreamRun, ...guardEvents.inheritedOrDenied].map(
+    (event) => [event, true] as const,
+  ),
+)
+const eventCondition = (events: readonly string[]): string =>
+  events.map((event) => `github.event_name == '${event}'`).join(' || ')
+const sameRepoGuardExpression =
+  `(${eventCondition(guardEvents.trusted)}) || ` +
+  `((${eventCondition(guardEvents.pullRequest)}) && github.event.pull_request.head.repo.full_name == github.repository) || ` +
+  `(${eventCondition(guardEvents.upstreamRun)} && github.event.workflow_run.head_repository.full_name == github.repository)`
 
-/** Canonical fleet guard: PR/review and upstream-run heads must belong to this repository.
- * Other events (including push/merge_group) pass. issue_comment has no authenticated head
- * repository in its payload and is intentionally not admitted on fleet runners.
+const hasForkControlledRunnerExpression = (value: string): boolean =>
+  /\$\{\{[^}]*\b(?:github\s*(?:\.\s*(?:event\b|head_ref\b)|\[)|inputs\b)/.test(value)
+
+/** Canonical allowlist: reusable workflows inherit the caller's event and context.
+ * Unknown and issue/comment/target events are denied, never implicitly trusted.
  */
-export const sameRepoPullRequestGuard = (): string =>
-  "((github.event_name != 'pull_request' && github.event_name != 'pull_request_review' && github.event_name != 'pull_request_review_comment') || github.event.pull_request.head.repo.full_name == github.repository) && (github.event_name != 'workflow_run' || github.event.workflow_run.head_repository.full_name == github.repository) && github.event_name != 'issue_comment'"
+export const sameRepoPullRequestGuard = (): string => sameRepoGuardExpression
 
 /** Scan only actual top-level operators; quoted strings and nested expressions cannot attest a guard. */
 const guardExpressionParts = (expression: string) => {
@@ -351,6 +365,9 @@ export const collectWorkflowPolicyViolations = ({
     })
   for (const [job, config] of Object.entries(workflow.jobs)) {
     const path = `jobs.${job}.runs-on`
+    const protectUnknown = (): void => {
+      if (policy.sameRepoGuardRunnerLabels !== undefined) protectedRunnerJobs.add(job)
+    }
     const checkRunner = ({
       runner,
       resolveMatrix,
@@ -358,20 +375,45 @@ export const collectWorkflowPolicyViolations = ({
       runner: unknown
       resolveMatrix: boolean
     }): void => {
+      if (typeof runner === 'object' && runner !== null && Array.isArray(runner) === false) {
+        const labels: unknown = Reflect.get(runner, 'labels')
+        const group: unknown = Reflect.get(runner, 'group')
+        if (labels !== undefined) checkRunner({ runner: labels, resolveMatrix })
+        else protectUnknown()
+        if (typeof group === 'string' && hasForkControlledRunnerExpression(group) === true)
+          add({ job, rule: 'fork-controlled-runner', path, value: group })
+        return
+      }
       if (Array.isArray(runner) === true) {
-        if (runner.length === 0) add({ job, rule: 'dynamic-runner', path, value: '[]' })
+        if (runner.length === 0) {
+          protectUnknown()
+          add({ job, rule: 'dynamic-runner', path, value: '[]' })
+        }
         for (const label of runner) checkRunner({ runner: label, resolveMatrix })
         return
       }
       if (typeof runner !== 'string' || runner.length === 0) {
+        protectUnknown()
         add({ job, rule: 'dynamic-runner', path, value: String(runner) })
         return
       }
       if (runner.includes('${{') === false) {
         labelRules({ job, path, label: runner })
+        if (
+          policy.sameRepoGuardRunnerLabels !== undefined &&
+          policy.admittedRunnerLabels.includes(runner) === false &&
+          /^(?:ubuntu-|macos-|windows-|namespace-profile-|nscloud-|namespace-features:)/i.test(
+            runner,
+          ) === false
+        )
+          protectUnknown()
         return
       }
       // Even unresolved expressions must not hide forbidden literal fallbacks.
+      const fixedNonFleetPrefix =
+        /^(?:ubuntu-|macos-|windows-|namespace-profile-|nscloud-|namespace-features:)/i.test(runner)
+      if (fixedNonFleetPrefix === false && hasForkControlledRunnerExpression(runner) === true)
+        add({ job, rule: 'fork-controlled-runner', path, value: runner })
       if (runner.includes('||') === true) add({ job, rule: 'runner-fallback', path, value: runner })
       for (const literal of runner.matchAll(/'((?:[^']|'')*)'|"([^"]*)"/g)) {
         const value = (literal[1] ?? literal[2])!.replaceAll("''", "'")
@@ -403,29 +445,32 @@ export const collectWorkflowPolicyViolations = ({
         contract.labels.length > 0
       ) {
         for (const label of contract.labels) {
+          if (
+            /^(?:ubuntu-|macos-|windows-|namespace-profile-|nscloud-|namespace-features:)/i.test(
+              label,
+            ) === false
+          )
+            protectUnknown()
           if (label.includes('${{') === true)
             add({ job, rule: 'dynamic-runner', path, value: label })
           else labelRules({ job, path, label })
         }
         return
       }
+      if (fixedNonFleetPrefix === false) protectUnknown()
       add({ job, rule: 'dynamic-runner', path, value: runner })
     }
     checkRunner({ runner: config['runs-on'], resolveMatrix: true })
     if (
       protectedRunnerJobs.has(job) === true &&
       events.some((event) => forkCodeEvents[event] === true) === true &&
-      (events.includes('issue_comment') === true ||
-        hasSameRepoPullRequestGuard(config.if) === false)
+      hasSameRepoPullRequestGuard(config.if) === false
     ) {
       add({
         job,
         rule: 'fleet-pr-without-same-repo-guard',
         path: `jobs.${job}.if`,
-        value:
-          events.includes('issue_comment') === true
-            ? 'issue_comment has no verifiable head repository'
-            : (config.if ?? '(missing)'),
+        value: config.if ?? '(missing)',
       })
     }
     // Compare labels within each concrete selection, not across independent matrix jobs.
@@ -611,7 +656,8 @@ export const validateWorkflowPolicy = ({
     if (
       policy.mode === 'report' &&
       (violation.rule === 'fleet-pr-without-same-repo-guard' ||
-        violation.rule === 'pull-request-target')
+        violation.rule === 'pull-request-target' ||
+        violation.rule === 'fork-controlled-runner')
     ) {
       issues.push({ kind: 'VIOLATION', message: violationKey(violation), violation })
     }

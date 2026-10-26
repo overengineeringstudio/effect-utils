@@ -126,17 +126,21 @@ require an exact typed admission declaration with admitted possible labels.
 `linuxX64Runner` selects light work; `linuxX64HeavyRunner` is the dedicated
 heavy scale set and must never be combined with generic labels.
 
-Fleet jobs triggered by `pull_request`, `pull_request_review`,
-`pull_request_review_comment`, or `workflow_run` must use the exported
-`sameRepoPullRequestGuard()` as their job condition, alone or as a top-level
-conjunction with another condition. The canonical expression verifies the PR
-head repository or upstream run head repository, respectively, while allowing
-other events (including push and merge groups). OR, negated, and partial guards
-are rejected. Fleet `issue_comment` jobs are forbidden because that event
-does not establish a trusted head repository. `ciWorkflow` requires consumers
-to supply the guard explicitly; higher-level auto-review and release helpers
-add it when selecting fleet runners. Neither exceptions nor the report ledger
-can admit an unguarded fleet job or `pull_request_target`.
+Jobs that could reach fleet runners (including capability-only labels, unknown
+selectors, and runner groups) require `sameRepoPullRequestGuard()` on
+`pull_request`, `pull_request_review`, `pull_request_review_comment`,
+`workflow_run`, and `workflow_call`. Reusable workflows inherit their caller's
+event. The exact guard, alone or as a top-level conjunction, permits only
+push, merge groups, schedules, manual dispatches, and repository-owned PR or
+upstream-run heads. Unknown events, issue comments, and pull-request targets
+are not admitted. OR, negated, and partial guards are rejected.
+Fork-controlled runner expressions are hard errors even with a guard.
+Immutable hosted/Namespace selector prefixes prove non-fleet routing even
+when their feature suffixes contain expressions.
+`ciWorkflow` requires consumers to supply the guard explicitly; higher-level
+auto-review and release helpers add it when selecting fleet runners.
+Neither exceptions nor the report ledger can admit an unguarded potential
+fleet job, fork-controlled runner selection, or `pull_request_target`.
 This generator boundary assumes ephemeral runners, no persistent secrets, and
 repository-restricted runner groups; it does not verify infrastructure settings.
 
@@ -167,10 +171,11 @@ regenerating; generation cannot admit a new row automatically.
 Ledger generation and report checks share the same validated,
 exception-filtered observations. The raw census is retained only to detect
 stale exceptions, so accepted exceptions cannot reappear on regeneration.
-Storage ledger paths use step ID, then step name, then action repository and
-occurrence ordinal, never an absolute step index. Removing or inserting an
-unrelated step cannot manufacture new storage debt. Give duplicate action
-steps distinct IDs or names when their individual identity must survive removal.
+Storage ledger paths label steps by ID or name while always including ref-free
+action repository/subpath and canonical execution/input content. Only equivalent
+steps share an occurrence ordinal; absolute step indexes are never used.
+Removing a same-name step with different content cannot manufacture new debt,
+and changing an action cannot inherit an unrelated action's existing ledger row.
 
 Shared-helper tests enforce runner/event policy. Storage-emitting helpers are
 explicitly listed as `pendingStorageMigration` in

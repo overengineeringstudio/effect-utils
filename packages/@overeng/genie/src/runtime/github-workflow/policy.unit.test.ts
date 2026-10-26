@@ -355,6 +355,7 @@ describe('fleet fork-code admission', () => {
     'pull_request_review',
     'pull_request_review_comment',
     'workflow_run',
+    'workflow_call',
   ] as const)('requires canonical same-repository ownership for %s', (event) => {
     const input = { ...workflow(), on: event }
     expect(collect(input, guardedPolicy).map((entry) => entry.rule)).toContain(
@@ -419,7 +420,7 @@ describe('fleet fork-code admission', () => {
   })
   it('uses an event-specific guard that preserves push and merge_group in mixed workflows', () => {
     expect(guard).toBe(
-      "((github.event_name != 'pull_request' && github.event_name != 'pull_request_review' && github.event_name != 'pull_request_review_comment') || github.event.pull_request.head.repo.full_name == github.repository) && (github.event_name != 'workflow_run' || github.event.workflow_run.head_repository.full_name == github.repository) && github.event_name != 'issue_comment'",
+      "(github.event_name == 'push' || github.event_name == 'merge_group' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') || ((github.event_name == 'pull_request' || github.event_name == 'pull_request_review' || github.event_name == 'pull_request_review_comment') && github.event.pull_request.head.repo.full_name == github.repository) || (github.event_name == 'workflow_run' && github.event.workflow_run.head_repository.full_name == github.repository)",
     )
     const mixed: GitHubWorkflowArgs = {
       ...workflow(),
@@ -428,11 +429,51 @@ describe('fleet fork-code admission', () => {
     mixed.jobs.test!.if = guard
     expect(collect(mixed, guardedPolicy)).toEqual([])
   })
-  it('rejects issue_comment fleet jobs even with a guard because their payload cannot attest head ownership', () => {
-    const input = { ...workflow(), on: 'issue_comment' as const }
+  it.each(['issue_comment', 'pull_request_target', 'unknown'])(
+    'allowlist denies inherited %s',
+    (event) => {
+      const evaluate = (expression: string, eventName: string): boolean => {
+        const js = expression
+          .replaceAll('github.event_name', JSON.stringify(eventName))
+          .replaceAll('github.event.pull_request.head.repo.full_name', '"example/project"')
+          .replaceAll('github.event.workflow_run.head_repository.full_name', '"example/project"')
+          .replaceAll('github.repository', '"example/project"')
+        return Function(`"use strict"; return (${js})`)() as boolean
+      }
+      expect(evaluate(guard, event)).toBe(false)
+      expect(evaluate(guard, 'push')).toBe(true)
+      expect(evaluate(guard, 'merge_group')).toBe(true)
+      expect(evaluate(guard, 'pull_request')).toBe(true)
+    },
+  )
+  it.each([
+    '${{ needs.plan.outputs.runner }}',
+    '${{ github.event.pull_request.title }}',
+    { labels: 'pool-small' },
+    { labels: ['pool-small'] },
+    { group: 'shared-fleet' },
+  ])('unknown or object runner selection cannot ledger-bypass guard: %j', (runner) => {
+    const input = prWorkflow()
+    input.jobs.test!['runs-on'] = runner as GitHubWorkflowArgs['jobs'][string]['runs-on']
+    const observations = collect(input, guardedPolicy)
+    expect(observations.map((entry) => entry.rule)).toContain('fleet-pr-without-same-repo-guard')
+    expect(issueKinds(input, { ...guardedPolicy, mode: 'report', ledger: observations })).toContain(
+      'VIOLATION',
+    )
+  })
+  it.each([
+    '${{ github.event.pull_request.title }}',
+    '${{ github.head_ref }}',
+    '${{ inputs.runner }}',
+    { group: '${{ inputs.group }}' },
+  ])('fork-controlled selection remains a hard error even with a guard: %j', (runner) => {
+    const input = prWorkflow()
+    input.jobs.test!['runs-on'] = runner as GitHubWorkflowArgs['jobs'][string]['runs-on']
     input.jobs.test!.if = guard
-    expect(collect(input, guardedPolicy).map((entry) => entry.rule)).toContain(
-      'fleet-pr-without-same-repo-guard',
+    const observations = collect(input, guardedPolicy)
+    expect(observations.map((entry) => entry.rule)).toContain('fork-controlled-runner')
+    expect(issueKinds(input, { ...guardedPolicy, mode: 'report', ledger: observations })).toContain(
+      'VIOLATION',
     )
   })
   it('cannot admit fork-code exposure through either a report ledger or an exception', () => {
