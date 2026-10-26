@@ -5,6 +5,7 @@ import {
   collectWorkflowPolicyViolations,
   decodeWorkflowPolicyLedger,
   sameRepoPullRequestGuard,
+  workflowConditionConjuncts,
   validateWorkflowPolicy,
   WorkflowPolicyError,
   type WorkflowPolicy,
@@ -535,6 +536,33 @@ describe('fleet fork-code admission', () => {
         exceptions: [{ ...exception, rule: 'fleet-pr-without-same-repo-guard' }],
       }),
     ).toContain('INVALID_EXCEPTION')
+  })
+  it.each([
+    `github[false && (${sameRepoPullRequestGuard()}) && 'repository'] == null`,
+    `(${sameRepoPullRequestGuard()}) && github[false`,
+    `(${sameRepoPullRequestGuard()}) && github.false]`,
+    `(${sameRepoPullRequestGuard()}) && github[(false])`,
+    `(${sameRepoPullRequestGuard()}) && (github[false]`,
+  ])(
+    'does not promote an indexed or unbalanced expression into guard evidence: %s',
+    (condition) => {
+      const input = prWorkflow()
+      input.jobs.test!.if = condition
+      expect(collect(input, guardedPolicy).map((entry) => entry.rule)).toContain(
+        'fleet-pr-without-same-repo-guard',
+      )
+    },
+  )
+  it.each(['github[false', 'github.false]', 'github[(false])', '(github[false]'])(
+    'does not split unbalanced condition %s',
+    (condition) => {
+      expect(workflowConditionConjuncts(condition)).toBeUndefined()
+    },
+  )
+  it('ignores bracket-looking text inside quoted strings while finding a real guard', () => {
+    const input = prWorkflow()
+    input.jobs.test!.if = `(${sameRepoPullRequestGuard()}) && contains('it''s [)] &&', '[')`
+    expect(collect(input, guardedPolicy)).toEqual([])
   })
   it('cannot admit pull_request_target through a report ledger', () => {
     const input = { ...workflow(), on: 'pull_request_target' as const }

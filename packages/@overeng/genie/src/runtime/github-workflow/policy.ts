@@ -327,7 +327,7 @@ export const sameRepoPullRequestGuard = (): string => sameRepoGuardExpression
 
 /** Scan only actual top-level operators; quoted strings and nested expressions cannot attest a guard. */
 const guardExpressionParts = (expression: string) => {
-  let depth = 0
+  const delimiters: string[] = []
   let quote = ''
   let start = 0
   let outerClose = -1
@@ -343,21 +343,20 @@ const guardExpressionParts = (expression: string) => {
       continue
     }
     if (char === "'" || char === '"') quote = char
-    else if (char === '(') depth++
-    else if (char === ')') {
-      depth--
-      if (depth < 0) return undefined
-      if (depth === 0 && outerClose === -1) outerClose = index
-    } else if (depth === 0 && expression.slice(index, index + 2) === '||') {
+    else if (char === '(' || char === '[') delimiters.push(char)
+    else if (char === ')' || char === ']') {
+      if (delimiters.pop() !== (char === ')' ? '(' : '[')) return undefined
+      if (char === ')' && delimiters.length === 0 && outerClose === -1) outerClose = index
+    } else if (delimiters.length === 0 && expression.slice(index, index + 2) === '||') {
       hasOr = true
       index++
-    } else if (depth === 0 && expression.slice(index, index + 2) === '&&') {
+    } else if (delimiters.length === 0 && expression.slice(index, index + 2) === '&&') {
       parts.push(expression.slice(start, index).trim())
       index++
       start = index + 1
     }
   }
-  if (depth !== 0 || quote !== '') return undefined
+  if (delimiters.length !== 0 || quote !== '') return undefined
   parts.push(expression.slice(start).trim())
   return { parts, hasOr, outerClose }
 }
@@ -389,6 +388,38 @@ const hasSameRepoPullRequestGuard = (condition: string | undefined): boolean => 
     parsed.parts.every((part) => part !== '') === true &&
     parsed.parts.some((part) => unwrapGuardExpression(part) === guard) === true
   )
+}
+
+/** Split only top-level conjunctions; nested/quoted operators cannot supply a proof. */
+export const workflowConditionConjuncts = (condition: string): readonly string[] | undefined => {
+  const parsed = guardExpressionParts(unwrapGuardExpression(condition))
+  if (
+    parsed === undefined ||
+    parsed.hasOr === true ||
+    parsed.parts.some((part) => part === '') === true
+  )
+    return undefined
+  return parsed.parts.map(unwrapGuardExpression)
+}
+
+/** Remove only the exact canonical guard when it is a top-level conjunction.
+ * The guard only narrows admission, so proofs about the remaining restriction still hold.
+ * Unrecognized/modified guards and outer disjunctions are returned untouched.
+ */
+export const stripSameRepoPullRequestGuard = (condition: string): string => {
+  const expression = unwrapGuardExpression(condition)
+  const parsed = guardExpressionParts(expression)
+  if (
+    parsed === undefined ||
+    parsed.hasOr === true ||
+    parsed.parts.length < 2 ||
+    parsed.parts.some((part) => part === '') === true
+  )
+    return condition
+  const guard = sameRepoPullRequestGuard()
+  const remaining = parsed.parts.filter((part) => unwrapGuardExpression(part) !== guard)
+  if (remaining.length === parsed.parts.length) return condition
+  return unwrapGuardExpression(remaining.join(' && '))
 }
 
 /** Decode a checked-in JSON ledger without weakening its rule and identity types. */

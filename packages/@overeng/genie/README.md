@@ -158,6 +158,18 @@ Trusted dynamic sources still require ordinary dynamic-runner admission.
 auto-review and release helpers add it when selecting fleet runners.
 Neither exceptions nor the report ledger can admit an unguarded potential
 fleet job, fork-controlled runner selection, or `pull_request_target`.
+Cache-publisher validation recognizes that exact canonical guard as a narrowing
+top-level conjunction (in either order) and analyzes the remaining main-branch
+and trusted-event restriction. Modified guards or outer disjunctions are not
+stripped, and a remaining restriction permitting PR publication still fails.
+Publisher event scope is proved only by an entire positive top-level event
+conjunct (`github.event_name == 'push'`, or a parenthesized OR of such comparisons).
+Multiple positive event conjuncts intersect their event sets. Negations,
+inequalities, function calls, and other predicates are opaque narrowings: they
+cannot establish event scope. Without a positive event proof, publication fails.
+Condition boundaries respect quoted strings and balanced parentheses/brackets;
+operators inside index expressions cannot prove a guard, main ref, or event scope.
+Unbalanced or mismatched delimiters fail closed.
 This generator boundary assumes ephemeral runners, no persistent secrets, and
 repository-restricted runner groups; it does not verify infrastructure settings.
 

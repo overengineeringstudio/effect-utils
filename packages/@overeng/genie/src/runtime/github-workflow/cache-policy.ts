@@ -3,6 +3,7 @@ import {
   decodeBinaryCacheDescriptor,
 } from './binary-cache-descriptor.ts'
 import type { GitHubWorkflowArgs } from './mod.ts'
+import { stripSameRepoPullRequestGuard, workflowConditionConjuncts } from './policy.ts'
 
 /** Symbol metadata survives step spreading but is not serialized into workflow YAML. */
 export const jobCacheDescriptors = Symbol('jobCacheDescriptors')
@@ -59,29 +60,39 @@ export const isFleetCacheRunner = (runner: string | readonly string[]): boolean 
 
 const protectedJobEvents = (condition: string | undefined): readonly string[] => {
   if (condition === undefined) return []
-  const expression = condition
-    .trim()
-    .replace(/^\$\{\{\s*/, '')
-    .replace(/\s*\}\}$/, '')
-  const grouped = [
-    ...expression.matchAll(
-      /\(\s*github\.event_name == '(push|workflow_dispatch|schedule)'(?:\s*\|\|\s*github\.event_name == '(push|workflow_dispatch|schedule)')*\s*\)/g,
-    ),
-  ]
-  const matches =
-    grouped.length === 0
-      ? [...expression.matchAll(/github\.event_name == '(push|workflow_dispatch|schedule)'/g)]
-      : grouped
-  if (matches.length !== 1) return []
-  const withoutEvents = expression.replace(matches[0]![0], 'EVENT_GUARD')
+  const expression = stripSameRepoPullRequestGuard(
+    condition
+      .trim()
+      .replace(/^\$\{\{\s*/, '')
+      .replace(/\s*\}\}$/, ''),
+  )
+  const conjuncts = workflowConditionConjuncts(expression)
   if (
-    withoutEvents.includes('||') === true ||
-    /(^|&&)\s*github\.ref == 'refs\/heads\/main'\s*(&&|$)/.test(withoutEvents) === false
+    conjuncts === undefined ||
+    conjuncts.some((part) => /^github\.ref\s*==\s*'refs\/heads\/main'$/.test(part)) === false
   )
     return []
-  return [
-    ...matches[0]![0].matchAll(/github\.event_name == '(push|workflow_dispatch|schedule)'/g),
-  ].map((match) => match[1]!)
+  let events: readonly string[] | undefined
+  for (const part of conjuncts) {
+    // Only a complete, positive top-level event conjunct can prove event scope.
+    // Every other conjunct is an opaque narrowing, never evidence for admission.
+    if (
+      /^github\.event_name\s*==\s*'[\w-]+'(?:\s*\|\|\s*github\.event_name\s*==\s*'[\w-]+')*$/.test(
+        part,
+      ) === false
+    )
+      continue
+    const selected = [...part.matchAll(/github\.event_name\s*==\s*'([\w-]+)'/g)].map(
+      (match) => match[1]!,
+    )
+    events =
+      events === undefined ? selected : events.filter((event) => selected.includes(event) === true)
+  }
+  return events !== undefined &&
+    events.every((event) => ['push', 'workflow_dispatch', 'schedule'].includes(event) === true) ===
+      true
+    ? events
+    : []
 }
 
 const workflowEvents = (on: GitHubWorkflowArgs['on']): readonly string[] =>
