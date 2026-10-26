@@ -7,7 +7,7 @@ load("//buck2/products:defs.bzl", "javascript_product")
 # Projection source: packages/@overeng/megarepo/BUCK.genie.ts
 # Projection schema version: 13
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:c4782173b6fb88771cba2315fc0fb370c6e599ea536fdb64a74a5c7a37713aea
+# Semantic fingerprint: sha256:3f079093bc10c380f406187866b2f9c7a16ab2cbf95d186e9a3b40027838d906
 # Regenerate: devenv tasks run genie:run
 
 load("//buck2:materialization.bzl", "export_materialization_inputs", "package_view")
@@ -1354,6 +1354,7 @@ vitest_test(
         "src/store/store-lossless.integration.test.ts",
         "src/store/store-pinned-deletion.integration.test.ts",
         "src/store/store-workspace-activity.integration.test.ts",
+        "src/store/store-worktree-remove.integration.test.ts",
         "src/test-utils/store-setup.integration.test.ts",
     ],
     tools = {
@@ -1396,6 +1397,7 @@ vitest_collect(
         "src/store/store-lossless.integration.test.ts",
         "src/store/store-pinned-deletion.integration.test.ts",
         "src/store/store-workspace-activity.integration.test.ts",
+        "src/store/store-worktree-remove.integration.test.ts",
         "src/test-utils/store-setup.integration.test.ts",
     ],
     tools = {
