@@ -4,7 +4,8 @@ set -euo pipefail
 TESTS_DIR="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$TESTS_DIR/../../../../.." && pwd)"
 
-unset GITHUB_ACTIONS PNPM_JOB_LOCAL_STORE
+# Never let an inherited host-store override escape the temporary fixtures.
+unset GITHUB_ACTIONS PNPM_JOB_LOCAL_STORE PNPM_SHARED_STORE_DIR
 
 assert_exit_code() {
   local expected="$1"
@@ -242,8 +243,8 @@ trap 'if [ "${KEEP_PNPM_SMOKE_TMP:-0}" = "1" ]; then echo "pnpm smoke tmp: $tmpd
 workspace="$tmpdir/workspace"
 mkdir -p "$workspace/.devenv/task-cache" "$workspace/.pnpm-home-a/store/v11" "$workspace/.pnpm-home-b/store/v11" "$tmpdir/bin" "$workspace/packages/demo/node_modules/.bin" "$workspace/nested/pkg"
 
-echo "Preflight: profile exposes the pnpm guard and opt-in historical-store collector, not pnpmPkg"
-assert_eq $'pnpm\npnpm-store-gc' "$(eval_pnpm_package_names)" "pnpm module packages should contain the guard and collector only"
+echo "Preflight: profile exposes the pnpm guard and opt-in store maintenance CLIs, not pnpmPkg"
+assert_eq $'pnpm\npnpm-store-gc\npnpm-store-retire' "$(eval_pnpm_package_names)" "pnpm module packages should contain the guard and maintenance CLIs only"
 
 echo "Preflight: generated dependency graph contract classifies workspace overrides"
 assert_json_field \

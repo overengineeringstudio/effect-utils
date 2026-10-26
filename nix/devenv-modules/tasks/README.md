@@ -231,9 +231,9 @@ for outer tasks that must complete before the nested devenv process can evaluate
     Hoisted linking does not use GVS.
   - GVS uses `PNPM_CONFIG_ENABLE_GLOBAL_VIRTUAL_STORE=true`, not the ineffective
     pnpm 12 kebab-case `--config` spelling, and leaves `virtual-store-dir` unset.
-    The default complete store is `$HOME/.local/share/pnpm/store` in GVS mode
-    versus `$HOME/.local/share/pnpm/store-shared-v1` otherwise;
-    `PNPM_SHARED_STORE_DIR` overrides either local store.
+    Both modes use the complete shared store declared by
+    `pnpm-install-contract.json` (`~/.local/share/pnpm/store-shared-v1`).
+    `PNPM_SHARED_STORE_DIR` overrides the local shared store in either mode.
   - Job-local mode explicitly disables GVS (including inherited environment/YAML
     opt-ins) and uses the job-local store and projection. Other CI runners must
     set `PNPM_JOB_LOCAL_STORE=1` to obtain that isolation. Fixed-output preparation
@@ -267,6 +267,19 @@ for outer tasks that must complete before the nested devenv process can evaluate
   - `pnpm:store:migrate-legacy` explicitly replaces only the recognized
     historical `v11/files` bridge under the exclusive cache lease; normal
     installs and unknown bridges fail closed.
+  - `PNPM_RETIRE_STORE_DIR=/path/to/legacy-store devenv tasks run pnpm:store:retire`
+    reports a legacy host store's eligibility and unique-file byte size without
+    deleting it. Set `PNPM_RETIRE_APPLY=1` to explicitly apply; the packaged CLI
+    also accepts `pnpm-store-retire /path/to/legacy-store --apply`.
+    The contract default and configured shared store are protected. Retirement
+    enumerates current-repository git worktrees and, when `mr` is available,
+    every worktree registered by repositories in `mr store ls --output json`.
+    Root and nested workspace `node_modules` symlinks and CAS hardlinks refuse
+    retirement, as do unidentified external hardlinks or incomplete proofs.
+    The exclusive existing cache lease covers proof and deletion; apply renames
+    to a sibling tombstone before deleting, leaving interrupted work retired.
+    See [the host retirement contract](../../../context/dependency-materialization/04-store-authority/spec.md#legacy-host-store-retirement)
+    for enumeration boundaries and failure behavior.
   - `pnpm-store-gc --git-dir /path/to/repo/.bare --root /path/to/worktree`
     reports historical root-local store retirement in a read-only dry-run.
     The collector supports Linux x86/x86_64 and ARM/aarch64, selecting each
