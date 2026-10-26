@@ -3,6 +3,7 @@ import {
   decodeBinaryCacheDescriptor,
 } from './binary-cache-descriptor.ts'
 import type { GitHubWorkflowArgs } from './mod.ts'
+import { stripSameRepoPullRequestGuard } from './policy.ts'
 
 /** Symbol metadata survives step spreading but is not serialized into workflow YAML. */
 export const jobCacheDescriptors = Symbol('jobCacheDescriptors')
@@ -59,10 +60,12 @@ export const isFleetCacheRunner = (runner: string | readonly string[]): boolean 
 
 const protectedJobEvents = (condition: string | undefined): readonly string[] => {
   if (condition === undefined) return []
-  const expression = condition
-    .trim()
-    .replace(/^\$\{\{\s*/, '')
-    .replace(/\s*\}\}$/, '')
+  const expression = stripSameRepoPullRequestGuard(
+    condition
+      .trim()
+      .replace(/^\$\{\{\s*/, '')
+      .replace(/\s*\}\}$/, ''),
+  )
   const grouped = [
     ...expression.matchAll(
       /\(\s*github\.event_name == '(push|workflow_dispatch|schedule)'(?:\s*\|\|\s*github\.event_name == '(push|workflow_dispatch|schedule)')*\s*\)/g,

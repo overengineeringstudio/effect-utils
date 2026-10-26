@@ -151,6 +151,10 @@ are rejected. Known pure expression functions do not relax argument admission.
 auto-review and release helpers add it when selecting fleet runners.
 Neither exceptions nor the report ledger can admit an unguarded potential
 fleet job, fork-controlled runner selection, or `pull_request_target`.
+Cache-publisher validation recognizes that exact canonical guard as a narrowing
+top-level conjunction (in either order) and analyzes the remaining main-branch
+and trusted-event restriction. Modified guards or outer disjunctions are not
+stripped, and a remaining restriction permitting PR publication still fails.
 This generator boundary assumes ephemeral runners, no persistent secrets, and
 repository-restricted runner groups; it does not verify infrastructure settings.
 

@@ -309,6 +309,26 @@ const hasSameRepoPullRequestGuard = (condition: string | undefined): boolean => 
   )
 }
 
+/** Remove only the exact canonical guard when it is a top-level conjunction.
+ * The guard only narrows admission, so proofs about the remaining restriction still hold.
+ * Unrecognized/modified guards and outer disjunctions are returned untouched.
+ */
+export const stripSameRepoPullRequestGuard = (condition: string): string => {
+  const expression = unwrapGuardExpression(condition)
+  const parsed = guardExpressionParts(expression)
+  if (
+    parsed === undefined ||
+    parsed.hasOr === true ||
+    parsed.parts.length < 2 ||
+    parsed.parts.some((part) => part === '') === true
+  )
+    return condition
+  const guard = sameRepoPullRequestGuard()
+  const remaining = parsed.parts.filter((part) => unwrapGuardExpression(part) !== guard)
+  if (remaining.length === parsed.parts.length) return condition
+  return unwrapGuardExpression(remaining.join(' && '))
+}
+
 /** Decode a checked-in JSON ledger without weakening its rule and identity types. */
 export const decodeWorkflowPolicyLedger = (value: unknown): readonly WorkflowPolicyViolation[] => {
   if (Array.isArray(value) === false)

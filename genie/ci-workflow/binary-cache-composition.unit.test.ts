@@ -5,6 +5,7 @@ import { pathToFileURL } from 'node:url'
 
 import { describe, expect, it } from 'vitest'
 
+import { sameRepoPullRequestGuard } from '../../packages/@overeng/genie/src/runtime/github-workflow/policy.ts'
 import { githubWorkflow } from '../../packages/@overeng/genie/src/runtime/mod.ts'
 import {
   binaryCachesExtraConfForJob,
@@ -333,6 +334,64 @@ describe('Cachix publisher', () => {
       triggers: ['schedule'],
     })
     expect(scheduled.if).toContain("github.event_name == 'schedule'")
+  })
+
+  it.each(['first', 'last'] as const)(
+    'admits the canonical guard as the %s conjunct through both workflow validators',
+    (order) => {
+      const guard = sameRepoPullRequestGuard()
+      const restriction =
+        "github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')"
+      const condition =
+        order === 'first' ? `(${guard}) && (${restriction})` : `(${restriction}) && (${guard})`
+      expect(() =>
+        ciWorkflow({
+          trustTier: 'public',
+          on: { push: { branches: ['main'] }, pull_request: null, workflow_dispatch: null },
+          jobs: {
+            publish: {
+              'runs-on': linuxX64Runner,
+              if: condition,
+              steps: [
+                cachixPublisherStep({
+                  name: 'example',
+                  authToken: 'token',
+                  jobIf: protectedIf,
+                  triggers: ['push'],
+                }),
+              ],
+            },
+          },
+        }),
+      ).not.toThrow()
+    },
+  )
+
+  it.each([
+    `(${sameRepoPullRequestGuard()}) && (github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'pull_request'))`,
+    `(${sameRepoPullRequestGuard().replace("github.event_name == 'push' || ", '')}) && (${protectedIf})`,
+    `(${sameRepoPullRequestGuard()}) || (${protectedIf})`,
+  ])('does not weaken publisher admission for an unsafe or modified guard: %s', (condition) => {
+    expect(() =>
+      ciWorkflow({
+        trustTier: 'public',
+        on: { push: { branches: ['main'] }, pull_request: null },
+        jobs: {
+          publish: {
+            'runs-on': linuxX64Runner,
+            if: condition,
+            steps: [
+              cachixPublisherStep({
+                name: 'example',
+                authToken: 'token',
+                jobIf: protectedIf,
+                triggers: ['push'],
+              }),
+            ],
+          },
+        },
+      }),
+    ).toThrow(CachePublisherJobError)
   })
 
   it('rejects unprotected jobs and mismatched triggers', () => {
