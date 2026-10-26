@@ -127,6 +127,13 @@ Materialization-Root lock + package-manager-home lock
   -> root-local projection
 ```
 
+After acquiring either lease mode, admission compares the locked descriptor's
+device/inode with the current maintenance-lock pathname. A retired or replaced
+lock (including a missing pathname) is not admission: close the stale
+descriptor, recreate/reopen the current lock, and retry within the original
+timeout. Thus an installer queued before host-store retirement cannot proceed
+under a deleted lock inode while later installers use a new one.
+
 Normal installs require no registry of roots: the Store Cache is disposable
 and does not own graph identity. Host-store retirement explicitly enumerates
 registered worktrees before discarding a complete legacy namespace.

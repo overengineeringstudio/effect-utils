@@ -6,6 +6,7 @@ import importlib.util
 import json
 import os
 from pathlib import Path
+import select
 import shutil
 import subprocess
 import sys
@@ -291,6 +292,46 @@ class RetirementTests(unittest.TestCase):
         with self.leased() as root, patch.object(ENGINE.shutil, "rmtree", remove):
             ENGINE.retire(self.store, True, root)
         self.assertFalse(self.store.exists())
+
+    def test_waiting_installer_reopens_retired_lease_inode(self):
+        script = '''
+set -euo pipefail
+source "$1"
+queued_flock() { printf 'queued\\n'; flock "$@"; }
+acquire_pnpm_store_cache_lease queued_flock shared "$2" 5
+[[ "$2/.effect-utils-pnpm-store-cache-maintenance.lock" -ef /dev/fd/202 ]]
+printf 'acquired\\n'
+'''
+        waiter = None
+        stale_lock = None
+        try:
+            with self.leased() as root:
+                original_lock = ENGINE.identity((self.store / ENGINE.LEASE).stat())
+                stale_lock = os.open(self.store / ENGINE.LEASE, os.O_RDONLY)
+                waiter = subprocess.Popen(
+                    [str(self.bin / "bash"), "-c", script, "installer",
+                     str(SHARED / "pnpm-task-helpers.sh"), str(self.store)],
+                    env=self.env, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                    text=True,
+                )
+                readable, _, _ = select.select([waiter.stdout], [], [], 5)
+                self.assertTrue(readable, "installer did not queue for the held lease")
+                self.assertEqual(waiter.stdout.readline(), "queued\n")
+                self.assertIsNone(waiter.poll(), "installer bypassed the exclusive lease")
+                ENGINE.retire(self.store, True, root)
+                self.assertFalse(self.store.exists())
+            stdout, stderr = waiter.communicate(timeout=10)
+            self.assertEqual(waiter.returncode, 0, stderr)
+            self.assertEqual(stdout, "queued\nacquired\n")
+            self.assertNotEqual(
+                ENGINE.identity((self.store / ENGINE.LEASE).stat()), original_lock,
+            )
+        finally:
+            if waiter is not None and waiter.poll() is None:
+                waiter.kill()
+                waiter.communicate()
+            if stale_lock is not None:
+                os.close(stale_lock)
 
     def test_target_recreation_keeps_tombstone_and_new_target(self):
         original = os.rename

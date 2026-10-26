@@ -203,12 +203,29 @@ acquire_pnpm_store_cache_lease() {
       ;;
   esac
 
-  mkdir -p "$store_dir"
-  exec 202>"$lockfile"
-  if ! "$flock_bin" "$flock_mode" -w "$timeout_seconds" 202; then
-    echo "[pnpm] Store Cache $mode lease timeout after ${timeout_seconds}s: $lockfile" >&2
-    return 1
-  fi
+  local deadline=$((SECONDS + timeout_seconds))
+  local remaining="$timeout_seconds"
+  while :; do
+    mkdir -p "$store_dir" || return
+    exec 202>"$lockfile" || return
+    if ! "$flock_bin" "$flock_mode" -w "$remaining" 202; then
+      exec 202>&-
+      echo "[pnpm] Store Cache $mode lease timeout after ${timeout_seconds}s: $lockfile" >&2
+      return 1
+    fi
+    # Bash's -ef compares device/inode, including the open descriptor behind
+    # /dev/fd. Retirement can unlink the lock while this caller waits in flock;
+    # never admit a mutation on that stale inode (or a missing lock pathname).
+    if [[ "$lockfile" -ef /dev/fd/202 ]]; then
+      return 0
+    fi
+    exec 202>&-
+    remaining=$((deadline - SECONDS))
+    if [ "$remaining" -le 0 ]; then
+      echo "[pnpm] Store Cache $mode lease changed during admission; timeout after ${timeout_seconds}s: $lockfile" >&2
+      return 1
+    fi
+  done
 }
 
 migrate_legacy_pnpm_store_cache() {

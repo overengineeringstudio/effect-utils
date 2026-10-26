@@ -75,6 +75,8 @@ for mode in true false; do
     mkdir -p "$tmpdir/first"
     printf '{"name":"default-store-fixture","private":true,"packageManager":"pnpm@12.7.0"}\n' > "$tmpdir/first/package.json"
     cd "$tmpdir/first"
+    # extract_script generates this mode-specific task only at runtime.
+    # shellcheck disable=SC1090
     source "$tmpdir/$mode-enterShell-install.sh"
     expected="$(node - "$ROOT/pnpm-install-contract.json" <<'EOF'
 const contract = require(process.argv[2])
