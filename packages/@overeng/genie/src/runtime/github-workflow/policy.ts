@@ -23,6 +23,7 @@ export type WorkflowPolicyViolation = {
   readonly job: string
   readonly rule: WorkflowPolicyRule
   readonly path: string
+  /** Observed diagnostic value; banned-action identity excludes the action ref. */
   readonly value: string
 }
 
@@ -587,7 +588,7 @@ const violationKey = (violation: WorkflowPolicyViolation): string =>
     violation.job,
     violation.rule,
     violation.path,
-    violation.value,
+    violation.rule === 'banned-action' ? violation.value.split('@')[0] : violation.value,
   ])
 const exceptionKey = (
   entry: Pick<WorkflowPolicyViolation, 'repository' | 'workflow' | 'job' | 'rule'>,

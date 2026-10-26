@@ -176,6 +176,9 @@ action repository/subpath and canonical execution/input content. Only equivalent
 steps share an occurrence ordinal; absolute step indexes are never used.
 Removing a same-name step with different content cannot manufacture new debt,
 and changing an action cannot inherit an unrelated action's existing ledger row.
+For banned actions, the observed ref remains diagnostic metadata in `value`,
+but ledger matching excludes it. Ref bumps do not introduce new debt, and
+equivalent-step ordinals use the same ref-insensitive identity.
 
 Shared-helper tests enforce runner/event policy. Storage-emitting helpers are
 explicitly listed as `pendingStorageMigration` in

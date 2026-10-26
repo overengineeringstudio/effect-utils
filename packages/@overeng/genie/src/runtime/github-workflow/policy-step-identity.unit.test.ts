@@ -64,6 +64,26 @@ describe('stable workflow policy step identities', () => {
     expect(issues[0]?.violation).toEqual(ledger[0])
   })
 
+  it('removes same-name uploads at different refs without manufacturing new debt', () => {
+    const steps: Step[] = [
+      { name: 'Upload artifact', uses: 'actions/upload-artifact@v3' },
+      { name: 'Upload artifact', uses: 'actions/upload-artifact@v4' },
+    ]
+    const ledger = collect(steps)
+    expect(ledger).toHaveLength(2)
+    const remaining = steps.slice(1)
+    expect(collect(remaining)[0]?.value).toBe('actions/upload-artifact@v4')
+    expect(reportIssues(remaining, ledger).map((issue) => issue.kind)).toEqual(['STALE'])
+    expect(reportIssues(remaining, ledger.slice(0, 1))).toEqual([])
+  })
+
+  it('keeps an action ref bump diagnostic-only, not new migration debt', () => {
+    const ledger = collect([{ name: 'Upload artifact', uses: 'actions/upload-artifact@v3' }])
+    const bumped: Step[] = [{ name: 'Upload artifact', uses: 'actions/upload-artifact@v4' }]
+    expect(collect(bumped)[0]?.value).toBe('actions/upload-artifact@v4')
+    expect(reportIssues(bumped, ledger)).toEqual([])
+  })
+
   it.each([
     { kind: 'named', steps: namedUploads },
     { kind: 'identified', steps: identifiedUploads },
