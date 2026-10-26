@@ -28,4 +28,7 @@ manages retention.
 Writes are asynchronous, serialized, append-only, and best-effort: filesystem
 failures do not fail requests, and produce at most one warning per process.
 Each row uses one append-mode write, allowing independent processes to append
-without interleaving rows. Orderly CLI shutdown drains queued writes before exit.
+without interleaving rows. Existing targets must be regular files; FIFOs, devices,
+directories, and symlinks are refused. Orderly CLI shutdown allows up to two
+seconds to drain queued writes, then drops remaining rows with the same
+one-per-process warning rather than blocking exit indefinitely.

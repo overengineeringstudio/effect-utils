@@ -1,7 +1,9 @@
+import { constants } from 'node:fs'
+import { lstat, open } from 'node:fs/promises'
 import { hostname, homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 
-import { Context, Effect, Exit, FileSystem, Layer, Schema } from 'effect'
+import { Context, Effect, Exit, FileSystem, Layer, Logger, Schema } from 'effect'
 import { HttpClient } from 'effect/http'
 
 import type { GitHubAppRequestMetadata } from '@overeng/utils/node/github-app'
@@ -10,9 +12,28 @@ const encode = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown))
 let warned = false
 let retentionStarted = false
 let pending = Promise.resolve()
+let dropping = false
+const warn = Effect.suspend(() => {
+  if (warned === true) return Effect.void
+  warned = true
+  return Effect.logWarning('GitHub API usage ledger could not be written or drained').pipe(
+    Effect.provideService(Logger.LogToStderr, true),
+  )
+})
 
-/** Wait for queued writes when explicitly collecting ledger evidence (not on the request path). */
-export const flushUsageLedger = Effect.promise(() => pending)
+/** Bound orderly shutdown; a stalled ledger never holds the CLI open indefinitely. */
+export const flushUsageLedger = Effect.promise(() => pending).pipe(
+  Effect.interruptible,
+  Effect.timeoutOrElse({
+    duration: '2 seconds',
+    orElse: () =>
+      Effect.gen(function* () {
+        dropping = true
+        pending = Promise.resolve()
+        yield* warn
+      }),
+  }),
+)
 const commands: Readonly<Record<string, true>> = {
   status: true,
   logs: true,
@@ -125,12 +146,6 @@ export const usageRoute = (url: URL): string => {
 const makeUsageLedger = Effect.fn('UsageLedger.make')(function* (authKind: 'gh-cli' | 'app') {
   const fs = yield* FileSystem.FileSystem
   const context = yield* Effect.context<never>()
-  const warn = Effect.suspend(() => {
-    if (warned === true) return Effect.void
-    warned = true
-    // Deliberately omit the filesystem error: it can contain private paths.
-    return Effect.logWarning('GitHub API usage ledger could not be written')
-  })
   const record = ({
     url,
     method,
@@ -143,6 +158,7 @@ const makeUsageLedger = Effect.fn('UsageLedger.make')(function* (authKind: 'gh-c
     headers: Readonly<Record<string, string>>
   }) =>
     Effect.sync(() => {
+      if (dropping === true) return
       const now = new Date()
       const day = now.toISOString().slice(0, 10)
       const override = process.env.GH_CI_UTILS_USAGE_LEDGER
@@ -188,13 +204,40 @@ const makeUsageLedger = Effect.fn('UsageLedger.make')(function* (authKind: 'gh-c
       if (prune === true) retentionStarted = true
       const write = Effect.gen(function* () {
         yield* fs.makeDirectory(dirname(path), { recursive: true })
-        yield* Effect.scoped(
-          Effect.gen(function* () {
-            const file = yield* fs.open(path, { flag: 'a', mode: 0o600 })
-            // One O_APPEND write per row, also when independent CLI processes share a file.
-            yield* file.write(new TextEncoder().encode(`${encode(row)}\n`))
-          }),
-        )
+        if (dropping === true) return
+        // Effect FileSystem lacks lstat and nonblocking/no-follow open flags.
+        // Native descriptor operations prevent a FIFO or a replacement symlink from blocking open.
+        const appended = yield* Effect.tryPromise(async () => {
+          try {
+            if ((await lstat(path)).isFile() === false) return false
+          } catch (cause) {
+            if (
+              typeof cause !== 'object' ||
+              cause === null ||
+              !('code' in cause) ||
+              cause.code !== 'ENOENT'
+            )
+              throw cause
+          }
+          const file = await open(
+            path,
+            constants.O_WRONLY |
+              constants.O_CREAT |
+              constants.O_APPEND |
+              constants.O_NONBLOCK |
+              constants.O_NOFOLLOW,
+            0o600,
+          )
+          try {
+            if ((await file.stat()).isFile() === false) return false
+            if (dropping === true) return true
+            const bytes = new TextEncoder().encode(`${encode(row)}\n`)
+            return (await file.write(bytes)).bytesWritten === bytes.length
+          } finally {
+            await file.close()
+          }
+        })
+        if (appended === false) yield* warn
         if (prune === true) {
           const cutoff = new Date(`${day}T00:00:00.000Z`).getTime() - 14 * 86400000
           for (const name of yield* fs.readDirectory(directory)) {
@@ -208,7 +251,9 @@ const makeUsageLedger = Effect.fn('UsageLedger.make')(function* (authKind: 'gh-c
         }
       }).pipe(Effect.catchCause(() => warn))
       // Serialize append operations without making HTTP requests wait for filesystem I/O.
-      pending = pending.then(() => Effect.runPromiseWith(context)(write))
+      pending = pending.then(() =>
+        dropping === true ? undefined : Effect.runPromiseWith(context)(write),
+      )
     })
   const wrap = (client: HttpClient.HttpClient) =>
     HttpClient.make((request, url) => {

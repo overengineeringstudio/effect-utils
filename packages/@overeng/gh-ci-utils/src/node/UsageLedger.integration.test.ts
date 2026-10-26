@@ -62,6 +62,50 @@ const fixture = Effect.gen(function* () {
 })
 
 describe('GitHub usage ledger', () => {
+  it.live(
+    'exits the CLI with a FIFO override or a stalled filesystem within the drain bound',
+    () =>
+      Effect.gen(function* () {
+        const { fs, directory } = yield* fixture
+        const spawner = yield* ChildProcessSpawner
+        const fifo = `${directory}/usage.fifo`
+        expect(yield* spawner.exitCode(ChildProcess.make('mkfifo', [fifo]))).toBe(0)
+        const script = `${directory}/shutdown.mjs`
+        yield* fs.writeFileString(
+          script,
+          `
+import { Effect, FileSystem } from ${encodeString(import.meta.resolve('effect'))}
+import { NodeServices } from ${encodeString(import.meta.resolve('@effect/platform-node'))}
+import { UsageLedger } from ${encodeString(new URL('./UsageLedger.ts', import.meta.url).href)}
+const stalled = process.argv[2] === 'stalled'
+await Effect.runPromise(Effect.gen(function* () {
+  const fs = yield* FileSystem.FileSystem
+  const ledger = yield* UsageLedger.pipe(
+    Effect.provide(UsageLedger.layer('app')),
+    Effect.provideService(FileSystem.FileSystem, stalled ? { ...fs, makeDirectory: () => Effect.never } : fs),
+  )
+  yield* ledger.observe({ method: 'POST', path: '/app/installations/123/access_tokens', status: 201 })
+}).pipe(Effect.provide(NodeServices.layer)))
+process.argv = [process.execPath, 'gh-ci-utils', '--help']
+// This module executes the CLI immediately: load it only after queuing the test write.
+await import(${encodeString(new URL('../../bin/gh-ci-utils.ts', import.meta.url).href)})
+`,
+        )
+        for (const mode of ['fifo', 'stalled']) {
+          process.env.GH_CI_UTILS_USAGE_LEDGER =
+            mode === 'fifo' ? fifo : `${directory}/stalled.jsonl`
+          const started = Date.now()
+          const code = yield* spawner
+            .exitCode(ChildProcess.make(process.execPath, [script, mode]))
+            .pipe(Effect.timeout('8 seconds'))
+          expect(code).toBe(0)
+          expect(Date.now() - started).toBeLessThan(8000)
+        }
+        expect((yield* fs.stat(fifo)).type).toBe('FIFO')
+      }).pipe(Effect.provide(NodeServices.layer)),
+    { timeout: 30_000 },
+  )
+
   it.live('redacts refs, SHAs, contents, names and unknown path segments', () =>
     Effect.gen(function* () {
       const { client, readRows } = yield* fixture
