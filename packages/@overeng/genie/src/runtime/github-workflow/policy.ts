@@ -167,9 +167,11 @@ const safeRunnerFunctions: Readonly<Record<string, true>> = {
 const hasUnadmittedRunnerTokens = ({
   expression,
   admittedOutput,
+  matrixReference,
 }: {
   expression: string
   admittedOutput: boolean
+  matrixReference?: ((path: readonly string[]) => boolean) | undefined
 }): boolean => {
   const tokens = expression.toLowerCase().match(/[a-z_][\w-]*|[.[\]()]/g) ?? []
   for (let index = 0; index < tokens.length; index++) {
@@ -188,7 +190,8 @@ const hasUnadmittedRunnerTokens = ({
     }
     if (tokens[index + 1] === '[') return true
     if (path.length === 1 && ['true', 'false', 'null'].includes(root) === true) continue
-    if ((root === 'matrix' || root === 'vars') && path.length >= 2) continue
+    if (root === 'vars' && path.length >= 2) continue
+    if (root === 'matrix' && path.length >= 2 && matrixReference?.(path.slice(1)) === true) continue
     if (root === 'needs' && admittedOutput === true && path.length === 4 && path[2] === 'outputs')
       continue
     if (root === 'github' && path.length === 2 && safeGithubRunnerProperties[path[1]!] === true)
@@ -202,9 +205,11 @@ const hasUnadmittedRunnerTokens = ({
 const hasForkControlledRunnerExpression = ({
   value,
   admittedOutput = false,
+  matrixReference,
 }: {
   value: string
   admittedOutput?: boolean
+  matrixReference?: ((path: readonly string[]) => boolean) | undefined
 }): boolean => {
   let offset = 0
   while (offset < value.length) {
@@ -233,9 +238,86 @@ const hasForkControlledRunnerExpression = ({
     }
     // Malformed expressions cannot establish safe runner provenance either.
     if (closed === false || quoted === true) return true
-    if (hasUnadmittedRunnerTokens({ expression, admittedOutput }) === true) return true
+    if (hasUnadmittedRunnerTokens({ expression, admittedOutput, matrixReference }) === true)
+      return true
   }
   return false
+}
+
+/** A matrix context token carries the provenance of its referenced axis and row modifiers.
+ * Dynamic sources may use trusted configuration/identity or exact admitted outputs,
+ * never another matrix reference (which would make provenance circular).
+ */
+const admittedRunnerMatrixReference = ({
+  path,
+  matrix,
+  policy,
+}: {
+  path: readonly string[]
+  matrix: unknown
+  policy: WorkflowPolicy
+}): boolean => {
+  const admittedSource = (value: unknown): boolean => {
+    if (typeof value === 'string' && value.includes('${{') === true)
+      return (
+        hasForkControlledRunnerExpression({
+          value,
+          admittedOutput:
+            outputExpression.test(value) === true &&
+            policy.admittedRunnerOutputs?.some((output) => output.expression === value) === true,
+        }) === false
+      )
+    if (Array.isArray(value) === true) return value.every(admittedSource)
+    if (typeof value === 'object' && value !== null)
+      return Object.values(value).every(admittedSource)
+    return value !== undefined
+  }
+  if (typeof matrix === 'string')
+    return matrix.includes('${{') === true && admittedSource(matrix) === true
+  if (typeof matrix !== 'object' || matrix === null || Array.isArray(matrix) === true) return false
+  const axis = expressionProperty({ value: matrix, key: path[0]! })
+  const resolvesPath = (value: unknown): boolean => {
+    for (const key of path.slice(1)) {
+      if (typeof value === 'string' && value.includes('${{') === true) return admittedSource(value)
+      value = expressionProperty({ value, key })
+    }
+    return value !== undefined && admittedSource(value) === true
+  }
+  let found = false
+  if (axis !== undefined) {
+    if (typeof axis === 'string' && axis.includes('${{') === true) {
+      if (admittedSource(axis) === false) return false
+      found = true
+    } else {
+      if (Array.isArray(axis) === false || axis.length === 0 || axis.every(resolvesPath) === false)
+        return false
+      found = true
+    }
+  }
+  for (const modifier of ['include', 'exclude']) {
+    const rows = expressionProperty({ value: matrix, key: modifier })
+    if (rows === undefined) continue
+    if (admittedSource(rows) === false) return false
+    if (typeof rows === 'string' && rows.includes('${{') === true) {
+      if (modifier === 'include') found = true
+      continue
+    }
+    if (Array.isArray(rows) === false) return false
+    if (modifier === 'include') {
+      for (const row of rows) {
+        if (typeof row === 'string' && row.includes('${{') === true) {
+          found = true
+          continue
+        }
+        if (typeof row !== 'object' || row === null || Array.isArray(row) === true) return false
+        const value = expressionProperty({ value: row, key: path[0]! })
+        if (value === undefined) continue
+        if (resolvesPath(value) === false) return false
+        found = true
+      }
+    }
+  }
+  return found
 }
 
 /** Canonical allowlist: reusable workflows inherit the caller's event and context.
@@ -481,7 +563,15 @@ export const collectWorkflowPolicyViolations = ({
         if (
           typeof group === 'string' &&
           events.some((event) => isTrustedWorkflowEvent(event) === false) === true &&
-          hasForkControlledRunnerExpression({ value: group }) === true
+          hasForkControlledRunnerExpression({
+            value: group,
+            matrixReference: (reference) =>
+              admittedRunnerMatrixReference({
+                path: reference,
+                matrix: config.strategy?.matrix,
+                policy,
+              }),
+          }) === true
         )
           add({ job, rule: 'fork-controlled-runner', path, value: group })
         return
@@ -519,6 +609,12 @@ export const collectWorkflowPolicyViolations = ({
         events.some((event) => isTrustedWorkflowEvent(event) === false) === true &&
         hasForkControlledRunnerExpression({
           value: runner,
+          matrixReference: (reference) =>
+            admittedRunnerMatrixReference({
+              path: reference,
+              matrix: config.strategy?.matrix,
+              policy,
+            }),
           admittedOutput:
             outputExpression.test(runner) === true &&
             policy.admittedRunnerOutputs?.some((output) => output.expression === runner) === true,
