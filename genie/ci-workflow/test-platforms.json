@@ -348,6 +348,10 @@
         "rationale": "Explicit Darwin heap/teardown-abort handling, actual clone/copy/hardlink import behavior, concurrent shared-store installs and inode-alias mutation probes."
       },
       {
+        "script": "pnpm-store-retire.test.sh",
+        "rationale": "Real portable maintenance leases, symlink/GVS and hardlink consumer scans, NUL-safe Git worktrees, protected-store aliases and fd-safe tombstone removal over isolated temporary fixtures."
+      },
+      {
         "script": "pnpm-source-input-staging.test.sh",
         "rationale": "Actual generation publication, executable-mode preservation, retained hardlink bytes during GC, and symlink/traversal/cycle refusal."
       },
