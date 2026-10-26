@@ -97,6 +97,27 @@ and the reason tags such as `jq-1.6` classify correctly. Phase 2 is a
 heuristic fallback when the repo cannot answer: 40-char hex ⇒ commit; a
 semver-like pattern (bare or prefixed) ⇒ tag; otherwise branch.
 
+### Store fetch
+
+A store fetch refreshes branch heads only:
+`git fetch --no-tags --prune origin +refs/heads/*:refs/remotes/origin/*`.
+It never fetches all tags. For refs the caller is about to resolve (a member's
+pinned ref, the `--ref`/`--base` of `mr store worktree new`), it queries exact tag
+names and force-fetches those advertised by the remote. Bare names prefer tags
+over branches, matching ref resolution; qualified `refs/tags/<ref>` names are
+preserved. The remote is the source of truth for cache-store tags, so upstream
+tag moves update local tags. A requested SHA missing after the branch fetch is
+fetched explicitly; a server refusing SHA requests returns a Git command error.
+
+Fetches hold the repository's writer lock. Network commands carry a deadline
+(`MEGAREPO_GIT_NETWORK_TIMEOUT_MS`, default 10 minutes); expiry or interruption
+signals the writer's process group while its leader is alive. On Linux, cleanup
+after leader exit signals the group only when procfs proves a member still has
+the admission lock inode open; an empty or recycled unrelated group is never
+signalled. On macOS, post-exit signalling is disabled because there is no procfs
+ownership proof. A macOS descendant that survives the initial group signal may
+retain admission until it exits; cleanup never guesses ownership from a pgid.
+
 ### Store liveness, hygiene, and GC
 
 `mr store status` reports bare-store configuration issues once per repository
@@ -276,7 +297,7 @@ mounts, dist overlays, per-workspace capability projection, and a synthesized
 Buck root — is retired (principal q5, 2026-09-25).
 
 By default, `mr store worktree new` bootstraps a missing bare repository and
-fetches remote refs (including tags). For source-only branch work from objects
+fetches it as described in [Store fetch](#store-fetch). For source-only branch work from objects
 already in the store, use
 `mr store worktree new owner/repo --no-fetch --ref feature/local --base <full-commit-sha>`.
 `--no-fetch` requires an existing bare repository and a full 40-character SHA

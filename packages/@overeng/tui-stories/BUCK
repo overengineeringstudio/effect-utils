@@ -7,7 +7,7 @@ load("//buck2/products:defs.bzl", "javascript_product")
 # Projection source: packages/@overeng/tui-stories/BUCK.genie.ts
 # Projection schema version: 13
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:5897ff08dd34857e20973fa2a7895a2420b976e1d98683c1962ff0d621ecadf0
+# Semantic fingerprint: sha256:ecbadf7fbb2684491165bcddb4c7625ff057103a5be3c9f2a332990642363610
 # Regenerate: devenv tasks run genie:run
 
 load("//buck2:materialization.bzl", "export_materialization_inputs", "package_view")
@@ -368,6 +368,7 @@ package_view(
         "node_modules/@overeng/megarepo/src/store/store-deletion-lease.integration.test.ts": "//packages/@overeng/megarepo:src/store/store-deletion-lease.integration.test.ts",
         "node_modules/@overeng/megarepo/src/store/store-deletion-lease.ts": "//packages/@overeng/megarepo:src/store/store-deletion-lease.ts",
         "node_modules/@overeng/megarepo/src/store/store-fetch-refspec.integration.test.ts": "//packages/@overeng/megarepo:src/store/store-fetch-refspec.integration.test.ts",
+        "node_modules/@overeng/megarepo/src/store/store-fetch.integration.test.ts": "//packages/@overeng/megarepo:src/store/store-fetch.integration.test.ts",
         "node_modules/@overeng/megarepo/src/store/store-fs-atomic.ts": "//packages/@overeng/megarepo:src/store/store-fs-atomic.ts",
         "node_modules/@overeng/megarepo/src/store/store-fs-atomic.unit.test.ts": "//packages/@overeng/megarepo:src/store/store-fs-atomic.unit.test.ts",
         "node_modules/@overeng/megarepo/src/store/store-gc-config.ts": "//packages/@overeng/megarepo:src/store/store-gc-config.ts",
@@ -757,6 +758,7 @@ package_view(
         "node_modules/@overeng/megarepo/src/store/store-deletion-lease.integration.test.ts": "//packages/@overeng/megarepo:src/store/store-deletion-lease.integration.test.ts",
         "node_modules/@overeng/megarepo/src/store/store-deletion-lease.ts": "//packages/@overeng/megarepo:src/store/store-deletion-lease.ts",
         "node_modules/@overeng/megarepo/src/store/store-fetch-refspec.integration.test.ts": "//packages/@overeng/megarepo:src/store/store-fetch-refspec.integration.test.ts",
+        "node_modules/@overeng/megarepo/src/store/store-fetch.integration.test.ts": "//packages/@overeng/megarepo:src/store/store-fetch.integration.test.ts",
         "node_modules/@overeng/megarepo/src/store/store-fs-atomic.ts": "//packages/@overeng/megarepo:src/store/store-fs-atomic.ts",
         "node_modules/@overeng/megarepo/src/store/store-fs-atomic.unit.test.ts": "//packages/@overeng/megarepo:src/store/store-fs-atomic.unit.test.ts",
         "node_modules/@overeng/megarepo/src/store/store-gc-config.ts": "//packages/@overeng/megarepo:src/store/store-gc-config.ts",
@@ -1146,6 +1148,7 @@ package_view(
         "node_modules/@overeng/megarepo/src/store/store-deletion-lease.integration.test.ts": "//packages/@overeng/megarepo:src/store/store-deletion-lease.integration.test.ts",
         "node_modules/@overeng/megarepo/src/store/store-deletion-lease.ts": "//packages/@overeng/megarepo:src/store/store-deletion-lease.ts",
         "node_modules/@overeng/megarepo/src/store/store-fetch-refspec.integration.test.ts": "//packages/@overeng/megarepo:src/store/store-fetch-refspec.integration.test.ts",
+        "node_modules/@overeng/megarepo/src/store/store-fetch.integration.test.ts": "//packages/@overeng/megarepo:src/store/store-fetch.integration.test.ts",
         "node_modules/@overeng/megarepo/src/store/store-fs-atomic.ts": "//packages/@overeng/megarepo:src/store/store-fs-atomic.ts",
         "node_modules/@overeng/megarepo/src/store/store-fs-atomic.unit.test.ts": "//packages/@overeng/megarepo:src/store/store-fs-atomic.unit.test.ts",
         "node_modules/@overeng/megarepo/src/store/store-gc-config.ts": "//packages/@overeng/megarepo:src/store/store-gc-config.ts",

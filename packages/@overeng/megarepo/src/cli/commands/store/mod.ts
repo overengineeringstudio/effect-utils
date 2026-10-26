@@ -4334,8 +4334,14 @@ const storeWorktreeNewCommand = Cli.Command.make(
         yield* Git.cloneBare({ url: cloneUrl, targetPath: bareRepoPath })
       }
 
-      // Fetch to ensure refs are up to date
-      if (noFetch === false) yield* Git.fetchBare({ repoPath: bareRepoPath })
+      // Refresh the requested starting ref, including missing explicit SHA objects.
+      if (noFetch === false) {
+        const startRef = base ?? commit ?? ref
+        yield* Git.fetchBare({
+          repoPath: bareRepoPath,
+          ...(startRef === undefined ? {} : { refs: [startRef] }),
+        })
+      }
 
       // Determine target ref and worktree creation mode
       const targetRef = commit ?? ref!
