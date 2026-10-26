@@ -160,6 +160,62 @@ describe('scoped store worktree removal', () => {
     ),
   )
 
+  it.effect(
+    'refuses an empty symlinked administration root before orphan reconstruction writes',
+    () =>
+      testEffect(
+        Effect.gen(function* () {
+          const f = yield* fixture
+          const adminRoot = `${f.bare}worktrees`
+          const outside = yield* f.fs.makeTempDirectoryScoped()
+          yield* f.fs.remove(f.admin, { recursive: true })
+          yield* f.fs.rename(adminRoot, `${adminRoot}.saved`)
+          yield* f.fs.symlink(outside, adminRoot)
+          yield* Effect.addFinalizer(() =>
+            Effect.gen(function* () {
+              yield* f.fs.remove(adminRoot)
+              yield* f.fs.rename(`${adminRoot}.saved`, adminRoot)
+            }).pipe(Effect.orDie),
+          )
+          const failure = yield* removeStoreWorktree(f).pipe(Effect.flip)
+          expect(failure).toMatchObject({ reason: 'invalid-path' })
+          expect(String(failure)).toContain('must be physical and not a symlink')
+          expect(yield* f.fs.readDirectory(outside)).toEqual([])
+          expect(yield* f.fs.exists(`${f.path}/.git`)).toBe(true)
+        }),
+      ),
+  )
+
+  it.effect(
+    'repairs a proven orphan with missing nested parents and returns not-found on retry',
+    () =>
+      testEffect(
+        Effect.gen(function* () {
+          const f = yield* fixture
+          const path = f.path.replace(/\/topic$/u, '/feature/topic')
+          yield* Git.createWorktree({
+            repoPath: f.bare,
+            worktreePath: path,
+            branch: 'feature/topic',
+            createBranch: true,
+            startPoint: 'origin/sibling',
+          })
+          const admin = (yield* f.fs.readFileString(`${path}/.git`)).trim().slice('gitdir: '.length)
+          const refs = yield* Git.runCommand({ cwd: f.bare, args: ['show-ref'] })
+          yield* f.fs.remove(path.replace(/\/topic$/u, ''), { recursive: true })
+          expect(yield* removeStoreWorktree({ store: f.store, path })).toMatchObject({
+            repaired: true,
+          })
+          expect(yield* f.fs.exists(admin)).toBe(false)
+          expect(yield* f.fs.exists(f.admin)).toBe(true)
+          expect(yield* Git.runCommand({ cwd: f.bare, args: ['show-ref'] })).toBe(refs)
+          expect(
+            yield* removeStoreWorktree({ store: f.store, path }).pipe(Effect.flip),
+          ).toMatchObject({ reason: 'not-found' })
+        }),
+      ),
+  )
+
   it.effect('never reconstructs markerless remnants even with destructive consent', () =>
     testEffect(
       Effect.gen(function* () {

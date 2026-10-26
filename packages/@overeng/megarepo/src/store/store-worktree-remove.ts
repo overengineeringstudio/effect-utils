@@ -1,3 +1,4 @@
+import { lstat } from 'node:fs/promises'
 import { dirname, join, relative, resolve } from 'node:path'
 
 import { Clock, Effect, Schema } from 'effect'
@@ -52,6 +53,37 @@ export const removeStoreWorktree = Effect.fn('store.removeStoreWorktree')(
       readonly message: string
     }) => new StoreWorktreeRemoveError({ path, reason, message })
     const base = yield* fs.realPath(store.basePath)
+    // Inspect each existing component without following symlinks. Once a parent
+    // is absent the whole remaining suffix is absent, so orphan cleanup can
+    // still use its reciprocal administration record as ownership evidence.
+    const validateDirectoryPath = Effect.fn('store.validateRemovalDirectory')(function* (
+      target: string,
+    ) {
+      let current = base
+      for (const component of relative(base, target).split('/')) {
+        current = join(current, component)
+        const info = yield* Effect.tryPromise({
+          try: () =>
+            lstat(current).catch((cause: NodeJS.ErrnoException) => {
+              if (cause.code === 'ENOENT') return undefined
+              throw cause
+            }),
+          catch: (cause) =>
+            new StoreWorktreeRemoveError({
+              path,
+              reason: 'io',
+              message: `Cannot inspect directory component '${current}'`,
+              cause,
+            }),
+        })
+        if (info === undefined) return
+        if (info.isSymbolicLink() === true || info.isDirectory() === false)
+          return yield* refuse({
+            reason: 'invalid-path',
+            message: `Directory component must be physical and not a symlink: '${current}'`,
+          })
+      }
+    })
     const parts = relative(base, path).split('/')
     if (
       parts.length < 6 ||
@@ -73,14 +105,10 @@ export const removeStoreWorktree = Effect.fn('store.removeStoreWorktree')(
       })
 
     return yield* Effect.gen(function* () {
+      const adminRoot = join(bare, 'worktrees')
+      yield* validateDirectoryPath(path)
+      yield* validateDirectoryPath(adminRoot)
       const exists = yield* fs.exists(path)
-      // Canonical paths exclude symlink aliases and symlinked directory ancestors.
-      const physical = yield* fs.realPath(exists === true ? path : dirname(path))
-      if (physical !== (exists === true ? path : dirname(path)))
-        return yield* refuse({
-          reason: 'invalid-path',
-          message: 'Worktree path must be physical, not a symlink or alias',
-        })
       if (
         (yield* Git.runCommand({ cwd: bare, args: ['rev-parse', '--is-bare-repository'] })) !==
         'true'
@@ -114,7 +142,6 @@ export const removeStoreWorktree = Effect.fn('store.removeStoreWorktree')(
           message: 'Worktree is referenced by a registered workspace',
         })
 
-      const adminRoot = join(bare, 'worktrees')
       const names = (yield* fs.exists(adminRoot)) === true ? yield* fs.readDirectory(adminRoot) : []
       const matches: string[] = []
       for (const name of names) {
@@ -226,6 +253,10 @@ export const removeStoreWorktree = Effect.fn('store.removeStoreWorktree')(
           cwd: bare,
           args: ['rev-parse', '--verify', `${head}^{commit}`],
         })
+        // Recheck the complete administration chain immediately before writing,
+        // including an empty or absent worktrees root.
+        yield* validateDirectoryPath(pointedAdmin)
+        if ((yield* fs.exists(adminRoot)) === false) yield* fs.makeDirectory(adminRoot)
         yield* fs.makeDirectory(pointedAdmin)
         admin = pointedAdmin
         yield* fs.writeFileString(join(admin, 'gitdir'), `${path}/.git\n`)

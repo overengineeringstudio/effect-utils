@@ -295,6 +295,11 @@ repository's default branch), locked registrations, and worktrees referenced by
 registered workspaces are protected. Dirty/untracked work is refused unless
 `--discard-changes` explicitly authorizes its removal; HEAD commits unreachable
 from any remote are refused unless `--allow-unpushed` is explicit.
+Every existing directory component of the target and administration root is
+validated without following symlinks under that lock, including an empty
+administration root before reconstruction. Missing nested worktree parents are
+validated through their nearest existing physical ancestor, so proven orphan
+registrations can still be repaired and a retry returns `not-found`.
 
 Editor-view teardown is a prerequisite, not an implicit side effect. Close
 editors/builds and run `devenv tasks run worktree:teardown --mode single` inside
