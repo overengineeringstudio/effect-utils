@@ -48,6 +48,12 @@ Installation-token clients and the public bot lookup keep using the injected
 HttpClient; the public lookup preserves Fetch RequestInit settings except for
 its `redirect: 'manual'` override.
 
+`options.onRequestComplete` optionally observes the isolated JWT transport with
+only method, pathname, status (null on transport failure), and the rate-limit
+resource/remaining header values. The callback returns an Effect; callback
+exceptions and Effect failures are ignored. It receives no credentials, other
+headers, query strings, or bodies and cannot customize the fixed JWT transport.
+
 Repository names are nonempty, installation-relative names without `/`.
 `{ _tag: 'AllInstallation' }` explicitly requests installation-wide access and
 is accepted only when every requested permission is `read`. Permissions must
