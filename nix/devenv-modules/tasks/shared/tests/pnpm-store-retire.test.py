@@ -4,9 +4,11 @@ import contextlib
 import fcntl
 import importlib.util
 import json
+import io
 import os
 from pathlib import Path
 import select
+import signal
 import shutil
 import subprocess
 import sys
@@ -20,6 +22,20 @@ SPEC = importlib.util.spec_from_file_location("retirement", SHARED / "pnpm-store
 ENGINE = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(ENGINE)
 
+def run_bounded_command(command, name, timeout, env=None):
+    child = subprocess.Popen(command, env=env, start_new_session=True)
+    try:
+        return child.wait(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        # Kill the whole test session, including a shell/flock descendant that
+        # could otherwise retain a lease or an inherited output pipe.
+        os.killpg(child.pid, signal.SIGKILL)
+        child.wait()
+        print(f"FAIL: {name} exceeded its {timeout}s deadline; process group killed",
+              file=sys.stderr, flush=True)
+        return 124
+
+
 
 class RetirementTests(unittest.TestCase):
     def setUp(self):
@@ -31,7 +47,7 @@ class RetirementTests(unittest.TestCase):
         self.repo.mkdir(parents=True)
         self.bin = self.base / "bin"
         self.bin.mkdir()
-        for name in ("bash", "git", "flock", "mkdir"):
+        for name in ("bash", "git", "flock", "mkdir", "node"):
             executable = shutil.which(name)
             if executable is None:
                 self.fail(f"required fixture tool is missing: {name}")
@@ -299,7 +315,12 @@ set -euo pipefail
 source "$1"
 queued_flock() { printf 'queued\\n'; flock "$@"; }
 acquire_pnpm_store_cache_lease queued_flock shared "$2" 5
-[[ "$2/.effect-utils-pnpm-store-cache-maintenance.lock" -ef /dev/fd/202 ]]
+node - "$2/.effect-utils-pnpm-store-cache-maintenance.lock" <<'JS'
+const fs = require('node:fs')
+const held = fs.fstatSync(202, { bigint: true })
+const current = fs.statSync(process.argv[2], { bigint: true })
+process.exit(held.dev === current.dev && held.ino === current.ino ? 0 : 1)
+JS
 printf 'acquired\\n'
 '''
         waiter = None
@@ -377,6 +398,33 @@ printf 'acquired\\n'
         self.assertTrue((self.base / "new-consumer").exists())
         self.assertEqual(len(list(self.base.glob("old-store.retired-*/v11/files/aa/payload"))), 1)
 
+    def test_watchdog_names_and_kills_blocked_test(self):
+        output = io.StringIO()
+        with contextlib.redirect_stderr(output):
+            status = run_bounded_command(
+                [sys.executable, "-c", "import signal; signal.pause()"],
+                "blocked-fixture", 0.1,
+            )
+        self.assertEqual(status, 124)
+        self.assertIn("blocked-fixture", output.getvalue())
+        self.assertIn("process group killed", output.getvalue())
+
 
 if __name__ == "__main__":
-    unittest.main()
+    if len(sys.argv) == 3 and sys.argv[1] == "--case":
+        unittest.main(argv=[sys.argv[0], sys.argv[2]], verbosity=2)
+    else:
+        names = unittest.defaultTestLoader.getTestCaseNames(RetirementTests)
+        for name in names:
+            qualified = f"RetirementTests.{name}"
+            print(f"pnpm-store-retire: test={qualified} deadline=30s", flush=True)
+            # The supervisor owns this directory, so even a killed test's
+            # temporary stores are reclaimed only after all descendants die.
+            with tempfile.TemporaryDirectory(prefix="pnpm-retire-case-") as fixture:
+                status = run_bounded_command(
+                    [sys.executable, __file__, "--case", qualified],
+                    qualified, 30, dict(os.environ, TMPDIR=fixture),
+                )
+            if status:
+                sys.exit(status)
+        print(f"All {len(names)} bounded pnpm store retirement tests passed", flush=True)

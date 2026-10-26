@@ -127,12 +127,13 @@ Materialization-Root lock + package-manager-home lock
   -> root-local projection
 ```
 
-After acquiring either lease mode, admission compares the locked descriptor's
-device/inode with the current maintenance-lock pathname. A retired or replaced
-lock (including a missing pathname) is not admission: close the stale
-descriptor, recreate/reopen the current lock, and retry within the original
-timeout. Thus an installer queued before host-store retirement cannot proceed
-under a deleted lock inode while later installers use a new one.
+After acquiring either lease mode, admission uses Node's direct `fstat(202)`
+and pathname `stat` with full-width integer device/inode identities. It does
+not infer descriptor identity through `/dev/fd` pathname emulation on Darwin.
+A retired or replaced lock (including a missing pathname) is not admission:
+close the stale descriptor, recreate/reopen the current lock, and retry within
+the original timeout. Thus an installer queued before host-store retirement
+cannot proceed under a deleted lock inode while later installers use a new one.
 
 Normal installs require no registry of roots: the Store Cache is disposable
 and does not own graph identity. Host-store retirement explicitly enumerates
@@ -203,6 +204,11 @@ and deletion. Apply first atomically renames the complete store to a sibling
 tombstone, then removes only that tombstone. Interruption during deletion
 therefore leaves a tombstone, not a half-deleted live namespace. Unmanaged
 writers do not participate in the lease and must be quiesced by the owner.
+
+The retirement regression suite runs each named case in a separate process
+session with a 30-second deadline covering setup, execution, and cleanup. The
+supervisor kills the entire session on expiry and reports the case name before
+reclaiming its temporary stores; an orphaned flock cannot hold the CI job open.
 
 ## Health And Repair
 

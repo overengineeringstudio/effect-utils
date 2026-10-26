@@ -213,10 +213,20 @@ acquire_pnpm_store_cache_lease() {
       echo "[pnpm] Store Cache $mode lease timeout after ${timeout_seconds}s: $lockfile" >&2
       return 1
     fi
-    # Bash's -ef compares device/inode, including the open descriptor behind
-    # /dev/fd. Retirement can unlink the lock while this caller waits in flock;
-    # never admit a mutation on that stale inode (or a missing lock pathname).
-    if [[ "$lockfile" -ef /dev/fd/202 ]]; then
+    # Use fstat on the inherited descriptor, not stat of /dev/fd: descriptor
+    # filesystem pathname semantics are platform-specific (notably Darwin).
+    # BigInt preserves the full device/inode identity on every supported host.
+    if node - "$lockfile" <<'EOF'
+const fs = require('node:fs')
+try {
+  const held = fs.fstatSync(202, { bigint: true })
+  const current = fs.statSync(process.argv[2], { bigint: true })
+  process.exit(held.dev === current.dev && held.ino === current.ino ? 0 : 1)
+} catch {
+  process.exit(1)
+}
+EOF
+    then
       return 0
     fi
     exec 202>&-

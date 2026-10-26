@@ -6,6 +6,7 @@ pkgs.writeShellApplication {
     pkgs.git
     pkgs.flock
     pkgs.coreutils
+    pkgs.nodejs
     pkgs.python3
   ];
   text = ''
