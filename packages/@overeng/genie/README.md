@@ -174,10 +174,12 @@ the pre-v5 contract; every other ref is conservatively treated as modern.
 Hosted runners, Namespace, storage, fallback, mixed-heavy, `pull_request_target`,
 and same-repository guard rules cannot be excepted.
 This repository explicitly uses report mode with the generated
-`policy-migration-ledger.json`: new violations and stale entries both fail
-generation. The ledger is migration inventory, not an exception mechanism;
-it only shrinks and must eventually be empty. Remove resolved rows before
-regenerating; generation cannot admit a new row automatically.
+`policy-migration-ledger.json`: new violations fail eagerly, while removed debt
+is omitted automatically by regeneration (`genie:run`). The ledger is migration
+inventory, not an exception mechanism; it only shrinks and must eventually be
+empty. `genie --check`/CI rejects stale committed rows through the generated-file
+freshness diff until the shrunk ledger is committed. No hand edits are needed,
+and generation cannot admit new rows or security violations.
 Ledger generation and report checks share the same validated,
 exception-filtered observations. The raw census is retained only to detect
 stale exceptions, so accepted exceptions cannot reappear on regeneration.
