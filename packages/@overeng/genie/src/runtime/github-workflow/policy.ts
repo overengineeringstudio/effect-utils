@@ -103,6 +103,7 @@ const rules: readonly WorkflowPolicyRule[] = [
 const neverExceptable: Partial<Record<WorkflowPolicyRule, true>> = {
   'hosted-runner': true,
   'namespace-runner': true,
+  'pull-request-target': true,
   'banned-action': true,
   'setup-action-cache': true,
   'docker-gha-cache': true,

@@ -26,7 +26,7 @@
           "repository": { "type": "string", "minLength": 1 },
           "workflow": { "type": "string", "minLength": 1 },
           "job": { "type": "string", "minLength": 1 },
-          "rule": { "enum": ["runner-not-admitted", "dynamic-runner", "pull-request-target"] },
+          "rule": { "enum": ["runner-not-admitted", "dynamic-runner"] },
           "owner": { "type": "string", "minLength": 1 },
           "approver": { "type": "string", "minLength": 1 },
           "justification": { "type": "string", "minLength": 1 },

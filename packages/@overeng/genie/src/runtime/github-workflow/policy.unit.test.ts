@@ -277,6 +277,17 @@ describe('exceptions and exact report ledger', () => {
       'INVALID_EXCEPTION',
     )
   })
+  it('rejects an otherwise complete workflow-scoped pull_request_target exception', () => {
+    expect(
+      issueKinds(
+        { ...workflow(), on: 'pull_request_target' },
+        {
+          ...policy,
+          exceptions: [{ ...exception, job: '*', rule: 'pull-request-target' }],
+        },
+      ),
+    ).toContain('INVALID_EXCEPTION')
+  })
   it('rejects duplicate exceptions and caller-added never-exceptable rules', () => {
     expect(issueKinds(workflow(), { ...policy, exceptions: [exception, exception] })).toContain(
       'INVALID_EXCEPTION',
