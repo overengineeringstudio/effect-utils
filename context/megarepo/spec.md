@@ -288,6 +288,37 @@ worktree registration are created; existing refs, Git configuration, and
 `FETCH_HEAD` are not refreshed. It does not write megarepo configuration, lock
 files, or composition state.
 
+`mr store worktree rm <path>` removes exactly one standalone store worktree,
+under its bare repository's Git writer lock. It preserves every branch/tag ref
+and sibling worktree. Default/canonical branches (`main`, `master`, and the bare
+repository's default branch), locked registrations, and worktrees referenced by
+registered workspaces are protected. Dirty/untracked work is refused unless
+`--discard-changes` explicitly authorizes its removal; HEAD commits unreachable
+from any remote are refused unless `--allow-unpushed` is explicit.
+
+Editor-view teardown is a prerequisite, not an implicit side effect. Close
+editors/builds and run `devenv tasks run worktree:teardown --mode single` inside
+the retired worktree, leave it, then run `mr store worktree rm <path>`. Unreleased
+editor roots are detected through the publisher's shared lifecycle markers and
+produce a structured refusal with this guidance. `mr` never invokes devenv,
+changes materialization permissions, or follows symlinks to remove external
+trees. In particular, read-only editor snapshot files may be CAS hardlinks:
+recursive chmod would corrupt other worktrees.
+
+Plain `git worktree remove` can unlink tracked files, fail to unlink a payload
+inside a read-only directory with EACCES, then delete its administration entry
+anyway, leaving the remaining payload behind; `.git` may also have been deleted.
+When `.git` survives, scoped removal repairs that dangling registration from its
+existing store ref and applies the same safety checks; already deleted tracked
+files count as changes and require explicit discard consent. If both ownership
+markers are gone, it refuses even with discard consent: ownership cannot be
+proven. Editor-view GC or release must reclaim any editor payload, otherwise an
+operator removes the remnant manually. The opposite partial state (tree absent,
+matching admin entry present) removes only that orphan entry, after protecting
+staged changes and unpushed commits. Git has no path-scoped `worktree prune`, so
+this command never runs repository-wide pruning. A second removal reports the
+structured `not-found` error.
+
 ## CLI Surface
 
 | Command                          | Responsibility | Contract                                                              |

@@ -852,6 +852,7 @@
         "src/store/store-symlink.unit.test.ts",
         "src/store/store-workspace-activity.integration.test.ts",
         "src/store/store-worktree-policy.unit.test.ts",
+        "src/store/store-worktree-remove.integration.test.ts",
         "src/sync/member.unit.test.ts",
         "src/test-utils/setup.unit.test.ts",
         "src/test-utils/store-setup.integration.test.ts"
@@ -920,6 +921,7 @@
         "src/store/store-symlink.unit.test.ts",
         "src/store/store-workspace-activity.integration.test.ts",
         "src/store/store-worktree-policy.unit.test.ts",
+        "src/store/store-worktree-remove.integration.test.ts",
         "src/sync/member.unit.test.ts",
         "src/test-utils/setup.unit.test.ts",
         "src/test-utils/store-setup.integration.test.ts"

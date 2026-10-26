@@ -7,7 +7,7 @@ load("//buck2/products:defs.bzl", "javascript_product")
 # Projection source: packages/@overeng/megarepo/BUCK.genie.ts
 # Projection schema version: 13
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:72725a2f6bb6557541ed8ec0165270ec55c95c790fb673391c84104512aca9dd
+# Semantic fingerprint: sha256:c4782173b6fb88771cba2315fc0fb370c6e599ea536fdb64a74a5c7a37713aea
 # Regenerate: devenv tasks run genie:run
 
 load("//buck2:materialization.bzl", "export_materialization_inputs", "package_view")
@@ -276,6 +276,8 @@ export_materialization_inputs([
     "src/store/store-workspace-activity.ts",
     "src/store/store-worktree-policy.ts",
     "src/store/store-worktree-policy.unit.test.ts",
+    "src/store/store-worktree-remove.integration.test.ts",
+    "src/store/store-worktree-remove.ts",
     "src/store/store.ts",
     "src/sync/member-mount.ts",
     "src/sync/member.ts",
@@ -588,6 +590,8 @@ package_view(
         "src/store/store-workspace-activity.ts": "src/store/store-workspace-activity.ts",
         "src/store/store-worktree-policy.ts": "src/store/store-worktree-policy.ts",
         "src/store/store-worktree-policy.unit.test.ts": "src/store/store-worktree-policy.unit.test.ts",
+        "src/store/store-worktree-remove.integration.test.ts": "src/store/store-worktree-remove.integration.test.ts",
+        "src/store/store-worktree-remove.ts": "src/store/store-worktree-remove.ts",
         "src/store/store.ts": "src/store/store.ts",
         "src/sync/member-mount.ts": "src/sync/member-mount.ts",
         "src/sync/member.ts": "src/sync/member.ts",
@@ -902,6 +906,8 @@ package_view(
         "src/store/store-workspace-activity.ts": "src/store/store-workspace-activity.ts",
         "src/store/store-worktree-policy.ts": "src/store/store-worktree-policy.ts",
         "src/store/store-worktree-policy.unit.test.ts": "src/store/store-worktree-policy.unit.test.ts",
+        "src/store/store-worktree-remove.integration.test.ts": "src/store/store-worktree-remove.integration.test.ts",
+        "src/store/store-worktree-remove.ts": "src/store/store-worktree-remove.ts",
         "src/store/store.ts": "src/store/store.ts",
         "src/sync/member-mount.ts": "src/sync/member-mount.ts",
         "src/sync/member.ts": "src/sync/member.ts",
@@ -1211,6 +1217,8 @@ package_view(
         "src/store/store-workspace-activity.ts": "src/store/store-workspace-activity.ts",
         "src/store/store-worktree-policy.ts": "src/store/store-worktree-policy.ts",
         "src/store/store-worktree-policy.unit.test.ts": "src/store/store-worktree-policy.unit.test.ts",
+        "src/store/store-worktree-remove.integration.test.ts": "src/store/store-worktree-remove.integration.test.ts",
+        "src/store/store-worktree-remove.ts": "src/store/store-worktree-remove.ts",
         "src/store/store.ts": "src/store/store.ts",
         "src/sync/member-mount.ts": "src/sync/member-mount.ts",
         "src/sync/member.ts": "src/sync/member.ts",
@@ -1297,6 +1305,7 @@ npm_package_archive(
     dist = ":dist",
     typecheck = ":typecheck",
     workspace_manifests = [
+        "//packages/@overeng/buck2-tools:package.json",
         "//packages/@overeng/effect-path:package.json",
         "//packages/@overeng/kdl:package.json",
         "//packages/@overeng/kdl-effect:package.json",

@@ -8,6 +8,7 @@ import {
   privatePackageDefaults,
   workspaceClosureReference,
 } from '../../../genie/internal.ts'
+import buck2ToolsPkg from '../buck2-tools/package.json.genie.ts'
 import effectPathPkg from '../effect-path/package.json.genie.ts'
 import kdlEffectPkg from '../kdl-effect/package.json.genie.ts'
 import kdlPkg from '../kdl/package.json.genie.ts'
@@ -23,7 +24,15 @@ const peerDepNames = ['@effect/platform-node', 'effect'] as const
 const runtimeDeps = catalog.compose({
   workspace: workspaceMember({ memberPath: 'packages/@overeng/megarepo' }),
   dependencies: {
-    workspace: [effectPathPkg, kdlPkg, kdlEffectPkg, otelContractPkg, tuiReactPkg, utilsPkg],
+    workspace: [
+      buck2ToolsPkg,
+      effectPathPkg,
+      kdlPkg,
+      kdlEffectPkg,
+      otelContractPkg,
+      tuiReactPkg,
+      utilsPkg,
+    ],
     external: catalog.pick('react'),
   },
   devDependencies: {

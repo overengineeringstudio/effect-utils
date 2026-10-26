@@ -51,6 +51,7 @@ import {
   probeEditorViewLease,
   probeEditorViewLeaseUnderFence,
 } from './editor-view-leases.ts'
+import { editorViewRootSuffixes, isEditorViewReleaseControl } from './editor-view-lifecycle.ts'
 import {
   editorViewAutomaticEvictionEvidence,
   classifyEditorViewProcessCandidates,
@@ -2692,7 +2693,7 @@ export const releaseEditorViewRoot = async (options: EditorViewOptions): Promise
           // Preserve the canonical root and persistent lock identities even on explicit
           // teardown: recreating a pathname must never split flock ownership.
           for (const name of readdirSync(paths.editorRoot)) {
-            if (name === '.leases' || name === '.publish.lock') continue
+            if (isEditorViewReleaseControl(name) === true) continue
             const path = join(paths.editorRoot, name)
             if (lstatSync(path).isDirectory() === true) makeDirectoriesWritable(path)
             rmSync(path, { recursive: true })
@@ -3033,7 +3034,7 @@ const discoverBudgetRoots = (root: EditorViewBudgetRoot): readonly EditorViewBud
   }
   const roots = new Map<string, EditorViewBudgetRoot>([[root.editorRoot, root]])
   for (const repoRoot of repositories)
-    for (const suffix of ['.editor-view', 'packages/.editor-view', 'context/.editor-view']) {
+    for (const suffix of editorViewRootSuffixes) {
       const editorRoot = join(repoRoot, suffix)
       try {
         if (lstatSync(editorRoot).isDirectory() === true)

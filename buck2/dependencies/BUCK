@@ -3,7 +3,7 @@
 
 # Generated file - DO NOT EDIT
 # Source: pnpm-lock.yaml
-# Store fingerprint: sha256:d07e3ad5bd2a689482eace8a9dbd9bc0976c989ae993cfd4e811f677dc190df1
+# Store fingerprint: sha256:03bc55020c3e96c61d5d274e500338875f8165f5fb329d52d27949b692f354d3
 
 load("//buck2:materialization.bzl", "export_materialization_inputs")
 load("//buck2:static_checks.bzl", "static_source_set")
@@ -60735,6 +60735,7 @@ pnpm_store_view(
         "vitest": "vitest@5.0.3_@opentelemetry+api@1.9.1_@types+node@26.5.0_@vitest+browser-playwright@5.0.3_@vitest+ui@5._1c9a61b8ae5e04be\tvitest.mjs",
     },
     workspace_trees = {
+        "workspace_packages_overeng_buck2_tools_291dbdc94266": "//packages/@overeng/buck2-tools:package_tree",
         "workspace_packages_overeng_effect_path_1b53042f2a10": "//packages/@overeng/effect-path:package_tree",
         "workspace_packages_overeng_kdl_27809480005f": "//packages/@overeng/kdl:package_tree",
         "workspace_packages_overeng_kdl_effect_526cf28cf509": "//packages/@overeng/kdl-effect:package_tree",
@@ -60746,6 +60747,7 @@ pnpm_store_view(
         "workspace_packages_overeng_utils_storybook_4017a5070d04": "//packages/@overeng/utils-storybook:package_tree",
     },
     workspace_dependencies = {
+        "@overeng/buck2-tools": "workspace_packages_overeng_buck2_tools_291dbdc94266",
         "@overeng/effect-path": "workspace_packages_overeng_effect_path_1b53042f2a10",
         "@overeng/kdl": "workspace_packages_overeng_kdl_27809480005f",
         "@overeng/kdl-effect": "workspace_packages_overeng_kdl_effect_526cf28cf509",
@@ -61819,6 +61821,7 @@ pnpm_store_view(
         "vitest": "vitest@5.0.3_@opentelemetry+api@1.9.1_@types+node@26.5.0_@vitest+browser-playwright@5.0.3_@vitest+ui@5._1c9a61b8ae5e04be\tvitest.mjs",
     },
     workspace_trees = {
+        "workspace_packages_overeng_buck2_tools_291dbdc94266": "//packages/@overeng/buck2-tools:product_package_tree",
         "workspace_packages_overeng_effect_path_1b53042f2a10": "//packages/@overeng/effect-path:product_package_tree",
         "workspace_packages_overeng_kdl_27809480005f": "//packages/@overeng/kdl:product_package_tree",
         "workspace_packages_overeng_kdl_effect_526cf28cf509": "//packages/@overeng/kdl-effect:product_package_tree",
@@ -61830,6 +61833,7 @@ pnpm_store_view(
         "workspace_packages_overeng_utils_storybook_4017a5070d04": "//packages/@overeng/utils-storybook:product_package_tree",
     },
     workspace_dependencies = {
+        "@overeng/buck2-tools": "workspace_packages_overeng_buck2_tools_291dbdc94266",
         "@overeng/effect-path": "workspace_packages_overeng_effect_path_1b53042f2a10",
         "@overeng/kdl": "workspace_packages_overeng_kdl_27809480005f",
         "@overeng/kdl-effect": "workspace_packages_overeng_kdl_effect_526cf28cf509",
