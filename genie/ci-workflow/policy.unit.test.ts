@@ -6,10 +6,12 @@ import type { GitHubWorkflowArgs } from '../../packages/@overeng/genie/src/runti
 import {
   collectWorkflowPolicyViolations,
   decodeWorkflowPolicyLedger,
+  sameRepoPullRequestGuard,
   validateWorkflowPolicy,
   type WorkflowPolicyException,
   type WorkflowPolicyRule,
 } from '../../packages/@overeng/genie/src/runtime/github-workflow/policy.ts'
+import { autoReviewWorkflow } from '../auto-review.ts'
 import { defaultRefPolicyCheckJob } from '../ci-workflow.ts'
 import { requiredCIJobs } from '../ci.ts'
 import { withBuck2CacheEvidence } from './buck2-cache-evidence.ts'
@@ -79,6 +81,27 @@ const snapshotRelease = prSnapshotReleaseJobs({
   runsOn: [...linuxX64Runner],
 })
 
+// Raw jobs acquire their PR-origin guard when the consumer composes a workflow.
+const guardedFixtureJobs = (rawJobs: Record<string, Record<string, unknown>>) =>
+  Object.fromEntries(
+    Object.entries(rawJobs).map(([id, value]) => {
+      const condition =
+        typeof value.if === 'string'
+          ? value.if.trim().replace(/^\$\{\{\s*/, '').replace(/\s*\}\}$/, '')
+          : undefined
+      return [
+        id,
+        {
+          ...value,
+          if:
+            condition === undefined
+              ? sameRepoPullRequestGuard()
+              : `(${sameRepoPullRequestGuard()}) && (${condition})`,
+        },
+      ]
+    }),
+  )
+
 // Keep each producer separate: a new storage action cannot hide behind another helper's L7 debt.
 const helperWorkflows = {
   defaultRefPolicyCheckJob: { jobs: { check: defaultRefPolicyCheckJob() } },
@@ -95,7 +118,7 @@ const helperWorkflows = {
     }),
   },
   prSnapshotReleaseJobs: {
-    jobs: snapshotRelease.jobs,
+    jobs: guardedFixtureJobs(snapshotRelease.jobs),
     on: {
       workflow_dispatch: { inputs: snapshotRelease.dispatchInputs },
       schedule: snapshotRelease.scheduleTrigger,
@@ -128,25 +151,27 @@ const helperWorkflows = {
   },
   netlifyPreviewDeployJobs: {
     on: netlifyPreviewDeployTrigger('Build'),
-    jobs: netlifyPreviewDeployJobs({
-      runsOn: {
-        resolvePreview: linuxX64Runner,
-        deployPreview: linuxX64Runner,
-        publishPreviewComment: linuxX64Runner,
-      },
-      setupSteps: [],
-      netlifyAuthToken: '${{ secrets.NETLIFY_AUTH_TOKEN }}',
-      title: 'Preview',
-      noRecordsMessage: 'No previews',
-      stateId: 'preview',
-    }),
+    jobs: guardedFixtureJobs(
+      netlifyPreviewDeployJobs({
+        runsOn: {
+          resolvePreview: linuxX64Runner,
+          deployPreview: linuxX64Runner,
+          publishPreviewComment: linuxX64Runner,
+        },
+        setupSteps: [],
+        netlifyAuthToken: '${{ secrets.NETLIFY_AUTH_TOKEN }}',
+        title: 'Preview',
+        noRecordsMessage: 'No previews',
+        stateId: 'preview',
+      }),
+    ),
   },
   pipelineCloseJob: { jobs: { close: pipelineCloseJob({ jobs, runsOn: [...linuxX64Runner] }) } },
   withPipelineTelemetry: { jobs: withPipelineTelemetry(jobs) },
   withBuck2CacheEvidence: { jobs: withBuck2CacheEvidence(jobs) },
   withBuck2CachePostures: { jobs: withBuck2CachePostures({ jobs, postures: { check: 'reader' } }) },
   withNixRealisationTimeouts: { jobs: withNixRealisationTimeouts(jobs, {}) },
-  ciWorkflow: ciWorkflow({ on: 'pull_request', jobs, trustTier: 'public' }).data,
+  ciWorkflow: ciWorkflow({ on: 'push', jobs, trustTier: 'public' }).data,
   mergeQueueAdmittedJob: {
     jobs: { check: mergeQueueAdmittedJob({ runsOn: linuxX64Runner, steps: [step] }) },
   },
@@ -242,7 +267,7 @@ const storageRules: Partial<Record<WorkflowPolicyRule, true>> = {
 // Some deploy helpers expose loose records and step helpers return readonly arrays;
 // the fixture boundary only adapts those declarations, without changing emitted values.
 const fixtureWorkflow = (fixture: { jobs: object; on?: unknown }): GitHubWorkflowArgs =>
-  ({ on: 'pull_request', ...fixture }) as GitHubWorkflowArgs
+  ({ on: 'push', ...fixture }) as GitHubWorkflowArgs
 
 const expectedRequiredChecks = [
   'default-ref-policy',
@@ -314,6 +339,111 @@ describe('shared helper fleet policy', () => {
     expect(
       collectWorkflowPolicyViolations({ workflow, policy }).map((violation) => violation.rule),
     ).toContain('runner-fallback')
+  })
+})
+
+describe('shared workflow same-repository PR guards', () => {
+  const guard = sameRepoPullRequestGuard()
+  const rule = 'fleet-pr-without-same-repo-guard'
+
+  it('rejects the public PR fleet composer repro instead of injecting a guard', () => {
+    expect(() =>
+      ciWorkflow({
+        on: 'pull_request',
+        trustTier: 'public',
+        jobs: {
+          check: {
+            'runs-on': ['sh-linux-x64', 'nix'],
+            steps: [{ run: 'echo repro' }],
+          },
+        },
+      }),
+    ).toThrow(rule)
+  })
+
+  it.each(['enforce', 'report'] as const)(
+    'hard-fails an unguarded public PR fleet workflow in %s mode',
+    (mode) => {
+      expect(() =>
+        ciWorkflow({
+          on: 'pull_request',
+          trustTier: 'public',
+          jobs,
+          policy: fleetWorkflowPolicy({
+            repository: 'example/project',
+            workflow: 'ci.yml',
+            mode,
+          }),
+        }),
+      ).toThrow(rule)
+    },
+  )
+
+  it.each([
+    guard,
+    `(${guard}) && (github.ref != 'refs/heads/disabled')`,
+    `(github.ref != 'refs/heads/disabled') && (${guard})`,
+  ])('admits an exact guard or top-level conjunction: %s', (condition) => {
+    const workflow = ciWorkflow({
+      on: 'pull_request',
+      trustTier: 'public',
+      jobs: { check: { ...job, if: condition } },
+    }).data
+    expect(workflow.jobs.check?.if).toBe(condition)
+    expect(collectWorkflowPolicyViolations({ workflow, policy })).toEqual([])
+  })
+
+  it.each([
+    `(${guard}) || github.event_name == 'pull_request'`,
+    `((${guard}) && github.ref != 'refs/heads/disabled') || true`,
+  ])('rejects a guard bypassable through OR: %s', (condition) => {
+    expect(() =>
+      ciWorkflow({
+        on: 'pull_request',
+        trustTier: 'public',
+        jobs: { check: { ...job, if: condition } },
+      }),
+    ).toThrow(rule)
+  })
+
+  it('admits push-only public fleet CI without changing job conditions', () => {
+    const workflow = ciWorkflow({ on: 'push', trustTier: 'public', jobs }).data
+    expect(workflow.jobs.check?.if).toBeUndefined()
+    expect(collectWorkflowPolicyViolations({ workflow, policy })).toEqual([])
+  })
+
+  it('guards the default fleet auto-review workflow', () => {
+    const workflow = autoReviewWorkflow().data
+    expect(workflow.jobs['request-review']?.if).toBe(guard)
+    expect(collectWorkflowPolicyViolations({ workflow, policy })).toEqual([])
+  })
+
+  it('does not add a job condition to Namespace auto-review workflows', () => {
+    const workflow = autoReviewWorkflow({
+      runner: 'namespace-profile-linux-x86-64',
+      policy: {
+        repository: 'example/project',
+        workflow: 'auto-review.yml',
+        admittedRunnerLabels: ['namespace-profile-linux-x86-64'],
+      },
+    }).data
+    expect(workflow.jobs['request-review']).not.toHaveProperty('if')
+  })
+
+  it('guards every fleet release job without weakening its existing event condition', () => {
+    const workflow = helperWorkflows.releaseWorkflow
+    const conditions = {
+      'create-release-pr':
+        "github.event_name == 'workflow_dispatch' && inputs.mode == 'create-release-pr'",
+      'validate-release-plan':
+        "github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && inputs.mode == 'validate-release-plan')",
+      'publish-release':
+        "github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.mode == 'publish-release')",
+    }
+    for (const [id, condition] of Object.entries(conditions)) {
+      expect(workflow.jobs[id]?.if).toBe(`(${guard}) && (${condition})`)
+    }
+    expect(collectWorkflowPolicyViolations({ workflow, policy })).toEqual([])
   })
 })
 

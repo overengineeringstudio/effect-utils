@@ -12,6 +12,7 @@ export type WorkflowPolicyRule =
   | 'docker-gha-cache'
   | 'runner-fallback'
   | 'runner-label-mix'
+  | 'fleet-pr-without-same-repo-guard'
 
 /** Stable, exact identity for an observed violation and its report-mode ledger entry. */
 export type WorkflowPolicyViolation = {
@@ -42,11 +43,12 @@ export type WorkflowPolicy = {
   readonly workflow: string
   readonly mode?: 'enforce' | 'report'
   readonly admittedRunnerLabels: readonly string[]
+  /** Runner labels whose fork-capable event jobs require the canonical same-repository guard. */
+  readonly sameRepoGuardRunnerLabels?: readonly string[]
   /** These labels must be the only label in an individual runner selection. */
   readonly exclusiveRunnerLabels?: readonly string[]
   readonly bannedHostedRunners?: boolean
   readonly bannedNamespaceRunners?: boolean
-  readonly banPullRequestTarget?: boolean
   readonly banDockerGhaCache?: boolean
   /** Action repository (optionally a subpath), without a ref; matches every ref and subpath. */
   readonly bannedActions?: readonly string[]
@@ -99,6 +101,7 @@ const rules: readonly WorkflowPolicyRule[] = [
   'docker-gha-cache',
   'runner-fallback',
   'runner-label-mix',
+  'fleet-pr-without-same-repo-guard',
 ]
 const neverExceptable: Partial<Record<WorkflowPolicyRule, true>> = {
   'hosted-runner': true,
@@ -109,6 +112,84 @@ const neverExceptable: Partial<Record<WorkflowPolicyRule, true>> = {
   'docker-gha-cache': true,
   'runner-fallback': true,
   'runner-label-mix': true,
+  'fleet-pr-without-same-repo-guard': true,
+}
+
+const forkCodeEvents: Readonly<Record<string, true>> = {
+  pull_request: true,
+  pull_request_review: true,
+  pull_request_review_comment: true,
+  workflow_run: true,
+  issue_comment: true,
+}
+
+/** Canonical fleet guard: PR/review and upstream-run heads must belong to this repository.
+ * Other events (including push/merge_group) pass. issue_comment has no authenticated head
+ * repository in its payload and is intentionally not admitted on fleet runners.
+ */
+export const sameRepoPullRequestGuard = (): string =>
+  "((github.event_name != 'pull_request' && github.event_name != 'pull_request_review' && github.event_name != 'pull_request_review_comment') || github.event.pull_request.head.repo.full_name == github.repository) && (github.event_name != 'workflow_run' || github.event.workflow_run.head_repository.full_name == github.repository) && github.event_name != 'issue_comment'"
+
+/** Scan only actual top-level operators; quoted strings and nested expressions cannot attest a guard. */
+const guardExpressionParts = (expression: string) => {
+  let depth = 0
+  let quote = ''
+  let start = 0
+  let outerClose = -1
+  let hasOr = false
+  const parts: string[] = []
+  for (let index = 0; index < expression.length; index++) {
+    const char = expression[index]!
+    if (quote !== '') {
+      if (char === quote) {
+        if (expression[index + 1] === quote) index++
+        else quote = ''
+      }
+      continue
+    }
+    if (char === "'" || char === '"') quote = char
+    else if (char === '(') depth++
+    else if (char === ')') {
+      depth--
+      if (depth < 0) return undefined
+      if (depth === 0 && outerClose === -1) outerClose = index
+    } else if (depth === 0 && expression.slice(index, index + 2) === '||') {
+      hasOr = true
+      index++
+    } else if (depth === 0 && expression.slice(index, index + 2) === '&&') {
+      parts.push(expression.slice(start, index).trim())
+      index++
+      start = index + 1
+    }
+  }
+  if (depth !== 0 || quote !== '') return undefined
+  parts.push(expression.slice(start).trim())
+  return { parts, hasOr, outerClose }
+}
+
+const unwrapGuardExpression = (value: string): string => {
+  let expression = value.trim()
+  while (expression.startsWith('(') === true) {
+    if (guardExpressionParts(expression)?.outerClose !== expression.length - 1) break
+    expression = expression.slice(1, -1).trim()
+  }
+  return expression
+}
+
+const hasSameRepoPullRequestGuard = (condition: string | undefined): boolean => {
+  if (condition === undefined) return false
+  const trimmed = condition.trim()
+  const expression = unwrapGuardExpression(
+    trimmed.startsWith('${{') === true && trimmed.endsWith('}}') === true
+      ? trimmed.slice(3, -2)
+      : trimmed,
+  )
+  const guard = sameRepoPullRequestGuard()
+  if (expression === guard) return true
+  const parsed = guardExpressionParts(expression)
+  return parsed !== undefined && parsed.hasOr === false && parsed.parts.length > 1 &&
+    parsed.parts.every((part) => part !== '') === true &&
+    parsed.parts.some((part) => unwrapGuardExpression(part) === guard) === true
 }
 
 /** Decode a checked-in JSON ledger without weakening its rule and identity types. */
@@ -217,6 +298,7 @@ export const collectWorkflowPolicyViolations = ({
   policy: WorkflowPolicy
 }): WorkflowPolicyViolation[] => {
   const violations: WorkflowPolicyViolation[] = []
+  const protectedRunnerJobs = new Set<string>()
   const add = ({
     job,
     rule,
@@ -235,6 +317,7 @@ export const collectWorkflowPolicyViolations = ({
       violations.push(violation)
   }
   const labelRules = ({ job, path, label }: { job: string; path: string; label: string }): void => {
+    if (policy.sameRepoGuardRunnerLabels?.includes(label) === true) protectedRunnerJobs.add(job)
     if (
       policy.bannedHostedRunners !== false &&
       /^(?:ubuntu-|macos-|windows-)|-latest$/i.test(label) === true
@@ -254,7 +337,7 @@ export const collectWorkflowPolicyViolations = ({
       : Array.isArray(workflow.on) === true
         ? workflow.on
         : Object.keys(workflow.on)
-  if (policy.banPullRequestTarget !== false && events.includes('pull_request_target') === true)
+  if (events.includes('pull_request_target') === true)
     add({
       job: '*',
       rule: 'pull-request-target',
@@ -324,6 +407,20 @@ export const collectWorkflowPolicyViolations = ({
       add({ job, rule: 'dynamic-runner', path, value: runner })
     }
     checkRunner({ runner: config['runs-on'], resolveMatrix: true })
+    if (
+      protectedRunnerJobs.has(job) === true &&
+      events.some((event) => forkCodeEvents[event] === true) === true &&
+      (events.includes('issue_comment') === true || hasSameRepoPullRequestGuard(config.if) === false)
+    ) {
+      add({
+        job,
+        rule: 'fleet-pr-without-same-repo-guard',
+        path: `jobs.${job}.if`,
+        value: events.includes('issue_comment') === true
+          ? 'issue_comment has no verifiable head repository'
+          : config.if ?? '(missing)',
+      })
+    }
     // Compare labels within each concrete selection, not across independent matrix jobs.
     const selections = matrixRows(config.strategy?.matrix) ?? [{}]
     for (const row of selections) {
@@ -501,6 +598,11 @@ export const validateWorkflowPolicy = ({
 }): void => {
   const violations = collectEffectiveWorkflowPolicyViolations({ workflow, policy })
   const issues: WorkflowPolicyIssue[] = []
+  for (const violation of violations) {
+    if (policy.mode === 'report' && (violation.rule === 'fleet-pr-without-same-repo-guard' || violation.rule === 'pull-request-target')) {
+      issues.push({ kind: 'VIOLATION', message: violationKey(violation), violation })
+    }
+  }
   if (policy.mode === 'report') {
     const actual = new Set(violations.map(violationKey))
     const expected = new Set((policy.ledger ?? []).map(violationKey))

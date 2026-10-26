@@ -4,6 +4,7 @@ import { githubWorkflow, type GitHubWorkflowArgs } from './mod.ts'
 import {
   collectWorkflowPolicyViolations,
   decodeWorkflowPolicyLedger,
+  sameRepoPullRequestGuard,
   validateWorkflowPolicy,
   WorkflowPolicyError,
   type WorkflowPolicy,
@@ -338,5 +339,92 @@ describe('githubWorkflow policy lifecycle', () => {
     input.jobs.test!['runs-on'] = 'unknown'
     expect(() => output.stringify(ctx)).toThrow(WorkflowPolicyError)
     expect(() => output.validate?.(ctx)).toThrow(WorkflowPolicyError)
+  })
+})
+
+describe('fleet fork-code admission', () => {
+  const guardedPolicy: WorkflowPolicy = {
+    ...policy,
+    sameRepoGuardRunnerLabels: ['pool-small', 'pool-heavy'],
+  }
+  const guard = sameRepoPullRequestGuard()
+  const prWorkflow = (): GitHubWorkflowArgs => ({ ...workflow(), on: 'pull_request' })
+
+  it.each(['pull_request', 'pull_request_review', 'pull_request_review_comment', 'workflow_run'] as const)(
+    'requires canonical same-repository ownership for %s',
+    (event) => {
+      const input = { ...workflow(), on: event }
+      expect(collect(input, guardedPolicy).map((entry) => entry.rule)).toContain('fleet-pr-without-same-repo-guard')
+      expect(() => validateWorkflowPolicy({ workflow: input, policy: guardedPolicy })).toThrow(WorkflowPolicyError)
+      input.jobs.test!.if = guard
+      expect(() => validateWorkflowPolicy({ workflow: input, policy: guardedPolicy })).not.toThrow()
+    },
+  )
+  it.each([
+    guard,
+    `\${{ ${guard} }}`,
+    `(${guard}) && (github.ref == 'refs/heads/main')`,
+    `(github.ref == 'refs/heads/main') && (${guard})`,
+    `\${{ ((${guard})) && (contains('a && b || c', 'b')) }}`,
+  ])('accepts only the full guard or a top-level conjunction: %s', (condition) => {
+    const input = prWorkflow()
+    input.jobs.test!.if = condition
+    expect(collect(input, guardedPolicy)).toEqual([])
+  })
+  it.each([
+    `(${guard}) || true`,
+    `true || (${guard})`,
+    `!(${guard})`,
+    `(${guard}) && false || true`,
+    `!((${guard}) && false)`,
+    "github.event.pull_request.head.repo.full_name == github.repository",
+    "github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository",
+  ])('rejects disjunction, negation and partial guard matches: %s', (condition) => {
+    const input = prWorkflow()
+    input.jobs.test!.if = condition
+    expect(collect(input, guardedPolicy).map((entry) => entry.rule)).toContain('fleet-pr-without-same-repo-guard')
+  })
+  it('protects finite matrices and typed admitted outputs', () => {
+    const matrix = prWorkflow()
+    matrix.jobs.test!['runs-on'] = '${{ matrix.runner }}'
+    matrix.jobs.test!.strategy = { matrix: { runner: ['linux', 'pool-small'] } }
+    expect(collect(matrix, guardedPolicy).map((entry) => entry.rule)).toContain('fleet-pr-without-same-repo-guard')
+    const output = prWorkflow()
+    output.jobs.test!['runs-on'] = '${{ needs.select.outputs.runner }}'
+    const outputPolicy = {
+      ...guardedPolicy,
+      admittedRunnerOutputs: [{ expression: '${{ needs.select.outputs.runner }}', labels: ['pool-small'] }],
+    }
+    expect(collect(output, outputPolicy).map((entry) => entry.rule)).toContain('fleet-pr-without-same-repo-guard')
+    output.jobs.test!.if = guard
+    expect(collect(output, outputPolicy)).toEqual([])
+  })
+  it('does not require a guard on non-fleet jobs or push-only workflows', () => {
+    expect(collect({ ...workflow('linux'), on: 'pull_request' }, guardedPolicy)).toEqual([])
+    expect(collect(workflow(), guardedPolicy)).toEqual([])
+  })
+  it('uses an event-specific guard that preserves push and merge_group in mixed workflows', () => {
+    expect(guard).toBe("((github.event_name != 'pull_request' && github.event_name != 'pull_request_review' && github.event_name != 'pull_request_review_comment') || github.event.pull_request.head.repo.full_name == github.repository) && (github.event_name != 'workflow_run' || github.event.workflow_run.head_repository.full_name == github.repository) && github.event_name != 'issue_comment'")
+    const mixed = { ...workflow(), on: ['push', 'merge_group', 'pull_request', 'workflow_run'] as const }
+    mixed.jobs.test!.if = guard
+    expect(collect(mixed, guardedPolicy)).toEqual([])
+  })
+  it('rejects issue_comment fleet jobs even with a guard because their payload cannot attest head ownership', () => {
+    const input = { ...workflow(), on: 'issue_comment' as const }
+    input.jobs.test!.if = guard
+    expect(collect(input, guardedPolicy).map((entry) => entry.rule)).toContain('fleet-pr-without-same-repo-guard')
+  })
+  it('cannot admit fork-code exposure through either a report ledger or an exception', () => {
+    const input = prWorkflow()
+    const ledger = collect(input, guardedPolicy)
+    expect(issueKinds(input, { ...guardedPolicy, mode: 'report', ledger })).toContain('VIOLATION')
+    expect(issueKinds(input, {
+      ...guardedPolicy,
+      exceptions: [{ ...exception, rule: 'fleet-pr-without-same-repo-guard' }],
+    })).toContain('INVALID_EXCEPTION')
+  })
+  it('cannot admit pull_request_target through a report ledger', () => {
+    const input = { ...workflow(), on: 'pull_request_target' as const }
+    expect(issueKinds(input, { ...guardedPolicy, mode: 'report', ledger: collect(input, guardedPolicy) })).toContain('VIOLATION')
   })
 })

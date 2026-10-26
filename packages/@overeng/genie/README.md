@@ -126,6 +126,20 @@ require an exact typed admission declaration with admitted possible labels.
 `linuxX64Runner` selects light work; `linuxX64HeavyRunner` is the dedicated
 heavy scale set and must never be combined with generic labels.
 
+Fleet jobs triggered by `pull_request`, `pull_request_review`,
+`pull_request_review_comment`, or `workflow_run` must use the exported
+`sameRepoPullRequestGuard()` as their job condition, alone or as a top-level
+conjunction with another condition. The canonical expression verifies the PR
+head repository or upstream run head repository, respectively, while allowing
+other events (including push and merge groups). OR, negated, and partial guards
+are rejected. Fleet `issue_comment` jobs are forbidden because that event
+does not establish a trusted head repository. `ciWorkflow` requires consumers
+to supply the guard explicitly; higher-level auto-review and release helpers
+add it when selecting fleet runners. Neither exceptions nor the report ledger
+can admit an unguarded fleet job or `pull_request_target`.
+This generator boundary assumes ephemeral runners, no persistent secrets, and
+repository-restricted runner groups; it does not verify infrastructure settings.
+
 Runner selection is explicit: `prReviewsResolvedJob`, `prSnapshotPackJob`,
 `prSnapshotReleaseJobs`, `plainFlakeJob` and its Cargo/genie wrappers require
 `runsOn: linuxX64Runner` (or another appropriate export from `runners.ts`).
@@ -143,8 +157,9 @@ by default, Python/Java/.NET require explicit caching, Node v5+ requires
 `package-manager-cache: false` plus no explicit cache, and Bun requires
 `no-cache: true`. Only exact `vN`, `vN.N`, or `vN.N.N` Node tags can select
 the pre-v5 contract; every other ref is conservatively treated as modern.
-Hosted runners, Namespace, storage, fallback, and mixed-heavy rules cannot
-be excepted. This repository explicitly uses report mode with the generated
+Hosted runners, Namespace, storage, fallback, mixed-heavy, `pull_request_target`,
+and same-repository guard rules cannot be excepted.
+This repository explicitly uses report mode with the generated
 `policy-migration-ledger.json`: new violations and stale entries both fail
 generation. The ledger is migration inventory, not an exception mechanism;
 it only shrinks and must eventually be empty. Remove resolved rows before

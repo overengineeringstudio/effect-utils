@@ -1,6 +1,10 @@
 /** Shared auto-review workflow: requests review from a human when an assistant opens a PR */
 
-import type { WorkflowPolicy } from '../packages/@overeng/genie/src/runtime/github-workflow/policy.ts'
+import { isFleetCacheRunner } from '../packages/@overeng/genie/src/runtime/github-workflow/cache-policy.ts'
+import {
+  sameRepoPullRequestGuard,
+  type WorkflowPolicy,
+} from '../packages/@overeng/genie/src/runtime/github-workflow/policy.ts'
 import { githubWorkflow } from '../packages/@overeng/genie/src/runtime/mod.ts'
 import {
   defaultActionlintConfig,
@@ -43,6 +47,7 @@ export const autoReviewWorkflow = ({
     jobs: {
       'request-review': {
         'runs-on': runner,
+        ...(isFleetCacheRunner(runner) === true ? { if: sameRepoPullRequestGuard() } : {}),
         'timeout-minutes': timeoutMinutes,
         steps: [
           linuxNixSandboxFallbackStep,

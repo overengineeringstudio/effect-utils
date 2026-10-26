@@ -32,6 +32,7 @@ export const fleetWorkflowPolicy = ({
   workflow,
   mode,
   admittedRunnerLabels: [...Object.values(fleetRunnerLabels), nixRunnerSelector],
+  sameRepoGuardRunnerLabels: Object.values(fleetRunnerLabels),
   exclusiveRunnerLabels: [fleetRunnerLabels.linuxX64Heavy],
   bannedActions: [
     'actions/upload-artifact',

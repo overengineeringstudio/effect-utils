@@ -15,6 +15,8 @@
  * sequences once the input shape and option naming have been reviewed.
  */
 
+import { isFleetCacheRunner } from '../../packages/@overeng/genie/src/runtime/github-workflow/cache-policy.ts'
+import { sameRepoPullRequestGuard } from '../../packages/@overeng/genie/src/runtime/github-workflow/policy.ts'
 import {
   githubWorkflow,
   type ActionlintConfig,
@@ -225,8 +227,16 @@ export const releaseWorkflow = (opts: ReleaseWorkflowOptions) => {
   //  - publish-release: read release plan + (optional) npm token fallback +
   //    repo-supplied publishSteps.
 
+  const jobCondition = (runner: WorkflowJob['runs-on'], condition: string): string =>
+    isFleetCacheRunner(runner) === true
+      ? `(${sameRepoPullRequestGuard()}) && (${condition})`
+      : condition
+
   const createReleasePrJob: WorkflowJob = {
-    if: "github.event_name == 'workflow_dispatch' && inputs.mode == 'create-release-pr'",
+    if: jobCondition(
+      opts.runsOn.createReleasePr,
+      "github.event_name == 'workflow_dispatch' && inputs.mode == 'create-release-pr'",
+    ),
     'runs-on': opts.runsOn.createReleasePr,
     permissions: {
       actions: 'write',
@@ -243,7 +253,10 @@ export const releaseWorkflow = (opts: ReleaseWorkflowOptions) => {
   }
 
   const validateReleasePlanJob: WorkflowJob = {
-    if: "github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && inputs.mode == 'validate-release-plan')",
+    if: jobCondition(
+      opts.runsOn.validateReleasePlan,
+      "github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && inputs.mode == 'validate-release-plan')",
+    ),
     'runs-on': opts.runsOn.validateReleasePlan,
     defaults: bashShellDefaults,
     steps: [
@@ -257,7 +270,10 @@ export const releaseWorkflow = (opts: ReleaseWorkflowOptions) => {
   }
 
   const publishReleaseJob: WorkflowJob = {
-    if: "github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.mode == 'publish-release')",
+    if: jobCondition(
+      opts.runsOn.publishRelease,
+      "github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.mode == 'publish-release')",
+    ),
     'runs-on': opts.runsOn.publishRelease,
     permissions: {
       contents: 'write',
