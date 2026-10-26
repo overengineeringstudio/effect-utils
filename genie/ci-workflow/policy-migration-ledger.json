@@ -580,22 +580,6 @@
     {
       "repository": "overengineeringstudio/effect-utils",
       "workflow": "ci.yml",
-      "job": "notify-alignment",
-      "rule": "dynamic-runner",
-      "path": "jobs.notify-alignment.runs-on",
-      "value": "namespace-profile-linux-x86-64;github.run-id=${{ github.run_id }};job.priority=4"
-    },
-    {
-      "repository": "overengineeringstudio/effect-utils",
-      "workflow": "ci.yml",
-      "job": "promote-published",
-      "rule": "dynamic-runner",
-      "path": "jobs.promote-published.runs-on",
-      "value": "namespace-profile-linux-x86-64;github.run-id=${{ github.run_id }};job.priority=1"
-    },
-    {
-      "repository": "overengineeringstudio/effect-utils",
-      "workflow": "ci.yml",
       "job": "pipeline-traces",
       "rule": "runner-fallback",
       "path": "jobs.pipeline-traces.runs-on",

@@ -14,6 +14,7 @@ import {
   ciOtelSpansSummaryStep,
   prepareCiScriptsStep,
   notifyAlignmentJob,
+  dispatchAlignmentStep,
   preparePinnedDevenvStep,
   prepareCiOtelSpoolStep,
   installNixStep,
@@ -1271,17 +1272,23 @@ const extraJobs: Record<string, any> = {
   },
   'promote-published': {
     needs: ['publish-products', 'consumer-smoke'],
-    if: publishedRefIf,
-    'runs-on': namespaceRunner({
-      profile: 'namespace-profile-linux-x86-64',
-      runId: '${{ github.run_id }}',
-      privileged: 'never',
-      priority: deliveryJobPriority,
-    }),
+    if: `(${publishedRefIf}) && (${sameRepoPullRequestGuard()})`,
+    'runs-on': linuxX64Runner,
     'timeout-minutes': 5,
     permissions: { contents: 'read' },
     defaults: bashShellDefaults,
-    steps: [checkoutStep(), ...publishedRefSteps],
+    steps: [
+      checkoutStep(),
+      ...publishedRefSteps.map((step) =>
+        'run' in step
+          ? {
+              ...step,
+              shell:
+                'nix shell nixpkgs#gh nixpkgs#git --command bash --noprofile --norc -e -o pipefail {0}',
+            }
+          : step,
+      ),
+    ],
   },
   'publish-products': {
     if: trustedSecretCiIf,
@@ -2109,15 +2116,16 @@ const allCiJobs: Record<string, any> = {
     ...notifyAlignmentJob({
       targetRepo: 'schickling/megarepo-all',
       needs: ['tested-tree', 'quality', ...Object.keys(deployJobs)],
-      runner: namespaceRunner({
-        profile: 'namespace-profile-linux-x86-64',
-        runId: '${{ github.run_id }}',
-        privileged: 'never',
-        priority: backgroundJobPriority,
-      }),
+      runner: linuxX64Runner,
     }),
+    steps: [
+      {
+        ...dispatchAlignmentStep({ targetRepo: 'schickling/megarepo-all' }),
+        shell: 'nix shell nixpkgs#curl --command bash --noprofile --norc -e -o pipefail {0}',
+      },
+    ],
     // Optional lookup failures permit authoritative quality fallback; publication must succeed.
-    if: `\${{ !cancelled() && github.ref == 'refs/heads/main' && github.event_name == 'push' && (needs.quality.result == 'success' || needs.tested-tree.outputs.tested == 'true') && ${Object.keys(
+    if: `\${{ (${sameRepoPullRequestGuard()}) && !cancelled() && github.ref == 'refs/heads/main' && github.event_name == 'push' && (needs.quality.result == 'success' || needs.tested-tree.outputs.tested == 'true') && ${Object.keys(
       deployJobs,
     )
       .map((id) => `needs['${id}'].result == 'success'`)

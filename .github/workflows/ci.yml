@@ -6377,10 +6377,10 @@ jobs:
       group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || 'code') }}-deploy-storybooks"
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') }}
   notify-alignment:
-    runs-on: ['namespace-profile-linux-x86-64;github.run-id=${{ github.run_id }};job.priority=4']
+    runs-on: [sh-linux-x64, nix]
     timeout-minutes: 30
     needs: [tested-tree, quality, deploy-storybooks]
-    if: ${{ !cancelled() && github.ref == 'refs/heads/main' && github.event_name == 'push' && (needs.quality.result == 'success' || needs.tested-tree.outputs.tested == 'true') && needs['deploy-storybooks'].result == 'success' }}
+    if: ${{ ((github.event_name == 'push' || github.event_name == 'merge_group' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') || ((github.event_name == 'pull_request' || github.event_name == 'pull_request_review' || github.event_name == 'pull_request_review_comment') && github.event.pull_request.head.repo.full_name == github.repository) || (github.event_name == 'workflow_run' && github.event.workflow_run.head_repository.full_name == github.repository)) && !cancelled() && github.ref == 'refs/heads/main' && github.event_name == 'push' && (needs.quality.result == 'success' || needs.tested-tree.outputs.tested == 'true') && needs['deploy-storybooks'].result == 'success' }}
     steps:
       - id: linux-nix-sandbox-policy
         name: Disable Linux Nix sandbox fallback
@@ -6405,7 +6405,7 @@ jobs:
             --header "Authorization: Bearer ${GH_TOKEN}" \
             --header "X-GitHub-Api-Version: 2022-11-28" \
             --data "$payload"
-        shell: bash
+        shell: 'nix shell nixpkgs#curl --command bash --noprofile --norc -e -o pipefail {0}'
     env:
       FORCE_SETUP: '1'
       CI: 'true'
@@ -6416,8 +6416,8 @@ jobs:
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') }}
   promote-published:
     needs: [publish-products, consumer-smoke]
-    if: github.repository == 'overengineeringstudio/effect-utils' && github.event_name == 'push' && github.ref == 'refs/heads/main' && needs['publish-products'].result == 'success' && needs['consumer-smoke'].result == 'success' && needs['publish-products'].outputs.current-sha == github.sha && needs['consumer-smoke'].outputs.current-sha == github.sha
-    runs-on: ['namespace-profile-linux-x86-64;github.run-id=${{ github.run_id }};job.priority=1']
+    if: (github.repository == 'overengineeringstudio/effect-utils' && github.event_name == 'push' && github.ref == 'refs/heads/main' && needs['publish-products'].result == 'success' && needs['consumer-smoke'].result == 'success' && needs['publish-products'].outputs.current-sha == github.sha && needs['consumer-smoke'].outputs.current-sha == github.sha) && ((github.event_name == 'push' || github.event_name == 'merge_group' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') || ((github.event_name == 'pull_request' || github.event_name == 'pull_request_review' || github.event_name == 'pull_request_review_comment') && github.event.pull_request.head.repo.full_name == github.repository) || (github.event_name == 'workflow_run' && github.event.workflow_run.head_repository.full_name == github.repository))
+    runs-on: [sh-linux-x64, nix]
     timeout-minutes: 5
     permissions:
       contents: read
@@ -6504,6 +6504,7 @@ jobs:
           fi
           echo "::error::Failed to advance published to $GITHUB_SHA after 3 push attempts"
           exit 1
+        shell: 'nix shell nixpkgs#gh nixpkgs#git --command bash --noprofile --norc -e -o pipefail {0}'
     env:
       FORCE_SETUP: '1'
       CI: 'true'
