@@ -38,7 +38,10 @@ const data = {
   }),
 }
 
-/** Imports enforce exact ledger membership before regeneration: additions cannot self-admit. */
+/** Eager imports reject new/security debt. Current observations automatically omit
+ * resolved rows; genie --check detects that stale file through normal freshness.
+ * Regenerate with genie:run, never edit ledger rows by hand.
+ */
 export default createGenieOutput({
   data,
   stringify: () => JSON.stringify(data, undefined, 2) + '\n',

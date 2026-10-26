@@ -302,14 +302,14 @@ describe('exceptions and exact report ledger', () => {
       }),
     ).toContain('INVALID_EXCEPTION')
   })
-  it('requires exact ledger equality: NEW, STALE, matching, changed value', () => {
+  it('rejects new report debt while allowing regeneration to remove stale ledger rows', () => {
     const input = workflow('legacy-runner')
     const ledger = collect(input)
     expect(issueKinds(input, { ...policy, mode: 'report', ledger: [] })).toEqual(['NEW'])
-    expect(issueKinds(workflow(), { ...policy, mode: 'report', ledger })).toEqual(['STALE'])
+    expect(issueKinds(workflow(), { ...policy, mode: 'report', ledger })).toEqual([])
     expect(issueKinds(input, { ...policy, mode: 'report', ledger })).toEqual([])
     expect(issueKinds(workflow('different-runner'), { ...policy, mode: 'report', ledger })).toEqual(
-      ['NEW', 'STALE'],
+      ['NEW'],
     )
   })
   it('decodes ledger JSON and rejects invalid rule and field types', () => {

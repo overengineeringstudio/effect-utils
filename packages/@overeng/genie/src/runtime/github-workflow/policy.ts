@@ -77,7 +77,7 @@ export type WorkflowPolicy = {
 
 /** Structured admission or report-ledger failure. */
 export type WorkflowPolicyIssue = {
-  readonly kind: 'VIOLATION' | 'NEW' | 'STALE' | 'INVALID_EXCEPTION' | 'INVALID_POLICY'
+  readonly kind: 'VIOLATION' | 'NEW' | 'INVALID_EXCEPTION' | 'INVALID_POLICY'
   readonly message: string
   readonly violation?: WorkflowPolicyViolation
 }
@@ -875,7 +875,7 @@ export const collectEffectiveWorkflowPolicyViolations = ({
   )
 }
 
-/** Enforce policy or compare its effective observations with the exact report ledger. */
+/** Enforce policy or reject new report-mode debt. Generated ledger freshness detects removals. */
 export const validateWorkflowPolicy = ({
   workflow,
   policy,
@@ -896,14 +896,10 @@ export const validateWorkflowPolicy = ({
     }
   }
   if (policy.mode === 'report') {
-    const actual = new Set(violations.map(violationKey))
     const expected = new Set((policy.ledger ?? []).map(violationKey))
     for (const violation of violations)
       if (expected.has(violationKey(violation)) === false)
         issues.push({ kind: 'NEW', message: violationKey(violation), violation })
-    for (const violation of policy.ledger ?? [])
-      if (actual.has(violationKey(violation)) === false)
-        issues.push({ kind: 'STALE', message: violationKey(violation), violation })
   } else {
     for (const violation of violations)
       issues.push({ kind: 'VIOLATION', message: violationKey(violation), violation })

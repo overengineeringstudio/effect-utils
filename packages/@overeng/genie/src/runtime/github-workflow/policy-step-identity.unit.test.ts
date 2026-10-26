@@ -46,8 +46,8 @@ const identifiedUploads: Step[] = [
   { id: 'upload-results', name: 'Upload artifact', uses: 'actions/upload-artifact@v4' },
 ]
 
-// Exercise the collector and report-mode validator, not just helper output: a
-// repaired violation must leave one stale entry rather than re-keying survivors.
+// Exercise collector identity and report-mode subset admission: resolved debt
+// disappears from the generated ledger without manufacturing NEW survivors.
 describe('stable workflow policy step identities', () => {
   it.each([
     { kind: 'named', steps: namedUploads },
@@ -59,9 +59,7 @@ describe('stable workflow policy step identities', () => {
 
     const remaining = steps.slice(1)
     expect(collect(remaining)).toEqual(ledger.slice(1))
-    const issues = reportIssues(remaining, ledger)
-    expect(issues.map((issue) => issue.kind)).toEqual(['STALE'])
-    expect(issues[0]?.violation).toEqual(ledger[0])
+    expect(reportIssues(remaining, ledger)).toEqual([])
   })
 
   it('removes same-name uploads at different refs without manufacturing new debt', () => {
@@ -73,7 +71,7 @@ describe('stable workflow policy step identities', () => {
     expect(ledger).toHaveLength(2)
     const remaining = steps.slice(1)
     expect(collect(remaining)[0]?.value).toBe('actions/upload-artifact@v4')
-    expect(reportIssues(remaining, ledger).map((issue) => issue.kind)).toEqual(['STALE'])
+    expect(reportIssues(remaining, ledger)).toEqual([])
     expect(reportIssues(remaining, ledger.slice(0, 1))).toEqual([])
   })
 
@@ -220,17 +218,12 @@ describe('stable workflow policy step identities', () => {
     expect(collectWorkflowPolicyViolations({ workflow: remaining, policy: actionPolicy })).toEqual(
       ledger.slice(1),
     )
-    try {
+    expect(() =>
       validateWorkflowPolicy({
         workflow: remaining,
         policy: { ...actionPolicy, mode: 'report', ledger },
-      })
-      expect.fail('Expected the removed action to leave a stale ledger entry')
-    } catch (error) {
-      if (!(error instanceof WorkflowPolicyError)) throw error
-      expect(error.issues.map((issue) => issue.kind)).toEqual(['STALE'])
-      expect(error.issues[0]?.violation).toEqual(ledger[0])
-    }
+      }),
+    ).not.toThrow()
   })
 
   it.each([
@@ -256,7 +249,7 @@ describe('stable workflow policy step identities', () => {
       expect.fail('Expected an action replacement to require a new ledger entry')
     } catch (error) {
       if (!(error instanceof WorkflowPolicyError)) throw error
-      expect(error.issues.map((issue) => issue.kind)).toEqual(['NEW', 'STALE'])
+      expect(error.issues.map((issue) => issue.kind)).toEqual(['NEW'])
     }
   })
 
@@ -272,10 +265,9 @@ describe('stable workflow policy step identities', () => {
     expect(ledger).toHaveLength(2)
     expect(ledger[0]?.path).not.toBe(ledger[1]?.path)
     expect(collect(steps.slice(1))).toEqual(ledger.slice(1))
-    expect(reportIssues(steps.slice(1), ledger).map((issue) => issue.kind)).toEqual(['STALE'])
+    expect(reportIssues(steps.slice(1), ledger)).toEqual([])
     expect(reportIssues(steps.slice(1), ledger.slice(0, 1)).map((issue) => issue.kind)).toEqual([
       'NEW',
-      'STALE',
     ])
   })
 
