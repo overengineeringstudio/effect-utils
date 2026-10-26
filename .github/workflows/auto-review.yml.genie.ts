@@ -14,7 +14,7 @@ export default githubWorkflow({
     'request-review': {
       ...workflow.jobs['request-review'],
       steps: workflow.jobs['request-review'].steps.map((step) =>
-        step.name.startsWith('Request review')
+        step.name.startsWith('Request review') === true
           ? {
               ...step,
               shell: 'nix shell nixpkgs#curl --command bash --noprofile --norc -e -o pipefail {0}',
