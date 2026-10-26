@@ -266,6 +266,11 @@
       "description": "@overeng/genie package · Set: manual"
     },
     {
+      "name": "system:genie-fractal",
+      "color": "a371f7",
+      "description": "@overeng/genie-fractal package · Set: manual"
+    },
+    {
       "name": "system:genie-smalltalk",
       "color": "a371f7",
       "description": "@overeng/genie-smalltalk package · Set: manual"

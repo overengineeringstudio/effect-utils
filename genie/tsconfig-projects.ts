@@ -25,6 +25,7 @@ import effectRustFixtureConsumerTsconfig from '../packages/@overeng/effect-rust-
 import effectRustTsconfig from '../packages/@overeng/effect-rust/tsconfig.json.genie.ts'
 import effectSchemaFormAriaTsconfig from '../packages/@overeng/effect-schema-form-aria/tsconfig.json.genie.ts'
 import effectSchemaFormTsconfig from '../packages/@overeng/effect-schema-form/tsconfig.json.genie.ts'
+import genieFractalTsconfig from '../packages/@overeng/genie-fractal/tsconfig.json.genie.ts'
 import genieSmalltalkTsconfig from '../packages/@overeng/genie-smalltalk/tsconfig.json.genie.ts'
 import type { GenieOutput, TSConfigArgs } from '../packages/@overeng/genie/src/runtime/mod.ts'
 import genieTsconfig from '../packages/@overeng/genie/tsconfig.json.genie.ts'
@@ -147,6 +148,8 @@ const rootWorkspaceTsconfigProjects = (() => {
     'packages/@overeng/effect-schema-form': { tsconfig: effectSchemaFormTsconfig },
     'packages/@overeng/effect-schema-form-aria': { tsconfig: effectSchemaFormAriaTsconfig },
     'packages/@overeng/genie': { tsconfig: genieTsconfig },
+    'packages/@overeng/genie-fractal': { tsconfig: genieFractalTsconfig },
+    // arn:lmig:smalltalk:2026-10-26-genie-fractal-alias — temporary compatibility project.
     'packages/@overeng/genie-smalltalk': { tsconfig: genieSmalltalkTsconfig },
     'packages/@overeng/gh-ci-utils': { tsconfig: ghCiUtilsTsconfig },
     'packages/@overeng/kdl': { tsconfig: kdlTsconfig },

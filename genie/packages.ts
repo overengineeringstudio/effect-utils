@@ -32,6 +32,8 @@ export const internalPackages = [
   'effect-schema-form',
   'effect-schema-form-aria',
   'genie',
+  'genie-fractal',
+  // arn:lmig:smalltalk:2026-10-26-genie-fractal-alias — temporary compatibility package.
   'genie-smalltalk',
   'gh-ci-utils',
   'kdl',

@@ -1,6 +1,6 @@
 # Human gate isolated-daemon acceptance
 
-This plan covers the q161 human-gate edges for DSL-authored `kind: 'human'` gates. It is checked against native Smalltalk revision [`d5e230201e6593a1aac00f9ff8929d0132faab49`](https://github.com/compoundingtech/smalltalk/tree/d5e230201e6593a1aac00f9ff8929d0132faab49) (abbreviated `d5e2302` below). Only behavior that the native daemon implements is tested. Blocked edges are listed here; there are no skipped placeholder tests that pretend to cover them.
+This plan covers the q161 human-gate edges for DSL-authored `kind: 'human'` gates. It is checked against native Fractal revision [`d5e230201e6593a1aac00f9ff8929d0132faab49`](https://github.com/compoundingtech/smalltalk/tree/d5e230201e6593a1aac00f9ff8929d0132faab49) (abbreviated `d5e2302` below). Only behavior that the native daemon implements is tested. Blocked edges are listed here; there are no skipped placeholder tests that pretend to cover them.
 
 ## Fixture boundary
 
@@ -54,7 +54,7 @@ pinned fixture binary explicitly; do not substitute it for the production binary
 NIX_CONFIG='builders =' ST_BIN=/path/to/production-st \
   ST_FIXTURE_BIN=/path/to/d5e2302-test-support/bin/st3-fixture \
   gate-slot --class gate -- devenv shell -- \
-  bash -c 'cd packages/@overeng/genie-smalltalk && vitest run src/mod.unit.test.ts'
+  bash -c 'cd packages/@overeng/genie-fractal && vitest run src/mod.unit.test.ts'
 ```
 
 This runs the pure/type authoring assertions, round-trip and four real
