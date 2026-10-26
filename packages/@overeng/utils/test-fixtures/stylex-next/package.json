@@ -20,5 +20,5 @@
     "babel-loader": "10.1.1",
     "typescript": "5.9.3"
   },
-  "packageManager": "pnpm@12.7.0"
+  "packageManager": "pnpm@12.15.0"
 }

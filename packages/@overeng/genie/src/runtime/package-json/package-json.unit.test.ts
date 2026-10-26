@@ -1669,7 +1669,7 @@ describe('packageJson.aggregateFromPackages', () => {
     expect(result.data).toEqual({
       name: 'my-monorepo',
       private: true,
-      packageManager: 'pnpm@12.7.0',
+      packageManager: 'pnpm@12.15.0',
       workspaces: ['packages/app', 'packages/utils'],
     })
     expect(typeof result.stringify).toBe('function')
@@ -1691,7 +1691,7 @@ describe('packageJson.aggregateFromPackages', () => {
     })
     expect(parsed.name).toBe('my-monorepo')
     expect(parsed.private).toBe(true)
-    expect(parsed.packageManager).toBe('pnpm@12.7.0')
+    expect(parsed.packageManager).toBe('pnpm@12.15.0')
     expect(parsed.workspaces).toEqual(['packages/app', 'packages/utils'])
   })
 

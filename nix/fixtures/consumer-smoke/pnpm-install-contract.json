@@ -4,7 +4,7 @@
     "allowBuilds": {},
     "packageManager": {
       "name": "pnpm",
-      "version": "12.7.0"
+      "version": "12.15.0"
     }
   },
   "installPolicy": {
@@ -12,7 +12,7 @@
   },
   "packageManager": {
     "name": "pnpm",
-    "version": "12.7.0"
+    "version": "12.15.0"
   },
   "schemaVersion": 2,
   "storeContract": {
