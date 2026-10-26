@@ -4,6 +4,7 @@ import { lstat, open, realpath, stat } from 'node:fs/promises'
 import { constants as osConstants } from 'node:os'
 import { basename, dirname, resolve } from 'node:path'
 
+import { NodeStream } from '@effect/platform-node'
 import { Clock, Context, Effect, Option, Schedule, Schema, Stream } from 'effect'
 import type { PlatformError } from 'effect/PlatformError'
 import * as Command from 'effect/process/ChildProcess'
@@ -49,11 +50,10 @@ export const resolveGitCommonDir = Effect.fnUntraced(
       { cwd: absolute, stdout: 'pipe', stderr: 'pipe' },
     ).pipe(
       Effect.flatMap((child) =>
-        Effect.all([
-          Stream.runCollect(child.stdout),
-          Stream.runCollect(child.stderr),
-          child.exitCode,
-        ]),
+        Effect.all(
+          [Stream.runCollect(child.stdout), Stream.runCollect(child.stderr), child.exitCode],
+          { concurrency: 'unbounded' },
+        ),
       ),
       Effect.scoped,
     )
@@ -180,6 +180,12 @@ export interface GitWriterProcess {
  * Effect's spawner cannot inherit an existing descriptor. Writers use this narrow
  * adapter so fd3 retains the SAME open-file-description lock after mr is killed,
  * until the actual writer exits. Unlocked commands keep the standard spawner.
+ *
+ * Every descendant (remote helpers, transport commands such as `ext::`, a git
+ * wrapper's real git) inherits fd3 and therefore co-owns the lock. Piped writers
+ * run in their own process group, like Effect's spawner, so interruption signals
+ * the whole group and the lock is released once the group is gone. Interactive
+ * (`inheritStdio`) writers stay in the caller's group to keep the terminal.
  */
 export const startGitWriterProcess = Effect.fnUntraced(
   function* ({
@@ -208,8 +214,10 @@ export const startGitWriterProcess = Effect.fnUntraced(
     }
     // Native spawn is required solely for numeric fd inheritance, unavailable in
     // ChildProcess.CommandOptions. No shell parsing or command rewriting occurs.
+    const detached = inheritStdio === false
     const child = spawn(command, args, {
       cwd,
+      detached,
       ...(env === undefined ? {} : { env: { ...process.env, ...env } }),
       stdio: [
         inheritStdio === true ? 'inherit' : 'pipe',
@@ -226,11 +234,26 @@ export const startGitWriterProcess = Effect.fnUntraced(
     })
     // Install rejection handling immediately, even while stdout is being consumed.
     void exited.catch(() => undefined)
+    const signal = (name: NodeJS.Signals) => {
+      if (detached === true && child.pid !== undefined) {
+        try {
+          process.kill(-child.pid, name)
+          return
+        } catch {
+          // The group is already gone; fall through to the direct child.
+        }
+      }
+      child.kill(name)
+    }
     yield* Effect.addFinalizer(() =>
       Effect.promise(async () => {
-        if (child.exitCode !== null || child.signalCode !== null) return
-        child.kill('SIGTERM')
-        const escalation = setTimeout(() => child.kill('SIGKILL'), 1_000)
+        if (child.exitCode !== null || child.signalCode !== null) {
+          // A lock-holding descendant may outlive the direct child.
+          if (detached === true) signal('SIGKILL')
+          return
+        }
+        signal('SIGTERM')
+        const escalation = setTimeout(() => signal('SIGKILL'), 1_000)
         escalation.unref()
         try {
           await exited.catch(() => undefined)
@@ -239,21 +262,24 @@ export const startGitWriterProcess = Effect.fnUntraced(
         }
       }),
     )
+    // Async-iterator `return()` queues behind a pending `next()`, so interrupting a
+    // reader blocked on a silent pipe never settles and the child is never killed.
+    // `NodeStream.fromReadable` destroys the readable on interruption instead.
     const result: GitWriterProcess = {
       stdout:
         child.stdout === null
           ? Stream.empty
-          : Stream.fromAsyncIterable<Uint8Array, GitWriterLockError>(
-              child.stdout,
-              (cause) => new GitWriterLockError({ path: command, cause }),
-            ),
+          : NodeStream.fromReadable<Uint8Array, GitWriterLockError>({
+              evaluate: () => child.stdout!,
+              onError: (cause) => new GitWriterLockError({ path: command, cause }),
+            }),
       stderr:
         child.stderr === null
           ? Stream.empty
-          : Stream.fromAsyncIterable<Uint8Array, GitWriterLockError>(
-              child.stderr,
-              (cause) => new GitWriterLockError({ path: command, cause }),
-            ),
+          : NodeStream.fromReadable<Uint8Array, GitWriterLockError>({
+              evaluate: () => child.stderr!,
+              onError: (cause) => new GitWriterLockError({ path: command, cause }),
+            }),
       exitCode: io(command)(() => exited),
     }
     return result

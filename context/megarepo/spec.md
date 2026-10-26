@@ -97,6 +97,22 @@ and the reason tags such as `jq-1.6` classify correctly. Phase 2 is a
 heuristic fallback when the repo cannot answer: 40-char hex ⇒ commit; a
 semver-like pattern (bare or prefixed) ⇒ tag; otherwise branch.
 
+### Store fetch
+
+A store fetch refreshes branch heads only:
+`git fetch --no-tags --prune origin +refs/heads/*:refs/remotes/origin/*`.
+It never fetches all tags; a ref the caller is about to resolve (a member's
+pinned ref, the `--ref`/`--base` of `mr store worktree new`) that is not a known
+branch or a commit SHA is also fetched as exactly that tag with a forced
+refspec (`+refs/tags/<ref>:refs/tags/<ref>`). The remote is the source of truth
+for tags in a cache store, so an upstream tag move updates the local tag. When
+the remote has no such tag, the fetch falls back to branches only.
+
+Fetches hold the repository's writer lock. Network commands carry a deadline
+(`MEGAREPO_GIT_NETWORK_TIMEOUT_MS`, default 10 minutes); on expiry or interruption
+the writer's whole process group is terminated, so transport helpers that
+inherited the lock descriptor release it too.
+
 ### Store liveness, hygiene, and GC
 
 `mr store status` reports bare-store configuration issues once per repository
@@ -276,7 +292,7 @@ mounts, dist overlays, per-workspace capability projection, and a synthesized
 Buck root — is retired (principal q5, 2026-09-25).
 
 By default, `mr store worktree new` bootstraps a missing bare repository and
-fetches remote refs (including tags). For source-only branch work from objects
+fetches it as described in [Store fetch](#store-fetch). For source-only branch work from objects
 already in the store, use
 `mr store worktree new owner/repo --no-fetch --ref feature/local --base <full-commit-sha>`.
 `--no-fetch` requires an existing bare repository and a full 40-character SHA

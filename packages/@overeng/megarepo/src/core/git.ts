@@ -260,11 +260,13 @@ const runGitCommand = ({
         ...(env === undefined ? {} : { env }),
       })
 
-      // Concat is one O(n) allocation per stream; per-chunk spreading is O(n²).
-      const [stdoutChunks, stderrChunks] = yield* Effect.all([
-        Stream.runCollect(process.stdout),
-        Stream.runCollect(process.stderr),
-      ])
+      // Both pipes MUST drain concurrently: git blocks writing a full stderr pipe
+      // (e.g. one ref-update line per fetched tag) and never closes stdout, so a
+      // sequential drain deadlocks. Concat is one O(n) allocation per stream.
+      const [stdoutChunks, stderrChunks] = yield* Effect.all(
+        [Stream.runCollect(process.stdout), Stream.runCollect(process.stderr)],
+        { concurrency: 'unbounded' },
+      )
       const stdout = decodeChunks(stdoutChunks)
       const stderr = decodeChunks(stderrChunks)
       const exitCode = yield* process.exitCode
@@ -902,17 +904,57 @@ export const cloneBare = (args: { url: string; targetPath: string }) =>
   )
 
 /**
- * Fetch all refs from remote in a bare repo
- * Includes tags and prunes stale refs
+ * Refresh a bare store repo from its remote.
+ *
+ * Fetches branch heads into `refs/remotes/origin/*` (pruning deleted branches) and, for each
+ * name in `refs` that may be a tag, exactly that tag with a forced refspec: the remote is the
+ * source of truth for tags in a cache store, so an upstream tag move updates the local tag
+ * instead of failing with "would clobber existing tag". A name the remote has no tag for
+ * (e.g. a branch not fetched yet) falls back to the branch-only fetch.
+ *
+ * It never fetches all tags: `--tags` (and default tag auto-following) advertises, wants and
+ * writes every tag on each fetch, which on repositories with tens of thousands of tags turns a
+ * no-op refresh into a long, lock-holding transfer.
  */
-export const fetchBare = (args: { repoPath: string; remote?: string }) =>
+export const fetchBare = (args: {
+  repoPath: string
+  remote?: string
+  /** Refs the caller resolves after the fetch (pinned ref, worktree ref, branch base). */
+  refs?: ReadonlyArray<string>
+}) =>
   Effect.gen(function* () {
     const remote = args.remote ?? 'origin'
-    yield* runGitCommandWithRetry({
-      args: ['fetch', '--tags', '--prune', remote],
+    const branches = ['fetch', '--no-tags', '--prune', remote, bareOriginFetchRefspec]
+    // Tag candidates: not a commit SHA, not a refspec pattern, and not already a known
+    // branch, so the common branch pin costs no extra ref negotiation.
+    const tags = yield* Effect.filter(
+      [...new Set(args.refs ?? [])].filter(
+        (ref) =>
+          ref.length > 0 &&
+          /^[0-9a-f]{40}$/iu.test(ref) === false &&
+          /[*:^~?[\\\s]|\.\.|^-/u.test(ref) === false,
+      ),
+      (ref) =>
+        refExists({ repoPath: args.repoPath, ref: `refs/remotes/origin/${ref}` }).pipe(
+          Effect.map((isBranch) => isBranch === false),
+        ),
+    )
+    if (tags.length === 0) {
+      return yield* runGitCommandWithRetry({ args: branches, cwd: args.repoPath })
+    }
+    return yield* runGitCommandWithRetry({
+      args: [...branches, ...tags.map((tag) => `+refs/tags/${tag}:refs/tags/${tag}`)],
       cwd: args.repoPath,
-    })
+    }).pipe(
+      Effect.catchIf(
+        (error) =>
+          error instanceof GitCommandError &&
+          error.stderr.includes("couldn't find remote ref refs/tags/"),
+        () => runGitCommandWithRetry({ args: branches, cwd: args.repoPath }),
+      ),
+    )
   }).pipe(
+    Effect.asVoid,
     withGitWriterLock({ path: args.repoPath }),
     Observability.withRepoPathSpan({ name: 'git/fetch-bare', path: args.repoPath }),
   )

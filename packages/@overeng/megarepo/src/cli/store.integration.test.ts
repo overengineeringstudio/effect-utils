@@ -1717,10 +1717,14 @@ describe('mr store worktree new', () => {
               ],
               env: { MEGAREPO_STORE: fixture.storePath },
             })
-            expect(defaultResult.exitCode).toBe(1)
+            // The default path fetches branches only, so the moved upstream tag no longer
+            // fails it ("would clobber existing tag") and the unrequested local tag stays.
+            expect(defaultResult.exitCode).toBe(0)
             expect(yield* Git.refExists({ repoPath: bare, ref: 'refs/heads/default-fetch' })).toBe(
-              false,
+              true,
             )
+            expect(yield* fs.readFileString(`${bare}FETCH_HEAD`)).not.toBe(fetchHeadBefore)
+            expect(yield* Git.resolveRef({ repoPath: bare, ref: 'refs/tags/edge' })).toBe(base)
           }
         },
         Effect.provide(NodeServices.layer),
