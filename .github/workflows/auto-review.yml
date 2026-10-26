@@ -12,7 +12,8 @@ permissions:
 
 jobs:
   request-review:
-    runs-on: ['namespace-profile-linux-x86-64;github.run-id=${{ github.run_id }};job.priority=4']
+    runs-on: [sh-linux-x64, nix]
+    if: (github.event_name == 'push' || github.event_name == 'merge_group' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') || ((github.event_name == 'pull_request' || github.event_name == 'pull_request_review' || github.event_name == 'pull_request_review_comment') && github.event.pull_request.head.repo.full_name == github.repository) || (github.event_name == 'workflow_run' && github.event.workflow_run.head_repository.full_name == github.repository)
     timeout-minutes: 30
     steps:
       - id: linux-nix-sandbox-policy
@@ -34,3 +35,4 @@ jobs:
             --header "Authorization: Bearer ${GH_TOKEN}" \
             --header "X-GitHub-Api-Version: 2022-11-28" \
             --data '{"reviewers":["schickling"]}'
+        shell: 'nix shell nixpkgs#curl --command bash --noprofile --norc -e -o pipefail {0}'
