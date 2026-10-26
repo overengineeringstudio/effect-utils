@@ -135,6 +135,13 @@ Runner selection is explicit: `prReviewsResolvedJob`, `prSnapshotPackJob`,
 
 The central `policy-exceptions.json` requires exact repository, workflow,
 job, and rule plus owner, approver, justification, expiry, and tracking issue.
+Each workflow receives only its own repository/workflow entries. The complete
+repository census uses `validateFleetPolicyExceptionRegistry` to reject stale
+or unmatched entries; the own-workflow ledger generator runs that census.
+Setup-action cache controls follow their cited upstream manifests: Go caches
+by default, Python/Java/.NET require explicit caching, Node v5+ requires
+`package-manager-cache: false` plus no explicit cache, and Bun requires
+`no-cache: true`. Unknown Node refs are conservatively treated as modern.
 Hosted runners, Namespace, storage, fallback, and mixed-heavy rules cannot
 be excepted. This repository explicitly uses report mode with the generated
 `policy-migration-ledger.json`: new violations and stale entries both fail

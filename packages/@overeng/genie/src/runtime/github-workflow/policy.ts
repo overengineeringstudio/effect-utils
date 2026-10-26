@@ -55,6 +55,10 @@ export type WorkflowPolicy = {
     readonly action: string
     readonly input: string
     readonly defaultEnabled: boolean
+    /** Numeric action refs older than this major do not have this cache control. */
+    readonly minimumMajor?: number
+    /** Boolean opt-out controls must explicitly equal this value to disable caching. */
+    readonly enabledUnless?: 'false' | 'true'
   }[]
   /** Explicit finite output contracts; only exact needs.<job>.outputs.<name> expressions qualify. */
   readonly admittedRunnerOutputs?: readonly {
@@ -375,13 +379,22 @@ export const collectWorkflowPolicyViolations = ({
         add({ job, rule: 'banned-action', path: `${stepPath}.uses`, value: step.uses })
       for (const cache of policy.setupActionCaches ?? []) {
         if (matchesAction({ uses: step.uses, action: cache.action }) === false) continue
+        const major = /^v?(\d+)(?:\.|$)/.exec(step.uses.split('@')[1] ?? '')
+        if (
+          cache.minimumMajor !== undefined &&
+          major !== null &&
+          Number(major[1]) < cache.minimumMajor
+        )
+          continue
         const value = step.with?.[cache.input]
         const enabled =
-          value === undefined
-            ? cache.defaultEnabled
-            : value !== false &&
-              String(value).trim() !== '' &&
-              String(value).trim().toLowerCase() !== 'false'
+          cache.enabledUnless !== undefined
+            ? value === undefined || String(value).trim().toLowerCase() !== cache.enabledUnless
+            : value === undefined
+              ? cache.defaultEnabled
+              : value !== false &&
+                String(value).trim() !== '' &&
+                String(value).trim().toLowerCase() !== 'false'
         if (enabled === true)
           add({
             job,
@@ -450,7 +463,7 @@ export const validateWorkflowPolicy = ({
       exception.workflow === policy.workflow &&
       (exception.job === '*'
         ? exception.rule === 'pull-request-target'
-        : Object.hasOwn(workflow.jobs, exception.job) === true) &&
+        : exception.job.trim() !== '') &&
       rules.includes(exception.rule) === true &&
       neverExceptable[exception.rule] !== true &&
       policy.neverExceptableRules?.includes(exception.rule) !== true &&

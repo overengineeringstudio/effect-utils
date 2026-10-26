@@ -7,7 +7,7 @@ import storybookPreviewBuild from '../../.github/workflows/storybook-preview-bui
 import storybookPreviewDeploy from '../../.github/workflows/storybook-preview-deploy.yml.genie.ts'
 import { createGenieOutput } from '../../packages/@overeng/genie/src/runtime/core.ts'
 import { collectWorkflowPolicyViolations } from '../../packages/@overeng/genie/src/runtime/github-workflow/policy.ts'
-import { fleetWorkflowPolicy } from './policy.ts'
+import { fleetWorkflowPolicy, validateFleetPolicyExceptionRegistry } from './policy.ts'
 
 const workflows = {
   'auto-review.yml': autoReview,
@@ -18,6 +18,13 @@ const workflows = {
   'storybook-preview-build.yml': storybookPreviewBuild,
   'storybook-preview-deploy.yml': storybookPreviewDeploy,
 }
+
+validateFleetPolicyExceptionRegistry({
+  repository: 'overengineeringstudio/effect-utils',
+  workflows: Object.fromEntries(
+    Object.entries(workflows).map(([name, output]) => [name, output.data]),
+  ),
+})
 
 const data = {
   source: 'policy-migration-ledger.json.genie.ts',

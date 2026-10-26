@@ -19,7 +19,8 @@ const policy: WorkflowPolicy = {
   bannedActions: ['actions/cache', 'vendor/forbidden'],
   setupActionCaches: [
     { action: 'actions/setup-node', input: 'cache', defaultEnabled: false },
-    { action: 'actions/setup-python', input: 'cache', defaultEnabled: true },
+    { action: 'actions/setup-python', input: 'cache', defaultEnabled: false },
+    { action: 'actions/setup-go', input: 'cache', defaultEnabled: true },
   ],
 }
 const workflow = (runner: string | string[] = 'pool-small'): GitHubWorkflowArgs => ({
@@ -200,7 +201,7 @@ describe('workflow policy triggers and actions', () => {
   it.each([false, 'false', '', ' FALSE '])(
     'allows explicitly disabled caches %j including default-enabled actions',
     (cache) => {
-      for (const action of ['actions/setup-node', 'actions/setup-python'])
+      for (const action of ['actions/setup-node', 'actions/setup-python', 'actions/setup-go'])
         expect(collect(stepWorkflow(`${action}@v5`, { cache }))).toEqual([])
     },
   )
@@ -214,7 +215,8 @@ describe('workflow policy triggers and actions', () => {
   )
   it('uses configurable omitted-input defaults', () => {
     expect(collect(stepWorkflow('actions/setup-node@v5'))).toEqual([])
-    expect(collect(stepWorkflow('actions/setup-python@v5')).map((entry) => entry.rule)).toContain(
+    expect(collect(stepWorkflow('actions/setup-python@v6'))).toEqual([])
+    expect(collect(stepWorkflow('actions/setup-go@v6')).map((entry) => entry.rule)).toContain(
       'setup-action-cache',
     )
   })
@@ -250,7 +252,6 @@ describe('exceptions and exact report ledger', () => {
   it.each([
     { repository: 'other/repository' },
     { workflow: 'other.yml' },
-    { job: 'other' },
     { owner: '' },
     { approver: '' },
     { justification: '' },

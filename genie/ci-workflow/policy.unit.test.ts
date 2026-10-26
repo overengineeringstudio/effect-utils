@@ -5,6 +5,8 @@ import { isFleetCacheRunner } from '../../packages/@overeng/genie/src/runtime/gi
 import type { GitHubWorkflowArgs } from '../../packages/@overeng/genie/src/runtime/github-workflow/mod.ts'
 import {
   collectWorkflowPolicyViolations,
+  validateWorkflowPolicy,
+  type WorkflowPolicyException,
   type WorkflowPolicyRule,
 } from '../../packages/@overeng/genie/src/runtime/github-workflow/policy.ts'
 import { defaultRefPolicyCheckJob } from '../ci-workflow.ts'
@@ -27,7 +29,7 @@ import {
   mergeQueueSemanticGateJobs,
 } from './merge-queue.ts'
 import { pipelineCloseJob, withPipelineTelemetry } from './pipeline-telemetry.ts'
-import { fleetWorkflowPolicy } from './policy.ts'
+import { fleetWorkflowPolicy, validateFleetPolicyExceptionRegistry } from './policy.ts'
 import { prReviewsResolvedJob, prReviewsResolvedJobId } from './pr-reviews.ts'
 import { prSnapshotPackJob, prSnapshotReleaseJobs } from './pr-snapshot.ts'
 import { releaseWorkflow } from './release.ts'
@@ -307,5 +309,151 @@ describe('shared helper fleet policy', () => {
     expect(
       collectWorkflowPolicyViolations({ workflow, policy }).map((violation) => violation.rule),
     ).toContain('runner-fallback')
+  })
+})
+
+describe('upstream setup-action cache contracts', () => {
+  const setupViolations = (uses: string, inputs: Record<string, string | boolean> = {}) =>
+    collectWorkflowPolicyViolations({
+      workflow: fixtureWorkflow({ jobs: { check: { ...job, steps: [{ uses, with: inputs }] } } }),
+      policy,
+    }).filter((violation) => violation.rule === 'setup-action-cache')
+
+  it.each(['v5', 'v6', 'v6.1.0', '0123456789abcdef0123456789abcdef01234567'])(
+    'requires explicit automatic Node cache opt-out at %s',
+    (ref) => {
+      expect(setupViolations(`actions/setup-node@${ref}`)).toHaveLength(1)
+      expect(setupViolations(`actions/setup-node@${ref}`, { cache: '' })).toHaveLength(1)
+      for (const disabled of [false, 'false']) {
+        expect(
+          setupViolations(`actions/setup-node@${ref}`, { 'package-manager-cache': disabled }),
+        ).toEqual([])
+        expect(
+          setupViolations(`actions/setup-node@${ref}`, {
+            'package-manager-cache': disabled,
+            cache: '',
+          }),
+        ).toEqual([])
+        expect(
+          setupViolations(`actions/setup-node@${ref}`, {
+            'package-manager-cache': disabled,
+            cache: 'npm',
+          }),
+        ).toHaveLength(1)
+      }
+      expect(
+        setupViolations(`actions/setup-node@${ref}`, { 'package-manager-cache': '' }),
+      ).toHaveLength(1)
+      expect(
+        setupViolations(`actions/setup-node@${ref}`, {
+          'package-manager-cache': '${{ inputs.cache }}',
+        }),
+      ).toHaveLength(1)
+    },
+  )
+  it('preserves the pre-v5 Node explicit-cache-only contract', () => {
+    expect(setupViolations('actions/setup-node@v4')).toEqual([])
+    expect(setupViolations('actions/setup-node@v4', { cache: 'npm' })).toHaveLength(1)
+  })
+  it.each(['actions/setup-python@v6', 'actions/setup-java@v5', 'actions/setup-dotnet@v5'])(
+    '%s does not cache unless requested',
+    (uses) => {
+      expect(setupViolations(uses)).toEqual([])
+      expect(setupViolations(uses, { cache: '' })).toEqual([])
+      expect(setupViolations(uses, { cache: false })).toEqual([])
+      expect(setupViolations(uses, { cache: 'package-manager' })).toHaveLength(1)
+    },
+  )
+  it('requires explicit Go cache opt-out', () => {
+    expect(setupViolations('actions/setup-go@v6')).toHaveLength(1)
+    expect(setupViolations('actions/setup-go@v6', { cache: false })).toEqual([])
+    expect(setupViolations('actions/setup-go@v6', { cache: true })).toHaveLength(1)
+  })
+  it('requires the actual Bun executable-cache opt-out', () => {
+    expect(setupViolations('oven-sh/setup-bun@v2')).toHaveLength(1)
+    expect(setupViolations('oven-sh/setup-bun@v2', { cache: false })).toHaveLength(1)
+    expect(setupViolations('oven-sh/setup-bun@v2', { 'no-cache': false })).toHaveLength(1)
+    expect(setupViolations('oven-sh/setup-bun@v2', { 'no-cache': true })).toEqual([])
+    expect(setupViolations('oven-sh/setup-bun@v2', { 'no-cache': 'true' })).toEqual([])
+    expect(
+      setupViolations('oven-sh/setup-bun@v2', { 'no-cache': '${{ inputs.disable }}' }),
+    ).toHaveLength(1)
+  })
+})
+
+describe('central exception scoping', () => {
+  const repository = 'example/project'
+  const exceptionEntries: readonly WorkflowPolicyException[] = [
+    {
+      repository,
+      workflow: 'one.yml',
+      job: 'check',
+      rule: 'runner-not-admitted',
+      owner: 'maintainer',
+      approver: 'reviewer',
+      justification: 'Temporary selector migration',
+      expiry: '9999-12-31',
+      trackingIssue: 'https://github.com/example/project/issues/1',
+    },
+    {
+      repository,
+      workflow: 'two.yml',
+      job: 'other',
+      rule: 'runner-not-admitted',
+      owner: 'maintainer',
+      approver: 'reviewer',
+      justification: 'Temporary selector migration',
+      expiry: '9999-12-31',
+      trackingIssue: 'https://github.com/example/project/issues/2',
+    },
+    {
+      repository: 'other/project',
+      workflow: 'one.yml',
+      job: 'elsewhere',
+      rule: 'runner-not-admitted',
+      owner: 'maintainer',
+      approver: 'reviewer',
+      justification: 'Unrelated repository',
+      expiry: '9999-12-31',
+      trackingIssue: 'https://github.com/other/project/issues/1',
+    },
+  ]
+  const workflows = {
+    'one.yml': fixtureWorkflow({ jobs: { check: { ...job, 'runs-on': 'temporary-one' } } }),
+    'two.yml': fixtureWorkflow({ jobs: { other: { ...job, 'runs-on': 'temporary-two' } } }),
+  }
+
+  it('admits each workflow using only its own repository/workflow exceptions', () => {
+    for (const [workflow, value] of Object.entries(workflows)) {
+      const scoped = fleetWorkflowPolicy({ repository, workflow, exceptionEntries })
+      expect(scoped.exceptions).toHaveLength(1)
+      expect(() => validateWorkflowPolicy({ workflow: value, policy: scoped })).not.toThrow()
+    }
+    expect(() =>
+      validateFleetPolicyExceptionRegistry({ repository, workflows, exceptionEntries }),
+    ).not.toThrow()
+  })
+  it('reports unmatched or stale entries only against the full repository census', () => {
+    const clean = fixtureWorkflow({ jobs })
+    expect(() =>
+      validateWorkflowPolicy({
+        workflow: clean,
+        policy: fleetWorkflowPolicy({ repository, workflow: 'two.yml', exceptionEntries }),
+      }),
+    ).not.toThrow()
+    expect(() =>
+      validateFleetPolicyExceptionRegistry({
+        repository,
+        workflows: { ...workflows, 'two.yml': clean },
+        exceptionEntries,
+      }),
+    ).toThrow(/Stale or unmatched exception/)
+    expect(() =>
+      validateFleetPolicyExceptionRegistry({
+        repository,
+        workflows: { 'one.yml': workflows['one.yml'] },
+        exceptionEntries,
+      }),
+    ).toThrow(/two.yml/)
   })
 })
