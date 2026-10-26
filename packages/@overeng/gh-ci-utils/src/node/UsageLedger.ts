@@ -26,6 +26,61 @@ const commands: Readonly<Record<string, true>> = {
   auth: true,
 }
 
+const staticRouteSegments: Readonly<Record<string, true>> = {
+  repos: true,
+  repositories: true,
+  orgs: true,
+  users: true,
+  user: true,
+  app: true,
+  installations: true,
+  access_tokens: true,
+  graphql: true,
+  search: true,
+  actions: true,
+  runs: true,
+  jobs: true,
+  logs: true,
+  artifacts: true,
+  workflows: true,
+  rerun: true,
+  'rerun-failed-jobs': true,
+  cancel: true,
+  dispatches: true,
+  attempts: true,
+  issues: true,
+  pulls: true,
+  comments: true,
+  reviews: true,
+  commits: true,
+  compare: true,
+  'check-runs': true,
+  'check-suites': true,
+  annotations: true,
+  checks: true,
+  steps: true,
+  backscroll: true,
+  commit: true,
+  job: true,
+  git: true,
+  refs: true,
+  ref: true,
+  branches: true,
+  contents: true,
+  tags: true,
+  releases: true,
+  environments: true,
+  runners: true,
+  'runner-groups': true,
+  labels: true,
+  teams: true,
+  members: true,
+  collaborators: true,
+  permissions: true,
+  rate_limit: true,
+  statuses: true,
+}
+
 /** Only path structure is retained; query parameters never enter the ledger. */
 export const usageRoute = (url: URL): string => {
   const parts = url.pathname.split('/')
@@ -38,14 +93,31 @@ export const usageRoute = (url: URL): string => {
     parts[1] = '{owner}'
     parts[2] = '{repo}'
   }
+  let redactTail = false
   return parts
-    .map((part) =>
-      /^\d+$/.test(part) ||
-      /^[a-f0-9]{32,40}$/i.test(part) ||
-      /^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(part)
-        ? '{id}'
-        : part,
-    )
+    .map((part, index) => {
+      const previous = parts[index - 1]
+      if (
+        previous === 'refs' ||
+        previous === 'ref' ||
+        previous === 'branches' ||
+        previous === 'contents' ||
+        previous === 'tags' ||
+        previous === 'compare'
+      )
+        redactTail = true
+      if (part === '' || part === '{owner}' || part === '{repo}') return part
+      if (/^\d+$/.test(part)) return '{id}'
+      if (
+        redactTail === true ||
+        previous === 'environments' ||
+        previous === 'workflows' ||
+        previous === 'commits' ||
+        previous === 'commit'
+      )
+        return '{param}'
+      return Object.hasOwn(staticRouteSegments, part) ? part : '{param}'
+    })
     .join('/')
 }
 
@@ -116,7 +188,13 @@ const makeUsageLedger = Effect.fn('UsageLedger.make')(function* (authKind: 'gh-c
       if (prune === true) retentionStarted = true
       const write = Effect.gen(function* () {
         yield* fs.makeDirectory(dirname(path), { recursive: true })
-        yield* fs.writeFileString(path, `${encode(row)}\n`, { flag: 'a', mode: 0o600 })
+        yield* Effect.scoped(
+          Effect.gen(function* () {
+            const file = yield* fs.open(path, { flag: 'a', mode: 0o600 })
+            // One O_APPEND write per row, also when independent CLI processes share a file.
+            yield* file.write(new TextEncoder().encode(`${encode(row)}\n`))
+          }),
+        )
         if (prune === true) {
           const cutoff = new Date(`${day}T00:00:00.000Z`).getTime() - 14 * 86400000
           for (const name of yield* fs.readDirectory(directory)) {

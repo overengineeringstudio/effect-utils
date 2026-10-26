@@ -213,11 +213,12 @@ const makeGitHubClient = Effect.fn('github-client.make')(function* (options: Git
   const GITHUB_GRAPHQL_URL = new URL('/graphql', apiBase).href
   const spawner = yield* ChildProcessSpawner
   const auth = yield* GitHubAuthConfigTag
-  const ledger = yield* UsageLedger.pipe(
-    Effect.provide(UsageLedger.layer(auth._tag === 'github-app' ? 'app' : 'gh-cli')),
-  )
-  const rawHttpClient = ledger.wrap(yield* HttpClient.HttpClient)
-  const httpClient = rawHttpClient.pipe(HttpClient.withScope)
+  const transport = yield* HttpClient.HttpClient
+  const ledger = yield* UsageLedger.pipe(Effect.provide(UsageLedger.layer('app')))
+  const cliLedger = yield* UsageLedger.pipe(Effect.provide(UsageLedger.layer('gh-cli')))
+  const rawHttpClient = ledger.wrap(transport)
+  // This transport is selected only by the branches that obtain `getCliToken`.
+  const httpClient = cliLedger.wrap(transport).pipe(HttpClient.withScope)
   const fs = yield* FileSystem.FileSystem
   /** REST bucket, as reported by `api.github.com` REST responses. */
   const rateLimitRef = yield* Ref.make<Option.Option<RateLimitInfo>>(Option.none())

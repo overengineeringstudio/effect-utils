@@ -9,7 +9,10 @@ endpoint class (`core`, `graphql`, `search`, or `actions`), HTTP method, templat
 route, response status, authentication kind, and CLI subcommand when known.
 Rate-limit resource and remaining count are included when supplied by GitHub.
 Transport failures have a null status. Tokens, other headers, bodies, and query
-strings are never recorded; repository owners/names and numeric IDs are templated.
+strings are never recorded. Only an allowlist of static route segments is kept;
+owners, repository names, numeric IDs, refs, SHAs, file paths, and other dynamic
+segments are templated. Authentication kind follows the actual token source,
+including `gh-cli` when an App-configured client falls back to the local CLI token.
 
 `agent` is `FRACTAL_AGENT`, falling back to `ST_AGENT`, or null if neither is set.
 If both variables are set but differ, `agent` is null and `agentConflict: true`
@@ -24,3 +27,5 @@ manages retention.
 
 Writes are asynchronous, serialized, append-only, and best-effort: filesystem
 failures do not fail requests, and produce at most one warning per process.
+Each row uses one append-mode write, allowing independent processes to append
+without interleaving rows. Orderly CLI shutdown drains queued writes before exit.

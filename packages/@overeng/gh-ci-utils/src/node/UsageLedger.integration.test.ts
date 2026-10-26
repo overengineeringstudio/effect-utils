@@ -2,6 +2,8 @@ import { NodeServices } from '@effect/platform-node'
 import { describe, it } from '@effect/vitest'
 import { Effect, FileSystem, Layer, Logger, Schema } from 'effect'
 import { HttpClient, HttpClientRequest, HttpClientResponse } from 'effect/http'
+import * as ChildProcess from 'effect/process/ChildProcess'
+import { ChildProcessSpawner } from 'effect/process/ChildProcessSpawner'
 import { expect } from 'vitest'
 
 import { flushUsageLedger, UsageLedger, usageLedgerLayer } from './UsageLedger.ts'
@@ -9,6 +11,7 @@ import { flushUsageLedger, UsageLedger, usageLedgerLayer } from './UsageLedger.t
 const decode = Schema.decodeUnknownSync(
   Schema.fromJsonString(Schema.Array(Schema.Record(Schema.String, Schema.Unknown))),
 )
+const encodeString = Schema.encodeSync(Schema.fromJsonString(Schema.String))
 const fakeClient = HttpClient.make((request) =>
   Effect.succeed(
     HttpClientResponse.fromWeb(
@@ -59,6 +62,81 @@ const fixture = Effect.gen(function* () {
 })
 
 describe('GitHub usage ledger', () => {
+  it.live('redacts refs, SHAs, contents, names and unknown path segments', () =>
+    Effect.gen(function* () {
+      const { client, readRows } = yield* fixture
+      for (const path of [
+        '/repos/acme/project/git/refs/heads/secret-topic/secret-branch',
+        '/repos/acme/project/git/ref/heads/secret-topic',
+        '/repos/acme/project/branches/actions/runs',
+        '/repos/acme/project/commits/abcdef0123456789abcdef0123456789abcdef0123',
+        '/repos/acme/project/contents/secret-folder/secret-roadmap.md',
+        '/repos/acme/project/releases/tags/secret-release',
+        '/repos/acme/project/environments/actions',
+        '/repos/acme/project/actions/workflows/secret-workflow.yml/runs',
+        '/secret-endpoint/secret-value/123?secret-query=secret-value',
+      ])
+        yield* client.get(`https://api.github.com${path}`)
+      const { rows, raw } = yield* readRows
+      expect(rows.map((row) => row.route)).toEqual([
+        '/repos/{owner}/{repo}/git/refs/{param}/{param}/{param}',
+        '/repos/{owner}/{repo}/git/ref/{param}/{param}',
+        '/repos/{owner}/{repo}/branches/{param}/{param}',
+        '/repos/{owner}/{repo}/commits/{param}',
+        '/repos/{owner}/{repo}/contents/{param}/{param}',
+        '/repos/{owner}/{repo}/releases/tags/{param}',
+        '/repos/{owner}/{repo}/environments/{param}',
+        '/repos/{owner}/{repo}/actions/workflows/{param}/runs',
+        '/{param}/{param}/{id}',
+      ])
+      expect(raw).not.toContain('secret-')
+      expect(raw).not.toContain('abcdef0123456789')
+    }).pipe(Effect.provide(NodeServices.layer)),
+  )
+
+  it.live(
+    'appends complete rows from two processes and drains the last queued rows before exit',
+    () =>
+      Effect.gen(function* () {
+        const { fs, directory, readRows } = yield* fixture
+        const spawner = yield* ChildProcessSpawner
+        const script = `${directory}/writer.mjs`
+        yield* fs.writeFileString(
+          script,
+          `
+import { Effect } from ${encodeString(import.meta.resolve('effect'))}
+import { NodeServices } from ${encodeString(import.meta.resolve('@effect/platform-node'))}
+import { UsageLedger, flushUsageLedger } from ${encodeString(new URL('./UsageLedger.ts', import.meta.url).href)}
+await Effect.runPromise(Effect.gen(function* () {
+  const ledger = yield* UsageLedger.pipe(Effect.provide(UsageLedger.layer('app')))
+  for (let index = 0; index < 100; index++) {
+    yield* ledger.observe({ method: process.argv[2], path: '/app/installations/123/access_tokens', status: 201 })
+  }
+}).pipe(Effect.provide(NodeServices.layer), Effect.ensuring(flushUsageLedger)))
+process.exit(0)
+`,
+        )
+        const codes = yield* Effect.forEach(
+          ['GET', 'POST'],
+          (method) => spawner.exitCode(ChildProcess.make(process.execPath, [script, method])),
+          { concurrency: 2 },
+        )
+        expect(codes).toEqual([0, 0])
+        const { rows, raw } = yield* readRows
+        expect(raw.split('\n')).toHaveLength(201)
+        expect(rows).toHaveLength(200)
+        expect(rows.filter((row) => row.method === 'GET')).toHaveLength(100)
+        expect(rows.filter((row) => row.method === 'POST')).toHaveLength(100)
+        expect(
+          rows.every(
+            (row) =>
+              row.schemaVersion === 1 && row.route === '/app/installations/{id}/access_tokens',
+          ),
+        ).toBe(true)
+      }).pipe(Effect.provide(NodeServices.layer)),
+    { timeout: 30_000 },
+  )
+
   it.live('records isolated App token exchange observations in the same ledger', () =>
     Effect.gen(function* () {
       const { readRows } = yield* fixture

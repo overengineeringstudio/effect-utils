@@ -1,4 +1,5 @@
-import { Effect, Layer, Logger, Stream } from 'effect'
+import { NodeServices } from '@effect/platform-node'
+import { Effect, FileSystem, Layer, Logger, Schema, Stream } from 'effect'
 import { HttpClient, HttpClientResponse } from 'effect/http'
 import * as ChildProcess from 'effect/process/ChildProcess'
 import { ChildProcessSpawner } from 'effect/process/ChildProcessSpawner'
@@ -6,6 +7,7 @@ import { describe, expect, it } from 'vitest'
 
 import { GitHubAuthConfigTag } from '../src/node/Config.ts'
 import { GitHubClient } from '../src/node/GitHubClient.ts'
+import { flushUsageLedger } from '../src/node/UsageLedger.ts'
 
 /**
  * `gh auth token` is the only child process this path spawns, so every other
@@ -75,27 +77,55 @@ const runFallbackScenario = async (repos: readonly string[]) => {
     { mergeWithExisting: false },
   )
 
-  await Effect.gen(function* () {
+  const ledgerRows = await Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem
+    const directory = yield* fs.makeTempDirectoryScoped()
+    const previous = process.env.GH_CI_UTILS_USAGE_LEDGER
+    yield* Effect.addFinalizer(() =>
+      Effect.sync(() => {
+        if (previous === undefined) delete process.env.GH_CI_UTILS_USAGE_LEDGER
+        else process.env.GH_CI_UTILS_USAGE_LEDGER = previous
+      }),
+    )
+    const ledgerPath = `${directory}/usage.jsonl`
+    process.env.GH_CI_UTILS_USAGE_LEDGER = ledgerPath
     const client = yield* GitHubClient
     yield* Effect.forEach(
       repos,
       (repo) => client.listWorkflowRunsByStatus({ repo, status: 'completed' }),
       { concurrency: 'unbounded' },
     )
+    yield* flushUsageLedger
+    const raw = yield* fs.readFileString(ledgerPath)
+    return yield* Schema.decodeEffect(
+      Schema.fromJsonString(
+        Schema.Array(Schema.Struct({ authKind: Schema.Literals(['app', 'gh-cli']) })),
+      ),
+    )(`[${raw.trim().split('\n').join(',')}]`)
   }).pipe(
     Effect.provide(
-      GitHubClient.Default.pipe(
-        Layer.provide(Layer.mergeAll(spawnerLayer, httpLayer, authLayer)),
-        Layer.provideMerge(loggerLayer),
+      Layer.mergeAll(
+        NodeServices.layer,
+        GitHubClient.Default.pipe(
+          Layer.provide(Layer.mergeAll(spawnerLayer, httpLayer, authLayer)),
+          Layer.provideMerge(loggerLayer),
+        ),
       ),
     ),
+    Effect.scoped,
     Effect.runPromise,
   )
 
-  return { commands, authorizations, warnings }
+  return { commands, authorizations, warnings, ledgerRows }
 }
 
 describe('CLI-token fallback for owners without an App installation', () => {
+  it('records gh-cli for the credential actually used despite App configuration', async () => {
+    const { ledgerRows } = await runFallbackScenario(['external-org/external-repo'])
+    expect(ledgerRows).toHaveLength(1)
+    expect(ledgerRows[0]?.authKind).toBe('gh-cli')
+  })
+
   it('spawns `gh auth token` once for concurrent requests, and sends it trimmed', async () => {
     const { commands, authorizations } = await runFallbackScenario([
       'external-org/external-repo-a',
