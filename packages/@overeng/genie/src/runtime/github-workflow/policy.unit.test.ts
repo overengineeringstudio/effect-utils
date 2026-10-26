@@ -611,3 +611,109 @@ describe('fleet fork-code admission', () => {
     }
   })
 })
+
+describe('runner matrix provenance (#2143)', () => {
+  const matrixPolicy: WorkflowPolicy = { ...policy, sameRepoGuardRunnerLabels: ['pool-small'] }
+  const fixture = (matrix: unknown): GitHubWorkflowArgs => ({
+    ...workflow('${{ matrix.runner }}'),
+    on: 'pull_request',
+    jobs: {
+      test: {
+        ...workflow().jobs.test!,
+        'runs-on': '${{ matrix.runner }}',
+        if: sameRepoPullRequestGuard(),
+        strategy: {
+          matrix: matrix as NonNullable<
+            NonNullable<GitHubWorkflowArgs['jobs'][string]['strategy']>['matrix']
+          >,
+        },
+      },
+    },
+  })
+  it.each([
+    { label: 'issue repro', matrix: '${{ fromJSON(github.event.pull_request.title) }}' },
+    { label: 'caller input matrix', matrix: '${{ fromJSON(inputs.matrix) }}' },
+    { label: 'environment matrix', matrix: '${{ fromJSON(env.MATRIX) }}' },
+    { label: 'step-derived matrix', matrix: '${{ fromJSON(steps.select.outputs.matrix) }}' },
+    { label: 'unadmitted output', matrix: '${{ fromJSON(needs.plan.outputs.matrix) }}' },
+    {
+      label: 'axis expression',
+      matrix: { runner: '${{ fromJSON(github.event.pull_request.title) }}' },
+    },
+    { label: 'axis value expression', matrix: { runner: ['${{ inputs.runner }}'] } },
+    {
+      label: 'include expression',
+      matrix: { runner: ['pool-small'], include: '${{ fromJSON(inputs.rows) }}' },
+    },
+    { label: 'include row expression', matrix: { include: ['${{ fromJSON(inputs.row) }}'] } },
+    {
+      label: 'include value expression',
+      matrix: { include: [{ runner: '${{ inputs.runner }}' }] },
+    },
+    {
+      label: 'exclude expression',
+      matrix: {
+        runner: ['pool-small'],
+        exclude: '${{ fromJSON(github.event.pull_request.title) }}',
+      },
+    },
+    {
+      label: 'exclude value expression',
+      matrix: { runner: ['pool-small'], exclude: [{ runner: '${{ env.RUNNER }}' }] },
+    },
+    { label: 'missing referenced key', matrix: { os: ['pool-small'] } },
+    { label: 'missing referenced key in include', matrix: { include: [{ os: 'pool-small' }] } },
+    {
+      label: 'circular matrix source',
+      matrix: { runner: '${{ matrix.other }}', other: ['pool-small'] },
+    },
+  ])('hard-rejects $label independently of the report ledger', ({ matrix }) => {
+    const input = fixture(matrix)
+    const violations = collect(input, matrixPolicy)
+    expect(violations.map((entry) => entry.rule)).toContain('fork-controlled-runner')
+    expect(issueKinds(input, { ...matrixPolicy, mode: 'report', ledger: violations })).toContain(
+      'VIOLATION',
+    )
+  })
+  it.each([
+    { runner: ['pool-small'] },
+    { include: [{ runner: 'pool-small' }] },
+    { runner: ['pool-small'], include: [{ runner: 'pool-small', flavor: 'extra' }], exclude: [] },
+  ])('continues to admit statically resolved runner rows: %j', (matrix) => {
+    expect(collect(fixture(matrix), matrixPolicy)).toEqual([])
+  })
+  it.each([
+    '${{ fromJSON(vars.RUNNER_MATRIX) }}',
+    { runner: '${{ fromJSON(vars.RUNNERS) }}' },
+    { runner: ['${{ github.repository }}'] },
+    { runner: ['pool-small'], include: '${{ fromJSON(vars.INCLUDE_ROWS) }}' },
+    { runner: ['pool-small'], exclude: '${{ fromJSON(vars.EXCLUDE_ROWS) }}' },
+  ])('retains dynamic-runner debt, not fork taint, for trusted sources: %j', (matrix) => {
+    expect(collect(fixture(matrix), matrixPolicy).map((entry) => entry.rule)).not.toContain(
+      'fork-controlled-runner',
+    )
+  })
+  it('allows a dynamic matrix only through an exact admitted output contract', () => {
+    const expression = '${{ fromJSON(needs.plan.outputs.matrix) }}'
+    const input = fixture(expression)
+    const admitted: WorkflowPolicy = {
+      ...matrixPolicy,
+      admittedRunnerOutputs: [{ expression, labels: ['pool-small'] }],
+    }
+    expect(collect(input, admitted).map((entry) => entry.rule)).not.toContain(
+      'fork-controlled-runner',
+    )
+    expect(collect(input, matrixPolicy).map((entry) => entry.rule)).toContain(
+      'fork-controlled-runner',
+    )
+  })
+  it('checks nested matrix paths and case-insensitive axis keys', () => {
+    const input = fixture({ Runner: [{ label: 'pool-small' }] })
+    input.jobs.test!['runs-on'] = '${{ MATRIX.RUNNER.LABEL }}'
+    expect(collect(input, matrixPolicy)).toEqual([])
+    input.jobs.test!['runs-on'] = '${{ matrix.runner.missing }}'
+    expect(collect(input, matrixPolicy).map((entry) => entry.rule)).toContain(
+      'fork-controlled-runner',
+    )
+  })
+})

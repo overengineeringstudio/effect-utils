@@ -147,6 +147,13 @@ and `workflow`. Repository identity and checked-in workflow names are not PR
 payload; run identifiers/counters are assigned by GitHub. Bare context roots,
 index access, caller inputs, environment/step outputs, and unknown functions
 are rejected. Known pure expression functions do not relax argument admission.
+`matrix.*` admission follows the referenced axis/include values and all
+include/exclude modifiers. Static rows must provide the referenced key/path;
+dynamic matrix, axis, or row expressions must themselves pass the same token
+policy using only configuration, immutable identity, or exact admitted outputs.
+Missing keys and event/input/environment/step-derived sources are hard
+`fork-controlled-runner` failures, even with a matching report ledger.
+Trusted dynamic sources still require ordinary dynamic-runner admission.
 `ciWorkflow` requires consumers to supply the guard explicitly; higher-level
 auto-review and release helpers add it when selecting fleet runners.
 Neither exceptions nor the report ledger can admit an unguarded potential
