@@ -30,7 +30,7 @@ import {
   defaultNixClosureMeasurementBuckets,
   devenvPerfJob,
   downloadPreviousGitHubArtifactStep,
-  namespaceLinuxX64PairedPerfRunner,
+  LEGACY_NAMESPACE_LINUX_X64_PAIRED_PERF_RUNNER,
   namespaceRunner,
   nixClosureMeasurementSteps,
   sourceShapeMeasurementStep,
@@ -59,6 +59,7 @@ import {
   withPipelineTelemetry,
   pipelineCloseJob,
 } from '../../genie/ci-workflow/pipeline-telemetry.ts'
+import { effectUtilsWorkflowPolicy } from '../../genie/ci-workflow/policy.ts'
 import { publishedRefIf, publishedRefSteps } from '../../genie/ci-workflow/published-ref.ts'
 import type { CoreCIJobName } from '../../genie/ci.ts'
 import { pipelineJobIdentifierSet } from '../../packages/@overeng/ci-tools/src/pipeline-job-names.ts'
@@ -1553,7 +1554,7 @@ const extraJobs: Record<string, any> = {
     if: devenvPerfLaneIf,
     ...devenvPerfJob({
       runsOn: namespaceRunner({
-        profile: namespaceLinuxX64PairedPerfRunner,
+        profile: LEGACY_NAMESPACE_LINUX_X64_PAIRED_PERF_RUNNER,
         runId: '${{ github.run_id }}',
         privileged: 'always',
         priority: backgroundJobPriority,
@@ -1678,7 +1679,7 @@ const extraJobs: Record<string, any> = {
    * the live merge gate; this job is the early visible PR signal (thread resolution
    * does not retrigger workflows, so re-run after resolving threads to refresh).
    */
-  [prReviewsResolvedJobId]: prReviewsResolvedJob(),
+  [prReviewsResolvedJobId]: prReviewsResolvedJob({ runsOn: 'ubuntu-latest' }),
   'nix-closure-sizes': {
     if: empiricalProofLaneIf,
     'runs-on': namespaceRunner({
@@ -2164,6 +2165,7 @@ const {
 
 // oxlint-disable-next-line overeng/exports-first -- generated entrypoint is assembled after its job atoms
 export default ciWorkflow({
+  policy: effectUtilsWorkflowPolicy('ci.yml'),
   trustTier: 'public',
   name: 'CI',
   on: {
@@ -2230,7 +2232,10 @@ export default ciWorkflow({
           },
           ...withPipelineTelemetry(withBuck2CacheEvidence(instrumentedProductCiJobs)),
           'promote-published': promotePublishedJob!,
-          'pipeline-attempt-close': pipelineCloseJob(productCiJobs),
+          'pipeline-attempt-close': pipelineCloseJob({
+            jobs: productCiJobs,
+            runsOn: 'ubuntu-latest',
+          }),
           'pipeline-traces': pipelineTracesJob,
         },
         nixRealisationTimingsSeconds,

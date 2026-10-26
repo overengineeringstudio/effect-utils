@@ -73,14 +73,14 @@ export type PrSnapshotPackJobOptions = PrSnapshotSharedOptions & {
   /** Repo-relative path to the emitted boundary suite. Defaults to the shared location. */
   readonly validatorTestPath?: string
   /** Runner for the untrusted pack job. */
-  readonly runsOn?: WorkflowJob['runs-on']
+  readonly runsOn: WorkflowJob['runs-on']
 }
 
 export type PrSnapshotReleaseJobsOptions = PrSnapshotSharedOptions & {
   /** in-toto predicate type URI for the candidate attestation. */
   readonly attestationPredicateType: string
-  /** Runner for the trusted jobs. These do no repo build, so the default suits every consumer. */
-  readonly runsOn?: WorkflowJob['runs-on']
+  /** Explicit runner for the trusted jobs, which do no repository build. */
+  readonly runsOn: WorkflowJob['runs-on']
 }
 
 /**
@@ -94,7 +94,7 @@ export const prSnapshotPackJob = (opts: PrSnapshotPackJobOptions) => {
     validatorTestPath = emittedPrSnapshotValidatorTestPath,
     setupStepsAfterCheckout,
     packTask,
-    runsOn = 'ubuntu-24.04',
+    runsOn,
   } = opts
   return {
     [prSnapshotPackJobId]: {
@@ -162,7 +162,7 @@ export const prSnapshotReleaseJobs = (opts: PrSnapshotReleaseJobsOptions) => {
     topologyPath,
     validatorScriptPath = emittedPrSnapshotValidatorPath,
     attestationPredicateType,
-    runsOn = 'ubuntu-24.04',
+    runsOn,
   } = opts
   return {
     jobs: {

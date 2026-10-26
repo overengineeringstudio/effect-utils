@@ -108,6 +108,93 @@ Buck package source and test censuses also exclude existing `tmp/genie-locks`
 state directories. Ordinary files under `tmp` remain inputs, and unsafe paths
 or symlinks outside the state are still rejected.
 
+### GitHub workflow fleet policy
+
+`githubWorkflow({ policy, ...workflow })` validates policy at construction,
+serialization, and validation. `policy` is generator metadata and is never
+emitted into YAML. The generic validator is in
+`src/runtime/github-workflow/policy.ts`; fleet values are shared once in
+`genie/ci-workflow/policy.ts`, with runner labels and platforms in
+`genie/ci-workflow/runners.ts`. `ciWorkflow`, `autoReviewWorkflow`, and
+`releaseWorkflow` enforce the fleet policy by default.
+
+Policy rejects hosted, Namespace, unknown, unresolved dynamic, fallback, and
+mixed-heavy runner selections; forbidden events; Actions artifact/cache
+actions and known wrappers; setup-action caching; and Docker `type=gha`.
+Finite runner matrices are resolved before admission. Dynamic runner outputs
+require an exact typed admission declaration with admitted possible labels.
+`linuxX64Runner` selects light work; `linuxX64HeavyRunner` is the dedicated
+heavy scale set and must never be combined with generic labels.
+
+Jobs that could reach fleet runners (including capability-only labels, unknown
+selectors, and runner groups) require `sameRepoPullRequestGuard()` whenever any
+workflow trigger is outside `push`, `merge_group`, `schedule`, or
+`workflow_dispatch`. This default-deny rule includes future events and reusable
+workflows, which inherit their caller's event. The exact guard, alone or as a
+top-level conjunction, permits only
+push, merge groups, schedules, manual dispatches, and repository-owned PR or
+upstream-run heads. Unknown events, issue comments, and pull-request targets
+are not admitted. OR, negated, and partial guards are rejected.
+Fork-controlled runner expressions are hard errors even with a guard.
+Immutable hosted/Namespace selector prefixes prove non-fleet routing even
+when their feature suffixes contain expressions.
+Expression scanning respects quoted braces and doubled single-quote escapes,
+so format strings cannot hide fork-controlled runner inputs.
+For untrusted workflow triggers, case-insensitive context token admission permits
+only `matrix.*`, `vars.*`, exact typed `needs.<job>.outputs.*` contracts, and
+`github.repository`, `repository_owner`, `run_id`, `run_number`, `run_attempt`,
+and `workflow`. Repository identity and checked-in workflow names are not PR
+payload; run identifiers/counters are assigned by GitHub. Bare context roots,
+index access, caller inputs, environment/step outputs, and unknown functions
+are rejected. Known pure expression functions do not relax argument admission.
+`ciWorkflow` requires consumers to supply the guard explicitly; higher-level
+auto-review and release helpers add it when selecting fleet runners.
+Neither exceptions nor the report ledger can admit an unguarded potential
+fleet job, fork-controlled runner selection, or `pull_request_target`.
+This generator boundary assumes ephemeral runners, no persistent secrets, and
+repository-restricted runner groups; it does not verify infrastructure settings.
+
+Runner selection is explicit: `prReviewsResolvedJob`, `prSnapshotPackJob`,
+`prSnapshotReleaseJobs`, `plainFlakeJob` and its Cargo/genie wrappers require
+`runsOn: linuxX64Runner` (or another appropriate export from `runners.ts`).
+`pipelineCloseJob({ jobs, runsOn: linuxX64Runner })` requires explicit runner selection.
+`releaseWorkflow` requires
+`runsOn: { createReleasePr: linuxX64Runner, validateReleasePlan: linuxX64Runner, publishRelease: linuxX64Runner }`.
+
+The central `policy-exceptions.json` requires exact repository, workflow,
+job, and rule plus owner, approver, justification, expiry, and tracking issue.
+Each workflow receives only its own repository/workflow entries. The complete
+repository census uses `validateFleetPolicyExceptionRegistry` to reject stale
+or unmatched entries; the own-workflow ledger generator runs that census.
+Setup-action cache controls follow their cited upstream manifests: Go caches
+by default, Python/Java/.NET require explicit caching, Node v5+ requires
+`package-manager-cache: false` plus no explicit cache, and Bun requires
+`no-cache: true`. Only exact `vN`, `vN.N`, or `vN.N.N` Node tags can select
+the pre-v5 contract; every other ref is conservatively treated as modern.
+Hosted runners, Namespace, storage, fallback, mixed-heavy, `pull_request_target`,
+and same-repository guard rules cannot be excepted.
+This repository explicitly uses report mode with the generated
+`policy-migration-ledger.json`: new violations and stale entries both fail
+generation. The ledger is migration inventory, not an exception mechanism;
+it only shrinks and must eventually be empty. Remove resolved rows before
+regenerating; generation cannot admit a new row automatically.
+Ledger generation and report checks share the same validated,
+exception-filtered observations. The raw census is retained only to detect
+stale exceptions, so accepted exceptions cannot reappear on regeneration.
+Storage ledger paths label steps by ID or name while always including ref-free
+action repository/subpath and canonical execution/input content. Only equivalent
+steps share an occurrence ordinal; absolute step indexes are never used.
+Removing a same-name step with different content cannot manufacture new debt,
+and changing an action cannot inherit an unrelated action's existing ledger row.
+For banned actions, the observed ref remains diagnostic metadata in `value`,
+but ledger matching excludes it. Ref bumps do not introduce new debt, and
+equivalent-step ordinals use the same ref-insensitive identity.
+
+Shared-helper tests enforce runner/event policy. Storage-emitting helpers are
+explicitly listed as `pendingStorageMigration` in
+`genie/ci-workflow/policy.unit.test.ts` until stage L7; their storage behavior
+is intentionally unchanged and own-workflow uses remain in the ledger.
+
 ### Creating a Generator
 
 Create a `.genie.ts` file next to the config file you want to generate:

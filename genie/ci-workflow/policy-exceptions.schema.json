@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Workflow fleet policy exceptions",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["exceptions"],
+  "properties": {
+    "$schema": { "type": "string" },
+    "exceptions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "repository",
+          "workflow",
+          "job",
+          "rule",
+          "owner",
+          "approver",
+          "justification",
+          "expiry",
+          "trackingIssue"
+        ],
+        "properties": {
+          "repository": { "type": "string", "minLength": 1 },
+          "workflow": { "type": "string", "minLength": 1 },
+          "job": { "type": "string", "minLength": 1 },
+          "rule": { "enum": ["runner-not-admitted", "dynamic-runner"] },
+          "owner": { "type": "string", "minLength": 1 },
+          "approver": { "type": "string", "minLength": 1 },
+          "justification": { "type": "string", "minLength": 1 },
+          "expiry": { "type": "string", "format": "date" },
+          "trackingIssue": { "type": "string", "format": "uri" }
+        }
+      }
+    }
+  }
+}

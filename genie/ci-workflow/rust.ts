@@ -5,9 +5,8 @@ import {
   cachixStep,
   checkoutStep,
   installNixStep,
-  namespaceRunner,
 } from './setup.ts'
-import { bashShellDefaults, RUNNER_PROFILES, shellSingleQuote } from './shared.ts'
+import { bashShellDefaults, shellSingleQuote } from './shared.ts'
 
 type WorkflowJob = GitHubWorkflowArgs['jobs'][string]
 type WorkflowStep = WorkflowJob['steps'][number]
@@ -96,7 +95,7 @@ export type PlainFlakeJobOptions = PlainFlakeSetupOptions &
   Omit<WorkflowJob, 'runs-on' | 'steps'> & {
     /** Required even when overriding runsOn; Nix devShell realization can build. */
     readonly namespacePrivilege: NamespacePrivilege
-    readonly runsOn?: WorkflowJob['runs-on']
+    readonly runsOn: WorkflowJob['runs-on']
     /** Run after checkout/Nix setup, before the command. */
     readonly preSteps?: readonly WorkflowStep[]
     readonly postSteps?: readonly WorkflowStep[]
@@ -105,14 +104,8 @@ export type PlainFlakeJobOptions = PlainFlakeSetupOptions &
 /** Wrap one command; callers retain job gates, matrix, environment and timeout control. */
 export const plainFlakeJob = ({
   step,
-  namespacePrivilege,
-  runsOn = [
-    ...namespaceRunner({
-      profile: RUNNER_PROFILES[0],
-      runId: '${{ github.run_id }}',
-      privileged: namespacePrivilege,
-    }),
-  ],
+  namespacePrivilege: _namespacePrivilege,
+  runsOn,
   nix,
   cachix,
   preSteps = [],

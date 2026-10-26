@@ -14,9 +14,11 @@ import {
   pipelineDevenvStepName,
   pipelineIdentityStepName,
 } from '../../packages/@overeng/ci-tools/src/pipeline-job-names.ts'
+import { collectWorkflowPolicyViolations } from '../../packages/@overeng/genie/src/runtime/github-workflow/policy.ts'
 import type { GitHubWorkflowArgs } from '../../packages/@overeng/genie/src/runtime/mod.ts'
 import { defaultRefPolicyCheckStep } from './megarepo.ts'
 import { pipelineCloseJob } from './pipeline-telemetry.ts'
+import { fleetWorkflowPolicy } from './policy.ts'
 import { publishedRefIf } from './published-ref.ts'
 import { installNixStep, linuxSandboxPrerequisitesStep, namespaceRunner } from './setup.ts'
 import {
@@ -82,7 +84,7 @@ describe('Nix realisation step timeouts', () => {
     for (const [id, job] of Object.entries(ciWorkflow.data.jobs)) {
       if (id === 'consumer-smoke') continue
       for (const step of job.steps) {
-        if (step.name !== undefined && Object.hasOwn(expected, step.name)) {
+        if (step.name !== undefined && Object.hasOwn(expected, step.name) === true) {
           expect(step['timeout-minutes']).toBe(expected[step.name as keyof typeof expected])
         }
       }
@@ -316,11 +318,26 @@ describe('namespaceRunner', () => {
 })
 
 describe('Linux Nix sandbox fallback', () => {
+  const composeSandboxWorkflow = (workflow: Parameters<typeof composeCiWorkflow>[0]) => {
+    const policy = fleetWorkflowPolicy({
+      repository: 'example/sandbox-fixture',
+      workflow: 'Sandbox fixture',
+      mode: 'report',
+    })
+    return composeCiWorkflow({
+      ...workflow,
+      policy: {
+        ...policy,
+        ledger: collectWorkflowPolicyViolations({ workflow, policy }),
+      },
+    })
+  }
+
   const sandboxWorkflow = (
     runsOn: string | string[],
     capabilities?: Readonly<Record<string, 'supported'>>,
   ) =>
-    composeCiWorkflow({
+    composeSandboxWorkflow({
       trustTier: 'public',
       on: { push: { branches: ['main'] } },
       linuxNixSandboxCapabilities: capabilities,
@@ -359,7 +376,7 @@ describe('Linux Nix sandbox fallback', () => {
     ])
       expect(() => sandboxWorkflow(runsOn)).not.toThrow()
     expect(() =>
-      composeCiWorkflow({
+      composeSandboxWorkflow({
         trustTier: 'public',
         on: { push: { branches: ['main'] } },
         jobs: {
@@ -376,9 +393,11 @@ describe('Linux Nix sandbox fallback', () => {
       `'${privileged}' || '${unprivileged}'`,
       `'${unprivileged}' || '${privileged}'`,
     ])
-      expect(() => sandboxWorkflow(`\${{ inputs.fast && ${branches} }}`)).toThrow(/lacks container/)
+      expect(() => sandboxWorkflow(`\${{ github.run_attempt == 1 && ${branches} }}`)).toThrow(
+        /lacks container/,
+      )
     expect(() =>
-      sandboxWorkflow(`\${{ inputs.fast && '${privileged}' || 'ubuntu-latest' }}`),
+      sandboxWorkflow(`\${{ github.run_attempt == 1 && '${privileged}' || 'ubuntu-latest' }}`),
     ).not.toThrow()
     expect(() =>
       sandboxWorkflow(
@@ -391,7 +410,7 @@ describe('Linux Nix sandbox fallback', () => {
     for (const expression of [
       '${{ matrix.runner }}',
       "${{ format('namespace-profile-{0};container.privileged=true', matrix.platform) }}",
-      "${{ inputs.fast && matrix.runner || 'ubuntu-latest' }}",
+      "${{ github.run_attempt == 1 && matrix.runner || 'ubuntu-latest' }}",
     ]) {
       expect(() => sandboxWorkflow(expression)).toThrow(
         /cannot statically determine.*linuxNixSandboxCapabilities/,
@@ -447,21 +466,21 @@ describe('Linux Nix sandbox fallback', () => {
     expect(() =>
       sandboxWorkflow([
         machine,
-        `\${{ inputs.fast && '${privileged}' || '${privileged};github.run-id=42' }}`,
+        `\${{ github.run_attempt == 1 && '${privileged}' || '${privileged};github.run-id=42' }}`,
       ]),
     ).not.toThrow()
     for (const branches of [
       `'${privileged}' || 'namespace-features:container.privileged=false'`,
       `'namespace-features:container.privileged=false' || '${privileged}'`,
     ]) {
-      expect(() => sandboxWorkflow([machine, `\${{ inputs.fast && ${branches} }}`])).toThrow(
-        /lacks container/,
-      )
+      expect(() =>
+        sandboxWorkflow([machine, `\${{ github.run_attempt == 1 && ${branches} }}`]),
+      ).toThrow(/lacks container/)
     }
     expect(() =>
       sandboxWorkflow([
-        `\${{ inputs.fast && '${machine}' || 'ubuntu-latest' }}`,
-        `\${{ inputs.fast && '${privileged}' || '${privileged};github.run-id=42' }}`,
+        `\${{ github.run_attempt == 1 && '${machine}' || 'ubuntu-latest' }}`,
+        `\${{ github.run_attempt == 1 && '${privileged}' || '${privileged};github.run-id=42' }}`,
       ]),
     ).not.toThrow()
   })
@@ -501,16 +520,19 @@ describe('Linux Nix sandbox fallback', () => {
     const machine = 'nscloud-ubuntu-24.04-amd64-16x64-with-features'
     for (const feature of [
       'namespace-features:container.privileged=false',
-      "${{ inputs.fast && 'namespace-features:container.privileged=true' || 'namespace-features:container.privileged=false' }}",
+      "${{ github.run_attempt == 1 && 'namespace-features:container.privileged=true' || 'namespace-features:container.privileged=false' }}",
       'namespace-features:github.run-id=42',
     ])
       expect(() =>
         sandboxWorkflow([machine, feature, '${{ matrix.extraLabel }}'], { build: 'supported' }),
       ).toThrow(/container\.privileged/)
     expect(() =>
-      sandboxWorkflow("${{ inputs.fast && 'namespace-profile-linux-x86-64' || matrix.runner }}", {
-        build: 'supported',
-      }),
+      sandboxWorkflow(
+        "${{ github.run_attempt == 1 && 'namespace-profile-linux-x86-64' || matrix.runner }}",
+        {
+          build: 'supported',
+        },
+      ),
     ).toThrow(/lacks container/)
   })
 
@@ -522,7 +544,7 @@ describe('Linux Nix sandbox fallback', () => {
       ].join('\n'),
     )
     expect(installNixStep().with['extra-conf']).toContain(linuxNixSandboxFallbackConf)
-    const hostedInstall = pipelineCloseJob({}).steps.find(
+    const hostedInstall = pipelineCloseJob({ jobs: {}, runsOn: 'ubuntu-latest' }).steps.find(
       (step) => step.uses === 'cachix/install-nix-action@v31',
     )
     expect(hostedInstall?.with?.extra_nix_config).toBe(linuxNixSandboxFallbackConf)
@@ -530,7 +552,7 @@ describe('Linux Nix sandbox fallback', () => {
 
   it('configures Linux before any command, preserves inherited config, and skips macOS', () => {
     const macConfig = 'keep-derivations = true'
-    const rendered = composeCiWorkflow({
+    const rendered = composeSandboxWorkflow({
       trustTier: 'public',
       on: { push: { branches: ['main'] } },
       jobs: {
@@ -555,7 +577,7 @@ describe('Linux Nix sandbox fallback', () => {
     expect(linuxNixSandboxFallbackStep.run).toContain('"${NIX_CONFIG:-}"')
     expect(linuxNixSandboxFallbackStep.run).toContain('sandbox = true\\nsandbox-fallback = false')
     expect(linuxNixSandboxFallbackStep.run).toContain('sandbox-fallback = false')
-    const recomposed = composeCiWorkflow({
+    const recomposed = composeSandboxWorkflow({
       trustTier: 'public',
       on: { push: { branches: ['main'] } },
       jobs: rendered.jobs,
@@ -929,7 +951,7 @@ describe('unit-test shell selection', () => {
 
     for (const [jobId, job] of Object.entries(workflow.jobs)) {
       expect(job.env?.EFFECT_UTILS_CI_TEST, jobId).toBe(
-        ['test', 'test-macos', 'test-megarepo-store-gc'].includes(jobId) ? '1' : undefined,
+        ['test', 'test-macos', 'test-megarepo-store-gc'].includes(jobId) === true ? '1' : undefined,
       )
       for (const step of job.steps) {
         expect(step.env?.EFFECT_UTILS_CI_TEST, `${jobId}/${step.name ?? step.id}`).toBeUndefined()

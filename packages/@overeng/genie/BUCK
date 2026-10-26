@@ -10,7 +10,7 @@ load("//buck2/products:defs.bzl", "javascript_product")
 # Projection source: packages/@overeng/genie/BUCK.genie.ts
 # Projection schema version: 13
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:bb3dc0d5909e4b3e9aa80f3750e32230bded3534d2e59dbf9ee41d134a009da4
+# Semantic fingerprint: sha256:49dc748da6b9a38d84c5ecb6b6bc35c930ca682c58d7f0c2fbf0a1c18afbe791
 # Regenerate: devenv tasks run genie:run
 
 load("//buck2:materialization.bzl", "export_materialization_inputs", "package_view")
@@ -105,6 +105,10 @@ export_materialization_inputs([
     "src/runtime/github-workflow/ci-workflow-helpers.unit.test.ts",
     "src/runtime/github-workflow/github-workflow.unit.test.ts",
     "src/runtime/github-workflow/mod.ts",
+    "src/runtime/github-workflow/policy-step-identity.ts",
+    "src/runtime/github-workflow/policy-step-identity.unit.test.ts",
+    "src/runtime/github-workflow/policy.ts",
+    "src/runtime/github-workflow/policy.unit.test.ts",
     "src/runtime/json-artifact/json-artifact.unit.test.ts",
     "src/runtime/json-artifact/mod.ts",
     "src/runtime/megarepo-config/mod.ts",
@@ -272,6 +276,10 @@ package_view(
         "src/runtime/github-workflow/ci-workflow-helpers.unit.test.ts": "src/runtime/github-workflow/ci-workflow-helpers.unit.test.ts",
         "src/runtime/github-workflow/github-workflow.unit.test.ts": "src/runtime/github-workflow/github-workflow.unit.test.ts",
         "src/runtime/github-workflow/mod.ts": "src/runtime/github-workflow/mod.ts",
+        "src/runtime/github-workflow/policy-step-identity.ts": "src/runtime/github-workflow/policy-step-identity.ts",
+        "src/runtime/github-workflow/policy-step-identity.unit.test.ts": "src/runtime/github-workflow/policy-step-identity.unit.test.ts",
+        "src/runtime/github-workflow/policy.ts": "src/runtime/github-workflow/policy.ts",
+        "src/runtime/github-workflow/policy.unit.test.ts": "src/runtime/github-workflow/policy.unit.test.ts",
         "src/runtime/json-artifact/json-artifact.unit.test.ts": "src/runtime/json-artifact/json-artifact.unit.test.ts",
         "src/runtime/json-artifact/mod.ts": "src/runtime/json-artifact/mod.ts",
         "src/runtime/megarepo-config/mod.ts": "src/runtime/megarepo-config/mod.ts",
@@ -429,6 +437,10 @@ package_view(
         "src/runtime/github-workflow/ci-workflow-helpers.unit.test.ts": "src/runtime/github-workflow/ci-workflow-helpers.unit.test.ts",
         "src/runtime/github-workflow/github-workflow.unit.test.ts": "src/runtime/github-workflow/github-workflow.unit.test.ts",
         "src/runtime/github-workflow/mod.ts": "src/runtime/github-workflow/mod.ts",
+        "src/runtime/github-workflow/policy-step-identity.ts": "src/runtime/github-workflow/policy-step-identity.ts",
+        "src/runtime/github-workflow/policy-step-identity.unit.test.ts": "src/runtime/github-workflow/policy-step-identity.unit.test.ts",
+        "src/runtime/github-workflow/policy.ts": "src/runtime/github-workflow/policy.ts",
+        "src/runtime/github-workflow/policy.unit.test.ts": "src/runtime/github-workflow/policy.unit.test.ts",
         "src/runtime/json-artifact/json-artifact.unit.test.ts": "src/runtime/json-artifact/json-artifact.unit.test.ts",
         "src/runtime/json-artifact/mod.ts": "src/runtime/json-artifact/mod.ts",
         "src/runtime/megarepo-config/mod.ts": "src/runtime/megarepo-config/mod.ts",
@@ -583,6 +595,10 @@ package_view(
         "src/runtime/github-workflow/ci-workflow-helpers.unit.test.ts": "src/runtime/github-workflow/ci-workflow-helpers.unit.test.ts",
         "src/runtime/github-workflow/github-workflow.unit.test.ts": "src/runtime/github-workflow/github-workflow.unit.test.ts",
         "src/runtime/github-workflow/mod.ts": "src/runtime/github-workflow/mod.ts",
+        "src/runtime/github-workflow/policy-step-identity.ts": "src/runtime/github-workflow/policy-step-identity.ts",
+        "src/runtime/github-workflow/policy-step-identity.unit.test.ts": "src/runtime/github-workflow/policy-step-identity.unit.test.ts",
+        "src/runtime/github-workflow/policy.ts": "src/runtime/github-workflow/policy.ts",
+        "src/runtime/github-workflow/policy.unit.test.ts": "src/runtime/github-workflow/policy.unit.test.ts",
         "src/runtime/json-artifact/json-artifact.unit.test.ts": "src/runtime/json-artifact/json-artifact.unit.test.ts",
         "src/runtime/json-artifact/mod.ts": "src/runtime/json-artifact/mod.ts",
         "src/runtime/megarepo-config/mod.ts": "src/runtime/megarepo-config/mod.ts",
