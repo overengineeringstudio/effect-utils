@@ -60,9 +60,12 @@ import {
   pipelineCloseJob,
 } from '../../genie/ci-workflow/pipeline-telemetry.ts'
 import { effectUtilsWorkflowPolicy } from '../../genie/ci-workflow/policy.ts'
+import { prReviewsResolvedStep } from '../../genie/ci-workflow/pr-reviews.ts'
 import { publishedRefIf, publishedRefSteps } from '../../genie/ci-workflow/published-ref.ts'
+import { linuxX64Runner } from '../../genie/ci-workflow/runners.ts'
 import type { CoreCIJobName } from '../../genie/ci.ts'
 import { pipelineJobIdentifierSet } from '../../packages/@overeng/ci-tools/src/pipeline-job-names.ts'
+import { sameRepoPullRequestGuard } from '../../packages/@overeng/genie/src/runtime/github-workflow/policy.ts'
 
 const workflowReportFlakeRef =
   "github:${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name || github.repository }}/${{ github.event_name == 'pull_request' && github.head_ref || github.ref_name }}#ci-tools"
@@ -1679,7 +1682,19 @@ const extraJobs: Record<string, any> = {
    * the live merge gate; this job is the early visible PR signal (thread resolution
    * does not retrigger workflows, so re-run after resolving threads to refresh).
    */
-  [prReviewsResolvedJobId]: prReviewsResolvedJob({ runsOn: 'ubuntu-latest' }),
+  [prReviewsResolvedJobId]: {
+    ...prReviewsResolvedJob({
+      runsOn: linuxX64Runner,
+      condition: `\${{ github.event_name != 'schedule' && (${sameRepoPullRequestGuard()}) }}`,
+    }),
+    steps: [
+      {
+        ...prReviewsResolvedStep(),
+        shell:
+          'nix shell nixpkgs#gh nixpkgs#jq --command bash --noprofile --norc -e -o pipefail {0}',
+      },
+    ],
+  },
   'nix-closure-sizes': {
     if: empiricalProofLaneIf,
     'runs-on': namespaceRunner({
@@ -2203,9 +2218,10 @@ export default ciWorkflow({
     jobs: {
       ...withNixRealisationTimeouts(
         {
-          // API-only control job: no Nix bootstrap, cache evidence, or telemetry adapters.
+          // API-only control job: no cache evidence or telemetry adapters.
           'tested-tree': {
-            'runs-on': 'ubuntu-latest',
+            'runs-on': linuxX64Runner,
+            if: sameRepoPullRequestGuard(),
             'timeout-minutes': 3,
             permissions: { contents: 'read', actions: 'read' },
             outputs: { tested: '${{ steps.lookup.outputs.tested }}' },
@@ -2232,10 +2248,13 @@ export default ciWorkflow({
           },
           ...withPipelineTelemetry(withBuck2CacheEvidence(instrumentedProductCiJobs)),
           'promote-published': promotePublishedJob!,
-          'pipeline-attempt-close': pipelineCloseJob({
-            jobs: productCiJobs,
-            runsOn: 'ubuntu-latest',
-          }),
+          'pipeline-attempt-close': {
+            ...pipelineCloseJob({
+              jobs: productCiJobs,
+              runsOn: linuxX64Runner,
+            }),
+            if: `\${{ always() && (${sameRepoPullRequestGuard()}) }}`,
+          },
           'pipeline-traces': pipelineTracesJob,
         },
         nixRealisationTimingsSeconds,

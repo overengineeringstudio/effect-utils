@@ -44,7 +44,8 @@ on:
 
 jobs:
   tested-tree:
-    runs-on: ubuntu-latest
+    runs-on: [sh-linux-x64, nix]
+    if: (github.event_name == 'push' || github.event_name == 'merge_group' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') || ((github.event_name == 'pull_request' || github.event_name == 'pull_request_review' || github.event_name == 'pull_request_review_comment') && github.event.pull_request.head.repo.full_name == github.repository) || (github.event_name == 'workflow_run' && github.event.workflow_run.head_repository.full_name == github.repository)
     timeout-minutes: 3
     permissions:
       contents: read
@@ -4741,8 +4742,8 @@ jobs:
       group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || 'code') }}-trusted-buck2-remote-cache-proof"
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') }}
   pr-reviews-resolved:
-    if: ${{ github.event_name != 'schedule' }}
-    runs-on: ubuntu-latest
+    if: ${{ github.event_name != 'schedule' && ((github.event_name == 'push' || github.event_name == 'merge_group' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') || ((github.event_name == 'pull_request' || github.event_name == 'pull_request_review' || github.event_name == 'pull_request_review_comment') && github.event.pull_request.head.repo.full_name == github.repository) || (github.event_name == 'workflow_run' && github.event.workflow_run.head_repository.full_name == github.repository)) }}
+    runs-on: [sh-linux-x64, nix]
     timeout-minutes: 5
     permissions:
       pull-requests: read
@@ -4762,7 +4763,7 @@ jobs:
         shell: bash
         run: printf 'BUCK2_CI_JOB_INSTANCE=%s\n' "$(od -An -N32 -tx1 /dev/urandom | tr -d ' \n')" >> "$GITHUB_ENV"
       - name: Check unresolved review threads
-        shell: bash
+        shell: 'nix shell nixpkgs#gh nixpkgs#jq --command bash --noprofile --norc -e -o pipefail {0}'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -6512,7 +6513,7 @@ jobs:
       group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || 'code') }}-promote-published"
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') }}
   pipeline-attempt-close:
-    runs-on: ubuntu-latest
+    runs-on: [sh-linux-x64, nix]
     needs:
       - default-ref-policy
       - pr-buck2-tools
@@ -6537,7 +6538,7 @@ jobs:
       - test-live-deploy-ci-tools
       - deploy-storybooks
       - notify-alignment
-    if: ${{ always() }}
+    if: ${{ always() && ((github.event_name == 'push' || github.event_name == 'merge_group' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') || ((github.event_name == 'pull_request' || github.event_name == 'pull_request_review' || github.event_name == 'pull_request_review_comment') && github.event.pull_request.head.repo.full_name == github.repository) || (github.event_name == 'workflow_run' && github.event.workflow_run.head_repository.full_name == github.repository)) }}
     permissions:
       contents: read
       actions: read

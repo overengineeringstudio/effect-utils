@@ -12,22 +12,6 @@
     {
       "repository": "overengineeringstudio/effect-utils",
       "workflow": "ci.yml",
-      "job": "tested-tree",
-      "rule": "hosted-runner",
-      "path": "jobs.tested-tree.runs-on",
-      "value": "ubuntu-latest"
-    },
-    {
-      "repository": "overengineeringstudio/effect-utils",
-      "workflow": "ci.yml",
-      "job": "tested-tree",
-      "rule": "runner-not-admitted",
-      "path": "jobs.tested-tree.runs-on",
-      "value": "ubuntu-latest"
-    },
-    {
-      "repository": "overengineeringstudio/effect-utils",
-      "workflow": "ci.yml",
       "job": "default-ref-policy",
       "rule": "runner-fallback",
       "path": "jobs.default-ref-policy.runs-on",
@@ -468,22 +452,6 @@
     {
       "repository": "overengineeringstudio/effect-utils",
       "workflow": "ci.yml",
-      "job": "pr-reviews-resolved",
-      "rule": "hosted-runner",
-      "path": "jobs.pr-reviews-resolved.runs-on",
-      "value": "ubuntu-latest"
-    },
-    {
-      "repository": "overengineeringstudio/effect-utils",
-      "workflow": "ci.yml",
-      "job": "pr-reviews-resolved",
-      "rule": "runner-not-admitted",
-      "path": "jobs.pr-reviews-resolved.runs-on",
-      "value": "ubuntu-latest"
-    },
-    {
-      "repository": "overengineeringstudio/effect-utils",
-      "workflow": "ci.yml",
       "job": "source-shape",
       "rule": "runner-fallback",
       "path": "jobs.source-shape.runs-on",
@@ -624,22 +592,6 @@
       "rule": "dynamic-runner",
       "path": "jobs.promote-published.runs-on",
       "value": "namespace-profile-linux-x86-64;github.run-id=${{ github.run_id }};job.priority=1"
-    },
-    {
-      "repository": "overengineeringstudio/effect-utils",
-      "workflow": "ci.yml",
-      "job": "pipeline-attempt-close",
-      "rule": "hosted-runner",
-      "path": "jobs.pipeline-attempt-close.runs-on",
-      "value": "ubuntu-latest"
-    },
-    {
-      "repository": "overengineeringstudio/effect-utils",
-      "workflow": "ci.yml",
-      "job": "pipeline-attempt-close",
-      "rule": "runner-not-admitted",
-      "path": "jobs.pipeline-attempt-close.runs-on",
-      "value": "ubuntu-latest"
     },
     {
       "repository": "overengineeringstudio/effect-utils",
