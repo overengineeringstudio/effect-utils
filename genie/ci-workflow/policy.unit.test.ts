@@ -5,6 +5,7 @@ import { isFleetCacheRunner } from '../../packages/@overeng/genie/src/runtime/gi
 import type { GitHubWorkflowArgs } from '../../packages/@overeng/genie/src/runtime/github-workflow/mod.ts'
 import {
   collectWorkflowPolicyViolations,
+  decodeWorkflowPolicyLedger,
   validateWorkflowPolicy,
   type WorkflowPolicyException,
   type WorkflowPolicyRule,
@@ -29,7 +30,11 @@ import {
   mergeQueueSemanticGateJobs,
 } from './merge-queue.ts'
 import { pipelineCloseJob, withPipelineTelemetry } from './pipeline-telemetry.ts'
-import { fleetWorkflowPolicy, validateFleetPolicyExceptionRegistry } from './policy.ts'
+import {
+  collectFleetPolicyMigrationLedger,
+  fleetWorkflowPolicy,
+  validateFleetPolicyExceptionRegistry,
+} from './policy.ts'
 import { prReviewsResolvedJob, prReviewsResolvedJobId } from './pr-reviews.ts'
 import { prSnapshotPackJob, prSnapshotReleaseJobs } from './pr-snapshot.ts'
 import { releaseWorkflow } from './release.ts'
@@ -319,41 +324,51 @@ describe('upstream setup-action cache contracts', () => {
       policy,
     }).filter((violation) => violation.rule === 'setup-action-cache')
 
-  it.each(['v5', 'v6', 'v6.1.0', '0123456789abcdef0123456789abcdef01234567'])(
-    'requires explicit automatic Node cache opt-out at %s',
-    (ref) => {
-      expect(setupViolations(`actions/setup-node@${ref}`)).toHaveLength(1)
-      expect(setupViolations(`actions/setup-node@${ref}`, { cache: '' })).toHaveLength(1)
-      for (const disabled of [false, 'false']) {
-        expect(
-          setupViolations(`actions/setup-node@${ref}`, { 'package-manager-cache': disabled }),
-        ).toEqual([])
-        expect(
-          setupViolations(`actions/setup-node@${ref}`, {
-            'package-manager-cache': disabled,
-            cache: '',
-          }),
-        ).toEqual([])
-        expect(
-          setupViolations(`actions/setup-node@${ref}`, {
-            'package-manager-cache': disabled,
-            cache: 'npm',
-          }),
-        ).toHaveLength(1)
-      }
+  it.each([
+    'v5',
+    'v6',
+    'v6.1.0',
+    '0123456789abcdef0123456789abcdef01234567',
+    'v5-beta',
+    '4.x-foo',
+    'v4abc',
+    'v4.1-branch',
+    'v4.1.2.3',
+    '4',
+    '4.0',
+    'main',
+  ])('requires explicit automatic Node cache opt-out at %s', (ref) => {
+    expect(setupViolations(`actions/setup-node@${ref}`)).toHaveLength(1)
+    expect(setupViolations(`actions/setup-node@${ref}`, { cache: '' })).toHaveLength(1)
+    for (const disabled of [false, 'false']) {
       expect(
-        setupViolations(`actions/setup-node@${ref}`, { 'package-manager-cache': '' }),
-      ).toHaveLength(1)
+        setupViolations(`actions/setup-node@${ref}`, { 'package-manager-cache': disabled }),
+      ).toEqual([])
       expect(
         setupViolations(`actions/setup-node@${ref}`, {
-          'package-manager-cache': '${{ inputs.cache }}',
+          'package-manager-cache': disabled,
+          cache: '',
+        }),
+      ).toEqual([])
+      expect(
+        setupViolations(`actions/setup-node@${ref}`, {
+          'package-manager-cache': disabled,
+          cache: 'npm',
         }),
       ).toHaveLength(1)
-    },
-  )
-  it('preserves the pre-v5 Node explicit-cache-only contract', () => {
-    expect(setupViolations('actions/setup-node@v4')).toEqual([])
-    expect(setupViolations('actions/setup-node@v4', { cache: 'npm' })).toHaveLength(1)
+    }
+    expect(
+      setupViolations(`actions/setup-node@${ref}`, { 'package-manager-cache': '' }),
+    ).toHaveLength(1)
+    expect(
+      setupViolations(`actions/setup-node@${ref}`, {
+        'package-manager-cache': '${{ inputs.cache }}',
+      }),
+    ).toHaveLength(1)
+  })
+  it.each(['v4', 'v4.0', 'v4.0.0'])('preserves the exact pre-v5 tag %s contract', (ref) => {
+    expect(setupViolations(`actions/setup-node@${ref}`)).toEqual([])
+    expect(setupViolations(`actions/setup-node@${ref}`, { cache: 'npm' })).toHaveLength(1)
   })
   it.each(['actions/setup-python@v6', 'actions/setup-java@v5', 'actions/setup-dotnet@v5'])(
     '%s does not cache unless requested',
@@ -431,6 +446,52 @@ describe('central exception scoping', () => {
     }
     expect(() =>
       validateFleetPolicyExceptionRegistry({ repository, workflows, exceptionEntries }),
+    ).not.toThrow()
+  })
+  it('round-trips report ledgers using the same exception-filtered observations as checks', () => {
+    const workflow = 'one.yml'
+    const value = workflows[workflow]
+    const entries = exceptionEntries.filter(
+      (entry) => entry.repository === repository && entry.workflow === workflow,
+    )
+    const before = fleetWorkflowPolicy({
+      repository,
+      workflow,
+      mode: 'report',
+      ledger: [],
+      exceptionEntries: entries,
+    })
+    expect(collectWorkflowPolicyViolations({ workflow: value, policy: before })).toHaveLength(1)
+    expect(() => validateWorkflowPolicy({ workflow: value, policy: before })).not.toThrow()
+
+    const generated = collectFleetPolicyMigrationLedger({
+      repository,
+      workflows: { [workflow]: value },
+      exceptionEntries: entries,
+    })
+    expect(generated).toEqual([])
+    const regenerated = decodeWorkflowPolicyLedger(JSON.parse(JSON.stringify(generated)))
+    const after = fleetWorkflowPolicy({
+      repository,
+      workflow,
+      mode: 'report',
+      ledger: regenerated,
+      exceptionEntries: entries,
+    })
+    expect(() => validateWorkflowPolicy({ workflow: value, policy: after })).not.toThrow()
+    expect(
+      collectFleetPolicyMigrationLedger({
+        repository,
+        workflows: { [workflow]: value },
+        exceptionEntries: entries,
+      }),
+    ).toEqual(regenerated)
+    expect(() =>
+      validateFleetPolicyExceptionRegistry({
+        repository,
+        workflows: { [workflow]: value },
+        exceptionEntries: entries,
+      }),
     ).not.toThrow()
   })
   it('reports unmatched or stale entries only against the full repository census', () => {

@@ -6,8 +6,10 @@ import storybookPlays from '../../.github/workflows/storybook-plays.yml.genie.ts
 import storybookPreviewBuild from '../../.github/workflows/storybook-preview-build.yml.genie.ts'
 import storybookPreviewDeploy from '../../.github/workflows/storybook-preview-deploy.yml.genie.ts'
 import { createGenieOutput } from '../../packages/@overeng/genie/src/runtime/core.ts'
-import { collectWorkflowPolicyViolations } from '../../packages/@overeng/genie/src/runtime/github-workflow/policy.ts'
-import { fleetWorkflowPolicy, validateFleetPolicyExceptionRegistry } from './policy.ts'
+import {
+  collectFleetPolicyMigrationLedger,
+  validateFleetPolicyExceptionRegistry,
+} from './policy.ts'
 
 const workflows = {
   'auto-review.yml': autoReview,
@@ -19,21 +21,21 @@ const workflows = {
   'storybook-preview-deploy.yml': storybookPreviewDeploy,
 }
 
+const workflowData = Object.fromEntries(
+  Object.entries(workflows).map(([name, output]) => [name, output.data]),
+)
+
 validateFleetPolicyExceptionRegistry({
   repository: 'overengineeringstudio/effect-utils',
-  workflows: Object.fromEntries(
-    Object.entries(workflows).map(([name, output]) => [name, output.data]),
-  ),
+  workflows: workflowData,
 })
 
 const data = {
   source: 'policy-migration-ledger.json.genie.ts',
-  violations: Object.entries(workflows).flatMap(([workflow, output]) =>
-    collectWorkflowPolicyViolations({
-      workflow: output.data,
-      policy: fleetWorkflowPolicy({ repository: 'overengineeringstudio/effect-utils', workflow }),
-    }),
-  ),
+  violations: collectFleetPolicyMigrationLedger({
+    repository: 'overengineeringstudio/effect-utils',
+    workflows: workflowData,
+  }),
 }
 
 /** Imports enforce exact ledger membership before regeneration: additions cannot self-admit. */

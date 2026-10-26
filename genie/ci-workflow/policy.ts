@@ -1,5 +1,6 @@
 import type { GitHubWorkflowArgs } from '../../packages/@overeng/genie/src/runtime/github-workflow/mod.ts'
 import {
+  collectEffectiveWorkflowPolicyViolations,
   collectWorkflowPolicyViolations,
   decodeWorkflowPolicyLedger,
   WorkflowPolicyError,
@@ -120,3 +121,20 @@ export const validateFleetPolicyExceptionRegistry = ({
     )
   }
 }
+
+/** Generate the same exception-filtered observations that report-mode validation compares. */
+export const collectFleetPolicyMigrationLedger = ({
+  repository,
+  workflows,
+  exceptionEntries = exceptions.exceptions,
+}: {
+  readonly repository: string
+  readonly workflows: Readonly<Record<string, GitHubWorkflowArgs>>
+  readonly exceptionEntries?: readonly WorkflowPolicyException[]
+}): readonly WorkflowPolicyViolation[] =>
+  Object.entries(workflows).flatMap(([workflow, value]) =>
+    collectEffectiveWorkflowPolicyViolations({
+      workflow: value,
+      policy: fleetWorkflowPolicy({ repository, workflow, exceptionEntries }),
+    }),
+  )

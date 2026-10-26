@@ -55,7 +55,7 @@ export type WorkflowPolicy = {
     readonly action: string
     readonly input: string
     readonly defaultEnabled: boolean
-    /** Numeric action refs older than this major do not have this cache control. */
+    /** Only exact vN/vN.N/vN.N.N tags older than this major omit this cache control. */
     readonly minimumMajor?: number
     /** Boolean opt-out controls must explicitly equal this value to disable caching. */
     readonly enabledUnless?: 'false' | 'true'
@@ -379,7 +379,7 @@ export const collectWorkflowPolicyViolations = ({
         add({ job, rule: 'banned-action', path: `${stepPath}.uses`, value: step.uses })
       for (const cache of policy.setupActionCaches ?? []) {
         if (matchesAction({ uses: step.uses, action: cache.action }) === false) continue
-        const major = /^v?(\d+)(?:\.|$)/.exec(step.uses.split('@')[1] ?? '')
+        const major = /^v(\d+)(?:\.\d+){0,2}$/.exec(step.uses.split('@')[1] ?? '')
         if (
           cache.minimumMajor !== undefined &&
           major !== null &&
@@ -439,14 +439,14 @@ const exceptionKey = (
   entry: Pick<WorkflowPolicyViolation, 'repository' | 'workflow' | 'job' | 'rule'>,
 ): string => JSON.stringify([entry.repository, entry.workflow, entry.job, entry.rule])
 
-/** Enforce policy, or require exact equality with a reviewed report ledger. Always validates exceptions. */
-export const validateWorkflowPolicy = ({
+/** Validate policy/exception provenance and collect the unsuppressed observations used by checks and ledgers. */
+export const collectEffectiveWorkflowPolicyViolations = ({
   workflow,
   policy,
 }: {
   workflow: GitHubWorkflowArgs
   policy: WorkflowPolicy
-}): void => {
+}): WorkflowPolicyViolation[] => {
   const issues: WorkflowPolicyIssue[] = []
   if (policy.repository.trim() === '' || policy.workflow.trim() === '')
     issues.push({
@@ -482,9 +482,22 @@ export const validateWorkflowPolicy = ({
         message: `Invalid, expired, duplicate, or forbidden exception: ${key}`,
       })
   }
-  const violations = collectWorkflowPolicyViolations({ workflow, policy }).filter(
+  if (issues.length > 0) throw new WorkflowPolicyError(issues)
+  return collectWorkflowPolicyViolations({ workflow, policy }).filter(
     (violation) => accepted.has(exceptionKey(violation)) === false,
   )
+}
+
+/** Enforce policy or compare its effective observations with the exact report ledger. */
+export const validateWorkflowPolicy = ({
+  workflow,
+  policy,
+}: {
+  workflow: GitHubWorkflowArgs
+  policy: WorkflowPolicy
+}): void => {
+  const violations = collectEffectiveWorkflowPolicyViolations({ workflow, policy })
+  const issues: WorkflowPolicyIssue[] = []
   if (policy.mode === 'report') {
     const actual = new Set(violations.map(violationKey))
     const expected = new Set((policy.ledger ?? []).map(violationKey))

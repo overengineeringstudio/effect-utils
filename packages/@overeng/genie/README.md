@@ -141,13 +141,17 @@ or unmatched entries; the own-workflow ledger generator runs that census.
 Setup-action cache controls follow their cited upstream manifests: Go caches
 by default, Python/Java/.NET require explicit caching, Node v5+ requires
 `package-manager-cache: false` plus no explicit cache, and Bun requires
-`no-cache: true`. Unknown Node refs are conservatively treated as modern.
+`no-cache: true`. Only exact `vN`, `vN.N`, or `vN.N.N` Node tags can select
+the pre-v5 contract; every other ref is conservatively treated as modern.
 Hosted runners, Namespace, storage, fallback, and mixed-heavy rules cannot
 be excepted. This repository explicitly uses report mode with the generated
 `policy-migration-ledger.json`: new violations and stale entries both fail
 generation. The ledger is migration inventory, not an exception mechanism;
 it only shrinks and must eventually be empty. Remove resolved rows before
 regenerating; generation cannot admit a new row automatically.
+Ledger generation and report checks share the same validated,
+exception-filtered observations. The raw census is retained only to detect
+stale exceptions, so accepted exceptions cannot reappear on regeneration.
 
 Shared-helper tests enforce runner/event policy. Storage-emitting helpers are
 explicitly listed as `pendingStorageMigration` in
