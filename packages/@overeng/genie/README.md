@@ -140,6 +140,13 @@ Immutable hosted/Namespace selector prefixes prove non-fleet routing even
 when their feature suffixes contain expressions.
 Expression scanning respects quoted braces and doubled single-quote escapes,
 so format strings cannot hide fork-controlled runner inputs.
+For untrusted workflow triggers, case-insensitive context token admission permits
+only `matrix.*`, `vars.*`, exact typed `needs.<job>.outputs.*` contracts, and
+`github.repository`, `repository_owner`, `run_id`, `run_number`, `run_attempt`,
+and `workflow`. Repository identity and checked-in workflow names are not PR
+payload; run identifiers/counters are assigned by GitHub. Bare context roots,
+index access, caller inputs, environment/step outputs, and unknown functions
+are rejected. Known pure expression functions do not relax argument admission.
 `ciWorkflow` requires consumers to supply the guard explicitly; higher-level
 auto-review and release helpers add it when selecting fleet runners.
 Neither exceptions nor the report ledger can admit an unguarded potential

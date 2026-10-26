@@ -134,8 +134,78 @@ const sameRepoGuardExpression =
   `((${eventCondition(guardEvents.pullRequest)}) && github.event.pull_request.head.repo.full_name == github.repository) || ` +
   `(${eventCondition(guardEvents.upstreamRun)} && github.event.workflow_run.head_repository.full_name == github.repository)`
 
+const expressionProperty = ({ value, key }: { value: unknown; key: string }): unknown => {
+  if (typeof value !== 'object' || value === null) return undefined
+  const actual = Object.keys(value).find(
+    (candidate) => candidate.toLowerCase() === key.toLowerCase(),
+  )
+  return actual === undefined ? undefined : Reflect.get(value, actual)
+}
+
+/** Immutable run/repository identity, not PR payload, branch, input, or environment data.
+ * workflow is the checked-in workflow name; repository/owner identify the executing
+ * repository; run IDs/counters are assigned by GitHub rather than fork authors.
+ */
+const safeGithubRunnerProperties: Readonly<Record<string, true>> = {
+  repository: true,
+  repository_owner: true,
+  run_id: true,
+  run_number: true,
+  run_attempt: true,
+  workflow: true,
+}
+const safeRunnerFunctions: Readonly<Record<string, true>> = {
+  format: true,
+  fromjson: true,
+  tojson: true,
+  contains: true,
+  startswith: true,
+  endswith: true,
+  join: true,
+}
+
+const hasUnadmittedRunnerTokens = ({
+  expression,
+  admittedOutput,
+}: {
+  expression: string
+  admittedOutput: boolean
+}): boolean => {
+  const tokens = expression.toLowerCase().match(/[a-z_][\w-]*|[.[\]()]/g) ?? []
+  for (let index = 0; index < tokens.length; index++) {
+    const root = tokens[index]!
+    if (/^[a-z_]/.test(root) === false) continue
+    if (tokens[index + 1] === '(') {
+      if (safeRunnerFunctions[root] !== true) return true
+      continue
+    }
+    const path = [root]
+    while (tokens[index + 1] === '.') {
+      const property = tokens[index + 2]
+      if (property === undefined || /^[a-z_]/.test(property) === false) return true
+      path.push(property)
+      index += 2
+    }
+    if (tokens[index + 1] === '[') return true
+    if (path.length === 1 && ['true', 'false', 'null'].includes(root) === true) continue
+    if ((root === 'matrix' || root === 'vars') && path.length >= 2) continue
+    if (root === 'needs' && admittedOutput === true && path.length === 4 && path[2] === 'outputs')
+      continue
+    if (root === 'github' && path.length === 2 && safeGithubRunnerProperties[path[1]!] === true)
+      continue
+    return true
+  }
+  return false
+}
+
 /** Scan expression boundaries without treating quoted braces as closing delimiters. */
-const hasForkControlledRunnerExpression = (value: string): boolean => {
+const hasForkControlledRunnerExpression = ({
+  value,
+  admittedOutput = false,
+}: {
+  value: string
+  admittedOutput?: boolean
+}): boolean => {
   let offset = 0
   while (offset < value.length) {
     const start = value.indexOf('${{', offset)
@@ -163,8 +233,7 @@ const hasForkControlledRunnerExpression = (value: string): boolean => {
     }
     // Malformed expressions cannot establish safe runner provenance either.
     if (closed === false || quoted === true) return true
-    if (/\b(?:github\s*(?:\.\s*(?:event\b|head_ref\b)|\[)|inputs\b)/.test(expression) === true)
-      return true
+    if (hasUnadmittedRunnerTokens({ expression, admittedOutput }) === true) return true
   }
   return false
 }
@@ -409,7 +478,11 @@ export const collectWorkflowPolicyViolations = ({
         const group: unknown = Reflect.get(runner, 'group')
         if (labels !== undefined) checkRunner({ runner: labels, resolveMatrix })
         else protectUnknown()
-        if (typeof group === 'string' && hasForkControlledRunnerExpression(group) === true)
+        if (
+          typeof group === 'string' &&
+          events.some((event) => isTrustedWorkflowEvent(event) === false) === true &&
+          hasForkControlledRunnerExpression({ value: group }) === true
+        )
           add({ job, rule: 'fork-controlled-runner', path, value: group })
         return
       }
@@ -441,7 +514,16 @@ export const collectWorkflowPolicyViolations = ({
       // Even unresolved expressions must not hide forbidden literal fallbacks.
       const fixedNonFleetPrefix =
         /^(?:ubuntu-|macos-|windows-|namespace-profile-|nscloud-|namespace-features:)/i.test(runner)
-      if (fixedNonFleetPrefix === false && hasForkControlledRunnerExpression(runner) === true)
+      if (
+        fixedNonFleetPrefix === false &&
+        events.some((event) => isTrustedWorkflowEvent(event) === false) === true &&
+        hasForkControlledRunnerExpression({
+          value: runner,
+          admittedOutput:
+            outputExpression.test(runner) === true &&
+            policy.admittedRunnerOutputs?.some((output) => output.expression === runner) === true,
+        }) === true
+      )
         add({ job, rule: 'fork-controlled-runner', path, value: runner })
       if (runner.includes('||') === true) add({ job, rule: 'runner-fallback', path, value: runner })
       for (const literal of runner.matchAll(/'((?:[^']|'')*)'|"([^"]*)"/g)) {
@@ -453,15 +535,13 @@ export const collectWorkflowPolicyViolations = ({
         )
           labelRules({ job, path, label: value })
       }
-      const reference = /^\$\{\{\s*matrix\.([\w.-]+)\s*\}\}$/.exec(runner)
+      const reference = /^\$\{\{\s*matrix\.([\w.-]+)\s*\}\}$/i.exec(runner)
       if (resolveMatrix === true && reference !== null) {
         const rows = matrixRows(config.strategy?.matrix)
         if (rows !== undefined && rows.length > 0) {
           for (const row of rows) {
             let value: unknown = row
-            for (const key of reference[1]!.split('.'))
-              value =
-                typeof value === 'object' && value !== null ? Reflect.get(value, key) : undefined
+            for (const key of reference[1]!.split('.')) value = expressionProperty({ value, key })
             checkRunner({ runner: value, resolveMatrix: false })
           }
           return
@@ -512,14 +592,11 @@ export const collectWorkflowPolicyViolations = ({
           return
         }
         const reference =
-          typeof value === 'string' ? /^\$\{\{\s*matrix\.([\w.-]+)\s*\}\}$/.exec(value) : null
+          typeof value === 'string' ? /^\$\{\{\s*matrix\.([\w.-]+)\s*\}\}$/i.exec(value) : null
         if (reference !== null) {
           let resolved: unknown = row
           for (const key of reference[1]!.split('.'))
-            resolved =
-              typeof resolved === 'object' && resolved !== null
-                ? Reflect.get(resolved, key)
-                : undefined
+            resolved = expressionProperty({ value: resolved, key })
           if (Array.isArray(resolved) === true) labels.push(...resolved)
           else labels.push(resolved)
         } else {

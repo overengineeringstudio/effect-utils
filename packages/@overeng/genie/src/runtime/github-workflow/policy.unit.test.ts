@@ -546,4 +546,68 @@ describe('fleet fork-code admission', () => {
       }),
     ).toContain('VIOLATION')
   })
+  it.each([
+    '${{ fromJSON(toJSON(github)).event.pull_request.title }}',
+    '${{ GitHub.Event.pull_request.title }}',
+    "${{ github['event'].pull_request.title }}",
+    '${{ toJSON(github) }}',
+    '${{ github[matrix.key] }}',
+    '${{ env.RUNNER }}',
+    '${{ steps.select.outputs.runner }}',
+    '${{ unknownFunction(matrix.os) }}',
+    '${{ needs.unadmitted.outputs.runner }}',
+    '${{ anotherContext.runner }}',
+  ])('defaults to deny every unadmitted context reference: %s', (runner) => {
+    const input = prWorkflow()
+    input.jobs.test!['runs-on'] = runner
+    input.jobs.test!.if = guard
+    const observations = collect(input, guardedPolicy)
+    expect(observations.map((entry) => entry.rule)).toContain('fork-controlled-runner')
+    expect(issueKinds(input, { ...guardedPolicy, mode: 'report', ledger: observations })).toContain(
+      'VIOLATION',
+    )
+  })
+  it('treats reusable-workflow inputs as controlled by its caller', () => {
+    const input: GitHubWorkflowArgs = { ...workflow('${{ inputs.runner }}'), on: 'workflow_call' }
+    input.jobs.test!.if = guard
+    expect(collect(input, guardedPolicy).map((entry) => entry.rule)).toContain(
+      'fork-controlled-runner',
+    )
+  })
+  it('admits mixed-case matrix context and property access', () => {
+    const input = prWorkflow()
+    input.jobs.test!['runs-on'] = '${{ MATRIX.OS }}'
+    input.jobs.test!.strategy = { matrix: { os: ['pool-small'] } }
+    input.jobs.test!.if = guard
+    expect(collect(input, guardedPolicy)).toEqual([])
+  })
+  it.each(['repository', 'repository_owner', 'run_id', 'run_number', 'run_attempt', 'workflow'])(
+    'allows immutable GitHub identity %s but not deeper data',
+    (property) => {
+      const input = prWorkflow()
+      input.jobs.test!['runs-on'] = `\${{ GitHub.${property.toUpperCase()} }}`
+      input.jobs.test!.if = guard
+      expect(collect(input, guardedPolicy).map((entry) => entry.rule)).not.toContain(
+        'fork-controlled-runner',
+      )
+      input.jobs.test!['runs-on'] = `\${{ github.${property}.payload }}`
+      expect(collect(input, guardedPolicy).map((entry) => entry.rule)).toContain(
+        'fork-controlled-runner',
+      )
+    },
+  )
+  it('admits repository configuration vars context but denies bare roots', () => {
+    const input = prWorkflow()
+    input.jobs.test!.if = guard
+    input.jobs.test!['runs-on'] = '${{ VARS.RUNNER }}'
+    expect(collect(input, guardedPolicy).map((entry) => entry.rule)).not.toContain(
+      'fork-controlled-runner',
+    )
+    for (const runner of ['${{ vars }}', '${{ matrix }}']) {
+      input.jobs.test!['runs-on'] = runner
+      expect(collect(input, guardedPolicy).map((entry) => entry.rule)).toContain(
+        'fork-controlled-runner',
+      )
+    }
+  })
 })
