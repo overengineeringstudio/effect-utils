@@ -309,6 +309,18 @@ const hasSameRepoPullRequestGuard = (condition: string | undefined): boolean => 
   )
 }
 
+/** Split only top-level conjunctions; nested/quoted operators cannot supply a proof. */
+export const workflowConditionConjuncts = (condition: string): readonly string[] | undefined => {
+  const parsed = guardExpressionParts(unwrapGuardExpression(condition))
+  if (
+    parsed === undefined ||
+    parsed.hasOr === true ||
+    parsed.parts.some((part) => part === '') === true
+  )
+    return undefined
+  return parsed.parts.map(unwrapGuardExpression)
+}
+
 /** Remove only the exact canonical guard when it is a top-level conjunction.
  * The guard only narrows admission, so proofs about the remaining restriction still hold.
  * Unrecognized/modified guards and outer disjunctions are returned untouched.
