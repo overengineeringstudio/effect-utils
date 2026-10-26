@@ -349,6 +349,46 @@ describe('shared workflow same-repository PR guards', () => {
   const guard = sameRepoPullRequestGuard()
   const rule = 'fleet-pr-without-same-repo-guard'
 
+  it('requires a same-repository guard for every admitted fleet selector', () => {
+    expect(policy.sameRepoGuardRunnerLabels).toEqual(policy.admittedRunnerLabels)
+  })
+
+  it('rejects an unguarded public PR workflow using only the nix selector', () => {
+    const workflow = fixtureWorkflow({
+      on: 'pull_request',
+      jobs: { check: { ...job, 'runs-on': 'nix' } },
+    })
+    expect(
+      collectWorkflowPolicyViolations({ workflow, policy }).map((violation) => violation.rule),
+    ).toEqual([rule])
+    expect(() => validateWorkflowPolicy({ workflow, policy })).toThrow(rule)
+  })
+
+  it('admits a guarded public PR workflow using only the nix selector', () => {
+    const workflow = fixtureWorkflow({
+      on: 'pull_request',
+      jobs: { check: { ...job, 'runs-on': 'nix', if: guard } },
+    })
+    expect(collectWorkflowPolicyViolations({ workflow, policy })).toEqual([])
+    expect(() => validateWorkflowPolicy({ workflow, policy })).not.toThrow()
+  })
+
+  it('cannot ledger-admit an unguarded public PR workflow using only the nix selector', () => {
+    const workflow = fixtureWorkflow({
+      on: 'pull_request',
+      jobs: { check: { ...job, 'runs-on': 'nix' } },
+    })
+    const ledger = collectWorkflowPolicyViolations({ workflow, policy })
+    expect(ledger.map((violation) => violation.rule)).toEqual([rule])
+    const reportPolicy = fleetWorkflowPolicy({
+      repository: policy.repository,
+      workflow: policy.workflow,
+      mode: 'report',
+      ledger,
+    })
+    expect(() => validateWorkflowPolicy({ workflow, policy: reportPolicy })).toThrow(rule)
+  })
+
   it('rejects the public PR fleet composer repro instead of injecting a guard', () => {
     expect(() =>
       ciWorkflow({

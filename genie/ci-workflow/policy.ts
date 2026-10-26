@@ -14,6 +14,8 @@ import exceptions from './policy-exceptions.json' with { type: 'json' }
 import migrationLedger from './policy-migration-ledger.json' with { type: 'json' }
 import { fleetRunnerLabels, nixRunnerSelector } from './runners.ts'
 
+const admittedRunnerLabels = [...Object.values(fleetRunnerLabels), nixRunnerSelector]
+
 /** Fleet policy values live here; the generator package supplies only the mechanism. */
 export const fleetWorkflowPolicy = ({
   repository,
@@ -31,8 +33,9 @@ export const fleetWorkflowPolicy = ({
   repository,
   workflow,
   mode,
-  admittedRunnerLabels: [...Object.values(fleetRunnerLabels), nixRunnerSelector],
-  sameRepoGuardRunnerLabels: Object.values(fleetRunnerLabels),
+  admittedRunnerLabels,
+  // Any admitted selector, including nix alone, can reach the fleet.
+  sameRepoGuardRunnerLabels: admittedRunnerLabels,
   exclusiveRunnerLabels: [fleetRunnerLabels.linuxX64Heavy],
   bannedActions: [
     'actions/upload-artifact',
