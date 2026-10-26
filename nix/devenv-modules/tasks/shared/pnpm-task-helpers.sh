@@ -64,6 +64,18 @@ pnpm_frozen_store_policy() {
   fi
 }
 
+pnpm_shared_store_default() {
+  local node_bin="$1"
+  local contract_path="${PNPM_INSTALL_CONTRACT_PATH:-$(dirname "${BASH_SOURCE[0]}")/../../../../pnpm-install-contract.json}"
+  "$node_bin" - "$contract_path" <<'EOF'
+const path = require('node:path')
+const contract = require(path.resolve(process.argv[2]))
+const defaultPath = contract.storeContract.localDevelopment.defaultPath
+if (!defaultPath.startsWith('~/')) throw new Error('Expected a home-relative shared Store Cache default')
+console.log(path.join(process.env.HOME, defaultPath.slice(2)))
+EOF
+}
+
 configure_pnpm_storage() {
   local node_bin="$1"
   local materialization_root="$2"
@@ -97,11 +109,7 @@ configure_pnpm_storage() {
     if [ -n "${PNPM_SHARED_STORE_DIR:-}" ]; then
       store_dir="$PNPM_SHARED_STORE_DIR"
     else
-      if [ "$global_virtual_store" = true ]; then
-        store_dir="$HOME/.local/share/pnpm/store"
-      else
-        store_dir="$HOME/.local/share/pnpm/store-shared-v1"
-      fi
+      store_dir="$(pnpm_shared_store_default "$node_bin")" || return
     fi
 
     local store_version_dir="$store_dir/v11"

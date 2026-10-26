@@ -758,7 +758,7 @@ echo "Test 34b: historical shared-files pools stay outside the managed store"
   test -f "$historical_pool/sentinel"
 )
 
-echo "Test 34g: GVS opt-in selects the complete standard store and clears local projection overrides"
+echo "Test 34g: GVS opt-in shares the contract store and clears local projection overrides"
 (
   storage_root="$test_dir/gvs-storage-root"
   isolated_home="$test_dir/gvs-storage-home"
@@ -768,11 +768,12 @@ echo "Test 34g: GVS opt-in selects the complete standard store and clears local 
   export PNPM_CONFIG_VIRTUAL_STORE_DIR=node_modules/.pnpm
   export npm_config_virtual_store_dir=node_modules/.pnpm
   configure_pnpm_storage node "$storage_root" "$test_dir/job-store" true true "$pnpm_bin"
-  assert_eq "$isolated_home/.local/share/pnpm/store" "$npm_config_store_dir" "GVS selects the standard complete store"
+  assert_eq "$(pnpm_shared_store_default node)" "$npm_config_store_dir" "GVS selects the contract shared store"
   assert_eq "true" "$PNPM_CONFIG_ENABLE_GLOBAL_VIRTUAL_STORE" "GVS uses the effective pnpm environment key"
   test -z "${PNPM_CONFIG_VIRTUAL_STORE_DIR+x}"
   test -z "${npm_config_virtual_store_dir+x}"
   configure_pnpm_storage node "$storage_root" "$test_dir/job-store" true false "$pnpm_bin"
+  assert_eq "$(pnpm_shared_store_default node)" "$npm_config_store_dir" "root-local mode selects the same contract store"
   assert_eq "false" "$PNPM_CONFIG_ENABLE_GLOBAL_VIRTUAL_STORE" "non-opted roots disable inherited GVS"
   assert_eq "node_modules/.pnpm" "$PNPM_CONFIG_VIRTUAL_STORE_DIR" "non-opted roots retain a local projection"
 )
@@ -810,7 +811,7 @@ echo "Test 34i: effective frozen-store policy keeps the shared CAS and uses a wr
   # The default shared CAS must not change just because its projection is local.
   unset PNPM_SHARED_STORE_DIR
   configure_pnpm_storage node "$storage_root" "$job_store" true true "$pnpm_bin"
-  assert_eq "$HOME/.local/share/pnpm/store" "$PNPM_STORE_DIR" "frozen policy preserves the GVS default CAS"
+  assert_eq "$(pnpm_shared_store_default node)" "$PNPM_STORE_DIR" "frozen policy preserves the contract default CAS"
   for mode in github-actions fixed-output-job-local; do
     unset GITHUB_ACTIONS PNPM_JOB_LOCAL_STORE
     case "$mode" in

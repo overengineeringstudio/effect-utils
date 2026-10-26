@@ -23,7 +23,10 @@ let
 in
 {
   helpersScript = pkgs.writeText "pnpm-task-helpers.sh" (
-    builtins.readFile ../shared/pnpm-task-helpers.sh
+    ''
+      PNPM_INSTALL_CONTRACT_PATH=${lib.escapeShellArg (pkgs.writeText "pnpm-install-contract.json" (builtins.readFile ../../../../pnpm-install-contract.json))}
+    ''
+    + builtins.readFile ../shared/pnpm-task-helpers.sh
   );
   acquireRootLock = ''
     acquire_pnpm_materialization_root_lock \

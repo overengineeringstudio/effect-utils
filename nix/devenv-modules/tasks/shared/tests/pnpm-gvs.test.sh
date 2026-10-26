@@ -66,6 +66,27 @@ check_guarded_shell_policy() (
   echo "guarded enterShell: GVS=$expected_gvs; native policy probe bypassed guard without passthrough"
 )
 
+# Projection mode changes topology, not the CAS namespace. Resolve the expected
+# default from the same generated contract consumed by the packaged helpers.
+for mode in true false; do
+  (
+    unset PNPM_SHARED_STORE_DIR
+    extract_script "$tmpdir/first" "$mode" enterShell
+    mkdir -p "$tmpdir/first"
+    printf '{"name":"default-store-fixture","private":true,"packageManager":"pnpm@12.7.0"}\n' > "$tmpdir/first/package.json"
+    cd "$tmpdir/first"
+    source "$tmpdir/$mode-enterShell-install.sh"
+    expected="$(node - "$ROOT/pnpm-install-contract.json" <<'EOF'
+const contract = require(process.argv[2])
+console.log(require('node:path').join(process.env.HOME, contract.storeContract.localDevelopment.defaultPath.slice(2)))
+EOF
+)"
+    test "$PNPM_STORE_DIR" = "$expected"
+    test "$PNPM_CONFIG_ENABLE_GLOBAL_VIRTUAL_STORE" = "$mode"
+    echo "default CAS: GVS=$mode uses contract shared store"
+  )
+done
+
 for name in first second ci local; do
   root="$tmpdir/$name"
   mkdir -p "$root"
