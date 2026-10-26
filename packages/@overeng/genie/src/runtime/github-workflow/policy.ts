@@ -80,9 +80,11 @@ export type WorkflowPolicyIssue = {
 /** Aggregated workflow policy failures, including exact violation identities. */
 export class WorkflowPolicyError extends Error {
   readonly _tag = 'WorkflowPolicyError'
-  constructor(readonly issues: readonly WorkflowPolicyIssue[]) {
+  readonly issues: readonly WorkflowPolicyIssue[]
+  constructor(issues: readonly WorkflowPolicyIssue[]) {
     super(issues.map((issue) => `${issue.kind}: ${issue.message}`).join('\n'))
     this.name = 'WorkflowPolicyError'
+    this.issues = issues
   }
 }
 
