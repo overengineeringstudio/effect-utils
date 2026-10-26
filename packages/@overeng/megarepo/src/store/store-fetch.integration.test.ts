@@ -1,4 +1,5 @@
 import { execFileSync } from 'node:child_process'
+import { readFileSync, readdirSync, readlinkSync } from 'node:fs'
 
 import { NodeServices } from '@effect/platform-node'
 import { describe, it } from '@effect/vitest'
@@ -7,7 +8,7 @@ import * as FileSystem from 'effect/FileSystem'
 import { expect } from 'vitest'
 
 import * as Git from '../core/git.ts'
-import { withGitWriterLock } from './git-writer-lock.ts'
+import { startGitWriterProcess, withGitWriterLock } from './git-writer-lock.ts'
 
 /** More tags than fit in a socket buffer as `[new tag]` lines (~60 bytes each). */
 const TAG_COUNT = 10_000
@@ -119,6 +120,117 @@ describe('store fetch', () => {
       expect(yield* git(bare, 'rev-parse', 'refs/remotes/origin/later')).toBe(commitB)
       expect(yield* tagCount(bare)).toBe(0)
     }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+  )
+
+  it.effect('qualified tag pins refresh exactly the named tag', () =>
+    Effect.gen(function* () {
+      const { upstream, bare, commitB } = yield* fixture
+      yield* Git.fetchBare({ repoPath: bare, refs: ['refs/tags/edge'] })
+      yield* git(upstream, 'update-ref', 'refs/tags/edge', commitB)
+      yield* Git.fetchBare({ repoPath: bare, refs: ['refs/tags/edge', 'absent'] })
+      expect(yield* git(bare, 'rev-parse', 'refs/tags/edge')).toBe(commitB)
+      expect(yield* tagCount(bare)).toBe(1)
+      expect(yield* Git.refExists({ repoPath: bare, ref: 'refs/tags/refs/tags/edge' })).toBe(false)
+    }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+  )
+
+  it.effect('bare ref pins prefer a moved tag over a same-named known branch', () =>
+    Effect.gen(function* () {
+      const { upstream, bare, commitA, commitB } = yield* fixture
+      yield* git(upstream, 'update-ref', 'refs/heads/edge', commitA)
+      yield* Git.fetchBare({ repoPath: bare, refs: ['edge'] })
+      yield* git(upstream, 'update-ref', 'refs/tags/edge', commitB)
+      yield* Git.fetchBare({ repoPath: bare, refs: ['edge'] })
+      expect(yield* git(bare, 'rev-parse', 'refs/remotes/origin/edge')).toBe(commitA)
+      const resolved = yield* Git.queryLocalRefType({ repoPath: bare, ref: 'edge' })
+      expect(resolved.type).toBe('tag')
+      expect(yield* git(bare, 'rev-parse', 'refs/tags/edge')).toBe(commitB)
+    }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+  )
+
+  it.effect('missing SHA pins fetch objects reachable only from an unrequested tag', () =>
+    Effect.gen(function* () {
+      const { upstream, bare } = yield* fixture
+      const tree = yield* git(upstream, 'rev-parse', 'main^{tree}')
+      const tagOnly = yield* git(upstream, 'commit-tree', tree, '-m', 'tag-only root')
+      yield* git(upstream, 'update-ref', 'refs/tags/isolated', tagOnly)
+      yield* Git.fetchBare({ repoPath: bare })
+      expect(yield* Git.refExists({ repoPath: bare, ref: tagOnly })).toBe(false)
+      yield* Git.fetchBare({ repoPath: bare, refs: [tagOnly] })
+      expect(yield* Git.refExists({ repoPath: bare, ref: tagOnly })).toBe(true)
+      expect(yield* tagCount(bare)).toBe(0)
+    }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+  )
+
+  it.effect.skipIf(process.platform !== 'linux')(
+    'the admission descriptor is close-on-exec before explicit writer duplication',
+    () =>
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem
+        const { bare } = yield* fixture
+        const common = yield* fs.realPath(bare)
+        yield* Effect.sync(() => {
+          const owned = readdirSync('/proc/self/fd').filter((fd) => {
+            try {
+              return readlinkSync(`/proc/self/fd/${fd}`) === `${common}.mr-writer.lock`
+            } catch {
+              return false
+            }
+          })
+          expect(owned).toHaveLength(1)
+          const info = readFileSync(`/proc/self/fdinfo/${owned[0]!}`, 'utf8')
+          const flags = Number.parseInt(info.match(/^flags:\s+([0-7]+)$/mu)![1]!, 8)
+          expect(flags & 0o2000000).toBe(0o2000000)
+        }).pipe(withGitWriterLock({ path: bare }))
+      }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+  )
+
+  it.live(
+    'interrupt kills a lock-holding SIGTERM-resistant grandchild after the leader exits',
+    () =>
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem
+        const { root, bare } = yield* fixture
+        const marker = `${root}/grandchild-pid`
+        const bun = process.versions.bun === undefined ? 'bun' : process.execPath
+        // These subprocess timers keep real OS processes alive; fake clocks cannot
+        // exercise process-group signals or kernel flock descriptor ownership.
+        const grandchild = `
+          process.on('SIGTERM', () => {});
+          require('node:fs').writeFileSync(process.argv[1], String(process.pid));
+          setInterval(() => {}, 1000);
+        `
+        const leader = `
+          require('node:child_process').spawn(process.execPath, ['-e', process.argv[1], process.argv[2]], {
+            stdio: ['ignore', 'ignore', 'ignore', 3]
+          });
+          setInterval(() => {}, 1000);
+        `
+        // Cleanup only this fixture process even if a regression leaves it alive.
+        yield* Effect.addFinalizer(() =>
+          Effect.sync(() => {
+            try {
+              const pid = Number(readFileSync(marker, 'utf8'))
+              process.kill(pid, 'SIGKILL')
+            } catch {
+              // No marker, or the fixture process has already exited.
+            }
+          }),
+        )
+        const result = yield* Effect.gen(function* () {
+          yield* startGitWriterProcess({ command: bun, args: ['-e', leader, grandchild, marker] })
+          while ((yield* fs.exists(marker)) === false) yield* Effect.sleep('10 millis')
+          return yield* Effect.never
+        }).pipe(
+          Effect.scoped,
+          withGitWriterLock({ path: bare }),
+          Effect.timeout('1500 millis'),
+          Effect.result,
+        )
+        expect(result._tag).toBe('Failure')
+        expect(yield* fs.exists(marker)).toBe(true)
+        yield* Effect.void.pipe(withGitWriterLock({ path: bare }), Effect.timeout('5 seconds'))
+      }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
   )
 
   // `it.live`: the network deadline and the lock wait follow wall time, not a TestClock.

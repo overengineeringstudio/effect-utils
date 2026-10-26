@@ -906,15 +906,14 @@ export const cloneBare = (args: { url: string; targetPath: string }) =>
 /**
  * Refresh a bare store repo from its remote.
  *
- * Fetches branch heads into `refs/remotes/origin/*` (pruning deleted branches) and, for each
- * name in `refs` that may be a tag, exactly that tag with a forced refspec: the remote is the
- * source of truth for tags in a cache store, so an upstream tag move updates the local tag
- * instead of failing with "would clobber existing tag". A name the remote has no tag for
- * (e.g. a branch not fetched yet) falls back to the branch-only fetch.
+ * Fetches branch heads into `refs/remotes/origin/*` (pruning deleted branches), then
+ * queries exact tag names requested by callers. Bare names prefer tags over branches,
+ * matching the resolver, and qualified tag names are preserved. Requested tags use
+ * forced refspecs because the remote is the source of truth for tags in a cache store.
+ * Missing requested SHA objects are fetched explicitly, including tag-only commits.
  *
- * It never fetches all tags: `--tags` (and default tag auto-following) advertises, wants and
- * writes every tag on each fetch, which on repositories with tens of thousands of tags turns a
- * no-op refresh into a long, lock-holding transfer.
+ * It never fetches all tags or auto-follows tags. Only the named tags and missing SHA
+ * objects are transferred in addition to branch heads.
  */
 export const fetchBare = (args: {
   repoPath: string
@@ -924,35 +923,51 @@ export const fetchBare = (args: {
 }) =>
   Effect.gen(function* () {
     const remote = args.remote ?? 'origin'
-    const branches = ['fetch', '--no-tags', '--prune', remote, bareOriginFetchRefspec]
-    // Tag candidates: not a commit SHA, not a refspec pattern, and not already a known
-    // branch, so the common branch pin costs no extra ref negotiation.
-    const tags = yield* Effect.filter(
-      [...new Set(args.refs ?? [])].filter(
+    yield* runGitCommandWithRetry({
+      args: ['fetch', '--no-tags', '--prune', remote, bareOriginFetchRefspec],
+      cwd: args.repoPath,
+    })
+    const requested = [...new Set(args.refs ?? [])]
+    const tagRefs = requested
+      .filter(
         (ref) =>
           ref.length > 0 &&
           /^[0-9a-f]{40}$/iu.test(ref) === false &&
-          /[*:^~?[\\\s]|\.\.|^-/u.test(ref) === false,
-      ),
-      (ref) =>
-        refExists({ repoPath: args.repoPath, ref: `refs/remotes/origin/${ref}` }).pipe(
-          Effect.map((isBranch) => isBranch === false),
-        ),
-    )
-    if (tags.length === 0) {
-      return yield* runGitCommandWithRetry({ args: branches, cwd: args.repoPath })
+          /[*:^~?[\\\s]|\.\.|^-/u.test(ref) === false &&
+          (ref.startsWith('refs/') === false || ref.startsWith('refs/tags/')),
+      )
+      .map((ref) => (ref.startsWith('refs/tags/') === true ? ref : `refs/tags/${ref}`))
+    if (tagRefs.length > 0) {
+      // Resolution checks tags before branches, including when both names exist.
+      // Query exact names even for a known branch: a new or moved remote tag must
+      // take the same precedence. Missing tags are normal, not failed fetches.
+      const advertised = yield* runGitCommandWithRetry({
+        args: ['ls-remote', '--refs', remote, ...tagRefs],
+        cwd: args.repoPath,
+      })
+      const present = new Set(advertised.split('\n').map((line) => line.split('\t')[1]))
+      const tags = tagRefs.filter((ref) => present.has(ref))
+      if (tags.length > 0) {
+        yield* runGitCommandWithRetry({
+          args: ['fetch', '--no-tags', '--prune', remote, ...tags.map((ref) => `+${ref}:${ref}`)],
+          cwd: args.repoPath,
+        })
+      }
     }
-    return yield* runGitCommandWithRetry({
-      args: [...branches, ...tags.map((tag) => `+refs/tags/${tag}:refs/tags/${tag}`)],
-      cwd: args.repoPath,
-    }).pipe(
-      Effect.catchIf(
-        (error) =>
-          error instanceof GitCommandError &&
-          error.stderr.includes("couldn't find remote ref refs/tags/"),
-        () => runGitCommandWithRetry({ args: branches, cwd: args.repoPath }),
-      ),
-    )
+    for (const ref of requested) {
+      if (
+        /^[0-9a-f]{40}$/iu.test(ref) === true &&
+        (yield* refExists({ repoPath: args.repoPath, ref })) === false
+      ) {
+        // A SHA may be reachable only through an unrequested tag, not any branch.
+        // Ask for the object itself; servers that disallow this return a typed
+        // GitCommandError rather than silently leaving the pin unavailable.
+        yield* runGitCommandWithRetry({
+          args: ['fetch', '--no-tags', remote, ref],
+          cwd: args.repoPath,
+        })
+      }
+    }
   }).pipe(
     Effect.asVoid,
     withGitWriterLock({ path: args.repoPath }),

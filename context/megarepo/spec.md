@@ -101,12 +101,13 @@ semver-like pattern (bare or prefixed) ⇒ tag; otherwise branch.
 
 A store fetch refreshes branch heads only:
 `git fetch --no-tags --prune origin +refs/heads/*:refs/remotes/origin/*`.
-It never fetches all tags; a ref the caller is about to resolve (a member's
-pinned ref, the `--ref`/`--base` of `mr store worktree new`) that is not a known
-branch or a commit SHA is also fetched as exactly that tag with a forced
-refspec (`+refs/tags/<ref>:refs/tags/<ref>`). The remote is the source of truth
-for tags in a cache store, so an upstream tag move updates the local tag. When
-the remote has no such tag, the fetch falls back to branches only.
+It never fetches all tags. For refs the caller is about to resolve (a member's
+pinned ref, the `--ref`/`--base` of `mr store worktree new`), it queries exact tag
+names and force-fetches those advertised by the remote. Bare names prefer tags
+over branches, matching ref resolution; qualified `refs/tags/<ref>` names are
+preserved. The remote is the source of truth for cache-store tags, so upstream
+tag moves update local tags. A requested SHA missing after the branch fetch is
+fetched explicitly; a server refusing SHA requests returns a Git command error.
 
 Fetches hold the repository's writer lock. Network commands carry a deadline
 (`MEGAREPO_GIT_NETWORK_TIMEOUT_MS`, default 10 minutes); on expiry or interruption

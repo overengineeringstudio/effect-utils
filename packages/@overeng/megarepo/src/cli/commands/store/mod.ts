@@ -4333,10 +4333,9 @@ const storeWorktreeNewCommand = Cli.Command.make(
         yield* Git.cloneBare({ url: cloneUrl, targetPath: bareRepoPath })
       }
 
-      // Fetch branches plus the ref the worktree starts from (`--base` for a new branch,
-      // otherwise `--ref`) when it may be a tag.
+      // Refresh the requested starting ref, including missing explicit SHA objects.
       if (noFetch === false) {
-        const startRef = base ?? ref
+        const startRef = base ?? commit ?? ref
         yield* Git.fetchBare({
           repoPath: bareRepoPath,
           ...(startRef === undefined ? {} : { refs: [startRef] }),

@@ -125,7 +125,17 @@ export const withGitWriterLock =
         Effect.gen(function* () {
           const file = yield* Effect.acquireRelease(
             io(lockPath)(() =>
-              open(lockPath, constants.O_CREAT | constants.O_RDWR | constants.O_NOFOLLOW, 0o600),
+              // Bun does not add CLOEXEC for numeric open flags. Keep unrelated
+              // spawns from inheriting admission; only the explicit fd3 duplicate
+              // below belongs to a writer. Node's constants omit O_CLOEXEC.
+              open(
+                lockPath,
+                constants.O_CREAT |
+                  constants.O_RDWR |
+                  constants.O_NOFOLLOW |
+                  (process.platform === 'darwin' ? 0x1000000 : 0o2000000),
+                0o600,
+              ),
             ),
             (handle) => Effect.promise(() => handle.close()).pipe(Effect.orDie),
           )
@@ -259,6 +269,9 @@ export const startGitWriterProcess = Effect.fnUntraced(
           await exited.catch(() => undefined)
         } finally {
           clearTimeout(escalation)
+          // The leader exiting does not mean its group exited: a helper can
+          // ignore SIGTERM and retain fd3. Kill that group before releasing ours.
+          if (detached === true) signal('SIGKILL')
         }
       }),
     )
