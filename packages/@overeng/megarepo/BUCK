@@ -7,7 +7,7 @@ load("//buck2/products:defs.bzl", "javascript_product")
 # Projection source: packages/@overeng/megarepo/BUCK.genie.ts
 # Projection schema version: 13
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:72725a2f6bb6557541ed8ec0165270ec55c95c790fb673391c84104512aca9dd
+# Semantic fingerprint: sha256:2d12715a91fabfd9babd9b116976fd84e11ba873a24e6ebce53eb110af9075b8
 # Regenerate: devenv tasks run genie:run
 
 load("//buck2:materialization.bzl", "export_materialization_inputs", "package_view")
@@ -246,6 +246,7 @@ export_materialization_inputs([
     "src/store/store-deletion-lease.integration.test.ts",
     "src/store/store-deletion-lease.ts",
     "src/store/store-fetch-refspec.integration.test.ts",
+    "src/store/store-fetch.integration.test.ts",
     "src/store/store-fs-atomic.ts",
     "src/store/store-fs-atomic.unit.test.ts",
     "src/store/store-gc-config.ts",
@@ -558,6 +559,7 @@ package_view(
         "src/store/store-deletion-lease.integration.test.ts": "src/store/store-deletion-lease.integration.test.ts",
         "src/store/store-deletion-lease.ts": "src/store/store-deletion-lease.ts",
         "src/store/store-fetch-refspec.integration.test.ts": "src/store/store-fetch-refspec.integration.test.ts",
+        "src/store/store-fetch.integration.test.ts": "src/store/store-fetch.integration.test.ts",
         "src/store/store-fs-atomic.ts": "src/store/store-fs-atomic.ts",
         "src/store/store-fs-atomic.unit.test.ts": "src/store/store-fs-atomic.unit.test.ts",
         "src/store/store-gc-config.ts": "src/store/store-gc-config.ts",
@@ -872,6 +874,7 @@ package_view(
         "src/store/store-deletion-lease.integration.test.ts": "src/store/store-deletion-lease.integration.test.ts",
         "src/store/store-deletion-lease.ts": "src/store/store-deletion-lease.ts",
         "src/store/store-fetch-refspec.integration.test.ts": "src/store/store-fetch-refspec.integration.test.ts",
+        "src/store/store-fetch.integration.test.ts": "src/store/store-fetch.integration.test.ts",
         "src/store/store-fs-atomic.ts": "src/store/store-fs-atomic.ts",
         "src/store/store-fs-atomic.unit.test.ts": "src/store/store-fs-atomic.unit.test.ts",
         "src/store/store-gc-config.ts": "src/store/store-gc-config.ts",
@@ -1181,6 +1184,7 @@ package_view(
         "src/store/store-deletion-lease.integration.test.ts": "src/store/store-deletion-lease.integration.test.ts",
         "src/store/store-deletion-lease.ts": "src/store/store-deletion-lease.ts",
         "src/store/store-fetch-refspec.integration.test.ts": "src/store/store-fetch-refspec.integration.test.ts",
+        "src/store/store-fetch.integration.test.ts": "src/store/store-fetch.integration.test.ts",
         "src/store/store-fs-atomic.ts": "src/store/store-fs-atomic.ts",
         "src/store/store-fs-atomic.unit.test.ts": "src/store/store-fs-atomic.unit.test.ts",
         "src/store/store-gc-config.ts": "src/store/store-gc-config.ts",
