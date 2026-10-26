@@ -46,7 +46,7 @@
       "workflow": "ci.yml",
       "job": "default-ref-policy",
       "rule": "banned-action",
-      "path": "jobs.default-ref-policy.steps[name:\"Upload Buck2 cache evidence\"].uses",
+      "path": "jobs.default-ref-policy.steps[name:\"Upload Buck2 cache evidence\"|action:\"actions/upload-artifact\"|content:{\"if\":\"${{ always() }}\",\"with\":[[\"if-no-files-found\",\"warn\"],[\"name\",\"buck2-cache-evidence-default-ref-policy-${{ github.run_attempt }}\"],[\"path\",\"${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}\\n${{ env.CI_BUCK2_CACHE_ACTIONS_PATH }}\"],[\"retention-days\",14]]}].uses",
       "value": "actions/upload-artifact@v4"
     },
     {
@@ -70,7 +70,7 @@
       "workflow": "ci.yml",
       "job": "pr-buck2-tools",
       "rule": "banned-action",
-      "path": "jobs.pr-buck2-tools.steps[name:\"Upload Nix diagnostics artifact\"].uses",
+      "path": "jobs.pr-buck2-tools.steps[name:\"Upload Nix diagnostics artifact\"|action:\"actions/upload-artifact\"|content:{\"if\":\"failure() && env.NIX_STORE_DIAGNOSTICS_DIR != ''\",\"with\":[[\"if-no-files-found\",\"ignore\"],[\"name\",\"nix-store-diagnostics-${{ github.job }}-${{ runner.os }}-run-${{ github.run_id }}-attempt-${{ github.run_attempt }}\"],[\"path\",\"${{ env.NIX_STORE_DIAGNOSTICS_DIR }}\"],[\"retention-days\",14]]}].uses",
       "value": "actions/upload-artifact@v4"
     },
     {
@@ -78,7 +78,7 @@
       "workflow": "ci.yml",
       "job": "pr-buck2-tools",
       "rule": "banned-action",
-      "path": "jobs.pr-buck2-tools.steps[name:\"Upload Buck2 cache evidence\"].uses",
+      "path": "jobs.pr-buck2-tools.steps[name:\"Upload Buck2 cache evidence\"|action:\"actions/upload-artifact\"|content:{\"if\":\"${{ always() }}\",\"with\":[[\"if-no-files-found\",\"warn\"],[\"name\",\"buck2-cache-evidence-pr-buck2-tools-${{ github.run_attempt }}\"],[\"path\",\"${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}\\n${{ env.CI_BUCK2_CACHE_ACTIONS_PATH }}\"],[\"retention-days\",14]]}].uses",
       "value": "actions/upload-artifact@v4"
     },
     {
@@ -102,7 +102,7 @@
       "workflow": "ci.yml",
       "job": "quality",
       "rule": "banned-action",
-      "path": "jobs.quality.steps[name:\"Upload Nix diagnostics artifact\"].uses",
+      "path": "jobs.quality.steps[name:\"Upload Nix diagnostics artifact\"|action:\"actions/upload-artifact\"|content:{\"if\":\"failure() && env.NIX_STORE_DIAGNOSTICS_DIR != ''\",\"with\":[[\"if-no-files-found\",\"ignore\"],[\"name\",\"nix-store-diagnostics-${{ github.job }}-${{ runner.os }}-run-${{ github.run_id }}-attempt-${{ github.run_attempt }}\"],[\"path\",\"${{ env.NIX_STORE_DIAGNOSTICS_DIR }}\"],[\"retention-days\",14]]}].uses",
       "value": "actions/upload-artifact@v4"
     },
     {
@@ -110,7 +110,7 @@
       "workflow": "ci.yml",
       "job": "quality",
       "rule": "banned-action",
-      "path": "jobs.quality.steps[name:\"Upload CI OpenTelemetry spans\"].uses",
+      "path": "jobs.quality.steps[name:\"Upload CI OpenTelemetry spans\"|action:\"actions/upload-artifact\"|content:{\"if\":\"always() && env.OTEL_SPAN_SPOOL_DIR != ''\",\"with\":[[\"if-no-files-found\",\"warn\"],[\"name\",\"ci-otel-${{ github.job }}-${{ runner.os }}-${{ runner.arch }}-run-${{ github.run_id }}-attempt-${{ github.run_attempt }}\"],[\"path\",\"${{ env.OTEL_SPAN_SPOOL_DIR }}\"],[\"retention-days\",14]]}].uses",
       "value": "actions/upload-artifact@v4"
     },
     {
@@ -118,7 +118,7 @@
       "workflow": "ci.yml",
       "job": "quality",
       "rule": "banned-action",
-      "path": "jobs.quality.steps[name:\"Upload Buck2 cache evidence\"].uses",
+      "path": "jobs.quality.steps[name:\"Upload Buck2 cache evidence\"|action:\"actions/upload-artifact\"|content:{\"if\":\"${{ always() }}\",\"with\":[[\"if-no-files-found\",\"warn\"],[\"name\",\"buck2-cache-evidence-quality-${{ github.run_attempt }}\"],[\"path\",\"${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}\\n${{ env.CI_BUCK2_CACHE_ACTIONS_PATH }}\"],[\"retention-days\",14]]}].uses",
       "value": "actions/upload-artifact@v4"
     },
     {
@@ -134,7 +134,7 @@
       "workflow": "ci.yml",
       "job": "test",
       "rule": "banned-action",
-      "path": "jobs.test.steps[name:\"Upload Nix diagnostics artifact\"].uses",
+      "path": "jobs.test.steps[name:\"Upload Nix diagnostics artifact\"|action:\"actions/upload-artifact\"|content:{\"if\":\"failure() && env.NIX_STORE_DIAGNOSTICS_DIR != ''\",\"with\":[[\"if-no-files-found\",\"ignore\"],[\"name\",\"nix-store-diagnostics-${{ github.job }}-${{ runner.os }}-run-${{ github.run_id }}-attempt-${{ github.run_attempt }}\"],[\"path\",\"${{ env.NIX_STORE_DIAGNOSTICS_DIR }}\"],[\"retention-days\",14]]}].uses",
       "value": "actions/upload-artifact@v4"
     },
     {
@@ -142,7 +142,7 @@
       "workflow": "ci.yml",
       "job": "test",
       "rule": "banned-action",
-      "path": "jobs.test.steps[name:\"Upload retained Vitest collection reports\"].uses",
+      "path": "jobs.test.steps[name:\"Upload retained Vitest collection reports\"|action:\"actions/upload-artifact\"|content:{\"if\":\"${{ always() }}\",\"continue-on-error\":true,\"with\":[[\"if-no-files-found\",\"ignore\"],[\"name\",\"vitest-collection-${{ github.job }}-${{ github.run_id }}-${{ github.run_attempt }}\"],[\"path\",\"tmp/otel-scrape/summaries/*.vitest.json\"],[\"retention-days\",14]]}].uses",
       "value": "actions/upload-artifact@v4"
     },
     {
@@ -150,7 +150,7 @@
       "workflow": "ci.yml",
       "job": "test",
       "rule": "banned-action",
-      "path": "jobs.test.steps[name:\"Upload test resource samples\"].uses",
+      "path": "jobs.test.steps[name:\"Upload test resource samples\"|action:\"actions/upload-artifact\"|content:{\"if\":\"${{ always() }}\",\"continue-on-error\":true,\"with\":[[\"if-no-files-found\",\"ignore\"],[\"name\",\"test-resources-${{ github.job }}-${{ github.run_id }}-${{ github.run_attempt }}\"],[\"path\",\"tmp/ci-resources/test-resources.json\"],[\"retention-days\",14]]}].uses",
       "value": "actions/upload-artifact@v4"
     },
     {
@@ -158,7 +158,7 @@
       "workflow": "ci.yml",
       "job": "test",
       "rule": "banned-action",
-      "path": "jobs.test.steps[name:\"Upload CI OpenTelemetry spans\"].uses",
+      "path": "jobs.test.steps[name:\"Upload CI OpenTelemetry spans\"|action:\"actions/upload-artifact\"|content:{\"if\":\"always() && env.OTEL_SPAN_SPOOL_DIR != ''\",\"with\":[[\"if-no-files-found\",\"warn\"],[\"name\",\"ci-otel-${{ github.job }}-${{ runner.os }}-${{ runner.arch }}-run-${{ github.run_id }}-attempt-${{ github.run_attempt }}\"],[\"path\",\"${{ env.OTEL_SPAN_SPOOL_DIR }}\"],[\"retention-days\",14]]}].uses",
       "value": "actions/upload-artifact@v4"
     },
     {
@@ -166,7 +166,7 @@
       "workflow": "ci.yml",
       "job": "test",
       "rule": "banned-action",
-      "path": "jobs.test.steps[name:\"Upload Buck2 cache evidence\"].uses",
+      "path": "jobs.test.steps[name:\"Upload Buck2 cache evidence\"|action:\"actions/upload-artifact\"|content:{\"if\":\"${{ always() }}\",\"with\":[[\"if-no-files-found\",\"warn\"],[\"name\",\"buck2-cache-evidence-test-${{ github.run_attempt }}\"],[\"path\",\"${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}\\n${{ env.CI_BUCK2_CACHE_ACTIONS_PATH }}\"],[\"retention-days\",14]]}].uses",
       "value": "actions/upload-artifact@v4"
     },
     {
@@ -182,7 +182,7 @@
       "workflow": "ci.yml",
       "job": "test-macos",
       "rule": "banned-action",
-      "path": "jobs.test-macos.steps[name:\"Mount local Nix substituter cache volume\"].uses",
+      "path": "jobs.test-macos.steps[name:\"Mount local Nix substituter cache volume\"|action:\"namespacelabs/nscloud-cache-action\"|content:{\"continue-on-error\":true,\"with\":[[\"path\",\"/Users/runner/.cache/nix-substituter\"]]}].uses",
       "value": "namespacelabs/nscloud-cache-action@v1"
     },
     {
@@ -190,7 +190,7 @@
       "workflow": "ci.yml",
       "job": "test-macos",
       "rule": "banned-action",
-      "path": "jobs.test-macos.steps[name:\"Upload Nix diagnostics artifact\"].uses",
+      "path": "jobs.test-macos.steps[name:\"Upload Nix diagnostics artifact\"|action:\"actions/upload-artifact\"|content:{\"if\":\"failure() && env.NIX_STORE_DIAGNOSTICS_DIR != ''\",\"with\":[[\"if-no-files-found\",\"ignore\"],[\"name\",\"nix-store-diagnostics-${{ github.job }}-${{ runner.os }}-run-${{ github.run_id }}-attempt-${{ github.run_attempt }}\"],[\"path\",\"${{ env.NIX_STORE_DIAGNOSTICS_DIR }}\"],[\"retention-days\",14]]}].uses",
       "value": "actions/upload-artifact@v4"
     },
     {
@@ -198,7 +198,7 @@
       "workflow": "ci.yml",
       "job": "test-macos",
       "rule": "banned-action",
-      "path": "jobs.test-macos.steps[name:\"Upload retained Vitest collection reports\"].uses",
+      "path": "jobs.test-macos.steps[name:\"Upload retained Vitest collection reports\"|action:\"actions/upload-artifact\"|content:{\"if\":\"${{ always() }}\",\"continue-on-error\":true,\"with\":[[\"if-no-files-found\",\"ignore\"],[\"name\",\"vitest-collection-${{ github.job }}-${{ github.run_id }}-${{ github.run_attempt }}\"],[\"path\",\"tmp/otel-scrape/summaries/*.vitest.json\"],[\"retention-days\",14]]}].uses",
       "value": "actions/upload-artifact@v4"
     },
     {
@@ -206,7 +206,7 @@
       "workflow": "ci.yml",
       "job": "test-macos",
       "rule": "banned-action",
-      "path": "jobs.test-macos.steps[name:\"Upload test resource samples\"].uses",
+      "path": "jobs.test-macos.steps[name:\"Upload test resource samples\"|action:\"actions/upload-artifact\"|content:{\"if\":\"${{ always() }}\",\"continue-on-error\":true,\"with\":[[\"if-no-files-found\",\"ignore\"],[\"name\",\"test-resources-${{ github.job }}-${{ github.run_id }}-${{ github.run_attempt }}\"],[\"path\",\"tmp/ci-resources/test-resources.json\"],[\"retention-days\",14]]}].uses",
       "value": "actions/upload-artifact@v4"
     },
     {
@@ -214,7 +214,7 @@
       "workflow": "ci.yml",
       "job": "test-macos",
       "rule": "banned-action",
-      "path": "jobs.test-macos.steps[name:\"Upload CI OpenTelemetry spans\"].uses",
+      "path": "jobs.test-macos.steps[name:\"Upload CI OpenTelemetry spans\"|action:\"actions/upload-artifact\"|content:{\"if\":\"always() && env.OTEL_SPAN_SPOOL_DIR != ''\",\"with\":[[\"if-no-files-found\",\"warn\"],[\"name\",\"ci-otel-${{ github.job }}-${{ runner.os }}-${{ runner.arch }}-run-${{ github.run_id }}-attempt-${{ github.run_attempt }}\"],[\"path\",\"${{ env.OTEL_SPAN_SPOOL_DIR }}\"],[\"retention-days\",14]]}].uses",
       "value": "actions/upload-artifact@v4"
     },
     {
@@ -222,7 +222,7 @@
       "workflow": "ci.yml",
       "job": "test-macos",
       "rule": "banned-action",
-      "path": "jobs.test-macos.steps[name:\"Upload Buck2 cache evidence\"].uses",
+      "path": "jobs.test-macos.steps[name:\"Upload Buck2 cache evidence\"|action:\"actions/upload-artifact\"|content:{\"if\":\"${{ always() }}\",\"with\":[[\"if-no-files-found\",\"warn\"],[\"name\",\"buck2-cache-evidence-test-macos-${{ github.run_attempt }}\"],[\"path\",\"${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}\\n${{ env.CI_BUCK2_CACHE_ACTIONS_PATH }}\"],[\"retention-days\",14]]}].uses",
       "value": "actions/upload-artifact@v4"
     },
     {
@@ -238,7 +238,7 @@
       "workflow": "ci.yml",
       "job": "test-playwright-utils",
       "rule": "banned-action",
-      "path": "jobs.test-playwright-utils.steps[name:\"Upload Playwright failure evidence\"].uses",
+      "path": "jobs.test-playwright-utils.steps[name:\"Upload Playwright failure evidence\"|action:\"actions/upload-artifact\"|content:{\"if\":\"failure()\",\"with\":[[\"if-no-files-found\",\"ignore\"],[\"name\",\"playwright-test-results-utils-run-${{ github.run_id }}-attempt-${{ github.run_attempt }}\"],[\"path\",\"packages/@overeng/utils/test-results/\"],[\"retention-days\",14]]}].uses",
       "value": "actions/upload-artifact@v4"
     },
     {
@@ -246,7 +246,7 @@
       "workflow": "ci.yml",
       "job": "test-playwright-utils",
       "rule": "banned-action",
-      "path": "jobs.test-playwright-utils.steps[name:\"Upload Nix diagnostics artifact\"].uses",
+      "path": "jobs.test-playwright-utils.steps[name:\"Upload Nix diagnostics artifact\"|action:\"actions/upload-artifact\"|content:{\"if\":\"failure() && env.NIX_STORE_DIAGNOSTICS_DIR != ''\",\"with\":[[\"if-no-files-found\",\"ignore\"],[\"name\",\"nix-store-diagnostics-${{ github.job }}-${{ runner.os }}-run-${{ github.run_id }}-attempt-${{ github.run_attempt }}\"],[\"path\",\"${{ env.NIX_STORE_DIAGNOSTICS_DIR }}\"],[\"retention-days\",14]]}].uses",
       "value": "actions/upload-artifact@v4"
     },
     {
@@ -254,7 +254,7 @@
       "workflow": "ci.yml",
       "job": "test-playwright-utils",
       "rule": "banned-action",
-      "path": "jobs.test-playwright-utils.steps[name:\"Upload CI OpenTelemetry spans\"].uses",
+      "path": "jobs.test-playwright-utils.steps[name:\"Upload CI OpenTelemetry spans\"|action:\"actions/upload-artifact\"|content:{\"if\":\"always() && env.OTEL_SPAN_SPOOL_DIR != ''\",\"with\":[[\"if-no-files-found\",\"warn\"],[\"name\",\"ci-otel-${{ github.job }}-${{ runner.os }}-${{ runner.arch }}-run-${{ github.run_id }}-attempt-${{ github.run_attempt }}\"],[\"path\",\"${{ env.OTEL_SPAN_SPOOL_DIR }}\"],[\"retention-days\",14]]}].uses",
       "value": "actions/upload-artifact@v4"
     },
     {
@@ -262,7 +262,7 @@
       "workflow": "ci.yml",
       "job": "test-playwright-utils",
       "rule": "banned-action",
-      "path": "jobs.test-playwright-utils.steps[name:\"Upload Buck2 cache evidence\"].uses",
+      "path": "jobs.test-playwright-utils.steps[name:\"Upload Buck2 cache evidence\"|action:\"actions/upload-artifact\"|content:{\"if\":\"${{ always() }}\",\"with\":[[\"if-no-files-found\",\"warn\"],[\"name\",\"buck2-cache-evidence-test-playwright-utils-${{ github.run_attempt }}\"],[\"path\",\"${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}\\n${{ env.CI_BUCK2_CACHE_ACTIONS_PATH }}\"],[\"retention-days\",14]]}].uses",
       "value": "actions/upload-artifact@v4"
     },
     {
@@ -278,7 +278,7 @@
       "workflow": "ci.yml",
       "job": "test-playwright-tui-react",
       "rule": "banned-action",
-      "path": "jobs.test-playwright-tui-react.steps[name:\"Upload Playwright failure evidence\"].uses",
+      "path": "jobs.test-playwright-tui-react.steps[name:\"Upload Playwright failure evidence\"|action:\"actions/upload-artifact\"|content:{\"if\":\"failure()\",\"with\":[[\"if-no-files-found\",\"ignore\"],[\"name\",\"playwright-test-results-tui-react-run-${{ github.run_id }}-attempt-${{ github.run_attempt }}\"],[\"path\",\"packages/@overeng/tui-react/test-results/\"],[\"retention-days\",14]]}].uses",
       "value": "actions/upload-artifact@v4"
     },
     {
@@ -286,7 +286,7 @@
       "workflow": "ci.yml",
       "job": "test-playwright-tui-react",
       "rule": "banned-action",
-      "path": "jobs.test-playwright-tui-react.steps[name:\"Upload Nix diagnostics artifact\"].uses",
+      "path": "jobs.test-playwright-tui-react.steps[name:\"Upload Nix diagnostics artifact\"|action:\"actions/upload-artifact\"|content:{\"if\":\"failure() && env.NIX_STORE_DIAGNOSTICS_DIR != ''\",\"with\":[[\"if-no-files-found\",\"ignore\"],[\"name\",\"nix-store-diagnostics-${{ github.job }}-${{ runner.os }}-run-${{ github.run_id }}-attempt-${{ github.run_attempt }}\"],[\"path\",\"${{ env.NIX_STORE_DIAGNOSTICS_DIR }}\"],[\"retention-days\",14]]}].uses",
       "value": "actions/upload-artifact@v4"
     },
     {
@@ -294,7 +294,7 @@
       "workflow": "ci.yml",
       "job": "test-playwright-tui-react",
       "rule": "banned-action",
-      "path": "jobs.test-playwright-tui-react.steps[name:\"Upload CI OpenTelemetry spans\"].uses",
+      "path": "jobs.test-playwright-tui-react.steps[name:\"Upload CI OpenTelemetry spans\"|action:\"actions/upload-artifact\"|content:{\"if\":\"always() && env.OTEL_SPAN_SPOOL_DIR != ''\",\"with\":[[\"if-no-files-found\",\"warn\"],[\"name\",\"ci-otel-${{ github.job }}-${{ runner.os }}-${{ runner.arch }}-run-${{ github.run_id }}-attempt-${{ github.run_attempt }}\"],[\"path\",\"${{ env.OTEL_SPAN_SPOOL_DIR }}\"],[\"retention-days\",14]]}].uses",
       "value": "actions/upload-artifact@v4"
     },
     {
@@ -302,7 +302,7 @@
       "workflow": "ci.yml",
       "job": "test-playwright-tui-react",
       "rule": "banned-action",
-      "path": "jobs.test-playwright-tui-react.steps[name:\"Upload Buck2 cache evidence\"].uses",
+      "path": "jobs.test-playwright-tui-react.steps[name:\"Upload Buck2 cache evidence\"|action:\"actions/upload-artifact\"|content:{\"if\":\"${{ always() }}\",\"with\":[[\"if-no-files-found\",\"warn\"],[\"name\",\"buck2-cache-evidence-test-playwright-tui-react-${{ github.run_attempt }}\"],[\"path\",\"${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}\\n${{ env.CI_BUCK2_CACHE_ACTIONS_PATH }}\"],[\"retention-days\",14]]}].uses",
       "value": "actions/upload-artifact@v4"
     },
     {
@@ -318,7 +318,7 @@
       "workflow": "ci.yml",
       "job": "test-megarepo-store-gc",
       "rule": "banned-action",
-      "path": "jobs.test-megarepo-store-gc.steps[name:\"Upload Nix diagnostics artifact\"].uses",
+      "path": "jobs.test-megarepo-store-gc.steps[name:\"Upload Nix diagnostics artifact\"|action:\"actions/upload-artifact\"|content:{\"if\":\"failure() && env.NIX_STORE_DIAGNOSTICS_DIR != ''\",\"with\":[[\"if-no-files-found\",\"ignore\"],[\"name\",\"nix-store-diagnostics-${{ github.job }}-${{ runner.os }}-run-${{ github.run_id }}-attempt-${{ github.run_attempt }}\"],[\"path\",\"${{ env.NIX_STORE_DIAGNOSTICS_DIR }}\"],[\"retention-days\",14]]}].uses",
       "value": "actions/upload-artifact@v4"
     },
     {
@@ -326,7 +326,7 @@
       "workflow": "ci.yml",
       "job": "test-megarepo-store-gc",
       "rule": "banned-action",
-      "path": "jobs.test-megarepo-store-gc.steps[name:\"Upload CI OpenTelemetry spans\"].uses",
+      "path": "jobs.test-megarepo-store-gc.steps[name:\"Upload CI OpenTelemetry spans\"|action:\"actions/upload-artifact\"|content:{\"if\":\"always() && env.OTEL_SPAN_SPOOL_DIR != ''\",\"with\":[[\"if-no-files-found\",\"warn\"],[\"name\",\"ci-otel-${{ github.job }}-${{ runner.os }}-${{ runner.arch }}-run-${{ github.run_id }}-attempt-${{ github.run_attempt }}\"],[\"path\",\"${{ env.OTEL_SPAN_SPOOL_DIR }}\"],[\"retention-days\",14]]}].uses",
       "value": "actions/upload-artifact@v4"
     },
     {
@@ -334,7 +334,7 @@
       "workflow": "ci.yml",
       "job": "test-megarepo-store-gc",
       "rule": "banned-action",
-      "path": "jobs.test-megarepo-store-gc.steps[name:\"Upload Buck2 cache evidence\"].uses",
+      "path": "jobs.test-megarepo-store-gc.steps[name:\"Upload Buck2 cache evidence\"|action:\"actions/upload-artifact\"|content:{\"if\":\"${{ always() }}\",\"with\":[[\"if-no-files-found\",\"warn\"],[\"name\",\"buck2-cache-evidence-test-megarepo-store-gc-${{ github.run_attempt }}\"],[\"path\",\"${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}\\n${{ env.CI_BUCK2_CACHE_ACTIONS_PATH }}\"],[\"retention-days\",14]]}].uses",
       "value": "actions/upload-artifact@v4"
     },
     {
@@ -350,7 +350,7 @@
       "workflow": "ci.yml",
       "job": "cargo",
       "rule": "banned-action",
-      "path": "jobs.cargo.steps[name:\"Upload Nix diagnostics artifact\"].uses",
+      "path": "jobs.cargo.steps[name:\"Upload Nix diagnostics artifact\"|action:\"actions/upload-artifact\"|content:{\"if\":\"failure() && env.NIX_STORE_DIAGNOSTICS_DIR != ''\",\"with\":[[\"if-no-files-found\",\"ignore\"],[\"name\",\"nix-store-diagnostics-${{ github.job }}-${{ runner.os }}-run-${{ github.run_id }}-attempt-${{ github.run_attempt }}\"],[\"path\",\"${{ env.NIX_STORE_DIAGNOSTICS_DIR }}\"],[\"retention-days\",14]]}].uses",
       "value": "actions/upload-artifact@v4"
     },
     {
@@ -358,7 +358,7 @@
       "workflow": "ci.yml",
       "job": "cargo",
       "rule": "banned-action",
-      "path": "jobs.cargo.steps[name:\"Upload CI OpenTelemetry spans\"].uses",
+      "path": "jobs.cargo.steps[name:\"Upload CI OpenTelemetry spans\"|action:\"actions/upload-artifact\"|content:{\"if\":\"always() && env.OTEL_SPAN_SPOOL_DIR != ''\",\"with\":[[\"if-no-files-found\",\"warn\"],[\"name\",\"ci-otel-${{ github.job }}-${{ runner.os }}-${{ runner.arch }}-run-${{ github.run_id }}-attempt-${{ github.run_attempt }}\"],[\"path\",\"${{ env.OTEL_SPAN_SPOOL_DIR }}\"],[\"retention-days\",14]]}].uses",
       "value": "actions/upload-artifact@v4"
     },
     {
@@ -366,7 +366,7 @@
       "workflow": "ci.yml",
       "job": "cargo",
       "rule": "banned-action",
-      "path": "jobs.cargo.steps[name:\"Upload Buck2 cache evidence\"].uses",
+      "path": "jobs.cargo.steps[name:\"Upload Buck2 cache evidence\"|action:\"actions/upload-artifact\"|content:{\"if\":\"${{ always() }}\",\"with\":[[\"if-no-files-found\",\"warn\"],[\"name\",\"buck2-cache-evidence-cargo-${{ github.run_attempt }}\"],[\"path\",\"${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}\\n${{ env.CI_BUCK2_CACHE_ACTIONS_PATH }}\"],[\"retention-days\",14]]}].uses",
       "value": "actions/upload-artifact@v4"
     },
     {
@@ -382,7 +382,7 @@
       "workflow": "ci.yml",
       "job": "weaver",
       "rule": "banned-action",
-      "path": "jobs.weaver.steps[name:\"Upload Nix diagnostics artifact\"].uses",
+      "path": "jobs.weaver.steps[name:\"Upload Nix diagnostics artifact\"|action:\"actions/upload-artifact\"|content:{\"if\":\"failure() && env.NIX_STORE_DIAGNOSTICS_DIR != ''\",\"with\":[[\"if-no-files-found\",\"ignore\"],[\"name\",\"nix-store-diagnostics-${{ github.job }}-${{ runner.os }}-run-${{ github.run_id }}-attempt-${{ github.run_attempt }}\"],[\"path\",\"${{ env.NIX_STORE_DIAGNOSTICS_DIR }}\"],[\"retention-days\",14]]}].uses",
       "value": "actions/upload-artifact@v4"
     },
     {
@@ -390,7 +390,7 @@
       "workflow": "ci.yml",
       "job": "weaver",
       "rule": "banned-action",
-      "path": "jobs.weaver.steps[name:\"Upload CI OpenTelemetry spans\"].uses",
+      "path": "jobs.weaver.steps[name:\"Upload CI OpenTelemetry spans\"|action:\"actions/upload-artifact\"|content:{\"if\":\"always() && env.OTEL_SPAN_SPOOL_DIR != ''\",\"with\":[[\"if-no-files-found\",\"warn\"],[\"name\",\"ci-otel-${{ github.job }}-${{ runner.os }}-${{ runner.arch }}-run-${{ github.run_id }}-attempt-${{ github.run_attempt }}\"],[\"path\",\"${{ env.OTEL_SPAN_SPOOL_DIR }}\"],[\"retention-days\",14]]}].uses",
       "value": "actions/upload-artifact@v4"
     },
     {
@@ -398,7 +398,7 @@
       "workflow": "ci.yml",
       "job": "weaver",
       "rule": "banned-action",
-      "path": "jobs.weaver.steps[name:\"Upload Buck2 cache evidence\"].uses",
+      "path": "jobs.weaver.steps[name:\"Upload Buck2 cache evidence\"|action:\"actions/upload-artifact\"|content:{\"if\":\"${{ always() }}\",\"with\":[[\"if-no-files-found\",\"warn\"],[\"name\",\"buck2-cache-evidence-weaver-${{ github.run_attempt }}\"],[\"path\",\"${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}\\n${{ env.CI_BUCK2_CACHE_ACTIONS_PATH }}\"],[\"retention-days\",14]]}].uses",
       "value": "actions/upload-artifact@v4"
     },
     {
@@ -414,7 +414,7 @@
       "workflow": "ci.yml",
       "job": "pr-a-inert-buck",
       "rule": "banned-action",
-      "path": "jobs.pr-a-inert-buck.steps[name:\"Upload Buck2 cache evidence\"].uses",
+      "path": "jobs.pr-a-inert-buck.steps[name:\"Upload Buck2 cache evidence\"|action:\"actions/upload-artifact\"|content:{\"if\":\"${{ always() }}\",\"with\":[[\"if-no-files-found\",\"warn\"],[\"name\",\"buck2-cache-evidence-pr-a-inert-buck-${{ github.run_attempt }}\"],[\"path\",\"${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}\\n${{ env.CI_BUCK2_CACHE_ACTIONS_PATH }}\"],[\"retention-days\",14]]}].uses",
       "value": "actions/upload-artifact@v4"
     },
     {
@@ -430,7 +430,7 @@
       "workflow": "ci.yml",
       "job": "build-products",
       "rule": "banned-action",
-      "path": "jobs.build-products.steps[name:\"Upload Buck2 cache evidence\"].uses",
+      "path": "jobs.build-products.steps[name:\"Upload Buck2 cache evidence\"|action:\"actions/upload-artifact\"|content:{\"if\":\"${{ always() }}\",\"with\":[[\"if-no-files-found\",\"warn\"],[\"name\",\"buck2-cache-evidence-build-products-${{ github.run_attempt }}\"],[\"path\",\"${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}\\n${{ env.CI_BUCK2_CACHE_ACTIONS_PATH }}\"],[\"retention-days\",14]]}].uses",
       "value": "actions/upload-artifact@v4"
     },
     {
@@ -446,7 +446,7 @@
       "workflow": "ci.yml",
       "job": "publish-products",
       "rule": "banned-action",
-      "path": "jobs.publish-products.steps[name:\"Upload Buck2 cache evidence\"].uses",
+      "path": "jobs.publish-products.steps[name:\"Upload Buck2 cache evidence\"|action:\"actions/upload-artifact\"|content:{\"if\":\"${{ always() }}\",\"with\":[[\"if-no-files-found\",\"warn\"],[\"name\",\"buck2-cache-evidence-publish-products-${{ github.run_attempt }}\"],[\"path\",\"${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}\\n${{ env.CI_BUCK2_CACHE_ACTIONS_PATH }}\"],[\"retention-days\",14]]}].uses",
       "value": "actions/upload-artifact@v4"
     },
     {
@@ -462,7 +462,7 @@
       "workflow": "ci.yml",
       "job": "trusted-buck2-remote-cache-proof",
       "rule": "banned-action",
-      "path": "jobs.trusted-buck2-remote-cache-proof.steps[name:\"Upload Buck2 cache evidence\"].uses",
+      "path": "jobs.trusted-buck2-remote-cache-proof.steps[name:\"Upload Buck2 cache evidence\"|action:\"actions/upload-artifact\"|content:{\"if\":\"${{ always() }}\",\"with\":[[\"if-no-files-found\",\"warn\"],[\"name\",\"buck2-cache-evidence-trusted-buck2-remote-cache-proof-${{ github.run_attempt }}\"],[\"path\",\"${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}\\n${{ env.CI_BUCK2_CACHE_ACTIONS_PATH }}\"],[\"retention-days\",14]]}].uses",
       "value": "actions/upload-artifact@v4"
     },
     {
@@ -502,7 +502,7 @@
       "workflow": "ci.yml",
       "job": "source-shape",
       "rule": "banned-action",
-      "path": "jobs.source-shape.steps[name:\"Upload CI measurements: source-shape\"].uses",
+      "path": "jobs.source-shape.steps[name:\"Upload CI measurements: source-shape\"|action:\"actions/upload-artifact\"|content:{\"if\":\"always()\",\"with\":[[\"if-no-files-found\",\"error\"],[\"name\",\"source-shape\"],[\"path\",\"tmp/source-shape-ci\\n!tmp/source-shape-ci/baseline/**\"],[\"retention-days\",14]]}].uses",
       "value": "actions/upload-artifact@v4"
     },
     {
@@ -510,7 +510,7 @@
       "workflow": "ci.yml",
       "job": "source-shape",
       "rule": "banned-action",
-      "path": "jobs.source-shape.steps[name:\"Upload Buck2 cache evidence\"].uses",
+      "path": "jobs.source-shape.steps[name:\"Upload Buck2 cache evidence\"|action:\"actions/upload-artifact\"|content:{\"if\":\"${{ always() }}\",\"with\":[[\"if-no-files-found\",\"warn\"],[\"name\",\"buck2-cache-evidence-source-shape-${{ github.run_attempt }}\"],[\"path\",\"${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}\\n${{ env.CI_BUCK2_CACHE_ACTIONS_PATH }}\"],[\"retention-days\",14]]}].uses",
       "value": "actions/upload-artifact@v4"
     },
     {
@@ -526,7 +526,7 @@
       "workflow": "ci.yml",
       "job": "test-integration-notion",
       "rule": "banned-action",
-      "path": "jobs.test-integration-notion.steps[name:\"Upload Nix diagnostics artifact\"].uses",
+      "path": "jobs.test-integration-notion.steps[name:\"Upload Nix diagnostics artifact\"|action:\"actions/upload-artifact\"|content:{\"if\":\"failure() && env.NIX_STORE_DIAGNOSTICS_DIR != ''\",\"with\":[[\"if-no-files-found\",\"ignore\"],[\"name\",\"nix-store-diagnostics-${{ github.job }}-${{ runner.os }}-run-${{ github.run_id }}-attempt-${{ github.run_attempt }}\"],[\"path\",\"${{ env.NIX_STORE_DIAGNOSTICS_DIR }}\"],[\"retention-days\",14]]}].uses",
       "value": "actions/upload-artifact@v4"
     },
     {
@@ -534,7 +534,7 @@
       "workflow": "ci.yml",
       "job": "test-integration-notion",
       "rule": "banned-action",
-      "path": "jobs.test-integration-notion.steps[name:\"Upload Buck2 cache evidence\"].uses",
+      "path": "jobs.test-integration-notion.steps[name:\"Upload Buck2 cache evidence\"|action:\"actions/upload-artifact\"|content:{\"if\":\"${{ always() }}\",\"with\":[[\"if-no-files-found\",\"warn\"],[\"name\",\"buck2-cache-evidence-test-integration-notion-${{ github.run_attempt }}\"],[\"path\",\"${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}\\n${{ env.CI_BUCK2_CACHE_ACTIONS_PATH }}\"],[\"retention-days\",14]]}].uses",
       "value": "actions/upload-artifact@v4"
     },
     {
@@ -550,7 +550,7 @@
       "workflow": "ci.yml",
       "job": "test-integration-restate",
       "rule": "banned-action",
-      "path": "jobs.test-integration-restate.steps[name:\"Upload Nix diagnostics artifact\"].uses",
+      "path": "jobs.test-integration-restate.steps[name:\"Upload Nix diagnostics artifact\"|action:\"actions/upload-artifact\"|content:{\"if\":\"failure() && env.NIX_STORE_DIAGNOSTICS_DIR != ''\",\"with\":[[\"if-no-files-found\",\"ignore\"],[\"name\",\"nix-store-diagnostics-${{ github.job }}-${{ runner.os }}-run-${{ github.run_id }}-attempt-${{ github.run_attempt }}\"],[\"path\",\"${{ env.NIX_STORE_DIAGNOSTICS_DIR }}\"],[\"retention-days\",14]]}].uses",
       "value": "actions/upload-artifact@v4"
     },
     {
@@ -558,7 +558,7 @@
       "workflow": "ci.yml",
       "job": "test-integration-restate",
       "rule": "banned-action",
-      "path": "jobs.test-integration-restate.steps[name:\"Upload Buck2 cache evidence\"].uses",
+      "path": "jobs.test-integration-restate.steps[name:\"Upload Buck2 cache evidence\"|action:\"actions/upload-artifact\"|content:{\"if\":\"${{ always() }}\",\"with\":[[\"if-no-files-found\",\"warn\"],[\"name\",\"buck2-cache-evidence-test-integration-restate-${{ github.run_attempt }}\"],[\"path\",\"${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}\\n${{ env.CI_BUCK2_CACHE_ACTIONS_PATH }}\"],[\"retention-days\",14]]}].uses",
       "value": "actions/upload-artifact@v4"
     },
     {
@@ -574,7 +574,7 @@
       "workflow": "ci.yml",
       "job": "test-live-deploy-ci-tools",
       "rule": "banned-action",
-      "path": "jobs.test-live-deploy-ci-tools.steps[name:\"Upload Nix diagnostics artifact\"].uses",
+      "path": "jobs.test-live-deploy-ci-tools.steps[name:\"Upload Nix diagnostics artifact\"|action:\"actions/upload-artifact\"|content:{\"if\":\"failure() && env.NIX_STORE_DIAGNOSTICS_DIR != ''\",\"with\":[[\"if-no-files-found\",\"ignore\"],[\"name\",\"nix-store-diagnostics-${{ github.job }}-${{ runner.os }}-run-${{ github.run_id }}-attempt-${{ github.run_attempt }}\"],[\"path\",\"${{ env.NIX_STORE_DIAGNOSTICS_DIR }}\"],[\"retention-days\",14]]}].uses",
       "value": "actions/upload-artifact@v4"
     },
     {
@@ -582,7 +582,7 @@
       "workflow": "ci.yml",
       "job": "test-live-deploy-ci-tools",
       "rule": "banned-action",
-      "path": "jobs.test-live-deploy-ci-tools.steps[name:\"Upload Buck2 cache evidence\"].uses",
+      "path": "jobs.test-live-deploy-ci-tools.steps[name:\"Upload Buck2 cache evidence\"|action:\"actions/upload-artifact\"|content:{\"if\":\"${{ always() }}\",\"with\":[[\"if-no-files-found\",\"warn\"],[\"name\",\"buck2-cache-evidence-test-live-deploy-ci-tools-${{ github.run_attempt }}\"],[\"path\",\"${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}\\n${{ env.CI_BUCK2_CACHE_ACTIONS_PATH }}\"],[\"retention-days\",14]]}].uses",
       "value": "actions/upload-artifact@v4"
     },
     {
@@ -598,7 +598,7 @@
       "workflow": "ci.yml",
       "job": "deploy-storybooks",
       "rule": "banned-action",
-      "path": "jobs.deploy-storybooks.steps[name:\"Upload Nix diagnostics artifact\"].uses",
+      "path": "jobs.deploy-storybooks.steps[name:\"Upload Nix diagnostics artifact\"|action:\"actions/upload-artifact\"|content:{\"if\":\"failure() && env.NIX_STORE_DIAGNOSTICS_DIR != ''\",\"with\":[[\"if-no-files-found\",\"ignore\"],[\"name\",\"nix-store-diagnostics-${{ github.job }}-${{ runner.os }}-run-${{ github.run_id }}-attempt-${{ github.run_attempt }}\"],[\"path\",\"${{ env.NIX_STORE_DIAGNOSTICS_DIR }}\"],[\"retention-days\",14]]}].uses",
       "value": "actions/upload-artifact@v4"
     },
     {
@@ -606,7 +606,7 @@
       "workflow": "ci.yml",
       "job": "deploy-storybooks",
       "rule": "banned-action",
-      "path": "jobs.deploy-storybooks.steps[name:\"Upload Buck2 cache evidence\"].uses",
+      "path": "jobs.deploy-storybooks.steps[name:\"Upload Buck2 cache evidence\"|action:\"actions/upload-artifact\"|content:{\"if\":\"${{ always() }}\",\"with\":[[\"if-no-files-found\",\"warn\"],[\"name\",\"buck2-cache-evidence-deploy-storybooks-${{ github.run_attempt }}\"],[\"path\",\"${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}\\n${{ env.CI_BUCK2_CACHE_ACTIONS_PATH }}\"],[\"retention-days\",14]]}].uses",
       "value": "actions/upload-artifact@v4"
     },
     {
@@ -686,7 +686,7 @@
       "workflow": "compiled-products.yml",
       "job": "publish-compiled-products",
       "rule": "banned-action",
-      "path": "jobs.publish-compiled-products.steps[name:\"Upload Buck2 cache evidence\"].uses",
+      "path": "jobs.publish-compiled-products.steps[name:\"Upload Buck2 cache evidence\"|action:\"actions/upload-artifact\"|content:{\"if\":\"${{ always() }}\",\"with\":[[\"if-no-files-found\",\"warn\"],[\"name\",\"buck2-cache-evidence-publish-compiled-products-${{ strategy.job-index }}-${{ github.run_attempt }}\"],[\"path\",\"${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}\\n${{ env.CI_BUCK2_CACHE_ACTIONS_PATH }}\"],[\"retention-days\",14]]}].uses",
       "value": "actions/upload-artifact@v4"
     },
     {
@@ -710,7 +710,7 @@
       "workflow": "empirical-proofs.yml",
       "job": "test-megarepo-cold-gc",
       "rule": "banned-action",
-      "path": "jobs.test-megarepo-cold-gc.steps[name:\"Upload Nix diagnostics artifact\"].uses",
+      "path": "jobs.test-megarepo-cold-gc.steps[name:\"Upload Nix diagnostics artifact\"|action:\"actions/upload-artifact\"|content:{\"if\":\"failure() && env.NIX_STORE_DIAGNOSTICS_DIR != ''\",\"with\":[[\"if-no-files-found\",\"ignore\"],[\"name\",\"nix-store-diagnostics-${{ github.job }}-${{ runner.os }}-run-${{ github.run_id }}-attempt-${{ github.run_attempt }}\"],[\"path\",\"${{ env.NIX_STORE_DIAGNOSTICS_DIR }}\"],[\"retention-days\",14]]}].uses",
       "value": "actions/upload-artifact@v4"
     },
     {
@@ -718,7 +718,7 @@
       "workflow": "empirical-proofs.yml",
       "job": "test-megarepo-cold-gc",
       "rule": "banned-action",
-      "path": "jobs.test-megarepo-cold-gc.steps[name:\"Upload CI OpenTelemetry spans\"].uses",
+      "path": "jobs.test-megarepo-cold-gc.steps[name:\"Upload CI OpenTelemetry spans\"|action:\"actions/upload-artifact\"|content:{\"if\":\"always() && env.OTEL_SPAN_SPOOL_DIR != ''\",\"with\":[[\"if-no-files-found\",\"warn\"],[\"name\",\"ci-otel-${{ github.job }}-${{ runner.os }}-${{ runner.arch }}-run-${{ github.run_id }}-attempt-${{ github.run_attempt }}\"],[\"path\",\"${{ env.OTEL_SPAN_SPOOL_DIR }}\"],[\"retention-days\",14]]}].uses",
       "value": "actions/upload-artifact@v4"
     },
     {
@@ -726,7 +726,7 @@
       "workflow": "empirical-proofs.yml",
       "job": "test-megarepo-cold-gc",
       "rule": "banned-action",
-      "path": "jobs.test-megarepo-cold-gc.steps[name:\"Upload Buck2 cache evidence\"].uses",
+      "path": "jobs.test-megarepo-cold-gc.steps[name:\"Upload Buck2 cache evidence\"|action:\"actions/upload-artifact\"|content:{\"if\":\"${{ always() }}\",\"with\":[[\"if-no-files-found\",\"warn\"],[\"name\",\"buck2-cache-evidence-test-megarepo-cold-gc-${{ github.run_attempt }}\"],[\"path\",\"${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}\\n${{ env.CI_BUCK2_CACHE_ACTIONS_PATH }}\"],[\"retention-days\",14]]}].uses",
       "value": "actions/upload-artifact@v4"
     },
     {
@@ -750,7 +750,7 @@
       "workflow": "empirical-proofs.yml",
       "job": "bootstrap-cold-proof",
       "rule": "banned-action",
-      "path": "jobs.bootstrap-cold-proof.steps[name:\"Upload Nix diagnostics artifact\"].uses",
+      "path": "jobs.bootstrap-cold-proof.steps[name:\"Upload Nix diagnostics artifact\"|action:\"actions/upload-artifact\"|content:{\"if\":\"failure() && env.NIX_STORE_DIAGNOSTICS_DIR != ''\",\"with\":[[\"if-no-files-found\",\"ignore\"],[\"name\",\"nix-store-diagnostics-${{ github.job }}-${{ runner.os }}-run-${{ github.run_id }}-attempt-${{ github.run_attempt }}\"],[\"path\",\"${{ env.NIX_STORE_DIAGNOSTICS_DIR }}\"],[\"retention-days\",14]]}].uses",
       "value": "actions/upload-artifact@v4"
     },
     {
@@ -758,7 +758,7 @@
       "workflow": "empirical-proofs.yml",
       "job": "bootstrap-cold-proof",
       "rule": "banned-action",
-      "path": "jobs.bootstrap-cold-proof.steps[name:\"Upload Buck2 cache evidence\"].uses",
+      "path": "jobs.bootstrap-cold-proof.steps[name:\"Upload Buck2 cache evidence\"|action:\"actions/upload-artifact\"|content:{\"if\":\"${{ always() }}\",\"with\":[[\"if-no-files-found\",\"warn\"],[\"name\",\"buck2-cache-evidence-bootstrap-cold-proof-${{ github.run_attempt }}\"],[\"path\",\"${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}\\n${{ env.CI_BUCK2_CACHE_ACTIONS_PATH }}\"],[\"retention-days\",14]]}].uses",
       "value": "actions/upload-artifact@v4"
     },
     {
@@ -790,7 +790,7 @@
       "workflow": "empirical-proofs.yml",
       "job": "devenv-perf",
       "rule": "banned-action",
-      "path": "jobs.devenv-perf.steps[name:\"Upload devenv perf artifacts\"].uses",
+      "path": "jobs.devenv-perf.steps[name:\"Upload devenv perf artifacts\"|action:\"actions/upload-artifact\"|content:{\"if\":\"always()\",\"with\":[[\"if-no-files-found\",\"error\"],[\"name\",\"devenv-perf\"],[\"path\",\"${{ github.workspace }}/tmp/devenv-perf-ci\\n!${{ github.workspace }}/tmp/devenv-perf-ci/baseline/**\"],[\"retention-days\",7]]}].uses",
       "value": "actions/upload-artifact@v4"
     },
     {
@@ -798,7 +798,7 @@
       "workflow": "empirical-proofs.yml",
       "job": "devenv-perf",
       "rule": "banned-action",
-      "path": "jobs.devenv-perf.steps[name:\"Upload Buck2 cache evidence\"].uses",
+      "path": "jobs.devenv-perf.steps[name:\"Upload Buck2 cache evidence\"|action:\"actions/upload-artifact\"|content:{\"if\":\"${{ always() }}\",\"with\":[[\"if-no-files-found\",\"warn\"],[\"name\",\"buck2-cache-evidence-devenv-perf-${{ github.run_attempt }}\"],[\"path\",\"${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}\\n${{ env.CI_BUCK2_CACHE_ACTIONS_PATH }}\"],[\"retention-days\",14]]}].uses",
       "value": "actions/upload-artifact@v4"
     },
     {
@@ -822,7 +822,7 @@
       "workflow": "empirical-proofs.yml",
       "job": "nix-closure-sizes",
       "rule": "banned-action",
-      "path": "jobs.nix-closure-sizes.steps[name:\"Upload CI measurements: nix-closure-measurements\"].uses",
+      "path": "jobs.nix-closure-sizes.steps[name:\"Upload CI measurements: nix-closure-measurements\"|action:\"actions/upload-artifact\"|content:{\"if\":\"always()\",\"with\":[[\"if-no-files-found\",\"error\"],[\"name\",\"nix-closure-measurements\"],[\"path\",\"${{ github.workspace }}/tmp/nix-closure-ci\\n!${{ github.workspace }}/tmp/nix-closure-ci/baseline/**\"],[\"retention-days\",14]]}].uses",
       "value": "actions/upload-artifact@v4"
     },
     {
@@ -830,7 +830,7 @@
       "workflow": "empirical-proofs.yml",
       "job": "nix-closure-sizes",
       "rule": "banned-action",
-      "path": "jobs.nix-closure-sizes.steps[name:\"Upload Nix diagnostics artifact\"].uses",
+      "path": "jobs.nix-closure-sizes.steps[name:\"Upload Nix diagnostics artifact\"|action:\"actions/upload-artifact\"|content:{\"if\":\"failure() && env.NIX_STORE_DIAGNOSTICS_DIR != ''\",\"with\":[[\"if-no-files-found\",\"ignore\"],[\"name\",\"nix-store-diagnostics-${{ github.job }}-${{ runner.os }}-run-${{ github.run_id }}-attempt-${{ github.run_attempt }}\"],[\"path\",\"${{ env.NIX_STORE_DIAGNOSTICS_DIR }}\"],[\"retention-days\",14]]}].uses",
       "value": "actions/upload-artifact@v4"
     },
     {
@@ -838,7 +838,7 @@
       "workflow": "empirical-proofs.yml",
       "job": "nix-closure-sizes",
       "rule": "banned-action",
-      "path": "jobs.nix-closure-sizes.steps[name:\"Upload Buck2 cache evidence\"].uses",
+      "path": "jobs.nix-closure-sizes.steps[name:\"Upload Buck2 cache evidence\"|action:\"actions/upload-artifact\"|content:{\"if\":\"${{ always() }}\",\"with\":[[\"if-no-files-found\",\"warn\"],[\"name\",\"buck2-cache-evidence-nix-closure-sizes-${{ github.run_attempt }}\"],[\"path\",\"${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}\\n${{ env.CI_BUCK2_CACHE_ACTIONS_PATH }}\"],[\"retention-days\",14]]}].uses",
       "value": "actions/upload-artifact@v4"
     },
     {
@@ -854,7 +854,7 @@
       "workflow": "empirical-proofs.yml",
       "job": "main-source-shape",
       "rule": "banned-action",
-      "path": "jobs.main-source-shape.steps[name:\"Upload CI measurements: source-shape\"].uses",
+      "path": "jobs.main-source-shape.steps[name:\"Upload CI measurements: source-shape\"|action:\"actions/upload-artifact\"|content:{\"if\":\"always()\",\"with\":[[\"if-no-files-found\",\"error\"],[\"name\",\"source-shape\"],[\"path\",\"tmp/source-shape-ci\\n!tmp/source-shape-ci/baseline/**\"],[\"retention-days\",14]]}].uses",
       "value": "actions/upload-artifact@v4"
     },
     {
@@ -862,7 +862,7 @@
       "workflow": "empirical-proofs.yml",
       "job": "main-source-shape",
       "rule": "banned-action",
-      "path": "jobs.main-source-shape.steps[name:\"Upload Buck2 cache evidence\"].uses",
+      "path": "jobs.main-source-shape.steps[name:\"Upload Buck2 cache evidence\"|action:\"actions/upload-artifact\"|content:{\"if\":\"${{ always() }}\",\"with\":[[\"if-no-files-found\",\"warn\"],[\"name\",\"buck2-cache-evidence-main-source-shape-${{ github.run_attempt }}\"],[\"path\",\"${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}\\n${{ env.CI_BUCK2_CACHE_ACTIONS_PATH }}\"],[\"retention-days\",14]]}].uses",
       "value": "actions/upload-artifact@v4"
     },
     {
@@ -878,7 +878,7 @@
       "workflow": "empirical-proofs.yml",
       "job": "ci-measurements-report",
       "rule": "banned-action",
-      "path": "jobs.ci-measurements-report.steps[name:\"Download current measurement artifact: devenv-perf\"].uses",
+      "path": "jobs.ci-measurements-report.steps[name:\"Download current measurement artifact: devenv-perf\"|action:\"actions/download-artifact\"|content:{\"if\":\"${{ needs.devenv-perf.result == 'success' }}\",\"with\":[[\"name\",\"devenv-perf\"],[\"path\",\"tmp/ci-measurement-report/current/devenv-perf\"]]}].uses",
       "value": "actions/download-artifact@v4"
     },
     {
@@ -886,7 +886,7 @@
       "workflow": "empirical-proofs.yml",
       "job": "ci-measurements-report",
       "rule": "banned-action",
-      "path": "jobs.ci-measurements-report.steps[name:\"Download current measurement artifact: nix-closure-measurements\"].uses",
+      "path": "jobs.ci-measurements-report.steps[name:\"Download current measurement artifact: nix-closure-measurements\"|action:\"actions/download-artifact\"|content:{\"with\":[[\"name\",\"nix-closure-measurements\"],[\"path\",\"tmp/ci-measurement-report/current/nix-closure-measurements\"]]}].uses",
       "value": "actions/download-artifact@v4"
     },
     {
@@ -894,7 +894,7 @@
       "workflow": "empirical-proofs.yml",
       "job": "ci-measurements-report",
       "rule": "banned-action",
-      "path": "jobs.ci-measurements-report.steps[name:\"Download current measurement artifact: source-shape\"].uses",
+      "path": "jobs.ci-measurements-report.steps[name:\"Download current measurement artifact: source-shape\"|action:\"actions/download-artifact\"|content:{\"if\":\"${{ needs.main-source-shape.result == 'success' }}\",\"with\":[[\"name\",\"source-shape\"],[\"path\",\"tmp/ci-measurement-report/current/source-shape\"]]}].uses",
       "value": "actions/download-artifact@v4"
     },
     {
@@ -902,7 +902,7 @@
       "workflow": "empirical-proofs.yml",
       "job": "ci-measurements-report",
       "rule": "banned-action",
-      "path": "jobs.ci-measurements-report.steps[name:\"Upload CI measurements: ci-measurements-report\"].uses",
+      "path": "jobs.ci-measurements-report.steps[name:\"Upload CI measurements: ci-measurements-report\"|action:\"actions/upload-artifact\"|content:{\"if\":\"always()\",\"with\":[[\"if-no-files-found\",\"error\"],[\"name\",\"ci-measurements-report\"],[\"path\",\"tmp/ci-measurement-report\\n!tmp/ci-measurement-report/baseline/**\"],[\"retention-days\",14]]}].uses",
       "value": "actions/upload-artifact@v4"
     },
     {
@@ -910,7 +910,7 @@
       "workflow": "empirical-proofs.yml",
       "job": "ci-measurements-report",
       "rule": "banned-action",
-      "path": "jobs.ci-measurements-report.steps[name:\"Upload Buck2 cache evidence\"].uses",
+      "path": "jobs.ci-measurements-report.steps[name:\"Upload Buck2 cache evidence\"|action:\"actions/upload-artifact\"|content:{\"if\":\"${{ always() }}\",\"with\":[[\"if-no-files-found\",\"warn\"],[\"name\",\"buck2-cache-evidence-ci-measurements-report-${{ github.run_attempt }}\"],[\"path\",\"${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}\\n${{ env.CI_BUCK2_CACHE_ACTIONS_PATH }}\"],[\"retention-days\",14]]}].uses",
       "value": "actions/upload-artifact@v4"
     },
     {
@@ -934,7 +934,7 @@
       "workflow": "storybook-plays.yml",
       "job": "test-storybook-plays",
       "rule": "banned-action",
-      "path": "jobs.test-storybook-plays.steps[name:\"Upload Buck2 cache evidence\"].uses",
+      "path": "jobs.test-storybook-plays.steps[name:\"Upload Buck2 cache evidence\"|action:\"actions/upload-artifact\"|content:{\"if\":\"${{ always() }}\",\"with\":[[\"if-no-files-found\",\"warn\"],[\"name\",\"buck2-cache-evidence-test-storybook-plays-${{ github.run_attempt }}\"],[\"path\",\"${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}\\n${{ env.CI_BUCK2_CACHE_ACTIONS_PATH }}\"],[\"retention-days\",14]]}].uses",
       "value": "actions/upload-artifact@v4"
     },
     {
@@ -958,7 +958,7 @@
       "workflow": "storybook-preview-build.yml",
       "job": "build-storybooks",
       "rule": "banned-action",
-      "path": "jobs.build-storybooks.steps[name:\"Upload staged Netlify output\"].uses",
+      "path": "jobs.build-storybooks.steps[name:\"Upload staged Netlify output\"|action:\"actions/upload-artifact\"|content:{\"with\":[[\"if-no-files-found\",\"error\"],[\"include-hidden-files\",true],[\"name\",\"netlify-preview-static\"],[\"path\",\"${{ runner.temp }}/netlify-preview-stage\"],[\"retention-days\",3]]}].uses",
       "value": "actions/upload-artifact@v4"
     },
     {
@@ -966,7 +966,7 @@
       "workflow": "storybook-preview-build.yml",
       "job": "build-storybooks",
       "rule": "banned-action",
-      "path": "jobs.build-storybooks.steps[name:\"Upload Buck2 cache evidence\"].uses",
+      "path": "jobs.build-storybooks.steps[name:\"Upload Buck2 cache evidence\"|action:\"actions/upload-artifact\"|content:{\"if\":\"${{ always() }}\",\"with\":[[\"if-no-files-found\",\"warn\"],[\"name\",\"buck2-cache-evidence-build-storybooks-${{ github.run_attempt }}\"],[\"path\",\"${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}\\n${{ env.CI_BUCK2_CACHE_ACTIONS_PATH }}\"],[\"retention-days\",14]]}].uses",
       "value": "actions/upload-artifact@v4"
     },
     {
@@ -990,7 +990,7 @@
       "workflow": "storybook-preview-deploy.yml",
       "job": "deploy-preview",
       "rule": "banned-action",
-      "path": "jobs.deploy-preview.steps[name:\"Download staged Netlify output\"].uses",
+      "path": "jobs.deploy-preview.steps[name:\"Download staged Netlify output\"|action:\"actions/download-artifact\"|content:{\"with\":[[\"github-token\",\"${{ github.token }}\"],[\"name\",\"netlify-preview-static\"],[\"path\",\"${{ runner.temp }}/netlify-preview-stage\"],[\"run-id\",\"${{ github.event.workflow_run.id }}\"]]}].uses",
       "value": "actions/download-artifact@v4"
     },
     {
@@ -998,7 +998,7 @@
       "workflow": "storybook-preview-deploy.yml",
       "job": "deploy-preview",
       "rule": "banned-action",
-      "path": "jobs.deploy-preview.steps[name:\"Upload rendered preview comment\"].uses",
+      "path": "jobs.deploy-preview.steps[name:\"Upload rendered preview comment\"|action:\"actions/upload-artifact\"|content:{\"with\":[[\"if-no-files-found\",\"error\"],[\"name\",\"netlify-preview-comment\"],[\"path\",\"${{ runner.temp }}/workflow-reports/netlify-preview\"],[\"retention-days\",1]]}].uses",
       "value": "actions/upload-artifact@v4"
     },
     {
@@ -1014,7 +1014,7 @@
       "workflow": "storybook-preview-deploy.yml",
       "job": "publish-preview-comment",
       "rule": "banned-action",
-      "path": "jobs.publish-preview-comment.steps[name:\"Download rendered preview comment\"].uses",
+      "path": "jobs.publish-preview-comment.steps[name:\"Download rendered preview comment\"|action:\"actions/download-artifact\"|content:{\"with\":[[\"name\",\"netlify-preview-comment\"],[\"path\",\"${{ runner.temp }}/workflow-reports/netlify-preview\"]]}].uses",
       "value": "actions/download-artifact@v4"
     }
   ]

@@ -81,15 +81,15 @@ describe('stable workflow policy step identities', () => {
     expect(reportIssues(expanded, ledger)).toEqual([])
   })
 
-  it('numbers unnamed actions by repository occurrence rather than absolute step position or ref', () => {
+  it('numbers equivalent unnamed actions independently of absolute step position or ref', () => {
     const steps: Step[] = [
       { uses: 'actions/upload-artifact@v3' },
       { uses: 'actions/upload-artifact@v4' },
     ]
     const ledger = collect(steps)
     expect(ledger.map((violation) => violation.path)).toEqual([
-      'jobs.test.steps[action:"actions/upload-artifact"].uses',
-      'jobs.test.steps[action:"actions/upload-artifact"#2].uses',
+      'jobs.test.steps[action:"actions/upload-artifact"|content:{"with":[]}].uses',
+      'jobs.test.steps[action:"actions/upload-artifact"|content:{"with":[]}#2].uses',
     ])
     const expanded: Step[] = [
       { run: 'echo prepare' },
@@ -110,9 +110,9 @@ describe('stable workflow policy step identities', () => {
     ]
     const ledger = collect(steps)
     expect(ledger.map((violation) => violation.path)).toEqual([
-      'jobs.test.steps[name:"Upload artifact"].uses',
-      'jobs.test.steps[name:"Upload artifact"#2].uses',
-      'jobs.test.steps[name:"Upload artifact#2"].uses',
+      'jobs.test.steps[name:"Upload artifact"|action:"actions/upload-artifact"|content:{"with":[]}].uses',
+      'jobs.test.steps[name:"Upload artifact"|action:"actions/upload-artifact"|content:{"with":[]}#2].uses',
+      'jobs.test.steps[name:"Upload artifact#2"|action:"actions/upload-artifact"|content:{"with":[]}].uses',
     ])
     expect(reportIssues(steps, ledger)).toEqual([])
     expect(reportIssues(steps, ledger.slice(0, 1)).map((issue) => issue.kind)).toEqual([
@@ -121,13 +121,15 @@ describe('stable workflow policy step identities', () => {
     ])
   })
 
-  it('keeps same-name run steps in the per-job ordinal sequence', () => {
+  it('does not let same-name run steps shift action identities', () => {
     expect(
       collect([
         { name: 'Repeated', run: 'echo prepare' },
         { name: 'Repeated', uses: 'actions/upload-artifact@v4' },
       ]).map((violation) => violation.path),
-    ).toEqual(['jobs.test.steps[name:"Repeated"#2].uses'])
+    ).toEqual([
+      'jobs.test.steps[name:"Repeated"|action:"actions/upload-artifact"|content:{"with":[]}].uses',
+    ])
   })
 
   it('resets ordinals for each job', () => {
@@ -141,8 +143,8 @@ describe('stable workflow policy step identities', () => {
         (violation) => violation.path,
       ),
     ).toEqual([
-      'jobs.test.steps[name:"Upload artifact"].uses',
-      'jobs.other.steps[name:"Upload artifact"].uses',
+      'jobs.test.steps[name:"Upload artifact"|action:"actions/upload-artifact"|content:{"with":[]}].uses',
+      'jobs.other.steps[name:"Upload artifact"|action:"actions/upload-artifact"|content:{"with":[]}].uses',
     ])
   })
 
@@ -154,19 +156,19 @@ describe('stable workflow policy step identities', () => {
         step: { id, name: 'Ignored name', uses: 'actions/upload-artifact@v4' },
         ordinals,
       }),
-    ).toBe(`id:${JSON.stringify(id)}`)
+    ).toBe(`id:${JSON.stringify(id)}|action:"actions/upload-artifact"|content:{"with":[]}`)
     expect(workflowPolicyStepIdentity({ step: { name: id, run: 'echo ok' }, ordinals })).toBe(
-      `name:${JSON.stringify(id)}`,
+      `name:${JSON.stringify(id)}|run|content:{"run":"echo ok"}`,
     )
     expect(
       workflowPolicyStepIdentity({
         step: { id, name: 'Changed name', uses: 'actions/upload-artifact@v5' },
         ordinals,
       }),
-    ).toBe(`id:${JSON.stringify(id)}#2`)
+    ).toBe(`id:${JSON.stringify(id)}|action:"actions/upload-artifact"|content:{"with":[]}#2`)
   })
 
-  it('provides ordinal identities for unnamed run steps without shifting action identities', () => {
+  it('distinguishes unnamed run content without shifting action identities', () => {
     const ordinals = new Map<string, number>()
     const steps: Step[] = [
       { run: 'echo first' },
@@ -174,9 +176,141 @@ describe('stable workflow policy step identities', () => {
       { run: 'echo second' },
     ]
     expect(steps.map((step) => workflowPolicyStepIdentity({ step, ordinals }))).toEqual([
-      'run',
-      'action:"actions/checkout"',
-      'run#2',
+      'run|content:{"run":"echo first"}',
+      'action:"actions/checkout"|content:{"with":[]}',
+      'run|content:{"run":"echo second"}',
     ])
+  })
+
+  it('keeps a same-name action stable when a different action is removed', () => {
+    const steps: Step[] = [
+      { name: 'Transfer artifact', uses: 'actions/upload-artifact@v4' },
+      { name: 'Transfer artifact', uses: 'actions/download-artifact@v4' },
+    ]
+    const actionPolicy: WorkflowPolicy = {
+      ...policy,
+      bannedActions: ['actions/upload-artifact', 'actions/download-artifact'],
+    }
+    const ledger = collectWorkflowPolicyViolations({
+      workflow: workflow(steps),
+      policy: actionPolicy,
+    })
+    expect(ledger).toHaveLength(2)
+    const remaining = workflow(steps.slice(1))
+    expect(collectWorkflowPolicyViolations({ workflow: remaining, policy: actionPolicy })).toEqual(
+      ledger.slice(1),
+    )
+    try {
+      validateWorkflowPolicy({
+        workflow: remaining,
+        policy: { ...actionPolicy, mode: 'report', ledger },
+      })
+      expect.fail('Expected the removed action to leave a stale ledger entry')
+    } catch (error) {
+      if (!(error instanceof WorkflowPolicyError)) throw error
+      expect(error.issues.map((issue) => issue.kind)).toEqual(['STALE'])
+      expect(error.issues[0]?.violation).toEqual(ledger[0])
+    }
+  })
+
+  it.each([
+    { label: 'name', identity: { name: 'Transfer artifact' } },
+    { label: 'ID', identity: { id: 'transfer', name: 'Transfer artifact' } },
+  ])('requires action provenance even with a stable $label', ({ identity }) => {
+    const original: Step[] = [{ ...identity, uses: 'actions/upload-artifact@v4' }]
+    const replacement: Step[] = [{ ...identity, uses: 'actions/download-artifact@v4' }]
+    const actionPolicy: WorkflowPolicy = {
+      ...policy,
+      bannedActions: ['actions/upload-artifact', 'actions/download-artifact'],
+    }
+    const ledger = collectWorkflowPolicyViolations({
+      workflow: workflow(original),
+      policy: actionPolicy,
+    })
+    expect(ledger).toHaveLength(1)
+    try {
+      validateWorkflowPolicy({
+        workflow: workflow(replacement),
+        policy: { ...actionPolicy, mode: 'report', ledger },
+      })
+      expect.fail('Expected an action replacement to require a new ledger entry')
+    } catch (error) {
+      if (!(error instanceof WorkflowPolicyError)) throw error
+      expect(error.issues.map((issue) => issue.kind)).toEqual(['NEW', 'STALE'])
+    }
+  })
+
+  it.each([
+    { label: 'name', identity: { name: 'Upload artifact' } },
+    { label: 'ID', identity: { id: 'upload', name: 'Upload artifact' } },
+  ])('distinguishes same-action input content under a shared $label', ({ identity }) => {
+    const steps: Step[] = [
+      { ...identity, uses: 'actions/upload-artifact@v4', with: { name: 'logs' } },
+      { ...identity, uses: 'actions/upload-artifact@v4', with: { name: 'results' } },
+    ]
+    const ledger = collect(steps)
+    expect(ledger).toHaveLength(2)
+    expect(ledger[0]?.path).not.toBe(ledger[1]?.path)
+    expect(collect(steps.slice(1))).toEqual(ledger.slice(1))
+    expect(reportIssues(steps.slice(1), ledger).map((issue) => issue.kind)).toEqual(['STALE'])
+    expect(reportIssues(steps.slice(1), ledger.slice(0, 1)).map((issue) => issue.kind)).toEqual([
+      'NEW',
+      'STALE',
+    ])
+  })
+
+  it('canonicalizes input ordering while preserving input keys and value types', () => {
+    const identity = (withInputs: Record<string, string | number | boolean>) =>
+      workflowPolicyStepIdentity({
+        step: { name: 'Upload', uses: 'actions/upload-artifact/path@v4', with: withInputs },
+        ordinals: new Map(),
+      })
+    expect(identity({ name: 'logs', retention: 1 })).toBe(identity({ retention: 1, name: 'logs' }))
+    expect(identity({ name: 'logs' })).not.toBe(identity({ path: 'logs' }))
+    expect(identity({ retention: 1 })).not.toBe(identity({ retention: '1' }))
+    expect(identity({ enabled: true })).not.toBe(identity({ enabled: 'true' }))
+    expect(identity({})).toContain('action:"actions/upload-artifact/path"')
+  })
+
+  it('distinguishes run content under shared IDs and names and numbers only equivalents', () => {
+    for (const label of [{ name: 'Execute' }, { id: 'execute', name: 'Execute' }]) {
+      const ordinals = new Map<string, number>()
+      const first = workflowPolicyStepIdentity({
+        step: { ...label, run: 'echo first' },
+        ordinals,
+      })
+      const second = workflowPolicyStepIdentity({
+        step: { ...label, run: 'echo second' },
+        ordinals,
+      })
+      expect(second).not.toBe(first)
+      expect(second).not.toMatch(/#2$/)
+      expect(workflowPolicyStepIdentity({ step: { ...label, run: 'echo first' }, ordinals })).toBe(
+        `${first}#2`,
+      )
+    }
+  })
+
+  it('preserves action subpaths in identified provenance while ignoring ref changes', () => {
+    const identity = (uses: string) =>
+      workflowPolicyStepIdentity({
+        step: { id: 'setup', name: 'Setup', uses },
+        ordinals: new Map(),
+      })
+    expect(identity('example/actions/setup@v1')).toBe(identity('example/actions/setup@v2'))
+    expect(identity('example/actions/setup@v1')).not.toBe(identity('example/actions/other@v1'))
+  })
+
+  it('canonicalizes environment order but distinguishes other execution content', () => {
+    const identity = (step: Step) => workflowPolicyStepIdentity({ step, ordinals: new Map() })
+    const step: Step = { name: 'Execute', run: 'echo ok', env: { A: '1', B: '2' } }
+    expect(identity(step)).toBe(
+      identity({ name: 'Execute', run: 'echo ok', env: { B: '2', A: '1' } }),
+    )
+    expect(identity(step)).not.toBe(identity({ ...step, env: { A: '2', B: '2' } }))
+    expect(identity(step)).not.toBe(identity({ ...step, if: 'always()' }))
+    expect(identity({ run: 'echo ok', shell: 'bash' })).not.toBe(
+      identity({ run: 'echo ok', shell: 'sh' }),
+    )
   })
 })
