@@ -46,7 +46,7 @@
       "workflow": "ci.yml",
       "job": "default-ref-policy",
       "rule": "banned-action",
-      "path": "jobs.default-ref-policy.steps[9].uses",
+      "path": "jobs.default-ref-policy.steps[name:\"Upload Buck2 cache evidence\"].uses",
       "value": "actions/upload-artifact@v4"
     },
     {
@@ -70,7 +70,7 @@
       "workflow": "ci.yml",
       "job": "pr-buck2-tools",
       "rule": "banned-action",
-      "path": "jobs.pr-buck2-tools.steps[17].uses",
+      "path": "jobs.pr-buck2-tools.steps[name:\"Upload Nix diagnostics artifact\"].uses",
       "value": "actions/upload-artifact@v4"
     },
     {
@@ -78,7 +78,7 @@
       "workflow": "ci.yml",
       "job": "pr-buck2-tools",
       "rule": "banned-action",
-      "path": "jobs.pr-buck2-tools.steps[20].uses",
+      "path": "jobs.pr-buck2-tools.steps[name:\"Upload Buck2 cache evidence\"].uses",
       "value": "actions/upload-artifact@v4"
     },
     {
@@ -102,7 +102,7 @@
       "workflow": "ci.yml",
       "job": "quality",
       "rule": "banned-action",
-      "path": "jobs.quality.steps[36].uses",
+      "path": "jobs.quality.steps[name:\"Upload Nix diagnostics artifact\"].uses",
       "value": "actions/upload-artifact@v4"
     },
     {
@@ -110,7 +110,7 @@
       "workflow": "ci.yml",
       "job": "quality",
       "rule": "banned-action",
-      "path": "jobs.quality.steps[39].uses",
+      "path": "jobs.quality.steps[name:\"Upload CI OpenTelemetry spans\"].uses",
       "value": "actions/upload-artifact@v4"
     },
     {
@@ -118,7 +118,7 @@
       "workflow": "ci.yml",
       "job": "quality",
       "rule": "banned-action",
-      "path": "jobs.quality.steps[41].uses",
+      "path": "jobs.quality.steps[name:\"Upload Buck2 cache evidence\"].uses",
       "value": "actions/upload-artifact@v4"
     },
     {
@@ -134,7 +134,7 @@
       "workflow": "ci.yml",
       "job": "test",
       "rule": "banned-action",
-      "path": "jobs.test.steps[18].uses",
+      "path": "jobs.test.steps[name:\"Upload Nix diagnostics artifact\"].uses",
       "value": "actions/upload-artifact@v4"
     },
     {
@@ -142,7 +142,7 @@
       "workflow": "ci.yml",
       "job": "test",
       "rule": "banned-action",
-      "path": "jobs.test.steps[20].uses",
+      "path": "jobs.test.steps[name:\"Upload retained Vitest collection reports\"].uses",
       "value": "actions/upload-artifact@v4"
     },
     {
@@ -150,7 +150,7 @@
       "workflow": "ci.yml",
       "job": "test",
       "rule": "banned-action",
-      "path": "jobs.test.steps[21].uses",
+      "path": "jobs.test.steps[name:\"Upload test resource samples\"].uses",
       "value": "actions/upload-artifact@v4"
     },
     {
@@ -158,7 +158,7 @@
       "workflow": "ci.yml",
       "job": "test",
       "rule": "banned-action",
-      "path": "jobs.test.steps[23].uses",
+      "path": "jobs.test.steps[name:\"Upload CI OpenTelemetry spans\"].uses",
       "value": "actions/upload-artifact@v4"
     },
     {
@@ -166,7 +166,7 @@
       "workflow": "ci.yml",
       "job": "test",
       "rule": "banned-action",
-      "path": "jobs.test.steps[25].uses",
+      "path": "jobs.test.steps[name:\"Upload Buck2 cache evidence\"].uses",
       "value": "actions/upload-artifact@v4"
     },
     {
@@ -182,7 +182,7 @@
       "workflow": "ci.yml",
       "job": "test-macos",
       "rule": "banned-action",
-      "path": "jobs.test-macos.steps[4].uses",
+      "path": "jobs.test-macos.steps[name:\"Mount local Nix substituter cache volume\"].uses",
       "value": "namespacelabs/nscloud-cache-action@v1"
     },
     {
@@ -190,7 +190,7 @@
       "workflow": "ci.yml",
       "job": "test-macos",
       "rule": "banned-action",
-      "path": "jobs.test-macos.steps[25].uses",
+      "path": "jobs.test-macos.steps[name:\"Upload Nix diagnostics artifact\"].uses",
       "value": "actions/upload-artifact@v4"
     },
     {
@@ -198,7 +198,7 @@
       "workflow": "ci.yml",
       "job": "test-macos",
       "rule": "banned-action",
-      "path": "jobs.test-macos.steps[27].uses",
+      "path": "jobs.test-macos.steps[name:\"Upload retained Vitest collection reports\"].uses",
       "value": "actions/upload-artifact@v4"
     },
     {
@@ -206,7 +206,7 @@
       "workflow": "ci.yml",
       "job": "test-macos",
       "rule": "banned-action",
-      "path": "jobs.test-macos.steps[28].uses",
+      "path": "jobs.test-macos.steps[name:\"Upload test resource samples\"].uses",
       "value": "actions/upload-artifact@v4"
     },
     {
@@ -214,7 +214,7 @@
       "workflow": "ci.yml",
       "job": "test-macos",
       "rule": "banned-action",
-      "path": "jobs.test-macos.steps[30].uses",
+      "path": "jobs.test-macos.steps[name:\"Upload CI OpenTelemetry spans\"].uses",
       "value": "actions/upload-artifact@v4"
     },
     {
@@ -222,7 +222,7 @@
       "workflow": "ci.yml",
       "job": "test-macos",
       "rule": "banned-action",
-      "path": "jobs.test-macos.steps[32].uses",
+      "path": "jobs.test-macos.steps[name:\"Upload Buck2 cache evidence\"].uses",
       "value": "actions/upload-artifact@v4"
     },
     {
@@ -238,7 +238,7 @@
       "workflow": "ci.yml",
       "job": "test-playwright-utils",
       "rule": "banned-action",
-      "path": "jobs.test-playwright-utils.steps[17].uses",
+      "path": "jobs.test-playwright-utils.steps[name:\"Upload Playwright failure evidence\"].uses",
       "value": "actions/upload-artifact@v4"
     },
     {
@@ -246,7 +246,7 @@
       "workflow": "ci.yml",
       "job": "test-playwright-utils",
       "rule": "banned-action",
-      "path": "jobs.test-playwright-utils.steps[19].uses",
+      "path": "jobs.test-playwright-utils.steps[name:\"Upload Nix diagnostics artifact\"].uses",
       "value": "actions/upload-artifact@v4"
     },
     {
@@ -254,7 +254,7 @@
       "workflow": "ci.yml",
       "job": "test-playwright-utils",
       "rule": "banned-action",
-      "path": "jobs.test-playwright-utils.steps[22].uses",
+      "path": "jobs.test-playwright-utils.steps[name:\"Upload CI OpenTelemetry spans\"].uses",
       "value": "actions/upload-artifact@v4"
     },
     {
@@ -262,7 +262,7 @@
       "workflow": "ci.yml",
       "job": "test-playwright-utils",
       "rule": "banned-action",
-      "path": "jobs.test-playwright-utils.steps[24].uses",
+      "path": "jobs.test-playwright-utils.steps[name:\"Upload Buck2 cache evidence\"].uses",
       "value": "actions/upload-artifact@v4"
     },
     {
@@ -278,7 +278,7 @@
       "workflow": "ci.yml",
       "job": "test-playwright-tui-react",
       "rule": "banned-action",
-      "path": "jobs.test-playwright-tui-react.steps[17].uses",
+      "path": "jobs.test-playwright-tui-react.steps[name:\"Upload Playwright failure evidence\"].uses",
       "value": "actions/upload-artifact@v4"
     },
     {
@@ -286,7 +286,7 @@
       "workflow": "ci.yml",
       "job": "test-playwright-tui-react",
       "rule": "banned-action",
-      "path": "jobs.test-playwright-tui-react.steps[19].uses",
+      "path": "jobs.test-playwright-tui-react.steps[name:\"Upload Nix diagnostics artifact\"].uses",
       "value": "actions/upload-artifact@v4"
     },
     {
@@ -294,7 +294,7 @@
       "workflow": "ci.yml",
       "job": "test-playwright-tui-react",
       "rule": "banned-action",
-      "path": "jobs.test-playwright-tui-react.steps[22].uses",
+      "path": "jobs.test-playwright-tui-react.steps[name:\"Upload CI OpenTelemetry spans\"].uses",
       "value": "actions/upload-artifact@v4"
     },
     {
@@ -302,7 +302,7 @@
       "workflow": "ci.yml",
       "job": "test-playwright-tui-react",
       "rule": "banned-action",
-      "path": "jobs.test-playwright-tui-react.steps[24].uses",
+      "path": "jobs.test-playwright-tui-react.steps[name:\"Upload Buck2 cache evidence\"].uses",
       "value": "actions/upload-artifact@v4"
     },
     {
@@ -318,7 +318,7 @@
       "workflow": "ci.yml",
       "job": "test-megarepo-store-gc",
       "rule": "banned-action",
-      "path": "jobs.test-megarepo-store-gc.steps[19].uses",
+      "path": "jobs.test-megarepo-store-gc.steps[name:\"Upload Nix diagnostics artifact\"].uses",
       "value": "actions/upload-artifact@v4"
     },
     {
@@ -326,7 +326,7 @@
       "workflow": "ci.yml",
       "job": "test-megarepo-store-gc",
       "rule": "banned-action",
-      "path": "jobs.test-megarepo-store-gc.steps[22].uses",
+      "path": "jobs.test-megarepo-store-gc.steps[name:\"Upload CI OpenTelemetry spans\"].uses",
       "value": "actions/upload-artifact@v4"
     },
     {
@@ -334,7 +334,7 @@
       "workflow": "ci.yml",
       "job": "test-megarepo-store-gc",
       "rule": "banned-action",
-      "path": "jobs.test-megarepo-store-gc.steps[24].uses",
+      "path": "jobs.test-megarepo-store-gc.steps[name:\"Upload Buck2 cache evidence\"].uses",
       "value": "actions/upload-artifact@v4"
     },
     {
@@ -350,7 +350,7 @@
       "workflow": "ci.yml",
       "job": "cargo",
       "rule": "banned-action",
-      "path": "jobs.cargo.steps[18].uses",
+      "path": "jobs.cargo.steps[name:\"Upload Nix diagnostics artifact\"].uses",
       "value": "actions/upload-artifact@v4"
     },
     {
@@ -358,7 +358,7 @@
       "workflow": "ci.yml",
       "job": "cargo",
       "rule": "banned-action",
-      "path": "jobs.cargo.steps[21].uses",
+      "path": "jobs.cargo.steps[name:\"Upload CI OpenTelemetry spans\"].uses",
       "value": "actions/upload-artifact@v4"
     },
     {
@@ -366,7 +366,7 @@
       "workflow": "ci.yml",
       "job": "cargo",
       "rule": "banned-action",
-      "path": "jobs.cargo.steps[23].uses",
+      "path": "jobs.cargo.steps[name:\"Upload Buck2 cache evidence\"].uses",
       "value": "actions/upload-artifact@v4"
     },
     {
@@ -382,7 +382,7 @@
       "workflow": "ci.yml",
       "job": "weaver",
       "rule": "banned-action",
-      "path": "jobs.weaver.steps[19].uses",
+      "path": "jobs.weaver.steps[name:\"Upload Nix diagnostics artifact\"].uses",
       "value": "actions/upload-artifact@v4"
     },
     {
@@ -390,7 +390,7 @@
       "workflow": "ci.yml",
       "job": "weaver",
       "rule": "banned-action",
-      "path": "jobs.weaver.steps[22].uses",
+      "path": "jobs.weaver.steps[name:\"Upload CI OpenTelemetry spans\"].uses",
       "value": "actions/upload-artifact@v4"
     },
     {
@@ -398,7 +398,7 @@
       "workflow": "ci.yml",
       "job": "weaver",
       "rule": "banned-action",
-      "path": "jobs.weaver.steps[24].uses",
+      "path": "jobs.weaver.steps[name:\"Upload Buck2 cache evidence\"].uses",
       "value": "actions/upload-artifact@v4"
     },
     {
@@ -414,7 +414,7 @@
       "workflow": "ci.yml",
       "job": "pr-a-inert-buck",
       "rule": "banned-action",
-      "path": "jobs.pr-a-inert-buck.steps[20].uses",
+      "path": "jobs.pr-a-inert-buck.steps[name:\"Upload Buck2 cache evidence\"].uses",
       "value": "actions/upload-artifact@v4"
     },
     {
@@ -430,7 +430,7 @@
       "workflow": "ci.yml",
       "job": "build-products",
       "rule": "banned-action",
-      "path": "jobs.build-products.steps[9].uses",
+      "path": "jobs.build-products.steps[name:\"Upload Buck2 cache evidence\"].uses",
       "value": "actions/upload-artifact@v4"
     },
     {
@@ -446,7 +446,7 @@
       "workflow": "ci.yml",
       "job": "publish-products",
       "rule": "banned-action",
-      "path": "jobs.publish-products.steps[16].uses",
+      "path": "jobs.publish-products.steps[name:\"Upload Buck2 cache evidence\"].uses",
       "value": "actions/upload-artifact@v4"
     },
     {
@@ -462,7 +462,7 @@
       "workflow": "ci.yml",
       "job": "trusted-buck2-remote-cache-proof",
       "rule": "banned-action",
-      "path": "jobs.trusted-buck2-remote-cache-proof.steps[13].uses",
+      "path": "jobs.trusted-buck2-remote-cache-proof.steps[name:\"Upload Buck2 cache evidence\"].uses",
       "value": "actions/upload-artifact@v4"
     },
     {
@@ -502,7 +502,7 @@
       "workflow": "ci.yml",
       "job": "source-shape",
       "rule": "banned-action",
-      "path": "jobs.source-shape.steps[9].uses",
+      "path": "jobs.source-shape.steps[name:\"Upload CI measurements: source-shape\"].uses",
       "value": "actions/upload-artifact@v4"
     },
     {
@@ -510,7 +510,7 @@
       "workflow": "ci.yml",
       "job": "source-shape",
       "rule": "banned-action",
-      "path": "jobs.source-shape.steps[11].uses",
+      "path": "jobs.source-shape.steps[name:\"Upload Buck2 cache evidence\"].uses",
       "value": "actions/upload-artifact@v4"
     },
     {
@@ -526,7 +526,7 @@
       "workflow": "ci.yml",
       "job": "test-integration-notion",
       "rule": "banned-action",
-      "path": "jobs.test-integration-notion.steps[17].uses",
+      "path": "jobs.test-integration-notion.steps[name:\"Upload Nix diagnostics artifact\"].uses",
       "value": "actions/upload-artifact@v4"
     },
     {
@@ -534,7 +534,7 @@
       "workflow": "ci.yml",
       "job": "test-integration-notion",
       "rule": "banned-action",
-      "path": "jobs.test-integration-notion.steps[20].uses",
+      "path": "jobs.test-integration-notion.steps[name:\"Upload Buck2 cache evidence\"].uses",
       "value": "actions/upload-artifact@v4"
     },
     {
@@ -550,7 +550,7 @@
       "workflow": "ci.yml",
       "job": "test-integration-restate",
       "rule": "banned-action",
-      "path": "jobs.test-integration-restate.steps[17].uses",
+      "path": "jobs.test-integration-restate.steps[name:\"Upload Nix diagnostics artifact\"].uses",
       "value": "actions/upload-artifact@v4"
     },
     {
@@ -558,7 +558,7 @@
       "workflow": "ci.yml",
       "job": "test-integration-restate",
       "rule": "banned-action",
-      "path": "jobs.test-integration-restate.steps[20].uses",
+      "path": "jobs.test-integration-restate.steps[name:\"Upload Buck2 cache evidence\"].uses",
       "value": "actions/upload-artifact@v4"
     },
     {
@@ -574,7 +574,7 @@
       "workflow": "ci.yml",
       "job": "test-live-deploy-ci-tools",
       "rule": "banned-action",
-      "path": "jobs.test-live-deploy-ci-tools.steps[20].uses",
+      "path": "jobs.test-live-deploy-ci-tools.steps[name:\"Upload Nix diagnostics artifact\"].uses",
       "value": "actions/upload-artifact@v4"
     },
     {
@@ -582,7 +582,7 @@
       "workflow": "ci.yml",
       "job": "test-live-deploy-ci-tools",
       "rule": "banned-action",
-      "path": "jobs.test-live-deploy-ci-tools.steps[23].uses",
+      "path": "jobs.test-live-deploy-ci-tools.steps[name:\"Upload Buck2 cache evidence\"].uses",
       "value": "actions/upload-artifact@v4"
     },
     {
@@ -598,7 +598,7 @@
       "workflow": "ci.yml",
       "job": "deploy-storybooks",
       "rule": "banned-action",
-      "path": "jobs.deploy-storybooks.steps[20].uses",
+      "path": "jobs.deploy-storybooks.steps[name:\"Upload Nix diagnostics artifact\"].uses",
       "value": "actions/upload-artifact@v4"
     },
     {
@@ -606,7 +606,7 @@
       "workflow": "ci.yml",
       "job": "deploy-storybooks",
       "rule": "banned-action",
-      "path": "jobs.deploy-storybooks.steps[23].uses",
+      "path": "jobs.deploy-storybooks.steps[name:\"Upload Buck2 cache evidence\"].uses",
       "value": "actions/upload-artifact@v4"
     },
     {
@@ -686,7 +686,7 @@
       "workflow": "compiled-products.yml",
       "job": "publish-compiled-products",
       "rule": "banned-action",
-      "path": "jobs.publish-compiled-products.steps[9].uses",
+      "path": "jobs.publish-compiled-products.steps[name:\"Upload Buck2 cache evidence\"].uses",
       "value": "actions/upload-artifact@v4"
     },
     {
@@ -710,7 +710,7 @@
       "workflow": "empirical-proofs.yml",
       "job": "test-megarepo-cold-gc",
       "rule": "banned-action",
-      "path": "jobs.test-megarepo-cold-gc.steps[19].uses",
+      "path": "jobs.test-megarepo-cold-gc.steps[name:\"Upload Nix diagnostics artifact\"].uses",
       "value": "actions/upload-artifact@v4"
     },
     {
@@ -718,7 +718,7 @@
       "workflow": "empirical-proofs.yml",
       "job": "test-megarepo-cold-gc",
       "rule": "banned-action",
-      "path": "jobs.test-megarepo-cold-gc.steps[22].uses",
+      "path": "jobs.test-megarepo-cold-gc.steps[name:\"Upload CI OpenTelemetry spans\"].uses",
       "value": "actions/upload-artifact@v4"
     },
     {
@@ -726,7 +726,7 @@
       "workflow": "empirical-proofs.yml",
       "job": "test-megarepo-cold-gc",
       "rule": "banned-action",
-      "path": "jobs.test-megarepo-cold-gc.steps[24].uses",
+      "path": "jobs.test-megarepo-cold-gc.steps[name:\"Upload Buck2 cache evidence\"].uses",
       "value": "actions/upload-artifact@v4"
     },
     {
@@ -750,7 +750,7 @@
       "workflow": "empirical-proofs.yml",
       "job": "bootstrap-cold-proof",
       "rule": "banned-action",
-      "path": "jobs.bootstrap-cold-proof.steps[17].uses",
+      "path": "jobs.bootstrap-cold-proof.steps[name:\"Upload Nix diagnostics artifact\"].uses",
       "value": "actions/upload-artifact@v4"
     },
     {
@@ -758,7 +758,7 @@
       "workflow": "empirical-proofs.yml",
       "job": "bootstrap-cold-proof",
       "rule": "banned-action",
-      "path": "jobs.bootstrap-cold-proof.steps[20].uses",
+      "path": "jobs.bootstrap-cold-proof.steps[name:\"Upload Buck2 cache evidence\"].uses",
       "value": "actions/upload-artifact@v4"
     },
     {
@@ -790,7 +790,7 @@
       "workflow": "empirical-proofs.yml",
       "job": "devenv-perf",
       "rule": "banned-action",
-      "path": "jobs.devenv-perf.steps[16].uses",
+      "path": "jobs.devenv-perf.steps[name:\"Upload devenv perf artifacts\"].uses",
       "value": "actions/upload-artifact@v4"
     },
     {
@@ -798,7 +798,7 @@
       "workflow": "empirical-proofs.yml",
       "job": "devenv-perf",
       "rule": "banned-action",
-      "path": "jobs.devenv-perf.steps[18].uses",
+      "path": "jobs.devenv-perf.steps[name:\"Upload Buck2 cache evidence\"].uses",
       "value": "actions/upload-artifact@v4"
     },
     {
@@ -822,7 +822,7 @@
       "workflow": "empirical-proofs.yml",
       "job": "nix-closure-sizes",
       "rule": "banned-action",
-      "path": "jobs.nix-closure-sizes.steps[18].uses",
+      "path": "jobs.nix-closure-sizes.steps[name:\"Upload CI measurements: nix-closure-measurements\"].uses",
       "value": "actions/upload-artifact@v4"
     },
     {
@@ -830,7 +830,7 @@
       "workflow": "empirical-proofs.yml",
       "job": "nix-closure-sizes",
       "rule": "banned-action",
-      "path": "jobs.nix-closure-sizes.steps[20].uses",
+      "path": "jobs.nix-closure-sizes.steps[name:\"Upload Nix diagnostics artifact\"].uses",
       "value": "actions/upload-artifact@v4"
     },
     {
@@ -838,7 +838,7 @@
       "workflow": "empirical-proofs.yml",
       "job": "nix-closure-sizes",
       "rule": "banned-action",
-      "path": "jobs.nix-closure-sizes.steps[23].uses",
+      "path": "jobs.nix-closure-sizes.steps[name:\"Upload Buck2 cache evidence\"].uses",
       "value": "actions/upload-artifact@v4"
     },
     {
@@ -854,7 +854,7 @@
       "workflow": "empirical-proofs.yml",
       "job": "main-source-shape",
       "rule": "banned-action",
-      "path": "jobs.main-source-shape.steps[9].uses",
+      "path": "jobs.main-source-shape.steps[name:\"Upload CI measurements: source-shape\"].uses",
       "value": "actions/upload-artifact@v4"
     },
     {
@@ -862,7 +862,7 @@
       "workflow": "empirical-proofs.yml",
       "job": "main-source-shape",
       "rule": "banned-action",
-      "path": "jobs.main-source-shape.steps[11].uses",
+      "path": "jobs.main-source-shape.steps[name:\"Upload Buck2 cache evidence\"].uses",
       "value": "actions/upload-artifact@v4"
     },
     {
@@ -878,7 +878,7 @@
       "workflow": "empirical-proofs.yml",
       "job": "ci-measurements-report",
       "rule": "banned-action",
-      "path": "jobs.ci-measurements-report.steps[7].uses",
+      "path": "jobs.ci-measurements-report.steps[name:\"Download current measurement artifact: devenv-perf\"].uses",
       "value": "actions/download-artifact@v4"
     },
     {
@@ -886,7 +886,7 @@
       "workflow": "empirical-proofs.yml",
       "job": "ci-measurements-report",
       "rule": "banned-action",
-      "path": "jobs.ci-measurements-report.steps[8].uses",
+      "path": "jobs.ci-measurements-report.steps[name:\"Download current measurement artifact: nix-closure-measurements\"].uses",
       "value": "actions/download-artifact@v4"
     },
     {
@@ -894,7 +894,7 @@
       "workflow": "empirical-proofs.yml",
       "job": "ci-measurements-report",
       "rule": "banned-action",
-      "path": "jobs.ci-measurements-report.steps[9].uses",
+      "path": "jobs.ci-measurements-report.steps[name:\"Download current measurement artifact: source-shape\"].uses",
       "value": "actions/download-artifact@v4"
     },
     {
@@ -902,7 +902,7 @@
       "workflow": "empirical-proofs.yml",
       "job": "ci-measurements-report",
       "rule": "banned-action",
-      "path": "jobs.ci-measurements-report.steps[14].uses",
+      "path": "jobs.ci-measurements-report.steps[name:\"Upload CI measurements: ci-measurements-report\"].uses",
       "value": "actions/upload-artifact@v4"
     },
     {
@@ -910,7 +910,7 @@
       "workflow": "empirical-proofs.yml",
       "job": "ci-measurements-report",
       "rule": "banned-action",
-      "path": "jobs.ci-measurements-report.steps[16].uses",
+      "path": "jobs.ci-measurements-report.steps[name:\"Upload Buck2 cache evidence\"].uses",
       "value": "actions/upload-artifact@v4"
     },
     {
@@ -934,7 +934,7 @@
       "workflow": "storybook-plays.yml",
       "job": "test-storybook-plays",
       "rule": "banned-action",
-      "path": "jobs.test-storybook-plays.steps[13].uses",
+      "path": "jobs.test-storybook-plays.steps[name:\"Upload Buck2 cache evidence\"].uses",
       "value": "actions/upload-artifact@v4"
     },
     {
@@ -958,7 +958,7 @@
       "workflow": "storybook-preview-build.yml",
       "job": "build-storybooks",
       "rule": "banned-action",
-      "path": "jobs.build-storybooks.steps[12].uses",
+      "path": "jobs.build-storybooks.steps[name:\"Upload staged Netlify output\"].uses",
       "value": "actions/upload-artifact@v4"
     },
     {
@@ -966,7 +966,7 @@
       "workflow": "storybook-preview-build.yml",
       "job": "build-storybooks",
       "rule": "banned-action",
-      "path": "jobs.build-storybooks.steps[14].uses",
+      "path": "jobs.build-storybooks.steps[name:\"Upload Buck2 cache evidence\"].uses",
       "value": "actions/upload-artifact@v4"
     },
     {
@@ -990,7 +990,7 @@
       "workflow": "storybook-preview-deploy.yml",
       "job": "deploy-preview",
       "rule": "banned-action",
-      "path": "jobs.deploy-preview.steps[10].uses",
+      "path": "jobs.deploy-preview.steps[name:\"Download staged Netlify output\"].uses",
       "value": "actions/download-artifact@v4"
     },
     {
@@ -998,7 +998,7 @@
       "workflow": "storybook-preview-deploy.yml",
       "job": "deploy-preview",
       "rule": "banned-action",
-      "path": "jobs.deploy-preview.steps[14].uses",
+      "path": "jobs.deploy-preview.steps[name:\"Upload rendered preview comment\"].uses",
       "value": "actions/upload-artifact@v4"
     },
     {
@@ -1014,7 +1014,7 @@
       "workflow": "storybook-preview-deploy.yml",
       "job": "publish-preview-comment",
       "rule": "banned-action",
-      "path": "jobs.publish-preview-comment.steps[10].uses",
+      "path": "jobs.publish-preview-comment.steps[name:\"Download rendered preview comment\"].uses",
       "value": "actions/download-artifact@v4"
     }
   ]

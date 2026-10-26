@@ -10,7 +10,7 @@ load("//buck2/products:defs.bzl", "javascript_product")
 # Projection source: packages/@overeng/genie/BUCK.genie.ts
 # Projection schema version: 13
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:e42561faca85dc52326a8cb04e3e599e306b2f3c32b7318ed357f19782a1c0a9
+# Semantic fingerprint: sha256:49dc748da6b9a38d84c5ecb6b6bc35c930ca682c58d7f0c2fbf0a1c18afbe791
 # Regenerate: devenv tasks run genie:run
 
 load("//buck2:materialization.bzl", "export_materialization_inputs", "package_view")
@@ -105,6 +105,8 @@ export_materialization_inputs([
     "src/runtime/github-workflow/ci-workflow-helpers.unit.test.ts",
     "src/runtime/github-workflow/github-workflow.unit.test.ts",
     "src/runtime/github-workflow/mod.ts",
+    "src/runtime/github-workflow/policy-step-identity.ts",
+    "src/runtime/github-workflow/policy-step-identity.unit.test.ts",
     "src/runtime/github-workflow/policy.ts",
     "src/runtime/github-workflow/policy.unit.test.ts",
     "src/runtime/json-artifact/json-artifact.unit.test.ts",
@@ -274,6 +276,8 @@ package_view(
         "src/runtime/github-workflow/ci-workflow-helpers.unit.test.ts": "src/runtime/github-workflow/ci-workflow-helpers.unit.test.ts",
         "src/runtime/github-workflow/github-workflow.unit.test.ts": "src/runtime/github-workflow/github-workflow.unit.test.ts",
         "src/runtime/github-workflow/mod.ts": "src/runtime/github-workflow/mod.ts",
+        "src/runtime/github-workflow/policy-step-identity.ts": "src/runtime/github-workflow/policy-step-identity.ts",
+        "src/runtime/github-workflow/policy-step-identity.unit.test.ts": "src/runtime/github-workflow/policy-step-identity.unit.test.ts",
         "src/runtime/github-workflow/policy.ts": "src/runtime/github-workflow/policy.ts",
         "src/runtime/github-workflow/policy.unit.test.ts": "src/runtime/github-workflow/policy.unit.test.ts",
         "src/runtime/json-artifact/json-artifact.unit.test.ts": "src/runtime/json-artifact/json-artifact.unit.test.ts",
@@ -433,6 +437,8 @@ package_view(
         "src/runtime/github-workflow/ci-workflow-helpers.unit.test.ts": "src/runtime/github-workflow/ci-workflow-helpers.unit.test.ts",
         "src/runtime/github-workflow/github-workflow.unit.test.ts": "src/runtime/github-workflow/github-workflow.unit.test.ts",
         "src/runtime/github-workflow/mod.ts": "src/runtime/github-workflow/mod.ts",
+        "src/runtime/github-workflow/policy-step-identity.ts": "src/runtime/github-workflow/policy-step-identity.ts",
+        "src/runtime/github-workflow/policy-step-identity.unit.test.ts": "src/runtime/github-workflow/policy-step-identity.unit.test.ts",
         "src/runtime/github-workflow/policy.ts": "src/runtime/github-workflow/policy.ts",
         "src/runtime/github-workflow/policy.unit.test.ts": "src/runtime/github-workflow/policy.unit.test.ts",
         "src/runtime/json-artifact/json-artifact.unit.test.ts": "src/runtime/json-artifact/json-artifact.unit.test.ts",
@@ -589,6 +595,8 @@ package_view(
         "src/runtime/github-workflow/ci-workflow-helpers.unit.test.ts": "src/runtime/github-workflow/ci-workflow-helpers.unit.test.ts",
         "src/runtime/github-workflow/github-workflow.unit.test.ts": "src/runtime/github-workflow/github-workflow.unit.test.ts",
         "src/runtime/github-workflow/mod.ts": "src/runtime/github-workflow/mod.ts",
+        "src/runtime/github-workflow/policy-step-identity.ts": "src/runtime/github-workflow/policy-step-identity.ts",
+        "src/runtime/github-workflow/policy-step-identity.unit.test.ts": "src/runtime/github-workflow/policy-step-identity.unit.test.ts",
         "src/runtime/github-workflow/policy.ts": "src/runtime/github-workflow/policy.ts",
         "src/runtime/github-workflow/policy.unit.test.ts": "src/runtime/github-workflow/policy.unit.test.ts",
         "src/runtime/json-artifact/json-artifact.unit.test.ts": "src/runtime/json-artifact/json-artifact.unit.test.ts",

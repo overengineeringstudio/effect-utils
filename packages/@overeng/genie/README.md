@@ -167,6 +167,10 @@ regenerating; generation cannot admit a new row automatically.
 Ledger generation and report checks share the same validated,
 exception-filtered observations. The raw census is retained only to detect
 stale exceptions, so accepted exceptions cannot reappear on regeneration.
+Storage ledger paths use step ID, then step name, then action repository and
+occurrence ordinal, never an absolute step index. Removing or inserting an
+unrelated step cannot manufacture new storage debt. Give duplicate action
+steps distinct IDs or names when their individual identity must survive removal.
 
 Shared-helper tests enforce runner/event policy. Storage-emitting helpers are
 explicitly listed as `pendingStorageMigration` in

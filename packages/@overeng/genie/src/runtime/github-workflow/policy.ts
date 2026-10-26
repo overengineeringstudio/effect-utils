@@ -1,4 +1,5 @@
 import type { GitHubWorkflowArgs } from './mod.ts'
+import { workflowPolicyStepIdentity } from './policy-step-identity.ts'
 
 /** Stable identifiers for generic workflow admission rules. */
 export type WorkflowPolicyRule =
@@ -187,9 +188,13 @@ const hasSameRepoPullRequestGuard = (condition: string | undefined): boolean => 
   const guard = sameRepoPullRequestGuard()
   if (expression === guard) return true
   const parsed = guardExpressionParts(expression)
-  return parsed !== undefined && parsed.hasOr === false && parsed.parts.length > 1 &&
+  return (
+    parsed !== undefined &&
+    parsed.hasOr === false &&
+    parsed.parts.length > 1 &&
     parsed.parts.every((part) => part !== '') === true &&
     parsed.parts.some((part) => unwrapGuardExpression(part) === guard) === true
+  )
 }
 
 /** Decode a checked-in JSON ledger without weakening its rule and identity types. */
@@ -410,15 +415,17 @@ export const collectWorkflowPolicyViolations = ({
     if (
       protectedRunnerJobs.has(job) === true &&
       events.some((event) => forkCodeEvents[event] === true) === true &&
-      (events.includes('issue_comment') === true || hasSameRepoPullRequestGuard(config.if) === false)
+      (events.includes('issue_comment') === true ||
+        hasSameRepoPullRequestGuard(config.if) === false)
     ) {
       add({
         job,
         rule: 'fleet-pr-without-same-repo-guard',
         path: `jobs.${job}.if`,
-        value: events.includes('issue_comment') === true
-          ? 'issue_comment has no verifiable head repository'
-          : config.if ?? '(missing)',
+        value:
+          events.includes('issue_comment') === true
+            ? 'issue_comment has no verifiable head repository'
+            : (config.if ?? '(missing)'),
       })
     }
     // Compare labels within each concrete selection, not across independent matrix jobs.
@@ -470,9 +477,11 @@ export const collectWorkflowPolicyViolations = ({
       )
         add({ job, rule: 'runner-label-mix', path, value: JSON.stringify(labels) })
     }
-    for (const [index, step] of config.steps.entries()) {
+    const stepOrdinals = new Map<string, number>()
+    for (const step of config.steps) {
+      const identity = workflowPolicyStepIdentity({ step, ordinals: stepOrdinals })
       if ('uses' in step === false) continue
-      const stepPath = `jobs.${job}.steps[${index}]`
+      const stepPath = `jobs.${job}.steps[${identity}]`
       if (
         policy.bannedActions?.some((action) => matchesAction({ uses: step.uses, action })) === true
       )
@@ -599,7 +608,11 @@ export const validateWorkflowPolicy = ({
   const violations = collectEffectiveWorkflowPolicyViolations({ workflow, policy })
   const issues: WorkflowPolicyIssue[] = []
   for (const violation of violations) {
-    if (policy.mode === 'report' && (violation.rule === 'fleet-pr-without-same-repo-guard' || violation.rule === 'pull-request-target')) {
+    if (
+      policy.mode === 'report' &&
+      (violation.rule === 'fleet-pr-without-same-repo-guard' ||
+        violation.rule === 'pull-request-target')
+    ) {
       issues.push({ kind: 'VIOLATION', message: violationKey(violation), violation })
     }
   }
