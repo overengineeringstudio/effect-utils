@@ -87,7 +87,10 @@ const guardedFixtureJobs = (rawJobs: Record<string, Record<string, unknown>>) =>
     Object.entries(rawJobs).map(([id, value]) => {
       const condition =
         typeof value.if === 'string'
-          ? value.if.trim().replace(/^\$\{\{\s*/, '').replace(/\s*\}\}$/, '')
+          ? value.if
+              .trim()
+              .replace(/^\$\{\{\s*/, '')
+              .replace(/\s*\}\}$/, '')
           : undefined
       return [
         id,
@@ -425,6 +428,17 @@ describe('shared workflow same-repository PR guards', () => {
         repository: 'example/project',
         workflow: 'auto-review.yml',
         admittedRunnerLabels: ['namespace-profile-linux-x86-64'],
+        mode: 'report',
+        ledger: [
+          {
+            repository: 'example/project',
+            workflow: 'auto-review.yml',
+            job: 'request-review',
+            rule: 'namespace-runner',
+            path: 'jobs.request-review.runs-on',
+            value: 'namespace-profile-linux-x86-64',
+          },
+        ],
       },
     }).data
     expect(workflow.jobs['request-review']).not.toHaveProperty('if')

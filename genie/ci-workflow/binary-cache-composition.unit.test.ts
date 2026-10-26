@@ -378,8 +378,7 @@ describe('Cachix publisher', () => {
       ).toThrow(CachePublisherJobError)
     }
     expect(() =>
-      ciWorkflow({
-        trustTier: 'public',
+      githubWorkflow({
         on: { push: { branches: ['main'] }, pull_request: null },
         jobs: {
           publish: {

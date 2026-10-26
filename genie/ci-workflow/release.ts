@@ -28,6 +28,17 @@ import { bashShellDefaults } from './shared.ts'
 type WorkflowJob = GitHubWorkflowArgs['jobs'][string]
 type WorkflowStep = WorkflowJob['steps'][number]
 
+const jobCondition = ({
+  runner,
+  condition,
+}: {
+  runner: WorkflowJob['runs-on']
+  condition: string
+}): string =>
+  isFleetCacheRunner(runner) === true
+    ? `(${sameRepoPullRequestGuard()}) && (${condition})`
+    : condition
+
 const placeholderRun = (label: string) =>
   `echo "TODO: ${label} — wired in follow-up; see context/workflows/release-workflow.md"\nexit 1`
 
@@ -227,16 +238,11 @@ export const releaseWorkflow = (opts: ReleaseWorkflowOptions) => {
   //  - publish-release: read release plan + (optional) npm token fallback +
   //    repo-supplied publishSteps.
 
-  const jobCondition = (runner: WorkflowJob['runs-on'], condition: string): string =>
-    isFleetCacheRunner(runner) === true
-      ? `(${sameRepoPullRequestGuard()}) && (${condition})`
-      : condition
-
   const createReleasePrJob: WorkflowJob = {
-    if: jobCondition(
-      opts.runsOn.createReleasePr,
-      "github.event_name == 'workflow_dispatch' && inputs.mode == 'create-release-pr'",
-    ),
+    if: jobCondition({
+      runner: opts.runsOn.createReleasePr,
+      condition: "github.event_name == 'workflow_dispatch' && inputs.mode == 'create-release-pr'",
+    }),
     'runs-on': opts.runsOn.createReleasePr,
     permissions: {
       actions: 'write',
@@ -253,10 +259,11 @@ export const releaseWorkflow = (opts: ReleaseWorkflowOptions) => {
   }
 
   const validateReleasePlanJob: WorkflowJob = {
-    if: jobCondition(
-      opts.runsOn.validateReleasePlan,
-      "github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && inputs.mode == 'validate-release-plan')",
-    ),
+    if: jobCondition({
+      runner: opts.runsOn.validateReleasePlan,
+      condition:
+        "github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && inputs.mode == 'validate-release-plan')",
+    }),
     'runs-on': opts.runsOn.validateReleasePlan,
     defaults: bashShellDefaults,
     steps: [
@@ -270,10 +277,11 @@ export const releaseWorkflow = (opts: ReleaseWorkflowOptions) => {
   }
 
   const publishReleaseJob: WorkflowJob = {
-    if: jobCondition(
-      opts.runsOn.publishRelease,
-      "github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.mode == 'publish-release')",
-    ),
+    if: jobCondition({
+      runner: opts.runsOn.publishRelease,
+      condition:
+        "github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.mode == 'publish-release')",
+    }),
     'runs-on': opts.runsOn.publishRelease,
     permissions: {
       contents: 'write',
