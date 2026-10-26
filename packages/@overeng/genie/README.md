@@ -108,6 +108,45 @@ Buck package source and test censuses also exclude existing `tmp/genie-locks`
 state directories. Ordinary files under `tmp` remain inputs, and unsafe paths
 or symlinks outside the state are still rejected.
 
+### GitHub workflow fleet policy
+
+`githubWorkflow({ policy, ...workflow })` validates policy at construction,
+serialization, and validation. `policy` is generator metadata and is never
+emitted into YAML. The generic validator is in
+`src/runtime/github-workflow/policy.ts`; fleet values are shared once in
+`genie/ci-workflow/policy.ts`, with runner labels and platforms in
+`genie/ci-workflow/runners.ts`. `ciWorkflow`, `autoReviewWorkflow`, and
+`releaseWorkflow` enforce the fleet policy by default.
+
+Policy rejects hosted, Namespace, unknown, unresolved dynamic, fallback, and
+mixed-heavy runner selections; forbidden events; Actions artifact/cache
+actions and known wrappers; setup-action caching; and Docker `type=gha`.
+Finite runner matrices are resolved before admission. Dynamic runner outputs
+require an exact typed admission declaration with admitted possible labels.
+`linuxX64Runner` selects light work; `linuxX64HeavyRunner` is the dedicated
+heavy scale set and must never be combined with generic labels.
+
+Runner selection is explicit: `prReviewsResolvedJob`, `prSnapshotPackJob`,
+`prSnapshotReleaseJobs`, `plainFlakeJob` and its Cargo/genie wrappers require
+`runsOn: linuxX64Runner` (or another appropriate export from `runners.ts`).
+`pipelineCloseJob({ jobs, runsOn: linuxX64Runner })` requires explicit runner selection.
+`releaseWorkflow` requires
+`runsOn: { createReleasePr: linuxX64Runner, validateReleasePlan: linuxX64Runner, publishRelease: linuxX64Runner }`.
+
+The central `policy-exceptions.json` requires exact repository, workflow,
+job, and rule plus owner, approver, justification, expiry, and tracking issue.
+Hosted runners, Namespace, storage, fallback, and mixed-heavy rules cannot
+be excepted. This repository explicitly uses report mode with the generated
+`policy-migration-ledger.json`: new violations and stale entries both fail
+generation. The ledger is migration inventory, not an exception mechanism;
+it only shrinks and must eventually be empty. Remove resolved rows before
+regenerating; generation cannot admit a new row automatically.
+
+Shared-helper tests enforce runner/event policy. Storage-emitting helpers are
+explicitly listed as `pendingStorageMigration` in
+`genie/ci-workflow/policy.unit.test.ts` until stage L7; their storage behavior
+is intentionally unchanged and own-workflow uses remain in the ledger.
+
 ### Creating a Generator
 
 Create a `.genie.ts` file next to the config file you want to generate:

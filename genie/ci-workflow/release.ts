@@ -20,7 +20,8 @@ import {
   type ActionlintConfig,
   type GitHubWorkflowArgs,
 } from '../../packages/@overeng/genie/src/runtime/mod.ts'
-import { bashShellDefaults, linuxX64Runner } from './shared.ts'
+import { fleetWorkflowPolicy } from './policy.ts'
+import { bashShellDefaults } from './shared.ts'
 
 type WorkflowJob = GitHubWorkflowArgs['jobs'][string]
 type WorkflowStep = WorkflowJob['steps'][number]
@@ -56,10 +57,18 @@ export type ReleaseChannel = {
  * to model them directly.
  */
 export type ReleaseWorkflowOptions = {
+  /** Explicit selection for each release job; no implicit runner allocation. */
+  readonly runsOn: {
+    readonly createReleasePr: WorkflowJob['runs-on']
+    readonly validateReleasePlan: WorkflowJob['runs-on']
+    readonly publishRelease: WorkflowJob['runs-on']
+  }
+
   /**
    * Workflow `name:` field. Defaults to `'Release'`.
    */
   readonly name?: string
+  readonly policy?: GitHubWorkflowArgs['policy']
 
   /**
    * Workspace identifier used in branch names and commit messages.
@@ -218,7 +227,7 @@ export const releaseWorkflow = (opts: ReleaseWorkflowOptions) => {
 
   const createReleasePrJob: WorkflowJob = {
     if: "github.event_name == 'workflow_dispatch' && inputs.mode == 'create-release-pr'",
-    'runs-on': 'ubuntu-latest',
+    'runs-on': opts.runsOn.createReleasePr,
     permissions: {
       actions: 'write',
       contents: 'write',
@@ -235,7 +244,7 @@ export const releaseWorkflow = (opts: ReleaseWorkflowOptions) => {
 
   const validateReleasePlanJob: WorkflowJob = {
     if: "github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && inputs.mode == 'validate-release-plan')",
-    'runs-on': linuxX64Runner as unknown as string[],
+    'runs-on': opts.runsOn.validateReleasePlan,
     defaults: bashShellDefaults,
     steps: [
       ...opts.setupSteps,
@@ -249,7 +258,7 @@ export const releaseWorkflow = (opts: ReleaseWorkflowOptions) => {
 
   const publishReleaseJob: WorkflowJob = {
     if: "github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.mode == 'publish-release')",
-    'runs-on': linuxX64Runner as unknown as string[],
+    'runs-on': opts.runsOn.publishRelease,
     permissions: {
       contents: 'write',
       'id-token': 'write',
@@ -276,6 +285,12 @@ export const releaseWorkflow = (opts: ReleaseWorkflowOptions) => {
 
   return githubWorkflow({
     name: opts.name ?? 'Release',
+    policy:
+      opts.policy ??
+      fleetWorkflowPolicy({
+        repository: '${{ github.repository }}',
+        workflow: opts.name ?? 'Release',
+      }),
     ...(opts.actionlint === false
       ? {}
       : opts.actionlint !== undefined

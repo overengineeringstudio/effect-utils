@@ -276,14 +276,24 @@ import {
   defaultActionlintConfig,
 } from '../../repos/effect-utils/genie/ci-workflow.ts'
 
+const linuxRunner = namespaceRunner({
+  profile: RUNNER_PROFILES[0],
+  runId: '${{ github.run_id }}',
+  privileged: 'trusted',
+})
+
 export default githubWorkflow({
   name: 'Rust CI',
   on: { pull_request: githubWorkflowEvent.all, push: { branches: ['main'] } },
   linuxNixSandboxCapabilities: { test: 'supported' },
   actionlint: defaultActionlintConfig,
   jobs: {
-    fmt: cargoFmtJob({ namespacePrivilege: 'trusted' }),
-    clippy: cargoClippyJob({ namespacePrivilege: 'trusted', extraArgs: ['--', '-D', 'warnings'] }),
+    fmt: cargoFmtJob({ namespacePrivilege: 'trusted', runsOn: linuxRunner }),
+    clippy: cargoClippyJob({
+      namespacePrivilege: 'trusted',
+      runsOn: linuxRunner,
+      extraArgs: ['--', '-D', 'warnings'],
+    }),
     test: cargoNextestJob({
       namespacePrivilege: 'trusted',
       retries: 2,
@@ -296,12 +306,12 @@ export default githubWorkflow({
         privileged: 'trusted',
       }),
     }),
-    freshness: plainFlakeGenieCheckJob({ namespacePrivilege: 'trusted' }),
+    freshness: plainFlakeGenieCheckJob({ namespacePrivilege: 'trusted', runsOn: linuxRunner }),
   },
 })
 ```
 
-Jobs default to the shared Namespace Linux profile with workflow-run affinity.
+Jobs require explicit `runsOn`; the example retains the historical Namespace Linux profile.
 Runner matrices use the same `namespaceRunner`, `RUNNER_PROFILES` and actionlint
 configuration as other CI helpers. Job options retain GitHub's gates, environment,
 permissions, defaults, matrix and timeout controls, plus `preSteps`/`postSteps`.

@@ -24,6 +24,7 @@ import {
   validateWorkflowCachePolicy,
 } from './cache-policy.ts'
 import { prSnapshotPackJob, prSnapshotReleaseJobs } from './pr-snapshot.ts'
+import { linuxX64Runner } from './runners.ts'
 import {
   buck2TrustedCacheWriterStep,
   cachixPublisherStep,
@@ -126,6 +127,7 @@ describe('build cache composition', () => {
         ciWorkflow({
           trustTier: 'public',
           on: { push: { branches: ['main'] } },
+          linuxNixSandboxCapabilities: { build: 'supported' },
           jobs: { build: { 'runs-on': runsOn, steps: [{ ...step }] } },
         }),
       ).toThrow(PrivateBinaryCacheRunnerError)
@@ -381,7 +383,7 @@ describe('Cachix publisher', () => {
         on: { push: { branches: ['main'] }, pull_request: null },
         jobs: {
           publish: {
-            'runs-on': 'ubuntu-latest',
+            'runs-on': linuxX64Runner,
             if: "github.ref == 'refs/heads/main' && (github.event_name == 'push')",
             steps: [publisher],
           },
@@ -420,11 +422,13 @@ describe('Cachix publisher', () => {
 
   it('accepts PR snapshot producer and release consumer workflows without job-wide cache tokens', () => {
     const producer = prSnapshotPackJob({
+      runsOn: 'ubuntu-24.04',
       topologyPath: 'release-topology.json',
       setupStepsAfterCheckout: [],
       packTask: 'release:pack',
     })
     const release = prSnapshotReleaseJobs({
+      runsOn: 'ubuntu-24.04',
       topologyPath: 'release-topology.json',
       attestationPredicateType: 'https://example.com/pr-snapshot/v1',
     })

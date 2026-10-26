@@ -56,6 +56,11 @@ The first iteration intentionally does **not** cover:
 import { releaseWorkflow } from '<effect-utils>/genie/ci-workflow.ts'
 
 export default releaseWorkflow({
+  runsOn: {
+    createReleasePr: 'ubuntu-latest',
+    validateReleasePlan: ['sh-linux-x64', 'nix'],
+    publishRelease: ['sh-linux-x64', 'nix'],
+  },
   workspaceName: 'livestore',
   workspaceDisplayName: 'LiveStore',
 

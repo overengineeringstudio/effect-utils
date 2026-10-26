@@ -17,6 +17,7 @@ import {
 import { withBuck2CacheEvidence } from '../../genie/ci-workflow/buck2-cache-evidence.ts'
 import { withBuck2CachePostures } from '../../genie/ci-workflow/buck2-cache-posture.ts'
 import { withPipelineTelemetry } from '../../genie/ci-workflow/pipeline-telemetry.ts'
+import { effectUtilsWorkflowPolicy } from '../../genie/ci-workflow/policy.ts'
 import { empiricalProofJobs } from './ci.yml.genie.ts'
 
 /** Keep export failures visible on the nonblocking daily job, without changing other jobs. */
@@ -48,6 +49,7 @@ const withCacheJoinExportCheck = (jobs: CiWorkflowArgs['jobs']): CiWorkflowArgs[
 }
 
 export default ciWorkflow({
+  policy: effectUtilsWorkflowPolicy('empirical-proofs.yml'),
   trustTier: 'public',
   name: 'Empirical Proofs',
   on: {

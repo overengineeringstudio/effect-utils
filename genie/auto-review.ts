@@ -1,11 +1,13 @@
 /** Shared auto-review workflow: requests review from a human when an assistant opens a PR */
 
+import type { WorkflowPolicy } from '../packages/@overeng/genie/src/runtime/github-workflow/policy.ts'
 import { githubWorkflow } from '../packages/@overeng/genie/src/runtime/mod.ts'
 import {
   defaultActionlintConfig,
   linuxX64Runner,
   linuxNixSandboxFallbackStep,
 } from './ci-workflow.ts'
+import { fleetWorkflowPolicy } from './ci-workflow/policy.ts'
 
 /** Generate the shared auto-review workflow used by assistant-authored PRs. */
 export const autoReviewWorkflow = ({
@@ -13,8 +15,21 @@ export const autoReviewWorkflow = ({
   reviewer = 'schickling',
   runner = linuxX64Runner,
   timeoutMinutes = 30,
+  policy,
+}: {
+  author?: string
+  reviewer?: string
+  runner?: string | readonly string[]
+  timeoutMinutes?: number
+  policy?: WorkflowPolicy
 } = {}) =>
   githubWorkflow({
+    policy:
+      policy ??
+      fleetWorkflowPolicy({
+        repository: '${{ github.repository }}',
+        workflow: 'Auto-request review',
+      }),
     actionlint: defaultActionlintConfig,
     name: 'Auto-request review',
     on: {
