@@ -124,13 +124,9 @@ const guardEvents = {
   trusted: ['push', 'merge_group', 'schedule', 'workflow_dispatch'],
   pullRequest: ['pull_request', 'pull_request_review', 'pull_request_review_comment'],
   upstreamRun: ['workflow_run'],
-  inheritedOrDenied: ['workflow_call', 'issue_comment'],
 } as const
-const forkCodeEvents: Readonly<Record<string, true>> = Object.fromEntries(
-  [...guardEvents.pullRequest, ...guardEvents.upstreamRun, ...guardEvents.inheritedOrDenied].map(
-    (event) => [event, true] as const,
-  ),
-)
+const isTrustedWorkflowEvent = (event: string): boolean =>
+  guardEvents.trusted.some((trusted) => trusted === event)
 const eventCondition = (events: readonly string[]): string =>
   events.map((event) => `github.event_name == '${event}'`).join(' || ')
 const sameRepoGuardExpression =
@@ -138,8 +134,40 @@ const sameRepoGuardExpression =
   `((${eventCondition(guardEvents.pullRequest)}) && github.event.pull_request.head.repo.full_name == github.repository) || ` +
   `(${eventCondition(guardEvents.upstreamRun)} && github.event.workflow_run.head_repository.full_name == github.repository)`
 
-const hasForkControlledRunnerExpression = (value: string): boolean =>
-  /\$\{\{[^}]*\b(?:github\s*(?:\.\s*(?:event\b|head_ref\b)|\[)|inputs\b)/.test(value)
+/** Scan expression boundaries without treating quoted braces as closing delimiters. */
+const hasForkControlledRunnerExpression = (value: string): boolean => {
+  let offset = 0
+  while (offset < value.length) {
+    const start = value.indexOf('${{', offset)
+    if (start === -1) return false
+    let quoted = false
+    let closed = false
+    let expression = ''
+    for (let index = start + 3; index < value.length; index++) {
+      const char = value[index]!
+      if (char === "'") {
+        if (quoted === true && value[index + 1] === "'") {
+          index++
+          continue
+        }
+        quoted = !quoted
+        expression += ' '
+      } else if (quoted === false) {
+        if (char === '}' && value[index + 1] === '}') {
+          offset = index + 2
+          closed = true
+          break
+        }
+        expression += char
+      }
+    }
+    // Malformed expressions cannot establish safe runner provenance either.
+    if (closed === false || quoted === true) return true
+    if (/\b(?:github\s*(?:\.\s*(?:event\b|head_ref\b)|\[)|inputs\b)/.test(expression) === true)
+      return true
+  }
+  return false
+}
 
 /** Canonical allowlist: reusable workflows inherit the caller's event and context.
  * Unknown and issue/comment/target events are denied, never implicitly trusted.
@@ -464,7 +492,7 @@ export const collectWorkflowPolicyViolations = ({
     checkRunner({ runner: config['runs-on'], resolveMatrix: true })
     if (
       protectedRunnerJobs.has(job) === true &&
-      events.some((event) => forkCodeEvents[event] === true) === true &&
+      events.some((event) => isTrustedWorkflowEvent(event) === false) === true &&
       hasSameRepoPullRequestGuard(config.if) === false
     ) {
       add({

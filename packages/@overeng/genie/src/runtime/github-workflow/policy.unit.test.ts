@@ -368,6 +368,55 @@ describe('fleet fork-code admission', () => {
     expect(() => validateWorkflowPolicy({ workflow: input, policy: guardedPolicy })).not.toThrow()
   })
   it.each([
+    'discussion',
+    'release',
+    'deployment_status',
+    'check_run',
+    'repository_dispatch',
+    'future_unrecognized_event',
+  ])('defaults to guarded fleet admission for %s', (event) => {
+    const input: GitHubWorkflowArgs = {
+      ...workflow(),
+      on: event as GitHubWorkflowArgs['on'],
+    }
+    expect(() => validateWorkflowPolicy({ workflow: input, policy: guardedPolicy })).toThrow(
+      WorkflowPolicyError,
+    )
+    input.jobs.test!.if = guard
+    expect(() => validateWorkflowPolicy({ workflow: input, policy: guardedPolicy })).not.toThrow()
+  })
+  it.each(['push', 'merge_group', 'schedule', 'workflow_dispatch'] as const)(
+    'admits trusted-only %s without a guard',
+    (event) => {
+      const input: GitHubWorkflowArgs = { ...workflow(), on: event }
+      expect(() => validateWorkflowPolicy({ workflow: input, policy: guardedPolicy })).not.toThrow()
+    },
+  )
+  it.each([
+    "${{ format('{0}', github.event.pull_request.title) }}",
+    "${{ format('{outer {0} }}', github.event.pull_request.title) }}",
+    "${{ format('it''s }} {0}', github.head_ref) }}",
+    "${{ github.run_id }}-${{ format('{0}', inputs.runner) }}",
+    "${{ format('safe }} value', github.run_id) }}-${{ github.event.pull_request.title }}",
+  ])('scans complete quoted-brace expressions for fork-controlled selectors: %s', (runner) => {
+    const input = prWorkflow()
+    input.jobs.test!['runs-on'] = runner
+    input.jobs.test!.if = guard
+    const observations = collect(input, guardedPolicy)
+    expect(observations.map((entry) => entry.rule)).toContain('fork-controlled-runner')
+    expect(issueKinds(input, { ...guardedPolicy, mode: 'report', ledger: observations })).toContain(
+      'VIOLATION',
+    )
+  })
+  it('does not treat context-looking quoted strings as runner context reads', () => {
+    const input = prWorkflow()
+    input.jobs.test!['runs-on'] = "${{ format('github.event.fake }} it''s {0}', github.run_id) }}"
+    input.jobs.test!.if = guard
+    expect(collect(input, guardedPolicy).map((entry) => entry.rule)).not.toContain(
+      'fork-controlled-runner',
+    )
+  })
+  it.each([
     guard,
     `\${{ ${guard} }}`,
     `(${guard}) && (github.ref == 'refs/heads/main')`,

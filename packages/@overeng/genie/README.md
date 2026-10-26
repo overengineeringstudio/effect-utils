@@ -127,16 +127,19 @@ require an exact typed admission declaration with admitted possible labels.
 heavy scale set and must never be combined with generic labels.
 
 Jobs that could reach fleet runners (including capability-only labels, unknown
-selectors, and runner groups) require `sameRepoPullRequestGuard()` on
-`pull_request`, `pull_request_review`, `pull_request_review_comment`,
-`workflow_run`, and `workflow_call`. Reusable workflows inherit their caller's
-event. The exact guard, alone or as a top-level conjunction, permits only
+selectors, and runner groups) require `sameRepoPullRequestGuard()` whenever any
+workflow trigger is outside `push`, `merge_group`, `schedule`, or
+`workflow_dispatch`. This default-deny rule includes future events and reusable
+workflows, which inherit their caller's event. The exact guard, alone or as a
+top-level conjunction, permits only
 push, merge groups, schedules, manual dispatches, and repository-owned PR or
 upstream-run heads. Unknown events, issue comments, and pull-request targets
 are not admitted. OR, negated, and partial guards are rejected.
 Fork-controlled runner expressions are hard errors even with a guard.
 Immutable hosted/Namespace selector prefixes prove non-fleet routing even
 when their feature suffixes contain expressions.
+Expression scanning respects quoted braces and doubled single-quote escapes,
+so format strings cannot hide fork-controlled runner inputs.
 `ciWorkflow` requires consumers to supply the guard explicitly; higher-level
 auto-review and release helpers add it when selecting fleet runners.
 Neither exceptions nor the report ledger can admit an unguarded potential
