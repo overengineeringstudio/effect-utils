@@ -789,6 +789,7 @@
         "src/store/store-lossless.integration.test.ts",
         "src/store/store-pinned-deletion.integration.test.ts",
         "src/store/store-workspace-activity.integration.test.ts",
+        "src/store/store-worktree-remove.integration.test.ts",
         "src/test-utils/store-setup.integration.test.ts"
       ],
       "packageName": "megarepo",
@@ -854,6 +855,7 @@
         "src/store/store-symlink.unit.test.ts",
         "src/store/store-workspace-activity.integration.test.ts",
         "src/store/store-worktree-policy.unit.test.ts",
+        "src/store/store-worktree-remove.integration.test.ts",
         "src/sync/member.unit.test.ts",
         "src/test-utils/setup.unit.test.ts",
         "src/test-utils/store-setup.integration.test.ts"
@@ -923,6 +925,7 @@
         "src/store/store-symlink.unit.test.ts",
         "src/store/store-workspace-activity.integration.test.ts",
         "src/store/store-worktree-policy.unit.test.ts",
+        "src/store/store-worktree-remove.integration.test.ts",
         "src/sync/member.unit.test.ts",
         "src/test-utils/setup.unit.test.ts",
         "src/test-utils/store-setup.integration.test.ts"
@@ -959,6 +962,7 @@
         "src/store/store-lossless.integration.test.ts",
         "src/store/store-pinned-deletion.integration.test.ts",
         "src/store/store-workspace-activity.integration.test.ts",
+        "src/store/store-worktree-remove.integration.test.ts",
         "src/test-utils/store-setup.integration.test.ts"
       ],
       "unboundedTaskName": "test:megarepo:unbounded"

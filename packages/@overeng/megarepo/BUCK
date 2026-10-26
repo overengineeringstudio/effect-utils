@@ -7,7 +7,7 @@ load("//buck2/products:defs.bzl", "javascript_product")
 # Projection source: packages/@overeng/megarepo/BUCK.genie.ts
 # Projection schema version: 13
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:23a8a374dc438aa97a2e1d8e7b9d1a14bea1932400db2ba56e44561922ccc33a
+# Semantic fingerprint: sha256:b8195332c226638ab4482e824e1762f27b37f783505deec03d3c6bd87ed2633d
 # Regenerate: devenv tasks run genie:run
 
 load("//buck2:materialization.bzl", "export_materialization_inputs", "package_view")
@@ -277,6 +277,8 @@ export_materialization_inputs([
     "src/store/store-workspace-activity.ts",
     "src/store/store-worktree-policy.ts",
     "src/store/store-worktree-policy.unit.test.ts",
+    "src/store/store-worktree-remove.integration.test.ts",
+    "src/store/store-worktree-remove.ts",
     "src/store/store.ts",
     "src/sync/member-mount.ts",
     "src/sync/member.ts",
@@ -590,6 +592,8 @@ package_view(
         "src/store/store-workspace-activity.ts": "src/store/store-workspace-activity.ts",
         "src/store/store-worktree-policy.ts": "src/store/store-worktree-policy.ts",
         "src/store/store-worktree-policy.unit.test.ts": "src/store/store-worktree-policy.unit.test.ts",
+        "src/store/store-worktree-remove.integration.test.ts": "src/store/store-worktree-remove.integration.test.ts",
+        "src/store/store-worktree-remove.ts": "src/store/store-worktree-remove.ts",
         "src/store/store.ts": "src/store/store.ts",
         "src/sync/member-mount.ts": "src/sync/member-mount.ts",
         "src/sync/member.ts": "src/sync/member.ts",
@@ -905,6 +909,8 @@ package_view(
         "src/store/store-workspace-activity.ts": "src/store/store-workspace-activity.ts",
         "src/store/store-worktree-policy.ts": "src/store/store-worktree-policy.ts",
         "src/store/store-worktree-policy.unit.test.ts": "src/store/store-worktree-policy.unit.test.ts",
+        "src/store/store-worktree-remove.integration.test.ts": "src/store/store-worktree-remove.integration.test.ts",
+        "src/store/store-worktree-remove.ts": "src/store/store-worktree-remove.ts",
         "src/store/store.ts": "src/store/store.ts",
         "src/sync/member-mount.ts": "src/sync/member-mount.ts",
         "src/sync/member.ts": "src/sync/member.ts",
@@ -1215,6 +1221,8 @@ package_view(
         "src/store/store-workspace-activity.ts": "src/store/store-workspace-activity.ts",
         "src/store/store-worktree-policy.ts": "src/store/store-worktree-policy.ts",
         "src/store/store-worktree-policy.unit.test.ts": "src/store/store-worktree-policy.unit.test.ts",
+        "src/store/store-worktree-remove.integration.test.ts": "src/store/store-worktree-remove.integration.test.ts",
+        "src/store/store-worktree-remove.ts": "src/store/store-worktree-remove.ts",
         "src/store/store.ts": "src/store/store.ts",
         "src/sync/member-mount.ts": "src/sync/member-mount.ts",
         "src/sync/member.ts": "src/sync/member.ts",
@@ -1301,6 +1309,7 @@ npm_package_archive(
     dist = ":dist",
     typecheck = ":typecheck",
     workspace_manifests = [
+        "//packages/@overeng/buck2-tools:package.json",
         "//packages/@overeng/effect-path:package.json",
         "//packages/@overeng/kdl:package.json",
         "//packages/@overeng/kdl-effect:package.json",
@@ -1350,6 +1359,7 @@ vitest_test(
         "src/store/store-lossless.integration.test.ts",
         "src/store/store-pinned-deletion.integration.test.ts",
         "src/store/store-workspace-activity.integration.test.ts",
+        "src/store/store-worktree-remove.integration.test.ts",
         "src/test-utils/store-setup.integration.test.ts",
     ],
     tools = {
@@ -1393,6 +1403,7 @@ vitest_collect(
         "src/store/store-lossless.integration.test.ts",
         "src/store/store-pinned-deletion.integration.test.ts",
         "src/store/store-workspace-activity.integration.test.ts",
+        "src/store/store-worktree-remove.integration.test.ts",
         "src/test-utils/store-setup.integration.test.ts",
     ],
     tools = {
