@@ -1,3 +1,4 @@
+import { stat } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
 
 import { NodeServices } from '@effect/platform-node'
@@ -11,7 +12,11 @@ import { expect } from 'vitest'
 import { EffectPath } from '@overeng/effect-path'
 
 import * as Git from '../core/git.ts'
-import { startGitWriterProcess, withGitWriterLock } from './git-writer-lock.ts'
+import {
+  signalLockHoldingProcessGroup,
+  startGitWriterProcess,
+  withGitWriterLock,
+} from './git-writer-lock.ts'
 
 const worker = fileURLToPath(new URL('../test-utils/git-writer-lock-worker.ts', import.meta.url))
 const cli = fileURLToPath(new URL('../../bin/mr.ts', import.meta.url))
@@ -331,4 +336,41 @@ describe('Git common-directory writer lock (Bun subprocesses)', { timeout: 120_0
       expect(yield* f.fs.readFileString(`${f.common}/FETCH_HEAD`)).toBe(fetchHead)
     }).pipe(Effect.provide(NodeServices.layer)),
   )
+  for (const scenario of ['empty', 'different-group', 'different-inode', 'lock-holder'] as const) {
+    it.effect(`post-exit group signal requires admission inode proof: ${scenario}`, () =>
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem
+        const root = yield* fs.makeTempDirectoryScoped()
+        const procRoot = `${root}/proc`
+        const admission = `${root}/admission`
+        const other = `${root}/other`
+        yield* fs.makeDirectory(procRoot)
+        yield* fs.writeFileString(admission, '')
+        yield* fs.writeFileString(other, '')
+        const lockIdentity = yield* Effect.promise(() => stat(admission))
+        if (scenario !== 'empty') {
+          yield* fs.makeDirectory(`${procRoot}/456/fd`, { recursive: true })
+          const pgid = scenario === 'different-group' ? 999 : 123
+          yield* fs.writeFileString(`${procRoot}/456/stat`, `456 (fixture) S 1 ${pgid} 123 0 0\n`)
+          yield* fs.symlink(
+            scenario === 'different-inode' ? other : admission,
+            `${procRoot}/456/fd/3`,
+          )
+        }
+        const signals: Array<number> = []
+        const signalled = yield* Effect.promise(() =>
+          signalLockHoldingProcessGroup({
+            pgid: 123,
+            lockIdentity,
+            procRoot,
+            kill: (group) => {
+              signals.push(group)
+            },
+          }),
+        )
+        expect(signalled).toBe(scenario === 'lock-holder')
+        expect(signals).toEqual(scenario === 'lock-holder' ? [123] : [])
+      }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+    )
+  }
 })

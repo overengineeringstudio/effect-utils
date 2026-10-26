@@ -189,7 +189,7 @@ describe('store fetch', () => {
       }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
   )
 
-  it.live(
+  it.live.skipIf(process.platform !== 'linux')(
     'interrupt kills a lock-holding SIGTERM-resistant grandchild after the leader exits',
     () =>
       Effect.gen(function* () {

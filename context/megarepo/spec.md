@@ -110,9 +110,13 @@ tag moves update local tags. A requested SHA missing after the branch fetch is
 fetched explicitly; a server refusing SHA requests returns a Git command error.
 
 Fetches hold the repository's writer lock. Network commands carry a deadline
-(`MEGAREPO_GIT_NETWORK_TIMEOUT_MS`, default 10 minutes); on expiry or interruption
-the writer's whole process group is terminated, so transport helpers that
-inherited the lock descriptor release it too.
+(`MEGAREPO_GIT_NETWORK_TIMEOUT_MS`, default 10 minutes); expiry or interruption
+signals the writer's process group while its leader is alive. On Linux, cleanup
+after leader exit signals the group only when procfs proves a member still has
+the admission lock inode open; an empty or recycled unrelated group is never
+signalled. On macOS, post-exit signalling is disabled because there is no procfs
+ownership proof. A macOS descendant that survives the initial group signal may
+retain admission until it exits; cleanup never guesses ownership from a pgid.
 
 ### Store liveness, hygiene, and GC
 

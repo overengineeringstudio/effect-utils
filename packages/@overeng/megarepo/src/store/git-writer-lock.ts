@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process'
 import { constants } from 'node:fs'
-import { lstat, open, realpath, stat } from 'node:fs/promises'
+import { lstat, open, readFile, readdir, realpath, stat } from 'node:fs/promises'
 import { constants as osConstants } from 'node:os'
 import { basename, dirname, resolve } from 'node:path'
 
@@ -17,9 +17,10 @@ export class GitWriterLockError extends Schema.TaggedError<GitWriterLockError>()
   { path: Schema.String, cause: Schema.Defect() },
 ) {}
 
-class WriterDescriptor extends Context.Service<WriterDescriptor, number>()(
-  'megarepo/GitWriterDescriptor',
-) {}
+class WriterDescriptor extends Context.Service<
+  WriterDescriptor,
+  { readonly fd: number; readonly dev: number; readonly ino: number }
+>()('megarepo/GitWriterDescriptor') {}
 
 const io =
   (path: string) =>
@@ -175,7 +176,13 @@ export const withGitWriterLock =
               cause: 'Persistent lock control was replaced',
             })
           }
-          return yield* effect.pipe(Effect.provideService(WriterDescriptor, file.fd))
+          return yield* effect.pipe(
+            Effect.provideService(WriterDescriptor, {
+              fd: file.fd,
+              dev: opened.dev,
+              ino: opened.ino,
+            }),
+          )
         }),
       )
     }).pipe(Observability.withRepoPathSpan({ name: 'git/writer-lock', path }))
@@ -184,6 +191,62 @@ export interface GitWriterProcess {
   readonly stdout: Stream.Stream<Uint8Array, GitWriterLockError | PlatformError>
   readonly stderr: Stream.Stream<Uint8Array, GitWriterLockError | PlatformError>
   readonly exitCode: Effect.Effect<number, GitWriterLockError | PlatformError>
+}
+
+/**
+ * A departed leader's pgid can be recycled. Only signal a surviving group when
+ * Linux procfs proves a member still owns this admission inode. Unreadable or
+ * vanished evidence never authorizes a signal. `procRoot`/`kill` are test seams.
+ */
+export const signalLockHoldingProcessGroup = async ({
+  pgid,
+  lockIdentity,
+  procRoot = '/proc',
+  kill = (group: number) => process.kill(-group, 'SIGKILL'),
+}: {
+  readonly pgid: number
+  readonly lockIdentity: { readonly dev: number; readonly ino: number }
+  readonly procRoot?: string
+  readonly kill?: (group: number) => void
+}): Promise<boolean> => {
+  let processes: Array<string>
+  try {
+    processes = await readdir(procRoot)
+  } catch {
+    return false
+  }
+  /* eslint-disable no-await-in-loop -- Check ownership immediately before signalling; bound procfs fd usage and stop at the first proven holder. */
+  for (const pid of processes) {
+    if (/^[0-9]+$/u.test(pid) === false) continue
+    try {
+      // comm is parenthesized and may itself contain spaces or ')' characters.
+      const status = await readFile(`${procRoot}/${pid}/stat`, 'utf8')
+      const fields = status.slice(status.lastIndexOf(')') + 2).split(' ')
+      if (Number(fields[2]) !== pgid) continue
+      const descriptors = await readdir(`${procRoot}/${pid}/fd`)
+      for (const fd of descriptors) {
+        try {
+          const owned = await stat(`${procRoot}/${pid}/fd/${fd}`)
+          if (owned.dev !== lockIdentity.dev || owned.ino !== lockIdentity.ino) continue
+          // Recheck membership after the fd lookup; PID reuse during the scan
+          // must not turn another group's lock holder into ownership evidence.
+          const current = await readFile(`${procRoot}/${pid}/stat`, 'utf8')
+          if (current !== status) {
+            const now = current.slice(current.lastIndexOf(')') + 2).split(' ')
+            if (Number(now[2]) !== pgid || now[19] !== fields[19]) continue
+          }
+          kill(pgid)
+          return true
+        } catch {
+          // Fds and processes can disappear between listing and stat.
+        }
+      }
+    } catch {
+      // Inaccessible processes do not constitute ownership proof.
+    }
+  }
+  /* eslint-enable no-await-in-loop */
+  return false
 }
 
 /**
@@ -233,7 +296,7 @@ export const startGitWriterProcess = Effect.fnUntraced(
         inheritStdio === true ? 'inherit' : 'pipe',
         inheritStdio === true ? 'inherit' : 'pipe',
         inheritStdio === true ? 'inherit' : 'pipe',
-        descriptor.value,
+        descriptor.value.fd,
       ],
     })
     const exited = new Promise<number>((accept, reject) => {
@@ -244,13 +307,23 @@ export const startGitWriterProcess = Effect.fnUntraced(
     })
     // Install rejection handling immediately, even while stdout is being consumed.
     void exited.catch(() => undefined)
-    const signal = (name: NodeJS.Signals) => {
+    const signal = async (name: NodeJS.Signals) => {
+      if (child.exitCode !== null || child.signalCode !== null) {
+        if (detached === true && child.pid !== undefined && process.platform === 'linux') {
+          await signalLockHoldingProcessGroup({
+            pgid: child.pid,
+            lockIdentity: descriptor.value,
+          })
+        }
+        // Without procfs (macOS), a departed leader cannot prove group identity.
+        return
+      }
       if (detached === true && child.pid !== undefined) {
         try {
           process.kill(-child.pid, name)
           return
         } catch {
-          // The group is already gone; fall through to the direct child.
+          // Fall back only while the direct child is still known alive.
         }
       }
       child.kill(name)
@@ -259,19 +332,19 @@ export const startGitWriterProcess = Effect.fnUntraced(
       Effect.promise(async () => {
         if (child.exitCode !== null || child.signalCode !== null) {
           // A lock-holding descendant may outlive the direct child.
-          if (detached === true) signal('SIGKILL')
+          if (detached === true) await signal('SIGKILL')
           return
         }
-        signal('SIGTERM')
-        const escalation = setTimeout(() => signal('SIGKILL'), 1_000)
+        await signal('SIGTERM')
+        const escalation = setTimeout(() => void signal('SIGKILL'), 1_000)
         escalation.unref()
         try {
           await exited.catch(() => undefined)
         } finally {
           clearTimeout(escalation)
-          // The leader exiting does not mean its group exited: a helper can
-          // ignore SIGTERM and retain fd3. Kill that group before releasing ours.
-          if (detached === true) signal('SIGKILL')
+          // A surviving lock holder proves this is still our group. A recycled
+          // pgid without that evidence must never receive a post-exit signal.
+          if (detached === true) await signal('SIGKILL')
         }
       }),
     )
