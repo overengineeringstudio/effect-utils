@@ -400,6 +400,10 @@ describe('Cachix publisher', () => {
     "!contains(github.event_name, 'push')",
     "unknownFunction(github.event_name == 'push')",
     "(inputs.publish == true && github.event_name == 'push')",
+    "github[false && github.ref == 'refs/heads/main' && github.event_name == 'push' && 'repository'] == null",
+    "github[false && github.ref == 'refs/heads/main' && github.event_name == 'push'",
+    "github.false] && github.ref == 'refs/heads/main' && github.event_name == 'push'",
+    "github[(false] && github.ref == 'refs/heads/main' && github.event_name == 'push')",
   ])('does not extract an event proof from a non-positive conjunct: %s', (restriction) => {
     expect(() =>
       ciWorkflow({
@@ -412,6 +416,29 @@ describe('Cachix publisher', () => {
           publish: {
             'runs-on': linuxX64Runner,
             if: `(${sameRepoPullRequestGuard()}) && (github.ref == 'refs/heads/main' && ${restriction})`,
+            steps: [
+              cachixPublisherStep({
+                name: 'example',
+                authToken: 'token',
+                jobIf: protectedIf,
+                triggers: ['push'],
+              }),
+            ],
+          },
+        },
+      }),
+    ).toThrow(CachePublisherJobError)
+  })
+
+  it('does not promote index-expression main/event comparisons into publisher proofs', () => {
+    expect(() =>
+      ciWorkflow({
+        trustTier: 'public',
+        on: { push: null, workflow_run: { workflows: ['ci'], types: ['completed'] } },
+        jobs: {
+          publish: {
+            'runs-on': linuxX64Runner,
+            if: `(${sameRepoPullRequestGuard()}) && (github[false && github.ref == 'refs/heads/main' && github.event_name == 'push' && 'repository'] == null)`,
             steps: [
               cachixPublisherStep({
                 name: 'example',

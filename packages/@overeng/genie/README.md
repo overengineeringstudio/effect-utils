@@ -160,6 +160,9 @@ conjunct (`github.event_name == 'push'`, or a parenthesized OR of such compariso
 Multiple positive event conjuncts intersect their event sets. Negations,
 inequalities, function calls, and other predicates are opaque narrowings: they
 cannot establish event scope. Without a positive event proof, publication fails.
+Condition boundaries respect quoted strings and balanced parentheses/brackets;
+operators inside index expressions cannot prove a guard, main ref, or event scope.
+Unbalanced or mismatched delimiters fail closed.
 This generator boundary assumes ephemeral runners, no persistent secrets, and
 repository-restricted runner groups; it does not verify infrastructure settings.
 
