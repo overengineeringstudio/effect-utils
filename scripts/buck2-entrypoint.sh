@@ -106,7 +106,12 @@ if [[ $# -gt 0 && -n "${HOME:-}${XDG_CACHE_HOME:-}" && -f "$root/.buckroot" && -
         && (( EPOCHSECONDS < expires && expires - EPOCHSECONDS <= 5 )); then
         mapfile -d '' -t admitted <&3
         exec 3<&-
-        exec @native@ "${admitted[@]}"
+        # Remote readers must remain supervised across admission and execution.
+        # The explicit escape hatch wins over all config and credentials.
+        if [[ "${BUCK2_NO_REMOTE_CACHE:-}" == 1 ]]; then
+          exec @native@ "${admitted[@]}"
+        fi
+        exec @launcher@ @native@ --launch-cache "$cache" "$@"
       fi
       exec 3<&-
     fi

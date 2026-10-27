@@ -42,8 +42,9 @@ A crash-released root-wide flock is acquired before overlay reconciliation.
 Before changing the overlay, a mismatched live launcher or busy daemon in the
 same isolation fails closed. Legacy live reservations without isolation retain
 root-wide protection until exit. The launcher reservation is written before releasing that lock:
-`execve` preserves its PID and process birth identity until the native command
-exits, covering the gap before Buck reports an active command without inheriting
+The launcher stays alive while supervising cache-enabled readers; other commands
+use `execve`, preserving its PID and process birth identity until the native command
+exits. Both cover the gap before Buck reports an active command without inheriting
 a lock into buckd. Birth is Linux `/proc/<pid>/stat` field 22 or macOS `ps lstart`;
 reused PIDs do not preserve dead reservations. Unknown identity fails closed.
 Matching concurrent launches and differently postured daemon isolations can proceed together.
@@ -180,7 +181,37 @@ platform, which reads `remote_cache_enabled` and `allow_cache_uploads` from root
 config (local execution, remote reuse; `remote_enabled = False`).
 `BUCK2_NO_REMOTE_CACHE=1` wins over all credentials and disables reads/uploads.
 Read-only endpoint admission failures fail open; either selected writer posture
-fails closed on REAPI unavailability.
+fails closed on REAPI unavailability. If an admitted reader command fails solely
+with an RE-client initialization/capabilities/connect unavailable diagnostic, the
+launcher reruns it at most once using `BUCK2_NO_REMOTE_CACHE=1` (reads and uploads
+disabled), after re-admitting the changed daemon posture. It emits a warning and
+a `reader-reapi-unavailable-rerun` event in the admission JSONL evidence, with a
+fresh invocation ID and an REAPI fallback count. Unknown/mixed diagnostics,
+compilation/test failures, authentication/authorization failures, integrity errors,
+and writer postures never trigger this rerun; its result is final.
+Stdout remains inherited. Supervision applies only when stderr is not a TTY;
+terminal invocations and `run`, `install`, and `bxl` execute unchanged without a
+rerun, preserving superconsole and interactive user-binary behavior. The shared
+subcommand scan skips global option values, so an isolation named `run` is not a
+run command. Captured
+stderr is bounded to 256 KiB of bytes before decoding; overflow or signal
+termination forbids rerun. The stderr tee advances short writes and waits on
+nonblocking backpressure. Launcher interruption cancels a stalled backpressure
+wait and disables fallback; a normal native exit does not cancel forwarding.
+After normal exit, stderr drains completely before returning the child's result.
+A consumer that remains stalled without interruption blocks as native Buck would.
+A failed or interrupted output consumer still drains/discards remaining stderr
+and reaps the child's final result.
+
+The classifier strips Buck's bracketed timestamps and embedded RFC3339 warning
+timestamps, accepts only enumerated progress/statistics lines, and validates every
+`Action failed:` block as `remote_action_cache` RE-client initialization followed
+by an unavailable capabilities error. Digest identifiers are metadata permitted
+only inside a validated block; digest mismatches remain integrity failures.
+Non-empty action stdout/stderr rejects rerun. `BUILD ERRORS (N)` must match the
+summary block count; repeated live failure blocks must match the summary's action
+set. The verbatim public CI fixture exercises both live and repeated summary
+diagnostics through the launcher's captured native stderr.
 
 ### Local Materialization Policy (BUILD.BUCK.REUSE-R08–R10)
 
@@ -564,10 +595,11 @@ copy to this exact race is not proven. Agent workflows must provide a healthy,
 correctly rooted Watchman service instead of using this explicit unsafe opt-in.
 
 Remote endpoint outcomes expire after five seconds. Complete successful
-read-only invocations can bypass the JavaScript launcher within the remaining
-probe lifetime; the key includes config contents, arguments, working directory
-and exported environment. Writer credentials, includes and external mode files
-bypass that fast path. Inside gate-slot, an outer shell retains cleanup ownership
+explicitly cache-disabled invocations can bypass the JavaScript launcher within
+the remaining probe lifetime; the key includes config contents, arguments, working
+directory and exported environment. Cache-enabled readers return through the
+launcher so execution remains supervised. Writer credentials, includes and external
+mode files bypass that fast path. Inside gate-slot, an outer shell retains cleanup ownership
 even when arguments are cached: it waits for the native client and stops only
 the selected idle daemon, leaving all local build work in the job's cgroup.
 The [wrapper lifecycle contract](../../../../README.md) defines signal handling,
@@ -608,10 +640,10 @@ emits the existing warning. Outage overrides are CLI root-config values, not
 persistent endpoint changes; RE client identity/credentials still require a
 managed root overlay before daemon startup.
 
-Admission is a reachability snapshot, not a native runtime circuit breaker.
-An endpoint that fails after a successful probe can still fail a native action;
-the pinned native client has ten hard-coded connection attempts with 45 seconds
-of cumulative backoff and no configurable startup fallback.
+Admission is a reachability snapshot. The pinned native client has ten hard-coded
+connection attempts with 45 seconds of cumulative backoff and no configurable
+startup fallback. After this fails, the reader-only, strictly classified once-only
+launcher rerun described above applies; other native failures remain final.
 
 ## Reuse Verification
 
@@ -674,6 +706,11 @@ JSONL row to `${CI_BUCK2_CACHE_EVIDENCE_PATH}.admission.jsonl`, with the authori
   "admissionRetrySuccesses": { "reapi": 1, "archiveOrigin": 0 }
 }
 ```
+
+The optional `event` discriminator is repository-local, case-sensitive, and accepts
+only `reader-reapi-unavailable-rerun`, requiring `admissionFallbacks.reapi = 1`.
+It denotes the new no-cache invocation, not a successful probe retry; unknown
+event values reject the row. Legacy rows omit it.
 
 An REAPI fallback may include `reapiFailure: { class, phase, elapsedMs, deadlineMs }`,
 including when admission reuses a cached negative probe. `class` is one of

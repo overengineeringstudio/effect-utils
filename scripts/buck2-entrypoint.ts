@@ -19,6 +19,8 @@ import {
 import { homedir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import process from 'node:process'
+import { setTimeout as waitForBackpressure } from 'node:timers/promises'
+import { isatty } from 'node:tty'
 
 import type { CacheAdmissionInvocation } from '../genie/ci-scripts/buck2-cache-evidence.ts'
 import {
@@ -79,13 +81,19 @@ const findRoot = (cwd: string): string | undefined => {
   }
 }
 
-const skipsWatcherAdmission = (args: readonly string[]): boolean => {
-  if (args.some((arg) => ['--help', '-h', '--version'].includes(arg)) === true) return true
+/** Shared native subcommand scan: global option values are not commands. */
+const buckSubcommand = (
+  args: readonly string[],
+): { readonly command: string; readonly index: number } | undefined => {
   for (let index = 0; index < args.length; index++) {
     const arg = args[index] ?? ''
     if (
       [
         '--isolation-dir',
+        '--config',
+        '-c',
+        '--config-file',
+        '--chdir',
         '--verbose',
         '-v',
         '--oncall',
@@ -98,9 +106,18 @@ const skipsWatcherAdmission = (args: readonly string[]): boolean => {
       continue
     }
     if (arg.startsWith('-') === true) continue
-    return ['kill', 'status', 'log'].includes(arg)
+    return { command: arg, index }
   }
-  return true
+  return undefined
+}
+
+const skipsWatcherAdmission = (args: readonly string[]): boolean => {
+  const command = buckSubcommand(args)?.command
+  return (
+    args.some((arg) => ['--help', '-h', '--version'].includes(arg)) === true ||
+    command === undefined ||
+    ['kill', 'status', 'log'].includes(command)
+  )
 }
 
 let admissionExpires = Date.now() + 5000
@@ -321,6 +338,8 @@ export const directBuckArguments = async ({
   deadlineMs = 2500,
   probeDeadlineSignal,
   beforeCachePosture,
+  onCachePosture,
+  readerRerun = false,
 }: {
   readonly args: readonly string[]
   readonly cwd: string
@@ -331,12 +350,19 @@ export const directBuckArguments = async ({
   readonly probeDeadlineSignal?: (endpoint: AdmissionProbeEndpoint) => AbortSignal | undefined
   /** Check effective post-probe policy before changing the daemon-scoped root overlay. */
   readonly beforeCachePosture?: CachePostureCheck
+  /** Observe the effective admitted posture, including CLI policy and probe fallback. */
+  readonly onCachePosture?: CachePostureCheck
+  readonly readerRerun?: boolean
 }): Promise<string[]> => {
   admissionExpires = Date.now() + 5000
   failedOpen = false
   const sentinel = args.indexOf('--')
   const configArgs = sentinel === -1 ? args : args.slice(0, sentinel)
-  const command = configArgs.find((arg) => configCommands[arg] === true)
+  const selectedCommand = buckSubcommand(configArgs)?.command
+  const command =
+    selectedCommand !== undefined && configCommands[selectedCommand] === true
+      ? selectedCommand
+      : undefined
   if (skipsWatcherAdmission(configArgs) === true) return [...args]
   const root = findRoot(cwd)
   if (root === undefined) return [...args]
@@ -520,7 +546,7 @@ export const directBuckArguments = async ({
                 }),
             }),
         })
-  admission.admissionFallbacks.reapi = remoteAvailable === false ? 1 : 0
+  admission.admissionFallbacks.reapi = remoteAvailable === false || readerRerun === true ? 1 : 0
   if (remoteAvailable === false && reapiDiagnostics.failure !== undefined) {
     const failure = /^class=([a-z-]+) phase=([a-z]+) elapsed_ms=(\d+) deadline_ms=(\d+)$/u.exec(
       reapiDiagnostics.failure,
@@ -537,9 +563,16 @@ export const directBuckArguments = async ({
   if (evidencePath !== undefined && evidencePath !== '') {
     try {
       mkdirSync(dirname(evidencePath), { recursive: true })
-      appendFileSync(`${evidencePath}.admission.jsonl`, `${JSON.stringify(admission)}\n`, {
-        mode: 0o600,
-      })
+      appendFileSync(
+        `${evidencePath}.admission.jsonl`,
+        `${JSON.stringify({
+          ...admission,
+          ...(readerRerun === true ? { event: 'reader-reapi-unavailable-rerun' } : {}),
+        })}\n`,
+        {
+          mode: 0o600,
+        },
+      )
     } catch {
       writeSync(2, 'warning: Buck2 admission evidence could not be persisted\n')
     }
@@ -572,6 +605,7 @@ export const directBuckArguments = async ({
   // its effective fallback, not an optimistic policy it will never execute.
   // Compare before mutating the shared overlay or starting/stopping any daemon.
   beforeCachePosture?.(values)
+  onCachePosture?.(values)
   // Native RE client construction ignores CLI config. Writer headers/endpoints must
   // be in the root overlay before daemon startup, including removal on public reads.
   if (
@@ -742,7 +776,8 @@ export const resolveGateInvocation = ({
   }
   const sentinel = expanded.indexOf('--')
   let buckArgs = sentinel === -1 ? expanded : expanded.slice(0, sentinel)
-  const runIndex = buckArgs.indexOf('run')
+  const selectedCommand = buckSubcommand(buckArgs)
+  const runIndex = selectedCommand?.command === 'run' ? selectedCommand.index : -1
   if (
     strictRunArguments === true &&
     runIndex !== -1 &&
@@ -1383,10 +1418,243 @@ export const nativeBuildIdArguments = ({
   mkdirSync(dirname(registry), { recursive: true, mode: 0o700 })
   appendFileSync(registry, `${JSON.stringify({ buildId, path })}\n`, { mode: 0o600 })
   if (suppliedPath !== undefined) return [...args]
-  const runIndex = before.indexOf('run')
+  const selectedCommand = buckSubcommand(before)
+  const runIndex = selectedCommand?.command === 'run' ? selectedCommand.index : -1
   if (runIndex !== -1)
     return [...before.slice(0, runIndex + 1), '--write-build-id', path, ...args.slice(runIndex + 1)]
   return [...before, '--write-build-id', path, ...(sentinel === -1 ? [] : args.slice(sentinel))]
+}
+
+/**
+ * Deliberately fail closed on unknown output. Every diagnostic must belong to
+ * RE client construction/capabilities, not merely contain an "unavailable" word.
+ */
+export const isOnlyReapiUnavailable = (output: string): boolean => {
+  const unavailable =
+    /(?:The service is currently unavailable|code:\s*['"]?Unavailable['"]?|status:\s*Unavailable)/iu
+  const scope =
+    /^(?:Error:|Command failed:)\s*\(?(?:Failed to query capabilities of remote|Remote Execution Error on REClientBuilder|Failed to connect to RE)\b/u
+  const forbidden =
+    /(?:unauthenticated|permission[ _-]?denied|unauthorized|authentication|authorization|invalid[_ -]argument|digest[ _-]mismatch|mismatched[ _-]digest|checksum|corrupt|integrity|certificate|invalid peer|unknown issuer|error\[|compil(?:e|ation) error|test(?:s)? fail)/iu
+  const informational = [
+    /^Build ID: [a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/u,
+    /^File changed: \S+$/u,
+    /^\d+ additional file change events$/u,
+    /^Waiting on \S+ \([^)]+\) -- [\w .:-]+$/u,
+    /^Cache hits: \d+(?:\.\d+)?%$/u,
+    /^Commands: \d+ \(cached: \d+, remote: \d+, local: \d+\)$/u,
+    /^Network: up \d+(?:\.\d+)?(?:B|KiB|MiB|GiB|TiB)\s+down \d+(?:\.\d+)?(?:B|KiB|MiB|GiB|TiB)$/u,
+  ]
+  const live = new Set<string>()
+  const summary = new Set<string>()
+  let expected: number | undefined
+  let summaryHeading = false
+  let fatal = false
+  let block: { action: string; phase: 'internal' | 'error' | 'details' } | undefined
+  const finishBlock = (): boolean => {
+    if (block === undefined) return true
+    if (block.phase !== 'details') return false
+    const actions = expected === undefined ? live : summary
+    if (actions.has(block.action) === true) return false
+    actions.add(block.action)
+    block = undefined
+    return true
+  }
+  for (const raw of output.split(/\r?\n/u)) {
+    const line = raw
+      .replace(new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, 'gu'), '')
+      .replace(/^\[\d{4}-\d\d-\d\dT[^\]]+\]\s*/u, '')
+      .trim()
+      .replace(/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d+)?(?:Z|[+-]\d\d:\d\d)\s+(?=WARN )/u, '')
+    if (line === '') continue
+    if (/^Remote action digest: '[a-f0-9]+:\d+'$/u.test(line) === true) {
+      if (block?.phase !== 'details') return false
+      continue
+    }
+    if (forbidden.test(line) === true) return false
+    if (line.startsWith('Action failed: ') === true) {
+      if (finishBlock() === false || (expected !== undefined && summaryHeading === false))
+        return false
+      if (/^Action failed: \S+ \([^)]+\)(?: \([^)]+\))?$/u.test(line) === false) return false
+      block = { action: line.slice('Action failed: '.length), phase: 'internal' }
+      continue
+    }
+    if (block?.phase === 'internal') {
+      if (
+        /^Internal error \(stage: remote_action_cache\): Remote Execution Error on REClientBuilder(?: for ReSession <none>)?$/u.test(
+          line,
+        ) === false
+      )
+        return false
+      block.phase = 'error'
+      continue
+    }
+    if (block?.phase === 'error') {
+      if (
+        /^Error:\s*\(?Failed to query capabilities of remote\b/u.test(line) === false ||
+        unavailable.test(line) === false
+      )
+        return false
+      block.phase = 'details'
+      fatal = true
+      continue
+    }
+    if (/^(?:Stdout|Stderr):/u.test(line) === true) {
+      if (block?.phase !== 'details' || /^(?:Stdout|Stderr): <empty>$/u.test(line) === false)
+        return false
+      continue
+    }
+    if (finishBlock() === false) return false
+    const count = /^BUILD ERRORS \(([1-9]\d*)\)$/u.exec(line)
+    if (count !== null) {
+      if (expected !== undefined) return false
+      expected = Number(count[1])
+      if (Number.isSafeInteger(expected) === false) return false
+      continue
+    }
+    if (line === 'The following actions failed during the execution of this command:') {
+      if (expected === undefined || summaryHeading === true) return false
+      summaryHeading = true
+      continue
+    }
+    if (informational.some((pattern) => pattern.test(line)) === true) continue
+    if (
+      /^WARN buck2_execute::re::client: Failed to connect to RE, retrying after sleeping \d+ seconds?: Remote Execution Error on REClientBuilder(?: for ReSession <none>| \.\.\.)?$/u.test(
+        line,
+      ) === true
+    )
+      continue
+    if (scope.test(line) === false || unavailable.test(line) === false) return false
+    fatal = true
+  }
+  if (finishBlock() === false || fatal === false) return false
+  if (expected === undefined) return live.size === 0
+  return (
+    summaryHeading === true &&
+    summary.size === expected &&
+    (live.size === 0 ||
+      (live.size === expected && [...live].every((action) => summary.has(action))))
+  )
+}
+
+/** There is intentionally no retry loop: the second result is always final. */
+export const runWithReaderCacheFallback = async ({
+  reader,
+  run,
+  fallback,
+}: {
+  readonly reader: boolean
+  readonly run: () => Promise<{
+    readonly exitCode: number
+    readonly output: string
+    readonly signalCode?: string | null
+  }>
+  readonly fallback: () => Promise<number>
+}): Promise<number> => {
+  const result = await run()
+  return reader === true &&
+    result.exitCode !== 0 &&
+    (result.signalCode === undefined || result.signalCode === null) &&
+    isOnlyReapiUnavailable(result.output) === true
+    ? fallback()
+    : result.exitCode
+}
+
+/** Keep terminal console behavior and user-binary commands on the native exec path. */
+export const shouldSuperviseReaderCommand = ({
+  reader,
+  stderrIsTTY,
+  args,
+  cwd,
+  env,
+}: {
+  readonly reader: boolean
+  readonly stderrIsTTY: boolean
+  readonly args: readonly string[]
+  readonly cwd: string
+  readonly env: Readonly<Record<string, string | undefined>>
+}): boolean => {
+  if (reader === false || stderrIsTTY === true) return false
+  const invocation = resolveGateInvocation({ args, cwd, env, strictRunArguments: false })
+  if (invocation === undefined) return false
+  const command = buckSubcommand(invocation.args)?.command
+  return (
+    command !== undefined &&
+    configCommands[command] === true &&
+    ['run', 'install', 'bxl'].includes(command) === false
+  )
+}
+
+/** Advance short writes and yield on EAGAIN; a broken consumer must not orphan Buck. */
+export const writeNativeStderrChunk = async ({
+  chunk,
+  write = (bytes) => writeSync(2, bytes),
+  signal,
+  pause = () => waitForBackpressure(1, undefined, { signal }),
+}: {
+  readonly chunk: Uint8Array
+  readonly write?: (bytes: Uint8Array) => number
+  readonly signal?: AbortSignal
+  readonly pause?: () => Promise<void>
+}): Promise<boolean> => {
+  let offset = 0
+  while (offset < chunk.byteLength) {
+    try {
+      const accepted = write(chunk.subarray(offset))
+      if (accepted > 0) {
+        offset += accepted
+        continue
+      }
+    } catch (error) {
+      const code =
+        typeof error === 'object' && error !== null && 'code' in error ? error.code : undefined
+      if (code !== 'EAGAIN' && code !== 'EWOULDBLOCK') return false
+    }
+    if (signal?.aborted === true) return false
+    try {
+      // eslint-disable-next-line no-await-in-loop -- Retry this write only after backpressure clears.
+      await pause()
+    } catch {
+      return false
+    }
+  }
+  return true
+}
+
+/** Drain native stderr even after capture overflow or a failed output consumer. */
+export const captureNativeStderr = async ({
+  stream,
+  signal,
+  writeChunk = writeNativeStderrChunk,
+}: {
+  readonly stream: AsyncIterable<Uint8Array>
+  readonly signal?: AbortSignal
+  readonly writeChunk?: (options: {
+    readonly chunk: Uint8Array
+    readonly signal?: AbortSignal
+  }) => Promise<boolean>
+}): Promise<string | undefined> => {
+  const decoder = new TextDecoder()
+  let bytes = 0
+  let output = ''
+  let writable = true
+  try {
+    for await (const chunk of stream) {
+      if (writable === true) {
+        try {
+          writable = await writeChunk({ chunk, signal })
+        } catch {
+          writable = false
+        }
+      }
+      bytes += chunk.byteLength
+      if (bytes > 262144) output = ''
+      else output += decoder.decode(chunk, { stream: true })
+    }
+  } catch {
+    return undefined
+  }
+  return bytes > 262144 || writable === false ? undefined : output + decoder.decode()
 }
 
 const warnStdio = (message: string): void => {
@@ -1394,6 +1662,44 @@ const warnStdio = (message: string): void => {
     writeSync(2, message)
   } catch {
     // Optional protection must still exec with closed or unwritable stderr.
+  }
+}
+/** Preserve stdout and supervise only redirected native stderr. */
+const observeNativeCommand = async ({
+  native,
+  args,
+}: {
+  readonly native: string
+  readonly args: readonly string[]
+}): Promise<{ exitCode: number; output: string; signalCode: string | null }> => {
+  const child = Bun.spawn([native, ...args], {
+    env: process.env,
+    stdin: 'inherit',
+    stdout: 'inherit',
+    stderr: 'pipe',
+  })
+  let interrupted = false
+  const writes = new AbortController()
+  const exited = child.exited
+  const forward = (signal: NodeJS.Signals) => {
+    interrupted = true
+    writes.abort()
+    child.kill(signal)
+  }
+  const signals = ['SIGINT', 'SIGTERM', 'SIGHUP'] as const
+  const handlers = signals.map((signal) => () => forward(signal))
+  for (const [index, signal] of signals.entries()) process.on(signal, handlers[index]!)
+  try {
+    const output = await captureNativeStderr({ stream: child.stderr, signal: writes.signal })
+    const exitCode = await exited
+    const signalCode = child.signalCode
+    return {
+      exitCode,
+      signalCode,
+      output: interrupted === true || signalCode !== null ? '' : (output ?? ''),
+    }
+  } finally {
+    for (const [index, signal] of signals.entries()) process.off(signal, handlers[index]!)
   }
 }
 
@@ -1468,12 +1774,20 @@ if (import.meta.main === true) {
     const launchCache = process.argv[3] === '--launch-cache' ? process.argv[4] : undefined
     const requestedArgs = process.argv.slice(launchCache === undefined ? 3 : 5)
     const root = findRoot(process.cwd())
+    let reader = false
+    let readerRerun = false
     const admit = async (beforeCachePosture?: CachePostureCheck): Promise<string[]> => {
       const prepared = await directBuckArguments({
         args: requestedArgs,
         cwd: process.cwd(),
         env: process.env,
         beforeCachePosture,
+        readerRerun,
+        onCachePosture: (values) => {
+          reader =
+            values['buck2.remote_cache_enabled'] !== 'false' &&
+            values['buck2.allow_cache_uploads'] === 'false'
+        },
       })
       const sentinel = prepared.indexOf('--')
       const configArgs = sentinel === -1 ? prepared : prepared.slice(0, sentinel)
@@ -1495,7 +1809,7 @@ if (import.meta.main === true) {
       }
       return prepared
     }
-    const admittedArgs =
+    const prepare = async (): Promise<string[]> =>
       root === undefined
         ? await admit()
         : await admitCacheDaemonCommand({
@@ -1505,6 +1819,7 @@ if (import.meta.main === true) {
             env: process.env,
             admit,
           })
+    const admittedArgs = await prepare()
     const args = nativeBuildIdArguments({
       args: admittedArgs,
       cwd: process.cwd(),
@@ -1538,7 +1853,39 @@ if (import.meta.main === true) {
     } catch (error) {
       warnStdio(`warning: Buck2 stdio flag restoration failed: ${String(error)}\n`)
     }
-    process.execve(native, [native, ...args], process.env)
+    if (
+      shouldSuperviseReaderCommand({
+        reader,
+        stderrIsTTY: isatty(2),
+        args: requestedArgs,
+        cwd: process.cwd(),
+        env: process.env,
+      }) === true
+    ) {
+      process.exitCode = await runWithReaderCacheFallback({
+        reader,
+        run: () => observeNativeCommand({ native, args }),
+        fallback: async () => {
+          warning({
+            message:
+              'REAPI became unavailable after admission; rerunning once without remote cache',
+            env: process.env,
+          })
+          if (launchCache !== undefined && launchCache !== '') rmSync(launchCache, { force: true })
+          process.env['BUCK2_NO_REMOTE_CACHE'] = '1'
+          process.env['BUCK_WRAPPER_UUID'] = randomUUID()
+          readerRerun = true
+          const fallbackArgs = nativeBuildIdArguments({
+            args: await prepare(),
+            cwd: process.cwd(),
+            env: process.env,
+          })
+          return (await observeNativeCommand({ native, args: fallbackArgs })).exitCode
+        },
+      })
+    } else {
+      process.execve(native, [native, ...args], process.env)
+    }
   } catch (error) {
     writeSync(2, `${error instanceof Error ? error.message : String(error)}\n`)
     process.exitCode = 1
