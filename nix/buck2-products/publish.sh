@@ -9,6 +9,7 @@ cache_url="${CACHIX_CACHE_URL:-https://$cache.cachix.org}"
 cache_url="${cache_url%/}"
 local_cache=false
 dry_run=false
+realise_inputs=false
 proposal=""
 declare -a selected_products=()
 
@@ -19,9 +20,10 @@ fail() {
 
 usage() {
   cat <<'EOF'
-Usage: nix/buck2-products/publish.sh [--dry-run] [--product NAME] [--proposal PATH]
+Usage: nix/buck2-products/publish.sh [--dry-run | --realise-inputs] [--product NAME] [--proposal PATH]
 
 --dry-run       Validate and print the complete public publication plan without building or mutating.
+--realise-inputs Realise only the selected products' Nix build inputs, without building or publishing products.
 --product NAME  Publish only NAME. May be repeated. The default is every inventory product.
 --proposal PATH Write the merged manifest outside the Git worktree. The default writes it to stdout.
 EOF
@@ -30,12 +32,18 @@ EOF
 while (($#)); do
   case "$1" in
     --dry-run) dry_run=true; shift ;;
+    --realise-inputs) realise_inputs=true; shift ;;
     --product) (($# >= 2)) || fail "--product requires a name"; selected_products+=("$2"); shift 2 ;;
     --proposal) (($# >= 2)) || fail "--proposal requires a path"; proposal="$2"; shift 2 ;;
     --help|-h) usage; exit 0 ;;
     *) fail "unknown argument: $1" ;;
   esac
 done
+
+if $realise_inputs; then
+  $dry_run && fail "--realise-inputs is unavailable in dry-run mode"
+  [[ -z "$proposal" ]] || fail "--proposal is unavailable with --realise-inputs"
+fi
 
 [[ -f "$targets" && ! -L "$targets" ]] || fail "generated target inventory is missing: $targets"
 [[ -f "$manifest" && ! -L "$manifest" ]] || fail "current product manifest is missing: $manifest"
@@ -153,6 +161,27 @@ if $dry_run; then
   exit 0
 fi
 
+product_attr() {
+  local safe_name="${1#@}"
+  printf 'buck-product-%s-from-source\n' "${safe_name//\//-}"
+}
+
+if $realise_inputs; then
+  for tool in nix nix-store; do
+    command -v "$tool" >/dev/null || fail "$tool is required"
+  done
+  while IFS= read -r name; do
+    attr="$(product_attr "$name")"
+    drv="$(nix path-info --derivation "$repo_root#$attr")"
+    # A derivation references its input derivations and source paths, not its
+    # own outputs. Realise those references, never the product derivation.
+    references="$(nix-store --query --references "$drv")"
+    mapfile -t inputs <<<"$references"
+    nix-store --realise "${inputs[@]}" >/dev/null
+  done < <(jq -r '.[].name' <<<"$rows")
+  exit 0
+fi
+
 for tool in curl git jq nix realpath sha256sum stat; do
   command -v "$tool" >/dev/null || fail "$tool is required"
 done
@@ -224,7 +253,7 @@ while IFS= read -r row; do
   target="$(jq -r '.target' <<<"$row")"
   output_name="$(jq -r '.outputName' <<<"$row")"
   safe_name="$(sed 's|^@||; s|/|-|g' <<<"$name")"
-  attr="buck-product-$safe_name-from-source"
+  attr="$(product_attr "$name")"
   store_path="$(nix build --no-link --print-out-paths "$repo_root#$attr")"
   [[ "$store_path" == /nix/store/* && -d "$store_path" ]] || fail "$name did not build one store directory"
   artifact="$store_path/$output_name"

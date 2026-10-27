@@ -44,6 +44,7 @@ import {
   linuxNixSandboxFallbackStep,
   namespacePrivilegeTrustedPredicate,
   withNixRealisationTimeouts,
+  withCiSourceRoot,
 } from './shared.ts'
 import testPlatforms from './test-platforms.json' with { type: 'json' }
 
@@ -1044,6 +1045,26 @@ describe('published consumer ref', () => {
   const smoke = ciWorkflow.data.jobs['consumer-smoke']!
   const promotion = ciWorkflow.data.jobs['promote-published']!
   const steps = promotion.steps!
+
+  it('realises publication inputs before the unchanged build-and-push timeout', () => {
+    const realiseIndex = publisher.steps.findIndex(
+      (step) => step.name === 'Realise publish-products build inputs',
+    )
+    const publishIndex = publisher.steps.findIndex((step) => step.name === 'Publish products')
+    const authIndex = publisher.steps.findIndex((step) => step.id === 'product-cachix-auth')
+    expect(realiseIndex).toBeGreaterThan(authIndex)
+    expect(publishIndex).toBeGreaterThan(realiseIndex)
+    const realise = publisher.steps[realiseIndex]!
+    const publish = publisher.steps[publishIndex]!
+    expect(realise['timeout-minutes']).toBeUndefined()
+    expect(publish['timeout-minutes']).toBe(32)
+    expect(realise.if).toBe(publish.if)
+    expect(realise.env).toEqual(publish.env)
+    expect(realise.env?.GITHUB_TOKEN).toBe('${{ github.token }}')
+    expect(realise.env?.CACHIX_AUTH_TOKEN).toBe('${{ secrets.CACHIX_AUTH_TOKEN }}')
+    expect(realise.run).toBe(withCiSourceRoot('nix/buck2-products/publish.sh --realise-inputs'))
+    expect(publish.run).toContain('nix/buck2-products/publish.sh --proposal "$proposal"')
+  })
 
   it('joins independent same-SHA publication and consumer proofs before main-push promotion', () => {
     expect(promotion.needs).toEqual(['publish-products', 'consumer-smoke'])

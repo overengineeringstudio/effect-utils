@@ -70,6 +70,15 @@ name that already identifies another store path; pushes the store path; and
 creates an immutable Cachix pin with the product as an artifact. Anonymous HTTP
 download and digest verification complete publication.
 
+`publish.sh --realise-inputs` selects the same inventory and flake attributes as
+publication, resolves their derivations with `nix path-info --derivation`, and
+realises only each derivation's input references with `nix-store --realise`.
+It does not build the selected products or mutate the cache or manifest. The
+protected publisher workflow runs this mode in a preceding step with the same
+token environment and publication-scope condition. Cold substitution and input
+builds use the job timeout; the unchanged 32-minute publication step budget
+covers the product builds and pushes.
+
 Cache-native rows contain exact `name`, `version`, `sha256`, `size`,
 `storePath`, `artifactUrl`, and `provenance` fields. The Nix loader validates
 every field and treats the recorded store path as the substitution identity.

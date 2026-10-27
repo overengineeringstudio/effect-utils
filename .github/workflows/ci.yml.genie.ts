@@ -1374,6 +1374,17 @@ const extraJobs: Record<string, any> = {
         triggers: ['push', 'workflow_dispatch'],
         authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}',
         step: {
+          name: 'Realise publish-products build inputs',
+          if: "steps.publication-scope.outputs.publish == 'true'",
+          env: githubTokenEnv(),
+          run: withCiSourceRoot('nix/buck2-products/publish.sh --realise-inputs'),
+        },
+      }),
+      cachixPushStep({
+        jobIf: trustedSecretCiIf,
+        triggers: ['push', 'workflow_dispatch'],
+        authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}',
+        step: {
           id: 'product-publication',
           name: 'Publish products',
           if: "steps.publication-scope.outputs.publish == 'true'",
