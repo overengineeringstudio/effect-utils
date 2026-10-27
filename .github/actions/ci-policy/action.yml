@@ -27,6 +27,8 @@ runs:
         else
           consumer_root=$(realpath "$GITHUB_WORKSPACE/$CI_POLICY_ROOT")
         fi
+        # Keep Bun configuration discovery in the trusted, pinned action checkout.
+        cd "$policy_root"
         # Fleet runners provide Nix and the pinned Bun closure. Offline realization
         # prevents registry, package-manager, or binary-cache network access here.
         nix shell --offline "path:$policy_root#bun" --command \
