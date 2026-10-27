@@ -1,4 +1,4 @@
-import { Schema } from 'effect'
+import { Schema, SchemaAST } from 'effect'
 import { describe, expect, it } from 'vitest'
 
 import * as Fractal from '@overeng/genie-fractal'
@@ -73,6 +73,6 @@ describe('genie-smalltalk compatibility alias', () => {
     [Fractal.MissionSchema, 'Fractal.Mission'],
     [Fractal.OmpSchema, 'Fractal.Omp'],
   ] as const)('uses the new diagnostic identifier %s', (schema, identifier) => {
-    expect(schema.ast.annotations?.identifier).toBe(identifier)
+    expect(SchemaAST.resolveIdentifier(schema.ast)).toBe(identifier)
   })
 })
