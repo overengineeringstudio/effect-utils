@@ -21,21 +21,17 @@ import { type ParsedLockedInput, parseLockedInput } from './schema.ts'
  * - https://github.com/owner/repo.git
  * - git@github.com:owner/repo
  * - git@github.com:owner/repo.git
+ * - ssh://git@github.com/owner/repo(.git)
+ * - git+ssh://git@github.com/owner/repo(.git)
  */
 export const normalizeGitHubUrl = (url: string): string | undefined => {
-  // HTTPS format
-  const httpsMatch = url.match(/^https?:\/\/github\.com\/([^/]+)\/([^/.]+?)(?:\.git)?(?:\/)?$/)
-  if (httpsMatch?.[1] !== undefined && httpsMatch[2] !== undefined) {
-    return `https://github.com/${httpsMatch[1]}/${httpsMatch[2]}`
-  }
-
-  // SSH format
-  const sshMatch = url.match(/^git@github\.com:([^/]+)\/([^/.]+?)(?:\.git)?$/)
-  if (sshMatch?.[1] !== undefined && sshMatch[2] !== undefined) {
-    return `https://github.com/${sshMatch[1]}/${sshMatch[2]}`
-  }
-
-  return undefined
+  // Keep the transport forms aligned with megarepo-lock-sync.jq's repo_key.
+  const match = url.match(
+    /^(?:https?:\/\/github\.com\/|(?:git\+)?ssh:\/\/git@github\.com\/|git@github\.com:)([^/]+)\/([^/]+?)(?:\.git)?\/?$/,
+  )
+  return match?.[1] !== undefined && match[2] !== undefined
+    ? `https://github.com/${match[1]}/${match[2]}`
+    : undefined
 }
 
 /**

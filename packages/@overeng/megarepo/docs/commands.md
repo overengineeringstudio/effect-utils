@@ -53,6 +53,9 @@ including follows paths. Every node in each standalone lock is inspected,
 including nested duplicates and locks without a direct root reference. Nodes
 with the same original or repository identity belong to the selected cohort;
 the named direct input is also validated even if its repository differs.
+GitHub repository identity is shared across HTTPS, SCP-style `git@github.com:`,
+`ssh://git@github.com/`, and `git+ssh://git@github.com/` URLs, with or without
+the `.git` suffix, matching the transports recognized by `mr:lock-sync-check`.
 
 Both modes share discovery and comparison. Every matching input must have the
 same structural `original` as the root; a different original, unresolved input,

@@ -147,6 +147,39 @@ describe('standalone root lock synchronization', () => {
     }).pipe(withServices),
   )
 
+  it.effect('preflights nested mismatched originals across every GitHub transport', () =>
+    Effect.gen(function* () {
+      const { fs, root } = yield* fixture
+      const before = yield* fs.readFileString(`${root}flake.lock`)
+      for (const url of [
+        'https://github.com/example/library.git',
+        'git@github.com:example/library.git',
+        'ssh://git@github.com/example/library.git',
+        'git+ssh://git@github.com/example/library.git',
+      ]) {
+        const mismatch = encodeJson({
+          ...lock(),
+          nodes: {
+            ...lock().nodes,
+            nested: { inputs: { library: 'library_3' } },
+            library_3: {
+              original: { type: 'git', url, ref: 'main' },
+              locked: { type: 'git', url, rev: 'b'.repeat(40) },
+            },
+          },
+        })
+        yield* fs.writeFileString(`${root}nix/tool/flake.lock`, mismatch)
+        expect(
+          Exit.isFailure(
+            yield* Effect.exit(syncStandaloneLocks({ root, input: 'library', write: true })),
+          ),
+        ).toBe(true)
+        expect(yield* fs.readFileString(`${root}flake.lock`)).toBe(before)
+        expect(yield* fs.readFileString(`${root}nix/tool/flake.lock`)).toBe(mismatch)
+      }
+    }).pipe(withServices),
+  )
+
   it.effect('fails closed on a missing declared root before writing an earlier valid lock', () =>
     Effect.gen(function* () {
       const { fs, root } = yield* fixture
