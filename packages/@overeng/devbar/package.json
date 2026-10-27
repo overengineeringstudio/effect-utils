@@ -25,6 +25,7 @@
   "type": "module",
   "private": true,
   "description": "Host-composed developer shell with panel, strip, and status slots for React applications",
+  "license": "Apache-2.0",
   "exports": {
     ".": {
       "types": "./dist/mod.d.ts",

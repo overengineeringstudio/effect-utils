@@ -2,6 +2,7 @@
 import {
   catalog,
   packageJson,
+  firstPartyPackageDefaults,
   workspaceMember,
   type PackageJsonData,
 } from '../../../genie/internal.ts'
@@ -21,6 +22,7 @@ const composition = catalog.compose({
 export default packageJson(
   {
     name: 'effect-socket-examples',
+    ...firstPartyPackageDefaults,
     private: true,
     type: 'module',
   } satisfies PackageJsonData,

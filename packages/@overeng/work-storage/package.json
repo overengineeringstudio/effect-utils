@@ -11,6 +11,7 @@
   "type": "module",
   "private": true,
   "description": "Portable work-storage v1 contract and Effect reader",
+  "license": "Apache-2.0",
   "exports": {
     ".": {
       "types": "./dist/src/mod.d.ts",

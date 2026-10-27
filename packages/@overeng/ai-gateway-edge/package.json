@@ -12,6 +12,7 @@
   "type": "module",
   "private": true,
   "description": "Runtime-configured authentication and metering edge for the shared AI gateway wire",
+  "license": "Apache-2.0",
   "exports": {
     ".": {
       "types": "./dist/src/mod.d.ts",

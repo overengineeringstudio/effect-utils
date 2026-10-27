@@ -10,7 +10,7 @@
   "version": "0.1.0",
   "type": "module",
   "description": "Scoped, content-free Effect RPC protocol observation with opt-in capture sinks",
-  "license": "MIT",
+  "license": "Apache-2.0",
   "exports": {
     ".": {
       "types": "./dist/src/index.d.ts",
