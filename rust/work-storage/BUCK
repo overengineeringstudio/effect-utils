@@ -5,7 +5,7 @@ load("//buck2/rust:defs.bzl", "rust_test_receipt")
 # Projection source: rust/work-storage/BUCK.genie.ts
 # Projection schema version: 1
 # Projection generator: effect-utils/rust/cargo-buck2-package-projection
-# Semantic fingerprint: sha256:9aee81c5e807bf6b948765d268dcf6f28fab9f37af36f9b3075693fc0028481d
+# Semantic fingerprint: sha256:757881a107607b78cac80ec020e699013254d0e83ffef66bbb61aa6b4cbbe2d1
 # Semantic inputs: genie/buck2/mod.ts, packages/@overeng/otel-scrape/Cargo.toml, packages/@overeng/otelite/Cargo.toml, packages/@overeng/pingping/Cargo.toml, packages/@overeng/pingping/crates/netinfo-macos/Cargo.toml, rust/Cargo.lock, rust/Cargo.toml, rust/ai-gateway/Cargo.toml, rust/buck2-tools/archive-tool/Cargo.toml, rust/buck2-tools/core/Cargo.toml, rust/buck2-tools/core/cargo-buck2-package-projection.ts, rust/buck2-tools/events/Cargo.toml, rust/buck2-tools/fingerprint/Cargo.toml, rust/buck2-tools/product/Cargo.toml, rust/content-address-contract/Cargo.toml, rust/content-address-core/Cargo.toml, rust/content-address-interop/Cargo.toml, rust/effect-rust-fixtures/hash-core/Cargo.toml, rust/effect-rust-fixtures/hash-interop/Cargo.toml, rust/effect-rust-fixtures/math-core/Cargo.toml, rust/effect-rust-fixtures/math-interop/Cargo.toml, rust/effect-rust-fixtures/napi-adapter/Cargo.toml, rust/effect-rust-fixtures/wasm-adapter/Cargo.toml, rust/effect-rust-macros/Cargo.toml, rust/effect-rust/Cargo.toml, rust/reindeer.toml, rust/third-party/BUCK, rust/work-storage/BUCK.genie.ts, rust/work-storage/Cargo.toml, rust/work-storage/src/**/*.rs, rust/work-storage/tests/**/*.rs
 # Regenerate: devenv tasks run genie:run
 
@@ -65,7 +65,7 @@ native.rust_binary(
         "CARGO_PKG_DESCRIPTION": "",
         "CARGO_PKG_HOMEPAGE": "",
         "CARGO_PKG_REPOSITORY": "",
-        "CARGO_PKG_LICENSE": "MIT",
+        "CARGO_PKG_LICENSE": "Apache-2.0",
         "CARGO_PKG_LICENSE_FILE": "",
         "CARGO_PKG_README": "",
         "CARGO_PKG_RUST_VERSION": "",
@@ -104,7 +104,7 @@ buildscript_run(
         "CARGO_PKG_DESCRIPTION": "",
         "CARGO_PKG_HOMEPAGE": "",
         "CARGO_PKG_REPOSITORY": "",
-        "CARGO_PKG_LICENSE": "MIT",
+        "CARGO_PKG_LICENSE": "Apache-2.0",
         "CARGO_PKG_LICENSE_FILE": "",
         "CARGO_PKG_README": "",
         "CARGO_PKG_RUST_VERSION": "",
@@ -139,7 +139,7 @@ native.rust_library(
         "CARGO_PKG_DESCRIPTION": "",
         "CARGO_PKG_HOMEPAGE": "",
         "CARGO_PKG_REPOSITORY": "",
-        "CARGO_PKG_LICENSE": "MIT",
+        "CARGO_PKG_LICENSE": "Apache-2.0",
         "CARGO_PKG_LICENSE_FILE": "",
         "CARGO_PKG_README": "",
         "CARGO_PKG_RUST_VERSION": "",
