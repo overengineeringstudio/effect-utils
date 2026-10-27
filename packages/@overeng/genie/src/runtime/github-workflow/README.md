@@ -59,6 +59,12 @@ branch or tag. Run the job on the fleet's `[sh-linux-x64, nix]` selector and app
 the canonical `sameRepoPullRequestGuard()` expression when admitting non-push
 events. The check job is subject to the same policy as every other job.
 
+**Threat model:** This action is defense in depth against accidental policy drift
+and environment-based bypass, not a sandbox against a workflow author who
+controls the job and can remove the step. Real enforcement requires the policy
+check to be a required check and fleet access to be restricted through runner
+groups. The action assumes a trusted runner and the pinned action checkout.
+
 The composite action reads `.github/workflows/*.yml` and `*.yaml` from the
 checkout, parses them with Bun's built-in YAML parser, and invokes
 `validateWorkflowPolicy()` with `fleetWorkflowPolicy()` in enforce mode. It does
@@ -89,8 +95,10 @@ builders are disabled. No preinstalled Node/Bun or pre-realized closure is assum
 
 The composite shell uses an absolute `/usr/bin/env` launcher with a runner-owned
 `PATH`, removes `BASH_ENV`/`ENV` before Bash starts, and enables Bash privileged
-mode to ignore startup files and exported functions. Inputs remain environment
-data rather than interpolated shell code.
+mode to ignore startup files and exported functions. The step's `env` mapping
+clears Linux `LD_PRELOAD`/`LD_LIBRARY_PATH`/`LD_AUDIT` and macOS
+`DYLD_INSERT_LIBRARIES`/`DYLD_LIBRARY_PATH`/`DYLD_FRAMEWORK_PATH` before the native
+launcher is created. Inputs remain data rather than interpolated shell code.
 
 Both Nix and Bun run through `env -i` with only an isolated temporary `HOME`,
 `TMPDIR`, and a runner-owned `PATH`. Consumer `BUN_OPTIONS`, `NODE_OPTIONS`,
@@ -119,8 +127,10 @@ The real-Nix isolation smoke runs in the same Linux `quality` (`pr/quality`) job
 in the separate “CI policy action isolation smoke” step:
 `bun test ./genie/ci-workflow/check-policy-action.integration.test.ts`.
 It exercises the actual custom-shell launcher and trusted Nix bootstrap with
-hostile Bash startup files/exported functions, Bun/Nix options and consumer
-`bash`/`nix` executables.
+hostile Bash startup files/exported functions, Bun/Nix options, loader overrides,
+and consumer `bash`/`nix` executables. On Linux it builds a tiny constructor-only
+shared object using the pinned nixpkgs C compiler, proves the injection works
+against an unsanitized launcher, then verifies the real step excludes it.
 
 ## Type Reference
 

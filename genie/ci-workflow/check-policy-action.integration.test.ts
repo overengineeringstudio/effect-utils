@@ -35,6 +35,54 @@ test('real action ignores consumer runtime options, PATH executables and Nix con
     const action = Bun.YAML.parse(
       await Bun.file(join(root, '.github/actions/ci-policy/action.yml')).text(),
     )
+    const loaderControls = [
+      'LD_PRELOAD',
+      'LD_LIBRARY_PATH',
+      'LD_AUDIT',
+      'DYLD_INSERT_LIBRARIES',
+      'DYLD_LIBRARY_PATH',
+      'DYLD_FRAMEWORK_PATH',
+    ] as const
+    for (const name of loaderControls) expect(action.runs.steps[0].env[name]).toBe('')
+    const loaderOverrides = Object.fromEntries(
+      loaderControls.map((name) => [name, action.runs.steps[0].env[name]]),
+    )
+    const nix = (await Bun.file('/nix/var/nix/profiles/default/bin/nix').exists())
+      ? '/nix/var/nix/profiles/default/bin/nix'
+      : '/run/current-system/sw/bin/nix'
+    const packageSelector = join(root, '.github/actions/ci-policy/bun-package.nix')
+    const bunPackage = (
+      await Bun.$`${nix} eval --impure --raw --file ${packageSelector}`.text()
+    ).trim()
+    const compilerPackage = bunPackage.replace(/#bun$/, '#stdenv.cc')
+    const library = join(fixture, 'loader-injection.so')
+    const source = join(fixture, 'loader-injection.c')
+    await Bun.write(
+      source,
+      `
+      #include <fcntl.h>
+      #include <stdlib.h>
+      #include <unistd.h>
+      __attribute__((constructor)) static void inject(void) {
+        const char *marker = getenv("CI_POLICY_LOADER_MARKER");
+        if (marker) {
+          int fd = open(marker, O_WRONLY | O_CREAT | O_TRUNC, 0600);
+          if (fd >= 0) { write(fd, "loader", 6); close(fd); }
+        }
+        _exit(0);
+      }
+    `,
+    )
+    await Bun.$`${nix} shell --option builders ${''} --option max-jobs 0 ${compilerPackage} --command cc -shared -fPIC -o ${library} ${source}`.quiet()
+    // Prove the fixture can bypass a native launcher before env -i executes.
+    const vulnerable = Bun.spawnSync(['/usr/bin/env', '-i', '/bin/sh', '-c', 'exit 42'], {
+      env: { ...Bun.env, LD_PRELOAD: library, CI_POLICY_LOADER_MARKER: marker },
+      stdout: 'pipe',
+      stderr: 'pipe',
+    })
+    expect(vulnerable.exitCode, vulnerable.stderr.toString()).toBe(0)
+    expect(await Bun.file(marker).text()).toBe('loader')
+    await rm(marker)
     const script = join(fixture, 'action-step.sh')
     await Bun.write(script, action.runs.steps[0].run)
     // Match the runner's custom-shell argv boundary, including its script argument.
@@ -70,6 +118,15 @@ test('real action ignores consumer runtime options, PATH executables and Nix con
           ENV: startup,
           'BASH_FUNC_realpath%%': `() { printf function > '${marker}'; exit 0; }`,
           'BASH_FUNC_env%%': `() { printf function > '${marker}'; exit 0; }`,
+          LD_PRELOAD: library,
+          LD_LIBRARY_PATH: fixture,
+          LD_AUDIT: library,
+          DYLD_INSERT_LIBRARIES: library,
+          DYLD_LIBRARY_PATH: fixture,
+          DYLD_FRAMEWORK_PATH: fixture,
+          CI_POLICY_LOADER_MARKER: marker,
+          // GitHub overlays step env before creating the custom-shell process.
+          ...loaderOverrides,
         },
         stdout: 'pipe',
         stderr: 'pipe',
