@@ -184,7 +184,9 @@ const normalizableDuration = (allowZero: boolean) =>
     }),
   )
 /** Positive native u64 millisecond durations, normalized immediately. */
-export const DurationSchema = normalizableDuration(false).annotate({ identifier: 'Fractal.Duration' })
+export const DurationSchema = normalizableDuration(false).annotate({
+  identifier: 'Fractal.Duration',
+})
 /** Native u64 millisecond durations for fields where zero is meaningful. */
 export const NonNegativeDurationSchema = normalizableDuration(true).annotate({
   identifier: 'Fractal.NonNegativeDuration',
