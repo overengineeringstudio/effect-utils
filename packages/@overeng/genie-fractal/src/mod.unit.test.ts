@@ -32,7 +32,7 @@ import {
   schedule,
   step,
   StepSchema,
-  smalltalkKdl,
+  fractalKdl,
 } from './mod.ts'
 import type { FieldIsInput, StepDependency, StepHandle } from './mod.ts'
 import {
@@ -754,7 +754,7 @@ const fanInMission = () => ({
   ],
 })
 
-describe('Smalltalk declarations', () => {
+describe('Fractal declarations', () => {
   it('requires a typed agent declaration rather than a string or omitted report', () => {
     expectTypeOf<string>().not.toMatchTypeOf<(typeof MissionSchema.Encoded)['reportTo']>()
     expectTypeOf<Omit<typeof MissionSchema.Encoded, 'reportTo'>>().not.toMatchTypeOf<
@@ -1164,8 +1164,8 @@ describe('Smalltalk declarations', () => {
     ).toBe('version 2\n"quoted key" "a\\n\\"b" #true #false 12 a="x" z=#true {\n  nested\n}\n')
     expect(() => emit([node({ name: 'bad', args: [Infinity] })])).toThrow()
     expect(
-      smalltalkKdl([node({ name: 'bad', args: [Infinity] })]).validate?.({ cwd: '', location: '' }),
-    ).toMatchObject([{ severity: 'error', rule: 'smalltalk-kdl' }])
+      fractalKdl([node({ name: 'bad', args: [Infinity] })]).validate?.({ cwd: '', location: '' }),
+    ).toMatchObject([{ severity: 'error', rule: 'fractal-kdl' }])
   })
   it('rejects invalid or excess authored fields before rendering', () => {
     expect(() =>
@@ -1255,7 +1255,7 @@ describe('Smalltalk declarations', () => {
         harness: { kind: 'omp', model: 'example', effort: 'medium' },
       }),
     ]
-    expect(smalltalkKdl(nodes).stringify({ cwd: '', location: '' })).toContain(
+    expect(fractalKdl(nodes).stringify({ cwd: '', location: '' })).toContain(
       'workspace "/tmp/seat" create=#false',
     )
   })

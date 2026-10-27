@@ -119,6 +119,13 @@ export default oxlintConfig({
       files: ['**/react-inspector/src/schema/mod.tsx'],
       rules: { 'oxc/no-barrel-file': 'off' },
     },
+    // arn:lmig:smalltalk:2026-10-26-genie-fractal-alias
+    // These temporary public subpaths deliberately forward to the canonical
+    // package. De-barreling them would break old-name consumers.
+    {
+      files: ['**/genie-smalltalk/src/tree.ts', '**/genie-smalltalk/src/testing.ts'],
+      rules: { 'oxc/no-barrel-file': 'off' },
+    },
     // restate-effect's `./testing` harness has a benign barrel-induced cycle:
     // `testing.ts` aggregates and re-exports `RestateTestEnv`, which imports the
     // harness back from `testing.ts`. Test-infra aggregation, not a runtime

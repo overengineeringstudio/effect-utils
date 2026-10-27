@@ -21,7 +21,7 @@ const treeModule = new URL('./tree.ts', import.meta.url).href
 
 /** Writes files below a fresh root; each test gets distinct module URLs. */
 const fixture = (files: Readonly<Record<string, string>>): string => {
-  const root = mkdtempSync(join(tmpdir(), 'genie-smalltalk-tree-'))
+  const root = mkdtempSync(join(tmpdir(), 'genie-fractal-tree-'))
   for (const [path, text] of Object.entries(files)) {
     mkdirSync(dirname(join(root, path)), { recursive: true })
     writeFileSync(join(root, path), text)

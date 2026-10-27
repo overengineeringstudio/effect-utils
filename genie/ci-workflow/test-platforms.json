@@ -212,8 +212,12 @@
         "rationale": "effect-schema-form bounded parsing, schema, API, rendering or build-contract assertions; no Darwin-specific host lifecycle regression. Host-sensitive source complements are classified independently."
       },
       {
+        "task": "test:genie-fractal",
+        "rationale": "genie-fractal bounded parsing, schema, API, rendering or build-contract assertions; no Darwin-specific host lifecycle regression. Host-sensitive source complements are classified independently."
+      },
+      {
         "task": "test:genie-smalltalk",
-        "rationale": "genie-smalltalk bounded parsing, schema, API, rendering or build-contract assertions; no Darwin-specific host lifecycle regression. Host-sensitive source complements are classified independently."
+        "rationale": "Temporary package alias identity and compatibility assertions; no host-specific lifecycle behavior. arn:lmig:smalltalk:2026-10-26-genie-fractal-alias"
       },
       {
         "task": "test:gh-ci-utils",
