@@ -1812,7 +1812,7 @@ export const nixClosureMeasurementsJob = (opts: NixClosureMeasurementsJobOptions
     ],
   }) as const
 
-export const sourceShapeMeasurementStep = (opts: SourceShapeMeasurementStepOptions) => {
+export const sourceShapeMeasurementSteps = (opts: SourceShapeMeasurementStepOptions) => {
   const artifactDir = opts.artifactDir ?? 'tmp/ci-measurements'
   const artifactFileAssignment =
     opts.artifactFile === undefined
@@ -1829,11 +1829,12 @@ export const sourceShapeMeasurementStep = (opts: SourceShapeMeasurementStepOptio
       ? `target_system="${dollar}{DEVENV_SYSTEM:-${dollar}{RUNNER_OS:-unknown}}"`
       : `target_system=${shellSingleQuote(opts.targetSystem)}`
 
-  return {
+  const tokenEnv = githubTokenEnv()
+  const measurementStep = {
     name: `Measure source shape: ${targetName}`,
     shell: 'bash',
     env: {
-      ...githubTokenEnv(),
+      ...tokenEnv,
       ARTIFACT_DIR: artifactDir,
       RUNNER_CLASS: '${{ runner.os }}-${{ runner.arch }}',
     },
@@ -2015,6 +2016,14 @@ NODE
 cat "$artifact_file"
 `,
   } as const
+  return [
+    {
+      name: 'Realise source-shape tool closure',
+      env: tokenEnv,
+      run: 'nix build --no-update-lock-file --no-link .#buck2-node',
+    },
+    measurementStep,
+  ] as const
 }
 
 export const compareCiMeasurementsStep = (opts?: CiMeasurementsComparisonStepOptions) =>

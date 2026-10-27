@@ -161,7 +161,7 @@ export {
   nixClosureMeasurementSteps,
   nixClosureMeasurementsJob,
   nixClosureMeasurementStep,
-  sourceShapeMeasurementStep,
+  sourceShapeMeasurementSteps,
   type CiMeasurementDescriptor,
   type CiMeasurementObservation,
   type CiMeasurementsArtifactStepOptions,

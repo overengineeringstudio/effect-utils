@@ -33,7 +33,7 @@ import {
   LEGACY_NAMESPACE_LINUX_X64_PAIRED_PERF_RUNNER,
   namespaceRunner,
   nixClosureMeasurementSteps,
-  sourceShapeMeasurementStep,
+  sourceShapeMeasurementSteps,
   nixDiagnosticsArtifactStep,
   workflowReportCommentBodyStep,
   workflowReportCollectorStep,
@@ -1739,11 +1739,7 @@ const extraJobs: Record<string, any> = {
       installNixStep(),
       linuxSandboxPrerequisitesStep({ privileged: 'trusted' }),
       ciMeasurementBaselineCheckoutStep,
-      {
-        name: 'Realise source-shape tool closure',
-        run: 'nix build --no-update-lock-file --no-link .#buck2-node',
-      },
-      sourceShapeMeasurementStep({
+      ...sourceShapeMeasurementSteps({
         artifactDir: `${sourceShapeMeasurementsDir}/current/effect-utils`,
         targetId: 'effect_utils',
         targetName: 'effect-utils',
