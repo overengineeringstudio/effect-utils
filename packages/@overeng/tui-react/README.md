@@ -255,4 +255,4 @@ and uploaded only when the job fails, with 14-day retention.
 
 ## License
 
-MIT
+Apache-2.0. See the [root LICENSE](../../../LICENSE).
