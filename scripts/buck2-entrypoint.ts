@@ -19,6 +19,7 @@ import {
 import { homedir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import process from 'node:process'
+import { setTimeout as waitForBackpressure } from 'node:timers/promises'
 import { isatty } from 'node:tty'
 
 import type { CacheAdmissionInvocation } from '../genie/ci-scripts/buck2-cache-evidence.ts'
@@ -80,13 +81,19 @@ const findRoot = (cwd: string): string | undefined => {
   }
 }
 
-const skipsWatcherAdmission = (args: readonly string[]): boolean => {
-  if (args.some((arg) => ['--help', '-h', '--version'].includes(arg)) === true) return true
+/** Shared native subcommand scan: global option values are not commands. */
+const buckSubcommand = (
+  args: readonly string[],
+): { readonly command: string; readonly index: number } | undefined => {
   for (let index = 0; index < args.length; index++) {
     const arg = args[index] ?? ''
     if (
       [
         '--isolation-dir',
+        '--config',
+        '-c',
+        '--config-file',
+        '--chdir',
         '--verbose',
         '-v',
         '--oncall',
@@ -99,9 +106,18 @@ const skipsWatcherAdmission = (args: readonly string[]): boolean => {
       continue
     }
     if (arg.startsWith('-') === true) continue
-    return ['kill', 'status', 'log'].includes(arg)
+    return { command: arg, index }
   }
-  return true
+  return undefined
+}
+
+const skipsWatcherAdmission = (args: readonly string[]): boolean => {
+  const command = buckSubcommand(args)?.command
+  return (
+    args.some((arg) => ['--help', '-h', '--version'].includes(arg)) === true ||
+    command === undefined ||
+    ['kill', 'status', 'log'].includes(command)
+  )
 }
 
 let admissionExpires = Date.now() + 5000
@@ -342,7 +358,11 @@ export const directBuckArguments = async ({
   failedOpen = false
   const sentinel = args.indexOf('--')
   const configArgs = sentinel === -1 ? args : args.slice(0, sentinel)
-  const command = configArgs.find((arg) => configCommands[arg] === true)
+  const selectedCommand = buckSubcommand(configArgs)?.command
+  const command =
+    selectedCommand !== undefined && configCommands[selectedCommand] === true
+      ? selectedCommand
+      : undefined
   if (skipsWatcherAdmission(configArgs) === true) return [...args]
   const root = findRoot(cwd)
   if (root === undefined) return [...args]
@@ -756,7 +776,8 @@ export const resolveGateInvocation = ({
   }
   const sentinel = expanded.indexOf('--')
   let buckArgs = sentinel === -1 ? expanded : expanded.slice(0, sentinel)
-  const runIndex = buckArgs.indexOf('run')
+  const selectedCommand = buckSubcommand(buckArgs)
+  const runIndex = selectedCommand?.command === 'run' ? selectedCommand.index : -1
   if (
     strictRunArguments === true &&
     runIndex !== -1 &&
@@ -1397,7 +1418,8 @@ export const nativeBuildIdArguments = ({
   mkdirSync(dirname(registry), { recursive: true, mode: 0o700 })
   appendFileSync(registry, `${JSON.stringify({ buildId, path })}\n`, { mode: 0o600 })
   if (suppliedPath !== undefined) return [...args]
-  const runIndex = before.indexOf('run')
+  const selectedCommand = buckSubcommand(before)
+  const runIndex = selectedCommand?.command === 'run' ? selectedCommand.index : -1
   if (runIndex !== -1)
     return [...before.slice(0, runIndex + 1), '--write-build-id', path, ...args.slice(runIndex + 1)]
   return [...before, '--write-build-id', path, ...(sentinel === -1 ? [] : args.slice(sentinel))]
@@ -1555,18 +1577,24 @@ export const shouldSuperviseReaderCommand = ({
   if (reader === false || stderrIsTTY === true) return false
   const invocation = resolveGateInvocation({ args, cwd, env, strictRunArguments: false })
   if (invocation === undefined) return false
-  if (invocation.args.some((arg) => ['run', 'install', 'bxl'].includes(arg)) === true) return false
-  return invocation.args.some((arg) => configCommands[arg] === true)
+  const command = buckSubcommand(invocation.args)?.command
+  return (
+    command !== undefined &&
+    configCommands[command] === true &&
+    ['run', 'install', 'bxl'].includes(command) === false
+  )
 }
 
 /** Advance short writes and yield on EAGAIN; a broken consumer must not orphan Buck. */
 export const writeNativeStderrChunk = async ({
   chunk,
   write = (bytes) => writeSync(2, bytes),
-  pause = () => new Promise<void>((resume) => setTimeout(resume, 1)),
+  signal,
+  pause = () => waitForBackpressure(1, undefined, { signal }),
 }: {
   readonly chunk: Uint8Array
   readonly write?: (bytes: Uint8Array) => number
+  readonly signal?: AbortSignal
   readonly pause?: () => Promise<void>
 }): Promise<boolean> => {
   let offset = 0
@@ -1582,8 +1610,13 @@ export const writeNativeStderrChunk = async ({
         typeof error === 'object' && error !== null && 'code' in error ? error.code : undefined
       if (code !== 'EAGAIN' && code !== 'EWOULDBLOCK') return false
     }
-    // eslint-disable-next-line no-await-in-loop -- Retry this write only after backpressure clears.
-    await pause()
+    if (signal?.aborted === true) return false
+    try {
+      // eslint-disable-next-line no-await-in-loop -- Retry this write only after backpressure clears.
+      await pause()
+    } catch {
+      return false
+    }
   }
   return true
 }
@@ -1591,10 +1624,15 @@ export const writeNativeStderrChunk = async ({
 /** Drain native stderr even after capture overflow or a failed output consumer. */
 export const captureNativeStderr = async ({
   stream,
+  signal,
   writeChunk = writeNativeStderrChunk,
 }: {
   readonly stream: AsyncIterable<Uint8Array>
-  readonly writeChunk?: (options: { readonly chunk: Uint8Array }) => Promise<boolean>
+  readonly signal?: AbortSignal
+  readonly writeChunk?: (options: {
+    readonly chunk: Uint8Array
+    readonly signal?: AbortSignal
+  }) => Promise<boolean>
 }): Promise<string | undefined> => {
   const decoder = new TextDecoder()
   let bytes = 0
@@ -1604,7 +1642,7 @@ export const captureNativeStderr = async ({
     for await (const chunk of stream) {
       if (writable === true) {
         try {
-          writable = await writeChunk({ chunk })
+          writable = await writeChunk({ chunk, signal })
         } catch {
           writable = false
         }
@@ -1641,16 +1679,22 @@ const observeNativeCommand = async ({
     stderr: 'pipe',
   })
   let interrupted = false
+  const writes = new AbortController()
+  const exited = child.exited.then((exitCode) => {
+    writes.abort()
+    return exitCode
+  })
   const forward = (signal: NodeJS.Signals) => {
     interrupted = true
+    writes.abort()
     child.kill(signal)
   }
   const signals = ['SIGINT', 'SIGTERM', 'SIGHUP'] as const
   const handlers = signals.map((signal) => () => forward(signal))
   for (const [index, signal] of signals.entries()) process.on(signal, handlers[index]!)
   try {
-    const output = await captureNativeStderr({ stream: child.stderr })
-    const exitCode = await child.exited
+    const output = await captureNativeStderr({ stream: child.stderr, signal: writes.signal })
+    const exitCode = await exited
     const signalCode = child.signalCode
     return {
       exitCode,

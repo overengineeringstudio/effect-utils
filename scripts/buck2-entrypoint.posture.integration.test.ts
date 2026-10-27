@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'bun:test'
 import {
   chmodSync,
+  closeSync,
+  constants,
+  openSync,
   existsSync,
   mkdtempSync,
   readFileSync,
@@ -136,6 +139,139 @@ else if(args.includes('build')) {
       expect(rows[1].admissionFallbacks.reapi).toBe(1)
       expect(rows[1].invocationId).not.toBe(rows[0].invocationId)
     } finally {
+      await new Promise<void>((resolve, reject) =>
+        grpc.close((error) => (error === undefined ? resolve() : reject(error))),
+      )
+      rmSync(root, { recursive: true, force: true })
+    }
+  }, 15000)
+
+  it('reaps a signalled reader when its nonblocking stderr consumer stops reading', async () => {
+    const root = realpathSync(mkdtempSync(join(tmpdir(), 'buck2-stalled-stderr-')))
+    const grpc = createServer()
+    grpc.on('stream', (stream) => {
+      stream.on('data', () => {})
+      stream.on('end', () => {
+        stream.respond({ ':status': 200, 'content-type': 'application/grpc', 'grpc-status': '0' })
+        stream.end(Buffer.from([0, 0, 0, 0, 0]))
+      })
+    })
+    await new Promise<void>((resolve) => grpc.listen(0, '127.0.0.1', resolve))
+    let stopChild: (() => void) | undefined
+    let stderrFd: number | undefined
+    try {
+      const address = grpc.address()
+      if (address === null || typeof address === 'string')
+        throw new Error('missing fixture address')
+      writeFileSync(join(root, '.buckroot'), '')
+      writeFileSync(
+        join(root, '.buckconfig'),
+        `[buck2]\nremote_cache_enabled = true\nallow_cache_uploads = false\n[buck2_re_client]\naction_cache_address = grpc://127.0.0.1:${address.port}\ntls = false\n`,
+      )
+      const preload = join(root, 'nonblocking.ts')
+      writeFileSync(
+        preload,
+        `import {dlopen} from 'bun:ffi';
+const library=dlopen(process.env.BUCK2_STDIO_LIBRARY,{eu_getfl:{args:['i32'],returns:'i32'},eu_setfl:{args:['i32','i32'],returns:'i32'}});
+if(library.symbols.eu_setfl(2,library.symbols.eu_getfl(2)|(process.platform==='darwin'?4:2048))!==0) throw new Error('nonblocking stderr setup failed');
+library.close();
+`,
+      )
+      const native = join(root, 'native')
+      writeFileSync(
+        native,
+        `#!${process.execPath}
+import './nonblocking.ts';
+import {appendFileSync,writeFileSync,writeSync,openSync,closeSync,constants} from 'node:fs';
+import {createServer} from 'node:net';
+appendFileSync('commands','build\\n');
+writeFileSync('native-pid',String(process.pid));
+process.on('SIGTERM',()=>process.exit(143));
+createServer().listen('native-live.sock');
+const chunk=Buffer.alloc(65536,65);
+const stalled=openSync(process.env.STALLED_FIFO,constants.O_WRONLY|constants.O_NONBLOCK);
+while(true) {
+ try { writeSync(stalled,chunk); }
+ catch(error) { if(error.code==='EAGAIN'||error.code==='EWOULDBLOCK') break; throw error; }
+}
+closeSync(stalled);
+while(true) {
+ try { writeSync(2,chunk); }
+ catch(error) { if(error.code==='EAGAIN'||error.code==='EWOULDBLOCK') break; throw error; }
+}
+writeSync(1,'stalled\\n');
+`,
+        { mode: 0o700 },
+      )
+      const fifo = join(root, 'stalled-stderr')
+      const mkfifo = Bun.which('mkfifo')
+      if (mkfifo === null) throw new Error('mkfifo required for stalled stderr fixture')
+      expect(Bun.spawnSync([mkfifo, fifo]).exitCode).toBe(0)
+      stderrFd = openSync(fifo, constants.O_RDWR | constants.O_NONBLOCK)
+      const child = Bun.spawn(
+        [
+          process.execPath,
+          '--preload',
+          preload,
+          join(import.meta.dir, 'buck2-entrypoint.ts'),
+          native,
+          'build',
+          '//:fixture',
+        ],
+        {
+          cwd: root,
+          env: {
+            ...process.env,
+            HOME: root,
+            XDG_CACHE_HOME: join(root, 'cache'),
+            CI: '',
+            GITHUB_ACTIONS: '',
+            CI_BUCK2_CACHE_EVIDENCE_PATH: '',
+            BUCK2_PUBLIC_CACHE_READ_ONLY: '1',
+            BUCK2_NO_REMOTE_CACHE: '',
+            BUCK2_PRIVATE_CACHE_WRITE_AUTH: '',
+            BUCK2_PRIVATE_CACHE_WRITE_BASIC_AUTH: '',
+            BUCK2_CACHE_WRITE_BASIC_AUTH: '',
+            STALLED_FIFO: fifo,
+          },
+          stdin: 'ignore',
+          stdout: 'pipe',
+          stderr: stderrFd,
+        },
+      )
+      stopChild = () => child.kill('SIGKILL')
+      // Native filled the FIFO directly after admission. Its read end stays open
+      // but is never read, so the launcher's stderr writer cannot make progress.
+      const reader = child.stdout.getReader()
+      const ready = await reader.read()
+      expect(new TextDecoder().decode(ready.value)).toBe('stalled\n')
+      reader.releaseLock()
+      child.kill('SIGTERM')
+      const deadline = AbortSignal.timeout(5000)
+      const exitCode = await Promise.race([
+        child.exited,
+        new Promise<never>((_, reject) =>
+          deadline.addEventListener('abort', () =>
+            reject(new Error('launcher did not reap its interrupted child')),
+          ),
+        ),
+      ])
+      expect(exitCode).toBe(143)
+      expect(readFileSync(join(root, 'commands'), 'utf8')).toBe('build\n')
+    } finally {
+      try {
+        stopChild?.()
+      } catch {
+        /* Already reaped. */
+      }
+      if (existsSync(join(root, 'native-pid')) === true) {
+        try {
+          process.kill(Number(readFileSync(join(root, 'native-pid'), 'utf8')), 'SIGKILL')
+        } catch {
+          /* Already reaped. */
+        }
+      }
+      if (stderrFd !== undefined) closeSync(stderrFd)
       await new Promise<void>((resolve, reject) =>
         grpc.close((error) => (error === undefined ? resolve() : reject(error))),
       )

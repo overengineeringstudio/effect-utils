@@ -191,11 +191,14 @@ compilation/test failures, authentication/authorization failures, integrity erro
 and writer postures never trigger this rerun; its result is final.
 Stdout remains inherited. Supervision applies only when stderr is not a TTY;
 terminal invocations and `run`, `install`, and `bxl` execute unchanged without a
-rerun, preserving superconsole and interactive user-binary behavior. Captured
+rerun, preserving superconsole and interactive user-binary behavior. The shared
+subcommand scan skips global option values, so an isolation named `run` is not a
+run command. Captured
 stderr is bounded to 256 KiB of bytes before decoding; overflow or signal
 termination forbids rerun. The stderr tee advances short writes and waits on
-nonblocking backpressure. A failed output consumer disables fallback but still
-drains stderr and waits for the child's final result.
+nonblocking backpressure. Interruption and native child termination cancel a
+stalled backpressure wait and disable fallback. A failed or cancelled output
+consumer still drains/discards remaining stderr and reaps the child's final result.
 
 The classifier strips Buck's bracketed timestamps and embedded RFC3339 warning
 timestamps, accepts only enumerated progress/statistics lines, and validates every

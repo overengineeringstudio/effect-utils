@@ -191,6 +191,17 @@ it('never reruns writers or successes and makes a failed rerun final', async () 
 it('leaves terminal stderr and interactive user-binary commands unsupervised', () => {
   const options = { reader: true, stderrIsTTY: false, cwd: '/project', env: {} }
   expect(shouldSuperviseReaderCommand({ ...options, args: ['build', '//:app'] })).toBe(true)
+  for (const isolation of ['run', 'install', 'bxl']) {
+    expect(
+      shouldSuperviseReaderCommand({
+        ...options,
+        args: ['--isolation-dir', isolation, 'build', '//:app'],
+      }),
+    ).toBe(true)
+  }
+  expect(
+    shouldSuperviseReaderCommand({ ...options, args: ['--isolation-dir', 'x', 'run', '//t'] }),
+  ).toBe(false)
   expect(
     shouldSuperviseReaderCommand({ ...options, stderrIsTTY: true, args: ['build', '//:app'] }),
   ).toBe(false)
@@ -276,5 +287,33 @@ it('drains native stderr after a tee failure instead of replacing the child resu
       },
     }),
   ).toBeUndefined()
+  expect(drained).toBe(3)
+})
+
+it('cancels a stalled stderr backpressure retry and disables capture on termination', async () => {
+  const cancelled = new AbortController()
+  let attempts = 0
+  let drained = 0
+  const output = await captureNativeStderr({
+    signal: cancelled.signal,
+    stream: (async function* () {
+      for (let index = 0; index < 3; index++) {
+        drained++
+        yield new Uint8Array([65])
+      }
+    })(),
+    writeChunk: ({ chunk, signal }) =>
+      writeNativeStderrChunk({
+        chunk,
+        signal,
+        write: () => {
+          attempts++
+          cancelled.abort()
+          throw Object.assign(new Error('consumer stopped reading'), { code: 'EAGAIN' })
+        },
+      }),
+  })
+  expect(output).toBeUndefined()
+  expect(attempts).toBe(1)
   expect(drained).toBe(3)
 })
