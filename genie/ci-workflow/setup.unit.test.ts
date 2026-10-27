@@ -20,9 +20,21 @@ import { defaultRefPolicyCheckStep } from './megarepo.ts'
 import { pipelineCloseJob } from './pipeline-telemetry.ts'
 import { fleetWorkflowPolicy } from './policy.ts'
 import { publishedRefIf } from './published-ref.ts'
-import { installNixStep, linuxSandboxPrerequisitesStep, namespaceRunner } from './setup.ts'
+import {
+  installNixStep,
+  linuxSandboxPrerequisitesStep,
+  namespaceRunner,
+  pnpmInstallWithDiagnosticsStep,
+  pnpmStateSetupStep,
+  restoreNixCacheStep,
+  saveNixCacheStep,
+  standardSelfHostedPnpmCiPostSteps,
+  standardSelfHostedPnpmCiPrepSteps,
+} from './setup.ts'
 import {
   buck2CiJobInstanceStep,
+  ciPnpmHome,
+  ciPnpmStore,
   ciWorkflow as composeCiWorkflow,
   ciJobAdmission,
   defaultRefPolicyVerdictStepId,
@@ -1122,5 +1134,57 @@ describe('shared default-ref policy configuration', () => {
     expect(JSON.parse(verdict.env?.DEFAULT_REFS_JSON ?? '{}')).toEqual({
       'livestorejs/livestore': 'dev',
     })
+  })
+})
+
+describe('cold pnpm preparation', () => {
+  it.each([true, false])(
+    'prepares cold pnpm state and installs unconditionally with diagnostics enabled: %s',
+    (includeDiagnostics) => {
+      const prep = standardSelfHostedPnpmCiPrepSteps({ includeDiagnostics })
+      const post = standardSelfHostedPnpmCiPostSteps({
+        includeDiagnosticsArtifact: includeDiagnostics,
+      })
+      const isolationIndex = prep.findIndex((step) => step.name === pnpmStateSetupStep.name)
+      const install = pnpmInstallWithDiagnosticsStep()
+      const installIndex = prep.findIndex((step) => step.name === install.name)
+
+      expect(isolationIndex).toBeGreaterThanOrEqual(0)
+      expect(prep[isolationIndex]).toEqual(pnpmStateSetupStep)
+      expect(pnpmStateSetupStep).not.toHaveProperty('if')
+      expect(pnpmStateSetupStep.run).toContain(`mkdir -p "${ciPnpmStore}" "${ciPnpmHome}" .devenv`)
+      expect(pnpmStateSetupStep.run).toContain(`ln -s "${ciPnpmStore}" "$member_store"`)
+      for (const [name, path] of [
+        ['PNPM_STORE_DIR', ciPnpmStore],
+        ['PNPM_CONFIG_STORE_DIR', ciPnpmStore],
+        ['PNPM_HOME', ciPnpmHome],
+      ]) {
+        expect(pnpmStateSetupStep.run).toContain(`echo "${name}=${path}" >> "$GITHUB_ENV"`)
+      }
+      expect(installIndex).toBeGreaterThan(isolationIndex)
+      expect(prep[installIndex]).toEqual(install)
+      expect(prep[installIndex]).not.toHaveProperty('if')
+      expect(install.run).toContain('pnpm:install')
+      expect(install.run).not.toContain('cache-hit')
+      expect([...prep, ...post].map((step) => step.name)).not.toContain('Restore pnpm state')
+      expect([...prep, ...post].map((step) => step.name)).not.toContain('Save pnpm state')
+      expect(
+        [...prep, ...post].filter(
+          (step) =>
+            'uses' in step &&
+            typeof step.uses === 'string' &&
+            step.uses.startsWith('actions/cache/'),
+        ),
+      ).toEqual([restoreNixCacheStep(), saveNixCacheStep()])
+    },
+  )
+})
+
+describe('Nix cache stable paths', () => {
+  it('uses identical stable restore/save paths for Nix caches', () => {
+    const nixRestore = restoreNixCacheStep()
+    const nixSave = saveNixCacheStep()
+    expect(nixRestore.with.path).toBe(nixSave.with.path)
+    expect(nixRestore.with.path).not.toContain('github.run_id')
   })
 })
