@@ -464,6 +464,19 @@ describe('nix-lock matcher', () => {
       )
     })
 
+    it('normalizes every GitHub transport accepted by the lock-sync guard', () => {
+      for (const url of [
+        'https://github.com/example/some.library.git',
+        'git@github.com:example/some.library.git',
+        'ssh://git@github.com/example/some.library.git',
+        'git+ssh://git@github.com/example/some.library.git',
+      ]) {
+        expect(normalizeGitHubUrl(url)).toBe('https://github.com/example/some.library')
+        expect(urlsMatch({ url1: url, url2: 'https://github.com/example/some.library' })).toBe(true)
+      }
+      expect(normalizeGitHubUrl('ssh://git@gitlab.com/example/some.library.git')).toBeUndefined()
+    })
+
     it('should return undefined for non-GitHub URLs', () => {
       expect(normalizeGitHubUrl('https://gitlab.com/owner/repo')).toBeUndefined()
       expect(normalizeGitHubUrl('/local/path')).toBeUndefined()

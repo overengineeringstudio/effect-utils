@@ -22,6 +22,7 @@ const fullAuthorityTargets = [
   '//buck2/toolchains:archive_tool',
   '//buck2/toolchains:product_tool',
   '//rust/work-storage:conformance-receipt',
+  '//rust/ci-storage:tests-receipt',
   ...['wasm-adapter:wasm', 'napi-adapter:napi', 'app:app'].flatMap((product) =>
     ['node', 'bun'].map((runtime) => `//rust/effect-rust-fixtures/${product}-smoke-${runtime}`),
   ),

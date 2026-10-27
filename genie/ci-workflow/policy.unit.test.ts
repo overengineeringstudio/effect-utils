@@ -34,6 +34,8 @@ import {
 import { pipelineCloseJob, withPipelineTelemetry } from './pipeline-telemetry.ts'
 import {
   collectFleetPolicyMigrationLedger,
+  consumerMigrationLedger,
+  consumerMigrationPolicy,
   fleetWorkflowPolicy,
   validateFleetPolicyExceptionRegistry,
 } from './policy.ts'
@@ -712,5 +714,128 @@ describe('consumer cold pnpm workflow', () => {
     expect(yaml).not.toContain('pnpm-state-v3-')
     expect(install).not.toHaveProperty('if')
     expect(pnpmStateSetupStep.run).toContain('mkdir -p')
+  })
+})
+
+describe('consumer migration ledger', () => {
+  const workflow = 'consumer-ci.yml'
+  const definition: GitHubWorkflowArgs = {
+    name: workflow,
+    on: 'push',
+    jobs: {
+      check: {
+        'runs-on': [...linuxX64Runner],
+        steps: [
+          { name: 'Restore legacy pnpm state', uses: 'actions/cache/restore@v4' },
+          { run: 'pnpm test' },
+          { name: 'Save legacy pnpm state', uses: 'actions/cache/save@v4' },
+          { name: 'Upload results', uses: 'actions/upload-artifact@v4', with: { path: 'results' } },
+        ],
+      },
+    },
+  }
+  const workflows = { [workflow]: definition }
+  const ledger = consumerMigrationLedger({ workflows })
+  const generate = (value = definition, baseline = ledger) =>
+    ciWorkflow({
+      ...value,
+      actionlint: false,
+      policy: consumerMigrationPolicy({ workflow, ledger: baseline }),
+    })
+
+  it('enforces by default, but generates existing pnpm state and artifact debt with a seeded ledger', () => {
+    expect(() => ciWorkflow({ ...definition, actionlint: false })).toThrow(/banned-action/)
+    expect(ledger.violations.filter((entry) => entry.rule === 'banned-action')).toHaveLength(3)
+    const output = generate()
+    const yaml = output.stringify({
+      location: '.github/workflows/consumer-ci.yml',
+      cwd: '/workspace',
+    })
+    expect(yaml).toContain('actions/cache/restore@v4')
+    expect(yaml).toContain('actions/cache/save@v4')
+    expect(yaml).toContain('actions/upload-artifact@v4')
+  })
+
+  it('rejects new debt both when generating and refreshing', () => {
+    const changed: GitHubWorkflowArgs = {
+      ...definition,
+      jobs: {
+        check: {
+          ...definition.jobs.check!,
+          steps: [...definition.jobs.check!.steps, { uses: 'actions/download-artifact@v4' }],
+        },
+      },
+    }
+    expect(() => generate(changed)).toThrow(/NEW/)
+    expect(() => consumerMigrationLedger({ workflows: { [workflow]: changed }, ledger })).toThrow(
+      /NEW/,
+    )
+  })
+
+  it('refreshes shrink-only, preserves hand-rolled ledgers and filters by workflow', () => {
+    const clean: GitHubWorkflowArgs = {
+      ...definition,
+      jobs: { check: { ...definition.jobs.check!, steps: [{ run: 'pnpm test' }] } },
+    }
+    const refreshed = consumerMigrationLedger({
+      workflows: { [workflow]: generate(clean).data },
+      ledger,
+    })
+    expect(refreshed.violations).toEqual([])
+    const multiWorkflowLedger = {
+      violations: [
+        ...ledger.violations,
+        ...ledger.violations.map((entry) => ({ ...entry, workflow: 'other.yml' })),
+      ],
+    }
+    expect(consumerMigrationPolicy({ workflow, ledger: multiWorkflowLedger }).ledger).toEqual(
+      ledger.violations,
+    )
+    expect(() => generate(definition, JSON.parse(JSON.stringify(ledger)))).not.toThrow()
+    expect(() =>
+      ciWorkflow({
+        ...definition,
+        actionlint: false,
+        policy: fleetWorkflowPolicy({
+          repository: '${{ github.repository }}',
+          workflow,
+          mode: 'report',
+          ledger: decodeWorkflowPolicyLedger(ledger.violations),
+        }),
+      }),
+    ).not.toThrow()
+  })
+
+  it.each([
+    ['pull-request-target', { ...definition, on: 'pull_request_target' as const }],
+    ['fleet-pr-without-same-repo-guard', { ...definition, on: 'pull_request' as const }],
+    [
+      'fork-controlled-runner',
+      {
+        ...definition,
+        on: 'pull_request' as const,
+        jobs: {
+          check: {
+            ...definition.jobs.check!,
+            if: sameRepoPullRequestGuard(),
+            'runs-on': '${{ github.event.pull_request.head.repo.name }}',
+          },
+        },
+      },
+    ],
+  ])('never seeds or accepts forbidden rule %s', (rule, value) => {
+    const violations = collectFleetPolicyMigrationLedger({
+      workflows: { [workflow]: value },
+      repository: '${{ github.repository }}',
+    })
+    expect(violations.some((entry) => entry.rule === rule)).toBe(true)
+    const forbiddenLedger = { violations }
+    expect(() => consumerMigrationLedger({ workflows: { [workflow]: value } })).toThrow()
+    expect(() =>
+      validateWorkflowPolicy({
+        workflow: value,
+        policy: consumerMigrationPolicy({ workflow, ledger: forbiddenLedger }),
+      }),
+    ).toThrow()
   })
 })

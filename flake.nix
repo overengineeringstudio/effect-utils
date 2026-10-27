@@ -420,6 +420,12 @@ rec {
 
         apps =
           githubRepoSettingsApps
+          // {
+            ci-storage = flake-utils.lib.mkApp {
+              drv = nativeProductPackages.ci-storage;
+              exePath = "/bin/ci-storage";
+            };
+          }
           // pkgs.lib.optionalAttrs (nativeProductPackages ? otelite) {
             otelite = flake-utils.lib.mkApp {
               drv = nativeProductPackages.otelite;

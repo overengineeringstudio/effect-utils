@@ -65,6 +65,11 @@ export const defaultRefPolicyCheckJob = (opts: DefaultRefPolicyCheckJobOptions =
   } satisfies GitHubWorkflowJob
 }
 export {
+  consumerMigrationLedger,
+  consumerMigrationPolicy,
+  fleetWorkflowPolicy,
+} from './ci-workflow/policy.ts'
+export {
   cargoClippyJob,
   cargoClippyStep,
   cargoFmtJob,
