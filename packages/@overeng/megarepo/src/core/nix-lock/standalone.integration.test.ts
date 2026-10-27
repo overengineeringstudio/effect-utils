@@ -94,6 +94,102 @@ describe('standalone root lock synchronization', () => {
       }).pipe(withServices),
   )
 
+  it.effect('synchronizes every nested duplicate even without a named direct root input', () =>
+    Effect.gen(function* () {
+      const { fs, root } = yield* fixture
+      const nested = {
+        version: 7,
+        root: 'consumer',
+        nodes: {
+          consumer: { inputs: { tool: 'tool' } },
+          tool: { inputs: { library: 'library_2' } },
+          library_2: { original, locked: { ...locked, rev: 'b'.repeat(40) } },
+          library_3: { original, locked: { ...locked, rev: 'c'.repeat(40) } },
+        },
+      }
+      yield* fs.writeFileString(`${root}flake.lock`, encodeJson(nested))
+      expect((yield* syncStandaloneLocks({ root, input: 'library' })).changed).toContain(
+        'flake.lock',
+      )
+      yield* syncStandaloneLocks({ root, input: 'library', write: true })
+      expect(decodeJson(yield* fs.readFileString(`${root}flake.lock`))).toEqual({
+        ...nested,
+        nodes: {
+          ...nested.nodes,
+          library_2: { original, locked },
+          library_3: { original, locked },
+        },
+      })
+      expect((yield* syncStandaloneLocks({ root, input: 'library' })).changed).toEqual([])
+    }).pipe(withServices),
+  )
+
+  it.effect('preflights a nested duplicate with a differing original before any write', () =>
+    Effect.gen(function* () {
+      const { fs, root } = yield* fixture
+      const nestedMismatch = {
+        ...lock(),
+        nodes: {
+          ...lock().nodes,
+          library_3: { original: { ...original, ref: 'main' }, locked },
+        },
+      }
+      const mismatchContent = encodeJson(nestedMismatch)
+      yield* fs.writeFileString(`${root}nix/tool/flake.lock`, mismatchContent)
+      const before = yield* fs.readFileString(`${root}flake.lock`)
+      expect(
+        Exit.isFailure(
+          yield* Effect.exit(syncStandaloneLocks({ root, input: 'library', write: true })),
+        ),
+      ).toBe(true)
+      expect(yield* fs.readFileString(`${root}flake.lock`)).toBe(before)
+      expect(yield* fs.readFileString(`${root}nix/tool/flake.lock`)).toBe(mismatchContent)
+    }).pipe(withServices),
+  )
+
+  it.effect('fails closed on a missing declared root before writing an earlier valid lock', () =>
+    Effect.gen(function* () {
+      const { fs, root } = yield* fixture
+      const malformed = encodeJson({ ...lock(), root: 'missing-root' })
+      yield* fs.writeFileString(`${root}nix/tool/flake.lock`, malformed)
+      const before = yield* fs.readFileString(`${root}flake.lock`)
+      for (const write of [false, true]) {
+        expect(
+          Exit.isFailure(
+            yield* Effect.exit(
+              syncStandaloneLocks({
+                root,
+                input: 'library',
+                write,
+              }),
+            ),
+          ),
+        ).toBe(true)
+      }
+      expect(yield* fs.readFileString(`${root}flake.lock`)).toBe(before)
+      expect(yield* fs.readFileString(`${root}nix/tool/flake.lock`)).toBe(malformed)
+    }).pipe(withServices),
+  )
+
+  it.effect(
+    'atomically replaces a lock while an existing hard link retains the complete old file',
+    () =>
+      Effect.gen(function* () {
+        const { fs, root } = yield* fixture
+        const target = `${root}nix/tool/flake.lock`
+        const held = `${root}held.lock`
+        const before = yield* fs.readFileString(target)
+        yield* fs.link(target, held)
+        yield* syncStandaloneLocks({ root, input: 'library', write: true })
+        // An in-place/truncating write would also change the old inode through this hard link.
+        expect(yield* fs.readFileString(held)).toBe(before)
+        expect(decodeJson(yield* fs.readFileString(target))).toEqual(lock())
+        expect(
+          (yield* fs.readDirectory(`${root}nix/tool`)).filter((name) => name.includes('.tmp-')),
+        ).toEqual([])
+      }).pipe(withServices),
+  )
+
   it.effect('preflights differing originals across the whole cohort without partial writes', () =>
     Effect.gen(function* () {
       const { fs, root } = yield* fixture

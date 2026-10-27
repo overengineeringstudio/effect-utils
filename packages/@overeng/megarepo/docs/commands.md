@@ -48,13 +48,16 @@ mr lock-sync --input effect-utils --root-lock flake.lock --write
 The default authority is `devenv.lock`. Discovery includes tracked and non-ignored
 untracked `flake.lock` files, including the root `flake.lock` when `devenv.lock`
 is authoritative. Ignored caches and member mounts are not traversed.
-The named GitHub/git input is matched through each lock's root input map,
-including follows paths, not through potentially suffixed node IDs.
-Locks without that input are unchanged.
+The authoritative GitHub/git input is resolved through the root input map,
+including follows paths. Every node in each standalone lock is inspected,
+including nested duplicates and locks without a direct root reference. Nodes
+with the same original or repository identity belong to the selected cohort;
+the named direct input is also validated even if its repository differs.
 
 Both modes share discovery and comparison. Every matching input must have the
 same structural `original` as the root; a different original, unresolved input,
-or malformed lock fails before any write. Write mode copies the complete
+missing declared root node, or malformed lock fails before any write.
+Write mode atomically replaces each changed lock and copies the complete
 `locked` object (including revision, NAR hash, timestamp and extra metadata)
 without re-resolving the ref. It preserves `original` (including `ref=published`),
 local dependency edges and all unrelated nodes. Repeating a successful write

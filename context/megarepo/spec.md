@@ -366,8 +366,11 @@ without rewriting it. Member repins are made as member PRs.
 `mr lock-sync --input <name> [--root-lock devenv.lock|flake.lock]` checks every
 tracked or non-ignored standalone `flake.lock` in the current consumer repository
 against the root lock's named input (including follows paths). `--write` copies its complete `locked`
-metadata without resolving the input again. `original` must match structurally
-across the entire cohort before any write and is never changed. The default
+metadata without resolving the input again. Every node is inspected, including
+nested duplicates without a direct root reference. Matching repository nodes must
+have the same structural `original` across the cohort before any write, and
+`original` is never changed. A missing declared root fails preflight. Each changed
+lock is replaced atomically. The default
 authority is `devenv.lock`; member mounts and ignored caches are excluded. This is
 separate from member-worktree synchronization, leaves `megarepo.lock` untouched,
 and assumes the authoritative root already passes `mr:lock-sync-check`.
