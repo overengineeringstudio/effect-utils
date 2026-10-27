@@ -1,3 +1,4 @@
+import { NodeFileSystem } from '@effect/platform-node'
 import { Context, Effect, Layer, Option, Schema } from 'effect'
 /**
  * GitHub internal web API client.
@@ -21,6 +22,7 @@ import {
   isSessionNearExpiry,
 } from './GitHubSession.ts'
 import { withGitHubSpan } from './observability.ts'
+import { usageLedgerLayer } from './UsageLedger.ts'
 
 const GITHUB_BASE = 'https://github.com'
 
@@ -53,7 +55,9 @@ export const BackscrollResponse = Schema.Struct({
 })
 
 const makeGitHubInternal = Effect.gen(function* () {
-  const httpClient = (yield* HttpClient.HttpClient).pipe(HttpClient.withScope)
+  const httpClient = (yield* HttpClient.HttpClient.pipe(
+    Effect.provide(usageLedgerLayer('gh-cli').pipe(Layer.provide(NodeFileSystem.layer))),
+  )).pipe(HttpClient.withScope)
 
   /** Execute and decode an authenticated JSON request before its response scope closes. */
   const internalGetJson = ({ path, session }: { path: string; session: SessionData }) =>
