@@ -3,6 +3,7 @@ import {
   collectEffectiveWorkflowPolicyViolations,
   collectWorkflowPolicyViolations,
   decodeWorkflowPolicyLedger,
+  validateWorkflowPolicy,
   WorkflowPolicyError,
 } from '../../packages/@overeng/genie/src/runtime/github-workflow/policy.ts'
 import type {
@@ -79,15 +80,31 @@ export const fleetWorkflowPolicy = ({
   ...(ledger === undefined ? {} : { ledger }),
 })
 
-/** This repository's existing allocations/storage are inventoried, never excepted. */
-export const effectUtilsWorkflowPolicy = (workflow: string): WorkflowPolicy =>
+/** Consumer-owned migration inventory; repository identity must match when seeding. */
+export const consumerMigrationPolicy = ({
+  repository = '${{ github.repository }}',
+  workflow,
+  ledger,
+}: {
+  readonly repository?: string
+  readonly workflow: string
+  readonly ledger: { readonly violations: unknown }
+}): WorkflowPolicy =>
   fleetWorkflowPolicy({
-    repository: 'overengineeringstudio/effect-utils',
+    repository,
     workflow,
     mode: 'report',
-    ledger: decodeWorkflowPolicyLedger(migrationLedger.violations).filter(
+    ledger: decodeWorkflowPolicyLedger(ledger.violations).filter(
       (entry) => entry.workflow === workflow,
     ),
+  })
+
+/** This repository uses the same consumer migration contract as downstream workflows. */
+export const effectUtilsWorkflowPolicy = (workflow: string): WorkflowPolicy =>
+  consumerMigrationPolicy({
+    repository: 'overengineeringstudio/effect-utils',
+    workflow,
+    ledger: migrationLedger,
   })
 
 /** Stale or unmatched exceptions belong to a complete repository census, not one workflow. */
@@ -142,3 +159,27 @@ export const collectFleetPolicyMigrationLedger = ({
       policy: fleetWorkflowPolicy({ repository, workflow, exceptionEntries }),
     }),
   )
+
+/**
+ * Seed once from raw workflow definitions, then refresh with the committed ledger.
+ * Refresh rejects new debt; even the initial seed rejects security violations.
+ * Use the result as createGenieOutput data for normal genie freshness checks.
+ */
+export const consumerMigrationLedger = ({
+  repository = '${{ github.repository }}',
+  workflows,
+  ledger,
+}: {
+  readonly repository?: string
+  readonly workflows: Readonly<Record<string, GitHubWorkflowArgs>>
+  readonly ledger?: { readonly violations: unknown }
+}): { readonly violations: readonly WorkflowPolicyViolation[] } => {
+  const observations = collectFleetPolicyMigrationLedger({ repository, workflows })
+  const baseline = ledger ?? { violations: observations }
+  for (const [workflow, value] of Object.entries(workflows))
+    validateWorkflowPolicy({
+      workflow: value,
+      policy: consumerMigrationPolicy({ repository, workflow, ledger: baseline }),
+    })
+  return { violations: observations }
+}
