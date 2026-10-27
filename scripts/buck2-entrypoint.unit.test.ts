@@ -4,6 +4,8 @@ import {
   gateCgroupRelation,
   gateDaemonStopDecision,
   gateScopeIdentity,
+  isOnlyReapiUnavailable,
+  runWithReaderCacheFallback,
 } from './buck2-entrypoint.ts'
 
 const root = '/project/root'
@@ -78,4 +80,61 @@ it('reuses parent, nested and sibling cgroups but migrates determinably foreign 
   expect(
     gateCgroupRelation({ caller: '0::/user.slice/session.scope', daemon: `0::${scope}` }),
   ).toBe('unknown')
+})
+
+const reUnavailable = `Error: (Failed to query capabilities of remote: code: 'The service is currently unavailable', message: "tls handshake eof", source: tonic::transport::Error(Transport, ConnectError(...)))`
+const reWarning =
+  'WARN buck2_execute::re::client: Failed to connect to RE, retrying after sleeping 1 seconds: Remote Execution Error on REClientBuilder ...'
+
+it('classifies only RE initialization/capabilities/connect unavailable diagnostics', () => {
+  expect(isOnlyReapiUnavailable(reUnavailable)).toBe(true)
+  expect(isOnlyReapiUnavailable(`${reWarning}\n${reUnavailable}\n${reUnavailable}`)).toBe(true)
+  expect(
+    isOnlyReapiUnavailable(`Error: Remote Execution Error on REClientBuilder: status: Unavailable`),
+  ).toBe(true)
+  expect(
+    isOnlyReapiUnavailable(`Command failed: Failed to connect to RE: code: 'Unavailable'`),
+  ).toBe(true)
+  for (const output of [
+    '',
+    reWarning,
+    'Error: service unavailable',
+    'error[E0308]: mismatched types',
+    'error TS2322: Type is not assignable',
+    'TESTS FAILED: assertion failed',
+    reUnavailable.replace('The service is currently unavailable', 'Unauthenticated'),
+    reUnavailable.replace('The service is currently unavailable', 'PermissionDenied'),
+    reUnavailable.replace('tls handshake eof', 'digest mismatch'),
+    reUnavailable.replace('tls handshake eof', 'checksum mismatch'),
+    reUnavailable.replace('tls handshake eof', 'certificate expired'),
+    `${reUnavailable}\nerror[E0308]: mismatched types`,
+    `${reUnavailable}\nTESTS FAILED: assertion failed`,
+    `${reUnavailable}\nError: permission denied`,
+    `${reUnavailable}\nError: digest mismatch`,
+    `${reUnavailable}\nError: unknown failure`,
+  ])
+    expect(isOnlyReapiUnavailable(output)).toBe(false)
+})
+
+it('never reruns writers or successes and makes a failed rerun final', async () => {
+  for (const reader of [true, false]) {
+    for (const exitCode of [0, 1]) {
+      let runs = 0
+      let reruns = 0
+      const result = await runWithReaderCacheFallback({
+        reader,
+        run: async () => {
+          runs++
+          return { exitCode, output: reUnavailable }
+        },
+        fallback: async () => {
+          reruns++
+          return 17
+        },
+      })
+      expect(runs).toBe(1)
+      expect(reruns).toBe(reader === true && exitCode !== 0 ? 1 : 0)
+      expect(result).toBe(reruns === 1 ? 17 : exitCode)
+    }
+  }
 })

@@ -1111,6 +1111,12 @@ describe('cache admission evidence schema', () => {
       admissionRetrySuccesses: { reapi: 0, archiveOrigin: 0 },
     }
     expect(decodeCacheAdmissionInvocation(row)).toEqual(row)
+    const event = 'reader-reapi-unavailable-rerun'
+    expect(decodeCacheAdmissionInvocation({ ...row, event }).event).toBe(event)
+    expect(() => decodeCacheAdmissionInvocation({ ...row, event: 'unknown-event' })).toThrow()
+    expect(() => decodeCacheAdmissionInvocation({
+      ...row, event, admissionFallbacks: { reapi: 0, archiveOrigin: 0 },
+    })).toThrow()
     const failure = { class: 'deadline', phase: 'tls', elapsedMs: 2510, deadlineMs: 2500 }
     expect(decodeCacheAdmissionInvocation({ ...row, reapiFailure: failure }).reapiFailure).toEqual(failure)
     for (const reapiDecision of ['first-probe-for-ci-job', 'pinned-from-first-probe', 'unpinned-missing-job-instance'])

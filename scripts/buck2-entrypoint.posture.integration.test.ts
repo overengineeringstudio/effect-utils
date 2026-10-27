@@ -10,6 +10,7 @@ import {
   statSync,
   writeFileSync,
 } from 'node:fs'
+import { createServer } from 'node:http2'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -22,6 +23,7 @@ import {
   directBuckArguments,
   cacheDaemonPolicyArguments,
 } from './buck2-entrypoint.ts'
+import './buck2-entrypoint.unit.test.ts'
 
 const secret = 'planted-writer-credential-never-persist'
 const values = {
@@ -30,6 +32,111 @@ const values = {
 }
 
 describe('daemon RE posture', () => {
+  it('reruns an admitted reader once without remote cache and records evidence end-to-end', async () => {
+    const root = realpathSync(mkdtempSync(join(tmpdir(), 'buck2-reader-rerun-')))
+    const grpc = createServer()
+    grpc.on('stream', (stream) => {
+      stream.on('data', () => {})
+      stream.on('end', () => {
+        stream.respond({ ':status': 200, 'content-type': 'application/grpc', 'grpc-status': '0' })
+        stream.end(Buffer.from([0, 0, 0, 0, 0]))
+      })
+    })
+    await new Promise<void>((resolve) => grpc.listen(0, '127.0.0.1', resolve))
+    try {
+      const address = grpc.address()
+      if (address === null || typeof address === 'string')
+        throw new Error('missing fixture address')
+      writeFileSync(join(root, '.buckroot'), '')
+      writeFileSync(
+        join(root, '.buckconfig'),
+        `[buck2]\nremote_cache_enabled = true\nallow_cache_uploads = false\nfile_watcher = fs_hash_crawler\n[buck2_re_client]\naction_cache_address = grpc://127.0.0.1:${address.port}\ntls = false\n`,
+      )
+      const native = join(root, 'native')
+      writeFileSync(
+        native,
+        `#!${process.execPath}
+import {existsSync,readFileSync,writeFileSync,appendFileSync,rmSync} from 'node:fs';
+const args=process.argv.slice(2), state='daemon.json';
+if(args.includes('status')) { if(existsSync(state)) console.log(readFileSync(state,'utf8')); }
+else if(args.includes('kill')) rmSync(state,{force:true});
+else if(args.includes('audit')) writeFileSync(state,JSON.stringify({project_root:process.cwd(),isolation_dir:'v2',active_commands:[],process_info:{pid:12345},start_time:'fixture'}));
+else if(args.includes('build')) {
+ const policy=readFileSync(args[args.lastIndexOf('--config-file')+1],'utf8');
+ appendFileSync('commands.jsonl',JSON.stringify({args,policy,noRemote:process.env.BUCK2_NO_REMOTE_CACHE})+'\\n');
+ if(process.env.BUCK2_NO_REMOTE_CACHE!=='1') {
+  console.error("Error: (Failed to query capabilities of remote: code: 'The service is currently unavailable', message: \\"tls handshake eof\\")");
+  process.exit(1);
+ }
+ console.log('local build succeeded');
+} else process.exit(9);
+`,
+        { mode: 0o700 },
+      )
+      const evidence = join(root, 'evidence')
+      const child = Bun.spawn(
+        [
+          process.execPath,
+          join(import.meta.dir, 'buck2-entrypoint.ts'),
+          native,
+          'build',
+          '//:fixture',
+        ],
+        {
+          cwd: root,
+          env: {
+            ...process.env,
+            HOME: root,
+            XDG_CACHE_HOME: join(root, 'cache'),
+            BUCK2_PUBLIC_CACHE_READ_ONLY: '1',
+            BUCK2_NO_REMOTE_CACHE: '',
+            BUCK2_PRIVATE_CACHE_WRITE_AUTH: '',
+            BUCK2_PRIVATE_CACHE_WRITE_BASIC_AUTH: '',
+            BUCK2_CACHE_WRITE_BASIC_AUTH: '',
+            CI: '1',
+            GITHUB_RUN_ID: 'reader-rerun-fixture',
+            GITHUB_JOB: 'reader-rerun-fixture',
+            BUCK2_CI_JOB_INSTANCE: 'reader-rerun-fixture',
+            GITHUB_ACTIONS: '',
+            CI_BUCK2_CACHE_EVIDENCE_PATH: evidence,
+            CI_BUCK2_CACHE_EVIDENCE_START: '',
+          },
+          stdout: 'pipe',
+          stderr: 'pipe',
+        },
+      )
+      const [stdout, stderr, code] = await Promise.all([
+        new Response(child.stdout).text(),
+        new Response(child.stderr).text(),
+        child.exited,
+      ])
+      expect(code, stderr).toBe(0)
+      expect(stdout).toContain('local build succeeded')
+      expect(stderr).toContain('rerunning once without remote cache')
+      const commands = readFileSync(join(root, 'commands.jsonl'), 'utf8')
+        .trim()
+        .split('\n')
+        .map((line) => JSON.parse(line))
+      expect(commands).toHaveLength(2)
+      expect(buckConfigValues(commands[0].policy)['buck2.remote_cache_enabled']).toBe('true')
+      expect(commands[1].noRemote).toBe('1')
+      expect(buckConfigValues(commands[1].policy)['buck2.remote_cache_enabled']).toBe('false')
+      expect(buckConfigValues(commands[1].policy)['buck2.allow_cache_uploads']).toBe('false')
+      const rows = readFileSync(`${evidence}.admission.jsonl`, 'utf8')
+        .trim()
+        .split('\n')
+        .map((line) => JSON.parse(line))
+      expect(rows).toHaveLength(2)
+      expect(rows[1].event).toBe('reader-reapi-unavailable-rerun')
+      expect(rows[1].admissionFallbacks.reapi).toBe(1)
+      expect(rows[1].invocationId).not.toBe(rows[0].invocationId)
+    } finally {
+      await new Promise<void>((resolve, reject) =>
+        grpc.close((error) => (error === undefined ? resolve() : reject(error))),
+      )
+      rmSync(root, { recursive: true, force: true })
+    }
+  }, 15000)
   it('pins before direct and nested argfile payloads and refuses unresolved argfiles', () => {
     const cwd = mkdtempSync(join(tmpdir(), 'buck2-policy-argfiles-'))
     try {

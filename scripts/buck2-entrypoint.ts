@@ -321,6 +321,8 @@ export const directBuckArguments = async ({
   deadlineMs = 2500,
   probeDeadlineSignal,
   beforeCachePosture,
+  onCachePosture,
+  readerRerun = false,
 }: {
   readonly args: readonly string[]
   readonly cwd: string
@@ -331,6 +333,9 @@ export const directBuckArguments = async ({
   readonly probeDeadlineSignal?: (endpoint: AdmissionProbeEndpoint) => AbortSignal | undefined
   /** Check effective post-probe policy before changing the daemon-scoped root overlay. */
   readonly beforeCachePosture?: CachePostureCheck
+  /** Observe the effective admitted posture, including CLI policy and probe fallback. */
+  readonly onCachePosture?: CachePostureCheck
+  readonly readerRerun?: boolean
 }): Promise<string[]> => {
   admissionExpires = Date.now() + 5000
   failedOpen = false
@@ -520,7 +525,7 @@ export const directBuckArguments = async ({
                 }),
             }),
         })
-  admission.admissionFallbacks.reapi = remoteAvailable === false ? 1 : 0
+  admission.admissionFallbacks.reapi = remoteAvailable === false || readerRerun === true ? 1 : 0
   if (remoteAvailable === false && reapiDiagnostics.failure !== undefined) {
     const failure = /^class=([a-z-]+) phase=([a-z]+) elapsed_ms=(\d+) deadline_ms=(\d+)$/u.exec(
       reapiDiagnostics.failure,
@@ -537,9 +542,16 @@ export const directBuckArguments = async ({
   if (evidencePath !== undefined && evidencePath !== '') {
     try {
       mkdirSync(dirname(evidencePath), { recursive: true })
-      appendFileSync(`${evidencePath}.admission.jsonl`, `${JSON.stringify(admission)}\n`, {
-        mode: 0o600,
-      })
+      appendFileSync(
+        `${evidencePath}.admission.jsonl`,
+        `${JSON.stringify({
+          ...admission,
+          ...(readerRerun === true ? { event: 'reader-reapi-unavailable-rerun' } : {}),
+        })}\n`,
+        {
+          mode: 0o600,
+        },
+      )
     } catch {
       writeSync(2, 'warning: Buck2 admission evidence could not be persisted\n')
     }
@@ -572,6 +584,7 @@ export const directBuckArguments = async ({
   // its effective fallback, not an optimistic policy it will never execute.
   // Compare before mutating the shared overlay or starting/stopping any daemon.
   beforeCachePosture?.(values)
+  onCachePosture?.(values)
   // Native RE client construction ignores CLI config. Writer headers/endpoints must
   // be in the root overlay before daemon startup, including removal on public reads.
   if (
@@ -1397,6 +1410,97 @@ const warnStdio = (message: string): void => {
   }
 }
 
+/**
+ * Deliberately fail closed on unknown output. Every diagnostic must belong to
+ * RE client construction/capabilities, not merely contain an "unavailable" word.
+ */
+export const isOnlyReapiUnavailable = (output: string): boolean => {
+  const unavailable =
+    /(?:The service is currently unavailable|code:\s*['"]?Unavailable['"]?|status:\s*Unavailable)/iu
+  const scope =
+    /^(?:Error:|Command failed:)\s*\(?(?:Failed to query capabilities of remote|Remote Execution Error on REClientBuilder|Failed to connect to RE)\b/u
+  const forbidden =
+    /(?:unauthenticated|permission[ _-]?denied|unauthorized|authentication|authorization|invalid[_ -]argument|digest|checksum|corrupt|integrity|certificate|invalid peer|unknown issuer|error\[|compil(?:e|ation) error|test(?:s)? fail)/iu
+  let fatal = false
+  for (const raw of output.split(/\r?\n/u)) {
+    const line = raw
+      .replace(/\x1b\[[0-9;]*m/gu, '')
+      .replace(/^\[[^\]]+\]\s*/u, '')
+      .trim()
+    if (line === '') continue
+    if (forbidden.test(line) === true) return false
+    if (
+      /^WARN buck2_execute::re::client: Failed to connect to RE, retrying after sleeping \d+ seconds?: Remote Execution Error on REClientBuilder(?:\b|$)/u.test(
+        line,
+      ) === true
+    )
+      continue
+    if (scope.test(line) === false || unavailable.test(line) === false) return false
+    fatal = true
+  }
+  return fatal
+}
+
+/** There is intentionally no retry loop: the second result is always final. */
+export const runWithReaderCacheFallback = async ({
+  reader,
+  run,
+  fallback,
+}: {
+  readonly reader: boolean
+  readonly run: () => Promise<{ readonly exitCode: number; readonly output: string }>
+  readonly fallback: () => Promise<number>
+}): Promise<number> => {
+  const result = await run()
+  return reader === true && result.exitCode !== 0 && isOnlyReapiUnavailable(result.output) === true
+    ? fallback()
+    : result.exitCode
+}
+
+/** Tee both streams without retaining unbounded build output. Overflow refuses fallback. */
+const observeNativeCommand = async (
+  native: string,
+  args: readonly string[],
+): Promise<{ exitCode: number; output: string }> => {
+  const child = Bun.spawn([native, ...args], {
+    env: process.env,
+    stdin: 'inherit',
+    stdout: 'pipe',
+    stderr: 'pipe',
+  })
+  let output = ''
+  let overflow = false
+  let interrupted = false
+  const forward = (signal: NodeJS.Signals) => {
+    interrupted = true
+    child.kill(signal)
+  }
+  const signals = ['SIGINT', 'SIGTERM', 'SIGHUP'] as const
+  const handlers = signals.map((signal) => () => forward(signal))
+  for (const [index, signal] of signals.entries()) process.on(signal, handlers[index]!)
+  const tee = async (stream: ReadableStream<Uint8Array>, fd: number) => {
+    const decoder = new TextDecoder()
+    for await (const chunk of stream) {
+      writeSync(fd, chunk)
+      if (overflow === false) {
+        output += decoder.decode(chunk, { stream: true })
+        if (output.length > 262144) {
+          overflow = true
+          output = ''
+        }
+      }
+    }
+    if (overflow === false) output += decoder.decode()
+  }
+  try {
+    await Promise.all([tee(child.stdout, 1), tee(child.stderr, 2)])
+    const exitCode = await child.exited
+    return { exitCode, output: overflow === true || interrupted === true ? '' : output }
+  } finally {
+    for (const [index, signal] of signals.entries()) process.off(signal, handlers[index]!)
+  }
+}
+
 // Replaced by Nix; source execution receives the same library from devenv.
 declare const BUCK2_STDIO_LIBRARY: string
 if (import.meta.main === true) {
@@ -1468,12 +1572,20 @@ if (import.meta.main === true) {
     const launchCache = process.argv[3] === '--launch-cache' ? process.argv[4] : undefined
     const requestedArgs = process.argv.slice(launchCache === undefined ? 3 : 5)
     const root = findRoot(process.cwd())
+    let reader = false
+    let readerRerun = false
     const admit = async (beforeCachePosture?: CachePostureCheck): Promise<string[]> => {
       const prepared = await directBuckArguments({
         args: requestedArgs,
         cwd: process.cwd(),
         env: process.env,
         beforeCachePosture,
+        readerRerun,
+        onCachePosture: (values) => {
+          reader =
+            values['buck2.remote_cache_enabled'] !== 'false' &&
+            values['buck2.allow_cache_uploads'] === 'false'
+        },
       })
       const sentinel = prepared.indexOf('--')
       const configArgs = sentinel === -1 ? prepared : prepared.slice(0, sentinel)
@@ -1495,7 +1607,7 @@ if (import.meta.main === true) {
       }
       return prepared
     }
-    const admittedArgs =
+    const prepare = async (): Promise<string[]> =>
       root === undefined
         ? await admit()
         : await admitCacheDaemonCommand({
@@ -1505,6 +1617,7 @@ if (import.meta.main === true) {
             env: process.env,
             admit,
           })
+    const admittedArgs = await prepare()
     const args = nativeBuildIdArguments({
       args: admittedArgs,
       cwd: process.cwd(),
@@ -1538,7 +1651,31 @@ if (import.meta.main === true) {
     } catch (error) {
       warnStdio(`warning: Buck2 stdio flag restoration failed: ${String(error)}\n`)
     }
-    process.execve(native, [native, ...args], process.env)
+    if (reader === true) {
+      process.exitCode = await runWithReaderCacheFallback({
+        reader,
+        run: () => observeNativeCommand(native, args),
+        fallback: async () => {
+          warning({
+            message:
+              'REAPI became unavailable after admission; rerunning once without remote cache',
+            env: process.env,
+          })
+          if (launchCache !== undefined && launchCache !== '') rmSync(launchCache, { force: true })
+          process.env['BUCK2_NO_REMOTE_CACHE'] = '1'
+          process.env['BUCK_WRAPPER_UUID'] = randomUUID()
+          readerRerun = true
+          const fallbackArgs = nativeBuildIdArguments({
+            args: await prepare(),
+            cwd: process.cwd(),
+            env: process.env,
+          })
+          return (await observeNativeCommand(native, fallbackArgs)).exitCode
+        },
+      })
+    } else {
+      process.execve(native, [native, ...args], process.env)
+    }
   } catch (error) {
     writeSync(2, `${error instanceof Error ? error.message : String(error)}\n`)
     process.exitCode = 1
