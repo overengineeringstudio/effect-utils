@@ -28,8 +28,8 @@ import {
   directBuckArguments,
   cacheDaemonPolicyArguments,
 } from './buck2-entrypoint.ts'
-import * as readerRerunUnitTests from './buck2-entrypoint.unit.test.ts'
-void readerRerunUnitTests
+import * as readerShadowUnitTests from './buck2-entrypoint.unit.test.ts'
+void readerShadowUnitTests
 
 const secret = 'planted-writer-credential-never-persist'
 const values = {
@@ -38,8 +38,8 @@ const values = {
 }
 
 describe('daemon RE posture', () => {
-  it('reruns an admitted reader once without remote cache and records evidence end-to-end', async () => {
-    const root = realpathSync(mkdtempSync(join(tmpdir(), 'buck2-reader-rerun-')))
+  it('records reader REAPI shadow evidence without rerunning or replacing the native failure', async () => {
+    const root = realpathSync(mkdtempSync(join(tmpdir(), 'buck2-reader-shadow-')))
     const grpc = createServer()
     grpc.on('stream', (stream) => {
       stream.on('data', () => {})
@@ -74,11 +74,8 @@ else if(args.includes('audit')) writeFileSync(state,JSON.stringify({project_root
 else if(args.includes('build')) {
  const policy=readFileSync(args[args.lastIndexOf('--config-file')+1],'utf8');
  appendFileSync('commands.jsonl',JSON.stringify({args,policy,noRemote:process.env.BUCK2_NO_REMOTE_CACHE})+'\\n');
- if(process.env.BUCK2_NO_REMOTE_CACHE!=='1') {
-  console.error(${JSON.stringify(incidentOutput)});
-  process.exit(1);
- }
- console.log('local build succeeded');
+ console.error(${JSON.stringify(incidentOutput)});
+ process.exit(1);
 } else process.exit(9);
 `,
         { mode: 0o700 },
@@ -104,9 +101,9 @@ else if(args.includes('build')) {
             BUCK2_PRIVATE_CACHE_WRITE_BASIC_AUTH: '',
             BUCK2_CACHE_WRITE_BASIC_AUTH: '',
             CI: '1',
-            GITHUB_RUN_ID: 'reader-rerun-fixture',
-            GITHUB_JOB: 'reader-rerun-fixture',
-            BUCK2_CI_JOB_INSTANCE: 'reader-rerun-fixture',
+            GITHUB_RUN_ID: 'reader-shadow-fixture',
+            GITHUB_JOB: 'reader-shadow-fixture',
+            BUCK2_CI_JOB_INSTANCE: 'reader-shadow-fixture',
             GITHUB_ACTIONS: '',
             CI_BUCK2_CACHE_EVIDENCE_PATH: evidence,
             CI_BUCK2_CACHE_EVIDENCE_START: '',
@@ -120,26 +117,58 @@ else if(args.includes('build')) {
         new Response(child.stderr).text(),
         child.exited,
       ])
-      expect(code, stderr).toBe(0)
-      expect(stdout).toContain('local build succeeded')
-      expect(stderr).toContain('rerunning once without remote cache')
+      expect(code, stderr).toBe(1)
+      expect(stdout).toBe('')
+      expect(stderr).toContain(incidentOutput)
+      expect(stderr).toContain('no rerun happened; the native failure stands')
       const commands = readFileSync(join(root, 'commands.jsonl'), 'utf8')
         .trim()
         .split('\n')
         .map((line) => JSON.parse(line))
-      expect(commands).toHaveLength(2)
+      expect(commands).toHaveLength(1)
+      expect(commands[0].noRemote).not.toBe('1')
       expect(buckConfigValues(commands[0].policy)['buck2.remote_cache_enabled']).toBe('true')
-      expect(commands[1].noRemote).toBe('1')
-      expect(buckConfigValues(commands[1].policy)['buck2.remote_cache_enabled']).toBe('false')
-      expect(buckConfigValues(commands[1].policy)['buck2.allow_cache_uploads']).toBe('false')
+      expect(buckConfigValues(commands[0].policy)['buck2.allow_cache_uploads']).toBe('false')
       const rows = readFileSync(`${evidence}.admission.jsonl`, 'utf8')
         .trim()
         .split('\n')
         .map((line) => JSON.parse(line))
       expect(rows).toHaveLength(2)
-      expect(rows[1].event).toBe('reader-reapi-unavailable-rerun')
-      expect(rows[1].admissionFallbacks.reapi).toBe(1)
-      expect(rows[1].invocationId).not.toBe(rows[0].invocationId)
+      expect(rows[1].event).toBe('reader-reapi-unavailable-shadow')
+      expect(rows[1].admissionFallbacks.reapi).toBe(0)
+      expect(rows[1].invocationId).toBe(rows[0].invocationId)
+      expect(rows[1].shadow).toEqual({
+        cause: {
+          capabilitiesUnavailable: true,
+          connectRetry: true,
+          clientInitialization: true,
+          connectUnavailable: false,
+          transportMessage: 'tls-handshake-eof',
+        },
+        command: { subcommand: 'build', argumentCount: commands[0].args.length },
+        nativeExitCode: 1,
+        durationMs: expect.any(Number),
+        failedActionCount: 1,
+        wouldDisableRemoteCache: true,
+      })
+      expect(Number.isSafeInteger(rows[1].shadow.durationMs)).toBe(true)
+      expect(rows[1].shadow.durationMs).toBeGreaterThanOrEqual(0)
+      const collector = Bun.spawn(
+        [
+          process.execPath,
+          join(import.meta.dir, '../genie/ci-scripts/buck2-cache-evidence.ts'),
+          '--output',
+          evidence,
+        ],
+        {
+          stdout: 'pipe',
+          stderr: 'pipe',
+        },
+      )
+      expect(await collector.exited, await new Response(collector.stderr).text()).toBe(0)
+      const projected = JSON.parse(readFileSync(evidence, 'utf8'))
+      expect(projected.admissionInvocations).toEqual([rows[1]])
+      expect(projected.admissionFallbacks.reapi).toBe(0)
     } finally {
       await new Promise<void>((resolve, reject) =>
         grpc.close((error) => (error === undefined ? resolve() : reject(error))),

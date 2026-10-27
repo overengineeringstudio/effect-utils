@@ -183,21 +183,21 @@ config (local execution, remote reuse; `remote_enabled = False`).
 Read-only endpoint admission failures fail open; either selected writer posture
 fails closed on REAPI unavailability. If an admitted reader command fails solely
 with an RE-client initialization/capabilities/connect unavailable diagnostic, the
-launcher reruns it at most once using `BUCK2_NO_REMOTE_CACHE=1` (reads and uploads
-disabled), after re-admitting the changed daemon posture. It emits a warning and
-a `reader-reapi-unavailable-rerun` event in the admission JSONL evidence, with a
-fresh invocation ID and an REAPI fallback count. Unknown/mixed diagnostics,
-compilation/test failures, authentication/authorization failures, integrity errors,
-and writer postures never trigger this rerun; its result is final.
+launcher records `reader-reapi-unavailable-shadow` evidence and warns that no
+rerun happened. The native failure and exit code stand; there is no second
+invocation, no cache-posture change, and no admission fallback increment.
+This shadow-only observation preserves the strict outage posture. Unknown/mixed
+diagnostics, compilation/test failures, authentication/authorization failures,
+integrity errors, and writer postures produce no shadow event.
 Stdout remains inherited. Supervision applies only when stderr is not a TTY;
-terminal invocations and `run`, `install`, and `bxl` execute unchanged without a
-rerun, preserving superconsole and interactive user-binary behavior. The shared
+terminal invocations and `run`, `install`, and `bxl` execute unchanged without
+shadow classification, preserving superconsole and interactive user-binary behavior. The shared
 subcommand scan skips global option values, so an isolation named `run` is not a
 run command. Captured
 stderr is bounded to 256 KiB of bytes before decoding; overflow or signal
-termination forbids rerun. The stderr tee advances short writes and waits on
+termination forbids shadow evidence. The stderr tee advances short writes and waits on
 nonblocking backpressure. Launcher interruption cancels a stalled backpressure
-wait and disables fallback; a normal native exit does not cancel forwarding.
+wait and disables shadow evidence; a normal native exit does not cancel forwarding.
 After normal exit, stderr drains completely before returning the child's result.
 A consumer that remains stalled without interruption blocks as native Buck would.
 A failed or interrupted output consumer still drains/discards remaining stderr
@@ -208,7 +208,7 @@ timestamps, accepts only enumerated progress/statistics lines, and validates eve
 `Action failed:` block as `remote_action_cache` RE-client initialization followed
 by an unavailable capabilities error. Digest identifiers are metadata permitted
 only inside a validated block; digest mismatches remain integrity failures.
-Non-empty action stdout/stderr rejects rerun. `BUILD ERRORS (N)` must match the
+Non-empty action stdout/stderr rejects shadow classification. `BUILD ERRORS (N)` must match the
 summary block count; repeated live failure blocks must match the summary's action
 set. The verbatim public CI fixture exercises both live and repeated summary
 diagnostics through the launcher's captured native stderr.
@@ -642,8 +642,8 @@ managed root overlay before daemon startup.
 
 Admission is a reachability snapshot. The pinned native client has ten hard-coded
 connection attempts with 45 seconds of cumulative backoff and no configurable
-startup fallback. After this fails, the reader-only, strictly classified once-only
-launcher rerun described above applies; other native failures remain final.
+startup fallback. After this fails, eligible readers record the strictly classified
+shadow observation described above. Every native failure remains final.
 
 ## Reuse Verification
 
@@ -708,9 +708,44 @@ JSONL row to `${CI_BUCK2_CACHE_EVIDENCE_PATH}.admission.jsonl`, with the authori
 ```
 
 The optional `event` discriminator is repository-local, case-sensitive, and accepts
-only `reader-reapi-unavailable-rerun`, requiring `admissionFallbacks.reapi = 1`.
-It denotes the new no-cache invocation, not a successful probe retry; unknown
-event values reject the row. Legacy rows omit it.
+only `reader-reapi-unavailable-shadow`, requiring `admissionFallbacks.reapi = 0`
+and a `shadow` payload. It enriches the original admission using the same native
+`invocationId`; it never invents a second invocation or claims a fallback occurred.
+The collector merges a base row and its matching shadow row in either order,
+deduplicates identical observations, and rejects conflicting admission or shadow
+payloads. Legacy rows omit both `event` and `shadow`; unknown event values reject
+the row.
+
+The shadow payload contains only bounded classification tags and numeric metadata:
+
+```json
+{
+  "cause": {
+    "capabilitiesUnavailable": true,
+    "connectRetry": true,
+    "clientInitialization": true,
+    "connectUnavailable": false,
+    "transportMessage": "tls-handshake-eof"
+  },
+  "command": { "subcommand": "build", "argumentCount": 8 },
+  "nativeExitCode": 1,
+  "durationMs": 47000,
+  "failedActionCount": 1,
+  "wouldDisableRemoteCache": true
+}
+```
+
+`cause` records which accepted diagnostic line classes matched. `transportMessage`
+is one of `tls-handshake-eof`, `transport-error`, or `none`, never raw error text.
+`subcommand` is one of `build`, `test`, `audit`, `cquery`, `uquery`, `aquery`, or
+`targets`; `argumentCount` counts native arguments without retaining their contents.
+`nativeExitCode` is 1–255. Durations and counts are nonnegative safe integers;
+`durationMs` measures native startup through exit, excluding subsequent output
+draining. `failedActionCount` is the validated `BUILD ERRORS` count, or zero for
+standalone client-init failures. `wouldDisableRemoteCache: true` records that a
+hypothetical no-cache invocation would disable both reads and uploads; no such
+invocation executes. No target names, raw arguments, environment, addresses, or
+credentials enter this payload.
 
 An REAPI fallback may include `reapiFailure: { class, phase, elapsedMs, deadlineMs }`,
 including when admission reuses a cached negative probe. `class` is one of

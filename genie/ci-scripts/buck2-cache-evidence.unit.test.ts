@@ -22,6 +22,7 @@ import {
   finalizeNativeLogFreshness,
   maxCacheEvidenceActions,
   mergeCacheEvidence,
+  type ReaderReapiUnavailableShadow,
 } from './buck2-cache-evidence.ts'
 
 // Reduced native `buck2 log show` records from local-build.pb.zst, decoded by
@@ -1111,12 +1112,7 @@ describe('cache admission evidence schema', () => {
       admissionRetrySuccesses: { reapi: 0, archiveOrigin: 0 },
     }
     expect(decodeCacheAdmissionInvocation(row)).toEqual(row)
-    const event = 'reader-reapi-unavailable-rerun'
-    expect(decodeCacheAdmissionInvocation({ ...row, event }).event).toBe(event)
     expect(() => decodeCacheAdmissionInvocation({ ...row, event: 'unknown-event' })).toThrow()
-    expect(() => decodeCacheAdmissionInvocation({
-      ...row, event, admissionFallbacks: { reapi: 0, archiveOrigin: 0 },
-    })).toThrow()
     const failure = { class: 'deadline', phase: 'tls', elapsedMs: 2510, deadlineMs: 2500 }
     expect(decodeCacheAdmissionInvocation({ ...row, reapiFailure: failure }).reapiFailure).toEqual(failure)
     for (const reapiDecision of ['first-probe-for-ci-job', 'pinned-from-first-probe', 'unpinned-missing-job-instance'])
@@ -1143,6 +1139,53 @@ describe('cache admission evidence schema', () => {
     expect(decodeCacheAdmissionEvidence(evidence).reapiFailures).toEqual(evidence.reapiFailures)
     expect(() => decodeCacheAdmissionEvidence({ ...evidence, reapiFailures: [] })).toThrow()
     expect(decodeCacheAdmissionEvidence({ admissionInvocations: [row] }).reapiFailures).toEqual([])
+  })
+
+  it('validates and projects shadow evidence without inventing a fallback or a second invocation', () => {
+    const base = decodeCacheAdmissionInvocation({
+      invocationId: '2fc13b48-c94a-4a9c-936f-bc24615bc360',
+      admissionFallbacks: { reapi: 0, archiveOrigin: 0 },
+      admissionRetrySuccesses: { reapi: 0, archiveOrigin: 0 },
+    })
+    const shadow: ReaderReapiUnavailableShadow = {
+      cause: {
+        capabilitiesUnavailable: true, connectRetry: true, clientInitialization: true,
+        connectUnavailable: false, transportMessage: 'tls-handshake-eof',
+      },
+      command: { subcommand: 'build', argumentCount: 4 },
+      nativeExitCode: 1, durationMs: 47000, failedActionCount: 1,
+      wouldDisableRemoteCache: true,
+    }
+    const row = decodeCacheAdmissionInvocation({ ...base, event: 'reader-reapi-unavailable-shadow', shadow })
+    expect(row.shadow).toEqual(shadow)
+    for (const invalid of [
+      { ...row, shadow: undefined },
+      { ...row, event: undefined },
+      { ...row, event: 'reader-reapi-unavailable-rerun' },
+      { ...row, admissionFallbacks: { reapi: 1, archiveOrigin: 0 } },
+    ]) expect(() => decodeCacheAdmissionInvocation(invalid)).toThrow()
+    for (const invalidShadow of [
+        { ...shadow, nativeExitCode: 0 }, { ...shadow, nativeExitCode: 256 },
+        { ...shadow, durationMs: -1 }, { ...shadow, durationMs: 0.5 },
+        { ...shadow, failedActionCount: -1 }, { ...shadow, wouldDisableRemoteCache: false },
+        { ...shadow, command: { subcommand: 'secret-command', argumentCount: 2 } },
+        { ...shadow, cause: { ...shadow.cause, transportMessage: 'unbounded free text' } },
+        { ...shadow, cause: { ...shadow.cause, capabilitiesUnavailable: false, clientInitialization: false } },
+    ]) expect(() => decodeCacheAdmissionInvocation({ ...row, shadow: invalidShadow })).toThrow()
+    const initial = { ...emptyCacheEvidence(), admissionInvocations: [base] }
+    const observed = { ...emptyCacheEvidence(), admissionInvocations: [row] }
+    for (const options of [
+      { previous: initial, next: observed }, { previous: observed, next: initial },
+      { previous: observed, next: observed },
+    ]) {
+      const merged = mergeCacheEvidence(options)
+      expect(merged.admissionInvocations).toEqual([row])
+      expect(merged.admissionFallbacks).toEqual({ reapi: 0, archiveOrigin: 0 })
+    }
+    expect(() => mergeCacheEvidence({
+      previous: observed,
+      next: { ...emptyCacheEvidence(), admissionInvocations: [{ ...row, shadow: { ...shadow, failedActionCount: 2 } }] },
+    })).toThrow()
   })
 
   it('normalizes retained summaries to explicit zero admission evidence', () => {

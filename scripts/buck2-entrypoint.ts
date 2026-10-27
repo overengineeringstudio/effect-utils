@@ -22,7 +22,10 @@ import process from 'node:process'
 import { setTimeout as waitForBackpressure } from 'node:timers/promises'
 import { isatty } from 'node:tty'
 
-import type { CacheAdmissionInvocation } from '../genie/ci-scripts/buck2-cache-evidence.ts'
+import type {
+  CacheAdmissionInvocation,
+  ReaderReapiUnavailableShadow,
+} from '../genie/ci-scripts/buck2-cache-evidence.ts'
 import {
   buckConfigValues,
   canonicalCacheAdmissionInvocationId,
@@ -339,7 +342,7 @@ export const directBuckArguments = async ({
   probeDeadlineSignal,
   beforeCachePosture,
   onCachePosture,
-  readerRerun = false,
+  onCacheAdmission,
 }: {
   readonly args: readonly string[]
   readonly cwd: string
@@ -352,7 +355,7 @@ export const directBuckArguments = async ({
   readonly beforeCachePosture?: CachePostureCheck
   /** Observe the effective admitted posture, including CLI policy and probe fallback. */
   readonly onCachePosture?: CachePostureCheck
-  readonly readerRerun?: boolean
+  readonly onCacheAdmission?: (admission: CacheAdmissionInvocation) => void
 }): Promise<string[]> => {
   admissionExpires = Date.now() + 5000
   failedOpen = false
@@ -546,7 +549,7 @@ export const directBuckArguments = async ({
                 }),
             }),
         })
-  admission.admissionFallbacks.reapi = remoteAvailable === false || readerRerun === true ? 1 : 0
+  admission.admissionFallbacks.reapi = remoteAvailable === false ? 1 : 0
   if (remoteAvailable === false && reapiDiagnostics.failure !== undefined) {
     const failure = /^class=([a-z-]+) phase=([a-z]+) elapsed_ms=(\d+) deadline_ms=(\d+)$/u.exec(
       reapiDiagnostics.failure,
@@ -559,20 +562,14 @@ export const directBuckArguments = async ({
         deadlineMs: Number(failure[4]),
       })
   }
+  onCacheAdmission?.(admission)
   const evidencePath = env['CI_BUCK2_CACHE_EVIDENCE_PATH']
   if (evidencePath !== undefined && evidencePath !== '') {
     try {
       mkdirSync(dirname(evidencePath), { recursive: true })
-      appendFileSync(
-        `${evidencePath}.admission.jsonl`,
-        `${JSON.stringify({
-          ...admission,
-          ...(readerRerun === true ? { event: 'reader-reapi-unavailable-rerun' } : {}),
-        })}\n`,
-        {
-          mode: 0o600,
-        },
-      )
+      appendFileSync(`${evidencePath}.admission.jsonl`, `${JSON.stringify(admission)}\n`, {
+        mode: 0o600,
+      })
     } catch {
       writeSync(2, 'warning: Buck2 admission evidence could not be persisted\n')
     }
@@ -1537,27 +1534,61 @@ export const isOnlyReapiUnavailable = (output: string): boolean => {
   )
 }
 
-/** There is intentionally no retry loop: the second result is always final. */
-export const runWithReaderCacheFallback = async ({
+/** Classify once for evidence only; the original native failure always stands. */
+export const runWithReaderCacheShadow = async ({
   reader,
+  command,
   run,
-  fallback,
+  onShadow,
 }: {
   readonly reader: boolean
+  readonly command: ReaderReapiUnavailableShadow['command']
   readonly run: () => Promise<{
     readonly exitCode: number
     readonly output: string
     readonly signalCode?: string | null
+    readonly durationMs?: number
   }>
-  readonly fallback: () => Promise<number>
+  readonly onShadow: (shadow: ReaderReapiUnavailableShadow) => void
 }): Promise<number> => {
+  const started = performance.now()
   const result = await run()
-  return reader === true &&
+  const durationMs = result.durationMs ?? Math.max(0, Math.round(performance.now() - started))
+  if (
+    reader === true &&
     result.exitCode !== 0 &&
     (result.signalCode === undefined || result.signalCode === null) &&
     isOnlyReapiUnavailable(result.output) === true
-    ? fallback()
-    : result.exitCode
+  ) {
+    const diagnostics = result.output.replace(
+      new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, 'gu'),
+      '',
+    )
+    onShadow({
+      cause: {
+        capabilitiesUnavailable: /Failed to query capabilities of remote/u.test(diagnostics),
+        connectRetry: /WARN buck2_execute::re::client: Failed to connect to RE, retrying/u.test(
+          diagnostics,
+        ),
+        clientInitialization: /REClientBuilder/u.test(diagnostics),
+        connectUnavailable: /(?:Error:|Command failed:)\s*\(?Failed to connect to RE/u.test(
+          diagnostics,
+        ),
+        transportMessage:
+          diagnostics.includes('tls handshake eof') === true
+            ? 'tls-handshake-eof'
+            : /tonic::transport::Error|transport error/iu.test(diagnostics) === true
+              ? 'transport-error'
+              : 'none',
+      },
+      command,
+      nativeExitCode: result.exitCode,
+      durationMs,
+      failedActionCount: Number(/BUILD ERRORS \(([1-9]\d*)\)/u.exec(diagnostics)?.[1] ?? 0),
+      wouldDisableRemoteCache: true,
+    })
+  }
+  return result.exitCode
 }
 
 /** Keep terminal console behavior and user-binary commands on the native exec path. */
@@ -1671,7 +1702,13 @@ const observeNativeCommand = async ({
 }: {
   readonly native: string
   readonly args: readonly string[]
-}): Promise<{ exitCode: number; output: string; signalCode: string | null }> => {
+}): Promise<{
+  exitCode: number
+  output: string
+  signalCode: string | null
+  durationMs: number
+}> => {
+  const started = performance.now()
   const child = Bun.spawn([native, ...args], {
     env: process.env,
     stdin: 'inherit',
@@ -1680,7 +1717,11 @@ const observeNativeCommand = async ({
   })
   let interrupted = false
   const writes = new AbortController()
-  const exited = child.exited
+  let durationMs = 0
+  const exited = child.exited.then((exitCode) => {
+    durationMs = Math.max(0, Math.round(performance.now() - started))
+    return exitCode
+  })
   const forward = (signal: NodeJS.Signals) => {
     interrupted = true
     writes.abort()
@@ -1696,6 +1737,7 @@ const observeNativeCommand = async ({
     return {
       exitCode,
       signalCode,
+      durationMs,
       output: interrupted === true || signalCode !== null ? '' : (output ?? ''),
     }
   } finally {
@@ -1775,14 +1817,16 @@ if (import.meta.main === true) {
     const requestedArgs = process.argv.slice(launchCache === undefined ? 3 : 5)
     const root = findRoot(process.cwd())
     let reader = false
-    let readerRerun = false
+    let admittedInvocation: CacheAdmissionInvocation | undefined
     const admit = async (beforeCachePosture?: CachePostureCheck): Promise<string[]> => {
       const prepared = await directBuckArguments({
         args: requestedArgs,
         cwd: process.cwd(),
         env: process.env,
         beforeCachePosture,
-        readerRerun,
+        onCacheAdmission: (admission) => {
+          admittedInvocation = admission
+        },
         onCachePosture: (values) => {
           reader =
             values['buck2.remote_cache_enabled'] !== 'false' &&
@@ -1809,7 +1853,7 @@ if (import.meta.main === true) {
       }
       return prepared
     }
-    const prepare = async (): Promise<string[]> =>
+    const admittedArgs =
       root === undefined
         ? await admit()
         : await admitCacheDaemonCommand({
@@ -1819,7 +1863,6 @@ if (import.meta.main === true) {
             env: process.env,
             admit,
           })
-    const admittedArgs = await prepare()
     const args = nativeBuildIdArguments({
       args: admittedArgs,
       cwd: process.cwd(),
@@ -1862,25 +1905,35 @@ if (import.meta.main === true) {
         env: process.env,
       }) === true
     ) {
-      process.exitCode = await runWithReaderCacheFallback({
+      const command = buckSubcommand(args)?.command
+      process.exitCode = await runWithReaderCacheShadow({
         reader,
+        command: { subcommand: command ?? 'unknown', argumentCount: args.length },
         run: () => observeNativeCommand({ native, args }),
-        fallback: async () => {
-          warning({
-            message:
-              'REAPI became unavailable after admission; rerunning once without remote cache',
-            env: process.env,
-          })
-          if (launchCache !== undefined && launchCache !== '') rmSync(launchCache, { force: true })
-          process.env['BUCK2_NO_REMOTE_CACHE'] = '1'
-          process.env['BUCK_WRAPPER_UUID'] = randomUUID()
-          readerRerun = true
-          const fallbackArgs = nativeBuildIdArguments({
-            args: await prepare(),
-            cwd: process.cwd(),
-            env: process.env,
-          })
-          return (await observeNativeCommand({ native, args: fallbackArgs })).exitCode
+        onShadow: (shadow) => {
+          warnStdio(
+            'warning: Buck2 reader REAPI unavailability classified in shadow mode; no rerun happened; the native failure stands\n',
+          )
+          const evidencePath = process.env['CI_BUCK2_CACHE_EVIDENCE_PATH']
+          if (
+            evidencePath !== undefined &&
+            evidencePath !== '' &&
+            admittedInvocation !== undefined
+          ) {
+            try {
+              appendFileSync(
+                `${evidencePath}.admission.jsonl`,
+                `${JSON.stringify({
+                  ...admittedInvocation,
+                  event: 'reader-reapi-unavailable-shadow',
+                  shadow,
+                })}\n`,
+                { mode: 0o600 },
+              )
+            } catch {
+              warnStdio('warning: Buck2 shadow evidence could not be persisted\n')
+            }
+          }
         },
       })
     } else {
