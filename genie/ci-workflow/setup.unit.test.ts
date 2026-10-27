@@ -1052,16 +1052,28 @@ describe('published consumer ref', () => {
     )
     const publishIndex = publisher.steps.findIndex((step) => step.name === 'Publish products')
     const authIndex = publisher.steps.findIndex((step) => step.id === 'product-cachix-auth')
-    expect(realiseIndex).toBeGreaterThan(authIndex)
+    const readIndex = publisher.steps.findIndex((step) => step.id === 'product-cachix-read')
+    expect(readIndex).toBeGreaterThan(-1)
+    expect(realiseIndex).toBeGreaterThan(readIndex)
+    expect(authIndex).toBeGreaterThan(realiseIndex)
+    expect(publishIndex).toBeGreaterThan(authIndex)
+    expect(publisher.steps[readIndex]?.with).toEqual({
+      name: 'overeng-effect-utils',
+      skipPush: true,
+    })
     expect(publishIndex).toBeGreaterThan(realiseIndex)
     const realise = publisher.steps[realiseIndex]!
     const publish = publisher.steps[publishIndex]!
     expect(realise['timeout-minutes']).toBeUndefined()
     expect(publish['timeout-minutes']).toBe(32)
     expect(realise.if).toBe(publish.if)
-    expect(realise.env).toEqual(publish.env)
+    expect(realise.env).toEqual({ GITHUB_TOKEN: publish.env?.GITHUB_TOKEN })
     expect(realise.env?.GITHUB_TOKEN).toBe('${{ github.token }}')
-    expect(realise.env?.CACHIX_AUTH_TOKEN).toBe('${{ secrets.CACHIX_AUTH_TOKEN }}')
+    expect(realise.env?.CACHIX_AUTH_TOKEN).toBeUndefined()
+    for (const step of publisher.steps.slice(0, realiseIndex + 1)) {
+      expect(step.env?.CACHIX_AUTH_TOKEN).toBeUndefined()
+      expect(step.with?.authToken).toBeUndefined()
+    }
     expect(realise.run).toBe(withCiSourceRoot('nix/buck2-products/publish.sh --realise-inputs'))
     expect(publish.run).toContain('nix/buck2-products/publish.sh --proposal "$proposal"')
   })

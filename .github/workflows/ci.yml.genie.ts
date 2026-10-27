@@ -1365,21 +1365,21 @@ const extraJobs: Record<string, any> = {
         if: "steps.publication-scope.outputs.publish == 'true'",
       },
       {
+        ...trustedCachixStep,
+        id: 'product-cachix-read',
+        if: "steps.publication-scope.outputs.publish == 'true'",
+      },
+      {
+        name: 'Realise publish-products build inputs',
+        if: `${publishingCachixStep.if} && (steps.publication-scope.outputs.publish == 'true')`,
+        env: githubTokenEnv(),
+        run: withCiSourceRoot('nix/buck2-products/publish.sh --realise-inputs'),
+      },
+      {
         ...publishingCachixStep,
         id: 'product-cachix-auth',
         if: `${publishingCachixStep.if} && steps.publication-scope.outputs.publish == 'true'`,
       },
-      cachixPushStep({
-        jobIf: trustedSecretCiIf,
-        triggers: ['push', 'workflow_dispatch'],
-        authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}',
-        step: {
-          name: 'Realise publish-products build inputs',
-          if: "steps.publication-scope.outputs.publish == 'true'",
-          env: githubTokenEnv(),
-          run: withCiSourceRoot('nix/buck2-products/publish.sh --realise-inputs'),
-        },
-      }),
       cachixPushStep({
         jobIf: trustedSecretCiIf,
         triggers: ['push', 'workflow_dispatch'],
