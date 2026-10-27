@@ -855,6 +855,14 @@ const jobs: Record<CoreCIJobName, CiWorkflowArgs['jobs'][string]> = {
             ],
           }),
         ),
+        {
+          name: 'CI policy action isolation smoke',
+          env: githubTokenEnv(),
+          run: withCiSourceRoot(
+            'nix shell .#bun --command bun test ./genie/ci-workflow/check-policy-action.integration.test.ts',
+          ),
+          'timeout-minutes': 5,
+        },
         // The aggregate unit jobs are queue/main-only; keep web highlighting and SSR
         // regressions in the required PR lane through the existing package task.
         buck2TrustedCacheWriterStep({
