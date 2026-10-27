@@ -51,17 +51,16 @@ import {
   plainFlakeJob,
 } from './rust.ts'
 import {
+  ciDiagnosticsSetupStep,
   ciOtelSpansArtifactStep,
   nixDiagnosticsArtifactStep,
-  pnpmStatePublisherPostSteps,
+  pnpmInstallWithDiagnosticsStep,
+  pnpmStateSetupStep,
   restoreNixCacheStep,
-  restorePnpmStateStep,
   saveNixCacheStep,
-  savePnpmStateStep,
   standardSelfHostedDevenvTaskJob,
   standardSelfHostedPnpmCiPostSteps,
   standardSelfHostedPnpmCiPrepSteps,
-  withSinglePnpmStatePublisher,
 } from './setup.ts'
 import { ciWorkflow, withNixRealisationTimeouts } from './shared.ts'
 
@@ -215,22 +214,14 @@ const helperWorkflows = {
       }),
     },
   },
-  withSinglePnpmStatePublisher: {
-    jobs: withSinglePnpmStatePublisher({ jobs, publisher: 'check' }),
-  },
   standardSelfHostedPnpmCiPrepSteps: {
     jobs: { check: { ...job, steps: standardSelfHostedPnpmCiPrepSteps() } },
   },
   standardSelfHostedPnpmCiPostSteps: {
     jobs: { check: { ...job, steps: standardSelfHostedPnpmCiPostSteps() } },
   },
-  pnpmStatePublisherPostSteps: {
-    jobs: { check: { ...job, steps: pnpmStatePublisherPostSteps({ publish: true }) } },
-  },
   restoreNixCacheStep: { jobs: { check: { ...job, steps: [restoreNixCacheStep()] } } },
   saveNixCacheStep: { jobs: { check: { ...job, steps: [saveNixCacheStep()] } } },
-  restorePnpmStateStep: { jobs: { check: { ...job, steps: [restorePnpmStateStep()] } } },
-  savePnpmStateStep: { jobs: { check: { ...job, steps: [savePnpmStateStep()] } } },
   restoreMegarepoStoreStep: { jobs: { check: { ...job, steps: [restoreMegarepoStoreStep()] } } },
   saveMegarepoStoreStep: { jobs: { check: { ...job, steps: [saveMegarepoStoreStep()] } } },
   netlifyPreviewBuildSteps: { jobs: { check: { ...job, steps: netlifyPreviewBuildSteps() } } },
@@ -249,14 +240,10 @@ const pendingStorageMigration: readonly (keyof typeof helperWorkflows)[] = [
   'withBuck2CacheEvidence',
   'devenvPerfJob',
   'nixClosureMeasurementsJob',
-  'withSinglePnpmStatePublisher',
   'standardSelfHostedPnpmCiPrepSteps',
   'standardSelfHostedPnpmCiPostSteps',
-  'pnpmStatePublisherPostSteps',
   'restoreNixCacheStep',
   'saveNixCacheStep',
-  'restorePnpmStateStep',
-  'savePnpmStateStep',
   'restoreMegarepoStoreStep',
   'saveMegarepoStoreStep',
   'netlifyPreviewBuildSteps',
@@ -705,6 +692,31 @@ describe('central exception scoping', () => {
   })
 })
 
+describe('consumer cold pnpm workflow', () => {
+  it('generates under default enforcement with job-local state and an unconditional install', () => {
+    const install = pnpmInstallWithDiagnosticsStep()
+    const output = ciWorkflow({
+      name: 'Consumer CI',
+      on: 'push',
+      actionlint: false,
+      jobs: {
+        check: {
+          'runs-on': [...linuxX64Runner],
+          steps: [pnpmStateSetupStep, ciDiagnosticsSetupStep, install, { run: 'pnpm test' }],
+        },
+      },
+    })
+    const yaml = output.stringify({ location: '.github/workflows/ci.yml', cwd: '/workspace' })
+    expect(yaml).toContain('Isolate pnpm state')
+    expect(yaml).toContain('Install pnpm dependencies')
+    expect(yaml).toContain('pnpm:install')
+    expect(yaml).not.toContain('actions/cache')
+    expect(yaml).not.toContain('pnpm-state-v3-')
+    expect(install).not.toHaveProperty('if')
+    expect(pnpmStateSetupStep.run).toContain('mkdir -p')
+  })
+})
+
 describe('consumer migration ledger', () => {
   const workflow = 'consumer-ci.yml'
   const definition: GitHubWorkflowArgs = {
@@ -714,9 +726,9 @@ describe('consumer migration ledger', () => {
       check: {
         'runs-on': [...linuxX64Runner],
         steps: [
-          restorePnpmStateStep(),
+          { name: 'Restore legacy pnpm state', uses: 'actions/cache/restore@v4' },
           { run: 'pnpm test' },
-          savePnpmStateStep(),
+          { name: 'Save legacy pnpm state', uses: 'actions/cache/save@v4' },
           { name: 'Upload results', uses: 'actions/upload-artifact@v4', with: { path: 'results' } },
         ],
       },

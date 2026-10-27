@@ -24,7 +24,6 @@ import {
   ciNixCachePath,
   ciNixCacheRoot,
   ciPnpmHome,
-  ciPnpmStatePaths,
   ciPnpmStore,
   ciCompositionStateRoot,
   withCiSourceRoot,
@@ -640,115 +639,8 @@ export const saveNixCacheStep = (opts?: { restoreStepId?: string; path?: string 
 }
 
 /**
- * Shared pnpm-state cache contract version.
- *
- * Composed into every pnpm-state key as `${keyPrefix}-${version}-...`, so one
- * bump here flips the cold-rebuild for the whole stack at once while each repo
- * keeps its own `keyPrefix` namespace (e.g. `livestore-pnpm-state`). Bumping
- * forces a one-time cold rebuild for every consumer, so treat a change as a
- * coordinated stack-wide event.
- */
-export const pnpmStateCacheVersion = 'v3'
-
-/** Default pnpm-state key namespace when a repo does not set its own. */
-export const defaultPnpmStateKeyPrefix = 'pnpm-state'
-
-const defaultPnpmStateHashFilesExpression = "${{ hashFiles('**/pnpm-lock.yaml') }}"
-
-const pnpmStateCachePrimaryKey = (args: { keyPrefix: string; hashFilesExpression: string }) =>
-  `${args.keyPrefix}-${pnpmStateCacheVersion}-${'${{ runner.os }}'}-${'${{ runner.arch }}'}-${args.hashFilesExpression}`
-
-/**
- * Restore the workspace-local pnpm state snapshot before any install work runs.
- *
- * Live pnpm state must use exact-key semantics. Prefix fallback restore keys
- * are not part of the supported contract for mutable pnpm state because they
- * blur the authority boundary between the current lockfile graph and older
- * warmed state.
- *
- * Order this AFTER checkout: the workspace-relative store (`.devenv/pnpm-store-pure-v1` /
- * `.pnpm-home`) is gitignored, so a restore placed before checkout would be
- * wiped by checkout's clean.
- */
-export const restorePnpmStateStep = (opts?: {
-  keyPrefix?: string
-  hashFilesExpression?: string
-  stepId?: string
-  path?: string
-}) => {
-  const keyPrefix = opts?.keyPrefix ?? defaultPnpmStateKeyPrefix
-  const hashFilesExpression = opts?.hashFilesExpression ?? defaultPnpmStateHashFilesExpression
-  const path = opts?.path ?? ciPnpmStatePaths
-
-  return {
-    id: opts?.stepId ?? 'restore-pnpm-state',
-    name: 'Restore pnpm state',
-    uses: 'actions/cache/restore@v4' as const,
-    with: {
-      path,
-      // The fetched state contents are platform-specific, so the cache must
-      // isolate both OS and CPU architecture to avoid cross-platform corruption.
-      key: pnpmStateCachePrimaryKey({ keyPrefix, hashFilesExpression }),
-    },
-  }
-}
-
-/**
- * Save the job-local pnpm state after the main task graph runs.
- *
- * Save only after prior steps succeeded. This avoids publishing partial or
- * corrupt live state after a failed dependency preparation step.
- */
-export const savePnpmStateStep = (opts?: {
-  keyPrefix?: string
-  hashFilesExpression?: string
-  restoreStepId?: string
-  path?: string
-}) => {
-  const keyPrefix = opts?.keyPrefix ?? defaultPnpmStateKeyPrefix
-  const hashFilesExpression = opts?.hashFilesExpression ?? defaultPnpmStateHashFilesExpression
-  const restoreStepId = opts?.restoreStepId ?? 'restore-pnpm-state'
-  const path = opts?.path ?? ciPnpmStatePaths
-
-  return {
-    name: 'Save pnpm state',
-    if: `\${{ success() && steps.${restoreStepId}.outputs.cache-hit != 'true' }}`,
-    uses: 'actions/cache/save@v4' as const,
-    with: {
-      path,
-      // Reuse the same primary key expression as restore. GitHub Actions does
-      // not allow nesting `${{ ... }}` inside a fallback string of another
-      // expression, so deriving the key once in TypeScript keeps the emitted
-      // workflow expression valid.
-      key: pnpmStateCachePrimaryKey({ keyPrefix, hashFilesExpression }),
-    },
-  }
-}
-
-/**
- * pnpm-state publisher post-steps for a repo's own hand-rolled `job()` factory.
- *
- * Returns the save step only when this job is the designated publisher, else
- * `[]`, so a local factory can gate its single save call by spreading:
- *
- *   steps: [...baseSteps, step, ...pnpmStatePublisherPostSteps({ publish })]
- *
- * pnpm state uses exact-key, single-writer semantics: exactly one job per
- * `(os, arch, lockfile)` key should publish; every other job restores only.
- * Defaults to `publish: false` so a repo must name its publisher — forgetting
- * degrades to cold installs (slower CI), never to the concurrent multi-writer
- * saves that exhaust self-hosted runner disk. Matrix / multi-lockfile-graph
- * repos may publish from several jobs (one per closure).
- */
-export const pnpmStatePublisherPostSteps = (opts?: {
-  publish?: boolean
-  save?: Parameters<typeof savePnpmStateStep>[0]
-}): readonly ReturnType<typeof savePnpmStateStep>[] =>
-  opts?.publish === true ? [savePnpmStateStep(opts?.save)] : []
-
-/**
  * Shared self-hosted CI setup for repos that prepare a devenv workspace,
- * restore warmed mutable state, and run `pnpm:install` before the main task.
+ * isolate job-local mutable state, and run `pnpm:install` before the main task.
  *
  * This composes the existing step atoms into one standard contract so
  * downstream repos can delete local workflow glue instead of reassembling the
@@ -759,7 +651,6 @@ export const standardSelfHostedPnpmCiPrepSteps = (opts?: {
   installNix?: Parameters<typeof installNixStep>[0]
   restoreNixCache?: Parameters<typeof restoreNixCacheStep>[0]
   applyMegarepoLock?: false | Parameters<typeof applyMegarepoLockStep>[0]
-  restorePnpmState?: Parameters<typeof restorePnpmStateStep>[0]
   includeDiagnostics?: boolean
 }) =>
   [
@@ -774,32 +665,18 @@ export const standardSelfHostedPnpmCiPrepSteps = (opts?: {
     pnpmStateSetupStep,
     ciDiagnosticsSetupStep,
     ...(opts?.includeDiagnostics === false ? [] : [captureRunnerPressureStep]),
-    restorePnpmStateStep(opts?.restorePnpmState),
     pnpmInstallWithDiagnosticsStep(),
   ] as const
 
 /**
- * Shared self-hosted CI tail for repos that save warmed mutable state and keep
+ * Shared self-hosted CI tail for repos that save the Nix cache and keep
  * pnpm / runner diagnostics attached to the finished job.
  */
 export const standardSelfHostedPnpmCiPostSteps = (opts?: {
-  /**
-   * Designate this job as a pnpm-state publisher. Delegates to
-   * `pnpmStatePublisherPostSteps`; defaults to `false` (restore-only). This
-   * only reaches repos that compose their job via this shared helper — repos
-   * with a hand-rolled `job()` factory must call `pnpmStatePublisherPostSteps`
-   * (or `withSinglePnpmStatePublisher`) directly.
-   */
-  savePnpmState?: boolean
-  savePnpmStateOptions?: Parameters<typeof savePnpmStateStep>[0]
   saveNixCache?: Parameters<typeof saveNixCacheStep>[0]
   includeDiagnosticsArtifact?: boolean
 }) =>
   [
-    ...pnpmStatePublisherPostSteps({
-      publish: opts?.savePnpmState,
-      save: opts?.savePnpmStateOptions,
-    }),
     saveNixCacheStep(opts?.saveNixCache),
     ...(opts?.includeDiagnosticsArtifact === false ? [] : [ciDiagnosticsArtifactStep()]),
   ] as const
@@ -909,46 +786,6 @@ export const standardSelfHostedDevenvTaskJob = ({
   ],
   ...jobOptions,
 })
-
-/**
- * Stamp EXACTLY ONE job in a workflow job map as the pnpm-state publisher.
- *
- * Appends the save step to the named publisher and leaves every other job
- * restore-only, centralizing the single-writer invariant so a repo declares its
- * publisher once and cannot save on many jobs or none. Throws if the named job
- * is absent, or if any job already saves pnpm state (so this helper is the sole
- * authority). Repos whose jobs share one closure use this; matrix repos needing
- * several publishers spread `pnpmStatePublisherPostSteps` per job instead.
- */
-export const withSinglePnpmStatePublisher = <
-  TJobs extends Record<string, { steps: readonly WorkflowStep[] }>,
->({
-  jobs,
-  publisher,
-  save,
-}: {
-  jobs: TJobs
-  publisher: keyof TJobs & string
-  save?: Parameters<typeof savePnpmStateStep>[0]
-}): TJobs => {
-  const publisherJob = jobs[publisher]
-  if (publisherJob === undefined) {
-    throw new Error(
-      `withSinglePnpmStatePublisher: publisher job '${publisher}' is not in the job map`,
-    )
-  }
-  for (const [name, job] of Object.entries(jobs)) {
-    if (job.steps.some((step) => (step as { name?: string }).name === 'Save pnpm state') === true) {
-      throw new Error(
-        `withSinglePnpmStatePublisher: job '${name}' already saves pnpm state; remove per-job saves so exactly one publisher writes`,
-      )
-    }
-  }
-  return {
-    ...jobs,
-    [publisher]: { ...publisherJob, steps: [...publisherJob.steps, savePnpmStateStep(save)] },
-  } as TJobs
-}
 
 /**
  * Upload CI diagnostics captured during the pnpm install / runner-pressure

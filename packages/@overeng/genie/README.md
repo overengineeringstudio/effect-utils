@@ -297,6 +297,28 @@ explicitly listed as `pendingStorageMigration` in
 `genie/ci-workflow/policy.unit.test.ts` until stage L7; their storage behavior
 is intentionally unchanged and own-workflow uses remain in the ledger.
 
+#### Cold pnpm state in consumer jobs
+
+The shared pnpm Actions-cache APIs are removed: `restorePnpmStateStep`,
+`savePnpmStateStep`, `pnpmStatePublisherPostSteps`,
+`withSinglePnpmStatePublisher`, `pnpmStateCacheVersion`,
+`defaultPnpmStateKeyPrefix`, and `ciPnpmStatePaths`. pnpm state is a disposable
+accelerator, not an Actions-cache handoff.
+
+Delete restore/save steps, publisher wrappers, and their imports from consumer
+workflows. Remove `restorePnpmState` options passed to
+`standardSelfHostedPnpmCiPrepSteps`, and `savePnpmState` /
+`savePnpmStateOptions` passed to `standardSelfHostedPnpmCiPostSteps`
+(including nested `prep` / `post` options of
+`standardSelfHostedDevenvTaskJob`). Refresh the migration ledger to drop the
+matching removed-action rows; refresh only shrinks the existing inventory.
+
+Keep `pnpmStateSetupStep` when composing jobs manually: it creates the
+job-local pnpm store/home, links the workspace store, and exports their paths.
+Run `pnpm:install` unconditionally after setup. The standard preparation helper
+retains setup and `pnpmInstallWithDiagnosticsStep()` without consulting a cache
+hit or requiring a restored snapshot. Nix cache helpers are unchanged.
+
 ### Creating a Generator
 
 Create a `.genie.ts` file next to the config file you want to generate:

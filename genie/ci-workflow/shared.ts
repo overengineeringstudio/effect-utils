@@ -629,14 +629,11 @@ export const dollar = '$'
 /** Stable runner scratch shared by one job's synthesized composition and mutable tool state. */
 export const ciCompositionStateRoot = '${{ runner.temp }}/composition-state'
 
-/** Stable pnpm home restored independently of the disposable synthesized workspace path. */
+/** Job-local pnpm home, independent of the disposable synthesized workspace path. */
 export const ciPnpmHome = `${ciCompositionStateRoot}/pnpm-home`
 
 /** Stable pnpm content store projected into the owned member through a relative workspace symlink. */
 export const ciPnpmStore = `${ciCompositionStateRoot}/pnpm-store-pure-v1`
-
-/** Canonical stable pnpm state surface used by both cache restore and save. */
-export const ciPnpmStatePaths = [ciPnpmHome, ciPnpmStore].join('\n')
 
 /** Job-local CI diagnostics directory used for runner pressure snapshots and install logs. */
 export const jobLocalCiDiagnosticsDir = `${ciCompositionStateRoot}/diagnostics/${'${{ github.job }}'}`
