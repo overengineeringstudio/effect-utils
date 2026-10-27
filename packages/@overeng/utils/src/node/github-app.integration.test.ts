@@ -19,7 +19,12 @@ import { FetchHttpClient, HttpClient } from 'effect/http'
 import { TestClock } from 'effect/testing'
 import { expect } from 'vitest'
 
-import { makeGitHubApp, InstallationScope } from './github-app.ts'
+import {
+  makeGitHubApp,
+  InstallationScope,
+  type GitHubAppOptions,
+  type GitHubAppRequestMetadata,
+} from './github-app.ts'
 
 const Json = Schema.fromJsonString(Schema.Unknown)
 const Claims = Schema.fromJsonString(
@@ -31,7 +36,10 @@ const scope: InstallationScope = {
   permissions: { issues: 'write' },
 }
 
-const fixture = (transport: Layer.Layer<HttpClient.HttpClient> = FetchHttpClient.layer) =>
+const fixture = (
+  transport: Layer.Layer<HttpClient.HttpClient> = FetchHttpClient.layer,
+  onRequestComplete?: GitHubAppOptions['onRequestComplete'],
+) =>
   Effect.gen(function* () {
     const { privateKey, publicKey } = generateKeyPairSync('rsa', { modulusLength: 2048 })
     const started = yield* Deferred.make<void>()
@@ -185,12 +193,45 @@ const fixture = (transport: Layer.Layer<HttpClient.HttpClient> = FetchHttpClient
         identity: { clientID: 'Iv1.fixture' },
         privateKey: Redacted.make(privateKey.export({ type: 'pkcs8', format: 'pem' }).toString()),
       },
-      { apiBase, consumer: 'fixture' },
+      {
+        apiBase,
+        consumer: 'fixture',
+        ...(onRequestComplete === undefined ? {} : { onRequestComplete }),
+      },
     ).pipe(
       Effect.provideService(HttpClient.HttpClient, Context.get(services, HttpClient.HttpClient)),
     )
     return { state, app, apiBase, started, release }
   })
+
+it.effect('observes token exchange metadata without secrets and ignores observer failures', () =>
+  Effect.gen(function* () {
+    const events: GitHubAppRequestMetadata[] = []
+    const { app, state } = yield* fixture(FetchHttpClient.layer, (metadata) =>
+      Effect.sync(() => {
+        events.push(metadata)
+      }).pipe(Effect.andThen(Effect.die('observer failure must not affect token minting'))),
+    )
+    const token = Redacted.value(yield* app.token(scope))
+    expect(token).toBe('installation-1')
+    expect(events).toEqual([
+      {
+        method: 'POST',
+        path: '/app/installations/123/access_tokens',
+        status: 201,
+        rateLimitResource: 'core',
+        rateLimitRemaining: '4999',
+      },
+    ])
+    const raw = yield* Schema.encodeEffect(Json)(events)
+    expect(raw).not.toContain(token)
+    for (const jwt of state.jwtTokens) expect(raw).not.toContain(jwt)
+    expect(raw).not.toContain('authorization')
+    expect(raw).not.toContain('repositories')
+    expect(raw).not.toContain('permissions')
+    expect(raw).not.toContain('expires_at')
+  }),
+)
 
 it.effect('signs real JWTs, caches concurrent requests, refreshes early, and isolates scope', () =>
   Effect.gen(function* () {
