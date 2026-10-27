@@ -120,21 +120,22 @@ GLOBAL FLAGS
   --cwd string                                                        Override the working directory
 
 SUBCOMMANDS
-  init        Initialize a new megarepo in the current directory
-  root        Print the megarepo root directory
-  env         Output environment variables for shell integration
-  status      Show workspace status and member states
-  ls          List all members in the megarepo
-  check       Check that the megarepo is structurally valid
-  fetch       Remote → Lock: fetch upstream refs, resolve commits, write lock. Use --apply to also materialize workspace.
-  apply       Lock → Workspace: create worktrees from lock, symlink, generators. Nix lock sync is opt-in. Never writes lock.
-  lock        Workspace → Lock: record current worktree HEAD commits into megarepo.lock.
-  add         Add a new member repository
-  config      Configuration operations: push refs, pin/unpin members
-  exec        Execute a command in member directories
-  store       Manage the shared git store
-  generate    Generate configuration files
-  deps        Show the Nix input dependency graph between megarepo members.
+  init         Initialize a new megarepo in the current directory
+  root         Print the megarepo root directory
+  env          Output environment variables for shell integration
+  status       Show workspace status and member states
+  ls           List all members in the megarepo
+  check        Check that the megarepo is structurally valid
+  fetch        Remote → Lock: fetch upstream refs, resolve commits, write lock. Use --apply to also materialize workspace.
+  apply        Lock → Workspace: create worktrees from lock, symlink, generators. Nix lock sync is opt-in. Never writes lock.
+  lock         Workspace → Lock: record current worktree HEAD commits into megarepo.lock.
+  lock-sync    Check or synchronize standalone flake locks from one root-resolved input
+  add          Add a new member repository
+  config       Configuration operations: push refs, pin/unpin members
+  exec         Execute a command in member directories
+  store        Manage the shared git store
+  generate     Generate configuration files
+  deps         Show the Nix input dependency graph between megarepo members.
 ",
 }
 `;
