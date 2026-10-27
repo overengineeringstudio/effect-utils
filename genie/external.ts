@@ -1031,8 +1031,6 @@ export {
   nixClosureMeasurementSteps,
   nixClosureMeasurementsJob,
   pnpmStateSetupStep,
-  restorePnpmStateStep,
-  savePnpmStateStep,
   preparePinnedDevenvStep,
   preparePinnedDevenvStepFor,
   installMegarepoStep,

@@ -16,6 +16,16 @@ import { fileURLToPath } from 'node:url'
 
 import { beforeAll, describe, expect, it } from 'vitest'
 
+import {
+  pnpmInstallWithDiagnosticsStep,
+  pnpmStateSetupStep,
+  restoreNixCacheStep,
+  saveNixCacheStep,
+  standardSelfHostedPnpmCiPostSteps,
+  standardSelfHostedPnpmCiPrepSteps,
+} from '../../../../../../genie/ci-workflow/setup.ts'
+import { ciPnpmHome, ciPnpmStore } from '../../../../../../genie/ci-workflow/shared.ts'
+
 const ciWorkflowModuleRoot = fileURLToPath(new URL('../../../../../../', import.meta.url))
 
 const ciWorkflowSource = [
@@ -398,12 +408,6 @@ const generatedDevenvPerfJob = extractSourceBlock(
   '  nix-closure-sizes:',
 )
 
-const restorePnpmStateStepSource = extractSourceBlock(
-  ciWorkflowSource,
-  'export const restorePnpmStateStep = (opts?: {',
-  '/**\n * Save the job-local pnpm state after the main task graph runs.',
-)
-
 const validateNixStoreStepSource = extractSourceBlock(
   ciWorkflowSource,
   "export const validateNixStoreStepFor = (lockFile = 'devenv.lock') =>",
@@ -669,18 +673,11 @@ describe('ci workflow reporting helpers', () => {
   })
 })
 
-describe('ci workflow pnpm cache defaults', () => {
+describe('ci workflow pnpm preparation and Nix cache defaults', () => {
   it('keeps pnpm home stable under runner composition state', () => {
     expect(ciWorkflowSource).toContain(
       'export const ciPnpmHome = `${ciCompositionStateRoot}/pnpm-home`',
     )
-  })
-
-  it('defaults the pnpm state helpers to restoring both home and auxiliary store state', () => {
-    expect(ciWorkflowSource).toContain(
-      'export const ciPnpmStatePaths = [ciPnpmHome, ciPnpmStore].join(',
-    )
-    expect(ciWorkflowSource).toContain('const path = opts?.path ?? ciPnpmStatePaths')
   })
 
   it('exports PNPM_CONFIG_STORE_DIR alongside pnpm store state', () => {
@@ -689,46 +686,51 @@ describe('ci workflow pnpm cache defaults', () => {
     )
   })
 
-  it('uses exact-key pnpm state restore semantics with an explicit versioned prefix', () => {
-    expect(restorePnpmStateStepSource).toContain(
-      'const keyPrefix = opts?.keyPrefix ?? defaultPnpmStateKeyPrefix',
-    )
-    expect(restorePnpmStateStepSource).toContain(
-      'const hashFilesExpression = opts?.hashFilesExpression ?? defaultPnpmStateHashFilesExpression',
-    )
-    expect(restorePnpmStateStepSource).toContain("name: 'Restore pnpm state'")
-    expect(restorePnpmStateStepSource).not.toContain("'restore-keys':")
-  })
+  it.each([true, false])(
+    'prepares cold pnpm state and installs unconditionally with diagnostics enabled: %s',
+    (includeDiagnostics) => {
+      const prep = standardSelfHostedPnpmCiPrepSteps({ includeDiagnostics })
+      const post = standardSelfHostedPnpmCiPostSteps({
+        includeDiagnosticsArtifact: includeDiagnostics,
+      })
+      const isolationIndex = prep.findIndex((step) => step.name === pnpmStateSetupStep.name)
+      const install = pnpmInstallWithDiagnosticsStep()
+      const installIndex = prep.findIndex((step) => step.name === install.name)
 
-  it('centralizes the pnpm state cache contract version at v3', () => {
-    expect(ciWorkflowSource).toContain("export const pnpmStateCacheVersion = 'v3'")
-    expect(ciWorkflowSource).toContain("export const defaultPnpmStateKeyPrefix = 'pnpm-state'")
-    expect(ciWorkflowSource).toContain(
-      `const defaultPnpmStateHashFilesExpression = "\${{ hashFiles('**/pnpm-lock.yaml') }}"`,
-    )
-    expect(ciWorkflowSource).toContain('`${args.keyPrefix}-${pnpmStateCacheVersion}-')
-  })
+      expect(isolationIndex).toBeGreaterThanOrEqual(0)
+      expect(prep[isolationIndex]).toEqual(pnpmStateSetupStep)
+      expect(pnpmStateSetupStep).not.toHaveProperty('if')
+      expect(pnpmStateSetupStep.run).toContain(`mkdir -p "${ciPnpmStore}" "${ciPnpmHome}" .devenv`)
+      expect(pnpmStateSetupStep.run).toContain(`ln -s "${ciPnpmStore}" "$member_store"`)
+      for (const [name, path] of [
+        ['PNPM_STORE_DIR', ciPnpmStore],
+        ['PNPM_CONFIG_STORE_DIR', ciPnpmStore],
+        ['PNPM_HOME', ciPnpmHome],
+      ]) {
+        expect(pnpmStateSetupStep.run).toContain(`echo "${name}=${path}" >> "$GITHUB_ENV"`)
+      }
+      expect(installIndex).toBeGreaterThan(isolationIndex)
+      expect(prep[installIndex]).toEqual(install)
+      expect(prep[installIndex]).not.toHaveProperty('if')
+      expect(install.run).toContain('pnpm:install')
+      expect(install.run).not.toContain('cache-hit')
+      expect([...prep, ...post].map((step) => step.name)).not.toContain('Restore pnpm state')
+      expect([...prep, ...post].map((step) => step.name)).not.toContain('Save pnpm state')
+      expect(
+        [...prep, ...post].filter(
+          (step) =>
+            'uses' in step &&
+            typeof step.uses === 'string' &&
+            step.uses.startsWith('actions/cache/'),
+        ),
+      ).toEqual([restoreNixCacheStep(), saveNixCacheStep()])
+    },
+  )
 
-  it('allows repositories to narrow pnpm state hashing without redefining cache steps', () => {
-    expect(ciWorkflowSource).toContain('hashFilesExpression?: string')
-    expect(ciWorkflowSource).toContain(
-      'pnpmStateCachePrimaryKey({ keyPrefix, hashFilesExpression })',
-    )
-  })
-
-  it('uses identical stable restore/save paths for pnpm and Nix caches', async () => {
-    const { restoreNixCacheStep, restorePnpmStateStep, saveNixCacheStep, savePnpmStateStep } =
-      await import(
-        // oxlint-disable-next-line import/no-dynamic-require
-        new URL('../../../../../../genie/ci-workflow/setup.ts', import.meta.url).href
-      )
-    const pnpmRestore = restorePnpmStateStep()
-    const pnpmSave = savePnpmStateStep()
+  it('uses identical stable restore/save paths for Nix caches', () => {
     const nixRestore = restoreNixCacheStep()
     const nixSave = saveNixCacheStep()
-    expect(pnpmRestore.with.path).toBe(pnpmSave.with.path)
     expect(nixRestore.with.path).toBe(nixSave.with.path)
-    expect(pnpmRestore.with.path).not.toContain('github.run_id')
     expect(nixRestore.with.path).not.toContain('github.run_id')
   })
 
@@ -745,20 +747,10 @@ describe('ci workflow pnpm cache defaults', () => {
     )
   })
 
-  it('exposes a callable single-publisher primitive and delegates the composer to it', () => {
-    expect(ciWorkflowSource).toContain('export const pnpmStatePublisherPostSteps = (opts?: {')
-    expect(ciWorkflowSource).toContain('export const withSinglePnpmStatePublisher = <')
-    expect(ciWorkflowSource).toContain(
-      'opts?.publish === true ? [savePnpmStateStep(opts?.save)] : []',
-    )
-    expect(ciWorkflowSource).toContain('...pnpmStatePublisherPostSteps({')
-  })
-
-  it('only saves pnpm state after prior steps succeed', () => {
-    expect(ciWorkflowSource).toContain("name: 'Save pnpm state'")
-    expect(ciWorkflowSource).toContain(
-      "if: `\\${{ success() && steps.${restoreStepId}.outputs.cache-hit != 'true' }}`",
-    )
+  it('keeps Actions-cache pnpm state out of the own workflows', () => {
+    expect(generatedCiWorkflowYamlSource).not.toContain('pnpm-state-v3')
+    expect(generatedCiWorkflowYamlSource).not.toContain('Restore pnpm state')
+    expect(generatedCiWorkflowYamlSource).not.toContain('Save pnpm state')
   })
 
   it('keeps the diagnostics summary portable', () => {
