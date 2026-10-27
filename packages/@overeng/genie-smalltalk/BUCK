@@ -4,7 +4,7 @@
 # Projection source: packages/@overeng/genie-smalltalk/BUCK.genie.ts
 # Projection schema version: 13
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:d6753c43c2227d7e2d325fff00122a208a8747a0925e73a81ccd921f85f89289
+# Semantic fingerprint: sha256:bdf237e08b66ab977bb45d54f8764ff669c1ce8186e80e27fb6f25efb5f49b61
 # Regenerate: devenv tasks run genie:run
 
 load("//buck2:materialization.bzl", "export_materialization_inputs", "package_view")
@@ -21,23 +21,10 @@ export_file(
 )
 
 export_materialization_inputs([
-    "src/authoring-boundaries.unit.test.ts",
-    "src/child-missions.unit.test.ts",
     "src/compatibility.unit.test.ts",
-    "src/fragments.unit.test.ts",
-    "src/gate-constructors.unit.test.ts",
     "src/mod.ts",
-    "src/mod.unit.test.ts",
-    "src/pr-landing.fixture.ts",
-    "src/run-values.ts",
-    "src/run-values.unit.test.ts",
-    "src/subject-ref.ts",
     "src/testing.ts",
     "src/tree.ts",
-    "src/tree.unit.test.ts",
-    "src/upstream-repin.fixture.ts",
-    "src/values.ts",
-    "src/values.unit.test.ts",
 ])
 
 static_source_set(
@@ -79,23 +66,10 @@ package_view(
     dependency_view = "//buck2/dependencies:view_packages_overeng_genie_smalltalk_8c26e80c6e0e",
     files = {
         "package.json": "package.json",
-        "src/authoring-boundaries.unit.test.ts": "src/authoring-boundaries.unit.test.ts",
-        "src/child-missions.unit.test.ts": "src/child-missions.unit.test.ts",
         "src/compatibility.unit.test.ts": "src/compatibility.unit.test.ts",
-        "src/fragments.unit.test.ts": "src/fragments.unit.test.ts",
-        "src/gate-constructors.unit.test.ts": "src/gate-constructors.unit.test.ts",
         "src/mod.ts": "src/mod.ts",
-        "src/mod.unit.test.ts": "src/mod.unit.test.ts",
-        "src/pr-landing.fixture.ts": "src/pr-landing.fixture.ts",
-        "src/run-values.ts": "src/run-values.ts",
-        "src/run-values.unit.test.ts": "src/run-values.unit.test.ts",
-        "src/subject-ref.ts": "src/subject-ref.ts",
         "src/testing.ts": "src/testing.ts",
         "src/tree.ts": "src/tree.ts",
-        "src/tree.unit.test.ts": "src/tree.unit.test.ts",
-        "src/upstream-repin.fixture.ts": "src/upstream-repin.fixture.ts",
-        "src/values.ts": "src/values.ts",
-        "src/values.unit.test.ts": "src/values.unit.test.ts",
         "tsconfig.json": "tsconfig.json",
     },
     workspace_dist = {
@@ -121,23 +95,10 @@ package_view(
     dependency_view = "//buck2/dependencies:product_view_packages_overeng_genie_smalltalk_8c26e80c6e0e",
     files = {
         "package.json": "package.json",
-        "src/authoring-boundaries.unit.test.ts": "src/authoring-boundaries.unit.test.ts",
-        "src/child-missions.unit.test.ts": "src/child-missions.unit.test.ts",
         "src/compatibility.unit.test.ts": "src/compatibility.unit.test.ts",
-        "src/fragments.unit.test.ts": "src/fragments.unit.test.ts",
-        "src/gate-constructors.unit.test.ts": "src/gate-constructors.unit.test.ts",
         "src/mod.ts": "src/mod.ts",
-        "src/mod.unit.test.ts": "src/mod.unit.test.ts",
-        "src/pr-landing.fixture.ts": "src/pr-landing.fixture.ts",
-        "src/run-values.ts": "src/run-values.ts",
-        "src/run-values.unit.test.ts": "src/run-values.unit.test.ts",
-        "src/subject-ref.ts": "src/subject-ref.ts",
         "src/testing.ts": "src/testing.ts",
         "src/tree.ts": "src/tree.ts",
-        "src/tree.unit.test.ts": "src/tree.unit.test.ts",
-        "src/upstream-repin.fixture.ts": "src/upstream-repin.fixture.ts",
-        "src/values.ts": "src/values.ts",
-        "src/values.unit.test.ts": "src/values.unit.test.ts",
         "tsconfig.json": "tsconfig.json",
     },
     workspace_dist = {
@@ -161,23 +122,10 @@ package_view(
     dependency_view = "//buck2/dependencies:view_packages_overeng_genie_smalltalk_8c26e80c6e0e",
     files = {
         "package.json": "package.json",
-        "src/authoring-boundaries.unit.test.ts": "src/authoring-boundaries.unit.test.ts",
-        "src/child-missions.unit.test.ts": "src/child-missions.unit.test.ts",
         "src/compatibility.unit.test.ts": "src/compatibility.unit.test.ts",
-        "src/fragments.unit.test.ts": "src/fragments.unit.test.ts",
-        "src/gate-constructors.unit.test.ts": "src/gate-constructors.unit.test.ts",
         "src/mod.ts": "src/mod.ts",
-        "src/mod.unit.test.ts": "src/mod.unit.test.ts",
-        "src/pr-landing.fixture.ts": "src/pr-landing.fixture.ts",
-        "src/run-values.ts": "src/run-values.ts",
-        "src/run-values.unit.test.ts": "src/run-values.unit.test.ts",
-        "src/subject-ref.ts": "src/subject-ref.ts",
         "src/testing.ts": "src/testing.ts",
         "src/tree.ts": "src/tree.ts",
-        "src/tree.unit.test.ts": "src/tree.unit.test.ts",
-        "src/upstream-repin.fixture.ts": "src/upstream-repin.fixture.ts",
-        "src/values.ts": "src/values.ts",
-        "src/values.unit.test.ts": "src/values.unit.test.ts",
         "tsconfig.json": "tsconfig.json",
         "vitest.config.ts": "vitest.config.ts",
     },
