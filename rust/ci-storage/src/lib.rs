@@ -477,7 +477,7 @@ mod tests {
     #[test]
     fn oversized_extension_records_are_rejected_before_reading_their_bodies() {
         let root = tempfile::tempdir().unwrap();
-        for kind in [b'L', b'K', b'x', b'g'] {
+        for kind in *b"LKxg" {
             let archive = root.path().join("extension.tar.gz");
             let mut gzip =
                 GzBuilder::new().write(File::create(&archive).unwrap(), Compression::default());
