@@ -36,6 +36,22 @@ const readWorkflow = async (path: string): Promise<GitHubWorkflowArgs> => {
       throw new Error(
         `${path}: jobs.${id} must declare steps; reusable workflow calls are not admitted`,
       )
+    const runner: unknown = job['runs-on']
+    const labels = (value: unknown): boolean =>
+      (typeof value === 'string' && value.trim() !== '') ||
+      (Array.isArray(value) &&
+        value.length > 0 &&
+        value.every((label) => typeof label === 'string' && label.trim() !== ''))
+    const runnerMapping =
+      typeof runner === 'object' &&
+      runner !== null &&
+      Array.isArray(runner) === false &&
+      Object.keys(runner).length > 0 &&
+      Object.keys(runner).every((key) => key === 'labels' || key === 'group') &&
+      ('labels' in runner ? labels(runner.labels) : true) &&
+      ('group' in runner ? typeof runner.group === 'string' && runner.group.trim() !== '' : true)
+    if (labels(runner) === false && runnerMapping === false)
+      throw new Error(`${path}: jobs.${id}.runs-on has an unsupported runner shape`)
     const condition: unknown = job.if
     if (typeof condition === 'boolean' || typeof condition === 'number') job.if = String(condition)
     else if (condition !== undefined && typeof condition !== 'string')

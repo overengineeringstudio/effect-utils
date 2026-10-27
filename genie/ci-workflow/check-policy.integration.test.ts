@@ -207,3 +207,37 @@ for (const step of [
     expect(result.stderr).toContain('has an invalid step')
   })
 }
+
+for (const runner of [
+  '{}',
+  '{ unexpected: sh-linux-x64 }',
+  '{ labels: sh-linux-x64, unexpected: nix }',
+  '{ labels: null }',
+  '{ labels: [sh-linux-x64, false] }',
+  '{ group: [] }',
+  '{ group: \"\" }',
+  '[]',
+  'false',
+  'null',
+  '1',
+]) {
+  test(`entrypoint rejects unsupported runner shape ${runner}`, async () => {
+    const result = await run(await fixture(workflow({ runner })))
+    expect(result.exitCode).toBe(1)
+    expect(result.stderr).toContain('has an unsupported runner shape')
+  })
+}
+
+for (const runner of [
+  'sh-linux-x64',
+  '[sh-linux-x64, nix]',
+  '{ labels: sh-linux-x64 }',
+  '{ labels: [sh-linux-x64, nix] }',
+  '{ group: fleet }',
+  '{ group: fleet, labels: [sh-linux-x64, nix] }',
+]) {
+  test(`entrypoint admits supported runner shape ${runner}`, async () => {
+    const result = await run(await fixture(workflow({ runner })))
+    expect(result.exitCode).toBe(0)
+  })
+}

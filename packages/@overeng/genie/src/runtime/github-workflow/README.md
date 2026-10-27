@@ -87,6 +87,11 @@ store or evaluating the consumer's flake. Pinned-source retrieval and normal
 signed binary-cache substitution are allowed; local compilation and remote
 builders are disabled. No preinstalled Node/Bun or pre-realized closure is assumed.
 
+The composite shell uses an absolute `/usr/bin/env` launcher with a runner-owned
+`PATH`, removes `BASH_ENV`/`ENV` before Bash starts, and enables Bash privileged
+mode to ignore startup files and exported functions. Inputs remain environment
+data rather than interpolated shell code.
+
 Both Nix and Bun run through `env -i` with only an isolated temporary `HOME`,
 `TMPDIR`, and a runner-owned `PATH`. Consumer `BUN_OPTIONS`, `NODE_OPTIONS`,
 `NIX_CONFIG`, `NIX_USER_CONF_FILES`, `NIX_PATH`, and other configuration overrides
@@ -95,7 +100,9 @@ are not forwarded. The temporary home also prevents user configuration discovery
 Policy execution and Bun configuration discovery run from the pinned action root,
 not the consumer checkout. Scalar boolean/numeric job conditions are normalized
 to strings; mappings/sequences and steps without exactly one nonempty `run` or
-`uses` string are rejected before the shared policy is invoked.
+`uses` string are rejected before the shared policy is invoked. Runner selectors
+must be strings, nonempty string arrays, or nonempty mappings containing only
+supported `labels` and/or `group` keys with valid values.
 
 For a local check with Bun available:
 
@@ -108,10 +115,12 @@ The entrypoint fixture tests live in
 `genie:ci-workflow:test` in the `quality` (`pr/quality`) CI job's
 “Genie projection and CI workflow regression tests” step.
 
-The real-Nix isolation smoke is a separate Linux fleet-runner check:
+The real-Nix isolation smoke runs in the same Linux `quality` (`pr/quality`) job,
+in the separate “CI policy action isolation smoke” step:
 `bun test ./genie/ci-workflow/check-policy-action.integration.test.ts`.
-It exercises the composite shell with hostile consumer Bun/Nix options and a
-consumer-provided `nix` executable, while using the actual trusted Nix bootstrap.
+It exercises the actual custom-shell launcher and trusted Nix bootstrap with
+hostile Bash startup files/exported functions, Bun/Nix options and consumer
+`bash`/`nix` executables.
 
 ## Type Reference
 
