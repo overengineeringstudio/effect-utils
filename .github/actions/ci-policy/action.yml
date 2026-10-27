@@ -21,6 +21,20 @@ runs:
         CI_POLICY_REPOSITORY: ${{ github.repository }}
       run: |
         set -euo pipefail
+        trusted_path=/nix/var/nix/profiles/default/bin:/run/current-system/sw/bin:/usr/bin:/bin
+        export PATH="$trusted_path"
+        unset BASH_ENV ENV CDPATH
+        if [[ -x /nix/var/nix/profiles/default/bin/nix ]]; then
+          nix_bin=/nix/var/nix/profiles/default/bin/nix
+        elif [[ -x /run/current-system/sw/bin/nix ]]; then
+          nix_bin=/run/current-system/sw/bin/nix
+        else
+          echo 'A trusted fleet Nix installation is required' >&2
+          exit 1
+        fi
+        runtime_home=$(mktemp -d "${RUNNER_TEMP:?RUNNER_TEMP not set}/ci-policy.XXXXXX")
+        trap 'rm -rf -- "$runtime_home"' EXIT
+        mkdir "$runtime_home/tmp"
         policy_root=$(realpath "$CI_POLICY_ACTION_PATH/../../..")
         if [[ "$CI_POLICY_ROOT" = /* ]]; then
           consumer_root=$(realpath "$CI_POLICY_ROOT")
@@ -29,12 +43,14 @@ runs:
         fi
         # Keep Bun configuration discovery in the trusted, pinned action checkout.
         cd "$policy_root"
-        # Fleet runners provide Nix and the pinned Bun closure. Offline realization
-        # prevents registry, package-manager, or binary-cache network access here.
-        # --impure is only for reading the explicit checked-out JSON lockfile;
-        # this expression cannot fetch sources or evaluate consumer configuration.
-        bun_package=$(nix eval --offline --impure --raw \
-          --file "$CI_POLICY_ACTION_PATH/bun-package.nix")
-        nix shell --offline --option builders '' --option max-jobs 0 "$bun_package" --command \
-          bun "$policy_root/genie/ci-workflow/check-policy.ts" \
+        # No consumer Nix configuration, runtime options, or user configuration
+        # enters either bootstrap or validation. Only signed substitution is
+        # permitted: compilation and remote builders remain disabled.
+        bun_package=$(env -i HOME="$runtime_home" TMPDIR="$runtime_home/tmp" PATH="$trusted_path" \
+          "$nix_bin" eval --impure --raw --file "$CI_POLICY_ACTION_PATH/bun-package.nix")
+        bun_root=$(env -i HOME="$runtime_home" TMPDIR="$runtime_home/tmp" PATH="$trusted_path" \
+          "$nix_bin" build --no-link --print-out-paths \
+          --option builders '' --option max-jobs 0 "$bun_package")
+        env -i HOME="$runtime_home" TMPDIR="$runtime_home/tmp" PATH="$trusted_path" \
+          "$bun_root/bin/bun" "$policy_root/genie/ci-workflow/check-policy.ts" \
           "$consumer_root" "$CI_POLICY_REPOSITORY" "$CI_POLICY_EXCEPTIONS"

@@ -36,14 +36,18 @@ const readWorkflow = async (path: string): Promise<GitHubWorkflowArgs> => {
       throw new Error(
         `${path}: jobs.${id} must declare steps; reusable workflow calls are not admitted`,
       )
-    if (job.if !== undefined && typeof job.if !== 'string')
-      throw new Error(`${path}: jobs.${id}.if must be a string expression`)
+    const condition: unknown = job.if
+    if (typeof condition === 'boolean' || typeof condition === 'number') job.if = String(condition)
+    else if (condition !== undefined && typeof condition !== 'string')
+      throw new Error(`${path}: jobs.${id}.if must be a scalar expression`)
     for (const step of job.steps) {
       if (
         typeof step !== 'object' ||
         step === null ||
-        ('uses' in step && typeof step.uses !== 'string') ||
-        ('run' in step && typeof step.run !== 'string')
+        Array.isArray(step) ||
+        'uses' in step === 'run' in step ||
+        ('uses' in step && (typeof step.uses !== 'string' || step.uses.trim() === '')) ||
+        ('run' in step && (typeof step.run !== 'string' || step.run.trim() === ''))
       )
         throw new Error(`${path}: jobs.${id} has an invalid step`)
     }

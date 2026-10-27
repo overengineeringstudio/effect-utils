@@ -78,18 +78,24 @@ Inputs:
   by the shared validator. No effect-utils migration ledger or exceptions are
   inherited.
 
-There are no npm installs, cache/artifact actions, or runtime network requests.
-The fleet runner must provide Nix and pre-realize Bun and the nixpkgs source
-pinned by the action revision's root `flake.lock`. A small Nix expression reads
-only that explicit JSON file and returns `github:NixOS/nixpkgs/<locked-rev>#bun`;
-it does not copy the worktree into the store or evaluate the consumer's flake.
-`nix eval --offline --impure` permits reading that absolute lockfile, not network
-access. `nix shell --offline` disables remote builders and local build jobs,
-so a missing provisioned closure fails rather than fetching or building packages.
-No preinstalled Node or Bun is assumed. The action repository comes from GitHub's
-pinned action download, not the consumer checkout; its policy code cannot be
-replaced by consumer YAML, and Bun configuration discovery runs from the pinned
-action root.
+There are no npm installs or cache/artifact actions. The fleet runner must provide
+Nix at `/nix/var/nix/profiles/default/bin/nix` or
+`/run/current-system/sw/bin/nix`; an executable on the consumer's `PATH` is never
+used. A small Nix expression reads the pinned action's root `flake.lock` and returns
+`github:NixOS/nixpkgs/<locked-rev>#bun`, without copying the worktree into the
+store or evaluating the consumer's flake. Pinned-source retrieval and normal
+signed binary-cache substitution are allowed; local compilation and remote
+builders are disabled. No preinstalled Node/Bun or pre-realized closure is assumed.
+
+Both Nix and Bun run through `env -i` with only an isolated temporary `HOME`,
+`TMPDIR`, and a runner-owned `PATH`. Consumer `BUN_OPTIONS`, `NODE_OPTIONS`,
+`NIX_CONFIG`, `NIX_USER_CONF_FILES`, `NIX_PATH`, and other configuration overrides
+are not forwarded. The temporary home also prevents user configuration discovery.
+`nix eval --impure` permits reading the action's checked-out lockfile only.
+Policy execution and Bun configuration discovery run from the pinned action root,
+not the consumer checkout. Scalar boolean/numeric job conditions are normalized
+to strings; mappings/sequences and steps without exactly one nonempty `run` or
+`uses` string are rejected before the shared policy is invoked.
 
 For a local check with Bun available:
 
@@ -101,6 +107,11 @@ The entrypoint fixture tests live in
 `genie/ci-workflow/check-policy.integration.test.ts` and run through
 `genie:ci-workflow:test` in the `quality` (`pr/quality`) CI job's
 “Genie projection and CI workflow regression tests” step.
+
+The real-Nix isolation smoke is a separate Linux fleet-runner check:
+`bun test ./genie/ci-workflow/check-policy-action.integration.test.ts`.
+It exercises the composite shell with hostile consumer Bun/Nix options and a
+consumer-provided `nix` executable, while using the actual trusted Nix bootstrap.
 
 ## Type Reference
 

@@ -170,3 +170,40 @@ test('consumer exceptions reject unknown workflow identities', async () => {
   expect(result.exitCode).toBe(1)
   expect(result.stderr).toContain('Stale or unmatched exception')
 })
+
+for (const condition of ['true', 'false', '0', '1', '-1', '1.5']) {
+  test(`entrypoint normalizes scalar condition ${condition}`, async () => {
+    expect((await run(await fixture(workflow({ condition })))).exitCode).toBe(0)
+  })
+  test(`scalar condition ${condition} does not replace a same-repository guard`, async () => {
+    const result = await run(await fixture(workflow({ event: 'pull_request', condition })))
+    expect(result.exitCode).toBe(1)
+    expect(result.stderr).toContain('fleet-pr-without-same-repo-guard')
+  })
+}
+
+for (const condition of ['{ unexpected: true }', '[true]']) {
+  test(`entrypoint rejects nonscalar condition ${condition}`, async () => {
+    const result = await run(await fixture(workflow({ condition })))
+    expect(result.exitCode).toBe(1)
+    expect(result.stderr).toContain('must be a scalar expression')
+  })
+}
+
+for (const step of [
+  '{}',
+  '[]',
+  'name: not executable',
+  '{ run: echo invalid, uses: actions/checkout@v6 }',
+  '{ run: null }',
+  '{ uses: false }',
+  '{ run: 1 }',
+  '{ uses: \"\" }',
+  '{ run: \" \" }',
+]) {
+  test(`entrypoint rejects unknown step shape ${step}`, async () => {
+    const result = await run(await fixture(workflow({ step })))
+    expect(result.exitCode).toBe(1)
+    expect(result.stderr).toContain('has an invalid step')
+  })
+}
