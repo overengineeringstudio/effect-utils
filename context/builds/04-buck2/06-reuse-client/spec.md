@@ -189,6 +189,14 @@ a `reader-reapi-unavailable-rerun` event in the admission JSONL evidence, with a
 fresh invocation ID and an REAPI fallback count. Unknown/mixed diagnostics,
 compilation/test failures, authentication/authorization failures, integrity errors,
 and writer postures never trigger this rerun; its result is final.
+Stdout remains inherited. Supervision applies only when stderr is not a TTY;
+terminal invocations and `run`, `install`, and `bxl` execute unchanged without a
+rerun, preserving superconsole and interactive user-binary behavior. Captured
+stderr is bounded to 256 KiB of bytes before decoding; overflow or signal
+termination forbids rerun. The stderr tee advances short writes and waits on
+nonblocking backpressure. A failed output consumer disables fallback but still
+drains stderr and waits for the child's final result.
+
 The classifier strips Buck's bracketed timestamps and embedded RFC3339 warning
 timestamps, accepts only enumerated progress/statistics lines, and validates every
 `Action failed:` block as `remote_action_cache` RE-client initialization followed

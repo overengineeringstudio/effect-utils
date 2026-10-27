@@ -19,6 +19,7 @@ import {
 import { homedir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import process from 'node:process'
+import { isatty } from 'node:tty'
 
 import type { CacheAdmissionInvocation } from '../genie/ci-scripts/buck2-cache-evidence.ts'
 import {
@@ -1402,14 +1403,6 @@ export const nativeBuildIdArguments = ({
   return [...before, '--write-build-id', path, ...(sentinel === -1 ? [] : args.slice(sentinel))]
 }
 
-const warnStdio = (message: string): void => {
-  try {
-    writeSync(2, message)
-  } catch {
-    // Optional protection must still exec with closed or unwritable stderr.
-  }
-}
-
 /**
  * Deliberately fail closed on unknown output. Every diagnostic must belong to
  * RE client construction/capabilities, not merely contain an "unavailable" word.
@@ -1447,7 +1440,7 @@ export const isOnlyReapiUnavailable = (output: string): boolean => {
   }
   for (const raw of output.split(/\r?\n/u)) {
     const line = raw
-      .replace(/\x1b\[[0-9;]*m/gu, '')
+      .replace(new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, 'gu'), '')
       .replace(/^\[\d{4}-\d\d-\d\dT[^\]]+\]\s*/u, '')
       .trim()
       .replace(/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d+)?(?:Z|[+-]\d\d:\d\d)\s+(?=WARN )/u, '')
@@ -1529,28 +1522,124 @@ export const runWithReaderCacheFallback = async ({
   fallback,
 }: {
   readonly reader: boolean
-  readonly run: () => Promise<{ readonly exitCode: number; readonly output: string }>
+  readonly run: () => Promise<{
+    readonly exitCode: number
+    readonly output: string
+    readonly signalCode?: string | null
+  }>
   readonly fallback: () => Promise<number>
 }): Promise<number> => {
   const result = await run()
-  return reader === true && result.exitCode !== 0 && isOnlyReapiUnavailable(result.output) === true
+  return reader === true &&
+    result.exitCode !== 0 &&
+    (result.signalCode === undefined || result.signalCode === null) &&
+    isOnlyReapiUnavailable(result.output) === true
     ? fallback()
     : result.exitCode
 }
 
-/** Tee both streams without retaining unbounded build output. Overflow refuses fallback. */
-const observeNativeCommand = async (
-  native: string,
-  args: readonly string[],
-): Promise<{ exitCode: number; output: string }> => {
+/** Keep terminal console behavior and user-binary commands on the native exec path. */
+export const shouldSuperviseReaderCommand = ({
+  reader,
+  stderrIsTTY,
+  args,
+  cwd,
+  env,
+}: {
+  readonly reader: boolean
+  readonly stderrIsTTY: boolean
+  readonly args: readonly string[]
+  readonly cwd: string
+  readonly env: Readonly<Record<string, string | undefined>>
+}): boolean => {
+  if (reader === false || stderrIsTTY === true) return false
+  const invocation = resolveGateInvocation({ args, cwd, env, strictRunArguments: false })
+  if (invocation === undefined) return false
+  if (invocation.args.some((arg) => ['run', 'install', 'bxl'].includes(arg)) === true) return false
+  return invocation.args.some((arg) => configCommands[arg] === true)
+}
+
+/** Advance short writes and yield on EAGAIN; a broken consumer must not orphan Buck. */
+export const writeNativeStderrChunk = async ({
+  chunk,
+  write = (bytes) => writeSync(2, bytes),
+  pause = () => new Promise<void>((resume) => setTimeout(resume, 1)),
+}: {
+  readonly chunk: Uint8Array
+  readonly write?: (bytes: Uint8Array) => number
+  readonly pause?: () => Promise<void>
+}): Promise<boolean> => {
+  let offset = 0
+  while (offset < chunk.byteLength) {
+    try {
+      const accepted = write(chunk.subarray(offset))
+      if (accepted > 0) {
+        offset += accepted
+        continue
+      }
+    } catch (error) {
+      const code =
+        typeof error === 'object' && error !== null && 'code' in error ? error.code : undefined
+      if (code !== 'EAGAIN' && code !== 'EWOULDBLOCK') return false
+    }
+    // eslint-disable-next-line no-await-in-loop -- Retry this write only after backpressure clears.
+    await pause()
+  }
+  return true
+}
+
+/** Drain native stderr even after capture overflow or a failed output consumer. */
+export const captureNativeStderr = async ({
+  stream,
+  writeChunk = writeNativeStderrChunk,
+}: {
+  readonly stream: AsyncIterable<Uint8Array>
+  readonly writeChunk?: (options: { readonly chunk: Uint8Array }) => Promise<boolean>
+}): Promise<string | undefined> => {
+  const decoder = new TextDecoder()
+  let bytes = 0
+  let output = ''
+  let writable = true
+  try {
+    for await (const chunk of stream) {
+      if (writable === true) {
+        try {
+          writable = await writeChunk({ chunk })
+        } catch {
+          writable = false
+        }
+      }
+      bytes += chunk.byteLength
+      if (bytes > 262144) output = ''
+      else output += decoder.decode(chunk, { stream: true })
+    }
+  } catch {
+    return undefined
+  }
+  return bytes > 262144 || writable === false ? undefined : output + decoder.decode()
+}
+
+const warnStdio = (message: string): void => {
+  try {
+    writeSync(2, message)
+  } catch {
+    // Optional protection must still exec with closed or unwritable stderr.
+  }
+}
+/** Preserve stdout and supervise only redirected native stderr. */
+const observeNativeCommand = async ({
+  native,
+  args,
+}: {
+  readonly native: string
+  readonly args: readonly string[]
+}): Promise<{ exitCode: number; output: string; signalCode: string | null }> => {
   const child = Bun.spawn([native, ...args], {
     env: process.env,
     stdin: 'inherit',
-    stdout: 'pipe',
+    stdout: 'inherit',
     stderr: 'pipe',
   })
-  let output = ''
-  let overflow = false
   let interrupted = false
   const forward = (signal: NodeJS.Signals) => {
     interrupted = true
@@ -1559,24 +1648,15 @@ const observeNativeCommand = async (
   const signals = ['SIGINT', 'SIGTERM', 'SIGHUP'] as const
   const handlers = signals.map((signal) => () => forward(signal))
   for (const [index, signal] of signals.entries()) process.on(signal, handlers[index]!)
-  const tee = async (stream: ReadableStream<Uint8Array>, fd: number) => {
-    const decoder = new TextDecoder()
-    for await (const chunk of stream) {
-      writeSync(fd, chunk)
-      if (overflow === false) {
-        output += decoder.decode(chunk, { stream: true })
-        if (output.length > 262144) {
-          overflow = true
-          output = ''
-        }
-      }
-    }
-    if (overflow === false) output += decoder.decode()
-  }
   try {
-    await Promise.all([tee(child.stdout, 1), tee(child.stderr, 2)])
+    const output = await captureNativeStderr({ stream: child.stderr })
     const exitCode = await child.exited
-    return { exitCode, output: overflow === true || interrupted === true ? '' : output }
+    const signalCode = child.signalCode
+    return {
+      exitCode,
+      signalCode,
+      output: interrupted === true || signalCode !== null ? '' : (output ?? ''),
+    }
   } finally {
     for (const [index, signal] of signals.entries()) process.off(signal, handlers[index]!)
   }
@@ -1732,10 +1812,18 @@ if (import.meta.main === true) {
     } catch (error) {
       warnStdio(`warning: Buck2 stdio flag restoration failed: ${String(error)}\n`)
     }
-    if (reader === true) {
+    if (
+      shouldSuperviseReaderCommand({
+        reader,
+        stderrIsTTY: isatty(2),
+        args: requestedArgs,
+        cwd: process.cwd(),
+        env: process.env,
+      }) === true
+    ) {
       process.exitCode = await runWithReaderCacheFallback({
         reader,
-        run: () => observeNativeCommand(native, args),
+        run: () => observeNativeCommand({ native, args }),
         fallback: async () => {
           warning({
             message:
@@ -1751,7 +1839,7 @@ if (import.meta.main === true) {
             cwd: process.cwd(),
             env: process.env,
           })
-          return (await observeNativeCommand(native, fallbackArgs)).exitCode
+          return (await observeNativeCommand({ native, args: fallbackArgs })).exitCode
         },
       })
     } else {

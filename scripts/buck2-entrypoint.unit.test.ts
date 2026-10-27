@@ -7,6 +7,9 @@ import {
   gateScopeIdentity,
   isOnlyReapiUnavailable,
   runWithReaderCacheFallback,
+  captureNativeStderr,
+  shouldSuperviseReaderCommand,
+  writeNativeStderrChunk,
 } from './buck2-entrypoint.ts'
 
 const root = '/project/root'
@@ -183,4 +186,95 @@ it('never reruns writers or successes and makes a failed rerun final', async () 
       expect(result).toBe(reruns === 1 ? 17 : exitCode)
     }
   }
+})
+
+it('leaves terminal stderr and interactive user-binary commands unsupervised', () => {
+  const options = { reader: true, stderrIsTTY: false, cwd: '/project', env: {} }
+  expect(shouldSuperviseReaderCommand({ ...options, args: ['build', '//:app'] })).toBe(true)
+  expect(
+    shouldSuperviseReaderCommand({ ...options, stderrIsTTY: true, args: ['build', '//:app'] }),
+  ).toBe(false)
+  expect(
+    shouldSuperviseReaderCommand({ ...options, reader: false, args: ['build', '//:app'] }),
+  ).toBe(false)
+  for (const command of ['run', 'install', 'bxl']) {
+    expect(shouldSuperviseReaderCommand({ ...options, args: [command, '//:app'] })).toBe(false)
+  }
+})
+
+it('never reruns a native child terminated by a signal', async () => {
+  let reruns = 0
+  expect(
+    await runWithReaderCacheFallback({
+      reader: true,
+      run: async () => ({ exitCode: 143, signalCode: 'SIGTERM', output: reUnavailable }),
+      fallback: async () => {
+        reruns++
+        return 0
+      },
+    }),
+  ).toBe(143)
+  expect(reruns).toBe(0)
+})
+
+it('advances short stderr writes and waits for nonblocking backpressure', async () => {
+  const chunk = new TextEncoder().encode('complete diagnostic')
+  const accepted: number[] = []
+  let calls = 0
+  let pauses = 0
+  expect(
+    await writeNativeStderrChunk({
+      chunk,
+      write: (bytes) => {
+        calls++
+        if (calls === 2) throw Object.assign(new Error('backpressure'), { code: 'EAGAIN' })
+        const count = Math.min(3, bytes.byteLength)
+        accepted.push(...bytes.subarray(0, count))
+        return count
+      },
+      pause: async () => {
+        pauses++
+      },
+    }),
+  ).toBe(true)
+  expect(new TextDecoder().decode(new Uint8Array(accepted))).toBe('complete diagnostic')
+  expect(pauses).toBe(1)
+})
+
+it('caps captured stderr by bytes before decoding multibyte text and still drains output', async () => {
+  const text = 'é'.repeat(131073)
+  expect(text.length).toBeLessThan(262144)
+  const chunk = new TextEncoder().encode(text)
+  let written = 0
+  expect(
+    await captureNativeStderr({
+      stream: (async function* () {
+        yield chunk.subarray(0, 100001)
+        yield chunk.subarray(100001)
+      })(),
+      writeChunk: async ({ chunk: bytes }) => {
+        written += bytes.byteLength
+        return true
+      },
+    }),
+  ).toBeUndefined()
+  expect(written).toBe(chunk.byteLength)
+})
+
+it('drains native stderr after a tee failure instead of replacing the child result', async () => {
+  let drained = 0
+  expect(
+    await captureNativeStderr({
+      stream: (async function* () {
+        for (let index = 0; index < 3; index++) {
+          drained++
+          yield new Uint8Array([65])
+        }
+      })(),
+      writeChunk: async () => {
+        throw new Error('closed stderr')
+      },
+    }),
+  ).toBeUndefined()
+  expect(drained).toBe(3)
 })

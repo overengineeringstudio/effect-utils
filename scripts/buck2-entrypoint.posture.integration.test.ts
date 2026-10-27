@@ -23,7 +23,8 @@ import {
   directBuckArguments,
   cacheDaemonPolicyArguments,
 } from './buck2-entrypoint.ts'
-import './buck2-entrypoint.unit.test.ts'
+import * as readerRerunUnitTests from './buck2-entrypoint.unit.test.ts'
+void readerRerunUnitTests
 
 const secret = 'planted-writer-credential-never-persist'
 const values = {
