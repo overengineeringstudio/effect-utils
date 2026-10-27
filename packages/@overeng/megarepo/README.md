@@ -425,6 +425,12 @@ The mr receipt contracts in `cli.contract.test.ts` belong to the bounded lane
 (`test:buck2:unit`), not the source-only megarepo chain. Receipt fixtures preserve the
 runner module's real exports and replace only `runBuckMaintain`.
 
+The standalone lock-sync integration suite belongs to the native source complement:
+its real Git fixtures and production `git ls-files` discovery require Git, which is
+not a tool in the bounded Buck sandbox. `BUCK.genie.ts` declares this ownership in
+the bounded lane's `excludes`; generated `unboundedFiles` schedules the same suite
+under `test:megarepo:unbounded`, so `test:megarepo` still executes every test.
+
 Native ownership safety assertions use deterministic subprocess projections on every
 host. An additional real-`pty` test skips only when the executable is absent from
 `PATH`; other probe failures fail the test. Empty native projections also require PTY

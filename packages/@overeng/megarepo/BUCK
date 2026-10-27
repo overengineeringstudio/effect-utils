@@ -7,7 +7,7 @@ load("//buck2/products:defs.bzl", "javascript_product")
 # Projection source: packages/@overeng/megarepo/BUCK.genie.ts
 # Projection schema version: 13
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:22e0356c60817984b820a4ee4060f5a03e3e66b07c9e6acb9c41818e15bbe313
+# Semantic fingerprint: sha256:79803912bef8d76e0f72a8f76cd07759eea3e7b417e884032d487d1a9462c071
 # Regenerate: devenv tasks run genie:run
 
 load("//buck2:materialization.bzl", "export_materialization_inputs", "package_view")
@@ -1355,6 +1355,7 @@ vitest_test(
         "src/core/git-streaming-parsers.integration.test.ts",
         "src/core/git-timeout.integration.test.ts",
         "src/core/nix-lock/mod.integration.test.ts",
+        "src/core/nix-lock/standalone.integration.test.ts",
         "src/store/git-writer-lock.integration.test.ts",
         "src/store/store-archive.integration.test.ts",
         "src/store/store-branch-worktree.integration.test.ts",
@@ -1399,6 +1400,7 @@ vitest_collect(
         "src/core/git-streaming-parsers.integration.test.ts",
         "src/core/git-timeout.integration.test.ts",
         "src/core/nix-lock/mod.integration.test.ts",
+        "src/core/nix-lock/standalone.integration.test.ts",
         "src/store/git-writer-lock.integration.test.ts",
         "src/store/store-archive.integration.test.ts",
         "src/store/store-branch-worktree.integration.test.ts",
