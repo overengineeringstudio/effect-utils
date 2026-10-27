@@ -79,13 +79,17 @@ Inputs:
   inherited.
 
 There are no npm installs, cache/artifact actions, or runtime network requests.
-The fleet runner must provide Nix and pre-realize the Bun package and locked
-flake inputs for the pinned action revision. The action uses
-`nix shell --offline` with remote builders disabled and zero local build jobs,
+The fleet runner must provide Nix and pre-realize Bun and the nixpkgs source
+pinned by the action revision's root `flake.lock`. A small Nix expression reads
+only that explicit JSON file and returns `github:NixOS/nixpkgs/<locked-rev>#bun`;
+it does not copy the worktree into the store or evaluate the consumer's flake.
+`nix eval --offline --impure` permits reading that absolute lockfile, not network
+access. `nix shell --offline` disables remote builders and local build jobs,
 so a missing provisioned closure fails rather than fetching or building packages.
 No preinstalled Node or Bun is assumed. The action repository comes from GitHub's
 pinned action download, not the consumer checkout; its policy code cannot be
-replaced by consumer YAML.
+replaced by consumer YAML, and Bun configuration discovery runs from the pinned
+action root.
 
 For a local check with Bun available:
 
