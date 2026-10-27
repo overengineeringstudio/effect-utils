@@ -211,6 +211,87 @@ For banned actions, the observed ref remains diagnostic metadata in `value`,
 but ledger matching excludes it. Ref bumps do not introduce new debt, and
 equivalent-step ordinals use the same ref-insensitive identity.
 
+#### Consumer migration ledgers
+
+Consumers repinning shared CI helpers can inventory existing storage debt without
+disabling policy. `consumerMigrationPolicy` and `consumerMigrationLedger` are
+exported from `genie/ci-workflow.ts` and `genie/ci-workflow/policy.ts`.
+The policy helper uses report mode, decodes the existing `{ violations: [...] }`
+JSON shape, and selects only rows for the supplied workflow identity. Existing
+hand-rolled `fleetWorkflowPolicy({ mode: 'report', ledger })` policies still work.
+New violations fail; `pull-request-target`, `fleet-pr-without-same-repo-guard`,
+and `fork-controlled-runner` can never be ledgered, including during seeding.
+The pnpm-state helpers are unchanged.
+
+Keep raw workflow definitions separate from eager generation so the initial
+inventory does not need to import a workflow that already fails enforcement.
+For example, export `ciDefinition` (a `GitHubWorkflowArgs`) from
+`genie/ci-definition.ts`, then create the initial JSON once:
+
+```ts
+// genie/seed-policy-ledger.ts (one-time script; remove after seeding)
+import { writeFileSync } from 'node:fs'
+import { consumerMigrationLedger } from '../repos/effect-utils/genie/ci-workflow.ts'
+import { ciDefinition } from './ci-definition.ts'
+
+const data = consumerMigrationLedger({
+  workflows: { 'ci.yml': ciDefinition },
+})
+writeFileSync('genie/policy-migration-ledger.json', JSON.stringify(data, undefined, 2) + '\n', {
+  flag: 'wx',
+})
+```
+
+Run `bun genie/seed-policy-ledger.ts`. Include every workflow in this initial
+census, review the JSON, then delete the seed script: seeding is not the refresh
+command. Exclusive creation (`flag: 'wx'`) refuses to overwrite an existing ledger
+if the script is accidentally rerun. Do not reseed to accept new debt.
+The default repository identity is
+the literal `${{ github.repository }}`, matching `ciWorkflow`; if you supply an
+explicit repository, use the same value for seed, policy, and refresh. Workflow
+keys must likewise match exactly.
+
+Apply the ledger in `.github/workflows/ci.yml.genie.ts`:
+
+```ts
+import { ciWorkflow, consumerMigrationPolicy } from '../../repos/effect-utils/genie/ci-workflow.ts'
+import { ciDefinition } from '../../genie/ci-definition.ts'
+import ledger from '../../genie/policy-migration-ledger.json' with { type: 'json' }
+
+export default ciWorkflow({
+  ...ciDefinition,
+  policy: consumerMigrationPolicy({ workflow: 'ci.yml', ledger }),
+})
+```
+
+For permanent shrink-only refresh, add
+`genie/policy-migration-ledger.json.genie.ts`, reusing the ordinary genie
+generated-file machinery (adjust dependency paths for your checkout):
+
+```ts
+import ci from '../.github/workflows/ci.yml.genie.ts'
+import { consumerMigrationLedger } from '../repos/effect-utils/genie/ci-workflow.ts'
+import { createGenieOutput } from '../repos/effect-utils/packages/@overeng/genie/src/runtime/core.ts'
+import ledger from './policy-migration-ledger.json' with { type: 'json' }
+
+const data = consumerMigrationLedger({
+  workflows: { 'ci.yml': ci.data },
+  ledger,
+})
+export default createGenieOutput({
+  data,
+  stringify: () => JSON.stringify(data, undefined, 2) + '\n',
+})
+```
+
+Run `genie` (or the consumer's `devenv tasks run genie:run`) to remove resolved
+rows automatically, and `genie --check` in CI to reject stale committed JSON.
+Include all workflow outputs in the refresh census. Eager workflow imports and
+the refresh helper both reject new debt before writing a ledger. Step identities
+and ref matching are the same as the fleet policy's existing ledger format.
+Once the inventory is empty, remove the migration ledger and explicit policy to
+return to `ciWorkflow`'s default enforcement.
+
 Shared-helper tests enforce runner/event policy. Storage-emitting helpers are
 explicitly listed as `pendingStorageMigration` in
 `genie/ci-workflow/policy.unit.test.ts` until stage L7; their storage behavior
