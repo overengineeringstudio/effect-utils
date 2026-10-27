@@ -167,7 +167,7 @@ await Effect.runPromise(Effect.gen(function* () {
       // Isolate unhandled stream errors: the child must exit cleanly, not merely
       // resolve the formatting Effect before a late Writable error is emitted.
       const result = spawnSync('bun', ['--eval', source], {
-        cwd: fileURLToPath(new URL('../../../../../', import.meta.url)),
+        cwd: fileURLToPath(new URL('../../', import.meta.url)),
         env: { ...process.env, PATH: `${root}:${process.env.PATH ?? ''}` },
         encoding: 'utf8',
       })
