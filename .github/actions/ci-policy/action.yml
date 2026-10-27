@@ -31,6 +31,6 @@ runs:
         cd "$policy_root"
         # Fleet runners provide Nix and the pinned Bun closure. Offline realization
         # prevents registry, package-manager, or binary-cache network access here.
-        nix shell --offline "path:$policy_root#bun" --command \
+        nix shell --offline --option builders '' --option max-jobs 0 "path:$policy_root#bun" --command \
           bun "$policy_root/genie/ci-workflow/check-policy.ts" \
           "$consumer_root" "$CI_POLICY_REPOSITORY" "$CI_POLICY_EXCEPTIONS"
