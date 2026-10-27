@@ -1380,6 +1380,8 @@ in
 
   tasks."genie:ci-workflow:test" = {
     description = "Run bootstrap-safe CI workflow helpers and strict Buck cache evidence joins";
+    # CLI integration tests and root CI scripts import the bootstrap dependency view.
+    after = [ "buck2:editor:bootstrap" ];
     exec = trace.exec "genie:ci-workflow:test" ''
       set -euo pipefail
       cd "''${DEVENV_ROOT:-$PWD}"
