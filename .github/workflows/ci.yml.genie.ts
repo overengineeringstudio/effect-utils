@@ -1739,6 +1739,10 @@ const extraJobs: Record<string, any> = {
       installNixStep(),
       linuxSandboxPrerequisitesStep({ privileged: 'trusted' }),
       ciMeasurementBaselineCheckoutStep,
+      {
+        name: 'Realise source-shape tool closure',
+        run: 'nix build --no-update-lock-file --no-link .#buck2-node',
+      },
       sourceShapeMeasurementStep({
         artifactDir: `${sourceShapeMeasurementsDir}/current/effect-utils`,
         targetId: 'effect_utils',

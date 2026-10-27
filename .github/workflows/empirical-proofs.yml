@@ -2376,6 +2376,8 @@ jobs:
           fi
           printf "%s\n%s\n%s\n" "$started_at" "$source_root" "$fresh_root" > "$marker"
           printf "CI_BUCK2_CACHE_EVIDENCE_STARTED_AT=%s\n" "$started_at" >> "$GITHUB_ENV"
+      - name: Realise source-shape tool closure
+        run: 'nix build --no-update-lock-file --no-link .#buck2-node'
       - name: 'Measure source shape: effect-utils'
         shell: bash
         env:
