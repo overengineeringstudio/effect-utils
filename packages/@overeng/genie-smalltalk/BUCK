@@ -4,7 +4,7 @@
 # Projection source: packages/@overeng/genie-smalltalk/BUCK.genie.ts
 # Projection schema version: 13
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:7e92f3f9ffd80ea2397b1c6f8c6c939d2c0bcb5f9c76f0cfe91b31626efc5693
+# Semantic fingerprint: sha256:d6753c43c2227d7e2d325fff00122a208a8747a0925e73a81ccd921f85f89289
 # Regenerate: devenv tasks run genie:run
 
 load("//buck2:materialization.bzl", "export_materialization_inputs", "package_view")
@@ -23,6 +23,7 @@ export_file(
 export_materialization_inputs([
     "src/authoring-boundaries.unit.test.ts",
     "src/child-missions.unit.test.ts",
+    "src/compatibility.unit.test.ts",
     "src/fragments.unit.test.ts",
     "src/gate-constructors.unit.test.ts",
     "src/mod.ts",
@@ -80,6 +81,7 @@ package_view(
         "package.json": "package.json",
         "src/authoring-boundaries.unit.test.ts": "src/authoring-boundaries.unit.test.ts",
         "src/child-missions.unit.test.ts": "src/child-missions.unit.test.ts",
+        "src/compatibility.unit.test.ts": "src/compatibility.unit.test.ts",
         "src/fragments.unit.test.ts": "src/fragments.unit.test.ts",
         "src/gate-constructors.unit.test.ts": "src/gate-constructors.unit.test.ts",
         "src/mod.ts": "src/mod.ts",
@@ -97,18 +99,15 @@ package_view(
         "tsconfig.json": "tsconfig.json",
     },
     workspace_dist = {
-        "node_modules/@overeng/genie/dist": "//packages/@overeng/genie:dist",
-        "node_modules/@overeng/genie/package.json": "//packages/@overeng/genie:package.json",
-        "node_modules/@overeng/kdl/dist": "//packages/@overeng/kdl:dist",
-        "node_modules/@overeng/kdl/package.json": "//packages/@overeng/kdl:package.json",
+        "node_modules/@overeng/genie-fractal/dist": "//packages/@overeng/genie-fractal:dist",
+        "node_modules/@overeng/genie-fractal/package.json": "//packages/@overeng/genie-fractal:package.json",
         "node_modules/@overeng/utils-dev/dist": "//packages/@overeng/utils-dev:dist",
         "node_modules/@overeng/utils-dev/package.json": "//packages/@overeng/utils-dev:package.json",
     },
     generated_dependencies = {
     },
     workspace_dependency_views = {
-        "node_modules/@overeng/genie/node_modules": "//packages/@overeng/genie:package_tree",
-        "node_modules/@overeng/kdl/node_modules": "//packages/@overeng/kdl:package_tree",
+        "node_modules/@overeng/genie-fractal/node_modules": "//packages/@overeng/genie-fractal:package_tree",
         "node_modules/@overeng/utils-dev/node_modules": "//packages/@overeng/utils-dev:package_tree",
     },
     strip_project_references = True,
@@ -124,6 +123,7 @@ package_view(
         "package.json": "package.json",
         "src/authoring-boundaries.unit.test.ts": "src/authoring-boundaries.unit.test.ts",
         "src/child-missions.unit.test.ts": "src/child-missions.unit.test.ts",
+        "src/compatibility.unit.test.ts": "src/compatibility.unit.test.ts",
         "src/fragments.unit.test.ts": "src/fragments.unit.test.ts",
         "src/gate-constructors.unit.test.ts": "src/gate-constructors.unit.test.ts",
         "src/mod.ts": "src/mod.ts",
@@ -141,15 +141,13 @@ package_view(
         "tsconfig.json": "tsconfig.json",
     },
     workspace_dist = {
-        "node_modules/@overeng/genie/package.json": "//packages/@overeng/genie:package.json",
-        "node_modules/@overeng/kdl/package.json": "//packages/@overeng/kdl:package.json",
+        "node_modules/@overeng/genie-fractal/package.json": "//packages/@overeng/genie-fractal:package.json",
         "node_modules/@overeng/utils-dev/package.json": "//packages/@overeng/utils-dev:package.json",
     },
     generated_dependencies = {
     },
     workspace_dependency_views = {
-        "node_modules/@overeng/genie/node_modules": "//packages/@overeng/genie:product_package_tree",
-        "node_modules/@overeng/kdl/node_modules": "//packages/@overeng/kdl:product_package_tree",
+        "node_modules/@overeng/genie-fractal/node_modules": "//packages/@overeng/genie-fractal:product_package_tree",
         "node_modules/@overeng/utils-dev/node_modules": "//packages/@overeng/utils-dev:product_package_tree",
     },
     strip_project_references = True,
@@ -165,6 +163,7 @@ package_view(
         "package.json": "package.json",
         "src/authoring-boundaries.unit.test.ts": "src/authoring-boundaries.unit.test.ts",
         "src/child-missions.unit.test.ts": "src/child-missions.unit.test.ts",
+        "src/compatibility.unit.test.ts": "src/compatibility.unit.test.ts",
         "src/fragments.unit.test.ts": "src/fragments.unit.test.ts",
         "src/gate-constructors.unit.test.ts": "src/gate-constructors.unit.test.ts",
         "src/mod.ts": "src/mod.ts",
@@ -183,18 +182,15 @@ package_view(
         "vitest.config.ts": "vitest.config.ts",
     },
     workspace_dist = {
-        "node_modules/@overeng/genie/dist": "//packages/@overeng/genie:dist",
-        "node_modules/@overeng/genie/package.json": "//packages/@overeng/genie:package.json",
-        "node_modules/@overeng/kdl/dist": "//packages/@overeng/kdl:dist",
-        "node_modules/@overeng/kdl/package.json": "//packages/@overeng/kdl:package.json",
+        "node_modules/@overeng/genie-fractal/dist": "//packages/@overeng/genie-fractal:dist",
+        "node_modules/@overeng/genie-fractal/package.json": "//packages/@overeng/genie-fractal:package.json",
         "node_modules/@overeng/utils-dev/dist": "//packages/@overeng/utils-dev:dist",
         "node_modules/@overeng/utils-dev/package.json": "//packages/@overeng/utils-dev:package.json",
     },
     generated_dependencies = {
     },
     workspace_dependency_views = {
-        "node_modules/@overeng/genie/node_modules": "//packages/@overeng/genie:package_tree",
-        "node_modules/@overeng/kdl/node_modules": "//packages/@overeng/kdl:package_tree",
+        "node_modules/@overeng/genie-fractal/node_modules": "//packages/@overeng/genie-fractal:package_tree",
         "node_modules/@overeng/utils-dev/node_modules": "//packages/@overeng/utils-dev:package_tree",
     },
     strip_project_references = True,
@@ -231,8 +227,7 @@ npm_package_archive(
     dist = ":dist",
     typecheck = ":typecheck",
     workspace_manifests = [
-        "//packages/@overeng/genie:package.json",
-        "//packages/@overeng/kdl:package.json",
+        "//packages/@overeng/genie-fractal:package.json",
         "//packages/@overeng/utils-dev:package.json",
     ],
     output = "overeng-genie-smalltalk.tgz",

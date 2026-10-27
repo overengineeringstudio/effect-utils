@@ -184,10 +184,12 @@ const normalizableDuration = (allowZero: boolean) =>
     }),
   )
 /** Positive native u64 millisecond durations, normalized immediately. */
-export const DurationSchema = normalizableDuration(false).annotate({ identifier: 'St.Duration' })
+export const DurationSchema = normalizableDuration(false).annotate({
+  identifier: 'Fractal.Duration',
+})
 /** Native u64 millisecond durations for fields where zero is meaningful. */
 export const NonNegativeDurationSchema = normalizableDuration(true).annotate({
-  identifier: 'St.NonNegativeDuration',
+  identifier: 'Fractal.NonNegativeDuration',
 })
 
 /** Explicit offsets only; Effect owns parsing and UTC conversion. */
@@ -235,7 +237,7 @@ export const InstantSchema = Schema.declare<InstantInput>((value): value is Inst
       encode: SchemaGetter.transform(normalizeInstant),
     }),
   )
-  .annotate({ identifier: 'St.Instant' })
+  .annotate({ identifier: 'Fractal.Instant' })
 
 /** Native local wall-clock time in 24-hour HH:MM form. */
 export const CalendarTimeSchema = Schema.String.pipe(
@@ -243,7 +245,7 @@ export const CalendarTimeSchema = Schema.String.pipe(
     message: 'calendar at must be a valid 24-hour HH:MM',
   }),
   Schema.brand('CalendarTime'),
-).annotate({ identifier: 'St.CalendarTime' })
+).annotate({ identifier: 'Fractal.CalendarTime' })
 /** A timezone recognized by the runtime IANA timezone database. */
 export const IanaTimezoneSchema = Schema.String.pipe(
   Schema.refine(
@@ -259,11 +261,11 @@ export const IanaTimezoneSchema = Schema.String.pipe(
     { message: 'unknown IANA timezone' },
   ),
   Schema.brand('IanaTimezone'),
-).annotate({ identifier: 'St.IanaTimezone' })
+).annotate({ identifier: 'Fractal.IanaTimezone' })
 /** The native calendar's optional single weekly day. */
 export const CalendarDaysSchema = Schema.Tuple([
   Schema.Literals(['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']),
-]).annotate({ identifier: 'St.CalendarDays' })
+]).annotate({ identifier: 'Fractal.CalendarDays' })
 
 const validName = ({
   value: s,
@@ -311,11 +313,11 @@ export const DocumentReferenceSchema = Text.pipe(
       (at < 0 || /^[0-9a-fA-F]{64}$/u.test(s.slice(at + 1)))
     )
   }),
-).annotate({ identifier: 'St.DocumentReference' })
+).annotate({ identifier: 'Fractal.DocumentReference' })
 /** Exact immutable document hash references without interpolation. */
 export const PinnedDocumentReferenceSchema = DocumentReferenceSchema.pipe(
   Schema.refine((s): s is string => !s.includes('${') && /@[0-9a-fA-F]{64}$/u.test(s)),
-).annotate({ identifier: 'St.PinnedDocumentReference' })
+).annotate({ identifier: 'Fractal.PinnedDocumentReference' })
 const isPinnedDocument = (input: unknown): boolean =>
   Schema.is(PinnedDocumentReferenceSchema)(input)
 
@@ -347,7 +349,7 @@ const LaunchShape = Schema.Union([
       { message: 'launch cannot set and unset the same environment name' },
     ),
   )
-  .annotate({ identifier: 'St.Launch', parseOptions: strict })
+  .annotate({ identifier: 'Fractal.Launch', parseOptions: strict })
 /** Closed, immutable Argv or Shell launch values. */
 export const LaunchSchema = canonicalCodec(LaunchShape)
 /** A normalized canonical process launch. */
@@ -412,7 +414,7 @@ export const lowerLaunch = (input: Launch) => {
 }
 
 /** Only latest-only catch-up is supported by the production native contract. */
-export const CatchUpSchema = Schema.Literal('latest').annotate({ identifier: 'St.CatchUp' })
+export const CatchUpSchema = Schema.Literal('latest').annotate({ identifier: 'Fractal.CatchUp' })
 /** Production native catch-up behavior. */
 export type CatchUp = typeof CatchUpSchema.Type
 const TimingShape = Schema.Union([
@@ -428,7 +430,7 @@ const TimingShape = Schema.Union([
     days: Schema.optionalKey(CalendarDaysSchema),
     catchUp: Schema.optionalKey(CatchUpSchema),
   }),
-]).annotate({ identifier: 'St.Timing', parseOptions: strict })
+]).annotate({ identifier: 'Fractal.Timing', parseOptions: strict })
 /** Closed, immutable At, Every or Calendar timing values. */
 export const TimingSchema = canonicalCodec(TimingShape)
 /** A normalized canonical schedule timing. */
@@ -526,7 +528,7 @@ const ReviewShape = Schema.Union([
     ),
   ),
   Schema.TaggedStruct('PinnedDocument', { reference: PinnedDocumentReferenceSchema }),
-]).annotate({ identifier: 'St.Review', parseOptions: strict })
+]).annotate({ identifier: 'Fractal.Review', parseOptions: strict })
 /** Closed, immutable subject, file or exact-document review values. */
 export const ReviewSchema = canonicalCodec(ReviewShape)
 /** A normalized canonical human-review target. */

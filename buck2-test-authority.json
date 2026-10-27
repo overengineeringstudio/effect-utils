@@ -485,6 +485,38 @@
       "unboundedFiles": []
     },
     {
+      "collectionTarget": "effect_utils//packages/@overeng/genie-fractal:test_collect",
+      "excludes": [],
+      "packageName": "genie-fractal",
+      "packagePath": "packages/@overeng/genie-fractal",
+      "runner": "vitest",
+      "selectedTestFiles": [
+        "src/authoring-boundaries.unit.test.ts",
+        "src/child-missions.unit.test.ts",
+        "src/fragments.unit.test.ts",
+        "src/gate-constructors.unit.test.ts",
+        "src/mod.unit.test.ts",
+        "src/run-values.unit.test.ts",
+        "src/tree.unit.test.ts",
+        "src/values.unit.test.ts"
+      ],
+      "sourceOwners": {},
+      "target": "effect_utils//packages/@overeng/genie-fractal:test",
+      "taskName": "test:genie-fractal",
+      "testFiles": [
+        "src/authoring-boundaries.unit.test.ts",
+        "src/child-missions.unit.test.ts",
+        "src/fragments.unit.test.ts",
+        "src/gate-constructors.unit.test.ts",
+        "src/mod.unit.test.ts",
+        "src/run-values.unit.test.ts",
+        "src/tree.unit.test.ts",
+        "src/values.unit.test.ts"
+      ],
+      "unboundedAfter": [],
+      "unboundedFiles": []
+    },
+    {
       "collectionTarget": "effect_utils//packages/@overeng/genie-smalltalk:test_collect",
       "excludes": [],
       "packageName": "genie-smalltalk",
@@ -493,6 +525,7 @@
       "selectedTestFiles": [
         "src/authoring-boundaries.unit.test.ts",
         "src/child-missions.unit.test.ts",
+        "src/compatibility.unit.test.ts",
         "src/fragments.unit.test.ts",
         "src/gate-constructors.unit.test.ts",
         "src/mod.unit.test.ts",
@@ -506,6 +539,7 @@
       "testFiles": [
         "src/authoring-boundaries.unit.test.ts",
         "src/child-missions.unit.test.ts",
+        "src/compatibility.unit.test.ts",
         "src/fragments.unit.test.ts",
         "src/gate-constructors.unit.test.ts",
         "src/mod.unit.test.ts",

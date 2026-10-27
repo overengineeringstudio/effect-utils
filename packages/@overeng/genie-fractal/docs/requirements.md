@@ -1,8 +1,8 @@
-# Smalltalk Declaration DSL — Requirements
+# Fractal Declaration DSL — Requirements
 
 ## Context
 
-This package owns reusable TypeScript authoring and lowering for native Smalltalk declarations. Native Smalltalk owns grammar admission, scheduling, authorization and execution. Consuming graph repositories own domain policy and publication.
+This package owns reusable TypeScript authoring and lowering for native Fractal declarations. Native Fractal owns grammar admission, scheduling, authorization and execution. Consuming graph repositories own domain policy and publication.
 
 ## Assumptions
 
@@ -29,4 +29,4 @@ This package owns reusable TypeScript authoring and lowering for native Smalltal
 
 ### Must preserve bounded authority
 
-- **STDSL-R07 Exact-plan binding:** Plan-based review and execution bind to the same immutable pre-run plan. Reusable authority, where supplied by native Smalltalk, is bounded to the exact plan and its admitted action, scope, identity and consumption limits; declarations do not manufacture authority.
+- **STDSL-R07 Exact-plan binding:** Plan-based review and execution bind to the same immutable pre-run plan. Reusable authority, where supplied by native Fractal, is bounded to the exact plan and its admitted action, scope, identity and consumption limits; declarations do not manufacture authority.
