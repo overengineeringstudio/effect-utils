@@ -237,12 +237,16 @@ import { ciDefinition } from './ci-definition.ts'
 const data = consumerMigrationLedger({
   workflows: { 'ci.yml': ciDefinition },
 })
-writeFileSync('genie/policy-migration-ledger.json', JSON.stringify(data, undefined, 2) + '\n')
+writeFileSync('genie/policy-migration-ledger.json', JSON.stringify(data, undefined, 2) + '\n', {
+  flag: 'wx',
+})
 ```
 
 Run `bun genie/seed-policy-ledger.ts`. Include every workflow in this initial
 census, review the JSON, then delete the seed script: seeding is not the refresh
-command. Do not reseed to accept new debt. The default repository identity is
+command. Exclusive creation (`flag: 'wx'`) refuses to overwrite an existing ledger
+if the script is accidentally rerun. Do not reseed to accept new debt.
+The default repository identity is
 the literal `${{ github.repository }}`, matching `ciWorkflow`; if you supply an
 explicit repository, use the same value for seed, policy, and refresh. Workflow
 keys must likewise match exactly.
