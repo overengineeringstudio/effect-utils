@@ -151,19 +151,20 @@ describe('formatter subprocess stdin lifetime', () => {
       const root = yield* fs.makeTempDirectoryScoped({ prefix: 'genie-formatter-exit-' })
       const formatterModule = new URL('./generation.ts', import.meta.url).href
       const source = `
-import { symlinkSync } from 'node:fs'
+import { writeFileSync } from 'node:fs'
 import { NodeServices } from '@effect/platform-node'
 import { Effect, Option } from 'effect'
 import { makeOxfmtFormatter } from ${encodeString(formatterModule)}
-// A native early exit forces stdin to close before buffered input is flushed.
-symlinkSync(Bun.which('true')!, ${encodeString(`${root}/oxfmt`)})
+// The kernel invokes this already running Bun executable directly: no host
+// utility, shell, env shebang, or extra staged resource is needed.
+writeFileSync(${encodeString(`${root}/oxfmt`)}, '#!' + process.execPath + ' --eval=process.exit(0)\\n', { mode: 0o755 })
 await Effect.runPromise(Effect.gen(function* () {
   const formatter = yield* makeOxfmtFormatter({ configPath: Option.none() })
-  for (let iteration = 0; iteration < 500; iteration++) {
+  yield* Effect.forEach(Array.from({ length: 32 }), () => Effect.gen(function* () {
     const content = '{"violations":[]}\\n'
     const result = yield* formatter({ targetFilePath: ${encodeString(`${root}/ledger.json`)}, content })
     if (result !== content) throw new Error('Formatter fallback changed the content')
-  }
+  }), { concurrency: 8 })
 }).pipe(Effect.provide(NodeServices.layer)))
 `
       // Isolate unhandled stream errors: the child must exit cleanly, not merely
