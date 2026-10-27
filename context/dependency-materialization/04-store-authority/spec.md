@@ -8,8 +8,8 @@ Status: **Draft**
 ## Scope
 
 This spec defines steady-state storage placement, graph isolation, package
-import selection, and root-repair boundaries. It does not define transitional
-legacy-store migration, a root registry, named storage profiles, all-root
+import selection, root-repair boundaries, and legacy host-store retirement.
+It does not define a persistent root registry, named storage profiles, all-root
 repair, or machine-specific Store Cache placement.
 
 ## Requirement Trace
@@ -76,9 +76,11 @@ with a workspace suffix for nested Materialization Roots. Other CI runners must
 set the explicit opt-in to preserve job isolation. `CI=1` alone is a non-watch
 execution flag, not a Store Cache ownership boundary; dev-host tasks retain the
 same-user shared store. `PNPM_SHARED_STORE_DIR` overrides the shared path;
-otherwise it is `$HOME/.local/share/pnpm/store-shared-v1`, or
-`$HOME/.local/share/pnpm/store` for the opted-in global virtual store. Job-local
-mode disables global virtual store reuse regardless of local opt-ins.
+otherwise both root-local and opted-in global virtual stores use the
+`storeContract.localDevelopment.defaultPath` from the generated
+`pnpm-install-contract.json` (`~/.local/share/pnpm/store-shared-v1`), whose source
+is `genie/external.ts`. GVS changes graph placement, not the shared CAS namespace.
+Job-local mode disables global virtual store reuse regardless of local opt-ins.
 
 Frozen lockfile verification (`lint:check:lockfile`) resolves storage independently
 using the same selection prologue as `pnpm:install`; task-local exports are not
@@ -125,8 +127,17 @@ Materialization-Root lock + package-manager-home lock
   -> root-local projection
 ```
 
-No registry of roots is required: the Store Cache is disposable and does not
-own graph identity.
+After acquiring either lease mode, admission uses Node's direct `fstat(202)`
+and pathname `stat` with full-width integer device/inode identities. It does
+not infer descriptor identity through `/dev/fd` pathname emulation on Darwin.
+A retired or replaced lock (including a missing pathname) is not admission:
+close the stale descriptor, recreate/reopen the current lock, and retry within
+the original timeout. Thus an installer queued before host-store retirement
+cannot proceed under a deleted lock inode while later installers use a new one.
+
+Normal installs require no registry of roots: the Store Cache is disposable
+and does not own graph identity. Host-store retirement explicitly enumerates
+registered worktrees before discarding a complete legacy namespace.
 
 ## Host Lifecycle
 
@@ -139,9 +150,9 @@ measurement-only. Maintenance takes the exclusive Store Cache lease, then
 reports bytes before, bytes after, reclaimed bytes, outcome, and dry-run mode.
 Root-scoped repair never invokes this operation.
 
-The cache owner does not enumerate Materialization Roots and never deletes
-individual pnpm internals itself. Eviction may make a future offline install
-miss; it cannot change a declared graph or an already-materialized root.
+pnpm-native pruning does not enumerate Materialization Roots or delete individual
+pnpm internals itself. Eviction may make a future offline install miss; it
+cannot change a declared graph or an already-materialized root.
 
 Legacy external `v11/files` bridges are not followed by managed installs. The
 explicit `pnpm:store:migrate-legacy` operation takes the exclusive maintenance
@@ -150,6 +161,54 @@ disposable v11 metadata inside the selected Store Cache. It preserves the store
 root and maintenance-lock inode and leaves the external historical pool
 untouched. An already self-contained cache is a successful no-op; any unknown
 bridge fails closed.
+
+### Legacy Host Store Retirement
+
+```text
+explicit legacy store -> exclusive maintenance lease -> registered-root census
+  -> symlink / inode / link-count proof -> dry-run verdict
+  -> explicit apply -> sibling tombstone rename -> tombstone deletion
+```
+
+`pnpm:store:retire` owns complete legacy host Store Cache retirement; it is
+distinct from `pnpm-store-gc`, which covers historical worktree-local pure
+stores. The target must be explicit. The contract shared store and the
+`PNPM_SHARED_STORE_DIR` override remain protected, including resolved aliases.
+Only a self-contained `v11/files` layout is eligible.
+
+The census uses `git worktree list --porcelain -z` in the current repository.
+When `mr` is available, it also lists repositories with `mr store ls --output
+json` and runs the same git enumeration against each
+`<basePath>/<relativePath>/.bare`. Bare records are excluded; canonical root
+paths are deduplicated. Prunable, missing, unreadable, or unsuccessfully
+enumerated registrations refuse retirement. This is an enumeration of
+registered worktrees, not a scan of every directory on the host.
+
+Every enumerated root is inspected recursively for root and nested workspace
+`node_modules`. Discovery skips only `.git` and follows directory aliases,
+including linked workspace packages; consumer scans follow all directory
+symlinks. Unresolvable links and filesystem-read errors fail closed. Symlinks
+resolving into the target, including `.pnpm` and GVS links, refuse retirement
+and identify every offending root. Package-file `(st_dev, st_ino)` identities
+are compared with the target's CAS `files` tree; any match refuses retirement.
+Unaccounted hardlink counts also refuse retirement even when the owning root
+is not registered. Internal GVS links are allowed only within the target;
+external store bridges are not eligible.
+
+The default is a non-destructive eligibility verdict and size report; deletion
+requires explicit `pnpm-store-retire --apply` or `PNPM_RETIRE_APPLY=1` for the
+devenv task. Select its target with `PNPM_RETIRE_STORE_DIR`; the CLI also accepts
+a positional target. Dry-run may create the maintenance-lock file. The exclusive
+`acquire_pnpm_store_cache_lease` admission lease covers census, proof, rename,
+and deletion. Apply first atomically renames the complete store to a sibling
+tombstone, then removes only that tombstone. Interruption during deletion
+therefore leaves a tombstone, not a half-deleted live namespace. Unmanaged
+writers do not participate in the lease and must be quiesced by the owner.
+
+The retirement regression suite runs each named case in a separate process
+session with a 30-second deadline covering setup, execution, and cleanup. The
+supervisor kills the entire session on expiry and reports the case name before
+reclaiming its temporary stores; an orphaned flock cannot hold the CI job open.
 
 ## Health And Repair
 

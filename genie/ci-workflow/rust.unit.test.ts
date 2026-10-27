@@ -13,9 +13,16 @@ import {
 import { namespaceRunner } from './setup.ts'
 
 describe('plain-flake Rust CI', () => {
-  it('propagates each explicit privilege mode through every default Namespace job', () => {
+  it('retains each explicit privilege mode in caller-selected Namespace runners', () => {
     for (const namespacePrivilege of ['always', 'trusted', 'never'] as const) {
-      const opts = { namespacePrivilege }
+      const opts = {
+        namespacePrivilege,
+        runsOn: namespaceRunner({
+          profile: 'namespace-profile-linux-x86-64',
+          runId: '${{ github.run_id }}',
+          privileged: namespacePrivilege,
+        }),
+      }
       const jobs = [
         plainFlakeJob({ ...opts, step: { run: 'nix build' } }),
         cargoFmtJob(opts),

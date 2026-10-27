@@ -1108,7 +1108,9 @@ describe('ci workflow pr-reviews helpers', () => {
 
   it('wires pr-reviews-resolved into the generated workflow and repo settings', () => {
     expect(generatedWorkflowSource).toContain('prReviewsResolvedJob')
-    expect(generatedWorkflowSource).toContain('[prReviewsResolvedJobId]: prReviewsResolvedJob()')
+    expect(generatedWorkflowSource).toContain(
+      "[prReviewsResolvedJobId]: prReviewsResolvedJob({ runsOn: 'ubuntu-latest' })",
+    )
     expect(generatedCiWorkflowYamlSource).toContain('  pr-reviews-resolved:')
     expect(generatedCiWorkflowYamlSource).toContain('reviewThreads(first:100')
     expect(generatedRepoSettingsSource).toContain('prReviewsPullRequestRule()')
@@ -1293,6 +1295,7 @@ describe('ci workflow standard job helpers', () => {
               (step) => step.name === 'Deploy docs to Vercel',
             )
             const snapshotPackStep = prSnapshotPackJob({
+              runsOn: 'ubuntu-24.04',
               topologyPath: 'release-topology.json',
               setupStepsAfterCheckout: [],
               packTask: 'release:pack',
@@ -1336,7 +1339,7 @@ describe('ci workflow standard job helpers', () => {
               trustTier,
               name: 'CI',
               on: { push: { branches: ['main'] } },
-              jobs: { check: { 'runs-on': 'ubuntu-latest', steps: [] } },
+              jobs: { check: { 'runs-on': ['sh-linux-x64', 'nix'], steps: [] } },
             })
             console.log(JSON.stringify({
               jobEnv: workflow.data.jobs.check?.env,

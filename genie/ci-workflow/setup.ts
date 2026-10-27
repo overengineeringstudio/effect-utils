@@ -1,6 +1,5 @@
 import { pipelineDevenvStepName } from '../../packages/@overeng/ci-tools/src/pipeline-job-names.ts'
 import type { GitHubWorkflowArgs } from '../../packages/@overeng/genie/src/runtime/mod.ts'
-import type { RunnerProfile } from '../ci.ts'
 import { renderBinaryCachesExtraConf } from './binary-cache-composition.ts'
 import type { BinaryCacheDescriptor } from './binary-cache-descriptors.ts'
 import {
@@ -10,6 +9,7 @@ import {
   CachePublisherJobError,
 } from './cache-policy.ts'
 import { applyMegarepoLockStep } from './megarepo.ts'
+import type { RunnerProfile } from './runners.ts'
 import {
   bashShellDefaults,
   defaultCiRuntimeScriptsDir,

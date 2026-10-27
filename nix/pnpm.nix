@@ -21,13 +21,11 @@
 # The linux-arm64 payload is bundled alongside the eval-platform one:
 # `resolveInstalledBinary()` probes the host's target directory, and a
 # wrapper evaluated on x86_64 but executed on aarch64 (remote builders)
-# must find a working binary there. Without it, resolution walks into
-# ancestor `node_modules` and spawns whatever half-installed copy it finds
-# (typically missing its optional exe or carrying an unpatched interpreter),
-# failing with a bare spawnSync ENOENT.
+# must find a working binary there. Without it, resolution cannot find a
+# matching executable in the wrapper's own optional-dependency locations.
 let
   lib = pkgs.lib;
-  version = "12.7.0";
+  version = "12.15.0";
 
   platform = pkgs.stdenv.hostPlatform;
 
@@ -45,17 +43,17 @@ let
       unsupportedPlatform;
 
   exeHashes = {
-    "linux-x64" = "sha256-Kyn+L9kWh71plcNWxz1+hOrV/OYwo4yj0jGcLOep/EU=";
-    "linux-arm64" = "sha256-m6NyMSn40aUIly+LTka7LpiXODOGG5/rzOKEdRk5cr8=";
-    "linux-x64-musl" = "sha256-8XH4x64Oz2frI7SmqLMoZ5J2DKgWAjKaghy3Izfrb/M=";
-    "linux-arm64-musl" = "sha256-Jig47yJUCvCmcOn5I51B7mEpODv6StWFveIkG77/r74=";
-    "darwin-x64" = "sha256-vT1FCcruSoiSP+7K9O1pc1aBDcxift/3PGlGMVm49c4=";
-    "darwin-arm64" = "sha256-lxwInMbFfy9d8GEbQxQB3ZbfpwfeKOx1VNXuxVJwG3Q=";
+    "linux-x64" = "sha256-QC9wRbHgWHrLFULxjTivvMtrq/PHRROU5vs9nwFgxso=";
+    "linux-arm64" = "sha256-gRfWXyjmJ+lJ1fxl1jNCJmMmgmpW+jdDF78T/hFmpQ4=";
+    "linux-x64-musl" = "sha256-8af/R+IK1TTwzqJnCbnKfMJLFexmFR37kVJx5UauTgg=";
+    "linux-arm64-musl" = "sha256-z21teggQd0PvDHaDicKTXB/7cAKwKrAGgtLuVlDgSD0=";
+    "darwin-x64" = "sha256-Iu1Bl9JpIzAMzaYrEqPUsn7QDNeZbN5BaIPGuBNZ7aY=";
+    "darwin-arm64" = "sha256-+rOOR5ASd2+jgQMTvYx+H9OfiD+RXBEcqYARLwaVUV4=";
   };
 
   wrapperSrc = pkgs.fetchurl {
     url = "https://registry.npmjs.org/pnpm/-/pnpm-${version}.tgz";
-    hash = "sha256-Gn/ks2q+rXnuE+Lywgid3Tf+4BYXm5/laoWkTvcqr38=";
+    hash = "sha256-9Rc/YSfMUFzbNuwXcZ/lSoURxv2FYMfOtL98c+O0RYs=";
   };
 
   exeSrc = pkgs.fetchurl {

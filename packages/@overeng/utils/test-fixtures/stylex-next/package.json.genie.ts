@@ -12,7 +12,7 @@ const installedVersion = ({ name }: { name: string }): string => {
 export default packageJson({
   name: 'fixture-next',
   private: true,
-  packageManager: 'pnpm@12.7.0',
+  packageManager: 'pnpm@12.15.0',
   dependencies: Object.fromEntries(
     ['next', 'react', 'react-dom', '@stylexjs/stylex', 'postcss'].map((name) => [
       name,

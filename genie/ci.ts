@@ -5,14 +5,7 @@
  * - .github/repo-settings.json.genie.ts (required status checks)
  */
 
-/** Runner profiles for multi-platform CI jobs */
-export const RUNNER_PROFILES = [
-  'namespace-profile-linux-x86-64',
-  'namespace-profile-macos-arm64',
-] as const
-
-/** Union of supported GitHub Actions runner profile labels. */
-export type RunnerProfile = (typeof RUNNER_PROFILES)[number]
+export { RUNNER_PROFILES, type RunnerProfile } from './ci-workflow/runners.ts'
 
 /** Core CI job keys used for the typed product-job block in the workflow generator. */
 export const CORE_CI_JOB_NAMES = [
