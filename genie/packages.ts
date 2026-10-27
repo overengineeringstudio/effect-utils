@@ -90,7 +90,7 @@ export const internalPackageCatalogEntries = Object.fromEntries(
 ) as Record<`@overeng/${InternalPackageName}`, 'workspace:^'>
 
 /**
- * Nix-only @overeng/* packages that participate in the Nix/flake topology but
+ * Nix-only packages that participate in the Nix/flake topology but
  * are NOT part of the pnpm workspace.
  *
  * These intentionally live outside `internalPackages` because they have no
@@ -103,6 +103,13 @@ export const internalPackageCatalogEntries = Object.fromEntries(
  * `apps.<flakeRef>`); `cratePath` is the repo-relative crate root.
  */
 export const nixOnlyPackages = [
+  {
+    name: 'ci-storage',
+    /** Rust crate: deterministic CI artifacts and presigned-file transport. */
+    kind: 'rust-crate',
+    flakeRef: 'ci-storage',
+    cratePath: 'rust/ci-storage',
+  },
   {
     name: 'otelite',
     /** Rust crate: local OTLP capture tool for E2E and instrumentation tests. */
@@ -128,5 +135,5 @@ export const nixOnlyPackages = [
   },
 ] as const
 
-/** Short name of a nix-only (non-pnpm) @overeng/* package. */
+/** Short name of a nix-only (non-pnpm) package. */
 export type NixOnlyPackageName = (typeof nixOnlyPackages)[number]['name']

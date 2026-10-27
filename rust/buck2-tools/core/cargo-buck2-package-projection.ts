@@ -2846,6 +2846,7 @@ const effectUtilsWorkspaceMemberManifestPaths = [
   'rust/buck2-tools/events/Cargo.toml',
   'rust/buck2-tools/fingerprint/Cargo.toml',
   'rust/buck2-tools/product/Cargo.toml',
+  'rust/ci-storage/Cargo.toml',
   'rust/effect-rust/Cargo.toml',
   'rust/effect-rust-macros/Cargo.toml',
   'rust/effect-rust-fixtures/hash-interop/Cargo.toml',
