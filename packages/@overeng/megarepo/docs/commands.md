@@ -34,6 +34,37 @@ mr lock [--force] [--all] [--only <members>] [--skip <members>] [--dry-run]
 
 This expects the workspace to already be reconciled to `megarepo.kdl`. If a member symlink points at the wrong ref, it is skipped with a hint to run `mr fetch --apply`.
 
+### `mr lock-sync`
+
+Check standalone flake locks against an input already resolved in the consumer
+repository's root lock. Run from the repository root (or use `mr --cwd <root>`).
+
+```bash
+mr lock-sync --input effect-utils                     # read-only; fails on drift
+mr lock-sync --input effect-utils --write             # copy the root resolution
+mr lock-sync --input effect-utils --root-lock flake.lock --write
+```
+
+The default authority is `devenv.lock`. Discovery includes tracked and non-ignored
+untracked `flake.lock` files, including the root `flake.lock` when `devenv.lock`
+is authoritative. Ignored caches and member mounts are not traversed.
+The named GitHub/git input is matched through each lock's root input map,
+including follows paths, not through potentially suffixed node IDs.
+Locks without that input are unchanged.
+
+Both modes share discovery and comparison. Every matching input must have the
+same structural `original` as the root; a different original, unresolved input,
+or malformed lock fails before any write. Write mode copies the complete
+`locked` object (including revision, NAR hash, timestamp and extra metadata)
+without re-resolving the ref. It preserves `original` (including `ref=published`),
+local dependency edges and all unrelated nodes. Repeating a successful write
+does not touch any file.
+
+Unlike `mr apply --lock-sync`, this operates within one consumer repository,
+does not modify member worktrees or `megarepo.lock`, and does not require a
+megarepo config. The authoritative root resolution must already satisfy
+`mr:lock-sync-check`; copying it does not repair root drift against `megarepo.lock`.
+
 ### `mr apply`
 
 Apply the exact commits from `megarepo.lock`.

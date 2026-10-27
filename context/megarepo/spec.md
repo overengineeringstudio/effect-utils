@@ -363,6 +363,15 @@ Nix lock rewriting during `mr apply` and `mr fetch --apply` is off by default;
 `--lock-sync direct|recursive` opts in. `mr:lock-sync-check` reports lock drift
 without rewriting it. Member repins are made as member PRs.
 
+`mr lock-sync --input <name> [--root-lock devenv.lock|flake.lock]` checks every
+tracked or non-ignored standalone `flake.lock` in the current consumer repository
+against the root lock's named input (including follows paths). `--write` copies its complete `locked`
+metadata without resolving the input again. `original` must match structurally
+across the entire cohort before any write and is never changed. The default
+authority is `devenv.lock`; member mounts and ignored caches are excluded. This is
+separate from member-worktree synchronization, leaves `megarepo.lock` untouched,
+and assumes the authoritative root already passes `mr:lock-sync-check`.
+
 Filtering (`--only` / `--skip`, mutually exclusive) applies to bulk
 arrangement commands; generators skip members that were not synced rather than
 failing on a missing path.

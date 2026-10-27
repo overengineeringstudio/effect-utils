@@ -7,7 +7,7 @@ load("//buck2/products:defs.bzl", "javascript_product")
 # Projection source: packages/@overeng/megarepo/BUCK.genie.ts
 # Projection schema version: 13
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:b8195332c226638ab4482e824e1762f27b37f783505deec03d3c6bd87ed2633d
+# Semantic fingerprint: sha256:22e0356c60817984b820a4ee4060f5a03e3e66b07c9e6acb9c41818e15bbe313
 # Regenerate: devenv tasks run genie:run
 
 load("//buck2:materialization.bzl", "export_materialization_inputs", "package_view")
@@ -42,6 +42,7 @@ export_materialization_inputs([
     "src/cli/commands/fetch.ts",
     "src/cli/commands/generate/mod.ts",
     "src/cli/commands/init.ts",
+    "src/cli/commands/lock-sync.ts",
     "src/cli/commands/lock.ts",
     "src/cli/commands/ls.ts",
     "src/cli/commands/mod.ts",
@@ -210,6 +211,8 @@ export_materialization_inputs([
     "src/core/nix-lock/schema.unit.test.ts",
     "src/core/nix-lock/source-rewriter.ts",
     "src/core/nix-lock/source-rewriter.unit.test.ts",
+    "src/core/nix-lock/standalone.integration.test.ts",
+    "src/core/nix-lock/standalone.ts",
     "src/core/observability.ts",
     "src/core/ref.ts",
     "src/core/ref.unit.test.ts",
@@ -357,6 +360,7 @@ package_view(
         "src/cli/commands/fetch.ts": "src/cli/commands/fetch.ts",
         "src/cli/commands/generate/mod.ts": "src/cli/commands/generate/mod.ts",
         "src/cli/commands/init.ts": "src/cli/commands/init.ts",
+        "src/cli/commands/lock-sync.ts": "src/cli/commands/lock-sync.ts",
         "src/cli/commands/lock.ts": "src/cli/commands/lock.ts",
         "src/cli/commands/ls.ts": "src/cli/commands/ls.ts",
         "src/cli/commands/mod.ts": "src/cli/commands/mod.ts",
@@ -525,6 +529,8 @@ package_view(
         "src/core/nix-lock/schema.unit.test.ts": "src/core/nix-lock/schema.unit.test.ts",
         "src/core/nix-lock/source-rewriter.ts": "src/core/nix-lock/source-rewriter.ts",
         "src/core/nix-lock/source-rewriter.unit.test.ts": "src/core/nix-lock/source-rewriter.unit.test.ts",
+        "src/core/nix-lock/standalone.integration.test.ts": "src/core/nix-lock/standalone.integration.test.ts",
+        "src/core/nix-lock/standalone.ts": "src/core/nix-lock/standalone.ts",
         "src/core/observability.ts": "src/core/observability.ts",
         "src/core/ref.ts": "src/core/ref.ts",
         "src/core/ref.unit.test.ts": "src/core/ref.unit.test.ts",
@@ -674,6 +680,7 @@ package_view(
         "src/cli/commands/fetch.ts": "src/cli/commands/fetch.ts",
         "src/cli/commands/generate/mod.ts": "src/cli/commands/generate/mod.ts",
         "src/cli/commands/init.ts": "src/cli/commands/init.ts",
+        "src/cli/commands/lock-sync.ts": "src/cli/commands/lock-sync.ts",
         "src/cli/commands/lock.ts": "src/cli/commands/lock.ts",
         "src/cli/commands/ls.ts": "src/cli/commands/ls.ts",
         "src/cli/commands/mod.ts": "src/cli/commands/mod.ts",
@@ -842,6 +849,8 @@ package_view(
         "src/core/nix-lock/schema.unit.test.ts": "src/core/nix-lock/schema.unit.test.ts",
         "src/core/nix-lock/source-rewriter.ts": "src/core/nix-lock/source-rewriter.ts",
         "src/core/nix-lock/source-rewriter.unit.test.ts": "src/core/nix-lock/source-rewriter.unit.test.ts",
+        "src/core/nix-lock/standalone.integration.test.ts": "src/core/nix-lock/standalone.integration.test.ts",
+        "src/core/nix-lock/standalone.ts": "src/core/nix-lock/standalone.ts",
         "src/core/observability.ts": "src/core/observability.ts",
         "src/core/ref.ts": "src/core/ref.ts",
         "src/core/ref.unit.test.ts": "src/core/ref.unit.test.ts",
@@ -986,6 +995,7 @@ package_view(
         "src/cli/commands/fetch.ts": "src/cli/commands/fetch.ts",
         "src/cli/commands/generate/mod.ts": "src/cli/commands/generate/mod.ts",
         "src/cli/commands/init.ts": "src/cli/commands/init.ts",
+        "src/cli/commands/lock-sync.ts": "src/cli/commands/lock-sync.ts",
         "src/cli/commands/lock.ts": "src/cli/commands/lock.ts",
         "src/cli/commands/ls.ts": "src/cli/commands/ls.ts",
         "src/cli/commands/mod.ts": "src/cli/commands/mod.ts",
@@ -1154,6 +1164,8 @@ package_view(
         "src/core/nix-lock/schema.unit.test.ts": "src/core/nix-lock/schema.unit.test.ts",
         "src/core/nix-lock/source-rewriter.ts": "src/core/nix-lock/source-rewriter.ts",
         "src/core/nix-lock/source-rewriter.unit.test.ts": "src/core/nix-lock/source-rewriter.unit.test.ts",
+        "src/core/nix-lock/standalone.integration.test.ts": "src/core/nix-lock/standalone.integration.test.ts",
+        "src/core/nix-lock/standalone.ts": "src/core/nix-lock/standalone.ts",
         "src/core/observability.ts": "src/core/observability.ts",
         "src/core/ref.ts": "src/core/ref.ts",
         "src/core/ref.unit.test.ts": "src/core/ref.unit.test.ts",
