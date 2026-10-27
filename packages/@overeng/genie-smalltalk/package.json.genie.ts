@@ -1,4 +1,5 @@
 // @genie-bootstrap
+// arn:lmig:smalltalk:2026-10-26-genie-fractal-alias — temporary package alias until consumer contraction.
 import {
   catalog,
   exportEntry,
@@ -6,8 +7,7 @@ import {
   privatePackageDefaults,
   workspaceMember,
 } from '../../../genie/internal.ts'
-import geniePkg from '../genie/package.json.genie.ts'
-import kdlPkg from '../kdl/package.json.genie.ts'
+import fractalPkg from '../genie-fractal/package.json.genie.ts'
 import utilsDevPkg from '../utils-dev/package.json.genie.ts'
 
 export default packageJson(
@@ -40,12 +40,12 @@ export default packageJson(
   catalog.compose({
     workspace: workspaceMember({ memberPath: 'packages/@overeng/genie-smalltalk' }),
     dependencies: {
-      workspace: [geniePkg, kdlPkg],
-      external: catalog.pick('effect', '@noble/hashes'),
+      workspace: [fractalPkg],
     },
     devDependencies: {
       workspace: [utilsDevPkg],
       external: catalog.pick(
+        'effect',
         '@effect/platform-node',
         '@effect/opentelemetry',
         '@effect/vitest',

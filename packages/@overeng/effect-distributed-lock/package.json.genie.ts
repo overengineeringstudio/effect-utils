@@ -1,9 +1,9 @@
 // @genie-bootstrap
+import { privatePackageDefaults } from '../../../genie/external.ts'
 import {
   catalog,
   exportEntry,
   packageJson,
-  privatePackageDefaults,
   workspaceMember,
   type PackageJsonInputData,
 } from '../../../genie/internal.ts'

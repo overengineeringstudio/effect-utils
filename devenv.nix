@@ -1091,10 +1091,12 @@ in
         {
           path = "packages/@overeng/utils";
           name = "utils";
+          isolateNetwork = true;
         }
         {
           path = "packages/@overeng/tui-react";
           name = "tui-react";
+          isolateNetwork = true;
         }
         {
           path = "packages/@overeng/meters";
@@ -1215,6 +1217,12 @@ in
     MV_BIN = "${pkgs.coreutils}/bin/mv";
     JQ_BIN = "${pkgs.jq}/bin/jq";
     FINGERPRINT_BIN = "${repoFlake.packages.${currentSystem}.buck2-fingerprint}/bin/buck2-fingerprint";
+  };
+  # The source deploy complement evaluates real Nix task launchers against fake
+  # providers; pin its evaluator and jq instead of relying on host PATH tools.
+  tasks."test:ci-tools:unbounded".env = {
+    NIX_INSTANTIATE_BIN = "${pkgs.nix}/bin/nix-instantiate";
+    JQ_BIN = "${pkgs.jq}/bin/jq";
   };
   tasks."test:restate-integration" = lib.mkIf (!ciUnitTest) {
     after = lib.mkForce [ "buck2:editor:publish:restate-effect" ];
@@ -1372,12 +1380,18 @@ in
 
   tasks."genie:ci-workflow:test" = {
     description = "Run bootstrap-safe CI workflow helpers and strict Buck cache evidence joins";
+    # CLI integration tests and root CI scripts import the bootstrap dependency view.
+    after = [ "buck2:editor:bootstrap" ];
     exec = trace.exec "genie:ci-workflow:test" ''
       set -euo pipefail
       cd "''${DEVENV_ROOT:-$PWD}"
       # `./` makes these exact paths; bare arguments are suffix filters that
       # also match the copies Buck stages under buck-out.
-      ${sourceBun}/bin/bun ./packages/@overeng/buck2-tools/src/bun-test-runner.ts test ./genie/ci-workflow/default-ref-policy-script.unit.test.ts ./genie/ci-workflow/rust.unit.test.ts ./genie/ci-workflow/setup.unit.test.ts ./genie/ci-workflow/nix-substituter.integration.test.ts ./genie/ci-workflow/empirical-proofs.unit.test.ts ./genie/ci-scripts/buck2-cache-join.unit.test.ts ./genie/ci-scripts/buck2-cache-join-discovery.unit.test.ts ./genie/ci-scripts/buck2-cache-join-download.unit.test.ts ./genie/ci-scripts/buck2-cache-warm99.unit.test.ts ./genie/ci-scripts/buck2-cache-warm99.integration.test.ts
+      ${sourceBun}/bin/bun ./packages/@overeng/buck2-tools/src/bun-test-runner.ts test ./packages/@overeng/genie/src/runtime/github-workflow/policy-step-identity.unit.test.ts ./genie/ci-workflow/binary-cache-composition.unit.test.ts
+      ${sourceBun}/bin/bun ./packages/@overeng/buck2-tools/src/bun-test-runner.ts test ./packages/@overeng/genie/src/runtime/github-workflow/ci-workflow-helpers.unit.test.ts
+      ${sourceBun}/bin/bun ./packages/@overeng/buck2-tools/src/bun-test-runner.ts test ./genie/ci-workflow/check-policy.integration.test.ts
+      ${sourceBun}/bin/bun ./packages/@overeng/buck2-tools/src/bun-test-runner.ts test ./packages/@overeng/genie/src/runtime/github-workflow/policy.unit.test.ts ./genie/ci-workflow/policy.unit.test.ts ./genie/ci-workflow/default-ref-policy-script.unit.test.ts ./genie/ci-workflow/rust.unit.test.ts ./genie/ci-workflow/storage.unit.test.ts ./genie/ci-workflow/setup.unit.test.ts ./genie/ci-workflow/nix-substituter.integration.test.ts ./genie/ci-workflow/empirical-proofs.unit.test.ts ./genie/ci-scripts/buck2-cache-join.unit.test.ts ./genie/ci-scripts/buck2-cache-join-discovery.unit.test.ts ./genie/ci-scripts/buck2-cache-join-download.unit.test.ts ./genie/ci-scripts/buck2-cache-warm99.unit.test.ts ./genie/ci-scripts/buck2-cache-warm99.integration.test.ts
+      ${sourceBun}/bin/bun ./packages/@overeng/buck2-tools/src/bun-test-runner.ts test ./genie/ci-workflow/policy-migration-ledger.integration.test.ts
       exec ${pkgs.bash}/bin/bash ./genie/ci-workflow/published-ref-decide.test.sh
     '';
     execIfModified = [
@@ -1630,6 +1644,15 @@ in
         cargo test --locked --package 'buck2-*'
       )
       ${sourceBun}/bin/bun ./packages/@overeng/buck2-tools/src/bun-test-runner.ts test buck2/swift/compile.unit.test.ts
+    '';
+  };
+
+  tasks."cargo:test:ci-storage" = {
+    description = "Test canonical CI storage archives and presigned transport";
+    exec = trace.exec "cargo:test:ci-storage" ''
+      set -euo pipefail
+      cd "''${DEVENV_ROOT:-$PWD}/rust"
+      cargo test --locked --package ci-storage
     '';
   };
 

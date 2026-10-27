@@ -37,10 +37,10 @@ actions cache. Dependency content reaches jobs as Nix-prepared `*-pnpm-deps`
 derivations resolved from the self-hosted runners' Nix store (with explicit
 eviction steps for forced-cold validation), per
 [../../03-nix-prepared-deps/](../../03-nix-prepared-deps/requirements.md).
-The publisher primitives (`pnpmStateSetupStep`,
-`pnpmStatePublisherPostSteps`, `withSinglePnpmStatePublisher`) remain
-exported by the genie CI helpers for consumer repos that still run the
-actions-cache lane.
+The shared pnpm Actions-cache save/restore helpers, cache-key constants, and
+publisher wrappers are removed. `pnpmStateSetupStep` remains exported to
+initialize isolated job-local pnpm directories and environment; dependency
+installation runs unconditionally without a restored Actions-cache snapshot.
 
 ## Direction
 
@@ -49,7 +49,6 @@ update Intent
 ## Resolution Signal
 
 Re-scope this sub-area to match the cutover: record the Nix-store path as
-this repo's CI-profile realization and narrow the actions-cache lane contract
-to the consumer repos that still use it (or retire it here outright). The
-delta closes when requirements.md and spec.md no longer present the
-actions-cache lane as load-bearing for this repo's own CI.
+this repo's CI-profile realization and retire the Actions-cache lane contract.
+The delta closes when requirements.md and spec.md no longer present the
+Actions-cache lane as load-bearing for this repo's or consumers' shared helpers.

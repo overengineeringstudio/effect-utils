@@ -97,8 +97,14 @@ export const withPipelineTelemetry = (jobs: Record<string, Job>): Record<string,
     }),
   )
 
-export const pipelineCloseJob = (jobs: Record<string, Job>): Job => ({
-  'runs-on': 'ubuntu-latest',
+export const pipelineCloseJob = ({
+  jobs,
+  runsOn,
+}: {
+  readonly jobs: Record<string, Job>
+  readonly runsOn: Job['runs-on']
+}): Job => ({
+  'runs-on': runsOn,
   needs: Object.keys(jobs),
   if: '${{ always() }}',
   permissions: { contents: 'read', actions: 'read', 'id-token': 'write' },

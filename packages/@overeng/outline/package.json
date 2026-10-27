@@ -10,6 +10,7 @@
   "version": "0.1.0",
   "type": "module",
   "description": "Theme-free document outline models and accessible React navigation",
+  "license": "Apache-2.0",
   "exports": {
     ".": {
       "types": "./dist/src/mod.d.ts",

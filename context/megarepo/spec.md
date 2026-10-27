@@ -97,7 +97,41 @@ and the reason tags such as `jq-1.6` classify correctly. Phase 2 is a
 heuristic fallback when the repo cannot answer: 40-char hex ⇒ commit; a
 semver-like pattern (bare or prefixed) ⇒ tag; otherwise branch.
 
+### Store fetch
+
+A store fetch refreshes branch heads only:
+`git fetch --no-tags --prune origin +refs/heads/*:refs/remotes/origin/*`.
+It never fetches all tags. For refs the caller is about to resolve (a member's
+pinned ref, the `--ref`/`--base` of `mr store worktree new`), it queries exact tag
+names and force-fetches those advertised by the remote. Bare names prefer tags
+over branches, matching ref resolution; qualified `refs/tags/<ref>` names are
+preserved. The remote is the source of truth for cache-store tags, so upstream
+tag moves update local tags. A requested SHA missing after the branch fetch is
+fetched explicitly; a server refusing SHA requests returns a Git command error.
+
+Fetches hold the repository's writer lock. Network commands carry a deadline
+(`MEGAREPO_GIT_NETWORK_TIMEOUT_MS`, default 10 minutes); expiry or interruption
+signals the writer's process group while its leader is alive. On Linux, cleanup
+after leader exit signals the group only when procfs proves a member still has
+the admission lock inode open; an empty or recycled unrelated group is never
+signalled. On macOS, post-exit signalling is disabled because there is no procfs
+ownership proof. A macOS descendant that survives the initial group signal may
+retain admission until it exits; cleanup never guesses ownership from a pgid.
+
 ### Store liveness, hygiene, and GC
+
+`mr store status` reports bare-store configuration issues once per repository
+in `repoIssues`, independently of whether any worktrees or store `refs/`
+directory exist. Member pre-flight hygiene checks report the same issues.
+`missing_origin` means the bare store has no local `remote.origin.url`;
+operators must configure the URL explicitly, and `mr store fix` skips it.
+`missing_fetch_refspec` means origin exists but has no local
+`remote.origin.fetch` key. `mr store fix` adds
+`+refs/heads/*:refs/remotes/origin/*` only when that key is absent and origin
+still exists, rechecking both under the store's Git writer lock. Existing fetch
+configuration is preserved. Repair is idempotent and does not fetch, prune,
+modify refs, or touch linked worktrees; `--dry-run` reports the proposed config
+change only.
 
 The store is shared across every megarepo on the host, so reclamation is
 governed by cross-workspace evidence rather than by any single workspace's
@@ -263,7 +297,7 @@ mounts, dist overlays, per-workspace capability projection, and a synthesized
 Buck root — is retired (principal q5, 2026-09-25).
 
 By default, `mr store worktree new` bootstraps a missing bare repository and
-fetches remote refs (including tags). For source-only branch work from objects
+fetches it as described in [Store fetch](#store-fetch). For source-only branch work from objects
 already in the store, use
 `mr store worktree new owner/repo --no-fetch --ref feature/local --base <full-commit-sha>`.
 `--no-fetch` requires an existing bare repository and a full 40-character SHA
@@ -274,6 +308,42 @@ validation or checkout. Only the requested branch and standalone
 worktree registration are created; existing refs, Git configuration, and
 `FETCH_HEAD` are not refreshed. It does not write megarepo configuration, lock
 files, or composition state.
+
+`mr store worktree rm <path>` removes exactly one standalone store worktree,
+under its bare repository's Git writer lock. It preserves every branch/tag ref
+and sibling worktree. Default/canonical branches (`main`, `master`, and the bare
+repository's default branch), locked registrations, and worktrees referenced by
+registered workspaces are protected. Dirty/untracked work is refused unless
+`--discard-changes` explicitly authorizes its removal; HEAD commits unreachable
+from any remote are refused unless `--allow-unpushed` is explicit.
+Every existing directory component of the target and administration root is
+validated without following symlinks under that lock, including an empty
+administration root before reconstruction. Missing nested worktree parents are
+validated through their nearest existing physical ancestor, so proven orphan
+registrations can still be repaired and a retry returns `not-found`.
+
+Editor-view teardown is a prerequisite, not an implicit side effect. Close
+editors/builds and run `devenv tasks run worktree:teardown --mode single` inside
+the retired worktree, leave it, then run `mr store worktree rm <path>`. Unreleased
+editor roots are detected through the publisher's shared lifecycle markers and
+produce a structured refusal with this guidance. `mr` never invokes devenv,
+changes materialization permissions, or follows symlinks to remove external
+trees. In particular, read-only editor snapshot files may be CAS hardlinks:
+recursive chmod would corrupt other worktrees.
+
+Plain `git worktree remove` can unlink tracked files, fail to unlink a payload
+inside a read-only directory with EACCES, then delete its administration entry
+anyway, leaving the remaining payload behind; `.git` may also have been deleted.
+When `.git` survives, scoped removal repairs that dangling registration from its
+existing store ref and applies the same safety checks; already deleted tracked
+files count as changes and require explicit discard consent. If both ownership
+markers are gone, it refuses even with discard consent: ownership cannot be
+proven. Editor-view GC or release must reclaim any editor payload, otherwise an
+operator removes the remnant manually. The opposite partial state (tree absent,
+matching admin entry present) removes only that orphan entry, after protecting
+staged changes and unpushed commits. Git has no path-scoped `worktree prune`, so
+this command never runs repository-wide pruning. A second removal reports the
+structured `not-found` error.
 
 ## CLI Surface
 
@@ -292,6 +362,18 @@ files, or composition state.
 Nix lock rewriting during `mr apply` and `mr fetch --apply` is off by default;
 `--lock-sync direct|recursive` opts in. `mr:lock-sync-check` reports lock drift
 without rewriting it. Member repins are made as member PRs.
+
+`mr lock-sync --input <name> [--root-lock devenv.lock|flake.lock]` checks every
+tracked or non-ignored standalone `flake.lock` in the current consumer repository
+against the root lock's named input (including follows paths). `--write` copies its complete `locked`
+metadata without resolving the input again. Every node is inspected, including
+nested duplicates without a direct root reference. Matching repository nodes must
+have the same structural `original` across the cohort before any write, and
+`original` is never changed. A missing declared root fails preflight. Each changed
+lock is replaced atomically. The default
+authority is `devenv.lock`; member mounts and ignored caches are excluded. This is
+separate from member-worktree synchronization, leaves `megarepo.lock` untouched,
+and assumes the authoritative root already passes `mr:lock-sync-check`.
 
 Filtering (`--only` / `--skip`, mutually exclusive) applies to bulk
 arrangement commands; generators skip members that were not synced rather than

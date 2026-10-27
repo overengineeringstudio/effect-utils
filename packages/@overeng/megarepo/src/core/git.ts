@@ -9,7 +9,7 @@ import type { Stats } from 'node:fs'
 import { link, lstat, open, readFile, rename, unlink } from 'node:fs/promises'
 import * as NodePath from 'node:path'
 
-import { Duration, Effect, Option, Schedule, Sink, Stream } from 'effect'
+import { Duration, Effect, Option, Schedule, Schema, Sink, Stream } from 'effect'
 
 import { startGitWriterProcess, withGitWriterLock } from '../store/git-writer-lock.ts'
 import * as Observability from './observability.ts'
@@ -260,11 +260,13 @@ const runGitCommand = ({
         ...(env === undefined ? {} : { env }),
       })
 
-      // Concat is one O(n) allocation per stream; per-chunk spreading is O(n²).
-      const [stdoutChunks, stderrChunks] = yield* Effect.all([
-        Stream.runCollect(process.stdout),
-        Stream.runCollect(process.stderr),
-      ])
+      // Both pipes MUST drain concurrently: git blocks writing a full stderr pipe
+      // (e.g. one ref-update line per fetched tag) and never closes stdout, so a
+      // sequential drain deadlocks. Concat is one O(n) allocation per stream.
+      const [stdoutChunks, stderrChunks] = yield* Effect.all(
+        [Stream.runCollect(process.stdout), Stream.runCollect(process.stderr)],
+        { concurrency: 'unbounded' },
+      )
       const stdout = decodeChunks(stdoutChunks)
       const stderr = decodeChunks(stderrChunks)
       const exitCode = yield* process.exitCode
@@ -781,6 +783,79 @@ export const listRefShortNames = (args: { bareRepoPath: string; namespace: 'head
 // Bare Repo Operations
 // =============================================================================
 
+/** Branch refspec shared by new stores and repairs of existing stores. */
+export const bareOriginFetchRefspec = '+refs/heads/*:refs/remotes/origin/*'
+
+/** Check only the store's own config; inherited config does not initialize a store. */
+export const hasBareOriginFetchRefspec = Effect.fn('git/has-bare-origin-fetch-refspec')(function* ({
+  repoPath,
+}: {
+  repoPath: string
+}) {
+  return yield* runGitCommand({
+    args: ['config', '--local', '--get-all', 'remote.origin.fetch'],
+    cwd: repoPath,
+  }).pipe(
+    Effect.map(() => true),
+    Effect.catchTag('GitCommandError', (error) =>
+      error.exitCode === 1 && error.stderr === '' ? Effect.succeed(false) : Effect.fail(error),
+    ),
+  )
+})
+
+/** Missing origin is diagnosed separately; a refspec cannot repair its URL. */
+export class BareOriginMissingError extends Schema.TaggedError<BareOriginMissingError>()(
+  'BareOriginMissingError',
+  { repoPath: Schema.String, message: Schema.String },
+) {}
+
+/** Inspect store-local origin configuration independently of linked worktrees. */
+export const getBareOriginConfigIssue = Effect.fn('git/bare-origin-config-issue')(function* ({
+  repoPath,
+}: {
+  repoPath: string
+}) {
+  const origin = yield* runGitCommand({
+    args: ['config', '--local', '--get', 'remote.origin.url'],
+    cwd: repoPath,
+  }).pipe(
+    Effect.catchTag('GitCommandError', (error) =>
+      error.exitCode === 1 && error.stderr === '' ? Effect.succeed('') : Effect.fail(error),
+    ),
+  )
+  if (origin === '') return 'missing_origin' as const
+  if ((yield* hasBareOriginFetchRefspec({ repoPath })) === false) {
+    return 'missing_fetch_refspec' as const
+  }
+  return undefined
+})
+
+/** Add only a missing fetch config key, without fetching or modifying refs/worktrees. */
+export const repairBareOriginFetchRefspec = ({ repoPath }: { repoPath: string }) =>
+  Effect.gen(function* () {
+    // Recheck under the writer lock so repeated/concurrent repairs are no-ops.
+    const issue = yield* getBareOriginConfigIssue({ repoPath })
+    if (issue === 'missing_origin') {
+      return yield* new BareOriginMissingError({
+        repoPath,
+        message:
+          'bare repo has no origin remote URL; configure origin before repairing its fetch refspec',
+      })
+    }
+    if (issue === undefined) return false
+    yield* runGitCommand({
+      args: ['config', '--local', '--add', 'remote.origin.fetch', bareOriginFetchRefspec],
+      cwd: repoPath,
+    })
+    return true
+  }).pipe(
+    withGitWriterLock({ path: repoPath }),
+    Observability.withRepoPathSpan({
+      name: 'git/repair-bare-origin-fetch-refspec',
+      path: repoPath,
+    }),
+  )
+
 /**
  * Clone a repository as a bare repo.
  * Configures fetch refspec so remote tracking refs are created on fetch.
@@ -815,7 +890,7 @@ export const cloneBare = (args: { url: string; targetPath: string }) =>
     }
     // Complete initialization even if a previous holder died after cloning.
     yield* runGitCommand({
-      args: ['config', 'remote.origin.fetch', '+refs/heads/*:refs/remotes/origin/*'],
+      args: ['config', 'remote.origin.fetch', bareOriginFetchRefspec],
       cwd: args.targetPath,
     })
     return exists === false
@@ -829,17 +904,72 @@ export const cloneBare = (args: { url: string; targetPath: string }) =>
   )
 
 /**
- * Fetch all refs from remote in a bare repo
- * Includes tags and prunes stale refs
+ * Refresh a bare store repo from its remote.
+ *
+ * Fetches branch heads into `refs/remotes/origin/*` (pruning deleted branches), then
+ * queries exact tag names requested by callers. Bare names prefer tags over branches,
+ * matching the resolver, and qualified tag names are preserved. Requested tags use
+ * forced refspecs because the remote is the source of truth for tags in a cache store.
+ * Missing requested SHA objects are fetched explicitly, including tag-only commits.
+ *
+ * It never fetches all tags or auto-follows tags. Only the named tags and missing SHA
+ * objects are transferred in addition to branch heads.
  */
-export const fetchBare = (args: { repoPath: string; remote?: string }) =>
+export const fetchBare = (args: {
+  repoPath: string
+  remote?: string
+  /** Refs the caller resolves after the fetch (pinned ref, worktree ref, branch base). */
+  refs?: ReadonlyArray<string>
+}) =>
   Effect.gen(function* () {
     const remote = args.remote ?? 'origin'
     yield* runGitCommandWithRetry({
-      args: ['fetch', '--tags', '--prune', remote],
+      args: ['fetch', '--no-tags', '--prune', remote, bareOriginFetchRefspec],
       cwd: args.repoPath,
     })
+    const requested = [...new Set(args.refs ?? [])]
+    const tagRefs = requested
+      .filter(
+        (ref) =>
+          ref.length > 0 &&
+          /^[0-9a-f]{40}$/iu.test(ref) === false &&
+          /[*:^~?[\\\s]|\.\.|^-/u.test(ref) === false &&
+          (ref.startsWith('refs/') === false || ref.startsWith('refs/tags/')),
+      )
+      .map((ref) => (ref.startsWith('refs/tags/') === true ? ref : `refs/tags/${ref}`))
+    if (tagRefs.length > 0) {
+      // Resolution checks tags before branches, including when both names exist.
+      // Query exact names even for a known branch: a new or moved remote tag must
+      // take the same precedence. Missing tags are normal, not failed fetches.
+      const advertised = yield* runGitCommandWithRetry({
+        args: ['ls-remote', '--refs', remote, ...tagRefs],
+        cwd: args.repoPath,
+      })
+      const present = new Set(advertised.split('\n').map((line) => line.split('\t')[1]))
+      const tags = tagRefs.filter((ref) => present.has(ref))
+      if (tags.length > 0) {
+        yield* runGitCommandWithRetry({
+          args: ['fetch', '--no-tags', '--prune', remote, ...tags.map((ref) => `+${ref}:${ref}`)],
+          cwd: args.repoPath,
+        })
+      }
+    }
+    for (const ref of requested) {
+      if (
+        /^[0-9a-f]{40}$/iu.test(ref) === true &&
+        (yield* refExists({ repoPath: args.repoPath, ref })) === false
+      ) {
+        // A SHA may be reachable only through an unrequested tag, not any branch.
+        // Ask for the object itself; servers that disallow this return a typed
+        // GitCommandError rather than silently leaving the pin unavailable.
+        yield* runGitCommandWithRetry({
+          args: ['fetch', '--no-tags', remote, ref],
+          cwd: args.repoPath,
+        })
+      }
+    }
   }).pipe(
+    Effect.asVoid,
     withGitWriterLock({ path: args.repoPath }),
     Observability.withRepoPathSpan({ name: 'git/fetch-bare', path: args.repoPath }),
   )
@@ -860,7 +990,7 @@ export const fetchPullRequestHeads = (args: { repoPath: string; remote?: string 
   Effect.gen(function* () {
     const remote = args.remote ?? 'origin'
     yield* runGitCommandWithRetry({
-      args: ['fetch', remote, '+refs/pull/*/head:refs/remotes/origin/pr/*'],
+      args: ['fetch', '--no-tags', remote, '+refs/pull/*/head:refs/remotes/origin/pr/*'],
       cwd: args.repoPath,
     })
   }).pipe(

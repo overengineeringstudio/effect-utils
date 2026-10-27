@@ -259,7 +259,7 @@ const checkWorkspaceContract = ({
   for (const [field, expected] of [
     ['version', '0.0.0'],
     ['edition', '2021'],
-    ['license', 'MIT'],
+    ['license', 'Apache-2.0'],
   ] as const) {
     if (workspacePackage[field] !== expected) {
       throw new Error(`rust/Cargo.toml workspace.package.${field} must remain ${expected}`)
@@ -310,7 +310,7 @@ const checkWorkspaceContract = ({
     if (
       packageEntry.version !== '0.0.0' ||
       packageEntry.edition !== '2021' ||
-      packageEntry.license !== 'MIT'
+      packageEntry.license !== 'Apache-2.0'
     ) {
       throw new Error(`${name} does not resolve the shared Cargo package contract`)
     }
@@ -323,6 +323,7 @@ const checkWorkspaceContract = ({
     'buck2-fingerprint',
     'buck2-product',
     'buck2-tool-core',
+    'ci-storage',
     'content-address-contract',
     'content-address-core',
     'content-address-interop',
@@ -442,7 +443,8 @@ const checkWorkspaceContract = ({
   const nativeProducts = inventory.products.map((rawEntry, index) => {
     const entry = requireRecord(rawEntry, `native products[${index}]`)
     const name = requireString(entry.name, `native products[${index}].name`)
-    const rust = name === 'otelite' || name === 'otel-scrape' || name === 'pingping'
+    const rust =
+      name === 'ci-storage' || name === 'otelite' || name === 'otel-scrape' || name === 'pingping'
     requireExactFields({
       value: entry,
       fields: [
@@ -481,11 +483,14 @@ const checkWorkspaceContract = ({
       throw new Error(
         `native products[${index}] must declare exactly the TS sandbox capabilities it uses`,
       )
-    const packagePath = rust === true ? name : 'genie'
+    const packagePath =
+      name === 'ci-storage'
+        ? 'rust/ci-storage'
+        : `packages/@overeng/${rust === true ? name : 'genie'}`
     const sourcePaths = requireStrings(entry.sourcePaths, `native products[${index}].sourcePaths`)
     requireUnique(sourcePaths, `native products[${index}].sourcePaths`)
     if (
-      sourcePaths.includes(`packages/@overeng/${packagePath}`) === false ||
+      sourcePaths.includes(packagePath) === false ||
       sourcePaths.some(
         (source) =>
           /^[A-Za-z0-9_.@-]+(?:\/[A-Za-z0-9_.@-]+)*$/u.test(source) === false ||
@@ -501,7 +506,7 @@ const checkWorkspaceContract = ({
       (rust === true && entry.cargoWorkspaceRoot !== 'rust') ||
       ('shellCompletions' in entry &&
         (rust === false || typeof entry.shellCompletions !== 'boolean')) ||
-      target !== `effect_utils//packages/@overeng/${packagePath}:${name}-product`
+      target !== `effect_utils//${packagePath}:${name}-product`
     ) {
       throw new Error(`native products[${index}] does not match its Buck target`)
     }
@@ -510,7 +515,7 @@ const checkWorkspaceContract = ({
   requireUnique(nativeProducts, 'native products')
   if (
     JSON.stringify(sorted(nativeProducts)) !==
-    JSON.stringify(['otel-scrape', 'otelite', 'pingping', 'typescript-api-server'])
+    JSON.stringify(['ci-storage', 'otel-scrape', 'otelite', 'pingping', 'typescript-api-server'])
   )
     throw new Error('native product target census changed')
 

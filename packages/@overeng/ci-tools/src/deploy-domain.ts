@@ -16,9 +16,11 @@ import type { WorkflowReportRecord } from './workflow-report.ts'
 /** Non-empty trimmed string (shared `@overeng/utils` definition). */
 export const NonEmptyTrimmedString = nonEmptyTrimmedString
 
-export const DeployProvider = Schema.Literals(['netlify', 'vercel']).annotate({
-  identifier: 'CiTools.Deploy.Provider',
-})
+export const DeployProvider = Schema.Literals(['netlify', 'vercel', 'cloudflare-workers']).annotate(
+  {
+    identifier: 'CiTools.Deploy.Provider',
+  },
+)
 export type DeployProvider = typeof DeployProvider.Type
 
 export const DeployMode = Schema.Literals(['prod', 'pr', 'draft', 'preview']).annotate({
@@ -116,9 +118,21 @@ export const VercelProviderConfig = Schema.TaggedStruct('VercelProviderConfig', 
 }).annotate({ identifier: 'CiTools.Deploy.VercelProviderConfig' })
 export type VercelProviderConfig = typeof VercelProviderConfig.Type
 
+export const CloudflareWorkersProviderConfig = Schema.TaggedStruct(
+  'CloudflareWorkersProviderConfig',
+  {
+    config: NonEmptyTrimmedString,
+    workerName: DeployAlias,
+    accountIdEnv: EnvVarName,
+    authTokenEnv: EnvVarName,
+  },
+).annotate({ identifier: 'CiTools.Deploy.CloudflareWorkersProviderConfig' })
+export type CloudflareWorkersProviderConfig = typeof CloudflareWorkersProviderConfig.Type
+
 export const DeployProviderConfig = Schema.Union([
   NetlifyProviderConfig,
   VercelProviderConfig,
+  CloudflareWorkersProviderConfig,
 ]).annotate({ identifier: 'CiTools.Deploy.ProviderConfig' })
 export type DeployProviderConfig = typeof DeployProviderConfig.Type
 
@@ -186,7 +200,7 @@ const deployEnvKeySuffix = (target: string) =>
 
 export const deployTaskOutput = (opts: { readonly result: DeployResultV1 }) => {
   const suffix = deployEnvKeySuffix(opts.result.target)
-  const provider = opts.result.provider.toUpperCase()
+  const provider = deployEnvKeySuffix(opts.result.provider)
   const rawDeployUrl = opts.result.rawDeployUrl.toString()
   const finalDeployUrl = opts.result.finalUrl.toString()
   const deployedAtUtc = encodeDateTimeUtc(opts.result.endedAtUtc)
@@ -206,6 +220,7 @@ export const deployTaskOutput = (opts: { readonly result: DeployResultV1 }) => {
         [`${provider}_RAW_DEPLOY_URL_${suffix}`]: rawDeployUrl,
         [`${provider}_DEPLOYED_AT_UTC`]: deployedAtUtc,
         [`${provider}_DEPLOYED_AT_UTC_${suffix}`]: deployedAtUtc,
+        ...(opts.result.deployId === undefined ? {} : { DEPLOY_ID: opts.result.deployId }),
       },
     },
   }
@@ -465,6 +480,7 @@ export const deploySuccessRecord = (
       target: opts.input.target,
       mode: opts.input.mode,
       attempts: opts.result.attempts,
+      ...(opts.result.deployId === undefined ? {} : { deployId: opts.result.deployId }),
       ...(opts.result.alias === undefined ? {} : { alias: opts.result.alias }),
       ...(opts.result.productionDomains === undefined || opts.result.productionDomains.length === 0
         ? {}

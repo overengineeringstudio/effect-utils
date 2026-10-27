@@ -96,6 +96,23 @@ describe('genie CLI argument boundaries', () => {
     expect(result.status).toBe(1)
     expect(result.stdout).toBe('')
   })
+
+  it.each([
+    ['without check', ['--read-set', 'evidence.json']],
+    ['with watch', ['--check', '--watch', '--read-set', 'evidence.json']],
+    ['with dry-run', ['--check', '--dry-run', '--read-set', 'evidence.json']],
+    ['with phase', ['--check', '--phase', 'bootstrap', '--read-set', 'evidence.json']],
+    ['with inline destination', ['--read-set=evidence.json']],
+  ] as const)('rejects read-set %s before producing JSON output', (_name, args) => {
+    const result = runCli(...args, '--json')
+    expect(result.status).toBe(1)
+    expect(result.signal).toBeNull()
+    expect(result.stdout).toBe('')
+    expect(result.stderr).toContain('CliError/InvalidValue')
+    expect(result.stderr).toContain(
+      'use --read-set only with --check, without --watch, --dry-run, or --phase',
+    )
+  })
 })
 
 it('rejects conflicting output flags', () => {

@@ -7,7 +7,7 @@ load("//buck2/products:defs.bzl", "javascript_product")
 # Projection source: packages/@overeng/gh-ci-utils/BUCK.genie.ts
 # Projection schema version: 13
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:9171e1d0e7303cd7bf6b4cbc463f02c584e64a1120dc27e7ebad6a8225ad2b0f
+# Semantic fingerprint: sha256:23430ec225fa9403c510ed881e90692d1795dd8782ce0eeb5abe9894b1b617f0
 # Regenerate: devenv tasks run genie:run
 
 load("//buck2:materialization.bzl", "export_materialization_inputs", "package_view")
@@ -111,6 +111,8 @@ export_materialization_inputs([
     "src/node/NamespaceClient.ts",
     "src/node/RunId.ts",
     "src/node/RunnerClient.ts",
+    "src/node/UsageLedger.integration.test.ts",
+    "src/node/UsageLedger.ts",
     "src/node/commands/artifacts.ts",
     "src/node/commands/artifacts.unit.test.ts",
     "src/node/commands/auth.ts",
@@ -277,6 +279,8 @@ package_view(
         "src/node/NamespaceClient.ts": "src/node/NamespaceClient.ts",
         "src/node/RunId.ts": "src/node/RunId.ts",
         "src/node/RunnerClient.ts": "src/node/RunnerClient.ts",
+        "src/node/UsageLedger.integration.test.ts": "src/node/UsageLedger.integration.test.ts",
+        "src/node/UsageLedger.ts": "src/node/UsageLedger.ts",
         "src/node/commands/artifacts.ts": "src/node/commands/artifacts.ts",
         "src/node/commands/artifacts.unit.test.ts": "src/node/commands/artifacts.unit.test.ts",
         "src/node/commands/auth.ts": "src/node/commands/auth.ts",
@@ -430,6 +434,8 @@ package_view(
         "src/node/NamespaceClient.ts": "src/node/NamespaceClient.ts",
         "src/node/RunId.ts": "src/node/RunId.ts",
         "src/node/RunnerClient.ts": "src/node/RunnerClient.ts",
+        "src/node/UsageLedger.integration.test.ts": "src/node/UsageLedger.integration.test.ts",
+        "src/node/UsageLedger.ts": "src/node/UsageLedger.ts",
         "src/node/commands/artifacts.ts": "src/node/commands/artifacts.ts",
         "src/node/commands/artifacts.unit.test.ts": "src/node/commands/artifacts.unit.test.ts",
         "src/node/commands/auth.ts": "src/node/commands/auth.ts",
@@ -580,6 +586,8 @@ package_view(
         "src/node/NamespaceClient.ts": "src/node/NamespaceClient.ts",
         "src/node/RunId.ts": "src/node/RunId.ts",
         "src/node/RunnerClient.ts": "src/node/RunnerClient.ts",
+        "src/node/UsageLedger.integration.test.ts": "src/node/UsageLedger.integration.test.ts",
+        "src/node/UsageLedger.ts": "src/node/UsageLedger.ts",
         "src/node/commands/artifacts.ts": "src/node/commands/artifacts.ts",
         "src/node/commands/artifacts.unit.test.ts": "src/node/commands/artifacts.unit.test.ts",
         "src/node/commands/auth.ts": "src/node/commands/auth.ts",

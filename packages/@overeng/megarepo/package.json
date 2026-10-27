@@ -3,6 +3,7 @@
     "source": "package.json.genie.ts",
     "warning": "DO NOT EDIT - changes will be overwritten",
     "workspaceClosureDirs": [
+      "packages/@overeng/buck2-tools",
       "packages/@overeng/content-address",
       "packages/@overeng/effect-distributed-lock",
       "packages/@overeng/effect-path",
@@ -22,6 +23,7 @@
   "version": "0.1.0",
   "type": "module",
   "private": true,
+  "license": "Apache-2.0",
   "exports": {
     ".": {
       "types": "./dist/src/mod.d.ts",
@@ -47,6 +49,7 @@
     "@effect/vitest": "4.0.3",
     "@opentui/core": "0.5.11",
     "@opentui/react": "0.5.11",
+    "@overeng/buck2-tools": "workspace:^",
     "@overeng/effect-path": "workspace:^",
     "@overeng/kdl": "workspace:^",
     "@overeng/kdl-effect": "workspace:^",

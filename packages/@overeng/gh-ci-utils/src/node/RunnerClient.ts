@@ -1,10 +1,12 @@
-import { Duration, Effect, Schema } from 'effect'
+import { NodeFileSystem } from '@effect/platform-node'
+import { Duration, Effect, Layer, Schema } from 'effect'
 /**
  * Client for querying runner-scaler /jobs endpoint on self-hosted runners.
  */
 import { HttpClient, HttpClientRequest } from 'effect/http'
 
 import { RUNNER_SCALER_PORT } from '../isomorphic/lib/constants.ts'
+import { usageLedgerLayer } from './UsageLedger.ts'
 
 /** Schema for an active job running on a self-hosted runner */
 export const ActiveJob = Schema.Struct({
@@ -35,7 +37,9 @@ export const fetchRunnerHostJobs = (
   host: string,
 ): Effect.Effect<RunnerHostJobsResult, never, HttpClient.HttpClient> =>
   Effect.gen(function* () {
-    const httpClient = (yield* HttpClient.HttpClient).pipe(HttpClient.withScope)
+    const httpClient = (yield* HttpClient.HttpClient.pipe(
+      Effect.provide(usageLedgerLayer('gh-cli').pipe(Layer.provide(NodeFileSystem.layer))),
+    )).pipe(HttpClient.withScope)
 
     const response = yield* httpClient.execute(
       HttpClientRequest.get(`http://${host}:${RUNNER_SCALER_PORT}/jobs`),

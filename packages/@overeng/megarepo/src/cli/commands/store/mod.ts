@@ -116,6 +116,7 @@ import {
   type ColdWorktreeDecision,
 } from '../../../store/store-worktree-policy.ts'
 import { classifyStoreWorktreePolicy } from '../../../store/store-worktree-policy.ts'
+import { removeStoreWorktree } from '../../../store/store-worktree-remove.ts'
 import { isStoreDirectory, Store, StoreLayer } from '../../../store/store.ts'
 import { getCloneUrl } from '../../../sync/mod.ts'
 import {
@@ -132,6 +133,7 @@ import { StoreApp, StoreView } from '../../renderers/StoreOutput/mod.ts'
 import type {
   StoreAction,
   StoreGcResult,
+  StoreRepoIssue,
   StoreWorktreeStatus,
   StoreWorktreeIssue,
 } from '../../renderers/StoreOutput/mod.ts'
@@ -2221,13 +2223,32 @@ const storeStatusCommand = Cli.Command.make('status', { output: outputOption }, 
               EffectPath.unsafe.relativeDir('.bare/'),
             )
             const bareExists = yield* fs.exists(bareRepoPath)
+            const configIssue =
+              bareExists === true
+                ? yield* Git.getBareOriginConfigIssue({ repoPath: bareRepoPath })
+                : undefined
+            const repoIssues: StoreRepoIssue[] =
+              configIssue === undefined
+                ? []
+                : [
+                    {
+                      repo: repo.relativePath,
+                      path: bareRepoPath,
+                      type: configIssue,
+                      severity: 'error',
+                      message:
+                        configIssue === 'missing_origin'
+                          ? 'bare repo has no origin remote URL; configure origin before repairing its fetch refspec'
+                          : 'bare repo is missing remote.origin.fetch; run mr store fix',
+                    },
+                  ]
 
             const refsDir = EffectPath.ops.join(
               repo.fullPath,
               EffectPath.unsafe.relativeDir('refs/'),
             )
             const refsExists = yield* fs.exists(refsDir)
-            if (refsExists === false) return []
+            if (refsExists === false) return { worktrees: [], repoIssues }
 
             // Reuse the bounded, source-of-truth-guarded collector (same path gc
             // uses) so a broken worktree never makes the walk enumerate its entire
@@ -2239,7 +2260,7 @@ const storeStatusCommand = Cli.Command.make('status', { output: outputOption }, 
             })
 
             // Analyze all worktrees for this repo in parallel
-            return yield* Effect.forEach(
+            const worktrees = yield* Effect.forEach(
               allWorktrees,
               ({ path: worktreePath, ref: expectedRef, refType: refTypeDir, broken }) =>
                 Effect.gen(function* () {
@@ -2326,11 +2347,13 @@ const storeStatusCommand = Cli.Command.make('status', { output: outputOption }, 
                 }),
               { concurrency: 8 },
             )
+            return { worktrees, repoIssues }
           }),
         { concurrency: 8 },
       )
 
-      const worktreeStatuses = repoResults.flat()
+      const worktreeStatuses = repoResults.flatMap((result) => result.worktrees)
+      const repoIssues = repoResults.flatMap((result) => result.repoIssues)
       const totalWorktreeCount = worktreeStatuses.length
 
       // Use TuiApp for output
@@ -2342,6 +2365,7 @@ const storeStatusCommand = Cli.Command.make('status', { output: outputOption }, 
           repoCount: repos.length,
           worktreeCount: totalWorktreeCount,
           worktrees: worktreeStatuses,
+          repoIssues,
         },
       })
     }).pipe(
@@ -4310,8 +4334,14 @@ const storeWorktreeNewCommand = Cli.Command.make(
         yield* Git.cloneBare({ url: cloneUrl, targetPath: bareRepoPath })
       }
 
-      // Fetch to ensure refs are up to date
-      if (noFetch === false) yield* Git.fetchBare({ repoPath: bareRepoPath })
+      // Refresh the requested starting ref, including missing explicit SHA objects.
+      if (noFetch === false) {
+        const startRef = base ?? commit ?? ref
+        yield* Git.fetchBare({
+          repoPath: bareRepoPath,
+          ...(startRef === undefined ? {} : { refs: [startRef] }),
+        })
+      }
 
       // Determine target ref and worktree creation mode
       const targetRef = commit ?? ref!
@@ -4453,9 +4483,33 @@ const storeWorktreeNewCommand = Cli.Command.make(
     ),
 ).pipe(Cli.Command.withDescription('Create a new worktree in the store'))
 
+/** Scoped removal deliberately leaves editor/build teardown to its owner. */
+const storeWorktreeRemoveCommand = Cli.Command.make(
+  'rm',
+  {
+    path: Cli.Argument.String('path').pipe(
+      Cli.Argument.withDescription('Exact store worktree path'),
+    ),
+    discardChanges: Cli.Flag.Boolean('discard-changes').pipe(
+      Cli.Flag.withDescription('Explicitly discard uncommitted and untracked changes'),
+      Cli.Flag.withDefault(false),
+    ),
+    allowUnpushed: Cli.Flag.Boolean('allow-unpushed').pipe(
+      Cli.Flag.withDescription('Allow removing a worktree whose HEAD is not on any remote'),
+      Cli.Flag.withDefault(false),
+    ),
+  },
+  ({ path, discardChanges, allowUnpushed }) =>
+    Effect.gen(function* () {
+      const store = yield* Store
+      const result = yield* removeStoreWorktree({ store, path, discardChanges, allowUnpushed })
+      yield* Console.log(`Removed store worktree: ${result.path}`)
+    }).pipe(Effect.provide(StoreLayer)),
+).pipe(Cli.Command.withDescription('Remove one retired store worktree after worktree:teardown'))
+
 /** Worktree subcommand group */
 const storeWorktreeCommand = Cli.Command.make('worktree', {}).pipe(
-  Cli.Command.withSubcommands([storeWorktreeNewCommand]),
+  Cli.Command.withSubcommands([storeWorktreeNewCommand, storeWorktreeRemoveCommand]),
   Cli.Command.withDescription('Manage worktrees in the store'),
 )
 

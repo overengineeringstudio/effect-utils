@@ -231,13 +231,30 @@ for outer tasks that must complete before the nested devenv process can evaluate
     Hoisted linking does not use GVS.
   - GVS uses `PNPM_CONFIG_ENABLE_GLOBAL_VIRTUAL_STORE=true`, not the ineffective
     pnpm 12 kebab-case `--config` spelling, and leaves `virtual-store-dir` unset.
-    The default complete store is `$HOME/.local/share/pnpm/store` in GVS mode
-    versus `$HOME/.local/share/pnpm/store-shared-v1` otherwise;
-    `PNPM_SHARED_STORE_DIR` overrides either local store.
+    Both modes use the complete shared store declared by
+    `pnpm-install-contract.json` (`~/.local/share/pnpm/store-shared-v1`).
+    `PNPM_SHARED_STORE_DIR` overrides the local shared store in either mode.
   - Job-local mode explicitly disables GVS (including inherited environment/YAML
     opt-ins) and uses the job-local store and projection. Other CI runners must
     set `PNPM_JOB_LOCAL_STORE=1` to obtain that isolation. Fixed-output preparation
     stays root-local and GVS-disabled.
+  - Effective `frozenStore: true` policy also disables GVS, but retains the shared
+    CAS selected above. The selector reads `pnpm config get frozen-store` using
+    one absolute native binary resolved by the CLI guard's shared dispatcher:
+    explicit `pnpmPkg`, otherwise the first non-guard pnpm on PATH.
+    That path is selected once per storage prologue and used for policy reads,
+    installation, and stale-projection repair, with the caller's isolated
+    `XDG_CONFIG_HOME`. Shell entry needs no task guard passthrough.
+    Both storage selection and stale-projection repair include configuration
+    overrides from `installFlags` in that query. An explicit writable override
+    (`--frozen-store=false` or `--no-frozen-store`) therefore retains GVS even
+    under globally frozen policy.
+    Builds run in writable `node_modules/.pnpm`, not the read-only shared
+    `links/` graph. This overrides workspace GVS without relaxing offline,
+    frozen-lockfile, or frozen-store policy. Only these read-only installs lose
+    cross-root graph reuse; normal writable installs still use GVS.
+    Stale projections are still purged, but rematerialization omits `--force`,
+    which pnpm rejects with a frozen store.
   - Install, update, dedupe, status, doctor, and shell setup share the selected
     policy. Readiness receipts include effective GVS/store policy. Health and
     projection fingerprints visit only this root's reachable shared instances,
@@ -250,6 +267,19 @@ for outer tasks that must complete before the nested devenv process can evaluate
   - `pnpm:store:migrate-legacy` explicitly replaces only the recognized
     historical `v11/files` bridge under the exclusive cache lease; normal
     installs and unknown bridges fail closed.
+  - `PNPM_RETIRE_STORE_DIR=/path/to/legacy-store devenv tasks run pnpm:store:retire`
+    reports a legacy host store's eligibility and unique-file byte size without
+    deleting it. Set `PNPM_RETIRE_APPLY=1` to explicitly apply; the packaged CLI
+    also accepts `pnpm-store-retire /path/to/legacy-store --apply`.
+    The contract default and configured shared store are protected. Retirement
+    enumerates current-repository git worktrees and, when `mr` is available,
+    every worktree registered by repositories in `mr store ls --output json`.
+    Root and nested workspace `node_modules` symlinks and CAS hardlinks refuse
+    retirement, as do unidentified external hardlinks or incomplete proofs.
+    The exclusive existing cache lease covers proof and deletion; apply renames
+    to a sibling tombstone before deleting, leaving interrupted work retired.
+    See [the host retirement contract](../../../context/dependency-materialization/04-store-authority/spec.md#legacy-host-store-retirement)
+    for enumeration boundaries and failure behavior.
   - `pnpm-store-gc --git-dir /path/to/repo/.bare --root /path/to/worktree`
     reports historical root-local store retirement in a read-only dry-run.
     The collector supports Linux x86/x86_64 and ARM/aarch64, selecting each
@@ -351,6 +381,67 @@ for outer tasks that must complete before the nested devenv process can evaluate
   - Build-mode tasks pass root-directory/build-env config to `ci-tools`; `ci-tools`
     owns `vercel pull`, `vercel build`, prebuilt output validation, deploy,
     aliasing, workflow-report records, and GitHub outputs.
+- `cloudflare-workers.nix` - Consumer-built Cloudflare Workers deployments
+  - Provides `cloudflare-workers:deploy` and
+    `cloudflare-workers:deploy:<target>`. Deployment configuration declares
+    required `name`, `workerName`, and `config`, plus optional `cwd` and
+    `productionDomains`; `afterTask` points to the consumer-owned build
+    prerequisite. `workerName` identifies the existing Worker script for the
+    API lookup before Wrangler and is passed to Wrangler as `--name`.
+    `config` is resolved relative to `cwd`. Supply `ciToolsBin`; select Wrangler
+    with `wranglerPkg` or `wranglerBin` when overriding the module default.
+    The invoking process environment is inherited by build hooks; deployment
+    `env` overrides apply only to deploy, not to the preceding build.
+  - Uses `ci-tools deploy cloudflare-workers --target NAME --worker-name WORKER
+--config PATH --cwd DIR --mode prod|pr --wrangler-bin BIN`; PR mode requires
+    `--pr N`.
+    Repeat `--production-domain HOST` for expected production hostnames.
+    Custom-domain desired state belongs in Wrangler configuration, not in an
+    additional domain API reconciler.
+  - `--auth-token-env` defaults to `CLOUDFLARE_API_TOKEN`;
+    `--account-id-env` defaults to `CLOUDFLARE_ACCOUNT_ID`. Pass environment
+    variable names, not credential values, through configuration.
+    Module option `cloudflareApiBaseUrl` forwards `--cloudflare-api-base-url`
+    and defaults to `https://api.cloudflare.com/client/v4`; override it for a
+    fake provider endpoint in integration tests.
+  - Production uses Wrangler deploy; PR mode uploads a Worker version and
+    reports its stable preview alias and immutable preview URL.
+  - Worker code and Wrangler configuration are executable inputs. Never use a
+    fork PR or `pull_request_target` job with these credentials, even when the
+    build was performed separately.
+  - Use the reusable Genie job helper, rather than guarding only the deploy
+    step:
+
+    ```ts
+    import { cloudflareWorkersDeployJobs } from './genie/deploy-preview/cloudflare-workers.ts'
+
+    const deployJobs = cloudflareWorkersDeployJobs({
+      targets: [{ name: 'web' }],
+      runner: ['ubuntu-latest'],
+      baseSteps: checkoutAndSetupSteps,
+      commentBaseSteps: checkoutAndSetupSteps,
+      env: {
+        CLOUDFLARE_API_TOKEN: '${{ secrets.CLOUDFLARE_API_TOKEN }}',
+        CLOUDFLARE_ACCOUNT_ID: '${{ secrets.CLOUDFLARE_ACCOUNT_ID }}',
+      },
+      runDevenvTasksBefore,
+    })
+    ```
+
+    `checkoutAndSetupSteps` and `runDevenvTasksBefore` are consumer workflow
+    setup inputs. Spread `deployJobs` into the workflow's jobs and configure
+    the matching Nix deployment target. The helper admits only main pushes and
+    same-repository PRs at the **job boundary**; optional `deployCondition`
+    further restricts access and cannot replace that predicate. Credentials
+    stay in the deploy job environment, not the workflow-global environment.
+    Same-repository PR code must be trusted by the repository's access policy.
+    Report collection, rendering, and managed PR comment publication reuse the
+    workflow-report tasks; the comment job receives no Cloudflare job env.
+
+  - Cloudflare Workers live E2E is intentionally not exercised by this
+    integration. No live deploy/domain validation is claimed. See the
+    [provider specification](../../../context/ci-tools/spec.md#cloudflare-workers-provider)
+    for the executable-code trust boundary and live-test authorization scope.
 - `workflow-report.nix` - Workflow-report tasks
   - Provides `workflow-report:collect-bundle`,
     `workflow-report:render-comment-body`, and `workflow-report:publish`.

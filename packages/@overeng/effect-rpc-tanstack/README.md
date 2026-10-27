@@ -276,4 +276,4 @@ See the [basic example](./examples/basic) for a complete working example.
 
 ## License
 
-MIT
+Apache-2.0. See the [root LICENSE](../../../LICENSE).

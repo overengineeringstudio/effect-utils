@@ -11,6 +11,7 @@ import {
   defineCatalog,
   definePackageJson,
   effectUtilsWorkspacePatches,
+  privatePackageDefaults as externalPrivatePackageDefaults,
 } from './external.ts'
 import { internalPackageCatalogEntries } from './packages.ts'
 
@@ -37,7 +38,6 @@ export {
   patchPostinstall,
   pnpmPatchedDependencies,
   pnpmWorkspaceYaml,
-  privatePackageDefaults,
   reactJsx,
   tsconfigJson,
   workspaceClosureReference,
@@ -71,6 +71,14 @@ export {
   type WorkspacePackage,
   type WorkspacePackageLike,
 } from './external.ts'
+
+/** License metadata for first-party effect-utils packages. */
+export const firstPartyPackageDefaults = { license: 'Apache-2.0' } as const
+
+export const privatePackageDefaults = {
+  ...externalPrivatePackageDefaults,
+  ...firstPartyPackageDefaults,
+} as const
 
 export const packageJson = definePackageJson({
   validation: {

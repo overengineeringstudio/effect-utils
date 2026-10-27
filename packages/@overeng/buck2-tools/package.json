@@ -11,10 +11,15 @@
   "version": "0.1.0",
   "type": "module",
   "private": true,
+  "license": "Apache-2.0",
   "exports": {
     ".": {
       "types": "./dist/src/mod.d.ts",
       "default": "./src/mod.ts"
+    },
+    "./editor-view-lifecycle": {
+      "types": "./dist/src/editor-view-lifecycle.d.ts",
+      "default": "./src/editor-view-lifecycle.ts"
     }
   },
   "dependencies": {
@@ -34,6 +39,10 @@
       ".": {
         "types": "./dist/src/mod.d.ts",
         "default": "./dist/src/mod.js"
+      },
+      "./editor-view-lifecycle": {
+        "types": "./dist/src/editor-view-lifecycle.d.ts",
+        "default": "./dist/src/editor-view-lifecycle.js"
       }
     }
   }

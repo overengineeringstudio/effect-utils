@@ -23,7 +23,7 @@
   "version": "0.1.0",
   "type": "module",
   "description": "Scoped RPC meters and lazy explorer panels for host-owned developer tools",
-  "license": "MIT",
+  "license": "Apache-2.0",
   "exports": {
     "./core": {
       "types": "./dist/src/core.d.ts",

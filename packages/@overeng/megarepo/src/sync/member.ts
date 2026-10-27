@@ -750,12 +750,12 @@ export const syncMember = <R = never>({
         }
         yield* Observability.annotateSyncMemberAction('skip-dry-run')
       } else if (isFetchMode === true && dryRun === false) {
-        yield* Git.fetchBare({ repoPath: bareRepoPath }).pipe(Effect.ignore)
+        yield* Git.fetchBare({ repoPath: bareRepoPath, refs: [targetRef] }).pipe(Effect.ignore)
         yield* Observability.annotateSyncMemberAction('fetch')
       } else if (isApplyMode === true && targetCommit !== undefined && dryRun === false) {
         const commitExists = yield* Git.refExists({ repoPath: bareRepoPath, ref: targetCommit })
         if (commitExists === false) {
-          yield* Git.fetchBare({ repoPath: bareRepoPath }).pipe(Effect.ignore)
+          yield* Git.fetchBare({ repoPath: bareRepoPath, refs: [targetRef] }).pipe(Effect.ignore)
           yield* Observability.annotateSyncMemberAction('fetch-missing-commit')
         } else {
           yield* Observability.annotateSyncMemberAction('noop')

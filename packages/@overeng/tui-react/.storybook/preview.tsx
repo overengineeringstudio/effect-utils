@@ -6,4 +6,4 @@
 
 import { tuiPreview } from '../src/storybook/mod.tsx'
 
-export default tuiPreview
+export default { ...tuiPreview }

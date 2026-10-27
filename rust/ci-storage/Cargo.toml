@@ -1,0 +1,21 @@
+[package]
+name = "ci-storage"
+workspace = ".."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+clap = { version = "4", features = ["derive", "env"] }
+flate2 = "1"
+rustix = { version = "1", features = ["fs"] }
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+tar = { version = "0.4", default-features = false }
+tempfile.workspace = true
+ureq = { version = "3", default-features = false, features = ["rustls"] }
+
+[dev-dependencies]
+proptest = "1"

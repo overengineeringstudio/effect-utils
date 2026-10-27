@@ -1,9 +1,14 @@
+import { spawnSync } from 'node:child_process'
+import { fileURLToPath } from 'node:url'
+
 import { NodeServices } from '@effect/platform-node'
 import { it } from '@effect/vitest'
-import { Effect, FileSystem, Option } from 'effect'
+import { Effect, FileSystem, Option, Schema } from 'effect'
 import { describe, expect } from 'vitest'
 
 import { makeOxfmtFormatter } from './generation.ts'
+
+const encodeString = Schema.encodeSync(Schema.fromJsonString(Schema.String))
 
 const withFormatterTest = <TOutput, TError, TRequirements>(
   effect: Effect.Effect<TOutput, TError, TRequirements>,
@@ -135,6 +140,43 @@ describe('per-check formatter config reuse', () => {
       )
       expect(actual).toBe(fixture.content)
       expect(reads).toBe(0)
+    }).pipe(withFormatterTest),
+  )
+})
+
+describe('formatter subprocess stdin lifetime', () => {
+  it.effect('keeps early formatter exits from escaping as an unhandled EPIPE', () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem
+      const root = yield* fs.makeTempDirectoryScoped({ prefix: 'genie-formatter-exit-' })
+      const formatterModule = new URL('./generation.ts', import.meta.url).href
+      const source = `
+import { writeFileSync } from 'node:fs'
+import { NodeServices } from '@effect/platform-node'
+import { Effect, Option } from 'effect'
+import { makeOxfmtFormatter } from ${encodeString(formatterModule)}
+// The kernel invokes this already running Bun executable directly: no host
+// utility, shell, env shebang, or extra staged resource is needed.
+writeFileSync(${encodeString(`${root}/oxfmt`)}, '#!' + process.execPath + ' --eval=process.exit(0)\\n', { mode: 0o755 })
+await Effect.runPromise(Effect.gen(function* () {
+  const formatter = yield* makeOxfmtFormatter({ configPath: Option.none() })
+  yield* Effect.forEach(Array.from({ length: 32 }), () => Effect.gen(function* () {
+    const content = '{"violations":[]}\\n'
+    const result = yield* formatter({ targetFilePath: ${encodeString(`${root}/ledger.json`)}, content })
+    if (result !== content) throw new Error('Formatter fallback changed the content')
+  }), { concurrency: 8 })
+}).pipe(Effect.provide(NodeServices.layer)))
+`
+      // Isolate unhandled stream errors: the child must exit cleanly, not merely
+      // resolve the formatting Effect before a late Writable error is emitted.
+      const result = spawnSync('bun', ['--eval', source], {
+        cwd: fileURLToPath(new URL('../../', import.meta.url)),
+        env: { ...process.env, PATH: `${root}:${process.env.PATH ?? ''}` },
+        encoding: 'utf8',
+      })
+      const stderr = result.stderr
+      expect(result.status, stderr).toBe(0)
+      expect(stderr).not.toContain('EPIPE')
     }).pipe(withFormatterTest),
   )
 })

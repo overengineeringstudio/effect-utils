@@ -17,6 +17,7 @@ import {
   TOOL_FAILURE_EXIT_CODE,
   renderToolFailure,
 } from '../src/node/lib/toolFailure.ts'
+import { flushUsageLedger } from '../src/node/UsageLedger.ts'
 
 const buildStamp = '__CLI_BUILD_STAMP__'
 const version = resolveCliVersion({
@@ -79,5 +80,6 @@ program.pipe(
       process.exitCode = TOOL_FAILURE_EXIT_CODE
     }),
   ),
+  Effect.ensuring(flushUsageLedger),
   runTuiMain(NodeRuntime, { formatError: compactFormatError }),
 )

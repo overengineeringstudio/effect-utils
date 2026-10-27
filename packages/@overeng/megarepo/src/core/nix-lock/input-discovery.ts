@@ -157,6 +157,53 @@ export const extractDevenvYamlInputs = (
   return results
 }
 
+/** Resolve a named root input, including Nix follows paths, without assuming node IDs. */
+export const resolveLockInputNode = ({
+  nodes,
+  root = 'root',
+  inputName,
+}: {
+  nodes: Record<string, Record<string, unknown>>
+  root?: string
+  inputName: string
+}): string | undefined => {
+  const active = new Set<string>()
+  const resolve = ({
+    start,
+    path,
+  }: {
+    start: string
+    path: readonly string[]
+  }): string | undefined => {
+    let current = start
+    for (const name of path) {
+      const key = `${current}\0${name}`
+      if (active.has(key) === true) return undefined
+      const inputs = nodes[current]?.['inputs']
+      if (typeof inputs !== 'object' || inputs === null || Array.isArray(inputs) === true) {
+        return undefined
+      }
+      const reference: unknown = Reflect.get(inputs, name)
+      if (typeof reference === 'string') {
+        current = reference
+      } else if (
+        Array.isArray(reference) === true &&
+        reference.every((part) => typeof part === 'string') === true
+      ) {
+        active.add(key)
+        const followed = resolve({ start: root, path: reference })
+        active.delete(key)
+        if (followed === undefined) return undefined
+        current = followed
+      } else {
+        return undefined
+      }
+    }
+    return nodes[current] === undefined ? undefined : current
+  }
+  return resolve({ start: root, path: [inputName] })
+}
+
 /**
  * Extract input URLs from a flake.lock or devenv.lock file (JSON).
  *
@@ -184,11 +231,12 @@ export const extractLockFileInputs = (
   const rootNode = parsed.nodes[rootNodeName]
   if (rootNode === undefined) return results
 
-  const rootInputs = rootNode['inputs'] as Record<string, string> | undefined
+  const rootInputs = rootNode['inputs'] as Record<string, unknown> | undefined
   if (rootInputs === undefined) return results
 
-  for (const [inputName, nodeName] of Object.entries(rootInputs)) {
-    const node = parsed.nodes[nodeName]
+  for (const inputName of Object.keys(rootInputs)) {
+    const nodeName = resolveLockInputNode({ nodes: parsed.nodes, root: rootNodeName, inputName })
+    const node = nodeName === undefined ? undefined : parsed.nodes[nodeName]
     if (node === undefined) continue
 
     const locked = node['locked'] as Record<string, unknown> | undefined

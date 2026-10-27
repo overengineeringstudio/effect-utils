@@ -100,7 +100,7 @@ parallel_safe() {
     nix-cli-no-hash-refresh.test.sh | observability-capture.test.sh | \
     otel-instr-gating.test.sh | otel-run.test.sh | otel-scrape-oxfmt-wrap.test.sh | \
     oxlint-plugin-injection.test.sh | oxlint-rule-policy.test.sh | \
-    pipeline-run.test.sh | pnpm-gvs.test.sh | \
+    pipeline-run.test.sh | playwright-network-isolation.test.sh | pnpm-gvs.test.sh | \
     pnpm-nested-roots-and-source-inputs.test.sh | pnpm-shared-store-reuse.test.sh | \
     pnpm-source-input-refresh.integration.test.sh | pnpm-source-input-staging.test.sh | \
     pnpm-task-smoke.test.sh | pnpm.test.sh | secretspec-native-tasks.test.sh | \

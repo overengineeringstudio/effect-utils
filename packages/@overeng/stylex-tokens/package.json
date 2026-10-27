@@ -11,6 +11,7 @@
   "type": "module",
   "private": true,
   "description": "Shared StyleX design-token scales and reset stylesheet (browser-only)",
+  "license": "Apache-2.0",
   "exports": {
     "./preflight.css": "./src/preflight.css",
     "./tokens.stylex": {

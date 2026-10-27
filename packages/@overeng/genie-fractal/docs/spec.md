@@ -1,4 +1,4 @@
-# Smalltalk Declaration DSL — Spec
+# Fractal Declaration DSL — Spec
 
 This document specifies reusable TypeScript declaration values, references and lowering. It builds on [requirements.md](./requirements.md). Conformance evidence and capability boundaries are recorded in [COVERAGE.md](../COVERAGE.md).
 
@@ -17,7 +17,7 @@ Defines generic authoring values, constructor normalization, scoped assembly and
                    -> scoped mission assembly
                    -> validated native projection
 
-Each serializable domain has one exported Effect schema. Public value and encoded types derive from that schema; boundary input codecs derive from its members or normalize into it. Launch, Timing and Review are closed tagged unions. Constructors are thin functions over shared construction/normalization, not alternate implementations. Canonical values contain no native-envelope override fields. Schemas carry hierarchical St.<Module>.<Value> diagnostic identifiers.
+Each serializable domain has one exported Effect schema. Public value and encoded types derive from that schema; boundary input codecs derive from its members or normalize into it. Launch, Timing and Review are closed tagged unions. Constructors are thin functions over shared construction/normalization, not alternate implementations. Canonical values contain no native-envelope override fields. Schemas carry hierarchical Fractal.<Module>.<Value> diagnostic identifiers.
 
 Launch distinguishes argv and shell execution. Shared environment, removal and working-directory fields apply consistently to both. Timing distinguishes elapsed recurrence, absolute instant and local-calendar recurrence. Effect Duration and DateTime are normalized once and refined to the selected native grammar's precision/range. Local-calendar time and IANA zone remain explicit; an elapsed day is not a calendar day. Review distinguishes graph subjects and immutable document pins and preserves native-admitted template/file forms through explicit variants or codecs.
 
@@ -29,7 +29,7 @@ Launch distinguishes argv and shell execution. Shared environment, removal and w
 
 Reuse existing module-path SubjectRef/SubjectDefinition and scoped StepHandle, input and product APIs. Cross-declaration references carry subject-kind information; the resolver owns path identity and revision serialization. Source identities and scope-bearing capabilities are not interchangeable. Runtime assembly rejects absent targets, incorrect scopes and invalid dependencies even when TypeScript checks are bypassed.
 
-Generic values and lowering live in this package. Graph/kit libraries own domain policy and choose values; loaders own discovery/resolution; publishers own publication; native Smalltalk owns admission and running behavior. Layer-style requirement/output composition is vocabulary for boundaries, not a second runtime scheduler.
+Generic values and lowering live in this package. Graph/kit libraries own domain policy and choose values; loaders own discovery/resolution; publishers own publication; native Fractal owns admission and running behavior. Layer-style requirement/output composition is vocabulary for boundaries, not a second runtime scheduler.
 
 Pure values use schema-derived or Effect structural equivalence. Equivalent values hash equally. Scoped handles retain exact provenance; structural equality cannot grant ownership. Effect hashes are not immutable-document cryptographic digests.
 

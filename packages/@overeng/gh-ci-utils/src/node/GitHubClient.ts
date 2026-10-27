@@ -52,6 +52,7 @@ import {
 import { GitHubAuthConfigTag } from './Config.ts'
 import type { GitHubAppAuthConfig } from './Config.ts'
 import { withGitHubSpan } from './observability.ts'
+import { UsageLedger } from './UsageLedger.ts'
 
 /** One client contract regardless of CLI or App authentication source. */
 type AuthenticatedClient = HttpClient.HttpClient.With<GitHubApiError, Scope.Scope>
@@ -210,10 +211,14 @@ const makeGitHubClient = Effect.fn('github-client.make')(function* (options: Git
   const apiBase = options.apiBase ?? new URL('https://api.github.com')
   const GITHUB_API_BASE = apiBase.origin
   const GITHUB_GRAPHQL_URL = new URL('/graphql', apiBase).href
-  const httpClient = (yield* HttpClient.HttpClient).pipe(HttpClient.withScope)
   const spawner = yield* ChildProcessSpawner
   const auth = yield* GitHubAuthConfigTag
-  const rawHttpClient = yield* HttpClient.HttpClient
+  const transport = yield* HttpClient.HttpClient
+  const ledger = yield* UsageLedger.pipe(Effect.provide(UsageLedger.layer('app')))
+  const cliLedger = yield* UsageLedger.pipe(Effect.provide(UsageLedger.layer('gh-cli')))
+  const rawHttpClient = ledger.wrap(transport)
+  // This transport is selected only by the branches that obtain `getCliToken`.
+  const httpClient = cliLedger.wrap(transport).pipe(HttpClient.withScope)
   const fs = yield* FileSystem.FileSystem
   /** REST bucket, as reported by `api.github.com` REST responses. */
   const rateLimitRef = yield* Ref.make<Option.Option<RateLimitInfo>>(Option.none())
@@ -284,7 +289,14 @@ const makeGitHubClient = Effect.fn('github-client.make')(function* (options: Git
           identity: { clientID: auth.clientID },
           privateKey: Redacted.make(privateKey),
         },
-        { userAgent: GITHUB_USER_AGENT, consumer: options.consumer, apiBase },
+        {
+          userAgent: GITHUB_USER_AGENT,
+          consumer: options.consumer,
+          apiBase,
+          ...(apiBase.hostname === 'github.com' || apiBase.hostname.endsWith('.github.com')
+            ? { onRequestComplete: ledger.observe }
+            : {}),
+        },
       ).pipe(
         Effect.provideService(HttpClient.HttpClient, rawHttpClient),
         Effect.mapError((cause) => new GitHubAuthError({ message: cause.message, cause })),

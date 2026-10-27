@@ -10,6 +10,7 @@
   "version": "0.1.0",
   "type": "module",
   "private": true,
+  "license": "Apache-2.0",
   "exports": {
     "./cli-contract": {
       "types": "./dist/src/cli-contract.d.ts",
