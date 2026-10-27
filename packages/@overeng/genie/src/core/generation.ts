@@ -1,3 +1,4 @@
+import { spawn } from 'node:child_process'
 import { createHash, randomUUID } from 'node:crypto'
 import * as nodeFsSync from 'node:fs'
 import nodeFs from 'node:fs/promises'
@@ -5,21 +6,9 @@ import os from 'node:os'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 
-import {
-  Duration,
-  Effect,
-  Exit,
-  FileSystem,
-  Option,
-  Result,
-  Schema,
-  Semaphore,
-  Stream,
-} from 'effect'
+import { Duration, Effect, Exit, FileSystem, Option, Result, Schema, Semaphore } from 'effect'
 import type { Path } from 'effect'
 import type { PlatformError } from 'effect/PlatformError'
-import * as Command from 'effect/process/ChildProcess'
-import * as CommandExecutor from 'effect/process/ChildProcessSpawner'
 import type { Node } from 'typescript/unstable/ast'
 import {
   isIdentifier,
@@ -718,7 +707,7 @@ const loadOxfmtConfig = Effect.fn('loadOxfmtConfig')(function* ({
 export type OxfmtFormatter = (options: {
   targetFilePath: string
   content: string
-}) => Effect.Effect<string, never, FileSystem.FileSystem | CommandExecutor.ChildProcessSpawner>
+}) => Effect.Effect<string, never, FileSystem.FileSystem>
 
 /**
  * Reuse successful config preflight as a snapshot within one read-only check invocation.
@@ -885,11 +874,35 @@ const formatWithOxfmt = Effect.fn('formatWithOxfmt')(function* ({
         ),
         evidence: 'observed',
       })
-    const spawner = yield* CommandExecutor.ChildProcessSpawner
-    return yield* spawner.string(
-      Command.make('oxfmt', args, {
-        stdin: { stream: Stream.make(content).pipe(Stream.encodeText) },
-      }),
+    // NodeSink removes its error listener at `finish`, but Bun flushes its
+    // buffered FileSink in auto-destroy afterwards. An early formatter exit
+    // can therefore emit EPIPE outside the Effect. Own stdin through `close`,
+    // including that final flush, rather than treating `finish` as disposal.
+    return yield* Effect.tryPromise(
+      (signal) =>
+        new Promise<string>((resolve, reject) => {
+          const child = spawn('oxfmt', args, { stdio: ['pipe', 'pipe', 'ignore'], signal })
+          let output = ''
+          let failure: unknown
+          const onError = (error: Error) => {
+            failure = error
+          }
+          child.on('error', onError)
+          child.stdin.on('error', onError)
+          child.stdout.on('error', onError)
+          child.stdout.setEncoding('utf8')
+          child.stdout.on('data', (chunk: string) => {
+            output += chunk
+          })
+          child.once('close', () => {
+            child.stdin.off('error', onError)
+            child.stdout.off('error', onError)
+            child.off('error', onError)
+            if (failure !== undefined) reject(failure)
+            else resolve(output)
+          })
+          child.stdin.end(content)
+        }),
     )
   }).pipe(Effect.orElseSucceed(() => content))
 
@@ -1221,11 +1234,7 @@ export const generateFile = ({
   readOnly: boolean
   dryRun?: boolean
   oxfmtConfigPath: Option.Option<string>
-}): Effect.Effect<
-  GenerateSuccess,
-  GenieFileError,
-  FileSystem.FileSystem | CommandExecutor.ChildProcessSpawner | Path.Path
-> =>
+}): Effect.Effect<GenerateSuccess, GenieFileError, FileSystem.FileSystem | Path.Path> =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
     const targetFilePath = genieFilePath.replace('.genie.ts', '')
@@ -1339,7 +1348,7 @@ export const checkFile = ({
 }): Effect.Effect<
   void,
   GenieCheckError | GenieImportError | GenieRuntimeTranspilerCacheError | PlatformError,
-  FileSystem.FileSystem | CommandExecutor.ChildProcessSpawner
+  FileSystem.FileSystem
 > => checkFileDetailed({ genieFilePath, cwd, oxfmtConfigPath }).pipe(Effect.asVoid)
 
 /** Check a generated file and return the loaded genie module for downstream validation reuse. */
@@ -1356,7 +1365,7 @@ export const checkFileDetailed = ({
 }): Effect.Effect<
   { targetFilePath: string; loadedGenieFile: LoadedGenieFile },
   GenieCheckError | GenieImportError | GenieRuntimeTranspilerCacheError | PlatformError,
-  FileSystem.FileSystem | CommandExecutor.ChildProcessSpawner
+  FileSystem.FileSystem
 > =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
