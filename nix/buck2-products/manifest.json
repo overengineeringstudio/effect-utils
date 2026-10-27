@@ -666,14 +666,14 @@
       "version": "0.0.0"
     },
     {
-      "artifactUrl": "https://overeng-effect-utils.cachix.org/serve/gikjhmz1c4vnhx7qnkis5fi1ksacyzhg/mr.js",
+      "artifactUrl": "https://overeng-effect-utils.cachix.org/serve/acx923k7lpph7rrxihj6l51cbsykc2z7/mr.js",
       "descriptor": {
         "externalCapabilities": [
           "git",
           "nix"
         ],
         "externalModules": [],
-        "integrity": "sha256-OHseWIAcHKap8ujCQaH0ehwMkJW1iYR/tLUoqkgctHA=",
+        "integrity": "sha256-04+1qosVTX9psphRwj1JQm7YkORSHVDOCDyXhtJ/MVI=",
         "modulePath": "mr.js",
         "platform": {
           "abi": "any",
@@ -691,20 +691,20 @@
         "runtimeContractVersion": "v1",
         "runtimeKind": "bun",
         "schema": "effect-utils/javascript-product/v2",
-        "sizeBytes": 2884212,
+        "sizeBytes": 2892927,
         "target": "effect_utils//packages/@overeng/megarepo:megarepo-candidate"
       },
-      "descriptorSha256": "fe618df115423f2737ca54700485787378888dd40e2c6f9e138e4dd4309c293f",
+      "descriptorSha256": "5989104c1d58b6ccc4deffeb2227f28b4d38a5e5042d9470c2a333a561c17777",
       "name": "megarepo",
       "provenance": {
-        "producerCommit": "436a7f1ab19468053e2c930984e423cbf86e81c4",
-        "productDigest": "387b1e58801c1ca6a9f2e8c241a1f47a1c0c9095b589847fb4b528aa481cb470",
+        "producerCommit": "fe5e5a4573614abc720343a51a8892b150684d10",
+        "productDigest": "d38fb5aa8b154d7f69b29851c23d49426ed890e4521d50ce083c9786d27f3152",
         "schema": "effect-utils/buck-product-provenance/v1",
         "target": "effect_utils//packages/@overeng/megarepo:megarepo-candidate"
       },
-      "sha256": "387b1e58801c1ca6a9f2e8c241a1f47a1c0c9095b589847fb4b528aa481cb470",
-      "size": 2884212,
-      "storePath": "/nix/store/gikjhmz1c4vnhx7qnkis5fi1ksacyzhg-megarepo-buck2-from-source-0.0.0",
+      "sha256": "d38fb5aa8b154d7f69b29851c23d49426ed890e4521d50ce083c9786d27f3152",
+      "size": 2892927,
+      "storePath": "/nix/store/acx923k7lpph7rrxihj6l51cbsykc2z7-megarepo-buck2-from-source-0.0.0",
       "version": "0.0.0"
     },
     {
