@@ -11,6 +11,7 @@ members = [
   "buck2-tools/events",
   "buck2-tools/fingerprint",
   "buck2-tools/product",
+  "ci-storage",
   "effect-rust",
   "effect-rust-macros",
   "effect-rust-fixtures/hash-interop",

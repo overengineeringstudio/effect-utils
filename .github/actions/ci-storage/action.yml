@@ -1,0 +1,131 @@
+name: CI storage
+description: Pack and transfer verified CI artifacts using supplied presigned URL files
+inputs:
+  mode:
+    description: upload or download
+    required: true
+  paths:
+    description: JSON array of paths to pack for upload
+    required: false
+  retention:
+    description: Artifact retention class (diagnostic, handoff, or release) for upload
+    required: false
+  repo:
+    description: Artifact repository identity (OWNER/REPO) for upload
+    required: false
+    default: ${{ github.repository }}
+  ref:
+    description: Artifact ref JSON for download
+    required: false
+  destination:
+    description: Extraction destination for download
+    required: false
+  put-url-file:
+    description: File containing the presigned PUT URL for upload; never the URL itself
+    required: false
+  get-url-file:
+    description: File containing the presigned GET URL for download; never the URL itself
+    required: false
+outputs:
+  ref:
+    description: Artifact ref JSON, published only after a successful upload
+    value: ${{ steps.storage.outputs.ref }}
+  sha256:
+    description: Canonical archive SHA-256, published only after a successful upload
+    value: ${{ steps.storage.outputs.sha256 }}
+runs:
+  using: composite
+  steps:
+    - name: Transfer CI artifact
+      id: storage
+      shell: /usr/bin/env -u BASH_ENV -u ENV PATH=/nix/var/nix/profiles/default/bin:/run/current-system/sw/bin:/usr/bin:/bin bash --noprofile --norc -p -eo pipefail {0}
+      env:
+        # Clear loader injection before the runner creates the native launcher.
+        LD_PRELOAD: ''
+        LD_LIBRARY_PATH: ''
+        LD_AUDIT: ''
+        DYLD_INSERT_LIBRARIES: ''
+        DYLD_LIBRARY_PATH: ''
+        DYLD_FRAMEWORK_PATH: ''
+        CI_STORAGE_ACTION_PATH: ${{ github.action_path }}
+        CI_STORAGE_MODE: ${{ inputs.mode }}
+        CI_STORAGE_PATHS: ${{ inputs.paths }}
+        CI_STORAGE_RETENTION: ${{ inputs.retention }}
+        CI_STORAGE_REPO: ${{ inputs.repo }}
+        CI_STORAGE_REF: ${{ inputs.ref }}
+        CI_STORAGE_DESTINATION: ${{ inputs.destination }}
+        CI_STORAGE_PUT_URL_FILE: ${{ inputs.put-url-file }}
+        CI_STORAGE_GET_URL_FILE: ${{ inputs.get-url-file }}
+      run: |
+        set -euo pipefail
+        trusted_path=/nix/var/nix/profiles/default/bin:/run/current-system/sw/bin:/usr/bin:/bin
+        export PATH="$trusted_path"
+        unset BASH_ENV ENV CDPATH
+        for variable in ${!LD_@} ${!DYLD_@}; do unset "$variable"; done
+        case "$CI_STORAGE_MODE" in
+          upload)
+            [[ -n "$CI_STORAGE_PATHS" && -n "$CI_STORAGE_RETENTION" && -n "$CI_STORAGE_REPO" && -n "$CI_STORAGE_PUT_URL_FILE" ]] || {
+              echo 'Upload requires paths, retention, repo, and put-url-file' >&2
+              exit 1
+            }
+            ;;
+          download)
+            [[ -n "$CI_STORAGE_REF" && -n "$CI_STORAGE_DESTINATION" && -n "$CI_STORAGE_GET_URL_FILE" ]] || {
+              echo 'Download requires ref, destination, and get-url-file' >&2
+              exit 1
+            }
+            ;;
+          *) echo 'Mode must be upload or download' >&2; exit 1 ;;
+        esac
+        if [[ -x /nix/var/nix/profiles/default/bin/nix ]]; then
+          nix_bin=/nix/var/nix/profiles/default/bin/nix
+        elif [[ -x /run/current-system/sw/bin/nix ]]; then
+          nix_bin=/run/current-system/sw/bin/nix
+        else
+          echo 'A trusted fleet Nix installation is required' >&2
+          exit 1
+        fi
+        umask 077
+        runtime_home=$(mktemp -d "${RUNNER_TEMP:?RUNNER_TEMP not set}/ci-storage.XXXXXX")
+        trap 'rm -rf -- "$runtime_home"' EXIT
+        mkdir "$runtime_home/tmp"
+        action_root=$(realpath "$CI_STORAGE_ACTION_PATH/../../..")
+        workspace=$(realpath "${GITHUB_WORKSPACE:?GITHUB_WORKSPACE not set}")
+        cd "$action_root"
+        # Bootstrap only from this pinned action checkout and its locked nixpkgs.
+        # Signed substitutes are allowed; local and remote compilation are not.
+        jq_package=$(/usr/bin/env -i HOME="$runtime_home" TMPDIR="$runtime_home/tmp" PATH="$trusted_path" \
+          "$nix_bin" eval --impure --raw --file "$CI_STORAGE_ACTION_PATH/jq-package.nix")
+        storage_root=$(/usr/bin/env -i HOME="$runtime_home" TMPDIR="$runtime_home/tmp" PATH="$trusted_path" \
+          "$nix_bin" build --no-link --print-out-paths --no-write-lock-file \
+          --accept-flake-config --option builders '' --option max-jobs 0 \
+          "path:$action_root#ci-storage")
+        jq_root=$(/usr/bin/env -i HOME="$runtime_home" TMPDIR="$runtime_home/tmp" PATH="$trusted_path" \
+          "$nix_bin" build --no-link --print-out-paths \
+          --option builders '' --option max-jobs 0 "$jq_package")
+        storage() {
+          /usr/bin/env -i HOME="$runtime_home" TMPDIR="$runtime_home/tmp" PATH="$trusted_path" \
+            "$storage_root/bin/ci-storage" "$@"
+        }
+        json() {
+          /usr/bin/env -i HOME="$runtime_home" TMPDIR="$runtime_home/tmp" PATH="$trusted_path" \
+            "$jq_root/bin/jq" "$@"
+        }
+        cd "$workspace"
+        archive="$runtime_home/artifact.tar.gz"
+        if [[ "$CI_STORAGE_MODE" = upload ]]; then
+          printf '%s' "$CI_STORAGE_PATHS" | json -e '
+            type == "array" and length > 0 and all(.[]; type == "string" and length > 0 and (contains("\u0000") | not))
+          ' >/dev/null
+          printf '%s' "$CI_STORAGE_PATHS" | json -j '.[] | ., "\u0000"' > "$runtime_home/paths"
+          mapfile -d '' -t paths < "$runtime_home/paths"
+          storage pack --retention "$CI_STORAGE_RETENTION" --repo "$CI_STORAGE_REPO" \
+            --out "$archive" -- "${paths[@]}" > "$runtime_home/receipt.json"
+          ref=$(json -ce '.ref | select(type == "object")' "$runtime_home/receipt.json")
+          sha256=$(json -er '.sha256 | select(type == "string" and test("^[0-9a-f]{64}$"))' "$runtime_home/receipt.json")
+          storage put "$archive" --url-file "$CI_STORAGE_PUT_URL_FILE"
+          printf 'ref=%s\nsha256=%s\n' "$ref" "$sha256" >> "${GITHUB_OUTPUT:?GITHUB_OUTPUT not set}"
+        else
+          storage get --url-file "$CI_STORAGE_GET_URL_FILE" --out "$archive"
+          storage extract "$archive" --ref "$CI_STORAGE_REF" --dest "$CI_STORAGE_DESTINATION"
+        fi

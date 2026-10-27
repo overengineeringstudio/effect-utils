@@ -7,7 +7,7 @@ load("//buck2/products:defs.bzl", "javascript_product")
 # Projection source: packages/@overeng/tui-stories/BUCK.genie.ts
 # Projection schema version: 13
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:ecbadf7fbb2684491165bcddb4c7625ff057103a5be3c9f2a332990642363610
+# Semantic fingerprint: sha256:fe1424660ef7bc2f5b09ab2f5f949f858a20e6d7684fcd7438d07a140eed739b
 # Regenerate: devenv tasks run genie:run
 
 load("//buck2:materialization.bzl", "export_materialization_inputs", "package_view")
@@ -164,6 +164,7 @@ package_view(
         "node_modules/@overeng/megarepo/src/cli/commands/fetch.ts": "//packages/@overeng/megarepo:src/cli/commands/fetch.ts",
         "node_modules/@overeng/megarepo/src/cli/commands/generate/mod.ts": "//packages/@overeng/megarepo:src/cli/commands/generate/mod.ts",
         "node_modules/@overeng/megarepo/src/cli/commands/init.ts": "//packages/@overeng/megarepo:src/cli/commands/init.ts",
+        "node_modules/@overeng/megarepo/src/cli/commands/lock-sync.ts": "//packages/@overeng/megarepo:src/cli/commands/lock-sync.ts",
         "node_modules/@overeng/megarepo/src/cli/commands/lock.ts": "//packages/@overeng/megarepo:src/cli/commands/lock.ts",
         "node_modules/@overeng/megarepo/src/cli/commands/ls.ts": "//packages/@overeng/megarepo:src/cli/commands/ls.ts",
         "node_modules/@overeng/megarepo/src/cli/commands/mod.ts": "//packages/@overeng/megarepo:src/cli/commands/mod.ts",
@@ -332,6 +333,8 @@ package_view(
         "node_modules/@overeng/megarepo/src/core/nix-lock/schema.unit.test.ts": "//packages/@overeng/megarepo:src/core/nix-lock/schema.unit.test.ts",
         "node_modules/@overeng/megarepo/src/core/nix-lock/source-rewriter.ts": "//packages/@overeng/megarepo:src/core/nix-lock/source-rewriter.ts",
         "node_modules/@overeng/megarepo/src/core/nix-lock/source-rewriter.unit.test.ts": "//packages/@overeng/megarepo:src/core/nix-lock/source-rewriter.unit.test.ts",
+        "node_modules/@overeng/megarepo/src/core/nix-lock/standalone.integration.test.ts": "//packages/@overeng/megarepo:src/core/nix-lock/standalone.integration.test.ts",
+        "node_modules/@overeng/megarepo/src/core/nix-lock/standalone.ts": "//packages/@overeng/megarepo:src/core/nix-lock/standalone.ts",
         "node_modules/@overeng/megarepo/src/core/observability.ts": "//packages/@overeng/megarepo:src/core/observability.ts",
         "node_modules/@overeng/megarepo/src/core/ref.ts": "//packages/@overeng/megarepo:src/core/ref.ts",
         "node_modules/@overeng/megarepo/src/core/ref.unit.test.ts": "//packages/@overeng/megarepo:src/core/ref.unit.test.ts",
@@ -554,6 +557,7 @@ package_view(
         "node_modules/@overeng/megarepo/src/cli/commands/fetch.ts": "//packages/@overeng/megarepo:src/cli/commands/fetch.ts",
         "node_modules/@overeng/megarepo/src/cli/commands/generate/mod.ts": "//packages/@overeng/megarepo:src/cli/commands/generate/mod.ts",
         "node_modules/@overeng/megarepo/src/cli/commands/init.ts": "//packages/@overeng/megarepo:src/cli/commands/init.ts",
+        "node_modules/@overeng/megarepo/src/cli/commands/lock-sync.ts": "//packages/@overeng/megarepo:src/cli/commands/lock-sync.ts",
         "node_modules/@overeng/megarepo/src/cli/commands/lock.ts": "//packages/@overeng/megarepo:src/cli/commands/lock.ts",
         "node_modules/@overeng/megarepo/src/cli/commands/ls.ts": "//packages/@overeng/megarepo:src/cli/commands/ls.ts",
         "node_modules/@overeng/megarepo/src/cli/commands/mod.ts": "//packages/@overeng/megarepo:src/cli/commands/mod.ts",
@@ -722,6 +726,8 @@ package_view(
         "node_modules/@overeng/megarepo/src/core/nix-lock/schema.unit.test.ts": "//packages/@overeng/megarepo:src/core/nix-lock/schema.unit.test.ts",
         "node_modules/@overeng/megarepo/src/core/nix-lock/source-rewriter.ts": "//packages/@overeng/megarepo:src/core/nix-lock/source-rewriter.ts",
         "node_modules/@overeng/megarepo/src/core/nix-lock/source-rewriter.unit.test.ts": "//packages/@overeng/megarepo:src/core/nix-lock/source-rewriter.unit.test.ts",
+        "node_modules/@overeng/megarepo/src/core/nix-lock/standalone.integration.test.ts": "//packages/@overeng/megarepo:src/core/nix-lock/standalone.integration.test.ts",
+        "node_modules/@overeng/megarepo/src/core/nix-lock/standalone.ts": "//packages/@overeng/megarepo:src/core/nix-lock/standalone.ts",
         "node_modules/@overeng/megarepo/src/core/observability.ts": "//packages/@overeng/megarepo:src/core/observability.ts",
         "node_modules/@overeng/megarepo/src/core/ref.ts": "//packages/@overeng/megarepo:src/core/ref.ts",
         "node_modules/@overeng/megarepo/src/core/ref.unit.test.ts": "//packages/@overeng/megarepo:src/core/ref.unit.test.ts",
@@ -944,6 +950,7 @@ package_view(
         "node_modules/@overeng/megarepo/src/cli/commands/fetch.ts": "//packages/@overeng/megarepo:src/cli/commands/fetch.ts",
         "node_modules/@overeng/megarepo/src/cli/commands/generate/mod.ts": "//packages/@overeng/megarepo:src/cli/commands/generate/mod.ts",
         "node_modules/@overeng/megarepo/src/cli/commands/init.ts": "//packages/@overeng/megarepo:src/cli/commands/init.ts",
+        "node_modules/@overeng/megarepo/src/cli/commands/lock-sync.ts": "//packages/@overeng/megarepo:src/cli/commands/lock-sync.ts",
         "node_modules/@overeng/megarepo/src/cli/commands/lock.ts": "//packages/@overeng/megarepo:src/cli/commands/lock.ts",
         "node_modules/@overeng/megarepo/src/cli/commands/ls.ts": "//packages/@overeng/megarepo:src/cli/commands/ls.ts",
         "node_modules/@overeng/megarepo/src/cli/commands/mod.ts": "//packages/@overeng/megarepo:src/cli/commands/mod.ts",
@@ -1112,6 +1119,8 @@ package_view(
         "node_modules/@overeng/megarepo/src/core/nix-lock/schema.unit.test.ts": "//packages/@overeng/megarepo:src/core/nix-lock/schema.unit.test.ts",
         "node_modules/@overeng/megarepo/src/core/nix-lock/source-rewriter.ts": "//packages/@overeng/megarepo:src/core/nix-lock/source-rewriter.ts",
         "node_modules/@overeng/megarepo/src/core/nix-lock/source-rewriter.unit.test.ts": "//packages/@overeng/megarepo:src/core/nix-lock/source-rewriter.unit.test.ts",
+        "node_modules/@overeng/megarepo/src/core/nix-lock/standalone.integration.test.ts": "//packages/@overeng/megarepo:src/core/nix-lock/standalone.integration.test.ts",
+        "node_modules/@overeng/megarepo/src/core/nix-lock/standalone.ts": "//packages/@overeng/megarepo:src/core/nix-lock/standalone.ts",
         "node_modules/@overeng/megarepo/src/core/observability.ts": "//packages/@overeng/megarepo:src/core/observability.ts",
         "node_modules/@overeng/megarepo/src/core/ref.ts": "//packages/@overeng/megarepo:src/core/ref.ts",
         "node_modules/@overeng/megarepo/src/core/ref.unit.test.ts": "//packages/@overeng/megarepo:src/core/ref.unit.test.ts",

@@ -4,7 +4,7 @@
 # Projection source: BUCK.genie.ts
 # Projection schema version: 1
 # Projection generator: effect-utils/genie/buck2-root-aggregate-projection
-# Semantic fingerprint: sha256:c984fcb027e178cd35165320bc21250671931281f4814c58cccd7a5cef346928
+# Semantic fingerprint: sha256:9f8bf8b374230db74b8c34def55b113955e42a78c3ca1542a133eeda3961f6d4
 # Regenerate: devenv tasks run genie:run
 load("//buck2:weaver.bzl", "weaver_checks")
 load("//buck2:check_aggregate.bzl", "check_aggregate")
@@ -359,6 +359,7 @@ check_aggregate(
         "//buck2/toolchains:archive_tool",
         "//buck2/toolchains:product_tool",
         "//rust/work-storage:conformance-receipt",
+        "//rust/ci-storage:tests-receipt",
         "//rust/effect-rust-fixtures/wasm-adapter:wasm-smoke-node",
         "//rust/effect-rust-fixtures/wasm-adapter:wasm-smoke-bun",
         "//rust/effect-rust-fixtures/napi-adapter:napi-smoke-node",
