@@ -34,8 +34,7 @@ runs:
         # --impure is only for reading the explicit checked-out JSON lockfile;
         # this expression cannot fetch sources or evaluate consumer configuration.
         bun_package=$(nix eval --offline --impure --raw \
-          --file "$CI_POLICY_ACTION_PATH/bun-package.nix" \
-          --argstr lockFile "$policy_root/flake.lock")
+          --file "$CI_POLICY_ACTION_PATH/bun-package.nix")
         nix shell --offline --option builders '' --option max-jobs 0 "$bun_package" --command \
           bun "$policy_root/genie/ci-workflow/check-policy.ts" \
           "$consumer_root" "$CI_POLICY_REPOSITORY" "$CI_POLICY_EXCEPTIONS"
