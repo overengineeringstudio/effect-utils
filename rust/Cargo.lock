@@ -444,6 +444,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "ci-storage"
+version = "0.0.0"
+dependencies = [
+ "clap",
+ "flate2",
+ "proptest",
+ "rustix",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tar",
+ "tempfile",
+ "ureq",
+]
+
+[[package]]
 name = "clap"
 version = "4.6.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2589,6 +2605,7 @@ version = "0.23.45"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0d41d731c7d2f962d1ccc364cec258de3c0e93b38c2fb3ba97ac74513048d634"
 dependencies = [
+ "log",
  "once_cell",
  "ring",
  "rustls-pki-types",
@@ -3435,8 +3452,11 @@ dependencies = [
  "base64 0.23.1",
  "log",
  "percent-encoding",
+ "rustls",
+ "rustls-pki-types",
  "ureq-proto",
  "utf8-zero",
+ "webpki-roots",
 ]
 
 [[package]]

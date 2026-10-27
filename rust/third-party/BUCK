@@ -973,17 +973,7 @@ cargo.rust_library(
         "CARGO_PKG_VERSION_PATCH": "2",
         "CARGO_PKG_VERSION_PRE": "",
     },
-    platform = {
-        "linux-arm64": dict(
-            features = ["std"],
-        ),
-        "linux-x86_64": dict(
-            features = ["std"],
-        ),
-        "macos-arm64": dict(
-            features = ["std"],
-        ),
-    },
+    features = ["std"],
     visibility = [],
 )
 
@@ -1571,6 +1561,7 @@ cargo.rust_library(
         "color",
         "default",
         "derive",
+        "env",
         "error-context",
         "help",
         "std",
@@ -1618,6 +1609,7 @@ cargo.rust_library(
     },
     features = [
         "color",
+        "env",
         "error-context",
         "help",
         "std",
@@ -2956,12 +2948,22 @@ cargo.rust_library(
         "CARGO_PKG_VERSION_PATCH": "14",
         "CARGO_PKG_VERSION_PRE": "",
     },
-    features = [
-        "default",
-        "std",
-    ],
+    features = ["std"],
+    platform = {
+        "linux-arm64": dict(
+            features = ["default"],
+            deps = [":libc-0.2"],
+        ),
+        "linux-x86_64": dict(
+            features = ["default"],
+            deps = [":libc-0.2"],
+        ),
+        "macos-arm64": dict(
+            features = ["default"],
+            deps = [":libc-0.2"],
+        ),
+    },
     visibility = [],
-    deps = [":libc-0.2"],
 )
 
 crate_archive(
@@ -3051,6 +3053,45 @@ cargo.rust_library(
         ":regex-automata-0.4",
         ":regex-syntax-0.8",
     ],
+)
+
+crate_archive(
+    name = "fastrand-2.5.0.crate",
+    sha256 = "da7c62ceae207dd37ea5b845da6a0696c799f85e97da1ab5b7910be3c1c80223",
+    strip_prefix = "fastrand-2.5.0",
+    urls = ["https://static.crates.io/crates/fastrand/2.5.0/download"],
+    visibility = [],
+)
+
+cargo.rust_library(
+    name = "fastrand-2",
+    srcs = [":fastrand-2.5.0.crate"],
+    crate = "fastrand",
+    crate_root = "fastrand-2.5.0.crate/src/lib.rs",
+    edition = "2018",
+    env = {
+        "CARGO_BIN_NAME": "fastrand",
+        "CARGO_CRATE_NAME": "fastrand",
+        "CARGO_MANIFEST_DIR": "fastrand-2.5.0.crate",
+        "CARGO_PKG_AUTHORS": "Stjepan Glavina <stjepang@gmail.com>",
+        "CARGO_PKG_DESCRIPTION": "A simple and fast random number generator",
+        "CARGO_PKG_HOMEPAGE": "",
+        "CARGO_PKG_NAME": "fastrand",
+        "CARGO_PKG_README": "README.md",
+        "CARGO_PKG_REPOSITORY": "https://github.com/smol-rs/fastrand",
+        "CARGO_PKG_RUST_VERSION": "1.63",
+        "CARGO_PKG_VERSION": "2.5.0",
+        "CARGO_PKG_VERSION_MAJOR": "2",
+        "CARGO_PKG_VERSION_MINOR": "5",
+        "CARGO_PKG_VERSION_PATCH": "0",
+        "CARGO_PKG_VERSION_PRE": "",
+    },
+    features = [
+        "alloc",
+        "default",
+        "std",
+    ],
+    visibility = [],
 )
 
 crate_archive(
@@ -9279,6 +9320,12 @@ cargo.rust_library(
     visibility = [],
 )
 
+alias(
+    name = "rustix",
+    actual = ":rustix-1",
+    visibility = ["PUBLIC"],
+)
+
 crate_archive(
     name = "rustix-1.1.5.crate",
     sha256 = "891efababe418670775f199f0d233d84843c227a0949a883ce15b37c78d6629d",
@@ -9313,18 +9360,36 @@ cargo.rust_library(
     },
     features = [
         "alloc",
+        "default",
+        "fs",
         "std",
-        "stdio",
-        "termios",
     ],
     platform = {
         "linux-arm64": dict(
+            features = [
+                "stdio",
+                "termios",
+            ],
             deps = [":linux-raw-sys-0.12"],
         ),
         "linux-x86_64": dict(
+            features = [
+                "stdio",
+                "termios",
+            ],
             deps = [":linux-raw-sys-0.12"],
         ),
         "macos-arm64": dict(
+            features = [
+                "stdio",
+                "termios",
+            ],
+            named_deps = {
+                "libc_errno": ":errno-0.3",
+            },
+            deps = [":libc-0.2"],
+        ),
+        "wasm32": dict(
             named_deps = {
                 "libc_errno": ":errno-0.3",
             },
@@ -9361,10 +9426,30 @@ cargo.rust_binary(
     },
     features = [
         "alloc",
+        "default",
+        "fs",
         "std",
-        "stdio",
-        "termios",
     ],
+    platform = {
+        "linux-arm64": dict(
+            features = [
+                "stdio",
+                "termios",
+            ],
+        ),
+        "linux-x86_64": dict(
+            features = [
+                "stdio",
+                "termios",
+            ],
+        ),
+        "macos-arm64": dict(
+            features = [
+                "stdio",
+                "termios",
+            ],
+        ),
+    },
     visibility = [],
 )
 
@@ -9386,10 +9471,30 @@ buildscript_run(
     },
     features = [
         "alloc",
+        "default",
+        "fs",
         "std",
-        "stdio",
-        "termios",
     ],
+    platform = {
+        "linux-arm64": dict(
+            features = [
+                "stdio",
+                "termios",
+            ],
+        ),
+        "linux-x86_64": dict(
+            features = [
+                "stdio",
+                "termios",
+            ],
+        ),
+        "macos-arm64": dict(
+            features = [
+                "stdio",
+                "termios",
+            ],
+        ),
+    },
     version = "1.1.5",
 )
 
@@ -9432,6 +9537,8 @@ cargo.rust_library(
         "OUT_DIR": "$(location :rustls-0.23-build-script-run[out_dir])",
     },
     features = [
+        "log",
+        "logging",
         "ring",
         "std",
         "tls12",
@@ -9442,6 +9549,7 @@ cargo.rust_library(
     rustc_flags = ["@$(location :rustls-0.23-build-script-run[rustc_flags])"],
     visibility = [],
     deps = [
+        ":log-0.4",
         ":once_cell-1",
         ":ring-0.17",
         ":rustls-webpki-0.103",
@@ -9474,6 +9582,8 @@ cargo.rust_binary(
         "CARGO_PKG_VERSION_PRE": "",
     },
     features = [
+        "log",
+        "logging",
         "ring",
         "std",
         "tls12",
@@ -9498,6 +9608,8 @@ buildscript_run(
         "CARGO_PKG_VERSION_PRE": "",
     },
     features = [
+        "log",
+        "logging",
         "ring",
         "std",
         "tls12",
@@ -11617,6 +11729,74 @@ cargo.rust_library(
     deps = [":filetime-0.2"],
 )
 
+alias(
+    name = "tempfile",
+    actual = ":tempfile-3",
+    visibility = ["PUBLIC"],
+)
+
+crate_archive(
+    name = "tempfile-3.27.0.crate",
+    sha256 = "32497e9a4c7b38532efcdebeef879707aa9f794296a4f0244f6f69e9bc8574bd",
+    strip_prefix = "tempfile-3.27.0",
+    urls = ["https://static.crates.io/crates/tempfile/3.27.0/download"],
+    visibility = [],
+)
+
+cargo.rust_library(
+    name = "tempfile-3",
+    srcs = [":tempfile-3.27.0.crate"],
+    crate = "tempfile",
+    crate_root = "tempfile-3.27.0.crate/src/lib.rs",
+    edition = "2021",
+    env = {
+        "CARGO_BIN_NAME": "tempfile",
+        "CARGO_CRATE_NAME": "tempfile",
+        "CARGO_MANIFEST_DIR": "tempfile-3.27.0.crate",
+        "CARGO_PKG_AUTHORS": "Steven Allen <steven@stebalien.com>:The Rust Project Developers:Ashley Mannix <ashleymannix@live.com.au>:Jason White <me@jasonwhite.io>",
+        "CARGO_PKG_DESCRIPTION": "A library for managing temporary files and directories.",
+        "CARGO_PKG_HOMEPAGE": "https://stebalien.com/projects/tempfile-rs/",
+        "CARGO_PKG_NAME": "tempfile",
+        "CARGO_PKG_README": "README.md",
+        "CARGO_PKG_REPOSITORY": "https://github.com/Stebalien/tempfile",
+        "CARGO_PKG_RUST_VERSION": "1.63",
+        "CARGO_PKG_VERSION": "3.27.0",
+        "CARGO_PKG_VERSION_MAJOR": "3",
+        "CARGO_PKG_VERSION_MINOR": "27",
+        "CARGO_PKG_VERSION_PATCH": "0",
+        "CARGO_PKG_VERSION_PRE": "",
+    },
+    features = [
+        "default",
+        "getrandom",
+    ],
+    platform = {
+        "linux-arm64": dict(
+            deps = [
+                ":getrandom-0.4",
+                ":rustix-1",
+            ],
+        ),
+        "linux-x86_64": dict(
+            deps = [
+                ":getrandom-0.4",
+                ":rustix-1",
+            ],
+        ),
+        "macos-arm64": dict(
+            deps = [
+                ":getrandom-0.4",
+                ":rustix-1",
+            ],
+        ),
+    },
+    visibility = [],
+    deps = [
+        ":fastrand-2",
+        ":once_cell-1",
+    ],
+)
+
 crate_archive(
     name = "thiserror-2.0.21.crate",
     sha256 = "09e52cb86a36cede5cb101bf8908837b3e4c6e5e59fe7fd85c23fb56200d189e",
@@ -13221,13 +13401,24 @@ cargo.rust_library(
         "CARGO_PKG_VERSION_PATCH": "2",
         "CARGO_PKG_VERSION_PRE": "",
     },
+    features = [
+        "_ring",
+        "_rustls",
+        "_tls",
+        "rustls",
+        "rustls-no-provider",
+        "rustls-webpki-roots",
+    ],
     visibility = [],
     deps = [
         ":base64-0.23",
         ":log-0.4",
         ":percent-encoding-2",
+        ":rustls-0.23",
+        ":rustls-pki-types-1",
         ":ureq-proto-0.6",
         ":utf8-zero-0.8",
+        ":webpki-roots-1",
     ],
 )
 
