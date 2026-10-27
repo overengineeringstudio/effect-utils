@@ -28,7 +28,7 @@ members = [
 [workspace.package]
 version = "0.0.0"
 edition = "2021"
-license = "MIT"
+license = "Apache-2.0"
 
 # Request templates are inherited only where the member semantics match.
 # Each member still owns whether, where, and with which dependency kind it uses
