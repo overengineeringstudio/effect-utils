@@ -90,8 +90,10 @@ export type CacheAdmissionInvocation = {
   admissionRetrySuccesses: { reapi: number; archiveOrigin: number }
   reapiFailure?: ReapiAdmissionFailure
   reapiDecision?: 'first-probe-for-ci-job' | 'pinned-from-first-probe' | 'unpinned-missing-job-instance'
-  event?: 'reader-reapi-unavailable-shadow'
+  event?: 'reader-reapi-unavailable-shadow' | 'reader-reapi-unavailable-rerun'
   shadow?: ReaderReapiUnavailableShadow
+  /** Read-only provenance for measured historical reruns; never emitted by the launcher. */
+  legacyRerun?: true
 }
 // Historical command diagnostics remain readable; native downloads emit none.
 const archiveOriginFallbackReasons = [
@@ -243,8 +245,15 @@ export const decodeCacheAdmissionInvocation = (value: unknown): CacheAdmissionIn
     throw new Error('Invalid REAPI job decision source')
   const event = field({ value, key: 'event' })
   const shadow = field({ value, key: 'shadow' })
-  if ((event !== undefined && event !== 'reader-reapi-unavailable-shadow') ||
-    (event === undefined) !== (shadow === undefined) ||
+  // Retained outage measurements cannot be reconstructed from shadow observations.
+  const legacyRerun = event === 'reader-reapi-unavailable-rerun'
+  const legacyTag = field({ value, key: 'legacyRerun' })
+  if (legacyRerun === true) {
+    if (admissionFallbacks.reapi !== 1 || shadow !== undefined ||
+      (legacyTag !== undefined && legacyTag !== true))
+      throw new Error('Invalid legacy reader REAPI rerun event')
+  } else if ((event !== undefined && event !== 'reader-reapi-unavailable-shadow') ||
+    (event === undefined) !== (shadow === undefined) || legacyTag !== undefined ||
     (event !== undefined && admissionFallbacks.reapi !== 0))
     throw new Error('Invalid cache admission shadow event')
   return {
@@ -253,6 +262,7 @@ export const decodeCacheAdmissionInvocation = (value: unknown): CacheAdmissionIn
     ...(decision === undefined ? {} : { reapiDecision: decision }),
     ...(event === undefined ? {} : { event }),
     ...(shadow === undefined ? {} : { shadow: decodeReaderReapiUnavailableShadow(shadow) }),
+    ...(legacyRerun === true ? { legacyRerun } : {}),
   }
 }
 const collectAdmissionInvocations = (

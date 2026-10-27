@@ -1141,6 +1141,41 @@ describe('cache admission evidence schema', () => {
     expect(decodeCacheAdmissionEvidence({ admissionInvocations: [row] }).reapiFailures).toEqual([])
   })
 
+  it('retains measured #2165 rerun rows and their original invocation pair as read-only legacy evidence', () => {
+    const original = {
+      invocationId: '9552ef6c-294e-4a51-9100-9006d6f2c343',
+      admissionFallbacks: { reapi: 0, archiveOrigin: 0 },
+      admissionRetrySuccesses: { reapi: 0, archiveOrigin: 0 },
+    }
+    // Exact old wire shape: the rerun received a fresh invocation UUID and
+    // one REAPI fallback, with no shadow payload or provenance tag on disk.
+    const rerun = {
+      invocationId: '2fc13b48-c94a-4a9c-936f-bc24615bc360',
+      admissionFallbacks: { reapi: 1, archiveOrigin: 0 },
+      admissionRetrySuccesses: { reapi: 0, archiveOrigin: 0 },
+      event: 'reader-reapi-unavailable-rerun',
+    }
+    const decoded = decodeCacheAdmissionInvocation(rerun)
+    expect(decoded).toEqual({ ...rerun, legacyRerun: true })
+    expect(decoded.shadow).toBeUndefined()
+    const projected = decodeCacheAdmissionEvidence({ admissionInvocations: [original, rerun] })
+    expect(projected.admissionInvocations).toEqual([original, decoded])
+    expect(projected.admissionFallbacks).toEqual({ reapi: 1, archiveOrigin: 0 })
+    expect(decodeCacheAdmissionEvidence(projected)).toEqual(projected)
+    const retained = { ...emptyCacheEvidence(), ...projected }
+    const reprojected = mergeCacheEvidence({ previous: retained, next: retained })
+    expect(reprojected.admissionInvocations).toEqual([original, decoded])
+    expect(reprojected.admissionFallbacks).toEqual({ reapi: 1, archiveOrigin: 0 })
+    for (const invalid of [
+      { ...rerun, admissionFallbacks: { reapi: 0, archiveOrigin: 0 } },
+      { ...rerun, shadow: {} },
+      { ...rerun, legacyRerun: false },
+      { ...rerun, invocationId: 'invalid' },
+      { ...rerun, admissionRetrySuccesses: { reapi: 1, archiveOrigin: 0 } },
+      { ...original, legacyRerun: true },
+    ]) expect(() => decodeCacheAdmissionInvocation(invalid)).toThrow()
+  })
+
   it('validates and projects shadow evidence without inventing a fallback or a second invocation', () => {
     const base = decodeCacheAdmissionInvocation({
       invocationId: '2fc13b48-c94a-4a9c-936f-bc24615bc360',
@@ -1161,8 +1196,9 @@ describe('cache admission evidence schema', () => {
     for (const invalid of [
       { ...row, shadow: undefined },
       { ...row, event: undefined },
-      { ...row, event: 'reader-reapi-unavailable-rerun' },
+      { ...row, event: 'reader-reapi-unavailable-rerun', admissionFallbacks: { reapi: 1, archiveOrigin: 0 } },
       { ...row, admissionFallbacks: { reapi: 1, archiveOrigin: 0 } },
+      { ...row, legacyRerun: true },
     ]) expect(() => decodeCacheAdmissionInvocation(invalid)).toThrow()
     for (const invalidShadow of [
         { ...shadow, nativeExitCode: 0 }, { ...shadow, nativeExitCode: 256 },

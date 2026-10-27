@@ -707,14 +707,22 @@ JSONL row to `${CI_BUCK2_CACHE_EVIDENCE_PATH}.admission.jsonl`, with the authori
 }
 ```
 
-The optional `event` discriminator is repository-local, case-sensitive, and accepts
-only `reader-reapi-unavailable-shadow`, requiring `admissionFallbacks.reapi = 0`
+New admission writes use only the repository-local, case-sensitive event
+`reader-reapi-unavailable-shadow`, requiring `admissionFallbacks.reapi = 0`
 and a `shadow` payload. It enriches the original admission using the same native
 `invocationId`; it never invents a second invocation or claims a fallback occurred.
 The collector merges a base row and its matching shadow row in either order,
 deduplicates identical observations, and rejects conflicting admission or shadow
-payloads. Legacy rows omit both `event` and `shadow`; unknown event values reject
-the row.
+payloads. Rows without an event remain readable.
+
+The decoder also retains the historical `reader-reapi-unavailable-rerun` event
+as read-only measured evidence: it requires `admissionFallbacks.reapi = 1` and
+no `shadow` payload, and projects `legacyRerun: true`. Its original and rerun
+invocation IDs and measured fallback count remain distinct and unchanged through
+daily joins and reprojections. The launcher never emits this historical event;
+it cannot be reconstructed from a hypothetical shadow observation. Old-named
+rows carrying shadow payloads, malformed historical rows, and unknown events
+are rejected.
 
 The shadow payload contains only bounded classification tags and numeric metadata:
 
