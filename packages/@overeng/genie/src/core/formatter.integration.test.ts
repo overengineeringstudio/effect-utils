@@ -3,10 +3,12 @@ import { fileURLToPath } from 'node:url'
 
 import { NodeServices } from '@effect/platform-node'
 import { it } from '@effect/vitest'
-import { Effect, FileSystem, Option } from 'effect'
+import { Effect, FileSystem, Option, Schema } from 'effect'
 import { describe, expect } from 'vitest'
 
 import { makeOxfmtFormatter } from './generation.ts'
+
+const encodeString = Schema.encodeSync(Schema.fromJsonString(Schema.String))
 
 const withFormatterTest = <TOutput, TError, TRequirements>(
   effect: Effect.Effect<TOutput, TError, TRequirements>,
@@ -152,14 +154,14 @@ describe('formatter subprocess stdin lifetime', () => {
 import { symlinkSync } from 'node:fs'
 import { NodeServices } from '@effect/platform-node'
 import { Effect, Option } from 'effect'
-import { makeOxfmtFormatter } from ${JSON.stringify(formatterModule)}
+import { makeOxfmtFormatter } from ${encodeString(formatterModule)}
 // A native early exit forces stdin to close before buffered input is flushed.
-symlinkSync(Bun.which('true')!, ${JSON.stringify(`${root}/oxfmt`)})
+symlinkSync(Bun.which('true')!, ${encodeString(`${root}/oxfmt`)})
 await Effect.runPromise(Effect.gen(function* () {
   const formatter = yield* makeOxfmtFormatter({ configPath: Option.none() })
   for (let iteration = 0; iteration < 500; iteration++) {
     const content = '{"violations":[]}\\n'
-    const result = yield* formatter({ targetFilePath: ${JSON.stringify(`${root}/ledger.json`)}, content })
+    const result = yield* formatter({ targetFilePath: ${encodeString(`${root}/ledger.json`)}, content })
     if (result !== content) throw new Error('Formatter fallback changed the content')
   }
 }).pipe(Effect.provide(NodeServices.layer)))
