@@ -1420,17 +1420,91 @@ export const isOnlyReapiUnavailable = (output: string): boolean => {
   const scope =
     /^(?:Error:|Command failed:)\s*\(?(?:Failed to query capabilities of remote|Remote Execution Error on REClientBuilder|Failed to connect to RE)\b/u
   const forbidden =
-    /(?:unauthenticated|permission[ _-]?denied|unauthorized|authentication|authorization|invalid[_ -]argument|digest|checksum|corrupt|integrity|certificate|invalid peer|unknown issuer|error\[|compil(?:e|ation) error|test(?:s)? fail)/iu
+    /(?:unauthenticated|permission[ _-]?denied|unauthorized|authentication|authorization|invalid[_ -]argument|digest[ _-]mismatch|mismatched[ _-]digest|checksum|corrupt|integrity|certificate|invalid peer|unknown issuer|error\[|compil(?:e|ation) error|test(?:s)? fail)/iu
+  const informational = [
+    /^Build ID: [a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/u,
+    /^File changed: \S+$/u,
+    /^\d+ additional file change events$/u,
+    /^Waiting on \S+ \([^)]+\) -- [\w .:-]+$/u,
+    /^Cache hits: \d+(?:\.\d+)?%$/u,
+    /^Commands: \d+ \(cached: \d+, remote: \d+, local: \d+\)$/u,
+    /^Network: up \d+(?:\.\d+)?(?:B|KiB|MiB|GiB|TiB)\s+down \d+(?:\.\d+)?(?:B|KiB|MiB|GiB|TiB)$/u,
+  ]
+  const live = new Set<string>()
+  const summary = new Set<string>()
+  let expected: number | undefined
+  let summaryHeading = false
   let fatal = false
+  let block: { action: string; phase: 'internal' | 'error' | 'details' } | undefined
+  const finishBlock = (): boolean => {
+    if (block === undefined) return true
+    if (block.phase !== 'details') return false
+    const actions = expected === undefined ? live : summary
+    if (actions.has(block.action) === true) return false
+    actions.add(block.action)
+    block = undefined
+    return true
+  }
   for (const raw of output.split(/\r?\n/u)) {
     const line = raw
       .replace(/\x1b\[[0-9;]*m/gu, '')
-      .replace(/^\[[^\]]+\]\s*/u, '')
+      .replace(/^\[\d{4}-\d\d-\d\dT[^\]]+\]\s*/u, '')
       .trim()
+      .replace(/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d+)?(?:Z|[+-]\d\d:\d\d)\s+(?=WARN )/u, '')
     if (line === '') continue
+    if (/^Remote action digest: '[a-f0-9]+:\d+'$/u.test(line) === true) {
+      if (block?.phase !== 'details') return false
+      continue
+    }
     if (forbidden.test(line) === true) return false
+    if (line.startsWith('Action failed: ') === true) {
+      if (finishBlock() === false || (expected !== undefined && summaryHeading === false))
+        return false
+      if (/^Action failed: \S+ \([^)]+\)(?: \([^)]+\))?$/u.test(line) === false) return false
+      block = { action: line.slice('Action failed: '.length), phase: 'internal' }
+      continue
+    }
+    if (block?.phase === 'internal') {
+      if (
+        /^Internal error \(stage: remote_action_cache\): Remote Execution Error on REClientBuilder(?: for ReSession <none>)?$/u.test(
+          line,
+        ) === false
+      )
+        return false
+      block.phase = 'error'
+      continue
+    }
+    if (block?.phase === 'error') {
+      if (
+        /^Error:\s*\(?Failed to query capabilities of remote\b/u.test(line) === false ||
+        unavailable.test(line) === false
+      )
+        return false
+      block.phase = 'details'
+      fatal = true
+      continue
+    }
+    if (/^(?:Stdout|Stderr):/u.test(line) === true) {
+      if (block?.phase !== 'details' || /^(?:Stdout|Stderr): <empty>$/u.test(line) === false)
+        return false
+      continue
+    }
+    if (finishBlock() === false) return false
+    const count = /^BUILD ERRORS \(([1-9]\d*)\)$/u.exec(line)
+    if (count !== null) {
+      if (expected !== undefined) return false
+      expected = Number(count[1])
+      if (Number.isSafeInteger(expected) === false) return false
+      continue
+    }
+    if (line === 'The following actions failed during the execution of this command:') {
+      if (expected === undefined || summaryHeading === true) return false
+      summaryHeading = true
+      continue
+    }
+    if (informational.some((pattern) => pattern.test(line)) === true) continue
     if (
-      /^WARN buck2_execute::re::client: Failed to connect to RE, retrying after sleeping \d+ seconds?: Remote Execution Error on REClientBuilder(?:\b|$)/u.test(
+      /^WARN buck2_execute::re::client: Failed to connect to RE, retrying after sleeping \d+ seconds?: Remote Execution Error on REClientBuilder(?: for ReSession <none>| \.\.\.)?$/u.test(
         line,
       ) === true
     )
@@ -1438,7 +1512,14 @@ export const isOnlyReapiUnavailable = (output: string): boolean => {
     if (scope.test(line) === false || unavailable.test(line) === false) return false
     fatal = true
   }
-  return fatal
+  if (finishBlock() === false || fatal === false) return false
+  if (expected === undefined) return live.size === 0
+  return (
+    summaryHeading === true &&
+    summary.size === expected &&
+    (live.size === 0 ||
+      (live.size === expected && [...live].every((action) => summary.has(action))))
+  )
 }
 
 /** There is intentionally no retry loop: the second result is always final. */

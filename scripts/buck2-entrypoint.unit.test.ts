@@ -1,4 +1,5 @@
 import { expect, it } from 'bun:test'
+import { readFileSync } from 'node:fs'
 
 import {
   gateCgroupRelation,
@@ -114,6 +115,51 @@ it('classifies only RE initialization/capabilities/connect unavailable diagnosti
     `${reUnavailable}\nError: unknown failure`,
   ])
     expect(isOnlyReapiUnavailable(output)).toBe(false)
+})
+
+// Public CI job 122291447993, with only GitHub's outer log prefix removed.
+const incidentOutput = readFileSync(
+  new URL('./fixtures/buck2-re-unavailable.txt', import.meta.url),
+  'utf8',
+)
+
+it('classifies the verbatim Buck RE-unavailable incident including repeated action summary', () => {
+  expect(isOnlyReapiUnavailable(incidentOutput)).toBe(true)
+})
+
+it('rejects real-incident mutations rather than masking another action failure', async () => {
+  for (const output of [
+    `${incidentOutput}\nAction failed: root//:compile (root//:platform) (compile app)\nerror[E0308]: mismatched types\n`,
+    incidentOutput.replace('Stderr: <empty>', 'Stderr: compiler crashed'),
+    incidentOutput.replace('Stdout: <empty>', 'Stdout: tests executed and failed'),
+    incidentOutput.replace('BUILD ERRORS (1)', 'BUILD ERRORS (2)'),
+    incidentOutput.replace('stage: remote_action_cache', 'stage: execute'),
+    incidentOutput.replaceAll('The service is currently unavailable', 'Unauthenticated'),
+    incidentOutput.replaceAll('The service is currently unavailable', 'PermissionDenied'),
+    incidentOutput.replaceAll('tls handshake eof', 'digest mismatch'),
+    incidentOutput.replaceAll('tls handshake eof', 'checksum mismatch'),
+    incidentOutput.replaceAll('tls handshake eof', 'corrupt remote data'),
+    incidentOutput.replace(
+      'Internal error (stage: remote_action_cache): Remote Execution Error on REClientBuilder for ReSession <none>\n',
+      '',
+    ),
+    `${incidentOutput}\nError: a real build failure`,
+    `Remote action digest: 'abc:1'\n${incidentOutput}`,
+  ]) {
+    expect(isOnlyReapiUnavailable(output)).toBe(false)
+    let reruns = 0
+    expect(
+      await runWithReaderCacheFallback({
+        reader: true,
+        run: async () => ({ exitCode: 1, output }),
+        fallback: async () => {
+          reruns++
+          return 0
+        },
+      }),
+    ).toBe(1)
+    expect(reruns).toBe(0)
+  }
 })
 
 it('never reruns writers or successes and makes a failed rerun final', async () => {

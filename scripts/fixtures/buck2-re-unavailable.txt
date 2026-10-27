@@ -1,0 +1,42 @@
+[2026-10-27T15:51:41.267+00:00] Build ID: a720e2fe-da58-43a7-bbb8-8e8e47019652
+[2026-10-27T15:51:41.288+00:00] File changed: effect_utils//.buckconfig.local
+[2026-10-27T15:51:41.288+00:00] File changed: effect_utils//.buck2/capability-publications/.a57ab2dc-51e4-4e56-b75d-b5f322a4afe1.candidate
+[2026-10-27T15:51:41.288+00:00] File changed: effect_utils//.buck2/capability-publications/d7079e2a3103332cf1db221656b319c25f07f9c6d6d1f10e48ec565510681259.json
+[2026-10-27T15:51:41.288+00:00] 4289 additional file change events
+[2026-10-27T15:51:41.863+00:00] [2m2026-10-27T15:51:41.826788Z[0m [33m WARN[0m [2mbuck2_execute::re::client[0m[2m:[0m Failed to connect to RE, retrying after sleeping 1 seconds: Remote Execution Error on REClientBuilder for ReSession <none>
+[2026-10-27T15:51:41.863+00:00] Error: (Failed to query capabilities of remote: code: 'The service is currently unavailable', message: "tls handshake eof", source: tonic::transport::Error(Transport, ConnectError(Custom { kind: UnexpectedEof, error: "tls handshake eof" })): transport error: tls handshake eof: tls handshake eof)
+[2026-10-27T15:51:43.063+00:00] [2m2026-10-27T15:51:43.006546Z[0m [33m WARN[0m [2mbuck2_execute::re::client[0m[2m:[0m Failed to connect to RE, retrying after sleeping 2 seconds: Remote Execution Error on REClientBuilder for ReSession <none>
+[2026-10-27T15:51:43.063+00:00] Error: (Failed to query capabilities of remote: code: 'The service is currently unavailable', message: "tls handshake eof", source: tonic::transport::Error(Transport, ConnectError(Custom { kind: UnexpectedEof, error: "tls handshake eof" })): transport error: tls handshake eof: tls handshake eof)
+[2026-10-27T15:51:45.263+00:00] [2m2026-10-27T15:51:45.215298Z[0m [33m WARN[0m [2mbuck2_execute::re::client[0m[2m:[0m Failed to connect to RE, retrying after sleeping 3 seconds: Remote Execution Error on REClientBuilder for ReSession <none>
+[2026-10-27T15:51:45.263+00:00] Error: (Failed to query capabilities of remote: code: 'The service is currently unavailable', message: "tls handshake eof", source: tonic::transport::Error(Transport, ConnectError(Custom { kind: UnexpectedEof, error: "tls handshake eof" })): transport error: tls handshake eof: tls handshake eof)
+[2026-10-27T15:51:48.463+00:00] [2m2026-10-27T15:51:48.396161Z[0m [33m WARN[0m [2mbuck2_execute::re::client[0m[2m:[0m Failed to connect to RE, retrying after sleeping 4 seconds: Remote Execution Error on REClientBuilder for ReSession <none>
+[2026-10-27T15:51:48.463+00:00] Error: (Failed to query capabilities of remote: code: 'The service is currently unavailable', message: "tls handshake eof", source: tonic::transport::Error(Transport, ConnectError(Custom { kind: UnexpectedEof, error: "tls handshake eof" })): transport error: tls handshake eof: tls handshake eof)
+[2026-10-27T15:51:52.663+00:00] [2m2026-10-27T15:51:52.610776Z[0m [33m WARN[0m [2mbuck2_execute::re::client[0m[2m:[0m Failed to connect to RE, retrying after sleeping 5 seconds: Remote Execution Error on REClientBuilder for ReSession <none>
+[2026-10-27T15:51:52.663+00:00] Error: (Failed to query capabilities of remote: code: 'The service is currently unavailable', message: "tls handshake eof", source: tonic::transport::Error(Transport, ConnectError(Custom { kind: UnexpectedEof, error: "tls handshake eof" })): transport error: tls handshake eof: tls handshake eof)
+[2026-10-27T15:51:57.863+00:00] [2m2026-10-27T15:51:57.829518Z[0m [33m WARN[0m [2mbuck2_execute::re::client[0m[2m:[0m Failed to connect to RE, retrying after sleeping 6 seconds: Remote Execution Error on REClientBuilder for ReSession <none>
+[2026-10-27T15:51:57.863+00:00] Error: (Failed to query capabilities of remote: code: 'The service is currently unavailable', message: "tls handshake eof", source: tonic::transport::Error(Transport, ConnectError(Custom { kind: UnexpectedEof, error: "tls handshake eof" })): transport error: tls handshake eof: tls handshake eof)
+[2026-10-27T15:52:04.063+00:00] [2m2026-10-27T15:52:04.048621Z[0m [33m WARN[0m [2mbuck2_execute::re::client[0m[2m:[0m Failed to connect to RE, retrying after sleeping 7 seconds: Remote Execution Error on REClientBuilder for ReSession <none>
+[2026-10-27T15:52:04.063+00:00] Error: (Failed to query capabilities of remote: code: 'The service is currently unavailable', message: "tls handshake eof", source: tonic::transport::Error(Transport, ConnectError(Custom { kind: UnexpectedEof, error: "tls handshake eof" })): transport error: tls handshake eof: tls handshake eof)
+[2026-10-27T15:52:11.163+00:00] Waiting on effect_utils//packages/@overeng/notion-react:test (effect_utils//buck2/platforms:linux_x86_64#a312ca1b0cfd7c35) -- unit_test_verdict
+[2026-10-27T15:52:11.464+00:00] [2m2026-10-27T15:52:11.268097Z[0m [33m WARN[0m [2mbuck2_execute::re::client[0m[2m:[0m Failed to connect to RE, retrying after sleeping 8 seconds: Remote Execution Error on REClientBuilder for ReSession <none>
+[2026-10-27T15:52:11.464+00:00] Error: (Failed to query capabilities of remote: code: 'The service is currently unavailable', message: "tls handshake eof", source: tonic::transport::Error(Transport, ConnectError(Custom { kind: UnexpectedEof, error: "tls handshake eof" })): transport error: tls handshake eof: tls handshake eof)
+[2026-10-27T15:52:18.564+00:00] Waiting on effect_utils//packages/@overeng/notion-react:test (effect_utils//buck2/platforms:linux_x86_64#a312ca1b0cfd7c35) -- unit_test_verdict
+[2026-10-27T15:52:19.663+00:00] [2m2026-10-27T15:52:19.489304Z[0m [33m WARN[0m [2mbuck2_execute::re::client[0m[2m:[0m Failed to connect to RE, retrying after sleeping 9 seconds: Remote Execution Error on REClientBuilder for ReSession <none>
+[2026-10-27T15:52:19.663+00:00] Error: (Failed to query capabilities of remote: code: 'The service is currently unavailable', message: "tls handshake eof", source: tonic::transport::Error(Transport, ConnectError(Custom { kind: UnexpectedEof, error: "tls handshake eof" })): transport error: tls handshake eof: tls handshake eof)
+[2026-10-27T15:52:26.763+00:00] Waiting on effect_utils//packages/@overeng/notion-react:test (effect_utils//buck2/platforms:linux_x86_64#a312ca1b0cfd7c35) -- unit_test_verdict
+[2026-10-27T15:52:28.669+00:00] Action failed: effect_utils//packages/@overeng/notion-react:test (effect_utils//buck2/platforms:linux_x86_64#a312ca1b0cfd7c35) (unit_test_verdict test)
+[2026-10-27T15:52:28.669+00:00] Internal error (stage: remote_action_cache): Remote Execution Error on REClientBuilder for ReSession <none>
+[2026-10-27T15:52:28.669+00:00] Error: (Failed to query capabilities of remote: code: 'The service is currently unavailable', message: "tls handshake eof", source: tonic::transport::Error(Transport, ConnectError(Custom { kind: UnexpectedEof, error: "tls handshake eof" })): transport error: tls handshake eof: tls handshake eof)
+[2026-10-27T15:52:28.669+00:00] Remote action digest: 'fa82556acf2919229a23e2f526a52bfb530bdcac0d65326b194e1065c7246820:142'
+[2026-10-27T15:52:28.669+00:00] Stdout: <empty>
+[2026-10-27T15:52:28.669+00:00] Stderr: <empty>
+
+[2026-10-27T15:52:28.674+00:00] Cache hits: 13%
+[2026-10-27T15:52:28.674+00:00] Commands: 8 (cached: 1, remote: 0, local: 7)
+[2026-10-27T15:52:28.674+00:00] Network: up 2.2KiB  down 0B
+[2026-10-27T15:52:28.674+00:00]
+[2026-10-27T15:52:28.674+00:00] BUILD ERRORS (1)
+[2026-10-27T15:52:28.674+00:00] The following actions failed during the execution of this command:
+[2026-10-27T15:52:28.674+00:00] Action failed: effect_utils//packages/@overeng/notion-react:test (effect_utils//buck2/platforms:linux_x86_64#a312ca1b0cfd7c35) (unit_test_verdict test)
+[2026-10-27T15:52:28.674+00:00] Internal error (stage: remote_action_cache): Remote Execution Error on REClientBuilder for ReSession <none>
+[2026-10-27T15:52:28.674+00:00] Error: (Failed to query capabilities of remote: code: 'The service is currently unavailable', message: "tls handshake eof", source: tonic::transport::Error(Transport, ConnectError(Custom { kind: UnexpectedEof, error: "tls handshake eof" })): transport error: tls handshake eof: tls handshake eof)

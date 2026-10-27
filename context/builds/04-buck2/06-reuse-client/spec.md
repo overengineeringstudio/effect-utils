@@ -189,6 +189,15 @@ a `reader-reapi-unavailable-rerun` event in the admission JSONL evidence, with a
 fresh invocation ID and an REAPI fallback count. Unknown/mixed diagnostics,
 compilation/test failures, authentication/authorization failures, integrity errors,
 and writer postures never trigger this rerun; its result is final.
+The classifier strips Buck's bracketed timestamps and embedded RFC3339 warning
+timestamps, accepts only enumerated progress/statistics lines, and validates every
+`Action failed:` block as `remote_action_cache` RE-client initialization followed
+by an unavailable capabilities error. Digest identifiers are metadata permitted
+only inside a validated block; digest mismatches remain integrity failures.
+Non-empty action stdout/stderr rejects rerun. `BUILD ERRORS (N)` must match the
+summary block count; repeated live failure blocks must match the summary's action
+set. The verbatim public CI fixture exercises both live and repeated summary
+diagnostics through the launcher's captured native stderr.
 
 ### Local Materialization Policy (BUILD.BUCK.REUSE-R08–R10)
 

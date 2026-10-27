@@ -53,6 +53,10 @@ describe('daemon RE posture', () => {
         `[buck2]\nremote_cache_enabled = true\nallow_cache_uploads = false\nfile_watcher = fs_hash_crawler\n[buck2_re_client]\naction_cache_address = grpc://127.0.0.1:${address.port}\ntls = false\n`,
       )
       const native = join(root, 'native')
+      const incidentOutput = readFileSync(
+        new URL('./fixtures/buck2-re-unavailable.txt', import.meta.url),
+        'utf8',
+      )
       writeFileSync(
         native,
         `#!${process.execPath}
@@ -65,7 +69,7 @@ else if(args.includes('build')) {
  const policy=readFileSync(args[args.lastIndexOf('--config-file')+1],'utf8');
  appendFileSync('commands.jsonl',JSON.stringify({args,policy,noRemote:process.env.BUCK2_NO_REMOTE_CACHE})+'\\n');
  if(process.env.BUCK2_NO_REMOTE_CACHE!=='1') {
-  console.error("Error: (Failed to query capabilities of remote: code: 'The service is currently unavailable', message: \\"tls handshake eof\\")");
+  console.error(${JSON.stringify(incidentOutput)});
   process.exit(1);
  }
  console.log('local build succeeded');
