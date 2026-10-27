@@ -14,6 +14,74 @@ use std::{
 pub type Result<T, E = Box<dyn std::error::Error>> = std::result::Result<T, E>;
 const MANIFEST: &str = ".ci-storage-manifest.json";
 
+#[derive(Clone, Copy)]
+struct Limits {
+    manifest_bytes: u64,
+    entry_bytes: u64,
+    payload_bytes: u64,
+    decoded_bytes: u64,
+    entries: usize,
+}
+const LIMITS: Limits = Limits {
+    manifest_bytes: 16 * 1024 * 1024,
+    entry_bytes: 1024 * 1024 * 1024,
+    payload_bytes: 4 * 1024 * 1024 * 1024,
+    decoded_bytes: 4 * 1024 * 1024 * 1024 + 64 * 1024 * 1024,
+    entries: 10_000,
+};
+
+/// Unlike Read::take, exhausting the budget is an error, not an artificial EOF.
+struct ByteBudget<R> {
+    reader: R,
+    remaining: u64,
+}
+impl<R: Read> Read for ByteBudget<R> {
+    fn read(&mut self, buffer: &mut [u8]) -> io::Result<usize> {
+        if buffer.is_empty() {
+            return Ok(0);
+        }
+        if self.remaining == 0 {
+            let mut probe = [0];
+            return if self.reader.read(&mut probe)? == 0 {
+                Ok(0)
+            } else {
+                Err(io::Error::other("decoded archive byte limit exceeded"))
+            };
+        }
+        let maximum = usize::try_from(self.remaining)
+            .unwrap_or(usize::MAX)
+            .min(buffer.len());
+        let count = self.reader.read(&mut buffer[..maximum])?;
+        self.remaining -= count as u64;
+        Ok(count)
+    }
+}
+
+fn validate_manifest(entries: &[Entry], limits: Limits) -> Result<()> {
+    if entries.len() > limits.entries {
+        return Err("archive entry count limit exceeded".into());
+    }
+    let mut total = 0_u64;
+    let mut previous: Option<&str> = None;
+    for entry in entries {
+        clean_path(&entry.path)?;
+        if previous.is_some_and(|path| path >= entry.path.as_str()) {
+            return Err("manifest is not strictly sorted".into());
+        }
+        previous = Some(&entry.path);
+        if entry.size > limits.entry_bytes {
+            return Err("archive entry byte limit exceeded".into());
+        }
+        total = total
+            .checked_add(entry.size)
+            .ok_or("archive payload byte limit exceeded")?;
+        if total > limits.payload_bytes {
+            return Err("archive payload byte limit exceeded".into());
+        }
+    }
+    Ok(())
+}
+
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, clap::ValueEnum)]
 #[serde(rename_all = "lowercase")]
 pub enum Retention {
@@ -82,6 +150,7 @@ struct Entry {
 
 fn clean_path(value: &str) -> Result<()> {
     if value.is_empty()
+        || value.len() > 100
         || value.contains('\\')
         || value.contains(':')
         || value.contains('\0')
@@ -159,7 +228,13 @@ fn collect(root: &Path, path: &str, paths: &mut BTreeSet<String>) -> Result<()> 
     }
     let metadata = fs::symlink_metadata(&current)?;
     if metadata.is_file() {
+        if metadata.len() > LIMITS.entry_bytes {
+            return Err("archive entry byte limit exceeded".into());
+        }
         paths.insert(path.to_owned());
+        if paths.len() > LIMITS.entries {
+            return Err("archive entry count limit exceeded".into());
+        }
     } else if metadata.is_dir() {
         for child in fs::read_dir(current)? {
             let child = child?;
@@ -188,16 +263,24 @@ fn append(
     header.set_mtime(0);
     header.set_entry_type(tar::EntryType::Regular);
     header.set_cksum();
-    builder.append_data(&mut header, name, reader)?;
+    let mut bounded = reader.take(size.checked_add(1).ok_or("archive entry size overflow")?);
+    builder.append_data(&mut header, name, &mut bounded)?;
+    if bounded.limit() != 1 {
+        return Err("payload size changed while packing".into());
+    }
     Ok(())
 }
 fn encode(root: &Path, entries: &[Entry], writer: impl Write) -> Result<()> {
+    validate_manifest(entries, LIMITS)?;
     let gzip = GzBuilder::new()
         .mtime(0)
         .operating_system(255)
         .write(writer, Compression::default());
     let mut builder = tar::Builder::new(gzip);
     let manifest = serde_json::to_vec(entries)?;
+    if manifest.len() as u64 > LIMITS.manifest_bytes {
+        return Err("manifest byte limit exceeded".into());
+    }
     append(
         &mut builder,
         MANIFEST,
@@ -232,13 +315,26 @@ pub fn pack(
     for path in paths {
         collect(root, path, &mut files)?;
     }
-    let entries: Vec<_> = files
+    let mut entries: Vec<_> = files
         .into_iter()
         .map(|path| {
-            let (sha256, size) = digest_reader(open_payload(root, &path)?)?;
-            Ok(Entry { path, sha256, size })
+            let size = open_payload(root, &path)?.metadata()?.len();
+            Ok(Entry {
+                path,
+                sha256: String::new(),
+                size,
+            })
         })
         .collect::<Result<_>>()?;
+    validate_manifest(&entries, LIMITS)?;
+    for entry in &mut entries {
+        let (sha256, size) =
+            digest_reader(open_payload(root, &entry.path)?.take(LIMITS.entry_bytes + 1))?;
+        if size != entry.size {
+            return Err("payload size changed while packing".into());
+        }
+        entry.sha256 = sha256;
+    }
     let parent = out
         .parent()
         .filter(|p| !p.as_os_str().is_empty())
@@ -255,6 +351,14 @@ fn stage(
     reference: &ArtifactRef,
     parent: Option<&Path>,
 ) -> Result<tempfile::TempDir> {
+    stage_with_limits(archive, reference, parent, LIMITS)
+}
+fn stage_with_limits(
+    archive: &Path,
+    reference: &ArtifactRef,
+    parent: Option<&Path>,
+    limits: Limits,
+) -> Result<tempfile::TempDir> {
     reference.validate()?;
     if digest(archive)? != reference.sha256 {
         return Err("archive digest mismatch".into());
@@ -263,25 +367,26 @@ fn stage(
         Some(parent) => tempfile::tempdir_in(parent)?,
         None => tempfile::tempdir()?,
     };
-    let mut tar = tar::Archive::new(GzDecoder::new(File::open(archive)?));
-    let mut entries = tar.entries()?;
+    let decoder = ByteBudget {
+        reader: GzDecoder::new(File::open(archive)?),
+        remaining: limits.decoded_bytes,
+    };
+    let mut tar = tar::Archive::new(decoder);
+    // Raw iteration exposes extension headers without allocating their attacker-sized bodies.
+    let mut entries = tar.entries()?.raw(true);
     let mut first = entries.next().ok_or("missing manifest")??;
     if first.path_bytes().as_ref() != MANIFEST.as_bytes()
         || !first.header().entry_type().is_file()
-        || first.size() > 16 * 1024 * 1024
+        || first.size() > limits.manifest_bytes
     {
         return Err("invalid manifest entry".into());
     }
     let mut manifest = Vec::new();
     first.read_to_end(&mut manifest)?;
+    drop(first);
     let expected: Vec<Entry> = serde_json::from_slice(&manifest)?;
-    let mut previous: Option<&str> = None;
+    validate_manifest(&expected, limits)?;
     for item in &expected {
-        clean_path(&item.path)?;
-        if previous.is_some_and(|p| p >= item.path.as_str()) {
-            return Err("manifest is not strictly sorted".into());
-        }
-        previous = Some(&item.path);
         let mut entry = entries.next().ok_or("missing archive entry")??;
         if entry.path_bytes().as_ref() != item.path.as_bytes()
             || !entry.header().entry_type().is_file()
@@ -309,9 +414,14 @@ fn stage(
             return Err("file checksum mismatch".into());
         }
     }
-    if entries.next().is_some() {
+    if let Some(entry) = entries.next() {
+        entry?;
         return Err("unexpected archive entry".into());
     }
+    drop(entries);
+    // Tar stops at its end markers; drain the decoder so trailing decoded bombs
+    // cannot bypass the byte budget before canonical verification.
+    io::copy(&mut tar.into_inner(), &mut io::sink())?;
     // Canonical re-encoding rejects alternate headers, extension entries and trailing data.
     let mut canonical = tempfile::NamedTempFile::new()?;
     encode(temporary.path(), &expected, &mut canonical)?;
@@ -359,6 +469,134 @@ pub mod transport;
 mod tests {
     use super::*;
     use proptest::prelude::*;
+
+    #[test]
+    fn oversized_extension_records_are_rejected_before_reading_their_bodies() {
+        let root = tempfile::tempdir().unwrap();
+        for kind in [b'L', b'K', b'x', b'g'] {
+            let archive = root.path().join("extension.tar.gz");
+            let mut gzip =
+                GzBuilder::new().write(File::create(&archive).unwrap(), Compression::default());
+            let mut header = tar::Header::new_gnu();
+            header.set_path("././@LongLink").unwrap();
+            header.set_entry_type(tar::EntryType::new(kind));
+            header.set_size(2 * 1024 * 1024);
+            header.set_cksum();
+            gzip.write_all(header.as_bytes()).unwrap();
+            io::copy(&mut io::repeat(0).take(2 * 1024 * 1024), &mut gzip).unwrap();
+            gzip.finish().unwrap();
+            let reference = ArtifactRef {
+                repo: "owner/repo".into(),
+                sha256: digest(&archive).unwrap(),
+                retention: Retention::Diagnostic,
+            };
+            let error = stage_with_limits(
+                &archive,
+                &reference,
+                Some(root.path()),
+                Limits {
+                    decoded_bytes: 1024,
+                    ..LIMITS
+                },
+            )
+            .unwrap_err();
+            // Transparent extension processing would exhaust this tiny decoder budget.
+            assert_eq!(error.to_string(), "invalid manifest entry");
+        }
+    }
+
+    #[test]
+    fn aggregate_payload_entry_size_and_count_limits_are_enforced_before_extraction() {
+        let root = tempfile::tempdir().unwrap();
+        fs::write(root.path().join("a"), vec![0; 512]).unwrap();
+        fs::write(root.path().join("b"), vec![0; 512]).unwrap();
+        let archive = root.path().join("payload.tar.gz");
+        let reference = pack(
+            root.path(),
+            &["a".into(), "b".into()],
+            Retention::Handoff,
+            "owner/repo".into(),
+            &archive,
+        )
+        .unwrap();
+        for (limits, message) in [
+            (
+                Limits {
+                    payload_bytes: 600,
+                    ..LIMITS
+                },
+                "archive payload byte limit exceeded",
+            ),
+            (
+                Limits {
+                    entry_bytes: 256,
+                    ..LIMITS
+                },
+                "archive entry byte limit exceeded",
+            ),
+            (
+                Limits {
+                    entries: 1,
+                    ..LIMITS
+                },
+                "archive entry count limit exceeded",
+            ),
+        ] {
+            let error =
+                stage_with_limits(&archive, &reference, Some(root.path()), limits).unwrap_err();
+            assert_eq!(error.to_string(), message);
+        }
+    }
+
+    #[test]
+    fn trailing_decoded_bomb_exhausts_the_decoder_budget() {
+        let root = tempfile::tempdir().unwrap();
+        let archive = root.path().join("trailing.tar.gz");
+        let gzip = GzBuilder::new().write(File::create(&archive).unwrap(), Compression::default());
+        let mut tar = tar::Builder::new(gzip);
+        append(&mut tar, MANIFEST, 2, b"[]".as_slice()).unwrap();
+        let mut gzip = tar.into_inner().unwrap();
+        io::copy(&mut io::repeat(0).take(1024 * 1024), &mut gzip).unwrap();
+        gzip.finish().unwrap();
+        let reference = ArtifactRef {
+            repo: "owner/repo".into(),
+            sha256: digest(&archive).unwrap(),
+            retention: Retention::Diagnostic,
+        };
+        let error = stage_with_limits(
+            &archive,
+            &reference,
+            Some(root.path()),
+            Limits {
+                decoded_bytes: 4096,
+                ..LIMITS
+            },
+        )
+        .unwrap_err();
+        assert!(error
+            .to_string()
+            .contains("decoded archive byte limit exceeded"));
+    }
+
+    #[test]
+    fn byte_budget_distinguishes_exact_eof_from_overflow() {
+        let mut exact = ByteBudget {
+            reader: b"ab".as_slice(),
+            remaining: 2,
+        };
+        assert_eq!(io::copy(&mut exact, &mut io::sink()).unwrap(), 2);
+        let mut overflow = ByteBudget {
+            reader: b"abc".as_slice(),
+            remaining: 2,
+        };
+        assert_eq!(
+            io::copy(&mut overflow, &mut io::sink())
+                .unwrap_err()
+                .to_string(),
+            "decoded archive byte limit exceeded"
+        );
+        assert!(clean_path(&"a".repeat(101)).is_err());
+    }
 
     #[test]
     fn publication_rejects_destination_created_after_staging() {

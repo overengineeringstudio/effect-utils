@@ -84,7 +84,7 @@ This section implements R01 and R03.
 
 ### Selected paths
 
-`pack` takes explicit file or directory paths relative to its working directory. Paths are clean UTF-8, slash-separated sequences of normal components: no absolute roots, empty components, `.` or `..`, or platform-specific path escape syntax. Archive paths preserve this working-directory-relative layout, including the selected directory name; they are not rebased to each input's basename.
+`pack` takes explicit file or directory paths relative to its working directory. Paths are clean UTF-8, at most 100 bytes, and slash-separated sequences of normal components: no absolute roots, empty components, `.` or `..`, or platform-specific path escape syntax. Archive paths preserve this working-directory-relative layout, including the selected directory name; they are not rebased to each input's basename.
 
 Directories are traversed recursively. Only regular files are included; empty directories are omitted. Overlapping input selections are deduplicated by archive path. Symbolic links are rejected, including links in directory parents; they are neither followed nor archived. Non-regular source objects are rejected. The root path `.ci-storage-manifest.json` is reserved and cannot be supplied as a payload file.
 
@@ -123,22 +123,38 @@ Writers serialize the array as compact UTF-8 JSON with row fields in the order `
 
 Canonical encoding is the CLI's GNU tar construction followed by its fixed gzip encoder. Verification reconstructs this encoding and compares its complete compressed-byte digest with the expected archive digest, not merely the decoded entries. A differently compressed stream, changed header, trailing content, or otherwise noncanonical representation fails even if all file hashes match. Changes to the encoder must preserve `ci/v1` byte compatibility.
 
-Long archive paths use the canonical GNU long-name records emitted by the encoder. These records are encoding metadata, not additional logical payload entries; alternate extension records or noncanonical long-name representations fail reconstruction.
+Canonical archives contain no extension records. The 100-byte path limit fits each path directly into its GNU header, so writers never emit GNU long-name or long-link records. Readers use raw header iteration and reject GNU long-name, GNU long-link, local PAX, and global PAX records before reading their bodies.
+
+### Resource limits
+
+Packing, verification, and extraction enforce fixed protocol limits; callers cannot raise them through command-line flags.
+
+| Resource                        | Maximum                                                                                            |
+| ------------------------------- | -------------------------------------------------------------------------------------------------- |
+| Payload entries / manifest rows | 10,000 (plus the single manifest tar entry).                                                       |
+| Archive path                    | 100 UTF-8 bytes.                                                                                   |
+| Manifest body                   | 16 MiB.                                                                                            |
+| Individual payload body         | 1 GiB.                                                                                             |
+| Sum of payload body sizes       | 4 GiB.                                                                                             |
+| Complete decoded gzip stream    | 4 GiB + 64 MiB, including tar headers, padding, manifest, end markers, and trailing decoded bytes. |
+
+MiB and GiB mean powers of 1024. Manifest entry counts, per-entry sizes, and the overflow-checked total are validated before payload materialization. Packing checks these limits before hashing payloads or emitting an archive. A byte-budget reader wraps the gzip decoder before the tar parser sees any decoded bytes; exceeding its budget is an explicit `decoded archive byte limit exceeded` error, never a successful truncated stream. Verification drains the decoder after tar end markers so trailing decoded data cannot bypass the budget. Limit violations exit with status `1`, clean temporary state, and publish no destination or reference.
 
 ### Rejected entries
 
-| Input                                                            | Reader behavior |
-| ---------------------------------------------------------------- | --------------- |
-| Symlink, including an internal/non-escaping link                 | Reject.         |
-| Hardlink                                                         | Reject.         |
-| Device, FIFO, socket, directory entry, or unknown tar entry type | Reject.         |
-| Absolute path, traversal, or noncanonical path                   | Reject.         |
-| Duplicate entry or duplicate manifest path                       | Reject.         |
-| Payload not present in the manifest                              | Reject.         |
-| Manifest row without its exact payload entry                     | Reject.         |
-| Manifest absent, repeated, or not first                          | Reject.         |
-| Per-file size/hash mismatch or archive digest mismatch           | Reject.         |
-| Valid contents with noncanonical ordering, metadata, or encoding | Reject.         |
+| Input                                                            | Reader behavior                 |
+| ---------------------------------------------------------------- | ------------------------------- |
+| Symlink, including an internal/non-escaping link                 | Reject.                         |
+| Hardlink                                                         | Reject.                         |
+| Device, FIFO, socket, directory entry, or unknown tar entry type | Reject.                         |
+| GNU long-name/long-link or PAX extension record                  | Reject before reading its body. |
+| Absolute path, traversal, or noncanonical path                   | Reject.                         |
+| Duplicate entry or duplicate manifest path                       | Reject.                         |
+| Payload not present in the manifest                              | Reject.                         |
+| Manifest row without its exact payload entry                     | Reject.                         |
+| Manifest absent, repeated, or not first                          | Reject.                         |
+| Per-file size/hash mismatch or archive digest mismatch           | Reject.                         |
+| Valid contents with noncanonical ordering, metadata, or encoding | Reject.                         |
 
 ## CLI
 
