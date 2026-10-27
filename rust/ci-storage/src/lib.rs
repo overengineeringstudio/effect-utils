@@ -372,53 +372,57 @@ fn stage_with_limits(
         remaining: limits.decoded_bytes,
     };
     let mut tar = tar::Archive::new(decoder);
-    // Raw iteration exposes extension headers without allocating their attacker-sized bodies.
-    let mut entries = tar.entries()?.raw(true);
-    let mut first = entries.next().ok_or("missing manifest")??;
-    if first.path_bytes().as_ref() != MANIFEST.as_bytes()
-        || !first.header().entry_type().is_file()
-        || first.size() > limits.manifest_bytes
-    {
-        return Err("invalid manifest entry".into());
-    }
-    let mut manifest = Vec::new();
-    first.read_to_end(&mut manifest)?;
-    drop(first);
-    let expected: Vec<Entry> = serde_json::from_slice(&manifest)?;
-    validate_manifest(&expected, limits)?;
-    for item in &expected {
-        let mut entry = entries.next().ok_or("missing archive entry")??;
-        if entry.path_bytes().as_ref() != item.path.as_bytes()
-            || !entry.header().entry_type().is_file()
-            || entry.size() != item.size
-        {
-            return Err("archive entry does not match manifest".into());
-        }
-        let output = temporary.path().join(&item.path);
-        fs::create_dir_all(output.parent().ok_or("missing entry parent")?)?;
-        let mut file = File::options().write(true).create_new(true).open(&output)?;
-        #[cfg(unix)]
-        {
-            file.set_permissions(fs::Permissions::from_mode(0o644))?;
-            let mut directory = output.parent();
-            while let Some(path) = directory {
-                if path == temporary.path() {
-                    break;
+    let expected = {
+        // Raw iteration exposes extension headers without allocating their attacker-sized bodies.
+        let mut entries = tar.entries()?.raw(true);
+        let manifest = {
+            let mut first = entries.next().ok_or("missing manifest")??;
+            if first.path_bytes().as_ref() != MANIFEST.as_bytes()
+                || !first.header().entry_type().is_file()
+                || first.size() > limits.manifest_bytes
+            {
+                return Err("invalid manifest entry".into());
+            }
+            let mut manifest = Vec::new();
+            first.read_to_end(&mut manifest)?;
+            manifest
+        };
+        let expected: Vec<Entry> = serde_json::from_slice(&manifest)?;
+        validate_manifest(&expected, limits)?;
+        for item in &expected {
+            let mut entry = entries.next().ok_or("missing archive entry")??;
+            if entry.path_bytes().as_ref() != item.path.as_bytes()
+                || !entry.header().entry_type().is_file()
+                || entry.size() != item.size
+            {
+                return Err("archive entry does not match manifest".into());
+            }
+            let output = temporary.path().join(&item.path);
+            fs::create_dir_all(output.parent().ok_or("missing entry parent")?)?;
+            let mut file = File::options().write(true).create_new(true).open(&output)?;
+            #[cfg(unix)]
+            {
+                file.set_permissions(fs::Permissions::from_mode(0o644))?;
+                let mut directory = output.parent();
+                while let Some(path) = directory {
+                    if path == temporary.path() {
+                        break;
+                    }
+                    fs::set_permissions(path, fs::Permissions::from_mode(0o755))?;
+                    directory = path.parent();
                 }
-                fs::set_permissions(path, fs::Permissions::from_mode(0o755))?;
-                directory = path.parent();
+            }
+            io::copy(&mut entry, &mut file)?;
+            if digest(&output)? != item.sha256 {
+                return Err("file checksum mismatch".into());
             }
         }
-        io::copy(&mut entry, &mut file)?;
-        if digest(&output)? != item.sha256 {
-            return Err("file checksum mismatch".into());
+        if let Some(entry) = entries.next() {
+            entry?;
+            return Err("unexpected archive entry".into());
         }
-    }
-    if let Some(entry) = entries.next() {
-        entry?;
-        return Err("unexpected archive entry".into());
-    }
-    drop(entries);
+        expected
+    };
     // Tar stops at its end markers; drain the decoder so trailing decoded bombs
     // cannot bypass the byte budget before canonical verification.
     io::copy(&mut tar.into_inner(), &mut io::sink())?;
