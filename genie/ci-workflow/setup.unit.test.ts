@@ -671,6 +671,36 @@ describe('Linux Nix sandbox fallback', () => {
     }
   })
 
+  it('realises the source-shape closure before the two-minute measurement budget', () => {
+    for (const job of [
+      ciWorkflow.data.jobs['source-shape']!,
+      empiricalWorkflow.data.jobs['main-source-shape']!,
+    ]) {
+      const guardIndex = job.steps.findIndex(
+        (step) => step.name === 'Log Linux sandbox prerequisites',
+      )
+      const realiseIndex = job.steps.findIndex(
+        (step) => step.name === 'Realise source-shape tool closure',
+      )
+      const measureIndex = job.steps.findIndex(
+        (step) => step.name === 'Measure source shape: effect-utils',
+      )
+      expect(realiseIndex).toBeGreaterThan(guardIndex)
+      expect(measureIndex).toBeGreaterThan(realiseIndex)
+      const realise = job.steps[realiseIndex]!
+      const measure = job.steps[measureIndex]!
+      expect(realise['timeout-minutes']).toBeUndefined()
+      expect(realise.run).toBe('nix build --no-update-lock-file --no-link .#buck2-node')
+      expect(measure.run).toContain(
+        'nix build --no-update-lock-file --no-link --print-out-paths .#buck2-node',
+      )
+    }
+    const requiredMeasurement = ciWorkflow.data.jobs['source-shape']!.steps.find(
+      (step) => step.name === 'Measure source shape: effect-utils',
+    )
+    expect(requiredMeasurement?.['timeout-minutes']).toBe(2)
+  })
+
   it('keeps checkout-controlled execution after the policy verdict and guards always cleanup', () => {
     const job = ciWorkflow.data.jobs['default-ref-policy']!
     const verdict = job.steps.findIndex((step) => step.id === defaultRefPolicyVerdictStepId)

@@ -1258,6 +1258,9 @@ describe('ci workflow standard job helpers', () => {
             const sourceShapeStep = generatedSteps.find(
               ({ step }) => step.name === 'Measure source shape: effect-utils',
             )?.step
+            const sourceShapeRealisationStep = generatedSteps.find(
+              ({ step }) => step.name === 'Realise source-shape tool closure',
+            )?.step
             const localOnlyStepTokenPresence = Object.fromEntries(
               ['Reject tracked product and editor payload bytes'].map((name) => {
                 const step = generatedSteps.find(({ step }) => step.name === name)?.step
@@ -1287,6 +1290,7 @@ describe('ci workflow standard job helpers', () => {
               }).env.GITHUB_TOKEN,
               nativeDependencyPolicyRegressionStepEnv: nativeDependencyPolicyRegressionStep.env,
               sourceShapeStepEnv: sourceShapeStep?.env,
+              sourceShapeRealisationStepEnv: sourceShapeRealisationStep?.env,
               generatedDevenvAuthMissing,
               netlifyStepEnv: netlifyStep.env,
               customNetlifyStepEnv: customNetlifyStep.env,
@@ -1350,6 +1354,7 @@ describe('ci workflow standard job helpers', () => {
           RUNNER_CLASS: '${{ runner.os }}-${{ runner.arch }}',
           ...expectedTokenEnv,
         },
+        sourceShapeRealisationStepEnv: expectedTokenEnv,
         generatedDevenvAuthMissing: [],
         netlifyStepEnv: {
           NETLIFY_AUTH_TOKEN: 'netlify-secret',

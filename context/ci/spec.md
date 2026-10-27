@@ -374,8 +374,12 @@ before checking its refs. Genie freezes the root `flake.lock` nixpkgs revision
 and NAR hash into an upstream `github:NixOS/nixpkgs/...#nodejs_24` installable in
 the generated workflow; the running gate never reads the checkout's lockfile to
 resolve its interpreter. `source-shape` explicitly needs `default-ref-policy`
-before realizing the declared `.#buck2-node` output. Both invoke the exact
-realized `bin/node`, use `--no-update-lock-file`, and never select ambient Node
+before realizing the declared `.#buck2-node` output. Source-shape realizes that
+tool closure in a preceding step under the job timeout, keeping the measurement's
+two-minute budget independent of cold-store substitution. Both source-shape steps
+share the same explicit GitHub token environment for private flake input fetches.
+The two source-only jobs invoke the exact realized `bin/node`, use
+`--no-update-lock-file`, and never select ambient Node
 or an unpinned registry package. Both apply the `trusted` Linux prerequisites
 guard before realizing tools: fork PRs fail closed. The separate main source-shape
 proof inherits that guard but does not depend on the product workflow's gate;
