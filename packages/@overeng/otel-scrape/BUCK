@@ -4,7 +4,7 @@
 # Projection source: packages/@overeng/otel-scrape/BUCK.genie.ts
 # Projection schema version: 1
 # Projection generator: effect-utils/rust/cargo-buck2-package-projection
-# Semantic fingerprint: sha256:3a3377e07ad9834eceec1679ca07de7973fad2e5678b40c711406fce4e19babc
+# Semantic fingerprint: sha256:39d9dfd2a87264c2d7c236733e7c3f8377012ed080a6841d9baef83a03fee420
 # Semantic inputs: genie/buck2/mod.ts, packages/@overeng/otel-scrape/BUCK.genie.ts, packages/@overeng/otel-scrape/Cargo.toml, packages/@overeng/otel-scrape/src/**/*.rs, packages/@overeng/otel-scrape/tests/**/*.rs, packages/@overeng/otelite/Cargo.toml, packages/@overeng/pingping/Cargo.toml, packages/@overeng/pingping/crates/netinfo-macos/Cargo.toml, rust/Cargo.lock, rust/Cargo.toml, rust/ai-gateway/Cargo.toml, rust/buck2-tools/archive-tool/Cargo.toml, rust/buck2-tools/core/Cargo.toml, rust/buck2-tools/core/cargo-buck2-package-projection.ts, rust/buck2-tools/events/Cargo.toml, rust/buck2-tools/fingerprint/Cargo.toml, rust/buck2-tools/product/Cargo.toml, rust/ci-storage/Cargo.toml, rust/content-address-contract/Cargo.toml, rust/content-address-core/Cargo.toml, rust/content-address-interop/Cargo.toml, rust/effect-rust-fixtures/hash-core/Cargo.toml, rust/effect-rust-fixtures/hash-interop/Cargo.toml, rust/effect-rust-fixtures/math-core/Cargo.toml, rust/effect-rust-fixtures/math-interop/Cargo.toml, rust/effect-rust-fixtures/napi-adapter/Cargo.toml, rust/effect-rust-fixtures/wasm-adapter/Cargo.toml, rust/effect-rust-macros/Cargo.toml, rust/effect-rust/Cargo.toml, rust/reindeer.toml, rust/third-party/BUCK, rust/work-storage/Cargo.toml
 # Regenerate: devenv tasks run genie:run
 
@@ -128,7 +128,7 @@ native.rust_library(
         "CARGO_PKG_DESCRIPTION": "Process wrapper for command telemetry and profile artifact links",
         "CARGO_PKG_HOMEPAGE": "",
         "CARGO_PKG_REPOSITORY": "",
-        "CARGO_PKG_LICENSE": "MIT",
+        "CARGO_PKG_LICENSE": "Apache-2.0",
         "CARGO_PKG_LICENSE_FILE": "",
         "CARGO_PKG_README": "README.md",
         "CARGO_PKG_RUST_VERSION": "",
@@ -176,7 +176,7 @@ native.rust_binary(
         "CARGO_PKG_DESCRIPTION": "Process wrapper for command telemetry and profile artifact links",
         "CARGO_PKG_HOMEPAGE": "",
         "CARGO_PKG_REPOSITORY": "",
-        "CARGO_PKG_LICENSE": "MIT",
+        "CARGO_PKG_LICENSE": "Apache-2.0",
         "CARGO_PKG_LICENSE_FILE": "",
         "CARGO_PKG_README": "README.md",
         "CARGO_PKG_RUST_VERSION": "",

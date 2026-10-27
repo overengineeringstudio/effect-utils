@@ -16,6 +16,7 @@
   "version": "0.1.0",
   "type": "module",
   "private": true,
+  "license": "Apache-2.0",
   "exports": {
     ".": {
       "types": "./dist/src/mod.d.ts",

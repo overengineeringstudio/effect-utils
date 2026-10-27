@@ -4,7 +4,7 @@
 # Projection source: rust/effect-rust-fixtures/hash-interop/BUCK.genie.ts
 # Projection schema version: 1
 # Projection generator: effect-utils/rust/cargo-buck2-package-projection
-# Semantic fingerprint: sha256:01a621f7a4f0d5b98ff73d54afe9ee3b7312dd7de70000c63605970d2e936f15
+# Semantic fingerprint: sha256:6052e0c6d02b67a9c603f83df5d7fed73f6fe169baf55d6237b24c25f8af8695
 # Semantic inputs: genie/buck2/mod.ts, packages/@overeng/otel-scrape/Cargo.toml, packages/@overeng/otelite/Cargo.toml, packages/@overeng/pingping/Cargo.toml, packages/@overeng/pingping/crates/netinfo-macos/Cargo.toml, rust/Cargo.lock, rust/Cargo.toml, rust/ai-gateway/Cargo.toml, rust/buck2-tools/archive-tool/Cargo.toml, rust/buck2-tools/core/Cargo.toml, rust/buck2-tools/core/cargo-buck2-package-projection.ts, rust/buck2-tools/events/Cargo.toml, rust/buck2-tools/fingerprint/Cargo.toml, rust/buck2-tools/product/Cargo.toml, rust/ci-storage/Cargo.toml, rust/content-address-contract/Cargo.toml, rust/content-address-core/Cargo.toml, rust/content-address-interop/Cargo.toml, rust/effect-rust-fixtures/hash-core/Cargo.toml, rust/effect-rust-fixtures/hash-interop/BUCK.genie.ts, rust/effect-rust-fixtures/hash-interop/Cargo.toml, rust/effect-rust-fixtures/hash-interop/src/**/*.rs, rust/effect-rust-fixtures/hash-interop/tests/**/*.rs, rust/effect-rust-fixtures/math-core/Cargo.toml, rust/effect-rust-fixtures/math-interop/Cargo.toml, rust/effect-rust-fixtures/napi-adapter/Cargo.toml, rust/effect-rust-fixtures/wasm-adapter/Cargo.toml, rust/effect-rust-macros/Cargo.toml, rust/effect-rust/Cargo.toml, rust/reindeer.toml, rust/third-party/BUCK, rust/work-storage/Cargo.toml
 # Regenerate: devenv tasks run genie:run
 
@@ -71,7 +71,7 @@ native.rust_library(
         "CARGO_PKG_DESCRIPTION": "",
         "CARGO_PKG_HOMEPAGE": "",
         "CARGO_PKG_REPOSITORY": "",
-        "CARGO_PKG_LICENSE": "MIT",
+        "CARGO_PKG_LICENSE": "Apache-2.0",
         "CARGO_PKG_LICENSE_FILE": "",
         "CARGO_PKG_README": "",
         "CARGO_PKG_RUST_VERSION": "",

@@ -4,6 +4,7 @@ import {
   workspaceMember,
   exportEntry,
   packageJson,
+  firstPartyPackageDefaults,
   type PackageJsonInputData,
 } from '../../../genie/internal.ts'
 import otelBrowserPkg from '../otel-browser/package.json.genie.ts'
@@ -91,7 +92,7 @@ export default packageJson(
     version: '0.1.0',
     description:
       'Canvas performance meters and headless measurement windows for React applications',
-    license: 'MIT',
+    ...firstPartyPackageDefaults,
     type: 'module',
     files: ['package.json', 'dist', 'src', '!dist/**/*.tsbuildinfo'],
     exports: Object.fromEntries(

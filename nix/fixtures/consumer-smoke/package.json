@@ -2,6 +2,7 @@
   "dependencies": {
     "@fixture/shared": "file:.devenv/pnpm-source-inputs/current/repos/source/packages/shared"
   },
+  "license": "Apache-2.0",
   "name": "@fixture/consumer",
   "packageManager": "pnpm@12.15.0",
   "private": true,

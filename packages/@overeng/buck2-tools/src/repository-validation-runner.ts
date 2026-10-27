@@ -259,7 +259,7 @@ const checkWorkspaceContract = ({
   for (const [field, expected] of [
     ['version', '0.0.0'],
     ['edition', '2021'],
-    ['license', 'MIT'],
+    ['license', 'Apache-2.0'],
   ] as const) {
     if (workspacePackage[field] !== expected) {
       throw new Error(`rust/Cargo.toml workspace.package.${field} must remain ${expected}`)
@@ -310,7 +310,7 @@ const checkWorkspaceContract = ({
     if (
       packageEntry.version !== '0.0.0' ||
       packageEntry.edition !== '2021' ||
-      packageEntry.license !== 'MIT'
+      packageEntry.license !== 'Apache-2.0'
     ) {
       throw new Error(`${name} does not resolve the shared Cargo package contract`)
     }
