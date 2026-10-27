@@ -1680,10 +1680,7 @@ const observeNativeCommand = async ({
   })
   let interrupted = false
   const writes = new AbortController()
-  const exited = child.exited.then((exitCode) => {
-    writes.abort()
-    return exitCode
-  })
+  const exited = child.exited
   const forward = (signal: NodeJS.Signals) => {
     interrupted = true
     writes.abort()

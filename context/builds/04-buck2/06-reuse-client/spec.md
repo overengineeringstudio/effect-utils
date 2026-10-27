@@ -196,9 +196,12 @@ subcommand scan skips global option values, so an isolation named `run` is not a
 run command. Captured
 stderr is bounded to 256 KiB of bytes before decoding; overflow or signal
 termination forbids rerun. The stderr tee advances short writes and waits on
-nonblocking backpressure. Interruption and native child termination cancel a
-stalled backpressure wait and disable fallback. A failed or cancelled output
-consumer still drains/discards remaining stderr and reaps the child's final result.
+nonblocking backpressure. Launcher interruption cancels a stalled backpressure
+wait and disables fallback; a normal native exit does not cancel forwarding.
+After normal exit, stderr drains completely before returning the child's result.
+A consumer that remains stalled without interruption blocks as native Buck would.
+A failed or interrupted output consumer still drains/discards remaining stderr
+and reaps the child's final result.
 
 The classifier strips Buck's bracketed timestamps and embedded RFC3339 warning
 timestamps, accepts only enumerated progress/statistics lines, and validates every
