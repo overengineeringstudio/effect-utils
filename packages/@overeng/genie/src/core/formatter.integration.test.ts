@@ -1,3 +1,6 @@
+import { spawnSync } from 'node:child_process'
+import { fileURLToPath } from 'node:url'
+
 import { NodeServices } from '@effect/platform-node'
 import { it } from '@effect/vitest'
 import { Effect, FileSystem, Option } from 'effect'
@@ -135,6 +138,42 @@ describe('per-check formatter config reuse', () => {
       )
       expect(actual).toBe(fixture.content)
       expect(reads).toBe(0)
+    }).pipe(withFormatterTest),
+  )
+})
+
+describe('formatter subprocess stdin lifetime', () => {
+  it.effect('keeps early formatter exits from escaping as an unhandled EPIPE', () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem
+      const root = yield* fs.makeTempDirectoryScoped({ prefix: 'genie-formatter-exit-' })
+      const formatterModule = new URL('./generation.ts', import.meta.url).href
+      const source = `
+import { symlinkSync } from 'node:fs'
+import { NodeServices } from '@effect/platform-node'
+import { Effect, Option } from 'effect'
+import { makeOxfmtFormatter } from ${JSON.stringify(formatterModule)}
+// A native early exit forces stdin to close before buffered input is flushed.
+symlinkSync(Bun.which('true')!, ${JSON.stringify(`${root}/oxfmt`)})
+await Effect.runPromise(Effect.gen(function* () {
+  const formatter = yield* makeOxfmtFormatter({ configPath: Option.none() })
+  for (let iteration = 0; iteration < 500; iteration++) {
+    const content = '{"violations":[]}\\n'
+    const result = yield* formatter({ targetFilePath: ${JSON.stringify(`${root}/ledger.json`)}, content })
+    if (result !== content) throw new Error('Formatter fallback changed the content')
+  }
+}).pipe(Effect.provide(NodeServices.layer)))
+`
+      // Isolate unhandled stream errors: the child must exit cleanly, not merely
+      // resolve the formatting Effect before a late Writable error is emitted.
+      const result = spawnSync('bun', ['--eval', source], {
+        cwd: fileURLToPath(new URL('../../../../../', import.meta.url)),
+        env: { ...process.env, PATH: `${root}:${process.env.PATH ?? ''}` },
+        encoding: 'utf8',
+      })
+      const stderr = result.stderr
+      expect(result.status, stderr).toBe(0)
+      expect(stderr).not.toContain('EPIPE')
     }).pipe(withFormatterTest),
   )
 })
