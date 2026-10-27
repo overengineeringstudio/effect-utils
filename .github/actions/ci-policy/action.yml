@@ -1,0 +1,34 @@
+name: CI workflow fleet policy
+description: Enforce the shared Genie fleet policy against checked-in workflow YAML
+inputs:
+  repository-root:
+    description: Checkout to inspect, relative to the workspace (or an absolute path)
+    required: false
+    default: .
+  exceptions-file:
+    description: Optional JSON exception registry, relative to repository-root
+    required: false
+    default: ''
+runs:
+  using: composite
+  steps:
+    - name: Check workflow fleet policy
+      shell: bash
+      env:
+        CI_POLICY_ACTION_PATH: ${{ github.action_path }}
+        CI_POLICY_ROOT: ${{ inputs.repository-root }}
+        CI_POLICY_EXCEPTIONS: ${{ inputs.exceptions-file }}
+        CI_POLICY_REPOSITORY: ${{ github.repository }}
+      run: |
+        set -euo pipefail
+        policy_root=$(realpath "$CI_POLICY_ACTION_PATH/../../..")
+        if [[ "$CI_POLICY_ROOT" = /* ]]; then
+          consumer_root=$(realpath "$CI_POLICY_ROOT")
+        else
+          consumer_root=$(realpath "$GITHUB_WORKSPACE/$CI_POLICY_ROOT")
+        fi
+        # Fleet runners provide Nix and the pinned Bun closure. Offline realization
+        # prevents registry, package-manager, or binary-cache network access here.
+        nix shell --offline "path:$policy_root#bun" --command \
+          bun "$policy_root/genie/ci-workflow/check-policy.ts" \
+          "$consumer_root" "$CI_POLICY_REPOSITORY" "$CI_POLICY_EXCEPTIONS"

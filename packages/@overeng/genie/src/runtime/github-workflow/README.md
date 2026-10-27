@@ -50,6 +50,53 @@ Private binary-cache jobs accept the static fleet runner labels, including
 Each publisher label can be used alone or with the optional `nix` capability label;
 unknown labels are rejected.
 
+## Checking hand-written workflows
+
+Non-Genie repositories can invoke
+`overengineeringstudio/effect-utils/.github/actions/ci-policy` after checking out
+their repository. Pin `uses` to a full, immutable effect-utils commit SHA, not a
+branch or tag. Run the job on the fleet's `[sh-linux-x64, nix]` selector and apply
+the canonical `sameRepoPullRequestGuard()` expression when admitting non-push
+events. The check job is subject to the same policy as every other job.
+
+The composite action reads `.github/workflows/*.yml` and `*.yaml` from the
+checkout, parses them with Bun's built-in YAML parser, and invokes
+`validateWorkflowPolicy()` with `fleetWorkflowPolicy()` in enforce mode. It does
+not generate workflows or maintain a separate set of policy regexes. Opaque
+job-level reusable workflow calls are rejected rather than treating an unchecked
+callee as compliant; executable jobs must declare their runner and steps.
+
+Inputs:
+
+- `repository-root`: checkout path, relative to the workspace or absolute;
+  defaults to `.`.
+- `exceptions-file`: optional JSON file relative to that root, containing an
+  `exceptions` array with the shared `WorkflowPolicyException` fields. Workflow
+  identities are exact repository-relative paths such as
+  `.github/workflows/ci.yml`. Entries must belong to the consumer repository;
+  expiry, provenance, forbidden rules, duplicates, and stale entries are checked
+  by the shared validator. No effect-utils migration ledger or exceptions are
+  inherited.
+
+There are no npm installs, cache/artifact actions, or runtime network requests.
+The fleet runner must provide Nix and pre-realize the Bun package and locked
+flake inputs for the pinned action revision. The action uses
+`nix shell --offline path:<action-repository>#bun`, so a missing provisioned
+closure fails rather than fetching packages. No preinstalled Node or Bun is
+assumed. The action repository comes from GitHub's pinned action download, not
+the consumer checkout; its policy code cannot be replaced by consumer YAML.
+
+For a local check with Bun available:
+
+```sh
+bun genie/ci-workflow/check-policy.ts /path/to/checkout owner/repository
+```
+
+The entrypoint fixture tests live in
+`genie/ci-workflow/check-policy.integration.test.ts` and run through
+`genie:ci-workflow:test` in the CI typecheck/lint job's
+“Genie projection and CI workflow regression tests” step.
+
 ## Type Reference
 
 See [GitHub Actions workflow syntax](https://docs.github.com/en/actions/using-workflows/workflow-syntax-for-github-actions) for detailed documentation on all options.
