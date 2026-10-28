@@ -10,10 +10,10 @@ start first; any explicit priority precedes an unspecified priority.
 | Priority | Work                                |
 | -------- | ----------------------------------- |
 | 1        | effect-utils delivery               |
-| 2        | Smalltalk, PTY and tooling delivery |
+| 2        | Fractal, PTY and tooling delivery   |
 | 3        | LiveStore delivery                  |
 | 4        | effect-utils background             |
-| 5        | Smalltalk and tooling background    |
+| 5        | Fractal and tooling background      |
 | 6        | LiveStore background                |
 
 Delivery includes required-check prerequisites, main verification, releases and
