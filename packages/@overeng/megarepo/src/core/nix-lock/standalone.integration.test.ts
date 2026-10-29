@@ -94,6 +94,162 @@ describe('standalone root lock synchronization', () => {
       }).pipe(withServices),
   )
 
+  it.effect(
+    'limits synchronization to selected locks and leaves archived ref intent untouched',
+    () =>
+      Effect.gen(function* () {
+        const { fs, root } = yield* fixture
+        yield* fs.makeDirectory(`${root}archive`, { recursive: true })
+        const archived = encodeJson(lock({ stale: true, ref: 'main' }))
+        yield* fs.writeFileString(`${root}archive/flake.lock`, archived)
+        const excludedBefore = yield* fs.readFileString(`${root}nix/tool/flake.lock`)
+        const sourceBefore = yield* fs.readFileString(`${root}devenv.lock`)
+        const options = { root, input: 'library', locks: ['flake.lock'] }
+        expect(yield* syncStandaloneLocks(options)).toEqual({
+          checked: ['flake.lock'],
+          changed: ['flake.lock'],
+        })
+        yield* syncStandaloneLocks({ ...options, write: true })
+        expect(decodeJson(yield* fs.readFileString(`${root}flake.lock`))).toEqual(lock())
+        expect(yield* fs.readFileString(`${root}archive/flake.lock`)).toBe(archived)
+        expect(yield* fs.readFileString(`${root}nix/tool/flake.lock`)).toBe(excludedBefore)
+        expect(yield* fs.readFileString(`${root}devenv.lock`)).toBe(sourceBefore)
+      }).pipe(withServices),
+  )
+
+  it.effect('names an included archived lock with a differing ref and writes nothing', () =>
+    Effect.gen(function* () {
+      const { fs, root } = yield* fixture
+      yield* fs.makeDirectory(`${root}z-archive`, { recursive: true })
+      const archived = encodeJson(lock({ stale: true, ref: 'main' }))
+      yield* fs.writeFileString(`${root}z-archive/flake.lock`, archived)
+      const before = yield* fs.readFileString(`${root}flake.lock`)
+      const error = yield* syncStandaloneLocks({
+        root,
+        input: 'library',
+        locks: ['flake.lock', 'z-archive/flake.lock'],
+        write: true,
+      }).pipe(Effect.flip)
+      expect(error).toMatchObject({
+        _tag: 'StandaloneLockSyncError',
+        path: `${root}z-archive/flake.lock`,
+      })
+      expect(error.message).toContain('z-archive/flake.lock')
+      expect(error.message).toContain('different original')
+      expect(yield* fs.readFileString(`${root}flake.lock`)).toBe(before)
+      expect(yield* fs.readFileString(`${root}z-archive/flake.lock`)).toBe(archived)
+    }).pipe(withServices),
+  )
+
+  it.effect(
+    'normalizes, deduplicates and sorts explicit lock paths without discovering others',
+    () =>
+      Effect.gen(function* () {
+        const { fs, root } = yield* fixture
+        const before = yield* fs.readFileString(`${root}flake.lock`)
+        const options = {
+          root,
+          input: 'library',
+          locks: [
+            'nix/tool/flake.lock',
+            './nested dir/sub/flake.lock',
+            './nix/tool/flake.lock',
+            'nested dir/sub/flake.lock',
+          ],
+        }
+        const expected = ['nested dir/sub/flake.lock', 'nix/tool/flake.lock']
+        expect(yield* syncStandaloneLocks(options)).toEqual({
+          checked: expected,
+          changed: expected,
+        })
+        expect(yield* syncStandaloneLocks({ ...options, write: true })).toEqual({
+          checked: expected,
+          changed: expected,
+        })
+        expect(yield* syncStandaloneLocks(options)).toEqual({ checked: expected, changed: [] })
+        expect(yield* fs.readFileString(`${root}flake.lock`)).toBe(before)
+      }).pipe(withServices),
+  )
+
+  it.effect('rejects missing, absolute and escaping selected paths before any writes', () =>
+    Effect.gen(function* () {
+      const { fs, root } = yield* fixture
+      const before = yield* fs.readFileString(`${root}flake.lock`)
+      for (const selected of [
+        'z-missing/flake.lock',
+        `${root}nix/tool/flake.lock`,
+        '../flake.lock',
+        'nix/tool/not-a-flake.lock',
+      ]) {
+        const error = yield* syncStandaloneLocks({
+          root,
+          input: 'library',
+          locks: ['flake.lock', selected],
+          write: true,
+        }).pipe(Effect.flip)
+        expect(error._tag).toBe('StandaloneLockSyncError')
+        expect(error.message).toContain(selected)
+        expect(yield* fs.readFileString(`${root}flake.lock`)).toBe(before)
+      }
+    }).pipe(withServices),
+  )
+
+  it.effect(
+    'synchronizes one repository across dirs while preserving target original and locked dir',
+    () =>
+      Effect.gen(function* () {
+        const { fs, root } = yield* fixture
+        for (const { sourceDir, targetDir } of [
+          { sourceDir: undefined, targetDir: 'sub' },
+          { sourceDir: 'sub', targetDir: undefined },
+          { sourceDir: 'source', targetDir: 'target' },
+        ]) {
+          const sourceMetadata = sourceDir === undefined ? {} : { dir: sourceDir }
+          const targetMetadata = targetDir === undefined ? {} : { dir: targetDir }
+          const source = {
+            ...lock(),
+            nodes: {
+              ...lock().nodes,
+              library_2: {
+                ...lock().nodes.library_2,
+                original: { ...original, ...sourceMetadata },
+                locked: { ...locked, ...sourceMetadata },
+              },
+            },
+          }
+          const target = {
+            ...lock({ stale: true }),
+            nodes: {
+              ...lock({ stale: true }).nodes,
+              library_2: {
+                ...lock({ stale: true }).nodes.library_2,
+                original: { ...original, ...targetMetadata },
+                locked: { ...locked, ...targetMetadata, rev: 'b'.repeat(40) },
+              },
+            },
+          }
+          const sourceContent = encodeJson(source)
+          yield* fs.writeFileString(`${root}devenv.lock`, sourceContent)
+          yield* fs.writeFileString(`${root}flake.lock`, encodeJson(target))
+          const options = { root, input: 'library', locks: ['flake.lock'] }
+          expect((yield* syncStandaloneLocks(options)).changed).toEqual(['flake.lock'])
+          yield* syncStandaloneLocks({ ...options, write: true })
+          expect(decodeJson(yield* fs.readFileString(`${root}flake.lock`))).toEqual({
+            ...target,
+            nodes: {
+              ...target.nodes,
+              library_2: {
+                ...target.nodes.library_2,
+                locked: { ...locked, ...targetMetadata },
+              },
+            },
+          })
+          expect(yield* fs.readFileString(`${root}devenv.lock`)).toBe(sourceContent)
+          expect((yield* syncStandaloneLocks(options)).changed).toEqual([])
+        }
+      }).pipe(withServices),
+  )
+
   it.effect('synchronizes every nested duplicate even without a named direct root input', () =>
     Effect.gen(function* () {
       const { fs, root } = yield* fixture
@@ -223,6 +379,35 @@ describe('standalone root lock synchronization', () => {
       }).pipe(withServices),
   )
 
+  it.effect('restores every original lock when the second replacement rename fails', () =>
+    Effect.gen(function* () {
+      const { fs, root } = yield* fixture
+      const paths = ['flake.lock', 'nested dir/sub/flake.lock', 'nix/tool/flake.lock']
+      const before = yield* Effect.forEach(paths, (path) => fs.readFileString(`${root}${path}`))
+      let injectedFailure = false
+      const controlledFs: FileSystem.FileSystem = {
+        ...fs,
+        rename: (from, to) => {
+          if (to === `${root}nested dir/sub/flake.lock` && injectedFailure === false) {
+            injectedFailure = true
+            return fs.rename(`${root}missing-replacement`, to)
+          }
+          return fs.rename(from, to)
+        },
+      }
+      const result = yield* Effect.exit(
+        syncStandaloneLocks({ root, input: 'library', write: true }).pipe(
+          Effect.provideService(FileSystem.FileSystem, controlledFs),
+        ),
+      )
+      expect(injectedFailure).toBe(true)
+      expect(Exit.isFailure(result)).toBe(true)
+      expect(yield* Effect.forEach(paths, (path) => fs.readFileString(`${root}${path}`))).toEqual(
+        before,
+      )
+    }).pipe(withServices),
+  )
+
   it.effect('preflights differing originals across the whole cohort without partial writes', () =>
     Effect.gen(function* () {
       const { fs, root } = yield* fixture
@@ -343,6 +528,37 @@ describe('standalone root lock synchronization', () => {
       expect(Exit.isFailure(yield* Effect.exit(run(['--input', 'library'])))).toBe(true)
       yield* run(['--input', 'library', '--write'])
       yield* run(['--input', 'library'])
+    }).pipe(withServices),
+  )
+
+  it.effect('CLI accepts repeated exact --lock paths and excludes archived locks', () =>
+    Effect.gen(function* () {
+      const { fs, root } = yield* fixture
+      yield* fs.makeDirectory(`${root}archive`, { recursive: true })
+      const archived = encodeJson(lock({ stale: true, ref: 'main' }))
+      yield* fs.writeFileString(`${root}archive/flake.lock`, archived)
+      const before = yield* fs.readFileString(`${root}nix/tool/flake.lock`)
+      const run = (args: string[]) =>
+        Cli.Command.runWith(lockSyncCommand, { version: 'test' })(args).pipe(
+          Effect.provideService(Cwd, root),
+        )
+      const args = [
+        '--input',
+        'library',
+        '--lock',
+        'nested dir/sub/flake.lock',
+        '--lock',
+        'flake.lock',
+      ]
+      expect(Exit.isFailure(yield* Effect.exit(run(args)))).toBe(true)
+      yield* run([...args, '--write'])
+      yield* run(args)
+      expect(decodeJson(yield* fs.readFileString(`${root}flake.lock`))).toEqual(lock())
+      expect(decodeJson(yield* fs.readFileString(`${root}nested dir/sub/flake.lock`))).toEqual(
+        lock(),
+      )
+      expect(yield* fs.readFileString(`${root}nix/tool/flake.lock`)).toBe(before)
+      expect(yield* fs.readFileString(`${root}archive/flake.lock`)).toBe(archived)
     }).pipe(withServices),
   )
 

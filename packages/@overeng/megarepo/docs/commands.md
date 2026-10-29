@@ -43,11 +43,21 @@ repository's root lock. Run from the repository root (or use `mr --cwd <root>`).
 mr lock-sync --input effect-utils                     # read-only; fails on drift
 mr lock-sync --input effect-utils --write             # copy the root resolution
 mr lock-sync --input effect-utils --root-lock flake.lock --write
+mr lock-sync --input effect-utils --lock flake.lock --lock nix/tool/flake.lock --write
 ```
 
-The default authority is `devenv.lock`. Discovery includes tracked and non-ignored
-untracked `flake.lock` files, including the root `flake.lock` when `devenv.lock`
-is authoritative. Ignored caches and member mounts are not traversed.
+The default authority is `devenv.lock`. Without `--lock`, discovery includes tracked
+and non-ignored untracked `flake.lock` files, including the root `flake.lock` when
+`devenv.lock` is authoritative. Ignored caches and member mounts are not traversed.
+
+Repeat `--lock <path>` to select an exact set of repository-relative `flake.lock`
+paths instead of using Git discovery. Paths are not globs or Git pathspecs;
+duplicates are removed after normalization and results are sorted by path.
+For example, selecting only active consumers leaves an archived lock with a
+deliberately different ref untouched and unvalidated. Explicitly selected paths
+must exist; missing, absolute, repository-escaping, and non-`flake.lock` paths
+fail before any write. The authoritative root lock is never rewritten.
+
 The authoritative GitHub/git input is resolved through the root input map,
 including follows paths. Every node in each standalone lock is inspected,
 including nested duplicates and locks without a direct root reference. Nodes
@@ -57,14 +67,20 @@ GitHub repository identity is shared across HTTPS, SCP-style `git@github.com:`,
 `ssh://git@github.com/`, and `git+ssh://git@github.com/` URLs, with or without
 the `.git` suffix, matching the transports recognized by `mr:lock-sync-check`.
 
-Both modes share discovery and comparison. Every matching input must have the
-same structural `original` as the root; a different original, unresolved input,
-missing declared root node, or malformed lock fails before any write.
-Write mode atomically replaces each changed lock and copies the complete
-`locked` object (including revision, NAR hash, timestamp and extra metadata)
-without re-resolving the ref. It preserves `original` (including `ref=published`),
-local dependency edges and all unrelated nodes. Repeating a successful write
-does not touch any file.
+Both modes share selection and comparison. Every matching input must have the
+same structural `original` as the root except for `dir`: flakes in different
+subdirectories of the same repository may share its resolution. A different ref
+or any other original mismatch, unresolved input, missing declared root node,
+or malformed lock fails before any write. Original mismatch errors name the
+offending lock file.
+
+Write mode stages the complete cohort before atomically replacing changed locks;
+if a replacement fails, previously replaced locks are restored. It copies the
+complete root `locked` metadata (including revision, NAR hash, timestamp and extra
+metadata) without re-resolving the ref, retaining each target's own `dir` from its
+`original` rather than inheriting the source's directory. It preserves `original`
+(including `ref=published` and `dir`), local dependency edges and all unrelated
+nodes. Repeating a successful write does not touch any file.
 
 Unlike `mr apply --lock-sync`, this operates within one consumer repository,
 does not modify member worktrees or `megarepo.lock`, and does not require a

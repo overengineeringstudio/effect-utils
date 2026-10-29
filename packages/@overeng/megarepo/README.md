@@ -53,6 +53,25 @@ For CI:
 mr apply --git-protocol=https
 ```
 
+### Standalone Nix lock synchronization
+
+Use an already resolved root input to check or update standalone flake locks without
+changing their declared ref intent:
+
+```bash
+mr lock-sync --input effect-utils --lock flake.lock --lock nix/tool/flake.lock
+mr lock-sync --input effect-utils --lock flake.lock --lock nix/tool/flake.lock --write
+```
+
+Repeat `--lock` to select exact repository-relative `flake.lock` paths, not globs or
+Git pathspecs. This lets active consumers share the root resolution while archived
+locks with intentionally different refs stay outside the synchronization scope.
+Missing, absolute, and repository-escaping selections fail before any writes.
+Without `--lock`, Git discovery still checks all tracked and non-ignored standalone
+flake locks. The authority defaults to `devenv.lock`; use `--root-lock flake.lock`
+when the root flake lock is authoritative. See the
+[command reference](docs/commands.md#mr-lock-sync) for validation and write behavior.
+
 ## Directory Layout
 
 After `mr fetch --apply` and `mr lock`:
