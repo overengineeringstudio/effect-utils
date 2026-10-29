@@ -1,17 +1,17 @@
 import { expect, it } from 'bun:test'
 import { spawnSync } from 'node:child_process'
-import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 import * as isolationUnitTests from './buck2-gate-isolation.unit.test.ts'
+import { createTestTempDirectory } from './test-tmp.ts'
 
 void isolationUnitTests
 
 const entrypoint = new URL('./buck2-entrypoint.ts', import.meta.url).href
 
 it('targets only the selected isolation through native status and kill, retaining unrelated v2', () => {
-  const root = realpathSync(mkdtempSync(join(tmpdir(), 'buck-gate-isolation-')))
+  const root = realpathSync(createTestTempDirectory('buck-gate-isolation-'))
   const cwd = join(root, 'subdir')
   const native = join(root, 'native')
   const calls = join(root, 'calls.jsonl')

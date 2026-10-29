@@ -5,7 +5,6 @@ import {
   constants,
   openSync,
   existsSync,
-  mkdtempSync,
   readFileSync,
   readSync,
   realpathSync,
@@ -15,7 +14,6 @@ import {
   writeFileSync,
 } from 'node:fs'
 import { createServer } from 'node:http2'
-import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { setTimeout as waitForConsumer } from 'node:timers/promises'
 
@@ -29,6 +27,7 @@ import {
   cacheDaemonPolicyArguments,
 } from './buck2-entrypoint.ts'
 import * as readerShadowUnitTests from './buck2-entrypoint.unit.test.ts'
+import { createTestTempDirectory } from './test-tmp.ts'
 void readerShadowUnitTests
 
 const secret = 'planted-writer-credential-never-persist'
@@ -39,7 +38,7 @@ const values = {
 
 describe('daemon RE posture', () => {
   it('records reader REAPI shadow evidence without rerunning or replacing the native failure', async () => {
-    const root = realpathSync(mkdtempSync(join(tmpdir(), 'buck2-reader-shadow-')))
+    const root = realpathSync(createTestTempDirectory('buck2-reader-shadow-'))
     const grpc = createServer()
     grpc.on('stream', (stream) => {
       stream.on('data', () => {})
@@ -183,7 +182,7 @@ else if(args.includes('build')) {
         ? 'reaps a signalled reader when its nonblocking stderr consumer stops reading'
         : 'forwards every stderr byte to a slow consumer after a normal native exit',
       async () => {
-        const root = realpathSync(mkdtempSync(join(tmpdir(), 'buck2-stalled-stderr-')))
+        const root = realpathSync(createTestTempDirectory('buck2-stalled-stderr-'))
         const grpc = createServer()
         grpc.on('stream', (stream) => {
           stream.on('data', () => {})
@@ -358,7 +357,7 @@ if(process.env.STALLED_TERMINATION==='exit') process.exit(0);
     )
   }
   it('pins before direct and nested argfile payloads and refuses unresolved argfiles', () => {
-    const cwd = mkdtempSync(join(tmpdir(), 'buck2-policy-argfiles-'))
+    const cwd = createTestTempDirectory('buck2-policy-argfiles-')
     try {
       const pin = (args: readonly string[]) =>
         cacheDaemonPolicyArguments({
@@ -446,7 +445,7 @@ if(process.env.STALLED_TERMINATION==='exit') process.exit(0);
     const tracked = readFileSync(join(import.meta.dir, '..', '.buckconfig'), 'utf8')
     expect(buckConfigValues(tracked)['buck2.remote_cache_enabled']).toBeUndefined()
     for (const posture of ['publisher', 'reader-outage', 'optional-writer-outage']) {
-      const root = realpathSync(mkdtempSync(join(tmpdir(), 'buck2-effective-posture-')))
+      const root = realpathSync(createTestTempDirectory('buck2-effective-posture-'))
       try {
         const native = join(root, 'native')
         writeFileSync(join(root, '.buckroot'), '')
@@ -537,7 +536,7 @@ else process.exit(9);
   }, 15000)
 
   it('records closed REAPI outage diagnostics, including cached admission failures', async () => {
-    const root = mkdtempSync(join(tmpdir(), 'buck2-admission-failure-'))
+    const root = createTestTempDirectory('buck2-admission-failure-')
     try {
       const evidence = join(root, 'evidence.json')
       const child = Bun.spawn(
@@ -629,7 +628,7 @@ for(let index=0;index<2;index++) await directBuckArguments({
   })
 
   it('reconciles reader to writer and rotated auth once, persists only private keyed state and fails closed while busy', async () => {
-    const root = realpathSync(mkdtempSync(join(tmpdir(), 'buck2-daemon-posture-')))
+    const root = realpathSync(createTestTempDirectory('buck2-daemon-posture-'))
     const native = join(root, 'native')
     const state = join(root, 'native-state')
     const calls = join(root, 'calls')
@@ -712,8 +711,8 @@ else process.exit(9);
   }, 15000)
 
   it('refuses different postures on one daemon, admits other roots/isolations and expires a reused PID', async () => {
-    const root = mkdtempSync(join(tmpdir(), 'buck2-posture-race-'))
-    const separateRoot = mkdtempSync(join(tmpdir(), 'buck2-posture-separate-'))
+    const root = createTestTempDirectory('buck2-posture-race-')
+    const separateRoot = createTestTempDirectory('buck2-posture-separate-')
     const native = join(root, 'native')
     const state = join(root, 'daemon.json')
     const overlay = join(root, '.buckconfig.local')

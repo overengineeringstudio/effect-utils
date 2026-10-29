@@ -113,6 +113,13 @@ without fleet `gate-slot` or building actions.
 entrypoint and gate lifecycle tests; its fail-closed gate-slot requirement is
 unchanged.
 
+The shared posture and gate-isolation fixtures allocate private per-run roots
+under the checkout's ignored `tmp`, removing each fixture in `finally` and the
+run root in `afterAll`. This applies to local and CI imports alike: Bun enumerates
+working-directory ancestors on startup, so the size of a shared system temporary
+directory must not become part of a fake native command's workload. Test guards
+and native admission deadlines remain unchanged.
+
 Cache-less commands (`BUCK2_NO_REMOTE_CACHE=1` or native `--no-remote-cache`)
 retain the fixed-source/offline posture contract: they remove the RE client
 configuration before startup. A test that needs this posture concurrently with
