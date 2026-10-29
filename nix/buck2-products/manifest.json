@@ -197,17 +197,17 @@
       "version": "0.1.0"
     },
     {
-      "artifactUrl": "https://overeng-effect-utils.cachix.org/serve/p7qb5m6kfm58bkgk0krpbwcprvxlr97k/overeng-genie.tgz",
+      "artifactUrl": "https://overeng-effect-utils.cachix.org/serve/hkyw3ba0wcrvi8pal65lcwhv17351n98/overeng-genie.tgz",
       "name": "@overeng/genie",
       "provenance": {
-        "producerCommit": "ef7d8f1bf777cb78df3dc4a3c36235283cb0499a",
-        "productDigest": "ae678e5d441db01ab3da851d18548b43ce1a1aa38c3fa8c54df6d4fa7f32ea93",
+        "producerCommit": "5811fdaae548c863f587e07cdcb25e7897d74cee",
+        "productDigest": "010d4734c6ea1be0d4aa85926a06e2d1cb756a6980971d2b61228ce52d9e2e97",
         "schema": "effect-utils/buck-product-provenance/v1",
         "target": "effect_utils//packages/@overeng/genie:dist-package"
       },
-      "sha256": "ae678e5d441db01ab3da851d18548b43ce1a1aa38c3fa8c54df6d4fa7f32ea93",
-      "size": 932522,
-      "storePath": "/nix/store/p7qb5m6kfm58bkgk0krpbwcprvxlr97k-overeng-genie-buck2-from-source-0.1.0",
+      "sha256": "010d4734c6ea1be0d4aa85926a06e2d1cb756a6980971d2b61228ce52d9e2e97",
+      "size": 932290,
+      "storePath": "/nix/store/hkyw3ba0wcrvi8pal65lcwhv17351n98-overeng-genie-buck2-from-source-0.1.0",
       "version": "0.1.0"
     },
     {
@@ -527,7 +527,7 @@
       "version": "0.0.0"
     },
     {
-      "artifactUrl": "https://overeng-effect-utils.cachix.org/serve/4qvzxwrhhkx4j11jbrrrgqfzlkk10a50/genie.js",
+      "artifactUrl": "https://overeng-effect-utils.cachix.org/serve/wa5dzsa79nv7z4g5zd1j1ymch56bjnwb/genie.js",
       "descriptor": {
         "externalCapabilities": [
           "actionlint",
@@ -547,7 +547,7 @@
           "@opentui/core-win32-arm64",
           "@opentui/core-win32-x64"
         ],
-        "integrity": "sha256-DHdREJMtpSv92KJi3IpAx3njrVs7+7CKcFNazwpAFPU=",
+        "integrity": "sha256-pOuCa4Pi4RbXIT02A2sN/exEK98naSSVq1PBop8zpwk=",
         "modulePath": "genie.js",
         "platform": {
           "abi": "any",
@@ -565,20 +565,20 @@
         "runtimeContractVersion": "v1",
         "runtimeKind": "bun",
         "schema": "effect-utils/javascript-product/v2",
-        "sizeBytes": 6796416,
+        "sizeBytes": 6796328,
         "target": "effect_utils//packages/@overeng/genie:genie-candidate"
       },
-      "descriptorSha256": "b14e53fec4e4f3fada61fe17bccacafbfb0fd644d95cc98f57fc19f4b88c83ee",
+      "descriptorSha256": "ea5fc8f6803afd522ce7fe362d2d94ad2903a8e194420f4c92ad10a2485c9af9",
       "name": "genie",
       "provenance": {
-        "producerCommit": "3e0484adfce1942950a789f6d362c7907a04b42d",
-        "productDigest": "0c775110932da52bfdd8a262dc8a40c779e3ad5b3bfbb08a70535acf0a4014f5",
+        "producerCommit": "5811fdaae548c863f587e07cdcb25e7897d74cee",
+        "productDigest": "a4eb826b83e2e116d7213d36036b0dfdec442bdf27692495ab53c1a29f33a709",
         "schema": "effect-utils/buck-product-provenance/v1",
         "target": "effect_utils//packages/@overeng/genie:genie-candidate"
       },
-      "sha256": "0c775110932da52bfdd8a262dc8a40c779e3ad5b3bfbb08a70535acf0a4014f5",
-      "size": 6796416,
-      "storePath": "/nix/store/4qvzxwrhhkx4j11jbrrrgqfzlkk10a50-genie-buck2-from-source-0.0.0",
+      "sha256": "a4eb826b83e2e116d7213d36036b0dfdec442bdf27692495ab53c1a29f33a709",
+      "size": 6796328,
+      "storePath": "/nix/store/wa5dzsa79nv7z4g5zd1j1ymch56bjnwb-genie-buck2-from-source-0.0.0",
       "version": "0.0.0"
     },
     {
@@ -666,14 +666,14 @@
       "version": "0.0.0"
     },
     {
-      "artifactUrl": "https://overeng-effect-utils.cachix.org/serve/g1pz4jglq7d03q2ixh6762k20r33ndk7/mr.js",
+      "artifactUrl": "https://overeng-effect-utils.cachix.org/serve/nypi0zhagi9jqjf2ywkbcyk9r8w5skjl/mr.js",
       "descriptor": {
         "externalCapabilities": [
           "git",
           "nix"
         ],
         "externalModules": [],
-        "integrity": "sha256-CxGCVBfflDBP3YwnXSMSnPJaJlqWBm+a2EVXoSuiWEU=",
+        "integrity": "sha256-CYidb7BAJ0U5DJIE8itACXn1K2/vLeM7Iwg1SciQLj4=",
         "modulePath": "mr.js",
         "platform": {
           "abi": "any",
@@ -691,20 +691,20 @@
         "runtimeContractVersion": "v1",
         "runtimeKind": "bun",
         "schema": "effect-utils/javascript-product/v2",
-        "sizeBytes": 2892957,
+        "sizeBytes": 2895478,
         "target": "effect_utils//packages/@overeng/megarepo:megarepo-candidate"
       },
-      "descriptorSha256": "94d9a58fb03275a63d8019fc643e5a8babe5cdba5e8521563ed1fc24b0437aa7",
+      "descriptorSha256": "e6ec5643af28507b314dbec0f119d2fd3edb51444c5f52a2333055d965fcaaed",
       "name": "megarepo",
       "provenance": {
-        "producerCommit": "6dac8d00a1b82b6bb65ceb09d862b5bda62f6c55",
-        "productDigest": "0b11825417df94304fdd8c275d23129cf25a265a96066f9ad84557a12ba25845",
+        "producerCommit": "54d317bb883c644bc7287f88207ddd71728c9b32",
+        "productDigest": "09889d6fb0402745390c9204f22b400979f52b6fef2de33b23083549c8902e3e",
         "schema": "effect-utils/buck-product-provenance/v1",
         "target": "effect_utils//packages/@overeng/megarepo:megarepo-candidate"
       },
-      "sha256": "0b11825417df94304fdd8c275d23129cf25a265a96066f9ad84557a12ba25845",
-      "size": 2892957,
-      "storePath": "/nix/store/g1pz4jglq7d03q2ixh6762k20r33ndk7-megarepo-buck2-from-source-0.0.0",
+      "sha256": "09889d6fb0402745390c9204f22b400979f52b6fef2de33b23083549c8902e3e",
+      "size": 2895478,
+      "storePath": "/nix/store/nypi0zhagi9jqjf2ywkbcyk9r8w5skjl-megarepo-buck2-from-source-0.0.0",
       "version": "0.0.0"
     },
     {
