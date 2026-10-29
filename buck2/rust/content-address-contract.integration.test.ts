@@ -67,8 +67,13 @@ const makeFixture = (): string => {
   return root
 }
 
-const run = (root: string, args: readonly string[]) =>
-  Bun.spawnSync({ cmd: [process.execPath, ...args], cwd: root, stdout: 'pipe', stderr: 'pipe' })
+const run = (root: string, args: readonly string[]) => {
+  // Contract fingerprints record the published runtime, not this test runner's.
+  const bun = args[0] === generator ? process.env.BUN_BIN : process.execPath
+  if (bun === undefined || bun === '')
+    throw new Error('Contract generator tests require BUN_BIN from buck2:rust:generators:test')
+  return Bun.spawnSync({ cmd: [bun, ...args], cwd: root, stdout: 'pipe', stderr: 'pipe' })
+}
 
 const succeed = (root: string, args: readonly string[]): string => {
   const result = run(root, args)

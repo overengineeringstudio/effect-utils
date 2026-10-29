@@ -50,6 +50,7 @@ let
     ${publishBuckCapabilities}
     cd "$root"
     export BWRAP_BIN=${repoFlake.packages.${currentSystem}.buck2-bubblewrap}/bin/bwrap
+    # Match the immutable launcher artifact's declared runtime, not the test runner.
     export BUN_BIN=${flakePkgs.bun}/bin/bun
     export BASH_BIN=${repoFlake.packages.${currentSystem}.buck2-rust-shell}/bin/bash
     probe_outputs="$("$BUCK2_BIN" build \
@@ -919,6 +920,14 @@ let
     };
 in
 {
+  # Only this repository's shell/tasks receive the temporary Bun runtime fix.
+  # repoFlake/flakePkgs and all published package closures remain independent.
+  overlays = [
+    (_final: previous: {
+      bun = import ./nix/devenv-bun.nix { pkgs = previous; };
+    })
+  ];
+
   # Shared source tasks lease before resolving their package binary.
   env.EDITOR_VIEW_SOURCE_LAUNCHER = "${sourceLease}/bin/editor-view-source";
   env.EDITOR_VIEW_LEASE_BIN = "${editorViewLease}/bin/editor-view-lease";
@@ -1567,6 +1576,8 @@ in
       set -euo pipefail
       cd "''${DEVENV_ROOT:-$PWD}"
       export PATH=${lib.makeBinPath [ pkgs.gnutar ]}:$PATH
+      # Contract fingerprints use the published runtime; remove with the shell override.
+      export BUN_BIN=${flakePkgs.bun}/bin/bun
       exec ${sourceBun}/bin/bun test ./buck2/rust/
     '';
     execIfModified = [
@@ -1832,7 +1843,9 @@ in
     exec = trace.exec "content-address:contract:generate" ''
       set -euo pipefail
       root="''${DEVENV_ROOT:-$PWD}"
-      exec ${sourceBun}/bin/bun "$root/packages/@overeng/content-address/src/generate-contract.ts"
+      # Contract fingerprints use the published runtime; remove with the shell override.
+      export BUN_BIN=${flakePkgs.bun}/bin/bun
+      exec ${sourceLease}/bin/editor-view-source "$BUN_BIN" "$root/packages/@overeng/content-address/src/generate-contract.ts"
     '';
   };
 
@@ -1849,7 +1862,9 @@ in
         "$root/rust/content-address-contract/generation.json" \
         "$root/rust/content-address-contract/src/lib.rs" \
         "$root/rust/content-address-contract/schema/"*.json
-      exec ${sourceBun}/bin/bun "$root/packages/@overeng/content-address/src/generate-contract.ts" --check
+      # Contract fingerprints use the published runtime; remove with the shell override.
+      export BUN_BIN=${flakePkgs.bun}/bin/bun
+      exec ${sourceLease}/bin/editor-view-source "$BUN_BIN" "$root/packages/@overeng/content-address/src/generate-contract.ts" --check
     '';
   };
 
