@@ -50,7 +50,8 @@ let
     ${publishBuckCapabilities}
     cd "$root"
     export BWRAP_BIN=${repoFlake.packages.${currentSystem}.buck2-bubblewrap}/bin/bwrap
-    export BUN_BIN=${pkgs.bun}/bin/bun
+    # Match the immutable launcher artifact's declared runtime, not the test runner.
+    export BUN_BIN=${flakePkgs.bun}/bin/bun
     export BASH_BIN=${repoFlake.packages.${currentSystem}.buck2-rust-shell}/bin/bash
     probe_outputs="$("$BUCK2_BIN" build \
       --target-platforms effect_utils//buck2/platforms:host_platform \
