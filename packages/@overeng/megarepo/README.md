@@ -73,7 +73,6 @@ supplies the actual locked metadata for the revision; write mode updates the
 authority root and selected standalone locks together atomically, preserving
 `original.ref`.
 Without `--write`, no locks are written and requested-revision drift fails the check.
-
 Repeat `--lock` to select exact repository-relative `flake.lock` paths, not globs or
 Git pathspecs. This lets active consumers share the root resolution while archived
 locks with intentionally different refs stay outside the synchronization scope.

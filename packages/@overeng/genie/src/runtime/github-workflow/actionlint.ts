@@ -33,15 +33,6 @@ const deriveSeverity = ({
   return 'error'
 }
 
-/** Build a temporary actionlint YAML config with self-hosted runner labels. */
-const writeConfigFile = (labels: readonly string[]): string => {
-  const dir = mkdtempSync(join(tmpdir(), 'genie-actionlint-'))
-  const configPath = join(dir, 'actionlint.yaml')
-  const yaml = `self-hosted-runner:\n  labels:\n${labels.map((l) => `    - ${l}`).join('\n')}\n`
-  writeFileSync(configPath, yaml)
-  return configPath
-}
-
 /**
  * Run actionlint and log any issues to stderr.
  *
@@ -99,12 +90,7 @@ const runActionlintRaw = ({
     '-pyflakes=',
   ]
 
-  let configPath: string | undefined
-  if (config?.selfHostedRunnerLabels !== undefined && config.selfHostedRunnerLabels.length > 0) {
-    configPath = writeConfigFile(config.selfHostedRunnerLabels)
-    args.push('-config-file', configPath)
-  }
-
+  let configDir: string | undefined
   if (config?.ignorePatterns !== undefined) {
     for (const pattern of config.ignorePatterns) {
       args.push('-ignore', pattern)
@@ -114,6 +100,17 @@ const runActionlintRaw = ({
   args.push('-')
 
   try {
+    if (config?.selfHostedRunnerLabels !== undefined && config.selfHostedRunnerLabels.length > 0) {
+      configDir = mkdtempSync(join(tmpdir(), 'genie-actionlint-'))
+      const configPath = join(configDir, 'actionlint.yaml')
+      const labels = config.selfHostedRunnerLabels
+      writeFileSync(
+        configPath,
+        `self-hosted-runner:\n  labels:\n${labels.map((label) => `    - ${label}`).join('\n')}\n`,
+      )
+      args.unshift('-config-file', configPath)
+    }
+
     const proc = spawnSync(bin, args, {
       input: yaml,
       encoding: 'utf-8',
@@ -157,13 +154,7 @@ const runActionlintRaw = ({
 
     return { issues, durationMs }
   } finally {
-    if (configPath !== undefined) {
-      try {
-        rmSync(configPath, { recursive: true })
-      } catch {
-        // best-effort cleanup
-      }
-    }
+    if (configDir !== undefined) rmSync(configDir, { recursive: true, force: true })
   }
 }
 
