@@ -1,6 +1,8 @@
 # otel-span: OTLP trace span CLI.
 #
 # Delivers spans via spool file ($OTEL_SPAN_SPOOL_DIR) or HTTP POST (fallback).
+# Scratch files are removed on errors, SIGINT and SIGTERM. Published spool
+# records remain durable for retry; SIGKILL cannot run shell cleanup traps.
 #
 # Subcommands:
 #   run             — wrap a command in an OTLP trace span
@@ -27,12 +29,15 @@ pkgs.writeShellScriptBin "otel-span" ''
         local payload="$1"
         local _spool_dir="''${OTEL_SPAN_SPOOL_DIR:-}"
         if [ -n "$_spool_dir" ] && [ -d "$_spool_dir" ]; then
-          if [ "''${OTEL_SPOOL_MULTI_WRITER:-}" = "1" ]; then
-            local _tmp
+          if [ "''${OTEL_SPOOL_MULTI_WRITER:-}" = "1" ]; then (
+            local _tmp=""
+            trap '${pkgs.coreutils}/bin/rm -f -- "$_tmp"' EXIT
+            trap 'exit 130' INT
+            trap 'exit 143' TERM
             _tmp=$(${pkgs.coreutils}/bin/mktemp "$_spool_dir/.tmp.XXXXXXXXXX")
             printf '%s\n' "$payload" | "$_jq" -c . > "$_tmp"
             ${pkgs.coreutils}/bin/mv "$_tmp" "''${_spool_dir}/$(${pkgs.coreutils}/bin/date +%s%N)-$$.jsonl"
-          else
+          ); else
             printf '%s\n' "$payload" | "$_jq" -c . >> "$_spool_dir/spans.jsonl"
           fi
         elif [ -n "''${OTEL_EXPORTER_OTLP_ENDPOINT:-}" ] && [[ "''${PIPELINE_TRUSTED:-true}" != false && "''${PIPELINE_FORK:-false}" != true ]]; then
@@ -43,23 +48,26 @@ pkgs.writeShellScriptBin "otel-span" ''
         fi
       }
 
-      _spool_otlp_chunk() {
-        local LC_ALL=C payload=$1 pending=$2 digest tmp
+      _spool_otlp_chunk() (
+        local LC_ALL=C payload=$1 pending=$2 digest tmp=""
+        trap '${pkgs.coreutils}/bin/rm -f -- "$tmp"' EXIT
+        trap 'exit 130' INT
+        trap 'exit 143' TERM
         if (( ''${#payload} > 3300000 )); then
           echo "otel-span: span payload exceeds OTLP collector limit; native JSONL retained" >&2
           return 1
         fi
-        digest="$(printf '%s' "$payload" | ${pkgs.coreutils}/bin/sha256sum)"
+        digest="$(printf '%s' "$payload" | ${pkgs.coreutils}/bin/sha256sum)" || return 1
         digest="''${digest%% *}"
         [[ -f "$pending/$digest.traces.chunk" ]] && return 0
-        tmp="$(${pkgs.coreutils}/bin/mktemp "$pending/.tmp.XXXXXXXX")"
+        tmp="$(${pkgs.coreutils}/bin/mktemp "$pending/.tmp.XXXXXXXX")" || return 1
         "$_jq" -cn --arg id "$digest" --argjson bytes "''${#payload}" \
-          '{signal:"traces",byte_count:$bytes,destination:"OTEL_EXPORTER_OTLP_ENDPOINT",id:$id}' > "$tmp"
-        printf '%s' "$payload" >> "$tmp"
+          '{signal:"traces",byte_count:$bytes,destination:"OTEL_EXPORTER_OTLP_ENDPOINT",id:$id}' > "$tmp" || return 1
+        printf '%s' "$payload" >> "$tmp" || return 1
         ${pkgs.coreutils}/bin/sync "$tmp" || return 1
         ${pkgs.coreutils}/bin/mv "$tmp" "$pending/$digest.traces.chunk" || return 1
         ${pkgs.coreutils}/bin/sync "$pending"
-      }
+      )
 
       _pipeline_prepare_spans() {
         local spool=$1 payload file
@@ -290,10 +298,9 @@ pkgs.writeShellScriptBin "otel-span" ''
       }
 
       _append_attr_json() {
-        local out="$1"
-        local type="$2"
-        local key="$3"
-        local value="$4"
+        local type="$1"
+        local key="$2"
+        local value="$3"
 
         # service.name belongs on the resource. Keeping it off span attributes
         # avoids duplicate query paths and trace preview noise.
@@ -304,23 +311,23 @@ pkgs.writeShellScriptBin "otel-span" ''
         case "$type" in
           string)
             "$_jq" -cn --arg key "$key" --arg value "$value" \
-              '{key:$key,value:{stringValue:$value}}' >> "$out"
+              '{key:$key,value:{stringValue:$value}}'
             ;;
           bool)
             [[ "$value" = "true" || "$value" = "false" ]] || { echo "otel-span: bool attribute $key must be true or false" >&2; exit 1; }
             "$_jq" -cn --arg key "$key" --argjson value "$value" \
-              '{key:$key,value:{boolValue:$value}}' >> "$out"
+              '{key:$key,value:{boolValue:$value}}'
             ;;
           int)
             [[ "$value" =~ ^-?[0-9]+$ ]] || { echo "otel-span: int attribute $key is not an integer: $value" >&2; exit 1; }
             "$_jq" -cn --arg key "$key" --arg value "$value" \
-              '{key:$key,value:{intValue:$value}}' >> "$out"
+              '{key:$key,value:{intValue:$value}}'
             ;;
           double)
             [[ "$value" =~ ^-?([0-9]+[.][0-9]*|[.][0-9]+)([eE][-+]?[0-9]+)?$ || "$value" =~ ^-?[0-9]+[eE][-+]?[0-9]+$ || "$value" =~ ^-?[0-9]+$ ]] \
               || { echo "otel-span: double attribute $key is not numeric: $value" >&2; exit 1; }
             "$_jq" -cn --arg key "$key" --argjson value "$value" \
-              '{key:$key,value:{doubleValue:$value}}' >> "$out"
+              '{key:$key,value:{doubleValue:$value}}'
             ;;
           *)
             echo "otel-span: internal error: unknown attribute type $type" >&2
@@ -337,21 +344,21 @@ pkgs.writeShellScriptBin "otel-span" ''
 
       _build_attrs_json() {
         local span_name="$1"
-        local out
-        out=$(${pkgs.coreutils}/bin/mktemp)
         local has_label=0
         local i
-        for ((i = 0; i < ''${#ATTR_KEYS[@]}; i += 1)); do
-          if [[ "''${ATTR_KEYS[$i]}" = "span.label" ]]; then
-            has_label=1
+        # Stream into jq: invalid typed attributes fail the pipeline without
+        # leaving a scratch file, including inside command substitutions.
+        {
+          for ((i = 0; i < ''${#ATTR_KEYS[@]}; i += 1)); do
+            if [[ "''${ATTR_KEYS[$i]}" = "span.label" ]]; then
+              has_label=1
+            fi
+            _append_attr_json "''${ATTR_TYPES[$i]}" "''${ATTR_KEYS[$i]}" "''${ATTR_VALUES[$i]}"
+          done
+          if [[ "$has_label" -eq 0 ]]; then
+            _append_attr_json "string" "span.label" "$(_span_label_default "$span_name")"
           fi
-          _append_attr_json "$out" "''${ATTR_TYPES[$i]}" "''${ATTR_KEYS[$i]}" "''${ATTR_VALUES[$i]}"
-        done
-        if [[ "$has_label" -eq 0 ]]; then
-          _append_attr_json "$out" "string" "span.label" "$(_span_label_default "$span_name")"
-        fi
-        "$_jq" -cs . "$out"
-        ${pkgs.coreutils}/bin/rm -f "$out"
+        } | "$_jq" -cs .
       }
 
       _build_span_payload() {
@@ -683,7 +690,12 @@ pkgs.writeShellScriptBin "otel-span" ''
 
         local start_ns end_ns exit_code attrs_json status_json payload
         start_ns="''${START_TIME_NS:-$(${pkgs.coreutils}/bin/date +%s%N)}"
-        local forward_file
+        # This is a standalone binary, not a sourced shell helper. These traps
+        # cannot replace the invoking shell's traps; pipeline-run owns its own.
+        local forward_file=""
+        trap '${pkgs.coreutils}/bin/rm -f -- "$forward_file"' EXIT
+        trap 'exit 130' INT
+        trap 'exit 143' TERM
         forward_file="$(${pkgs.coreutils}/bin/mktemp)"
         export OTEL_SPAN_FORWARD_LINK_FILE="$forward_file"
 

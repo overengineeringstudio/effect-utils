@@ -12,6 +12,41 @@ export GIT_CONFIG_GLOBAL="$tmp/gitconfig" GIT_CONFIG_SYSTEM=/dev/null
 # CI wraps the test task in a pipeline-run; this probe owns a separate local spool.
 unset PIPELINE_ENTRYPOINT_ACTIVE PIPELINE_SPOOL_DIR
 
+# Attribute validation used to leak a bare mktemp file on exit. Keep scratch
+# files separate from intentional span output and assert both status and cleanup.
+mkdir -p "$tmp/scratch" "$tmp/leak-spans"
+leak_env=(TMPDIR="$tmp/scratch" OTEL_SPAN_SPOOL_DIR="$tmp/leak-spans" OTEL_EXPORTER_OTLP_ENDPOINT=)
+code=0
+env "${leak_env[@]}" "$span" emit-span test invalid --attr-bool invalid=neither \
+  > "$tmp/invalid.out" 2> "$tmp/invalid.err" || code=$?
+[[ $code == 1 ]] && [[ $(< "$tmp/invalid.err") == *'must be true or false'* ]]
+[[ -z $(find "$tmp/scratch" -mindepth 1 -print -quit) ]]
+printf 'invalid attribute error leaves private TMPDIR empty\n'
+
+# The wrapped child observes the already-created forward file, then signals the
+# wrapper before exiting. No sleeps or racing an unobserved mktemp allocation.
+for signal in TERM INT; do
+  code=0
+  env "${leak_env[@]}" "$span" run test interrupted -- bash -c '
+    [[ -f "$OTEL_SPAN_FORWARD_LINK_FILE" ]] || exit 90
+    kill -s "$1" "$PPID"
+  ' bash "$signal" || code=$?
+  expected_code=143
+  [[ $signal != INT ]] || expected_code=130
+  [[ $code == "$expected_code" ]] || { echo "$signal status: $code" >&2; exit 1; }
+  [[ -z $(find "$tmp/scratch" -mindepth 1 -print -quit) ]]
+  printf '%s leaves private TMPDIR empty\n' "$signal"
+done
+
+# Atomic multi-writer delivery must discard its unpublished staging file when
+# jq rejects a raw payload, without deleting any completed span files.
+code=0
+printf 'not-json\n' | env "${leak_env[@]}" OTEL_SPOOL_MULTI_WRITER=1 \
+  "$span" emit > "$tmp/raw.out" 2> "$tmp/raw.err" || code=$?
+[[ $code != 0 ]]
+[[ -z $(find "$tmp/leak-spans" -mindepth 1 -print -quit) ]]
+printf 'invalid raw payload leaves no unpublished spool file\n'
+
 run='ci/github/overengineeringstudio%2Feffect-utils/421/2'
 runner='namespace-profile-linux-x86-64'
 expected='trace=dc8939be377d7ae198ab958b5457787c root=53fa95f498248e99'
