@@ -1,8 +1,10 @@
 import { NodeServices } from '@effect/platform-node'
 import { describe, it } from '@effect/vitest'
-import { Effect, Exit, Schema } from 'effect'
+import { Effect, Exit, Schema, Stream } from 'effect'
 import * as Cli from 'effect/cli'
 import * as FileSystem from 'effect/FileSystem'
+import * as ChildProcess from 'effect/process/ChildProcess'
+import { ChildProcessSpawner } from 'effect/process/ChildProcessSpawner'
 import { expect } from 'vitest'
 
 import { EffectPath } from '@overeng/effect-path'
@@ -65,7 +67,200 @@ const fixture = Effect.gen(function* () {
 const withServices = <TA, TE, TR>(effect: Effect.Effect<TA, TE, TR>) =>
   effect.pipe(Effect.provide(NodeServices.layer), Effect.scoped)
 
+const requestedRev = 'c'.repeat(40)
+const requestedLocked = {
+  ...locked,
+  rev: requestedRev,
+  narHash: 'sha256-requested-resolution',
+  lastModified: 1234567000,
+}
+const fixtureLocks = [
+  'devenv.lock',
+  'flake.lock',
+  'nested dir/sub/flake.lock',
+  'nix/tool/flake.lock',
+]
+
+/** Git ancestry and Nix metadata are fixture outputs, never real network commands. */
+const revisionSpawner = ({
+  mergeBase = requestedRev,
+  ref = original.ref,
+}: { mergeBase?: string; ref?: string } = {}) => {
+  const calls: string[][] = []
+  const expected = [
+    ['git', 'init', '--bare', expect.any(String)],
+    ['git', 'fetch', '--no-tags', '--', 'https://github.com/example/library.git', ref],
+    ['git', 'merge-base', requestedRev, 'FETCH_HEAD'],
+    ['nix', 'flake', 'prefetch', `github:example/library/${requestedRev}`, '--json'],
+  ]
+  const forbidden = (method: string) =>
+    Effect.die(new Error(`Unexpected ChildProcessSpawner.${method} in offline revision test`))
+  const service = {
+    string: (command: ChildProcess.Command) =>
+      Effect.gen(function* () {
+        if (ChildProcess.isStandardCommand(command) === false) {
+          return yield* forbidden('string with a piped command')
+        }
+        const call = [command.command, ...command.args]
+        calls.push(call)
+        if (command.command === 'git') {
+          expect(call).toEqual(expected[calls.length - 1])
+          return command.args[0] === 'merge-base' ? `${mergeBase}\n` : ''
+        }
+        if (command.command === 'nix') {
+          expect(call).toEqual(expected[3])
+          return encodeJson({
+            hash: requestedLocked.narHash,
+            locked: requestedLocked,
+          })
+        }
+        return yield* forbidden(`string: ${call.join(' ')}`)
+      }),
+    spawn: () => forbidden('spawn'),
+    exitCode: () => forbidden('exitCode'),
+    lines: () => forbidden('lines'),
+    streamString: () => Stream.fromEffect(forbidden('streamString')),
+    streamLines: () => Stream.fromEffect(forbidden('streamLines')),
+  }
+  return { service, calls, expected }
+}
+
 describe('standalone root lock synchronization', () => {
+  it.effect(
+    'resolves an explicit ancestor or identical revision without changing original ref intent',
+    () =>
+      Effect.gen(function* () {
+        for (const tipRev of ['d'.repeat(40), requestedRev]) {
+          const { fs, root } = yield* fixture
+          const ref = 'release/stable'
+          const source = lock({ nodeId: 'root-library', ref })
+          yield* fs.writeFileString(
+            `${root}devenv.lock`,
+            encodeJson({
+              ...source,
+              nodes: {
+                ...source.nodes,
+                'root-library': {
+                  ...source.nodes['root-library'],
+                  locked: { ...locked, rev: tipRev },
+                },
+              },
+            }),
+          )
+          const selected = ['flake.lock', 'nested dir/sub/flake.lock']
+          for (const path of selected) {
+            yield* fs.writeFileString(`${root}${path}`, encodeJson(lock({ stale: true, ref })))
+          }
+          const excludedBefore = yield* fs.readFileString(`${root}nix/tool/flake.lock`)
+          const mock = revisionSpawner({ ref })
+          const result = yield* syncStandaloneLocks({
+            root,
+            input: 'library',
+            locks: selected,
+            rev: requestedRev,
+            write: true,
+          }).pipe(Effect.provideService(ChildProcessSpawner, mock.service))
+          expect(result).toEqual({
+            checked: ['devenv.lock', ...selected],
+            changed: ['devenv.lock', ...selected],
+          })
+          for (const path of ['devenv.lock', ...selected]) {
+            const nodeId = path === 'devenv.lock' ? 'root-library' : 'library_2'
+            const expected = lock({ nodeId, ref })
+            expect(decodeJson(yield* fs.readFileString(`${root}${path}`))).toEqual({
+              ...expected,
+              nodes: {
+                ...expected.nodes,
+                [nodeId]: { ...expected.nodes[nodeId], locked: requestedLocked },
+              },
+            })
+          }
+          expect(yield* fs.readFileString(`${root}nix/tool/flake.lock`)).toBe(excludedBefore)
+          expect(mock.calls).toEqual(mock.expected)
+        }
+      }).pipe(withServices),
+  )
+
+  it.effect('rejects unreachable revisions or a different merge base without writing locks', () =>
+    Effect.gen(function* () {
+      // A behind commit or a divergent commit has a merge base other than itself.
+      for (const mergeBase of [locked.rev, 'd'.repeat(40)]) {
+        const { fs, root } = yield* fixture
+        const before = yield* Effect.forEach(fixtureLocks, (path) =>
+          fs.readFileString(`${root}${path}`),
+        )
+        const mock = revisionSpawner({ mergeBase })
+        const error = yield* syncStandaloneLocks({
+          root,
+          input: 'library',
+          locks: fixtureLocks.slice(1),
+          rev: requestedRev,
+          write: true,
+        }).pipe(Effect.provideService(ChildProcessSpawner, mock.service), Effect.flip)
+        expect(error._tag).toBe('StandaloneLockSyncError')
+        expect(
+          yield* Effect.forEach(fixtureLocks, (path) => fs.readFileString(`${root}${path}`)),
+        ).toEqual(before)
+        expect(mock.calls).toEqual(mock.expected.slice(0, 3))
+      }
+    }).pipe(withServices),
+  )
+
+  it.effect('checks requested revision drift in root and standalone locks without writes', () =>
+    Effect.gen(function* () {
+      const { fs, root } = yield* fixture
+      // The cohort already agrees with root; only the requested revision introduces drift.
+      for (const path of fixtureLocks.slice(1)) {
+        yield* fs.writeFileString(`${root}${path}`, encodeJson(lock()))
+      }
+      const before = yield* Effect.forEach(fixtureLocks, (path) =>
+        fs.readFileString(`${root}${path}`),
+      )
+      const mock = revisionSpawner()
+      const result = yield* syncStandaloneLocks({
+        root,
+        input: 'library',
+        locks: fixtureLocks.slice(1),
+        rev: requestedRev,
+      }).pipe(Effect.provideService(ChildProcessSpawner, mock.service))
+      expect(result).toEqual({ checked: fixtureLocks, changed: fixtureLocks })
+      expect(
+        yield* Effect.forEach(fixtureLocks, (path) => fs.readFileString(`${root}${path}`)),
+      ).toEqual(before)
+      expect(mock.calls).toEqual(mock.expected)
+    }).pipe(withServices),
+  )
+
+  it.effect('preflights the whole revision cohort before writing even the root authority', () =>
+    Effect.gen(function* () {
+      const { fs, root } = yield* fixture
+      yield* fs.writeFileString(
+        `${root}nix/tool/flake.lock`,
+        encodeJson(lock({ stale: true, ref: 'main' })),
+      )
+      const before = yield* Effect.forEach(fixtureLocks, (path) =>
+        fs.readFileString(`${root}${path}`),
+      )
+      const mock = revisionSpawner()
+      const error = yield* syncStandaloneLocks({
+        root,
+        input: 'library',
+        locks: fixtureLocks.slice(1),
+        rev: requestedRev,
+        write: true,
+      }).pipe(Effect.provideService(ChildProcessSpawner, mock.service), Effect.flip)
+      expect(error).toMatchObject({
+        _tag: 'StandaloneLockSyncError',
+        path: `${root}nix/tool/flake.lock`,
+      })
+      expect(error.message).toContain('different original')
+      expect(
+        yield* Effect.forEach(fixtureLocks, (path) => fs.readFileString(`${root}${path}`)),
+      ).toEqual(before)
+      expect(mock.calls[0]).toEqual(mock.expected[0])
+    }).pipe(withServices),
+  )
+
   it.effect(
     'checks, copies complete locked metadata, preserves graph and original, and is idempotent',
     () =>

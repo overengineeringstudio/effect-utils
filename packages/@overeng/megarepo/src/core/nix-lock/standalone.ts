@@ -3,11 +3,14 @@ import { isDeepStrictEqual } from 'node:util'
 
 import { Effect, Exit, Schema } from 'effect'
 import * as FileSystem from 'effect/FileSystem'
+import * as ChildProcess from 'effect/process/ChildProcess'
+import { ChildProcessSpawner } from 'effect/process/ChildProcessSpawner'
 
 import { authorizeAuthorWorkspaceWrite } from '../../store/store-path.ts'
 import { runCommand } from '../git.ts'
 import { extractLockFileInputs, resolveLockInputNode } from './input-discovery.ts'
 import { urlsMatch } from './matcher.ts'
+import { fetchNixFlakeMetadata } from './mod.ts'
 import { parseLockedInput } from './schema.ts'
 
 /** Repository identity selects duplicate nodes independently of their lock-local IDs. */
@@ -54,12 +57,14 @@ export const syncStandaloneLocks = Effect.fn('nix-lock/syncStandaloneLocks')(fun
   rootLock = 'devenv.lock',
   locks,
   write = false,
+  rev,
 }: {
   root: string
   input: string
   rootLock?: 'devenv.lock' | 'flake.lock'
   locks?: ReadonlyArray<string>
   write?: boolean
+  rev?: string
 }) {
   const fs = yield* FileSystem.FileSystem
   const root = rootPath.replace(/\/$/, '')
@@ -72,6 +77,7 @@ export const syncStandaloneLocks = Effect.fn('nix-lock/syncStandaloneLocks')(fun
   const sourceNode = sourceId === undefined ? undefined : source.nodes[sourceId]
   const sourceRepository = inputRepositoryUrl(discovered?.locked)
   if (
+    sourceId === undefined ||
     discovered === undefined ||
     sourceNode?.['original'] === undefined ||
     sourceRepository === undefined
@@ -83,9 +89,90 @@ export const syncStandaloneLocks = Effect.fn('nix-lock/syncStandaloneLocks')(fun
     })
   }
   const sourceOriginal = withoutDir(sourceNode['original'])
-  const sourceLocked = yield* Schema.decodeUnknownEffect(InputMetadata)(
-    withoutDir(discovered.locked),
-  )
+  let sourceLocked = yield* Schema.decodeUnknownEffect(InputMetadata)(withoutDir(discovered.locked))
+  if (rev !== undefined) {
+    const tracking = yield* Schema.decodeUnknownEffect(
+      Schema.Struct({
+        type: Schema.Literal('github'),
+        owner: Schema.NonEmptyString,
+        repo: Schema.NonEmptyString,
+        ref: Schema.NonEmptyString,
+        rev: Schema.optional(Schema.String),
+      }),
+    )(sourceOriginal).pipe(
+      Effect.mapError(
+        () =>
+          new StandaloneLockSyncError({
+            path: sourcePath,
+            input,
+            message:
+              '--rev requires a GitHub input with an original tracking ref; no locks written',
+          }),
+      ),
+    )
+    if (/^[0-9a-f]{40}$/.test(rev) === false || tracking.rev !== undefined) {
+      return yield* new StandaloneLockSyncError({
+        path: sourcePath,
+        input,
+        message:
+          '--rev requires a full lowercase 40-character commit SHA and an unpinned original ref; no locks written',
+      })
+    }
+    // Fetch the complete tracking-ref history in isolation: a commit existing
+    // elsewhere in the repository is not enough to prove it is reachable.
+    const mergeBase = yield* Effect.scoped(
+      Effect.gen(function* () {
+        const directory = yield* fs.makeTempDirectoryScoped({ prefix: 'mr-lock-sync-ref-' })
+        const spawner = yield* ChildProcessSpawner
+        yield* spawner.string(ChildProcess.make('git', ['init', '--bare', directory]))
+        yield* spawner.string(
+          ChildProcess.make(
+            'git',
+            [
+              'fetch',
+              '--no-tags',
+              '--',
+              `https://github.com/${tracking.owner}/${tracking.repo}.git`,
+              tracking.ref,
+            ],
+            { cwd: directory },
+          ),
+        )
+        return yield* spawner.string(
+          ChildProcess.make('git', ['merge-base', rev, 'FETCH_HEAD'], { cwd: directory }),
+        )
+      }),
+    ).pipe(
+      Effect.mapError(
+        () =>
+          new StandaloneLockSyncError({
+            path: sourcePath,
+            input,
+            message: `Could not verify ${rev} is reachable from '${tracking.ref}' using git; no locks written`,
+          }),
+      ),
+    )
+    if (mergeBase.trim() !== rev) {
+      return yield* new StandaloneLockSyncError({
+        path: sourcePath,
+        input,
+        message: `Commit ${rev} is not reachable from '${tracking.ref}'; no locks written`,
+      })
+    }
+    const metadata = yield* fetchNixFlakeMetadata({
+      owner: tracking.owner,
+      repo: tracking.repo,
+      rev,
+    })
+    sourceLocked = {
+      ...sourceLocked,
+      type: 'github',
+      owner: tracking.owner,
+      repo: tracking.repo,
+      rev,
+      ...metadata,
+    }
+  }
 
   // Explicit paths are an exact cohort, not Git pathspecs or glob expressions.
   const explicit = locks !== undefined && locks.length > 0
@@ -127,6 +214,22 @@ export const syncStandaloneLocks = Effect.fn('nix-lock/syncStandaloneLocks')(fun
           .filter((path) => path !== '')
   const plans: Array<{ path: string; content: string }> = []
   const checked: string[] = []
+  if (rev !== undefined) {
+    const original = sourceNode['original']
+    const dir = Schema.is(InputMetadata)(original) === true ? original['dir'] : undefined
+    const locked = dir === undefined ? sourceLocked : { ...sourceLocked, dir }
+    checked.push(rootLock)
+    if (isDeepStrictEqual(sourceNode['locked'], locked) === false) {
+      const updated = {
+        ...source,
+        nodes: { ...source.nodes, [sourceId]: { ...sourceNode, locked } },
+      }
+      plans.push({
+        path: sourcePath,
+        content: `${yield* Schema.encodeEffect(LockJson)(updated)}\n`,
+      })
+    }
+  }
   // A set avoids duplicate tracked/untracked results; git excludes ignored caches and member mounts.
   for (const relative of [...new Set(files)].toSorted()) {
     if (relative === rootLock) continue
