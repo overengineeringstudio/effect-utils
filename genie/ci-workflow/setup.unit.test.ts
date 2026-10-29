@@ -44,6 +44,7 @@ import {
   linuxNixSandboxFallbackStep,
   namespacePrivilegeTrustedPredicate,
   withNixRealisationTimeouts,
+  withCiSourceRoot,
 } from './shared.ts'
 import testPlatforms from './test-platforms.json' with { type: 'json' }
 
@@ -1074,6 +1075,38 @@ describe('published consumer ref', () => {
   const smoke = ciWorkflow.data.jobs['consumer-smoke']!
   const promotion = ciWorkflow.data.jobs['promote-published']!
   const steps = promotion.steps!
+
+  it('realises publication inputs before the unchanged build-and-push timeout', () => {
+    const realiseIndex = publisher.steps.findIndex(
+      (step) => step.name === 'Realise publish-products build inputs',
+    )
+    const publishIndex = publisher.steps.findIndex((step) => step.name === 'Publish products')
+    const authIndex = publisher.steps.findIndex((step) => step.id === 'product-cachix-auth')
+    const readIndex = publisher.steps.findIndex((step) => step.id === 'product-cachix-read')
+    expect(readIndex).toBeGreaterThan(-1)
+    expect(realiseIndex).toBeGreaterThan(readIndex)
+    expect(authIndex).toBeGreaterThan(realiseIndex)
+    expect(publishIndex).toBeGreaterThan(authIndex)
+    expect(publisher.steps[readIndex]?.with).toEqual({
+      name: 'overeng-effect-utils',
+      skipPush: true,
+    })
+    expect(publishIndex).toBeGreaterThan(realiseIndex)
+    const realise = publisher.steps[realiseIndex]!
+    const publish = publisher.steps[publishIndex]!
+    expect(realise['timeout-minutes']).toBeUndefined()
+    expect(publish['timeout-minutes']).toBe(32)
+    expect(realise.if).toBe(publish.if)
+    expect(realise.env).toEqual({ GITHUB_TOKEN: publish.env?.GITHUB_TOKEN })
+    expect(realise.env?.GITHUB_TOKEN).toBe('${{ github.token }}')
+    expect(realise.env?.CACHIX_AUTH_TOKEN).toBeUndefined()
+    for (const step of publisher.steps.slice(0, realiseIndex + 1)) {
+      expect(step.env?.CACHIX_AUTH_TOKEN).toBeUndefined()
+      expect(step.with?.authToken).toBeUndefined()
+    }
+    expect(realise.run).toBe(withCiSourceRoot('nix/buck2-products/publish.sh --realise-inputs'))
+    expect(publish.run).toContain('nix/buck2-products/publish.sh --proposal "$proposal"')
+  })
 
   it('joins independent same-SHA publication and consumer proofs before main-push promotion', () => {
     expect(promotion.needs).toEqual(['publish-products', 'consumer-smoke'])

@@ -4423,6 +4423,18 @@ jobs:
         id: product-cachix-cli
         if: steps.publication-scope.outputs.publish == 'true'
         timeout-minutes: 3
+      - name: Enable Cachix cache
+        uses: cachix/cachix-action@v17
+        with:
+          name: overeng-effect-utils
+          skipPush: true
+        id: product-cachix-read
+        if: steps.publication-scope.outputs.publish == 'true'
+      - name: Realise publish-products build inputs
+        if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && (steps.publication-scope.outputs.publish == 'true')
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: 'cd "${GITHUB_WORKSPACE:-$PWD}" && nix/buck2-products/publish.sh --realise-inputs'
       - name: Publish to Cachix
         if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && steps.publication-scope.outputs.publish == 'true'
         uses: cachix/cachix-action@v17
