@@ -124,22 +124,66 @@ export const syncStandaloneLocks = Effect.fn('nix-lock/syncStandaloneLocks')(fun
       Effect.gen(function* () {
         const directory = yield* fs.makeTempDirectoryScoped({ prefix: 'mr-lock-sync-ref-' })
         const spawner = yield* ChildProcessSpawner
-        yield* spawner.string(ChildProcess.make('git', ['init', '--bare', directory]))
+        // Ask Git for its repository-local environment contract rather than
+        // maintaining a partial list that misses object/index/config overrides.
+        const localVariables = yield* spawner.string(
+          ChildProcess.make('git', [`--git-dir=${directory}`, 'rev-parse', '--local-env-vars'], {
+            // Discovery needs no Git-specific configuration or credentials. Its
+            // own process must not inherit repository redirection either.
+            env: Object.fromEntries(
+              Object.entries(process.env).filter(([name]) => name.startsWith('GIT_') === false),
+            ),
+            extendEnv: false,
+          }),
+        )
+        const excluded = new Set([
+          ...localVariables.trim().split(/\s+/),
+          'GIT_NAMESPACE',
+          'GIT_CEILING_DIRECTORIES',
+          'GIT_DISCOVERY_ACROSS_FILESYSTEM',
+        ])
+        if (excluded.has('GIT_DIR') === false || excluded.has('GIT_INDEX_FILE') === false) {
+          return yield* new StandaloneLockSyncError({
+            path: sourcePath,
+            input,
+            message:
+              'Could not discover Git repository-local environment variables; no locks written',
+          })
+        }
+        const options = {
+          cwd: directory,
+          env: Object.fromEntries(
+            Object.entries(process.env).filter(([name]) => excluded.has(name) === false),
+          ),
+          extendEnv: false,
+        }
+        yield* spawner.string(
+          ChildProcess.make(
+            'git',
+            [`--git-dir=${directory}`, 'init', '--bare', directory],
+            options,
+          ),
+        )
         yield* spawner.string(
           ChildProcess.make(
             'git',
             [
+              `--git-dir=${directory}`,
               'fetch',
               '--no-tags',
               '--',
               `https://github.com/${tracking.owner}/${tracking.repo}.git`,
               tracking.ref,
             ],
-            { cwd: directory },
+            options,
           ),
         )
         return yield* spawner.string(
-          ChildProcess.make('git', ['merge-base', rev, 'FETCH_HEAD'], { cwd: directory }),
+          ChildProcess.make(
+            'git',
+            [`--git-dir=${directory}`, 'merge-base', rev, 'FETCH_HEAD'],
+            options,
+          ),
         )
       }),
     ).pipe(

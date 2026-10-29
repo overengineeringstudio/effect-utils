@@ -88,9 +88,18 @@ const revisionSpawner = ({
 }: { mergeBase?: string; ref?: string } = {}) => {
   const calls: string[][] = []
   const expected = [
-    ['git', 'init', '--bare', expect.any(String)],
-    ['git', 'fetch', '--no-tags', '--', 'https://github.com/example/library.git', ref],
-    ['git', 'merge-base', requestedRev, 'FETCH_HEAD'],
+    ['git', expect.stringMatching(/^--git-dir=/), 'rev-parse', '--local-env-vars'],
+    ['git', expect.stringMatching(/^--git-dir=/), 'init', '--bare', expect.any(String)],
+    [
+      'git',
+      expect.stringMatching(/^--git-dir=/),
+      'fetch',
+      '--no-tags',
+      '--',
+      'https://github.com/example/library.git',
+      ref,
+    ],
+    ['git', expect.stringMatching(/^--git-dir=/), 'merge-base', requestedRev, 'FETCH_HEAD'],
     ['nix', 'flake', 'prefetch', `github:example/library/${requestedRev}`, '--json'],
   ]
   const forbidden = (method: string) =>
@@ -105,10 +114,13 @@ const revisionSpawner = ({
         calls.push(call)
         if (command.command === 'git') {
           expect(call).toEqual(expected[calls.length - 1])
-          return command.args[0] === 'merge-base' ? `${mergeBase}\n` : ''
+          if (command.args.includes('--local-env-vars') === true) {
+            return 'GIT_DIR\nGIT_INDEX_FILE\nGIT_OBJECT_DIRECTORY\nGIT_COMMON_DIR\n'
+          }
+          return command.args.includes('merge-base') === true ? `${mergeBase}\n` : ''
         }
         if (command.command === 'nix') {
-          expect(call).toEqual(expected[3])
+          expect(call).toEqual(expected[4])
           return encodeJson({
             hash: requestedLocked.narHash,
             locked: requestedLocked,
@@ -126,6 +138,158 @@ const revisionSpawner = ({
 }
 
 describe('standalone root lock synchronization', () => {
+  it.effect('isolates ancestry Git writes from inherited hook repository overrides', () =>
+    Effect.gen(function* () {
+      const spawner = yield* ChildProcessSpawner
+      for (const write of [false, true]) {
+        const { fs, root } = yield* fixture
+        const upstream = EffectPath.unsafe.absoluteDir(`${root}upstream/`)
+        const sentinel = EffectPath.unsafe.absoluteDir(`${root}sentinel/`)
+        for (const repo of [upstream, sentinel]) {
+          yield* fs.makeDirectory(repo)
+          yield* initGitRepo(repo)
+          yield* runGitCommand(repo, 'commit', '--allow-empty', '-m', 'initial')
+        }
+        const rev = yield* runGitCommand(upstream, 'rev-parse', 'HEAD')
+        yield* runGitCommand(upstream, 'commit', '--allow-empty', '-m', 'ref tip ahead')
+        yield* runGitCommand(upstream, 'branch', 'published')
+        const tip = yield* runGitCommand(upstream, 'rev-parse', 'HEAD')
+        const source = lock({ nodeId: 'root-library' })
+        yield* fs.writeFileString(
+          `${root}devenv.lock`,
+          encodeJson({
+            ...source,
+            nodes: {
+              ...source.nodes,
+              'root-library': { ...source.nodes['root-library'], locked: { ...locked, rev: tip } },
+            },
+          }),
+        )
+        // Byte snapshots include every object, ref, configuration and index file.
+        const snapshot = Effect.fn(function* (directory: string) {
+          const paths = yield* fs.readDirectory(directory, { recursive: true })
+          const entries: Array<readonly [string, string]> = []
+          for (const path of paths.toSorted()) {
+            const absolute = `${directory}/${path}`
+            if ((yield* fs.stat(absolute)).type === 'Directory') continue
+            entries.push([path, Buffer.from(yield* fs.readFile(absolute)).toString('hex')])
+          }
+          return entries
+        })
+        const before = yield* snapshot(`${sentinel}.git`)
+        const rootBefore = yield* fs.readFileString(`${root}devenv.lock`)
+        const overrides = {
+          GIT_DIR: `${sentinel}.git`,
+          GIT_WORK_TREE: sentinel,
+          GIT_INDEX_FILE: `${sentinel}.git/index`,
+          GIT_OBJECT_DIRECTORY: `${sentinel}.git/objects`,
+          GIT_ALTERNATE_OBJECT_DIRECTORIES: `${sentinel}.git/objects`,
+          GIT_CONFIG: `${sentinel}.git/config`,
+          GIT_COMMON_DIR: `${sentinel}.git`,
+          GIT_NAMESPACE: 'sentinel-namespace',
+          GIT_PREFIX: 'sentinel-prefix/',
+          GIT_CEILING_DIRECTORIES: sentinel,
+          GIT_TERMINAL_PROMPT: '0',
+        }
+        yield* Effect.scoped(
+          Effect.gen(function* () {
+            yield* Effect.acquireRelease(
+              Effect.sync(() => {
+                const previous = Object.fromEntries(
+                  Object.keys(overrides).map((key) => [key, process.env[key]]),
+                )
+                Object.assign(process.env, overrides)
+                return previous
+              }),
+              (previous) =>
+                Effect.sync(() => {
+                  for (const [key, value] of Object.entries(previous)) {
+                    if (value === undefined) delete process.env[key]
+                    else process.env[key] = value
+                  }
+                }),
+            )
+            const isolatedSpawner = {
+              ...spawner,
+              string: (command: ChildProcess.Command) => {
+                if (ChildProcess.isStandardCommand(command) === false)
+                  return spawner.string(command)
+                if (command.command === 'nix') {
+                  return Effect.succeed(
+                    encodeJson({
+                      hash: requestedLocked.narHash,
+                      locked: { ...requestedLocked, rev },
+                    }),
+                  )
+                }
+                expect(command.args[0]).toMatch(/^--git-dir=/)
+                expect(command.options.env?.['GIT_DIR']).toBeUndefined()
+                expect(command.options.env?.['GIT_INDEX_FILE']).toBeUndefined()
+                if (command.args.includes('--local-env-vars') === false) {
+                  for (const key of Object.keys(overrides)) {
+                    if (key === 'GIT_TERMINAL_PROMPT') continue
+                    expect(command.options.env?.[key]).toBeUndefined()
+                  }
+                  expect(command.options.extendEnv).toBe(false)
+                  expect(command.options.env?.['GIT_TERMINAL_PROMPT']).toBe('0')
+                  expect(command.options.env?.['HOME']).toBe(process.env['HOME'])
+                }
+                // Keep real Git execution, substituting only the remote URL for an offline repo.
+                return spawner.string(
+                  ChildProcess.make(
+                    command.command,
+                    command.args.map((arg) =>
+                      arg === 'https://github.com/example/library.git' ? upstream : arg,
+                    ),
+                    command.options,
+                  ),
+                )
+              },
+            }
+            expect(
+              yield* syncStandaloneLocks({
+                root,
+                input: 'library',
+                locks: ['flake.lock'],
+                rev,
+                write,
+              }).pipe(Effect.provideService(ChildProcessSpawner, isolatedSpawner)),
+            ).toEqual({
+              checked: ['devenv.lock', 'flake.lock'],
+              changed: ['devenv.lock', 'flake.lock'],
+            })
+          }),
+        )
+        expect(yield* snapshot(`${sentinel}.git`)).toEqual(before)
+        if (write === false) {
+          expect(yield* fs.readFileString(`${root}devenv.lock`)).toBe(rootBefore)
+        } else {
+          const expected = {
+            ...source,
+            nodes: {
+              ...source.nodes,
+              'root-library': {
+                ...source.nodes['root-library'],
+                locked: { ...requestedLocked, rev },
+              },
+            },
+          }
+          expect(decodeJson(yield* fs.readFileString(`${root}devenv.lock`))).toEqual(expected)
+          expect(decodeJson(yield* fs.readFileString(`${root}flake.lock`))).toEqual({
+            ...lock(),
+            nodes: {
+              ...lock().nodes,
+              library_2: {
+                ...lock().nodes['library_2'],
+                locked: { ...requestedLocked, rev },
+              },
+            },
+          })
+        }
+      }
+    }).pipe(withServices),
+  )
+
   it.effect(
     'resolves an explicit ancestor or identical revision without changing original ref intent',
     () =>
@@ -201,7 +365,7 @@ describe('standalone root lock synchronization', () => {
         expect(
           yield* Effect.forEach(fixtureLocks, (path) => fs.readFileString(`${root}${path}`)),
         ).toEqual(before)
-        expect(mock.calls).toEqual(mock.expected.slice(0, 3))
+        expect(mock.calls).toEqual(mock.expected.slice(0, 4))
       }
     }).pipe(withServices),
   )

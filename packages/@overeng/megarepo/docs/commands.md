@@ -93,6 +93,9 @@ check stops the operation before any lock is written. It then prefetches the
 requested revision with Nix to obtain the actual locked metadata, including the
 NAR hash and timestamp, rather than combining a new revision with stale metadata
 from the existing root lock.
+Ancestry Git commands explicitly target the temporary Git directory and discard
+repository-local Git environment overrides (including hook-provided object and
+index paths), while retaining authentication settings.
 
 With `--rev --write`, the authority root and selected standalone locks are staged
 and updated together in the same atomic operation. In both write modes, the
