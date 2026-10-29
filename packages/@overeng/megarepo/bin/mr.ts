@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 
 import { NodeRuntime, NodeServices } from '@effect/platform-node'
-import { Effect, Layer, Schema } from 'effect'
+import { Effect, Layer, Logger, Schema } from 'effect'
 import * as Cli from 'effect/cli'
 
 import { ServiceIdentity } from '@overeng/otel-contract'
@@ -86,6 +86,8 @@ const program = Effect.gen(function* () {
           Layer.succeed(CliVersion, { name: 'mr', version }),
         ),
         jsonStdoutGuardLayer(args),
+        // Diagnostics stay on stderr even after handlers restore the payload Console.
+        Layer.succeed(Logger.LogToStderr, true),
         NodeServices.layer,
         otelLayer,
       ),

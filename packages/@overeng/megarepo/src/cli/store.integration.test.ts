@@ -132,6 +132,49 @@ const runMrCommand = ({
     }
   }).pipe(Effect.scoped)
 
+describe('mr store JSON subprocess output', () => {
+  for (const loosePath of ['tmp/x.sh', 'widget/refs/heads/loose.txt']) {
+    it.effect(`keeps enumeration warnings on stderr for ${loosePath}`, () =>
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem
+        const { storePath } = yield* createStoreFixture([
+          { host: 'github.com', owner: 'acme', repo: 'widget', branches: [] },
+        ])
+        const looseEntry = `${storePath}github.com/acme/${loosePath}`
+        yield* fs.makeDirectory(looseEntry.slice(0, looseEntry.lastIndexOf('/')), {
+          recursive: true,
+        })
+        yield* fs.writeFileString(looseEntry, 'loose store entry\n')
+        const outside = yield* fs.makeTempDirectoryScoped()
+        const result = spawnSync(
+          'bun',
+          [
+            fileURLToPath(new URL('../../bin/mr.ts', import.meta.url)),
+            'store',
+            'gc',
+            '--dry-run',
+            '--output',
+            'json',
+          ],
+          {
+            cwd: outside,
+            encoding: 'utf8',
+            timeout: 30_000,
+            env: { ...process.env, MEGAREPO_STORE: storePath, NO_COLOR: '1' },
+          },
+        )
+        expect(result.error).toBeUndefined()
+        expect(result.status, result.stderr).toBe(0)
+        expect(decodeStoreGcJsonOutput(result.stdout).results).toEqual([])
+        expect(result.stderr).toContain(
+          `store enumeration: skipping non-directory entry ${looseEntry}`,
+        )
+        expect(result.stdout).not.toContain('store enumeration:')
+      }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+    )
+  }
+})
+
 describe('mr store status bare repository health', () => {
   for (const refsState of ['absent', 'empty'] as const) {
     it.effect(`reports bare config issues with ${refsState} refs and no worktrees`, () =>

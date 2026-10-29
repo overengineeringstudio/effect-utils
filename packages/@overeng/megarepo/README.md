@@ -136,6 +136,10 @@ mr store gc --budgets /etc/megarepo/build-output-budgets.json --dry-run --output
 mr store gc --budgets /etc/megarepo/build-output-budgets.json --expected-plan <sha256> --candidate-path <root> --output json
 ```
 
+Effect diagnostic logs go to stderr, including store-enumeration warnings about loose files.
+With `--output json` or `--output ndjson`, stdout contains only the command payload, so it
+can be piped directly into tools such as `jq`. Human-mode presentation remains on stdout.
+
 `--budgets` cannot be combined with `--generated-artifacts`, `--all`, or `--force`. The policy is
 decoded strictly before the store is inspected: an unreadable file, unknown `schemaVersion`, or
 malformed field exits non-zero and deletes nothing. Its shape is:
