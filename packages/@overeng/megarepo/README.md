@@ -55,21 +55,34 @@ mr apply --git-protocol=https
 
 ### Standalone Nix lock synchronization
 
-Use an already resolved root input to check or update standalone flake locks without
-changing their declared ref intent:
+Check or update standalone flake locks from an already resolved root input, or
+select a revision explicitly, without changing their declared ref intent. For
+example, with a root `nixpkgs` input tracking `github:NixOS/nixpkgs/nixos-unstable`:
 
 ```bash
-mr lock-sync --input effect-utils --lock flake.lock --lock nix/tool/flake.lock
-mr lock-sync --input effect-utils --lock flake.lock --lock nix/tool/flake.lock --write
+mr lock-sync --input nixpkgs --lock flake.lock --lock nix/tool/flake.lock
+mr lock-sync --input nixpkgs --lock flake.lock --lock nix/tool/flake.lock --write
+mr lock-sync --input nixpkgs --rev <40-character-sha> --lock flake.lock --write
 ```
+
+`--rev` accepts a full 40-character Git SHA and requires a GitHub input whose
+`original` declares a tracking ref. Git fetches that ref into a temporary bare
+repository and verifies that the requested commit is its ancestor; repository
+access is required, and failed ancestry checks stop the operation. Nix prefetch
+supplies the actual locked metadata for the revision; write mode updates the
+authority root and selected standalone locks together atomically, preserving
+`original.ref`.
+Without `--write`, no locks are written and requested-revision drift fails the check.
 
 Repeat `--lock` to select exact repository-relative `flake.lock` paths, not globs or
 Git pathspecs. This lets active consumers share the root resolution while archived
 locks with intentionally different refs stay outside the synchronization scope.
 Missing, absolute, and repository-escaping selections fail before any writes.
-Without `--lock`, Git discovery still checks all tracked and non-ignored standalone
-flake locks. The authority defaults to `devenv.lock`; use `--root-lock flake.lock`
-when the root flake lock is authoritative. See the
+Without `--lock`, Git discovery checks all tracked and non-ignored standalone
+flake locks. `--lock` still selects only the standalone cohort: with `--rev`, the
+authority root always participates, even when it is not selected by `--lock`.
+The authority defaults to `devenv.lock`; use `--root-lock flake.lock` when the root
+flake lock is authoritative. See the
 [command reference](docs/commands.md#mr-lock-sync) for validation and write behavior.
 
 ## Directory Layout
