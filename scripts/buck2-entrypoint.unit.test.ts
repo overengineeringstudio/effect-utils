@@ -1,12 +1,13 @@
 import { expect, it } from 'bun:test'
 import { readFileSync } from 'node:fs'
 
+import type { ReaderReapiUnavailableShadow } from '../genie/ci-scripts/buck2-cache-evidence.ts'
 import {
   gateCgroupRelation,
   gateDaemonStopDecision,
   gateScopeIdentity,
   isOnlyReapiUnavailable,
-  runWithReaderCacheFallback,
+  runWithReaderCacheShadow,
   captureNativeStderr,
   shouldSuperviseReaderCommand,
   writeNativeStderrChunk,
@@ -150,40 +151,56 @@ it('rejects real-incident mutations rather than masking another action failure',
     `Remote action digest: 'abc:1'\n${incidentOutput}`,
   ]) {
     expect(isOnlyReapiUnavailable(output)).toBe(false)
-    let reruns = 0
+    const shadows: ReaderReapiUnavailableShadow[] = []
     expect(
-      await runWithReaderCacheFallback({
+      await runWithReaderCacheShadow({
         reader: true,
+        command: { subcommand: 'build', argumentCount: 2 },
         run: async () => ({ exitCode: 1, output }),
-        fallback: async () => {
-          reruns++
-          return 0
+        onShadow: (shadow) => {
+          shadows.push(shadow)
         },
       }),
     ).toBe(1)
-    expect(reruns).toBe(0)
+    expect(shadows).toHaveLength(0)
   }
 })
 
-it('never reruns writers or successes and makes a failed rerun final', async () => {
+it('records shadow evidence only for failed readers and always preserves the native result', async () => {
   for (const reader of [true, false]) {
     for (const exitCode of [0, 1]) {
       let runs = 0
-      let reruns = 0
-      const result = await runWithReaderCacheFallback({
+      const shadows: ReaderReapiUnavailableShadow[] = []
+      const result = await runWithReaderCacheShadow({
         reader,
+        command: { subcommand: 'build', argumentCount: 2 },
         run: async () => {
           runs++
-          return { exitCode, output: reUnavailable }
+          return { exitCode, output: incidentOutput, durationMs: 47 }
         },
-        fallback: async () => {
-          reruns++
-          return 17
+        onShadow: (shadow) => {
+          shadows.push(shadow)
         },
       })
       expect(runs).toBe(1)
-      expect(reruns).toBe(reader === true && exitCode !== 0 ? 1 : 0)
-      expect(result).toBe(reruns === 1 ? 17 : exitCode)
+      expect(shadows).toHaveLength(reader === true && exitCode !== 0 ? 1 : 0)
+      expect(result).toBe(exitCode)
+      if (shadows[0] !== undefined) {
+        expect(shadows[0]).toEqual({
+          cause: {
+            capabilitiesUnavailable: true,
+            connectRetry: true,
+            clientInitialization: true,
+            connectUnavailable: false,
+            transportMessage: 'tls-handshake-eof',
+          },
+          command: { subcommand: 'build', argumentCount: 2 },
+          nativeExitCode: exitCode,
+          durationMs: 47,
+          failedActionCount: 1,
+          wouldDisableRemoteCache: true,
+        })
+      }
     }
   }
 })
@@ -213,19 +230,19 @@ it('leaves terminal stderr and interactive user-binary commands unsupervised', (
   }
 })
 
-it('never reruns a native child terminated by a signal', async () => {
-  let reruns = 0
+it('never records a shadow event for a native child terminated by a signal', async () => {
+  const shadows: ReaderReapiUnavailableShadow[] = []
   expect(
-    await runWithReaderCacheFallback({
+    await runWithReaderCacheShadow({
       reader: true,
+      command: { subcommand: 'build', argumentCount: 2 },
       run: async () => ({ exitCode: 143, signalCode: 'SIGTERM', output: reUnavailable }),
-      fallback: async () => {
-        reruns++
-        return 0
+      onShadow: (shadow) => {
+        shadows.push(shadow)
       },
     }),
   ).toBe(143)
-  expect(reruns).toBe(0)
+  expect(shadows).toHaveLength(0)
 })
 
 it('advances short stderr writes and waits for nonblocking backpressure', async () => {
