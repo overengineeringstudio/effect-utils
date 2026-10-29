@@ -50,7 +50,7 @@ let
     ${publishBuckCapabilities}
     cd "$root"
     export BWRAP_BIN=${repoFlake.packages.${currentSystem}.buck2-bubblewrap}/bin/bwrap
-    export BUN_BIN=${flakePkgs.bun}/bin/bun
+    export BUN_BIN=${pkgs.bun}/bin/bun
     export BASH_BIN=${repoFlake.packages.${currentSystem}.buck2-rust-shell}/bin/bash
     probe_outputs="$("$BUCK2_BIN" build \
       --target-platforms effect_utils//buck2/platforms:host_platform \
@@ -919,6 +919,14 @@ let
     };
 in
 {
+  # Only this repository's shell/tasks receive the temporary Bun runtime fix.
+  # repoFlake/flakePkgs and all published package closures remain independent.
+  overlays = [
+    (_final: previous: {
+      bun = import ./nix/devenv-bun.nix { pkgs = previous; };
+    })
+  ];
+
   # Shared source tasks lease before resolving their package binary.
   env.EDITOR_VIEW_SOURCE_LAUNCHER = "${sourceLease}/bin/editor-view-source";
   env.EDITOR_VIEW_LEASE_BIN = "${editorViewLease}/bin/editor-view-lease";
