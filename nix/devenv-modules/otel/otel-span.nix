@@ -690,12 +690,11 @@ pkgs.writeShellScriptBin "otel-span" ''
 
         local start_ns end_ns exit_code attrs_json status_json payload
         start_ns="''${START_TIME_NS:-$(${pkgs.coreutils}/bin/date +%s%N)}"
-        # This is a standalone binary, not a sourced shell helper. These traps
-        # cannot replace the invoking shell's traps; pipeline-run owns its own.
+        # EXIT cleanup also runs when Bash terminates on its default SIGTERM
+        # action. Do not trap TERM/INT here: Bash would defer those handlers
+        # until the synchronous foreground command finished.
         local forward_file=""
         trap '${pkgs.coreutils}/bin/rm -f -- "$forward_file"' EXIT
-        trap 'exit 130' INT
-        trap 'exit 143' TERM
         forward_file="$(${pkgs.coreutils}/bin/mktemp)"
         export OTEL_SPAN_FORWARD_LINK_FILE="$forward_file"
 
