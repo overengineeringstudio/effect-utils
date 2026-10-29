@@ -1,11 +1,9 @@
+import { dirname, isAbsolute, normalize } from 'node:path'
 import { isDeepStrictEqual } from 'node:util'
 
-import { Effect, Schema } from 'effect'
+import { Effect, Exit, Schema } from 'effect'
 import * as FileSystem from 'effect/FileSystem'
 
-import { EffectPath } from '@overeng/effect-path'
-
-import { writeFileAtomic } from '../../store/store-fs-atomic.ts'
 import { authorizeAuthorWorkspaceWrite } from '../../store/store-path.ts'
 import { runCommand } from '../git.ts'
 import { extractLockFileInputs, resolveLockInputNode } from './input-discovery.ts'
@@ -21,6 +19,14 @@ const inputRepositoryUrl = (section: unknown): string | undefined => {
   }
   return parsed?.type === 'git' ? parsed.url : undefined
 }
+
+const InputMetadata = Schema.Record(Schema.String, Schema.Unknown)
+
+/** Nix hashes the repository source, not the selected flake directory. */
+const withoutDir = (metadata: unknown): unknown =>
+  Schema.is(InputMetadata)(metadata) === true
+    ? Object.fromEntries(Object.entries(metadata).filter(([key]) => key !== 'dir'))
+    : metadata
 
 /** Keep arbitrary node metadata, including fields unknown to mr, intact. */
 const LockJson = Schema.fromJsonString(
@@ -46,11 +52,13 @@ export const syncStandaloneLocks = Effect.fn('nix-lock/syncStandaloneLocks')(fun
   root: rootPath,
   input,
   rootLock = 'devenv.lock',
+  locks,
   write = false,
 }: {
   root: string
   input: string
   rootLock?: 'devenv.lock' | 'flake.lock'
+  locks?: ReadonlyArray<string>
   write?: boolean
 }) {
   const fs = yield* FileSystem.FileSystem
@@ -74,28 +82,66 @@ export const syncStandaloneLocks = Effect.fn('nix-lock/syncStandaloneLocks')(fun
       message: `Root lock must resolve a GitHub or git input '${input}' with original metadata`,
     })
   }
+  const sourceOriginal = withoutDir(sourceNode['original'])
+  const sourceLocked = yield* Schema.decodeUnknownEffect(InputMetadata)(
+    withoutDir(discovered.locked),
+  )
 
-  const files = yield* runCommand({
-    args: [
-      'ls-files',
-      '-z',
-      '--cached',
-      '--others',
-      '--exclude-standard',
-      '--',
-      'flake.lock',
-      '**/flake.lock',
-    ],
-    cwd: root,
-  })
+  // Explicit paths are an exact cohort, not Git pathspecs or glob expressions.
+  const explicit = locks !== undefined && locks.length > 0
+  const selected: string[] = []
+  for (const path of locks ?? []) {
+    const relative = normalize(path)
+    if (
+      isAbsolute(path) === true ||
+      relative === '..' ||
+      relative.startsWith('../') === true ||
+      relative === '.' ||
+      (relative.endsWith('/flake.lock') === false && relative !== 'flake.lock')
+    ) {
+      return yield* new StandaloneLockSyncError({
+        path,
+        input,
+        message: `Invalid standalone lock path '${path}'; expected a repository-relative flake.lock; no locks written`,
+      })
+    }
+    selected.push(relative)
+  }
+  const files =
+    explicit === true
+      ? selected
+      : (yield* runCommand({
+          args: [
+            'ls-files',
+            '-z',
+            '--cached',
+            '--others',
+            '--exclude-standard',
+            '--',
+            'flake.lock',
+            '**/flake.lock',
+          ],
+          cwd: root,
+        }))
+          .split('\0')
+          .filter((path) => path !== '')
   const plans: Array<{ path: string; content: string }> = []
   const checked: string[] = []
   // A set avoids duplicate tracked/untracked results; git excludes ignored caches and member mounts.
-  for (const relative of [...new Set(files.split('\0').filter((path) => path !== ''))].toSorted()) {
+  for (const relative of [...new Set(files)].toSorted()) {
     if (relative === rootLock) continue
     const path = `${root}/${relative}`
     // Tracked files removed from the worktree are not standalone locks in this consumer.
-    if ((yield* fs.exists(path)) === false) continue
+    if ((yield* fs.exists(path)) === false) {
+      if (explicit === true) {
+        return yield* new StandaloneLockSyncError({
+          path,
+          input,
+          message: `Selected lock '${relative}' does not exist; no locks written`,
+        })
+      }
+      continue
+    }
     const content = yield* fs.readFileString(path)
     const lock = yield* Schema.decodeEffect(LockJson)(content)
     const declaredRoot = lock.nodes[lock.root]
@@ -125,7 +171,7 @@ export const syncStandaloneLocks = Effect.fn('nix-lock/syncStandaloneLocks')(fun
     const updates: Record<string, Record<string, unknown>> = {}
     let referencesInput = false
     for (const [candidateId, node] of Object.entries(lock.nodes)) {
-      const sameOriginal = isDeepStrictEqual(node['original'], sourceNode['original'])
+      const sameOriginal = isDeepStrictEqual(withoutDir(node['original']), sourceOriginal)
       const repository = inputRepositoryUrl(node['locked']) ?? inputRepositoryUrl(node['original'])
       if (
         candidateId !== nodeId &&
@@ -138,13 +184,16 @@ export const syncStandaloneLocks = Effect.fn('nix-lock/syncStandaloneLocks')(fun
         return yield* new StandaloneLockSyncError({
           path,
           input,
-          message: `Node '${candidateId}' for input '${input}' has a different original; no locks written`,
+          message: `Lock '${relative}': node '${candidateId}' for input '${input}' has a different original; no locks written`,
         })
       }
       referencesInput = true
-      if (isDeepStrictEqual(node['locked'], discovered.locked) === true) continue
-      // Keep local graph edges; only the resolved source metadata comes from the root.
-      updates[candidateId] = { ...node, locked: discovered.locked }
+      const original = node['original']
+      const dir = Schema.is(InputMetadata)(original) === true ? original['dir'] : undefined
+      const locked = dir === undefined ? sourceLocked : { ...sourceLocked, dir }
+      if (isDeepStrictEqual(node['locked'], locked) === true) continue
+      // Keep the complete original and graph; only source metadata is shared between subflakes.
+      updates[candidateId] = { ...node, locked }
     }
     if (referencesInput === false) continue
     checked.push(relative)
@@ -169,12 +218,44 @@ export const syncStandaloneLocks = Effect.fn('nix-lock/syncStandaloneLocks')(fun
         return yield* authorizeAuthorWorkspaceWrite({ target: plan.path, workspaceRoot: root })
       }),
     )
-    for (const [index, plan] of plans.entries()) {
-      yield* writeFileAtomic({
-        path: EffectPath.unsafe.absoluteFile(authorized[index]!),
-        content: plan.content,
-      })
-    }
+    yield* Effect.scoped(
+      Effect.gen(function* () {
+        // Stage the complete cohort and retain the original inodes before replacing anything.
+        const staged = yield* Effect.forEach(plans, (plan, index) =>
+          Effect.gen(function* () {
+            const path = authorized[index]!
+            const directory = yield* fs.makeTempDirectoryScoped({
+              directory: dirname(path),
+              prefix: '.mr-lock-sync-',
+            })
+            const replacement = `${directory}/replacement`
+            const backup = `${directory}/original`
+            yield* fs.writeFileString(replacement, plan.content)
+            yield* fs.link(path, backup)
+            return { path, replacement, backup }
+          }),
+        )
+        const committed: typeof staged = []
+        yield* Effect.forEach(staged, (plan) =>
+          fs.rename(plan.replacement, plan.path).pipe(
+            Effect.tap(() =>
+              Effect.sync(() => {
+                committed.push(plan)
+              }),
+            ),
+          ),
+        ).pipe(
+          Effect.onExit((exit) =>
+            Exit.isFailure(exit) === true
+              ? Effect.forEach(committed.toReversed(), (plan) =>
+                  fs.rename(plan.backup, plan.path),
+                ).pipe(Effect.orDie)
+              : Effect.void,
+          ),
+          Effect.uninterruptible,
+        )
+      }),
+    )
   }
   return { checked, changed: plans.map((plan) => plan.path.slice(root.length + 1)) }
 })

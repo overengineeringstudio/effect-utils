@@ -16,6 +16,12 @@ export const lockSyncCommand = Cli.Command.make(
       Cli.Flag.withDescription('Authoritative lock in the current consumer repository root'),
       Cli.Flag.withDefault('devenv.lock'),
     ),
+    locks: Cli.Flag.String('lock').pipe(
+      Cli.Flag.withDescription(
+        'Standalone flake.lock path relative to the repository root (repeatable); defaults to Git discovery',
+      ),
+      Cli.Flag.atLeast(0),
+    ),
     write: Cli.Flag.Boolean('write').pipe(
       Cli.Flag.withDescription(
         'Write root-resolved locked metadata; otherwise check without writing',
@@ -23,10 +29,10 @@ export const lockSyncCommand = Cli.Command.make(
       Cli.Flag.withDefault(false),
     ),
   },
-  ({ input, rootLock, write }) =>
+  ({ input, rootLock, locks, write }) =>
     Effect.gen(function* () {
       const root = yield* Cwd
-      const result = yield* syncStandaloneLocks({ root, input, rootLock, write })
+      const result = yield* syncStandaloneLocks({ root, input, rootLock, locks, write })
       for (const path of result.changed) {
         yield* Console.log(`${write === true ? 'Updated' : 'Drift'}: ${path}`)
       }
