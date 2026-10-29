@@ -1576,6 +1576,8 @@ in
       set -euo pipefail
       cd "''${DEVENV_ROOT:-$PWD}"
       export PATH=${lib.makeBinPath [ pkgs.gnutar ]}:$PATH
+      # Contract fingerprints use the published runtime; remove with the shell override.
+      export BUN_BIN=${flakePkgs.bun}/bin/bun
       exec ${sourceBun}/bin/bun test ./buck2/rust/
     '';
     execIfModified = [
