@@ -4,9 +4,11 @@ import { mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'no
 import { join } from 'node:path'
 
 import * as isolationUnitTests from './buck2-gate-isolation.unit.test.ts'
-import { createTestTempDirectory } from './test-tmp.ts'
+import { createTestTempDirectoryFactory } from './test-tmp.ts'
 
 void isolationUnitTests
+
+const createTestTempDirectory = createTestTempDirectoryFactory()
 
 const entrypoint = new URL('./buck2-entrypoint.ts', import.meta.url).href
 

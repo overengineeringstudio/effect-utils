@@ -1436,6 +1436,7 @@ in
       export BUCK2_NATIVE_BIN=${buck2Machine}/libexec/buck2
       exec ${sourceBun}/bin/bun ./packages/@overeng/buck2-tools/src/bun-test-runner.ts test \
         ./scripts/buck2-entrypoint.posture.integration.test.ts \
+        ./scripts/buck2-gate-isolation.integration.test.ts \
         ./scripts/buck2-entrypoint.daemon.integration.test.ts \
         ./scripts/buck2-cache-posture.integration.test.ts
     '';

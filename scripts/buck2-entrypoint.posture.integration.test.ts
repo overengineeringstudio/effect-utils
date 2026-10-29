@@ -27,8 +27,10 @@ import {
   cacheDaemonPolicyArguments,
 } from './buck2-entrypoint.ts'
 import * as readerShadowUnitTests from './buck2-entrypoint.unit.test.ts'
-import { createTestTempDirectory } from './test-tmp.ts'
+import { createTestTempDirectoryFactory } from './test-tmp.ts'
 void readerShadowUnitTests
+
+const createTestTempDirectory = createTestTempDirectoryFactory()
 
 const secret = 'planted-writer-credential-never-persist'
 const values = {

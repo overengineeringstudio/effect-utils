@@ -113,9 +113,11 @@ without fleet `gate-slot` or building actions.
 entrypoint and gate lifecycle tests; its fail-closed gate-slot requirement is
 unchanged.
 
-The shared posture and gate-isolation fixtures allocate private per-run roots
-under the checkout's ignored `tmp`, removing each fixture in `finally` and the
-run root in `afterAll`. This applies to local and CI imports alike: Bun enumerates
+The shared posture and gate-isolation fixtures allocate private per-file run roots
+under the checkout's ignored `tmp`, removing each fixture in `finally` and each
+file's run root in its own `afterAll`. Both files run in one CI invocation to
+exercise cleanup across Bun's shared module registry. This applies to local and
+CI imports alike: Bun enumerates
 working-directory ancestors on startup, so the size of a shared system temporary
 directory must not become part of a fake native command's workload. Test guards
 and native admission deadlines remain unchanged.

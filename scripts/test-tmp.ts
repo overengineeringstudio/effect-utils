@@ -6,9 +6,11 @@ import { join } from 'node:path'
 // directory. Keep subprocess fixtures in the checkout's ignored tmp instead:
 // unrelated users' temporary files must not become part of a test's workload.
 const parent = join(import.meta.dir, '..', 'tmp')
-mkdirSync(parent, { recursive: true })
-const root = mkdtempSync(join(parent, 'bun-fixtures-'))
-afterAll(() => rmSync(root, { recursive: true, force: true }))
 
-/** Allocate an isolated fixture; callers still remove it in their finally block. */
-export const createTestTempDirectory = (prefix: string): string => mkdtempSync(join(root, prefix))
+/** Call at each test file's top level so its cleanup owns only that file's root. */
+export const createTestTempDirectoryFactory = (): ((prefix: string) => string) => {
+  mkdirSync(parent, { recursive: true })
+  const root = mkdtempSync(join(parent, 'bun-fixtures-'))
+  afterAll(() => rmSync(root, { recursive: true, force: true }))
+  return (prefix) => mkdtempSync(join(root, prefix))
+}

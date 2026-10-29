@@ -3,8 +3,9 @@ import { spawnSync } from 'node:child_process'
 import { readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
-import { createTestTempDirectory } from './test-tmp.ts'
+import { createTestTempDirectoryFactory } from './test-tmp.ts'
 
+const createTestTempDirectory = createTestTempDirectoryFactory()
 const roots: string[] = []
 afterEach(() => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true })
