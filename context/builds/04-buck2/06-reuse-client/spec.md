@@ -127,7 +127,9 @@ overlay. This includes the upstream `spawnSync` GC/poll-lifetime fix
 ([Bun #44581](https://github.com/oven-sh/bun/pull/44581)); it does not change
 published package runtimes or consumer overlays. The override preserves the
 locked nixpkgs Bun derivation and asserts that it must be removed once the locked
-version reaches 1.4.3.
+version reaches 1.4.3. Contract generation and freshness checks explicitly retain
+the published Bun 1.4.2 runtime because its version is part of the committed
+contract fingerprint.
 
 Cache-less commands (`BUCK2_NO_REMOTE_CACHE=1` or native `--no-remote-cache`)
 retain the fixed-source/offline posture contract: they remove the RE client

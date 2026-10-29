@@ -1840,7 +1840,9 @@ in
     exec = trace.exec "content-address:contract:generate" ''
       set -euo pipefail
       root="''${DEVENV_ROOT:-$PWD}"
-      exec ${sourceBun}/bin/bun "$root/packages/@overeng/content-address/src/generate-contract.ts"
+      # Contract fingerprints use the published runtime; remove with the shell override.
+      export BUN_BIN=${flakePkgs.bun}/bin/bun
+      exec ${sourceLease}/bin/editor-view-source "$BUN_BIN" "$root/packages/@overeng/content-address/src/generate-contract.ts"
     '';
   };
 
@@ -1857,7 +1859,9 @@ in
         "$root/rust/content-address-contract/generation.json" \
         "$root/rust/content-address-contract/src/lib.rs" \
         "$root/rust/content-address-contract/schema/"*.json
-      exec ${sourceBun}/bin/bun "$root/packages/@overeng/content-address/src/generate-contract.ts" --check
+      # Contract fingerprints use the published runtime; remove with the shell override.
+      export BUN_BIN=${flakePkgs.bun}/bin/bun
+      exec ${sourceLease}/bin/editor-view-source "$BUN_BIN" "$root/packages/@overeng/content-address/src/generate-contract.ts" --check
     '';
   };
 
