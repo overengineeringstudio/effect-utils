@@ -49,7 +49,8 @@ const normalizeOutput = (input: string): string =>
     time: true,
     repoRoot,
     effectCliInternals: true,
-  }).replace(/(^[ \t]+at [^\n]+\n)(?:[ \t]+at [^\n]+\n)+/gmu, '$1')
+    stackFrames: 'origin',
+  })
 
 const runCli = (...args: ReadonlyArray<string>) => {
   const result = spawnSync('bun', [cliPath, ...args], {

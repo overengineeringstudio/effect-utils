@@ -83,6 +83,72 @@ describe('normalizeCliOutput', () => {
     })
   })
 
+  describe('stack frames', () => {
+    const origin = '    at <anonymous> (/repo/node_modules/effect/dist/cli/Command.js:12:34)\n'
+    const runtime =
+      '    at map (native:1:11)\n' +
+      '    at runLoop (/repo/node_modules/effect/dist/internal/effect.js:476:88)\n' +
+      '    at runTuiMainImpl (/repo/src/cli.tsx:397:10)\n'
+
+    it('preserves frames unless a policy is selected', () => {
+      const input = `Help requested\n${origin}${runtime}`
+      expect(normalizeCliOutput({ input })).toBe(input)
+    })
+
+    it('retains each origin while excluding named and anonymous runtime frames', () => {
+      const input = `First error\n${origin}${runtime}Second error\n${origin}${runtime}`
+      expect(normalizeCliOutput({ input, stackFrames: 'origin' })).toBe(
+        `First error\n${origin}Second error\n${origin}`,
+      )
+    })
+
+    it('normalizes the retained Effect CLI origin without changing error prose', () => {
+      expect(
+        normalizeCliOutput({
+          input: `Help requested\n${origin}${runtime}`,
+          repoRoot: '/repo',
+          effectCliInternals: true,
+          stackFrames: 'origin',
+        }),
+      ).toBe(
+        'Help requested\n' +
+          '    at <anonymous> (<repo>/node_modules/.pnpm/effect@<version>/node_modules/effect/dist/unstable/cli/Command.js:<line>:<column>)\n',
+      )
+    })
+
+    it('handles a final frame without a trailing newline', () => {
+      expect(
+        normalizeCliOutput({
+          input: `Help requested\n${origin}    at map (native:1:11)`,
+          stackFrames: 'origin',
+        }),
+      ).toBe(`Help requested\n${origin}`)
+    })
+
+    it.each(['origin', 'omit'] as const)('preserves schema paths with the %s policy', (stackFrames) => {
+      const input = 'Invalid member\n  at ["members"]\n  Expected a string\n'
+      expect(normalizeCliOutput({ input, stackFrames })).toBe(input)
+    })
+
+    it('recognizes bare file frames', () => {
+      expect(
+        normalizeCliOutput({
+          input: `${origin}    at /repo/src/main.ts:12:34\n`,
+          stackFrames: 'origin',
+        }),
+      ).toBe(origin)
+    })
+
+    it('omits frames and their trailing spacing while preserving diagnostic lines', () => {
+      expect(
+        normalizeCliOutput({
+          input: `\nERROR\n  Missing argument\nHelp requested\n\n${origin}\n${runtime}\n`,
+          stackFrames: 'omit',
+        }),
+      ).toBe('\nERROR\n  Missing argument\nHelp requested\n\n')
+    })
+  })
+
   describe('local-source suffix', () => {
     it('is masked unconditionally, including under an empty policy', () => {
       const input = 'genie v4.0.0 — running from local source (/repo/packages/@overeng/genie)'
