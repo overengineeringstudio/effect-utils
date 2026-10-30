@@ -102,6 +102,15 @@ describe('schema-aware JSON omission', () => {
     }
   })
 
+  it('rejects optional record values during Effect schema construction, before admission', () => {
+    for (const value of [Schema.optional(Schema.String), Schema.optionalKey(Schema.String)])
+      expect(() => Schema.Record(Schema.String, value)).toThrow(
+        new Error(
+          'Cannot use `Schema.optionalKey` or `Schema.optional` with index signatures. Index signatures already allow keys to be absent; use `Schema.UndefinedOr` to allow `undefined` values.',
+        ),
+      )
+  })
+
   it('rejects unportable undefined contracts at admission and missing required values at decoding', () => {
     const required = Schema.Struct({ value: Schema.UndefinedOr(Schema.String) })
     const array = Schema.Array(Schema.UndefinedOr(Schema.String))
@@ -115,7 +124,6 @@ describe('schema-aware JSON omission', () => {
       expect(() => compile({ Request: schema })).toThrow(AdmissionError)
     for (const schema of [
       Schema.Array(Schema.optional(Schema.String)),
-      Schema.Record(Schema.String, Schema.optional(Schema.String)),
       Schema.Struct({ value: Schema.optional(Schema.Undefined) }),
     ])
       expect(() => compile({ Request: schema })).toThrow(AdmissionError)

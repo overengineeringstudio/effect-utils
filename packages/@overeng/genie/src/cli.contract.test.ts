@@ -37,9 +37,10 @@ const repoRoot = (() => {
  * usage, and error prose are captured for review but may be re-baselined by the genie owner during
  * Effect 4 repair with an alignment-register entry.
  * The local-source version suffix, log timestamps, and absolute checkout paths
- * (v4 `CliError` output embeds stack-frame file paths) are normalized, so
- * version-string content, log timing, and machine-specific paths are not gated
- * by this baseline.
+ * (v4 `CliError` output embeds stack-frame file paths) are normalized. Only the
+ * canonical CLI origin frame is retained; additional runtime frames are not
+ * part of the prose contract. Version-string content, log timing, and
+ * machine-specific paths are not gated by this baseline.
  */
 const normalizeOutput = (input: string): string =>
   normalizeCliOutput({
@@ -48,7 +49,7 @@ const normalizeOutput = (input: string): string =>
     time: true,
     repoRoot,
     effectCliInternals: true,
-  })
+  }).replace(/(^[ \t]+at [^\n]+\n)(?:[ \t]+at [^\n]+\n)+/gmu, '$1')
 
 const runCli = (...args: ReadonlyArray<string>) => {
   const result = spawnSync('bun', [cliPath, ...args], {
