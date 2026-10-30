@@ -239,6 +239,13 @@ const config = NotionConfigLive({
 
 All API errors are returned as `NotionApiError` with structured error information:
 
+Requests automatically retry rate limits, transient server failures, and HTTP 409
+`conflict_error` responses using the configured `maxRetries` and exponential
+`retryBaseDelay`. Conflicts, including block appends and positioned inserts, use
+equal jitter (50–100% of each exponential delay) to avoid synchronized retries.
+Other 409 error codes are not treated as conflicts. When the retry budget is
+exhausted, the final failure remains a `NotionApiError`.
+
 ```ts
 import { NotionApiError, NotionErrorCode } from '@overeng/notion-effect-client'
 
