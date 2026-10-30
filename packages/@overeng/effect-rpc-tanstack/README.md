@@ -270,6 +270,25 @@ Creates an Effect-native file route with typed loaders.
 
 Creates a result object from encoded Exit data with pattern matching helpers.
 
+### Effect 4.1 compatibility
+
+The default NDJSON transport now sends `Content-Type: application/x-ndjson`
+instead of `application/ndjson`. Update custom clients, proxies, and content-type
+checks accordingly. The HTTP RPC request/response message bodies and failure
+partition are unchanged: typed errors use `Fail`, while defects and invalid
+requests use `Die`; encoded HTTP causes remain arrays.
+
+SSR loader data uses Effect's built-in `Exit`/`Cause` representation, not the
+HTTP RPC codec. In Effect 4.1, failure causes expose `reasons` instead of
+`failures`, including in their JSON representation and the exported
+`ExitEncoded` type. Consumers directly accessing a cause must migrate
+`.cause.failures` to `.cause.reasons`. The package's exported function names and
+call signatures are unchanged.
+
+Upgrade SSR producers and consumers together and invalidate persisted loader
+data or caches containing the old Cause representation. This package supports
+only the current representation; it does not provide a legacy decoder.
+
 ## Example
 
 See the [basic example](./examples/basic) for a complete working example.

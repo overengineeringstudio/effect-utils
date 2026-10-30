@@ -51,7 +51,7 @@ const rpcPost = async ({
 }) => {
   const request = new Request('http://localhost/api/rpc', {
     method: 'POST',
-    headers: { 'content-type': 'application/ndjson' },
+    headers: { 'content-type': 'application/x-ndjson' },
     body,
   })
   const response = await handler(request)
@@ -80,6 +80,8 @@ const decodeExitFailure = (encoded: unknown) => {
 describe('effect-rpc-tanstack RPC wire baselines (cross-major invariant)', () => {
   // These bytes pin the package's single current SSR Exit format. #979 records
   // consumer-owned coordinated rollout and cache policy; there is no dual decoder.
+  // Effect 4.1 exposes Cause.reasons (formerly Cause.failures), including toJSON.
+  // This SSR representation is distinct from HTTP RPC's encoded cause array.
   it('captures SSR Exit JSON bytes and re-encoded identity', () => {
     const exits = {
       success: encodeExit(
@@ -124,6 +126,7 @@ describe('effect-rpc-tanstack RPC wire baselines (cross-major invariant)', () =>
 
   // These bytes pin the package's single current HTTP RPC format. #979 records
   // consumer-owned coordinated rollout and cache policy; there is no dual decoder.
+  // Effect 4.1 uses application/x-ndjson; the RPC message bodies remain unchanged.
   it('captures HTTP RPC NDJSON bytes and failure partition', async () => {
     const handlers = Api.toLayer(
       Effect.succeed(

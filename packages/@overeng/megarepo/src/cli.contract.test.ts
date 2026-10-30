@@ -34,7 +34,8 @@ const stripAnsi = (output: string) =>
 const normalizeOutput = (output: string) =>
   stripAnsi(output)
     .replace(/ — running from local source \([^)]+\)/gu, '')
-    .replace(/^ +at <anonymous> .+$/gmu, '')
+    .replace(/^[ \t]+at .+$/gmu, '')
+    .replace(/\n{3,}$/u, '\n\n')
 
 const runCli = (...args: ReadonlyArray<string>) => {
   const result = spawnSync('bun', [cliPath, ...args], {

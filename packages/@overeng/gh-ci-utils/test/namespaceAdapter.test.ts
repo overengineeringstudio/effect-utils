@@ -11,7 +11,7 @@
  * The decoders are exercised as pure functions because the live `nsc` JSON
  * shape is not contractually stable: they must survive renames and nesting.
  */
-import { Effect, Layer, Sink, Stream } from 'effect'
+import { Effect, Layer, Redacted, Sink, Stream } from 'effect'
 import * as PlatformError from 'effect/PlatformError'
 import * as ChildProcess from 'effect/process/ChildProcess'
 import {
@@ -108,9 +108,12 @@ const fakeSpawner = ({
         if (ChildProcess.isStandardCommand(command) === false) {
           return yield* Effect.die(new Error('the inspect path must not build a piped command'))
         }
-        const argv = [command.command, ...command.args]
+        const args = command.args.map((word) =>
+          typeof word === 'string' ? word : Redacted.value(word),
+        )
+        const argv = [command.command, ...args]
         recorded.push(argv)
-        const result = respond(command.args)
+        const result = respond(args)
         if (result._tag === 'not-on-path') {
           return yield* PlatformError.systemError({
             _tag: 'NotFound',
