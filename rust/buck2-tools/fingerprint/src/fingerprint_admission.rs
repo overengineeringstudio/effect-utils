@@ -1,9 +1,11 @@
 //! Host-wide admission shared by CLI invocations, worktrees and Buck daemons.
+use std::collections::HashMap;
 use std::fs::{self, File, OpenOptions, TryLockError};
 use std::io::{self, ErrorKind};
 use std::os::unix::fs::{MetadataExt, OpenOptionsExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, Condvar, LazyLock, Mutex};
 
 // Fixed, not CPU-scaled: ~220 concurrent walks caused ZFS dnode lookup livelock
 // on dev3 on 2026-10-15. More CPUs do not increase safe filesystem concurrency.
@@ -132,10 +134,10 @@ fn lock_file(directory: &Path, name: &str) -> io::Result<File> {
 }
 
 fn acquire_at(directory: &Path) -> io::Result<File> {
-    acquire_at_for_pid(directory, std::process::id(), || {})
+    acquire_at_with_wait_hook(directory, || {})
 }
 
-fn acquire_at_for_pid(directory: &Path, pid: u32, before_wait: impl FnOnce()) -> io::Result<File> {
+fn acquire_at_with_wait_hook(directory: &Path, before_wait: impl FnOnce()) -> io::Result<File> {
     publish_directory(directory).map_err(|error| coordination_error(directory, "1777", error))?;
     let metadata = fs::symlink_metadata(directory)
         .map_err(|error| coordination_error(directory, "1777", error))?;
@@ -146,8 +148,8 @@ fn acquire_at_for_pid(directory: &Path, pid: u32, before_wait: impl FnOnce()) ->
             io::Error::other("not a directory"),
         ));
     }
-    // Serialize only the scan. Waiters release admission before blocking on
-    // PID-distributed slots, so one slow slot does not block the entire queue.
+    // Keep admission through the wait: newcomers cannot steal the next free
+    // slot from this waiter. Slot owners never need admission to release.
     let admission = lock_file(directory, "admission")?;
     admission
         .lock()
@@ -173,22 +175,130 @@ fn acquire_at_for_pid(directory: &Path, pid: u32, before_wait: impl FnOnce()) ->
             }
         }
     }
-    drop(admission);
+    let pool = wait_pool(directory)?;
     // Tests synchronize here to prove the full scan completed before releasing
     // a nonzero slot; the production caller supplies an inlined no-op.
     before_wait();
-    wait_for_slot(directory, pid)
+    pool.wait()
     // Dropping the returned descriptor releases the slot, including on errors,
     // panic or process termination. Never unlink live coordination files.
 }
 
-fn wait_for_slot(directory: &Path, pid: u32) -> io::Result<File> {
-    let index = pid as usize % FINGERPRINT_WALK_LIMIT;
-    let slot = lock_file(directory, &format!("slot-{index}"))?;
-    slot.lock().map_err(|error| {
-        coordination_error(&directory.join(format!("slot-{index}")), "0666", error)
-    })?;
-    Ok(slot)
+#[derive(Default)]
+struct WaitState {
+    request: Option<Arc<()>>,
+    result: Option<io::Result<File>>,
+    stopped: bool,
+}
+
+#[derive(Default)]
+struct WaitPool {
+    state: Mutex<WaitState>,
+    changed: Condvar,
+}
+
+fn wait_pool(directory: &Path) -> io::Result<Arc<WaitPool>> {
+    static POOLS: LazyLock<Mutex<HashMap<PathBuf, Arc<WaitPool>>>> = LazyLock::new(Mutex::default);
+    let directory = fs::canonicalize(directory)?;
+    let mut pools = POOLS
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    if let Some(pool) = pools.get(&directory) {
+        return Ok(Arc::clone(pool));
+    }
+    let pool = Arc::new(WaitPool::default());
+    // Four reusable helpers per directory/process, not four per acquisition.
+    // A helper can remain blocked on an old request, but releases stale wins
+    // immediately. It never runs a walk or holds an unwanted slot idle.
+    for index in 0..FINGERPRINT_WALK_LIMIT {
+        let worker = Arc::clone(&pool);
+        let directory = directory.clone();
+        if let Err(error) = std::thread::Builder::new()
+            .name(format!("fingerprint-slot-{index}"))
+            .spawn(move || worker.run(&directory, index))
+        {
+            pool.state
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .stopped = true;
+            pool.changed.notify_all();
+            return Err(error);
+        }
+    }
+    pools.insert(directory, Arc::clone(&pool));
+    Ok(pool)
+}
+
+impl WaitPool {
+    fn wait(&self) -> io::Result<File> {
+        let mut state = self
+            .state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        // The cross-process admission lock also serializes local requests.
+        debug_assert!(state.request.is_none());
+        state.request = Some(Arc::new(()));
+        self.changed.notify_all();
+        while state.result.is_none() {
+            state = self
+                .changed
+                .wait(state)
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+        }
+        state.request = None;
+        state.result.take().unwrap()
+    }
+
+    fn run(&self, directory: &Path, index: usize) {
+        let mut previous = None;
+        loop {
+            let request = {
+                let mut state = self
+                    .state
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner);
+                loop {
+                    if state.stopped {
+                        return;
+                    }
+                    if let Some(request) = &state.request {
+                        if previous
+                            .as_ref()
+                            .is_none_or(|previous| !Arc::ptr_eq(previous, request))
+                        {
+                            break Arc::clone(request);
+                        }
+                    }
+                    state = self
+                        .changed
+                        .wait(state)
+                        .unwrap_or_else(std::sync::PoisonError::into_inner);
+                }
+            };
+            let result = (|| {
+                let slot = lock_file(directory, &format!("slot-{index}"))?;
+                slot.lock().map_err(|error| {
+                    coordination_error(&directory.join(format!("slot-{index}")), "0666", error)
+                })?;
+                Ok(slot)
+            })();
+            let mut state = self
+                .state
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            if state
+                .request
+                .as_ref()
+                .is_some_and(|current| Arc::ptr_eq(current, &request))
+                && state.result.is_none()
+            {
+                state.result = Some(result);
+                self.changed.notify_all();
+            }
+            // Losing/stale results drop here, even if no request is pending.
+            previous = Some(request);
+        }
+    }
 }
 
 #[cfg(test)]
@@ -244,13 +354,14 @@ mod tests {
         let root = tempfile::tempdir().unwrap();
         let directory = root.path().join("locks");
         drop(acquire_at(&directory).unwrap());
-        let start = Arc::new(Barrier::new(FINGERPRINT_WALK_LIMIT + 4));
+        let contenders = 64;
+        let start = Arc::new(Barrier::new(contenders + 1));
         let first_wave = Arc::new(Barrier::new(FINGERPRINT_WALK_LIMIT + 1));
         let active = Arc::new(AtomicUsize::new(0));
         let maximum = Arc::new(AtomicUsize::new(0));
         let entered = Arc::new(AtomicUsize::new(0));
         thread::scope(|scope| {
-            for _ in 0..FINGERPRINT_WALK_LIMIT + 3 {
+            for _ in 0..contenders {
                 let (start, first_wave, active, maximum, entered, directory) = (
                     start.clone(),
                     first_wave.clone(),
@@ -276,17 +387,19 @@ mod tests {
             first_wave.wait();
         });
         assert_eq!(maximum.load(Ordering::SeqCst), FINGERPRINT_WALK_LIMIT);
-        assert_eq!(entered.load(Ordering::SeqCst), FINGERPRINT_WALK_LIMIT + 3);
+        assert_eq!(entered.load(Ordering::SeqCst), contenders);
         assert_eq!(active.load(Ordering::SeqCst), 0);
     }
 
     #[test]
-    fn releasing_nonzero_slot_admits_its_waiter_without_releasing_slot_zero() {
+    fn waiter_takes_first_free_slot_while_former_pid_slot_stays_busy() {
         let root = tempfile::tempdir().unwrap();
         let directory = root.path().join("locks");
         let mut permits = (0..FINGERPRINT_WALK_LIMIT)
             .map(|_| acquire_at(&directory).unwrap())
             .collect::<Vec<_>>();
+        let former_pid_slot = std::process::id() as usize % FINGERPRINT_WALK_LIMIT;
+        let free_slot = (former_pid_slot + 1) % FINGERPRINT_WALK_LIMIT;
         for index in 0..FINGERPRINT_WALK_LIMIT {
             assert!(matches!(
                 lock_file(&directory, &format!("slot-{index}"))
@@ -300,17 +413,21 @@ mod tests {
         thread::scope(|scope| {
             scope.spawn(|| {
                 let permit =
-                    acquire_at_for_pid(&directory, 1, || scanned_tx.send(()).unwrap()).unwrap();
-                tx.send(()).unwrap();
-                drop(permit);
+                    acquire_at_with_wait_hook(&directory, || scanned_tx.send(()).unwrap()).unwrap();
+                tx.send(permit).unwrap();
             });
             scanned_rx.recv().unwrap();
             assert!(matches!(rx.try_recv(), Err(mpsc::TryRecvError::Empty)));
-            drop(permits.remove(1));
-            rx.recv().unwrap();
+            let released = permits.remove(free_slot);
+            let inode = released.metadata().unwrap().ino();
+            drop(released);
+            let replacement = rx.recv().unwrap();
+            assert_eq!(replacement.metadata().unwrap().ino(), inode);
         });
         assert!(matches!(
-            lock_file(&directory, "slot-0").unwrap().try_lock(),
+            lock_file(&directory, &format!("slot-{former_pid_slot}"))
+                .unwrap()
+                .try_lock(),
             Err(TryLockError::WouldBlock)
         ));
     }
