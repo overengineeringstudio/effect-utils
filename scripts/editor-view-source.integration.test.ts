@@ -224,7 +224,9 @@ describe('verified private lease preload', () => {
         },
       )
       expect(result.status).not.toBe(0)
-      expect(result.stderr).toContain(`Unsafe editor-view preload path: ${realpathSync(unsafePreload)}`)
+      expect(result.stderr).toContain(
+        `Unsafe editor-view preload path: ${realpathSync(unsafePreload)}`,
+      )
       expect(result.stderr).toContain('select a runtime directory')
     } finally {
       closeSync(fd)
