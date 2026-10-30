@@ -247,8 +247,11 @@ echo "Preflight: profile exposes the pnpm guard and opt-in store maintenance CLI
 assert_eq $'pnpm\npnpm-store-gc\npnpm-store-retire' "$(eval_pnpm_package_names)" "pnpm module packages should contain the guard and maintenance CLIs only"
 
 echo "Preflight: generated dependency graph contract classifies workspace overrides"
+# The generated manifest projects the authoritative catalog without adding a
+# TypeScript runtime dependency to this shell smoke test.
+effect_version="$(node -p 'require(process.argv[1]).devDependencies.effect' "$ROOT/packages/@overeng/utils/package.json")"
 assert_json_field \
-  "4.0.3" \
+  "$effect_version" \
   "$ROOT/pnpm-install-contract.json" \
   '(value) => value.dependencyGraphContract.overrides["@effect/platform-node-shared"]' \
   "dependency graph contract should include the active Effect cohort override"
