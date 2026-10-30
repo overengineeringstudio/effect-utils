@@ -18,6 +18,7 @@ const workspaceDeps = catalog.compose({
       'alchemy',
       'effect',
       '@effect/platform-node',
+      '@effect/platform-bun',
       '@effect/vitest',
       '@types/node',
       'typescript',

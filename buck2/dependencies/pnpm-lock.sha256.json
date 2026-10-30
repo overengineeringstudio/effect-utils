@@ -1,6 +1,6 @@
 {
   "schema": "effect-utils/buck2-pnpm-sha256/v2",
-  "lockfileFingerprint": "sha256:21d4f989bf53c9b5b4f73c9ca4a4098c1e5932b330fa361e8838e4cf671c7e1d",
+  "lockfileFingerprint": "sha256:16a94bb9f1c273bd36ebf4f3252c095da9d14f0408d66986947e1dd9a048d8fc",
   "packages": {
     "@adobe/css-tools@4.5.0": {
       "bins": {},
@@ -318,6 +318,15 @@
       "registryUrl": "https://registry.npmjs.org/@effect/opentelemetry/-/opentelemetry-4.1.0.tgz",
       "sha256": "ae7b8ccef0396f39430f13c0fb2c04627f8ce4d4104fd1fdb6c177d7dcebbf6a",
       "sizeBytes": 101616
+    },
+    "@effect/platform-bun@4.1.0": {
+      "bins": {},
+      "classification": "public",
+      "integrity": "sha512-ZgIV+tV2utcbiopbWSoJuGn3FZuyqhLWIYITFCR8vlwnKicO1q0WgP4BBjDUYUTMRPEU/N1+BcZourAgpiDI/w==",
+      "packageIdentity": "@effect/platform-bun@4.1.0",
+      "registryUrl": "https://registry.npmjs.org/@effect/platform-bun/-/platform-bun-4.1.0.tgz",
+      "sha256": "c6a7411334f50ee97b544906169b375fe4066b2ce8b8e26a38a2de5e436432b9",
+      "sizeBytes": 126791
     },
     "@effect/platform-node-shared@4.1.0": {
       "bins": {},
@@ -1887,15 +1896,6 @@
       "sha256": "fe4d030cbc8e25e6cf09af400fa4c6a834501d144c046943434a5b999d954753",
       "sizeBytes": 7707
     },
-    "@oxc-project/types@0.148.0": {
-      "bins": {},
-      "classification": "public",
-      "integrity": "sha512-Nm4s/jB+4FpFsPhWGEC4h7rzksesmtnMXomo6rCMcg/b8zLQuOziRgkCS1fxDCXOlJB/6Q8oABOZ/OP6RIPj9A==",
-      "packageIdentity": "@oxc-project/types@0.148.0",
-      "registryUrl": "https://registry.npmjs.org/@oxc-project/types/-/types-0.148.0.tgz",
-      "sha256": "ccd3b39fa536bc1ae5c714d3d0dca4ba28ba7cb82d9ad760690ab3593c33bbf9",
-      "sizeBytes": 7704
-    },
     "@oxc-project/types@0.153.0": {
       "bins": {},
       "classification": "public",
@@ -2438,15 +2438,6 @@
       "sha256": "61973ad34c04878cf0ec1fbdc6b00ede0e5e7b00d4bf6ec85ca38de53d792b8f",
       "sizeBytes": 6736333
     },
-    "@rolldown/binding-android-arm-eabi@1.2.7": {
-      "bins": {},
-      "classification": "public",
-      "integrity": "sha512-EypzgnYCwyVY4NDHKzGmNJT5b+XaQEBniHxsMdeIQLB/tcCzZnhqrzHpZFbX9iaxx+5RiB8caATBtfvZP7zVxQ==",
-      "packageIdentity": "@rolldown/binding-android-arm-eabi@1.2.7",
-      "registryUrl": "https://registry.npmjs.org/@rolldown/binding-android-arm-eabi/-/binding-android-arm-eabi-1.2.7.tgz",
-      "sha256": "2b8d587dcdee375a8af1ca48abace4d0b31aeee349853477556045ff92a1ac40",
-      "sizeBytes": 6539373
-    },
     "@rolldown/binding-android-arm64@1.2.13": {
       "bins": {},
       "classification": "public",
@@ -2455,15 +2446,6 @@
       "registryUrl": "https://registry.npmjs.org/@rolldown/binding-android-arm64/-/binding-android-arm64-1.2.13.tgz",
       "sha256": "33340dadefcea9fd8eb73c8cb2c32cc21020856065c3f3da7b9cedc1ed5d2e2c",
       "sizeBytes": 7737193
-    },
-    "@rolldown/binding-android-arm64@1.2.7": {
-      "bins": {},
-      "classification": "public",
-      "integrity": "sha512-l17HE9EweWaqJZhuUuNBN/FzM62xw+DECVnJyvMsxn8vJFAGLy5QfLDoYAcronkAN8VxKZHezDpulHDPx95vFw==",
-      "packageIdentity": "@rolldown/binding-android-arm64@1.2.7",
-      "registryUrl": "https://registry.npmjs.org/@rolldown/binding-android-arm64/-/binding-android-arm64-1.2.7.tgz",
-      "sha256": "e61c8586ff64c3f42e3c2718282fe1d2805f6d45f3ef2bc7f3f4dbbcf66b8696",
-      "sizeBytes": 7526782
     },
     "@rolldown/binding-darwin-arm64@1.2.13": {
       "bins": {},
@@ -2474,15 +2456,6 @@
       "sha256": "1b03e925ffdd1f952fdc76a6aebdb5a79cb64cc3f659644458f002e952443a06",
       "sizeBytes": 7427740
     },
-    "@rolldown/binding-darwin-arm64@1.2.7": {
-      "bins": {},
-      "classification": "public",
-      "integrity": "sha512-8ED8ELFvHXc6OCETIn4gXObPiaR6bckM/ipXtbzlPVDRMBfEGjCKgO90F9YtfdpDatVx/ZQw7aZ1vUMf/+T3Mw==",
-      "packageIdentity": "@rolldown/binding-darwin-arm64@1.2.7",
-      "registryUrl": "https://registry.npmjs.org/@rolldown/binding-darwin-arm64/-/binding-darwin-arm64-1.2.7.tgz",
-      "sha256": "b112fad0dec0e5faabb78bca35f28ec48b2629e53c4c7e77e44b57b463f04568",
-      "sizeBytes": 7223230
-    },
     "@rolldown/binding-darwin-x64@1.2.13": {
       "bins": {},
       "classification": "public",
@@ -2491,15 +2464,6 @@
       "registryUrl": "https://registry.npmjs.org/@rolldown/binding-darwin-x64/-/binding-darwin-x64-1.2.13.tgz",
       "sha256": "1252eeaf942eaa564ff77cd42f3723bdac63a2a170bae7669a3e573e9fa66d2d",
       "sizeBytes": 7787608
-    },
-    "@rolldown/binding-darwin-x64@1.2.7": {
-      "bins": {},
-      "classification": "public",
-      "integrity": "sha512-/WPripjtiAIZ2tWY7ddijORT0Ujg87wxWW/qcoFVCKAWVDPhtY0xr7Dj0M3GyNGz60jGwTElhro/mkF9dT7dDQ==",
-      "packageIdentity": "@rolldown/binding-darwin-x64@1.2.7",
-      "registryUrl": "https://registry.npmjs.org/@rolldown/binding-darwin-x64/-/binding-darwin-x64-1.2.7.tgz",
-      "sha256": "215445326b9e7d055f79f6acfca0951abb322d41465df00201bbb1888c291a1a",
-      "sizeBytes": 7548364
     },
     "@rolldown/binding-freebsd-x64@1.2.13": {
       "bins": {},
@@ -2510,15 +2474,6 @@
       "sha256": "d2dfe85465eff21fef45851fd1e0d5c7acf379d021fa992415326964d82ea4b0",
       "sizeBytes": 8133467
     },
-    "@rolldown/binding-freebsd-x64@1.2.7": {
-      "bins": {},
-      "classification": "public",
-      "integrity": "sha512-14DI4NcqpvbICxSnGLx3PmtDaWqRP/KGSGb6C+JLLVPeZRl6dKdHba3pGsqT3vpdTqhEYIPG0MMQ8c0xYqoJxA==",
-      "packageIdentity": "@rolldown/binding-freebsd-x64@1.2.7",
-      "registryUrl": "https://registry.npmjs.org/@rolldown/binding-freebsd-x64/-/binding-freebsd-x64-1.2.7.tgz",
-      "sha256": "11a776ec928fb0221dad39e4d631da49a9284255fda1a8a7717d6ad83bd0370c",
-      "sizeBytes": 7909971
-    },
     "@rolldown/binding-linux-arm-gnueabihf@1.2.13": {
       "bins": {},
       "classification": "public",
@@ -2527,15 +2482,6 @@
       "registryUrl": "https://registry.npmjs.org/@rolldown/binding-linux-arm-gnueabihf/-/binding-linux-arm-gnueabihf-1.2.13.tgz",
       "sha256": "ea21106a37ceba643e0e1cd9b9111f402481ac7a93f7febde61bb738ada110e3",
       "sizeBytes": 7465749
-    },
-    "@rolldown/binding-linux-arm-gnueabihf@1.2.7": {
-      "bins": {},
-      "classification": "public",
-      "integrity": "sha512-bxrWIRvHWQvbJwi+VIie/kDJmQxcNE6xxWwZdqF/ExVAigtHkv54WTLQPb+QsZdnFy18fg7JPfWGL0RH6vwIlQ==",
-      "packageIdentity": "@rolldown/binding-linux-arm-gnueabihf@1.2.7",
-      "registryUrl": "https://registry.npmjs.org/@rolldown/binding-linux-arm-gnueabihf/-/binding-linux-arm-gnueabihf-1.2.7.tgz",
-      "sha256": "7a411ec45ad25fd7d75bc585714cf5d807f38b0d893419dca006fe09b64419e9",
-      "sizeBytes": 7255782
     },
     "@rolldown/binding-linux-arm64-gnu@1.2.13": {
       "bins": {},
@@ -2546,15 +2492,6 @@
       "sha256": "137b29a5fba6d1ad81235da65891a33fdc73ffdf2a22336929e6d4332640c2fd",
       "sizeBytes": 7738867
     },
-    "@rolldown/binding-linux-arm64-gnu@1.2.7": {
-      "bins": {},
-      "classification": "public",
-      "integrity": "sha512-toOY2BChBZyuxU7OYX6Tn389di4IzAqPTycVcci0O7FSfBqzRB3RZn+K5Is6ANf4tmgRd/K1yZTsNTXbkXsnLg==",
-      "packageIdentity": "@rolldown/binding-linux-arm64-gnu@1.2.7",
-      "registryUrl": "https://registry.npmjs.org/@rolldown/binding-linux-arm64-gnu/-/binding-linux-arm64-gnu-1.2.7.tgz",
-      "sha256": "7add60734a765e6a8106814c73d79cc4caddf70df2807d44e4ef6f3116a0f7fa",
-      "sizeBytes": 7549043
-    },
     "@rolldown/binding-linux-arm64-musl@1.2.13": {
       "bins": {},
       "classification": "public",
@@ -2563,15 +2500,6 @@
       "registryUrl": "https://registry.npmjs.org/@rolldown/binding-linux-arm64-musl/-/binding-linux-arm64-musl-1.2.13.tgz",
       "sha256": "e0cbd4ed2133d27c16b3dd85a5afe8d328db76d9828245c3b509e4a8bd1f73fa",
       "sizeBytes": 7758315
-    },
-    "@rolldown/binding-linux-arm64-musl@1.2.7": {
-      "bins": {},
-      "classification": "public",
-      "integrity": "sha512-lAIXTH/aiLRLxsTgQvfhjo4K1ydWIp00+V0voOr9beb/9ZmkUFrSIb03dXNFRgMNvkE6oGsF10ioQ6UsI+vS5Q==",
-      "packageIdentity": "@rolldown/binding-linux-arm64-musl@1.2.7",
-      "registryUrl": "https://registry.npmjs.org/@rolldown/binding-linux-arm64-musl/-/binding-linux-arm64-musl-1.2.7.tgz",
-      "sha256": "07a8e155365725c5253ac6c2aa2113d866446145a3939b7e533e97436e123e76",
-      "sizeBytes": 7561398
     },
     "@rolldown/binding-linux-ppc64-gnu@1.2.13": {
       "bins": {},
@@ -2582,15 +2510,6 @@
       "sha256": "63a981d1c0cf179ad6e5488f6e856a6d0f9b9cc01ca3ffe86e403afd31505bcc",
       "sizeBytes": 9034698
     },
-    "@rolldown/binding-linux-ppc64-gnu@1.2.7": {
-      "bins": {},
-      "classification": "public",
-      "integrity": "sha512-kdnwS28Pkenp/mZMRwjXXXwxQ7pIsm+bF919LUK93BOyhcLsrVKdP2p9fxpiPNPAbNuch8ypQt0pm2P2LYCAGg==",
-      "packageIdentity": "@rolldown/binding-linux-ppc64-gnu@1.2.7",
-      "registryUrl": "https://registry.npmjs.org/@rolldown/binding-linux-ppc64-gnu/-/binding-linux-ppc64-gnu-1.2.7.tgz",
-      "sha256": "95962d6025fb2dc5f9096d8c6ea99d3444487d8e011293b222059ebd5619532f",
-      "sizeBytes": 8821532
-    },
     "@rolldown/binding-linux-s390x-gnu@1.2.13": {
       "bins": {},
       "classification": "public",
@@ -2599,15 +2518,6 @@
       "registryUrl": "https://registry.npmjs.org/@rolldown/binding-linux-s390x-gnu/-/binding-linux-s390x-gnu-1.2.13.tgz",
       "sha256": "b387845f9b24da121b6f11c6d75d242894e6704ed7f096c267a8759bda8838dd",
       "sizeBytes": 8345518
-    },
-    "@rolldown/binding-linux-s390x-gnu@1.2.7": {
-      "bins": {},
-      "classification": "public",
-      "integrity": "sha512-516OdsyLdr5E65paF3yBF55t8mfm9+gmtCsK3xI7XKXIT7EfRlHhxL8K/NR6Hu8BWSgF5+1w74lTL0+nxcc8Qw==",
-      "packageIdentity": "@rolldown/binding-linux-s390x-gnu@1.2.7",
-      "registryUrl": "https://registry.npmjs.org/@rolldown/binding-linux-s390x-gnu/-/binding-linux-s390x-gnu-1.2.7.tgz",
-      "sha256": "a89f8702b2bd127b47dab9cde83411bdb62486c28d6c7a520d4adcf1ad2c5942",
-      "sizeBytes": 8051935
     },
     "@rolldown/binding-linux-x64-gnu@1.2.13": {
       "bins": {},
@@ -2618,15 +2528,6 @@
       "sha256": "210481d7a9e91606e57cebc8d64ee175eda2c042ad4f6369da347caf43cc874f",
       "sizeBytes": 8180509
     },
-    "@rolldown/binding-linux-x64-gnu@1.2.7": {
-      "bins": {},
-      "classification": "public",
-      "integrity": "sha512-r8/z8n7GFaYRln3xmP1Cxy0HH/HLM0uBUPkEuSVEfKGDA89M0FsZRZJRSwe/tJjRx+fpH/gjorfhB8tmEbSFLA==",
-      "packageIdentity": "@rolldown/binding-linux-x64-gnu@1.2.7",
-      "registryUrl": "https://registry.npmjs.org/@rolldown/binding-linux-x64-gnu/-/binding-linux-x64-gnu-1.2.7.tgz",
-      "sha256": "ab1d70c96059499e722f4b86329cd878886803b60b2149fbc86b8ddbc2a2af07",
-      "sizeBytes": 7966270
-    },
     "@rolldown/binding-linux-x64-musl@1.2.13": {
       "bins": {},
       "classification": "public",
@@ -2635,15 +2536,6 @@
       "registryUrl": "https://registry.npmjs.org/@rolldown/binding-linux-x64-musl/-/binding-linux-x64-musl-1.2.13.tgz",
       "sha256": "4cc27485f7a7a85293f11a9b590689825550065b34db6514d0ccd87fff99e2a0",
       "sizeBytes": 8164891
-    },
-    "@rolldown/binding-linux-x64-musl@1.2.7": {
-      "bins": {},
-      "classification": "public",
-      "integrity": "sha512-pAsE8iiDxUg1xBqdhrTfg45AVDVpirjz00sblEYClGNNcMnDb+e8beQgqIAw6LvauX/APvgxUnwrgun/YYGBhw==",
-      "packageIdentity": "@rolldown/binding-linux-x64-musl@1.2.7",
-      "registryUrl": "https://registry.npmjs.org/@rolldown/binding-linux-x64-musl/-/binding-linux-x64-musl-1.2.7.tgz",
-      "sha256": "4fe38c01877ec445f4dc744833caa30ce8ef2e0e17a1ad3eaf5a3d7952648907",
-      "sizeBytes": 7941299
     },
     "@rolldown/binding-openharmony-arm64@1.2.13": {
       "bins": {},
@@ -2654,15 +2546,6 @@
       "sha256": "ebef90cb3e6200c7aa0dc9ada70e30e6d6af7703a17b5590af12fb9679756f5e",
       "sizeBytes": 7689361
     },
-    "@rolldown/binding-openharmony-arm64@1.2.7": {
-      "bins": {},
-      "classification": "public",
-      "integrity": "sha512-lTcIYmmnQQA8Or/2DatS6oSqcdLHvendjS+zLu+FwgToynWMRSmQdpM65fTANJgIS4mjbMOo5KT2lnT9SAb96w==",
-      "packageIdentity": "@rolldown/binding-openharmony-arm64@1.2.7",
-      "registryUrl": "https://registry.npmjs.org/@rolldown/binding-openharmony-arm64/-/binding-openharmony-arm64-1.2.7.tgz",
-      "sha256": "f7703f7f18f86babfbaac909c00728f03fc1171c4e23fcd039cce589a26a3698",
-      "sizeBytes": 7478348
-    },
     "@rolldown/binding-win32-arm64-msvc@1.2.13": {
       "bins": {},
       "classification": "public",
@@ -2672,15 +2555,6 @@
       "sha256": "7a4bf7d7f12f00066f50b080416722391aaceaa47d094b295ab019a5839e4771",
       "sizeBytes": 7851321
     },
-    "@rolldown/binding-win32-arm64-msvc@1.2.7": {
-      "bins": {},
-      "classification": "public",
-      "integrity": "sha512-e3Gu3WxbNk/UqQhxqU7YIYO+9ZBvWNz3U+h/qRFosscMFzdRPbXYSaSWgSnklv2fz1TgzBTcti2z35c/7irsHw==",
-      "packageIdentity": "@rolldown/binding-win32-arm64-msvc@1.2.7",
-      "registryUrl": "https://registry.npmjs.org/@rolldown/binding-win32-arm64-msvc/-/binding-win32-arm64-msvc-1.2.7.tgz",
-      "sha256": "43ea9452be7888525cf7c44f5f66ef5a27681c81b943bb998360a4065a618b8e",
-      "sizeBytes": 7630929
-    },
     "@rolldown/binding-win32-x64-msvc@1.2.13": {
       "bins": {},
       "classification": "public",
@@ -2689,15 +2563,6 @@
       "registryUrl": "https://registry.npmjs.org/@rolldown/binding-win32-x64-msvc/-/binding-win32-x64-msvc-1.2.13.tgz",
       "sha256": "4be3eb3db40c945a518b977ce5c180a23337b5dbd80b25be0c60cadcb7d90491",
       "sizeBytes": 8252358
-    },
-    "@rolldown/binding-win32-x64-msvc@1.2.7": {
-      "bins": {},
-      "classification": "public",
-      "integrity": "sha512-W/jg5qoRSqjsEv0+dZi4e687mcHqmVuU0P4fK6qS/xjetW2Gmc1W8j//z5nAeNcC8Ttm0hV46IjcYeuVwYhuiw==",
-      "packageIdentity": "@rolldown/binding-win32-x64-msvc@1.2.7",
-      "registryUrl": "https://registry.npmjs.org/@rolldown/binding-win32-x64-msvc/-/binding-win32-x64-msvc-1.2.7.tgz",
-      "sha256": "a57a0164781a1d7ec24b3b67c8274ea9f3e9857b30ecfba83acca9f49006f5ce",
-      "sizeBytes": 8004534
     },
     "@rolldown/pluginutils@1.0.1": {
       "bins": {},
@@ -6210,17 +6075,6 @@
       "sha256": "6609ae17a89a69e6e97acc3a1c5d5473b20b8c93ec2a3ed4d6f6bf71f691d6bf",
       "sizeBytes": 203136
     },
-    "rolldown@1.2.7": {
-      "bins": {
-        "rolldown": "bin/cli.mjs"
-      },
-      "classification": "public",
-      "integrity": "sha512-g0EtLvBjTUB7jhyV0S/TCup3v/XSVl45vUIGbOGU4QPiyjTenCe4mKuFvW9fEgYmS2Fo42AUssRmNuMziXdrig==",
-      "packageIdentity": "rolldown@1.2.7",
-      "registryUrl": "https://registry.npmjs.org/rolldown/-/rolldown-1.2.7.tgz",
-      "sha256": "dd719a90ec82b9673bef3f0bee5e3a3bac427852bf0b2ac234471cf792725a4d",
-      "sizeBytes": 195953
-    },
     "rou3@0.8.1": {
       "bins": {},
       "classification": "public",
@@ -6997,5 +6851,5 @@
   "source": "pnpm-lock.yaml",
   "generator": "buck2/dependencies/pnpm-lock.sha256.json.genie.ts",
   "regenerate": "devenv tasks run genie:run",
-  "fingerprint": "sha256:1df11b7b53c6d72c5a3dd45fc4e68460be6ee1d4b806ac800d49a5cce68cafde"
+  "fingerprint": "sha256:e38d62184741915147115275edbfdee0c2247efb786e216d8b19153f3d29a8bd"
 }

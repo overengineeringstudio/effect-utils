@@ -23,6 +23,7 @@
     "libsodium-wrappers": "0.8.4"
   },
   "devDependencies": {
+    "@effect/platform-bun": "4.1.0",
     "@effect/platform-node": "4.1.0",
     "@effect/vitest": "4.1.0",
     "@types/node": "26.5.0",

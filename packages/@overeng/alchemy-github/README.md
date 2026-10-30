@@ -114,6 +114,8 @@ const ruleset =
 
 Unit tests cover manifest generation/default-disabled hooks, escaping and drift diffs. Local HTTP integration tests implement conversion, App observation and repository/environment Actions secret endpoints, decrypt the sealed payload, and assert PEM absence from serialized Alchemy state, outputs, logs and errors. A contract test asserts Ruleset is exactly upstream's resource, not a competing provider.
 
+Real beta.84 Plan/Deploy engine tests persist registration attributes, then verify unchanged redeploys reject live permission/event drift and missing secrets. Host tests cover GitHub.com, data-residency browser/API origins, and Enterprise Server. Conversion recovery tests retain pending attributes after a post-sink drift error, reject replay, and recover via explicit adoption.
+
 The manual **read-only App adoption** lane is skipped unless all these variables are set:
 
 - `ALCHEMY_GITHUB_LIVE=1`

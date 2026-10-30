@@ -1,7 +1,14 @@
+// The upstream Test/Core adapter intentionally exposes generic engine error/service
+// channels; keep them intact so these tests exercise the real engine, not a cast facade.
+/** @effect-diagnostics anyUnknownInErrorContext:off */
+import { mkdtemp, rm } from 'node:fs/promises'
 import { createServer } from 'node:http'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 
 import { fromToken } from '@alchemy.run/github/Credentials'
 import { it } from '@effect/vitest'
+import { AlchemyContext } from 'alchemy/AlchemyContext'
 import * as Provider from 'alchemy/Provider'
 import { State } from 'alchemy/State'
 import { scratchStack, toEffect } from 'alchemy/Test/Core'
@@ -15,6 +22,11 @@ import { Providers } from './Providers.ts'
 const encodeJson = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown))
 
 const fixture = Effect.gen(function* () {
+  const directory = yield* Effect.acquireRelease(
+    Effect.promise(() => mkdtemp(join(tmpdir(), 'alchemy-github-engine-'))),
+    (path) => Effect.promise(() => rm(path, { recursive: true })),
+  )
+  const context = { dotAlchemy: directory, dev: false, adopt: false }
   const live = {
     permissions: { contents: 'read', metadata: 'read' },
     events: ['push'],
@@ -88,7 +100,15 @@ const fixture = Effect.gen(function* () {
     const state = yield* yield* State
     return yield* state.get({ stack: stack.name, stage: stack.stage, fqn: 'App' })
   }).pipe(Effect.provide(stack.state))
-  return { live, stack, props, program, persisted, options: { ...options, state: stack.state } }
+  return {
+    live,
+    stack,
+    props,
+    program,
+    persisted,
+    context,
+    options: { ...options, state: stack.state },
+  }
 })
 
 for (const drift of ['permissions', 'events'] as const) {
@@ -137,7 +157,7 @@ for (const drift of ['permissions', 'events'] as const) {
             expect(yield* f.persisted).toEqual(before)
           }),
           f.options,
-        )
+        ).pipe(Effect.provideService(AlchemyContext, f.context))
       }),
   )
 }
@@ -161,7 +181,7 @@ it.effect('real engine rejects a missing secret during an otherwise unchanged re
         expect(yield* f.persisted).toEqual(before)
       }),
       f.options,
-    )
+    ).pipe(Effect.provideService(AlchemyContext, f.context))
   }),
 )
 
@@ -181,6 +201,6 @@ it.effect('real engine refuses fresh adoption without the declared secret', () =
         expect(yield* f.persisted).not.toMatchObject({ attr: { status: 'registered' } })
       }),
       f.options,
-    )
+    ).pipe(Effect.provideService(AlchemyContext, f.context))
   }),
 )

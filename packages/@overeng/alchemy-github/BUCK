@@ -4,7 +4,7 @@
 # Projection source: packages/@overeng/alchemy-github/BUCK.genie.ts
 # Projection schema version: 13
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:4f2b047286a8c1e26b117e670dcc3674c383740c72ec718ac6756108f7b2e5a8
+# Semantic fingerprint: sha256:c3c85bcbbbac1048d5bcafe9db57c3a37f4cb8c13214051ac3e17ab12ca32fd1
 # Regenerate: devenv tasks run genie:run
 
 load("//buck2:materialization.bzl", "export_materialization_inputs", "package_view")
@@ -27,6 +27,8 @@ export_materialization_inputs([
     "src/AppErrors.ts",
     "src/Providers.ts",
     "src/Ruleset.unit.test.ts",
+    "src/engine.integration.test.ts",
+    "src/host.unit.test.ts",
     "src/manifest.ts",
     "src/manifest.unit.test.ts",
     "src/mod.ts",
@@ -77,6 +79,8 @@ package_view(
         "src/AppErrors.ts": "src/AppErrors.ts",
         "src/Providers.ts": "src/Providers.ts",
         "src/Ruleset.unit.test.ts": "src/Ruleset.unit.test.ts",
+        "src/engine.integration.test.ts": "src/engine.integration.test.ts",
+        "src/host.unit.test.ts": "src/host.unit.test.ts",
         "src/manifest.ts": "src/manifest.ts",
         "src/manifest.unit.test.ts": "src/manifest.unit.test.ts",
         "src/mod.ts": "src/mod.ts",
@@ -105,6 +109,8 @@ package_view(
         "src/AppErrors.ts": "src/AppErrors.ts",
         "src/Providers.ts": "src/Providers.ts",
         "src/Ruleset.unit.test.ts": "src/Ruleset.unit.test.ts",
+        "src/engine.integration.test.ts": "src/engine.integration.test.ts",
+        "src/host.unit.test.ts": "src/host.unit.test.ts",
         "src/manifest.ts": "src/manifest.ts",
         "src/manifest.unit.test.ts": "src/manifest.unit.test.ts",
         "src/mod.ts": "src/mod.ts",
@@ -133,6 +139,8 @@ package_view(
         "src/AppErrors.ts": "src/AppErrors.ts",
         "src/Providers.ts": "src/Providers.ts",
         "src/Ruleset.unit.test.ts": "src/Ruleset.unit.test.ts",
+        "src/engine.integration.test.ts": "src/engine.integration.test.ts",
+        "src/host.unit.test.ts": "src/host.unit.test.ts",
         "src/manifest.ts": "src/manifest.ts",
         "src/manifest.unit.test.ts": "src/manifest.unit.test.ts",
         "src/mod.ts": "src/mod.ts",

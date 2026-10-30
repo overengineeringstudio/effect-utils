@@ -63,6 +63,8 @@
         "src/App.integration.test.ts",
         "src/App.live.test.ts",
         "src/Ruleset.unit.test.ts",
+        "src/engine.integration.test.ts",
+        "src/host.unit.test.ts",
         "src/manifest.unit.test.ts"
       ],
       "sourceOwners": {},
@@ -72,6 +74,8 @@
         "src/App.integration.test.ts",
         "src/App.live.test.ts",
         "src/Ruleset.unit.test.ts",
+        "src/engine.integration.test.ts",
+        "src/host.unit.test.ts",
         "src/manifest.unit.test.ts"
       ],
       "unboundedAfter": [],
