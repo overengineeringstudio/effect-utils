@@ -5,6 +5,7 @@ import { rootWorkspacePackages } from '../package.json.genie.ts'
 import agentSessionIngestTsconfig from '../packages/@overeng/agent-session-ingest/tsconfig.json.genie.ts'
 import aiGatewayConformanceTsconfig from '../packages/@overeng/ai-gateway-conformance/tsconfig.json.genie.ts'
 import aiGatewayEdgeTsconfig from '../packages/@overeng/ai-gateway-edge/tsconfig.json.genie.ts'
+import alchemyGitHubTsconfig from '../packages/@overeng/alchemy-github/tsconfig.json.genie.ts'
 import buck2ToolsTsconfig from '../packages/@overeng/buck2-tools/tsconfig.json.genie.ts'
 import ciToolsTsconfig from '../packages/@overeng/ci-tools/tsconfig.json.genie.ts'
 import contentAddressTsconfig from '../packages/@overeng/content-address/tsconfig.json.genie.ts'
@@ -123,6 +124,7 @@ const rootWorkspaceTsconfigProjects = (() => {
     'packages/@overeng/agent-session-ingest': { tsconfig: agentSessionIngestTsconfig },
     'packages/@overeng/ai-gateway-conformance': { tsconfig: aiGatewayConformanceTsconfig },
     'packages/@overeng/ai-gateway-edge': { tsconfig: aiGatewayEdgeTsconfig },
+    'packages/@overeng/alchemy-github': { tsconfig: alchemyGitHubTsconfig },
     'packages/@overeng/buck2-tools': { tsconfig: buck2ToolsTsconfig },
     'packages/@overeng/ci-tools': { tsconfig: ciToolsTsconfig },
     'packages/@overeng/content-address': { tsconfig: contentAddressTsconfig },

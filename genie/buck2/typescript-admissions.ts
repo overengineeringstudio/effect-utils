@@ -3,6 +3,7 @@ import { buck2TypeScriptAdmission as opentuiAdmission } from '../../context/open
 import { buck2TypeScriptAdmission as agentSessionIngestAdmission } from '../../packages/@overeng/agent-session-ingest/BUCK.genie.ts'
 import { buck2TypeScriptAdmission as aiGatewayConformanceAdmission } from '../../packages/@overeng/ai-gateway-conformance/BUCK.genie.ts'
 import { buck2TypeScriptAdmission as aiGatewayEdgeAdmission } from '../../packages/@overeng/ai-gateway-edge/BUCK.genie.ts'
+import { buck2TypeScriptAdmission as alchemyGitHubAdmission } from '../../packages/@overeng/alchemy-github/BUCK.genie.ts'
 import { buck2TypeScriptAdmission as buck2ToolsAdmission } from '../../packages/@overeng/buck2-tools/BUCK.genie.ts'
 import { buck2TypeScriptAdmission as ciToolsAdmission } from '../../packages/@overeng/ci-tools/BUCK.genie.ts'
 import { buck2TypeScriptAdmission as contentAddressAdmission } from '../../packages/@overeng/content-address/BUCK.genie.ts'
@@ -96,6 +97,7 @@ export const buck2TypeScriptAdmissions = {
   agentSessionIngest: agentSessionIngestAdmission,
   aiGatewayConformance: aiGatewayConformanceAdmission,
   aiGatewayEdge: aiGatewayEdgeAdmission,
+  alchemyGitHub: alchemyGitHubAdmission,
   buck2Tools: buck2ToolsAdmission,
   ciTools: ciToolsAdmission,
   contentAddress: contentAddressAdmission,

@@ -1,0 +1,223 @@
+import { generateKeyPairSync } from 'node:crypto'
+import { createServer } from 'node:http'
+
+import { it } from '@effect/vitest'
+import { fromToken } from '@alchemy.run/github/Credentials'
+import { encodeState } from 'alchemy/State/StateEncoding'
+import { Effect, Logger, Redacted, Schema } from 'effect'
+import sodium from 'libsodium-wrappers'
+import { expect } from 'vitest'
+
+import { deleteApp, diffApp, readAppState, reconcileApp, type AppProps } from './App.ts'
+
+const Json = Schema.fromJsonString(Schema.Unknown)
+const encodeJson = Schema.encodeSync(Json)
+const decodeSecret = Schema.decodeUnknownSync(Schema.fromJsonString(Schema.Struct({ encrypted_value: Schema.String, key_id: Schema.String })))
+const manifest: AppProps['manifest'] = {
+  name: 'Example App', url: 'https://example.com', redirectUrl: 'https://example.com/callback',
+  permissions: { contents: 'read' }, events: ['push'],
+}
+
+const fixture = (environment?: string) => Effect.gen(function* () {
+  yield* Effect.promise(async () => { await sodium.ready })
+  const pair = sodium.crypto_box_keypair()
+  const rsa = generateKeyPairSync('rsa', { modulusLength: 2048 })
+  const pem = rsa.privateKey.export({ type: 'pkcs8', format: 'pem' }).toString()
+  const state = { conversionCalls: 0, writeCalls: 0, writeStatus: 201, secretStatus: 200, contents: '', seen: [] as string[], permission: 'read', secretName: 'APP_PRIVATE_KEY', updatedAt: '2026-01-02T00:00:00Z' }
+  const metadata = () => ({ id: 123, slug: 'example-app', client_id: 'Iv1.example', owner: { login: 'example' }, permissions: { contents: state.permission, metadata: 'read' }, events: ['push'] })
+  const server = createServer(async (request, response) => {
+    const path = (request.url ?? '').replace(/^\/api/, '')
+    state.seen.push(`${request.method} ${path}`)
+    response.setHeader('content-type', 'application/json')
+    if (path.endsWith('/public-key')) {
+      response.end(encodeJson({ key_id: 'key-1', key: sodium.to_base64(pair.publicKey, sodium.base64_variants.ORIGINAL) }))
+    } else if (path === '/app-manifests/one-use-code/conversions' && request.method === 'POST') {
+      state.conversionCalls++
+      response.statusCode = 201
+      response.end(encodeJson({ ...metadata(), pem, client_secret: 'discard-client-secret', webhook_secret: 'discard-hook-secret' }))
+    } else if (path.endsWith('/APP_PRIVATE_KEY') && request.method === 'PUT') {
+      state.writeCalls++
+      let body = ''
+      for await (const chunk of request) body += chunk.toString()
+      const sealed = decodeSecret(body)
+      state.contents = sodium.to_string(sodium.crypto_box_seal_open(sodium.from_base64(sealed.encrypted_value, sodium.base64_variants.ORIGINAL), pair.publicKey, pair.privateKey))
+      response.statusCode = state.writeStatus
+      // Deliberately echo secrets in the failing response: none may survive in the error.
+      response.end(encodeJson(state.writeStatus >= 400 ? { message: pem, client_secret: 'discard-client-secret' } : {}))
+    } else if (path.endsWith('/APP_PRIVATE_KEY') && request.method === 'GET') {
+      response.statusCode = state.secretStatus
+      response.end(encodeJson({ name: state.secretName, created_at: '2026-01-01T00:00:00Z', updated_at: state.updatedAt }))
+    } else if (path === '/apps/example-app') {
+      response.end(encodeJson(metadata()))
+    } else {
+      response.statusCode = 404
+      response.end('{}')
+    }
+  })
+  yield* Effect.acquireRelease(
+    Effect.promise(() => new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))),
+    () => Effect.promise(() => new Promise<void>((resolve) => server.close(() => resolve()))),
+  )
+  const address = server.address()
+  if (address === null || typeof address === 'string') return yield* Effect.die('Expected TCP fixture')
+  const credentials = fromToken('fixture-token', { baseUrl: `http://127.0.0.1:${address.port}/api` })
+  const props: AppProps = { owner: 'example', manifest, privateKeySecret: { owner: 'example', repository: 'repo', name: 'APP_PRIVATE_KEY', ...(environment === undefined ? {} : { environment }) } }
+  const pending = yield* reconcileApp(props).pipe(Effect.provide(credentials))
+  if (pending.status !== 'pending') return yield* Effect.die('Expected pending manifest')
+  const converting: AppProps = { ...props, conversion: { code: Redacted.make('one-use-code'), state: pending.state } }
+  return { state, pem, credentials, props, converting, pending }
+})
+
+for (const environment of [undefined, 'production']) {
+  it.effect(`converts and seals directly to ${environment ?? 'repository'} Actions secret without returning PEM`, () => Effect.gen(function* () {
+    const f = yield* fixture(environment)
+    const logs: string[] = []
+    const logger = Logger.make((entry) => { logs.push(encodeJson(entry.message)) })
+    const result = yield* reconcileApp(f.converting, f.pending).pipe(
+      Effect.tap((output) => Effect.log(output)),
+      Effect.provide(f.credentials),
+      Effect.provide(Logger.layer([logger], { mergeWithExisting: false })),
+    )
+    expect(result.status).toBe('registered')
+    if (result.status !== 'registered') return yield* Effect.die('Expected registration')
+    expect(result.appId).toBe(123)
+    expect(result.integrationId).toBe(123)
+    expect(result.keyFingerprint).toMatch(/^[a-f0-9]{64}$/)
+    expect(result.privateKeySecret).toMatchObject({ name: 'APP_PRIVATE_KEY', scope: environment === undefined ? 'repository' : 'environment', updatedAt: f.state.updatedAt })
+    expect(f.state.contents).toBe(f.pem)
+    expect(f.state.conversionCalls).toBe(1)
+    expect(f.state.writeCalls).toBe(1)
+    expect(f.state.seen[0]).toBe(`GET /repos/example/repo/${environment === undefined ? 'actions' : 'environments/production'}/secrets/public-key`)
+    const serialized = encodeJson(result)
+    expect(serialized).not.toContain('PRIVATE KEY')
+    expect(serialized).not.toContain('discard-client-secret')
+    expect(serialized).not.toContain('discard-hook-secret')
+    const state = encodeJson(encodeState({ props: f.converting, attr: result }))
+    expect(state).not.toContain(f.pem)
+    expect(state).not.toContain('PRIVATE KEY')
+    expect(logs.join('\n')).not.toContain('PRIVATE KEY')
+  }))
+}
+
+it.effect('returns sanitized manual-recovery error after one-use conversion and a failed sink', () => Effect.gen(function* () {
+  const f = yield* fixture()
+  f.state.writeStatus = 403
+  const error = yield* reconcileApp(f.converting, f.pending).pipe(Effect.provide(f.credentials), Effect.flip)
+  expect(error._tag).toBe('AppConversionRecoveryError')
+  const serialized = encodeJson(error)
+  expect(serialized).not.toContain('PRIVATE KEY')
+  expect(serialized).not.toContain('discard-client-secret')
+  expect(serialized).not.toContain('one-use-code')
+  expect(serialized).toContain('revoke')
+  expect(f.state.conversionCalls).toBe(1)
+  expect(f.state.writeCalls).toBe(1)
+}))
+
+it.effect('rejects expired codes and wrong callback states before any HTTP request', () => Effect.gen(function* () {
+  const f = yield* fixture()
+  const expired = { ...f.pending, expiresAt: 0 }
+  const error = yield* reconcileApp(f.converting, expired).pipe(Effect.provide(f.credentials), Effect.flip)
+  expect(error._tag).toBe('GitHubAppResourceError')
+  const mismatch = { ...f.converting, conversion: { code: Redacted.make('one-use-code'), state: 'wrong' } }
+  yield* reconcileApp(mismatch, f.pending).pipe(Effect.provide(f.credentials), Effect.flip)
+  expect(f.state.seen).toEqual([])
+}))
+
+it.effect('adopts metadata without conversion or key access and reports typed live drift', () => Effect.gen(function* () {
+  const f = yield* fixture()
+  const adopting: AppProps = { ...f.props, adopt: { slug: 'example-app', appId: 123, installationId: 456 } }
+  const registered = yield* reconcileApp(adopting).pipe(Effect.provide(f.credentials))
+  expect(registered).toMatchObject({ status: 'registered', appId: 123, installationId: 456 })
+  expect(registered).not.toHaveProperty('keyFingerprint')
+  expect(f.state.conversionCalls).toBe(0)
+  expect(f.state.writeCalls).toBe(0)
+  f.state.permission = 'write'
+  const drift = yield* reconcileApp(adopting, registered).pipe(Effect.provide(f.credentials), Effect.flip)
+  expect(drift._tag).toBe('AppManifestDriftError')
+  expect(drift).toMatchObject({ permissions: [{ permission: 'contents', desired: 'read', observed: 'write' }] })
+}))
+
+it.effect('refuses adoption when the declared Actions secret is missing', () => Effect.gen(function* () {
+  const f = yield* fixture()
+  f.state.secretStatus = 404
+  const error = yield* reconcileApp({ ...f.props, adopt: { slug: 'example-app' } }).pipe(Effect.provide(f.credentials), Effect.flip)
+  expect(error._tag).toBe('GitHubAppResourceError')
+  expect(f.state.seen).toHaveLength(1)
+}))
+
+it.effect('resumes the same pending form and refreshes only after its hour expires', () => Effect.gen(function* () {
+  const f = yield* fixture()
+  const resumed = yield* reconcileApp(f.props, f.pending).pipe(Effect.provide(f.credentials))
+  expect(resumed).toEqual(f.pending)
+  expect(f.pending.manifestHtml).toContain('method="post"')
+  expect(f.pending.expiresAt - f.pending.startedAt).toBe(3_600_000)
+  const refreshed = yield* reconcileApp(f.props, { ...f.pending, expiresAt: 0 }).pipe(Effect.provide(f.credentials))
+  expect(refreshed.status).toBe('pending')
+  if (refreshed.status !== 'pending') return yield* Effect.die('Expected pending form')
+  expect(refreshed.state).not.toBe(f.pending.state)
+  expect(f.state.seen).toEqual([])
+}))
+
+it.effect('sinks the one-time key even when the owner changed manifest permissions in the browser', () => Effect.gen(function* () {
+  const f = yield* fixture()
+  f.state.permission = 'write'
+  const error = yield* reconcileApp(f.converting, f.pending).pipe(Effect.provide(f.credentials), Effect.flip)
+  expect(error._tag).toBe('AppManifestDriftError')
+  expect(f.state.writeCalls).toBe(1)
+  expect(f.state.contents).toBe(f.pem)
+  expect(encodeJson(error)).not.toContain('PRIVATE KEY')
+}))
+
+it.effect('observes secret timestamp drift and removes a stale key fingerprint', () => Effect.gen(function* () {
+  const f = yield* fixture()
+  const registered = yield* reconcileApp(f.converting, f.pending).pipe(Effect.provide(f.credentials))
+  expect(registered.status).toBe('registered')
+  f.state.updatedAt = '2026-02-01T00:00:00Z'
+  const observed = yield* reconcileApp(f.props, registered).pipe(Effect.provide(f.credentials))
+  expect(observed).not.toHaveProperty('keyFingerprint')
+  expect(observed).toMatchObject({ privateKeySecret: { updatedAt: f.state.updatedAt } })
+}))
+
+it.effect('refuses mismatched secret metadata names', () => Effect.gen(function* () {
+  const f = yield* fixture()
+  f.state.secretName = 'DIFFERENT_KEY'
+  const error = yield* reconcileApp({ ...f.props, adopt: { slug: 'example-app' } }).pipe(Effect.provide(f.credentials), Effect.flip)
+  expect(error._tag).toBe('GitHubAppResourceError')
+  expect(f.state.conversionCalls).toBe(0)
+}))
+
+it.effect('observes remote drift before a no-op plan and accepts browser-remedied declarations', () => Effect.gen(function* () {
+  const f = yield* fixture()
+  const registered = yield* reconcileApp(f.converting, f.pending).pipe(Effect.provide(f.credentials))
+  f.state.permission = 'write'
+  const observed = yield* readAppState(f.props, registered).pipe(Effect.provide(f.credentials))
+  expect(observed).toMatchObject({ permissions: { contents: 'write' } })
+  const drift = yield* diffApp(f.props, observed, f.props).pipe(Effect.provide(f.credentials), Effect.flip)
+  expect(drift._tag).toBe('AppManifestDriftError')
+  const desired: AppProps = { ...f.props, manifest: { ...f.props.manifest, permissions: { contents: 'write' } } }
+  yield* diffApp(desired, observed, f.props).pipe(Effect.provide(f.credentials))
+  const reconciled = yield* reconcileApp(desired, observed, f.props).pipe(Effect.provide(f.credentials))
+  expect(reconciled).toMatchObject({ permissions: { contents: 'write' } })
+  f.state.secretStatus = 404
+  const missing = yield* readAppState(desired, reconciled).pipe(Effect.provide(f.credentials), Effect.flip)
+  expect(missing._tag).toBe('GitHubAppResourceError')
+}))
+
+it.effect('plans conversion and expiration updates while keeping unchanged pending plans stable', () => Effect.gen(function* () {
+  const f = yield* fixture()
+  expect(yield* readAppState(f.props, f.pending).pipe(Effect.provide(f.credentials))).toEqual(f.pending)
+  expect(yield* diffApp(f.props, f.pending, f.props).pipe(Effect.provide(f.credentials))).toBeUndefined()
+  expect(yield* diffApp(f.converting, f.pending, f.props).pipe(Effect.provide(f.credentials))).toEqual({ action: 'update' })
+  expect(yield* diffApp(f.props, { ...f.pending, expiresAt: 0 }, f.props).pipe(Effect.provide(f.credentials))).toEqual({ action: 'update' })
+  expect(f.state.seen).toEqual([])
+}))
+
+it.effect('allows pending removal but fails closed for registered deletion unless explicitly orphaned', () => Effect.gen(function* () {
+  const f = yield* fixture()
+  yield* deleteApp(f.props, f.pending)
+  const registered = yield* reconcileApp(f.converting, f.pending).pipe(Effect.provide(f.credentials))
+  const error = yield* deleteApp(f.props, registered).pipe(Effect.flip)
+  expect(error._tag).toBe('GitHubAppResourceError')
+  yield* deleteApp({ ...f.props, destroy: 'orphan' }, registered)
+  expect(f.state.seen.some((request) => request.startsWith('DELETE'))).toBe(false)
+}))

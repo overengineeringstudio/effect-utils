@@ -310,6 +310,10 @@ export const catalog = defineCatalog({
   // the `effect` core package (mostly under `effect/*`); only these
   // packages remain separate.
   effect: '4.0.3',
+  // Alchemy beta.84 follows stable Effect 4; the next tag is an older incompatible beta.
+  alchemy: '2.0.0-beta.84',
+  '@alchemy.run/github': '2.0.0-beta.84',
+  'libsodium-wrappers': '0.8.4',
   '@number0/iroh': '1.1.0',
   '@effect/ai-openai-compat': '4.0.3',
   '@effect/ai-typesafe': '4.0.3',

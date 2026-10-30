@@ -1,0 +1,48 @@
+{
+  "$genie": {
+    "source": "package.json.genie.ts",
+    "warning": "DO NOT EDIT - changes will be overwritten",
+    "workspaceClosureDirs": [
+      "packages/@overeng/alchemy-github"
+    ]
+  },
+  "name": "@overeng/alchemy-github",
+  "version": "0.1.0",
+  "type": "module",
+  "private": true,
+  "description": "GitHub App and repository Ruleset resources for Alchemy v2",
+  "license": "Apache-2.0",
+  "exports": {
+    ".": {
+      "types": "./dist/src/mod.d.ts",
+      "default": "./src/mod.ts"
+    }
+  },
+  "dependencies": {
+    "@alchemy.run/github": "2.0.0-beta.84",
+    "libsodium-wrappers": "0.8.4"
+  },
+  "devDependencies": {
+    "@effect/platform-node": "4.0.3",
+    "@effect/vitest": "4.0.3",
+    "@types/node": "26.5.0",
+    "alchemy": "2.0.0-beta.84",
+    "effect": "4.0.3",
+    "typescript": "7.0.2",
+    "vite": "8.2.2",
+    "vitest": "5.0.3"
+  },
+  "peerDependencies": {
+    "alchemy": "2.0.0-beta.84",
+    "effect": "^4.0.3"
+  },
+  "publishConfig": {
+    "access": "public",
+    "exports": {
+      ".": {
+        "types": "./dist/src/mod.d.ts",
+        "default": "./dist/src/mod.js"
+      }
+    }
+  }
+}

@@ -12,6 +12,7 @@
     "packages/@overeng/agent-session-ingest",
     "packages/@overeng/ai-gateway-conformance",
     "packages/@overeng/ai-gateway-edge",
+    "packages/@overeng/alchemy-github",
     "packages/@overeng/buck2-tools",
     "packages/@overeng/ci-tools",
     "packages/@overeng/content-address",

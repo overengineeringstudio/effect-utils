@@ -4,7 +4,7 @@
 # Projection source: BUCK.genie.ts
 # Projection schema version: 1
 # Projection generator: effect-utils/genie/buck2-root-aggregate-projection
-# Semantic fingerprint: sha256:9f8bf8b374230db74b8c34def55b113955e42a78c3ca1542a133eeda3961f6d4
+# Semantic fingerprint: sha256:fb9532374f5918f117f7fa983c5be71ce72a53ef2865c86f4528953fc7c5e78c
 # Regenerate: devenv tasks run genie:run
 load("//buck2:weaver.bzl", "weaver_checks")
 load("//buck2:check_aggregate.bzl", "check_aggregate")
@@ -181,6 +181,7 @@ check_aggregate(
         "//packages/@overeng/agent-session-ingest:typecheck",
         "//packages/@overeng/ai-gateway-conformance:typecheck",
         "//packages/@overeng/ai-gateway-edge:typecheck",
+        "//packages/@overeng/alchemy-github:typecheck",
         "//packages/@overeng/buck2-tools:typecheck",
         "//packages/@overeng/ci-tools:typecheck",
         "//packages/@overeng/content-address:typecheck",
@@ -251,6 +252,7 @@ check_aggregate(
         "//packages/@overeng/agent-session-ingest:dist",
         "//packages/@overeng/ai-gateway-conformance:dist",
         "//packages/@overeng/ai-gateway-edge:dist",
+        "//packages/@overeng/alchemy-github:dist",
         "//packages/@overeng/buck2-tools:dist",
         "//packages/@overeng/ci-tools:dist",
         "//packages/@overeng/content-address:dist",
@@ -305,6 +307,7 @@ check_aggregate(
         "//packages/@overeng/utils-storybook:dist",
         "effect_utils//packages/@overeng/agent-session-ingest:test",
         "effect_utils//packages/@overeng/ai-gateway-edge:test",
+        "effect_utils//packages/@overeng/alchemy-github:test",
         "effect_utils//packages/@overeng/ci-tools:test",
         "effect_utils//packages/@overeng/ci-tools:test_pipeline_report_local_api",
         "effect_utils//packages/@overeng/content-address:test",

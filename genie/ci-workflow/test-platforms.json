@@ -148,6 +148,10 @@
         "rationale": "ai-gateway-edge bounded parsing, schema, API, rendering or build-contract assertions; no Darwin-specific host lifecycle regression. Host-sensitive source complements are classified independently."
       },
       {
+        "task": "test:alchemy-github",
+        "rationale": "Manifest, drift and ruleset mapping assertions with local HTTP endpoints; no host-specific lifecycle behavior. Live GitHub integration is opt-in and skipped in CI."
+      },
+      {
         "task": "test:ci-tools",
         "rationale": "ci-tools bounded parsing, schema, API, rendering or build-contract assertions; no Darwin-specific host lifecycle regression. Host-sensitive source complements are classified independently."
       },

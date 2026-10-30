@@ -54,6 +54,30 @@
       "unboundedFiles": []
     },
     {
+      "collectionTarget": "effect_utils//packages/@overeng/alchemy-github:test_collect",
+      "excludes": [],
+      "packageName": "alchemy-github",
+      "packagePath": "packages/@overeng/alchemy-github",
+      "runner": "vitest",
+      "selectedTestFiles": [
+        "src/App.integration.test.ts",
+        "src/App.live.test.ts",
+        "src/Ruleset.unit.test.ts",
+        "src/manifest.unit.test.ts"
+      ],
+      "sourceOwners": {},
+      "target": "effect_utils//packages/@overeng/alchemy-github:test",
+      "taskName": "test:alchemy-github",
+      "testFiles": [
+        "src/App.integration.test.ts",
+        "src/App.live.test.ts",
+        "src/Ruleset.unit.test.ts",
+        "src/manifest.unit.test.ts"
+      ],
+      "unboundedAfter": [],
+      "unboundedFiles": []
+    },
+    {
       "collectionTarget": "effect_utils//packages/@overeng/ci-tools:test_collect",
       "excludes": [
         "src/deploy-cloudflare-workers.e2e.test.ts",
