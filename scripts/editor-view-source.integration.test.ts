@@ -5,9 +5,11 @@ import {
   chmodSync,
   closeSync,
   existsSync,
+  mkdirSync,
   mkdtempSync,
   openSync,
   readFileSync,
+  realpathSync,
   rmSync,
   writeFileSync,
   statSync,
@@ -43,9 +45,9 @@ const inheritedRead = `const fs = require('node:fs'); process.stdout.write(fs.re
 
 describe('verified private lease preload', () => {
   const installer = new URL('../nix/editor-view-lease/prepare-preload.sh', import.meta.url).pathname
-  const install = (directory: string) =>
+  const install = (directory: string, home = join(directory, 'home')) =>
     spawnSync('bash', [installer, preload], {
-      env: { ...cleanEnvironment(), XDG_RUNTIME_DIR: directory, TMPDIR: directory },
+      env: { ...cleanEnvironment(), XDG_RUNTIME_DIR: directory, TMPDIR: directory, HOME: home },
       encoding: 'utf8',
     })
   it('the real source launcher exports the same verified copy to every consumer', () => {
@@ -77,7 +79,7 @@ describe('verified private lease preload', () => {
     expect(result.status).toBe(0)
     const path = result.stdout.trim()
     const digest = createHash('sha256').update(readFileSync(preload)).digest('hex')
-    expect(path).toBe(join(directory, 'editor-view-lease', `preload-${digest}.cjs`))
+    expect(path).toBe(join(realpathSync(directory), 'editor-view-lease', `preload-${digest}.cjs`))
     expect(path.startsWith('/nix/store/')).toBe(false)
     expect(readFileSync(path)).toEqual(readFileSync(preload))
     expect(statSync(path).mode & 0o777).toBe(0o444)
@@ -88,6 +90,8 @@ describe('verified private lease preload', () => {
     const refused = install(directory)
     expect(refused.status).not.toBe(0)
     expect(refused.stderr).toContain('untrusted preload hash')
+    expect(refused.stderr).toContain(path)
+    expect(refused.stderr).toContain('the next launch reinstalls it')
     expect(refused.stdout).toBe('')
   })
   it('concurrent installers converge on the same verified file', async () => {
@@ -125,7 +129,8 @@ describe('verified private lease preload', () => {
       chmodSync(directory, mode)
       const result = install(directory)
       expect(result.status).not.toBe(0)
-      expect(result.stderr).toContain('untrusted preload directory')
+      expect(result.stderr).toContain('unsafe runtime directory')
+      expect(result.stderr).toContain(directory)
     })
   }
   it.skipIf(process.getuid?.() === 0)('refuses a runtime directory owned by another user', () => {
@@ -148,6 +153,82 @@ describe('verified private lease preload', () => {
     const refused = install(directory)
     expect(refused.status).not.toBe(0)
     expect(refused.stderr).toContain('untrusted preload mode')
+  })
+  for (const mode of [0o770, 0o707]) {
+    it(`skips a candidate beneath a non-sticky writable ancestor (${mode.toString(8)})`, () => {
+      const ancestor = fixture()
+      const candidate = join(ancestor, 'runtime')
+      const home = fixture()
+      mkdirSync(candidate, { mode: 0o700 })
+      chmodSync(ancestor, mode)
+      const result = install(candidate, home)
+      expect(result.status).toBe(0)
+      expect(result.stdout.trim().startsWith(join(realpathSync(home), '.cache'))).toBe(true)
+      expect(result.stderr).toContain(realpathSync(ancestor))
+      expect(result.stderr).toContain('fix')
+    })
+  }
+  it('accepts a sticky world-writable ancestor', () => {
+    const ancestor = fixture()
+    const candidate = join(ancestor, 'runtime')
+    mkdirSync(candidate, { mode: 0o700 })
+    chmodSync(ancestor, 0o1777)
+    const result = install(candidate)
+    expect(result.status).toBe(0)
+    expect(result.stdout.trim().startsWith(realpathSync(candidate))).toBe(true)
+  })
+  it('skips a candidate with spaces and fails closed if no safe candidate remains', () => {
+    const directory = fixture()
+    const candidate = join(directory, 'runtime with spaces')
+    mkdirSync(candidate, { mode: 0o700 })
+    const home = fixture()
+    const result = install(candidate, home)
+    expect(result.status).toBe(0)
+    expect(result.stdout.trim().startsWith(join(realpathSync(home), '.cache'))).toBe(true)
+    expect(result.stderr).toContain(candidate)
+    const refused = install(candidate)
+    expect(refused.status).not.toBe(0)
+    expect(refused.stderr).toContain('no trusted runtime directory')
+    expect(refused.stderr).toContain(candidate)
+  })
+  it('exports a resolved path rather than a symlinked runtime ancestor', () => {
+    const directory = fixture()
+    const parent = fixture()
+    const alias = join(parent, 'alias')
+    symlinkSync(directory, alias)
+    const result = install(alias)
+    expect(result.status).toBe(0)
+    expect(result.stdout.trim().startsWith(realpathSync(directory))).toBe(true)
+    expect(result.stdout).not.toContain(alias)
+  })
+  it('refuses unsafe inherited forwarding even when loaded by an explicit argument', () => {
+    const directory = fixture()
+    const unsafePreload = join(directory, 'unsafe preload.cjs')
+    const payload = join(directory, 'generation')
+    writeFileSync(unsafePreload, readFileSync(preload))
+    writeFileSync(payload, 'leased')
+    const fd = openSync(payload, 'r')
+    try {
+      const result = spawnSync(
+        process.execPath,
+        [
+          '--require',
+          unsafePreload,
+          '-e',
+          "require('node:child_process').spawnSync(process.execPath, ['-e', '1'])",
+        ],
+        {
+          env: { ...cleanEnvironment(), EDITOR_VIEW_LEASE_FDS: '3' },
+          stdio: ['ignore', 'pipe', 'pipe', fd],
+          encoding: 'utf8',
+        },
+      )
+      expect(result.status).not.toBe(0)
+      expect(result.stderr).toContain(`Unsafe editor-view preload path: ${unsafePreload}`)
+      expect(result.stderr).toContain('select a runtime directory')
+    } finally {
+      closeSync(fd)
+    }
   })
 })
 

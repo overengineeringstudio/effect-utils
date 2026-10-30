@@ -17,10 +17,15 @@ Source consumers install the bootstrap lease preload as
 `preload-<sha256>.cjs` in a private `editor-view-lease` runtime directory:
 `$XDG_RUNTIME_DIR` on Linux, the per-user `$TMPDIR` on macOS, or
 `$HOME/.cache` as fallback. This avoids Bun enumerating large store ancestors
-while resolving every child preload. Each launch checks the directory owner
-and permissions and verifies the regular file's owner, read-only mode and
-hash against the store source before exporting its path. Concurrent first
-launches publish atomically; an existing mismatched file fails closed rather
+while resolving every child preload. Each candidate is resolved to its real path;
+every ancestor must be root- or current-user-owned, with no group/other write
+permission unless sticky. Unsafe candidates, including paths requiring runtime
+option quoting, are skipped in favor of the fallback. If none qualifies, launch
+fails closed. Each launch also checks the private directory owner and permissions and
+verifies the regular file's owner, read-only mode and hash against the store
+source before exporting its resolved path. Inherited forwarding rejects unsafe
+path characters too. Concurrent first launches publish atomically;
+an existing mismatched file fails closed rather
 than being silently repaired. Remove only the reported invalid preload after
 investigating its provenance, then launch again.
 

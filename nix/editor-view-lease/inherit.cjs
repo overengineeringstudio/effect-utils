@@ -16,18 +16,25 @@ const descriptorList = (value) => {
   })
 }
 const leases = descriptorList(process.env.EDITOR_VIEW_LEASE_FDS)
-const leaseEnvironment = (env, descriptors) => ({
-  ...env,
-  EDITOR_VIEW_LEASE_FDS: descriptors.join(','),
-  // Child env replacement must not silently remove descriptor propagation.
-  EDITOR_VIEW_LEASE_ACTIVE: process.env.EDITOR_VIEW_LEASE_ACTIVE,
-  EDITOR_VIEW_LEASE_PRELOAD: __filename,
-  EDITOR_VIEW_LEASE_LIBRARY: process.env.EDITOR_VIEW_LEASE_LIBRARY,
-  EDITOR_VIEW_LEASE_WORKSPACE_ROOT: process.env.EDITOR_VIEW_LEASE_WORKSPACE_ROOT,
-  EDITOR_VIEW_CONTENT_STORE: process.env.EDITOR_VIEW_CONTENT_STORE,
-  NODE_OPTIONS: `${env.NODE_OPTIONS ?? ''} --require=${__filename}`,
-  BUN_OPTIONS: `${env.BUN_OPTIONS ?? ''} --preload=${__filename}`,
-})
+const leaseEnvironment = (env, descriptors) => {
+  if (!/^[A-Za-z0-9._/+-]+$/.test(__filename)) {
+    throw new Error(
+      `Unsafe editor-view preload path: ${__filename}; select a runtime directory without whitespace or unsafe characters`,
+    )
+  }
+  return {
+    ...env,
+    EDITOR_VIEW_LEASE_FDS: descriptors.join(','),
+    // Child env replacement must not silently remove descriptor propagation.
+    EDITOR_VIEW_LEASE_ACTIVE: process.env.EDITOR_VIEW_LEASE_ACTIVE,
+    EDITOR_VIEW_LEASE_PRELOAD: __filename,
+    EDITOR_VIEW_LEASE_LIBRARY: process.env.EDITOR_VIEW_LEASE_LIBRARY,
+    EDITOR_VIEW_LEASE_WORKSPACE_ROOT: process.env.EDITOR_VIEW_LEASE_WORKSPACE_ROOT,
+    EDITOR_VIEW_CONTENT_STORE: process.env.EDITOR_VIEW_CONTENT_STORE,
+    NODE_OPTIONS: `${env.NODE_OPTIONS ?? ''} --require=${__filename}`,
+    BUN_OPTIONS: `${env.BUN_OPTIONS ?? ''} --preload=${__filename}`,
+  }
+}
 
 // Never unlock: every inheritor shares the same open file description. Each
 // process closes its own descriptors on exit, including after parent SIGKILL.
