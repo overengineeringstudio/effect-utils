@@ -239,17 +239,17 @@
       "version": "0.1.0"
     },
     {
-      "artifactUrl": "https://overeng-effect-utils.cachix.org/serve/rhvda9q26bnrkp2jqmnda037clc643lh/overeng-notion-effect-client.tgz",
+      "artifactUrl": "https://overeng-effect-utils.cachix.org/serve/1najxpsx8bicg1imrqn7h5dl2kiqy1x1/overeng-notion-effect-client.tgz",
       "name": "@overeng/notion-effect-client",
       "provenance": {
-        "producerCommit": "088420bb4ea57f1174685e17a421abc151086b8d",
-        "productDigest": "da57b6aa9a49b272c4ee3d04af4c26420ab770ef325c3f7e1b2555115b1559e3",
+        "producerCommit": "5e480bb2220b02a233f79a07c118f65775ff569e",
+        "productDigest": "6110f8163cbaeee5d7d26dda247787be2c0e0398ae63ad49d1ba7b124104dd5f",
         "schema": "effect-utils/buck-product-provenance/v1",
         "target": "effect_utils//packages/@overeng/notion-effect-client:dist-package"
       },
-      "sha256": "da57b6aa9a49b272c4ee3d04af4c26420ab770ef325c3f7e1b2555115b1559e3",
-      "size": 312780,
-      "storePath": "/nix/store/rhvda9q26bnrkp2jqmnda037clc643lh-overeng-notion-effect-client-buck2-from-source-0.1.0",
+      "sha256": "6110f8163cbaeee5d7d26dda247787be2c0e0398ae63ad49d1ba7b124104dd5f",
+      "size": 314070,
+      "storePath": "/nix/store/1najxpsx8bicg1imrqn7h5dl2kiqy1x1-overeng-notion-effect-client-buck2-from-source-0.1.0",
       "version": "0.1.0"
     },
     {
