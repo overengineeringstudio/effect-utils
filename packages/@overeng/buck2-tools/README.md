@@ -445,11 +445,14 @@ process or another handle. Positive pathname/device/inode references and all sca
 completeness checks remain in force. The exact `lsof` marker `(revoked)` alone is
 not proof. Diagnostics expose `editor-view-process-census: deadVnode=N unknown=M`,
 where `N` counts proven descriptors and `M` counts unresolved census reasons.
-Every unknown Linux identity, observation or enumeration and every unknown
-`lsof` record also emits `editor-view-reader-unknown` with its observed PID,
-command name, descriptor, failing call and errno. Unavailable fields are explicitly
-`null`, never invented. On Darwin the packaged fixed-arity `eu_darwin_log_unknown`
-helper additionally emits correlated
+Unknown Linux identity, observation or enumeration failures and unknown `lsof`
+records emit `editor-view-reader-unknown` once per process per scan, with fields
+`pid`, `comm`, `fd`, `call`, `errno` and `failures`. The first failed observation
+supplies the command name, descriptor, call and errno; `failures` counts all failed
+observations for that process. Unavailable fields are explicitly `null`, never
+invented. Failures without a process identity emit individual records with
+`failures: 1`. Returned reasons and census counters remain unchanged. On Darwin
+the packaged fixed-arity `eu_darwin_log_unknown` helper additionally emits correlated
 kernel diagnostics with numeric errno/results for BSD process info before and
 after the query, a bounded descriptor-type sample, and vnode/path-info calls.
 These observations help distinguish an exit race from an inaccessible live

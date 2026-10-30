@@ -426,25 +426,82 @@ describe('migration reader evidence', () => {
         const records = logged
           .filter((line) => line.startsWith('editor-view-reader-unknown: '))
           .map((line) => JSON.parse(line.slice('editor-view-reader-unknown: '.length)))
-        expect(records).toContainEqual({
-          pid: site === 'enumeration' ? null : '123',
-          comm: site === 'enumeration' ? null : 'fixture-reader',
-          fd: site === 'observation' ? '4' : null,
-          call:
-            site === 'enumeration'
-              ? 'readdir:/proc'
-              : site === 'identity'
-                ? 'lstat:/proc/123'
-                : site === 'observation'
-                  ? 'readlink:/proc/123/fd/4'
-                  : 'readFile:/proc/123/stat',
-          errno: site === 'enumeration' ? 'EIO' : 'EACCES',
-        })
+        expect(records).toEqual([
+          {
+            pid: site === 'enumeration' ? null : '123',
+            comm: site === 'enumeration' ? null : 'fixture-reader',
+            fd: site === 'observation' ? '4' : null,
+            call:
+              site === 'enumeration'
+                ? 'readdir:/proc'
+                : site === 'identity'
+                  ? 'lstat:/proc/123'
+                  : site === 'observation'
+                    ? 'readlink:/proc/123/fd/4'
+                    : 'readFile:/proc/123/stat',
+            errno: site === 'enumeration' ? 'EIO' : 'EACCES',
+            failures: site === 'observation' || site === 'incarnation' ? 2 : 1,
+          },
+        ])
       } finally {
         output.mockRestore()
       }
     },
   )
+
+  it('logs one counted record per opaque Linux process per scan without dropping reasons', () => {
+    const logged: string[] = []
+    const output = vi
+      .spyOn(console, 'error')
+      .mockImplementation((line) => logged.push(String(line)))
+    try {
+      const pids = ['123', '124']
+      const entries = ['cwd', 'root', 'exe', 'fd/4', 'fd/5', 'fd/6']
+      io.readdirSync.mockImplementation((path: string) =>
+        path === '/proc' ? pids : ['4', '5', '6'],
+      )
+      io.readFileSync.mockImplementation((path: string) =>
+        path.endsWith('/stat') === true
+          ? incarnation()
+          : path.endsWith('/comm') === true
+            ? 'fixture-reader'
+            : '',
+      )
+      io.readlinkSync.mockImplementation(() => {
+        throw denied()
+      })
+      for (let scan = 0; scan < 2; scan++) {
+        const evidence = classify()
+        for (const candidate of candidates)
+          expect(evidence.get(candidate.key)).toEqual({
+            state: 'unknown',
+            reasons: pids.flatMap((pid) =>
+              entries.map(
+                (entry) => `proc-incomplete: /proc/${pid}/${entry}: EACCES; reachability unknown`,
+              ),
+            ),
+          })
+      }
+      const records = logged
+        .filter((line) => line.startsWith('editor-view-reader-unknown: '))
+        .map((line) => JSON.parse(line.slice('editor-view-reader-unknown: '.length)))
+      const expected = pids.map((pid) => ({
+        pid,
+        comm: 'fixture-reader',
+        fd: null,
+        call: `readlink:/proc/${pid}/cwd`,
+        errno: 'EACCES',
+        failures: entries.length,
+      }))
+      expect(records).toEqual([...expected, ...expected])
+      expect(logged.filter((line) => line.startsWith('editor-view-process-census: '))).toEqual([
+        'editor-view-process-census: allowlisted=0 unknown=2',
+        'editor-view-process-census: allowlisted=0 unknown=2',
+      ])
+    } finally {
+      output.mockRestore()
+    }
+  })
 
   it('does not skip nondumpable same-user processes whose proc ownership changed', () => {
     io.lstatSync.mockReturnValue({ uid: uid + 1 })
@@ -545,7 +602,7 @@ describe('macOS lsof completeness', () => {
     expect(classify().get('a')?.state).toBe('unknown')
   })
 
-  it('logs each unknown fd with process identity and unavailable lsof errno without clearing it', () => {
+  it('logs one counted unknown per lsof process without dropping descriptor reasons', () => {
     const logged: string[] = []
     const output = vi
       .spyOn(console, 'error')
@@ -557,7 +614,15 @@ describe('macOS lsof completeness', () => {
         status: 0,
         signal: null,
       })
-      expect(classify().get('a')?.state).toBe('unknown')
+      const evidence = classify()
+      for (const candidate of candidates)
+        expect(evidence.get(candidate.key)).toEqual({
+          state: 'unknown',
+          reasons: [
+            'lsof-incomplete: missing/unknown file type: 15',
+            'lsof-incomplete: missing device/inode: 16',
+          ],
+        })
       const records = logged
         .filter(
           (line) =>
@@ -565,8 +630,14 @@ describe('macOS lsof completeness', () => {
         )
         .map((line) => JSON.parse(line.slice('editor-view-reader-unknown: '.length)))
       expect(records).toEqual([
-        { pid: '123', comm: 'fixture-reader', fd: '15', call: 'lsof.file-type', errno: null },
-        { pid: '123', comm: 'fixture-reader', fd: '16', call: 'lsof.file-inode', errno: null },
+        {
+          pid: '123',
+          comm: 'fixture-reader',
+          fd: '15',
+          call: 'lsof.file-type',
+          errno: null,
+          failures: 2,
+        },
       ])
       expect(io.spawnSync).toHaveBeenCalledWith(
         '/usr/sbin/lsof',
