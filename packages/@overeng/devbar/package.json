@@ -54,8 +54,8 @@
     "@overeng/stylex-tokens": "workspace:^"
   },
   "devDependencies": {
-    "@effect/platform-node": "4.0.3",
-    "@effect/vitest": "4.0.3",
+    "@effect/platform-node": "4.1.0",
+    "@effect/vitest": "4.1.0",
     "@overeng/effect-rpc-explorer": "workspace:^",
     "@overeng/effect-rpc-explorer-react": "workspace:^",
     "@overeng/effect-rpc-observer": "workspace:^",
@@ -75,7 +75,7 @@
     "@vitejs/plugin-react": "6.1.1",
     "@vitest/browser": "5.0.3",
     "@vitest/browser-playwright": "5.0.3",
-    "effect": "4.0.3",
+    "effect": "4.1.0",
     "happy-dom": "20.14.0",
     "playwright": "1.64.1",
     "react": "19.2.8",

@@ -1,10 +1,10 @@
 /**
  * Shared normalization for CLI contract baselines (`cli.contract.test.ts`).
  *
- * Each option masks one machine-specific token class; options default to
- * `false`, so each consumer states an explicit policy and silent drift between
- * copies cannot happen. The local-source version suffix is always masked,
- * because every contract test needs it regardless of policy.
+ * Each option masks one machine-specific token class; masking is opt-in, so
+ * each consumer states an explicit policy and silent drift between copies
+ * cannot happen. The local-source version suffix is always masked, because
+ * every contract test needs it regardless of policy.
  */
 
 /** Broad ANSI/ECMA-48 control-sequence matcher used by the CLI contract baselines. */
@@ -54,6 +54,11 @@ export interface NormalizeCliOutputPolicy {
    * package prerelease versions, and internal source positions. Default: `false`.
    */
   readonly effectCliInternals?: boolean | undefined
+  /**
+   * Keep only each stack's origin frame, or omit frames entirely. Runtime
+   * call chains and their source positions are not CLI prose. Default: preserve.
+   */
+  readonly stackFrames?: 'origin' | 'omit' | undefined
 }
 
 /**
@@ -71,6 +76,7 @@ export const normalizeCliOutput = ({
   time = false,
   repoRoot,
   effectCliInternals = false,
+  stackFrames,
 }: NormalizeCliOutputPolicy): string => {
   let output = input
   if (ansi === true) output = output.replace(ANSI_PATTERN, '')
@@ -83,6 +89,16 @@ export const normalizeCliOutput = ({
     output = output
       .replace(EFFECT_CLI_FIBER_PATTERN, '<fiber>')
       .replace(EFFECT_CLI_FRAME_PATTERN, EFFECT_CLI_FRAME_TOKEN)
+  }
+  if (stackFrames === 'origin') {
+    output = output.replace(
+      /(^[ \t]+at (?:[^\n]+ \([^\n]*\)|[^\n]+:\d+:\d+)(?:\n|$))(?:[ \t]+at (?:[^\n]+ \([^\n]*\)|[^\n]+:\d+:\d+)(?:\n|$))+/gmu,
+      '$1',
+    )
+  } else if (stackFrames === 'omit') {
+    output = output
+      .replace(/^[ \t]+at (?:[^\n]+ \([^\n]*\)|[^\n]+:\d+:\d+)$/gmu, '')
+      .replace(/\n{3,}$/u, '\n\n')
   }
   return output.replace(LOCAL_SOURCE_SUFFIX_PATTERN, '')
 }

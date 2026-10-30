@@ -645,7 +645,14 @@ export const makeGitHubApp = Effect.fn('github-app.make')(function* (
           }
           // Never expose the authenticated request through response decoding failures.
           // Body access remains lazy/streaming; only safe metadata survives in errors.
-          const safeRequest = HttpClientRequest.make(request.method)(`${url.origin}${url.pathname}`)
+          const safeRequest = HttpClientRequest.makeWith(
+            request.method,
+            `${url.origin}${url.pathname}`,
+            HttpClientRequest.empty.urlParams,
+            HttpClientRequest.empty.hash,
+            HttpClientRequest.empty.headers,
+            HttpClientRequest.empty.body,
+          )
           const metadata = HttpClientResponse.fromWeb(
             safeRequest,
             new Response(null, {

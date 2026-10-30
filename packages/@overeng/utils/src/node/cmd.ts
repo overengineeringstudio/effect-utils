@@ -1,7 +1,7 @@
 import fs from 'node:fs'
 
 import type { Scope } from 'effect'
-import { Cause, type Duration, Effect, Fiber, Option, Schema, Stream } from 'effect'
+import { Cause, type Duration, Effect, Fiber, Option, Result, Schema, Stream } from 'effect'
 import type { PlatformError } from 'effect/PlatformError'
 import * as Process from 'effect/process'
 
@@ -66,7 +66,7 @@ export const cmd: (
         stderr?: 'inherit' | 'pipe'
         /** Stream stdout to the terminal or keep it in memory. */
         stdout?: 'inherit' | 'pipe'
-        /** Run in a subshell (required for compound commands). */
+        /** Run in a subshell. Strings are shell scripts; array arguments are quoted literally. */
         shell?: boolean
         /** Environment overrides for the command. */
         env?: Record<string, string | undefined>
@@ -190,7 +190,7 @@ export const cmdStart: (
         stderr?: 'inherit' | 'pipe'
         /** Stream stdout to the terminal or keep it in memory. */
         stdout?: 'inherit' | 'pipe'
-        /** Run in a subshell (required for compound commands). */
+        /** Run in a subshell. Strings are shell scripts; array arguments are quoted literally. */
         shell?: boolean
         /** Environment overrides for the command. */
         env?: Record<string, string | undefined>
@@ -259,7 +259,7 @@ export const cmdText: (
   options?: {
     /** Stream stderr to the terminal or pipe to stdout. */
     stderr?: 'inherit' | 'pipe'
-    /** Run in a subshell (required for compound commands). */
+    /** Run in a subshell. Strings are shell scripts; array arguments are quoted literally. */
     runInShell?: boolean
     /** Environment overrides for the command. */
     env?: Record<string, string | undefined>
@@ -298,7 +298,8 @@ export const cmdText: (
 
   return yield* spawner.string(
     buildCommand({
-      input: [command, ...args],
+      input:
+        Array.isArray(commandInput) === true ? commandInput.filter(isNotUndefined) : commandInput,
       useShell: options?.runInShell === true,
       cwd,
       // inherit = Stream stderr to process.stderr, pipe = Stream stderr to process.stdout
@@ -330,6 +331,7 @@ export const cmdCollect = <R = never>(opts: {
   readonly commandInput: string | (string | undefined)[]
   readonly onOutput?: (stream: 'stdout' | 'stderr', line: string) => Effect.Effect<void, never, R>
   readonly env?: Record<string, string | undefined>
+  /** Run in a subshell. Strings are shell scripts; array arguments are quoted literally. */
   readonly shell?: boolean
   readonly workingDirectory?: string
 }): Effect.Effect<
@@ -657,22 +659,22 @@ const buildCommand = (
   } & Process.ChildProcess.CommandOptions,
 ): Process.ChildProcess.StandardCommand => {
   const { input, useShell, ...options } = opts
+  if (useShell === true) {
+    return Process.ChildProcess.make(
+      Array.isArray(input) === true ? Result.getOrThrow(Process.CommandLine.join(input)) : input,
+      { ...options, shell: true },
+    )
+  }
   if (Array.isArray(input) === true) {
     const [command, ...args] = input
     if (command === undefined) throw new Error('Command cannot be empty')
-    return Process.ChildProcess.make(command, args, {
-      ...(useShell === true ? { shell: true } : {}),
-      ...options,
-    })
+    return Process.ChildProcess.make(command, args, options)
   }
 
   // Single-string form is tokenized on whitespace at execution time.
   const [command, ...args] = input.trim().split(/\s+/)
   if (command === undefined || command === '') throw new Error('Command cannot be empty')
-  return Process.ChildProcess.make(command, args, {
-    ...(useShell === true ? { shell: true } : {}),
-    ...options,
-  })
+  return Process.ChildProcess.make(command, args, options)
 }
 
 type TLineTerminator = 'newline' | 'carriage-return' | 'none'

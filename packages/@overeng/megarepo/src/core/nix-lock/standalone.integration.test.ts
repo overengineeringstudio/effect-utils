@@ -1,6 +1,6 @@
 import { NodeServices } from '@effect/platform-node'
 import { describe, it } from '@effect/vitest'
-import { Effect, Exit, Schema, Stream } from 'effect'
+import { Effect, Exit, Redacted, Schema, Stream } from 'effect'
 import * as Cli from 'effect/cli'
 import * as FileSystem from 'effect/FileSystem'
 import * as ChildProcess from 'effect/process/ChildProcess'
@@ -110,7 +110,10 @@ const revisionSpawner = ({
         if (ChildProcess.isStandardCommand(command) === false) {
           return yield* forbidden('string with a piped command')
         }
-        const call = [command.command, ...command.args]
+        const call = [
+          command.command,
+          ...command.args.map((word) => (typeof word === 'string' ? word : Redacted.value(word))),
+        ]
         calls.push(call)
         if (command.command === 'git') {
           expect(call).toEqual(expected[calls.length - 1])
