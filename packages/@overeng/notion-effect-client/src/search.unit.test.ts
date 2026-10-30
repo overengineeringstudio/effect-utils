@@ -59,6 +59,55 @@ describe('NotionSearch pagination', () => {
     }),
   )
 
+  it.effect('bounds a stale index scan and restarts from the head on the next attempt', () =>
+    Effect.gen(function* () {
+      let requests = 0
+      let indexed = false
+      const bodies: unknown[] = []
+      const layer = createTestLayer((request) => {
+        requests++
+        // Fail promptly if the collector regresses to workspace enumeration.
+        expect(requests).toBeLessThanOrEqual(indexed === true ? 11 : 10)
+        const body = request.body
+        expect(body._tag).toBe('Uint8Array')
+        if (body._tag === 'Uint8Array') {
+          bodies.push(
+            Schema.decodeSync(Schema.fromJsonString(Schema.Unknown))(
+              new TextDecoder().decode(body.body),
+            ),
+          )
+        }
+        return {
+          status: 200,
+          body: {
+            object: 'list',
+            results:
+              indexed === true
+                ? [{ object: 'page', id: 'fixture' }]
+                : Array.from({ length: 10 }, (_, index) => ({
+                    object: 'page',
+                    id: `unrelated-${requests}-${index}`,
+                  })),
+            // The shared workspace need not end before the readiness deadline.
+            has_more: true,
+            next_cursor: `cursor-${requests}`,
+          },
+        }
+      })
+      const probe = collectSearchFixtures(
+        NotionSearch.searchStream({ query: 'run-token', pageSize: 10 }),
+        ['fixture'],
+      ).pipe(Effect.provide(layer))
+      const stale = yield* probe
+      expect(stale).toHaveLength(100)
+      expect(requests).toBe(10)
+      indexed = true
+      expect(yield* probe).toEqual([{ object: 'page', id: 'fixture' }])
+      expect(requests).toBe(11)
+      expect(bodies[10]).toEqual({ query: 'run-token', page_size: 10 })
+    }),
+  )
+
   it.effect.prop(
     'forwards opaque cursors unchanged through manual and streamed pages, including an empty page',
     [Schema.String, Schema.String, Schema.String],
