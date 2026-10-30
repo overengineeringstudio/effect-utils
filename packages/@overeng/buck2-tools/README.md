@@ -13,6 +13,17 @@ selector. The full `test:buck2-tools` and `devenv-modules:test` tasks also run i
 the PR-only `pr/buck2-tools` job on the Linux namespace runner, without duplicating
 the merge-group test lane.
 
+Source consumers install the bootstrap lease preload as
+`preload-<sha256>.cjs` in a private `editor-view-lease` runtime directory:
+`$XDG_RUNTIME_DIR` on Linux, the per-user `$TMPDIR` on macOS, or
+`$HOME/.cache` as fallback. This avoids Bun enumerating large store ancestors
+while resolving every child preload. Each launch checks the directory owner
+and permissions and verifies the regular file's owner, read-only mode and
+hash against the store source before exporting its path. Concurrent first
+launches publish atomically; an existing mismatched file fails closed rather
+than being silently repaired. Remove only the reported invalid preload after
+investigating its provenance, then launch again.
+
 ## Editor publisher
 
 `src/editor-view.ts` atomically publishes and checks one dependency view.

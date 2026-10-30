@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, it } from 'bun:test'
-import { spawnSync } from 'node:child_process'
+import { spawn, spawnSync } from 'node:child_process'
+import { createHash } from 'node:crypto'
 import {
+  chmodSync,
   closeSync,
   existsSync,
   mkdtempSync,
@@ -8,6 +10,8 @@ import {
   readFileSync,
   rmSync,
   writeFileSync,
+  statSync,
+  symlinkSync,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -36,6 +40,116 @@ const cleanEnvironment = () => {
   return env
 }
 const inheritedRead = `const fs = require('node:fs'); process.stdout.write(fs.readFileSync(Number(process.env.EDITOR_VIEW_LEASE_FDS.split(',')[0]), 'utf8'))`
+
+describe('verified private lease preload', () => {
+  const installer = new URL('../nix/editor-view-lease/prepare-preload.sh', import.meta.url).pathname
+  const install = (directory: string) =>
+    spawnSync('bash', [installer, preload], {
+      env: { ...cleanEnvironment(), XDG_RUNTIME_DIR: directory, TMPDIR: directory },
+      encoding: 'utf8',
+    })
+  it('the real source launcher exports the same verified copy to every consumer', () => {
+    const directory = fixture()
+    const launcher = process.env.EDITOR_VIEW_SOURCE_LAUNCHER
+    if (launcher === undefined) throw new Error('EDITOR_VIEW_SOURCE_LAUNCHER is required')
+    const result = spawnSync(
+      launcher,
+      [
+        process.execPath,
+        '-e',
+        'console.log(JSON.stringify([process.env.EDITOR_VIEW_LEASE_PRELOAD, process.env.NODE_OPTIONS, process.env.BUN_OPTIONS]))',
+      ],
+      {
+        env: { ...cleanEnvironment(), XDG_RUNTIME_DIR: directory, TMPDIR: directory },
+        encoding: 'utf8',
+      },
+    )
+    expect(result.status).toBe(0)
+    const [path, nodeOptions, bunOptions] = JSON.parse(result.stdout)
+    expect(path.startsWith('/nix/store/')).toBe(false)
+    expect(readFileSync(path)).toEqual(readFileSync(preload))
+    expect(nodeOptions).toContain(`--require=${path}`)
+    expect(bunOptions).toContain(`--preload=${path}`)
+  })
+  it('publishes the expected hash outside the store and refuses subsequent tampering', () => {
+    const directory = fixture()
+    const result = install(directory)
+    expect(result.status).toBe(0)
+    const path = result.stdout.trim()
+    const digest = createHash('sha256').update(readFileSync(preload)).digest('hex')
+    expect(path).toBe(join(directory, 'editor-view-lease', `preload-${digest}.cjs`))
+    expect(path.startsWith('/nix/store/')).toBe(false)
+    expect(readFileSync(path)).toEqual(readFileSync(preload))
+    expect(statSync(path).mode & 0o777).toBe(0o444)
+    expect(statSync(join(directory, 'editor-view-lease')).mode & 0o777).toBe(0o700)
+    chmodSync(path, 0o644)
+    writeFileSync(path, 'tampered')
+    chmodSync(path, 0o444)
+    const refused = install(directory)
+    expect(refused.status).not.toBe(0)
+    expect(refused.stderr).toContain('untrusted preload hash')
+    expect(refused.stdout).toBe('')
+  })
+  it('concurrent installers converge on the same verified file', async () => {
+    const directory = fixture()
+    const results = await Promise.all(
+      Array.from(
+        { length: 8 },
+        () =>
+          new Promise<string>((resolve, reject) => {
+            const child = spawn('bash', [installer, preload], {
+              env: { ...cleanEnvironment(), XDG_RUNTIME_DIR: directory, TMPDIR: directory },
+            })
+            let stdout = ''
+            let stderr = ''
+            child.stdout.on('data', (chunk) => {
+              stdout += chunk
+            })
+            child.stderr.on('data', (chunk) => {
+              stderr += chunk
+            })
+            child.on('error', reject)
+            child.on('close', (code) => {
+              if (code === 0) resolve(stdout.trim())
+              else reject(new Error(stderr))
+            })
+          }),
+      ),
+    )
+    expect(new Set(results).size).toBe(1)
+    expect(readFileSync(results[0]!)).toEqual(readFileSync(preload))
+  })
+  for (const mode of [0o720, 0o702]) {
+    it(`refuses a writable runtime directory (${mode.toString(8)})`, () => {
+      const directory = fixture()
+      chmodSync(directory, mode)
+      const result = install(directory)
+      expect(result.status).not.toBe(0)
+      expect(result.stderr).toContain('untrusted preload directory')
+    })
+  }
+  it.skipIf(process.getuid?.() === 0)('refuses a runtime directory owned by another user', () => {
+    expect(install('/usr').status).not.toBe(0)
+  })
+  it('refuses a symlink instead of a content-addressed regular file', () => {
+    const directory = fixture()
+    const result = install(directory)
+    const path = result.stdout.trim()
+    expect(result.status).toBe(0)
+    rmSync(path)
+    symlinkSync(preload, path)
+    expect(install(directory).status).not.toBe(0)
+  })
+  it('refuses an existing writable preload even when its bytes match', () => {
+    const directory = fixture()
+    const result = install(directory)
+    expect(result.status).toBe(0)
+    chmodSync(result.stdout.trim(), 0o644)
+    const refused = install(directory)
+    expect(refused.status).not.toBe(0)
+    expect(refused.stderr).toContain('untrusted preload mode')
+  })
+})
 
 // Exercise actual descriptor passing, not just the parent's lifetime or an env
 // variable containing a pathname. Native lock semantics have their own suite.
