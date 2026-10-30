@@ -4,7 +4,7 @@ import { createServer } from 'node:http'
 import { fromToken } from '@alchemy.run/github/Credentials'
 import { it } from '@effect/vitest'
 import { encodeState } from 'alchemy/State/StateEncoding'
-import { Effect, Layer, Logger, Redacted, Schema } from 'effect'
+import { Clock, Effect, Layer, Logger, Redacted, Schema } from 'effect'
 import sodium from 'libsodium-wrappers'
 import { expect } from 'vitest'
 
@@ -31,6 +31,7 @@ const fixture = (environment?: string) =>
     const pair = sodium.crypto_box_keypair()
     const rsa = generateKeyPairSync('rsa', { modulusLength: 2048 })
     const pem = rsa.privateKey.export({ type: 'pkcs8', format: 'pem' }).toString()
+    const now = yield* Clock.currentTimeMillis
     const state = {
       conversionCalls: 0,
       writeCalls: 0,
@@ -40,7 +41,7 @@ const fixture = (environment?: string) =>
       seen: [] as string[],
       permission: 'read',
       secretName: 'APP_PRIVATE_KEY',
-      updatedAt: '2026-01-02T00:00:00Z',
+      updatedAt: new Date(now - 10_000).toISOString(),
     }
     const metadata = () => ({
       id: 123,
@@ -74,6 +75,7 @@ const fixture = (environment?: string) =>
         )
       } else if (path.endsWith('/APP_PRIVATE_KEY') === true && request.method === 'PUT') {
         state.writeCalls++
+        if (state.writeStatus < 400) state.updatedAt = new Date(now).toISOString()
         let body = ''
         for await (const chunk of request) body += chunk.toString()
         const sealed = decodeSecret(body)
@@ -168,7 +170,7 @@ for (const environment of [undefined, 'production']) {
         expect(f.state.conversionCalls).toBe(1)
         expect(f.state.writeCalls).toBe(1)
         expect(f.state.seen[0]).toBe(
-          `GET /repos/example/repo/${environment === undefined ? 'actions' : 'environments/production'}/secrets/public-key`,
+          `GET /repos/example/repo/${environment === undefined ? 'actions' : 'environments/production'}/secrets/APP_PRIVATE_KEY`,
         )
         const serialized = encodeJson(result)
         expect(serialized).not.toContain('PRIVATE KEY')
@@ -201,6 +203,44 @@ it.effect(
       expect(f.state.conversionCalls).toBe(1)
       expect(f.state.writeCalls).toBe(1)
     }),
+)
+
+it.effect('recovers post-conversion drift by adoption without replaying the consumed code', () =>
+  Effect.gen(function* () {
+    const f = yield* fixture()
+    f.state.permission = 'write'
+    const drift = yield* reconcileApp(f.converting, f.pending).pipe(
+      Effect.provide(f.credentials),
+      Effect.flip,
+    )
+    expect(drift._tag).toBe('AppManifestDriftError')
+    if (drift._tag !== 'AppManifestDriftError') return yield* Effect.die('Expected typed drift')
+    expect(drift.permissions).toContainEqual({
+      permission: 'contents',
+      desired: 'read',
+      observed: 'write',
+    })
+    expect(drift.remedy).toContain('example-app')
+    expect(drift.remedy).toContain('remove conversion')
+    expect(drift.remedy).toContain('adopt:')
+    expect(encodeJson(drift)).not.toContain(f.pem)
+    expect(f.state.contents).toBe(f.pem)
+    const retry = yield* reconcileApp(f.converting, f.pending).pipe(
+      Effect.provide(f.credentials),
+      Effect.flip,
+    )
+    expect(retry._tag).toBe('AppConversionRecoveryError')
+    expect(f.state.conversionCalls).toBe(1)
+    expect(f.state.writeCalls).toBe(1)
+    f.state.permission = 'read'
+    const recovered = yield* reconcileApp(
+      { ...f.props, adopt: { slug: 'example-app' } },
+      f.pending,
+    ).pipe(Effect.provide(f.credentials))
+    expect(recovered.status).toBe('registered')
+    expect(f.state.conversionCalls).toBe(1)
+    expect(encodeJson(recovered)).not.toContain(f.pem)
+  }),
 )
 
 it.effect('rejects expired codes and wrong callback states before any HTTP request', () =>

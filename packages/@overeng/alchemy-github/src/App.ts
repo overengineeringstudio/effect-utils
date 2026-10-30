@@ -310,6 +310,45 @@ export const convertApp = Effect.fn('GitHub.App.convert')(function* (
     })
   const octokit = yield* octokitFor(props.baseUrl)
   const path = secretPath(props.privateKeySecret)
+  // The sink timestamp is a durable, non-secret replay barrier after a successful PUT
+  // whose reconciliation failed before Alchemy could record the registered attributes.
+  const existingSecret = yield* safe({
+    operation: 'inspect conversion sink',
+    run: async () => {
+      try {
+        return (
+          await octokit.request(`GET ${path}/${encodeURIComponent(props.privateKeySecret.name)}`, {
+            request: { retries: 0, redirect: 'error' },
+          })
+        ).data
+      } catch (error) {
+        if (
+          typeof error === 'object' &&
+          error !== null &&
+          'status' in error &&
+          error.status === 404
+        )
+          return undefined
+        throw error
+      }
+    },
+  })
+  if (existingSecret !== undefined) {
+    const observed = yield* decode({
+      schema: Schema.Struct({ updated_at: Schema.String }),
+      value: existingSecret,
+    })
+    const updatedAt = Date.parse(observed.updated_at)
+    // GitHub timestamps have second precision; include the whole starting second.
+    if (
+      Number.isFinite(updatedAt) === false ||
+      updatedAt >= Math.floor(pending.startedAt / 1000) * 1000
+    )
+      return yield* new AppConversionRecoveryError({
+        message:
+          'The declared Actions secret was written since this manifest form was created. Conversion is blocked because its one-use code may already be consumed. Inspect the owner App settings, remove conversion, and adopt the created App by slug using this same secret. An unrelated secret write also requires explicit recovery; no secret contents are inferred.',
+      })
+  }
   const keyResponse = yield* safe({
     operation: 'get Actions public key',
     run: () => octokit.request(`GET ${path}/public-key`),
@@ -370,7 +409,16 @@ export const convertApp = Effect.fn('GitHub.App.convert')(function* (
       })
       const secret = yield* verifySecret(props)
       // Drift is checked after sinking: never discard the only key because the owner edited the form.
-      yield* assertManifest(props.manifest, data)
+      yield* assertManifest(props.manifest, data).pipe(
+        Effect.mapError(
+          (error) =>
+            new AppManifestDriftError({
+              permissions: error.permissions,
+              ...(error.events === undefined ? {} : { events: error.events }),
+              remedy: `The App "${data.slug}" was created and its private key was written to the declared Actions secret, but the owner changed the manifest grants. The one-use conversion code is consumed: do not retry it. Edit the App settings in the owner browser and approve changed permissions, then remove conversion and set adopt: { slug: "${data.slug}" } with the same privateKeySecret and deploy. Alchemy still has pending attributes; explicit adoption recovers them without replaying conversion.`,
+            }),
+        ),
+      )
       if (data.owner.login.toLowerCase() !== props.owner.toLowerCase()) {
         return yield* new AppError({
           operation: 'convert',
@@ -454,7 +502,15 @@ export const reconcileApp = Effect.fn('GitHub.App.reconcile')(function* (
   )
     return output
   const baseUrl = yield* effectiveGitHubBaseUrl(news.baseUrl)
-  const webOrigin = baseUrl === undefined ? 'https://github.com' : new URL(baseUrl).origin
+  const webUrl = new URL(baseUrl ?? 'https://github.com')
+  // API hosts differ from browser hosts on github.com and data-residency instances only.
+  if (webUrl.hostname === 'api.github.com') webUrl.hostname = 'github.com'
+  else if (
+    webUrl.hostname.startsWith('api.') === true &&
+    webUrl.hostname.endsWith('.ghe.com') === true
+  )
+    webUrl.hostname = webUrl.hostname.slice('api.'.length)
+  const webOrigin = webUrl.origin
   const registration =
     news.ownerType === 'user'
       ? '/settings/apps/new'
@@ -493,7 +549,9 @@ export const diffApp = Effect.fn('GitHub.App.diff')(function* (
 ) {
   if (olds !== undefined) yield* assertUnchanged(olds, news)
   if (output?.status === 'registered') {
-    yield* assertManifest(news.manifest, output)
+    // beta84 plans unchanged resources from persisted output without calling read.
+    const observed = yield* adoptApp(news, output, false)
+    yield* assertManifest(news.manifest, observed)
     return undefined
   }
   if (output?.status === 'pending') {
