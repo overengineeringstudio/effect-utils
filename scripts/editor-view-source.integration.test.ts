@@ -215,7 +215,7 @@ describe('verified private lease preload', () => {
           '--require',
           unsafePreload,
           '-e',
-          "require('node:child_process').spawnSync(process.execPath, ['-e', '1'])",
+          "const result = require('node:child_process').spawnSync(process.execPath, ['-e', '1']); if (result.error) throw result.error",
         ],
         {
           env: { ...cleanEnvironment(), EDITOR_VIEW_LEASE_FDS: '3' },
