@@ -19,15 +19,15 @@
     }
   },
   "devDependencies": {
-    "@effect/vitest": "4.0.3",
+    "@effect/vitest": "4.1.0",
     "@overeng/utils-dev": "workspace:^",
     "@types/node": "26.5.0",
-    "effect": "4.0.3",
+    "effect": "4.1.0",
     "typescript": "7.0.2",
     "vitest": "5.0.3"
   },
   "peerDependencies": {
-    "effect": "^4.0.3"
+    "effect": "^4.1.0"
   },
   "publishConfig": {
     "access": "public",

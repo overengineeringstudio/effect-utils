@@ -193,11 +193,11 @@ const assertError = ({ case: replayCase, error }: { case: Case; error: AiError.A
     const body = 'http' in error.reason ? error.reason.http?.body : undefined
     expect(Schema.decodeUnknownSync(errorBody)(body).error.type).toBe(replayCase.expect.error.type)
     if (replayCase.request.path === '/v1/chat/completions') {
-      // Generic auth/server reasons use flat metadata; provider-specific reasons namespace it.
+      // The compatible provider namespaces metadata for every HTTP error reason.
       const metadata = 'metadata' in error.reason ? error.reason.metadata : undefined
-      const providerMetadata =
-        metadata !== undefined && 'openai' in metadata ? metadata.openai : metadata
-      expect(providerMetadata).toMatchObject({ errorType: replayCase.expect.error.type })
+      expect(metadata).toMatchObject({
+        'openai-compat': { errorType: replayCase.expect.error.type },
+      })
     }
   }
 }

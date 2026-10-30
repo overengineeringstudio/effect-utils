@@ -44,9 +44,9 @@
     "pngjs": "7.0.0"
   },
   "devDependencies": {
-    "@effect/opentelemetry": "4.0.3",
-    "@effect/platform-node": "4.0.3",
-    "@effect/vitest": "4.0.3",
+    "@effect/opentelemetry": "4.1.0",
+    "@effect/platform-node": "4.1.0",
+    "@effect/vitest": "4.1.0",
     "@overeng/utils": "workspace:^",
     "@overeng/utils-dev": "workspace:^",
     "@playwright/test": "1.64.1",
@@ -57,7 +57,7 @@
     "@types/react": "19.2.18",
     "@vitest/browser": "5.0.3",
     "@vitest/browser-playwright": "5.0.3",
-    "effect": "4.0.3",
+    "effect": "4.1.0",
     "playwright": "1.64.1",
     "react": "19.2.8",
     "react-dom": "19.2.8",

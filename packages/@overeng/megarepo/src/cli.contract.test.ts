@@ -6,6 +6,8 @@ import { fileURLToPath } from 'node:url'
 
 import { afterAll, describe, expect, it } from 'vitest'
 
+import { normalizeCliOutput } from '@overeng/utils-dev/cli-contract'
+
 const cliPath = fileURLToPath(new URL('../bin/mr.ts', import.meta.url))
 const workspaceRoot = mkdtempSync(join(tmpdir(), 'megarepo-cli-contract-'))
 writeFileSync(join(workspaceRoot, 'megarepo.kdl'), 'members {\n}\n')
@@ -24,17 +26,8 @@ afterAll(() => {
  * Stack-trace frames are normalized, so effect-internal line numbers are not gated by this
  * baseline.
  */
-const stripAnsi = (output: string) =>
-  output.replace(
-    // oxlint-disable-next-line no-control-regex -- CLI contract snapshots intentionally normalize terminal control bytes.
-    /[\u001b\u009b][[\]()#;?]*(?:(?:(?:[a-zA-Z\d]*(?:;[a-zA-Z\d]*)*)?\u0007)|(?:(?:\d{1,4}(?:;\d{0,4})*)?[\dA-PR-TZcf-nq-uy=><~]))/gu,
-    '',
-  )
-
-const normalizeOutput = (output: string) =>
-  stripAnsi(output)
-    .replace(/ — running from local source \([^)]+\)/gu, '')
-    .replace(/^ +at <anonymous> .+$/gmu, '')
+const normalizeOutput = (input: string) =>
+  normalizeCliOutput({ input, ansi: true, stackFrames: 'omit' })
 
 const runCli = (...args: ReadonlyArray<string>) => {
   const result = spawnSync('bun', [cliPath, ...args], {

@@ -39,14 +39,14 @@ describe('effect-rpc-tanstack streaming', () => {
     const request = new Request('http://localhost/api/rpc', {
       method: 'POST',
       headers: {
-        'content-type': 'application/ndjson',
+        'content-type': 'application/x-ndjson',
       },
       body,
     })
 
     try {
       const response = await handler(request)
-      expect(response.headers.get('content-type')).toContain('application/ndjson')
+      expect(response.headers.get('content-type')).toBe('application/x-ndjson')
 
       const text = await response.text()
       const messages = text
