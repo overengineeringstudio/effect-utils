@@ -125,10 +125,13 @@ describe('normalizeCliOutput', () => {
       ).toBe(`Help requested\n${origin}`)
     })
 
-    it.each(['origin', 'omit'] as const)('preserves schema paths with the %s policy', (stackFrames) => {
-      const input = 'Invalid member\n  at ["members"]\n  Expected a string\n'
-      expect(normalizeCliOutput({ input, stackFrames })).toBe(input)
-    })
+    it.each(['origin', 'omit'] as const)(
+      'preserves schema paths with the %s policy',
+      (stackFrames) => {
+        const input = 'Invalid member\n  at ["members"]\n  Expected a string\n'
+        expect(normalizeCliOutput({ input, stackFrames })).toBe(input)
+      },
+    )
 
     it('recognizes bare file frames', () => {
       expect(
