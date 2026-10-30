@@ -9,7 +9,14 @@ import { isResolved } from 'alchemy/Diff'
 import * as Provider from 'alchemy/Provider'
 import { Resource } from 'alchemy/Resource'
 import { Clock, Effect, Redacted, Schema } from 'effect'
-import sodium from 'libsodium-wrappers'
+import sodium, {
+  ready,
+  from_base64,
+  to_base64,
+  base64_variants,
+  from_string,
+  memzero,
+} from 'libsodium-wrappers'
 
 import { AppConversionRecoveryError, AppError, AppManifestDriftError } from './AppErrors.ts'
 import {
@@ -369,8 +376,8 @@ export const convertApp = Effect.fn('GitHub.App.convert')(function* (
   yield* safe({
     operation: 'initialize sealed box',
     run: async () => {
-      await sodium.ready
-      const bytes = sodium.from_base64(publicKey.key, sodium.base64_variants.ORIGINAL)
+      await ready
+      const bytes = from_base64(publicKey.key, base64_variants.ORIGINAL)
       if (bytes.length !== sodium.crypto_box_PUBLICKEYBYTES)
         throw new TypeError('Invalid Actions public key')
     },
@@ -391,22 +398,22 @@ export const convertApp = Effect.fn('GitHub.App.convert')(function* (
       const sealed = yield* safe({
         operation: 'seal private key',
         run: async () => {
-          const plaintext = sodium.from_string(data.pem)
+          const plaintext = from_string(data.pem)
           try {
             const ciphertext = sodium.crypto_box_seal(
               plaintext,
-              sodium.from_base64(publicKey.key, sodium.base64_variants.ORIGINAL),
+              from_base64(publicKey.key, base64_variants.ORIGINAL),
             )
             const key = createPublicKey(createPrivateKey(data.pem))
             const fingerprint = createHash('sha256')
               .update(key.export({ type: 'spki', format: 'der' }))
               .digest('hex')
             return {
-              ciphertext: sodium.to_base64(ciphertext, sodium.base64_variants.ORIGINAL),
+              ciphertext: to_base64(ciphertext, base64_variants.ORIGINAL),
               fingerprint,
             }
           } finally {
-            sodium.memzero(plaintext)
+            memzero(plaintext)
           }
         },
       })

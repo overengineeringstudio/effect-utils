@@ -5,7 +5,13 @@ import { fromToken } from '@alchemy.run/github/Credentials'
 import { it } from '@effect/vitest'
 import { encodeState } from 'alchemy/State/StateEncoding'
 import { Clock, Effect, Layer, Logger, Redacted, Schema } from 'effect'
-import sodium from 'libsodium-wrappers'
+import sodium, {
+  ready,
+  from_base64,
+  to_base64,
+  base64_variants,
+  to_string,
+} from 'libsodium-wrappers'
 import { expect } from 'vitest'
 
 import { deleteApp, diffApp, readAppState, reconcileApp, type AppProps } from './App.ts'
@@ -26,7 +32,7 @@ const manifest: AppProps['manifest'] = {
 const fixture = (environment?: string) =>
   Effect.gen(function* () {
     yield* Effect.promise(async () => {
-      await sodium.ready
+      await ready
     })
     const pair = sodium.crypto_box_keypair()
     const rsa = generateKeyPairSync('rsa', { modulusLength: 2048 })
@@ -60,7 +66,7 @@ const fixture = (environment?: string) =>
         response.end(
           encodeJson({
             key_id: 'key-1',
-            key: sodium.to_base64(pair.publicKey, sodium.base64_variants.ORIGINAL),
+            key: to_base64(pair.publicKey, base64_variants.ORIGINAL),
           }),
         )
       } else if (path === '/app-manifests/one-use-code/conversions' && request.method === 'POST') {
@@ -84,9 +90,9 @@ const fixture = (environment?: string) =>
         let body = ''
         for await (const chunk of request) body += chunk.toString()
         const sealed = decodeSecret(body)
-        state.contents = sodium.to_string(
+        state.contents = to_string(
           sodium.crypto_box_seal_open(
-            sodium.from_base64(sealed.encrypted_value, sodium.base64_variants.ORIGINAL),
+            from_base64(sealed.encrypted_value, base64_variants.ORIGINAL),
             pair.publicKey,
             pair.privateKey,
           ),
