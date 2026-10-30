@@ -61,7 +61,7 @@ export const isAnalyzableSourcePath = (file: string): boolean =>
  */
 const apiSpawnOptions = (cwd: string) => {
   // The upstream client pins stdio to three slots and offers no spawn hook.
-  // Install the store-backed descriptor mapper before constructing the API,
+  // Install the verified bootstrap descriptor mapper before constructing the API,
   // including compiled Bun products that do not honor runtime preload flags.
   // The actual compiler child owns duplicates until close/exit; parent death
   // cannot release its leases. Never import a lease implementation from a view.
