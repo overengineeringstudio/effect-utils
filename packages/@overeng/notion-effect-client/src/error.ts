@@ -48,9 +48,10 @@ export class NotionApiError extends Schema.TaggedError<NotionApiError>()('Notion
   /** Original request method for debugging */
   method: Schema.OptionFromUndefinedOr(Schema.String),
 }) {
-  /** Check if error is retryable (rate limit or server error) */
+  /** Check if error is retryable (write conflict, rate limit, or server error). */
   get isRetryable(): boolean {
     return (
+      (this.status === 409 && this.code === 'conflict_error') ||
       this.code === 'rate_limited' ||
       this.code === 'internal_server_error' ||
       this.code === 'service_unavailable' ||
