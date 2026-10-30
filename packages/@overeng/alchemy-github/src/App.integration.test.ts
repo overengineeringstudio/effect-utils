@@ -34,6 +34,7 @@ const fixture = (environment?: string) =>
     const now = yield* Clock.currentTimeMillis
     const state = {
       conversionCalls: 0,
+      conversionStatus: 201,
       writeCalls: 0,
       writeStatus: 201,
       secretStatus: 200,
@@ -64,7 +65,11 @@ const fixture = (environment?: string) =>
         )
       } else if (path === '/app-manifests/one-use-code/conversions' && request.method === 'POST') {
         state.conversionCalls++
-        response.statusCode = 201
+        response.statusCode = state.conversionStatus
+        if (state.conversionStatus !== 201) {
+          response.end(encodeJson({ message: `Invalid or consumed code: ${pem}` }))
+          return
+        }
         response.end(
           encodeJson({
             ...metadata(),
@@ -133,6 +138,7 @@ const fixture = (environment?: string) =>
     }
     const pending = yield* reconcileApp(props).pipe(Effect.provide(credentials))
     if (pending.status !== 'pending') return yield* Effect.die('Expected pending manifest')
+    state.seen.length = 0
     const converting: AppProps = {
       ...props,
       conversion: { code: Redacted.make('one-use-code'), state: pending.state },
@@ -261,6 +267,55 @@ it.effect('rejects expired codes and wrong callback states before any HTTP reque
   }),
 )
 
+for (const skew of [-86_400_000, 86_400_000]) {
+  it.effect(`converts an unchanged existing secret despite local starting-clock skew ${skew}`, () =>
+    Effect.gen(function* () {
+      const f = yield* fixture()
+      expect(f.pending.secretBaseline).toBe(f.state.updatedAt)
+      const result = yield* reconcileApp(f.converting, {
+        ...f.pending,
+        startedAt: f.pending.startedAt + skew,
+      }).pipe(Effect.provide(f.credentials))
+      expect(result.status).toBe('registered')
+      expect(f.state.conversionCalls).toBe(1)
+    }),
+  )
+}
+
+it.effect('refuses a changed GitHub secret baseline without assuming an App exists', () =>
+  Effect.gen(function* () {
+    const f = yield* fixture()
+    f.state.updatedAt = '2030-01-01T00:00:00Z'
+    const error = yield* reconcileApp(f.converting, f.pending).pipe(
+      Effect.provide(f.credentials),
+      Effect.flip,
+    )
+    expect(error._tag).toBe('AppConversionRecoveryError')
+    expect(encodeJson(error)).toContain('if an App was created')
+    expect(encodeJson(error)).toContain('otherwise')
+    expect(encodeJson(error)).toContain('new form')
+    expect(f.state.conversionCalls).toBe(0)
+  }),
+)
+
+for (const status of [404, 422]) {
+  it.effect(`maps GitHub conversion rejection ${status} to sanitized typed recovery`, () =>
+    Effect.gen(function* () {
+      const f = yield* fixture()
+      f.state.conversionStatus = status
+      const error = yield* reconcileApp(f.converting, f.pending).pipe(
+        Effect.provide(f.credentials),
+        Effect.flip,
+      )
+      expect(error._tag).toBe('AppConversionRecoveryError')
+      expect(encodeJson(error)).not.toContain(f.pem)
+      expect(encodeJson(error)).not.toContain('one-use-code')
+      expect(f.state.conversionCalls).toBe(1)
+      expect(f.state.writeCalls).toBe(0)
+    }),
+  )
+}
+
 it.effect('adopts metadata without conversion or key access and reports typed live drift', () =>
   Effect.gen(function* () {
     const f = yield* fixture()
@@ -303,6 +358,7 @@ it.effect('resumes the same pending form and refreshes only after its hour expir
     const f = yield* fixture()
     const resumed = yield* reconcileApp(f.props, f.pending).pipe(Effect.provide(f.credentials))
     expect(resumed).toEqual(f.pending)
+    expect(f.state.seen).toEqual([])
     expect(f.pending.manifestHtml).toContain('method="post"')
     expect(f.pending.expiresAt - f.pending.startedAt).toBe(3_600_000)
     const refreshed = yield* reconcileApp(f.props, { ...f.pending, expiresAt: 0 }).pipe(
@@ -311,8 +367,33 @@ it.effect('resumes the same pending form and refreshes only after its hour expir
     expect(refreshed.status).toBe('pending')
     if (refreshed.status !== 'pending') return yield* Effect.die('Expected pending form')
     expect(refreshed.state).not.toBe(f.pending.state)
-    expect(f.state.seen).toEqual([])
+    expect(f.state.seen).toEqual(['GET /repos/example/repo/actions/secrets/APP_PRIVATE_KEY'])
+    expect(refreshed.secretBaseline).toBe(f.state.updatedAt)
   }),
+)
+
+it.effect(
+  'persists an absent sink baseline and rejects later secret creation before conversion',
+  () =>
+    Effect.gen(function* () {
+      const f = yield* fixture()
+      f.state.secretStatus = 404
+      const pending = yield* reconcileApp(f.props, { ...f.pending, expiresAt: 0 }).pipe(
+        Effect.provide(f.credentials),
+      )
+      if (pending.status !== 'pending') return yield* Effect.die('Expected pending form')
+      expect(pending.secretBaseline).toBeNull()
+      f.state.secretStatus = 200
+      const error = yield* reconcileApp(
+        {
+          ...f.converting,
+          conversion: { code: Redacted.make('one-use-code'), state: pending.state },
+        },
+        pending,
+      ).pipe(Effect.provide(f.credentials), Effect.flip)
+      expect(error._tag).toBe('AppConversionRecoveryError')
+      expect(f.state.conversionCalls).toBe(0)
+    }),
 )
 
 it.effect(

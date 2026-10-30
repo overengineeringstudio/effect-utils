@@ -61,6 +61,8 @@ export interface PendingApp {
   readonly state: string
   readonly startedAt: number
   readonly expiresAt: number
+  /** GitHub server observation at form issuance; null means the secret was absent. */
+  readonly secretBaseline: string | null
 }
 
 /** Nonsecret observed App identity, grants, public-key fingerprint, and secret metadata. */
@@ -280,6 +282,49 @@ const adoptApp = Effect.fn('GitHub.App.adopt')(function* (
   return result
 })
 
+const observeSecretBaseline = Effect.fn('GitHub.App.observeSecretBaseline')(function* (
+  props: AppProps,
+) {
+  const octokit = yield* octokitFor(props.baseUrl)
+  const data = yield* safe({
+    operation: 'inspect conversion sink',
+    run: async () => {
+      try {
+        return (
+          await octokit.request(
+            `GET ${secretPath(props.privateKeySecret)}/${encodeURIComponent(props.privateKeySecret.name)}`,
+            { request: { retries: 0, redirect: 'error' } },
+          )
+        ).data
+      } catch (error) {
+        if (
+          typeof error === 'object' &&
+          error !== null &&
+          'status' in error &&
+          error.status === 404
+        )
+          return undefined
+        throw error
+      }
+    },
+  })
+  if (data === undefined) return null
+  return (yield* decode({ schema: Schema.Struct({ updated_at: Schema.String }), value: data }))
+    .updated_at
+})
+
+/** Browser origin corresponding to an upstream-normalized GitHub API base URL. */
+export const appBrowserOrigin = (baseUrl: string | undefined): string => {
+  const webUrl = new URL(baseUrl ?? 'https://github.com')
+  if (webUrl.hostname === 'api.github.com') webUrl.hostname = 'github.com'
+  else if (
+    webUrl.hostname.startsWith('api.') === true &&
+    webUrl.hostname.endsWith('.ghe.com') === true
+  )
+    webUrl.hostname = webUrl.hostname.slice('api.'.length)
+  return webUrl.origin
+}
+
 /**
  * There is no transaction across manifest conversion, Actions PUT, and Alchemy state.
  * Preflight everything possible, disable POST retries and mask interruption until the sink
@@ -310,45 +355,12 @@ export const convertApp = Effect.fn('GitHub.App.convert')(function* (
     })
   const octokit = yield* octokitFor(props.baseUrl)
   const path = secretPath(props.privateKeySecret)
-  // The sink timestamp is a durable, non-secret replay barrier after a successful PUT
-  // whose reconciliation failed before Alchemy could record the registered attributes.
-  const existingSecret = yield* safe({
-    operation: 'inspect conversion sink',
-    run: async () => {
-      try {
-        return (
-          await octokit.request(`GET ${path}/${encodeURIComponent(props.privateKeySecret.name)}`, {
-            request: { retries: 0, redirect: 'error' },
-          })
-        ).data
-      } catch (error) {
-        if (
-          typeof error === 'object' &&
-          error !== null &&
-          'status' in error &&
-          error.status === 404
-        )
-          return undefined
-        throw error
-      }
-    },
-  })
-  if (existingSecret !== undefined) {
-    const observed = yield* decode({
-      schema: Schema.Struct({ updated_at: Schema.String }),
-      value: existingSecret,
+  const currentSecret = yield* observeSecretBaseline(props)
+  if (pending.secretBaseline === undefined || currentSecret !== pending.secretBaseline)
+    return yield* new AppConversionRecoveryError({
+      message:
+        'The declared Actions secret changed since this manifest form was issued (or this older pending state has no baseline). A previous conversion may have sunk a key, or another writer may have changed the secret. Conversion is blocked. Inspect the owner App settings: if an App was created, remove conversion and adopt its slug using the same secret; otherwise remove conversion, let this form expire, and deploy to issue a new form. No App existence or secret key identity is inferred.',
     })
-    const updatedAt = Date.parse(observed.updated_at)
-    // GitHub timestamps have second precision; include the whole starting second.
-    if (
-      Number.isFinite(updatedAt) === false ||
-      updatedAt >= Math.floor(pending.startedAt / 1000) * 1000
-    )
-      return yield* new AppConversionRecoveryError({
-        message:
-          'The declared Actions secret was written since this manifest form was created. Conversion is blocked because its one-use code may already be consumed. Inspect the owner App settings, remove conversion, and adopt the created App by slug using this same secret. An unrelated secret write also requires explicit recovery; no secret contents are inferred.',
-      })
-  }
   const keyResponse = yield* safe({
     operation: 'get Actions public key',
     run: () => octokit.request(`GET ${path}/public-key`),
@@ -444,7 +456,7 @@ export const convertApp = Effect.fn('GitHub.App.convert')(function* (
         Effect.fail(
           new AppConversionRecoveryError({
             message:
-              'Manifest conversion or the Actions secret write did not complete conclusively. The one-use code may be consumed. Do not retry automatically. Inspect the App in the owner browser; if necessary revoke the generated key, generate a replacement, put it in the declared Actions secret, and adopt by slug. A successful secret write with lost Alchemy state can also be recovered by explicit adoption. No private key was persisted by Alchemy.',
+              'Manifest conversion or the Actions secret write did not complete conclusively. The one-use code may be consumed, expired, or invalid. Do not retry automatically. Inspect the owner browser: if an App exists, revoke/replace its key if necessary, put the replacement in the declared Actions secret, remove conversion and adopt by slug. If no App was created, remove conversion and reissue a form after the pending form expires. A successful secret write with lost Alchemy state can be recovered by explicit adoption. No private key was persisted by Alchemy.',
           }),
         ),
       ),
@@ -502,15 +514,7 @@ export const reconcileApp = Effect.fn('GitHub.App.reconcile')(function* (
   )
     return output
   const baseUrl = yield* effectiveGitHubBaseUrl(news.baseUrl)
-  const webUrl = new URL(baseUrl ?? 'https://github.com')
-  // API hosts differ from browser hosts on github.com and data-residency instances only.
-  if (webUrl.hostname === 'api.github.com') webUrl.hostname = 'github.com'
-  else if (
-    webUrl.hostname.startsWith('api.') === true &&
-    webUrl.hostname.endsWith('.ghe.com') === true
-  )
-    webUrl.hostname = webUrl.hostname.slice('api.'.length)
-  const webOrigin = webUrl.origin
+  const webOrigin = appBrowserOrigin(baseUrl)
   const registration =
     news.ownerType === 'user'
       ? '/settings/apps/new'
@@ -526,6 +530,7 @@ export const reconcileApp = Effect.fn('GitHub.App.reconcile')(function* (
     state,
     startedAt: now,
     expiresAt: now + 60 * 60 * 1000,
+    secretBaseline: yield* observeSecretBaseline(news),
   }
   return pending
 })

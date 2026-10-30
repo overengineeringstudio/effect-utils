@@ -4,23 +4,7 @@ import { it } from '@effect/vitest'
 import { Effect } from 'effect'
 import { expect } from 'vitest'
 
-import { reconcileApp, type AppProps } from './App.ts'
-
-const props: AppProps = {
-  owner: 'example',
-  manifest: {
-    name: 'Example App',
-    url: 'https://example.com',
-    redirectUrl: 'https://example.com/callback',
-    permissions: { contents: 'read' },
-    events: ['push'],
-  },
-  privateKeySecret: {
-    owner: 'example',
-    repository: 'repo',
-    name: 'APP_PRIVATE_KEY',
-  },
-}
+import { appBrowserOrigin } from './App.ts'
 
 const cases: ReadonlyArray<{
   readonly name: string
@@ -89,15 +73,7 @@ for (const testCase of cases) {
       // Use upstream normalization, not a hand-written credentials service or HTTP fixture.
       const apiBaseUrl = yield* effectiveGitHubBaseUrl(testCase.resourceBaseUrl)
       expect(apiBaseUrl).toBe(testCase.apiBaseUrl)
-      const pending = yield* reconcileApp({
-        ...props,
-        ...(testCase.resourceBaseUrl === undefined ? {} : { baseUrl: testCase.resourceBaseUrl }),
-      })
-      expect(pending.status).toBe('pending')
-      if (pending.status !== 'pending') return yield* Effect.die('Expected pending manifest')
-      const formUrl = `${testCase.webOrigin}/organizations/example/settings/apps/new?state=${pending.state}`
-      expect(pending.formUrl).toBe(formUrl)
-      expect(pending.manifestHtml).toContain(`action="${formUrl}"`)
+      expect(appBrowserOrigin(apiBaseUrl)).toBe(testCase.webOrigin)
     }).pipe(
       Effect.provide(
         fromToken(
