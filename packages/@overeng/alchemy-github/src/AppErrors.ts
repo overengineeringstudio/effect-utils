@@ -6,17 +6,31 @@ export class AppError extends Schema.TaggedError<AppError>()('GitHubAppResourceE
   message: Schema.String,
 }) {}
 
-export class AppManifestDriftError extends Schema.TaggedError<AppManifestDriftError>()('AppManifestDriftError', {
-  permissions: Schema.Array(Schema.Struct({
-    permission: Schema.String,
-    desired: Schema.optional(Schema.String),
-    observed: Schema.optional(Schema.String),
-  })),
-  events: Schema.optional(Schema.Struct({ desired: Schema.Array(Schema.String), observed: Schema.Array(Schema.String) })),
-  remedy: Schema.String,
-}) {}
+/** Desired grants differ from live App permissions/events and require an owner-browser remedy. */
+export class AppManifestDriftError extends Schema.TaggedError<AppManifestDriftError>()(
+  'AppManifestDriftError',
+  {
+    permissions: Schema.Array(
+      Schema.Struct({
+        permission: Schema.String,
+        desired: Schema.optional(Schema.String),
+        observed: Schema.optional(Schema.String),
+      }),
+    ),
+    events: Schema.optional(
+      Schema.Struct({
+        desired: Schema.Array(Schema.String),
+        observed: Schema.Array(Schema.String),
+      }),
+    ),
+    remedy: Schema.String,
+  },
+) {}
 
 /** Conversion is not transactional with Actions. Do not retry the one-use code automatically. */
-export class AppConversionRecoveryError extends Schema.TaggedError<AppConversionRecoveryError>()('AppConversionRecoveryError', {
-  message: Schema.String,
-}) {}
+export class AppConversionRecoveryError extends Schema.TaggedError<AppConversionRecoveryError>()(
+  'AppConversionRecoveryError',
+  {
+    message: Schema.String,
+  },
+) {}

@@ -44,9 +44,9 @@ import notionMdTsconfig from '../packages/@overeng/notion-md/tsconfig.json.genie
 import notionPropertyWriteTsconfig from '../packages/@overeng/notion-property-write/tsconfig.json.genie.ts'
 import notionReactTsconfig from '../packages/@overeng/notion-react/tsconfig.json.genie.ts'
 import npmReleaseTsconfig from '../packages/@overeng/npm-release/tsconfig.json.genie.ts'
-import outlineTsconfig from '../packages/@overeng/outline/tsconfig.json.genie.ts'
 import otelBrowserTsconfig from '../packages/@overeng/otel-browser/tsconfig.json.genie.ts'
 import otelContractTsconfig from '../packages/@overeng/otel-contract/tsconfig.json.genie.ts'
+import outlineTsconfig from '../packages/@overeng/outline/tsconfig.json.genie.ts'
 import oxcConfigTsconfig from '../packages/@overeng/oxc-config/tsconfig.json.genie.ts'
 import ptyEffectTsconfig from '../packages/@overeng/pty-effect/tsconfig.json.genie.ts'
 import reactInspectorTsconfig from '../packages/@overeng/react-inspector/tsconfig.json.genie.ts'
@@ -146,7 +146,9 @@ const rootWorkspaceTsconfigProjects = (() => {
       tsconfig: effectRpcTanstackBasicTsconfig,
     },
     'packages/@overeng/effect-rust': { tsconfig: effectRustTsconfig },
-    'packages/@overeng/effect-rust-fixture-consumer': { tsconfig: effectRustFixtureConsumerTsconfig },
+    'packages/@overeng/effect-rust-fixture-consumer': {
+      tsconfig: effectRustFixtureConsumerTsconfig,
+    },
     'packages/@overeng/effect-schema-form': { tsconfig: effectSchemaFormTsconfig },
     'packages/@overeng/effect-schema-form-aria': { tsconfig: effectSchemaFormAriaTsconfig },
     'packages/@overeng/genie': { tsconfig: genieTsconfig },

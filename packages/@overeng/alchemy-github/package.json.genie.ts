@@ -14,7 +14,16 @@ const workspaceDeps = catalog.compose({
     external: catalog.pick('@alchemy.run/github', 'libsodium-wrappers'),
   },
   devDependencies: {
-    external: catalog.pick('alchemy', 'effect', '@effect/platform-node', '@effect/vitest', '@types/node', 'typescript', 'vitest', 'vite'),
+    external: catalog.pick(
+      'alchemy',
+      'effect',
+      '@effect/platform-node',
+      '@effect/vitest',
+      '@types/node',
+      'typescript',
+      'vitest',
+      'vite',
+    ),
   },
   peerDependencies: {
     external: catalog.peers('alchemy', 'effect'),

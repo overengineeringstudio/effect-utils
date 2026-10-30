@@ -50,12 +50,14 @@ export default Alchemy.Stack(
         environment: 'production', // Omit for a repository Actions secret.
         name: 'CHECK_PUBLISHER_PRIVATE_KEY',
       },
-      ...(process.env.APP_MANIFEST_CODE === undefined ? {} : {
-        conversion: {
-          code: Redacted.make(process.env.APP_MANIFEST_CODE),
-          state: process.env.APP_MANIFEST_STATE!,
-        },
-      }),
+      ...(process.env.APP_MANIFEST_CODE === undefined
+        ? {}
+        : {
+            conversion: {
+              code: Redacted.make(process.env.APP_MANIFEST_CODE),
+              state: process.env.APP_MANIFEST_STATE!,
+            },
+          }),
     })
     return { app }
   }),
@@ -86,20 +88,22 @@ GitHub supports `DELETE /app/installations/{id}` with an App JWT, but has **no R
 The beta.84 provider already supports the consumer's required-check integration ID, strict policy, bypass actors and observed-policy comparison on updates. Use its camelCase contract directly:
 
 ```ts
-const ruleset = yield* GitHub.Ruleset('required-check', {
-  owner: 'example-org',
-  repository: 'example-project',
-  name: 'Required publisher check',
-  enforcement: 'active',
-  conditions: { include: ['~DEFAULT_BRANCH'], exclude: [] },
-  rules: {
-    requiredStatusChecks: {
-      checks: [{ context: 'publisher', integrationId: appId }],
-      strictRequiredStatusChecksPolicy: true,
+const ruleset =
+  yield *
+  GitHub.Ruleset('required-check', {
+    owner: 'example-org',
+    repository: 'example-project',
+    name: 'Required publisher check',
+    enforcement: 'active',
+    conditions: { include: ['~DEFAULT_BRANCH'], exclude: [] },
+    rules: {
+      requiredStatusChecks: {
+        checks: [{ context: 'publisher', integrationId: appId }],
+        strictRequiredStatusChecksPolicy: true,
+      },
     },
-  },
-  bypassActors: [{ actorId: appId, actorType: 'Integration', bypassMode: 'pull_request' }],
-})
+    bypassActors: [{ actorId: appId, actorType: 'Integration', bypassMode: 'pull_request' }],
+  })
 ```
 
 `appId` is the registration ID, not an installation ID. Upstream maps these fields to `required_status_checks[].integration_id`, `strict_required_status_checks_policy`, and `bypass_actors`. On reconciliation it reads actual policy, compares controlled fields, and PUTs only when they differ. This is not an additional no-op plan drift detector. Upstream supports name-based adoption through `adopt(true)` and defaults removal to retain; opt into Alchemy's destroy removal policy deliberately when deletion is wanted. The package does not promise ID-based adoption or the full genie ruleset schema.
