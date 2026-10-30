@@ -277,6 +277,8 @@ const makeFixture = ({ packageName = 'tui-core' }: { packageName?: string } = {}
     nodeModules,
     cp,
     fingerprintTool,
+    // Fixture fingerprints must not queue behind real workspace walks in another test chain.
+    admissionDirectory: join(root, 'fingerprint-admission'),
     workspaceAuthority,
     consumerCache,
     snapshotRetention: 2,
@@ -552,7 +554,13 @@ describe('editor view publisher', () => {
 
       const fingerprint = await canonicalTreeFingerprint({ tree: first })
       expect(await canonicalTreeFingerprint({ tree: second })).toBe(fingerprint)
-      expect(await canonicalTreeFingerprint({ tree: first, fingerprintTool })).toBe(fingerprint)
+      expect(
+        await canonicalTreeFingerprint({
+          tree: first,
+          fingerprintTool,
+          admissionDirectory: fixture.options.admissionDirectory,
+        }),
+      ).toBe(fingerprint)
       expect(await canonicalTreeFingerprint({ tree: collisionShape })).not.toBe(fingerprint)
 
       // A dereferenced view digest equals the plain digest of the same bytes
@@ -570,7 +578,12 @@ describe('editor view publisher', () => {
         await canonicalTreeFingerprint({ tree: materialized }),
       )
       expect(
-        await canonicalTreeFingerprint({ tree: linked, dereference: true, fingerprintTool }),
+        await canonicalTreeFingerprint({
+          tree: linked,
+          dereference: true,
+          fingerprintTool,
+          admissionDirectory: fixture.options.admissionDirectory,
+        }),
       ).toBe(await canonicalTreeFingerprint({ tree: materialized }))
       expect(await canonicalTreeFingerprint({ tree: linked })).not.toBe(
         await canonicalTreeFingerprint({ tree: linked, dereference: true }),
@@ -597,7 +610,12 @@ describe('editor view publisher', () => {
         { source: backing, identity: 'backing' },
       ]
       expect(
-        await canonicalTreeFingerprintWithResolvedLinks({ tree, linkOwners, fingerprintTool }),
+        await canonicalTreeFingerprintWithResolvedLinks({
+          tree,
+          linkOwners,
+          fingerprintTool,
+          admissionDirectory: fixture.options.admissionDirectory,
+        }),
       ).toEqual(await canonicalTreeFingerprintWithResolvedLinks({ tree, linkOwners }))
       expect(
         await canonicalTreeFingerprint({
@@ -605,6 +623,7 @@ describe('editor view publisher', () => {
           dereference: true,
           backingRoots: [backing],
           fingerprintTool,
+          admissionDirectory: fixture.options.admissionDirectory,
         }),
       ).toBe(await canonicalTreeFingerprint({ tree, dereference: true, backingRoots: [backing] }))
     } finally {
@@ -978,7 +997,13 @@ describe('editor view publisher', () => {
       const hashing = canonicalTreeFingerprint({ tree })
       linkSync(payload, join(fixture.root, 'second-reader'))
       await expect(hashing).resolves.toBe(before)
-      expect(await canonicalTreeFingerprint({ tree, fingerprintTool })).toBe(before)
+      expect(
+        await canonicalTreeFingerprint({
+          tree,
+          fingerprintTool,
+          admissionDirectory: fixture.options.admissionDirectory,
+        }),
+      ).toBe(before)
     } finally {
       cleanup(fixture)
     }
@@ -3616,7 +3641,11 @@ process.stderr.write = (...args) => {
         replacement = join(fixture.root, 'clean-ancestor')
         const payload = join(ancestor, 'index.js')
         const alias = join(fixture.root, 'ancestor-retained-inode')
-        const cleanDigest = await canonicalTreeFingerprint({ tree: snapshot, fingerprintTool })
+        const cleanDigest = await canonicalTreeFingerprint({
+          tree: snapshot,
+          fingerprintTool,
+          admissionDirectory: fixture.options.admissionDirectory,
+        })
         nativeFs.cpSync(ancestor, replacement, { recursive: true })
         const originalInode = statSync(payload).ino
         linkSync(payload, alias)
@@ -3935,11 +3964,16 @@ process.stderr.write = (...args) => {
 
   it('refuses garbage collection when snapshot ownership is ambiguous', async () => {
     const fixture = makeFixture()
+    const options = {
+      ...fixture.options,
+      // Only the tiny fixture tree is relevant to ownership refusal, not a workspace closure.
+      backingRoots: [fixture.nodeModules],
+    }
     try {
-      await publishEditorView(fixture.options)
+      await publishEditorView(options)
       const current = currentTarget(fixture)
       mkdirSync(join(fixture.editorRoot, '.store', 'unowned'))
-      await expect(publishEditorView(fixture.options)).rejects.toThrow(
+      await expect(publishEditorView(options)).rejects.toThrow(
         'snapshot store contains an ambiguously owned entry',
       )
       expect(currentTarget(fixture)).toBe(current)
