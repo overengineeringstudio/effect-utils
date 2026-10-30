@@ -321,12 +321,13 @@ Vitest.describe.skipIf(SKIP_INTEGRATION)('NotionSearch (integration)', () => {
             for (const item of filtered.results) expect(item.object).toBe(value)
 
             const streamed = yield* waitForIndex(
-              `searchStream:filter=${value}:pageSize=1`,
+              `searchStream:filter=${value}:pageSize=10`,
               collectSearchFixtures(
                 NotionSearch.searchStream({
                   query,
                   filter: { property: 'object', value },
-                  pageSize: 1,
+                  // Batch the bounded readiness scan; pageSize=1 is exercised below.
+                  pageSize: 10,
                 }),
                 [id],
               ),
@@ -375,8 +376,8 @@ Vitest.describe.skipIf(SKIP_INTEGRATION)('NotionSearch (integration)', () => {
           expect(second.results[0]?.id).not.toBe(first.results[0]?.id)
 
           const streamed = yield* waitForIndex(
-            'searchStream:unfiltered:pageSize=1',
-            collectSearchFixtures(NotionSearch.searchStream({ query, pageSize: 1 }), [
+            'searchStream:unfiltered:pageSize=10',
+            collectSearchFixtures(NotionSearch.searchStream({ query, pageSize: 10 }), [
               page.id,
               dataSourceId,
             ]),

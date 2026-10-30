@@ -260,3 +260,13 @@ const result =
     }),
   )
 ```
+
+## Search integration fixtures
+
+The live search test polls each query shape against a shared one-minute indexing
+deadline. A run-specific title does not guarantee that every returned item belongs
+to that run: unrelated workspace results can still be present. Stream readiness
+probes therefore inspect at most 100 items per attempt, using batches of 10, and
+stop earlier when all expected fixture IDs are found. A miss restarts from the
+index head on the next poll instead of exhausting the workspace from a stale
+cursor. Manual pagination separately exercises one-item pages and opaque cursors.
