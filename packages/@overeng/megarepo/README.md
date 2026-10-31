@@ -229,8 +229,12 @@ Rows carry a `kind`: `worktree` retains `repo`, `ref`, `refType` and `workspaceP
 `containerPath` and `outputRoot`, without ref fields. A class may select these independently with
 `repoRoots: "*-target"` instead of (or alongside) worktree `paths`. Only immediate directories
 are admitted, never symlinks, mount crossings or registered-worktree overlaps.
-Repository outputs are observation-only. Cargo authority requires the standard `CACHEDIR.TAG`
-signature (not merely a similarly named file); missing authority is reported and retained.
+Repository outputs require both `processWorktreeCoverage: "registered-worktrees"` and
+`processRepoOutputCoverage: "repo-build-outputs"` in admitted activity, plus the standard `CACHEDIR.TAG`
+signature, not merely a marker filename or a failed Git check. Seats/PTYs anywhere in the
+container veto all its outputs; direct process references protect only their containing output.
+Unknown evidence keeps. Apply locks the container, rechecks authority and the complete Git
+registry admission, and deletes only the selected output root after all idle predicates pass.
 Both kinds carry `livenessKey` and `admissionIdentity`; the digest binds version, ownership,
 census admission and process coverage. Old/unversioned policies and receipts are rejected:
 consumers must decode v2 owner kinds and regenerate plans instead of reusing v1 hashes.
