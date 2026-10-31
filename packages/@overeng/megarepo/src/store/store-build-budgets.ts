@@ -201,6 +201,7 @@ export type BudgetRepoWorktrees = ReadonlyArray<{
     readonly refType: 'heads' | 'tags' | 'commits'
     readonly path: AbsoluteDirPath
     readonly broken: boolean
+    readonly requiresExpandedProcessCoverage?: boolean
   }>
 }>
 
@@ -599,7 +600,9 @@ export const planBuildOutputBudgets = Effect.fn('store.planBuildOutputBudgets')(
                               ? 'artifact-not-ignored'
                               : now - scan.newestMtimeMs < policy.idleRetentionMs
                                 ? 'retention'
-                                : 'eligible'
+                                : worktree.requiresExpandedProcessCoverage === true
+                                  ? 'process-liveness-unavailable'
+                                  : 'eligible'
         const candidate: MutableCandidate = {
           repo: repo.relativePath,
           ref: worktree.ref,

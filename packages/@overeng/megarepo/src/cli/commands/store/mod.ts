@@ -149,6 +149,7 @@ type CollectedWorktree = {
   refType: 'heads' | 'tags' | 'commits'
   path: AbsoluteDirPath
   broken: boolean
+  requiresExpandedProcessCoverage?: boolean
 }
 
 type GcWorktreeDecision =
@@ -955,9 +956,18 @@ const collectBudgetRepoWorktrees = Effect.fn('store.collectBudgetRepoWorktrees')
       const common = yield* fs.readFileString(`${gitdir}/commondir`)
       if ((yield* fs.realPath(resolve(gitdir, common.trim()))) !== bare)
         return { reason: 'commondir mismatch', incomplete: true }
+      const backlink = yield* fs.readFileString(`${gitdir}/gitdir`)
+      if ((yield* fs.realPath(resolve(gitdir, backlink.trim()))) !== dotGit)
+        return { reason: 'gitdir backlink mismatch', incomplete: true }
       const registration = registrations.find((entry) => normalize(entry.path) === path)
       if (registration === undefined)
         return { reason: 'worktree is not registered', incomplete: true }
+      const registeredHead =
+        Option.isSome(registration.symbolicRef) === true
+          ? `ref: ${registration.symbolicRef.value}`
+          : registration.head
+      if ((yield* fs.readFileString(`${gitdir}/HEAD`)).trim() !== registeredHead)
+        return { reason: 'registration HEAD mismatch', incomplete: true }
       const identity = Git.worktreeRegistrationRef(registration)
       if (identity === undefined)
         return { reason: 'symbolic ref cannot be represented by budget refType', incomplete: true }
@@ -966,6 +976,8 @@ const collectBudgetRepoWorktrees = Effect.fn('store.collectBudgetRepoWorktrees')
         ...identity,
         path: EffectPath.unsafe.absoluteDir(`${canonical}/`),
         broken: false,
+        requiresExpandedProcessCoverage:
+          layout.some((entry) => entry.path.replace(/\/+$/u, '') === canonical) === false,
       })
     }).pipe(Effect.orElseSucceed(() => ({ reason: 'broken worktree ownership', incomplete: true })))
     if (admitted !== undefined) {
