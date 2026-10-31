@@ -342,6 +342,51 @@ const applyCommitRemnantFixture = ({
 
 describe('worktree mode selection', () => {
   it.effect(
+    'creates two missing references of one repository during parallel sync',
+    Effect.fnUntraced(
+      function* () {
+        const fs = yield* FileSystem.FileSystem
+        const store = yield* createStoreFixture([
+          { host: 'example.com', owner: 'team', repo: 'parallel' },
+        ])
+        const bare = store.bareRepoPaths['example.com/team/parallel']!
+        const first = (yield* runGitCommand(bare, 'rev-parse', 'main')).trim()
+        const tree = (yield* runGitCommand(bare, 'rev-parse', 'main^{tree}')).trim()
+        const second = (yield* runGitCommand(
+          bare,
+          '-c',
+          'user.name=Test',
+          '-c',
+          'user.email=test@example.com',
+          'commit-tree',
+          tree,
+          '-p',
+          first,
+          '-m',
+          'second',
+        )).trim()
+        const url = 'https://example.com/team/parallel'
+        const entries = Object.entries({ first, second })
+        const { workspacePath } = yield* createWorkspaceWithLock({
+          members: Object.fromEntries(entries.map(([name, commit]) => [name, `${url}#${commit}`])),
+          lockEntries: Object.fromEntries(
+            entries.map(([name, commit]) => [name, { url, ref: commit, commit }]),
+          ),
+        })
+        const result = yield* runApplyCommand({
+          cwd: workspacePath,
+          args: ['--worktree-mode', 'commit', '--output', 'json'],
+          env: { MEGAREPO_STORE: store.storePath.slice(0, -1) },
+        })
+        expect(result.exitCode).toBe(0)
+        for (const [, commit] of entries)
+          expect(yield* fs.exists(`${bare}../refs/commits/${commit}/.git`)).toBe(true)
+      },
+      Effect.provide(NodeServices.layer),
+      Effect.scoped,
+    ),
+  )
+  it.effect(
     'selects deterministic CI worktrees without requiring every caller to repeat the policy',
     Effect.fnUntraced(
       function* () {
