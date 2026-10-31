@@ -9,15 +9,15 @@ import { join } from 'node:path'
 import { fromToken } from '@alchemy.run/github/Credentials'
 import { it } from '@effect/vitest'
 import { AlchemyContext } from 'alchemy/AlchemyContext'
-import * as Provider from 'alchemy/Provider'
 import { State } from 'alchemy/State'
 import { scratchStack, toEffect } from 'alchemy/Test/Core'
 import { Effect, Layer, Schema } from 'effect'
 import { expect } from 'vitest'
 
-import { App, AppProvider, type AppProps } from './App.ts'
+import { App, type AppProps } from './App.ts'
 import { AppError, AppManifestDriftError } from './AppErrors.ts'
-import { Providers } from './Providers.ts'
+import { providers as githubProviders } from './Providers.ts'
+import { SecretSource } from './SecretSource.ts'
 
 const encodeJson = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown))
 
@@ -75,10 +75,11 @@ const fixture = Effect.gen(function* () {
   const credentials = fromToken('fixture-token', {
     baseUrl: `http://127.0.0.1:${address.port}/api`,
   })
-  const providers = Layer.effect(Providers, Provider.collection([App])).pipe(
-    Layer.provide(AppProvider),
-    Layer.provideMerge(credentials),
-  )
+  const providers = githubProviders({
+    secretSource: Layer.succeed(SecretSource, {
+      read: () => Effect.die('App adoption must not read secret sources'),
+    }),
+  }).pipe(Layer.merge(credentials))
   const options = { providers, stage: 'test', dev: false, sidecar: false }
   // Core's scratch harness uses the real beta84 Plan.make -> apply pipeline,
   // with an isolated in-memory store shared across deploys and plans.
