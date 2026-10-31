@@ -4627,12 +4627,18 @@ const storeLeaseCommand = Cli.Command.make(
     ownerPath: Cli.Flag.String('owner-path').pipe(
       Cli.Flag.withDescription('Store worktree path whose reclamation the lease must exclude'),
     ),
+    repoPath: Cli.Flag.String('repo-path').pipe(
+      Cli.Flag.withDescription(
+        'Existing bare repository or worktree; required when the owner path does not exist yet',
+      ),
+      Cli.Flag.optional,
+    ),
     command: Cli.Argument.String('command').pipe(
       Cli.Argument.withDescription('Command and arguments to run while holding the lease'),
       Cli.Argument.atLeast(1),
     ),
   },
-  ({ ownerPath, command }) =>
+  ({ ownerPath, repoPath, command }) =>
     Effect.gen(function* () {
       const store = yield* Store
       const exitCode = yield* Effect.gen(function* () {
@@ -4642,7 +4648,14 @@ const storeLeaseCommand = Cli.Command.make(
           stdout: 'inherit',
         })
         return yield* child.exitCode
-      }).pipe(Effect.scoped, withStoreWorktreeLease({ storeBasePath: store.basePath, ownerPath }))
+      }).pipe(
+        Effect.scoped,
+        withStoreWorktreeLease({
+          storeBasePath: store.basePath,
+          ownerPath,
+          ...(Option.isSome(repoPath) === true ? { bareRepoPath: repoPath.value } : {}),
+        }),
+      )
       // Wrapping must be transparent: the child's own code is the command's code
       // (`runTuiMain`'s teardown honors an already-set `process.exitCode`), so a
       // wrapped `exit 42` stays 42 instead of collapsing to a generic failure.

@@ -235,12 +235,16 @@ signature, not merely a marker filename or a failed Git check. Seats/PTYs anywhe
 container veto all its outputs; direct process references protect only their containing output.
 Unknown evidence keeps. Repository outputs containing `.git` or a bare repository boundary
 are never eligible, including when the output root itself is a bare repository.
-Apply acquires the canonical container first, then sorted registered-worktree activation leases,
-and re-enumerates registrations under those leases. Activation and worktree creation follow
-the same container-first protocol. The container stays leased through removal; every lease
-is released on exit. Git boundaries and registry identity are checked again before removal.
-External registration/activation tools must participate via `mr store lease` before publishing
-either coverage capability: tools bypassing the shared protocol remain a registration race.
+Apply acquires exclusive canonical container admission first, then sorted worktree leases,
+and re-enumerates registrations under those leases. Admission stays held through removal;
+every lease is released on exit. Git boundaries and registry identity are checked again.
+Repository admission supports kernel shared/exclusive flock controls, separate from Git writer
+locks. Controls persist: never unlink them, which would split ownership.
+Activation (`mr store lease`) and every mr creation path acquire a shared canonical repository
+fence before the exclusive worktree lease. Shared holders coexist and nest; exclusive
+reclamation refuses while they hold admission. A prospective owner requires `--repo-path`
+pointing to an existing verified repository/worktree. External tools must use this protocol
+before publishing coverage; tools bypassing it remain a registration race.
 Both kinds carry `livenessKey` and `admissionIdentity`; the digest binds version, ownership,
 census admission and process coverage. Old/unversioned policies and receipts are rejected:
 consumers must decode v2 owner kinds and regenerate plans instead of reusing v1 hashes.

@@ -959,10 +959,11 @@ describe('mr store lease', () => {
     Effect.fnUntraced(
       function* () {
         const fs = yield* FileSystem.FileSystem
-        const { storePath, worktreePaths } = yield* createStoreFixture([
+        const { storePath, worktreePaths, bareRepoPaths } = yield* createStoreFixture([
           { host: 'github.com', owner: 'test-owner', repo: 'leased-repo', branches: ['main'] },
         ])
         const owner = worktreePaths['github.com/test-owner/leased-repo#main']!
+        const base = yield* Git.getCurrentCommit(owner)
         const cwd = EffectPath.unsafe.absoluteDir(`${yield* fs.makeTempDirectoryScoped()}/`)
         const leasePath = deletionLeasePath({
           storeBasePath: storePath,
@@ -973,11 +974,71 @@ describe('mr store lease', () => {
         // is covered from before its first write until after it exits.
         const observed = yield* runMrCommand({
           cwd,
-          command: ['store', 'lease', '--owner-path', owner, '--', 'test', '-f', leasePath],
+          command: [
+            'store',
+            'lease',
+            '--owner-path',
+            owner,
+            '--',
+            'sh',
+            '-c',
+            'test -f "$1" && shift && exec "$@"',
+            'lease-test',
+            leasePath,
+            'bun',
+            fileURLToPath(new URL('../../bin/mr.ts', import.meta.url)),
+            'store',
+            'worktree',
+            'new',
+            'test-owner/leased-repo',
+            '--no-fetch',
+            '--ref',
+            'nested',
+            '--base',
+            base,
+            '--porcelain',
+          ],
           env: { MEGAREPO_STORE: storePath },
         })
         expect(observed.exitCode).toBe(0)
         expect(yield* fs.exists(leasePath)).toBe(false)
+        expect(
+          yield* Git.getCurrentBranch(
+            EffectPath.unsafe.absoluteDir(
+              `${storePath}github.com/test-owner/leased-repo/refs/heads/nested/`,
+            ),
+          ),
+        ).toEqual(Option.some('nested'))
+        const external = `${cwd}prospective`
+        const args = ['store', 'lease', '--owner-path', external]
+        const child = [
+          '--',
+          'git',
+          '--git-dir',
+          bareRepoPaths['github.com/test-owner/leased-repo']!,
+          'worktree',
+          'add',
+          '-b',
+          'external',
+          external,
+          'main',
+        ]
+        const missingSource = yield* runMrCommand({
+          cwd,
+          command: [...args, ...child],
+          env: { MEGAREPO_STORE: storePath },
+        })
+        expect(missingSource.exitCode).toBe(1)
+        expect(yield* fs.exists(external)).toBe(false)
+        const explicitSource = yield* runMrCommand({
+          cwd,
+          command: [...args, '--repo-path', owner, ...child],
+          env: { MEGAREPO_STORE: storePath },
+        })
+        expect(explicitSource.exitCode, explicitSource.failure).toBe(0)
+        expect(yield* Git.getCurrentBranch(EffectPath.unsafe.absoluteDir(`${external}/`))).toEqual(
+          Option.some('external'),
+        )
 
         // Wrapping is transparent: the child's own code becomes the command's
         // code (`process.exitCode`, honored by the CLI teardown), never a
