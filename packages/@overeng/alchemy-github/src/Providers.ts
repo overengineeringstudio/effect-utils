@@ -5,6 +5,7 @@ import { Layer } from 'effect'
 import { ActionsSecret, ActionsSecretProvider } from './ActionsSecret.ts'
 import { ActionsVariable, ActionsVariableProvider } from './ActionsVariable.ts'
 import { App, AppProvider } from './App.ts'
+import { Labels, LabelsProvider } from './Labels.ts'
 import {
   fromEnv as manifestCodesFromEnv,
   type ManifestCodeSourceLayer,
@@ -21,8 +22,10 @@ export const providers = (
     readonly manifestCodeSource?: ManifestCodeSourceLayer
   },
 ) =>
-  Layer.effect(Providers, Provider.collection([App, ActionsSecret, ActionsVariable])).pipe(
-    Layer.provide(Layer.mergeAll(AppProvider, ActionsSecretProvider, ActionsVariableProvider)),
+  Layer.effect(Providers, Provider.collection([App, ActionsSecret, ActionsVariable, Labels])).pipe(
+    Layer.provide(
+      Layer.mergeAll(AppProvider, ActionsSecretProvider, ActionsVariableProvider, LabelsProvider),
+    ),
     Layer.provideMerge(options?.secretSource ?? SecretSourceLive),
     Layer.provideMerge(options?.manifestCodeSource ?? manifestCodesFromEnv()),
     Layer.provideMerge(GitHub.providers(options)),

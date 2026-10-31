@@ -219,6 +219,30 @@ Variable names are normalized to uppercase in requests, comparisons and state, m
 
 These are repository permissions; write includes read, and the environment must already exist. See GitHub's [Actions variables REST documentation](https://docs.github.com/en/rest/actions/variables). The separate resource adds live plan-time drift observation; upstream's `Variable` remains available unchanged.
 
+## Repository labels
+
+`GitHub.Labels` manages definitions, not issue/pull-request label assignments. Load the repository's file with the exported `LabelsFileSchema` / `LabelDefinitionSchema` contract:
+
+```ts
+const labels = yield * GitHub.loadLabelsFile('.github/labels.json')
+const applied =
+  yield *
+  GitHub.Labels('repository-labels', {
+    owner: 'example-org',
+    repo: 'example-project',
+    labels,
+    // deleteUnmanaged: true, // destructive opt-in; false by default
+  })
+```
+
+The JSON envelope is `{ "labels": [{ "name": "bug", "color": "d73a4a", "description": "A defect" }] }`; other envelope metadata is ignored. Colors are exactly six hexadecimal digits without `#`. Names must be unique ignoring case. An omitted description means an empty description, so existing descriptions are cleared.
+
+Plans and read observations list all pages of repository labels. Missing managed labels or color/description drift trigger an update; case-only name differences do not rename labels. Unmanaged names and managed drift are reported through Effect logs, never added to the ownership receipt. `deleteUnmanaged: true` deletes every label outside the declared set, including labels created by other tools; otherwise they are left alone. Renames are not supported: changing a name declares a different label and leaves the previous one unmanaged unless deletion is explicitly enabled.
+
+Outputs/state attributes contain only `managed` names and their last-applied values. Read observations preserve that receipt rather than replacing it with external edits. Destroy lists live labels and deletes only managed labels whose name (ignoring case), color and description still match the receipt; missing, externally edited and unmanaged labels are left alone. A concurrent writer between observation and deletion cannot be protected by the labels API, which has no conditional delete contract here. Do not manage the same label set from multiple resources.
+
+The App installation needs **Issues: write OR Pull requests: write** repository permission for create/update/delete; either permission suffices. Listing needs the corresponding read permission (or public repository access). GitHub documents both alternatives for [create](https://docs.github.com/en/rest/issues/labels#create-a-label), [update](https://docs.github.com/en/rest/issues/labels#update-a-label), [delete](https://docs.github.com/en/rest/issues/labels#delete-a-label), and [list](https://docs.github.com/en/rest/issues/labels#list-labels-for-a-repository). No new secret handling is involved.
+
 ## Required checks with the upstream Ruleset
 
 The beta.84 provider already supports the consumer's required-check integration ID, strict policy, bypass actors and observed-policy comparison on updates. Use its camelCase contract directly:
