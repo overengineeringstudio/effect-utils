@@ -1,5 +1,6 @@
 import { createHash, createPrivateKey, createPublicKey, randomBytes } from 'node:crypto'
 
+import { GitHubCredentials } from '@alchemy.run/github/Credentials'
 import {
   effectiveGitHubBaseUrl,
   gitHubBaseUrlChanged,
@@ -355,7 +356,47 @@ export const convertApp = Effect.fn('GitHub.App.convert')(function* (
       message:
         'The one-hour manifest registration window expired. Remove the conversion input and deploy a new form.',
     })
-  const octokit = yield* octokitFor(props.baseUrl)
+  const credentials = yield* yield* GitHubCredentials
+  const baseUrl = (yield* effectiveGitHubBaseUrl(props.baseUrl)) ?? 'https://api.github.com'
+  // Do not use Octokit here: its request-log plugin logs expanded callback URLs
+  // before our sanitized error boundary, and debug hooks can observe request bodies.
+  const direct = async ({
+    method,
+    endpoint,
+    body,
+  }: {
+    method: string
+    endpoint: string
+    body?: Record<string, string>
+  }) => {
+    const response = await fetch(`${baseUrl.replace(/\/$/, '')}${endpoint}`, {
+      method,
+      redirect: 'manual',
+      headers: {
+        accept: 'application/vnd.github+json',
+        authorization: `Bearer ${Redacted.value(credentials.token)}`,
+        'x-github-api-version': '2022-11-28',
+        ...(body === undefined ? {} : { 'content-type': 'application/json' }),
+      },
+      ...(body === undefined
+        ? {}
+        : {
+            body: Schema.encodeSync(
+              Schema.fromJsonString(Schema.Record(Schema.String, Schema.String)),
+            )(body),
+          }),
+    })
+    if (response.ok === false) {
+      await response.body?.cancel()
+      throw new Error('GitHub conversion transport failed')
+    }
+    if (method === 'PUT' || response.status === 204) {
+      await response.body?.cancel()
+      return undefined
+    }
+    const data: unknown = await response.json()
+    return data
+  }
   const path = secretPath(props.privateKeySecret)
   const currentSecret = yield* observeSecretBaseline(props)
   if (pending.secretBaseline === undefined || currentSecret !== pending.secretBaseline)
@@ -365,9 +406,9 @@ export const convertApp = Effect.fn('GitHub.App.convert')(function* (
     })
   const keyResponse = yield* safe({
     operation: 'get Actions public key',
-    run: () => octokit.request(`GET ${path}/public-key`),
+    run: () => direct({ method: 'GET', endpoint: `${path}/public-key` }),
   })
-  const publicKey = yield* decode({ schema: PublicKey, value: keyResponse.data })
+  const publicKey = yield* decode({ schema: PublicKey, value: keyResponse })
   const sealingKey = yield* safe({
     operation: 'initialize sealed box',
     run: () => prepareSealedBox(publicKey.key),
@@ -390,12 +431,12 @@ export const convertApp = Effect.fn('GitHub.App.convert')(function* (
       const response = yield* safe({
         operation: 'convert manifest',
         run: () =>
-          octokit.request('POST /app-manifests/{code}/conversions', {
-            code: Redacted.value(code),
-            request: { retries: 0, redirect: 'error' },
+          direct({
+            method: 'POST',
+            endpoint: `/app-manifests/${encodeURIComponent(Redacted.value(code))}/conversions`,
           }),
       })
-      const data = yield* decode({ schema: Conversion, value: response.data })
+      const data = yield* decode({ schema: Conversion, value: response })
       const sealed = yield* safe({
         operation: 'seal private key',
         run: async () => {
@@ -418,10 +459,13 @@ export const convertApp = Effect.fn('GitHub.App.convert')(function* (
       yield* safe({
         operation: 'write Actions secret',
         run: () =>
-          octokit.request(`PUT ${path}/${encodeURIComponent(props.privateKeySecret.name)}`, {
-            encrypted_value: sealed.ciphertext,
-            key_id: publicKey.key_id,
-            request: { retries: 0, redirect: 'error' },
+          direct({
+            method: 'PUT',
+            endpoint: `${path}/${encodeURIComponent(props.privateKeySecret.name)}`,
+            body: {
+              encrypted_value: sealed.ciphertext,
+              key_id: publicKey.key_id,
+            },
           }),
       })
       const secret = yield* verifySecret(props)

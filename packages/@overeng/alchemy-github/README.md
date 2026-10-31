@@ -14,6 +14,8 @@ The npm `next` tag was inspected first: it pointed to `2.0.0-beta.72`, whose bun
 
 Use a protected state backend and never commit `.alchemy/` state. Built-in resources retain their upstream secret/state semantics. JavaScript cannot guarantee physical erasure of immutable strings from memory; the conversion key is kept local and never retained as resource state. The mutable byte buffer used for encryption is zeroed after sealing.
 
+The conversion POST, its public-key preflight GET and its sealed-secret PUT use direct HTTP requests with manual redirect handling, no retries and no request logger. They deliberately bypass Octokit's request-log plugin, which can print expanded callback URLs before provider error sanitization. Error responses are discarded without logging their bodies. Other package-owned Octokit calls carry only App/secret metadata, public keys, sealed ciphertext or explicitly non-secret variable values; they never receive the callback code or PEM.
+
 The deployment credentials configured through upstream `GitHub.providers()` need Actions secret access to the selected repository/environment. They are separate from the generated App's runtime credential. The new App can request only `checks: write` and be installed only on the intended repository.
 
 ## Two-step App registration
