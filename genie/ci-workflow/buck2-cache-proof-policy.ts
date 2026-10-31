@@ -41,6 +41,7 @@ export const coreCachePostures = {
   'pr-reviews-resolved': 'reader',
   'test-integration-notion': 'reader',
   'test-live-deploy-ci-tools': 'reader',
+  'test-live-alchemy-github': 'reader',
   'deploy-storybooks': 'reader',
   'publish-products': 'reader',
   'consumer-smoke': 'reader',
