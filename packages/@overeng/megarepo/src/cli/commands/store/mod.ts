@@ -54,6 +54,7 @@ import {
   loadBuildOutputBudgetPolicyReceipt,
   loadBuildOutputBudgets,
   planBuildOutputBudgets,
+  type BudgetRepoWorktrees,
 } from '../../../store/store-build-budgets.ts'
 import { canonicalizeOwnerPath, withDeletionLease } from '../../../store/store-deletion-lease.ts'
 import {
@@ -928,7 +929,7 @@ const collectBudgetRepoWorktrees = Effect.fn('store.collectBudgetRepoWorktrees')
   const registrations = yield* Git.listWorktrees(bareRepoPath)
   const bare = yield* fs.realPath(bareRepoPath)
   const store = yield* fs.realPath(storeBasePath)
-  const worktrees: Array<CollectedWorktree> = []
+  const worktrees: Array<BudgetRepoWorktrees[number]['worktrees'][number]> = []
   const seen = new Set<string>()
   let censusIncomplete = false
   // Validate layout roots too: a registry entry must not bypass ownership checks.
@@ -970,7 +971,7 @@ const collectBudgetRepoWorktrees = Effect.fn('store.collectBudgetRepoWorktrees')
         return { reason: 'registration HEAD mismatch', incomplete: true }
       const identity = Git.worktreeRegistrationRef(registration)
       if (identity === undefined)
-        return { reason: 'symbolic ref cannot be represented by budget refType', incomplete: true }
+        return { reason: 'registration has no valid ref identity', incomplete: true }
       seen.add(canonical)
       worktrees.push({
         ...identity,

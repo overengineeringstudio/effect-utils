@@ -703,15 +703,15 @@ export interface WorktreeRegistration {
   readonly lockReason: Option.Option<string>
 }
 
-/** Only branch and detached identities fit the current budget receipt contract. */
+/** Preserve full non-head symbolic refs rather than inventing branch identities. */
 export const worktreeRegistrationRef = (
   registration: WorktreeRegistration,
-): { ref: string; refType: 'heads' | 'commits' } | undefined => {
+): { ref: string; refType: 'heads' | 'commits' | 'symbolic' } | undefined => {
   if (Option.isSome(registration.symbolicRef) === true) {
     const ref = registration.symbolicRef.value
     return ref.startsWith('refs/heads/') === true
       ? { ref: ref.slice(11), refType: 'heads' }
-      : undefined
+      : { ref, refType: 'symbolic' }
   }
   return /^[0-9a-f]{40,64}$/u.test(registration.head) === true
     ? { ref: registration.head, refType: 'commits' }

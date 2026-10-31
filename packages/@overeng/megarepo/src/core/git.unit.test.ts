@@ -30,7 +30,7 @@ describe('git', () => {
     })
     expect(
       worktreeRegistrationRef({ ...registration, symbolicRef: Option.some('refs/custom/topic') }),
-    ).toBeUndefined()
+    ).toEqual({ ref: 'refs/custom/topic', refType: 'symbolic' })
   })
   describe('parseGitRemoteUrl', () => {
     describe('SSH URLs', () => {

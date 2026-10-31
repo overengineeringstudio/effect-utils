@@ -834,7 +834,7 @@ and actual HEAD branch in machine-readable metadata.
 
 ##### Build-output budgets
 
-`--budgets` reads a strict `megarepo.build-output-budgets.v1` policy before any
+`--budgets` reads a strict `megarepo.build-output-budgets.v2` policy before any
 store inspection (unknown schema or malformed input ⇒ non-zero exit, nothing
 deleted). Each class lists root patterns (`name` at the worktree root,
 `**/name` nested, never crossing symlinks, mounts, `.git`, another class root,
@@ -851,7 +851,7 @@ newest write older than `idleRetentionMs`, an ignored root with no tracked
 file, and canonical containment; unknown keeps. Incomplete scans mark the class
 `scan-incomplete` regardless of `keptByReason`.
 
-Output is the `megarepo.build-output-budget-plan.v1` document (`planSha256`,
+Output is the `megarepo.build-output-budget-plan.v2` document (`planSha256`,
 `results`, `classes`). Application takes the candidate's owner lock and deletion
 lease, recaptures activity, replans with the same digest, re-checks the
 candidate, then deletes that root only. Budget mode never tears down worktrees;

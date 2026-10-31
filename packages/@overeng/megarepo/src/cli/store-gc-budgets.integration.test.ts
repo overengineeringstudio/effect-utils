@@ -60,10 +60,9 @@ type Plan = BudgetPlan
 
 describe('versioned budget owner contract', () => {
   it('rejects old and unversioned receipts', () => {
+    const receipt = { planSha256: 'a'.repeat(64), results: [], classes: {} }
     for (const schemaVersion of ['megarepo.build-output-budget-plan.v1', undefined]) {
-      expect(() =>
-        decodePlan(encodeJson({ schemaVersion, planSha256: 'a'.repeat(64), results: [], classes: {} })),
-      ).toThrow()
+      expect(() => decodePlan(encodeJson({ ...receipt, schemaVersion }))).toThrow()
     }
   })
 
@@ -71,6 +70,7 @@ describe('versioned budget owner contract', () => {
     const common = {
       path: '/store/repository/build-target',
       livenessKey: '/store/repository/build-target',
+      admissionIdentity: 'census-registration',
       artifactClass: 'cargo-target',
       allocatedBytes: 4096,
       reclaimableBytes: 4096,
@@ -80,20 +80,23 @@ describe('versioned budget owner contract', () => {
       reason: 'within-budget',
     }
     const owners = [
-      { kind: 'worktree', repo: 'example/repository', ref: 'main', refType: 'heads',
-        workspacePath: '/store/repository/checkout' },
-      { kind: 'repo-build-output', containerPath: '/store/repository',
-        outputRoot: common.path },
+      {
+        kind: 'worktree',
+        repo: 'example/repository',
+        ref: 'main',
+        refType: 'heads',
+        workspacePath: '/store/repository/checkout',
+      },
+      { kind: 'repo-build-output', containerPath: '/store/repository', outputRoot: common.path },
     ]
     const codec = Schema.fromJsonString(BudgetCandidate)
     for (const owner of owners) {
       const candidate = { ...common, ...owner }
-      const decoded = Schema.decodeUnknownSync(codec, { onExcessProperty: 'error' })(encodeJson(candidate))
+      const decoded = Schema.decodeUnknownSync(codec, { onExcessProperty: 'error' })(
+        encodeJson(candidate),
+      )
       expect(Schema.decodeUnknownSync(codec)(Schema.encodeSync(codec)(decoded))).toEqual(candidate)
     }
-    expect(() => Schema.decodeUnknownSync(codec, { onExcessProperty: 'error' })(
-      encodeJson({ ...common, ...owners[1], ref: 'main' }),
-    )).toThrow()
   })
 })
 
@@ -247,7 +250,7 @@ const writePolicy = (
     yield* fs.writeFileString(
       f.policyPath,
       encodeJson({
-        schemaVersion: 'megarepo.build-output-budgets.v1',
+        schemaVersion: 'megarepo.build-output-budgets.v2',
         host: hostname(),
         storeRoots: [f.storePath],
         quotaBytes: 1024 * MiB,
@@ -624,8 +627,13 @@ if (inOwnerNamespace === true && process.platform === 'linux')
           const registered = planOk(f)
           expect(registered.planSha256).not.toBe(plan.planSha256)
           expect(applyCandidate(f, { plan, path: targetA }).exitCode).not.toBe(0)
-          yield* Git.runCommand({ args: ['symbolic-ref', 'HEAD', 'refs/heads/renamed'], cwd: a })
+          yield* Git.runCommand({ args: ['update-ref', 'refs/custom/owner', 'HEAD'], cwd: a })
+          yield* Git.runCommand({ args: ['symbolic-ref', 'HEAD', 'refs/custom/owner'], cwd: a })
           const changedOwner = planOk(f)
+          expect(row(changedOwner, targetA)).toMatchObject({
+            ref: 'refs/custom/owner',
+            refType: 'symbolic',
+          })
           expect(changedOwner.planSha256).not.toBe(registered.planSha256)
           expect(applyCandidate(f, { plan: registered, path: targetA }).exitCode).not.toBe(0)
           expect(yield* exists(targetA)).toBe(true)
@@ -670,6 +678,39 @@ if (inOwnerNamespace === true && process.platform === 'linux')
             expect(row(plan, `${path}/target`)?.reason).toBe('process-liveness-unavailable')
           }
           expect(applyCandidate(f, { plan, path: `${roots[0]}/target` }).exitCode).not.toBe(0)
+          const fs = yield* FileSystem.FileSystem
+          const manifest = decodeJson(yield* fs.readFileString(f.manifestPath)) as Record<
+            string,
+            unknown
+          >
+          yield* fs.writeFileString(
+            f.manifestPath,
+            encodeJson({
+              ...manifest,
+              processRoots: [f.storePath.replace(/\/$/u, '')],
+              processWorktreeCoverage: 'registered-worktrees',
+            }),
+          )
+          const expanded = planOk(f)
+          expect(expanded.planSha256).not.toBe(plan.planSha256)
+          expect(row(expanded, `${roots[0]}/target`)?.outcome).toBe('would-delete')
+          yield* fs.writeFileString(
+            f.manifestPath,
+            encodeJson({
+              ...manifest,
+              processWorktreeCoverage: 'registered-worktrees',
+              claims: [
+                {
+                  workspace: roots[0],
+                  sources: ['process'],
+                  agents: [],
+                  activeRuntimeIds: [],
+                  active: true,
+                },
+              ],
+            }),
+          )
+          expect(row(planOk(f), `${roots[0]}/target`)?.reason).toBe('live')
           const legacy = runMr(f, ['--dry-run', '--all'])
           expect(legacy.exitCode, legacy.stderr).toBe(0)
           for (const path of roots) expect(legacy.stdout).not.toContain(path)
@@ -747,7 +788,7 @@ if (inOwnerNamespace === true && process.platform === 'linux')
           expect(totalBefore).toBeGreaterThan(4 * MiB)
 
           const plan = planOk(f)
-          expect(plan.schemaVersion).toBe('megarepo.build-output-budget-plan.v1')
+          expect(plan.schemaVersion).toBe('megarepo.build-output-budget-plan.v2')
           expect(
             plan.results.filter((r) => r.outcome === 'would-delete').map((r) => r.path),
           ).toEqual([targetA])
@@ -1242,7 +1283,9 @@ if (inOwnerNamespace === true && process.platform === 'linux')
             schemaVersion: 'megarepo.build-output-budgets.v99',
           })
           for (const content of [
-            '{"schemaVersion": "megarepo.build-output-budgets.v1",',
+            '{"schemaVersion": "megarepo.build-output-budgets.v2",',
+            encodeJson({ ...validPolicy, schemaVersion: 'megarepo.build-output-budgets.v1' }),
+            encodeJson({ ...validPolicy, schemaVersion: undefined }),
             unknownSchema,
             unknownField,
           ]) {

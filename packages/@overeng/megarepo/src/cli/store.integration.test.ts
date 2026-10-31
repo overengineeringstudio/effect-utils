@@ -887,7 +887,7 @@ describe('mr store gc', () => {
           yield* fs.writeFileString(
             policyPath,
             encodeJson({
-              schemaVersion: 'megarepo.build-output-budgets.v1',
+              schemaVersion: 'megarepo.build-output-budgets.v2',
               host: hostname(),
               storeRoots: [storePath],
               quotaBytes: 1024 * 1024,

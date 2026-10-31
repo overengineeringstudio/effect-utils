@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto'
 import type { BigIntStats, Dir } from 'node:fs'
 import { lstat, opendir } from 'node:fs/promises'
 import { hostname } from 'node:os'
-import { isAbsolute, join, normalize, relative } from 'node:path'
+import { isAbsolute, join, normalize, relative, resolve } from 'node:path'
 
 import { Clock, Effect, Schema } from 'effect'
 import * as FileSystem from 'effect/FileSystem'
@@ -61,7 +61,7 @@ const RootPattern = Schema.NonEmptyString.check(
 
 /** Strict host policy: accounting is allocated bytes, not logical size or exclusive ZFS usage. */
 export const BuildOutputBudgets = Schema.Struct({
-  schemaVersion: Schema.Literal('megarepo.build-output-budgets.v1'),
+  schemaVersion: Schema.Literal('megarepo.build-output-budgets.v2'),
   host: Schema.NonEmptyString,
   storeRoots: Schema.Array(AbsolutePath).check(Schema.isMinLength(1)),
   quotaBytes: Bytes,
@@ -100,13 +100,10 @@ export const BudgetReason = Schema.Literals([
   'scan-incomplete',
   'deletion-partial',
 ])
-/** Schema-validated accounting and eligibility for one discovered output root. */
-export const BudgetCandidate = Schema.Struct({
-  repo: Schema.String,
-  ref: Schema.String,
-  refType: Schema.Literals(['heads', 'tags', 'commits']),
+const CandidateFields = {
   path: AbsolutePath,
-  workspacePath: AbsolutePath,
+  livenessKey: AbsolutePath,
+  admissionIdentity: Schema.NonEmptyString,
   artifactClass: Schema.NonEmptyString,
   allocatedBytes: Bytes,
   reclaimableBytes: Bytes,
@@ -117,9 +114,30 @@ export const BudgetCandidate = Schema.Struct({
   recoverPath: Schema.optional(Schema.String),
   code: Schema.optional(Schema.String),
   message: Schema.optional(Schema.String),
-}).annotate({ identifier: 'Megarepo.BuildOutputBudgetCandidate' })
+}
+/** Ownership is truthful: repository build outputs have no worktree ref identity. */
+export const BudgetCandidate = Schema.Union([
+  Schema.Struct({
+    ...CandidateFields,
+    kind: Schema.Literal('worktree'),
+    repo: Schema.String,
+    ref: Schema.String,
+    refType: Schema.Literals(['heads', 'tags', 'commits', 'symbolic']),
+    workspacePath: AbsolutePath,
+  }),
+  Schema.Struct({
+    ...CandidateFields,
+    kind: Schema.Literal('repo-build-output'),
+    containerPath: AbsolutePath,
+    outputRoot: AbsolutePath,
+    ref: Schema.optionalKey(Schema.Never),
+    refType: Schema.optionalKey(Schema.Never),
+    workspacePath: Schema.optionalKey(Schema.Never),
+  }),
+]).annotate({ identifier: 'Megarepo.BuildOutputBudgetCandidate' })
 export type BudgetCandidate = typeof BudgetCandidate.Type
-type MutableCandidate = { -readonly [TKey in keyof BudgetCandidate]: BudgetCandidate[TKey] }
+type WorktreeCandidate = Extract<BudgetCandidate, { kind: 'worktree' }>
+type MutableCandidate = { -readonly [TKey in keyof WorktreeCandidate]: WorktreeCandidate[TKey] }
 /** Per-class allocated-byte accounting, reclamation and safety summary. */
 export const BudgetClassSummary = Schema.Struct({
   totalBytes: Bytes,
@@ -133,7 +151,7 @@ export const BudgetClassSummary = Schema.Struct({
 })
 /** Plan-hash-bound budget dry-run or single-root apply receipt. */
 export const BudgetPlan = Schema.Struct({
-  schemaVersion: Schema.Literal('megarepo.build-output-budget-plan.v1'),
+  schemaVersion: Schema.Literal('megarepo.build-output-budget-plan.v2'),
   planSha256: Schema.String.check(Schema.isPattern(/^[0-9a-f]{64}$/u)),
   results: Schema.Array(BudgetCandidate),
   classes: Schema.Record(Schema.String, BudgetClassSummary),
@@ -160,7 +178,7 @@ export const loadBuildOutputBudgetPolicyReceipt = Effect.fn(
   const policy = yield* Schema.decodeEffect(Schema.fromJsonString(BuildOutputBudgets), {
     onExcessProperty: 'error',
   })(content).pipe(
-    Effect.mapError(() => fail(`Cannot decode megarepo.build-output-budgets.v1 policy: ${path}`)),
+    Effect.mapError(() => fail(`Cannot decode megarepo.build-output-budgets.v2 policy: ${path}`)),
   )
   const patterns = new Map<string, string>()
   for (const [name, entry] of Object.entries(policy.classes)) {
@@ -198,7 +216,7 @@ export type BudgetRepoWorktrees = ReadonlyArray<{
   readonly censusIncomplete?: boolean
   readonly worktrees: ReadonlyArray<{
     readonly ref: string
-    readonly refType: 'heads' | 'tags' | 'commits'
+    readonly refType: 'heads' | 'tags' | 'commits' | 'symbolic'
     readonly path: AbsoluteDirPath
     readonly broken: boolean
     readonly requiresExpandedProcessCoverage?: boolean
@@ -230,6 +248,50 @@ const deletionFingerprint = ({
   artifactFingerprint: string
   identity: DeletionIdentity
 }): string => createHash('sha256').update(encode({ artifactFingerprint, identity })).digest('hex')
+
+/** Persisted Git admission evidence is recaptured even under the deletion lease. */
+const worktreeAdmissionIdentity = Effect.fn('store.worktreeAdmissionIdentity')(function* ({
+  owner,
+  barePath,
+}: {
+  owner: string
+  barePath: string
+}) {
+  const fs = yield* FileSystem.FileSystem
+  const bare = yield* fs.realPath(barePath)
+  const dotGit = `${owner}/.git`
+  const pointer = yield* fs.readFileString(dotGit)
+  if (pointer.startsWith('gitdir: ') === false) return yield* fail('Missing worktree gitdir')
+  const gitdir = yield* fs.realPath(resolve(owner, pointer.slice(8).trim()))
+  const backlink = yield* fs.readFileString(`${gitdir}/gitdir`)
+  const common = yield* fs.readFileString(`${gitdir}/commondir`)
+  if (
+    (yield* fs.realPath(resolve(gitdir, backlink.trim()))) !== dotGit ||
+    (yield* fs.realPath(resolve(gitdir, common.trim()))) !== bare
+  )
+    return yield* fail('Worktree admission ownership changed')
+  const evidence = yield* Effect.forEach(
+    [dotGit, `${gitdir}/gitdir`, `${gitdir}/commondir`, `${gitdir}/HEAD`],
+    (path) =>
+      Effect.gen(function* () {
+        const content = yield* fs.readFileString(path)
+        const info = yield* Effect.tryPromise(() => lstat(path, { bigint: true }))
+        if (info.isFile() === false) return yield* fail('Worktree admission is not a regular file')
+        return { path, content, identity: fingerprint({ path, info }) }
+      }),
+  )
+  const info = yield* Effect.tryPromise(() => lstat(bare, { bigint: true }))
+  return createHash('sha256')
+    .update(
+      encode({
+        bare,
+        gitdir,
+        bareIdentity: `${info.dev}:${info.ino}:${info.birthtimeNs}`,
+        evidence,
+      }),
+    )
+    .digest('hex')
+})
 
 /** Native lstat is required: the platform FileSystem stat does not expose allocated blocks. */
 const boundedScan = <TScanResult>({
@@ -497,6 +559,7 @@ export const planBuildOutputBudgets = Effect.fn('store.planBuildOutputBudgets')(
   })
   const deadlineAt = performance.now() + SCAN_DEADLINE_MS
   const results: MutableCandidate[] = []
+  const admissions: Array<{ owner: string; identity: string }> = []
   const inodeRoots = new Map<string, Map<string, { bytes: number; roots: Set<string> }>>()
   const incomplete = new Set<string>()
   for (const name of Object.keys(policy.classes)) inodeRoots.set(name, new Map())
@@ -518,6 +581,15 @@ export const planBuildOutputBudgets = Effect.fn('store.planBuildOutputBudgets')(
         for (const name of Object.keys(policy.classes)) incomplete.add(name)
         continue
       }
+      const admissionIdentity = yield* worktreeAdmissionIdentity({
+        owner: canonicalOwner,
+        barePath: join(canonicalStore, repo.relativePath, '.bare'),
+      }).pipe(Effect.orElseSucceed(() => undefined))
+      if (admissionIdentity === undefined) {
+        for (const name of Object.keys(policy.classes)) incomplete.add(name)
+        continue
+      }
+      admissions.push({ owner: canonicalOwner, identity: admissionIdentity })
       const roots = yield* discoverRoots({ workspacePath: canonicalOwner, policy, deadlineAt })
       if (roots === undefined) {
         for (const name of Object.keys(policy.classes)) incomplete.add(name)
@@ -600,10 +672,14 @@ export const planBuildOutputBudgets = Effect.fn('store.planBuildOutputBudgets')(
                               ? 'artifact-not-ignored'
                               : now - scan.newestMtimeMs < policy.idleRetentionMs
                                 ? 'retention'
-                                : worktree.requiresExpandedProcessCoverage === true
+                                : worktree.requiresExpandedProcessCoverage === true &&
+                                    activity.processWorktreeCoverage !== 'registered-worktrees'
                                   ? 'process-liveness-unavailable'
                                   : 'eligible'
         const candidate: MutableCandidate = {
+          kind: 'worktree',
+          livenessKey: canonicalOwner,
+          admissionIdentity,
           repo: repo.relativePath,
           ref: worktree.ref,
           refType: worktree.refType,
@@ -709,10 +785,27 @@ export const planBuildOutputBudgets = Effect.fn('store.planBuildOutputBudgets')(
   const classes = Object.fromEntries(classSummaries)
   const sorted = results.toSorted((left, right) => comparePaths(left.path, right.path))
   const planSha256 = createHash('sha256')
-    .update(encode({ policy, activityEpoch: activity?.epoch, results: sorted, classes }))
+    .update(
+      encode({
+        schemaVersion: 'megarepo.build-output-budget-plan.v2',
+        policy,
+        activityEpoch: activity?.epoch,
+        processWorktreeCoverage: activity?.processWorktreeCoverage,
+        census: repoWorktrees
+          .map(({ repo, worktrees, censusIncomplete }) => ({
+            repo: repo.relativePath,
+            censusIncomplete: censusIncomplete === true,
+            worktrees: worktrees.toSorted((a, b) => comparePaths(a.path, b.path)),
+          }))
+          .toSorted((a, b) => comparePaths(a.repo, b.repo)),
+        admissions: admissions.toSorted((a, b) => comparePaths(a.owner, b.owner)),
+        results: sorted,
+        classes,
+      }),
+    )
     .digest('hex')
   return {
-    schemaVersion: 'megarepo.build-output-budget-plan.v1' as const,
+    schemaVersion: 'megarepo.build-output-budget-plan.v2' as const,
     planSha256,
     results: sorted,
     classes,
@@ -761,6 +854,13 @@ export const applyBuildOutputBudgetCandidate = Effect.fn('store.applyBuildOutput
     if (selected.length !== 1)
       return yield* fail('Budget candidate is missing, ambiguous, or not eligible')
     const candidate = selected[0]!
+    const requiresExpandedCoverage = repoWorktrees.some(({ worktrees }) =>
+      worktrees.some(
+        (worktree) =>
+          worktree.path.replace(/\/+$/u, '') === candidate.workspacePath &&
+          worktree.requiresExpandedProcessCoverage === true,
+      ),
+    )
     const deletionRoot = yield* fs.realPath(storeBasePath)
     const identity = yield* captureDeletionIdentity({
       rootPath: deletionRoot,
@@ -839,9 +939,18 @@ export const applyBuildOutputBudgetCandidate = Effect.fn('store.applyBuildOutput
             })
             if (
               finalActivity === undefined ||
+              (requiresExpandedCoverage === true &&
+                finalActivity.processWorktreeCoverage !== 'registered-worktrees') ||
               isWorkspaceActive({ activity: finalActivity, canonicalWorktree: ownerPath }) === true
             )
               return yield* fail('Candidate activity became live or unknown')
+            if (
+              (yield* worktreeAdmissionIdentity({
+                owner: ownerPath,
+                barePath: join(storeBasePath, candidate.repo, '.bare'),
+              })) !== candidate.admissionIdentity
+            )
+              return yield* fail('Candidate admission changed before deletion')
             const processState = yield* readBudgetWorktreeInUse({
               worktreePath: ownerDir,
               activity: finalActivity,
