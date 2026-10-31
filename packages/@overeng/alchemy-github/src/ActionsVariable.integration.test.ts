@@ -163,7 +163,7 @@ for (const environment of [undefined, 'production / west']) {
             expect((yield* f.stack.plan(f.program())).resources.Variable?.action).toBe('noop')
             expect(
               (yield* f.stack.plan(f.program({ name: 'SETTING' }))).resources.Variable?.action,
-            ).toBe('noop')
+            ).toBe('update')
 
             f.live.value = 'changed remotely'
             f.live.requests.length = 0
