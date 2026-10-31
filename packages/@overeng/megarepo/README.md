@@ -239,6 +239,9 @@ Apply acquires the container and every registered worktree's canonical activatio
 sorted order, then re-enumerates registrations under those leases. Registration changes or
 unavailable leases refuse deletion; all acquired leases are released on every exit. Git
 boundaries and registry identity are checked again immediately before removal.
+Activation (`mr store lease`) and worktree creation acquire the canonical repository-container
+lease before the worktree lease. External tools must use this protocol before publishing
+coverage: registration or activation bypassing it cannot be excluded by registry observations.
 Both kinds carry `livenessKey` and `admissionIdentity`; the digest binds version, ownership,
 census admission and process coverage. Old/unversioned policies and receipts are rejected:
 consumers must decode v2 owner kinds and regenerate plans instead of reusing v1 hashes.
