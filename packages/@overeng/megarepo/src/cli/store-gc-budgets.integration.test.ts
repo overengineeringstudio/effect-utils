@@ -43,7 +43,9 @@ import {
 import {
   acquireDeletionLease,
   canonicalizeOwnerPath,
+  createStoreWorktree,
   releaseDeletionLease,
+  withStoreWorktreeLease,
 } from '../store/store-deletion-lease.ts'
 import { decodeJson, encodeJson } from '../test-utils/json.ts'
 import { createStoreFixture, getWorktreeCommit } from '../test-utils/store-setup.ts'
@@ -735,12 +737,24 @@ if (inOwnerNamespace === true && process.platform === 'linux')
           expect(yield* exists(output)).toBe(true)
           yield* releaseDeletionLease(lease)
           const beforeRegistration = planOk(f)
-          yield* Git.createWorktree({
-            repoPath: f.bareRepoPaths[REPO_KEY]!,
-            worktreePath: `${container}/late-checkout`,
-            branch: 'late-checkout',
-            createBranch: true,
-          })
+          yield* Effect.gen(function* () {
+            const contended = applyCandidate(f, { plan: beforeRegistration, path: output })
+            expect(contended.exitCode).not.toBe(0)
+            expect(contended.stderr).toContain('flock')
+            yield* createStoreWorktree({
+              storeBasePath: f.storePath,
+              repoPath: f.bareRepoPaths[REPO_KEY]!,
+              worktreePath: `${container}/late-checkout`,
+              branch: 'late-checkout',
+              createBranch: true,
+            })
+          }).pipe(
+            withStoreWorktreeLease({
+              storeBasePath: f.storePath,
+              ownerPath: `${container}/prospective-activation`,
+              bareRepoPath: f.bareRepoPaths[REPO_KEY]!,
+            }),
+          )
           expect(applyCandidate(f, { plan: beforeRegistration, path: output }).exitCode).not.toBe(0)
           expect(planOk(f).planSha256).not.toBe(beforeRegistration.planSha256)
           expect(yield* exists(output)).toBe(true)

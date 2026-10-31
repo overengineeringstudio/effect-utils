@@ -10,6 +10,7 @@ import * as FileSystem from 'effect/FileSystem'
 import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
 
 import * as Git from '../core/git.ts'
+import { withGitContainerLock } from './git-writer-lock.ts'
 import {
   acquireDeletionLease,
   canonicalizeOwnerPath,
@@ -1093,12 +1094,14 @@ export const applyBuildOutputBudgetCandidate = Effect.fn('store.applyBuildOutput
         .filter((path) => path !== ownerPath && path !== `${ownerPath}/.bare`)
         .toSorted(comparePaths),
     ]
-    return yield* Effect.gen(function* () {
-      for (const path of leaseOwners)
+    const applyUnderLeases = Effect.gen(function* () {
+      for (const path of leaseOwners) {
+        if (candidate.kind === 'repo-build-output' && path === ownerPath) continue
         yield* Effect.acquireRelease(
           acquireDeletionLease({ storeBasePath, ownerPath: path, now }),
           releaseDeletionLease,
         )
+      }
       if (
         admission !== undefined &&
         (yield* repoAdmissionIdentity({ store: deletionRoot, container: ownerPath })).identity !==
@@ -1287,5 +1290,10 @@ export const applyBuildOutputBudgetCandidate = Effect.fn('store.applyBuildOutput
         },
       }
     }).pipe(Effect.scoped)
+    return yield* candidate.kind === 'repo-build-output'
+      ? applyUnderLeases.pipe(
+          withGitContainerLock({ path: `${ownerPath}/.bare`, mode: 'exclusive' }),
+        )
+      : applyUnderLeases
   },
 )
