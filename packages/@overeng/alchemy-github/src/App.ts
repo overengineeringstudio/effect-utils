@@ -9,14 +9,7 @@ import { isResolved } from 'alchemy/Diff'
 import * as Provider from 'alchemy/Provider'
 import { Resource } from 'alchemy/Resource'
 import { Clock, Effect, Redacted, Schema } from 'effect'
-import sodium, {
-  ready,
-  from_base64,
-  to_base64,
-  base64_variants,
-  from_string,
-  memzero,
-} from 'libsodium-wrappers'
+import { from_string, memzero } from 'libsodium-wrappers'
 
 import { AppConversionRecoveryError, AppError, AppManifestDriftError } from './AppErrors.ts'
 import {
@@ -26,7 +19,9 @@ import {
   type AppManifest,
   type AppManifestSource,
 } from './manifest.ts'
+import { ManifestCodeSource } from './ManifestCodeSource.ts'
 import type { Providers } from './Providers.ts'
+import { prepareSealedBox, sealSecret } from './SealedBox.ts'
 
 /** Write-only repository or environment Actions secret destination for the App private key. */
 export interface AppKeySecret {
@@ -43,8 +38,8 @@ export interface AppProps {
   readonly manifest: AppManifestSource
   /** The only destination of a newly generated private key. Never supplied as a Resource input. */
   readonly privateKeySecret: AppKeySecret
-  /** Supply only after deploying the pending form and checking its callback state. */
-  readonly conversion?: { readonly code: Redacted.Redacted<string>; readonly state: string }
+  /** Resume only the persisted pending token; the one-use code comes from ManifestCodeSource. */
+  readonly conversion?: { readonly state: string }
   /** Adopt requires an existing Actions secret; its contents cannot be read or verified. */
   readonly adopt?: {
     readonly slug: string
@@ -373,15 +368,21 @@ export const convertApp = Effect.fn('GitHub.App.convert')(function* (
     run: () => octokit.request(`GET ${path}/public-key`),
   })
   const publicKey = yield* decode({ schema: PublicKey, value: keyResponse.data })
-  yield* safe({
+  const sealingKey = yield* safe({
     operation: 'initialize sealed box',
-    run: async () => {
-      await ready
-      const bytes = from_base64(publicKey.key, base64_variants.ORIGINAL)
-      if (bytes.length !== sodium.crypto_box_PUBLICKEYBYTES)
-        throw new TypeError('Invalid Actions public key')
-    },
+    run: () => prepareSealedBox(publicKey.key),
   })
+  const source = yield* ManifestCodeSource
+  const code = yield* source.read(pending.state).pipe(
+    Effect.catchCause(() =>
+      Effect.fail(
+        new AppError({
+          operation: 'manifest code source',
+          message: 'Manifest callback source failed; cause withheld.',
+        }),
+      ),
+    ),
+  )
 
   return yield* Effect.uninterruptible(
     Effect.gen(function* () {
@@ -390,7 +391,7 @@ export const convertApp = Effect.fn('GitHub.App.convert')(function* (
         operation: 'convert manifest',
         run: () =>
           octokit.request('POST /app-manifests/{code}/conversions', {
-            code: Redacted.value(conversion.code),
+            code: Redacted.value(code),
             request: { retries: 0, redirect: 'error' },
           }),
       })
@@ -400,16 +401,13 @@ export const convertApp = Effect.fn('GitHub.App.convert')(function* (
         run: async () => {
           const plaintext = from_string(data.pem)
           try {
-            const ciphertext = sodium.crypto_box_seal(
-              plaintext,
-              from_base64(publicKey.key, base64_variants.ORIGINAL),
-            )
+            const ciphertext = sealSecret({ plaintext: plaintext, publicKey: sealingKey })
             const key = createPublicKey(createPrivateKey(data.pem))
             const fingerprint = createHash('sha256')
               .update(key.export({ type: 'spki', format: 'der' }))
               .digest('hex')
             return {
-              ciphertext: to_base64(ciphertext, base64_variants.ORIGINAL),
+              ciphertext,
               fingerprint,
             }
           } finally {

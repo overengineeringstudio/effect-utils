@@ -90,7 +90,7 @@ Declare the App in an Alchemy stack:
 import * as Alchemy from 'alchemy'
 import { localState } from 'alchemy/State/LocalState'
 import * as GitHub from '@overeng/alchemy-github'
-import { Effect, Redacted } from 'effect'
+import { Effect } from 'effect'
 
 export default Alchemy.Stack(
   'RepositoryChecks',
@@ -116,14 +116,9 @@ export default Alchemy.Stack(
         environment: 'production', // Omit for a repository Actions secret.
         name: 'CHECK_PUBLISHER_PRIVATE_KEY',
       },
-      ...(process.env.APP_MANIFEST_CODE === undefined
+      ...(process.env.GITHUB_APP_MANIFEST_CODE_STATE === undefined
         ? {}
-        : {
-            conversion: {
-              code: Redacted.make(process.env.APP_MANIFEST_CODE),
-              state: process.env.APP_MANIFEST_STATE!,
-            },
-          }),
+        : { conversion: { state: process.env.GITHUB_APP_MANIFEST_CODE_STATE } }),
     })
     return { app }
   }),
@@ -132,10 +127,14 @@ export default Alchemy.Stack(
 
 1. Deploy **without** `conversion`. The resource persists `status: 'pending'`, a portable `manifestHtml` form, `formUrl`, callback `state`, `startedAt` and `expiresAt`. Serve the form from a trusted page or save the non-secret form locally. The URL alone does not contain the POSTed manifest.
 2. The owner submits the form and confirms the App on GitHub. GitHub redirects to `redirectUrl` with a one-time `code` and `state`. Verify state matches the pending registration. Complete within the one-hour window. The provider never opens or automates a browser.
-3. Set `APP_MANIFEST_CODE` and `APP_MANIFEST_STATE` and deploy the same resource again. The provider checks state/expiration, preflights the Actions public key, converts the code once, and writes the sealed PEM directly to the secret. Remove the conversion environment variables after success. Webhooks are disabled unless explicitly configured.
+3. Set `GITHUB_APP_MANIFEST_CODE` to the one-use code and `GITHUB_APP_MANIFEST_CODE_STATE` to its callback state, then deploy the same resource again. Only the state token enters resource props. The default `ManifestCodes.fromEnv('GITHUB_APP_MANIFEST_CODE')` reads the code and companion `_STATE` variable during apply, verifies the token, then converts once and writes the sealed PEM directly to the secret. Neither planning nor provider construction reads the code. Remove both variables after success. Webhooks are disabled unless explicitly configured.
 4. Install the App through GitHub's UI. Supply `installationId` explicitly if it is needed by the stack. It is an operator assertion, not inferred from `appId` or verified with a key the provider no longer holds.
 
 Registered outputs include `appId`, `integrationId` (equal to `appId`), `slug`, `clientId` where returned, optional `installationId`, the public-key fingerprint, observed permissions/events, and `privateKeySecret` metadata including repository/environment scope and `updatedAt`. A pending App cannot yet supply a required-check integration ID: declare dependent resources after registration instead of treating pending as success.
+
+**Breaking API change:** `conversion.code` is no longer accepted. Alchemy persists resource props before reconciliation and unwraps Redacted values when encoding state; wrapping a code in Redacted does not protect durable state. Keep callback codes exclusively in `ManifestCodeSource`, never in resource props or stack outputs. Existing state written by older versions may contain an unspent code: protect that state, let the code expire, and remove it from retained state copies according to your state-store policy.
+
+For a different environment variable prefix, pass `manifestCodeSource: GitHub.ManifestCodes.fromEnv('CUSTOM_CODE')` to `GitHub.providers()`, then set `CUSTOM_CODE` and `CUSTOM_CODE_STATE`. For an interactive workflow, inject `GitHub.ManifestCodes.fromPrompt(prompt)`; the Effect callback receives the pending state and must securely prompt for and return `{ state, code: Redacted.make(code) }`. The source validates that the entered callback state matches that pending token. Do not log callback values. Prompts run only during apply, after the replay baseline and encryption preflight.
 
 ### Recovery and drift
 
@@ -150,6 +149,73 @@ Permission/event drift is a typed hard error with a diff and UI remedy, never an
 Use `adopt: { slug: 'example-check-publisher' }` with the existing `privateKeySecret` destination. The secret must exist. Optional `appId` and `clientId` assertions are checked against metadata where returned. Optional `installationId` is explicitly unverifiable. ID-only adoption is not supported. Adoption never obtains a key or invents a fingerprint.
 
 GitHub supports `DELETE /app/installations/{id}` with an App JWT, but has **no REST API to delete an App registration**. A sink-only provider has no key for uninstall. Registered destroy therefore fails closed. Delete/uninstall in the owner UI, or set `destroy: 'orphan'` to relinquish Alchemy ownership while leaving the App and secret untouched. Pending state can be removed without that flag. Key rotation is an explicit manual operation outside this resource and must preserve the same sink-only boundary.
+
+## Actions secrets
+
+`GitHub.ActionsSecret` accepts a reasoned, concrete 1Password reference, never a raw secret value:
+
+```ts
+const signingSecret =
+  yield *
+  GitHub.ActionsSecret('SigningSecret', {
+    owner: 'example',
+    repository: 'target',
+    environment: 'production', // omit for repository scope
+    name: 'SIGNING_TOKEN',
+    value: {
+      ref: 'op://aaaaaaaaaaaaaaaaaaaaaaaaaa/bbbbbbbbbbbbbbbbbbbbbbbbbb/token',
+      reason: 'Publish the declared deployment signing token to Actions',
+    },
+    hashKey: {
+      ref: 'op://aaaaaaaaaaaaaaaaaaaaaaaaaa/cccccccccccccccccccccccccc/hmac',
+      reason: 'Detect changes using this stack-specific HMAC key',
+    },
+  })
+```
+
+Provision the referenced items and a separate HMAC key per stack externally. Apply resolves values through `SecretSource`, encrypts with the scope's Actions public key using the same sealed-box helper as App conversion, includes `key_id`, and zeroes mutable value/key buffers after PUT or failure. State contains only secret metadata and, with `hashKey`, HMAC-SHA256 plus the key reference; neither the value nor the HMAC key enters outputs, state or diagnostic causes. There is no value cache. Node/Bun immutable strings used by the CLI JSON decoder are transient and garbage-collected, not securely erasable.
+
+Default plans observe the live GitHub secret metadata and, when `hashKey` is configured, read both handles and compare the HMAC with state. Without `hashKey`, only existence and `updated_at` detect drift. Set `driftMode: 'updatedAtOnly'` to prevent all value/key reads during planning, even with a hash key configured. GitHub timestamps do not prove secret contents or distinguish same-timestamp writes. Apply still reads the source to perform an authorized update. Destroy deletes a managed secret unless `retain: true`. Names, scope and host are immutable.
+
+Secret names are normalized to uppercase for GitHub requests, identity and persisted metadata; changing only their case does not move the resource.
+
+The default `SecretSourceLive` uses the runtime `ChildProcessSpawner` and runs only `op-proxy read <ref> --reason <reason> --cache none --fresh --output json`; it discards stderr and sanitizes failures. No raw `op`, temp secret files, or mutations are used. `GitHub.providers({ ...options, secretSource: customSourceLayer })` can inject another `SecretSource` implementation. **Current op-proxy CLI limitation:** it trims original boundary whitespace before JSON encoding; the adapter performs no additional trimming. Use a byte-preserving injected source for whitespace-significant values until the CLI supplies a lossless read contract.
+
+### Narrowest GitHub App repository permissions
+
+| Resource/scope             | Plan/read                                                | Apply/destroy       |
+| -------------------------- | -------------------------------------------------------- | ------------------- |
+| ActionsSecret, repository  | Secrets: read (metadata and public key)                  | Secrets: write      |
+| ActionsSecret, environment | Environments: read (metadata and environment public key) | Environments: write |
+
+Write permission includes the corresponding read operations. Restrict the App installation to the target repository; this resource does not need Actions workflow read/write, Contents, organization Secrets, or an App private key in state. The environment must already exist. Permission names and endpoint scopes follow GitHub's [Actions secrets REST documentation](https://docs.github.com/en/rest/actions/secrets). The same permission table applies to the App conversion sink.
+
+## Actions variables
+
+`GitHub.ActionsVariable` manages a plain, non-secret repository or environment variable. Its value is intentionally stored in Alchemy state and outputs; use `ActionsSecret` for confidential values.
+
+```ts
+const releaseChannel =
+  yield *
+  GitHub.ActionsVariable('release-channel', {
+    owner: 'example-org',
+    repository: 'example-project',
+    environment: 'production', // omit for repository scope
+    name: 'RELEASE_CHANNEL',
+    value: 'stable',
+  })
+```
+
+Plans read the current value from GitHub, so remote edits and deletion are repaired even when the declaration has not changed. Apply creates or updates the variable. Destroy deletes it unless `retain: true` is declared. Owner, repository, environment, name and API host are immutable resource identity; use a new resource identity to move a variable.
+
+Variable names are normalized to uppercase in requests, comparisons and state, matching GitHub. Case-only declaration changes preserve identity.
+
+| Resource/scope               | Plan/read          | Apply/destroy       |
+| ---------------------------- | ------------------ | ------------------- |
+| ActionsVariable, repository  | Variables: read    | Variables: write    |
+| ActionsVariable, environment | Environments: read | Environments: write |
+
+These are repository permissions; write includes read, and the environment must already exist. See GitHub's [Actions variables REST documentation](https://docs.github.com/en/rest/actions/variables). The separate resource adds live plan-time drift observation; upstream's `Variable` remains available unchanged.
 
 ## Required checks with the upstream Ruleset
 
