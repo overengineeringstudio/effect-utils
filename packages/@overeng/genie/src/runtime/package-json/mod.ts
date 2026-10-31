@@ -11,6 +11,7 @@ import { createGenieOutput } from '../core.ts'
 import type { GenieContext, GenieOutput, Strict } from '../core.ts'
 import type { PnpmPackageClosureConfig } from '../pnpm-workspace/mod.ts'
 import { projectPnpmPackageClosure } from '../pnpm-workspace/mod.ts'
+import { isSemver } from '../semver/mod.ts'
 import {
   relativeRepoPath,
   rootWorkspaceMemberPathsFromPackages,
@@ -1177,12 +1178,21 @@ const aggregatePackageJsonFromPackages = ({
   name,
   repoName,
   extraMembers = [],
+  packageManager = DEFAULT_AGGREGATE_PACKAGE_MANAGER,
 }: {
   packages: readonly WorkspacePackageLike[]
   name: string
   repoName: string
   extraMembers?: readonly string[]
+  /** Explicit fleet pin, independent of the effect-utils member revision. */
+  packageManager?: string
 }) => {
+  if (packageManager.startsWith('pnpm@') === false || isSemver(packageManager.slice(5)) === false) {
+    throw new Error(
+      `aggregateFromPackages packageManager must be pnpm@<semver>; received ${JSON.stringify(packageManager)}`,
+    )
+  }
+
   const projectedMembers = rootWorkspaceMemberPathsFromPackages({ packages, repoName })
   const allMembers =
     extraMembers.length === 0
@@ -1192,7 +1202,7 @@ const aggregatePackageJsonFromPackages = ({
   const aggregate: AggregatePackageJsonData = {
     name,
     private: true,
-    packageManager: DEFAULT_AGGREGATE_PACKAGE_MANAGER,
+    packageManager,
     workspaces: allMembers,
   }
 

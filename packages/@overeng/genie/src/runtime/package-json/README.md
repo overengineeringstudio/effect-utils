@@ -144,6 +144,8 @@ For repository aggregates and projections, use:
 Both require an explicit `repoName` — projection does not infer the current
 repo heuristically.
 
+Pass an optional `packageManager: 'pnpm@<semver>'` to `aggregateFromPackages` to align with the fleet pin independently of the effect-utils member pin; omission uses the centralized default, and invalid pins fail generation.
+
 `extraMembers` is an exceptional compromise for non-genie-managed workspace
 members (e.g. standalone, copyable examples) that cannot be derived from
 package metadata. Prefer creating real package generators over using
