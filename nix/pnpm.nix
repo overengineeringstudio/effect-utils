@@ -85,6 +85,12 @@ pkgs.stdenvNoCC.mkDerivation {
   pname = "pnpm";
   inherit version;
 
+  # Agent-policy pnpm guard accepts the previous pin for minor/patch bumps; remove after until; omit for major bumps.
+  passthru.transition = {
+    previousVersion = "12.15.0";
+    until = "2026-11-14T08:17:26Z";
+  };
+
   dontUnpack = true;
 
   nativeBuildInputs = [ pkgs.makeWrapper ] ++ lib.optional platform.isLinux pkgs.autoPatchelfHook;
