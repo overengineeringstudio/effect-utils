@@ -20,7 +20,9 @@ import { Effect, FileSystem, Layer, Logger, Schema } from 'effect'
 import { describe, expect } from 'vitest'
 
 import { ActionsError } from './ActionsCommon.ts'
+import { ActionsSecret } from './ActionsSecret.ts'
 import { ActionsVariable } from './ActionsVariable.ts'
+import { Labels } from './Labels.ts'
 import { providers } from './Providers.ts'
 import { SecretSource } from './SecretSource.ts'
 
@@ -268,6 +270,126 @@ describe.skipIf(enabled === false)('GitHub sandbox resource lifecycle', () => {
                   'updated',
               ).toBe(true)
               yield* f.destroy(program('updated'))
+              expect((yield* f.request({ method: 'GET', path: f.path })) === undefined).toBe(true)
+            }),
+          })
+        }),
+      ),
+    { timeout: 120_000 },
+  )
+
+  it.effect(
+    'creates, updates and deletes an env-backed Actions secret',
+    () =>
+      liveTest(
+        Effect.gen(function* () {
+          const f = yield* sandbox('secret')
+          const program = (version: number) =>
+            Effect.gen(function* () {
+              const secret = yield* ActionsSecret('Secret', {
+                ...f.scope,
+                name: f.name,
+                value: {
+                  ref: 'op://sandbox/live/value',
+                  reason: `Publish sandbox secret revision ${version}`,
+                },
+                hashKey: {
+                  ref: 'op://sandbox/live/hash',
+                  reason: 'Detect sandbox source changes without persisting values',
+                },
+              })
+              return {
+                name: secret.name,
+                scope: secret.scope,
+                updatedAt: secret.updatedAt,
+                hash: secret.hash,
+              }
+            })
+          yield* f.cleanup(program(1))
+          yield* sanitized({
+            operation: 'secret lifecycle',
+            effect: Effect.gen(function* () {
+              const first = yield* f.deploy(program(1))
+              expect(
+                first.name === f.name && first.scope === 'repository' && first.updatedAt.length > 0,
+              ).toBe(true)
+              const decode = Schema.decodeUnknownEffect(
+                Schema.Struct({ name: Schema.String, updated_at: Schema.String }),
+              )
+              expect(
+                (yield* decode(yield* f.request({ method: 'GET', path: f.path }))).name === f.name,
+              ).toBe(true)
+              yield* f.updateSecret
+              // HMAC drift forces an update even within GitHub's timestamp resolution.
+              const updated = yield* f.deploy(program(2))
+              expect(updated.name === f.name && updated.updatedAt.length > 0).toBe(true)
+              expect(typeof updated.hash === 'string' && updated.hash !== first.hash).toBe(true)
+              expect(
+                (yield* decode(yield* f.request({ method: 'GET', path: f.path }))).name === f.name,
+              ).toBe(true)
+              yield* f.destroy(program(2))
+              expect((yield* f.request({ method: 'GET', path: f.path })) === undefined).toBe(true)
+            }),
+          })
+        }),
+      ),
+    { timeout: 120_000 },
+  )
+
+  it.effect(
+    'creates, updates and destroys only run-owned labels',
+    () =>
+      liveTest(
+        Effect.gen(function* () {
+          const f = yield* sandbox('labels')
+          const program = ({
+            color,
+            description,
+          }: {
+            readonly color: string
+            readonly description: string
+          }) =>
+            Effect.gen(function* () {
+              const labels = yield* Labels('Labels', {
+                owner: f.scope.owner,
+                repo: f.scope.repository,
+                deleteUnmanaged: false,
+                labels: [{ name: f.name, color, description }],
+              })
+              return { managed: labels.managed }
+            })
+          yield* f.cleanup(program({ color: '123456', description: 'Sandbox initial' }))
+          yield* sanitized({
+            operation: 'labels lifecycle',
+            effect: Effect.gen(function* () {
+              const first = yield* f.deploy(
+                program({ color: '123456', description: 'Sandbox initial' }),
+              )
+              expect(first.managed).toEqual([
+                { name: f.name, color: '123456', description: 'Sandbox initial' },
+              ])
+              const decode = Schema.decodeUnknownEffect(
+                Schema.Struct({
+                  name: Schema.String,
+                  color: Schema.String,
+                  description: Schema.String,
+                }),
+              )
+              expect(
+                (yield* decode(yield* f.request({ method: 'GET', path: f.path }))).color ===
+                  '123456',
+              ).toBe(true)
+              const updated = yield* f.deploy(
+                program({ color: 'abcdef', description: 'Sandbox updated' }),
+              )
+              expect(updated.managed).toEqual([
+                { name: f.name, color: 'abcdef', description: 'Sandbox updated' },
+              ])
+              const observed = yield* decode(yield* f.request({ method: 'GET', path: f.path }))
+              expect(
+                observed.color === 'abcdef' && observed.description === 'Sandbox updated',
+              ).toBe(true)
+              yield* f.destroy(program({ color: 'abcdef', description: 'Sandbox updated' }))
               expect((yield* f.request({ method: 'GET', path: f.path })) === undefined).toBe(true)
             }),
           })
