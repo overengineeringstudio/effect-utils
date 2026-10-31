@@ -1018,6 +1018,7 @@ in
       );
     }
     (taskModules.lint-oxc {
+      inherit pnpmPkg;
       oxlintPkg = oxlintWithPlugins;
       lintPaths = [
         "packages"
