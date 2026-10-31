@@ -258,6 +258,9 @@ describe('native build ID registry', () => {
     { requested: ['build', '//:empty'] },
     { requested: ['audit', 'providers', '//:empty'] },
     { requested: ['run', '//:empty', '--', '--payload'] },
+    { requested: ['run', '//:empty', 'payload', '--flag'] },
+    { requested: ['run', '//:empty', 'payload', '--event-log', 'payload-sink'] },
+    { requested: ['run', '//:empty', '--', '--event-log', 'payload-sink'] },
     { requested: ['build', '//:empty', '--event-log', 'CALLER_SINK'] },
     { requested: ['build', '//:empty', '--event-log=CALLER_SINK'] },
   ])(
@@ -281,7 +284,7 @@ describe('native build ID registry', () => {
           .join('\n') + '\n'
       writeFileSync(
         native,
-        `#!${process.execPath}\nconst args = process.argv.slice(2); if (args[0] === 'log') { process.stdout.write(await Bun.file(args[2]).text()); process.exit(0); } const sink = args.findIndex(arg => arg === '--event-log' || arg.startsWith('--event-log=')); if (args.includes('audit') && sink < args.indexOf('providers')) process.exit(17); if (args.includes('--') && sink > args.indexOf('--')) process.exit(18); await Bun.write(args[sink].includes('=') ? args[sink].slice('--event-log='.length) : args[sink + 1], ${JSON.stringify(events)});\n`,
+        `#!${process.execPath}\nconst args = process.argv.slice(2); if (args[0] === 'log') { process.stdout.write(await Bun.file(args[2]).text()); process.exit(0); } await Bun.write(${JSON.stringify(join(root, 'native-args.json'))}, JSON.stringify(args)); const sink = args.findIndex(arg => arg === '--event-log' || arg.startsWith('--event-log=')); if (args.includes('audit') && sink < args.indexOf('providers')) process.exit(17); if (args.includes('--') && sink > args.indexOf('--')) process.exit(18); await Bun.write(args[sink].includes('=') ? args[sink].slice('--event-log='.length) : args[sink + 1], ${JSON.stringify(events)});\n`,
         { mode: 0o700 },
       )
       const env = {
@@ -310,6 +313,11 @@ describe('native build ID registry', () => {
         )
         expect(shard.complete).toBe(true)
         expect(JSON.parse(shard.artifact.trim()).actionCount).toBe(0)
+        if (requested[0] === 'run') {
+          const observed: string[] = JSON.parse(readFileSync(join(root, 'native-args.json'), 'utf8'))
+          expect(observed.indexOf('--event-log')).toBeLessThan(observed.indexOf('//:empty'))
+          expect(observed.slice(observed.indexOf('//:empty') + 1)).toEqual(requested.slice(2))
+        }
         if (requested.some((arg) => arg.includes('CALLER_SINK')) === true)
           expect(readFileSync(join(root, 'caller.pb.zst'), 'utf8')).toBe(events)
       } finally {

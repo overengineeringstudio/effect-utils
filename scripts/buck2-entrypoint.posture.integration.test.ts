@@ -40,9 +40,14 @@ const values = {
 }
 
 describe('daemon RE posture', () => {
-  it.each([false, true])(
-    'records reader REAPI shadow evidence without rerunning or replacing the native failure (native evidence: %s)',
-    async (nativeEvidence) => {
+  it.each([
+    { nativeEvidence: false, reader: true, termination: 'exit' },
+    { nativeEvidence: true, reader: true, termination: 'exit' },
+    { nativeEvidence: true, reader: false, termination: 'SIGTERM' },
+    { nativeEvidence: true, reader: true, termination: 'SIGTERM' },
+  ])(
+    'preserves native termination through the entrypoint (evidence: $nativeEvidence, reader: $reader, termination: $termination)',
+    async ({ nativeEvidence, reader, termination }) => {
       const root = realpathSync(createTestTempDirectory('buck2-reader-shadow-'))
       const grpc = createServer()
       grpc.on('stream', (stream) => {
@@ -76,7 +81,7 @@ describe('daemon RE posture', () => {
         writeFileSync(
           native,
           `#!${process.execPath}
-import {existsSync,readFileSync,writeFileSync,appendFileSync,rmSync} from 'node:fs';
+import {existsSync,readFileSync,writeFileSync,appendFileSync,rmSync,writeSync} from 'node:fs';
 const args=process.argv.slice(2), state='daemon.json';
 if(args.includes('status')) { if(existsSync(state)) console.log(readFileSync(state,'utf8')); }
 else if(args.includes('kill')) rmSync(state,{force:true});
@@ -90,8 +95,8 @@ else if(args.includes('build')) {
    const event=phase=>({Event:{trace_id,span_id:1,timestamp:[Math.floor(Date.now()/1000),0],data:{[phase]:{data:{Command:{}}}}}});
    writeFileSync(sink,[event('SpanStart'),event('SpanEnd')].map(JSON.stringify).join('\\n')+'\\n');
  }
- console.error(${JSON.stringify(incidentOutput)});
- process.exit(1);
+ writeSync(2,${JSON.stringify(`${incidentOutput}\n`)});
+ ${termination === 'SIGTERM' ? "process.kill(process.pid,'SIGTERM');" : 'process.exit(1);'}
 } else process.exit(9);
 `,
           { mode: 0o700 },
@@ -112,7 +117,7 @@ else if(args.includes('build')) {
               HOME: root,
               XDG_CACHE_HOME: join(root, 'cache'),
               BUCK2_PUBLIC_CACHE_READ_ONLY: '1',
-              BUCK2_NO_REMOTE_CACHE: '',
+              BUCK2_NO_REMOTE_CACHE: reader === true ? '' : '1',
               BUCK2_PRIVATE_CACHE_WRITE_AUTH: '',
               BUCK2_PRIVATE_CACHE_WRITE_BASIC_AUTH: '',
               BUCK2_CACHE_WRITE_BASIC_AUTH: '',
@@ -134,10 +139,11 @@ else if(args.includes('build')) {
           new Response(child.stderr).text(),
           child.exited,
         ])
-        expect(code, stderr).toBe(1)
+        const expectedExitCode = termination === 'SIGTERM' ? 143 : 1
+        expect(code, stderr).toBe(expectedExitCode)
+        expect(child.signalCode).toBe(termination === 'SIGTERM' ? 'SIGTERM' : null)
         expect(stdout).toBe('')
         expect(stderr).toContain(incidentOutput)
-        expect(stderr).toContain('no rerun happened; the native failure stands')
         expect(stderr.split(`${incidentOutput}\n`)).toHaveLength(2)
         if (nativeEvidence === true) {
           const shard = JSON.parse(readFileSync(`${evidence}.shards/${buildId}.json`, 'utf8'))
@@ -145,7 +151,7 @@ else if(args.includes('build')) {
           const completion = JSON.parse(
             readFileSync(`${evidence}.native-build-ids/${buildId}.exit.json`, 'utf8'),
           )
-          expect(completion.exitCode).toBe(1)
+          expect(completion.exitCode).toBe(expectedExitCode)
           expect(completion.sourceComplete).toBe(true)
         }
         const commands = readFileSync(join(root, 'commands.jsonl'), 'utf8')
@@ -153,6 +159,11 @@ else if(args.includes('build')) {
           .split('\n')
           .map((line) => JSON.parse(line))
         expect(commands).toHaveLength(1)
+        if (termination === 'SIGTERM') {
+          expect(stderr).not.toContain('no rerun happened; the native failure stands')
+          return
+        }
+        expect(stderr).toContain('no rerun happened; the native failure stands')
         expect(commands[0].noRemote).not.toBe('1')
         expect(buckConfigValues(commands[0].policy)['buck2.remote_cache_enabled']).toBe('true')
         expect(buckConfigValues(commands[0].policy)['buck2.allow_cache_uploads']).toBe('false')

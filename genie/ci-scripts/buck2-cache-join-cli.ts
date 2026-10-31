@@ -14,11 +14,11 @@ import * as ChildProcess from 'effect/process/ChildProcess'
 import { ChildProcessSpawner } from 'effect/process/ChildProcessSpawner'
 
 import { coreProofDisabledJobIds } from '../ci-workflow/buck2-cache-proof-policy.ts'
-import { proofJobCell } from './buck2-action-evidence.ts'
 import {
   apiBudgetAvailable,
   artifactCanMatter,
   classifyRun,
+  discoverProofJobIdentity,
   selectRuns,
   type EvidenceRun,
 } from './buck2-cache-join-discovery.ts'
@@ -385,20 +385,18 @@ const program = Effect.gen(function* () {
         }
         for (const job of result.success.jobs) {
           if (job.conclusion === null) proofCollectionGaps.push('workflow-job-not-complete')
-          const id = (job.name.startsWith('ci/') === true ? job.name.slice(3) : job.name).split(
-            ' (',
-          )[0]!
+          const identity = discoverProofJobIdentity(job.name)
           if (
             job.conclusion === 'skipped' ||
             job.steps.some((step) => step.name === 'Start Buck2 cache evidence window') !== true ||
-            coreProofDisabledJobIds[id] === true
+            (identity !== undefined && coreProofDisabledJobIds[identity.job] === true)
           )
             continue
-          if (/^[a-zA-Z0-9_.:-]{1,96}$/.test(id) !== true || expectedJobs.length >= 128) {
+          if (identity === undefined || expectedJobs.length >= 128) {
             proofCollectionGaps.push('job-discovery-bound-or-identity-gap')
             continue
           }
-          const cell = proofJobCell(job.name)
+          const { job: id, cell } = identity
           if (
             expectedJobs.some((expected) => expected.runId === run.id && expected.cell === cell) ===
             true

@@ -119,6 +119,9 @@ export const REQUIRED_CI_JOB_NAMES = [
  */
 export const STANDALONE_REQUIRED_CI_JOB_NAMES = ['test-storybook-plays'] as const
 
+/** Job key shared by the preview build workflow and historical evidence discovery. */
+export const STORYBOOK_PREVIEW_BUILD_JOB_NAME = 'build-storybooks' as const
+
 /** GitHub status-check context names emitted by a workflow job key. */
 export const ciJobCheckContexts = (jobName: CIJobName) => {
   if (jobName === 'quality') return ['pr/quality']

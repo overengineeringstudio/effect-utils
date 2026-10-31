@@ -1478,8 +1478,16 @@ export const runNativeWithEvidence = async ({
   } catch {
     return undefined
   }
-  const sentinel = args.indexOf('--')
-  const before = sentinel === -1 ? args : args.slice(0, sentinel)
+  const invocation = resolveGateInvocation({
+    args,
+    cwd: process.cwd(),
+    env: process.env,
+    strictRunArguments: false,
+    includePayload: true,
+  })
+  if (invocation?.nativeArgumentCount === undefined) return undefined
+  const before = invocation.args.slice(0, invocation.nativeArgumentCount)
+  const payload = invocation.args.slice(invocation.nativeArgumentCount)
   if (before.includes('--no-event-log') === true) return undefined
   const callerSinkIndex = before.findIndex(
     (arg) => arg === '--event-log' || arg.startsWith('--event-log='),
@@ -1527,12 +1535,15 @@ export const runNativeWithEvidence = async ({
     const ready = await collector.stdout.getReader().read()
     if (ready.done === true || new TextDecoder().decode(ready.value).trim() !== 'ready')
       throw new Error('Evidence collector did not open its sink')
-    // Common event-log options belong to the leaf command (e.g. audit providers),
-    // but never to run/BXL executable payload following the sentinel.
+    // Keep common options on the leaf command, before run's target/payload.
+    const selectedCommand = buckSubcommand(before)
+    const runIndex = selectedCommand?.command === 'run' ? selectedCommand.index : -1
     const nativeArgs =
-      callerSink === undefined
-        ? [...before, '--event-log', sink, ...(sentinel === -1 ? [] : args.slice(sentinel))]
-        : args
+      callerSink !== undefined
+        ? invocation.args
+        : runIndex !== -1
+          ? [...before.slice(0, runIndex + 1), '--event-log', sink, ...before.slice(runIndex + 1), ...payload]
+          : [...before, '--event-log', sink, ...payload]
     const { child, result } = spawnNativeCommand({ native, args: nativeArgs, stderr })
     reapNative = async () => {
       if (child.exitCode === null) child.kill('SIGKILL')
@@ -1863,7 +1874,7 @@ const warnStdio = (message: string): void => {
 type NativeCommandResult = {
   exitCode: number
   output: string
-  signalCode: string | null
+  signalCode: NodeJS.Signals | null
   durationMs: number
 }
 
@@ -2084,14 +2095,18 @@ if (import.meta.main === true) {
       cwd: process.cwd(),
       env: process.env,
     })
+    let nativeResult: NativeCommandResult | undefined
     if (superviseReader === true) {
       const command = buckSubcommand(args)?.command
-      process.exitCode = await runWithReaderCacheShadow({
+      await runWithReaderCacheShadow({
         reader,
         command: { subcommand: command ?? 'unknown', argumentCount: args.length },
-        run: async () =>
-          (await runNativeWithEvidence({ native, args, root, stderr: 'pipe' })) ??
-          (await observeNativeCommand({ native, args })),
+        run: async () => {
+          nativeResult =
+            (await runNativeWithEvidence({ native, args, root, stderr: 'pipe' })) ??
+            (await observeNativeCommand({ native, args }))
+          return nativeResult
+        },
         onShadow: (shadow) => {
           warnStdio(
             'warning: Buck2 reader REAPI unavailability classified in shadow mode; no rerun happened; the native failure stands\n',
@@ -2119,9 +2134,15 @@ if (import.meta.main === true) {
         },
       })
     } else {
-      const result = await runNativeWithEvidence({ native, args, root })
-      if (result === undefined) process.execve(native, [native, ...args], process.env)
-      else process.exitCode = result.exitCode
+      nativeResult = await runNativeWithEvidence({ native, args, root })
+      if (nativeResult === undefined) process.execve(native, [native, ...args], process.env)
+    }
+    if (nativeResult !== undefined) {
+      process.exitCode = nativeResult.exitCode
+      if (nativeResult.signalCode !== null) {
+        process.removeAllListeners(nativeResult.signalCode)
+        process.kill(process.pid, nativeResult.signalCode)
+      }
     }
   } catch (error) {
     writeSync(2, `${error instanceof Error ? error.message : String(error)}\n`)
