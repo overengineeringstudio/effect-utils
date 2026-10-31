@@ -1959,6 +1959,7 @@ const extraJobs: Record<string, any> = {
     'runs-on': linuxX64Runner,
     'timeout-minutes': 30,
     permissions: { contents: 'read' },
+    env: { ALCHEMY_TELEMETRY_DISABLED: '1' },
     defaults: bashShellDefaults,
     steps: [
       {

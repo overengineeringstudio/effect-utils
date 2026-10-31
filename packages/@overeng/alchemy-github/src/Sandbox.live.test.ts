@@ -14,6 +14,7 @@ import { AlchemyContext } from 'alchemy/AlchemyContext'
 import * as Stack from 'alchemy/Stack'
 import { Stage } from 'alchemy/Stage'
 import { localState } from 'alchemy/State/LocalState'
+import { isTelemetryDisabled } from 'alchemy/Telemetry/Attributes'
 import { deploy, destroy, toEffect } from 'alchemy/Test/Core'
 import { Effect, FileSystem, Layer, Logger, Schema } from 'effect'
 import { describe, expect } from 'vitest'
@@ -24,6 +25,10 @@ import { ActionsVariable } from './ActionsVariable.ts'
 import { Labels } from './Labels.ts'
 import { providers } from './Providers.ts'
 import { SecretSource } from './SecretSource.ts'
+
+// Test/Core installs upstream TelemetryLive during deploy/destroy. Opt out before
+// building it: terminal masking cannot protect private props sent to an exporter.
+process.env.ALCHEMY_TELEMETRY_DISABLED = '1'
 
 const enabled = process.env.ALCHEMY_GITHUB_SANDBOX_LIVE === '1'
 const required = [
@@ -212,7 +217,20 @@ const sandbox = (kind: 'variable' | 'secret' | 'labels') =>
 
 const quiet = Logger.layer([], { mergeWithExisting: false })
 const liveTest = <A, E, R>(program: Effect.Effect<A, E, R>) =>
-  Effect.scoped(program).pipe(Effect.provide(Layer.merge(NodeServices.layer, quiet)))
+  Effect.scoped(
+    Effect.gen(function* () {
+      // Check upstream's resolved gate before any sandbox inputs or resources run.
+      expect(yield* isTelemetryDisabled).toBe(true)
+      return yield* program
+    }),
+  ).pipe(Effect.provide(Layer.merge(NodeServices.layer, quiet)))
+
+// Runs even without live credentials, and consults the exact gate TelemetryLive uses.
+it.effect('disables upstream Alchemy telemetry for the sandbox harness', () =>
+  Effect.map(isTelemetryDisabled, (disabled) => {
+    expect(disabled).toBe(true)
+  }),
+)
 
 // Distinct from App.live.test.ts: that manual adoption gate remains read-only.
 // Required App repository permissions: Variables write, Secrets write, Issues write,

@@ -288,6 +288,8 @@ Install the App only on the intended sandbox repository. The job mints a reposit
 
 The lane exercises Actions variable create/update/delete, an env-backed Actions secret sink, and Labels create/update/destroy with unique run-prefixed names. Each case cleans up its own resources, never unmanaged labels. Alchemy state is local to the job and is not uploaded. The sandbox lane does not create Apps or use manifest conversion; the App exists before the lane runs.
 
+The job and local sandbox harness set `ALCHEMY_TELEMETRY_DISABLED=1` and assert Alchemy's resolved opt-out before running resources. Consumers passing secret-backed identities or props should also disable Alchemy telemetry: log masking does not protect data sent to external telemetry exporters.
+
 Ruleset mutation is intentionally excluded: it would require the broader **Administration: write** permission, which these resource checks do not otherwise need. Cleanup finalizers run on ordinary test failures; a hard runner/process termination can still leave run-prefixed fixtures for an operator to inspect and remove.
 
 ### Manual read-only App adoption
