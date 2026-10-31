@@ -78,6 +78,11 @@ const fixture = Effect.gen(function* () {
     writes: 0,
     brokerStatus: 200,
     storageStatus: 200,
+    brokerPrefix: prefix,
+    redirectPhase: '',
+    redirectStatus: 307,
+    redirectedRequests: 0,
+    redirectResponses: 0,
     // Tests set this from Effect Clock, never wall-clock sleeps.
     now: yield* Clock.currentTimeMillis,
     origin: '',
@@ -85,6 +90,18 @@ const fixture = Effect.gen(function* () {
   const server = createServer(async (request, response) => {
     const url = new URL(request.url ?? '/', 'http://localhost')
     response.setHeader('content-type', 'application/json')
+    if (url.pathname === '/redirect-target') {
+      live.redirectedRequests++
+      response.end('{}')
+      return
+    }
+    const phase =
+      url.pathname === '/oidc' ? 'oidc' : url.pathname === '/broker' ? 'broker' : 'storage'
+    if (live.redirectPhase === phase) {
+      live.redirectResponses++
+      response.writeHead(live.redirectStatus, { location: `${live.origin}/redirect-target` }).end()
+      return
+    }
     if (url.pathname === '/oidc') {
       live.oidcCalls++
       if (
@@ -117,7 +134,7 @@ const fixture = Effect.gen(function* () {
                 sessionToken: sessionToken(live.brokerCalls),
                 endpoint: 'https://objects.example.com',
                 bucket,
-                prefix,
+                prefix: live.brokerPrefix,
                 expiresAt: new Date(live.now + 300_000).toISOString(),
               }
             : { message: `${actionsToken} ${oidcToken} ${secretKey}` },
@@ -501,4 +518,77 @@ it.effect('sanitizes a real broker failure before issuing any storage request', 
     expect(f.live.requests).toEqual([])
     expect(f.live.objects.size).toBe(0)
   }),
+)
+
+for (const phase of ['oidc', 'broker', 'storage'] as const) {
+  for (const status of [301, 302, 303, 307, 308]) {
+    it.effect(`rejects ${status} ${phase} redirects without forwarding credentials`, () =>
+      Effect.gen(function* () {
+        const f = yield* fixture
+        f.live.redirectPhase = phase
+        f.live.redirectStatus = status
+        const result =
+          phase === 'storage'
+            ? yield* f.inspect.pipe(Effect.flip)
+            : yield* RepoStateCredentials.use((credentials) => credentials.get).pipe(
+                Effect.provide(f.credentials),
+                Effect.flip,
+              )
+        expect(result).toMatchObject({
+          _tag: phase === 'storage' ? 'StateStoreError' : 'RepoStateError',
+        })
+        expect(f.live.redirectResponses).toBe(1)
+        expect(f.live.redirectedRequests).toBe(0)
+        expect(f.live.objects.size).toBe(0)
+        f.assertNoSecrets(result)
+      }),
+    )
+  }
+}
+
+for (const invalidPrefix of [
+  'alchemy/v1/../project/',
+  'alchemy/v1/example/./',
+  'alchemy/v1/%2e%2e/project/',
+  'alchemy/v1/example/%2E%2E/',
+  'alchemy/v1/example/a%2fb/',
+  'alchemy/v1/ex ample/project/',
+]) {
+  it.effect(`rejects unsafe broker prefix ${invalidPrefix}`, () =>
+    Effect.gen(function* () {
+      const f = yield* fixture
+      f.live.brokerPrefix = invalidPrefix
+      const error = yield* RepoStateCredentials.use((credentials) => credentials.get).pipe(
+        Effect.provide(f.credentials),
+        Effect.flip,
+      )
+      expect(error).toMatchObject({ _tag: 'RepoStateError' })
+      expect(f.live.requests).toEqual([])
+      f.assertNoSecrets(error)
+    }),
+  )
+}
+
+it.effect(
+  'rejects dot-segment keys and preserves literal percent-encoded dot names inside the prefix',
+  () =>
+    Effect.gen(function* () {
+      const f = yield* fixture
+      yield* Effect.gen(function* () {
+        const store = yield* yield* State
+        for (const stack of ['.', '..']) {
+          const error = yield* store.getOutput({ stack, stage: 'test' }).pipe(Effect.flip)
+          expect(error).toMatchObject({ _tag: 'StateStoreError' })
+        }
+        expect(f.live.requests).toEqual([])
+        for (const stack of ['%2e%2e', '%2E%2E', '%2e.', '.%2e']) {
+          expect(yield* store.getOutput({ stack, stage: 'test' })).toBeUndefined()
+          expect(
+            f.live.requests.some((request) => request.key.startsWith(`${prefix}${stack}/`)),
+          ).toBe(true)
+        }
+      }).pipe(Effect.provide(f.state))
+      expect(f.live.requests.every((request) => request.key.startsWith(prefix))).toBe(true)
+      expect(f.live.signatureFailures).toEqual([])
+    }),
 )

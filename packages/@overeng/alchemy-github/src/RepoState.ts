@@ -3,6 +3,7 @@ import { createHash, createHmac } from 'node:crypto'
 import { State, StateStoreError } from 'alchemy/State'
 import { makeBucketState, type BucketObjects } from 'alchemy/State/BucketState'
 import { Cause, Clock, Effect, Layer, Redacted, Schedule, Scope } from 'effect'
+import * as FetchHttpClient from 'effect/http/FetchHttpClient'
 import * as HttpClient from 'effect/http/HttpClient'
 import * as HttpClientRequest from 'effect/http/HttpClientRequest'
 
@@ -76,7 +77,11 @@ export const githubRepoState = (): Layer.Layer<
           const url = yield* Effect.try({
             try: () => {
               const target = new URL(credential.endpoint)
-              target.pathname = `${target.pathname.replace(/\/$/, '')}/${encode(credential.bucket)}/${key.split('/').map(encode).join('/')}`
+              const pathname = `${target.pathname.replace(/\/$/, '')}/${encode(credential.bucket)}/${key.split('/').map(encode).join('/')}`
+              target.pathname = pathname
+              // WHATWG URLs normalize both literal and percent-encoded dot segments.
+              // Refuse any key whose encoded path would not survive that normalization.
+              if (target.pathname !== pathname) return undefined
               target.search = query
                 .map(([name, value]) => `${encode(name)}=${encode(value)}`)
                 .toSorted()
@@ -85,6 +90,7 @@ export const githubRepoState = (): Layer.Layer<
             },
             catch: () => failure('endpoint'),
           })
+          if (url === undefined) return yield* failure('key normalization')
           const now = yield* Clock.currentTimeMillis
           const date = new Date(now).toISOString().replace(/[:-]|\.\d{3}/g, '')
           const day = date.slice(0, 8)
@@ -127,11 +133,13 @@ export const githubRepoState = (): Layer.Layer<
             outgoing = outgoing.pipe(HttpClientRequest.bodyText(body, 'application/json'))
           return yield* Effect.gen(function* () {
             const response = yield* client.execute(outgoing)
+            if (response.status >= 300 && response.status < 400) return yield* failure('redirect')
             // Consume the response here, so request-bearing transport/decode errors cannot escape.
             const text = yield* response.text
             return { status: response.status, text, version: response.headers.etag }
           }).pipe(
             Effect.provideService(HttpClient.TracerDisabledWhen, () => true),
+            Effect.provideService(FetchHttpClient.RequestInit, { redirect: 'manual' }),
             Effect.withTracerEnabled(false),
             Effect.catchCause((cause) =>
               Cause.hasInterrupts(cause) === true ? Effect.interrupt : failure('request'),

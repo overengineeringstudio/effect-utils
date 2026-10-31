@@ -10,6 +10,7 @@ import {
   Redacted,
   Schema,
 } from 'effect'
+import * as FetchHttpClient from 'effect/http/FetchHttpClient'
 import * as HttpClient from 'effect/http/HttpClient'
 import * as HttpClientRequest from 'effect/http/HttpClientRequest'
 
@@ -27,7 +28,12 @@ export const RepoStateCredential = Schema.Struct({
   sessionToken: secret,
   endpoint: Schema.String.check(Schema.isPattern(/^https:\/\/[^/?#@]+\/?$/)),
   bucket: Schema.NonEmptyString,
-  prefix: Schema.String.check(Schema.isPattern(/^alchemy\/v1\/[^/]+\/[^/]+\/$/)),
+  prefix: Schema.String.check(
+    Schema.isPattern(/^alchemy\/v1\/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+\/$/),
+    Schema.makeFilter((value) =>
+      value.split('/').every((segment) => segment !== '.' && segment !== '..'),
+    ),
+  ),
   expiresAt: Schema.String.check(Schema.makeFilter((value) => Number.isFinite(Date.parse(value)))),
 }).annotate({ identifier: 'RepoState.Credential' })
 export type RepoStateCredential = typeof RepoStateCredential.Type
@@ -71,8 +77,8 @@ export const githubActionsOidc = ({
           token: Config.Redacted('ACTIONS_ID_TOKEN_REQUEST_TOKEN'),
         }).pipe(sanitize('actions-oidc-configuration'))
 
-        // The base client does not follow redirects; do not inject middleware that
-        // follows redirects or logs credential-bearing requests or responses.
+        // Fetch must not replay bearer/JWT requests at a redirect target. Injected
+        // clients must also omit redirect-following and request/body logging middleware.
         const oidc = yield* Effect.gen(function* () {
           const response = yield* client.execute(
             HttpClientRequest.get(configuration.url).pipe(
@@ -107,6 +113,7 @@ export const githubActionsOidc = ({
         Effect.provideService(HttpClient.TracerDisabledWhen, () => true),
         Effect.provideService(HttpClient.TracerPropagationEnabled, false),
         Effect.withTracerEnabled(false),
+        Effect.provideService(FetchHttpClient.RequestInit, { redirect: 'manual' }),
         Effect.provideService(ConfigProvider.ConfigProvider, configProvider),
         sanitize('credential-acquisition'),
       )
