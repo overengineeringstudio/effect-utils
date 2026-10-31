@@ -20,7 +20,7 @@
  */
 
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process'
-import { randomBytes } from 'node:crypto'
+import { createHash, randomBytes } from 'node:crypto'
 import { link, lstat, mkdir, readdir, statfs, symlink, utimes, writeFile } from 'node:fs/promises'
 import { hostname } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -35,7 +35,11 @@ import { expect, vi } from 'vitest'
 import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
 
 import * as Git from '../core/git.ts'
-import { BudgetCandidate, BudgetPlan } from '../store/store-build-budgets.ts'
+import {
+  BudgetCandidate,
+  BudgetPlan,
+  encodeBudgetPlanEvidence,
+} from '../store/store-build-budgets.ts'
 import {
   acquireDeletionLease,
   canonicalizeOwnerPath,
@@ -91,11 +95,28 @@ describe('versioned budget owner contract', () => {
     ]
     const codec = Schema.fromJsonString(BudgetCandidate)
     const decode = Schema.decodeSync(codec, { onExcessProperty: 'error' })
+    const rows: BudgetCandidate[] = []
     for (const owner of owners) {
       const candidate = { ...common, ...owner }
       const decoded = decode(encodeJson(candidate))
+      rows.push(decoded)
       expect(decode(Schema.encodeSync(codec)(decoded))).toEqual(candidate)
     }
+    const evidence = {
+      schemaVersion: 'megarepo.build-output-budget-plan.v2' as const,
+      results: [rows[0]!],
+      classes: {},
+    }
+    const hashBudgetPlanEvidence = (value: typeof evidence) =>
+      createHash('sha256').update(encodeBudgetPlanEvidence(value)).digest('hex')
+    const digest = hashBudgetPlanEvidence(evidence)
+    expect(hashBudgetPlanEvidence({ ...evidence, results: [rows[1]!] })).not.toBe(digest)
+    expect(
+      hashBudgetPlanEvidence({
+        ...evidence,
+        results: [{ ...rows[0]!, livenessKey: '/store/other-output' }],
+      }),
+    ).not.toBe(digest)
   })
 })
 
@@ -611,6 +632,91 @@ if (inOwnerNamespace === false) {
 }
 if (inOwnerNamespace === true && process.platform === 'linux')
   describe('mr store gc --budgets (build-output budgets acceptance)', () => {
+    it.effect(
+      'repository output observes coverage, seats and process boundaries but is never deleted',
+      Effect.fnUntraced(
+        function* () {
+          const f = yield* budgetFixture(['main'])
+          const fs = yield* FileSystem.FileSystem
+          const container = dirname(f.bareRepoPaths[REPO_KEY]!.replace(/\/$/u, ''))
+          const output = `${container}/foo-target`
+          const sibling = `${output}-evil`
+          yield* makeArtifact(output, { files: { 'build.bin': MiB }, ageMs: 3 * DAY_MS })
+          yield* fs.makeDirectory(sibling)
+          yield* writePolicy(f, { budgetBytes: 0 })
+          const policy = decodeJson(yield* fs.readFileString(f.policyPath)) as Record<
+            string,
+            unknown
+          >
+          yield* fs.writeFileString(
+            f.policyPath,
+            encodeJson({
+              ...policy,
+              classes: { 'repo-cargo': { budgetBytes: 0, repoRoots: '*-target' } },
+            }),
+          )
+          expect(row(planOk(f), output)?.reason).toBe('artifact-authority-missing')
+          yield* fs.writeFileString(
+            `${output}/CACHEDIR.TAG`,
+            'Signature: 8a477f597d28d172789f06886806bc55\n',
+          )
+          yield* Effect.promise(() => backdate(output, new Date(Date.now() - 3 * DAY_MS)))
+          expect(row(planOk(f), output)?.reason).toBe('process-liveness-unavailable')
+          const manifest = decodeJson(yield* fs.readFileString(f.manifestPath)) as Record<
+            string,
+            unknown
+          >
+          yield* fs.writeFileString(
+            f.manifestPath,
+            encodeJson({
+              ...manifest,
+              processWorktreeCoverage: 'registered-worktrees',
+            }),
+          )
+          expect(row(planOk(f), output)?.reason).toBe('process-liveness-unavailable')
+          const idle = {
+            ...manifest,
+            processWorktreeCoverage: 'registered-worktrees',
+            processRepoOutputCoverage: 'repo-build-outputs',
+          }
+          yield* fs.writeFileString(f.manifestPath, encodeJson(idle))
+          const eligible = planOk(f)
+          expect(row(eligible, output)?.reason).toBe('repo-output-observation-only')
+          for (const source of ['st3-seat', 'pty']) {
+            yield* fs.writeFileString(
+              f.manifestPath,
+              encodeJson({
+                ...idle,
+                claims: [
+                  {
+                    workspace: worktree(f, 'main').replace(/\/$/u, ''),
+                    sources: [source],
+                    agents: [],
+                    activeRuntimeIds: [],
+                    active: true,
+                  },
+                ],
+              }),
+            )
+            expect(row(planOk(f), output)?.reason).toBe('live')
+            expect(applyCandidate(f, { plan: eligible, path: output }).exitCode).not.toBe(0)
+          }
+          yield* fs.writeFileString(f.manifestPath, encodeJson(idle))
+          const direct = yield* holderIn(output)
+          expect(row(planOk(f), output)?.reason).toBe('live')
+          yield* Effect.promise(() => killHolder(direct))
+          const adjacent = yield* holderIn(sibling)
+          expect(row(planOk(f), output)?.reason).toBe('repo-output-observation-only')
+          const applied = applyCandidate(f, { plan: planOk(f), path: output })
+          expect(applied.exitCode).not.toBe(0)
+          expect(yield* exists(output)).toBe(true)
+          expect(yield* exists(sibling)).toBe(true)
+          yield* Effect.promise(() => killHolder(adjacent))
+        },
+        Effect.provide(NodeServices.layer),
+        Effect.scoped,
+      ),
+    )
     it.effect(
       'repository selector accounts only immediate non-overlapping output directories',
       Effect.fnUntraced(

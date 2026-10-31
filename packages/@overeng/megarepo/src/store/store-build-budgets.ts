@@ -101,6 +101,7 @@ export const BudgetReason = Schema.Literals([
   'scan-incomplete',
   'deletion-partial',
   'artifact-authority-missing',
+  'repo-output-observation-only',
 ])
 const CandidateFields = {
   path: AbsolutePath,
@@ -247,6 +248,10 @@ const fingerprint = ({
 const comparePaths = (left: string, right: string): number =>
   left < right ? -1 : left > right ? 1 : 0
 const encode = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown))
+/** Serialize the complete typed receipt together with opaque policy/admission evidence. */
+export const encodeBudgetPlanEvidence = (
+  evidence: Omit<BudgetPlan, 'planSha256'> & Readonly<Record<string, unknown>>,
+): string => encode(evidence)
 // The candidate fingerprint also binds every ancestor's persisted deletion evidence.
 const deletionFingerprint = ({
   artifactFingerprint,
@@ -387,8 +392,26 @@ const repoAdmissionIdentity = Effect.fn('store.repoAdmissionIdentity')(function*
   store: string
   container: string
 }) {
+  const fs = yield* FileSystem.FileSystem
   const identity = yield* captureDeletionIdentity({ rootPath: store, path: `${container}/.bare` })
-  return createHash('sha256').update(encode(identity)).digest('hex')
+  const registrations = yield* Git.listWorktrees(`${container}/.bare`)
+  const worktrees = yield* Effect.forEach(registrations, (entry) =>
+    fs.realPath(entry.path).pipe(Effect.orElseSucceed(() => entry.path)),
+  )
+  const registryPath = `${container}/.bare/worktrees`
+  const registry =
+    (yield* fs.exists(registryPath)) === true
+      ? fingerprint({
+          path: registryPath,
+          info: yield* Effect.tryPromise(() => lstat(registryPath, { bigint: true })),
+        })
+      : 'missing'
+  return {
+    identity: createHash('sha256')
+      .update(encode({ identity, registrations, registry }))
+      .digest('hex'),
+    worktrees,
+  }
 })
 
 const repoOutputActive = ({
@@ -811,20 +834,29 @@ export const planBuildOutputBudgets = Effect.fn('store.planBuildOutputBudgets')(
     if (selectedClass === undefined) continue
     const [artifactClass] = selectedClass
     const container = resolve(canonicalStore, repo.relativePath)
-    const roots = yield* discoverRepoOutputs({
-      container,
-      worktrees: repoWorktrees.flatMap((entry) => entry.worktrees.map((owner) => owner.path)),
-      deadlineAt,
-    })
-    const admissionIdentity = yield* repoAdmissionIdentity({
-      store: canonicalStore,
-      container,
-    }).pipe(Effect.orElseSucceed(() => undefined))
-    if (roots === undefined || admissionIdentity === undefined) {
+    const admission = yield* repoAdmissionIdentity({ store: canonicalStore, container }).pipe(
+      Effect.orElseSucceed(() => undefined),
+    )
+    const roots =
+      admission === undefined
+        ? undefined
+        : yield* discoverRepoOutputs({
+            container,
+            worktrees: admission.worktrees,
+            deadlineAt,
+          })
+    if (roots === undefined || admission === undefined) {
       incomplete.add(artifactClass)
       continue
     }
+    const admissionIdentity = admission.identity
     admissions.push({ owner: container, identity: admissionIdentity })
+    const lease =
+      container === ignoreLeaseOwner
+        ? false
+        : yield* fs
+            .exists(deletionLeasePath({ storeBasePath, ownerPath: container }))
+            .pipe(Effect.orElseSucceed(() => undefined))
     for (const path of roots) {
       const identity = yield* captureDeletionIdentity({ rootPath: canonicalStore, path }).pipe(
         Effect.orElseSucceed(() => undefined),
@@ -844,7 +876,17 @@ export const planBuildOutputBudgets = Effect.fn('store.planBuildOutputBudgets')(
                       isInsideWorktree({ candidate: entry.path, worktreePath: path }),
                     ) === true)
                 ? 'live'
-                : 'process-liveness-unavailable'
+                : processScan._tag === 'unknown' ||
+                    activity.processWorktreeCoverage !== 'registered-worktrees' ||
+                    activity.processRepoOutputCoverage !== 'repo-build-outputs'
+                  ? 'process-liveness-unavailable'
+                  : lease === undefined
+                    ? 'lease-unknown'
+                    : lease === true
+                      ? 'lease-held'
+                      : now - scan.newestMtimeMs < policy.idleRetentionMs
+                        ? 'retention'
+                        : 'repo-output-observation-only'
       if (scan === undefined || identity === undefined || scan.symlink === true)
         incomplete.add(artifactClass)
       results.push({
@@ -948,11 +990,12 @@ export const planBuildOutputBudgets = Effect.fn('store.planBuildOutputBudgets')(
   const sorted = results.toSorted((left, right) => comparePaths(left.path, right.path))
   const planSha256 = createHash('sha256')
     .update(
-      encode({
+      encodeBudgetPlanEvidence({
         schemaVersion: 'megarepo.build-output-budget-plan.v2',
         policy,
         activityEpoch: activity?.epoch,
         processWorktreeCoverage: activity?.processWorktreeCoverage,
+        processRepoOutputCoverage: activity?.processRepoOutputCoverage,
         census: repoWorktrees
           .map(({ repo, worktrees, censusIncomplete }) => ({
             repo: repo.relativePath,
@@ -1016,7 +1059,8 @@ export const applyBuildOutputBudgetCandidate = Effect.fn('store.applyBuildOutput
     if (selected.length !== 1)
       return yield* fail('Budget candidate is missing, ambiguous, or not eligible')
     const candidate = selected[0]!
-    if (candidate.kind !== 'worktree') return yield* fail('Repository output is observation-only')
+    if (candidate.kind === 'repo-build-output')
+      return yield* fail('Repository output is observation-only')
     const requiresExpandedCoverage = repoWorktrees.some(({ worktrees }) =>
       worktrees.some(
         (worktree) =>
@@ -1053,7 +1097,6 @@ export const applyBuildOutputBudgetCandidate = Effect.fn('store.applyBuildOutput
         (row) => row.path === candidate.path && row.outcome === 'would-delete',
       )
       if (current === undefined) return yield* fail('Budget candidate no longer eligible')
-      if (current.kind !== 'worktree') return yield* fail('Repository output is observation-only')
       const removal = yield* withGcPinnedDeletion({
         rootPath: deletionRoot,
         path: current.path,
@@ -1075,27 +1118,40 @@ export const applyBuildOutputBudgetCandidate = Effect.fn('store.applyBuildOutput
             )
               return yield* fail('Candidate changed before deletion')
             const canonicalRoot = yield* fs.realPath(current.path)
-            const canonicalOwner = yield* fs.realPath(current.workspacePath)
+            const canonicalOwner = yield* fs.realPath(
+              current.kind === 'worktree' ? current.workspacePath : current.containerPath,
+            )
             if (
               canonicalRoot !== current.path ||
               canonicalOwner !== ownerPath ||
               isInsideWorktree({ candidate: canonicalRoot, worktreePath: canonicalOwner }) === false
             )
               return yield* fail('Budget candidate containment changed')
-            const ownerDir = EffectPath.unsafe.absoluteDir(`${candidate.workspacePath}/`)
+            const ownerDir = EffectPath.unsafe.absoluteDir(`${ownerPath}/`)
             const rel = relative(ownerPath, current.path)
-            const tracked = yield* Git.hasTrackedFiles({ cwd: ownerDir, path: rel }).pipe(
-              Effect.orElseSucceed(() => undefined),
-            )
-            const ignored = yield* Git.runCommand({
-              args: ['check-ignore', '--quiet', '--', rel],
-              cwd: ownerDir,
-            }).pipe(
-              Effect.as(true),
-              Effect.orElseSucceed(() => false),
-            )
-            if (tracked !== false || ignored === false)
-              return yield* fail('Candidate tracked/ignore predicates changed')
+            if (current.kind === 'worktree') {
+              const tracked = yield* Git.hasTrackedFiles({ cwd: ownerDir, path: rel }).pipe(
+                Effect.orElseSucceed(() => undefined),
+              )
+              const ignored = yield* Git.runCommand({
+                args: ['check-ignore', '--quiet', '--', rel],
+                cwd: ownerDir,
+              }).pipe(
+                Effect.as(true),
+                Effect.orElseSucceed(() => false),
+              )
+              if (tracked !== false || ignored === false)
+                return yield* fail('Candidate tracked/ignore predicates changed')
+            } else if (
+              freshPolicy.classes[current.artifactClass]?.repoRoots !== '*-target' ||
+              rel.includes('/') === true ||
+              rel.endsWith('-target') === false ||
+              current.livenessKey !== current.path ||
+              current.outputRoot !== current.path ||
+              (yield* cargoOutputAuthority(current.path)) === false
+            ) {
+              return yield* fail('Repository output authority changed')
+            }
             const finalActivity = yield* readBudgetWorkspaceActivity({
               fs,
               config: activityConfig,
@@ -1105,18 +1161,29 @@ export const applyBuildOutputBudgetCandidate = Effect.fn('store.applyBuildOutput
               finalActivity === undefined ||
               (requiresExpandedCoverage === true &&
                 finalActivity.processWorktreeCoverage !== 'registered-worktrees') ||
-              isWorkspaceActive({ activity: finalActivity, canonicalWorktree: ownerPath }) === true
+              (current.kind === 'repo-build-output' &&
+                finalActivity.processRepoOutputCoverage !== 'repo-build-outputs') ||
+              (current.kind === 'worktree'
+                ? isWorkspaceActive({ activity: finalActivity, canonicalWorktree: ownerPath })
+                : repoOutputActive({
+                    activity: finalActivity,
+                    container: ownerPath,
+                    output: current.livenessKey,
+                  })) === true
             )
               return yield* fail('Candidate activity became live or unknown')
-            if (
-              (yield* worktreeAdmissionIdentity({
-                owner: ownerPath,
-                barePath: join(storeBasePath, candidate.repo, '.bare'),
-              })) !== candidate.admissionIdentity
-            )
+            const finalAdmission =
+              current.kind === 'worktree'
+                ? yield* worktreeAdmissionIdentity({
+                    owner: ownerPath,
+                    barePath: join(storeBasePath, current.repo, '.bare'),
+                  })
+                : (yield* repoAdmissionIdentity({ store: deletionRoot, container: ownerPath }))
+                    .identity
+            if (finalAdmission !== current.admissionIdentity)
               return yield* fail('Candidate admission changed before deletion')
             const processState = yield* readBudgetWorktreeInUse({
-              worktreePath: ownerDir,
+              worktreePath: EffectPath.unsafe.absoluteDir(`${current.livenessKey}/`),
               activity: finalActivity,
             })
             if (processState._tag !== 'free') {
@@ -1170,7 +1237,7 @@ export const applyBuildOutputBudgetCandidate = Effect.fn('store.applyBuildOutput
             },
           }
         }
-        return yield* removal.failure
+        return yield* Effect.fail(removal.failure)
       }
       const summary = fresh.classes[current.artifactClass]!
       return {
