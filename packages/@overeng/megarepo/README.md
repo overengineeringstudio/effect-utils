@@ -233,8 +233,11 @@ Repository outputs require both `processWorktreeCoverage: "registered-worktrees"
 `processRepoOutputCoverage: "repo-build-outputs"` in admitted activity, plus the standard `CACHEDIR.TAG`
 signature, not merely a marker filename or a failed Git check. Seats/PTYs anywhere in the
 container veto all its outputs; direct process references protect only their containing output.
-Unknown evidence keeps. Repository output remains observation-only even with complete
-coverage: its liveness and registry contract never grants deletion authority.
+Unknown evidence keeps. Repository outputs containing `.git` or a bare repository boundary
+are never eligible, including when the output root itself is a bare repository.
+Apply acquires exclusive canonical container admission first, then sorted worktree leases,
+and re-enumerates registrations under those leases. Admission stays held through removal;
+every lease is released on exit. Git boundaries and registry identity are checked again.
 Repository admission supports kernel shared/exclusive flock controls, separate from Git writer
 locks. Controls persist: never unlink them, which would split ownership.
 Activation (`mr store lease`) and every mr creation path acquire a shared canonical repository

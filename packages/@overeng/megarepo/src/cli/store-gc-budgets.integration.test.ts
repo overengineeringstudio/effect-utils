@@ -43,7 +43,9 @@ import {
 import {
   acquireDeletionLease,
   canonicalizeOwnerPath,
+  createStoreWorktree,
   releaseDeletionLease,
+  withStoreWorktreeLease,
 } from '../store/store-deletion-lease.ts'
 import { decodeJson, encodeJson } from '../test-utils/json.ts'
 import { createStoreFixture, getWorktreeCommit } from '../test-utils/store-setup.ts'
@@ -633,7 +635,7 @@ if (inOwnerNamespace === false) {
 if (inOwnerNamespace === true && process.platform === 'linux')
   describe('mr store gc --budgets (build-output budgets acceptance)', () => {
     it.effect(
-      'repository output observes coverage, seats and process boundaries but is never deleted',
+      'repository output requires exclusive worktree leases and excludes Git boundaries',
       Effect.fnUntraced(
         function* () {
           const f = yield* budgetFixture(['main'])
@@ -680,8 +682,23 @@ if (inOwnerNamespace === true && process.platform === 'linux')
             processRepoOutputCoverage: 'repo-build-outputs',
           }
           yield* fs.writeFileString(f.manifestPath, encodeJson(idle))
+          for (const boundary of [output, `${output}/source.git`]) {
+            yield* Git.runCommand({ args: ['init', '--bare', boundary], cwd: f.outside })
+            yield* fs.remove(`${boundary}/config`)
+            const protectedPlan = planOk(f)
+            expect(row(protectedPlan, output)?.reason).toBe('artifact-scan-incomplete')
+            expect(applyCandidate(f, { plan: protectedPlan, path: output }).exitCode).not.toBe(0)
+            expect(yield* exists(output)).toBe(true)
+            yield* fs.remove(output, { recursive: true })
+            yield* makeArtifact(output, { files: { 'build.bin': MiB }, ageMs: 3 * DAY_MS })
+            yield* fs.writeFileString(
+              `${output}/CACHEDIR.TAG`,
+              'Signature: 8a477f597d28d172789f06886806bc55\n',
+            )
+            yield* Effect.promise(() => backdate(output, new Date(Date.now() - 3 * DAY_MS)))
+          }
           const eligible = planOk(f)
-          expect(row(eligible, output)?.reason).toBe('repo-output-observation-only')
+          expect(row(eligible, output)?.outcome).toBe('would-delete')
           for (const source of ['st3-seat', 'pty']) {
             yield* fs.writeFileString(
               f.manifestPath,
@@ -706,10 +723,51 @@ if (inOwnerNamespace === true && process.platform === 'linux')
           expect(row(planOk(f), output)?.reason).toBe('live')
           yield* Effect.promise(() => killHolder(direct))
           const adjacent = yield* holderIn(sibling)
-          expect(row(planOk(f), output)?.reason).toBe('repo-output-observation-only')
-          const applied = applyCandidate(f, { plan: planOk(f), path: output })
-          expect(applied.exitCode).not.toBe(0)
+          expect(row(planOk(f), output)?.outcome).toBe('would-delete')
+          const ready = planOk(f)
+          const lease = yield* Effect.acquireRelease(
+            acquireDeletionLease({
+              storeBasePath: f.storePath,
+              ownerPath: yield* canonicalizeOwnerPath(worktree(f, 'main')),
+              now: Date.now(),
+            }),
+            releaseDeletionLease,
+          )
+          expect(applyCandidate(f, { plan: ready, path: output }).exitCode).not.toBe(0)
           expect(yield* exists(output)).toBe(true)
+          yield* releaseDeletionLease(lease)
+          const beforeRegistration = planOk(f)
+          yield* Effect.gen(function* () {
+            const contended = applyCandidate(f, { plan: beforeRegistration, path: output })
+            expect(contended.exitCode).not.toBe(0)
+            expect(contended.stderr).toContain('flock')
+            yield* createStoreWorktree({
+              storeBasePath: f.storePath,
+              repoPath: f.bareRepoPaths[REPO_KEY]!,
+              worktreePath: `${container}/late-checkout`,
+              branch: 'late-checkout',
+              createBranch: true,
+            })
+          }).pipe(
+            withStoreWorktreeLease({
+              storeBasePath: f.storePath,
+              ownerPath: `${container}/prospective-activation`,
+              bareRepoPath: f.bareRepoPaths[REPO_KEY]!,
+            }),
+          )
+          expect(applyCandidate(f, { plan: beforeRegistration, path: output }).exitCode).not.toBe(0)
+          expect(planOk(f).planSha256).not.toBe(beforeRegistration.planSha256)
+          expect(yield* exists(output)).toBe(true)
+          const applied = applyCandidate(f, { plan: planOk(f), path: output })
+          expect(applied.exitCode, applied.stderr).toBe(0)
+          expect(applied.plan?.results).toEqual([
+            expect.objectContaining({
+              kind: 'repo-build-output',
+              path: output,
+              outcome: 'deleted',
+            }),
+          ])
+          expect(yield* exists(output)).toBe(false)
           expect(yield* exists(sibling)).toBe(true)
           yield* Effect.promise(() => killHolder(adjacent))
         },
