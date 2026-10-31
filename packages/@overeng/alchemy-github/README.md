@@ -24,7 +24,7 @@ Declare the App in an Alchemy stack:
 import * as Alchemy from 'alchemy'
 import { localState } from 'alchemy/State/LocalState'
 import * as GitHub from '@overeng/alchemy-github'
-import { Effect, Redacted } from 'effect'
+import { Effect } from 'effect'
 
 export default Alchemy.Stack(
   'RepositoryChecks',
@@ -50,14 +50,9 @@ export default Alchemy.Stack(
         environment: 'production', // Omit for a repository Actions secret.
         name: 'CHECK_PUBLISHER_PRIVATE_KEY',
       },
-      ...(process.env.APP_MANIFEST_CODE === undefined
+      ...(process.env.GITHUB_APP_MANIFEST_CODE_STATE === undefined
         ? {}
-        : {
-            conversion: {
-              code: Redacted.make(process.env.APP_MANIFEST_CODE),
-              state: process.env.APP_MANIFEST_STATE!,
-            },
-          }),
+        : { conversion: { state: process.env.GITHUB_APP_MANIFEST_CODE_STATE } }),
     })
     return { app }
   }),
@@ -66,10 +61,14 @@ export default Alchemy.Stack(
 
 1. Deploy **without** `conversion`. The resource persists `status: 'pending'`, a portable `manifestHtml` form, `formUrl`, callback `state`, `startedAt` and `expiresAt`. Serve the form from a trusted page or save the non-secret form locally. The URL alone does not contain the POSTed manifest.
 2. The owner submits the form and confirms the App on GitHub. GitHub redirects to `redirectUrl` with a one-time `code` and `state`. Verify state matches the pending registration. Complete within the one-hour window. The provider never opens or automates a browser.
-3. Set `APP_MANIFEST_CODE` and `APP_MANIFEST_STATE` and deploy the same resource again. The provider checks state/expiration, preflights the Actions public key, converts the code once, and writes the sealed PEM directly to the secret. Remove the conversion environment variables after success. Webhooks are disabled unless explicitly configured.
+3. Set `GITHUB_APP_MANIFEST_CODE` to the one-use code and `GITHUB_APP_MANIFEST_CODE_STATE` to its callback state, then deploy the same resource again. Only the state token enters resource props. The default `ManifestCodes.fromEnv('GITHUB_APP_MANIFEST_CODE')` reads the code and companion `_STATE` variable during apply, verifies the token, then converts once and writes the sealed PEM directly to the secret. Neither planning nor provider construction reads the code. Remove both variables after success. Webhooks are disabled unless explicitly configured.
 4. Install the App through GitHub's UI. Supply `installationId` explicitly if it is needed by the stack. It is an operator assertion, not inferred from `appId` or verified with a key the provider no longer holds.
 
 Registered outputs include `appId`, `integrationId` (equal to `appId`), `slug`, `clientId` where returned, optional `installationId`, the public-key fingerprint, observed permissions/events, and `privateKeySecret` metadata including repository/environment scope and `updatedAt`. A pending App cannot yet supply a required-check integration ID: declare dependent resources after registration instead of treating pending as success.
+
+**Breaking API change:** `conversion.code` is no longer accepted. Alchemy persists resource props before reconciliation and unwraps Redacted values when encoding state; wrapping a code in Redacted does not protect durable state. Keep callback codes exclusively in `ManifestCodeSource`, never in resource props or stack outputs. Existing state written by older versions may contain an unspent code: protect that state, let the code expire, and remove it from retained state copies according to your state-store policy.
+
+For a different environment variable prefix, pass `manifestCodeSource: GitHub.ManifestCodes.fromEnv('CUSTOM_CODE')` to `GitHub.providers()`, then set `CUSTOM_CODE` and `CUSTOM_CODE_STATE`. For an interactive workflow, inject `GitHub.ManifestCodes.fromPrompt(prompt)`; the Effect callback receives the pending state and must securely prompt for and return `{ state, code: Redacted.make(code) }`. The source validates that the entered callback state matches that pending token. Do not log callback values. Prompts run only during apply, after the replay baseline and encryption preflight.
 
 ### Recovery and drift
 

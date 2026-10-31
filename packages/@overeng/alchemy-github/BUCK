@@ -4,7 +4,7 @@
 # Projection source: packages/@overeng/alchemy-github/BUCK.genie.ts
 # Projection schema version: 13
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:f1dd849b3df4f8d2ee231a5d655b432120065a70319bb600a32e00e0f28691bc
+# Semantic fingerprint: sha256:304ce8620082cb011879f49d878f10ee44a589600b80a1c0dd4ef038392052a2
 # Regenerate: devenv tasks run genie:run
 
 load("//buck2:materialization.bzl", "export_materialization_inputs", "package_view")
@@ -28,6 +28,8 @@ export_materialization_inputs([
     "src/App.live.test.ts",
     "src/App.ts",
     "src/AppErrors.ts",
+    "src/ManifestCodeSource.ts",
+    "src/ManifestCodeSource.unit.test.ts",
     "src/Providers.ts",
     "src/Ruleset.unit.test.ts",
     "src/SealedBox.ts",
@@ -86,6 +88,8 @@ package_view(
         "src/App.live.test.ts": "src/App.live.test.ts",
         "src/App.ts": "src/App.ts",
         "src/AppErrors.ts": "src/AppErrors.ts",
+        "src/ManifestCodeSource.ts": "src/ManifestCodeSource.ts",
+        "src/ManifestCodeSource.unit.test.ts": "src/ManifestCodeSource.unit.test.ts",
         "src/Providers.ts": "src/Providers.ts",
         "src/Ruleset.unit.test.ts": "src/Ruleset.unit.test.ts",
         "src/SealedBox.ts": "src/SealedBox.ts",
@@ -122,6 +126,8 @@ package_view(
         "src/App.live.test.ts": "src/App.live.test.ts",
         "src/App.ts": "src/App.ts",
         "src/AppErrors.ts": "src/AppErrors.ts",
+        "src/ManifestCodeSource.ts": "src/ManifestCodeSource.ts",
+        "src/ManifestCodeSource.unit.test.ts": "src/ManifestCodeSource.unit.test.ts",
         "src/Providers.ts": "src/Providers.ts",
         "src/Ruleset.unit.test.ts": "src/Ruleset.unit.test.ts",
         "src/SealedBox.ts": "src/SealedBox.ts",
@@ -158,6 +164,8 @@ package_view(
         "src/App.live.test.ts": "src/App.live.test.ts",
         "src/App.ts": "src/App.ts",
         "src/AppErrors.ts": "src/AppErrors.ts",
+        "src/ManifestCodeSource.ts": "src/ManifestCodeSource.ts",
+        "src/ManifestCodeSource.unit.test.ts": "src/ManifestCodeSource.unit.test.ts",
         "src/Providers.ts": "src/Providers.ts",
         "src/Ruleset.unit.test.ts": "src/Ruleset.unit.test.ts",
         "src/SealedBox.ts": "src/SealedBox.ts",
