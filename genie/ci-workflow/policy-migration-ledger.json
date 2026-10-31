@@ -3,30 +3,6 @@
   "violations": [
     {
       "repository": "overengineeringstudio/effect-utils",
-      "workflow": "auto-review.yml",
-      "job": "request-review",
-      "rule": "dynamic-runner",
-      "path": "jobs.request-review.runs-on",
-      "value": "namespace-profile-linux-x86-64;github.run-id=${{ github.run_id }};job.priority=4"
-    },
-    {
-      "repository": "overengineeringstudio/effect-utils",
-      "workflow": "ci.yml",
-      "job": "tested-tree",
-      "rule": "hosted-runner",
-      "path": "jobs.tested-tree.runs-on",
-      "value": "ubuntu-latest"
-    },
-    {
-      "repository": "overengineeringstudio/effect-utils",
-      "workflow": "ci.yml",
-      "job": "tested-tree",
-      "rule": "runner-not-admitted",
-      "path": "jobs.tested-tree.runs-on",
-      "value": "ubuntu-latest"
-    },
-    {
-      "repository": "overengineeringstudio/effect-utils",
       "workflow": "ci.yml",
       "job": "default-ref-policy",
       "rule": "runner-fallback",
@@ -428,22 +404,6 @@
     {
       "repository": "overengineeringstudio/effect-utils",
       "workflow": "ci.yml",
-      "job": "pr-reviews-resolved",
-      "rule": "hosted-runner",
-      "path": "jobs.pr-reviews-resolved.runs-on",
-      "value": "ubuntu-latest"
-    },
-    {
-      "repository": "overengineeringstudio/effect-utils",
-      "workflow": "ci.yml",
-      "job": "pr-reviews-resolved",
-      "rule": "runner-not-admitted",
-      "path": "jobs.pr-reviews-resolved.runs-on",
-      "value": "ubuntu-latest"
-    },
-    {
-      "repository": "overengineeringstudio/effect-utils",
-      "workflow": "ci.yml",
       "job": "source-shape",
       "rule": "runner-fallback",
       "path": "jobs.source-shape.runs-on",
@@ -560,38 +520,6 @@
       "rule": "banned-action",
       "path": "jobs.deploy-storybooks.steps[name:\"Upload Buck2 cache evidence\"|action:\"actions/upload-artifact\"|content:{\"if\":\"${{ always() }}\",\"with\":[[\"if-no-files-found\",\"warn\"],[\"name\",\"buck2-cache-evidence-deploy-storybooks-${{ github.run_attempt }}\"],[\"path\",\"${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}\\n${{ env.CI_BUCK2_CACHE_ACTIONS_PATH }}\\n${{ env.CI_BUCK2_CACHE_WARM99_PATH }}\\n${{ env.CI_BUCK2_CACHE_PROOF_MANIFEST_PATH }}\\n${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}.shard-index.json\\n${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}.shards/*.json\"],[\"retention-days\",90]]}].uses",
       "value": "actions/upload-artifact@v4"
-    },
-    {
-      "repository": "overengineeringstudio/effect-utils",
-      "workflow": "ci.yml",
-      "job": "notify-alignment",
-      "rule": "dynamic-runner",
-      "path": "jobs.notify-alignment.runs-on",
-      "value": "namespace-profile-linux-x86-64;github.run-id=${{ github.run_id }};job.priority=4"
-    },
-    {
-      "repository": "overengineeringstudio/effect-utils",
-      "workflow": "ci.yml",
-      "job": "promote-published",
-      "rule": "dynamic-runner",
-      "path": "jobs.promote-published.runs-on",
-      "value": "namespace-profile-linux-x86-64;github.run-id=${{ github.run_id }};job.priority=1"
-    },
-    {
-      "repository": "overengineeringstudio/effect-utils",
-      "workflow": "ci.yml",
-      "job": "pipeline-attempt-close",
-      "rule": "hosted-runner",
-      "path": "jobs.pipeline-attempt-close.runs-on",
-      "value": "ubuntu-latest"
-    },
-    {
-      "repository": "overengineeringstudio/effect-utils",
-      "workflow": "ci.yml",
-      "job": "pipeline-attempt-close",
-      "rule": "runner-not-admitted",
-      "path": "jobs.pipeline-attempt-close.runs-on",
-      "value": "ubuntu-latest"
     },
     {
       "repository": "overengineeringstudio/effect-utils",
@@ -896,14 +824,6 @@
       "rule": "banned-action",
       "path": "jobs.build-storybooks.steps[name:\"Upload Buck2 cache evidence\"|action:\"actions/upload-artifact\"|content:{\"if\":\"${{ always() }}\",\"with\":[[\"if-no-files-found\",\"warn\"],[\"name\",\"buck2-cache-evidence-build-storybooks-${{ github.run_attempt }}\"],[\"path\",\"${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}\\n${{ env.CI_BUCK2_CACHE_ACTIONS_PATH }}\\n${{ env.CI_BUCK2_CACHE_WARM99_PATH }}\\n${{ env.CI_BUCK2_CACHE_PROOF_MANIFEST_PATH }}\\n${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}.shard-index.json\\n${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}.shards/*.json\"],[\"retention-days\",90]]}].uses",
       "value": "actions/upload-artifact@v4"
-    },
-    {
-      "repository": "overengineeringstudio/effect-utils",
-      "workflow": "storybook-preview-deploy.yml",
-      "job": "resolve-preview",
-      "rule": "dynamic-runner",
-      "path": "jobs.resolve-preview.runs-on",
-      "value": "namespace-profile-linux-x86-64;github.run-id=${{ github.run_id }};job.priority=4"
     },
     {
       "repository": "overengineeringstudio/effect-utils",

@@ -14,6 +14,7 @@ import {
   ciOtelSpansSummaryStep,
   prepareCiScriptsStep,
   notifyAlignmentJob,
+  dispatchAlignmentStep,
   preparePinnedDevenvStep,
   prepareCiOtelSpoolStep,
   installNixStep,
@@ -61,12 +62,21 @@ import {
   pipelineCloseJob,
 } from '../../genie/ci-workflow/pipeline-telemetry.ts'
 import { effectUtilsWorkflowPolicy } from '../../genie/ci-workflow/policy.ts'
+import { prReviewsResolvedStep } from '../../genie/ci-workflow/pr-reviews.ts'
 import { publishedRefIf, publishedRefSteps } from '../../genie/ci-workflow/published-ref.ts'
+import { linuxX64Runner } from '../../genie/ci-workflow/runners.ts'
 import type { CoreCIJobName } from '../../genie/ci.ts'
 import { pipelineJobIdentifierSet } from '../../packages/@overeng/ci-tools/src/pipeline-job-names.ts'
+import { sameRepoPullRequestGuard } from '../../packages/@overeng/genie/src/runtime/github-workflow/policy.ts'
 
 const workflowReportFlakeRef =
   "github:${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name || github.repository }}/${{ github.event_name == 'pull_request' && github.head_ref || github.ref_name }}#ci-tools"
+
+const fleetGitConfigStep = {
+  name: 'Isolate job Git configuration',
+  shell: 'bash',
+  run: 'echo "GIT_CONFIG_GLOBAL=$RUNNER_TEMP/gitconfig" >> "$GITHUB_ENV"',
+} as const
 
 const trustedCachixStep = cachixStep({ name: 'overeng-effect-utils' })
 const binaryCache = readBinaryCacheDescriptors(
@@ -1283,17 +1293,24 @@ const extraJobs: Record<string, any> = {
   },
   'promote-published': {
     needs: ['publish-products', 'consumer-smoke'],
-    if: publishedRefIf,
-    'runs-on': namespaceRunner({
-      profile: 'namespace-profile-linux-x86-64',
-      runId: '${{ github.run_id }}',
-      privileged: 'never',
-      priority: deliveryJobPriority,
-    }),
+    if: `(${publishedRefIf}) && (${sameRepoPullRequestGuard()})`,
+    'runs-on': linuxX64Runner,
     'timeout-minutes': 5,
     permissions: { contents: 'read' },
     defaults: bashShellDefaults,
-    steps: [checkoutStep(), ...publishedRefSteps],
+    steps: [
+      fleetGitConfigStep,
+      checkoutStep(),
+      ...publishedRefSteps.map((step) =>
+        'run' in step
+          ? {
+              ...step,
+              shell:
+                'nix shell nixpkgs#gh nixpkgs#git --command bash --noprofile --norc -e -o pipefail {0}',
+            }
+          : step,
+      ),
+    ],
   },
   'publish-products': {
     if: trustedSecretCiIf,
@@ -1705,7 +1722,19 @@ const extraJobs: Record<string, any> = {
    * the live merge gate; this job is the early visible PR signal (thread resolution
    * does not retrigger workflows, so re-run after resolving threads to refresh).
    */
-  [prReviewsResolvedJobId]: prReviewsResolvedJob({ runsOn: 'ubuntu-latest' }),
+  [prReviewsResolvedJobId]: {
+    ...prReviewsResolvedJob({
+      runsOn: linuxX64Runner,
+      condition: `\${{ github.event_name != 'schedule' && (${sameRepoPullRequestGuard()}) }}`,
+    }),
+    steps: [
+      {
+        ...prReviewsResolvedStep(),
+        shell:
+          'nix shell nixpkgs#gh nixpkgs#jq --command bash --noprofile --norc -e -o pipefail {0}',
+      },
+    ],
+  },
   'nix-closure-sizes': {
     if: empiricalProofLaneIf,
     'runs-on': namespaceRunner({
@@ -2120,15 +2149,16 @@ const allCiJobs: Record<string, any> = {
     ...notifyAlignmentJob({
       targetRepo: 'schickling/megarepo-all',
       needs: ['tested-tree', 'quality', ...Object.keys(deployJobs)],
-      runner: namespaceRunner({
-        profile: 'namespace-profile-linux-x86-64',
-        runId: '${{ github.run_id }}',
-        privileged: 'never',
-        priority: backgroundJobPriority,
-      }),
+      runner: linuxX64Runner,
     }),
+    steps: [
+      {
+        ...dispatchAlignmentStep({ targetRepo: 'schickling/megarepo-all' }),
+        shell: 'nix shell nixpkgs#curl --command bash --noprofile --norc -e -o pipefail {0}',
+      },
+    ],
     // Optional lookup failures permit authoritative quality fallback; publication must succeed.
-    if: `\${{ !cancelled() && github.ref == 'refs/heads/main' && github.event_name == 'push' && (needs.quality.result == 'success' || needs.tested-tree.outputs.tested == 'true') && ${Object.keys(
+    if: `\${{ (${sameRepoPullRequestGuard()}) && !cancelled() && github.ref == 'refs/heads/main' && github.event_name == 'push' && (needs.quality.result == 'success' || needs.tested-tree.outputs.tested == 'true') && ${Object.keys(
       deployJobs,
     )
       .map((id) => `needs['${id}'].result == 'success'`)
@@ -2189,6 +2219,11 @@ const {
   ...instrumentedProductCiJobs
 } = productCiJobs
 
+const fleetPipelineCloseJob = pipelineCloseJob({
+  jobs: productCiJobs,
+  runsOn: linuxX64Runner,
+})
+
 // oxlint-disable-next-line overeng/exports-first -- generated entrypoint is assembled after its job atoms
 export default ciWorkflow({
   policy: effectUtilsWorkflowPolicy('ci.yml'),
@@ -2229,13 +2264,15 @@ export default ciWorkflow({
     jobs: {
       ...withNixRealisationTimeouts(
         {
-          // API-only control job: no Nix bootstrap, cache evidence, or telemetry adapters.
+          // API-only control job: no cache evidence or telemetry adapters.
           'tested-tree': {
-            'runs-on': 'ubuntu-latest',
+            'runs-on': linuxX64Runner,
+            if: sameRepoPullRequestGuard(),
             'timeout-minutes': 3,
             permissions: { contents: 'read', actions: 'read' },
             outputs: { tested: '${{ steps.lookup.outputs.tested }}' },
             steps: [
+              fleetGitConfigStep,
               {
                 ...checkoutStep(),
                 if: "${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}",
@@ -2258,10 +2295,17 @@ export default ciWorkflow({
           },
           ...withPipelineTelemetry(withBuck2CacheEvidence(instrumentedProductCiJobs)),
           'promote-published': promotePublishedJob!,
-          'pipeline-attempt-close': pipelineCloseJob({
-            jobs: productCiJobs,
-            runsOn: 'ubuntu-latest',
-          }),
+          'pipeline-attempt-close': {
+            ...fleetPipelineCloseJob,
+            // Fleet runners already reach the collector through host tailnet networking.
+            steps: [
+              fleetGitConfigStep,
+              ...fleetPipelineCloseJob.steps.filter(
+                (step) => step.uses !== 'tailscale/github-action@v4',
+              ),
+            ],
+            if: `\${{ always() && (${sameRepoPullRequestGuard()}) }}`,
+          },
           'pipeline-traces': pipelineTracesJob,
         },
         nixRealisationTimingsSeconds,
