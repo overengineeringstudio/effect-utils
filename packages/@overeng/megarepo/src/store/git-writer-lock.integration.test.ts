@@ -15,6 +15,7 @@ import * as Git from '../core/git.ts'
 import {
   signalLockHoldingProcessGroup,
   startGitWriterProcess,
+  withGitContainerLock,
   withGitWriterLock,
 } from './git-writer-lock.ts'
 
@@ -107,6 +108,21 @@ const expectBlocked = Effect.fn('test/writer-lock/expectBlocked')(function* (mar
 })
 
 describe('Git common-directory writer lock (Bun subprocesses)', { timeout: 120_000 }, () => {
+  it.live('shared container holders coexist and veto exclusive reclamation', () =>
+    Effect.gen(function* () {
+      const f = yield* fixture
+      const shared = withGitContainerLock({ path: f.bare, mode: 'shared' })
+      const exclusive = withGitContainerLock({ path: f.bare, mode: 'exclusive' })
+      const blocked = yield* exclusive(Effect.void).pipe(Effect.result, shared, shared)
+      expect(blocked._tag).toBe('Failure')
+      yield* exclusive(Effect.void)
+      expect(
+        (yield* withGitContainerLock({ path: `${f.root}/missing`, mode: 'shared' })(
+          Effect.void,
+        ).pipe(Effect.result))._tag,
+      ).toBe('Failure')
+    }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+  )
   it.live('passes lazy-fetch suppression to the native locked writer process', () =>
     Effect.gen(function* () {
       const f = yield* fixture
