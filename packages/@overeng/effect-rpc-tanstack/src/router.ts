@@ -60,22 +60,24 @@ export const encodeExit = <A, E>(exit: Exit.Exit<A, E>): ExitEncoded =>
  */
 export const decodeExit = <A, E>(encoded: ExitEncoded): Exit.Exit<A, E> => {
   const decoded = Schema.decodeSync(ExitSchema)(encoded)
-  return (decoded._tag === 'Success'
-    ? Exit.succeed(decoded.value)
-    : Exit.failCause(
-        Cause.fromReasons(
-          decoded.cause.reasons.map((reason) => {
-            switch (reason._tag) {
-              case 'Fail':
-                return Cause.makeFailReason(reason.error)
-              case 'Die':
-                return Cause.makeDieReason(reason.defect)
-              case 'Interrupt':
-                return Cause.makeInterruptReason(reason.fiberId)
-            }
-          }),
-        ),
-      )) as Exit.Exit<A, E>
+  return (
+    decoded._tag === 'Success'
+      ? Exit.succeed(decoded.value)
+      : Exit.failCause(
+          Cause.fromReasons(
+            decoded.cause.reasons.map((reason) => {
+              switch (reason._tag) {
+                case 'Fail':
+                  return Cause.makeFailReason(reason.error)
+                case 'Die':
+                  return Cause.makeDieReason(reason.defect)
+                case 'Interrupt':
+                  return Cause.makeInterruptReason(reason.fiberId)
+              }
+            }),
+          ),
+        )
+  ) as Exit.Exit<A, E>
 }
 
 /**
