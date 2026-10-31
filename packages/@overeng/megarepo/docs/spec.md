@@ -654,6 +654,17 @@ mr root --json
 
 ### Store Commands
 
+#### Shared namespace directory creation
+
+Members with the same repository URL share the repository namespace even when
+their refs and worktree locks differ. Namespace components are created with
+exclusive `mkdir`; an existing component is accepted only after checking that
+it is a physical directory. Only newly created directories receive mode 0755.
+Path resolution must tolerate a sibling publishing a directory after a missing
+`realPath` lookup: inspect the entry without following links and call `readLink`
+only for a symbolic link. Dangling aliases still resolve before subsequent `..`
+components, without treating an ordinary directory as a link.
+
 #### Common-directory writer coordination
 
 ```text

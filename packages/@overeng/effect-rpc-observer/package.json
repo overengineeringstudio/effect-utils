@@ -10,7 +10,7 @@
   "version": "0.1.0",
   "type": "module",
   "description": "Scoped, content-free Effect RPC protocol observation with opt-in capture sinks",
-  "license": "MIT",
+  "license": "Apache-2.0",
   "exports": {
     ".": {
       "types": "./dist/src/index.d.ts",
@@ -24,13 +24,13 @@
     "!dist/**/*.tsbuildinfo"
   ],
   "devDependencies": {
-    "@effect/vitest": "4.0.3",
-    "effect": "4.0.3",
+    "@effect/vitest": "4.1.0",
+    "effect": "4.1.0",
     "typescript": "7.0.2",
     "vitest": "5.0.3"
   },
   "peerDependencies": {
-    "effect": "^4.0.3"
+    "effect": "^4.1.0"
   },
   "publishConfig": {
     "access": "public",

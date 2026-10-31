@@ -3,6 +3,9 @@ import type { GenieOutput, Strict } from '../mod.ts'
 import * as yaml from '../utils/yaml.ts'
 import type { GenieValidationIssue } from '../validation/mod.ts'
 import { validateWorkflowCachePolicy } from './cache-policy.ts'
+import { validateWorkflowPolicy, type WorkflowPolicy } from './policy.ts'
+
+export * from './policy.ts'
 
 /** Configuration for actionlint validation in `githubWorkflow()` (alias of {@link GenieActionlintConfig}). */
 export type ActionlintConfig = GenieActionlintConfig
@@ -285,6 +288,8 @@ export type GitHubWorkflowArgs = {
   'run-name'?: string
   /** actionlint validation config — pass `false` to disable, or provide runner labels / ignore patterns */
   actionlint?: ActionlintConfig | false
+  /** Optional generator-only policy, enforced at construction, stringify, and validation. */
+  policy?: WorkflowPolicy
 }
 
 const normalizeWorkflowOn = (on: GitHubWorkflowArgs['on']): GitHubWorkflowArgs['on'] => {
@@ -765,15 +770,33 @@ export const githubWorkflow = <const T extends GitHubWorkflowArgs>(
 ): GenieOutput<T> => {
   const normalizedArgs = { ...args, on: normalizeWorkflowOn(args.on) }
   validateWorkflowCachePolicy({ workflow: normalizedArgs })
-  const { actionlint: _actionlint, ...yamlArgs } = normalizedArgs
+  if (normalizedArgs.policy !== undefined)
+    validateWorkflowPolicy({
+      workflow: normalizedArgs,
+      policy: normalizedArgs.policy,
+      refreshLedger: true,
+    })
+  const { actionlint: _actionlint, policy: _policy, ...yamlArgs } = normalizedArgs
   return createGenieOutput({
     data: args,
     stringify: (_ctx) => {
       validateWorkflowCachePolicy({ workflow: normalizedArgs })
+      if (normalizedArgs.policy !== undefined)
+        validateWorkflowPolicy({
+          workflow: normalizedArgs,
+          policy: normalizedArgs.policy,
+          refreshLedger: _ctx.mode === 'generate',
+        })
       return yaml.stringify(yamlArgs)
     },
     validate: (ctx) => {
       validateWorkflowCachePolicy({ workflow: normalizedArgs })
+      if (normalizedArgs.policy !== undefined)
+        validateWorkflowPolicy({
+          workflow: normalizedArgs,
+          policy: normalizedArgs.policy,
+          refreshLedger: ctx.mode === 'generate',
+        })
       const yamlContent = yaml.stringify(yamlArgs)
       return validateWorkflow({ args: normalizedArgs, yamlContent, ctx })
     },

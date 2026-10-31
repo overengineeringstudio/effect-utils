@@ -37,9 +37,10 @@ const repoRoot = (() => {
  * usage, and error prose are captured for review but may be re-baselined by the genie owner during
  * Effect 4 repair with an alignment-register entry.
  * The local-source version suffix, log timestamps, and absolute checkout paths
- * (v4 `CliError` output embeds stack-frame file paths) are normalized, so
- * version-string content, log timing, and machine-specific paths are not gated
- * by this baseline.
+ * (v4 `CliError` output embeds stack-frame file paths) are normalized. Only the
+ * canonical CLI origin frame is retained; additional runtime frames are not
+ * part of the prose contract. Version-string content, log timing, and
+ * machine-specific paths are not gated by this baseline.
  */
 const normalizeOutput = (input: string): string =>
   normalizeCliOutput({
@@ -48,6 +49,7 @@ const normalizeOutput = (input: string): string =>
     time: true,
     repoRoot,
     effectCliInternals: true,
+    stackFrames: 'origin',
   })
 
 const runCli = (...args: ReadonlyArray<string>) => {
@@ -95,6 +97,23 @@ describe('genie CLI argument boundaries', () => {
     const result = runCli('--phase', 'nope', '--json')
     expect(result.status).toBe(1)
     expect(result.stdout).toBe('')
+  })
+
+  it.each([
+    ['without check', ['--read-set', 'evidence.json']],
+    ['with watch', ['--check', '--watch', '--read-set', 'evidence.json']],
+    ['with dry-run', ['--check', '--dry-run', '--read-set', 'evidence.json']],
+    ['with phase', ['--check', '--phase', 'bootstrap', '--read-set', 'evidence.json']],
+    ['with inline destination', ['--read-set=evidence.json']],
+  ] as const)('rejects read-set %s before producing JSON output', (_name, args) => {
+    const result = runCli(...args, '--json')
+    expect(result.status).toBe(1)
+    expect(result.signal).toBeNull()
+    expect(result.stdout).toBe('')
+    expect(result.stderr).toContain('CliError/InvalidValue')
+    expect(result.stderr).toContain(
+      'use --read-set only with --check, without --watch, --dry-run, or --phase',
+    )
   })
 })
 

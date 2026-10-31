@@ -4,7 +4,7 @@
 # Projection source: BUCK.genie.ts
 # Projection schema version: 1
 # Projection generator: effect-utils/genie/buck2-root-aggregate-projection
-# Semantic fingerprint: sha256:fd4a354cdd7b4cac9bd17f019139dbb78f7987a5ddfb90a1c99796de604714b6
+# Semantic fingerprint: sha256:fb9532374f5918f117f7fa983c5be71ce72a53ef2865c86f4528953fc7c5e78c
 # Regenerate: devenv tasks run genie:run
 load("//buck2:weaver.bzl", "weaver_checks")
 load("//buck2:check_aggregate.bzl", "check_aggregate")
@@ -181,6 +181,7 @@ check_aggregate(
         "//packages/@overeng/agent-session-ingest:typecheck",
         "//packages/@overeng/ai-gateway-conformance:typecheck",
         "//packages/@overeng/ai-gateway-edge:typecheck",
+        "//packages/@overeng/alchemy-github:typecheck",
         "//packages/@overeng/buck2-tools:typecheck",
         "//packages/@overeng/ci-tools:typecheck",
         "//packages/@overeng/content-address:typecheck",
@@ -204,6 +205,7 @@ check_aggregate(
         "//packages/@overeng/effect-schema-form:typecheck",
         "//packages/@overeng/effect-schema-form-aria:typecheck",
         "//packages/@overeng/genie:typecheck",
+        "//packages/@overeng/genie-fractal:typecheck",
         "//packages/@overeng/genie-smalltalk:typecheck",
         "//packages/@overeng/gh-ci-utils:typecheck",
         "//packages/@overeng/kdl:typecheck",
@@ -250,6 +252,7 @@ check_aggregate(
         "//packages/@overeng/agent-session-ingest:dist",
         "//packages/@overeng/ai-gateway-conformance:dist",
         "//packages/@overeng/ai-gateway-edge:dist",
+        "//packages/@overeng/alchemy-github:dist",
         "//packages/@overeng/buck2-tools:dist",
         "//packages/@overeng/ci-tools:dist",
         "//packages/@overeng/content-address:dist",
@@ -272,6 +275,7 @@ check_aggregate(
         "//packages/@overeng/effect-schema-form:dist",
         "//packages/@overeng/effect-schema-form-aria:dist",
         "//packages/@overeng/genie:dist",
+        "//packages/@overeng/genie-fractal:dist",
         "//packages/@overeng/genie-smalltalk:dist",
         "//packages/@overeng/gh-ci-utils:dist",
         "//packages/@overeng/kdl:dist",
@@ -303,6 +307,7 @@ check_aggregate(
         "//packages/@overeng/utils-storybook:dist",
         "effect_utils//packages/@overeng/agent-session-ingest:test",
         "effect_utils//packages/@overeng/ai-gateway-edge:test",
+        "effect_utils//packages/@overeng/alchemy-github:test",
         "effect_utils//packages/@overeng/ci-tools:test",
         "effect_utils//packages/@overeng/ci-tools:test_pipeline_report_local_api",
         "effect_utils//packages/@overeng/content-address:test",
@@ -321,6 +326,7 @@ check_aggregate(
         "effect_utils//packages/@overeng/effect-rust:test",
         "effect_utils//packages/@overeng/effect-schema-form-aria:test",
         "effect_utils//packages/@overeng/effect-schema-form:test",
+        "effect_utils//packages/@overeng/genie-fractal:test",
         "effect_utils//packages/@overeng/genie-smalltalk:test",
         "effect_utils//packages/@overeng/genie:test",
         "effect_utils//packages/@overeng/gh-ci-utils:test",
@@ -356,6 +362,7 @@ check_aggregate(
         "//buck2/toolchains:archive_tool",
         "//buck2/toolchains:product_tool",
         "//rust/work-storage:conformance-receipt",
+        "//rust/ci-storage:tests-receipt",
         "//rust/effect-rust-fixtures/wasm-adapter:wasm-smoke-node",
         "//rust/effect-rust-fixtures/wasm-adapter:wasm-smoke-bun",
         "//rust/effect-rust-fixtures/napi-adapter:napi-smoke-node",

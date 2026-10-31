@@ -1,4 +1,15 @@
-import { Cause, Context, Duration, Effect, Layer, Option, Redacted, Schedule, Schema } from 'effect'
+import {
+  Cause,
+  Context,
+  Duration,
+  Effect,
+  Layer,
+  Option,
+  Random,
+  Redacted,
+  Schedule,
+  Schema,
+} from 'effect'
 import { HttpClient, TracerHeaderFilter } from 'effect/http/HttpClient'
 import type { HttpClientError } from 'effect/http/HttpClientError'
 import * as HttpClientRequest from 'effect/http/HttpClientRequest'
@@ -486,9 +497,9 @@ const retryRateLimit = (error: NotionApiError): Option.Option<RateLimitInfo> =>
  * Execute a Notion API request with error handling and automatic retry.
  *
  * Retry behavior:
- * - Retryable: rate_limited, internal_server_error, service_unavailable, gateway_timeout
+ * - Retryable: 409 conflict_error, rate_limited, internal_server_error, service_unavailable, gateway_timeout
  * - Non-retryable: invalid_request, unauthorized, object_not_found, etc.
- * - Uses exponential backoff, respecting retry-after header for rate limits
+ * - Uses bounded exponential backoff, jittering conflicts and respecting retry-after for rate limits
  */
 export const executeRequest = <A, I, R>({
   method,
@@ -589,13 +600,17 @@ export const executeRequest = <A, I, R>({
       })
 
     /**
-     * Per-attempt delay matching the legacy loop: the exponential backoff for
-     * this attempt index, floored by any server-advised `Retry-After`. The
+     * Per-attempt exponential backoff, jittered for conflicts and floored by any
+     * server-advised `Retry-After`. The
      * `attempt` here is the zero-based index of the attempt that just failed
      * (equivalently, the number of retries already performed).
      */
-    const retryDelayMs = (opts: { error: NotionApiError; attempt: number }): number => {
-      const backoffMs = retryBaseDelay * 2 ** opts.attempt
+    const retryDelayMs = (opts: {
+      error: NotionApiError
+      attempt: number
+      jitter: number
+    }): number => {
+      const backoffMs = retryBaseDelay * 2 ** opts.attempt * (0.5 + opts.jitter * 0.5)
       const retryAfterMs = Option.getOrElse(opts.error.retryAfterMillis, () => 0)
       return Math.max(backoffMs, retryAfterMs)
     }
@@ -609,7 +624,7 @@ export const executeRequest = <A, I, R>({
      * continue for retryable errors under the `maxRetries` bound, and produces
      * the floored backoff as both schedule output and step delay. Telemetry and
      * span annotation are emitted here — exactly once per retry decision with
-     * the exact delay — preserving the legacy loop's observable behavior.
+     * the exact delay.
      */
     const retrySchedule = Schedule.fromStepWithMetadata<
       NotionApiError,
@@ -626,55 +641,62 @@ export const executeRequest = <A, I, R>({
           return Cause.done(0)
         }
 
-        const delayMs0 = retryDelayMs({ error, attempt })
-        const rateLimit = retryRateLimit(error)
+        // Equal jitter keeps concurrent writers from retrying in lockstep, within
+        // the existing exponential delay and maxRetries bounds.
+        return Effect.flatMap(
+          error.status === 409 && error.code === 'conflict_error' ? Random.next : Effect.succeed(1),
+          (jitter) => {
+            const delayMs0 = retryDelayMs({ error, attempt, jitter })
+            const rateLimit = retryRateLimit(error)
 
-        /* Retry-After PRESSURE counters (decision 0017 Half 2): count + sum the
-         * server-advised backpressure when this retry honors a `Retry-After`
-         * header. `retryAfterMillis` is Some only when the server sent one. */
-        const retryAfterMs = Option.getOrUndefined(error.retryAfterMillis)
-        const emitRetryAfter =
-          retryAfterMs === undefined
-            ? Effect.void
-            : Effect.andThen(
-                NotionRateLimitMetricBridges.retryAfterTotal.trustedIncrement({
-                  method,
-                  operation: route.operation,
-                }),
-                NotionRateLimitMetricBridges.retryAfterMsTotal.trustedIncrementBy({
-                  labels: { method, operation: route.operation },
-                  amount: retryAfterMs,
-                }),
-              )
+            /* Retry-After PRESSURE counters (decision 0017 Half 2): count + sum the
+             * server-advised backpressure when this retry honors a `Retry-After`
+             * header. `retryAfterMillis` is Some only when the server sent one. */
+            const retryAfterMs = Option.getOrUndefined(error.retryAfterMillis)
+            const emitRetryAfter =
+              retryAfterMs === undefined
+                ? Effect.void
+                : Effect.andThen(
+                    NotionRateLimitMetricBridges.retryAfterTotal.trustedIncrement({
+                      method,
+                      operation: route.operation,
+                    }),
+                    NotionRateLimitMetricBridges.retryAfterMsTotal.trustedIncrementBy({
+                      labels: { method, operation: route.operation },
+                      amount: retryAfterMs,
+                    }),
+                  )
 
-        return Effect.as(
-          Effect.all(
-            [
-              emitRetryAfter,
-              annotateRateLimitSpan({
-                method,
-                route,
-                status: error.status,
-                attempt,
-                attempts: attempt + 1,
-                retryDelayMs: delayMs0,
-                rateLimit,
-              }),
-              reportHttpTelemetry({
-                _tag: 'retry',
-                method,
-                route: route.route,
-                operation: route.operation,
-                status: error.status,
-                attempt,
-                nextAttempt: attempt + 1,
-                delayMs: delayMs0,
-                rateLimit,
-              }),
-            ],
-            { discard: true },
-          ),
-          [delayMs0, Duration.millis(delayMs0)] as const,
+            return Effect.as(
+              Effect.all(
+                [
+                  emitRetryAfter,
+                  annotateRateLimitSpan({
+                    method,
+                    route,
+                    status: error.status,
+                    attempt,
+                    attempts: attempt + 1,
+                    retryDelayMs: delayMs0,
+                    rateLimit,
+                  }),
+                  reportHttpTelemetry({
+                    _tag: 'retry',
+                    method,
+                    route: route.route,
+                    operation: route.operation,
+                    status: error.status,
+                    attempt,
+                    nextAttempt: attempt + 1,
+                    delayMs: delayMs0,
+                    rateLimit,
+                  }),
+                ],
+                { discard: true },
+              ),
+              [delayMs0, Duration.millis(delayMs0)] as const,
+            )
+          },
         )
       }),
     )

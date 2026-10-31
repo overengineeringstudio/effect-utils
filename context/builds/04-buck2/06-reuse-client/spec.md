@@ -42,8 +42,9 @@ A crash-released root-wide flock is acquired before overlay reconciliation.
 Before changing the overlay, a mismatched live launcher or busy daemon in the
 same isolation fails closed. Legacy live reservations without isolation retain
 root-wide protection until exit. The launcher reservation is written before releasing that lock:
-`execve` preserves its PID and process birth identity until the native command
-exits, covering the gap before Buck reports an active command without inheriting
+The launcher stays alive while supervising cache-enabled readers; other commands
+use `execve`, preserving its PID and process birth identity until the native command
+exits. Both cover the gap before Buck reports an active command without inheriting
 a lock into buckd. Birth is Linux `/proc/<pid>/stat` field 22 or macOS `ps lstart`;
 reused PIDs do not preserve dead reservations. Unknown identity fails closed.
 Matching concurrent launches and differently postured daemon isolations can proceed together.
@@ -72,10 +73,36 @@ pins remote caching and uploads off. Absent root `remote_cache_enabled` and
 `allow_cache_uploads` retain the rule policy's `true` defaults; the tracked
 reader's explicit upload prohibition still wins. Absent action-upload default
 remains native `false`, and absent HTTP headers remain empty.
-REAPI probing precedes reservation comparison and overlay mutation while holding
-the startup lock. Identical fallback launchers therefore compare the same
-disabled policy and can proceed concurrently; actual same-daemon policy
-mismatches still refuse before any cache-overlay mutation.
+REAPI admission precedes reservation comparison and overlay mutation while holding
+the startup lock. In CI with a GitHub job-instance identity, the first fresh
+probe result is pinned per canonical project root and `(GITHUB_RUN_ID,
+GITHUB_RUN_ATTEMPT, GITHUB_JOB, BUCK2_CI_JOB_INSTANCE)`. Composed workflows
+initialize `BUCK2_CI_JOB_INSTANCE` once during inline job bootstrap, immediately
+after the Linux sandbox policy and before checkout or Buck, using a random nonce
+persisted through `GITHUB_ENV`, so even sequential matrix children on the same
+runner/root receive distinct identities. Later launches in that instance with
+the same endpoint/auth identity retain its availability decision even if the
+endpoint recovers. Each distinct job instance gets a fresh probe. Unconfigured
+CI jobs without the instance identity retain the bounded five-second probe
+cache, recorded as `unpinned-missing-job-instance` in admission evidence; they
+neither share matrix-parent pins nor acquire a new admission refusal. Local
+invocations retain their existing probe cache. Explicit cache-less requests
+remain explicit policy changes, not a probe result.
+
+The decision file is `buck-out/.cache-daemon-posture/reapi-job-<job-hash>.json`
+(`0600`), written atomically under the root lock. Endpoint/auth identities are
+HMACs with a private persisted random key, never raw credentials; filenames
+contain only a job-identity hash. Different credentials remain distinct and
+cannot silently replace a live daemon's authority. Actual same-daemon policy
+mismatches still refuse. A conflicting lease is checked for liveness again
+after the awaited probe so an already-exited client cannot cause refusal.
+
+A first-probe fallback visibly warns on stderr with its bounded diagnostic
+reason and appends a GitHub step-summary entry when `GITHUB_STEP_SUMMARY` is set.
+This explicitly announces that the job retains local execution even after
+recovery. Admission evidence records `reapiDecision` as
+`first-probe-for-ci-job` or `pinned-from-first-probe`, retaining the original
+bounded failure reason on pinned fallback invocations.
 
 Linux quality and the macOS test job run `buck2:cache-posture:ci-test`: the
 standalone posture suites exercise process-birth identities and locking with
@@ -85,6 +112,24 @@ without fleet `gate-slot` or building actions.
 `buck2:cache-posture:test` remains the fleet-host suite, including the broader
 entrypoint and gate lifecycle tests; its fail-closed gate-slot requirement is
 unchanged.
+
+The shared posture and gate-isolation fixtures allocate private per-file run roots
+under the checkout's ignored `tmp`, removing each fixture in `finally` and each
+file's run root in its own `afterAll`. Both files run in one CI invocation to
+exercise cleanup across Bun's shared module registry. This applies to local and
+CI imports alike: Bun enumerates
+working-directory ancestors on startup, so the size of a shared system temporary
+directory must not become part of a fake native command's workload. Test guards
+and native admission deadlines remain unchanged.
+
+The repository's own devenv shell and tasks temporarily use Bun 1.4.4 via a local
+overlay. This includes the upstream `spawnSync` GC/poll-lifetime fix
+([Bun #44581](https://github.com/oven-sh/bun/pull/44581)); it does not change
+published package runtimes or consumer overlays. The override preserves the
+locked nixpkgs Bun derivation and asserts that it must be removed once the locked
+version reaches 1.4.3. Contract generation and freshness checks explicitly retain
+the published Bun 1.4.2 runtime because its version is part of the committed
+contract fingerprint.
 
 Cache-less commands (`BUCK2_NO_REMOTE_CACHE=1` or native `--no-remote-cache`)
 retain the fixed-source/offline posture contract: they remove the RE client
@@ -154,7 +199,37 @@ platform, which reads `remote_cache_enabled` and `allow_cache_uploads` from root
 config (local execution, remote reuse; `remote_enabled = False`).
 `BUCK2_NO_REMOTE_CACHE=1` wins over all credentials and disables reads/uploads.
 Read-only endpoint admission failures fail open; either selected writer posture
-fails closed on REAPI unavailability.
+fails closed on REAPI unavailability. If an admitted reader command fails solely
+with an RE-client initialization/capabilities/connect unavailable diagnostic, the
+launcher records `reader-reapi-unavailable-shadow` evidence and warns that no
+rerun happened. The native failure and exit code stand; there is no second
+invocation, no cache-posture change, and no admission fallback increment.
+This shadow-only observation preserves the strict outage posture. Unknown/mixed
+diagnostics, compilation/test failures, authentication/authorization failures,
+integrity errors, and writer postures produce no shadow event.
+Stdout remains inherited. Supervision applies only when stderr is not a TTY;
+terminal invocations and `run`, `install`, and `bxl` execute unchanged without
+shadow classification, preserving superconsole and interactive user-binary behavior. The shared
+subcommand scan skips global option values, so an isolation named `run` is not a
+run command. Captured
+stderr is bounded to 256 KiB of bytes before decoding; overflow or signal
+termination forbids shadow evidence. The stderr tee advances short writes and waits on
+nonblocking backpressure. Launcher interruption cancels a stalled backpressure
+wait and disables shadow evidence; a normal native exit does not cancel forwarding.
+After normal exit, stderr drains completely before returning the child's result.
+A consumer that remains stalled without interruption blocks as native Buck would.
+A failed or interrupted output consumer still drains/discards remaining stderr
+and reaps the child's final result.
+
+The classifier strips Buck's bracketed timestamps and embedded RFC3339 warning
+timestamps, accepts only enumerated progress/statistics lines, and validates every
+`Action failed:` block as `remote_action_cache` RE-client initialization followed
+by an unavailable capabilities error. Digest identifiers are metadata permitted
+only inside a validated block; digest mismatches remain integrity failures.
+Non-empty action stdout/stderr rejects shadow classification. `BUILD ERRORS (N)` must match the
+summary block count; repeated live failure blocks must match the summary's action
+set. The verbatim public CI fixture exercises both live and repeated summary
+diagnostics through the launcher's captured native stderr.
 
 ### Local Materialization Policy (BUILD.BUCK.REUSE-R08–R10)
 
@@ -548,10 +623,11 @@ copy to this exact race is not proven. Agent workflows must provide a healthy,
 correctly rooted Watchman service instead of using this explicit unsafe opt-in.
 
 Remote endpoint outcomes expire after five seconds. Complete successful
-read-only invocations can bypass the JavaScript launcher within the remaining
-probe lifetime; the key includes config contents, arguments, working directory
-and exported environment. Writer credentials, includes and external mode files
-bypass that fast path. Inside gate-slot, an outer shell retains cleanup ownership
+explicitly cache-disabled invocations can bypass the JavaScript launcher within
+the remaining probe lifetime; the key includes config contents, arguments, working
+directory and exported environment. Cache-enabled readers return through the
+launcher so execution remains supervised. Writer credentials, includes and external
+mode files bypass that fast path. Inside gate-slot, an outer shell retains cleanup ownership
 even when arguments are cached: it waits for the native client and stops only
 the selected idle daemon, leaving all local build work in the job's cgroup.
 The [wrapper lifecycle contract](../../../../README.md) defines signal handling,
@@ -592,10 +668,10 @@ emits the existing warning. Outage overrides are CLI root-config values, not
 persistent endpoint changes; RE client identity/credentials still require a
 managed root overlay before daemon startup.
 
-Admission is a reachability snapshot, not a native runtime circuit breaker.
-An endpoint that fails after a successful probe can still fail a native action;
-the pinned native client has ten hard-coded connection attempts with 45 seconds
-of cumulative backoff and no configurable startup fallback.
+Admission is a reachability snapshot. The pinned native client has ten hard-coded
+connection attempts with 45 seconds of cumulative backoff and no configurable
+startup fallback. After this fails, eligible readers record the strictly classified
+shadow observation described above. Every native failure remains final.
 
 ## Reuse Verification
 
@@ -663,6 +739,54 @@ JSONL row to `${CI_BUCK2_CACHE_EVIDENCE_PATH}.admission.jsonl`, with the authori
   "admissionRetrySuccesses": { "reapi": 1, "archiveOrigin": 0 }
 }
 ```
+
+New admission writes use only the repository-local, case-sensitive event
+`reader-reapi-unavailable-shadow`, requiring `admissionFallbacks.reapi = 0`
+and a `shadow` payload. It enriches the original admission using the same native
+`invocationId`; it never invents a second invocation or claims a fallback occurred.
+The collector merges a base row and its matching shadow row in either order,
+deduplicates identical observations, and rejects conflicting admission or shadow
+payloads. Rows without an event remain readable.
+
+The decoder also retains the historical `reader-reapi-unavailable-rerun` event
+as read-only measured evidence: it requires `admissionFallbacks.reapi = 1` and
+no `shadow` payload, and projects `legacyRerun: true`. Its original and rerun
+invocation IDs and measured fallback count remain distinct and unchanged through
+daily joins and reprojections. The launcher never emits this historical event;
+it cannot be reconstructed from a hypothetical shadow observation. Old-named
+rows carrying shadow payloads, malformed historical rows, and unknown events
+are rejected.
+
+The shadow payload contains only bounded classification tags and numeric metadata:
+
+```json
+{
+  "cause": {
+    "capabilitiesUnavailable": true,
+    "connectRetry": true,
+    "clientInitialization": true,
+    "connectUnavailable": false,
+    "transportMessage": "tls-handshake-eof"
+  },
+  "command": { "subcommand": "build", "argumentCount": 8 },
+  "nativeExitCode": 1,
+  "durationMs": 47000,
+  "failedActionCount": 1,
+  "wouldDisableRemoteCache": true
+}
+```
+
+`cause` records which accepted diagnostic line classes matched. `transportMessage`
+is one of `tls-handshake-eof`, `transport-error`, or `none`, never raw error text.
+`subcommand` is one of `build`, `test`, `audit`, `cquery`, `uquery`, `aquery`, or
+`targets`; `argumentCount` counts native arguments without retaining their contents.
+`nativeExitCode` is 1–255. Durations and counts are nonnegative safe integers;
+`durationMs` measures native startup through exit, excluding subsequent output
+draining. `failedActionCount` is the validated `BUILD ERRORS` count, or zero for
+standalone client-init failures. `wouldDisableRemoteCache: true` records that a
+hypothetical no-cache invocation would disable both reads and uploads; no such
+invocation executes. No target names, raw arguments, environment, addresses, or
+credentials enter this payload.
 
 An REAPI fallback may include `reapiFailure: { class, phase, elapsedMs, deadlineMs }`,
 including when admission reuses a cached negative probe. `class` is one of

@@ -15,6 +15,7 @@ import {
 } from '../../genie/ci-workflow.ts'
 import { withBuck2CacheEvidence } from '../../genie/ci-workflow/buck2-cache-evidence.ts'
 import { buck2CachePostureEnv } from '../../genie/ci-workflow/buck2-cache-posture.ts'
+import { effectUtilsWorkflowPolicy } from '../../genie/ci-workflow/policy.ts'
 
 const binaryCache = readBinaryCacheDescriptors(
   new URL('../../nix/binary-caches.json', import.meta.url),
@@ -32,6 +33,7 @@ const protectedMainIf =
 // `test` on Darwin). A separate workflow avoids ci.yml's Actions size limit.
 // oxlint-disable-next-line overeng/exports-first -- generated entrypoint
 export default ciWorkflow({
+  policy: effectUtilsWorkflowPolicy('compiled-products.yml'),
   trustTier: 'public',
   // The matrix below gives every Linux profile privileged: 'always'.
   linuxNixSandboxCapabilities: { 'publish-compiled-products': 'supported' },

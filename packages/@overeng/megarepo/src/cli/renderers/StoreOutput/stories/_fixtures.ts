@@ -426,6 +426,7 @@ export const createStatusState = (opts: {
   worktreeCount: opts.worktreeCount,
   diskUsage: opts.diskUsage,
   worktrees: opts.worktrees,
+  repoIssues: [],
 })
 
 // =============================================================================

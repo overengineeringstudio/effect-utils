@@ -11,7 +11,7 @@
       "unix-dgram": false
     },
     "overrides": {
-      "@effect/platform-node-shared": "4.0.3"
+      "@effect/platform-node-shared": "4.1.0"
     },
     "packageExtensions": {
       "storybook": {
@@ -22,7 +22,7 @@
     },
     "packageManager": {
       "name": "pnpm",
-      "version": "12.7.0"
+      "version": "12.15.0"
     }
   },
   "installPolicy": {
@@ -76,7 +76,7 @@
   },
   "packageManager": {
     "name": "pnpm",
-    "version": "12.7.0"
+    "version": "12.15.0"
   },
   "schemaVersion": 2,
   "storeContract": {
@@ -108,6 +108,7 @@
       "packages/@overeng/agent-session-ingest",
       "packages/@overeng/ai-gateway-conformance",
       "packages/@overeng/ai-gateway-edge",
+      "packages/@overeng/alchemy-github",
       "packages/@overeng/buck2-tools",
       "packages/@overeng/ci-tools",
       "packages/@overeng/content-address",
@@ -129,6 +130,7 @@
       "packages/@overeng/effect-schema-form",
       "packages/@overeng/effect-schema-form-aria",
       "packages/@overeng/genie",
+      "packages/@overeng/genie-fractal",
       "packages/@overeng/genie-smalltalk",
       "packages/@overeng/gh-ci-utils",
       "packages/@overeng/kdl",

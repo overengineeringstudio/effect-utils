@@ -53,6 +53,38 @@ For CI:
 mr apply --git-protocol=https
 ```
 
+### Standalone Nix lock synchronization
+
+Check or update standalone flake locks from an already resolved root input, or
+select a revision explicitly, without changing their declared ref intent. For
+example, with a root `nixpkgs` input tracking `github:NixOS/nixpkgs/nixos-unstable`:
+
+```bash
+mr lock-sync --input nixpkgs --lock flake.lock --lock nix/tool/flake.lock
+mr lock-sync --input nixpkgs --lock flake.lock --lock nix/tool/flake.lock --write
+mr lock-sync --input nixpkgs --rev <40-character-sha> --lock flake.lock --write
+```
+
+`--rev` accepts a full 40-character Git SHA and requires a GitHub input whose
+`original` declares a tracking ref. Git fetches that ref into a temporary bare
+repository and verifies that the requested commit is its ancestor; repository
+access is required, and failed ancestry checks stop the operation. Nix prefetch
+supplies the actual locked metadata for the revision; write mode updates the
+authority root and selected standalone locks together atomically, preserving
+`original.ref`.
+Without `--write`, no locks are written and requested-revision drift fails the check.
+
+Repeat `--lock` to select exact repository-relative `flake.lock` paths, not globs or
+Git pathspecs. This lets active consumers share the root resolution while archived
+locks with intentionally different refs stay outside the synchronization scope.
+Missing, absolute, and repository-escaping selections fail before any writes.
+Without `--lock`, Git discovery checks all tracked and non-ignored standalone
+flake locks. `--lock` still selects only the standalone cohort: with `--rev`, the
+authority root always participates, even when it is not selected by `--lock`.
+The authority defaults to `devenv.lock`; use `--root-lock flake.lock` when the root
+flake lock is authoritative. See the
+[command reference](docs/commands.md#mr-lock-sync) for validation and write behavior.
+
 ## Directory Layout
 
 After `mr fetch --apply` and `mr lock`:
@@ -135,6 +167,10 @@ written idle roots until each class is back under budget:
 mr store gc --budgets /etc/megarepo/build-output-budgets.json --dry-run --output json
 mr store gc --budgets /etc/megarepo/build-output-budgets.json --expected-plan <sha256> --candidate-path <root> --output json
 ```
+
+Effect diagnostic logs go to stderr, including store-enumeration warnings about loose files.
+With `--output json` or `--output ndjson`, stdout contains only the command payload, so it
+can be piped directly into tools such as `jq`. Human-mode presentation remains on stdout.
 
 `--budgets` cannot be combined with `--generated-artifacts`, `--all`, or `--force`. The policy is
 decoded strictly before the store is inspected: an unreadable file, unknown `schemaVersion`, or
@@ -424,6 +460,12 @@ This ordering reuses the required megarepo publication rather than adding a seco
 The mr receipt contracts in `cli.contract.test.ts` belong to the bounded lane
 (`test:buck2:unit`), not the source-only megarepo chain. Receipt fixtures preserve the
 runner module's real exports and replace only `runBuckMaintain`.
+
+The standalone lock-sync integration suite belongs to the native source complement:
+its real Git fixtures and production `git ls-files` discovery require Git, which is
+not a tool in the bounded Buck sandbox. `BUCK.genie.ts` declares this ownership in
+the bounded lane's `excludes`; generated `unboundedFiles` schedules the same suite
+under `test:megarepo:unbounded`, so `test:megarepo` still executes every test.
 
 Native ownership safety assertions use deterministic subprocess projections on every
 host. An additional real-`pty` test skips only when the executable is absent from

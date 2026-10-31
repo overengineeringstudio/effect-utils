@@ -3,45 +3,28 @@ import {
   type ActionlintConfig,
   type GitHubWorkflowArgs,
 } from '../../packages/@overeng/genie/src/runtime/mod.ts'
-import { RUNNER_PROFILES, type RunnerProfile } from '../ci.ts'
 import type { BinaryCacheDescriptor } from './binary-cache-descriptors.ts'
 import { workflowCacheDescriptors } from './cache-policy.ts'
+import { fleetWorkflowPolicy } from './policy.ts'
+import { selfHostedRunnerLabels } from './runners.ts'
 
-export { RUNNER_PROFILES, type RunnerProfile }
+export {
+  RUNNER_PROFILES,
+  type RunnerProfile,
+  linuxX64Runner,
+  linuxX64HeavyRunner,
+  linuxArm64Runner,
+  darwinArm64Runner,
+  LEGACY_NAMESPACE_LINUX_X64_PAIRED_PERF_RUNNER,
+} from './runners.ts'
 
 // =============================================================================
 // Shared Config
 // =============================================================================
 
-/** Self-hosted NixOS runner labels (x86_64-linux, e.g. dev3) */
-export const linuxX64Runner = ['sh-linux-x64', 'nix'] as const
-
-/** Self-hosted NixOS runner labels (aarch64-linux, e.g. dev4) */
-export const linuxArm64Runner = ['sh-linux-arm64', 'nix'] as const
-
-/** Self-hosted macOS runner labels (aarch64-darwin, e.g. mbp2021) */
-export const darwinArm64Runner = ['sh-darwin-arm64', 'nix'] as const
-
-/** Namespace Linux runner with 288 GB for paired base/head Nix closures. */
-export const namespaceLinuxX64PairedPerfRunner = 'nscloud-ubuntu-24.04-amd64-16x64-with-features'
-
-/** All self-hosted runner labels — derived from the runner constants above + RUNNER_PROFILES */
-const SELF_HOSTED_RUNNER_LABELS = [
-  ...new Set([
-    ...RUNNER_PROFILES,
-    ...linuxX64Runner,
-    ...linuxArm64Runner,
-    'sh-linux-x64-publish',
-    'sh-linux-arm64-publish',
-    ...darwinArm64Runner,
-    namespaceLinuxX64PairedPerfRunner,
-    `${namespaceLinuxX64PairedPerfRunner};job.priority=4`,
-  ]),
-] as const
-
 /** Default actionlint config with all known self-hosted runner labels */
 export const defaultActionlintConfig: ActionlintConfig = {
-  selfHostedRunnerLabels: SELF_HOSTED_RUNNER_LABELS,
+  selfHostedRunnerLabels,
 }
 
 /** Standard shell defaults for CI run steps */
@@ -60,7 +43,11 @@ type NixRealisationTiming = { readonly p95: number; readonly max: number }
 export const withNixRealisationTimeouts = (
   jobs: GitHubWorkflowArgs['jobs'],
   timingsSeconds: Readonly<
-    Record<string, NixRealisationTiming | { readonly Linux: NixRealisationTiming; readonly macOS: NixRealisationTiming }>
+    Record<
+      string,
+      | NixRealisationTiming
+      | { readonly Linux: NixRealisationTiming; readonly macOS: NixRealisationTiming }
+    >
   >,
 ): GitHubWorkflowArgs['jobs'] =>
   Object.fromEntries(
@@ -459,6 +446,15 @@ export const withCiAdmissionCleanup = (steps: CiJobSteps): CiJobSteps => {
   })
 }
 
+export const buck2CiJobInstanceStep = {
+  id: 'buck2-ci-job-instance',
+  name: 'Initialize Buck2 CI job instance',
+  shell: 'bash',
+  // A fresh nonce, not the matrix parent ID or runner name: sequential
+  // matrix children may reuse the same runner and checkout directory.
+  run: `printf 'BUCK2_CI_JOB_INSTANCE=%s\\n' "$(od -An -N32 -tx1 /dev/urandom | tr -d ' \\n')" >> "$GITHUB_ENV"`,
+} as const
+
 const withStandardCIEnv = ({
   jobs,
   trustTier,
@@ -477,6 +473,7 @@ const withStandardCIEnv = ({
         },
         steps: withCiAdmissionCleanup([
           linuxNixSandboxFallbackStep,
+          buck2CiJobInstanceStep,
           ...job.steps.filter((step) => step.id !== linuxNixSandboxFallbackStep.id),
         ]),
       },
@@ -502,6 +499,12 @@ export const ciWorkflow = ({
   const workflow = {
     [workflowCacheDescriptors]: binaryCaches ?? [],
     ...rest,
+    policy:
+      args.policy ??
+      fleetWorkflowPolicy({
+        repository: '${{ github.repository }}',
+        workflow: args.name ?? 'CI',
+      }),
     on: concurrency === undefined ? withJobConcurrencyDispatchInputs(on) : on,
     ...(concurrency === undefined ? {} : { concurrency }),
     actionlint: actionlint ?? defaultActionlintConfig,
@@ -626,14 +629,11 @@ export const dollar = '$'
 /** Stable runner scratch shared by one job's synthesized composition and mutable tool state. */
 export const ciCompositionStateRoot = '${{ runner.temp }}/composition-state'
 
-/** Stable pnpm home restored independently of the disposable synthesized workspace path. */
+/** Job-local pnpm home, independent of the disposable synthesized workspace path. */
 export const ciPnpmHome = `${ciCompositionStateRoot}/pnpm-home`
 
 /** Stable pnpm content store projected into the owned member through a relative workspace symlink. */
 export const ciPnpmStore = `${ciCompositionStateRoot}/pnpm-store-pure-v1`
-
-/** Canonical stable pnpm state surface used by both cache restore and save. */
-export const ciPnpmStatePaths = [ciPnpmHome, ciPnpmStore].join('\n')
 
 /** Job-local CI diagnostics directory used for runner pressure snapshots and install logs. */
 export const jobLocalCiDiagnosticsDir = `${ciCompositionStateRoot}/diagnostics/${'${{ github.job }}'}`

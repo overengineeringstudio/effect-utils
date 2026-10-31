@@ -36,6 +36,7 @@ const normalizeOutput = (input: string): string =>
     time: true,
     repoRoot,
     effectCliInternals: true,
+    stackFrames: 'origin',
   })
 
 const runCli = (...args: ReadonlyArray<string>) => {

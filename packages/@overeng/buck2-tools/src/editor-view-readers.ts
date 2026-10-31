@@ -118,6 +118,7 @@ const logUnknownRecord = (record: {
   readonly fd: string | null
   readonly call: string
   readonly errno: string | number | null
+  readonly failures: number
 }): void => {
   console.error(`editor-view-reader-unknown: ${JSON.stringify(record)}`)
   if (process.platform !== 'darwin') return
@@ -682,13 +683,43 @@ const processIncarnation = (base: string): ProcessIncarnation => {
 const scanEditorViewProcesses = (
   observer: ProcessObserver & { readonly processIds?: readonly number[] },
 ): readonly string[] => {
+  const records = new Map<string, Parameters<typeof logUnknownRecord>[0]>()
+  try {
+    return collectEditorViewProcesses({
+      observer,
+      recordUnknown: (record) => {
+        if (record.pid === null) {
+          logUnknownRecord({ ...record, failures: 1 })
+          return
+        }
+        const previous = records.get(record.pid)
+        records.set(
+          record.pid,
+          previous === undefined
+            ? { ...record, failures: 1 }
+            : { ...previous, failures: previous.failures + 1 },
+        )
+      },
+    })
+  } finally {
+    for (const record of records.values()) logUnknownRecord(record)
+  }
+}
+
+const collectEditorViewProcesses = ({
+  observer,
+  recordUnknown,
+}: {
+  readonly observer: ProcessObserver & { readonly processIds?: readonly number[] }
+  readonly recordUnknown: (record: Omit<Parameters<typeof logUnknownRecord>[0], 'failures'>) => void
+}): readonly string[] => {
   const processIds = observer.processIds ?? editorViewProcessTestScope.getStore()?.()
   const reasons: string[] = []
   if (
     processIds?.some((pid) => Number.isInteger(pid) === false || pid <= 0 || pid > 0x7fffffff) ===
     true
   ) {
-    logUnknownRecord({
+    recordUnknown({
       pid: null,
       comm: null,
       fd: null,
@@ -700,7 +731,7 @@ const scanEditorViewProcesses = (
   if (processIds?.length === 0) return []
   const uid = process.getuid?.()
   if (uid === undefined) {
-    logUnknownRecord({ pid: null, comm: null, fd: null, call: 'process.getuid', errno: null })
+    recordUnknown({ pid: null, comm: null, fd: null, call: 'process.getuid', errno: null })
     return ['process-uid-unavailable']
   }
   if (process.platform === 'linux') {
@@ -709,7 +740,7 @@ const scanEditorViewProcesses = (
       pids = processIds?.map(String) ?? readdirSync('/proc')
     } catch (error) {
       console.error('editor-view-process-census: allowlisted=0 unknown=1')
-      logUnknownRecord({
+      recordUnknown({
         pid: null,
         comm: null,
         fd: null,
@@ -737,7 +768,7 @@ const scanEditorViewProcesses = (
         readonly error?: unknown
         readonly fd?: string | null
       }): void =>
-        logUnknownRecord({
+        recordUnknown({
           pid,
           comm: commObserved,
           fd,
@@ -967,7 +998,7 @@ const scanEditorViewProcesses = (
     readonly errno?: string | number | null
   }): void => {
     reasons.push(reason)
-    logUnknownRecord({
+    recordUnknown({
       pid: pid.length === 0 ? null : pid,
       comm: comm.length === 0 ? null : comm,
       fd: descriptor.length === 0 ? null : descriptor,

@@ -34,6 +34,89 @@ mr lock [--force] [--all] [--only <members>] [--skip <members>] [--dry-run]
 
 This expects the workspace to already be reconciled to `megarepo.kdl`. If a member symlink points at the wrong ref, it is skipped with a hint to run `mr fetch --apply`.
 
+### `mr lock-sync`
+
+Check standalone flake locks against an input resolved in the consumer repository's
+root lock, or request a particular revision with `--rev`. Run from the repository
+root (or use `mr --cwd <root>`). These examples assume a root `nixpkgs` input
+tracking the public repository `github:NixOS/nixpkgs/nixos-unstable`:
+
+```bash
+mr lock-sync --input nixpkgs                          # read-only; fails on drift
+mr lock-sync --input nixpkgs --write                  # copy the root resolution
+mr lock-sync --input nixpkgs --root-lock flake.lock --write
+mr lock-sync --input nixpkgs --lock flake.lock --lock nix/tool/flake.lock --write
+mr lock-sync --input nixpkgs --rev <40-character-sha>   # check requested revision
+mr lock-sync --input nixpkgs --rev <40-character-sha> --lock flake.lock --write
+```
+
+The default authority is `devenv.lock`. Without `--lock`, discovery includes tracked
+and non-ignored untracked `flake.lock` files, including the root `flake.lock` when
+`devenv.lock` is authoritative. Ignored caches and member mounts are not traversed.
+
+Repeat `--lock <path>` to select an exact set of repository-relative `flake.lock`
+paths instead of using Git discovery. Paths are not globs or Git pathspecs;
+duplicates are removed after normalization and results are sorted by path.
+For example, selecting only active consumers leaves an archived lock with a
+deliberately different ref untouched and unvalidated. Explicitly selected paths
+must exist; missing, absolute, repository-escaping, and non-`flake.lock` paths
+fail before any write. Without `--rev`, the authoritative root lock is never
+rewritten. With `--rev`, `--lock` still selects exactly the standalone cohort;
+the authority root always participates in addition to that selection.
+
+The authoritative GitHub/git input is resolved through the root input map,
+including follows paths. Every node in each standalone lock is inspected,
+including nested duplicates and locks without a direct root reference. Nodes
+with the same original or repository identity belong to the selected cohort;
+the named direct input is also validated even if its repository differs.
+GitHub repository identity is shared across HTTPS, SCP-style `git@github.com:`,
+`ssh://git@github.com/`, and `git+ssh://git@github.com/` URLs, with or without
+the `.git` suffix, matching the transports recognized by `mr:lock-sync-check`.
+
+Both modes share selection and comparison. Every matching input must have the
+same structural `original` as the root except for `dir`: flakes in different
+subdirectories of the same repository may share its resolution. A different ref
+or any other original mismatch, unresolved input, missing declared root node,
+or malformed lock fails before any write. Original mismatch errors name the
+offending lock file.
+
+Without `--rev`, write mode copies the complete root `locked` metadata (including
+revision, NAR hash, timestamp and extra metadata) without re-resolving the ref.
+
+`--rev <sha>` requires a full 40-character Git commit SHA, not an abbreviated SHA,
+branch, or tag. The authoritative input must identify a GitHub repository and its
+`original` must declare a tracking `ref`. The command fetches that ref with Git
+into a temporary bare repository and checks that the requested commit is an
+ancestor of the fetched ref. Git repository access is required; no authenticated
+`gh` session is needed. Reachability checks fail closed: a failed fetch or ancestry
+check stops the operation before any lock is written. It then prefetches the
+requested revision with Nix to obtain the actual locked metadata, including the
+NAR hash and timestamp, rather than combining a new revision with stale metadata
+from the existing root lock.
+Ancestry Git commands explicitly target the temporary Git directory and discard
+repository-local Git environment overrides (including hook-provided object and
+index paths), while retaining authentication settings.
+
+With `--rev --write`, the authority root and selected standalone locks are staged
+and updated together in the same atomic operation. In both write modes, the
+complete cohort is staged before replacing changed locks; if a replacement fails,
+previously replaced locks are restored. Each target retains its own `dir` from
+its `original` rather than inheriting the source's directory. Writes preserve
+`original` (including the tracking `ref` and `dir`), local dependency edges and all
+unrelated nodes. Repeating a successful write does not touch any file.
+
+Check mode (without `--write`) never writes locks. With `--rev`, it checks both the
+authority root and the selected standalone cohort against the requested
+revision's prefetched metadata and fails on drift, even when the standalone locks
+currently agree with the existing root resolution.
+
+Unlike `mr apply --lock-sync`, this operates within one consumer repository,
+does not modify member worktrees or `megarepo.lock`, and does not require a
+megarepo config. Without `--rev`, the authoritative root resolution must already
+satisfy `mr:lock-sync-check`; copying it does not repair root drift against
+`megarepo.lock`. Updating locks with `--rev` does not update `megarepo.lock` or
+guarantee agreement with that separate authority.
+
 ### `mr apply`
 
 Apply the exact commits from `megarepo.lock`.

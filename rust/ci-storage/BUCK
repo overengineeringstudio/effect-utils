@@ -1,0 +1,185 @@
+# Generated file - DO NOT EDIT
+# Source: BUCK.genie.ts
+
+load("//buck2/rust:defs.bzl", "rust_test_receipt")
+# Projection source: rust/ci-storage/BUCK.genie.ts
+# Projection schema version: 1
+# Projection generator: effect-utils/rust/cargo-buck2-package-projection
+# Semantic fingerprint: sha256:b3361416cf452be0c9cf65e8c57e3af4cdec7ba41858fdd82f5757fef7aead42
+# Semantic inputs: genie/buck2/mod.ts, packages/@overeng/otel-scrape/Cargo.toml, packages/@overeng/otelite/Cargo.toml, packages/@overeng/pingping/Cargo.toml, packages/@overeng/pingping/crates/netinfo-macos/Cargo.toml, rust/Cargo.lock, rust/Cargo.toml, rust/ai-gateway/Cargo.toml, rust/buck2-tools/archive-tool/Cargo.toml, rust/buck2-tools/core/Cargo.toml, rust/buck2-tools/core/cargo-buck2-package-projection.ts, rust/buck2-tools/events/Cargo.toml, rust/buck2-tools/fingerprint/Cargo.toml, rust/buck2-tools/product/Cargo.toml, rust/ci-storage/BUCK.genie.ts, rust/ci-storage/Cargo.toml, rust/ci-storage/src/**/*.rs, rust/ci-storage/tests/**/*.rs, rust/content-address-contract/Cargo.toml, rust/content-address-core/Cargo.toml, rust/content-address-interop/Cargo.toml, rust/effect-rust-fixtures/hash-core/Cargo.toml, rust/effect-rust-fixtures/hash-interop/Cargo.toml, rust/effect-rust-fixtures/math-core/Cargo.toml, rust/effect-rust-fixtures/math-interop/Cargo.toml, rust/effect-rust-fixtures/napi-adapter/Cargo.toml, rust/effect-rust-fixtures/wasm-adapter/Cargo.toml, rust/effect-rust-macros/Cargo.toml, rust/effect-rust/Cargo.toml, rust/reindeer.toml, rust/third-party/BUCK, rust/work-storage/Cargo.toml
+# Regenerate: devenv tasks run genie:run
+
+load("@prelude//:prelude.bzl", "native")
+load("//buck2:static_checks.bzl", "static_source_set")
+load("//buck2/products:defs.bzl", "build_product")
+load("//buck2/platforms:defs.bzl", "host_platform_label")
+load("//buck2/rust:defs.bzl", "rust_product_executable")
+static_source_set(
+    name = "static_sources",
+    prefix = "rust/ci-storage",
+    srcs = [
+        "BUCK",
+        "BUCK.genie.ts",
+        "Cargo.toml",
+        "src/lib.rs",
+        "src/main.rs",
+        "src/transport.rs",
+    ] + glob(["rust-toolchain.toml"]),
+    visibility = ["PUBLIC"],
+)
+
+native.export_file(
+    name = "cargo-source/Cargo.toml",
+    src = "Cargo.toml",
+    visibility = ["PUBLIC"],
+)
+
+native.export_file(
+    name = "cargo-source/src/lib.rs",
+    src = "src/lib.rs",
+    visibility = ["PUBLIC"],
+)
+
+native.export_file(
+    name = "cargo-source/src/main.rs",
+    src = "src/main.rs",
+    visibility = ["PUBLIC"],
+)
+
+native.export_file(
+    name = "cargo-source/src/transport.rs",
+    src = "src/transport.rs",
+    visibility = ["PUBLIC"],
+)
+
+native.rust_library(
+    name = "lib",
+    crate = "ci_storage",
+    crate_root = "src/lib.rs",
+    srcs = [
+        "src/lib.rs",
+        "src/main.rs",
+        "src/transport.rs",
+    ],
+    deps = [
+        "//rust/third-party:clap",
+        "//rust/third-party:flate2",
+        "//rust/third-party:rustix",
+        "//rust/third-party:serde",
+        "//rust/third-party:serde_json",
+        "//rust/third-party:sha2",
+        "//rust/third-party:tar",
+        "//rust/third-party:tempfile",
+        "//rust/third-party:ureq",
+    ],
+    edition = "2021",
+    env = {
+        "CARGO_PKG_NAME": "ci-storage",
+        "CARGO_PKG_VERSION": "0.0.0",
+        "CARGO_PKG_VERSION_MAJOR": "0",
+        "CARGO_PKG_VERSION_MINOR": "0",
+        "CARGO_PKG_VERSION_PATCH": "0",
+        "CARGO_PKG_VERSION_PRE": "",
+        "CARGO_PKG_AUTHORS": "",
+        "CARGO_PKG_DESCRIPTION": "",
+        "CARGO_PKG_HOMEPAGE": "",
+        "CARGO_PKG_REPOSITORY": "",
+        "CARGO_PKG_LICENSE": "Apache-2.0",
+        "CARGO_PKG_LICENSE_FILE": "",
+        "CARGO_PKG_README": "",
+        "CARGO_PKG_RUST_VERSION": "",
+        "CARGO_CRATE_NAME": "ci_storage",
+        "CARGO_MANIFEST_DIR": "rust/ci-storage",
+    },
+    visibility = [
+        "PUBLIC",
+    ],
+)
+
+native.rust_binary(
+    name = "ci-storage",
+    crate = "ci_storage",
+    crate_root = "src/main.rs",
+    srcs = [
+        "src/lib.rs",
+        "src/main.rs",
+        "src/transport.rs",
+    ],
+    deps = [
+        "//rust/third-party:clap",
+        "//rust/third-party:flate2",
+        "//rust/third-party:rustix",
+        "//rust/third-party:serde",
+        "//rust/third-party:serde_json",
+        "//rust/third-party:sha2",
+        "//rust/third-party:tar",
+        "//rust/third-party:tempfile",
+        "//rust/third-party:ureq",
+        ":lib",
+    ],
+    edition = "2021",
+    env = {
+        "CARGO_PKG_NAME": "ci-storage",
+        "CARGO_PKG_VERSION": "0.0.0",
+        "CARGO_PKG_VERSION_MAJOR": "0",
+        "CARGO_PKG_VERSION_MINOR": "0",
+        "CARGO_PKG_VERSION_PATCH": "0",
+        "CARGO_PKG_VERSION_PRE": "",
+        "CARGO_PKG_AUTHORS": "",
+        "CARGO_PKG_DESCRIPTION": "",
+        "CARGO_PKG_HOMEPAGE": "",
+        "CARGO_PKG_REPOSITORY": "",
+        "CARGO_PKG_LICENSE": "Apache-2.0",
+        "CARGO_PKG_LICENSE_FILE": "",
+        "CARGO_PKG_README": "",
+        "CARGO_PKG_RUST_VERSION": "",
+        "CARGO_CRATE_NAME": "ci_storage",
+        "CARGO_MANIFEST_DIR": "rust/ci-storage",
+        "CARGO_BIN_NAME": "ci-storage",
+    },
+    visibility = [
+        "PUBLIC",
+    ],
+)
+
+rust_product_executable(
+    name = "ci-storage-product-executable",
+    binary = ":ci-storage",
+    recipe = "cargo-workspace:ci-storage@0.0.0",
+    target_platform = host_platform_label(),
+)
+
+build_product(
+    name = "ci-storage-product",
+    entrypoint = "bin/ci-storage",
+    executable = ":ci-storage-product-executable",
+    product_name = "ci-storage",
+    target_platform = host_platform_label(),
+)
+
+native.rust_test(
+    name = "tests",
+    crate = "ci_storage_tests",
+    crate_root = "src/lib.rs",
+    srcs = glob(["src/**/*.rs"]),
+    edition = "2021",
+    deps = [
+        "//rust/third-party:clap",
+        "//rust/third-party:flate2",
+        "//rust/third-party:proptest",
+        "//rust/third-party:rustix",
+        "//rust/third-party:serde",
+        "//rust/third-party:serde_json",
+        "//rust/third-party:sha2",
+        "//rust/third-party:tar",
+        "//rust/third-party:tempfile",
+        "//rust/third-party:ureq",
+    ],
+    visibility = ["PUBLIC"],
+)
+
+rust_test_receipt(
+    name = "tests-receipt",
+    test = ":tests",
+    visibility = ["PUBLIC"],
+)

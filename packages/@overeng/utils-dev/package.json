@@ -10,6 +10,7 @@
   "version": "0.1.0",
   "type": "module",
   "private": true,
+  "license": "Apache-2.0",
   "exports": {
     "./cli-contract": {
       "types": "./dist/src/cli-contract.d.ts",
@@ -25,19 +26,19 @@
     }
   },
   "devDependencies": {
-    "@effect/opentelemetry": "4.0.3",
-    "@effect/platform-node": "4.0.3",
-    "@effect/vitest": "4.0.3",
+    "@effect/opentelemetry": "4.1.0",
+    "@effect/platform-node": "4.1.0",
+    "@effect/vitest": "4.1.0",
     "@types/node": "26.5.0",
-    "effect": "4.0.3",
+    "effect": "4.1.0",
     "typescript": "7.0.2",
     "vitest": "5.0.3"
   },
   "peerDependencies": {
-    "@effect/opentelemetry": "^4.0.3",
-    "@effect/platform-node": "^4.0.3",
-    "@effect/vitest": "^4.0.3",
-    "effect": "^4.0.3",
+    "@effect/opentelemetry": "^4.1.0",
+    "@effect/platform-node": "^4.1.0",
+    "@effect/vitest": "^4.1.0",
+    "effect": "^4.1.0",
     "vitest": "^5.0.3"
   },
   "publishConfig": {

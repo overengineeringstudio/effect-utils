@@ -5,7 +5,12 @@ import { fileURLToPath } from 'node:url'
 import { Effect, FileSystem, Option, Path } from 'effect'
 import type { PlatformError } from 'effect/PlatformError'
 
-import { inputFileSystem } from '../runtime/node/inputs.ts'
+import {
+  inputFileSystem,
+  isInputRecording,
+  recordInput,
+  recordInputReason,
+} from '../runtime/node/inputs.ts'
 import { GenieRuntimeTranspilerCacheError, GenieSourceWorkspaceConflictError } from './errors.ts'
 import { resolveImportMapSpecifierForImporterSync } from './import-map/mod.ts'
 import * as Observability from './observability.ts'
@@ -153,6 +158,15 @@ const gitListGenieFiles = ({
 
 const discoverGitGenieFiles = ({ cwd }: { cwd: string }): Array<string> | undefined => {
   try {
+    if (isInputRecording() === true)
+      recordInputReason({
+        code: 'subprocess',
+        operation: 'git discovery',
+        detail: 'Git discovery executes with an unaccounted repository/configuration closure',
+        source: { module: '@overeng/genie/src/core/discovery.ts', line: null },
+        generators: [],
+        evidence: 'observed',
+      })
     execFileSync('git', ['-C', cwd, 'rev-parse', '--is-inside-work-tree'], {
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'ignore'],
@@ -232,6 +246,7 @@ export const findGenieFiles = Effect.fn('discovery/findGenieFiles')(function* (d
 
   const walk: (currentDir: string) => Effect.Effect<string[], PlatformError> = Effect.fnUntraced(
     function* (currentDir: string) {
+      recordInput(currentDir)
       const entries = yield* fs.readDirectory(currentDir)
       const results: string[] = []
 

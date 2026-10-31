@@ -11,6 +11,7 @@
 export * from './deploy-domain.ts'
 export * from './deploy-netlify.ts'
 export * from './deploy-vercel.ts'
+export * from './deploy-cloudflare-workers.ts'
 export * from './quarantine.ts'
 export * from './workflow-report.ts'
 export * from './pipeline-job-names.ts'

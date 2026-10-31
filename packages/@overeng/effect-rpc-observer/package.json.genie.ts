@@ -3,6 +3,7 @@ import {
   catalog,
   exportEntry,
   packageJson,
+  firstPartyPackageDefaults,
   workspaceMember,
   type PackageJsonInputData,
 } from '../../../genie/internal.ts'
@@ -24,7 +25,7 @@ export default packageJson(
     name: '@overeng/effect-rpc-observer',
     version: '0.1.0',
     description: 'Scoped, content-free Effect RPC protocol observation with opt-in capture sinks',
-    license: 'MIT',
+    ...firstPartyPackageDefaults,
     type: 'module',
     files: ['package.json', 'dist', 'src', '!dist/**/*.tsbuildinfo'],
     exports: {

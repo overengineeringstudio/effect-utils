@@ -7,6 +7,7 @@ import { expect } from 'vitest'
 
 import { Vitest } from '@overeng/utils-dev/node-vitest'
 
+import { NotionBlocks } from '../blocks.ts'
 import { NOTION_API_BASE_URL, NOTION_API_VERSION, NotionConfig } from '../config.ts'
 import { NotionApiError } from '../error.ts'
 import { createTestLayer, type MockResponse, sampleResponses } from '../test/test-utils.ts'
@@ -548,12 +549,30 @@ Vitest.describe('executeRequest retry schedule', () => {
    * response sequence; the harness advances virtual time generously so the
    * schedule's sleeps elapse without depending on wall-clock.
    */
-  const runWithRetries = (responses: ReadonlyArray<MockResponse>) =>
+  const runWithRetries = (
+    responses: ReadonlyArray<MockResponse>,
+    operation?: 'append' | 'insert',
+  ) =>
     Effect.gen(function* () {
       let call = 0
       const events: NotionHttpTelemetryEvent[] = []
 
-      const fiber = yield* get({ path: '/databases/123', responseSchema: TestSchema }).pipe(
+      const request =
+        operation === undefined
+          ? get({ path: '/databases/123', responseSchema: TestSchema }).pipe(Effect.asVoid)
+          : NotionBlocks.append({
+              blockId: 'parent-block',
+              children: [{ object: 'block', type: 'paragraph', paragraph: { rich_text: [] } }],
+              ...(operation === 'insert'
+                ? {
+                    position: {
+                      type: 'after_block',
+                      after_block: { id: 'previous-block' },
+                    } as const,
+                  }
+                : {}),
+            }).pipe(Effect.asVoid)
+      const fiber = yield* request.pipe(
         Effect.result,
         Effect.provideService(NotionHttpTelemetry, {
           report: (event) =>
@@ -676,6 +695,62 @@ Vitest.describe('executeRequest retry schedule', () => {
       expect(retryEvents).toHaveLength(0)
     }),
   )
+
+  for (const operation of ['append', 'insert'] as const) {
+    const conflict: MockResponse = {
+      status: 409,
+      body: sampleResponses.error(409, 'conflict_error', 'Conflict occurred while saving.'),
+    }
+
+    Vitest.it.effect(`${operation} retries a conflict then succeeds`, () =>
+      Effect.gen(function* () {
+        const { result, retryEvents, calls } = yield* runWithRetries(
+          [conflict, { status: 200, body: { object: 'list', results: [] } }],
+          operation,
+        )
+
+        expect(Result.isSuccess(result)).toBe(true)
+        expect(calls).toBe(2)
+        expect(retryEvents).toHaveLength(1)
+        expect(retryEvents[0]?.delayMs).toBeGreaterThanOrEqual(500)
+        expect(retryEvents[0]?.delayMs).toBeLessThan(1000)
+      }),
+    )
+
+    Vitest.it.effect(`${operation} exhausts bounded conflict retries with a typed failure`, () =>
+      Effect.gen(function* () {
+        const { result, retryEvents, calls } = yield* runWithRetries([conflict], operation)
+
+        expect(calls).toBe(4)
+        expect(retryEvents).toHaveLength(3)
+        for (const [attempt, event] of retryEvents.entries()) {
+          expect(event.delayMs).toBeGreaterThanOrEqual(500 * 2 ** attempt)
+          expect(event.delayMs).toBeLessThan(1000 * 2 ** attempt)
+        }
+        expect(Result.isFailure(result)).toBe(true)
+        if (Result.isFailure(result) === true) {
+          expect(result.failure).toBeInstanceOf(NotionApiError)
+          expect(result.failure).toMatchObject({ status: 409, code: 'conflict_error' })
+        }
+      }),
+    )
+
+    Vitest.it.effect(`${operation} does not retry a non-conflict 409`, () =>
+      Effect.gen(function* () {
+        const { result, retryEvents, calls } = yield* runWithRetries(
+          [{ status: 409, body: sampleResponses.error(409, 'validation_error', 'Invalid write') }],
+          operation,
+        )
+
+        expect(calls).toBe(1)
+        expect(retryEvents).toHaveLength(0)
+        expect(Result.isFailure(result)).toBe(true)
+        if (Result.isFailure(result) === true) {
+          expect(result.failure).toMatchObject({ status: 409, code: 'validation_error' })
+        }
+      }),
+    )
+  }
 })
 
 Vitest.describe('post', () => {

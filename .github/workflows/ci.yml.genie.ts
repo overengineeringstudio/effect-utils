@@ -30,10 +30,10 @@ import {
   defaultNixClosureMeasurementBuckets,
   devenvPerfJob,
   downloadPreviousGitHubArtifactStep,
-  namespaceLinuxX64PairedPerfRunner,
+  LEGACY_NAMESPACE_LINUX_X64_PAIRED_PERF_RUNNER,
   namespaceRunner,
   nixClosureMeasurementSteps,
-  sourceShapeMeasurementStep,
+  sourceShapeMeasurementSteps,
   nixDiagnosticsArtifactStep,
   workflowReportCommentBodyStep,
   workflowReportCollectorStep,
@@ -60,6 +60,7 @@ import {
   withPipelineTelemetry,
   pipelineCloseJob,
 } from '../../genie/ci-workflow/pipeline-telemetry.ts'
+import { effectUtilsWorkflowPolicy } from '../../genie/ci-workflow/policy.ts'
 import { publishedRefIf, publishedRefSteps } from '../../genie/ci-workflow/published-ref.ts'
 import type { CoreCIJobName } from '../../genie/ci.ts'
 import { pipelineJobIdentifierSet } from '../../packages/@overeng/ci-tools/src/pipeline-job-names.ts'
@@ -855,6 +856,14 @@ const jobs: Record<CoreCIJobName, CiWorkflowArgs['jobs'][string]> = {
             ],
           }),
         ),
+        {
+          name: 'CI policy action isolation smoke',
+          env: githubTokenEnv(),
+          run: withCiSourceRoot(
+            'nix shell .#bun --command bun test ./genie/ci-workflow/check-policy-action.integration.test.ts',
+          ),
+          'timeout-minutes': 5,
+        },
         // The aggregate unit jobs are queue/main-only; keep web highlighting and SSR
         // regressions in the required PR lane through the existing package task.
         buck2TrustedCacheWriterStep({
@@ -1363,6 +1372,17 @@ const extraJobs: Record<string, any> = {
         if: "steps.publication-scope.outputs.publish == 'true'",
       },
       {
+        ...trustedCachixStep,
+        id: 'product-cachix-read',
+        if: "steps.publication-scope.outputs.publish == 'true'",
+      },
+      {
+        name: 'Realise publish-products build inputs',
+        if: `${publishingCachixStep.if} && (steps.publication-scope.outputs.publish == 'true')`,
+        env: githubTokenEnv(),
+        run: withCiSourceRoot('nix/buck2-products/publish.sh --realise-inputs'),
+      },
+      {
         ...publishingCachixStep,
         id: 'product-cachix-auth',
         if: `${publishingCachixStep.if} && steps.publication-scope.outputs.publish == 'true'`,
@@ -1560,7 +1580,7 @@ const extraJobs: Record<string, any> = {
     if: devenvPerfLaneIf,
     ...devenvPerfJob({
       runsOn: namespaceRunner({
-        profile: namespaceLinuxX64PairedPerfRunner,
+        profile: LEGACY_NAMESPACE_LINUX_X64_PAIRED_PERF_RUNNER,
         runId: '${{ github.run_id }}',
         privileged: 'always',
         priority: backgroundJobPriority,
@@ -1685,7 +1705,7 @@ const extraJobs: Record<string, any> = {
    * the live merge gate; this job is the early visible PR signal (thread resolution
    * does not retrigger workflows, so re-run after resolving threads to refresh).
    */
-  [prReviewsResolvedJobId]: prReviewsResolvedJob(),
+  [prReviewsResolvedJobId]: prReviewsResolvedJob({ runsOn: 'ubuntu-latest' }),
   'nix-closure-sizes': {
     if: empiricalProofLaneIf,
     'runs-on': namespaceRunner({
@@ -1737,7 +1757,7 @@ const extraJobs: Record<string, any> = {
       installNixStep(),
       linuxSandboxPrerequisitesStep({ privileged: 'trusted' }),
       ciMeasurementBaselineCheckoutStep,
-      sourceShapeMeasurementStep({
+      ...sourceShapeMeasurementSteps({
         artifactDir: `${sourceShapeMeasurementsDir}/current/effect-utils`,
         targetId: 'effect_utils',
         targetName: 'effect-utils',
@@ -2171,6 +2191,7 @@ const {
 
 // oxlint-disable-next-line overeng/exports-first -- generated entrypoint is assembled after its job atoms
 export default ciWorkflow({
+  policy: effectUtilsWorkflowPolicy('ci.yml'),
   trustTier: 'public',
   name: 'CI',
   on: {
@@ -2237,7 +2258,10 @@ export default ciWorkflow({
           },
           ...withPipelineTelemetry(withBuck2CacheEvidence(instrumentedProductCiJobs)),
           'promote-published': promotePublishedJob!,
-          'pipeline-attempt-close': pipelineCloseJob(productCiJobs),
+          'pipeline-attempt-close': pipelineCloseJob({
+            jobs: productCiJobs,
+            runsOn: 'ubuntu-latest',
+          }),
           'pipeline-traces': pipelineTracesJob,
         },
         nixRealisationTimingsSeconds,

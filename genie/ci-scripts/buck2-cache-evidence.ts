@@ -71,11 +71,33 @@ export const cacheEvidenceOutcomes = [
 ] as const
 export type CacheOutcome = (typeof cacheEvidenceOutcomes)[number]
 export type OutcomeCounts = Record<CacheOutcome, number>
+export type ReaderReapiUnavailableShadow = {
+  cause: {
+    capabilitiesUnavailable: boolean
+    connectRetry: boolean
+    clientInitialization: boolean
+    connectUnavailable: boolean
+    transportMessage: 'tls-handshake-eof' | 'transport-error' | 'none'
+  }
+  command: { subcommand: string; argumentCount: number }
+  nativeExitCode: number
+  durationMs: number
+  failedActionCount: number
+  wouldDisableRemoteCache: true
+}
 export type CacheAdmissionInvocation = {
   invocationId: string
   admissionFallbacks: { reapi: number; archiveOrigin: number }
   admissionRetrySuccesses: { reapi: number; archiveOrigin: number }
   reapiFailure?: ReapiAdmissionFailure
+  reapiDecision?:
+    | 'first-probe-for-ci-job'
+    | 'pinned-from-first-probe'
+    | 'unpinned-missing-job-instance'
+  event?: 'reader-reapi-unavailable-shadow' | 'reader-reapi-unavailable-rerun'
+  shadow?: ReaderReapiUnavailableShadow
+  /** Read-only provenance for measured historical reruns; never emitted by the launcher. */
+  legacyRerun?: true
 }
 // Historical command diagnostics remain readable; native downloads emit none.
 const archiveOriginFallbackReasons = [
@@ -182,6 +204,52 @@ const decodeAdmissionCounters = (
   reapi: count(field({ value, key: 'reapi' })),
   archiveOrigin: count(field({ value, key: 'archiveOrigin' })),
 })
+export const decodeReaderReapiUnavailableShadow = (
+  value: unknown,
+): ReaderReapiUnavailableShadow => {
+  const cause = field({ value, key: 'cause' })
+  const command = field({ value, key: 'command' })
+  const subcommand = field({ value: command, key: 'subcommand' })
+  const transportMessage = field({ value: cause, key: 'transportMessage' })
+  const capabilitiesUnavailable = field({ value: cause, key: 'capabilitiesUnavailable' })
+  const connectRetry = field({ value: cause, key: 'connectRetry' })
+  const clientInitialization = field({ value: cause, key: 'clientInitialization' })
+  const connectUnavailable = field({ value: cause, key: 'connectUnavailable' })
+  if (
+    typeof subcommand !== 'string' ||
+    ['build', 'test', 'audit', 'cquery', 'uquery', 'aquery', 'targets'].includes(subcommand) ===
+      false ||
+    typeof capabilitiesUnavailable !== 'boolean' ||
+    typeof connectRetry !== 'boolean' ||
+    typeof clientInitialization !== 'boolean' ||
+    typeof connectUnavailable !== 'boolean' ||
+    (capabilitiesUnavailable === false &&
+      clientInitialization === false &&
+      connectUnavailable === false) ||
+    (transportMessage !== 'tls-handshake-eof' &&
+      transportMessage !== 'transport-error' &&
+      transportMessage !== 'none') ||
+    field({ value, key: 'wouldDisableRemoteCache' }) !== true
+  )
+    throw new Error('Invalid reader REAPI shadow classification')
+  const nativeExitCode = count(field({ value, key: 'nativeExitCode' }))
+  if (nativeExitCode === 0 || nativeExitCode > 255)
+    throw new Error('Invalid reader REAPI shadow exit code')
+  return {
+    cause: {
+      capabilitiesUnavailable,
+      connectRetry,
+      clientInitialization,
+      connectUnavailable,
+      transportMessage,
+    },
+    command: { subcommand, argumentCount: count(field({ value: command, key: 'argumentCount' })) },
+    nativeExitCode,
+    durationMs: count(field({ value, key: 'durationMs' })),
+    failedActionCount: count(field({ value, key: 'failedActionCount' })),
+    wouldDisableRemoteCache: true,
+  }
+}
 export const decodeCacheAdmissionInvocation = (value: unknown): CacheAdmissionInvocation => {
   const invocationId = canonicalCacheAdmissionInvocationId(field({ value, key: 'invocationId' }))
   const admissionFallbacks = decodeAdmissionCounters(field({ value, key: 'admissionFallbacks' }))
@@ -195,11 +263,42 @@ export const decodeCacheAdmissionInvocation = (value: unknown): CacheAdmissionIn
   const failure = field({ value, key: 'reapiFailure' })
   if (failure !== undefined && admissionFallbacks.reapi !== 1)
     throw new Error('REAPI failure requires an admission fallback')
+  const decision = field({ value, key: 'reapiDecision' })
+  if (
+    decision !== undefined &&
+    decision !== 'first-probe-for-ci-job' &&
+    decision !== 'pinned-from-first-probe' &&
+    decision !== 'unpinned-missing-job-instance'
+  )
+    throw new Error('Invalid REAPI job decision source')
+  const event = field({ value, key: 'event' })
+  const shadow = field({ value, key: 'shadow' })
+  // Retained outage measurements cannot be reconstructed from shadow observations.
+  const legacyRerun = event === 'reader-reapi-unavailable-rerun'
+  const legacyTag = field({ value, key: 'legacyRerun' })
+  if (legacyRerun === true) {
+    if (
+      admissionFallbacks.reapi !== 1 ||
+      shadow !== undefined ||
+      (legacyTag !== undefined && legacyTag !== true)
+    )
+      throw new Error('Invalid legacy reader REAPI rerun event')
+  } else if (
+    (event !== undefined && event !== 'reader-reapi-unavailable-shadow') ||
+    (event === undefined) !== (shadow === undefined) ||
+    legacyTag !== undefined ||
+    (event !== undefined && admissionFallbacks.reapi !== 0)
+  )
+    throw new Error('Invalid cache admission shadow event')
   return {
     invocationId,
     admissionFallbacks,
     admissionRetrySuccesses,
     ...(failure === undefined ? {} : { reapiFailure: decodeReapiAdmissionFailure(failure) }),
+    ...(decision === undefined ? {} : { reapiDecision: decision }),
+    ...(event === undefined ? {} : { event }),
+    ...(shadow === undefined ? {} : { shadow: decodeReaderReapiUnavailableShadow(shadow) }),
+    ...(legacyRerun === true ? { legacyRerun } : {}),
   }
 }
 const collectAdmissionInvocations = (
@@ -210,8 +309,19 @@ const collectAdmissionInvocations = (
   for (const invocation of invocations) {
     const previous = seen.get(invocation.invocationId)
     if (previous !== undefined) {
-      if (JSON.stringify(previous) !== JSON.stringify(invocation))
+      const { event: previousEvent, shadow: previousShadow, ...previousAdmission } = previous
+      const { event, shadow, ...admission } = invocation
+      if (
+        JSON.stringify(previousAdmission) !== JSON.stringify(admission) ||
+        (previousEvent !== undefined &&
+          event !== undefined &&
+          JSON.stringify(previousShadow) !== JSON.stringify(shadow))
+      )
         throw new Error('Conflicting cache admission invocation')
+      // A post-command shadow row enriches its original admission without
+      // inventing another invocation or incrementing admission fallback totals.
+      if (previousEvent === undefined && event !== undefined)
+        Object.assign(previous, { event, shadow })
       continue
     }
     seen.set(invocation.invocationId, invocation)
@@ -635,18 +745,19 @@ export const createCacheEvidenceProjector = ({
     // The emitter omits values without a digest; these are not declared-output/path indices.
     const nativeOutputs = field({ value: end, key: 'outputs' })
     const outputTinyDigests =
-      commandAction &&
+      commandAction === true &&
       cacheUploadResult !== 1 &&
       field({ value: end, key: 'failed' }) !== true &&
       nativeOutputs !== undefined
         ? decodeOutputTinyDigests({
             algorithm: 'buck2-tiny-digest-v1',
-            outputs: Array.isArray(nativeOutputs)
-              ? nativeOutputs.map((output, index) => ({
-                  index,
-                  tinyDigest: field({ value: output, key: 'tiny_digest' }),
-                }))
-              : nativeOutputs,
+            outputs:
+              Array.isArray(nativeOutputs) === true
+                ? nativeOutputs.map((output, index) => ({
+                    index,
+                    tinyDigest: field({ value: output, key: 'tiny_digest' }),
+                  }))
+                : nativeOutputs,
           })
         : undefined
     const nativeName = field({ value: end, key: 'name' })

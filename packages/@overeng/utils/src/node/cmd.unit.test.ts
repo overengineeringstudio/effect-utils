@@ -8,7 +8,7 @@ import { expect } from 'vitest'
 
 import { Vitest } from '@overeng/utils-dev/node-vitest'
 
-import { cmd, cmdCollect } from './cmd.ts'
+import { cmd, cmdCollect, cmdText } from './cmd.ts'
 import { CurrentWorkingDirectory } from './workspace.ts'
 
 const TestLayer = Layer.mergeAll(NodeServices.layer, CurrentWorkingDirectory.live)
@@ -34,6 +34,23 @@ Vitest.describe('cmd helper', () => {
       function* () {
         const exit = yield* cmd(['printf', 'ok'])
         expect(exit).toBe(ChildProcessSpawner.ExitCode(0))
+      },
+      Effect.provide(TestLayer),
+      Effect.scoped,
+    ),
+  )
+
+  Vitest.it.effect(
+    'preserves shell scripts and quotes array arguments',
+    Effect.fnUntraced(
+      function* () {
+        const script = yield* cmdText('  printf "%s" "hello world" | tr a-z A-Z', {
+          runInShell: true,
+        })
+        expect(script).toBe('HELLO WORLD')
+        const literal = 'hello world; $HOME'
+        const output = yield* cmdText(['printf', '%s', literal], { runInShell: true })
+        expect(output).toBe(literal)
       },
       Effect.provide(TestLayer),
       Effect.scoped,

@@ -132,6 +132,99 @@ const runMrCommand = ({
     }
   }).pipe(Effect.scoped)
 
+describe('mr store JSON subprocess output', () => {
+  for (const loosePath of ['tmp/x.sh', 'widget/refs/heads/loose.txt']) {
+    it.effect(`keeps enumeration warnings on stderr for ${loosePath}`, () =>
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem
+        const { storePath } = yield* createStoreFixture([
+          { host: 'github.com', owner: 'acme', repo: 'widget', branches: [] },
+        ])
+        const looseEntry = `${storePath}github.com/acme/${loosePath}`
+        yield* fs.makeDirectory(looseEntry.slice(0, looseEntry.lastIndexOf('/')), {
+          recursive: true,
+        })
+        yield* fs.writeFileString(looseEntry, 'loose store entry\n')
+        const outside = yield* fs.makeTempDirectoryScoped()
+        const result = spawnSync(
+          'bun',
+          [
+            fileURLToPath(new URL('../../bin/mr.ts', import.meta.url)),
+            'store',
+            'gc',
+            '--dry-run',
+            '--output',
+            'json',
+          ],
+          {
+            cwd: outside,
+            encoding: 'utf8',
+            timeout: 30_000,
+            env: { ...process.env, MEGAREPO_STORE: storePath, NO_COLOR: '1' },
+          },
+        )
+        expect(result.error).toBeUndefined()
+        expect(result.status, result.stderr).toBe(0)
+        expect(decodeStoreGcJsonOutput(result.stdout).results).toEqual([])
+        expect(result.stderr).toContain(
+          `store enumeration: skipping non-directory entry ${looseEntry}`,
+        )
+        expect(result.stdout).not.toContain('store enumeration:')
+      }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+    )
+  }
+})
+
+describe('mr store status bare repository health', () => {
+  for (const refsState of ['absent', 'empty'] as const) {
+    it.effect(`reports bare config issues with ${refsState} refs and no worktrees`, () =>
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem
+        const { storePath, bareRepoPaths } = yield* createStoreFixture([
+          { host: 'github.com', owner: 'test', repo: 'legacy', branches: [], withRemote: true },
+        ])
+        const bare = bareRepoPaths['github.com/test/legacy']!
+        yield* Git.runCommand({
+          cwd: bare,
+          args: ['config', '--local', '--unset-all', 'remote.origin.fetch'],
+        })
+        if (refsState === 'absent') {
+          yield* fs.remove(`${storePath}github.com/test/legacy/refs`, { recursive: true })
+        }
+        for (const missingOrigin of [false, true]) {
+          if (missingOrigin === true) {
+            yield* Git.runCommand({
+              cwd: bare,
+              args: ['config', '--local', '--unset-all', 'remote.origin.url'],
+            })
+          }
+          const result = yield* runMrCommand({
+            cwd: storePath,
+            command: ['store', 'status', '--output', 'json'],
+            env: { MEGAREPO_STORE: storePath },
+          })
+          expect(result.exitCode, result.failure).toBe(0)
+          const status = yield* Schema.decodeUnknownEffect(
+            Schema.Struct({
+              worktreeCount: Schema.Finite,
+              worktrees: Schema.Array(Schema.Unknown),
+              repoIssues: Schema.Array(Schema.Struct({ type: Schema.String, repo: Schema.String })),
+            }),
+          )(decodeJson(result.stdout))
+          expect(status.worktreeCount).toBe(0)
+          expect(status.worktrees).toEqual([])
+          expect(status.repoIssues).toEqual([
+            {
+              type: missingOrigin === true ? 'missing_origin' : 'missing_fetch_refspec',
+              repo: 'github.com/test/legacy/',
+            },
+          ])
+        }
+      }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+    )
+  }
+})
+
 describe('mr store gc', () => {
   it.effect(
     'completes gc and reports foreign files at every enumeration level without deleting them',
@@ -1667,10 +1760,14 @@ describe('mr store worktree new', () => {
               ],
               env: { MEGAREPO_STORE: fixture.storePath },
             })
-            expect(defaultResult.exitCode).toBe(1)
+            // The default path fetches branches only, so the moved upstream tag no longer
+            // fails it ("would clobber existing tag") and the unrequested local tag stays.
+            expect(defaultResult.exitCode).toBe(0)
             expect(yield* Git.refExists({ repoPath: bare, ref: 'refs/heads/default-fetch' })).toBe(
-              false,
+              true,
             )
+            expect(yield* fs.readFileString(`${bare}FETCH_HEAD`)).not.toBe(fetchHeadBefore)
+            expect(yield* Git.resolveRef({ repoPath: bare, ref: 'refs/tags/edge' })).toBe(base)
           }
         },
         Effect.provide(NodeServices.layer),

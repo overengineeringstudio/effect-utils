@@ -64,7 +64,11 @@ export const collectStream = <A, E, R>(
 ): Effect.Effect<readonly A[], E, R> =>
   Effect.map(Stream.runCollect(stream), (chunks): readonly A[] => [...chunks])
 
-/** Observe every required search fixture without exhausting unrelated workspace results. */
+/**
+ * Observe search fixtures within the same 100-result horizon as a single-page probe.
+ * A missing fixture must finish the attempt so readiness polling can restart from
+ * the head of the changing index, rather than enumerate the shared workspace.
+ */
 export const collectSearchFixtures = <TItem extends { readonly id: string }, TError, TRequirements>(
   stream: Stream.Stream<TItem, TError, TRequirements>,
   expectedIds: readonly string[],
@@ -74,6 +78,7 @@ export const collectSearchFixtures = <TItem extends { readonly id: string }, TEr
     const remaining = new Set(expectedIds)
     return collectStream(
       stream.pipe(
+        Stream.take(100),
         Stream.takeUntil((item) => {
           remaining.delete(item.id)
           return remaining.size === 0

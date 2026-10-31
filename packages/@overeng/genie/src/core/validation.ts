@@ -32,11 +32,13 @@ export const runGenieValidation = ({
   cwd,
   genieFiles,
   preloadedFiles,
+  mode = 'check',
   requirePackageJsonValidate = process.env.GENIE_REQUIRE_PACKAGE_JSON_VALIDATE === '1',
 }: {
   cwd: string
   genieFiles?: ReadonlyArray<string>
   preloadedFiles?: ReadonlyArray<LoadedGenieFile>
+  mode?: 'generate' | 'check'
   requirePackageJsonValidate?: boolean
 }): Effect.Effect<
   ValidationIssue[],
@@ -93,6 +95,7 @@ export const runGenieValidation = ({
       const ctx: GenieContext = {
         cwd,
         location,
+        mode,
         workspace: {
           packages: packageJsonContext.packages,
           byName: packageJsonContext.byName,

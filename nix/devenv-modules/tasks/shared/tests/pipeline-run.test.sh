@@ -12,6 +12,105 @@ export GIT_CONFIG_GLOBAL="$tmp/gitconfig" GIT_CONFIG_SYSTEM=/dev/null
 # CI wraps the test task in a pipeline-run; this probe owns a separate local spool.
 unset PIPELINE_ENTRYPOINT_ACTIVE PIPELINE_SPOOL_DIR
 
+# Attribute validation used to leak a bare mktemp file on exit. Keep scratch
+# files separate from intentional span output and assert both status and cleanup.
+mkdir -p "$tmp/scratch" "$tmp/leak-spans"
+leak_env=(TMPDIR="$tmp/scratch" OTEL_SPAN_SPOOL_DIR="$tmp/leak-spans" OTEL_EXPORTER_OTLP_ENDPOINT=)
+code=0
+env "${leak_env[@]}" "$span" emit-span test invalid --attr-bool invalid=neither \
+  > "$tmp/invalid.out" 2> "$tmp/invalid.err" || code=$?
+[[ $code == 1 ]] && [[ $(< "$tmp/invalid.err") == *'must be true or false'* ]]
+[[ -z $(find "$tmp/scratch" -mindepth 1 -print -quit) ]]
+printf 'invalid attribute error leaves private TMPDIR empty\n'
+
+# The wrapped child observes the already-created forward file, then signals the
+# wrapper before exiting. No sleeps or racing an unobserved mktemp allocation.
+for signal in TERM INT; do
+  code=0
+  env "${leak_env[@]}" "$span" run test interrupted -- bash -c '
+    [[ -f "$OTEL_SPAN_FORWARD_LINK_FILE" ]] || exit 90
+    kill -s "$1" "$PPID"
+  ' bash "$signal" || code=$?
+  expected_code=143
+  # Match the original synchronous Bash command's default SIGINT behaviour.
+  [[ $signal != INT ]] || expected_code=0
+  [[ $code == "$expected_code" ]] || { echo "$signal status: $code" >&2; exit 1; }
+  [[ -z $(find "$tmp/scratch" -mindepth 1 -print -quit) ]]
+  printf '%s leaves private TMPDIR empty\n' "$signal"
+done
+
+# TERM must interrupt the wrapper while its foreground child is still alive,
+# not merely after that child exits. timeout bounds the old deferred-trap bug.
+code=0
+env "${leak_env[@]}" timeout 3 bash -c '
+  span=$1 ready=$2
+  "$span" run test live-child -- bash -c '\''
+    [[ -f "$OTEL_SPAN_FORWARD_LINK_FILE" ]] || exit 90
+    printf "%s\n" "$BASHPID" > "$1"
+    exec sleep 30
+  '\'' bash "$ready" &
+  wrapper=$!
+  trap '\''kill -KILL "$wrapper" 2>/dev/null || true'\'' EXIT
+  until [[ -s "$ready" ]]; do sleep 0.01; done
+  child=$(< "$ready")
+  kill -TERM "$wrapper"
+  wait "$wrapper"
+  code=$?
+  kill -0 "$child" || exit 91
+  exit "$code"
+' bash "$span" "$tmp/live-child.pid" || code=$?
+if [[ -s "$tmp/live-child.pid" ]]; then
+  kill -TERM "$(< "$tmp/live-child.pid")" 2>/dev/null || true
+fi
+[[ $code == 143 ]] || { echo "live-child TERM status: $code (expected 143 before 3s)" >&2; exit 1; }
+[[ -z $(find "$tmp/scratch" -mindepth 1 -print -quit) ]]
+printf 'TERM exits within 3s with foreground child alive and private TMPDIR empty\n'
+
+# A background descendant must not keep forwarding resources open and delay
+# completion. The file protocol also retains ordinary stdin/stdout and status.
+code=0
+env "${leak_env[@]}" timeout 3 "$span" run test background-child -- bash -c '
+  sleep 30 &
+  printf "%s\n" "$!" > "$1"
+' bash "$tmp/background-child.pid" || code=$?
+if [[ -s "$tmp/background-child.pid" ]]; then
+  kill -TERM "$(< "$tmp/background-child.pid")" 2>/dev/null || true
+fi
+[[ $code == 0 ]] || { echo "background-child status: $code" >&2; exit 1; }
+[[ $(printf 'stdin preserved' | env "${leak_env[@]}" "$span" run test stdin -- cat) == 'stdin preserved' ]]
+code=0
+env "${leak_env[@]}" "$span" run test status -- bash -c 'exit 13' || code=$?
+[[ $code == 13 ]]
+[[ -z $(find "$tmp/scratch" -mindepth 1 -print -quit) ]]
+rm -f "$tmp/leak-spans/"*.jsonl
+printf 'background descendants, stdin/stdout and command status remain unchanged\n'
+
+# Atomic multi-writer delivery must discard its unpublished staging file when
+# jq rejects a raw payload, without deleting any completed span files.
+code=0
+printf 'not-json\n' | env "${leak_env[@]}" OTEL_SPOOL_MULTI_WRITER=1 \
+  "$span" emit > "$tmp/raw.out" 2> "$tmp/raw.err" || code=$?
+[[ $code != 0 ]]
+[[ -z $(find "$tmp/leak-spans" -mindepth 1 -print -quit) ]]
+printf 'invalid raw payload leaves no unpublished spool file\n'
+
+# Exercise the real pipeline-run writer twice through the regular file path.
+# Each root overwrites the earlier link; only the last root links from run.
+env -u PIPELINE_RUN_ID "${leak_env[@]}" DEVENV_ROOT="$tmp/forward-roots" \
+  OTEL_SPOOL_MULTI_WRITER=0 OTELITE_HTTP_ENDPOINT= PIPELINE_EXPORT_OWNER=adapter \
+  "$span" run test forward-writer -- bash -ec '
+    "$1" pipeline-run -- true
+    cp "$OTEL_SPAN_FORWARD_LINK_FILE" "$2/first-link"
+    "$1" pipeline-run -- true
+    cp "$OTEL_SPAN_FORWARD_LINK_FILE" "$2/last-link"
+  ' bash "$span" "$tmp"
+[[ $(< "$tmp/first-link") != "$(< "$tmp/last-link")" ]]
+last_link=$(< "$tmp/last-link")
+[[ $(jq -r '.resourceSpans[0].scopeSpans[0].spans[0].links[0] | "00-\(.traceId)-\(.spanId)-01"' \
+  "$tmp/leak-spans/spans.jsonl") == "$last_link" ]]
+[[ -z $(find "$tmp/scratch" -mindepth 1 -print -quit) ]]
+printf 'real pipeline-run writer preserves last-write-wins forwarding\n'
+
 run='ci/github/overengineeringstudio%2Feffect-utils/421/2'
 runner='namespace-profile-linux-x86-64'
 expected='trace=dc8939be377d7ae198ab958b5457787c root=53fa95f498248e99'

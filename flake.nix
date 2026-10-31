@@ -60,6 +60,7 @@ rec {
         providerCliPackages = {
           vercel-cli = import ./nix/provider-clis/vercel-cli { inherit pkgs; };
           netlify-cli = import ./nix/provider-clis/netlify-cli { inherit pkgs; };
+          wrangler = import ./nix/provider-clis/wrangler { inherit pkgs; };
         };
         # Native products are built from this pinned source revision, imported
         # with descriptor/runtime validation and substituted from Cachix.
@@ -419,6 +420,12 @@ rec {
 
         apps =
           githubRepoSettingsApps
+          // {
+            ci-storage = flake-utils.lib.mkApp {
+              drv = nativeProductPackages.ci-storage;
+              exePath = "/bin/ci-storage";
+            };
+          }
           // pkgs.lib.optionalAttrs (nativeProductPackages ? otelite) {
             otelite = flake-utils.lib.mkApp {
               drv = nativeProductPackages.otelite;
@@ -471,6 +478,7 @@ rec {
           storybook = import ./nix/devenv-modules/tasks/shared/storybook.nix;
           netlify = import ./nix/devenv-modules/tasks/shared/netlify.nix;
           vercel = import ./nix/devenv-modules/tasks/shared/vercel.nix;
+          cloudflare-workers = import ./nix/devenv-modules/tasks/shared/cloudflare-workers.nix;
           workflow-report = import ./nix/devenv-modules/tasks/shared/workflow-report.nix;
           lint-nix = import ./nix/devenv-modules/tasks/shared/lint-nix.nix;
           lint-oxc = import ./nix/devenv-modules/tasks/shared/lint-oxc.nix;

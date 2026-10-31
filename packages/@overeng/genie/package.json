@@ -19,6 +19,7 @@
   "version": "0.1.0",
   "type": "module",
   "private": true,
+  "license": "Apache-2.0",
   "exports": {
     ".": {
       "types": "./dist/src/runtime/mod.d.ts",
@@ -50,10 +51,10 @@
     "storybook:build": "storybook build"
   },
   "dependencies": {
-    "@effect/atom-react": "4.0.3",
-    "@effect/opentelemetry": "4.0.3",
-    "@effect/platform-node": "4.0.3",
-    "@effect/vitest": "4.0.3",
+    "@effect/atom-react": "4.1.0",
+    "@effect/opentelemetry": "4.1.0",
+    "@effect/platform-node": "4.1.0",
+    "@effect/vitest": "4.1.0",
     "@opentui/core": "0.5.11",
     "@opentui/react": "0.5.11",
     "@overeng/otel-contract": "workspace:^",
@@ -63,7 +64,7 @@
     "@storybook/react": "10.6.0",
     "@types/react": "19.2.18",
     "@types/react-reconciler": "0.33.0",
-    "effect": "4.0.3",
+    "effect": "4.1.0",
     "jsonc-parser": "3.3.1",
     "react": "19.2.8",
     "react-dom": "19.2.8",
@@ -77,9 +78,9 @@
     }
   },
   "devDependencies": {
-    "@effect/atom-react": "4.0.3",
-    "@effect/platform-node": "4.0.3",
-    "@effect/vitest": "4.0.3",
+    "@effect/atom-react": "4.1.0",
+    "@effect/platform-node": "4.1.0",
+    "@effect/vitest": "4.1.0",
     "@overeng/utils-dev": "workspace:^",
     "@overeng/utils-storybook": "workspace:^",
     "@storybook/react": "10.6.0",

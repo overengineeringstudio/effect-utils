@@ -17,6 +17,7 @@ import {
 import { withBuck2CacheEvidence } from '../../genie/ci-workflow/buck2-cache-evidence.ts'
 import { withBuck2CachePostures } from '../../genie/ci-workflow/buck2-cache-posture.ts'
 import { withPipelineTelemetry } from '../../genie/ci-workflow/pipeline-telemetry.ts'
+import { effectUtilsWorkflowPolicy } from '../../genie/ci-workflow/policy.ts'
 import { empiricalProofJobs } from './ci.yml.genie.ts'
 
 /** Keep export failures visible on the nonblocking daily job, without changing other jobs. */
@@ -48,6 +49,7 @@ const withCacheJoinExportCheck = (jobs: CiWorkflowArgs['jobs']): CiWorkflowArgs[
 }
 
 export default ciWorkflow({
+  policy: effectUtilsWorkflowPolicy('empirical-proofs.yml'),
   trustTier: 'public',
   name: 'Empirical Proofs',
   on: {
@@ -116,17 +118,6 @@ export default ciWorkflow({
                   "'",
                 ].join('\n'),
               ),
-            },
-            {
-              name: 'Upload authoritative Buck2 warm99 proof observations',
-              if: '${{ always() }}',
-              uses: 'actions/upload-artifact@v4',
-              with: {
-                name: 'buck2-cache-history-proof-${{ github.run_attempt }}',
-                path: '${{ github.workspace }}/tmp/buck2-cache-history-proof',
-                'if-no-files-found': 'warn',
-                'retention-days': 90,
-              },
             },
           ],
         },

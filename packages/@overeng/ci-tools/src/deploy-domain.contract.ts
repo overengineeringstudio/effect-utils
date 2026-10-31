@@ -44,8 +44,8 @@ const shortSpanLabel = (value: string): string => value.slice(0, 40)
 /** Deploy provider a run targets. */
 export const DeployProvider = attr.enum({
   key: 'ci_tools.deploy.provider',
-  values: ['netlify', 'vercel'],
-  briefs: { netlify: 'Netlify.', vercel: 'Vercel.' },
+  values: ['netlify', 'vercel', 'cloudflare-workers'],
+  briefs: { netlify: 'Netlify.', vercel: 'Vercel.', 'cloudflare-workers': 'Cloudflare Workers.' },
   brief: 'Deploy provider a run targets.',
   stability: 'development',
 })

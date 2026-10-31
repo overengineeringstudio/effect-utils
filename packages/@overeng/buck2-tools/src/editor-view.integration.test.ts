@@ -33,6 +33,7 @@ import {
   reserveEditorViewBudget as reserveEditorViewBudgetUnscoped,
   type EditorViewBudgetRootLock,
 } from './editor-view-budget.ts'
+import { acquireEditorViewLease, probeReleasedEditorViewLease } from './editor-view-leases.ts'
 import { managedEditorViewSnapshots, type EditorViewPinRecord } from './editor-view-readers.ts'
 import {
   editorViewStagingCreatorIdentity,
@@ -53,6 +54,7 @@ import {
   publishEditorViews as publishEditorViewsUnscoped,
   recoverEditorViewLock,
   releaseEditorViewRoot as releaseEditorViewRootUnscoped,
+  retireEditorViewRoot,
   unpinEditorView,
   verifyEditorViewSnapshot,
   tryAcquireEditorViewBudgetRootLock,
@@ -277,6 +279,8 @@ const makeFixture = ({ packageName = 'tui-core' }: { packageName?: string } = {}
     nodeModules,
     cp,
     fingerprintTool,
+    // Fixture fingerprints must not queue behind real workspace walks in another test chain.
+    admissionDirectory: join(root, 'fingerprint-admission'),
     workspaceAuthority,
     consumerCache,
     snapshotRetention: 2,
@@ -552,7 +556,13 @@ describe('editor view publisher', () => {
 
       const fingerprint = await canonicalTreeFingerprint({ tree: first })
       expect(await canonicalTreeFingerprint({ tree: second })).toBe(fingerprint)
-      expect(await canonicalTreeFingerprint({ tree: first, fingerprintTool })).toBe(fingerprint)
+      expect(
+        await canonicalTreeFingerprint({
+          tree: first,
+          fingerprintTool,
+          admissionDirectory: fixture.options.admissionDirectory,
+        }),
+      ).toBe(fingerprint)
       expect(await canonicalTreeFingerprint({ tree: collisionShape })).not.toBe(fingerprint)
 
       // A dereferenced view digest equals the plain digest of the same bytes
@@ -570,7 +580,12 @@ describe('editor view publisher', () => {
         await canonicalTreeFingerprint({ tree: materialized }),
       )
       expect(
-        await canonicalTreeFingerprint({ tree: linked, dereference: true, fingerprintTool }),
+        await canonicalTreeFingerprint({
+          tree: linked,
+          dereference: true,
+          fingerprintTool,
+          admissionDirectory: fixture.options.admissionDirectory,
+        }),
       ).toBe(await canonicalTreeFingerprint({ tree: materialized }))
       expect(await canonicalTreeFingerprint({ tree: linked })).not.toBe(
         await canonicalTreeFingerprint({ tree: linked, dereference: true }),
@@ -597,7 +612,12 @@ describe('editor view publisher', () => {
         { source: backing, identity: 'backing' },
       ]
       expect(
-        await canonicalTreeFingerprintWithResolvedLinks({ tree, linkOwners, fingerprintTool }),
+        await canonicalTreeFingerprintWithResolvedLinks({
+          tree,
+          linkOwners,
+          fingerprintTool,
+          admissionDirectory: fixture.options.admissionDirectory,
+        }),
       ).toEqual(await canonicalTreeFingerprintWithResolvedLinks({ tree, linkOwners }))
       expect(
         await canonicalTreeFingerprint({
@@ -605,6 +625,7 @@ describe('editor view publisher', () => {
           dereference: true,
           backingRoots: [backing],
           fingerprintTool,
+          admissionDirectory: fixture.options.admissionDirectory,
         }),
       ).toBe(await canonicalTreeFingerprint({ tree, dereference: true, backingRoots: [backing] }))
     } finally {
@@ -978,7 +999,13 @@ describe('editor view publisher', () => {
       const hashing = canonicalTreeFingerprint({ tree })
       linkSync(payload, join(fixture.root, 'second-reader'))
       await expect(hashing).resolves.toBe(before)
-      expect(await canonicalTreeFingerprint({ tree, fingerprintTool })).toBe(before)
+      expect(
+        await canonicalTreeFingerprint({
+          tree,
+          fingerprintTool,
+          admissionDirectory: fixture.options.admissionDirectory,
+        }),
+      ).toBe(before)
     } finally {
       cleanup(fixture)
     }
@@ -1959,6 +1986,87 @@ describe('editor view publisher', () => {
       expect(lstatSync(join(fixture.packageDir, 'node_modules')).isSymbolicLink()).toBe(true)
       await releaseEditorViewRoot(fixture.options)
     } finally {
+      cleanup(fixture)
+    }
+  })
+
+  it('retires released lease controls and empty legacy roots non-recursively', async () => {
+    const fixture = makeFixture()
+    try {
+      await publishEditorView(fixture.options)
+      await releaseEditorViewRoot(fixture.options)
+      expect(readdirSync(fixture.editorRoot)).toEqual(['.leases'])
+      await retireEditorViewRoot({ options: fixture.options })
+      expect(existsSync(fixture.editorRoot)).toBe(false)
+      await retireEditorViewRoot({ options: fixture.options })
+      const legacy = join(fixture.root, 'context', '.editor-view')
+      mkdirSync(legacy, { recursive: true })
+      await retireEditorViewRoot({ options: fixture.options, editorRoot: legacy })
+      expect(existsSync(legacy)).toBe(false)
+    } finally {
+      cleanup(fixture)
+    }
+  })
+
+  it.each(['file', 'generation', 'symlink', 'hardlink'] as const)(
+    'refuses unexpected retirement %s without removing any entries',
+    async (kind) => {
+      const fixture = makeFixture()
+      try {
+        await publishEditorView(fixture.options)
+        await releaseEditorViewRoot(fixture.options)
+        const leases = join(fixture.editorRoot, '.leases')
+        const controls = readdirSync(leases)
+        const unexpected = join(
+          kind === 'hardlink' ? leases : fixture.editorRoot,
+          kind === 'hardlink' ? controls[0]! : 'unexpected',
+        )
+        if (kind === 'file') writeFileSync(unexpected, 'unexpected')
+        if (kind === 'generation') mkdirSync(unexpected)
+        if (kind === 'symlink') symlinkSync(fixture.root, unexpected)
+        if (kind === 'hardlink') linkSync(unexpected, join(fixture.root, 'retained-control'))
+        const entries = readdirSync(fixture.editorRoot)
+        await expect(retireEditorViewRoot({ options: fixture.options })).rejects.toThrow(unexpected)
+        expect(readdirSync(fixture.editorRoot)).toEqual(entries)
+        expect(readdirSync(leases)).toEqual(controls)
+        expect(lstatSync(unexpected)).toBeDefined()
+      } finally {
+        cleanup(fixture)
+      }
+    },
+  )
+
+  it('refuses release with a held reader and retirement with a held tombstone', async () => {
+    const fixture = makeFixture()
+    let releaseLease: (() => void) | undefined
+    try {
+      const record = await publishEditorView(fixture.options)
+      const reader = await acquireEditorViewLease({
+        editorRoot: fixture.editorRoot,
+        contentStore: fixture.options.contentStore!,
+        resolveSnapshot: () => storeName(record.snapshot),
+      })
+      releaseLease = reader.release
+      await expect(releaseEditorViewRoot(fixture.options)).rejects.toThrow(
+        'held or unknown readers',
+      )
+      reader.release()
+      await releaseEditorViewRoot(fixture.options)
+      const held = probeReleasedEditorViewLease({
+        editorRoot: fixture.editorRoot,
+        snapshot: storeName(record.snapshot),
+      })
+      expect(held.state).toBe('clear')
+      releaseLease = held.release
+      await expect(retireEditorViewRoot({ options: fixture.options })).rejects.toThrow(
+        'cannot retire editor root',
+      )
+      expect(readdirSync(fixture.editorRoot)).toEqual(['.leases'])
+      held.release()
+      await retireEditorViewRoot({ options: fixture.options })
+      expect(existsSync(fixture.editorRoot)).toBe(false)
+    } finally {
+      releaseLease?.()
       cleanup(fixture)
     }
   })
@@ -3616,7 +3724,11 @@ process.stderr.write = (...args) => {
         replacement = join(fixture.root, 'clean-ancestor')
         const payload = join(ancestor, 'index.js')
         const alias = join(fixture.root, 'ancestor-retained-inode')
-        const cleanDigest = await canonicalTreeFingerprint({ tree: snapshot, fingerprintTool })
+        const cleanDigest = await canonicalTreeFingerprint({
+          tree: snapshot,
+          fingerprintTool,
+          admissionDirectory: fixture.options.admissionDirectory,
+        })
         nativeFs.cpSync(ancestor, replacement, { recursive: true })
         const originalInode = statSync(payload).ino
         linkSync(payload, alias)
@@ -3935,11 +4047,16 @@ process.stderr.write = (...args) => {
 
   it('refuses garbage collection when snapshot ownership is ambiguous', async () => {
     const fixture = makeFixture()
+    const options = {
+      ...fixture.options,
+      // Only the tiny fixture tree is relevant to ownership refusal, not a workspace closure.
+      backingRoots: [fixture.nodeModules],
+    }
     try {
-      await publishEditorView(fixture.options)
+      await publishEditorView(options)
       const current = currentTarget(fixture)
       mkdirSync(join(fixture.editorRoot, '.store', 'unowned'))
-      await expect(publishEditorView(fixture.options)).rejects.toThrow(
+      await expect(publishEditorView(options)).rejects.toThrow(
         'snapshot store contains an ambiguously owned entry',
       )
       expect(currentTarget(fixture)).toBe(current)

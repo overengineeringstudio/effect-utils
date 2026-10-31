@@ -21,8 +21,13 @@ import {
 import { homedir, tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import process from 'node:process'
+import { setTimeout as waitForBackpressure } from 'node:timers/promises'
+import { isatty } from 'node:tty'
 
-import type { CacheAdmissionInvocation } from '../genie/ci-scripts/buck2-cache-evidence.ts'
+import type {
+  CacheAdmissionInvocation,
+  ReaderReapiUnavailableShadow,
+} from '../genie/ci-scripts/buck2-cache-evidence.ts'
 import {
   buckConfigValues,
   canonicalCacheAdmissionInvocationId,
@@ -81,13 +86,19 @@ const findRoot = (cwd: string): string | undefined => {
   }
 }
 
-const skipsWatcherAdmission = (args: readonly string[]): boolean => {
-  if (args.some((arg) => ['--help', '-h', '--version'].includes(arg)) === true) return true
+/** Shared native subcommand scan: global option values are not commands. */
+const buckSubcommand = (
+  args: readonly string[],
+): { readonly command: string; readonly index: number } | undefined => {
   for (let index = 0; index < args.length; index++) {
     const arg = args[index] ?? ''
     if (
       [
         '--isolation-dir',
+        '--config',
+        '-c',
+        '--config-file',
+        '--chdir',
         '--verbose',
         '-v',
         '--oncall',
@@ -100,9 +111,18 @@ const skipsWatcherAdmission = (args: readonly string[]): boolean => {
       continue
     }
     if (arg.startsWith('-') === true) continue
-    return ['kill', 'status', 'log'].includes(arg)
+    return { command: arg, index }
   }
-  return true
+  return undefined
+}
+
+const skipsWatcherAdmission = (args: readonly string[]): boolean => {
+  const command = buckSubcommand(args)?.command
+  return (
+    args.some((arg) => ['--help', '-h', '--version'].includes(arg)) === true ||
+    command === undefined ||
+    ['kill', 'status', 'log'].includes(command)
+  )
 }
 
 let admissionExpires = Date.now() + 5000
@@ -116,6 +136,7 @@ const cachedProbe = async ({
   now = Date.now(),
   root,
   diagnostics,
+  reuse = true,
 }: {
   readonly key: string
   readonly cacheDirectory: string
@@ -123,6 +144,7 @@ const cachedProbe = async ({
   readonly now?: number
   readonly root?: string
   readonly diagnostics?: { failure?: string }
+  readonly reuse?: boolean
 }): Promise<boolean> => {
   // Root-keyed watcher admission can be reclaimed without knowing the original
   // environment/config variants. Endpoint admission remains shared across roots.
@@ -131,30 +153,33 @@ const cachedProbe = async ({
     cacheDirectory,
     `${prefix}${createHash('sha256').update(key).digest('hex')}.json`,
   )
-  try {
-    const value: unknown = JSON.parse(readFileSync(path, 'utf8'))
-    if (
-      typeof value === 'object' &&
-      value !== null &&
-      'at' in value &&
-      'available' in value &&
-      typeof value.at === 'number' &&
-      typeof value.available === 'boolean' &&
-      now >= value.at &&
-      now - value.at < 5000
-    ) {
-      admissionExpires = Math.min(admissionExpires, value.at + 5000)
+  if (reuse === true) {
+    try {
+      const value: unknown = JSON.parse(readFileSync(path, 'utf8'))
       if (
-        diagnostics !== undefined &&
-        'failure' in value &&
-        typeof value.failure === 'string' &&
-        /^class=[a-z-]+ phase=[a-z]+ elapsed_ms=\d+ deadline_ms=\d+$/u.test(value.failure) === true
-      )
-        diagnostics.failure = value.failure
-      return value.available
+        typeof value === 'object' &&
+        value !== null &&
+        'at' in value &&
+        'available' in value &&
+        typeof value.at === 'number' &&
+        typeof value.available === 'boolean' &&
+        now >= value.at &&
+        now - value.at < 5000
+      ) {
+        admissionExpires = Math.min(admissionExpires, value.at + 5000)
+        if (
+          diagnostics !== undefined &&
+          'failure' in value &&
+          typeof value.failure === 'string' &&
+          /^class=[a-z-]+ phase=[a-z]+ elapsed_ms=\d+ deadline_ms=\d+$/u.test(value.failure) ===
+            true
+        )
+          diagnostics.failure = value.failure
+        return value.available
+      }
+    } catch {
+      /* Missing or stale cache entries are probed again. */
     }
-  } catch {
-    /* Missing or stale cache entries are probed again. */
   }
   const available = await probe()
   const candidate = `${path}.${randomUUID()}`
@@ -174,6 +199,116 @@ const cachedProbe = async ({
     } catch {
       /* An inaccessible cache directory must not turn cleanup into a build failure. */
     }
+  }
+  return available
+}
+
+/**
+ * Called under CI's root admission lock. Availability is a job decision, not
+ * a per-launch policy input: a later fast probe cannot invalidate live leases.
+ */
+const pinCiJobReapiProbe = async ({
+  root,
+  env,
+  key,
+  diagnostics,
+  admission,
+  probe,
+}: {
+  readonly root: string
+  readonly env: Readonly<Record<string, string | undefined>>
+  readonly key: string
+  readonly diagnostics: { failure?: string }
+  readonly admission: CacheAdmissionInvocation
+  readonly probe: (fresh: boolean) => Promise<boolean>
+}): Promise<boolean> => {
+  if (env['CI'] !== '1' && env['CI'] !== 'true') return probe(false)
+  const instance = env['BUCK2_CI_JOB_INSTANCE']
+  if (instance === undefined || instance === '') {
+    // Unconfigured workflows retain the pre-pinning probe policy, never a shared
+    // matrix-child pin or a new admission refusal. Evidence names this explicitly.
+    admission.reapiDecision = 'unpinned-missing-job-instance'
+    return probe(false)
+  }
+  const run = env['GITHUB_RUN_ID']
+  const job = env['GITHUB_JOB']
+  if (run === undefined || run === '' || job === undefined || job === '') return probe(false)
+  const scope = JSON.stringify([run, env['GITHUB_RUN_ATTEMPT'] ?? '1', job, instance])
+  const directory = join(root, 'buck-out', '.cache-daemon-posture')
+  mkdirSync(directory, { recursive: true, mode: 0o700 })
+  const path = join(directory, `reapi-job-${createHash('sha256').update(scope).digest('hex')}.json`)
+  const failurePattern = /^class=[a-z-]+ phase=[a-z]+ elapsed_ms=\d+ deadline_ms=\d+$/u
+  let salt = randomBytes(32).toString('hex')
+  const decisions: Record<string, { available: boolean; failure?: string }> = {}
+  if (existsSync(path) === true) {
+    const fd = openSync(path, 'r')
+    let saved: unknown
+    try {
+      fchmodSync(fd, 0o600)
+      saved = JSON.parse(readFileSync(fd, 'utf8'))
+    } finally {
+      closeSync(fd)
+    }
+    if (
+      typeof saved !== 'object' ||
+      saved === null ||
+      !('salt' in saved) ||
+      typeof saved.salt !== 'string' ||
+      !('decisions' in saved) ||
+      typeof saved.decisions !== 'object' ||
+      saved.decisions === null
+    )
+      throw new Error('Buck2 cache posture: malformed CI job probe decision')
+    salt = saved.salt
+    for (const [fingerprint, decision] of Object.entries(saved.decisions)) {
+      if (
+        /^[a-f0-9]{64}$/u.test(fingerprint) === false ||
+        typeof decision !== 'object' ||
+        decision === null ||
+        !('available' in decision) ||
+        typeof decision.available !== 'boolean' ||
+        ('failure' in decision &&
+          (typeof decision.failure !== 'string' || failurePattern.test(decision.failure) === false))
+      )
+        throw new Error('Buck2 cache posture: malformed CI job probe decision')
+      decisions[fingerprint] = {
+        available: decision.available,
+        ...('failure' in decision ? { failure: decision.failure as string } : {}),
+      }
+    }
+  }
+  // A private persisted key protects endpoint/auth identity; neither it nor its
+  // digest is printed or used in a filename. Credential changes remain distinct.
+  const fingerprint = createHmac('sha256', salt).update(key).digest('hex')
+  const previous = decisions[fingerprint]
+  if (previous !== undefined) {
+    admission.reapiDecision = 'pinned-from-first-probe'
+    diagnostics.failure = previous.failure
+    return previous.available
+  }
+  const available = await probe(true)
+  admission.reapiDecision = 'first-probe-for-ci-job'
+  const failure = diagnostics.failure
+  decisions[fingerprint] = { available, ...(failure === undefined ? {} : { failure }) }
+  if (available === false) {
+    const reason = failure ?? 'REAPI unavailable'
+    writeSync(
+      2,
+      `warning: Buck2 CI job remote cache pinned to local fallback from first probe (${reason}); subsequent launches keep this posture for the job\n`,
+    )
+    const summary = env['GITHUB_STEP_SUMMARY']
+    if (summary !== undefined && summary !== '')
+      appendFileSync(
+        summary,
+        `\n### Buck2 remote-cache admission\n\n**Pinned from first probe: local fallback for this CI job.** Reason: \`${reason}\`. Later launches retain this decision even if the endpoint recovers.\n`,
+      )
+  }
+  const candidate = `${path}.${randomUUID()}`
+  try {
+    writeFileSync(candidate, JSON.stringify({ salt, decisions }), { mode: 0o600, flag: 'wx' })
+    renameSync(candidate, path)
+  } finally {
+    rmSync(candidate, { force: true })
   }
   return available
 }
@@ -208,6 +343,8 @@ export const directBuckArguments = async ({
   deadlineMs = 2500,
   probeDeadlineSignal,
   beforeCachePosture,
+  onCachePosture,
+  onCacheAdmission,
 }: {
   readonly args: readonly string[]
   readonly cwd: string
@@ -218,12 +355,19 @@ export const directBuckArguments = async ({
   readonly probeDeadlineSignal?: (endpoint: AdmissionProbeEndpoint) => AbortSignal | undefined
   /** Check effective post-probe policy before changing the daemon-scoped root overlay. */
   readonly beforeCachePosture?: CachePostureCheck
+  /** Observe the effective admitted posture, including CLI policy and probe fallback. */
+  readonly onCachePosture?: CachePostureCheck
+  readonly onCacheAdmission?: (admission: CacheAdmissionInvocation) => void
 }): Promise<string[]> => {
   admissionExpires = Date.now() + 5000
   failedOpen = false
   const sentinel = args.indexOf('--')
   const configArgs = sentinel === -1 ? args : args.slice(0, sentinel)
-  const command = configArgs.find((arg) => configCommands[arg] === true)
+  const selectedCommand = buckSubcommand(configArgs)?.command
+  const command =
+    selectedCommand !== undefined && configCommands[selectedCommand] === true
+      ? selectedCommand
+      : undefined
   if (skipsWatcherAdmission(configArgs) === true) return [...args]
   const root = findRoot(cwd)
   if (root === undefined) return [...args]
@@ -352,40 +496,58 @@ export const directBuckArguments = async ({
     return available
   }
   const reapiDiagnostics: { failure?: string } = {}
+  const reapiKey = JSON.stringify([
+    'reapi',
+    values['buck2_re_client.action_cache_address'],
+    values['buck2_re_client.instance_name'],
+    values['buck2_re_client.tls'],
+    header,
+  ])
   const remoteAvailable =
     remote === false
       ? true
-      : await cachedProbe({
-          cacheDirectory,
+      : await pinCiJobReapiProbe({
+          root,
+          env,
+          key: reapiKey,
           diagnostics: reapiDiagnostics,
-          key: JSON.stringify([
-            'reapi',
-            values['buck2_re_client.action_cache_address'],
-            values['buck2_re_client.instance_name'],
-            values['buck2_re_client.tls'],
-            header,
-          ]),
-          probe: () =>
-            retryProbe({
-              endpoint: 'reapi',
+          admission,
+          probe: (fresh) =>
+            cachedProbe({
+              reuse: !fresh,
+              cacheDirectory,
+              diagnostics: reapiDiagnostics,
+              key: reapiKey,
               probe: () =>
-                probeRemoteCacheCapabilities({
-                  address: values['buck2_re_client.action_cache_address'],
-                  instanceName: values['buck2_re_client.instance_name'] ?? '',
-                  tls: values['buck2_re_client.tls'] !== 'false',
-                  header: values['buck2_re_client.http_headers'],
-                  env,
-                  deadlineMs,
-                  deadlineSignal: probeDeadlineSignal?.('reapi'),
-                  onFailure: ({ errorClass, phase, elapsedMs, deadlineMs: probeDeadlineMs }) => {
-                    reapiDiagnostics.failure = `class=${errorClass} phase=${phase} elapsed_ms=${elapsedMs} deadline_ms=${probeDeadlineMs}`
-                    writeSync(2, `warning: Buck2 REAPI probe failed: ${reapiDiagnostics.failure}\n`)
-                  },
-                  onConnectionEvent: ({ event, elapsedMs, address, family }) =>
-                    writeSync(
-                      2,
-                      `Buck2 REAPI probe: event=${event} elapsed_ms=${elapsedMs} address=${address ?? 'unavailable'} family=${family ?? 'unavailable'}\n`,
-                    ),
+                retryProbe({
+                  endpoint: 'reapi',
+                  probe: () =>
+                    probeRemoteCacheCapabilities({
+                      address: values['buck2_re_client.action_cache_address'],
+                      instanceName: values['buck2_re_client.instance_name'] ?? '',
+                      tls: values['buck2_re_client.tls'] !== 'false',
+                      header: values['buck2_re_client.http_headers'],
+                      env,
+                      deadlineMs,
+                      deadlineSignal: probeDeadlineSignal?.('reapi'),
+                      onFailure: ({
+                        errorClass,
+                        phase,
+                        elapsedMs,
+                        deadlineMs: probeDeadlineMs,
+                      }) => {
+                        reapiDiagnostics.failure = `class=${errorClass} phase=${phase} elapsed_ms=${elapsedMs} deadline_ms=${probeDeadlineMs}`
+                        writeSync(
+                          2,
+                          `warning: Buck2 REAPI probe failed: ${reapiDiagnostics.failure}\n`,
+                        )
+                      },
+                      onConnectionEvent: ({ event, elapsedMs, address, family }) =>
+                        writeSync(
+                          2,
+                          `Buck2 REAPI probe: event=${event} elapsed_ms=${elapsedMs} address=${address ?? 'unavailable'} family=${family ?? 'unavailable'}\n`,
+                        ),
+                    }),
                 }),
             }),
         })
@@ -402,6 +564,7 @@ export const directBuckArguments = async ({
         deadlineMs: Number(failure[4]),
       })
   }
+  onCacheAdmission?.(admission)
   const evidencePath = env['CI_BUCK2_CACHE_EVIDENCE_PATH']
   if (evidencePath !== undefined && evidencePath !== '') {
     try {
@@ -441,6 +604,7 @@ export const directBuckArguments = async ({
   // its effective fallback, not an optimistic policy it will never execute.
   // Compare before mutating the shared overlay or starting/stopping any daemon.
   beforeCachePosture?.(values)
+  onCachePosture?.(values)
   // Native RE client construction ignores CLI config. Writer headers/endpoints must
   // be in the root overlay before daemon startup, including removal on public reads.
   if (
@@ -611,7 +775,8 @@ export const resolveGateInvocation = ({
   }
   const sentinel = expanded.indexOf('--')
   let buckArgs = sentinel === -1 ? expanded : expanded.slice(0, sentinel)
-  const runIndex = buckArgs.indexOf('run')
+  const selectedCommand = buckSubcommand(buckArgs)
+  const runIndex = selectedCommand?.command === 'run' ? selectedCommand.index : -1
   if (
     strictRunArguments === true &&
     runIndex !== -1 &&
@@ -1084,7 +1249,8 @@ export const admitCacheDaemonCommand = async ({
         launches.some(
           (launch) =>
             (launch.isolation === undefined || launch.isolation === isolation) &&
-            launch.fingerprint !== desired,
+            launch.fingerprint !== desired &&
+            cacheLauncherBirth(launch.pid) === launch.birth,
         ) === true
       )
         throw new Error(
@@ -1261,7 +1427,8 @@ export const nativeBuildIdArguments = ({
     { mode: 0o600 },
   )
   if (suppliedPath !== undefined) return [...args]
-  const runIndex = before.indexOf('run')
+  const selectedCommand = buckSubcommand(before)
+  const runIndex = selectedCommand?.command === 'run' ? selectedCommand.index : -1
   if (runIndex !== -1)
     return [...before.slice(0, runIndex + 1), '--write-build-id', path, ...args.slice(runIndex + 1)]
   return [...before, '--write-build-id', path, ...(sentinel === -1 ? [] : args.slice(sentinel))]
@@ -1294,24 +1461,26 @@ export const runNativeWithEvidence = async ({
   native,
   args,
   root,
+  stderr = 'inherit',
 }: {
   native: string
   args: string[]
   root: string | undefined
-}): Promise<boolean> => {
+  stderr?: 'inherit' | 'pipe'
+}): Promise<NativeCommandResult | undefined> => {
   const output = process.env.CI_BUCK2_CACHE_EVIDENCE_PATH
   const wrapperId = process.env.BUCK_WRAPPER_UUID
-  if (output === undefined || root === undefined || wrapperId === undefined) return false
+  if (output === undefined || root === undefined || wrapperId === undefined) return undefined
   const buildId = canonicalCacheAdmissionInvocationId(wrapperId)
   try {
     const rows = readFileSync(`${output}.native-build-id-paths.jsonl`, 'utf8').trim().split('\n')
-    if (rows.some((line) => JSON.parse(line).buildId === buildId) === false) return false
+    if (rows.some((line) => JSON.parse(line).buildId === buildId) === false) return undefined
   } catch {
-    return false
+    return undefined
   }
   const sentinel = args.indexOf('--')
   const before = sentinel === -1 ? args : args.slice(0, sentinel)
-  if (before.includes('--no-event-log') === true) return false
+  if (before.includes('--no-event-log') === true) return undefined
   const callerSinkIndex = before.findIndex(
     (arg) => arg === '--event-log' || arg.startsWith('--event-log='),
   )
@@ -1321,7 +1490,7 @@ export const runNativeWithEvidence = async ({
       : before[callerSinkIndex] === '--event-log'
         ? before[callerSinkIndex + 1]
         : before[callerSinkIndex]?.slice('--event-log='.length)
-  if (callerSinkIndex !== -1 && (callerSink === undefined || callerSink === '')) return false
+  if (callerSinkIndex !== -1 && (callerSink === undefined || callerSink === '')) return undefined
   const directory = mkdtempSync(join(tmpdir(), 'buck2-evidence-'))
   const sink = join(directory, 'native.json-lines')
   let keeper: number | undefined
@@ -1364,23 +1533,12 @@ export const runNativeWithEvidence = async ({
       callerSink === undefined
         ? [...before, '--event-log', sink, ...(sentinel === -1 ? [] : args.slice(sentinel))]
         : args
-    const child = Bun.spawn([native, ...nativeArgs], {
-      stdin: 'inherit',
-      stdout: 'inherit',
-      stderr: 'inherit',
-      env: process.env,
-    })
+    const { child, result } = spawnNativeCommand({ native, args: nativeArgs, stderr })
     reapNative = async () => {
       if (child.exitCode === null) child.kill('SIGKILL')
       await child.exited
     }
-    const onInt = () => child.kill('SIGINT')
-    const onTerm = () => child.kill('SIGTERM')
-    const onHup = () => child.kill('SIGHUP')
-    process.on('SIGINT', onInt)
-    process.on('SIGTERM', onTerm)
-    process.on('SIGHUP', onHup)
-    let status: number
+    let nativeResult: NativeCommandResult
     let sourceComplete = true
     try {
       const finished = await Promise.race([
@@ -1388,7 +1546,7 @@ export const runNativeWithEvidence = async ({
         collector.exited.then((exitCode) => ({ source: 'collector' as const, exitCode })),
       ])
       if (finished.source === 'collector') child.kill('SIGTERM')
-      status = await child.exited
+      nativeResult = await result
       if (callerSink !== undefined) {
         // Preserve the caller's OTEL/profiling sink and decode that exact file,
         // outside native rotation. Never rediscover it through --recent.
@@ -1409,21 +1567,17 @@ export const runNativeWithEvidence = async ({
     } finally {
       closeSync(keeper)
       keeper = undefined
-      process.off('SIGINT', onInt)
-      process.off('SIGTERM', onTerm)
-      process.off('SIGHUP', onHup)
     }
     await collector.exited
     const completion = `${output}.native-build-ids/${buildId}.exit.json`
     mkdirSync(dirname(completion), { recursive: true, mode: 0o700 })
     writeFileSync(
       `${completion}.pending`,
-      `${JSON.stringify({ buildId, exitCode: status, sourceComplete, finishedAt: Date.now() })}\n`,
+      `${JSON.stringify({ buildId, exitCode: nativeResult.exitCode, sourceComplete, finishedAt: Date.now() })}\n`,
       { mode: 0o600 },
     )
     renameSync(`${completion}.pending`, completion)
-    process.exitCode = status
-    return true
+    return nativeResult
   } finally {
     if (keeper !== undefined) closeSync(keeper)
     await reapNative?.()
@@ -1433,6 +1587,272 @@ export const runNativeWithEvidence = async ({
   }
 }
 
+/**
+ * Deliberately fail closed on unknown output. Every diagnostic must belong to
+ * RE client construction/capabilities, not merely contain an "unavailable" word.
+ */
+export const isOnlyReapiUnavailable = (output: string): boolean => {
+  const unavailable =
+    /(?:The service is currently unavailable|code:\s*['"]?Unavailable['"]?|status:\s*Unavailable)/iu
+  const scope =
+    /^(?:Error:|Command failed:)\s*\(?(?:Failed to query capabilities of remote|Remote Execution Error on REClientBuilder|Failed to connect to RE)\b/u
+  const forbidden =
+    /(?:unauthenticated|permission[ _-]?denied|unauthorized|authentication|authorization|invalid[_ -]argument|digest[ _-]mismatch|mismatched[ _-]digest|checksum|corrupt|integrity|certificate|invalid peer|unknown issuer|error\[|compil(?:e|ation) error|test(?:s)? fail)/iu
+  const informational = [
+    /^Build ID: [a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/u,
+    /^File changed: \S+$/u,
+    /^\d+ additional file change events$/u,
+    /^Waiting on \S+ \([^)]+\) -- [\w .:-]+$/u,
+    /^Cache hits: \d+(?:\.\d+)?%$/u,
+    /^Commands: \d+ \(cached: \d+, remote: \d+, local: \d+\)$/u,
+    /^Network: up \d+(?:\.\d+)?(?:B|KiB|MiB|GiB|TiB)\s+down \d+(?:\.\d+)?(?:B|KiB|MiB|GiB|TiB)$/u,
+  ]
+  const live = new Set<string>()
+  const summary = new Set<string>()
+  let expected: number | undefined
+  let summaryHeading = false
+  let fatal = false
+  let block: { action: string; phase: 'internal' | 'error' | 'details' } | undefined
+  const finishBlock = (): boolean => {
+    if (block === undefined) return true
+    if (block.phase !== 'details') return false
+    const actions = expected === undefined ? live : summary
+    if (actions.has(block.action) === true) return false
+    actions.add(block.action)
+    block = undefined
+    return true
+  }
+  for (const raw of output.split(/\r?\n/u)) {
+    const line = raw
+      .replace(new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, 'gu'), '')
+      .replace(/^\[\d{4}-\d\d-\d\dT[^\]]+\]\s*/u, '')
+      .trim()
+      .replace(/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d+)?(?:Z|[+-]\d\d:\d\d)\s+(?=WARN )/u, '')
+    if (line === '') continue
+    if (/^Remote action digest: '[a-f0-9]+:\d+'$/u.test(line) === true) {
+      if (block?.phase !== 'details') return false
+      continue
+    }
+    if (forbidden.test(line) === true) return false
+    if (line.startsWith('Action failed: ') === true) {
+      if (finishBlock() === false || (expected !== undefined && summaryHeading === false))
+        return false
+      if (/^Action failed: \S+ \([^)]+\)(?: \([^)]+\))?$/u.test(line) === false) return false
+      block = { action: line.slice('Action failed: '.length), phase: 'internal' }
+      continue
+    }
+    if (block?.phase === 'internal') {
+      if (
+        /^Internal error \(stage: remote_action_cache\): Remote Execution Error on REClientBuilder(?: for ReSession <none>)?$/u.test(
+          line,
+        ) === false
+      )
+        return false
+      block.phase = 'error'
+      continue
+    }
+    if (block?.phase === 'error') {
+      if (
+        /^Error:\s*\(?Failed to query capabilities of remote\b/u.test(line) === false ||
+        unavailable.test(line) === false
+      )
+        return false
+      block.phase = 'details'
+      fatal = true
+      continue
+    }
+    if (/^(?:Stdout|Stderr):/u.test(line) === true) {
+      if (block?.phase !== 'details' || /^(?:Stdout|Stderr): <empty>$/u.test(line) === false)
+        return false
+      continue
+    }
+    if (finishBlock() === false) return false
+    const count = /^BUILD ERRORS \(([1-9]\d*)\)$/u.exec(line)
+    if (count !== null) {
+      if (expected !== undefined) return false
+      expected = Number(count[1])
+      if (Number.isSafeInteger(expected) === false) return false
+      continue
+    }
+    if (line === 'The following actions failed during the execution of this command:') {
+      if (expected === undefined || summaryHeading === true) return false
+      summaryHeading = true
+      continue
+    }
+    if (informational.some((pattern) => pattern.test(line)) === true) continue
+    if (
+      /^WARN buck2_execute::re::client: Failed to connect to RE, retrying after sleeping \d+ seconds?: Remote Execution Error on REClientBuilder(?: for ReSession <none>| \.\.\.)?$/u.test(
+        line,
+      ) === true
+    )
+      continue
+    if (scope.test(line) === false || unavailable.test(line) === false) return false
+    fatal = true
+  }
+  if (finishBlock() === false || fatal === false) return false
+  if (expected === undefined) return live.size === 0
+  return (
+    summaryHeading === true &&
+    summary.size === expected &&
+    (live.size === 0 ||
+      (live.size === expected && [...live].every((action) => summary.has(action))))
+  )
+}
+
+/** Classify once for evidence only; the original native failure always stands. */
+export const runWithReaderCacheShadow = async ({
+  reader,
+  command,
+  run,
+  onShadow,
+}: {
+  readonly reader: boolean
+  readonly command: ReaderReapiUnavailableShadow['command']
+  readonly run: () => Promise<{
+    readonly exitCode: number
+    readonly output: string
+    readonly signalCode?: string | null
+    readonly durationMs?: number
+  }>
+  readonly onShadow: (shadow: ReaderReapiUnavailableShadow) => void
+}): Promise<number> => {
+  const started = performance.now()
+  const result = await run()
+  const durationMs = result.durationMs ?? Math.max(0, Math.round(performance.now() - started))
+  if (
+    reader === true &&
+    result.exitCode !== 0 &&
+    (result.signalCode === undefined || result.signalCode === null) &&
+    isOnlyReapiUnavailable(result.output) === true
+  ) {
+    const diagnostics = result.output.replace(
+      new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, 'gu'),
+      '',
+    )
+    onShadow({
+      cause: {
+        capabilitiesUnavailable: /Failed to query capabilities of remote/u.test(diagnostics),
+        connectRetry: /WARN buck2_execute::re::client: Failed to connect to RE, retrying/u.test(
+          diagnostics,
+        ),
+        clientInitialization: /REClientBuilder/u.test(diagnostics),
+        connectUnavailable: /(?:Error:|Command failed:)\s*\(?Failed to connect to RE/u.test(
+          diagnostics,
+        ),
+        transportMessage:
+          diagnostics.includes('tls handshake eof') === true
+            ? 'tls-handshake-eof'
+            : /tonic::transport::Error|transport error/iu.test(diagnostics) === true
+              ? 'transport-error'
+              : 'none',
+      },
+      command,
+      nativeExitCode: result.exitCode,
+      durationMs,
+      failedActionCount: Number(/BUILD ERRORS \(([1-9]\d*)\)/u.exec(diagnostics)?.[1] ?? 0),
+      wouldDisableRemoteCache: true,
+    })
+  }
+  return result.exitCode
+}
+
+/** Keep terminal console behavior and user-binary commands on the native exec path. */
+export const shouldSuperviseReaderCommand = ({
+  reader,
+  stderrIsTTY,
+  args,
+  cwd,
+  env,
+}: {
+  readonly reader: boolean
+  readonly stderrIsTTY: boolean
+  readonly args: readonly string[]
+  readonly cwd: string
+  readonly env: Readonly<Record<string, string | undefined>>
+}): boolean => {
+  if (reader === false || stderrIsTTY === true) return false
+  const invocation = resolveGateInvocation({ args, cwd, env, strictRunArguments: false })
+  if (invocation === undefined) return false
+  const command = buckSubcommand(invocation.args)?.command
+  return (
+    command !== undefined &&
+    configCommands[command] === true &&
+    ['run', 'install', 'bxl'].includes(command) === false
+  )
+}
+
+/** Advance short writes and yield on EAGAIN; a broken consumer must not orphan Buck. */
+export const writeNativeStderrChunk = async ({
+  chunk,
+  write = (bytes) => writeSync(2, bytes),
+  signal,
+  pause = () => waitForBackpressure(1, undefined, { signal }),
+}: {
+  readonly chunk: Uint8Array
+  readonly write?: (bytes: Uint8Array) => number
+  readonly signal?: AbortSignal
+  readonly pause?: () => Promise<void>
+}): Promise<boolean> => {
+  let offset = 0
+  while (offset < chunk.byteLength) {
+    try {
+      const accepted = write(chunk.subarray(offset))
+      if (accepted > 0) {
+        offset += accepted
+        continue
+      }
+    } catch (error) {
+      const code =
+        typeof error === 'object' && error !== null && 'code' in error ? error.code : undefined
+      if (code !== 'EAGAIN' && code !== 'EWOULDBLOCK') return false
+    }
+    if (signal?.aborted === true) return false
+    try {
+      // eslint-disable-next-line no-await-in-loop -- Retry this write only after backpressure clears.
+      await pause()
+    } catch {
+      return false
+    }
+  }
+  return true
+}
+
+/** Drain native stderr even after capture overflow or a failed output consumer. */
+export const captureNativeStderr = async ({
+  stream,
+  signal,
+  writeChunk = writeNativeStderrChunk,
+}: {
+  readonly stream: AsyncIterable<Uint8Array>
+  readonly signal?: AbortSignal
+  readonly writeChunk?: (options: {
+    readonly chunk: Uint8Array
+    readonly signal?: AbortSignal
+  }) => Promise<boolean>
+}): Promise<string | undefined> => {
+  const decoder = new TextDecoder()
+  let bytes = 0
+  let output = ''
+  let writable = true
+  try {
+    for await (const chunk of stream) {
+      if (writable === true) {
+        try {
+          writable = await writeChunk({ chunk, signal })
+        } catch {
+          writable = false
+        }
+      }
+      bytes += chunk.byteLength
+      if (bytes > 262144) output = ''
+      else output += decoder.decode(chunk, { stream: true })
+    }
+  } catch {
+    return undefined
+  }
+  return bytes > 262144 || writable === false ? undefined : output + decoder.decode()
+}
+
 const warnStdio = (message: string): void => {
   try {
     writeSync(2, message)
@@ -1440,6 +1860,71 @@ const warnStdio = (message: string): void => {
     // Optional protection must still exec with closed or unwritable stderr.
   }
 }
+type NativeCommandResult = {
+  exitCode: number
+  output: string
+  signalCode: string | null
+  durationMs: number
+}
+
+/** Spawn exactly once, preserving inherited stdout and forwarding redirected stderr byte-for-byte. */
+const spawnNativeCommand = ({
+  native,
+  args,
+  stderr,
+}: {
+  readonly native: string
+  readonly args: readonly string[]
+  readonly stderr: 'inherit' | 'pipe'
+}) => {
+  const started = performance.now()
+  const child = Bun.spawn([native, ...args], {
+    env: process.env,
+    stdin: 'inherit',
+    stdout: 'inherit',
+    stderr,
+  })
+  let interrupted = false
+  const writes = new AbortController()
+  let durationMs = 0
+  const exited = child.exited.then((exitCode) => {
+    durationMs = Math.max(0, Math.round(performance.now() - started))
+    return exitCode
+  })
+  const forward = (signal: NodeJS.Signals) => {
+    interrupted = true
+    writes.abort()
+    child.kill(signal)
+  }
+  const signals = ['SIGINT', 'SIGTERM', 'SIGHUP'] as const
+  const handlers = signals.map((signal) => () => forward(signal))
+  for (const [index, signal] of signals.entries()) process.on(signal, handlers[index]!)
+  const result = (async (): Promise<NativeCommandResult> => {
+    try {
+      const output =
+        child.stderr === null
+          ? ''
+          : await captureNativeStderr({ stream: child.stderr, signal: writes.signal })
+      const exitCode = await exited
+      const signalCode = child.signalCode
+      return {
+        exitCode,
+        signalCode,
+        durationMs,
+        output: interrupted === true || signalCode !== null ? '' : (output ?? ''),
+      }
+    } finally {
+      for (const [index, signal] of signals.entries()) process.off(signal, handlers[index]!)
+    }
+  })()
+  return { child, result }
+}
+
+/** Preserve stdout and supervise only redirected native stderr. */
+const observeNativeCommand = (options: {
+  readonly native: string
+  readonly args: readonly string[]
+}): Promise<NativeCommandResult> => spawnNativeCommand({ ...options, stderr: 'pipe' }).result
 
 // Replaced by Nix; source execution receives the same library from devenv.
 declare const BUCK2_STDIO_LIBRARY: string
@@ -1512,12 +1997,22 @@ if (import.meta.main === true) {
     const launchCache = process.argv[3] === '--launch-cache' ? process.argv[4] : undefined
     const requestedArgs = process.argv.slice(launchCache === undefined ? 3 : 5)
     const root = findRoot(process.cwd())
+    let reader = false
+    let admittedInvocation: CacheAdmissionInvocation | undefined
     const admit = async (beforeCachePosture?: CachePostureCheck): Promise<string[]> => {
       const prepared = await directBuckArguments({
         args: requestedArgs,
         cwd: process.cwd(),
         env: process.env,
         beforeCachePosture,
+        onCacheAdmission: (admission) => {
+          admittedInvocation = admission
+        },
+        onCachePosture: (values) => {
+          reader =
+            values['buck2.remote_cache_enabled'] !== 'false' &&
+            values['buck2.allow_cache_uploads'] === 'false'
+        },
       })
       const sentinel = prepared.indexOf('--')
       const configArgs = sentinel === -1 ? prepared : prepared.slice(0, sentinel)
@@ -1582,8 +2077,52 @@ if (import.meta.main === true) {
     } catch (error) {
       warnStdio(`warning: Buck2 stdio flag restoration failed: ${String(error)}\n`)
     }
-    if ((await runNativeWithEvidence({ native, args, root })) === true) process.exit()
-    process.execve(native, [native, ...args], process.env)
+    const superviseReader = shouldSuperviseReaderCommand({
+      reader,
+      stderrIsTTY: isatty(2),
+      args: requestedArgs,
+      cwd: process.cwd(),
+      env: process.env,
+    })
+    if (superviseReader === true) {
+      const command = buckSubcommand(args)?.command
+      process.exitCode = await runWithReaderCacheShadow({
+        reader,
+        command: { subcommand: command ?? 'unknown', argumentCount: args.length },
+        run: async () =>
+          (await runNativeWithEvidence({ native, args, root, stderr: 'pipe' })) ??
+          (await observeNativeCommand({ native, args })),
+        onShadow: (shadow) => {
+          warnStdio(
+            'warning: Buck2 reader REAPI unavailability classified in shadow mode; no rerun happened; the native failure stands\n',
+          )
+          const evidencePath = process.env['CI_BUCK2_CACHE_EVIDENCE_PATH']
+          if (
+            evidencePath !== undefined &&
+            evidencePath !== '' &&
+            admittedInvocation !== undefined
+          ) {
+            try {
+              appendFileSync(
+                `${evidencePath}.admission.jsonl`,
+                `${JSON.stringify({
+                  ...admittedInvocation,
+                  event: 'reader-reapi-unavailable-shadow',
+                  shadow,
+                })}\n`,
+                { mode: 0o600 },
+              )
+            } catch {
+              warnStdio('warning: Buck2 shadow evidence could not be persisted\n')
+            }
+          }
+        },
+      })
+    } else {
+      const result = await runNativeWithEvidence({ native, args, root })
+      if (result === undefined) process.execve(native, [native, ...args], process.env)
+      else process.exitCode = result.exitCode
+    }
   } catch (error) {
     writeSync(2, `${error instanceof Error ? error.message : String(error)}\n`)
     process.exitCode = 1

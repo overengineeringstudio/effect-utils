@@ -11,6 +11,7 @@
   "type": "module",
   "private": true,
   "description": "Portable work-storage v1 contract and Effect reader",
+  "license": "Apache-2.0",
   "exports": {
     ".": {
       "types": "./dist/src/mod.d.ts",
@@ -20,16 +21,16 @@
     "./protocol.schema.json": "./protocol.schema.json"
   },
   "devDependencies": {
-    "@effect/platform-node": "4.0.3",
-    "@effect/vitest": "4.0.3",
+    "@effect/platform-node": "4.1.0",
+    "@effect/vitest": "4.1.0",
     "@types/node": "26.5.0",
     "ajv": "8.20.0",
-    "effect": "4.0.3",
+    "effect": "4.1.0",
     "typescript": "7.0.2",
     "vitest": "5.0.3"
   },
   "peerDependencies": {
-    "effect": "^4.0.3"
+    "effect": "^4.1.0"
   },
   "publishConfig": {
     "access": "public",

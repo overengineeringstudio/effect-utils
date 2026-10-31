@@ -18,6 +18,7 @@ FLAGS
   --watch                Watch for changes and regenerate automatically
   --writeable            Generate files as writable (default: read-only)
   --check                Check if generated files are up to date (for CI)
+  --read-set string      Write check read-set evidence to this path (requires a full --check)
   --dry-run              Preview changes without writing files
   --defer-validation     Generate projections before a repair step; the caller must finish with genie --check
   --phase choice         Only run generators declaring this phase (bootstrap runs before install; default: all phases) (choices: bootstrap, design-time)
@@ -50,6 +51,7 @@ FLAGS
   --watch                Watch for changes and regenerate automatically
   --writeable            Generate files as writable (default: read-only)
   --check                Check if generated files are up to date (for CI)
+  --read-set string      Write check read-set evidence to this path (requires a full --check)
   --dry-run              Preview changes without writing files
   --defer-validation     Generate projections before a repair step; the caller must finish with genie --check
   --phase choice         Only run generators declaring this phase (bootstrap runs before install; default: all phases) (choices: bootstrap, design-time)
@@ -126,6 +128,7 @@ FLAGS
   --watch                Watch for changes and regenerate automatically
   --writeable            Generate files as writable (default: read-only)
   --check                Check if generated files are up to date (for CI)
+  --read-set string      Write check read-set evidence to this path (requires a full --check)
   --dry-run              Preview changes without writing files
   --defer-validation     Generate projections before a repair step; the caller must finish with genie --check
   --phase choice         Only run generators declaring this phase (bootstrap runs before install; default: all phases) (choices: bootstrap, design-time)
@@ -191,6 +194,7 @@ FLAGS
   --watch                Watch for changes and regenerate automatically
   --writeable            Generate files as writable (default: read-only)
   --check                Check if generated files are up to date (for CI)
+  --read-set string      Write check read-set evidence to this path (requires a full --check)
   --dry-run              Preview changes without writing files
   --defer-validation     Generate projections before a repair step; the caller must finish with genie --check
   --phase choice         Only run generators declaring this phase (bootstrap runs before install; default: all phases) (choices: bootstrap, design-time)

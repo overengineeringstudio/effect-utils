@@ -1,4 +1,4 @@
-import { packageJson } from '../../../../../genie/internal.ts'
+import { firstPartyPackageDefaults, packageJson } from '../../../../../genie/internal.ts'
 import utilsPackage from '../../package.json.genie.ts'
 
 /** The fixture exercises the same adapter dependency versions as its owner. */
@@ -11,8 +11,9 @@ const installedVersion = ({ name }: { name: string }): string => {
 
 export default packageJson({
   name: 'fixture-next',
+  ...firstPartyPackageDefaults,
   private: true,
-  packageManager: 'pnpm@12.7.0',
+  packageManager: 'pnpm@12.15.0',
   dependencies: Object.fromEntries(
     ['next', 'react', 'react-dom', '@stylexjs/stylex', 'postcss'].map((name) => [
       name,

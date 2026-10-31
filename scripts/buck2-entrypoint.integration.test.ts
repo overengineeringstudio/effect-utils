@@ -302,8 +302,9 @@ describe('native build ID registry', () => {
         Object.assign(process.env, env)
         process.env.PATH = join(root, 'no-host-utilities')
         delete process.env.BUN_BIN
-        expect(await runNativeWithEvidence({ native, args, root })).toBe(true)
-        expect(process.exitCode).toBe(0)
+        const result = await runNativeWithEvidence({ native, args, root })
+        expect(result?.exitCode).toBe(0)
+        expect(result?.signalCode).toBeNull()
         const shard = JSON.parse(
           readFileSync(join(`${evidence}.shards`, `${buildId}.json`), 'utf8'),
         )
@@ -626,6 +627,103 @@ writeFileSync(sink, [event('SpanStart'), event('SpanEnd')].map(JSON.stringify).j
 })
 
 describe('direct pinned Buck posture', () => {
+  it.each([
+    { stderrMode: 'inherit', termination: 'exit' },
+    { stderrMode: 'pipe', termination: 'exit' },
+    { stderrMode: 'inherit', termination: 'SIGTERM' },
+    { stderrMode: 'pipe', termination: 'SIGTERM' },
+  ])(
+    'preserves native evidence exit/signal and stderr bytes ($stderrMode, $termination)',
+    async ({ stderrMode, termination }) => {
+      const root = fixture()
+      const buildId = '11111111-2222-4333-8444-555555555555'
+      const evidence = join(root, 'evidence.json')
+      const native = join(root, 'native-result')
+      symlinkSync(new URL('../genie', import.meta.url).pathname, join(root, 'genie'))
+      const diagnostic = 'native stderr: \u001b[31mbytes\u001b[0m\n'
+      writeFileSync(
+        native,
+        `#!${process.execPath}
+import {writeFileSync,writeSync,appendFileSync} from 'node:fs';
+appendFileSync(${JSON.stringify(join(root, 'commands'))},'build\\n');
+const args=process.argv.slice(2),trace_id=process.env.BUCK_WRAPPER_UUID;
+const event=phase=>({Event:{trace_id,span_id:1,timestamp:[Math.floor(Date.now()/1000),0],data:{[phase]:{data:{Command:{}}}}}});
+writeFileSync(args[args.indexOf('--event-log')+1],[event('SpanStart'),event('SpanEnd')].map(JSON.stringify).join('\\n')+'\\n');
+writeSync(2,${JSON.stringify(diagnostic)});
+${termination === 'exit' ? 'process.exit(19)' : "process.kill(process.pid,'SIGTERM')"};
+`,
+        { mode: 0o700 },
+      )
+      const child = Bun.spawn(
+        [
+          process.execPath,
+          '-e',
+          `
+import {nativeBuildIdArguments,runNativeWithEvidence} from ${JSON.stringify(join(import.meta.dir, 'buck2-entrypoint.ts'))};
+const args=nativeBuildIdArguments({args:['build','//:empty'],cwd:process.cwd(),env:process.env});
+console.log(JSON.stringify(await runNativeWithEvidence({native:${JSON.stringify(native)},args,root:process.cwd(),stderr:${JSON.stringify(stderrMode)}})));
+`,
+        ],
+        {
+          cwd: root,
+          env: {
+            ...process.env,
+            BUCK_WRAPPER_UUID: buildId,
+            CI_BUCK2_CACHE_EVIDENCE_PATH: evidence,
+            CI_BUCK2_CACHE_EVIDENCE_START: join(root, 'evidence-start'),
+          },
+          stdout: 'pipe',
+          stderr: 'pipe',
+        },
+      )
+      const [stdout, stderr, code] = await Promise.all([
+        new Response(child.stdout).text(),
+        new Response(child.stderr).text(),
+        child.exited,
+      ])
+      expect(code, stderr).toBe(0)
+      expect(stderr).toBe(diagnostic)
+      const result = JSON.parse(stdout)
+      expect(result.exitCode).toBe(termination === 'exit' ? 19 : 143)
+      expect(result.signalCode).toBe(termination === 'exit' ? null : 'SIGTERM')
+      expect(result.output).toBe(stderrMode === 'pipe' && termination === 'exit' ? diagnostic : '')
+      expect(result.durationMs).toBeGreaterThanOrEqual(0)
+      expect(readFileSync(join(root, 'commands'), 'utf8')).toBe('build\n')
+      expect(
+        JSON.parse(readFileSync(`${evidence}.native-build-ids/${buildId}.exit.json`, 'utf8'))
+          .exitCode,
+      ).toBe(result.exitCode)
+    },
+  )
+
+  it('execves the native command when neither evidence nor reader shadow applies', async () => {
+    const root = fixture()
+    const native = join(root, 'native-exec')
+    writeFileSync(native, `#!${process.execPath}\nconsole.log(process.pid); process.exit(23)\n`, {
+      mode: 0o700,
+    })
+    const child = Bun.spawn(
+      [process.execPath, join(import.meta.dir, 'buck2-entrypoint.ts'), native, '--version'],
+      {
+        cwd: root,
+        env: {
+          PATH: process.env.PATH,
+          HOME: root,
+          BUCK2_STDIO_LIBRARY: process.env.BUCK2_STDIO_LIBRARY,
+        },
+        stdout: 'pipe',
+        stderr: 'pipe',
+      },
+    )
+    const [stdout, stderr, exitCode] = await Promise.all([
+      new Response(child.stdout).text(),
+      new Response(child.stderr).text(),
+      child.exited,
+    ])
+    expect(exitCode, stderr).toBe(23)
+    expect(Number(stdout.trim())).toBe(child.pid)
+  })
+
   for (const mode of ['source', 'compiled', 'missing-shim'] as const) {
     it(`preserves inherited stdio flags and complete large stderr after a launcher diagnostic (${mode})`, async () => {
       const root = fixture()

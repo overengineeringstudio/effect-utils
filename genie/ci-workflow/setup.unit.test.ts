@@ -14,12 +14,27 @@ import {
   pipelineDevenvStepName,
   pipelineIdentityStepName,
 } from '../../packages/@overeng/ci-tools/src/pipeline-job-names.ts'
+import { collectWorkflowPolicyViolations } from '../../packages/@overeng/genie/src/runtime/github-workflow/policy.ts'
 import type { GitHubWorkflowArgs } from '../../packages/@overeng/genie/src/runtime/mod.ts'
 import { defaultRefPolicyCheckStep } from './megarepo.ts'
 import { pipelineCloseJob } from './pipeline-telemetry.ts'
+import { fleetWorkflowPolicy } from './policy.ts'
 import { publishedRefIf } from './published-ref.ts'
-import { installNixStep, linuxSandboxPrerequisitesStep, namespaceRunner } from './setup.ts'
 import {
+  installNixStep,
+  linuxSandboxPrerequisitesStep,
+  namespaceRunner,
+  pnpmInstallWithDiagnosticsStep,
+  pnpmStateSetupStep,
+  restoreNixCacheStep,
+  saveNixCacheStep,
+  standardSelfHostedPnpmCiPostSteps,
+  standardSelfHostedPnpmCiPrepSteps,
+} from './setup.ts'
+import {
+  buck2CiJobInstanceStep,
+  ciPnpmHome,
+  ciPnpmStore,
   ciWorkflow as composeCiWorkflow,
   ciJobAdmission,
   defaultRefPolicyVerdictStepId,
@@ -29,6 +44,7 @@ import {
   linuxNixSandboxFallbackStep,
   namespacePrivilegeTrustedPredicate,
   withNixRealisationTimeouts,
+  withCiSourceRoot,
 } from './shared.ts'
 import testPlatforms from './test-platforms.json' with { type: 'json' }
 
@@ -81,7 +97,7 @@ describe('Nix realisation step timeouts', () => {
     for (const [id, job] of Object.entries(ciWorkflow.data.jobs)) {
       if (id === 'consumer-smoke') continue
       for (const step of job.steps) {
-        if (step.name !== undefined && Object.hasOwn(expected, step.name)) {
+        if (step.name !== undefined && Object.hasOwn(expected, step.name) === true) {
           expect(step['timeout-minutes']).toBe(expected[step.name as keyof typeof expected])
         }
       }
@@ -315,11 +331,26 @@ describe('namespaceRunner', () => {
 })
 
 describe('Linux Nix sandbox fallback', () => {
+  const composeSandboxWorkflow = (workflow: Parameters<typeof composeCiWorkflow>[0]) => {
+    const policy = fleetWorkflowPolicy({
+      repository: 'example/sandbox-fixture',
+      workflow: 'Sandbox fixture',
+      mode: 'report',
+    })
+    return composeCiWorkflow({
+      ...workflow,
+      policy: {
+        ...policy,
+        ledger: collectWorkflowPolicyViolations({ workflow, policy }),
+      },
+    })
+  }
+
   const sandboxWorkflow = (
     runsOn: string | string[],
     capabilities?: Readonly<Record<string, 'supported'>>,
   ) =>
-    composeCiWorkflow({
+    composeSandboxWorkflow({
       trustTier: 'public',
       on: { push: { branches: ['main'] } },
       linuxNixSandboxCapabilities: capabilities,
@@ -358,7 +389,7 @@ describe('Linux Nix sandbox fallback', () => {
     ])
       expect(() => sandboxWorkflow(runsOn)).not.toThrow()
     expect(() =>
-      composeCiWorkflow({
+      composeSandboxWorkflow({
         trustTier: 'public',
         on: { push: { branches: ['main'] } },
         jobs: {
@@ -375,9 +406,11 @@ describe('Linux Nix sandbox fallback', () => {
       `'${privileged}' || '${unprivileged}'`,
       `'${unprivileged}' || '${privileged}'`,
     ])
-      expect(() => sandboxWorkflow(`\${{ inputs.fast && ${branches} }}`)).toThrow(/lacks container/)
+      expect(() => sandboxWorkflow(`\${{ github.run_attempt == 1 && ${branches} }}`)).toThrow(
+        /lacks container/,
+      )
     expect(() =>
-      sandboxWorkflow(`\${{ inputs.fast && '${privileged}' || 'ubuntu-latest' }}`),
+      sandboxWorkflow(`\${{ github.run_attempt == 1 && '${privileged}' || 'ubuntu-latest' }}`),
     ).not.toThrow()
     expect(() =>
       sandboxWorkflow(
@@ -390,7 +423,7 @@ describe('Linux Nix sandbox fallback', () => {
     for (const expression of [
       '${{ matrix.runner }}',
       "${{ format('namespace-profile-{0};container.privileged=true', matrix.platform) }}",
-      "${{ inputs.fast && matrix.runner || 'ubuntu-latest' }}",
+      "${{ github.run_attempt == 1 && matrix.runner || 'ubuntu-latest' }}",
     ]) {
       expect(() => sandboxWorkflow(expression)).toThrow(
         /cannot statically determine.*linuxNixSandboxCapabilities/,
@@ -446,21 +479,21 @@ describe('Linux Nix sandbox fallback', () => {
     expect(() =>
       sandboxWorkflow([
         machine,
-        `\${{ inputs.fast && '${privileged}' || '${privileged};github.run-id=42' }}`,
+        `\${{ github.run_attempt == 1 && '${privileged}' || '${privileged};github.run-id=42' }}`,
       ]),
     ).not.toThrow()
     for (const branches of [
       `'${privileged}' || 'namespace-features:container.privileged=false'`,
       `'namespace-features:container.privileged=false' || '${privileged}'`,
     ]) {
-      expect(() => sandboxWorkflow([machine, `\${{ inputs.fast && ${branches} }}`])).toThrow(
-        /lacks container/,
-      )
+      expect(() =>
+        sandboxWorkflow([machine, `\${{ github.run_attempt == 1 && ${branches} }}`]),
+      ).toThrow(/lacks container/)
     }
     expect(() =>
       sandboxWorkflow([
-        `\${{ inputs.fast && '${machine}' || 'ubuntu-latest' }}`,
-        `\${{ inputs.fast && '${privileged}' || '${privileged};github.run-id=42' }}`,
+        `\${{ github.run_attempt == 1 && '${machine}' || 'ubuntu-latest' }}`,
+        `\${{ github.run_attempt == 1 && '${privileged}' || '${privileged};github.run-id=42' }}`,
       ]),
     ).not.toThrow()
   })
@@ -500,16 +533,19 @@ describe('Linux Nix sandbox fallback', () => {
     const machine = 'nscloud-ubuntu-24.04-amd64-16x64-with-features'
     for (const feature of [
       'namespace-features:container.privileged=false',
-      "${{ inputs.fast && 'namespace-features:container.privileged=true' || 'namespace-features:container.privileged=false' }}",
+      "${{ github.run_attempt == 1 && 'namespace-features:container.privileged=true' || 'namespace-features:container.privileged=false' }}",
       'namespace-features:github.run-id=42',
     ])
       expect(() =>
         sandboxWorkflow([machine, feature, '${{ matrix.extraLabel }}'], { build: 'supported' }),
       ).toThrow(/container\.privileged/)
     expect(() =>
-      sandboxWorkflow("${{ inputs.fast && 'namespace-profile-linux-x86-64' || matrix.runner }}", {
-        build: 'supported',
-      }),
+      sandboxWorkflow(
+        "${{ github.run_attempt == 1 && 'namespace-profile-linux-x86-64' || matrix.runner }}",
+        {
+          build: 'supported',
+        },
+      ),
     ).toThrow(/lacks container/)
   })
 
@@ -521,7 +557,7 @@ describe('Linux Nix sandbox fallback', () => {
       ].join('\n'),
     )
     expect(installNixStep().with['extra-conf']).toContain(linuxNixSandboxFallbackConf)
-    const hostedInstall = pipelineCloseJob({}).steps.find(
+    const hostedInstall = pipelineCloseJob({ jobs: {}, runsOn: 'ubuntu-latest' }).steps.find(
       (step) => step.uses === 'cachix/install-nix-action@v31',
     )
     expect(hostedInstall?.with?.extra_nix_config).toBe(linuxNixSandboxFallbackConf)
@@ -529,7 +565,7 @@ describe('Linux Nix sandbox fallback', () => {
 
   it('configures Linux before any command, preserves inherited config, and skips macOS', () => {
     const macConfig = 'keep-derivations = true'
-    const rendered = composeCiWorkflow({
+    const rendered = composeSandboxWorkflow({
       trustTier: 'public',
       on: { push: { branches: ['main'] } },
       jobs: {
@@ -554,7 +590,7 @@ describe('Linux Nix sandbox fallback', () => {
     expect(linuxNixSandboxFallbackStep.run).toContain('"${NIX_CONFIG:-}"')
     expect(linuxNixSandboxFallbackStep.run).toContain('sandbox = true\\nsandbox-fallback = false')
     expect(linuxNixSandboxFallbackStep.run).toContain('sandbox-fallback = false')
-    const recomposed = composeCiWorkflow({
+    const recomposed = composeSandboxWorkflow({
       trustTier: 'public',
       on: { push: { branches: ['main'] } },
       jobs: rendered.jobs,
@@ -636,6 +672,36 @@ describe('Linux Nix sandbox fallback', () => {
     }
   })
 
+  it('realises the source-shape closure before the two-minute measurement budget', () => {
+    for (const job of [
+      ciWorkflow.data.jobs['source-shape']!,
+      empiricalWorkflow.data.jobs['main-source-shape']!,
+    ]) {
+      const guardIndex = job.steps.findIndex(
+        (step) => step.name === 'Log Linux sandbox prerequisites',
+      )
+      const realiseIndex = job.steps.findIndex(
+        (step) => step.name === 'Realise source-shape tool closure',
+      )
+      const measureIndex = job.steps.findIndex(
+        (step) => step.name === 'Measure source shape: effect-utils',
+      )
+      expect(realiseIndex).toBeGreaterThan(guardIndex)
+      expect(measureIndex).toBeGreaterThan(realiseIndex)
+      const realise = job.steps[realiseIndex]!
+      const measure = job.steps[measureIndex]!
+      expect(realise['timeout-minutes']).toBeUndefined()
+      expect(realise.run).toBe('nix build --no-update-lock-file --no-link .#buck2-node')
+      expect(measure.run).toContain(
+        'nix build --no-update-lock-file --no-link --print-out-paths .#buck2-node',
+      )
+    }
+    const requiredMeasurement = ciWorkflow.data.jobs['source-shape']!.steps.find(
+      (step) => step.name === 'Measure source shape: effect-utils',
+    )
+    expect(requiredMeasurement?.['timeout-minutes']).toBe(2)
+  })
+
   it('keeps checkout-controlled execution after the policy verdict and guards always cleanup', () => {
     const job = ciWorkflow.data.jobs['default-ref-policy']!
     const verdict = job.steps.findIndex((step) => step.id === defaultRefPolicyVerdictStepId)
@@ -645,6 +711,7 @@ describe('Linux Nix sandbox fallback', () => {
     const inlineSetupScripts: Record<string, true> = {
       [linuxNixSandboxFallbackStep.run]: true,
       [linuxSandboxPrerequisitesStep({ privileged: 'trusted' }).run]: true,
+      [buck2CiJobInstanceStep.run]: true,
     }
     for (const [index, step] of job.steps.entries()) {
       if (index < verdict) {
@@ -893,6 +960,31 @@ describe('CI execution admission cleanup', () => {
   })
 })
 
+describe('Buck2 CI job instance projection', () => {
+  it('initializes a fresh instance before any Buck-running job steps', () => {
+    for (const definition of [
+      ciWorkflow,
+      compiledWorkflow,
+      empiricalWorkflow,
+      storybookPlaysWorkflow,
+      previewBuildWorkflow,
+      previewDeployWorkflow,
+      autoReviewWorkflow,
+    ]) {
+      const workflow: GitHubWorkflowArgs = definition.data
+      for (const [jobId, job] of Object.entries(workflow.jobs)) {
+        if (job.env?.BUCK2_NO_REMOTE_CACHE !== '0') continue
+        const initializers = job.steps.filter((step) => step.id === 'buck2-ci-job-instance')
+        expect(initializers, jobId).toHaveLength(1)
+        expect(job.steps[1], jobId).toBe(initializers[0]!)
+        expect(initializers[0]!.run, jobId).toContain('BUCK2_CI_JOB_INSTANCE=%s')
+        expect(initializers[0]!.run, jobId).toContain('/dev/urandom')
+        expect(initializers[0]!.run, jobId).toContain('>> "$GITHUB_ENV"')
+      }
+    }
+  })
+})
+
 describe('unit-test shell selection', () => {
   it('selects the narrow shell only at job scope for required unit-test jobs', () => {
     const workflow: GitHubWorkflowArgs = ciWorkflow.data
@@ -906,7 +998,7 @@ describe('unit-test shell selection', () => {
 
     for (const [jobId, job] of Object.entries(workflow.jobs)) {
       expect(job.env?.EFFECT_UTILS_CI_TEST, jobId).toBe(
-        ['test', 'test-macos', 'test-megarepo-store-gc'].includes(jobId) ? '1' : undefined,
+        ['test', 'test-macos', 'test-megarepo-store-gc'].includes(jobId) === true ? '1' : undefined,
       )
       for (const step of job.steps) {
         expect(step.env?.EFFECT_UTILS_CI_TEST, `${jobId}/${step.name ?? step.id}`).toBeUndefined()
@@ -987,6 +1079,38 @@ describe('published consumer ref', () => {
   const smoke = ciWorkflow.data.jobs['consumer-smoke']!
   const promotion = ciWorkflow.data.jobs['promote-published']!
   const steps = promotion.steps!
+
+  it('realises publication inputs before the unchanged build-and-push timeout', () => {
+    const realiseIndex = publisher.steps.findIndex(
+      (step) => step.name === 'Realise publish-products build inputs',
+    )
+    const publishIndex = publisher.steps.findIndex((step) => step.name === 'Publish products')
+    const authIndex = publisher.steps.findIndex((step) => step.id === 'product-cachix-auth')
+    const readIndex = publisher.steps.findIndex((step) => step.id === 'product-cachix-read')
+    expect(readIndex).toBeGreaterThan(-1)
+    expect(realiseIndex).toBeGreaterThan(readIndex)
+    expect(authIndex).toBeGreaterThan(realiseIndex)
+    expect(publishIndex).toBeGreaterThan(authIndex)
+    expect(publisher.steps[readIndex]?.with).toEqual({
+      name: 'overeng-effect-utils',
+      skipPush: true,
+    })
+    expect(publishIndex).toBeGreaterThan(realiseIndex)
+    const realise = publisher.steps[realiseIndex]!
+    const publish = publisher.steps[publishIndex]!
+    expect(realise['timeout-minutes']).toBeUndefined()
+    expect(publish['timeout-minutes']).toBe(32)
+    expect(realise.if).toBe(publish.if)
+    expect(realise.env).toEqual({ GITHUB_TOKEN: publish.env?.GITHUB_TOKEN })
+    expect(realise.env?.GITHUB_TOKEN).toBe('${{ github.token }}')
+    expect(realise.env?.CACHIX_AUTH_TOKEN).toBeUndefined()
+    for (const step of publisher.steps.slice(0, realiseIndex + 1)) {
+      expect(step.env?.CACHIX_AUTH_TOKEN).toBeUndefined()
+      expect(step.with?.authToken).toBeUndefined()
+    }
+    expect(realise.run).toBe(withCiSourceRoot('nix/buck2-products/publish.sh --realise-inputs'))
+    expect(publish.run).toContain('nix/buck2-products/publish.sh --proposal "$proposal"')
+  })
 
   it('joins independent same-SHA publication and consumer proofs before main-push promotion', () => {
     expect(promotion.needs).toEqual(['publish-products', 'consumer-smoke'])
@@ -1077,5 +1201,57 @@ describe('shared default-ref policy configuration', () => {
     expect(JSON.parse(verdict.env?.DEFAULT_REFS_JSON ?? '{}')).toEqual({
       'livestorejs/livestore': 'dev',
     })
+  })
+})
+
+describe('cold pnpm preparation', () => {
+  it.each([true, false])(
+    'prepares cold pnpm state and installs unconditionally with diagnostics enabled: %s',
+    (includeDiagnostics) => {
+      const prep = standardSelfHostedPnpmCiPrepSteps({ includeDiagnostics })
+      const post = standardSelfHostedPnpmCiPostSteps({
+        includeDiagnosticsArtifact: includeDiagnostics,
+      })
+      const isolationIndex = prep.findIndex((step) => step.name === pnpmStateSetupStep.name)
+      const install = pnpmInstallWithDiagnosticsStep()
+      const installIndex = prep.findIndex((step) => step.name === install.name)
+
+      expect(isolationIndex).toBeGreaterThanOrEqual(0)
+      expect(prep[isolationIndex]).toEqual(pnpmStateSetupStep)
+      expect(pnpmStateSetupStep).not.toHaveProperty('if')
+      expect(pnpmStateSetupStep.run).toContain(`mkdir -p "${ciPnpmStore}" "${ciPnpmHome}" .devenv`)
+      expect(pnpmStateSetupStep.run).toContain(`ln -s "${ciPnpmStore}" "$member_store"`)
+      for (const [name, path] of [
+        ['PNPM_STORE_DIR', ciPnpmStore],
+        ['PNPM_CONFIG_STORE_DIR', ciPnpmStore],
+        ['PNPM_HOME', ciPnpmHome],
+      ]) {
+        expect(pnpmStateSetupStep.run).toContain(`echo "${name}=${path}" >> "$GITHUB_ENV"`)
+      }
+      expect(installIndex).toBeGreaterThan(isolationIndex)
+      expect(prep[installIndex]).toEqual(install)
+      expect(prep[installIndex]).not.toHaveProperty('if')
+      expect(install.run).toContain('pnpm:install')
+      expect(install.run).not.toContain('cache-hit')
+      expect([...prep, ...post].map((step) => step.name)).not.toContain('Restore pnpm state')
+      expect([...prep, ...post].map((step) => step.name)).not.toContain('Save pnpm state')
+      expect(
+        [...prep, ...post].filter(
+          (step) =>
+            'uses' in step &&
+            typeof step.uses === 'string' &&
+            step.uses.startsWith('actions/cache/'),
+        ),
+      ).toEqual([restoreNixCacheStep(), saveNixCacheStep()])
+    },
+  )
+})
+
+describe('Nix cache stable paths', () => {
+  it('uses identical stable restore/save paths for Nix caches', () => {
+    const nixRestore = restoreNixCacheStep()
+    const nixSave = saveNixCacheStep()
+    expect(nixRestore.with.path).toBe(nixSave.with.path)
+    expect(nixRestore.with.path).not.toContain('github.run_id')
   })
 })

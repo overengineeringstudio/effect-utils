@@ -5,6 +5,7 @@ import {
   netlifyPreviewDeployJobs,
   netlifyPreviewDeployTrigger,
 } from '../../genie/ci-workflow.ts'
+import { effectUtilsWorkflowPolicy } from '../../genie/ci-workflow/policy.ts'
 import {
   storybookPreviewBuildWorkflowName,
   storybookPreviewRunner,
@@ -15,6 +16,7 @@ import {
 // `workflow_run`, so it only takes effect once merged to `main`.
 // oxlint-disable-next-line overeng/exports-first -- generated entrypoint
 export default ciWorkflow({
+  policy: effectUtilsWorkflowPolicy('storybook-preview-deploy.yml'),
   trustTier: 'public',
   name: 'Storybook Preview Deploy',
   on: netlifyPreviewDeployTrigger(storybookPreviewBuildWorkflowName),

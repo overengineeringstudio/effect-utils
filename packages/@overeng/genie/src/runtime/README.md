@@ -34,47 +34,64 @@ know about `packageJson(...)`.
 
 ## Filesystem inputs and warm generation caches
 
-With `GENIE_INPUT_MANIFEST` set, a successful full generation (all phases,
-validation enabled, not a dry run) atomically publishes that file. Its first line
-is `genie-inputs-v1` when source closure analysis completes, or
-`genie-inputs-incomplete` when it cannot establish the closure. Only `v1` is
-cacheable; incomplete/unknown headers must mean a cache miss. Remaining lines
-are sorted, deduplicated absolute input paths, terminated by newlines.
-Failed, interrupted, partial, and dry runs never
-replace an existing manifest. Without the environment variable the CLI behaves
-as before.
+With `GENIE_INPUT_MANIFEST` set, a successful full generation or check (all
+phases, validation enabled, not a dry run) atomically publishes sorted unique
+absolute input paths. Its first line preserves the existing generation-cache
+decision: `genie-inputs-incomplete` after source scan/read failures, import-map
+resolution failures, or unresolved imports; otherwise `genie-inputs-v1`.
+This legacy decision does not certify the influencing closure and MUST NOT be
+used as read-set reuse evidence. Unrestricted generators, helpers, dependencies,
+and engine/validator capabilities still make the read-set conservatively
+incomplete without disabling the legacy generation cache.
+
+`genie --check --read-set FILE` additionally records schema-1 observations and
+publishes private (`0600`) JSON evidence. `FILE.reasons.json` contains the same
+reason occurrences, source modules/packages, and expanded affected-generator
+lists, plus `groups` keyed by reason code and exact source location with
+`occurrences` counts and unique affected generators. The artifact contains
+successful per-target results; it does **not** enable reuse yet. Closure
+certification, consumer current-state validation, and per-generator reuse are
+not implemented in this recording slice.
+
+Both requested outputs are projections of one invocation's recording.
+`GENIE_INPUT_MANIFEST.meta.json` (where the environment variable's value is the
+manifest filename) carries the invocation ID, `legacyComplete` (matching the
+header), `readSetComplete` (matching the artifact, or `null` in path-only mode),
+and whether digest evidence was requested. The legacy path set equals the
+file/directory path union in the read-set, including observed absences. The
+internal `validateReadSetPair` helper rejects mismatched invocation IDs or
+read-set completeness and path-only metadata; it deliberately allows a complete
+legacy cache decision alongside an incomplete read-set. It validates artifact
+structure and same-run provenance, not current state or reuse eligibility. Failed
+checks/publication remove stale evidence rather than leaving a previous
+successful result behind.
+Partial/dry runs do not request a recording. Without either output, no recording
+state, source scan, hashing, or artifact IO is installed. Legacy-only recording
+collects paths and reasons, not digest evidence.
 
 For generator filesystem reads use `defineRepoContext().readText/readJson`,
 or the Node-only `@overeng/genie/node` exports `inputReadFileSync`,
-`inputExistsSync`, `inputStatSync`, and `inputReaddirSync`. These retain Node's
-overloads and errors and record paths **before** probing, including missing
-optional inputs. `recordInput(path)` explicitly declares a dependency read by
-another API or a subprocess. Recursive `inputReaddirSync` records returned
-paths, including all nested directories; custom walkers must likewise record
-each visited directory. Cache consumers hash canonical resolution identity, file
-contents, directory entry names/types, and missing markers, not just existing files.
+`inputExistsSync`, `inputStatSync`, `inputReaddirSync`, and
+`inputRealpathSync`. These retain Node's overloads and errors and associate
+consumed observations with stability checks, including missing optional paths.
+Stat recording cross-checks the metadata returned to the caller against exact
+bigint evidence; disagreement remains incomplete even if state is restored.
+`recordInputEnvironment`
+returns the consumed environment value but records only its presence and a
+freshly salted digest, never plaintext. `recordInput(path)` declares a dependency
+consumed by another API. Recursive directory readers retain nested inventories,
+including empty directories. Repeated conflicting observations are incomplete.
 
-The engine also records generator source and transitive relative/`#`-alias
-imports (including helpers and catalogs), bare workspace-package imports after
-following symlinks, resolution candidates, package scope/export metadata, and
-consulted import-map/megarepo files. Root `megarepo.lock`, `flake.lock`,
-`pnpm-lock.yaml`, `pnpm-workspace.yaml`, `package.json`, and formatter configuration
-are inputs too. Literal dynamic imports discoverable by Bun's import scanner
-are included; computed import paths must be declared with `recordInput`.
-Unresolved, unreadable, or unparseable imports do not make generation fail:
-optional imports may legitimately be conditional or caught. They instead mark
-the process-shared recording incomplete, so its manifest cannot enable warm
-reuse. Missing package export targets can depend on arbitrary resolver metadata;
-recording guessed candidate paths alone is not proof of a complete closure.
-The real runtime import remains responsible for its own failure semantics.
-Installed dependency closures whose real paths remain under `node_modules`
-are owned by the package-manager/tool identity, not traversed as generator source.
-
-This is an explicit input contract, **not** transparent process tracing:
-arbitrary `node:fs`, `Bun.file`, native libraries, subprocess reads, environment
-values, and network responses cannot all be intercepted consistently across
-Node/Bun and compiled execution. Custom readers must use these APIs or declare
-their file inputs explicitly. Filesystem reads through descriptors need an
-explicit path declaration. Retained in-process module caches can retain reads
-from earlier runs, so recording conservatively retains previously consulted
-paths across successful and failed recording sessions.
+This is an explicit input contract, **not** transparent tracing or containment.
+Raw filesystem access, environment lookup, native code, subprocesses, computed
+imports, and network capabilities remain visible as reasons, rather than being
+certified by partial wrappers. The source scan's lexical capability diagnostics
+are explicitly unproven; every unaccounted module also receives its own
+`unknown-capability` occurrence. Runtime import and validation semantics are
+unchanged. Each session starts fresh; evidence is never assembled from a previous
+recording or reused module-initialization history.
+Within one session, canonical reason/payload keys and decoded prefix, symlink,
+and inventory data are cached to avoid repeated serialization and allocation.
+Caches do not replace fresh filesystem observations or final stability checks:
+directory readers still enumerate raw names and inspect child types, and
+traversed prefixes still receive fresh metadata checks.

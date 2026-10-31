@@ -77,6 +77,13 @@ export const writeGithubDeployOutputs = Effect.fn('ci-tools.deploy.io.write-gith
     yield* Effect.sync(() => {
       if (opts.githubOutputFile !== undefined) {
         appendGithubOutput({ path: opts.githubOutputFile, name: 'final_url', value: finalUrl })
+        if (opts.result.deployId !== undefined) {
+          appendGithubOutput({
+            path: opts.githubOutputFile,
+            name: 'deploy_id',
+            value: opts.result.deployId,
+          })
+        }
         appendGithubOutput({ path: opts.githubOutputFile, name: 'deploy_url', value: finalUrl })
         appendGithubOutput({
           path: opts.githubOutputFile,

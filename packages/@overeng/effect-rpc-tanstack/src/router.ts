@@ -21,6 +21,8 @@ const ExitSchema = Schema.Exit(Schema.Unknown, Schema.Unknown, Schema.Defect())
 /**
  * Encoded Exit type for SSR serialization.
  * This is the JSON-safe representation that can be serialized by seroval.
+ * Its failure cause follows Effect's Cause model (`reasons` in Effect 4.1).
+ * This is not the HTTP RPC wire codec, which encodes causes as arrays.
  */
 export type ExitEncoded = typeof ExitSchema.Encoded
 

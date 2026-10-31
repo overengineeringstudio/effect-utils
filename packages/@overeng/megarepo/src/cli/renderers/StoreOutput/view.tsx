@@ -53,6 +53,7 @@ export const StoreView = ({ stateAtom }: StoreViewProps) => {
           worktreeCount={state.worktreeCount}
           diskUsage={state.diskUsage}
           worktrees={state.worktrees}
+          repoIssues={state.repoIssues}
         />
       )
     case 'Fetch':
@@ -198,12 +199,14 @@ const StoreStatusView = ({
   worktreeCount,
   diskUsage,
   worktrees,
+  repoIssues,
 }: {
   basePath: string
   repoCount: number
   worktreeCount: number
   diskUsage?: string | undefined
   worktrees: readonly StoreWorktreeStatus[]
+  repoIssues: readonly { repo: string; type: string; message: string }[]
 }) => {
   // Filter to only worktrees with issues
   const worktreesWithIssues = worktrees.filter((w) => w.issues.length > 0)
@@ -211,7 +214,7 @@ const StoreStatusView = ({
   // Count issues by severity
   const errorCount = worktrees.reduce(
     (acc, w) => acc + w.issues.filter((i) => i.severity === 'error').length,
-    0,
+    repoIssues.length,
   )
   const warningCount = worktrees.reduce(
     (acc, w) => acc + w.issues.filter((i) => i.severity === 'warning').length,
@@ -237,9 +240,17 @@ const StoreStatusView = ({
         </Text>
         <Text> </Text>
       </Box>
-      {worktreesWithIssues.length > 0 && (
+      {(worktreesWithIssues.length > 0 || repoIssues.length > 0) && (
         <>
           <Text bold>Issues:</Text>
+          {repoIssues.map((issue) => (
+            <Box key={`${issue.repo}-${issue.type}`} flexDirection="column">
+              <Text color="red">
+                {SYMBOLS.cross} {issue.repo} (.bare)
+              </Text>
+              <Text> {issue.message}</Text>
+            </Box>
+          ))}
           {worktreesWithIssues.map((worktree) => (
             <StoreStatusWorktreeRow
               key={`${worktree.repo}-${worktree.refType}-${worktree.ref}`}
@@ -389,7 +400,7 @@ const StoreStatusSummary = ({
     return (
       <Box flexDirection="row">
         <Text color="green">{SYMBOLS.check}</Text>
-        <Text> All worktrees healthy</Text>
+        <Text> Store healthy</Text>
       </Box>
     )
   }

@@ -55,6 +55,10 @@
   ],
   "neutral": [
     {
+      "task": "test:alchemy-github:unbounded",
+      "rationale": "Manual read-only GitHub App adoption lane; skipped without explicit credentials and no platform-specific behavior."
+    },
+    {
       "task": "buck2:rust:generators:test",
       "rationale": "Platform-neutral Bun/JS contract generation and USTAR round-trips through pinned GNU tar; no Darwin-specific behavior."
     },
@@ -148,6 +152,10 @@
         "rationale": "ai-gateway-edge bounded parsing, schema, API, rendering or build-contract assertions; no Darwin-specific host lifecycle regression. Host-sensitive source complements are classified independently."
       },
       {
+        "task": "test:alchemy-github",
+        "rationale": "Manifest, drift and ruleset mapping assertions with local HTTP endpoints; no host-specific lifecycle behavior. Manual live adoption is owned by the source/unbounded complement."
+      },
+      {
         "task": "test:ci-tools",
         "rationale": "ci-tools bounded parsing, schema, API, rendering or build-contract assertions; no Darwin-specific host lifecycle regression. Host-sensitive source complements are classified independently."
       },
@@ -212,8 +220,12 @@
         "rationale": "effect-schema-form bounded parsing, schema, API, rendering or build-contract assertions; no Darwin-specific host lifecycle regression. Host-sensitive source complements are classified independently."
       },
       {
+        "task": "test:genie-fractal",
+        "rationale": "genie-fractal bounded parsing, schema, API, rendering or build-contract assertions; no Darwin-specific host lifecycle regression. Host-sensitive source complements are classified independently."
+      },
+      {
         "task": "test:genie-smalltalk",
-        "rationale": "genie-smalltalk bounded parsing, schema, API, rendering or build-contract assertions; no Darwin-specific host lifecycle regression. Host-sensitive source complements are classified independently."
+        "rationale": "Temporary package alias identity and compatibility assertions; no host-specific lifecycle behavior. arn:lmig:smalltalk:2026-10-26-genie-fractal-alias"
       },
       {
         "task": "test:gh-ci-utils",
@@ -346,6 +358,10 @@
       {
         "script": "pnpm-shared-store-reuse.test.sh",
         "rationale": "Explicit Darwin heap/teardown-abort handling, actual clone/copy/hardlink import behavior, concurrent shared-store installs and inode-alias mutation probes."
+      },
+      {
+        "script": "pnpm-store-retire.test.sh",
+        "rationale": "Real portable maintenance leases, symlink/GVS and hardlink consumer scans, NUL-safe Git worktrees, protected-store aliases and fd-safe tombstone removal over isolated temporary fixtures."
       },
       {
         "script": "pnpm-source-input-staging.test.sh",
@@ -489,6 +505,10 @@
       {
         "script": "pnpm-task-smoke.test.sh",
         "rationale": "Generated task flags/cache/error-policy contracts with fake pnpm and no-op flock. Darwin teardown cases explicitly override isDarwin and synthesize exits 134/137, so Linux exercises the same Darwin policy."
+      },
+      {
+        "script": "playwright-network-isolation.test.sh",
+        "rationale": "Linux namespace contract proves the task can reach its local HTTP server but has no non-loopback route; unsupported platforms explicitly report the unsandboxed fallback."
       },
       {
         "script": "secretspec-native-tasks.test.sh",

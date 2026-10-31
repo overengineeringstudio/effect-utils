@@ -69,6 +69,8 @@ let
       config
       workspaceRoot
       globalVirtualStore
+      installFlags
+      pnpmPkg
       ;
   };
   workspaceCacheName =
@@ -108,6 +110,12 @@ let
       "${taskNamePrefix}:store:migrate-legacy"
     else
       "${taskNamePrefix}:store:migrate-legacy:${taskSuffix}";
+  retireStoreTaskName =
+    if taskSuffix == null then
+      "${taskNamePrefix}:store:retire"
+    else
+      "${taskNamePrefix}:store:retire:${taskSuffix}";
+  retireStoreCli = import ./pnpm-store-retire.nix { inherit pkgs; };
   resetLockFilesTaskName =
     if taskSuffix == null then
       "${taskNamePrefix}:reset-lock-files"
@@ -138,9 +146,9 @@ let
   # derivation here would force the module's `pkgs` argument while devenv is
   # still assembling `_module.args`, causing an evaluation recursion.
   pnpmLockMutatorOverrideVersion =
-    if pnpmLockMutatorPkg == null then "12.7.0" else pnpmLockMutatorPkg.version or "unknown";
+    if pnpmLockMutatorPkg == null then "12.15.0" else pnpmLockMutatorPkg.version or "unknown";
   pnpmLockMutatorOverrideIsSupported =
-    pnpmLockMutatorPkg == null || pnpmLockMutatorOverrideVersion == "12.7.0";
+    pnpmLockMutatorPkg == null || pnpmLockMutatorOverrideVersion == "12.15.0";
 
   flock = "${pkgs.flock}/bin/flock";
   installFlagsString = lib.escapeShellArgs installFlags;
@@ -410,7 +418,7 @@ let
       ''}
 
       if [ -z "''${CI:-}" ]; then
-        pnpm "''${install_args[@]}"
+        "$PNPM_NATIVE_BIN" "''${install_args[@]}"
         return
       fi
 
@@ -430,7 +438,7 @@ let
         # so teardown pressure does not fail otherwise-complete installs.
         export NODE_OPTIONS="''${NODE_OPTIONS:+$NODE_OPTIONS }--max-old-space-size=1536"
       ''}
-      pnpm "''${install_args[@]}" > "$log_file" 2>&1
+      "$PNPM_NATIVE_BIN" "''${install_args[@]}" > "$log_file" 2>&1
       rc="$?"
       set -e
       if [ "$rc" -eq 0 ]; then
@@ -619,7 +627,9 @@ let
           _force_install=true
         fi
 
-        if [ "$_force_install" = true ]; then
+        # The stale projection is already purged. Frozen stores can rematerialize
+        # it from the CAS, but pnpm rejects --force with read-only store policy.
+        if [ "$_force_install" = true ] && [ "$(pnpm_frozen_store_policy "$PNPM_NATIVE_BIN" ${installFlagsString})" != true ]; then
           run_pnpm_install --force
         else
           run_pnpm_install
@@ -863,10 +873,23 @@ let
           echo "[pnpm] Legacy host Store Cache migration is unavailable with a job-local store" >&2
           exit 1
         fi
-        store_dir="''${PNPM_SHARED_STORE_DIR:-$HOME/.local/share/pnpm/store-shared-v1}"
+        store_dir="''${PNPM_SHARED_STORE_DIR:-$(pnpm_shared_store_default ${lib.escapeShellArg "${pkgs.nodejs}/bin/node"})}"
         expected_legacy_files="$HOME/.local/share/pnpm/shared-files/v11"
         acquire_pnpm_store_cache_lease ${lib.escapeShellArg flock} exclusive "$store_dir" 600
         migrate_legacy_pnpm_store_cache "$store_dir" "$expected_legacy_files"
+      '';
+    };
+
+    "${retireStoreTaskName}" = {
+      description = "Dry-run retirement of PNPM_RETIRE_STORE_DIR; set PNPM_RETIRE_APPLY=1 to apply";
+      exec = trace.exec retireStoreTaskName ''
+        set -euo pipefail
+        cd ${lib.escapeShellArg workspaceRootAbs}
+        retire_args=()
+        if [ "''${PNPM_RETIRE_APPLY:-0}" = 1 ]; then
+          retire_args+=(--apply)
+        fi
+        exec ${retireStoreCli}/bin/pnpm-store-retire "''${retire_args[@]}"
       '';
     };
 
@@ -889,13 +912,14 @@ let
         doctorTaskName
         repairTaskName
         migrateLegacyStoreTaskName
+        retireStoreTaskName
       ];
 
 in
 assert lib.assertMsg (builtins.isBool globalVirtualStore) "globalVirtualStore must be a Boolean";
 assert lib.assertMsg pnpmLockMutatorOverrideIsSupported ''
   pnpm lock mutator version ${pnpmLockMutatorOverrideVersion} is not supported.
-  Set a derivation versioned as the verified-safe pnpm 12.7.0 pin;
+  Set a derivation versioned as the verified-safe pnpm 12.15.0 pin;
   other versions require explicit verification and an allowlist change.
 '';
 assert lib.assertMsg (!sourceInputPathsOverlap) "sourceInputPaths entries must not overlap";
@@ -905,7 +929,10 @@ assert lib.assertMsg (!sourceInputPathsOverlap) "sourceInputPaths entries must n
       tasks = selectedTasks;
       reals = lib.optionalAttrs (pnpmPkg != null) { pnpm = pnpmPkg; };
     }
-    ++ [ (import ./pnpm-store-gc.nix { inherit pkgs; }) ];
+    ++ [
+      (import ./pnpm-store-gc.nix { inherit pkgs; })
+      retireStoreCli
+    ];
 
   enterShell = lib.mkIf (globalCache && workspaceRoot == ".") ''
     export PNPM_HOME="''${PNPM_HOME:-${config.devenv.root}/.devenv/pnpm-home}"

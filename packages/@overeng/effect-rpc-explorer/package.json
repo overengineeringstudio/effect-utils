@@ -15,6 +15,7 @@
   "version": "0.1.0",
   "type": "module",
   "private": true,
+  "license": "Apache-2.0",
   "exports": {
     ".": {
       "types": "./dist/src/mod.d.ts",
@@ -26,13 +27,13 @@
     "@overeng/otel-contract": "workspace:^"
   },
   "devDependencies": {
-    "@effect/vitest": "4.0.3",
-    "effect": "4.0.3",
+    "@effect/vitest": "4.1.0",
+    "effect": "4.1.0",
     "typescript": "7.0.2",
     "vitest": "5.0.3"
   },
   "peerDependencies": {
-    "effect": "^4.0.3"
+    "effect": "^4.1.0"
   },
   "publishConfig": {
     "access": "public",

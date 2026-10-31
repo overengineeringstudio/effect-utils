@@ -50,6 +50,7 @@ let
     ${publishBuckCapabilities}
     cd "$root"
     export BWRAP_BIN=${repoFlake.packages.${currentSystem}.buck2-bubblewrap}/bin/bwrap
+    # Match the immutable launcher artifact's declared runtime, not the test runner.
     export BUN_BIN=${flakePkgs.bun}/bin/bun
     export BASH_BIN=${repoFlake.packages.${currentSystem}.buck2-rust-shell}/bin/bash
     probe_outputs="$("$BUCK2_BIN" build \
@@ -919,6 +920,14 @@ let
     };
 in
 {
+  # Only this repository's shell/tasks receive the temporary Bun runtime fix.
+  # repoFlake/flakePkgs and all published package closures remain independent.
+  overlays = [
+    (_final: previous: {
+      bun = import ./nix/devenv-bun.nix { pkgs = previous; };
+    })
+  ];
+
   # Shared source tasks lease before resolving their package binary.
   env.EDITOR_VIEW_SOURCE_LAUNCHER = "${sourceLease}/bin/editor-view-source";
   env.EDITOR_VIEW_LEASE_BIN = "${editorViewLease}/bin/editor-view-lease";
@@ -1091,10 +1100,12 @@ in
         {
           path = "packages/@overeng/utils";
           name = "utils";
+          isolateNetwork = true;
         }
         {
           path = "packages/@overeng/tui-react";
           name = "tui-react";
+          isolateNetwork = true;
         }
         {
           path = "packages/@overeng/meters";
@@ -1215,6 +1226,12 @@ in
     MV_BIN = "${pkgs.coreutils}/bin/mv";
     JQ_BIN = "${pkgs.jq}/bin/jq";
     FINGERPRINT_BIN = "${repoFlake.packages.${currentSystem}.buck2-fingerprint}/bin/buck2-fingerprint";
+  };
+  # The source deploy complement evaluates real Nix task launchers against fake
+  # providers; pin its evaluator and jq instead of relying on host PATH tools.
+  tasks."test:ci-tools:unbounded".env = {
+    NIX_INSTANTIATE_BIN = "${pkgs.nix}/bin/nix-instantiate";
+    JQ_BIN = "${pkgs.jq}/bin/jq";
   };
   tasks."test:restate-integration" = lib.mkIf (!ciUnitTest) {
     after = lib.mkForce [ "buck2:editor:publish:restate-effect" ];
@@ -1363,6 +1380,8 @@ in
         repoFlake.packages.${currentSystem}.buck2-fingerprint
       }/bin/buck2-fingerprint
       ${tsSandboxTestEnvironment}
+      cd "$root"
+      ${sourceBun}/bin/bun "$root/packages/@overeng/buck2-tools/src/bun-test-runner.ts" test ./buck2/dependencies/assemble-store.unit.test.ts
       cd "$root/packages/@overeng/buck2-tools"
       exec ${sourceBun}/bin/bun "$root/packages/@overeng/buck2-tools/src/bun-test-runner.ts" test src/*.test.ts
     ''
@@ -1370,12 +1389,19 @@ in
 
   tasks."genie:ci-workflow:test" = {
     description = "Run bootstrap-safe CI workflow helpers and strict Buck cache evidence joins";
+    # CLI integration tests and root CI scripts import the bootstrap dependency view.
+    after = [ "buck2:editor:bootstrap" ];
     exec = trace.exec "genie:ci-workflow:test" ''
       set -euo pipefail
       cd "''${DEVENV_ROOT:-$PWD}"
       # `./` makes these exact paths; bare arguments are suffix filters that
       # also match the copies Buck stages under buck-out.
-      ${sourceBun}/bin/bun ./packages/@overeng/buck2-tools/src/bun-test-runner.ts test ./genie/ci-workflow/default-ref-policy-script.unit.test.ts ./genie/ci-workflow/rust.unit.test.ts ./genie/ci-workflow/setup.unit.test.ts ./genie/ci-workflow/nix-substituter.integration.test.ts ./genie/ci-workflow/empirical-proofs.unit.test.ts ./genie/ci-scripts/buck2-cache-join.unit.test.ts ./genie/ci-scripts/buck2-cache-join-discovery.unit.test.ts ./genie/ci-scripts/buck2-cache-join-download.unit.test.ts ./genie/ci-scripts/buck2-cache-warm99.unit.test.ts ./genie/ci-scripts/buck2-cache-warm99.integration.test.ts
+      ${sourceBun}/bin/bun ./packages/@overeng/buck2-tools/src/bun-test-runner.ts test ./packages/@overeng/genie/src/runtime/github-workflow/policy-step-identity.unit.test.ts ./genie/ci-workflow/binary-cache-composition.unit.test.ts
+      ${sourceBun}/bin/bun ./packages/@overeng/buck2-tools/src/bun-test-runner.ts test ./packages/@overeng/genie/src/runtime/github-workflow/ci-workflow-helpers.unit.test.ts
+      ${sourceBun}/bin/bun ./packages/@overeng/buck2-tools/src/bun-test-runner.ts test ./scripts/genie-actionlint.integration.test.ts
+      ${sourceBun}/bin/bun ./packages/@overeng/buck2-tools/src/bun-test-runner.ts test ./genie/ci-workflow/check-policy.integration.test.ts
+      ${sourceBun}/bin/bun ./packages/@overeng/buck2-tools/src/bun-test-runner.ts test ./packages/@overeng/genie/src/runtime/github-workflow/policy.unit.test.ts ./genie/ci-workflow/policy.unit.test.ts ./genie/ci-workflow/default-ref-policy-script.unit.test.ts ./genie/ci-workflow/rust.unit.test.ts ./genie/ci-workflow/storage.unit.test.ts ./genie/ci-workflow/setup.unit.test.ts ./genie/ci-workflow/nix-substituter.integration.test.ts ./genie/ci-workflow/empirical-proofs.unit.test.ts ./genie/ci-scripts/buck2-cache-join.unit.test.ts ./genie/ci-scripts/buck2-cache-join-discovery.unit.test.ts ./genie/ci-scripts/buck2-cache-join-download.unit.test.ts ./genie/ci-scripts/buck2-cache-warm99.unit.test.ts ./genie/ci-scripts/buck2-cache-warm99.integration.test.ts
+      ${sourceBun}/bin/bun ./packages/@overeng/buck2-tools/src/bun-test-runner.ts test ./genie/ci-workflow/policy-migration-ledger.integration.test.ts
       exec ${pkgs.bash}/bin/bash ./genie/ci-workflow/published-ref-decide.test.sh
     '';
     execIfModified = [
@@ -1385,6 +1411,8 @@ in
       "genie/ci.ts"
       ".github/workflows/ci.yml.genie.ts"
       "packages/@overeng/genie/src/runtime/**/*.ts"
+      "scripts/genie-actionlint.integration.test.ts"
+      "scripts/test-tmp.ts"
     ];
   };
 
@@ -1400,6 +1428,7 @@ in
     execIfModified = [
       "nix/buck2.nix"
       "scripts/buck2-entrypoint.*"
+      "scripts/test-tmp.ts"
       "scripts/buck2-stdio.*"
       "scripts/buck2-cache-posture.*"
       "scripts/buck2-remote-cache-proof.sh"
@@ -1416,6 +1445,7 @@ in
       export BUCK2_NATIVE_BIN=${buck2Machine}/libexec/buck2
       exec ${sourceBun}/bin/bun ./packages/@overeng/buck2-tools/src/bun-test-runner.ts test \
         ./scripts/buck2-entrypoint.posture.integration.test.ts \
+        ./scripts/buck2-gate-isolation.integration.test.ts \
         ./scripts/buck2-entrypoint.daemon.integration.test.ts \
         ./scripts/buck2-cache-posture.integration.test.ts
     '';
@@ -1546,6 +1576,8 @@ in
       set -euo pipefail
       cd "''${DEVENV_ROOT:-$PWD}"
       export PATH=${lib.makeBinPath [ pkgs.gnutar ]}:$PATH
+      # Contract fingerprints use the published runtime; remove with the shell override.
+      export BUN_BIN=${flakePkgs.bun}/bin/bun
       exec ${sourceBun}/bin/bun test ./buck2/rust/
     '';
     execIfModified = [
@@ -1628,6 +1660,15 @@ in
         cargo test --locked --package 'buck2-*'
       )
       ${sourceBun}/bin/bun ./packages/@overeng/buck2-tools/src/bun-test-runner.ts test buck2/swift/compile.unit.test.ts
+    '';
+  };
+
+  tasks."cargo:test:ci-storage" = {
+    description = "Test canonical CI storage archives and presigned transport";
+    exec = trace.exec "cargo:test:ci-storage" ''
+      set -euo pipefail
+      cd "''${DEVENV_ROOT:-$PWD}/rust"
+      cargo test --locked --package ci-storage
     '';
   };
 
@@ -1802,7 +1843,9 @@ in
     exec = trace.exec "content-address:contract:generate" ''
       set -euo pipefail
       root="''${DEVENV_ROOT:-$PWD}"
-      exec ${sourceBun}/bin/bun "$root/packages/@overeng/content-address/src/generate-contract.ts"
+      # Contract fingerprints use the published runtime; remove with the shell override.
+      export BUN_BIN=${flakePkgs.bun}/bin/bun
+      exec ${sourceLease}/bin/editor-view-source "$BUN_BIN" "$root/packages/@overeng/content-address/src/generate-contract.ts"
     '';
   };
 
@@ -1819,7 +1862,9 @@ in
         "$root/rust/content-address-contract/generation.json" \
         "$root/rust/content-address-contract/src/lib.rs" \
         "$root/rust/content-address-contract/schema/"*.json
-      exec ${sourceBun}/bin/bun "$root/packages/@overeng/content-address/src/generate-contract.ts" --check
+      # Contract fingerprints use the published runtime; remove with the shell override.
+      export BUN_BIN=${flakePkgs.bun}/bin/bun
+      exec ${sourceLease}/bin/editor-view-source "$BUN_BIN" "$root/packages/@overeng/content-address/src/generate-contract.ts" --check
     '';
   };
 
@@ -1931,6 +1976,12 @@ in
         ${pkgs.bun}/bin/bun "$root/packages/@overeng/buck2-tools/src/editor-view.ts" release \
           --repo-root "$root" --package "$package"
       done
+      if [ "''${WORKTREE_TEARDOWN_EDITOR_RETIRE:-0}" = 1 ]; then
+        for package in ${lib.concatStringsSep " " (map lib.escapeShellArg ([ "." ] ++ allPackages))}; do
+          ${pkgs.bun}/bin/bun "$root/packages/@overeng/buck2-tools/src/editor-view.ts" retire \
+            --repo-root "$root" --package "$package"
+        done
+      fi
     '';
   };
 

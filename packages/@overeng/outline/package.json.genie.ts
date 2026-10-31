@@ -4,12 +4,14 @@ import {
   workspaceMember,
   exportEntry,
   packageJson,
+  firstPartyPackageDefaults,
   type PackageJsonInputData,
 } from '../../../genie/internal.ts'
 
 export default packageJson(
   {
     name: '@overeng/outline',
+    ...firstPartyPackageDefaults,
     version: '0.1.0',
     type: 'module',
     description: 'Theme-free document outline models and accessible React navigation',

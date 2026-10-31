@@ -9,11 +9,12 @@
   "name": "opentui-examples",
   "type": "module",
   "private": true,
+  "license": "Apache-2.0",
   "dependencies": {
-    "@effect/atom-react": "4.0.3",
+    "@effect/atom-react": "4.1.0",
     "@opentui/core": "0.5.11",
     "@opentui/react": "0.5.11",
-    "effect": "4.0.3",
+    "effect": "4.1.0",
     "react": "19.2.8"
   },
   "devDependencies": {

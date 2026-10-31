@@ -10,7 +10,7 @@ import {
   checkoutStep,
   installNixStep,
   linuxSandboxPrerequisitesStep,
-  namespaceLinuxX64PairedPerfRunner,
+  LEGACY_NAMESPACE_LINUX_X64_PAIRED_PERF_RUNNER,
   prepareCiScriptsStep,
   preparePinnedDevenvStep,
   validateNixStoreStep,
@@ -28,7 +28,7 @@ const proofJobIds = Array.from(
 const workflowForJob = (jobId: string) =>
   jobId === 'test-storybook-plays'
     ? playsWorkflow
-    : proofJobIds.includes(jobId)
+    : proofJobIds.includes(jobId) === true
       ? proofWorkflow
       : workflow
 const condition = (jobId: string) => {
@@ -248,7 +248,7 @@ test('label-triggered proofs never publish an ordinary merge-required context', 
     const jobId =
       name === 'test (namespace-profile-macos-arm64)'
         ? 'test-macos'
-        : name.startsWith('test (')
+        : name.startsWith('test (') === true
           ? 'test'
           : name
     expect(
@@ -310,12 +310,17 @@ test('historical source measurements retain any-ref dispatch backfills', () => {
 })
 
 test('Linux sandbox prerequisites run only on Namespace profiles', () => {
-  const namespaceProfiles = new Set<string>([...RUNNER_PROFILES, namespaceLinuxX64PairedPerfRunner])
+  const namespaceProfiles: Readonly<Record<string, true>> = {
+    [RUNNER_PROFILES[0]]: true,
+    [RUNNER_PROFILES[1]]: true,
+    [LEGACY_NAMESPACE_LINUX_X64_PAIRED_PERF_RUNNER]: true,
+  }
   for (const job of Object.values(empiricalWorkflow.data.jobs)) {
-    if (job.steps.some((step) => step.name === 'Log Linux sandbox prerequisites') !== true) continue
+    if (job.steps.some((step) => step.name === 'Log Linux sandbox prerequisites') === false)
+      continue
     const runners = job['runs-on']
     const labels = typeof runners === 'string' ? [runners] : runners
-    expect(labels.some((label) => namespaceProfiles.has(label.split(';')[0]!))).toBe(true)
+    expect(labels.some((label) => namespaceProfiles[label.split(';')[0]!] === true)).toBe(true)
   }
 })
 
@@ -387,7 +392,8 @@ test('pinned devenv jobs configure a public binary cache before entering devenv'
           })
         )
       })
-      if (!hasCachixSetup && !hasInstallerCache) violations.push(`${workflowName}/${jobId}`)
+      if (hasCachixSetup === false && hasInstallerCache === false)
+        violations.push(`${workflowName}/${jobId}`)
     }
   }
   expect(violations).toEqual([])
@@ -424,22 +430,12 @@ test('daily cache join has read-only GitHub access and uses the previous-day met
   expect(JSON.stringify(job).match(/secrets\.[A-Z_]+/g)).toBeNull()
 })
 
-test('daily warm99 proof retains authoritative history and full observations for ninety days', () => {
+test('daily warm99 proof writes authoritative history and full observations locally', () => {
   const job = empiricalWorkflow.data.jobs['buck2-cache-join']!
   const join = job.steps.find((step) => step.name === 'Join previous UTC day cache evidence')
   expect(join !== undefined && 'run' in join ? join.run : undefined).toContain(
     '--proof-directory "$GITHUB_WORKSPACE/tmp/buck2-cache-history-proof"',
   )
-  const upload = job.steps.find(
-    (step) => step.name === 'Upload authoritative Buck2 warm99 proof observations',
-  )
-  expect(upload?.if).toBe('${{ always() }}')
-  expect(upload !== undefined && 'with' in upload ? upload.with?.path : undefined).toBe(
-    '${{ github.workspace }}/tmp/buck2-cache-history-proof',
-  )
-  expect(
-    upload !== undefined && 'with' in upload ? upload.with?.['retention-days'] : undefined,
-  ).toBe(90)
 })
 
 test('daily cache export postcheck follows telemetry export and fails on pending chunks', () => {

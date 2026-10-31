@@ -7,6 +7,7 @@ import {
 } from '../../genie/ci-workflow.ts'
 import { withBuck2CacheEvidence } from '../../genie/ci-workflow/buck2-cache-evidence.ts'
 import { buck2CachePostureEnv } from '../../genie/ci-workflow/buck2-cache-posture.ts'
+import { effectUtilsWorkflowPolicy } from '../../genie/ci-workflow/policy.ts'
 import {
   storybookPaths,
   storybookPreviewBuildWorkflowName,
@@ -19,6 +20,7 @@ import {
 // deploys it from the default branch.
 // oxlint-disable-next-line overeng/exports-first -- generated entrypoint
 export default ciWorkflow({
+  policy: effectUtilsWorkflowPolicy('storybook-preview-build.yml'),
   trustTier: 'public',
   name: storybookPreviewBuildWorkflowName,
   on: {

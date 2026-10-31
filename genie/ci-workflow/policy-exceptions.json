@@ -1,0 +1,4 @@
+{
+  "$schema": "./policy-exceptions.schema.json",
+  "exceptions": []
+}

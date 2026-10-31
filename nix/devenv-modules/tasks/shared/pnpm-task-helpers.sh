@@ -16,12 +16,74 @@ pnpm_use_job_local_store() {
   [ "${GITHUB_ACTIONS:-}" = true ] || [ "${PNPM_JOB_LOCAL_STORE:-}" = 1 ]
 }
 
+pnpm_frozen_store_policy() {
+  local pnpm_bin="$1"
+  shift
+  local -a config_args=()
+  local frozen_store_flag=false
+  # `config get` accepts configuration overrides, but not install-only options
+  # such as --lockfile-only. Let pnpm resolve precedence and boolean spellings.
+  while [ "$#" -gt 0 ]; do
+    # Match option names only, never substrings in filter/path argument values.
+    case "${1%%=*}" in
+      --frozen-store | --no-frozen-store | --config.frozen-store)
+        config_args+=("$1")
+        frozen_store_flag=true
+        ;;
+      --config.* | -C?* | --ignore-workspace)
+        config_args+=("$1")
+        ;;
+      --dir | -C)
+        config_args+=("$1")
+        if [ "$1" = "${1%%=*}" ]; then
+          config_args+=("${2-}")
+          shift
+        fi
+        ;;
+    esac
+    shift
+  done
+  local policy
+  if policy="$("$pnpm_bin" config get frozen-store "${config_args[@]}")"; then
+    if [ "$frozen_store_flag" = true ] && [ "$policy" != true ] && [ "$policy" != false ]; then
+      # A frozen-store override without a resolved boolean is unsafe
+      # to treat as writable, including forms this native version ignores.
+      printf 'true\n'
+    else
+      printf '%s\n' "$policy"
+    fi
+  else
+    local status=$?
+    if [ "$frozen_store_flag" = true ]; then
+      # Keep parser diagnostics, but choose the read-only-safe projection when
+      # config get cannot resolve an install flag (for example double negation).
+      printf 'true\n'
+    else
+      return "$status"
+    fi
+  fi
+}
+
+pnpm_shared_store_default() {
+  local node_bin="$1"
+  local contract_path="${PNPM_INSTALL_CONTRACT_PATH:-$(dirname "${BASH_SOURCE[0]}")/../../../../pnpm-install-contract.json}"
+  "$node_bin" - "$contract_path" <<'EOF'
+const path = require('node:path')
+const contract = require(path.resolve(process.argv[2]))
+const defaultPath = contract.storeContract.localDevelopment.defaultPath
+if (!defaultPath.startsWith('~/')) throw new Error('Expected a home-relative shared Store Cache default')
+console.log(path.join(process.env.HOME, defaultPath.slice(2)))
+EOF
+}
+
 configure_pnpm_storage() {
   local node_bin="$1"
   local materialization_root="$2"
   local job_local_store="$3"
   local host_is_linux="$4"
   local global_virtual_store="$5"
+  local pnpm_bin="$6"
+  shift 6
   local store_dir
   local package_import_method="auto"
 
@@ -34,18 +96,20 @@ configure_pnpm_storage() {
     store_dir="$job_local_store"
   else
     if [ "$global_virtual_store" = true ]; then
-      export PNPM_CONFIG_ENABLE_GLOBAL_VIRTUAL_STORE=true
-      export npm_config_enable_global_virtual_store=true
-      unset PNPM_CONFIG_VIRTUAL_STORE_DIR npm_config_virtual_store_dir
+      local frozen_store
+      frozen_store="$(cd "$materialization_root" && pnpm_frozen_store_policy "$pnpm_bin" "$@")" || return
+      # GVS puts dependency builds in the shared store. A frozen store can only
+      # supply the CAS; builds must stay in this root's writable virtual store.
+      if [ "$frozen_store" != true ]; then
+        export PNPM_CONFIG_ENABLE_GLOBAL_VIRTUAL_STORE=true
+        export npm_config_enable_global_virtual_store=true
+        unset PNPM_CONFIG_VIRTUAL_STORE_DIR npm_config_virtual_store_dir
+      fi
     fi
     if [ -n "${PNPM_SHARED_STORE_DIR:-}" ]; then
       store_dir="$PNPM_SHARED_STORE_DIR"
     else
-      if [ "$global_virtual_store" = true ]; then
-        store_dir="$HOME/.local/share/pnpm/store"
-      else
-        store_dir="$HOME/.local/share/pnpm/store-shared-v1"
-      fi
+      store_dir="$(pnpm_shared_store_default "$node_bin")" || return
     fi
 
     local store_version_dir="$store_dir/v11"
@@ -139,12 +203,39 @@ acquire_pnpm_store_cache_lease() {
       ;;
   esac
 
-  mkdir -p "$store_dir"
-  exec 202>"$lockfile"
-  if ! "$flock_bin" "$flock_mode" -w "$timeout_seconds" 202; then
-    echo "[pnpm] Store Cache $mode lease timeout after ${timeout_seconds}s: $lockfile" >&2
-    return 1
-  fi
+  local deadline=$((SECONDS + timeout_seconds))
+  local remaining="$timeout_seconds"
+  while :; do
+    mkdir -p "$store_dir" || return
+    exec 202>"$lockfile" || return
+    if ! "$flock_bin" "$flock_mode" -w "$remaining" 202; then
+      exec 202>&-
+      echo "[pnpm] Store Cache $mode lease timeout after ${timeout_seconds}s: $lockfile" >&2
+      return 1
+    fi
+    # Use fstat on the inherited descriptor, not stat of /dev/fd: descriptor
+    # filesystem pathname semantics are platform-specific (notably Darwin).
+    # BigInt preserves the full device/inode identity on every supported host.
+    if node - "$lockfile" <<'EOF'
+const fs = require('node:fs')
+try {
+  const held = fs.fstatSync(202, { bigint: true })
+  const current = fs.statSync(process.argv[2], { bigint: true })
+  process.exit(held.dev === current.dev && held.ino === current.ino ? 0 : 1)
+} catch {
+  process.exit(1)
+}
+EOF
+    then
+      return 0
+    fi
+    exec 202>&-
+    remaining=$((deadline - SECONDS))
+    if [ "$remaining" -le 0 ]; then
+      echo "[pnpm] Store Cache $mode lease changed during admission; timeout after ${timeout_seconds}s: $lockfile" >&2
+      return 1
+    fi
+  done
 }
 
 migrate_legacy_pnpm_store_cache() {

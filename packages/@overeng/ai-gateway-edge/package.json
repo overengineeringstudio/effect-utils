@@ -12,6 +12,7 @@
   "type": "module",
   "private": true,
   "description": "Runtime-configured authentication and metering edge for the shared AI gateway wire",
+  "license": "Apache-2.0",
   "exports": {
     ".": {
       "types": "./dist/src/mod.d.ts",
@@ -22,8 +23,8 @@
     "ai-gateway-edge": "./src/cli.ts"
   },
   "dependencies": {
-    "@effect/platform-node": "4.0.3",
-    "effect": "4.0.3"
+    "@effect/platform-node": "4.1.0",
+    "effect": "4.1.0"
   },
   "devDependencies": {
     "@overeng/ai-gateway-conformance": "workspace:^",

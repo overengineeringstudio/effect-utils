@@ -40,7 +40,7 @@ host_is_linux=false
 if [ "$(uname -s)" = Linux ]; then host_is_linux=true; fi
 (
   cd "$roots/seed"
-  configure_pnpm_storage "$(command -v node)" "$PWD" "$PWD/.devenv/pnpm-store-pure-v1" "$host_is_linux" false
+  configure_pnpm_storage "$(command -v node)" "$PWD" "$PWD/.devenv/pnpm-store-pure-v1" "$host_is_linux" false "$PNPM"
   "$PNPM" install --lockfile-only "${policy_flags[@]}" --reporter=append-only
 )
 git -C "$roots/seed" init -q
@@ -52,7 +52,7 @@ for name in root-a root-b; do
   (
     cd "$roots/$name"
     ensure_local_pnpm_home_default "$PWD"
-    configure_pnpm_storage "$(command -v node)" "$PWD" "$PWD/.devenv/pnpm-store-pure-v1" "$host_is_linux" false
+    configure_pnpm_storage "$(command -v node)" "$PWD" "$PWD/.devenv/pnpm-store-pure-v1" "$host_is_linux" false "$PNPM"
     test "$PNPM_STORE_DIR" = "$fixture/shared-store"
     test "$PNPM_CONFIG_ENABLE_GLOBAL_VIRTUAL_STORE" = false
     acquire_pnpm_store_cache_lease "$(command -v flock)" shared "$PNPM_STORE_DIR" 10

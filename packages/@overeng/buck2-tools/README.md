@@ -13,6 +13,22 @@ selector. The full `test:buck2-tools` and `devenv-modules:test` tasks also run i
 the PR-only `pr/buck2-tools` job on the Linux namespace runner, without duplicating
 the merge-group test lane.
 
+Source consumers install the bootstrap lease preload as
+`preload-<sha256>.cjs` in a private `editor-view-lease` runtime directory:
+`$XDG_RUNTIME_DIR` on Linux, the per-user `$TMPDIR` on macOS, or
+`$HOME/.cache` as fallback. This avoids Bun enumerating large store ancestors
+while resolving every child preload. Each candidate is resolved to its real path;
+every ancestor must be root- or current-user-owned, with no group/other write
+permission unless sticky. Unsafe candidates, including paths requiring runtime
+option quoting, are skipped in favor of the fallback. If none qualifies, launch
+fails closed. Each launch also checks the private directory owner and permissions and
+verifies the regular file's owner, read-only mode and hash against the store
+source before exporting its resolved path. Inherited forwarding rejects unsafe
+path characters too. Concurrent first launches publish atomically;
+an existing mismatched file fails closed rather
+than being silently repaired. Remove only the reported invalid preload after
+investigating its provenance, then launch again.
+
 ## Editor publisher
 
 `src/editor-view.ts` atomically publishes and checks one dependency view.
@@ -180,6 +196,14 @@ integration fixtures share one private four-slot domain per fixture host, so
 their policy races cannot queue behind unrelated production fingerprint walks.
 Their hashing, filesystem copies, process evidence, and five-second deadlines
 remain real and unchanged.
+Editor-view integration fixtures likewise use a private admission domain by
+default, including sibling views, publisher subprocesses, and direct native
+fingerprint checks. Otherwise a tiny fixture's payload hashing or warm-snapshot
+validation can wait behind a real workspace publication in another test chain
+and exhaust its assertion deadline (#2057, #2116). The ambiguous-ownership GC
+regression declares only its tiny dependency root; explicit legacy and finite
+backing-root scenarios retain their original modes. Real publications, refusal
+assertions, phase-duration logs, and default deadlines remain unchanged.
 
 The coordination directory is deliberately **outside the action digest**. It
 controls scheduling only: file contents are neither read as fingerprint inputs
@@ -429,11 +453,14 @@ process or another handle. Positive pathname/device/inode references and all sca
 completeness checks remain in force. The exact `lsof` marker `(revoked)` alone is
 not proof. Diagnostics expose `editor-view-process-census: deadVnode=N unknown=M`,
 where `N` counts proven descriptors and `M` counts unresolved census reasons.
-Every unknown Linux identity, observation or enumeration and every unknown
-`lsof` record also emits `editor-view-reader-unknown` with its observed PID,
-command name, descriptor, failing call and errno. Unavailable fields are explicitly
-`null`, never invented. On Darwin the packaged fixed-arity `eu_darwin_log_unknown`
-helper additionally emits correlated
+Unknown Linux identity, observation or enumeration failures and unknown `lsof`
+records emit `editor-view-reader-unknown` once per process per scan, with fields
+`pid`, `comm`, `fd`, `call`, `errno` and `failures`. The first failed observation
+supplies the command name, descriptor, call and errno; `failures` counts all failed
+observations for that process. Unavailable fields are explicitly `null`, never
+invented. Failures without a process identity emit individual records with
+`failures: 1`. Returned reasons and census counters remain unchanged. On Darwin
+the packaged fixed-arity `eu_darwin_log_unknown` helper additionally emits correlated
 kernel diagnostics with numeric errno/results for BSD process info before and
 after the query, a bounded descriptor-type sample, and vnode/path-info calls.
 These observations help distinguish an exit race from an inaccessible live
@@ -699,7 +726,8 @@ After closing editors and builds using a retired worktree, run
 `devenv tasks run worktree:teardown --mode single` from that worktree. It stops
 every Buck daemon isolation for the absolute checkout root, removes only its
 isolation state, deletes its Watchman watch when the service is reachable, removes only
-its root-keyed admission cache entries, invokes `buck2:editor:release`, and makes
+its root-keyed admission cache entries, invokes `buck2:editor:release` with final
+editor-root retirement enabled, and makes
 remaining directories owner-writable without following symlinks or chmodding
 files. Then leave its working directory and use ordinary `git worktree remove`
 from another worktree. Teardown is offline and idempotent, does not delete
@@ -732,6 +760,8 @@ check, clean, or worktree-guard module, or can explicitly import
 
 `devenv tasks run buck2:editor:release --mode single` remains available for
 editor-only release, including every sibling view sharing those roots.
+Unlike worktree teardown, ordinary release preserves the root and persistent
+lease controls so republishing cannot split flock identities.
 
 The publisher CLI also supports `release --repo-root <root> --package <package>`
 for one shared editor root. Teardown holds the publication lock, refuses a live
@@ -740,6 +770,14 @@ and makes only
 owned directories writable before removal. It never follows snapshot symlinks
 or changes external dependency targets. Neither release nor teardown is ever a
 dependency of setup, tests, or checks; republishing recreates a released root.
+
+The `retire --repo-root <root> --package <package>` CLI is only for removing a
+quiesced worktree after release. Under publication and content-store exclusion,
+it validates the entire root before unlinking single-link lease controls and
+removing empty directories non-recursively. Unexpected entries or held/unknown
+leases fail with their exact path. Teardown derives roots from workspace packages
+and the known root, `packages/`, and `context/` editor-root suffixes; it also
+retires empty package-local legacy roots without walking dependency trees.
 
 ## Package action capabilities
 

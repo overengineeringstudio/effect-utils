@@ -1,3 +1,4 @@
+import { spawn } from 'node:child_process'
 import { createHash, randomUUID } from 'node:crypto'
 import * as nodeFsSync from 'node:fs'
 import nodeFs from 'node:fs/promises'
@@ -5,21 +6,9 @@ import os from 'node:os'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 
-import {
-  Duration,
-  Effect,
-  Exit,
-  FileSystem,
-  Option,
-  Result,
-  Schema,
-  Semaphore,
-  Stream,
-} from 'effect'
+import { Duration, Effect, Exit, FileSystem, Option, Result, Schema, Semaphore } from 'effect'
 import type { Path } from 'effect'
 import type { PlatformError } from 'effect/PlatformError'
-import * as Command from 'effect/process/ChildProcess'
-import * as CommandExecutor from 'effect/process/ChildProcessSpawner'
 import type { Node } from 'typescript/unstable/ast'
 import {
   isIdentifier,
@@ -32,7 +21,15 @@ import { DistributedSemaphore } from '@overeng/utils/lock'
 import { FileSystemBacking } from '@overeng/utils/node'
 
 import type { GenieOutput } from '../runtime/mod.ts'
-import { inputFileSystem } from '../runtime/node/inputs.ts'
+import {
+  getInputRecording,
+  inputFileSystem,
+  isInputRecording,
+  isReadSetRecording,
+  recordGeneratorResult,
+  recordInput,
+  recordInputReason,
+} from '../runtime/node/inputs.ts'
 import { isAnalyzableSourcePath, runTsFileAnalysis } from '../runtime/node/ts-api.ts'
 import type { TsFileAnalysisSession } from '../runtime/node/ts-api.ts'
 import { CatalogConflictError } from '../runtime/package-json/catalog.ts'
@@ -693,6 +690,7 @@ const loadOxfmtConfig = Effect.fn('loadOxfmtConfig')(function* ({
   }
 
   const fs = yield* FileSystem.FileSystem
+  recordInput(configPath.value)
   const raw = yield* fs.readFileString(configPath.value)
   const config = yield* Effect.try({
     try: () => decodeOxfmtConfig(raw) as OxfmtConfig,
@@ -703,6 +701,33 @@ const loadOxfmtConfig = Effect.fn('loadOxfmtConfig')(function* ({
   })
 
   return Option.some(config)
+})
+
+/** Formats one target file; falls back to the unformatted content on formatter errors so a check reports drift instead of failing. */
+export type OxfmtFormatter = (options: {
+  targetFilePath: string
+  content: string
+}) => Effect.Effect<string, never, FileSystem.FileSystem>
+
+/**
+ * Reuse successful config preflight as a snapshot within one read-only check invocation.
+ * Concurrent callers share one attempt, but failures expire immediately so later files retry.
+ * Keep the CLI in charge of actual formatting/config resolution, and create this inside the
+ * invocation (never a watch loop). Generation does not share this preflight because it can
+ * rewrite the config during the run.
+ */
+export const makeOxfmtFormatter = Effect.fn('makeOxfmtFormatter')(function* ({
+  configPath,
+}: {
+  configPath: Option.Option<string>
+}) {
+  const cachedConfig = yield* Effect.cachedWithTTL(loadOxfmtConfig({ configPath }), (exit) =>
+    Exit.isSuccess(exit) === true ? Infinity : 0,
+  )
+  const loadConfig = cachedConfig.pipe(Effect.result)
+  const format: OxfmtFormatter = ({ targetFilePath, content }) =>
+    formatWithOxfmt({ targetFilePath, content, configPath, loadConfig })
+  return format
 })
 
 /**
@@ -806,10 +831,16 @@ const formatWithOxfmt = Effect.fn('formatWithOxfmt')(function* ({
   targetFilePath,
   content,
   configPath,
+  loadConfig = loadOxfmtConfig({ configPath }).pipe(Effect.result),
 }: {
   targetFilePath: string
   content: string
   configPath: Option.Option<string>
+  loadConfig?: Effect.Effect<
+    Result.Result<Option.Option<OxfmtConfig>, PlatformError | InvalidOxfmtConfigError>,
+    never,
+    FileSystem.FileSystem
+  >
 }) {
   yield* Observability.annotateOxfmt({
     targetFilePath,
@@ -821,7 +852,7 @@ const formatWithOxfmt = Effect.fn('formatWithOxfmt')(function* ({
     return content
   }
 
-  const optionsResult = yield* loadOxfmtConfig({ configPath }).pipe(Effect.result)
+  const optionsResult = yield* loadConfig
   if (Result.isFailure(optionsResult) === true) {
     return content
   }
@@ -832,11 +863,46 @@ const formatWithOxfmt = Effect.fn('formatWithOxfmt')(function* ({
   })
 
   const result = yield* Effect.gen(function* () {
-    const spawner = yield* CommandExecutor.ChildProcessSpawner
-    return yield* spawner.string(
-      Command.make('oxfmt', args, {
-        stdin: { stream: Stream.make(content).pipe(Stream.encodeText) },
-      }),
+    if (isInputRecording() === true)
+      recordInputReason({
+        code: 'subprocess',
+        operation: 'oxfmt',
+        detail: 'Formatter execution has an unaccounted executable and input closure',
+        source: { module: '@overeng/genie/src/core/generation.ts', line: null },
+        generators: getInputRecording()!.generators.filter((generator) =>
+          targetFilePath.endsWith(path.sep + generator.replace('.genie.ts', '')),
+        ),
+        evidence: 'observed',
+      })
+    // NodeSink removes its error listener at `finish`, but Bun flushes its
+    // buffered FileSink in auto-destroy afterwards. An early formatter exit
+    // can therefore emit EPIPE outside the Effect. Own stdin through `close`,
+    // including that final flush, rather than treating `finish` as disposal.
+    return yield* Effect.tryPromise(
+      (signal) =>
+        new Promise<string>((resolve, reject) => {
+          const child = spawn('oxfmt', args, { stdio: ['pipe', 'pipe', 'ignore'], signal })
+          let output = ''
+          let failure: unknown
+          const onError = (error: Error) => {
+            failure = error
+          }
+          child.on('error', onError)
+          child.stdin.on('error', onError)
+          child.stdout.on('error', onError)
+          child.stdout.setEncoding('utf8')
+          child.stdout.on('data', (chunk: string) => {
+            output += chunk
+          })
+          child.once('close', () => {
+            child.stdin.off('error', onError)
+            child.stdout.off('error', onError)
+            child.off('error', onError)
+            if (failure !== undefined) reject(failure)
+            else resolve(output)
+          })
+          child.stdin.end(content)
+        }),
     )
   }).pipe(Effect.orElseSucceed(() => content))
 
@@ -1019,11 +1085,15 @@ export const getExpectedContent = Effect.fn('getExpectedContent')(function* ({
   cwd,
   oxfmtConfigPath,
   loadedGenieFile,
+  formatter,
+  mode = 'check',
 }: {
   genieFilePath: string
   cwd: string
   oxfmtConfigPath: Option.Option<string>
   loadedGenieFile?: LoadedGenieFile
+  formatter?: OxfmtFormatter | undefined
+  mode?: 'generate' | 'check'
 }) {
   yield* Observability.annotateFile({
     label: Observability.relativePath({
@@ -1038,14 +1108,12 @@ export const getExpectedContent = Effect.fn('getExpectedContent')(function* ({
   const sourceFile = path.basename(genieFilePath)
   const loaded =
     loadedGenieFile === undefined ? yield* loadGenieFile({ genieFilePath, cwd }) : loadedGenieFile
-  const rawContent = loaded.output.stringify(loaded.ctx)
+  const rawContent = loaded.output.stringify({ ...loaded.ctx, mode })
 
   const header = getHeaderComment({ targetFilePath, sourceFile })
-  const formattedContent = yield* formatWithOxfmt({
-    targetFilePath,
-    content: rawContent,
-    configPath: oxfmtConfigPath,
-  })
+  const formattedContent = yield* formatter === undefined
+    ? formatWithOxfmt({ targetFilePath, content: rawContent, configPath: oxfmtConfigPath })
+    : formatter({ targetFilePath, content: rawContent })
 
   return {
     targetFilePath,
@@ -1168,11 +1236,7 @@ export const generateFile = ({
   readOnly: boolean
   dryRun?: boolean
   oxfmtConfigPath: Option.Option<string>
-}): Effect.Effect<
-  GenerateSuccess,
-  GenieFileError,
-  FileSystem.FileSystem | CommandExecutor.ChildProcessSpawner | Path.Path
-> =>
+}): Effect.Effect<GenerateSuccess, GenieFileError, FileSystem.FileSystem | Path.Path> =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
     const targetFilePath = genieFilePath.replace('.genie.ts', '')
@@ -1182,6 +1246,7 @@ export const generateFile = ({
       genieFilePath,
       cwd,
       oxfmtConfigPath,
+      mode: 'generate',
     })
 
     const targetDirExists = yield* fs.exists(targetDir)
@@ -1286,7 +1351,7 @@ export const checkFile = ({
 }): Effect.Effect<
   void,
   GenieCheckError | GenieImportError | GenieRuntimeTranspilerCacheError | PlatformError,
-  FileSystem.FileSystem | CommandExecutor.ChildProcessSpawner
+  FileSystem.FileSystem
 > => checkFileDetailed({ genieFilePath, cwd, oxfmtConfigPath }).pipe(Effect.asVoid)
 
 /** Check a generated file and return the loaded genie module for downstream validation reuse. */
@@ -1294,14 +1359,16 @@ export const checkFileDetailed = ({
   genieFilePath,
   cwd,
   oxfmtConfigPath,
+  formatter,
 }: {
   genieFilePath: string
   cwd: string
   oxfmtConfigPath: Option.Option<string>
+  formatter?: OxfmtFormatter
 }): Effect.Effect<
   { targetFilePath: string; loadedGenieFile: LoadedGenieFile },
   GenieCheckError | GenieImportError | GenieRuntimeTranspilerCacheError | PlatformError,
-  FileSystem.FileSystem | CommandExecutor.ChildProcessSpawner
+  FileSystem.FileSystem
 > =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
@@ -1311,8 +1378,10 @@ export const checkFileDetailed = ({
       cwd,
       oxfmtConfigPath,
       loadedGenieFile,
+      formatter,
     })
 
+    recordInput(targetFilePath)
     const fileExists = yield* fs.exists(targetFilePath)
     if (fileExists === false) {
       return yield* new GenieCheckError({
@@ -1322,6 +1391,7 @@ export const checkFileDetailed = ({
     }
 
     const actualContent = yield* fs.readFileString(targetFilePath)
+    recordInput(targetFilePath)
 
     if (actualContent !== expectedContent) {
       return yield* new GenieCheckError({
@@ -1330,6 +1400,13 @@ export const checkFileDetailed = ({
       })
     }
 
+    if (isReadSetRecording() === true)
+      recordGeneratorResult({
+        generator: path.relative(cwd, genieFilePath).split(path.sep).join('/'),
+        target: targetFilePath,
+        moduleFiles: [genieFilePath],
+        checkedContent: expectedContent,
+      })
     return { targetFilePath, loadedGenieFile }
   }).pipe(
     Observability.withFileSpan({

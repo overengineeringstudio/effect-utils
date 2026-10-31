@@ -398,12 +398,6 @@ const generatedDevenvPerfJob = extractSourceBlock(
   '  nix-closure-sizes:',
 )
 
-const restorePnpmStateStepSource = extractSourceBlock(
-  ciWorkflowSource,
-  'export const restorePnpmStateStep = (opts?: {',
-  '/**\n * Save the job-local pnpm state after the main task graph runs.',
-)
-
 const validateNixStoreStepSource = extractSourceBlock(
   ciWorkflowSource,
   "export const validateNixStoreStepFor = (lockFile = 'devenv.lock') =>",
@@ -669,67 +663,17 @@ describe('ci workflow reporting helpers', () => {
   })
 })
 
-describe('ci workflow pnpm cache defaults', () => {
+describe('ci workflow pnpm preparation and Nix cache defaults', () => {
   it('keeps pnpm home stable under runner composition state', () => {
     expect(ciWorkflowSource).toContain(
       'export const ciPnpmHome = `${ciCompositionStateRoot}/pnpm-home`',
     )
   })
 
-  it('defaults the pnpm state helpers to restoring both home and auxiliary store state', () => {
-    expect(ciWorkflowSource).toContain(
-      'export const ciPnpmStatePaths = [ciPnpmHome, ciPnpmStore].join(',
-    )
-    expect(ciWorkflowSource).toContain('const path = opts?.path ?? ciPnpmStatePaths')
-  })
-
   it('exports PNPM_CONFIG_STORE_DIR alongside pnpm store state', () => {
     expect(ciWorkflowSource).toContain(
       '`echo "PNPM_CONFIG_STORE_DIR=${ciPnpmStore}" >> "$GITHUB_ENV"`',
     )
-  })
-
-  it('uses exact-key pnpm state restore semantics with an explicit versioned prefix', () => {
-    expect(restorePnpmStateStepSource).toContain(
-      'const keyPrefix = opts?.keyPrefix ?? defaultPnpmStateKeyPrefix',
-    )
-    expect(restorePnpmStateStepSource).toContain(
-      'const hashFilesExpression = opts?.hashFilesExpression ?? defaultPnpmStateHashFilesExpression',
-    )
-    expect(restorePnpmStateStepSource).toContain("name: 'Restore pnpm state'")
-    expect(restorePnpmStateStepSource).not.toContain("'restore-keys':")
-  })
-
-  it('centralizes the pnpm state cache contract version at v3', () => {
-    expect(ciWorkflowSource).toContain("export const pnpmStateCacheVersion = 'v3'")
-    expect(ciWorkflowSource).toContain("export const defaultPnpmStateKeyPrefix = 'pnpm-state'")
-    expect(ciWorkflowSource).toContain(
-      `const defaultPnpmStateHashFilesExpression = "\${{ hashFiles('**/pnpm-lock.yaml') }}"`,
-    )
-    expect(ciWorkflowSource).toContain('`${args.keyPrefix}-${pnpmStateCacheVersion}-')
-  })
-
-  it('allows repositories to narrow pnpm state hashing without redefining cache steps', () => {
-    expect(ciWorkflowSource).toContain('hashFilesExpression?: string')
-    expect(ciWorkflowSource).toContain(
-      'pnpmStateCachePrimaryKey({ keyPrefix, hashFilesExpression })',
-    )
-  })
-
-  it('uses identical stable restore/save paths for pnpm and Nix caches', async () => {
-    const { restoreNixCacheStep, restorePnpmStateStep, saveNixCacheStep, savePnpmStateStep } =
-      await import(
-        // oxlint-disable-next-line import/no-dynamic-require
-        new URL('../../../../../../genie/ci-workflow/setup.ts', import.meta.url).href
-      )
-    const pnpmRestore = restorePnpmStateStep()
-    const pnpmSave = savePnpmStateStep()
-    const nixRestore = restoreNixCacheStep()
-    const nixSave = saveNixCacheStep()
-    expect(pnpmRestore.with.path).toBe(pnpmSave.with.path)
-    expect(nixRestore.with.path).toBe(nixSave.with.path)
-    expect(pnpmRestore.with.path).not.toContain('github.run_id')
-    expect(nixRestore.with.path).not.toContain('github.run_id')
   })
 
   it('keeps the pnpm store definition stable without caching it in CI', () => {
@@ -745,20 +689,10 @@ describe('ci workflow pnpm cache defaults', () => {
     )
   })
 
-  it('exposes a callable single-publisher primitive and delegates the composer to it', () => {
-    expect(ciWorkflowSource).toContain('export const pnpmStatePublisherPostSteps = (opts?: {')
-    expect(ciWorkflowSource).toContain('export const withSinglePnpmStatePublisher = <')
-    expect(ciWorkflowSource).toContain(
-      'opts?.publish === true ? [savePnpmStateStep(opts?.save)] : []',
-    )
-    expect(ciWorkflowSource).toContain('...pnpmStatePublisherPostSteps({')
-  })
-
-  it('only saves pnpm state after prior steps succeed', () => {
-    expect(ciWorkflowSource).toContain("name: 'Save pnpm state'")
-    expect(ciWorkflowSource).toContain(
-      "if: `\\${{ success() && steps.${restoreStepId}.outputs.cache-hit != 'true' }}`",
-    )
+  it('keeps Actions-cache pnpm state out of the own workflows', () => {
+    expect(generatedCiWorkflowYamlSource).not.toContain('pnpm-state-v3')
+    expect(generatedCiWorkflowYamlSource).not.toContain('Restore pnpm state')
+    expect(generatedCiWorkflowYamlSource).not.toContain('Save pnpm state')
   })
 
   it('keeps the diagnostics summary portable', () => {
@@ -1108,7 +1042,9 @@ describe('ci workflow pr-reviews helpers', () => {
 
   it('wires pr-reviews-resolved into the generated workflow and repo settings', () => {
     expect(generatedWorkflowSource).toContain('prReviewsResolvedJob')
-    expect(generatedWorkflowSource).toContain('[prReviewsResolvedJobId]: prReviewsResolvedJob()')
+    expect(generatedWorkflowSource).toContain(
+      "[prReviewsResolvedJobId]: prReviewsResolvedJob({ runsOn: 'ubuntu-latest' })",
+    )
     expect(generatedCiWorkflowYamlSource).toContain('  pr-reviews-resolved:')
     expect(generatedCiWorkflowYamlSource).toContain('reviewThreads(first:100')
     expect(generatedRepoSettingsSource).toContain('prReviewsPullRequestRule()')
@@ -1293,6 +1229,7 @@ describe('ci workflow standard job helpers', () => {
               (step) => step.name === 'Deploy docs to Vercel',
             )
             const snapshotPackStep = prSnapshotPackJob({
+              runsOn: 'ubuntu-24.04',
               topologyPath: 'release-topology.json',
               setupStepsAfterCheckout: [],
               packTask: 'release:pack',
@@ -1321,6 +1258,9 @@ describe('ci workflow standard job helpers', () => {
             const sourceShapeStep = generatedSteps.find(
               ({ step }) => step.name === 'Measure source shape: effect-utils',
             )?.step
+            const sourceShapeRealisationStep = generatedSteps.find(
+              ({ step }) => step.name === 'Realise source-shape tool closure',
+            )?.step
             const localOnlyStepTokenPresence = Object.fromEntries(
               ['Reject tracked product and editor payload bytes'].map((name) => {
                 const step = generatedSteps.find(({ step }) => step.name === name)?.step
@@ -1336,7 +1276,7 @@ describe('ci workflow standard job helpers', () => {
               trustTier,
               name: 'CI',
               on: { push: { branches: ['main'] } },
-              jobs: { check: { 'runs-on': 'ubuntu-latest', steps: [] } },
+              jobs: { check: { 'runs-on': ['sh-linux-x64', 'nix'], steps: [] } },
             })
             console.log(JSON.stringify({
               jobEnv: workflow.data.jobs.check?.env,
@@ -1350,6 +1290,7 @@ describe('ci workflow standard job helpers', () => {
               }).env.GITHUB_TOKEN,
               nativeDependencyPolicyRegressionStepEnv: nativeDependencyPolicyRegressionStep.env,
               sourceShapeStepEnv: sourceShapeStep?.env,
+              sourceShapeRealisationStepEnv: sourceShapeRealisationStep?.env,
               generatedDevenvAuthMissing,
               netlifyStepEnv: netlifyStep.env,
               customNetlifyStepEnv: customNetlifyStep.env,
@@ -1413,6 +1354,7 @@ describe('ci workflow standard job helpers', () => {
           RUNNER_CLASS: '${{ runner.os }}-${{ runner.arch }}',
           ...expectedTokenEnv,
         },
+        sourceShapeRealisationStepEnv: expectedTokenEnv,
         generatedDevenvAuthMissing: [],
         netlifyStepEnv: {
           NETLIFY_AUTH_TOKEN: 'netlify-secret',
@@ -2077,5 +2019,144 @@ describe('effect-utils standalone CI root', () => {
     expect(buckToolchainsSource).not.toContain('store_dir =')
     expect(generatedCiWorkflowYamlSource).not.toContain('Evict cached pnpm deps for oxlint-npm')
     expect(generatedCiWorkflowYamlSource).not.toContain('.#oxc-config-plugin-pnpm-deps')
+  })
+})
+
+describe('Cloudflare Workers trusted deployment jobs', () => {
+  it('keeps credential execution job-gated and transports reports between runners', () => {
+    const fixture = spawnSync(
+      'bun',
+      [
+        '-e',
+        `
+          import assert from 'node:assert/strict'
+          import {
+            cloudflareWorkersDeployJobs,
+            cloudflareWorkersTrustedJobCondition,
+            cloudflareWorkersTrustedJobConditionFor,
+          } from './genie/deploy-preview/cloudflare-workers.ts'
+
+          assert.equal(typeof cloudflareWorkersTrustedJobCondition, 'string')
+          assert.equal(cloudflareWorkersTrustedJobCondition, cloudflareWorkersTrustedJobConditionFor())
+          assert.equal(cloudflareWorkersTrustedJobCondition, "(github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)")
+          const jobs = cloudflareWorkersDeployJobs({
+            targets: [{ name: 'web' }],
+            runner: ['ubuntu-latest'],
+            baseSteps: [{ run: 'consumer setup' }],
+            commentBaseSteps: [{ run: 'report setup' }],
+            env: { CLOUDFLARE_API_TOKEN: 'token-expression', CLOUDFLARE_ACCOUNT_ID: 'account-expression' },
+            deployCondition: 'false',
+            runDevenvTasksBefore: (...args) => args.join(' '),
+          })
+          const deploy = jobs['deploy-web']
+          const comment = jobs['post-cloudflare-workers-deploy-comment']
+          assert.equal(deploy.if, '(' + cloudflareWorkersTrustedJobCondition + ') && (false)')
+          assert.equal(deploy.env.CLOUDFLARE_API_TOKEN, 'token-expression')
+          assert.equal(comment.env, undefined)
+          assert.equal(comment.permissions['pull-requests'], 'write')
+          assert.equal(deploy.permissions['pull-requests'], undefined)
+          assert.ok(comment.if.includes(cloudflareWorkersTrustedJobCondition))
+
+          for (const [event, ref, head, expected] of [
+            ['push', 'refs/heads/main', '', true],
+            ['push', 'refs/heads/feature', '', false],
+            ['pull_request', 'refs/pull/42/merge', 'example/repo', true],
+            ['pull_request', 'refs/pull/42/merge', 'fork/repo', false],
+            ['pull_request_target', 'refs/heads/main', 'example/repo', false],
+            ['pull_request_target', 'refs/heads/main', 'fork/repo', false],
+            ['workflow_dispatch', 'refs/heads/main', '', false],
+          ]) {
+            const github = {
+              event_name: event, ref, repository: 'example/repo',
+              event: { pull_request: { head: { repo: { full_name: head } } } },
+            }
+            assert.equal(Function('github', 'return (' + cloudflareWorkersTrustedJobCondition + ')')(github), expected)
+            assert.equal(Function('github', 'return (' + deploy.if + ')')(github), false)
+          }
+
+          const launcher = deploy.steps.find((step) => step.id === 'deploy')
+          assert.ok(launcher.run.includes('cloudflare-workers:deploy:web --show-output --input type=pr'))
+          assert.ok(launcher.run.includes('--input type=prod'))
+          const upload = deploy.steps.find((step) => step.uses === 'actions/upload-artifact@v4')
+          assert.equal(upload.if, 'always()')
+          assert.equal(upload.with.name, 'cloudflare-workers-report-web')
+          const download = comment.steps.find((step) => step.uses === 'actions/download-artifact@v4')
+          assert.equal(download.with.pattern, 'cloudflare-workers-report-*')
+          assert.equal(download.with['merge-multiple'], true)
+          const collector = comment.steps.find((step) => step.env?.WORKFLOW_REPORT_INPUT_PATHS_JSON)
+          assert.ok(JSON.parse(collector.env.WORKFLOW_REPORT_INPUT_PATHS_JSON)[0].endsWith('/cloudflare-workers-inputs/cloudflare-workers-WEB.jsonl'))
+          assert.equal(comment.steps[0].run, 'report setup')
+        `,
+      ],
+      { cwd: ciWorkflowModuleRoot, encoding: 'utf8' },
+    )
+    expect(fixture.status, fixture.stderr).toBe(0)
+  })
+
+  it('allows only declared main-ref dispatches, with production concurrency and no payload inputs', () => {
+    const fixture = spawnSync(
+      'bun',
+      [
+        '-e',
+        `
+          import assert from 'node:assert/strict'
+          import { cloudflareWorkersDeployJobs, cloudflareWorkersDeployTriggers } from './genie/deploy-preview/cloudflare-workers.ts'
+          import { githubWorkflow } from './packages/@overeng/genie/src/runtime/mod.ts'
+
+          const options = {
+            targets: [{ name: 'web' }], runner: ['ubuntu-latest'],
+            baseSteps: [{ run: 'consumer setup' }], env: {},
+            includeComment: false,
+            runDevenvTasksBefore: (...args) => args.join(' '),
+          }
+          assert.equal(cloudflareWorkersDeployTriggers().repository_dispatch, undefined)
+          assert.equal(cloudflareWorkersDeployTriggers({ dispatchTypes: [] }).repository_dispatch, undefined)
+          for (const type of ['', ' ', '*', 'docs-*', 'docs?', '[docs]', 42, null]) {
+            assert.throws(() => cloudflareWorkersDeployTriggers({ dispatchTypes: [type] }), /dispatchTypes/)
+            assert.throws(() => cloudflareWorkersDeployJobs({ ...options, dispatchTypes: [type] }), /dispatchTypes/)
+          }
+          for (const mainBranch of ['main', 'release']) {
+            const events = { mainBranch, dispatchTypes: ['docs-changed', 'content-changed'] }
+            const on = cloudflareWorkersDeployTriggers(events)
+            assert.deepEqual(on.repository_dispatch, { types: events.dispatchTypes })
+            assert.deepEqual(on.push, { branches: [mainBranch] })
+            const jobs = cloudflareWorkersDeployJobs({ ...options, ...events })
+            const deploy = jobs['deploy-web']
+            const allowed = Function('github', 'return (' + deploy.if + ')')
+            const event = (name, ref, action, head = '') => ({
+              event_name: name, ref, repository: 'example/repo',
+              event: { action, pull_request: { number: 42, head: { repo: { full_name: head } } } },
+            })
+            for (const action of events.dispatchTypes) {
+              assert.equal(allowed(event('repository_dispatch', 'refs/heads/' + mainBranch, action)), true)
+            }
+            assert.equal(allowed(event('repository_dispatch', 'refs/heads/' + mainBranch, 'unknown')), false)
+            assert.equal(allowed(event('repository_dispatch', 'refs/heads/feature', 'docs-changed')), false)
+            assert.equal(allowed(event('push', 'refs/heads/' + mainBranch, '')), true)
+            assert.equal(allowed(event('pull_request', 'refs/pull/42/merge', '', 'example/repo')), true)
+            assert.equal(allowed(event('pull_request', 'refs/pull/42/merge', '', 'fork/repo')), false)
+            assert.equal(allowed(event('pull_request_target', 'refs/heads/' + mainBranch, '', 'example/repo')), false)
+            const disabled = cloudflareWorkersDeployJobs(options)['deploy-web']
+            assert.equal(Function('github', 'return (' + disabled.if + ')')(event('repository_dispatch', 'refs/heads/main', 'docs-changed')), false)
+            const restricted = cloudflareWorkersDeployJobs({ ...options, ...events, deployCondition: 'false' })['deploy-web']
+            assert.equal(Function('github', 'return (' + restricted.if + ')')(event('repository_dispatch', 'refs/heads/' + mainBranch, 'docs-changed')), false)
+            const widened = cloudflareWorkersDeployJobs({ ...options, ...events, deployCondition: 'true' })['deploy-web']
+            assert.equal(Function('github', 'return (' + widened.if + ')')(event('repository_dispatch', 'refs/heads/' + mainBranch, 'unknown')), false)
+            const groupExpression = deploy.concurrency.group.match(/\\$\\{\\{ (github.event_name.*?) \\}\\}/)[1]
+            const group = Function('github', 'format', 'return (' + groupExpression + ')')
+            assert.equal(group(event('push', 'refs/heads/' + mainBranch, '')), group(event('repository_dispatch', 'refs/heads/' + mainBranch, 'docs-changed')))
+            assert.notEqual(group(event('pull_request', 'refs/pull/42/merge', '', 'example/repo'), (_, n) => 'pr-' + n), 'prod')
+            const launcher = deploy.steps.find((step) => step.id === 'deploy').run
+            assert.ok(launcher.includes('if [ "\${{ github.event_name }}" = "pull_request" ]; then'))
+            assert.ok(launcher.includes('else\\n  cloudflare-workers:deploy:web --show-output --input type=prod'))
+            const yaml = githubWorkflow({ name: 'Deploy', on, jobs }).stringify({ location: '.github/workflows/deploy.yml', cwd: process.cwd() })
+            assert.equal(yaml.includes('client_payload'), false)
+            assert.ok(yaml.includes('repository_dispatch:'))
+          }
+        `,
+      ],
+      { cwd: ciWorkflowModuleRoot, encoding: 'utf8' },
+    )
+    expect(fixture.status, fixture.stderr).toBe(0)
   })
 })

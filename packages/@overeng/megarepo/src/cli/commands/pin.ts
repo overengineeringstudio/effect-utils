@@ -298,8 +298,8 @@ export const pinCommand = Cli.Command.make(
                 yield* makeStoreDirectory(repoBasePath)
                 yield* Git.cloneBare({ url: cloneUrl, targetPath: bareRepoPath })
               } else {
-                // Fetch to ensure we have the latest refs
-                yield* Git.fetchBare({ repoPath: bareRepoPath }).pipe(Effect.ignore)
+                // Fetch branches plus the pinned ref when it may be a tag.
+                yield* Git.fetchBare({ repoPath: bareRepoPath, refs: [newRef] }).pipe(Effect.ignore)
               }
 
               // Resolve commit

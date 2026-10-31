@@ -1,6 +1,6 @@
 import { createPrivateKey, createSign } from 'node:crypto'
 
-import { Clock, Context, Effect, Layer, Redacted, Schema, Semaphore, Stream } from 'effect'
+import { Clock, Context, Effect, Exit, Layer, Redacted, Schema, Semaphore, Stream } from 'effect'
 import { FetchHttpClient, HttpClient, HttpClientRequest, HttpClientResponse } from 'effect/http'
 import { HttpClientError, DecodeError } from 'effect/http/HttpClientError'
 
@@ -89,6 +89,15 @@ const encodeHeader = Schema.encodeSync(Schema.fromJsonString(JwtHeader))
 const encodeClaims = Schema.encodeSync(Schema.fromJsonString(JwtClaims))
 const encodeScope = Schema.encodeSync(Schema.fromJsonString(InstallationScope))
 
+/** Credential-free completion metadata for the fixed JWT transport. */
+export interface GitHubAppRequestMetadata {
+  readonly method: string
+  readonly path: string
+  readonly status: number | null
+  readonly rateLimitResource?: string
+  readonly rateLimitRemaining?: string
+}
+
 /** Consumer identity and transport/token refresh settings. */
 export interface GitHubAppOptions {
   /** Stable process/consumer identity, never a repository, request ID, or credential. */
@@ -96,6 +105,8 @@ export interface GitHubAppOptions {
   readonly apiBase?: URL
   readonly userAgent?: string
   readonly refreshMarginSeconds?: number
+  /** Best-effort metadata observation; failures cannot affect authentication or requests. */
+  readonly onRequestComplete?: (metadata: GitHubAppRequestMetadata) => Effect.Effect<void>
 }
 
 const MintOperation = OtelOperation.define({
@@ -206,12 +217,28 @@ export const makeGitHubApp = Effect.fn('github-app.make')(function* (
   const jwtTransport = yield* HttpClient.HttpClient.pipe(Effect.provide(FetchHttpClient.layer))
   const platformFetch = globalThis.fetch
   const executeJwt = (request: HttpClientRequest.HttpClientRequest) =>
-    jwtTransport
-      .execute(request)
-      .pipe(
-        Effect.provideService(FetchHttpClient.Fetch, platformFetch),
-        Effect.provideService(FetchHttpClient.RequestInit, { redirect: 'manual' }),
-      )
+    jwtTransport.execute(request).pipe(
+      Effect.provideService(FetchHttpClient.Fetch, platformFetch),
+      Effect.provideService(FetchHttpClient.RequestInit, { redirect: 'manual' }),
+      Effect.onExit((exit) =>
+        Effect.suspend(
+          () =>
+            options.onRequestComplete?.({
+              method: request.method,
+              path: new URL(request.url).pathname,
+              status: Exit.isSuccess(exit) === true ? exit.value.status : null,
+              ...(Exit.isSuccess(exit) === true &&
+              exit.value.headers['x-ratelimit-resource'] !== undefined
+                ? { rateLimitResource: exit.value.headers['x-ratelimit-resource'] }
+                : {}),
+              ...(Exit.isSuccess(exit) === true &&
+              exit.value.headers['x-ratelimit-remaining'] !== undefined
+                ? { rateLimitRemaining: exit.value.headers['x-ratelimit-remaining'] }
+                : {}),
+            }) ?? Effect.void,
+        ).pipe(Effect.ignoreCause),
+      ),
+    )
   const apiBase = options.apiBase ?? new URL('https://api.github.com')
   const headers = {
     Accept: 'application/vnd.github+json',
@@ -618,7 +645,14 @@ export const makeGitHubApp = Effect.fn('github-app.make')(function* (
           }
           // Never expose the authenticated request through response decoding failures.
           // Body access remains lazy/streaming; only safe metadata survives in errors.
-          const safeRequest = HttpClientRequest.make(request.method)(`${url.origin}${url.pathname}`)
+          const safeRequest = HttpClientRequest.makeWith(
+            request.method,
+            `${url.origin}${url.pathname}`,
+            HttpClientRequest.empty.urlParams,
+            HttpClientRequest.empty.hash,
+            HttpClientRequest.empty.headers,
+            HttpClientRequest.empty.body,
+          )
           const metadata = HttpClientResponse.fromWeb(
             safeRequest,
             new Response(null, {

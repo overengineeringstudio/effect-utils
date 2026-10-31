@@ -29,9 +29,9 @@ let
     # between Linux and Darwin builders, so each system pins its measured hash.
     hash =
       {
-        aarch64-darwin = "sha256-T9xUm2wJkLHJMfyijPdHlE29jZY7nMy2gu0qhAMtVg0=";
-        aarch64-linux = "sha256-MnhEfl4qpDX1rSXYpE3kdj9XHd69kqU07pegLCmYnLY=";
-        x86_64-linux = "sha256-MnhEfl4qpDX1rSXYpE3kdj9XHd69kqU07pegLCmYnLY=";
+        aarch64-darwin = "sha256-9dGKP134lCVdjli1vdWgj13aD4LjPtD2FuMzHe7/jEo=";
+        aarch64-linux = "sha256-Bqgo2l9tqoK973Hg/zsv+tk56Fj0L9k1JJftzrUU0eU=";
+        x86_64-linux = "sha256-Bqgo2l9tqoK973Hg/zsv+tk56Fj0L9k1JJftzrUU0eU=";
       }
       .${pkgs.stdenv.hostPlatform.system}
         or (throw "stylex-next-fixture: no pinned pnpm store hash for ${pkgs.stdenv.hostPlatform.system}");
@@ -53,7 +53,7 @@ let
     '';
   };
 in
-assert lib.assertMsg (pnpm.version == "12.7.0") "stylex-next-fixture requires pnpm 12.7.0";
+assert lib.assertMsg (pnpm.version == "12.15.0") "stylex-next-fixture requires pnpm 12.15.0";
 pkgs.runCommand "stylex-next-fixture"
   {
     nativeBuildInputs = [

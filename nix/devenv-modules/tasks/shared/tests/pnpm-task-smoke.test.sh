@@ -4,7 +4,8 @@ set -euo pipefail
 TESTS_DIR="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$TESTS_DIR/../../../../.." && pwd)"
 
-unset GITHUB_ACTIONS PNPM_JOB_LOCAL_STORE
+# Never let an inherited host-store override escape the temporary fixtures.
+unset GITHUB_ACTIONS PNPM_JOB_LOCAL_STORE PNPM_SHARED_STORE_DIR
 
 assert_exit_code() {
   local expected="$1"
@@ -242,12 +243,15 @@ trap 'if [ "${KEEP_PNPM_SMOKE_TMP:-0}" = "1" ]; then echo "pnpm smoke tmp: $tmpd
 workspace="$tmpdir/workspace"
 mkdir -p "$workspace/.devenv/task-cache" "$workspace/.pnpm-home-a/store/v11" "$workspace/.pnpm-home-b/store/v11" "$tmpdir/bin" "$workspace/packages/demo/node_modules/.bin" "$workspace/nested/pkg"
 
-echo "Preflight: profile exposes the pnpm guard and opt-in historical-store collector, not pnpmPkg"
-assert_eq $'pnpm\npnpm-store-gc' "$(eval_pnpm_package_names)" "pnpm module packages should contain the guard and collector only"
+echo "Preflight: profile exposes the pnpm guard and opt-in store maintenance CLIs, not pnpmPkg"
+assert_eq $'pnpm\npnpm-store-gc\npnpm-store-retire' "$(eval_pnpm_package_names)" "pnpm module packages should contain the guard and maintenance CLIs only"
 
 echo "Preflight: generated dependency graph contract classifies workspace overrides"
+# The generated manifest projects the authoritative catalog without adding a
+# TypeScript runtime dependency to this shell smoke test.
+effect_version="$(node -p 'require(process.argv[1]).devDependencies.effect' "$ROOT/packages/@overeng/utils/package.json")"
 assert_json_field \
-  "4.0.3" \
+  "$effect_version" \
   "$ROOT/pnpm-install-contract.json" \
   '(value) => value.dependencyGraphContract.overrides["@effect/platform-node-shared"]' \
   "dependency graph contract should include the active Effect cohort override"
@@ -371,7 +375,7 @@ set -euo pipefail
 printf '%s\n' "$*" >> "${TEST_PNPM_MUTATOR_LOG:?}"
 printf 'PWD=%s\n' "$PWD" >> "${TEST_PNPM_MUTATOR_LOG:?}"
 if [ "${1:-}" = "--version" ]; then
-  echo "12.7.0"
+  echo "12.15.0"
   exit 0
 fi
 if [ "${1:-}" = "install" ]; then

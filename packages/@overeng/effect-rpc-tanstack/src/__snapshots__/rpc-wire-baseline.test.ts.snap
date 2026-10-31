@@ -55,101 +55,101 @@ exports[`effect-rpc-tanstack RPC wire baselines (cross-major invariant) > captur
       "domainFailure": {
         "body": "{"_tag":"Exit","requestId":"2","exit":{"_tag":"Failure","cause":[{"_tag":"Fail","error":{"_tag":"GreetingError","reason":"missing-user","userId":""}}]}}
 ",
-        "contentType": "application/ndjson",
+        "contentType": "application/x-ndjson",
         "status": 200,
       },
       "invalidEnvelope": {
         "body": "{"_tag":"Exit","requestId":"5","exit":{"_tag":"Failure","cause":[{"_tag":"Die","defect":"Unknown request tag: "}]}}
 ",
-        "contentType": "application/ndjson",
+        "contentType": "application/x-ndjson",
         "status": 200,
       },
       "invalidId": {
         "body": "{"_tag":"Exit","requestId":"req-invalid-id","exit":{"_tag":"Success","value":{"message":"hello ada-ß","empty":"","unicode":"Grüße ß"}}}
 ",
-        "contentType": "application/ndjson",
+        "contentType": "application/x-ndjson",
         "status": 200,
       },
       "invalidPayload": {
         "body": "{"_tag":"Exit","requestId":"3","exit":{"_tag":"Failure","cause":[{"_tag":"Die","defect":"Expected string\\n  at [\\"userId\\"]"}]}}
 ",
-        "contentType": "application/ndjson",
+        "contentType": "application/x-ndjson",
         "status": 200,
       },
       "success": {
         "body": "{"_tag":"Exit","requestId":"1","exit":{"_tag":"Success","value":{"message":"hello ada-ß","empty":"","unicode":"Grüße ß"}}}
 ",
-        "contentType": "application/ndjson",
+        "contentType": "application/x-ndjson",
         "status": 200,
       },
       "unknownTag": {
         "body": "{"_tag":"Exit","requestId":"4","exit":{"_tag":"Failure","cause":[{"_tag":"Die","defect":"Unknown request tag: UnknownRpc"}]}}
 ",
-        "contentType": "application/ndjson",
+        "contentType": "application/x-ndjson",
         "status": 200,
       },
     },
     "encoded": "{
   "success": {
     "status": 200,
-    "contentType": "application/ndjson",
+    "contentType": "application/x-ndjson",
     "body": "{\\"_tag\\":\\"Exit\\",\\"requestId\\":\\"1\\",\\"exit\\":{\\"_tag\\":\\"Success\\",\\"value\\":{\\"message\\":\\"hello ada-ß\\",\\"empty\\":\\"\\",\\"unicode\\":\\"Grüße ß\\"}}}\\n"
   },
   "domainFailure": {
     "status": 200,
-    "contentType": "application/ndjson",
+    "contentType": "application/x-ndjson",
     "body": "{\\"_tag\\":\\"Exit\\",\\"requestId\\":\\"2\\",\\"exit\\":{\\"_tag\\":\\"Failure\\",\\"cause\\":[{\\"_tag\\":\\"Fail\\",\\"error\\":{\\"_tag\\":\\"GreetingError\\",\\"reason\\":\\"missing-user\\",\\"userId\\":\\"\\"}}]}}\\n"
   },
   "invalidPayload": {
     "status": 200,
-    "contentType": "application/ndjson",
+    "contentType": "application/x-ndjson",
     "body": "{\\"_tag\\":\\"Exit\\",\\"requestId\\":\\"3\\",\\"exit\\":{\\"_tag\\":\\"Failure\\",\\"cause\\":[{\\"_tag\\":\\"Die\\",\\"defect\\":\\"Expected string\\\\n  at [\\\\\\"userId\\\\\\"]\\"}]}}\\n"
   },
   "unknownTag": {
     "status": 200,
-    "contentType": "application/ndjson",
+    "contentType": "application/x-ndjson",
     "body": "{\\"_tag\\":\\"Exit\\",\\"requestId\\":\\"4\\",\\"exit\\":{\\"_tag\\":\\"Failure\\",\\"cause\\":[{\\"_tag\\":\\"Die\\",\\"defect\\":\\"Unknown request tag: UnknownRpc\\"}]}}\\n"
   },
   "invalidEnvelope": {
     "status": 200,
-    "contentType": "application/ndjson",
+    "contentType": "application/x-ndjson",
     "body": "{\\"_tag\\":\\"Exit\\",\\"requestId\\":\\"5\\",\\"exit\\":{\\"_tag\\":\\"Failure\\",\\"cause\\":[{\\"_tag\\":\\"Die\\",\\"defect\\":\\"Unknown request tag: \\"}]}}\\n"
   },
   "invalidId": {
     "status": 200,
-    "contentType": "application/ndjson",
+    "contentType": "application/x-ndjson",
     "body": "{\\"_tag\\":\\"Exit\\",\\"requestId\\":\\"req-invalid-id\\",\\"exit\\":{\\"_tag\\":\\"Success\\",\\"value\\":{\\"message\\":\\"hello ada-ß\\",\\"empty\\":\\"\\",\\"unicode\\":\\"Grüße ß\\"}}}\\n"
   }
 }",
     "reencoded": "{
   "success": {
     "status": 200,
-    "contentType": "application/ndjson",
+    "contentType": "application/x-ndjson",
     "body": "{\\"_tag\\":\\"Exit\\",\\"requestId\\":\\"1\\",\\"exit\\":{\\"_tag\\":\\"Success\\",\\"value\\":{\\"message\\":\\"hello ada-ß\\",\\"empty\\":\\"\\",\\"unicode\\":\\"Grüße ß\\"}}}\\n"
   },
   "domainFailure": {
     "status": 200,
-    "contentType": "application/ndjson",
+    "contentType": "application/x-ndjson",
     "body": "{\\"_tag\\":\\"Exit\\",\\"requestId\\":\\"2\\",\\"exit\\":{\\"_tag\\":\\"Failure\\",\\"cause\\":[{\\"_tag\\":\\"Fail\\",\\"error\\":{\\"_tag\\":\\"GreetingError\\",\\"reason\\":\\"missing-user\\",\\"userId\\":\\"\\"}}]}}\\n"
   },
   "invalidPayload": {
     "status": 200,
-    "contentType": "application/ndjson",
+    "contentType": "application/x-ndjson",
     "body": "{\\"_tag\\":\\"Exit\\",\\"requestId\\":\\"3\\",\\"exit\\":{\\"_tag\\":\\"Failure\\",\\"cause\\":[{\\"_tag\\":\\"Die\\",\\"defect\\":\\"Expected string\\\\n  at [\\\\\\"userId\\\\\\"]\\"}]}}\\n"
   },
   "unknownTag": {
     "status": 200,
-    "contentType": "application/ndjson",
+    "contentType": "application/x-ndjson",
     "body": "{\\"_tag\\":\\"Exit\\",\\"requestId\\":\\"4\\",\\"exit\\":{\\"_tag\\":\\"Failure\\",\\"cause\\":[{\\"_tag\\":\\"Die\\",\\"defect\\":\\"Unknown request tag: UnknownRpc\\"}]}}\\n"
   },
   "invalidEnvelope": {
     "status": 200,
-    "contentType": "application/ndjson",
+    "contentType": "application/x-ndjson",
     "body": "{\\"_tag\\":\\"Exit\\",\\"requestId\\":\\"5\\",\\"exit\\":{\\"_tag\\":\\"Failure\\",\\"cause\\":[{\\"_tag\\":\\"Die\\",\\"defect\\":\\"Unknown request tag: \\"}]}}\\n"
   },
   "invalidId": {
     "status": 200,
-    "contentType": "application/ndjson",
+    "contentType": "application/x-ndjson",
     "body": "{\\"_tag\\":\\"Exit\\",\\"requestId\\":\\"req-invalid-id\\",\\"exit\\":{\\"_tag\\":\\"Success\\",\\"value\\":{\\"message\\":\\"hello ada-ß\\",\\"empty\\":\\"\\",\\"unicode\\":\\"Grüße ß\\"}}}\\n"
   }
 }",
@@ -158,37 +158,37 @@ exports[`effect-rpc-tanstack RPC wire baselines (cross-major invariant) > captur
     "domainFailure": {
       "body": "{"_tag":"Exit","requestId":"2","exit":{"_tag":"Failure","cause":[{"_tag":"Fail","error":{"_tag":"GreetingError","reason":"missing-user","userId":""}}]}}
 ",
-      "contentType": "application/ndjson",
+      "contentType": "application/x-ndjson",
       "status": 200,
     },
     "invalidEnvelope": {
       "body": "{"_tag":"Exit","requestId":"5","exit":{"_tag":"Failure","cause":[{"_tag":"Die","defect":"Unknown request tag: "}]}}
 ",
-      "contentType": "application/ndjson",
+      "contentType": "application/x-ndjson",
       "status": 200,
     },
     "invalidId": {
       "body": "{"_tag":"Exit","requestId":"req-invalid-id","exit":{"_tag":"Success","value":{"message":"hello ada-ß","empty":"","unicode":"Grüße ß"}}}
 ",
-      "contentType": "application/ndjson",
+      "contentType": "application/x-ndjson",
       "status": 200,
     },
     "invalidPayload": {
       "body": "{"_tag":"Exit","requestId":"3","exit":{"_tag":"Failure","cause":[{"_tag":"Die","defect":"Expected string\\n  at [\\"userId\\"]"}]}}
 ",
-      "contentType": "application/ndjson",
+      "contentType": "application/x-ndjson",
       "status": 200,
     },
     "success": {
       "body": "{"_tag":"Exit","requestId":"1","exit":{"_tag":"Success","value":{"message":"hello ada-ß","empty":"","unicode":"Grüße ß"}}}
 ",
-      "contentType": "application/ndjson",
+      "contentType": "application/x-ndjson",
       "status": 200,
     },
     "unknownTag": {
       "body": "{"_tag":"Exit","requestId":"4","exit":{"_tag":"Failure","cause":[{"_tag":"Die","defect":"Unknown request tag: UnknownRpc"}]}}
 ",
-      "contentType": "application/ndjson",
+      "contentType": "application/x-ndjson",
       "status": 200,
     },
   },
@@ -243,7 +243,7 @@ exports[`effect-rpc-tanstack RPC wire baselines (cross-major invariant) > captur
         "_tag": "Failure",
         "cause": {
           "_id": "Cause",
-          "failures": [
+          "reasons": [
             {
               "_tag": "Die",
               "defect": {
@@ -259,7 +259,7 @@ exports[`effect-rpc-tanstack RPC wire baselines (cross-major invariant) > captur
         "_tag": "Failure",
         "cause": {
           "_id": "Cause",
-          "failures": [
+          "reasons": [
             {
               "_tag": "Fail",
               "error": {
@@ -300,7 +300,7 @@ exports[`effect-rpc-tanstack RPC wire baselines (cross-major invariant) > captur
     "_tag": "Failure",
     "cause": {
       "_id": "Cause",
-      "failures": [
+      "reasons": [
         {
           "_tag": "Fail",
           "error": {
@@ -317,7 +317,7 @@ exports[`effect-rpc-tanstack RPC wire baselines (cross-major invariant) > captur
     "_tag": "Failure",
     "cause": {
       "_id": "Cause",
-      "failures": [
+      "reasons": [
         {
           "_tag": "Die",
           "defect": {
@@ -346,7 +346,7 @@ exports[`effect-rpc-tanstack RPC wire baselines (cross-major invariant) > captur
     "_tag": "Failure",
     "cause": {
       "_id": "Cause",
-      "failures": [
+      "reasons": [
         {
           "_tag": "Fail",
           "error": {
@@ -363,7 +363,7 @@ exports[`effect-rpc-tanstack RPC wire baselines (cross-major invariant) > captur
     "_tag": "Failure",
     "cause": {
       "_id": "Cause",
-      "failures": [
+      "reasons": [
         {
           "_tag": "Die",
           "defect": {

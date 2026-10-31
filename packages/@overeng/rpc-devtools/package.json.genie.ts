@@ -3,6 +3,7 @@ import {
   catalog,
   exportEntry,
   packageJson,
+  firstPartyPackageDefaults,
   workspaceMember,
   type PackageJsonInputData,
 } from '../../../genie/internal.ts'
@@ -34,7 +35,7 @@ export default packageJson(
   {
     name: '@overeng/rpc-devtools',
     version: '0.1.0',
-    license: 'MIT',
+    ...firstPartyPackageDefaults,
     type: 'module',
     description: 'Scoped RPC meters and lazy explorer panels for host-owned developer tools',
     files: ['package.json', 'dist', 'src', '!dist/**/*.tsbuildinfo'],

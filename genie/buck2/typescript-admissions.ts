@@ -3,6 +3,7 @@ import { buck2TypeScriptAdmission as opentuiAdmission } from '../../context/open
 import { buck2TypeScriptAdmission as agentSessionIngestAdmission } from '../../packages/@overeng/agent-session-ingest/BUCK.genie.ts'
 import { buck2TypeScriptAdmission as aiGatewayConformanceAdmission } from '../../packages/@overeng/ai-gateway-conformance/BUCK.genie.ts'
 import { buck2TypeScriptAdmission as aiGatewayEdgeAdmission } from '../../packages/@overeng/ai-gateway-edge/BUCK.genie.ts'
+import { buck2TypeScriptAdmission as alchemyGitHubAdmission } from '../../packages/@overeng/alchemy-github/BUCK.genie.ts'
 import { buck2TypeScriptAdmission as buck2ToolsAdmission } from '../../packages/@overeng/buck2-tools/BUCK.genie.ts'
 import { buck2TypeScriptAdmission as ciToolsAdmission } from '../../packages/@overeng/ci-tools/BUCK.genie.ts'
 import { buck2TypeScriptAdmission as contentAddressAdmission } from '../../packages/@overeng/content-address/BUCK.genie.ts'
@@ -23,6 +24,7 @@ import { buck2TypeScriptAdmission as effectRustFixtureConsumerAdmission } from '
 import { buck2TypeScriptAdmission as effectRustAdmission } from '../../packages/@overeng/effect-rust/BUCK.genie.ts'
 import { buck2TypeScriptAdmission as effectSchemaFormAriaAdmission } from '../../packages/@overeng/effect-schema-form-aria/BUCK.genie.ts'
 import { buck2TypeScriptAdmission as effectSchemaFormAdmission } from '../../packages/@overeng/effect-schema-form/BUCK.genie.ts'
+import { buck2TypeScriptAdmission as genieFractalAdmission } from '../../packages/@overeng/genie-fractal/BUCK.genie.ts'
 import { buck2TypeScriptAdmission as genieSmalltalkAdmission } from '../../packages/@overeng/genie-smalltalk/BUCK.genie.ts'
 import { buck2TypeScriptAdmission as genieAdmission } from '../../packages/@overeng/genie/BUCK.genie.ts'
 import { buck2TypeScriptAdmission as ghCiUtilsAdmission } from '../../packages/@overeng/gh-ci-utils/BUCK.genie.ts'
@@ -95,6 +97,7 @@ export const buck2TypeScriptAdmissions = {
   agentSessionIngest: agentSessionIngestAdmission,
   aiGatewayConformance: aiGatewayConformanceAdmission,
   aiGatewayEdge: aiGatewayEdgeAdmission,
+  alchemyGitHub: alchemyGitHubAdmission,
   buck2Tools: buck2ToolsAdmission,
   ciTools: ciToolsAdmission,
   contentAddress: contentAddressAdmission,
@@ -118,6 +121,8 @@ export const buck2TypeScriptAdmissions = {
   effectSchemaForm: effectSchemaFormAdmission,
   effectSchemaFormAria: effectSchemaFormAriaAdmission,
   genie: genieAdmission,
+  genieFractal: genieFractalAdmission,
+  // arn:lmig:smalltalk:2026-10-26-genie-fractal-alias — temporary compatibility admission.
   genieSmalltalk: genieSmalltalkAdmission,
   ghCiUtils: ghCiUtilsAdmission,
   kdl: kdlAdmission,

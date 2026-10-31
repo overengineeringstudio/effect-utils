@@ -10,6 +10,7 @@ import {
 } from '../../genie/ci-workflow.ts'
 import { withBuck2CacheEvidence } from '../../genie/ci-workflow/buck2-cache-evidence.ts'
 import { buck2CachePostureEnv } from '../../genie/ci-workflow/buck2-cache-posture.ts'
+import { effectUtilsWorkflowPolicy } from '../../genie/ci-workflow/policy.ts'
 import { STANDALONE_REQUIRED_CI_JOB_NAMES } from '../../genie/ci.ts'
 import { storybookPreviewSetupSteps } from '../../genie/storybook-preview.ts'
 
@@ -24,6 +25,7 @@ const [playsJobName] = STANDALONE_REQUIRED_CI_JOB_NAMES
 
 // oxlint-disable-next-line overeng/exports-first -- generated entrypoint
 export default ciWorkflow({
+  policy: effectUtilsWorkflowPolicy('storybook-plays.yml'),
   trustTier: 'public',
   name: 'Storybook Plays',
   on: {

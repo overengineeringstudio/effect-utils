@@ -21,6 +21,8 @@ import {
   realpathSync,
   renameSync,
   rmSync,
+  rmdirSync,
+  unlinkSync,
   statSync,
   symlinkSync,
   utimesSync,
@@ -50,7 +52,9 @@ import {
   ensureEditorViewLeaseControl,
   probeEditorViewLease,
   probeEditorViewLeaseUnderFence,
+  probeReleasedEditorViewLease,
 } from './editor-view-leases.ts'
+import { editorViewRootSuffixes, isEditorViewReleaseControl } from './editor-view-lifecycle.ts'
 import {
   editorViewAutomaticEvictionEvidence,
   classifyEditorViewProcessCandidates,
@@ -2692,7 +2696,7 @@ export const releaseEditorViewRoot = async (options: EditorViewOptions): Promise
           // Preserve the canonical root and persistent lock identities even on explicit
           // teardown: recreating a pathname must never split flock ownership.
           for (const name of readdirSync(paths.editorRoot)) {
-            if (name === '.leases' || name === '.publish.lock') continue
+            if (isEditorViewReleaseControl(name) === true) continue
             const path = join(paths.editorRoot, name)
             if (lstatSync(path).isDirectory() === true) makeDirectoriesWritable(path)
             rmSync(path, { recursive: true })
@@ -2712,6 +2716,85 @@ export const releaseEditorViewRoot = async (options: EditorViewOptions): Promise
       await collectEditorViewBudgetFootprints({ editorRoot: paths.editorRoot })
     },
   })
+}
+
+/** Final retirement is only for worktrees being removed: their flock identities must never be reused. */
+export const retireEditorViewRoot = async ({
+  options,
+  editorRoot = makePaths(options).editorRoot,
+}: {
+  readonly options: EditorViewOptions
+  readonly editorRoot?: string
+}): Promise<void> => {
+  const paths = makePaths(options)
+  if (pathExists(editorRoot) === false) return
+  requireDirectory({ path: editorRoot, field: 'editor root' })
+  if (realpathSync(editorRoot) !== editorRoot)
+    fail(`editor root must not contain symbolic links: ${editorRoot}`)
+  const lock = await acquirePublicationLock({
+    editorRoot,
+    recoveryCommand: `recover-lock --repo-root ${paths.repoRoot} --package ${options.package}`,
+  })
+  const leases: { readonly release: () => void }[] = []
+  try {
+    await withEditorViewContentStoreLock({
+      contentStore: paths.contentStore,
+      run: async () => {
+        const leaseDirectory = join(editorRoot, '.leases')
+        const controls: string[] = []
+        for (const name of readdirSync(editorRoot)) {
+          const path = join(editorRoot, name)
+          if (path === lock.path) continue
+          if (name !== '.leases' || lstatSync(path).isDirectory() === false)
+            fail(`unexpected retirement entry: ${path}`)
+          for (const entry of readdirSync(path)) {
+            const control = join(path, entry)
+            const status = lstatSync(control)
+            if (
+              entry.endsWith('.lock') === false ||
+              status.isFile() === false ||
+              status.nlink !== 1
+            )
+              fail(`unexpected retirement entry: ${control}`)
+            controls.push(control)
+          }
+        }
+        // Validate and retain every exclusive lease before unlinking any control.
+        for (const control of controls) {
+          const lease = probeReleasedEditorViewLease({
+            editorRoot,
+            snapshot: basename(control, '.lock'),
+          })
+          if (lease.state !== 'clear') {
+            lease.release()
+            fail(`cannot retire editor root: ${control}: ${lease.reasons.join('; ')}`)
+          }
+          leases.push(lease)
+        }
+        const ownerPath = join(lock.path, 'owner.json')
+        for (const name of readdirSync(lock.path))
+          if (name !== 'owner.json') fail(`unexpected retirement entry: ${join(lock.path, name)}`)
+        if (readLockOwner(ownerPath).token !== lock.token)
+          fail(`publication lock ownership changed: ${lock.path}`)
+        for (const control of controls) unlinkSync(control)
+        if (pathExists(leaseDirectory) === true) rmdirSync(leaseDirectory)
+        unlinkSync(ownerPath)
+        rmdirSync(lock.path)
+        rmdirSync(editorRoot)
+      },
+    })
+  } finally {
+    for (const lease of leases) lease.release()
+    if (pathExists(lock.path) === true) {
+      const ownerPath = join(lock.path, 'owner.json')
+      if (pathExists(ownerPath) === true) {
+        if (readLockOwner(ownerPath).token !== lock.token)
+          fail(`publication lock ownership changed: ${lock.path}`)
+        unlinkSync(ownerPath)
+      }
+      rmdirSync(lock.path)
+    }
+  }
 }
 
 /** Exact-token recovery shared by explicit operator recovery and proven abandoned-owner recovery. */
@@ -3033,7 +3116,7 @@ const discoverBudgetRoots = (root: EditorViewBudgetRoot): readonly EditorViewBud
   }
   const roots = new Map<string, EditorViewBudgetRoot>([[root.editorRoot, root]])
   for (const repoRoot of repositories)
-    for (const suffix of ['.editor-view', 'packages/.editor-view', 'context/.editor-view']) {
+    for (const suffix of editorViewRootSuffixes) {
       const editorRoot = join(repoRoot, suffix)
       try {
         if (lstatSync(editorRoot).isDirectory() === true)
@@ -4130,6 +4213,7 @@ type ParsedCli = {
     | 'verify'
     | 'recover-lock'
     | 'release'
+    | 'retire'
     | 'collect-content'
     | 'repair-content'
     | 'pin'
@@ -4147,6 +4231,7 @@ const commands = [
   'verify',
   'recover-lock',
   'release',
+  'retire',
   'collect-content',
   'repair-content',
   'pin',
@@ -4176,7 +4261,11 @@ const parseCli = (args: readonly string[]): ParsedCli => {
   const storeMaintenance = command === 'collect-content' || command === 'repair-content'
   const managingPins = command === 'pin' || command === 'unpin'
   const maintenance =
-    recover === true || command === 'release' || storeMaintenance === true || managingPins === true
+    recover === true ||
+    command === 'release' ||
+    command === 'retire' ||
+    storeMaintenance === true ||
+    managingPins === true
   const admitting = command === 'publish' || command === 'check'
   if (admitting === false && backingRoots.length > 0)
     fail(`unexpected option for ${command}: --backing-root`)
@@ -4331,6 +4420,20 @@ const main = async (): Promise<void> => {
   } else if (parsed.command === 'release') {
     await releaseEditorViewRoot(parsed.options)
     process.stdout.write(`released editor dependency root for ${parsed.options.package}\n`)
+  } else if (parsed.command === 'retire') {
+    const paths = makePaths(parsed.options)
+    const roots = new Set([
+      paths.editorRoot,
+      join(paths.packageDir, '.editor-view'),
+      ...(parsed.options.package === '.'
+        ? editorViewRootSuffixes.map((suffix) => join(paths.repoRoot, suffix))
+        : []),
+    ])
+    for (const root of roots) {
+      // eslint-disable-next-line no-await-in-loop -- Shared roots retire sequentially under their fences.
+      await retireEditorViewRoot({ options: parsed.options, editorRoot: root })
+    }
+    process.stdout.write(`retired editor dependency roots for ${parsed.options.package}\n`)
   } else if (parsed.command === 'collect-content') {
     const collected = await collectEditorViewContentStore({
       contentStore: makePaths(parsed.options).contentStore,
