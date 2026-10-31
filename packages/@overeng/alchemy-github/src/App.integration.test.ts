@@ -20,7 +20,7 @@ import sodium, {
   base64_variants,
   to_string,
 } from 'libsodium-wrappers'
-import { expect } from 'vitest'
+import { expect, vi } from 'vitest'
 
 import { App, deleteApp, diffApp, readAppState, reconcileApp, type AppProps } from './App.ts'
 import { fromPrompt } from './ManifestCodeSource.ts'
@@ -328,11 +328,30 @@ it.effect('refuses a changed GitHub secret baseline without assuming an App exis
   }),
 )
 
-for (const status of [404, 422]) {
+for (const status of [404, 422, 500]) {
   it.effect(`maps GitHub conversion rejection ${status} to sanitized typed recovery`, () =>
     Effect.gen(function* () {
       const f = yield* fixture()
       f.state.conversionStatus = status
+      const captured: string[] = []
+      yield* Effect.acquireRelease(
+        Effect.sync(() => [
+          ...(['debug', 'error', 'info', 'log', 'trace', 'warn'] as const).map((method) =>
+            vi.spyOn(console, method).mockImplementation((...values: unknown[]) => {
+              captured.push(...values.map(String))
+            }),
+          ),
+          vi.spyOn(process.stderr, 'write').mockImplementation((chunk) => {
+            captured.push(String(chunk))
+            return true
+          }),
+          vi.spyOn(process.stdout, 'write').mockImplementation((chunk) => {
+            captured.push(String(chunk))
+            return true
+          }),
+        ]),
+        (spies) => Effect.sync(() => spies.forEach((spy) => spy.mockRestore())),
+      )
       const error = yield* reconcileApp(f.converting, f.pending).pipe(
         Effect.provide(f.credentials),
         Effect.flip,
@@ -342,6 +361,11 @@ for (const status of [404, 422]) {
       expect(encodeJson(error)).not.toContain('one-use-code')
       expect(f.state.conversionCalls).toBe(1)
       expect(f.state.writeCalls).toBe(0)
+      const output = captured.join('\n')
+      expect(output).not.toContain(f.pem)
+      const code = 'one-use-code'
+      for (let offset = 0; offset <= code.length - 4; offset++)
+        expect(output).not.toContain(code.slice(offset, offset + 4))
     }),
   )
 }
