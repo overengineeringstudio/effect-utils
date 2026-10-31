@@ -233,16 +233,18 @@ describe('selectRuns', () => {
       }),
     )
     const result = selectRuns(runs)
-    const expectedIds = Array.from({ length: 50 }, (_, index) =>
-      1 + Math.floor((index * 115) / 49),
-    )
+    const expectedIds = Array.from({ length: 50 }, (_, index) => 1 + Math.floor((index * 115) / 49))
     expect(result.selected.map((run) => run.id).sort((a, b) => a - b)).toEqual(expectedIds)
     expect(result.lanes.find(({ lane }) => lane === 'merge_group')).toEqual({
-      lane: 'merge_group', seen: 116, selected: 50,
+      lane: 'merge_group',
+      seen: 116,
+      selected: 50,
     })
     expect(selectRuns([...runs].reverse())).toEqual(result)
     const nextDay = runs.map((run) => ({
-      ...run, id: run.id + 1000, created_at: run.created_at.replace('2026-10-20', '2026-10-21'),
+      ...run,
+      id: run.id + 1000,
+      created_at: run.created_at.replace('2026-10-20', '2026-10-21'),
     }))
     expect(selectRuns([...runs, ...nextDay]).selected).toHaveLength(100)
   })
@@ -250,7 +252,9 @@ describe('selectRuns', () => {
   it('applies reader limits independently to each UTC day', () => {
     const runs = Array.from({ length: 30 }, (_, index) => evidenceRun(index + 1))
     const nextDay = runs.map((run) => ({
-      ...run, id: run.id + 100, created_at: run.created_at.replace('2026-10-20', '2026-10-21'),
+      ...run,
+      id: run.id + 100,
+      created_at: run.created_at.replace('2026-10-20', '2026-10-21'),
     }))
     expect(selectRuns([...runs, ...nextDay]).selected).toHaveLength(50)
   })

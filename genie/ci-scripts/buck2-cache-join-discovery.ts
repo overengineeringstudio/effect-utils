@@ -24,9 +24,10 @@ const proofJobIdsByDisplayName: Readonly<Record<string, string | undefined>> = O
 export const discoverProofJobIdentity = (
   displayName: string,
 ): { job: string; cell: string } | undefined => {
-  const job = Object.hasOwn(proofJobIdsByDisplayName, displayName)
-    ? proofJobIdsByDisplayName[displayName]
-    : undefined
+  const job =
+    Object.hasOwn(proofJobIdsByDisplayName, displayName) === true
+      ? proofJobIdsByDisplayName[displayName]
+      : undefined
   return job === undefined ? undefined : { job, cell: proofJobCell(displayName) }
 }
 
@@ -88,7 +89,8 @@ export const selectRuns = (
     let selectedCount = 0
     for (const candidates of byDay.values()) {
       if (lane === 'merge_group') candidates.sort((left, right) => left.id - right.id)
-      const limit = lane === 'main-writer' ? candidates.length : lane === 'merge_group' ? 50 : readerLimit
+      const limit =
+        lane === 'main-writer' ? candidates.length : lane === 'merge_group' ? 50 : readerLimit
       const count = Math.min(candidates.length, Math.max(0, Math.floor(limit)))
       for (let index = 0; index < count; index++) {
         const position =

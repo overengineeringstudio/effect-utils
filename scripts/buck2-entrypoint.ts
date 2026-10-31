@@ -1542,7 +1542,13 @@ export const runNativeWithEvidence = async ({
       callerSink !== undefined
         ? invocation.args
         : runIndex !== -1
-          ? [...before.slice(0, runIndex + 1), '--event-log', sink, ...before.slice(runIndex + 1), ...payload]
+          ? [
+              ...before.slice(0, runIndex + 1),
+              '--event-log',
+              sink,
+              ...before.slice(runIndex + 1),
+              ...payload,
+            ]
           : [...before, '--event-log', sink, ...payload]
     const { child, result } = spawnNativeCommand({ native, args: nativeArgs, stderr })
     reapNative = async () => {

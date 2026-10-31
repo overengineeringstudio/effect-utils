@@ -314,7 +314,9 @@ describe('native build ID registry', () => {
         expect(shard.complete).toBe(true)
         expect(JSON.parse(shard.artifact.trim()).actionCount).toBe(0)
         if (requested[0] === 'run') {
-          const observed: string[] = JSON.parse(readFileSync(join(root, 'native-args.json'), 'utf8'))
+          const observed: string[] = JSON.parse(
+            readFileSync(join(root, 'native-args.json'), 'utf8'),
+          )
           expect(observed.indexOf('--event-log')).toBeLessThan(observed.indexOf('//:empty'))
           expect(observed.slice(observed.indexOf('//:empty') + 1)).toEqual(requested.slice(2))
         }
