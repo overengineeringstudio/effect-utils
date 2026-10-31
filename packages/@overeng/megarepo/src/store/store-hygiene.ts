@@ -20,7 +20,6 @@ import * as Git from '../core/git.ts'
 import type { LockFile } from '../core/lock.ts'
 import { classifyRef } from '../core/ref.ts'
 import { resolveStoreBranchWorktree } from './store-branch-worktree.ts'
-import { createStoreWorktree, createStoreWorktreeDetached } from './store-deletion-lease.ts'
 import { makeStoreDirectory } from './store-path.ts'
 import type { MegarepoStore } from './store.ts'
 
@@ -528,16 +527,14 @@ export const fixStoreIssues = ({
 
             if (parsed !== undefined) {
               if (parsed.type === 'heads') {
-                yield* createStoreWorktree({
-                  storeBasePath: store.basePath,
+                yield* Git.createWorktree({
                   repoPath: bareRepoPath,
                   worktreePath,
                   branch: parsed.ref,
                   createBranch: false,
                 })
               } else {
-                yield* createStoreWorktreeDetached({
-                  storeBasePath: store.basePath,
+                yield* Git.createWorktreeDetached({
                   repoPath: bareRepoPath,
                   worktreePath,
                   commit: parsed.ref,

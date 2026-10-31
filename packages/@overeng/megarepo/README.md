@@ -237,9 +237,11 @@ Unknown evidence keeps. Repository output remains observation-only even with com
 coverage: its liveness and registry contract never grants deletion authority.
 Repository admission supports kernel shared/exclusive flock controls, separate from Git writer
 locks. Controls persist: never unlink them, which would split ownership.
-Activation (`mr store lease`) and worktree creation acquire the canonical repository-container
-lease before the worktree lease. External tools must use this protocol before publishing
-coverage: registration or activation bypassing it cannot be excluded by registry observations.
+Activation (`mr store lease`) and store-command creation acquire a shared canonical repository
+fence before the exclusive worktree lease. Shared holders coexist and nest; exclusive
+reclamation refuses while they hold admission. A prospective owner requires `--repo-path`
+pointing to an existing verified repository/worktree. External tools must use this protocol
+before publishing coverage; tools bypassing it remain a registration race.
 Both kinds carry `livenessKey` and `admissionIdentity`; the digest binds version, ownership,
 census admission and process coverage. Old/unversioned policies and receipts are rejected:
 consumers must decode v2 owner kinds and regenerate plans instead of reusing v1 hashes.

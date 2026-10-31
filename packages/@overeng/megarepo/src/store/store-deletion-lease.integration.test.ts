@@ -13,13 +13,15 @@ import { hostname } from 'node:os'
 
 import { NodeServices } from '@effect/platform-node'
 import { describe, it } from '@effect/vitest'
-import { Effect } from 'effect'
+import { Clock, Deferred, Effect, Fiber, Scope } from 'effect'
 import * as FileSystem from 'effect/FileSystem'
 import { expect } from 'vitest'
 
 import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
 
 import { encodeJson } from '../test-utils/mod.ts'
+import { createStoreFixture } from '../test-utils/store-setup.ts'
+import { withGitContainerLock, withGitWriterLock } from './git-writer-lock.ts'
 import {
   acquireDeletionLease,
   canonicalizeOwnerPath,
@@ -134,50 +136,74 @@ describe('store deletion lease', () => {
   )
 
   it.effect(
-    'container fencing excludes activation and registration without recursive acquisition',
+    'shares activation and creation admission while excluding repository reclamation',
     Effect.fnUntraced(
       function* () {
-        const f = yield* fixture()
-        const container = yield* canonicalizeOwnerPath(`${f.storePath}example.com/team/repo`)
-        const ownerPath = `${container}/refs/heads/new`
-        const bareRepoPath = `${container}/.bare`
-        const containerLease = { storeBasePath: f.storePath, ownerPath: container, now: NOW }
+        const f = yield* createStoreFixture([
+          { host: 'example.com', owner: 'team', repo: 'repo', branches: ['main'] },
+        ])
+        const bareRepoPath = f.bareRepoPaths['example.com/team/repo']!
+        const ownerPath = f.worktreePaths['example.com/team/repo#main']!
         const activation = withStoreWorktreeLease({ storeBasePath: f.storePath, ownerPath })
-        const registration = createStoreWorktree({
-          storeBasePath: f.storePath,
-          repoPath: bareRepoPath,
-          worktreePath: ownerPath,
-          branch: 'new',
-          createBranch: true,
-        })
-        const blocked = yield* withDeletionLease(containerLease)(
-          Effect.all([
-            activation(Effect.die('activation entered during deletion')).pipe(Effect.result),
-            registration.pipe(Effect.result),
-          ]),
-        )
-        for (const result of blocked) {
-          expect(result._tag).toBe('Failure')
-          if (result._tag === 'Failure') {
-            expect(result.failure).toBeInstanceOf(DeletionLeaseUnavailableError)
-            expect(result.failure).toMatchObject({ ownerPath: container })
-          }
-        }
-        const duringActivation = yield* activation(
-          withDeletionLease(containerLease)(Effect.void).pipe(Effect.result),
-        )
-        expect(duringActivation._tag).toBe('Failure')
-        // GC holds the container and uses only the worktree primitive underneath.
-        yield* Effect.void.pipe(
-          withDeletionLease({ ...containerLease, ownerPath }),
-          withDeletionLease(containerLease),
-        )
+        const exclusive = withGitContainerLock({ path: bareRepoPath, mode: 'exclusive' })
+        const registration = (branch: string) =>
+          createStoreWorktree({
+            storeBasePath: f.storePath,
+            repoPath: bareRepoPath,
+            worktreePath: `${bareRepoPath}../refs/heads/${branch}`,
+            branch,
+            createBranch: true,
+          })
         const fs = yield* FileSystem.FileSystem
-        yield* fs.makeDirectory(bareRepoPath, { recursive: true })
-        yield* withStoreWorktreeLease({
-          storeBasePath: f.storePath,
-          ownerPath: container,
-        })(Effect.void)
+        const outside = yield* fs.makeTempDirectoryScoped()
+        for (const prospective of [`${outside}/external`, `${bareRepoPath}../refs/heads/missing`]) {
+          const options = { storeBasePath: f.storePath, ownerPath: prospective }
+          expect(
+            (yield* withStoreWorktreeLease(options)(Effect.void).pipe(Effect.result))._tag,
+          ).toBe('Failure')
+          yield* withStoreWorktreeLease({ ...options, bareRepoPath })(Effect.void)
+        }
+        yield* activation(
+          Effect.gen(function* () {
+            expect((yield* exclusive(Effect.void).pipe(Effect.result))._tag).toBe('Failure')
+            // Different refs coexist under the same activation's shared container fence.
+            yield* Effect.all([registration('one'), registration('two')], {
+              concurrency: 'unbounded',
+            })
+          }),
+        )
+        const entered = yield* Deferred.make<void>()
+        const scope = yield* Scope.Scope
+        const creating = yield* withGitWriterLock({ path: bareRepoPath })(
+          Effect.gen(function* () {
+            const fiber = yield* registration('blocked-writer').pipe(
+              Effect.forkScoped,
+              Effect.provideService(Scope.Scope, scope),
+            )
+            yield* Effect.sleep('100 millis').pipe(
+              Effect.provideService(Clock.Clock, Clock.Clock.defaultValue()),
+            )
+            expect((yield* exclusive(Effect.void).pipe(Effect.result))._tag).toBe('Failure')
+            return fiber
+          }),
+        )
+        yield* Fiber.join(creating)
+        const waiting = yield* exclusive(
+          Effect.gen(function* () {
+            const fiber = yield* Effect.all(
+              [activation(Deferred.succeed(entered, undefined)), registration('three')],
+              { concurrency: 'unbounded' },
+            ).pipe(Effect.forkScoped, Effect.provideService(Scope.Scope, scope))
+            yield* Effect.sleep('100 millis').pipe(
+              Effect.provideService(Clock.Clock, Clock.Clock.defaultValue()),
+            )
+            expect(yield* Deferred.isDone(entered)).toBe(false)
+            expect(yield* fs.exists(`${bareRepoPath}../refs/heads/three`)).toBe(false)
+            return fiber
+          }),
+        )
+        yield* Fiber.join(waiting)
+        expect(yield* Deferred.isDone(entered)).toBe(true)
       },
       Effect.provide(NodeServices.layer),
       Effect.scoped,

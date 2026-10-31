@@ -34,7 +34,7 @@ import * as FileSystem from 'effect/FileSystem'
 import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
 
 import * as Git from '../core/git.ts'
-import { resolveGitCommonDir } from './git-writer-lock.ts'
+import { resolveGitCommonDir, withGitContainerLock } from './git-writer-lock.ts'
 
 /** On-disk lease record version. */
 const DELETION_LEASE_VERSION = 1
@@ -315,9 +315,8 @@ export const withDeletionLease =
     )
 
 /**
- * Activation/registration fences the repository before its worktree. GC already
- * holding that repository lease must use withDeletionLease directly, not this helper.
- * External worktrees derive their repository from Git, never a fabricated store path.
+ * Shared repository admission precedes the exclusive worktree activation lease.
+ * Prospective owners require an existing Git source; missing paths are not Git identity.
  */
 export const withStoreWorktreeLease =
   ({
@@ -334,19 +333,20 @@ export const withStoreWorktreeLease =
       const owner = yield* canonicalizeOwnerPath(ownerPath)
       const store = yield* canonicalizeOwnerPath(storeBasePath)
       const fs = yield* FileSystem.FileSystem
-      const ownsBare = bareRepoPath === undefined && (yield* fs.exists(`${owner}/.bare`))
+      const registered = (yield* fs.exists(`${owner}/.git`)) === true
+      const source =
+        registered === true
+          ? owner
+          : (bareRepoPath ??
+            ((yield* fs.exists(`${owner}/.bare`)) === true ? `${owner}/.bare` : owner))
       const bare =
-        bareRepoPath !== undefined || ownsBare === true
-          ? yield* canonicalizeOwnerPath(bareRepoPath ?? `${owner}/.bare`)
-          : yield* resolveGitCommonDir(owner).pipe(Effect.orElseSucceed(() => undefined))
+        (yield* fs.exists(source)) === true
+          ? yield* resolveGitCommonDir(source).pipe(Effect.orElseSucceed(() => undefined))
+          : undefined
       const container =
         bare?.endsWith('/.bare') === true && bare.startsWith(`${store}/`) === true
           ? dirname(bare)
-          : bare === undefined &&
-              owner.startsWith(`${store}/`) === true &&
-              (yield* fs.exists(`${owner}/.git`)) === false
-            ? owner.match(/^(.+?)\/refs\/(?:heads|tags|commits)\/.+$/)?.[1]
-            : undefined
+          : undefined
       const now = yield* Clock.currentTimeMillis
       const run = withDeletionLease({ storeBasePath, ownerPath: owner, now })(effect)
       if (container === undefined) {
@@ -359,9 +359,8 @@ export const withStoreWorktreeLease =
         }
         return yield* run
       }
-      // A container owner needs exactly one lease, never a recursive acquisition.
-      return yield* withDeletionLease({ storeBasePath, ownerPath: container, now })(
-        container === owner ? effect : run,
+      return yield* (container === owner ? effect : run).pipe(
+        withGitContainerLock({ path: bare!, mode: 'shared' }),
       )
     })
 

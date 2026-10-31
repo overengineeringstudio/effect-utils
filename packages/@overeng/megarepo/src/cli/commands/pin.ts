@@ -36,10 +36,6 @@ import {
 } from '../../core/lock.ts'
 import { classifyRef } from '../../core/ref.ts'
 import { resolveStoreBranchWorktree } from '../../store/store-branch-worktree.ts'
-import {
-  createStoreWorktree,
-  createStoreWorktreeDetached,
-} from '../../store/store-deletion-lease.ts'
 import { runPreflightChecks } from '../../store/store-hygiene.ts'
 import { refreshWorkspaceRegistry } from '../../store/store-liveness.ts'
 import { authorizeAuthorWorkspaceWrite, makeStoreDirectory } from '../../store/store-path.ts'
@@ -334,16 +330,14 @@ export const pinCommand = Cli.Command.make(
 
                 // Create the worktree
                 if (refType === 'commit' || refType === 'tag') {
-                  yield* createStoreWorktreeDetached({
-                    storeBasePath: store.basePath,
+                  yield* Git.createWorktreeDetached({
                     repoPath: bareRepoPath,
                     worktreePath,
                     commit: targetCommit,
                   })
                 } else {
                   // Branch: create worktree tracking the branch
-                  yield* createStoreWorktree({
-                    storeBasePath: store.basePath,
+                  yield* Git.createWorktree({
                     repoPath: bareRepoPath,
                     worktreePath,
                     branch: `origin/${newRef}`,
@@ -351,8 +345,7 @@ export const pinCommand = Cli.Command.make(
                   }).pipe(
                     Effect.catch(() =>
                       // Fallback: create detached at the resolved commit
-                      createStoreWorktreeDetached({
-                        storeBasePath: store.basePath,
+                      Git.createWorktreeDetached({
                         repoPath: bareRepoPath,
                         worktreePath,
                         commit: targetCommit,
@@ -490,8 +483,7 @@ export const pinCommand = Cli.Command.make(
                 }
 
                 // Create detached worktree at the pinned commit
-                yield* createStoreWorktreeDetached({
-                  storeBasePath: store.basePath,
+                yield* Git.createWorktreeDetached({
                   repoPath: bareRepoPath,
                   worktreePath: commitWorktreePath,
                   commit: lockedMember.commit,
