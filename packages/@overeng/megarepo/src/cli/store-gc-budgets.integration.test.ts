@@ -90,12 +90,11 @@ describe('versioned budget owner contract', () => {
       { kind: 'repo-build-output', containerPath: '/store/repository', outputRoot: common.path },
     ]
     const codec = Schema.fromJsonString(BudgetCandidate)
+    const decode = Schema.decodeSync(codec, { onExcessProperty: 'error' })
     for (const owner of owners) {
       const candidate = { ...common, ...owner }
-      const decoded = Schema.decodeUnknownSync(codec, { onExcessProperty: 'error' })(
-        encodeJson(candidate),
-      )
-      expect(Schema.decodeUnknownSync(codec)(Schema.encodeSync(codec)(decoded))).toEqual(candidate)
+      const decoded = decode(encodeJson(candidate))
+      expect(decode(Schema.encodeSync(codec)(decoded))).toEqual(candidate)
     }
   })
 })
