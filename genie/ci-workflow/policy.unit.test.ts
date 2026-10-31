@@ -256,6 +256,15 @@ const storageRules: Partial<Record<WorkflowPolicyRule, true>> = {
   'docker-gha-cache': true,
 }
 
+describe('megarepo store cache save guard', () => {
+  it('requires success and a cache miss while excluding fork PRs without excluding pushes', () => {
+    expect(saveMegarepoStoreStep().if).toBe(
+      "${{ success() && steps.restore-megarepo-store.outputs.cache-hit != 'true' && github.event.pull_request.head.repo.fork != true }}",
+    )
+    expect(restoreMegarepoStoreStep()).not.toHaveProperty('if')
+  })
+})
+
 // Some deploy helpers expose loose records and step helpers return readonly arrays;
 // the fixture boundary only adapts those declarations, without changing emitted values.
 const fixtureWorkflow = (fixture: { jobs: object; on?: unknown }): GitHubWorkflowArgs =>
