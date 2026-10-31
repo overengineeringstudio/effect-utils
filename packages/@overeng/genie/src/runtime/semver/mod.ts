@@ -5,6 +5,13 @@
  * `^`, `~`, `>=X <Y`, `>=X`, `||` disjunction, `*`, and bare versions.
  */
 
+/** Check a concrete semver, including optional prerelease and build identifiers. */
+export const isSemver = (value: string): boolean =>
+  value.trim() === value &&
+  /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*))*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/.test(
+    value,
+  )
+
 /** Parsed semver version as a `[major, minor, patch]` tuple. */
 export type SemVer = readonly [major: number, minor: number, patch: number]
 

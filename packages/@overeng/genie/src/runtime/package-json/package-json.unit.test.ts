@@ -1669,10 +1669,48 @@ describe('packageJson.aggregateFromPackages', () => {
     expect(result.data).toEqual({
       name: 'my-monorepo',
       private: true,
-      packageManager: 'pnpm@12.15.0',
+      packageManager: 'pnpm@12.17.0',
       workspaces: ['packages/app', 'packages/utils'],
     })
     expect(typeof result.stringify).toBe('function')
+  })
+
+  it.each(['pnpm@12.17.0', 'pnpm@12.17.0-rc.1+build.2'])(
+    'emits an explicit package manager pin: %s',
+    (packageManager) => {
+      const result = packageJson.aggregateFromPackages({
+        packages: [appPkg],
+        name: 'my-monorepo',
+        repoName: repo.repoName,
+        packageManager,
+      })
+
+      expect(result.data.packageManager).toBe(packageManager)
+      expect(JSON.parse(result.stringify(mockWorkspaceRootContext)).packageManager).toBe(
+        packageManager,
+      )
+    },
+  )
+
+  it.each([
+    '',
+    'npm@12.17.0',
+    'pnpm@latest',
+    'pnpm@^12.17.0',
+    'pnpm@12.17',
+    'pnpm@012.17.0',
+    'pnpm@12.17.0-01',
+    'pnpm@12.17.0+',
+    'pnpm@12.17.0\n',
+  ])('rejects an invalid package manager pin at generation time: %j', (packageManager) => {
+    expect(() =>
+      packageJson.aggregateFromPackages({
+        packages: [appPkg],
+        name: 'my-monorepo',
+        repoName: repo.repoName,
+        packageManager,
+      }),
+    ).toThrow('aggregateFromPackages packageManager must be pnpm@<semver>')
   })
 
   it('stringify produces valid JSON with $genie marker', () => {
@@ -1691,7 +1729,7 @@ describe('packageJson.aggregateFromPackages', () => {
     })
     expect(parsed.name).toBe('my-monorepo')
     expect(parsed.private).toBe(true)
-    expect(parsed.packageManager).toBe('pnpm@12.15.0')
+    expect(parsed.packageManager).toBe('pnpm@12.17.0')
     expect(parsed.workspaces).toEqual(['packages/app', 'packages/utils'])
   })
 

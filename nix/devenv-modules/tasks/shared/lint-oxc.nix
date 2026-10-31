@@ -8,6 +8,8 @@
 #     (inputs.effect-utils.devenvModules.tasks.lint-oxc {
 #       # Git pathspecs that define the lint surface.
 #       lintPaths = [ "packages" "scripts" ];
+#       # Use the same pinned pnpm derivation as the pnpm task module.
+#       pnpmPkg = inputs.effect-utils.lib.mkPnpm { inherit pkgs; };  # optional
 #       # Glob patterns for .genie.ts files (for genie check caching)
 #       # Should match all *.genie.ts files without traversing node_modules
 #       geniePatterns = [
@@ -61,6 +63,9 @@
   denyWarnings ? true,
   # Match the pnpm module's opt-in when using a global virtual store.
   globalVirtualStore ? false,
+  # Real derivation/path backing pnpm resolution for frozen lockfile checks.
+  # Match the pnpm task module's pin instead of relying on PATH discovery.
+  pnpmPkg ? null,
   # Real derivation/path backing the formatter guard. Defaults to pkgs.oxfmt but
   # stays injectable so module tests can prove absolute-path execution without
   # depending on PATH shadowing.
@@ -85,6 +90,7 @@ let
       pkgs
       config
       globalVirtualStore
+      pnpmPkg
       ;
   };
   megarepoStoreEnv = builtins.getEnv "MEGAREPO_STORE";

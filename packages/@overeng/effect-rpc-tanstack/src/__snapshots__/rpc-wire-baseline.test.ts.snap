@@ -228,21 +228,20 @@ exports[`effect-rpc-tanstack RPC wire baselines (cross-major invariant) > captur
   "failures": {
     "invalidExitTag": {
       "_tag": "failed",
-      "error": "SchemaError(Expected Exit)",
+      "error": "SchemaError(Expected { readonly "_tag": "Success", ... } | { readonly "_tag": "Failure", ... })",
     },
     "missingFailureCause": {
       "_tag": "failed",
-      "error": "SchemaError(Expected Exit)",
+      "error": "SchemaError(Missing key
+  at ["cause"])",
     },
   },
   "wire": {
     "byteIdentical": true,
     "decoded": {
       "defect": {
-        "_id": "Exit",
         "_tag": "Failure",
         "cause": {
-          "_id": "Cause",
           "reasons": [
             {
               "_tag": "Die",
@@ -255,10 +254,8 @@ exports[`effect-rpc-tanstack RPC wire baselines (cross-major invariant) > captur
         },
       },
       "failure": {
-        "_id": "Exit",
         "_tag": "Failure",
         "cause": {
-          "_id": "Cause",
           "reasons": [
             {
               "_tag": "Fail",
@@ -272,7 +269,6 @@ exports[`effect-rpc-tanstack RPC wire baselines (cross-major invariant) > captur
         },
       },
       "success": {
-        "_id": "Exit",
         "_tag": "Success",
         "value": {
           "empty": "",
@@ -285,7 +281,6 @@ exports[`effect-rpc-tanstack RPC wire baselines (cross-major invariant) > captur
     },
     "encoded": "{
   "success": {
-    "_id": "Exit",
     "_tag": "Success",
     "value": {
       "message": "hello ß",
@@ -296,10 +291,8 @@ exports[`effect-rpc-tanstack RPC wire baselines (cross-major invariant) > captur
     }
   },
   "failure": {
-    "_id": "Exit",
     "_tag": "Failure",
     "cause": {
-      "_id": "Cause",
       "reasons": [
         {
           "_tag": "Fail",
@@ -313,10 +306,8 @@ exports[`effect-rpc-tanstack RPC wire baselines (cross-major invariant) > captur
     }
   },
   "defect": {
-    "_id": "Exit",
     "_tag": "Failure",
     "cause": {
-      "_id": "Cause",
       "reasons": [
         {
           "_tag": "Die",
@@ -331,7 +322,6 @@ exports[`effect-rpc-tanstack RPC wire baselines (cross-major invariant) > captur
 }",
     "reencoded": "{
   "success": {
-    "_id": "Exit",
     "_tag": "Success",
     "value": {
       "message": "hello ß",
@@ -342,10 +332,8 @@ exports[`effect-rpc-tanstack RPC wire baselines (cross-major invariant) > captur
     }
   },
   "failure": {
-    "_id": "Exit",
     "_tag": "Failure",
     "cause": {
-      "_id": "Cause",
       "reasons": [
         {
           "_tag": "Fail",
@@ -359,10 +347,8 @@ exports[`effect-rpc-tanstack RPC wire baselines (cross-major invariant) > captur
     }
   },
   "defect": {
-    "_id": "Exit",
     "_tag": "Failure",
     "cause": {
-      "_id": "Cause",
       "reasons": [
         {
           "_tag": "Die",

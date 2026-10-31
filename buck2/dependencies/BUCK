@@ -3,7 +3,7 @@
 
 # Generated file - DO NOT EDIT
 # Source: pnpm-lock.yaml
-# Store fingerprint: sha256:2e6b6bd136765f96146307fe32463d9df49dd090dbd4ac2670d3c27c702f253a
+# Store fingerprint: sha256:aeaa6a2e4b6ac77c150c55cff4cbf4a37391f6dc442d00eddb01de6da9e11df1
 
 load("//buck2:materialization.bzl", "export_materialization_inputs")
 load("//buck2:static_checks.bzl", "static_source_set")
@@ -43706,6 +43706,7 @@ pnpm_store_view(
         "effect": "effect@4.1.0",
         "react": "react@19.2.8",
         "react-dom": "react-dom@19.2.8_react@19.2.8",
+        "seroval": "seroval@1.6.4",
         "typescript": "typescript@7.0.2",
         "vite": "vite@8.2.2_@types+node@26.5.0_esbuild@0.28.2_jiti@2.7.0_yaml@2.9.1",
         "vitest": "vitest@5.0.3_@opentelemetry+api@1.9.1_@types+node@26.5.0_@vitest+browser-playwright@5.0.3_@vitest+ui@5._07cb29887e6e8dcb",
@@ -44434,6 +44435,7 @@ pnpm_store_view(
         "effect": "effect@4.1.0",
         "react": "react@19.2.8",
         "react-dom": "react-dom@19.2.8_react@19.2.8",
+        "seroval": "seroval@1.6.4",
         "typescript": "typescript@7.0.2",
         "vite": "vite@8.2.2_@types+node@26.5.0_esbuild@0.28.2_jiti@2.7.0_yaml@2.9.1",
         "vitest": "vitest@5.0.3_@opentelemetry+api@1.9.1_@types+node@26.5.0_@vitest+browser-playwright@5.0.3_@vitest+ui@5._07cb29887e6e8dcb",
@@ -45162,6 +45164,7 @@ pnpm_store_view(
         "effect": "effect@4.1.0",
         "react": "react@19.2.8",
         "react-dom": "react-dom@19.2.8_react@19.2.8",
+        "seroval": "seroval@1.6.4",
         "typescript": "typescript@7.0.2",
         "vite": "vite@8.2.2_@types+node@26.5.0_esbuild@0.28.2_jiti@2.7.0_yaml@2.9.1",
         "vitest": "vitest@5.0.3_@opentelemetry+api@1.9.1_@types+node@26.5.0_@vitest+browser-playwright@5.0.3_@vitest+ui@5._07cb29887e6e8dcb",
