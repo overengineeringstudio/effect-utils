@@ -55,6 +55,10 @@
   ],
   "neutral": [
     {
+      "task": "test:alchemy-github:unbounded",
+      "rationale": "Manual read-only GitHub App adoption lane; skipped without explicit credentials and no platform-specific behavior."
+    },
+    {
       "task": "buck2:rust:generators:test",
       "rationale": "Platform-neutral Bun/JS contract generation and USTAR round-trips through pinned GNU tar; no Darwin-specific behavior."
     },
@@ -146,6 +150,10 @@
       {
         "task": "test:ai-gateway-edge",
         "rationale": "ai-gateway-edge bounded parsing, schema, API, rendering or build-contract assertions; no Darwin-specific host lifecycle regression. Host-sensitive source complements are classified independently."
+      },
+      {
+        "task": "test:alchemy-github",
+        "rationale": "Manifest, drift and ruleset mapping assertions with local HTTP endpoints; no host-specific lifecycle behavior. Manual live adoption is owned by the source/unbounded complement."
       },
       {
         "task": "test:ci-tools",

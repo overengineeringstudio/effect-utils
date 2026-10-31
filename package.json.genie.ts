@@ -5,6 +5,7 @@ import { firstPartyPackageDefaults, packageJson } from './genie/internal.ts'
 import agentSessionIngestPkg from './packages/@overeng/agent-session-ingest/package.json.genie.ts'
 import aiGatewayConformancePkg from './packages/@overeng/ai-gateway-conformance/package.json.genie.ts'
 import aiGatewayEdgePkg from './packages/@overeng/ai-gateway-edge/package.json.genie.ts'
+import alchemyGitHubPkg from './packages/@overeng/alchemy-github/package.json.genie.ts'
 import buck2ToolsPkg from './packages/@overeng/buck2-tools/package.json.genie.ts'
 import ciToolsPkg from './packages/@overeng/ci-tools/package.json.genie.ts'
 import contentAddressPkg from './packages/@overeng/content-address/package.json.genie.ts'
@@ -64,6 +65,7 @@ export const rootWorkspacePackages = [
   agentSessionIngestPkg,
   aiGatewayConformancePkg,
   aiGatewayEdgePkg,
+  alchemyGitHubPkg,
   buck2ToolsPkg,
   contentAddressPkg,
   dataGraphPkg,

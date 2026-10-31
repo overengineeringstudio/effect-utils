@@ -12,6 +12,7 @@ export const internalPackages = [
   'agent-session-ingest',
   'ai-gateway-conformance',
   'ai-gateway-edge',
+  'alchemy-github',
   'buck2-tools',
   'content-address',
   'data-graph',
