@@ -940,10 +940,10 @@ const collectBudgetRepoWorktrees = Effect.fn('store.collectBudgetRepoWorktrees')
   for (const path of paths) {
     const admitted = yield* Effect.gen(function* () {
       const canonical = yield* fs.realPath(path)
-      if (canonical === bare) return
+      if (canonical === bare) return undefined
       if (canonical.startsWith(`${store.replace(/\/+$/, '')}/`) === false)
         return { reason: 'store-external registration', incomplete: false }
-      if (seen.has(canonical) === true) return
+      if (seen.has(canonical) === true) return undefined
       yield* captureDeletionIdentity({ rootPath: store, path })
       const dotGit = `${canonical}/.git`
       if ((yield* Effect.tryPromise(() => lstat(dotGit))).isFile() === false)
@@ -980,6 +980,7 @@ const collectBudgetRepoWorktrees = Effect.fn('store.collectBudgetRepoWorktrees')
         requiresExpandedProcessCoverage:
           layout.some((entry) => entry.path.replace(/\/+$/u, '') === canonical) === false,
       })
+      return undefined
     }).pipe(Effect.orElseSucceed(() => ({ reason: 'broken worktree ownership', incomplete: true })))
     if (admitted !== undefined) {
       censusIncomplete ||= admitted.incomplete
