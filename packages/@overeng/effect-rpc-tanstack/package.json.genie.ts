@@ -29,6 +29,7 @@ const workspaceDeps = catalog.compose({
     workspace: [utilsPkg],
     external: {
       ...catalog.pick(...peerDepNames, '@types/react', 'typescript', 'vite', 'vitest'),
+      seroval: '1.6.4',
     },
   },
   peerDependencies: {
