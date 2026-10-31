@@ -141,6 +141,20 @@ and consumer `bash`/`nix` executables. On Linux it builds a tiny constructor-onl
 shared object using the pinned nixpkgs C compiler, proves the injection works
 against an unsanitized launcher, then verifies the real step excludes it.
 
+## Refreshing migration ledgers
+
+`devenv tasks run genie:run` refreshes existing debt without growing the ledger.
+It removes resolved rows and can re-key a grandfathered `banned-action` row when
+only step content changes. Matching requires the same repository, workflow,
+job, rule, step ID (preferred) or name, and full action identity including ref.
+Unlabelled steps and ambiguous identities cannot be re-keyed. Every old row and
+current finding must match one-to-one; all non-key row fields are retained.
+
+`devenv tasks run genie:check` still rejects content changes until the refresh
+has been reviewed and committed. New jobs, steps, actions, or refs remain new
+debt even during refresh. Banned actions remain never-exceptable: this is a
+reviewable update to existing migration debt, not an exception mechanism.
+
 ## Type Reference
 
 See [GitHub Actions workflow syntax](https://docs.github.com/en/actions/using-workflows/workflow-syntax-for-github-actions) for detailed documentation on all options.

@@ -772,6 +772,71 @@ describe('consumer migration ledger', () => {
     )
   })
 
+  const upload = (path: string, uses = 'actions/upload-artifact@v4', name = 'Upload results') => ({
+    name,
+    uses,
+    with: { path },
+  })
+  const withSteps = (steps: GitHubWorkflowArgs['jobs'][string]['steps']): GitHubWorkflowArgs => ({
+    ...definition,
+    jobs: { check: { ...definition.jobs.check!, steps } },
+  })
+  const original = withSteps([upload('before')])
+  const originalLedger = consumerMigrationLedger({ workflows: { [workflow]: original } })
+  const refresh = (value: GitHubWorkflowArgs, baseline = originalLedger) =>
+    consumerMigrationLedger({ workflows: { [workflow]: value }, ledger: baseline })
+
+  it('re-keys content only, retaining row count and all other row fields', () => {
+    const changed = withSteps([{ run: 'echo unrelated' }, upload('after')])
+    const result = refresh(changed)
+    expect(result.violations).toHaveLength(originalLedger.violations.length)
+    expect(result.violations[0]!.path).not.toBe(originalLedger.violations[0]!.path)
+    expect({ ...result.violations[0], path: originalLedger.violations[0]!.path }).toEqual(
+      originalLedger.violations[0],
+    )
+    const output = generate(changed, originalLedger)
+    expect(() => output.stringify({ cwd: '/workspace', location: '.' })).toThrow(
+      /devenv tasks run genie:run/,
+    )
+    expect(() =>
+      output.stringify({ cwd: '/workspace', location: '.', mode: 'generate' }),
+    ).not.toThrow()
+  })
+
+  it.each([
+    ['step', withSteps([upload('before'), upload('after', undefined, 'New upload')])],
+    ['action', withSteps([upload('after', 'actions/download-artifact@v4')])],
+    ['ref', withSteps([upload('after', 'actions/upload-artifact@v5')])],
+    ['ref only', withSteps([upload('before', 'actions/upload-artifact@v5')])],
+    ['unlabelled', withSteps([{ uses: 'actions/upload-artifact@v4', with: { path: 'after' } }])],
+    ['job', { ...original, jobs: { different: original.jobs.check! } }],
+  ])('refuses new banned-action %s during refresh', (_label, changed) => {
+    expect(() => refresh(changed)).toThrow(/NEW/)
+  })
+
+  it('refuses ambiguous changed steps in the same job', () => {
+    const baseline = consumerMigrationLedger({
+      workflows: { [workflow]: withSteps([upload('one'), upload('two')]) },
+    })
+    expect(() => refresh(withSteps([upload('three'), upload('four')]), baseline)).toThrow(
+      /Ambiguous banned-action re-key.*check/,
+    )
+  })
+
+  it('never grows for every subset of removed, unchanged, or changed labelled steps (finite property)', () => {
+    const steps = ['one', 'two', 'three'].map((name) => upload('before', undefined, name))
+    const baseline = consumerMigrationLedger({ workflows: { [workflow]: withSteps(steps) } })
+    for (let choices = 0; choices < 27; choices++) {
+      const selected = steps.flatMap((step, index) => {
+        const choice = Math.floor(choices / 3 ** index) % 3
+        return choice === 0 ? [] : [{ ...step, with: { path: choice === 1 ? 'before' : 'after' } }]
+      })
+      const result = refresh(withSteps(selected), baseline)
+      expect(result.violations.length).toBeLessThanOrEqual(baseline.violations.length)
+      expect(result.violations).toHaveLength(selected.length)
+    }
+  })
+
   it('refreshes shrink-only, preserves hand-rolled ledgers and filters by workflow', () => {
     const clean: GitHubWorkflowArgs = {
       ...definition,

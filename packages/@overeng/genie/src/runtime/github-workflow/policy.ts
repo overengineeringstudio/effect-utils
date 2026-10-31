@@ -23,7 +23,7 @@ export type WorkflowPolicyViolation = {
   readonly job: string
   readonly rule: WorkflowPolicyRule
   readonly path: string
-  /** Observed diagnostic value; banned-action identity excludes the action ref. */
+  /** Observed action identity includes its exact ref. */
   readonly value: string
 }
 
@@ -820,11 +820,81 @@ const violationKey = (violation: WorkflowPolicyViolation): string =>
     violation.job,
     violation.rule,
     violation.path,
-    violation.rule === 'banned-action' ? violation.value.split('@')[0] : violation.value,
+    violation.value,
   ])
 const exceptionKey = (
   entry: Pick<WorkflowPolicyViolation, 'repository' | 'workflow' | 'job' | 'rule'>,
 ): string => JSON.stringify([entry.repository, entry.workflow, entry.job, entry.rule])
+
+/**
+ * Refresh only content-addressed, labelled banned-action steps. The existing id
+ * (preferred) or name survives unrelated step insertion; unlabelled steps cannot
+ * prove identity. Full action values retain the exact ref throughout matching.
+ */
+export const reconcileWorkflowPolicyLedger = ({
+  violations,
+  ledger,
+  refresh = false,
+}: {
+  readonly violations: readonly WorkflowPolicyViolation[]
+  readonly ledger: readonly WorkflowPolicyViolation[]
+  readonly refresh?: boolean
+}): readonly WorkflowPolicyViolation[] => {
+  const contentKey = (entry: WorkflowPolicyViolation): string | undefined => {
+    if (entry.rule !== 'banned-action') return undefined
+    const prefix = `jobs.${entry.job}.steps[`
+    if (entry.path.startsWith(prefix) === false) return undefined
+    const identity = /^(?:id|name):"(?:[^"\\]|\\.)*"\|action:"(?:[^"\\]|\\.)*"\|content:/.exec(
+      entry.path.slice(prefix.length),
+    )?.[0]
+    return identity === undefined
+      ? undefined
+      : JSON.stringify([
+          entry.repository,
+          entry.workflow,
+          entry.job,
+          entry.rule,
+          entry.value,
+          identity,
+        ])
+  }
+  const remaining = new Set(ledger)
+  const issues: WorkflowPolicyIssue[] = []
+  const result = violations.map((violation) => {
+    const exact = [...remaining].find((entry) => violationKey(entry) === violationKey(violation))
+    if (exact !== undefined) {
+      remaining.delete(exact)
+      return exact
+    }
+    const key = contentKey(violation)
+    const candidates = key === undefined ? [] : ledger.filter((entry) => contentKey(entry) === key)
+    if (candidates.length > 0) {
+      const ambiguous =
+        candidates.length !== 1 ||
+        violations.filter((entry) => contentKey(entry) === key).length !== 1 ||
+        remaining.has(candidates[0]!) === false
+      if (ambiguous === true)
+        issues.push({
+          kind: 'NEW',
+          message: `Ambiguous banned-action re-key in ${violation.repository}/${violation.workflow}/${violation.job}: step identity must match one ledger row and one current finding.`,
+          violation,
+        })
+      else if (refresh === true) {
+        const previous = candidates[0]!
+        remaining.delete(previous)
+        return { ...previous, path: violation.path }
+      } else
+        issues.push({
+          kind: 'NEW',
+          message: `${violationKey(violation)}; step content changed. Review a ledger refresh with devenv tasks run genie:run.`,
+          violation,
+        })
+    } else issues.push({ kind: 'NEW', message: violationKey(violation), violation })
+    return violation
+  })
+  if (issues.length > 0) throw new WorkflowPolicyError(issues)
+  return result
+}
 
 /** Validate policy/exception provenance and collect the unsuppressed observations used by checks and ledgers. */
 export const collectEffectiveWorkflowPolicyViolations = ({
@@ -879,9 +949,12 @@ export const collectEffectiveWorkflowPolicyViolations = ({
 export const validateWorkflowPolicy = ({
   workflow,
   policy,
+  refreshLedger = false,
 }: {
   workflow: GitHubWorkflowArgs
   policy: WorkflowPolicy
+  /** Construction may defer content-only re-keys until stringify knows the run mode. */
+  refreshLedger?: boolean
 }): void => {
   const violations = collectEffectiveWorkflowPolicyViolations({ workflow, policy })
   const issues: WorkflowPolicyIssue[] = []
@@ -896,10 +969,11 @@ export const validateWorkflowPolicy = ({
     }
   }
   if (policy.mode === 'report') {
-    const expected = new Set((policy.ledger ?? []).map(violationKey))
-    for (const violation of violations)
-      if (expected.has(violationKey(violation)) === false)
-        issues.push({ kind: 'NEW', message: violationKey(violation), violation })
+    reconcileWorkflowPolicyLedger({
+      violations,
+      ledger: policy.ledger ?? [],
+      refresh: refreshLedger,
+    })
   } else {
     for (const violation of violations)
       issues.push({ kind: 'VIOLATION', message: violationKey(violation), violation })

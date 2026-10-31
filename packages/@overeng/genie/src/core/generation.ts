@@ -1086,12 +1086,14 @@ export const getExpectedContent = Effect.fn('getExpectedContent')(function* ({
   oxfmtConfigPath,
   loadedGenieFile,
   formatter,
+  mode = 'check',
 }: {
   genieFilePath: string
   cwd: string
   oxfmtConfigPath: Option.Option<string>
   loadedGenieFile?: LoadedGenieFile
   formatter?: OxfmtFormatter | undefined
+  mode?: 'generate' | 'check'
 }) {
   yield* Observability.annotateFile({
     label: Observability.relativePath({
@@ -1106,7 +1108,7 @@ export const getExpectedContent = Effect.fn('getExpectedContent')(function* ({
   const sourceFile = path.basename(genieFilePath)
   const loaded =
     loadedGenieFile === undefined ? yield* loadGenieFile({ genieFilePath, cwd }) : loadedGenieFile
-  const rawContent = loaded.output.stringify(loaded.ctx)
+  const rawContent = loaded.output.stringify({ ...loaded.ctx, mode })
 
   const header = getHeaderComment({ targetFilePath, sourceFile })
   const formattedContent = yield* formatter === undefined
@@ -1244,6 +1246,7 @@ export const generateFile = ({
       genieFilePath,
       cwd,
       oxfmtConfigPath,
+      mode: 'generate',
     })
 
     const targetDirExists = yield* fs.exists(targetDir)

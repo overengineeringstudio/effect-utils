@@ -1,9 +1,11 @@
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
 import { describe, expect, it } from 'vitest'
 
+import type { GitHubWorkflowArgs } from '../../packages/@overeng/genie/src/runtime/github-workflow/mod.ts'
 import { collectWorkflowPolicyViolations } from '../../packages/@overeng/genie/src/runtime/github-workflow/policy.ts'
 
 const repositoryRoot = fileURLToPath(new URL('../../', import.meta.url))
@@ -11,6 +13,7 @@ const policy = {
   repository: 'example/project',
   workflow: 'ci.yml',
   admittedRunnerLabels: ['pool-small'],
+  bannedActions: ['actions/upload-artifact'],
 }
 const workflow = (runner: string) => ({
   on: 'push' as const,
@@ -22,27 +25,30 @@ const withFixture = (
     root: string
     ledgerPath: string
     setRunner: (runner: string) => void
+    setWorkflow: (value: GitHubWorkflowArgs) => void
     generate: (check?: boolean) => { status: number | null; output: string }
   }) => void,
+  initial: GitHubWorkflowArgs = workflow('legacy-runner'),
 ) => {
-  const parent = join(repositoryRoot, 'tmp')
+  const parent = join(homedir(), '.cache')
   mkdirSync(parent, { recursive: true })
-  const root = mkdtempSync(join(parent, 'policy-ledger-refresh-'))
+  const root = mkdtempSync(join(parent, 'bc-'))
   const ledgerPath = join(root, 'ledger.json')
   const runtime = pathToFileURL(join(repositoryRoot, 'packages/@overeng/genie/src/runtime')).href
-  const setRunner = (runner: string) =>
+  const setWorkflow = (value: GitHubWorkflowArgs) =>
     writeFileSync(
       join(root, 'workflow.ts'),
       `
 import { githubWorkflow } from '${runtime}/github-workflow/mod.ts'
 import ledger from './ledger.json' with { type: 'json' }
 export default githubWorkflow({
-  ...${JSON.stringify(workflow(runner))},
+  ...${JSON.stringify(value)},
   actionlint: false,
   policy: { ...${JSON.stringify(policy)}, mode: 'report', ledger: ledger.violations },
 })
 `,
     )
+  const setRunner = (runner: string) => setWorkflow(workflow(runner))
   try {
     // Give discovery an isolated Git boundary rather than the parent's ignored tmp/.
     const initialized = Bun.spawnSync(['git', 'init', root], { cwd: repositoryRoot })
@@ -53,7 +59,7 @@ export default githubWorkflow({
         {
           source: 'ledger.json.genie.ts',
           violations: collectWorkflowPolicyViolations({
-            workflow: workflow('legacy-runner'),
+            workflow: initial,
             policy,
           }),
         },
@@ -66,7 +72,7 @@ export default githubWorkflow({
       `
 import workflow from './workflow.ts'
 import { createGenieOutput } from '${runtime}/core.ts'
-import { collectEffectiveWorkflowPolicyViolations } from '${runtime}/github-workflow/policy.ts'
+import { collectEffectiveWorkflowPolicyViolations, validateWorkflowPolicy } from '${runtime}/github-workflow/policy.ts'
 import ledger from './ledger.json' with { type: 'json' }
 const data = {
   source: 'ledger.json.genie.ts',
@@ -75,7 +81,14 @@ const data = {
     policy: { ...${JSON.stringify(policy)}, mode: 'report', ledger: ledger.violations },
   }),
 }
-export default createGenieOutput({ data, stringify: () => JSON.stringify(data, null, 2) + '\\n' })
+export default createGenieOutput({ data, stringify: (ctx) => {
+  validateWorkflowPolicy({
+    workflow: workflow.data,
+    policy: workflow.data.policy,
+    refreshLedger: ctx.mode === 'generate',
+  })
+  return JSON.stringify(data, null, 2) + '\\n'
+} })
 `,
     )
     const generate = (check = false) => {
@@ -96,7 +109,7 @@ export default createGenieOutput({ data, stringify: () => JSON.stringify(data, n
         output: new TextDecoder().decode(result.stdout) + new TextDecoder().decode(result.stderr),
       }
     }
-    run({ root, ledgerPath, setRunner, generate })
+    run({ root, ledgerPath, setRunner, setWorkflow, generate })
   } finally {
     rmSync(root, { recursive: true, force: true })
   }
@@ -128,5 +141,34 @@ describe('migration ledger refresh through eager workflow imports', () => {
       expect(result.output).toContain('NEW')
       expect(readFileSync(ledgerPath, 'utf8')).toBe(committed)
     })
+  }, 30_000)
+
+  it('requires explicit generation to re-key eager imports, then check passes', () => {
+    const upload = (path: string): GitHubWorkflowArgs => ({
+      on: 'push',
+      jobs: {
+        check: {
+          'runs-on': 'pool-small',
+          steps: [{ name: 'Upload evidence', uses: 'actions/upload-artifact@v4', with: { path } }],
+        },
+      },
+    })
+    withFixture(({ ledgerPath, setWorkflow, generate }) => {
+      const before = JSON.parse(readFileSync(ledgerPath, 'utf8'))
+      setWorkflow(upload('after'))
+      const checked = generate(true)
+      expect(checked.status, checked.output).toBe(1)
+      expect(checked.output).toContain('devenv tasks run genie:run')
+      expect(JSON.parse(readFileSync(ledgerPath, 'utf8'))).toEqual(before)
+      const regenerated = generate()
+      expect(regenerated.status, regenerated.output).toBe(0)
+      const after = JSON.parse(readFileSync(ledgerPath, 'utf8'))
+      expect(after.violations).toHaveLength(before.violations.length)
+      expect({ ...after.violations[0], path: before.violations[0].path }).toEqual(
+        before.violations[0],
+      )
+      const final = generate(true)
+      expect(final.status, final.output).toBe(0)
+    }, upload('before'))
   }, 30_000)
 })

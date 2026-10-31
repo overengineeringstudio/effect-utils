@@ -3,6 +3,7 @@ import {
   collectEffectiveWorkflowPolicyViolations,
   collectWorkflowPolicyViolations,
   decodeWorkflowPolicyLedger,
+  reconcileWorkflowPolicyLedger,
   validateWorkflowPolicy,
   WorkflowPolicyError,
 } from '../../packages/@overeng/genie/src/runtime/github-workflow/policy.ts'
@@ -180,6 +181,13 @@ export const consumerMigrationLedger = ({
     validateWorkflowPolicy({
       workflow: value,
       policy: consumerMigrationPolicy({ repository, workflow, ledger: baseline }),
+      refreshLedger: true,
     })
-  return { violations: observations }
+  return {
+    violations: reconcileWorkflowPolicyLedger({
+      violations: observations,
+      ledger: decodeWorkflowPolicyLedger(baseline.violations),
+      refresh: true,
+    }),
+  }
 }
