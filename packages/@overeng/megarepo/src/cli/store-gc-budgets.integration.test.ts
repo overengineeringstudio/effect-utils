@@ -665,6 +665,11 @@ if (inOwnerNamespace === true && process.platform === 'linux')
             'feature/census-2',
           ])
           expect(row(plan, `${roots[1]}/target`)?.refType).toBe('commits')
+          for (const path of roots) {
+            expect(row(plan, `${path}/target`)?.allocatedBytes).toBeGreaterThan(0)
+            expect(row(plan, `${path}/target`)?.reason).toBe('process-liveness-unavailable')
+          }
+          expect(applyCandidate(f, { plan, path: `${roots[0]}/target` }).exitCode).not.toBe(0)
           const legacy = runMr(f, ['--dry-run', '--all'])
           expect(legacy.exitCode, legacy.stderr).toBe(0)
           for (const path of roots) expect(legacy.stdout).not.toContain(path)
@@ -689,6 +694,7 @@ if (inOwnerNamespace === true && process.platform === 'linux')
             `${repo}/stale`,
             `${repo}/mismatch`,
             `${f.outside}external`,
+            `${repo}/cross-linked`,
           ]
           for (const [index, path] of paths.entries()) {
             yield* Git.createWorktree({
@@ -706,6 +712,10 @@ if (inOwnerNamespace === true && process.platform === 'linux')
           yield* fs.remove(`${paths[1]}/.git`)
           const pointer = yield* fs.readFileString(`${paths[2]}/.git`)
           yield* fs.writeFileString(`${pointer.slice(8).trim()}/commondir`, `${paths[0]}\n`)
+          yield* fs.writeFileString(
+            `${paths[4]}/.git`,
+            yield* fs.readFileString(`${paths[0]}/.git`),
+          )
           const alias = `${repo}/alias`
           yield* Effect.promise(() => symlink(paths[0]!, alias))
           // A second registry record names the same canonical owner through an alias.
@@ -721,6 +731,7 @@ if (inOwnerNamespace === true && process.platform === 'linux')
           expect(result.stderr).toContain('broken worktree ownership')
           expect(result.stderr).toContain('commondir mismatch')
           expect(result.stderr).toContain('store-external registration')
+          expect(result.stderr).toContain('gitdir backlink mismatch')
         },
         Effect.provide(NodeServices.layer),
         Effect.scoped,

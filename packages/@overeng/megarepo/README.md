@@ -178,6 +178,8 @@ Branch and detached identities come from Git, not directory names. External regi
 unsafe paths, broken ownership and symbolic refs outside the supported branch/commit contract
 are excluded with stderr diagnostics; incomplete internal discovery prevents eviction.
 These additional roots never enter whole-worktree GC or archive discovery.
+These roots are observation-only: bytes are reported but never eviction-eligible.
+Admission verifies the admin directory's canonical `.git` backlink and matching registration HEAD.
 
 `--budgets` cannot be combined with `--generated-artifacts`, `--all`, or `--force`. The policy is
 decoded strictly before the store is inspected: an unreadable file, unknown `schemaVersion`, or
