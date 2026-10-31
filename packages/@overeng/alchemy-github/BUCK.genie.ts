@@ -9,7 +9,15 @@ export const buck2TypeScriptAdmission = {
   sourceRoots: ['src'],
   workspaceSiblings: [],
   authorities: [{ declarationEntrypoint: 'src/mod.d.ts', projectFile: 'tsconfig.json' }],
-  tests: [{ name: 'test', runner: 'vitest' }],
+  tests: [
+    {
+      name: 'test',
+      runner: 'vitest',
+      // Manual provider access belongs to the generated source/unbounded complement,
+      // not the bounded collection inventory (the suite is skipped without credentials).
+      excludes: ['src/App.live.test.ts'],
+    },
+  ],
 } as const satisfies Buck2TypeScriptAdmission
 
 export default buck2TypeScriptPackageProjection(buck2TypeScriptAdmission)

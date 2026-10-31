@@ -125,6 +125,6 @@ The manual **read-only App adoption** lane is skipped unless all these variables
 - `ALCHEMY_GITHUB_LIVE_SECRET_NAME`: its existing Actions secret
 - Optionally `ALCHEMY_GITHUB_LIVE_SECRET_ENVIRONMENT`
 
-Run `devenv tasks run test:alchemy-github` after installing the supported cohort. The live lane makes GET requests only; no App creation, conversion, installation or secret mutation is automated. Normal tests need no credentials, and no live lane has been exercised as part of this change.
+Run `devenv tasks run test:alchemy-github` for the bounded local tests, or `devenv tasks run test:alchemy-github:unbounded` for the manual lane after installing the supported cohort. The package's Buck admission excludes `src/App.live.test.ts` from bounded collection and assigns it to the generated source/unbounded complement, following the repository's live-integration ownership convention. The live lane makes GET requests only; no App creation, conversion, installation or secret mutation is automated. Normal tests need no credentials, and no live lane has been exercised as part of this change.
 
 API references: [manifest registration](https://docs.github.com/en/apps/sharing-github-apps/registering-a-github-app-from-a-manifest), [Apps REST](https://docs.github.com/en/rest/apps/apps), [repository rulesets](https://docs.github.com/en/rest/repos/rules), [Actions secrets](https://docs.github.com/en/rest/actions/secrets).

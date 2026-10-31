@@ -55,7 +55,7 @@
     },
     {
       "collectionTarget": "effect_utils//packages/@overeng/alchemy-github:test_collect",
-      "excludes": [],
+      "excludes": ["src/App.live.test.ts"],
       "packageName": "alchemy-github",
       "packagePath": "packages/@overeng/alchemy-github",
       "runner": "vitest",
@@ -79,7 +79,8 @@
         "src/manifest.unit.test.ts"
       ],
       "unboundedAfter": [],
-      "unboundedFiles": []
+      "unboundedFiles": ["src/App.live.test.ts"],
+      "unboundedTaskName": "test:alchemy-github:unbounded"
     },
     {
       "collectionTarget": "effect_utils//packages/@overeng/ci-tools:test_collect",

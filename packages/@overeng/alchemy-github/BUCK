@@ -4,7 +4,7 @@
 # Projection source: packages/@overeng/alchemy-github/BUCK.genie.ts
 # Projection schema version: 13
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:c3c85bcbbbac1048d5bcafe9db57c3a37f4cb8c13214051ac3e17ab12ca32fd1
+# Semantic fingerprint: sha256:3ac355b09acac86e2de096f03782d6657256b8dd33c6152febc95a29330028b0
 # Regenerate: devenv tasks run genie:run
 
 load("//buck2:materialization.bzl", "export_materialization_inputs", "package_view")
@@ -195,11 +195,17 @@ npm_package_archive(
 vitest_test(
     name = "test",
     package_tree = ":test_package_tree",
+    excludes = [
+        "src/App.live.test.ts",
+    ],
     visibility = ["PUBLIC"],
 )
 
 vitest_collect(
     name = "test_collect",
     package_tree = ":test_package_tree",
+    excludes = [
+        "src/App.live.test.ts",
+    ],
     visibility = ["PUBLIC"],
 )
