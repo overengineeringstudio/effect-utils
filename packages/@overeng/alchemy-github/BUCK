@@ -4,7 +4,7 @@
 # Projection source: packages/@overeng/alchemy-github/BUCK.genie.ts
 # Projection schema version: 13
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:3ac355b09acac86e2de096f03782d6657256b8dd33c6152febc95a29330028b0
+# Semantic fingerprint: sha256:f1dd849b3df4f8d2ee231a5d655b432120065a70319bb600a32e00e0f28691bc
 # Regenerate: devenv tasks run genie:run
 
 load("//buck2:materialization.bzl", "export_materialization_inputs", "package_view")
@@ -21,12 +21,18 @@ export_file(
 )
 
 export_materialization_inputs([
+    "src/ActionsCommon.ts",
+    "src/ActionsSecret.integration.test.ts",
+    "src/ActionsSecret.ts",
     "src/App.integration.test.ts",
     "src/App.live.test.ts",
     "src/App.ts",
     "src/AppErrors.ts",
     "src/Providers.ts",
     "src/Ruleset.unit.test.ts",
+    "src/SealedBox.ts",
+    "src/SecretSource.ts",
+    "src/SecretSource.unit.test.ts",
     "src/engine.integration.test.ts",
     "src/host.unit.test.ts",
     "src/manifest.ts",
@@ -73,12 +79,18 @@ package_view(
     dependency_view = "//buck2/dependencies:view_packages_overeng_alchemy_github_303965750171",
     files = {
         "package.json": "package.json",
+        "src/ActionsCommon.ts": "src/ActionsCommon.ts",
+        "src/ActionsSecret.integration.test.ts": "src/ActionsSecret.integration.test.ts",
+        "src/ActionsSecret.ts": "src/ActionsSecret.ts",
         "src/App.integration.test.ts": "src/App.integration.test.ts",
         "src/App.live.test.ts": "src/App.live.test.ts",
         "src/App.ts": "src/App.ts",
         "src/AppErrors.ts": "src/AppErrors.ts",
         "src/Providers.ts": "src/Providers.ts",
         "src/Ruleset.unit.test.ts": "src/Ruleset.unit.test.ts",
+        "src/SealedBox.ts": "src/SealedBox.ts",
+        "src/SecretSource.ts": "src/SecretSource.ts",
+        "src/SecretSource.unit.test.ts": "src/SecretSource.unit.test.ts",
         "src/engine.integration.test.ts": "src/engine.integration.test.ts",
         "src/host.unit.test.ts": "src/host.unit.test.ts",
         "src/manifest.ts": "src/manifest.ts",
@@ -103,12 +115,18 @@ package_view(
     dependency_view = "//buck2/dependencies:product_view_packages_overeng_alchemy_github_303965750171",
     files = {
         "package.json": "package.json",
+        "src/ActionsCommon.ts": "src/ActionsCommon.ts",
+        "src/ActionsSecret.integration.test.ts": "src/ActionsSecret.integration.test.ts",
+        "src/ActionsSecret.ts": "src/ActionsSecret.ts",
         "src/App.integration.test.ts": "src/App.integration.test.ts",
         "src/App.live.test.ts": "src/App.live.test.ts",
         "src/App.ts": "src/App.ts",
         "src/AppErrors.ts": "src/AppErrors.ts",
         "src/Providers.ts": "src/Providers.ts",
         "src/Ruleset.unit.test.ts": "src/Ruleset.unit.test.ts",
+        "src/SealedBox.ts": "src/SealedBox.ts",
+        "src/SecretSource.ts": "src/SecretSource.ts",
+        "src/SecretSource.unit.test.ts": "src/SecretSource.unit.test.ts",
         "src/engine.integration.test.ts": "src/engine.integration.test.ts",
         "src/host.unit.test.ts": "src/host.unit.test.ts",
         "src/manifest.ts": "src/manifest.ts",
@@ -133,12 +151,18 @@ package_view(
     dependency_view = "//buck2/dependencies:view_packages_overeng_alchemy_github_303965750171",
     files = {
         "package.json": "package.json",
+        "src/ActionsCommon.ts": "src/ActionsCommon.ts",
+        "src/ActionsSecret.integration.test.ts": "src/ActionsSecret.integration.test.ts",
+        "src/ActionsSecret.ts": "src/ActionsSecret.ts",
         "src/App.integration.test.ts": "src/App.integration.test.ts",
         "src/App.live.test.ts": "src/App.live.test.ts",
         "src/App.ts": "src/App.ts",
         "src/AppErrors.ts": "src/AppErrors.ts",
         "src/Providers.ts": "src/Providers.ts",
         "src/Ruleset.unit.test.ts": "src/Ruleset.unit.test.ts",
+        "src/SealedBox.ts": "src/SealedBox.ts",
+        "src/SecretSource.ts": "src/SecretSource.ts",
+        "src/SecretSource.unit.test.ts": "src/SecretSource.unit.test.ts",
         "src/engine.integration.test.ts": "src/engine.integration.test.ts",
         "src/host.unit.test.ts": "src/host.unit.test.ts",
         "src/manifest.ts": "src/manifest.ts",

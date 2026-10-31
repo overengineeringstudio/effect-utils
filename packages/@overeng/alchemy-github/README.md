@@ -85,6 +85,44 @@ Use `adopt: { slug: 'example-check-publisher' }` with the existing `privateKeySe
 
 GitHub supports `DELETE /app/installations/{id}` with an App JWT, but has **no REST API to delete an App registration**. A sink-only provider has no key for uninstall. Registered destroy therefore fails closed. Delete/uninstall in the owner UI, or set `destroy: 'orphan'` to relinquish Alchemy ownership while leaving the App and secret untouched. Pending state can be removed without that flag. Key rotation is an explicit manual operation outside this resource and must preserve the same sink-only boundary.
 
+## Actions secrets
+
+`GitHub.ActionsSecret` accepts a reasoned, concrete 1Password reference, never a raw secret value:
+
+```ts
+const signingSecret =
+  yield *
+  GitHub.ActionsSecret('SigningSecret', {
+    owner: 'example',
+    repository: 'target',
+    environment: 'production', // omit for repository scope
+    name: 'SIGNING_TOKEN',
+    value: {
+      ref: 'op://aaaaaaaaaaaaaaaaaaaaaaaaaa/bbbbbbbbbbbbbbbbbbbbbbbbbb/token',
+      reason: 'Publish the declared deployment signing token to Actions',
+    },
+    hashKey: {
+      ref: 'op://aaaaaaaaaaaaaaaaaaaaaaaaaa/cccccccccccccccccccccccccc/hmac',
+      reason: 'Detect changes using this stack-specific HMAC key',
+    },
+  })
+```
+
+Provision the referenced items and a separate HMAC key per stack externally. Apply resolves values through `SecretSource`, encrypts with the scope's Actions public key using the same sealed-box helper as App conversion, includes `key_id`, and zeroes mutable value/key buffers after PUT or failure. State contains only secret metadata and, with `hashKey`, HMAC-SHA256 plus the key reference; neither the value nor the HMAC key enters outputs, state or diagnostic causes. There is no value cache. Node/Bun immutable strings used by the CLI JSON decoder are transient and garbage-collected, not securely erasable.
+
+Default plans observe the live GitHub secret metadata and, when `hashKey` is configured, read both handles and compare the HMAC with state. Without `hashKey`, only existence and `updated_at` detect drift. Set `driftMode: 'updatedAtOnly'` to prevent all value/key reads during planning, even with a hash key configured. GitHub timestamps do not prove secret contents or distinguish same-timestamp writes. Apply still reads the source to perform an authorized update. Destroy deletes a managed secret unless `retain: true`. Names, scope and host are immutable.
+
+The default `SecretSourceLive` uses the runtime `ChildProcessSpawner` and runs only `op-proxy read <ref> --reason <reason> --cache none --fresh --output json`; it discards stderr and sanitizes failures. No raw `op`, temp secret files, or mutations are used. `GitHub.providers({ ...options, secretSource: customSourceLayer })` can inject another `SecretSource` implementation. **Current op-proxy CLI limitation:** it trims original boundary whitespace before JSON encoding; the adapter performs no additional trimming. Use a byte-preserving injected source for whitespace-significant values until the CLI supplies a lossless read contract.
+
+### Narrowest GitHub App repository permissions
+
+| Resource/scope             | Plan/read                                                | Apply/destroy       |
+| -------------------------- | -------------------------------------------------------- | ------------------- |
+| ActionsSecret, repository  | Secrets: read (metadata and public key)                  | Secrets: write      |
+| ActionsSecret, environment | Environments: read (metadata and environment public key) | Environments: write |
+
+Write permission includes the corresponding read operations. Restrict the App installation to the target repository; this resource does not need Actions workflow read/write, Contents, organization Secrets, or an App private key in state. The environment must already exist. Permission names and endpoint scopes follow GitHub's [Actions secrets REST documentation](https://docs.github.com/en/rest/actions/secrets). The same permission table applies to the App conversion sink.
+
 ## Required checks with the upstream Ruleset
 
 The beta.84 provider already supports the consumer's required-check integration ID, strict policy, bypass actors and observed-policy comparison on updates. Use its camelCase contract directly:
