@@ -23,7 +23,7 @@ export type WorkflowPolicyViolation = {
   readonly job: string
   readonly rule: WorkflowPolicyRule
   readonly path: string
-  /** Observed action identity includes its exact ref. */
+  /** Observed diagnostic value; banned-action identity excludes the action ref. */
   readonly value: string
 }
 
@@ -820,16 +820,34 @@ const violationKey = (violation: WorkflowPolicyViolation): string =>
     violation.job,
     violation.rule,
     violation.path,
-    violation.value,
+    violation.rule === 'banned-action' ? violation.value.split('@')[0] : violation.value,
   ])
 const exceptionKey = (
   entry: Pick<WorkflowPolicyViolation, 'repository' | 'workflow' | 'job' | 'rule'>,
 ): string => JSON.stringify([entry.repository, entry.workflow, entry.job, entry.rule])
 
+const contentKey = (entry: WorkflowPolicyViolation): string | undefined => {
+  if (entry.rule !== 'banned-action') return undefined
+  const prefix = `jobs.${entry.job}.steps[`
+  if (entry.path.startsWith(prefix) === false) return undefined
+  const identity = /^(?:id|name):"(?:[^"\\]|\\.)*"\|action:"(?:[^"\\]|\\.)*"\|content:/.exec(
+    entry.path.slice(prefix.length),
+  )?.[0]
+  return identity === undefined
+    ? undefined
+    : JSON.stringify([
+        entry.repository,
+        entry.workflow,
+        entry.job,
+        entry.rule,
+        entry.value.split('@')[0],
+        identity,
+      ])
+}
 /**
  * Refresh only content-addressed, labelled banned-action steps. The existing id
  * (preferred) or name survives unrelated step insertion; unlabelled steps cannot
- * prove identity. Full action values retain the exact ref throughout matching.
+ * prove identity. Action refs remain diagnostic-only, as in ordinary ledger keys.
  */
 export const reconcileWorkflowPolicyLedger = ({
   violations,
@@ -840,24 +858,6 @@ export const reconcileWorkflowPolicyLedger = ({
   readonly ledger: readonly WorkflowPolicyViolation[]
   readonly refresh?: boolean
 }): readonly WorkflowPolicyViolation[] => {
-  const contentKey = (entry: WorkflowPolicyViolation): string | undefined => {
-    if (entry.rule !== 'banned-action') return undefined
-    const prefix = `jobs.${entry.job}.steps[`
-    if (entry.path.startsWith(prefix) === false) return undefined
-    const identity = /^(?:id|name):"(?:[^"\\]|\\.)*"\|action:"(?:[^"\\]|\\.)*"\|content:/.exec(
-      entry.path.slice(prefix.length),
-    )?.[0]
-    return identity === undefined
-      ? undefined
-      : JSON.stringify([
-          entry.repository,
-          entry.workflow,
-          entry.job,
-          entry.rule,
-          entry.value,
-          identity,
-        ])
-  }
   const remaining = new Set(ledger)
   const issues: WorkflowPolicyIssue[] = []
   const result = violations.map((violation) => {

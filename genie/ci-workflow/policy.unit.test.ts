@@ -806,12 +806,21 @@ describe('consumer migration ledger', () => {
   it.each([
     ['step', withSteps([upload('before'), upload('after', undefined, 'New upload')])],
     ['action', withSteps([upload('after', 'actions/download-artifact@v4')])],
-    ['ref', withSteps([upload('after', 'actions/upload-artifact@v5')])],
-    ['ref only', withSteps([upload('before', 'actions/upload-artifact@v5')])],
     ['unlabelled', withSteps([{ uses: 'actions/upload-artifact@v4', with: { path: 'after' } }])],
     ['job', { ...original, jobs: { different: original.jobs.check! } }],
   ])('refuses new banned-action %s during refresh', (_label, changed) => {
     expect(() => refresh(changed)).toThrow(/NEW/)
+  })
+
+  it('keeps existing action ref bumps diagnostic-only, including during content refresh', () => {
+    const refOnly = withSteps([upload('before', 'actions/upload-artifact@v5')])
+    expect(() =>
+      generate(refOnly, originalLedger).stringify({ cwd: '/workspace', location: '.' }),
+    ).not.toThrow()
+    expect(refresh(refOnly).violations).toHaveLength(1)
+    expect(
+      refresh(withSteps([upload('after', 'actions/upload-artifact@v5')])).violations,
+    ).toHaveLength(1)
   })
 
   it('refuses ambiguous changed steps in the same job', () => {
