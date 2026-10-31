@@ -138,7 +138,7 @@ done
 
 # The module sets this only when the consumer defines the existing release task.
 if [ "${WORKTREE_TEARDOWN_EDITOR_RELEASE:-0}" = 1 ]; then
-  DEVENV_TUI=false devenv tasks run buck2:editor:release --mode single
+  WORKTREE_TEARDOWN_EDITOR_RETIRE=1 DEVENV_TUI=false devenv tasks run buck2:editor:release --mode single
 fi
 
 # Find ownership markers separately from directories: no shell/stat tests per

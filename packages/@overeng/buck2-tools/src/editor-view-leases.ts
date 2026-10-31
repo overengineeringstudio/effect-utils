@@ -175,7 +175,7 @@ const validateControl = ({
   return status
 }
 
-/** Caller MUST hold the owning CAS fence. Never remove these tombstones, including on retirement. */
+/** Caller MUST hold the owning CAS fence. Only final worktree retirement removes tombstones. */
 export const ensureEditorViewLeaseControl = (input: {
   readonly editorRoot: string
   readonly snapshot: string
@@ -233,10 +233,12 @@ const acquire = ({
   editorRoot,
   snapshot,
   exclusive,
+  released = false,
 }: {
   readonly editorRoot: string
   readonly snapshot: string
   readonly exclusive: boolean
+  readonly released?: boolean
 }): EditorViewLeaseProbe & {
   readonly fd?: number
   readonly snapshot?: string
@@ -245,7 +247,10 @@ const acquire = ({
   let fd: number | undefined
   try {
     const identity = paths({ editorRoot, snapshot })
-    const generation = validateGeneration({ root: identity.root, snapshot: identity.snapshot })
+    const generation =
+      released === true
+        ? undefined
+        : validateGeneration({ root: identity.root, snapshot: identity.snapshot })
     privateDirectory(dirname(identity.control))
     fd = openSync(
       identity.control,
@@ -271,6 +276,7 @@ const acquire = ({
     }
     validateControl({ control: identity.control, fd })
     if (
+      generation !== undefined &&
       same({
         left: generation,
         right: validateGeneration({ root: identity.root, snapshot: identity.snapshot }),
@@ -307,6 +313,12 @@ export const probeEditorViewLease = (input: {
   readonly editorRoot: string
   readonly snapshot: string
 }): EditorViewLeaseProbe => acquire({ ...input, exclusive: true })
+
+/** Final worktree retirement probes tombstones even after their generations were released. */
+export const probeReleasedEditorViewLease = (input: {
+  readonly editorRoot: string
+  readonly snapshot: string
+}): EditorViewLeaseProbe => acquire({ ...input, exclusive: true, released: true })
 
 /**
  * Retirement admission only. Caller MUST hold the owning CAS fence: readers can

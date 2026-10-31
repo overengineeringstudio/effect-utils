@@ -33,6 +33,7 @@ import {
   reserveEditorViewBudget as reserveEditorViewBudgetUnscoped,
   type EditorViewBudgetRootLock,
 } from './editor-view-budget.ts'
+import { acquireEditorViewLease, probeReleasedEditorViewLease } from './editor-view-leases.ts'
 import { managedEditorViewSnapshots, type EditorViewPinRecord } from './editor-view-readers.ts'
 import {
   editorViewStagingCreatorIdentity,
@@ -53,6 +54,7 @@ import {
   publishEditorViews as publishEditorViewsUnscoped,
   recoverEditorViewLock,
   releaseEditorViewRoot as releaseEditorViewRootUnscoped,
+  retireEditorViewRoot,
   unpinEditorView,
   verifyEditorViewSnapshot,
   tryAcquireEditorViewBudgetRootLock,
@@ -1984,6 +1986,87 @@ describe('editor view publisher', () => {
       expect(lstatSync(join(fixture.packageDir, 'node_modules')).isSymbolicLink()).toBe(true)
       await releaseEditorViewRoot(fixture.options)
     } finally {
+      cleanup(fixture)
+    }
+  })
+
+  it('retires released lease controls and empty legacy roots non-recursively', async () => {
+    const fixture = makeFixture()
+    try {
+      await publishEditorView(fixture.options)
+      await releaseEditorViewRoot(fixture.options)
+      expect(readdirSync(fixture.editorRoot)).toEqual(['.leases'])
+      await retireEditorViewRoot({ options: fixture.options })
+      expect(existsSync(fixture.editorRoot)).toBe(false)
+      await retireEditorViewRoot({ options: fixture.options })
+      const legacy = join(fixture.root, 'context', '.editor-view')
+      mkdirSync(legacy, { recursive: true })
+      await retireEditorViewRoot({ options: fixture.options, editorRoot: legacy })
+      expect(existsSync(legacy)).toBe(false)
+    } finally {
+      cleanup(fixture)
+    }
+  })
+
+  it.each(['file', 'generation', 'symlink', 'hardlink'] as const)(
+    'refuses unexpected retirement %s without removing any entries',
+    async (kind) => {
+      const fixture = makeFixture()
+      try {
+        await publishEditorView(fixture.options)
+        await releaseEditorViewRoot(fixture.options)
+        const leases = join(fixture.editorRoot, '.leases')
+        const controls = readdirSync(leases)
+        const unexpected = join(
+          kind === 'hardlink' ? leases : fixture.editorRoot,
+          kind === 'hardlink' ? controls[0]! : 'unexpected',
+        )
+        if (kind === 'file') writeFileSync(unexpected, 'unexpected')
+        if (kind === 'generation') mkdirSync(unexpected)
+        if (kind === 'symlink') symlinkSync(fixture.root, unexpected)
+        if (kind === 'hardlink') linkSync(unexpected, join(fixture.root, 'retained-control'))
+        const entries = readdirSync(fixture.editorRoot)
+        await expect(retireEditorViewRoot({ options: fixture.options })).rejects.toThrow(unexpected)
+        expect(readdirSync(fixture.editorRoot)).toEqual(entries)
+        expect(readdirSync(leases)).toEqual(controls)
+        expect(lstatSync(unexpected)).toBeDefined()
+      } finally {
+        cleanup(fixture)
+      }
+    },
+  )
+
+  it('refuses release with a held reader and retirement with a held tombstone', async () => {
+    const fixture = makeFixture()
+    let releaseLease: (() => void) | undefined
+    try {
+      const record = await publishEditorView(fixture.options)
+      const reader = await acquireEditorViewLease({
+        editorRoot: fixture.editorRoot,
+        contentStore: fixture.options.contentStore!,
+        resolveSnapshot: () => storeName(record.snapshot),
+      })
+      releaseLease = reader.release
+      await expect(releaseEditorViewRoot(fixture.options)).rejects.toThrow(
+        'held or unknown readers',
+      )
+      reader.release()
+      await releaseEditorViewRoot(fixture.options)
+      const held = probeReleasedEditorViewLease({
+        editorRoot: fixture.editorRoot,
+        snapshot: storeName(record.snapshot),
+      })
+      expect(held.state).toBe('clear')
+      releaseLease = held.release
+      await expect(retireEditorViewRoot({ options: fixture.options })).rejects.toThrow(
+        'cannot retire editor root',
+      )
+      expect(readdirSync(fixture.editorRoot)).toEqual(['.leases'])
+      held.release()
+      await retireEditorViewRoot({ options: fixture.options })
+      expect(existsSync(fixture.editorRoot)).toBe(false)
+    } finally {
+      releaseLease?.()
       cleanup(fixture)
     }
   })
