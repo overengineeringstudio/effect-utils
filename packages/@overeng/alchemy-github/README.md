@@ -124,6 +124,33 @@ The default `SecretSourceLive` uses the runtime `ChildProcessSpawner` and runs o
 
 Write permission includes the corresponding read operations. Restrict the App installation to the target repository; this resource does not need Actions workflow read/write, Contents, organization Secrets, or an App private key in state. The environment must already exist. Permission names and endpoint scopes follow GitHub's [Actions secrets REST documentation](https://docs.github.com/en/rest/actions/secrets). The same permission table applies to the App conversion sink.
 
+## Actions variables
+
+`GitHub.ActionsVariable` manages a plain, non-secret repository or environment variable. Its value is intentionally stored in Alchemy state and outputs; use `ActionsSecret` for confidential values.
+
+```ts
+const releaseChannel =
+  yield *
+  GitHub.ActionsVariable('release-channel', {
+    owner: 'example-org',
+    repository: 'example-project',
+    environment: 'production', // omit for repository scope
+    name: 'RELEASE_CHANNEL',
+    value: 'stable',
+  })
+```
+
+Plans read the current value from GitHub, so remote edits and deletion are repaired even when the declaration has not changed. Apply creates or updates the variable. Destroy deletes it unless `retain: true` is declared. Owner, repository, environment, name and API host are immutable resource identity; use a new resource identity to move a variable.
+
+Variable names are normalized to uppercase in requests, comparisons and state, matching GitHub. Case-only declaration changes preserve identity.
+
+| Resource/scope               | Plan/read          | Apply/destroy       |
+| ---------------------------- | ------------------ | ------------------- |
+| ActionsVariable, repository  | Variables: read    | Variables: write    |
+| ActionsVariable, environment | Environments: read | Environments: write |
+
+These are repository permissions; write includes read, and the environment must already exist. See GitHub's [Actions variables REST documentation](https://docs.github.com/en/rest/actions/variables). The separate resource adds live plan-time drift observation; upstream's `Variable` remains available unchanged.
+
 ## Required checks with the upstream Ruleset
 
 The beta.84 provider already supports the consumer's required-check integration ID, strict policy, bypass actors and observed-policy comparison on updates. Use its camelCase contract directly:

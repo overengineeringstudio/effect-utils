@@ -61,6 +61,7 @@
       "runner": "vitest",
       "selectedTestFiles": [
         "src/ActionsSecret.integration.test.ts",
+        "src/ActionsVariable.integration.test.ts",
         "src/App.integration.test.ts",
         "src/App.live.test.ts",
         "src/ManifestCodeSource.unit.test.ts",
@@ -75,6 +76,7 @@
       "taskName": "test:alchemy-github",
       "testFiles": [
         "src/ActionsSecret.integration.test.ts",
+        "src/ActionsVariable.integration.test.ts",
         "src/App.integration.test.ts",
         "src/App.live.test.ts",
         "src/ManifestCodeSource.unit.test.ts",

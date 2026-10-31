@@ -4,7 +4,7 @@
 # Projection source: packages/@overeng/alchemy-github/BUCK.genie.ts
 # Projection schema version: 13
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:304ce8620082cb011879f49d878f10ee44a589600b80a1c0dd4ef038392052a2
+# Semantic fingerprint: sha256:6e198ab4f499e06f448cdfab0b0282d737f4dfe6a28942c97501f2c33864b96f
 # Regenerate: devenv tasks run genie:run
 
 load("//buck2:materialization.bzl", "export_materialization_inputs", "package_view")
@@ -24,6 +24,8 @@ export_materialization_inputs([
     "src/ActionsCommon.ts",
     "src/ActionsSecret.integration.test.ts",
     "src/ActionsSecret.ts",
+    "src/ActionsVariable.integration.test.ts",
+    "src/ActionsVariable.ts",
     "src/App.integration.test.ts",
     "src/App.live.test.ts",
     "src/App.ts",
@@ -84,6 +86,8 @@ package_view(
         "src/ActionsCommon.ts": "src/ActionsCommon.ts",
         "src/ActionsSecret.integration.test.ts": "src/ActionsSecret.integration.test.ts",
         "src/ActionsSecret.ts": "src/ActionsSecret.ts",
+        "src/ActionsVariable.integration.test.ts": "src/ActionsVariable.integration.test.ts",
+        "src/ActionsVariable.ts": "src/ActionsVariable.ts",
         "src/App.integration.test.ts": "src/App.integration.test.ts",
         "src/App.live.test.ts": "src/App.live.test.ts",
         "src/App.ts": "src/App.ts",
@@ -122,6 +126,8 @@ package_view(
         "src/ActionsCommon.ts": "src/ActionsCommon.ts",
         "src/ActionsSecret.integration.test.ts": "src/ActionsSecret.integration.test.ts",
         "src/ActionsSecret.ts": "src/ActionsSecret.ts",
+        "src/ActionsVariable.integration.test.ts": "src/ActionsVariable.integration.test.ts",
+        "src/ActionsVariable.ts": "src/ActionsVariable.ts",
         "src/App.integration.test.ts": "src/App.integration.test.ts",
         "src/App.live.test.ts": "src/App.live.test.ts",
         "src/App.ts": "src/App.ts",
@@ -160,6 +166,8 @@ package_view(
         "src/ActionsCommon.ts": "src/ActionsCommon.ts",
         "src/ActionsSecret.integration.test.ts": "src/ActionsSecret.integration.test.ts",
         "src/ActionsSecret.ts": "src/ActionsSecret.ts",
+        "src/ActionsVariable.integration.test.ts": "src/ActionsVariable.integration.test.ts",
+        "src/ActionsVariable.ts": "src/ActionsVariable.ts",
         "src/App.integration.test.ts": "src/App.integration.test.ts",
         "src/App.live.test.ts": "src/App.live.test.ts",
         "src/App.ts": "src/App.ts",
