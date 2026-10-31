@@ -24,9 +24,19 @@ const assertPackPrSnapshotGuard = (workflow) => {
   assert.notEqual(start, -1, 'pack-pr-snapshot job must exist')
   const remaining = lines.slice(start + 1)
   const end = remaining.findIndex((line) => /^(?: {2}[\w-]+:|[^\s#])/.test(line))
-  const job = [lines[start], ...remaining.slice(0, end === -1 ? undefined : end)].join('\n')
-  assert.match(job, /pack-pr-snapshot:\n    if: github\.event_name == 'pull_request'/)
-  assert.doesNotMatch(job, /head\.repo\.full_name == github\.repository/)
+  const jobLines = remaining.slice(0, end === -1 ? undefined : end)
+  const ifStart = jobLines.findIndex((line) => /^ {4}if:/.test(line))
+  assert.notEqual(ifStart, -1, 'pack-pr-snapshot must have a job-level if condition')
+  const ifRemaining = jobLines.slice(ifStart + 1)
+  const ifEnd = ifRemaining.findIndex(
+    (line) => /^ {0,4}\S/.test(line) && line.trimStart().startsWith('#') === false,
+  )
+  const condition = [
+    jobLines[ifStart].replace(/^ {4}if:[ \t]*/, ''),
+    ...ifRemaining.slice(0, ifEnd === -1 ? undefined : ifEnd),
+  ].join('\n')
+  assert.match(condition, /github\.event_name\s*==\s*'pull_request'/)
+  assert.doesNotMatch(condition, /head\.repo\.full_name\s*==\s*github\.repository/)
 }
 
 test('snapshot guard assertion ignores later jobs and stops at the end of the jobs map', () => {
@@ -46,6 +56,43 @@ test('snapshot guard assertion ignores later jobs and stops at the end of the jo
 `),
   )
   assert.doesNotThrow(() => assertPackPrSnapshotGuard(snapshotJob))
+})
+
+test('snapshot guard assertion accepts a trusted-privilege runs-on label', () => {
+  assert.doesNotThrow(() =>
+    assertPackPrSnapshotGuard(`jobs:
+  pack-pr-snapshot:
+    if: github.event_name == 'pull_request'
+    runs-on:
+      - "namespace-profile-linux-x86-64;\${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && ';container.privileged=true' || '' }}"
+    steps: []
+`),
+  )
+})
+
+test('snapshot guard assertion reads a folded job-level if independently of field order', () => {
+  assert.doesNotThrow(() =>
+    assertPackPrSnapshotGuard(`jobs:
+  pack-pr-snapshot:
+    runs-on:
+      - "namespace-profile-linux-x86-64;\${{ github.event.pull_request.head.repo.full_name == github.repository }}"
+    if: >-
+      github.event_name == 'pull_request'
+    steps: []
+`),
+  )
+  assert.throws(
+    () =>
+      assertPackPrSnapshotGuard(`jobs:
+  pack-pr-snapshot:
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.head.repo.full_name ==
+        github.repository
+    runs-on: ubuntu-24.04
+`),
+    assert.AssertionError,
+  )
 })
 
 test('snapshot guard assertion rejects a same-repo guard in the snapshot job itself', () => {
