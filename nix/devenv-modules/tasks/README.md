@@ -130,7 +130,8 @@ for outer tasks that must complete before the nested devenv process can evaluate
 - `worktree-teardown.nix` - Explicit offline `worktree:teardown` before worktree
   removal; inherited by setup, check, clean, and worktree-guard imports. Stops
   every root-owned Buck isolation, releases reachable Watchman and root-keyed
-  admission state, calls `buck2:editor:release` when defined, and makes real
+  admission state, calls `buck2:editor:release` with final editor-root retirement
+  enabled when defined, and makes real
   directories owner-writable using NUL-delimited find scans and a sorted streaming
   ownership-prefix filter before batched chmod. It never follows symlinks or
   chmods nested Git/megarepo ownership boundaries. Both scans prune unreadable

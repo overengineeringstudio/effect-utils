@@ -726,7 +726,8 @@ After closing editors and builds using a retired worktree, run
 `devenv tasks run worktree:teardown --mode single` from that worktree. It stops
 every Buck daemon isolation for the absolute checkout root, removes only its
 isolation state, deletes its Watchman watch when the service is reachable, removes only
-its root-keyed admission cache entries, invokes `buck2:editor:release`, and makes
+its root-keyed admission cache entries, invokes `buck2:editor:release` with final
+editor-root retirement enabled, and makes
 remaining directories owner-writable without following symlinks or chmodding
 files. Then leave its working directory and use ordinary `git worktree remove`
 from another worktree. Teardown is offline and idempotent, does not delete
@@ -759,6 +760,8 @@ check, clean, or worktree-guard module, or can explicitly import
 
 `devenv tasks run buck2:editor:release --mode single` remains available for
 editor-only release, including every sibling view sharing those roots.
+Unlike worktree teardown, ordinary release preserves the root and persistent
+lease controls so republishing cannot split flock identities.
 
 The publisher CLI also supports `release --repo-root <root> --package <package>`
 for one shared editor root. Teardown holds the publication lock, refuses a live
@@ -767,6 +770,14 @@ and makes only
 owned directories writable before removal. It never follows snapshot symlinks
 or changes external dependency targets. Neither release nor teardown is ever a
 dependency of setup, tests, or checks; republishing recreates a released root.
+
+The `retire --repo-root <root> --package <package>` CLI is only for removing a
+quiesced worktree after release. Under publication and content-store exclusion,
+it validates the entire root before unlinking single-link lease controls and
+removing empty directories non-recursively. Unexpected entries or held/unknown
+leases fail with their exact path. Teardown derives roots from workspace packages
+and the known root, `packages/`, and `context/` editor-root suffixes; it also
+retires empty package-local legacy roots without walking dependency trees.
 
 ## Package action capabilities
 

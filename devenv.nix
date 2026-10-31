@@ -1976,6 +1976,12 @@ in
         ${pkgs.bun}/bin/bun "$root/packages/@overeng/buck2-tools/src/editor-view.ts" release \
           --repo-root "$root" --package "$package"
       done
+      if [ "''${WORKTREE_TEARDOWN_EDITOR_RETIRE:-0}" = 1 ]; then
+        for package in ${lib.concatStringsSep " " (map lib.escapeShellArg ([ "." ] ++ allPackages))}; do
+          ${pkgs.bun}/bin/bun "$root/packages/@overeng/buck2-tools/src/editor-view.ts" retire \
+            --repo-root "$root" --package "$package"
+        done
+      fi
     '';
   };
 

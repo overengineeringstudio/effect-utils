@@ -118,6 +118,9 @@ cat >"$main/devenv.nix" <<NIX
   cachix.enable = false;
   tasks."buck2:editor:release".exec = ''
     $BUN $ROOT/packages/@overeng/buck2-tools/src/editor-view.ts release --repo-root "\$DEVENV_ROOT" --package .
+    if [ "''\${WORKTREE_TEARDOWN_EDITOR_RETIRE:-0}" = 1 ]; then
+      $BUN $ROOT/packages/@overeng/buck2-tools/src/editor-view.ts retire --repo-root "\$DEVENV_ROOT" --package .
+    fi
   '';
 }
 NIX
@@ -138,6 +141,7 @@ printf '{"schema":"effect-utils/workspace-dependency-authority/v1","requiredPack
   --workspace-authority "$worktree/inputs/authority.json" --consumer-cache "$worktree/.devenv/vite-cache/root" \
   --cp "$CP" --mv "$MV" --fingerprint-tool "$FINGERPRINT" --snapshot-retention 2
 [ -d "$worktree/.editor-view/.store" ] || fail 'real editor view was not published'
+mkdir -p "$worktree/context/.editor-view" "$worktree/packages/.editor-view"
 
 export XDG_CACHE_HOME="$TEMP_ROOT/cache"
 cache="$XDG_CACHE_HOME/effect-utils/buck2-posture-v2"
@@ -210,10 +214,9 @@ for pid in "${pids[@]}"; do
   if kill -0 "$pid" 2>/dev/null; then fail "daemon $pid remains live"; fi
 done
 [ ! -e "$state" ] || fail 'root buckd state remains'
-[ ! -e "$worktree/.editor-view/.store" ] || fail 'editor generations remain'
-[ -d "$worktree/.editor-view/.leases" ] || fail 'persistent lease controls were removed'
-"$BUN" -e 'const fs=require("node:fs"); const root=process.argv[1]; if(fs.readdirSync(root).some(name=>name!==".leases")) process.exit(1); if(fs.readdirSync(root+"/.leases").length===0) process.exit(1)' \
-  "$worktree/.editor-view" || fail 'editor root contains more than persistent lease tombstones'
+[ ! -e "$worktree/.editor-view" ] || fail 'editor root remains after retirement'
+[ ! -e "$worktree/context/.editor-view" ] || fail 'empty legacy context editor root remains'
+[ ! -e "$worktree/packages/.editor-view" ] || fail 'empty legacy packages editor root remains'
 for entry in "$cache/$root_hash-"*; do
   if [ -e "$entry" ] || [ -L "$entry" ]; then fail 'root admission entries remain'; fi
 done
@@ -230,7 +233,7 @@ fi
 (cd "$worktree" && WATCHMAN_SOCK="$TEMP_ROOT/missing.sock" "$DEVENV" tasks run worktree:teardown --mode single)
 git -C "$main" worktree remove "$worktree"
 [ ! -e "$worktree" ] || fail 'ordinary git worktree remove failed'
-echo 'PASS: two live Buck isolations stopped; buckd/watch/root caches/editor generations released; lease tombstones retained; second and unreachable-Watchman runs exit 0; unrelated state and file modes preserved; git worktree remove succeeds without chmod'
+echo 'PASS: two live Buck isolations stopped; buckd/watch/root caches/editor roots retired; second and unreachable-Watchman runs exit 0; unrelated state and file modes preserved; git worktree remove succeeds without chmod'
 
 # A descendant absolute checkout path shares its parent's buckd namespace, but
 # is not one of the parent's isolations. Exercise Git file/dir boundaries and
