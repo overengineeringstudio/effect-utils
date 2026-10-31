@@ -426,6 +426,20 @@ Each generator has its own documentation:
 - **[oxfmt-config](./src/lib/oxfmt-config/README.md)** - Generate `oxfmt.jsonc` configuration files
 - **[pnpm-workspace](./src/lib/pnpm-workspace/README.md)** - Generate `pnpm-workspace.yaml` files
 
+### Repository rulesets
+
+`githubRuleset()` builds one repository ruleset payload per generated JSON file.
+Bypass actors include individual GitHub `User` IDs, alongside apps, teams and
+repository roles.
+
+The `@overeng/genie/node` entry exports `reconcileGithubRuleset({ mode, options })`,
+where `options` contains `repo`, the declared `ruleset` name and its generated
+`file`. `check` reports missing rulesets and controlled-field drift without
+writing; `apply` creates a missing ruleset or updates its existing ID.
+For multiple rulesets, await reconciliation sequentially in the intended policy
+order. For a policy split, create the replacement ruleset before removing those
+rules from the existing ruleset.
+
 ## Composition Helpers
 
 The canonical `@overeng/genie` export exposes the thin artifact builders. Use
