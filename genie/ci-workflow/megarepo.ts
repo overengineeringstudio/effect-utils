@@ -53,12 +53,13 @@ export const restoreMegarepoStoreStep = (opts?: { skip?: readonly string[] }) =>
 })
 
 /**
- * Save the {@link cacheableMegarepoStore} AFTER the sync step, guarded on a cold restore. Pass the
- * same `skip` as {@link restoreMegarepoStoreStep} / {@link applyMegarepoLockStep}.
+ * Save the {@link cacheableMegarepoStore} AFTER the sync step on a cold restore, excluding fork PRs.
+ * Restores remain available to forks; the fork field is null on push events, so saves stay enabled.
+ * Pass the same `skip` as {@link restoreMegarepoStoreStep} / {@link applyMegarepoLockStep}.
  */
 export const saveMegarepoStoreStep = (opts?: { skip?: readonly string[] }) => ({
   name: 'Save megarepo store',
-  if: "${{ success() && steps.restore-megarepo-store.outputs.cache-hit != 'true' }}",
+  if: "${{ success() && steps.restore-megarepo-store.outputs.cache-hit != 'true' && github.event.pull_request.head.repo.fork != true }}",
   uses: 'actions/cache/save@v4',
   with: { path: cacheableMegarepoStore, key: megarepoStoreCacheKey(opts?.skip) },
 })
