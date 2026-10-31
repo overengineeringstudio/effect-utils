@@ -26,11 +26,15 @@
 
 import { createHash, randomUUID } from 'node:crypto'
 import { hostname } from 'node:os'
+import { dirname } from 'node:path'
 
-import { Effect, Schema } from 'effect'
+import { Clock, Effect, Schema } from 'effect'
 import * as FileSystem from 'effect/FileSystem'
 
 import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
+
+import * as Git from '../core/git.ts'
+import { resolveGitCommonDir } from './git-writer-lock.ts'
 
 /** On-disk lease record version. */
 const DELETION_LEASE_VERSION = 1
@@ -309,3 +313,80 @@ export const withDeletionLease =
       () => effect,
       (lease) => releaseDeletionLease(lease),
     )
+
+/**
+ * Activation/registration fences the repository before its worktree. GC already
+ * holding that repository lease must use withDeletionLease directly, not this helper.
+ * External worktrees derive their repository from Git, never a fabricated store path.
+ */
+export const withStoreWorktreeLease =
+  ({
+    storeBasePath,
+    ownerPath,
+    bareRepoPath,
+  }: {
+    storeBasePath: AbsoluteDirPath
+    ownerPath: string
+    bareRepoPath?: string
+  }) =>
+  <A, E, R>(effect: Effect.Effect<A, E, R>) =>
+    Effect.gen(function* () {
+      const owner = yield* canonicalizeOwnerPath(ownerPath)
+      const store = yield* canonicalizeOwnerPath(storeBasePath)
+      const fs = yield* FileSystem.FileSystem
+      const ownsBare = bareRepoPath === undefined && (yield* fs.exists(`${owner}/.bare`))
+      const bare =
+        bareRepoPath !== undefined || ownsBare === true
+          ? yield* canonicalizeOwnerPath(bareRepoPath ?? `${owner}/.bare`)
+          : yield* resolveGitCommonDir(owner).pipe(Effect.orElseSucceed(() => undefined))
+      const container =
+        bare?.endsWith('/.bare') === true && bare.startsWith(`${store}/`) === true
+          ? dirname(bare)
+          : bare === undefined &&
+              owner.startsWith(`${store}/`) === true &&
+              (yield* fs.exists(`${owner}/.git`)) === false
+            ? owner.match(/^(.+?)\/refs\/(?:heads|tags|commits)\/.+$/)?.[1]
+            : undefined
+      const now = yield* Clock.currentTimeMillis
+      const run = withDeletionLease({ storeBasePath, ownerPath: owner, now })(effect)
+      if (container === undefined) {
+        if (bare === undefined || owner.startsWith(`${store}/`) === true) {
+          return yield* new DeletionLeaseUnavailableError({
+            ownerPath: owner,
+            leasePath: deletionLeasePath({ storeBasePath, ownerPath: owner }),
+            message: 'Cannot identify the store repository container for activation',
+          })
+        }
+        return yield* run
+      }
+      // A container owner needs exactly one lease, never a recursive acquisition.
+      return yield* withDeletionLease({ storeBasePath, ownerPath: container, now })(
+        container === owner ? effect : run,
+      )
+    })
+
+/** Every mr worktree registration uses the same container-first deletion fence. */
+export const createStoreWorktree = ({
+  storeBasePath,
+  ...args
+}: Parameters<typeof Git.createWorktree>[0] & { storeBasePath: AbsoluteDirPath }) =>
+  Git.createWorktree(args).pipe(
+    withStoreWorktreeLease({
+      storeBasePath,
+      ownerPath: args.worktreePath,
+      bareRepoPath: args.repoPath,
+    }),
+  )
+
+/** Detached registrations use the same container-first fence as branch registrations. */
+export const createStoreWorktreeDetached = ({
+  storeBasePath,
+  ...args
+}: Parameters<typeof Git.createWorktreeDetached>[0] & { storeBasePath: AbsoluteDirPath }) =>
+  Git.createWorktreeDetached(args).pipe(
+    withStoreWorktreeLease({
+      storeBasePath,
+      ownerPath: args.worktreePath,
+      bareRepoPath: args.repoPath,
+    }),
+  )
