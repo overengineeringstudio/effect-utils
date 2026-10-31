@@ -178,14 +178,17 @@ const runValidationOrFail = Effect.fn('genie/runValidationOrFail')(function* ({
   cwd,
   genieFiles,
   preloadedFiles,
+  mode = 'check',
 }: {
   cwd: string
   genieFiles?: ReadonlyArray<string>
   preloadedFiles?: ReadonlyArray<LoadedGenieFile>
+  mode?: 'generate' | 'check'
 }) {
   yield* Observability.annotatePath({ label: 'validate', path: cwd })
   const validationResult = yield* runGenieValidation({
     cwd,
+    mode,
     ...(genieFiles !== undefined ? { genieFiles } : {}),
     ...(preloadedFiles !== undefined ? { preloadedFiles } : {}),
   }).pipe(Effect.result)
@@ -394,7 +397,7 @@ export const generateAll = ({
 
     // Run validation hooks after successful generation
     if (dryRun === false && validate === true) {
-      yield* runValidationOrFail({ cwd, genieFiles })
+      yield* runValidationOrFail({ cwd, genieFiles, mode: 'generate' })
     }
 
     yield* emit({ _tag: 'Complete', summary })

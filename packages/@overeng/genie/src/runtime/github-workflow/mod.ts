@@ -771,20 +771,32 @@ export const githubWorkflow = <const T extends GitHubWorkflowArgs>(
   const normalizedArgs = { ...args, on: normalizeWorkflowOn(args.on) }
   validateWorkflowCachePolicy({ workflow: normalizedArgs })
   if (normalizedArgs.policy !== undefined)
-    validateWorkflowPolicy({ workflow: normalizedArgs, policy: normalizedArgs.policy })
+    validateWorkflowPolicy({
+      workflow: normalizedArgs,
+      policy: normalizedArgs.policy,
+      refreshLedger: true,
+    })
   const { actionlint: _actionlint, policy: _policy, ...yamlArgs } = normalizedArgs
   return createGenieOutput({
     data: args,
     stringify: (_ctx) => {
       validateWorkflowCachePolicy({ workflow: normalizedArgs })
       if (normalizedArgs.policy !== undefined)
-        validateWorkflowPolicy({ workflow: normalizedArgs, policy: normalizedArgs.policy })
+        validateWorkflowPolicy({
+          workflow: normalizedArgs,
+          policy: normalizedArgs.policy,
+          refreshLedger: _ctx.mode === 'generate',
+        })
       return yaml.stringify(yamlArgs)
     },
     validate: (ctx) => {
       validateWorkflowCachePolicy({ workflow: normalizedArgs })
       if (normalizedArgs.policy !== undefined)
-        validateWorkflowPolicy({ workflow: normalizedArgs, policy: normalizedArgs.policy })
+        validateWorkflowPolicy({
+          workflow: normalizedArgs,
+          policy: normalizedArgs.policy,
+          refreshLedger: ctx.mode === 'generate',
+        })
       const yamlContent = yaml.stringify(yamlArgs)
       return validateWorkflow({ args: normalizedArgs, yamlContent, ctx })
     },

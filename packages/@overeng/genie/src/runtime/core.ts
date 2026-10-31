@@ -57,6 +57,8 @@ export type GenieContext = {
   location: string
   /** Absolute path to the working directory (repo root) */
   cwd: string
+  /** Generation permits reviewed migration-ledger refreshes; omitted contexts fail closed as checks. */
+  mode?: 'generate' | 'check'
   /** All workspace packages — populated during validation, undefined during stringify */
   workspace?: {
     packages: PackageInfo[]
