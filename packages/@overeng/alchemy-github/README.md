@@ -16,6 +16,72 @@ Use a protected state backend and never commit `.alchemy/` state. Built-in resou
 
 The deployment credentials configured through upstream `GitHub.providers()` need Actions secret access to the selected repository/environment. They are separate from the generated App's runtime credential. The new App can request only `checks: write` and be installed only on the intended repository.
 
+## Repository-scoped remote state
+
+`githubRepoState()` stores Alchemy state in an S3-compatible R2 bucket using temporary credentials from an explicitly configured broker. `githubActionsOidc({ brokerUrl })` is the default Actions credential layer; there is no built-in broker URL. It reads `ACTIONS_ID_TOKEN_REQUEST_URL` and `ACTIONS_ID_TOKEN_REQUEST_TOKEN` through Effect Config, requests an OIDC token with the broker URL as its audience, and POSTs `{ token }` to that broker. The broker must validate the Actions identity and authorize the repository before returning credentials scoped to `alchemy/v1/owner/repo/`.
+
+```ts
+import * as Alchemy from 'alchemy'
+import * as GitHub from '@overeng/alchemy-github'
+import { Layer } from 'effect'
+import * as FetchHttpClient from 'effect/http/FetchHttpClient'
+
+const state = GitHub.githubRepoState().pipe(
+  Layer.provide(
+    GitHub.githubActionsOidc({
+      brokerUrl: 'https://state-broker.example.com/credentials',
+    }),
+  ),
+  Layer.provide(FetchHttpClient.layer),
+)
+
+export default Alchemy.Stack(
+  'RepositoryChecks',
+  { providers: GitHub.providers(), state },
+  GitHub.App('check-publisher', {
+    owner: 'example-org',
+    ownerType: 'organization',
+    manifest: {
+      name: 'Example Check Publisher',
+      url: 'https://example.com/checks',
+      redirectUrl: 'https://example.com/github-app-callback',
+      permissions: { checks: 'write' },
+    },
+    privateKeySecret: {
+      owner: 'example-org',
+      repository: 'example-project',
+      environment: 'production',
+      name: 'CHECK_PUBLISHER_PRIVATE_KEY',
+    },
+  }),
+)
+```
+
+The broker response contains `accessKeyId`, `secretAccessKey`, `sessionToken`, `endpoint`, `bucket`, `prefix`, and an ISO `expiresAt`. Credentials are cached in memory, concurrent refreshes share one exchange, and the next read refreshes them one minute before expiry. Failures discard upstream requests, response bodies and causes; credential HTTP tracing and trace-header propagation are disabled. Use a normal HTTP client without request/body logging or redirect middleware. The Actions bearer token, OIDC JWT and R2 credentials are never written to state.
+
+Credential and signed storage requests force Fetch's `redirect: 'manual'`; every 3xx response fails rather than forwarding credentials. Broker prefixes accept only `alchemy/v1/<owner>/<repo>/` with ASCII letters, digits, `_`, `-`, and `.` within each name, excluding the standalone `.` and `..` names and all percent-encoding. Object keys that URL normalization would alter are rejected before transmission; literal percent signs are escaped so encoded-looking names cannot traverse directories.
+
+State is **sensitive metadata**, not a secret store. This backend does not add state encryption. In the supported Alchemy beta.84, state encoding unwraps `Redacted` values into plaintext state markers; redaction protects inspection/logging, not persisted values. Our GitHub App attributes exclude the App private key, but arbitrary resources can persist sensitive inputs, attributes and outputs, including `Redacted` secrets. Do not put plaintext secrets into resource state; apply private bucket access, repository-scoped temporary credentials, retention policies and appropriate encryption controls to the stored objects.
+
+An Actions job must grant OIDC permission and select the protected environment expected by the broker's authorization policy:
+
+```yaml
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install --frozen-lockfile
+      - run: bunx alchemy deploy
+```
+
+Actions injects the OIDC request environment variables automatically for a job with `id-token: write`; do not create long-lived R2 secrets in the workflow. Deployment authentication for GitHub resources is configured separately through the upstream providers. Protect the `production` environment and configure broker policy to require that environment and the intended repository/workflow identity.
+
 ## Two-step App registration
 
 Declare the App in an Alchemy stack:

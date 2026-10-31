@@ -4,7 +4,7 @@
 # Projection source: packages/@overeng/alchemy-github/BUCK.genie.ts
 # Projection schema version: 13
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:6e198ab4f499e06f448cdfab0b0282d737f4dfe6a28942c97501f2c33864b96f
+# Semantic fingerprint: sha256:7b49b8898cde7ee99ae077e820adfe782dd430551eb832e9052b4b4daaf6a70a
 # Regenerate: devenv tasks run genie:run
 
 load("//buck2:materialization.bzl", "export_materialization_inputs", "package_view")
@@ -33,6 +33,10 @@ export_materialization_inputs([
     "src/ManifestCodeSource.ts",
     "src/ManifestCodeSource.unit.test.ts",
     "src/Providers.ts",
+    "src/RepoState.integration.test.ts",
+    "src/RepoState.ts",
+    "src/RepoStateCredentials.ts",
+    "src/RepoStateCredentials.unit.test.ts",
     "src/Ruleset.unit.test.ts",
     "src/SealedBox.ts",
     "src/SecretSource.ts",
@@ -95,6 +99,10 @@ package_view(
         "src/ManifestCodeSource.ts": "src/ManifestCodeSource.ts",
         "src/ManifestCodeSource.unit.test.ts": "src/ManifestCodeSource.unit.test.ts",
         "src/Providers.ts": "src/Providers.ts",
+        "src/RepoState.integration.test.ts": "src/RepoState.integration.test.ts",
+        "src/RepoState.ts": "src/RepoState.ts",
+        "src/RepoStateCredentials.ts": "src/RepoStateCredentials.ts",
+        "src/RepoStateCredentials.unit.test.ts": "src/RepoStateCredentials.unit.test.ts",
         "src/Ruleset.unit.test.ts": "src/Ruleset.unit.test.ts",
         "src/SealedBox.ts": "src/SealedBox.ts",
         "src/SecretSource.ts": "src/SecretSource.ts",
@@ -135,6 +143,10 @@ package_view(
         "src/ManifestCodeSource.ts": "src/ManifestCodeSource.ts",
         "src/ManifestCodeSource.unit.test.ts": "src/ManifestCodeSource.unit.test.ts",
         "src/Providers.ts": "src/Providers.ts",
+        "src/RepoState.integration.test.ts": "src/RepoState.integration.test.ts",
+        "src/RepoState.ts": "src/RepoState.ts",
+        "src/RepoStateCredentials.ts": "src/RepoStateCredentials.ts",
+        "src/RepoStateCredentials.unit.test.ts": "src/RepoStateCredentials.unit.test.ts",
         "src/Ruleset.unit.test.ts": "src/Ruleset.unit.test.ts",
         "src/SealedBox.ts": "src/SealedBox.ts",
         "src/SecretSource.ts": "src/SecretSource.ts",
@@ -175,6 +187,10 @@ package_view(
         "src/ManifestCodeSource.ts": "src/ManifestCodeSource.ts",
         "src/ManifestCodeSource.unit.test.ts": "src/ManifestCodeSource.unit.test.ts",
         "src/Providers.ts": "src/Providers.ts",
+        "src/RepoState.integration.test.ts": "src/RepoState.integration.test.ts",
+        "src/RepoState.ts": "src/RepoState.ts",
+        "src/RepoStateCredentials.ts": "src/RepoStateCredentials.ts",
+        "src/RepoStateCredentials.unit.test.ts": "src/RepoStateCredentials.unit.test.ts",
         "src/Ruleset.unit.test.ts": "src/Ruleset.unit.test.ts",
         "src/SealedBox.ts": "src/SealedBox.ts",
         "src/SecretSource.ts": "src/SecretSource.ts",
