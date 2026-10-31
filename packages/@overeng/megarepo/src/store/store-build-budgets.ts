@@ -11,9 +11,10 @@ import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
 
 import * as Git from '../core/git.ts'
 import {
+  acquireDeletionLease,
   canonicalizeOwnerPath,
   deletionLeasePath,
-  withDeletionLease,
+  releaseDeletionLease,
 } from './store-deletion-lease.ts'
 import { recordGcDeletion, withGcPinnedDeletion } from './store-gc-receipts.ts'
 import { isInsideWorktree, readProcessReferences } from './store-inuse.ts'
@@ -101,7 +102,6 @@ export const BudgetReason = Schema.Literals([
   'scan-incomplete',
   'deletion-partial',
   'artifact-authority-missing',
-  'repo-output-observation-only',
 ])
 const CandidateFields = {
   path: AbsolutePath,
@@ -396,7 +396,7 @@ const repoAdmissionIdentity = Effect.fn('store.repoAdmissionIdentity')(function*
   const identity = yield* captureDeletionIdentity({ rootPath: store, path: `${container}/.bare` })
   const registrations = yield* Git.listWorktrees(`${container}/.bare`)
   const worktrees = yield* Effect.forEach(registrations, (entry) =>
-    fs.realPath(entry.path).pipe(Effect.orElseSucceed(() => entry.path)),
+    canonicalizeOwnerPath(entry.path),
   )
   const registryPath = `${container}/.bare/worktrees`
   const registry =
@@ -599,8 +599,13 @@ const scanRoot = ({
         if (info.isDirectory() === true) {
           // eslint-disable-next-line no-await-in-loop
           const entries = await children(current)
-          if (entries.some((entry) => entry.endsWith('/.git')) === true)
-            throw fail('Artifact contains a git boundary')
+          if (
+            entries.some((entry) => entry.endsWith('/.git')) === true ||
+            ['HEAD', 'objects', 'refs', 'config'].every((name) =>
+              entries.includes(join(current, name)),
+            ) === true
+          )
+            throw fail('Artifact contains a Git repository boundary')
           pending.push(...entries)
         }
       }
@@ -640,7 +645,7 @@ export const planBuildOutputBudgets = Effect.fn('store.planBuildOutputBudgets')(
   liveSet,
   activity,
   now,
-  ignoreLeaseOwner,
+  ignoreLeaseOwners,
 }: {
   policy: BuildOutputBudgets
   storeBasePath: AbsoluteDirPath
@@ -648,7 +653,7 @@ export const planBuildOutputBudgets = Effect.fn('store.planBuildOutputBudgets')(
   liveSet: StoreLiveSet
   activity: BudgetWorkspaceActivity | undefined
   now: number
-  ignoreLeaseOwner?: string | undefined
+  ignoreLeaseOwners?: ReadonlyArray<string> | undefined
 }) {
   if ((yield* storeDeletionPlatform) !== 'linux')
     return yield* fail('unsupported-platform: build-output budgets require Linux pinned deletion')
@@ -725,7 +730,7 @@ export const planBuildOutputBudgets = Effect.fn('store.planBuildOutputBudgets')(
             )
           : undefined
       const lease =
-        canonicalOwner === ignoreLeaseOwner
+        ignoreLeaseOwners?.includes(canonicalOwner) === true
           ? false
           : yield* fs
               .exists(deletionLeasePath({ storeBasePath, ownerPath: canonicalOwner }))
@@ -852,7 +857,7 @@ export const planBuildOutputBudgets = Effect.fn('store.planBuildOutputBudgets')(
     const admissionIdentity = admission.identity
     admissions.push({ owner: container, identity: admissionIdentity })
     const lease =
-      container === ignoreLeaseOwner
+      ignoreLeaseOwners?.includes(container) === true
         ? false
         : yield* fs
             .exists(deletionLeasePath({ storeBasePath, ownerPath: container }))
@@ -886,7 +891,7 @@ export const planBuildOutputBudgets = Effect.fn('store.planBuildOutputBudgets')(
                       ? 'lease-held'
                       : now - scan.newestMtimeMs < policy.idleRetentionMs
                         ? 'retention'
-                        : 'repo-output-observation-only'
+                        : 'eligible'
       if (scan === undefined || identity === undefined || scan.symlink === true)
         incomplete.add(artifactClass)
       results.push({
@@ -1059,22 +1064,47 @@ export const applyBuildOutputBudgetCandidate = Effect.fn('store.applyBuildOutput
     if (selected.length !== 1)
       return yield* fail('Budget candidate is missing, ambiguous, or not eligible')
     const candidate = selected[0]!
-    if (candidate.kind === 'repo-build-output')
-      return yield* fail('Repository output is observation-only')
-    const requiresExpandedCoverage = repoWorktrees.some(({ worktrees }) =>
-      worktrees.some(
-        (worktree) =>
-          worktree.path.replace(/\/+$/u, '') === candidate.workspacePath &&
-          worktree.requiresExpandedProcessCoverage === true,
-      ),
-    )
+    const requiresExpandedCoverage =
+      candidate.kind === 'repo-build-output' ||
+      repoWorktrees.some(({ worktrees }) =>
+        worktrees.some(
+          (worktree) =>
+            worktree.path.replace(/\/+$/u, '') === candidate.workspacePath &&
+            worktree.requiresExpandedProcessCoverage === true,
+        ),
+      )
     const deletionRoot = yield* fs.realPath(storeBasePath)
     const identity = yield* captureDeletionIdentity({
       rootPath: deletionRoot,
       path: candidate.path,
     })
-    const ownerPath = yield* canonicalizeOwnerPath(candidate.workspacePath)
+    const ownerPath = yield* canonicalizeOwnerPath(
+      candidate.kind === 'worktree' ? candidate.workspacePath : candidate.containerPath,
+    )
+    const admission =
+      candidate.kind === 'repo-build-output'
+        ? yield* repoAdmissionIdentity({ store: deletionRoot, container: ownerPath })
+        : undefined
+    if (admission !== undefined && admission.identity !== candidate.admissionIdentity)
+      return yield* fail('Repository registration changed before lease acquisition')
+    const leaseOwners = [
+      ...new Set([
+        ownerPath,
+        ...(admission?.worktrees ?? []).filter((path) => path !== `${ownerPath}/.bare`),
+      ]),
+    ].toSorted(comparePaths)
     return yield* Effect.gen(function* () {
+      for (const path of leaseOwners)
+        yield* Effect.acquireRelease(
+          acquireDeletionLease({ storeBasePath, ownerPath: path, now }),
+          releaseDeletionLease,
+        )
+      if (
+        admission !== undefined &&
+        (yield* repoAdmissionIdentity({ store: deletionRoot, container: ownerPath })).identity !==
+          admission.identity
+      )
+        return yield* fail('Repository registration changed under deletion leases')
       const freshPolicy = yield* loadBuildOutputBudgets({ path: policyPath })
       const freshActivity = yield* readBudgetWorkspaceActivity({
         fs,
@@ -1089,7 +1119,7 @@ export const applyBuildOutputBudgetCandidate = Effect.fn('store.applyBuildOutput
         liveSet,
         activity: freshActivity,
         now: freshNow,
-        ignoreLeaseOwner: ownerPath,
+        ignoreLeaseOwners: leaseOwners,
       })
       if (fresh.planSha256 !== expectedPlan)
         return yield* fail('Budget plan changed under deletion lease; refusing deletion')
@@ -1256,6 +1286,6 @@ export const applyBuildOutputBudgetCandidate = Effect.fn('store.applyBuildOutput
           },
         },
       }
-    }).pipe(withDeletionLease({ storeBasePath, ownerPath, now }))
+    }).pipe(Effect.scoped)
   },
 )

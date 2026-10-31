@@ -233,8 +233,12 @@ Repository outputs require both `processWorktreeCoverage: "registered-worktrees"
 `processRepoOutputCoverage: "repo-build-outputs"` in admitted activity, plus the standard `CACHEDIR.TAG`
 signature, not merely a marker filename or a failed Git check. Seats/PTYs anywhere in the
 container veto all its outputs; direct process references protect only their containing output.
-Unknown evidence keeps. Repository output remains observation-only even with complete
-coverage: its liveness and registry contract never grants deletion authority.
+Unknown evidence keeps. Repository outputs containing `.git` or a bare repository boundary
+are never eligible, including when the output root itself is a bare repository.
+Apply acquires the container and every registered worktree's canonical activation lease in
+sorted order, then re-enumerates registrations under those leases. Registration changes or
+unavailable leases refuse deletion; all acquired leases are released on every exit. Git
+boundaries and registry identity are checked again immediately before removal.
 Both kinds carry `livenessKey` and `admissionIdentity`; the digest binds version, ownership,
 census admission and process coverage. Old/unversioned policies and receipts are rejected:
 consumers must decode v2 owner kinds and regenerate plans instead of reusing v1 hashes.
