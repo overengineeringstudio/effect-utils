@@ -6,7 +6,7 @@
  */
 
 import type { PeerDependencyRules } from '../pnpm-workspace/mod.ts'
-import { satisfiesRange } from '../semver/mod.ts'
+import { isSemver, satisfiesRange } from '../semver/mod.ts'
 import type { GenieValidationIssue } from '../validation/mod.ts'
 
 // =============================================================================
@@ -145,12 +145,6 @@ export const parsePeerDepsFromLockfile = (yamlContent: string): Map<string, Peer
 // =============================================================================
 // Validation
 // =============================================================================
-
-/** Only concrete registry semvers can stand in for missing lock metadata. */
-const isSemver = (value: string): boolean =>
-  /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*))*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/.test(
-    value,
-  )
 
 /** Input for `validateCatalogPeerDeps`: catalog versions, lockfile content, and optional override rules. */
 export type CatalogPeerDepsValidationArgs = {
