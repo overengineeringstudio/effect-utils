@@ -18,21 +18,25 @@ describe('github ruleset diff', () => {
       name: 'main-workflow',
       target: 'branch',
       enforcement: 'active',
-      rules: [{
-        type: 'pull_request',
-        parameters: {
-          required_approving_review_count: 0,
-          dismiss_stale_reviews_on_push: false,
-          require_code_owner_review: false,
-          require_last_push_approval: false,
-          required_review_thread_resolution: false,
-          require_extra_approval_for_unattributed_changes: true,
+      rules: [
+        {
+          type: 'pull_request',
+          parameters: {
+            required_approving_review_count: 0,
+            dismiss_stale_reviews_on_push: false,
+            require_code_owner_review: false,
+            require_last_push_approval: false,
+            required_review_thread_resolution: false,
+            require_extra_approval_for_unattributed_changes: true,
+          },
         },
-      }],
+      ],
       bypass_actors: [actor],
     })
     expect(output.data.bypass_actors).toEqual([actor])
-    expect(output.data.rules[0].parameters.require_extra_approval_for_unattributed_changes).toBe(true)
+    expect(output.data.rules[0].parameters.require_extra_approval_for_unattributed_changes).toBe(
+      true,
+    )
   })
 
   it('compares controlled fields only', () => {
