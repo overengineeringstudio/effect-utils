@@ -55,7 +55,7 @@
     },
     {
       "collectionTarget": "effect_utils//packages/@overeng/alchemy-github:test_collect",
-      "excludes": ["src/App.live.test.ts"],
+      "excludes": ["src/App.live.test.ts", "src/Sandbox.live.test.ts"],
       "packageName": "alchemy-github",
       "packagePath": "packages/@overeng/alchemy-github",
       "runner": "vitest",
@@ -69,6 +69,7 @@
         "src/RepoState.integration.test.ts",
         "src/RepoStateCredentials.unit.test.ts",
         "src/Ruleset.unit.test.ts",
+        "src/Sandbox.live.test.ts",
         "src/SecretSource.unit.test.ts",
         "src/engine.integration.test.ts",
         "src/host.unit.test.ts",
@@ -87,13 +88,14 @@
         "src/RepoState.integration.test.ts",
         "src/RepoStateCredentials.unit.test.ts",
         "src/Ruleset.unit.test.ts",
+        "src/Sandbox.live.test.ts",
         "src/SecretSource.unit.test.ts",
         "src/engine.integration.test.ts",
         "src/host.unit.test.ts",
         "src/manifest.unit.test.ts"
       ],
       "unboundedAfter": [],
-      "unboundedFiles": ["src/App.live.test.ts"],
+      "unboundedFiles": ["src/App.live.test.ts", "src/Sandbox.live.test.ts"],
       "unboundedTaskName": "test:alchemy-github:unbounded"
     },
     {
