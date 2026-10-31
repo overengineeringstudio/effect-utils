@@ -13,20 +13,24 @@ import { hostname } from 'node:os'
 
 import { NodeServices } from '@effect/platform-node'
 import { describe, it } from '@effect/vitest'
-import { Effect } from 'effect'
+import { Clock, Deferred, Effect, Fiber, Scope } from 'effect'
 import * as FileSystem from 'effect/FileSystem'
 import { expect } from 'vitest'
 
 import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
 
 import { encodeJson } from '../test-utils/mod.ts'
+import { createStoreFixture } from '../test-utils/store-setup.ts'
+import { withGitContainerLock, withGitWriterLock } from './git-writer-lock.ts'
 import {
   acquireDeletionLease,
   canonicalizeOwnerPath,
+  createStoreWorktree,
   deletionLeasePath,
   DeletionLeaseUnavailableError,
   releaseDeletionLease,
   withDeletionLease,
+  withStoreWorktreeLease,
 } from './store-deletion-lease.ts'
 
 const NOW = 1_800_000_000_000
@@ -125,6 +129,81 @@ describe('store deletion lease', () => {
 
         // Nothing leaks: once activation exits, reclamation proceeds.
         expect(yield* attemptDelete).toBe('deleted')
+      },
+      Effect.provide(NodeServices.layer),
+      Effect.scoped,
+    ),
+  )
+
+  it.effect(
+    'shares activation and creation admission while excluding repository reclamation',
+    Effect.fnUntraced(
+      function* () {
+        const f = yield* createStoreFixture([
+          { host: 'example.com', owner: 'team', repo: 'repo', branches: ['main'] },
+        ])
+        const bareRepoPath = f.bareRepoPaths['example.com/team/repo']!
+        const ownerPath = f.worktreePaths['example.com/team/repo#main']!
+        const activation = withStoreWorktreeLease({ storeBasePath: f.storePath, ownerPath })
+        const exclusive = withGitContainerLock({ path: bareRepoPath, mode: 'exclusive' })
+        const registration = (branch: string) =>
+          createStoreWorktree({
+            storeBasePath: f.storePath,
+            repoPath: bareRepoPath,
+            worktreePath: `${bareRepoPath}../refs/heads/${branch}`,
+            branch,
+            createBranch: true,
+          })
+        const fs = yield* FileSystem.FileSystem
+        const outside = yield* fs.makeTempDirectoryScoped()
+        for (const prospective of [`${outside}/external`, `${bareRepoPath}../refs/heads/missing`]) {
+          const options = { storeBasePath: f.storePath, ownerPath: prospective }
+          expect(
+            (yield* withStoreWorktreeLease(options)(Effect.void).pipe(Effect.result))._tag,
+          ).toBe('Failure')
+          yield* withStoreWorktreeLease({ ...options, bareRepoPath })(Effect.void)
+        }
+        yield* activation(
+          Effect.gen(function* () {
+            expect((yield* exclusive(Effect.void).pipe(Effect.result))._tag).toBe('Failure')
+            // Different refs coexist under the same activation's shared container fence.
+            yield* Effect.all([registration('one'), registration('two')], {
+              concurrency: 'unbounded',
+            })
+          }),
+        )
+        const entered = yield* Deferred.make<void>()
+        const scope = yield* Scope.Scope
+        const creating = yield* withGitWriterLock({ path: bareRepoPath })(
+          Effect.gen(function* () {
+            const fiber = yield* registration('blocked-writer').pipe(
+              Effect.forkScoped,
+              Effect.provideService(Scope.Scope, scope),
+            )
+            yield* Effect.sleep('100 millis').pipe(
+              Effect.provideService(Clock.Clock, Clock.Clock.defaultValue()),
+            )
+            expect((yield* exclusive(Effect.void).pipe(Effect.result))._tag).toBe('Failure')
+            return fiber
+          }),
+        )
+        yield* Fiber.join(creating)
+        const waiting = yield* exclusive(
+          Effect.gen(function* () {
+            const fiber = yield* Effect.all(
+              [activation(Deferred.succeed(entered, undefined)), registration('three')],
+              { concurrency: 'unbounded' },
+            ).pipe(Effect.forkScoped, Effect.provideService(Scope.Scope, scope))
+            yield* Effect.sleep('100 millis').pipe(
+              Effect.provideService(Clock.Clock, Clock.Clock.defaultValue()),
+            )
+            expect(yield* Deferred.isDone(entered)).toBe(false)
+            expect(yield* fs.exists(`${bareRepoPath}../refs/heads/three`)).toBe(false)
+            return fiber
+          }),
+        )
+        yield* Fiber.join(waiting)
+        expect(yield* Deferred.isDone(entered)).toBe(true)
       },
       Effect.provide(NodeServices.layer),
       Effect.scoped,
