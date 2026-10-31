@@ -8,6 +8,9 @@
 # The version here MUST match DEFAULT_AGGREGATE_PACKAGE_MANAGER in
 # packages/@overeng/genie/src/runtime/package-json/mod.ts.
 #
+# Refresh each payload hash with `nix store prefetch-file --json <url>` using
+# the registry.npmjs.org tarball URLs below and every target in exeHashes.
+#
 # pnpm 12 is a native (Rust) executable. The `pnpm` npm package no longer
 # contains the CLI: it carries the Corepack entrypoint (`bin/pnpm.mjs`), the
 # `sh` placeholder bins, and the bundled `dist/` payload (node-gyp), while the
@@ -25,7 +28,7 @@
 # matching executable in the wrapper's own optional-dependency locations.
 let
   lib = pkgs.lib;
-  version = "12.15.0";
+  version = "12.17.0";
 
   platform = pkgs.stdenv.hostPlatform;
 
@@ -43,17 +46,17 @@ let
       unsupportedPlatform;
 
   exeHashes = {
-    "linux-x64" = "sha256-QC9wRbHgWHrLFULxjTivvMtrq/PHRROU5vs9nwFgxso=";
-    "linux-arm64" = "sha256-gRfWXyjmJ+lJ1fxl1jNCJmMmgmpW+jdDF78T/hFmpQ4=";
-    "linux-x64-musl" = "sha256-8af/R+IK1TTwzqJnCbnKfMJLFexmFR37kVJx5UauTgg=";
-    "linux-arm64-musl" = "sha256-z21teggQd0PvDHaDicKTXB/7cAKwKrAGgtLuVlDgSD0=";
-    "darwin-x64" = "sha256-Iu1Bl9JpIzAMzaYrEqPUsn7QDNeZbN5BaIPGuBNZ7aY=";
-    "darwin-arm64" = "sha256-+rOOR5ASd2+jgQMTvYx+H9OfiD+RXBEcqYARLwaVUV4=";
+    "linux-x64" = "sha256-bBxx0A+Cdl2PdIjfbRqUUz/RrV1HyG2kEhGx2hCTydQ=";
+    "linux-arm64" = "sha256-AX4CZKrDqVXjTYL12UwQBQSnkcDdOH8RG3qYQCQRXVA=";
+    "linux-x64-musl" = "sha256-IwLCbls5QAaVLM7Lt3vhUGusl/IgyVb3Lt6S/UDuD/M=";
+    "linux-arm64-musl" = "sha256-oU4FQz7nCFI4PyCZ/xpVt4XBG4jtmqyy7OxSFJ17byU=";
+    "darwin-x64" = "sha256-pR0a55KsW69RsLTow60ek8fhNiqY/ns0M2dGYSCF/wE=";
+    "darwin-arm64" = "sha256-f5Icd5f5San8n6x41r52coEgfJGo1M8MLZxy7K6wpXI=";
   };
 
   wrapperSrc = pkgs.fetchurl {
     url = "https://registry.npmjs.org/pnpm/-/pnpm-${version}.tgz";
-    hash = "sha256-9Rc/YSfMUFzbNuwXcZ/lSoURxv2FYMfOtL98c+O0RYs=";
+    hash = "sha256-bXduKFGH+eM02IJsxaiOguQWBjRfGWpak/RAO9MyVT4=";
   };
 
   exeSrc = pkgs.fetchurl {
