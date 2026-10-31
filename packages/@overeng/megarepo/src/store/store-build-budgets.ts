@@ -600,10 +600,10 @@ const scanRoot = ({
           // eslint-disable-next-line no-await-in-loop
           const entries = await children(current)
           if (
-            entries.some((entry) => entry.endsWith('/.git')) === true ||
-            ['HEAD', 'objects', 'refs', 'config'].every((name) =>
-              entries.includes(join(current, name)),
-            ) === true
+            entries.includes(join(current, '.git')) === true ||
+            entries.includes(join(current, 'commondir')) === true ||
+            (entries.includes(join(current, 'HEAD')) === true &&
+              ['objects', 'refs'].some((name) => entries.includes(join(current, name))) === true)
           )
             throw fail('Artifact contains a Git repository boundary')
           pending.push(...entries)
@@ -1088,11 +1088,11 @@ export const applyBuildOutputBudgetCandidate = Effect.fn('store.applyBuildOutput
     if (admission !== undefined && admission.identity !== candidate.admissionIdentity)
       return yield* fail('Repository registration changed before lease acquisition')
     const leaseOwners = [
-      ...new Set([
-        ownerPath,
-        ...(admission?.worktrees ?? []).filter((path) => path !== `${ownerPath}/.bare`),
-      ]),
-    ].toSorted(comparePaths)
+      ownerPath,
+      ...[...new Set(admission?.worktrees ?? [])]
+        .filter((path) => path !== ownerPath && path !== `${ownerPath}/.bare`)
+        .toSorted(comparePaths),
+    ]
     return yield* Effect.gen(function* () {
       for (const path of leaseOwners)
         yield* Effect.acquireRelease(

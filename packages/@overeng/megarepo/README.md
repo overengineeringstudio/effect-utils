@@ -235,13 +235,12 @@ signature, not merely a marker filename or a failed Git check. Seats/PTYs anywhe
 container veto all its outputs; direct process references protect only their containing output.
 Unknown evidence keeps. Repository outputs containing `.git` or a bare repository boundary
 are never eligible, including when the output root itself is a bare repository.
-Apply acquires the container and every registered worktree's canonical activation lease in
-sorted order, then re-enumerates registrations under those leases. Registration changes or
-unavailable leases refuse deletion; all acquired leases are released on every exit. Git
-boundaries and registry identity are checked again immediately before removal.
-Activation (`mr store lease`) and worktree creation acquire the canonical repository-container
-lease before the worktree lease. External tools must use this protocol before publishing
-coverage: registration or activation bypassing it cannot be excluded by registry observations.
+Apply acquires the canonical container first, then sorted registered-worktree activation leases,
+and re-enumerates registrations under those leases. Activation and worktree creation follow
+the same container-first protocol. The container stays leased through removal; every lease
+is released on exit. Git boundaries and registry identity are checked again before removal.
+External registration/activation tools must participate via `mr store lease` before publishing
+either coverage capability: tools bypassing the shared protocol remain a registration race.
 Both kinds carry `livenessKey` and `admissionIdentity`; the digest binds version, ownership,
 census admission and process coverage. Old/unversioned policies and receipts are rejected:
 consumers must decode v2 owner kinds and regenerate plans instead of reusing v1 hashes.

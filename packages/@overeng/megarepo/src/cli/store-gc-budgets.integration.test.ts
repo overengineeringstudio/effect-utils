@@ -682,6 +682,7 @@ if (inOwnerNamespace === true && process.platform === 'linux')
           yield* fs.writeFileString(f.manifestPath, encodeJson(idle))
           for (const boundary of [output, `${output}/source.git`]) {
             yield* Git.runCommand({ args: ['init', '--bare', boundary], cwd: f.outside })
+            yield* fs.remove(`${boundary}/config`)
             const protectedPlan = planOk(f)
             expect(row(protectedPlan, output)?.reason).toBe('artifact-scan-incomplete')
             expect(applyCandidate(f, { plan: protectedPlan, path: output }).exitCode).not.toBe(0)
