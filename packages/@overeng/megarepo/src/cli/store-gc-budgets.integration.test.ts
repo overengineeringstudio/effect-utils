@@ -738,7 +738,6 @@ if (inOwnerNamespace === true && process.platform === 'linux')
             'nested/inner-target',
             'unsigned-target',
             'ordinary',
-            'worktree-target',
             'overlap-target',
           ]) {
             const path = `${container}/${name}`
@@ -750,10 +749,9 @@ if (inOwnerNamespace === true && process.platform === 'linux')
               )
             yield* Effect.promise(() => backdate(path, new Date(Date.now() - 3 * DAY_MS)))
           }
+          const fifo = `${container}/unsigned-target/CACHEDIR.TAG`
+          expect(spawnSync('mkfifo', [fifo]).status).toBe(0)
           for (const name of ['worktree-target', 'overlap-target/nested']) {
-            // Git needs an empty checkout destination.
-            if (name === 'worktree-target')
-              yield* fs.remove(`${container}/${name}`, { recursive: true })
             yield* Git.createWorktree({
               repoPath: bare,
               worktreePath: `${container}/${name}`,
