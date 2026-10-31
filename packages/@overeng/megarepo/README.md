@@ -226,7 +226,11 @@ activity on the admitted epoch, replans completely, requires the same digest, an
 idle predicate on the one candidate before deleting it.
 Rows carry a `kind`: `worktree` retains `repo`, `ref`, `refType` and `workspacePath`;
 `symbolic` refs retain the full Git ref name. The `repo-build-output` schema instead carries
-`containerPath` and `outputRoot`, without ref fields; no repository-output selector is enabled.
+`containerPath` and `outputRoot`, without ref fields. A class may select these independently with
+`repoRoots: "*-target"` instead of (or alongside) worktree `paths`. Only immediate directories
+are admitted, never symlinks, mount crossings or registered-worktree overlaps.
+Repository outputs are observation-only. Cargo authority requires the standard `CACHEDIR.TAG`
+signature (not merely a similarly named file); missing authority is reported and retained.
 Both kinds carry `livenessKey` and `admissionIdentity`; the digest binds version, ownership,
 census admission and process coverage. Old/unversioned policies and receipts are rejected:
 consumers must decode v2 owner kinds and regenerate plans instead of reusing v1 hashes.

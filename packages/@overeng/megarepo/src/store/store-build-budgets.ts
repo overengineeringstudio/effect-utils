@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto'
-import type { BigIntStats, Dir } from 'node:fs'
-import { lstat, opendir } from 'node:fs/promises'
+import { constants, type BigIntStats, type Dir } from 'node:fs'
+import { lstat, open, opendir } from 'node:fs/promises'
 import { hostname } from 'node:os'
 import { isAbsolute, join, normalize, relative, resolve } from 'node:path'
 
@@ -70,7 +70,8 @@ export const BuildOutputBudgets = Schema.Struct({
     Schema.NonEmptyString,
     Schema.Struct({
       budgetBytes: Bytes,
-      paths: Schema.Array(RootPattern).check(Schema.isMinLength(1)),
+      paths: Schema.optionalKey(Schema.Array(RootPattern).check(Schema.isMinLength(1))),
+      repoRoots: Schema.optionalKey(Schema.Literal('*-target')),
     }),
   ),
   worklog: Schema.optionalKey(
@@ -99,6 +100,7 @@ export const BudgetReason = Schema.Literals([
   'artifact-scan-incomplete',
   'scan-incomplete',
   'deletion-partial',
+  'artifact-authority-missing',
 ])
 const CandidateFields = {
   path: AbsolutePath,
@@ -136,8 +138,8 @@ export const BudgetCandidate = Schema.Union([
   }),
 ]).annotate({ identifier: 'Megarepo.BuildOutputBudgetCandidate' })
 export type BudgetCandidate = typeof BudgetCandidate.Type
-type WorktreeCandidate = Extract<BudgetCandidate, { kind: 'worktree' }>
-type MutableCandidate = { -readonly [TKey in keyof WorktreeCandidate]: WorktreeCandidate[TKey] }
+type Mutable<TValue> = { -readonly [TKey in keyof TValue]: TValue[TKey] }
+type MutableCandidate = Mutable<BudgetCandidate>
 /** Per-class allocated-byte accounting, reclamation and safety summary. */
 export const BudgetClassSummary = Schema.Struct({
   totalBytes: Bytes,
@@ -182,7 +184,12 @@ export const loadBuildOutputBudgetPolicyReceipt = Effect.fn(
   )
   const patterns = new Map<string, string>()
   for (const [name, entry] of Object.entries(policy.classes)) {
-    for (const pattern of entry.paths) {
+    if (entry.paths === undefined && entry.repoRoots === undefined)
+      return yield* fail(`Budget class ${name} has no root selector`)
+    for (const pattern of [
+      ...(entry.paths ?? []),
+      ...(entry.repoRoots === undefined ? [] : [`repo:${entry.repoRoots}`]),
+    ]) {
       const owner = patterns.get(pattern)
       if (owner !== undefined && owner !== name)
         return yield* fail(`Budget path ${pattern} belongs to multiple classes`)
@@ -354,6 +361,89 @@ const boundedScan = <TScanResult>({
     })
   })
 
+const cargoOutputAuthority = (path: string) =>
+  Effect.tryPromise(async () => {
+    const marker = `${path}/CACHEDIR.TAG`
+    if ((await lstat(marker)).isFile() === false) return false
+    const file = await open(
+      marker,
+      constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK,
+    )
+    try {
+      if ((await file.stat()).isFile() === false) return false
+      const { buffer, bytesRead } = await file.read({ buffer: Buffer.alloc(44), position: 0 })
+      return (
+        buffer.toString('utf8', 0, bytesRead) === 'Signature: 8a477f597d28d172789f06886806bc55\n'
+      )
+    } finally {
+      await file.close()
+    }
+  }).pipe(Effect.orElseSucceed(() => false))
+
+const repoAdmissionIdentity = Effect.fn('store.repoAdmissionIdentity')(function* ({
+  store,
+  container,
+}: {
+  store: string
+  container: string
+}) {
+  const identity = yield* captureDeletionIdentity({ rootPath: store, path: `${container}/.bare` })
+  return createHash('sha256').update(encode(identity)).digest('hex')
+})
+
+const repoOutputActive = ({
+  activity,
+  container,
+  output,
+}: {
+  activity: BudgetWorkspaceActivity
+  container: string
+  output: string
+}) => {
+  if (isWorkspaceActive({ activity, canonicalWorktree: output }) === true) return true
+  for (const path of activity.activePaths)
+    if (isInsideWorktree({ candidate: path, worktreePath: container }) === true) return true
+  return false
+}
+
+const discoverRepoOutputs = ({
+  container,
+  worktrees,
+  deadlineAt,
+}: {
+  container: string
+  worktrees: ReadonlyArray<string>
+  deadlineAt: number
+}) =>
+  boundedScan({
+    deadlineAt,
+    scan: async ({ inspect, children }) => {
+      const before = fingerprint({ path: container, info: await inspect(container) })
+      const mount = readDirectoryEvidence(container).mountId
+      const matches: string[] = []
+      for (const path of await children(container)) {
+        // eslint-disable-next-line no-await-in-loop
+        const info = await inspect(path)
+        if (
+          path.endsWith('-target') === false ||
+          info.isDirectory() === false ||
+          info.isSymbolicLink() === true ||
+          readDirectoryEvidence(path).mountId !== mount ||
+          worktrees.some(
+            (owner) =>
+              isInsideWorktree({ candidate: path, worktreePath: owner }) ||
+              isInsideWorktree({ candidate: owner, worktreePath: path }),
+          ) === true
+        )
+          continue
+        matches.push(path)
+      }
+      if (fingerprint({ path: container, info: await inspect(container) }) !== before)
+        throw fail('Repository output census changed')
+      return matches
+    },
+  })
+
 const discoverRoots = ({
   workspacePath,
   policy,
@@ -370,7 +460,10 @@ const discoverRoots = ({
       const matches: Array<{ path: string; artifactClass: string }> = []
       const snapshots = new Map<string, string>()
       const pending = [workspacePath]
-      const configuredClasses = Object.entries(policy.classes)
+      const configuredClasses = Object.entries(policy.classes).filter(
+        ([, entry]) => entry.paths !== undefined,
+      )
+      if (configuredClasses.length === 0) return matches
       while (pending.length > 0) {
         const path = pending.pop()!
         // eslint-disable-next-line no-await-in-loop
@@ -386,7 +479,7 @@ const discoverRoots = ({
         let artifactClass: string | undefined
         for (const [name, entry] of configuredClasses) {
           if (
-            entry.paths.some((pattern) =>
+            (entry.paths ?? []).some((pattern) =>
               pattern.startsWith('**/') === true
                 ? rel.slice(rel.lastIndexOf('/') + 1) === pattern.slice(3)
                 : rel === pattern,
@@ -447,7 +540,7 @@ const scanRoot = ({
       const inodes = new Map<string, number>()
       let newestMtimeMs = 0
       let symlink = false
-      const patterns = Object.values(policy.classes).flatMap((entry) => entry.paths)
+      const patterns = Object.values(policy.classes).flatMap((entry) => entry.paths ?? [])
       while (pending.length > 0) {
         const current = pending.pop()!
         // eslint-disable-next-line no-await-in-loop
@@ -712,6 +805,75 @@ export const planBuildOutputBudgets = Effect.fn('store.planBuildOutputBudgets')(
         }
       }
     }
+    const selectedClass = Object.entries(policy.classes).find(
+      ([, config]) => config.repoRoots !== undefined,
+    )
+    if (selectedClass === undefined) continue
+    const [artifactClass] = selectedClass
+    const container = resolve(canonicalStore, repo.relativePath)
+    const roots = yield* discoverRepoOutputs({
+      container,
+      worktrees: repoWorktrees.flatMap((entry) => entry.worktrees.map((owner) => owner.path)),
+      deadlineAt,
+    })
+    const admissionIdentity = yield* repoAdmissionIdentity({
+      store: canonicalStore,
+      container,
+    }).pipe(Effect.orElseSucceed(() => undefined))
+    if (roots === undefined || admissionIdentity === undefined) {
+      incomplete.add(artifactClass)
+      continue
+    }
+    admissions.push({ owner: container, identity: admissionIdentity })
+    for (const path of roots) {
+      const identity = yield* captureDeletionIdentity({ rootPath: canonicalStore, path }).pipe(
+        Effect.orElseSucceed(() => undefined),
+      )
+      const scan = yield* scanRoot({ path, workspacePath: container, policy, deadlineAt })
+      const authority = yield* cargoOutputAuthority(path)
+      const reason: typeof BudgetReason.Type =
+        identity === undefined || scan === undefined || scan.symlink === true
+          ? 'artifact-scan-incomplete'
+          : activity === undefined
+            ? 'agent-liveness-unavailable'
+            : authority === false
+              ? 'artifact-authority-missing'
+              : repoOutputActive({ activity, container, output: path }) === true ||
+                  (processScan._tag === 'complete' &&
+                    processScan.references.some((entry) =>
+                      isInsideWorktree({ candidate: entry.path, worktreePath: path }),
+                    ) === true)
+                ? 'live'
+                : 'process-liveness-unavailable'
+      if (scan === undefined || identity === undefined || scan.symlink === true)
+        incomplete.add(artifactClass)
+      results.push({
+        kind: 'repo-build-output',
+        containerPath: container,
+        outputRoot: path,
+        livenessKey: path,
+        admissionIdentity,
+        path,
+        artifactClass,
+        allocatedBytes: scan === undefined ? 0 : totalInodes(scan.inodes),
+        reclaimableBytes: 0,
+        mtimeMs: scan?.newestMtimeMs ?? 0,
+        fingerprint:
+          scan === undefined || identity === undefined
+            ? ''
+            : deletionFingerprint({ artifactFingerprint: scan.fingerprint, identity }),
+        reason,
+        outcome: unknownReasons[reason] === true ? 'unknown' : 'keep',
+      })
+      if (scan === undefined) continue
+      const classInodes = inodeRoots.get(artifactClass)!
+      for (const [id, bytes] of scan.inodes) {
+        const existing = classInodes.get(id)
+        if (existing !== undefined && existing.bytes !== bytes) incomplete.add(artifactClass)
+        if (existing === undefined) classInodes.set(id, { bytes, roots: new Set([path]) })
+        else existing.roots.add(path)
+      }
+    }
   }
   const classSummaries = new Map<string, typeof BudgetClassSummary.Type>()
   for (const [name, config] of Object.entries(policy.classes)) {
@@ -854,6 +1016,7 @@ export const applyBuildOutputBudgetCandidate = Effect.fn('store.applyBuildOutput
     if (selected.length !== 1)
       return yield* fail('Budget candidate is missing, ambiguous, or not eligible')
     const candidate = selected[0]!
+    if (candidate.kind !== 'worktree') return yield* fail('Repository output is observation-only')
     const requiresExpandedCoverage = repoWorktrees.some(({ worktrees }) =>
       worktrees.some(
         (worktree) =>
@@ -890,6 +1053,7 @@ export const applyBuildOutputBudgetCandidate = Effect.fn('store.applyBuildOutput
         (row) => row.path === candidate.path && row.outcome === 'would-delete',
       )
       if (current === undefined) return yield* fail('Budget candidate no longer eligible')
+      if (current.kind !== 'worktree') return yield* fail('Repository output is observation-only')
       const removal = yield* withGcPinnedDeletion({
         rootPath: deletionRoot,
         path: current.path,
