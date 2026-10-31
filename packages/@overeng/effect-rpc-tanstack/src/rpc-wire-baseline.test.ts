@@ -1,5 +1,6 @@
 import { Effect, Exit, Schema } from 'effect'
 import { Rpc, RpcGroup } from 'effect/rpc'
+import { deserialize, serialize } from 'seroval'
 import { describe, expect, it } from 'vitest'
 
 import { encodeExit, decodeExit, makeEffectLoaderResult } from './router.ts'
@@ -78,10 +79,78 @@ const decodeExitFailure = (encoded: unknown) => {
 }
 
 describe('effect-rpc-tanstack RPC wire baselines (cross-major invariant)', () => {
+  it.each([
+    ['failure', Exit.fail({ _tag: 'ExpectedError', message: 'missing user' })],
+    ['defect', Exit.die('loader defect')],
+    ['interrupt', Exit.interrupt(123)],
+  ])('encodes %s as plain JSON data and decodes it after transport', (_, exit) => {
+    const assertPlainData = (value: unknown): void => {
+      if (typeof value !== 'object' || value === null) return
+      expect(Object.getPrototypeOf(value)).toBe(
+        Array.isArray(value) === true ? Array.prototype : Object.prototype,
+      )
+      for (const child of Object.values(value)) assertPlainData(child)
+    }
+    const encoded = encodeExit(exit)
+    assertPlainData(encoded)
+    const transported = structuredClone(encoded)
+    expect(decodeExit(transported)).toEqual(exit)
+    expect(decodeExit(deserialize<typeof encoded>(serialize(encoded)))).toEqual(exit)
+  })
+
+  it('preserves seroval-native success payloads', () => {
+    const value = { absent: undefined, date: new Date(0), entries: new Map([['key', 'value']]) }
+    const encoded = encodeExit(Exit.succeed(value))
+    expect(decodeExit(deserialize<typeof encoded>(serialize(encoded)))).toEqual(Exit.succeed(value))
+  })
+
+  it.each(['GetInvoicesData', 'UnknownRpc'])(
+    'handles an NDJSON Request for %s without a trailing newline',
+    async (tag) => {
+      const group = RpcGroup.make(
+        Rpc.make('GetInvoicesData', { payload: {}, success: Schema.String }),
+      )
+      const { handler, dispose } = makeHandler({
+        group,
+        handlerLayer: group.toLayer({ GetInvoicesData: () => Effect.succeed('invoices') }),
+        disableTracing: true,
+      })
+      try {
+        const request = new Request('http://localhost/api/rpc', {
+          method: 'POST',
+          headers: { 'content-type': 'application/x-ndjson' },
+          body: JSON.stringify({ _tag: 'Request', id: '1', tag, payload: {}, headers: [] }),
+        })
+        const response = await handler(request)
+        expect(response.status).toBe(200)
+        expect(response.headers.get('content-type')).toBe('application/x-ndjson')
+        const message = JSON.parse(await response.text())
+        expect(request.signal.aborted).toBe(false)
+        if (tag === 'GetInvoicesData') {
+          expect(message).toEqual({
+            _tag: 'Exit',
+            requestId: '1',
+            exit: { _tag: 'Success', value: 'invoices' },
+          })
+        } else {
+          expect(message).toEqual({
+            _tag: 'Exit',
+            requestId: '1',
+            exit: {
+              _tag: 'Failure',
+              cause: [{ _tag: 'Die', defect: 'Unknown request tag: UnknownRpc' }],
+            },
+          })
+        }
+      } finally {
+        await dispose()
+      }
+    },
+  )
+
   // These bytes pin the package's single current SSR Exit format. #979 records
   // consumer-owned coordinated rollout and cache policy; there is no dual decoder.
-  // Effect 4.1 exposes Cause.reasons (formerly Cause.failures), including toJSON.
-  // This SSR representation is distinct from HTTP RPC's encoded cause array.
+  // SSR uses plain Cause.reasons containers; HTTP RPC encodes causes as arrays.
   it('captures SSR Exit JSON bytes and re-encoded identity', () => {
     const exits = {
       success: encodeExit(
@@ -93,6 +162,12 @@ describe('effect-rpc-tanstack RPC wire baselines (cross-major invariant)', () =>
       ),
       failure: encodeExit(Exit.fail(new GreetingError({ reason: 'missing-user', userId: '' }))),
       defect: encodeExit(Exit.die(new Error('loader defect ß'))),
+    }
+    for (const encoded of Object.values(exits)) {
+      // Seroval materializes Error.name as an own property; payload fields survive.
+      expect(decodeExit(deserialize<typeof encoded>(serialize(encoded)))).toMatchObject(
+        decodeExit(encoded),
+      )
     }
 
     const successResult = makeEffectLoaderResult<typeof exits.success, GreetingError>(exits.success)

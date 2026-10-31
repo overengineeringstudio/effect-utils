@@ -12,31 +12,73 @@ import {
 } from '@tanstack/react-router'
 import { Cause, Effect, Exit, type Layer, Option, Result, Schema } from 'effect'
 
-/**
- * Schema for encoding Exit values for SSR serialization.
- * Uses Effect's built-in Exit schema with Unknown types for flexibility.
- */
-const ExitSchema = Schema.Exit(Schema.Unknown, Schema.Unknown, Schema.Defect())
+/** Plain containers for SSR; payloads retain seroval-supported runtime types. */
+const ExitSchema = Schema.Union([
+  Schema.TaggedStruct('Success', { value: Schema.Unknown }),
+  Schema.TaggedStruct('Failure', {
+    cause: Schema.Struct({
+      reasons: Schema.Array(
+        Schema.Union([
+          Schema.TaggedStruct('Fail', { error: Schema.Unknown }),
+          Schema.TaggedStruct('Die', { defect: Schema.Defect() }),
+          Schema.TaggedStruct('Interrupt', { fiberId: Schema.UndefinedOr(Schema.Finite) }),
+        ]),
+      ),
+    }),
+  }),
+])
 
-/**
- * Encoded Exit type for SSR serialization.
- * This is the JSON-safe representation that can be serialized by seroval.
- * Its failure cause follows Effect's Cause model (`reasons` in Effect 4.1).
- * This is not the HTTP RPC wire codec, which encodes causes as arrays.
- */
+/** Exit and Cause containers are plain data; payloads are seroval-native. */
 export type ExitEncoded = typeof ExitSchema.Encoded
 
 /**
  * Encode an Exit for SSR serialization using Effect Schema.
  */
 export const encodeExit = <A, E>(exit: Exit.Exit<A, E>): ExitEncoded =>
-  Schema.encodeSync(ExitSchema)(exit as Exit.Exit<unknown, unknown>)
+  Schema.encodeSync(ExitSchema)(
+    Exit.isSuccess(exit) === true
+      ? { _tag: 'Success', value: exit.value }
+      : {
+          _tag: 'Failure',
+          cause: {
+            reasons: exit.cause.reasons.map((reason) => {
+              switch (reason._tag) {
+                case 'Fail':
+                  return { _tag: 'Fail', error: reason.error }
+                case 'Die':
+                  return { _tag: 'Die', defect: reason.defect }
+                case 'Interrupt':
+                  return { _tag: 'Interrupt', fiberId: reason.fiberId }
+              }
+            }),
+          },
+        },
+  )
 
 /**
  * Decode an ExitEncoded back to Exit using Effect Schema.
  */
-export const decodeExit = <A, E>(encoded: ExitEncoded): Exit.Exit<A, E> =>
-  Schema.decodeSync(ExitSchema)(encoded) as Exit.Exit<A, E>
+export const decodeExit = <A, E>(encoded: ExitEncoded): Exit.Exit<A, E> => {
+  const decoded = Schema.decodeSync(ExitSchema)(encoded)
+  return (
+    decoded._tag === 'Success'
+      ? Exit.succeed(decoded.value)
+      : Exit.failCause(
+          Cause.fromReasons(
+            decoded.cause.reasons.map((reason) => {
+              switch (reason._tag) {
+                case 'Fail':
+                  return Cause.makeFailReason(reason.error)
+                case 'Die':
+                  return Cause.makeDieReason(reason.defect)
+                case 'Interrupt':
+                  return Cause.makeInterruptReason(reason.fiberId)
+              }
+            }),
+          ),
+        )
+  ) as Exit.Exit<A, E>
+}
 
 /**
  * Effect-native loader context

@@ -103,10 +103,43 @@ export const makeHandler: {
     handlerLayer,
   )
 
-  return HttpRouter.toWebHandler(appLayer, {
+  const webHandler: RpcWebHandler = HttpRouter.toWebHandler(appLayer, {
     ...(options.middleware === undefined ? {} : { middleware: options.middleware }),
     ...(options.memoMap === undefined ? {} : { memoMap: options.memoMap }),
   })
+  return {
+    ...webHandler,
+    // oxlint-disable-next-line overeng/named-args -- Effect's web handler API uses positional request/context.
+    handler: (request, context) => {
+      if (
+        options.serializationLayer !== undefined ||
+        request.body === null ||
+        request.headers.get('content-type')?.split(';')[0]?.trim() !== 'application/x-ndjson'
+      ) {
+        return webHandler.handler(request, context)
+      }
+      // Effect's NDJSON parser emits only newline-terminated frames and has no
+      // EOF flush. Complete the final frame without buffering the request body.
+      let lastByte: number | undefined
+      const body = request.body.pipeThrough(
+        new TransformStream<Uint8Array, Uint8Array>({
+          transform(chunk, controller) {
+            if (chunk.length > 0) lastByte = chunk[chunk.length - 1]
+            controller.enqueue(chunk)
+          },
+          flush(controller) {
+            if (lastByte !== undefined && lastByte !== 10) {
+              controller.enqueue(new Uint8Array([10]))
+            }
+          },
+        }),
+      )
+      const headers = new Headers(request.headers)
+      headers.delete('content-length')
+      const init: RequestInit & { duplex: 'half' } = { body, headers, duplex: 'half' }
+      return webHandler.handler(new Request(request, init), context)
+    },
+  }
 }
 
 /**

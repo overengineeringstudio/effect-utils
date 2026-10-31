@@ -45,6 +45,7 @@
     "effect": "4.1.0",
     "react": "19.2.8",
     "react-dom": "19.2.8",
+    "seroval": "1.6.4",
     "typescript": "7.0.2",
     "vite": "8.2.2",
     "vitest": "5.0.3"

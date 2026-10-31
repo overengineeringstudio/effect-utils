@@ -201,6 +201,12 @@ function Home() {
 
 For Effect-native loaders with proper error handling and SSR serialization:
 
+SSR exit serialization uses plain Exit and Cause containers (`cause.reasons`).
+Success values and typed errors retain seroval-supported runtime types; defects
+use Effect's `Schema.Defect` codec. Decode with `decodeExit` or
+`makeEffectLoaderResult` to rebuild Effect values. Server and client must use the
+same package version; this format is distinct from the HTTP RPC cause-array codec.
+
 ```typescript
 // src/routes/users.$id.tsx
 import { createEffectRoute, makeEffectLoaderResult, type ExitEncoded } from '@overeng/effect-rpc-tanstack/router'
@@ -234,6 +240,10 @@ Creates a web handler for TanStack Start API routes from an RpcGroup and its han
 - `options.serializationLayer` - Optional serialization layer (defaults to NDJSON)
 
 Returns `{ handler, dispose }` where `handler` accepts a `Request` and returns a `Response`.
+
+The default NDJSON transport accepts a final request frame without a trailing
+newline, completing it at end of body without buffering the stream. Custom
+serialization layers retain their own framing behavior.
 
 #### `makeHandlerWithRuntime(options)`
 

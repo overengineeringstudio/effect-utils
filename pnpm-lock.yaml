@@ -713,6 +713,9 @@ importers:
       react-dom:
         specifier: 19.2.8
         version: 19.2.8(react@19.2.8)
+      seroval:
+        specifier: 1.6.4
+        version: 1.6.4
       typescript:
         specifier: 7.0.2
         version: 7.0.2
