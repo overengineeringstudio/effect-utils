@@ -174,11 +174,12 @@ can be piped directly into tools such as `jq`. Human-mode presentation remains o
 
 Budget discovery also admits registered worktrees outside `refs/`, including hidden directories,
 after canonical deduplication and verification of their `.git` and common repository ownership.
-Branch and detached identities come from Git, not directory names. External registrations,
-unsafe paths, broken ownership and symbolic refs outside the supported branch/commit contract
-are excluded with stderr diagnostics; incomplete internal discovery prevents eviction.
+Branch, detached and full symbolic-ref identities come from Git, not directory names.
+External registrations, unsafe paths and broken ownership are excluded with stderr diagnostics;
+incomplete internal discovery prevents eviction.
 These additional roots never enter whole-worktree GC or archive discovery.
-These roots are observation-only: bytes are reported but never eviction-eligible.
+These roots remain observation-only unless the admitted activity manifest explicitly declares
+`processWorktreeCoverage: "registered-worktrees"`; store-wide process roots alone are insufficient.
 Admission verifies the admin directory's canonical `.git` backlink and matching registration HEAD.
 
 `--budgets` cannot be combined with `--generated-artifacts`, `--all`, or `--force`. The policy is
@@ -187,9 +188,9 @@ malformed field exits non-zero and deletes nothing. Its shape is:
 
 ```json
 {
-  "schemaVersion": "megarepo.build-output-budgets.v1",
+  "schemaVersion": "megarepo.build-output-budgets.v2",
   "host": "build-host",
-  "storeRoots": ["/home/developer/.megarepo"],
+  "storeRoots": ["/var/lib/megarepo"],
   "quotaBytes": 824633720832,
   "idleRetentionMs": 86400000,
   "classes": {
@@ -217,12 +218,18 @@ older than `idleRetentionMs`, Git-ignored with no tracked file, and canonically 
 worktree. Any unknown keeps. When nothing idle remains, the class reports
 `over-budget-no-idle-candidate` rather than evicting live work.
 
-JSON output is the `megarepo.build-output-budget-plan.v1` document: `planSha256`, the candidate
+JSON output is the `megarepo.build-output-budget-plan.v2` document: `planSha256`, the candidate
 `results`, and `classes` keyed by class name with `totalBytes`, `budgetBytes`,
 `idleCandidateBytes`, `evictedBytes`, `projectedBytes`, `keptByReason`, `scanStatus`, and `status`
 for exporting gauges. Application holds the owner-worktree lock and deletion lease, recaptures
 activity on the admitted epoch, replans completely, requires the same digest, and re-checks every
 idle predicate on the one candidate before deleting it.
+Rows carry a `kind`: `worktree` retains `repo`, `ref`, `refType` and `workspacePath`;
+`symbolic` refs retain the full Git ref name. The `repo-build-output` schema instead carries
+`containerPath` and `outputRoot`, without ref fields; no repository-output selector is enabled.
+Both kinds carry `livenessKey` and `admissionIdentity`; the digest binds version, ownership,
+census admission and process coverage. Old/unversioned policies and receipts are rejected:
+consumers must decode v2 owner kinds and regenerate plans instead of reusing v1 hashes.
 On Linux, deletion pins directories with no-follow file descriptors through quarantine and
 recursive removal. Mount boundaries are identified by each pinned fd's `/proc/self/fdinfo`
 `mnt_id`, not `st_dev`: overlayfs can report underlying-layer devices for ordinary files.

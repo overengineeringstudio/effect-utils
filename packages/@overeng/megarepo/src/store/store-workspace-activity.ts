@@ -471,6 +471,7 @@ const ActivityManifest = Schema.Struct({
    */
   processCoverage: Schema.optionalKey(Schema.Literal('all-uids')),
   processRoots: Schema.optionalKey(Schema.Array(AbsolutePath)),
+  processWorktreeCoverage: Schema.optionalKey(Schema.Literal('registered-worktrees')),
   processIdentities: Schema.optionalKey(
     Schema.Array(
       Schema.Struct({
@@ -525,6 +526,8 @@ export interface BudgetWorkspaceActivityEpoch extends WorkspaceActivityEpoch {
 /** Activity whose epoch identifies the admitted producer snapshot. */
 export interface BudgetWorkspaceActivity extends WorkspaceActivity {
   readonly epoch: BudgetWorkspaceActivityEpoch
+  /** Explicit producer opt-in: process claims retain non-refs registered roots. */
+  readonly processWorktreeCoverage?: 'registered-worktrees' | undefined
   /** Seat ownership is retained even for inactive claims; activity remains a separate gate. */
   readonly ownerClaims?: ReadonlyArray<{
     readonly workspace: string
@@ -753,6 +756,7 @@ export const readActivityManifest = Effect.fn('store.readActivityManifest')(func
   return {
     activePaths,
     processPaths,
+    processWorktreeCoverage: manifest.processWorktreeCoverage,
     processCoverage,
     ownerClaims: manifest.claims
       .filter((claim) => claim.sources.includes('st3-seat'))
@@ -914,6 +918,7 @@ export const readBudgetWorkspaceActivity: (options: {
               activePaths: new Set([...manifest.activePaths, ...own.activePaths]),
               processPaths: new Set([...manifest.processPaths, ...own.processPaths]),
               processCoverage: manifest.processCoverage,
+              processWorktreeCoverage: manifest.processWorktreeCoverage,
               ownerClaims: manifest.ownerClaims,
               epoch: manifest.epoch,
             }

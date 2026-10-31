@@ -35,7 +35,7 @@ import { expect, vi } from 'vitest'
 import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
 
 import * as Git from '../core/git.ts'
-import { BudgetPlan } from '../store/store-build-budgets.ts'
+import { BudgetCandidate, BudgetPlan } from '../store/store-build-budgets.ts'
 import {
   acquireDeletionLease,
   canonicalizeOwnerPath,
@@ -57,6 +57,47 @@ const REPO_KEY = `${REPO.host}/${REPO.owner}/${REPO.repo}`
 
 const decodePlan = Schema.decodeUnknownSync(Schema.fromJsonString(BudgetPlan))
 type Plan = BudgetPlan
+
+describe('versioned budget owner contract', () => {
+  it('rejects old and unversioned receipts', () => {
+    const receipt = { planSha256: 'a'.repeat(64), results: [], classes: {} }
+    for (const schemaVersion of ['megarepo.build-output-budget-plan.v1', undefined]) {
+      expect(() => decodePlan(encodeJson({ ...receipt, schemaVersion }))).toThrow()
+    }
+  })
+
+  it('roundtrips both owner kinds without inventing repo-output refs', () => {
+    const common = {
+      path: '/store/repository/build-target',
+      livenessKey: '/store/repository/build-target',
+      admissionIdentity: 'census-registration',
+      artifactClass: 'cargo-target',
+      allocatedBytes: 4096,
+      reclaimableBytes: 4096,
+      mtimeMs: 0,
+      fingerprint: 'identity',
+      outcome: 'keep',
+      reason: 'within-budget',
+    }
+    const owners = [
+      {
+        kind: 'worktree',
+        repo: 'example/repository',
+        ref: 'main',
+        refType: 'heads',
+        workspacePath: '/store/repository/checkout',
+      },
+      { kind: 'repo-build-output', containerPath: '/store/repository', outputRoot: common.path },
+    ]
+    const codec = Schema.fromJsonString(BudgetCandidate)
+    const decode = Schema.decodeSync(codec, { onExcessProperty: 'error' })
+    for (const owner of owners) {
+      const candidate = { ...common, ...owner }
+      const decoded = decode(encodeJson(candidate))
+      expect(decode(Schema.encodeSync(codec)(decoded))).toEqual(candidate)
+    }
+  })
+})
 
 // =============================================================================
 // Root CLI subprocess
@@ -208,7 +249,7 @@ const writePolicy = (
     yield* fs.writeFileString(
       f.policyPath,
       encodeJson({
-        schemaVersion: 'megarepo.build-output-budgets.v1',
+        schemaVersion: 'megarepo.build-output-budgets.v2',
         host: hostname(),
         storeRoots: [f.storePath],
         quotaBytes: 1024 * MiB,
@@ -571,6 +612,36 @@ if (inOwnerNamespace === false) {
 if (inOwnerNamespace === true && process.platform === 'linux')
   describe('mr store gc --budgets (build-output budgets acceptance)', () => {
     it.effect(
+      'registration and ownership changes invalidate budget application',
+      Effect.fnUntraced(
+        function* () {
+          const { f, a, targetA } = yield* twoTargets({ budgetBytes: 0 })
+          const fs = yield* FileSystem.FileSystem
+          const plan = planOk(f)
+          const dotGit = `${a}.git`
+          const pointer = yield* fs.readFileString(dotGit)
+          // Re-register the same owner with an unchanged checkout and output root.
+          yield* fs.remove(dotGit)
+          yield* fs.writeFileString(dotGit, pointer)
+          const registered = planOk(f)
+          expect(registered.planSha256).not.toBe(plan.planSha256)
+          expect(applyCandidate(f, { plan, path: targetA }).exitCode).not.toBe(0)
+          yield* Git.runCommand({ args: ['update-ref', 'refs/custom/owner', 'HEAD'], cwd: a })
+          yield* Git.runCommand({ args: ['symbolic-ref', 'HEAD', 'refs/custom/owner'], cwd: a })
+          const changedOwner = planOk(f)
+          expect(row(changedOwner, targetA)).toMatchObject({
+            ref: 'refs/custom/owner',
+            refType: 'symbolic',
+          })
+          expect(changedOwner.planSha256).not.toBe(registered.planSha256)
+          expect(applyCandidate(f, { plan: registered, path: targetA }).exitCode).not.toBe(0)
+          expect(yield* exists(targetA)).toBe(true)
+        },
+        Effect.provide(NodeServices.layer),
+        Effect.scoped,
+      ),
+    )
+    it.effect(
       'budget-only census admits custom, detached and hidden registrations with truthful identity',
       Effect.fnUntraced(
         function* () {
@@ -606,6 +677,39 @@ if (inOwnerNamespace === true && process.platform === 'linux')
             expect(row(plan, `${path}/target`)?.reason).toBe('process-liveness-unavailable')
           }
           expect(applyCandidate(f, { plan, path: `${roots[0]}/target` }).exitCode).not.toBe(0)
+          const fs = yield* FileSystem.FileSystem
+          const manifest = decodeJson(yield* fs.readFileString(f.manifestPath)) as Record<
+            string,
+            unknown
+          >
+          yield* fs.writeFileString(
+            f.manifestPath,
+            encodeJson({
+              ...manifest,
+              processRoots: [f.storePath.replace(/\/$/u, '')],
+              processWorktreeCoverage: 'registered-worktrees',
+            }),
+          )
+          const expanded = planOk(f)
+          expect(expanded.planSha256).not.toBe(plan.planSha256)
+          expect(row(expanded, `${roots[0]}/target`)?.outcome).toBe('would-delete')
+          yield* fs.writeFileString(
+            f.manifestPath,
+            encodeJson({
+              ...manifest,
+              processWorktreeCoverage: 'registered-worktrees',
+              claims: [
+                {
+                  workspace: roots[0],
+                  sources: ['process'],
+                  agents: [],
+                  activeRuntimeIds: [],
+                  active: true,
+                },
+              ],
+            }),
+          )
+          expect(row(planOk(f), `${roots[0]}/target`)?.reason).toBe('live')
           const legacy = runMr(f, ['--dry-run', '--all'])
           expect(legacy.exitCode, legacy.stderr).toBe(0)
           for (const path of roots) expect(legacy.stdout).not.toContain(path)
@@ -683,7 +787,7 @@ if (inOwnerNamespace === true && process.platform === 'linux')
           expect(totalBefore).toBeGreaterThan(4 * MiB)
 
           const plan = planOk(f)
-          expect(plan.schemaVersion).toBe('megarepo.build-output-budget-plan.v1')
+          expect(plan.schemaVersion).toBe('megarepo.build-output-budget-plan.v2')
           expect(
             plan.results.filter((r) => r.outcome === 'would-delete').map((r) => r.path),
           ).toEqual([targetA])
@@ -1178,7 +1282,9 @@ if (inOwnerNamespace === true && process.platform === 'linux')
             schemaVersion: 'megarepo.build-output-budgets.v99',
           })
           for (const content of [
-            '{"schemaVersion": "megarepo.build-output-budgets.v1",',
+            '{"schemaVersion": "megarepo.build-output-budgets.v2",',
+            encodeJson({ ...validPolicy, schemaVersion: 'megarepo.build-output-budgets.v1' }),
+            encodeJson({ ...validPolicy, schemaVersion: undefined }),
             unknownSchema,
             unknownField,
           ]) {
