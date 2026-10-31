@@ -112,6 +112,8 @@ Provision the referenced items and a separate HMAC key per stack externally. App
 
 Default plans observe the live GitHub secret metadata and, when `hashKey` is configured, read both handles and compare the HMAC with state. Without `hashKey`, only existence and `updated_at` detect drift. Set `driftMode: 'updatedAtOnly'` to prevent all value/key reads during planning, even with a hash key configured. GitHub timestamps do not prove secret contents or distinguish same-timestamp writes. Apply still reads the source to perform an authorized update. Destroy deletes a managed secret unless `retain: true`. Names, scope and host are immutable.
 
+Secret names are normalized to uppercase for GitHub requests, identity and persisted metadata; changing only their case does not move the resource.
+
 The default `SecretSourceLive` uses the runtime `ChildProcessSpawner` and runs only `op-proxy read <ref> --reason <reason> --cache none --fresh --output json`; it discards stderr and sanitizes failures. No raw `op`, temp secret files, or mutations are used. `GitHub.providers({ ...options, secretSource: customSourceLayer })` can inject another `SecretSource` implementation. **Current op-proxy CLI limitation:** it trims original boundary whitespace before JSON encoding; the adapter performs no additional trimming. Use a byte-preserving injected source for whitespace-significant values until the CLI supplies a lossless read contract.
 
 ### Narrowest GitHub App repository permissions

@@ -47,12 +47,12 @@ export type ActionsSecret = Resource<
 export const ActionsSecret = Resource<ActionsSecret>('GitHub.ActionsSecret')
 const metadata = Schema.Struct({ name: Schema.String, updated_at: Schema.String })
 const endpoint = (p: ActionsSecretProps) =>
-  `${actionsPath({ scope: p, kind: 'secrets' })}/${encodeURIComponent(p.name)}`
+  `${actionsPath({ scope: p, kind: 'secrets' })}/${encodeURIComponent(p.name.toUpperCase())}`
 const readSecret = Effect.fn(function* (p: ActionsSecretProps) {
   const data = yield* request(p, 'GET', endpoint(p))
   if (data === undefined) return undefined
   const observed = yield* decodeActions({ schema: metadata, value: data })
-  if (observed.name !== p.name)
+  if (observed.name.toUpperCase() !== p.name.toUpperCase())
     return yield* new ActionsError({
       operation: 'read',
       message: 'Actions secret name differs from the declaration.',
@@ -61,7 +61,7 @@ const readSecret = Effect.fn(function* (p: ActionsSecretProps) {
     owner: p.owner,
     repository: p.repository,
     ...(p.environment === undefined ? {} : { environment: p.environment }),
-    name: observed.name,
+    name: observed.name.toUpperCase(),
     scope: p.environment === undefined ? ('repository' as const) : ('environment' as const),
     updatedAt: observed.updated_at,
   }

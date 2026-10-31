@@ -7,7 +7,6 @@ import { join } from 'node:path'
 import { fromToken } from '@alchemy.run/github/Credentials'
 import { it } from '@effect/vitest'
 import { AlchemyContext } from 'alchemy/AlchemyContext'
-import * as Provider from 'alchemy/Provider'
 import { State } from 'alchemy/State'
 import { encodeState } from 'alchemy/State/StateEncoding'
 import { scratchStack, toEffect } from 'alchemy/Test/Core'
@@ -22,8 +21,8 @@ import sodium, {
 import { expect } from 'vitest'
 
 import { ActionsError } from './ActionsCommon.ts'
-import { ActionsSecret, ActionsSecretProvider, type ActionsSecretProps } from './ActionsSecret.ts'
-import { Providers } from './Providers.ts'
+import { ActionsSecret, type ActionsSecretProps } from './ActionsSecret.ts'
+import { providers as githubProviders } from './Providers.ts'
 import { SecretSource } from './SecretSource.ts'
 
 const encode = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown))
@@ -120,10 +119,8 @@ const fixture = (environment?: string) =>
     const logger = Logger.layer([Logger.make((entry) => state.logs.push(encode(entry.message)))], {
       mergeWithExisting: false,
     })
-    const providers = Layer.effect(Providers, Provider.collection([ActionsSecret])).pipe(
-      Layer.provide(ActionsSecretProvider),
-      Layer.provideMerge(credentials),
-      Layer.provideMerge(source),
+    const providers = githubProviders({ secretSource: source }).pipe(
+      Layer.merge(credentials),
       Layer.provideMerge(logger),
     )
     const directory = yield* Effect.acquireRelease(
@@ -135,7 +132,7 @@ const fixture = (environment?: string) =>
     const props: ActionsSecretProps = {
       owner: 'example',
       repository: 'repo',
-      name: 'EXAMPLE_SECRET',
+      name: 'example_secret',
       ...(environment === undefined ? {} : { environment }),
       value: {
         ref: 'op://aaaaaaaaaaaaaaaaaaaaaaaaaa/bbbbbbbbbbbbbbbbbbbbbbbbbb/value',
