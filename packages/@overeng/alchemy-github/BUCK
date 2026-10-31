@@ -4,7 +4,7 @@
 # Projection source: packages/@overeng/alchemy-github/BUCK.genie.ts
 # Projection schema version: 13
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:7b49b8898cde7ee99ae077e820adfe782dd430551eb832e9052b4b4daaf6a70a
+# Semantic fingerprint: sha256:92fd27910831ae542cdf3a3e14d16c601bdb70d323e4a308186481d444fdddac
 # Regenerate: devenv tasks run genie:run
 
 load("//buck2:materialization.bzl", "export_materialization_inputs", "package_view")
@@ -30,6 +30,8 @@ export_materialization_inputs([
     "src/App.live.test.ts",
     "src/App.ts",
     "src/AppErrors.ts",
+    "src/Labels.integration.test.ts",
+    "src/Labels.ts",
     "src/ManifestCodeSource.ts",
     "src/ManifestCodeSource.unit.test.ts",
     "src/Providers.ts",
@@ -96,6 +98,8 @@ package_view(
         "src/App.live.test.ts": "src/App.live.test.ts",
         "src/App.ts": "src/App.ts",
         "src/AppErrors.ts": "src/AppErrors.ts",
+        "src/Labels.integration.test.ts": "src/Labels.integration.test.ts",
+        "src/Labels.ts": "src/Labels.ts",
         "src/ManifestCodeSource.ts": "src/ManifestCodeSource.ts",
         "src/ManifestCodeSource.unit.test.ts": "src/ManifestCodeSource.unit.test.ts",
         "src/Providers.ts": "src/Providers.ts",
@@ -140,6 +144,8 @@ package_view(
         "src/App.live.test.ts": "src/App.live.test.ts",
         "src/App.ts": "src/App.ts",
         "src/AppErrors.ts": "src/AppErrors.ts",
+        "src/Labels.integration.test.ts": "src/Labels.integration.test.ts",
+        "src/Labels.ts": "src/Labels.ts",
         "src/ManifestCodeSource.ts": "src/ManifestCodeSource.ts",
         "src/ManifestCodeSource.unit.test.ts": "src/ManifestCodeSource.unit.test.ts",
         "src/Providers.ts": "src/Providers.ts",
@@ -184,6 +190,8 @@ package_view(
         "src/App.live.test.ts": "src/App.live.test.ts",
         "src/App.ts": "src/App.ts",
         "src/AppErrors.ts": "src/AppErrors.ts",
+        "src/Labels.integration.test.ts": "src/Labels.integration.test.ts",
+        "src/Labels.ts": "src/Labels.ts",
         "src/ManifestCodeSource.ts": "src/ManifestCodeSource.ts",
         "src/ManifestCodeSource.unit.test.ts": "src/ManifestCodeSource.unit.test.ts",
         "src/Providers.ts": "src/Providers.ts",
