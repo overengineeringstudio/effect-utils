@@ -388,6 +388,16 @@ Recovery MUST be explicit and **quiesced across all readers/writers and aliases*
 
 The APFS prototype eliminated actual extraction and download work but did not improve elapsed time: the controlled legacy run took **45.9 s**, the first warm replay **118.6 s**, and the settled warm replay **53.8 s**. The settled run used metadata proofs for all 250 recipes, yet installation still required **25,983 per-file clones** of **510,611,609 bytes**. Native evidence retained identical RE action digests for all **272 downstream consumers** in cold and warm comparisons. These are prototype observations, not acceptance results.
 
+Measured **2026-10-24**, comparing the slice 2 prototype at
+`46b29545fb52b644e5b742fe28dfc87d8f65265e` with the slice 1 baseline
+([#2101](https://github.com/overengineeringstudio/effect-utils/pull/2101)) at
+`1cda58b4067211b1b3eebc0fd5960d242375fed6`, in the same controlled capability
+profile. The primary run receipt records both revisions and the **45.942 s**
+baseline; the settled prototype summary records **53.784 s**. Its replay receipts
+record the **25,983 clones / 510,611,609 bytes**, and native consumer-action proof
+records the **272 unchanged downstream digests**. These measurements describe this
+revision pair, not the default capability profile or a later implementation.
+
 Profiling identified per-file clone/open/identity work, rather than proof-file reads or leases, as the dominant replay cost. A two-generation reproduction also showed that adding shared payload pins and removing private extraction links changes ctime and invalidates recipe proofs. On non-reflink ext4, ordinary-file hardlinks remain prohibited; replay would copy and hash approximately 510.6 MB rather than decode approximately 135.8 MB of archives, with no measured ext4 win.
 
 **Decision:** park extraction replay. Recursive tree clone is rejected, not a pending prototype. Reopening requires the upstream [facebook/buck2#1590](https://github.com/facebook/buck2/issues/1590) fix to enter the repository's Buck pin, followed by a separately proved ext4 ordinary-file hardlink mode and renewed acceptance measurements. Archive acquisition in #2101 remains independent.
@@ -682,14 +692,19 @@ not regressions.
 ### CI cache-evidence artifacts
 
 ```text
-native log show -> allowlisted incremental projector
-                  +-> buck2-cache-evidence.json (compact, <=64 representatives)
-                  +-> buck2-cache-actions.jsonl.gz (every first action end)
-writers + expected fresh readers -> warm99 per-lane evaluator
+native per-command event sink -> allowlisted incremental projector -> atomic sanitized shard
+expected native IDs + completed shards -> job finalizer
+  +-> buck2-cache-evidence.json (compact, <=64 representatives)
+  +-> buck2-cache-actions.jsonl.gz (every first action end)
+  +-> buck2-cache-proof-manifest.json + buck2-cache-warm99.json
+writers + explicitly expected fresh readers -> warm99 per-lane evaluator
 ```
 
 CI retains `buck2-cache-evidence-<job>[-<matrix-index>]-<run-attempt>` artifacts
-for 14 days. Each upload contains both files. The compact summary remains schema
+for 90 days, including complete action evidence for the entire proof review
+window. Each upload contains the compact summary, complete compressed action
+stream, sanitized shards/index, warm99 report, and proof manifest. No raw event
+sink or private native-path registry is uploaded. The compact summary remains schema
 version `1`: complete native outcome `counts`, per-build-ID `invocations`, and at
 most 64 representative `actions`. Its existing `droppedActionCount` continues
 to describe omitted **representatives**, not missing full-artifact rows.
@@ -845,28 +860,29 @@ The gzip payload is UTF-8 JSONL with a header followed by one action record per
 first native `ActionExecution` end span. Rows are never grouped or sampled.
 Missing fields remain explicit `null`; they do not suppress a row.
 
-| Header field            | Contract                                                                                                                                       |
-| ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
-| `type`, `schemaVersion` | `"header"`, `1`                                                                                                                                |
-| `cacheOutcomeMapping`   | Repository-owned versioned mapping identifier above                                                                                            |
-| `metadata`              | `repo`, `runId`, `runAttempt`, `job`, `lane`, `headSha`, `posture`, `startedAt`, `finishedAt`; once per file                                   |
-| `lane`                  | `main-writer`, `main-reader`, `merge_group`, or `pr`; unknown is `null` and cannot pass                                                        |
-| `posture`               | `read-only`, `writer`, or `disabled-by-design`                                                                                                 |
-| `status`                | `collected`, `no-native-logs`, or `remote-cache-disabled-by-design`                                                                            |
-| Completeness            | `complete`, `actionCount`, `rows`, `droppedActionCount`, `missingDigestCount`, `missingIdentityCount`, `missingTimestampCount`, `evidenceGaps` |
-| `invocations`           | Native `buildId`, `context`, command `startedAt`/`completedAt`, `freshRoot`, `actionCount`, `excludedByDesign`, and `complete`                 |
-| `excludedByDesign`      | Reason-keyed counts, including `local-materialization-policy`; independent of native outcome counts                                            |
+| Header field            | Contract                                                                                                                                                    |
+| ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `type`, `schemaVersion` | `"header"`, `1`                                                                                                                                             |
+| `cacheOutcomeMapping`   | Repository-owned versioned mapping identifier above                                                                                                         |
+| `metadata`              | `repo`, `runId`, `runAttempt`, `job`, `lane`, `headSha`, `posture`, `startedAt`, `finishedAt`; once per file                                                |
+| `lane`                  | `main-writer`, `main-reader`, `merge_group`, or `pr`; unknown is `null` and cannot pass                                                                     |
+| `posture`               | `read-only`, `writer`, or `disabled-by-design`                                                                                                              |
+| `status`                | `collected`, `no-native-logs`, or `remote-cache-disabled-by-design`                                                                                         |
+| Completeness            | `complete`, `actionCount`, `rows`, `droppedActionCount`, `missingDigestCount`, `missingIdentityCount`, `missingTimestampCount`, `evidenceGaps`              |
+| `invocations`           | Native `buildId`, `context`, command `startedAt`/`completedAt`, `freshRoot`, optional sanitized `rootId`, `actionCount`, `excludedByDesign`, and `complete` |
+| `excludedByDesign`      | Reason-keyed counts, including `local-materialization-policy`; independent of native outcome counts                                                         |
 
-| Action field          | Contract                                                                                                                                    |
-| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| `type`                | `"action"`                                                                                                                                  |
-| Identity              | `buildId`, `context`, `category`, `target`, full `configuration`, exact native AC `digest` (`hash:size`)                                    |
-| Native classification | Integer `executionKind` and `cacheUploadResult`, retained even when the normalized outcome overrides the kind                               |
-| Outcomes              | `outcome` and `cacheOutcome` use the named compact mapping; `uploadOutcome` is `uploaded`, `failed` (native values 9–15), or `not-uploaded` |
-| Times                 | `startedAt`, `completedAt`, `endTime` (same as completedAt), `uploadCompletedAt`                                                            |
-| `commandAction`       | Native action kind is `Run`; non-command actions are retained but do not form a command-cache denominator                                   |
-| `exclusionReason`     | Repository-owned exact reason `local-materialization-policy` for the policy categories; `null` otherwise                                    |
-| `uploadErrors`        | Optional array of `{ category, reErrorCode }`, one per failed native `CacheUpload` end; category is closed, gRPC code is 0–16 or `null`     |
+| Action field          | Contract                                                                                                                                                                       |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `type`                | `"action"`                                                                                                                                                                     |
+| Identity              | `buildId`, `context`, `category`, `target`, full `configuration`, exact native AC `digest` (`hash:size`)                                                                       |
+| Configured action key | Optional opaque `identifier` hash (or known empty protobuf default); with `target` (owner), `category`, and `configuration`, identifies local dep-file reuse; not an RE digest |
+| Native classification | Integer `executionKind` and `cacheUploadResult`, retained even when the normalized outcome overrides the kind                                                                  |
+| Outcomes              | `outcome` and `cacheOutcome` use the named compact mapping; `uploadOutcome` is `uploaded`, `failed` (native values 9–15), or `not-uploaded`                                    |
+| Times                 | `startedAt`, `completedAt`, `endTime` (same as completedAt), `uploadCompletedAt`                                                                                               |
+| `commandAction`       | Native action kind is `Run`; non-command actions are retained but do not form a command-cache denominator                                                                      |
+| `exclusionReason`     | Repository-owned exact reason `local-materialization-policy` for the policy categories; `null` otherwise                                                                       |
+| `uploadErrors`        | Optional array of `{ category, reErrorCode }`, one per failed native `CacheUpload` end; category is closed, gRPC code is 0–16 or `null`                                        |
 
 All times are integer Unix milliseconds. The pinned log decoder emits native
 timestamps as `[seconds,nanoseconds]`; conversion floors sub-millisecond time.
@@ -931,6 +947,13 @@ output paths/payloads, host names, and raw error payloads are never copied. Inva
 identity text becomes `null` rather than a lossy replacement key. The
 repository-local mapping identifier has exact case-sensitive spelling and a
 version suffix; unknown versions are rejected, not silently reinterpreted.
+Every nonempty native action identifier is published only as
+`identifier-sha256-v1:<64 lowercase hex>`, hashing the UTF-8 domain separator
+`effect-utils/buck2-action-identifier/v1` followed by NUL and the original UTF-8
+identifier. Relative paths, drive-letter paths, hostnames, and environment-like
+values are never emitted as identifier text. The known empty protobuf default
+remains `""`; absent/unknown remains absent or `null`. The decoder rejects raw
+nonempty identifiers rather than republishing historical private text.
 In particular, compact `uploaded` takes precedence over execution kind, and
 kind `7` maps to `local-cache`; consumers retain raw enums so that they need not
 call local-dep-file reuse a remote hit.
@@ -945,11 +968,14 @@ evidence independently of OTLP delivery.
 
 Freshness is a positive proof, not an assumption from checkout. The CI start
 window records that the canonical tracked root has no `buck-out` file or
-symlink. Finalization uses native command timestamps to grant freshness only
-to the unique earliest invocation from that root; later invocations are
-excluded. Tied/unknown starts, redirected roots without proof, and preexisting
-native state cannot claim freshness. The two-root proof explicitly marks only
-the first build after each wiped root, preserving its populate/replay labels.
+symlink. Finalization uses native command timestamps to mark the unique earliest
+cache-bearing invocation from that root with `freshRoot: true`; later invocation
+markers remain false. That marker attests the job root's initial state: warm99
+counts each identity's first occurrence across the root, including later
+invocations, rather than treating the marker as a command-wide admission gate.
+Tied/unknown starts, redirected roots without proof, and preexisting native state
+cannot claim freshness. The two-root proof explicitly marks only the first build
+after each wiped root, preserving its populate/replay labels.
 Every retained invocation must satisfy the native-time enclosure
 `job.startedAt <= invocation.startedAt <= invocation.completedAt <= job.finishedAt`.
 Equality is valid at millisecond precision. Missing or out-of-window bounds retain
@@ -957,37 +983,76 @@ rows only as incomplete evidence and revoke freshness; filesystem mtime cannot
 make an older native invocation part of the current observation.
 
 CI posture sets Buck's native `[buck2] retained_event_logs = 120`; developer
-retention remains unchanged. This limits log count, not bytes or age. The
-evidence-enabled launcher registers `{buildId, path}` JSONL rows in
-`${CI_BUCK2_CACHE_EVIDENCE_PATH}.native-build-id-paths.jsonl` after admission
-only when the invocation's canonical project root matches `recorded_root` in
-the valid `CI_BUCK2_CACHE_EVIDENCE_START` marker and its resolved isolation
-directory is the default `v2` (implicit or explicit, including
-`BUCK_ISOLATION_DIR`). The marker uses the collector's three-line
-`started_at`, `recorded_root`, `fresh_root` format. Foreign fixture roots and
-non-default isolations retain their caller flags without registration: the
-collector scans only `.devenv/otel` and `buck-out/v2/log` in the collected root.
-For `run`, isolation resolution stops at `--` or the first executable
-positional argument after the target. Payload flags cannot change the selected
-isolation or supply a native build-ID output. The launcher inserts its native
-build-ID flag before the run target and payload; unknown run-option arities
-leave the invocation unregistered rather than guessing its payload boundary.
-The lowercase hyphenated UUID identifies the actual native `--write-build-id`
-output; a registry row alone does not prove launch. Finalization confirms the
-file's UUID and job-window mtime, then compares confirmed IDs with all decoded
-native invocation IDs, including zero-action commands. A missing confirmed ID
-records `native-log-rotated` and revokes native-log freshness rather than
-promoting a surviving local-cache invocation. Legacy artifacts without this
-registry cannot establish rotation.
+retention remains unchanged. This is a native log-count limit, not the proof
+retention mechanism. Evidence-enabled commands use the pinned Buck
+`--event-log` extra sink outside the rotating log directory, with its supported
+`.json-lines` encoding. A private FIFO feeds the existing allowlisted incremental
+projector; its mode-0600 sink is created through the platform syscall, independent
+of host command lookup. The compiled launcher pins its collector's Bun interpreter
+in the Nix closure, so hermetic command paths do not disable capture.
+Raw events are not retained in public artifacts. A bounded sanitized
+per-build-ID shard is atomically finalized only after native command completion.
+The launcher waits for collection before returning the original command status.
+Crashes, truncation, missing command end, overflow, or unresolved IDs remain gaps.
+An existing caller-owned extra sink, such as the aggregate task's OTEL
+`.pb.zst` file, is preserved rather than replaced. Immediately after native
+completion, the pinned native `log show` decoder reads that exact file into the
+same private projector, before the launcher returns control to its owner.
+No rotating-log discovery or `--recent` lookup participates. Missing/truncated
+caller files or failed decoding remain gaps, even if a decoder emitted a complete
+prefix; native command status is preserved. Raw ownership, retention, and OTEL
+ingestion stay with the caller.
+
+Automatic capture is admitted only for the canonical tracked root in the
+three-line `started_at`, `recorded_root`, `fresh_root` start marker and its default
+`v2` isolation. Foreign fixture roots and non-default isolations cannot silently
+inherit the marker. Deliberate two-root proof commands explicitly register their
+own root scopes and sinks. `run` option parsing stops before executable payload
+arguments; payload flags cannot change capture ownership or the native build-ID
+output. The extra event-log option is placed after the leaf command, including
+nested commands such as `audit providers`, but before any executable-payload
+sentinel. Unknown option arities are not guessed.
+
+The private native build-ID registry records expected commands before launch.
+The finalizer reconciles expected registrations, native `--write-build-id` UUID
+files, and complete sanitized shards, including zero-action commands. A registry
+row alone never proves execution. Each shard has bounded rows/bytes, checksum,
+native command bounds, root scope, and completion status. Completed shards remain
+authoritative after any number of native log rotations or removal of Buck logs;
+missing/incomplete shards fail closed rather than promoting surviving local
+state. Legacy incomplete writer artifacts cannot seed successful uploads.
+
+The full action payload retains its 64 MiB ceiling. Sanitized shard storage is
+bounded separately to 64 MiB per job, with a 32 MiB per-shard ceiling and at most
+4096 expected invocations; exceeding any bound invalidates the proof.
+`buck2-cache-proof-manifest.json` binds expected observations/jobs, source
+artifact checksums, native invocation IDs/root scopes, shard counts/checksums,
+and successful upload-before-reader references to the warm99 report. A per-job
+report without historical writers/readers is explicitly incomplete, not a
+passing substitute for two observations. The daily join supplies explicit
+historical run/job membership from workflow jobs, retaining missing/expired
+evidence as gaps rather than discovering only successful uploads. Latest retained
+attempt is selected per expected job and matrix cell; a rerun of failed jobs
+does not discard successful jobs' older-attempt evidence. Membership matches
+run ID, base job, cell, and attempt exactly: stale evidence from a rerun cell
+cannot replace a missing sibling cell. The cell is a domain-separated SHA-256
+token of the existing full GitHub job display name (including matrix values);
+required-check display names are never changed. Unknown historical cell
+identity and ambiguous discovered display names fail closed. The sanitized
+manifest preserves each expected job's attempt and cell even if its evidence
+reference is unavailable.
 
 Finalization exits `2` when it successfully writes incomplete evidence, and
 `1` on an operational failure. Collection preserves either failure but adds
 `evidence-finalization-failed` only for an operational finalization failure,
 not as a duplicate diagnosis of an already recorded evidence gap.
 
-In-Nix product jobs retain disabled-by-design headers and zero action rows.
-Their reuse metric is Nix substitution, not Buck AC. The daily cache-health
-mission and post-merge proof consume the full contract.
+Jobs explicitly declared proof-disabled because they execute no checkout-native
+Buck (including source-shape and in-Nix product jobs) emit no native-proof start,
+collection, or upload steps and never enter the expected native cohort.
+Their Nix reuse metric, where applicable, is substitution, not Buck AC.
+Retained historical in-Nix headers remain disabled-by-design with zero actions.
+The daily cache-health mission and post-merge proof consume the full contract.
 See [observability](../07-observability/spec.md#ci-action-cache-evidence) for
 the legacy compact outcome classes and missing-evidence counters.
 
@@ -1034,27 +1099,54 @@ omit a failed job:
 
 Paths resolve relative to the manifest; reports omit them. Observation sequence
 numbers strictly increase. Each enabled lane has explicitly enumerated reader
-jobs, and each expected job needs a complete fresh invocation. All writer
+jobs, and each expected job needs a complete fresh-root attestation. All writer
 artifacts must be complete before they establish eligible uploads. The reader
 tuple is eligible only where an exact successful upload completed strictly
-before that fresh reader invocation started. Duplicate identities count once;
-all eligible fresh occurrences of an identity must have raw execution kind `3`
-to count as a remote hit. Local-cache and local-dep-file outcomes are misses,
-not remote hits, even if the compact mapping groups them as local-cache.
+before the invocation containing its first occurrence in that fresh job root
+started. An identity is `(category,target,configuration,digest)`. Its first
+occurrence in each root counts, in any invocation; every repetition in the same
+root is excluded-nonfresh. All eligible first occurrences across distinct reader
+roots must have raw execution kind `3` to count as a remote hit. Local-action-cache,
+local-cache and local-dep-file outcomes are misses or excluded repetitions,
+never remote hits, even if the compact mapping calls them cache hits.
 Writer and reader repository metadata must agree. Distinct observations require
 distinct native reader build IDs; replaying one artifact under a new manifest
 sequence is an evidence gap, not a second fresh-root measurement.
 
-Freshness belongs to the first cache-bearing native invocation in a fresh job
-root: no earlier invocation may have executed or cached any action. Zero-action
-audits do not consume freshness. Every invocation after the first cache-bearing
-one is nonfresh, even when its command is otherwise cache-enabled.
+Freshness belongs to an identity's first occurrence in an attested fresh job
+root, not to the first cache-bearing invocation alone. Each root represented by
+a reader artifact must attest that it began without prior native state.
+Sanitized invocation `rootId` is an opaque 64-character lowercase hexadecimal
+scope for explicit multi-root proofs; it contains no host path. A retained
+single-root artifact without `rootId` has one legacy scope.
+All eligible, cold, changed, and noncacheable counting keys retain both reader
+artifact and root scope. Distinct fresh roots, including the same checkout path
+in separate jobs, do not deduplicate each other's identities: 100 eligible
+identities per root with two misses in one root yield 198/200, not 98/100.
+Multiple fresh roots without unambiguous scope are an evidence gap. Command rows
+are ordered by their native start timestamps before deduplication. Zero-action
+audits do not consume freshness. In particular, a new
+identity in a later invocation counts normally even if its inputs came from
+local execution in an earlier invocation of the same root. This measures each
+action's first cache lookup without hiding later commands behind bootstrap work;
+it does not require every input producer to have been a remote hit.
 
-Buck's native `LocalActionCache` (execution kind `10`) reuses an earlier local
-action without command metadata, so its RE action digest can be absent. Retain
-these rows with `digest: null`; only a known nonfresh invocation may classify
-them as excluded-nonfresh rather than an evidence gap. Fresh command rows still
-require native digests, and uploaded rows always require their native digest.
+Every new command identity requires its native digest, including later
+invocations. A missing digest is an evidence gap, not a basis for guessing
+identity. Uploaded rows always require their native digest.
+
+The sole digestless repetition exception is native `LocalActionCache` (execution
+kind `10`, local dep-file reuse). Pinned Buck returns
+[`ActionExecutionMetadata::LocalActionCache` from `dep_files.rs:941–982`](https://github.com/facebook/buck2/blob/be6971d47dcc835b7356e1698b23039ffee4f4c2/app/buck2_action_impl/src/actions/impls/run/dep_files.rs#L941-L982)
+and [`run.rs:1147–1160`](https://github.com/facebook/buck2/blob/be6971d47dcc835b7356e1698b23039ffee4f4c2/app/buck2_action_impl/src/actions/impls/run.rs#L1147-L1160)
+returns before preparing the command and its RE action digest. Therefore a
+kind-10 row is excluded-nonfresh only when the same attested root has an earlier
+digest-bearing command occurrence with the same configured action key
+`(owner,category,identifier,configuration)`, completed no later than the local
+reuse started. Millisecond equality is valid. An unavailable native identifier,
+a different root, or no such earlier occurrence is an evidence gap. The configured
+key proves a repetition, never an inferred RE digest: kind `10` is neither a
+new identity nor a remote hit.
 The codec's `classifyCacheAction` identifies kind `10` as a local-action-cache
 hit, never an avoidable local-execution candidate. Such candidates are only
 non-policy-excluded command actions of kind `1` or `8` with a native digest in

@@ -1,5 +1,5 @@
 #!/usr/bin/env -S bun
-import { dlopen } from 'bun:ffi'
+import { dlopen, ptr } from 'bun:ffi'
 import { spawnSync } from 'node:child_process'
 import { createHash, createHmac, randomBytes, randomUUID } from 'node:crypto'
 import {
@@ -8,15 +8,17 @@ import {
   fchmodSync,
   existsSync,
   mkdirSync,
+  mkdtempSync,
   openSync,
   readFileSync,
   realpathSync,
   renameSync,
   rmSync,
+  statSync,
   writeFileSync,
   writeSync,
 } from 'node:fs'
-import { homedir } from 'node:os'
+import { homedir, tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import process from 'node:process'
 import { setTimeout as waitForBackpressure } from 'node:timers/promises'
@@ -1413,13 +1415,193 @@ export const nativeBuildIdArguments = ({
   if (suppliedPath === undefined) mkdirSync(dirname(path), { recursive: true, mode: 0o700 })
   const registry = resolve(cwd, `${evidencePath}.native-build-id-paths.jsonl`)
   mkdirSync(dirname(registry), { recursive: true, mode: 0o700 })
-  appendFileSync(registry, `${JSON.stringify({ buildId, path })}\n`, { mode: 0o600 })
+  let priorMtimeMs: number | null = null
+  try {
+    priorMtimeMs = statSync(path).mtimeMs
+  } catch (error) {
+    if (!(error instanceof Error) || !('code' in error) || error.code !== 'ENOENT') throw error
+  }
+  appendFileSync(
+    registry,
+    `${JSON.stringify({ buildId, path, startedAt: Date.now(), priorMtimeMs })}\n`,
+    { mode: 0o600 },
+  )
   if (suppliedPath !== undefined) return [...args]
   const selectedCommand = buckSubcommand(before)
   const runIndex = selectedCommand?.command === 'run' ? selectedCommand.index : -1
   if (runIndex !== -1)
     return [...before.slice(0, runIndex + 1), '--write-build-id', path, ...args.slice(runIndex + 1)]
   return [...before, '--write-build-id', path, ...(sentinel === -1 ? [] : args.slice(sentinel))]
+}
+
+/** Use the platform syscall: capture must not depend on a host mkfifo utility. */
+export const createPrivateEvidenceSink = (path: string): void => {
+  const library = dlopen(
+    process.platform === 'linux' ? 'libc.so.6' : '/usr/lib/libSystem.B.dylib',
+    { mkfifo: { args: ['ptr', 'u32'], returns: 'i32' } },
+  )
+  try {
+    const encoded = Buffer.from(`${path}\0`)
+    if (library.symbols.mkfifo(ptr(encoded), 0o600) !== 0)
+      throw new Error('Cannot create private evidence FIFO')
+  } finally {
+    library.close()
+  }
+}
+
+// Compiled launchers cannot reuse process.execPath as a source interpreter.
+// Pin the same Bun used by the Nix build; source execution already runs in Bun.
+declare const BUCK2_EVIDENCE_BUN_BINARY: string
+
+/** Capture through Buck's supported extra sink, not its rotating log directory.
+ * FIFO raw events are private and never persisted or uploaded. The collector
+ * atomically publishes a sanitized shard; a killed collector leaves a registry gap.
+ */
+export const runNativeWithEvidence = async ({
+  native,
+  args,
+  root,
+  stderr = 'inherit',
+}: {
+  native: string
+  args: string[]
+  root: string | undefined
+  stderr?: 'inherit' | 'pipe'
+}): Promise<NativeCommandResult | undefined> => {
+  const output = process.env.CI_BUCK2_CACHE_EVIDENCE_PATH
+  const wrapperId = process.env.BUCK_WRAPPER_UUID
+  if (output === undefined || root === undefined || wrapperId === undefined) return undefined
+  const buildId = canonicalCacheAdmissionInvocationId(wrapperId)
+  try {
+    const rows = readFileSync(`${output}.native-build-id-paths.jsonl`, 'utf8').trim().split('\n')
+    if (rows.some((line) => JSON.parse(line).buildId === buildId) === false) return undefined
+  } catch {
+    return undefined
+  }
+  const invocation = resolveGateInvocation({
+    args,
+    cwd: process.cwd(),
+    env: process.env,
+    strictRunArguments: false,
+    includePayload: true,
+  })
+  if (invocation?.nativeArgumentCount === undefined) return undefined
+  const before = invocation.args.slice(0, invocation.nativeArgumentCount)
+  const payload = invocation.args.slice(invocation.nativeArgumentCount)
+  if (before.includes('--no-event-log') === true) return undefined
+  const callerSinkIndex = before.findIndex(
+    (arg) => arg === '--event-log' || arg.startsWith('--event-log='),
+  )
+  const callerSink =
+    callerSinkIndex === -1
+      ? undefined
+      : before[callerSinkIndex] === '--event-log'
+        ? before[callerSinkIndex + 1]
+        : before[callerSinkIndex]?.slice('--event-log='.length)
+  if (callerSinkIndex !== -1 && (callerSink === undefined || callerSink === '')) return undefined
+  const directory = mkdtempSync(join(tmpdir(), 'buck2-evidence-'))
+  const sink = join(directory, 'native.json-lines')
+  let keeper: number | undefined
+  let reapCollector: (() => Promise<void>) | undefined
+  let reapNative: (() => Promise<void>) | undefined
+  let reapDecoder: (() => Promise<void>) | undefined
+  try {
+    createPrivateEvidenceSink(sink)
+    keeper = openSync(sink, 'r+')
+    const marker = process.env.CI_BUCK2_CACHE_EVIDENCE_START
+    const fresh = marker !== undefined && readFileSync(marker, 'utf8').split('\n')[2] === '1'
+    const bun =
+      typeof BUCK2_EVIDENCE_BUN_BINARY === 'string' ? BUCK2_EVIDENCE_BUN_BINARY : process.execPath
+    const collector = Bun.spawn(
+      [
+        bun,
+        join(root, 'genie/ci-scripts/buck2-cache-evidence.ts'),
+        '--output',
+        output,
+        '--write-shard',
+        sink,
+        '--shard-build-id',
+        buildId,
+        '--root-id',
+        createHash('sha256').update(realpathSync(root)).digest('hex'),
+        ...(fresh === true ? ['--fresh-root'] : []),
+      ],
+      { stdin: 'ignore', stdout: 'pipe', stderr: 'ignore' },
+    )
+    reapCollector = async () => {
+      if (collector.exitCode === null) collector.kill('SIGKILL')
+      await collector.exited
+    }
+    const ready = await collector.stdout.getReader().read()
+    if (ready.done === true || new TextDecoder().decode(ready.value).trim() !== 'ready')
+      throw new Error('Evidence collector did not open its sink')
+    // Keep common options on the leaf command, before run's target/payload.
+    const selectedCommand = buckSubcommand(before)
+    const runIndex = selectedCommand?.command === 'run' ? selectedCommand.index : -1
+    const nativeArgs =
+      callerSink !== undefined
+        ? invocation.args
+        : runIndex !== -1
+          ? [
+              ...before.slice(0, runIndex + 1),
+              '--event-log',
+              sink,
+              ...before.slice(runIndex + 1),
+              ...payload,
+            ]
+          : [...before, '--event-log', sink, ...payload]
+    const { child, result } = spawnNativeCommand({ native, args: nativeArgs, stderr })
+    reapNative = async () => {
+      if (child.exitCode === null) child.kill('SIGKILL')
+      await child.exited
+    }
+    let nativeResult: NativeCommandResult
+    let sourceComplete = true
+    try {
+      const finished = await Promise.race([
+        child.exited.then((exitCode) => ({ source: 'native' as const, exitCode })),
+        collector.exited.then((exitCode) => ({ source: 'collector' as const, exitCode })),
+      ])
+      if (finished.source === 'collector') child.kill('SIGTERM')
+      nativeResult = await result
+      if (callerSink !== undefined) {
+        // Preserve the caller's OTEL/profiling sink and decode that exact file,
+        // outside native rotation. Never rediscover it through --recent.
+        const decoder = Bun.spawn([native, 'log', 'show', resolve(callerSink)], {
+          stdin: 'ignore',
+          stdout: keeper,
+          stderr: 'ignore',
+          env: process.env,
+        })
+        reapDecoder = async () => {
+          if (decoder.exitCode === null) decoder.kill('SIGKILL')
+          await decoder.exited
+        }
+        await Promise.race([decoder.exited, collector.exited])
+        if (decoder.exitCode === null) decoder.kill('SIGKILL')
+        sourceComplete = (await decoder.exited) === 0
+      }
+    } finally {
+      closeSync(keeper)
+      keeper = undefined
+    }
+    await collector.exited
+    const completion = `${output}.native-build-ids/${buildId}.exit.json`
+    mkdirSync(dirname(completion), { recursive: true, mode: 0o700 })
+    writeFileSync(
+      `${completion}.pending`,
+      `${JSON.stringify({ buildId, exitCode: nativeResult.exitCode, sourceComplete, finishedAt: Date.now() })}\n`,
+      { mode: 0o600 },
+    )
+    renameSync(`${completion}.pending`, completion)
+    return nativeResult
+  } finally {
+    if (keeper !== undefined) closeSync(keeper)
+    await reapNative?.()
+    await reapDecoder?.()
+    await reapCollector?.()
+    rmSync(directory, { recursive: true, force: true })
+  }
 }
 
 /**
@@ -1695,25 +1877,29 @@ const warnStdio = (message: string): void => {
     // Optional protection must still exec with closed or unwritable stderr.
   }
 }
-/** Preserve stdout and supervise only redirected native stderr. */
-const observeNativeCommand = async ({
+type NativeCommandResult = {
+  exitCode: number
+  output: string
+  signalCode: NodeJS.Signals | null
+  durationMs: number
+}
+
+/** Spawn exactly once, preserving inherited stdout and forwarding redirected stderr byte-for-byte. */
+const spawnNativeCommand = ({
   native,
   args,
+  stderr,
 }: {
   readonly native: string
   readonly args: readonly string[]
-}): Promise<{
-  exitCode: number
-  output: string
-  signalCode: string | null
-  durationMs: number
-}> => {
+  readonly stderr: 'inherit' | 'pipe'
+}) => {
   const started = performance.now()
   const child = Bun.spawn([native, ...args], {
     env: process.env,
     stdin: 'inherit',
     stdout: 'inherit',
-    stderr: 'pipe',
+    stderr,
   })
   let interrupted = false
   const writes = new AbortController()
@@ -1730,20 +1916,32 @@ const observeNativeCommand = async ({
   const signals = ['SIGINT', 'SIGTERM', 'SIGHUP'] as const
   const handlers = signals.map((signal) => () => forward(signal))
   for (const [index, signal] of signals.entries()) process.on(signal, handlers[index]!)
-  try {
-    const output = await captureNativeStderr({ stream: child.stderr, signal: writes.signal })
-    const exitCode = await exited
-    const signalCode = child.signalCode
-    return {
-      exitCode,
-      signalCode,
-      durationMs,
-      output: interrupted === true || signalCode !== null ? '' : (output ?? ''),
+  const result = (async (): Promise<NativeCommandResult> => {
+    try {
+      const output =
+        child.stderr === null
+          ? ''
+          : await captureNativeStderr({ stream: child.stderr, signal: writes.signal })
+      const exitCode = await exited
+      const signalCode = child.signalCode
+      return {
+        exitCode,
+        signalCode,
+        durationMs,
+        output: interrupted === true || signalCode !== null ? '' : (output ?? ''),
+      }
+    } finally {
+      for (const [index, signal] of signals.entries()) process.off(signal, handlers[index]!)
     }
-  } finally {
-    for (const [index, signal] of signals.entries()) process.off(signal, handlers[index]!)
-  }
+  })()
+  return { child, result }
 }
+
+/** Preserve stdout and supervise only redirected native stderr. */
+const observeNativeCommand = (options: {
+  readonly native: string
+  readonly args: readonly string[]
+}): Promise<NativeCommandResult> => spawnNativeCommand({ ...options, stderr: 'pipe' }).result
 
 // Replaced by Nix; source execution receives the same library from devenv.
 declare const BUCK2_STDIO_LIBRARY: string
@@ -1896,20 +2094,25 @@ if (import.meta.main === true) {
     } catch (error) {
       warnStdio(`warning: Buck2 stdio flag restoration failed: ${String(error)}\n`)
     }
-    if (
-      shouldSuperviseReaderCommand({
-        reader,
-        stderrIsTTY: isatty(2),
-        args: requestedArgs,
-        cwd: process.cwd(),
-        env: process.env,
-      }) === true
-    ) {
+    const superviseReader = shouldSuperviseReaderCommand({
+      reader,
+      stderrIsTTY: isatty(2),
+      args: requestedArgs,
+      cwd: process.cwd(),
+      env: process.env,
+    })
+    let nativeResult: NativeCommandResult | undefined
+    if (superviseReader === true) {
       const command = buckSubcommand(args)?.command
-      process.exitCode = await runWithReaderCacheShadow({
+      await runWithReaderCacheShadow({
         reader,
         command: { subcommand: command ?? 'unknown', argumentCount: args.length },
-        run: () => observeNativeCommand({ native, args }),
+        run: async () => {
+          nativeResult =
+            (await runNativeWithEvidence({ native, args, root, stderr: 'pipe' })) ??
+            (await observeNativeCommand({ native, args }))
+          return nativeResult
+        },
         onShadow: (shadow) => {
           warnStdio(
             'warning: Buck2 reader REAPI unavailability classified in shadow mode; no rerun happened; the native failure stands\n',
@@ -1937,7 +2140,15 @@ if (import.meta.main === true) {
         },
       })
     } else {
-      process.execve(native, [native, ...args], process.env)
+      nativeResult = await runNativeWithEvidence({ native, args, root })
+      if (nativeResult === undefined) process.execve(native, [native, ...args], process.env)
+    }
+    if (nativeResult !== undefined) {
+      process.exitCode = nativeResult.exitCode
+      if (nativeResult.signalCode !== null) {
+        process.removeAllListeners(nativeResult.signalCode)
+        process.kill(process.pid, nativeResult.signalCode)
+      }
     }
   } catch (error) {
     writeSync(2, `${error instanceof Error ? error.message : String(error)}\n`)

@@ -246,6 +246,65 @@ export const identity = (action: ActionRecord): string | undefined =>
     : undefined
 const baseIdentity = (action: ActionRecord): string =>
   JSON.stringify([action.category, action.target, action.configuration])
+const rootScope = (rootId: string | undefined): string => JSON.stringify(rootId ?? null)
+const ambiguousLegacyRoots = (artifact: ActionArtifact): boolean =>
+  artifact.header.invocations.filter((invocation) => invocation.freshRoot).length > 1 &&
+  artifact.header.invocations.some((invocation) => invocation.rootId === undefined)
+
+/** A configured action key proves local reuse, never an inferred RE action digest. */
+const localActionRepetitions = (artifact: ActionArtifact): Set<ActionRecord> => {
+  const repetitions = new Set<ActionRecord>()
+  if (
+    artifact.actions.some((action) => action.executionKind === 10) === false ||
+    ambiguousLegacyRoots(artifact) === true
+  )
+    return repetitions
+  const invocations = new Map(
+    artifact.header.invocations.map((invocation) => [invocation.buildId, invocation]),
+  )
+  const freshRoots = new Set(
+    artifact.header.invocations
+      .filter((invocation) => invocation.freshRoot)
+      .map((invocation) => rootScope(invocation.rootId)),
+  )
+  const configuredKey = (action: ActionRecord): string | undefined => {
+    const invocation = invocations.get(action.buildId)
+    return invocation !== undefined &&
+      freshRoots.has(rootScope(invocation.rootId)) === true &&
+      action.target !== null &&
+      action.category !== null &&
+      action.configuration !== null &&
+      typeof action.identifier === 'string'
+      ? JSON.stringify([
+          rootScope(invocation.rootId),
+          action.target,
+          action.category,
+          action.identifier,
+          action.configuration,
+        ])
+      : undefined
+  }
+  const completed = new Map<string, number>()
+  for (const action of artifact.actions) {
+    if (
+      action.commandAction !== true ||
+      action.executionKind === 10 ||
+      identity(action) === undefined ||
+      action.completedAt === null
+    )
+      continue
+    const key = configuredKey(action)
+    if (key !== undefined)
+      completed.set(key, Math.min(completed.get(key) ?? Infinity, action.completedAt))
+  }
+  for (const action of artifact.actions) {
+    if (action.executionKind !== 10 || action.startedAt === null) continue
+    const key = configuredKey(action)
+    if (key !== undefined && (completed.get(key) ?? Infinity) <= action.startedAt)
+      repetitions.add(action)
+  }
+  return repetitions
+}
 export const completeArtifact = ({
   artifact,
   writer,
@@ -254,6 +313,12 @@ export const completeArtifact = ({
   writer: boolean
 }): boolean => {
   const h = artifact.header
+  const localRepetitions = localActionRepetitions(artifact)
+  const freshRoots = new Set(
+    h.invocations
+      .filter((invocation) => invocation.freshRoot)
+      .map((invocation) => rootScope(invocation.rootId)),
+  )
   // Reader means an observed lookup, not a read-only cache credential: queue jobs also write.
   const { lane: cacheLane, posture } = h.metadata
   const lanePostureValid =
@@ -284,23 +349,19 @@ export const completeArtifact = ({
         inv.complete === true &&
         invocationWithinJobWindow({ invocation: inv, metadata: h.metadata }) === true,
     ) === true &&
-    (writer === true || h.invocations.some((inv) => inv.freshRoot === true) === true) &&
+    (writer === true ||
+      (!ambiguousLegacyRoots(artifact) &&
+        h.invocations.length > 0 &&
+        h.invocations.every((invocation) => freshRoots.has(rootScope(invocation.rootId))))) &&
     artifact.actions.every(
       (a) =>
-        a.commandAction !== true ||
-        ((identity(a) !== undefined ||
-          (a.executionKind === 10 &&
-            a.digest === null &&
-            a.category !== null &&
-            a.target !== null &&
-            a.configuration !== null &&
-            a.uploadOutcome !== 'uploaded' &&
-            h.invocations.some((inv) => inv.buildId === a.buildId && inv.freshRoot !== true) ===
-              true)) &&
+        (a.commandAction !== true && a.executionKind !== 10) ||
+        ((a.executionKind === 10 ? localRepetitions.has(a) : identity(a) !== undefined) &&
           a.startedAt !== null &&
           a.completedAt !== null &&
           a.endTime !== null &&
-          (a.uploadOutcome !== 'uploaded' || a.uploadCompletedAt !== null)),
+          (a.uploadOutcome !== 'uploaded' ||
+            (identity(a) !== undefined && a.uploadCompletedAt !== null))),
     ) === true
   )
 }
@@ -456,7 +517,14 @@ export const evaluateWarm99 = ({
           result.evidenceGap++
           continue
         }
-        for (const action of artifact.actions) {
+        // Root scopes keep explicit two-root proofs distinct; legacy single-root artifacts
+        // use the artifact's attestation without exposing a canonical host path.
+        // Native rows are serialized by identity, so establish occurrence order explicitly.
+        const seenIdentities = new Set<string>()
+        const chronological = artifact.actions.toSorted(
+          (left, right) => (left.startedAt ?? Infinity) - (right.startedAt ?? Infinity),
+        )
+        for (const action of chronological) {
           if (actionExclusionReason(action.category) !== null) continue
           const invocation = artifact.header.invocations.find(
             (inv) => inv.buildId === action.buildId,
@@ -466,12 +534,14 @@ export const evaluateWarm99 = ({
             result.evidenceGap++
             continue
           }
-          if (invocation.freshRoot !== true) {
+          if (action.executionKind === 10) {
+            // completeArtifact already proved an earlier native configured-key occurrence.
             result.excluded++
             continue
           }
           if (action.commandAction !== true) {
-            result.noncacheable++
+            if (invocation.freshRoot === true) result.noncacheable++
+            else result.excluded++
             continue
           }
           const key = identity(action)
@@ -480,17 +550,23 @@ export const evaluateWarm99 = ({
             result.evidenceGap++
             continue
           }
+          const occurrence = JSON.stringify([ids[0], rootScope(invocation.rootId), key])
+          if (seenIdentities.has(occurrence) === true) {
+            result.excluded++
+            continue
+          }
+          seenIdentities.add(occurrence)
           const eligible = (uploads.get(key) ?? Infinity) < invocation.startedAt
           const noncacheable =
             action.executionKind === 0 || action.executionKind === 4 || action.executionKind === 6
           if (eligible === true) {
-            outcomes.set(key, action.executionKind === 3 && (outcomes.get(key) ?? true) === true)
+            outcomes.set(occurrence, action.executionKind === 3)
           } else if ((uploadedBases.get(baseIdentity(action)) ?? Infinity) < invocation.startedAt) {
-            changedIdentities.add(key)
+            changedIdentities.add(occurrence)
           } else if (noncacheable === true) {
-            noncacheableIdentities.add(key)
+            noncacheableIdentities.add(occurrence)
           } else {
-            cold.add(key)
+            cold.add(occurrence)
           }
         }
       }

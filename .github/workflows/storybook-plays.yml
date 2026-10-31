@@ -37,8 +37,11 @@ jobs:
       BUCK2_CACHE_WRITE_OPTIONAL: '1'
       CI_BUCK2_CACHE_EVIDENCE_PATH: '${{ github.workspace }}/tmp/buck2-cache-evidence.json'
       CI_BUCK2_CACHE_ACTIONS_PATH: '${{ github.workspace }}/tmp/buck2-cache-actions.jsonl.gz'
+      CI_BUCK2_CACHE_WARM99_PATH: '${{ github.workspace }}/tmp/buck2-cache-warm99.json'
+      CI_BUCK2_CACHE_PROOF_MANIFEST_PATH: '${{ github.workspace }}/tmp/buck2-cache-proof-manifest.json'
       CI_BUCK2_CACHE_EVIDENCE_START: '${{ github.workspace }}/tmp/buck2-cache-evidence-start'
       CI_BUCK2_CACHE_EVIDENCE_JOB: test-storybook-plays
+      CI_BUCK2_CACHE_EVIDENCE_JOB_NAME: test-storybook-plays
       CI_BUCK2_CACHE_EVIDENCE_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
       CI_BUCK2_CACHE_EVIDENCE_DISABLED: '0'
     steps:
@@ -183,5 +186,9 @@ jobs:
           path: |
             ${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}
             ${{ env.CI_BUCK2_CACHE_ACTIONS_PATH }}
+            ${{ env.CI_BUCK2_CACHE_WARM99_PATH }}
+            ${{ env.CI_BUCK2_CACHE_PROOF_MANIFEST_PATH }}
+            ${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}.shard-index.json
+            ${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}.shards/*.json
           if-no-files-found: warn
-          retention-days: 14
+          retention-days: 90

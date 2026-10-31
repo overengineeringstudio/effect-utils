@@ -48,6 +48,7 @@ import {
   invocationWithinJobWindow,
   maxActionArtifactBytes,
   outcomeFor,
+  proofJobCell,
   zeroActionExclusionCounts,
   type ActionExclusionCounts,
   type ActionExclusionReason,
@@ -89,7 +90,10 @@ export type CacheAdmissionInvocation = {
   admissionFallbacks: { reapi: number; archiveOrigin: number }
   admissionRetrySuccesses: { reapi: number; archiveOrigin: number }
   reapiFailure?: ReapiAdmissionFailure
-  reapiDecision?: 'first-probe-for-ci-job' | 'pinned-from-first-probe' | 'unpinned-missing-job-instance'
+  reapiDecision?:
+    | 'first-probe-for-ci-job'
+    | 'pinned-from-first-probe'
+    | 'unpinned-missing-job-instance'
   event?: 'reader-reapi-unavailable-shadow' | 'reader-reapi-unavailable-rerun'
   shadow?: ReaderReapiUnavailableShadow
   /** Read-only provenance for measured historical reruns; never emitted by the launcher. */
@@ -200,7 +204,9 @@ const decodeAdmissionCounters = (
   reapi: count(field({ value, key: 'reapi' })),
   archiveOrigin: count(field({ value, key: 'archiveOrigin' })),
 })
-export const decodeReaderReapiUnavailableShadow = (value: unknown): ReaderReapiUnavailableShadow => {
+export const decodeReaderReapiUnavailableShadow = (
+  value: unknown,
+): ReaderReapiUnavailableShadow => {
   const cause = field({ value, key: 'cause' })
   const command = field({ value, key: 'command' })
   const subcommand = field({ value: command, key: 'subcommand' })
@@ -209,17 +215,34 @@ export const decodeReaderReapiUnavailableShadow = (value: unknown): ReaderReapiU
   const connectRetry = field({ value: cause, key: 'connectRetry' })
   const clientInitialization = field({ value: cause, key: 'clientInitialization' })
   const connectUnavailable = field({ value: cause, key: 'connectUnavailable' })
-  if (typeof subcommand !== 'string' || ['build', 'test', 'audit', 'cquery', 'uquery', 'aquery', 'targets'].includes(subcommand) === false ||
-    typeof capabilitiesUnavailable !== 'boolean' || typeof connectRetry !== 'boolean' ||
-    typeof clientInitialization !== 'boolean' || typeof connectUnavailable !== 'boolean' ||
-    (capabilitiesUnavailable === false && clientInitialization === false && connectUnavailable === false) ||
-    (transportMessage !== 'tls-handshake-eof' && transportMessage !== 'transport-error' && transportMessage !== 'none') ||
-    field({ value, key: 'wouldDisableRemoteCache' }) !== true)
+  if (
+    typeof subcommand !== 'string' ||
+    ['build', 'test', 'audit', 'cquery', 'uquery', 'aquery', 'targets'].includes(subcommand) ===
+      false ||
+    typeof capabilitiesUnavailable !== 'boolean' ||
+    typeof connectRetry !== 'boolean' ||
+    typeof clientInitialization !== 'boolean' ||
+    typeof connectUnavailable !== 'boolean' ||
+    (capabilitiesUnavailable === false &&
+      clientInitialization === false &&
+      connectUnavailable === false) ||
+    (transportMessage !== 'tls-handshake-eof' &&
+      transportMessage !== 'transport-error' &&
+      transportMessage !== 'none') ||
+    field({ value, key: 'wouldDisableRemoteCache' }) !== true
+  )
     throw new Error('Invalid reader REAPI shadow classification')
   const nativeExitCode = count(field({ value, key: 'nativeExitCode' }))
-  if (nativeExitCode === 0 || nativeExitCode > 255) throw new Error('Invalid reader REAPI shadow exit code')
+  if (nativeExitCode === 0 || nativeExitCode > 255)
+    throw new Error('Invalid reader REAPI shadow exit code')
   return {
-    cause: { capabilitiesUnavailable, connectRetry, clientInitialization, connectUnavailable, transportMessage },
+    cause: {
+      capabilitiesUnavailable,
+      connectRetry,
+      clientInitialization,
+      connectUnavailable,
+      transportMessage,
+    },
     command: { subcommand, argumentCount: count(field({ value: command, key: 'argumentCount' })) },
     nativeExitCode,
     durationMs: count(field({ value, key: 'durationMs' })),
@@ -241,7 +264,12 @@ export const decodeCacheAdmissionInvocation = (value: unknown): CacheAdmissionIn
   if (failure !== undefined && admissionFallbacks.reapi !== 1)
     throw new Error('REAPI failure requires an admission fallback')
   const decision = field({ value, key: 'reapiDecision' })
-  if (decision !== undefined && decision !== 'first-probe-for-ci-job' && decision !== 'pinned-from-first-probe' && decision !== 'unpinned-missing-job-instance')
+  if (
+    decision !== undefined &&
+    decision !== 'first-probe-for-ci-job' &&
+    decision !== 'pinned-from-first-probe' &&
+    decision !== 'unpinned-missing-job-instance'
+  )
     throw new Error('Invalid REAPI job decision source')
   const event = field({ value, key: 'event' })
   const shadow = field({ value, key: 'shadow' })
@@ -249,15 +277,23 @@ export const decodeCacheAdmissionInvocation = (value: unknown): CacheAdmissionIn
   const legacyRerun = event === 'reader-reapi-unavailable-rerun'
   const legacyTag = field({ value, key: 'legacyRerun' })
   if (legacyRerun === true) {
-    if (admissionFallbacks.reapi !== 1 || shadow !== undefined ||
-      (legacyTag !== undefined && legacyTag !== true))
+    if (
+      admissionFallbacks.reapi !== 1 ||
+      shadow !== undefined ||
+      (legacyTag !== undefined && legacyTag !== true)
+    )
       throw new Error('Invalid legacy reader REAPI rerun event')
-  } else if ((event !== undefined && event !== 'reader-reapi-unavailable-shadow') ||
-    (event === undefined) !== (shadow === undefined) || legacyTag !== undefined ||
-    (event !== undefined && admissionFallbacks.reapi !== 0))
+  } else if (
+    (event !== undefined && event !== 'reader-reapi-unavailable-shadow') ||
+    (event === undefined) !== (shadow === undefined) ||
+    legacyTag !== undefined ||
+    (event !== undefined && admissionFallbacks.reapi !== 0)
+  )
     throw new Error('Invalid cache admission shadow event')
   return {
-    invocationId, admissionFallbacks, admissionRetrySuccesses,
+    invocationId,
+    admissionFallbacks,
+    admissionRetrySuccesses,
     ...(failure === undefined ? {} : { reapiFailure: decodeReapiAdmissionFailure(failure) }),
     ...(decision === undefined ? {} : { reapiDecision: decision }),
     ...(event === undefined ? {} : { event }),
@@ -275,12 +311,17 @@ const collectAdmissionInvocations = (
     if (previous !== undefined) {
       const { event: previousEvent, shadow: previousShadow, ...previousAdmission } = previous
       const { event, shadow, ...admission } = invocation
-      if (JSON.stringify(previousAdmission) !== JSON.stringify(admission) ||
-        (previousEvent !== undefined && event !== undefined && JSON.stringify(previousShadow) !== JSON.stringify(shadow)))
+      if (
+        JSON.stringify(previousAdmission) !== JSON.stringify(admission) ||
+        (previousEvent !== undefined &&
+          event !== undefined &&
+          JSON.stringify(previousShadow) !== JSON.stringify(shadow))
+      )
         throw new Error('Conflicting cache admission invocation')
       // A post-command shadow row enriches its original admission without
       // inventing another invocation or incrementing admission fallback totals.
-      if (previousEvent === undefined && event !== undefined) Object.assign(previous, { event, shadow })
+      if (previousEvent === undefined && event !== undefined)
+        Object.assign(previous, { event, shadow })
       continue
     }
     seen.set(invocation.invocationId, invocation)
@@ -296,7 +337,10 @@ const collectAdmissionInvocations = (
       )
       if (group === undefined)
         result.reapiFailures.push({
-          class: failure.class, phase: failure.phase, count: 1, maxElapsedMs: failure.elapsedMs,
+          class: failure.class,
+          phase: failure.phase,
+          count: 1,
+          maxElapsedMs: failure.elapsedMs,
         })
       else {
         group.count++
@@ -567,11 +611,13 @@ export const createCacheEvidenceProjector = ({
   onAction,
   onInvocation,
   freshRoot = false,
+  rootId,
 }: {
   context?: string
   onAction?: (action: ActionRecord) => void
   onInvocation?: (invocation: ActionInvocation) => void
   freshRoot?: boolean
+  rootId?: string
 } = {}): {
   add: (value: unknown) => void
   finish: () => CacheEvidence
@@ -699,23 +745,39 @@ export const createCacheEvidenceProjector = ({
     // The emitter omits values without a digest; these are not declared-output/path indices.
     const nativeOutputs = field({ value: end, key: 'outputs' })
     const outputTinyDigests =
-      commandAction && cacheUploadResult !== 1 && field({ value: end, key: 'failed' }) !== true &&
+      commandAction === true &&
+      cacheUploadResult !== 1 &&
+      field({ value: end, key: 'failed' }) !== true &&
       nativeOutputs !== undefined
         ? decodeOutputTinyDigests({
             algorithm: 'buck2-tiny-digest-v1',
-            outputs: Array.isArray(nativeOutputs)
-              ? nativeOutputs.map((output, index) => ({
-                  index,
-                  tinyDigest: field({ value: output, key: 'tiny_digest' }),
-                }))
-              : nativeOutputs,
+            outputs:
+              Array.isArray(nativeOutputs) === true
+                ? nativeOutputs.map((output, index) => ({
+                    index,
+                    tinyDigest: field({ value: output, key: 'tiny_digest' }),
+                  }))
+                : nativeOutputs,
           })
         : undefined
+    const nativeName = field({ value: end, key: 'name' })
+    const nativeIdentifier = field({ value: nativeName, key: 'identifier' })
     const row: ActionRecord = {
       type: 'action',
       buildId: safeIdentity({ value: buildId, grammar: /^[a-zA-Z0-9_.-]+$/ }),
       context: safeIdentity({ value: context, grammar: /^[a-zA-Z0-9_.:-]+$/ }),
       category: safeIdentity({ value: category, grammar: /^[a-zA-Z0-9_.-]+$/ }),
+      identifier:
+        typeof nativeName !== 'object' || nativeName === null || Array.isArray(nativeName) === true
+          ? null
+          : nativeIdentifier === undefined || nativeIdentifier === ''
+            ? ''
+            : typeof nativeIdentifier === 'string'
+              ? `identifier-sha256-v1:${createHash('sha256')
+                  .update('effect-utils/buck2-action-identifier/v1\0')
+                  .update(nativeIdentifier)
+                  .digest('hex')}`
+              : null,
       exclusionReason,
       target: safeIdentity({ value: target, grammar: labelGrammar }),
       configuration: safeIdentity({ value: configuration, grammar: configurationGrammar }),
@@ -758,23 +820,23 @@ export const createCacheEvidenceProjector = ({
         (row.category === null ||
           row.target === null ||
           row.configuration === null ||
-          (row.digest === null && (executionKind !== 10 || cacheUploadResult === 1)) ||
+          (row.digest === null && executionKind !== 10) ||
           row.startedAt === null))
     )
       invalidActionCount++
     onAction?.(row)
-    if (digest === undefined || category === undefined || target === undefined) return
-    if (buildId === undefined) throw new Error('Action event is missing its native trace id')
+    if (row.digest === null || row.category === null || row.target === null || row.buildId === null)
+      return
     retainRepresentative({
       rows: actions,
       action: {
-        buildId,
-        ...(context === undefined ? {} : { context }),
-        category,
+        buildId: row.buildId,
+        ...(row.context === null ? {} : { context: row.context }),
+        category: row.category,
         exclusionReason,
-        target,
-        ...(configuration === undefined ? {} : { configuration }),
-        digest,
+        target: row.target,
+        ...(row.configuration === null ? {} : { configuration: row.configuration }),
+        digest: row.digest,
         outcome,
         executionKind,
         cacheUploadResult,
@@ -787,6 +849,7 @@ export const createCacheEvidenceProjector = ({
     if (buildId === undefined) throw new Error('Event file is missing its native trace id')
     onInvocation?.({
       buildId,
+      ...(rootId === undefined ? {} : { rootId }),
       context: context ?? null,
       startedAt: invocationStartedAt,
       completedAt: invocationCompletedAt,
@@ -1001,7 +1064,9 @@ export const decodeCacheEvidence = (value: unknown): CacheEvidence => {
     }
     const uploadErrors = decodeCacheUploadErrors(field({ value: item, key: 'uploadErrors' }))
     if (uploadErrors !== undefined) action.uploadErrors = uploadErrors
-    const outputTinyDigests = decodeOutputTinyDigests(field({ value: item, key: 'outputTinyDigests' }))
+    const outputTinyDigests = decodeOutputTinyDigests(
+      field({ value: item, key: 'outputTinyDigests' }),
+    )
     if (outputTinyDigests !== undefined) action.outputTinyDigests = outputTinyDigests
     const exclusionReason = field({ value: item, key: 'exclusionReason' })
     if (exclusionReason !== undefined && exclusionReason !== action.exclusionReason)
@@ -1063,7 +1128,7 @@ export const emptyCacheEvidence = (): CacheEvidence => ({
   actions: [],
 })
 
-const emptyActionArtifact = (status: CacheEvidence['status']): ActionArtifact => ({
+export const emptyActionArtifact = (status: CacheEvidence['status']): ActionArtifact => ({
   header: {
     type: 'header',
     schemaVersion: 1,
@@ -1094,13 +1159,6 @@ const emptyActionArtifact = (status: CacheEvidence['status']): ActionArtifact =>
   actions: [],
 })
 
-const envTime = (key: string): number | null => {
-  const value = process.env[key]
-  if (value === undefined || /^[0-9]{1,16}$/.test(value) === false) return null
-  const result = Number(value)
-  return Number.isSafeInteger(result) === true ? result : null
-}
-
 /** Resolve freshness only after comparing actual native launches with all decoded IDs. */
 export const finalizeNativeLogFreshness = ({
   invocations,
@@ -1119,7 +1177,9 @@ export const finalizeNativeLogFreshness = ({
     Infinity,
   )
   const earliestIds = new Set(
-    cacheBearingInvocations.filter((item) => item.startedAt === earliest).map((item) => item.buildId),
+    cacheBearingInvocations
+      .filter((item) => item.startedAt === earliest)
+      .map((item) => item.buildId),
   )
   for (const invocation of nativeInvocations) {
     invocation.freshRoot =
@@ -1130,6 +1190,13 @@ export const finalizeNativeLogFreshness = ({
       invocation.startedAt === earliest
   }
   return rotated
+}
+
+const envTime = (key: string): number | null => {
+  const value = process.env[key]
+  if (value === undefined || /^[0-9]{1,16}$/.test(value) === false) return null
+  const result = Number(value)
+  return Number.isSafeInteger(result) === true ? result : null
 }
 
 const confirmedNativeBuildIds = async ({
@@ -1146,26 +1213,33 @@ const confirmedNativeBuildIds = async ({
   // Legacy retained evidence has no registry and cannot establish rotation.
   if (startedAt === null || finishedAt === null || (await registry.exists()) === false)
     return confirmed
+  if (registry.size > 4096 * 8192) return confirmed
   for (const line of (await registry.text()).split('\n')) {
     if (line.trim().length === 0) continue
-    const row: unknown = JSON.parse(line)
-    const buildId = canonicalCacheAdmissionInvocationId(field({ value: row, key: 'buildId' }))
-    const path = requiredText(field({ value: row, key: 'path' }))
     try {
+      const row: unknown = JSON.parse(line)
+      const buildId = canonicalCacheAdmissionInvocationId(field({ value: row, key: 'buildId' }))
+      const path = requiredText(field({ value: row, key: 'path' }))
+      // Registry reads are bounded and deliberately serial to avoid opening thousands of files.
+      // eslint-disable-next-line no-await-in-loop
       const info = await stat(path)
       if (info.isFile() === false || info.mtimeMs < startedAt || info.mtimeMs > finishedAt) continue
+      if (info.size > 128) continue
+      // eslint-disable-next-line no-await-in-loop -- Read only after the bounded stat guard.
       const nativeId = canonicalCacheAdmissionInvocationId((await Bun.file(path).text()).trim())
       if (nativeId === buildId) confirmed.add(buildId)
-    } catch (error) {
-      // A registry row is written before launch. Missing or unconfirmed outputs
-      // do not establish a native invocation, nor do stale files from other jobs.
-      if (error instanceof Error && 'code' in error && error.code !== 'ENOENT') throw error
+    } catch {
+      // Reconciliation records malformed/missing native outputs as explicit gaps.
+      // Preserve all other confirmed IDs and still write final diagnostic artifacts.
     }
   }
   return confirmed
 }
 
 const run = async (): Promise<void> => {
+  // CLI-only consumers depend on this projection library; lazy loading avoids a static cycle.
+  const { reconcileNativeShards, registerNativeShard, writeNativeShard } =
+    await import('./buck2-cache-shards.ts')
   const { values } = parseArgs({
     args: Bun.argv.slice(2),
     strict: true,
@@ -1177,6 +1251,11 @@ const run = async (): Promise<void> => {
       'fresh-root': { type: 'boolean', default: false },
       finalize: { type: 'boolean', default: false },
       'evidence-gap': { type: 'string' },
+      'write-shard': { type: 'string' },
+      'shard-build-id': { type: 'string' },
+      'root-id': { type: 'string' },
+      'register-native': { type: 'string' },
+      'native-exit-code': { type: 'string' },
       'remote-cache-disabled-by-design': { type: 'boolean', default: false },
     },
   })
@@ -1188,6 +1267,29 @@ const run = async (): Promise<void> => {
   }
   if (values.context !== undefined && /^[a-zA-Z0-9_.:-]{1,96}$/.test(values.context) === false) {
     throw new Error('Invalid evidence context label')
+  }
+  if (values['root-id'] !== undefined && /^[a-f0-9]{64}$/.test(values['root-id']) === false)
+    throw new Error('Invalid root scope')
+  if (values['register-native'] !== undefined) {
+    console.log(
+      await registerNativeShard({ output: values.output, buildId: values['register-native'] }),
+    )
+    return
+  }
+  if (values['write-shard'] !== undefined) {
+    if (values['shard-build-id'] === undefined) throw new Error('Missing shard build ID')
+    await writeNativeShard({
+      output: values.output,
+      events: values['write-shard'],
+      buildId: values['shard-build-id'],
+      freshRoot: values['fresh-root'],
+      rootId: values['root-id'],
+      context: values.context,
+      exitCode:
+        values['native-exit-code'] === undefined ? undefined : Number(values['native-exit-code']),
+      onReady: () => console.log('ready'),
+    })
+    return
   }
   if (
     values['evidence-gap'] !== undefined &&
@@ -1202,6 +1304,7 @@ const run = async (): Promise<void> => {
   const previousSummary = Bun.file(values.output)
   let previous: CacheEvidence | undefined
   let full = emptyActionArtifact(evidence.status)
+  let expectedNativeIds = new Set<string>()
   if (disabled === false && (await previousSummary.exists()) === true) {
     let previousValue: unknown
     try {
@@ -1231,6 +1334,35 @@ const run = async (): Promise<void> => {
     } else if ((previous?.actionCount ?? 0) > 0)
       full.header.evidenceGaps.push('prior-artifact-missing')
   }
+  if (values.finalize === true && disabled === false) {
+    const reconciled = await reconcileNativeShards({ output: values.output })
+    evidence = mergeCacheEvidence({ previous: evidence, next: reconciled.summary })
+    let mergedBytes = full.actions.reduce(
+      (size, row) => size + Buffer.byteLength(JSON.stringify(row)) + 1,
+      0,
+    )
+    for (const invocation of reconciled.artifact.header.invocations) {
+      const existing = full.header.invocations.find((item) => item.buildId === invocation.buildId)
+      if (existing !== undefined) {
+        if (existing.rootId === undefined && invocation.rootId !== undefined)
+          existing.rootId = invocation.rootId
+        continue
+      }
+      full.header.invocations.push(invocation)
+      for (const row of reconciled.artifact.actions.filter(
+        (candidate) => candidate.buildId === invocation.buildId,
+      )) {
+        const size = Buffer.byteLength(JSON.stringify(row)) + 1
+        if (mergedBytes + size > maxActionArtifactBytes) full.header.droppedActionCount++
+        else {
+          mergedBytes += size
+          full.actions.push(row)
+        }
+      }
+    }
+    full.header.evidenceGaps.push(...reconciled.index.evidenceGaps)
+    expectedNativeIds = new Set(reconciled.index.expectedBuildIds)
+  }
   if (values['evidence-gap'] !== undefined) full.header.evidenceGaps.push(values['evidence-gap'])
   if (values.events !== undefined) {
     const rows: ActionRecord[] = []
@@ -1245,6 +1377,7 @@ const run = async (): Promise<void> => {
       // Native-log candidates resolve by command start time at finalization.
       // Explicit proof contexts own independent wiped roots.
       freshRoot: values['fresh-root'] === true,
+      rootId: values['root-id'],
       onAction: (row) => {
         const size = Buffer.byteLength(JSON.stringify(row)) + 1
         if (rowBytes + size > maxActionArtifactBytes) dropped++
@@ -1339,6 +1472,10 @@ const run = async (): Promise<void> => {
     runId: safeIdentity({ value: evidence.metadata.runId, grammar: /^[0-9]+$/ }),
     runAttempt: safeIdentity({ value: evidence.metadata.runAttempt, grammar: /^[0-9]+$/ }),
     job: safeIdentity({ value: evidence.metadata.job, grammar: /^[a-zA-Z0-9_.-]+$/ }),
+    cell:
+      process.env.CI_BUCK2_CACHE_EVIDENCE_JOB_NAME === undefined
+        ? null
+        : proofJobCell(process.env.CI_BUCK2_CACHE_EVIDENCE_JOB_NAME),
     lane:
       process.env.GITHUB_EVENT_NAME === 'merge_group'
         ? 'merge_group'
@@ -1371,20 +1508,52 @@ const run = async (): Promise<void> => {
     })
     if (finalizeNativeLogFreshness({ invocations: header.invocations, confirmedBuildIds }) === true)
       header.evidenceGaps.push('native-log-rotated')
+    if (
+      disabled === false &&
+      header.invocations.some(
+        (invocation) => expectedNativeIds.has(invocation.buildId) === false,
+      ) === true
+    )
+      header.evidenceGaps.push('unregistered-native-invocation')
     for (const invocation of header.invocations) {
       if (invocationWithinJobWindow({ invocation, metadata: header.metadata }) === false) {
         invocation.freshRoot = false
         header.evidenceGaps.push('native-invocation-outside-job-window')
       }
     }
-    // Buck's LocalActionCache hits omit command metadata (including the RE action
-    // digest). Preserve those rows, but permit the omission only outside freshness.
-    for (const action of full.actions) {
-      if (action.commandAction === true && action.executionKind === 10 && action.digest === null) {
-        const invocation = header.invocations.find((item) => item.buildId === action.buildId)
-        if (invocation === undefined || invocation.freshRoot === true)
-          header.evidenceGaps.push('fresh-local-cache-action-missing-digest')
-      }
+    const priorConfiguredActions = new Map<string, number>()
+    for (const action of full.actions.toSorted(
+      (a, b) => (a.startedAt ?? Infinity) - (b.startedAt ?? Infinity),
+    )) {
+      if (action.commandAction === false) continue
+      const invocation = header.invocations.find((item) => item.buildId === action.buildId)
+      const key =
+        invocation?.rootId !== undefined &&
+        action.category !== null &&
+        action.target !== null &&
+        action.configuration !== null &&
+        typeof action.identifier === 'string'
+          ? JSON.stringify([
+              invocation.rootId,
+              action.target,
+              action.category,
+              action.identifier,
+              action.configuration,
+            ])
+          : undefined
+      if (action.digest !== null) {
+        if (key !== undefined && action.completedAt !== null)
+          priorConfiguredActions.set(
+            key,
+            Math.min(priorConfiguredActions.get(key) ?? Infinity, action.completedAt),
+          )
+      } else if (
+        action.executionKind !== 10 ||
+        key === undefined ||
+        action.startedAt === null ||
+        (priorConfiguredActions.get(key) ?? Infinity) > action.startedAt
+      )
+        header.evidenceGaps.push('command-action-missing-native-digest')
     }
   }
   header.rows = full.actions.length
@@ -1461,6 +1630,14 @@ const run = async (): Promise<void> => {
     droppedActionCount: header.droppedActionCount,
   }
   await Bun.write(values.output, `${JSON.stringify(evidence)}\n`)
+  if (values.finalize === true)
+    await (
+      await import('./buck2-cache-proof-reports.ts')
+    ).writeBuck2CacheProofReports({
+      summaryPath: values.output,
+      actionsPath: actionsOutput,
+      shardIndexPath: `${values.output}.shard-index.json`,
+    })
   if (values.finalize === true && process.env.GITHUB_STEP_SUMMARY !== undefined) {
     const admission = decodeCacheAdmissionEvidence(evidence)
     const summary = Bun.file(process.env.GITHUB_STEP_SUMMARY)

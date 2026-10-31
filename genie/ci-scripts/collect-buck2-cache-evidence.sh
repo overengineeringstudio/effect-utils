@@ -43,44 +43,10 @@ if [ "$window_valid" = 0 ]; then
   record_gap start-window-missing
 fi
 
-# A later CI_SOURCE_ROOT redirect or a different canonical root cannot inherit freshness.
-# Every native log is a candidate fresh invocation; the projector confirms native
-# build-ID outputs, rejects rotated evidence, then picks the earliest cache-bearing
-# CommandStart at --finalize and marks later invocations freshRoot=false.
-fresh_args=()
-if [ "$window_valid" = 1 ] && [ "$fresh_root" = 1 ] && [ "$recorded_root" = "$(pwd -P)" ]; then
-  fresh_args=(--fresh-root)
-fi
-
-events=""
-logs=""
-trap 'rm -f "$events" "$logs"' EXIT
-if [ "${CI_BUCK2_CACHE_EVIDENCE_DISABLED:-0}" != 1 ] && [ "$window_valid" = 1 ]; then
-  if events=$(mktemp "${RUNNER_TEMP:-${TMPDIR:-/tmp}}/buck2-cache-events.XXXXXXXX") &&
-     logs=$(mktemp "${RUNNER_TEMP:-${TMPDIR:-/tmp}}/buck2-cache-logs.XXXXXXXX"); then
-    : > "$logs"
-    for directory in .devenv/otel buck-out/v2/log; do
-      [ -d "$directory" ] || continue
-      # Materialize the discovery result so find failures cannot disappear in process substitution.
-      if ! find "$directory" -type f -name '*.pb.zst' -newer "$marker" -print0 >> "$logs" 2>/dev/null; then
-        record_gap native-log-discovery-failed
-      fi
-    done
-    # Discovery order is arbitrary and mtime cannot order concurrent builds; the earliest
-    # native CommandStart wins freshness at finalize rather than file iteration order.
-    while IFS= read -r -d '' log; do
-      if ! buck2 log show "$log" > "$events" 2>/dev/null; then
-        record_gap native-log-decode-failed
-        continue
-      fi
-      if ! bun "$projector" "${args[@]}" --events "$events" --context native-log "${fresh_args[@]}" 2>/dev/null; then
-        record_gap native-log-projection-failed
-      fi
-    done < "$logs"
-  else
-    record_gap native-log-discovery-failed
-  fi
-fi
+# Entrypoint-owned native event FIFOs are projected before each command returns.
+# Finalization reconciles every registered launch/build-ID output/finalized shard.
+# Never rescan rotating Buck logs: doing so reintroduces both loss and stale-root
+# attribution, and would make completed shards depend on raw-log retention.
 
 if finished_at=$(bun -e 'console.log(Date.now())' 2>/dev/null) && [[ "$finished_at" =~ ^[0-9]+$ ]]; then
   export CI_BUCK2_CACHE_EVIDENCE_FINISHED_AT="$finished_at"

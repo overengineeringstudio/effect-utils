@@ -44,14 +44,6 @@
     {
       "repository": "overengineeringstudio/effect-utils",
       "workflow": "ci.yml",
-      "job": "default-ref-policy",
-      "rule": "banned-action",
-      "path": "jobs.default-ref-policy.steps[name:\"Upload Buck2 cache evidence\"|action:\"actions/upload-artifact\"|content:{\"if\":\"${{ always() }}\",\"with\":[[\"if-no-files-found\",\"warn\"],[\"name\",\"buck2-cache-evidence-default-ref-policy-${{ github.run_attempt }}\"],[\"path\",\"${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}\\n${{ env.CI_BUCK2_CACHE_ACTIONS_PATH }}\"],[\"retention-days\",14]]}].uses",
-      "value": "actions/upload-artifact@v4"
-    },
-    {
-      "repository": "overengineeringstudio/effect-utils",
-      "workflow": "ci.yml",
       "job": "pr-buck2-tools",
       "rule": "runner-fallback",
       "path": "jobs.pr-buck2-tools.runs-on",
@@ -78,7 +70,7 @@
       "workflow": "ci.yml",
       "job": "pr-buck2-tools",
       "rule": "banned-action",
-      "path": "jobs.pr-buck2-tools.steps[name:\"Upload Buck2 cache evidence\"|action:\"actions/upload-artifact\"|content:{\"if\":\"${{ always() }}\",\"with\":[[\"if-no-files-found\",\"warn\"],[\"name\",\"buck2-cache-evidence-pr-buck2-tools-${{ github.run_attempt }}\"],[\"path\",\"${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}\\n${{ env.CI_BUCK2_CACHE_ACTIONS_PATH }}\"],[\"retention-days\",14]]}].uses",
+      "path": "jobs.pr-buck2-tools.steps[name:\"Upload Buck2 cache evidence\"|action:\"actions/upload-artifact\"|content:{\"if\":\"${{ always() }}\",\"with\":[[\"if-no-files-found\",\"warn\"],[\"name\",\"buck2-cache-evidence-pr-buck2-tools-${{ github.run_attempt }}\"],[\"path\",\"${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}\\n${{ env.CI_BUCK2_CACHE_ACTIONS_PATH }}\\n${{ env.CI_BUCK2_CACHE_WARM99_PATH }}\\n${{ env.CI_BUCK2_CACHE_PROOF_MANIFEST_PATH }}\\n${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}.shard-index.json\\n${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}.shards/*.json\"],[\"retention-days\",90]]}].uses",
       "value": "actions/upload-artifact@v4"
     },
     {
@@ -118,7 +110,7 @@
       "workflow": "ci.yml",
       "job": "quality",
       "rule": "banned-action",
-      "path": "jobs.quality.steps[name:\"Upload Buck2 cache evidence\"|action:\"actions/upload-artifact\"|content:{\"if\":\"${{ always() }}\",\"with\":[[\"if-no-files-found\",\"warn\"],[\"name\",\"buck2-cache-evidence-quality-${{ github.run_attempt }}\"],[\"path\",\"${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}\\n${{ env.CI_BUCK2_CACHE_ACTIONS_PATH }}\"],[\"retention-days\",14]]}].uses",
+      "path": "jobs.quality.steps[name:\"Upload Buck2 cache evidence\"|action:\"actions/upload-artifact\"|content:{\"if\":\"${{ always() }}\",\"with\":[[\"if-no-files-found\",\"warn\"],[\"name\",\"buck2-cache-evidence-quality-${{ github.run_attempt }}\"],[\"path\",\"${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}\\n${{ env.CI_BUCK2_CACHE_ACTIONS_PATH }}\\n${{ env.CI_BUCK2_CACHE_WARM99_PATH }}\\n${{ env.CI_BUCK2_CACHE_PROOF_MANIFEST_PATH }}\\n${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}.shard-index.json\\n${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}.shards/*.json\"],[\"retention-days\",90]]}].uses",
       "value": "actions/upload-artifact@v4"
     },
     {
@@ -166,7 +158,7 @@
       "workflow": "ci.yml",
       "job": "test",
       "rule": "banned-action",
-      "path": "jobs.test.steps[name:\"Upload Buck2 cache evidence\"|action:\"actions/upload-artifact\"|content:{\"if\":\"${{ always() }}\",\"with\":[[\"if-no-files-found\",\"warn\"],[\"name\",\"buck2-cache-evidence-test-${{ github.run_attempt }}\"],[\"path\",\"${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}\\n${{ env.CI_BUCK2_CACHE_ACTIONS_PATH }}\"],[\"retention-days\",14]]}].uses",
+      "path": "jobs.test.steps[name:\"Upload Buck2 cache evidence\"|action:\"actions/upload-artifact\"|content:{\"if\":\"${{ always() }}\",\"with\":[[\"if-no-files-found\",\"warn\"],[\"name\",\"buck2-cache-evidence-test-${{ github.run_attempt }}\"],[\"path\",\"${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}\\n${{ env.CI_BUCK2_CACHE_ACTIONS_PATH }}\\n${{ env.CI_BUCK2_CACHE_WARM99_PATH }}\\n${{ env.CI_BUCK2_CACHE_PROOF_MANIFEST_PATH }}\\n${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}.shard-index.json\\n${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}.shards/*.json\"],[\"retention-days\",90]]}].uses",
       "value": "actions/upload-artifact@v4"
     },
     {
@@ -222,7 +214,7 @@
       "workflow": "ci.yml",
       "job": "test-macos",
       "rule": "banned-action",
-      "path": "jobs.test-macos.steps[name:\"Upload Buck2 cache evidence\"|action:\"actions/upload-artifact\"|content:{\"if\":\"${{ always() }}\",\"with\":[[\"if-no-files-found\",\"warn\"],[\"name\",\"buck2-cache-evidence-test-macos-${{ github.run_attempt }}\"],[\"path\",\"${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}\\n${{ env.CI_BUCK2_CACHE_ACTIONS_PATH }}\"],[\"retention-days\",14]]}].uses",
+      "path": "jobs.test-macos.steps[name:\"Upload Buck2 cache evidence\"|action:\"actions/upload-artifact\"|content:{\"if\":\"${{ always() }}\",\"with\":[[\"if-no-files-found\",\"warn\"],[\"name\",\"buck2-cache-evidence-test-macos-${{ github.run_attempt }}\"],[\"path\",\"${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}\\n${{ env.CI_BUCK2_CACHE_ACTIONS_PATH }}\\n${{ env.CI_BUCK2_CACHE_WARM99_PATH }}\\n${{ env.CI_BUCK2_CACHE_PROOF_MANIFEST_PATH }}\\n${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}.shard-index.json\\n${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}.shards/*.json\"],[\"retention-days\",90]]}].uses",
       "value": "actions/upload-artifact@v4"
     },
     {
@@ -262,7 +254,7 @@
       "workflow": "ci.yml",
       "job": "test-playwright-utils",
       "rule": "banned-action",
-      "path": "jobs.test-playwright-utils.steps[name:\"Upload Buck2 cache evidence\"|action:\"actions/upload-artifact\"|content:{\"if\":\"${{ always() }}\",\"with\":[[\"if-no-files-found\",\"warn\"],[\"name\",\"buck2-cache-evidence-test-playwright-utils-${{ github.run_attempt }}\"],[\"path\",\"${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}\\n${{ env.CI_BUCK2_CACHE_ACTIONS_PATH }}\"],[\"retention-days\",14]]}].uses",
+      "path": "jobs.test-playwright-utils.steps[name:\"Upload Buck2 cache evidence\"|action:\"actions/upload-artifact\"|content:{\"if\":\"${{ always() }}\",\"with\":[[\"if-no-files-found\",\"warn\"],[\"name\",\"buck2-cache-evidence-test-playwright-utils-${{ github.run_attempt }}\"],[\"path\",\"${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}\\n${{ env.CI_BUCK2_CACHE_ACTIONS_PATH }}\\n${{ env.CI_BUCK2_CACHE_WARM99_PATH }}\\n${{ env.CI_BUCK2_CACHE_PROOF_MANIFEST_PATH }}\\n${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}.shard-index.json\\n${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}.shards/*.json\"],[\"retention-days\",90]]}].uses",
       "value": "actions/upload-artifact@v4"
     },
     {
@@ -302,7 +294,7 @@
       "workflow": "ci.yml",
       "job": "test-playwright-tui-react",
       "rule": "banned-action",
-      "path": "jobs.test-playwright-tui-react.steps[name:\"Upload Buck2 cache evidence\"|action:\"actions/upload-artifact\"|content:{\"if\":\"${{ always() }}\",\"with\":[[\"if-no-files-found\",\"warn\"],[\"name\",\"buck2-cache-evidence-test-playwright-tui-react-${{ github.run_attempt }}\"],[\"path\",\"${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}\\n${{ env.CI_BUCK2_CACHE_ACTIONS_PATH }}\"],[\"retention-days\",14]]}].uses",
+      "path": "jobs.test-playwright-tui-react.steps[name:\"Upload Buck2 cache evidence\"|action:\"actions/upload-artifact\"|content:{\"if\":\"${{ always() }}\",\"with\":[[\"if-no-files-found\",\"warn\"],[\"name\",\"buck2-cache-evidence-test-playwright-tui-react-${{ github.run_attempt }}\"],[\"path\",\"${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}\\n${{ env.CI_BUCK2_CACHE_ACTIONS_PATH }}\\n${{ env.CI_BUCK2_CACHE_WARM99_PATH }}\\n${{ env.CI_BUCK2_CACHE_PROOF_MANIFEST_PATH }}\\n${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}.shard-index.json\\n${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}.shards/*.json\"],[\"retention-days\",90]]}].uses",
       "value": "actions/upload-artifact@v4"
     },
     {
@@ -334,7 +326,7 @@
       "workflow": "ci.yml",
       "job": "test-megarepo-store-gc",
       "rule": "banned-action",
-      "path": "jobs.test-megarepo-store-gc.steps[name:\"Upload Buck2 cache evidence\"|action:\"actions/upload-artifact\"|content:{\"if\":\"${{ always() }}\",\"with\":[[\"if-no-files-found\",\"warn\"],[\"name\",\"buck2-cache-evidence-test-megarepo-store-gc-${{ github.run_attempt }}\"],[\"path\",\"${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}\\n${{ env.CI_BUCK2_CACHE_ACTIONS_PATH }}\"],[\"retention-days\",14]]}].uses",
+      "path": "jobs.test-megarepo-store-gc.steps[name:\"Upload Buck2 cache evidence\"|action:\"actions/upload-artifact\"|content:{\"if\":\"${{ always() }}\",\"with\":[[\"if-no-files-found\",\"warn\"],[\"name\",\"buck2-cache-evidence-test-megarepo-store-gc-${{ github.run_attempt }}\"],[\"path\",\"${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}\\n${{ env.CI_BUCK2_CACHE_ACTIONS_PATH }}\\n${{ env.CI_BUCK2_CACHE_WARM99_PATH }}\\n${{ env.CI_BUCK2_CACHE_PROOF_MANIFEST_PATH }}\\n${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}.shard-index.json\\n${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}.shards/*.json\"],[\"retention-days\",90]]}].uses",
       "value": "actions/upload-artifact@v4"
     },
     {
@@ -359,14 +351,6 @@
       "job": "cargo",
       "rule": "banned-action",
       "path": "jobs.cargo.steps[name:\"Upload CI OpenTelemetry spans\"|action:\"actions/upload-artifact\"|content:{\"if\":\"always() && env.OTEL_SPAN_SPOOL_DIR != ''\",\"with\":[[\"if-no-files-found\",\"warn\"],[\"name\",\"ci-otel-${{ github.job }}-${{ runner.os }}-${{ runner.arch }}-run-${{ github.run_id }}-attempt-${{ github.run_attempt }}\"],[\"path\",\"${{ env.OTEL_SPAN_SPOOL_DIR }}\"],[\"retention-days\",14]]}].uses",
-      "value": "actions/upload-artifact@v4"
-    },
-    {
-      "repository": "overengineeringstudio/effect-utils",
-      "workflow": "ci.yml",
-      "job": "cargo",
-      "rule": "banned-action",
-      "path": "jobs.cargo.steps[name:\"Upload Buck2 cache evidence\"|action:\"actions/upload-artifact\"|content:{\"if\":\"${{ always() }}\",\"with\":[[\"if-no-files-found\",\"warn\"],[\"name\",\"buck2-cache-evidence-cargo-${{ github.run_attempt }}\"],[\"path\",\"${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}\\n${{ env.CI_BUCK2_CACHE_ACTIONS_PATH }}\"],[\"retention-days\",14]]}].uses",
       "value": "actions/upload-artifact@v4"
     },
     {
@@ -398,7 +382,7 @@
       "workflow": "ci.yml",
       "job": "weaver",
       "rule": "banned-action",
-      "path": "jobs.weaver.steps[name:\"Upload Buck2 cache evidence\"|action:\"actions/upload-artifact\"|content:{\"if\":\"${{ always() }}\",\"with\":[[\"if-no-files-found\",\"warn\"],[\"name\",\"buck2-cache-evidence-weaver-${{ github.run_attempt }}\"],[\"path\",\"${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}\\n${{ env.CI_BUCK2_CACHE_ACTIONS_PATH }}\"],[\"retention-days\",14]]}].uses",
+      "path": "jobs.weaver.steps[name:\"Upload Buck2 cache evidence\"|action:\"actions/upload-artifact\"|content:{\"if\":\"${{ always() }}\",\"with\":[[\"if-no-files-found\",\"warn\"],[\"name\",\"buck2-cache-evidence-weaver-${{ github.run_attempt }}\"],[\"path\",\"${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}\\n${{ env.CI_BUCK2_CACHE_ACTIONS_PATH }}\\n${{ env.CI_BUCK2_CACHE_WARM99_PATH }}\\n${{ env.CI_BUCK2_CACHE_PROOF_MANIFEST_PATH }}\\n${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}.shard-index.json\\n${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}.shards/*.json\"],[\"retention-days\",90]]}].uses",
       "value": "actions/upload-artifact@v4"
     },
     {
@@ -412,14 +396,6 @@
     {
       "repository": "overengineeringstudio/effect-utils",
       "workflow": "ci.yml",
-      "job": "pr-a-inert-buck",
-      "rule": "banned-action",
-      "path": "jobs.pr-a-inert-buck.steps[name:\"Upload Buck2 cache evidence\"|action:\"actions/upload-artifact\"|content:{\"if\":\"${{ always() }}\",\"with\":[[\"if-no-files-found\",\"warn\"],[\"name\",\"buck2-cache-evidence-pr-a-inert-buck-${{ github.run_attempt }}\"],[\"path\",\"${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}\\n${{ env.CI_BUCK2_CACHE_ACTIONS_PATH }}\"],[\"retention-days\",14]]}].uses",
-      "value": "actions/upload-artifact@v4"
-    },
-    {
-      "repository": "overengineeringstudio/effect-utils",
-      "workflow": "ci.yml",
       "job": "build-products",
       "rule": "dynamic-runner",
       "path": "jobs.build-products.runs-on",
@@ -428,26 +404,10 @@
     {
       "repository": "overengineeringstudio/effect-utils",
       "workflow": "ci.yml",
-      "job": "build-products",
-      "rule": "banned-action",
-      "path": "jobs.build-products.steps[name:\"Upload Buck2 cache evidence\"|action:\"actions/upload-artifact\"|content:{\"if\":\"${{ always() }}\",\"with\":[[\"if-no-files-found\",\"warn\"],[\"name\",\"buck2-cache-evidence-build-products-${{ github.run_attempt }}\"],[\"path\",\"${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}\\n${{ env.CI_BUCK2_CACHE_ACTIONS_PATH }}\"],[\"retention-days\",14]]}].uses",
-      "value": "actions/upload-artifact@v4"
-    },
-    {
-      "repository": "overengineeringstudio/effect-utils",
-      "workflow": "ci.yml",
       "job": "publish-products",
       "rule": "dynamic-runner",
       "path": "jobs.publish-products.runs-on",
       "value": "namespace-profile-linux-x86-64;github.run-id=${{ github.run_id }};container.privileged=true;job.priority=1"
-    },
-    {
-      "repository": "overengineeringstudio/effect-utils",
-      "workflow": "ci.yml",
-      "job": "publish-products",
-      "rule": "banned-action",
-      "path": "jobs.publish-products.steps[name:\"Upload Buck2 cache evidence\"|action:\"actions/upload-artifact\"|content:{\"if\":\"${{ always() }}\",\"with\":[[\"if-no-files-found\",\"warn\"],[\"name\",\"buck2-cache-evidence-publish-products-${{ github.run_attempt }}\"],[\"path\",\"${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}\\n${{ env.CI_BUCK2_CACHE_ACTIONS_PATH }}\"],[\"retention-days\",14]]}].uses",
-      "value": "actions/upload-artifact@v4"
     },
     {
       "repository": "overengineeringstudio/effect-utils",
@@ -462,7 +422,7 @@
       "workflow": "ci.yml",
       "job": "trusted-buck2-remote-cache-proof",
       "rule": "banned-action",
-      "path": "jobs.trusted-buck2-remote-cache-proof.steps[name:\"Upload Buck2 cache evidence\"|action:\"actions/upload-artifact\"|content:{\"if\":\"${{ always() }}\",\"with\":[[\"if-no-files-found\",\"warn\"],[\"name\",\"buck2-cache-evidence-trusted-buck2-remote-cache-proof-${{ github.run_attempt }}\"],[\"path\",\"${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}\\n${{ env.CI_BUCK2_CACHE_ACTIONS_PATH }}\"],[\"retention-days\",14]]}].uses",
+      "path": "jobs.trusted-buck2-remote-cache-proof.steps[name:\"Upload Buck2 cache evidence\"|action:\"actions/upload-artifact\"|content:{\"if\":\"${{ always() }}\",\"with\":[[\"if-no-files-found\",\"warn\"],[\"name\",\"buck2-cache-evidence-trusted-buck2-remote-cache-proof-${{ github.run_attempt }}\"],[\"path\",\"${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}\\n${{ env.CI_BUCK2_CACHE_ACTIONS_PATH }}\\n${{ env.CI_BUCK2_CACHE_WARM99_PATH }}\\n${{ env.CI_BUCK2_CACHE_PROOF_MANIFEST_PATH }}\\n${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}.shard-index.json\\n${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}.shards/*.json\"],[\"retention-days\",90]]}].uses",
       "value": "actions/upload-artifact@v4"
     },
     {
@@ -508,14 +468,6 @@
     {
       "repository": "overengineeringstudio/effect-utils",
       "workflow": "ci.yml",
-      "job": "source-shape",
-      "rule": "banned-action",
-      "path": "jobs.source-shape.steps[name:\"Upload Buck2 cache evidence\"|action:\"actions/upload-artifact\"|content:{\"if\":\"${{ always() }}\",\"with\":[[\"if-no-files-found\",\"warn\"],[\"name\",\"buck2-cache-evidence-source-shape-${{ github.run_attempt }}\"],[\"path\",\"${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}\\n${{ env.CI_BUCK2_CACHE_ACTIONS_PATH }}\"],[\"retention-days\",14]]}].uses",
-      "value": "actions/upload-artifact@v4"
-    },
-    {
-      "repository": "overengineeringstudio/effect-utils",
-      "workflow": "ci.yml",
       "job": "test-integration-notion",
       "rule": "dynamic-runner",
       "path": "jobs.test-integration-notion.runs-on",
@@ -534,7 +486,7 @@
       "workflow": "ci.yml",
       "job": "test-integration-notion",
       "rule": "banned-action",
-      "path": "jobs.test-integration-notion.steps[name:\"Upload Buck2 cache evidence\"|action:\"actions/upload-artifact\"|content:{\"if\":\"${{ always() }}\",\"with\":[[\"if-no-files-found\",\"warn\"],[\"name\",\"buck2-cache-evidence-test-integration-notion-${{ github.run_attempt }}\"],[\"path\",\"${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}\\n${{ env.CI_BUCK2_CACHE_ACTIONS_PATH }}\"],[\"retention-days\",14]]}].uses",
+      "path": "jobs.test-integration-notion.steps[name:\"Upload Buck2 cache evidence\"|action:\"actions/upload-artifact\"|content:{\"if\":\"${{ always() }}\",\"with\":[[\"if-no-files-found\",\"warn\"],[\"name\",\"buck2-cache-evidence-test-integration-notion-${{ github.run_attempt }}\"],[\"path\",\"${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}\\n${{ env.CI_BUCK2_CACHE_ACTIONS_PATH }}\\n${{ env.CI_BUCK2_CACHE_WARM99_PATH }}\\n${{ env.CI_BUCK2_CACHE_PROOF_MANIFEST_PATH }}\\n${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}.shard-index.json\\n${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}.shards/*.json\"],[\"retention-days\",90]]}].uses",
       "value": "actions/upload-artifact@v4"
     },
     {
@@ -558,7 +510,7 @@
       "workflow": "ci.yml",
       "job": "test-integration-restate",
       "rule": "banned-action",
-      "path": "jobs.test-integration-restate.steps[name:\"Upload Buck2 cache evidence\"|action:\"actions/upload-artifact\"|content:{\"if\":\"${{ always() }}\",\"with\":[[\"if-no-files-found\",\"warn\"],[\"name\",\"buck2-cache-evidence-test-integration-restate-${{ github.run_attempt }}\"],[\"path\",\"${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}\\n${{ env.CI_BUCK2_CACHE_ACTIONS_PATH }}\"],[\"retention-days\",14]]}].uses",
+      "path": "jobs.test-integration-restate.steps[name:\"Upload Buck2 cache evidence\"|action:\"actions/upload-artifact\"|content:{\"if\":\"${{ always() }}\",\"with\":[[\"if-no-files-found\",\"warn\"],[\"name\",\"buck2-cache-evidence-test-integration-restate-${{ github.run_attempt }}\"],[\"path\",\"${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}\\n${{ env.CI_BUCK2_CACHE_ACTIONS_PATH }}\\n${{ env.CI_BUCK2_CACHE_WARM99_PATH }}\\n${{ env.CI_BUCK2_CACHE_PROOF_MANIFEST_PATH }}\\n${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}.shard-index.json\\n${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}.shards/*.json\"],[\"retention-days\",90]]}].uses",
       "value": "actions/upload-artifact@v4"
     },
     {
@@ -582,7 +534,7 @@
       "workflow": "ci.yml",
       "job": "test-live-deploy-ci-tools",
       "rule": "banned-action",
-      "path": "jobs.test-live-deploy-ci-tools.steps[name:\"Upload Buck2 cache evidence\"|action:\"actions/upload-artifact\"|content:{\"if\":\"${{ always() }}\",\"with\":[[\"if-no-files-found\",\"warn\"],[\"name\",\"buck2-cache-evidence-test-live-deploy-ci-tools-${{ github.run_attempt }}\"],[\"path\",\"${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}\\n${{ env.CI_BUCK2_CACHE_ACTIONS_PATH }}\"],[\"retention-days\",14]]}].uses",
+      "path": "jobs.test-live-deploy-ci-tools.steps[name:\"Upload Buck2 cache evidence\"|action:\"actions/upload-artifact\"|content:{\"if\":\"${{ always() }}\",\"with\":[[\"if-no-files-found\",\"warn\"],[\"name\",\"buck2-cache-evidence-test-live-deploy-ci-tools-${{ github.run_attempt }}\"],[\"path\",\"${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}\\n${{ env.CI_BUCK2_CACHE_ACTIONS_PATH }}\\n${{ env.CI_BUCK2_CACHE_WARM99_PATH }}\\n${{ env.CI_BUCK2_CACHE_PROOF_MANIFEST_PATH }}\\n${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}.shard-index.json\\n${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}.shards/*.json\"],[\"retention-days\",90]]}].uses",
       "value": "actions/upload-artifact@v4"
     },
     {
@@ -606,7 +558,7 @@
       "workflow": "ci.yml",
       "job": "deploy-storybooks",
       "rule": "banned-action",
-      "path": "jobs.deploy-storybooks.steps[name:\"Upload Buck2 cache evidence\"|action:\"actions/upload-artifact\"|content:{\"if\":\"${{ always() }}\",\"with\":[[\"if-no-files-found\",\"warn\"],[\"name\",\"buck2-cache-evidence-deploy-storybooks-${{ github.run_attempt }}\"],[\"path\",\"${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}\\n${{ env.CI_BUCK2_CACHE_ACTIONS_PATH }}\"],[\"retention-days\",14]]}].uses",
+      "path": "jobs.deploy-storybooks.steps[name:\"Upload Buck2 cache evidence\"|action:\"actions/upload-artifact\"|content:{\"if\":\"${{ always() }}\",\"with\":[[\"if-no-files-found\",\"warn\"],[\"name\",\"buck2-cache-evidence-deploy-storybooks-${{ github.run_attempt }}\"],[\"path\",\"${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}\\n${{ env.CI_BUCK2_CACHE_ACTIONS_PATH }}\\n${{ env.CI_BUCK2_CACHE_WARM99_PATH }}\\n${{ env.CI_BUCK2_CACHE_PROOF_MANIFEST_PATH }}\\n${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}.shard-index.json\\n${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}.shards/*.json\"],[\"retention-days\",90]]}].uses",
       "value": "actions/upload-artifact@v4"
     },
     {
@@ -683,14 +635,6 @@
     },
     {
       "repository": "overengineeringstudio/effect-utils",
-      "workflow": "compiled-products.yml",
-      "job": "publish-compiled-products",
-      "rule": "banned-action",
-      "path": "jobs.publish-compiled-products.steps[name:\"Upload Buck2 cache evidence\"|action:\"actions/upload-artifact\"|content:{\"if\":\"${{ always() }}\",\"with\":[[\"if-no-files-found\",\"warn\"],[\"name\",\"buck2-cache-evidence-publish-compiled-products-${{ strategy.job-index }}-${{ github.run_attempt }}\"],[\"path\",\"${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}\\n${{ env.CI_BUCK2_CACHE_ACTIONS_PATH }}\"],[\"retention-days\",14]]}].uses",
-      "value": "actions/upload-artifact@v4"
-    },
-    {
-      "repository": "overengineeringstudio/effect-utils",
       "workflow": "empirical-proofs.yml",
       "job": "test-megarepo-cold-gc",
       "rule": "runner-fallback",
@@ -726,7 +670,7 @@
       "workflow": "empirical-proofs.yml",
       "job": "test-megarepo-cold-gc",
       "rule": "banned-action",
-      "path": "jobs.test-megarepo-cold-gc.steps[name:\"Upload Buck2 cache evidence\"|action:\"actions/upload-artifact\"|content:{\"if\":\"${{ always() }}\",\"with\":[[\"if-no-files-found\",\"warn\"],[\"name\",\"buck2-cache-evidence-test-megarepo-cold-gc-${{ github.run_attempt }}\"],[\"path\",\"${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}\\n${{ env.CI_BUCK2_CACHE_ACTIONS_PATH }}\"],[\"retention-days\",14]]}].uses",
+      "path": "jobs.test-megarepo-cold-gc.steps[name:\"Upload Buck2 cache evidence\"|action:\"actions/upload-artifact\"|content:{\"if\":\"${{ always() }}\",\"with\":[[\"if-no-files-found\",\"warn\"],[\"name\",\"buck2-cache-evidence-test-megarepo-cold-gc-${{ github.run_attempt }}\"],[\"path\",\"${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}\\n${{ env.CI_BUCK2_CACHE_ACTIONS_PATH }}\\n${{ env.CI_BUCK2_CACHE_WARM99_PATH }}\\n${{ env.CI_BUCK2_CACHE_PROOF_MANIFEST_PATH }}\\n${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}.shard-index.json\\n${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}.shards/*.json\"],[\"retention-days\",90]]}].uses",
       "value": "actions/upload-artifact@v4"
     },
     {
@@ -758,7 +702,7 @@
       "workflow": "empirical-proofs.yml",
       "job": "bootstrap-cold-proof",
       "rule": "banned-action",
-      "path": "jobs.bootstrap-cold-proof.steps[name:\"Upload Buck2 cache evidence\"|action:\"actions/upload-artifact\"|content:{\"if\":\"${{ always() }}\",\"with\":[[\"if-no-files-found\",\"warn\"],[\"name\",\"buck2-cache-evidence-bootstrap-cold-proof-${{ github.run_attempt }}\"],[\"path\",\"${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}\\n${{ env.CI_BUCK2_CACHE_ACTIONS_PATH }}\"],[\"retention-days\",14]]}].uses",
+      "path": "jobs.bootstrap-cold-proof.steps[name:\"Upload Buck2 cache evidence\"|action:\"actions/upload-artifact\"|content:{\"if\":\"${{ always() }}\",\"with\":[[\"if-no-files-found\",\"warn\"],[\"name\",\"buck2-cache-evidence-bootstrap-cold-proof-${{ github.run_attempt }}\"],[\"path\",\"${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}\\n${{ env.CI_BUCK2_CACHE_ACTIONS_PATH }}\\n${{ env.CI_BUCK2_CACHE_WARM99_PATH }}\\n${{ env.CI_BUCK2_CACHE_PROOF_MANIFEST_PATH }}\\n${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}.shard-index.json\\n${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}.shards/*.json\"],[\"retention-days\",90]]}].uses",
       "value": "actions/upload-artifact@v4"
     },
     {
@@ -798,7 +742,7 @@
       "workflow": "empirical-proofs.yml",
       "job": "devenv-perf",
       "rule": "banned-action",
-      "path": "jobs.devenv-perf.steps[name:\"Upload Buck2 cache evidence\"|action:\"actions/upload-artifact\"|content:{\"if\":\"${{ always() }}\",\"with\":[[\"if-no-files-found\",\"warn\"],[\"name\",\"buck2-cache-evidence-devenv-perf-${{ github.run_attempt }}\"],[\"path\",\"${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}\\n${{ env.CI_BUCK2_CACHE_ACTIONS_PATH }}\"],[\"retention-days\",14]]}].uses",
+      "path": "jobs.devenv-perf.steps[name:\"Upload Buck2 cache evidence\"|action:\"actions/upload-artifact\"|content:{\"if\":\"${{ always() }}\",\"with\":[[\"if-no-files-found\",\"warn\"],[\"name\",\"buck2-cache-evidence-devenv-perf-${{ github.run_attempt }}\"],[\"path\",\"${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}\\n${{ env.CI_BUCK2_CACHE_ACTIONS_PATH }}\\n${{ env.CI_BUCK2_CACHE_WARM99_PATH }}\\n${{ env.CI_BUCK2_CACHE_PROOF_MANIFEST_PATH }}\\n${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}.shard-index.json\\n${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}.shards/*.json\"],[\"retention-days\",90]]}].uses",
       "value": "actions/upload-artifact@v4"
     },
     {
@@ -838,7 +782,7 @@
       "workflow": "empirical-proofs.yml",
       "job": "nix-closure-sizes",
       "rule": "banned-action",
-      "path": "jobs.nix-closure-sizes.steps[name:\"Upload Buck2 cache evidence\"|action:\"actions/upload-artifact\"|content:{\"if\":\"${{ always() }}\",\"with\":[[\"if-no-files-found\",\"warn\"],[\"name\",\"buck2-cache-evidence-nix-closure-sizes-${{ github.run_attempt }}\"],[\"path\",\"${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}\\n${{ env.CI_BUCK2_CACHE_ACTIONS_PATH }}\"],[\"retention-days\",14]]}].uses",
+      "path": "jobs.nix-closure-sizes.steps[name:\"Upload Buck2 cache evidence\"|action:\"actions/upload-artifact\"|content:{\"if\":\"${{ always() }}\",\"with\":[[\"if-no-files-found\",\"warn\"],[\"name\",\"buck2-cache-evidence-nix-closure-sizes-${{ github.run_attempt }}\"],[\"path\",\"${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}\\n${{ env.CI_BUCK2_CACHE_ACTIONS_PATH }}\\n${{ env.CI_BUCK2_CACHE_WARM99_PATH }}\\n${{ env.CI_BUCK2_CACHE_PROOF_MANIFEST_PATH }}\\n${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}.shard-index.json\\n${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}.shards/*.json\"],[\"retention-days\",90]]}].uses",
       "value": "actions/upload-artifact@v4"
     },
     {
@@ -855,14 +799,6 @@
       "job": "main-source-shape",
       "rule": "banned-action",
       "path": "jobs.main-source-shape.steps[name:\"Upload CI measurements: source-shape\"|action:\"actions/upload-artifact\"|content:{\"if\":\"always()\",\"with\":[[\"if-no-files-found\",\"error\"],[\"name\",\"source-shape\"],[\"path\",\"tmp/source-shape-ci\\n!tmp/source-shape-ci/baseline/**\"],[\"retention-days\",14]]}].uses",
-      "value": "actions/upload-artifact@v4"
-    },
-    {
-      "repository": "overengineeringstudio/effect-utils",
-      "workflow": "empirical-proofs.yml",
-      "job": "main-source-shape",
-      "rule": "banned-action",
-      "path": "jobs.main-source-shape.steps[name:\"Upload Buck2 cache evidence\"|action:\"actions/upload-artifact\"|content:{\"if\":\"${{ always() }}\",\"with\":[[\"if-no-files-found\",\"warn\"],[\"name\",\"buck2-cache-evidence-main-source-shape-${{ github.run_attempt }}\"],[\"path\",\"${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}\\n${{ env.CI_BUCK2_CACHE_ACTIONS_PATH }}\"],[\"retention-days\",14]]}].uses",
       "value": "actions/upload-artifact@v4"
     },
     {
@@ -908,14 +844,6 @@
     {
       "repository": "overengineeringstudio/effect-utils",
       "workflow": "empirical-proofs.yml",
-      "job": "ci-measurements-report",
-      "rule": "banned-action",
-      "path": "jobs.ci-measurements-report.steps[name:\"Upload Buck2 cache evidence\"|action:\"actions/upload-artifact\"|content:{\"if\":\"${{ always() }}\",\"with\":[[\"if-no-files-found\",\"warn\"],[\"name\",\"buck2-cache-evidence-ci-measurements-report-${{ github.run_attempt }}\"],[\"path\",\"${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}\\n${{ env.CI_BUCK2_CACHE_ACTIONS_PATH }}\"],[\"retention-days\",14]]}].uses",
-      "value": "actions/upload-artifact@v4"
-    },
-    {
-      "repository": "overengineeringstudio/effect-utils",
-      "workflow": "empirical-proofs.yml",
       "job": "buck2-cache-join",
       "rule": "dynamic-runner",
       "path": "jobs.buck2-cache-join.runs-on",
@@ -934,7 +862,7 @@
       "workflow": "storybook-plays.yml",
       "job": "test-storybook-plays",
       "rule": "banned-action",
-      "path": "jobs.test-storybook-plays.steps[name:\"Upload Buck2 cache evidence\"|action:\"actions/upload-artifact\"|content:{\"if\":\"${{ always() }}\",\"with\":[[\"if-no-files-found\",\"warn\"],[\"name\",\"buck2-cache-evidence-test-storybook-plays-${{ github.run_attempt }}\"],[\"path\",\"${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}\\n${{ env.CI_BUCK2_CACHE_ACTIONS_PATH }}\"],[\"retention-days\",14]]}].uses",
+      "path": "jobs.test-storybook-plays.steps[name:\"Upload Buck2 cache evidence\"|action:\"actions/upload-artifact\"|content:{\"if\":\"${{ always() }}\",\"with\":[[\"if-no-files-found\",\"warn\"],[\"name\",\"buck2-cache-evidence-test-storybook-plays-${{ github.run_attempt }}\"],[\"path\",\"${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}\\n${{ env.CI_BUCK2_CACHE_ACTIONS_PATH }}\\n${{ env.CI_BUCK2_CACHE_WARM99_PATH }}\\n${{ env.CI_BUCK2_CACHE_PROOF_MANIFEST_PATH }}\\n${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}.shard-index.json\\n${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}.shards/*.json\"],[\"retention-days\",90]]}].uses",
       "value": "actions/upload-artifact@v4"
     },
     {
@@ -966,7 +894,7 @@
       "workflow": "storybook-preview-build.yml",
       "job": "build-storybooks",
       "rule": "banned-action",
-      "path": "jobs.build-storybooks.steps[name:\"Upload Buck2 cache evidence\"|action:\"actions/upload-artifact\"|content:{\"if\":\"${{ always() }}\",\"with\":[[\"if-no-files-found\",\"warn\"],[\"name\",\"buck2-cache-evidence-build-storybooks-${{ github.run_attempt }}\"],[\"path\",\"${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}\\n${{ env.CI_BUCK2_CACHE_ACTIONS_PATH }}\"],[\"retention-days\",14]]}].uses",
+      "path": "jobs.build-storybooks.steps[name:\"Upload Buck2 cache evidence\"|action:\"actions/upload-artifact\"|content:{\"if\":\"${{ always() }}\",\"with\":[[\"if-no-files-found\",\"warn\"],[\"name\",\"buck2-cache-evidence-build-storybooks-${{ github.run_attempt }}\"],[\"path\",\"${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}\\n${{ env.CI_BUCK2_CACHE_ACTIONS_PATH }}\\n${{ env.CI_BUCK2_CACHE_WARM99_PATH }}\\n${{ env.CI_BUCK2_CACHE_PROOF_MANIFEST_PATH }}\\n${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}.shard-index.json\\n${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}.shards/*.json\"],[\"retention-days\",90]]}].uses",
       "value": "actions/upload-artifact@v4"
     },
     {

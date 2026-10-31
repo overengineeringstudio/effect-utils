@@ -1,4 +1,35 @@
-import type { CacheLane } from './buck2-action-evidence.ts'
+import { coreCachePostures } from '../ci-workflow/buck2-cache-proof-policy.ts'
+import {
+  CI_JOB_NAMES,
+  ciJobCheckContexts,
+  STANDALONE_REQUIRED_CI_JOB_NAMES,
+  STORYBOOK_PREVIEW_BUILD_JOB_NAME,
+} from '../ci.ts'
+import { proofJobCell, type CacheLane } from './buck2-action-evidence.ts'
+
+const proofJobIdsByDisplayName: Readonly<Record<string, string | undefined>> = Object.fromEntries([
+  ...CI_JOB_NAMES.flatMap((job) =>
+    ciJobCheckContexts(job).map((name): [string, string] => [name, job]),
+  ),
+  ...[
+    ...Object.keys(coreCachePostures).filter(
+      (job) => CI_JOB_NAMES.some((known) => known === job) === false,
+    ),
+    ...STANDALONE_REQUIRED_CI_JOB_NAMES,
+    STORYBOOK_PREVIEW_BUILD_JOB_NAME,
+  ].map((job): [string, string] => [job, job]),
+])
+
+/** Resolve only declared workflow names; hash the full display name for execution-cell identity. */
+export const discoverProofJobIdentity = (
+  displayName: string,
+): { job: string; cell: string } | undefined => {
+  const job =
+    Object.hasOwn(proofJobIdsByDisplayName, displayName) === true
+      ? proofJobIdsByDisplayName[displayName]
+      : undefined
+  return job === undefined ? undefined : { job, cell: proofJobCell(displayName) }
+}
 
 export type EvidenceRun = {
   id: number
@@ -58,7 +89,8 @@ export const selectRuns = (
     let selectedCount = 0
     for (const candidates of byDay.values()) {
       if (lane === 'merge_group') candidates.sort((left, right) => left.id - right.id)
-      const limit = lane === 'main-writer' ? candidates.length : lane === 'merge_group' ? 50 : readerLimit
+      const limit =
+        lane === 'main-writer' ? candidates.length : lane === 'merge_group' ? 50 : readerLimit
       const count = Math.min(candidates.length, Math.max(0, Math.floor(limit)))
       for (let index = 0; index < count; index++) {
         const position =

@@ -104,9 +104,22 @@ const outcome = (value: unknown): CacheOutcome => {
   }
 }
 const grpcCodeNames = [
-  'OK', 'CANCELLED', 'UNKNOWN', 'INVALID_ARGUMENT', 'DEADLINE_EXCEEDED', 'NOT_FOUND',
-  'ALREADY_EXISTS', 'PERMISSION_DENIED', 'RESOURCE_EXHAUSTED', 'FAILED_PRECONDITION',
-  'ABORTED', 'OUT_OF_RANGE', 'UNIMPLEMENTED', 'INTERNAL', 'UNAVAILABLE', 'DATA_LOSS',
+  'OK',
+  'CANCELLED',
+  'UNKNOWN',
+  'INVALID_ARGUMENT',
+  'DEADLINE_EXCEEDED',
+  'NOT_FOUND',
+  'ALREADY_EXISTS',
+  'PERMISSION_DENIED',
+  'RESOURCE_EXHAUSTED',
+  'FAILED_PRECONDITION',
+  'ABORTED',
+  'OUT_OF_RANGE',
+  'UNIMPLEMENTED',
+  'INTERNAL',
+  'UNAVAILABLE',
+  'DATA_LOSS',
   'UNAUTHENTICATED',
 ]
 /** Accept only gRPC enum names or status numbers; never retain an arbitrary native string. */
@@ -170,7 +183,10 @@ export const decodeOutputTinyDigests = (value: unknown): OutputTinyDigests | und
     algorithm: 'buck2-tiny-digest-v1',
     outputs: list(field({ value, key: 'outputs' })).map((output, index) => {
       const tinyDigest = text(field({ value: output, key: 'tinyDigest' }))
-      if (integer(field({ value: output, key: 'index' })) !== index || /^[a-f0-9]{8}$/.test(tinyDigest) === false)
+      if (
+        integer(field({ value: output, key: 'index' })) !== index ||
+        /^[a-f0-9]{8}$/.test(tinyDigest) === false
+      )
         return invalid()
       return { index, tinyDigest }
     }),
@@ -197,6 +213,17 @@ const decodeAction = (value: unknown): ActionRecord => {
       value: field({ value: value, key: 'category' }),
       grammar: /^[a-zA-Z0-9_.-]+$/,
     }),
+    ...(field({ value, key: 'identifier' }) === undefined
+      ? {}
+      : {
+          identifier:
+            field({ value, key: 'identifier' }) === ''
+              ? ''
+              : nullableText({
+                  value: field({ value, key: 'identifier' }),
+                  grammar: /^identifier-sha256-v1:[a-f0-9]{64}$/,
+                }),
+        }),
     exclusionReason: actionExclusionReason(
       nullableText({
         value: field({ value: value, key: 'category' }),
@@ -304,6 +331,13 @@ export const decodeActionArtifact = (raw: string): ActionArtifact => {
         value: field({ value: metadata, key: 'job' }),
         grammar: /^[a-zA-Z0-9_.-]+$/,
       }),
+      cell:
+        field({ value: metadata, key: 'cell' }) === undefined
+          ? null
+          : nullableText({
+              value: field({ value: metadata, key: 'cell' }),
+              grammar: /^job-cell-sha256-v1:[a-f0-9]{64}$/,
+            }),
       lane: rawLane === null ? null : lane(rawLane),
       headSha: nullableText({
         value: field({ value: metadata, key: 'headSha' }),
@@ -328,23 +362,29 @@ export const decodeActionArtifact = (raw: string): ActionArtifact => {
     evidenceGaps: list(field({ value: value, key: 'evidenceGaps' })).map(
       (gap) => nullableText({ value: gap, grammar: /^[a-zA-Z0-9_.:-]+$/ }) ?? invalid(),
     ),
-    invocations: list(field({ value: value, key: 'invocations' })).map((item) => ({
-      buildId:
-        nullableText({
-          value: field({ value: item, key: 'buildId' }),
-          grammar: /^[a-zA-Z0-9_.-]+$/,
-        }) ?? invalid(),
-      context: nullableText({ value: field({ value: item, key: 'context' }) }),
-      startedAt: timestamp(field({ value: item, key: 'startedAt' })),
-      completedAt: timestamp(field({ value: item, key: 'completedAt' })),
-      freshRoot: boolean(field({ value: item, key: 'freshRoot' })),
-      actionCount: integer(field({ value: item, key: 'actionCount' })),
-      excludedByDesign:
-        field({ value: item, key: 'excludedByDesign' }) === undefined
-          ? zeroActionExclusionCounts()
-          : decodeActionExclusionCounts(field({ value: item, key: 'excludedByDesign' })),
-      complete: boolean(field({ value: item, key: 'complete' })),
-    })),
+    invocations: list(field({ value: value, key: 'invocations' })).map((item) => {
+      const invocation: ActionInvocation = {
+        buildId:
+          nullableText({
+            value: field({ value: item, key: 'buildId' }),
+            grammar: /^[a-zA-Z0-9_.-]+$/,
+          }) ?? invalid(),
+        context: nullableText({ value: field({ value: item, key: 'context' }) }),
+        startedAt: timestamp(field({ value: item, key: 'startedAt' })),
+        completedAt: timestamp(field({ value: item, key: 'completedAt' })),
+        freshRoot: boolean(field({ value: item, key: 'freshRoot' })),
+        actionCount: integer(field({ value: item, key: 'actionCount' })),
+        excludedByDesign:
+          field({ value: item, key: 'excludedByDesign' }) === undefined
+            ? zeroActionExclusionCounts()
+            : decodeActionExclusionCounts(field({ value: item, key: 'excludedByDesign' })),
+        complete: boolean(field({ value: item, key: 'complete' })),
+      }
+      const rootId = field({ value: item, key: 'rootId' })
+      if (rootId !== undefined)
+        invocation.rootId = nullableText({ value: rootId, grammar: /^[a-f0-9]{64}$/ }) ?? invalid()
+      return invocation
+    }),
   }
   const actions = values.map(decodeAction)
   // Retained artifacts predate policy fields; complete rows recover the same category policy.

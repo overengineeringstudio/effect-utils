@@ -2,7 +2,7 @@
 import { createHash } from 'node:crypto'
 import { mkdir, mkdtemp, rename, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 import { parseArgs } from 'node:util'
 
 import { NodeRuntime, NodeServices } from '@effect/platform-node'
@@ -13,10 +13,29 @@ import * as HttpClientRequest from 'effect/http/HttpClientRequest'
 import * as ChildProcess from 'effect/process/ChildProcess'
 import { ChildProcessSpawner } from 'effect/process/ChildProcessSpawner'
 
+import { coreProofDisabledJobIds } from '../ci-workflow/buck2-cache-proof-policy.ts'
+import {
+  apiBudgetAvailable,
+  artifactCanMatter,
+  classifyRun,
+  discoverProofJobIdentity,
+  selectRuns,
+  type EvidenceRun,
+} from './buck2-cache-join-discovery.ts'
+import {
+  DownloadLimitError,
+  makeDownloadBudget,
+  readBoundedBytes,
+} from './buck2-cache-join-download.ts'
 import { aggregate, previousUtcDay, renderPrometheus, renderOtlp } from './buck2-cache-join.ts'
+import {
+  planProofHistory,
+  selectProofRelevantRuns,
+  type ExpectedHistoryJob,
+  type HistorySource,
+} from './buck2-cache-proof-history.ts'
+import { writeBuck2CacheProofReports } from './buck2-cache-proof-reports.ts'
 import { decodeEvidence } from './buck2-cache-warm99.ts'
-import { apiBudgetAvailable, artifactCanMatter, classifyRun, selectRuns, type EvidenceRun } from './buck2-cache-join-discovery.ts'
-import { DownloadLimitError, makeDownloadBudget, readBoundedBytes } from './buck2-cache-join-download.ts'
 
 const limits = {
   runs: 1000,
@@ -26,8 +45,12 @@ const limits = {
   concurrency: 2,
 }
 class JoinError extends Schema.TaggedError<JoinError>()('JoinError', { message: Schema.String }) {}
-class BudgetError extends Schema.TaggedError<BudgetError>()('BudgetError', { message: Schema.String }) {}
-class RetryError extends Schema.TaggedError<RetryError>()('RetryError', { message: Schema.String }) {}
+class BudgetError extends Schema.TaggedError<BudgetError>()('BudgetError', {
+  message: Schema.String,
+}) {}
+class RetryError extends Schema.TaggedError<RetryError>()('RetryError', {
+  message: Schema.String,
+}) {}
 const failure = (message: string) => new JoinError({ message })
 const io = <A>(message: string, body: () => Promise<A>) =>
   Effect.tryPromise({
@@ -43,10 +66,33 @@ const Artifact = Schema.Struct({
   workflow_run: Schema.Struct({ id: Schema.Number }),
 })
 const Artifacts = Schema.Struct({ total_count: Schema.Number, artifacts: Schema.Array(Artifact) })
-const Runs = Schema.Struct({ workflow_runs: Schema.Array(Schema.Struct({
-  id: Schema.Number, event: Schema.String, head_branch: Schema.NullOr(Schema.String), created_at: Schema.String,
-})) })
-const evidenceWorkflows = ['ci.yml', 'empirical-proofs.yml', 'storybook-plays.yml', 'storybook-preview-build.yml']
+const Jobs = Schema.Struct({
+  total_count: Schema.Number,
+  jobs: Schema.Array(
+    Schema.Struct({
+      name: Schema.String,
+      run_attempt: Schema.Number,
+      conclusion: Schema.NullOr(Schema.String),
+      steps: Schema.Array(Schema.Struct({ name: Schema.String })),
+    }),
+  ),
+})
+const Runs = Schema.Struct({
+  workflow_runs: Schema.Array(
+    Schema.Struct({
+      id: Schema.Number,
+      event: Schema.String,
+      head_branch: Schema.NullOr(Schema.String),
+      created_at: Schema.String,
+    }),
+  ),
+})
+const evidenceWorkflows = [
+  'ci.yml',
+  'empirical-proofs.yml',
+  'storybook-plays.yml',
+  'storybook-preview-build.yml',
+]
 const Json = Schema.fromJsonString(Schema.Unknown)
 const ReportJson = Schema.fromJsonString(Schema.Unknown)
 
@@ -68,6 +114,8 @@ Prometheus output (default) uses gauges of window totals, not cumulative counter
 --previous-utc-day selects the previous complete UTC day [00:00Z,24:00Z).
 --otlp-spool writes an OTLP metrics chunk, timestamped at window end, for pipeline-export.
 Writers: main-writer and merge_group; only uploads completed before the reader starts qualify.
+--proof-directory retains full downloaded proof sources, authoritative run/job expectations,
+and warm99/proof reports; missing discovery or evidence remains an explicit proof gap.
 Limits: 31-day window, 1000 observed runs, 2000 artifacts, 80 MiB/ZIP, 2 GiB total.
 API safety: about 700 calls daily target, 800 maximum, stop at 200 remaining, two downloads with 250 ms pacing.
 Per UTC day: all main-writer runs; at most 50 evenly ID-spaced merge_group and 25 time-spaced main-reader/pr runs.
@@ -89,19 +137,30 @@ const readZip = Effect.fn('buck2-cache-join.read-zip')(function* (
     const handle = yield* spawner.spawn(
       ChildProcess.make(process.env.UNZIP_BIN ?? 'unzip', args, { stdout: 'pipe', stderr: 'pipe' }),
     )
-    const [stdout, , exitCode] = yield* Effect.all([
-      readBoundedBytes(handle.stdout, maxBytes).pipe(Effect.mapError((cause) =>
-        cause instanceof DownloadLimitError ? failure(cause.message) : cause)),
-      readBoundedBytes(handle.stderr, 64 * 1024).pipe(Effect.mapError((cause) =>
-        cause instanceof DownloadLimitError ? failure(cause.message) : cause)),
-      handle.exitCode,
-    ], { concurrency: 3 })
+    const [stdout, , exitCode] = yield* Effect.all(
+      [
+        readBoundedBytes(handle.stdout, maxBytes).pipe(
+          Effect.mapError((cause) =>
+            cause instanceof DownloadLimitError ? failure(cause.message) : cause,
+          ),
+        ),
+        readBoundedBytes(handle.stderr, 64 * 1024).pipe(
+          Effect.mapError((cause) =>
+            cause instanceof DownloadLimitError ? failure(cause.message) : cause,
+          ),
+        ),
+        handle.exitCode,
+      ],
+      { concurrency: 3 },
+    )
     if (exitCode !== 0) return yield* failure('Invalid evidence ZIP or unavailable platform unzip')
     return stdout
   })
-  const listing = yield* unzip(['-Z', '-1', archive], 64 * 1024)
+  // Proof bundles also retain bounded per-invocation shards. Only the two exact
+  // allowlisted legacy members below are read; no archive paths are extracted.
+  const listing = yield* unzip(['-Z', '-1', archive], 1024 * 1024)
   const names = new TextDecoder('utf-8', { fatal: true }).decode(listing).trimEnd().split('\n')
-  if (names.length > 16) return yield* failure('ZIP entry limit exceeded')
+  if (names.length > 4104) return yield* failure('ZIP entry limit exceeded')
   const members = new Map<string, Buffer>()
   for (const name of ['buck2-cache-evidence.json', 'buck2-cache-actions.jsonl.gz']) {
     if (names.filter((entry) => entry === name).length !== 1)
@@ -110,7 +169,9 @@ const readZip = Effect.fn('buck2-cache-join.read-zip')(function* (
     members.set(name, yield* unzip(['-p', archive, name], limits.artifactBytes))
   }
   return {
-    summary: new TextDecoder('utf-8', { fatal: true }).decode(members.get('buck2-cache-evidence.json')!),
+    summary: new TextDecoder('utf-8', { fatal: true }).decode(
+      members.get('buck2-cache-evidence.json')!,
+    ),
     actions: members.get('buck2-cache-actions.jsonl.gz')!,
   }
 })
@@ -126,6 +187,7 @@ const program = Effect.gen(function* () {
           format: { type: 'string' },
           'previous-utc-day': { type: 'boolean' },
           'otlp-spool': { type: 'string' },
+          'proof-directory': { type: 'string' },
           help: { type: 'boolean', short: 'h' },
         },
       }).values,
@@ -180,39 +242,64 @@ const program = Effect.gen(function* () {
     path: string,
     maxBytes: number,
   ) {
-    if (!apiBudgetAvailable({ calls: apiCalls, remaining: remaining === undefined ? undefined : remaining - limits.concurrency })) {
+    if (
+      !apiBudgetAvailable({
+        calls: apiCalls,
+        remaining: remaining === undefined ? undefined : remaining - limits.concurrency,
+      })
+    ) {
       budgetStopped = true
-      return yield* new BudgetError({ message: 'API budget exhausted: cap 800 or remaining floor 200' })
+      return yield* new BudgetError({
+        message: 'API budget exhausted: cap 800 or remaining floor 200',
+      })
     }
     // Reserve before yielding so concurrent requests cannot overrun the hard cap.
     apiCalls++
     yield* Effect.sleep('250 millis')
-    const response = yield* client.execute(
-      HttpClientRequest.get(`https://api.github.com/repos/${repo}${path}`).pipe(
-        HttpClientRequest.setHeaders({
-          Authorization: `Bearer ${token}`,
-          Accept: 'application/vnd.github+json',
-          'X-GitHub-Api-Version': '2022-11-28',
-          'User-Agent': 'buck2-cache-join',
-        }),
-      ),
-    ).pipe(
-      Effect.provideService(FetchHttpClient.RequestInit, { redirect: 'manual' }),
-      Effect.provideService(HttpClient.TracerDisabledWhen, () => true),
-      Effect.mapError(() => new RetryError({ message: 'GitHub transport failed' })),
-    )
+    const response = yield* client
+      .execute(
+        HttpClientRequest.get(`https://api.github.com/repos/${repo}${path}`).pipe(
+          HttpClientRequest.setHeaders({
+            Authorization: `Bearer ${token}`,
+            Accept: 'application/vnd.github+json',
+            'X-GitHub-Api-Version': '2022-11-28',
+            'User-Agent': 'buck2-cache-join',
+          }),
+        ),
+      )
+      .pipe(
+        Effect.provideService(FetchHttpClient.RequestInit, { redirect: 'manual' }),
+        Effect.provideService(HttpClient.TracerDisabledWhen, () => true),
+        Effect.mapError(() => new RetryError({ message: 'GitHub transport failed' })),
+      )
     const rateRemaining = response.headers['x-ratelimit-remaining']
-    if (rateRemaining !== undefined && /^\d+$/.test(rateRemaining)) remaining = Math.min(remaining ?? Infinity, Number(rateRemaining))
-    if (response.status === 429 || (response.status === 403 && remaining !== undefined && remaining <= 200)) {
+    if (rateRemaining !== undefined && /^\d+$/.test(rateRemaining))
+      remaining = Math.min(remaining ?? Infinity, Number(rateRemaining))
+    if (
+      response.status === 429 ||
+      (response.status === 403 && remaining !== undefined && remaining <= 200)
+    ) {
       budgetStopped = true
       return yield* new BudgetError({ message: 'GitHub API rate limit refused collection' })
     }
-    if (response.status >= 500) return yield* new RetryError({ message: `GitHub API ${path} returned HTTP ${response.status}` })
+    if (response.status >= 500)
+      return yield* new RetryError({
+        message: `GitHub API ${path} returned HTTP ${response.status}`,
+      })
     let payload = response
     if (response.status === 302) {
       const location = URL.parse(response.headers.location ?? '')
-      if (location === null || location.protocol !== 'https:' || location.username !== '' || location.password !== '' ||
-        !(location.hostname.endsWith('.blob.core.windows.net') || location.hostname.endsWith('.actions.githubusercontent.com') || location.hostname.endsWith('.githubusercontent.com')))
+      if (
+        location === null ||
+        location.protocol !== 'https:' ||
+        location.username !== '' ||
+        location.password !== '' ||
+        !(
+          location.hostname.endsWith('.blob.core.windows.net') ||
+          location.hostname.endsWith('.actions.githubusercontent.com') ||
+          location.hostname.endsWith('.githubusercontent.com')
+        )
+      )
         return yield* failure('GitHub artifact storage redirect rejected')
       // Signed storage URLs are not API calls; never forward GitHub credentials or trace headers.
       payload = yield* client.execute(HttpClientRequest.get(location.href)).pipe(
@@ -221,7 +308,8 @@ const program = Effect.gen(function* () {
         Effect.mapError(() => new RetryError({ message: 'Artifact transport failed' })),
       )
     }
-    if (payload.status >= 500) return yield* new RetryError({ message: `Artifact storage returned HTTP ${payload.status}` })
+    if (payload.status >= 500)
+      return yield* new RetryError({ message: `Artifact storage returned HTTP ${payload.status}` })
     if (payload.status < 200 || payload.status >= 300)
       return yield* failure(`GitHub artifact/API ${path} returned HTTP ${payload.status}`)
     return yield* readBoundedBytes(
@@ -230,12 +318,18 @@ const program = Effect.gen(function* () {
       path.startsWith('/actions/artifacts/') ? downloadBudget : undefined,
     ).pipe(
       Effect.mapError((cause) =>
-        cause instanceof DownloadLimitError ? failure(cause.message)
-          : cause instanceof JoinError ? cause : new RetryError({ message: 'Response transport failed' }),
+        cause instanceof DownloadLimitError
+          ? failure(cause.message)
+          : cause instanceof JoinError
+            ? cause
+            : new RetryError({ message: 'Response transport failed' }),
       ),
     )
   })
-  const request = Effect.fn('buck2-cache-join.github-request')(function* (path: string, maxBytes: number) {
+  const request = Effect.fn('buck2-cache-join.github-request')(function* (
+    path: string,
+    maxBytes: number,
+  ) {
     for (let attempt = 1; attempt <= 3; attempt++) {
       const result = yield* requestOnce(path, maxBytes).pipe(Effect.result)
       if (result._tag === 'Success') return result.success
@@ -252,10 +346,12 @@ const program = Effect.gen(function* () {
   const discovered: EvidenceRun[] = []
   for (const workflow of evidenceWorkflows) {
     for (let page = 1; ; page++) {
-      const created = encodeURIComponent(`${new Date(since).toISOString()}..${new Date(until - 1).toISOString()}`)
-      const result = yield* jsonRequest(`/actions/workflows/${workflow}/runs?created=${created}&per_page=100&page=${page}`).pipe(
-        Effect.flatMap(Schema.decodeUnknownEffect(Runs)), Effect.result,
+      const created = encodeURIComponent(
+        `${new Date(since).toISOString()}..${new Date(until - 1).toISOString()}`,
       )
+      const result = yield* jsonRequest(
+        `/actions/workflows/${workflow}/runs?created=${created}&per_page=100&page=${page}`,
+      ).pipe(Effect.flatMap(Schema.decodeUnknownEffect(Runs)), Effect.result)
       if (result._tag === 'Failure') {
         if (!(result.failure instanceof BudgetError)) return yield* result.failure
         unlabelledEvidenceGaps++
@@ -271,28 +367,88 @@ const program = Effect.gen(function* () {
     if (budgetStopped) break
   }
   const selection = selectRuns(discovered)
+  const proofDirectory =
+    options['proof-directory'] === undefined ? undefined : resolve(options['proof-directory'])
+  const proofRelevantRuns = selectProofRelevantRuns(discovered)
+  const expectedJobs: ExpectedHistoryJob[] = []
+  const proofCollectionGaps: string[] = []
+  if (proofDirectory !== undefined) {
+    yield* io('Cannot create proof directory', () => mkdir(proofDirectory, { recursive: true }))
+    for (const run of proofRelevantRuns) {
+      for (let page = 1; page <= 10; page++) {
+        const result = yield* jsonRequest(
+          `/actions/runs/${run.id}/jobs?filter=latest&per_page=100&page=${page}`,
+        ).pipe(Effect.flatMap(Schema.decodeUnknownEffect(Jobs)), Effect.result)
+        if (result._tag === 'Failure') {
+          proofCollectionGaps.push('job-discovery-unavailable')
+          break
+        }
+        for (const job of result.success.jobs) {
+          if (job.conclusion === null) proofCollectionGaps.push('workflow-job-not-complete')
+          const identity = discoverProofJobIdentity(job.name)
+          if (
+            job.conclusion === 'skipped' ||
+            job.steps.some((step) => step.name === 'Start Buck2 cache evidence window') !== true ||
+            (identity !== undefined && coreProofDisabledJobIds[identity.job] === true)
+          )
+            continue
+          if (identity === undefined || expectedJobs.length >= 128) {
+            proofCollectionGaps.push('job-discovery-bound-or-identity-gap')
+            continue
+          }
+          const { job: id, cell } = identity
+          if (
+            expectedJobs.some((expected) => expected.runId === run.id && expected.cell === cell) ===
+            true
+          )
+            proofCollectionGaps.push('job-discovery-ambiguous-cell')
+          expectedJobs.push({ runId: run.id, job: id, runAttempt: job.run_attempt, cell })
+        }
+        if (result.success.jobs.length < 100) break
+        if (page === 10) proofCollectionGaps.push('job-discovery-page-cap')
+      }
+    }
+  }
+  const historySources: HistorySource[] = []
+  let retainedProofBytes = 0
   const runs = new Set(selection.selected.map((run) => run.id))
   const selected: (typeof Artifact.Type)[] = []
   let artifactCount = 0
+  let metricArtifactCount = 0
   let skippedExpired = 0
   let skippedByPolicy = 0
-  for (const run of selection.selected) {
+  const collectionRuns = new Map(selection.selected.map((run) => [run.id, run]))
+  if (proofDirectory !== undefined)
+    for (const run of proofRelevantRuns) collectionRuns.set(run.id, run)
+  for (const run of collectionRuns.values()) {
     for (let page = 1; ; page++) {
-      const result = yield* jsonRequest(`/actions/runs/${run.id}/artifacts?per_page=100&page=${page}`).pipe(
-        Effect.flatMap(Schema.decodeUnknownEffect(Artifacts)), Effect.result,
-      )
+      const result = yield* jsonRequest(
+        `/actions/runs/${run.id}/artifacts?per_page=100&page=${page}`,
+      ).pipe(Effect.flatMap(Schema.decodeUnknownEffect(Artifacts)), Effect.result)
       if (result._tag === 'Failure') {
         if (!(result.failure instanceof BudgetError)) return yield* result.failure
-        unlabelledEvidenceGaps++
+        if (runs.has(run.id) === true) unlabelledEvidenceGaps++
         break
       }
       for (const artifact of result.success.artifacts) {
         if (!artifact.name.startsWith('buck2-cache-evidence-')) continue
         artifactCount++
-        if (artifactCount > limits.artifacts) return yield* failure('Artifact cap hit; narrow the window')
-        if (artifact.expired) { skippedExpired++; unlabelledEvidenceGaps++; continue }
-        if (!artifactCanMatter(artifact.name)) { skippedByPolicy++; continue }
-        if (artifact.size_in_bytes > limits.artifactBytes) return yield* failure('Artifact byte cap hit')
+        if (runs.has(run.id) === true) metricArtifactCount++
+        if (artifactCount > limits.artifacts)
+          return yield* failure('Artifact cap hit; narrow the window')
+        if (artifact.expired) {
+          if (runs.has(run.id) === true) {
+            skippedExpired++
+            unlabelledEvidenceGaps++
+          }
+          continue
+        }
+        if (!artifactCanMatter(artifact.name)) {
+          if (runs.has(run.id) === true) skippedByPolicy++
+          continue
+        }
+        if (artifact.size_in_bytes > limits.artifactBytes)
+          return yield* failure('Artifact byte cap hit')
         selected.push(artifact)
       }
       if (result.success.artifacts.length < 100) break
@@ -332,6 +488,58 @@ const program = Effect.gen(function* () {
             })
             const lane = evidence.header.metadata.lane
             if (lane === null) return undefined
+            if (
+              proofDirectory !== undefined &&
+              evidence.header.metadata.repo === repo &&
+              evidence.header.metadata.runId === String(artifact.workflow_run.id)
+            ) {
+              if (
+                expectedJobs.some(
+                  (job) =>
+                    job.runId === artifact.workflow_run.id &&
+                    job.job === evidence.header.metadata.job &&
+                    String(job.runAttempt) === evidence.header.metadata.runAttempt &&
+                    job.cell === evidence.header.metadata.cell,
+                ) === true
+              ) {
+                const size = Buffer.byteLength(files.summary) + files.actions.length
+                if (historySources.length >= 128 || retainedProofBytes + size > 128 * 1024 * 1024)
+                  proofCollectionGaps.push('proof-retention-bound-exceeded')
+                else if (
+                  evidence.header.metadata.job !== null &&
+                  evidence.header.metadata.cell !== null &&
+                  evidence.header.metadata.cell !== undefined
+                ) {
+                  retainedProofBytes += size
+                  const destination = join(proofDirectory, 'sources', String(artifact.id))
+                  yield* io('Cannot retain authoritative proof source', async () => {
+                    await mkdir(destination, { recursive: true })
+                    await writeFile(join(destination, 'buck2-cache-evidence.json'), files.summary)
+                    await writeFile(
+                      join(destination, 'buck2-cache-actions.jsonl.gz'),
+                      files.actions,
+                    )
+                  })
+                  const nativeStarts = evidence.header.invocations.flatMap((invocation) =>
+                    invocation.startedAt === null ? [] : [invocation.startedAt],
+                  )
+                  historySources.push({
+                    id: artifact.id,
+                    runId: artifact.workflow_run.id,
+                    runAttempt: Number(evidence.header.metadata.runAttempt),
+                    lane,
+                    job: evidence.header.metadata.job,
+                    cell: evidence.header.metadata.cell,
+                    trustedWriter: evidence.header.metadata.posture === 'writer',
+                    startedAt:
+                      nativeStarts.length > 0
+                        ? Math.min(...nativeStarts)
+                        : evidence.header.metadata.startedAt,
+                    finishedAt: evidence.header.metadata.finishedAt,
+                  })
+                }
+              }
+            }
             return {
               artifact: evidence,
               lane,
@@ -350,7 +558,7 @@ const program = Effect.gen(function* () {
         }).pipe(Effect.result)
         if (result._tag === 'Success') return result.success
         if (result.failure instanceof BudgetError) {
-          unlabelledEvidenceGaps++
+          if (runs.has(artifact.workflow_run.id) === true) unlabelledEvidenceGaps++
           return undefined
         }
         // Resource caps must never become a partial, apparently successful day.
@@ -359,7 +567,7 @@ const program = Effect.gen(function* () {
           /cap hit|cap exceeded|limit exceeded/.test(result.failure.message)
         )
           return yield* result.failure
-        unlabelledEvidenceGaps++
+        if (runs.has(artifact.workflow_run.id) === true) unlabelledEvidenceGaps++
         return undefined
       }),
     { concurrency: limits.concurrency },
@@ -367,19 +575,91 @@ const program = Effect.gen(function* () {
   const report = aggregate({
     repo,
     runs: runs.size,
-    artifacts: artifactCount,
-    observations: observations.filter((value) => value !== undefined),
+    artifacts: metricArtifactCount,
+    observations: observations
+      .filter((value) => value !== undefined)
+      .filter((value) => runs.has(Number(value.runId))),
     windowEndTimestampSeconds: until / 1000,
     unlabelledEvidenceGaps,
     samples: selection.lanes.map((sample) => ({
       ...sample,
-      artifacts: selected.filter((artifact) => selection.selected.some((run) =>
-        run.id === artifact.workflow_run.id && classifyRun(run) === sample.lane)).length,
+      artifacts: selected.filter((artifact) =>
+        selection.selected.some(
+          (run) => run.id === artifact.workflow_run.id && classifyRun(run) === sample.lane,
+        ),
+      ).length,
     })),
   })
-  const relevantArtifacts = observations.filter((value) => value !== undefined).length
-  const outputReport = { ...report, collection: { api_calls: apiCalls, remaining, budget_stopped: budgetStopped, selected_artifacts: selected.length, relevant_artifacts: relevantArtifacts, skipped_expired: skippedExpired, skipped_by_policy: skippedByPolicy } }
-  if (budgetStopped) process.stderr.write('buck2-cache-join: API budget stopped collection; unexamined artifacts are evidence gaps (cap=800 floor=200)\n')
+  const relevantArtifacts = observations.filter(
+    (value) => value !== undefined && runs.has(Number(value.runId)),
+  ).length
+  const outputReport = {
+    ...report,
+    collection: {
+      api_calls: apiCalls,
+      remaining,
+      budget_stopped: budgetStopped,
+      selected_artifacts: selected.length,
+      relevant_artifacts: relevantArtifacts,
+      skipped_expired: skippedExpired,
+      skipped_by_policy: skippedByPolicy,
+    },
+  }
+  if (budgetStopped)
+    process.stderr.write(
+      'buck2-cache-join: API budget stopped collection; unexamined artifacts are evidence gaps (cap=800 floor=200)\n',
+    )
+  if (proofDirectory !== undefined) {
+    const planned = planProofHistory({
+      runs: proofRelevantRuns,
+      sources: historySources,
+      expectedJobs,
+    })
+    const manifestPath = join(proofDirectory, 'buck2-cache-warm99-observations.json')
+    yield* io('Cannot publish authoritative historical proof', async () => {
+      await writeFile(
+        manifestPath,
+        `${JSON.stringify({ ...planned.manifest, nixSubstitutionEvidence: 'unavailable' }, null, 2)}\n`,
+      )
+      const first = historySources[0]
+      const summaryPath = join(proofDirectory, 'buck2-cache-evidence.json')
+      const actionsPath = join(proofDirectory, 'buck2-cache-actions.jsonl.gz')
+      if (first !== undefined) {
+        await Bun.write(
+          summaryPath,
+          Bun.file(join(proofDirectory, 'sources', String(first.id), 'buck2-cache-evidence.json')),
+        )
+        await Bun.write(
+          actionsPath,
+          Bun.file(
+            join(proofDirectory, 'sources', String(first.id), 'buck2-cache-actions.jsonl.gz'),
+          ),
+        )
+      }
+      await writeBuck2CacheProofReports({
+        summaryPath,
+        actionsPath,
+        manifestPath,
+        expectedJobs,
+        nixSubstitutionObserved: false,
+        collectionEvidenceGaps: [
+          ...proofCollectionGaps,
+          ...planned.evidenceGaps,
+          ...(budgetStopped === true ? ['artifact-collection-incomplete'] : []),
+        ],
+      })
+      const acceptance: unknown = await Bun.file(
+        join(proofDirectory, 'buck2-cache-warm99.json'),
+      ).json()
+      if (
+        typeof acceptance !== 'object' ||
+        acceptance === null ||
+        !('accepted' in acceptance) ||
+        acceptance.accepted !== true
+      )
+        process.exitCode = 1
+    })
+  }
   if (options['otlp-spool'] !== undefined) {
     const directory = options['otlp-spool']
     const body = yield* Schema.encodeEffect(ReportJson)(renderOtlp(report))

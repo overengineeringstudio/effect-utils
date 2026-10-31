@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url'
 
 import { standaloneCachePostureConfig } from '../../scripts/buck2-cache-posture.ts'
 import { requiredCIJobs } from '../ci.ts'
+import { coreProofDisabledJobIds } from './buck2-cache-proof-policy.ts'
 
 type GeneratedWorkflow = {
   env?: Record<string, string>
@@ -110,6 +111,26 @@ const scenarios = [
 ]
 
 describe('generated CI cache trust behavior', () => {
+  it('keeps source-shape outside native proof production and expected membership', async () => {
+    for (const [filename, jobId] of [
+      ['ci.yml', 'source-shape'],
+      ['empirical-proofs.yml', 'main-source-shape'],
+      ['empirical-proofs.yml', 'ci-measurements-report'],
+    ] as const) {
+      const workflow = await readWorkflow(filename)
+      const job = workflow.jobs[jobId]!
+      expect(coreProofDisabledJobIds[jobId]).toBe(true)
+      expect(job.env?.BUCK2_NO_REMOTE_CACHE).toBe('1')
+      expect(job.env?.CI_BUCK2_CACHE_EVIDENCE_DISABLED).toBe('1')
+      expect(job.env?.CI_BUCK2_CACHE_EVIDENCE_START).toBeUndefined()
+      expect(job.env?.CI_BUCK2_CACHE_PROOF_MANIFEST_PATH).toBeUndefined()
+      expect(job.steps.some((step) => step.name?.includes('Buck2 cache evidence'))).toBe(false)
+      expect(
+        job.steps.some((step) => String(step.with?.name ?? '').startsWith('buck2-cache-evidence-')),
+      ).toBe(false)
+    }
+  })
+
   it('enables opportunistic uploads only with a protected main or queue event and step-local credential', async () => {
     for (const filename of ['ci.yml', 'storybook-plays.yml']) {
       const workflow = await readWorkflow(filename)
@@ -525,7 +546,7 @@ describe('generated CI cache trust behavior', () => {
     }
   })
 
-  it('uploads both native evidence artifacts for every decorated workflow job', async () => {
+  it('uploads full native evidence and sanitized proof artifacts for every decorated workflow job', async () => {
     for (const filename of [
       'ci.yml',
       'compiled-products.yml',
@@ -546,9 +567,16 @@ describe('generated CI cache trust behavior', () => {
         expect(uploads).toHaveLength(1)
         expect(uploads[0]?.if).toBe('${{ always() }}')
         expect(String(uploads[0]?.with?.path).trimEnd()).toBe(
-          '${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}\n${{ env.CI_BUCK2_CACHE_ACTIONS_PATH }}',
+          [
+            '${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}',
+            '${{ env.CI_BUCK2_CACHE_ACTIONS_PATH }}',
+            '${{ env.CI_BUCK2_CACHE_WARM99_PATH }}',
+            '${{ env.CI_BUCK2_CACHE_PROOF_MANIFEST_PATH }}',
+            '${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}.shard-index.json',
+            '${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}.shards/*.json',
+          ].join('\n'),
         )
-        expect(uploads[0]?.with?.['retention-days']).toBe(14)
+        expect(uploads[0]?.with?.['retention-days']).toBe(90)
       }
     }
   })

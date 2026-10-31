@@ -60,6 +60,34 @@ ln -s "$node_path" "$scratch/ambient/g1-proof-node"
 export PATH="$scratch/ambient:$PATH"
 # Prove B is executable in the exact parent environment inherited by the daemon.
 [ "$(g1-proof-node --eval 'process.stdout.write("tool-b-executed")')" = tool-b-executed ]
+
+# Native event sinks are independent of log rotation. Each wiped materializer
+# has its own opaque root incarnation, and failed commands still finalize evidence.
+run_identity_build() {
+  local phase="$1" status=0 build_id native_id root_id
+  shift
+  build_id="$("$bun" -e 'console.log(crypto.randomUUID())')"
+  root_id="$("$bun" -e 'import {createHash} from "node:crypto"; console.log(createHash("sha256").update(crypto.randomUUID()).digest("hex"))')"
+  native_id="$scratch/$phase.trace"
+  if [ -n "${CI_BUCK2_CACHE_EVIDENCE_PATH:-}" ]; then
+    native_id="$("$bun" "$source_root/genie/ci-scripts/buck2-cache-evidence.ts" --output "$CI_BUCK2_CACHE_EVIDENCE_PATH" --register-native "$build_id")"
+  fi
+  local sink="$scratch/logs/$phase.json-lines"
+  : > "$sink"
+  BUCK_WRAPPER_UUID="$build_id" CI_BUCK2_CACHE_EVIDENCE_PATH="" "$buck" build \
+    --event-log "$sink" --write-build-id "$native_id" "$@" || status=$?
+  mv "$sink" "$scratch/logs/$phase.jsonl"
+  if [ -n "${CI_BUCK2_CACHE_EVIDENCE_PATH:-}" ]; then
+    if ! "$bun" "$source_root/genie/ci-scripts/buck2-cache-evidence.ts" \
+      --output "$CI_BUCK2_CACHE_EVIDENCE_PATH" --write-shard "$scratch/logs/$phase.jsonl" \
+      --shard-build-id "$build_id" --native-exit-code "$status" --root-id "$root_id" \
+      --context "capability-identity-$phase" --fresh-root >/dev/null; then
+      "$bun" "$source_root/genie/ci-scripts/buck2-cache-evidence.ts" --output "$CI_BUCK2_CACHE_EVIDENCE_PATH" --evidence-gap proof-evidence-capture-failed || true
+      if [ "$status" -eq 0 ]; then return 1; fi
+    fi
+  fi
+  return "$status"
+}
 for phase in baseline selected unused action-env; do
   # No local action state may hide an unchanged action: all four native outcomes
   # must be emitted again (and must be remote hits in the trusted writer proof).
@@ -68,19 +96,12 @@ for phase in baseline selected unused action-env; do
   cp -R "$profiles/$phase" "$fixture/.buck2/capabilities"
   (
     cd "$fixture"
-    "$buck" build --local-only --config buck2.file_watcher=notify \
-      --write-build-id "$scratch/$phase.trace" \
+    run_identity_build "$phase" --local-only --config buck2.file_watcher=notify \
       effect_utils//buck2/tests/capability_identity:selected \
       effect_utils//buck2/tests/capability_identity:unselected \
       effect_utils//buck2/tests/capability_identity:dependency_negative \
       effect_utils//buck2/tests/capability_identity:dependency_positive
-    "$buck" log show --trace-id "$(cat "$scratch/$phase.trace")" >"$scratch/logs/$phase.jsonl"
   )
-  if [ -n "${CI_BUCK2_CACHE_EVIDENCE_PATH:-}" ]; then
-    "$bun" "$source_root/genie/ci-scripts/buck2-cache-evidence.ts" \
-      --events "$scratch/logs/$phase.jsonl" --output "$CI_BUCK2_CACHE_EVIDENCE_PATH" \
-      --context "capability-identity-$phase" --fresh-root
-  fi
 done
 # A remote cached success is not evidence that the dependency check executed in
 # this parent PATH. Force a separate cold native run with remote reads disabled.
@@ -88,11 +109,9 @@ done
 rm -rf "$fixture/buck-out"
 (
   cd "$fixture"
-  "$buck" build --local-only --no-remote-cache --config buck2.file_watcher=notify \
+  run_identity_build dependency --local-only --no-remote-cache --config buck2.file_watcher=notify \
     --config buck2.remote_cache_enabled=false \
-    --write-build-id "$scratch/dependency.trace" \
     effect_utils//buck2/tests/capability_identity:dependency_negative \
     effect_utils//buck2/tests/capability_identity:dependency_positive
-  "$buck" log show --trace-id "$(cat "$scratch/dependency.trace")" >"$scratch/logs/dependency.jsonl"
 )
 "$bun" "$source_root/scripts/buck2-capability-identity-proof.ts" assert "$scratch/logs" "$evidence" "${require_remote_hits[@]}"

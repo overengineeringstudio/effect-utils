@@ -729,11 +729,13 @@ describe('Linux Nix sandbox fallback', () => {
         )
       }
     }
-    for (const name of ['Start Buck2 cache evidence window', pipelineIdentityStepName]) {
-      // Every checkout-dependent wrapper must attach after, not ahead of, admission.
-      const step = job.steps.findIndex((entry) => entry.name === name)
-      expect(step, name).toBeGreaterThan(verdict)
-    }
+    // Proof-disabled policy jobs retain pipeline identity after admission, but
+    // must not add a native-evidence window for commands they never execute.
+    const identity = job.steps.findIndex((entry) => entry.name === pipelineIdentityStepName)
+    expect(identity).toBeGreaterThan(verdict)
+    expect(job.steps.some((entry) => entry.name === 'Start Buck2 cache evidence window')).toBe(
+      false,
+    )
   })
 
   it('denies pipeline close local-flake execution on forks and failed source admission', () => {
@@ -858,7 +860,6 @@ describe('CI execution admission cleanup', () => {
       'build-products': 'job',
       'publish-products': 'job',
       'trusted-buck2-remote-cache-proof': 'job',
-      'publish-compiled-products': 'job',
       'ci-measurements-report': 'job',
       'pipeline-attempt-close': 'step',
     }
@@ -871,6 +872,9 @@ describe('CI execution admission cleanup', () => {
             /\b(?:always|failure|cancelled|success)\s*\(/.test(step.if ?? '') &&
             (step.run !== undefined || step.uses?.startsWith('./')),
         )
+        // This Nix-only publisher's former cleanup was solely native-proof
+        // collection; proof-disabled jobs must not recreate that local execution.
+        if (jobId === 'publish-compiled-products') expect(cleanup).toHaveLength(0)
         if (cleanup.length === 0) continue
         expect(independentRoutes[jobId], jobId).toBeDefined()
         seen.add(jobId)

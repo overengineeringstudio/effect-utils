@@ -1,13 +1,62 @@
 import { describe, expect, it } from 'bun:test'
 
+import { proofJobCell } from './buck2-action-evidence.ts'
 import {
   apiBudgetAvailable,
   artifactCanMatter,
   artifactInWindow,
   classifyRun,
+  discoverProofJobIdentity,
   type EvidenceRun,
   selectRuns,
 } from './buck2-cache-join-discovery.ts'
+
+describe('discoverProofJobIdentity', () => {
+  it('resolves PR display names to the declared workflow job IDs', () => {
+    expect(discoverProofJobIdentity('pr/quality')).toEqual({
+      job: 'quality',
+      cell: proofJobCell('pr/quality'),
+    })
+    expect(discoverProofJobIdentity('pr/buck2-tools')).toEqual({
+      job: 'pr-buck2-tools',
+      cell: proofJobCell('pr/buck2-tools'),
+    })
+  })
+
+  it('preserves full matrix display names as distinct cell identities', () => {
+    const linuxName = 'test (namespace-profile-linux-x86-64)'
+    const macosName = 'test (namespace-profile-macos-arm64)'
+    const linux = discoverProofJobIdentity(linuxName)
+    const macos = discoverProofJobIdentity(macosName)
+    expect(linux).toEqual({ job: 'test', cell: proofJobCell(linuxName) })
+    expect(macos).toEqual({ job: 'test-macos', cell: proofJobCell(macosName) })
+    expect(linux!.cell).not.toBe(macos!.cell)
+  })
+
+  it('resolves declared standalone evidence jobs without guessing display prefixes', () => {
+    for (const job of ['bootstrap-cold-proof', 'test-storybook-plays', 'build-storybooks']) {
+      expect(discoverProofJobIdentity(job)).toEqual({ job, cell: proofJobCell(job) })
+    }
+  })
+
+  it('fails closed for unknown display names and undeclared matrix cells', () => {
+    for (const name of [
+      '',
+      'future-job',
+      'ci/quality',
+      'quality',
+      'pr-buck2-tools',
+      'test',
+      'test-macos',
+      'test (unknown-runner)',
+      'pr/quality (unknown-cell)',
+      'constructor',
+      '__proto__',
+    ]) {
+      expect(discoverProofJobIdentity(name)).toBeUndefined()
+    }
+  })
+})
 
 describe('artifactCanMatter', () => {
   it('retains enabled and unknown evidence producers for download', () => {
@@ -184,16 +233,18 @@ describe('selectRuns', () => {
       }),
     )
     const result = selectRuns(runs)
-    const expectedIds = Array.from({ length: 50 }, (_, index) =>
-      1 + Math.floor((index * 115) / 49),
-    )
+    const expectedIds = Array.from({ length: 50 }, (_, index) => 1 + Math.floor((index * 115) / 49))
     expect(result.selected.map((run) => run.id).sort((a, b) => a - b)).toEqual(expectedIds)
     expect(result.lanes.find(({ lane }) => lane === 'merge_group')).toEqual({
-      lane: 'merge_group', seen: 116, selected: 50,
+      lane: 'merge_group',
+      seen: 116,
+      selected: 50,
     })
     expect(selectRuns([...runs].reverse())).toEqual(result)
     const nextDay = runs.map((run) => ({
-      ...run, id: run.id + 1000, created_at: run.created_at.replace('2026-10-20', '2026-10-21'),
+      ...run,
+      id: run.id + 1000,
+      created_at: run.created_at.replace('2026-10-20', '2026-10-21'),
     }))
     expect(selectRuns([...runs, ...nextDay]).selected).toHaveLength(100)
   })
@@ -201,7 +252,9 @@ describe('selectRuns', () => {
   it('applies reader limits independently to each UTC day', () => {
     const runs = Array.from({ length: 30 }, (_, index) => evidenceRun(index + 1))
     const nextDay = runs.map((run) => ({
-      ...run, id: run.id + 100, created_at: run.created_at.replace('2026-10-20', '2026-10-21'),
+      ...run,
+      id: run.id + 100,
+      created_at: run.created_at.replace('2026-10-20', '2026-10-21'),
     }))
     expect(selectRuns([...runs, ...nextDay]).selected).toHaveLength(50)
   })

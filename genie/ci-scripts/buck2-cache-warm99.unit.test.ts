@@ -229,7 +229,7 @@ describe('strict action boundary', () => {
 })
 describe('warm99 identity acceptance', () => {
   it('keeps materialization and Darwin TS outside eligible, cold, changed and upload-failure cohorts', () => {
-    for (const executionKind of [1, 3, 8, 10]) {
+    for (const executionKind of [1, 3, 8]) {
       const manifest = manifestFixture()
       const loaded = loadedFixture(manifest)
       for (const item of loaded) {
@@ -322,6 +322,51 @@ describe('warm99 identity acceptance', () => {
       expect(report.lanes[0]?.observations[0]?.evidenceGap).toBeGreaterThan(0)
     }
   })
+  it('preserves the recovered Linux bootstrap cohort: eight cold emits, policy work and noncommands', () => {
+    // Both recovered observations have this bootstrap shape in quality/weaver/test/store-gc.
+    // Identity-first and invocation-first rules coincide when there is only one invocation.
+    const manifest = manifestFixture()
+    const loaded = loadedFixture(manifest)
+    const policyCounts: Record<string, number> = {
+      pnpm_extract: 322,
+      pnpm_store_entry: 309,
+      pnpm_store_view: 10,
+      package_tree: 10,
+      pnpm_store_scc: 4,
+      runtime_module: 2,
+    }
+    for (const item of loaded)
+      item.readers = [
+        artifactFixture(false, [
+          ...Array.from({ length: 8 }, (_, index) =>
+            actionFixture({ category: 'tsgo_emit', target: `test//:emit-${index}` }),
+          ),
+          ...Object.entries(policyCounts).flatMap(([category, count]) =>
+            Array.from({ length: count }, (_, index) =>
+              actionFixture({
+                category,
+                target: `test//:policy-${category}-${index}`,
+                executionKind: 1,
+              }),
+            ),
+          ),
+          ...Array.from({ length: 718 }, () =>
+            actionFixture({ commandAction: false, digest: null, executionKind: 4 }),
+          ),
+        ]),
+      ]
+    for (const observation of evaluateWarm99({ manifest, loaded }).lanes[0]!.observations)
+      expect(observation).toMatchObject({
+        complete: true,
+        eligible: 0,
+        remoteHits: 0,
+        cold: 8,
+        changed: 0,
+        excluded: 657,
+        noncacheable: 718,
+        evidenceGap: 0,
+      })
+  })
   it('requires two observations for every lane and keeps Nix separate', () => {
     const manifest = manifestFixture(['main-reader', 'merge_group', 'pr'])
     const report = evaluateWarm99({ manifest: manifest, loaded: loadedFixture(manifest) })
@@ -348,17 +393,23 @@ describe('warm99 identity acceptance', () => {
       expect(report.lanes[0]?.observations[0]?.cold).toBe(1)
     }
   })
-  it('deduplicates identities and requires all reader occurrences remote including kind7', () => {
+  it('counts the first identity occurrence and excludes repetitions, never promoting local hits', () => {
     for (const kind of [3, 1, 7]) {
       const manifest = manifestFixture()
       const loaded = loadedFixture(manifest)
       for (const item of loaded)
         item.readers = [
-          artifactFixture(false, [actionFixture(), actionFixture({ executionKind: kind })]),
+          artifactFixture(false, [
+            actionFixture({ executionKind: kind, startedAt: 200 }),
+            actionFixture({ executionKind: 3, startedAt: 220, completedAt: 230, endTime: 230 }),
+          ]),
         ]
       const report = evaluateWarm99({ manifest: manifest, loaded: loaded })
-      expect(report.lanes[0]?.observations[0]?.eligible).toBe(1)
-      expect(report.lanes[0]?.observations[0]?.remoteHits).toBe(kind === 3 ? 1 : 0)
+      expect(report.lanes[0]?.observations[0]).toMatchObject({
+        eligible: 1,
+        remoteHits: kind === 3 ? 1 : 0,
+        excluded: 1,
+      })
       expect(report.accepted).toBe(kind === 3)
     }
   })
@@ -395,44 +446,343 @@ describe('warm99 identity acceptance', () => {
       }
       const report = evaluateWarm99({ manifest: manifest, loaded: loaded })
       expect(report.lanes[0]?.observations[0]).toMatchObject({
-        eligible: 1,
-        remoteHits: start === 50 ? 1 : 0,
+        eligible: start === 50 ? 1 : 2,
+        remoteHits: 1,
         cold: start === 50 ? 1 : 0,
       })
       expect(report.accepted).toBe(start === 50)
     }
   })
-  it('excludes later nonfresh invocations without invalidating the fresh first invocation', () => {
+  it('counts A once and new B in invocation two, independent of serialized row order', () => {
     const manifest = manifestFixture()
     const loaded = loadedFixture(manifest)
     for (const item of loaded) {
+      const writer = item.writers[0]!
+      writer.actions.push({ ...writer.actions[0]!, target: 'test//:B' })
+      writer.header.actionCount = writer.header.rows = 2
+      writer.header.invocations[0]!.actionCount = 2
       const reader = artifactFixture(false, [
-        actionFixture(),
-        actionFixture({ buildId: 'later', executionKind: 10, digest: null }),
+        actionFixture({
+          buildId: 'later',
+          target: 'test//:B',
+          startedAt: 250,
+          completedAt: 260,
+          endTime: 260,
+        }),
+        actionFixture({
+          buildId: 'later',
+          identifier: '',
+          executionKind: 10,
+          digest: null,
+          startedAt: 250,
+          completedAt: 260,
+          endTime: 260,
+        }),
+        actionFixture({ identifier: '' }),
       ])
-      const first = reader.header.invocations[0]
-      if (first === undefined) throw new Error('fixture')
+      const first = reader.header.invocations[0]!
       first.actionCount = 1
       for (const action of reader.actions)
         if (action.buildId === 'later') action.buildId = `${first.buildId}-later`
       reader.header.invocations.push({
+        ...first,
         buildId: `${first.buildId}-later`,
-        context: 'test',
         startedAt: 250,
-        completedAt: 300,
         freshRoot: false,
-        actionCount: 1,
-        excludedByDesign: { 'local-materialization-policy': 0, 'darwin-unsandboxed': 0 },
-        complete: true,
+        actionCount: 2,
       })
       item.readers = [reader]
     }
     const report = evaluateWarm99({ manifest: manifest, loaded: loaded })
     expect(report.accepted).toBe(true)
     expect(report.lanes[0]?.observations[0]).toMatchObject({
-      eligible: 1,
-      remoteHits: 1,
+      eligible: 2,
+      remoteHits: 2,
       excluded: 1,
+    })
+  })
+
+  it('counts a new identity normally when its inputs were executed locally in an earlier invocation', () => {
+    const manifest = manifestFixture()
+    const loaded = loadedFixture(manifest)
+    for (const item of loaded) {
+      const writer = item.writers[0]!
+      writer.actions.push({ ...writer.actions[0]!, target: 'test//:consumer' })
+      writer.header.actionCount = writer.header.rows = 2
+      writer.header.invocations[0]!.actionCount = 2
+      // The first command produces the consumer's declared input locally.
+      const reader = artifactFixture(false, [
+        actionFixture({ executionKind: 1 }),
+        actionFixture({
+          buildId: 'consumer',
+          target: 'test//:consumer',
+          startedAt: 250,
+          completedAt: 260,
+          endTime: 260,
+        }),
+      ])
+      const first = reader.header.invocations[0]!
+      first.actionCount = 1
+      for (const action of reader.actions)
+        if (action.buildId === 'consumer') action.buildId = `${first.buildId}-consumer`
+      reader.header.invocations.push({
+        ...first,
+        buildId: `${first.buildId}-consumer`,
+        startedAt: 250,
+        freshRoot: false,
+        actionCount: 1,
+      })
+      item.readers = [reader]
+    }
+    expect(
+      evaluateWarm99({ manifest: manifest, loaded: loaded }).lanes[0]?.observations[0],
+    ).toMatchObject({
+      complete: true,
+      eligible: 2,
+      remoteHits: 1,
+      excluded: 0,
+    })
+  })
+
+  it('treats a later command without native digest as a gap, including an unproven kind-10 key', () => {
+    for (const executionKind of [1, 3, 7, 10]) {
+      const manifest = manifestFixture()
+      const loaded = loadedFixture(manifest)
+      for (const item of loaded) {
+        const reader = artifactFixture(false, [
+          actionFixture({ identifier: '' }),
+          actionFixture({
+            buildId: 'later',
+            target: 'test//:new-key',
+            identifier: '',
+            executionKind,
+            digest: null,
+            startedAt: 250,
+            completedAt: 260,
+            endTime: 260,
+          }),
+        ])
+        const first = reader.header.invocations[0]!
+        first.actionCount = 1
+        for (const action of reader.actions)
+          if (action.buildId === 'later') action.buildId = `${first.buildId}-later`
+        reader.header.invocations.push({
+          ...first,
+          buildId: `${first.buildId}-later`,
+          startedAt: 250,
+          freshRoot: false,
+          actionCount: 1,
+        })
+        item.readers = [reader]
+      }
+      const report = evaluateWarm99({ manifest: manifest, loaded: loaded })
+      expect(report.accepted).toBe(false)
+      expect(report.lanes[0]?.observations[0]).toMatchObject({ complete: false, evidenceGap: 1 })
+    }
+  })
+  it('excludes a digestless kind-10 repetition after a digest-bearing local execution', () => {
+    const manifest = manifestFixture()
+    const loaded = loadedFixture(manifest)
+    for (const item of loaded) {
+      const reader = artifactFixture(false, [
+        actionFixture({ identifier: 'compile', executionKind: 1 }),
+        actionFixture({
+          buildId: 'later',
+          identifier: 'compile',
+          executionKind: 10,
+          digest: null,
+          startedAt: 250,
+          completedAt: 260,
+          endTime: 260,
+        }),
+      ])
+      const first = reader.header.invocations[0]!
+      first.actionCount = 1
+      for (const action of reader.actions)
+        if (action.buildId === 'later') action.buildId = `${first.buildId}-later`
+      reader.header.invocations.push({
+        ...first,
+        buildId: `${first.buildId}-later`,
+        startedAt: 250,
+        freshRoot: false,
+        actionCount: 1,
+      })
+      item.readers = [reader]
+    }
+    expect(evaluateWarm99({ manifest, loaded }).lanes[0]?.observations[0]).toMatchObject({
+      complete: true,
+      eligible: 1,
+      remoteHits: 0,
+      excluded: 1,
+      evidenceGap: 0,
+    })
+  })
+
+  it('does not reuse configured-key evidence across identifiers or root scopes', () => {
+    for (const mismatch of ['identifier', 'root', 'unknown-identifier']) {
+      const manifest = manifestFixture()
+      const loaded = loadedFixture(manifest)
+      for (const item of loaded) {
+        const reader = artifactFixture(false, [
+          actionFixture({ identifier: 'first', executionKind: 1 }),
+          actionFixture({
+            buildId: 'later',
+            identifier:
+              mismatch === 'identifier'
+                ? 'other'
+                : mismatch === 'unknown-identifier'
+                  ? null
+                  : 'first',
+            executionKind: 10,
+            digest: null,
+            startedAt: 250,
+            completedAt: 260,
+            endTime: 260,
+          }),
+        ])
+        const first = reader.header.invocations[0]!
+        first.rootId = 'a'.repeat(64)
+        first.actionCount = 1
+        for (const action of reader.actions)
+          if (action.buildId === 'later') action.buildId = `${first.buildId}-later`
+        reader.header.invocations.push({
+          ...first,
+          buildId: `${first.buildId}-later`,
+          rootId: (mismatch === 'root' ? 'b' : 'a').repeat(64),
+          startedAt: 250,
+          freshRoot: mismatch === 'root',
+          actionCount: 1,
+        })
+        item.readers = [reader]
+      }
+      expect(evaluateWarm99({ manifest, loaded }).lanes[0]?.observations[0]).toMatchObject({
+        complete: false,
+        evidenceGap: 1,
+      })
+    }
+  })
+
+  it('counts first occurrences independently in two explicitly attested roots', () => {
+    const manifest = manifestFixture()
+    const loaded = loadedFixture(manifest)
+    for (const item of loaded) {
+      const reader = artifactFixture(false, [
+        actionFixture(),
+        actionFixture({
+          buildId: 'second-root',
+          executionKind: 1,
+          startedAt: 250,
+          completedAt: 260,
+          endTime: 260,
+        }),
+      ])
+      const first = reader.header.invocations[0]!
+      first.rootId = 'a'.repeat(64)
+      first.actionCount = 1
+      for (const action of reader.actions)
+        if (action.buildId === 'second-root') action.buildId = `${first.buildId}-second-root`
+      reader.header.invocations.push({
+        ...first,
+        buildId: `${first.buildId}-second-root`,
+        rootId: 'b'.repeat(64),
+        startedAt: 250,
+        actionCount: 1,
+      })
+      item.readers = [reader]
+    }
+    expect(evaluateWarm99({ manifest, loaded }).lanes[0]?.observations[0]).toMatchObject({
+      complete: true,
+      eligible: 2,
+      remoteHits: 1,
+      excluded: 0,
+    })
+  })
+  it('preserves a 198/200 threshold across roots and scopes all diagnostic counts', () => {
+    const manifest = manifestFixture()
+    const loaded = loadedFixture(manifest)
+    for (const item of loaded) {
+      item.writers = [
+        artifactFixture(true, [
+          ...Array.from({ length: 100 }, (_, index) =>
+            actionFixture({
+              target: `test//:action-${index}`,
+              uploadOutcome: 'uploaded',
+              uploadCompletedAt: 100,
+              startedAt: 10,
+              completedAt: 100,
+            }),
+          ),
+          actionFixture({
+            target: 'test//:changed',
+            uploadOutcome: 'uploaded',
+            uploadCompletedAt: 100,
+            startedAt: 10,
+            completedAt: 100,
+          }),
+        ]),
+      ]
+      const perRoot = Array.from({ length: 2 }, (_, root) => [
+        ...Array.from({ length: 100 }, (_, index) =>
+          actionFixture({
+            target: `test//:action-${index}`,
+            buildId: root === 0 ? 'build' : 'second-root',
+            executionKind: root === 1 && index < 2 ? 1 : 3,
+          }),
+        ),
+        actionFixture({ target: 'test//:cold', buildId: root === 0 ? 'build' : 'second-root' }),
+        actionFixture({
+          target: 'test//:changed',
+          digest: 'changed:1',
+          buildId: root === 0 ? 'build' : 'second-root',
+        }),
+        actionFixture({
+          target: 'test//:noncacheable',
+          executionKind: 0,
+          buildId: root === 0 ? 'build' : 'second-root',
+        }),
+      ])
+      const reader = artifactFixture(false, perRoot.flat())
+      const first = reader.header.invocations[0]!
+      first.rootId = 'a'.repeat(64)
+      first.actionCount = perRoot[0]!.length
+      for (const action of reader.actions)
+        if (action.buildId === 'second-root') action.buildId = `${first.buildId}-second-root`
+      reader.header.invocations.push({
+        ...first,
+        buildId: `${first.buildId}-second-root`,
+        rootId: 'b'.repeat(64),
+      })
+      item.readers = [reader]
+    }
+    const report = evaluateWarm99({ manifest, loaded })
+    expect(report.accepted).toBe(true)
+    expect(report.lanes[0]?.observations[0]).toMatchObject({
+      complete: true,
+      eligible: 200,
+      remoteHits: 198,
+      hitRate: 0.99,
+      meetsThreshold: true,
+      cold: 2,
+      changed: 2,
+      noncacheable: 2,
+      excluded: 0,
+    })
+  })
+  it('keeps same-path roots in distinct reader artifacts independent', () => {
+    const manifest = manifestFixture()
+    for (const observation of manifest.observations)
+      observation.readers.push({
+        lane: 'main-reader',
+        summary: 'second-job.json',
+        actions: 'second-job.gz',
+      })
+    const loaded = loadedFixture(manifest)
+    for (const item of loaded)
+      for (const reader of item.readers) reader!.header.invocations[0]!.rootId = 'a'.repeat(64)
+    expect(evaluateWarm99({ manifest, loaded }).lanes[0]?.observations[0]).toMatchObject({
+      complete: true,
+      eligible: 2,
+      remoteHits: 2,
     })
   })
   it('missing digest, metadata, nonfresh invocation, and missing reader invalidate', () => {

@@ -430,6 +430,14 @@ test('daily cache join has read-only GitHub access and uses the previous-day met
   expect(JSON.stringify(job).match(/secrets\.[A-Z_]+/g)).toBeNull()
 })
 
+test('daily warm99 proof writes authoritative history and full observations locally', () => {
+  const job = empiricalWorkflow.data.jobs['buck2-cache-join']!
+  const join = job.steps.find((step) => step.name === 'Join previous UTC day cache evidence')
+  expect(join !== undefined && 'run' in join ? join.run : undefined).toContain(
+    '--proof-directory "$GITHUB_WORKSPACE/tmp/buck2-cache-history-proof"',
+  )
+})
+
 test('daily cache export postcheck follows telemetry export and fails on pending chunks', () => {
   const steps = empiricalWorkflow.data.jobs['buck2-cache-join']!.steps
   const exportIndex = steps.findIndex(

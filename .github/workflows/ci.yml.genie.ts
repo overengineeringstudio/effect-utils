@@ -55,6 +55,7 @@ import {
 } from '../../genie/ci-workflow.ts'
 import { withBuck2CacheEvidence } from '../../genie/ci-workflow/buck2-cache-evidence.ts'
 import { withBuck2CachePostures } from '../../genie/ci-workflow/buck2-cache-posture.ts'
+import { coreCachePostures } from '../../genie/ci-workflow/buck2-cache-proof-policy.ts'
 import {
   withPipelineTelemetry,
   pipelineCloseJob,
@@ -897,6 +898,12 @@ const jobs: Record<CoreCIJobName, CiWorkflowArgs['jobs'][string]> = {
               './genie/ci-scripts/buck2-action-evidence.integration.test.ts',
               './genie/ci-scripts/buck2-cache-warm99.unit.test.ts',
               './genie/ci-scripts/buck2-cache-warm99.integration.test.ts',
+              './genie/ci-scripts/buck2-cache-proof-reports.integration.test.ts',
+              './genie/ci-scripts/buck2-cache-proof-history.unit.test.ts',
+              './genie/ci-scripts/buck2-cache-shards.integration.test.ts',
+              './genie/ci-scripts/buck2-cache-join.unit.test.ts',
+              './genie/ci-scripts/buck2-cache-join-discovery.unit.test.ts',
+              './genie/ci-scripts/buck2-cache-join-download.unit.test.ts',
               './genie/ci-workflow/buck2-cache-evidence.unit.test.ts',
               './genie/ci-workflow/buck2-cache-posture.integration.test.ts',
             ].join(' '),
@@ -1733,7 +1740,7 @@ const extraJobs: Record<string, any> = {
       failureReminderStep,
     ],
   },
-  // Checkout exemption: source-shape measures actions-checkout bytes only; it runs no devenv/Buck.
+  // Checkout/native-proof exemption: measures checkout bytes only, with no devenv/Buck execution.
   'source-shape': {
     'runs-on': namespaceRunner({
       profile: 'namespace-profile-linux-x86-64',
@@ -2264,33 +2271,6 @@ export default ciWorkflow({
     },
     // Protected queue heads and fallback main pushes warm the cache opportunistically.
     // PR jobs never receive writer credentials; the dedicated main proof remains strict.
-    postures: {
-      'default-ref-policy': 'reader',
-      'tested-tree': 'reader',
-      quality: 'trusted-writer',
-      'pr-buck2-tools': 'reader',
-      test: 'trusted-writer',
-      'test-macos': 'trusted-writer',
-      'test-playwright-utils': 'trusted-writer',
-      'test-playwright-tui-react': 'trusted-writer',
-      'test-megarepo-store-gc': 'reader',
-      cargo: 'trusted-writer',
-      weaver: 'trusted-writer',
-      'source-shape': 'reader',
-      'test-integration-restate': 'trusted-writer',
-      'build-products': 'reader',
-      'pr-reviews-resolved': 'reader',
-      'test-integration-notion': 'reader',
-      'test-live-deploy-ci-tools': 'reader',
-      'deploy-storybooks': 'reader',
-      'publish-products': 'reader',
-      'consumer-smoke': 'reader',
-      'promote-published': 'none',
-      'notify-alignment': 'reader',
-      'trusted-buck2-remote-cache-proof': 'writer',
-      'pr-a-inert-buck': 'none',
-      'pipeline-attempt-close': 'reader',
-      'pipeline-traces': 'reader',
-    },
+    postures: coreCachePostures,
   }),
 } satisfies CiWorkflowArgs)

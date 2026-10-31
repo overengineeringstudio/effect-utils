@@ -8,6 +8,7 @@ import {
 import { withBuck2CacheEvidence } from '../../genie/ci-workflow/buck2-cache-evidence.ts'
 import { buck2CachePostureEnv } from '../../genie/ci-workflow/buck2-cache-posture.ts'
 import { effectUtilsWorkflowPolicy } from '../../genie/ci-workflow/policy.ts'
+import { STORYBOOK_PREVIEW_BUILD_JOB_NAME } from '../../genie/ci.ts'
 import {
   storybookPaths,
   storybookPreviewBuildWorkflowName,
@@ -28,7 +29,7 @@ export default ciWorkflow({
   },
   permissions: { contents: 'read' },
   jobs: withBuck2CacheEvidence({
-    'build-storybooks': {
+    [STORYBOOK_PREVIEW_BUILD_JOB_NAME]: {
       'runs-on': storybookPreviewRunner('trusted'),
       'timeout-minutes': 30,
       permissions: { contents: 'read' },

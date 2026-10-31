@@ -10,6 +10,8 @@ import {
   realpathSync,
   readdirSync,
   rmSync,
+  statSync,
+  symlinkSync,
   watch,
   writeFileSync,
 } from 'node:fs'
@@ -22,8 +24,10 @@ import type { CacheAdmissionInvocation } from '../genie/ci-scripts/buck2-cache-e
 import * as daemonPostureTests from './buck2-entrypoint.posture.integration.test.ts'
 import {
   type AdmissionProbeEndpoint,
+  createPrivateEvidenceSink,
   directBuckArguments,
   nativeBuildIdArguments,
+  runNativeWithEvidence,
 } from './buck2-entrypoint.ts'
 import * as gateUnitTests from './buck2-entrypoint.unit.test.ts'
 import * as gateIsolationTests from './buck2-gate-isolation.integration.test.ts'
@@ -234,6 +238,99 @@ afterEach(async () => {
 
 describe('native build ID registry', () => {
   const buildId = '00112233-4455-4677-8899-aabbccddeeff'
+  it('creates a private native FIFO without depending on the host command path', () => {
+    const root = fixture()
+    const sink = join(root, 'native.json-lines')
+    const previousPath = process.env.PATH
+    try {
+      process.env.PATH = join(root, 'no-host-utilities')
+      createPrivateEvidenceSink(sink)
+    } finally {
+      if (previousPath === undefined) delete process.env.PATH
+      else process.env.PATH = previousPath
+    }
+    expect(statSync(sink).isFIFO()).toBe(true)
+    expect(statSync(sink).mode & 0o777).toBe(0o600)
+    expect(() => createPrivateEvidenceSink(sink)).toThrow('Cannot create private evidence FIFO')
+  })
+
+  it.each([
+    { requested: ['build', '//:empty'] },
+    { requested: ['audit', 'providers', '//:empty'] },
+    { requested: ['run', '//:empty', '--', '--payload'] },
+    { requested: ['run', '//:empty', 'payload', '--flag'] },
+    { requested: ['run', '//:empty', 'payload', '--event-log', 'payload-sink'] },
+    { requested: ['run', '//:empty', '--', '--event-log', 'payload-sink'] },
+    { requested: ['build', '//:empty', '--event-log', 'CALLER_SINK'] },
+    { requested: ['build', '//:empty', '--event-log=CALLER_SINK'] },
+  ])(
+    'collects a real leaf-command sink with no Bun utility on PATH: $requested',
+    async ({ requested }) => {
+      const root = fixture()
+      const evidence = join(root, 'evidence.json')
+      symlinkSync(new URL('../genie', import.meta.url).pathname, join(root, 'genie'))
+      const native = join(root, 'native')
+      const event = (phase: string) => ({
+        Event: {
+          trace_id: buildId,
+          span_id: 1,
+          timestamp: [Math.floor(Date.now() / 1000), 0],
+          data: { [phase]: { data: { Command: {} } } },
+        },
+      })
+      const events =
+        [{ trace_id: buildId }, event('SpanStart'), event('SpanEnd')]
+          .map((value) => JSON.stringify(value))
+          .join('\n') + '\n'
+      writeFileSync(
+        native,
+        `#!${process.execPath}\nconst args = process.argv.slice(2); if (args[0] === 'log') { process.stdout.write(await Bun.file(args[2]).text()); process.exit(0); } await Bun.write(${JSON.stringify(join(root, 'native-args.json'))}, JSON.stringify(args)); const sink = args.findIndex(arg => arg === '--event-log' || arg.startsWith('--event-log=')); if (args.includes('audit') && sink < args.indexOf('providers')) process.exit(17); if (args.includes('--') && sink > args.indexOf('--')) process.exit(18); await Bun.write(args[sink].includes('=') ? args[sink].slice('--event-log='.length) : args[sink + 1], ${JSON.stringify(events)});\n`,
+        { mode: 0o700 },
+      )
+      const env = {
+        CI_BUCK2_CACHE_EVIDENCE_PATH: evidence,
+        CI_BUCK2_CACHE_EVIDENCE_START: join(root, 'evidence-start'),
+        BUCK_WRAPPER_UUID: buildId,
+      }
+      const args = nativeBuildIdArguments({
+        cwd: root,
+        args: requested.map((arg) => arg.replace('CALLER_SINK', join(root, 'caller.pb.zst'))),
+        env,
+      })
+      const previous = Object.fromEntries(
+        [...Object.keys(env), 'PATH', 'BUN_BIN'].map((key) => [key, process.env[key]]),
+      )
+      const exitCode = process.exitCode
+      try {
+        Object.assign(process.env, env)
+        process.env.PATH = join(root, 'no-host-utilities')
+        delete process.env.BUN_BIN
+        const result = await runNativeWithEvidence({ native, args, root })
+        expect(result?.exitCode).toBe(0)
+        expect(result?.signalCode).toBeNull()
+        const shard = JSON.parse(
+          readFileSync(join(`${evidence}.shards`, `${buildId}.json`), 'utf8'),
+        )
+        expect(shard.complete).toBe(true)
+        expect(JSON.parse(shard.artifact.trim()).actionCount).toBe(0)
+        if (requested[0] === 'run') {
+          const observed: string[] = JSON.parse(
+            readFileSync(join(root, 'native-args.json'), 'utf8'),
+          )
+          expect(observed.indexOf('--event-log')).toBeLessThan(observed.indexOf('//:empty'))
+          expect(observed.slice(observed.indexOf('//:empty') + 1)).toEqual(requested.slice(2))
+        }
+        if (requested.some((arg) => arg.includes('CALLER_SINK')) === true)
+          expect(readFileSync(join(root, 'caller.pb.zst'), 'utf8')).toBe(events)
+      } finally {
+        process.exitCode = exitCode
+        for (const [key, value] of Object.entries(previous)) {
+          if (value === undefined) delete process.env[key]
+          else process.env[key] = value
+        }
+      }
+    },
+  )
 
   it('does not register a foreign project root or non-default isolation', () => {
     const root = fixture()
@@ -430,9 +527,12 @@ describe('native build ID registry', () => {
     const result = nativeBuildIdArguments({ args, cwd: root, env })
     const path = `${evidence}.native-build-ids/${buildId}.buck-trace-id`
     expect(result).toEqual(['run', '--write-build-id', path, ...args.slice(1)])
-    expect(readFileSync(`${evidence}.native-build-id-paths.jsonl`, 'utf8')).toBe(
-      `${JSON.stringify({ buildId, path })}\n`,
-    )
+    expect(JSON.parse(readFileSync(`${evidence}.native-build-id-paths.jsonl`, 'utf8'))).toEqual({
+      buildId,
+      path,
+      startedAt: expect.any(Number),
+      priorMtimeMs: null,
+    })
     expect(existsSync(path)).toBe(false)
   })
 
@@ -455,6 +555,8 @@ describe('native build ID registry', () => {
       expect(JSON.parse(readFileSync(`${evidence}.native-build-id-paths.jsonl`, 'utf8'))).toEqual({
         buildId,
         path: join(root, 'caller.id'),
+        startedAt: expect.any(Number),
+        priorMtimeMs: null,
       })
       expect(existsSync(join(root, 'caller.id'))).toBe(false)
     })
@@ -492,6 +594,8 @@ describe('native build ID registry', () => {
     const root = fixture()
     const evidence = join(root, 'evidence.json')
     const native = join(root, 'native-build-id')
+    symlinkSync(join(import.meta.dir, '../genie'), join(root, 'genie'), 'dir')
+    symlinkSync(import.meta.dir, join(root, 'scripts'), 'dir')
     writeFileSync(
       native,
       `#!${process.execPath}
@@ -499,6 +603,9 @@ import { writeFileSync } from 'node:fs'
 const args = process.argv.slice(2)
 const path = args[args.indexOf('--write-build-id') + 1]
 writeFileSync(path, process.env.BUCK_WRAPPER_UUID + '\\n')
+const sink = args[args.indexOf('--event-log') + 1]
+const event = (phase) => ({ Event: { trace_id: process.env.BUCK_WRAPPER_UUID, span_id: 1, timestamp: [Math.floor(Date.now()/1000), 0], data: { [phase]: { data: { Command: {} } } } } })
+writeFileSync(sink, [event('SpanStart'), event('SpanEnd')].map(JSON.stringify).join('\\n') + '\\n')
 `,
       { mode: 0o700 },
     )
@@ -530,6 +637,103 @@ writeFileSync(path, process.env.BUCK_WRAPPER_UUID + '\\n')
 })
 
 describe('direct pinned Buck posture', () => {
+  it.each([
+    { stderrMode: 'inherit', termination: 'exit' },
+    { stderrMode: 'pipe', termination: 'exit' },
+    { stderrMode: 'inherit', termination: 'SIGTERM' },
+    { stderrMode: 'pipe', termination: 'SIGTERM' },
+  ])(
+    'preserves native evidence exit/signal and stderr bytes ($stderrMode, $termination)',
+    async ({ stderrMode, termination }) => {
+      const root = fixture()
+      const buildId = '11111111-2222-4333-8444-555555555555'
+      const evidence = join(root, 'evidence.json')
+      const native = join(root, 'native-result')
+      symlinkSync(new URL('../genie', import.meta.url).pathname, join(root, 'genie'))
+      const diagnostic = 'native stderr: \u001b[31mbytes\u001b[0m\n'
+      writeFileSync(
+        native,
+        `#!${process.execPath}
+import {writeFileSync,writeSync,appendFileSync} from 'node:fs';
+appendFileSync(${JSON.stringify(join(root, 'commands'))},'build\\n');
+const args=process.argv.slice(2),trace_id=process.env.BUCK_WRAPPER_UUID;
+const event=phase=>({Event:{trace_id,span_id:1,timestamp:[Math.floor(Date.now()/1000),0],data:{[phase]:{data:{Command:{}}}}}});
+writeFileSync(args[args.indexOf('--event-log')+1],[event('SpanStart'),event('SpanEnd')].map(JSON.stringify).join('\\n')+'\\n');
+writeSync(2,${JSON.stringify(diagnostic)});
+${termination === 'exit' ? 'process.exit(19)' : "process.kill(process.pid,'SIGTERM')"};
+`,
+        { mode: 0o700 },
+      )
+      const child = Bun.spawn(
+        [
+          process.execPath,
+          '-e',
+          `
+import {nativeBuildIdArguments,runNativeWithEvidence} from ${JSON.stringify(join(import.meta.dir, 'buck2-entrypoint.ts'))};
+const args=nativeBuildIdArguments({args:['build','//:empty'],cwd:process.cwd(),env:process.env});
+console.log(JSON.stringify(await runNativeWithEvidence({native:${JSON.stringify(native)},args,root:process.cwd(),stderr:${JSON.stringify(stderrMode)}})));
+`,
+        ],
+        {
+          cwd: root,
+          env: {
+            ...process.env,
+            BUCK_WRAPPER_UUID: buildId,
+            CI_BUCK2_CACHE_EVIDENCE_PATH: evidence,
+            CI_BUCK2_CACHE_EVIDENCE_START: join(root, 'evidence-start'),
+          },
+          stdout: 'pipe',
+          stderr: 'pipe',
+        },
+      )
+      const [stdout, stderr, code] = await Promise.all([
+        new Response(child.stdout).text(),
+        new Response(child.stderr).text(),
+        child.exited,
+      ])
+      expect(code, stderr).toBe(0)
+      expect(stderr).toBe(diagnostic)
+      const result = JSON.parse(stdout)
+      expect(result.exitCode).toBe(termination === 'exit' ? 19 : 143)
+      expect(result.signalCode).toBe(termination === 'exit' ? null : 'SIGTERM')
+      expect(result.output).toBe(stderrMode === 'pipe' && termination === 'exit' ? diagnostic : '')
+      expect(result.durationMs).toBeGreaterThanOrEqual(0)
+      expect(readFileSync(join(root, 'commands'), 'utf8')).toBe('build\n')
+      expect(
+        JSON.parse(readFileSync(`${evidence}.native-build-ids/${buildId}.exit.json`, 'utf8'))
+          .exitCode,
+      ).toBe(result.exitCode)
+    },
+  )
+
+  it('execves the native command when neither evidence nor reader shadow applies', async () => {
+    const root = fixture()
+    const native = join(root, 'native-exec')
+    writeFileSync(native, `#!${process.execPath}\nconsole.log(process.pid); process.exit(23)\n`, {
+      mode: 0o700,
+    })
+    const child = Bun.spawn(
+      [process.execPath, join(import.meta.dir, 'buck2-entrypoint.ts'), native, '--version'],
+      {
+        cwd: root,
+        env: {
+          PATH: process.env.PATH,
+          HOME: root,
+          BUCK2_STDIO_LIBRARY: process.env.BUCK2_STDIO_LIBRARY,
+        },
+        stdout: 'pipe',
+        stderr: 'pipe',
+      },
+    )
+    const [stdout, stderr, exitCode] = await Promise.all([
+      new Response(child.stdout).text(),
+      new Response(child.stderr).text(),
+      child.exited,
+    ])
+    expect(exitCode, stderr).toBe(23)
+    expect(Number(stdout.trim())).toBe(child.pid)
+  })
+
   for (const mode of ['source', 'compiled', 'missing-shim'] as const) {
     it(`preserves inherited stdio flags and complete large stderr after a launcher diagnostic (${mode})`, async () => {
       const root = fixture()
