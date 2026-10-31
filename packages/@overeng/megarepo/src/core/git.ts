@@ -699,7 +699,23 @@ export interface WorktreeRegistration {
   readonly path: string
   readonly head: string
   readonly branch: Option.Option<string>
+  readonly symbolicRef: Option.Option<string>
   readonly lockReason: Option.Option<string>
+}
+
+/** Only branch and detached identities fit the current budget receipt contract. */
+export const worktreeRegistrationRef = (
+  registration: WorktreeRegistration,
+): { ref: string; refType: 'heads' | 'commits' } | undefined => {
+  if (Option.isSome(registration.symbolicRef) === true) {
+    const ref = registration.symbolicRef.value
+    return ref.startsWith('refs/heads/') === true
+      ? { ref: ref.slice(11), refType: 'heads' }
+      : undefined
+  }
+  return /^[0-9a-f]{40,64}$/u.test(registration.head) === true
+    ? { ref: registration.head, refType: 'commits' }
+    : undefined
 }
 
 /** List registered worktrees while preserving Git's raw paths and lock reasons. */
@@ -717,7 +733,8 @@ export const listWorktrees = (repoPath: string) =>
         worktrees.push({
           path: current.path,
           head: current.head,
-          branch: Option.fromUndefinedOr(current.branch),
+          branch: Option.fromUndefinedOr(current.branch?.replace(/^refs\/heads\//u, '')),
+          symbolicRef: Option.fromUndefinedOr(current.branch),
           lockReason: Option.fromUndefinedOr(current.lockReason),
         })
       }
@@ -737,7 +754,7 @@ export const listWorktrees = (repoPath: string) =>
           } else if (line.startsWith('HEAD ') === true) {
             current.head = line.slice(5)
           } else if (line.startsWith('branch ') === true) {
-            current.branch = line.slice(7).replace('refs/heads/', '')
+            current.branch = line.slice(7)
           } else if (line === 'locked') {
             current.lockReason = ''
           } else if (line.startsWith('locked ') === true) {
