@@ -4,7 +4,7 @@
 # Projection source: packages/@overeng/alchemy-github/BUCK.genie.ts
 # Projection schema version: 13
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:92fd27910831ae542cdf3a3e14d16c601bdb70d323e4a308186481d444fdddac
+# Semantic fingerprint: sha256:49cdf0252f411aa8967d9b2bbf75b0f1bcb2dcf5943261ef4929f2e6a86f7aa2
 # Regenerate: devenv tasks run genie:run
 
 load("//buck2:materialization.bzl", "export_materialization_inputs", "package_view")
@@ -40,6 +40,7 @@ export_materialization_inputs([
     "src/RepoStateCredentials.ts",
     "src/RepoStateCredentials.unit.test.ts",
     "src/Ruleset.unit.test.ts",
+    "src/Sandbox.live.test.ts",
     "src/SealedBox.ts",
     "src/SecretSource.ts",
     "src/SecretSource.unit.test.ts",
@@ -108,6 +109,7 @@ package_view(
         "src/RepoStateCredentials.ts": "src/RepoStateCredentials.ts",
         "src/RepoStateCredentials.unit.test.ts": "src/RepoStateCredentials.unit.test.ts",
         "src/Ruleset.unit.test.ts": "src/Ruleset.unit.test.ts",
+        "src/Sandbox.live.test.ts": "src/Sandbox.live.test.ts",
         "src/SealedBox.ts": "src/SealedBox.ts",
         "src/SecretSource.ts": "src/SecretSource.ts",
         "src/SecretSource.unit.test.ts": "src/SecretSource.unit.test.ts",
@@ -154,6 +156,7 @@ package_view(
         "src/RepoStateCredentials.ts": "src/RepoStateCredentials.ts",
         "src/RepoStateCredentials.unit.test.ts": "src/RepoStateCredentials.unit.test.ts",
         "src/Ruleset.unit.test.ts": "src/Ruleset.unit.test.ts",
+        "src/Sandbox.live.test.ts": "src/Sandbox.live.test.ts",
         "src/SealedBox.ts": "src/SealedBox.ts",
         "src/SecretSource.ts": "src/SecretSource.ts",
         "src/SecretSource.unit.test.ts": "src/SecretSource.unit.test.ts",
@@ -200,6 +203,7 @@ package_view(
         "src/RepoStateCredentials.ts": "src/RepoStateCredentials.ts",
         "src/RepoStateCredentials.unit.test.ts": "src/RepoStateCredentials.unit.test.ts",
         "src/Ruleset.unit.test.ts": "src/Ruleset.unit.test.ts",
+        "src/Sandbox.live.test.ts": "src/Sandbox.live.test.ts",
         "src/SealedBox.ts": "src/SealedBox.ts",
         "src/SecretSource.ts": "src/SecretSource.ts",
         "src/SecretSource.unit.test.ts": "src/SecretSource.unit.test.ts",
@@ -261,6 +265,7 @@ vitest_test(
     package_tree = ":test_package_tree",
     excludes = [
         "src/App.live.test.ts",
+        "src/Sandbox.live.test.ts",
     ],
     visibility = ["PUBLIC"],
 )
@@ -270,6 +275,7 @@ vitest_collect(
     package_tree = ":test_package_tree",
     excludes = [
         "src/App.live.test.ts",
+        "src/Sandbox.live.test.ts",
     ],
     visibility = ["PUBLIC"],
 )
