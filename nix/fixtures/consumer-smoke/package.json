@@ -4,7 +4,7 @@
   },
   "license": "Apache-2.0",
   "name": "@fixture/consumer",
-  "packageManager": "pnpm@12.15.0",
+  "packageManager": "pnpm@12.17.0",
   "private": true,
   "schemaVersion": 1,
   "version": "1.0.0"

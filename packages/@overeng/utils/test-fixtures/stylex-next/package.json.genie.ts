@@ -13,7 +13,7 @@ export default packageJson({
   name: 'fixture-next',
   ...firstPartyPackageDefaults,
   private: true,
-  packageManager: 'pnpm@12.15.0',
+  packageManager: 'pnpm@12.17.0',
   dependencies: Object.fromEntries(
     ['next', 'react', 'react-dom', '@stylexjs/stylex', 'postcss'].map((name) => [
       name,
