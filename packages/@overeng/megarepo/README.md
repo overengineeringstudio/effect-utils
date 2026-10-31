@@ -235,6 +235,8 @@ signature, not merely a marker filename or a failed Git check. Seats/PTYs anywhe
 container veto all its outputs; direct process references protect only their containing output.
 Unknown evidence keeps. Repository output remains observation-only even with complete
 coverage: its liveness and registry contract never grants deletion authority.
+Repository admission supports kernel shared/exclusive flock controls, separate from Git writer
+locks. Controls persist: never unlink them, which would split ownership.
 Activation (`mr store lease`) and worktree creation acquire the canonical repository-container
 lease before the worktree lease. External tools must use this protocol before publishing
 coverage: registration or activation bypassing it cannot be excluded by registry observations.
