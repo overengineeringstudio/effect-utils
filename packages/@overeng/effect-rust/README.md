@@ -112,6 +112,11 @@ Source staging carries sources only, not a built runtime distribution. Choose
 one of these supported setups:
 
 - A bundler or TypeScript-aware runtime, such as Vite or Bun.
+- Vite SSR with `ssr.noExternal: ['@overeng/effect-rust', '@overeng/content-address']`,
+  including every source-staged package that imports `@overeng/effect-rust`.
+  Vite externalizes SSR dependencies by default; without this setting, Node
+  loads `src/*.ts` from `node_modules` and fails with
+  `ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING`.
 - Vitest with `test.server.deps.inline: ['@overeng/effect-rust']`, so the runtime
   sources are transformed rather than externalized.
 - Unbundled Node with a self-built runtime distribution (for example, a tsgo
