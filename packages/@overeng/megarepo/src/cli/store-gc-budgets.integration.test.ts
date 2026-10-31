@@ -633,7 +633,7 @@ if (inOwnerNamespace === false) {
 if (inOwnerNamespace === true && process.platform === 'linux')
   describe('mr store gc --budgets (build-output budgets acceptance)', () => {
     it.effect(
-      'repository outputs require coverage and authority, honor seats and exact process boundaries, and apply one root',
+      'repository output observes coverage, seats and process boundaries but is never deleted',
       Effect.fnUntraced(
         function* () {
           const f = yield* budgetFixture(['main'])
@@ -681,7 +681,7 @@ if (inOwnerNamespace === true && process.platform === 'linux')
           }
           yield* fs.writeFileString(f.manifestPath, encodeJson(idle))
           const eligible = planOk(f)
-          expect(row(eligible, output)?.outcome).toBe('would-delete')
+          expect(row(eligible, output)?.reason).toBe('repo-output-observation-only')
           for (const source of ['st3-seat', 'pty']) {
             yield* fs.writeFileString(
               f.manifestPath,
@@ -706,17 +706,10 @@ if (inOwnerNamespace === true && process.platform === 'linux')
           expect(row(planOk(f), output)?.reason).toBe('live')
           yield* Effect.promise(() => killHolder(direct))
           const adjacent = yield* holderIn(sibling)
-          expect(row(planOk(f), output)?.outcome).toBe('would-delete')
+          expect(row(planOk(f), output)?.reason).toBe('repo-output-observation-only')
           const applied = applyCandidate(f, { plan: planOk(f), path: output })
-          expect(applied.exitCode, applied.stderr).toBe(0)
-          expect(applied.plan?.results).toEqual([
-            expect.objectContaining({
-              kind: 'repo-build-output',
-              path: output,
-              outcome: 'deleted',
-            }),
-          ])
-          expect(yield* exists(output)).toBe(false)
+          expect(applied.exitCode).not.toBe(0)
+          expect(yield* exists(output)).toBe(true)
           expect(yield* exists(sibling)).toBe(true)
           yield* Effect.promise(() => killHolder(adjacent))
         },
