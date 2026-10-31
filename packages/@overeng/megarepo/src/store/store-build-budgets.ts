@@ -363,11 +363,16 @@ const boundedScan = <TScanResult>({
 
 const cargoOutputAuthority = (path: string) =>
   Effect.tryPromise(async () => {
-    const file = await open(`${path}/CACHEDIR.TAG`, constants.O_RDONLY | constants.O_NOFOLLOW)
+    const marker = `${path}/CACHEDIR.TAG`
+    if ((await lstat(marker)).isFile() === false) return false
+    const file = await open(
+      marker,
+      constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK,
+    )
     try {
+      if ((await file.stat()).isFile() === false) return false
       const { buffer, bytesRead } = await file.read({ buffer: Buffer.alloc(44), position: 0 })
       return (
-        (await file.stat()).isFile() &&
         buffer.toString('utf8', 0, bytesRead) === 'Signature: 8a477f597d28d172789f06886806bc55\n'
       )
     } finally {
