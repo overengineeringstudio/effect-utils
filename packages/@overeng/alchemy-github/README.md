@@ -151,6 +151,7 @@ Variable names are normalized to uppercase in requests, comparisons and state, m
 | ActionsVariable, environment | Environments: read | Environments: write |
 
 These are repository permissions; write includes read, and the environment must already exist. See GitHub's [Actions variables REST documentation](https://docs.github.com/en/rest/actions/variables). The separate resource adds live plan-time drift observation; upstream's `Variable` remains available unchanged.
+
 ## Required checks with the upstream Ruleset
 
 The beta.84 provider already supports the consumer's required-check integration ID, strict policy, bypass actors and observed-policy comparison on updates. Use its camelCase contract directly:
