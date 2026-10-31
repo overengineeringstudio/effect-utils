@@ -2723,7 +2723,10 @@ const storeGcCommand = Cli.Command.make(
               message: 'budget candidate is missing, ambiguous, or no longer eligible',
             })
           }
-          plan = yield* storeLock.withWorktreeLock(selected[0]!.workspacePath)(
+          const candidate = selected[0]!
+          const owner =
+            candidate.kind === 'worktree' ? candidate.workspacePath : candidate.containerPath
+          plan = yield* storeLock.withWorktreeLock(owner)(
             Effect.gen(function* () {
               const freshInputs = yield* collectBudgetInputs
               return yield* applyBuildOutputBudgetCandidate({

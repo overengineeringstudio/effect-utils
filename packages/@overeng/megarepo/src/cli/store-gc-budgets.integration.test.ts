@@ -612,6 +612,111 @@ if (inOwnerNamespace === false) {
 if (inOwnerNamespace === true && process.platform === 'linux')
   describe('mr store gc --budgets (build-output budgets acceptance)', () => {
     it.effect(
+      'repository selector accounts only immediate non-overlapping output directories',
+      Effect.fnUntraced(
+        function* () {
+          const f = yield* budgetFixture(['main'])
+          const fs = yield* FileSystem.FileSystem
+          const bare = f.bareRepoPaths[REPO_KEY]!
+          const container = dirname(bare.replace(/\/$/u, ''))
+          for (const name of [
+            'foo-target',
+            'foo-target-evil',
+            'nested/inner-target',
+            'unsigned-target',
+            'ordinary',
+            'worktree-target',
+            'overlap-target',
+          ]) {
+            const path = `${container}/${name}`
+            yield* makeArtifact(path, { files: { 'build.bin': MiB }, ageMs: 3 * DAY_MS })
+            if (name !== 'unsigned-target')
+              yield* fs.writeFileString(
+                `${path}/CACHEDIR.TAG`,
+                'Signature: 8a477f597d28d172789f06886806bc55\n',
+              )
+            yield* Effect.promise(() => backdate(path, new Date(Date.now() - 3 * DAY_MS)))
+          }
+          for (const name of ['worktree-target', 'overlap-target/nested']) {
+            // Git needs an empty checkout destination.
+            if (name === 'worktree-target')
+              yield* fs.remove(`${container}/${name}`, { recursive: true })
+            yield* Git.createWorktree({
+              repoPath: bare,
+              worktreePath: `${container}/${name}`,
+              branch: name.replace('/', '-'),
+              createBranch: true,
+            })
+          }
+          const mounted = `${container}/mount-target`
+          yield* fs.makeDirectory(mounted)
+          yield* Effect.promise(() =>
+            symlink(`${container}/foo-target`, `${container}/link-target`),
+          )
+          yield* writePolicy(f, { budgetBytes: 0 })
+          expect(planOk(f).results).toEqual([])
+          const policy = decodeJson(yield* fs.readFileString(f.policyPath)) as Record<
+            string,
+            unknown
+          >
+          yield* fs.writeFileString(
+            f.policyPath,
+            encodeJson({
+              ...policy,
+              classes: { 'repo-cargo': { budgetBytes: 0, repoRoots: '*-target' } },
+            }),
+          )
+          // The bind mount exists only in this child's disposable mount namespace.
+          const result = spawnSync(
+            'unshare',
+            [
+              '--user',
+              '--map-root-user',
+              '--mount',
+              'sh',
+              '-c',
+              'mount --bind "$1" "$2" && shift 2 && exec "$@"',
+              'fixture',
+              f.outside,
+              mounted,
+              'env',
+              ...cliEnv(f),
+              'bun',
+              MR_BIN,
+              'store',
+              'gc',
+              '--budgets',
+              f.policyPath,
+              '--dry-run',
+              '--output',
+              'json',
+            ],
+            { cwd: f.outside, encoding: 'utf8', timeout: 120_000 },
+          )
+          expect(result.status, result.stderr).toBe(0)
+          const plan = decodePlan(result.stdout.trim())
+          expect(plan.results.map((entry) => entry.path)).toEqual([
+            `${container}/foo-target`,
+            `${container}/unsigned-target`,
+          ])
+          expect(row(plan, `${container}/foo-target`)).toMatchObject({
+            kind: 'repo-build-output',
+            containerPath: container,
+            outputRoot: `${container}/foo-target`,
+            livenessKey: `${container}/foo-target`,
+            reason: 'process-liveness-unavailable',
+          })
+          expect(row(plan, `${container}/foo-target`)?.allocatedBytes).toBeGreaterThan(0)
+          expect(row(plan, `${container}/unsigned-target`)?.reason).toBe(
+            'artifact-authority-missing',
+          )
+          expect(applyCandidate(f, { plan, path: `${container}/foo-target` }).exitCode).not.toBe(0)
+        },
+        Effect.provide(NodeServices.layer),
+        Effect.scoped,
+      ),
+    )
+    it.effect(
       'registration and ownership changes invalidate budget application',
       Effect.fnUntraced(
         function* () {
