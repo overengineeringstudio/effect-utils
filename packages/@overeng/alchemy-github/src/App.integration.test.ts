@@ -1,10 +1,18 @@
+// Alchemy's Test/Core engine intentionally exposes generic error/service channels.
+/** @effect-diagnostics anyUnknownInErrorContext:off */
 import { generateKeyPairSync } from 'node:crypto'
+import { mkdtemp, rm } from 'node:fs/promises'
 import { createServer } from 'node:http'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 
 import { fromToken } from '@alchemy.run/github/Credentials'
 import { it } from '@effect/vitest'
+import { AlchemyContext } from 'alchemy/AlchemyContext'
+import { State } from 'alchemy/State'
 import { encodeState } from 'alchemy/State/StateEncoding'
-import { Clock, Effect, Layer, Logger, Redacted, Schema } from 'effect'
+import { scratchStack, toEffect } from 'alchemy/Test/Core'
+import { Clock, Deferred, Effect, Fiber, Layer, Logger, Redacted, Schema } from 'effect'
 import sodium, {
   ready,
   from_base64,
@@ -14,7 +22,10 @@ import sodium, {
 } from 'libsodium-wrappers'
 import { expect } from 'vitest'
 
-import { deleteApp, diffApp, readAppState, reconcileApp, type AppProps } from './App.ts'
+import { App, deleteApp, diffApp, readAppState, reconcileApp, type AppProps } from './App.ts'
+import { fromPrompt } from './ManifestCodeSource.ts'
+import { providers as githubProviders } from './Providers.ts'
+import { SecretSource } from './SecretSource.ts'
 
 const Json = Schema.fromJsonString(Schema.Unknown)
 const encodeJson = Schema.encodeSync(Json)
@@ -41,6 +52,7 @@ const fixture = (environment?: string) =>
     const state = {
       conversionCalls: 0,
       conversionStatus: 201,
+      invalidPem: false,
       writeCalls: 0,
       writeStatus: 201,
       secretStatus: 200,
@@ -79,7 +91,7 @@ const fixture = (environment?: string) =>
         response.end(
           encodeJson({
             ...metadata(),
-            pem,
+            pem: state.invalidPem === true ? 'invalid-private-key' : pem,
             client_secret: 'discard-client-secret',
             webhook_secret: 'discard-hook-secret',
           }),
@@ -131,7 +143,11 @@ const fixture = (environment?: string) =>
       return yield* Effect.die('Expected TCP fixture')
     const credentials = fromToken('fixture-token', {
       baseUrl: `http://127.0.0.1:${address.port}/api`,
-    })
+    }).pipe(
+      Layer.merge(
+        fromPrompt((state) => Effect.succeed({ state, code: Redacted.make('one-use-code') })),
+      ),
+    )
     const props: AppProps = {
       owner: 'example',
       manifest,
@@ -147,9 +163,17 @@ const fixture = (environment?: string) =>
     state.seen.length = 0
     const converting: AppProps = {
       ...props,
-      conversion: { code: Redacted.make('one-use-code'), state: pending.state },
+      conversion: { state: pending.state },
     }
-    return { state, pem, credentials, props, converting, pending }
+    return {
+      state,
+      pem,
+      credentials,
+      props,
+      converting,
+      pending,
+      baseUrl: `http://127.0.0.1:${address.port}/api`,
+    }
   })
 
 for (const environment of [undefined, 'production']) {
@@ -266,7 +290,7 @@ it.effect('rejects expired codes and wrong callback states before any HTTP reque
     expect(error._tag).toBe('GitHubAppResourceError')
     const mismatch = {
       ...f.converting,
-      conversion: { code: Redacted.make('one-use-code'), state: 'wrong' },
+      conversion: { state: 'wrong' },
     }
     yield* reconcileApp(mismatch, f.pending).pipe(Effect.provide(f.credentials), Effect.flip)
     expect(f.state.seen).toEqual([])
@@ -393,7 +417,7 @@ it.effect(
       const error = yield* reconcileApp(
         {
           ...f.converting,
-          conversion: { code: Redacted.make('one-use-code'), state: pending.state },
+          conversion: { state: pending.state },
         },
         pending,
       ).pipe(Effect.provide(f.credentials), Effect.flip)
@@ -518,3 +542,83 @@ it.effect(
       expect(f.state.seen.some((request) => request.startsWith('DELETE'))).toBe(false)
     }),
 )
+
+for (const outcome of ['interrupt-before-post', 'fail-before-put', 'success'] as const) {
+  it.effect(`real engine keeps manifest code ephemeral: ${outcome}`, () =>
+    Effect.gen(function* () {
+      const f = yield* fixture()
+      const directory = yield* Effect.acquireRelease(
+        Effect.promise(() => mkdtemp(join(tmpdir(), 'app-code-engine-'))),
+        (path) => Effect.promise(() => rm(path, { recursive: true })),
+      )
+      const reached = yield* Deferred.make<void>()
+      const code = 'one-use-code'
+      let reads = 0
+      const providers = githubProviders({
+        secretSource: Layer.succeed(SecretSource, {
+          read: () => Effect.die('App conversion must not read ActionsSecret sources'),
+        }),
+        manifestCodeSource: fromPrompt((state) =>
+          Effect.gen(function* () {
+            reads++
+            yield* Deferred.succeed(reached, undefined)
+            if (outcome === 'interrupt-before-post') return yield* Effect.never
+            return { state, code: Redacted.make(code) }
+          }),
+        ),
+      }).pipe(Layer.merge(fromToken('fixture-token', { baseUrl: f.baseUrl })))
+      const options = { providers, stage: 'test', dev: false, sidecar: false }
+      const stack = scratchStack(options, 'app-code-engine')
+      const program = (props: AppProps) => App('App', props)
+      const persisted = Effect.gen(function* () {
+        const store = yield* yield* State
+        return yield* store.get({ stack: stack.name, stage: stack.stage, fqn: 'App' })
+      }).pipe(Effect.provide(stack.state))
+      yield* toEffect(
+        Effect.gen(function* () {
+          yield* stack.deploy(program(f.props))
+          const row = yield* persisted
+          if (row?.kind === 'action' || row?.attr?.status !== 'pending')
+            return yield* Effect.die('Expected durable pending form')
+          const converting: AppProps = { ...f.props, conversion: { state: row.attr.state } }
+          yield* stack.plan(program(converting))
+          expect(reads).toBe(0)
+          f.state.invalidPem = outcome === 'fail-before-put'
+          if (outcome === 'interrupt-before-post') {
+            const fiber = yield* Effect.forkChild(stack.deploy(program(converting)))
+            yield* Deferred.await(reached)
+            yield* Fiber.interrupt(fiber)
+          } else if (outcome === 'fail-before-put') {
+            const result = yield* stack.deploy(program(converting)).pipe(Effect.exit)
+            expect(result._tag).toBe('Failure')
+          } else {
+            yield* stack.deploy(program(converting))
+          }
+          const after = yield* persisted
+          if (after === undefined || after.kind === 'action')
+            return yield* Effect.die('Expected persisted resource')
+          const encoded = encodeJson(encodeState(after))
+          for (let offset = 0; offset <= code.length - 8; offset++)
+            expect(encoded).not.toContain(code.slice(offset, offset + 8))
+          expect(encoded).not.toContain(f.pem)
+          expect(after?.props).not.toHaveProperty('conversion.code')
+          expect(f.state.conversionCalls).toBe(outcome === 'interrupt-before-post' ? 0 : 1)
+          expect(f.state.writeCalls).toBe(outcome === 'success' ? 1 : 0)
+          if (outcome === 'success') {
+            expect(after?.attr).toMatchObject({ status: 'registered', appId: 123 })
+            expect(f.state.contents).toBe(f.pem)
+          } else {
+            expect(after?.attr).toMatchObject({
+              status: 'pending',
+              state: row.attr.state,
+              secretBaseline: row.attr.secretBaseline,
+            })
+          }
+        }),
+        { ...options, state: stack.state },
+      ).pipe(
+        Effect.provideService(AlchemyContext, { dotAlchemy: directory, dev: false, adopt: false }),
+      )
+    }),
+  )
+}

@@ -7,6 +7,7 @@ import { describe, expect } from 'vitest'
 import { reconcileApp, type AppProps } from './App.ts'
 import { AppError } from './AppErrors.ts'
 import { AppPermissions } from './manifest.ts'
+import { fromEnv as manifestCodesFromEnv } from './ManifestCodeSource.ts'
 
 const token = process.env.ALCHEMY_GITHUB_LIVE_TOKEN
 const repository = process.env.ALCHEMY_GITHUB_LIVE_REPOSITORY
@@ -80,7 +81,7 @@ describe.skipIf(!enabled)('manual GitHub App adoption', () => {
             },
             adopt: { slug, appId: metadata.id },
           }
-          const result = yield* reconcileApp(props)
+          const result = yield* reconcileApp(props).pipe(Effect.provide(manifestCodesFromEnv()))
           expect(result.status).toBe('registered')
           if (result.status !== 'registered') return yield* Effect.die('Expected adopted App')
           expect(result.appId).toBe(metadata.id)

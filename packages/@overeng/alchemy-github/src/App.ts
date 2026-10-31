@@ -19,6 +19,7 @@ import {
   type AppManifest,
   type AppManifestSource,
 } from './manifest.ts'
+import { ManifestCodeSource } from './ManifestCodeSource.ts'
 import type { Providers } from './Providers.ts'
 import { prepareSealedBox, sealSecret } from './SealedBox.ts'
 
@@ -37,8 +38,8 @@ export interface AppProps {
   readonly manifest: AppManifestSource
   /** The only destination of a newly generated private key. Never supplied as a Resource input. */
   readonly privateKeySecret: AppKeySecret
-  /** Supply only after deploying the pending form and checking its callback state. */
-  readonly conversion?: { readonly code: Redacted.Redacted<string>; readonly state: string }
+  /** Resume only the persisted pending token; the one-use code comes from ManifestCodeSource. */
+  readonly conversion?: { readonly state: string }
   /** Adopt requires an existing Actions secret; its contents cannot be read or verified. */
   readonly adopt?: {
     readonly slug: string
@@ -371,6 +372,17 @@ export const convertApp = Effect.fn('GitHub.App.convert')(function* (
     operation: 'initialize sealed box',
     run: () => prepareSealedBox(publicKey.key),
   })
+  const source = yield* ManifestCodeSource
+  const code = yield* source.read(pending.state).pipe(
+    Effect.catchCause(() =>
+      Effect.fail(
+        new AppError({
+          operation: 'manifest code source',
+          message: 'Manifest callback source failed; cause withheld.',
+        }),
+      ),
+    ),
+  )
 
   return yield* Effect.uninterruptible(
     Effect.gen(function* () {
@@ -379,7 +391,7 @@ export const convertApp = Effect.fn('GitHub.App.convert')(function* (
         operation: 'convert manifest',
         run: () =>
           octokit.request('POST /app-manifests/{code}/conversions', {
-            code: Redacted.value(conversion.code),
+            code: Redacted.value(code),
             request: { retries: 0, redirect: 'error' },
           }),
       })
