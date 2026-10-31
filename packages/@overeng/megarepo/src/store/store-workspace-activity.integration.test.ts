@@ -657,6 +657,30 @@ describe('readBudgetWorkspaceActivity manifest admission', () => {
   )
 
   it.live(
+    'protects custom and hidden budget owners without treating their siblings as active',
+    Effect.fnUntraced(
+      function* () {
+        const { fs, workspace, manifestPath } = yield* fixture
+        for (const suffix of ['custom/checkout', '.hidden/checkout']) {
+          const owner = `${workspace}/${suffix}`
+          yield* fs.makeDirectory(owner, { recursive: true })
+          yield* fs.writeFileString(manifestPath, manifest({ workspace: owner }))
+          const activity = yield* readBudgetWorkspaceActivity({
+            fs,
+            config: manifestOnly(manifestPath),
+          })
+          expect(isWorkspaceActive({ activity: activity!, canonicalWorktree: owner })).toBe(true)
+          expect(
+            isWorkspaceActive({ activity: activity!, canonicalWorktree: `${owner}-sibling` }),
+          ).toBe(false)
+        }
+      },
+      Effect.provide(NodeServices.layer),
+      Effect.scoped,
+    ),
+  )
+
+  it.live(
     'missing manifest is unknown and never falls back to builtin evidence',
     Effect.fnUntraced(
       function* () {

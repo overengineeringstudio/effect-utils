@@ -8,9 +8,30 @@ import {
   isTransientGitError,
   parseGitRemoteUrl,
   type ParsedGitRemote,
+  worktreeRegistrationRef,
 } from './git.ts'
 
 describe('git', () => {
+  it('derives budget refs from Git rather than the registered directory name', () => {
+    const registration = {
+      path: '/store/repository/.hidden/arbitrary',
+      head: 'a'.repeat(40),
+      branch: Option.some('feature/topic'),
+      symbolicRef: Option.some('refs/heads/feature/topic'),
+      lockReason: Option.none<string>(),
+    }
+    expect(worktreeRegistrationRef(registration)).toEqual({
+      ref: 'feature/topic',
+      refType: 'heads',
+    })
+    expect(worktreeRegistrationRef({ ...registration, symbolicRef: Option.none() })).toEqual({
+      ref: registration.head,
+      refType: 'commits',
+    })
+    expect(
+      worktreeRegistrationRef({ ...registration, symbolicRef: Option.some('refs/custom/topic') }),
+    ).toBeUndefined()
+  })
   describe('parseGitRemoteUrl', () => {
     describe('SSH URLs', () => {
       it('should parse standard SSH URL', () => {

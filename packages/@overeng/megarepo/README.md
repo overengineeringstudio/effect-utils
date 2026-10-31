@@ -172,6 +172,13 @@ Effect diagnostic logs go to stderr, including store-enumeration warnings about 
 With `--output json` or `--output ndjson`, stdout contains only the command payload, so it
 can be piped directly into tools such as `jq`. Human-mode presentation remains on stdout.
 
+Budget discovery also admits registered worktrees outside `refs/`, including hidden directories,
+after canonical deduplication and verification of their `.git` and common repository ownership.
+Branch and detached identities come from Git, not directory names. External registrations,
+unsafe paths, broken ownership and symbolic refs outside the supported branch/commit contract
+are excluded with stderr diagnostics; incomplete internal discovery prevents eviction.
+These additional roots never enter whole-worktree GC or archive discovery.
+
 `--budgets` cannot be combined with `--generated-artifacts`, `--all`, or `--force`. The policy is
 decoded strictly before the store is inspected: an unreadable file, unknown `schemaVersion`, or
 malformed field exits non-zero and deletes nothing. Its shape is:

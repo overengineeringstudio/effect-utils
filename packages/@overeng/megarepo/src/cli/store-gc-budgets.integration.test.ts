@@ -571,6 +571,98 @@ if (inOwnerNamespace === false) {
 if (inOwnerNamespace === true && process.platform === 'linux')
   describe('mr store gc --budgets (build-output budgets acceptance)', () => {
     it.effect(
+      'budget-only census admits custom, detached and hidden registrations with truthful identity',
+      Effect.fnUntraced(
+        function* () {
+          const f = yield* budgetFixture(['main'])
+          const bare = f.bareRepoPaths[REPO_KEY]!
+          const repo = dirname(bare.replace(/\/$/u, ''))
+          const commit = yield* Git.getCurrentCommit(worktree(f, 'main'))
+          const roots = [`${repo}/custom`, `${repo}/detached`, `${repo}/.hidden/checkout`]
+          for (const [index, path] of roots.entries()) {
+            yield* Git.createWorktree({
+              repoPath: bare,
+              worktreePath: path,
+              branch: index === 1 ? commit : `feature/census-${index}`,
+              createBranch: index !== 1,
+            })
+            const dir = EffectPath.unsafe.absoluteDir(`${path}/`)
+            yield* ignoreTargets(dir)
+            yield* makeArtifact(`${path}/target`, {
+              files: { 'build.bin': MiB },
+              ageMs: 3 * DAY_MS,
+            })
+          }
+          yield* writePolicy(f, { budgetBytes: 0 })
+          const plan = planOk(f)
+          expect(roots.map((path) => row(plan, `${path}/target`)?.ref)).toEqual([
+            'feature/census-0',
+            yield* Git.getCurrentCommit(roots[1]!),
+            'feature/census-2',
+          ])
+          expect(row(plan, `${roots[1]}/target`)?.refType).toBe('commits')
+          const legacy = runMr(f, ['--dry-run', '--all'])
+          expect(legacy.exitCode, legacy.stderr).toBe(0)
+          for (const path of roots) expect(legacy.stdout).not.toContain(path)
+          yield* writeManifest(f, { activeWorkspaces: [roots[2]!] })
+          expect(row(planOk(f), `${roots[2]}/target`)?.reason).toBe('live')
+        },
+        Effect.provide(NodeServices.layer),
+        Effect.scoped,
+      ),
+    )
+
+    it.effect(
+      'budget census excludes stale, mismatched, alias and external registrations',
+      Effect.fnUntraced(
+        function* () {
+          const f = yield* budgetFixture(['main'])
+          const fs = yield* FileSystem.FileSystem
+          const bare = f.bareRepoPaths[REPO_KEY]!
+          const repo = dirname(bare.replace(/\/$/u, ''))
+          const paths = [
+            `${repo}/valid`,
+            `${repo}/stale`,
+            `${repo}/mismatch`,
+            `${f.outside}external`,
+          ]
+          for (const [index, path] of paths.entries()) {
+            yield* Git.createWorktree({
+              repoPath: bare,
+              worktreePath: path,
+              branch: `census-${index}`,
+              createBranch: true,
+            })
+            yield* ignoreTargets(EffectPath.unsafe.absoluteDir(`${path}/`))
+            yield* makeArtifact(`${path}/target`, {
+              files: { 'build.bin': MiB },
+              ageMs: 3 * DAY_MS,
+            })
+          }
+          yield* fs.remove(`${paths[1]}/.git`)
+          const pointer = yield* fs.readFileString(`${paths[2]}/.git`)
+          yield* fs.writeFileString(`${pointer.slice(8).trim()}/commondir`, `${paths[0]}\n`)
+          const alias = `${repo}/alias`
+          yield* Effect.promise(() => symlink(paths[0]!, alias))
+          // A second registry record names the same canonical owner through an alias.
+          yield* fs.makeDirectory(`${bare}worktrees/alias`, { recursive: true })
+          yield* fs.writeFileString(`${bare}worktrees/alias/gitdir`, `${alias}/.git\n`)
+          yield* fs.writeFileString(`${bare}worktrees/alias/HEAD`, 'ref: refs/heads/census-0\n')
+          yield* fs.writeFileString(`${bare}worktrees/alias/commondir`, '../..\n')
+          yield* writePolicy(f, { budgetBytes: 0 })
+          const result = runBudgets(f)
+          expect(result.exitCode, result.stderr).toBe(0)
+          expect(result.plan?.results.map((entry) => entry.path)).toEqual([`${paths[0]}/target`])
+          expect(result.plan?.classes['cargo-target']?.scanStatus).toBe('scan-incomplete')
+          expect(result.stderr).toContain('broken worktree ownership')
+          expect(result.stderr).toContain('commondir mismatch')
+          expect(result.stderr).toContain('store-external registration')
+        },
+        Effect.provide(NodeServices.layer),
+        Effect.scoped,
+      ),
+    )
+    it.effect(
       '1: LRU evicts exactly the older idle root, apply removes it with the plan hash, next plan is empty',
       Effect.fnUntraced(
         function* () {
