@@ -56,7 +56,7 @@
   "neutral": [
     {
       "task": "test:alchemy-github:unbounded",
-      "rationale": "Manual read-only GitHub App adoption lane; skipped without explicit credentials and no platform-specific behavior."
+      "rationale": "Credentialed sandbox provider lifecycle lane plus manual read-only App adoption; no platform-specific behavior. The sandbox CI gate fails closed when enabled without credentials."
     },
     {
       "task": "buck2:rust:generators:test",
@@ -153,7 +153,7 @@
       },
       {
         "task": "test:alchemy-github",
-        "rationale": "Manifest, drift and ruleset mapping assertions with local HTTP endpoints; no host-specific lifecycle behavior. Manual live adoption is owned by the source/unbounded complement."
+        "rationale": "Manifest, drift and provider lifecycle assertions with local HTTP endpoints; no host-specific lifecycle behavior. Credentialed live coverage is owned by the source/unbounded complement."
       },
       {
         "task": "test:ci-tools",
