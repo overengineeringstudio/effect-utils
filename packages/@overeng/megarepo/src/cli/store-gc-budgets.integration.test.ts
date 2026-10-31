@@ -35,7 +35,7 @@ import { expect, vi } from 'vitest'
 import { EffectPath, type AbsoluteDirPath } from '@overeng/effect-path'
 
 import * as Git from '../core/git.ts'
-import { BudgetPlan } from '../store/store-build-budgets.ts'
+import { BudgetCandidate, BudgetPlan } from '../store/store-build-budgets.ts'
 import {
   acquireDeletionLease,
   canonicalizeOwnerPath,
@@ -57,6 +57,45 @@ const REPO_KEY = `${REPO.host}/${REPO.owner}/${REPO.repo}`
 
 const decodePlan = Schema.decodeUnknownSync(Schema.fromJsonString(BudgetPlan))
 type Plan = BudgetPlan
+
+describe('versioned budget owner contract', () => {
+  it('rejects old and unversioned receipts', () => {
+    for (const schemaVersion of ['megarepo.build-output-budget-plan.v1', undefined]) {
+      expect(() =>
+        decodePlan(encodeJson({ schemaVersion, planSha256: 'a'.repeat(64), results: [], classes: {} })),
+      ).toThrow()
+    }
+  })
+
+  it('roundtrips both owner kinds without inventing repo-output refs', () => {
+    const common = {
+      path: '/store/repository/build-target',
+      livenessKey: '/store/repository/build-target',
+      artifactClass: 'cargo-target',
+      allocatedBytes: 4096,
+      reclaimableBytes: 4096,
+      mtimeMs: 0,
+      fingerprint: 'identity',
+      outcome: 'keep',
+      reason: 'within-budget',
+    }
+    const owners = [
+      { kind: 'worktree', repo: 'example/repository', ref: 'main', refType: 'heads',
+        workspacePath: '/store/repository/checkout' },
+      { kind: 'repo-build-output', containerPath: '/store/repository',
+        outputRoot: common.path },
+    ]
+    const codec = Schema.fromJsonString(BudgetCandidate)
+    for (const owner of owners) {
+      const candidate = { ...common, ...owner }
+      const decoded = Schema.decodeUnknownSync(codec, { onExcessProperty: 'error' })(encodeJson(candidate))
+      expect(Schema.decodeUnknownSync(codec)(Schema.encodeSync(codec)(decoded))).toEqual(candidate)
+    }
+    expect(() => Schema.decodeUnknownSync(codec, { onExcessProperty: 'error' })(
+      encodeJson({ ...common, ...owners[1], ref: 'main' }),
+    )).toThrow()
+  })
+})
 
 // =============================================================================
 // Root CLI subprocess
@@ -570,6 +609,31 @@ if (inOwnerNamespace === false) {
 }
 if (inOwnerNamespace === true && process.platform === 'linux')
   describe('mr store gc --budgets (build-output budgets acceptance)', () => {
+    it.effect(
+      'registration and ownership changes invalidate budget application',
+      Effect.fnUntraced(
+        function* () {
+          const { f, a, targetA } = yield* twoTargets({ budgetBytes: 0 })
+          const fs = yield* FileSystem.FileSystem
+          const plan = planOk(f)
+          const dotGit = `${a}.git`
+          const pointer = yield* fs.readFileString(dotGit)
+          // Re-register the same owner with an unchanged checkout and output root.
+          yield* fs.remove(dotGit)
+          yield* fs.writeFileString(dotGit, pointer)
+          const registered = planOk(f)
+          expect(registered.planSha256).not.toBe(plan.planSha256)
+          expect(applyCandidate(f, { plan, path: targetA }).exitCode).not.toBe(0)
+          yield* Git.runCommand({ args: ['symbolic-ref', 'HEAD', 'refs/heads/renamed'], cwd: a })
+          const changedOwner = planOk(f)
+          expect(changedOwner.planSha256).not.toBe(registered.planSha256)
+          expect(applyCandidate(f, { plan: registered, path: targetA }).exitCode).not.toBe(0)
+          expect(yield* exists(targetA)).toBe(true)
+        },
+        Effect.provide(NodeServices.layer),
+        Effect.scoped,
+      ),
+    )
     it.effect(
       'budget-only census admits custom, detached and hidden registrations with truthful identity',
       Effect.fnUntraced(
