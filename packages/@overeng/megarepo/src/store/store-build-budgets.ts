@@ -195,6 +195,7 @@ export const loadBuildOutputBudgets = Effect.fn('store.loadBuildOutputBudgets')(
 /** Store inventory consumed by discovery and budget accounting. */
 export type BudgetRepoWorktrees = ReadonlyArray<{
   readonly repo: { readonly relativePath: string }
+  readonly censusIncomplete?: boolean
   readonly worktrees: ReadonlyArray<{
     readonly ref: string
     readonly refType: 'heads' | 'tags' | 'commits'
@@ -498,7 +499,9 @@ export const planBuildOutputBudgets = Effect.fn('store.planBuildOutputBudgets')(
   const inodeRoots = new Map<string, Map<string, { bytes: number; roots: Set<string> }>>()
   const incomplete = new Set<string>()
   for (const name of Object.keys(policy.classes)) inodeRoots.set(name, new Map())
-  for (const { repo, worktrees } of repoWorktrees) {
+  for (const { repo, worktrees, censusIncomplete } of repoWorktrees) {
+    if (censusIncomplete === true)
+      for (const name of Object.keys(policy.classes)) incomplete.add(name)
     for (const worktree of worktrees) {
       if (worktree.broken === true) {
         for (const name of Object.keys(policy.classes)) incomplete.add(name)

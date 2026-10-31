@@ -12,7 +12,7 @@
 import { createHash } from 'node:crypto'
 import type { Dir, Stats } from 'node:fs'
 import { lstat, opendir } from 'node:fs/promises'
-import { dirname, isAbsolute, normalize } from 'node:path'
+import { dirname, isAbsolute, normalize, resolve } from 'node:path'
 
 import { Clock, Console, Effect, Option, Schedule, Schema, Stream } from 'effect'
 import * as Cli from 'effect/cli'
@@ -910,6 +910,71 @@ const collectRepoStoreWorktrees = ({
       bareRepoPath,
     }),
   )
+
+/** Registry admission is budget-only; it never grants whole-worktree GC authority. */
+const collectBudgetRepoWorktrees = Effect.fn('store.collectBudgetRepoWorktrees')(function* ({
+  fs,
+  repoPath,
+  bareRepoPath,
+  storeBasePath,
+}: {
+  fs: FileSystem.FileSystem
+  repoPath: AbsoluteDirPath
+  bareRepoPath: AbsoluteDirPath
+  storeBasePath: AbsoluteDirPath
+}) {
+  const layout = yield* collectRepoStoreWorktrees({ fs, repoPath, bareRepoPath })
+  const registrations = yield* Git.listWorktrees(bareRepoPath)
+  const bare = yield* fs.realPath(bareRepoPath)
+  const store = yield* fs.realPath(storeBasePath)
+  const worktrees: Array<CollectedWorktree> = []
+  const seen = new Set<string>()
+  let censusIncomplete = false
+  // Validate layout roots too: a registry entry must not bypass ownership checks.
+  const paths = new Set([
+    ...layout.map((entry) => entry.path.replace(/\/+$/, '')),
+    ...registrations.map((entry) => entry.path.replace(/\/+$/, '')),
+  ])
+  for (const path of paths) {
+    const admitted = yield* Effect.gen(function* () {
+      const canonical = yield* fs.realPath(path)
+      if (canonical === bare) return
+      if (canonical.startsWith(`${store.replace(/\/+$/, '')}/`) === false)
+        return { reason: 'store-external registration', incomplete: false }
+      if (seen.has(canonical) === true) return
+      yield* captureDeletionIdentity({ rootPath: store, path })
+      const dotGit = `${canonical}/.git`
+      if ((yield* Effect.tryPromise(() => lstat(dotGit))).isFile() === false)
+        return { reason: '.git is not a regular file', incomplete: true }
+      const gitFile = yield* fs.readFileString(dotGit)
+      if (gitFile.startsWith('gitdir: ') === false)
+        return { reason: 'missing gitdir file', incomplete: true }
+      const gitdir = yield* fs.realPath(resolve(canonical, gitFile.slice(8).trim()))
+      if (dirname(gitdir) !== `${bare}/worktrees`)
+        return { reason: 'gitdir belongs to another repository', incomplete: true }
+      const common = yield* fs.readFileString(`${gitdir}/commondir`)
+      if ((yield* fs.realPath(resolve(gitdir, common.trim()))) !== bare)
+        return { reason: 'commondir mismatch', incomplete: true }
+      const registration = registrations.find((entry) => normalize(entry.path) === path)
+      if (registration === undefined)
+        return { reason: 'worktree is not registered', incomplete: true }
+      const identity = Git.worktreeRegistrationRef(registration)
+      if (identity === undefined)
+        return { reason: 'symbolic ref cannot be represented by budget refType', incomplete: true }
+      seen.add(canonical)
+      worktrees.push({
+        ...identity,
+        path: EffectPath.unsafe.absoluteDir(`${canonical}/`),
+        broken: false,
+      })
+    }).pipe(Effect.orElseSucceed(() => ({ reason: 'broken worktree ownership', incomplete: true })))
+    if (admitted !== undefined) {
+      censusIncomplete ||= admitted.incomplete
+      yield* Effect.logWarning(`Budget census excluded ${path}: ${admitted.reason}`)
+    }
+  }
+  return { worktrees, censusIncomplete }
+})
 
 const classifyGcWorktree = ({
   worktree,
@@ -2588,12 +2653,13 @@ const storeGcCommand = Cli.Command.make(
                   repo.fullPath,
                   EffectPath.unsafe.relativeDir('.bare/'),
                 )
-                const worktrees = yield* collectRepoStoreWorktrees({
+                const census = yield* collectBudgetRepoWorktrees({
                   fs,
                   repoPath: repo.fullPath,
                   bareRepoPath,
+                  storeBasePath: store.basePath,
                 })
-                return { repo, bareRepoPath, worktrees }
+                return { repo, bareRepoPath, ...census }
               }),
             { concurrency: gcRepoConcurrency() },
           )
