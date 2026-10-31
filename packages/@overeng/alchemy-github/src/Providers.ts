@@ -18,6 +18,6 @@ export const providers = (
 ) =>
   Layer.effect(Providers, Provider.collection([App, ActionsSecret, ActionsVariable])).pipe(
     Layer.provide(Layer.mergeAll(AppProvider, ActionsSecretProvider, ActionsVariableProvider)),
-    Layer.provide(options?.secretSource ?? SecretSourceLive),
+    Layer.provideMerge(options?.secretSource ?? SecretSourceLive),
     Layer.provideMerge(GitHub.providers(options)),
   )
