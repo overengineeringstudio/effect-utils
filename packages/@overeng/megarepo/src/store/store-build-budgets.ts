@@ -101,6 +101,7 @@ export const BudgetReason = Schema.Literals([
   'scan-incomplete',
   'deletion-partial',
   'artifact-authority-missing',
+  'repo-output-observation-only',
 ])
 const CandidateFields = {
   path: AbsolutePath,
@@ -885,7 +886,7 @@ export const planBuildOutputBudgets = Effect.fn('store.planBuildOutputBudgets')(
                       ? 'lease-held'
                       : now - scan.newestMtimeMs < policy.idleRetentionMs
                         ? 'retention'
-                        : 'eligible'
+                        : 'repo-output-observation-only'
       if (scan === undefined || identity === undefined || scan.symlink === true)
         incomplete.add(artifactClass)
       results.push({
@@ -1058,23 +1059,21 @@ export const applyBuildOutputBudgetCandidate = Effect.fn('store.applyBuildOutput
     if (selected.length !== 1)
       return yield* fail('Budget candidate is missing, ambiguous, or not eligible')
     const candidate = selected[0]!
-    const requiresExpandedCoverage =
-      candidate.kind === 'repo-build-output' ||
-      repoWorktrees.some(({ worktrees }) =>
-        worktrees.some(
-          (worktree) =>
-            worktree.path.replace(/\/+$/u, '') === candidate.workspacePath &&
-            worktree.requiresExpandedProcessCoverage === true,
-        ),
-      )
+    if (candidate.kind === 'repo-build-output')
+      return yield* fail('Repository output is observation-only')
+    const requiresExpandedCoverage = repoWorktrees.some(({ worktrees }) =>
+      worktrees.some(
+        (worktree) =>
+          worktree.path.replace(/\/+$/u, '') === candidate.workspacePath &&
+          worktree.requiresExpandedProcessCoverage === true,
+      ),
+    )
     const deletionRoot = yield* fs.realPath(storeBasePath)
     const identity = yield* captureDeletionIdentity({
       rootPath: deletionRoot,
       path: candidate.path,
     })
-    const ownerPath = yield* canonicalizeOwnerPath(
-      candidate.kind === 'worktree' ? candidate.workspacePath : candidate.containerPath,
-    )
+    const ownerPath = yield* canonicalizeOwnerPath(candidate.workspacePath)
     return yield* Effect.gen(function* () {
       const freshPolicy = yield* loadBuildOutputBudgets({ path: policyPath })
       const freshActivity = yield* readBudgetWorkspaceActivity({
