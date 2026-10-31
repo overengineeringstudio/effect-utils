@@ -104,7 +104,7 @@ const fixture = (environment?: string, retain = false) =>
       owner: 'example',
       repository: 'repo',
       ...(environment === undefined ? {} : { environment }),
-      name: 'SETTING',
+      name: 'setting',
       value: 'desired',
       retain,
     }
@@ -161,6 +161,9 @@ for (const environment of [undefined, 'production / west']) {
               },
             })
             expect((yield* f.stack.plan(f.program())).resources.Variable?.action).toBe('noop')
+            expect(
+              (yield* f.stack.plan(f.program({ name: 'SETTING' }))).resources.Variable?.action,
+            ).toBe('noop')
 
             f.live.value = 'changed remotely'
             f.live.requests.length = 0

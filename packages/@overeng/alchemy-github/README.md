@@ -143,6 +143,8 @@ const releaseChannel =
 
 Plans read the current value from GitHub, so remote edits and deletion are repaired even when the declaration has not changed. Apply creates or updates the variable. Destroy deletes it unless `retain: true` is declared. Owner, repository, environment, name and API host are immutable resource identity; use a new resource identity to move a variable.
 
+Variable names are normalized to uppercase in requests, comparisons and state, matching GitHub. Case-only declaration changes preserve identity.
+
 | Resource/scope               | Plan/read          | Apply/destroy       |
 | ---------------------------- | ------------------ | ------------------- |
 | ActionsVariable, repository  | Variables: read    | Variables: write    |

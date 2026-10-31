@@ -32,7 +32,7 @@ export type ActionsVariable = Resource<
 export const ActionsVariable = Resource<ActionsVariable>('GitHub.ActionsVariable')
 const Metadata = Schema.Struct({ name: Schema.String, value: Schema.String })
 const path = (props: ActionsVariableProps) =>
-  `${actionsPath({ scope: props, kind: 'variables' })}/${encodeURIComponent(props.name)}`
+  `${actionsPath({ scope: props, kind: 'variables' })}/${encodeURIComponent(props.name.toUpperCase())}`
 const identity = Effect.fn('GitHub.ActionsVariable.identity')(function* (
   props: ActionsVariableProps,
   output?: ActionsVariableAttributes,
@@ -44,7 +44,7 @@ const identity = Effect.fn('GitHub.ActionsVariable.identity')(function* (
       output.owner !== props.owner ||
       output.repository !== props.repository ||
       output.environment !== props.environment ||
-      output.name !== props.name)
+      output.name.toUpperCase() !== props.name.toUpperCase())
   )
     return yield* new ActionsError({
       operation: 'identity',
@@ -69,7 +69,7 @@ const read = Effect.fn('GitHub.ActionsVariable.read')(function* (
         }),
     ),
   )
-  if (metadata.name !== props.name)
+  if (metadata.name.toUpperCase() !== props.name.toUpperCase())
     return yield* new ActionsError({
       operation: 'identity',
       message: 'GitHub returned a different Actions variable name.',
@@ -80,6 +80,7 @@ const read = Effect.fn('GitHub.ActionsVariable.read')(function* (
     ...(props.environment === undefined ? {} : { environment: props.environment }),
     baseUrl,
     ...metadata,
+    name: metadata.name.toUpperCase(),
   }
 })
 
@@ -106,14 +107,14 @@ export const ActionsVariableProvider = Provider.succeed(ActionsVariable, {
         news,
         live === undefined ? 'POST' : 'PATCH',
         live === undefined ? actionsPath({ scope: news, kind: 'variables' }) : path(news),
-        { name: news.name, value: news.value },
+        { name: news.name.toUpperCase(), value: news.value },
       )
       return {
         owner: news.owner,
         repository: news.repository,
         ...(news.environment === undefined ? {} : { environment: news.environment }),
         baseUrl,
-        name: news.name,
+        name: news.name.toUpperCase(),
         value: news.value,
       }
     }),
