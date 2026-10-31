@@ -62,6 +62,8 @@
       "selectedTestFiles": [
         "src/App.integration.test.ts",
         "src/App.live.test.ts",
+        "src/RepoState.integration.test.ts",
+        "src/RepoStateCredentials.unit.test.ts",
         "src/Ruleset.unit.test.ts",
         "src/engine.integration.test.ts",
         "src/host.unit.test.ts",
@@ -73,6 +75,8 @@
       "testFiles": [
         "src/App.integration.test.ts",
         "src/App.live.test.ts",
+        "src/RepoState.integration.test.ts",
+        "src/RepoStateCredentials.unit.test.ts",
         "src/Ruleset.unit.test.ts",
         "src/engine.integration.test.ts",
         "src/host.unit.test.ts",

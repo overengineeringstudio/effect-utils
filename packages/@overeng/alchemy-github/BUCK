@@ -4,7 +4,7 @@
 # Projection source: packages/@overeng/alchemy-github/BUCK.genie.ts
 # Projection schema version: 13
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:3ac355b09acac86e2de096f03782d6657256b8dd33c6152febc95a29330028b0
+# Semantic fingerprint: sha256:bc1fc868b07cdd47bd0028fbb3c9616dd60e8e8be9bff53be266a2fd6a872bd9
 # Regenerate: devenv tasks run genie:run
 
 load("//buck2:materialization.bzl", "export_materialization_inputs", "package_view")
@@ -26,6 +26,10 @@ export_materialization_inputs([
     "src/App.ts",
     "src/AppErrors.ts",
     "src/Providers.ts",
+    "src/RepoState.integration.test.ts",
+    "src/RepoState.ts",
+    "src/RepoStateCredentials.ts",
+    "src/RepoStateCredentials.unit.test.ts",
     "src/Ruleset.unit.test.ts",
     "src/engine.integration.test.ts",
     "src/host.unit.test.ts",
@@ -78,6 +82,10 @@ package_view(
         "src/App.ts": "src/App.ts",
         "src/AppErrors.ts": "src/AppErrors.ts",
         "src/Providers.ts": "src/Providers.ts",
+        "src/RepoState.integration.test.ts": "src/RepoState.integration.test.ts",
+        "src/RepoState.ts": "src/RepoState.ts",
+        "src/RepoStateCredentials.ts": "src/RepoStateCredentials.ts",
+        "src/RepoStateCredentials.unit.test.ts": "src/RepoStateCredentials.unit.test.ts",
         "src/Ruleset.unit.test.ts": "src/Ruleset.unit.test.ts",
         "src/engine.integration.test.ts": "src/engine.integration.test.ts",
         "src/host.unit.test.ts": "src/host.unit.test.ts",
@@ -108,6 +116,10 @@ package_view(
         "src/App.ts": "src/App.ts",
         "src/AppErrors.ts": "src/AppErrors.ts",
         "src/Providers.ts": "src/Providers.ts",
+        "src/RepoState.integration.test.ts": "src/RepoState.integration.test.ts",
+        "src/RepoState.ts": "src/RepoState.ts",
+        "src/RepoStateCredentials.ts": "src/RepoStateCredentials.ts",
+        "src/RepoStateCredentials.unit.test.ts": "src/RepoStateCredentials.unit.test.ts",
         "src/Ruleset.unit.test.ts": "src/Ruleset.unit.test.ts",
         "src/engine.integration.test.ts": "src/engine.integration.test.ts",
         "src/host.unit.test.ts": "src/host.unit.test.ts",
@@ -138,6 +150,10 @@ package_view(
         "src/App.ts": "src/App.ts",
         "src/AppErrors.ts": "src/AppErrors.ts",
         "src/Providers.ts": "src/Providers.ts",
+        "src/RepoState.integration.test.ts": "src/RepoState.integration.test.ts",
+        "src/RepoState.ts": "src/RepoState.ts",
+        "src/RepoStateCredentials.ts": "src/RepoStateCredentials.ts",
+        "src/RepoStateCredentials.unit.test.ts": "src/RepoStateCredentials.unit.test.ts",
         "src/Ruleset.unit.test.ts": "src/Ruleset.unit.test.ts",
         "src/engine.integration.test.ts": "src/engine.integration.test.ts",
         "src/host.unit.test.ts": "src/host.unit.test.ts",
