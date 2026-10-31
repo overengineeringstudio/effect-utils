@@ -268,11 +268,21 @@ const ruleset =
 
 `appId` is the registration ID, not an installation ID. Upstream maps these fields to `required_status_checks[].integration_id`, `strict_required_status_checks_policy`, and `bypass_actors`. On reconciliation it reads actual policy, compares controlled fields, and PUTs only when they differ. This is not an additional no-op plan drift detector. Upstream supports name-based adoption through `adopt(true)` and defaults removal to retain; opt into Alchemy's destroy removal policy deliberately when deletion is wanted. The package does not promise ID-based adoption or the full genie ruleset schema.
 
-## Tests and manual live lane
+## Tests and live lanes
 
 Unit tests cover manifest generation/default-disabled hooks, escaping and drift diffs. Local HTTP integration tests implement conversion, App observation and repository/environment Actions secret endpoints, decrypt the sealed payload, and assert PEM absence from serialized Alchemy state, outputs, logs and errors. A contract test asserts Ruleset is exactly upstream's resource, not a competing provider.
 
 Real beta.84 Plan/Deploy engine tests persist registration attributes, then verify unchanged redeploys reject live permission/event drift and missing secrets. Host tests cover GitHub.com, data-residency browser/API origins, and Enterprise Server. Conversion recovery tests retain pending attributes after a post-sink drift error, reject replay, and recover via explicit adoption.
+
+### Blocking sandbox resource lane
+
+The lane exercises Actions variable create/update/delete, an env-backed Actions secret sink, and Labels create/update/destroy with unique run-prefixed names. Each case cleans up its own resources, never unmanaged labels. Alchemy state is local to the job and is not uploaded. The sandbox lane does not create Apps or use manifest conversion; the App exists before the lane runs.
+
+The job and local sandbox harness set `ALCHEMY_TELEMETRY_DISABLED=1` and assert Alchemy's resolved opt-out before running resources. Consumers passing secret-backed identities or props should also disable Alchemy telemetry: log masking does not protect data sent to external telemetry exporters.
+
+Ruleset mutation is intentionally excluded: it would require the broader **Administration: write** permission, which these resource checks do not otherwise need. Cleanup finalizers run on ordinary test failures; a hard runner/process termination can still leave run-prefixed fixtures for an operator to inspect and remove.
+
+### Manual read-only App adoption
 
 The manual **read-only App adoption** lane is skipped unless all these variables are set:
 
@@ -283,6 +293,6 @@ The manual **read-only App adoption** lane is skipped unless all these variables
 - `ALCHEMY_GITHUB_LIVE_SECRET_NAME`: its existing Actions secret
 - Optionally `ALCHEMY_GITHUB_LIVE_SECRET_ENVIRONMENT`
 
-Run `devenv tasks run test:alchemy-github` for the bounded local tests, or `devenv tasks run test:alchemy-github:unbounded` for the manual lane after installing the supported cohort. The package's Buck admission excludes `src/App.live.test.ts` from bounded collection and assigns it to the generated source/unbounded complement, following the repository's live-integration ownership convention. The live lane makes GET requests only; no App creation, conversion, installation or secret mutation is automated. Normal tests need no credentials, and no live lane has been exercised as part of this change.
+Run `devenv tasks run test:alchemy-github` for bounded local tests, or `devenv tasks run test:alchemy-github:unbounded` for the credentialed/manual complement after installing the supported cohort. Buck excludes `src/App.live.test.ts` and `src/Sandbox.live.test.ts` from bounded collection. The separate App-adoption suite makes GET requests only; the explicitly enabled sandbox suite performs run-scoped mutations. Normal bounded tests need no credentials. Live coverage must be exercised separately; local HTTP tests do not prove real GitHub behavior.
 
 API references: [manifest registration](https://docs.github.com/en/apps/sharing-github-apps/registering-a-github-app-from-a-manifest), [Apps REST](https://docs.github.com/en/rest/apps/apps), [repository rulesets](https://docs.github.com/en/rest/repos/rules), [Actions secrets](https://docs.github.com/en/rest/actions/secrets).

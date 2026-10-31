@@ -13,9 +13,9 @@ export const buck2TypeScriptAdmission = {
     {
       name: 'test',
       runner: 'vitest',
-      // Manual provider access belongs to the generated source/unbounded complement,
-      // not the bounded collection inventory (the suite is skipped without credentials).
-      excludes: ['src/App.live.test.ts'],
+      // Credentialed/manual provider access belongs to the source/unbounded complement.
+      // Sandbox.live fails closed when its explicit live gate is enabled.
+      excludes: ['src/App.live.test.ts', 'src/Sandbox.live.test.ts'],
     },
   ],
 } as const satisfies Buck2TypeScriptAdmission
