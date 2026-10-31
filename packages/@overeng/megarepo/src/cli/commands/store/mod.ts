@@ -56,7 +56,13 @@ import {
   planBuildOutputBudgets,
   type BudgetRepoWorktrees,
 } from '../../../store/store-build-budgets.ts'
-import { canonicalizeOwnerPath, withDeletionLease } from '../../../store/store-deletion-lease.ts'
+import {
+  canonicalizeOwnerPath,
+  createStoreWorktree,
+  createStoreWorktreeDetached,
+  withDeletionLease,
+  withStoreWorktreeLease,
+} from '../../../store/store-deletion-lease.ts'
 import {
   loadStoreGcConfig,
   type StoreGcConfig,
@@ -4033,21 +4039,24 @@ const storeAddCommand = Cli.Command.make(
         }
 
         if (refType === 'commit' || refType === 'tag') {
-          yield* Git.createWorktreeDetached({
+          yield* createStoreWorktreeDetached({
+            storeBasePath: store.basePath,
             repoPath: bareRepoPath,
             worktreePath,
             commit: targetRef,
           })
         } else {
           yield* Effect.firstSuccessOf([
-            Git.createWorktree({
+            createStoreWorktree({
+              storeBasePath: store.basePath,
               repoPath: bareRepoPath,
               worktreePath,
               branch: targetRef,
               createBranch: false,
             }),
             Effect.suspend(() =>
-              Git.createWorktree({
+              createStoreWorktree({
+                storeBasePath: store.basePath,
                 repoPath: bareRepoPath,
                 worktreePath,
                 branch: `origin/${targetRef}`,
@@ -4055,7 +4064,8 @@ const storeAddCommand = Cli.Command.make(
               }),
             ),
             Effect.suspend(() =>
-              Git.createWorktreeDetached({
+              createStoreWorktreeDetached({
+                storeBasePath: store.basePath,
                 repoPath: bareRepoPath,
                 worktreePath,
                 commit: targetRef,
@@ -4467,14 +4477,16 @@ const storeWorktreeNewCommand = Cli.Command.make(
       // Create the worktree
       if (commit !== undefined) {
         // Detached HEAD at specific commit
-        yield* Git.createWorktreeDetached({
+        yield* createStoreWorktreeDetached({
+          storeBasePath: store.basePath,
           repoPath: bareRepoPath,
           worktreePath,
           commit,
         })
       } else if (isNewBranch === true) {
         // New branch from base
-        yield* Git.createWorktree({
+        yield* createStoreWorktree({
+          storeBasePath: store.basePath,
           repoPath: bareRepoPath,
           worktreePath,
           branch: ref!,
@@ -4493,21 +4505,24 @@ const storeWorktreeNewCommand = Cli.Command.make(
       } else {
         // Existing branch or tag
         if (refType === 'tag') {
-          yield* Git.createWorktreeDetached({
+          yield* createStoreWorktreeDetached({
+            storeBasePath: store.basePath,
             repoPath: bareRepoPath,
             worktreePath,
             commit: targetRef,
           })
         } else {
           yield* Effect.firstSuccessOf([
-            Git.createWorktree({
+            createStoreWorktree({
+              storeBasePath: store.basePath,
               repoPath: bareRepoPath,
               worktreePath,
               branch: targetRef,
               createBranch: false,
             }),
             Effect.suspend(() =>
-              Git.createWorktree({
+              createStoreWorktree({
+                storeBasePath: store.basePath,
                 repoPath: bareRepoPath,
                 worktreePath,
                 branch: `origin/${targetRef}`,
@@ -4515,7 +4530,8 @@ const storeWorktreeNewCommand = Cli.Command.make(
               }),
             ),
             Effect.suspend(() =>
-              Git.createWorktreeDetached({
+              createStoreWorktreeDetached({
+                storeBasePath: store.basePath,
                 repoPath: bareRepoPath,
                 worktreePath,
                 commit: targetRef,
@@ -4619,8 +4635,6 @@ const storeLeaseCommand = Cli.Command.make(
   ({ ownerPath, command }) =>
     Effect.gen(function* () {
       const store = yield* Store
-      const now = yield* Clock.currentTimeMillis
-      const leaseOwnerPath = yield* canonicalizeOwnerPath(ownerPath)
       const exitCode = yield* Effect.gen(function* () {
         const child = yield* ChildProcess.make(command[0]!, command.slice(1), {
           stderr: 'inherit',
@@ -4628,10 +4642,7 @@ const storeLeaseCommand = Cli.Command.make(
           stdout: 'inherit',
         })
         return yield* child.exitCode
-      }).pipe(
-        Effect.scoped,
-        withDeletionLease({ storeBasePath: store.basePath, ownerPath: leaseOwnerPath, now }),
-      )
+      }).pipe(Effect.scoped, withStoreWorktreeLease({ storeBasePath: store.basePath, ownerPath }))
       // Wrapping must be transparent: the child's own code is the command's code
       // (`runTuiMain`'s teardown honors an already-set `process.exitCode`), so a
       // wrapped `exit 42` stays 42 instead of collapsing to a generic failure.

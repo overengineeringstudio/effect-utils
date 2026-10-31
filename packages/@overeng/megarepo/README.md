@@ -235,6 +235,9 @@ signature, not merely a marker filename or a failed Git check. Seats/PTYs anywhe
 container veto all its outputs; direct process references protect only their containing output.
 Unknown evidence keeps. Repository output remains observation-only even with complete
 coverage: its liveness and registry contract never grants deletion authority.
+Activation (`mr store lease`) and worktree creation acquire the canonical repository-container
+lease before the worktree lease. External tools must use this protocol before publishing
+coverage: registration or activation bypassing it cannot be excluded by registry observations.
 Both kinds carry `livenessKey` and `admissionIdentity`; the digest binds version, ownership,
 census admission and process coverage. Old/unversioned policies and receipts are rejected:
 consumers must decode v2 owner kinds and regenerate plans instead of reusing v1 hashes.

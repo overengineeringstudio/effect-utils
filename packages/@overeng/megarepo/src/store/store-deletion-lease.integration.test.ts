@@ -23,10 +23,12 @@ import { encodeJson } from '../test-utils/mod.ts'
 import {
   acquireDeletionLease,
   canonicalizeOwnerPath,
+  createStoreWorktree,
   deletionLeasePath,
   DeletionLeaseUnavailableError,
   releaseDeletionLease,
   withDeletionLease,
+  withStoreWorktreeLease,
 } from './store-deletion-lease.ts'
 
 const NOW = 1_800_000_000_000
@@ -125,6 +127,57 @@ describe('store deletion lease', () => {
 
         // Nothing leaks: once activation exits, reclamation proceeds.
         expect(yield* attemptDelete).toBe('deleted')
+      },
+      Effect.provide(NodeServices.layer),
+      Effect.scoped,
+    ),
+  )
+
+  it.effect(
+    'container fencing excludes activation and registration without recursive acquisition',
+    Effect.fnUntraced(
+      function* () {
+        const f = yield* fixture()
+        const container = yield* canonicalizeOwnerPath(`${f.storePath}example.com/team/repo`)
+        const ownerPath = `${container}/refs/heads/new`
+        const bareRepoPath = `${container}/.bare`
+        const containerLease = { storeBasePath: f.storePath, ownerPath: container, now: NOW }
+        const activation = withStoreWorktreeLease({ storeBasePath: f.storePath, ownerPath })
+        const registration = createStoreWorktree({
+          storeBasePath: f.storePath,
+          repoPath: bareRepoPath,
+          worktreePath: ownerPath,
+          branch: 'new',
+          createBranch: true,
+        })
+        const blocked = yield* withDeletionLease(containerLease)(
+          Effect.all([
+            activation(Effect.die('activation entered during deletion')).pipe(Effect.result),
+            registration.pipe(Effect.result),
+          ]),
+        )
+        for (const result of blocked) {
+          expect(result._tag).toBe('Failure')
+          if (result._tag === 'Failure') {
+            expect(result.failure).toBeInstanceOf(DeletionLeaseUnavailableError)
+            expect(result.failure).toMatchObject({ ownerPath: container })
+          }
+        }
+        const duringActivation = yield* activation(
+          withDeletionLease(containerLease)(Effect.void).pipe(Effect.result),
+        )
+        expect(duringActivation._tag).toBe('Failure')
+        // GC holds the container and uses only the worktree primitive underneath.
+        yield* Effect.void.pipe(
+          withDeletionLease({ ...containerLease, ownerPath }),
+          withDeletionLease(containerLease),
+        )
+        const fs = yield* FileSystem.FileSystem
+        yield* fs.makeDirectory(bareRepoPath, { recursive: true })
+        yield* withStoreWorktreeLease({
+          storeBasePath: f.storePath,
+          ownerPath: container,
+        })(Effect.void)
       },
       Effect.provide(NodeServices.layer),
       Effect.scoped,

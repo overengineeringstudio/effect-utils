@@ -28,6 +28,7 @@ import {
   canonicalizeStorePath,
   resolveStoreBranchWorktree,
 } from '../store/store-branch-worktree.ts'
+import { createStoreWorktree, createStoreWorktreeDetached } from '../store/store-deletion-lease.ts'
 import { StoreLock } from '../store/store-lock.ts'
 import { assertCanonicalMutationAllowed, makeStoreDirectory } from '../store/store-path.ts'
 import { Store } from '../store/store.ts'
@@ -1084,7 +1085,8 @@ export const syncMember = <R = never>({
 
             // Create worktree
             if (worktreeRefType === 'commit' || worktreeRefType === 'tag') {
-              yield* Git.createWorktreeDetached({
+              yield* createStoreWorktreeDetached({
+                storeBasePath: store.basePath,
                 repoPath: bareRepoPath,
                 worktreePath,
                 commit: targetCommit ?? worktreeRef,
@@ -1093,14 +1095,16 @@ export const syncMember = <R = never>({
                 onWorktreeCreated?.(yield* fs.realPath(worktreePath))
               }
             } else {
-              yield* Git.createWorktree({
+              yield* createStoreWorktree({
+                storeBasePath: store.basePath,
                 repoPath: bareRepoPath,
                 worktreePath,
                 branch: targetRef,
                 createBranch: false,
               }).pipe(
                 Effect.catch(() =>
-                  Git.createWorktree({
+                  createStoreWorktree({
+                    storeBasePath: store.basePath,
                     repoPath: bareRepoPath,
                     worktreePath,
                     branch: `origin/${targetRef}`,
@@ -1147,7 +1151,8 @@ export const syncMember = <R = never>({
             if (parent !== undefined) {
               yield* makeStoreDirectory(parent)
             }
-            yield* Git.createWorktreeDetached({
+            yield* createStoreWorktreeDetached({
+              storeBasePath: store.basePath,
               repoPath: bareRepoPath,
               worktreePath: commitWorktreePath,
               commit: targetCommit!,
