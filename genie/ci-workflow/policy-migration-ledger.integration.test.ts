@@ -102,7 +102,7 @@ export default createGenieOutput({ data, stringify: (ctx) => {
           'json',
           ...(check === true ? ['--check'] : []),
         ],
-        { cwd: repositoryRoot, env: process.env },
+        { cwd: repositoryRoot, env: process.env, stdout: 'pipe', stderr: 'pipe' },
       )
       return {
         status: result.exitCode,
