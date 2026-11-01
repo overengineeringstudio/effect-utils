@@ -16,11 +16,23 @@ export default githubWorkflow({
   jobs: {
     test: {
       'runs-on': 'ubuntu-latest',
-      steps: [{ uses: 'actions/checkout@v4' }, { run: 'npm test' }],
+      steps: [
+        {
+          $comment: 'v4.4.0',
+          uses: 'actions/checkout@11d5960a326750d5838078e36cf38b85af677262',
+        },
+        { run: 'npm test' },
+      ],
     },
   },
 })
 ```
+
+External action steps use full commit SHAs; `$comment` records the matching release
+tag as a YAML comment before the step. Consumers of the shared CI helpers must
+regenerate their workflows with `devenv tasks run genie:run` after updating their
+`published` ref. Action literals authored in a consumer's own workflow sources are
+independent of the helpers and must be pinned there as well.
 
 ## Features
 

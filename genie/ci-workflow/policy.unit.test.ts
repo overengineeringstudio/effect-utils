@@ -510,7 +510,6 @@ describe('upstream setup-action cache contracts', () => {
     'v5',
     'v6',
     'v6.1.0',
-    '0123456789abcdef0123456789abcdef01234567',
     'v5-beta',
     '4.x-foo',
     'v4abc',
@@ -551,6 +550,17 @@ describe('upstream setup-action cache contracts', () => {
   it.each(['v4', 'v4.0', 'v4.0.0'])('preserves the exact pre-v5 tag %s contract', (ref) => {
     expect(setupViolations(`actions/setup-node@${ref}`)).toEqual([])
     expect(setupViolations(`actions/setup-node@${ref}`, { cache: 'npm' })).toHaveLength(1)
+  })
+  it('uses registered release metadata for SHA-pinned Node v4', () => {
+    const uses = 'actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020'
+    expect(setupViolations(uses)).toEqual([])
+    expect(setupViolations(uses, { cache: 'npm' })).toHaveLength(1)
+  })
+  it('fails closed for unknown SHA-pinned Node releases, even with cache opt-out', () => {
+    const uses = 'actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444'
+    const violations = setupViolations(uses, { 'package-manager-cache': false })
+    expect(violations).toHaveLength(1)
+    expect(violations[0]?.value).toContain('Unknown SHA-pinned action version')
   })
   it.each(['actions/setup-python@v6', 'actions/setup-java@v5', 'actions/setup-dotnet@v5'])(
     '%s does not cache unless requested',
