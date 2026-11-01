@@ -232,7 +232,8 @@ are admitted, never symlinks, mount crossings or registered-worktree overlaps.
 Repository outputs require both `processWorktreeCoverage: "registered-worktrees"` and
 `processRepoOutputCoverage: "repo-build-outputs"` in admitted activity, plus the standard `CACHEDIR.TAG`
 signature, not merely a marker filename or a failed Git check. Seats/PTYs anywhere in the
-container veto all its outputs; direct process references protect only their containing output.
+container veto all its outputs. Process claims protect overlapping roots in either direction:
+an output root, a directory below it, or its containing repository all keep the output.
 Unknown evidence keeps. Repository outputs containing `.git` or a bare repository boundary
 are never eligible, including when the output root itself is a bare repository.
 Apply acquires exclusive canonical container admission first, then sorted worktree leases,
