@@ -57,7 +57,7 @@ describe('cache join', () => {
     expect(report.counts.every((row) => row.eligible_actions === 0)).toBe(true)
   })
 
-  it('joins exact identities only after an earlier successful writer upload', () => {
+  it('joins exact identities only after an earlier trusted writer upload', () => {
     for (const [uploadedAt, eligible] of [
       [199, 1],
       [200, 0],
@@ -92,7 +92,7 @@ describe('cache join', () => {
     ).toMatchObject({ eligible_actions: 0, remote_hit_actions: 0, cold_actions: 1 })
   })
 
-  it('accepts merge queue writers but not PR uploads or changed digests', () => {
+  it('rejects merge queue and PR uploads as trusted presence', () => {
     const queue = writerFixture()
     queue.header.metadata.lane = 'merge_group'
     queue.header.metadata.job = 'test'
@@ -107,10 +107,10 @@ describe('cache join', () => {
     expect(
       report.counts.find((row) => row.lane === 'main-reader' && row.platform === 'linux'),
     ).toMatchObject({
-      eligible_actions: 1,
-      remote_hit_actions: 1,
-      cold_actions: 0,
-      changed_actions: 1,
+      eligible_actions: 0,
+      remote_hit_actions: 0,
+      cold_actions: 2,
+      changed_actions: 0,
     })
     const withoutQueue = reportFor([
       observation(writerFixture(), 'pr'),
@@ -244,7 +244,7 @@ describe('cache join', () => {
         ),
       }),
     ).toMatchInlineSnapshot(`
-        "# HELP buck2_cache_lane_eligible_actions Window eligible actions by cache lane and platform.
+        "# HELP buck2_cache_lane_eligible_actions Window exact action identities observed by complete trusted main writers before reader invocation start, by cache lane and platform.
         # TYPE buck2_cache_lane_eligible_actions gauge
         buck2_cache_lane_eligible_actions{repo=\"public/test\",lane=\"main-reader\",platform=\"linux\"} 1 1000000
         # HELP buck2_cache_lane_remote_hit_actions Window remote hit actions by cache lane and platform.
@@ -265,7 +265,7 @@ describe('cache join', () => {
         # HELP buck2_cache_lane_noncacheable_actions Window noncacheable actions by cache lane and platform.
         # TYPE buck2_cache_lane_noncacheable_actions gauge
         buck2_cache_lane_noncacheable_actions{repo=\"public/test\",lane=\"main-reader\",platform=\"linux\"} 0 1000000
-        # HELP buck2_cache_lane_excluded_actions Window excluded actions by cache lane and platform.
+        # HELP buck2_cache_lane_excluded_actions Window policy-excluded actions, deliberate cache-read-disabled controls and nonfresh repetitions by cache lane and platform.
         # TYPE buck2_cache_lane_excluded_actions gauge
         buck2_cache_lane_excluded_actions{repo=\"public/test\",lane=\"main-reader\",platform=\"linux\"} 0 1000000
         # HELP buck2_cache_lane_upload_failure_actions Window upload failure actions by cache lane and platform.

@@ -92,7 +92,7 @@ describe('proof report publication', () => {
     expect(proof.accepted).toBe(true)
     expect(proof.references).toHaveLength(4)
     expect(
-      proof.writerPriorUploadBindings[0].invocations[0].writers[0].successfulPriorUploadCount,
+      proof.writerPriorObservationBindings[0].invocations[0].writers[0].priorObservationCount,
     ).toBe(1)
     expect(proof.historicalManifestSha256).toMatch(/^[a-f0-9]{64}$/)
     await Bun.write(join(options.root, manifest.observations[1]!.readers[0]!.actions), 'corrupt')
@@ -299,7 +299,7 @@ describe('proof report publication', () => {
     await writeBuck2CacheProofReports({ ...options, manifestPath })
     const proof = await Bun.file(join(options.root, proofManifestName)).json()
     expect(
-      proof.writerPriorUploadBindings[0].invocations.map(
+      proof.writerPriorObservationBindings[0].invocations.map(
         (item: { writers: unknown[] }) => item.writers.length,
       ),
     ).toEqual([1, 0, 1, 0])

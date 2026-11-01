@@ -265,6 +265,63 @@ describe('strict action boundary', () => {
   })
 })
 describe('warm99 identity acceptance', () => {
+  it.each(['upload', 'remote-hit'] as const)(
+    'requires earlier exact trusted %s anchors',
+    (source) => {
+      for (const observedAt of [199, 200, 201])
+        for (const lane of ['main-writer', 'merge_group', 'pr'] as const)
+          for (const anchor of [
+            'trusted',
+            'disabled',
+            'none',
+            'different-configuration',
+            'incomplete',
+          ]) {
+            if (anchor !== 'trusted' && (lane !== 'main-writer' || observedAt !== 199)) continue
+            const manifest = manifestFixture()
+            const loaded = loadedFixture(manifest)
+            for (const item of loaded) {
+              const writer = item.writers[0]!
+              item.observation.writers[0]!.lane = lane
+              writer.header.metadata.lane = lane
+              writer.header.metadata.posture = lane === 'pr' ? 'read-only' : 'writer'
+              if (anchor === 'disabled')
+                writer.header.invocations[0]!.cacheReadPolicy = 'disabled-by-design'
+              if (anchor === 'incomplete') writer.header.complete = false
+              writer.actions = [
+                actionFixture({
+                  buildId: writer.header.invocations[0]!.buildId,
+                  executionKind: source === 'upload' ? 1 : 3,
+                  uploadOutcome: source === 'upload' ? 'uploaded' : 'not-uploaded',
+                  cacheUploadResult: source === 'upload' ? 1 : 0,
+                  startedAt: 10,
+                  completedAt: observedAt,
+                  endTime: observedAt,
+                  uploadCompletedAt: source === 'upload' ? observedAt : null,
+                }),
+              ]
+              if (anchor === 'different-configuration')
+                writer.actions[0]!.configuration = 'linux#other'
+              if (anchor === 'none') {
+                item.writers = []
+                item.observation.writers = []
+              }
+            }
+            const eligible =
+              anchor === 'trusted' && lane === 'main-writer' && observedAt < 200 ? 1 : 0
+            const report = evaluateWarm99({ manifest, loaded })
+            expect(report.accepted).toBe(eligible === 1)
+            expect(report.lanes[0]!.observations[0]).toMatchObject({
+              ...(anchor === 'incomplete' ? {} : { complete: true }),
+              evidenceGap: anchor === 'incomplete' ? 1 : 0,
+              eligible,
+              remoteHits: eligible,
+              cold: 1 - eligible,
+            })
+          }
+    },
+  )
+
   it('does not consume enabled lookup freshness with an earlier cache-off control', () => {
     const manifest = manifestFixture()
     const loaded = loadedFixture(manifest)
@@ -1071,7 +1128,7 @@ describe('cache lane posture', () => {
     expect(report.accepted).toBe(true)
     expect(report.lanes.map((lane) => lane.consecutive)).toEqual([2, 2])
   })
-  it('accepts queue writer sources but rejects PR writer posture or read-only writer sources', () => {
+  it('rejects queue or PR anchors, PR writer posture and read-only writer sources', () => {
     for (const mode of ['queue', 'pr-reader', 'pr-writer', 'readonly-source']) {
       const manifest = manifestFixture(['pr'])
       const loaded = loadedFixture(manifest)
@@ -1096,7 +1153,7 @@ describe('cache lane posture', () => {
           writer.header.metadata.posture = 'read-only'
         }
       }
-      expect(evaluateWarm99({ manifest: manifest, loaded: loaded }).accepted).toBe(mode === 'queue')
+      expect(evaluateWarm99({ manifest: manifest, loaded: loaded }).accepted).toBe(false)
     }
   })
 })
