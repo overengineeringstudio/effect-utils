@@ -131,6 +131,7 @@ let
       "--features"
       "example-children"
     ];
+    nativeBuildInputs = [ pkgs.swift ];
     buildInputs = [ pkgs.apple-sdk_15 ];
     # Reuse the capability's pure SDK environment, NOT its compiler wrapper:
     # that wrapper signs outputs after ABI normalization. This assembly must not.
@@ -149,6 +150,12 @@ let
     doCheck = false;
     dontStrip = true;
     dontAutoSignDarwinBinaries = true;
+    postInstall = ''
+      mkdir -p "$out/lib"
+      library=$(find target -name libpermissions_onboarding.dylib -print -quit)
+      test -n "$library"
+      cp "$library" "$out/lib/"
+    '';
     postFixup = ''
       ${pkgs.darwin.cctools}/bin/install_name_tool \
         -change '${pkgs.libiconv}/lib/libiconv.2.dylib' /usr/lib/libiconv.2.dylib \
@@ -211,6 +218,8 @@ let
     mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
     ${helperAssembly.copy}
     cp '${runtime}/bin/macos-permissions-host' "$app/Contents/MacOS/macos-permissions-host"
+    mkdir -p "$app/Contents/Frameworks"
+    cp '${runtime}/lib/libpermissions_onboarding.dylib' "$app/Contents/Frameworks/"
     cp '${infoPlist}' "$app/Contents/Info.plist"
     cp '${policy}' "$app/Contents/Resources/policy.json"
     cp '${runtimeIdentity}' "$app/Contents/Resources/runtime-identity.json"
@@ -248,7 +257,15 @@ let
       path = "${bundle}/${name}.app";
       executable = "Contents/MacOS/macos-permissions-host";
       inherit hostSourceHash entitlements;
-      nestedCode = helperAssembly.nestedCode;
+      nestedCode = helperAssembly.nestedCode ++ [
+        {
+          path = "Contents/Frameworks/libpermissions_onboarding.dylib";
+          identifier = "${bundleId}.onboarding";
+          requirement = ''identifier "${bundleId}.onboarding" and anchor apple generic and certificate leaf[subject.OU] = "${signer.teamId}"'';
+          entitlements = null;
+          options = [ "runtime" ];
+        }
+      ];
       signingOptions = [ "runtime" ];
     };
   };

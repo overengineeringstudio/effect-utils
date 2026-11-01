@@ -61,8 +61,8 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         *destination = Some(PathBuf::from(args.get(index + 1).ok_or("Host option requires a path")?));
         index += 2;
     }
-    if mode == "onboard" && (!human_present || socket.is_some() || generation_pointer.is_some() || gui_socket.is_some() || role.is_some()) {
-        return Err("Onboarding requires --human-present and does not accept service endpoints or roles".into());
+    if mode == "onboard" && (!human_present || config_path.is_none() || socket.is_some() || generation_pointer.is_some() || gui_socket.is_some() || role.is_some()) {
+        return Err("Onboarding requires --human-present --config PATH and does not accept service endpoints or roles".into());
     }
     if mode == "serve" && human_present { return Err("Human-present consent is available only through onboard".into()); }
     let config_path = match config_path {
