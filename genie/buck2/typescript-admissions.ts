@@ -57,6 +57,7 @@ import { buck2TypeScriptAdmission as utilsDevAdmission } from '../../packages/@o
 import { buck2TypeScriptAdmission as utilsStorybookAdmission } from '../../packages/@overeng/utils-storybook/BUCK.genie.ts'
 import { buck2TypeScriptAdmission as utilsAdmission } from '../../packages/@overeng/utils/BUCK.genie.ts'
 import { buck2TypeScriptAdmission as workStorageAdmission } from '../../packages/@overeng/work-storage/BUCK.genie.ts'
+import readerComposition from '../ci-workflow/reader-composition.json'
 import { pnpmWorkspaceMemberPaths } from '../packages.ts'
 import {
   buck2TestCollectionTargetSuffix,
@@ -200,6 +201,56 @@ export const authoritativeBuck2TypeScriptDeclarations: readonly AuthoritativeBuc
           },
         ],
   )
+
+/**
+ * Declaration actions embedded in reader editor views, from the very same
+ * workspace-sibling composition rendered by buck2TypeScriptPackageProjection.
+ * A trusted writer builds this union before mutating its proof-only sources.
+ */
+export const deriveReaderDeclarationTargets = ({
+  admissions,
+  roots,
+}: {
+  readonly admissions: readonly Pick<
+    Buck2TypeScriptAdmission,
+    'packagePath' | 'workspaceSiblings'
+  >[]
+  readonly roots: readonly string[]
+}): readonly string[] => {
+  const byPath = Object.fromEntries(
+    admissions.map((admission) => [admission.packagePath, admission]),
+  )
+  const visited = new Set<string>()
+  const targets = new Set<string>()
+  const visit = (packagePath: string): void => {
+    if (visited.has(packagePath) === true) return
+    visited.add(packagePath)
+    const admission = byPath[packagePath]
+    if (admission === undefined)
+      throw new Error(`Reader composition has no Buck admission: ${packagePath}`)
+    for (const sibling of admission.workspaceSiblings ?? []) {
+      if (sibling.distTarget !== undefined) targets.add(sibling.distTarget)
+      visit(sibling.packagePath)
+    }
+  }
+  for (const root of roots) visit(root)
+  return [...targets].toSorted(compareAuthorityStrings)
+}
+
+/** Existing reader entry roots, shared with Nix tasks and the live-deploy workflow. */
+export const readerCompositionPackagePaths = [
+  ...new Set([
+    ...readerComposition.storybooks.map(({ path }) => path),
+    ...readerComposition.notionIntegration,
+    ...readerComposition.liveDeploy,
+  ]),
+].toSorted(compareAuthorityStrings)
+
+/** Only declaration dependencies reachable from the actual main-reader lane roots. */
+export const readerDeclarationTargets = deriveReaderDeclarationTargets({
+  admissions: Object.values(buck2TypeScriptAdmissions),
+  roots: readerCompositionPackagePaths,
+})
 
 /** Cell every generated bridge label is qualified with; Buck resolves nothing relative. */
 const buck2Cell = 'effect_utils'
