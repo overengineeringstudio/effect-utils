@@ -276,6 +276,16 @@ Real beta.84 Plan/Deploy engine tests persist registration attributes, then veri
 
 ### Blocking sandbox resource lane
 
+The `alchemy-github/live` CI check runs only on pushes to `main` and `merge_group`, never on pull requests. It uses environment `alchemy-github-live` and fails if required configuration is missing; missing credentials are not a successful skip. Provision the sandbox App and environment before enabling/merging the workflow.
+
+Configure these environment values without checking their contents into source:
+
+- Secret `ALCHEMY_GITHUB_SANDBOX_REPO`: sandbox `owner/repo`; secret-backed so GitHub masks the full identity in logs. Preflight also masks owner and repository components separately.
+- Variable `ALCHEMY_GITHUB_SANDBOX_APP_ID`: the dedicated App's ID.
+- Secret `ALCHEMY_GITHUB_SANDBOX_APP_PRIVATE_KEY`: its PEM.
+
+Install the App only on the intended sandbox repository. The job mints a repository-restricted installation token, generates and masks a random secret fixture, and passes `ALCHEMY_GITHUB_SANDBOX_LIVE=1`, `ALCHEMY_GITHUB_SANDBOX_TOKEN`, `ALCHEMY_GITHUB_SANDBOX_RUN_ID`, and `ALCHEMY_GITHUB_SANDBOX_SECRET_VALUE` to the unbounded tests. No op-proxy source is used. The App needs repository **Variables: write**, **Secrets: write**, and either **Issues: write** or **Pull requests: write** (label definitions); corresponding read operations are included. No sandbox repository name is embedded in the workflow or tests.
+
 The lane exercises Actions variable create/update/delete, an env-backed Actions secret sink, and Labels create/update/destroy with unique run-prefixed names. Each case cleans up its own resources, never unmanaged labels. Alchemy state is local to the job and is not uploaded. The sandbox lane does not create Apps or use manifest conversion; the App exists before the lane runs.
 
 The job and local sandbox harness set `ALCHEMY_TELEMETRY_DISABLED=1` and assert Alchemy's resolved opt-out before running resources. Consumers passing secret-backed identities or props should also disable Alchemy telemetry: log masking does not protect data sent to external telemetry exporters.

@@ -6519,6 +6519,7 @@ jobs:
       - source-shape
       - test-integration-notion
       - test-integration-restate
+      - test-live-alchemy-github
       - test-live-deploy-ci-tools
       - deploy-storybooks
       - notify-alignment
@@ -6749,4 +6750,216 @@ jobs:
       BUCK2_PUBLIC_CACHE_READ_ONLY: '1'
     concurrency:
       group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || 'code') }}-consumer-smoke"
+      cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') }}
+  test-live-alchemy-github:
+    name: alchemy-github/live
+    if: ${{ ((github.event_name == 'push' || github.event_name == 'merge_group' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') || ((github.event_name == 'pull_request' || github.event_name == 'pull_request_review' || github.event_name == 'pull_request_review_comment') && github.event.pull_request.head.repo.full_name == github.repository) || (github.event_name == 'workflow_run' && github.event.workflow_run.head_repository.full_name == github.repository)) && (github.event_name == 'merge_group' || (github.event_name == 'push' && github.ref == 'refs/heads/main')) }}
+    environment: alchemy-github-live
+    runs-on: [sh-linux-x64, nix]
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    env:
+      FORCE_SETUP: '1'
+      CI: 'true'
+      BUCK2_NO_REMOTE_CACHE: '0'
+      BUCK2_PUBLIC_CACHE_READ_ONLY: '1'
+      ALCHEMY_TELEMETRY_DISABLED: '1'
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - id: linux-nix-sandbox-policy
+        name: Disable Linux Nix sandbox fallback
+        if: ${{ runner.os == 'Linux' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf 'NIX_CONFIG<<EOF\n%s\nsandbox = true\nsandbox-fallback = false\nEOF\n' "${NIX_CONFIG:-}" >> "$GITHUB_ENV"
+      - id: buck2-ci-job-instance
+        name: Initialize Buck2 CI job instance
+        shell: bash
+        run: printf 'BUCK2_CI_JOB_INSTANCE=%s\n' "$(od -An -N32 -tx1 /dev/urandom | tr -d ' \n')" >> "$GITHUB_ENV"
+      - id: sandbox-config
+        name: Require GitHub sandbox configuration
+        env:
+          ALCHEMY_GITHUB_SANDBOX_REPO: ${{ secrets.ALCHEMY_GITHUB_SANDBOX_REPO }}
+          ALCHEMY_GITHUB_SANDBOX_APP_ID: ${{ vars.ALCHEMY_GITHUB_SANDBOX_APP_ID }}
+          APP_PRIVATE_KEY_PRESENT: ${{ secrets.ALCHEMY_GITHUB_SANDBOX_APP_PRIVATE_KEY != '' }}
+        run: |
+          set -euo pipefail
+          missing=0
+          if [ -z "$ALCHEMY_GITHUB_SANDBOX_REPO" ]; then
+            echo "::error::Environment alchemy-github-live requires secret ALCHEMY_GITHUB_SANDBOX_REPO"
+            missing=1
+          fi
+          if [ -z "$ALCHEMY_GITHUB_SANDBOX_APP_ID" ]; then
+            echo "::error::Environment alchemy-github-live requires variable ALCHEMY_GITHUB_SANDBOX_APP_ID"
+            missing=1
+          fi
+          if [ "$APP_PRIVATE_KEY_PRESENT" != true ]; then
+            echo "::error::Environment alchemy-github-live requires secret ALCHEMY_GITHUB_SANDBOX_APP_PRIVATE_KEY"
+            missing=1
+          fi
+          if [ "$missing" = 1 ]; then exit 1; fi
+          if [[ ! "$ALCHEMY_GITHUB_SANDBOX_REPO" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]]; then
+            echo "::error::ALCHEMY_GITHUB_SANDBOX_REPO must be owner/repo"
+            exit 1
+          fi
+          echo "::add-mask::$ALCHEMY_GITHUB_SANDBOX_REPO"
+          echo "::add-mask::${ALCHEMY_GITHUB_SANDBOX_REPO%%/*}"
+          echo "::add-mask::${ALCHEMY_GITHUB_SANDBOX_REPO#*/}"
+          echo "owner=${ALCHEMY_GITHUB_SANDBOX_REPO%%/*}" >> "$GITHUB_OUTPUT"
+          echo "repository=${ALCHEMY_GITHUB_SANDBOX_REPO#*/}" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Install Nix
+        uses: DeterminateSystems/determinate-nix-action@v3
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        with:
+          extra-conf: |
+            experimental-features = nix-command flakes
+            accept-flake-config = true
+            extra-substituters = https://overeng-effect-utils.cachix.org
+            extra-trusted-public-keys = overeng-effect-utils.cachix.org-1:KFmqYNF6Q7ZzVYPl2znpJYZGEolage9YNCA9res6vKc=
+            access-tokens = github.com=${{ github.token }}
+            ${{ runner.os == 'Linux' && 'sandbox = true' || '' }}
+            ${{ runner.os == 'Linux' && 'sandbox-fallback = false' || '' }}
+          summarize: true
+      - id: linux-sandbox-admission
+        name: Log Linux sandbox prerequisites
+        if: ${{ runner.os == 'Linux' }}
+        shell: bash
+        env:
+          BUCK2_TS_PRIVILEGE_ALLOWED: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+        run: |
+          set -euo pipefail
+          if [ "$BUCK2_TS_PRIVILEGE_ALLOWED" != true ]; then
+            echo "::error::Buck TypeScript lane refused: untrusted pull_request runs on an unprivileged Namespace runner; privileged Nix/Bubblewrap execution is not admitted (fork policy Q49 pending)." >&2
+            exit 1
+          fi
+          nix config show | grep -E '^sandbox'
+          for key in kernel.apparmor_restrict_unprivileged_userns user.max_user_namespaces; do
+            if sysctl "$key"; then :; else printf "Unavailable sysctl: %s\n" "$key"; fi
+          done
+          unshare -Ur true
+          echo "unshare -Ur true: passed"
+      - name: Checkout CI measurement baseline ref
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' }}
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.measurement_baseline_ref }}
+      - name: Provide cachix CLI from nixpkgs
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          out=$(nix build --no-link --print-out-paths nixpkgs#cachix)
+          echo "$out/bin" >> "$GITHUB_PATH"
+      - name: Enable Cachix cache
+        uses: cachix/cachix-action@v17
+        with:
+          name: overeng-effect-utils
+          skipPush: true
+      - name: Prepare CI helper scripts
+        shell: bash
+        run: |
+          cd "${GITHUB_WORKSPACE:-$PWD}" && set -euo pipefail
+          scripts_src='genie/ci-scripts'
+          scripts_dst='${{ runner.temp }}/composition-state/ci-runtime'
+          if [ ! -d "$scripts_src" ]; then
+            echo "::error::CI helper script directory is missing: $scripts_src"
+            exit 1
+          fi
+          rm -rf "$scripts_dst"
+          mkdir -p "$scripts_dst"
+          cp -R "$scripts_src/." "$scripts_dst/"
+          rm -f "$scripts_dst"/*.genie.ts
+          chmod +x "$scripts_dst"/*.sh
+      - name: Use pinned devenv from lock
+        run: |
+          cd "${GITHUB_WORKSPACE:-$PWD}" && DEVENV_REV=$(jq -r .nodes.devenv.locked.rev 'devenv.lock')
+          if [ -z "$DEVENV_REV" ] || [ "$DEVENV_REV" = "null" ]; then
+            printf '::error::%s missing .nodes.devenv.locked.rev\n' 'devenv.lock'
+            exit 1
+          fi
+          echo "DEVENV_REV=$DEVENV_REV" >> "$GITHUB_ENV"
+          echo "Pinned devenv rev: $DEVENV_REV"
+        shell: bash
+      - name: Resolve devenv
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
+          bash "$__genie_ci_retry_script" 'resolve devenv (devenv.lock)' 'cd "${GITHUB_WORKSPACE:-$PWD}" && '"'"'${{ runner.temp }}/composition-state/ci-runtime/resolve-devenv.sh'"'"' '"'"'devenv.lock'"'"''
+        shell: bash
+      - name: Prepare source generator dependency views
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
+          bash "$__genie_ci_retry_script" 'devenv tasks run buck2:editor:bootstrap' 'cd "${GITHUB_WORKSPACE:-$PWD}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false ${PIPELINE_RUN_PREFIX:+$PIPELINE_RUN_PREFIX }"${DEVENV_BIN:?DEVENV_BIN not set}" tasks run buck2:editor:bootstrap'
+      - name: Force diagnostics failure (debug)
+        if: ${{ github.event_name == 'workflow_dispatch' && (inputs.debug_force_nix_diagnostics_failure == true || inputs.debug_force_nix_diagnostics_failure == 'true') }}
+        shell: bash
+        run: |
+          diag_dir="${NIX_STORE_DIAGNOSTICS_DIR:-${RUNNER_TEMP:-/tmp}/composition-state/nix-store-diagnostics-missing}"
+          mkdir -p "$diag_dir"
+          cat > "$diag_dir/synthetic-signature.log" <<'EOF'
+          Failed to convert config.cachix to JSON
+          ... while evaluating the option `cachix.package`
+          error: path '/nix/store/synthetic-invalid-path' is not valid
+          EOF
+          echo "::warning::Intentional failure for diagnostics validation (#272)"
+          exit 1
+      - id: sandbox-app-token
+        name: Mint repository-restricted GitHub sandbox token
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ vars.ALCHEMY_GITHUB_SANDBOX_APP_ID }}
+          private-key: ${{ secrets.ALCHEMY_GITHUB_SANDBOX_APP_PRIVATE_KEY }}
+          owner: ${{ steps.sandbox-config.outputs.owner }}
+          repositories: ${{ steps.sandbox-config.outputs.repository }}
+      - name: Generate ephemeral sandbox secret value
+        run: |
+          set -euo pipefail
+          set +x
+          value="$(od -An -N32 -tx1 /dev/urandom | tr -d " \n")"
+          echo "::add-mask::$value"
+          echo "ALCHEMY_GITHUB_SANDBOX_SECRET_VALUE=$value" >> "$GITHUB_ENV"
+      - name: GitHub sandbox resource live tests
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          ALCHEMY_GITHUB_SANDBOX_LIVE: '1'
+          ALCHEMY_GITHUB_SANDBOX_REPO: ${{ secrets.ALCHEMY_GITHUB_SANDBOX_REPO }}
+          ALCHEMY_GITHUB_SANDBOX_APP_ID: ${{ vars.ALCHEMY_GITHUB_SANDBOX_APP_ID }}
+          ALCHEMY_GITHUB_SANDBOX_TOKEN: ${{ steps.sandbox-app-token.outputs.token }}
+          ALCHEMY_GITHUB_SANDBOX_RUN_ID: '${{ github.run_id }}-${{ github.run_attempt }}'
+        run: |
+          cd "${GITHUB_WORKSPACE:-$PWD}" && set -euo pipefail
+          "${DEVENV_BIN:?DEVENV_BIN not set}" shell -- bash -euo pipefail -c '
+            prepared=()
+            restore_views() {
+              for package in "${prepared[@]}"; do
+                rm -f "$package/node_modules"
+                backup="$RUNNER_TEMP/genie-pr-${package##*/}-node-modules"
+                if [ -e "$backup" ] || [ -L "$backup" ]; then mv "$backup" "$package/node_modules"; fi
+              done
+            }
+            trap restore_views EXIT
+            for package in packages/@overeng/alchemy-github; do
+              if [ "$package" = . ]; then target=//:node_modules; else target=//$package:node_modules; fi
+              modules="$("${BUCK2_BIN:?BUCK2_BIN not set}" build "$target" --show-simple-output)"
+              backup="${RUNNER_TEMP:?RUNNER_TEMP not set}/genie-pr-${package##*/}-node-modules"
+              if [ -e "$package/node_modules" ] || [ -L "$package/node_modules" ]; then mv "$package/node_modules" "$backup"; fi
+              prepared+=("$package")
+              ln -s "$PWD/$modules" "$package/node_modules"
+            done
+            "$DEVENV_BIN" tasks run --mode single test:alchemy-github:unbounded
+          '
+    concurrency:
+      group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || 'code') }}-test-live-alchemy-github"
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') }}

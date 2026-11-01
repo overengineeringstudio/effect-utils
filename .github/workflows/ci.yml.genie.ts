@@ -20,6 +20,7 @@ import {
   prepareCiOtelSpoolStep,
   installNixStep,
   linuxSandboxPrerequisitesStep,
+  linuxX64Runner,
   runDevenvTasksBefore,
   ciWorkflow,
   type CiWorkflowArgs,
@@ -66,6 +67,7 @@ import { effectUtilsWorkflowPolicy } from '../../genie/ci-workflow/policy.ts'
 import { publishedRefIf, publishedRefSteps } from '../../genie/ci-workflow/published-ref.ts'
 import type { CoreCIJobName } from '../../genie/ci.ts'
 import { pipelineJobIdentifierSet } from '../../packages/@overeng/ci-tools/src/pipeline-job-names.ts'
+import { sameRepoPullRequestGuard } from '../../packages/@overeng/genie/src/runtime/github-workflow/policy.ts'
 
 const workflowReportFlakeRef =
   "github:${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name || github.repository }}/${{ github.event_name == 'pull_request' && github.head_ref || github.ref_name }}#ci-tools"
@@ -1952,6 +1954,87 @@ const extraJobs: Record<string, any> = {
       failureReminderStep,
     ],
   },
+  'test-live-alchemy-github': {
+    name: 'alchemy-github/live',
+    if: `\${{ (${sameRepoPullRequestGuard()}) && (github.event_name == 'merge_group' || (github.event_name == 'push' && github.ref == 'refs/heads/main')) }}`,
+    environment: 'alchemy-github-live',
+    'runs-on': linuxX64Runner,
+    'timeout-minutes': 30,
+    permissions: { contents: 'read' },
+    env: { ALCHEMY_TELEMETRY_DISABLED: '1' },
+    defaults: bashShellDefaults,
+    steps: [
+      {
+        id: 'sandbox-config',
+        name: 'Require GitHub sandbox configuration',
+        env: {
+          ALCHEMY_GITHUB_SANDBOX_REPO: '${{ secrets.ALCHEMY_GITHUB_SANDBOX_REPO }}',
+          ALCHEMY_GITHUB_SANDBOX_APP_ID: '${{ vars.ALCHEMY_GITHUB_SANDBOX_APP_ID }}',
+          APP_PRIVATE_KEY_PRESENT: "${{ secrets.ALCHEMY_GITHUB_SANDBOX_APP_PRIVATE_KEY != '' }}",
+        },
+        run: [
+          'set -euo pipefail',
+          'missing=0',
+          'if [ -z "$ALCHEMY_GITHUB_SANDBOX_REPO" ]; then',
+          '  echo "::error::Environment alchemy-github-live requires secret ALCHEMY_GITHUB_SANDBOX_REPO"',
+          '  missing=1',
+          'fi',
+          'if [ -z "$ALCHEMY_GITHUB_SANDBOX_APP_ID" ]; then',
+          '  echo "::error::Environment alchemy-github-live requires variable ALCHEMY_GITHUB_SANDBOX_APP_ID"',
+          '  missing=1',
+          'fi',
+          'if [ "$APP_PRIVATE_KEY_PRESENT" != true ]; then',
+          '  echo "::error::Environment alchemy-github-live requires secret ALCHEMY_GITHUB_SANDBOX_APP_PRIVATE_KEY"',
+          '  missing=1',
+          'fi',
+          'if [ "$missing" = 1 ]; then exit 1; fi',
+          'if [[ ! "$ALCHEMY_GITHUB_SANDBOX_REPO" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]]; then',
+          '  echo "::error::ALCHEMY_GITHUB_SANDBOX_REPO must be owner/repo"',
+          '  exit 1',
+          'fi',
+          'echo "::add-mask::$ALCHEMY_GITHUB_SANDBOX_REPO"',
+          'echo "::add-mask::${ALCHEMY_GITHUB_SANDBOX_REPO%%/*}"',
+          'echo "::add-mask::${ALCHEMY_GITHUB_SANDBOX_REPO#*/}"',
+          'echo "owner=${ALCHEMY_GITHUB_SANDBOX_REPO%%/*}" >> "$GITHUB_OUTPUT"',
+          'echo "repository=${ALCHEMY_GITHUB_SANDBOX_REPO#*/}" >> "$GITHUB_OUTPUT"',
+        ].join('\n'),
+      },
+      ...baseSteps,
+      githubAppInstallationTokenStep({
+        id: 'sandbox-app-token',
+        name: 'Mint repository-restricted GitHub sandbox token',
+        appId: '${{ vars.ALCHEMY_GITHUB_SANDBOX_APP_ID }}',
+        privateKey: '${{ secrets.ALCHEMY_GITHUB_SANDBOX_APP_PRIVATE_KEY }}',
+        owner: '${{ steps.sandbox-config.outputs.owner }}',
+        repositories: ['${{ steps.sandbox-config.outputs.repository }}'],
+      }),
+      {
+        name: 'Generate ephemeral sandbox secret value',
+        run: [
+          'set -euo pipefail',
+          'set +x',
+          'value="$(od -An -N32 -tx1 /dev/urandom | tr -d " \\n")"',
+          'echo "::add-mask::$value"',
+          'echo "ALCHEMY_GITHUB_SANDBOX_SECRET_VALUE=$value" >> "$GITHUB_ENV"',
+        ].join('\n'),
+      },
+      {
+        ...sourceRegressionStep({
+          name: 'GitHub sandbox resource live tests',
+          packages: ['packages/@overeng/alchemy-github'],
+          tasks: ['test:alchemy-github:unbounded'],
+        }),
+        env: {
+          ...githubTokenEnv(),
+          ALCHEMY_GITHUB_SANDBOX_LIVE: '1',
+          ALCHEMY_GITHUB_SANDBOX_REPO: '${{ secrets.ALCHEMY_GITHUB_SANDBOX_REPO }}',
+          ALCHEMY_GITHUB_SANDBOX_APP_ID: '${{ vars.ALCHEMY_GITHUB_SANDBOX_APP_ID }}',
+          ALCHEMY_GITHUB_SANDBOX_TOKEN: '${{ steps.sandbox-app-token.outputs.token }}',
+          ALCHEMY_GITHUB_SANDBOX_RUN_ID: '${{ github.run_id }}-${{ github.run_attempt }}',
+        },
+      },
+    ],
+  },
   'test-live-deploy-ci-tools': {
     if: trustedSecretCiIf,
     concurrency: {
@@ -2190,6 +2273,7 @@ const productCiJobs: CiWorkflowArgs['jobs'] = {
 const {
   'consumer-smoke': consumerSmokeJob,
   'promote-published': promotePublishedJob,
+  'test-live-alchemy-github': alchemyGithubLiveJob,
   ...instrumentedProductCiJobs
 } = productCiJobs
 
@@ -2272,6 +2356,8 @@ export default ciWorkflow({
       ),
       // Consumer bootstrap policy is managed independently from source-editor setup.
       'consumer-smoke': consumerSmokeJob!,
+      // Keep this credentialed resource lane free of legacy artifact-action debt.
+      'test-live-alchemy-github': alchemyGithubLiveJob!,
     },
     // Protected queue heads and fallback main pushes warm the cache opportunistically.
     // PR jobs never receive writer credentials; the dedicated main proof remains strict.

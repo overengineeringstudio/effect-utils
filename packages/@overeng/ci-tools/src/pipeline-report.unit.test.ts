@@ -179,6 +179,14 @@ describe('Pipeline traces from recorded public GitHub Jobs API payloads', () => 
     })
   })
 
+  it('resolves the stable GitHub sandbox live check name', () => {
+    expect(pipelineJobIdentityForName('alchemy-github/live')).toEqual({
+      job: 'test-live-alchemy-github',
+      dimensions: {},
+    })
+    expect(pipelineJobIdentityForName('test-live-alchemy-github')).toBeUndefined()
+  })
+
   it('does not advertise a trace when the adapter cannot finish, even if export reports success', () => {
     const job = options.jobs.find((candidate) => candidate.name === 'typecheck')!
     const completed = [
