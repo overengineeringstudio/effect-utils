@@ -155,6 +155,53 @@ describe('mission lanes', () => {
   })
 })
 
+describe('agent principals', () => {
+  it('emits exactly one person principal child without properties or a body', () => {
+    expect(emit([agent({ id: 'example/worker', principal: person('person/operator') })])).toBe(
+      `version 2
+agent "example/worker" {
+  principal "person/operator"
+}
+`,
+    )
+  })
+
+  it('emits no principal child when unset', () => {
+    expect(emit([agent({ id: 'example/worker' })])).toBe(
+      `version 2
+agent "example/worker" {
+}
+`,
+    )
+  })
+
+  it('rejects an agent reference as principal', () => {
+    type Principal = NonNullable<(typeof AgentSchema.Type)['principal']>
+    expectTypeOf<Principal>().toEqualTypeOf<PersonReference>()
+    expectTypeOf<AgentReference>().not.toExtend<Principal>()
+    expect(() =>
+      Schema.decodeUnknownSync(AgentSchema)({ id: 'example/worker', principal: owner }),
+    ).toThrow()
+  })
+
+  it.each([
+    'person/',
+    'person//operator',
+    'person/operator/',
+    'person/../operator',
+    'agent/operator',
+    'operator',
+    'person/with spaces',
+  ])('rejects malformed principal person subject %s', (subject) => {
+    expect(() =>
+      Schema.decodeSync(AgentSchema)({
+        id: 'example/worker',
+        principal: { kind: 'person', subject },
+      }),
+    ).toThrow()
+  })
+})
+
 // These are authoring contracts, not assertions about person authentication.
 describe('attributed human gates', () => {
   it('keeps person references distinct from imported agent references', () => {

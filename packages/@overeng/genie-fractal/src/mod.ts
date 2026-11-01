@@ -334,6 +334,7 @@ const AgentSchemaFields = Schema.Struct({
   identity: Schema.optionalKey(Text),
   name: Schema.optionalKey(Text),
   description: Schema.optionalKey(Text),
+  principal: Schema.optionalKey(PersonReferenceSchema),
   host: Schema.optionalKey(Text),
   workspace: Schema.optionalKey(Text),
   create: Schema.optionalKey(Schema.Boolean),
@@ -2409,6 +2410,7 @@ export const agent = (input: typeof AgentSchema.Encoded): Node => {
     ...optionalChild({ name: 'identity', value: a.identity }),
     ...optionalChild({ name: 'name', value: a.name }),
     ...optionalChild({ name: 'description', value: a.description }),
+    ...optionalChild({ name: 'principal', value: a.principal?.subject }),
     ...optionalChild({ name: 'host', value: a.host }),
   ]
   if (a.workspace !== undefined) {
