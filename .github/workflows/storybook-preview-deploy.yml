@@ -16,8 +16,8 @@ concurrency:
 
 jobs:
   resolve-preview:
-    if: ${{ github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'pull_request' }}
-    runs-on: ['namespace-profile-linux-x86-64;github.run-id=${{ github.run_id }};job.priority=4']
+    if: ${{ ((github.event_name == 'push' || github.event_name == 'merge_group' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') || ((github.event_name == 'pull_request' || github.event_name == 'pull_request_review' || github.event_name == 'pull_request_review_comment') && github.event.pull_request.head.repo.full_name == github.repository) || (github.event_name == 'workflow_run' && github.event.workflow_run.head_repository.full_name == github.repository)) && github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'pull_request' }}
+    runs-on: [sh-linux-x64, nix]
     timeout-minutes: 5
     permissions:
       pull-requests: read
@@ -43,28 +43,21 @@ jobs:
         run: printf 'BUCK2_CI_JOB_INSTANCE=%s\n' "$(od -An -N32 -tx1 /dev/urandom | tr -d ' \n')" >> "$GITHUB_ENV"
       - id: pull-request
         name: Resolve pull request from the triggering run
-        shell: bash
+        shell: 'nix shell nixpkgs#gh nixpkgs#jq --command bash --noprofile --norc -e -o pipefail {0}'
         env:
           GH_TOKEN: ${{ github.token }}
-          RUN_EVENT: ${{ github.event.workflow_run.event }}
-          RUN_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
           RUN_HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
-          RUN_HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
           RUN_HEAD_REPO: ${{ github.event.workflow_run.head_repository.full_name }}
           RUN_PR_NUMBER: ${{ github.event.workflow_run.pull_requests[0].number }}
         run: |
           set -euo pipefail
-          test "$RUN_EVENT" = pull_request
-          test "$RUN_CONCLUSION" = success
           [[ "$RUN_HEAD_SHA" =~ ^[0-9a-f]{40}$ ]]
-          test -n "$RUN_HEAD_REPO"
-          test -n "$RUN_HEAD_BRANCH"
+          test "$RUN_HEAD_REPO" = "$GITHUB_REPOSITORY"
           pr_number="$RUN_PR_NUMBER"
           if [ -z "$pr_number" ]; then
-            # `workflow_run.pull_requests` is empty for fork heads; match the open PR by head.
             pr_number=$(gh api --paginate "/repos/$GITHUB_REPOSITORY/pulls?state=open&per_page=100" --slurp \
-              | jq -r --arg repo "$RUN_HEAD_REPO" --arg ref "$RUN_HEAD_BRANCH" --arg sha "$RUN_HEAD_SHA" \
-                '[.[][] | select(.head.repo.full_name == $repo and .head.ref == $ref and .head.sha == $sha)] | if length == 1 then .[0].number else "" end')
+              | jq -r --arg repo "$RUN_HEAD_REPO" --arg sha "$RUN_HEAD_SHA" \
+                '[.[][] | select(.head.repo.full_name == $repo and .head.sha == $sha)] | if length == 1 then .[0].number else "" end')
           fi
           deploy=true
           if [ -z "$pr_number" ]; then
@@ -78,10 +71,6 @@ jobs:
               echo "::notice::PR #$pr_number is closed or its head moved past $RUN_HEAD_SHA; skipping stale preview deploy"
               deploy=false
             fi
-          fi
-          if [ "$RUN_HEAD_REPO" != "$GITHUB_REPOSITORY" ]; then
-            echo "::notice::Fork pull request from $RUN_HEAD_REPO; fork previews are not deployed"
-            deploy=false
           fi
           {
             echo "deploy=$deploy"
