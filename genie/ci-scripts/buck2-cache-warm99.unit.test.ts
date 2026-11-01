@@ -12,11 +12,81 @@ import {
   loadedFixture,
   manifestFixture,
 } from './buck2-cache-warm99.fixtures.ts'
-import { decodeEvidence, decodeManifest, evaluateWarm99 } from './buck2-cache-warm99.ts'
+import {
+  decodeEvidence,
+  decodeManifest,
+  evaluateWarm99,
+  renderWarm99Diagnostics,
+} from './buck2-cache-warm99.ts'
 
 const rawArtifact = (artifact = artifactFixture()): string =>
   `${[artifact.header, ...artifact.actions].map((item) => JSON.stringify(item)).join('\n')}\n`
+describe('sanitized warm99 diagnostics', () => {
+  it('prints every lane and observation without reader IDs or native identities', () => {
+    const manifest = manifestFixture(['main-reader', 'merge_group', 'pr'])
+    const report = evaluateWarm99({ manifest, loaded: loadedFixture(manifest) })
+    for (const entry of report.lanes)
+      for (const observation of entry.observations) observation.id = '/private/path\ninjected'
+    const lines = renderWarm99Diagnostics(report).split('\n')
+    expect(lines).toHaveLength(6)
+    expect(lines[0]).toBe(
+      'buck2-cache-join: lane=main-reader observation=0 eligible=1 hits=1 rate=1 complete=true gaps=0 consecutive=1',
+    )
+    expect(lines[1]).toContain('consecutive=2')
+    expect(lines.join('\n')).not.toContain('injected')
+    report.lanes[0]!.observations[0]!.eligible = 0
+    report.lanes[0]!.observations[0]!.remoteHits = 0
+    report.lanes[0]!.observations[0]!.meetsThreshold = false
+    expect(renderWarm99Diagnostics(report)).toContain('eligible=0 hits=0 rate=unavailable')
+  })
+})
 describe('strict action boundary', () => {
+  it('decodes the reserved retained cache-off context independently of source revision and preserves explicit policy', () => {
+    for (const headSha of [
+      'd749e890d67386a5f23d9787444bfcb3e491f4da',
+      '110fa22c52d387f440494118adfe2013bb5dacfa',
+      'a'.repeat(40),
+    ]) {
+      for (const repo of ['overengineeringstudio/effect-utils', 'other/repo']) {
+        for (const context of ['capability-identity-dependency', 'capability-identity-baseline']) {
+          const artifact = artifactFixture()
+          artifact.header.metadata.headSha = headSha
+          artifact.header.metadata.repo = repo
+          artifact.header.invocations[0]!.context = context
+          const retained = rawArtifact(artifact).replaceAll('"cacheReadPolicy":"enabled",', '')
+          const invocation = decodeActionArtifact(retained).header.invocations[0]!
+          const disabled = context === 'capability-identity-dependency'
+          expect(invocation.cacheReadPolicy).toBe(
+            disabled === true ? 'disabled-by-design' : 'unknown',
+          )
+          expect(
+            decodeActionArtifact(rawArtifact(artifact)).header.invocations[0]!.cacheReadPolicy,
+          ).toBe('enabled')
+        }
+      }
+    }
+    expect(() =>
+      decodeActionArtifact(
+        rawArtifact().replace(
+          '"cacheReadPolicy":"enabled"',
+          '"cacheReadPolicy":"inferred-from-local"',
+        ),
+      ),
+    ).toThrow()
+  })
+
+  it('does not classify explicitly disabled local executions as avoidable reader candidates', () => {
+    const invocation = artifactFixture().header.invocations[0]!
+    for (const cacheReadPolicy of ['enabled', 'disabled-by-design', 'unknown'] as const) {
+      expect(
+        classifyCacheAction({
+          action: actionFixture({ buildId: invocation.buildId, executionKind: 1 }),
+          invocation: { ...invocation, cacheReadPolicy },
+        }),
+      ).toBe(cacheReadPolicy === 'disabled-by-design' ? 'other' : 'fresh-local-execution')
+    }
+  })
+
   it('classifies kind-10 reuse as hits and only fresh kind-1/8 digest executions as candidates', () => {
     const invocation = artifactFixture().header.invocations[0]!
     for (const executionKind of [1, 8, 10]) {
@@ -228,6 +298,194 @@ describe('strict action boundary', () => {
   })
 })
 describe('warm99 identity acceptance', () => {
+  it('excludes explicit cache-read-disabled controls without excluding their cache-enabled categories', () => {
+    for (const category of [
+      'capability_identity_dependency_negative',
+      'capability_identity_dependency_positive',
+    ]) {
+      for (const cacheReadPolicy of ['enabled', 'disabled-by-design', 'unknown'] as const) {
+        const manifest = manifestFixture()
+        const loaded = loadedFixture(manifest)
+        for (const item of loaded) {
+          item.writers[0]!.actions[0]!.category = category
+          const reader = item.readers[0]!
+          reader.actions = [
+            actionFixture({
+              buildId: reader.header.invocations[0]!.buildId,
+              category,
+              executionKind: 1,
+            }),
+          ]
+          reader.header.invocations[0]!.cacheReadPolicy = cacheReadPolicy
+        }
+        const disabled = cacheReadPolicy === 'disabled-by-design'
+        expect(evaluateWarm99({ manifest, loaded }).lanes[0]!.observations[0]).toMatchObject({
+          complete: true,
+          eligible: disabled === true ? 0 : 1,
+          remoteHits: 0,
+          cold: 0,
+          excluded: disabled === true ? 1 : 0,
+          evidenceGap: 0,
+        })
+      }
+    }
+  })
+
+  it('never anchors trusted presence from a cache-read-disabled invocation', () => {
+    for (const executionKind of [1, 3]) {
+      const manifest = manifestFixture()
+      const loaded = loadedFixture(manifest)
+      for (const item of loaded) {
+        item.writers[0]!.header.invocations[0]!.cacheReadPolicy = 'disabled-by-design'
+        item.writers[0]!.actions[0]!.executionKind = executionKind
+      }
+      expect(evaluateWarm99({ manifest, loaded }).lanes[0]!.observations[0]).toMatchObject({
+        complete: true,
+        eligible: 0,
+        remoteHits: 0,
+        cold: 1,
+      })
+    }
+  })
+
+  it('does not consume first cache-enabled lookup freshness with an earlier cache-off control', () => {
+    const manifest = manifestFixture()
+    const loaded = loadedFixture(manifest)
+    for (const item of loaded) {
+      const reader = item.readers[0]!
+      const first = reader.header.invocations[0]!
+      first.cacheReadPolicy = 'disabled-by-design'
+      first.actionCount = 1
+      const next = {
+        ...first,
+        buildId: `${first.buildId}-enabled`,
+        startedAt: 250,
+        cacheReadPolicy: 'enabled' as const,
+        freshRoot: false,
+      }
+      reader.header.invocations.push(next)
+      reader.actions = [
+        actionFixture({ buildId: first.buildId, executionKind: 1 }),
+        actionFixture({ buildId: next.buildId, startedAt: 250, completedAt: 260, endTime: 260 }),
+      ]
+    }
+    expect(evaluateWarm99({ manifest, loaded }).lanes[0]!.observations[0]).toMatchObject({
+      complete: true,
+      eligible: 1,
+      remoteHits: 1,
+      excluded: 1,
+      cold: 0,
+    })
+  })
+
+  it('binds exact identities only to earlier complete trusted writer observations', () => {
+    for (const source of ['upload', 'remote-hit'] as const) {
+      for (const observedAt of [199, 200, 201]) {
+        for (const lane of ['main-writer', 'merge_group', 'pr'] as const) {
+          const manifest = manifestFixture()
+          const loaded = loadedFixture(manifest)
+          for (const item of loaded) {
+            const writer = item.writers[0]!
+            item.observation.writers[0]!.lane = lane
+            writer.header.metadata.lane = lane
+            writer.header.metadata.posture = lane === 'pr' ? 'read-only' : 'writer'
+            writer.actions = [
+              actionFixture({
+                buildId: writer.header.invocations[0]!.buildId,
+                executionKind: source === 'upload' ? 1 : 3,
+                uploadOutcome: source === 'upload' ? 'uploaded' : 'not-uploaded',
+                cacheUploadResult: source === 'upload' ? 1 : 0,
+                startedAt: 10,
+                completedAt: observedAt,
+                endTime: observedAt,
+                uploadCompletedAt: source === 'upload' ? observedAt : null,
+              }),
+            ]
+          }
+          const report = evaluateWarm99({ manifest, loaded })
+          const eligible = lane === 'main-writer' && observedAt < 200 ? 1 : 0
+          expect(report.accepted).toBe(eligible === 1)
+          expect(report.lanes[0]!.observations[0]).toMatchObject({
+            complete: true,
+            evidenceGap: 0,
+            eligible,
+            remoteHits: eligible,
+            cold: 1 - eligible,
+          })
+        }
+      }
+    }
+  })
+
+  it('keeps raw reader hits cold without an exact trusted configuration anchor', () => {
+    for (const anchor of ['none', 'different-configuration', 'incomplete'] as const) {
+      const manifest = manifestFixture()
+      const loaded = loadedFixture(manifest)
+      for (const item of loaded) {
+        if (anchor === 'none') {
+          item.writers = []
+          item.observation.writers = []
+        } else if (anchor === 'different-configuration') {
+          item.writers[0]!.actions[0]!.configuration = 'linux#other'
+        } else {
+          item.writers[0]!.header.complete = false
+        }
+      }
+      expect(evaluateWarm99({ manifest, loaded }).lanes[0]!.observations[0]).toMatchObject({
+        eligible: 0,
+        remoteHits: 0,
+        cold: 1,
+        evidenceGap: anchor === 'incomplete' ? 1 : 0,
+      })
+    }
+  })
+
+  it('uses each writer action timestamp rather than a cohort cutoff', () => {
+    const manifest = manifestFixture()
+    const loaded = loadedFixture(manifest)
+    for (const item of loaded) {
+      item.writers[0]!.actions = [
+        actionFixture({
+          buildId: item.writers[0]!.header.invocations[0]!.buildId,
+          target: 'test//:early',
+          digest: 'aaaa:1',
+          startedAt: 10,
+          completedAt: 199,
+          endTime: 199,
+        }),
+        actionFixture({
+          buildId: item.writers[0]!.header.invocations[0]!.buildId,
+          target: 'test//:equal',
+          digest: 'bbbb:1',
+          startedAt: 10,
+          completedAt: 200,
+          endTime: 200,
+        }),
+        actionFixture({
+          buildId: item.writers[0]!.header.invocations[0]!.buildId,
+          target: 'test//:future',
+          digest: 'cccc:1',
+          startedAt: 10,
+          completedAt: 201,
+          endTime: 201,
+        }),
+      ]
+      item.readers = [
+        artifactFixture(false, [
+          actionFixture({ target: 'test//:early', digest: 'aaaa:1' }),
+          actionFixture({ target: 'test//:equal', digest: 'bbbb:1' }),
+          actionFixture({ target: 'test//:future', digest: 'cccc:1' }),
+        ]),
+      ]
+    }
+    expect(evaluateWarm99({ manifest, loaded }).lanes[0]!.observations[0]).toMatchObject({
+      complete: true,
+      eligible: 1,
+      remoteHits: 1,
+      cold: 2,
+    })
+  })
+
   it('keeps materialization and Darwin TS outside eligible, cold, changed and upload-failure cohorts', () => {
     for (const executionKind of [1, 3, 8]) {
       const manifest = manifestFixture()
@@ -985,7 +1243,7 @@ describe('cache lane posture', () => {
     expect(report.accepted).toBe(true)
     expect(report.lanes.map((lane) => lane.consecutive)).toEqual([2, 2])
   })
-  it('accepts queue writer sources but rejects PR writer posture or read-only writer sources', () => {
+  it('rejects queue or PR anchors, PR writer posture and read-only writer sources', () => {
     for (const mode of ['queue', 'pr-reader', 'pr-writer', 'readonly-source']) {
       const manifest = manifestFixture(['pr'])
       const loaded = loadedFixture(manifest)
@@ -1010,7 +1268,7 @@ describe('cache lane posture', () => {
           writer.header.metadata.posture = 'read-only'
         }
       }
-      expect(evaluateWarm99({ manifest: manifest, loaded: loaded }).accepted).toBe(mode === 'queue')
+      expect(evaluateWarm99({ manifest: manifest, loaded: loaded }).accepted).toBe(false)
     }
   })
 })

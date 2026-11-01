@@ -64,8 +64,10 @@ export PATH="$scratch/ambient:$PATH"
 # Native event sinks are independent of log rotation. Each wiped materializer
 # has its own opaque root incarnation, and failed commands still finalize evidence.
 run_identity_build() {
-  local phase="$1" status=0 build_id native_id root_id
+  local phase="$1" status=0 build_id native_id root_id cache_read_policy=enabled
   shift
+  # This phase proves dependency execution, not ActionCache reuse.
+  if [ "$phase" = dependency ]; then cache_read_policy=disabled-by-design; fi
   build_id="$("$bun" -e 'console.log(crypto.randomUUID())')"
   root_id="$("$bun" -e 'import {createHash} from "node:crypto"; console.log(createHash("sha256").update(crypto.randomUUID()).digest("hex"))')"
   native_id="$scratch/$phase.trace"
@@ -81,7 +83,7 @@ run_identity_build() {
     if ! "$bun" "$source_root/genie/ci-scripts/buck2-cache-evidence.ts" \
       --output "$CI_BUCK2_CACHE_EVIDENCE_PATH" --write-shard "$scratch/logs/$phase.jsonl" \
       --shard-build-id "$build_id" --native-exit-code "$status" --root-id "$root_id" \
-      --context "capability-identity-$phase" --fresh-root >/dev/null; then
+      --context "capability-identity-$phase" --cache-read-policy "$cache_read_policy" --fresh-root >/dev/null; then
       "$bun" "$source_root/genie/ci-scripts/buck2-cache-evidence.ts" --output "$CI_BUCK2_CACHE_EVIDENCE_PATH" --evidence-gap proof-evidence-capture-failed || true
       if [ "$status" -eq 0 ]; then return 1; fi
     fi

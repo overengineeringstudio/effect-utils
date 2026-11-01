@@ -62,6 +62,7 @@ import {
 } from '../../genie/ci-workflow/pipeline-telemetry.ts'
 import { effectUtilsWorkflowPolicy } from '../../genie/ci-workflow/policy.ts'
 import { publishedRefIf, publishedRefSteps } from '../../genie/ci-workflow/published-ref.ts'
+import readerComposition from '../../genie/ci-workflow/reader-composition.json'
 import type { CoreCIJobName } from '../../genie/ci.ts'
 import { pipelineJobIdentifierSet } from '../../packages/@overeng/ci-tools/src/pipeline-job-names.ts'
 
@@ -198,7 +199,7 @@ const liveNetlifyCiToolsE2EStep = {
     [
       'netlify_pkg="$(nix build --no-link --print-out-paths .#netlify-cli)"',
       'export CI_TOOLS_LIVE_NETLIFY_BIN="$netlify_pkg/bin/netlify"',
-      'EDITOR_VIEW_PACKAGES=\'["packages/@overeng/ci-tools"]\' DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run buck2:editor:publish',
+      `EDITOR_VIEW_PACKAGES='${JSON.stringify(readerComposition.liveDeploy)}' DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false "\${DEVENV_BIN:?DEVENV_BIN not set}" tasks run buck2:editor:publish`,
       'DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" shell --no-reload -- bun test packages/@overeng/ci-tools/src/deploy-netlify.live.e2e.test.ts',
     ].join('\n'),
   ),
@@ -260,7 +261,7 @@ const liveVercelCiToolsE2EStep = {
     [
       'vercel_pkg="$(nix build --no-link --print-out-paths .#vercel-cli)"',
       'export CI_TOOLS_LIVE_VERCEL_BIN="$vercel_pkg/bin/vercel"',
-      'EDITOR_VIEW_PACKAGES=\'["packages/@overeng/ci-tools"]\' DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" tasks run buck2:editor:publish',
+      `EDITOR_VIEW_PACKAGES='${JSON.stringify(readerComposition.liveDeploy)}' DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false "\${DEVENV_BIN:?DEVENV_BIN not set}" tasks run buck2:editor:publish`,
       'DEVENV_TUI=false "${DEVENV_BIN:?DEVENV_BIN not set}" shell --no-reload -- bun test packages/@overeng/ci-tools/src/deploy-vercel.live.e2e.test.ts',
     ].join('\n'),
   ),
@@ -2258,6 +2259,8 @@ export default ciWorkflow({
           },
           ...withPipelineTelemetry(withBuck2CacheEvidence(instrumentedProductCiJobs)),
           'promote-published': promotePublishedJob!,
+          // API/OTel adapters and Nix's nested ci-tools build execute no checkout-native Buck.
+          // Shared proof policy declares their `none` postures and disabled membership.
           'pipeline-attempt-close': pipelineCloseJob({
             jobs: productCiJobs,
             runsOn: 'ubuntu-latest',
@@ -2266,7 +2269,7 @@ export default ciWorkflow({
         },
         nixRealisationTimingsSeconds,
       ),
-      // Consumer bootstrap policy is managed independently from source-editor setup.
+      // Isolated pnpm consumer: no checkout-native Buck or root-shell cache evidence.
       'consumer-smoke': consumerSmokeJob!,
     },
     // Protected queue heads and fallback main pushes warm the cache opportunistically.

@@ -6,6 +6,7 @@ import {
   actionExclusionReason,
   type ActionArtifact,
   type CacheLane,
+  type CacheReadPolicy,
 } from './buck2-action-evidence.ts'
 import type { ExpectedHistoryJob } from './buck2-cache-proof-history.ts'
 import {
@@ -14,6 +15,7 @@ import {
   decodeManifest,
   evaluateWarm99,
   identity,
+  trustedPresenceObservedAt,
   type ArtifactReference,
   type LoadedObservation,
   type WarmManifest,
@@ -67,6 +69,7 @@ type ProofReference = {
     startedAt: number | null
     completedAt: number | null
     freshRoot: boolean
+    cacheReadPolicy: CacheReadPolicy
     complete: boolean
   }[]
   gap: 'unavailable-or-invalid-evidence' | null
@@ -264,6 +267,7 @@ export const writeBuck2CacheProofReports = async ({
         startedAt: item.startedAt,
         completedAt: item.completedAt,
         freshRoot: item.freshRoot,
+        cacheReadPolicy: item.cacheReadPolicy,
         complete: item.complete,
       }))
       record.gap = null
@@ -290,7 +294,7 @@ export const writeBuck2CacheProofReports = async ({
     loaded.push({ observation, writers, readers })
   }
   const report = evaluateWarm99({ manifest, loaded })
-  // Bind only real, successful native uploads strictly before each reader invocation.
+  // Bind exact identities observed by trusted main writers before each reader invocation.
   const bindings = references
     .filter((ref) => ref.role === 'reader')
     .map((reader) => {
@@ -312,6 +316,7 @@ export const writeBuck2CacheProofReports = async ({
             (item) => item.buildId === action.buildId,
           )
           if (key === undefined || invocation === undefined) continue
+          if (invocation.cacheReadPolicy === 'disabled-by-design') continue
           const nativeRootId = field({ value: invocation, key: 'rootId' })
           const rootId =
             typeof nativeRootId === 'string'
@@ -342,27 +347,32 @@ export const writeBuck2CacheProofReports = async ({
                 completeArtifact({ artifact: prior, writer: true }) !== true
               )
                 return []
-              const uploads = (prior?.actions ?? []).filter((action) => {
+              const observations = prior.actions.filter((action) => {
                 const key = identity(action)
+                const observedAt = trustedPresenceObservedAt({
+                  action,
+                  invocation: prior.header.invocations.find(
+                    (item) => item.buildId === action.buildId,
+                  ),
+                })
                 return (
-                  actionExclusionReason(action.category) === null &&
-                  action.commandAction === true &&
                   prior.header.metadata.repo === artifact?.header.metadata.repo &&
                   key !== undefined &&
                   eligible.has(key) === true &&
-                  action.uploadOutcome === 'uploaded' &&
-                  action.uploadCompletedAt !== null &&
+                  observedAt !== undefined &&
                   invocation.startedAt !== null &&
-                  action.uploadCompletedAt < invocation.startedAt
+                  observedAt < invocation.startedAt
                 )
               })
-              return uploads.length === 0
+              return observations.length === 0
                 ? []
                 : [
                     {
                       reference: writer.id,
-                      successfulPriorUploadCount: uploads.length,
-                      identitiesSha256: sha256(JSON.stringify(uploads.map(identity).toSorted())),
+                      priorObservationCount: observations.length,
+                      identitiesSha256: sha256(
+                        JSON.stringify(observations.map(identity).toSorted()),
+                      ),
                     },
                   ]
             })
@@ -449,7 +459,7 @@ export const writeBuck2CacheProofReports = async ({
       reference: ref.id,
     })),
     references,
-    writerPriorUploadBindings: bindings,
+    writerPriorObservationBindings: bindings,
     shardIndex: shards,
     warm99: {
       name: warm99ReportName,

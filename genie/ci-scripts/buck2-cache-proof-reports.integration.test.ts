@@ -92,12 +92,91 @@ describe('proof report publication', () => {
     expect(proof.accepted).toBe(true)
     expect(proof.references).toHaveLength(4)
     expect(
-      proof.writerPriorUploadBindings[0].invocations[0].writers[0].successfulPriorUploadCount,
+      proof.writerPriorObservationBindings[0].invocations[0].writers[0].priorObservationCount,
     ).toBe(1)
     expect(proof.historicalManifestSha256).toMatch(/^[a-f0-9]{64}$/)
     await Bun.write(join(options.root, manifest.observations[1]!.readers[0]!.actions), 'corrupt')
     await writeBuck2CacheProofReports({ ...options, manifestPath })
     expect((await Bun.file(join(options.root, warm99ReportName)).json()).accepted).toBe(false)
+  })
+
+  it('projects trusted remote-hit observations per reader invocation and rejects untrusted anchors', async () => {
+    for (const lane of ['main-writer', 'merge_group', 'pr'] as const) {
+      for (const completedAt of [199, 200, 201]) {
+        const options = await setup()
+        const manifest = manifestFixture()
+        const loaded = loadedFixture(manifest)
+        for (const item of loaded) {
+          const writer = item.writers[0]!
+          item.observation.writers[0]!.lane = lane
+          writer.header.metadata.lane = lane
+          writer.header.metadata.posture = lane === 'pr' ? 'read-only' : 'writer'
+          writer.actions = [
+            actionFixture({
+              buildId: writer.header.invocations[0]!.buildId,
+              startedAt: 10,
+              completedAt,
+              endTime: completedAt,
+            }),
+          ]
+          await put(
+            join(options.root, item.observation.writers[0]!.summary),
+            join(options.root, item.observation.writers[0]!.actions),
+            writer,
+          )
+          await put(
+            join(options.root, item.observation.readers[0]!.summary),
+            join(options.root, item.observation.readers[0]!.actions),
+            item.readers[0]!,
+          )
+        }
+        await put(options.summaryPath, options.actionsPath, artifactFixture())
+        const manifestPath = join(options.root, 'history.json')
+        await Bun.write(manifestPath, JSON.stringify(manifest))
+        await writeBuck2CacheProofReports({ ...options, manifestPath })
+        const proof = await Bun.file(join(options.root, proofManifestName)).json()
+        const eligible = lane === 'main-writer' && completedAt < 200
+        expect(proof.accepted).toBe(eligible)
+        const bindings = proof.writerPriorObservationBindings[0].invocations[0].writers
+        expect(bindings).toHaveLength(eligible === true ? 1 : 0)
+        if (eligible === true) expect(bindings[0].priorObservationCount).toBe(1)
+      }
+    }
+  })
+
+  it('publishes invocation lookup policy and never binds deliberate cache-off controls', async () => {
+    for (const disabledRole of ['writer', 'reader'] as const) {
+      const options = await setup()
+      const manifest = manifestFixture()
+      const loaded = loadedFixture(manifest)
+      for (const item of loaded) {
+        const artifact = disabledRole === 'writer' ? item.writers[0]! : item.readers[0]!
+        artifact.header.invocations[0]!.cacheReadPolicy = 'disabled-by-design'
+        for (const [index, writer] of item.writers.entries())
+          await put(
+            join(options.root, item.observation.writers[index]!.summary),
+            join(options.root, item.observation.writers[index]!.actions),
+            writer!,
+          )
+        for (const [index, reader] of item.readers.entries())
+          await put(
+            join(options.root, item.observation.readers[index]!.summary),
+            join(options.root, item.observation.readers[index]!.actions),
+            reader!,
+          )
+      }
+      await put(options.summaryPath, options.actionsPath, artifactFixture())
+      const manifestPath = join(options.root, 'history.json')
+      await Bun.write(manifestPath, JSON.stringify(manifest))
+      await writeBuck2CacheProofReports({ ...options, manifestPath })
+      const proof = await Bun.file(join(options.root, proofManifestName)).json()
+      expect(proof.accepted).toBe(false)
+      expect(proof.writerPriorObservationBindings[0].invocations[0].writers).toEqual([])
+      expect(
+        proof.references.find((ref: { role: string }) => ref.role === disabledRole).invocations[0]
+          .cacheReadPolicy,
+      ).toBe('disabled-by-design')
+    }
   })
 
   it('preserves discovered mixed cell attempts when an authoritative reference is missing', async () => {
@@ -299,7 +378,7 @@ describe('proof report publication', () => {
     await writeBuck2CacheProofReports({ ...options, manifestPath })
     const proof = await Bun.file(join(options.root, proofManifestName)).json()
     expect(
-      proof.writerPriorUploadBindings[0].invocations.map(
+      proof.writerPriorObservationBindings[0].invocations.map(
         (item: { writers: unknown[] }) => item.writers.length,
       ),
     ).toEqual([1, 0, 1, 0])

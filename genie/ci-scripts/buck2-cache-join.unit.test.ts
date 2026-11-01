@@ -57,7 +57,7 @@ describe('cache join', () => {
     expect(report.counts.every((row) => row.eligible_actions === 0)).toBe(true)
   })
 
-  it('joins exact identities only after an earlier successful writer upload', () => {
+  it('joins exact identities only after an earlier trusted writer upload', () => {
     for (const [uploadedAt, eligible] of [
       [199, 1],
       [200, 0],
@@ -92,7 +92,7 @@ describe('cache join', () => {
     ).toMatchObject({ eligible_actions: 0, remote_hit_actions: 0, cold_actions: 1 })
   })
 
-  it('accepts merge queue writers but not PR uploads or changed digests', () => {
+  it('rejects merge queue and PR uploads as trusted presence', () => {
     const queue = writerFixture()
     queue.header.metadata.lane = 'merge_group'
     queue.header.metadata.job = 'test'
@@ -106,7 +106,12 @@ describe('cache join', () => {
     ])
     expect(
       report.counts.find((row) => row.lane === 'main-reader' && row.platform === 'linux'),
-    ).toMatchObject({ eligible_actions: 1, remote_hit_actions: 1, cold_actions: 0, changed_actions: 1 })
+    ).toMatchObject({
+      eligible_actions: 0,
+      remote_hit_actions: 0,
+      cold_actions: 2,
+      changed_actions: 0,
+    })
     const withoutQueue = reportFor([
       observation(writerFixture(), 'pr'),
       observation(artifactFixture()),
@@ -114,6 +119,46 @@ describe('cache join', () => {
     expect(
       withoutQueue.counts.find((row) => row.lane === 'main-reader' && row.platform === 'linux'),
     ).toMatchObject({ eligible_actions: 0, cold_actions: 1 })
+  })
+
+  it('joins a stable trusted writer remote hit using its own completion time', () => {
+    for (const completedAt of [199, 200, 201]) {
+      const writer = writerFixture()
+      writer.actions = [
+        actionFixture({
+          buildId: writer.header.invocations[0]!.buildId,
+          startedAt: 10,
+          completedAt,
+          endTime: completedAt,
+        }),
+      ]
+      const report = reportFor([observation(writer, 'main-writer'), observation(artifactFixture())])
+      const eligible = completedAt < 200 ? 1 : 0
+      expect(
+        report.counts.find((row) => row.lane === 'main-reader' && row.platform === 'linux'),
+      ).toMatchObject({
+        eligible_actions: eligible,
+        remote_hit_actions: eligible,
+        cold_actions: 1 - eligible,
+      })
+    }
+  })
+
+  it('keeps deliberate cache-off controls out of eligible misses and raw local reader counts', () => {
+    const reader = artifactFixture(false, [actionFixture({ executionKind: 1 })])
+    reader.header.invocations[0]!.cacheReadPolicy = 'disabled-by-design'
+    const report = reportFor([observation(writerFixture(), 'main-writer'), observation(reader)])
+    expect(
+      report.counts.find((row) => row.lane === 'main-reader' && row.platform === 'linux'),
+    ).toMatchObject({
+      eligible_actions: 0,
+      remote_hit_actions: 0,
+      avoidable_miss_actions: 0,
+      local_actions: 0,
+      excluded_actions: 1,
+      cold_actions: 0,
+      evidence_gaps: 0,
+    })
   })
 
   it('retains valid counts alongside incomplete evidence, exclusions and unknown jobs', () => {
@@ -239,7 +284,7 @@ describe('cache join', () => {
         ),
       }),
     ).toMatchInlineSnapshot(`
-        "# HELP buck2_cache_lane_eligible_actions Window eligible actions by cache lane and platform.
+        "# HELP buck2_cache_lane_eligible_actions Window exact action identities observed by complete trusted main writers before reader invocation start, by cache lane and platform.
         # TYPE buck2_cache_lane_eligible_actions gauge
         buck2_cache_lane_eligible_actions{repo=\"public/test\",lane=\"main-reader\",platform=\"linux\"} 1 1000000
         # HELP buck2_cache_lane_remote_hit_actions Window remote hit actions by cache lane and platform.
@@ -260,7 +305,7 @@ describe('cache join', () => {
         # HELP buck2_cache_lane_noncacheable_actions Window noncacheable actions by cache lane and platform.
         # TYPE buck2_cache_lane_noncacheable_actions gauge
         buck2_cache_lane_noncacheable_actions{repo=\"public/test\",lane=\"main-reader\",platform=\"linux\"} 0 1000000
-        # HELP buck2_cache_lane_excluded_actions Window excluded actions by cache lane and platform.
+        # HELP buck2_cache_lane_excluded_actions Window policy-excluded actions, deliberate cache-read-disabled controls and nonfresh repetitions by cache lane and platform.
         # TYPE buck2_cache_lane_excluded_actions gauge
         buck2_cache_lane_excluded_actions{repo=\"public/test\",lane=\"main-reader\",platform=\"linux\"} 0 1000000
         # HELP buck2_cache_lane_upload_failure_actions Window upload failure actions by cache lane and platform.
@@ -304,19 +349,21 @@ describe('cache join', () => {
   it('exports disjoint cold and changed cohorts and the remaining warm99 counts to OTLP', () => {
     const report = reportFor([
       observation(writerFixture(), 'main-writer'),
-      observation(artifactFixture(false, [
-        actionFixture(),
-        actionFixture({ digest: 'feedbeef:12' }),
-        actionFixture({ target: 'test//:cold' }),
-        actionFixture({ target: 'test//:noncacheable', executionKind: 0 }),
-        actionFixture({ category: 'pnpm_extract' }),
-        actionFixture({
-          target: 'test//:failed-upload',
-          executionKind: 1,
-          cacheUploadResult: 9,
-          uploadOutcome: 'failed',
-        }),
-      ])),
+      observation(
+        artifactFixture(false, [
+          actionFixture(),
+          actionFixture({ digest: 'feedbeef:12' }),
+          actionFixture({ target: 'test//:cold' }),
+          actionFixture({ target: 'test//:noncacheable', executionKind: 0 }),
+          actionFixture({ category: 'pnpm_extract' }),
+          actionFixture({
+            target: 'test//:failed-upload',
+            executionKind: 1,
+            cacheUploadResult: 9,
+            uploadOutcome: 'failed',
+          }),
+        ]),
+      ),
     ])
     const metrics = renderOtlp(report).resourceMetrics[0]?.scopeMetrics[0]?.metrics
     for (const [cohort, value] of [
@@ -405,10 +452,7 @@ describe('cache join', () => {
   it('retains sampling independently of joined artifacts and evidence gaps', () => {
     const input = {
       repo: 'public/test',
-      observations: [
-        observation(writerFixture(), 'main-writer'),
-        observation(artifactFixture()),
-      ],
+      observations: [observation(writerFixture(), 'main-writer'), observation(artifactFixture())],
       runs: 5,
       artifacts: 7,
       windowEndTimestampSeconds: 1000,

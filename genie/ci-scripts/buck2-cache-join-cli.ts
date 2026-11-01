@@ -35,7 +35,7 @@ import {
   type HistorySource,
 } from './buck2-cache-proof-history.ts'
 import { writeBuck2CacheProofReports } from './buck2-cache-proof-reports.ts'
-import { decodeEvidence } from './buck2-cache-warm99.ts'
+import { decodeEvidence, renderWarm99Diagnostics } from './buck2-cache-warm99.ts'
 
 const limits = {
   runs: 1000,
@@ -113,13 +113,13 @@ GITHUB_TOKEN is required (Actions read permission). No GitHub writes are perform
 Prometheus output (default) uses gauges of window totals, not cumulative counters.
 --previous-utc-day selects the previous complete UTC day [00:00Z,24:00Z).
 --otlp-spool writes an OTLP metrics chunk, timestamped at window end, for pipeline-export.
-Writers: main-writer and merge_group; only uploads completed before the reader starts qualify.
+Trusted presence: only complete main-writer uploads or verified remote-hit observations before each reader invocation qualify.
 --proof-directory retains full downloaded proof sources, authoritative run/job expectations,
 and warm99/proof reports; missing discovery or evidence remains an explicit proof gap.
 Limits: 31-day window, 1000 observed runs, 2000 artifacts, 80 MiB/ZIP, 2 GiB total.
 API safety: about 700 calls daily target, 800 maximum, stop at 200 remaining, two downloads with 250 ms pacing.
 Per UTC day: all main-writer runs; at most 50 evenly ID-spaced merge_group and 25 time-spaced main-reader/pr runs.
-Sampled merge writers make avoidable-miss counts a lower bound; coverage gauges show selected/seen runs.
+Sampled readers make metrics a lower bound; coverage gauges show selected/seen runs.
 Transient HTTP 5xx and transport failures retry at most three attempts, all charged to the cap.
 Budget exhaustion emits an explicit join evidence gap; resource caps fail clearly.
 Invalid or unavailable evidence contributes evidence_gaps without discarding valid evidence.
@@ -369,9 +369,9 @@ const program = Effect.gen(function* () {
   const selection = selectRuns(discovered)
   const proofDirectory =
     options['proof-directory'] === undefined ? undefined : resolve(options['proof-directory'])
+  const proofCollectionGaps: string[] = []
   const proofRelevantRuns = selectProofRelevantRuns(discovered)
   const expectedJobs: ExpectedHistoryJob[] = []
-  const proofCollectionGaps: string[] = []
   if (proofDirectory !== undefined) {
     yield* io('Cannot create proof directory', () => mkdir(proofDirectory, { recursive: true }))
     for (const run of proofRelevantRuns) {
@@ -530,10 +530,15 @@ const program = Effect.gen(function* () {
                     lane,
                     job: evidence.header.metadata.job,
                     cell: evidence.header.metadata.cell,
-                    trustedWriter: evidence.header.metadata.posture === 'writer',
+                    trustedWriter:
+                      evidence.header.metadata.posture === 'writer' && lane === 'main-writer',
                     startedAt:
                       nativeStarts.length > 0
                         ? Math.min(...nativeStarts)
+                        : evidence.header.metadata.startedAt,
+                    latestStartedAt:
+                      nativeStarts.length > 0
+                        ? Math.max(...nativeStarts)
                         : evidence.header.metadata.startedAt,
                     finishedAt: evidence.header.metadata.finishedAt,
                   })
@@ -603,6 +608,8 @@ const program = Effect.gen(function* () {
       relevant_artifacts: relevantArtifacts,
       skipped_expired: skippedExpired,
       skipped_by_policy: skippedByPolicy,
+      api_call_cap: 800,
+      api_reserve_floor: 200,
     },
   }
   if (budgetStopped)
@@ -611,7 +618,7 @@ const program = Effect.gen(function* () {
     )
   if (proofDirectory !== undefined) {
     const planned = planProofHistory({
-      runs: proofRelevantRuns,
+      runs: discovered,
       sources: historySources,
       expectedJobs,
     })
@@ -656,8 +663,10 @@ const program = Effect.gen(function* () {
         acceptance === null ||
         !('accepted' in acceptance) ||
         acceptance.accepted !== true
-      )
+      ) {
+        process.stderr.write(`${renderWarm99Diagnostics(acceptance)}\n`)
         process.exitCode = 1
+      }
     })
   }
   if (options['otlp-spool'] !== undefined) {
