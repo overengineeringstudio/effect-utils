@@ -10,7 +10,7 @@ load("//buck2/products:defs.bzl", "javascript_product")
 # Projection source: packages/@overeng/genie/BUCK.genie.ts
 # Projection schema version: 13
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:49dc748da6b9a38d84c5ecb6b6bc35c930ca682c58d7f0c2fbf0a1c18afbe791
+# Semantic fingerprint: sha256:5c8530542793e08a8ac7baed8bb81dffc2c2fdf317b46a2a42e9b589b98c9b68
 # Regenerate: devenv tasks run genie:run
 
 load("//buck2:materialization.bzl", "export_materialization_inputs", "package_view")
@@ -98,6 +98,7 @@ export_materialization_inputs([
     "src/runtime/github-ruleset/mod.ts",
     "src/runtime/github-ruleset/reconcile.ts",
     "src/runtime/github-ruleset/reconcile.unit.test.ts",
+    "src/runtime/github-workflow/action-pins.ts",
     "src/runtime/github-workflow/actionlint.ts",
     "src/runtime/github-workflow/binary-cache-descriptor.ts",
     "src/runtime/github-workflow/cache-policy.ts",
@@ -269,6 +270,7 @@ package_view(
         "src/runtime/github-ruleset/mod.ts": "src/runtime/github-ruleset/mod.ts",
         "src/runtime/github-ruleset/reconcile.ts": "src/runtime/github-ruleset/reconcile.ts",
         "src/runtime/github-ruleset/reconcile.unit.test.ts": "src/runtime/github-ruleset/reconcile.unit.test.ts",
+        "src/runtime/github-workflow/action-pins.ts": "src/runtime/github-workflow/action-pins.ts",
         "src/runtime/github-workflow/actionlint.ts": "src/runtime/github-workflow/actionlint.ts",
         "src/runtime/github-workflow/binary-cache-descriptor.ts": "src/runtime/github-workflow/binary-cache-descriptor.ts",
         "src/runtime/github-workflow/cache-policy.ts": "src/runtime/github-workflow/cache-policy.ts",
@@ -430,6 +432,7 @@ package_view(
         "src/runtime/github-ruleset/mod.ts": "src/runtime/github-ruleset/mod.ts",
         "src/runtime/github-ruleset/reconcile.ts": "src/runtime/github-ruleset/reconcile.ts",
         "src/runtime/github-ruleset/reconcile.unit.test.ts": "src/runtime/github-ruleset/reconcile.unit.test.ts",
+        "src/runtime/github-workflow/action-pins.ts": "src/runtime/github-workflow/action-pins.ts",
         "src/runtime/github-workflow/actionlint.ts": "src/runtime/github-workflow/actionlint.ts",
         "src/runtime/github-workflow/binary-cache-descriptor.ts": "src/runtime/github-workflow/binary-cache-descriptor.ts",
         "src/runtime/github-workflow/cache-policy.ts": "src/runtime/github-workflow/cache-policy.ts",
@@ -588,6 +591,7 @@ package_view(
         "src/runtime/github-ruleset/mod.ts": "src/runtime/github-ruleset/mod.ts",
         "src/runtime/github-ruleset/reconcile.ts": "src/runtime/github-ruleset/reconcile.ts",
         "src/runtime/github-ruleset/reconcile.unit.test.ts": "src/runtime/github-ruleset/reconcile.unit.test.ts",
+        "src/runtime/github-workflow/action-pins.ts": "src/runtime/github-workflow/action-pins.ts",
         "src/runtime/github-workflow/actionlint.ts": "src/runtime/github-workflow/actionlint.ts",
         "src/runtime/github-workflow/binary-cache-descriptor.ts": "src/runtime/github-workflow/binary-cache-descriptor.ts",
         "src/runtime/github-workflow/cache-policy.ts": "src/runtime/github-workflow/cache-policy.ts",
