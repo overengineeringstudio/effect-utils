@@ -571,83 +571,11 @@ let
     ) buck2TestLanes
   );
 
-  # Packages that have storybook (subset of allPackages)
-  packagesWithStorybook = [
-    {
-      path = "packages/@overeng/tui-react";
-      name = "tui-react";
-      port = 6006;
-    }
-    {
-      path = "packages/@overeng/megarepo";
-      name = "megarepo";
-      port = 6007;
-    }
-    {
-      path = "packages/@overeng/genie";
-      name = "genie";
-      port = 6008;
-    }
-    {
-      path = "packages/@overeng/effect-react";
-      name = "effect-react";
-      port = 6009;
-    }
-    {
-      path = "packages/@overeng/effect-schema-form-aria";
-      name = "effect-schema-form-aria";
-      port = 6010;
-      playTests = true;
-    }
-    {
-      path = "packages/@overeng/react-inspector";
-      name = "react-inspector";
-      port = 6011;
-    }
-    {
-      path = "packages/@overeng/notion-cli";
-      name = "notion-cli";
-      port = 6012;
-    }
-    {
-      path = "packages/@overeng/tui-stories";
-      name = "tui-stories";
-      port = 6013;
-    }
-    {
-      path = "packages/@overeng/notion-react";
-      name = "notion-react";
-      port = 6014;
-    }
-    {
-      path = "packages/@overeng/notion-md";
-      name = "notion-md";
-      port = 6015;
-    }
-    {
-      path = "packages/@overeng/gh-ci-utils";
-      name = "gh-ci-utils";
-      port = 6016;
-    }
-    {
-      path = "packages/@overeng/effect-rpc-explorer-react";
-      name = "effect-rpc-explorer-react";
-      port = 6017;
-      playTests = true;
-    }
-    {
-      path = "packages/@overeng/devbar";
-      name = "devbar";
-      port = 6018;
-      playTests = true;
-    }
-    {
-      path = "packages/@overeng/meters";
-      name = "meters";
-      port = 6019;
-      playTests = true;
-    }
-  ];
+  # Reader roots are shared with the trusted proof's declaration closure.
+  readerComposition = builtins.fromJSON (
+    builtins.readFile ./genie/ci-workflow/reader-composition.json
+  );
+  packagesWithStorybook = readerComposition.storybooks;
   packagesWithNetlifyPreview = lib.filter (pkg: pkg.name != "tui-stories") packagesWithStorybook;
   consumerPublicationPackagePaths = lib.unique (
     map (pkg: pkg.path) packagesWithStorybook
@@ -656,19 +584,10 @@ let
       "packages/@overeng/notion-datasource-sync"
     ]
   );
-  notionIntegrationPackages =
-    map
-      (name: {
-        inherit name;
-        path = "packages/@overeng/${name}";
-      })
-      [
-        "notion-effect-client"
-        "notion-cli"
-        "notion-datasource-sync"
-        "notion-md"
-        "notion-react"
-      ];
+  notionIntegrationPackages = map (path: {
+    inherit path;
+    name = builtins.baseNameOf path;
+  }) readerComposition.notionIntegration;
   # Aggregate-only aliases follow the source-test chain pattern: reuse the final
   # standalone command/runtime, replacing only the dependency that installs views.
   executionAlias =
