@@ -17,6 +17,9 @@ export const coreProofDisabledJobIds: Readonly<Record<string, true>> = {
   'ci-measurements-report': true,
   'notify-alignment': true,
   'tested-tree': true,
+  'pipeline-attempt-close': true,
+  'pipeline-traces': true,
+  'consumer-smoke': true,
   'pr-reviews-resolved': true,
   'promote-published': true,
   'pr-a-inert-buck': true,
@@ -25,7 +28,7 @@ export const coreProofDisabledJobIds: Readonly<Record<string, true>> = {
 /** Shared by CI declaration and historical proof membership; missing artifacts cannot reveal posture. */
 export const coreCachePostures = {
   'default-ref-policy': 'reader',
-  'tested-tree': 'reader',
+  'tested-tree': 'none',
   quality: 'trusted-writer',
   'pr-buck2-tools': 'reader',
   test: 'trusted-writer',
@@ -43,13 +46,13 @@ export const coreCachePostures = {
   'test-live-deploy-ci-tools': 'reader',
   'deploy-storybooks': 'reader',
   'publish-products': 'reader',
-  'consumer-smoke': 'reader',
+  'consumer-smoke': 'none',
   'promote-published': 'none',
   'notify-alignment': 'reader',
   'trusted-buck2-remote-cache-proof': 'writer',
   'pr-a-inert-buck': 'none',
-  'pipeline-attempt-close': 'reader',
-  'pipeline-traces': 'reader',
+  'pipeline-attempt-close': 'none',
+  'pipeline-traces': 'none',
 } as const satisfies Readonly<Record<string, Buck2CachePosture>>
 
 export const coreWriterJobIds: ReadonlySet<string> = new Set(

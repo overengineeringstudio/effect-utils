@@ -433,6 +433,8 @@ export const evaluateWarm99 = ({
         for (const action of artifact.actions) {
           const key = identity(action)
           if (
+            artifact.header.invocations.find((inv) => inv.buildId === action.buildId)
+              ?.cacheReadPolicy === 'disabled-by-design' ||
             actionExclusionReason(action.category) !== null ||
             action.commandAction !== true ||
             key === undefined ||
@@ -532,6 +534,11 @@ export const evaluateWarm99 = ({
           if (invocation === undefined || invocation.startedAt === null) {
             result.complete = false
             result.evidenceGap++
+            continue
+          }
+          // Cache-off controls do not consume the first cache-enabled occurrence.
+          if (invocation.cacheReadPolicy === 'disabled-by-design') {
+            result.excluded++
             continue
           }
           if (action.executionKind === 10) {

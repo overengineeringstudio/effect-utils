@@ -1,5 +1,3 @@
-import { pinnedAction } from '../../packages/@overeng/genie/src/runtime/github-workflow/action-pins.ts'
-
 import { rootNixSourceGlobs } from '../../genie/buck2/root-aggregate-projection.ts'
 import {
   type RunnerProfile,
@@ -66,6 +64,7 @@ import { effectUtilsWorkflowPolicy } from '../../genie/ci-workflow/policy.ts'
 import { publishedRefIf, publishedRefSteps } from '../../genie/ci-workflow/published-ref.ts'
 import type { CoreCIJobName } from '../../genie/ci.ts'
 import { pipelineJobIdentifierSet } from '../../packages/@overeng/ci-tools/src/pipeline-job-names.ts'
+import { pinnedAction } from '../../packages/@overeng/genie/src/runtime/github-workflow/action-pins.ts'
 
 const workflowReportFlakeRef =
   "github:${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name || github.repository }}/${{ github.event_name == 'pull_request' && github.head_ref || github.ref_name }}#ci-tools"
@@ -2262,6 +2261,8 @@ export default ciWorkflow({
           },
           ...withPipelineTelemetry(withBuck2CacheEvidence(instrumentedProductCiJobs)),
           'promote-published': promotePublishedJob!,
+          // API/OTel adapters and Nix's nested ci-tools build execute no checkout-native Buck.
+          // Shared proof policy declares their `none` postures and disabled membership.
           'pipeline-attempt-close': pipelineCloseJob({
             jobs: productCiJobs,
             runsOn: 'ubuntu-latest',
@@ -2270,7 +2271,7 @@ export default ciWorkflow({
         },
         nixRealisationTimingsSeconds,
       ),
-      // Consumer bootstrap policy is managed independently from source-editor setup.
+      // Isolated pnpm consumer: no checkout-native Buck or root-shell cache evidence.
       'consumer-smoke': consumerSmokeJob!,
     },
     // Protected queue heads and fallback main pushes warm the cache opportunistically.

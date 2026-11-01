@@ -201,7 +201,10 @@ export const aggregate = ({
           actionExclusionReason(action.category) === null &&
           (action.executionKind === 1 || action.executionKind === 8) &&
           artifact.header.invocations.some(
-            (invocation) => invocation.buildId === action.buildId && invocation.freshRoot === true,
+            (invocation) =>
+              invocation.buildId === action.buildId &&
+              invocation.freshRoot === true &&
+              invocation.cacheReadPolicy !== 'disabled-by-design',
           )
         ) {
           const key = identity(action)

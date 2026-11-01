@@ -6,6 +6,7 @@ import {
   actionExclusionReason,
   type ActionArtifact,
   type CacheLane,
+  type CacheReadPolicy,
 } from './buck2-action-evidence.ts'
 import type { ExpectedHistoryJob } from './buck2-cache-proof-history.ts'
 import {
@@ -67,6 +68,7 @@ type ProofReference = {
     startedAt: number | null
     completedAt: number | null
     freshRoot: boolean
+    cacheReadPolicy: CacheReadPolicy
     complete: boolean
   }[]
   gap: 'unavailable-or-invalid-evidence' | null
@@ -264,6 +266,7 @@ export const writeBuck2CacheProofReports = async ({
         startedAt: item.startedAt,
         completedAt: item.completedAt,
         freshRoot: item.freshRoot,
+        cacheReadPolicy: item.cacheReadPolicy,
         complete: item.complete,
       }))
       record.gap = null
@@ -312,6 +315,7 @@ export const writeBuck2CacheProofReports = async ({
             (item) => item.buildId === action.buildId,
           )
           if (key === undefined || invocation === undefined) continue
+          if (invocation.cacheReadPolicy === 'disabled-by-design') continue
           const nativeRootId = field({ value: invocation, key: 'rootId' })
           const rootId =
             typeof nativeRootId === 'string'
@@ -345,6 +349,8 @@ export const writeBuck2CacheProofReports = async ({
               const uploads = (prior?.actions ?? []).filter((action) => {
                 const key = identity(action)
                 return (
+                  prior.header.invocations.find((item) => item.buildId === action.buildId)
+                    ?.cacheReadPolicy !== 'disabled-by-design' &&
                   actionExclusionReason(action.category) === null &&
                   action.commandAction === true &&
                   prior.header.metadata.repo === artifact?.header.metadata.repo &&

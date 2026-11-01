@@ -312,6 +312,37 @@ describe('native Buck cache evidence projection', () => {
     ).toThrow()
   })
 
+  it('projects explicit invocation lookup policy without relabeling native outcomes or categories', () => {
+    for (const cacheReadPolicy of ['enabled', 'disabled-by-design', 'unknown'] as const) {
+      const invocations: ActionInvocation[] = []
+      const rows: ActionRecord[] = []
+      const projector = createCacheEvidenceProjector({
+        context: 'capability-identity-dependency',
+        cacheReadPolicy,
+        onInvocation: (invocation) => invocations.push(invocation),
+        onAction: (action) => rows.push(action),
+      })
+      projector.add(
+        nativeEvent(
+          'SpanEnd',
+          actionEnd({
+            name: { category: 'capability_identity_dependency_negative' },
+            execution_kind: 1,
+            cache_upload_result: 0,
+          }),
+        ),
+      )
+      projector.finish()
+      expect(invocations[0]!.cacheReadPolicy).toBe(cacheReadPolicy)
+      expect(rows[0]).toMatchObject({
+        category: 'capability_identity_dependency_negative',
+        executionKind: 1,
+        outcome: 'local',
+        exclusionReason: null,
+      })
+    }
+  })
+
   it('reports every materialization category separately without relabeling native outcomes', () => {
     for (const category of localMaterializationCategories) {
       for (const executionKind of [1, 3, 8, 10]) {
@@ -858,6 +889,7 @@ describe('native Buck cache evidence projection', () => {
     const survivor: ActionInvocation = {
       buildId: 'survivor',
       context: 'native-log',
+      cacheReadPolicy: 'unknown',
       freshRoot: true,
       actionCount: 1,
       excludedByDesign: { 'local-materialization-policy': 0, 'darwin-unsandboxed': 0 },
@@ -878,6 +910,7 @@ describe('native Buck cache evidence projection', () => {
     const invocation: ActionInvocation = {
       buildId: 'build',
       context: 'native-log',
+      cacheReadPolicy: 'unknown',
       freshRoot: true,
       actionCount: 1,
       excludedByDesign: { 'local-materialization-policy': 0, 'darwin-unsandboxed': 0 },
@@ -958,6 +991,7 @@ describe('native Buck cache evidence projection', () => {
       {
         buildId: fixtureBuildId,
         context: 'populate',
+        cacheReadPolicy: 'unknown',
         freshRoot: true,
         actionCount: 100,
         excludedByDesign: { 'local-materialization-policy': 0, 'darwin-unsandboxed': 0 },

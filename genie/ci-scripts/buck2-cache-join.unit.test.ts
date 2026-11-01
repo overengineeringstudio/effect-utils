@@ -106,7 +106,12 @@ describe('cache join', () => {
     ])
     expect(
       report.counts.find((row) => row.lane === 'main-reader' && row.platform === 'linux'),
-    ).toMatchObject({ eligible_actions: 1, remote_hit_actions: 1, cold_actions: 0, changed_actions: 1 })
+    ).toMatchObject({
+      eligible_actions: 1,
+      remote_hit_actions: 1,
+      cold_actions: 0,
+      changed_actions: 1,
+    })
     const withoutQueue = reportFor([
       observation(writerFixture(), 'pr'),
       observation(artifactFixture()),
@@ -304,19 +309,21 @@ describe('cache join', () => {
   it('exports disjoint cold and changed cohorts and the remaining warm99 counts to OTLP', () => {
     const report = reportFor([
       observation(writerFixture(), 'main-writer'),
-      observation(artifactFixture(false, [
-        actionFixture(),
-        actionFixture({ digest: 'feedbeef:12' }),
-        actionFixture({ target: 'test//:cold' }),
-        actionFixture({ target: 'test//:noncacheable', executionKind: 0 }),
-        actionFixture({ category: 'pnpm_extract' }),
-        actionFixture({
-          target: 'test//:failed-upload',
-          executionKind: 1,
-          cacheUploadResult: 9,
-          uploadOutcome: 'failed',
-        }),
-      ])),
+      observation(
+        artifactFixture(false, [
+          actionFixture(),
+          actionFixture({ digest: 'feedbeef:12' }),
+          actionFixture({ target: 'test//:cold' }),
+          actionFixture({ target: 'test//:noncacheable', executionKind: 0 }),
+          actionFixture({ category: 'pnpm_extract' }),
+          actionFixture({
+            target: 'test//:failed-upload',
+            executionKind: 1,
+            cacheUploadResult: 9,
+            uploadOutcome: 'failed',
+          }),
+        ]),
+      ),
     ])
     const metrics = renderOtlp(report).resourceMetrics[0]?.scopeMetrics[0]?.metrics
     for (const [cohort, value] of [
@@ -405,10 +412,7 @@ describe('cache join', () => {
   it('retains sampling independently of joined artifacts and evidence gaps', () => {
     const input = {
       repo: 'public/test',
-      observations: [
-        observation(writerFixture(), 'main-writer'),
-        observation(artifactFixture()),
-      ],
+      observations: [observation(writerFixture(), 'main-writer'), observation(artifactFixture())],
       runs: 5,
       artifacts: 7,
       windowEndTimestampSeconds: 1000,
