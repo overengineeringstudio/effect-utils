@@ -37,6 +37,7 @@ import {
   decodeActionArtifact,
   decodeActionExclusionCounts,
   decodeCacheUploadErrors,
+  decodeCacheReadPolicy,
   decodeOutputTinyDigests,
 } from './buck2-action-evidence-codec.ts'
 import {
@@ -55,6 +56,7 @@ import {
   type ActionArtifact,
   type ActionInvocation,
   type ActionRecord,
+  type CacheReadPolicy,
   type CacheUploadError,
 } from './buck2-action-evidence.ts'
 import type { OutputTinyDigests } from './buck2-action-evidence.ts'
@@ -612,12 +614,14 @@ export const createCacheEvidenceProjector = ({
   onInvocation,
   freshRoot = false,
   rootId,
+  cacheReadPolicy = 'unknown',
 }: {
   context?: string
   onAction?: (action: ActionRecord) => void
   onInvocation?: (invocation: ActionInvocation) => void
   freshRoot?: boolean
   rootId?: string
+  cacheReadPolicy?: CacheReadPolicy
 } = {}): {
   add: (value: unknown) => void
   finish: () => CacheEvidence
@@ -851,6 +855,7 @@ export const createCacheEvidenceProjector = ({
       buildId,
       ...(rootId === undefined ? {} : { rootId }),
       context: context ?? null,
+      cacheReadPolicy,
       startedAt: invocationStartedAt,
       completedAt: invocationCompletedAt,
       freshRoot,
@@ -1247,6 +1252,7 @@ const run = async (): Promise<void> => {
       events: { type: 'string' },
       output: { type: 'string' },
       context: { type: 'string' },
+      'cache-read-policy': { type: 'string' },
       'actions-output': { type: 'string' },
       'fresh-root': { type: 'boolean', default: false },
       finalize: { type: 'boolean', default: false },
@@ -1285,6 +1291,7 @@ const run = async (): Promise<void> => {
       freshRoot: values['fresh-root'],
       rootId: values['root-id'],
       context: values.context,
+      cacheReadPolicy: decodeCacheReadPolicy(values['cache-read-policy'] ?? 'unknown'),
       exitCode:
         values['native-exit-code'] === undefined ? undefined : Number(values['native-exit-code']),
       onReady: () => console.log('ready'),
@@ -1374,6 +1381,7 @@ const run = async (): Promise<void> => {
     const invocations: ActionInvocation[] = []
     const projector = createCacheEvidenceProjector({
       context: values.context,
+      cacheReadPolicy: decodeCacheReadPolicy(values['cache-read-policy'] ?? 'unknown'),
       // Native-log candidates resolve by command start time at finalization.
       // Explicit proof contexts own independent wiped roots.
       freshRoot: values['fresh-root'] === true,

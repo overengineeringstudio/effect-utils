@@ -17,6 +17,43 @@ import { decodeEvidence, decodeManifest, evaluateWarm99 } from './buck2-cache-wa
 const rawArtifact = (artifact = artifactFixture()): string =>
   `${[artifact.header, ...artifact.actions].map((item) => JSON.stringify(item)).join('\n')}\n`
 describe('strict action boundary', () => {
+  it('decodes explicit policy and retained context without inferring native outcomes', () => {
+    for (const context of [
+      'capability-identity-dependency',
+      'capability-identity-baseline',
+      'native-log',
+      null,
+    ]) {
+      const artifact = artifactFixture()
+      artifact.header.invocations[0]!.context = context
+      const raw = rawArtifact(artifact)
+      expect(decodeActionArtifact(raw).header.invocations[0]!.cacheReadPolicy).toBe('enabled')
+      const retained = raw.replaceAll('"cacheReadPolicy":"enabled",', '')
+      expect(decodeActionArtifact(retained).header.invocations[0]!.cacheReadPolicy).toBe(
+        context === 'capability-identity-dependency' ? 'disabled-by-design' : 'unknown',
+      )
+    }
+    expect(() => decodeActionArtifact(rawArtifact().replace('"enabled"', '"invalid"'))).toThrow()
+  })
+  it('classifies disabled local executions without hiding native local hits', () => {
+    const invocation = artifactFixture().header.invocations[0]!
+    for (const cacheReadPolicy of ['enabled', 'disabled-by-design', 'unknown'] as const) {
+      for (const executionKind of [1, 8, 10]) {
+        expect(
+          classifyCacheAction({
+            action: actionFixture({ buildId: invocation.buildId, executionKind }),
+            invocation: { ...invocation, cacheReadPolicy },
+          }),
+        ).toBe(
+          executionKind === 10
+            ? 'local-action-cache-hit'
+            : cacheReadPolicy === 'disabled-by-design'
+              ? 'other'
+              : 'fresh-local-execution',
+        )
+      }
+    }
+  })
   it('classifies kind-10 reuse as hits and only fresh kind-1/8 digest executions as candidates', () => {
     const invocation = artifactFixture().header.invocations[0]!
     for (const executionKind of [1, 8, 10]) {
@@ -228,6 +265,55 @@ describe('strict action boundary', () => {
   })
 })
 describe('warm99 identity acceptance', () => {
+  it('does not consume enabled lookup freshness with an earlier cache-off control', () => {
+    const manifest = manifestFixture()
+    const loaded = loadedFixture(manifest)
+    for (const item of loaded) {
+      const reader = item.readers[0]!
+      const first = reader.header.invocations[0]!
+      first.cacheReadPolicy = 'disabled-by-design'
+      const next = {
+        ...first,
+        buildId: `${first.buildId}-enabled`,
+        startedAt: 250,
+        cacheReadPolicy: 'enabled' as const,
+        freshRoot: false,
+      }
+      reader.header.invocations.push(next)
+      reader.actions = [
+        actionFixture({ buildId: first.buildId, executionKind: 1 }),
+        actionFixture({ buildId: next.buildId, startedAt: 250, completedAt: 260, endTime: 260 }),
+      ]
+    }
+    expect(evaluateWarm99({ manifest, loaded }).lanes[0]!.observations[0]).toMatchObject({
+      complete: true,
+      eligible: 1,
+      remoteHits: 1,
+      excluded: 1,
+      cold: 0,
+    })
+  })
+  it('excludes disabled readers and disabled uploads, preserving upload-only main/queue anchors', () => {
+    for (const role of ['reader', 'writer'] as const) {
+      for (const cacheReadPolicy of ['enabled', 'disabled-by-design', 'unknown'] as const) {
+        const manifest = manifestFixture()
+        const loaded = loadedFixture(manifest)
+        for (const item of loaded) {
+          const artifact = role === 'reader' ? item.readers[0]! : item.writers[0]!
+          artifact.header.invocations[0]!.cacheReadPolicy = cacheReadPolicy
+        }
+        const disabled = cacheReadPolicy === 'disabled-by-design'
+        expect(evaluateWarm99({ manifest, loaded }).lanes[0]!.observations[0]).toMatchObject({
+          complete: true,
+          eligible: disabled === true ? 0 : 1,
+          remoteHits: disabled === true ? 0 : 1,
+          excluded: disabled === true && role === 'reader' ? 1 : 0,
+          cold: disabled === true && role === 'writer' ? 1 : 0,
+          evidenceGap: 0,
+        })
+      }
+    }
+  })
   it('keeps materialization and Darwin TS outside eligible, cold, changed and upload-failure cohorts', () => {
     for (const executionKind of [1, 3, 8]) {
       const manifest = manifestFixture()

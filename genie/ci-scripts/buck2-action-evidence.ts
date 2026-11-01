@@ -104,11 +104,14 @@ export type ActionRecord = {
   /** Absent for unselected actions and logs/artifacts without output evidence. */
   outputTinyDigests?: OutputTinyDigests
 }
+export type CacheReadPolicy = 'enabled' | 'disabled-by-design' | 'unknown'
 export type ActionInvocation = {
   buildId: string
   /** Opaque canonical-root scope; never a host path. */
   rootId?: string
   context: string | null
+  /** Explicit invocation lookup policy; unknown is not an attestation of enabled reads. */
+  cacheReadPolicy: CacheReadPolicy
   startedAt: number | null
   completedAt: number | null
   freshRoot: boolean

@@ -5,7 +5,7 @@ import { appendFile, mkdir, readdir, rename, stat } from 'node:fs/promises'
 import { join } from 'node:path'
 
 import { decodeActionArtifact } from './buck2-action-evidence-codec.ts'
-import type { ActionRecord } from './buck2-action-evidence.ts'
+import type { ActionRecord, CacheReadPolicy } from './buck2-action-evidence.ts'
 import {
   actionExclusionReasons,
   countActionExclusions,
@@ -68,6 +68,7 @@ export const writeNativeShard = async ({
   freshRoot = false,
   rootId,
   context = 'native-log',
+  cacheReadPolicy = 'unknown',
   exitCode,
   onReady,
 }: {
@@ -77,6 +78,7 @@ export const writeNativeShard = async ({
   freshRoot?: boolean
   rootId?: string
   context?: string
+  cacheReadPolicy?: CacheReadPolicy
   exitCode?: number
   onReady?: () => void
 }): Promise<void> => {
@@ -103,6 +105,7 @@ export const writeNativeShard = async ({
     context,
     freshRoot,
     rootId,
+    cacheReadPolicy,
     onAction: (row: ActionRecord) => {
       const size = Buffer.byteLength(JSON.stringify(row)) + 1
       if (bytes + size > maxShardBytes / 2) overflow = true

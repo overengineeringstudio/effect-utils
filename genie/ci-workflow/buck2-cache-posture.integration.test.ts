@@ -131,6 +131,29 @@ describe('generated CI cache trust behavior', () => {
     }
   })
 
+  it('disables native cache posture and proof membership for control and isolated consumer jobs', async () => {
+    const workflow = await readWorkflow()
+    for (const jobId of [
+      'tested-tree',
+      'pipeline-attempt-close',
+      'pipeline-traces',
+      'consumer-smoke',
+    ]) {
+      const job = workflow.jobs[jobId]!
+      expect(coreProofDisabledJobIds[jobId]).toBe(true)
+      expect(job.env?.BUCK2_NO_REMOTE_CACHE).toBe('1')
+      expect(job.env?.BUCK2_PUBLIC_CACHE_READ_ONLY).toBe('1')
+      expect(job.env?.BUCK2_CACHE_WRITE_OPTIONAL).toBeUndefined()
+      expect(job.env?.BUCK2_PUBLIC_CACHE_WRITE_AUTH).toBeUndefined()
+      expect(job.env?.CI_BUCK2_CACHE_EVIDENCE_START).toBeUndefined()
+      expect(job.env?.CI_BUCK2_CACHE_PROOF_MANIFEST_PATH).toBeUndefined()
+      expect(job.steps.some((step) => step.name?.includes('Buck2 cache evidence'))).toBe(false)
+      expect(
+        job.steps.some((step) => String(step.with?.name ?? '').startsWith('buck2-cache-evidence-')),
+      ).toBe(false)
+    }
+  })
+
   it('enables opportunistic uploads only with a protected main or queue event and step-local credential', async () => {
     for (const filename of ['ci.yml', 'storybook-plays.yml']) {
       const workflow = await readWorkflow(filename)
