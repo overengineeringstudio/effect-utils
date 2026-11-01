@@ -1059,7 +1059,7 @@ the legacy compact outcome classes and missing-evidence counters.
 ### Per-lane warm99 evaluation
 
 ```text
-writer upload completion < fresh reader command start
+trusted writer per-action observation < fresh reader invocation start
     exact (category,target,configuration,digest) join
     eligible remote identities / eligible identities
     >=99% for each enabled lane, twice consecutively
@@ -1099,11 +1099,19 @@ omit a failed job:
 
 Paths resolve relative to the manifest; reports omit them. Observation sequence
 numbers strictly increase. Each enabled lane has explicitly enumerated reader
-jobs, and each expected job needs a complete fresh-root attestation. All writer
-artifacts must be complete before they establish eligible uploads. The reader
-tuple is eligible only where an exact successful upload completed strictly
-before the invocation containing its first occurrence in that fresh job root
-started. An identity is `(category,target,configuration,digest)`. Its first
+jobs, and each expected job needs a complete fresh-root attestation. Only complete
+`main-writer` artifacts with writer posture establish trusted presence: either a
+successful upload at `uploadCompletedAt` or a verified native execution-kind `3`
+remote hit at that action's `completedAt`. Each exact observation must precede
+the invocation containing the reader's first occurrence strictly; equality and
+future timestamps do not bind. There is no cohort-wide timestamp cutoff.
+PR and merge-group artifacts never bind, even with writer posture or uploads;
+intentionally ineligible writer references are not missing-evidence errors.
+A raw reader remote hit without such a trusted anchor remains cold.
+Historical proof manifests expose these per-invocation bindings as
+`writerPriorObservationBindings`, with `priorObservationCount` and an exact-identity
+hash per contributing writer reference.
+An identity is `(category,target,configuration,digest)`. Its first
 occurrence in each root counts, in any invocation; every repetition in the same
 root is excluded-nonfresh. All eligible first occurrences across distinct reader
 roots must have raw execution kind `3` to count as a remote hit. Local-action-cache,
@@ -1112,6 +1120,39 @@ never remote hits, even if the compact mapping calls them cache hits.
 Writer and reader repository metadata must agree. Distinct observations require
 distinct native reader build IDs; replaying one artifact under a new manifest
 sequence is an evidence gap, not a second fresh-root measurement.
+
+Native invocation evidence records `cacheReadPolicy` as `enabled`,
+`disabled-by-design`, or `unknown`. Collection accepts `--cache-read-policy`;
+the capability-identity proof explicitly declares only its `dependency` phase
+disabled, matching `--no-remote-cache --config buck2.remote_cache_enabled=false`.
+Its baseline/selected/unused/action-env phases remain cache-enabled, including
+the same dependency action categories. A deliberately disabled invocation does
+not attempt an ActionCache lookup: its rows count as excluded, never eligible,
+cold, avoidable/local reader misses, or trusted presence anchors. It does not
+consume an identity's later cache-enabled first occurrence in the same root.
+Native outcomes and category policy counts remain unchanged.
+
+Retained evidence without the new field remains authoritative. The decoder's
+reader arm recognizes the reserved `capability-identity-dependency` context
+protocol as disabled, independently of run or revision. The context's
+[evidence-producing introduction](https://github.com/overengineeringstudio/effect-utils/blob/7bda6fe68793924bd37bea44a3535237d6912e79/scripts/buck2-capability-identity-proof.sh)
+already required `--no-remote-cache` and `buck2.remote_cache_enabled=false`;
+the [original dependency control](https://github.com/overengineeringstudio/effect-utils/blob/6e05e3dc23f52dda3323c8d79653c3595fc48dbc/scripts/buck2-capability-identity-proof.sh)
+also disabled reads, before its native rows were collected.
+Inspected reader sources
+[`d749e890d67386a5f23d9787444bfcb3e491f4da`](https://github.com/overengineeringstudio/effect-utils/blob/d749e890d67386a5f23d9787444bfcb3e491f4da/scripts/buck2-capability-identity-proof.sh#L106-L115)
+and
+[`110fa22c52d387f440494118adfe2013bb5dacfa`](https://github.com/overengineeringstudio/effect-utils/blob/110fa22c52d387f440494118adfe2013bb5dacfa/scripts/buck2-capability-identity-proof.sh#L106-L115)
+preserve that protocol. These are evidence citations, not a head-SHA whitelist.
+This is source-contract classification, not a retroactive producer attestation;
+proof invocation projections expose the classified policy with source metadata
+and original artifact checksums. Every other missing-policy case stays
+`unknown`, preserving the existing lane/posture scoring behavior rather than
+inventing a disabled lookup or invalidating all retained writer anchors.
+Local execution alone never proves reads were disabled.
+An explicit policy field takes precedence. Remove the retained reader arm only
+after an admitted-artifact inventory reports zero invocations without
+`cacheReadPolicy`; its no-retained-input behavior is covered by decoder tests.
 
 Freshness belongs to an identity's first occurrence in an attested fresh job
 root, not to the first cache-bearing invocation alone. Each root represented by
@@ -1156,11 +1197,11 @@ Missing identity fields or timestamps remain evidence gaps. Cargo and
 default-ref-policy jobs execute no native Buck actions and are explicitly
 disabled-by-design, not remote-cache reader or writer lanes.
 
-The report separates cold tuples (no prior upload), changed tuples (same
-category/target/configuration, different prior uploaded digest), excluded
+The report separates cold tuples (no prior trusted observation), changed tuples
+(same category/target/configuration, different previously observed trusted digest), excluded
 nonfresh/disabled actions, reason-keyed `excludedByDesign` policy counts,
 noncacheable native actions, upload failures, and evidence gaps. Policy rows
-cannot seed the prior-upload cohort or enter the eligible denominator, including
+cannot seed the trusted-presence cohort or enter the eligible denominator, including
 historical remote-hit/upload rows. Nix substitution totals are separate and
 never augment the Buck denominator.
 Missing expected jobs/files, malformed/schema-incompatible or
@@ -1239,16 +1280,16 @@ is substituted for a measured lane budget (axe record `uttvbj`).
 BUILD.BUCK.REUSE-R08–R14 retain their rolling 7-day evidence window. The legacy
 compact observed rate counts native outcome spans:
 remote hit / (remote hit + local execution + local cache + upload).
-The warm99 acceptance gate uses the distinct exact-identity, prior-upload,
+The warm99 acceptance gate uses the distinct exact-identity, trusted-presence,
 fresh-root denominator specified above, not that observed aggregate.
 
-| Requirement | Evidence                                                                                                                      |
-| ----------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| R08–R10     | Full CI action-identity artifacts and warm99 reports; R08 joins local executions against prior successful public-tier uploads |
-| R11         | public tier server request counters (`GetActionResult` hits/misses, `UpdateActionResult` writes)                              |
-| R12         | weekly two-root probe per trusted host, native event log                                                                      |
-| R13         | narinfo presence for each published product and the publish-run derivation diff                                               |
-| R14         | daily cache-health measurement history                                                                                        |
+| Requirement | Evidence                                                                                                                        |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| R08–R10     | Full CI action-identity artifacts and warm99 reports; R08 joins local executions against prior trusted public-tier observations |
+| R11         | public tier server request counters (`GetActionResult` hits/misses, `UpdateActionResult` writes)                                |
+| R12         | weekly two-root probe per trusted host, native event log                                                                        |
+| R13         | narinfo presence for each published product and the publish-run derivation diff                                                 |
+| R14         | daily cache-health measurement history                                                                                          |
 
 R09 and R10 apply only to lanes where queue writers populate the public tier
 before readers run. Rates measured before that ordering exists form a separate

@@ -121,6 +121,46 @@ describe('cache join', () => {
     ).toMatchObject({ eligible_actions: 0, cold_actions: 1 })
   })
 
+  it('joins a stable trusted writer remote hit using its own completion time', () => {
+    for (const completedAt of [199, 200, 201]) {
+      const writer = writerFixture()
+      writer.actions = [
+        actionFixture({
+          buildId: writer.header.invocations[0]!.buildId,
+          startedAt: 10,
+          completedAt,
+          endTime: completedAt,
+        }),
+      ]
+      const report = reportFor([observation(writer, 'main-writer'), observation(artifactFixture())])
+      const eligible = completedAt < 200 ? 1 : 0
+      expect(
+        report.counts.find((row) => row.lane === 'main-reader' && row.platform === 'linux'),
+      ).toMatchObject({
+        eligible_actions: eligible,
+        remote_hit_actions: eligible,
+        cold_actions: 1 - eligible,
+      })
+    }
+  })
+
+  it('keeps deliberate cache-off controls out of eligible misses and raw local reader counts', () => {
+    const reader = artifactFixture(false, [actionFixture({ executionKind: 1 })])
+    reader.header.invocations[0]!.cacheReadPolicy = 'disabled-by-design'
+    const report = reportFor([observation(writerFixture(), 'main-writer'), observation(reader)])
+    expect(
+      report.counts.find((row) => row.lane === 'main-reader' && row.platform === 'linux'),
+    ).toMatchObject({
+      eligible_actions: 0,
+      remote_hit_actions: 0,
+      avoidable_miss_actions: 0,
+      local_actions: 0,
+      excluded_actions: 1,
+      cold_actions: 0,
+      evidence_gaps: 0,
+    })
+  })
+
   it('retains valid counts alongside incomplete evidence, exclusions and unknown jobs', () => {
     const broken = artifactFixture()
     broken.header.complete = false
