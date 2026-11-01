@@ -12,7 +12,12 @@ import {
   loadedFixture,
   manifestFixture,
 } from './buck2-cache-warm99.fixtures.ts'
-import { decodeEvidence, decodeManifest, evaluateWarm99 } from './buck2-cache-warm99.ts'
+import {
+  decodeEvidence,
+  decodeManifest,
+  evaluateWarm99,
+  renderWarm99Diagnostics,
+} from './buck2-cache-warm99.ts'
 
 const rawArtifact = (artifact = artifactFixture()): string =>
   `${[artifact.header, ...artifact.actions].map((item) => JSON.stringify(item)).join('\n')}\n`
@@ -265,6 +270,52 @@ describe('strict action boundary', () => {
   })
 })
 describe('warm99 identity acceptance', () => {
+  it('prints every lane and observation without reader IDs or native identities', () => {
+    const manifest = manifestFixture(['main-reader', 'merge_group', 'pr'])
+    const report = evaluateWarm99({ manifest, loaded: loadedFixture(manifest) })
+    for (const entry of report.lanes)
+      for (const observation of entry.observations) observation.id = '/private/path\ninjected'
+    const lines = renderWarm99Diagnostics(report).split('\n')
+    expect(lines).toHaveLength(6)
+    expect(lines[0]).toBe(
+      'buck2-cache-join: lane=main-reader observation=0 eligible=1 hits=1 rate=1 complete=true gaps=0 consecutive=1',
+    )
+    expect(lines[1]).toContain('consecutive=2')
+    expect(lines.join('\n')).not.toContain('injected')
+    report.lanes[0]!.observations[0]!.eligible = 0
+    report.lanes[0]!.observations[0]!.remoteHits = 0
+    report.lanes[0]!.observations[0]!.meetsThreshold = false
+    expect(renderWarm99Diagnostics(report)).toContain('eligible=0 hits=0 rate=unavailable')
+  })
+  it('uses each writer action timestamp rather than a cohort cutoff', () => {
+    const manifest = manifestFixture()
+    const loaded = loadedFixture(manifest)
+    for (const item of loaded) {
+      const writer = item.writers[0]!
+      writer.actions = [199, 200, 201].map((endTime) =>
+        actionFixture({
+          buildId: writer.header.invocations[0]!.buildId,
+          target: `test//:${endTime}`,
+          digest: `${endTime}:1`,
+          startedAt: 10,
+          completedAt: endTime,
+          endTime,
+        }),
+      )
+      item.readers = [
+        artifactFixture(
+          false,
+          writer.actions.map(({ target, digest }) => actionFixture({ target, digest })),
+        ),
+      ]
+    }
+    expect(evaluateWarm99({ manifest, loaded }).lanes[0]!.observations[0]).toMatchObject({
+      complete: true,
+      eligible: 1,
+      remoteHits: 1,
+      cold: 2,
+    })
+  })
   it.each(['upload', 'remote-hit'] as const)(
     'requires earlier exact trusted %s anchors',
     (source) => {

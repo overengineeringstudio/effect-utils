@@ -107,10 +107,10 @@ describe('authoritative proof history planning', () => {
     expect(planned.manifest.observations[0]!.writers[0]!.actions).toBe('missing/writer-1-0.gz')
     expect(planned.evidenceGaps).toContain('expected-writer-job-evidence-unavailable')
   })
-  it('does not use read-only merge jobs or future writers as trusted prior uploads', () => {
+  it('retains trusted writers regardless of job completion; per-action timestamps decide eligibility', () => {
     const planned = planProofHistory({
       expectedLanes: ['main-reader'],
-      runs: [run(1, 'merge_group', 'ci.yml'), run(2), run(3)],
+      runs: [run(1), run(2), run(3)],
       expectedJobs: [
         { runId: 1, job: 'store-gc', cell: 'singleton', runAttempt: 1 },
         { runId: 2, job: 'reader', cell: 'singleton', runAttempt: 1 },
@@ -155,20 +155,59 @@ describe('authoritative proof history planning', () => {
           id: 104,
           runId: 1,
           runAttempt: 1,
-          lane: 'merge_group',
+          lane: 'main-writer',
           job: 'quality',
           cell: 'singleton',
           trustedWriter: true,
-          startedAt: 4000,
+          startedAt: 1500,
           finishedAt: 4100,
         },
       ],
     })
     expect(planned.manifest.observations.map((observation) => observation.writers)).toEqual([
+      [
+        {
+          lane: 'main-writer',
+          summary: 'sources/104/buck2-cache-evidence.json',
+          actions: 'sources/104/buck2-cache-actions.jsonl.gz',
+        },
+      ],
+      [
+        {
+          lane: 'main-writer',
+          summary: 'sources/104/buck2-cache-evidence.json',
+          actions: 'sources/104/buck2-cache-actions.jsonl.gz',
+        },
+      ],
+    ])
+    expect(planned.evidenceGaps).toEqual([])
+  })
+  it('does not require a future writer to complete an earlier reader observation', () => {
+    const jobs = [1, 2, 3].map((runId) => ({
+      runId,
+      job: runId === 3 ? 'quality' : 'reader',
+      cell: 'singleton',
+      runAttempt: 1,
+    }))
+    const planned = planProofHistory({
+      runs: [run(1, 'pull_request'), run(2, 'pull_request'), run(3)],
+      expectedLanes: ['pr'],
+      expectedJobs: jobs,
+      sources: jobs.map((job, index) =>
+        Object.assign({}, job, {
+          id: 100 + index,
+          lane: job.runId === 3 ? ('main-writer' as const) : ('pr' as const),
+          trustedWriter: job.runId === 3,
+          startedAt: job.runId * 1000,
+          finishedAt: null,
+        }),
+      ),
+    })
+    expect(planned.evidenceGaps).toEqual([])
+    expect(planned.manifest.observations.map((observation) => observation.writers)).toEqual([
       [],
       [],
     ])
-    expect(planned.evidenceGaps).toEqual([])
   })
   it('preserves non-rerun successes and mixed-attempt matrix multiplicity', () => {
     const expectedJobs = [
