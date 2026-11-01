@@ -121,13 +121,15 @@ jobs:
         name: Initialize Buck2 CI job instance
         shell: bash
         run: printf 'BUCK2_CI_JOB_INSTANCE=%s\n' "$(od -An -N32 -tx1 /dev/urandom | tr -d ' \n')" >> "$GITHUB_ENV"
-      - name: Checkout default-branch tooling
-        uses: actions/checkout@v6
+      - # v6.1.0
+        name: Checkout default-branch tooling
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
           ref: ${{ github.workflow_sha }}
           persist-credentials: false
-      - name: Install Nix
-        uses: DeterminateSystems/determinate-nix-action@v3
+      - # v3.24.1
+        name: Install Nix
+        uses: DeterminateSystems/determinate-nix-action@92957199488000b908fdad19f63711000965d8f3
         env:
           GITHUB_TOKEN: ${{ github.token }}
         with:
@@ -166,8 +168,9 @@ jobs:
           set -euo pipefail
           out=$(nix build --no-link --print-out-paths nixpkgs#cachix)
           echo "$out/bin" >> "$GITHUB_PATH"
-      - name: Enable Cachix cache
-        uses: cachix/cachix-action@v17
+      - # v17
+        name: Enable Cachix cache
+        uses: cachix/cachix-action@38b082610b782e7e93e209c35fd730d399dee866
         with:
           name: overeng-effect-utils
           skipPush: true
@@ -203,8 +206,9 @@ jobs:
           __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
           bash "$__genie_ci_retry_script" 'resolve devenv (devenv.lock)' 'cd "${GITHUB_WORKSPACE:-$PWD}" && '"'"'${{ runner.temp }}/composition-state/ci-runtime/resolve-devenv.sh'"'"' '"'"'devenv.lock'"'"''
         shell: bash
-      - name: Download staged Netlify output
-        uses: actions/download-artifact@v4
+      - # v4.3.0
+        name: Download staged Netlify output
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
           name: netlify-preview-static
           path: '${{ runner.temp }}/netlify-preview-stage'
@@ -268,8 +272,9 @@ jobs:
         run: |
           __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
           bash "$__genie_ci_retry_script" 'devenv tasks run workflow-report:render-comment-body --show-output' 'cd "${GITHUB_WORKSPACE:-$PWD}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false ${PIPELINE_RUN_PREFIX:+$PIPELINE_RUN_PREFIX }"${DEVENV_BIN:?DEVENV_BIN not set}" tasks run workflow-report:render-comment-body --show-output'
-      - name: Upload rendered preview comment
-        uses: actions/upload-artifact@v4
+      - # v4.6.2
+        name: Upload rendered preview comment
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: netlify-preview-comment
           path: '${{ runner.temp }}/workflow-reports/netlify-preview'
@@ -305,13 +310,15 @@ jobs:
         name: Initialize Buck2 CI job instance
         shell: bash
         run: printf 'BUCK2_CI_JOB_INSTANCE=%s\n' "$(od -An -N32 -tx1 /dev/urandom | tr -d ' \n')" >> "$GITHUB_ENV"
-      - name: Checkout default-branch tooling
-        uses: actions/checkout@v6
+      - # v6.1.0
+        name: Checkout default-branch tooling
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
           ref: ${{ github.workflow_sha }}
           persist-credentials: false
-      - name: Install Nix
-        uses: DeterminateSystems/determinate-nix-action@v3
+      - # v3.24.1
+        name: Install Nix
+        uses: DeterminateSystems/determinate-nix-action@92957199488000b908fdad19f63711000965d8f3
         env:
           GITHUB_TOKEN: ${{ github.token }}
         with:
@@ -350,8 +357,9 @@ jobs:
           set -euo pipefail
           out=$(nix build --no-link --print-out-paths nixpkgs#cachix)
           echo "$out/bin" >> "$GITHUB_PATH"
-      - name: Enable Cachix cache
-        uses: cachix/cachix-action@v17
+      - # v17
+        name: Enable Cachix cache
+        uses: cachix/cachix-action@38b082610b782e7e93e209c35fd730d399dee866
         with:
           name: overeng-effect-utils
           skipPush: true
@@ -387,8 +395,9 @@ jobs:
           __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
           bash "$__genie_ci_retry_script" 'resolve devenv (devenv.lock)' 'cd "${GITHUB_WORKSPACE:-$PWD}" && '"'"'${{ runner.temp }}/composition-state/ci-runtime/resolve-devenv.sh'"'"' '"'"'devenv.lock'"'"''
         shell: bash
-      - name: Download rendered preview comment
-        uses: actions/download-artifact@v4
+      - # v4.3.0
+        name: Download rendered preview comment
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
           name: netlify-preview-comment
           path: '${{ runner.temp }}/workflow-reports/netlify-preview'

@@ -1,3 +1,5 @@
+import { pinnedAction } from '../../packages/@overeng/genie/src/runtime/github-workflow/action-pins.ts'
+
 import { rootNixSourceGlobs } from '../../genie/buck2/root-aggregate-projection.ts'
 import {
   type RunnerProfile,
@@ -463,7 +465,7 @@ const macosNixSubstituterUri = `file://${macosNixSubstituterDir}`
 
 const macosNixSubstituterMountStep = {
   name: 'Mount local Nix substituter cache volume',
-  uses: 'namespacelabs/nscloud-cache-action@v1',
+  ...pinnedAction({ name: 'namespaceCache' }),
   'continue-on-error': true,
   with: { path: macosNixSubstituterDir },
 } as const
@@ -599,7 +601,7 @@ const unitTestJob = ({
       name: 'Upload retained Vitest collection reports',
       if: '${{ always() }}',
       'continue-on-error': true,
-      uses: 'actions/upload-artifact@v4',
+      ...pinnedAction({ name: 'uploadArtifact' }),
       with: {
         name: 'vitest-collection-${{ github.job }}-${{ github.run_id }}-${{ github.run_attempt }}',
         path: 'tmp/otel-scrape/summaries/*.vitest.json',
@@ -611,7 +613,7 @@ const unitTestJob = ({
       name: 'Upload test resource samples',
       if: '${{ always() }}',
       'continue-on-error': true,
-      uses: 'actions/upload-artifact@v4',
+      ...pinnedAction({ name: 'uploadArtifact' }),
       with: {
         name: 'test-resources-${{ github.job }}-${{ github.run_id }}-${{ github.run_attempt }}',
         path: 'tmp/ci-resources/test-resources.json',
@@ -942,7 +944,7 @@ const jobs: Record<CoreCIJobName, CiWorkflowArgs['jobs'][string]> = {
       {
         name: 'Upload Playwright failure evidence',
         if: 'failure()',
-        uses: 'actions/upload-artifact@v4',
+        ...pinnedAction({ name: 'uploadArtifact' }),
         with: {
           name: 'playwright-test-results-utils-run-${{ github.run_id }}-attempt-${{ github.run_attempt }}',
           path: 'packages/@overeng/utils/test-results/',
@@ -965,7 +967,7 @@ const jobs: Record<CoreCIJobName, CiWorkflowArgs['jobs'][string]> = {
       {
         name: 'Upload Playwright failure evidence',
         if: 'failure()',
-        uses: 'actions/upload-artifact@v4',
+        ...pinnedAction({ name: 'uploadArtifact' }),
         with: {
           name: 'playwright-test-results-tui-react-run-${{ github.run_id }}-attempt-${{ github.run_attempt }}',
           path: 'packages/@overeng/tui-react/test-results/',
@@ -1083,7 +1085,7 @@ const downloadCurrentMeasurementArtifactStep = ({
   ({
     name: `Download current measurement artifact: ${artifactName}`,
     ...(producedBy === undefined ? {} : { if: `\${{ needs.${producedBy}.result == 'success' }}` }),
-    uses: 'actions/download-artifact@v4',
+    ...pinnedAction({ name: 'downloadArtifact' }),
     with: {
       name: artifactName,
       path: outputDir,
@@ -2063,7 +2065,9 @@ const pipelineTracesJob = {
   permissions: { contents: 'read', actions: 'read', 'pull-requests': 'write', 'id-token': 'write' },
   'continue-on-error': true,
   steps: [
-    { uses: 'actions/checkout@v6' },
+    {
+      ...pinnedAction({ name: 'checkout' }),
+    },
     // Read-only substituter: the protected publisher pushes `ci-tools-compiled`, so the report
     // substitutes it instead of building ~1300 derivations after every PR run.
     installNixStep({ binaryCaches: [binaryCache] }),
@@ -2242,7 +2246,7 @@ export default ciWorkflow({
                 with: { 'persist-credentials': false },
               },
               {
-                uses: 'actions/setup-node@v4',
+                ...pinnedAction({ name: 'setupNode' }),
                 if: "${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}",
                 with: { 'node-version': '24' },
               },

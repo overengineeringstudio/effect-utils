@@ -1,3 +1,5 @@
+import { pinnedAction } from '../../packages/@overeng/genie/src/runtime/github-workflow/action-pins.ts'
+
 import type { GitHubWorkflowArgs } from '../../packages/@overeng/genie/src/runtime/mod.ts'
 import {
   checkoutStep,
@@ -321,7 +323,7 @@ export const defaultNixClosureMeasurementBuckets = [
 export const ciMeasurementBaselineCheckoutStep = {
   name: 'Checkout CI measurement baseline ref',
   if: `\${{ ${ciMeasurementBaselineBackfillPredicate} }}`,
-  uses: 'actions/checkout@v6',
+  ...pinnedAction({ name: 'checkout' }),
   with: {
     ref: '${{ inputs.measurement_baseline_ref }}',
   },
@@ -1539,7 +1541,7 @@ export const devenvPerfArtifactStep = (
   return {
     name: 'Upload devenv perf artifacts',
     if: 'always()',
-    uses: 'actions/upload-artifact@v4',
+    ...pinnedAction({ name: 'uploadArtifact' }),
     with: {
       name:
         opts?.artifactName ??
@@ -1555,7 +1557,7 @@ export const ciMeasurementsArtifactStep = (opts: CiMeasurementsArtifactStepOptio
   ({
     name: `Upload CI measurements: ${opts.artifactName}`,
     if: 'always()',
-    uses: 'actions/upload-artifact@v4',
+    ...pinnedAction({ name: 'uploadArtifact' }),
     with: {
       name: opts.artifactName,
       path: [opts.path, `!${opts.path}/baseline/**`].join('\n'),

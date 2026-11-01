@@ -1,3 +1,5 @@
+import { pinnedAction } from '../../packages/@overeng/genie/src/runtime/github-workflow/action-pins.ts'
+
 import {
   netlifyDeployStep as buildNetlifyDeployStep,
   netlifyStagedPreviewDeployStep as buildNetlifyStagedPreviewDeployStep,
@@ -220,7 +222,7 @@ export const netlifyPreviewBuildSteps = (opts: { readonly artifactName?: string 
   ),
   {
     name: 'Upload staged Netlify output',
-    uses: 'actions/upload-artifact@v4',
+    ...pinnedAction({ name: 'uploadArtifact' }),
     with: {
       name: opts.artifactName ?? netlifyPreviewArtifactName,
       path: netlifyPreviewStageDir,
@@ -312,7 +314,7 @@ const workflowRunPullRequestStep = {
 
 const trustedDefaultBranchCheckoutStep = {
   name: 'Checkout default-branch tooling',
-  uses: 'actions/checkout@v6',
+  ...pinnedAction({ name: 'checkout' }),
   with: { ref: '${{ github.workflow_sha }}', 'persist-credentials': false },
 } as const
 
@@ -382,7 +384,7 @@ export const netlifyPreviewDeployJobs = (opts: {
         ...opts.setupSteps,
         {
           name: 'Download staged Netlify output',
-          uses: 'actions/download-artifact@v4',
+          ...pinnedAction({ name: 'downloadArtifact' }),
           with: {
             name: opts.artifactName ?? netlifyPreviewArtifactName,
             path: netlifyPreviewStageDir,
@@ -414,7 +416,7 @@ export const netlifyPreviewDeployJobs = (opts: {
         }),
         {
           name: 'Upload rendered preview comment',
-          uses: 'actions/upload-artifact@v4',
+          ...pinnedAction({ name: 'uploadArtifact' }),
           with: {
             name: netlifyPreviewCommentArtifactName,
             path: netlifyPreviewReportDir,
@@ -435,7 +437,7 @@ export const netlifyPreviewDeployJobs = (opts: {
         ...opts.setupSteps,
         {
           name: 'Download rendered preview comment',
-          uses: 'actions/download-artifact@v4',
+          ...pinnedAction({ name: 'downloadArtifact' }),
           with: { name: netlifyPreviewCommentArtifactName, path: netlifyPreviewReportDir },
         },
         workflowReportPublisherStep({

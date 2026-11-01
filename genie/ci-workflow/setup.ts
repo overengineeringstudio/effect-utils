@@ -1,3 +1,5 @@
+import { pinnedAction } from '../../packages/@overeng/genie/src/runtime/github-workflow/action-pins.ts'
+
 import { pipelineDevenvStepName } from '../../packages/@overeng/ci-tools/src/pipeline-job-names.ts'
 import type { GitHubWorkflowArgs } from '../../packages/@overeng/genie/src/runtime/mod.ts'
 import { renderBinaryCachesExtraConf } from './binary-cache-composition.ts'
@@ -111,9 +113,9 @@ export const namespaceRunner = ({
 // Step Atoms
 // =============================================================================
 
-/** Checkout repository via actions/checkout@v6 */
+/** Checkout repository via the pinned actions/checkout release. */
 export const checkoutStep = (opts?: { repository?: string; ref?: string; path?: string }) => ({
-  uses: 'actions/checkout@v6' as const,
+  ...pinnedAction({ name: 'checkout' }),
   with: { 'persist-credentials': false, ...opts },
 })
 
@@ -149,7 +151,7 @@ export const githubAppInstallationTokenStep = (opts: {
 }) => ({
   id: opts.id,
   name: opts.name ?? `Mint ${opts.owner} GitHub App token`,
-  uses: 'actions/create-github-app-token@v3' as const,
+  ...pinnedAction({ name: 'createGithubAppToken' }),
   with: {
     'app-id': opts.appId,
     'private-key': opts.privateKey,
@@ -231,7 +233,7 @@ export const installNixStep = (opts?: {
 }) => ({
   [jobCacheDescriptors]: opts?.binaryCaches ?? [],
   name: 'Install Nix',
-  uses: 'DeterminateSystems/determinate-nix-action@v3' as const,
+  ...pinnedAction({ name: 'determinateNix' }),
   env: githubTokenEnv(opts?.githubAccessTokenExpression),
   with: {
     'extra-conf': [
@@ -307,7 +309,7 @@ export const cachixCliBuildStep = {
 /** Read-only Cachix action. Publishing requires the protected publisher constructor. */
 export const cachixStep = (opts: { name: string }) => ({
   name: 'Enable Cachix cache',
-  uses: 'cachix/cachix-action@v17' as const,
+  ...pinnedAction({ name: 'cachix' }),
   with: { name: opts.name, skipPush: true },
 })
 
@@ -384,7 +386,7 @@ export const cachixPublisherStep = (
   [publisherWriteSecret]: publisherSecretName(opts.authToken),
   name: 'Publish to Cachix',
   if: protectedPublisherIf(opts),
-  uses: 'cachix/cachix-action@v17' as const,
+  ...pinnedAction({ name: 'cachix' }),
   with: { name: opts.name, authToken: opts.authToken },
 })
 
@@ -608,7 +610,7 @@ export const restoreNixCacheStep = (opts?: {
   return {
     id: opts?.stepId ?? 'restore-nix-cache',
     name: 'Restore nix cache',
-    uses: 'actions/cache/restore@v4' as const,
+    ...pinnedAction({ name: 'cache', subpath: 'restore' }),
     with: {
       path,
       key: nixCachePrimaryKey({ keyPrefix, hashFilesExpression }),
@@ -630,7 +632,7 @@ export const saveNixCacheStep = (opts?: { restoreStepId?: string; path?: string 
   return {
     name: 'Save nix cache',
     if: `\${{ always() && steps.${restoreStepId}.outputs.cache-primary-key != '' }}`,
-    uses: 'actions/cache/save@v4' as const,
+    ...pinnedAction({ name: 'cache', subpath: 'save' }),
     with: {
       path,
       key: `\${{ steps.${restoreStepId}.outputs.cache-primary-key }}`,
@@ -736,7 +738,7 @@ export const ciOtelSpansSummaryStep = {
 export const ciOtelSpansArtifactStep = {
   name: 'Upload CI OpenTelemetry spans',
   if: "always() && env.OTEL_SPAN_SPOOL_DIR != ''",
-  uses: 'actions/upload-artifact@v4',
+  ...pinnedAction({ name: 'uploadArtifact' }),
   with: {
     name: 'ci-otel-${{ github.job }}-${{ runner.os }}-${{ runner.arch }}-run-${{ github.run_id }}-attempt-${{ github.run_attempt }}',
     path: '${{ env.OTEL_SPAN_SPOOL_DIR }}',
@@ -794,7 +796,7 @@ export const standardSelfHostedDevenvTaskJob = ({
 export const ciDiagnosticsArtifactStep = (opts?: { if?: string; retentionDays?: number }) => ({
   name: 'Upload CI diagnostics artifact',
   if: opts?.if ?? "failure() && env.CI_DIAGNOSTICS_DIR != ''",
-  uses: 'actions/upload-artifact@v4' as const,
+  ...pinnedAction({ name: 'uploadArtifact' }),
   with: {
     name: 'ci-diagnostics-${{ github.job }}-${{ runner.os }}-run-${{ github.run_id }}-attempt-${{ github.run_attempt }}',
     path: '${{ env.CI_DIAGNOSTICS_DIR }}',
@@ -915,7 +917,7 @@ export const validateNixStoreStep = validateNixStoreStepFor()
 export const nixDiagnosticsArtifactStep = (opts?: { if?: string; retentionDays?: number }) => ({
   name: 'Upload Nix diagnostics artifact',
   if: opts?.if ?? "failure() && env.NIX_STORE_DIAGNOSTICS_DIR != ''",
-  uses: 'actions/upload-artifact@v4' as const,
+  ...pinnedAction({ name: 'uploadArtifact' }),
   with: {
     name: 'nix-store-diagnostics-${{ github.job }}-${{ runner.os }}-run-${{ github.run_id }}-attempt-${{ github.run_attempt }}',
     path: '${{ env.NIX_STORE_DIAGNOSTICS_DIR }}',

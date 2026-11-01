@@ -82,11 +82,11 @@ describe('plain-flake Rust CI', () => {
 
   it('enables optional Cachix reads without authorizing uploads', () => {
     const cacheSteps = plainFlakeSetupSteps({ cachix: 'public-rust' })
-    expect(cacheSteps.find((step) => step.uses === 'cachix/cachix-action@v17')?.with).toEqual({
+    expect(cacheSteps.find((step) => step.uses === 'cachix/cachix-action@38b082610b782e7e93e209c35fd730d399dee866')?.with).toEqual({
       name: 'public-rust',
       skipPush: true,
     })
-    expect(plainFlakeSetupSteps().some((step) => step.uses === 'cachix/cachix-action@v17')).toBe(
+    expect(plainFlakeSetupSteps().some((step) => step.uses === 'cachix/cachix-action@38b082610b782e7e93e209c35fd730d399dee866')).toBe(
       false,
     )
   })
