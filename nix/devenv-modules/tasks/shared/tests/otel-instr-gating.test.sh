@@ -153,11 +153,11 @@ out="$(env -i "${base_env[@]}" HOME="$tmpdir" OTEL_TASK_TRACEPARENT="$VALID_TRAC
   "$test_bash" -c 'source "$1"; printf "INSTR_COUNT=%s\nFLAGS_COUNT=%s\nINSTR=%s\nFLAGS=%s\n" "${#_otel_instr[@]}" "${#_otel_instr_flags[@]}" "${_otel_instr[*]-}" "${_otel_instr_flags[*]-}"' _ "$oxlint_prelude")"
 ic="$(printf '%s\n' "$out" | sed -n 's/^INSTR_COUNT=//p')"
 [ "$ic" -gt 0 ] || fail "oxlint/active: expected non-empty _otel_instr (otel-scrape wrap), got count=$ic"
-printf '%s\n' "$out" | grep -q "^INSTR=$stubbin/otel-scrape " \
+grep -q "^INSTR=$stubbin/otel-scrape " <<< "$out" \
   || fail "oxlint/active: _otel_instr should start with the exact fixture otel-scrape wrapper"
-printf '%s\n' "$out" | grep -q -- "--adapter oxlint" \
+[[ "$out" == *"--adapter oxlint"* ]] \
   || fail "oxlint/active: _otel_instr should pass --adapter oxlint"
-printf '%s\n' "$out" | grep -q "^FLAGS=--format=json$" \
+grep -q "^FLAGS=--format=json$" <<< "$out" \
   || fail "oxlint/active: _otel_instr_flags should be exactly --format=json (needs-render child flag)"
 
 # --- (b') vitest adapter: wraps when active, but injects NO --format=json child flag ---
@@ -167,7 +167,7 @@ ic="$(printf '%s\n' "$out" | sed -n 's/^INSTR_COUNT=//p')"
 fc="$(printf '%s\n' "$out" | sed -n 's/^FLAGS_COUNT=//p')"
 [ "$ic" -gt 0 ] || fail "vitest/active: expected non-empty _otel_instr, got count=$ic"
 [ "$fc" = "0" ] || fail "vitest/active: expected NO child flags (side-channel adapter), got count=$fc"
-printf '%s\n' "$out" | grep -q -- "--adapter vitest" \
+[[ "$out" == *"--adapter vitest"* ]] \
   || fail "vitest/active: _otel_instr should pass --adapter vitest"
 
 # --- WIRING: the real oxlint task exec consumes the arrays + the --format=json flag ---
@@ -181,11 +181,11 @@ oxlint_exec="$(nix eval --impure --raw --expr "
     }) { lib = pkgs.lib; pkgs = pkgs; config = { }; };
   in mod.tasks.\"lint:check:oxlint\".exec
 ")"
-printf '%s' "$oxlint_exec" | grep -qF '"${_otel_instr[@]}" oxlint' \
+[[ "$oxlint_exec" == *'"${_otel_instr[@]}" oxlint'* ]] \
   || fail 'lint:check:oxlint exec should wrap oxlint with the "${_otel_instr[@]}" array'
-printf '%s' "$oxlint_exec" | grep -qF '"${_otel_instr_flags[@]}"' \
+[[ "$oxlint_exec" == *'"${_otel_instr_flags[@]}"'* ]] \
   || fail 'lint:check:oxlint exec should pass the "${_otel_instr_flags[@]}" array to oxlint'
-printf '%s' "$oxlint_exec" | grep -qF -- '--format=json' \
+[[ "$oxlint_exec" == *'--format=json'* ]] \
   || fail 'lint:check:oxlint exec should embed the gated --format=json child flag (via the trace.instr prelude)'
 
 echo ""
