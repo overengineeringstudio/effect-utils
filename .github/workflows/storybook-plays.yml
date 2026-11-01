@@ -56,11 +56,13 @@ jobs:
         name: Initialize Buck2 CI job instance
         shell: bash
         run: printf 'BUCK2_CI_JOB_INSTANCE=%s\n' "$(od -An -N32 -tx1 /dev/urandom | tr -d ' \n')" >> "$GITHUB_ENV"
-      - uses: actions/checkout@v6
+      - # v6.1.0
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
           persist-credentials: false
-      - name: Install Nix
-        uses: DeterminateSystems/determinate-nix-action@v3
+      - # v3.24.1
+        name: Install Nix
+        uses: DeterminateSystems/determinate-nix-action@92957199488000b908fdad19f63711000965d8f3
         env:
           GITHUB_TOKEN: ${{ github.token }}
         with:
@@ -118,8 +120,9 @@ jobs:
           set -euo pipefail
           out=$(nix build --no-link --print-out-paths nixpkgs#cachix)
           echo "$out/bin" >> "$GITHUB_PATH"
-      - name: Enable Cachix cache
-        uses: cachix/cachix-action@v17
+      - # v17
+        name: Enable Cachix cache
+        uses: cachix/cachix-action@38b082610b782e7e93e209c35fd730d399dee866
         with:
           name: overeng-effect-utils
           skipPush: true
@@ -178,9 +181,10 @@ jobs:
           set -euo pipefail
           cd "${CI_SOURCE_ROOT:-${GITHUB_WORKSPACE:?GITHUB_WORKSPACE not set}}"
           nix shell .#bun .#buck2 --command bash genie/ci-scripts/collect-buck2-cache-evidence.sh
-      - name: Upload Buck2 cache evidence
+      - # v4.6.2
+        name: Upload Buck2 cache evidence
         if: ${{ always() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: 'buck2-cache-evidence-test-storybook-plays-${{ github.run_attempt }}'
           path: |

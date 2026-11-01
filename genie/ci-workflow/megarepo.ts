@@ -1,3 +1,5 @@
+import { pinnedAction } from '../../packages/@overeng/genie/src/runtime/github-workflow/action-pins.ts'
+
 import { inputReadFileSync as readFileSync } from '../../packages/@overeng/genie/src/runtime/node/inputs.ts'
 import { defaultRefPolicyCheckScript } from './default-ref-policy-script.ts'
 import { defaultRefPolicyVerdictStepId, githubTokenEnv, shellSingleQuote } from './shared.ts'
@@ -48,7 +50,7 @@ const megarepoStoreCacheKey = (skip?: readonly string[]): string => {
 export const restoreMegarepoStoreStep = (opts?: { skip?: readonly string[] }) => ({
   name: 'Restore megarepo store',
   id: 'restore-megarepo-store',
-  uses: 'actions/cache/restore@v4',
+  ...pinnedAction({ name: 'cache', subpath: 'restore' }),
   with: { path: cacheableMegarepoStore, key: megarepoStoreCacheKey(opts?.skip) },
 })
 
@@ -60,7 +62,7 @@ export const restoreMegarepoStoreStep = (opts?: { skip?: readonly string[] }) =>
 export const saveMegarepoStoreStep = (opts?: { skip?: readonly string[] }) => ({
   name: 'Save megarepo store',
   if: "${{ success() && steps.restore-megarepo-store.outputs.cache-hit != 'true' && github.event.pull_request.head.repo.fork != true }}",
-  uses: 'actions/cache/save@v4',
+  ...pinnedAction({ name: 'cache', subpath: 'save' }),
   with: { path: cacheableMegarepoStore, key: megarepoStoreCacheKey(opts?.skip) },
 })
 

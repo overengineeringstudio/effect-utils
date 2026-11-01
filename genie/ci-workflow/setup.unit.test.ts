@@ -558,7 +558,7 @@ describe('Linux Nix sandbox fallback', () => {
     )
     expect(installNixStep().with['extra-conf']).toContain(linuxNixSandboxFallbackConf)
     const hostedInstall = pipelineCloseJob({ jobs: {}, runsOn: 'ubuntu-latest' }).steps.find(
-      (step) => step.uses === 'cachix/install-nix-action@v31',
+      (step) => step.uses === 'cachix/install-nix-action@75c75c31ebece974e48ebc36b4ad125bd97bd97b',
     )
     expect(hostedInstall?.with?.extra_nix_config).toBe(linuxNixSandboxFallbackConf)
   })

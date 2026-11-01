@@ -623,8 +623,12 @@ exit "$attempt"
       )
       if (helperIndex < 0) continue
 
-      const checkoutIndex = jobBlock.indexOf('uses: actions/checkout@v6')
-      const installNixIndex = jobBlock.indexOf('uses: DeterminateSystems/determinate-nix-action@v3')
+      const checkoutIndex = jobBlock.indexOf(
+        'uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803',
+      )
+      const installNixIndex = jobBlock.indexOf(
+        'uses: DeterminateSystems/determinate-nix-action@92957199488000b908fdad19f63711000965d8f3',
+      )
       const prepareIndex = jobBlock.indexOf('Prepare CI helper scripts')
       const baselineCheckoutIndex = jobBlock.indexOf('Checkout CI measurement baseline ref')
       expect(checkoutIndex).toBeGreaterThanOrEqual(0)
@@ -1060,7 +1064,7 @@ describe('ci workflow pr-reviews helpers', () => {
 describe('ci workflow shared auth helpers', () => {
   it('supports minting GitHub App installation tokens for downstream private inputs', () => {
     expect(ciWorkflowSource).toContain('export const githubAppInstallationTokenStep')
-    expect(ciWorkflowSource).toContain("uses: 'actions/create-github-app-token@v3' as const")
+    expect(ciWorkflowSource).toContain("...pinnedAction({ name: 'createGithubAppToken' })")
   })
 
   it('lets installNixStep override the GitHub access token expression', () => {
@@ -1090,9 +1094,9 @@ describe('ci workflow shared auth helpers', () => {
     )
   })
 
-  it('pins the shared CI actions to the Node-24-safe majors', () => {
-    expect(ciWorkflowSource).toContain("uses: 'actions/checkout@v6' as const")
-    expect(ciWorkflowSource).toContain("uses: 'cachix/cachix-action@v17' as const")
+  it('pins the shared CI actions to Node-24-safe releases', () => {
+    expect(ciWorkflowSource).toContain("...pinnedAction({ name: 'checkout' })")
+    expect(ciWorkflowSource).toContain("...pinnedAction({ name: 'cachix' })")
   })
 
   it('provides cachix CLI from /nix/store on PATH instead of mutating the runner nix profile', () => {
@@ -2077,10 +2081,10 @@ describe('Cloudflare Workers trusted deployment jobs', () => {
           const launcher = deploy.steps.find((step) => step.id === 'deploy')
           assert.ok(launcher.run.includes('cloudflare-workers:deploy:web --show-output --input type=pr'))
           assert.ok(launcher.run.includes('--input type=prod'))
-          const upload = deploy.steps.find((step) => step.uses === 'actions/upload-artifact@v4')
+          const upload = deploy.steps.find((step) => step.uses === 'actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02')
           assert.equal(upload.if, 'always()')
           assert.equal(upload.with.name, 'cloudflare-workers-report-web')
-          const download = comment.steps.find((step) => step.uses === 'actions/download-artifact@v4')
+          const download = comment.steps.find((step) => step.uses === 'actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093')
           assert.equal(download.with.pattern, 'cloudflare-workers-report-*')
           assert.equal(download.with['merge-multiple'], true)
           const collector = comment.steps.find((step) => step.env?.WORKFLOW_REPORT_INPUT_PATHS_JSON)

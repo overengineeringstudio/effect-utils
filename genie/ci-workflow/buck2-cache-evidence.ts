@@ -1,3 +1,5 @@
+import { pinnedAction } from '../../packages/@overeng/genie/src/runtime/github-workflow/action-pins.ts'
+
 import type { GitHubWorkflowArgs } from '../../packages/@overeng/genie/src/runtime/mod.ts'
 import { coreProofDisabledJobIds } from './buck2-cache-proof-policy.ts'
 import { ciJobAdmission, withCiAdmissionCleanup } from './shared.ts'
@@ -78,7 +80,7 @@ export const withBuck2CacheEvidence = (
         {
           name: 'Upload Buck2 cache evidence',
           if: '${{ always() }}',
-          uses: 'actions/upload-artifact@v4',
+          ...pinnedAction({ name: 'uploadArtifact' }),
           with: {
             name:
               `buck2-cache-evidence-${jobId}` +

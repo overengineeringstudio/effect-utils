@@ -1,3 +1,5 @@
+import { pinnedAction } from '../../packages/@overeng/genie/src/runtime/github-workflow/action-pins.ts'
+
 /**
  * Label-gated PR snapshot publishing.
  *
@@ -110,7 +112,7 @@ export const prSnapshotPackJob = (opts: PrSnapshotPackJobOptions) => {
       steps: [
         {
           name: 'Checkout exact PR head',
-          uses: 'actions/checkout@v4',
+          ...pinnedAction({ name: 'checkoutV4' }),
           with: {
             ref: '${{ github.event.pull_request.head.sha }}',
             'persist-credentials': false,
@@ -143,7 +145,7 @@ export const prSnapshotPackJob = (opts: PrSnapshotPackJobOptions) => {
         },
         {
           name: 'Upload immutable PR snapshot candidate',
-          uses: 'actions/upload-artifact@v4',
+          ...pinnedAction({ name: 'uploadArtifact' }),
           with: {
             name: 'pr-snapshot-${{ github.event.pull_request.head.sha }}-${{ github.run_attempt }}',
             path: '${{ github.workspace }}/tmp/pr-snapshot-artifact/',
@@ -179,7 +181,7 @@ export const prSnapshotReleaseJobs = (opts: PrSnapshotReleaseJobsOptions) => {
         steps: [
           {
             name: 'Checkout trusted package topology',
-            uses: 'actions/checkout@v4',
+            ...pinnedAction({ name: 'checkoutV4' }),
             with: {
               ref: '${{ github.workflow_sha }}',
               'persist-credentials': false,
@@ -407,7 +409,7 @@ echo "source-run-url=$source_run_url" >> "$GITHUB_OUTPUT"`,
           },
           {
             name: 'Checkout trusted validator only',
-            uses: 'actions/checkout@v4',
+            ...pinnedAction({ name: 'checkoutV4' }),
             with: {
               ref: '${{ github.workflow_sha }}',
               'persist-credentials': false,
@@ -417,14 +419,14 @@ ${topologyPath}`,
           },
           {
             name: 'Use pinned Node validator runtime',
-            uses: 'actions/setup-node@v4',
+            ...pinnedAction({ name: 'setupNode' }),
             with: {
               'node-version': nodeVersion,
             },
           },
           {
             name: 'Download exact-run snapshot candidate',
-            uses: 'actions/download-artifact@v4',
+            ...pinnedAction({ name: 'downloadArtifact' }),
             with: {
               name: 'pr-snapshot-${{ steps.identity.outputs.head-sha }}-${{ steps.identity.outputs.run-attempt }}',
               path: '${{ github.workspace }}/tmp/pr-snapshot-artifact',
@@ -461,7 +463,7 @@ cp "$PUBLISH_LIST" "$ARTIFACT_DIR/trusted-publish-list.tsv"`,
           },
           {
             name: 'Upload validated snapshot candidate',
-            uses: 'actions/upload-artifact@v4',
+            ...pinnedAction({ name: 'uploadArtifact' }),
             with: {
               name: 'validated-pr-snapshot-${{ steps.identity.outputs.head-sha }}-${{ steps.identity.outputs.run-id }}-${{ steps.validate.outputs.release-run-attempt }}',
               path: '${{ github.workspace }}/tmp/pr-snapshot-artifact/',
@@ -489,7 +491,7 @@ cp "$PUBLISH_LIST" "$ARTIFACT_DIR/trusted-publish-list.tsv"`,
         steps: [
           {
             name: 'Download validated snapshot candidate',
-            uses: 'actions/download-artifact@v4',
+            ...pinnedAction({ name: 'downloadArtifact' }),
             with: {
               name: 'validated-pr-snapshot-${{ needs.validate-pr-snapshot.outputs.head-sha }}-${{ needs.validate-pr-snapshot.outputs.run-id }}-${{ needs.validate-pr-snapshot.outputs.release-run-attempt }}',
               path: '${{ github.workspace }}/tmp/validated-pr-snapshot',
@@ -522,7 +524,7 @@ jq -n \
           },
           {
             name: 'Attest validated snapshot candidate',
-            uses: 'actions/attest@v4',
+            ...pinnedAction({ name: 'attest' }),
             with: {
               'subject-path': [
                 '${{ env.ARTIFACT_DIR }}/*.tgz',
@@ -534,7 +536,7 @@ jq -n \
           },
           {
             name: 'Upload attested promotion artifact',
-            uses: 'actions/upload-artifact@v4',
+            ...pinnedAction({ name: 'uploadArtifact' }),
             with: {
               name: 'promotion-pr-snapshot-${{ needs.validate-pr-snapshot.outputs.head-sha }}-${{ needs.validate-pr-snapshot.outputs.run-id }}-${{ steps.handoff.outputs.promotion-attempt }}',
               path: '${{ github.workspace }}/tmp/validated-pr-snapshot/',
@@ -555,7 +557,7 @@ jq -n \
             // The authorization decision is made by the validator, so this job needs it — checked out
             // from the trusted workflow revision, never from the pull request under evaluation.
             name: 'Checkout trusted validator only',
-            uses: 'actions/checkout@v4',
+            ...pinnedAction({ name: 'checkoutV4' }),
             with: {
               ref: '${{ github.workflow_sha }}',
               'persist-credentials': false,
@@ -564,7 +566,7 @@ jq -n \
           },
           {
             name: 'Use pinned Node validator runtime',
-            uses: 'actions/setup-node@v4',
+            ...pinnedAction({ name: 'setupNode' }),
             with: { 'node-version': nodeVersion },
           },
           {
@@ -637,7 +639,7 @@ echo "Snapshot promotion authorized: $authorized ($authorized_by)" >> "$GITHUB_S
         steps: [
           {
             name: 'Use pinned npm trusted-publishing client',
-            uses: 'actions/setup-node@v4',
+            ...pinnedAction({ name: 'setupNode' }),
             with: {
               'node-version': nodeVersion,
             },
@@ -646,7 +648,7 @@ echo "Snapshot promotion authorized: $authorized ($authorized_by)" >> "$GITHUB_S
             // Needed for the pre-publication authorization recheck. Taken from the trusted workflow
             // revision, never from the pull request being published.
             name: 'Checkout trusted validator only',
-            uses: 'actions/checkout@v4',
+            ...pinnedAction({ name: 'checkoutV4' }),
             with: {
               ref: '${{ github.workflow_sha }}',
               'persist-credentials': false,
@@ -655,7 +657,7 @@ echo "Snapshot promotion authorized: $authorized ($authorized_by)" >> "$GITHUB_S
           },
           {
             name: 'Download validated promotion artifact',
-            uses: 'actions/download-artifact@v4',
+            ...pinnedAction({ name: 'downloadArtifact' }),
             with: {
               name: 'promotion-pr-snapshot-${{ needs.validate-pr-snapshot.outputs.head-sha }}-${{ needs.validate-pr-snapshot.outputs.run-id }}-${{ needs.attest-pr-snapshot.outputs.promotion-attempt }}',
               path: '${{ github.workspace }}/tmp/validated-pr-snapshot',
@@ -807,7 +809,7 @@ echo "Verified $verified immutable package versions and SHA-512 integrities; tag
           },
           {
             name: 'Upload trusted verification receipt',
-            uses: 'actions/upload-artifact@v4',
+            ...pinnedAction({ name: 'uploadArtifact' }),
             with: {
               name: 'verified-pr-snapshot-${{ needs.validate-pr-snapshot.outputs.head-sha }}-${{ needs.validate-pr-snapshot.outputs.run-id }}-${{ needs.validate-pr-snapshot.outputs.run-attempt }}',
               path: '${{ runner.temp }}/verified-pr-snapshot.json',
