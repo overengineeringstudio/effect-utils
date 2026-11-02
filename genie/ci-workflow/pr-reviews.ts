@@ -20,7 +20,7 @@ import type {
   GitHubWorkflowArgs,
   PullRequestParameters,
 } from '../../packages/@overeng/genie/src/runtime/mod.ts'
-import { bashShellDefaults } from './shared.ts'
+import { bashShellDefaults, githubTokenEnv } from './shared.ts'
 
 type WorkflowJob = GitHubWorkflowArgs['jobs'][string]
 type WorkflowStep = WorkflowJob['steps'][number]
@@ -39,7 +39,7 @@ const maxReviewThreads = maxReviewThreadPages * 100
 
 /** Options for the review-thread resolution check step. */
 export type PrReviewsResolvedStepOptions = {
-  /** Token expression the `gh` CLI authenticates with. */
+  /** Token expression for the `gh` CLI and authenticated Nix access. */
   readonly tokenExpression?: string
 }
 
@@ -53,6 +53,7 @@ export const prReviewsResolvedStep = (opts: PrReviewsResolvedStepOptions = {}): 
   name: 'Check unresolved review threads',
   shell: 'bash',
   env: {
+    ...githubTokenEnv(opts.tokenExpression),
     GH_TOKEN: opts.tokenExpression ?? '${{ secrets.GITHUB_TOKEN }}',
   },
   run: [

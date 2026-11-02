@@ -4724,6 +4724,7 @@ jobs:
       - name: Check unresolved review threads
         shell: bash
         env:
+          GITHUB_TOKEN: ${{ github.token }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail

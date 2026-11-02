@@ -311,6 +311,16 @@ describe('shared helper fleet policy', () => {
     const step = reviewJob.steps[0]!
     const script = String(step.run)
     expect(step.env?.GH_TOKEN).toBe('${{ secrets.GITHUB_TOKEN }}')
+    expect(step.env?.GITHUB_TOKEN).toBe('${{ github.token }}')
+    expect(
+      prReviewsResolvedJob({
+        runsOn: 'ubuntu-latest',
+        tokenExpression: '${{ secrets.REVIEW_TOKEN }}',
+      }).steps[0]?.env,
+    ).toEqual({
+      GITHUB_TOKEN: '${{ secrets.REVIEW_TOKEN }}',
+      GH_TOKEN: '${{ secrets.REVIEW_TOKEN }}',
+    })
     expect(reviewJob.steps).toHaveLength(1)
     expect(script.indexOf('could not determine the pull request number')).toBeLessThan(
       script.indexOf('command -v gh'),
