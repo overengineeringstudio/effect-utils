@@ -263,12 +263,43 @@ describe('cache join', () => {
 
   it('uses explicit job mappings rather than guessing platform from names', () => {
     expect(platformForJob('test')).toBe('linux')
+    expect(platformForJob('pr-buck2-tools')).toBe('linux')
     expect(platformForJob('test-macos')).toBe('darwin')
     expect(platformForJob('unknown-linux')).toBe('unknown')
     expect(platformForJob(undefined)).toBe('unknown')
     expect(platformForJob('publish-compiled-products')).toBe('linux')
     expect(platformForJob('toString')).toBe('unknown')
     expect(platformForJob('__proto__')).toBe('unknown')
+  })
+
+  it('labels PR Buck2 tooling actions and missing evidence as linux', () => {
+    const report = aggregate({
+      repo: 'public/test',
+      observations: [
+        observation(writerFixture(), 'main-writer'),
+        observation(artifactFixture(), 'pr', 'pr-buck2-tools'),
+      ],
+      evidenceGaps: [{ lane: 'pr', job: 'pr-buck2-tools' }],
+      runs: 2,
+      windowEndTimestampSeconds: 1000,
+    })
+    expect(
+      report.counts.find((row) => row.lane === 'pr' && row.platform === 'linux'),
+    ).toMatchObject({
+      eligible_actions: 1,
+      remote_hit_actions: 1,
+      evidence_gaps: 1,
+    })
+    expect(
+      report.counts.find((row) => row.lane === 'pr' && row.platform === 'unknown'),
+    ).toMatchObject({
+      eligible_actions: 0,
+      remote_hit_actions: 0,
+      evidence_gaps: 0,
+    })
+    expect(renderPrometheus(report)).toContain(
+      'buck2_cache_lane_eligible_actions{repo="public/test",lane="pr",platform="linux"} 1 ',
+    )
   })
 
   it('renders closed labels and window gauges without action identifiers', () => {
