@@ -81,6 +81,10 @@ import {
   reuseEditorViewSourceFiles,
   type EditorViewSourceFile,
 } from './editor-view-sharing.ts'
+import {
+  editorViewSourceIdentity,
+  editorViewSourceIdentityMatches,
+} from './editor-view-source-identity.ts'
 import { emitCompletedSpanAsync, type OtelSpanAttribute } from './otel-span-cli.ts'
 import { canonicalizeParent, canonicalizePath, realpathThroughName } from './real-path.ts'
 import { closeFingerprintAdmission, runFingerprintTool } from './typescript-runner.ts'
@@ -3155,45 +3159,6 @@ const budgetReservationBytes = ({
   return bytes
 }
 
-/** Metadata guards a content proof's lifetime; it is never a generation/cache key. */
-const editorViewSourceIdentity = (options: EditorViewOptions): string => {
-  const hash = createHash('sha256')
-  const visited = new Set<string>()
-  const visit = (path: string): void => {
-    if (visited.has(path) === true) return
-    visited.add(path)
-    const status = lstatSync(path, { bigint: true })
-    for (const value of [
-      path,
-      status.dev,
-      status.ino,
-      status.mode,
-      status.size,
-      status.mtimeNs,
-      status.ctimeNs,
-    ]) {
-      const [length, bytes] = frame(String(value))
-      hash.update(length)
-      hash.update(bytes)
-    }
-    if (status.isSymbolicLink() === true) {
-      const target = realpathSync(path)
-      const [length, bytes] = frame(`${readlinkSync(path)}\0${target}`)
-      hash.update(length)
-      hash.update(bytes)
-      visit(target)
-    } else if (status.isDirectory() === true)
-      for (const name of readdirSync(path).toSorted()) visit(join(path, name))
-  }
-  for (const source of new Set([
-    options.editorInputs,
-    options.nodeModules,
-    ...(options.backingRoots ?? []),
-  ]))
-    visit(realpathSync(resolve(source)))
-  return hash.digest('hex')
-}
-
 type EditorViewSourceAdmission = {
   readonly sourceIdentity: string
   readonly selectedPath: string
@@ -3450,7 +3415,10 @@ const publishEditorViewCoordinated = async ({
     // Recheck the complete entry/inode identity under the publication fence.
     // A changed proof is discarded, never admitted under an earlier content digest.
     const admitted =
-      sourceProof.sourceIdentity === editorViewSourceIdentity(options)
+      editorViewSourceIdentityMatches({
+        options,
+        identity: sourceProof.sourceIdentity,
+      }) === true
         ? sourceProof
         : await admitEditorViewSources(options)
     const {
