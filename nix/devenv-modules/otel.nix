@@ -820,8 +820,8 @@ in
           [ "$OTEL_EXPORTER_OTLP_ENDPOINT" = "http://127.0.0.1:${toString otelCollectorPort}" ] || return 1
           [ "$OTEL_GRAFANA_URL" = "http://127.0.0.1:${toString grafanaPort}" ] || return 1
           [ "$OTEL_SPAN_SPOOL_DIR" = "${spoolDir}" ] || return 1
-          echo "$_otel_grafana_link_url" | grep -q 'ts.example.test' || return 1
-          echo "$_otel_start_msg" | grep -q 'trace:' || return 1
+          [[ "$_otel_grafana_link_url" == *"ts.example.test"* ]] || return 1
+          [[ "$_otel_start_msg" == *"trace:"* ]] || return 1
         )
       }
       _check "Shell state resolution (local)" _test_shell_state_local
@@ -1072,13 +1072,13 @@ in
         local stderr_output
         stderr_output=$(OTEL_SPAN_SPOOL_DIR="$spool" OTEL_GRAFANA_URL="http://localhost:3000" otel-span run "test" "url-check" --log-url -- true 2>&1 1>/dev/null)
         # Must contain [otel] Trace: prefix
-        echo "$stderr_output" | grep -Eq '\[otel\] trace:|\[otel\] Trace:' || return 1
+        [[ "$stderr_output" == *"[otel] trace:"* || "$stderr_output" == *"[otel] Trace:"* ]] || return 1
         # Must contain the Grafana explore URL
-        echo "$stderr_output" | grep -q 'localhost:3000/explore' || return 1
+        [[ "$stderr_output" == *"localhost:3000/explore"* ]] || return 1
         # Must contain the trace ID from the span
         local trace_id
         trace_id=$(head -1 "$spool/spans.jsonl" | ${pkgs.jq}/bin/jq -r '.resourceSpans[0].scopeSpans[0].spans[0].traceId')
-        echo "$stderr_output" | grep -q "$trace_id" || return 1
+        [[ "$stderr_output" == *"$trace_id"* ]] || return 1
       }
       _check "--log-url output" _test_log_url
 
@@ -1301,7 +1301,7 @@ in
         span_ids=$(_all_span_ids "$_sf")
         parent_ids=$(_all_parent_ids "$_sf" | grep -v '^$' || true)
         while IFS= read -r pid; do
-          echo "$span_ids" | grep -qF "$pid" || return 1
+          [[ "$span_ids" == *"$pid"* ]] || return 1
         done <<< "$parent_ids"
         return 0
       }
@@ -1365,7 +1365,7 @@ in
         parent_ids=$(_all_parent_ids "$of" | grep -v '^$' || true)
         # The orphan's parent should NOT be in span_ids — so this check should fail
         while IFS= read -r pid; do
-          if ! echo "$span_ids" | grep -qF "$pid"; then
+          if [[ "$span_ids" != *"$pid"* ]]; then
             return 0  # correctly detected orphan
           fi
         done <<< "$parent_ids"

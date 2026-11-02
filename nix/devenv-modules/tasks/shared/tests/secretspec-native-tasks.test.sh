@@ -170,7 +170,7 @@ rc="$(run_case "$cap" "$repo" exec "$prefetch_exec")"
   && ok || fail "secrets:prefetch argv should be '--file secretspec.toml run -- true', got '$(argv "$cap")'"
 [ "$(env_field "$cap" profile)" = deploy ] \
   && ok || fail "secrets:prefetch must let the native SECRETSPEC_PROFILE channel select the profile"
-printf '%s' "$prefetch_exec" | grep -qF -- "--profile" \
+[[ "$prefetch_exec" == *"--profile"* ]] \
   && fail "secrets:prefetch must not inject its own --profile (native precedence owns it)" || ok
 grep -q 'NOTION_TOKEN\|AIRTABLE_API_KEY\|SIGNING_KEY' "$cap" \
   && fail "secrets:prefetch must not name individual secrets or other profiles" || ok
@@ -248,7 +248,7 @@ for subject in "$MODULE" "$binDir/secrets-run"; do
   fi
 done
 for body in "$check_exec" "$prefetch_exec"; do
-  if printf '%s' "$body" | grep -Eq "$legacy_pattern"; then
+  if [[ "$body" =~ $legacy_pattern ]]; then
     fail "legacy secrets path still present in a task exec"
   else
     ok
@@ -259,7 +259,7 @@ done
 grep -Eq 'export "[^"]*=\$|\$\{!' "$MODULE" \
   && fail "module must not export resolved values or indirect-expand env names" || ok
 # the closure must not need gawk any more
-nix path-info -r "$(cat "$tmpdir/env-path")" 2>/dev/null | grep -q -- '-gawk-' \
+nix path-info -r "$(cat "$tmpdir/env-path")" 2>/dev/null | grep -- '-gawk-' >/dev/null \
   && fail "secrets-run closure still contains gawk" || ok
 
 # --- (8) STANDALONE REPO: no manifest -> clean no-op ---

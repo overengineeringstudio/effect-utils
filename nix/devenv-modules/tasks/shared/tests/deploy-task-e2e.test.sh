@@ -9,7 +9,7 @@ assert_contains() {
   local needle="$2"
   local label="$3"
 
-  if ! printf '%s' "$haystack" | grep -qF -- "$needle"; then
+  if [[ "$haystack" != *"$needle"* ]]; then
     echo "FAIL: $label"
     echo "  expected to contain: $needle"
     echo "  actual output:"
@@ -23,7 +23,7 @@ assert_not_contains() {
   local needle="$2"
   local label="$3"
 
-  if printf '%s' "$haystack" | grep -qF -- "$needle"; then
+  if [[ "$haystack" == *"$needle"* ]]; then
     echo "FAIL: $label"
     echo "  expected not to contain: $needle"
     echo "  actual output:"
@@ -239,6 +239,32 @@ extract_vercel_build_task_script() {
   " | jq -r . > "$output_path"
   chmod +x "$output_path"
 }
+
+# Keep substring assertions independent of pipe buffers and literal shell metacharacters.
+# Run just this regression without deployment fixtures with --assertions-only.
+assert_substring_helpers() {
+  local padding haystack needle='literal * ? [x] \ --flag'
+  printf -v padding '%262144s' ''
+  haystack="$needle"$'\n'"$padding"$'\n'"$needle"
+  assert_contains "$haystack" "$needle" "large multi-write output contains a literal needle"
+  assert_contains "$haystack" "" "empty needle matches"
+  assert_not_contains "$haystack" "missing" "large output excludes an absent needle"
+  assert_not_contains "" "$needle" "empty output excludes a nonempty needle"
+  if (assert_contains "$haystack" "missing" "negative contains control") >/dev/null; then
+    echo "FAIL: assert_contains accepted an absent needle"
+    exit 1
+  fi
+  if (assert_not_contains "$haystack" "$needle" "negative not-contains control") >/dev/null; then
+    echo "FAIL: assert_not_contains accepted a present needle"
+    exit 1
+  fi
+}
+
+assert_substring_helpers
+if [[ "${1:-}" == "--assertions-only" ]]; then
+  echo "PASS: substring assertion helpers"
+  exit 0
+fi
 
 echo "Running deploy task E2E tests..."
 echo ""

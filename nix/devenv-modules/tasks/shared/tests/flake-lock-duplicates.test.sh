@@ -35,7 +35,7 @@ assert_contains() {
   local expected="$2"
   local label="$3"
 
-  if ! printf '%s\n' "$output" | grep -qF -- "$expected"; then
+  if [[ "$output" != *"$expected"* ]]; then
     echo "FAIL: $label"
     echo "  expected output to contain: $expected"
     echo "  actual output:"
