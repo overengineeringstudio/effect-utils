@@ -5,7 +5,7 @@ import { constants as osConstants } from 'node:os'
 import { basename, dirname, resolve } from 'node:path'
 
 import { NodeStream } from '@effect/platform-node'
-import { Clock, Context, Effect, Option, Schedule, Schema, Stream } from 'effect'
+import { Clock, Context, Effect, Layer, Option, Schedule, Schema, Stream } from 'effect'
 import type { PlatformError } from 'effect/PlatformError'
 import * as Command from 'effect/process/ChildProcess'
 
@@ -16,6 +16,13 @@ export class GitWriterLockError extends Schema.TaggedError<GitWriterLockError>()
   'GitWriterLockError',
   { path: Schema.String, cause: Schema.Defect() },
 ) {}
+/** Internal deterministic contention seam; ordinary callers need no observer. */
+export class CommitTreePreparationObserver extends Context.Service<
+  CommitTreePreparationObserver,
+  Effect.Effect<void>
+>()('megarepo/CommitTreePreparationObserver') {
+  static readonly layer = Layer.succeed(this, Effect.void)
+}
 
 class WriterDescriptor extends Context.Service<
   WriterDescriptor,
@@ -106,10 +113,12 @@ const withGitLock =
     path,
     create = false,
     containerMode,
+    onContention = Effect.void,
   }: {
     readonly path: string
     readonly create?: boolean
     readonly containerMode?: 'shared' | 'exclusive'
+    readonly onContention?: Effect.Effect<void>
   }) =>
   <A, E, R>(effect: Effect.Effect<A, E, R>) =>
     Effect.gen(function* () {
@@ -165,7 +174,7 @@ const withGitLock =
               errno === 4 ||
               (containerMode !== 'exclusive' && errno === (process.platform === 'darwin' ? 35 : 11))
             )
-              return Effect.succeed(false)
+              return Effect.as(errno === 4 ? Effect.void : onContention, false)
             return Effect.fail(
               new GitWriterLockError({ path: lockPath, cause: `flock errno=${errno}` }),
             )
@@ -202,8 +211,19 @@ export const withGitWriterLock = ({ path, create = false }: { path: string; crea
   withGitLock({ path, create })
 
 /** Per-commit-tree preparation admission, independent of repository Git writers. */
-export const withCommitTreePreparationLock = (worktreePath: string) =>
-  withGitLock({ path: `${worktreePath}.mr-preparation`, create: true })
+export const withCommitTreePreparationLock =
+  (worktreePath: string) =>
+  <A, E, R>(effect: Effect.Effect<A, E, R>) =>
+    Effect.gen(function* () {
+      const observer = yield* Effect.serviceOption(CommitTreePreparationObserver)
+      return yield* effect.pipe(
+        withGitLock({
+          path: `${worktreePath}.mr-preparation`,
+          create: true,
+          onContention: Option.getOrElse(observer, () => Effect.void),
+        }),
+      )
+    })
 
 /** Exclusive no-follow creation; retries accept only an owned empty regular marker. */
 export const ensurePreparationMarker = ({
