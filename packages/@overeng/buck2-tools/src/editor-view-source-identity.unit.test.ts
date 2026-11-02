@@ -40,9 +40,10 @@ for (const contents of ['export default 2\n', 'export default 22\n']) {
           backingRoots: [],
         }
         const prehash = editorViewSourceIdentity({ options })
-        const clock = prehash.clocks.get(statSync(payload, { bigint: true }).dev)
-        // Use only the filesystem probe to put this file in the racy window.
-        if (clock !== undefined) utimesSync(payload, 100, Number(clock / 1_000_000_000n + 1n))
+        const status = statSync(payload, { bigint: true })
+        const clock = prehash.clocks.get(status.dev) ?? status.ctimeNs
+        // Use filesystem time only; an unprobed device already requires all bytes.
+        utimesSync(payload, 100, Number(clock / 1_000_000_000n + 1n))
         const identity = editorViewSourceIdentity({ options, priorClocks: prehash.clocks })
         expect(identity.rehashedFiles).toBe(1)
         expect(editorViewSourceIdentityMatches({ options, identity })).toBe(true)

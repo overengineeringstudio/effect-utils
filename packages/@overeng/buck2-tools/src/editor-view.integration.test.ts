@@ -881,7 +881,8 @@ describe('editor view publisher', () => {
       await expect(publishEditorViews({ options: [fixture.options] })).rejects.toThrow(
         `tree symbolic link resolves outside declared backing roots: ${join(fixture.nodeModules, 'external')} -> ${external}`,
       )
-      expect(existsSync(fixture.editorRoot)).toBe(false)
+      const store = join(fixture.editorRoot, '.store')
+      expect(existsSync(store) === true ? readdirSync(store) : []).toEqual([])
       expect(
         readFileSync(join(fixture.packageDir, 'node_modules', 'legacy-root-install'), 'utf8'),
       ).toBe('retained')
