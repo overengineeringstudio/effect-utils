@@ -3246,6 +3246,21 @@ describe('canonical member mutation guard', () => {
             expect(yield* fs.exists(`${canonicalRoot}repos`)).toBe(false)
           }
           expect(yield* fs.readFileString(`${canonicalRoot}megarepo.lock`)).toBe(originalLock)
+          if (refKind === 'commits' && granted === true) {
+            const controls = path.dirname(canonicalRoot.slice(0, -1))
+            const marker = `${canonicalRoot.slice(0, -1)}.mr-unprepared`
+            expect(yield* fs.exists(marker)).toBe(false)
+            const beforeVerification = yield* snapshotWorkspaceTree(controls)
+            const verified = yield* runApplyCommand({
+              cwd: canonicalRoot,
+              args: ['--output', 'json', '--lock-sync', 'off', '--verify-shared'],
+              env: { MEGAREPO_STORE: `${workspacePath}store` },
+            })
+            expect(verified.exitCode).toBe(0)
+            expect(yield* fs.exists(marker)).toBe(false)
+            expect(yield* snapshotWorkspaceTree(controls)).toEqual(beforeVerification)
+            expect(yield* fs.realPath(`${canonicalRoot}repos/victim`)).toBe(memberPath)
+          }
         },
         Effect.provide(NodeServices.layer),
         Effect.scoped,
