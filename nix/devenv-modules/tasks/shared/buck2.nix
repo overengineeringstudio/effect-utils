@@ -57,6 +57,13 @@ let
       else
         buck_exit=$?
       fi
+      if [ "$buck_exit" -ne 0 ]; then
+        if [ -n "$spool" ]; then
+          printf '%s: Buck exited with code %s; event log: %s\n' '${taskName}' "$buck_exit" "$event_log" >&2
+        else
+          printf '%s: Buck exited with code %s; no event log\n' '${taskName}' "$buck_exit" >&2
+        fi
+      fi
       command_end_ns="$(${pkgs.coreutils}/bin/date +%s%N)" || command_end_ns=""
       if [ -n "''${BUCK_COMMAND_TRACE_ID:-}" ] && [ -n "$command_end_ns" ]; then
         command_status=ok
