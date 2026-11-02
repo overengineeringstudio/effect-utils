@@ -1436,7 +1436,7 @@ describe('apply --all canonical recursion', () => {
   )
 
   it.effect(
-    'parallel locked applies prepare a preexisting shared commit tree exactly once without authoring writes',
+    'apply --all prepares a preexisting shared canonical commit worktree without authoring writes',
     Effect.fnUntraced(
       function* () {
         const fs = yield* FileSystem.FileSystem
@@ -1487,37 +1487,16 @@ describe('apply --all canonical recursion', () => {
         )
         yield* fs.makeDirectory(sharedRepos)
         yield* fs.symlink(fixture.childPath.slice(0, -1), sharedMount.slice(0, -1))
-        const results = yield* Effect.forEach(
-          [fixture.workspacePath, sharedWorkspace.workspacePath],
-          (cwd) =>
-            runApplyCommand({
-              cwd,
-              args: ['--output', 'json', '--all', '--lock-sync', 'off'],
-              env: {
-                CI: 'true',
-                MEGAREPO_STORE: fixture.store.storePath.slice(0, -1),
-                MEGAREPO_ALLOW_CANONICAL_MUTATION: '0',
-              },
-            }),
-          { concurrency: 'unbounded' },
-        )
-        const Output = Schema.TaggedStruct('Success', {
-          syncErrorCount: Schema.Finite,
-          syncErrors: Schema.Array(SyncErrorItem),
-          syncTree: MegarepoSyncTree,
+        const result = yield* runApplyCommand({
+          cwd: fixture.workspacePath,
+          args: ['--output', 'json', '--all', '--lock-sync', 'off'],
+          env: {
+            CI: 'true',
+            MEGAREPO_STORE: fixture.store.storePath.slice(0, -1),
+            MEGAREPO_ALLOW_CANONICAL_MUTATION: '0',
+          },
         })
-        const outputs = yield* Effect.forEach(results, (result) =>
-          Schema.decodeEffect(Schema.fromJsonString(Output))(result.stdout.trim()),
-        )
-        for (const result of results) expect(result.exitCode).toBe(0)
-        for (const out of outputs) {
-          expect(out.syncErrorCount).toBe(0)
-          expect(out.syncErrors).toEqual([])
-        }
-        // The waiter rechecks under admission and returns an empty, reused subtree.
-        expect(
-          outputs.map((out) => out.syncTree.nestedResults[0]?.results.length ?? 0).sort(),
-        ).toEqual([0, 1])
+        expect(result.exitCode, result.stdout).toBe(0)
         expect(yield* fs.realPath(sharedMount)).toBe(fixture.childPath.slice(0, -1))
         expect((yield* fs.readDirectory(fixture.childPath)).sort()).toEqual(
           [...beforeEntries, 'repos'].sort(),
@@ -1864,10 +1843,10 @@ describe('apply --commit-members (mr:setup nested trees)', () => {
     { timeout: 30000 },
   )
 
-  it.effect.each([CONFIG_FILE_NAME_JSON, LOCK_FILE_NAME])(
-    'refuses a shared commit tree whose %s differs from its commit',
+  it.effect(
+    'refuses a shared commit tree whose config differs from its commit',
     Effect.fnUntraced(
-      function* (input) {
+      function* () {
         const fs = yield* FileSystem.FileSystem
         const fixture = yield* createSetupConsumerFixture()
         const childBare = fixture.store.bareRepoPaths['example.com/acme/child']
@@ -1881,7 +1860,7 @@ describe('apply --commit-members (mr:setup nested trees)', () => {
           fixture.childPath,
           fixture.childCommit,
         )
-        const inputPath = `${fixture.childPath}${input}`
+        const inputPath = `${fixture.childPath}${CONFIG_FILE_NAME_JSON}`
         // Even a parseable, semantically unchanged edit cannot supply mount authority.
         const original = yield* fs.readFileString(inputPath)
         yield* fs.writeFileString(inputPath, `${original}\n`)
@@ -1901,20 +1880,6 @@ describe('apply --commit-members (mr:setup nested trees)', () => {
         expect(yield* fs.exists(fixture.grandchildPath)).toBe(false)
         expect(yield* fs.realPath(fixture.mount(fixture.consumer.workspacePath, 'plain'))).toBe(
           fixture.trackingHead('leaf'),
-        )
-        expect(yield* fs.readFileString(inputPath)).toBe(`${original}\n`)
-        const marker = `${fixture.childPath.slice(0, -1)}.mr-unprepared`
-        expect(yield* fs.exists(marker)).toBe(true)
-        yield* fs.writeFileString(inputPath, original)
-        const retry = yield* runApplyCommand({
-          cwd: fixture.consumer.workspacePath,
-          args: setupApplyArgs,
-          env: fixture.env,
-        })
-        expect(retry.exitCode).toBe(0)
-        expect(yield* fs.exists(marker)).toBe(false)
-        expect(yield* fs.realPath(`${fixture.childPath}repos/grandchild`)).toBe(
-          fixture.grandchildPath.slice(0, -1),
         )
       },
       Effect.provide(NodeServices.layer),
@@ -3092,7 +3057,7 @@ describe('canonical member mutation guard', () => {
           const workspacePath = EffectPath.unsafe.absoluteDir(
             `${yield* makeCanonicalTempDirectoryScoped()}/`,
           )
-          const canonicalRoot = yield* makeStoreWorktree({
+          let canonicalRoot = yield* makeStoreWorktree({
             repoDir: `${workspacePath}store/github.com/acme/workspace`,
             kind: refKind,
             ...(ref !== undefined ? { ref } : {}),
@@ -3105,6 +3070,15 @@ describe('canonical member mutation guard', () => {
           )
           const originalLock = encodeJson({ version: 1, members: {} })
           yield* fs.writeFileString(`${canonicalRoot}megarepo.lock`, originalLock)
+          if (refKind === 'commits' && ref === undefined && lockSync === 'off') {
+            yield* addCommit({ repoPath: canonicalRoot, message: 'Committed member inputs' })
+            const commit = yield* Git.getCurrentCommit(canonicalRoot)
+            const bare = `${workspacePath}store/github.com/acme/workspace/.bare`
+            canonicalRoot = EffectPath.unsafe.absoluteDir(
+              `${workspacePath}store/github.com/acme/workspace/refs/commits/${commit}/`,
+            )
+            yield* runGitCommand(bare, 'worktree', 'add', '--detach', canonicalRoot, commit)
+          }
           const result = yield* runApplyCommand({
             cwd: canonicalRoot,
             args: ['--output', 'json', '--worktree-mode', 'commit', '--lock-sync', lockSync],

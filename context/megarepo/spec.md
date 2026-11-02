@@ -212,12 +212,10 @@ apply may populate the root and `repos/` mounts of those fresh commit worktrees;
 a second recursive visit to the same physical root is a no-op.
 
 Worktrees that existed before the invocation remain shared, not owned.
-With lock sync off, recursive apply may prepare their member mounts under an
-exclusive kernel lock keyed on the physical commit tree. It rechecks readiness
-under admission, verifies Git root/HEAD and byte-identical committed config/lock,
-and grants only root/`repos/` materialization, never authoring writes. Failed or
-interrupted preparation leaves an external unprepared marker until a successful
-retry; a partial tree is never reused as complete.
+Locked standalone and recursive apply validate store/Git identity and committed inputs
+before exclusive no-follow control creation. Per-tree admission permits only root/`repos/`
+mounts and is released before recursion, then reacquired for readiness/marker finalization.
+Failed or interrupted attempts remain marked unprepared and are retried, never trusted.
 
 The invoking workspace is the one canonical root an author owns when it is a
 non-default branch worktree (`refs/heads/<branch>` where `<branch>` is not the

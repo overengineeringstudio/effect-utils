@@ -42,7 +42,10 @@ import {
 } from '../../core/lock.ts'
 import { syncNixLocks, type NixLockSyncResult } from '../../core/nix-lock/mod.ts'
 import { generateAll, getEnabledGenerators } from '../../generators/mod.ts'
-import { withCommitTreePreparationLock } from '../../store/git-writer-lock.ts'
+import {
+  ensurePreparationMarker,
+  withCommitTreePreparationLock,
+} from '../../store/git-writer-lock.ts'
 import { runPreflightChecks, type StoreHygieneError } from '../../store/store-hygiene.ts'
 import { refreshWorkspaceRegistry } from '../../store/store-liveness.ts'
 import type { StoreLock } from '../../store/store-lock.ts'
@@ -96,12 +99,19 @@ const hasCommittedNestedInputs = Effect.fn('megarepo/committed-nested-inputs')(
     const fs = yield* FileSystem.FileSystem
     const root = yield* fs.realPath(megarepoRoot)
     const commit = root.match(/\/refs\/commits\/([0-9a-f]{40})$/)?.[1]
-    if (commit === undefined || (yield* Git.getCurrentCommit(megarepoRoot)) !== commit) return false
-    const gitRoot = yield* Git.runCommand({
-      args: ['rev-parse', '--show-toplevel'],
+    if (commit === undefined) return false
+    const store = yield* Store
+    if (root.startsWith(`${yield* fs.realPath(store.basePath)}/`) === false) return false
+    const [gitRoot, common, head] = (yield* Git.runCommand({
+      args: ['rev-parse', '--show-toplevel', '--path-format=absolute', '--git-common-dir', 'HEAD'],
       cwd: megarepoRoot,
-    })
-    if ((yield* fs.realPath(gitRoot)) !== root) return false
+    })).split('\n')
+    if (head !== commit || gitRoot === undefined || common === undefined) return false
+    if (
+      (yield* fs.realPath(gitRoot)) !== root ||
+      (yield* fs.realPath(common)) !== `${root.split('/refs/commits/')[0]}/.bare`
+    )
+      return false
     const { path: configPath } = yield* readMegarepoConfig(megarepoRoot)
     for (const input of [configPath, path.join(root, LOCK_FILE_NAME)]) {
       const physical = yield* fs.realPath(input)
@@ -184,15 +194,18 @@ const isPreparedNestedTree = ({
   megarepoRoot,
   seen,
   committedInputs = false,
+  directOnly = false,
 }: {
   megarepoRoot: AbsoluteDirPath
   seen: Set<string>
   committedInputs?: boolean
+  directOnly?: boolean
 }): Effect.Effect<boolean, never, FileSystem.FileSystem | ChildProcessSpawner | Store> =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
     const physicalRoot = yield* fs.realPath(megarepoRoot)
-    if ((yield* fs.exists(`${physicalRoot}.mr-unprepared`)) === true) return false
+    if (directOnly === false && (yield* fs.exists(`${physicalRoot}.mr-unprepared`)) === true)
+      return false
     if (committedInputs === true && (yield* hasCommittedNestedInputs(megarepoRoot)) === false)
       return false
     if (seen.has(physicalRoot) === true) return true
@@ -221,7 +234,7 @@ const isPreparedNestedTree = ({
       const nestedConfig = yield* findConfigPath(memberPath).pipe(
         Effect.orElseSucceed(() => undefined),
       )
-      if (nestedConfig !== undefined) {
+      if (directOnly === false && nestedConfig !== undefined) {
         const nestedRoot = EffectPath.unsafe.absoluteDir(
           memberPath.endsWith('/') === true ? memberPath : `${memberPath}/`,
         )
@@ -328,6 +341,31 @@ export const syncMegarepo = <R = never>({
 
     // Mark as visited
     visited.add(resolvedRoot)
+
+    // Reuse only a complete tree under the caller's physical-tree admission.
+    if (
+      isApplyMode === true &&
+      dryRun === false &&
+      (options.lockSyncMode ?? 'off') === 'off' &&
+      depth > 0 &&
+      (yield* isPreparedNestedTree({ megarepoRoot, seen: new Set(), committedInputs: true })) ===
+        true
+    ) {
+      return {
+        root: megarepoRoot,
+        results: [],
+        nestedMegarepos: [],
+        nestedResults: [],
+        lockSyncResults: undefined,
+      } satisfies MegarepoSyncResult
+    }
+    if (
+      isApplyMode === true &&
+      dryRun === false &&
+      (options.lockSyncMode ?? 'off') === 'off' &&
+      (yield* hasCommittedNestedInputs(megarepoRoot)) === true
+    )
+      yield* ensurePreparationMarker({ root: resolvedRoot })
 
     // Load config
     const { config, path: configPath } = yield* readMegarepoConfig(megarepoRoot)
@@ -478,7 +516,7 @@ export const syncMegarepo = <R = never>({
       let commitApplyRoot: string | undefined
       const pathCommit = resolvedRoot.match(/\/refs\/commits\/([0-9a-f]{40})$/)?.[1]
       if (
-        (depth === 0 || (yield* hasCommittedNestedInputs(megarepoRoot)) === true) &&
+        (yield* hasCommittedNestedInputs(megarepoRoot)) === true &&
         isApplyMode === true &&
         (options.lockSyncMode ?? 'off') === 'off' &&
         pathCommit !== undefined
@@ -528,13 +566,8 @@ export const syncMegarepo = <R = never>({
               }
             : isApplyMode === true &&
                 (options.lockSyncMode ?? 'off') === 'off' &&
-                (createdWorktrees.has(resolvedRoot) === true || commitApplyRoot !== undefined)
-              ? {
-                  materializationRoot: megarepoRoot,
-                  ...(commitApplyRoot !== undefined
-                    ? { commitApplyRoot }
-                    : { materializedRoot: resolvedRoot }),
-                }
+                commitApplyRoot !== undefined
+              ? { materializationRoot: megarepoRoot, commitApplyRoot }
               : {}
         yield* assertCanonicalMutationAllowed({ target: megarepoRoot, ...authorization })
         const membersRoot = getMembersRoot(megarepoRoot)
@@ -813,6 +846,68 @@ export const syncMegarepo = <R = never>({
       yield* refreshWorkspaceRegistry({ workspaceRoot: megarepoRoot, store, now })
     }
 
+    return {
+      root: megarepoRoot,
+      results: allResults,
+      nestedMegarepos,
+      nestedResults: [],
+      lockSyncResults: nixLockResult,
+    } satisfies MegarepoSyncResult
+  }).pipe(
+    (effect) =>
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem
+        const root = yield* fs.realPath(megarepoRoot)
+        if (
+          visited.has(root) === true ||
+          options.mode !== 'apply' ||
+          options.dryRun === true ||
+          (options.lockSyncMode ?? 'off') !== 'off' ||
+          (yield* hasCommittedNestedInputs(megarepoRoot)) === false
+        )
+          return { ...(yield* effect), preparationRoot: undefined }
+        return yield* Effect.gen(function* () {
+          yield* ensurePreparationMarker({ root, create: false })
+          return { ...(yield* effect), preparationRoot: root }
+        }).pipe(withCommitTreePreparationLock(root))
+      }),
+    Effect.flatMap((directResult) =>
+      syncNestedMegarepos({
+        megarepoRoot,
+        options,
+        depth,
+        visited,
+        createdWorktrees,
+        ...(onMissingRef !== undefined ? { onMissingRef } : {}),
+        directResult,
+      }),
+    ),
+    Observability.withSyncSpan({
+      megarepoRoot,
+      mode: options.mode,
+      depth,
+      dryRun: options.dryRun,
+      all: options.all,
+      force: options.force,
+    }),
+  )
+
+/** Descendant admission must never be nested beneath a parent's preparation flock. */
+const syncNestedMegarepos = <R>({
+  megarepoRoot,
+  options,
+  depth = 0,
+  visited = new Set<string>(),
+  createdWorktrees = new Set<string>(),
+  onMissingRef,
+  directResult,
+}: Parameters<typeof syncMegarepo<R>>[0] & {
+  directResult: MegarepoSyncResult & { preparationRoot?: string | undefined }
+}) =>
+  Effect.gen(function* () {
+    const { nestedMegarepos } = directResult
+    const { all } = options
+    if ('readOnly' in directResult && directResult.readOnly === true) return directResult
     // Handle --all flag: recursively sync nested megarepos in parallel
     const nestedResults =
       all === true && nestedMegarepos.length > 0
@@ -875,60 +970,25 @@ export const syncMegarepo = <R = never>({
             { concurrency: 4 },
           )
         : []
-
-    return {
-      root: megarepoRoot,
-      results: allResults,
-      nestedMegarepos,
-      nestedResults,
-      lockSyncResults: nixLockResult,
-    } satisfies MegarepoSyncResult
-  }).pipe(
-    Observability.withSyncSpan({
-      megarepoRoot,
-      mode: options.mode,
-      depth,
-      dryRun: options.dryRun,
-      all: options.all,
-      force: options.force,
-    }),
-    (effect) =>
-      Effect.gen(function* () {
-        const fs = yield* FileSystem.FileSystem
-        const root = yield* fs.realPath(megarepoRoot)
-        if (visited.has(root) === true) return yield* effect
+    const result = { ...directResult, nestedResults }
+    if (directResult.preparationRoot !== undefined) {
+      const fs = yield* FileSystem.FileSystem
+      const root = directResult.preparationRoot
+      yield* Effect.gen(function* () {
         if (
-          depth === 0 ||
-          options.mode !== 'apply' ||
-          options.dryRun === true ||
-          (options.lockSyncMode ?? 'off') !== 'off' ||
-          /\/refs\/commits\/[0-9a-f]{40}$/.test(root) === false
+          collectSyncErrors(result).length === 0 &&
+          (yield* isPreparedNestedTree({
+            megarepoRoot,
+            seen: new Set(),
+            committedInputs: true,
+            directOnly: true,
+          })) === true
         )
-          return yield* effect
-        return yield* Effect.gen(function* () {
-          // A failed or interrupted attempt is never accepted as a prepared tree.
-          if (
-            (yield* isPreparedNestedTree({
-              megarepoRoot,
-              seen: new Set(),
-              committedInputs: true,
-            })) === true
-          ) {
-            return {
-              root: megarepoRoot,
-              results: [],
-              nestedMegarepos: [],
-              nestedResults: [],
-              lockSyncResults: undefined,
-            } satisfies MegarepoSyncResult
-          }
-          yield* fs.writeFileString(`${root}.mr-unprepared`, '')
-          const result = yield* effect
-          if (collectSyncErrors(result).length === 0) yield* fs.remove(`${root}.mr-unprepared`)
-          return result
-        }).pipe(withCommitTreePreparationLock(root))
-      }),
-  )
+          yield* fs.remove(`${root}.mr-unprepared`).pipe(Effect.ignore)
+      }).pipe(withCommitTreePreparationLock(root))
+    }
+    return result
+  })
 
 const toMegarepoSyncTree = (r: MegarepoSyncResult): MegarepoSyncTreeType => ({
   root: r.root,
