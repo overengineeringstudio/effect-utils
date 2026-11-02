@@ -3158,7 +3158,10 @@ const budgetReservationBytes = ({
 /** Metadata guards a content proof's lifetime; it is never a generation/cache key. */
 const editorViewSourceIdentity = (options: EditorViewOptions): string => {
   const hash = createHash('sha256')
+  const visited = new Set<string>()
   const visit = (path: string): void => {
+    if (visited.has(path) === true) return
+    visited.add(path)
     const status = lstatSync(path, { bigint: true })
     for (const value of [
       path,
@@ -3177,6 +3180,7 @@ const editorViewSourceIdentity = (options: EditorViewOptions): string => {
       const [length, bytes] = frame(readlinkSync(path))
       hash.update(length)
       hash.update(bytes)
+      visit(realpathSync(path))
     } else if (status.isDirectory() === true)
       for (const name of readdirSync(path).toSorted()) visit(join(path, name))
   }

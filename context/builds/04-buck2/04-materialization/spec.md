@@ -260,6 +260,9 @@ stdin. Request size is not limited by the operating system's per-argument cap.
 The batch fingerprints source inputs before acquiring any state-root lock.
 Complete source metadata and literal-link identities bracket that proof and are
 rechecked under the fence; they guard proof lifetime, never key generation reuse.
+The inventory follows symlinks through their canonical destination metadata and
+recursively inventories directory targets, including targets outside source roots.
+An unreadable or unresolved destination refuses admission.
 The batch then acquires each distinct state-root lock before preparing any
 candidate and holds every lock until all workers settle.
 `editorViewPublicationWorkers` bounds candidate workers (four); bootstrap and
