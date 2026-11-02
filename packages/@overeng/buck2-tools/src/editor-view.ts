@@ -3402,8 +3402,7 @@ const publishEditorViewCoordinated = async ({
         `[editor-view] ${options.package}: evicted by host budget; republishing the immutable editor view\n`,
       )
     }
-    // Recheck the complete entry/inode identity under the publication fence.
-    // A changed proof is discarded, never admitted under an earlier content digest.
+    // Under the fence, discard/rebuild any proof whose complete source inventory changed.
     const admitted =
       editorViewSourceIdentityMatches({
         options,

@@ -9,7 +9,7 @@ import {
   writeFileSync,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { dirname, join } from 'node:path'
+import { join } from 'node:path'
 
 import { realpathThroughName } from './real-path.ts'
 
@@ -29,23 +29,23 @@ export type EditorViewSourceIdentity = {
 
 const probeClock = ({
   device,
-  path,
+  inventoried,
   repoRoot,
 }: {
   device: bigint
-  path: string
+  inventoried: ReadonlySet<string>
   repoRoot: string
 }): bigint | undefined => {
-  for (const directory of new Set([repoRoot, tmpdir(), dirname(path), path])) {
+  for (const directory of new Set([repoRoot, tmpdir()])) {
     let scratch: string | undefined
     try {
-      if (lstatSync(directory, { bigint: true }).dev !== device) continue
+      if (inventoried.has(realpathThroughName(directory)) === true) continue
       scratch = mkdtempSync(join(directory, '.editor-view-clock-'))
       const probe = join(scratch, 'clock')
       writeFileSync(probe, '')
-      return lstatSync(probe, { bigint: true }).ctimeNs
+      const status = lstatSync(probe, { bigint: true })
+      if (status.dev === device) return status.ctimeNs
     } catch {
-      // No writable same-device probe means every file on that device is racy.
     } finally {
       if (scratch !== undefined) rmSync(scratch, { recursive: true })
     }
@@ -73,8 +73,7 @@ export const editorViewSourceIdentity = ({
     visited.add(path)
     const status = lstatSync(path, { bigint: true })
     if (probing === true) {
-      if (clocks.has(status.dev) === false)
-        clocks.set(status.dev, probeClock({ device: status.dev, path, repoRoot }))
+      clocks.set(status.dev, undefined)
     } else {
       const { dev, ino, mode, size, mtimeNs, ctimeNs } = status
       hash.update(JSON.stringify([path, dev, ino, mode, size, mtimeNs, ctimeNs].map(String)))
@@ -100,7 +99,11 @@ export const editorViewSourceIdentity = ({
     for (const source of new Set([editorInputs, nodeModules, ...backingRoots]))
       visit(realpathThroughName(source))
   }
-  if (probing === true) scan() // All probes precede the first content read.
+  if (probing === true) {
+    scan() // Discover all covered devices/directories before writing any probes.
+    for (const device of clocks.keys())
+      clocks.set(device, probeClock({ device, repoRoot, inventoried: visited }))
+  }
   probing = false
   scan()
   return { digest: hash.digest('hex'), clocks, rehashedFiles }
