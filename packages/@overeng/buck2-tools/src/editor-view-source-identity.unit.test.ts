@@ -105,3 +105,30 @@ it('reports first and warm inventory re-hash costs on a 128-file fixture', () =>
     rmSync(root, { recursive: true, force: true })
   }
 })
+
+it('keeps two consecutive warm publication admissions unchanged with zero file re-hashes', () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'editor-view-warm-probe-')))
+  try {
+    writeFileSync(join(root, 'index.js'), 'export default 1\n')
+    const options = { repoRoot: root, editorInputs: root, nodeModules: root }
+    let warm = editorViewSourceIdentity({ options })
+    // Advance the filesystem clock through real probes, never sleeps or wall-clock time.
+    for (let attempt = 0; warm.rehashedFiles !== 0 && attempt < 1000; attempt++)
+      warm = editorViewSourceIdentity({ options })
+    expect(warm.rehashedFiles).toBe(0)
+    for (let publication = 0; publication < 2; publication++) {
+      const before = statSync(root, { bigint: true })
+      const identity = editorViewSourceIdentity({ options })
+      const after = statSync(root, { bigint: true })
+      const fenced = editorViewSourceIdentity({ options, priorClocks: identity.clocks })
+      expect(after.mtimeNs).toBe(before.mtimeNs)
+      expect(after.ctimeNs).toBe(before.ctimeNs)
+      expect(identity.rehashedFiles).toBe(0)
+      expect(fenced.rehashedFiles).toBe(0)
+      expect(fenced.digest).toBe(identity.digest)
+      expect(editorViewSourceIdentityMatches({ options, identity })).toBe(true)
+    }
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
