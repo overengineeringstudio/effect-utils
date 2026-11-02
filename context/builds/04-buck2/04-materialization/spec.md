@@ -266,6 +266,10 @@ An unreadable or unresolved destination refuses admission.
 Inventory coverage does not widen publication authority: native content proofs
 and relocation still reject payload destinations outside the declared closure.
 Targets resolve through named hardlinks, matching the owner-resolution contract.
+Before content hashing, one probe file per covered device supplies its filesystem
+ctime. Entries with mtime or ctime at or after that probe are racily clean and
+their bytes are rehashed under the fence. Devices without a writable same-device
+probe always require byte hashing; wall-clock time never authorizes reuse.
 The batch then acquires each distinct state-root lock before preparing any
 candidate and holds every lock until all workers settle.
 `editorViewPublicationWorkers` bounds candidate workers (four); bootstrap and

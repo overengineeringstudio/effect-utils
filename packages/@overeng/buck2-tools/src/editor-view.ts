@@ -84,6 +84,7 @@ import {
 import {
   editorViewSourceIdentity,
   editorViewSourceIdentityMatches,
+  type EditorViewSourceIdentity,
 } from './editor-view-source-identity.ts'
 import { emitCompletedSpanAsync, type OtelSpanAttribute } from './otel-span-cli.ts'
 import { canonicalizeParent, canonicalizePath, realpathThroughName } from './real-path.ts'
@@ -3160,7 +3161,7 @@ const budgetReservationBytes = ({
 }
 
 type EditorViewSourceAdmission = {
-  readonly sourceIdentity: string
+  readonly sourceIdentity: EditorViewSourceIdentity
   readonly selectedPath: string
   readonly finite: boolean
   readonly roots: readonly DeclaredSnapshotRoot[]
@@ -3173,8 +3174,7 @@ type EditorViewSourceAdmission = {
 const admitEditorViewSources = async (
   options: EditorViewOptions,
 ): Promise<EditorViewSourceAdmission> => {
-  const startedAt = performance.now()
-  const sourceIdentity = editorViewSourceIdentity(options)
+  const sourceIdentity = editorViewSourceIdentity({ options })
   const editorInputsPath = realpathSync(resolve(options.editorInputs))
   const selectedPath = realpathSync(resolve(options.nodeModules))
   const finite = (options.backingRoots?.length ?? 0) > 0
@@ -3217,18 +3217,8 @@ const admitEditorViewSources = async (
   const normalizedStoreDigest =
     declaredRoots?.digest ??
     (await canonicalTreeFingerprint({ tree: selectedPath, dereference: true, ...tool }))
-  if (sourceIdentity !== editorViewSourceIdentity(options))
+  if (editorViewSourceIdentityMatches({ options, identity: sourceIdentity }) === false)
     fail('editor view sources changed during admission; retry publication')
-  const durationMs = Math.round(performance.now() - startedAt)
-  process.stderr.write(
-    `[editor-view-phase] ${JSON.stringify({
-      package: options.package,
-      phase: 'source-admission',
-      event: 'complete',
-      durationMs,
-      elapsedMs: durationMs,
-    })}\n`,
-  )
   return {
     sourceIdentity,
     selectedPath,
