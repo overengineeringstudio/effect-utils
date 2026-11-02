@@ -59,7 +59,8 @@ class DeferredAdmission:
         if not stat.S_ISREG(named.st_mode) or (held.st_dev, held.st_ino) != (named.st_dev, named.st_ino):
             raise RuntimeError("publication flock pathname identity changed")
         self.client.sendall(b"1")
-        self.client.close()
+        # Keep the peer alive through child cleanup: Bun may still be completing
+        # its asynchronous connect when the acknowledgement is sent.
         self.admitted = True
         print(f"Editor-view publication admitted on lock {self.path} after waiting {now - self.wait_started:.3f}s.", file=sys.stderr, flush=True)
         return now + self.remaining

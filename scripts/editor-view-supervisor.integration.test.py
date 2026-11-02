@@ -150,10 +150,12 @@ state.rmdir()
             "import os,socket,time; "
             "s=socket.socket(socket.AF_UNIX); "
             "s.connect(os.environ['EDITOR_VIEW_PUBLICATION_ADMISSION_SOCKET']); "
-            "assert s.recv(1)==b'1'; s.close(); "
+            "assert s.recv(1)==b'1'; "
         )
         with tempfile.TemporaryDirectory() as scratch:
+            # recv must block until deadline cleanup, not observe premature peer EOF.
             for code in ("import time; time.sleep(60)", request + "time.sleep(60)",
+                         request + "s.recv(1)",
                          "import time; time.sleep(0.2); " + request + "time.sleep(0.2)"):
                 with self.subTest(code=code):
                     result = subprocess.run(
