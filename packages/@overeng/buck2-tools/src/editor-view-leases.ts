@@ -74,7 +74,7 @@ export const admitSupervisedEditorViewPublication = (): Promise<void> => {
     connection.once('error', reject)
     connection.once('end', () => reject(new Error('publication admission ended without a proof')))
     connection.once('data', (data) => {
-      if (data.equals(Buffer.from('1')) === false) {
+      if (typeof data === 'string' || data.equals(Buffer.from('1')) === false) {
         connection.destroy()
         reject(new Error('invalid publication admission proof'))
         return
