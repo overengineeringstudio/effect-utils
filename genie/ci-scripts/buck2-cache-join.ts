@@ -19,6 +19,7 @@ export const jobPlatforms: Readonly<Record<string, Platform>> = {
   'tested-tree': 'linux',
   'default-ref-policy': 'linux',
   quality: 'linux',
+  'pr-buck2-tools': 'linux',
   test: 'linux',
   'test-macos': 'darwin',
   'test-playwright-utils': 'linux',
