@@ -22,6 +22,7 @@
   # Opt in only for local development; job-local stores always use a local projection.
   globalVirtualStore ? false,
   frozenInCi ? true,
+  lockfileMode ? null,
   materialize ? true,
   installFlags ? [ ],
   # Canonical package-source directories consumed from outside this
@@ -51,7 +52,7 @@
   # releases strip executable metadata under --fix-lockfile. Overriding it
   # still requires an allowlist change below.
   pnpmLockMutatorPkg ? null,
-}:
+}@args:
 {
   lib,
   config,
@@ -154,10 +155,24 @@ let
   installFlagsString = lib.escapeShellArgs installFlags;
   localPolicyFlagsString = lib.escapeShellArgs pnpmInstallPolicy.liveInstallPolicyFlags;
   gvsPolicyFlagsString = lib.escapeShellArgs pnpmInstallPolicy.commonInstallPolicyFlags;
-  pureInstallFlags = installFlags ++ [
-    (if frozenInCi then "--frozen-lockfile" else "--no-frozen-lockfile")
-  ];
-  pureInstallFlagsString = lib.escapeShellArgs pureInstallFlags;
+  effectiveLockfileMode =
+    if lockfileMode != null then
+      lockfileMode
+    else if frozenInCi then
+      "frozen"
+    else
+      "unfrozen";
+  pureInstallFlags =
+    installFlags
+    ++ lib.optional (effectiveLockfileMode != "frozen-in-ci") (
+      if effectiveLockfileMode == "frozen" then "--frozen-lockfile" else "--no-frozen-lockfile"
+    );
+  pureInstallFlagsString =
+    lib.escapeShellArgs pureInstallFlags
+    + lib.optionalString (effectiveLockfileMode == "frozen-in-ci") (
+      " "
+      + ''"$(if [ -n "''${CI:-}" ]; then printf %s --frozen-lockfile; else printf %s --no-frozen-lockfile; fi)"''
+    );
   lockfileOnlyFlag = lib.optionalString (!materialize) " --lockfile-only";
 
   packageNameToPath = builtins.listToAttrs (
@@ -917,6 +932,14 @@ let
 
 in
 assert lib.assertMsg (builtins.isBool globalVirtualStore) "globalVirtualStore must be a Boolean";
+assert lib.assertMsg (
+  lockfileMode == null || !(args ? frozenInCi)
+) "Set lockfileMode or legacy frozenInCi, not both";
+assert lib.assertMsg (builtins.elem effectiveLockfileMode [
+  "frozen"
+  "frozen-in-ci"
+  "unfrozen"
+]) "lockfileMode must be frozen, frozen-in-ci, or unfrozen";
 assert lib.assertMsg pnpmLockMutatorOverrideIsSupported ''
   pnpm lock mutator version ${pnpmLockMutatorOverrideVersion} is not supported.
   Set a derivation versioned as the verified-safe pnpm 12.17.0 pin;

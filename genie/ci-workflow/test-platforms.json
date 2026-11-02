@@ -503,6 +503,10 @@
         "rationale": "Linux-only collector coverage for /proc process evidence, directory mount identities, bind/overlay mounts, maintenance leases and post-proof root replacement; non-Linux execution only refuses before filesystem access, so Linux is the authoritative lane."
       },
       {
+        "script": "pnpm-lockfile-mode.test.sh",
+        "rationale": "Evaluates generated install functions and records argv for runtime CI selection and legacy lockfile modes without network installs."
+      },
+      {
         "script": "pnpm-task-smoke.test.sh",
         "rationale": "Generated task flags/cache/error-policy contracts with fake pnpm and no-op flock. Darwin teardown cases explicitly override isDarwin and synthesize exits 134/137, so Linux exercises the same Darwin policy."
       },

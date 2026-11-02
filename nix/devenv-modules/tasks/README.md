@@ -220,6 +220,15 @@ for outer tasks that must complete before the nested devenv process can evaluate
     similar but non-identical identities are allowed.
 - `nix-cli.nix` - Nix CLI build/check tasks
 - `pnpm.nix` - pnpm install tasks
+  - `lockfileMode = "frozen-in-ci";` allows local lockfile edits while passing
+    `--frozen-lockfile` whenever `CI` is non-empty at runtime (including `CI=0`).
+    With `CI` unset or empty it passes `--no-frozen-lockfile`.
+    `"frozen"` always freezes installs; `"unfrozen"` never freezes installs.
+    The legacy `frozenInCi` option defaults to `true` and, despite its name,
+    maps to `"frozen"` everywhere; `false` maps to `"unfrozen"` everywhere.
+    Omit `frozenInCi` when setting a non-null `lockfileMode`; combining them
+    is an evaluation error. Update/dedupe remain explicit lockfile-authoring
+    tasks, independent of the install lockfile mode.
   - Local development shares one complete pnpm Store Cache between trusted
     roots of the same OS user. `GITHUB_ACTIONS=true` or the explicit opt-in
     `PNPM_JOB_LOCAL_STORE=1` selects the job-local Store Cache under
