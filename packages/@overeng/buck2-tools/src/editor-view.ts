@@ -3177,10 +3177,11 @@ const editorViewSourceIdentity = (options: EditorViewOptions): string => {
       hash.update(bytes)
     }
     if (status.isSymbolicLink() === true) {
-      const [length, bytes] = frame(readlinkSync(path))
+      const target = realpathSync(path)
+      const [length, bytes] = frame(`${readlinkSync(path)}\0${target}`)
       hash.update(length)
       hash.update(bytes)
-      visit(realpathSync(path))
+      visit(target)
     } else if (status.isDirectory() === true)
       for (const name of readdirSync(path).toSorted()) visit(join(path, name))
   }

@@ -825,6 +825,9 @@ describe('editor view publisher', () => {
         mkdirSync(dependency)
         const source = join(dependency, 'index.js')
         writeFileSync(source, 'export default 1\n')
+        const replacement = join(fixture.root, 'replacement')
+        mkdirSync(replacement)
+        writeFileSync(join(replacement, 'index.js'), 'export default 2\n')
         const linked = join(fixture.root, 'linked')
         const alias = join(fixture.root, 'alias')
         mkdirSync(linked)
@@ -833,7 +836,7 @@ describe('editor view publisher', () => {
         const options =
           mutation === 'direct'
             ? { ...fixture.options, backingRoots: [dependency] }
-            : { ...fixture.options, nodeModules: linked }
+            : { ...fixture.options, nodeModules: linked, backingRoots: [dependency, replacement] }
         const [first] = await publishEditorViews({ options: [options] })
         const before = statSync(source)
         let changed = false
@@ -844,9 +847,6 @@ describe('editor view publisher', () => {
               writeFileSync(source, 'export default 2\n')
               utimesSync(source, before.atime, before.mtime)
             } else {
-              const replacement = join(fixture.root, 'replacement')
-              mkdirSync(replacement)
-              writeFileSync(join(replacement, 'index.js'), 'export default 2\n')
               rmSync(alias)
               symlinkSync(replacement, alias)
             }
