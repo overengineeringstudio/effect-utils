@@ -832,7 +832,7 @@ describe('editor view publisher', () => {
         const alias = join(fixture.root, 'alias')
         mkdirSync(linked)
         symlinkSync(dependency, alias)
-        symlinkSync(alias, join(linked, 'dep'))
+        symlinkSync(join(alias, 'index.js'), join(linked, 'dep'))
         const options =
           mutation === 'direct'
             ? { ...fixture.options, backingRoots: [dependency] }
@@ -862,10 +862,10 @@ describe('editor view publisher', () => {
         expect(second?.normalizedStoreDigest).not.toBe(first?.normalizedStoreDigest)
         expect(second?.snapshot).not.toBe(first?.snapshot)
         expect(beforeMaterialize).toHaveBeenCalledTimes(1)
-        const payload = mutation === 'direct' ? '.backing/0000' : 'node_modules/dep'
-        expect(
-          readFileSync(join(fixture.editorRoot, second!.snapshot, payload, 'index.js'), 'utf8'),
-        ).toBe('export default 2\n')
+        const payload = mutation === 'direct' ? '.backing/0000/index.js' : 'node_modules/dep'
+        expect(readFileSync(join(fixture.editorRoot, second!.snapshot, payload), 'utf8')).toBe(
+          'export default 2\n',
+        )
       } finally {
         fsMocks.mkdirSync.mockReset().mockImplementation(nativeFs.mkdirSync)
         cleanup(fixture)
