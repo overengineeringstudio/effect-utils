@@ -93,7 +93,6 @@ import type {
 /** Policy for apply-time lock-file rewrites. */
 export type LockSyncMode = 'auto' | 'off' | 'direct' | 'recursive'
 
-/** Mount grants must use the tree's own committed inputs, never edited or aliased files. */
 const hasCommittedNestedInputs = Effect.fn('megarepo/committed-nested-inputs')(
   function* (megarepoRoot: AbsoluteDirPath) {
     const fs = yield* FileSystem.FileSystem
@@ -361,6 +360,7 @@ export const syncMegarepo = <R = never>({
     if (
       isApplyMode === true &&
       dryRun === false &&
+      options.verifyShared !== true &&
       (options.lockSyncMode ?? 'off') === 'off' &&
       (yield* hasCommittedNestedInputs(megarepoRoot)) === true
     )
@@ -861,6 +861,7 @@ export const syncMegarepo = <R = never>({
           visited.has(root) === true ||
           options.mode !== 'apply' ||
           options.dryRun === true ||
+          options.verifyShared === true ||
           (options.lockSyncMode ?? 'off') !== 'off' ||
           (yield* hasCommittedNestedInputs(megarepoRoot)) === false
         )
