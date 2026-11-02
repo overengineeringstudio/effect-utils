@@ -42,6 +42,7 @@ import {
 } from '../../core/lock.ts'
 import { syncNixLocks, type NixLockSyncResult } from '../../core/nix-lock/mod.ts'
 import { generateAll, getEnabledGenerators } from '../../generators/mod.ts'
+import { withCommitTreePreparationLock } from '../../store/git-writer-lock.ts'
 import { runPreflightChecks, type StoreHygieneError } from '../../store/store-hygiene.ts'
 import { refreshWorkspaceRegistry } from '../../store/store-liveness.ts'
 import type { StoreLock } from '../../store/store-lock.ts'
@@ -88,6 +89,37 @@ import type {
 
 /** Policy for apply-time lock-file rewrites. */
 export type LockSyncMode = 'auto' | 'off' | 'direct' | 'recursive'
+
+/** Mount grants must use the tree's own committed inputs, never edited or aliased files. */
+const hasCommittedNestedInputs = Effect.fn('megarepo/committed-nested-inputs')(
+  function* (megarepoRoot: AbsoluteDirPath) {
+    const fs = yield* FileSystem.FileSystem
+    const root = yield* fs.realPath(megarepoRoot)
+    const commit = root.match(/\/refs\/commits\/([0-9a-f]{40})$/)?.[1]
+    if (commit === undefined || (yield* Git.getCurrentCommit(megarepoRoot)) !== commit) return false
+    const gitRoot = yield* Git.runCommand({
+      args: ['rev-parse', '--show-toplevel'],
+      cwd: megarepoRoot,
+    })
+    if ((yield* fs.realPath(gitRoot)) !== root) return false
+    const { path: configPath } = yield* readMegarepoConfig(megarepoRoot)
+    for (const input of [configPath, path.join(root, LOCK_FILE_NAME)]) {
+      const physical = yield* fs.realPath(input)
+      if (physical !== path.join(root, path.basename(input))) return false
+      const committed = yield* Git.runCommand({
+        args: ['rev-parse', `${commit}:${path.basename(input)}`],
+        cwd: megarepoRoot,
+      })
+      const actual = yield* Git.runCommand({
+        args: ['hash-object', '--no-filters', physical],
+        cwd: megarepoRoot,
+      })
+      if (actual !== committed) return false
+    }
+    return true
+  },
+  Effect.orElseSucceed(() => false),
+)
 
 /** The same source-identity and readiness checks apply at every depth of a prepared tree. */
 const isPreparedMemberMount = ({
@@ -151,13 +183,18 @@ const isPreparedMemberMount = ({
 const isPreparedNestedTree = ({
   megarepoRoot,
   seen,
+  committedInputs = false,
 }: {
   megarepoRoot: AbsoluteDirPath
   seen: Set<string>
+  committedInputs?: boolean
 }): Effect.Effect<boolean, never, FileSystem.FileSystem | ChildProcessSpawner | Store> =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
     const physicalRoot = yield* fs.realPath(megarepoRoot)
+    if ((yield* fs.exists(`${physicalRoot}.mr-unprepared`)) === true) return false
+    if (committedInputs === true && (yield* hasCommittedNestedInputs(megarepoRoot)) === false)
+      return false
     if (seen.has(physicalRoot) === true) return true
     seen.add(physicalRoot)
     const { config, path: configPath } = yield* readMegarepoConfig(megarepoRoot)
@@ -188,7 +225,10 @@ const isPreparedNestedTree = ({
         const nestedRoot = EffectPath.unsafe.absoluteDir(
           memberPath.endsWith('/') === true ? memberPath : `${memberPath}/`,
         )
-        if ((yield* isPreparedNestedTree({ megarepoRoot: nestedRoot, seen })) === false) {
+        if (
+          (yield* isPreparedNestedTree({ megarepoRoot: nestedRoot, seen, committedInputs })) ===
+          false
+        ) {
           return false
         }
       }
@@ -289,30 +329,11 @@ export const syncMegarepo = <R = never>({
     // Mark as visited
     visited.add(resolvedRoot)
 
-    // A nested commit worktree this invocation did not create is shared. If an earlier
-    // invocation already prepared its locked tree, it is complete; otherwise the guard below
-    // refuses it instead of granting freshness.
-    if (
-      options.nestedCommit?._tag === 'Tree' &&
-      isApplyMode === true &&
-      depth > 0 &&
-      createdWorktrees.has(resolvedRoot) === false &&
-      (yield* isPreparedNestedTree({ megarepoRoot, seen: new Set() })) === true
-    ) {
-      return {
-        root: megarepoRoot,
-        results: [],
-        nestedMegarepos: [],
-        nestedResults: [],
-        lockSyncResults: undefined,
-      } satisfies MegarepoSyncResult
-    }
-
     // Load config
     const { config, path: configPath } = yield* readMegarepoConfig(megarepoRoot)
 
     // Top-level apply owns only its root and mount: an author branch, or an exact
-    // commit workspace with lock sync off. Nested roots need invocation-local freshness.
+    // commit workspace with lock sync off. Nested commit roots receive mount-only admission.
     const ownsTopLevelRoot = depth === 0 && (isApplyMode === true || isFetchMode === true)
     const verifySharedWorkspace =
       options.verifyShared === true &&
@@ -457,7 +478,7 @@ export const syncMegarepo = <R = never>({
       let commitApplyRoot: string | undefined
       const pathCommit = resolvedRoot.match(/\/refs\/commits\/([0-9a-f]{40})$/)?.[1]
       if (
-        depth === 0 &&
+        (depth === 0 || (yield* hasCommittedNestedInputs(megarepoRoot)) === true) &&
         isApplyMode === true &&
         (options.lockSyncMode ?? 'off') === 'off' &&
         pathCommit !== undefined
@@ -507,8 +528,13 @@ export const syncMegarepo = <R = never>({
               }
             : isApplyMode === true &&
                 (options.lockSyncMode ?? 'off') === 'off' &&
-                createdWorktrees.has(resolvedRoot) === true
-              ? { materializationRoot: megarepoRoot, materializedRoot: resolvedRoot }
+                (createdWorktrees.has(resolvedRoot) === true || commitApplyRoot !== undefined)
+              ? {
+                  materializationRoot: megarepoRoot,
+                  ...(commitApplyRoot !== undefined
+                    ? { commitApplyRoot }
+                    : { materializedRoot: resolvedRoot }),
+                }
               : {}
         yield* assertCanonicalMutationAllowed({ target: megarepoRoot, ...authorization })
         const membersRoot = getMembersRoot(megarepoRoot)
@@ -866,6 +892,42 @@ export const syncMegarepo = <R = never>({
       all: options.all,
       force: options.force,
     }),
+    (effect) =>
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem
+        const root = yield* fs.realPath(megarepoRoot)
+        if (visited.has(root) === true) return yield* effect
+        if (
+          depth === 0 ||
+          options.mode !== 'apply' ||
+          options.dryRun === true ||
+          (options.lockSyncMode ?? 'off') !== 'off' ||
+          /\/refs\/commits\/[0-9a-f]{40}$/.test(root) === false
+        )
+          return yield* effect
+        return yield* Effect.gen(function* () {
+          // A failed or interrupted attempt is never accepted as a prepared tree.
+          if (
+            (yield* isPreparedNestedTree({
+              megarepoRoot,
+              seen: new Set(),
+              committedInputs: true,
+            })) === true
+          ) {
+            return {
+              root: megarepoRoot,
+              results: [],
+              nestedMegarepos: [],
+              nestedResults: [],
+              lockSyncResults: undefined,
+            } satisfies MegarepoSyncResult
+          }
+          yield* fs.writeFileString(`${root}.mr-unprepared`, '')
+          const result = yield* effect
+          if (collectSyncErrors(result).length === 0) yield* fs.remove(`${root}.mr-unprepared`)
+          return result
+        }).pipe(withCommitTreePreparationLock(root))
+      }),
   )
 
 const toMegarepoSyncTree = (r: MegarepoSyncResult): MegarepoSyncTreeType => ({

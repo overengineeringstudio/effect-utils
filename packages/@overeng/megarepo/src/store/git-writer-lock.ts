@@ -201,6 +201,10 @@ const withGitLock =
 export const withGitWriterLock = ({ path, create = false }: { path: string; create?: boolean }) =>
   withGitLock({ path, create })
 
+/** Per-commit-tree preparation admission, independent of repository Git writers. */
+export const withCommitTreePreparationLock = (worktreePath: string) =>
+  withGitLock({ path: `${worktreePath}.mr-preparation`, create: true })
+
 /** Shared activation/creation or exclusive repository-output reclamation fence. */
 export const withGitContainerLock =
   ({ path, mode }: { path: string; mode: 'shared' | 'exclusive' }) =>

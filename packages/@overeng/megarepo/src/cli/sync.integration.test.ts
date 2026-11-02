@@ -1436,7 +1436,7 @@ describe('apply --all canonical recursion', () => {
   )
 
   it.effect(
-    'apply --all --lock-sync off denies recursion into a preexisting shared canonical commit worktree without mutation',
+    'parallel locked applies prepare a preexisting shared commit tree exactly once without authoring writes',
     Effect.fnUntraced(
       function* () {
         const fs = yield* FileSystem.FileSystem
@@ -1487,33 +1487,41 @@ describe('apply --all canonical recursion', () => {
         )
         yield* fs.makeDirectory(sharedRepos)
         yield* fs.symlink(fixture.childPath.slice(0, -1), sharedMount.slice(0, -1))
-        const result = yield* runApplyCommand({
-          cwd: fixture.workspacePath,
-          args: ['--output', 'json', '--all', '--lock-sync', 'off'],
-          env: {
-            CI: 'true',
-            MEGAREPO_STORE: fixture.store.storePath.slice(0, -1),
-            MEGAREPO_ALLOW_CANONICAL_MUTATION: '0',
-          },
-        })
-        const Output = Schema.TaggedStruct('Error', {
+        const results = yield* Effect.forEach(
+          [fixture.workspacePath, sharedWorkspace.workspacePath],
+          (cwd) =>
+            runApplyCommand({
+              cwd,
+              args: ['--output', 'json', '--all', '--lock-sync', 'off'],
+              env: {
+                CI: 'true',
+                MEGAREPO_STORE: fixture.store.storePath.slice(0, -1),
+                MEGAREPO_ALLOW_CANONICAL_MUTATION: '0',
+              },
+            }),
+          { concurrency: 'unbounded' },
+        )
+        const Output = Schema.TaggedStruct('Success', {
           syncErrorCount: Schema.Finite,
           syncErrors: Schema.Array(SyncErrorItem),
           syncTree: MegarepoSyncTree,
         })
-        const out = yield* Schema.decodeEffect(Schema.fromJsonString(Output))(result.stdout.trim())
-        expect(result.exitCode).toBe(1)
-        expect(out.syncErrorCount).toBe(1)
-        expect(out.syncErrors).toHaveLength(1)
-        expect(out.syncErrors[0]?.message).toContain('PermissionDenied')
-        expect(out.syncErrors[0]?.message).toContain('Refusing to mutate canonical worktree')
-        expect(out.syncTree.nestedResults).toHaveLength(1)
-        expect(out.syncTree.nestedResults[0]?.results).toEqual([
-          expect.objectContaining({ name: 'child', status: 'error' }),
-        ])
-        expect(out.syncTree.nestedResults[0]?.nestedResults).toHaveLength(0)
+        const outputs = yield* Effect.forEach(results, (result) =>
+          Schema.decodeEffect(Schema.fromJsonString(Output))(result.stdout.trim()),
+        )
+        for (const result of results) expect(result.exitCode).toBe(0)
+        for (const out of outputs) {
+          expect(out.syncErrorCount).toBe(0)
+          expect(out.syncErrors).toEqual([])
+        }
+        // The waiter rechecks under admission and returns an empty, reused subtree.
+        expect(
+          outputs.map((out) => out.syncTree.nestedResults[0]?.results.length ?? 0).sort(),
+        ).toEqual([0, 1])
         expect(yield* fs.realPath(sharedMount)).toBe(fixture.childPath.slice(0, -1))
-        expect(yield* fs.readDirectory(fixture.childPath)).toEqual(beforeEntries)
+        expect((yield* fs.readDirectory(fixture.childPath)).sort()).toEqual(
+          [...beforeEntries, 'repos'].sort(),
+        )
         expect(Array.from(yield* fs.readFile(sentinelPath))).toEqual(Array.from(sentinel))
         expect(
           yield* Effect.forEach([CONFIG_FILE_NAME_JSON, LOCK_FILE_NAME], (filename) =>
@@ -1528,13 +1536,12 @@ describe('apply --all canonical recursion', () => {
         expect(yield* runGitCommand(childBare, 'worktree', 'list', '--porcelain')).toBe(
           beforeWorktrees,
         )
-        expect(yield* fs.exists(fixture.grandchildPath)).toBe(false)
-        expect(yield* fs.exists(fixture.leafPath)).toBe(false)
-        expect(
-          yield* fs.exists(
-            EffectPath.ops.join(fixture.childPath, EffectPath.unsafe.relativeDir('repos/')),
-          ),
-        ).toBe(false)
+        expect(yield* fs.realPath(`${fixture.childPath}repos/grandchild`)).toBe(
+          fixture.grandchildPath.slice(0, -1),
+        )
+        expect(yield* fs.realPath(`${fixture.grandchildPath}repos/leaf`)).toBe(
+          fixture.leafPath.slice(0, -1),
+        )
       },
       Effect.provide(NodeServices.layer),
       Effect.scoped,
@@ -1857,10 +1864,10 @@ describe('apply --commit-members (mr:setup nested trees)', () => {
     { timeout: 30000 },
   )
 
-  it.effect(
-    'refuses a preexisting incomplete shared commit worktree instead of granting freshness',
+  it.effect.each([CONFIG_FILE_NAME_JSON, LOCK_FILE_NAME])(
+    'refuses a shared commit tree whose %s differs from its commit',
     Effect.fnUntraced(
-      function* () {
+      function* (input) {
         const fs = yield* FileSystem.FileSystem
         const fixture = yield* createSetupConsumerFixture()
         const childBare = fixture.store.bareRepoPaths['example.com/acme/child']
@@ -1874,6 +1881,10 @@ describe('apply --commit-members (mr:setup nested trees)', () => {
           fixture.childPath,
           fixture.childCommit,
         )
+        const inputPath = `${fixture.childPath}${input}`
+        // Even a parseable, semantically unchanged edit cannot supply mount authority.
+        const original = yield* fs.readFileString(inputPath)
+        yield* fs.writeFileString(inputPath, `${original}\n`)
 
         const result = yield* runApplyCommand({
           cwd: fixture.consumer.workspacePath,
@@ -1890,6 +1901,20 @@ describe('apply --commit-members (mr:setup nested trees)', () => {
         expect(yield* fs.exists(fixture.grandchildPath)).toBe(false)
         expect(yield* fs.realPath(fixture.mount(fixture.consumer.workspacePath, 'plain'))).toBe(
           fixture.trackingHead('leaf'),
+        )
+        expect(yield* fs.readFileString(inputPath)).toBe(`${original}\n`)
+        const marker = `${fixture.childPath.slice(0, -1)}.mr-unprepared`
+        expect(yield* fs.exists(marker)).toBe(true)
+        yield* fs.writeFileString(inputPath, original)
+        const retry = yield* runApplyCommand({
+          cwd: fixture.consumer.workspacePath,
+          args: setupApplyArgs,
+          env: fixture.env,
+        })
+        expect(retry.exitCode).toBe(0)
+        expect(yield* fs.exists(marker)).toBe(false)
+        expect(yield* fs.realPath(`${fixture.childPath}repos/grandchild`)).toBe(
+          fixture.grandchildPath.slice(0, -1),
         )
       },
       Effect.provide(NodeServices.layer),
