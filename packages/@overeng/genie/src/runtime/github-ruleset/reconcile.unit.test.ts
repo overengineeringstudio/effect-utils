@@ -4,6 +4,7 @@ import { join } from 'node:path'
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
+import { githubRuleset } from './mod.ts'
 import {
   diffGithubRuleset,
   formatGithubRulesetReport,
@@ -12,6 +13,33 @@ import {
 } from './reconcile.ts'
 
 describe('github ruleset diff', () => {
+  it('preserves individual user bypass and unattributed-change approval parameters', () => {
+    const actor = { actor_id: 123, actor_type: 'User', bypass_mode: 'always' } as const
+    const output = githubRuleset({
+      name: 'main-workflow',
+      target: 'branch',
+      enforcement: 'active',
+      rules: [
+        {
+          type: 'pull_request',
+          parameters: {
+            required_approving_review_count: 0,
+            dismiss_stale_reviews_on_push: false,
+            require_code_owner_review: false,
+            require_last_push_approval: false,
+            required_review_thread_resolution: false,
+            require_extra_approval_for_unattributed_changes: true,
+          },
+        },
+      ],
+      bypass_actors: [actor],
+    })
+    expect(output.data.bypass_actors).toEqual([actor])
+    expect(output.data.rules[0].parameters.require_extra_approval_for_unattributed_changes).toBe(
+      true,
+    )
+  })
+
   it('compares controlled fields only', () => {
     const diffs = diffGithubRuleset({
       desired: {
