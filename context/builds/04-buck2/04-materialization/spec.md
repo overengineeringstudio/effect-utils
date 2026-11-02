@@ -263,6 +263,9 @@ rechecked under the fence; they guard proof lifetime, never key generation reuse
 The inventory follows symlinks through their canonical destination metadata and
 recursively inventories directory targets, including targets outside source roots.
 An unreadable or unresolved destination refuses admission.
+Inventory coverage does not widen publication authority: native content proofs
+and relocation still reject payload destinations outside the declared closure.
+Targets resolve through named hardlinks, matching the owner-resolution contract.
 The batch then acquires each distinct state-root lock before preparing any
 candidate and holds every lock until all workers settle.
 `editorViewPublicationWorkers` bounds candidate workers (four); bootstrap and
