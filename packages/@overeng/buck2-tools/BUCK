@@ -1,12 +1,9 @@
-# Generated file - DO NOT EDIT
-# Source: BUCK.genie.ts
-
 load("//buck2/package_tools.bzl", "package_command_runtime")
 load("//buck2:materialization.bzl", "runtime_modules")
 # Projection source: packages/@overeng/buck2-tools/BUCK.genie.ts
 # Projection schema version: 13
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:4d99618c9c24e44ee42df8d7af7585a6080daad663ece8adf617dbe27b0615de
+# Semantic fingerprint: sha256:07726fee14340d1fffcbe358c20e462ccba51bcb17cc4c252e48957ac56212ba
 # Regenerate: devenv tasks run genie:run
 
 load("//buck2:materialization.bzl", "export_materialization_inputs", "package_view")
@@ -43,6 +40,7 @@ export_materialization_inputs([
     "src/editor-view-readers.unit.test.ts",
     "src/editor-view-sharing.integration.test.ts",
     "src/editor-view-sharing.ts",
+    "src/editor-view-source-identity.ts",
     "src/editor-view-test-filesystem.ts",
     "src/editor-view-test-processes.ts",
     "src/editor-view.integration.test.ts",
@@ -142,6 +140,7 @@ package_view(
         "src/editor-view-readers.unit.test.ts": "src/editor-view-readers.unit.test.ts",
         "src/editor-view-sharing.integration.test.ts": "src/editor-view-sharing.integration.test.ts",
         "src/editor-view-sharing.ts": "src/editor-view-sharing.ts",
+        "src/editor-view-source-identity.ts": "src/editor-view-source-identity.ts",
         "src/editor-view-test-filesystem.ts": "src/editor-view-test-filesystem.ts",
         "src/editor-view-test-processes.ts": "src/editor-view-test-processes.ts",
         "src/editor-view.integration.test.ts": "src/editor-view.integration.test.ts",
@@ -219,6 +218,7 @@ package_view(
         "src/editor-view-readers.unit.test.ts": "src/editor-view-readers.unit.test.ts",
         "src/editor-view-sharing.integration.test.ts": "src/editor-view-sharing.integration.test.ts",
         "src/editor-view-sharing.ts": "src/editor-view-sharing.ts",
+        "src/editor-view-source-identity.ts": "src/editor-view-source-identity.ts",
         "src/editor-view-test-filesystem.ts": "src/editor-view-test-filesystem.ts",
         "src/editor-view-test-processes.ts": "src/editor-view-test-processes.ts",
         "src/editor-view.integration.test.ts": "src/editor-view.integration.test.ts",
