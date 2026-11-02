@@ -306,6 +306,37 @@ describe('shared helper fleet policy', () => {
     })
   }
 
+  it('resolves review-gate tools from PATH or Nix and fails closed without either', () => {
+    const reviewJob = prReviewsResolvedJob({ runsOn: 'ubuntu-latest' })
+    const step = reviewJob.steps[0]!
+    const script = String(step.run)
+    expect(step.env?.GH_TOKEN).toBe('${{ secrets.GITHUB_TOKEN }}')
+    expect(reviewJob.steps).toHaveLength(1)
+    expect(script.indexOf('could not determine the pull request number')).toBeLessThan(
+      script.indexOf('command -v gh'),
+    )
+    for (const [tool, variable, output] of [
+      ['gh', 'GH_BIN', 'gh'],
+      ['jq', 'JQ_BIN', 'jq.bin'],
+    ]) {
+      expect(script).toContain(`if command -v ${tool} >/dev/null 2>&1; then`)
+      expect(script).toContain(`  ${variable}="$(command -v ${tool})"`)
+      expect(script).toContain('elif command -v nix >/dev/null 2>&1; then')
+      expect(script).toContain(
+        `::notice::${tool} is not on PATH; resolving nixpkgs#${output} through Nix`,
+      )
+      expect(script).toContain(
+        `  ${variable}="$(nix build --no-link --print-out-paths nixpkgs#${output})/bin/${tool}"`,
+      )
+      expect(script).toContain(
+        `::error::pr-reviews-resolved requires ${tool} on PATH or nix to resolve nixpkgs#${tool}'\n  exit 1`,
+      )
+    }
+    expect(script.match(/"\$GH_BIN" api graphql/g)).toHaveLength(2)
+    expect(script.match(/"\$JQ_BIN"/g)).toHaveLength(3)
+    expect(script).not.toMatch(/\| jq|=\$\(gh api|nix build[^\n]*2>/)
+  })
+
   it('preserves the literal required check contexts in CI and repository settings', () => {
     expect(requiredCIJobs).toEqual(expectedRequiredChecks)
     const requiredChecks = repoSettings.rules.flatMap((rule) =>

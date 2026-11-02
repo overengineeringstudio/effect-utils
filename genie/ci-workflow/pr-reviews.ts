@@ -46,6 +46,8 @@ export type PrReviewsResolvedStepOptions = {
 /**
  * Checkout-free step that fails while any review thread on the PR is unresolved.
  * Non-PR events succeed with a notice: there is no PR to gate.
+ * Requires `gh` and `jq` on PATH, or `nix` to resolve their nixpkgs binaries.
+ * Missing tools or failed Nix resolution fail closed; no checkout or Nix install is needed.
  */
 export const prReviewsResolvedStep = (opts: PrReviewsResolvedStepOptions = {}): WorkflowStep => ({
   name: 'Check unresolved review threads',
@@ -64,6 +66,24 @@ export const prReviewsResolvedStep = (opts: PrReviewsResolvedStepOptions = {}): 
     "  printf '%s\\n' '::error::pr-reviews-resolved could not determine the pull request number.'",
     '  exit 1',
     'fi',
+    'if command -v gh >/dev/null 2>&1; then',
+    '  GH_BIN="$(command -v gh)"',
+    'elif command -v nix >/dev/null 2>&1; then',
+    "  printf '%s\\n' '::notice::gh is not on PATH; resolving nixpkgs#gh through Nix'",
+    '  GH_BIN="$(nix build --no-link --print-out-paths nixpkgs#gh)/bin/gh"',
+    'else',
+    "  printf '%s\\n' '::error::pr-reviews-resolved requires gh on PATH or nix to resolve nixpkgs#gh'",
+    '  exit 1',
+    'fi',
+    'if command -v jq >/dev/null 2>&1; then',
+    '  JQ_BIN="$(command -v jq)"',
+    'elif command -v nix >/dev/null 2>&1; then',
+    "  printf '%s\\n' '::notice::jq is not on PATH; resolving nixpkgs#jq.bin through Nix'",
+    '  JQ_BIN="$(nix build --no-link --print-out-paths nixpkgs#jq.bin)/bin/jq"',
+    'else',
+    "  printf '%s\\n' '::error::pr-reviews-resolved requires jq on PATH or nix to resolve nixpkgs#jq'",
+    '  exit 1',
+    'fi',
     'owner="${GITHUB_REPOSITORY%%/*}"',
     'name="${GITHUB_REPOSITORY#*/}"',
     `query='${reviewThreadsQuery}'`,
@@ -77,16 +97,16 @@ export const prReviewsResolvedStep = (opts: PrReviewsResolvedStepOptions = {}): 
     '    exit 1',
     '  fi',
     '  if [ -z "$cursor" ]; then',
-    '    page_json=$(gh api graphql -f query="$query" -f owner="$owner" -f name="$name" -F number="$pr_number")',
+    '    page_json=$("$GH_BIN" api graphql -f query="$query" -f owner="$owner" -f name="$name" -F number="$pr_number")',
     '  else',
-    '    page_json=$(gh api graphql -f query="$query" -f owner="$owner" -f name="$name" -F number="$pr_number" -f cursor="$cursor")',
+    '    page_json=$("$GH_BIN" api graphql -f query="$query" -f owner="$owner" -f name="$name" -F number="$pr_number" -f cursor="$cursor")',
     '  fi',
-    "  page_unresolved=$(printf '%s\\n' \"$page_json\" | jq '[.data.repository.pullRequest.reviewThreads.nodes[]? | select(.isResolved == false)] | length')",
+    '  page_unresolved=$(printf \'%s\\n\' "$page_json" | "$JQ_BIN" \'[.data.repository.pullRequest.reviewThreads.nodes[]? | select(.isResolved == false)] | length\')',
     '  unresolved=$((unresolved + page_unresolved))',
-    '  if [ "$(printf \'%s\\n\' "$page_json" | jq -r \'.data.repository.pullRequest.reviewThreads.pageInfo.hasNextPage\')" != "true" ]; then',
+    '  if [ "$(printf \'%s\\n\' "$page_json" | "$JQ_BIN" -r \'.data.repository.pullRequest.reviewThreads.pageInfo.hasNextPage\')" != "true" ]; then',
     '    break',
     '  fi',
-    "  cursor=$(printf '%s\\n' \"$page_json\" | jq -r '.data.repository.pullRequest.reviewThreads.pageInfo.endCursor')",
+    '  cursor=$(printf \'%s\\n\' "$page_json" | "$JQ_BIN" -r \'.data.repository.pullRequest.reviewThreads.pageInfo.endCursor\')',
     'done',
     'if [ "$unresolved" -gt 0 ]; then',
     '  printf \'%s\\n\' "::error::pr-reviews-resolved found $unresolved unresolved review thread(s); resolve them before merge, then re-run this check (thread resolution does not retrigger workflows)."',
@@ -98,7 +118,7 @@ export const prReviewsResolvedStep = (opts: PrReviewsResolvedStepOptions = {}): 
 
 /** Options for the review-thread resolution gate job. */
 export type PrReviewsResolvedJobOptions = {
-  /** Explicit runner selection; this job only calls `gh api`. */
+  /** Explicit runner selection; requires `gh` and `jq` on PATH or `nix`. */
   readonly runsOn: string | readonly string[]
   /** Job-level `if`; defaults to running on every non-schedule event. */
   readonly condition?: string
@@ -109,6 +129,7 @@ export type PrReviewsResolvedJobOptions = {
 /**
  * Review-thread resolution gate job. Wire it into the workflow jobs map under
  * {@link prReviewsResolvedJobId} and list that id as a required status check.
+ * Resolves `gh` and `jq` from PATH first, falling back to Nix without installing Nix.
  */
 export const prReviewsResolvedJob = (opts: PrReviewsResolvedJobOptions): WorkflowJob => ({
   if: opts.condition ?? "${{ github.event_name != 'schedule' }}",
