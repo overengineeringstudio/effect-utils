@@ -284,6 +284,15 @@ is reported only after workers settle and locks are released. Each successful
 view retains its stderr timing record. Snapshot/retention formats, lock ownership,
 explicit recovery, and whole-workspace authority checks are unchanged.
 
+The supervisor-owned per-worktree publication flock is requested through a
+private local socket after source admission, before state-root lock acquisition.
+Authority queries, Buck builds and source proofs can overlap across invocations;
+payload validation, candidate writes and commits cannot. The supervisor retains
+the same flock inode through process-group cleanup and rejects pathname
+replacement before acknowledging admission. Execution deadlines count source
+preparation and admitted work, pausing only the actual flock wait. Read-only
+check invocations retain whole-command flock admission.
+
 If a legacy root install occupies the first hop, immutable GNU
 `mv --exchange --no-copy` installs the symlink without an absent-path window and
 retains the exchanged entry under `.legacy/`. A failure before the pointer flip

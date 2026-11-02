@@ -850,7 +850,7 @@ for (const name of editorPublishers) {
   )
   publisherAdmissionLocks.set(
     name,
-    /editor-view-supervisor\.py" (?:\d+|none) 5\s+\\\s+--lock "\$root\/\.devenv\/editor-view-publication\.lock"/u.test(
+    /editor-view-supervisor\.py" (?:\d+|none) 5\s+\\\s+--deferred-lock "\$root\/\.devenv\/editor-view-publication\.lock"/u.test(
       body,
     ),
   )

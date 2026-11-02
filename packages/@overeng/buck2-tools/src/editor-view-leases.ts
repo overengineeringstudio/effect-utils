@@ -16,6 +16,7 @@ import {
   statfsSync,
   writeSync,
 } from 'node:fs'
+import { createConnection } from 'node:net'
 import { basename, dirname, isAbsolute, join, resolve } from 'node:path'
 
 import { editorViewDescriptorFlags, withEditorViewContentStoreLock } from './editor-view-sharing.ts'
@@ -57,6 +58,32 @@ const privateDirectory = (path: string): BigIntStats => {
   )
     fail(`unsafe private directory: ${path}`)
   return status
+}
+
+let publicationAdmission: Promise<void> | undefined
+/** Request the supervisor-owned flock only after source proofs have settled. */
+export const admitSupervisedEditorViewPublication = (): Promise<void> => {
+  const endpoint = process.env.EDITOR_VIEW_PUBLICATION_ADMISSION_SOCKET
+  if (endpoint === undefined) return Promise.resolve()
+  publicationAdmission ??= new Promise<void>((resolveAdmission, reject) => {
+    privateDirectory(dirname(endpoint))
+    const status = lstatSync(endpoint, { bigint: true })
+    if (status.isSocket() === false || owned(status) === false)
+      fail(`unsafe publication admission endpoint: ${endpoint}`)
+    const connection = createConnection(endpoint)
+    connection.once('error', reject)
+    connection.once('end', () => reject(new Error('publication admission ended without a proof')))
+    connection.once('data', (data) => {
+      if (data.equals(Buffer.from('1')) === false) {
+        connection.destroy()
+        reject(new Error('invalid publication admission proof'))
+        return
+      }
+      connection.destroy()
+      resolveAdmission()
+    })
+  })
+  return publicationAdmission
 }
 
 /** Unknown/remote filesystems must never authorize destructive retirement. */

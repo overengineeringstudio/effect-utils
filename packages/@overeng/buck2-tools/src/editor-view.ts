@@ -51,6 +51,7 @@ import {
 import {
   ensureEditorViewLeaseControl,
   probeEditorViewLease,
+  admitSupervisedEditorViewPublication,
   probeEditorViewLeaseUnderFence,
   probeReleasedEditorViewLease,
 } from './editor-view-leases.ts'
@@ -3320,6 +3321,7 @@ const publishEditorViewCoordinated = async ({
   if (Number.isSafeInteger(budgetBytes) === false || budgetBytes <= 0)
     fail('hostBudgetBytes must be a positive safe integer')
   const sourceProof = preparedSources ?? (await admitEditorViewSources(options))
+  await admitSupervisedEditorViewPublication()
   const lock =
     coordinator?.lock ??
     (await acquirePublicationLock({
@@ -3887,6 +3889,7 @@ export const publishEditorViews = async ({
     }
     // Source proofs do not read or mutate editor state. Settle them before taking any fence.
     const prepared = await Promise.allSettled(options.map(admitEditorViewSources))
+    await admitSupervisedEditorViewPublication()
     const orderedRoots = Array.from(lockRequests.keys()).toSorted((left, right) => {
       const leftRoot = repositoryRoots.has(left)
       const rightRoot = repositoryRoots.has(right)

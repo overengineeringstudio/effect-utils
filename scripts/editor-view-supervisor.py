@@ -5,6 +5,9 @@ import fcntl
 import os
 import signal
 import subprocess
+import socket
+import stat
+import tempfile
 import sys
 import time
 
@@ -28,7 +31,41 @@ def signal_group(pgid, sig):
 
 
 
-def supervise(command, deadline, grace, pass_fds=(), waiting_lock=None):
+class DeferredAdmission:
+    """The supervisor owns the same flock until group cleanup, but acquires it on request."""
+    def __init__(self, lock, path, listener, endpoint):
+        self.lock, self.path, self.listener, self.endpoint = lock, path, listener, endpoint
+        self.client = None
+        self.wait_started = None
+        self.admitted = False
+        self.remaining = float("inf")
+
+    def observe(self, expires):
+        if self.admitted:
+            return expires
+        now = time.monotonic()
+        if self.client is None:
+            try:
+                self.client, _ = self.listener.accept()
+            except BlockingIOError:
+                return expires
+            self.wait_started = now
+            self.remaining = max(0, expires - now)
+        try:
+            fcntl.flock(self.lock.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            return float("inf")
+        held, named = os.fstat(self.lock.fileno()), os.stat(self.path, follow_symlinks=False)
+        if not stat.S_ISREG(named.st_mode) or (held.st_dev, held.st_ino) != (named.st_dev, named.st_ino):
+            raise RuntimeError("publication flock pathname identity changed")
+        self.client.sendall(b"1")
+        self.client.close()
+        self.admitted = True
+        print(f"Editor-view publication admitted on lock {self.path} after waiting {now - self.wait_started:.3f}s.", file=sys.stderr, flush=True)
+        return now + self.remaining
+
+
+def supervise(command, deadline, grace, pass_fds=(), waiting_lock=None, deferred=None):
     # Reap orphaned descendants ourselves on Linux, including TERM-resistant helpers.
     if sys.platform == "linux":
         if ctypes.CDLL(None, use_errno=True).prctl(36, 1, 0, 0, 0) != 0:
@@ -39,6 +76,9 @@ def supervise(command, deadline, grace, pass_fds=(), waiting_lock=None):
     child_env = os.environ.copy()
     child_env.pop("EDITOR_VIEW_LEASE_FDS", None)
     child_env.pop("EDITOR_VIEW_LEASE_ACTIVE", None)
+    child_env.pop("EDITOR_VIEW_PUBLICATION_ADMISSION_SOCKET", None)
+    if deferred is not None:
+        child_env["EDITOR_VIEW_PUBLICATION_ADMISSION_SOCKET"] = deferred.endpoint
     child = subprocess.Popen(command, start_new_session=True, pass_fds=pass_fds, env=child_env)
     interrupted = []
     for sig in (signal.SIGHUP, signal.SIGINT, signal.SIGTERM):
@@ -60,6 +100,13 @@ def supervise(command, deadline, grace, pass_fds=(), waiting_lock=None):
                 print(f"Editor-view publication admitted on lock {lock_path} after waiting {now - started:.3f}s.", file=sys.stderr, flush=True)
     while not interrupted and time.monotonic() < expires:
         observe_admission()
+        if deferred is not None:
+            try:
+                expires = deferred.observe(expires)
+            except Exception as error:
+                print(f"Editor-view publication admission failed: {error}", file=sys.stderr, flush=True)
+                interrupted.append(signal.SIGTERM)
+                break
         try:
             result = child.wait(timeout=min(0.05, max(0.001, expires - time.monotonic())))
             observe_admission()  # Also report admission for a child that exits immediately.
@@ -69,6 +116,8 @@ def supervise(command, deadline, grace, pass_fds=(), waiting_lock=None):
         except subprocess.TimeoutExpired:
             pass
     status = 128 + interrupted[0] if interrupted else 124
+    if deferred is not None and deferred.wait_started is not None and not deferred.admitted:
+        print(f"Editor-view publication was waiting for another publication on lock {deferred.path}.", file=sys.stderr, flush=True)
     if waiting_lock is not None and not admitted:
         print(f"Editor-view publication was waiting for another publication on lock {waiting_lock[0]}.", file=sys.stderr, flush=True)
     reason = "was interrupted" if interrupted else f"exceeded its {deadline:g}s execution deadline"
@@ -108,6 +157,22 @@ def supervise_locked(command, deadline, grace, lock_path):
             os.close(ready_write)
 
 
+def supervise_deferred(command, deadline, grace, lock_path):
+    os.makedirs(os.path.dirname(os.path.abspath(lock_path)), exist_ok=True)
+    with open(lock_path, "a") as lock, tempfile.TemporaryDirectory(prefix="eu-ev-admission-") as directory:
+        endpoint = os.path.join(os.path.realpath(directory), "socket")
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as listener:
+            listener.bind(endpoint)
+            listener.listen(1)
+            listener.setblocking(False)
+            admission = DeferredAdmission(lock, lock_path, listener, endpoint)
+            try:
+                return supervise(command, deadline, grace, deferred=admission)
+            finally:
+                if admission.client is not None:
+                    admission.client.close()
+
+
 if __name__ == "__main__":
     if sys.argv[1] == "--acquire":
         lock_fd, ready_fd = int(sys.argv[2]), int(sys.argv[3])
@@ -120,5 +185,7 @@ if __name__ == "__main__":
         deadline = None if sys.argv[1] == "none" else float(sys.argv[1])
         if sys.argv[3] == "--lock":
             sys.exit(supervise_locked(sys.argv[5:], deadline, float(sys.argv[2]), sys.argv[4]))
+        elif sys.argv[3] == "--deferred-lock":
+            sys.exit(supervise_deferred(sys.argv[5:], deadline, float(sys.argv[2]), sys.argv[4]))
         else:
             sys.exit(supervise(sys.argv[3:], deadline, float(sys.argv[2])))

@@ -780,9 +780,9 @@ let
       ${publishBuckCapabilities}
       # Supervise the whole authority/build/publication process tree, including
       # filesystem work and lock waits that an in-process JS timer cannot interrupt.
-      # Scoped consumers share packages/.editor-view: queue whole invocations
-      # on a per-worktree flock without expanding their requested package sets.
-      # Capped invocations start their execution deadline only after admission.
+      # Source admission overlaps; the publisher requests the supervisor-owned
+      # per-worktree flock before touching editor state. Only lock wait pauses
+      # the execution deadline; authority/build/source work still consumes it.
       ${lib.optionalString (publicationBudget != null) ''
         # editor-view-batch-budget: ${builtins.toJSON publicationBudget}
         # Max-measured fallback covers: ${lib.concatStringsSep ", " publicationBudget.missingConsumers}
@@ -791,7 +791,9 @@ let
       ${pkgs.python3}/bin/python "$root/scripts/editor-view-supervisor.py" ${
         if deadlineSeconds == null then "none" else toString deadlineSeconds
       } 5 \
-        --lock "$root/.devenv/editor-view-publication.lock" \
+        ${
+          if mode == "bootstrap" || mode == "publish" then "--deferred-lock" else "--lock"
+        } "$root/.devenv/editor-view-publication.lock" \
         ${sourceBun}/bin/bun "$root/scripts/editor-view-authority.ts" ${mode} \
         --repo-root "$root" \
         --workspace-root "$root" \
