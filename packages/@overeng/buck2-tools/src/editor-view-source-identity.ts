@@ -50,6 +50,7 @@ const probeClock = ({
       if (scratch !== undefined) rmSync(scratch, { recursive: true })
     }
   }
+  return undefined
 }
 
 /** Metadata guards proof lifetime; filesystem clocks identify racily clean files. */
