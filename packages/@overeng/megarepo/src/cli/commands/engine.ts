@@ -342,7 +342,6 @@ export const syncMegarepo = <R = never>({
     // Mark as visited
     visited.add(resolvedRoot)
 
-    // Reuse only a complete tree under the caller's physical-tree admission.
     if (
       isApplyMode === true &&
       dryRun === false &&
@@ -867,8 +866,9 @@ export const syncMegarepo = <R = never>({
         )
           return { ...(yield* effect), preparationRoot: undefined }
         return yield* Effect.gen(function* () {
+          const preparing = visited.has(root) === false
           yield* ensurePreparationMarker({ root, create: false })
-          return { ...(yield* effect), preparationRoot: root }
+          return { ...(yield* effect), preparationRoot: preparing === true ? root : undefined }
         }).pipe(withCommitTreePreparationLock(root))
       }),
     Effect.flatMap((directResult) =>
@@ -892,7 +892,6 @@ export const syncMegarepo = <R = never>({
     }),
   )
 
-/** Descendant admission must never be nested beneath a parent's preparation flock. */
 const syncNestedMegarepos = <R>({
   megarepoRoot,
   options,

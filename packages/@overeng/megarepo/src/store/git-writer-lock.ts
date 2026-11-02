@@ -205,6 +205,7 @@ export const withGitWriterLock = ({ path, create = false }: { path: string; crea
 export const withCommitTreePreparationLock = (worktreePath: string) =>
   withGitLock({ path: `${worktreePath}.mr-preparation`, create: true })
 
+/** Exclusive no-follow creation; retries accept only an owned empty regular marker. */
 export const ensurePreparationMarker = ({
   root,
   create = true,
