@@ -443,13 +443,14 @@ const makeSiblingView = ({
   }
 }
 
-/** Every entered phase, plus implicit admission, must finish exactly once. */
+/** Every entered phase, plus implicit source/publication admission, finishes once. */
 const expectCompletedPublicationPhases = (stderr: string, terminalPhase: string): void => {
   const phases: { phase: string; event: string; durationMs?: number }[] = stderr
     .split('\n')
     .filter((line) => line.startsWith('[editor-view-phase] '))
     .map((line) => JSON.parse(line.slice('[editor-view-phase] '.length)))
   const entered = [
+    'source-admission',
     'admission',
     ...phases.filter((phase) => phase.event === 'enter').map((phase) => phase.phase),
   ]
