@@ -107,6 +107,8 @@ it('needs real Git', () => execFileSync('git', ['--version']))
           bun,
           packageTree,
           'vitest.config.ts',
+          '30000',
+          '30000',
           '--fingerprint-tool',
           fingerprintTool,
         ],
