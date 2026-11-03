@@ -106,6 +106,7 @@ import {
   type PrStateInfo,
   type PrStateResolverService,
 } from '../../../store/store-pr-state.ts'
+import { inspectForeignGitDir } from '../../../store/store-rehome.ts'
 import {
   captureProcessActivityManifest,
   encodeWorkspaceActivityManifest,
@@ -2366,6 +2367,15 @@ const storeStatusCommand = Cli.Command.make('status', { output: outputOption }, 
                       message: '.git not found in worktree',
                     })
                   } else {
+                    if (bareExists === true) {
+                      const foreign = yield* inspectForeignGitDir({ worktreePath, bareRepoPath })
+                      if (foreign !== undefined)
+                        issues.push({
+                          type: 'foreign-git-dir',
+                          severity: 'error',
+                          message: `Git common directory belongs to ${foreign}, not ${bareRepoPath}`,
+                        })
+                    }
                     if (refTypeDir === 'heads') {
                       const actualBranch = yield* Git.getCurrentBranch(worktreePath).pipe(
                         Effect.orElseSucceed(() => Option.none<string>()),
@@ -2382,7 +2392,10 @@ const storeStatusCommand = Cli.Command.make('status', { output: outputOption }, 
                       }
                     }
 
-                    const worktreeStatus = yield* Git.getWorktreeStatus({ worktreePath }).pipe(
+                    const worktreeStatus = yield* Git.getWorktreeStatus({
+                      worktreePath,
+                      readOnly: true,
+                    }).pipe(
                       Effect.orElseSucceed(() => ({
                         isDirty: false,
                         hasUnpushed: false,
@@ -4177,6 +4190,47 @@ const storeFixCommand = Cli.Command.make(
           lockFile,
           store,
         })
+        const fs = yield* FileSystem.FileSystem
+        for (const repo of yield* store.listRepos) {
+          if (
+            Option.isSome(member) === true &&
+            memberNames.every((name) => {
+              const source = parseSourceString(config.members[name] ?? '')
+              return source === undefined || store.getRepoBasePath(source) !== repo.fullPath
+            }) === true
+          )
+            continue
+          const bareRepoPath = EffectPath.ops.join(
+            repo.fullPath,
+            EffectPath.unsafe.relativeDir('.bare/'),
+          )
+          if ((yield* fs.exists(bareRepoPath)) === false) continue
+          for (const worktree of yield* collectRepoStoreWorktrees({
+            fs,
+            repoPath: repo.fullPath,
+            bareRepoPath,
+          })) {
+            if (worktree.broken === true) continue
+            const worktreePath = worktree.path
+            const foreign = yield* inspectForeignGitDir({ worktreePath, bareRepoPath })
+            if (
+              foreign === undefined ||
+              issues.some(
+                (issue) =>
+                  issue.meta?._tag === 'foreign-git-dir' &&
+                  issue.meta.worktreePath === worktreePath,
+              ) === true
+            )
+              continue
+            issues.push({
+              severity: 'error',
+              type: 'foreign-git-dir',
+              memberName: repo.relativePath,
+              message: `Git common directory belongs to ${foreign}, not ${bareRepoPath}`,
+              meta: { _tag: 'foreign-git-dir', worktreePath, bareRepoPath },
+            })
+          }
+        }
 
         if (issues.length === 0) {
           yield* run(

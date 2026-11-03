@@ -7,7 +7,7 @@ load("//buck2/products:defs.bzl", "javascript_product")
 # Projection source: packages/@overeng/megarepo/BUCK.genie.ts
 # Projection schema version: 13
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:83aa17dad6fb33020de7e8eacbd654be04f70d283aa3e436c7e5633ace012df1
+# Semantic fingerprint: sha256:d437b2c05c2f0206a769fb4341f9b805b36c61934d3fb9da0bc68769f0fdea08
 # Regenerate: devenv tasks run genie:run
 
 load("//buck2:materialization.bzl", "export_materialization_inputs", "package_view")
@@ -185,6 +185,7 @@ export_materialization_inputs([
     "src/cli/store-gc-generated.integration.test.ts",
     "src/cli/store-gc-otel.integration.test.ts",
     "src/cli/store-gc-partial-deletion.integration.test.ts",
+    "src/cli/store-rehome.integration.test.ts",
     "src/cli/store.integration.test.ts",
     "src/cli/sync.integration.test.ts",
     "src/core/config.ts",
@@ -506,6 +507,7 @@ package_view(
         "src/cli/store-gc-generated.integration.test.ts": "src/cli/store-gc-generated.integration.test.ts",
         "src/cli/store-gc-otel.integration.test.ts": "src/cli/store-gc-otel.integration.test.ts",
         "src/cli/store-gc-partial-deletion.integration.test.ts": "src/cli/store-gc-partial-deletion.integration.test.ts",
+        "src/cli/store-rehome.integration.test.ts": "src/cli/store-rehome.integration.test.ts",
         "src/cli/store.integration.test.ts": "src/cli/store.integration.test.ts",
         "src/cli/sync.integration.test.ts": "src/cli/sync.integration.test.ts",
         "src/core/config.ts": "src/core/config.ts",
@@ -829,6 +831,7 @@ package_view(
         "src/cli/store-gc-generated.integration.test.ts": "src/cli/store-gc-generated.integration.test.ts",
         "src/cli/store-gc-otel.integration.test.ts": "src/cli/store-gc-otel.integration.test.ts",
         "src/cli/store-gc-partial-deletion.integration.test.ts": "src/cli/store-gc-partial-deletion.integration.test.ts",
+        "src/cli/store-rehome.integration.test.ts": "src/cli/store-rehome.integration.test.ts",
         "src/cli/store.integration.test.ts": "src/cli/store.integration.test.ts",
         "src/cli/sync.integration.test.ts": "src/cli/sync.integration.test.ts",
         "src/core/config.ts": "src/core/config.ts",
@@ -1147,6 +1150,7 @@ package_view(
         "src/cli/store-gc-generated.integration.test.ts": "src/cli/store-gc-generated.integration.test.ts",
         "src/cli/store-gc-otel.integration.test.ts": "src/cli/store-gc-otel.integration.test.ts",
         "src/cli/store-gc-partial-deletion.integration.test.ts": "src/cli/store-gc-partial-deletion.integration.test.ts",
+        "src/cli/store-rehome.integration.test.ts": "src/cli/store-rehome.integration.test.ts",
         "src/cli/store.integration.test.ts": "src/cli/store.integration.test.ts",
         "src/cli/sync.integration.test.ts": "src/cli/sync.integration.test.ts",
         "src/core/config.ts": "src/core/config.ts",

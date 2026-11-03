@@ -22,6 +22,7 @@ import { classifyRef } from '../core/ref.ts'
 import { resolveStoreBranchWorktree } from './store-branch-worktree.ts'
 import { createStoreWorktree, createStoreWorktreeDetached } from './store-deletion-lease.ts'
 import { makeStoreDirectory } from './store-path.ts'
+import { inspectForeignGitDir, rehomeCommitWorktree } from './store-rehome.ts'
 import type { MegarepoStore } from './store.ts'
 
 // =============================================================================
@@ -42,6 +43,7 @@ export type StoreIssueType =
   | 'unpushed'
   | 'orphaned'
   | 'ambiguous_worktree'
+  | 'foreign-git-dir'
 
 /** A detected consistency problem in the megarepo store for a specific member */
 export interface StoreIssue {
@@ -70,6 +72,11 @@ export type StoreIssueMeta =
     }
   | { readonly _tag: 'missing_bare'; readonly source: MemberSource }
   | { readonly _tag: 'missing_fetch_refspec'; readonly bareRepoPath: string }
+  | {
+      readonly _tag: 'foreign-git-dir'
+      readonly worktreePath: string
+      readonly bareRepoPath: string
+    }
 
 // =============================================================================
 // Store Hygiene Error
@@ -216,6 +223,17 @@ export const validateStoreMembers = ({
 
       // Use whichever worktree exists for subsequent checks
       const worktreePath = branchGitExists === true ? branchWorktreePath : commitWorktreePath
+      const foreign = yield* inspectForeignGitDir({ worktreePath, bareRepoPath })
+      if (foreign !== undefined) {
+        issues.push({
+          severity: 'error',
+          type: 'foreign-git-dir',
+          memberName,
+          message: `Git common directory belongs to ${foreign}, not ${bareRepoPath}`,
+          meta: { _tag: 'foreign-git-dir', worktreePath, bareRepoPath },
+        })
+        continue
+      }
 
       // Check ref mismatch (only for branch worktrees — tags/commits are detached by design).
       // Skip if we're using a commit worktree (content-aware selection chose it over the branch worktree).
@@ -263,7 +281,7 @@ export const validateStoreMembers = ({
       }
 
       // Check dirty/unpushed (warnings)
-      const worktreeStatus = yield* Git.getWorktreeStatus({ worktreePath }).pipe(
+      const worktreeStatus = yield* Git.getWorktreeStatus({ worktreePath, readOnly: true }).pipe(
         Effect.orElseSucceed(() => ({ isDirty: false, hasUnpushed: false, changesCount: 0 })),
       )
 
@@ -405,6 +423,27 @@ export const fixStoreIssues = ({
       if (issue.severity !== 'error') continue
 
       switch (issue.type) {
+        case 'foreign-git-dir': {
+          if (issue.meta?._tag !== 'foreign-git-dir') break
+          const { worktreePath, bareRepoPath } = issue.meta
+          const result =
+            /\/refs\/commits\/[0-9a-f]{40}\/?$/.test(worktreePath) === true
+              ? yield* rehomeCommitWorktree({ worktreePath, bareRepoPath, dryRun }).pipe(
+                  Effect.match({
+                    onSuccess: (message) => ({
+                      status: dryRun === true ? ('skipped' as const) : ('fixed' as const),
+                      message,
+                    }),
+                    onFailure: (error) => ({ status: 'error' as const, message: String(error) }),
+                  }),
+                )
+              : {
+                  status: 'skipped' as const,
+                  message: 'Foreign named worktree is report-only; preserve its private commits',
+                }
+          results.push({ memberName: issue.memberName, issueType: issue.type, ...result })
+          break
+        }
         case 'missing_fetch_refspec': {
           if (issue.meta?._tag !== 'missing_fetch_refspec') {
             results.push({
