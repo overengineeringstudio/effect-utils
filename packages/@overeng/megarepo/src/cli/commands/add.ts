@@ -108,15 +108,17 @@ export const addCommand = Cli.Command.make(
               // Parse the repo reference
               const parsed = parseRepoRef(repo)
               if (parsed === undefined) {
+                const credentialError = sourceCredentialError(repo)
                 const message =
-                  sourceCredentialError(repo) ??
-                  `Invalid repo reference: ${redactSourceCredentials(repo)}`
+                  credentialError ?? `Invalid repo reference: ${redactSourceCredentials(repo)}`
                 tui.dispatch({
                   _tag: 'SetError',
                   error: 'invalid_repo',
                   message,
                 })
-                return yield* new AddCommandError({ message })
+                return yield* new AddCommandError({
+                  message: credentialError ?? 'Invalid repo reference',
+                })
               }
 
               const memberName = Option.getOrElse(name, () => parsed.suggestedName)
