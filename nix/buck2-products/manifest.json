@@ -488,11 +488,11 @@
       "version": "0.0.0"
     },
     {
-      "artifactUrl": "https://overeng-effect-utils.cachix.org/serve/w1y5j9lkvfgh66d6cdrsrjmyvia4fhk8/ci-tools.js",
+      "artifactUrl": "https://overeng-effect-utils.cachix.org/serve/aw763gx76c5w3glgdg71w9s65y56kch1/ci-tools.js",
       "descriptor": {
         "externalCapabilities": [],
         "externalModules": [],
-        "integrity": "sha256-SqSpI2FfMK+EboJk12QlWxQ0MvLM1MS8ZXW8DAsNsCs=",
+        "integrity": "sha256-xF+I/OFwjfA0sh68MHrEyXjdDKPJ+dfx/9zSUsEbOt8=",
         "modulePath": "ci-tools.js",
         "platform": {
           "abi": "any",
@@ -510,20 +510,20 @@
         "runtimeContractVersion": "v1",
         "runtimeKind": "node",
         "schema": "effect-utils/javascript-product/v2",
-        "sizeBytes": 952004,
+        "sizeBytes": 955464,
         "target": "effect_utils//packages/@overeng/ci-tools:ci-tools-candidate"
       },
-      "descriptorSha256": "f1a4cb7a74a918e3ab61e86240a0f1caa8591ced8db148004199e89079d2e383",
+      "descriptorSha256": "75ed773443fb68b9d87e1d3b89ed467d97c4bc23df93adc79a1de6739f13411f",
       "name": "ci-tools",
       "provenance": {
-        "producerCommit": "9e34373dbab9ed3be14c1ef110fb3b4f5e51ee10",
-        "productDigest": "4aa4a923615f30af846e8264d764255b143432f2ccd4c4bc6575bc0c0b0db02b",
+        "producerCommit": "09db2dc312e888be76724cd337ba4768c151632d",
+        "productDigest": "c45f88fce1708df034b21ebc307ac4c978dd0ca3c9f9d7f1ffdcd252c11b3adf",
         "schema": "effect-utils/buck-product-provenance/v1",
         "target": "effect_utils//packages/@overeng/ci-tools:ci-tools-candidate"
       },
-      "sha256": "4aa4a923615f30af846e8264d764255b143432f2ccd4c4bc6575bc0c0b0db02b",
-      "size": 952004,
-      "storePath": "/nix/store/w1y5j9lkvfgh66d6cdrsrjmyvia4fhk8-ci-tools-buck2-from-source-0.0.0",
+      "sha256": "c45f88fce1708df034b21ebc307ac4c978dd0ca3c9f9d7f1ffdcd252c11b3adf",
+      "size": 955464,
+      "storePath": "/nix/store/aw763gx76c5w3glgdg71w9s65y56kch1-ci-tools-buck2-from-source-0.0.0",
       "version": "0.0.0"
     },
     {
@@ -623,7 +623,7 @@
       "version": "0.0.0"
     },
     {
-      "artifactUrl": "https://overeng-effect-utils.cachix.org/serve/31vi2khwi5agw2xp5ss0a96lpqbbxs10/gh-ci-utils.js",
+      "artifactUrl": "https://overeng-effect-utils.cachix.org/serve/2nrll5zhjl0jz7lkczv4w5s1rwnw9fmz/gh-ci-utils.js",
       "descriptor": {
         "externalCapabilities": [
           "gh",
@@ -631,7 +631,7 @@
           "node"
         ],
         "externalModules": [],
-        "integrity": "sha256-Dtmh3TLf9ZOQ8+JYrPbPyWPZvTs3Wjv8EI8G+a6xA/o=",
+        "integrity": "sha256-Uvcs1V5/KpiADY21bPXDMX5xcks9nX+V+x9klhX0vxg=",
         "modulePath": "gh-ci-utils.js",
         "platform": {
           "abi": "any",
@@ -649,20 +649,20 @@
         "runtimeContractVersion": "v1",
         "runtimeKind": "bun",
         "schema": "effect-utils/javascript-product/v2",
-        "sizeBytes": 2307311,
+        "sizeBytes": 2315802,
         "target": "effect_utils//packages/@overeng/gh-ci-utils:gh-ci-utils-candidate"
       },
-      "descriptorSha256": "a7d535c8963526050eea1ad84d08eb84abeb0131f1edd00f8530524b95945016",
+      "descriptorSha256": "93e08fae11784cd5ba948df83097290fe173e823e490c02d2e1f29dfeb872575",
       "name": "gh-ci-utils",
       "provenance": {
-        "producerCommit": "9e34373dbab9ed3be14c1ef110fb3b4f5e51ee10",
-        "productDigest": "0ed9a1dd32dff59390f3e258acf6cfc963d9bd3b375a3bfc108f06f9aeb103fa",
+        "producerCommit": "09db2dc312e888be76724cd337ba4768c151632d",
+        "productDigest": "52f72cd55e7f2a98800d8db56cf5c3317e71724b3d9d7f95fb1f649615f4bf18",
         "schema": "effect-utils/buck-product-provenance/v1",
         "target": "effect_utils//packages/@overeng/gh-ci-utils:gh-ci-utils-candidate"
       },
-      "sha256": "0ed9a1dd32dff59390f3e258acf6cfc963d9bd3b375a3bfc108f06f9aeb103fa",
-      "size": 2307311,
-      "storePath": "/nix/store/31vi2khwi5agw2xp5ss0a96lpqbbxs10-gh-ci-utils-buck2-from-source-0.0.0",
+      "sha256": "52f72cd55e7f2a98800d8db56cf5c3317e71724b3d9d7f95fb1f649615f4bf18",
+      "size": 2315802,
+      "storePath": "/nix/store/2nrll5zhjl0jz7lkczv4w5s1rwnw9fmz-gh-ci-utils-buck2-from-source-0.0.0",
       "version": "0.0.0"
     },
     {
