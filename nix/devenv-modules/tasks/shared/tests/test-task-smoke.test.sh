@@ -326,11 +326,11 @@ assert_eval_fails 4 'packageChains = [ [ "test:ok-a" "test:ok-a" ] [ ] [ ] [ ] ]
 assert_eval_fails 4 'packageChains = [ [ ] [ ] [ ] [ ] ];' "omits aggregate tasks:" "omitted tasks"
 
 # Evaluate every production root task's dependency edges without realizing commands.
-# The optional baseline module is the pre-change test.nix, stored beside the
-# current module for relative imports.
+# An optional baseline root-module snapshot imports the pre-change test module;
+# both snapshots live beside their originals to preserve relative imports.
 eval_root_test_graph() {
   local platform="$1" baseline="${2:-}"
-  EFFECT_UTILS_TEST_PLATFORM="$platform" TEST_TASK_BASELINE_MODULE="$baseline" \
+  EFFECT_UTILS_TEST_PLATFORM="$platform" TEST_TASK_BASELINE_ROOT_MODULE="$baseline" \
     nix eval --impure --json --expr "
       let
         flake = builtins.getFlake \"$NIX_FLAKE_REF\";
@@ -343,13 +343,8 @@ eval_root_test_graph() {
             playwright-web-flake = builtins.getFlake \"github:\${lock.owner}/\${lock.repo}/\${lock.rev}\";
           };
         };
-        baseline = builtins.getEnv \"TEST_TASK_BASELINE_MODULE\";
-        root = builtins.scopedImport {
-          import = path:
-            if baseline != \"\" && path == $ROOT/nix/devenv-modules/tasks/shared/test.nix
-            then args: builtins.import (builtins.toPath baseline) (builtins.removeAttrs args [ \"packageChains\" ])
-            else builtins.import path;
-        } $ROOT/devenv.nix;
+        baseline = builtins.getEnv \"TEST_TASK_BASELINE_ROOT_MODULE\";
+        root = import (if baseline == \"\" then $ROOT/devenv.nix else builtins.toPath baseline);
         evaluated = lib.evalModules {
           specialArgs = {
             inherit pkgs inputs;
@@ -383,9 +378,9 @@ eval_root_test_graph() {
 linux_graph="$(eval_root_test_graph linux)"
 assert_eq "$linux_graph" "$(eval_root_test_graph '')" \
   "Linux and platform-unspecified production task graphs are identical"
-if [ -n "${TEST_TASK_BASELINE_MODULE:-}" ]; then
+if [ -n "${TEST_TASK_BASELINE_ROOT_MODULE:-}" ]; then
   for platform in linux ''; do
-    assert_eq "$(eval_root_test_graph "$platform" "$TEST_TASK_BASELINE_MODULE")" \
+    assert_eq "$(eval_root_test_graph "$platform" "$TEST_TASK_BASELINE_ROOT_MODULE")" \
       "$(eval_root_test_graph "$platform")" \
       "production task graph is byte-identical to baseline for platform '$platform'"
   done
@@ -393,6 +388,26 @@ fi
 printf 'Linux and unspecified production graph SHA-256: '
 printf '%s' "$linux_graph" | sha256sum
 darwin_graph="$(eval_root_test_graph darwin)"
+if [ -n "${TEST_TASK_BASELINE_ROOT_MODULE:-}" ]; then
+  baseline_darwin_graph="$(eval_root_test_graph darwin "$TEST_TASK_BASELINE_ROOT_MODULE")"
+  if [ "$baseline_darwin_graph" = "$darwin_graph" ]; then
+    echo "FAIL: baseline must exercise the pre-rebalance Darwin scheduler"
+    exit 1
+  fi
+  GRAPH="$baseline_darwin_graph" "${PYTHON_BIN:-python3}" - <<'PY'
+import json, os
+
+graph = json.loads(os.environ["GRAPH"])
+for index in range(4):
+    pending = {name: after for name, after in graph.items() if name.startswith(f"test:run:chain:{index}:")}
+    chain = []
+    while pending:
+        head = next(name for name, after in pending.items() if not any(item in pending for item in after))
+        chain.append("test:" + head.split(":", 4)[4])
+        del pending[head]
+    print(f"Baseline Darwin worker {index}: " + " -> ".join(chain))
+PY
+fi
 GRAPH="$darwin_graph" SCHEDULING="$ROOT/genie/ci-workflow/test-scheduling.json" \
   "${PYTHON_BIN:-python3}" - <<'PY'
 import json
