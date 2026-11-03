@@ -7,7 +7,7 @@ load("//buck2/products:defs.bzl", "javascript_product")
 # Projection source: packages/@overeng/megarepo/BUCK.genie.ts
 # Projection schema version: 13
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:3a5d6b47c476513acc52d1f2827d02d030fb99baaf3a826e24f604fba1ad6e27
+# Semantic fingerprint: sha256:d46de4150a41fb9f620da530ffc349c9f38dca5d78f5ecb59549635213b291ac
 # Regenerate: devenv tasks run genie:run
 
 load("//buck2:materialization.bzl", "export_materialization_inputs", "package_view")
@@ -1369,6 +1369,7 @@ vitest_test(
         "src/cli/store-gc-generated.integration.test.ts",
         "src/cli/store-gc-otel.integration.test.ts",
         "src/cli/store-gc-partial-deletion.integration.test.ts",
+        "src/cli/store-rehome.integration.test.ts",
         "src/cli/store.integration.test.ts",
         "src/cli/sync.integration.test.ts",
         "src/core/git-memory.integration.test.ts",
@@ -1391,6 +1392,8 @@ vitest_test(
         "src/store/store-liveness.integration.test.ts",
         "src/store/store-lossless.integration.test.ts",
         "src/store/store-pinned-deletion.integration.test.ts",
+        "src/store/store-rehome.basic.integration.test.ts",
+        "src/store/store-rehome.integration.test.ts",
         "src/store/store-workspace-activity.integration.test.ts",
         "src/store/store-worktree-remove.integration.test.ts",
         "src/test-utils/store-setup.integration.test.ts",
@@ -1414,6 +1417,7 @@ vitest_collect(
         "src/cli/store-gc-generated.integration.test.ts",
         "src/cli/store-gc-otel.integration.test.ts",
         "src/cli/store-gc-partial-deletion.integration.test.ts",
+        "src/cli/store-rehome.integration.test.ts",
         "src/cli/store.integration.test.ts",
         "src/cli/sync.integration.test.ts",
         "src/core/git-memory.integration.test.ts",
@@ -1436,6 +1440,8 @@ vitest_collect(
         "src/store/store-liveness.integration.test.ts",
         "src/store/store-lossless.integration.test.ts",
         "src/store/store-pinned-deletion.integration.test.ts",
+        "src/store/store-rehome.basic.integration.test.ts",
+        "src/store/store-rehome.integration.test.ts",
         "src/store/store-workspace-activity.integration.test.ts",
         "src/store/store-worktree-remove.integration.test.ts",
         "src/test-utils/store-setup.integration.test.ts",
