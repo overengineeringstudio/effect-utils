@@ -114,7 +114,9 @@ Reconciliation records Buck events under `.devenv/otel/buck2-events/`. A failed
 Buck build or an interrupted reconciliation prints the last 40 stderr/progress
 lines (at most 16 KiB), followed by
 `<task>: Buck exited with code N; event log: <repo-relative path>`.
-Repository paths in the tail are relative and home paths use `<home>`.
+Repository paths are relative; home and external temporary paths use `<home>` and
+`<tmp>`. Longest-prefix redaction precedes line/byte retention, including split
+prefixes. Capture is bounded in memory and preserves UTF-8 code-point boundaries.
 The tail remains available during publication after a successful build; interruption
 then reports `interrupted by SIGTERM after Buck completed (code 0)` instead.
 Event logs are removed after successful reconciliation, once the Buck entrypoint

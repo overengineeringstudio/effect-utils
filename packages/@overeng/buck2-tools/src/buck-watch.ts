@@ -2,7 +2,7 @@
 import { spawn } from 'node:child_process'
 import { rmSync, writeSync } from 'node:fs'
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
-import { constants, homedir } from 'node:os'
+import { constants, homedir, tmpdir } from 'node:os'
 import { dirname, isAbsolute, join, resolve } from 'node:path'
 
 import { emitCompletedSpanAsync } from './otel-span-cli.ts'
@@ -415,6 +415,8 @@ export type RunCommand = (options: {
   readonly detached?: boolean
   readonly signal?: AbortSignal
   readonly onStderr?: (chunk: string) => void
+  /** Disable duplicate capture when onStderr owns a bounded diagnostic ring. */
+  readonly captureStderr?: boolean
 }) => Promise<CommandResult>
 
 /**
@@ -449,6 +451,7 @@ export const runCommand: RunCommand = ({
   detached,
   input,
   onStderr,
+  captureStderr,
 }) => {
   const settled = Promise.withResolvers<CommandResult>()
   const child =
@@ -460,10 +463,16 @@ export const runCommand: RunCommand = ({
   child.stdout.setEncoding('utf8').on('data', (chunk: string) => {
     stdout += chunk
   })
-  child.stderr.setEncoding('utf8').on('data', (chunk: string) => {
-    stderr += chunk
+  const decoder = new TextDecoder('utf-8', { ignoreBOM: true })
+  const capture = (chunk: string): void => {
+    if (chunk === '') return
+    if (captureStderr !== false) stderr += chunk
     onStderr?.(chunk)
+  }
+  child.stderr.on('data', (chunk: Buffer) => {
+    capture(decoder.decode(chunk, { stream: true }))
   })
+  child.stderr.once('end', () => capture(decoder.decode()))
   child.once('error', settled.reject)
   child.stdin?.on('error', settled.reject)
   child.stdin?.end(input)
@@ -604,7 +613,46 @@ export const reconcileBuckViews = async ({
   const eventLog = `${eventDirectory}/editor-view-${process.pid}-${crypto.randomUUID()}.pb.zst`
   // Retain only the last 16 KiB / 40 lines. Flush synchronously before default
   // signal termination: the supervisor escalates TERM to KILL after five seconds.
-  let buildTail = Buffer.alloc(0)
+  let buildTail = ''
+  let pendingPath = ''
+  const redactions = [
+    [`${options.workspaceRoot}/`, ''],
+    [process.env.TMPDIR, '<tmp>'],
+    [tmpdir(), '<tmp>'],
+    ['/tmp', '<tmp>'],
+    [homedir(), '<home>'],
+  ]
+    .filter((entry): entry is [string, string] => entry[0] !== undefined && entry[0] !== '')
+    .toSorted(([left], [right]) => right.length - left.length)
+  const captureBuildDiagnostic = (chunk: string): void => {
+    pendingPath += chunk
+    let index = 0
+    const sanitized: string[] = []
+    while (index < pendingPath.length) {
+      const rest = pendingPath.slice(index)
+      // Keep only a possible split prefix, not an unbounded unfinished line.
+      if (
+        redactions.some(([prefix]) => prefix.length > rest.length && prefix.startsWith(rest)) ===
+        true
+      )
+        break
+      const match = redactions.find(([prefix]) => rest.startsWith(prefix))
+      const point = String.fromCodePoint(pendingPath.codePointAt(index)!)
+      sanitized.push(match?.[1] ?? point)
+      index += match?.[0].length ?? point.length
+    }
+    pendingPath = pendingPath.slice(index)
+    // Redact before discarding any line/byte, including arbitrarily long lines.
+    buildTail = (buildTail + sanitized.join(''))
+      .split(/(?<=[\r\n])/u)
+      .slice(-40)
+      .join('')
+    const points = Array.from(buildTail)
+    let bytes = Buffer.byteLength(buildTail)
+    let start = 0
+    while (bytes > 16 * 1024) bytes -= Buffer.byteLength(points[start++]!)
+    buildTail = points.slice(start).join('')
+  }
   let reported = false
   let buildExitCode: number | undefined
   let reconciliationCompleted = false
@@ -617,11 +665,9 @@ export const reconcileBuckViews = async ({
   }): void => {
     if (reported === true) return
     reported = true
+    if (pendingPath !== '') captureBuildDiagnostic('\n')
     const tail = buildTail
-      .toString('utf8')
-      .replaceAll(`${options.workspaceRoot}/`, '')
-      .replaceAll(homedir(), '<home>')
-    writeSync(2, Buffer.from(tail).subarray(-16 * 1024))
+    writeSync(2, tail)
     const outcome =
       interruptedAfterBuild === undefined
         ? `Buck exited with code ${code}`
@@ -664,18 +710,8 @@ export const reconcileBuckViews = async ({
       command: options.buck2,
       args: ['build', ...request.buildTargets, '--show-full-output', '--event-log', eventLog],
       cwd: options.workspaceRoot,
-      onStderr: (chunk) => {
-        buildTail = Buffer.concat([buildTail, Buffer.from(chunk)]).subarray(-16 * 1024)
-        // Count LF and CR (Buck's in-place progress) without retaining older lines.
-        let lines = 0
-        for (let index = buildTail.length - 2; index >= 0; index--)
-          if (buildTail[index] === 10 || buildTail[index] === 13) {
-            if (++lines === 40) {
-              buildTail = buildTail.subarray(index + 1)
-              break
-            }
-          }
-      },
+      captureStderr: false,
+      onStderr: captureBuildDiagnostic,
       ...(options.signal === undefined ? {} : { signal: options.signal }),
     })
     buildExitCode = 0

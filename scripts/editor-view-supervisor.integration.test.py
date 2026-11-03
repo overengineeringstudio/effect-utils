@@ -32,11 +32,13 @@ class PublicationSupervisorTest(unittest.TestCase):
             ("deadline", "lines"), ("SIGTERM", "lines"),
             ("SIGKILL", "bytes"), ("deadline", "bytes"), ("publication", "lines"),
             ("success", "lines"), ("publication-child", "lines"),
+            ("deadline", "utf8"), ("deadline", "paths"),
         ):
             with self.subTest(termination=termination, payload=payload), \
                  tempfile.TemporaryDirectory() as scratch:
                 root = Path(scratch)
                 ready = root / "ready"
+                os.mkfifo(root / "release")
                 fake = root / "buck2"
                 fake.write_text(f"#!{sys.executable}\n" + r'''
 import os, pathlib, signal, sys, time
@@ -45,14 +47,20 @@ pathlib.Path(event).touch()
 if os.environ["PAYLOAD"] == "lines":
     for i in range(80):
         print(f"progress-{i:02d} {os.getcwd()}/input {os.path.expanduser('~')}/cache", file=sys.stderr)
+elif os.environ["PAYLOAD"] == "utf8":
+    os.write(2, b"\xe7")
+    os.write(2, b"\x95\x8c" + ("界" * 11000).encode())
+elif os.environ["PAYLOAD"] == "paths":
+    sys.stderr.write("z" * 20000 + os.path.expanduser("~") + "/cache " +
+                     os.environ["TMPDIR"] + "/blob /tmp/external " + "界" * 5400)
 else:
     sys.stderr.write("x" * 32768)
 sys.stderr.write("\nBUCK-BLOCKED\n")
 sys.stderr.flush()
 if os.environ["TERMINATION"] in ("publication", "publication-child", "success"):
     sys.exit(0)
-while not pathlib.Path("ready").exists():
-    time.sleep(0.01)
+with open("release", "rb", buffering=0) as release:
+    assert release.read(1) == b"1"
 if os.environ["TERMINATION"] != "deadline":
     os.kill(os.getpid(), getattr(signal, os.environ["TERMINATION"]))
 time.sleep(60)
@@ -64,6 +72,7 @@ time.sleep(60)
 import {{ existsSync, writeFileSync }} from 'node:fs'
 import {{ reconcileBuckViews, runCommand }} from {json.dumps(str(module))}
 let pending = ''
+let released = false
 await reconcileBuckViews({{
   request: {{ packagePaths: [], changedPaths: [], buildTargets: ['//:fake'] }},
   options: {{
@@ -78,9 +87,14 @@ await reconcileBuckViews({{
     run: (options) => runCommand({{ ...options, onStderr: (chunk) => {{
       options.onStderr?.(chunk)
       pending += chunk
-      if (pending.includes('BUCK-BLOCKED') && process.env.TERMINATION !== 'publication') writeFileSync('ready', '')
+      if (!released && pending.includes('BUCK-BLOCKED') && process.env.TERMINATION !== 'publication') {{
+        released = true
+        if (['deadline', 'SIGTERM', 'SIGKILL'].includes(process.env.TERMINATION ?? '')) writeFileSync('release', '1')
+        writeFileSync('ready', '')
+      }}
     }} }}).then((result) => {{
       if (options.command === './buck2' && process.env.TERMINATION === 'success') {{
+        if (result.stderr !== '') throw new Error('build stderr was captured twice')
         const event = options.args[options.args.indexOf('--event-log') + 1]
         if (!existsSync(event)) throw new Error('event log deleted before command resolved')
         writeFileSync('command-completed-with-event-log', '')
@@ -104,6 +118,8 @@ sys.exit(supervisor.supervise(sys.argv[1:], 1 if {termination!r} in ("deadline",
                     [sys.executable, "-c", driver, bun, str(runner)],
                     cwd=root, capture_output=True, text=True, timeout=10,
                     env={**os.environ, "CI": "1", "PAYLOAD": payload,
+                         "HOME": str(Path.home()) + "/private-" + "a" * 180,
+                         "TMPDIR": str(Path.home()) + "/private-" + "a" * 180 + "/temp-zone",
                          "TERMINATION": termination, "TRACEPARENT": "",
                          "OTEL_TASK_TRACEPARENT": ""},
                 )
@@ -124,6 +140,11 @@ sys.exit(supervisor.supervise(sys.argv[1:], 1 if {termination!r} in ("deadline",
                 self.assertNotIn(str(root), output)
                 self.assertNotIn(str(Path.home()), output)
                 self.assertLess(len(output.encode()), 17 * 1024)
+                self.assertNotIn("\ufffd", output)
+                if payload == "paths":
+                    self.assertIn("<home>/cache <tmp>/blob <tmp>/external", output)
+                    self.assertNotIn("private-", output)
+                    self.assertNotIn("a" * 20, output)
                 if payload == "lines":
                     self.assertNotIn("progress-00", output)
                     self.assertIn("progress-79 input <home>/cache", output)
