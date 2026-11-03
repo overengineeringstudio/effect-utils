@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test'
 
-import { selectBoundedTargets } from './pr-bounded-tests.ts'
+import { readPrDiff, selectBoundedTargets } from './pr-bounded-tests.ts'
 
 const lane = (packagePath: string, name = 'test') => ({
   packagePath,
@@ -56,4 +56,26 @@ test('skips empty diffs, shared changes and failed mappings instead of running e
       selectBoundedTargets({ files: ['packages/a/test.ts'], authority: invalid }).notice,
     ).toBeDefined()
   }
+})
+
+test('stacked PR selection uses event revisions, never synthetic checkout HEAD', () => {
+  const base = 'a'.repeat(40)
+  const head = 'b'.repeat(40)
+  const file = 'packages/@overeng/megarepo/src/store/store-symlink.unit.test.ts'
+  const commands: string[][] = []
+  const files = readPrDiff({
+    base,
+    head,
+    runGit: (...args) => {
+      commands.push(args)
+      return args[0] === 'merge-base' ? base : `${file}\0`
+    },
+  })
+  expect(commands).toEqual([
+    ['merge-base', base, head],
+    ['diff', '--no-renames', '--name-only', '-z', base, head],
+  ])
+  expect(selectBoundedTargets({ files, authority }).targets).toEqual([
+    'effect_utils//packages/@overeng/megarepo:test',
+  ])
 })

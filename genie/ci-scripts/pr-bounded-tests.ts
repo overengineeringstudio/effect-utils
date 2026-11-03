@@ -48,25 +48,40 @@ const git = (...args: string[]): string => {
   return result.stdout.toString().trimEnd()
 }
 
+/** Select authored PR changes, not unrelated changes in the synthetic merge checkout. */
+export const readPrDiff = ({
+  base,
+  head,
+  runGit = git,
+}: {
+  base: string
+  head: string
+  runGit?: (...args: string[]) => string
+}): string[] => {
+  if ([base, head].every((sha) => /^[a-f0-9]{40}$/.test(sha)) === false)
+    throw new Error('PR revisions are unavailable')
+  let mergeBase: string
+  try {
+    mergeBase = runGit('merge-base', base, head)
+  } catch {
+    if (runGit('rev-parse', '--is-shallow-repository') === 'true')
+      runGit('fetch', '--no-tags', '--unshallow', 'origin')
+    runGit('fetch', '--no-tags', 'origin', base, head)
+    mergeBase = runGit('merge-base', base, head)
+  }
+  // --no-renames records both sides of moves as deletion/addition.
+  return runGit('diff', '--no-renames', '--name-only', '-z', mergeBase, head)
+    .split('\0')
+    .filter(Boolean)
+}
+
 if (import.meta.main) {
   let selection: BoundedSelection
   try {
-    const base = process.env['PR_BOUNDED_BASE_SHA']
-    if (base === undefined || /^[a-f0-9]{40}$/.test(base) === false)
-      throw new Error('PR base is unavailable')
-    // Fetch only when the checkout's shallow history cannot resolve the common ancestor.
-    let mergeBase: string
-    try {
-      mergeBase = git('merge-base', base, 'HEAD')
-    } catch {
-      git('fetch', '--no-tags', '--unshallow', 'origin')
-      git('fetch', '--no-tags', 'origin', base)
-      mergeBase = git('merge-base', base, 'HEAD')
-    }
-    // --no-renames records both sides of moves as deletion/addition.
-    const files = git('diff', '--no-renames', '--name-only', '-z', mergeBase, 'HEAD')
-      .split('\0')
-      .filter(Boolean)
+    const files = readPrDiff({
+      base: process.env['PR_BOUNDED_BASE_SHA'] ?? '',
+      head: process.env['PR_BOUNDED_HEAD_SHA'] ?? '',
+    })
     selection = selectBoundedTargets({
       files,
       authority: await Bun.file('buck2-test-authority.json').json(),

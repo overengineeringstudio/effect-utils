@@ -755,6 +755,7 @@ const sourceRegressionStep = ({
       ? {
           PR_BOUNDED_ENABLED: "${{ github.event_name == 'pull_request' }}",
           PR_BOUNDED_BASE_SHA: '${{ github.event.pull_request.base.sha }}',
+          PR_BOUNDED_HEAD_SHA: '${{ github.event.pull_request.head.sha }}',
         }
       : {}),
   },
