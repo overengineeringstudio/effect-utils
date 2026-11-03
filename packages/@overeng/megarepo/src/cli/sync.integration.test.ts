@@ -1597,6 +1597,8 @@ describe('apply --all canonical recursion', () => {
                     CommitTreePreparationObserver,
                     Effect.die('Parent admission held during descendant preparation'),
                   ),
+                  Effect.provide(NodeServices.layer),
+                  Effect.orDie,
                 )
               }
               return yield* fs.makeDirectory(target, options)
