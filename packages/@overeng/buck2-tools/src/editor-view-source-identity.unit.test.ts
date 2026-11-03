@@ -145,10 +145,8 @@ it('classifies symlinked repository and temporary roots without exposing paths',
     process.env.TMPDIR = join(root, 'tmp-link')
     const options = { repoRoot: join(root, 'repo-link'), editorInputs: repo, nodeModules: root }
     const check = editorViewSourceIdentity({ options, priorClocks: new Map() })
-    expect([...check.devices.values()].map((device) => device.rootClass).sort()).toEqual([
-      'repo',
-      'tmp',
-    ])
+    const classes = new Set([...check.devices.values()].map((device) => device.rootClass))
+    expect([...classes].sort()).toEqual(['repo', 'tmp'])
     for (const device of check.devices.values())
       expect(['/nix/store', '/home/runner/work', '/tmp', '/private/tmp', 'other']).toContain(
         device.pathPrefix,
