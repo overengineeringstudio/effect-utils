@@ -48,16 +48,10 @@ const git = (...args: string[]): string => {
   return result.stdout.toString().trimEnd()
 }
 
+type PrRevisions = { base: string; head: string; runGit?: (...args: string[]) => string }
+
 /** Select authored PR changes, not unrelated changes in the synthetic merge checkout. */
-export const readPrDiff = ({
-  base,
-  head,
-  runGit = git,
-}: {
-  base: string
-  head: string
-  runGit?: (...args: string[]) => string
-}): string[] => {
+export const readPrDiff = ({ base, head, runGit = git }: PrRevisions): string[] => {
   if ([base, head].every((sha) => /^[a-f0-9]{40}$/.test(sha)) === false)
     throw new Error('PR revisions are unavailable')
   let mergeBase: string
@@ -70,9 +64,8 @@ export const readPrDiff = ({
     mergeBase = runGit('merge-base', base, head)
   }
   // --no-renames records both sides of moves as deletion/addition.
-  return runGit('diff', '--no-renames', '--name-only', '-z', mergeBase, head)
-    .split('\0')
-    .filter(Boolean)
+  const diff = runGit('diff', '--no-renames', '--name-only', '-z', mergeBase, head)
+  return diff.split('\0').filter(Boolean)
 }
 
 export type BoundedOutcome =
@@ -81,18 +74,11 @@ export type BoundedOutcome =
 
 /** Diff failures must fail the check; only intentional selection skips are successful. */
 export const resolveBoundedSelection = async ({
-  base,
-  head,
-  runGit = git,
   readAuthority = () => Bun.file('buck2-test-authority.json').json(),
-}: {
-  base: string
-  head: string
-  runGit?: (...args: string[]) => string
-  readAuthority?: () => Promise<unknown>
-}): Promise<BoundedOutcome> => {
+  ...revisions
+}: PrRevisions & { readAuthority?: () => Promise<unknown> }): Promise<BoundedOutcome> => {
   try {
-    const files = readPrDiff({ base, head, runGit })
+    const files = readPrDiff(revisions)
     const selection = selectBoundedTargets({ files, authority: await readAuthority() })
     return { exitCode: 0, selection }
   } catch {
