@@ -1455,15 +1455,9 @@ describe('publication waits for a live budget eviction, but not stale publisher 
     })
     const attempts = vi.spyOn(Fs, 'mkdirSync')
     const priorImplementation = attempts.getMockImplementation()
-    const attempted = Promise.withResolvers<void>()
-    attempts.mockImplementation((...args) => {
-      if (args[0] === lockPath) attempted.resolve()
-      return nativeFs.mkdirSync(...args)
-    })
     try {
       waiting = host.publish(victim)
-      // Source admission is asynchronous; observe the actual fence attempt.
-      await Promise.race([attempted.promise, waiting])
+      // The passive spy confirms the real publisher arrives during the held barrier.
       expect(attempts.mock.calls.some(([path]) => path === lockPath)).toBe(true)
       expect(readFileSync(join(lockPath, 'owner.json'), 'utf8')).toBe(owner)
     } finally {
