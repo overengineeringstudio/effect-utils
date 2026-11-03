@@ -368,7 +368,7 @@ const make = ({
                   dir,
                   EffectPath.unsafe.relativeDir(`${entry}/`),
                 )
-                if ((yield* fs.stat(entryPath.replace(/\/+$/, ''))).type !== 'Directory') return
+                if ((yield* isStoreDirectory({ fs, path: entryPath })) === false) return
 
                 yield* walk({ dir: entryPath, depth: depth + 1, census })
               }),
@@ -389,7 +389,7 @@ const make = ({
               basePath,
               EffectPath.unsafe.relativeDir(`${entry}/`),
             )
-            if ((yield* fs.stat(entryPath.replace(/\/+$/, ''))).type !== 'Directory') return
+            if ((yield* isStoreDirectory({ fs, path: entryPath })) === false) return
 
             const census = { repos: 0, overflow: undefined as AbsoluteDirPath | undefined }
             yield* walk({ dir: entryPath, depth: 1, census })

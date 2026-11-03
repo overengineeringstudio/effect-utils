@@ -134,7 +134,7 @@ const runMrCommand = ({
 
 describe('mr store JSON subprocess output', () => {
   for (const loosePath of ['tmp/x.sh', 'widget/refs/heads/loose.txt']) {
-    it.effect(`keeps foreign entries out of JSON output for ${loosePath}`, () =>
+    it.effect(`keeps enumeration warnings on stderr for ${loosePath}`, () =>
       Effect.gen(function* () {
         const fs = yield* FileSystem.FileSystem
         const { storePath } = yield* createStoreFixture([
@@ -166,13 +166,9 @@ describe('mr store JSON subprocess output', () => {
         expect(result.error).toBeUndefined()
         expect(result.status, result.stderr).toBe(0)
         expect(decodeStoreGcJsonOutput(result.stdout).results).toEqual([])
-        if (loosePath.startsWith('widget/') === true) {
-          expect(result.stderr).toContain(
-            `store enumeration: skipping non-directory entry ${looseEntry}`,
-          )
-        } else {
-          expect(result.stderr).not.toContain('store enumeration:')
-        }
+        expect(result.stderr).toContain(
+          `store enumeration: skipping non-directory entry ${looseEntry}`,
+        )
         expect(result.stdout).not.toContain('store enumeration:')
       }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
     )
@@ -1529,9 +1525,11 @@ describe('store discovery is bounded to the layout', () => {
           'github.com/acme/real/',
           'intranet/group/subgroup/repo/',
         ])
-        expect(warnings).toEqual([
+        const expectedWarnings = [
           `store enumeration: ignoring foreign namespace ${storePath}unknown-cache/`,
-        ])
+          `store enumeration: skipping non-directory entry ${storePath}foreign-file`,
+        ].toSorted()
+        expect(warnings.toSorted()).toEqual(expectedWarnings)
         expect(visited.some((path) => path.includes('pnpm-store-shared-v1'))).toBe(false)
         expect(visited.some((path) => path.includes('/refs/'))).toBe(false)
         // Remove the synthetic marker: CLI health checks require actual Git repos.
@@ -1565,9 +1563,7 @@ describe('store discovery is bounded to the layout', () => {
             expect(visited.some((path) => path.includes('unknown-cache'))).toBe(false)
             expect(warnings).toEqual([])
           } else {
-            expect(warnings).toEqual([
-              `store enumeration: ignoring foreign namespace ${storePath}unknown-cache/`,
-            ])
+            expect(warnings.toSorted()).toEqual(expectedWarnings)
           }
         }
         // Partial discovery in a real namespace must still fail closed.

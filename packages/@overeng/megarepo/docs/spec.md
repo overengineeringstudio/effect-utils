@@ -983,6 +983,8 @@ store) are not scanned. Unknown namespaces exceeding the depth bound without any
 repository marker are ignored with one diagnostic; overflow in a namespace containing
 repositories remains an error to prevent an incomplete census. `mr store fix <member>`
 inspects only that member's resolved repository, not unrelated store namespaces.
+Foreign files encountered at every enumerated layout level are reported as warnings
+without being modified; skipping foreign directory payloads does not suppress them.
 
 **Example output:**
 
