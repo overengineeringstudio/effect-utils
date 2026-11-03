@@ -29,6 +29,8 @@ import { gzipSync, gunzipSync } from 'node:zlib'
 
 import {
   canonicalCacheAdmissionInvocationId,
+  decodeReapiAdmissionAttempts,
+  type ReapiAdmissionAttempt,
   decodeReapiAdmissionFailure,
   type ReapiAdmissionFailure,
 } from '../../scripts/buck2-cache-posture.ts'
@@ -92,6 +94,7 @@ export type CacheAdmissionInvocation = {
   admissionFallbacks: { reapi: number; archiveOrigin: number }
   admissionRetrySuccesses: { reapi: number; archiveOrigin: number }
   reapiFailure?: ReapiAdmissionFailure
+  reapiAttempts?: ReapiAdmissionAttempt[]
   reapiDecision?:
     | 'first-probe-for-ci-job'
     | 'pinned-from-first-probe'
@@ -320,6 +323,9 @@ export const decodeCacheAdmissionInvocation = (value: unknown): CacheAdmissionIn
     admissionFallbacks,
     admissionRetrySuccesses,
     ...(failure === undefined ? {} : { reapiFailure: decodeReapiAdmissionFailure(failure) }),
+    ...(field({ value, key: 'reapiAttempts' }) === undefined
+      ? {}
+      : { reapiAttempts: decodeReapiAdmissionAttempts(field({ value, key: 'reapiAttempts' })) }),
     ...(decision === undefined ? {} : { reapiDecision: decision }),
     ...(event === undefined ? {} : { event }),
     ...(reason === undefined ? {} : { reason }),

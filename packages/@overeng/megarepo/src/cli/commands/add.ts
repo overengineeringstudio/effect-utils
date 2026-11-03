@@ -14,6 +14,8 @@ import {
   MegarepoConfig,
   parseSourceString,
   readMegarepoConfig,
+  redactSourceCredentials,
+  sourceCredentialError,
   writeMegarepoConfig,
 } from '../../core/config.ts'
 import * as Git from '../../core/git.ts'
@@ -106,12 +108,17 @@ export const addCommand = Cli.Command.make(
               // Parse the repo reference
               const parsed = parseRepoRef(repo)
               if (parsed === undefined) {
+                const credentialError = sourceCredentialError(repo)
+                const message =
+                  credentialError ?? `Invalid repo reference: ${redactSourceCredentials(repo)}`
                 tui.dispatch({
                   _tag: 'SetError',
                   error: 'invalid_repo',
-                  message: `Invalid repo reference: ${repo}`,
+                  message,
                 })
-                return yield* new AddCommandError({ message: 'Invalid repo reference' })
+                return yield* new AddCommandError({
+                  message: credentialError ?? 'Invalid repo reference',
+                })
               }
 
               const memberName = Option.getOrElse(name, () => parsed.suggestedName)
@@ -191,7 +198,7 @@ export const addCommand = Cli.Command.make(
           command: 'add',
           label: Option.getOrElse(name, () => parseRepoRef(repo)?.suggestedName ?? 'add'),
           output: outputMode,
-          repo,
+          repo: redactSourceCredentials(repo),
         }),
       ),
     ),

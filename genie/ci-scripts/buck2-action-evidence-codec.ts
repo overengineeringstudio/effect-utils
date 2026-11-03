@@ -18,6 +18,8 @@ import {
 } from './buck2-action-evidence.ts'
 import type { CacheOutcome } from './buck2-cache-evidence.ts'
 
+export const targetLabelGrammar = /^[a-zA-Z0-9_.-]+\/\/[a-zA-Z0-9_./@+-]*:[a-zA-Z0-9_.@+/-]+$/
+
 /** Local cache hits are reuse, never avoidable local-execution candidates. */
 export const classifyCacheAction = ({
   action,
@@ -234,7 +236,7 @@ const decodeAction = (value: unknown): ActionRecord => {
     ),
     target: nullableText({
       value: field({ value: value, key: 'target' }),
-      grammar: /^[a-zA-Z0-9_.-]+\/\/[a-zA-Z0-9_./@+-]*:[a-zA-Z0-9_.@+/-]+$/,
+      grammar: targetLabelGrammar,
     }),
     configuration: nullableText({
       value: field({ value: value, key: 'configuration' }),

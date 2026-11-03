@@ -26,6 +26,10 @@ on:
         required: false
         default: ''
         type: string
+      measure-macos:
+        description: Measure only macOS tests, read-only and excluded from cache proofs.
+        type: boolean
+        default: false
       run_notion_integration_on_branch:
         description: Opt into credentialed Notion integration tests on this branch.
         required: false
@@ -85,6 +89,7 @@ jobs:
       CI: 'true'
       BUCK2_NO_REMOTE_CACHE: '1'
       BUCK2_PUBLIC_CACHE_READ_ONLY: '1'
+    if: ${{ (github.event_name == 'workflow_dispatch' && inputs['measure-macos'] == true) || (success()) }}
     concurrency:
       group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || 'code') }}-tested-tree"
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') }}
@@ -554,12 +559,13 @@ jobs:
       BUCK2_PUBLIC_CACHE_READ_ONLY: '1'
       CI_BUCK2_CACHE_EVIDENCE_DISABLED: '1'
       CI_EVIDENCE_MODE: ${{ vars.CI_EVIDENCE_MODE }}
+    if: ${{ !(github.event_name == 'workflow_dispatch' && inputs['measure-macos'] == true) && (success()) }}
     concurrency:
       group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || 'code') }}-default-ref-policy"
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') }}
   pr-buck2-tools:
     name: pr/buck2-tools
-    if: ${{ github.event_name == 'pull_request' }}
+    if: ${{ !(github.event_name == 'workflow_dispatch' && inputs['measure-macos'] == true) && (github.event_name == 'pull_request') }}
     runs-on:
       [
         "namespace-profile-linux-x86-64;github.run-id=${{ github.run_id }}${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && ';container.privileged=true' || '' }};job.priority=1",
@@ -729,7 +735,9 @@ jobs:
           cd "${GITHUB_WORKSPACE:-$PWD}" && set -euo pipefail
           "${DEVENV_BIN:?DEVENV_BIN not set}" shell -- bash -euo pipefail -c '
             prepared=()
+            bounded_pid=
             restore_views() {
+              if [ -n "$bounded_pid" ]; then kill "$bounded_pid" 2>/dev/null || true; wait "$bounded_pid" 2>/dev/null || true; fi
               for package in "${prepared[@]}"; do
                 rm -f "$package/node_modules"
                 backup="$RUNNER_TEMP/genie-pr-${package##*/}-node-modules"
@@ -745,7 +753,13 @@ jobs:
               prepared+=("$package")
               ln -s "$PWD/$modules" "$package/node_modules"
             done
-            "$DEVENV_BIN" tasks run --mode single test:buck2-tools devenv-modules:test buck2:capabilities:identity-proof buck2:capabilities:recovery-test
+            regression_status=0
+            "$DEVENV_BIN" tasks run --mode single test:buck2-tools devenv-modules:test buck2:capabilities:identity-proof buck2:capabilities:recovery-test || regression_status=$?
+            if [ -n "$bounded_pid" ]; then
+              wait "$bounded_pid" || regression_status=1
+              bounded_pid=
+            fi
+            exit "$regression_status"
           '
       - name: Nix diagnostics summary
         if: ${{ (failure()) && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
@@ -877,7 +891,7 @@ jobs:
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') }}
   quality:
     name: pr/quality
-    if: ${{ !cancelled() && (!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && (github.event_name != 'push' || needs.tested-tree.outputs.tested != 'true') }}
+    if: ${{ !(github.event_name == 'workflow_dispatch' && inputs['measure-macos'] == true) && (!cancelled() && (!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && (github.event_name != 'push' || needs.tested-tree.outputs.tested != 'true')) }}
     runs-on:
       [
         "namespace-profile-linux-x86-64;github.run-id=${{ github.run_id }}${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && ';container.privileged=true' || '' }};job.priority=1",
@@ -1134,6 +1148,9 @@ jobs:
       - name: Genie projection and CI workflow regression tests
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          PR_BOUNDED_ENABLED: ${{ github.event_name == 'pull_request' }}
+          PR_BOUNDED_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_BOUNDED_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           BUCK2_PUBLIC_CACHE_WRITE_AUTH: ${{ ((github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'merge_group' && github.event.merge_group.base_ref == 'refs/heads/main' && startsWith(github.ref, 'refs/heads/gh-readonly-queue/main/'))) && secrets.BUCK2_PUBLIC_CACHE_WRITE_AUTH || '' }}
           PIPELINE_RUN_PREFIX: ${{ format('{0} shell -- otel-span pipeline-run --', env.DEVENV_BIN) }}
         run: |
@@ -1146,7 +1163,9 @@ jobs:
           cd "${GITHUB_WORKSPACE:-$PWD}" && set -euo pipefail
           "${DEVENV_BIN:?DEVENV_BIN not set}" shell -- bash -euo pipefail -c '
             prepared=()
+            bounded_pid=
             restore_views() {
+              if [ -n "$bounded_pid" ]; then kill "$bounded_pid" 2>/dev/null || true; wait "$bounded_pid" 2>/dev/null || true; fi
               for package in "${prepared[@]}"; do
                 rm -f "$package/node_modules"
                 backup="$RUNNER_TEMP/genie-pr-${package##*/}-node-modules"
@@ -1162,7 +1181,18 @@ jobs:
               prepared+=("$package")
               ln -s "$PWD/$modules" "$package/node_modules"
             done
-            "$DEVENV_BIN" tasks run --mode single genie:buck2:test genie:ci-workflow:test buck2:rust:generators:test buck2:cache-posture:ci-test
+            bun test ./genie/ci-scripts/pr-bounded-tests.unit.test.ts
+            if [ "$PR_BOUNDED_ENABLED" = true ]; then
+              bun ./genie/ci-scripts/pr-bounded-tests.ts &
+              bounded_pid=$!
+            fi
+            regression_status=0
+            "$DEVENV_BIN" tasks run --mode single genie:buck2:test genie:ci-workflow:test buck2:rust:generators:test buck2:cache-posture:ci-test || regression_status=$?
+            if [ -n "$bounded_pid" ]; then
+              wait "$bounded_pid" || regression_status=1
+              bounded_pid=
+            fi
+            exit "$regression_status"
           '
       - name: CI policy action isolation smoke
         env:
@@ -1202,6 +1232,7 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
           cd "${GITHUB_WORKSPACE:-$PWD}" && bash genie/ci-scripts/nix-gc-race-retry.test.sh
+          bash genie/ci-scripts/prefetch-locked-inputs.test.sh
           bash genie/ci-scripts/ci-measurement-comparison.test.sh
           bash genie/ci-scripts/native-dep-policy-audit.test.sh
       - name: Native cache evidence regressions
@@ -1453,7 +1484,7 @@ jobs:
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') }}
   test:
     name: test (namespace-profile-linux-x86-64)
-    if: ${{ !cancelled() && (!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && (github.event_name == 'merge_group' || (github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.tested-tree.outputs.tested != 'true')) }}
+    if: ${{ !(github.event_name == 'workflow_dispatch' && inputs['measure-macos'] == true) && (!cancelled() && (!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && (github.event_name == 'merge_group' || (github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.tested-tree.outputs.tested != 'true'))) }}
     needs: [tested-tree]
     runs-on:
       [
@@ -1838,7 +1869,7 @@ jobs:
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') }}
   test-macos:
     name: test (namespace-profile-macos-arm64)
-    if: ${{ !cancelled() && (!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && (github.event_name == 'merge_group' || (github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.tested-tree.outputs.tested != 'true')) }}
+    if: ${{ (github.event_name == 'workflow_dispatch' && inputs['measure-macos'] == true) || (!cancelled() && (!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && (github.event_name == 'merge_group' || (github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.tested-tree.outputs.tested != 'true'))) }}
     needs: [tested-tree]
     runs-on: ['namespace-profile-macos-arm64;github.run-id=${{ github.run_id }};job.priority=1']
     timeout-minutes: 90
@@ -1961,6 +1992,7 @@ jobs:
           fi
           printf "%s\n%s\n%s\n" "$started_at" "$source_root" "$fresh_root" > "$marker"
           printf "CI_BUCK2_CACHE_EVIDENCE_STARTED_AT=%s\n" "$started_at" >> "$GITHUB_ENV"
+        if: ${{ (!(github.event_name == 'workflow_dispatch' && inputs['measure-macos'] == true) && success()) && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
       - name: Provide cachix CLI from nixpkgs
         shell: bash
         env:
@@ -2026,7 +2058,7 @@ jobs:
           bash "$__genie_ci_retry_script" 'devenv tasks run buck2:editor:bootstrap' 'cd "${GITHUB_WORKSPACE:-$PWD}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false ${PIPELINE_RUN_PREFIX:+$PIPELINE_RUN_PREFIX }"${DEVENV_BIN:?DEVENV_BIN not set}" tasks run buck2:editor:bootstrap'
         timeout-minutes: ${{ runner.os == 'macOS' && 25 || 26 }}
       - name: Warm local Nix substituter after bootstrap
-        if: ${{ (success()) && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
+        if: ${{ !(github.event_name == 'workflow_dispatch' && inputs['measure-macos'] == true) && (success()) && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
         continue-on-error: true
         timeout-minutes: 15
         run: |
@@ -2104,7 +2136,7 @@ jobs:
           nix config show sandbox
           nix build .#buck-product-overeng-content-address-from-source --no-link --print-build-logs --option sandbox false
       - name: Save signed and content-addressed store paths to local Nix substituter
-        if: ${{ (!cancelled()) && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
+        if: ${{ !(github.event_name == 'workflow_dispatch' && inputs['measure-macos'] == true) && (!cancelled()) && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
         continue-on-error: true
         timeout-minutes: 15
         run: |
@@ -2152,7 +2184,7 @@ jobs:
           fi
       - # v4.6.2
         name: Upload Nix diagnostics artifact
-        if: failure() && env.NIX_STORE_DIAGNOSTICS_DIR != ''
+        if: ${{ !(github.event_name == 'workflow_dispatch' && inputs['measure-macos'] == true) && failure() && env.NIX_STORE_DIAGNOSTICS_DIR != '' }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: 'nix-store-diagnostics-${{ github.job }}-${{ runner.os }}-run-${{ github.run_id }}-attempt-${{ github.run_attempt }}'
@@ -2167,7 +2199,7 @@ jobs:
           echo "  https://github.com/overengineeringstudio/effect-utils/issues/201"
       - # v4.6.2
         name: Upload retained Vitest collection reports
-        if: ${{ always() }}
+        if: ${{ !(github.event_name == 'workflow_dispatch' && inputs['measure-macos'] == true) && always() }}
         continue-on-error: true
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
@@ -2177,7 +2209,7 @@ jobs:
           retention-days: 14
       - # v4.6.2
         name: Upload test resource samples
-        if: ${{ always() }}
+        if: ${{ !(github.event_name == 'workflow_dispatch' && inputs['measure-macos'] == true) && always() }}
         continue-on-error: true
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
@@ -2220,7 +2252,7 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
       - # v4.6.2
         name: Upload CI OpenTelemetry spans
-        if: always() && env.OTEL_SPAN_SPOOL_DIR != ''
+        if: ${{ !(github.event_name == 'workflow_dispatch' && inputs['measure-macos'] == true) && always() && env.OTEL_SPAN_SPOOL_DIR != '' }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: 'ci-otel-${{ github.job }}-${{ runner.os }}-${{ runner.arch }}-run-${{ github.run_id }}-attempt-${{ github.run_attempt }}'
@@ -2228,7 +2260,7 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
       - name: Collect Buck2 cache evidence
-        if: ${{ (always()) && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
+        if: ${{ !(github.event_name == 'workflow_dispatch' && inputs['measure-macos'] == true) && (always()) && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
         shell: bash
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -2239,7 +2271,7 @@ jobs:
           nix shell .#bun .#buck2 --command bash genie/ci-scripts/collect-buck2-cache-evidence.sh
       - # v4.6.2
         name: Upload Buck2 cache evidence
-        if: ${{ always() }}
+        if: ${{ !(github.event_name == 'workflow_dispatch' && inputs['measure-macos'] == true) && always() }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: 'buck2-cache-evidence-test-macos-${{ github.run_attempt }}'
@@ -2269,7 +2301,7 @@ jobs:
         shell: bash
         run: ':'
       - # v4.4.0
-        if: ${{ (always() && env.CI_EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && vars.TS_EVIDENCE_CLIENT_ID != '' && vars.TS_EVIDENCE_AUDIENCE != '') && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
+        if: ${{ !(github.event_name == 'workflow_dispatch' && inputs['measure-macos'] == true) && (always() && env.CI_EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && vars.TS_EVIDENCE_CLIENT_ID != '' && vars.TS_EVIDENCE_AUDIENCE != '') && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
         uses: tailscale/github-action@064b10558093f38325e838ddea35486bdc6b1d5c
         continue-on-error: true
         with:
@@ -2278,11 +2310,14 @@ jobs:
           tags: 'tag:ci-buck2-evidence'
           args: --accept-dns=true
       - name: Export completed job trace
-        if: ${{ (always()) && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
+        if: ${{ !(github.event_name == 'workflow_dispatch' && inputs['measure-macos'] == true) && (always()) && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
         shell: bash
         env:
           OTEL_EXPORTER_OTLP_ENDPOINT: ${{ vars.OTEL_EXPORTER_OTLP_ENDPOINT }}
         run: "bash genie/ci-scripts/evidence-job.sh export '${{ job.status }}' || true"
+      - name: Mark macOS measurement
+        if: ${{ (always() && (github.event_name == 'workflow_dispatch' && inputs['measure-macos'] == true)) && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
+        run: 'echo "## macOS measurement (read-only; excluded from cache proofs)" >> "$GITHUB_STEP_SUMMARY"'
     permissions:
       contents: read
       id-token: write
@@ -2290,7 +2325,7 @@ jobs:
       group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || 'code') }}-test-macos"
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') }}
   test-playwright-utils:
-    if: ${{ !cancelled() && (!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && (github.event_name == 'merge_group' || (github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.tested-tree.outputs.tested != 'true')) }}
+    if: ${{ !(github.event_name == 'workflow_dispatch' && inputs['measure-macos'] == true) && (!cancelled() && (!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && (github.event_name == 'merge_group' || (github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.tested-tree.outputs.tested != 'true'))) }}
     needs: [tested-tree]
     runs-on:
       [
@@ -2675,7 +2710,7 @@ jobs:
       group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || 'code') }}-test-playwright-utils"
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') }}
   test-playwright-tui-react:
-    if: ${{ !cancelled() && (!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && (github.event_name == 'merge_group' || (github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.tested-tree.outputs.tested != 'true')) }}
+    if: ${{ !(github.event_name == 'workflow_dispatch' && inputs['measure-macos'] == true) && (!cancelled() && (!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && (github.event_name == 'merge_group' || (github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.tested-tree.outputs.tested != 'true'))) }}
     needs: [tested-tree]
     runs-on:
       [
@@ -3060,7 +3095,7 @@ jobs:
       group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || 'code') }}-test-playwright-tui-react"
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') }}
   test-megarepo-store-gc:
-    if: ${{ (!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && (github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch' || github.event_name == 'merge_group') }}
+    if: ${{ !(github.event_name == 'workflow_dispatch' && inputs['measure-macos'] == true) && ((!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && (github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch' || github.event_name == 'merge_group')) }}
     runs-on:
       [
         'namespace-profile-linux-x86-64;github.run-id=${{ github.run_id }};container.privileged=true;job.priority=1',
@@ -3413,7 +3448,7 @@ jobs:
       group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || 'code') }}-test-megarepo-store-gc"
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') }}
   cargo:
-    if: ${{ !cancelled() && (!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && (github.event_name == 'merge_group' || (github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.tested-tree.outputs.tested != 'true')) }}
+    if: ${{ !(github.event_name == 'workflow_dispatch' && inputs['measure-macos'] == true) && (!cancelled() && (!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && (github.event_name == 'merge_group' || (github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.tested-tree.outputs.tested != 'true'))) }}
     needs: [tested-tree]
     runs-on:
       [
@@ -3702,7 +3737,7 @@ jobs:
       group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || 'code') }}-cargo"
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') }}
   weaver:
-    if: ${{ !cancelled() && (!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && (github.event_name == 'merge_group' || (github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.tested-tree.outputs.tested != 'true')) }}
+    if: ${{ !(github.event_name == 'workflow_dispatch' && inputs['measure-macos'] == true) && (!cancelled() && (!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && (github.event_name == 'merge_group' || (github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.tested-tree.outputs.tested != 'true'))) }}
     needs: [tested-tree]
     runs-on:
       [
@@ -4066,7 +4101,7 @@ jobs:
       group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || 'code') }}-weaver"
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') }}
   pr-a-inert-buck:
-    if: ${{ !cancelled() && (!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && (github.event_name == 'merge_group' || (github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.tested-tree.outputs.tested != 'true')) }}
+    if: ${{ !(github.event_name == 'workflow_dispatch' && inputs['measure-macos'] == true) && (!cancelled() && (!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && (github.event_name == 'merge_group' || (github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.tested-tree.outputs.tested != 'true'))) }}
     needs: [tested-tree]
     runs-on:
       [
@@ -4282,7 +4317,7 @@ jobs:
       group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || 'code') }}-pr-a-inert-buck"
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') }}
   build-products:
-    if: ${{ !cancelled() && (!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && (github.event_name == 'merge_group' || (github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.tested-tree.outputs.tested != 'true')) }}
+    if: ${{ !(github.event_name == 'workflow_dispatch' && inputs['measure-macos'] == true) && (!cancelled() && (!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && (github.event_name == 'merge_group' || (github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.tested-tree.outputs.tested != 'true'))) }}
     needs: [tested-tree]
     runs-on:
       [
@@ -4381,7 +4416,7 @@ jobs:
       group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || 'code') }}-build-products"
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') }}
   publish-products:
-    if: ${{ (!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') }}
+    if: ${{ (!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && !(github.event_name == 'workflow_dispatch' && inputs['measure-macos'] == true) }}
     runs-on:
       [
         'namespace-profile-linux-x86-64;github.run-id=${{ github.run_id }};container.privileged=true;job.priority=1',
@@ -4634,7 +4669,7 @@ jobs:
       group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || 'code') }}-publish-products"
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') }}
   trusted-buck2-remote-cache-proof:
-    if: ${{ (!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') }}
+    if: ${{ (!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && !(github.event_name == 'workflow_dispatch' && inputs['measure-macos'] == true) }}
     runs-on:
       [
         'namespace-profile-linux-x86-64;github.run-id=${{ github.run_id }};container.privileged=true;job.priority=1',
@@ -4845,7 +4880,7 @@ jobs:
       group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || 'code') }}-trusted-buck2-remote-cache-proof"
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') }}
   pr-reviews-resolved:
-    if: ${{ github.event_name != 'schedule' }}
+    if: ${{ !(github.event_name == 'workflow_dispatch' && inputs['measure-macos'] == true) && (github.event_name != 'schedule') }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -5242,12 +5277,12 @@ jobs:
           OTEL_EXPORTER_OTLP_ENDPOINT: ${{ vars.OTEL_EXPORTER_OTLP_ENDPOINT }}
         run: "bash genie/ci-scripts/evidence-job.sh export '${{ job.status }}' || true"
     needs: [default-ref-policy]
-    if: ${{ github.event_name == 'pull_request' || github.event_name == 'merge_group' }}
+    if: ${{ !(github.event_name == 'workflow_dispatch' && inputs['measure-macos'] == true) && (github.event_name == 'pull_request' || github.event_name == 'merge_group') }}
     concurrency:
       group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || 'code') }}-source-shape"
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') }}
   test-integration-notion:
-    if: ${{ (!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && ((github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')) || (github.event_name == 'workflow_dispatch' && inputs.run_notion_integration_on_branch == true)) }}
+    if: ${{ !(github.event_name == 'workflow_dispatch' && inputs['measure-macos'] == true) && ((!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && ((github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')) || (github.event_name == 'workflow_dispatch' && inputs.run_notion_integration_on_branch == true))) }}
     runs-on:
       [
         'namespace-profile-linux-x86-64;github.run-id=${{ github.run_id }};container.privileged=true;job.priority=1',
@@ -5550,7 +5585,7 @@ jobs:
       group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || 'code') }}-test-integration-notion"
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') }}
   test-integration-restate:
-    if: ${{ !cancelled() && (!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && (github.event_name == 'merge_group' || (github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.tested-tree.outputs.tested != 'true')) }}
+    if: ${{ !(github.event_name == 'workflow_dispatch' && inputs['measure-macos'] == true) && (!cancelled() && (!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && (github.event_name == 'merge_group' || (github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.tested-tree.outputs.tested != 'true'))) }}
     needs: [tested-tree]
     concurrency:
       group: 'test-integration-restate-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}'
@@ -5857,7 +5892,7 @@ jobs:
       contents: read
       id-token: write
   test-live-deploy-ci-tools:
-    if: ${{ (!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') }}
+    if: ${{ (!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && !(github.event_name == 'workflow_dispatch' && inputs['measure-macos'] == true) }}
     concurrency:
       group: 'test-live-deploy-ci-tools-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}'
       cancel-in-progress: true
@@ -6210,7 +6245,7 @@ jobs:
       contents: read
       id-token: write
   deploy-storybooks:
-    if: ${{ (!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') }}
+    if: ${{ (!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && !(github.event_name == 'workflow_dispatch' && inputs['measure-macos'] == true) }}
     runs-on:
       [
         'namespace-profile-linux-x86-64;github.run-id=${{ github.run_id }};container.privileged=true;job.priority=1',
@@ -6588,7 +6623,7 @@ jobs:
     runs-on: ['namespace-profile-linux-x86-64;github.run-id=${{ github.run_id }};job.priority=4']
     timeout-minutes: 30
     needs: [tested-tree, quality, deploy-storybooks]
-    if: ${{ !cancelled() && github.ref == 'refs/heads/main' && github.event_name == 'push' && (needs.quality.result == 'success' || needs.tested-tree.outputs.tested == 'true') && needs['deploy-storybooks'].result == 'success' }}
+    if: ${{ !(github.event_name == 'workflow_dispatch' && inputs['measure-macos'] == true) && (!cancelled() && github.ref == 'refs/heads/main' && github.event_name == 'push' && (needs.quality.result == 'success' || needs.tested-tree.outputs.tested == 'true') && needs['deploy-storybooks'].result == 'success') }}
     steps:
       - id: linux-nix-sandbox-policy
         name: Disable Linux Nix sandbox fallback
@@ -6749,7 +6784,7 @@ jobs:
       - test-live-deploy-ci-tools
       - deploy-storybooks
       - notify-alignment
-    if: ${{ always() }}
+    if: ${{ !(github.event_name == 'workflow_dispatch' && inputs['measure-macos'] == true) && (always()) }}
     permissions:
       contents: read
       actions: read
@@ -6808,7 +6843,7 @@ jobs:
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') }}
   pipeline-traces:
     needs: [pipeline-attempt-close]
-    if: ${{ always() && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && vars.CI_EVIDENCE_MODE == 'upload' }}
+    if: ${{ !(github.event_name == 'workflow_dispatch' && inputs['measure-macos'] == true) && (always() && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && vars.CI_EVIDENCE_MODE == 'upload') }}
     runs-on:
       [
         "namespace-profile-linux-x86-64;github.run-id=${{ github.run_id }}${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && ';container.privileged=true' || '' }};job.priority=4",
@@ -6868,7 +6903,7 @@ jobs:
       group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || 'code') }}-pipeline-traces"
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') }}
   consumer-smoke:
-    if: ${{ (!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') }}
+    if: ${{ (!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && !(github.event_name == 'workflow_dispatch' && inputs['measure-macos'] == true) }}
     runs-on:
       [
         "namespace-profile-linux-x86-64;github.run-id=${{ github.run_id }}${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && ';container.privileged=true' || '' }};job.priority=1",

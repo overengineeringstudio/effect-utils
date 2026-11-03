@@ -461,6 +461,14 @@ export const writeBuck2CacheProofReports = async ({
     references,
     writerPriorObservationBindings: bindings,
     shardIndex: shards,
+    missedEligible: warm.lanes.map(({ lane, observations }) => ({
+      lane,
+      observations: observations.map(({ sequence, eligibleMisses, eligibleMissesOverflow }) => ({
+        sequence,
+        eligibleMisses,
+        eligibleMissesOverflow,
+      })),
+    })),
     warm99: {
       name: warm99ReportName,
       sha256: sha256(warmBytes),

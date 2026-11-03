@@ -56,3 +56,48 @@ export const withBuck2CachePostures = ({
     }),
   )
 }
+
+/** Maintainer dispatch measures only Darwin; no cache saves, credentials, or trace/proof publication. */
+export const withMacosMeasurementDispatch = (
+  args: Parameters<typeof withBuck2CachePostures>[0],
+): GitHubWorkflowArgs['jobs'] => {
+  const jobs = withBuck2CachePostures(args)
+  const measure = "github.event_name == 'workflow_dispatch' && inputs['measure-macos'] == true"
+  return Object.fromEntries(
+    Object.entries(jobs).map(([id, job]) => {
+      // Keep explicit measurement exclusions and push-only promotion guards intact.
+      if (id === 'promote-published' || job.if?.includes(`!(${measure})`) === true) return [id, job]
+      return [
+        id,
+        {
+          ...job,
+          if: `\${{ ${id === 'test-macos' || id === 'tested-tree' ? `(${measure}) ||` : `!(${measure}) &&`} (${job.if?.replace(/^\$\{\{\s*|\s*\}\}$/g, '') ?? 'success()'}) }}`,
+          steps: [
+            ...job.steps.map((step) =>
+              id === 'test-macos' &&
+              (/^(Save signed|Warm local|Export completed job trace)|Buck2 cache evidence/.test(
+                step.name ?? '',
+              ) === true ||
+                /^(tailscale\/github-action|actions\/upload-artifact)@/.test(step.uses ?? '') ===
+                  true)
+                ? {
+                    ...step,
+                    if: `\${{ !(${measure}) && ${step.if?.replace(/^\$\{\{\s*|\s*\}\}$/g, '') ?? 'success()'} }}`,
+                  }
+                : step,
+            ),
+            ...(id === 'test-macos'
+              ? [
+                  {
+                    name: 'Mark macOS measurement',
+                    if: `\${{ always() && (${measure}) }}`,
+                    run: 'echo "## macOS measurement (read-only; excluded from cache proofs)" >> "$GITHUB_STEP_SUMMARY"',
+                  },
+                ]
+              : []),
+          ],
+        },
+      ]
+    }),
+  )
+}

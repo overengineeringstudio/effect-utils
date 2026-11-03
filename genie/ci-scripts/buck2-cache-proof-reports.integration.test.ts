@@ -66,6 +66,57 @@ describe('proof report publication', () => {
     expect(JSON.stringify(proof)).not.toContain(options.root)
   })
 
+  it('publishes the same bounded missed identities in warm99 and proof JSON', async () => {
+    const options = await setup()
+    const manifest = manifestFixture(['main-reader'], 1)
+    const loaded = loadedFixture(manifest)
+    const item = loaded[0]!
+    item.writers[0]!.actions[0]!.target = 'root//pkg:foo/bar'
+    item.readers[0]!.actions[0] = {
+      ...item.readers[0]!.actions[0]!,
+      target: 'root//pkg:foo/bar',
+      executionKind: 1,
+      outcome: 'local',
+      cacheOutcome: 'local',
+    }
+    await put(
+      join(options.root, item.observation.writers[0]!.summary),
+      join(options.root, item.observation.writers[0]!.actions),
+      item.writers[0]!,
+    )
+    await put(
+      join(options.root, item.observation.readers[0]!.summary),
+      join(options.root, item.observation.readers[0]!.actions),
+      item.readers[0]!,
+    )
+    await put(options.summaryPath, options.actionsPath, artifactFixture())
+    const manifestPath = join(options.root, 'history.json')
+    await Bun.write(manifestPath, JSON.stringify(manifest))
+    await writeBuck2CacheProofReports({ ...options, manifestPath })
+    const warm = await Bun.file(join(options.root, warm99ReportName)).json()
+    const proof = await Bun.file(join(options.root, proofManifestName)).json()
+    const cohort = warm.lanes[0].observations[0]
+    expect(cohort.eligibleMisses).toHaveLength(1)
+    expect(cohort.eligibleMisses[0]).toMatchObject({
+      target: 'root//pkg:foo/bar',
+      category: 'compile',
+      readerJob: 'test',
+      readerPosture: 'remote-reads-enabled',
+    })
+    expect(proof.missedEligible).toEqual([
+      {
+        lane: 'main-reader',
+        observations: [
+          {
+            sequence: 0,
+            eligibleMisses: cohort.eligibleMisses,
+            eligibleMissesOverflow: 0,
+          },
+        ],
+      },
+    ])
+  })
+
   it('evaluates authoritative historical observations and binds actual earlier uploads', async () => {
     const options = await setup()
     const manifest = manifestFixture()

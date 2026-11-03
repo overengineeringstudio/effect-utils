@@ -54,7 +54,7 @@ import {
   withNixRealisationTimeouts,
 } from '../../genie/ci-workflow.ts'
 import { withBuck2CacheEvidence } from '../../genie/ci-workflow/buck2-cache-evidence.ts'
-import { withBuck2CachePostures } from '../../genie/ci-workflow/buck2-cache-posture.ts'
+import { withMacosMeasurementDispatch } from '../../genie/ci-workflow/buck2-cache-posture.ts'
 import { coreCachePostures } from '../../genie/ci-workflow/buck2-cache-proof-policy.ts'
 import {
   withPipelineTelemetry,
@@ -343,7 +343,7 @@ const jobTimeoutMinutes = 30
 const longJobTimeoutMinutes = 45
 
 const heavyCiIf = `\${{ !cancelled() && (${ciMeasurementNotBaselineBackfillPredicate}) && (github.event_name == 'merge_group' || (github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.tested-tree.outputs.tested != 'true')) }}`
-const trustedSecretCiIf = `\${{ (${ciMeasurementNotBaselineBackfillPredicate}) && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') }}`
+const trustedSecretCiIf = `\${{ (${ciMeasurementNotBaselineBackfillPredicate}) && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && !(github.event_name == 'workflow_dispatch' && inputs['measure-macos'] == true) }}`
 // Branch secrets are available only through a deliberate collaborator dispatch, never a PR event.
 const notionIntegrationCiIf = `\${{ (${ciMeasurementNotBaselineBackfillPredicate}) && ((github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')) || (github.event_name == 'workflow_dispatch' && inputs.run_notion_integration_on_branch == true)) }}`
 const empiricalProofLaneIf = `\${{ (${ciMeasurementNotBaselineBackfillPredicate}) && ((github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')) || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'ci:heavy-proofs') && (github.event.action != 'labeled' || github.event.label.name == 'ci:heavy-proofs'))) }}`
@@ -741,19 +741,32 @@ const sourceRegressionStep = ({
   name,
   packages,
   tasks,
+  boundedPr = false,
 }: {
   name: string
   packages: readonly string[]
   tasks: readonly string[]
+  boundedPr?: boolean
 }) => ({
   name,
-  env: githubTokenEnv(),
+  env: {
+    ...githubTokenEnv(),
+    ...(boundedPr === true
+      ? {
+          PR_BOUNDED_ENABLED: "${{ github.event_name == 'pull_request' }}",
+          PR_BOUNDED_BASE_SHA: '${{ github.event.pull_request.base.sha }}',
+          PR_BOUNDED_HEAD_SHA: '${{ github.event.pull_request.head.sha }}',
+        }
+      : {}),
+  },
   run: withCiSourceRoot(
     [
       'set -euo pipefail',
       '"${DEVENV_BIN:?DEVENV_BIN not set}" shell -- bash -euo pipefail -c \'',
       '  prepared=()',
+      '  bounded_pid=',
       '  restore_views() {',
+      '    if [ -n "$bounded_pid" ]; then kill "$bounded_pid" 2>/dev/null || true; wait "$bounded_pid" 2>/dev/null || true; fi',
       '    for package in "${prepared[@]}"; do',
       '      rm -f "$package/node_modules"',
       '      backup="$RUNNER_TEMP/genie-pr-${package##*/}-node-modules"',
@@ -769,7 +782,22 @@ const sourceRegressionStep = ({
       '    prepared+=("$package")',
       '    ln -s "$PWD/$modules" "$package/node_modules"',
       '  done',
-      `  "$DEVENV_BIN" tasks run --mode single ${tasks.join(' ')}`,
+      ...(boundedPr === true
+        ? [
+            '  bun test ./genie/ci-scripts/pr-bounded-tests.unit.test.ts',
+            '  if [ "$PR_BOUNDED_ENABLED" = true ]; then',
+            '    bun ./genie/ci-scripts/pr-bounded-tests.ts &',
+            '    bounded_pid=$!',
+            '  fi',
+          ]
+        : []),
+      '  regression_status=0',
+      `  "$DEVENV_BIN" tasks run --mode single ${tasks.join(' ')} || regression_status=$?`,
+      '  if [ -n "$bounded_pid" ]; then',
+      '    wait "$bounded_pid" || regression_status=1',
+      '    bounded_pid=',
+      '  fi',
+      '  exit "$regression_status"',
       "'",
     ].join('\n'),
   ),
@@ -850,6 +878,7 @@ const jobs: Record<CoreCIJobName, CiWorkflowArgs['jobs'][string]> = {
             name: 'Genie projection and CI workflow regression tests',
             // test:run publishes all views; these suites need only these exact closures.
             packages: ['.', 'packages/@overeng/megarepo'],
+            boundedPr: true,
             tasks: [
               'genie:buck2:test',
               'genie:ci-workflow:test',
@@ -884,6 +913,7 @@ const jobs: Record<CoreCIJobName, CiWorkflowArgs['jobs'][string]> = {
           run: withCiSourceRoot(
             [
               'bash genie/ci-scripts/nix-gc-race-retry.test.sh',
+              'bash genie/ci-scripts/prefetch-locked-inputs.test.sh',
               'bash genie/ci-scripts/ci-measurement-comparison.test.sh',
               'bash genie/ci-scripts/native-dep-policy-audit.test.sh',
             ].join('\n'),
@@ -2206,6 +2236,11 @@ export default ciWorkflow({
     workflow_dispatch: {
       inputs: {
         ...ciMeasurementBaselineWorkflowDispatchInputs,
+        'measure-macos': {
+          description: 'Measure only macOS tests, read-only and excluded from cache proofs.',
+          type: 'boolean',
+          default: false,
+        },
         run_notion_integration_on_branch: {
           description: 'Opt into credentialed Notion integration tests on this branch.',
           required: false,
@@ -2230,7 +2265,7 @@ export default ciWorkflow({
     },
   },
   permissions: { contents: 'read', 'id-token': 'write' },
-  jobs: withBuck2CachePostures({
+  jobs: withMacosMeasurementDispatch({
     jobs: {
       ...withNixRealisationTimeouts(
         {

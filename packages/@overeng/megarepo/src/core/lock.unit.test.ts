@@ -1,9 +1,10 @@
-import { Option, Schema } from 'effect'
+import { Effect, Option, Schema } from 'effect'
 import { describe, expect, it } from 'vitest'
 
 import {
   checkLockStaleness,
   createEmptyLockFile,
+  decodeLockFileContent,
   createLockedMember,
   getLockedMember,
   hasMember,
@@ -22,6 +23,27 @@ import {
 
 describe('lock', () => {
   describe('LockFile schema', () => {
+    it('rejects credentialed legacy locks without retaining the secret', () => {
+      const content = JSON.stringify({
+        version: 1,
+        members: {
+          repo: {
+            url: 'https://fixture-secret@example.com/org/repo.git',
+            ref: 'main',
+            commit: 'abc123',
+            pinned: false,
+            lockedAt: '2024-01-15T10:30:00Z',
+          },
+        },
+      })
+      const effect = decodeLockFileContent(content)
+      const cause = Effect.runSyncExit(effect)
+      const error = Effect.runSync(effect.pipe(Effect.flip))
+      expect(error.message).toContain('https://***@example.com/org/repo.git')
+      expect(error.message).toContain('Fix the lock or config')
+      expect(JSON.stringify({ cause, issue: error.issue })).not.toContain('fixture-secret')
+    })
+
     it('should decode valid lock file', () => {
       const input = {
         version: 1,
