@@ -1,6 +1,8 @@
 #!/usr/bin/env -S bun
 import { spawn } from 'node:child_process'
+import { rmSync, writeSync } from 'node:fs'
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
+import { constants, homedir, tmpdir } from 'node:os'
 import { dirname, isAbsolute, join, resolve } from 'node:path'
 
 import { emitCompletedSpanAsync } from './otel-span-cli.ts'
@@ -413,6 +415,8 @@ export type RunCommand = (options: {
   readonly detached?: boolean
   readonly signal?: AbortSignal
   readonly onStderr?: (chunk: string) => void
+  /** Disable duplicate capture when onStderr owns a bounded diagnostic ring. */
+  readonly captureStderr?: boolean
 }) => Promise<CommandResult>
 
 /**
@@ -421,7 +425,7 @@ export type RunCommand = (options: {
  */
 export class CommandFailure extends Error {
   readonly exitCode: number | undefined
-  readonly signal: string | undefined
+  readonly signal: NodeJS.Signals | undefined
 
   constructor({
     message,
@@ -430,7 +434,7 @@ export class CommandFailure extends Error {
   }: {
     message: string
     exitCode: number | undefined
-    signal: string | undefined
+    signal: NodeJS.Signals | undefined
   }) {
     super(message)
     this.exitCode = exitCode
@@ -447,6 +451,7 @@ export const runCommand: RunCommand = ({
   detached,
   input,
   onStderr,
+  captureStderr,
 }) => {
   const settled = Promise.withResolvers<CommandResult>()
   const child =
@@ -458,10 +463,16 @@ export const runCommand: RunCommand = ({
   child.stdout.setEncoding('utf8').on('data', (chunk: string) => {
     stdout += chunk
   })
-  child.stderr.setEncoding('utf8').on('data', (chunk: string) => {
-    stderr += chunk
+  const decoder = new TextDecoder('utf-8', { ignoreBOM: true })
+  const capture = (chunk: string): void => {
+    if (chunk === '') return
+    if (captureStderr !== false) stderr += chunk
     onStderr?.(chunk)
+  }
+  child.stderr.on('data', (chunk: Buffer) => {
+    capture(decoder.decode(chunk, { stream: true }))
   })
+  child.stderr.once('end', () => capture(decoder.decode()))
   child.once('error', settled.reject)
   child.stdin?.on('error', settled.reject)
   child.stdin?.end(input)
@@ -558,6 +569,7 @@ export type BuckReconcilerOptions = {
   readonly run?: RunCommand
   readonly signal?: AbortSignal
   readonly onTiming?: (timing: BuckReconcileTiming) => void
+  readonly diagnosticTaskName?: string
   /** Prepare views within one exclusive-lock batch using the publisher's declared worker bound. */
   readonly batchPublication?: boolean
 }
@@ -596,15 +608,121 @@ export const reconcileBuckViews = async ({
       exitCode,
     })
   }
+  const eventDirectory = '.devenv/otel/buck2-events'
+  await mkdir(resolve(options.workspaceRoot, eventDirectory), { recursive: true })
+  const eventLog = `${eventDirectory}/editor-view-${process.pid}-${crypto.randomUUID()}.pb.zst`
+  // Retain only the last 16 KiB / 40 lines. Flush synchronously before default
+  // signal termination: the supervisor escalates TERM to KILL after five seconds.
+  let buildTail = ''
+  let pendingPath = ''
+  const redactions = [
+    [`${options.workspaceRoot}/`, ''],
+    [process.env.TMPDIR, '<tmp>'],
+    [tmpdir(), '<tmp>'],
+    ['/tmp', '<tmp>'],
+    [homedir(), '<home>'],
+  ]
+    .filter((entry): entry is [string, string] => entry[0] !== undefined && entry[0] !== '')
+    .toSorted(([left], [right]) => right.length - left.length)
+  const captureBuildDiagnostic = (chunk: string): void => {
+    pendingPath += chunk
+    let index = 0
+    const sanitized: string[] = []
+    while (index < pendingPath.length) {
+      const rest = pendingPath.slice(index)
+      // Keep only a possible split prefix, not an unbounded unfinished line.
+      if (
+        redactions.some(([prefix]) => prefix.length > rest.length && prefix.startsWith(rest)) ===
+        true
+      )
+        break
+      const match = redactions.find(([prefix]) => rest.startsWith(prefix))
+      const point = String.fromCodePoint(pendingPath.codePointAt(index)!)
+      sanitized.push(match?.[1] ?? point)
+      index += match?.[0].length ?? point.length
+    }
+    pendingPath = pendingPath.slice(index)
+    // Redact before discarding any line/byte, including arbitrarily long lines.
+    buildTail = (buildTail + sanitized.join(''))
+      .split(/(?<=[\r\n])/u)
+      .slice(-40)
+      .join('')
+    const points = Array.from(buildTail)
+    let bytes = Buffer.byteLength(buildTail)
+    let start = 0
+    while (bytes > 16 * 1024) bytes -= Buffer.byteLength(points[start++]!)
+    buildTail = points.slice(start).join('')
+  }
+  let reported = false
+  let buildExitCode: number | undefined
+  let reconciliationCompleted = false
+  const reportBuildFailure = ({
+    code,
+    interruptedAfterBuild,
+  }: {
+    readonly code: number
+    readonly interruptedAfterBuild?: NodeJS.Signals | undefined
+  }): void => {
+    if (reported === true) return
+    reported = true
+    if (pendingPath !== '') captureBuildDiagnostic('\n')
+    const tail = buildTail
+    writeSync(2, tail)
+    const outcome =
+      interruptedAfterBuild === undefined
+        ? `Buck exited with code ${code}`
+        : `interrupted by ${interruptedAfterBuild} after Buck completed (code ${code})`
+    writeSync(
+      2,
+      `${tail.endsWith('\n') === true || tail === '' ? '' : '\n'}${options.diagnosticTaskName ?? `buck2:editor:${options.mode}`}: ${outcome}; event log: ${eventLog}\n`,
+    )
+  }
+  const signals = ['SIGHUP', 'SIGINT', 'SIGTERM'] as const
+  const handlers = signals.map((signal) => {
+    const handler = (): void => {
+      reportBuildFailure({
+        code: buildExitCode ?? 128 + constants.signals[signal],
+        interruptedAfterBuild: buildExitCode === 0 ? signal : undefined,
+      })
+      process.removeListener(signal, handler)
+      // Do not replace any existing caller-owned cancellation handling.
+      if (process.listenerCount(signal) === 0) process.kill(process.pid, signal)
+    }
+    process.on(signal, handler)
+    return { signal, handler }
+  })
+  // oxlint-disable-next-line eslint/no-underscore-dangle -- scoped disposal must stay live until reconciliation returns
+  using _diagnostics = {
+    [Symbol.dispose]: () => {
+      for (const { signal, handler } of handlers) process.removeListener(signal, handler)
+      if (reconciliationCompleted === true)
+        try {
+          // The entrypoint finishes decoding the caller sink before execute resolves.
+          rmSync(resolve(options.workspaceRoot, eventLog), { force: true })
+        } catch {
+          // Diagnostic cleanup must not change successful reconciliation's status.
+        }
+    },
+  }
   let built: CommandResult
   try {
     built = await execute({
       command: options.buck2,
-      args: ['build', ...request.buildTargets, '--show-full-output'],
+      args: ['build', ...request.buildTargets, '--show-full-output', '--event-log', eventLog],
       cwd: options.workspaceRoot,
+      captureStderr: false,
+      onStderr: captureBuildDiagnostic,
       ...(options.signal === undefined ? {} : { signal: options.signal }),
     })
+    buildExitCode = 0
   } catch (error) {
+    const code =
+      error instanceof CommandFailure && error.signal !== undefined
+        ? 128 + (constants.signals[error.signal] ?? 1)
+        : exitCodeOf(error)
+    reportBuildFailure({ code })
+    if (error instanceof CommandFailure)
+      error.message = `${options.diagnosticTaskName ?? `buck2:editor:${options.mode}`}: Buck exited with code ${code}; event log: ${eventLog}`
     emitBuildSpan(exitCodeOf(error))
     throw error
   }
@@ -619,6 +737,12 @@ export const reconcileBuckViews = async ({
     isAbsolute(path) === true ? path : resolve(options.workspaceRoot, path)
   type EditorEntry = BuckWatchPackage & {
     readonly editor: NonNullable<BuckWatchPackage['editor']>
+  }
+  const publicationFailure = (error: unknown): never => {
+    // A group signal can kill/reap the publisher before this process observes it.
+    if (error instanceof CommandFailure && error.signal !== undefined)
+      reportBuildFailure({ code: 0, interruptedAfterBuild: error.signal })
+    throw error
   }
   const publicationArgs = async (entry: EditorEntry): Promise<readonly string[]> => {
     const manifestOutput = outputForTarget({
@@ -683,7 +807,7 @@ export const reconcileBuckViews = async ({
       })
     } catch (error) {
       emitPublicationSpan(exitCodeOf(error))
-      throw error
+      publicationFailure(error)
     }
     emitPublicationSpan(0)
     options.onTiming?.({
@@ -704,7 +828,7 @@ export const reconcileBuckViews = async ({
       input: JSON.stringify(requests),
       onStderr: forwardDiagnostics,
       cwd: options.repoRoot,
-    })
+    }).catch(publicationFailure)
     // Preserve the existing per-view callback as well as successful-task stderr evidence.
     for (const line of result.stderr.split('\n')) {
       if (line === '') continue
@@ -734,12 +858,14 @@ export const reconcileBuckViews = async ({
         durationMs: timing.durationMs,
       })
     }
+    reconciliationCompleted = true
     return
   }
   for (const entry of entries) {
     // eslint-disable-next-line no-await-in-loop
     await publish(entry)
   }
+  reconciliationCompleted = true
 }
 
 /** Atomically replace a machine-readable status file. */
