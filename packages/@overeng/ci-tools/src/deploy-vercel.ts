@@ -1064,6 +1064,8 @@ export const runVercelDeploy = Effect.fn('ci-tools.deploy.vercel')(function* (
   })
 
   const authTokenValue = envValue(options.authTokenEnv)
+  const protectionBypass =
+    options.protectionBypassEnv === undefined ? undefined : envValue(options.protectionBypassEnv)
   const failWithRecord = (failure: DeployFailure, attempts = 1) =>
     emitWorkflowReportRecord({
       workflowReportOutputFile: options.workflowReportOutputFile,
@@ -1072,7 +1074,9 @@ export const runVercelDeploy = Effect.fn('ci-tools.deploy.vercel')(function* (
         failure,
         attempts,
         createdAtUtc,
-        secretValues: authTokenValue === undefined ? [] : [authTokenValue],
+        secretValues: [authTokenValue, protectionBypass].filter(
+          (value): value is string => value !== undefined,
+        ),
       }),
     }).pipe(Effect.andThen(Effect.fail(failure)))
 
@@ -1129,8 +1133,6 @@ export const runVercelDeploy = Effect.fn('ci-tools.deploy.vercel')(function* (
   }
   const teamId = options.teamIdEnv === undefined ? undefined : envValue(options.teamIdEnv)
   const scope = options.scopeEnv === undefined ? undefined : envValue(options.scopeEnv)
-  const protectionBypass =
-    options.protectionBypassEnv === undefined ? undefined : envValue(options.protectionBypassEnv)
   const buildEnv = yield* buildEnvRecord({
     target: options.target,
     entries: options.buildEnv,

@@ -5,7 +5,11 @@ import { join, resolve } from 'node:path'
 
 import { describe, expect, it } from 'vitest'
 
-import { formatLiveDeployFailure, type LiveDeployProcessResult } from './deploy-live-diagnostics.ts'
+import {
+  formatLiveDeployFailure,
+  vercelLiveProcessEnvironment,
+  type LiveDeployProcessResult,
+} from './deploy-live-diagnostics.ts'
 
 const repoRoot = resolve(import.meta.dirname, '../../../..')
 const cliPath = join(repoRoot, 'packages/@overeng/ci-tools/bin/ci-tools.ts')
@@ -14,9 +18,8 @@ const requiredEnv = ['VERCEL_TOKEN', 'VERCEL_PROJECT_ID', 'VERCEL_ORG_ID', 'VERC
 const missingEnv = requiredEnv.filter((name) => process.env[name] === undefined)
 const liveIt = liveEnabled === true && missingEnv.length === 0 ? it : it.skip
 
-const testProcessEnv = () => {
-  const { DEVENV_TASK_OUTPUT_FILE: _taskOutputFile, ...env } = process.env
-  return env
+type VercelLiveProcessResult = LiveDeployProcessResult & {
+  readonly secretValues: readonly string[]
 }
 
 const readStreamText = (stream: NodeJS.ReadableStream) =>
@@ -52,6 +55,7 @@ const runCiTools = async (opts: {
   readonly target: string
   readonly marker: string
 }) => {
+  const environment = vercelLiveProcessEnvironment(process.env)
   const child = spawn(
     'bun',
     [
@@ -85,11 +89,7 @@ const runCiTools = async (opts: {
     ],
     {
       cwd: opts.workdir,
-      env: {
-        ...testProcessEnv(),
-        FORCE_COLOR: '0',
-        OTEL_EXPORTER_OTLP_ENDPOINT: '',
-      },
+      env: environment.env,
     },
   )
   const [stdout, stderr, status] = await Promise.all([
@@ -100,7 +100,7 @@ const runCiTools = async (opts: {
       child.on('close', (code) => resolve(code))
     }),
   ])
-  return { status, stdout, stderr }
+  return { status, stdout, stderr, secretValues: environment.secretValues }
 }
 
 describe('ci-tools deploy vercel live E2E', () => {
@@ -117,7 +117,7 @@ describe('ci-tools deploy vercel live E2E', () => {
         .slice(0, 24)
       const target = `ci-tools-e2e-${suffix}`
       const marker = `ci-tools-live-vercel-e2e:${runId}:${process.env.GITHUB_RUN_ATTEMPT ?? '0'}`
-      let failureResult: LiveDeployProcessResult | undefined
+      let failureResult: VercelLiveProcessResult | undefined
 
       try {
         mkdirSync(artifactDir, { recursive: true })
@@ -134,12 +134,9 @@ describe('ci-tools deploy vercel live E2E', () => {
           marker,
         })
         failureResult = result
-        const token = process.env.VERCEL_TOKEN
-        const bypassSecret = process.env.VERCEL_AUTOMATION_BYPASS_SECRET
         expect(
-          [token, bypassSecret].some(
-            (secret) =>
-              secret !== undefined && `${result.stdout}\n${result.stderr}`.includes(secret),
+          result.secretValues.some((secret) =>
+            `${result.stdout}\n${result.stderr}`.includes(secret),
           ),
         ).toBe(false)
         expect(result.status).toBe(0)
@@ -162,6 +159,7 @@ describe('ci-tools deploy vercel live E2E', () => {
               status: failureResult.status,
               report:
                 existsSync(reportFile) === true ? readFileSync(reportFile, 'utf8') : undefined,
+              includeProviderCause: true,
             }),
           )
         }
