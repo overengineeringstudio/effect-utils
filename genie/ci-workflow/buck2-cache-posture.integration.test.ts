@@ -345,6 +345,8 @@ describe('generated CI cache trust behavior', () => {
     expect(regression?.run).toContain(` ${path} `)
     const tasks = readFileSync(new URL('../../devenv.nix', import.meta.url), 'utf8')
     expect(tasks).toContain(`bun-test-runner.ts test ${path}\n`)
+    const localTask = tasks.split('tasks."genie:ci-workflow:test" = {')[1]?.split('\n  };')[0]
+    expect(localTask).toContain('"genie/ci-scripts/buck2-reapi-classification*.ts"')
   })
 
   it('skips main heavy lanes only for tested trees and still runs queues, publishers and the proof', async () => {

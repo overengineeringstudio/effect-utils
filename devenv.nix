@@ -1329,6 +1329,7 @@ in
       "genie/ci-workflow/**/*.ts"
       "genie/ci-workflow/**/*.sh"
       "genie/ci-scripts/buck2-cache-*.ts"
+      "genie/ci-scripts/buck2-reapi-classification*.ts"
       "genie/ci.ts"
       ".github/workflows/ci.yml.genie.ts"
       "packages/@overeng/genie/src/runtime/**/*.ts"
