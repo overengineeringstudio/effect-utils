@@ -658,7 +658,6 @@ jobs:
           fi
           printf "%s\n%s\n%s\n" "$started_at" "$source_root" "$fresh_root" > "$marker"
           printf "CI_BUCK2_CACHE_EVIDENCE_STARTED_AT=%s\n" "$started_at" >> "$GITHUB_ENV"
-        if: ${{ (!(github.event_name == 'workflow_dispatch' && inputs['measure-macos'] == true) && (success())) && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
       - name: Provide cachix CLI from nixpkgs
         shell: bash
         env:
@@ -806,7 +805,7 @@ jobs:
           echo "If this looks like Namespace runner Nix store corruption (e.g. \"... is not valid\", \"config.cachix\", \"cachix.package\"), add the run link + full nix-store output to:"
           echo "  https://github.com/overengineeringstudio/effect-utils/issues/201"
       - name: Collect Buck2 cache evidence
-        if: ${{ (!(github.event_name == 'workflow_dispatch' && inputs['measure-macos'] == true) && ((always()) && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')))) && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
+        if: ${{ (always()) && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
         shell: bash
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -817,7 +816,7 @@ jobs:
           nix shell .#bun .#buck2 --command bash genie/ci-scripts/collect-buck2-cache-evidence.sh
       - # v4.6.2
         name: Upload Buck2 cache evidence
-        if: ${{ !(github.event_name == 'workflow_dispatch' && inputs['measure-macos'] == true) && (always()) }}
+        if: ${{ always() }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: 'buck2-cache-evidence-pr-buck2-tools-${{ github.run_attempt }}'
@@ -985,7 +984,6 @@ jobs:
           fi
           printf "%s\n%s\n%s\n" "$started_at" "$source_root" "$fresh_root" > "$marker"
           printf "CI_BUCK2_CACHE_EVIDENCE_STARTED_AT=%s\n" "$started_at" >> "$GITHUB_ENV"
-        if: ${{ (!(github.event_name == 'workflow_dispatch' && inputs['measure-macos'] == true) && (success())) && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
       - name: Provide cachix CLI from nixpkgs
         shell: bash
         env:
@@ -1381,7 +1379,7 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
       - name: Collect Buck2 cache evidence
-        if: ${{ (!(github.event_name == 'workflow_dispatch' && inputs['measure-macos'] == true) && ((always()) && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')))) && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
+        if: ${{ (always()) && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
         shell: bash
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -1392,7 +1390,7 @@ jobs:
           nix shell .#bun .#buck2 --command bash genie/ci-scripts/collect-buck2-cache-evidence.sh
       - # v4.6.2
         name: Upload Buck2 cache evidence
-        if: ${{ !(github.event_name == 'workflow_dispatch' && inputs['measure-macos'] == true) && (always()) }}
+        if: ${{ always() }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: 'buck2-cache-evidence-quality-${{ github.run_attempt }}'
@@ -1581,7 +1579,6 @@ jobs:
           fi
           printf "%s\n%s\n%s\n" "$started_at" "$source_root" "$fresh_root" > "$marker"
           printf "CI_BUCK2_CACHE_EVIDENCE_STARTED_AT=%s\n" "$started_at" >> "$GITHUB_ENV"
-        if: ${{ (!(github.event_name == 'workflow_dispatch' && inputs['measure-macos'] == true) && (success())) && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
       - name: Provide cachix CLI from nixpkgs
         shell: bash
         env:
@@ -1784,7 +1781,7 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
       - name: Collect Buck2 cache evidence
-        if: ${{ (!(github.event_name == 'workflow_dispatch' && inputs['measure-macos'] == true) && ((always()) && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')))) && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
+        if: ${{ (always()) && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
         shell: bash
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -1795,7 +1792,7 @@ jobs:
           nix shell .#bun .#buck2 --command bash genie/ci-scripts/collect-buck2-cache-evidence.sh
       - # v4.6.2
         name: Upload Buck2 cache evidence
-        if: ${{ !(github.event_name == 'workflow_dispatch' && inputs['measure-macos'] == true) && (always()) }}
+        if: ${{ always() }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: 'buck2-cache-evidence-test-${{ github.run_attempt }}'
@@ -1970,7 +1967,7 @@ jobs:
           fi
           printf "%s\n%s\n%s\n" "$started_at" "$source_root" "$fresh_root" > "$marker"
           printf "CI_BUCK2_CACHE_EVIDENCE_STARTED_AT=%s\n" "$started_at" >> "$GITHUB_ENV"
-        if: ${{ (!(github.event_name == 'workflow_dispatch' && inputs['measure-macos'] == true) && (success())) && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
+        if: ${{ (!(github.event_name == 'workflow_dispatch' && inputs['measure-macos'] == true) && success()) && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
       - name: Provide cachix CLI from nixpkgs
         shell: bash
         env:
@@ -2036,7 +2033,7 @@ jobs:
           bash "$__genie_ci_retry_script" 'devenv tasks run buck2:editor:bootstrap' 'cd "${GITHUB_WORKSPACE:-$PWD}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false ${PIPELINE_RUN_PREFIX:+$PIPELINE_RUN_PREFIX }"${DEVENV_BIN:?DEVENV_BIN not set}" tasks run buck2:editor:bootstrap'
         timeout-minutes: ${{ runner.os == 'macOS' && 25 || 26 }}
       - name: Warm local Nix substituter after bootstrap
-        if: ${{ (!(github.event_name == 'workflow_dispatch' && inputs['measure-macos'] == true) && ((success()) && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')))) && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
+        if: ${{ !(github.event_name == 'workflow_dispatch' && inputs['measure-macos'] == true) && (success()) && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
         continue-on-error: true
         timeout-minutes: 15
         run: |
@@ -2114,7 +2111,7 @@ jobs:
           nix config show sandbox
           nix build .#buck-product-overeng-content-address-from-source --no-link --print-build-logs --option sandbox false
       - name: Save signed and content-addressed store paths to local Nix substituter
-        if: ${{ (!(github.event_name == 'workflow_dispatch' && inputs['measure-macos'] == true) && ((!cancelled()) && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')))) && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
+        if: ${{ !(github.event_name == 'workflow_dispatch' && inputs['measure-macos'] == true) && (!cancelled()) && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
         continue-on-error: true
         timeout-minutes: 15
         run: |
@@ -2238,7 +2235,7 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
       - name: Collect Buck2 cache evidence
-        if: ${{ (!(github.event_name == 'workflow_dispatch' && inputs['measure-macos'] == true) && ((always()) && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')))) && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
+        if: ${{ !(github.event_name == 'workflow_dispatch' && inputs['measure-macos'] == true) && (always()) && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
         shell: bash
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -2249,7 +2246,7 @@ jobs:
           nix shell .#bun .#buck2 --command bash genie/ci-scripts/collect-buck2-cache-evidence.sh
       - # v4.6.2
         name: Upload Buck2 cache evidence
-        if: ${{ !(github.event_name == 'workflow_dispatch' && inputs['measure-macos'] == true) && (always()) }}
+        if: ${{ !(github.event_name == 'workflow_dispatch' && inputs['measure-macos'] == true) && always() }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: 'buck2-cache-evidence-test-macos-${{ github.run_attempt }}'
@@ -2405,7 +2402,6 @@ jobs:
           fi
           printf "%s\n%s\n%s\n" "$started_at" "$source_root" "$fresh_root" > "$marker"
           printf "CI_BUCK2_CACHE_EVIDENCE_STARTED_AT=%s\n" "$started_at" >> "$GITHUB_ENV"
-        if: ${{ (!(github.event_name == 'workflow_dispatch' && inputs['measure-macos'] == true) && (success())) && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
       - name: Provide cachix CLI from nixpkgs
         shell: bash
         env:
@@ -2611,7 +2607,7 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
       - name: Collect Buck2 cache evidence
-        if: ${{ (!(github.event_name == 'workflow_dispatch' && inputs['measure-macos'] == true) && ((always()) && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')))) && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
+        if: ${{ (always()) && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
         shell: bash
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -2622,7 +2618,7 @@ jobs:
           nix shell .#bun .#buck2 --command bash genie/ci-scripts/collect-buck2-cache-evidence.sh
       - # v4.6.2
         name: Upload Buck2 cache evidence
-        if: ${{ !(github.event_name == 'workflow_dispatch' && inputs['measure-macos'] == true) && (always()) }}
+        if: ${{ always() }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: 'buck2-cache-evidence-test-playwright-utils-${{ github.run_attempt }}'
@@ -2791,7 +2787,6 @@ jobs:
           fi
           printf "%s\n%s\n%s\n" "$started_at" "$source_root" "$fresh_root" > "$marker"
           printf "CI_BUCK2_CACHE_EVIDENCE_STARTED_AT=%s\n" "$started_at" >> "$GITHUB_ENV"
-        if: ${{ (!(github.event_name == 'workflow_dispatch' && inputs['measure-macos'] == true) && (success())) && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
       - name: Provide cachix CLI from nixpkgs
         shell: bash
         env:
@@ -2997,7 +2992,7 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
       - name: Collect Buck2 cache evidence
-        if: ${{ (!(github.event_name == 'workflow_dispatch' && inputs['measure-macos'] == true) && ((always()) && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')))) && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
+        if: ${{ (always()) && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
         shell: bash
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -3008,7 +3003,7 @@ jobs:
           nix shell .#bun .#buck2 --command bash genie/ci-scripts/collect-buck2-cache-evidence.sh
       - # v4.6.2
         name: Upload Buck2 cache evidence
-        if: ${{ !(github.event_name == 'workflow_dispatch' && inputs['measure-macos'] == true) && (always()) }}
+        if: ${{ always() }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: 'buck2-cache-evidence-test-playwright-tui-react-${{ github.run_attempt }}'
@@ -3176,7 +3171,6 @@ jobs:
           fi
           printf "%s\n%s\n%s\n" "$started_at" "$source_root" "$fresh_root" > "$marker"
           printf "CI_BUCK2_CACHE_EVIDENCE_STARTED_AT=%s\n" "$started_at" >> "$GITHUB_ENV"
-        if: ${{ (!(github.event_name == 'workflow_dispatch' && inputs['measure-macos'] == true) && (success())) && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
       - name: Provide cachix CLI from nixpkgs
         shell: bash
         env:
@@ -3350,7 +3344,7 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
       - name: Collect Buck2 cache evidence
-        if: ${{ (!(github.event_name == 'workflow_dispatch' && inputs['measure-macos'] == true) && ((always()) && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')))) && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
+        if: ${{ (always()) && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
         shell: bash
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -3361,7 +3355,7 @@ jobs:
           nix shell .#bun .#buck2 --command bash genie/ci-scripts/collect-buck2-cache-evidence.sh
       - # v4.6.2
         name: Upload Buck2 cache evidence
-        if: ${{ !(github.event_name == 'workflow_dispatch' && inputs['measure-macos'] == true) && (always()) }}
+        if: ${{ always() }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: 'buck2-cache-evidence-test-megarepo-store-gc-${{ github.run_attempt }}'
@@ -3820,7 +3814,6 @@ jobs:
           fi
           printf "%s\n%s\n%s\n" "$started_at" "$source_root" "$fresh_root" > "$marker"
           printf "CI_BUCK2_CACHE_EVIDENCE_STARTED_AT=%s\n" "$started_at" >> "$GITHUB_ENV"
-        if: ${{ (!(github.event_name == 'workflow_dispatch' && inputs['measure-macos'] == true) && (success())) && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
       - name: Provide cachix CLI from nixpkgs
         shell: bash
         env:
@@ -4005,7 +3998,7 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
       - name: Collect Buck2 cache evidence
-        if: ${{ (!(github.event_name == 'workflow_dispatch' && inputs['measure-macos'] == true) && ((always()) && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')))) && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
+        if: ${{ (always()) && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
         shell: bash
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -4016,7 +4009,7 @@ jobs:
           nix shell .#bun .#buck2 --command bash genie/ci-scripts/collect-buck2-cache-evidence.sh
       - # v4.6.2
         name: Upload Buck2 cache evidence
-        if: ${{ !(github.event_name == 'workflow_dispatch' && inputs['measure-macos'] == true) && (always()) }}
+        if: ${{ always() }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: 'buck2-cache-evidence-weaver-${{ github.run_attempt }}'
@@ -5357,7 +5350,6 @@ jobs:
           fi
           printf "%s\n%s\n%s\n" "$started_at" "$source_root" "$fresh_root" > "$marker"
           printf "CI_BUCK2_CACHE_EVIDENCE_STARTED_AT=%s\n" "$started_at" >> "$GITHUB_ENV"
-        if: ${{ (!(github.event_name == 'workflow_dispatch' && inputs['measure-macos'] == true) && (success())) && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
       - name: Provide cachix CLI from nixpkgs
         shell: bash
         env:
@@ -5491,7 +5483,7 @@ jobs:
           echo "If this looks like Namespace runner Nix store corruption (e.g. \"... is not valid\", \"config.cachix\", \"cachix.package\"), add the run link + full nix-store output to:"
           echo "  https://github.com/overengineeringstudio/effect-utils/issues/201"
       - name: Collect Buck2 cache evidence
-        if: ${{ (!(github.event_name == 'workflow_dispatch' && inputs['measure-macos'] == true) && ((always()) && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')))) && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
+        if: ${{ (always()) && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
         shell: bash
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -5502,7 +5494,7 @@ jobs:
           nix shell .#bun .#buck2 --command bash genie/ci-scripts/collect-buck2-cache-evidence.sh
       - # v4.6.2
         name: Upload Buck2 cache evidence
-        if: ${{ !(github.event_name == 'workflow_dispatch' && inputs['measure-macos'] == true) && (always()) }}
+        if: ${{ always() }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: 'buck2-cache-evidence-test-integration-notion-${{ github.run_attempt }}'
@@ -5665,7 +5657,6 @@ jobs:
           fi
           printf "%s\n%s\n%s\n" "$started_at" "$source_root" "$fresh_root" > "$marker"
           printf "CI_BUCK2_CACHE_EVIDENCE_STARTED_AT=%s\n" "$started_at" >> "$GITHUB_ENV"
-        if: ${{ (!(github.event_name == 'workflow_dispatch' && inputs['measure-macos'] == true) && (success())) && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
       - name: Provide cachix CLI from nixpkgs
         shell: bash
         env:
@@ -5801,7 +5792,7 @@ jobs:
           echo "If this looks like Namespace runner Nix store corruption (e.g. \"... is not valid\", \"config.cachix\", \"cachix.package\"), add the run link + full nix-store output to:"
           echo "  https://github.com/overengineeringstudio/effect-utils/issues/201"
       - name: Collect Buck2 cache evidence
-        if: ${{ (!(github.event_name == 'workflow_dispatch' && inputs['measure-macos'] == true) && ((always()) && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')))) && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
+        if: ${{ (always()) && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
         shell: bash
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -5812,7 +5803,7 @@ jobs:
           nix shell .#bun .#buck2 --command bash genie/ci-scripts/collect-buck2-cache-evidence.sh
       - # v4.6.2
         name: Upload Buck2 cache evidence
-        if: ${{ !(github.event_name == 'workflow_dispatch' && inputs['measure-macos'] == true) && (always()) }}
+        if: ${{ always() }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: 'buck2-cache-evidence-test-integration-restate-${{ github.run_attempt }}'
@@ -5876,7 +5867,7 @@ jobs:
       contents: read
       id-token: write
   test-live-deploy-ci-tools:
-    if: ${{ !(github.event_name == 'workflow_dispatch' && inputs['measure-macos'] == true) && ((!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && !(github.event_name == 'workflow_dispatch' && inputs['measure-macos'] == true)) }}
+    if: ${{ (!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && !(github.event_name == 'workflow_dispatch' && inputs['measure-macos'] == true) }}
     concurrency:
       group: 'test-live-deploy-ci-tools-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}'
       cancel-in-progress: true
@@ -5972,7 +5963,6 @@ jobs:
           fi
           printf "%s\n%s\n%s\n" "$started_at" "$source_root" "$fresh_root" > "$marker"
           printf "CI_BUCK2_CACHE_EVIDENCE_STARTED_AT=%s\n" "$started_at" >> "$GITHUB_ENV"
-        if: ${{ (!(github.event_name == 'workflow_dispatch' && inputs['measure-macos'] == true) && (success())) && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
       - name: Provide cachix CLI from nixpkgs
         shell: bash
         env:
@@ -6156,7 +6146,7 @@ jobs:
           echo "If this looks like Namespace runner Nix store corruption (e.g. \"... is not valid\", \"config.cachix\", \"cachix.package\"), add the run link + full nix-store output to:"
           echo "  https://github.com/overengineeringstudio/effect-utils/issues/201"
       - name: Collect Buck2 cache evidence
-        if: ${{ (!(github.event_name == 'workflow_dispatch' && inputs['measure-macos'] == true) && ((always()) && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')))) && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
+        if: ${{ (always()) && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
         shell: bash
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -6167,7 +6157,7 @@ jobs:
           nix shell .#bun .#buck2 --command bash genie/ci-scripts/collect-buck2-cache-evidence.sh
       - # v4.6.2
         name: Upload Buck2 cache evidence
-        if: ${{ !(github.event_name == 'workflow_dispatch' && inputs['measure-macos'] == true) && (always()) }}
+        if: ${{ always() }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: 'buck2-cache-evidence-test-live-deploy-ci-tools-${{ github.run_attempt }}'
@@ -6230,7 +6220,7 @@ jobs:
       contents: read
       id-token: write
   deploy-storybooks:
-    if: ${{ !(github.event_name == 'workflow_dispatch' && inputs['measure-macos'] == true) && ((!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && !(github.event_name == 'workflow_dispatch' && inputs['measure-macos'] == true)) }}
+    if: ${{ (!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && !(github.event_name == 'workflow_dispatch' && inputs['measure-macos'] == true) }}
     runs-on:
       [
         'namespace-profile-linux-x86-64;github.run-id=${{ github.run_id }};container.privileged=true;job.priority=1',
@@ -6326,7 +6316,6 @@ jobs:
           fi
           printf "%s\n%s\n%s\n" "$started_at" "$source_root" "$fresh_root" > "$marker"
           printf "CI_BUCK2_CACHE_EVIDENCE_STARTED_AT=%s\n" "$started_at" >> "$GITHUB_ENV"
-        if: ${{ (!(github.event_name == 'workflow_dispatch' && inputs['measure-macos'] == true) && (success())) && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
       - name: Provide cachix CLI from nixpkgs
         shell: bash
         env:
@@ -6532,7 +6521,7 @@ jobs:
           echo "If this looks like Namespace runner Nix store corruption (e.g. \"... is not valid\", \"config.cachix\", \"cachix.package\"), add the run link + full nix-store output to:"
           echo "  https://github.com/overengineeringstudio/effect-utils/issues/201"
       - name: Collect Buck2 cache evidence
-        if: ${{ (!(github.event_name == 'workflow_dispatch' && inputs['measure-macos'] == true) && ((always()) && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')))) && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
+        if: ${{ (always()) && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
         shell: bash
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -6543,7 +6532,7 @@ jobs:
           nix shell .#bun .#buck2 --command bash genie/ci-scripts/collect-buck2-cache-evidence.sh
       - # v4.6.2
         name: Upload Buck2 cache evidence
-        if: ${{ !(github.event_name == 'workflow_dispatch' && inputs['measure-macos'] == true) && (always()) }}
+        if: ${{ always() }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: 'buck2-cache-evidence-deploy-storybooks-${{ github.run_attempt }}'
@@ -6646,7 +6635,7 @@ jobs:
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') }}
   promote-published:
     needs: [publish-products, consumer-smoke]
-    if: ${{ !(github.event_name == 'workflow_dispatch' && inputs['measure-macos'] == true) && (github.repository == 'overengineeringstudio/effect-utils' && github.event_name == 'push' && github.ref == 'refs/heads/main' && needs['publish-products'].result == 'success' && needs['consumer-smoke'].result == 'success' && needs['publish-products'].outputs.current-sha == github.sha && needs['consumer-smoke'].outputs.current-sha == github.sha) }}
+    if: github.repository == 'overengineeringstudio/effect-utils' && github.event_name == 'push' && github.ref == 'refs/heads/main' && needs['publish-products'].result == 'success' && needs['consumer-smoke'].result == 'success' && needs['publish-products'].outputs.current-sha == github.sha && needs['consumer-smoke'].outputs.current-sha == github.sha
     runs-on: ['namespace-profile-linux-x86-64;github.run-id=${{ github.run_id }};job.priority=1']
     timeout-minutes: 5
     permissions:
@@ -6889,7 +6878,7 @@ jobs:
       group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || 'code') }}-pipeline-traces"
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') }}
   consumer-smoke:
-    if: ${{ !(github.event_name == 'workflow_dispatch' && inputs['measure-macos'] == true) && ((!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && !(github.event_name == 'workflow_dispatch' && inputs['measure-macos'] == true)) }}
+    if: ${{ (!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && !(github.event_name == 'workflow_dispatch' && inputs['measure-macos'] == true) }}
     runs-on:
       [
         "namespace-profile-linux-x86-64;github.run-id=${{ github.run_id }}${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && ';container.privileged=true' || '' }};job.priority=1",
