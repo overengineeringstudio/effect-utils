@@ -31,6 +31,7 @@ import {
   lane,
   list,
   text,
+  targetLabelGrammar,
 } from './buck2-action-evidence-codec.ts'
 import {
   actionExclusionReason,
@@ -76,8 +77,7 @@ const maxEligibleMisses = 50
 const diagnosticToken = (value: string): string =>
   /^[a-zA-Z0-9_.:-]{1,160}$/.test(value) === true ? value : 'unavailable'
 const diagnosticTarget = (value: string): string =>
-  /^[a-zA-Z0-9_.-]*\/\/[a-zA-Z0-9_./@+-]*:[a-zA-Z0-9_.@+=,-]+$/.test(value) === true &&
-  value.length <= 512
+  targetLabelGrammar.test(value) === true && value.length <= 512 && value.trim() === value
     ? value
     : 'unavailable'
 export type LaneObservation = {

@@ -275,7 +275,7 @@ describe('warm99 identity acceptance', () => {
     const manifest = manifestFixture(['main-reader'], 1)
     const actions = Array.from({ length: 47 }, (_, index) =>
       actionFixture({
-        target: `root//packages/tool:target-${index}`,
+        target: index === 0 ? 'root//pkg:foo/bar' : `root//packages/tool:target-${index}`,
         executionKind: index < 8 ? 1 : 3,
       }),
     )
@@ -372,6 +372,10 @@ describe('warm99 identity acceptance', () => {
     cohort.eligibleMisses[0]!.target = '/private/path\ninjected'
     cohort.eligibleMisses[0]!.readerJob = '/private/job\ninjected'
     expect(renderWarm99Diagnostics(report)).not.toContain('injected')
+    for (const target of ['root//pkg:foo bar', 'root//pkg:foo\n', `root//pkg:${'x'.repeat(512)}`]) {
+      cohort.eligibleMisses[0]!.target = target
+      expect(renderWarm99Diagnostics(report).split('\n')[1]).toContain('miss target=unavailable ')
+    }
     reader.header.invocations[0]!.cacheReadPolicy = 'unknown'
     expect(
       evaluateWarm99({ manifest, loaded }).lanes[0]!.observations[0]!.eligibleMisses[0]!

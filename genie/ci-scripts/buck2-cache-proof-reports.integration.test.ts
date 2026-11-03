@@ -71,8 +71,10 @@ describe('proof report publication', () => {
     const manifest = manifestFixture(['main-reader'], 1)
     const loaded = loadedFixture(manifest)
     const item = loaded[0]!
+    item.writers[0]!.actions[0]!.target = 'root//pkg:foo/bar'
     item.readers[0]!.actions[0] = {
       ...item.readers[0]!.actions[0]!,
+      target: 'root//pkg:foo/bar',
       executionKind: 1,
       outcome: 'local',
       cacheOutcome: 'local',
@@ -96,7 +98,7 @@ describe('proof report publication', () => {
     const cohort = warm.lanes[0].observations[0]
     expect(cohort.eligibleMisses).toHaveLength(1)
     expect(cohort.eligibleMisses[0]).toMatchObject({
-      target: 'test//:test',
+      target: 'root//pkg:foo/bar',
       category: 'compile',
       readerJob: 'test',
       readerPosture: 'remote-reads-enabled',
