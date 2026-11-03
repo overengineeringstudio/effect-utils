@@ -223,7 +223,19 @@ export const validateStoreMembers = ({
 
       // Use whichever worktree exists for subsequent checks
       const worktreePath = branchGitExists === true ? branchWorktreePath : commitWorktreePath
-      const foreign = yield* inspectForeignGitDir({ worktreePath, bareRepoPath })
+      const identity = yield* inspectForeignGitDir({ worktreePath, bareRepoPath }).pipe(
+        Effect.result,
+      )
+      if (identity._tag === 'Failure') {
+        issues.push({
+          type: 'broken_worktree',
+          severity: 'error',
+          memberName,
+          message: `Cannot inspect Git identity: ${identity.failure}`,
+        })
+        continue
+      }
+      const foreign = identity.success
       if (foreign !== undefined) {
         issues.push({
           severity: 'error',
@@ -538,7 +550,7 @@ export const fixStoreIssues = ({
               memberName: issue.memberName,
               issueType: issue.type,
               status: 'skipped',
-              message: 'missing metadata for fix',
+              message: `${issue.message}; missing metadata for fix (manual inspection required)`,
             })
             break
           }
