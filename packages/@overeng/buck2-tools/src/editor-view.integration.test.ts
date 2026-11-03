@@ -816,6 +816,82 @@ describe('editor view publisher', () => {
     })
   }
 
+  for (const mutation of ['direct', 'retarget-external']) {
+    it(`rebuilds without a stale proof when ${mutation} changes between admission and the fence`, async () => {
+      const fixture = makeFixture()
+      try {
+        const dependency = join(fixture.root, 'dependency')
+        mkdirSync(dependency)
+        const source = join(dependency, 'index.js')
+        writeFileSync(source, 'export default 1\n')
+        const replacement = join(fixture.root, 'replacement')
+        mkdirSync(replacement)
+        writeFileSync(join(replacement, 'index.js'), 'export default 2\n')
+        const linked = join(fixture.root, 'linked')
+        const alias = join(fixture.root, 'alias')
+        mkdirSync(linked)
+        symlinkSync(dependency, alias)
+        symlinkSync(join(alias, 'index.js'), join(linked, 'dep'))
+        const options =
+          mutation === 'direct'
+            ? { ...fixture.options, backingRoots: [dependency] }
+            : { ...fixture.options, nodeModules: linked, backingRoots: [dependency, replacement] }
+        const [first] = await publishEditorViews({ options: [options] })
+        const before = statSync(source)
+        let changed = false
+        fsMocks.mkdirSync.mockImplementation((...args) => {
+          if (args[0] === join(fixture.editorRoot, '.publish.lock') && changed === false) {
+            changed = true
+            if (mutation !== 'retarget-external') {
+              writeFileSync(source, 'export default 2\n')
+              utimesSync(source, before.atime, before.mtime)
+            } else {
+              rmSync(alias)
+              symlinkSync(replacement, alias)
+            }
+          }
+          return nativeFs.mkdirSync(...args)
+        })
+        const beforeMaterialize = vi.fn()
+        const [second] = await publishEditorViews({
+          options: [{ ...options, beforeMaterialize }],
+        })
+        expect(changed).toBe(true)
+        expect(second?.editorInputsFingerprint).toBe(first?.editorInputsFingerprint)
+        expect(second?.normalizedStoreDigest).not.toBe(first?.normalizedStoreDigest)
+        expect(second?.snapshot).not.toBe(first?.snapshot)
+        expect(beforeMaterialize).toHaveBeenCalledTimes(1)
+        const payload = mutation === 'direct' ? '.backing/0000/index.js' : 'node_modules/dep'
+        expect(readFileSync(join(fixture.editorRoot, second!.snapshot, payload), 'utf8')).toBe(
+          'export default 2\n',
+        )
+      } finally {
+        fsMocks.mkdirSync.mockReset().mockImplementation(nativeFs.mkdirSync)
+        cleanup(fixture)
+      }
+    })
+  }
+
+  it('fails closed without snapshots or published bytes for an external-only destination', async () => {
+    const fixture = makeFixture()
+    try {
+      const external = join(fixture.root, 'external.js')
+      writeFileSync(external, 'export default "unadmitted"\n')
+      symlinkSync(external, join(fixture.nodeModules, 'external'))
+      await expect(publishEditorViews({ options: [fixture.options] })).rejects.toThrow(
+        `tree symbolic link resolves outside declared backing roots: ${join(fixture.nodeModules, 'external')} -> ${external}`,
+      )
+      const store = join(fixture.editorRoot, '.store')
+      expect(existsSync(store) === true ? readdirSync(store) : []).toEqual([])
+      expect(
+        readFileSync(join(fixture.packageDir, 'node_modules', 'legacy-root-install'), 'utf8'),
+      ).toBe('retained')
+      expect(existsSync(join(fixture.packageDir, 'node_modules', 'external'))).toBe(false)
+    } finally {
+      cleanup(fixture)
+    }
+  })
+
   describe('incremental finite source-stat manifest reuse', () => {
     let fixture: Fixture
     let options: EditorViewOptions

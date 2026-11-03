@@ -229,8 +229,8 @@ does not authorize recovery. After acquiring the lock, before any batch worker
 creates a candidate, the publisher reclaims abandoned payloads. Under the lock,
 the publisher:
 
-1. fingerprints each distinct selected dependency view and finite declared root
-   once for the admitted state;
+1. rechecks the complete source entry/inode identity of content proofs prepared
+   before lock acquisition; a mismatch discards those proofs and rehashes sources;
 2. derives the content-addressed snapshot name before copying; if that entry
    exists, verifies its complete immutable payload and exact admission record
    and reuses it without writing store bytes;
@@ -257,9 +257,22 @@ the publisher:
 Bootstrap and publication commands submit all selected views in one
 `publish-batch` operation, with the JSON array of publish argument lists on
 stdin. Request size is not limited by the operating system's per-argument cap.
-The batch acquires each distinct state-root lock before preparing any view and
-holds every lock until all workers have settled. `editorViewPublicationWorkers`
-in the publisher is the single declared resource bound (four); bootstrap and
+The batch fingerprints source inputs before acquiring any state-root lock.
+Complete source metadata and literal-link identities bracket that proof and are
+rechecked under the fence; they guard proof lifetime, never key generation reuse.
+The inventory follows symlinks through their canonical destination metadata and
+recursively inventories directory targets, including targets outside source roots.
+An unreadable or unresolved destination refuses admission.
+Inventory coverage does not widen publication authority: native content proofs
+and relocation still reject payload destinations outside the declared closure.
+Targets resolve through named hardlinks, matching the owner-resolution contract.
+Before content hashing, one probe file per covered device supplies its filesystem
+ctime. Entries with mtime or ctime at or after that probe are racily clean and
+their bytes are rehashed under the fence. Devices without a writable same-device
+probe always require byte hashing; wall-clock time never authorizes reuse.
+The batch then acquires each distinct state-root lock before preparing any
+candidate and holds every lock until all workers settle.
+`editorViewPublicationWorkers` bounds candidate workers (four); bootstrap and
 source-test publication both use it. Independent root fingerprints within a
 candidate remain concurrent. Native copy children are awaited asynchronously,
 with at most one per active view. Candidate names are unique per view operation;
