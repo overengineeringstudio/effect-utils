@@ -230,6 +230,18 @@ mr store ls [--json]
 mr store fetch [--json]
 ```
 
+### `mr store worktree new`
+
+```bash
+mr store worktree new owner/repo --ref feature --base main --porcelain
+```
+
+Creates `feature` at the base commit in the canonical `refs/heads/feature`
+worktree. A base can be a local ref, a remote-only branch name (including
+slash-separated names), an explicit `origin/branch`, or a commit SHA.
+The new worktree's branch is always the name passed to `--ref`, not the base.
+`--porcelain` prints only its path.
+
 ### `mr store gc`
 
 ```bash
