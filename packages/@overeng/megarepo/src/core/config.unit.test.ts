@@ -167,6 +167,12 @@ describe('config', () => {
           expect(message).toContain('SSH')
           expect(message).not.toContain(source)
           expect(message).not.toMatch(/secret|s%65cret|us%65r/)
+          const error = Effect.runSync(
+            decodeMegarepoConfigContent({ content, format }).pipe(Effect.flip),
+          )
+          expect(JSON.stringify({ cause: exit.cause, issue: error.issue })).not.toMatch(
+            /secret|s%65cret|us%65r/,
+          )
         }
       }
     })

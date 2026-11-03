@@ -180,13 +180,14 @@ export const sourceCredentialError = (source: string): string | undefined => {
   const safeUrl = credentialSourceUrl(source)
   return safeUrl === undefined
     ? undefined
-    : `HTTP(S) URL userinfo is not supported: ${safeUrl}. Use a Git credential helper (e.g. gh auth setup-git) or SSH instead.`
+    : `HTTP(S) URL userinfo is not supported: ${safeUrl}. Fix the lock or config and use a Git credential helper (e.g. gh auth setup-git) or SSH instead.`
 }
 
-const MemberSourceString = Schema.String.check(
+/** Source strings shared by configuration and lock decoding. */
+export const MemberSourceString = Schema.String.check(
   Schema.makeFilter<string>((source) => {
     const message = sourceCredentialError(source)
-    // Do not retain rejected input, even when schema decoding enables reportInput.
+    // Omit the rejected value from this leaf issue.
     return message === undefined ? undefined : new SchemaIssue.InvalidValue({ message })
   }),
 )
@@ -334,6 +335,7 @@ export const decodeMegarepoConfigContent = ({
   readonly content: string
   readonly format: ConfigFormat
 }) =>
+  // Keep reportInput disabled: enclosing schema issues otherwise retain credentialed inputs.
   Schema.decodeEffect(
     format === 'kdl' ? MegarepoConfigFromKdl : Schema.fromJsonString(MegarepoConfig),
   )(content)

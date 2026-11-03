@@ -530,19 +530,18 @@ export const syncMember = <R = never>({
     // For remote sources, use bare repo + worktree pattern
     // Resolve clone URL based on git protocol preference
     const lockedMember = lockFile?.members[name]
-    const resolvedCloneUrl = resolveCloneUrl({
+    const cloneUrl = resolveCloneUrl({
       source,
       gitProtocol,
       lockFileUrl: lockedMember?.url,
     })
-    if (resolvedCloneUrl === undefined) {
+    if (cloneUrl === undefined) {
       return {
         name,
         status: 'error',
         message: 'Cannot get clone URL',
       } satisfies MemberSyncResult
     }
-    const cloneUrl = Git.withoutHttpCredentials(resolvedCloneUrl)
 
     const bareRepoPath = store.getBareRepoPath(source)
     const bareExists = yield* store.hasBareRepo(source)
