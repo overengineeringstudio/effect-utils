@@ -343,7 +343,7 @@ const jobTimeoutMinutes = 30
 const longJobTimeoutMinutes = 45
 
 const heavyCiIf = `\${{ !cancelled() && (${ciMeasurementNotBaselineBackfillPredicate}) && (github.event_name == 'merge_group' || (github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.tested-tree.outputs.tested != 'true')) }}`
-const trustedSecretCiIf = `\${{ (${ciMeasurementNotBaselineBackfillPredicate}) && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') }}`
+const trustedSecretCiIf = `\${{ (${ciMeasurementNotBaselineBackfillPredicate}) && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && !(github.event_name == 'workflow_dispatch' && inputs['measure-macos'] == true) }}`
 // Branch secrets are available only through a deliberate collaborator dispatch, never a PR event.
 const notionIntegrationCiIf = `\${{ (${ciMeasurementNotBaselineBackfillPredicate}) && ((github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')) || (github.event_name == 'workflow_dispatch' && inputs.run_notion_integration_on_branch == true)) }}`
 const empiricalProofLaneIf = `\${{ (${ciMeasurementNotBaselineBackfillPredicate}) && ((github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')) || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'ci:heavy-proofs') && (github.event.action != 'labeled' || github.event.label.name == 'ci:heavy-proofs'))) }}`

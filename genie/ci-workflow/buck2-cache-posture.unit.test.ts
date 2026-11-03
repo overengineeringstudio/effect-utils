@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'bun:test'
 
+import { validateWorkflowCachePolicy } from '../../packages/@overeng/genie/src/runtime/github-workflow/cache-policy.ts'
 import { standaloneCachePostureConfig } from '../../scripts/buck2-cache-posture.ts'
 import { withBuck2CachePostures, withMacosMeasurementDispatch } from './buck2-cache-posture.ts'
 
@@ -16,6 +17,41 @@ const prJob = {
 }
 
 describe('declared Buck2 job cache posture', () => {
+  it('preserves protected writer guards verbatim for the cache-policy validator', () => {
+    const publisher = {
+      ...mainOnlyJob,
+      if: "${{ github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && !(github.event_name == 'workflow_dispatch' && inputs['measure-macos'] == true) }}",
+      steps: [
+        {
+          run: 'cachix push fixture',
+          env: { CACHIX_AUTH_TOKEN: '${{ secrets.CACHIX_AUTH_TOKEN }}' },
+        },
+      ],
+    }
+    const jobs = withMacosMeasurementDispatch({
+      jobs: { 'publish-products': publisher, 'trusted-buck2-remote-cache-proof': publisher },
+      postures: { 'publish-products': 'none', 'trusted-buck2-remote-cache-proof': 'writer' },
+    })
+    for (const job of Object.values(jobs)) {
+      expect(job.if).toBe(publisher.if)
+      expect(
+        new Function('github', 'inputs', `return (${job.if!.slice(3, -2)})`)(
+          { event_name: 'workflow_dispatch', ref: 'refs/heads/main' },
+          { 'measure-macos': true },
+        ),
+      ).toBe(false)
+    }
+    expect(() =>
+      validateWorkflowCachePolicy({
+        workflow: {
+          name: 'fixture',
+          on: { push: { branches: ['main'] }, workflow_dispatch: {} },
+          jobs,
+        },
+      }),
+    ).not.toThrow()
+  })
+
   it('measures dispatches without writes, local saves, or published join evidence', () => {
     const names = [
       'Unit tests',

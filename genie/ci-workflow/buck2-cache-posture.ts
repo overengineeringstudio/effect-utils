@@ -64,31 +64,36 @@ export const withMacosMeasurementDispatch = (
   const jobs = withBuck2CachePostures(args)
   const measure = "github.event_name == 'workflow_dispatch' && inputs['measure-macos'] == true"
   return Object.fromEntries(
-    Object.entries(jobs).map(([id, job]) => [
-      id,
-      {
-        ...job,
-        if: `\${{ ${id === 'test-macos' || id === 'tested-tree' ? `(${measure}) ||` : `!(${measure}) &&`} (${job.if?.replace(/^\$\{\{\s*|\s*\}\}$/g, '') ?? 'success()'}) }}`,
-        steps: [
-          ...job.steps.map((step) =>
-            /^(Save signed|Warm local)|Buck2 cache evidence/.test(step.name ?? '') === true
-              ? {
-                  ...step,
-                  if: `\${{ !(${measure}) && (${step.if?.replace(/^\$\{\{\s*|\s*\}\}$/g, '') ?? 'success()'}) }}`,
-                }
-              : step,
-          ),
-          ...(id === 'test-macos'
-            ? [
-                {
-                  name: 'Mark macOS measurement',
-                  if: `\${{ always() && (${measure}) }}`,
-                  run: 'echo "## macOS measurement (read-only; excluded from cache proofs)" >> "$GITHUB_STEP_SUMMARY"',
-                },
-              ]
-            : []),
-        ],
-      },
-    ]),
+    Object.entries(jobs).map(([id, job]) => {
+      // These use trustedSecretCiIf, which already excludes measurement dispatches.
+      // Preserve the validator's top-level protected-main publisher guard.
+      if (id === 'publish-products' || id === 'trusted-buck2-remote-cache-proof') return [id, job]
+      return [
+        id,
+        {
+          ...job,
+          if: `\${{ ${id === 'test-macos' || id === 'tested-tree' ? `(${measure}) ||` : `!(${measure}) &&`} (${job.if?.replace(/^\$\{\{\s*|\s*\}\}$/g, '') ?? 'success()'}) }}`,
+          steps: [
+            ...job.steps.map((step) =>
+              /^(Save signed|Warm local)|Buck2 cache evidence/.test(step.name ?? '') === true
+                ? {
+                    ...step,
+                    if: `\${{ !(${measure}) && (${step.if?.replace(/^\$\{\{\s*|\s*\}\}$/g, '') ?? 'success()'}) }}`,
+                  }
+                : step,
+            ),
+            ...(id === 'test-macos'
+              ? [
+                  {
+                    name: 'Mark macOS measurement',
+                    if: `\${{ always() && (${measure}) }}`,
+                    run: 'echo "## macOS measurement (read-only; excluded from cache proofs)" >> "$GITHUB_STEP_SUMMARY"',
+                  },
+                ]
+              : []),
+          ],
+        },
+      ]
+    }),
   )
 }
