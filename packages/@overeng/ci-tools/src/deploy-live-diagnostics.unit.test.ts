@@ -93,7 +93,7 @@ describe('live deploy failure diagnostics', () => {
       VERCEL_UNSET_TOKEN: undefined,
       DEVENV_TASK_OUTPUT_FILE: 'parent-output.json',
     })
-    expect(environment.env.VERCEL_SCOPE).toBe('ci')
+    expect(environment.env).toMatchObject({ VERCEL_SCOPE: 'ci' } satisfies NodeJS.ProcessEnv)
     expect(environment.env).not.toHaveProperty('DEVENV_TASK_OUTPUT_FILE')
     expect(environment.secretValues).toEqual([
       'token-sentinel',
