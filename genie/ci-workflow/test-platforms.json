@@ -344,6 +344,10 @@
         "rationale": "Native shell/xargs worker dispatch, FIFO coordination, supervisor SIGTERM, child reaping and platform-selection execution across serial/parallel queues."
       },
       {
+        "script": "editor-view-supervisor.test.sh",
+        "rationale": "Real outer flock/deferred admission, FIFO-controlled Buck daemon contention, process-group termination and child reaping on Linux and Darwin."
+      },
+      {
         "script": "genie-compiled-staging.test.sh",
         "rationale": "Compiled native Genie and platform-specific TypeScript API-server binaries; explicitly canonicalizes Darwin temporary-directory aliases and asserts staging cleanup and module identity."
       },
