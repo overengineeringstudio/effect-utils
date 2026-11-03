@@ -134,7 +134,7 @@ const runMrCommand = ({
 
 describe('mr store JSON subprocess output', () => {
   for (const loosePath of ['tmp/x.sh', 'widget/refs/heads/loose.txt']) {
-    it.effect(`keeps enumeration warnings on stderr for ${loosePath}`, () =>
+    it.effect(`keeps foreign entries out of JSON output for ${loosePath}`, () =>
       Effect.gen(function* () {
         const fs = yield* FileSystem.FileSystem
         const { storePath } = yield* createStoreFixture([
@@ -166,9 +166,13 @@ describe('mr store JSON subprocess output', () => {
         expect(result.error).toBeUndefined()
         expect(result.status, result.stderr).toBe(0)
         expect(decodeStoreGcJsonOutput(result.stdout).results).toEqual([])
-        expect(result.stderr).toContain(
-          `store enumeration: skipping non-directory entry ${looseEntry}`,
-        )
+        if (loosePath.startsWith('widget/') === true) {
+          expect(result.stderr).toContain(
+            `store enumeration: skipping non-directory entry ${looseEntry}`,
+          )
+        } else {
+          expect(result.stderr).not.toContain('store enumeration:')
+        }
         expect(result.stdout).not.toContain('store enumeration:')
       }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
     )
@@ -1477,6 +1481,102 @@ describe('store discovery is bounded to the layout', () => {
         expect(repos.some((p) => p.startsWith('evergreen/'))).toBe(false)
         expect(repos.some((p) => p.startsWith('stray/'))).toBe(false)
         expect(repos).toHaveLength(2)
+      },
+      Effect.provide(NodeServices.layer),
+      Effect.scoped,
+    ),
+  )
+
+  it.effect(
+    'skips tool caches, diagnoses unknown foreign trees once, and narrows member repair',
+    Effect.fnUntraced(
+      function* () {
+        const fs = yield* FileSystem.FileSystem
+        const { storePath, worktreePaths } = yield* createStoreFixture([
+          { host: 'github.com', owner: 'acme', repo: 'real', branches: ['main'] },
+        ])
+        const deep = Array.from({ length: 30 }, (_, i) => `d${i}`).join('/')
+        for (const root of ['pnpm-store-shared-v1/v11/links', 'unknown-cache']) {
+          yield* fs.makeDirectory(`${storePath}${root}/${deep}/node_modules`, { recursive: true })
+        }
+        yield* fs.writeFileString(`${storePath}foreign-file`, 'ignored')
+        // SSH/HTTP hosts need not contain dots; URL namespaces may have subgroups.
+        yield* fs.makeDirectory(`${storePath}intranet/group/subgroup/repo/.bare`, {
+          recursive: true,
+        })
+        const visited: Array<string> = []
+        const trackedFs = {
+          ...fs,
+          readDirectory: (path: string) => {
+            visited.push(path)
+            return fs.readDirectory(path)
+          },
+        }
+        const warnings: Array<string> = []
+        const loggerLayer = Logger.layer(
+          [
+            Logger.make(({ logLevel, message }) => {
+              if (logLevel === 'Warn') warnings.push(String(message))
+            }),
+          ],
+          { mergeWithExisting: false },
+        )
+        const store = yield* Effect.provide(Store, makeStoreLayer({ basePath: storePath })).pipe(
+          Effect.provideService(FileSystem.FileSystem, trackedFs),
+        )
+        const repos = yield* store.listRepos.pipe(Effect.provide(loggerLayer))
+        expect(repos.map((repo) => repo.relativePath)).toEqual([
+          'github.com/acme/real/',
+          'intranet/group/subgroup/repo/',
+        ])
+        expect(warnings).toEqual([
+          `store enumeration: ignoring foreign namespace ${storePath}unknown-cache/`,
+        ])
+        expect(visited.some((path) => path.includes('pnpm-store-shared-v1'))).toBe(false)
+        expect(visited.some((path) => path.includes('/refs/'))).toBe(false)
+        // Remove the synthetic marker: CLI health checks require actual Git repos.
+        yield* fs.remove(`${storePath}intranet`, { recursive: true })
+        const commit = yield* getWorktreeCommit(worktreePaths['github.com/acme/real#main']!)
+        const { workspacePath } = yield* createWorkspaceWithLock({
+          members: { real: 'acme/real' },
+          lockEntries: {
+            real: { url: 'https://github.com/acme/real', ref: 'main', commit },
+          },
+        })
+        for (const command of [
+          ['store', 'status'],
+          ['store', 'fix', '--dry-run'],
+          ['store', 'fix', 'real', '--dry-run'],
+          ['store', 'fix', 'real'],
+        ]) {
+          visited.length = 0
+          warnings.length = 0
+          const result = yield* runMrCommand({
+            cwd: workspacePath,
+            command,
+            env: { MEGAREPO_STORE: storePath },
+          }).pipe(
+            Effect.provideService(FileSystem.FileSystem, trackedFs),
+            Effect.provide(loggerLayer),
+          )
+          expect(result.exitCode, result.failure).toBe(0)
+          expect(visited.some((path) => path.includes('pnpm-store-shared-v1'))).toBe(false)
+          if (command.includes('real') === true) {
+            expect(visited.some((path) => path.includes('unknown-cache'))).toBe(false)
+            expect(warnings).toEqual([])
+          } else {
+            expect(warnings).toEqual([
+              `store enumeration: ignoring foreign namespace ${storePath}unknown-cache/`,
+            ])
+          }
+        }
+        // Partial discovery in a real namespace must still fail closed.
+        yield* fs.makeDirectory(`${storePath}github.com/unknown/${deep}`, { recursive: true })
+        const exit = yield* Effect.exit(store.listRepos)
+        expect(Exit.isFailure(exit)).toBe(true)
+        if (Exit.isFailure(exit) === true) {
+          expect(Cause.pretty(exit.cause)).toContain('census exceeded the supported depth')
+        }
       },
       Effect.provide(NodeServices.layer),
       Effect.scoped,

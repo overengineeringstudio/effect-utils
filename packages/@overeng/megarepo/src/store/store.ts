@@ -26,7 +26,13 @@ import { type PlatformError } from 'effect/PlatformError'
 
 import { EffectPath, type AbsoluteDirPath, type RelativeDirPath } from '@overeng/effect-path'
 
-import { DEFAULT_STORE_PATH, ENV_VARS, getStorePath, type MemberSource } from '../core/config.ts'
+import {
+  DEFAULT_STORE_PATH,
+  ENV_VARS,
+  getStorePath,
+  RESERVED_STORE_TOOL_ROOTS,
+  type MemberSource,
+} from '../core/config.ts'
 import * as Observability from '../core/observability.ts'
 import { classifyRef, refTypeToPathSegment, type RefType } from '../core/ref.ts'
 import { makeStoreLockLayer, StoreLock } from './store-lock.ts'
@@ -135,13 +141,16 @@ const shouldSkipStoreRootEntry = (entry: string): boolean =>
   //   - `tmp` is a conventional scratch dir.
   // The `_`-prefix convention is a stable contract for co-tenants, owned here; a
   // co-tenant writer that emits `_`-prefixed roots is well-behaved by design.
-  entry.startsWith('.') === true || entry.startsWith('_') === true || entry === 'tmp'
+  entry.startsWith('.') === true ||
+  entry.startsWith('_') === true ||
+  entry === 'tmp' ||
+  RESERVED_STORE_TOOL_ROOTS.has(entry)
 
 // Backstop depth for the store filesystem walks. For the `listRepos` layout walk
 // the documented layout is `<host>/<owner>/<repo>/.bare` (repos at depth ~2–3
-// from the store root); this generous bound lets nested namespaces (e.g. GitLab
-// subgroups) resolve while guaranteeing the walk can never descend into a
-// checked-out working tree (node_modules, build output) and exhaust memory.
+// from the store root); this generous bound supports nested URL namespaces
+// (e.g. GitLab subgroups). Repository markers and worktree markers stop descent
+// into payloads; unknown over-depth namespaces receive one diagnostic.
 // `collectNestedWorktrees` reuses it as a ref-NAME-nesting bound under
 // `refs/heads/<a>/<b>/…`; real branch names nest only a few segments, so the same
 // value (8) comfortably clears any legitimate worktree while still capping a
@@ -297,15 +306,18 @@ const make = ({
       const walk = ({
         dir,
         depth,
+        census,
       }: {
         dir: AbsoluteDirPath
         depth: number
+        census: { repos: number; overflow: AbsoluteDirPath | undefined }
       }): Effect.Effect<void, PlatformError> =>
         Effect.gen(function* () {
           yield* Effect.yieldNow
           const barePath = EffectPath.ops.join(dir, EffectPath.unsafe.relativeDir('.bare/'))
           const hasBare = yield* fs.exists(barePath)
           if (hasBare === true) {
+            census.repos++
             const relativePath = `${dir.slice(basePath.length).replace(/^\/+/, '').replace(/\/?$/, '/')}`
             result.push({
               relativePath: EffectPath.unsafe.relativeDir(relativePath),
@@ -336,12 +348,11 @@ const make = ({
             isHostNamespace === false && (hasNestedState === true || hasNestedLocks === true)
           if (isNestedStore === true) return
 
-          // Backstop: never descend past the layout's plausible repo depth, so a
-          // pathological non-git directory tree can't drive an unbounded walk.
+          // Classify overflow only after the whole namespace has been visited:
+          // a foreign subtree is ignorable, but incomplete member census is not.
           if (depth >= STORE_REPO_WALK_MAX_DEPTH) {
-            return yield* Effect.die(
-              new Error(`store listRepos census exceeded the supported depth at ${dir}`),
-            )
+            census.overflow ??= dir
+            return
           }
 
           const entries = yield* fs.readDirectory(dir)
@@ -357,9 +368,9 @@ const make = ({
                   dir,
                   EffectPath.unsafe.relativeDir(`${entry}/`),
                 )
-                if ((yield* isStoreDirectory({ fs, path: entryPath })) === false) return
+                if ((yield* fs.stat(entryPath.replace(/\/+$/, ''))).type !== 'Directory') return
 
-                yield* walk({ dir: entryPath, depth: depth + 1 })
+                yield* walk({ dir: entryPath, depth: depth + 1, census })
               }),
             { concurrency: 32 },
           )
@@ -378,9 +389,20 @@ const make = ({
               basePath,
               EffectPath.unsafe.relativeDir(`${entry}/`),
             )
-            if ((yield* isStoreDirectory({ fs, path: entryPath })) === false) return
+            if ((yield* fs.stat(entryPath.replace(/\/+$/, ''))).type !== 'Directory') return
 
-            yield* walk({ dir: entryPath, depth: 1 })
+            const census = { repos: 0, overflow: undefined as AbsoluteDirPath | undefined }
+            yield* walk({ dir: entryPath, depth: 1, census })
+            if (census.overflow !== undefined) {
+              if (census.repos > 0) {
+                return yield* Effect.die(
+                  new Error(
+                    `store listRepos census exceeded the supported depth at ${census.overflow}`,
+                  ),
+                )
+              }
+              yield* Effect.logWarning(`store enumeration: ignoring foreign namespace ${entryPath}`)
+            }
           }),
         { concurrency: 32 },
       ).pipe(
