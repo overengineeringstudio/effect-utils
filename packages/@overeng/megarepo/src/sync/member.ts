@@ -425,13 +425,13 @@ export const syncMember = <R = never>({
       } satisfies MemberSyncResult
     }
 
-    // Parse the source string
-    const source = parseSourceString(sourceString)
+    // Remove HTTP credentials before the parsed source reaches store operations or telemetry.
+    const source = parseSourceString(Git.withoutHttpCredentials(sourceString))
     if (source === undefined) {
       return {
         name,
         status: 'error',
-        message: `Invalid source string: ${sourceString}`,
+        message: `Invalid source string: ${Git.withoutHttpCredentials(sourceString)}`,
       } satisfies MemberSyncResult
     }
 
@@ -527,18 +527,19 @@ export const syncMember = <R = never>({
     // For remote sources, use bare repo + worktree pattern
     // Resolve clone URL based on git protocol preference
     const lockedMember = lockFile?.members[name]
-    const cloneUrl = resolveCloneUrl({
+    const resolvedCloneUrl = resolveCloneUrl({
       source,
       gitProtocol,
       lockFileUrl: lockedMember?.url,
     })
-    if (cloneUrl === undefined) {
+    if (resolvedCloneUrl === undefined) {
       return {
         name,
         status: 'error',
         message: 'Cannot get clone URL',
       } satisfies MemberSyncResult
     }
+    const cloneUrl = Git.withoutHttpCredentials(resolvedCloneUrl)
 
     const bareRepoPath = store.getBareRepoPath(source)
     const bareExists = yield* store.hasBareRepo(source)
@@ -1281,5 +1282,8 @@ export const syncMember = <R = never>({
         } satisfies MemberSyncResult
       })
     }),
-    Observability.withSyncMemberSpan({ name, source: sourceString }),
+    Observability.withSyncMemberSpan({
+      name,
+      source: Git.withoutHttpCredentials(sourceString),
+    }),
   )
