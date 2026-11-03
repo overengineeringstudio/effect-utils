@@ -3155,6 +3155,82 @@ const budgetReservationBytes = ({
   return bytes
 }
 
+/** Metadata guards a content proof's lifetime; it is never a generation/cache key. */
+const editorViewSourceIdentity = (options: EditorViewOptions): string => {
+  const hash = createHash('sha256')
+  const visit = (path: string): void => {
+    const status = lstatSync(path, { bigint: true })
+    for (const value of [
+      path, status.dev, status.ino, status.mode, status.size, status.mtimeNs, status.ctimeNs,
+    ]) {
+      const [length, bytes] = frame(String(value))
+      hash.update(length)
+      hash.update(bytes)
+    }
+    if (status.isSymbolicLink() === true) {
+      const [length, bytes] = frame(readlinkSync(path))
+      hash.update(length)
+      hash.update(bytes)
+    } else if (status.isDirectory() === true)
+      for (const name of readdirSync(path).toSorted()) visit(join(path, name))
+  }
+  for (const source of new Set([
+    options.editorInputs, options.nodeModules, ...(options.backingRoots ?? []),
+  ])) visit(realpathSync(resolve(source)))
+  return hash.digest('hex')
+}
+
+type EditorViewSourceAdmission = {
+  readonly sourceIdentity: string
+  readonly selectedPath: string
+  readonly finite: boolean
+  readonly roots: readonly DeclaredSnapshotRoot[]
+  readonly fingerprint: string
+  readonly selectedViewDigest: string
+  readonly declaredRoots: DeclaredRootFingerprints | undefined
+  readonly normalizedStoreDigest: string
+}
+
+const admitEditorViewSources = async (options: EditorViewOptions): Promise<EditorViewSourceAdmission> => {
+  const startedAt = performance.now()
+  const sourceIdentity = editorViewSourceIdentity(options)
+  const editorInputsPath = realpathSync(resolve(options.editorInputs))
+  const selectedPath = realpathSync(resolve(options.nodeModules))
+  const finite = (options.backingRoots?.length ?? 0) > 0
+  const roots = finite === true
+    ? declaredSnapshotRoots({ nodeModules: options.nodeModules, backingRoots: options.backingRoots ?? [] })
+    : []
+  const tool = { fingerprintTool: options.fingerprintTool, admissionDirectory: options.admissionDirectory }
+  const selected = finite === true
+    ? await canonicalTreeFingerprintWithResolvedLinks({ tree: selectedPath, linkOwners: roots, ...tool })
+    : undefined
+  const fingerprint = selected !== undefined && selectedPath === editorInputsPath
+    ? selected.resolvedLinksDigest
+    : await canonicalTreeFingerprint({ tree: editorInputsPath, ...tool })
+  const selectedViewDigest = selected?.resolvedLinksDigest ?? (selectedPath === editorInputsPath
+    ? fingerprint
+    : await canonicalTreeFingerprint({ tree: selectedPath, ...tool }))
+  const declaredRoots = finite === true
+    ? await fingerprintDeclaredRoots({
+        roots, ...tool,
+        ...(selected === undefined ? {} : { knownRoot: { source: selectedPath, ...selected } }),
+      })
+    : undefined
+  const normalizedStoreDigest = declaredRoots?.digest ??
+    await canonicalTreeFingerprint({ tree: selectedPath, dereference: true, ...tool })
+  if (sourceIdentity !== editorViewSourceIdentity(options))
+    fail('editor view sources changed during admission; retry publication')
+  const durationMs = Math.round(performance.now() - startedAt)
+  process.stderr.write(`[editor-view-phase] ${JSON.stringify({
+    package: options.package, phase: 'source-admission', event: 'complete',
+    durationMs, elapsedMs: durationMs,
+  })}\n`)
+  return {
+    sourceIdentity, selectedPath, finite, roots, fingerprint, selectedViewDigest,
+    declaredRoots, normalizedStoreDigest,
+  }
+}
+
 const interruptedPublicationPhases = new Set<() => void>()
 
 /** Publish or validate the immutable snapshot selected by the admitted editor inputs. */
@@ -3164,11 +3240,13 @@ const publishEditorViewCoordinated = async ({
   heldStateRoots,
   onContentChanged,
   budgetCensusSession,
+  preparedSources,
 }: {
   options: EditorViewOptions
   coordinator?: PublicationCoordinator
   heldStateRoots?: ReadonlySet<string>
   budgetCensusSession?: EditorViewBudgetCensusSession
+  preparedSources?: EditorViewSourceAdmission
   onContentChanged: () => void
 }): Promise<EditorViewRecord> => {
   const startedAtMs = performance.timeOrigin + performance.now()
@@ -3241,6 +3319,7 @@ const publishEditorViewCoordinated = async ({
   const budgetBytes = options.hostBudgetBytes ?? editorViewHostBudgetBytes()
   if (Number.isSafeInteger(budgetBytes) === false || budgetBytes <= 0)
     fail('hostBudgetBytes must be a positive safe integer')
+  const prepared = preparedSources ?? await admitEditorViewSources(options)
   const lock =
     coordinator?.lock ??
     (await acquirePublicationLock({
@@ -3323,48 +3402,15 @@ const publishEditorViewCoordinated = async ({
         `[editor-view] ${options.package}: evicted by host budget; republishing the immutable editor view\n`,
       )
     }
-    const editorInputsPath = realpathSync(resolve(options.editorInputs))
-    const selectedPath = realpathSync(resolve(options.nodeModules))
-    const finite = (options.backingRoots?.length ?? 0) > 0
-    const roots =
-      finite === true
-        ? declaredSnapshotRoots({
-            nodeModules: options.nodeModules,
-            backingRoots: options.backingRoots ?? [],
-          })
-        : []
-    // The owner-resolved form of the selected view is computed by the same walk as
-    // its literal digest, so admitting it for the copy-stability comparison adds no
-    // extra tree traversal.
-    const selectedFingerprints =
-      finite === true
-        ? await canonicalTreeFingerprintWithResolvedLinks({
-            tree: selectedPath,
-            linkOwners: roots,
-            fingerprintTool: options.fingerprintTool,
-            admissionDirectory: options.admissionDirectory,
-          })
-        : undefined
-    const fingerprint =
-      selectedFingerprints !== undefined && selectedPath === editorInputsPath
-        ? selectedFingerprints.resolvedLinksDigest
-        : await canonicalTreeFingerprint({
-            tree: editorInputsPath,
-            fingerprintTool: options.fingerprintTool,
-            admissionDirectory: options.admissionDirectory,
-          })
-    const selectedViewDigest =
-      selectedFingerprints?.resolvedLinksDigest ??
-      (selectedPath === editorInputsPath
-        ? fingerprint
-        : await canonicalTreeFingerprint({
-            tree: selectedPath,
-            fingerprintTool: options.fingerprintTool,
-            admissionDirectory: options.admissionDirectory,
-          }))
-    // A warm publication must prove both the admitted roots and the immutable snapshot.
-    // Begin validating the current snapshot before traversing the roots so those independent
-    // integrity checks overlap without weakening either one.
+    // Recheck the complete entry/inode identity under the publication fence.
+    // A changed proof is discarded, never admitted under an earlier content digest.
+    const admitted = prepared.sourceIdentity === editorViewSourceIdentity(options)
+      ? prepared
+      : await admitEditorViewSources(options)
+    const {
+      selectedPath, finite, roots, fingerprint, selectedViewDigest, declaredRoots, normalizedStoreDigest,
+    } = admitted
+    // The retained payload still receives its complete independent byte proof.
     const currentSnapshotValidation = (() => {
       if (
         pathExists(paths.current) === false ||
@@ -3402,32 +3448,6 @@ const publishEditorViewCoordinated = async ({
       }
     })()
     enterPhase('verify')
-    const declaredRoots =
-      finite === true
-        ? await fingerprintDeclaredRoots({
-            roots,
-            fingerprintTool: options.fingerprintTool,
-            admissionDirectory: options.admissionDirectory,
-            knownRoot: {
-              source: selectedPath,
-              digest: selectedFingerprints?.digest ?? selectedViewDigest,
-              resolvedLinksDigest:
-                selectedFingerprints?.resolvedLinksDigest ??
-                fail('selected view link owners were not admitted for hashing'),
-              literalLinksDigest:
-                selectedFingerprints?.literalLinksDigest ??
-                fail('selected view link owners were not admitted for hashing'),
-            },
-          })
-        : undefined
-    const normalizedStoreDigest =
-      declaredRoots?.digest ??
-      (await canonicalTreeFingerprint({
-        tree: selectedPath,
-        dereference: true,
-        fingerprintTool: options.fingerprintTool,
-        admissionDirectory: options.admissionDirectory,
-      }))
     const identity = snapshotIdentity({
       editorInputsFingerprint: fingerprint,
       normalizedStoreDigest,
@@ -3781,7 +3801,7 @@ const publishEditorViewCoordinated = async ({
   }
 }
 
-/** Publish one view while holding the exclusive state-root lock through every proof and write. */
+/** Admit sources first; retain the state-root fence through payload proofs and writes. */
 export const publishEditorView = async (options: EditorViewOptions): Promise<EditorViewRecord> => {
   const contentChanges = { changed: false }
   const record = await publishEditorViewCoordinated({
@@ -3856,6 +3876,8 @@ export const publishEditorViews = async ({
           )
       }
     }
+    // Source proofs do not read or mutate editor state. Settle them before taking any fence.
+    const prepared = await Promise.allSettled(options.map(admitEditorViewSources))
     const orderedRoots = Array.from(lockRequests.keys()).toSorted((left, right) => {
       const leftRoot = repositoryRoots.has(left)
       const rightRoot = repositoryRoots.has(right)
@@ -3903,12 +3925,15 @@ export const publishEditorViews = async ({
           })
         }
         try {
+          const sources = prepared[index] ?? fail('batch source proof is absent')
+          if (sources.status === 'rejected') throw sources.reason
           const coordinator =
             coordinators.get(makePaths(option).editorRoot) ?? fail('batch root lock is absent')
           // eslint-disable-next-line no-await-in-loop -- Each worker must finish before claiming its next view.
           const record = await publishEditorViewCoordinated({
             options: option,
             coordinator,
+            preparedSources: sources.value,
             heldStateRoots,
             budgetCensusSession,
             onContentChanged: () => {
