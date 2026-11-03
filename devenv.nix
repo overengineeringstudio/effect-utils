@@ -1455,7 +1455,7 @@ in
   tasks."genie:buck2:test" = {
     description = "Run Buck2 projection, staged-runtime and root maintenance-adapter contracts under pinned Bun";
     # Reuse the aggregate's existing scoped installer, not a second consumer
-    # publication. Its worker index is assigned by the weighted test scheduler.
+    # publication. Its worker index is assigned by the source-test scheduler.
     after =
       let
         megarepoInstallers = builtins.filter (

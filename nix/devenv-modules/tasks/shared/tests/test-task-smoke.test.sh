@@ -325,9 +325,9 @@ assert_eval_fails 4 'aggregatePackages = [ ]; packageChains = [ [ "test:ok-a" ] 
 assert_eval_fails 4 'packageChains = [ [ "test:ok-a" "test:ok-a" ] [ ] [ ] [ ] ];' "duplicate aggregate tasks: test:ok-a" "duplicate task"
 assert_eval_fails 4 'packageChains = [ [ ] [ ] [ ] [ ] ];' "omits aggregate tasks:" "omitted tasks"
 
-# Evaluate the production root source scheduler, its real scoped publishers and
-# root overrides without realizing their commands. The optional baseline module
-# is the pre-change test.nix, stored beside the current module for relative imports.
+# Evaluate every production root task's dependency edges without realizing commands.
+# The optional baseline module is the pre-change test.nix, stored beside the
+# current module for relative imports.
 eval_root_test_graph() {
   local platform="$1" baseline="${2:-}"
   EFFECT_UTILS_TEST_PLATFORM="$platform" TEST_TASK_BASELINE_MODULE="$baseline" \
@@ -336,31 +336,44 @@ eval_root_test_graph() {
         flake = builtins.getFlake \"$NIX_FLAKE_REF\";
         pkgs = import flake.inputs.nixpkgs { system = builtins.currentSystem; };
         lib = pkgs.lib;
+        lock = (builtins.fromJSON (builtins.readFile $ROOT/devenv.lock)).nodes.playwright-web-flake.locked;
+        inputs = flake.inputs // {
+          playwright = (import $ROOT/nix/playwright-flake/flake.nix).outputs {
+            nixpkgs = flake.inputs.nixpkgs;
+            playwright-web-flake = builtins.getFlake \"github:\${lock.owner}/\${lock.repo}/\${lock.rev}\";
+          };
+        };
         baseline = builtins.getEnv \"TEST_TASK_BASELINE_MODULE\";
         root = builtins.scopedImport {
           import = path:
             if baseline != \"\" && path == $ROOT/nix/devenv-modules/tasks/shared/test.nix
             then args: builtins.import (builtins.toPath baseline) (builtins.removeAttrs args [ \"packageChains\" ])
             else builtins.import path;
-        } $ROOT/devenv.nix { inherit pkgs lib; inputs = flake.inputs; config = evaluated.config; };
+        } $ROOT/devenv.nix;
         evaluated = lib.evalModules {
-          specialArgs = { inherit pkgs; };
+          specialArgs = {
+            inherit pkgs inputs;
+            # These paths are normally supplied by devenv before collecting imports.
+            config = {
+              inherit (evaluated.config) tasks effectUtils env;
+              devenv = { root = \"$ROOT\"; state = \"$ROOT/.devenv/state\"; runtime = \"$tmpdir/runtime\"; };
+            };
+          };
           modules = [
             ({ ... }: {
+              freeformType = lib.types.attrsOf lib.types.anything;
               options.tasks = lib.mkOption {
                 type = lib.types.attrsOf (lib.types.submodule {
                   freeformType = lib.types.attrsOf lib.types.anything;
                   options.after = lib.mkOption { type = lib.types.listOf lib.types.str; default = []; };
+                  options.cwd = lib.mkOption { type = lib.types.nullOr lib.types.str; default = null; };
                 });
                 default = {};
               };
               options.processes = lib.mkOption { type = lib.types.attrsOf lib.types.anything; default = {}; };
               options.packages = lib.mkOption { type = lib.types.listOf lib.types.anything; default = []; };
             })
-            # Root import positions: source test module, then scoped publishers.
-            (builtins.elemAt root.imports 13)
-            (builtins.elemAt root.imports 15)
-            { tasks = builtins.mapAttrs (_: task: { after = task.after or []; }) root.tasks; }
+            root
           ];
         };
       in builtins.mapAttrs (_: task: task.after or []) evaluated.config.tasks
@@ -369,12 +382,12 @@ eval_root_test_graph() {
 
 linux_graph="$(eval_root_test_graph linux)"
 assert_eq "$linux_graph" "$(eval_root_test_graph '')" \
-  "Linux and platform-unspecified production source graphs are identical"
+  "Linux and platform-unspecified production task graphs are identical"
 if [ -n "${TEST_TASK_BASELINE_MODULE:-}" ]; then
   for platform in linux ''; do
     assert_eq "$(eval_root_test_graph "$platform" "$TEST_TASK_BASELINE_MODULE")" \
       "$(eval_root_test_graph "$platform")" \
-      "production source graph is byte-identical to baseline for platform '$platform'"
+      "production task graph is byte-identical to baseline for platform '$platform'"
   done
 fi
 printf 'Linux and unspecified production graph SHA-256: '
