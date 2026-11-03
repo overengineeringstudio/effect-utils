@@ -1144,6 +1144,7 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
           PR_BOUNDED_ENABLED: ${{ github.event_name == 'pull_request' }}
           PR_BOUNDED_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_BOUNDED_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           BUCK2_PUBLIC_CACHE_WRITE_AUTH: ${{ ((github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'merge_group' && github.event.merge_group.base_ref == 'refs/heads/main' && startsWith(github.ref, 'refs/heads/gh-readonly-queue/main/'))) && secrets.BUCK2_PUBLIC_CACHE_WRITE_AUTH || '' }}
           PIPELINE_RUN_PREFIX: ${{ format('{0} shell -- otel-span pipeline-run --', env.DEVENV_BIN) }}
         run: |
