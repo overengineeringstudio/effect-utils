@@ -115,7 +115,11 @@ Buck build or an interrupted reconciliation prints the last 40 stderr/progress
 lines (at most 16 KiB), followed by
 `<task>: Buck exited with code N; event log: <repo-relative path>`.
 Repository paths in the tail are relative and home paths use `<home>`.
-The tail remains available during publication after a successful build (code 0).
+The tail remains available during publication after a successful build; interruption
+then reports `interrupted by SIGTERM after Buck completed (code 0)` instead.
+Event logs are removed after successful reconciliation, once the Buck entrypoint
+has decoded its caller-provided sink and completed the cache-evidence join.
+Failed or interrupted reconciliation retains its log for diagnosis.
 Signal diagnostics flush synchronously during the supervisor's TERM grace;
 a direct SIGKILL of the reconciliation process cannot flush buffered evidence.
 

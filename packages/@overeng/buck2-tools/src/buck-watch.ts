@@ -1,6 +1,6 @@
 #!/usr/bin/env -S bun
 import { spawn } from 'node:child_process'
-import { writeSync } from 'node:fs'
+import { rmSync, writeSync } from 'node:fs'
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
 import { constants, homedir } from 'node:os'
 import { dirname, isAbsolute, join, resolve } from 'node:path'
@@ -607,7 +607,14 @@ export const reconcileBuckViews = async ({
   let buildTail = Buffer.alloc(0)
   let reported = false
   let buildExitCode: number | undefined
-  const reportBuildFailure = (code: number): void => {
+  let reconciliationCompleted = false
+  const reportBuildFailure = ({
+    code,
+    interruptedAfterBuild,
+  }: {
+    readonly code: number
+    readonly interruptedAfterBuild?: NodeJS.Signals | undefined
+  }): void => {
     if (reported === true) return
     reported = true
     const tail = buildTail
@@ -615,15 +622,22 @@ export const reconcileBuckViews = async ({
       .replaceAll(`${options.workspaceRoot}/`, '')
       .replaceAll(homedir(), '<home>')
     writeSync(2, Buffer.from(tail).subarray(-16 * 1024))
+    const outcome =
+      interruptedAfterBuild === undefined
+        ? `Buck exited with code ${code}`
+        : `interrupted by ${interruptedAfterBuild} after Buck completed (code ${code})`
     writeSync(
       2,
-      `${tail.endsWith('\n') === true || tail === '' ? '' : '\n'}${options.diagnosticTaskName ?? `buck2:editor:${options.mode}`}: Buck exited with code ${code}; event log: ${eventLog}\n`,
+      `${tail.endsWith('\n') === true || tail === '' ? '' : '\n'}${options.diagnosticTaskName ?? `buck2:editor:${options.mode}`}: ${outcome}; event log: ${eventLog}\n`,
     )
   }
   const signals = ['SIGHUP', 'SIGINT', 'SIGTERM'] as const
   const handlers = signals.map((signal) => {
     const handler = (): void => {
-      reportBuildFailure(buildExitCode ?? 128 + constants.signals[signal])
+      reportBuildFailure({
+        code: buildExitCode ?? 128 + constants.signals[signal],
+        interruptedAfterBuild: buildExitCode === 0 ? signal : undefined,
+      })
       process.removeListener(signal, handler)
       // Do not replace any existing caller-owned cancellation handling.
       if (process.listenerCount(signal) === 0) process.kill(process.pid, signal)
@@ -635,6 +649,13 @@ export const reconcileBuckViews = async ({
   using _diagnostics = {
     [Symbol.dispose]: () => {
       for (const { signal, handler } of handlers) process.removeListener(signal, handler)
+      if (reconciliationCompleted === true)
+        try {
+          // The entrypoint finishes decoding the caller sink before execute resolves.
+          rmSync(resolve(options.workspaceRoot, eventLog), { force: true })
+        } catch {
+          // Diagnostic cleanup must not change successful reconciliation's status.
+        }
     },
   }
   let built: CommandResult
@@ -663,7 +684,7 @@ export const reconcileBuckViews = async ({
       error instanceof CommandFailure && error.signal !== undefined
         ? 128 + (constants.signals[error.signal] ?? 1)
         : exitCodeOf(error)
-    reportBuildFailure(code)
+    reportBuildFailure({ code })
     if (error instanceof CommandFailure)
       error.message = `${options.diagnosticTaskName ?? `buck2:editor:${options.mode}`}: Buck exited with code ${code}; event log: ${eventLog}`
     emitBuildSpan(exitCodeOf(error))
@@ -795,12 +816,14 @@ export const reconcileBuckViews = async ({
         durationMs: timing.durationMs,
       })
     }
+    reconciliationCompleted = true
     return
   }
   for (const entry of entries) {
     // eslint-disable-next-line no-await-in-loop
     await publish(entry)
   }
+  reconciliationCompleted = true
 }
 
 /** Atomically replace a machine-readable status file. */
