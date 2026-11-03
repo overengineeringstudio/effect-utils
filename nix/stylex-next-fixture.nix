@@ -53,7 +53,7 @@ let
     '';
   };
 in
-assert lib.assertMsg (pnpm.version == "12.15.0") "stylex-next-fixture requires pnpm 12.15.0";
+assert lib.assertMsg (pnpm.version == "12.17.0") "stylex-next-fixture requires pnpm 12.17.0";
 pkgs.runCommand "stylex-next-fixture"
   {
     nativeBuildInputs = [
