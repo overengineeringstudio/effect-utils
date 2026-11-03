@@ -1,6 +1,6 @@
 import { NodeServices } from '@effect/platform-node'
 import { it } from '@effect/vitest'
-import { Effect, Exit } from 'effect'
+import { Effect, Exit, Layer } from 'effect'
 import * as Cli from 'effect/cli'
 import { expect } from 'vitest'
 
@@ -39,7 +39,7 @@ const runStoreCommand = (cwd: AbsoluteDirPath, storePath: string, args: Readonly
       ...args,
       '--output',
       'json',
-    ]).pipe(Effect.provide(consoleLayer), Effect.provide(NodeServices.layer), Effect.exit)
+    ]).pipe(Effect.provide(Layer.mergeAll(consoleLayer, NodeServices.layer)), Effect.exit)
     expect(Exit.isSuccess(exit)).toBe(true)
     return (yield* getStdoutLines).join('\n')
   }).pipe(Effect.scoped)
