@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'bun:test'
 
+import workflow from '../../.github/workflows/ci.yml.genie.ts'
+import empiricalWorkflow from '../../.github/workflows/empirical-proofs.yml.genie.ts'
+import storybookPlaysWorkflow from '../../.github/workflows/storybook-plays.yml.genie.ts'
+import storybookPreviewWorkflow from '../../.github/workflows/storybook-preview-build.yml.genie.ts'
 import { withBuck2CacheEvidence } from './buck2-cache-evidence.ts'
 import { coreCachePostures, coreProofDisabledJobIds } from './buck2-cache-proof-policy.ts'
 
@@ -65,7 +69,7 @@ describe('Buck2 cache evidence workflow decorator', () => {
     expect(job.env?.CI_BUCK2_CACHE_EVIDENCE_DISABLED).toBe('0')
     expect(job.name).toBeUndefined()
     expect(job.env?.CI_BUCK2_CACHE_EVIDENCE_JOB_NAME).toBe('test (${{ matrix.system }})')
-    const upload = job.steps.at(-1)!
+    const upload = job.steps.find((step) => step.name === 'Upload Buck2 cache evidence')!
     expect('with' in upload && upload.with?.name).toBe(
       'buck2-cache-evidence-test-${{ strategy.job-index }}-${{ github.run_attempt }}',
     )
@@ -117,5 +121,42 @@ describe('Buck2 cache evidence workflow decorator', () => {
     expect(coreProofDisabledJobIds['main-source-shape']).toBe(true)
     for (const jobId of ['quality', 'test', 'weaver', 'trusted-buck2-remote-cache-proof'])
       expect(coreProofDisabledJobIds[jobId]).toBeUndefined()
+  })
+
+  it('emits the bounded classification step tail for every evidence-enabled CI job', () => {
+    const jobs = [
+      workflow,
+      empiricalWorkflow,
+      storybookPlaysWorkflow,
+      storybookPreviewWorkflow,
+    ].flatMap((definition) =>
+      Object.values(definition.data.jobs).filter(
+        (job) => job.env?.CI_BUCK2_CACHE_EVIDENCE_DISABLED === '0',
+      ),
+    )
+    expect(jobs.length).toBeGreaterThan(0)
+    for (const job of jobs) {
+      const index = job.steps.findIndex((step) => step.id === 'reapi_unavailable')
+      expect(index).toBeGreaterThan(-1)
+      const collect = job.steps[index]!
+      expect(collect.name).toBe('Collect REAPI unavailable classifications')
+      expect(collect.if).toContain('always()')
+      expect('run' in collect && collect.run).toContain(
+        '${CI_BUCK2_CACHE_EVIDENCE_PATH}.admission.jsonl',
+      )
+      expect('run' in collect && collect.run).toContain('nix shell --offline .#bun')
+      expect('run' in collect && collect.run).toContain('buck2-reapi-classification.ts')
+      expect('uses' in collect).toBe(false)
+      for (const [offset, phase] of ['admission', 'in_build'].entries()) {
+        const occurrence = job.steps[index + offset + 1]!
+        expect(occurrence.name).toBe(
+          `reapi-unavailable/${phase}/\${{ steps.reapi_unavailable.outputs.${phase} }}`,
+        )
+        expect(occurrence.if).toContain('always()')
+        expect(occurrence.if).toContain(`steps.reapi_unavailable.outputs.${phase} != ''`)
+        expect('run' in occurrence && occurrence.run).toBe(':')
+        expect('uses' in occurrence).toBe(false)
+      }
+    }
   })
 })

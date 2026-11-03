@@ -772,6 +772,21 @@ partial pairs, unknown values, mismatched phases, and pairs on plain or
 historical rerun rows are rejected. Merging retains this metadata without
 changing admission totals and rejects conflicting classified pairs.
 
+Every cache-evidence-enabled CI job appends an `always()` collect step named
+`Collect REAPI unavailable classifications`, followed by two gated no-op steps.
+The collector reads the admission sidecar through the admission decoder and
+sets `admission` and `in_build` outputs to the first classified reason per phase.
+Only the fixed reasons `init`, `capabilities`, and `connect` can enter step names.
+The rendered names are `reapi-unavailable/admission/<reason>` and
+`reapi-unavailable/in_build/<reason>`; each runs under `always()` only when its
+phase output is nonempty. All three steps retain the shared job-admission
+conditions: unadmitted jobs cannot have launched Buck2 or produced an occurrence.
+Their occurrence counters mean jobs with at least one classification in that
+phase, not invocation counts or admission fallback totals.
+Missing sidecars produce no outputs. Malformed rows produce plain diagnostics
+and do not fail the job; valid rows remain collectable. This local projection
+uses no network, credentials, workflow actions, artifacts, or caches.
+
 The decoder also retains the historical `reader-reapi-unavailable-rerun` event
 as read-only measured evidence: it requires `admissionFallbacks.reapi = 1` and
 no `shadow` payload, and projects `legacyRerun: true`. Its original and rerun
