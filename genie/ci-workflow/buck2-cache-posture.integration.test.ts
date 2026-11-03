@@ -336,6 +336,17 @@ describe('generated CI cache trust behavior', () => {
     }
   })
 
+  it('runs REAPI classification regressions by exact source path in CI and the local task', async () => {
+    const workflow = await readWorkflow()
+    const regression = workflow.jobs.quality!.steps.find(
+      (step) => step.name === 'Native cache evidence regressions',
+    )
+    const path = './genie/ci-scripts/buck2-reapi-classification.unit.test.ts'
+    expect(regression?.run).toContain(` ${path} `)
+    const tasks = readFileSync(new URL('../../devenv.nix', import.meta.url), 'utf8')
+    expect(tasks).toContain(`bun-test-runner.ts test ${path}\n`)
+  })
+
   it('skips main heavy lanes only for tested trees and still runs queues, publishers and the proof', async () => {
     const workflow = await readWorkflow()
     for (const id of [
