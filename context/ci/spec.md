@@ -113,6 +113,16 @@ body at EOF and receive a correct range rejection. No `nix.conf` setting fixes
 this resume-at-EOF bug. Other HTTP 4xx failures, including 404, do not match this
 retry signature.
 
+`Resolve devenv` overlaps pinned executable resolution with two locked-source
+prefetch workers. They traverse the checkout's `devenv.lock` shell graph,
+including follows edges, but exclude the root executable branch, local inputs,
+and unsupported fetch kinds. GitHub inputs require their locked revision and
+`narHash`; full locked identities are deduplicated before native Nix prefetch.
+All workers and fetch children are joined on completion or termination.
+Prefetch failures retain job-local diagnostics and leave normal shell resolution
+authoritative. This warms only source fetches, not the project evaluation cache,
+and publishes nothing to shared binary caches.
+
 The unit-test step retains non-gating host resource evidence sampled every five
 seconds in `test-resources-*` JSON artifacts. Linux reads `/proc`; Darwin uses
 native `vm_stat`, `sysctl`, and `ps`. Peaks are sampled, not an exhaustive

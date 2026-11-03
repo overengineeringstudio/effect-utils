@@ -47,11 +47,14 @@ export const ciWorkflowNixGcRaceRetryWrapperPath = 'genie/ci-scripts/run-with-ni
 export const ciWorkflowJobLocalRustStateScriptPath =
   'genie/ci-scripts/prepare-job-local-rust-state.sh'
 export const ciWorkflowResolveDevenvScriptPath = 'genie/ci-scripts/resolve-devenv.sh'
+export const ciWorkflowPrefetchLockedInputsScriptPath = 'genie/ci-scripts/prefetch-locked-inputs.sh'
 export const ciWorkflowEvictPnpmDepsCachedOutputsScriptPath =
   'genie/ci-scripts/evict-pnpm-deps-cached-outputs.sh'
 
 export const ciWorkflowResolveDevenvScript = String.raw`#!/usr/bin/env bash
 set -euo pipefail
+
+source "${dollar}{BASH_SOURCE[0]%/*}/prefetch-locked-inputs.sh"
 
 ${resolveDevenvFnScript}
 
@@ -83,6 +86,14 @@ main() {
     nix --version || true
   } > "${dollar}DIAG_ROOT/environment.txt" 2>&1
 
+  # Keep all warming inside this operation and its existing timeout boundary.
+  local prefetch_pid
+  prefetch_locked_inputs "${dollar}lock_file" "${dollar}DIAG_ROOT/locked-input-prefetch" &
+  prefetch_pid="${dollar}!"
+  trap '[ -z "${dollar}{prefetch_pid:-}" ] || { kill "${dollar}prefetch_pid" 2>/dev/null || true; wait "${dollar}prefetch_pid" 2>/dev/null || true; }' EXIT
+  trap 'exit 143' TERM
+  trap 'exit 130' INT
+
   if ! DEVENV_OUT="${dollar}(resolve_devenv 2> >(tee "${dollar}DIAG_ROOT/resolve-devenv.log" >&2))"; then
     echo "::error::resolve_devenv failed. Last 30 lines of log:" >&2
     tail -30 "${dollar}DIAG_ROOT/resolve-devenv.log" >&2 || true
@@ -109,6 +120,9 @@ main() {
 
   printf 'DEVENV_REV=%s\nDEVENV_GC_ROOT=%s\nDEVENV_BIN=%s\n' \
     "${dollar}DEVENV_REV" "${dollar}DEVENV_GC_ROOT" "${dollar}DEVENV_BIN" >> "${dollar}GITHUB_ENV"
+  wait "${dollar}prefetch_pid" || true
+  prefetch_pid=''
+  trap - EXIT TERM INT
   "${dollar}DEVENV_BIN" version | tee "${dollar}DIAG_ROOT/devenv-version.txt"
 }
 
@@ -358,6 +372,12 @@ export const ciWorkflowSupportFiles = {
   resolveDevenv: {
     path: ciWorkflowResolveDevenvScriptPath,
     output: textArtifact(ciWorkflowResolveDevenvScript),
+  },
+  prefetchLockedInputs: {
+    path: ciWorkflowPrefetchLockedInputsScriptPath,
+    get output() {
+      return sharedScriptArtifact(ciWorkflowPrefetchLockedInputsScriptPath)
+    },
   },
   nixGcRaceRetry: {
     path: ciWorkflowNixGcRaceRetryScriptPath,

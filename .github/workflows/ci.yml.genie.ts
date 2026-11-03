@@ -884,6 +884,7 @@ const jobs: Record<CoreCIJobName, CiWorkflowArgs['jobs'][string]> = {
           run: withCiSourceRoot(
             [
               'bash genie/ci-scripts/nix-gc-race-retry.test.sh',
+              'bash genie/ci-scripts/prefetch-locked-inputs.test.sh',
               'bash genie/ci-scripts/ci-measurement-comparison.test.sh',
               'bash genie/ci-scripts/native-dep-policy-audit.test.sh',
             ].join('\n'),
