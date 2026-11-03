@@ -1,7 +1,5 @@
 import { Result, Schema } from 'effect'
 
-import { redactDeployDiagnosticText } from './deploy-domain.ts'
-
 /** Captured child-process outcome retained until live deployment assertions finish. */
 export type LiveDeployProcessResult = {
   readonly status: number | null
@@ -9,16 +7,16 @@ export type LiveDeployProcessResult = {
   readonly stderr: string
 }
 
-/** Build the inherited Vercel child environment and its complete diagnostic redaction set together. */
+/** Build the child environment and retain only secret-named Vercel values for leak assertions. */
 export const vercelLiveProcessEnvironment = (inherited: NodeJS.ProcessEnv) => {
   const { DEVENV_TASK_OUTPUT_FILE: _taskOutputFile, ...env } = inherited
   const childEnv = { ...env, FORCE_COLOR: '0', OTEL_EXPORTER_OTLP_ENDPOINT: '' }
   return {
     env: childEnv,
     secretValues: Object.entries(childEnv)
-      .filter(([name, value]) => name.startsWith('VERCEL_') === true && value?.trim().length !== 0)
+      .filter(([name]) => /^VERCEL_(?:TOKEN|.*_TOKEN|.*_SECRET)$/u.test(name))
       .map(([, value]) => value)
-      .filter((value): value is string => value !== undefined),
+      .filter((value): value is string => value !== undefined && value.trim().length > 0),
   }
 }
 
@@ -59,11 +57,39 @@ const httpStatus = (value: unknown) => {
   return status >= 100 && status <= 599 ? status : undefined
 }
 
-/** Keep reports private by default; callers may opt into a bounded, redacted provider cause. */
+// Vercel 60.1.3's output manager renders Diagnostic names as "Error: [name] ...".
+// Only publish these known deploy error codes, not arbitrary grammar-valid text
+// (a credential could itself match the code grammar).
+const vercelErrorCodes: Record<string, true> = {
+  builds_rate_limited: true,
+  too_many_files: true,
+  forbidden: true,
+  missing_files: true,
+  cert_missing: true,
+  not_found: true,
+  missing_project_settings: true,
+}
+const providerCodes = (stderr: string) => {
+  const codes = [...stderr.matchAll(/Error:\s*\[([a-z][a-z0-9_]{1,63})\]/gu)]
+    .map((match) => match[1])
+    .filter((code): code is string => code !== undefined && Object.hasOwn(vercelErrorCodes, code))
+  return codes.length === 0 ? undefined : [...new Set(codes)].toSorted()
+}
+
+const providerFailureKind = (stderr: string) => {
+  if (/rate.?limit|creating deployments at a very fast pace/iu.test(stderr) === true) {
+    return 'rate_limited'
+  }
+  if (/timed? ?out|timeout|ETIMEDOUT/u.test(stderr) === true) return 'timeout'
+  if (/unauthorized|forbidden|invalid token|not authorized/iu.test(stderr) === true) return 'auth'
+  return undefined
+}
+
+/** Publish only finite classifications, numeric statuses and allowlisted provider error codes. */
 export const formatLiveDeployFailure = (opts: {
   readonly status: LiveDeployProcessResult['status']
   readonly report: string | undefined
-  readonly providerCause?: { readonly secretValues: readonly string[] } | undefined
+  readonly includeProviderCause?: boolean | undefined
 }): string => {
   const line = opts.report?.split('\n').find((entry) => entry.startsWith('WORKFLOW_REPORT_V1: '))
   const decoded =
@@ -72,12 +98,6 @@ export const formatLiveDeployFailure = (opts: {
       : Schema.decodeResult(DiagnosticReport)(line.slice('WORKFLOW_REPORT_V1: '.length))
   const data =
     decoded !== undefined && Result.isSuccess(decoded) === true ? decoded.success.data : undefined
-  // Redact the entire decoded string before truncating: a tail boundary must not
-  // expose the suffix of a credential that straddles that boundary.
-  const stderrTail =
-    opts.providerCause === undefined || data?.diagnostics?.stderr === undefined
-      ? undefined
-      : redactDeployDiagnosticText(data.diagnostics.stderr, opts.providerCause).trim().slice(-4096)
   const exitCode = data?.diagnostics?.exitCode
   return JSON.stringify(
     {
@@ -86,14 +106,15 @@ export const formatLiveDeployFailure = (opts: {
       operation: data?.operation,
       apiStatus: httpStatus(data?.diagnostics?.apiStatus),
       httpStatus: httpStatus(data?.diagnostics?.httpStatus),
-      ...(opts.providerCause === undefined
+      ...(opts.includeProviderCause !== true
         ? {}
         : {
             providerExitCode:
               exitCode !== undefined && /^\d{1,3}$/u.test(exitCode) === true
                 ? Number(exitCode)
                 : undefined,
-            stderrTail: stderrTail === '' ? undefined : stderrTail,
+            providerErrorCodes: providerCodes(data?.diagnostics?.stderr ?? ''),
+            providerFailureKind: providerFailureKind(data?.diagnostics?.stderr ?? ''),
           }),
     },
     undefined,
