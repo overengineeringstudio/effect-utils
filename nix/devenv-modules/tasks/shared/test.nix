@@ -28,6 +28,10 @@
 #       packageWeights = { "test:genie" = 72; };
 #     })
 #   ];
+#   # Alternatively, packageChains explicitly partitions selected aggregate task
+#   # names into exactly packageConcurrency ordered chains (empty chains allowed).
+#   # Each selected name must occur once; standalone-only names are rejected.
+#   # Null preserves weighted assignment, including platform-unspecified runs.
 #
 # Each package must have:
 #   - vitest as a devDependency in package.json
@@ -348,18 +352,20 @@ let
   };
 in
 builtins.seq validatedPackageConcurrency (
-  builtins.deepSeq validatedPackageChains (builtins.deepSeq validatedPackageWeights {
-    packages = cliGuard.fromTasks guardedTasks;
+  builtins.deepSeq validatedPackageChains (
+    builtins.deepSeq validatedPackageWeights {
+      packages = cliGuard.fromTasks guardedTasks;
 
-    tasks = lib.mkMerge (
-      (if hasPackages then map (pkg: cliGuard.stripGuards (mkTestTask pkg)) packages else [ ])
-      ++ (
-        if hasPackages && hasPackageConcurrency then
-          lib.concatMap mkPackageTestChain packageTestChains
-        else
-          [ ]
-      )
-      ++ [ (cliGuard.stripGuards guardedTasks) ]
-    );
-  })
+      tasks = lib.mkMerge (
+        (if hasPackages then map (pkg: cliGuard.stripGuards (mkTestTask pkg)) packages else [ ])
+        ++ (
+          if hasPackages && hasPackageConcurrency then
+            lib.concatMap mkPackageTestChain packageTestChains
+          else
+            [ ]
+        )
+        ++ [ (cliGuard.stripGuards guardedTasks) ]
+      );
+    }
+  )
 )

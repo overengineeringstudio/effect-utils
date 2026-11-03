@@ -325,4 +325,81 @@ assert_eval_fails 4 'aggregatePackages = [ ]; packageChains = [ [ "test:ok-a" ] 
 assert_eval_fails 4 'packageChains = [ [ "test:ok-a" "test:ok-a" ] [ ] [ ] [ ] ];' "duplicate aggregate tasks: test:ok-a" "duplicate task"
 assert_eval_fails 4 'packageChains = [ [ ] [ ] [ ] [ ] ];' "omits aggregate tasks:" "omitted tasks"
 
+# Evaluate the production root source scheduler, its real scoped publishers and
+# root overrides without realizing their commands. The optional baseline module
+# is the pre-change test.nix, stored beside the current module for relative imports.
+eval_root_test_graph() {
+  local platform="$1" baseline="${2:-}"
+  EFFECT_UTILS_TEST_PLATFORM="$platform" TEST_TASK_BASELINE_MODULE="$baseline" \
+    nix eval --impure --json --expr "
+      let
+        flake = builtins.getFlake \"$NIX_FLAKE_REF\";
+        pkgs = import flake.inputs.nixpkgs { system = builtins.currentSystem; };
+        lib = pkgs.lib;
+        baseline = builtins.getEnv \"TEST_TASK_BASELINE_MODULE\";
+        root = builtins.scopedImport {
+          import = path:
+            if baseline != \"\" && path == $ROOT/nix/devenv-modules/tasks/shared/test.nix
+            then args: builtins.import (builtins.toPath baseline) (builtins.removeAttrs args [ \"packageChains\" ])
+            else builtins.import path;
+        } $ROOT/devenv.nix { inherit pkgs lib; inputs = flake.inputs; config = evaluated.config; };
+        evaluated = lib.evalModules {
+          specialArgs = { inherit pkgs; };
+          modules = [
+            ({ ... }: {
+              options.tasks = lib.mkOption { type = lib.types.attrsOf lib.types.anything; default = {}; };
+              options.processes = lib.mkOption { type = lib.types.attrsOf lib.types.anything; default = {}; };
+              options.packages = lib.mkOption { type = lib.types.listOf lib.types.anything; default = []; };
+            })
+            # Root import positions: source test module, then scoped publishers.
+            (builtins.elemAt root.imports 13)
+            (builtins.elemAt root.imports 15)
+            { tasks = builtins.mapAttrs (_: task: { after = task.after or []; }) root.tasks; }
+          ];
+        };
+      in builtins.mapAttrs (_: task: task.after or []) evaluated.config.tasks
+    "
+}
+
+linux_graph="$(eval_root_test_graph linux)"
+assert_eq "$linux_graph" "$(eval_root_test_graph '')" \
+  "Linux and platform-unspecified production source graphs are identical"
+if [ -n "${TEST_TASK_BASELINE_MODULE:-}" ]; then
+  for platform in linux ''; do
+    assert_eq "$(eval_root_test_graph "$platform" "$TEST_TASK_BASELINE_MODULE")" \
+      "$(eval_root_test_graph "$platform")" \
+      "production source graph is byte-identical to baseline for platform '$platform'"
+  done
+fi
+printf 'Linux and unspecified production graph SHA-256: '
+printf '%s' "$linux_graph" | sha256sum
+darwin_graph="$(eval_root_test_graph darwin)"
+GRAPH="$darwin_graph" SCHEDULING="$ROOT/genie/ci-workflow/test-scheduling.json" \
+  "${PYTHON_BIN:-python3}" - <<'PY'
+import json
+import os
+
+graph = json.loads(os.environ["GRAPH"])
+with open(os.environ["SCHEDULING"]) as source:
+    scheduling = json.load(source)
+chains = scheduling["darwinSourceTaskChains"]
+assert len(chains) == scheduling["workers"] == 4
+expected = sorted(name for chain in chains for name in chain)
+actual = sorted("test:" + name.split(":", 4)[4] for name in graph if name.startswith("test:run:chain:"))
+assert actual == expected, (actual, expected)
+for index, chain in enumerate(chains):
+    previous = None
+    for task in chain:
+        suffix = f"{index}:{task.removeprefix('test:')}"
+        execution = f"test:run:chain:{suffix}"
+        installer = f"test:run:install:{suffix}"
+        assert installer in graph[execution]
+        if previous is not None:
+            assert previous in graph[execution] and previous in graph[installer]
+        previous = execution
+    if previous is not None:
+        assert previous in graph["test:run"]
+print("production Darwin partition and installer ordering passed")
+PY
+
 echo "test task smoke test passed"
