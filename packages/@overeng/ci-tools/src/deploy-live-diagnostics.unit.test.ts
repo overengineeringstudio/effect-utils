@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { formatLiveDeployFailure } from './deploy-live-diagnostics.ts'
+import { formatLiveDeployFailure, vercelLiveProcessEnvironment } from './deploy-live-diagnostics.ts'
 
 // Synthetic reports: no provider, network, or credentials are needed.
 describe('live deploy failure diagnostics', () => {
@@ -71,9 +71,7 @@ describe('live deploy failure diagnostics', () => {
         })}`,
       }),
     )
-    expect(diagnostic.stderrTail).toHaveLength(4096)
-    expect(diagnostic.stderrTail.endsWith(suffix)).toBe(true)
-    expect(diagnostic.stderrTail).not.toContain('sentinel')
+    expect(diagnostic.stderrTail).toBe(`ACTED]${suffix}`)
   })
 
   it('omits malformed provider exit codes even with provider causes enabled', () => {
@@ -85,6 +83,52 @@ describe('live deploy failure diagnostics', () => {
         formatLiveDeployFailure({ status: 1, report, providerCause: { secretValues: [] } }),
       ),
     ).toEqual({ exitStatus: 1 })
+  })
+
+  it('redacts encoded representations and overlapping secrets with provider causes enabled', () => {
+    const token = 'prefix/token-"quoted"'
+    const bypass = `${token}-bypass\nsuffix`
+    const representations = [token, bypass].flatMap((secret) => [
+      secret,
+      encodeURIComponent(secret),
+      JSON.stringify(secret).slice(1, -1),
+    ])
+    const diagnostic = JSON.parse(
+      formatLiveDeployFailure({
+        status: 1,
+        providerCause: { secretValues: ['', '   ', token, bypass] },
+        report: `WORKFLOW_REPORT_V1: ${JSON.stringify({
+          data: { diagnostics: { stderr: representations.join('\n') } },
+        })}`,
+      }),
+    )
+    expect(diagnostic.stderrTail).toBe(Array.from({ length: 6 }, () => '[REDACTED]').join('\n'))
+  })
+
+  it('derives redaction values from every inherited Vercel environment value', () => {
+    const oidcToken = 'extra-oidc-credential-sentinel'
+    const environment = vercelLiveProcessEnvironment({
+      VERCEL_TOKEN: 'prefix',
+      VERCEL_AUTOMATION_BYPASS_SECRET: 'prefix-bypass',
+      VERCEL_OIDC_TOKEN: oidcToken,
+      VERCEL_EMPTY: '',
+      VERCEL_UNSET: undefined,
+      DEVENV_TASK_OUTPUT_FILE: 'parent-output.json',
+      PATH: '/synthetic/bin',
+    })
+    expect(environment.env.VERCEL_OIDC_TOKEN).toBe(oidcToken)
+    expect(environment.env).not.toHaveProperty('DEVENV_TASK_OUTPUT_FILE')
+    expect(environment.secretValues).toEqual(['prefix', 'prefix-bypass', oidcToken])
+    const diagnostic = JSON.parse(
+      formatLiveDeployFailure({
+        status: 1,
+        providerCause: { secretValues: environment.secretValues },
+        report: `WORKFLOW_REPORT_V1: ${JSON.stringify({
+          data: { diagnostics: { stderr: `Error: prefix-bypass ${oidcToken}` } },
+        })}`,
+      }),
+    )
+    expect(diagnostic.stderrTail).toBe('Error: [REDACTED] [REDACTED]')
   })
 
   it.each([

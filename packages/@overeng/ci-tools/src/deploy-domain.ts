@@ -435,10 +435,19 @@ export const redactDeployDiagnosticText = (
   opts: { readonly secretValues?: readonly string[] } = {},
 ) => {
   let redacted = text
-  for (const secret of opts.secretValues ?? []) {
-    if (secret.trim().length > 0) {
-      redacted = redacted.split(secret).join('[REDACTED]')
-    }
+  const representations = new Set(
+    (opts.secretValues ?? [])
+      .filter((secret) => secret.trim().length > 0)
+      .flatMap((secret) => [
+        secret,
+        encodeURIComponent(secret),
+        JSON.stringify(secret).slice(1, -1),
+      ]),
+  )
+  // Replace whole longer credentials before a shorter credential can redact
+  // their prefix and leave an identifying suffix behind.
+  for (const secret of [...representations].toSorted((left, right) => right.length - left.length)) {
+    redacted = redacted.split(secret).join('[REDACTED]')
   }
   return redacted
     .replace(/(authorization:\s*bearer\s+)[^\s]+/giu, '$1[REDACTED]')

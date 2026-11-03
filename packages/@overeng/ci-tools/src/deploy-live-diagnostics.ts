@@ -9,6 +9,19 @@ export type LiveDeployProcessResult = {
   readonly stderr: string
 }
 
+/** Build the inherited Vercel child environment and its complete diagnostic redaction set together. */
+export const vercelLiveProcessEnvironment = (inherited: NodeJS.ProcessEnv) => {
+  const { DEVENV_TASK_OUTPUT_FILE: _taskOutputFile, ...env } = inherited
+  const childEnv = { ...env, FORCE_COLOR: '0', OTEL_EXPORTER_OTLP_ENDPOINT: '' }
+  return {
+    env: childEnv,
+    secretValues: Object.entries(childEnv)
+      .filter(([name, value]) => name.startsWith('VERCEL_') === true && value?.trim().length !== 0)
+      .map(([, value]) => value)
+      .filter((value): value is string => value !== undefined),
+  }
+}
+
 const DiagnosticReport = Schema.fromJsonString(
   Schema.Struct({
     data: Schema.Struct({
