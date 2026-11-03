@@ -232,26 +232,50 @@ const resolveNetlifySite = Effect.fn('ci-tools.deploy.netlify.resolve-site')(fun
   if (response.status === 429) {
     const now = yield* Clock.currentTimeMillis
     const retryAfter = response.headers['retry-after']?.trim()
-    const retrySeconds = retryAfter === undefined || retryAfter === '' ? NaN : Number(retryAfter)
-    const retryAt =
-      retryAfter === undefined
-        ? NaN
-        : Number.isFinite(retrySeconds) === true && retrySeconds >= 0
-          ? now + retrySeconds * 1000
-          : Date.parse(retryAfter)
+    const retrySeconds = Number(retryAfter)
+    const numericRetry =
+      retryAfter !== undefined &&
+      retryAfter !== '' &&
+      (Number.isNaN(retrySeconds) === false || /^[+-]?(?:Infinity|NaN)$/iu.test(retryAfter))
     const reset = response.headers['x-ratelimit-reset']?.trim()
-    const resetSeconds = reset === undefined || reset === '' ? NaN : Number(reset)
-    const resetAt =
-      Number.isFinite(resetSeconds) === true && resetSeconds >= 0 ? resetSeconds * 1000 : NaN
-    const waitUntil = Number.isFinite(retryAt) === true ? retryAt : resetAt
+    const resetSeconds = Number(reset)
+    const retryAt = numericRetry === true ? NaN : Date.parse(retryAfter ?? '')
+    const useReset =
+      numericRetry === false &&
+      Number.isNaN(retryAt) === true &&
+      reset !== undefined &&
+      reset !== '' &&
+      (Number.isNaN(resetSeconds) === false || /^[+-]?(?:Infinity|NaN)$/iu.test(reset))
+    // Validate seconds before multiplication: overflowing to Infinity must not fall back early.
+    const invalid =
+      numericRetry === true
+        ? Number.isFinite(retrySeconds) === false || retrySeconds < 0
+        : useReset === true && (Number.isFinite(resetSeconds) === false || resetSeconds < 0)
+    const tooLong =
+      numericRetry === true
+        ? retrySeconds > 60
+        : useReset === true
+          ? resetSeconds > (now + 60_000) / 1000
+          : retryAt > now + 60_000
+    const wait =
+      numericRetry === true
+        ? retrySeconds * 1000
+        : useReset === true
+          ? resetSeconds * 1000 - now
+          : retryAt - now
     return yield* new ProviderProjectLookupFailed({
       provider: 'netlify',
       target: opts.target,
-      transient: true,
-      message: 'Netlify site lookup was rate limited',
+      transient: invalid === false && tooLong === false,
+      message:
+        invalid === true
+          ? 'Netlify rate limit has an invalid numeric retry deadline'
+          : tooLong === true
+            ? 'Netlify rate limit exceeds the 60-second retry window'
+            : 'Netlify site lookup was rate limited',
       diagnostics: { apiStatus: String(response.status) },
-      ...(Number.isFinite(waitUntil) === true
-        ? { retryAfterMs: Math.max(0, waitUntil - now) }
+      ...(Number.isFinite(wait) === true && invalid === false && tooLong === false
+        ? { retryAfterMs: Math.max(0, wait) }
         : {}),
     })
   }
@@ -290,6 +314,8 @@ const resolveNetlifySite = Effect.fn('ci-tools.deploy.netlify.resolve-site')(fun
   }
 })
 
+export { resolveNetlifySite }
+
 // Never shorten a provider deadline to fit the bounded retry window.
 const netlifyLookupRetrySchedule = Schedule.exponential('1 second').pipe(
   Schedule.modifyDelay(({ duration, input }) =>
@@ -303,6 +329,14 @@ const netlifyLookupRetrySchedule = Schedule.exponential('1 second').pipe(
   Schedule.upTo({ times: 3 }),
   Schedule.while(({ elapsed, duration }) => elapsed + Duration.toMillis(duration) <= 60_000),
 )
+
+export const netlifyLookupRetryPolicy = {
+  schedule: netlifyLookupRetrySchedule,
+  while: (failure: DeployFailure) =>
+    failure._tag === 'ProviderProjectLookupFailed' &&
+    failure.transient === true &&
+    failure.diagnostics?.apiStatus === '429',
+}
 
 const classifyNetlifyDeployFailure = (opts: {
   readonly target: string
@@ -594,16 +628,7 @@ export const runNetlifyDeploy = Effect.fn('ci-tools.deploy.netlify')(function* (
       authToken: authTokenValue,
       apiBaseUrl: options.netlifyApiBaseUrl,
     })
-  }).pipe(
-    Effect.retry({
-      schedule: netlifyLookupRetrySchedule,
-      while: (failure) =>
-        failure._tag === 'ProviderProjectLookupFailed' &&
-        failure.transient === true &&
-        failure.diagnostics?.apiStatus === '429',
-    }),
-    Effect.result,
-  )
+  }).pipe(Effect.retry(netlifyLookupRetryPolicy), Effect.result)
   if (Result.isFailure(resolvedSiteResult) === true) {
     if (
       resolvedSiteResult.failure._tag === 'Unauthorized' &&
