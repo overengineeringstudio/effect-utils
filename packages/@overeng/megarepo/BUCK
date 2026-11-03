@@ -7,7 +7,7 @@ load("//buck2/products:defs.bzl", "javascript_product")
 # Projection source: packages/@overeng/megarepo/BUCK.genie.ts
 # Projection schema version: 13
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:b4982255197eb74485d647d4b632890e97bf3af9822707da7b54ba13aec9366b
+# Semantic fingerprint: sha256:d46de4150a41fb9f620da530ffc349c9f38dca5d78f5ecb59549635213b291ac
 # Regenerate: devenv tasks run genie:run
 
 load("//buck2:materialization.bzl", "export_materialization_inputs", "package_view")
@@ -277,6 +277,7 @@ export_materialization_inputs([
     "src/store/store-pr-state.ts",
     "src/store/store-pr-state.unit.test.ts",
     "src/store/store-rehome.basic.integration.test.ts",
+    "src/store/store-rehome.integration.test.ts",
     "src/store/store-rehome.ts",
     "src/store/store-symlink.unit.test.ts",
     "src/store/store-workspace-activity.integration.test.ts",
@@ -599,6 +600,7 @@ package_view(
         "src/store/store-pr-state.ts": "src/store/store-pr-state.ts",
         "src/store/store-pr-state.unit.test.ts": "src/store/store-pr-state.unit.test.ts",
         "src/store/store-rehome.basic.integration.test.ts": "src/store/store-rehome.basic.integration.test.ts",
+        "src/store/store-rehome.integration.test.ts": "src/store/store-rehome.integration.test.ts",
         "src/store/store-rehome.ts": "src/store/store-rehome.ts",
         "src/store/store-symlink.unit.test.ts": "src/store/store-symlink.unit.test.ts",
         "src/store/store-workspace-activity.integration.test.ts": "src/store/store-workspace-activity.integration.test.ts",
@@ -923,6 +925,7 @@ package_view(
         "src/store/store-pr-state.ts": "src/store/store-pr-state.ts",
         "src/store/store-pr-state.unit.test.ts": "src/store/store-pr-state.unit.test.ts",
         "src/store/store-rehome.basic.integration.test.ts": "src/store/store-rehome.basic.integration.test.ts",
+        "src/store/store-rehome.integration.test.ts": "src/store/store-rehome.integration.test.ts",
         "src/store/store-rehome.ts": "src/store/store-rehome.ts",
         "src/store/store-symlink.unit.test.ts": "src/store/store-symlink.unit.test.ts",
         "src/store/store-workspace-activity.integration.test.ts": "src/store/store-workspace-activity.integration.test.ts",
@@ -1242,6 +1245,7 @@ package_view(
         "src/store/store-pr-state.ts": "src/store/store-pr-state.ts",
         "src/store/store-pr-state.unit.test.ts": "src/store/store-pr-state.unit.test.ts",
         "src/store/store-rehome.basic.integration.test.ts": "src/store/store-rehome.basic.integration.test.ts",
+        "src/store/store-rehome.integration.test.ts": "src/store/store-rehome.integration.test.ts",
         "src/store/store-rehome.ts": "src/store/store-rehome.ts",
         "src/store/store-symlink.unit.test.ts": "src/store/store-symlink.unit.test.ts",
         "src/store/store-workspace-activity.integration.test.ts": "src/store/store-workspace-activity.integration.test.ts",
@@ -1389,6 +1393,7 @@ vitest_test(
         "src/store/store-lossless.integration.test.ts",
         "src/store/store-pinned-deletion.integration.test.ts",
         "src/store/store-rehome.basic.integration.test.ts",
+        "src/store/store-rehome.integration.test.ts",
         "src/store/store-workspace-activity.integration.test.ts",
         "src/store/store-worktree-remove.integration.test.ts",
         "src/test-utils/store-setup.integration.test.ts",
@@ -1436,6 +1441,7 @@ vitest_collect(
         "src/store/store-lossless.integration.test.ts",
         "src/store/store-pinned-deletion.integration.test.ts",
         "src/store/store-rehome.basic.integration.test.ts",
+        "src/store/store-rehome.integration.test.ts",
         "src/store/store-workspace-activity.integration.test.ts",
         "src/store/store-worktree-remove.integration.test.ts",
         "src/test-utils/store-setup.integration.test.ts",
