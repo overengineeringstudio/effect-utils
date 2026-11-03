@@ -1255,6 +1255,88 @@ describe('cache admission evidence schema', () => {
     expect(decodeCacheAdmissionEvidence({ admissionInvocations: [row] }).reapiFailures).toEqual([])
   })
 
+  it('classifies reader admission fallbacks without shadow or legacy rerun evidence', () => {
+    const base = {
+      invocationId: '2fc13b48-c94a-4a9c-936f-bc24615bc360',
+      admissionFallbacks: { reapi: 1, archiveOrigin: 0 },
+      admissionRetrySuccesses: { reapi: 0, archiveOrigin: 0 },
+    }
+    const row = decodeCacheAdmissionInvocation({
+      ...base,
+      event: 'reader-reapi-unavailable-admission',
+      reason: 'capabilities',
+      phase: 'admission',
+    })
+    expect(row).toEqual({
+      ...base,
+      event: 'reader-reapi-unavailable-admission',
+      reason: 'capabilities',
+      phase: 'admission',
+    })
+    const { reason, phase, ...olderRow } = row
+    expect(decodeCacheAdmissionInvocation(olderRow)).toEqual(olderRow)
+    expect(reason).toBe('capabilities')
+    expect(phase).toBe('admission')
+    expect(row.shadow).toBeUndefined()
+    expect(row.legacyRerun).toBeUndefined()
+    const failure = { class: 'deadline', phase: 'tls', elapsedMs: 2510, deadlineMs: 2500 }
+    const classified = decodeCacheAdmissionInvocation({
+      ...row,
+      reapiFailure: failure,
+      reapiDecision: 'pinned-from-first-probe',
+    })
+    const evidence = decodeCacheAdmissionEvidence({ admissionInvocations: [classified] })
+    expect(evidence.admissionInvocations).toEqual([classified])
+    expect(evidence.admissionFallbacks).toEqual({ reapi: 1, archiveOrigin: 0 })
+    expect(evidence.admissionRetrySuccesses).toEqual({ reapi: 0, archiveOrigin: 0 })
+    expect(evidence.reapiFailures).toEqual([
+      { class: 'deadline', phase: 'tls', count: 1, maxElapsedMs: 2510 },
+    ])
+    expect(decodeCacheAdmissionEvidence(evidence)).toEqual(evidence)
+    const initial = { ...emptyCacheEvidence(), admissionInvocations: [base] }
+    const observed = { ...emptyCacheEvidence(), admissionInvocations: [row] }
+    for (const options of [
+      { previous: initial, next: observed },
+      { previous: observed, next: initial },
+      { previous: observed, next: observed },
+    ]) {
+      const merged = mergeCacheEvidence(options)
+      expect(merged.admissionInvocations).toEqual([row])
+      expect(merged.admissionFallbacks).toEqual({ reapi: 1, archiveOrigin: 0 })
+      expect(merged.admissionRetrySuccesses).toEqual({ reapi: 0, archiveOrigin: 0 })
+    }
+    expect(() =>
+      mergeCacheEvidence({
+        previous: observed,
+        next: {
+          ...emptyCacheEvidence(),
+          admissionInvocations: [{ ...row, reason: 'connect' }],
+        },
+      }),
+    ).toThrow('Conflicting cache admission invocation')
+    for (const invalid of [
+      { ...row, admissionFallbacks: { reapi: 0, archiveOrigin: 0 } },
+      { ...row, admissionFallbacks: { reapi: 2, archiveOrigin: 0 } },
+      { ...row, admissionRetrySuccesses: { reapi: 1, archiveOrigin: 0 } },
+      { ...row, shadow: {} },
+      { ...row, shadow: null },
+      { ...row, legacyRerun: true },
+      { ...row, legacyRerun: false },
+      { ...row, legacyRerun: null },
+      { ...row, invocationId: 'invalid' },
+      { ...row, reapiFailure: { ...failure, class: 'unknown' } },
+      { ...row, reapiDecision: 'unknown' },
+      { ...row, reason: undefined },
+      { ...row, phase: undefined },
+      { ...row, reason: 'unknown' },
+      { ...row, phase: 'unknown' },
+      { ...row, phase: 'in_build' },
+      { ...row, event: undefined },
+      { ...row, event: 'reader-reapi-unavailable-rerun' },
+    ])
+      expect(() => decodeCacheAdmissionInvocation(invalid)).toThrow()
+  })
+
   it('retains measured #2165 rerun rows and their original invocation pair as read-only legacy evidence', () => {
     const original = {
       invocationId: '9552ef6c-294e-4a51-9100-9006d6f2c343',
@@ -1316,6 +1398,30 @@ describe('cache admission evidence schema', () => {
       event: 'reader-reapi-unavailable-shadow',
       shadow,
     })
+    expect(decodeCacheAdmissionInvocation(row)).toEqual(row)
+    for (const reason of ['init', 'capabilities', 'connect']) {
+      const classified = decodeCacheAdmissionInvocation({ ...row, reason, phase: 'in_build' })
+      expect(classified.reason).toBe(reason)
+      expect(classified.phase).toBe('in_build')
+      for (const options of [
+        { previous: row, next: classified },
+        { previous: classified, next: row },
+        { previous: base, next: classified },
+      ]) {
+        const merged = mergeCacheEvidence({
+          previous: {
+            ...emptyCacheEvidence(),
+            admissionInvocations: [decodeCacheAdmissionInvocation(options.previous)],
+          },
+          next: {
+            ...emptyCacheEvidence(),
+            admissionInvocations: [decodeCacheAdmissionInvocation(options.next)],
+          },
+        })
+        expect(merged.admissionInvocations).toEqual([classified])
+        expect(merged.admissionFallbacks).toEqual({ reapi: 0, archiveOrigin: 0 })
+      }
+    }
     expect(row.shadow).toEqual(shadow)
     for (const invalid of [
       { ...row, shadow: undefined },
@@ -1327,6 +1433,10 @@ describe('cache admission evidence schema', () => {
       },
       { ...row, admissionFallbacks: { reapi: 1, archiveOrigin: 0 } },
       { ...row, legacyRerun: true },
+      { ...row, reason: 'init' },
+      { ...row, phase: 'in_build' },
+      { ...row, reason: 'connect', phase: 'admission' },
+      { ...row, reason: 'unknown', phase: 'in_build' },
     ])
       expect(() => decodeCacheAdmissionInvocation(invalid)).toThrow()
     for (const invalidShadow of [

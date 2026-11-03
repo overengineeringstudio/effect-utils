@@ -199,13 +199,18 @@ platform, which reads `remote_cache_enabled` and `allow_cache_uploads` from root
 config (local execution, remote reuse; `remote_enabled = False`).
 `BUCK2_NO_REMOTE_CACHE=1` wins over all credentials and disables reads/uploads.
 Read-only endpoint admission failures fail open; either selected writer posture
-fails closed on REAPI unavailability. If an admitted reader command fails solely
-with an RE-client initialization/capabilities/connect unavailable diagnostic, the
-launcher records `reader-reapi-unavailable-shadow` evidence and warns that no
-rerun happened. The native failure and exit code stand; there is no second
-invocation, no cache-posture change, and no admission fallback increment.
-This shadow-only observation preserves the strict outage posture. Unknown/mixed
-diagnostics, compilation/test failures, authentication/authorization failures,
+fails closed on REAPI unavailability. When the effective pre-probe posture is a
+reader (`allow_cache_uploads = false`), a failed-open REAPI probe classifies the
+existing admission row as `reader-reapi-unavailable-admission` before native
+launch, with one REAPI fallback and no shadow observation or legacy rerun.
+If an admitted reader command instead fails solely with an RE-client
+initialization/capabilities/connect unavailable diagnostic, the launcher records
+`reader-reapi-unavailable-shadow` evidence and warns that no rerun happened.
+The native failure and exit code stand; there is no second invocation, no
+cache-posture change, and no admission fallback increment.
+This native in-build shadow-only observation preserves BUILD.BUCK.REUSE-R04's
+strict outage posture.
+Unknown/mixed diagnostics, compilation/test failures, authentication/authorization failures,
 integrity errors, and writer postures produce no shadow event.
 Stdout remains inherited. Supervision applies only when stderr is not a TTY;
 terminal invocations and `run`, `install`, and `bxl` execute unchanged without
@@ -740,13 +745,47 @@ JSONL row to `${CI_BUCK2_CACHE_EVIDENCE_PATH}.admission.jsonl`, with the authori
 }
 ```
 
-New admission writes use only the repository-local, case-sensitive event
-`reader-reapi-unavailable-shadow`, requiring `admissionFallbacks.reapi = 0`
-and a `shadow` payload. It enriches the original admission using the same native
-`invocationId`; it never invents a second invocation or claims a fallback occurred.
-The collector merges a base row and its matching shadow row in either order,
-deduplicates identical observations, and rejects conflicting admission or shadow
-payloads. Rows without an event remain readable.
+New admission writes use the repository-local, case-sensitive events
+`reader-reapi-unavailable-admission` and `reader-reapi-unavailable-shadow`.
+The pre-launch admission classification requires `admissionFallbacks.reapi = 1`
+and forbids `shadow` and `legacyRerun`. It labels the existing invocation row only
+when its effective pre-probe posture has `allow_cache_uploads = false` and REAPI
+admission fails open; writer refusals and unrelated fallback rows remain plain.
+Its fallback and optional `reapiFailure` contribute to the existing endpoint
+counters and failure groups, without a separate classification counter.
+
+The native in-build shadow classification requires `admissionFallbacks.reapi = 0`
+and a `shadow` payload, and forbids `legacyRerun`. It enriches the original
+admission using the same native `invocationId`; it never invents a second
+invocation or claims a fallback occurred. The collector merges a base row and its
+matching classified row in either order, deduplicates identical observations,
+and rejects conflicting admission or shadow payloads. Rows without an event
+remain readable.
+
+Current classified rows include the paired fields `reason` and `phase`.
+`reason` is `init`, `capabilities`, or `connect`; `phase` is `admission` for
+`reader-reapi-unavailable-admission` and `in_build` for
+`reader-reapi-unavailable-shadow`. Admission emits `reason: capabilities`;
+native shadow reasons prioritize capabilities, then client initialization
+(`init`), then `connect`. Older classified rows may omit both fields, but
+partial pairs, unknown values, mismatched phases, and pairs on plain or
+historical rerun rows are rejected. Merging retains this metadata without
+changing admission totals and rejects conflicting classified pairs.
+
+Every cache-evidence-enabled CI job appends an `always()` collect step named
+`Collect REAPI unavailable classifications`, followed by two gated no-op steps.
+The collector reads the admission sidecar through the admission decoder and
+sets `admission` and `in_build` outputs to the first classified reason per phase.
+Only the fixed reasons `init`, `capabilities`, and `connect` can enter step names.
+The rendered names are `reapi-unavailable/admission/<reason>` and
+`reapi-unavailable/in_build/<reason>`; each runs under `always()` only when its
+phase output is nonempty. All three steps retain the shared job-admission
+conditions: unadmitted jobs cannot have launched Buck2 or produced an occurrence.
+Their occurrence counters mean jobs with at least one classification in that
+phase, not invocation counts or admission fallback totals.
+Missing sidecars produce no outputs. Malformed rows produce plain diagnostics
+and do not fail the job; valid rows remain collectable. This local projection
+uses no network, credentials, workflow actions, artifacts, or caches.
 
 The decoder also retains the historical `reader-reapi-unavailable-rerun` event
 as read-only measured evidence: it requires `admissionFallbacks.reapi = 1` and

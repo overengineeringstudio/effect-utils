@@ -896,6 +896,7 @@ const jobs: Record<CoreCIJobName, CiWorkflowArgs['jobs'][string]> = {
             [
               'nix shell .#bun --command bun test',
               './genie/ci-scripts/buck2-cache-evidence.unit.test.ts',
+              './genie/ci-scripts/buck2-reapi-classification.unit.test.ts',
               './genie/ci-scripts/buck2-cache-evidence.integration.test.ts',
               './genie/ci-scripts/buck2-action-evidence.integration.test.ts',
               './genie/ci-scripts/buck2-cache-warm99.unit.test.ts',

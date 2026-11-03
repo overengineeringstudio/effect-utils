@@ -315,14 +315,14 @@ const pinCiJobReapiProbe = async ({
 
 const warning = ({
   message,
-  env,
+  workflowCommands,
 }: {
   readonly message: string
-  readonly env: Readonly<Record<string, string | undefined>>
+  readonly workflowCommands: boolean
 }): void => {
   failedOpen = true
   writeSync(2, `warning: Buck2 ${message}\n`)
-  if (env['GITHUB_ACTIONS'] === 'true') writeSync(2, `::warning title=Buck2 cache::${message}\n`)
+  if (workflowCommands === true) writeSync(2, `::warning title=Buck2 cache::${message}\n`)
 }
 
 /** Admission probe whose deadline a test can control through `probeDeadlineSignal`. */
@@ -345,6 +345,7 @@ export const directBuckArguments = async ({
   beforeCachePosture,
   onCachePosture,
   onCacheAdmission,
+  workflowCommands = false,
 }: {
   readonly args: readonly string[]
   readonly cwd: string
@@ -358,6 +359,8 @@ export const directBuckArguments = async ({
   /** Observe the effective admitted posture, including CLI policy and probe fallback. */
   readonly onCachePosture?: CachePostureCheck
   readonly onCacheAdmission?: (admission: CacheAdmissionInvocation) => void
+  /** Only the executable launcher may emit workflow commands; imported probes are diagnostics only. */
+  readonly workflowCommands?: boolean
 }): Promise<string[]> => {
   admissionExpires = Date.now() + 5000
   failedOpen = false
@@ -552,6 +555,11 @@ export const directBuckArguments = async ({
             }),
         })
   admission.admissionFallbacks.reapi = remoteAvailable === false ? 1 : 0
+  if (remoteAvailable === false && values['buck2.allow_cache_uploads'] === 'false') {
+    admission.event = 'reader-reapi-unavailable-admission'
+    admission.reason = 'capabilities'
+    admission.phase = 'admission'
+  }
   if (remoteAvailable === false && reapiDiagnostics.failure !== undefined) {
     const failure = /^class=([a-z-]+) phase=([a-z]+) elapsed_ms=(\d+) deadline_ms=(\d+)$/u.exec(
       reapiDiagnostics.failure,
@@ -581,7 +589,7 @@ export const directBuckArguments = async ({
       values['buck2.allow_cache_uploads'] === 'true' &&
       env['BUCK2_CACHE_WRITE_OPTIONAL'] !== '1'
     ) {
-      if (env['GITHUB_ACTIONS'] === 'true')
+      if (workflowCommands === true)
         writeSync(
           2,
           `::error title=Buck2 cache writer refused::REAPI unreachable (${reapiDiagnostics.failure ?? 'probe diagnostics unavailable from cached result'}); refusing to publish without remote cache\n`,
@@ -592,7 +600,7 @@ export const directBuckArguments = async ({
     }
     warning({
       message: 'REAPI is unreachable; using local execution without the remote cache',
-      env,
+      workflowCommands,
     })
     Object.assign(overrides, {
       'buck2.remote_cache_enabled': 'false',
@@ -1619,7 +1627,7 @@ export const isOnlyReapiUnavailable = (output: string): boolean => {
     /^Build ID: [a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/u,
     /^File changed: \S+$/u,
     /^\d+ additional file change events$/u,
-    /^Waiting on \S+ \([^)]+\) -- [\w .:-]+$/u,
+    /^Waiting on \S+ \([^)]+\) -- [\w .:-]+(?:, and \d+ other actions?)?$/u,
     /^Cache hits: \d+(?:\.\d+)?%$/u,
     /^Commands: \d+ \(cached: \d+, remote: \d+, local: \d+\)$/u,
     /^Network: up \d+(?:\.\d+)?(?:B|KiB|MiB|GiB|TiB)\s+down \d+(?:\.\d+)?(?:B|KiB|MiB|GiB|TiB)$/u,
@@ -1629,6 +1637,8 @@ export const isOnlyReapiUnavailable = (output: string): boolean => {
   let expected: number | undefined
   let summaryHeading = false
   let fatal = false
+  let buildFailed = false
+  const failedTargets = new Set<string>()
   let block: { action: string; phase: 'internal' | 'error' | 'details' } | undefined
   const finishBlock = (): boolean => {
     if (block === undefined) return true
@@ -1694,6 +1704,25 @@ export const isOnlyReapiUnavailable = (output: string): boolean => {
     if (line === 'The following actions failed during the execution of this command:') {
       if (expected === undefined || summaryHeading === true) return false
       summaryHeading = true
+      continue
+    }
+    // Native build footers repeat already validated action targets, not new failures.
+    if (line === 'BUILD FAILED') {
+      if (expected === undefined || summaryHeading === false || buildFailed === true) return false
+      buildFailed = true
+      continue
+    }
+    const failedTarget = /^Failed to build '(\S+ \([^)]+\))'$/u.exec(line)?.[1]
+    if (failedTarget !== undefined) {
+      if (
+        buildFailed === false ||
+        failedTargets.has(failedTarget) === true ||
+        [...summary].some(
+          (action) => action === failedTarget || action.startsWith(`${failedTarget} (`),
+        ) === false
+      )
+        return false
+      failedTargets.add(failedTarget)
       continue
     }
     if (informational.some((pattern) => pattern.test(line)) === true) continue
@@ -2021,6 +2050,7 @@ if (import.meta.main === true) {
         args: requestedArgs,
         cwd: process.cwd(),
         env: process.env,
+        workflowCommands: process.env['GITHUB_ACTIONS'] === 'true',
         beforeCachePosture,
         onCacheAdmission: (admission) => {
           admittedInvocation = admission
@@ -2129,6 +2159,13 @@ if (import.meta.main === true) {
                 `${JSON.stringify({
                   ...admittedInvocation,
                   event: 'reader-reapi-unavailable-shadow',
+                  reason:
+                    shadow.cause.capabilitiesUnavailable === true
+                      ? 'capabilities'
+                      : shadow.cause.clientInitialization === true
+                        ? 'init'
+                        : 'connect',
+                  phase: 'in_build',
                   shadow,
                 })}\n`,
                 { mode: 0o600 },

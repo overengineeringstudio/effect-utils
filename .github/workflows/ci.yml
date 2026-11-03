@@ -823,6 +823,22 @@ jobs:
             ${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}.shards/*.json
           if-no-files-found: warn
           retention-days: 90
+      - name: Collect REAPI unavailable classifications
+        id: reapi_unavailable
+        if: ${{ (always()) && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
+        shell: bash
+        run: |
+          cd "${CI_SOURCE_ROOT:-${GITHUB_WORKSPACE:?GITHUB_WORKSPACE not set}}" || exit 0
+          [ -n "${CI_BUCK2_CACHE_EVIDENCE_PATH:-}" ] && [ -f "${CI_BUCK2_CACHE_EVIDENCE_PATH}.admission.jsonl" ] || exit 0
+          nix shell --offline .#bun --command bun genie/ci-scripts/buck2-reapi-classification.ts || printf "%s\n" "REAPI classification collection unavailable; retaining the native job result"
+      - name: 'reapi-unavailable/admission/${{ steps.reapi_unavailable.outputs.admission }}'
+        if: ${{ (always() && steps.reapi_unavailable.outputs.admission != '') && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
+        shell: bash
+        run: ':'
+      - name: 'reapi-unavailable/in_build/${{ steps.reapi_unavailable.outputs.in_build }}'
+        if: ${{ (always() && steps.reapi_unavailable.outputs.in_build != '') && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
+        shell: bash
+        run: ':'
       - # v4.4.0
         if: ${{ (always() && env.CI_EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && vars.TS_EVIDENCE_CLIENT_ID != '' && vars.TS_EVIDENCE_AUDIENCE != '') && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
         uses: tailscale/github-action@064b10558093f38325e838ddea35486bdc6b1d5c
@@ -1191,7 +1207,7 @@ jobs:
       - name: Native cache evidence regressions
         env:
           GITHUB_TOKEN: ${{ github.token }}
-        run: 'cd "${GITHUB_WORKSPACE:-$PWD}" && nix shell .#bun --command bun test ./genie/ci-scripts/buck2-cache-evidence.unit.test.ts ./genie/ci-scripts/buck2-cache-evidence.integration.test.ts ./genie/ci-scripts/buck2-action-evidence.integration.test.ts ./genie/ci-scripts/buck2-cache-warm99.unit.test.ts ./genie/ci-scripts/buck2-cache-warm99.integration.test.ts ./genie/ci-scripts/buck2-cache-proof-reports.integration.test.ts ./genie/ci-scripts/buck2-cache-proof-history.unit.test.ts ./genie/ci-scripts/buck2-cache-shards.integration.test.ts ./genie/ci-scripts/buck2-cache-join.unit.test.ts ./genie/ci-scripts/buck2-cache-join-discovery.unit.test.ts ./genie/ci-scripts/buck2-cache-join-download.unit.test.ts ./genie/ci-workflow/buck2-cache-evidence.unit.test.ts ./genie/ci-workflow/buck2-cache-posture.integration.test.ts'
+        run: 'cd "${GITHUB_WORKSPACE:-$PWD}" && nix shell .#bun --command bun test ./genie/ci-scripts/buck2-cache-evidence.unit.test.ts ./genie/ci-scripts/buck2-reapi-classification.unit.test.ts ./genie/ci-scripts/buck2-cache-evidence.integration.test.ts ./genie/ci-scripts/buck2-action-evidence.integration.test.ts ./genie/ci-scripts/buck2-cache-warm99.unit.test.ts ./genie/ci-scripts/buck2-cache-warm99.integration.test.ts ./genie/ci-scripts/buck2-cache-proof-reports.integration.test.ts ./genie/ci-scripts/buck2-cache-proof-history.unit.test.ts ./genie/ci-scripts/buck2-cache-shards.integration.test.ts ./genie/ci-scripts/buck2-cache-join.unit.test.ts ./genie/ci-scripts/buck2-cache-join-discovery.unit.test.ts ./genie/ci-scripts/buck2-cache-join-download.unit.test.ts ./genie/ci-workflow/buck2-cache-evidence.unit.test.ts ./genie/ci-workflow/buck2-cache-posture.integration.test.ts'
       - name: Downstream flake-input regression
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -1381,6 +1397,22 @@ jobs:
             ${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}.shards/*.json
           if-no-files-found: warn
           retention-days: 90
+      - name: Collect REAPI unavailable classifications
+        id: reapi_unavailable
+        if: ${{ (always()) && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
+        shell: bash
+        run: |
+          cd "${CI_SOURCE_ROOT:-${GITHUB_WORKSPACE:?GITHUB_WORKSPACE not set}}" || exit 0
+          [ -n "${CI_BUCK2_CACHE_EVIDENCE_PATH:-}" ] && [ -f "${CI_BUCK2_CACHE_EVIDENCE_PATH}.admission.jsonl" ] || exit 0
+          nix shell --offline .#bun --command bun genie/ci-scripts/buck2-reapi-classification.ts || printf "%s\n" "REAPI classification collection unavailable; retaining the native job result"
+      - name: 'reapi-unavailable/admission/${{ steps.reapi_unavailable.outputs.admission }}'
+        if: ${{ (always() && steps.reapi_unavailable.outputs.admission != '') && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
+        shell: bash
+        run: ':'
+      - name: 'reapi-unavailable/in_build/${{ steps.reapi_unavailable.outputs.in_build }}'
+        if: ${{ (always() && steps.reapi_unavailable.outputs.in_build != '') && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
+        shell: bash
+        run: ':'
       - # v4.4.0
         if: ${{ (always() && env.CI_EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && vars.TS_EVIDENCE_CLIENT_ID != '' && vars.TS_EVIDENCE_AUDIENCE != '') && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
         uses: tailscale/github-action@064b10558093f38325e838ddea35486bdc6b1d5c
@@ -1767,6 +1799,22 @@ jobs:
             ${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}.shards/*.json
           if-no-files-found: warn
           retention-days: 90
+      - name: Collect REAPI unavailable classifications
+        id: reapi_unavailable
+        if: ${{ (always()) && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
+        shell: bash
+        run: |
+          cd "${CI_SOURCE_ROOT:-${GITHUB_WORKSPACE:?GITHUB_WORKSPACE not set}}" || exit 0
+          [ -n "${CI_BUCK2_CACHE_EVIDENCE_PATH:-}" ] && [ -f "${CI_BUCK2_CACHE_EVIDENCE_PATH}.admission.jsonl" ] || exit 0
+          nix shell --offline .#bun --command bun genie/ci-scripts/buck2-reapi-classification.ts || printf "%s\n" "REAPI classification collection unavailable; retaining the native job result"
+      - name: 'reapi-unavailable/admission/${{ steps.reapi_unavailable.outputs.admission }}'
+        if: ${{ (always() && steps.reapi_unavailable.outputs.admission != '') && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
+        shell: bash
+        run: ':'
+      - name: 'reapi-unavailable/in_build/${{ steps.reapi_unavailable.outputs.in_build }}'
+        if: ${{ (always() && steps.reapi_unavailable.outputs.in_build != '') && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
+        shell: bash
+        run: ':'
       - # v4.4.0
         if: ${{ (always() && env.CI_EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && vars.TS_EVIDENCE_CLIENT_ID != '' && vars.TS_EVIDENCE_AUDIENCE != '') && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
         uses: tailscale/github-action@064b10558093f38325e838ddea35486bdc6b1d5c
@@ -2204,6 +2252,22 @@ jobs:
             ${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}.shards/*.json
           if-no-files-found: warn
           retention-days: 90
+      - name: Collect REAPI unavailable classifications
+        id: reapi_unavailable
+        if: ${{ (always()) && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
+        shell: bash
+        run: |
+          cd "${CI_SOURCE_ROOT:-${GITHUB_WORKSPACE:?GITHUB_WORKSPACE not set}}" || exit 0
+          [ -n "${CI_BUCK2_CACHE_EVIDENCE_PATH:-}" ] && [ -f "${CI_BUCK2_CACHE_EVIDENCE_PATH}.admission.jsonl" ] || exit 0
+          nix shell --offline .#bun --command bun genie/ci-scripts/buck2-reapi-classification.ts || printf "%s\n" "REAPI classification collection unavailable; retaining the native job result"
+      - name: 'reapi-unavailable/admission/${{ steps.reapi_unavailable.outputs.admission }}'
+        if: ${{ (always() && steps.reapi_unavailable.outputs.admission != '') && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
+        shell: bash
+        run: ':'
+      - name: 'reapi-unavailable/in_build/${{ steps.reapi_unavailable.outputs.in_build }}'
+        if: ${{ (always() && steps.reapi_unavailable.outputs.in_build != '') && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
+        shell: bash
+        run: ':'
       - # v4.4.0
         if: ${{ (always() && env.CI_EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && vars.TS_EVIDENCE_CLIENT_ID != '' && vars.TS_EVIDENCE_AUDIENCE != '') && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
         uses: tailscale/github-action@064b10558093f38325e838ddea35486bdc6b1d5c
@@ -2557,6 +2621,22 @@ jobs:
             ${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}.shards/*.json
           if-no-files-found: warn
           retention-days: 90
+      - name: Collect REAPI unavailable classifications
+        id: reapi_unavailable
+        if: ${{ (always()) && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
+        shell: bash
+        run: |
+          cd "${CI_SOURCE_ROOT:-${GITHUB_WORKSPACE:?GITHUB_WORKSPACE not set}}" || exit 0
+          [ -n "${CI_BUCK2_CACHE_EVIDENCE_PATH:-}" ] && [ -f "${CI_BUCK2_CACHE_EVIDENCE_PATH}.admission.jsonl" ] || exit 0
+          nix shell --offline .#bun --command bun genie/ci-scripts/buck2-reapi-classification.ts || printf "%s\n" "REAPI classification collection unavailable; retaining the native job result"
+      - name: 'reapi-unavailable/admission/${{ steps.reapi_unavailable.outputs.admission }}'
+        if: ${{ (always() && steps.reapi_unavailable.outputs.admission != '') && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
+        shell: bash
+        run: ':'
+      - name: 'reapi-unavailable/in_build/${{ steps.reapi_unavailable.outputs.in_build }}'
+        if: ${{ (always() && steps.reapi_unavailable.outputs.in_build != '') && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
+        shell: bash
+        run: ':'
       - # v4.4.0
         if: ${{ (always() && env.CI_EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && vars.TS_EVIDENCE_CLIENT_ID != '' && vars.TS_EVIDENCE_AUDIENCE != '') && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
         uses: tailscale/github-action@064b10558093f38325e838ddea35486bdc6b1d5c
@@ -2926,6 +3006,22 @@ jobs:
             ${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}.shards/*.json
           if-no-files-found: warn
           retention-days: 90
+      - name: Collect REAPI unavailable classifications
+        id: reapi_unavailable
+        if: ${{ (always()) && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
+        shell: bash
+        run: |
+          cd "${CI_SOURCE_ROOT:-${GITHUB_WORKSPACE:?GITHUB_WORKSPACE not set}}" || exit 0
+          [ -n "${CI_BUCK2_CACHE_EVIDENCE_PATH:-}" ] && [ -f "${CI_BUCK2_CACHE_EVIDENCE_PATH}.admission.jsonl" ] || exit 0
+          nix shell --offline .#bun --command bun genie/ci-scripts/buck2-reapi-classification.ts || printf "%s\n" "REAPI classification collection unavailable; retaining the native job result"
+      - name: 'reapi-unavailable/admission/${{ steps.reapi_unavailable.outputs.admission }}'
+        if: ${{ (always() && steps.reapi_unavailable.outputs.admission != '') && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
+        shell: bash
+        run: ':'
+      - name: 'reapi-unavailable/in_build/${{ steps.reapi_unavailable.outputs.in_build }}'
+        if: ${{ (always() && steps.reapi_unavailable.outputs.in_build != '') && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
+        shell: bash
+        run: ':'
       - # v4.4.0
         if: ${{ (always() && env.CI_EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && vars.TS_EVIDENCE_CLIENT_ID != '' && vars.TS_EVIDENCE_AUDIENCE != '') && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
         uses: tailscale/github-action@064b10558093f38325e838ddea35486bdc6b1d5c
@@ -3262,6 +3358,22 @@ jobs:
             ${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}.shards/*.json
           if-no-files-found: warn
           retention-days: 90
+      - name: Collect REAPI unavailable classifications
+        id: reapi_unavailable
+        if: ${{ (always()) && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
+        shell: bash
+        run: |
+          cd "${CI_SOURCE_ROOT:-${GITHUB_WORKSPACE:?GITHUB_WORKSPACE not set}}" || exit 0
+          [ -n "${CI_BUCK2_CACHE_EVIDENCE_PATH:-}" ] && [ -f "${CI_BUCK2_CACHE_EVIDENCE_PATH}.admission.jsonl" ] || exit 0
+          nix shell --offline .#bun --command bun genie/ci-scripts/buck2-reapi-classification.ts || printf "%s\n" "REAPI classification collection unavailable; retaining the native job result"
+      - name: 'reapi-unavailable/admission/${{ steps.reapi_unavailable.outputs.admission }}'
+        if: ${{ (always() && steps.reapi_unavailable.outputs.admission != '') && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
+        shell: bash
+        run: ':'
+      - name: 'reapi-unavailable/in_build/${{ steps.reapi_unavailable.outputs.in_build }}'
+        if: ${{ (always() && steps.reapi_unavailable.outputs.in_build != '') && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
+        shell: bash
+        run: ':'
       - # v4.4.0
         if: ${{ (always() && env.CI_EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && vars.TS_EVIDENCE_CLIENT_ID != '' && vars.TS_EVIDENCE_AUDIENCE != '') && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
         uses: tailscale/github-action@064b10558093f38325e838ddea35486bdc6b1d5c
@@ -3900,6 +4012,22 @@ jobs:
             ${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}.shards/*.json
           if-no-files-found: warn
           retention-days: 90
+      - name: Collect REAPI unavailable classifications
+        id: reapi_unavailable
+        if: ${{ (always()) && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
+        shell: bash
+        run: |
+          cd "${CI_SOURCE_ROOT:-${GITHUB_WORKSPACE:?GITHUB_WORKSPACE not set}}" || exit 0
+          [ -n "${CI_BUCK2_CACHE_EVIDENCE_PATH:-}" ] && [ -f "${CI_BUCK2_CACHE_EVIDENCE_PATH}.admission.jsonl" ] || exit 0
+          nix shell --offline .#bun --command bun genie/ci-scripts/buck2-reapi-classification.ts || printf "%s\n" "REAPI classification collection unavailable; retaining the native job result"
+      - name: 'reapi-unavailable/admission/${{ steps.reapi_unavailable.outputs.admission }}'
+        if: ${{ (always() && steps.reapi_unavailable.outputs.admission != '') && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
+        shell: bash
+        run: ':'
+      - name: 'reapi-unavailable/in_build/${{ steps.reapi_unavailable.outputs.in_build }}'
+        if: ${{ (always() && steps.reapi_unavailable.outputs.in_build != '') && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
+        shell: bash
+        run: ':'
       - # v4.4.0
         if: ${{ (always() && env.CI_EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && vars.TS_EVIDENCE_CLIENT_ID != '' && vars.TS_EVIDENCE_AUDIENCE != '') && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
         uses: tailscale/github-action@064b10558093f38325e838ddea35486bdc6b1d5c
@@ -4682,6 +4810,22 @@ jobs:
             ${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}.shards/*.json
           if-no-files-found: warn
           retention-days: 90
+      - name: Collect REAPI unavailable classifications
+        id: reapi_unavailable
+        if: ${{ always() }}
+        shell: bash
+        run: |
+          cd "${CI_SOURCE_ROOT:-${GITHUB_WORKSPACE:?GITHUB_WORKSPACE not set}}" || exit 0
+          [ -n "${CI_BUCK2_CACHE_EVIDENCE_PATH:-}" ] && [ -f "${CI_BUCK2_CACHE_EVIDENCE_PATH}.admission.jsonl" ] || exit 0
+          nix shell --offline .#bun --command bun genie/ci-scripts/buck2-reapi-classification.ts || printf "%s\n" "REAPI classification collection unavailable; retaining the native job result"
+      - name: 'reapi-unavailable/admission/${{ steps.reapi_unavailable.outputs.admission }}'
+        if: ${{ always() && steps.reapi_unavailable.outputs.admission != '' }}
+        shell: bash
+        run: ':'
+      - name: 'reapi-unavailable/in_build/${{ steps.reapi_unavailable.outputs.in_build }}'
+        if: ${{ always() && steps.reapi_unavailable.outputs.in_build != '' }}
+        shell: bash
+        run: ':'
       - # v4.4.0
         if: ${{ always() && env.CI_EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && vars.TS_EVIDENCE_CLIENT_ID != '' && vars.TS_EVIDENCE_AUDIENCE != '' }}
         uses: tailscale/github-action@064b10558093f38325e838ddea35486bdc6b1d5c
@@ -5353,6 +5497,22 @@ jobs:
             ${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}.shards/*.json
           if-no-files-found: warn
           retention-days: 90
+      - name: Collect REAPI unavailable classifications
+        id: reapi_unavailable
+        if: ${{ (always()) && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
+        shell: bash
+        run: |
+          cd "${CI_SOURCE_ROOT:-${GITHUB_WORKSPACE:?GITHUB_WORKSPACE not set}}" || exit 0
+          [ -n "${CI_BUCK2_CACHE_EVIDENCE_PATH:-}" ] && [ -f "${CI_BUCK2_CACHE_EVIDENCE_PATH}.admission.jsonl" ] || exit 0
+          nix shell --offline .#bun --command bun genie/ci-scripts/buck2-reapi-classification.ts || printf "%s\n" "REAPI classification collection unavailable; retaining the native job result"
+      - name: 'reapi-unavailable/admission/${{ steps.reapi_unavailable.outputs.admission }}'
+        if: ${{ (always() && steps.reapi_unavailable.outputs.admission != '') && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
+        shell: bash
+        run: ':'
+      - name: 'reapi-unavailable/in_build/${{ steps.reapi_unavailable.outputs.in_build }}'
+        if: ${{ (always() && steps.reapi_unavailable.outputs.in_build != '') && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
+        shell: bash
+        run: ':'
       - # v4.4.0
         if: ${{ (always() && env.CI_EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && vars.TS_EVIDENCE_CLIENT_ID != '' && vars.TS_EVIDENCE_AUDIENCE != '') && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
         uses: tailscale/github-action@064b10558093f38325e838ddea35486bdc6b1d5c
@@ -5646,6 +5806,22 @@ jobs:
             ${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}.shards/*.json
           if-no-files-found: warn
           retention-days: 90
+      - name: Collect REAPI unavailable classifications
+        id: reapi_unavailable
+        if: ${{ (always()) && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
+        shell: bash
+        run: |
+          cd "${CI_SOURCE_ROOT:-${GITHUB_WORKSPACE:?GITHUB_WORKSPACE not set}}" || exit 0
+          [ -n "${CI_BUCK2_CACHE_EVIDENCE_PATH:-}" ] && [ -f "${CI_BUCK2_CACHE_EVIDENCE_PATH}.admission.jsonl" ] || exit 0
+          nix shell --offline .#bun --command bun genie/ci-scripts/buck2-reapi-classification.ts || printf "%s\n" "REAPI classification collection unavailable; retaining the native job result"
+      - name: 'reapi-unavailable/admission/${{ steps.reapi_unavailable.outputs.admission }}'
+        if: ${{ (always() && steps.reapi_unavailable.outputs.admission != '') && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
+        shell: bash
+        run: ':'
+      - name: 'reapi-unavailable/in_build/${{ steps.reapi_unavailable.outputs.in_build }}'
+        if: ${{ (always() && steps.reapi_unavailable.outputs.in_build != '') && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
+        shell: bash
+        run: ':'
       - # v4.4.0
         if: ${{ (always() && env.CI_EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && vars.TS_EVIDENCE_CLIENT_ID != '' && vars.TS_EVIDENCE_AUDIENCE != '') && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
         uses: tailscale/github-action@064b10558093f38325e838ddea35486bdc6b1d5c
@@ -5984,6 +6160,22 @@ jobs:
             ${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}.shards/*.json
           if-no-files-found: warn
           retention-days: 90
+      - name: Collect REAPI unavailable classifications
+        id: reapi_unavailable
+        if: ${{ (always()) && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
+        shell: bash
+        run: |
+          cd "${CI_SOURCE_ROOT:-${GITHUB_WORKSPACE:?GITHUB_WORKSPACE not set}}" || exit 0
+          [ -n "${CI_BUCK2_CACHE_EVIDENCE_PATH:-}" ] && [ -f "${CI_BUCK2_CACHE_EVIDENCE_PATH}.admission.jsonl" ] || exit 0
+          nix shell --offline .#bun --command bun genie/ci-scripts/buck2-reapi-classification.ts || printf "%s\n" "REAPI classification collection unavailable; retaining the native job result"
+      - name: 'reapi-unavailable/admission/${{ steps.reapi_unavailable.outputs.admission }}'
+        if: ${{ (always() && steps.reapi_unavailable.outputs.admission != '') && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
+        shell: bash
+        run: ':'
+      - name: 'reapi-unavailable/in_build/${{ steps.reapi_unavailable.outputs.in_build }}'
+        if: ${{ (always() && steps.reapi_unavailable.outputs.in_build != '') && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
+        shell: bash
+        run: ':'
       - # v4.4.0
         if: ${{ (always() && env.CI_EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && vars.TS_EVIDENCE_CLIENT_ID != '' && vars.TS_EVIDENCE_AUDIENCE != '') && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
         uses: tailscale/github-action@064b10558093f38325e838ddea35486bdc6b1d5c
@@ -6343,6 +6535,22 @@ jobs:
             ${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}.shards/*.json
           if-no-files-found: warn
           retention-days: 90
+      - name: Collect REAPI unavailable classifications
+        id: reapi_unavailable
+        if: ${{ (always()) && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
+        shell: bash
+        run: |
+          cd "${CI_SOURCE_ROOT:-${GITHUB_WORKSPACE:?GITHUB_WORKSPACE not set}}" || exit 0
+          [ -n "${CI_BUCK2_CACHE_EVIDENCE_PATH:-}" ] && [ -f "${CI_BUCK2_CACHE_EVIDENCE_PATH}.admission.jsonl" ] || exit 0
+          nix shell --offline .#bun --command bun genie/ci-scripts/buck2-reapi-classification.ts || printf "%s\n" "REAPI classification collection unavailable; retaining the native job result"
+      - name: 'reapi-unavailable/admission/${{ steps.reapi_unavailable.outputs.admission }}'
+        if: ${{ (always() && steps.reapi_unavailable.outputs.admission != '') && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
+        shell: bash
+        run: ':'
+      - name: 'reapi-unavailable/in_build/${{ steps.reapi_unavailable.outputs.in_build }}'
+        if: ${{ (always() && steps.reapi_unavailable.outputs.in_build != '') && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
+        shell: bash
+        run: ':'
       - # v4.4.0
         if: ${{ (always() && env.CI_EVIDENCE_MODE == 'upload' && env.PIPELINE_TRUSTED == 'true' && vars.TS_EVIDENCE_CLIENT_ID != '' && vars.TS_EVIDENCE_AUDIENCE != '') && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
         uses: tailscale/github-action@064b10558093f38325e838ddea35486bdc6b1d5c
