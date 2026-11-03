@@ -26,7 +26,7 @@ def load_supervisor():
 class PublicationSupervisorTest(unittest.TestCase):
     def test_bootstrap_buck_kill_evidence_is_bounded(self):
         repo = Path(__file__).resolve().parent.parent
-        bun = shutil.which("bun")
+        bun = os.environ.get("BUN_BIN") or shutil.which("bun")
         self.assertIsNotNone(bun, "Bun is required for the fake-Buck fixture")
         for termination, payload in (
             ("deadline", "lines"), ("SIGTERM", "lines"),
@@ -283,7 +283,7 @@ state.rmdir()
 
     def check_daemon_admission_order(self, *, synthetic_cycle):
         repo = Path(__file__).resolve().parent.parent
-        bun = shutil.which("bun")
+        bun = os.environ.get("BUN_BIN") or shutil.which("bun")
         self.assertIsNotNone(bun, "Bun is required for the fake-Buck fixture")
         with tempfile.TemporaryDirectory() as scratch:
             root = Path(scratch)
