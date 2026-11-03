@@ -7,7 +7,7 @@ load("//buck2/products:defs.bzl", "javascript_product")
 # Projection source: packages/@overeng/tui-stories/BUCK.genie.ts
 # Projection schema version: 13
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:5ae3a97403ba08a14245214ae68d11e408c889bc4f8d02010559af63ae3a2b97
+# Semantic fingerprint: sha256:ded7597f3e4b6a86ecb7e2b35b8648a5742282d760c0dd8bdca528f757a5f6e2
 # Regenerate: devenv tasks run genie:run
 
 load("//buck2:materialization.bzl", "export_materialization_inputs", "package_view")
@@ -307,6 +307,7 @@ package_view(
         "node_modules/@overeng/megarepo/src/cli/store-gc-generated.integration.test.ts": "//packages/@overeng/megarepo:src/cli/store-gc-generated.integration.test.ts",
         "node_modules/@overeng/megarepo/src/cli/store-gc-otel.integration.test.ts": "//packages/@overeng/megarepo:src/cli/store-gc-otel.integration.test.ts",
         "node_modules/@overeng/megarepo/src/cli/store-gc-partial-deletion.integration.test.ts": "//packages/@overeng/megarepo:src/cli/store-gc-partial-deletion.integration.test.ts",
+        "node_modules/@overeng/megarepo/src/cli/store-rehome.integration.test.ts": "//packages/@overeng/megarepo:src/cli/store-rehome.integration.test.ts",
         "node_modules/@overeng/megarepo/src/cli/store.integration.test.ts": "//packages/@overeng/megarepo:src/cli/store.integration.test.ts",
         "node_modules/@overeng/megarepo/src/cli/sync.integration.test.ts": "//packages/@overeng/megarepo:src/cli/sync.integration.test.ts",
         "node_modules/@overeng/megarepo/src/core/config.ts": "//packages/@overeng/megarepo:src/core/config.ts",
@@ -703,6 +704,7 @@ package_view(
         "node_modules/@overeng/megarepo/src/cli/store-gc-generated.integration.test.ts": "//packages/@overeng/megarepo:src/cli/store-gc-generated.integration.test.ts",
         "node_modules/@overeng/megarepo/src/cli/store-gc-otel.integration.test.ts": "//packages/@overeng/megarepo:src/cli/store-gc-otel.integration.test.ts",
         "node_modules/@overeng/megarepo/src/cli/store-gc-partial-deletion.integration.test.ts": "//packages/@overeng/megarepo:src/cli/store-gc-partial-deletion.integration.test.ts",
+        "node_modules/@overeng/megarepo/src/cli/store-rehome.integration.test.ts": "//packages/@overeng/megarepo:src/cli/store-rehome.integration.test.ts",
         "node_modules/@overeng/megarepo/src/cli/store.integration.test.ts": "//packages/@overeng/megarepo:src/cli/store.integration.test.ts",
         "node_modules/@overeng/megarepo/src/cli/sync.integration.test.ts": "//packages/@overeng/megarepo:src/cli/sync.integration.test.ts",
         "node_modules/@overeng/megarepo/src/core/config.ts": "//packages/@overeng/megarepo:src/core/config.ts",
@@ -1099,6 +1101,7 @@ package_view(
         "node_modules/@overeng/megarepo/src/cli/store-gc-generated.integration.test.ts": "//packages/@overeng/megarepo:src/cli/store-gc-generated.integration.test.ts",
         "node_modules/@overeng/megarepo/src/cli/store-gc-otel.integration.test.ts": "//packages/@overeng/megarepo:src/cli/store-gc-otel.integration.test.ts",
         "node_modules/@overeng/megarepo/src/cli/store-gc-partial-deletion.integration.test.ts": "//packages/@overeng/megarepo:src/cli/store-gc-partial-deletion.integration.test.ts",
+        "node_modules/@overeng/megarepo/src/cli/store-rehome.integration.test.ts": "//packages/@overeng/megarepo:src/cli/store-rehome.integration.test.ts",
         "node_modules/@overeng/megarepo/src/cli/store.integration.test.ts": "//packages/@overeng/megarepo:src/cli/store.integration.test.ts",
         "node_modules/@overeng/megarepo/src/cli/sync.integration.test.ts": "//packages/@overeng/megarepo:src/cli/sync.integration.test.ts",
         "node_modules/@overeng/megarepo/src/core/config.ts": "//packages/@overeng/megarepo:src/core/config.ts",

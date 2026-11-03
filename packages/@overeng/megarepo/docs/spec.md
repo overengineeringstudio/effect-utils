@@ -962,14 +962,20 @@ mr store status [--json]
 
 **Detected Issues:**
 
-| Issue             | Description                                    | Severity |
-| ----------------- | ---------------------------------------------- | -------- |
-| `dirty`           | Worktree has uncommitted changes               | warning  |
-| `unpushed`        | Worktree has commits not pushed to remote      | warning  |
-| `ref_mismatch`    | Checked-out branch doesn't match worktree path | error    |
-| `missing_bare`    | Worktree exists but `.bare/` repo is missing   | error    |
-| `broken_worktree` | Worktree directory is corrupted or incomplete  | error    |
-| `orphaned`        | Not referenced by current megarepo's lock      | info     |
+| Issue             | Description                                          | Severity |
+| ----------------- | ---------------------------------------------------- | -------- |
+| `dirty`           | Worktree has uncommitted changes                     | warning  |
+| `unpushed`        | Worktree has commits not pushed to remote            | warning  |
+| `ref_mismatch`    | Checked-out branch doesn't match worktree path       | error    |
+| `missing_bare`    | Worktree exists but `.bare/` repo is missing         | error    |
+| `broken_worktree` | Worktree directory is corrupted or incomplete        | error    |
+| `foreign-git-dir` | Worktree is registered in a different Git repository | error    |
+| `orphaned`        | Not referenced by current megarepo's lock            | info     |
+
+`mr store fix --dry-run` plans repair without writes. `mr store fix` re-homes only clean
+exact-commit trees into their store `.bare`, preserving tracked and ignored files in place.
+Foreign branch/tag trees remain report-only. The bounded collector may classify branch
+namespaces known only to the foreign repository as broken rather than foreign.
 
 **Example output:**
 

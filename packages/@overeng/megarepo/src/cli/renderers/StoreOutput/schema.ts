@@ -115,6 +115,7 @@ export const StoreWorktreeIssue = Schema.Struct({
     'missing_bare',
     'broken_worktree',
     'orphaned',
+    'foreign-git-dir',
   ]),
   severity: Schema.Literals(['error', 'warning', 'info']),
   message: Schema.String,

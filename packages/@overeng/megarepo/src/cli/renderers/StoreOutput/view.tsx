@@ -291,6 +291,14 @@ const getIssueHint = ({
   worktree: StoreWorktreeStatus
 }): { fix: string; explanation: string } | undefined => {
   switch (issue.type) {
+    case 'foreign-git-dir':
+      return {
+        fix: 'mr store fix --dry-run',
+        explanation:
+          worktree.refType === 'commits'
+            ? 're-home a clean exact commit tree'
+            : 'report-only; preserve foreign branch commits',
+      }
     case 'dirty':
       return {
         fix: `cd ~/.megarepo/${worktree.repo}/refs/${worktree.refType}/${worktree.ref}`,
