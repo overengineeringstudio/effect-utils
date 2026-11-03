@@ -1254,6 +1254,14 @@ JSON report and exits nonzero when acceptance is unmet or input is invalid.
 This temporal eligible-denominator measurement is distinct from the legacy
 observed action-span rate and from Nix substitution.
 
+Each lane observation also records up to 50 missed eligible occurrences and an
+overflow count in the warm99 report and proof manifest. Failure diagnostics include
+the Buck target label, action category, SHA-256 of the exact identity tuple, reader
+job key, and per-build read posture. A matching admission invocation with a REAPI
+fallback reports `admission-fallback`; otherwise explicitly enabled invocation reads
+report `remote-reads-enabled`, with missing evidence reported as `unknown`.
+Native configuration, digest and build identifiers are not exposed in these diagnostics.
+
 ### Action reuse versus verdict reuse
 
 | Claim                   | Required native evidence                                                                           | Insufficient evidence                            |

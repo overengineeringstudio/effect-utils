@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'bun:test'
+import { createHash } from 'node:crypto'
 
 import { classifyCacheAction, decodeActionArtifact } from './buck2-action-evidence-codec.ts'
 import {
@@ -270,6 +271,113 @@ describe('strict action boundary', () => {
   })
 })
 describe('warm99 identity acceptance', () => {
+  it('reports all eight eligible misses from one admission-fallback reader in a 39/47 cohort', () => {
+    const manifest = manifestFixture(['main-reader'], 1)
+    const actions = Array.from({ length: 47 }, (_, index) =>
+      actionFixture({
+        target: `root//packages/tool:target-${index}`,
+        executionKind: index < 8 ? 1 : 3,
+      }),
+    )
+    const writer = artifactFixture(
+      true,
+      actions.map((action) => ({
+        ...action,
+        startedAt: 10,
+        completedAt: 100,
+        endTime: 100,
+        uploadCompletedAt: 100,
+        uploadOutcome: 'uploaded',
+      })),
+    )
+    const reader = artifactFixture(false, actions)
+    reader.header.metadata.job = 'test-live-deploy-ci-tools'
+    const buildId = '123ba1cf-678d-4f1e-b0a3-f7ccd2b6ee31'
+    reader.header.invocations[0]!.buildId = buildId
+    reader.header.invocations[0]!.cacheReadPolicy = 'unknown'
+    for (const action of reader.actions) action.buildId = buildId
+    const encoded = encodedFixture(reader)
+    const decoded = decodeEvidence({
+      compressed: encoded.compressed,
+      summary: {
+        ...encoded.summary,
+        admissionFallbacks: { reapi: 1, archiveOrigin: 0 },
+        admissionInvocations: [
+          {
+            invocationId: reader.header.invocations[0]!.buildId,
+            admissionFallbacks: { reapi: 1, archiveOrigin: 0 },
+            admissionRetrySuccesses: { reapi: 0, archiveOrigin: 0 },
+          },
+        ],
+      },
+    })
+    const report = evaluateWarm99({
+      manifest,
+      loaded: [{ observation: manifest.observations[0]!, writers: [writer], readers: [decoded] }],
+    })
+    const cohort = report.lanes[0]!.observations[0]!
+    expect(cohort).toMatchObject({
+      eligible: 47,
+      remoteHits: 39,
+      meetsThreshold: false,
+      eligibleMissesOverflow: 0,
+    })
+    const expected = actions.slice(0, 8).map((action) => ({
+      target: action.target,
+      category: 'compile',
+      actionKeySha256: createHash('sha256')
+        .update(
+          JSON.stringify([action.category, action.target, action.configuration, action.digest]),
+        )
+        .digest('hex'),
+      readerJob: 'test-live-deploy-ci-tools',
+      readerPosture: 'admission-fallback',
+    }))
+    expect(JSON.parse(JSON.stringify(cohort)).eligibleMisses).toEqual(expected)
+    const lines = renderWarm99Diagnostics(report).split('\n')
+    expect(lines).toHaveLength(9)
+    for (const [index, miss] of expected.entries()) {
+      expect(lines[index + 1]).toBe(
+        `buck2-cache-join: lane=main-reader observation=0 miss target=${miss.target} category=compile actionKeySha256=${miss.actionKeySha256} readerJob=test-live-deploy-ci-tools readerPosture=admission-fallback`,
+      )
+    }
+    expect(lines.join('\n')).not.toContain('linux#1')
+    expect(lines.join('\n')).not.toContain('abcd:12')
+    expect(lines.join('\n')).not.toContain(reader.header.invocations[0]!.buildId)
+  })
+  it('bounds missed identities and counts overflow without changing eligibility', () => {
+    const manifest = manifestFixture(['main-reader'], 1)
+    const loaded = loadedFixture(manifest)
+    const item = loaded[0]!
+    const reader = item.readers[0]!
+    const writer = item.writers[0]!
+    reader.actions = Array.from({ length: 53 }, (_, index) => ({
+      ...reader.actions[0]!,
+      target: `root//:target-${index}`,
+      executionKind: 1,
+    }))
+    writer.actions = reader.actions.map((action) => ({
+      ...writer.actions[0]!,
+      target: action.target,
+    }))
+    const report = evaluateWarm99({ manifest, loaded })
+    const cohort = report.lanes[0]!.observations[0]!
+    expect(cohort.eligible).toBe(53)
+    expect(cohort.eligibleMisses).toHaveLength(50)
+    expect(cohort.eligibleMissesOverflow).toBe(3)
+    expect(cohort.eligibleMisses[0]!.readerPosture).toBe('remote-reads-enabled')
+    expect(renderWarm99Diagnostics(report).split('\n').at(-1)).toBe(
+      'buck2-cache-join: lane=main-reader observation=0 missesOverflow=3',
+    )
+    cohort.eligibleMisses[0]!.target = '/private/path\ninjected'
+    cohort.eligibleMisses[0]!.readerJob = '/private/job\ninjected'
+    expect(renderWarm99Diagnostics(report)).not.toContain('injected')
+    reader.header.invocations[0]!.cacheReadPolicy = 'unknown'
+    expect(
+      evaluateWarm99({ manifest, loaded }).lanes[0]!.observations[0]!.eligibleMisses[0]!
+        .readerPosture,
+    ).toBe('unknown')
+  })
   it('prints every lane and observation without reader IDs or native identities', () => {
     const manifest = manifestFixture(['main-reader', 'merge_group', 'pr'])
     const report = evaluateWarm99({ manifest, loaded: loadedFixture(manifest) })
