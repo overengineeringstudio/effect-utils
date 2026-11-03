@@ -39,6 +39,11 @@ invokes the publisher in deterministic order. Published snapshots byte-own the
 finite provider-declared closure; no link points back into disposable
 `buck-out`.
 
+The reconciliation command runner waits for child close after a stdin write
+failure. A nonzero or signaled child exit takes precedence over a concurrent
+broken pipe, preserving bounded Buck diagnostics for an interrupted publisher.
+A successful child exit still fails if its input could not be delivered.
+
 `genie:check` directly depends on `buck2:editor:bootstrap`: source-side generator
 freshness needs the root dependency view before trusting the generated graph.
 Bootstrap publishes only `.` and `packages/@overeng/otel-contract`, never the

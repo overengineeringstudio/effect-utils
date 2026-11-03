@@ -475,11 +475,17 @@ export const runCommand: RunCommand = ({
   })
   child.stderr.once('end', () => capture(decoder.decode()))
   child.once('error', settled.reject)
-  child.stdin?.on('error', settled.reject)
+  let inputError: Error | undefined
+  // A dead reader can report EPIPE before close supplies its actual exit status.
+  child.stdin?.on('error', (error: Error) => {
+    inputError = error
+  })
   child.stdin?.end(input)
   child.once('close', (code, childSignal) => {
-    if (code === 0) settled.resolve({ stdout, stderr })
-    else
+    if (code === 0) {
+      if (inputError !== undefined) settled.reject(inputError)
+      else settled.resolve({ stdout, stderr })
+    } else
       settled.reject(
         new CommandFailure({
           message:
