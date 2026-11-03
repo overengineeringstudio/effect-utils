@@ -801,6 +801,37 @@ describe('Buck watch reconciliation', () => {
     expect(exitCodeOf(error)).toBe(1)
   })
 
+  it('retains signaled child status when stdin fails before close', async () => {
+    const inputError = new Error('EPIPE: broken pipe, write')
+    const spawned = childProcessMocks.spawn.mockImplementationOnce((...args) => {
+      const child = Reflect.apply(
+        nativeChildProcess.spawn,
+        ChildProcess,
+        args,
+      ) as ChildProcess.ChildProcess
+      child.stderr?.once('data', () => {
+        child.stdin?.emit('error', inputError)
+        child.kill('SIGTERM')
+      })
+      return child
+    })
+    try {
+      const error = await runCommand({
+        command: process.execPath,
+        args: ['-e', 'require("node:net").createServer().listen(0, () => console.error("ready"))'],
+        cwd: tmpdir(),
+        input: '',
+      }).then(
+        () => undefined,
+        (rejection: unknown) => rejection,
+      )
+      expect(error).toBeInstanceOf(CommandFailure)
+      expect((error as CommandFailure).signal).toBe('SIGTERM')
+    } finally {
+      spawned.mockReset().mockImplementation(nativeChildProcess.spawn)
+    }
+  })
+
   it('keeps embedded command output from forging an exit status', async () => {
     const error = await runCommand({
       command: process.execPath,

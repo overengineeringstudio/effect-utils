@@ -26,7 +26,7 @@ def load_supervisor():
 class PublicationSupervisorTest(unittest.TestCase):
     def test_bootstrap_buck_kill_evidence_is_bounded(self):
         repo = Path(__file__).resolve().parent.parent
-        bun = shutil.which("bun")
+        bun = os.environ.get("BUN_BIN") or shutil.which("bun")
         self.assertIsNotNone(bun, "Bun is required for the fake-Buck fixture")
         for termination, payload in (
             ("deadline", "lines"), ("SIGTERM", "lines"),
@@ -79,10 +79,10 @@ await reconcileBuckViews({{
     plan: {{ packages: [], globalPaths: [] }}, mode: 'publish',
     repoRoot: process.cwd(), workspaceRoot: process.cwd(),
     buck2: './buck2', editorViewCommand: [process.execPath, '-e',
-      process.env.TERMINATION === 'publication-child' ? 'process.kill(process.pid, "SIGTERM")' : 'setInterval(() => {{}}, 1000)'], workspaceAuthority: '',
+      process.env.TERMINATION === 'publication-child' ? 'process.kill(process.pid, "SIGTERM")' :
+        'require("node:fs").readFileSync(0); require("node:fs").writeFileSync("ready", ""); setInterval(() => {{}}, 1000)'], workspaceAuthority: '',
     cp: '', mv: '', fingerprintTool: '', snapshotRetention: 3,
     batchPublication: process.env.TERMINATION !== 'success',
-    onTiming: () => {{ if (process.env.TERMINATION === 'publication') writeFileSync('ready', '') }},
     diagnosticTaskName: 'buck2:editor:bootstrap',
     run: (options) => runCommand({{ ...options, onStderr: (chunk) => {{
       options.onStderr?.(chunk)
@@ -274,6 +274,186 @@ state.rmdir()
                         if process.poll() is None:
                             process.terminate()
                         process.communicate(timeout=5)
+
+    def test_buck_exits_before_deferred_admission(self):
+        self.check_daemon_admission_order(synthetic_cycle=False)
+
+    def test_synthetic_daemon_admission_cycle_is_detected_and_reaped(self):
+        self.check_daemon_admission_order(synthetic_cycle=True)
+
+    def check_daemon_admission_order(self, *, synthetic_cycle):
+        repo = Path(__file__).resolve().parent.parent
+        bun = os.environ.get("BUN_BIN") or shutil.which("bun")
+        self.assertIsNotNone(bun, "Bun is required for the fake-Buck fixture")
+        with tempfile.TemporaryDirectory() as scratch:
+            root = Path(scratch)
+            descriptors, processes = {}, []
+            for name in ("events", "request-daemon", "finish-build", "finish-holder"):
+                os.mkfifo(root / name)
+                descriptors[name] = os.open(root / name, os.O_RDWR | os.O_NONBLOCK)
+            common = r'''
+import fcntl, os, pathlib, socket, sys
+def emit(event):
+    with open("events", "wb", buffering=0) as events:
+        events.write((event + "\n").encode())
+def gate(name):
+    with open(name, "rb", buffering=0) as control:
+        assert control.read(1) == b"1"
+'''
+            holder = common + r'''
+with open("publication.lock", "a") as outer, open("daemon.lock", "a") as daemon:
+    fcntl.flock(outer, fcntl.LOCK_EX)
+    emit("outer-held")
+    gate("request-daemon")
+    try:
+        fcntl.flock(daemon, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        emit("holder-daemon-blocked")
+    else:
+        raise AssertionError("preparer did not retain daemon")
+    fcntl.flock(daemon, fcntl.LOCK_EX)
+    emit("holder-daemon-complete")
+    gate("finish-holder")
+'''
+            fake = root / "buck2"
+            fake.write_text(f"#!{sys.executable}\n" + common + r'''
+pathlib.Path(sys.argv[sys.argv.index("--event-log") + 1]).touch()
+with open("daemon.lock", "a") as daemon:
+    fcntl.flock(daemon, fcntl.LOCK_EX)
+    emit("daemon-held")
+    gate("finish-build")
+    if os.environ["SYNTHETIC_CYCLE"] == "1":
+        with socket.socket(socket.AF_UNIX) as admission:
+            admission.connect(os.environ["EDITOR_VIEW_PUBLICATION_ADMISSION_SOCKET"])
+            assert admission.recv(1) == b"1"
+        raise AssertionError("synthetic cycle unexpectedly admitted")
+    fcntl.flock(daemon, fcntl.LOCK_UN)
+    emit("daemon-released")
+''')
+            fake.chmod(0o700)
+            runner = root / "runner.ts"
+            module = repo / "packages/@overeng/buck2-tools/src/buck-watch.ts"
+            runner.write_text(f'''
+import {{ writeFileSync }} from 'node:fs'
+import {{ reconcileBuckViews, runCommand }} from {json.dumps(str(module))}
+writeFileSync('preparer-pgid', String(process.pid))
+await reconcileBuckViews({{
+  request: {{ packagePaths: [], changedPaths: [], buildTargets: ['//:fake'] }},
+  options: {{
+    plan: {{ packages: [], globalPaths: [] }}, mode: 'publish',
+    repoRoot: process.cwd(), workspaceRoot: process.cwd(),
+    buck2: './buck2', editorViewCommand: [process.execPath, '-e', ''],
+    workspaceAuthority: '', cp: '', mv: '', fingerprintTool: '', snapshotRetention: 3,
+    run: async (options) => {{
+      const result = await runCommand(options)
+      if (options.command === './buck2') writeFileSync('events', 'build-child-closed\\n')
+      return result
+    }},
+  }},
+}})
+''')
+            # Observe the real failed flock attempt, not an elapsed-time proxy
+            # for admission waiting. The wrapper never changes admission behavior.
+            driver = common + f'''
+import importlib.util
+spec = importlib.util.spec_from_file_location("supervisor", {str(repo / "scripts/editor-view-supervisor.py")!r})
+supervisor = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(supervisor)
+original = supervisor.DeferredAdmission.observe
+def observe(admission, expires):
+    was_requested, was_admitted = admission.client is not None, admission.admitted
+    result = original(admission, expires)
+    if not was_requested and admission.client is not None:
+        emit("admission-request")
+    if not admission.admitted and admission.client is not None and not was_requested:
+        emit("preparer-outer-blocked")
+    if not was_admitted and admission.admitted:
+        emit("admission-granted")
+    return result
+supervisor.DeferredAdmission.observe = observe
+sys.exit(supervisor.supervise_deferred(sys.argv[1:], None, 0.1, "publication.lock"))
+'''
+            events, pending = [], b""
+            def await_event(expected):
+                nonlocal pending
+                deadline = time.monotonic() + 10
+                with selectors.DefaultSelector() as selector:
+                    selector.register(descriptors["events"], selectors.EVENT_READ)
+                    while expected not in events:
+                        self.assertTrue(
+                            selector.select(max(0, deadline - time.monotonic())),
+                            f"missing {expected}; observed {events}",
+                        )
+                        pending += os.read(descriptors["events"], 65536)
+                        while b"\n" in pending:
+                            event, pending = pending.split(b"\n", 1)
+                            events.append(event.decode())
+            def release(name):
+                os.write(descriptors[name], b"1")
+            def assert_locked(name):
+                with (root / name).open("a") as probe:
+                    with self.assertRaises(BlockingIOError):
+                        fcntl.flock(probe, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            try:
+                held = subprocess.Popen(
+                    [sys.executable, "-c", holder], cwd=root, start_new_session=True,
+                    stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+                )
+                processes.append(held)
+                await_event("outer-held")
+                prepared = subprocess.Popen(
+                    [sys.executable, "-c", driver, bun, str(runner)], cwd=root,
+                    env={**os.environ, "CI": "1", "SYNTHETIC_CYCLE": str(int(synthetic_cycle)),
+                         "TRACEPARENT": "", "OTEL_TASK_TRACEPARENT": ""},
+                    stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+                )
+                processes.append(prepared)
+                await_event("daemon-held")
+                release("request-daemon")
+                await_event("holder-daemon-blocked")
+                assert_locked("publication.lock")
+                assert_locked("daemon.lock")
+                release("finish-build")
+                await_event("preparer-outer-blocked")
+                if synthetic_cycle:
+                    # Both real nonblocking attempts failed while each actor
+                    # retained the resource needed by the other: H -> P -> H.
+                    assert_locked("publication.lock")
+                    assert_locked("daemon.lock")
+                    self.assertNotIn("holder-daemon-complete", events)
+                    self.assertNotIn("build-child-closed", events)
+                    self.assertNotIn("admission-granted", events)
+                    print("Detected synthetic cycle: H holds outer -> daemon(P) -> outer(H)")
+                    prepared.terminate()  # Supervisor kills and reaps its child group.
+                    _, stderr = prepared.communicate(timeout=10)
+                    self.assertEqual(prepared.returncode, 143, stderr)
+                    os.killpg(held.pid, signal.SIGTERM)
+                    self.assertEqual(held.communicate(timeout=10), ("", ""))
+                    self.assertEqual(held.returncode, -signal.SIGTERM)
+                else:
+                    await_event("holder-daemon-complete")
+                    self.assertLess(events.index("daemon-released"), events.index("build-child-closed"))
+                    self.assertLess(events.index("build-child-closed"), events.index("admission-request"))
+                    release("finish-holder")
+                    _, stderr = held.communicate(timeout=10)
+                    self.assertEqual(held.returncode, 0, stderr)
+                    await_event("admission-granted")
+                    self.assertLess(events.index("holder-daemon-complete"), events.index("admission-granted"))
+                    _, stderr = prepared.communicate(timeout=10)
+                    self.assertEqual(prepared.returncode, 0, stderr)
+                supervisor = load_supervisor()
+                for pgid in (held.pid, int((root / "preparer-pgid").read_text())):
+                    self.assertFalse(supervisor.signal_group(pgid, 0))
+            finally:
+                for process in processes:
+                    if process.poll() is None:
+                        if process is processes[0]:
+                            os.killpg(process.pid, signal.SIGTERM)
+                        else:
+                            process.terminate()
+                    process.communicate(timeout=10)
+                for descriptor in descriptors.values():
+                    os.close(descriptor)
 
     def test_deferred_preparation_and_admitted_work_share_execution_budget(self):
         request = (
