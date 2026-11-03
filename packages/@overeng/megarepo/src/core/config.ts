@@ -570,6 +570,9 @@ export const getSourceUrl = (source: MemberSource): string | undefined => {
   }
 }
 
+/** External pnpm tooling owns this co-tenant root; megarepo never enumerates it. */
+export const RESERVED_STORE_TOOL_ROOTS: ReadonlySet<string> = new Set(['pnpm-store-shared-v1'])
+
 /**
  * Get the store path for a member based on its source.
  * Returns a relative directory path from the store root.

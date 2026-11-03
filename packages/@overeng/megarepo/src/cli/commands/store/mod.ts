@@ -29,6 +29,7 @@ import {
   parseSourceString,
   isRemoteSource,
   getSourceRef,
+  getStorePath,
   readMegarepoConfig,
   redactSourceCredentials,
   sourceCredentialError,
@@ -4207,15 +4208,22 @@ const storeFixCommand = Cli.Command.make(
           store,
         })
         const fs = yield* FileSystem.FileSystem
-        for (const repo of yield* store.listRepos) {
-          if (
-            Option.isSome(member) === true &&
-            memberNames.every((name) => {
-              const source = parseSourceString(config.members[name] ?? '')
-              return source === undefined || store.getRepoBasePath(source) !== repo.fullPath
-            }) === true
-          )
-            continue
+        const selectedSource =
+          Option.isSome(member) === true
+            ? parseSourceString(config.members[member.value] ?? '')
+            : undefined
+        const repos =
+          Option.isNone(member) === true
+            ? yield* store.listRepos
+            : selectedSource !== undefined && isRemoteSource(selectedSource) === true
+              ? [
+                  {
+                    fullPath: store.getRepoBasePath(selectedSource),
+                    relativePath: getStorePath(selectedSource),
+                  },
+                ]
+              : []
+        for (const repo of repos) {
           const bareRepoPath = EffectPath.ops.join(
             repo.fullPath,
             EffectPath.unsafe.relativeDir('.bare/'),
