@@ -118,7 +118,7 @@ Repository paths in the tail are relative and home paths use `<home>`.
 The tail remains available during publication after a successful build; interruption
 then reports `interrupted by SIGTERM after Buck completed (code 0)` instead.
 Event logs are removed after successful reconciliation, once the Buck entrypoint
-has decoded its caller-provided sink and completed the cache-evidence join.
+has decoded its caller-provided sink and completed cache-evidence collection.
 Failed or interrupted reconciliation retains its log for diagnosis.
 Signal diagnostics flush synchronously during the supervisor's TERM grace;
 a direct SIGKILL of the reconciliation process cannot flush buffered evidence.
