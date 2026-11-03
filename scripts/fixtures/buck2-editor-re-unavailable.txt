@@ -1,0 +1,61 @@
+[2026-11-02T23:06:53.303+00:00] Build ID: 2efd87ae-142e-4ac2-96f6-665e6d296cd9
+[2026-11-02T23:06:53.312+00:00] File changed: effect_utils//.buckconfig.local
+[2026-11-02T23:06:53.704+00:00] 2026-11-02T23:06:53.646967Z  WARN buck2_execute::re::client: Failed to connect to RE, retrying after sleeping 1 seconds: Remote Execution Error on REClientBuilder for ReSession <none>
+[2026-11-02T23:06:53.704+00:00] Error: (Failed to query capabilities of remote: code: 'The service is currently unavailable', message: "tls handshake eof", source: tonic::transport::Error(Transport, ConnectError(Custom { kind: UnexpectedEof, error: "tls handshake eof" })): transport error: tls handshake eof: tls handshake eof)
+[2026-11-02T23:06:54.904+00:00] 2026-11-02T23:06:54.864413Z  WARN buck2_execute::re::client: Failed to connect to RE, retrying after sleeping 2 seconds: Remote Execution Error on REClientBuilder for ReSession <none>
+[2026-11-02T23:06:54.904+00:00] Error: (Failed to query capabilities of remote: code: 'The service is currently unavailable', message: "tls handshake eof", source: tonic::transport::Error(Transport, ConnectError(Custom { kind: UnexpectedEof, error: "tls handshake eof" })): transport error: tls handshake eof: tls handshake eof)
+[2026-11-02T23:06:57.104+00:00] 2026-11-02T23:06:57.074696Z  WARN buck2_execute::re::client: Failed to connect to RE, retrying after sleeping 3 seconds: Remote Execution Error on REClientBuilder for ReSession <none>
+[2026-11-02T23:06:57.104+00:00] Error: (Failed to query capabilities of remote: code: 'The service is currently unavailable', message: "tls handshake eof", source: tonic::transport::Error(Transport, ConnectError(Custom { kind: UnexpectedEof, error: "tls handshake eof" })): transport error: tls handshake eof: tls handshake eof)
+[2026-11-02T23:07:00.304+00:00] 2026-11-02T23:07:00.285915Z  WARN buck2_execute::re::client: Failed to connect to RE, retrying after sleeping 4 seconds: Remote Execution Error on REClientBuilder for ReSession <none>
+[2026-11-02T23:07:00.304+00:00] Error: (Failed to query capabilities of remote: code: 'The service is currently unavailable', message: "tls handshake eof", source: tonic::transport::Error(Transport, ConnectError(Custom { kind: UnexpectedEof, error: "tls handshake eof" })): transport error: tls handshake eof: tls handshake eof)
+[2026-11-02T23:07:04.504+00:00] 2026-11-02T23:07:04.495969Z  WARN buck2_execute::re::client: Failed to connect to RE, retrying after sleeping 5 seconds: Remote Execution Error on REClientBuilder for ReSession <none>
+[2026-11-02T23:07:04.504+00:00] Error: (Failed to query capabilities of remote: code: 'The service is currently unavailable', message: "tls handshake eof", source: tonic::transport::Error(Transport, ConnectError(Custom { kind: UnexpectedEof, error: "tls handshake eof" })): transport error: tls handshake eof: tls handshake eof)
+[2026-11-02T23:07:09.904+00:00] 2026-11-02T23:07:09.704704Z  WARN buck2_execute::re::client: Failed to connect to RE, retrying after sleeping 6 seconds: Remote Execution Error on REClientBuilder for ReSession <none>
+[2026-11-02T23:07:09.904+00:00] Error: (Failed to query capabilities of remote: code: 'The service is currently unavailable', message: "tls handshake eof", source: tonic::transport::Error(Transport, ConnectError(Custom { kind: UnexpectedEof, error: "tls handshake eof" })): transport error: tls handshake eof: tls handshake eof)
+[2026-11-02T23:07:16.103+00:00] 2026-11-02T23:07:15.913858Z  WARN buck2_execute::re::client: Failed to connect to RE, retrying after sleeping 7 seconds: Remote Execution Error on REClientBuilder for ReSession <none>
+[2026-11-02T23:07:16.103+00:00] Error: (Failed to query capabilities of remote: code: 'The service is currently unavailable', message: "tls handshake eof", source: tonic::transport::Error(Transport, ConnectError(Custom { kind: UnexpectedEof, error: "tls handshake eof" })): transport error: tls handshake eof: tls handshake eof)
+[2026-11-02T23:07:23.103+00:00] Waiting on effect_utils//packages/@overeng/effect-path:dist (effect_utils//buck2/platforms:linux_x86_64#a312ca1b0cfd7c35) -- tsgo_emit, and 1 other actions
+[2026-11-02T23:07:23.303+00:00] 2026-11-02T23:07:23.127240Z  WARN buck2_execute::re::client: Failed to connect to RE, retrying after sleeping 8 seconds: Remote Execution Error on REClientBuilder for ReSession <none>
+[2026-11-02T23:07:23.303+00:00] Error: (Failed to query capabilities of remote: code: 'The service is currently unavailable', message: "tls handshake eof", source: tonic::transport::Error(Transport, ConnectError(Custom { kind: UnexpectedEof, error: "tls handshake eof" })): transport error: tls handshake eof: tls handshake eof)
+[2026-11-02T23:07:30.403+00:00] Waiting on effect_utils//packages/@overeng/effect-path:dist (effect_utils//buck2/platforms:linux_x86_64#a312ca1b0cfd7c35) -- tsgo_emit, and 1 other actions
+[2026-11-02T23:07:31.503+00:00] 2026-11-02T23:07:31.341063Z  WARN buck2_execute::re::client: Failed to connect to RE, retrying after sleeping 9 seconds: Remote Execution Error on REClientBuilder for ReSession <none>
+[2026-11-02T23:07:31.503+00:00] Error: (Failed to query capabilities of remote: code: 'The service is currently unavailable', message: "tls handshake eof", source: tonic::transport::Error(Transport, ConnectError(Custom { kind: UnexpectedEof, error: "tls handshake eof" })): transport error: tls handshake eof: tls handshake eof)
+[2026-11-02T23:07:38.503+00:00] Waiting on effect_utils//packages/@overeng/effect-path:dist (effect_utils//buck2/platforms:linux_x86_64#a312ca1b0cfd7c35) -- tsgo_emit, and 1 other actions
+[2026-11-02T23:07:40.553+00:00] Action failed: effect_utils//packages/@overeng/effect-path:dist (effect_utils//buck2/platforms:linux_x86_64#a312ca1b0cfd7c35) (tsgo_emit dist)
+[2026-11-02T23:07:40.553+00:00] Internal error (stage: remote_action_cache): Remote Execution Error on REClientBuilder for ReSession <none>
+[2026-11-02T23:07:40.553+00:00] Error: (Failed to query capabilities of remote: code: 'The service is currently unavailable', message: "tls handshake eof", source: tonic::transport::Error(Transport, ConnectError(Custom { kind: UnexpectedEof, error: "tls handshake eof" })): transport error: tls handshake eof: tls handshake eof)
+[2026-11-02T23:07:40.553+00:00] Remote action digest: '8109631a1d48e77acafc1ef55ae2d79aa7c0a35fadea7cb8fedac798a26e08e2:141'
+[2026-11-02T23:07:40.553+00:00] Stdout: <empty>
+[2026-11-02T23:07:40.553+00:00] Stderr: <empty>
+
+[2026-11-02T23:07:40.553+00:00] Action failed: effect_utils//packages/@overeng/kdl:dist (effect_utils//buck2/platforms:linux_x86_64#a312ca1b0cfd7c35) (tsgo_emit dist)
+[2026-11-02T23:07:40.553+00:00] Internal error (stage: remote_action_cache): Remote Execution Error on REClientBuilder for ReSession <none>
+[2026-11-02T23:07:40.553+00:00] Error: (Failed to query capabilities of remote: code: 'The service is currently unavailable', message: "tls handshake eof", source: tonic::transport::Error(Transport, ConnectError(Custom { kind: UnexpectedEof, error: "tls handshake eof" })): transport error: tls handshake eof: tls handshake eof)
+[2026-11-02T23:07:40.553+00:00] Remote action digest: '2bd0956ad41a31bfb593aeb248bb2ff9f54f36b7ff8b05827485770194003ef8:141'
+[2026-11-02T23:07:40.553+00:00] Stdout: <empty>
+[2026-11-02T23:07:40.553+00:00] Stderr: <empty>
+
+[2026-11-02T23:07:40.558+00:00] Cache hits: 15%
+[2026-11-02T23:07:40.558+00:00] Commands: 13 (cached: 2, remote: 0, local: 11)
+[2026-11-02T23:07:40.558+00:00] Network: up 2.2KiB  down 140KiB
+[2026-11-02T23:07:40.559+00:00]
+[2026-11-02T23:07:40.559+00:00] BUILD ERRORS (2)
+[2026-11-02T23:07:40.559+00:00] The following actions failed during the execution of this command:
+[2026-11-02T23:07:40.559+00:00] Action failed: effect_utils//packages/@overeng/effect-path:dist (effect_utils//buck2/platforms:linux_x86_64#a312ca1b0cfd7c35) (tsgo_emit dist)
+[2026-11-02T23:07:40.559+00:00] Internal error (stage: remote_action_cache): Remote Execution Error on REClientBuilder for ReSession <none>
+[2026-11-02T23:07:40.559+00:00] Error: (Failed to query capabilities of remote: code: 'The service is currently unavailable', message: "tls handshake eof", source: tonic::transport::Error(Transport, ConnectError(Custom { kind: UnexpectedEof, error: "tls handshake eof" })): transport error: tls handshake eof: tls handshake eof)
+[2026-11-02T23:07:40.559+00:00] Remote action digest: '8109631a1d48e77acafc1ef55ae2d79aa7c0a35fadea7cb8fedac798a26e08e2:141'
+[2026-11-02T23:07:40.559+00:00] Stdout: <empty>
+[2026-11-02T23:07:40.559+00:00] Stderr: <empty>
+
+[2026-11-02T23:07:40.559+00:00] Action failed: effect_utils//packages/@overeng/kdl:dist (effect_utils//buck2/platforms:linux_x86_64#a312ca1b0cfd7c35) (tsgo_emit dist)
+[2026-11-02T23:07:40.559+00:00] Internal error (stage: remote_action_cache): Remote Execution Error on REClientBuilder for ReSession <none>
+[2026-11-02T23:07:40.559+00:00] Error: (Failed to query capabilities of remote: code: 'The service is currently unavailable', message: "tls handshake eof", source: tonic::transport::Error(Transport, ConnectError(Custom { kind: UnexpectedEof, error: "tls handshake eof" })): transport error: tls handshake eof: tls handshake eof)
+[2026-11-02T23:07:40.559+00:00] Remote action digest: '2bd0956ad41a31bfb593aeb248bb2ff9f54f36b7ff8b05827485770194003ef8:141'
+[2026-11-02T23:07:40.559+00:00] Stdout: <empty>
+[2026-11-02T23:07:40.559+00:00] Stderr: <empty>
+
+[2026-11-02T23:07:40.559+00:00]
+BUILD FAILED
+Failed to build 'effect_utils//packages/@overeng/kdl:dist (effect_utils//buck2/platforms:linux_x86_64#a312ca1b0cfd7c35)'
+Failed to build 'effect_utils//packages/@overeng/effect-path:dist (effect_utils//buck2/platforms:linux_x86_64#a312ca1b0cfd7c35)'
