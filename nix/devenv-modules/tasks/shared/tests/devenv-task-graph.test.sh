@@ -5,6 +5,26 @@ TESTS_DIR="$(cd "$(dirname "$0")" && pwd)"
 ROOT="${DEVENV_ROOT:-$(cd "$TESTS_DIR/../../../../.." && pwd)}"
 NODE_BIN="${NODE_BIN:-node}"
 
+# Exercise the production recognizer without evaluating a devenv task graph.
+"$NODE_BIN" --input-type=module - "$ROOT" <<'JS'
+import assert from 'node:assert/strict'
+const { hasPublicationAdmission } = await import(`${process.argv[2]}/scripts/devenv-task-graph-admission.mjs`)
+for (const flag of ['--lock', '--deferred-lock']) {
+  for (const deadline of ['300', 'none']) {
+    const command = `editor-view-supervisor.py" ${deadline} 5 \\\n  ${flag} "$root/.devenv/editor-view-publication.lock"`
+    assert.equal(hasPublicationAdmission(command), true, command)
+    for (const invalid of [
+      command.replace('editor-view-publication.lock', 'other.lock'),
+      command.replace(`${deadline} 5`, `${flag} ${deadline} 5`).replace(`  ${flag}`, '  --other'),
+      command.replace(`  ${flag}`, `  --other ${flag}`),
+      command.replace(`  ${flag}`, '  --unbounded-lock'),
+    ]) assert.equal(hasPublicationAdmission(invalid), false, invalid)
+  }
+}
+console.log('PASS: whole-command and deferred admission require the same position and lock path')
+JS
+if [[ "${DEVENV_TASK_GRAPH_ADMISSION_ONLY:-0}" == 1 ]]; then exit 0; fi
+
 # Validate the active profile: unit CI keeps the guard enabled, with narrowed
 # expectations selected by the same job-level flag as devenv.nix.
 "$NODE_BIN" "$ROOT/scripts/devenv-task-graph-check.mjs" "$ROOT"
