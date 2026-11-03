@@ -57,7 +57,7 @@ export const withBuck2CachePostures = ({
   )
 }
 
-/** Maintainer dispatch measures only Darwin; no cache saves or proof publication. */
+/** Maintainer dispatch measures only Darwin; no cache saves, credentials, or trace/proof publication. */
 export const withMacosMeasurementDispatch = (
   args: Parameters<typeof withBuck2CachePostures>[0],
 ): GitHubWorkflowArgs['jobs'] => {
@@ -75,7 +75,11 @@ export const withMacosMeasurementDispatch = (
           steps: [
             ...job.steps.map((step) =>
               id === 'test-macos' &&
-              /^(Save signed|Warm local)|Buck2 cache evidence/.test(step.name ?? '') === true
+              (/^(Save signed|Warm local|Export completed job trace)|Buck2 cache evidence/.test(
+                step.name ?? '',
+              ) === true ||
+                /^(tailscale\/github-action|actions\/upload-artifact)@/.test(step.uses ?? '') ===
+                  true)
                 ? {
                     ...step,
                     if: `\${{ !(${measure}) && ${step.if?.replace(/^\$\{\{\s*|\s*\}\}$/g, '') ?? 'success()'} }}`,

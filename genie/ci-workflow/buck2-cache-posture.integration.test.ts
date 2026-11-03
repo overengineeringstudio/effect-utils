@@ -111,6 +111,58 @@ const scenarios = [
 ]
 
 describe('generated CI cache trust behavior', () => {
+  it('excludes measurement credentials and trace/evidence publication without disabling normal runs', async () => {
+    const job = (await readWorkflow()).jobs['test-macos']!
+    const excluded = job.steps.filter(
+      (step) =>
+        /^(Save signed|Warm local|Export completed job trace)|Buck2 cache evidence/.test(
+          step.name ?? '',
+        ) || /^(tailscale\/github-action|actions\/upload-artifact)@/.test(step.uses ?? ''),
+    )
+    expect(excluded.some((step) => step.uses?.startsWith('tailscale/github-action@'))).toBe(true)
+    expect(excluded.some((step) => step.name === 'Export completed job trace')).toBe(true)
+    for (const measurement of [true, false]) {
+      for (const step of excluded) {
+        expect(step.if).toContain(
+          "!(github.event_name == 'workflow_dispatch' && inputs['measure-macos'] == true)",
+        )
+        const enabled = new Function(
+          'github',
+          'inputs',
+          'env',
+          'vars',
+          'runner',
+          'success',
+          'always',
+          'cancelled',
+          'failure',
+          `return (${step.if!.replace(/^\$\{\{\s*|\s*\}\}$/g, '')})`,
+        )(
+          { event_name: 'workflow_dispatch', ref: 'refs/heads/main' },
+          { 'measure-macos': measurement },
+          {
+            CI_EVIDENCE_MODE: 'upload',
+            PIPELINE_TRUSTED: 'true',
+            OTEL_SPAN_SPOOL_DIR: '/tmp/spans',
+            NIX_STORE_DIAGNOSTICS_DIR: '/tmp/diagnostics',
+          },
+          { TS_EVIDENCE_CLIENT_ID: 'client', TS_EVIDENCE_AUDIENCE: 'audience' },
+          { os: 'macOS' },
+          () => true,
+          () => true,
+          () => false,
+          () => true,
+        )
+        expect(enabled, step.name ?? step.uses).toBe(!measurement)
+      }
+    }
+    for (const step of job.steps.filter((step) => step.env?.BUCK2_PUBLIC_CACHE_WRITE_AUTH)) {
+      expect(
+        evaluate(step.env!.BUCK2_PUBLIC_CACHE_WRITE_AUTH!, 'workflow_dispatch', 'refs/heads/main'),
+      ).toBe('')
+    }
+  })
+
   it('keeps source-shape outside native proof production and expected membership', async () => {
     for (const [filename, jobId] of [
       ['ci.yml', 'source-shape'],

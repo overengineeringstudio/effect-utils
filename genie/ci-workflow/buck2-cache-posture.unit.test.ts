@@ -93,6 +93,29 @@ describe('declared Buck2 job cache posture', () => {
     }
   })
 
+  it('uses the same measurement guard for OIDC authentication and artifact/trace publication', () => {
+    const protectedSteps = [
+      { uses: 'tailscale/github-action@fixture', if: '${{ always() }}' },
+      { uses: 'actions/upload-artifact@fixture', if: '${{ always() }}' },
+      { name: 'Export completed job trace', if: '${{ always() }}', run: ':' },
+    ]
+    const jobs = withMacosMeasurementDispatch({
+      jobs: { 'test-macos': { ...prJob, steps: protectedSteps } },
+      postures: { 'test-macos': 'trusted-writer' },
+    })
+    for (const measurement of [true, false]) {
+      for (const step of jobs['test-macos']!.steps.slice(0, protectedSteps.length)) {
+        expect(
+          new Function('github', 'inputs', 'always', `return (${step.if!.slice(3, -2)})`)(
+            { event_name: 'workflow_dispatch' },
+            { 'measure-macos': measurement },
+            () => true,
+          ),
+        ).toBe(!measurement)
+      }
+    }
+  })
+
   it('allows the declared main-only writer to upload while PR readers and inert jobs cannot', () => {
     const jobs = withBuck2CachePostures({
       jobs: { publisher: mainOnlyJob, pullRequest: prJob, inert: prJob },
