@@ -772,6 +772,19 @@ partial pairs, unknown values, mismatched phases, and pairs on plain or
 historical rerun rows are rejected. Merging retains this metadata without
 changing admission totals and rejects conflicting classified pairs.
 
+Actual REAPI probes also attach optional repository-local `reapiAttempts` to the
+existing admission sidecar row and collected `admissionInvocations`. Each attempt
+emits one sanitized JSON log line (`Buck2 REAPI admission attempt:`). Attempts have
+`attemptIndex` (1 or 2), `elapsedMs`, `deadlineMs`, and observed milestones
+`dnsResolvedMs`, `tcpConnectedMs`, `tlsReadyMs`, `firstResponseMs`: rounded monotonic
+milliseconds since attempt start, not individual phase durations. Unobserved
+milestones are omitted (including DNS for IP literals and TLS for plaintext).
+Failures additionally carry the existing closed `failure` class/phase/timing
+shape. No endpoint paths, headers, credentials, or transport error text enter
+these fields. Cached and pinned invocations that perform no probe omit attempts;
+the original probing invocation retains the measurements. Older rows without
+attempts remain valid, so evidence and join schema versions do not change.
+
 Every cache-evidence-enabled CI job appends an `always()` collect step named
 `Collect REAPI unavailable classifications`, followed by two gated no-op steps.
 The collector reads the admission sidecar through the admission decoder and

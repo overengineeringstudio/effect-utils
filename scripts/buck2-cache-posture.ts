@@ -243,6 +243,52 @@ export const decodeReapiAdmissionFailure = (value: unknown): ReapiAdmissionFailu
   return { class: errorClass, phase, elapsedMs: value.elapsedMs, deadlineMs: value.deadlineMs }
 }
 
+/** Milestones are elapsed milliseconds from attempt start, not phase durations. */
+export type ReapiAdmissionAttempt = {
+  readonly attemptIndex: number
+  readonly elapsedMs: number
+  readonly deadlineMs: number
+  readonly dnsResolvedMs?: number
+  readonly tcpConnectedMs?: number
+  readonly tlsReadyMs?: number
+  readonly firstResponseMs?: number
+  readonly failure?: ReapiAdmissionFailure
+}
+
+/** Retain only fixed diagnostic fields; never transport text, URLs or headers. */
+export const decodeReapiAdmissionAttempts = (value: unknown): ReapiAdmissionAttempt[] => {
+  if (Array.isArray(value) === false) throw new Error('Invalid REAPI admission attempts')
+  return value.map((attempt: unknown) => {
+    if (typeof attempt !== 'object' || attempt === null)
+      throw new Error('Invalid REAPI admission attempt')
+    const timing = (key: string): number => {
+      const milliseconds = Reflect.get(attempt, key)
+      if (
+        typeof milliseconds !== 'number' ||
+        Number.isSafeInteger(milliseconds) === false ||
+        milliseconds < 0
+      )
+        throw new Error('Invalid REAPI admission timing')
+      return milliseconds
+    }
+    const attemptIndex = timing('attemptIndex')
+    if (attemptIndex !== 1 && attemptIndex !== 2)
+      throw new Error('Invalid REAPI admission attempt index')
+    const milestones: Partial<
+      Record<'dnsResolvedMs' | 'tcpConnectedMs' | 'tlsReadyMs' | 'firstResponseMs', number>
+    > = {}
+    for (const key of ['dnsResolvedMs', 'tcpConnectedMs', 'tlsReadyMs', 'firstResponseMs'] as const)
+      if (key in attempt) milestones[key] = timing(key)
+    return {
+      attemptIndex,
+      elapsedMs: timing('elapsedMs'),
+      deadlineMs: timing('deadlineMs'),
+      ...milestones,
+      ...('failure' in attempt ? { failure: decodeReapiAdmissionFailure(attempt.failure) } : {}),
+    }
+  })
+}
+
 /** Actual socket setup milestones with public-only addresses and monotonic timing. */
 export type RemoteCacheProbeConnectionEvent = {
   readonly event: 'dns-resolved' | 'tcp-attempt' | 'tcp-connected' | 'tls-ready'
@@ -310,6 +356,8 @@ export const probeRemoteCacheCapabilities = async ({
   deadlineSignal,
   onFailure,
   onConnectionEvent,
+  attemptIndex = 1,
+  onAttempt,
 }: {
   readonly address: string | undefined
   readonly instanceName: string
@@ -320,16 +368,34 @@ export const probeRemoteCacheCapabilities = async ({
   readonly deadlineSignal?: AbortSignal
   readonly onFailure?: (failure: RemoteCacheProbeFailure) => void
   readonly onConnectionEvent?: (event: RemoteCacheProbeConnectionEvent) => void
+  readonly attemptIndex?: number
+  readonly onAttempt?: (attempt: ReapiAdmissionAttempt) => void
 }): Promise<boolean> => {
   const started = performance.now()
   let phase: RemoteCacheProbeFailure['phase'] = 'configuration'
+  const milestones: {
+    dnsResolvedMs?: number
+    tcpConnectedMs?: number
+    tlsReadyMs?: number
+    firstResponseMs?: number
+  } = {}
+  const reportAttempt = (failure?: ReapiAdmissionFailure) =>
+    onAttempt?.({
+      attemptIndex,
+      elapsedMs: Math.round(performance.now() - started),
+      deadlineMs,
+      ...milestones,
+      ...(failure === undefined ? {} : { failure }),
+    })
   const failProbe = (errorClass: RemoteCacheProbeFailure['errorClass']): false => {
-    onFailure?.({
-      errorClass,
+    const failure = {
+      class: errorClass,
       phase,
       elapsedMs: Math.round(performance.now() - started),
       deadlineMs,
-    })
+    }
+    onFailure?.({ errorClass, phase, elapsedMs: failure.elapsedMs, deadlineMs })
+    reportAttempt(failure)
     return false
   }
   try {
@@ -384,6 +450,10 @@ export const probeRemoteCacheCapabilities = async ({
         readonly family?: number | string
       }) => {
         if (settled === true) return
+        const elapsedMs = Math.round(performance.now() - started)
+        if (event === 'dns-resolved') milestones.dnsResolvedMs = elapsedMs
+        if (event === 'tcp-connected') milestones.tcpConnectedMs = elapsedMs
+        if (event === 'tls-ready') milestones.tlsReadyMs = elapsedMs
         onConnectionEvent?.({
           event,
           elapsedMs: Math.round(performance.now() - started),
@@ -437,6 +507,7 @@ export const probeRemoteCacheCapabilities = async ({
         deadlineSignal?.removeEventListener('abort', onDeadline)
         client.destroy()
         if (result === false) failProbe(errorClass)
+        else reportAttempt()
         resolveProbe(result)
       }
       const onDeadline = () => finish({ result: false, errorClass: 'deadline' })
@@ -459,6 +530,7 @@ export const probeRemoteCacheCapabilities = async ({
       const chunks: Buffer[] = []
       let size = 0
       stream.on('response', (response) => {
+        milestones.firstResponseMs ??= Math.round(performance.now() - started)
         httpStatus = response[':status']
         contentType = String(response['content-type'] ?? '')
         if (response['grpc-status'] !== undefined) grpcStatus = String(response['grpc-status'])
