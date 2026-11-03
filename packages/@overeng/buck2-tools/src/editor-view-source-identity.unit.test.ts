@@ -15,6 +15,7 @@ import { join } from 'node:path'
 import { expect, it } from 'vitest'
 
 import {
+  editorViewAdmissionTiming,
   editorViewSourceIdentity,
   editorViewSourceIdentityMatches,
 } from './editor-view-source-identity.ts'
@@ -131,4 +132,30 @@ it('keeps two consecutive warm publication admissions unchanged with zero file r
   } finally {
     rmSync(root, { recursive: true, force: true })
   }
+})
+
+it('emits admission counters in the replay-deduplicable editor-view timing line', () => {
+  const devices = new Map([['1:repo', { device: '1', rootClass: 'repo', probed: true }]])
+  const check = { digest: 'proof', clocks: new Map(), rehashedFiles: 2, hashedBytes: 17, devices }
+  const fields = {
+    package: 'fixture',
+    admissionId: 'invocation-1',
+    durationMs: 9,
+    fenceMismatches: 1,
+    proofRebuilds: 1,
+    innerLockWaitMs: 3,
+  }
+  const line = editorViewAdmissionTiming({ ...fields, prehash: [check], fenced: [check] })
+  expect(line.startsWith('[editor-view-timing] ')).toBe(true)
+  expect(JSON.parse(line.slice('[editor-view-timing] '.length))).toEqual({
+    phase: 'editor-view',
+    packagePath: 'fixture',
+    ...fields,
+    prehashRehashedFiles: 2,
+    fencedRehashedFiles: 2,
+    hashedBytes: 34,
+    probedDevices: [{ device: '1', rootClass: 'repo', probed: true }],
+    unprobedDevices: [],
+    outerFlockWaitMs: null,
+  })
 })

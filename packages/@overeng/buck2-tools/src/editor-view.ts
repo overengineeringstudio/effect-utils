@@ -82,6 +82,7 @@ import {
   type EditorViewSourceFile,
 } from './editor-view-sharing.ts'
 import {
+  editorViewAdmissionTiming,
   editorViewSourceIdentity,
   editorViewSourceIdentityMatches,
   type EditorViewSourceIdentity,
@@ -2435,13 +2436,15 @@ const acquirePublicationLock = async ({
   readonly editorRoot: string
   readonly recoveryCommand: string
   readonly repoRoot?: string
-}): Promise<{ readonly path: string; readonly token: string }> => {
+}): Promise<{ readonly path: string; readonly token: string; readonly waitMs: number }> => {
   // Wait only for identified live eviction; recover only positively abandoned same-host owners.
   // Ordinary live, foreign-host, legacy, and unreadable owners retain explicit recovery.
   let acquisition: EditorViewPublicationLockProof['acquisition'] = 'normal'
+  const waitingAt = performance.now()
   for (;;) {
     try {
       const lock = acquireLock({ editorRoot, recoveryCommand })
+      const waitMs = performance.now() - waitingAt
       try {
         // A normal acquisition follows the previous holder's release; automatic
         // recovery below requires its dead-owner proof. Carry that provenance
@@ -2453,7 +2456,7 @@ const acquirePublicationLock = async ({
             repoRoot,
             publicationLock: { ...lock, acquisition },
           })
-        return lock
+        return { ...lock, waitMs }
       } catch (cleanupError) {
         releaseLock(lock)
         throw cleanupError
@@ -3078,7 +3081,7 @@ type PublicationWorkerState = {
 }
 
 type PublicationCoordinator = {
-  readonly lock: { readonly path: string; readonly token: string }
+  readonly lock: { readonly path: string; readonly token: string; readonly waitMs: number }
   readonly commit: <T>(operation: () => T | Promise<T>) => Promise<T>
   readonly workers: Map<string, PublicationWorkerState>
 }
@@ -3162,6 +3165,7 @@ const budgetReservationBytes = ({
 
 type EditorViewSourceAdmission = {
   readonly sourceIdentity: EditorViewSourceIdentity
+  readonly checks: EditorViewSourceIdentity[]
   readonly selectedPath: string
   readonly finite: boolean
   readonly roots: readonly DeclaredSnapshotRoot[]
@@ -3175,6 +3179,7 @@ const admitEditorViewSources = async (
   options: EditorViewOptions,
 ): Promise<EditorViewSourceAdmission> => {
   const sourceIdentity = editorViewSourceIdentity({ options })
+  const checks = [sourceIdentity]
   const editorInputsPath = realpathSync(resolve(options.editorInputs))
   const selectedPath = realpathSync(resolve(options.nodeModules))
   const finite = (options.backingRoots?.length ?? 0) > 0
@@ -3217,10 +3222,17 @@ const admitEditorViewSources = async (
   const normalizedStoreDigest =
     declaredRoots?.digest ??
     (await canonicalTreeFingerprint({ tree: selectedPath, dereference: true, ...tool }))
-  if (editorViewSourceIdentityMatches({ options, identity: sourceIdentity }) === false)
+  if (
+    editorViewSourceIdentityMatches({
+      options,
+      identity: sourceIdentity,
+      onChecked: (check) => checks.push(check),
+    }) === false
+  )
     fail('editor view sources changed during admission; retry publication')
   return {
     sourceIdentity,
+    checks,
     selectedPath,
     finite,
     roots,
@@ -3253,6 +3265,10 @@ const publishEditorViewCoordinated = async ({
   const phaseTimings: (readonly [name: string, durationMs: number])[] = []
   let phaseName = 'admission'
   let phaseStartedAt = performance.now()
+  let prehash: EditorViewSourceIdentity[] = []
+  const fenced: EditorViewSourceIdentity[] = []
+  let fenceMismatches = 0
+  let innerLockWaitMs = 0
   let phasesCompleted = false
   const completePhase = (): void => {
     const now = performance.now()
@@ -3281,6 +3297,18 @@ const publishEditorViewCoordinated = async ({
     if (phasesCompleted === true) return
     completePhase()
     phasesCompleted = true
+    process.stderr.write(
+      editorViewAdmissionTiming({
+        package: options.package,
+        admissionId: randomUUID(),
+        prehash,
+        fenced,
+        fenceMismatches,
+        proofRebuilds: fenceMismatches,
+        innerLockWaitMs,
+        durationMs: Math.round(performance.timeOrigin + performance.now() - startedAtMs),
+      }),
+    )
     emitCompletedSpanAsync({
       name: 'editor-view.phases',
       label: `phases ${options.viewName}`,
@@ -3320,6 +3348,7 @@ const publishEditorViewCoordinated = async ({
   if (Number.isSafeInteger(budgetBytes) === false || budgetBytes <= 0)
     fail('hostBudgetBytes must be a positive safe integer')
   const sourceProof = preparedSources ?? (await admitEditorViewSources(options))
+  prehash = sourceProof.checks
   const lock =
     coordinator?.lock ??
     (await acquirePublicationLock({
@@ -3327,6 +3356,7 @@ const publishEditorViewCoordinated = async ({
       repoRoot: paths.repoRoot,
       recoveryCommand: `recover-lock --repo-root ${paths.repoRoot} --package ${options.package}`,
     }))
+  innerLockWaitMs = lock.waitMs
   const importerLocks: { readonly path: string; readonly token: string }[] = []
   // A batch shares its exclusive state-root lock, not its private candidate/pointer names.
   const token = tokenSafe(coordinator === undefined ? lock.token : randomUUID())
@@ -3380,6 +3410,7 @@ const publishEditorViewCoordinated = async ({
           repoRoot: paths.repoRoot,
           recoveryCommand: `recover-lock --repo-root ${paths.repoRoot} --package ${packagePath}`,
         })
+        innerLockWaitMs += importerLock.waitMs
         importerLocks.push(importerLock)
       }
     }
@@ -3403,13 +3434,14 @@ const publishEditorViewCoordinated = async ({
       )
     }
     // Under the fence, discard/rebuild any proof whose complete source inventory changed.
-    const admitted =
-      editorViewSourceIdentityMatches({
-        options,
-        identity: sourceProof.sourceIdentity,
-      }) === true
-        ? sourceProof
-        : await admitEditorViewSources(options)
+    const matches = editorViewSourceIdentityMatches({
+      options,
+      identity: sourceProof.sourceIdentity,
+      onChecked: (check) => fenced.push(check),
+    })
+    if (matches === false) fenceMismatches++
+    const admitted = matches === true ? sourceProof : await admitEditorViewSources(options)
+    if (matches === false) prehash.push(...admitted.checks)
     const {
       selectedPath,
       finite,
@@ -4420,14 +4452,7 @@ const main = async (): Promise<void> => {
     })
     await publishEditorViews({
       options: requests,
-      onPublished: (record, durationMs) => {
-        process.stderr.write(
-          `[editor-view-timing] ${JSON.stringify({
-            phase: 'editor-view',
-            packagePath: record.package,
-            durationMs,
-          })}\n`,
-        )
+      onPublished: (record) => {
         process.stdout.write(
           `published ${record.package} editor view ${record.editorInputsFingerprint}\n`,
         )

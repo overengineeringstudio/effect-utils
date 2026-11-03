@@ -25,6 +25,8 @@ export type EditorViewSourceIdentity = {
   readonly digest: string
   readonly clocks: Clocks
   readonly rehashedFiles: number
+  readonly hashedBytes: number
+  readonly devices: ReadonlyMap<string, { device: string; rootClass: string; probed: boolean }>
 }
 
 const probeClock = ({
@@ -67,6 +69,8 @@ export const editorViewSourceIdentity = ({
     priorClocks === undefined ? new Map<bigint, bigint | undefined>() : new Map(priorClocks)
   const visited = new Set<string>()
   let rehashedFiles = 0
+  let hashedBytes = 0
+  const devices = new Map<string, { device: string; rootClass: string; probed: boolean }>()
   let probing = priorClocks === undefined
   const visit = (path: string): void => {
     if (visited.has(path) === true) return
@@ -78,12 +82,28 @@ export const editorViewSourceIdentity = ({
       const { dev, ino, mode, size, mtimeNs, ctimeNs } = status
       hash.update(JSON.stringify([path, dev, ino, mode, size, mtimeNs, ctimeNs].map(String)))
       const clock = clocks.get(status.dev)
+      const rootClass =
+        path.startsWith('/nix/store/') === true
+          ? 'nix-store'
+          : path === repoRoot || path.startsWith(`${repoRoot}/`) === true
+            ? 'repo'
+            : path.startsWith(`${tmpdir()}/`) === true
+              ? 'tmp'
+              : 'other'
+      if (devices.has(`${dev}:${rootClass}`) === false)
+        devices.set(`${dev}:${rootClass}`, {
+          device: String(dev),
+          rootClass,
+          probed: clock !== undefined,
+        })
       // Racy-git: at/after the same-device prehash probe, or unprobed, requires bytes.
       if (
         status.isFile() === true &&
         (clock === undefined || status.ctimeNs >= clock || status.mtimeNs >= clock)
       ) {
-        hash.update(createHash('sha256').update(readFileSync(path)).digest('hex'))
+        const bytes = readFileSync(path)
+        hashedBytes += bytes.byteLength
+        hash.update(createHash('sha256').update(bytes).digest('hex'))
         rehashedFiles++
       }
     }
@@ -106,15 +126,47 @@ export const editorViewSourceIdentity = ({
   }
   probing = false
   scan()
-  return { digest: hash.digest('hex'), clocks, rehashedFiles }
+  return { digest: hash.digest('hex'), clocks, rehashedFiles, hashedBytes, devices }
 }
 
 /** The same fail-closed comparison used after acquiring the publication fence. */
 export const editorViewSourceIdentityMatches = ({
   options,
   identity,
+  onChecked,
 }: {
   readonly options: SourceRoots
   readonly identity: EditorViewSourceIdentity
-}): boolean =>
-  editorViewSourceIdentity({ options, priorClocks: identity.clocks }).digest === identity.digest
+  readonly onChecked?: (checked: EditorViewSourceIdentity) => void
+}): boolean => {
+  const checked = editorViewSourceIdentity({ options, priorClocks: identity.clocks })
+  onChecked?.(checked)
+  return checked.digest === identity.digest
+}
+
+/** Existing timing wire format; admissionId deduplicates replayed stderr without merging real work. */
+export const editorViewAdmissionTiming = (input: {
+  package: string
+  admissionId: string
+  durationMs: number
+  prehash: readonly EditorViewSourceIdentity[]
+  fenced: readonly EditorViewSourceIdentity[]
+  fenceMismatches: number
+  proofRebuilds: number
+  innerLockWaitMs: number
+}): string => {
+  const { prehash, fenced, ...fields } = input
+  const checks = [...prehash, ...fenced]
+  const devices = new Map(checks.flatMap((check) => [...check.devices]))
+  return `[editor-view-timing] ${JSON.stringify({
+    phase: 'editor-view',
+    packagePath: input.package,
+    ...fields,
+    prehashRehashedFiles: prehash.reduce((sum, check) => sum + check.rehashedFiles, 0),
+    fencedRehashedFiles: fenced.reduce((sum, check) => sum + check.rehashedFiles, 0),
+    hashedBytes: checks.reduce((sum, check) => sum + check.hashedBytes, 0),
+    probedDevices: [...devices.values()].filter((device) => device.probed === true),
+    unprobedDevices: [...devices.values()].filter((device) => device.probed === false),
+    outerFlockWaitMs: null,
+  })}\n`
+}
