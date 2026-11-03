@@ -729,7 +729,9 @@ jobs:
           cd "${GITHUB_WORKSPACE:-$PWD}" && set -euo pipefail
           "${DEVENV_BIN:?DEVENV_BIN not set}" shell -- bash -euo pipefail -c '
             prepared=()
+            bounded_pid=
             restore_views() {
+              if [ -n "$bounded_pid" ]; then kill "$bounded_pid" 2>/dev/null || true; wait "$bounded_pid" 2>/dev/null || true; fi
               for package in "${prepared[@]}"; do
                 rm -f "$package/node_modules"
                 backup="$RUNNER_TEMP/genie-pr-${package##*/}-node-modules"
@@ -745,7 +747,13 @@ jobs:
               prepared+=("$package")
               ln -s "$PWD/$modules" "$package/node_modules"
             done
-            "$DEVENV_BIN" tasks run --mode single test:buck2-tools devenv-modules:test buck2:capabilities:identity-proof buck2:capabilities:recovery-test
+            regression_status=0
+            "$DEVENV_BIN" tasks run --mode single test:buck2-tools devenv-modules:test buck2:capabilities:identity-proof buck2:capabilities:recovery-test || regression_status=$?
+            if [ -n "$bounded_pid" ]; then
+              wait "$bounded_pid" || regression_status=1
+              bounded_pid=
+            fi
+            exit "$regression_status"
           '
       - name: Nix diagnostics summary
         if: ${{ (failure()) && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
@@ -1134,6 +1142,9 @@ jobs:
       - name: Genie projection and CI workflow regression tests
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          PR_BOUNDED_ENABLED: ${{ github.event_name == 'pull_request' }}
+          PR_BOUNDED_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_BOUNDED_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           BUCK2_PUBLIC_CACHE_WRITE_AUTH: ${{ ((github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'merge_group' && github.event.merge_group.base_ref == 'refs/heads/main' && startsWith(github.ref, 'refs/heads/gh-readonly-queue/main/'))) && secrets.BUCK2_PUBLIC_CACHE_WRITE_AUTH || '' }}
           PIPELINE_RUN_PREFIX: ${{ format('{0} shell -- otel-span pipeline-run --', env.DEVENV_BIN) }}
         run: |
@@ -1146,7 +1157,9 @@ jobs:
           cd "${GITHUB_WORKSPACE:-$PWD}" && set -euo pipefail
           "${DEVENV_BIN:?DEVENV_BIN not set}" shell -- bash -euo pipefail -c '
             prepared=()
+            bounded_pid=
             restore_views() {
+              if [ -n "$bounded_pid" ]; then kill "$bounded_pid" 2>/dev/null || true; wait "$bounded_pid" 2>/dev/null || true; fi
               for package in "${prepared[@]}"; do
                 rm -f "$package/node_modules"
                 backup="$RUNNER_TEMP/genie-pr-${package##*/}-node-modules"
@@ -1162,7 +1175,18 @@ jobs:
               prepared+=("$package")
               ln -s "$PWD/$modules" "$package/node_modules"
             done
-            "$DEVENV_BIN" tasks run --mode single genie:buck2:test genie:ci-workflow:test buck2:rust:generators:test buck2:cache-posture:ci-test
+            bun test ./genie/ci-scripts/pr-bounded-tests.unit.test.ts
+            if [ "$PR_BOUNDED_ENABLED" = true ]; then
+              bun ./genie/ci-scripts/pr-bounded-tests.ts &
+              bounded_pid=$!
+            fi
+            regression_status=0
+            "$DEVENV_BIN" tasks run --mode single genie:buck2:test genie:ci-workflow:test buck2:rust:generators:test buck2:cache-posture:ci-test || regression_status=$?
+            if [ -n "$bounded_pid" ]; then
+              wait "$bounded_pid" || regression_status=1
+              bounded_pid=
+            fi
+            exit "$regression_status"
           '
       - name: CI policy action isolation smoke
         env:
