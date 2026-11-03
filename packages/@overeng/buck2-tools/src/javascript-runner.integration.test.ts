@@ -94,9 +94,17 @@ declared: process.env.DECLARED,
       await writeFile(join(packageTree, 'vitest.config.ts'), 'export default { test: {} }\n')
       await writeFile(
         join(packageTree, 'git.test.ts'),
-        `import { it } from 'vitest'
-import { execFileSync } from 'node:child_process'
-it('needs real Git', () => execFileSync('git', ['--version']))
+        `import { it, expect } from 'vitest'
+import { spawn } from 'node:child_process'
+import { dirname } from 'node:path'
+it('needs real Git', async () => {
+  expect(process.env.PATH).toBe(dirname(process.env.BUN_BIN))
+  const { promise, resolve, reject } = Promise.withResolvers<void>()
+  const child = spawn('git', ['--version'])
+  child.once('error', reject)
+  child.once('exit', code => code === 0 ? resolve() : reject(new Error('git failed')))
+  await promise
+})
 `,
       )
       const child = Bun.spawn(
@@ -111,6 +119,10 @@ it('needs real Git', () => execFileSync('git', ['--version']))
           '30000',
           '--fingerprint-tool',
           fingerprintTool,
+          // Match megarepo's Bun-only authority; an empty PATH permits host-default lookup.
+          '--external-path',
+          'BUN_BIN',
+          bun,
         ],
         {
           env: { ...process.env, BUCK_SCRATCH_PATH: join(root, 'scratch') },
@@ -124,7 +136,7 @@ it('needs real Git', () => execFileSync('git', ['--version']))
         text(child.stderr),
         child.exited,
       ])
-      expect(status).not.toBe(0)
+      expect(status, stdout + stderr).not.toBe(0)
       expect(stdout + stderr).toContain('needs real Git')
       expect(stdout + stderr).toMatch(/ENOENT|Executable not found/)
     } finally {
