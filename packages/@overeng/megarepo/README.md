@@ -53,6 +53,14 @@ For CI:
 mr apply --git-protocol=https
 ```
 
+For authenticated HTTP(S) clones, configure a Git credential helper (for example,
+`gh auth setup-git`) or use SSH. Megarepo rejects HTTP(S) userinfo in member
+configuration, lock files, and `mr add` inputs, including username-only tokens and
+percent-encoded credentials. Errors show only `https://***@host/...` and explain
+how to migrate to a credential helper or SSH. Remove embedded credentials from
+existing configuration or lock files before running commands; accepted source identities are
+never rewritten. SSH URLs (including scp-style `git@host:path`) are unchanged.
+
 ### Standalone Nix lock synchronization
 
 Check or update standalone flake locks from an already resolved root input, or

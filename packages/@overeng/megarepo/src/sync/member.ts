@@ -17,6 +17,8 @@ import {
   getSourceRef,
   type MemberSource,
   parseSourceString,
+  redactSourceCredentials,
+  sourceCredentialError,
   validateMemberName,
 } from '../core/config.ts'
 import * as Git from '../core/git.ts'
@@ -425,13 +427,14 @@ export const syncMember = <R = never>({
       } satisfies MemberSyncResult
     }
 
-    // Parse the source string
     const source = parseSourceString(sourceString)
     if (source === undefined) {
       return {
         name,
         status: 'error',
-        message: `Invalid source string: ${sourceString}`,
+        message:
+          sourceCredentialError(sourceString) ??
+          `Invalid source string: ${redactSourceCredentials(sourceString)}`,
       } satisfies MemberSyncResult
     }
 
@@ -1281,5 +1284,8 @@ export const syncMember = <R = never>({
         } satisfies MemberSyncResult
       })
     }),
-    Observability.withSyncMemberSpan({ name, source: sourceString }),
+    Observability.withSyncMemberSpan({
+      name,
+      source: redactSourceCredentials(sourceString),
+    }),
   )

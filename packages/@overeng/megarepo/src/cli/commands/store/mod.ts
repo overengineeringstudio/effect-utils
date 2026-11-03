@@ -30,6 +30,8 @@ import {
   isRemoteSource,
   getSourceRef,
   readMegarepoConfig,
+  redactSourceCredentials,
+  sourceCredentialError,
 } from '../../../core/config.ts'
 import * as Git from '../../../core/git.ts'
 import { LOCK_FILE_NAME, readLockFile } from '../../../core/lock.ts'
@@ -3989,8 +3991,10 @@ const storeAddCommand = Cli.Command.make(
               tui.dispatch({
                 _tag: 'SetError',
                 error: 'invalid_source',
-                message: `Invalid source string: ${sourceString}`,
-                source: sourceString,
+                message:
+                  sourceCredentialError(sourceString) ??
+                  `Invalid source string: ${redactSourceCredentials(sourceString)}`,
+                source: redactSourceCredentials(sourceString),
               })
             }),
           { view: React.createElement(StoreView, { stateAtom: StoreApp.stateAtom }) },
@@ -4124,7 +4128,7 @@ const storeAddCommand = Cli.Command.make(
       Effect.provide(StoreLayer),
       Observability.withStoreSourceSpan({
         name: 'megarepo/store/add',
-        source: sourceString,
+        source: redactSourceCredentials(sourceString),
       }),
     ),
 ).pipe(Cli.Command.withDescription('Add a repository to the store (without adding to megarepo)'))
@@ -4430,8 +4434,10 @@ const storeWorktreeNewCommand = Cli.Command.make(
               tui.dispatch({
                 _tag: 'SetError',
                 error: 'invalid_source',
-                message: `Invalid repository: ${repoString}`,
-                source: repoString,
+                message:
+                  sourceCredentialError(repoString) ??
+                  `Invalid repository: ${redactSourceCredentials(repoString)}`,
+                source: redactSourceCredentials(repoString),
               })
             }),
           { view: React.createElement(StoreView, { stateAtom: StoreApp.stateAtom }) },
@@ -4649,7 +4655,7 @@ const storeWorktreeNewCommand = Cli.Command.make(
       Effect.provide(StoreLayer),
       Observability.withStoreSourceSpan({
         name: 'megarepo/store/worktree/new',
-        source: repoString,
+        source: redactSourceCredentials(repoString),
         ...(Option.isSome(refOpt) === true ? { ref: refOpt.value } : {}),
         ...(Option.isSome(baseOpt) === true ? { base: baseOpt.value } : {}),
         ...(Option.isSome(commitOpt) === true ? { commit: commitOpt.value } : {}),

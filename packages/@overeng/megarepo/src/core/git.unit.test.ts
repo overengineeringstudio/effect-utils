@@ -8,10 +8,33 @@ import {
   isTransientGitError,
   parseGitRemoteUrl,
   type ParsedGitRemote,
+  withoutHttpCredentials,
   worktreeRegistrationRef,
 } from './git.ts'
 
 describe('git', () => {
+  describe('withoutHttpCredentials', () => {
+    it.each([
+      [
+        'https://fixture-user:fixture-password@example.com/owner/repo.git',
+        'https://example.com/owner/repo.git',
+      ],
+      ['http://fixture-token@example.com/owner/repo.git', 'http://example.com/owner/repo.git'],
+      [
+        'HTTPS://fixture-user:p%40ss@example.com:8443/repo.git#main',
+        'HTTPS://example.com:8443/repo.git#main',
+      ],
+      ['https://example.com/owner/repo.git', 'https://example.com/owner/repo.git'],
+      ['https://example.com/owner@ref/repo.git', 'https://example.com/owner@ref/repo.git'],
+      ['https://example.com/repo.git?ref=owner@ref', 'https://example.com/repo.git?ref=owner@ref'],
+      ['git@example.com:owner/repo.git', 'git@example.com:owner/repo.git'],
+      ['ssh://git@example.com/owner/repo.git', 'ssh://git@example.com/owner/repo.git'],
+      ['/tmp/local@source/repo', '/tmp/local@source/repo'],
+    ])('sanitizes only HTTP(S) authority userinfo: %s', (input, expected) => {
+      expect(withoutHttpCredentials(input)).toBe(expected)
+    })
+  })
+
   it('derives budget refs from Git rather than the registered directory name', () => {
     const registration = {
       path: '/store/repository/.hidden/arbitrary',

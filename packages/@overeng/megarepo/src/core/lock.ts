@@ -18,6 +18,7 @@ import { type PlatformError } from 'effect/PlatformError'
 import type { AbsoluteFilePath } from '@overeng/effect-path'
 
 import { authorizeAuthorWorkspaceWrite } from '../store/store-path.ts'
+import { MemberSourceString } from './config.ts'
 
 // =============================================================================
 // Lock File Schema
@@ -34,7 +35,7 @@ export const LOCK_FILE_NAME = 'megarepo.lock'
  */
 export class LockedMember extends Schema.Class<LockedMember>('LockedMember')({
   /** Resolved URL (GitHub shorthand expanded) */
-  url: Schema.String,
+  url: MemberSourceString,
 
   /** Original ref from config (for context) */
   ref: Schema.String,
@@ -63,6 +64,8 @@ export class LockFile extends Schema.Class<LockFile>('LockFile')({
 // =============================================================================
 // Lock File Operations
 // =============================================================================
+/** Keep reportInput disabled: enclosing schema issues otherwise retain credentialed inputs. */
+export const decodeLockFileContent = Schema.decodeEffect(Schema.fromJsonString(LockFile))
 
 /**
  * Read and parse a lock file
@@ -83,7 +86,7 @@ export const readLockFile = (
     }
 
     const content = yield* fs.readFileString(lockPath)
-    const parsed = yield* Schema.decodeEffect(Schema.fromJsonString(LockFile))(content)
+    const parsed = yield* decodeLockFileContent(content)
     return Option.some(parsed)
   })
 
