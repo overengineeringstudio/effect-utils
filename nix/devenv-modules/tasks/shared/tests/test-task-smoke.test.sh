@@ -347,7 +347,13 @@ eval_root_test_graph() {
           specialArgs = { inherit pkgs; };
           modules = [
             ({ ... }: {
-              options.tasks = lib.mkOption { type = lib.types.attrsOf lib.types.anything; default = {}; };
+              options.tasks = lib.mkOption {
+                type = lib.types.attrsOf (lib.types.submodule {
+                  freeformType = lib.types.attrsOf lib.types.anything;
+                  options.after = lib.mkOption { type = lib.types.listOf lib.types.str; default = []; };
+                });
+                default = {};
+              };
               options.processes = lib.mkOption { type = lib.types.attrsOf lib.types.anything; default = {}; };
               options.packages = lib.mkOption { type = lib.types.listOf lib.types.anything; default = []; };
             })
