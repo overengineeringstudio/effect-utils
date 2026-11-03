@@ -920,6 +920,7 @@ in
       extraTests = builtins.filter selectedTestTask extraSourceTestTasks;
       packageConcurrency = testScheduling.workers;
       packageWeights = testScheduling.sourceTaskSeconds;
+      packageChains = if testPlatform == "darwin" then testScheduling.darwinSourceTaskChains else null;
       retainVitestJson = true;
     })
     # Per-lane Buck `test:<package>` tasks, each pulling in its unbounded complement.

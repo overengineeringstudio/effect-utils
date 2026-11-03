@@ -248,6 +248,43 @@ assert_eq \
   "$(eval_test_module_attr null 'builtins.toJSON tasks."test:run".after')" \
   "unbounded test:run still depends directly on every package task"
 
+# --- Explicit ordered partitions reuse the same chain and installer machinery ---
+
+explicit='packageChains = [
+  [ "test:long-d" "test:ok-c" ]
+  [ "test:long-e" "test:small-f" ]
+  [ "test:ok-a" ]
+  [ "test:native-b" ]
+];'
+assert_eq \
+  '["test:run:chain:0:ok-c","test:run:chain:1:small-f","test:run:chain:2:ok-a","test:run:chain:3:native-b","test:extra"]' \
+  "$(eval_test_module_attr 4 'builtins.toJSON tasks."test:run".after' "$weighted $explicit")" \
+  "explicit partition preserves ordered tails and extra suites"
+assert_eq \
+  '["test:run:chain:0:long-d"]' \
+  "$(eval_test_module_attr 4 'builtins.toJSON tasks."test:run:install:0:ok-c".after' "$explicit")" \
+  "explicit scoped installer waits for its predecessor"
+assert_eq \
+  '["test:run:install:0:ok-c","test:run:chain:0:long-d"]' \
+  "$(eval_test_module_attr 4 'builtins.toJSON tasks."test:run:chain:0:ok-c".after' "$explicit")" \
+  "explicit execution retains installer and direct predecessor"
+assert_eq \
+  '["overridden-package-runtime","pinned-tool","package-status-check","scoped-install-command","pinned-installer","installer-status-check"]' \
+  "$(eval_test_module_attr 4 'builtins.toJSON [ tasks."test:run:chain:0:ok-c".exec tasks."test:run:chain:0:ok-c".env.RUNTIME_TOOL tasks."test:run:chain:0:ok-c".status tasks."test:run:install:0:ok-c".exec tasks."test:run:install:0:ok-c".env.INSTALL_TOOL tasks."test:run:install:0:ok-c".status ]' "$explicit")" \
+  "explicit aliases reuse final execution and installer overrides"
+assert_eq \
+  '["test:long-d","test:long-e","test:native-b","test:ok-a","test:ok-c","test:small-f"]' \
+  "$(eval_test_module_attr 4 'builtins.toJSON (lib.sort builtins.lessThan (map (name: "test:" + lib.last (lib.splitString ":" name)) (builtins.filter (name: builtins.elem name (closureOf "test:run")) chainAliases)))' "$explicit")" \
+  "explicit aggregate covers exactly the selected package union"
+assert_eq \
+  "$(eval_test_module_attr 4 'builtins.toJSON tasks' "$weighted")" \
+  "$(eval_test_module_attr 4 'builtins.toJSON tasks' "$weighted packageChains = null;")" \
+  "null chains preserve the entire weighted task graph byte for byte"
+assert_eq \
+  '["test:run:chain:0:native-b","test:extra"]' \
+  "$(eval_test_module_attr 4 'builtins.toJSON tasks."test:run".after' 'aggregatePackages = [ { path = "packages/native-b"; name = "native-b"; } ]; packageChains = [ [ "test:native-b" ] [ ] [ ] [ ] ];')" \
+  "explicit empty chains do not create nonexistent tails"
+
 # --- Invalid inputs fail at evaluation with useful errors ---
 
 assert_eval_fails() {
@@ -278,5 +315,14 @@ assert_eval_fails '"4"' '' "packageConcurrency must be a positive integer or nul
 assert_eval_fails 4 'packageWeights = { "test:ok-a" = 0; };' 'packageWeights.test:ok-a must be a positive integer number of seconds' "zero package weight"
 assert_eval_fails 4 'packageWeights = { "test:ok-a" = 1.5; };' 'packageWeights.test:ok-a must be a positive integer number of seconds' "fractional package weight"
 assert_eval_fails 4 'packageWeights = [ ];' "packageWeights must be an attribute set of positive integer seconds" "non-attrset packageWeights"
+assert_eval_fails null "$explicit" "packageChains requires packageConcurrency" "chains without concurrency"
+assert_eval_fails 4 'packageChains = { };' "packageChains must be a list of lists" "non-list chains"
+assert_eval_fails 4 'packageChains = [ "test:ok-a" ];' "packageChains must be a list of lists" "non-list chain"
+assert_eval_fails 4 'packageChains = [ [ 1 ] ];' "packageChains must be a list of lists" "non-string name"
+assert_eval_fails 4 'packageChains = [ ];' "packageChains must contain exactly packageConcurrency chains" "wrong chain count"
+assert_eval_fails 4 'packageChains = [ [ "test:missing" ] [ ] [ ] [ ] ];' "unknown or unselected aggregate tasks: test:missing" "unknown task"
+assert_eval_fails 4 'aggregatePackages = [ ]; packageChains = [ [ "test:ok-a" ] [ ] [ ] [ ] ];' "unknown or unselected aggregate tasks: test:ok-a" "unselected standalone task"
+assert_eval_fails 4 'packageChains = [ [ "test:ok-a" "test:ok-a" ] [ ] [ ] [ ] ];' "duplicate aggregate tasks: test:ok-a" "duplicate task"
+assert_eval_fails 4 'packageChains = [ [ ] [ ] [ ] [ ] ];' "omits aggregate tasks:" "omitted tasks"
 
 echo "test task smoke test passed"

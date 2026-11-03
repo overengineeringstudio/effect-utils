@@ -49,6 +49,8 @@
   extraTests ? [ ],
   packageConcurrency ? null,
   packageWeights ? { },
+  # Optional ordered partition of aggregate task names; requires concurrency.
+  packageChains ? null,
   retainVitestJson ? false,
   sourceLauncher ? null,
 }:
@@ -163,6 +165,36 @@ let
   # names and stable chain indices break ties without runtime timing state.
   packageTaskName = pkg: "test:${pkg.name}";
   packageWeight = pkg: validatedPackageWeights.${packageTaskName pkg} or 1;
+  aggregateTaskNames = map packageTaskName aggregatePackages;
+  validatedPackageChains =
+    if packageChains == null then
+      null
+    else if !hasPackageConcurrency then
+      throw "packageChains requires packageConcurrency"
+    else if
+      !builtins.isList packageChains
+      || !lib.all (chain: builtins.isList chain && lib.all builtins.isString chain) packageChains
+    then
+      throw "packageChains must be a list of lists of aggregate task names"
+    else if builtins.length packageChains != validatedPackageConcurrency then
+      throw "packageChains must contain exactly packageConcurrency chains"
+    else
+      let
+        names = lib.concatLists packageChains;
+        unselected = lib.subtractLists aggregateTaskNames names;
+        omitted = lib.subtractLists names aggregateTaskNames;
+        duplicates = lib.filter (
+          name: builtins.length (lib.filter (candidate: candidate == name) names) > 1
+        ) (lib.unique names);
+      in
+      if unselected != [ ] then
+        throw "packageChains contains unknown or unselected aggregate tasks: ${lib.concatStringsSep ", " unselected}"
+      else if duplicates != [ ] then
+        throw "packageChains contains duplicate aggregate tasks: ${lib.concatStringsSep ", " duplicates}"
+      else if omitted != [ ] then
+        throw "packageChains omits aggregate tasks: ${lib.concatStringsSep ", " omitted}"
+      else
+        packageChains;
   sortedAggregatePackages = lib.sort (
     left: right:
     if packageWeight left == packageWeight right then
@@ -171,7 +203,14 @@ let
       packageWeight left > packageWeight right
   ) aggregatePackages;
   packageTestChains =
-    if hasPackageConcurrency then
+    if validatedPackageChains != null then
+      lib.imap0 (index: names: {
+        inherit index;
+        packages = map (
+          name: lib.findFirst (pkg: packageTaskName pkg == name) null aggregatePackages
+        ) names;
+      }) validatedPackageChains
+    else if hasPackageConcurrency then
       lib.foldl'
         (
           chains: pkg:
@@ -309,7 +348,7 @@ let
   };
 in
 builtins.seq validatedPackageConcurrency (
-  builtins.deepSeq validatedPackageWeights {
+  builtins.deepSeq validatedPackageChains (builtins.deepSeq validatedPackageWeights {
     packages = cliGuard.fromTasks guardedTasks;
 
     tasks = lib.mkMerge (
@@ -322,5 +361,5 @@ builtins.seq validatedPackageConcurrency (
       )
       ++ [ (cliGuard.stripGuards guardedTasks) ]
     );
-  }
+  })
 )

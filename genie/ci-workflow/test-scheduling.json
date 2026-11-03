@@ -1,6 +1,12 @@
 {
   "baselineRun": 37886131764,
   "workers": 4,
+  "darwinSourceTaskChains": [
+    ["test:megarepo:unbounded", "test:utils:unbounded"],
+    ["test:restate-effect:unbounded", "test:utils-dev:unbounded"],
+    ["test:buck2-tools", "test:notion-md:unbounded"],
+    ["test:notion-datasource-sync:unbounded", "test:genie:unbounded", "test:pty-effect:unbounded"]
+  ],
   "sourceTaskSeconds": {
     "test:buck2-tools": 44,
     "test:ci-tools:unbounded": 7,
