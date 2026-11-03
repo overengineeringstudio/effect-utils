@@ -41,10 +41,14 @@ class PublicationSupervisorTest(unittest.TestCase):
                     received += chunk
             return received
 
-        for mode in ("--lock", "--deferred-lock"):
-            with self.subTest(mode=mode), tempfile.TemporaryDirectory() as scratch:
+        garbage_cases = (b'{"pid":', b"\xff\x00" + str(Path.home()).encode(),
+                         b"x" * 16384 + str(Path.home()).encode())
+        for mode, garbage in ((mode, garbage) for mode in ("--lock", "--deferred-lock")
+                              for garbage in garbage_cases):
+            with self.subTest(mode=mode, bytes=len(garbage)), tempfile.TemporaryDirectory() as scratch:
                 root = Path(scratch)
                 lock = root / "publication.lock"
+                lock.write_bytes(garbage)
                 release = root / "release"
                 os.mkfifo(release)
                 leases = root / ".editor-view" / ".leases"
@@ -66,6 +70,21 @@ if sys.argv[1] == "holder":
                        "EDITOR_VIEW_ADMISSION_DIAGNOSTIC_SECONDS": "0",
                        "BUCK_ISOLATION_DIR": str(root / "private-isolation")}
                 env.pop("BUCK2_NATIVE_BIN", None)
+                # Model a crashed/legacy owner retaining a corrupt inode. No
+                # diagnostic may echo its bytes or require parseable metadata.
+                with lock.open("r+b") as corrupt_holder:
+                    fcntl.flock(corrupt_holder, fcntl.LOCK_EX)
+                    corrupt_dump = subprocess.run(
+                        [sys.executable, script, "--admission-dump", str(lock)],
+                        env=env, capture_output=True, timeout=10,
+                    )
+                self.assertEqual(corrupt_dump.returncode, 0)
+                self.assertIn(b"holder=unparseable\n", corrupt_dump.stderr)
+                self.assertNotIn(b"/", corrupt_dump.stderr)
+                self.assertLessEqual(len(corrupt_dump.stderr), 8192)
+                self.assertLessEqual(len(corrupt_dump.stderr.splitlines()), 40)
+                # The real holder now acquires and overwrites this same inode;
+                # the waiter must see its fresh record and admit normally.
                 command = [sys.executable, script, "5", "0.1", mode, str(lock),
                            sys.executable, "-c", fixture]
                 holder = subprocess.Popen([*command, "holder", str(release)], env=env,

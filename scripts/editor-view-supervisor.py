@@ -39,6 +39,8 @@ def safe_name(value):
 def record_holder(fd, command, pid):
     # Metadata lives in the flock inode, not a replaceable sidecar. Only an
     # admitted owner writes it; the supervisor retains ownership through cleanup.
+    # Contents are diagnostic-only: admission never parses them. Overwrite at
+    # offset zero before truncating; interrupted/short writes remain ignorable.
     payload = json.dumps({"pid": pid, "command": safe_name(command),
                           "started": time.monotonic()}).encode()
     try:
@@ -59,11 +61,14 @@ def admission_dump(path):
             except BlockingIOError:
                 owner = json.loads(lock.read(1024))
                 pid, started = owner["pid"], owner["started"]
-                if type(pid) is not int or type(started) not in (int, float):
+                if (type(pid) is not int or pid <= 0 or
+                        type(started) not in (int, float) or not math.isfinite(started)):
                     raise ValueError("invalid owner")
                 elapsed = max(0, time.monotonic() - started)
                 lines.append(f"holder recorded-pid={pid} command={safe_name(owner['command'])} "
                              f"held-seconds={elapsed:.1f} identity=advisory")
+    except (ValueError, TypeError, KeyError, OverflowError):
+        lines.append("holder=unparseable")
     except Exception:
         lines.append("holder=unknown")
     isolation = os.environ.get("BUCK_ISOLATION_DIR", "v2")
