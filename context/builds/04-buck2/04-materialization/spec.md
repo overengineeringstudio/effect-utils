@@ -221,6 +221,16 @@ registry with tracked package manifests and a Buck `owner(...)` census. The
 resulting authority file must name identical required and owned package sets;
 every package publication validates it.
 
+The invocation supervisor runs authority generation and Buck builds before
+requesting the worktree's outer publication flock. Each invocation owns its
+authority file until its process tree finishes. Source fingerprinting, snapshot
+payload validation and all publication mutations remain behind that flock and
+the ordered state-root fences; warm hits add no prehash or source inventory.
+The supervisor verifies the named flock inode and retains its open description
+through timeout cleanup. Preparation and admitted execution share one deadline;
+only time actually waiting for flock admission suspends it. Read-only checks
+retain whole-command admission.
+
 Publication holds the exclusive state-root `.publish.lock`, created atomically.
 A positively identified dead same-host holder can be recovered after repeating
 the process-incarnation proof under the host fence. Live publishers, foreign-host

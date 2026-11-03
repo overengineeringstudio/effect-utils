@@ -3,6 +3,8 @@ import { spawnSync } from 'node:child_process'
 import { existsSync, readFileSync } from 'node:fs'
 import { posix } from 'node:path'
 
+import { hasPublicationAdmission } from './devenv-task-graph-admission.mjs'
+
 const root = process.argv[2]
 if (root === undefined) {
   console.error(`usage: ${process.argv[1]} REPO_ROOT`)
@@ -848,12 +850,7 @@ for (const name of editorPublishers) {
       path === '.' ? '.editor-view' : posix.join(path, '..', '..', '.editor-view'),
     ),
   )
-  publisherAdmissionLocks.set(
-    name,
-    /editor-view-supervisor\.py" (?:\d+|none) 5\s+\\\s+--lock "\$root\/\.devenv\/editor-view-publication\.lock"/u.test(
-      body,
-    ),
-  )
+  publisherAdmissionLocks.set(name, hasPublicationAdmission(body))
 }
 const unorderedPublishers = []
 const unbatchedConsumerFanouts = []
