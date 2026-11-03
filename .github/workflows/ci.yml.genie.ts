@@ -741,19 +741,31 @@ const sourceRegressionStep = ({
   name,
   packages,
   tasks,
+  boundedPr = false,
 }: {
   name: string
   packages: readonly string[]
   tasks: readonly string[]
+  boundedPr?: boolean
 }) => ({
   name,
-  env: githubTokenEnv(),
+  env: {
+    ...githubTokenEnv(),
+    ...(boundedPr === true
+      ? {
+          PR_BOUNDED_ENABLED: "${{ github.event_name == 'pull_request' }}",
+          PR_BOUNDED_BASE_SHA: '${{ github.event.pull_request.base.sha }}',
+        }
+      : {}),
+  },
   run: withCiSourceRoot(
     [
       'set -euo pipefail',
       '"${DEVENV_BIN:?DEVENV_BIN not set}" shell -- bash -euo pipefail -c \'',
       '  prepared=()',
+      '  bounded_pid=',
       '  restore_views() {',
+      '    if [ -n "$bounded_pid" ]; then kill "$bounded_pid" 2>/dev/null || true; wait "$bounded_pid" 2>/dev/null || true; fi',
       '    for package in "${prepared[@]}"; do',
       '      rm -f "$package/node_modules"',
       '      backup="$RUNNER_TEMP/genie-pr-${package##*/}-node-modules"',
@@ -769,7 +781,22 @@ const sourceRegressionStep = ({
       '    prepared+=("$package")',
       '    ln -s "$PWD/$modules" "$package/node_modules"',
       '  done',
-      `  "$DEVENV_BIN" tasks run --mode single ${tasks.join(' ')}`,
+      ...(boundedPr === true
+        ? [
+            '  bun test ./genie/ci-scripts/pr-bounded-tests.unit.test.ts',
+            '  if [ "$PR_BOUNDED_ENABLED" = true ]; then',
+            '    bun ./genie/ci-scripts/pr-bounded-tests.ts &',
+            '    bounded_pid=$!',
+            '  fi',
+          ]
+        : []),
+      '  regression_status=0',
+      `  "$DEVENV_BIN" tasks run --mode single ${tasks.join(' ')} || regression_status=$?`,
+      '  if [ -n "$bounded_pid" ]; then',
+      '    wait "$bounded_pid" || regression_status=1',
+      '    bounded_pid=',
+      '  fi',
+      '  exit "$regression_status"',
       "'",
     ].join('\n'),
   ),
@@ -850,6 +877,7 @@ const jobs: Record<CoreCIJobName, CiWorkflowArgs['jobs'][string]> = {
             name: 'Genie projection and CI workflow regression tests',
             // test:run publishes all views; these suites need only these exact closures.
             packages: ['.', 'packages/@overeng/megarepo'],
+            boundedPr: true,
             tasks: [
               'genie:buck2:test',
               'genie:ci-workflow:test',
