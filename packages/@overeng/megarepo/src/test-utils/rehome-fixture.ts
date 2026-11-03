@@ -1,12 +1,10 @@
 import { Effect } from 'effect'
 import * as FileSystem from 'effect/FileSystem'
-import type { PlatformError } from 'effect/PlatformError'
 
 import { EffectPath } from '@overeng/effect-path'
 
 import * as Git from '../core/git.ts'
 import { createEmptyLockFile, writeLockFile } from '../core/lock.ts'
-import { inspectMemberMount } from '../sync/member-mount.ts'
 import { createStoreFixture, createWorkspaceWithLock } from './store-setup.ts'
 
 /** Scoped foreign-owned commit tree with tracked inputs and ignored mounted payloads. */
@@ -60,23 +58,3 @@ export const rehomeFixture = Effect.fnUntraced(function* (seedCanonical = true) 
     .slice('gitdir: '.length)
   return { fs, store, bareRepoPath, worktreePath, foreign, foreignAdmin, mounted, commit }
 })
-
-/** Snapshot bytes and mtimes without following mounts or reading access times. */
-export const snapshotRehome = (
-  root: string,
-): Effect.Effect<ReadonlyArray<unknown>, PlatformError, FileSystem.FileSystem> =>
-  Effect.gen(function* () {
-    const fs = yield* FileSystem.FileSystem
-    const mount = yield* inspectMemberMount(root)
-    if (mount._tag === 'Symlink') return ['symlink', mount.target]
-    const stat = yield* fs.stat(root)
-    return [
-      stat.type,
-      stat.mtime,
-      stat.type === 'Directory'
-        ? yield* Effect.forEach((yield* fs.readDirectory(root)).toSorted(), (name) =>
-            snapshotRehome(`${root}/${name}`).pipe(Effect.map((value) => [name, value])),
-          )
-        : yield* fs.readFile(root),
-    ]
-  })
