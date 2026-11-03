@@ -74,7 +74,7 @@ export const snapshotRehome = (
       stat.type,
       stat.mtime,
       stat.type === 'Directory'
-        ? yield* Effect.forEach((yield* fs.readDirectory(root)).sort(), (name) =>
+        ? yield* Effect.forEach((yield* fs.readDirectory(root)).toSorted(), (name) =>
             snapshotRehome(`${root}/${name}`).pipe(Effect.map((value) => [name, value])),
           )
         : yield* fs.readFile(root),
