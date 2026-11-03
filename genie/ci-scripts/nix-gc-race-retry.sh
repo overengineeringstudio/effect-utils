@@ -8,6 +8,8 @@ run_nix_gc_race_retry() {
   local max="${NIX_GC_RACE_MAX_RETRIES:-10}"
   local heartbeat="${CI_PROGRESS_HEARTBEAT_SECONDS:-60}"
   local daemon_socket_retry_delay="${NIX_DAEMON_SOCKET_RETRY_DELAY_SECONDS:-2}"
+  # Diagnostic threshold only: one bounded dump per attempt, never a deadline.
+  local preparation_threshold="${CI_PREPARATION_DIAGNOSTIC_SECONDS:-600}"
   local attempt=1
   local repaired_missing_subpaths=()
   # The guillemets Nix wraps a flake reference in, built from their UTF-8 bytes so this
@@ -17,7 +19,7 @@ run_nix_gc_race_retry() {
   flake_ref_open=$'\302\253'
   flake_ref_close=$'\302\273'
   nix_cache_root="${XDG_CACHE_HOME:-$HOME/.cache}/nix"
-  local log log_dir stdout_pipe stderr_pipe rc path missing_subpath repaired_missing_subpath start now elapsed hb_pid stdout_tee_pid stderr_tee_pid flattened saw_invalid_path saw_cachix_signature saw_fetch_signature saw_daemon_socket_failure saw_missing_flake_subpath missing_subpath_was_repaired had_errexit
+  local log log_dir stdout_pipe stderr_pipe rc path missing_subpath repaired_missing_subpath start now elapsed hb_pid stdout_tee_pid stderr_tee_pid flattened saw_invalid_path saw_cachix_signature saw_fetch_signature saw_daemon_socket_failure saw_missing_flake_subpath missing_subpath_was_repaired had_errexit preparation_start
 
   shift
   start="$(date +%s)"
@@ -34,9 +36,100 @@ run_nix_gc_race_retry() {
     } >> "$GITHUB_STEP_SUMMARY"
   }
 
+  # Observe the existing tee log; leave the foreground command and its signals alone.
+  preparation_diagnostics() {
+    python3 - "$log" "$log_dir" "$$" "$hb_pid" "$stdout_tee_pid" "$stderr_tee_pid" "$1" "$preparation_threshold" <<'PY'
+import os
+import re
+import subprocess
+import sys
+
+log, state, root, *args = sys.argv[1:]
+excluded = set(args[:3])
+elapsed, threshold = map(int, args[3:])
+pending = {}
+overflow = False
+started = False
+ansi = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
+with open(log, errors="replace") as stream:
+    for raw in stream:
+        line = ansi.sub("", raw).strip()
+        if re.search(r"(?:^|[\u2022\u2713]\s+)Running tasks\b", line):
+            started = True
+        activity = re.search(r"[\u2022\u2713]\s+(Building|Downloading)\s+(.+?)(?:\s+in\s+[\d.]+\s*[a-z]+)?$", line)
+        if activity:
+            kind, name = activity.groups()
+            key = (kind, name)
+            if "\u2713" in line:
+                pending.pop(key, None)
+            elif len(pending) < 24:
+                pending[key] = None
+            else:
+                overflow = True
+if started:
+    marker = os.path.join(state, "tasks-started")
+    if not os.path.exists(marker):
+        open(marker, "w").close()
+        print("::notice::[ci] phase: tasks started (observed devenv output)", flush=True)
+    sys.exit()
+marker = os.path.join(state, "preparation-dumped")
+if elapsed < 0 or elapsed < threshold or os.path.exists(marker):
+    sys.exit()
+open(marker, "w").close()
+
+def safe_name(value):
+    # Only basenames: never replay paths, URL credentials/query strings or argv.
+    value = value.split("?", 1)[0].split("#", 1)[0].rstrip("/").rsplit("/", 1)[-1]
+    return re.sub(r"[^a-zA-Z0-9_.+-]", "_", value)[:120] or "unknown"
+
+lines = ["::notice::[ci] preparation diagnostics begin (observed pending activities; not lock ownership)"]
+try:
+    result = subprocess.run(
+        ["ps", "-axo", "pid=,ppid=,etime=,comm="],
+        capture_output=True, text=True, timeout=2, check=True,
+    )
+    rows = [line.split(None, 3) for line in result.stdout.splitlines()]
+    children = [row for row in rows if len(row) == 4 and row[1] == root and row[0] not in excluded]
+    tree = list(children)
+    for row in tree:
+        tree.extend(child for child in rows if len(child) == 4 and child[1] == row[0])
+    for pid, parent, age, command in tree[:8]:
+        lines.append(f"process pid={pid} parent={parent} elapsed={age} command={safe_name(command)}")
+    if len(tree) > 8:
+        lines.append("[truncated: process tree exceeds 8 entries]")
+    if not tree:
+        lines.append("process tree unavailable (invocation may have exited)")
+except (OSError, subprocess.SubprocessError):
+    lines.append("process tree unavailable (probe failed or exceeded 2 s)")
+for kind, name in pending:
+    lines.append(f"pending {kind.lower()}: {safe_name(name)}")
+if not pending:
+    lines.append("pending Nix activities: unknown (no unmatched output markers)")
+if overflow:
+    lines.append("[truncated: more than 24 pending activities observed]")
+lines.append("::notice::[ci] preparation diagnostics end")
+payload = "\n".join(lines)
+if len(lines) > 40 or len(payload.encode()) > 8192:
+    payload = "\n".join(lines[:38]).encode()[:8000].decode(errors="ignore") + "\n[truncated: diagnostic output cap]"
+print(payload, flush=True)
+PY
+  }
+
   while [ "$attempt" -le "$max" ]; do
     echo "::notice::[ci] starting $task (attempt $attempt/$max)"
+    log=$(mktemp)
+    log_dir=$(mktemp -d)
+    echo "::notice::[ci] phase: environment realization started (attempt $attempt/$max)"
+    preparation_start=$(date +%s)
+    stdout_pipe="$log_dir/stdout"
+    stderr_pipe="$log_dir/stderr"
+    mkfifo "$stdout_pipe" "$stderr_pipe"
+    tee -a "$log" < "$stdout_pipe" &
+    stdout_tee_pid=$!
+    tee -a "$log" < "$stderr_pipe" >&2 &
+    stderr_tee_pid=$!
     (
+      hb_pid=$BASHPID
       heartbeat_sleep_pid=''
       trap '[ -z "$heartbeat_sleep_pid" ] || kill "$heartbeat_sleep_pid" 2>/dev/null || true; exit 0' TERM INT
       while true; do
@@ -46,19 +139,10 @@ run_nix_gc_race_retry() {
         now=$(date +%s)
         elapsed=$((now - start))
         echo "::notice::[ci] $task still running after $elapsed s (attempt $attempt/$max)"
+        preparation_diagnostics "$((now - preparation_start))" || true
       done
     ) &
     hb_pid=$!
-
-    log=$(mktemp)
-    log_dir=$(mktemp -d)
-    stdout_pipe="$log_dir/stdout"
-    stderr_pipe="$log_dir/stderr"
-    mkfifo "$stdout_pipe" "$stderr_pipe"
-    tee -a "$log" < "$stdout_pipe" &
-    stdout_tee_pid=$!
-    tee -a "$log" < "$stderr_pipe" >&2 &
-    stderr_tee_pid=$!
     had_errexit=false
     case $- in
       *e*) had_errexit=true ;;
@@ -71,10 +155,12 @@ run_nix_gc_race_retry() {
     fi
     wait "$stdout_tee_pid" 2>/dev/null || true
     wait "$stderr_tee_pid" 2>/dev/null || true
-    rm -rf "$log_dir"
-
     kill "$hb_pid" 2>/dev/null || true
     wait "$hb_pid" 2>/dev/null || true
+
+    # Always report task start even for commands shorter than one heartbeat.
+    preparation_diagnostics -1 || true
+    rm -rf "$log_dir"
 
     now=$(date +%s)
     elapsed=$((now - start))
