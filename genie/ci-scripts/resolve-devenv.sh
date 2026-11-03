@@ -4,6 +4,8 @@
 
 set -euo pipefail
 
+source "${BASH_SOURCE[0]%/*}/prefetch-locked-inputs.sh"
+
 DEVENV_GC_ROOT_DIR="${RUNNER_TEMP:-/tmp}/genie-nix-gc-roots"
 DEVENV_GC_ROOT_ID=$(printf '%s' "${GITHUB_RUN_ID:-local-$$}-${GITHUB_RUN_ATTEMPT:-0}-${GITHUB_JOB:-job}" | tr -c 'A-Za-z0-9._-' '_')
 DEVENV_GC_ROOT="$DEVENV_GC_ROOT_DIR/devenv-$DEVENV_GC_ROOT_ID"
@@ -82,6 +84,14 @@ main() {
     nix --version || true
   } > "$DIAG_ROOT/environment.txt" 2>&1
 
+  # Keep all warming inside this operation and its existing timeout boundary.
+  local prefetch_pid
+  prefetch_locked_inputs "$lock_file" "$DIAG_ROOT/locked-input-prefetch" &
+  prefetch_pid="$!"
+  trap '[ -z "${prefetch_pid:-}" ] || { kill "$prefetch_pid" 2>/dev/null || true; wait "$prefetch_pid" 2>/dev/null || true; }' EXIT
+  trap 'exit 143' TERM
+  trap 'exit 130' INT
+
   if ! DEVENV_OUT="$(resolve_devenv 2> >(tee "$DIAG_ROOT/resolve-devenv.log" >&2))"; then
     echo "::error::resolve_devenv failed. Last 30 lines of log:" >&2
     tail -30 "$DIAG_ROOT/resolve-devenv.log" >&2 || true
@@ -108,6 +118,9 @@ main() {
 
   printf 'DEVENV_REV=%s\nDEVENV_GC_ROOT=%s\nDEVENV_BIN=%s\n' \
     "$DEVENV_REV" "$DEVENV_GC_ROOT" "$DEVENV_BIN" >> "$GITHUB_ENV"
+  wait "$prefetch_pid" || true
+  prefetch_pid=''
+  trap - EXIT TERM INT
   "$DEVENV_BIN" version | tee "$DIAG_ROOT/devenv-version.txt"
 }
 
