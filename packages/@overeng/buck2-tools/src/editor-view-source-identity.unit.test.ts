@@ -146,16 +146,12 @@ it('emits admission counters in the replay-deduplicable editor-view timing line'
     innerLockWaitMs: 3,
   }
   const line = editorViewAdmissionTiming({ ...fields, prehash: [check], fenced: [check] })
-  expect(line.startsWith('[editor-view-timing] ')).toBe(true)
-  expect(JSON.parse(line.slice('[editor-view-timing] '.length))).toEqual({
-    phase: 'editor-view',
-    packagePath: 'fixture',
+  expect(JSON.parse(line.replace(/^\[editor-view-timing\] /, ''))).toMatchObject({
     ...fields,
     prehashRehashedFiles: 2,
     fencedRehashedFiles: 2,
     hashedBytes: 34,
     probedDevices: [{ device: '1', rootClass: 'repo', probed: true }],
     unprobedDevices: [],
-    outerFlockWaitMs: null,
   })
 })

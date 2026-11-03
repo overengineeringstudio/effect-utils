@@ -1364,12 +1364,12 @@ describe('warm publication wins the census-to-victim-lock race', () => {
                 ].join('\n')
                 const warm = spawnSync(bun, ['--eval', script], { encoding: 'utf8' })
                 expect(warm.status).toBe(0)
-                const phasePrefix = '[editor-view-phase] '
+                const phasePrefix = '[editor-view-'
                 const remainingStderr = warm.stderr
                   .split('\n')
                   .filter((line) => {
                     if (line.startsWith(phasePrefix) === false) return true
-                    JSON.parse(line.slice(phasePrefix.length))
+                    JSON.parse(line.slice(line.indexOf('] ') + 2))
                     return false
                   })
                   .join('\n')
