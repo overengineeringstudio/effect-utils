@@ -79,10 +79,10 @@ await reconcileBuckViews({{
     plan: {{ packages: [], globalPaths: [] }}, mode: 'publish',
     repoRoot: process.cwd(), workspaceRoot: process.cwd(),
     buck2: './buck2', editorViewCommand: [process.execPath, '-e',
-      process.env.TERMINATION === 'publication-child' ? 'process.kill(process.pid, "SIGTERM")' : 'setInterval(() => {{}}, 1000)'], workspaceAuthority: '',
+      process.env.TERMINATION === 'publication-child' ? 'process.kill(process.pid, "SIGTERM")' :
+        'require("node:fs").readFileSync(0); require("node:fs").writeFileSync("ready", ""); setInterval(() => {{}}, 1000)'], workspaceAuthority: '',
     cp: '', mv: '', fingerprintTool: '', snapshotRetention: 3,
     batchPublication: process.env.TERMINATION !== 'success',
-    onTiming: () => {{ if (process.env.TERMINATION === 'publication') writeFileSync('ready', '') }},
     diagnosticTaskName: 'buck2:editor:bootstrap',
     run: (options) => runCommand({{ ...options, onStderr: (chunk) => {{
       options.onStderr?.(chunk)
@@ -441,9 +441,9 @@ sys.exit(supervisor.supervise_deferred(sys.argv[1:], None, 0.1, "publication.loc
                     self.assertLess(events.index("holder-daemon-complete"), events.index("admission-granted"))
                     _, stderr = prepared.communicate(timeout=10)
                     self.assertEqual(prepared.returncode, 0, stderr)
+                supervisor = load_supervisor()
                 for pgid in (held.pid, int((root / "preparer-pgid").read_text())):
-                    with self.assertRaises(ProcessLookupError):
-                        os.killpg(pgid, 0)
+                    self.assertFalse(supervisor.signal_group(pgid, 0))
             finally:
                 for process in processes:
                     if process.poll() is None:
