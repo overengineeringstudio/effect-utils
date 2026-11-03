@@ -17,6 +17,7 @@ import path from 'node:path'
 
 import { Effect, Option, Schema } from 'effect'
 import * as FileSystem from 'effect/FileSystem'
+import * as SchemaIssue from 'effect/SchemaIssue'
 
 import {
   EffectPath,
@@ -154,6 +155,42 @@ export class GeneratorsConfig extends Schema.Class<GeneratorsConfig>('Generators
 // Megarepo Configuration
 // =============================================================================
 
+const credentialSourceUrl = (source: string): string | undefined => {
+  if (/^\s*https?:\/\/[^/?#]*@/i.test(source) === true) {
+    return source.replace(/^(\s*https?:\/\/)[^/?#]*@/i, '$1***@')
+  }
+  if (/^\s*https?:/i.test(source) === false) return undefined
+  try {
+    const url = new URL(source)
+    if (url.username === '' && url.password === '') return undefined
+    url.username = '***'
+    url.password = ''
+    return url.href
+  } catch {
+    return undefined
+  }
+}
+
+/** Render HTTP userinfo safely without changing accepted source identities. */
+export const redactSourceCredentials = (source: string): string =>
+  credentialSourceUrl(source) ?? source
+
+/** Shared rejection for configuration and CLI source inputs. */
+export const sourceCredentialError = (source: string): string | undefined => {
+  const safeUrl = credentialSourceUrl(source)
+  return safeUrl === undefined
+    ? undefined
+    : `HTTP(S) URL userinfo is not supported: ${safeUrl}. Use a Git credential helper (e.g. gh auth setup-git) or SSH instead.`
+}
+
+const MemberSourceString = Schema.String.check(
+  Schema.makeFilter<string>((source) => {
+    const message = sourceCredentialError(source)
+    // Do not retain rejected input, even when schema decoding enables reportInput.
+    return message === undefined ? undefined : new SchemaIssue.InvalidValue({ message })
+  }),
+)
+
 /**
  * Main megarepo configuration schema
  *
@@ -169,7 +206,7 @@ export class MegarepoConfig extends Schema.Class<MegarepoConfig>('MegarepoConfig
   $schema: Schema.optional(Schema.String),
 
   /** Members: repos to include in this megarepo (name -> source string) */
-  members: Schema.Record(Schema.String, Schema.String),
+  members: Schema.Record(Schema.String, MemberSourceString),
 
   /** Generators: optional config file generation */
   generators: Schema.optional(GeneratorsConfig),
@@ -483,6 +520,7 @@ const isLocalPath = (s: string): boolean => {
  * - Local path: "./...", "../...", "/...", "~..." (no #ref support)
  */
 export const parseSourceString = (sourceString: string): MemberSource | undefined => {
+  if (sourceCredentialError(sourceString) !== undefined) return undefined
   // Local paths don't support #ref syntax - the entire string is the path
   if (isLocalPath(sourceString) === true) {
     return { type: 'path', path: sourceString }

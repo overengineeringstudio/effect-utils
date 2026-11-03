@@ -17,6 +17,8 @@ import {
   getSourceRef,
   type MemberSource,
   parseSourceString,
+  redactSourceCredentials,
+  sourceCredentialError,
   validateMemberName,
 } from '../core/config.ts'
 import * as Git from '../core/git.ts'
@@ -425,13 +427,14 @@ export const syncMember = <R = never>({
       } satisfies MemberSyncResult
     }
 
-    // Remove HTTP credentials before the parsed source reaches store operations or telemetry.
-    const source = parseSourceString(Git.withoutHttpCredentials(sourceString))
+    const source = parseSourceString(sourceString)
     if (source === undefined) {
       return {
         name,
         status: 'error',
-        message: `Invalid source string: ${Git.withoutHttpCredentials(sourceString)}`,
+        message:
+          sourceCredentialError(sourceString) ??
+          `Invalid source string: ${redactSourceCredentials(sourceString)}`,
       } satisfies MemberSyncResult
     }
 
@@ -1284,6 +1287,6 @@ export const syncMember = <R = never>({
     }),
     Observability.withSyncMemberSpan({
       name,
-      source: Git.withoutHttpCredentials(sourceString),
+      source: redactSourceCredentials(sourceString),
     }),
   )
