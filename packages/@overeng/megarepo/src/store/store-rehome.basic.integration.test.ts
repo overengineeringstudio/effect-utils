@@ -1,13 +1,13 @@
 import { NodeServices } from '@effect/platform-node'
 import { it } from '@effect/vitest'
-import { Effect } from 'effect'
+import { Effect, Fiber } from 'effect'
 import { expect, vi } from 'vitest'
 
 import * as Git from '../core/git.ts'
 import { rehomeFixture } from '../test-utils/rehome-fixture.ts'
 import { inspectForeignGitDir, rehomeCommitWorktree } from './store-rehome.ts'
 
-it.effect('re-homes a foreign commit tree without changing its files or foreign registration', () =>
+it.effect('cleans refused/interrupted registration and preserves payloads on retry', () =>
   Effect.gen(function* () {
     const f = yield* rehomeFixture(false)
     const payload = yield* f.fs.readFile(`${f.worktreePath}megarepo.json`)
@@ -18,23 +18,35 @@ it.effect('re-homes a foreign commit tree without changing its files or foreign 
     const parent = `${f.worktreePath}..`
     const entries = yield* f.fs.readDirectory(parent)
     const run = Git.runCommand
-    const spy = vi
-      .spyOn(Git, 'runCommand')
-      .mockImplementation((options) =>
-        (options.args.includes('read-tree') === true
-          ? f.fs.writeFileString(`${f.worktreePath}megarepo.json`, 'dirty')
-          : Effect.void
-        ).pipe(Effect.orDie, Effect.andThen(run(options))),
+    for (const interrupt of [false, true]) {
+      const spy = vi
+        .spyOn(Git, 'runCommand')
+        .mockImplementation((options) =>
+          run(options).pipe(
+            Effect.tap(() =>
+              interrupt === true && options.args.includes('--no-checkout') === true
+                ? Effect.withFiber((fiber) =>
+                    Fiber.interrupt(fiber).pipe(Effect.forkDetach({ startImmediately: true })),
+                  )
+                : interrupt === false && options.args.includes('read-tree') === true
+                  ? f.fs
+                      .writeFileString(`${f.worktreePath}megarepo.json`, 'dirty')
+                      .pipe(Effect.orDie)
+                  : Effect.void,
+            ),
+          ),
+        )
+      const failed = yield* rehomeCommitWorktree(f).pipe(
+        Effect.forkChild,
+        Effect.flatMap(Fiber.await),
+        Effect.ensuring(Effect.sync(() => spy.mockRestore())),
       )
-    const failed = yield* rehomeCommitWorktree(f).pipe(
-      Effect.ensuring(Effect.sync(() => spy.mockRestore())),
-      Effect.exit,
-    )
-    expect(failed._tag).toBe('Failure')
-    expect(yield* f.fs.readDirectory(`${f.bareRepoPath}worktrees`)).toEqual(registrations)
-    expect(yield* f.fs.readDirectory(parent)).toEqual(entries)
-    expect(yield* f.fs.readFileString(`${f.worktreePath}.git`)).toBe(control)
-    yield* f.fs.writeFile(`${f.worktreePath}megarepo.json`, payload)
+      expect(failed._tag).toBe('Failure')
+      expect(yield* f.fs.readDirectory(`${f.bareRepoPath}worktrees`)).toEqual(registrations)
+      expect(yield* f.fs.readDirectory(parent)).toEqual(entries)
+      expect(yield* f.fs.readFileString(`${f.worktreePath}.git`)).toBe(control)
+      yield* f.fs.writeFile(`${f.worktreePath}megarepo.json`, payload)
+    }
     expect(yield* inspectForeignGitDir(f)).toBe(yield* f.fs.realPath(f.foreign))
     yield* rehomeCommitWorktree(f)
     expect(yield* inspectForeignGitDir(f)).toBeUndefined()
