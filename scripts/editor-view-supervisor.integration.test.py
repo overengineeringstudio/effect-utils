@@ -34,17 +34,14 @@ class PublicationSupervisorTest(unittest.TestCase):
             with selectors.DefaultSelector() as selector:
                 selector.register(stream, selectors.EVENT_READ)
                 while marker not in received:
-                    self.assertTrue(selector.select(max(0, deadline - time.monotonic())),
-                                    received.decode())
+                    self.assertTrue(selector.select(max(0, deadline - time.monotonic())), received.decode())
                     chunk = os.read(stream.fileno(), 8192)
                     self.assertTrue(chunk, received.decode())
                     received += chunk
             return received
 
-        garbage_cases = (b'{"pid":', b"\xff\x00" + str(Path.home()).encode(),
-                         b"x" * 16384 + str(Path.home()).encode())
-        for mode, garbage in ((mode, garbage) for mode in ("--lock", "--deferred-lock")
-                              for garbage in garbage_cases):
+        garbage_cases = (b'{"pid":', b"\xff\x00" + str(Path.home()).encode(), b"x" * 16384 + str(Path.home()).encode())
+        for mode, garbage in ((m, g) for m in ("--lock", "--deferred-lock") for g in garbage_cases):
             with self.subTest(mode=mode, bytes=len(garbage)), tempfile.TemporaryDirectory() as scratch:
                 root = Path(scratch)
                 lock = root / "publication.lock"
@@ -58,20 +55,17 @@ class PublicationSupervisorTest(unittest.TestCase):
 import os, socket, sys
 endpoint = os.environ.get("EDITOR_VIEW_PUBLICATION_ADMISSION_SOCKET")
 if endpoint:
-    admission = socket.socket(socket.AF_UNIX)
-    admission.connect(endpoint)
+    admission = socket.socket(socket.AF_UNIX); admission.connect(endpoint)
     assert admission.recv(1) == b"1"
 print("admitted", flush=True)
 if sys.argv[1] == "holder":
-    with open(sys.argv[2], "rb", buffering=0) as release:
-        assert release.read(1) == b"1"
+    with open(sys.argv[2], "rb", buffering=0) as release: assert release.read(1) == b"1"
 '''
                 env = {**os.environ, "DEVENV_ROOT": scratch,
                        "EDITOR_VIEW_ADMISSION_DIAGNOSTIC_SECONDS": "0",
                        "BUCK_ISOLATION_DIR": str(root / "private-isolation")}
                 env.pop("BUCK2_NATIVE_BIN", None)
-                # Model a crashed/legacy owner retaining a corrupt inode. No
-                # diagnostic may echo its bytes or require parseable metadata.
+                # A crashed owner's metadata must never be required or echoed.
                 with lock.open("r+b") as corrupt_holder:
                     fcntl.flock(corrupt_holder, fcntl.LOCK_EX)
                     corrupt_dump = subprocess.run(
@@ -83,10 +77,8 @@ if sys.argv[1] == "holder":
                 self.assertNotIn(b"/", corrupt_dump.stderr)
                 self.assertLessEqual(len(corrupt_dump.stderr), 8192)
                 self.assertLessEqual(len(corrupt_dump.stderr.splitlines()), 40)
-                # The real holder now acquires and overwrites this same inode;
-                # the waiter must see its fresh record and admit normally.
-                command = [sys.executable, script, "none", "0.1", mode, str(lock),
-                           sys.executable, "-c", fixture]
+                # Acquisition must overwrite this same inode and admit normally.
+                command = [sys.executable, script, "none", "0.1", mode, str(lock), sys.executable, "-c", fixture]
                 holder = subprocess.Popen([*command, "holder", str(release)], env=env,
                                           stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                                           start_new_session=True)
