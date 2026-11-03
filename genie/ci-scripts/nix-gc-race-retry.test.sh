@@ -546,5 +546,10 @@ assert_not_contains "without a detected transient Nix failure" "$permanent_stdou
 assert_contains "Nix flake input subpath still missing after one cache repair" "$permanent_summary" "the step summary carries the specific permanent-path note"
 assert_not_contains "No transient Nix failure signature detected" "$permanent_summary" "the step summary does not carry the generic note"
 
+echo "Test 16: FIFO-controlled preparation watchdog (generated launcher)"
+python_bin="${PYTHON_BIN:-python3}"
+"$python_bin" -c 'import sys; print("Preparation watchdog Python:", sys.executable, sys.version.split()[0], flush=True)'
+"$python_bin" "$ROOT/genie/ci-scripts/preparation-watchdog.test.py"
+
 echo ""
 echo "All nix GC race retry helper tests passed"

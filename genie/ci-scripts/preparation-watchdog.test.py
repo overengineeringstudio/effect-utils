@@ -2,7 +2,6 @@
 """FIFO-controlled coverage of the generated outer launcher's diagnostics only."""
 import os
 from pathlib import Path
-import re
 import selectors
 import signal
 import subprocess
@@ -10,11 +9,7 @@ import tempfile
 import unittest
 
 ROOT = Path(__file__).resolve().parents[2]
-SOURCE = (ROOT / "genie/ci-workflow/support-files.ts").read_text()
-SCRIPT = re.search(
-    r"export const ciWorkflowNixGcRaceRetryScript = String\.raw`([\s\S]*?)`\n\nexport const ciWorkflowNixGcRaceRetryWrapperScript",
-    SOURCE,
-).group(1).replace("${dollar}", "$")
+SCRIPT = (ROOT / "genie/ci-scripts/nix-gc-race-retry.sh").read_text()
 
 
 class PreparationWatchdogTest(unittest.TestCase):
