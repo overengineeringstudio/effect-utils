@@ -201,6 +201,42 @@ const withGitLock =
 export const withGitWriterLock = ({ path, create = false }: { path: string; create?: boolean }) =>
   withGitLock({ path, create })
 
+/** Per-commit-tree preparation admission, independent of repository Git writers. */
+export const withCommitTreePreparationLock = (worktreePath: string) =>
+  withGitLock({ path: `${worktreePath}.mr-preparation`, create: true })
+
+/** Exclusive no-follow creation; retries accept only an owned empty regular marker. */
+export const ensurePreparationMarker = ({
+  root,
+  create = true,
+}: {
+  root: string
+  create?: boolean
+}) =>
+  io(root)(async () => {
+    const marker = `${root}.mr-unprepared`
+    try {
+      const entry = await lstat(marker)
+      if (
+        entry.isFile() === false ||
+        entry.nlink !== 1 ||
+        entry.size !== 0 ||
+        entry.uid !== process.getuid?.()
+      )
+        throw new GitWriterLockError({ path: marker, cause: 'Unexpected preparation marker' })
+    } catch (cause) {
+      if ((cause as NodeJS.ErrnoException).code !== 'ENOENT') throw cause
+      if (create === true) {
+        const file = await open(
+          marker,
+          constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW | constants.O_WRONLY,
+          0o600,
+        )
+        await file.close()
+      }
+    }
+  })
+
 /** Shared activation/creation or exclusive repository-output reclamation fence. */
 export const withGitContainerLock =
   ({ path, mode }: { path: string; mode: 'shared' | 'exclusive' }) =>

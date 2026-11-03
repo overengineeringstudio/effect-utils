@@ -212,9 +212,8 @@ apply may populate the root and `repos/` mounts of those fresh commit worktrees;
 a second recursive visit to the same physical root is a no-op.
 
 Worktrees that existed before the invocation remain shared, not owned.
-Recursive apply refuses canonical mutations there; freshness is neither
-persisted nor inferred from existence. The freshness exception does not authorize
-lock rewrites or generators' authoring outputs.
+Locked apply proves store/Git identity and committed inputs before no-follow control creation.
+Admission permits only root/`repos/` mounts; release before recursion and reacquire for readiness/finalization. Unfinished attempts remain marked and retryable.
 
 The invoking workspace is the one canonical root an author owns when it is a
 non-default branch worktree (`refs/heads/<branch>` where `<branch>` is not the
@@ -246,18 +245,15 @@ Top-level `mr apply --lock-sync off` may also prepare an invoking
 physical root and its `HEAD` to exactly `<H>`. This materialization-only grant
 covers only the root and its own physical `repos/` directory, not lock/config
 writes, generators, branch advancement, or aliases into other trees. Lock sync
-must remain off. It does not grant ownership to preexisting shared nested trees,
-and neither tags nor branch paths gain permission from this commit grant.
+must remain off. Nested trees use the exclusive preparation admission above;
+neither tags nor branch paths gain permission from this commit grant.
 Enabled generators cause `PermissionDenied` before any member mount is changed,
 including when their output directories or files alias external destinations.
 
 Consumers normally prepare the dependency tree through the outer workspace's
-`mr apply --all`. A separately invoked exact-commit apply may prepare its own
-mounts under the top-level grant above; it cannot repair preexisting shared
-trees reached recursively. Package-install hooks may check that an already
-prepared member has the locked commit and fail with instructions to prepare
-it from the invoking workspace. An incomplete shared nested tree requires an
-owned workspace or explicit administrative repair, not a freshness grant.
+`mr apply --all`. Exact-commit apply can prepare its own mounts, and recursive
+locked apply can prepare incomplete shared commit trees under exclusive admission.
+Package-install hooks may validate the resulting locked tree without repairing it.
 
 Local setup that needs nested trees names the members explicitly:
 `mr apply --worktree-mode tracking --commit-members <a,b> --lock-sync off`.
@@ -268,10 +264,9 @@ and are not recursed into. A clean canonical branch exactly at the lock remains
 the co-development mount; divergent or dirty branches are preserved while the
 member mount selects the locked commit. `--only`/`--skip` select root members only;
 the listed member's
-fresh commit subtree is always applied completely or not created at all. A
-nested commit worktree that existed before the invocation is
-accepted only if its locked tree is already mounted; an incomplete one is
-refused as above. The devenv `taskModules.megarepo` option
+commit subtree is always applied completely. A preexisting nested commit worktree
+is reused if ready, otherwise prepared under the same exclusive admission.
+The devenv `taskModules.megarepo` option
 `setupCommitMembers` is the intended consumer path: `mr:setup` passes the list.
 Local readiness checks the root with `mr status`, then runs `mr status --all`
 inside each listed, non-skipped member that has its own megarepo configuration,

@@ -1436,7 +1436,7 @@ describe('apply --all canonical recursion', () => {
   )
 
   it.effect(
-    'apply --all --lock-sync off denies recursion into a preexisting shared canonical commit worktree without mutation',
+    'apply --all prepares a preexisting shared canonical commit worktree without authoring writes',
     Effect.fnUntraced(
       function* () {
         const fs = yield* FileSystem.FileSystem
@@ -1496,24 +1496,11 @@ describe('apply --all canonical recursion', () => {
             MEGAREPO_ALLOW_CANONICAL_MUTATION: '0',
           },
         })
-        const Output = Schema.TaggedStruct('Error', {
-          syncErrorCount: Schema.Finite,
-          syncErrors: Schema.Array(SyncErrorItem),
-          syncTree: MegarepoSyncTree,
-        })
-        const out = yield* Schema.decodeEffect(Schema.fromJsonString(Output))(result.stdout.trim())
-        expect(result.exitCode).toBe(1)
-        expect(out.syncErrorCount).toBe(1)
-        expect(out.syncErrors).toHaveLength(1)
-        expect(out.syncErrors[0]?.message).toContain('PermissionDenied')
-        expect(out.syncErrors[0]?.message).toContain('Refusing to mutate canonical worktree')
-        expect(out.syncTree.nestedResults).toHaveLength(1)
-        expect(out.syncTree.nestedResults[0]?.results).toEqual([
-          expect.objectContaining({ name: 'child', status: 'error' }),
-        ])
-        expect(out.syncTree.nestedResults[0]?.nestedResults).toHaveLength(0)
+        expect(result.exitCode, result.stdout).toBe(0)
         expect(yield* fs.realPath(sharedMount)).toBe(fixture.childPath.slice(0, -1))
-        expect(yield* fs.readDirectory(fixture.childPath)).toEqual(beforeEntries)
+        expect((yield* fs.readDirectory(fixture.childPath)).sort()).toEqual(
+          [...beforeEntries, 'repos'].sort(),
+        )
         expect(Array.from(yield* fs.readFile(sentinelPath))).toEqual(Array.from(sentinel))
         expect(
           yield* Effect.forEach([CONFIG_FILE_NAME_JSON, LOCK_FILE_NAME], (filename) =>
@@ -1528,13 +1515,12 @@ describe('apply --all canonical recursion', () => {
         expect(yield* runGitCommand(childBare, 'worktree', 'list', '--porcelain')).toBe(
           beforeWorktrees,
         )
-        expect(yield* fs.exists(fixture.grandchildPath)).toBe(false)
-        expect(yield* fs.exists(fixture.leafPath)).toBe(false)
-        expect(
-          yield* fs.exists(
-            EffectPath.ops.join(fixture.childPath, EffectPath.unsafe.relativeDir('repos/')),
-          ),
-        ).toBe(false)
+        expect(yield* fs.realPath(`${fixture.childPath}repos/grandchild`)).toBe(
+          fixture.grandchildPath.slice(0, -1),
+        )
+        expect(yield* fs.realPath(`${fixture.grandchildPath}repos/leaf`)).toBe(
+          fixture.leafPath.slice(0, -1),
+        )
       },
       Effect.provide(NodeServices.layer),
       Effect.scoped,
@@ -1858,7 +1844,7 @@ describe('apply --commit-members (mr:setup nested trees)', () => {
   )
 
   it.effect(
-    'refuses a preexisting incomplete shared commit worktree instead of granting freshness',
+    'refuses a shared commit tree whose config differs from its commit',
     Effect.fnUntraced(
       function* () {
         const fs = yield* FileSystem.FileSystem
@@ -1874,6 +1860,10 @@ describe('apply --commit-members (mr:setup nested trees)', () => {
           fixture.childPath,
           fixture.childCommit,
         )
+        const inputPath = `${fixture.childPath}${CONFIG_FILE_NAME_JSON}`
+        // Even a parseable, semantically unchanged edit cannot supply mount authority.
+        const original = yield* fs.readFileString(inputPath)
+        yield* fs.writeFileString(inputPath, `${original}\n`)
 
         const result = yield* runApplyCommand({
           cwd: fixture.consumer.workspacePath,
@@ -3067,7 +3057,7 @@ describe('canonical member mutation guard', () => {
           const workspacePath = EffectPath.unsafe.absoluteDir(
             `${yield* makeCanonicalTempDirectoryScoped()}/`,
           )
-          const canonicalRoot = yield* makeStoreWorktree({
+          let canonicalRoot = yield* makeStoreWorktree({
             repoDir: `${workspacePath}store/github.com/acme/workspace`,
             kind: refKind,
             ...(ref !== undefined ? { ref } : {}),
@@ -3080,6 +3070,17 @@ describe('canonical member mutation guard', () => {
           )
           const originalLock = encodeJson({ version: 1, members: {} })
           yield* fs.writeFileString(`${canonicalRoot}megarepo.lock`, originalLock)
+          if (refKind === 'commits' && ref === undefined && lockSync === 'off') {
+            yield* addCommit({ repoPath: canonicalRoot, message: 'Committed member inputs' })
+            const commit = yield* Git.getCurrentCommit(canonicalRoot)
+            const bare = EffectPath.unsafe.absoluteDir(
+              `${workspacePath}store/github.com/acme/workspace/.bare/`,
+            )
+            canonicalRoot = EffectPath.unsafe.absoluteDir(
+              `${workspacePath}store/github.com/acme/workspace/refs/commits/${commit}/`,
+            )
+            yield* runGitCommand(bare, 'worktree', 'add', '--detach', canonicalRoot, commit)
+          }
           const result = yield* runApplyCommand({
             cwd: canonicalRoot,
             args: ['--output', 'json', '--worktree-mode', 'commit', '--lock-sync', lockSync],
