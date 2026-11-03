@@ -491,10 +491,10 @@ export const directBuckArguments = async ({
     probe,
   }: {
     readonly endpoint: 'reapi'
-    readonly probe: () => Promise<boolean>
+    readonly probe: (attemptIndex: number) => Promise<boolean>
   }): Promise<boolean> => {
-    if ((await probe()) === true) return true
-    const available = await probe()
+    if ((await probe(1)) === true) return true
+    const available = await probe(2)
     if (available === true) admission.admissionRetrySuccesses[endpoint] = 1
     return available
   }
@@ -524,7 +524,7 @@ export const directBuckArguments = async ({
               probe: () =>
                 retryProbe({
                   endpoint: 'reapi',
-                  probe: () =>
+                  probe: (attemptIndex) =>
                     probeRemoteCacheCapabilities({
                       address: values['buck2_re_client.action_cache_address'],
                       instanceName: values['buck2_re_client.instance_name'] ?? '',
@@ -533,6 +533,11 @@ export const directBuckArguments = async ({
                       env,
                       deadlineMs,
                       deadlineSignal: probeDeadlineSignal?.('reapi'),
+                      attemptIndex,
+                      onAttempt: (attempt) => {
+                        ;(admission.reapiAttempts ??= []).push(attempt)
+                        writeSync(2, `Buck2 REAPI admission attempt: ${JSON.stringify(attempt)}\n`)
+                      },
                       onFailure: ({
                         errorClass,
                         phase,

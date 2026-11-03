@@ -10,6 +10,7 @@ import {
   buckConfigValues,
   probeRemoteCacheCapabilities,
   publicProbeAddress,
+  type ReapiAdmissionAttempt,
   type RemoteCacheProbeConnectionEvent,
   type RemoteCacheProbeFailure,
   reconcileStandaloneCachePosture,
@@ -358,6 +359,7 @@ describe('REAPI probe diagnostics', () => {
         response = scenario
         const failures: RemoteCacheProbeFailure[] = []
         const connections: RemoteCacheProbeConnectionEvent[] = []
+        const attempts: ReapiAdmissionAttempt[] = []
         const available = await probeRemoteCacheCapabilities({
           address: `grpc://localhost:${bound.port}`,
           instanceName: 'fixture',
@@ -367,8 +369,11 @@ describe('REAPI probe diagnostics', () => {
           deadlineMs: scenario === 'deadline' ? 50 : 1000,
           onFailure: (failure) => failures.push(failure),
           onConnectionEvent: (event) => connections.push(event),
+          onAttempt: (attempt) => attempts.push(attempt),
         })
         expect(available).toBe(scenario === 'healthy')
+        expect(attempts).toHaveLength(1)
+        expect(attempts[0]?.attemptIndex).toBe(1)
         const connected = connections.some(({ event }) => event === 'tcp-connected')
         // The deadline bounds DNS and connection setup too; it may expire before either completes.
         if (scenario !== 'deadline') {
@@ -380,6 +385,14 @@ describe('REAPI probe diagnostics', () => {
         expect(connections.every(({ elapsedMs }) => elapsedMs >= 0)).toBeTrue()
         if (scenario === 'healthy') {
           expect(failures).toEqual([])
+          expect(attempts[0]).toEqual({
+            attemptIndex: 1,
+            elapsedMs: expect.any(Number),
+            deadlineMs: 1000,
+            dnsResolvedMs: expect.any(Number),
+            tcpConnectedMs: expect.any(Number),
+            firstResponseMs: expect.any(Number),
+          })
         } else {
           expect(failures).toHaveLength(1)
           expect(failures[0]).toEqual({
@@ -412,6 +425,7 @@ describe('REAPI probe diagnostics', () => {
     try {
       const failures: RemoteCacheProbeFailure[] = []
       const connections: RemoteCacheProbeConnectionEvent[] = []
+      const attempts: ReapiAdmissionAttempt[] = []
       expect(
         await probeRemoteCacheCapabilities({
           address: `grpc://127.0.0.1:${bound.port}`,
@@ -422,11 +436,27 @@ describe('REAPI probe diagnostics', () => {
           deadlineMs: 100,
           onFailure: (failure) => failures.push(failure),
           onConnectionEvent: (event) => connections.push(event),
+          attemptIndex: 2,
+          onAttempt: (attempt) => attempts.push(attempt),
         }),
       ).toBeFalse()
       expect(failures).toHaveLength(1)
       expect(failures[0]?.errorClass).toBe('deadline')
       expect(failures[0]?.phase).toBe('tls')
+      expect(attempts).toEqual([
+        {
+          attemptIndex: 2,
+          elapsedMs: expect.any(Number),
+          deadlineMs: 100,
+          tcpConnectedMs: expect.any(Number),
+          failure: {
+            class: 'deadline',
+            phase: 'tls',
+            elapsedMs: expect.any(Number),
+            deadlineMs: 100,
+          },
+        },
+      ])
       expect(connections.some(({ event }) => event === 'tcp-connected')).toBeTrue()
       expect(connections.some(({ event }) => event === 'tls-ready')).toBeFalse()
       expect(connections.every(({ address }) => address === 'redacted')).toBeTrue()
