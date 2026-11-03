@@ -7,8 +7,8 @@ if [ "${1:-}" = flake ]; then
   trap 'printf "done %s\n" "$BASHPID" >&3' EXIT
   trap 'exit 143' TERM
   printf 'start %s\n' "$BASHPID" >&3
-  read -r permit <&4
-  [ "$permit" != fail ]
+  read -r -n 1 permit <&4
+  [ "$permit" != f ]
   exit
 fi
 
@@ -48,7 +48,7 @@ helper=$!
 read -r event first <&3; [ "$event" = start ]
 read -r event second <&3; [ "$event" = start ]
 # Both workers are now blocked. Release one failure and four successes.
-printf 'fail\nok\nok\nok\nok\n' >&4
+printf 'foooo' >&4
 active=2
 starts=2
 for ((i=0; i<8; i++)); do
