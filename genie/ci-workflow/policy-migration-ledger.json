@@ -182,7 +182,7 @@
       "workflow": "ci.yml",
       "job": "test-macos",
       "rule": "banned-action",
-      "path": "jobs.test-macos.steps[name:\"Upload Nix diagnostics artifact\"|action:\"actions/upload-artifact\"|content:{\"if\":\"failure() && env.NIX_STORE_DIAGNOSTICS_DIR != ''\",\"with\":[[\"if-no-files-found\",\"ignore\"],[\"name\",\"nix-store-diagnostics-${{ github.job }}-${{ runner.os }}-run-${{ github.run_id }}-attempt-${{ github.run_attempt }}\"],[\"path\",\"${{ env.NIX_STORE_DIAGNOSTICS_DIR }}\"],[\"retention-days\",14]]}].uses",
+      "path": "jobs.test-macos.steps[name:\"Upload Nix diagnostics artifact\"|action:\"actions/upload-artifact\"|content:{\"if\":\"${{ !(github.event_name == 'workflow_dispatch' && inputs['measure-macos'] == true) && failure() && env.NIX_STORE_DIAGNOSTICS_DIR != '' }}\",\"with\":[[\"if-no-files-found\",\"ignore\"],[\"name\",\"nix-store-diagnostics-${{ github.job }}-${{ runner.os }}-run-${{ github.run_id }}-attempt-${{ github.run_attempt }}\"],[\"path\",\"${{ env.NIX_STORE_DIAGNOSTICS_DIR }}\"],[\"retention-days\",14]]}].uses",
       "value": "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02"
     },
     {
@@ -190,7 +190,7 @@
       "workflow": "ci.yml",
       "job": "test-macos",
       "rule": "banned-action",
-      "path": "jobs.test-macos.steps[name:\"Upload retained Vitest collection reports\"|action:\"actions/upload-artifact\"|content:{\"if\":\"${{ always() }}\",\"continue-on-error\":true,\"with\":[[\"if-no-files-found\",\"ignore\"],[\"name\",\"vitest-collection-${{ github.job }}-${{ github.run_id }}-${{ github.run_attempt }}\"],[\"path\",\"tmp/otel-scrape/summaries/*.vitest.json\"],[\"retention-days\",14]]}].uses",
+      "path": "jobs.test-macos.steps[name:\"Upload retained Vitest collection reports\"|action:\"actions/upload-artifact\"|content:{\"if\":\"${{ !(github.event_name == 'workflow_dispatch' && inputs['measure-macos'] == true) && always() }}\",\"continue-on-error\":true,\"with\":[[\"if-no-files-found\",\"ignore\"],[\"name\",\"vitest-collection-${{ github.job }}-${{ github.run_id }}-${{ github.run_attempt }}\"],[\"path\",\"tmp/otel-scrape/summaries/*.vitest.json\"],[\"retention-days\",14]]}].uses",
       "value": "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02"
     },
     {
@@ -198,7 +198,7 @@
       "workflow": "ci.yml",
       "job": "test-macos",
       "rule": "banned-action",
-      "path": "jobs.test-macos.steps[name:\"Upload test resource samples\"|action:\"actions/upload-artifact\"|content:{\"if\":\"${{ always() }}\",\"continue-on-error\":true,\"with\":[[\"if-no-files-found\",\"ignore\"],[\"name\",\"test-resources-${{ github.job }}-${{ github.run_id }}-${{ github.run_attempt }}\"],[\"path\",\"tmp/ci-resources/test-resources.json\"],[\"retention-days\",14]]}].uses",
+      "path": "jobs.test-macos.steps[name:\"Upload test resource samples\"|action:\"actions/upload-artifact\"|content:{\"if\":\"${{ !(github.event_name == 'workflow_dispatch' && inputs['measure-macos'] == true) && always() }}\",\"continue-on-error\":true,\"with\":[[\"if-no-files-found\",\"ignore\"],[\"name\",\"test-resources-${{ github.job }}-${{ github.run_id }}-${{ github.run_attempt }}\"],[\"path\",\"tmp/ci-resources/test-resources.json\"],[\"retention-days\",14]]}].uses",
       "value": "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02"
     },
     {
@@ -206,7 +206,7 @@
       "workflow": "ci.yml",
       "job": "test-macos",
       "rule": "banned-action",
-      "path": "jobs.test-macos.steps[name:\"Upload CI OpenTelemetry spans\"|action:\"actions/upload-artifact\"|content:{\"if\":\"always() && env.OTEL_SPAN_SPOOL_DIR != ''\",\"with\":[[\"if-no-files-found\",\"warn\"],[\"name\",\"ci-otel-${{ github.job }}-${{ runner.os }}-${{ runner.arch }}-run-${{ github.run_id }}-attempt-${{ github.run_attempt }}\"],[\"path\",\"${{ env.OTEL_SPAN_SPOOL_DIR }}\"],[\"retention-days\",14]]}].uses",
+      "path": "jobs.test-macos.steps[name:\"Upload CI OpenTelemetry spans\"|action:\"actions/upload-artifact\"|content:{\"if\":\"${{ !(github.event_name == 'workflow_dispatch' && inputs['measure-macos'] == true) && always() && env.OTEL_SPAN_SPOOL_DIR != '' }}\",\"with\":[[\"if-no-files-found\",\"warn\"],[\"name\",\"ci-otel-${{ github.job }}-${{ runner.os }}-${{ runner.arch }}-run-${{ github.run_id }}-attempt-${{ github.run_attempt }}\"],[\"path\",\"${{ env.OTEL_SPAN_SPOOL_DIR }}\"],[\"retention-days\",14]]}].uses",
       "value": "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02"
     },
     {
