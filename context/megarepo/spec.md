@@ -211,11 +211,9 @@ of freshness. Only the creator publishes freshness under that lock. Recursive
 apply may populate the root and `repos/` mounts of those fresh commit worktrees;
 a second recursive visit to the same physical root is a no-op.
 
-Worktrees that existed before the invocation remain shared, not owned.
-Locked standalone and recursive apply validate store/Git identity and committed inputs
-before exclusive no-follow control creation. Per-tree admission permits only root/`repos/`
-mounts and is released before recursion, then reacquired for readiness/marker finalization.
-Failed or interrupted attempts remain marked unprepared and are retried, never trusted.
+Existing worktrees stay shared, not owned. Locked apply proves store/Git identity and
+committed inputs before no-follow control creation. Admission permits only root/`repos/` mounts;
+it is released before recursion and reacquired for readiness/finalization. Unfinished attempts remain marked and retryable.
 
 The invoking workspace is the one canonical root an author owns when it is a
 non-default branch worktree (`refs/heads/<branch>` where `<branch>` is not the

@@ -3073,7 +3073,9 @@ describe('canonical member mutation guard', () => {
           if (refKind === 'commits' && ref === undefined && lockSync === 'off') {
             yield* addCommit({ repoPath: canonicalRoot, message: 'Committed member inputs' })
             const commit = yield* Git.getCurrentCommit(canonicalRoot)
-            const bare = `${workspacePath}store/github.com/acme/workspace/.bare`
+            const bare = EffectPath.unsafe.absoluteDir(
+              `${workspacePath}store/github.com/acme/workspace/.bare/`,
+            )
             canonicalRoot = EffectPath.unsafe.absoluteDir(
               `${workspacePath}store/github.com/acme/workspace/refs/commits/${commit}/`,
             )
