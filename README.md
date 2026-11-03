@@ -29,6 +29,19 @@ pipeline traces, alignment notices and review-request notifications use 4. The r
 PR source-shape check retains delivery priority. Shapes, caches, access controls,
 required checks and workflow frequency are independent of these labels.
 
+## CI environment preparation diagnostics
+
+The outer Nix retry launcher logs environment-realization and observed task-start
+phases without changing Devenv's output buffering. At the existing heartbeat,
+`CI_PREPARATION_DIAGNOSTIC_SECONDS` (default 600) enables one preparation dump per
+attempt if `Running tasks` has not appeared. This is not a timeout: retry counts,
+command exit codes, signal handling and the existing CI limits remain unchanged.
+The dump reports up to eight descendant processes (basenames and elapsed times)
+and unmatched Nix build/download markers, capped at 40 lines / 8 KiB with explicit
+truncation. These are observations, not proof of lock ownership or a network stall.
+Run the FIFO-controlled regression with
+`CI=1 python3 genie/ci-scripts/preparation-watchdog.test.py`.
+
 ## Standalone Nix-staged JavaScript and TypeScript
 
 `devenv tasks run lint:check:standalone-staging` (included in PR `lint:check`)
