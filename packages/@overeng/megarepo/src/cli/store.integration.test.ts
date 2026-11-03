@@ -1793,6 +1793,120 @@ describe('mr store ls', () => {
 })
 
 describe('mr store worktree new', () => {
+  for (const localBase of [false, true]) {
+    for (const baseArg of ['base', 'origin/base', 'topic/base']) {
+      it.effect(
+        `creates NEW from ${baseArg} with BASE ${localBase === true ? 'also local' : 'remote only'}`,
+        Effect.fnUntraced(
+          function* () {
+            const fixture = yield* createStoreFixture([
+              {
+                host: 'github.com',
+                owner: 'test-owner',
+                repo: 'test-repo',
+                withRemote: true,
+              },
+            ])
+            const bare = fixture.bareRepoPaths['github.com/test-owner/test-repo']!
+            const upstream = fixture.upstreamRepoPaths['github.com/test-owner/test-repo']!
+            const baseBranch = baseArg.replace(/^origin\//u, '')
+            const main = yield* Git.runCommand({ cwd: upstream, args: ['rev-parse', 'main'] })
+            const tree = yield* Git.runCommand({
+              cwd: upstream,
+              args: ['rev-parse', 'main^{tree}'],
+            })
+            const baseCommit = yield* Git.runCommand({
+              cwd: upstream,
+              args: [
+                '-c',
+                'user.name=Test User',
+                '-c',
+                'user.email=test@example.com',
+                'commit-tree',
+                tree,
+                '-p',
+                main,
+                '-m',
+                'Distinct base commit',
+              ],
+            })
+            yield* Git.runCommand({
+              cwd: upstream,
+              args: ['update-ref', `refs/heads/${baseBranch}`, baseCommit],
+            })
+            yield* Git.fetchBare({ repoPath: bare })
+            if (localBase === true) {
+              yield* Git.runCommand({
+                cwd: bare,
+                args: ['update-ref', `refs/heads/${baseBranch}`, baseCommit],
+              })
+            }
+            const result = spawnSync(
+              'bun',
+              [
+                fileURLToPath(new URL('../../bin/mr.ts', import.meta.url)),
+                'store',
+                'worktree',
+                'new',
+                'test-owner/test-repo',
+                '--ref',
+                'NEW',
+                '--base',
+                baseArg,
+                '--porcelain',
+              ],
+              {
+                cwd: fixture.storePath,
+                encoding: 'utf8',
+                timeout: 30_000,
+                env: { ...process.env, MEGAREPO_STORE: fixture.storePath, NO_COLOR: '1' },
+              },
+            )
+            expect(result.error).toBeUndefined()
+            expect(result.status, result.stderr).toBe(0)
+            const path = `${fixture.storePath}github.com/test-owner/test-repo/refs/heads/NEW`
+            expect(result.stdout.trim()).toBe(path)
+            expect(yield* Git.runCommand({ cwd: path, args: ['symbolic-ref', 'HEAD'] })).toBe(
+              'refs/heads/NEW',
+            )
+            expect(yield* Git.runCommand({ cwd: path, args: ['rev-parse', 'HEAD'] })).toBe(
+              baseCommit,
+            )
+            expect(
+              yield* Git.runCommand({
+                cwd: upstream,
+                args: ['rev-parse', `refs/heads/${baseBranch}`],
+              }),
+            ).toBe(baseCommit)
+            if (localBase === true) {
+              expect(
+                yield* Git.runCommand({
+                  cwd: bare,
+                  args: ['rev-parse', `refs/heads/${baseBranch}`],
+                }),
+              ).toBe(baseCommit)
+            } else {
+              expect(
+                yield* Git.runCommand({
+                  cwd: bare,
+                  args: ['show-ref', '--verify', `refs/heads/${baseBranch}`],
+                }).pipe(Effect.exit),
+              ).toSatisfy(Exit.isFailure)
+            }
+            const registrations = yield* Git.listWorktrees(bare)
+            expect(
+              registrations
+                .filter((entry) => entry.path.replace(/\/$/u, '') === path)
+                .map((entry) => Option.getOrUndefined(entry.branch)),
+            ).toEqual(['NEW'])
+          },
+          Effect.provide(NodeServices.layer),
+          Effect.scoped,
+        ),
+      )
+    }
+  }
+
   for (const remoteState of ['conflicting-tag', 'unavailable'] as const) {
     it.effect(
       `creates an isolated mutable branch without fetching when remote is ${remoteState}`,

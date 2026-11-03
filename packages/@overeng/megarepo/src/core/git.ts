@@ -585,7 +585,19 @@ export const createWorktree = (args: {
       cmdArgs.push('-b', args.branch)
       cmdArgs.push(args.worktreePath)
       if (args.startPoint !== undefined) {
-        cmdArgs.push(args.startPoint)
+        // Git's remote-branch DWIM can replace even an explicit `-b` name with the
+        // unqualified start point. Resolve it ourselves so branch identity stays explicit.
+        const resolveStartPoint = (ref: string) =>
+          runGitCommand({
+            args: ['rev-parse', '--verify', `${ref}^{commit}`],
+            cwd: args.repoPath,
+            ...(args.env === undefined ? {} : { env: args.env }),
+          })
+        const startCommit = yield* Effect.firstSuccessOf([
+          resolveStartPoint(args.startPoint),
+          Effect.suspend(() => resolveStartPoint(`refs/remotes/origin/${args.startPoint}`)),
+        ])
+        cmdArgs.push(startCommit)
       }
     } else {
       cmdArgs.push(args.worktreePath, args.branch)
