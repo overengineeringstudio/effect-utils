@@ -134,6 +134,22 @@ it('keeps two consecutive warm publication admissions unchanged with zero file r
   }
 })
 
+it('omits unresolved diagnostic roots without rejecting the source inventory', () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'editor-view-missing-roots-')))
+  const previous = process.env.TMPDIR
+  try {
+    process.env.TMPDIR = join(root, 'missing-tmp')
+    const options = { repoRoot: join(root, 'missing-repo'), editorInputs: root, nodeModules: root }
+    const identity = editorViewSourceIdentity({ options })
+    expect([...identity.devices.values()].map((device) => device.rootClass)).toEqual(['other'])
+    expect(editorViewSourceIdentityMatches({ options, identity })).toBe(true)
+  } finally {
+    if (previous === undefined) delete process.env.TMPDIR
+    else process.env.TMPDIR = previous
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
 it('classifies symlinked repository and temporary roots without exposing paths', () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'editor-view-classes-')))
   const previous = process.env.TMPDIR

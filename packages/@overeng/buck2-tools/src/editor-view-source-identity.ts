@@ -56,6 +56,15 @@ const probeClock = ({
   return undefined
 }
 
+/** Diagnostic labels must not add filesystem requirements to source admission. */
+const diagnosticRoot = (path: string): string | undefined => {
+  try {
+    return realpathThroughName(path)
+  } catch {
+    return undefined
+  }
+}
+
 /** Metadata guards proof lifetime; filesystem clocks identify racily clean files. */
 export const editorViewSourceIdentity = ({
   options,
@@ -65,8 +74,8 @@ export const editorViewSourceIdentity = ({
   readonly priorClocks?: Clocks
 }): EditorViewSourceIdentity => {
   const { repoRoot, editorInputs, nodeModules, backingRoots = [] } = options
-  const canonicalRepo = realpathThroughName(repoRoot)
-  const canonicalTmp = realpathThroughName(tmpdir())
+  const canonicalRepo = diagnosticRoot(repoRoot)
+  const canonicalTmp = diagnosticRoot(tmpdir())
   const hash = createHash('sha256')
   const clocks =
     priorClocks === undefined ? new Map<bigint, bigint | undefined>() : new Map(priorClocks)
@@ -88,9 +97,11 @@ export const editorViewSourceIdentity = ({
       const rootClass =
         path.startsWith('/nix/store/') === true
           ? 'nix-store'
-          : path === canonicalRepo || path.startsWith(`${canonicalRepo}/`) === true
+          : canonicalRepo !== undefined &&
+              (path === canonicalRepo || path.startsWith(`${canonicalRepo}/`) === true)
             ? 'repo'
-            : path === canonicalTmp || path.startsWith(`${canonicalTmp}/`) === true
+            : canonicalTmp !== undefined &&
+                (path === canonicalTmp || path.startsWith(`${canonicalTmp}/`) === true)
               ? 'tmp'
               : 'other'
       if (devices.has(`${dev}:${rootClass}`) === false)

@@ -678,6 +678,20 @@ describe('editor view publisher', () => {
     },
   )
 
+  it('publishes successfully when TMPDIR cannot be canonicalized', async () => {
+    const fixture = makeFixture()
+    const previous = process.env.TMPDIR
+    try {
+      process.env.TMPDIR = join(fixture.root, 'missing-tmp')
+      const record = await publishEditorView(fixture.options)
+      await expect(checkEditorView(fixture.options)).resolves.toEqual(record)
+    } finally {
+      if (previous === undefined) delete process.env.TMPDIR
+      else process.env.TMPDIR = previous
+      cleanup(fixture)
+    }
+  })
+
   it('publishes a dereferenced byte-owned snapshot with distinct inodes and stable hops', async () => {
     const fixture = makeFixture()
     try {
