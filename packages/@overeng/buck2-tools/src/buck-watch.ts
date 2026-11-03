@@ -423,7 +423,7 @@ export type RunCommand = (options: {
  */
 export class CommandFailure extends Error {
   readonly exitCode: number | undefined
-  readonly signal: string | undefined
+  readonly signal: NodeJS.Signals | undefined
 
   constructor({
     message,
@@ -432,7 +432,7 @@ export class CommandFailure extends Error {
   }: {
     message: string
     exitCode: number | undefined
-    signal: string | undefined
+    signal: NodeJS.Signals | undefined
   }) {
     super(message)
     this.exitCode = exitCode
@@ -702,6 +702,12 @@ export const reconcileBuckViews = async ({
   type EditorEntry = BuckWatchPackage & {
     readonly editor: NonNullable<BuckWatchPackage['editor']>
   }
+  const publicationFailure = (error: unknown): never => {
+    // A group signal can kill/reap the publisher before this process observes it.
+    if (error instanceof CommandFailure && error.signal !== undefined)
+      reportBuildFailure({ code: 0, interruptedAfterBuild: error.signal })
+    throw error
+  }
   const publicationArgs = async (entry: EditorEntry): Promise<readonly string[]> => {
     const manifestOutput = outputForTarget({
       outputs,
@@ -765,7 +771,7 @@ export const reconcileBuckViews = async ({
       })
     } catch (error) {
       emitPublicationSpan(exitCodeOf(error))
-      throw error
+      publicationFailure(error)
     }
     emitPublicationSpan(0)
     options.onTiming?.({
@@ -786,7 +792,7 @@ export const reconcileBuckViews = async ({
       input: JSON.stringify(requests),
       onStderr: forwardDiagnostics,
       cwd: options.repoRoot,
-    })
+    }).catch(publicationFailure)
     // Preserve the existing per-view callback as well as successful-task stderr evidence.
     for (const line of result.stderr.split('\n')) {
       if (line === '') continue

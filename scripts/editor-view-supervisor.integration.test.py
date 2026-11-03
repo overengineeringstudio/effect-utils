@@ -31,7 +31,7 @@ class PublicationSupervisorTest(unittest.TestCase):
         for termination, payload in (
             ("deadline", "lines"), ("SIGTERM", "lines"),
             ("SIGKILL", "bytes"), ("deadline", "bytes"), ("publication", "lines"),
-            ("success", "lines"),
+            ("success", "lines"), ("publication-child", "lines"),
         ):
             with self.subTest(termination=termination, payload=payload), \
                  tempfile.TemporaryDirectory() as scratch:
@@ -49,7 +49,7 @@ else:
     sys.stderr.write("x" * 32768)
 sys.stderr.write("\nBUCK-BLOCKED\n")
 sys.stderr.flush()
-if os.environ["TERMINATION"] in ("publication", "success"):
+if os.environ["TERMINATION"] in ("publication", "publication-child", "success"):
     sys.exit(0)
 while not pathlib.Path("ready").exists():
     time.sleep(0.01)
@@ -69,7 +69,8 @@ await reconcileBuckViews({{
   options: {{
     plan: {{ packages: [], globalPaths: [] }}, mode: 'publish',
     repoRoot: process.cwd(), workspaceRoot: process.cwd(),
-    buck2: './buck2', editorViewCommand: [process.execPath, '-e', 'setInterval(() => {{}}, 1000)'], workspaceAuthority: '',
+    buck2: './buck2', editorViewCommand: [process.execPath, '-e',
+      process.env.TERMINATION === 'publication-child' ? 'process.kill(process.pid, "SIGTERM")' : 'setInterval(() => {{}}, 1000)'], workspaceAuthority: '',
     cp: '', mv: '', fingerprintTool: '', snapshotRetention: 3,
     batchPublication: process.env.TERMINATION !== 'success',
     onTiming: () => {{ if (process.env.TERMINATION === 'publication') writeFileSync('ready', '') }},
@@ -116,9 +117,9 @@ sys.exit(supervisor.supervise(sys.argv[1:], 1 if {termination!r} in ("deadline",
                 self.assertEqual(result.returncode, 124 if termination in ("deadline", "publication") else 1, output)
                 self.assertTrue(ready.exists(), output)
                 self.assertIn("BUCK-BLOCKED\n", output)
-                code = 0 if termination == "publication" else 137 if termination == "SIGKILL" else 143
+                code = 0 if termination.startswith("publication") else 137 if termination == "SIGKILL" else 143
                 outcome = (r"interrupted by SIGTERM after Buck completed \(code 0\)"
-                           if termination == "publication" else f"Buck exited with code {code}")
+                           if termination.startswith("publication") else f"Buck exited with code {code}")
                 self.assertRegex(output, rf"buck2:editor:bootstrap: {outcome}; event log: \.devenv/otel/buck2-events/editor-view-[\w-]+\.pb\.zst")
                 self.assertNotIn(str(root), output)
                 self.assertNotIn(str(Path.home()), output)
