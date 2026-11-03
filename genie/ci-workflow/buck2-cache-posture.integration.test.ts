@@ -590,7 +590,7 @@ describe('generated CI cache trust behavior', () => {
       'storybook-preview-build.yml',
     ]) {
       const workflow = await readWorkflow(filename)
-      for (const job of Object.values(workflow.jobs)) {
+      for (const [jobId, job] of Object.entries(workflow.jobs)) {
         const start = job.steps.find((step) => step.name === 'Start Buck2 cache evidence window')
         if (start === undefined) continue
         expect(job.env?.CI_BUCK2_CACHE_ACTIONS_PATH).toBe(
@@ -601,7 +601,11 @@ describe('generated CI cache trust behavior', () => {
         expect(start.run).toContain('[ ! -L "$source_root/buck-out" ]')
         const uploads = job.steps.filter((step) => step.name === 'Upload Buck2 cache evidence')
         expect(uploads).toHaveLength(1)
-        expect(uploads[0]?.if).toBe('${{ always() }}')
+        expect(uploads[0]?.if).toBe(
+          filename === 'ci.yml' && jobId === 'test-macos'
+            ? "${{ !(github.event_name == 'workflow_dispatch' && inputs['measure-macos'] == true) && always() }}"
+            : '${{ always() }}',
+        )
         expect(String(uploads[0]?.with?.path).trimEnd()).toBe(
           [
             '${{ env.CI_BUCK2_CACHE_EVIDENCE_PATH }}',

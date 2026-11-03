@@ -65,9 +65,8 @@ export const withMacosMeasurementDispatch = (
   const measure = "github.event_name == 'workflow_dispatch' && inputs['measure-macos'] == true"
   return Object.fromEntries(
     Object.entries(jobs).map(([id, job]) => {
-      // These use trustedSecretCiIf, which already excludes measurement dispatches.
-      // Preserve the validator's top-level protected-main publisher guard.
-      if (id === 'publish-products' || id === 'trusted-buck2-remote-cache-proof') return [id, job]
+      // Keep explicit measurement exclusions and push-only promotion guards intact.
+      if (id === 'promote-published' || job.if?.includes(`!(${measure})`) === true) return [id, job]
       return [
         id,
         {
@@ -75,10 +74,11 @@ export const withMacosMeasurementDispatch = (
           if: `\${{ ${id === 'test-macos' || id === 'tested-tree' ? `(${measure}) ||` : `!(${measure}) &&`} (${job.if?.replace(/^\$\{\{\s*|\s*\}\}$/g, '') ?? 'success()'}) }}`,
           steps: [
             ...job.steps.map((step) =>
+              id === 'test-macos' &&
               /^(Save signed|Warm local)|Buck2 cache evidence/.test(step.name ?? '') === true
                 ? {
                     ...step,
-                    if: `\${{ !(${measure}) && (${step.if?.replace(/^\$\{\{\s*|\s*\}\}$/g, '') ?? 'success()'}) }}`,
+                    if: `\${{ !(${measure}) && ${step.if?.replace(/^\$\{\{\s*|\s*\}\}$/g, '') ?? 'success()'} }}`,
                   }
                 : step,
             ),

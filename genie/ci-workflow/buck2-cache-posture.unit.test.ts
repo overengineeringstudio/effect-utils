@@ -52,6 +52,17 @@ describe('declared Buck2 job cache posture', () => {
     ).not.toThrow()
   })
 
+  it('preserves push-only promotion and unrelated job cleanup conditions', () => {
+    const promotion = { ...prJob, if: "github.event_name == 'push'" }
+    const cleanup = { name: 'Collect Buck2 cache evidence', if: '${{ always() }}', run: ':' }
+    const jobs = withMacosMeasurementDispatch({
+      jobs: { 'promote-published': promotion, quality: { ...prJob, steps: [cleanup] } },
+      postures: { 'promote-published': 'none', quality: 'trusted-writer' },
+    })
+    expect(jobs['promote-published']!.if).toBe(promotion.if)
+    expect(jobs.quality!.steps).toEqual([cleanup])
+  })
+
   it('measures dispatches without writes, local saves, or published join evidence', () => {
     const names = [
       'Unit tests',
