@@ -24,6 +24,88 @@ def load_supervisor():
 
 
 class PublicationSupervisorTest(unittest.TestCase):
+    def test_admission_wait_dump_is_once_bounded_and_preserves_admission(self):
+        supervisor = load_supervisor()
+        script = str(Path(__file__).with_name("editor-view-supervisor.py"))
+
+        def until(stream, marker):
+            received = b""
+            deadline = time.monotonic() + 10
+            with selectors.DefaultSelector() as selector:
+                selector.register(stream, selectors.EVENT_READ)
+                while marker not in received:
+                    self.assertTrue(selector.select(max(0, deadline - time.monotonic())),
+                                    received.decode())
+                    chunk = os.read(stream.fileno(), 8192)
+                    self.assertTrue(chunk, received.decode())
+                    received += chunk
+            return received
+
+        for mode in ("--lock", "--deferred-lock"):
+            with self.subTest(mode=mode), tempfile.TemporaryDirectory() as scratch:
+                root = Path(scratch)
+                lock = root / "publication.lock"
+                release = root / "release"
+                os.mkfifo(release)
+                leases = root / ".editor-view" / ".leases"
+                leases.mkdir(parents=True)
+                (leases / "generation.lock").touch()
+                fixture = r'''
+import os, socket, sys
+endpoint = os.environ.get("EDITOR_VIEW_PUBLICATION_ADMISSION_SOCKET")
+if endpoint:
+    admission = socket.socket(socket.AF_UNIX)
+    admission.connect(endpoint)
+    assert admission.recv(1) == b"1"
+print("admitted", flush=True)
+if sys.argv[1] == "holder":
+    with open(sys.argv[2], "rb", buffering=0) as release:
+        assert release.read(1) == b"1"
+'''
+                env = {**os.environ, "DEVENV_ROOT": scratch,
+                       "EDITOR_VIEW_ADMISSION_DIAGNOSTIC_SECONDS": "0",
+                       "BUCK_ISOLATION_DIR": str(root / "private-isolation")}
+                env.pop("BUCK2_NATIVE_BIN", None)
+                command = [sys.executable, script, "5", "0.1", mode, str(lock),
+                           sys.executable, "-c", fixture]
+                holder = subprocess.Popen([*command, "holder", str(release)], env=env,
+                                          stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                          start_new_session=True)
+                waiter = None
+                try:
+                    until(holder.stdout, b"admitted\n")
+                    waiter = subprocess.Popen([*command, "waiter"], env=env,
+                                              stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                              start_new_session=True)
+                    captured = until(waiter.stderr, b"[editor-view-admission-wait] end\n")
+                    begin = captured.index(b"[editor-view-admission-wait] begin\n")
+                    dump = captured[begin:]
+                    self.assertIn(f"recorded-pid={holder.pid}".encode(), dump)
+                    self.assertIn(f"command={Path(sys.executable).name}".encode(), dump)
+                    self.assertIn(b"held-seconds=", dump)
+                    self.assertIn(b"buck isolation=private-isolation status=unavailable", dump)
+                    self.assertIn(b"leases root=root controls=1", dump)
+                    self.assertNotIn(b"/", dump)
+                    self.assertNotIn(str(Path.home()).encode(), dump)
+                    self.assertLessEqual(len(dump), 8192)
+                    self.assertLessEqual(len(dump.splitlines()), 40)
+                    with release.open("wb", buffering=0) as fifo:
+                        fifo.write(b"1")
+                    _, holder_stderr = holder.communicate(timeout=10)
+                    stdout, stderr = waiter.communicate(timeout=10)
+                    self.assertEqual(holder.returncode, 0, holder_stderr.decode())
+                    self.assertEqual(waiter.returncode, 0, stderr.decode())
+                    self.assertEqual(stdout, b"admitted\n")
+                    self.assertEqual((captured + stderr).count(
+                        b"[editor-view-admission-wait] begin"), 1)
+                    self.assertIn(b"publication admitted on lock", stderr)
+                finally:
+                    for process in (holder, waiter):
+                        if process is not None:
+                            if process.poll() is None:
+                                supervisor.signal_group(process.pid, signal.SIGTERM)
+                            process.communicate(timeout=10)
+
     def test_bootstrap_buck_kill_evidence_is_bounded(self):
         repo = Path(__file__).resolve().parent.parent
         bun = os.environ.get("BUN_BIN") or shutil.which("bun")
