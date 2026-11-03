@@ -1235,7 +1235,7 @@ console.log(JSON.stringify(outcomes));`,
   })
 
   for (const githubActions of ['true', 'false', undefined]) {
-    it(`annotates writer refusal only in GitHub Actions (${githubActions ?? 'unset'})`, async () => {
+    it(`keeps imported writer refusal plain and annotates only the CI launcher (${githubActions ?? 'unset'})`, async () => {
       const root = fixture()
       const childPath = join(root, 'writer-refusal.ts')
       writeFileSync(
@@ -1279,19 +1279,45 @@ for (let attempt = 0; attempt < 2; attempt++) {
       const annotations = stderr
         .split('\n')
         .filter((line) => line.startsWith('::error title=Buck2 cache writer refused::'))
-      expect(annotations).toEqual(
-        githubActions === 'true'
-          ? Array(2).fill(
-              `::error title=Buck2 cache writer refused::REAPI unreachable (${failures.at(-1)}); refusing to publish without remote cache`,
-            )
-          : [],
-      )
+      expect(annotations).toEqual([])
       expect(
         stderr.match(
           /Buck cache writer: REAPI unreachable; refusing to publish without remote cache/gu,
         ),
       ).toHaveLength(2)
       expect(stderr).not.toContain('fixture-secret')
+      const native = join(root, 'native')
+      // Admission checks native status before the writer probe refuses the launch.
+      writeFileSync(native, `#!${process.execPath}\nprocess.exit(0)\n`, { mode: 0o700 })
+      const launcher = Bun.spawn(
+        [process.execPath, join(import.meta.dir, 'buck2-entrypoint.ts'), native, 'build', '//:app'],
+        {
+          cwd: root,
+          env: {
+            ...process.env,
+            GITHUB_ACTIONS: githubActions ?? '',
+            BUCK2_PRIVATE_CACHE_WRITE_BASIC_AUTH: 'fixture-secret',
+            BUCK2_PRIVATE_CACHE_ADDRESS: 'grpc://127.0.0.1:1',
+            BUCK2_PUBLIC_CACHE_READ_ONLY: '',
+            BUCK2_NO_REMOTE_CACHE: '',
+            BUCK2_PRIVATE_CACHE_WRITE_AUTH: '',
+            BUCK2_CACHE_WRITE_OPTIONAL: '',
+            CI_BUCK2_CACHE_EVIDENCE_PATH: '',
+            XDG_CACHE_HOME: join(root, 'launcher-cache'),
+          },
+          stdout: 'pipe',
+          stderr: 'pipe',
+        },
+      )
+      const launcherStderr = await new Response(launcher.stderr).text()
+      expect(await launcher.exited).toBe(1)
+      expect(launcherStderr).toContain('Buck cache writer: REAPI unreachable; refusing to publish')
+      expect(
+        launcherStderr
+          .split('\n')
+          .filter((line) => line.startsWith('::error title=Buck2 cache writer refused::')),
+      ).toHaveLength(githubActions === 'true' ? 1 : 0)
+      expect(launcherStderr).not.toContain('fixture-secret')
     })
   }
 
