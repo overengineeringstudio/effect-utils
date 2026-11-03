@@ -1,8 +1,8 @@
 import { constants } from 'node:fs'
-import { lstat, mkdtemp, open, realpath, rename, rmdir, unlink } from 'node:fs/promises'
+import { lstat, mkdtemp, open, realpath, rename, rm, writeFile } from 'node:fs/promises'
 import { basename, dirname, join, resolve } from 'node:path'
 
-import { Effect, Schema } from 'effect'
+import { Effect, Exit, Schema } from 'effect'
 
 import * as Git from '../core/git.ts'
 import { resolveGitCommonDir, withGitWriterLock } from './git-writer-lock.ts'
@@ -111,76 +111,74 @@ export const rehomeCommitWorktree = Effect.fn('store.rehomeCommitWorktree')(func
     )
     if (present === false)
       yield* git(bare)(['fetch', '--no-tags', '--no-write-fetch-head', '--', foreign, sha])
-    const temporary = yield* io(tree)(() => mkdtemp(join(dirname(tree), '.mr-rehome-')))
-    const prepared = join(temporary, 'tree')
-    yield* git(bare)(['worktree', 'add', '--no-checkout', '--detach', '--', prepared, sha])
-    yield* git(prepared)(['read-tree', sha])
-    const admin = yield* git(prepared)(['rev-parse', '--absolute-git-dir'])
-    if (dirname(admin) !== join(bare, 'worktrees'))
-      return yield* refuse('New registration escaped canonical worktree administration')
-    yield* physicalDirectory(admin)
-    if ((yield* io(admin)(() => lstat(admin))).uid !== process.getuid?.())
-      return yield* refuse('New administration directory is not owned by this user')
-    const backup = join(temporary, 'original.git')
-    // Unlike writeFileAtomic, control creation needs O_EXCL/O_NOFOLLOW. Both
-    // replacements are sibling renames; no checkout ever touches the real tree.
-    yield* Effect.gen(function* () {
-      const { info, foreign: current } = yield* validate()
-      if (current !== foreign) return yield* refuse('Git common directory changed during rehome')
-      yield* io(control)(async () => {
-        const original = await open(control, constants.O_RDONLY | constants.O_NOFOLLOW)
-        try {
-          const saved = await original.stat()
-          if (saved.dev !== info.dev || saved.ino !== info.ino || saved.isFile() === false)
-            throw refuse('Control file changed before backup')
-          const copy = await open(
-            backup,
-            constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW,
-            0o600,
-          )
-          try {
-            await copy.writeFile(await original.readFile())
-          } finally {
-            await copy.close()
-          }
-        } finally {
-          await original.close()
-        }
-      })
-      const backlink = join(admin, 'gitdir')
-      yield* io(backlink)(async () => {
-        if ((await lstat(backlink)).isFile() === false) throw refuse('Unsafe admin backlink')
-        const next = `${backlink}.mr-rehome`
-        const file = await open(
-          next,
-          constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW,
-          0o600,
-        )
-        try {
-          await file.writeFile(`${control}\n`)
-        } finally {
-          await file.close()
-        }
-        await rename(next, backlink)
-        const named = await lstat(control)
-        if (named.dev !== info.dev || named.ino !== info.ino || named.isFile() === false)
-          throw refuse('Control file changed before replacement')
-        const replacement = await lstat(join(prepared, '.git'))
-        if (replacement.isFile() === false || replacement.nlink !== 1)
-          throw refuse('Unsafe prepared .git control file')
-        await rename(join(prepared, '.git'), control)
-      })
-      yield* git(bare)(['worktree', 'repair', tree]).pipe(
-        Effect.catchCause((cause) =>
-          io(control)(() => rename(backup, control)).pipe(Effect.andThen(Effect.failCause(cause))),
-        ),
-      )
-      yield* io(temporary)(async () => {
-        await unlink(backup)
-        await rmdir(prepared)
-        await rmdir(temporary)
-      })
-    }).pipe(Effect.uninterruptible)
-    return plan
+    let admin: string | undefined
+    let handedOver = false
+    return yield* Effect.acquireUseRelease(
+      io(tree)(() => mkdtemp(join(dirname(tree), '.mr-rehome-'))),
+      (temporary) =>
+        Effect.gen(function* () {
+          const prepared = join(temporary, 'tree')
+          yield* git(bare)(['worktree', 'add', '--no-checkout', '--detach', '--', prepared, sha])
+          const registered = yield* git(prepared)(['rev-parse', '--absolute-git-dir'])
+          if (dirname(registered) !== join(bare, 'worktrees'))
+            return yield* refuse('New registration escaped canonical worktree administration')
+          yield* physicalDirectory(registered)
+          if ((yield* io(registered)(() => lstat(registered))).uid !== process.getuid?.())
+            return yield* refuse('New administration directory is not owned by this user')
+          admin = registered
+          yield* git(prepared)(['read-tree', sha])
+          const backup = join(temporary, 'original.git')
+          // Exclusive creation rejects existing files/symlinks; sibling renames never check out payloads.
+          yield* Effect.gen(function* () {
+            const { info, foreign: current } = yield* validate()
+            if (current !== foreign)
+              return yield* refuse('Git common directory changed during rehome')
+            yield* io(control)(async () => {
+              const original = await open(control, constants.O_RDONLY | constants.O_NOFOLLOW)
+              try {
+                const saved = await original.stat()
+                if (saved.dev !== info.dev || saved.ino !== info.ino || saved.isFile() === false)
+                  throw refuse('Control file changed before backup')
+                await writeFile(backup, await original.readFile(), { flag: 'wx', mode: 0o600 })
+              } finally {
+                await original.close()
+              }
+            })
+            const backlink = join(registered, 'gitdir')
+            yield* io(backlink)(async () => {
+              if ((await lstat(backlink)).isFile() === false) throw refuse('Unsafe admin backlink')
+              const next = `${backlink}.mr-rehome`
+              await writeFile(next, `${control}\n`, { flag: 'wx', mode: 0o600 })
+              await rename(next, backlink)
+              const named = await lstat(control)
+              if (named.dev !== info.dev || named.ino !== info.ino || named.isFile() === false)
+                throw refuse('Control file changed before replacement')
+              const replacement = await lstat(join(prepared, '.git'))
+              if (replacement.isFile() === false || replacement.nlink !== 1)
+                throw refuse('Unsafe prepared .git control file')
+              await rename(join(prepared, '.git'), control)
+              handedOver = true
+            })
+            yield* git(bare)(['worktree', 'repair', tree]).pipe(
+              Effect.catchCause((cause) =>
+                io(control)(async () => {
+                  await rename(backup, control)
+                  handedOver = false
+                }).pipe(Effect.andThen(Effect.failCause(cause))),
+              ),
+            )
+          }).pipe(Effect.uninterruptible)
+          return plan
+        }),
+      (temporary, exit) =>
+        // After a failed rollback preserve the backup and live canonical registration.
+        Exit.isSuccess(exit) === true || handedOver === false
+          ? io(temporary)(async () => {
+              if (handedOver === false && admin !== undefined)
+                await rm(admin, { recursive: true, force: true })
+              await rm(temporary, { recursive: true, force: true })
+            }).pipe(Effect.orDie)
+          : Effect.void,
+    )
   }).pipe(withGitWriterLock({ path: bare }))
 })

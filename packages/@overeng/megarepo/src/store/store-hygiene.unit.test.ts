@@ -513,7 +513,10 @@ describe('store-hygiene', () => {
 
           expect(results).toHaveLength(3)
           expect(results.every((r) => r.status === 'skipped')).toBe(true)
-          expect(results.every((r) => r.message === 'missing metadata for fix')).toBe(true)
+          expect(
+            results.every((r) => r.message.includes('missing metadata for fix') === true),
+          ).toBe(true)
+          expect(results[1]?.message).toContain('broken')
         }),
       ))
 

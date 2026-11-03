@@ -2368,7 +2368,19 @@ const storeStatusCommand = Cli.Command.make('status', { output: outputOption }, 
                     })
                   } else {
                     if (bareExists === true) {
-                      const foreign = yield* inspectForeignGitDir({ worktreePath, bareRepoPath })
+                      const foreign = yield* inspectForeignGitDir({
+                        worktreePath,
+                        bareRepoPath,
+                      }).pipe(
+                        Effect.catch((error) => {
+                          issues.push({
+                            type: 'broken_worktree',
+                            severity: 'error',
+                            message: `Cannot inspect Git identity: ${error}`,
+                          })
+                          return Effect.void
+                        }),
+                      )
                       if (foreign !== undefined)
                         issues.push({
                           type: 'foreign-git-dir',
@@ -4212,7 +4224,17 @@ const storeFixCommand = Cli.Command.make(
           })) {
             if (worktree.broken === true) continue
             const worktreePath = worktree.path
-            const foreign = yield* inspectForeignGitDir({ worktreePath, bareRepoPath })
+            const foreign = yield* inspectForeignGitDir({ worktreePath, bareRepoPath }).pipe(
+              Effect.catch((error) => {
+                issues.push({
+                  type: 'broken_worktree',
+                  severity: 'error',
+                  memberName: repo.relativePath,
+                  message: `Cannot inspect Git identity: ${error}`,
+                })
+                return Effect.void
+              }),
+            )
             if (
               foreign === undefined ||
               issues.some(

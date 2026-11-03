@@ -13,6 +13,7 @@ import {
   rehomeFixture as fixture,
   snapshotRehome as snapshot,
 } from '../test-utils/rehome-fixture.ts'
+import { createWorkspaceWithLock } from '../test-utils/store-setup.ts'
 import { mrCommand } from './mod.ts'
 
 const testEffect = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
@@ -75,6 +76,30 @@ it.effect('CLI status and fix repair commits while named branches remain report-
       ).toBe(yield* f.fs.realPath(f.foreign))
       expect(yield* snapshot(branchPath)).toEqual(branchBefore)
       expect(yield* snapshot(f.foreign)).toEqual(foreignBefore)
+    }),
+  ),
+)
+
+it.effect('dangling Git identity is reported without aborting scans or deleting the tree', () =>
+  testEffect(
+    Effect.gen(function* () {
+      const f = yield* fixture()
+      const url = 'https://example.com/acme/widget'
+      const { workspacePath } = yield* createWorkspaceWithLock({
+        members: { widget: url },
+        lockEntries: { widget: { url, ref: f.commit, commit: f.commit } },
+      })
+      yield* f.fs.writeFileString(
+        `${f.worktreePath}.git`,
+        'gitdir: /deleted/foreign/worktrees/foo\n',
+      )
+      const before = yield* snapshot(f.worktreePath)
+      for (const args of [['status'], ['fix', '--dry-run'], ['fix']]) {
+        const output = yield* runStoreCommand(workspacePath, f.store.storePath, args)
+        expect(output).toContain('broken_worktree')
+        expect(output).toContain('Cannot inspect Git identity')
+        expect(yield* snapshot(f.worktreePath)).toEqual(before)
+      }
     }),
   ),
 )
