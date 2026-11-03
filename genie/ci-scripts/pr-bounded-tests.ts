@@ -75,20 +75,42 @@ export const readPrDiff = ({
     .filter(Boolean)
 }
 
-if (import.meta.main) {
-  let selection: BoundedSelection
+export type BoundedOutcome =
+  | { exitCode: 0; selection: BoundedSelection }
+  | { exitCode: 1; error: string }
+
+/** Diff failures must fail the check; only intentional selection skips are successful. */
+export const resolveBoundedSelection = async ({
+  base,
+  head,
+  runGit = git,
+  readAuthority = () => Bun.file('buck2-test-authority.json').json(),
+}: {
+  base: string
+  head: string
+  runGit?: (...args: string[]) => string
+  readAuthority?: () => Promise<unknown>
+}): Promise<BoundedOutcome> => {
   try {
-    const files = readPrDiff({
-      base: process.env['PR_BOUNDED_BASE_SHA'] ?? '',
-      head: process.env['PR_BOUNDED_HEAD_SHA'] ?? '',
-    })
-    selection = selectBoundedTargets({
-      files,
-      authority: await Bun.file('buck2-test-authority.json').json(),
-    })
+    const files = readPrDiff({ base, head, runGit })
+    const selection = selectBoundedTargets({ files, authority: await readAuthority() })
+    return { exitCode: 0, selection }
   } catch {
-    selection = { targets: [], notice: 'PR diff or bounded mapping unavailable' }
+    // Do not expose command output, repository paths, or environment values in annotations.
+    return { exitCode: 1, error: 'PR revisions, history, or bounded authority are unavailable' }
   }
+}
+
+if (import.meta.main) {
+  const outcome = await resolveBoundedSelection({
+    base: process.env['PR_BOUNDED_BASE_SHA'] ?? '',
+    head: process.env['PR_BOUNDED_HEAD_SHA'] ?? '',
+  })
+  if (outcome.exitCode !== 0) {
+    console.log(`::error::Bounded PR check could not determine the PR diff: ${outcome.error}`)
+    process.exit(outcome.exitCode)
+  }
+  const { selection } = outcome
   if (selection.notice !== undefined)
     console.log(`::notice::Bounded PR check skipped: ${selection.notice}`)
   if (selection.targets.length > 0) {

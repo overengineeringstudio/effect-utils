@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test'
 
-import { readPrDiff, selectBoundedTargets } from './pr-bounded-tests.ts'
+import { readPrDiff, resolveBoundedSelection, selectBoundedTargets } from './pr-bounded-tests.ts'
 
 const lane = (packagePath: string, name = 'test') => ({
   packagePath,
@@ -78,4 +78,63 @@ test('stacked PR selection uses event revisions, never synthetic checkout HEAD',
   expect(selectBoundedTargets({ files, authority }).targets).toEqual([
     'effect_utils//packages/@overeng/megarepo:test',
   ])
+})
+
+test('missing and invalid event revisions fail the bounded check', async () => {
+  for (const revisions of [
+    { base: '', head: 'b'.repeat(40) },
+    { base: 'a'.repeat(40), head: '' },
+    { base: 'not-a-sha', head: 'b'.repeat(40) },
+    { base: 'a'.repeat(40), head: 'not-a-sha' },
+  ]) {
+    let gitCalled = false
+    const outcome = await resolveBoundedSelection({
+      ...revisions,
+      runGit: () => {
+        gitCalled = true
+        return ''
+      },
+      readAuthority: async () => authority,
+    })
+    expect(outcome).toEqual({
+      exitCode: 1,
+      error: 'PR revisions, history, or bounded authority are unavailable',
+    })
+    expect(gitCalled).toBe(false)
+  }
+})
+
+test('git failures fail the bounded check without exposing command output or paths', async () => {
+  for (const failingCommand of ['merge-base', 'rev-parse', 'fetch', 'diff']) {
+    const outcome = await resolveBoundedSelection({
+      base: 'a'.repeat(40),
+      head: 'b'.repeat(40),
+      runGit: (command) => {
+        if (command === failingCommand || (failingCommand !== 'diff' && command === 'merge-base'))
+          throw new Error('git failed in /private/checkout\n::notice::unsafe output')
+        return command === 'rev-parse' ? 'true' : 'a'.repeat(40)
+      },
+      readAuthority: async () => authority,
+    })
+    expect(outcome).toEqual({
+      exitCode: 1,
+      error: 'PR revisions, history, or bounded authority are unavailable',
+    })
+  }
+})
+
+test('intentional selection skips remain successful', async () => {
+  for (const file of ['devenv.nix', 'packages/unknown/a.ts']) {
+    const outcome = await resolveBoundedSelection({
+      base: 'a'.repeat(40),
+      head: 'b'.repeat(40),
+      runGit: (command) => (command === 'merge-base' ? 'a'.repeat(40) : `${file}\0`),
+      readAuthority: async () => authority,
+    })
+    expect(outcome.exitCode).toBe(0)
+    if (outcome.exitCode === 0) {
+      expect(outcome.selection.targets).toEqual([])
+      expect(outcome.selection.notice).toBeDefined()
+    }
+  }
 })
