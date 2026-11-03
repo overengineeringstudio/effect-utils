@@ -118,14 +118,17 @@ export const rehomeCommitWorktree = Effect.fn('store.rehomeCommitWorktree')(func
       (temporary) =>
         Effect.gen(function* () {
           const prepared = join(temporary, 'tree')
-          yield* git(bare)(['worktree', 'add', '--no-checkout', '--detach', '--', prepared, sha])
-          const registered = yield* git(prepared)(['rev-parse', '--absolute-git-dir'])
-          if (dirname(registered) !== join(bare, 'worktrees'))
-            return yield* refuse('New registration escaped canonical worktree administration')
-          yield* physicalDirectory(registered)
-          if ((yield* io(registered)(() => lstat(registered))).uid !== process.getuid?.())
-            return yield* refuse('New administration directory is not owned by this user')
-          admin = registered
+          const registration = yield* Effect.gen(function* () {
+            yield* git(bare)(['worktree', 'add', '--no-checkout', '--detach', '--', prepared, sha])
+            const registered = yield* git(prepared)(['rev-parse', '--absolute-git-dir'])
+            if (dirname(registered) !== join(bare, 'worktrees'))
+              return yield* refuse('New registration escaped canonical worktree administration')
+            yield* physicalDirectory(registered)
+            if ((yield* io(registered)(() => lstat(registered))).uid !== process.getuid?.())
+              return yield* refuse('New administration directory is not owned by this user')
+            admin = registered
+            return registered
+          }).pipe(Effect.uninterruptible)
           yield* git(prepared)(['read-tree', sha])
           const backup = join(temporary, 'original.git')
           // Exclusive creation rejects existing files/symlinks; sibling renames never check out payloads.
@@ -144,7 +147,7 @@ export const rehomeCommitWorktree = Effect.fn('store.rehomeCommitWorktree')(func
                 await original.close()
               }
             })
-            const backlink = join(registered, 'gitdir')
+            const backlink = join(registration, 'gitdir')
             yield* io(backlink)(async () => {
               if ((await lstat(backlink)).isFile() === false) throw refuse('Unsafe admin backlink')
               const next = `${backlink}.mr-rehome`

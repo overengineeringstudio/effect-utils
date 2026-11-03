@@ -7,6 +7,7 @@ import { EffectPath } from '@overeng/effect-path'
 import * as Git from '../core/git.ts'
 import { createEmptyLockFile, writeLockFile } from '../core/lock.ts'
 import { inspectMemberMount } from '../sync/member-mount.ts'
+import { addCommit } from './setup.ts'
 import { createStoreFixture, createWorkspaceWithLock } from './store-setup.ts'
 
 /** Scoped foreign-owned commit tree with tracked inputs and ignored mounted payloads. */
@@ -18,18 +19,12 @@ export const rehomeFixture = Effect.fnUntraced(function* (seedCanonical = true) 
     `${yield* fs.realPath(yield* fs.makeTempDirectoryScoped())}/`,
   )
   yield* fs.writeFileString(`${mounted}payload`, 'mounted files stay untouched\n')
-  const { workspacePath: source } = yield* createWorkspaceWithLock({
-    members: { mounted },
-  })
+  const { workspacePath: source } = yield* createWorkspaceWithLock({ members: { mounted } })
   yield* writeLockFile({
     lockPath: EffectPath.unsafe.absoluteFile(`${source}megarepo.lock`),
     lockFile: createEmptyLockFile(),
   })
-  yield* Git.runCommand({ cwd: source, args: ['add', 'megarepo.lock'] })
-  yield* Git.runCommand({
-    cwd: source,
-    args: ['commit', '--no-verify', '-m', 'Commit nested preparation inputs'],
-  })
+  yield* addCommit({ repoPath: source, message: 'Commit nested inputs' })
   if (seedCanonical === true)
     yield* Git.runCommand({
       cwd: bareRepoPath,
