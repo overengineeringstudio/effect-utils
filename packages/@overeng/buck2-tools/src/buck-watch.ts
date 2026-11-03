@@ -1,6 +1,8 @@
 #!/usr/bin/env -S bun
 import { spawn } from 'node:child_process'
+import { writeSync } from 'node:fs'
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
+import { constants, homedir } from 'node:os'
 import { dirname, isAbsolute, join, resolve } from 'node:path'
 
 import { emitCompletedSpanAsync } from './otel-span-cli.ts'
@@ -558,6 +560,7 @@ export type BuckReconcilerOptions = {
   readonly run?: RunCommand
   readonly signal?: AbortSignal
   readonly onTiming?: (timing: BuckReconcileTiming) => void
+  readonly diagnosticTaskName?: string
   /** Prepare views within one exclusive-lock batch using the publisher's declared worker bound. */
   readonly batchPublication?: boolean
 }
@@ -596,15 +599,73 @@ export const reconcileBuckViews = async ({
       exitCode,
     })
   }
+  const eventDirectory = '.devenv/otel/buck2-events'
+  await mkdir(resolve(options.workspaceRoot, eventDirectory), { recursive: true })
+  const eventLog = `${eventDirectory}/editor-view-${process.pid}-${crypto.randomUUID()}.pb.zst`
+  // Retain only the last 16 KiB / 40 lines. Flush synchronously before default
+  // signal termination: the supervisor escalates TERM to KILL after five seconds.
+  let buildTail = Buffer.alloc(0)
+  let reported = false
+  let buildExitCode: number | undefined
+  const reportBuildFailure = (code: number): void => {
+    if (reported === true) return
+    reported = true
+    const tail = buildTail
+      .toString('utf8')
+      .replaceAll(`${options.workspaceRoot}/`, '')
+      .replaceAll(homedir(), '<home>')
+    writeSync(2, Buffer.from(tail).subarray(-16 * 1024))
+    writeSync(
+      2,
+      `${tail.endsWith('\n') === true || tail === '' ? '' : '\n'}${options.diagnosticTaskName ?? `buck2:editor:${options.mode}`}: Buck exited with code ${code}; event log: ${eventLog}\n`,
+    )
+  }
+  const signals = ['SIGHUP', 'SIGINT', 'SIGTERM'] as const
+  const handlers = signals.map((signal) => {
+    const handler = (): void => {
+      reportBuildFailure(buildExitCode ?? 128 + constants.signals[signal])
+      process.removeListener(signal, handler)
+      // Do not replace any existing caller-owned cancellation handling.
+      if (process.listenerCount(signal) === 0) process.kill(process.pid, signal)
+    }
+    process.on(signal, handler)
+    return { signal, handler }
+  })
+  // oxlint-disable-next-line eslint/no-underscore-dangle -- scoped disposal must stay live until reconciliation returns
+  using _diagnostics = {
+    [Symbol.dispose]: () => {
+      for (const { signal, handler } of handlers) process.removeListener(signal, handler)
+    },
+  }
   let built: CommandResult
   try {
     built = await execute({
       command: options.buck2,
-      args: ['build', ...request.buildTargets, '--show-full-output'],
+      args: ['build', ...request.buildTargets, '--show-full-output', '--event-log', eventLog],
       cwd: options.workspaceRoot,
+      onStderr: (chunk) => {
+        buildTail = Buffer.concat([buildTail, Buffer.from(chunk)]).subarray(-16 * 1024)
+        // Count LF and CR (Buck's in-place progress) without retaining older lines.
+        let lines = 0
+        for (let index = buildTail.length - 2; index >= 0; index--)
+          if (buildTail[index] === 10 || buildTail[index] === 13) {
+            if (++lines === 40) {
+              buildTail = buildTail.subarray(index + 1)
+              break
+            }
+          }
+      },
       ...(options.signal === undefined ? {} : { signal: options.signal }),
     })
+    buildExitCode = 0
   } catch (error) {
+    const code =
+      error instanceof CommandFailure && error.signal !== undefined
+        ? 128 + (constants.signals[error.signal] ?? 1)
+        : exitCodeOf(error)
+    reportBuildFailure(code)
+    if (error instanceof CommandFailure)
+      error.message = `${options.diagnosticTaskName ?? `buck2:editor:${options.mode}`}: Buck exited with code ${code}; event log: ${eventLog}`
     emitBuildSpan(exitCodeOf(error))
     throw error
   }

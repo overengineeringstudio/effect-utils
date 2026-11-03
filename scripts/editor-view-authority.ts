@@ -391,6 +391,7 @@ const main = async (): Promise<void> => {
       fingerprintTool: options.fingerprintTool,
       snapshotRetention: options.snapshotRetention,
       onTiming: reportTiming,
+      diagnosticTaskName: `buck2:editor:${options.command}`,
       batchPublication: options.command !== 'check',
     },
   })

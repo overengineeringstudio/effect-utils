@@ -1,9 +1,11 @@
 import fcntl
 import importlib.util
+import json
 import os
 from pathlib import Path
 import signal
 import selectors
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -22,6 +24,95 @@ def load_supervisor():
 
 
 class PublicationSupervisorTest(unittest.TestCase):
+    def test_bootstrap_buck_kill_evidence_is_bounded(self):
+        repo = Path(__file__).resolve().parent.parent
+        bun = shutil.which("bun")
+        self.assertIsNotNone(bun, "Bun is required for the fake-Buck fixture")
+        for termination, payload in (
+            ("deadline", "lines"), ("SIGTERM", "lines"),
+            ("SIGKILL", "bytes"), ("deadline", "bytes"), ("publication", "lines"),
+        ):
+            with self.subTest(termination=termination, payload=payload), \
+                 tempfile.TemporaryDirectory() as scratch:
+                root = Path(scratch)
+                ready = root / "ready"
+                fake = root / "buck2"
+                fake.write_text(f"#!{sys.executable}\n" + r'''
+import os, pathlib, signal, sys, time
+event = sys.argv[sys.argv.index("--event-log") + 1]
+pathlib.Path(event).touch()
+if os.environ["PAYLOAD"] == "lines":
+    for i in range(80):
+        print(f"progress-{i:02d} {os.getcwd()}/input {os.path.expanduser('~')}/cache", file=sys.stderr)
+else:
+    sys.stderr.write("x" * 32768)
+sys.stderr.write("\nBUCK-BLOCKED\n")
+sys.stderr.flush()
+if os.environ["TERMINATION"] == "publication":
+    sys.exit(0)
+while not pathlib.Path("ready").exists():
+    time.sleep(0.01)
+if os.environ["TERMINATION"] != "deadline":
+    os.kill(os.getpid(), getattr(signal, os.environ["TERMINATION"]))
+time.sleep(60)
+''')
+                fake.chmod(0o700)
+                runner = root / "runner.ts"
+                module = repo / "packages/@overeng/buck2-tools/src/buck-watch.ts"
+                runner.write_text(f'''
+import {{ writeFileSync }} from 'node:fs'
+import {{ reconcileBuckViews, runCommand }} from {json.dumps(str(module))}
+let pending = ''
+await reconcileBuckViews({{
+  request: {{ packagePaths: [], changedPaths: [], buildTargets: ['//:fake'] }},
+  options: {{
+    plan: {{ packages: [], globalPaths: [] }}, mode: 'publish',
+    repoRoot: process.cwd(), workspaceRoot: process.cwd(),
+    buck2: './buck2', editorViewCommand: [process.execPath, '-e', 'setInterval(() => {{}}, 1000)'], workspaceAuthority: '',
+    cp: '', mv: '', fingerprintTool: '', snapshotRetention: 3,
+    batchPublication: true,
+    onTiming: () => {{ if (process.env.TERMINATION === 'publication') writeFileSync('ready', '') }},
+    diagnosticTaskName: 'buck2:editor:bootstrap',
+    run: (options) => runCommand({{ ...options, onStderr: (chunk) => {{
+      options.onStderr?.(chunk)
+      pending += chunk
+      if (pending.includes('BUCK-BLOCKED') && process.env.TERMINATION !== 'publication') writeFileSync('ready', '')
+    }} }}),
+  }},
+}}).catch((error) => {{ console.error(error.message); process.exitCode = 1 }})
+''')
+                # Inject elapsed time only after the ring has consumed the marker:
+                # no startup-speed dependency, real supervisor TERM/KILL escalation.
+                driver = f'''
+import importlib.util, pathlib, sys
+spec = importlib.util.spec_from_file_location("supervisor", {str(repo / "scripts/editor-view-supervisor.py")!r})
+supervisor = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(supervisor)
+supervisor.time.monotonic = lambda: 2 if pathlib.Path("ready").exists() else 0
+sys.exit(supervisor.supervise(sys.argv[1:], 1 if {termination!r} in ("deadline", "publication") else None, 0.2))
+'''
+                result = subprocess.run(
+                    [sys.executable, "-c", driver, bun, str(runner)],
+                    cwd=root, capture_output=True, text=True, timeout=10,
+                    env={**os.environ, "CI": "1", "PAYLOAD": payload,
+                         "TERMINATION": termination, "TRACEPARENT": "",
+                         "OTEL_TASK_TRACEPARENT": ""},
+                )
+                output = result.stderr
+                self.assertEqual(result.returncode, 124 if termination in ("deadline", "publication") else 1, output)
+                self.assertTrue(ready.exists(), output)
+                self.assertIn("BUCK-BLOCKED\n", output)
+                code = 0 if termination == "publication" else 137 if termination == "SIGKILL" else 143
+                self.assertRegex(output, rf"buck2:editor:bootstrap: Buck exited with code {code}; event log: \.devenv/otel/buck2-events/editor-view-[\w-]+\.pb\.zst")
+                self.assertNotIn(str(root), output)
+                self.assertNotIn(str(Path.home()), output)
+                self.assertLess(len(output.encode()), 17 * 1024)
+                if payload == "lines":
+                    self.assertNotIn("progress-00", output)
+                    self.assertIn("progress-79 input <home>/cache", output)
+                    self.assertLessEqual(output.count("progress-"), 39)
+                self.assertEqual(len(list(root.glob(".devenv/otel/buck2-events/*.pb.zst"))), 1)
+
     def test_descriptor_boundary_drops_mappings_but_parent_lease_remains_held(self):
         with tempfile.TemporaryDirectory() as scratch:
             control = Path(scratch) / "reader.lock"
