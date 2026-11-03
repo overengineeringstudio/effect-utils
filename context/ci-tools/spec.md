@@ -488,14 +488,22 @@ R23, R24.
 
 Retry is based on typed error tags, not raw exit codes.
 
-| Error tag                     | Current policy                                          |
-| ----------------------------- | ------------------------------------------------------- |
-| `ProviderProjectLookupFailed` | recorded as retryable; no provider retry loop currently |
-| `ProviderOperationFailed`     | retryable only when classified as transient             |
-| `VerificationFailed`          | retry verification before failing the deploy            |
-| all others                    | no retry                                                |
+| Error tag                     | Current policy                                         |
+| ----------------------------- | ------------------------------------------------------ |
+| `ProviderProjectLookupFailed` | recorded as retryable; Netlify API rate limits retried |
+| `ProviderOperationFailed`     | retryable only when classified as transient            |
+| `VerificationFailed`          | retry verification before failing the deploy           |
+| all others                    | no retry                                               |
 
 Attempt count is included in `DeployResultV1` and workflow-report records.
+
+A Netlify site lookup answered with HTTP 429 is transient and retried at most
+three times. `Retry-After` (seconds or HTTP date) sets the minimum wait, falling
+back to `X-RateLimit-Reset` (Unix seconds) when absent or invalid. Without either
+valid header, backoff starts at one second and doubles. The retry window is
+60 seconds, including the next scheduled wait. If a provider deadline exceeds
+that window, lookup fails without retrying early. Only rate limits are retried;
+no upload runs until lookup succeeds. Reported attempts include each lookup.
 
 ## Workflow Report Emission
 
