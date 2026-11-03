@@ -85,7 +85,7 @@ if sys.argv[1] == "holder":
                 self.assertLessEqual(len(corrupt_dump.stderr.splitlines()), 40)
                 # The real holder now acquires and overwrites this same inode;
                 # the waiter must see its fresh record and admit normally.
-                command = [sys.executable, script, "5", "0.1", mode, str(lock),
+                command = [sys.executable, script, "none", "0.1", mode, str(lock),
                            sys.executable, "-c", fixture]
                 holder = subprocess.Popen([*command, "holder", str(release)], env=env,
                                           stdout=subprocess.PIPE, stderr=subprocess.PIPE,
@@ -108,8 +108,9 @@ if sys.argv[1] == "holder":
                     self.assertNotIn(str(Path.home()).encode(), dump)
                     self.assertLessEqual(len(dump), 8192)
                     self.assertLessEqual(len(dump.splitlines()), 40)
-                    with release.open("wb", buffering=0) as fifo:
-                        fifo.write(b"1")
+                    release_fd = os.open(release, os.O_RDWR)
+                    os.write(release_fd, b"1")
+                    os.close(release_fd)
                     _, holder_stderr = holder.communicate(timeout=10)
                     stdout, stderr = waiter.communicate(timeout=10)
                     self.assertEqual(holder.returncode, 0, holder_stderr.decode())
@@ -124,6 +125,64 @@ if sys.argv[1] == "holder":
                             if process.poll() is None:
                                 supervisor.signal_group(process.pid, signal.SIGTERM)
                             process.communicate(timeout=10)
+
+    def test_collector_backpressure_parent_death_and_own_timeout(self):
+        supervisor = load_supervisor()
+        script = str(Path(__file__).with_name("editor-view-supervisor.py"))
+        for action in ("close", "death", "alarm"):
+            with self.subTest(action=action), tempfile.TemporaryDirectory() as scratch:
+                read_fd, write_fd = os.pipe()
+                os.set_blocking(write_fd, False)
+                try:
+                    while True:
+                        os.write(write_fd, b"x")
+                except BlockingIOError:
+                    pass
+                os.set_blocking(write_fd, True)
+                collector = (f'import os,runpy; s=runpy.run_path({script!r}); '
+                             's["guard_collector"](int(__import__("sys").argv[1])); '
+                             'print("ready",flush=True); os.write(2,b"x")')
+                driver = f'''
+import os,runpy,subprocess,sys
+s=runpy.run_path({script!r})
+if {action!r} == "close":
+    d=s["AdmissionDiagnostic"](); d.threshold=0
+    d.observe("missing",0); print("ready",flush=True)
+    sys.stdin.buffer.read(1); d.close(); print("closed",flush=True)
+else:
+    r,w=os.pipe()
+    p=subprocess.Popen([sys.executable,"-c",{collector!r},str(r)],pass_fds=(r,),start_new_session=True)
+    os.close(r); sys.stdin.buffer.read(1); p.wait()
+'''
+                parent = subprocess.Popen([sys.executable, "-c", driver], cwd=scratch,
+                                          stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                                          stderr=write_fd, start_new_session=True)
+                os.close(write_fd)
+                try:
+                    with selectors.DefaultSelector() as selector:
+                        selector.register(parent.stdout, selectors.EVENT_READ)
+                        self.assertTrue(selector.select(10))
+                        self.assertEqual(parent.stdout.readline(), b"ready\n")
+                        if action == "death":
+                            supervisor.signal_group(parent.pid, signal.SIGKILL)
+                        elif action == "close":
+                            parent.stdin.write(b"1"); parent.stdin.flush()
+                            self.assertTrue(selector.select(5))  # Stderr is still full.
+                            self.assertEqual(parent.stdout.readline(), b"closed\n")
+                        else:
+                            parent.stdin.write(b"1"); parent.stdin.flush()
+                    parent.wait(timeout=5)
+                    with selectors.DefaultSelector() as selector:
+                        selector.register(read_fd, selectors.EVENT_READ)
+                        while True:
+                            self.assertTrue(selector.select(5))
+                            if not os.read(read_fd, 8192):
+                                break  # No collector can retain the capture after parent exit.
+                finally:
+                    if parent.poll() is None:
+                        supervisor.signal_group(parent.pid, signal.SIGKILL)
+                    parent.communicate(timeout=5)
+                    os.close(read_fd)
 
     def test_bootstrap_buck_kill_evidence_is_bounded(self):
         repo = Path(__file__).resolve().parent.parent
