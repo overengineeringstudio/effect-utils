@@ -729,6 +729,7 @@ export const reconcileBuckViews = async ({
       )
         return fail('batch publisher returned invalid per-view timing evidence')
       options.onTiming({
+        ...timing,
         phase: 'editor-view',
         packagePath: timing.packagePath,
         durationMs: timing.durationMs,

@@ -152,6 +152,5 @@ it('emits admission counters in the replay-deduplicable editor-view timing line'
     fencedRehashedFiles: 2,
     hashedBytes: 34,
     probedDevices: [{ device: '1', rootClass: 'repo', probed: true }],
-    unprobedDevices: [],
   })
 })
