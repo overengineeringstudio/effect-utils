@@ -30,7 +30,7 @@ locked_shell_inputs() {
 }
 
 # Each worker owns and joins its fetch process, including on timeout/termination.
-locked_input_worker() (
+locked_input_worker() {
   local child='' ref failed=0
   trap '[ -z "$child" ] || { kill "$child" 2>/dev/null || true; wait "$child" 2>/dev/null || true; }' EXIT
   trap 'exit 143' TERM
@@ -41,12 +41,13 @@ locked_input_worker() (
     if ! wait "$child"; then failed=1; fi
     child=''
   done < "$1"
+  trap - EXIT TERM INT
   return "$failed"
-)
+}
 
 # Two workers overlap immutable fetches with executable resolution. Failures are
 # optional: the authoritative shell resolver still checks every locked identity.
-prefetch_locked_inputs() (
+prefetch_locked_inputs() {
   local lock_file="$1" work_dir="$2" child failed=0
   local children=()
   mkdir -p "$work_dir"
@@ -57,6 +58,7 @@ prefetch_locked_inputs() (
     # jq -e also reports no selected inputs as unsuccessful; an empty list is safe.
     if [ -s "$work_dir/parse.log" ]; then
       echo '::warning::Locked shell-input prefetch skipped: lock parsing failed.' >&2
+      trap - EXIT TERM INT
       return 0
     fi
   fi
@@ -73,4 +75,5 @@ prefetch_locked_inputs() (
   if [ "$failed" -ne 0 ]; then
     echo '::warning::Locked shell-input prefetch failed; normal shell resolution remains authoritative.' >&2
   fi
-)
+  trap - EXIT TERM INT
+}
