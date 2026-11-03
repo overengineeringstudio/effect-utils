@@ -181,7 +181,8 @@ print("fresh-discovery-required")
                     "EDITOR_VIEW_LEASE_FDS": str(holder.fileno()),
                     "EDITOR_VIEW_LEASE_ACTIVE": "1",
                 }
-                for admission in ([], ["--lock", str(Path(scratch) / "publication.lock")]):
+                for admission in ([], ["--lock", str(Path(scratch) / "publication.lock")],
+                                  ["--deferred-lock", str(Path(scratch) / "publication.lock")]):
                     result = subprocess.run(
                         [sys.executable, supervisor, "5", "0.1", *admission,
                          sys.executable, "-c", fixture, str(control),
@@ -230,6 +231,98 @@ print("fresh-discovery-required")
                         if process.poll() is None:
                             process.kill()
                         process.communicate(timeout=10)
+
+    def test_deferred_preparation_overlaps_but_publication_stays_serial(self):
+        with tempfile.TemporaryDirectory() as scratch:
+            lock, state = Path(scratch) / "publication.lock", Path(scratch) / ".publish.lock"
+            fixture = r'''
+import os, pathlib, socket, sys
+print("prepared", flush=True)
+with socket.socket(socket.AF_UNIX) as admission:
+    admission.connect(os.environ["EDITOR_VIEW_PUBLICATION_ADMISSION_SOCKET"])
+    assert admission.recv(1) == b"1"
+state = pathlib.Path(sys.argv[1])
+state.mkdir()
+print("publishing", flush=True)
+sys.stdin.buffer.read(1)
+state.rmdir()
+'''
+            command = [sys.executable, str(Path(__file__).with_name("editor-view-supervisor.py"))]
+            tail = ["0.1", "--deferred-lock", str(lock), sys.executable, "-c", fixture, str(state)]
+            first = subprocess.Popen([*command, "none", *tail], stdin=subprocess.PIPE,
+                                     stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            second = None
+            try:
+                self.assertEqual(first.stdout.readline().strip(), "prepared")
+                self.assertEqual(first.stdout.readline().strip(), "publishing")
+                inode = lock.stat().st_ino
+                second = subprocess.Popen([*command, "0.3", *tail], stdin=subprocess.PIPE,
+                                          stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+                self.assertEqual(second.stdout.readline().strip(), "prepared")
+                with self.assertRaises(subprocess.TimeoutExpired):
+                    second.communicate(timeout=0.6)
+                _, stderr = first.communicate("x", timeout=5)
+                self.assertEqual(first.returncode, 0, stderr)
+                stdout, stderr = second.communicate(timeout=5)
+                self.assertEqual(second.returncode, 0, stderr)
+                self.assertEqual(stdout.strip(), "publishing")
+                self.assertEqual(lock.stat().st_ino, inode)
+                self.assertFalse(state.exists())
+            finally:
+                for process in (first, second):
+                    if process is not None:
+                        if process.poll() is None:
+                            process.terminate()
+                        process.communicate(timeout=5)
+
+    def test_deferred_preparation_and_admitted_work_share_execution_budget(self):
+        request = (
+            "import os,socket,time; "
+            "s=socket.socket(socket.AF_UNIX); "
+            "s.connect(os.environ['EDITOR_VIEW_PUBLICATION_ADMISSION_SOCKET']); "
+            "assert s.recv(1)==b'1'; s.close(); "
+        )
+        with tempfile.TemporaryDirectory() as scratch:
+            for code in ("import time; time.sleep(60)", request + "time.sleep(60)",
+                         "import time; time.sleep(0.2); " + request + "time.sleep(0.2)"):
+                with self.subTest(code=code):
+                    result = subprocess.run(
+                        [sys.executable, str(Path(__file__).with_name("editor-view-supervisor.py")),
+                         "0.3", "0.1", "--deferred-lock", str(Path(scratch) / "publication.lock"),
+                         sys.executable, "-c", code], capture_output=True, text=True, timeout=5,
+                    )
+                    self.assertEqual(result.returncode, 124, result.stderr)
+                    self.assertIn("exceeded its 0.3s", result.stderr)
+
+    def test_deferred_admission_rejects_replaced_flock_identity(self):
+        with tempfile.TemporaryDirectory() as scratch:
+            lock = Path(scratch) / "publication.lock"
+            with lock.open("a") as holder:
+                fcntl.flock(holder, fcntl.LOCK_EX)
+                process = subprocess.Popen(
+                    [sys.executable, str(Path(__file__).with_name("editor-view-supervisor.py")),
+                     "1", "0.1", "--deferred-lock", str(lock), sys.executable, "-c",
+                     "import os,socket; print('prepared',flush=True); "
+                     "s=socket.socket(socket.AF_UNIX); "
+                     "s.connect(os.environ['EDITOR_VIEW_PUBLICATION_ADMISSION_SOCKET']); "
+                     "assert s.recv(1)==b'1'; print('committed',flush=True)"],
+                    stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+                )
+                try:
+                    self.assertEqual(process.stdout.readline().strip(), "prepared")
+                    with self.assertRaises(subprocess.TimeoutExpired):
+                        process.communicate(timeout=0.2)
+                    lock.unlink()
+                    lock.touch()
+                    fcntl.flock(holder, fcntl.LOCK_UN)
+                    stdout, stderr = process.communicate(timeout=5)
+                    self.assertEqual(process.returncode, 143, stderr)
+                    self.assertNotIn("committed", stdout)
+                    self.assertIn("flock pathname identity changed", stderr)
+                finally:
+                    if process.poll() is None:
+                        process.terminate()
+                    process.communicate(timeout=5)
 
     def test_long_admission_wait_does_not_consume_execution_deadline(self):
         with tempfile.TemporaryDirectory() as scratch:
@@ -366,6 +459,10 @@ print("fresh-discovery-required")
             # grandchild after the group's initial TERM. Both require escalation.
             fixture = r'''
 import os, signal, subprocess, sys, time
+import socket
+admission = socket.socket(socket.AF_UNIX)
+admission.connect(os.environ["EDITOR_VIEW_PUBLICATION_ADMISSION_SOCKET"])
+assert admission.recv(1) == b"1"
 child = r"""
 import os, signal, subprocess, sys, time
 signal.signal(signal.SIGTERM, signal.SIG_IGN)
@@ -381,7 +478,8 @@ time.sleep(60)
             start = time.monotonic()
             result = subprocess.run(
                 [sys.executable, str(Path(__file__).with_name("editor-view-supervisor.py")),
-                 "0.25", "0.5", sys.executable, "-c", fixture, str(pids)],
+                 "0.25", "0.5", "--deferred-lock", str(Path(scratch) / "publication.lock"),
+                 sys.executable, "-c", fixture, str(pids)],
                 capture_output=True, text=True, timeout=5,
             )
             self.assertEqual(result.returncode, 124, result.stderr)
@@ -392,6 +490,8 @@ time.sleep(60)
             for pid in descendants:
                 with self.assertRaises(ProcessLookupError):
                     os.kill(int(pid), 0)
+            with (Path(scratch) / "publication.lock").open("a") as released:
+                fcntl.flock(released, fcntl.LOCK_EX | fcntl.LOCK_NB)
 
     def test_preserves_success_and_failure(self):
         for deadline in ("2", "none"):

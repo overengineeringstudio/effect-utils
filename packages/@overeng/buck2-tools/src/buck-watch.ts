@@ -2,6 +2,7 @@
 import { spawn } from 'node:child_process'
 import { rmSync, writeSync } from 'node:fs'
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
+import { connect } from 'node:net'
 import { constants, homedir, tmpdir } from 'node:os'
 import { dirname, isAbsolute, join, resolve } from 'node:path'
 
@@ -574,6 +575,31 @@ export type BuckReconcilerOptions = {
   readonly batchPublication?: boolean
 }
 
+const admitPublication = async (): Promise<void> => {
+  const endpoint = process.env.EDITOR_VIEW_PUBLICATION_ADMISSION_SOCKET
+  if (endpoint === undefined) return
+  await new Promise<void>((onAdmitted, reject) => {
+    const socket = connect(endpoint)
+    let admitted = false
+    socket.once('error', reject)
+    socket.once('close', () => {
+      if (admitted === false)
+        reject(new Error('publication admission closed before acknowledgement'))
+    })
+    socket.once('data', (reply) => {
+      if (reply.length !== 1 || reply[0] !== 49) {
+        socket.destroy()
+        reject(new Error('publication admission returned an invalid acknowledgement'))
+        return
+      }
+      admitted = true
+      delete process.env.EDITOR_VIEW_PUBLICATION_ADMISSION_SOCKET
+      socket.unref()
+      onAdmitted()
+    })
+  })
+}
+
 /** Build the affected product set, then publish each affected editor view from provider roots. */
 export const reconcileBuckViews = async ({
   request,
@@ -731,6 +757,7 @@ export const reconcileBuckViews = async ({
     phase: 'buck-build',
     durationMs: performance.now() - buildStartedAt,
   })
+  await admitPublication()
   const outputs = parseBuildOutputs(built.stdout)
   const selected = new Set(request.packagePaths)
   const absoluteArtifact = (path: string): string =>
