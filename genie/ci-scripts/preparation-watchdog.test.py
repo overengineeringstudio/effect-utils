@@ -6,6 +6,7 @@ import selectors
 import signal
 import subprocess
 import tempfile
+import time
 import unittest
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -41,7 +42,11 @@ class PreparationWatchdogTest(unittest.TestCase):
                        CI_PREPARATION_DIAGNOSTIC_SECONDS="0")
             process = subprocess.Popen(
                 ["bash", "-euo", "pipefail", "-c",
-                 'source "$FIXTURE/helper.sh"; run_nix_gc_race_retry "devenv tasks run fixture" devenv'],
+                 'source "$FIXTURE/helper.sh"; '
+                 'mktemp() { if [ "$#" -eq 0 ]; then '
+                 ': > "$FIXTURE/attempt.log"; printf "%s\\n" "$FIXTURE/attempt.log"; '
+                 'else command mktemp "$@"; fi; }; '
+                 'run_nix_gc_race_retry "devenv tasks run fixture" devenv'],
                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT, env=env,
                 start_new_session=True,
             )
@@ -63,6 +68,11 @@ class PreparationWatchdogTest(unittest.TestCase):
                     self.assertTrue(selector.select(10))
                     output.extend(os.read(process.stdout.fileno(), 65536))
                 child = int(output.split(b"substitution-started ")[1].split(b"\n")[0])
+                # tee can publish stdout before its log write; gate on the actual log.
+                marker = f"substitution-started {child}\n".encode()
+                deadline = time.monotonic() + 10
+                while marker not in (root / "attempt.log").read_bytes():
+                    self.assertLess(time.monotonic(), deadline, "readiness missing from attempt log")
                 os.write(tick, b"tick\n")
                 until(b"phase: tasks started" if tasks else b"preparation diagnostics end")
                 # Two observed cadences prove the dump is one-shot, without sleeps.
