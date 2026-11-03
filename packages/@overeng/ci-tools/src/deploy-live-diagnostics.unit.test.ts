@@ -27,6 +27,66 @@ describe('live deploy failure diagnostics', () => {
     })
   })
 
+  it('includes the provider exit code and sanitized stderr tail when explicitly enabled', () => {
+    const token = 'token-sentinel-"quoted"'
+    const bypass = 'bypass-sentinel\nsecond-line'
+    const diagnostic = formatLiveDeployFailure({
+      status: 1,
+      providerCause: { secretValues: [token, bypass] },
+      report: `WORKFLOW_REPORT_V1: ${JSON.stringify({
+        data: {
+          errorKind: 'ProviderOperationFailed',
+          operation: 'deploy',
+          diagnostics: {
+            exitCode: '1',
+            apiStatus: '429',
+            stderr: `Vercel CLI 50.0.0\nHTTP 429: deployment limit\n${token}\n${bypass}\ntoken=other-value`,
+            stdout: 'unrelated private output',
+          },
+        },
+      })}`,
+    })
+    expect(JSON.parse(diagnostic)).toEqual({
+      exitStatus: 1,
+      errorKind: 'ProviderOperationFailed',
+      operation: 'deploy',
+      apiStatus: 429,
+      providerExitCode: 1,
+      stderrTail:
+        'Vercel CLI 50.0.0\nHTTP 429: deployment limit\n[REDACTED]\n[REDACTED]\ntoken=[REDACTED]',
+    })
+    expect(diagnostic).not.toContain('unrelated private output')
+    expect(diagnostic).not.toContain('sentinel')
+  })
+
+  it('redacts before limiting stderr to its final 4096 characters', () => {
+    const secret = 'boundary-secret-sentinel'
+    const suffix = 'x'.repeat(4090)
+    const diagnostic = JSON.parse(
+      formatLiveDeployFailure({
+        status: 1,
+        providerCause: { secretValues: [secret] },
+        report: `WORKFLOW_REPORT_V1: ${JSON.stringify({
+          data: { diagnostics: { stderr: `prefix${secret}${suffix}` } },
+        })}`,
+      }),
+    )
+    expect(diagnostic.stderrTail).toHaveLength(4096)
+    expect(diagnostic.stderrTail.endsWith(suffix)).toBe(true)
+    expect(diagnostic.stderrTail).not.toContain('sentinel')
+  })
+
+  it('omits malformed provider exit codes even with provider causes enabled', () => {
+    const report = `WORKFLOW_REPORT_V1: ${JSON.stringify({
+      data: { diagnostics: { exitCode: '1-private', stderr: '   ' } },
+    })}`
+    expect(
+      JSON.parse(
+        formatLiveDeployFailure({ status: 1, report, providerCause: { secretValues: [] } }),
+      ),
+    ).toEqual({ exitStatus: 1 })
+  })
+
   it.each([
     String.raw`https:\/\/example.invalid\/deploy?secret=escaped-url-sentinel`,
     String.raw`\u0075\u006e\u0069\u0063\u006f\u0064\u0065-sentinel`,

@@ -162,6 +162,12 @@ describe('ci-tools deploy vercel live E2E', () => {
               status: failureResult.status,
               report:
                 existsSync(reportFile) === true ? readFileSync(reportFile, 'utf8') : undefined,
+              providerCause: {
+                secretValues: [
+                  process.env.VERCEL_TOKEN,
+                  process.env.VERCEL_AUTOMATION_BYPASS_SECRET,
+                ].filter((value): value is string => value !== undefined),
+              },
             }),
           )
         }
