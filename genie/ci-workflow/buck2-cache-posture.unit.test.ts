@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'bun:test'
 
 import { standaloneCachePostureConfig } from '../../scripts/buck2-cache-posture.ts'
-import { withBuck2CachePostures } from './buck2-cache-posture.ts'
+import { withBuck2CachePostures, withMacosMeasurementDispatch } from './buck2-cache-posture.ts'
 
 const mainOnlyJob = {
   if: "${{ github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') }}",
@@ -16,6 +16,36 @@ const prJob = {
 }
 
 describe('declared Buck2 job cache posture', () => {
+  it('measures dispatches without writes, local saves, or published join evidence', () => {
+    const names = [
+      'Unit tests',
+      'Save signed store paths',
+      'Warm local Nix substituter after bootstrap',
+      'Upload Buck2 cache evidence',
+    ]
+    const jobs = withMacosMeasurementDispatch({
+      jobs: {
+        'test-macos': { ...prJob, steps: names.map((name) => ({ name, run: ':' })) },
+        'pipeline-traces': prJob,
+      },
+      postures: { 'test-macos': 'trusted-writer', 'pipeline-traces': 'none' },
+    })
+    for (const ref of ['refs/heads/main', 'refs/heads/feature']) {
+      const evaluate = (value: string) =>
+        new Function('github', 'inputs', 'success', 'always', `return (${value.slice(3, -2)})`)(
+          { event_name: 'workflow_dispatch', ref },
+          { 'measure-macos': true },
+          () => true,
+          () => true,
+        )
+      const macos = jobs['test-macos']!
+      expect(evaluate(macos.if!)).toBe(true)
+      expect(evaluate(jobs['pipeline-traces']!.if!)).toBe(false)
+      expect(evaluate(macos.env!.BUCK2_PUBLIC_CACHE_READ_ONLY!)).toBe('1')
+      expect(macos.steps.slice(1, 4).every((step) => evaluate(step.if!) === false)).toBe(true)
+    }
+  })
+
   it('allows the declared main-only writer to upload while PR readers and inert jobs cannot', () => {
     const jobs = withBuck2CachePostures({
       jobs: { publisher: mainOnlyJob, pullRequest: prJob, inert: prJob },

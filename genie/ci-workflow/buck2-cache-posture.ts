@@ -56,3 +56,39 @@ export const withBuck2CachePostures = ({
     }),
   )
 }
+
+/** Maintainer dispatch measures only Darwin; no cache saves or proof publication. */
+export const withMacosMeasurementDispatch = (
+  args: Parameters<typeof withBuck2CachePostures>[0],
+): GitHubWorkflowArgs['jobs'] => {
+  const jobs = withBuck2CachePostures(args)
+  const measure = "github.event_name == 'workflow_dispatch' && inputs['measure-macos'] == true"
+  return Object.fromEntries(
+    Object.entries(jobs).map(([id, job]) => [
+      id,
+      {
+        ...job,
+        if: `\${{ ${id === 'test-macos' || id === 'tested-tree' ? `(${measure}) ||` : `!(${measure}) &&`} (${job.if?.replace(/^\$\{\{\s*|\s*\}\}$/g, '') ?? 'success()'}) }}`,
+        steps: [
+          ...job.steps.map((step) =>
+            /^(Save signed|Warm local)|Buck2 cache evidence/.test(step.name ?? '') === true
+              ? {
+                  ...step,
+                  if: `\${{ !(${measure}) && (${step.if?.replace(/^\$\{\{\s*|\s*\}\}$/g, '') ?? 'success()'}) }}`,
+                }
+              : step,
+          ),
+          ...(id === 'test-macos'
+            ? [
+                {
+                  name: 'Mark macOS measurement',
+                  if: `\${{ always() && (${measure}) }}`,
+                  run: 'echo "## macOS measurement (read-only; excluded from cache proofs)" >> "$GITHUB_STEP_SUMMARY"',
+                },
+              ]
+            : []),
+        ],
+      },
+    ]),
+  )
+}

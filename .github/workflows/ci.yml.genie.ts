@@ -54,7 +54,7 @@ import {
   withNixRealisationTimeouts,
 } from '../../genie/ci-workflow.ts'
 import { withBuck2CacheEvidence } from '../../genie/ci-workflow/buck2-cache-evidence.ts'
-import { withBuck2CachePostures } from '../../genie/ci-workflow/buck2-cache-posture.ts'
+import { withMacosMeasurementDispatch } from '../../genie/ci-workflow/buck2-cache-posture.ts'
 import { coreCachePostures } from '../../genie/ci-workflow/buck2-cache-proof-policy.ts'
 import {
   withPipelineTelemetry,
@@ -2206,6 +2206,11 @@ export default ciWorkflow({
     workflow_dispatch: {
       inputs: {
         ...ciMeasurementBaselineWorkflowDispatchInputs,
+        'measure-macos': {
+          description: 'Measure only macOS tests, read-only and excluded from cache proofs.',
+          type: 'boolean',
+          default: false,
+        },
         run_notion_integration_on_branch: {
           description: 'Opt into credentialed Notion integration tests on this branch.',
           required: false,
@@ -2230,7 +2235,7 @@ export default ciWorkflow({
     },
   },
   permissions: { contents: 'read', 'id-token': 'write' },
-  jobs: withBuck2CachePostures({
+  jobs: withMacosMeasurementDispatch({
     jobs: {
       ...withNixRealisationTimeouts(
         {
