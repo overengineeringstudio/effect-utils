@@ -20,13 +20,14 @@ type SourceRoots = {
   readonly backingRoots?: readonly string[]
 }
 type Clocks = ReadonlyMap<bigint, bigint | undefined>
+type Device = { device: string; rootClass: string; probed: boolean; pathPrefix: string }
 /** Filesystem-clock receipt retained through the fenced recheck. */
 export type EditorViewSourceIdentity = {
   readonly digest: string
   readonly clocks: Clocks
   readonly rehashedFiles: number
   readonly hashedBytes: number
-  readonly devices: ReadonlyMap<string, { device: string; rootClass: string; probed: boolean }>
+  readonly devices: ReadonlyMap<string, Device>
 }
 
 const probeClock = ({
@@ -64,13 +65,15 @@ export const editorViewSourceIdentity = ({
   readonly priorClocks?: Clocks
 }): EditorViewSourceIdentity => {
   const { repoRoot, editorInputs, nodeModules, backingRoots = [] } = options
+  const canonicalRepo = realpathThroughName(repoRoot)
+  const canonicalTmp = realpathThroughName(tmpdir())
   const hash = createHash('sha256')
   const clocks =
     priorClocks === undefined ? new Map<bigint, bigint | undefined>() : new Map(priorClocks)
   const visited = new Set<string>()
   let rehashedFiles = 0
   let hashedBytes = 0
-  const devices = new Map<string, { device: string; rootClass: string; probed: boolean }>()
+  const devices = new Map<string, Device>()
   let probing = priorClocks === undefined
   const visit = (path: string): void => {
     if (visited.has(path) === true) return
@@ -85,15 +88,19 @@ export const editorViewSourceIdentity = ({
       const rootClass =
         path.startsWith('/nix/store/') === true
           ? 'nix-store'
-          : path === repoRoot || path.startsWith(`${repoRoot}/`) === true
+          : path === canonicalRepo || path.startsWith(`${canonicalRepo}/`) === true
             ? 'repo'
-            : path.startsWith(`${tmpdir()}/`) === true
+            : path === canonicalTmp || path.startsWith(`${canonicalTmp}/`) === true
               ? 'tmp'
               : 'other'
       if (devices.has(`${dev}:${rootClass}`) === false)
         devices.set(`${dev}:${rootClass}`, {
           device: String(dev),
           rootClass,
+          pathPrefix:
+            ['/nix/store', '/home/runner/work', '/tmp', '/private/tmp'].find(
+              (prefix) => path === prefix || path.startsWith(`${prefix}/`),
+            ) ?? 'other',
           probed: clock !== undefined,
         })
       // Racy-git: at/after the same-device prehash probe, or unprobed, requires bytes.

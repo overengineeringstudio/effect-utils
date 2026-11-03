@@ -134,8 +134,35 @@ it('keeps two consecutive warm publication admissions unchanged with zero file r
   }
 })
 
+it('classifies symlinked repository and temporary roots without exposing paths', () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'editor-view-classes-')))
+  const previous = process.env.TMPDIR
+  try {
+    const repo = join(root, 'repo')
+    mkdirSync(repo)
+    symlinkSync(root, join(root, 'tmp-link'))
+    symlinkSync(repo, join(root, 'repo-link'))
+    process.env.TMPDIR = join(root, 'tmp-link')
+    const options = { repoRoot: join(root, 'repo-link'), editorInputs: repo, nodeModules: root }
+    const check = editorViewSourceIdentity({ options, priorClocks: new Map() })
+    expect([...check.devices.values()].map((device) => device.rootClass).sort()).toEqual([
+      'repo',
+      'tmp',
+    ])
+    for (const device of check.devices.values())
+      expect(['/nix/store', '/home/runner/work', '/tmp', '/private/tmp', 'other']).toContain(
+        device.pathPrefix,
+      )
+  } finally {
+    if (previous === undefined) delete process.env.TMPDIR
+    else process.env.TMPDIR = previous
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
 it('emits admission counters in the replay-deduplicable editor-view timing line', () => {
-  const devices = new Map([['1:repo', { device: '1', rootClass: 'repo', probed: true }]])
+  const device = { device: '1', rootClass: 'repo', probed: true, pathPrefix: '/tmp' }
+  const devices = new Map([['1:repo', device]])
   const check = { digest: 'proof', clocks: new Map(), rehashedFiles: 2, hashedBytes: 17, devices }
   const fields = {
     package: 'fixture',

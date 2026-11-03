@@ -127,6 +127,11 @@ changes to transitive workspace source, declarations, or dependency bytes still
 select a new generation. Literal link inventories remain part of the admission
 stability proof, so changing even an equivalent link while copying fails closed.
 
+The `[editor-view-timing]` admission counters classify canonical repository and
+temporary roots. Device IDs are filesystem identifiers, not counts; an unprobed
+device requires byte hashing. `pathPrefix` is restricted to fixed public prefixes
+(`/nix/store`, `/home/runner/work`, `/tmp`, `/private/tmp`) or `other`, never full paths.
+
 Root publication also converges the authority manifest's package-local dependency
 topology: real `node_modules` directories identified by a regular `.modules.yaml`
 or dependency symlinks into the root `node_modules/.pnpm` store are renamed into

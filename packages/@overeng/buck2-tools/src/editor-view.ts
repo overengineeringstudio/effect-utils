@@ -3434,14 +3434,18 @@ const publishEditorViewCoordinated = async ({
       )
     }
     // Under the fence, discard/rebuild any proof whose complete source inventory changed.
-    const matches = editorViewSourceIdentityMatches({
-      options,
-      identity: sourceProof.sourceIdentity,
-      onChecked: (check) => fenced.push(check),
-    })
-    if (matches === false) fenceMismatches++
-    const admitted = matches === true ? sourceProof : await admitEditorViewSources(options)
-    if (matches === false) prehash.push(...admitted.checks)
+    const admitted =
+      editorViewSourceIdentityMatches({
+        options,
+        identity: sourceProof.sourceIdentity,
+        onChecked: (check) => fenced.push(check),
+      }) === true
+        ? sourceProof
+        : await admitEditorViewSources(options)
+    if (admitted !== sourceProof) {
+      fenceMismatches++
+      prehash.push(...admitted.checks)
+    }
     const {
       selectedPath,
       finite,
