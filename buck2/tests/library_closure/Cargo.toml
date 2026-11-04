@@ -1,0 +1,4 @@
+# Buck-only acceptance fixture; manifests document the local crate graph.
+[workspace]
+members = ["example_library", "generic_bridge", "generic_leaf", "probe_derive"]
+resolver = "3"

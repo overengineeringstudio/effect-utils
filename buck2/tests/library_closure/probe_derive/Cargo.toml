@@ -1,0 +1,8 @@
+[package]
+name = "probe_derive"
+version = "0.0.0"
+edition = "2024"
+
+[lib]
+path = "../derive.rs"
+proc-macro = true

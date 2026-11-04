@@ -1,0 +1,43 @@
+# Authored internal fixture, like the other buck2/tests packages; not a projection.
+load("@prelude//:prelude.bzl", "native")
+load("//buck2/rust:library_closure_probe.bzl", "library_closure_probe")
+
+native.export_file(name = "pack.mjs")
+
+native.rust_library(
+    name = "generic_leaf",
+    crate = "generic_leaf",
+    crate_root = "generic.rs",
+    srcs = ["generic.rs"],
+    edition = "2024",
+)
+
+native.rust_library(
+    name = "generic_bridge",
+    crate = "generic_bridge",
+    crate_root = "bridge.rs",
+    srcs = ["bridge.rs"],
+    deps = [":generic_leaf"],
+    edition = "2024",
+)
+
+native.rust_library(
+    name = "probe_derive",
+    crate = "probe_derive",
+    crate_root = "derive.rs",
+    srcs = ["derive.rs"],
+    proc_macro = True,
+    edition = "2024",
+)
+
+native.rust_library(
+    name = "example_library",
+    crate = "example_library",
+    crate_root = "library.rs",
+    srcs = ["library.rs"],
+    # Duplicate edge to the leaf exercises transitive-set deduplication.
+    deps = [":generic_bridge", ":generic_leaf", ":probe_derive", "//rust/third-party:serde"],
+    edition = "2024",
+)
+
+library_closure_probe(name = "closure", library = ":example_library")

@@ -9,6 +9,10 @@
       "rationale": "Real Nix/devenv closures, Darwin store paths, compiled staging and BSD/GNU shell behavior."
     },
     {
+      "task": "test:buck2:library-closure",
+      "rationale": "Native rlib metadata, flat transitive compilation inputs and external host proc-macro loading differ across ELF and Mach-O."
+    },
+    {
       "task": "test:buck2-tools",
       "rationale": "Editor publication, filesystem locks, snapshots and Darwin fsevents dependency projection; snapshot link containment must name hardlinked CAS files through their link path because Darwin realpath (F_GETPATH) may report any hardlink name."
     },

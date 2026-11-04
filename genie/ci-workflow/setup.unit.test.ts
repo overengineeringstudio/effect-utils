@@ -1013,6 +1013,7 @@ describe('required platform test classification', () => {
     const tasks = suites.map(({ task }) => task)
     const aggregateTasks = [
       'test:buck2:unit',
+      'test:buck2:library-closure',
       'test:run',
       'devenv-modules:test',
       'genie:buck2:test',
