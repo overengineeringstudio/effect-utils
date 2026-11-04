@@ -9,7 +9,7 @@
       "rationale": "Real Nix/devenv closures, Darwin store paths, compiled staging and BSD/GNU shell behavior."
     },
     {
-      "task": "buck2:rust:library-closure:test",
+      "task": "test:buck2:library-closure",
       "rationale": "Native rlib metadata, flat transitive compilation inputs and external host proc-macro loading differ across ELF and Mach-O."
     },
     {

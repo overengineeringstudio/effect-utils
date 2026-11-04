@@ -40,7 +40,7 @@ let
   extraSourceTestTasks = [
     "devenv-modules:test"
     "buck2:rust:generators:test"
-    "buck2:rust:library-closure:test"
+    "test:buck2:library-closure"
     "genie:buck2:test"
     "genie:ci-workflow:test"
   ];
@@ -1420,9 +1420,9 @@ in
     '';
   };
 
-  tasks."buck2:rust:library-closure:test" = {
+  tasks."test:buck2:library-closure" = {
     description = "Probe the native Rust library closure, external derives and embedded store references";
-    exec = trace.exec "buck2:rust:library-closure:test" ''
+    exec = trace.exec "test:buck2:library-closure" ''
       set -euo pipefail
       root="''${DEVENV_ROOT:-$PWD}"
       cd "$root"

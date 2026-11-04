@@ -2144,7 +2144,7 @@ const allCiJobs: Record<string, any> = {
           'devenv-modules:test',
           'buck2:capabilities:identity-proof',
           'buck2:capabilities:recovery-test',
-          'buck2:rust:library-closure:test',
+          'test:buck2:library-closure',
         ],
       }),
     }),
