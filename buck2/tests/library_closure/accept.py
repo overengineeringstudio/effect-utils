@@ -58,6 +58,13 @@ library = descriptor["library"]
 if any(library[key] != value for key, value in product.items()):
     raise SystemExit("Packaged descriptor compiler/crate metadata differs from the closure")
 inventory = {entry["path"]: entry["sha256"] for entry in library["artifacts"]}
+# The fixture reaches one leaf twice and a second version via alternate_leaf.
+leaves = [path for path in inventory if re.fullmatch(r"lib/libgeneric_leaf-[^/]+\.rlib", path)]
+if len(leaves) != 2:
+    raise SystemExit(f"Expected exactly two distinct generic_leaf versions after duplicate-edge deduplication: {leaves}")
+primaries = [path for path in inventory if re.fullmatch(r"lib/libexample_library(?:-[^/]+)?\.rlib", path)]
+if primaries != ["lib/libexample_library.rlib"]:
+    raise SystemExit(f"Expected only the stable primary rlib, without a hashed alias: {primaries}")
 with tarfile.open(args.artifact, mode="r:") as archive:
     members = archive.getmembers()
     if len({member.name for member in members}) != len(members):
