@@ -13,6 +13,21 @@ trap 'report_failure "$?" "${failure_line:-unknown}" "${failure_command:-$BASH_C
 
 repo_root="${1:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)}"
 export BUCK2_PRODUCTS_REPO="$repo_root"
+# Lock the flake to HEAD so revision/dirty-state identity checks stay pure.
+# Each publisher platform is evaluated independently; no product is realized.
+revision="$(git -C "$repo_root" rev-parse HEAD)"
+for system in x86_64-linux aarch64-darwin; do
+  nix eval --json \
+    --argstr flakeRef "git+file://$repo_root?rev=$revision&shallow=1" \
+    --argstr system "$system" \
+    --expr '
+      { flakeRef, system }:
+      let flake = builtins.getFlake flakeRef;
+      in import (flake.outPath + "/nix/buck2-products/compile-identity.test.nix") {
+        inherit flake system;
+      }
+    '
+done
 bash "$repo_root/nix/buck2-products/from-source-cores.test.sh" "$repo_root"
 bash "$repo_root/nix/buck2-products/capability-closure.test.sh" "$repo_root"
 contract="$(nix eval --impure --json --expr '
@@ -21,7 +36,7 @@ contract="$(nix eval --impure --json --expr '
     flake = builtins.getFlake ("git+file://" + toString repo + "?shallow=1");
     system = builtins.currentSystem;
     packages = flake.packages.${system};
-    product = packages.buck-product-megarepo-from-source;
+    product = packages.buck-product-megarepo-from-source.compiled;
     inventory = builtins.fromJSON (builtins.readFile (repo + "/nix/buck2-products/cache-targets.json"));
     declaration = builtins.head (builtins.filter (entry: entry.name == "megarepo") inventory.products);
   in {
