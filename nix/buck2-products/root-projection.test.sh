@@ -2,6 +2,8 @@
 set -Eeuo pipefail
 repo_root="${1:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)}"
 export BUCK2_PRODUCTS_REPO="$repo_root"
+nix eval --read-only --option allow-import-from-derivation false --raw \
+  "$repo_root#packages.x86_64-linux.buck2-vite-runtime-closure-fixture.drvPath" >/dev/null
 nix eval --impure --json --expr '
   let
     repo = /. + builtins.getEnv "BUCK2_PRODUCTS_REPO";

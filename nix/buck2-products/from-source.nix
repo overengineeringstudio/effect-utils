@@ -195,8 +195,14 @@ assert lib.assertMsg (
   repositorySource != null
   || builtins.all (
     package:
-    builtins.pathExists (source + "/${package}/BUCK")
-    || (rulesProjection != null && builtins.pathExists (rulesProjection + "/${package}/BUCK"))
+    let
+      file = repositoryRoot + "/${package}/BUCK";
+    in
+    builtins.pathExists file
+    && (
+      source.filter (toString file) "regular"
+      || (rulesProjection != null && rulesProjection.filter (toString file) "regular")
+    )
   ) entryPackages
 ) "buck2-products: entry package BUCK missing from product projection";
 assert lib.assertMsg (
