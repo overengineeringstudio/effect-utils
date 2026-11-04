@@ -18,8 +18,8 @@ let
   compilePaths = map (packages: (compile packages).drvPath) [ cleanA cleanB dirty ];
   stampPaths = map (packages: (stamp packages).drvPath) [ cleanA cleanB dirty ];
   activationUsesCompile = packages:
-    builtins.hasAttr (compile packages).drvPath
-      (builtins.getContext packages.gh-settings-genie.buildCommand);
+    builtins.elem (compile packages).drvPath
+      (builtins.attrNames (builtins.getContext packages.gh-settings-genie.buildCommand));
 in
 assert builtins.all (path: path == builtins.head compilePaths) compilePaths;
 assert (stamp cleanA).producerCommit == revisionA;

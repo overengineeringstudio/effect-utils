@@ -16,17 +16,12 @@ export BUCK2_PRODUCTS_REPO="$repo_root"
 # Lock the flake to HEAD so revision/dirty-state identity checks stay pure.
 # Each publisher platform is evaluated independently; no product is realized.
 revision="$(git -C "$repo_root" rev-parse HEAD)"
+flake_ref="$(jq -cn --arg url "git+file://$repo_root?rev=$revision&shallow=1" '$url')"
 for system in x86_64-linux aarch64-darwin; do
   nix eval --json \
-    --argstr flakeRef "git+file://$repo_root?rev=$revision&shallow=1" \
-    --argstr system "$system" \
-    --expr '
-      { flakeRef, system }:
-      let flake = builtins.getFlake flakeRef;
-      in import (flake.outPath + "/nix/buck2-products/compile-identity.test.nix") {
-        inherit flake system;
-      }
-    '
+    --file "$repo_root/nix/buck2-products/compile-identity.test.nix" \
+    --arg flake "builtins.getFlake $flake_ref" \
+    --argstr system "$system"
 done
 bash "$repo_root/nix/buck2-products/from-source-cores.test.sh" "$repo_root"
 bash "$repo_root/nix/buck2-products/capability-closure.test.sh" "$repo_root"
