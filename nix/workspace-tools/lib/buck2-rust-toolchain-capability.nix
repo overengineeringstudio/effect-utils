@@ -69,6 +69,22 @@ let
     wasm-bindgen = "wasm-bindgen";
     wasm-opt = "wasm-opt";
   };
+  # Identity is the underlying compiler output, never either invocation wrapper.
+  compilerIdentity = pkgs.runCommand "buck2-rust-compiler-identity.json" { } ''
+    ${pkgs.rustc}/bin/rustc -vV > version
+    sysroot="$(${pkgs.rustc}/bin/rustc --print sysroot)"
+    ${pkgs.jq}/bin/jq -n --rawfile version version \
+      --arg compilerStorePath ${lib.escapeShellArg (toString pkgs.rustc)} \
+      --arg sysroot "$(${pkgs.coreutils}/bin/readlink -f "$sysroot")" \
+      --argjson darwinWrapperEvidence ${
+        lib.escapeShellArg (
+          builtins.toJSON (lib.optional (darwinCapability != null) (toString darwinCapability.compiler))
+        )
+      } \
+      '{compilerStorePath: $compilerStorePath, sysroot: $sysroot,
+        verboseVersion: ($version | gsub("\r\n"; "\n") | sub("\n*$"; "\n")),
+        darwinWrapperEvidence: $darwinWrapperEvidence}' > "$out"
+  '';
   packages = lib.mapAttrs (
     name: package:
     # cargo_build_script uses this executable directly as a #! interpreter.
@@ -77,6 +93,11 @@ let
       package
     else
       pkgs.writeShellScriptBin executableNames.${name} ''
+        ${lib.optionalString (name == "rust-compiler") ''
+          if [ "$#" = 1 ] && [ "$1" = --effect-utils-compiler-identity ]; then
+            exec ${pkgs.coreutils}/bin/cat ${compilerIdentity}
+          fi
+        ''}
         ${lib.optionalString (name == "rust-linker" && pkgs.stdenv.hostPlatform.isLinux) ''
           export NIX_DONT_SET_RPATH=1
           export NIX_LDFLAGS=
