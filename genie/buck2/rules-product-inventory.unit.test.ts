@@ -34,6 +34,8 @@ const expectedFiles = [
   'buck2/rust/interop-service-package.ts',
   'buck2/rust/interop-service.ts',
   'buck2/rust/interop.bzl',
+  'buck2/rust/library-closure.mjs',
+  'buck2/rust/library.bzl',
   'buck2/rust/toolchains.bzl',
   'buck2/rust/wasm-guest-package.ts',
   'buck2/static_checks.bzl',
@@ -122,7 +124,7 @@ describe('Buck rules product inventory', () => {
         ...[...text.matchAll(/load\(\s*["'](\/\/[^"']+|:[^"']+)["']/g)].map((match) => match[1]!),
         ...[
           ...text.matchAll(
-            /default\s*=\s*["'](\/\/[^"']+\.(?:ts|js|sh|json)|:[^"']+\.(?:ts|js|sh|json))["']/g,
+            /default\s*=\s*["'](\/\/[^"']+\.(?:ts|js|mjs|sh|json)|:[^"']+\.(?:ts|js|mjs|sh|json))["']/g,
           ),
         ].map((match) => match[1]!),
       ]

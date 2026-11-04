@@ -237,6 +237,19 @@ dylibs cannot use it. Package-specific Cargo profile overrides require a
 package-aware rule projection; the current Cargo projector does not read
 profiles, so the shared workspace profile is the supported boundary.
 
+### Rust Compilation-Input Products
+
+`rust_library -> RustLinkInfo + plugins -> rust_product_library -> ProductArtifactInfo`
+
+`buck2/rust/library.bzl` selects static PIC link and emitted full metadata,
+never fast metadata, plus actual host proc-macro link singletons. It resolves
+dynamic crate names, preserves dependency suffixes, copies a flat closure,
+deduplicates identical sources and rejects conflicting destinations. The primary
+alone becomes `lib<crate>.rlib`. Native link records and unbundled shared
+libraries are rejected rather than omitted. `test:buck2:library-closure` checks
+compiler evidence, external derive loading, archive metadata and zero embedded
+store references (BUILD.BUCK.EXEC-R06/R07/R09/R10).
+
 ### Rust Interop Products
 
 ```text

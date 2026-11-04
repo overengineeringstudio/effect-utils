@@ -66,6 +66,8 @@ jq -e "(.requiredCapabilities | sort) == (.expectedCapabilities | sort)" <<<"$co
 [[ -f "$source/nix/weaver-flake/flake.nix" ]]
 [[ -f "$source/.buckconfig" ]]
 [[ -f "$source/buck2/dependencies/BUCK" ]]
+[[ -f "$source/buck2/rust/library-closure.mjs" ]]
+[[ ! -e "$source/buck2/tests/library_closure/closure.unit.test.mjs" ]]
 
 nix build "$repo_root#buck-product-megarepo-from-source" --no-link
 
