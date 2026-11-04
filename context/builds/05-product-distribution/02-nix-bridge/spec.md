@@ -47,6 +47,25 @@ products use the stricter substitution contract below.
 
 Every failed step terminates import. No step invokes Buck or a package manager.
 
+### Rust library realization
+
+`rust-library` is the inventory recipe kind; descriptor `kind: library` selects
+`buck-rust-library-product/v1`, not an executable runtime inspector. Source and
+published imports share exact descriptor validation, archive safety and digest
+checks. The entire closure installs flat under `lib/`; its exact inventory and
+each artifact SHA-256 must match before installation and after full fixup.
+Library realization explicitly sets `dontStrip = true` and never auto-patches
+ELF files. The portable payload store-reference rejection remains enabled.
+
+Import compares the producer's underlying compiler store path, full `rustc -vV`
+evidence, sysroot, target triple and panic strategy against the consumer's
+declared toolchain. A mismatch prints both identities and fails without a
+compiler fallback. Passthrough metadata exposes the checked compiler, target,
+panic strategy and descriptor path. Acceptance builds a separate derivation
+against the fixed-up output, compiling, linking and running an external consumer
+with bare rustc `--extern` and `-L dependency=<output>/lib`, including an installed
+proc macro when present.
+
 ## Cache-backed Product Bridge
 
 The generated product inventory is the source of truth for product name,

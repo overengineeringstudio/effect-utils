@@ -69,7 +69,7 @@ assert lib.assertMsg (
 realize {
   inherit (checkedDescriptor) name;
   inherit expectedPlatform expectedDescriptorDigest;
-  runtimeKind = checkedDescriptor.runtime.kind;
+  runtimeKind = if (checkedDescriptor.kind or null) == "library" then "library" else checkedDescriptor.runtime.kind;
   descriptorPath = lib.escapeShellArg "${descriptorFile}";
   archivePath = lib.escapeShellArg (toString fetchedArtifact);
   passthru = {
