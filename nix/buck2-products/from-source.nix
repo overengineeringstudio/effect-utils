@@ -4,10 +4,12 @@
 }:
 let
   lib = pkgs.lib;
-  # All cache products use the same unscoped repository projection. Keep both
-  # dependency discovery and toSource outside the per-product function.
+  defaultInputs = import ./buck-inputs.nix {
+    inherit lib;
+    repositoryRoot = ../..;
+  };
   unscopedSource =
-    repositoryRoot: cargoWorkspaceRoot:
+    repositoryRoot: cargoWorkspaceRoot: buckInputs:
     lib.fileset.toSource {
       root = repositoryRoot;
       fileset = lib.fileset.unions (
@@ -33,7 +35,7 @@ let
           (repositoryRoot + "/patches")
           (repositoryRoot + "/nix/weaver-flake/flake.nix")
           (repositoryRoot + "/scripts")
-          (lib.fileset.unions (import ./buck-inputs.nix { inherit lib repositoryRoot; }))
+          (lib.fileset.unions buckInputs.files)
           (repositoryRoot + "/packages/@overeng")
         ]
         ++ lib.optionals (cargoWorkspaceRoot != null) [
@@ -41,7 +43,7 @@ let
         ]
       );
     };
-  defaultSource = unscopedSource ../.. null;
+  defaultSource = unscopedSource ../.. null defaultInputs;
 in
 
 {
@@ -73,6 +75,32 @@ in
 let
   watcherPolicies = import ./watcher-policies.nix;
   cargoWorkspaceRoot = product.cargoWorkspaceRoot or null;
+  entryTargets = [
+    product.target
+  ]
+  ++ lib.optional (runtimeClosureTarget != null) runtimeClosureTarget;
+  entryPackages = map (
+    target: builtins.head (lib.splitString ":" (lib.last (lib.splitString "//" target)))
+  ) entryTargets;
+  baseInputs =
+    if repositoryRoot == ../.. then
+      defaultInputs
+    else
+      import ./buck-inputs.nix { inherit lib repositoryRoot; };
+  covered = builtins.all (package: builtins.elem package baseInputs.packages) entryPackages;
+  buckInputs =
+    if covered then
+      baseInputs
+    else
+      import ./buck-inputs.nix {
+        inherit lib repositoryRoot;
+        extraEntryTargets = entryTargets;
+      };
+  rulesProjection =
+    if rootProjection == null || covered then
+      rootProjection
+    else
+      import ./root-projection.nix { inherit pkgs repositoryRoot buckInputs; };
   # Cargo manifests in consumer roots live in repositorySource, which can be a
   # derivation. Read the staged workspace at build time, not repositoryRoot at
   # evaluation time: the latter belongs to this rules package.
@@ -87,10 +115,10 @@ let
       }
     else if repositorySource != null then
       repositorySource
-    else if repositoryRoot == ../.. && cargoWorkspaceRoot == null then
+    else if repositoryRoot == ../.. && cargoWorkspaceRoot == null && covered then
       defaultSource
     else
-      unscopedSource repositoryRoot cargoWorkspaceRoot;
+      unscopedSource repositoryRoot cargoWorkspaceRoot buckInputs;
   sourceDigest = builtins.hashString "sha256" (toString source);
   # Rust projections rendered with `cliBuildStamp` read this JSON through
   # `build_identity.cli_build_stamp`. Scoped native recipes have no Git
@@ -164,6 +192,14 @@ assert lib.assertMsg (
   (sourcePaths == null) == (rootProjection == null)
 ) "buck2-products: scoped sourcePaths require a separate rootProjection";
 assert lib.assertMsg (
+  repositorySource != null
+  || builtins.all (
+    package:
+    builtins.pathExists (source + "/${package}/BUCK")
+    || (rulesProjection != null && builtins.pathExists (rulesProjection + "/${package}/BUCK"))
+  ) entryPackages
+) "buck2-products: entry package BUCK missing from product projection";
+assert lib.assertMsg (
   !isBuildProduct || outputName == "artifact.tar"
 ) "buck2-products: ${product.kind} products must name the build_product payload artifact.tar";
 assert lib.assertMsg (
@@ -214,8 +250,8 @@ let
       export XDG_RUNTIME_DIR="$TMPDIR/runtime"
       export SSL_CERT_FILE="${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt"
       mkdir -p .buck2
-      ${lib.optionalString (rootProjection != null) ''
-        cp -R ${rootProjection}/. .
+      ${lib.optionalString (rulesProjection != null) ''
+        cp -R ${rulesProjection}/. .
         chmod -R u+w .buck2 buck2 BUCK .buckconfig .buckroot
       ''}
       mkdir -p "$HOME" "$XDG_CACHE_HOME" "$XDG_RUNTIME_DIR" .buck2/capabilities
@@ -345,13 +381,13 @@ let
         pnpmArchives
         producerCommit
         repositorySource
-        rootProjection
         source
         sourceDigest
         sourcePaths
         target
         runtimeClosureTarget
         ;
+      rootProjection = rulesProjection;
       artifactName = outputName;
       inherit productName;
       productKind = product.kind;

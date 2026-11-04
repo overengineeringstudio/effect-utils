@@ -2,6 +2,10 @@
 {
   pkgs,
   repositoryRoot ? ../..,
+  buckInputs ? import ./buck-inputs.nix {
+    inherit repositoryRoot;
+    inherit (pkgs) lib;
+  },
 }:
 let
   workspacePaths =
@@ -43,9 +47,6 @@ pkgs.lib.fileset.toSource {
       "nix/weaver-flake/flake.nix"
     ])
     ++ map (path: repositoryRoot + "/${path}") patchOwnerPaths
-    ++ (import ./buck-inputs.nix {
-      inherit repositoryRoot;
-      inherit (pkgs) lib;
-    })
+    ++ buckInputs.files
   );
 }

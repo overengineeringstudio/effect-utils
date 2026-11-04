@@ -54,16 +54,10 @@ set `checkProducerCommit = true` and supply the selected revision; an absent or
 mismatched revision fails the build. Published products retain their independent
 descriptor digest and evaluation-time validation unchanged.
 
-Source products separate package sources from Buck support inputs.
-`nix/buck2-products/buck-inputs.nix` follows literal loads, labels, exported files
-and helper imports from product BUCK packages, without unrelated sibling BUCKs.
-Reachable test trees, fixtures and test modules fail evaluation. The factory
-computes the default shared projection, including discovery and `toSource`, once.
-
-`bash nix/buck2-products/root-projection.test.sh "$PWD"` verifies that removing
-`buck2/tests/**` changes no projection or recipe, while real source/rule changes do.
-Sandboxed product builds check completeness; run all products after boundary changes.
-Recipe comparisons retain identical `producerCommit`; publication provenance binds HEAD.
+`buck2-products/buck-inputs.nix` follows literal load/export/helper dependencies;
+test inputs fail. Cache products share one projection; uncovered entries extend it.
+Run `bash nix/buck2-products/root-projection.test.sh "$PWD"` and sandboxed product
+builds for input isolation, real-input sensitivity and projection completeness.
 
 The Genie product wrapper realizes the pinned descriptor's capabilities through
 a closed provider registry. It supplies `gh` on PATH when the published product

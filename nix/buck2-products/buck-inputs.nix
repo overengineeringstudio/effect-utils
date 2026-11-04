@@ -1,36 +1,31 @@
-# Conservative literal dependency closure, not a recursive copy of buck2/.
-# Buck runs with only this projection in the Nix sandbox: a dynamic dependency
-# not represented here fails the source-product build rather than reading the
-# checkout. Keep the all-products build as the completeness check.
-{ lib, repositoryRoot }:
+{
+  lib,
+  repositoryRoot,
+  extraEntryTargets ? [ ],
+}:
 let
-  inventories =
-    map
-      (
-        name:
-        builtins.fromJSON (builtins.readFile (repositoryRoot + "/nix/buck2-products/${name}-targets.json"))
-      )
-      [
-        "cache"
-        "native"
-        "compiled"
-      ];
-  products = lib.concatMap (inventory: inventory.products) inventories;
+  readProducts =
+    name:
+    (builtins.fromJSON (
+      builtins.readFile (repositoryRoot + "/nix/buck2-products/${name}-targets.json")
+    )).products;
+  products = lib.concatMap readProducts [
+    "cache"
+    "native"
+    "compiled"
+  ];
   targetPackage =
     target: builtins.head (lib.splitString ":" (lib.last (lib.splitString "//" target)));
-  seeds = [ "BUCK" ] ++ map (product: "${targetPackage product.target}/BUCK") products;
-  # Source closures can contain packages whose rules differ from the entrypoint.
+  extraBucks = map (target: "${targetPackage target}/BUCK") extraEntryTargets;
+  seeds = [ "BUCK" ] ++ map (product: "${targetPackage product.target}/BUCK") products ++ extraBucks;
   sourcePaths = lib.unique (lib.concatMap (product: product.sourcePaths or [ ]) products);
   sourceBucks = lib.concatMap (
     path:
-    if builtins.pathExists (repositoryRoot + "/${path}") then
-      map (file: lib.removePrefix "${toString repositoryRoot}/" (toString file)) (
-        lib.fileset.toList (
-          lib.fileset.fileFilter (file: file.name == "BUCK") (repositoryRoot + "/${path}")
-        )
+    map (file: lib.removePrefix "${toString repositoryRoot}/" (toString file)) (
+      lib.fileset.toList (
+        lib.fileset.fileFilter (file: file.name == "BUCK") (repositoryRoot + "/${path}")
       )
-    else
-      [ ]
+    )
   ) sourcePaths;
   isTest =
     path:
@@ -47,24 +42,18 @@ let
     &&
       builtins.getAttr (builtins.baseNameOf absolute) (builtins.readDir (builtins.dirOf absolute))
       != "directory";
-  # Starlark labels and export_file names, and helper imports, are literals.
-  # Splitting on quoted strings also handles multiline load() declarations.
   literals =
     path:
     if lib.hasSuffix ".json" path then
       [ ]
     else
       let
-        # Strip comments in one pass. Splitting every generated BUCK line and
-        # then splitting it again at '#' dominates evaluator allocations.
         text = builtins.concatStringsSep "" (
           builtins.filter builtins.isString (
             builtins.split "#[^\n]*" (builtins.readFile (repositoryRoot + "/${path}"))
           )
         );
-        # Entrypoint packages also declare tests. Only their rule loads are
-        # eager; following every target mentioned in their BUCK would select
-        # unrelated test targets, not the product dependency graph.
+        # Entrypoint BUCKs contribute eager loads, not unrelated test targets.
         pattern =
           if lib.hasPrefix "buck2/" path then
             "[\"']((@rules)?//buck2[^\"']*|[A-Za-z0-9_./@:+-]+\\.(bzl|ts|tsx|mjs|json))[\"']"
@@ -105,10 +94,19 @@ let
       item:
       map (key: { inherit key; }) (lib.unique (lib.concatMap (resolve item.key) (literals item.key)));
   };
-  paths = builtins.filter (path: lib.hasPrefix "buck2/" path) (map (item: item.key) closure);
+  paths = builtins.filter (path: lib.hasPrefix "buck2/" path || builtins.elem path extraBucks) (
+    map (item: item.key) closure
+  );
   forbidden = builtins.filter isTest paths;
 in
 assert lib.assertMsg (
   forbidden == [ ]
 ) "buck2-products: product rules reference test inputs: ${lib.concatStringsSep ", " forbidden}";
-map (path: repositoryRoot + "/${path}") paths
+{
+  files = map (path: repositoryRoot + "/${path}") paths;
+  packages = lib.unique (
+    map (item: lib.removeSuffix "/" (lib.removeSuffix "BUCK" item.key)) (
+      builtins.filter (item: builtins.baseNameOf item.key == "BUCK") closure
+    )
+  );
+}
