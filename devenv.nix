@@ -1209,12 +1209,13 @@ in
     targets = [ "effect_utils//buck2/static:check_policy" ];
   });
 
-  # The outer devenv verb preserves stage-zero Genie freshness, then delegates
-  # every deterministic repository validation to Buck's static aggregate.
+  # Preserve stage-zero Genie freshness and standalone checks, including Rust
+  # formatting, before delegating the remaining validation to Buck's static aggregate.
   tasks."lint:check".after = lib.mkForce [
     "genie:check"
     "lint:check:no-tailwind"
     "lint:check:getflake"
+    "lint:check:rust"
     "lint:check:standalone-staging"
   ];
   tasks."lint:check".exec = lib.mkForce (buck2BuildExec {
@@ -1637,6 +1638,7 @@ in
     after = [
       "cargo:test:buck2-foundation"
       "cargo:proto-bindings:check"
+      "lint:check:rust"
     ];
     exec = trace.exec "cargo:check" ''
       set -euo pipefail
@@ -1644,7 +1646,6 @@ in
         cd rust
         cargo test --locked --workspace --exclude 'buck2-*'
         cargo clippy --locked --workspace --all-targets -- -D warnings
-        cargo fmt --all --check
       )
       cargo check --locked --manifest-path rust/effect-rust-macros/tests/wasm-only/Cargo.toml \
         --target-dir rust/target
@@ -1704,6 +1705,15 @@ in
     after = [ "genie:check" ];
     exec = trace.exec "nix:buck2-cargo-archives:check" ''
       exec ${pkgs.bash}/bin/bash nix/workspace-tools/lib/tests/buck2-cargo-archives.sh "$PWD"
+    '';
+  };
+
+  tasks."lint:check:rust" = {
+    description = "Check formatting of the shared Cargo workspace";
+    exec = trace.exec "lint:check:rust" ''
+      set -euo pipefail
+      cd "''${DEVENV_ROOT:-$PWD}"
+      cd rust && cargo fmt --all --check
     '';
   };
 
