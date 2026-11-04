@@ -105,15 +105,24 @@ let
       [ "''${actual%% *}" = "$hash" ] || fail "library artifact hash mismatch: $path"
     done < <(${pkgs.jq}/bin/jq -r '.library.artifacts[] | [.path, .sha256] | @tsv' "$descriptor")
   '';
-  builder = if isLibrary then
-    name: attrs: script: pkgs.stdenvNoCC.mkDerivation (attrs // {
-      inherit name;
-      phases = [ "installPhase" "fixupPhase" ];
-      installPhase = script;
-      dontStrip = true;
-      postFixup = checkLibrary;
-    })
-  else pkgs.runCommand;
+  builder =
+    if isLibrary then
+      name: attrs: script:
+      pkgs.stdenvNoCC.mkDerivation (
+        attrs
+        // {
+          inherit name;
+          phases = [
+            "installPhase"
+            "fixupPhase"
+          ];
+          installPhase = script;
+          dontStrip = true;
+          postFixup = checkLibrary;
+        }
+      )
+    else
+      pkgs.runCommand;
   dynamicElfRuntimeInputs = lib.optionals (runtimeKind == "elf-dynamic") [
     pkgs.glibc
     pkgs.libgcc
@@ -163,12 +172,14 @@ builder "${name}-buck2-import"
     allowedReferences = lib.optionals (runtimeKind == "elf-dynamic") (
       [ "out" ] ++ dynamicElfRuntimeInputs
     );
-    passthru = passthru // lib.optionalAttrs isLibrary {
-      rustc = pkgs.rustc;
-      rustTarget = expectedRustTarget;
-      panicStrategy = expectedPanicStrategy;
-      descriptorPath = descriptorPath;
-    };
+    passthru =
+      passthru
+      // lib.optionalAttrs isLibrary {
+        rustc = pkgs.rustc;
+        rustTarget = expectedRustTarget;
+        panicStrategy = expectedPanicStrategy;
+        descriptorPath = passthru.descriptorPath or descriptorPath;
+      };
   }
   ''
     set -euo pipefail

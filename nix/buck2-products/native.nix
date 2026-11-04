@@ -39,7 +39,10 @@ let
           "version"
         ]
       )
-    && builtins.elem product.kind [ "native" "rust-library" ]
+    && builtins.elem product.kind [
+      "native"
+      "rust-library"
+    ]
     && builtins.isString product.name
     && builtins.match "[A-Za-z0-9][A-Za-z0-9._+-]*" product.name != null
     && product.outputName == "artifact.tar"

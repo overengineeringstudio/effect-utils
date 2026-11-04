@@ -5,7 +5,10 @@ type ProductCapabilityShape = {
 
 /** Pnpm-backed products materialize package trees through sandboxed TS actions. */
 const usesTsSandbox = (product: ProductCapabilityShape): boolean =>
-  !((product.kind === 'native' || product.kind === 'rust-library') && product.cargoWorkspaceRoot !== undefined)
+  !(
+    (product.kind === 'native' || product.kind === 'rust-library') &&
+    product.cargoWorkspaceRoot !== undefined
+  )
 
 /**
  * The TS action sandbox base set (`buck2/toolchains/ts_sandbox.bzl`), excluding
@@ -18,7 +21,8 @@ export const tsSandboxCapabilities = ['bun', 'rust-shell'] as const
 export const productBuildCapabilities = (product: ProductCapabilityShape): readonly string[] => {
   const pnpm = ['action-env', 'archive-tool', ...tsSandboxCapabilities]
   const capabilities =
-    (product.kind === 'native' || product.kind === 'rust-library') && product.cargoWorkspaceRoot !== undefined
+    (product.kind === 'native' || product.kind === 'rust-library') &&
+    product.cargoWorkspaceRoot !== undefined
       ? [
           // Prelude build-script shims need declared Bash and coreutils on PATH.
           'action-env',
@@ -59,5 +63,6 @@ export const productBuildCapabilities = (product: ProductCapabilityShape): reado
  * Linux-only build capabilities. Bubblewrap is the TS sandbox's Linux
  * containment; Darwin runs the explicit `darwin-unsandboxed` admission lane.
  */
-export const productLinuxBuildCapabilities = (product: ProductCapabilityShape): readonly string[] =>
-  usesTsSandbox(product) ? ['bubblewrap'] : []
+export const productLinuxBuildCapabilities = (
+  product: ProductCapabilityShape,
+): readonly string[] => (usesTsSandbox(product) ? ['bubblewrap'] : [])
