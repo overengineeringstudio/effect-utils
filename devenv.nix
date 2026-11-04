@@ -1671,6 +1671,10 @@ in
     after = [ "genie:check" ];
     exec = trace.exec "nix:buck2-artifact-import:check" ''
       set -euo pipefail
+      BUCK2_RUST_COMPILER_IDENTITY="$(${
+        repoFlake.packages.${currentSystem}.buck2-rust-compiler
+      }/bin/rustc --effect-utils-compiler-identity)"
+      export BUCK2_RUST_COMPILER_IDENTITY
       ${pkgs.bash}/bin/bash nix/workspace-tools/lib/tests/buck2-build-product-contract.sh "$PWD"
       exec ${pkgs.bash}/bin/bash nix/workspace-tools/lib/tests/buck2-bridge.sh "$PWD"
     '';

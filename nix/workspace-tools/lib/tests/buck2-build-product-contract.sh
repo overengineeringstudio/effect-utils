@@ -49,6 +49,19 @@ let
       rustc = valid.library.rustc // { verboseVersion = version "aarch64-apple-darwin"; darwinWrapperEvidence = "${compiler}/bin/rustc"; };
       artifacts = [ (artifact valid.library.primary "rlib") (artifact "lib/libmacro.dylib" "proc-macro") (artifact "lib/libmetadata.rmeta" "rmeta") ]; };
   };
+  actualCompiler = builtins.fromJSON (builtins.getEnv "BUCK2_RUST_COMPILER_IDENTITY");
+  actualHost = builtins.head (builtins.match ".*\nhost: ([^\n]+)\n.*" actualCompiler.verboseVersion);
+  actual = valid // {
+    platform = if actualHost == "aarch64-apple-darwin" then darwin.platform else valid.platform // {
+      architecture = if actualHost == "x86_64-unknown-linux-gnu" then "x86_64" else "aarch64";
+    };
+    library = valid.library // { rustc = actualCompiler; hostTriple = actualHost; targetTriple = actualHost;
+      artifacts = [ (artifact valid.library.primary "rlib") ]; };
+  };
+  synthesizedDarwin = darwin // { library = darwin.library // { rustc = actualCompiler // {
+    verboseVersion = builtins.replaceStrings [ actualHost ] [ "aarch64-apple-darwin" ] actualCompiler.verboseVersion;
+    darwinWrapperEvidence = "${actualCompiler.compilerStorePath}/bin/rustc";
+  }; }; };
   negatives = [
     (valid // { kind = "executable"; }) (valid // { schema = "buck-build-product/v1"; }) (valid // { schema = "buck-rust-library-product/v2"; })
     (withLibrary { panicStrategy = "invalid"; }) (withLibrary { targetTriple = "x86_64-unknown-linux-gnu"; })
@@ -65,6 +78,8 @@ let
   ] ++ [ (withArtifacts [ (artifact valid.library.primary "rlib") (artifact "lib/libmacro.dylib" "proc-macro") ]) ];
 in
 assert contract.validateDescriptor valid == valid && contract.validateDescriptor darwin == darwin;
+assert contract.validateDescriptor actual == actual;
+assert contract.validateDescriptor synthesizedDarwin == synthesizedDarwin;
 assert contract.validateDescriptor (withLibrary { panicStrategy = "abort"; }) != null;
 assert builtins.all (object: rejects (object.replace (object.value // { unknown = true; })) && builtins.all (field: rejects (object.replace (builtins.removeAttrs object.value [ field ]))) (builtins.attrNames object.value)) objects;
 assert builtins.all rejects negatives;

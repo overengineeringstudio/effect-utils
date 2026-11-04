@@ -76,9 +76,9 @@ let
     ${pkgs.jq}/bin/jq -n --rawfile version version \
       --arg compilerStorePath ${lib.escapeShellArg (toString pkgs.rustc)} \
       --arg sysroot "$(${pkgs.coreutils}/bin/readlink -f "$sysroot")" \
-      --argjson darwinWrapperEvidence ${
+      --arg darwinWrapperEvidence ${
         lib.escapeShellArg (
-          builtins.toJSON (lib.optional (darwinCapability != null) (toString darwinCapability.compiler))
+          if darwinCapability != null then "${darwinCapability.compiler}/bin/rustc" else ""
         )
       } \
       '{compilerStorePath: $compilerStorePath, sysroot: $sysroot,
