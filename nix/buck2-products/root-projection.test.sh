@@ -9,7 +9,8 @@ nix eval --impure --json --expr '
     pkgs = import flake.inputs.nixpkgs { system = builtins.currentSystem; };
     lib = pkgs.lib;
     project = repositoryRoot: import (repo + "/nix/buck2-products/root-projection.nix") {
-      inherit pkgs repositoryRoot;
+      inherit pkgs;
+      repositoryRoot = builtins.toPath (toString repositoryRoot);
     };
     # Removing every test package is a stronger perturbation than editing one
     # BUCK file. Neither its presence nor its bytes may affect the source hash.

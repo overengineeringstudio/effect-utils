@@ -28,8 +28,10 @@ let
     || lib.hasInfix "/fixtures/" path
     || lib.hasInfix ".test." path
     || lib.hasSuffix ".genie.ts" path;
-  exists = path: builtins.pathExists (repositoryRoot + "/${path}")
-    && builtins.getAttr (builtins.baseNameOf path) (builtins.readDir (builtins.dirOf (repositoryRoot + "/${path}"))) != "directory";
+  exists = path:
+    let absolute = repositoryRoot + "/${path}";
+    in builtins.pathExists absolute
+      && builtins.getAttr (builtins.baseNameOf absolute) (builtins.readDir (builtins.dirOf absolute)) != "directory";
   # Starlark labels and export_file names, and helper imports, are literals.
   # Splitting on quoted strings also handles multiline load() declarations.
   literals = path:
