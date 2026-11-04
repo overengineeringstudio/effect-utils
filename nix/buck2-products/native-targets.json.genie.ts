@@ -17,6 +17,15 @@ const products = [
     version: '0.0.0',
   })),
   {
+    cargoWorkspaceRoot: 'rust',
+    kind: 'rust-library' as const,
+    name: 'example-library',
+    outputName: 'artifact.tar',
+    sourcePaths: ['buck2/tests/library_closure', 'rust/Cargo.lock', 'rust/Cargo.toml', 'rust/third-party'],
+    target: 'effect_utils//buck2/tests/library_closure:product',
+    version: '0.0.0',
+  },
+  {
     kind: 'native' as const,
     name: 'typescript-api-server',
     outputName: 'artifact.tar',

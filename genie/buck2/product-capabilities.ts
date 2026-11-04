@@ -1,11 +1,11 @@
 type ProductCapabilityShape = {
-  readonly kind: 'native' | 'compiled-executable' | 'javascript' | 'package'
+  readonly kind: 'native' | 'rust-library' | 'compiled-executable' | 'javascript' | 'package'
   readonly cargoWorkspaceRoot?: string
 }
 
 /** Pnpm-backed products materialize package trees through sandboxed TS actions. */
 const usesTsSandbox = (product: ProductCapabilityShape): boolean =>
-  !(product.kind === 'native' && product.cargoWorkspaceRoot !== undefined)
+  !((product.kind === 'native' || product.kind === 'rust-library') && product.cargoWorkspaceRoot !== undefined)
 
 /**
  * The TS action sandbox base set (`buck2/toolchains/ts_sandbox.bzl`), excluding
@@ -18,7 +18,7 @@ export const tsSandboxCapabilities = ['bun', 'rust-shell'] as const
 export const productBuildCapabilities = (product: ProductCapabilityShape): readonly string[] => {
   const pnpm = ['action-env', 'archive-tool', ...tsSandboxCapabilities]
   const capabilities =
-    product.kind === 'native' && product.cargoWorkspaceRoot !== undefined
+    (product.kind === 'native' || product.kind === 'rust-library') && product.cargoWorkspaceRoot !== undefined
       ? [
           // Prelude build-script shims need declared Bash and coreutils on PATH.
           'action-env',
