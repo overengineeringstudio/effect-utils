@@ -249,6 +249,7 @@ alone becomes `lib<crate>.rlib`. Native link records and unbundled shared
 libraries are rejected rather than omitted. `test:buck2:library-closure` checks
 compiler evidence, external derive loading, archive metadata and zero embedded
 store references (BUILD.BUCK.EXEC-R06/R07/R09/R10).
+The compiler wrapper checks actual argv and response-file panic options against the toolchain-reserved `EFFECT_UTILS_RUST_PANIC` environment value; crate environments must not override that value.
 
 ### Rust Interop Products
 

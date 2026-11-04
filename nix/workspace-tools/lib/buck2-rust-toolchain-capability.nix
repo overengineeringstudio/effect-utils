@@ -104,6 +104,37 @@ let
             exec ${pkgs.coreutils}/bin/cat ${compilerIdentity}
           fi
         ''}
+        ${lib.optionalString
+          (builtins.elem name [
+            "rust-compiler"
+            "rust-wasm-compiler"
+          ])
+          ''
+            expected="''${EFFECT_UTILS_RUST_PANIC:-}"
+            if [ -n "$expected" ]; then
+              case "$expected" in unwind|abort) ;; *) echo "Invalid toolchain panic strategy: $expected" >&2; exit 1 ;; esac
+              check_panic() {
+                local flag="''${1%$'\r'}" depth="$2" nested actual
+                case "$flag" in
+                  @*)
+                    if [ "$depth" -ge 16 ]; then echo "Recursive rustc response files" >&2; exit 1; fi
+                    while IFS= read -r nested || [ -n "$nested" ]; do
+                      check_panic "$nested" "$((depth + 1))"
+                    done < "''${flag#@}"
+                    ;;
+                  -Cpanic=*|--codegen=panic=*|panic=*)
+                    actual="''${flag##*panic=}"
+                    if [ "$actual" != "$expected" ]; then
+                      printf 'rustc flag `%s` is not allowed: toolchain panic=%s\n' "$flag" "$expected" >&2
+                      exit 1
+                    fi
+                    ;;
+                esac
+              }
+              for argument in "$@"; do check_panic "$argument" 0; done
+            fi
+          ''
+        }
         ${lib.optionalString (name == "rust-linker" && pkgs.stdenv.hostPlatform.isLinux) ''
           export NIX_DONT_SET_RPATH=1
           export NIX_LDFLAGS=
