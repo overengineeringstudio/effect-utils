@@ -27,15 +27,15 @@ const products = [
   {
     cargoWorkspaceRoot: 'rust',
     kind: 'rust-library' as const,
-    name: 'example-library',
+    name: 'content-address-core',
     outputName: 'artifact.tar',
     sourcePaths: [
-      'buck2/tests/library_closure',
+      'rust/content-address-core',
       'rust/Cargo.lock',
       'rust/Cargo.toml',
       'rust/third-party',
     ],
-    target: 'effect_utils//buck2/tests/library_closure:product',
+    target: 'effect_utils//rust/content-address-core:content-address-core-product',
     version: '0.0.0',
   },
   {

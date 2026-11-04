@@ -8,7 +8,7 @@ pkgs.runCommand "buck2-installed-library-consumer"
     nativeBuildInputs = [ pkgs.stdenv.cc ];
     dontStrip = true;
     passthru.mismatch = realize {
-      name = "example-library";
+      name = "content-address-core";
       runtimeKind = "library";
       expectedPlatform = {
         os = if pkgs.stdenv.hostPlatform.isDarwin then "darwin" else "linux";
@@ -25,11 +25,23 @@ pkgs.runCommand "buck2-installed-library-consumer"
     descriptor=${source}/descriptor.json
     ${pkgs.jq}/bin/jq -r '.library.artifacts[] | "\(.sha256)  ${product}/\(.path)"' "$descriptor" \
       | ${pkgs.coreutils}/bin/sha256sum --check
-    ${pkgs.stdenv.cc.bintools}/bin/ar t ${product}/lib/libexample_library.rlib \
+    ${pkgs.stdenv.cc.bintools}/bin/ar t ${product}/lib/libcontent_address_core.rlib \
       | ${pkgs.gnugrep}/bin/grep 'lib.rmeta'
-    ${product.rustc}/bin/rustc --edition=2024 \
-      ${../../buck2/tests/library_closure/consumer.rs} \
-      --extern example_library=${product}/lib/libexample_library.rlib \
+    cat > consumer.rs <<'RS'
+    #[derive(serde_derive::Serialize)]
+    struct ConsumerMarker { digest: content_address_core::Digest }
+    fn assert_serializable<T: serde::Serialize>() {}
+    fn main() {
+        assert_serializable::<ConsumerMarker>();
+        let digest = content_address_core::Digest([0; 32]);
+        assert_eq!(digest.to_string().parse::<content_address_core::Digest>().unwrap(), digest);
+    }
+    RS
+    serde=(${product}/lib/libserde-*.rlib)
+    derive=(${product}/lib/libserde_derive-*)
+    ${product.rustc}/bin/rustc --edition=2024 consumer.rs \
+      --extern content_address_core=${product}/lib/libcontent_address_core.rlib \
+      --extern serde="''${serde[0]}" --extern serde_derive="''${derive[0]}" \
       -L dependency=${product}/lib -o consumer
     ./consumer
     echo 'PASS: installed library metadata, external consumer and proc-macro loading'

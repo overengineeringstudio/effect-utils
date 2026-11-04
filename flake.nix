@@ -354,7 +354,7 @@ rec {
           // {
             buck2-library-consumer = import ./nix/buck2-products/library-check.nix {
               inherit pkgs;
-              product = nativeProductPackages.example-library;
+              product = nativeProductPackages.content-address-core;
             };
           };
         packages =
