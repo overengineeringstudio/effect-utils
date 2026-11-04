@@ -18,10 +18,3 @@ export_file(
     visibility = ["PUBLIC"],
 )
 
-
-# Public rule API lives in defs.bzl; concrete products belong to repository adapters.
-export_file(
-    name = "fixture_executable",
-    src = "defs.bzl",
-    visibility = ["PUBLIC"],
-)

@@ -34,7 +34,7 @@ let
       && builtins.getAttr (builtins.baseNameOf absolute) (builtins.readDir (builtins.dirOf absolute)) != "directory";
   # Starlark labels and export_file names, and helper imports, are literals.
   # Splitting on quoted strings also handles multiline load() declarations.
-  literals = path:
+  literals = path: if lib.hasSuffix ".json" path then [ ] else
     let
       text = lib.concatStringsSep "\n" (
         map (line: builtins.head (lib.splitString "#" line))
@@ -44,7 +44,7 @@ let
       # eager; following every target mentioned in their BUCK would select
       # unrelated test targets, not the product dependency graph.
       pattern = if lib.hasPrefix "buck2/" path then
-        "\"([^\"]*)\"|'([^']*)'"
+        "[\"']((@rules)?//buck2[^\"']*|[A-Za-z0-9_./@:+-]+\\.(bzl|ts|tsx|mjs|json))[\"']"
       else
         "load\\([[:space:]]*\"([^\"]*)\"";
     in lib.concatMap (part: if builtins.isList part then builtins.filter builtins.isString part else [ ])
@@ -61,8 +61,8 @@ let
         (lib.optional (!(lib.hasSuffix ".bzl" name)) "${package}/BUCK") ++ [ file ]
       else if lib.hasPrefix "//buck2/" value && lib.hasSuffix ".bzl" value then
         [ (lib.removePrefix "//" value) ]
-      else if lib.hasPrefix "buck2/" owner && builtins.match "[A-Za-z0-9_./@:+-]+" value != null then
-        [ file "${file}.ts" ]
+      else if lib.hasPrefix "buck2/" owner && builtins.match "[A-Za-z0-9_./@:+-]+\\.(bzl|ts|tsx|mjs|json)" value != null then
+        [ file ]
       else [ ];
     in map (path: lib.removePrefix "${toString repositoryRoot}/" (toString (repositoryRoot + "/${path}")))
       (builtins.filter (path: lib.hasPrefix "buck2/" path && exists path) candidates);

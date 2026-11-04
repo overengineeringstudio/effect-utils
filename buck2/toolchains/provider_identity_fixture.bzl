@@ -31,7 +31,7 @@ def cross_cell_product_identity(name, target_platform, executable_target_platfor
     executable = name + "_executable"
     _product_executable(
         name = executable,
-        executable = "//buck2/products:fixture_executable",
+        executable = "//buck2/toolchains:provider_identity_fixture.bzl",
         target_platform = executable_target_platform,
     )
     build_product(

@@ -4,13 +4,13 @@ repo_root="${1:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)}"
 export BUCK2_PRODUCTS_REPO="$repo_root"
 nix eval --impure --json --expr '
   let
-    repo = builtins.toPath (builtins.getEnv "BUCK2_PRODUCTS_REPO");
+    repo = /. + builtins.getEnv "BUCK2_PRODUCTS_REPO";
     flake = builtins.getFlake ("git+file://" + toString repo + "?shallow=1");
     pkgs = import flake.inputs.nixpkgs { system = builtins.currentSystem; };
     lib = pkgs.lib;
     project = repositoryRoot: import (repo + "/nix/buck2-products/root-projection.nix") {
       inherit pkgs;
-      repositoryRoot = builtins.toPath (toString repositoryRoot);
+      repositoryRoot = /. + builtins.unsafeDiscardStringContext (toString repositoryRoot);
     };
     # Removing every test package is a stronger perturbation than editing one
     # BUCK file. Neither its presence nor its bytes may affect the source hash.
@@ -63,7 +63,7 @@ nix eval --impure --json --expr '
           file: (file.hasExt "ts" || file.hasExt "tsx" || file.hasExt "rs")
             && !(lib.hasInfix ".test." file.name)
             && !(lib.hasSuffix ".genie.ts" file.name)
-        ) (builtins.toPath "${toString source}/${package}/src"));
+        ) (/. + builtins.unsafeDiscardStringContext "${toString source}/${package}/src"));
         ownFile = lib.removePrefix "${toString source}/" (toString (builtins.head ownFiles));
         # Every product loads the platform rule API through its rule/toolchain
         # imports, including the root package eagerly loaded by Prelude.
