@@ -573,7 +573,7 @@ describe('Responses pass-through (AIG.EDGE-R03, AIG.EDGE-R04, AIG.EDGE-R06)', ()
       expect(response.status).toBe(401)
       await response.text()
     }
-    for (const body of ['{', '{"input":"hello"}']) {
+    for (const body of ['{', '{}', '{"input":"hello"}']) {
       const response = await fetch(`${url}/v1/responses`, {
         method: 'POST',
         headers: auth,
@@ -584,15 +584,97 @@ describe('Responses pass-through (AIG.EDGE-R03, AIG.EDGE-R04, AIG.EDGE-R06)', ()
     }
     expect(forwarded).toBe(0)
     expect(metrics.render()).toContain(
-      'requests_total{consumer="fixture-consumer",model="_rejected",status="400"} 2',
+      'requests_total{consumer="fixture-consumer",model="_rejected",status="400"} 3',
     )
+    expect(metrics.render()).not.toContain('tokens_total{')
   })
+
+  it('meters a large terminal response split across transport chunks', async () => {
+    const bytes = `event: response.completed\ndata: ${JSON.stringify({
+      type: 'response.completed',
+      response: { output: [{ type: 'message', content: 'x'.repeat(262144) }], usage },
+    })}\n\n`
+    const upstream = await start(
+      () =>
+        new Response(
+          new ReadableStream({
+            start(controller) {
+              const encoded = new TextEncoder().encode(bytes)
+              for (let offset = 0; offset < encoded.length; offset += 8192)
+                controller.enqueue(encoded.subarray(offset, offset + 8192))
+              controller.close()
+            },
+          }),
+          { headers: { 'content-type': 'text/event-stream' } },
+        ),
+    )
+    const { url, metrics } = await gateway(upstream)
+    const response = await fetch(`${url}/v1/responses`, {
+      method: 'POST',
+      headers: auth,
+      body: '{"model":"fixture/large","stream":true}',
+    })
+    expect(await response.text()).toBe(bytes)
+    for (const [kind, count] of Object.entries({ input: 12, output: 7, cached: 3, reasoning: 4 }))
+      expect(metrics.render()).toContain(
+        `tokens_total{consumer="fixture-consumer",model="fixture/large",kind="${kind}"} ${count}`,
+      )
+  })
+
+  it.each([
+    ['/v1/responses', false],
+    ['/v1/responses', true],
+    ['/v1/chat/completions', false],
+    ['/v1/chat/completions', true],
+  ] as const)(
+    'retains independently valid usage counts on %s (stream=%s)',
+    async (path, stream) => {
+      const partialUsage =
+        path === '/v1/responses'
+          ? {
+              ...usage,
+              input_tokens_details: { cached_tokens: null },
+            }
+          : {
+              prompt_tokens: 12,
+              completion_tokens: 7,
+              prompt_tokens_details: { cached_tokens: null },
+              completion_tokens_details: { reasoning_tokens: 4 },
+            }
+      const payload =
+        stream === true && path === '/v1/responses'
+          ? { type: 'response.completed', response: { usage: partialUsage } }
+          : { usage: partialUsage }
+      const bytes =
+        stream === true ? `data: ${JSON.stringify(payload)}\n\n` : JSON.stringify(payload)
+      const upstream = await start(
+        () =>
+          new Response(bytes, {
+            headers: { 'content-type': stream === true ? 'text/event-stream' : 'application/json' },
+          }),
+      )
+      const { url, metrics } = await gateway(upstream)
+      const response = await fetch(`${url}${path}`, {
+        method: 'POST',
+        headers: auth,
+        body: encodeJson({ model: 'fixture/mixed', stream }),
+      })
+      expect(await response.text()).toBe(bytes)
+      for (const [kind, count] of Object.entries({ input: 12, output: 7, reasoning: 4 }))
+        expect(metrics.render()).toContain(
+          `tokens_total{consumer="fixture-consumer",model="fixture/mixed",kind="${kind}"} ${count}`,
+        )
+      expect(metrics.render()).not.toContain('kind="cached"')
+    },
+  )
 
   it.each([
     { previous_response_id: 'resp_other' },
     { conversation: 'conv_other' },
     { conversation: null },
     { input: [{ type: 'item_reference', id: 'item_other' }] },
+    { input: [{ id: 'item_other' }] },
+    { input: [{ id: 'item_other', type: null }] },
   ])('rejects server-side state references: %j', async (reference) => {
     let forwarded = 0
     const upstream = await start(() => {
@@ -622,7 +704,7 @@ describe('Responses pass-through (AIG.EDGE-R03, AIG.EDGE-R04, AIG.EDGE-R06)', ()
 
   it('preserves stateless continuity request and JSON response bytes and meters every usage kind', async () => {
     const body =
-      '{ "model": "fixture/responses", "previous_response_id": null, "store": false, "include": ["reasoning.encrypted_content"], "input": [{"type":"reasoning","encrypted_content":"opaque"}] }'
+      '{ "model": "fixture/responses", "previous_response_id": null, "store": false, "include": ["reasoning.encrypted_content"], "input": [{"role":"user","content":"hi"},{"type":"reasoning","id":"rs_fixture","encrypted_content":"opaque"},{"type":"message","id":"msg_fixture"},{"type":"function_call","id":"fc_fixture"},{"type":"function_call_output","id":"fco_fixture"}] }'
     const bytes = ` { "output": [], "usage": ${JSON.stringify(usage)} }\n`
     const upstream = await start(async (request) => {
       expect(new URL(request.url).pathname).toBe('/v1/responses')
@@ -896,28 +978,31 @@ describe('shared wire conformance through the edge (AIG.EDGE-R07)', () => {
       replayCase.request.auth === 'none' && replayCase.response.status === 401
     // Client fixtures may omit auth on a fake transport. The protected edge
     // projection supplies a fixture bearer except for the actual auth refusal.
-    const body: Schema.JsonObject = {
-      model: replayCase.request.match?.model ?? 'fixture/model',
-      stream: replayCase.request.match?.stream ?? false,
-      ...(replayCase.request.path === '/v1/responses'
-        ? { input: 'Fixture request' }
-        : { messages: [{ role: 'user', content: 'Fixture request' }] }),
-      ...(replayCase.request.match?.responseFormat === undefined
+    const body: Schema.JsonObject =
+      replayCase.id === 'responses.missing-model-400'
         ? {}
         : {
-            response_format: {
-              type: replayCase.request.match.responseFormat,
-              ...(replayCase.schema === undefined
-                ? {}
-                : { json_schema: { name: 'fixture', schema: replayCase.schema } }),
-            },
-          }),
-      ...(replayCase.request.path === '/v1/chat/completions' &&
-      replayCase.request.match?.stream === true
-        ? { stream_options: { include_usage: false, fixture_option: true } }
-        : {}),
-      ...replayCase.request.body,
-    }
+            model: replayCase.request.match?.model ?? 'fixture/model',
+            stream: replayCase.request.match?.stream ?? false,
+            ...(replayCase.request.path === '/v1/responses'
+              ? { input: 'Fixture request' }
+              : { messages: [{ role: 'user', content: 'Fixture request' }] }),
+            ...(replayCase.request.match?.responseFormat === undefined
+              ? {}
+              : {
+                  response_format: {
+                    type: replayCase.request.match.responseFormat,
+                    ...(replayCase.schema === undefined
+                      ? {}
+                      : { json_schema: { name: 'fixture', schema: replayCase.schema } }),
+                  },
+                }),
+            ...(replayCase.request.path === '/v1/chat/completions' &&
+            replayCase.request.match?.stream === true
+              ? { stream_options: { include_usage: false, fixture_option: true } }
+              : {}),
+            ...replayCase.request.body,
+          }
     let forwarded = 0
     const upstream = await start(async (request) => {
       forwarded++
@@ -965,7 +1050,12 @@ describe('shared wire conformance through the edge (AIG.EDGE-R07)', () => {
       expect(metrics.render()).not.toContain('consumer=')
       return
     }
-    expect(forwarded).toBe(replayCase.id === 'responses.state-reference-400' ? 0 : 1)
+    expect(forwarded).toBe(
+      replayCase.id === 'responses.state-reference-400' ||
+        replayCase.id === 'responses.missing-model-400'
+        ? 0
+        : 1,
+    )
     expect(bytes).toBe(expectedBytes)
     expect(response.headers.get('content-type')).toBe(fakeResponse.headers['content-type'])
     const model =

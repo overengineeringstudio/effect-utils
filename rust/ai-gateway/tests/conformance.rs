@@ -615,7 +615,8 @@ fn not_applicable_reason(case: &Value) -> Option<&'static str> {
         "responses.text"
         | "responses.stream.usage"
         | "responses.upstream-404"
-        | "responses.state-reference-400" => {
+        | "responses.state-reference-400"
+        | "responses.missing-model-400" => {
             Some("not applicable: the Rust client does not expose a Responses API")
         }
         _ => None,

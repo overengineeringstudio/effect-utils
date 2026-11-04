@@ -55,6 +55,8 @@ bearer -> digest comparison -> bound body -> decode model -> chat-only usage for
 
 After bounded JSON/model decoding and before forwarding, reject a non-null `previous_response_id`, any `conversation` field (including null), or an `input` array item whose `type` is `item_reference`. These requests receive 400 with `type: gateway_error`, null `code`, and a clear message identifying unsupported upstream state references; no request reaches the upstream. Consumer authentication does not establish ownership of IDs in the shared upstream account. No `GET /v1/responses/{id}` or conversation routes are exposed.
 
+For each input object, the reference classification is `type === "item_reference" || ((type is absent || type === null) && role is absent)`. The upstream item-reference `type` is optional, so an ID-only object or `{ "id": "msg_example", "type": null }` is rejected. A typeless `{ "role": "user", "content": "hi" }` remains a valid EasyInputMessage. Typed complete items retain their IDs: `message`, `reasoning` with `encrypted_content`, `function_call`, and `function_call_output` are not rejected merely for carrying `id`.
+
 Caller-carried continuity uses `store: false`, `include: ["reasoning.encrypted_content"]`, and complete prior output items echoed in the next request's `input`. Stateless item forms include `message`, `reasoning` with `encrypted_content`, `function_call`, and `function_call_output`. The edge neither decrypts nor rewrites these items and does not force those request fields. Size the optional Responses byte-limit override for the intended context: roughly four bytes per context token is a planning approximation, to which encrypted reasoning and JSON escaping/structure add overhead; token capacity is not an exact byte guarantee. The tradeoffs and official wire references are recorded in [Decision 0004](../.decisions/0004-responses-pass-through.md).
 
 ## Accounting (AIG.EDGE-R06)
@@ -84,6 +86,12 @@ Usage observation is endpoint-specific; Responses is not parsed as Chat Completi
 | Responses terminal SSE event | `response.usage` on `response.completed`, `response.incomplete`, or `response.failed` | `input_tokens` / `output_tokens` | `input_tokens_details.cached_tokens` / `output_tokens_details.reasoning_tokens` |
 
 Responses SSE accounting observes terminal usage exactly once per request, not snapshots on `response.created` or `response.in_progress`, deltas, or repeated terminal events. It preserves every event byte, including failed/incomplete payloads; observation does not turn an application failure into a successful response. Each count must be a supplied nonnegative safe integer; explicit zero is preserved, while absent, null, malformed, negative, fractional, or unsafe counts produce no corresponding token metric. Do not derive missing counts from `total_tokens`, output text, or other counts.
+
+Usage counts are decoded independently for every wire, including Chat Completions: a malformed cached-token detail does not discard valid input, output, or reasoning counts.
+
+Responses terminal events embed the complete `response.output`, not only usage. The Responses SSE observer therefore permits 16,777,216 UTF-16 code units per line and per accumulated event payload; other routes retain 65,536 per line and 131,072 per payload. This fixed allowance accommodates multi-megabyte terminal output while bounding retained line plus event text to roughly 64 MiB per active observer (excluding transient decoding/parsing allocations). Oversized events are discarded from observation in their entirety, never parsed as truncated JSON; subsequent events remain observable. Forwarding is independent of these observation limits and remains incremental and byte-exact. This is an observation limit, not a response-size restriction.
+
+An authenticated Responses body `{}` is rejected locally as a missing-model request, before upstream fetch, with 400 `gateway_error` and no token metrics. `input` is not required by the edge.
 
 ## Shared conformance (AIG.EDGE-R07)
 

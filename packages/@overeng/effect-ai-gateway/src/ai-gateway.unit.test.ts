@@ -215,6 +215,7 @@ const notApplicableCases: Record<string, string> = {
   'responses.stream.usage': 'Not applicable: AiGateway does not expose a Responses API.',
   'responses.upstream-404': 'Not applicable: AiGateway does not expose a Responses API.',
   'responses.state-reference-400': 'Not applicable: AiGateway does not expose a Responses API.',
+  'responses.missing-model-400': 'Not applicable: AiGateway does not expose a Responses API.',
 }
 
 describe('AiGateway shared wire conformance', () => {

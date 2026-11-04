@@ -1,0 +1,28 @@
+{
+  "id": "responses.missing-model-400",
+  "summary": "Reject a Responses request without a model locally instead of forwarding it upstream.",
+  "requirements": ["AIG-R10"],
+  "request": {
+    "method": "POST",
+    "path": "/v1/responses",
+    "auth": "bearer",
+    "body": {}
+  },
+  "response": {
+    "status": 400,
+    "json": {
+      "error": {
+        "message": "Invalid request JSON or model",
+        "type": "gateway_error",
+        "code": null
+      }
+    }
+  },
+  "expect": {
+    "outcome": "http-error",
+    "error": {
+      "status": 400,
+      "type": "gateway_error"
+    }
+  }
+}
