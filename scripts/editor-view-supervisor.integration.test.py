@@ -79,11 +79,12 @@ if sys.argv[1] == "holder":
                 self.assertLessEqual(len(corrupt_dump.stderr.splitlines()), 40)
                 # Acquisition must overwrite this same inode and admit normally.
                 command = [sys.executable, script, "none", "0.1", mode, str(lock), sys.executable, "-c", fixture]
-                holder = subprocess.Popen([*command, "holder", str(release)], env=env,
-                                          stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                                          start_new_session=True)
-                waiter = None
+                release_fd = os.open(release, os.O_RDWR)
+                holder = waiter = None
                 try:
+                    holder = subprocess.Popen([*command, "holder", str(release)], env=env,
+                                              stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                              start_new_session=True)
                     until(holder.stdout, b"admitted\n")
                     waiter = subprocess.Popen([*command, "waiter"], env=env,
                                               stdout=subprocess.PIPE, stderr=subprocess.PIPE,
@@ -100,9 +101,7 @@ if sys.argv[1] == "holder":
                     self.assertNotIn(str(Path.home()).encode(), dump)
                     self.assertLessEqual(len(dump), 8192)
                     self.assertLessEqual(len(dump.splitlines()), 40)
-                    release_fd = os.open(release, os.O_RDWR)
                     os.write(release_fd, b"1")
-                    os.close(release_fd)
                     _, holder_stderr = holder.communicate(timeout=10)
                     stdout, stderr = waiter.communicate(timeout=10)
                     self.assertEqual(holder.returncode, 0, holder_stderr.decode())
@@ -112,11 +111,14 @@ if sys.argv[1] == "holder":
                         b"[editor-view-admission-wait] begin"), 1)
                     self.assertIn(b"publication admitted on lock", stderr)
                 finally:
-                    for process in (holder, waiter):
-                        if process is not None:
-                            if process.poll() is None:
-                                supervisor.signal_group(process.pid, signal.SIGTERM)
-                            process.communicate(timeout=10)
+                    try:
+                        for process in (holder, waiter):
+                            if process is not None:
+                                if process.poll() is None:
+                                    supervisor.signal_group(process.pid, signal.SIGTERM)
+                                process.communicate(timeout=10)
+                    finally:
+                        os.close(release_fd)
 
     def test_collector_backpressure_parent_death_and_own_timeout(self):
         supervisor = load_supervisor()
