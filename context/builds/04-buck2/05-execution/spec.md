@@ -253,7 +253,10 @@ Before its directory is produced, every library closure must link an external
 binary using the recorded underlying compiler, sysroot and panic strategy;
 incompatible transitive artifacts are rejected regardless of producer flags or
 environment, including Nix wrapper flag injection. The acceptance task covers
-both per-crate flags and environment-injected transitive abort mismatches.
+both per-crate flags and environment-injected transitive abort mismatches,
+including declared-but-unused dependencies. The probe explicitly imports every
+exported rlib and host proc-macro through unique aliases, so duplicate crate
+names and unused dependency edges cannot bypass compiler compatibility checks.
 
 ### Rust Interop Products
 

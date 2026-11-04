@@ -64,15 +64,23 @@ if (crateName === undefined || ['unwind', 'abort'].includes(panicStrategy) === f
 const scratch = resolve(process.env.BUCK_SCRATCH_PATH)
 mkdirSync(scratch, { recursive: true })
 const source = join(scratch, 'panic-probe.rs')
-writeFileSync(source, `extern crate ${crateName}; fn main() {}\n`)
+// Explicit aliases force rustc to load even declared-but-unused dependencies,
+// including host macros and multiple hashes of the same crate name.
+const probeCrates = [...destinations.keys()]
+  .filter((name) => /\.(rlib|so|dylib|dll)$/.test(name))
+  .toSorted()
+  .map((name, index) => ({ alias: `closure_crate_${index}`, path: join(output, name) }))
+writeFileSync(
+  source,
+  probeCrates.map(({ alias }) => `extern crate ${alias};\n`).join('') + 'fn main() {}\n',
+)
 execFileSync(
   join(compiler.compilerStorePath, 'bin/rustc'),
   [
     '--edition=2024',
     '--crate-name=library_panic_probe',
     source,
-    '--extern',
-    `${crateName}=${join(output, `lib${crateName}.rlib`)}`,
+    ...probeCrates.flatMap(({ alias, path }) => ['--extern', `${alias}=${path}`]),
     '-L',
     `dependency=${output}`,
     `-Cpanic=${panicStrategy}`,
