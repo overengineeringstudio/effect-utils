@@ -326,6 +326,12 @@ imports from native Linux x86_64 and Darwin arm64 runners to the public
 `overeng-effect-utils` Cachix cache. This aggregate references the exact retained
 shell products, capabilities, Rust support tools, native imports, provider CLIs
 (`netlify-cli` and `vercel-cli`), pinned pnpm, and the oxlint plugin wrapper.
+The aggregate's `gh-settings-genie-source` entry retains
+`buckProductsFromSource.genie`, the exact source module copied by
+`gh-settings-genie` for settings activation. This is separate from the admitted
+Genie import. It is published transitively on both publisher platforms, not
+added to the executable smoke inventory: source products contain module
+artifacts and descriptors rather than `bin/<name>` launchers.
 The repository shell selects Netlify, pnpm and oxlint from these same flake
 packages rather than rebuilding them against devenv's independently locked
 nixpkgs. Cachix publishes their transitive store closures, including source

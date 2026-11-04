@@ -265,6 +265,8 @@ rec {
         # publishes the source bridge and validator outputs behind each import.
         ciTestShellProducts = {
           buck2-capabilities = buck2Capabilities;
+          # Settings activation copies this source module, not the admitted import.
+          gh-settings-genie-source = buckProductsFromSource.genie;
           inherit (providerCliPackages) netlify-cli vercel-cli;
           inherit (capabilityPackages)
             buck2

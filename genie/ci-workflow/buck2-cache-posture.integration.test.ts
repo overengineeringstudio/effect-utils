@@ -524,6 +524,8 @@ describe('generated CI cache trust behavior', () => {
     expect(script).toContain('if [ "$push" = true ]; then')
     const flake = await Bun.file(new URL('../../flake.nix', import.meta.url)).text()
     expect(flake).toContain('ci-test-shell-products = pkgs.linkFarm')
+    const retainedShellProducts = flake.match(/ciTestShellProducts = \{([\s\S]*?)\n        \};/)?.[1]
+    expect(retainedShellProducts).toContain('gh-settings-genie-source = buckProductsFromSource.genie;')
     expect(flake).toContain(
       'inherit (nativeProductPackages) otelite otel-scrape typescript-api-server;',
     )
