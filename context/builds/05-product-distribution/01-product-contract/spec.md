@@ -145,6 +145,8 @@ evidence, not alternate identities or undefined content/closure hashes.
 store `bin/rustc` path on Darwin. It is provenance only and never compared
 for compiler equality. Mismatches fail; no release-only or alternate-compiler
 fallback is permitted.
+The `package-library` command rejects malformed compiler evidence before emitting
+the archive descriptor; it shares deterministic USTAR encoding with executable packaging.
 
 Payload inspection independently verifies inventory, host macro architecture,
 target library/compiler and effective panic compatibility; schema acceptance alone
