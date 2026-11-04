@@ -287,7 +287,11 @@ export const makeRoutes = ({
                       typeof item === 'object' &&
                       item !== null &&
                       (('type' in item && item.type === 'item_reference') ||
-                        ((!('type' in item) || item.type === null) && !('role' in item))),
+                        ((!('type' in item) || item.type === null) &&
+                          ('id' in item ||
+                            !('role' in item) ||
+                            typeof item.role !== 'string' ||
+                            !('content' in item)))),
                   ) === true)
               )
                 throw new ServerSideStateReference()

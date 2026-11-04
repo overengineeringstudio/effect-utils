@@ -675,6 +675,13 @@ describe('Responses pass-through (AIG.EDGE-R03, AIG.EDGE-R04, AIG.EDGE-R06)', ()
     { input: [{ type: 'item_reference', id: 'item_other' }] },
     { input: [{ id: 'item_other' }] },
     { input: [{ id: 'item_other', type: null }] },
+    { input: [{ role: 'user', id: 'msg_other' }] },
+    { input: [{ role: 'user', id: 'msg_other', content: 'hi' }] },
+    { input: [{ role: null, id: 'msg_other' }] },
+    { input: [{ role: 'user' }] },
+    { input: [{ role: null, content: 'hi' }] },
+    { input: [{ content: 'hi' }] },
+    { input: [{ type: null, role: 'user', id: 'msg_other', content: 'hi' }] },
   ])('rejects server-side state references: %j', async (reference) => {
     let forwarded = 0
     const upstream = await start(() => {
@@ -776,9 +783,12 @@ describe('Responses pass-through (AIG.EDGE-R03, AIG.EDGE-R04, AIG.EDGE-R06)', ()
       headers: auth,
       body: '{"model":"fixture/responses","stream":true}',
     })
+    expect(response.status).toBe(200)
     expect(await response.text()).toBe(bytes)
     expect(metrics.render()).not.toContain('tokens_total{')
-    expect(metrics.render()).toContain('requests_total{')
+    expect(metrics.render()).toContain(
+      'requests_total{consumer="fixture-consumer",model="fixture/responses",status="200"} 1',
+    )
   })
 
   it('keeps errors unchanged and uses rejected model accounting', async () => {
@@ -895,70 +905,80 @@ describe('incremental SSE transport (AIG.EDGE-R04)', () => {
     },
   )
 
-  it('cancels the open upstream request when a client aborts mid-SSE', async () => {
-    const firstEvent = 'data: {"choices":[{"delta":{"content":"first"}}]}\n\n'
-    const disconnected = Promise.withResolvers<boolean>()
-    let upstreamClosed = false
-    const upstream = Http.createServer((incoming, outgoing) => {
-      incoming.resume()
-      outgoing.once('close', () => {
-        upstreamClosed = true
-        disconnected.resolve(outgoing.writableFinished)
+  it.each(['/v1/chat/completions', '/v1/responses'])(
+    'cancels upstream and counts one request when a client aborts mid-SSE on %s',
+    async (path) => {
+      const firstEvent =
+        path === '/v1/responses'
+          ? 'event: response.output_text.delta\ndata: {"type":"response.output_text.delta","delta":"first"}\n\n'
+          : 'data: {"choices":[{"delta":{"content":"first"}}]}\n\n'
+      const disconnected = Promise.withResolvers<boolean>()
+      let upstreamClosed = false
+      const upstream = Http.createServer((incoming, outgoing) => {
+        incoming.resume()
+        outgoing.once('close', () => {
+          upstreamClosed = true
+          disconnected.resolve(outgoing.writableFinished)
+        })
+        outgoing.writeHead(200, { 'content-type': 'text/event-stream' })
+        outgoing.write(firstEvent)
+        // Never end the upstream response: only cancellation can close it before
+        // fixture teardown, which deliberately happens after the assertion.
       })
-      outgoing.writeHead(200, { 'content-type': 'text/event-stream' })
-      outgoing.write(firstEvent)
-      // Never end the upstream response: only cancellation can close it before
-      // fixture teardown, which deliberately happens after the assertion.
-    })
-    await new Promise<void>((resolve) => upstream.listen(0, '127.0.0.1', resolve))
-    servers.push({
-      stop: () =>
-        new Promise<void>((resolve, reject) => {
-          upstream.close((cause) => (cause !== undefined ? reject(cause) : resolve()))
-          upstream.closeAllConnections()
-        }),
-    })
-    const address = upstream.address()
-    if (address === null || typeof address === 'string') throw new Error('Expected TCP address')
-    const { url } = await gateway(`http://127.0.0.1:${address.port}`)
-    const client = new AbortController()
-    try {
-      const response = await fetch(`${url}/v1/chat/completions`, {
-        method: 'POST',
-        headers: { ...auth, 'content-type': 'application/json' },
-        body: encodeJson({ model: 'fixture/stream', stream: true }),
-        signal: AbortSignal.any([client.signal, AbortSignal.timeout(2000)]),
+      await new Promise<void>((resolve) => upstream.listen(0, '127.0.0.1', resolve))
+      servers.push({
+        stop: () =>
+          new Promise<void>((resolve, reject) => {
+            upstream.close((cause) => (cause !== undefined ? reject(cause) : resolve()))
+            upstream.closeAllConnections()
+          }),
       })
-      expect(response.status).toBe(200)
-      const reader = response.body?.getReader()
-      if (reader === undefined) throw new Error('Expected streaming response body')
-      const initial: Uint8Array[] = []
-      let received = 0
-      while (received < Buffer.byteLength(firstEvent)) {
-        const chunk = await reader.read()
-        if (chunk.done === true) throw new Error('Upstream ended before the client abort')
-        initial.push(chunk.value)
-        received += chunk.value.byteLength
+      const address = upstream.address()
+      if (address === null || typeof address === 'string') throw new Error('Expected TCP address')
+      const { url, metrics } = await gateway(`http://127.0.0.1:${address.port}`)
+      const client = new AbortController()
+      try {
+        const response = await fetch(`${url}${path}`, {
+          method: 'POST',
+          headers: { ...auth, 'content-type': 'application/json' },
+          body: encodeJson({ model: 'fixture/stream', stream: true }),
+          signal: AbortSignal.any([client.signal, AbortSignal.timeout(2000)]),
+        })
+        expect(response.status).toBe(200)
+        const reader = response.body?.getReader()
+        if (reader === undefined) throw new Error('Expected streaming response body')
+        const initial: Uint8Array[] = []
+        let received = 0
+        while (received < Buffer.byteLength(firstEvent)) {
+          const chunk = await reader.read()
+          if (chunk.done === true) throw new Error('Upstream ended before the client abort')
+          initial.push(chunk.value)
+          received += chunk.value.byteLength
+        }
+        expect(Buffer.concat(initial).toString('utf8')).toBe(firstEvent)
+        expect(upstreamClosed).toBe(false)
+        client.abort()
+        await expect(reader.read()).rejects.toMatchObject({ name: 'AbortError' })
+        // Missing abort propagation fails this deadline instead of hanging or
+        // accidentally passing when afterEach closes the fixture's sockets.
+        const deadline = AbortSignal.timeout(2000)
+        const completedNormally = await Promise.race([
+          disconnected.promise,
+          new Promise<never>((_, reject) => {
+            deadline.addEventListener('abort', () => reject(deadline.reason), { once: true })
+          }),
+        ])
+        expect(completedNormally).toBe(false)
+        expect(upstreamClosed).toBe(true)
+        expect(metrics.render()).toContain(
+          'requests_total{consumer="fixture-consumer",model="fixture/stream",status="200"} 1',
+        )
+        expect(metrics.render()).not.toContain('tokens_total{')
+      } finally {
+        client.abort()
       }
-      expect(Buffer.concat(initial).toString('utf8')).toBe(firstEvent)
-      expect(upstreamClosed).toBe(false)
-      client.abort()
-      await expect(reader.read()).rejects.toMatchObject({ name: 'AbortError' })
-      // Missing abort propagation fails this deadline instead of hanging or
-      // accidentally passing when afterEach closes the fixture's sockets.
-      const deadline = AbortSignal.timeout(2000)
-      const completedNormally = await Promise.race([
-        disconnected.promise,
-        new Promise<never>((_, reject) => {
-          deadline.addEventListener('abort', () => reject(deadline.reason), { once: true })
-        }),
-      ])
-      expect(completedNormally).toBe(false)
-      expect(upstreamClosed).toBe(true)
-    } finally {
-      client.abort()
-    }
-  })
+    },
+  )
 })
 
 const cases = await Effect.runPromise(loadCases().pipe(Effect.provide(NodeServices.layer)))
