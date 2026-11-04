@@ -4,7 +4,9 @@ let
   revisionA = "1111111111111111111111111111111111111111";
   revisionB = "2222222222222222222222222222222222222222";
   packagesFor = sourceInfo:
-    (flake.outputs (flake.inputs // { self = flake // { inherit sourceInfo; }; })).packages.${system};
+    ((import (flake.outPath + "/flake.nix")).outputs (
+      flake.inputs // { self = flake // { inherit sourceInfo; }; }
+    )).packages.${system};
   cleanA = packagesFor { rev = revisionA; };
   cleanB = packagesFor { rev = revisionB; };
   dirty = packagesFor {
