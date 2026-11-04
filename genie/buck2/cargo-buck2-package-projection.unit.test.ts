@@ -1190,7 +1190,7 @@ describe('Cargo multi-product packages', () => {
     expect(rendered).toContain('crate_root = "src/core.rs"')
     expect(rendered).toContain('edition = "2024"')
     expect(rendered).toContain('"//rust/third-party:serde"')
-    expect(rendered).toContain('"rust_product_library")')
+    expect(rendered).toContain('load("//buck2/rust:library.bzl", "rust_product_library")')
     expect(productBlocks(rendered)).toEqual([
       'rust_product_library(\n    name = "relay-library-product-library",\n    library = ":lib",\n    recipe = "cargo-workspace:tailnet-relay@0.1.0",\n    target_platform = host_platform_label(),\n)',
       'build_product(\n    name = "relay-library-product",\n    artifact = ":relay-library-product-library",\n    product_name = "relay-library",\n    target_platform = host_platform_label(),\n)',
@@ -1204,7 +1204,8 @@ describe('Cargo multi-product packages', () => {
     ] as const
     const rendered = renderPackage({ buildProducts }, ['src/lib.rs', 'src/main.rs'])
     expect(productBlocks(rendered)).toHaveLength(4)
-    expect(rendered).toContain('"rust_product_executable", "rust_product_library")')
+    expect(rendered).toContain('load("//buck2/rust:defs.bzl", "rust_product_executable")')
+    expect(rendered).toContain('load("//buck2/rust:library.bzl", "rust_product_library")')
     expect(() => renderPackage({ buildProducts })).toThrow(
       'buildProducts[0] requires a Cargo library target in rust/relay/Cargo.toml',
     )

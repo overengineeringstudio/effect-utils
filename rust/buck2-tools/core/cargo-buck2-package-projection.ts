@@ -1220,11 +1220,13 @@ const cargoBuck2PackageProjectionFor = ({
       ? [
           `load(${starlarkString(`${buck2LoadLabelPrefix}/products:defs.bzl`)}, "build_product")`,
           `load(${starlarkString(`${buck2LoadLabelPrefix}/platforms:defs.bzl`)}, "host_platform_label")`,
-          `load(${starlarkString(`${buck2LoadLabelPrefix}/rust:defs.bzl`)}, ${sorted([
-            ...new Set(products.map((product) => `rust_product_${product.kind}`)),
-          ])
-            .map(starlarkString)
-            .join(', ')})`,
+          ...(['executable', 'library'] as const).flatMap((kind) =>
+            products.some((product) => product.kind === kind)
+              ? [
+                  `load(${starlarkString(`${buck2LoadLabelPrefix}/rust:${kind === 'library' ? 'library' : 'defs'}.bzl`)}, "rust_product_${kind}")`,
+                ]
+              : [],
+          ),
         ]
       : []),
     ...(buildScript === undefined &&
