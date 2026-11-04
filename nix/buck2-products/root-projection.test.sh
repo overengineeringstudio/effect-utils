@@ -6,8 +6,10 @@ nix eval --read-only --option allow-import-from-derivation false --raw \
   "$repo_root#packages.x86_64-linux.buck2-vite-runtime-closure-fixture.drvPath" >/dev/null
 nix eval --impure --json --expr '
   let
-    repo = /. + builtins.getEnv "BUCK2_PRODUCTS_REPO";
-    flake = builtins.getFlake ("git+file://" + toString repo + "?shallow=1");
+    checkout = builtins.getEnv "BUCK2_PRODUCTS_REPO";
+    flake = builtins.getFlake ("git+file://" + checkout + "?shallow=1");
+    # Compare the same Git-filtered source; activation can add ignored checkout files.
+    repo = /. + builtins.unsafeDiscardStringContext flake.outPath;
     pkgs = import flake.inputs.nixpkgs { system = builtins.currentSystem; };
     lib = pkgs.lib;
     project = repositoryRoot: import (repo + "/nix/buck2-products/root-projection.nix") {
