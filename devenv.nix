@@ -1426,13 +1426,20 @@ in
       ${publishBuckCapabilities}
       probe="$(${pkgs.coreutils}/bin/mktemp -d)"
       trap '${pkgs.coreutils}/bin/rm -rf -- "$probe"' EXIT
-      for part in closure rustc ar; do
+      platform="effect_utils//buck2/platforms:${
+        if pkgs.stdenv.isDarwin then
+          "macos_aarch64"
+        else
+          "linux_${pkgs.stdenv.hostPlatform.parsed.cpu.name}"
+      }"
+      for part in closure rustc ar metadata; do
         target=effect_utils//buck2/tests/library_closure:closure
         [[ "$part" = closure ]] || target="$target[$part]"
-        "$BUCK2_BIN" build --target-platforms effect_utils//buck2/platforms:host_platform --out "$probe/$part" "$target"
+        "$BUCK2_BIN" build --target-platforms "$platform" --out "$probe/$part" "$target"
       done
       ${pkgs.python3}/bin/python3 buck2/tests/library_closure/accept.py "$probe/closure" \
-        "$(${pkgs.coreutils}/bin/cat "$probe/rustc")" --ar "$(${pkgs.coreutils}/bin/cat "$probe/ar")"
+        "$(${pkgs.coreutils}/bin/cat "$probe/rustc")" --ar "$(${pkgs.coreutils}/bin/cat "$probe/ar")" --metadata "$probe/metadata"
+      ${sourceBun}/bin/bun test ./buck2/tests/library_closure/closure.unit.test.mjs
     '';
   };
 

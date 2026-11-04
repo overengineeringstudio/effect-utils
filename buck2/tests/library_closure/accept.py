@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """External acceptance/measurement only, not a portable-product validator.
 
-Usage: python3 accept.py PAYLOAD_DIR EXACT_TOOLCHAIN_RUSTC [--ar llvm-ar]
+Usage: python3 accept.py PAYLOAD_DIR EXACT_TOOLCHAIN_RUSTC --metadata JSON [--ar llvm-ar]
 Run in the producer's native compiler/linker environment. Store references are
 reported and rejected: nonzero counts require remapping investigation (DQ2).
 """
@@ -16,6 +16,7 @@ parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("payload", type=Path)
 parser.add_argument("rustc")
 parser.add_argument("--ar", default="ar", help="native ar or LLVM ar (also on Darwin)")
+parser.add_argument("--metadata", type=Path, required=True)
 args = parser.parse_args()
 payload = args.payload.resolve(strict=True)
 store = re.compile(rb"/nix/store/[a-z0-9]{32}-[A-Za-z0-9+._?=-]+")
@@ -42,6 +43,18 @@ print(json.dumps({"totalStoreReferenceCount": total,
 if total:
     raise SystemExit(f"DQ2, remapping investigation required: {sorted(store_paths)}")
 subprocess.run([args.rustc, "-vV"], check=True)
+product = json.loads(args.metadata.read_text())
+compiler = product["rustc"]
+underlying = str(Path(compiler["compilerStorePath"]) / "bin/rustc")
+version = subprocess.check_output([underlying, "-vV"], text=True).rstrip("\n") + "\n"
+sysroot = Path(subprocess.check_output([underlying, "--print", "sysroot"], text=True).strip()).resolve()
+if version != compiler["verboseVersion"] or str(sysroot) != compiler["sysroot"]:
+    raise SystemExit("Underlying compiler identity evidence does not match")
+if product["crateName"] != "example_library" or product["panicStrategy"] != "unwind":
+    raise SystemExit("Unchanged external consumer requires example_library with unwind")
+if product["targetTriple"] != product["hostTriple"]:
+    raise SystemExit("External acceptance requires a native library")
+print(json.dumps(product), flush=True)
 with tempfile.TemporaryDirectory(prefix="effect-utils-library-consumer-") as work:
     executable = str(Path(work) / "consumer")
     subprocess.run([args.rustc, "--edition=2024", str(Path(__file__).with_name("consumer.rs")),
