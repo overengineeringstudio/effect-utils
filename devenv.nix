@@ -781,10 +781,9 @@ let
       ${publishBuckCapabilities}
       # Supervise the whole authority/build/publication process tree, including
       # filesystem work and lock waits that an in-process JS timer cannot interrupt.
-      # Authority/build may overlap; source admission and publication retain the
-      # same per-worktree flock. Only actual flock wait suspends the deadline.
-      authority_directory="$(mktemp -d "$root/.devenv/editor-authority.XXXXXXXX")"
-      trap 'rm -r "$authority_directory"' EXIT
+      # Scoped consumers share packages/.editor-view: queue whole invocations
+      # on a per-worktree flock without expanding their requested package sets.
+      # Capped invocations start their execution deadline only after admission.
       ${lib.optionalString (publicationBudget != null) ''
         # editor-view-batch-budget: ${builtins.toJSON publicationBudget}
         # Max-measured fallback covers: ${lib.concatStringsSep ", " publicationBudget.missingConsumers}
@@ -793,16 +792,14 @@ let
       ${pkgs.python3}/bin/python "$root/scripts/editor-view-supervisor.py" ${
         if deadlineSeconds == null then "none" else toString deadlineSeconds
       } 5 \
-        ${
-          if mode == "check" then "--lock" else "--deferred-lock"
-        } "$root/.devenv/editor-view-publication.lock" \
+        --lock "$root/.devenv/editor-view-publication.lock" \
         ${sourceBun}/bin/bun "$root/scripts/editor-view-authority.ts" ${mode} \
         --repo-root "$root" \
         --workspace-root "$root" \
         --cell effect_utils \
         --buck2 "$BUCK2_BIN" \
         --git ${pkgs.git}/bin/git \
-        --output "$authority_directory/authority.json" \
+        --output "$root/.devenv/editor-workspace-authority.json" \
         --publisher "$root/packages/@overeng/buck2-tools/src/editor-view.ts" \
         --cp ${pkgs.coreutils}/bin/cp \
         --mv ${pkgs.coreutils}/bin/mv \
