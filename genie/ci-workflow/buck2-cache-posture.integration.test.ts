@@ -516,7 +516,7 @@ describe('generated CI cache trust behavior', () => {
       new URL('../ci-scripts/compiled-products.sh', import.meta.url),
     ).text()
     expect(script).toContain('refs=(.#ci-test-shell-products .#buck2-rules)')
-    expect(script.match(/\bnix build\b/g)).toHaveLength(1)
+    expect(script.match(/\bnix build\b/g)).toHaveLength(2)
     expect(script).toContain('--json "${refs[@]}"')
     expect(script).toContain('cachix push overeng-effect-utils $outputs')
     expect(script).toContain('if [ "$matches" -ne 1 ]; then')
@@ -536,6 +536,7 @@ describe('generated CI cache trust behavior', () => {
     const outputPaths = names.map((name) => join(work, `output-${name}`))
     const shellOutput = join(work, 'output-shell')
     const rulesOutput = join(work, 'output-buck2-rules')
+    const libraryOutput = join(work, 'output-library')
     const logs = {
       NIX_LOG: join(work, 'nix.log'),
       SMOKE_LOG: join(work, 'smoke.log'),
@@ -550,13 +551,21 @@ describe('generated CI cache trust behavior', () => {
       mkdirSync(join(work, 'tools'))
       mkdirSync(shellOutput)
       mkdirSync(rulesOutput)
+      mkdirSync(join(libraryOutput, 'lib'), { recursive: true })
       writeFileSync(
         join(work, 'nix/buck2-products/compiled-targets.json'),
-        JSON.stringify({ products: names.slice(0, 2).map((name) => ({ name })) }),
+        JSON.stringify({
+          products: names.slice(0, 2).map((name) => ({ name, kind: 'compiled-executable' })),
+        }),
       )
       writeFileSync(
         join(work, 'nix/buck2-products/native-targets.json'),
-        JSON.stringify({ products: [{ name: names[2] }] }),
+        JSON.stringify({
+          products: [
+            { name: names[2], kind: 'native' },
+            { name: 'library', kind: 'rust-library' },
+          ],
+        }),
       )
       names.forEach((name, index) => {
         const bin = join(outputPaths[index]!, 'bin')
@@ -568,13 +577,15 @@ describe('generated CI cache trust behavior', () => {
       })
       executable({
         path: join(work, 'tools/nix'),
-        content: 'printf \'%s\\n\' "$*" >> "$NIX_LOG"\nprintf \'%s\\n\' "$BUILD_JSON"',
+        content:
+          'printf \'%s\\n\' "$*" >> "$NIX_LOG"\nif [ "$1" = eval ]; then echo aarch64-linux; elif [[ "$*" == *".mismatch"* ]]; then\n[ "$FAIL_PRODUCT" != mismatch-accepted ] || exit 0\n[ "$FAIL_PRODUCT" != mismatch-unrelated ] || exit 1\nprintf "library compiler identity mismatch\\nproducer identity:\\nconsumer identity:\\n"; exit 1\nelse printf \'%s\\n\' "$BUILD_JSON"; fi',
       })
       executable({
         path: join(work, 'tools/cachix'),
         content: 'printf \'%s\\n\' "$*" >> "$CACHE_LOG"',
       })
       const outputs = [outputPaths[2]!, shellOutput, rulesOutput, outputPaths[1]!, outputPaths[0]!]
+      outputs.unshift(libraryOutput)
       const run = ({
         args,
         selectedOutputs = outputs,
@@ -604,7 +615,9 @@ describe('generated CI cache trust behavior', () => {
       for (const args of [[], ['--push']]) {
         expect(run({ args }).exitCode).toBe(0)
         expect(readFileSync(logs.NIX_LOG, 'utf8').trim().split('\n')).toEqual([
-          'build --no-link --print-build-logs --json .#ci-test-shell-products .#buck2-rules .#compiled-one-compiled .#compiled-two-compiled .#native-one',
+          'eval --impure --raw --expr builtins.currentSystem',
+          'build --no-link --print-build-logs --json .#ci-test-shell-products .#buck2-rules .#compiled-one-compiled .#compiled-two-compiled .#native-one .#checks.aarch64-linux.buck2-library-consumer .#library',
+          'build --no-link --print-build-logs .#checks.aarch64-linux.buck2-library-consumer.mismatch',
         ])
         expect(readFileSync(logs.SMOKE_LOG, 'utf8').trim().split('\n')).toEqual(
           names.map((name) => `${name} --help`),
@@ -628,6 +641,10 @@ describe('generated CI cache trust behavior', () => {
       )
       expect(readFileSync(logs.CACHE_LOG, 'utf8')).toBe('')
       expect(run({ args: ['--push'], failProduct: 'compiled-two' }).exitCode).not.toBe(0)
+      for (const failProduct of ['mismatch-accepted', 'mismatch-unrelated']) {
+        expect(run({ args: ['--push'], failProduct }).exitCode).not.toBe(0)
+        expect(readFileSync(logs.CACHE_LOG, 'utf8')).toBe('')
+      }
       expect(readFileSync(logs.CACHE_LOG, 'utf8')).toBe('')
     } finally {
       rmSync(work, { recursive: true, force: true })

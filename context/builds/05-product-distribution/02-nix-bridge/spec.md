@@ -61,10 +61,10 @@ Import compares the producer's underlying compiler store path, full `rustc -vV`
 evidence, sysroot, target triple and panic strategy against the consumer's
 declared toolchain. A mismatch prints both identities and fails without a
 compiler fallback. Passthrough metadata exposes the checked compiler, target,
-panic strategy and descriptor path. Acceptance builds a separate derivation
-against the fixed-up output, compiling, linking and running an external consumer
-with bare rustc `--extern` and `-L dependency=<output>/lib`, including an installed
-proc macro when present.
+panic strategy and descriptor path. Product CI builds an external rustc consumer
+against the fixed-up output, exercising metadata and installed proc macros.
+It also requires a mismatched import to fail with the compiler diagnostic and
+both identities. Publication follows both checks; executables retain `--help`.
 
 ## Cache-backed Product Bridge
 
