@@ -4,14 +4,20 @@
   compiled,
   producerCommit,
 }:
-assert pkgs.lib.assertMsg (builtins.match "[0-9a-f]{40}" producerCommit != null)
-  "buck2-products: producerCommit must be a full lowercase Git commit";
+assert pkgs.lib.assertMsg (
+  builtins.match "[0-9a-f]{40}" producerCommit != null
+) "buck2-products: producerCommit must be a full lowercase Git commit";
 pkgs.runCommand "${compiled.name}-stamped"
   {
     nativeBuildInputs = [ pkgs.jq ];
     passthru = {
       inherit compiled producerCommit;
-      inherit (compiled) artifactName productName productKind target;
+      inherit (compiled)
+        artifactName
+        productName
+        productKind
+        target
+        ;
     };
   }
   ''
