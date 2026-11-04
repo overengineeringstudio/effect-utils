@@ -48,6 +48,50 @@ fn input(error: impl std::fmt::Display) -> ToolError {
     fail("BUCK2_PRODUCT_LIBRARY", error.to_string())
 }
 
+fn store_output(path: &str) -> bool {
+    let Some((hash, name)) = path.strip_prefix("/nix/store/").and_then(|p| p.split_once('-')) else {
+        return false;
+    };
+    hash.len() == 32 && hash.bytes().all(|c| b"0123456789abcdfghijklmnpqrsvwxyz".contains(&c))
+        && !name.is_empty()
+        && name.bytes().all(|c| c.is_ascii_alphanumeric() || b"+._?=-".contains(&c))
+}
+
+fn compiler_metadata(metadata: &Metadata) -> ToolResult<()> {
+    let Some((arch, suffix)) = metadata.host_triple.split_once('-') else {
+        return Err(input("unsupported compiler host triple"));
+    };
+    if !matches!(arch, "x86_64" | "aarch64")
+        || !matches!(suffix, "unknown-linux-gnu" | "unknown-linux-musl" | "apple-darwin")
+    {
+        return Err(input("unsupported compiler host triple"));
+    }
+    let compiler = &metadata.rustc;
+    if !store_output(&compiler.compiler_store_path) || !store_output(&compiler.sysroot) {
+        return Err(input("compilerStorePath/sysroot must be canonical store output paths"));
+    }
+    let wrapper = &compiler.darwin_wrapper_evidence;
+    if !wrapper.is_empty() && (suffix != "apple-darwin"
+        || !wrapper.strip_suffix("/bin/rustc").is_some_and(store_output))
+    {
+        return Err(input("invalid Darwin wrapper evidence"));
+    }
+    let version = &compiler.verbose_version;
+    if version.contains('\r') || !version.ends_with('\n') || version.ends_with("\n\n") {
+        return Err(input("verboseVersion must use LF and exactly one final newline"));
+    }
+    for prefix in ["rustc ", "release: ", "commit-hash: ", "commit-date: ", "host: ", "LLVM version: "] {
+        let mut fields = version.lines().filter_map(|line| line.strip_prefix(prefix)).filter(|v| !v.is_empty());
+        let first = fields.next();
+        if first.is_none() || fields.next().is_some()
+            || (prefix == "host: " && first != Some(metadata.host_triple.as_str()))
+        {
+            return Err(input(format!("verboseVersion has missing, duplicate or inconsistent {prefix}evidence")));
+        }
+    }
+    Ok(())
+}
+
 fn files(directory: &Path, host: &str) -> ToolResult<BTreeMap<String, Vec<u8>>> {
     if !fs::symlink_metadata(directory).map_err(input)?.is_dir() {
         return Err(input("library directory must be a non-symlink directory"));
@@ -74,6 +118,7 @@ pub(crate) fn package(args: LibraryArgs) -> ToolResult<()> {
     validate_name(&args.name)?;
     safe_text(&args.target, "target")?;
     let decoded: Metadata = serde_json::from_slice(&fs::read(&args.metadata).map_err(input)?).map_err(input)?;
+    compiler_metadata(&decoded)?;
     let mut characters = decoded.crate_name.chars();
     if !characters.next().is_some_and(|c| c.is_ascii_alphabetic() || c == '_')
         || !characters.all(|c| c.is_ascii_alphanumeric() || c == '_')
@@ -179,6 +224,22 @@ mod tests {
         let mut members = tar::Archive::new(first.as_slice());
         let paths = members.entries().unwrap().map(|entry| entry.unwrap().path().unwrap().into_owned()).collect::<Vec<_>>();
         assert_eq!(paths, [PathBuf::from("lib"), PathBuf::from("lib/libdep-a.rlib"), PathBuf::from("lib/libroot.rlib")]);
+        let original: Value = serde_json::from_slice(&fs::read(&metadata).unwrap()).unwrap();
+        for (field, value) in [
+            ("hostTriple", json!("unsupported-host")),
+            ("compilerStorePath", json!("/nix/store/not-a-canonical-output")),
+            ("sysroot", json!("/nix/store/00000000000000000000000000000000-rustc/lib")),
+            ("verboseVersion", json!("rustc incomplete\n")),
+            ("verboseVersion", json!(original["rustc"]["verboseVersion"].as_str().unwrap().replace("host: x86_64", "host: aarch64"))),
+            ("verboseVersion", json!(format!("{}\n", original["rustc"]["verboseVersion"].as_str().unwrap()))),
+            ("darwinWrapperEvidence", json!("/nix/store/00000000000000000000000000000000-rustc/bin/rustc")),
+        ] {
+            let mut invalid = original.clone();
+            if field == "hostTriple" { invalid[field] = value; } else { invalid["rustc"][field] = value; }
+            fs::write(&metadata, serde_json::to_vec(&invalid).unwrap()).unwrap();
+            assert!(package(args()).is_err(), "{field}");
+        }
+        fs::write(&metadata, serde_json::to_vec(&original).unwrap()).unwrap();
         fs::remove_file(directory.join("libroot.rlib")).unwrap();
         assert!(package(args()).is_err());
     }
