@@ -1304,10 +1304,10 @@ jobs:
           audit=genie/ci-scripts/native-dep-policy-audit.ts
           if command -v bun >/dev/null 2>&1; then
             bun "$audit"
-            bun test ./genie/ci-scripts/tested-tree.unit.test.ts ./genie/ci-workflow/buck2-cache-posture.unit.test.ts ./genie/ci-workflow/buck2-cache-posture.integration.test.ts
+            bun test ./genie/ci-scripts/tested-tree.unit.test.ts ./genie/ci-workflow/buck2-cache-posture.unit.test.ts ./genie/ci-workflow/buck2-cache-posture.integration.test.ts ./genie/ci-scripts/publisher-head.unit.test.ts
           else
             nix run nixpkgs#bun -- "$audit"
-            nix run nixpkgs#bun -- test ./genie/ci-scripts/tested-tree.unit.test.ts ./genie/ci-workflow/buck2-cache-posture.unit.test.ts ./genie/ci-workflow/buck2-cache-posture.integration.test.ts
+            nix run nixpkgs#bun -- test ./genie/ci-scripts/tested-tree.unit.test.ts ./genie/ci-workflow/buck2-cache-posture.unit.test.ts ./genie/ci-workflow/buck2-cache-posture.integration.test.ts ./genie/ci-scripts/publisher-head.unit.test.ts
           fi
         timeout-minutes: 2
       - name: Nix diagnostics summary
@@ -4425,6 +4425,7 @@ jobs:
     permissions:
       contents: read
       pull-requests: read
+      checks: read
       statuses: write
       id-token: write
     defaults:
@@ -4608,6 +4609,12 @@ jobs:
             echo "::notice::Product cache published; manifest PR waits for the publisher GitHub App variable and secret"
             echo "enabled=false" >> "$GITHUB_OUTPUT"
           fi
+      - id: publisher-head
+        name: Decide whether to refresh publisher PR head
+        if: steps.publisher-app-config.outputs.enabled == 'true'
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: 'cd "${GITHUB_WORKSPACE:-$PWD}" && nix shell .#bun --command bun genie/ci-scripts/publisher-head.ts'
       - # v3.3.0
         id: publisher-app-token
         name: Mint publisher GitHub App token
@@ -4617,9 +4624,9 @@ jobs:
           private-key: ${{ secrets.NIX_PUBLISHER_GITHUB_APP_PRIVATE_KEY }}
           owner: overengineeringstudio
           repositories: effect-utils
-        if: steps.publisher-app-config.outputs.enabled == 'true'
+        if: steps.publisher-head.outputs.refresh == 'true'
       - name: Propose published product manifest
-        if: steps.publisher-app-config.outputs.enabled == 'true'
+        if: steps.publisher-head.outputs.refresh == 'true'
         env:
           GITHUB_TOKEN: ${{ steps.publisher-app-token.outputs.token }}
           GH_TOKEN: ${{ steps.publisher-app-token.outputs.token }}

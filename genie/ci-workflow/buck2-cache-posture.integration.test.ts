@@ -18,7 +18,9 @@ type GeneratedWorkflow = {
       if?: string
       needs?: string[]
       env?: Record<string, string>
+      permissions?: Record<string, string>
       steps: Array<{
+        id?: string
         name?: string
         uses?: string
         if?: string
@@ -484,9 +486,31 @@ describe('generated CI cache trust behavior', () => {
       './genie/ci-scripts/tested-tree.unit.test.ts',
       './genie/ci-workflow/buck2-cache-posture.unit.test.ts',
       './genie/ci-workflow/buck2-cache-posture.integration.test.ts',
+      './genie/ci-scripts/publisher-head.unit.test.ts',
     ].join(' ')
     expect(audit?.run).toContain(`bun test ${tests}`)
     expect(audit?.run).toContain(`nix run nixpkgs#bun -- test ${tests}`)
+    const localTask = await Bun.file(new URL('../../devenv.nix', import.meta.url)).text()
+    expect(localTask).toContain('test ./genie/ci-scripts/publisher-head.unit.test.ts')
+    expect(localTask).toContain('"genie/ci-scripts/publisher-head*.ts"')
+  })
+
+  it('reads publisher health with workflow scopes and gates App writes on refresh', async () => {
+    const publisher = (await readWorkflow()).jobs['publish-products']!
+    expect(publisher.permissions).toMatchObject({
+      contents: 'read',
+      'pull-requests': 'read',
+      checks: 'read',
+      statuses: 'write',
+    })
+    const decision = publisher.steps.find((step) => step.id === 'publisher-head')
+    expect(decision?.env?.GITHUB_TOKEN).toBe('${{ github.token }}')
+    expect(decision?.run).toContain('genie/ci-scripts/publisher-head.ts')
+    for (const step of publisher.steps.filter(
+      (step) =>
+        step.id === 'publisher-app-token' || step.name === 'Propose published product manifest',
+    ))
+      expect(step.if).toBe("steps.publisher-head.outputs.refresh == 'true'")
   })
 
   it('keeps credential-free build and preview workflows read-only', async () => {

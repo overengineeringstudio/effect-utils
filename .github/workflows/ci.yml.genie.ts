@@ -638,10 +638,10 @@ const nativeDepPolicyAuditStep = {
       'audit=genie/ci-scripts/native-dep-policy-audit.ts',
       'if command -v bun >/dev/null 2>&1; then',
       '  bun "$audit"',
-      '  bun test ./genie/ci-scripts/tested-tree.unit.test.ts ./genie/ci-workflow/buck2-cache-posture.unit.test.ts ./genie/ci-workflow/buck2-cache-posture.integration.test.ts',
+      '  bun test ./genie/ci-scripts/tested-tree.unit.test.ts ./genie/ci-workflow/buck2-cache-posture.unit.test.ts ./genie/ci-workflow/buck2-cache-posture.integration.test.ts ./genie/ci-scripts/publisher-head.unit.test.ts',
       'else',
       '  nix run nixpkgs#bun -- "$audit"',
-      '  nix run nixpkgs#bun -- test ./genie/ci-scripts/tested-tree.unit.test.ts ./genie/ci-workflow/buck2-cache-posture.unit.test.ts ./genie/ci-workflow/buck2-cache-posture.integration.test.ts',
+      '  nix run nixpkgs#bun -- test ./genie/ci-scripts/tested-tree.unit.test.ts ./genie/ci-workflow/buck2-cache-posture.unit.test.ts ./genie/ci-workflow/buck2-cache-posture.integration.test.ts ./genie/ci-scripts/publisher-head.unit.test.ts',
       'fi',
     ].join('\n'),
   ),
@@ -1337,7 +1337,7 @@ const extraJobs: Record<string, any> = {
       priority: deliveryJobPriority,
     }),
     'timeout-minutes': 120,
-    permissions: { contents: 'read', 'pull-requests': 'read', statuses: 'write' },
+    permissions: { contents: 'read', 'pull-requests': 'read', checks: 'read', statuses: 'write' },
     defaults: bashShellDefaults,
     env: githubTokenEnv(),
     outputs: {
@@ -1488,6 +1488,14 @@ const extraJobs: Record<string, any> = {
         ].join('\n'),
       },
       {
+        id: 'publisher-head',
+        name: 'Decide whether to refresh publisher PR head',
+        if: "steps.publisher-app-config.outputs.enabled == 'true'",
+        // Read checks with the workflow token; the App retains only its write scopes.
+        env: githubTokenEnv(),
+        run: withCiSourceRoot('nix shell .#bun --command bun genie/ci-scripts/publisher-head.ts'),
+      },
+      {
         ...githubAppInstallationTokenStep({
           id: 'publisher-app-token',
           name: 'Mint publisher GitHub App token',
@@ -1496,11 +1504,11 @@ const extraJobs: Record<string, any> = {
           owner: 'overengineeringstudio',
           repositories: ['effect-utils'],
         }),
-        if: "steps.publisher-app-config.outputs.enabled == 'true'",
+        if: "steps.publisher-head.outputs.refresh == 'true'",
       },
       {
         name: 'Propose published product manifest',
-        if: "steps.publisher-app-config.outputs.enabled == 'true'",
+        if: "steps.publisher-head.outputs.refresh == 'true'",
         env: githubAccessTokenEnv('${{ steps.publisher-app-token.outputs.token }}'),
         run: withCiSourceRoot(
           [
