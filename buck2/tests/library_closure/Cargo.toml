@@ -1,4 +1,5 @@
 # Buck-only acceptance fixture; manifests document the local crate graph.
 [workspace]
 members = ["example_library", "generic_bridge", "generic_leaf", "probe_derive"]
+exclude = ["generic_leaf_v2"]
 resolver = "3"
