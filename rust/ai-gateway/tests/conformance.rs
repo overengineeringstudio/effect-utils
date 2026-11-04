@@ -609,8 +609,25 @@ fn assert_outcome(case: &Value, result: ai_gateway::Result<Value>) {
     }
 }
 
+// Name edge-only cases individually so new cases never silently escape replay.
+fn not_applicable_reason(case: &Value) -> Option<&'static str> {
+    match string(&case["id"]) {
+        "responses.text"
+        | "responses.stream.usage"
+        | "responses.upstream-404"
+        | "responses.state-reference-400" => {
+            Some("not applicable: the Rust client does not expose a Responses API")
+        }
+        _ => None,
+    }
+}
+
 async fn run_case(case: &Value) {
     eprintln!("conformance: {}", string(&case["id"]));
+    if let Some(reason) = not_applicable_reason(case) {
+        eprintln!("{}: {reason}", string(&case["id"]));
+        return;
+    }
     let replay = Replay::start(case).await;
     let mut builder = Client::builder(&replay.origin);
     match string(&case["request"]["auth"]) {

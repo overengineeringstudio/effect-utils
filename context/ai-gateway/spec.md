@@ -16,6 +16,7 @@ Defines the consumer-observable HTTP wire: routes, authentication, payloads, SSE
 origin -> /healthz                 (no bearer)
        -> /v1/models               (consumer bearer)
        -> /v1/chat/completions     (consumer bearer)
+       -> /v1/responses            (consumer bearer; edge pass-through only)
        -> /v1/systemone            (consumer bearer)
 ```
 
@@ -23,13 +24,13 @@ origin -> /healthz                 (no bearer)
 
 Protected operations send `Authorization: Bearer <token>`. `Bearer` is case-sensitive; a token is a nonempty, whitespace-free opaque string. When no token is configured, a client omits Authorization entirely rather than sending an empty bearer. Protected gateways reject missing, invalid, or revoked tokens with HTTP 401. Token omission supports caller-controlled test transports, not anonymous access to protected routes. A token identifies one consumer, not a provider account or a request-body identity. Bearers are never included in diagnostic configuration or telemetry, and client libraries do not provision them.
 
-JSON requests use `Content-Type: application/json`. Chat responses are JSON unless `stream: true`, which selects `text/event-stream`. Health requires no consumer bearer: HTTP 200 with `{"status":"ok"}` means the gateway health check succeeded; HTTP 503 with `{"status":"unavailable"}` means unavailable. Health success does not prove a selected model is usable.
+JSON requests use `Content-Type: application/json`. Chat and Responses responses are JSON unless `stream: true`, which selects `text/event-stream`. Health requires no consumer bearer: HTTP 200 with `{"status":"ok"}` means the gateway health check succeeded; HTTP 503 with `{"status":"unavailable"}` means unavailable. Health success does not prove a selected model is usable.
 
 ### Identifier ownership and compatibility
 
 | Identifier                                | Owner and grammar                                                                                                                  | Reader behavior                                                                                                                                         |
 | ----------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| HTTP paths, JSON keys, SSE `data` framing | OpenAI-compatible chat convention, with this contract's health and System One routes; case-sensitive                               | Use exact documented paths and discriminators; additional provider metadata may be retained without assigning new semantics.                            |
+| HTTP paths, JSON keys, SSE `data` framing | OpenAI-compatible Chat Completions and Responses conventions, with this contract's health and System One routes; case-sensitive | Use exact documented paths and discriminators; additional provider metadata may be retained without assigning new semantics. |
 | Model ID                                  | Gateway catalog/provider namespace; nonempty `provider/model` string; prefix and remainder are opaque, case-sensitive catalog data | Preserve exact IDs, including slashes and `~` within the remainder. Never infer provider protocol, rewrite aliases, or assume availability from syntax. |
 | Decision question name                    | Caller-owned nonempty JSON object key, case-sensitive and unique within one request                                                | Response keys correlate by exact name; missing requested names fail validation.                                                                         |
 | `AI_GATEWAY_URL`, `AI_GATEWAY_TOKEN`      | Repository-owned cross-language convention, uppercase ASCII names                                                                  | Not OpenAI-standard `OPENAI_*` variables; no implicit fallback to a public provider endpoint.                                                           |
@@ -68,6 +69,17 @@ The catalog envelope is:
 
 The envelope and row `id` identify the listing and model. Catalog rows may include `object`, `owned_by`, `api`, `display_name`, `input_modalities`, `context_length`, `max_output_tokens`, and `kind` for non-chat models. `supports_tools` is emitted when explicitly false; its absence does not promise support. `created` is not required and can be absent. Clients must not require OpenAI's complete catalog row schema or select transport based on `api`. Unknown metadata is not an error. Listing does not prove available credentials, schema support, or operational readiness.
 
+## Responses pass-through (AIG.EDGE-R03, AIG.EDGE-R04, AIG.EDGE-R06)
+
+```text
+caller-owned Responses JSON -> POST /v1/responses -> unchanged upstream request
+                           <- JSON or unchanged Responses SSE
+```
+
+The [edge specification](./03-edge/spec.md#responses-pass-through-boundary-aigedge-r04) owns protected Responses forwarding and rejects cross-request upstream state references. Accepted request bodies retain their original bytes, including `store`, `include`, encrypted reasoning items, and streaming options; Chat Completions usage forcing never applies. There is no Chat Completions translation, Responses client API in either language, stored-response retrieval route, or conversation route.
+
+Responses JSON supplies usage under `usage`: `input_tokens`, `output_tokens`, `input_tokens_details.cached_tokens`, and `output_tokens_details.reasoning_tokens`. Streaming accounting reads the same fields under terminal-event `response.usage` exactly once for `response.completed`, `response.incomplete`, or `response.failed`, without modifying SSE bytes. Missing or malformed counts produce no corresponding token metrics; explicit supplied zero remains zero. [Decision 0004](./.decisions/0004-responses-pass-through.md) records the protocol choice and the implications for reasoning comparisons.
+
 ## Chat JSON (AIG-R01, AIG-R03, AIG-R11)
 
 ```text
@@ -77,7 +89,7 @@ messages + model + optional tools/format -> POST /v1/chat/completions
 
 A minimal request is `{"model":"anthropic/claude-haiku-4-5","messages":[{"role":"user","content":"Say hello"}],"stream":false}`. `model` is a nonempty advertised ID. Message roles include `system`, `developer`, `user`, `assistant`, and `tool`; legacy `function` input may be accepted but is not the client convention. Content can be text or OpenAI-style content parts. Data-URI image parts can be decoded; remote image URLs are not guaranteed image inputs and may become text placeholders.
 
-The gateway parses common Chat Completions fields including `tools`, `tool_choice`, `response_format`, `stream_options`, `max_completion_tokens` (preferred to `max_tokens`), `temperature`, `top_p`, `stop`, penalties, `reasoning_effort`, `service_tier`, metadata, and cache keys. Parsing does not guarantee every provider honors every tuning field: sampling controls can be stripped by a backend, and fields such as `seed`, `logit_bias`, `parallel_tool_calls`, and `user` are not portable guarantees. This contract does not promise complete OpenAI API parity or expose Responses, Messages, embedding, or audio routes.
+The gateway parses common Chat Completions fields including `tools`, `tool_choice`, `response_format`, `stream_options`, `max_completion_tokens` (preferred to `max_tokens`), `temperature`, `top_p`, `stop`, penalties, `reasoning_effort`, `service_tier`, metadata, and cache keys. Parsing does not guarantee every provider honors every tuning field: sampling controls can be stripped by a backend, and fields such as `seed`, `logit_bias`, `parallel_tool_calls`, and `user` are not portable guarantees. This contract does not promise complete OpenAI API parity or expose Messages, embedding, or audio routes. Responses is an edge-only pass-through operation, not a client-library generation API.
 
 A representative nonstreaming response is:
 
@@ -282,12 +294,7 @@ Structured cases also retain the caller's original JSON Schema for validation.
 | `tools.call`, `tools.result`                                        | Tool-call preservation and result continuation.                     |
 | `decision.triage`, `decision.invalid-422`                           | Native decisions and rejected requests.                             |
 | `errors.upstream-404`, `errors.rate-limited-429`, `errors.edge-502` | Distinguishable unsuccessful HTTP outcomes.                         |
+| `responses.text`, `responses.stream.usage` | Edge-only Responses JSON and terminal SSE usage with unchanged requests and response bytes. |
+| `responses.upstream-404`, `responses.state-reference-400` | Responses upstream error preservation and local rejection of unsafe state references. |
 
-The `01-effect`, `02-rust`, and `03-edge` realizations must replay every case. Each
-realization owns its replay adapter and local controlled transport or server
-harness; no case embeds executable code or a language-specific client API.
-Client adapters assert outgoing request expectations and decoded outcomes;
-the edge adapter supplies controlled upstream behavior and asserts the public
-wire response and request acceptance. Language-specific tests additionally cover
-telemetry lifetimes, cancellation, and other obligations not represented by
-these data-only exchanges; passing the case set does not waive those requirements.
+The `01-effect`, `02-rust`, and `03-edge` realizations must replay every applicable case and explicitly name inapplicable cases with their reasons. The four `responses.*` cases above are edge-only: both client realizations name them as unsupported because they expose no Responses operation; this is not evidence of client Responses support. Each realization owns its replay adapter and local controlled transport or server harness; no case embeds executable code or a language-specific client API. Client adapters assert outgoing request expectations and decoded outcomes; the edge adapter supplies controlled upstream behavior and asserts the public wire response and request acceptance or rejection before forwarding. Language-specific tests additionally cover telemetry lifetimes, cancellation, and other obligations not represented by these data-only exchanges; passing the case set does not waive those requirements.

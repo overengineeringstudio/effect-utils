@@ -116,6 +116,9 @@
             },
             "cached": {
               "type": "integer"
+            },
+            "reasoning": {
+              "type": "integer"
             }
           },
           "required": ["input", "output"],

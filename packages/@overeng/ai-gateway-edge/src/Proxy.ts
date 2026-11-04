@@ -21,6 +21,12 @@ const Usage = Schema.Struct({
   completion_tokens_details: Schema.optional(
     Schema.Struct({ reasoning_tokens: Schema.optional(TokenCount) }),
   ),
+  input_tokens_details: Schema.optional(
+    Schema.Struct({ cached_tokens: Schema.optional(TokenCount) }),
+  ),
+  output_tokens_details: Schema.optional(
+    Schema.Struct({ reasoning_tokens: Schema.optional(TokenCount) }),
+  ),
 })
 const RequestModel = Schema.Struct({
   model: Schema.NonEmptyString,
@@ -30,6 +36,13 @@ const decodeRequestModel = Schema.decodeUnknownSync(Schema.fromJsonString(Reques
 const decodeUsage = Schema.decodeUnknownOption(Usage)
 const decodeJson = Schema.decodeUnknownSync(Schema.fromJsonString(Schema.Unknown))
 const encodeJson = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown))
+const ResponsesState = Schema.Struct({
+  previous_response_id: Schema.optional(Schema.Unknown),
+  conversation: Schema.optional(Schema.Unknown),
+  input: Schema.optional(Schema.Unknown),
+})
+const decodeResponsesState = Schema.decodeUnknownSync(Schema.fromJsonString(ResponsesState))
+class ServerSideStateReference extends Data.TaggedError('ServerSideStateReference') {}
 class UpstreamStreamError extends Data.TaggedError('UpstreamStreamError')<{
   readonly cause: unknown
 }> {}
@@ -185,24 +198,34 @@ export const makeRoutes = ({
         kind: 'output',
         count: output,
       })
-    if (usage.prompt_tokens_details?.cached_tokens !== undefined)
+    const cached =
+      usage.prompt_tokens_details?.cached_tokens ?? usage.input_tokens_details?.cached_tokens
+    const reasoning =
+      usage.completion_tokens_details?.reasoning_tokens ??
+      usage.output_tokens_details?.reasoning_tokens
+    if (cached !== undefined)
       metrics.addTokens({
         labels: { consumer, model },
         status: status,
         kind: 'cached',
-        count: usage.prompt_tokens_details.cached_tokens,
+        count: cached,
       })
-    if (usage.completion_tokens_details?.reasoning_tokens !== undefined)
+    if (reasoning !== undefined)
       metrics.addTokens({
         labels: { consumer, model },
         status: status,
         kind: 'reasoning',
-        count: usage.completion_tokens_details.reasoning_tokens,
+        count: reasoning,
       })
   }
 
   const forward = (
-    path: '/v1/chat/completions' | '/v1/models' | '/v1/systemone' | '/alpha/decisions',
+    path:
+      | '/v1/chat/completions'
+      | '/v1/responses'
+      | '/v1/models'
+      | '/v1/systemone'
+      | '/alpha/decisions',
   ) =>
     Effect.gen(function* () {
       const request = yield* HttpServerRequest.HttpServerRequest
@@ -214,7 +237,11 @@ export const makeRoutes = ({
       const started = performance.now()
       let model = path === '/v1/models' ? 'models' : 'unknown'
       let body: string | undefined
-      const text = yield* readBody(request.source, maxRequestBodyBytes).pipe(
+      const requestBodyLimit =
+        path === '/v1/responses'
+          ? (config.routeMaxRequestBodyBytes?.['/v1/responses'] ?? maxRequestBodyBytes)
+          : maxRequestBodyBytes
+      const text = yield* readBody(request.source, requestBodyLimit).pipe(
         Effect.catchTag('RequestBodyTooLarge', () => Effect.void),
       )
       if (text === undefined) {
@@ -229,6 +256,22 @@ export const makeRoutes = ({
         const parsed = yield* Effect.try({
           try: () => {
             const value = decodeRequestModel(text)
+            if (path === '/v1/responses') {
+              const state = decodeResponsesState(text)
+              if (
+                (state.previous_response_id !== undefined && state.previous_response_id !== null) ||
+                Object.hasOwn(state, 'conversation') === true ||
+                (Array.isArray(state.input) === true &&
+                  state.input.some(
+                    (item: unknown) =>
+                      typeof item === 'object' &&
+                      item !== null &&
+                      'type' in item &&
+                      item.type === 'item_reference',
+                  ) === true)
+              )
+                throw new ServerSideStateReference()
+            }
             if (path !== '/v1/chat/completions' || value.stream !== true)
               return { model: value.model, body: text }
             const payload = decodeJson(text)
@@ -250,15 +293,24 @@ export const makeRoutes = ({
               }),
             }
           },
-          catch: () => 'invalid request' as const,
-        }).pipe(Effect.orElseSucceed(() => undefined))
-        if (parsed === undefined) {
+          catch: (cause) =>
+            cause instanceof ServerSideStateReference
+              ? ('server-side state reference' as const)
+              : ('invalid request' as const),
+        }).pipe(Effect.catch((reason) => Effect.succeed({ reason })))
+        if ('reason' in parsed) {
           metrics.record({
             labels: { consumer, model },
             status: 400,
             seconds: (performance.now() - started) / 1000,
           })
-          return error({ status: 400, message: 'Invalid request JSON or model' })
+          return error({
+            status: 400,
+            message:
+              parsed.reason === 'server-side state reference'
+                ? 'Server-side state references are not supported; send self-contained input with encrypted reasoning items'
+                : 'Invalid request JSON or model',
+          })
         }
         model = parsed.model
         body = parsed.body
@@ -322,7 +374,29 @@ export const makeRoutes = ({
         })
         return HttpServerResponse.empty({ status: response.status, headers: responseHeaders })
       }
+      let terminalUsageObserved = false
       const events = new UsageEvents((value) => {
+        if (path === '/v1/responses') {
+          if (
+            terminalUsageObserved === true ||
+            typeof value !== 'object' ||
+            value === null ||
+            !('type' in value) ||
+            (value.type !== 'response.completed' &&
+              value.type !== 'response.incomplete' &&
+              value.type !== 'response.failed')
+          )
+            return
+          terminalUsageObserved = true
+          if (
+            'response' in value &&
+            typeof value.response === 'object' &&
+            value.response !== null &&
+            'usage' in value.response
+          )
+            meterUsage({ consumer, model, status: response.status, value: value.response.usage })
+          return
+        }
         if (typeof value === 'object' && value !== null && 'usage' in value && value.usage !== null)
           meterUsage({
             consumer: consumer,
@@ -388,6 +462,7 @@ export const makeRoutes = ({
       HttpRouter.route('GET', '/healthz', health),
       HttpRouter.route('GET', '/v1/models', forward('/v1/models')),
       HttpRouter.route('POST', '/v1/chat/completions', forward('/v1/chat/completions')),
+      HttpRouter.route('POST', '/v1/responses', forward('/v1/responses')),
       HttpRouter.route('POST', '/v1/systemone', forward('/v1/systemone')),
       HttpRouter.route('POST', '/alpha/decisions', forward('/alpha/decisions')),
     ]),

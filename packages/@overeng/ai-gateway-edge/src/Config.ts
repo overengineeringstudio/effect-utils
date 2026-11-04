@@ -11,6 +11,11 @@ export const GatewayConfig = Schema.Struct({
   consumers: Schema.Array(Consumer),
   maxModelLabels: Schema.optionalKey(Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))),
   maxRequestBodyBytes: Schema.optionalKey(Schema.Int.check(Schema.isGreaterThan(0))),
+  routeMaxRequestBodyBytes: Schema.optionalKey(
+    Schema.Struct({
+      '/v1/responses': Schema.optionalKey(Schema.Int.check(Schema.isGreaterThan(0))),
+    }),
+  ),
 }).annotate({ identifier: 'AiGatewayEdge.Config' })
 
 /** Decoded runtime gateway configuration. */
