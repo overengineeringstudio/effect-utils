@@ -54,27 +54,16 @@ set `checkProducerCommit = true` and supply the selected revision; an absent or
 mismatched revision fails the build. Published products retain their independent
 descriptor digest and evaluation-time validation unchanged.
 
-Source products project Buck support inputs separately from their package
-sources. `nix/buck2-products/buck-inputs.nix` follows literal rule loads, target
-labels, exported files and helper imports from the product inventories and
-source-package BUCK files. Loading a `.bzl` file does not pull in that directory's
-unrelated BUCK package. The bundled Prelude and generated capability cell remain
-separate tool inputs. Test trees, fixtures and test modules are rejected if
-reachable, rather than silently copied into every recipe.
-The source-product factory shares the default repository projection across cache
-products, including dependency discovery and `toSource`; product selection must
-not rerun this repository-wide work for each inventory entry.
+Source products separate package sources from Buck support inputs.
+`nix/buck2-products/buck-inputs.nix` follows literal loads, labels, exported files
+and helper imports from product BUCK packages, without unrelated sibling BUCKs.
+Reachable test trees, fixtures and test modules fail evaluation. The factory
+computes the default shared projection, including discovery and `toSource`, once.
 
-`bash nix/buck2-products/root-projection.test.sh "$PWD"` checks that removing
-`buck2/tests/**` leaves the root projection hash unchanged. Completeness is
-fail-closed: source-product builds run in the Nix sandbox with only the declared
-package sources and projected support files, so a new dynamic file dependency
-requires updating the projector. Run the source-product contract and all
-registered from-source product builds when changing this boundary.
-The regression also compares whole recipes with identical `producerCommit`.
-Cache-publisher recipes (including Genie) intentionally retain HEAD-bound
-provenance; comparing a clean revision URL against a dirty worktree URL changes
-that provenance to the dirty sentinel and is not an input-isolation test.
+`bash nix/buck2-products/root-projection.test.sh "$PWD"` verifies that removing
+`buck2/tests/**` changes no projection or recipe, while real source/rule changes do.
+Sandboxed product builds check completeness; run all products after boundary changes.
+Recipe comparisons retain identical `producerCommit`; publication provenance binds HEAD.
 
 The Genie product wrapper realizes the pinned descriptor's capabilities through
 a closed provider registry. It supplies `gh` on PATH when the published product
