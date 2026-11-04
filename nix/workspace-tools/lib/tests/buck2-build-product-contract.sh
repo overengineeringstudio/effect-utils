@@ -76,6 +76,7 @@ let
     (withArtifacts (valid.library.artifacts ++ [ (builtins.head valid.library.artifacts) ]))
     (withArtifacts [ (builtins.head valid.library.artifacts) ]) (withArtifacts [ (artifact valid.library.primary "rlib") (artifact valid.library.primary "rlib") ])
     (withArtifacts [ (artifact valid.library.primary "rmeta") ])
+    (withArtifacts [ ((artifact valid.library.primary "rlib") // { sha256 = "tampered"; }) ])
     (withLibrary { rustc = valid.library.rustc // { verboseVersion = version "aarch64-apple-darwin"; }; })
     (withLibrary { rustc = valid.library.rustc // { verboseVersion = version valid.library.hostTriple + "\n"; }; })
     (withLibrary { rustc = valid.library.rustc // { compilerStorePath = "/tmp/rustc"; }; })
@@ -91,6 +92,7 @@ assert contract.validateDescriptor (withLibrary { panicStrategy = "abort"; }) !=
 assert builtins.all (object: rejects (object.replace (object.value // { unknown = true; })) && builtins.all (field: rejects (object.replace (builtins.removeAttrs object.value [ field ]))) (builtins.attrNames object.value)) objects;
 assert builtins.all rejects negatives;
 assert contract.verifyDescriptor { descriptor = valid; expectedDescriptorDigest = contract.descriptorDigest valid; } == valid;
+assert !(builtins.tryEval (builtins.deepSeq (contract.verifyDescriptor { descriptor = withLibrary { crateName = "tampered"; primary = "lib/libtampered.rlib"; artifacts = [ (artifact "lib/libtampered.rlib" "rlib") ]; }; expectedDescriptorDigest = contract.descriptorDigest valid; }) true)).success;
 "buck2-library-product-contract-test: PASS"
 '
 

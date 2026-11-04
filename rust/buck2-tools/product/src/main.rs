@@ -1,3 +1,4 @@
+mod library;
 mod npm_manifest;
 
 use buck2_tool_core::{
@@ -27,6 +28,7 @@ struct Cli {
 #[derive(Subcommand)]
 enum Command {
     Package(Box<PackageArgs>),
+    PackageLibrary(Box<library::LibraryArgs>),
     PackageAppBundle(Box<PackageAppBundleArgs>),
     NpmPackage(NpmPackageArgs),
 }
@@ -1360,6 +1362,7 @@ fn main() {
     )
     .and_then(|()| match cli.command {
         Command::Package(args) => package(*args),
+        Command::PackageLibrary(args) => library::package(*args),
         Command::PackageAppBundle(args) => package_app_bundle(*args),
         Command::NpmPackage(args) => npm_package(args),
     });
