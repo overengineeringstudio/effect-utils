@@ -13,17 +13,18 @@ import {
   type RepoContext,
 } from '../../../packages/@overeng/genie/src/runtime/repo-context/mod.ts'
 
-/** One independently named product selected from the package's Cargo targets. */
-export type CargoBuck2ProductOptions =
-  | { readonly kind: 'library'; readonly name: string }
-  | {
-      readonly kind: 'executable'
-      readonly name: string
-      /** Cargo binary target; defaults to `name`. */
-      readonly binary?: string
-      /** Payload-relative executable path; defaults to `bin/<name>`. */
-      readonly entrypoint?: string
-    }
+const productFields = {
+  library: ['kind', 'name'],
+  executable: ['kind', 'name', 'binary', 'entrypoint'],
+} as const
+type ProductKind = keyof typeof productFields
+
+/** Required identity fields and optional string fields share the decoder's closed-key table. */
+export type CargoBuck2ProductOptions = {
+  [TKind in ProductKind]: { readonly kind: TKind; readonly name: string } & {
+    readonly [TField in Exclude<(typeof productFields)[TKind][number], 'kind' | 'name'>]?: string
+  }
+}[ProductKind]
 
 /** One smoke target per runtime, each named `<product>-smoke-<runtime>`. */
 export type CargoBuck2InteropSmokeOptions = {
@@ -2487,6 +2488,56 @@ type ResolvedProduct =
       readonly name: string
     }
 
+const isProductKind = (value: unknown): value is ProductKind =>
+  typeof value === 'string' && Object.hasOwn(productFields, value)
+
+const decodeProduct = (
+  value: unknown,
+  field: string,
+  manifestPath: string,
+): CargoBuck2ProductOptions => {
+  const fail = (key: string, reason: string): never => {
+    throw new Error(`${field}${key === '' ? '' : `.${key}`} ${reason} in ${manifestPath}`)
+  }
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    return fail('', 'must be a product object')
+  }
+  if (!('kind' in value) || !isProductKind(value.kind)) {
+    return fail('kind', 'must be "library" or "executable"')
+  }
+  const kind = value.kind
+  for (const key of Object.keys(value)) {
+    if (!productFields[kind].some((allowed) => allowed === key)) {
+      return fail(key, `is not allowed for ${kind} products`)
+    }
+  }
+  if (!('name' in value) || typeof value.name !== 'string') {
+    return fail('name', 'must be a string')
+  }
+  const name = value.name
+  const binary = 'binary' in value ? value.binary : undefined
+  const entrypoint = 'entrypoint' in value ? value.entrypoint : undefined
+  if (binary !== undefined && typeof binary !== 'string') return fail('binary', 'must be a string')
+  if (entrypoint !== undefined && typeof entrypoint !== 'string') {
+    return fail('entrypoint', 'must be a string')
+  }
+  switch (kind) {
+    case 'library':
+      return { kind, name }
+    case 'executable':
+      return {
+        kind,
+        name,
+        ...(binary === undefined ? {} : { binary }),
+        ...(entrypoint === undefined ? {} : { entrypoint }),
+      }
+    default: {
+      const exhaustive: never = kind
+      return fail('kind', `is unsupported: ${exhaustive}`)
+    }
+  }
+}
+
 /** The singleton shorthand always selects an executable; explicit selections carry a kind. */
 const resolveProducts = ({
   binaries,
@@ -2521,14 +2572,20 @@ const resolveProducts = ({
   if (buildProduct === true) {
     throw new Error(`buildProduct and buildProducts are mutually exclusive in ${manifestPath}`)
   }
+  if (!Array.isArray(buildProducts)) {
+    throw new Error(`buildProducts must be an array in ${manifestPath}`)
+  }
   if (buildProducts.length === 0) {
     throw new Error(`buildProducts must name at least one product in ${manifestPath}`)
   }
   const binaryNames = new Set(binaries.map((binary) => binary.name))
-  const products = buildProducts.map((product, index): ResolvedProduct => {
+  const products = buildProducts.map((value: unknown, index): ResolvedProduct => {
     const field = `buildProducts[${index}]`
+    const product = decodeProduct(value, field, manifestPath)
     if (/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(product.name) === false) {
-      throw new Error(`${field}.name is not a Buck target-safe product name: ${product.name}`)
+      throw new Error(
+        `${field}.name is not a Buck target-safe product name: ${product.name} in ${manifestPath}`,
+      )
     }
     if (product.kind === 'library') {
       if (library === undefined) {
@@ -2556,7 +2613,9 @@ const resolveProducts = ({
       /^[A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)*$/.test(entrypoint) === false ||
       entrypoint.split('/').some((segment) => segment === '.' || segment === '..') === true
     ) {
-      throw new Error(`${field}.entrypoint must be a normalized relative path: ${entrypoint}`)
+      throw new Error(
+        `${field}.entrypoint must be a normalized relative path: ${entrypoint} in ${manifestPath}`,
+      )
     }
     return { kind: 'executable', binary, entrypoint, name: product.name }
   })

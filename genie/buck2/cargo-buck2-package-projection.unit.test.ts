@@ -1174,6 +1174,25 @@ describe('Cargo multi-product packages', () => {
     ).toBe(withoutHeader(renderPackage({ buildProduct: true }, single)))
   })
 
+  it.each([
+    [{ kind: 'unknown', name: 'tailnet-relay' }, 'kind'],
+    [{ name: 'tailnet-relay' }, 'kind'],
+    [{ kind: 'library' }, 'name'],
+    [{ kind: 'executable' }, 'name'],
+    [{ kind: 'library', name: 'relay', extra: true }, 'extra'],
+    [{ kind: 'executable', name: 'tailnet-relay', extra: true }, 'extra'],
+    [{ kind: 'library', name: 'relay', binary: 'tailnet-relay' }, 'binary'],
+    [{ kind: 'library', name: 'relay', entrypoint: 'bin/relay' }, 'entrypoint'],
+    [{ kind: 'executable', name: 'tailnet-relay', binary: 1 }, 'binary'],
+    [{ kind: 'executable', name: 'tailnet-relay', entrypoint: false }, 'entrypoint'],
+  ])('rejects malformed product %j at %s', (product, field) => {
+    // JSON models untyped authored input crossing the public projection boundary.
+    const options = JSON.parse(JSON.stringify({ buildProducts: [product] }))
+    expect(() => renderPackage(options, ['src/lib.rs', 'src/main.rs'])).toThrow(
+      new RegExp(`buildProducts\\[0\\]\\.${field} .* in rust/relay/Cargo\\.toml`),
+    )
+  })
+
   it('projects a pure library using its Cargo crate identity, root, edition and dependencies', () => {
     const rendered = renderCargoFixture({
       members: {
