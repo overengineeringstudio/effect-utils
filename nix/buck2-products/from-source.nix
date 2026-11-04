@@ -2,6 +2,49 @@
   pkgs,
   buck2,
 }:
+let
+  lib = pkgs.lib;
+  defaultInputs = import ./buck-inputs.nix {
+    inherit lib;
+    repositoryRoot = ../..;
+  };
+  unscopedSource =
+    repositoryRoot: cargoWorkspaceRoot: buckInputs:
+    lib.fileset.toSource {
+      root = repositoryRoot;
+      fileset = lib.fileset.unions (
+        [
+          (repositoryRoot + "/.buckconfig")
+          (repositoryRoot + "/.buckroot")
+          (repositoryRoot + "/.watchmanconfig")
+          (repositoryRoot + "/BUCK")
+          (repositoryRoot + "/package.json")
+          (repositoryRoot + "/pnpm-workspace.yaml")
+          (repositoryRoot + "/rust-toolchain.toml")
+          (repositoryRoot + "/.oxfmtrc.json")
+          (repositoryRoot + "/.oxlintrc.json")
+          (repositoryRoot + "/buck2-member.json")
+          (repositoryRoot + "/context")
+          (repositoryRoot + "/genie/weaver-registry")
+          (repositoryRoot + "/devenv.lock")
+          (repositoryRoot + "/devenv.yaml")
+          (repositoryRoot + "/flake.lock")
+          (repositoryRoot + "/flake.nix")
+          (repositoryRoot + "/megarepo.kdl")
+          (repositoryRoot + "/megarepo.lock")
+          (repositoryRoot + "/patches")
+          (repositoryRoot + "/nix/weaver-flake/flake.nix")
+          (repositoryRoot + "/scripts")
+          (lib.fileset.unions buckInputs.files)
+          (repositoryRoot + "/packages/@overeng")
+        ]
+        ++ lib.optionals (cargoWorkspaceRoot != null) [
+          (repositoryRoot + "/${cargoWorkspaceRoot}")
+        ]
+      );
+    };
+  defaultSource = unscopedSource ../.. null defaultInputs;
+in
 
 {
   capabilities,
@@ -32,9 +75,34 @@
 }:
 
 let
-  lib = pkgs.lib;
   watcherPolicies = import ./watcher-policies.nix;
   cargoWorkspaceRoot = product.cargoWorkspaceRoot or null;
+  entryTargets = [
+    product.target
+  ]
+  ++ lib.optional (runtimeClosureTarget != null) runtimeClosureTarget;
+  entryPackages = map (
+    target: builtins.head (lib.splitString ":" (lib.last (lib.splitString "//" target)))
+  ) entryTargets;
+  baseInputs =
+    if repositoryRoot == ../.. then
+      defaultInputs
+    else
+      import ./buck-inputs.nix { inherit lib repositoryRoot; };
+  covered = builtins.all (package: builtins.elem package baseInputs.packages) entryPackages;
+  buckInputs =
+    if covered then
+      baseInputs
+    else
+      import ./buck-inputs.nix {
+        inherit lib repositoryRoot;
+        extraEntryTargets = entryTargets;
+      };
+  rulesProjection =
+    if rootProjection == null || covered then
+      rootProjection
+    else
+      import ./root-projection.nix { inherit pkgs repositoryRoot buckInputs; };
   # Cargo manifests in consumer roots live in repositorySource, which can be a
   # derivation. Read the staged workspace at build time, not repositoryRoot at
   # evaluation time: the latter belongs to this rules package.
@@ -49,40 +117,10 @@ let
       }
     else if repositorySource != null then
       repositorySource
+    else if repositoryRoot == ../.. && cargoWorkspaceRoot == null && covered then
+      defaultSource
     else
-      lib.fileset.toSource {
-        root = repositoryRoot;
-        fileset = lib.fileset.unions (
-          [
-            (repositoryRoot + "/.buckconfig")
-            (repositoryRoot + "/.buckroot")
-            (repositoryRoot + "/.watchmanconfig")
-            (repositoryRoot + "/BUCK")
-            (repositoryRoot + "/package.json")
-            (repositoryRoot + "/pnpm-workspace.yaml")
-            (repositoryRoot + "/rust-toolchain.toml")
-            (repositoryRoot + "/.oxfmtrc.json")
-            (repositoryRoot + "/.oxlintrc.json")
-            (repositoryRoot + "/buck2-member.json")
-            (repositoryRoot + "/context")
-            (repositoryRoot + "/genie/weaver-registry")
-            (repositoryRoot + "/devenv.lock")
-            (repositoryRoot + "/devenv.yaml")
-            (repositoryRoot + "/flake.lock")
-            (repositoryRoot + "/flake.nix")
-            (repositoryRoot + "/megarepo.kdl")
-            (repositoryRoot + "/megarepo.lock")
-            (repositoryRoot + "/patches")
-            (repositoryRoot + "/nix/weaver-flake/flake.nix")
-            (repositoryRoot + "/scripts")
-            (repositoryRoot + "/buck2")
-            (repositoryRoot + "/packages/@overeng")
-          ]
-          ++ lib.optionals (cargoWorkspaceRoot != null) [
-            (repositoryRoot + "/${cargoWorkspaceRoot}")
-          ]
-        );
-      };
+      unscopedSource repositoryRoot cargoWorkspaceRoot buckInputs;
   sourceDigest = builtins.hashString "sha256" (toString source);
   # Rust projections rendered with `cliBuildStamp` read this JSON through
   # `build_identity.cli_build_stamp`. Scoped native recipes have no Git
@@ -160,6 +198,20 @@ assert lib.assertMsg (
   (sourcePaths == null) == (rootProjection == null)
 ) "buck2-products: scoped sourcePaths require a separate rootProjection";
 assert lib.assertMsg (
+  repositorySource != null
+  || builtins.all (
+    package:
+    let
+      file = repositoryRoot + "/${package}/BUCK";
+    in
+    builtins.pathExists file
+    && (
+      source.filter (toString file) "regular"
+      || (rulesProjection != null && rulesProjection.filter (toString file) "regular")
+    )
+  ) entryPackages
+) "buck2-products: entry package BUCK missing from product projection";
+assert lib.assertMsg (
   !isBuildProduct || outputName == "artifact.tar"
 ) "buck2-products: ${product.kind} products must name the build_product payload artifact.tar";
 assert lib.assertMsg (
@@ -214,8 +266,8 @@ let
       export XDG_RUNTIME_DIR="$TMPDIR/runtime"
       export SSL_CERT_FILE="${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt"
       mkdir -p .buck2
-      ${lib.optionalString (rootProjection != null) ''
-        cp -R ${rootProjection}/. .
+      ${lib.optionalString (rulesProjection != null) ''
+        cp -R ${rulesProjection}/. .
         chmod -R u+w .buck2 buck2 BUCK .buckconfig .buckroot
       ''}
       mkdir -p "$HOME" "$XDG_CACHE_HOME" "$XDG_RUNTIME_DIR" .buck2/capabilities
@@ -345,13 +397,13 @@ let
         pnpmArchives
         producerCommit
         repositorySource
-        rootProjection
         source
         sourceDigest
         sourcePaths
         target
         runtimeClosureTarget
         ;
+      rootProjection = rulesProjection;
       artifactName = outputName;
       inherit productName;
       productKind = product.kind;

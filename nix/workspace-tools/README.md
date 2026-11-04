@@ -54,6 +54,12 @@ set `checkProducerCommit = true` and supply the selected revision; an absent or
 mismatched revision fails the build. Published products retain their independent
 descriptor digest and evaluation-time validation unchanged.
 
+`buck2-products/buck-inputs.nix` follows literal load/export/helper dependencies;
+test inputs fail. Cache products share one projection; uncovered entries extend it.
+Entry assertions use repository paths and the projection's eval-time filter, never realized store contents.
+Run `bash nix/buck2-products/root-projection.test.sh "$PWD"` and sandboxed product
+builds for input isolation, real-input sensitivity and projection completeness.
+
 The Genie product wrapper realizes the pinned descriptor's capabilities through
 a closed provider registry. It supplies `gh` on PATH when the published product
 requires repository-settings reconciliation; old products do not acquire that
