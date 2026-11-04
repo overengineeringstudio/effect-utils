@@ -73,7 +73,7 @@ let
             (repositoryRoot + "/patches")
             (repositoryRoot + "/nix/weaver-flake/flake.nix")
             (repositoryRoot + "/scripts")
-            (repositoryRoot + "/buck2")
+            (lib.fileset.unions (import ./buck-inputs.nix { inherit lib repositoryRoot; }))
             (repositoryRoot + "/packages/@overeng")
           ]
           ++ lib.optionals (cargoWorkspaceRoot != null) [

@@ -54,6 +54,21 @@ set `checkProducerCommit = true` and supply the selected revision; an absent or
 mismatched revision fails the build. Published products retain their independent
 descriptor digest and evaluation-time validation unchanged.
 
+Source products project Buck support inputs separately from their package
+sources. `nix/buck2-products/buck-inputs.nix` follows literal rule loads, target
+labels, exported files and helper imports from the product inventories and
+source-package BUCK files. Loading a `.bzl` file does not pull in that directory's
+unrelated BUCK package. The bundled Prelude and generated capability cell remain
+separate tool inputs. Test trees, fixtures and test modules are rejected if
+reachable, rather than silently copied into every recipe.
+
+`bash nix/buck2-products/root-projection.test.sh "$PWD"` checks that removing
+`buck2/tests/**` leaves the root projection hash unchanged. Completeness is
+fail-closed: source-product builds run in the Nix sandbox with only the declared
+package sources and projected support files, so a new dynamic file dependency
+requires updating the projector. Run the source-product contract and all
+registered from-source product builds when changing this boundary.
+
 The Genie product wrapper realizes the pinned descriptor's capabilities through
 a closed provider registry. It supplies `gh` on PATH when the published product
 requires repository-settings reconciliation; old products do not acquire that
