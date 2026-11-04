@@ -11,16 +11,14 @@ import { Metrics } from './Metrics.ts'
 
 const TokenCount = Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))
 const Usage = Schema.Struct({
-  prompt_tokens: Schema.optional(TokenCount),
-  completion_tokens: Schema.optional(TokenCount),
-  input_tokens: Schema.optional(TokenCount),
-  output_tokens: Schema.optional(TokenCount),
-  prompt_tokens_details: Schema.optional(
-    Schema.Struct({ cached_tokens: Schema.optional(TokenCount) }),
-  ),
-  completion_tokens_details: Schema.optional(
-    Schema.Struct({ reasoning_tokens: Schema.optional(TokenCount) }),
-  ),
+  prompt_tokens: Schema.optional(Schema.Unknown),
+  completion_tokens: Schema.optional(Schema.Unknown),
+  input_tokens: Schema.optional(Schema.Unknown),
+  output_tokens: Schema.optional(Schema.Unknown),
+  prompt_tokens_details: Schema.optional(Schema.Unknown),
+  completion_tokens_details: Schema.optional(Schema.Unknown),
+  input_tokens_details: Schema.optional(Schema.Unknown),
+  output_tokens_details: Schema.optional(Schema.Unknown),
 })
 const RequestModel = Schema.Struct({
   model: Schema.NonEmptyString,
@@ -28,8 +26,24 @@ const RequestModel = Schema.Struct({
 })
 const decodeRequestModel = Schema.decodeUnknownSync(Schema.fromJsonString(RequestModel))
 const decodeUsage = Schema.decodeUnknownOption(Usage)
+const decodeTokenCount = Schema.decodeUnknownOption(TokenCount)
+const tokenCount = (value: unknown) => {
+  const parsed = decodeTokenCount(value)
+  return parsed._tag === 'Some' ? parsed.value : undefined
+}
+const detailCount = ({ value, key }: { value: unknown; key: string }) =>
+  typeof value === 'object' && value !== null && key in value
+    ? tokenCount(Reflect.get(value, key))
+    : undefined
 const decodeJson = Schema.decodeUnknownSync(Schema.fromJsonString(Schema.Unknown))
 const encodeJson = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown))
+const ResponsesState = Schema.Struct({
+  previous_response_id: Schema.optional(Schema.Unknown),
+  conversation: Schema.optional(Schema.Unknown),
+  input: Schema.optional(Schema.Unknown),
+})
+const decodeResponsesState = Schema.decodeUnknownSync(Schema.fromJsonString(ResponsesState))
+class ServerSideStateReference extends Data.TaggedError('ServerSideStateReference') {}
 class UpstreamStreamError extends Data.TaggedError('UpstreamStreamError')<{
   readonly cause: unknown
 }> {}
@@ -96,9 +110,22 @@ class UsageEvents {
   private readonly decoder = new TextDecoder()
   private line = ''
   private data = ''
+  private overflow = false
+  private readonly maxEventChars: number
+  private readonly maxLineChars: number
   private readonly record: (value: unknown) => void
-  constructor(record: (value: unknown) => void) {
+  constructor({
+    record,
+    maxEventChars = 131072,
+    maxLineChars = 65536,
+  }: {
+    record: (value: unknown) => void
+    maxEventChars?: number
+    maxLineChars?: number
+  }) {
     this.record = record
+    this.maxEventChars = maxEventChars
+    this.maxLineChars = maxLineChars
   }
   push(bytes: Uint8Array) {
     const text = this.decoder.decode(bytes, { stream: true })
@@ -107,17 +134,22 @@ class UsageEvents {
         const line = this.line.replace(/\r$/, '')
         this.line = ''
         if (line === '') {
-          if (this.data.length > 0) {
+          if (this.overflow === false && this.data.length > 0) {
             try {
               this.record(decodeJson(this.data))
             } catch {
               /* malformed upstream event is not usage */
             }
-            this.data = ''
           }
-        } else if (line.startsWith('data:') === true && this.data.length < 131072)
-          this.data += `${this.data.length === 0 ? '' : '\n'}${line.slice(5).trimStart()}`
-      } else if (this.line.length < 65536) this.line += char
+          this.data = ''
+          this.overflow = false
+        } else if (this.overflow === false && line.startsWith('data:') === true) {
+          const data = line.slice(5).trimStart()
+          if (this.data.length + data.length + 1 > this.maxEventChars) this.overflow = true
+          else this.data += `${this.data.length === 0 ? '' : '\n'}${data}`
+        }
+      } else if (this.line.length < this.maxLineChars) this.line += char
+      else this.overflow = true
     }
   }
 }
@@ -169,8 +201,8 @@ export const makeRoutes = ({
     const parsed = decodeUsage(value)
     if (parsed._tag === 'None') return
     const usage = parsed.value
-    const input = usage.prompt_tokens ?? usage.input_tokens
-    const output = usage.completion_tokens ?? usage.output_tokens
+    const input = tokenCount(usage.prompt_tokens) ?? tokenCount(usage.input_tokens)
+    const output = tokenCount(usage.completion_tokens) ?? tokenCount(usage.output_tokens)
     if (input !== undefined)
       metrics.addTokens({
         labels: { consumer, model },
@@ -185,24 +217,35 @@ export const makeRoutes = ({
         kind: 'output',
         count: output,
       })
-    if (usage.prompt_tokens_details?.cached_tokens !== undefined)
+    const cached =
+      detailCount({ value: usage.prompt_tokens_details, key: 'cached_tokens' }) ??
+      detailCount({ value: usage.input_tokens_details, key: 'cached_tokens' })
+    const reasoning =
+      detailCount({ value: usage.completion_tokens_details, key: 'reasoning_tokens' }) ??
+      detailCount({ value: usage.output_tokens_details, key: 'reasoning_tokens' })
+    if (cached !== undefined)
       metrics.addTokens({
         labels: { consumer, model },
         status: status,
         kind: 'cached',
-        count: usage.prompt_tokens_details.cached_tokens,
+        count: cached,
       })
-    if (usage.completion_tokens_details?.reasoning_tokens !== undefined)
+    if (reasoning !== undefined)
       metrics.addTokens({
         labels: { consumer, model },
         status: status,
         kind: 'reasoning',
-        count: usage.completion_tokens_details.reasoning_tokens,
+        count: reasoning,
       })
   }
 
   const forward = (
-    path: '/v1/chat/completions' | '/v1/models' | '/v1/systemone' | '/alpha/decisions',
+    path:
+      | '/v1/chat/completions'
+      | '/v1/responses'
+      | '/v1/models'
+      | '/v1/systemone'
+      | '/alpha/decisions',
   ) =>
     Effect.gen(function* () {
       const request = yield* HttpServerRequest.HttpServerRequest
@@ -214,7 +257,11 @@ export const makeRoutes = ({
       const started = performance.now()
       let model = path === '/v1/models' ? 'models' : 'unknown'
       let body: string | undefined
-      const text = yield* readBody(request.source, maxRequestBodyBytes).pipe(
+      const requestBodyLimit =
+        path === '/v1/responses'
+          ? (config.routeMaxRequestBodyBytes?.['/v1/responses'] ?? maxRequestBodyBytes)
+          : maxRequestBodyBytes
+      const text = yield* readBody(request.source, requestBodyLimit).pipe(
         Effect.catchTag('RequestBodyTooLarge', () => Effect.void),
       )
       if (text === undefined) {
@@ -229,6 +276,26 @@ export const makeRoutes = ({
         const parsed = yield* Effect.try({
           try: () => {
             const value = decodeRequestModel(text)
+            if (path === '/v1/responses') {
+              const state = decodeResponsesState(text)
+              if (
+                (state.previous_response_id !== undefined && state.previous_response_id !== null) ||
+                Object.hasOwn(state, 'conversation') === true ||
+                (Array.isArray(state.input) === true &&
+                  state.input.some(
+                    (item: unknown) =>
+                      typeof item === 'object' &&
+                      item !== null &&
+                      (('type' in item && item.type === 'item_reference') ||
+                        ((!('type' in item) || item.type === null) &&
+                          ('id' in item ||
+                            !('role' in item) ||
+                            typeof item.role !== 'string' ||
+                            !('content' in item)))),
+                  ) === true)
+              )
+                throw new ServerSideStateReference()
+            }
             if (path !== '/v1/chat/completions' || value.stream !== true)
               return { model: value.model, body: text }
             const payload = decodeJson(text)
@@ -250,15 +317,24 @@ export const makeRoutes = ({
               }),
             }
           },
-          catch: () => 'invalid request' as const,
-        }).pipe(Effect.orElseSucceed(() => undefined))
-        if (parsed === undefined) {
+          catch: (cause) =>
+            cause instanceof ServerSideStateReference
+              ? ('server-side state reference' as const)
+              : ('invalid request' as const),
+        }).pipe(Effect.catch((reason) => Effect.succeed({ reason })))
+        if ('reason' in parsed) {
           metrics.record({
             labels: { consumer, model },
             status: 400,
             seconds: (performance.now() - started) / 1000,
           })
-          return error({ status: 400, message: 'Invalid request JSON or model' })
+          return error({
+            status: 400,
+            message:
+              parsed.reason === 'server-side state reference'
+                ? 'Server-side state references are not supported; send self-contained input with encrypted reasoning items'
+                : 'Invalid request JSON or model',
+          })
         }
         model = parsed.model
         body = parsed.body
@@ -322,14 +398,44 @@ export const makeRoutes = ({
         })
         return HttpServerResponse.empty({ status: response.status, headers: responseHeaders })
       }
-      const events = new UsageEvents((value) => {
-        if (typeof value === 'object' && value !== null && 'usage' in value && value.usage !== null)
-          meterUsage({
-            consumer: consumer,
-            model: model,
-            status: response.status,
-            value: value.usage,
-          })
+      let terminalUsageObserved = false
+      const events = new UsageEvents({
+        record: (value) => {
+          if (path === '/v1/responses') {
+            if (
+              terminalUsageObserved === true ||
+              typeof value !== 'object' ||
+              value === null ||
+              !('type' in value) ||
+              (value.type !== 'response.completed' &&
+                value.type !== 'response.incomplete' &&
+                value.type !== 'response.failed')
+            )
+              return
+            terminalUsageObserved = true
+            if (
+              'response' in value &&
+              typeof value.response === 'object' &&
+              value.response !== null &&
+              'usage' in value.response
+            )
+              meterUsage({ consumer, model, status: response.status, value: value.response.usage })
+            return
+          }
+          if (
+            typeof value === 'object' &&
+            value !== null &&
+            'usage' in value &&
+            value.usage !== null
+          )
+            meterUsage({
+              consumer: consumer,
+              model: model,
+              status: response.status,
+              value: value.usage,
+            })
+        },
+        ...(path === '/v1/responses' ? { maxEventChars: 16777216, maxLineChars: 16777216 } : {}),
       })
       const isSse = response.headers.get('content-type')?.includes('text/event-stream') ?? false
       const stream = Stream.fromReadableStream({
@@ -388,6 +494,7 @@ export const makeRoutes = ({
       HttpRouter.route('GET', '/healthz', health),
       HttpRouter.route('GET', '/v1/models', forward('/v1/models')),
       HttpRouter.route('POST', '/v1/chat/completions', forward('/v1/chat/completions')),
+      HttpRouter.route('POST', '/v1/responses', forward('/v1/responses')),
       HttpRouter.route('POST', '/v1/systemone', forward('/v1/systemone')),
       HttpRouter.route('POST', '/alpha/decisions', forward('/alpha/decisions')),
     ]),
