@@ -1453,6 +1453,17 @@ in
         "$(${pkgs.coreutils}/bin/cat "$probe/rustc")" --ar "$(${pkgs.coreutils}/bin/cat "$probe/ar")" --metadata "$probe/metadata" \
         --artifact "$probe/artifact.tar" --descriptor "$probe/descriptor.json"
       ${sourceBun}/bin/bun test ./buck2/tests/library_closure/closure.unit.test.mjs
+      for route in flags env unused_flags unused_env; do
+        if "$BUCK2_BIN" build --target-platforms "$platform" \
+          "effect_utils//buck2/tests/library_closure:reject_panic_$route" >"$probe/$route.log" 2>&1; then
+          echo "Expected transitive abort closure rejection ($route)" >&2
+          exit 1
+        fi
+        ${pkgs.coreutils}/bin/cat "$probe/$route.log"
+        ${pkgs.gnugrep}/bin/grep -F 'requires panic strategy' "$probe/$route.log"
+        ${pkgs.gnugrep}/bin/grep -F 'abort' "$probe/$route.log"
+        ${pkgs.gnugrep}/bin/grep -F 'unwind' "$probe/$route.log"
+      done
     '';
   };
 

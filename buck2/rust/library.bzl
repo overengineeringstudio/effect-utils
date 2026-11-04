@@ -65,7 +65,8 @@ def _impl(ctx):
     bun = ctx.attrs._bun[BuckSupportToolInfo]
     hermetic_action(
         ctx,
-        cmd_args(hermetic_bun_command(ctx, bun.executable), ctx.attrs._pack, manifest, output.as_output(), metadata.as_output(), toolchain.compiler.args, hidden = inputs + [bun.manifest]),
+        cmd_args(hermetic_bun_command(ctx, bun.executable), ctx.attrs._pack, manifest, output.as_output(), metadata.as_output(), toolchain.compiler.args, ctx.attrs._rust_toolchain[ConfiguredRustToolchainInfo].linker.args, hidden = inputs + [bun.manifest]),
+        env = ctx.attrs._rust_toolchain[ConfiguredRustToolchainInfo].compile_env,
         category = "rust_library_closure",
         cacheable = False,
     )
