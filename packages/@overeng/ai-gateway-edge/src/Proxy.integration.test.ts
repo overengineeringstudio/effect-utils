@@ -66,6 +66,7 @@ const gateway = async (
   ],
   maxModelLabels?: number,
   maxRequestBodyBytes?: number,
+  routeMaxRequestBodyBytes?: GatewayConfig['routeMaxRequestBodyBytes'],
 ) => {
   const { router, metrics } = makeRoutes({
     config: {
@@ -73,6 +74,7 @@ const gateway = async (
       consumers,
       ...(maxModelLabels === undefined ? {} : { maxModelLabels }),
       ...(maxRequestBodyBytes === undefined ? {} : { maxRequestBodyBytes }),
+      ...(routeMaxRequestBodyBytes === undefined ? {} : { routeMaxRequestBodyBytes }),
     },
   })
   const server = Http.createServer()
@@ -163,7 +165,7 @@ describe('consumer verifier isolation (AIG.EDGE-R01, AIG.EDGE-R05, AIG.EDGE-R06)
 describe('authenticated request body limit (AIG.EDGE-R03, AIG.EDGE-R05, AIG.EDGE-R06)', () => {
   const body = JSON.stringify({ model: 'example', messages: [{ content: 'é' }] })
   const limit = Buffer.byteLength(body)
-  const paths = ['/v1/chat/completions', '/v1/systemone', '/alpha/decisions']
+  const paths = ['/v1/chat/completions', '/v1/responses', '/v1/systemone', '/alpha/decisions']
 
   it.each(paths)('forwards exactly the byte limit unchanged on %s', async (path) => {
     const received: string[] = []
@@ -266,6 +268,7 @@ describe('gateway proxy (AIG.EDGE-R02, AIG.EDGE-R03, AIG.EDGE-R04, AIG.EDGE-R05,
           ],
           maxModelLabels: 2,
           maxRequestBodyBytes: 2048,
+          routeMaxRequestBodyBytes: { '/v1/responses': 8388608 },
         })
         yield* fs.writeFileString(path, configJson)
         const config = yield* loadConfig(path)
@@ -273,6 +276,7 @@ describe('gateway proxy (AIG.EDGE-R02, AIG.EDGE-R03, AIG.EDGE-R04, AIG.EDGE-R05,
         expect(config.consumers[0]?.name).toBe('fixture-consumer')
         expect(config.maxModelLabels).toBe(2)
         expect(config.maxRequestBodyBytes).toBe(2048)
+        expect(config.routeMaxRequestBodyBytes).toEqual({ '/v1/responses': 8388608 })
       }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
     )
   })
@@ -542,6 +546,67 @@ describe('bounded model accounting (AIG.EDGE-R06)', () => {
     expect(rendered).toContain(
       'request_duration_seconds_count{consumer="fixture-consumer",model="_other"} 2',
     )
+  })
+})
+
+describe('Responses pass-through (AIG.EDGE-R03, AIG.EDGE-R04, AIG.EDGE-R06)', () => {
+  const usage = {
+    input_tokens: 12,
+    output_tokens: 7,
+    input_tokens_details: { cached_tokens: 3 },
+    output_tokens_details: { reasoning_tokens: 4 },
+  }
+
+  it('authenticates before forwarding and rejects invalid JSON or a missing model', async () => {
+    let forwarded = 0
+    const upstream = await start(() => {
+      forwarded++
+      return Response.json({})
+    })
+    const { url, metrics } = await gateway(upstream)
+    for (const headers of [{}, { authorization: 'Bearer wrong' }]) {
+      const response = await fetch(`${url}/v1/responses`, {
+        method: 'POST',
+        headers,
+        body: '{"model":"fixture/model"}',
+      })
+      expect(response.status).toBe(401)
+      await response.text()
+    }
+    for (const body of ['{', '{}', '{"input":"hello"}']) {
+      const response = await fetch(`${url}/v1/responses`, {
+        method: 'POST',
+        headers: auth,
+        body,
+      })
+      expect(response.status).toBe(400)
+      await response.text()
+    }
+    expect(forwarded).toBe(0)
+    expect(metrics.render()).toContain(
+      'requests_total{consumer="fixture-consumer",model="_rejected",status="400"} 3',
+    )
+    expect(metrics.render()).not.toContain('tokens_total{')
+  })
+
+  it('preserves stateless continuity request and JSON response bytes and meters every usage kind', async () => {
+    const body =
+      '{ "model": "fixture/responses", "previous_response_id": null, "store": false, "include": ["reasoning.encrypted_content"], "input": [{"role":"user","content":"hi"},{"type":"reasoning","id":"rs_fixture","encrypted_content":"opaque"},{"type":"message","id":"msg_fixture"},{"type":"function_call","id":"fc_fixture"},{"type":"function_call_output","id":"fco_fixture"}] }'
+    const bytes = ` { "output": [], "usage": ${JSON.stringify(usage)} }\n`
+    const upstream = await start(async (request) => {
+      expect(new URL(request.url).pathname).toBe('/v1/responses')
+      expect(request.headers.get('authorization')).toBeNull()
+      expect(await request.text()).toBe(body)
+      return new Response(bytes, { headers: { 'content-type': 'application/json' } })
+    })
+    const { url, metrics } = await gateway(upstream)
+    const response = await fetch(`${url}/v1/responses`, { method: 'POST', headers: auth, body })
+    expect(response.status).toBe(200)
+    expect(await response.text()).toBe(bytes)
+    for (const [kind, count] of Object.entries({ input: 12, output: 7, cached: 3, reasoning: 4 }))
+      expect(metrics.render()).toContain(
+        `tokens_total{consumer="fixture-consumer",model="fixture/responses",kind="${kind}"} ${count}`,
+      )
   })
 })
 
