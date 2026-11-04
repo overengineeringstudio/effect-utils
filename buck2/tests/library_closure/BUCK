@@ -52,17 +52,3 @@ rust_product_library(
     name = "closure", library = ":example_library", recipe = "library-closure-fixture/v1",
     target_platform = host_platform_label(),
 )
-
-native.rust_library(
-    name = "panic_override",
-    srcs = ["generic.rs"],
-    crate_root = "generic.rs",
-    rustc_flags = ["-Cpanic=abort"],
-)
-
-native.rust_library(
-    name = "transitive_panic_override",
-    srcs = ["bridge.rs"],
-    crate_root = "bridge.rs",
-    named_deps = {"generic_leaf": ":panic_override"},
-)
