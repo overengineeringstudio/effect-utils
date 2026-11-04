@@ -48,7 +48,7 @@ let
     && product.outputName == "artifact.tar"
     && builtins.isString product.target
     &&
-      builtins.match "effect_utils//(packages/@overeng|rust|buck2/tests)/[A-Za-z0-9._-]+:[A-Za-z0-9._+-]+" product.target
+      builtins.match "effect_utils//(packages/@overeng|rust)/[A-Za-z0-9._-]+:[A-Za-z0-9._+-]+" product.target
       != null
     && builtins.isString product.version
     && product.version != ""
