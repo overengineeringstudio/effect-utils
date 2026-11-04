@@ -1173,7 +1173,7 @@ const cargoBuck2PackageProjectionFor = ({
       'build_product(',
       `    name = ${starlarkString(`${product.name}-product`)},`,
       `    entrypoint = ${starlarkString(product.entrypoint)},`,
-      `    executable = ${starlarkString(`:${product.name}-product-executable`)},`,
+      `    artifact = ${starlarkString(`:${product.name}-product-executable`)},`,
       `    product_name = ${starlarkString(product.name)},`,
       `    target_platform = ${hostPlatform},`,
       ')',
