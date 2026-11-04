@@ -75,6 +75,19 @@ nix eval --impure --json --expr '
           if recipe.rootProjection == null then { src = changedRules; }
           else { buildPhase = builtins.replaceStrings [ (toString rules) ] [ (toString changedRules) ] recipe.buildPhase; }
         );
+        # Compare whole recipes under identical provenance conditions. Comparing
+        # a clean rev URL to a dirty URL would instead change producerCommit:
+        # the publisher intentionally binds provenance to HEAD (dirty = zero).
+        testlessRecipe = (import (repo + "/nix/buck2-products/from-source.nix") {
+          inherit pkgs;
+          buck2 = packages.buck2;
+        }) {
+          product = declaration;
+          inherit (recipe) capabilities pnpmArchives cargoArchives producerCommit
+            repositorySource sourcePaths runtimeClosureTarget nativeStorePackages;
+          repositoryRoot = /. + builtins.unsafeDiscardStringContext (toString withoutTests);
+          rootProjection = if recipe.rootProjection == null then null else project withoutTests;
+        };
       in
         assert ownFiles != [ ];
         assert builtins.pathExists (rules + "/${ruleFile}");
@@ -84,12 +97,14 @@ nix eval --impure --json --expr '
         assert recipe.drvPath != ruleRecipe.drvPath;
         assert toString source == toString (remove source "buck2/tests");
         assert toString rules == toString (remove rules "buck2/tests");
+        assert recipe.drvPath == testlessRecipe.drvPath;
         {
           name = declaration.name;
           inherit ownFile ruleFile;
           ownSourceChangesProjection = true;
           loadedRuleChangesProjection = true;
           testTreeIndependent = true;
+          sameRevisionRecipeTestTreeIndependent = true;
         };
     products = map checkProduct declarations;
   in
