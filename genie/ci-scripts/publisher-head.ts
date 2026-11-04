@@ -8,6 +8,7 @@ export type PublisherState =
       kind: 'pr'
       draft: boolean
       queued: boolean
+      ejected: boolean
       mergeable: 'MERGEABLE' | 'CONFLICTING' | 'UNKNOWN'
       rollup: 'SUCCESS' | 'PENDING' | 'EXPECTED' | 'FAILURE' | 'ERROR' | null
     }
@@ -18,6 +19,7 @@ export type PublisherDecision = {
     | 'no-pr'
     | 'queued'
     | 'conflict'
+    | 'ejected'
     | 'failed'
     | 'pending'
     | 'green'
@@ -33,6 +35,7 @@ export const decidePublisherHead = (state: PublisherState): PublisherDecision =>
   if (state.kind === 'no-pr') return { refresh: true, reason: 'no-pr' }
   if (state.queued === true) return { refresh: false, reason: 'queued' }
   if (state.mergeable === 'CONFLICTING') return { refresh: true, reason: 'conflict' }
+  if (state.ejected === true) return { refresh: true, reason: 'ejected' }
   if (state.mergeable === 'UNKNOWN') return { refresh: false, reason: 'unknown' }
   if (state.rollup === 'FAILURE' || state.rollup === 'ERROR')
     return { refresh: true, reason: 'failed' }
@@ -43,12 +46,45 @@ export const decidePublisherHead = (state: PublisherState): PublisherDecision =>
   return { refresh: false, reason: 'unknown' }
 }
 
+const latestTime = (values: unknown): number | undefined => {
+  if (Array.isArray(values) === false || values.length === 0) return undefined
+  let latest = -Infinity
+  for (const value of values) {
+    if (typeof value !== 'string') return undefined
+    const time = Date.parse(value)
+    if (Number.isFinite(time) === false) return undefined
+    latest = Math.max(latest, time)
+  }
+  return latest
+}
+
+/** Missing or ambiguous timeline evidence cannot justify replacing a pinned head. */
+export const wasCurrentHeadEjected = ({
+  headTimes,
+  removalTimes,
+}: {
+  headTimes?: unknown
+  removalTimes?: unknown
+}): boolean => {
+  const head = latestTime(headTimes)
+  const removal = latestTime(removalTimes)
+  return head !== undefined && removal !== undefined && removal > head
+}
+
 const query = `query($owner:String!, $name:String!) {
   repository(owner:$owner, name:$name) {
     pullRequests(first:2, states:OPEN, baseRefName:"main", headRefName:"automation/buck2-products-manifest") {
       nodes {
-        isDraft mergeable mergeQueueEntry { state }
-        commits(last:1) { nodes { commit { statusCheckRollup { state } } } }
+        headRefOid isDraft mergeable mergeQueueEntry { state }
+        commits(last:1) { nodes { commit { committedDate pushedDate statusCheckRollup { state } } } }
+        timelineItems(last:100, itemTypes:[REMOVED_FROM_MERGE_QUEUE_EVENT, HEAD_REF_FORCE_PUSHED_EVENT, PULL_REQUEST_COMMIT]) {
+          nodes {
+            __typename
+            ... on RemovedFromMergeQueueEvent { createdAt }
+            ... on HeadRefForcePushedEvent { createdAt afterCommit { oid } }
+            ... on PullRequestCommit { commit { oid committedDate } }
+          }
+        }
       }
     }
   }
@@ -78,7 +114,7 @@ export const readPublisherState = (repository: string): PublisherState => {
         '-f',
         `name=${name}`,
         '--jq',
-        '.data.repository.pullRequests.nodes | map({draft: .isDraft, mergeable, queued: (.mergeQueueEntry != null), rollup: .commits.nodes[0].commit.statusCheckRollup.state})',
+        '.data.repository.pullRequests.nodes | map(.headRefOid as $head | {draft: .isDraft, mergeable, queued: (.mergeQueueEntry != null), rollup: .commits.nodes[0].commit.statusCheckRollup.state, headTimes: ([.commits.nodes[0].commit.committedDate, .commits.nodes[0].commit.pushedDate] + [(.timelineItems.nodes // [])[] | select(.__typename == "HeadRefForcePushedEvent" and .afterCommit.oid == $head) | .createdAt] | map(select(. != null))), removalTimes: [(.timelineItems.nodes // [])[] | select(.__typename == "RemovedFromMergeQueueEvent") | .createdAt]})',
       ],
       { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] },
     )
@@ -111,6 +147,10 @@ export const readPublisherState = (repository: string): PublisherState => {
       kind: 'pr',
       draft: pr.draft,
       queued: pr.queued,
+      ejected: wasCurrentHeadEjected({
+        headTimes: 'headTimes' in pr ? pr.headTimes : undefined,
+        removalTimes: 'removalTimes' in pr ? pr.removalTimes : undefined,
+      }),
       mergeable: pr.mergeable,
       rollup: pr.rollup,
     }

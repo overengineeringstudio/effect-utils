@@ -430,15 +430,23 @@ main publication. A separate read-only health query uses the workflow's
 `statuses:write`, which also reads statuses). The App retains its narrow
 contents/PR write permissions and is minted only when a refresh is needed.
 
-The decision is ordered: a queued PR is kept; otherwise a conflict refreshes;
-unknown mergeability is kept while GitHub recomputes; failed/error checks
-refresh; drafts are kept; success keeps a green head; pending/expected checks
-keep a pending head. No open PR refreshes and creates one. Missing rollup or
-unreadable API evidence keeps the head, logs a diagnostic, and retries on the
-next main publication without failing the job. An ejected PR with failed checks
-refreshes, but a green ejected PR is kept for the existing requeue flow; a
-requeued PR is always kept. Each decision logs `publisher: keep head (reason)`
-or `publisher: refresh (reason)` with a fixed reason.
+The decision is ordered: unreadable API evidence keeps the head and exits
+successfully for the next main publication to retry; no open PR refreshes and
+creates one; a queued PR is kept; otherwise a conflict refreshes, then a current
+head ejection refreshes. Unknown mergeability is kept while GitHub recomputes;
+failed/error checks refresh; drafts are kept; success keeps a green head;
+pending/expected checks keep a pending head; missing rollup keeps the head.
+Each decision logs `publisher: keep head (reason)` or
+`publisher: refresh (reason)` with a fixed reason.
+
+The same query reads the latest 100 relevant timeline items. An open PR whose
+latest queue-removal timestamp is strictly newer than its current head's
+committed/pushed timestamp (including force-push events for that head) was
+ejected and refreshes even if its PR check rollup is still green. This avoids
+repeatedly requeuing a stale manifest that fails only against newer main.
+Removal before the current head does not trigger refresh, and a currently
+requeued PR is always kept. Missing or ambiguous timeline timestamps do not
+prove an ejection and cannot independently authorize a refresh.
 
 The merge queue tests against latest main. After the pinned PR merges, the
 next main publication opens a fresh PR with newer products: a slightly older
