@@ -29,17 +29,17 @@
       "version": "0.1.0"
     },
     {
-      "artifactUrl": "https://overeng-effect-utils.cachix.org/serve/iv4j7a0614jvqdxqp8yfbmny2j1hvx68/overeng-ai-gateway-edge.tgz",
+      "artifactUrl": "https://overeng-effect-utils.cachix.org/serve/9d8ksss3ly3ja34rxhnll899447mx6n8/overeng-ai-gateway-edge.tgz",
       "name": "@overeng/ai-gateway-edge",
       "provenance": {
-        "producerCommit": "9e34373dbab9ed3be14c1ef110fb3b4f5e51ee10",
-        "productDigest": "68ec13faaaa2ac4d7799f1b63d4362469cf0362c12d68d03b76b2678fd8ef397",
+        "producerCommit": "ef021a0a230523e2ddab1a8ce428156440b16319",
+        "productDigest": "1b82c3878bb327b97f4b8028cba2ac62ae5d60666943d20d5d2052b74b3d4f1c",
         "schema": "effect-utils/buck-product-provenance/v1",
         "target": "effect_utils//packages/@overeng/ai-gateway-edge:dist-package"
       },
-      "sha256": "68ec13faaaa2ac4d7799f1b63d4362469cf0362c12d68d03b76b2678fd8ef397",
-      "size": 39728,
-      "storePath": "/nix/store/iv4j7a0614jvqdxqp8yfbmny2j1hvx68-overeng-ai-gateway-edge-buck2-from-source-0.1.0",
+      "sha256": "1b82c3878bb327b97f4b8028cba2ac62ae5d60666943d20d5d2052b74b3d4f1c",
+      "size": 47632,
+      "storePath": "/nix/store/9d8ksss3ly3ja34rxhnll899447mx6n8-overeng-ai-gateway-edge-buck2-from-source-0.1.0",
       "version": "0.1.0"
     },
     {
@@ -449,11 +449,11 @@
       "version": "0.1.0"
     },
     {
-      "artifactUrl": "https://overeng-effect-utils.cachix.org/serve/d889slwzkacjsvifridri25ip9jjhmzd/ai-gateway-edge.js",
+      "artifactUrl": "https://overeng-effect-utils.cachix.org/serve/vadm57lfj339yl36s37ykgcym6k237m9/ai-gateway-edge.js",
       "descriptor": {
         "externalCapabilities": [],
         "externalModules": [],
-        "integrity": "sha256-9aM+w/Z0BBAWkwWya3QofF3aCjjfUSiQhXw404AUhpg=",
+        "integrity": "sha256-3P8xZK7HqjXBPh0F87gbWsaHnD7w5GDPUa22Y5Qh3UM=",
         "modulePath": "ai-gateway-edge.js",
         "platform": {
           "abi": "any",
@@ -471,20 +471,20 @@
         "runtimeContractVersion": "v1",
         "runtimeKind": "bun",
         "schema": "effect-utils/javascript-product/v2",
-        "sizeBytes": 670801,
+        "sizeBytes": 674148,
         "target": "effect_utils//packages/@overeng/ai-gateway-edge:ai-gateway-edge-candidate"
       },
-      "descriptorSha256": "171795f62cbd44d51c643e9987106cfce977b88d9c9dd330787484dda83289a0",
+      "descriptorSha256": "244e235d1074e0b1d16a35a5d7654efcbb2cacd550507b5465f416dd4e27cab7",
       "name": "ai-gateway-edge",
       "provenance": {
-        "producerCommit": "9e34373dbab9ed3be14c1ef110fb3b4f5e51ee10",
-        "productDigest": "f5a33ec3f6740410169305b26b74287c5dda0a38df512890857c38d380148698",
+        "producerCommit": "3260574aed0ae892bd55f9ef2139dc84c8ca2ffb",
+        "productDigest": "dcff3164aec7aa35c13e1d05f3b81b5ac6879c3ef0e460cf51adb6639421dd43",
         "schema": "effect-utils/buck-product-provenance/v1",
         "target": "effect_utils//packages/@overeng/ai-gateway-edge:ai-gateway-edge-candidate"
       },
-      "sha256": "f5a33ec3f6740410169305b26b74287c5dda0a38df512890857c38d380148698",
-      "size": 670801,
-      "storePath": "/nix/store/d889slwzkacjsvifridri25ip9jjhmzd-ai-gateway-edge-buck2-from-source-0.0.0",
+      "sha256": "dcff3164aec7aa35c13e1d05f3b81b5ac6879c3ef0e460cf51adb6639421dd43",
+      "size": 674148,
+      "storePath": "/nix/store/vadm57lfj339yl36s37ykgcym6k237m9-ai-gateway-edge-buck2-from-source-0.0.0",
       "version": "0.0.0"
     },
     {
