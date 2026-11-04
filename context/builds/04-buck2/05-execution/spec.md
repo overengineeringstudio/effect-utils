@@ -249,7 +249,6 @@ alone becomes `lib<crate>.rlib`. Native link records and unbundled shared
 libraries are rejected rather than omitted. `test:buck2:library-closure` checks
 compiler evidence, external derive loading, archive metadata and zero embedded
 store references (BUILD.BUCK.EXEC-R06/R07/R09/R10).
-Crates using the explicit `uses_restricted_rustc_flags=True` opt-out are not admitted into library products; strict enforcement of that residual boundary is a separate slice if needed.
 
 ### Rust Interop Products
 
