@@ -1136,15 +1136,22 @@ describe('Cargo multi-product packages', () => {
     })
   /** The product rule blocks, in emission order. */
   const productBlocks = (rendered: string): readonly string[] =>
-    [...rendered.matchAll(/^(?:rust_product_executable|build_product)\([\s\S]*?^\)$/gm)].map(
-      (match) => match[0],
-    )
+    [
+      ...rendered.matchAll(
+        /^(?:rust_product_executable|rust_product_library|build_product)\([\s\S]*?^\)$/gm,
+      ),
+    ].map((match) => match[0])
 
   it('emits one executable/product pair per named binary', () => {
     const rendered = renderPackage({
       buildProducts: [
-        { name: 'tailnet-relay' },
-        { name: 'edge', binary: 'devnet-edge', entrypoint: 'libexec/devnet-edge' },
+        { kind: 'executable', name: 'tailnet-relay' },
+        {
+          kind: 'executable',
+          name: 'edge',
+          binary: 'devnet-edge',
+          entrypoint: 'libexec/devnet-edge',
+        },
       ],
     })
     expect(productBlocks(rendered)).toEqual([
@@ -1161,42 +1168,118 @@ describe('Cargo multi-product packages', () => {
     const withoutHeader = (rendered: string) =>
       rendered.replace(/^# Semantic fingerprint: .*$/m, '')
     expect(
-      withoutHeader(renderPackage({ buildProducts: [{ name: 'tailnet-relay' }] }, single)),
+      withoutHeader(
+        renderPackage({ buildProducts: [{ kind: 'executable', name: 'tailnet-relay' }] }, single),
+      ),
     ).toBe(withoutHeader(renderPackage({ buildProduct: true }, single)))
   })
+
+  it('projects a pure library using its Cargo crate identity, root, edition and dependencies', () => {
+    const rendered = renderCargoFixture({
+      members: {
+        relay: {
+          manifest:
+            '[package]\nname = "tailnet-relay"\n\n[lib]\nname = "relay_core"\npath = "src/core.rs"\n\n[dependencies]\nserde.workspace = true',
+          files: ['src/core.rs'],
+        },
+      },
+      render: 'relay',
+      projectOptions: { buildProducts: [{ kind: 'library', name: 'relay-library' }] },
+    })
+    expect(rendered).toContain('crate = "relay_core"')
+    expect(rendered).toContain('crate_root = "src/core.rs"')
+    expect(rendered).toContain('edition = "2024"')
+    expect(rendered).toContain('"//rust/third-party:serde"')
+    expect(rendered).toContain('"rust_product_library")')
+    expect(productBlocks(rendered)).toEqual([
+      'rust_product_library(\n    name = "relay-library-product-library",\n    library = ":lib",\n    recipe = "cargo-workspace:tailnet-relay@0.1.0",\n    target_platform = host_platform_label(),\n)',
+      'build_product(\n    name = "relay-library-product",\n    artifact = ":relay-library-product-library",\n    product_name = "relay-library",\n    target_platform = host_platform_label(),\n)',
+    ])
+  })
+
+  it('selects independent library and executable products from one package', () => {
+    const buildProducts = [
+      { kind: 'library', name: 'relay-library' },
+      { kind: 'executable', name: 'tailnet-relay' },
+    ] as const
+    const rendered = renderPackage({ buildProducts }, ['src/lib.rs', 'src/main.rs'])
+    expect(productBlocks(rendered)).toHaveLength(4)
+    expect(rendered).toContain('"rust_product_executable", "rust_product_library")')
+    expect(() => renderPackage({ buildProducts })).toThrow(
+      'buildProducts[0] requires a Cargo library target in rust/relay/Cargo.toml',
+    )
+    expect(() =>
+      renderPackage(
+        {
+          buildProducts: [
+            { kind: 'library', name: 'tailnet-relay' },
+            { kind: 'executable', name: 'tailnet-relay' },
+          ],
+        },
+        ['src/lib.rs', 'src/main.rs'],
+      ),
+    ).toThrow('buildProducts names repeat in rust/relay/Cargo.toml: tailnet-relay')
+  })
+
+  it.each(['crate-type = ["cdylib"]', 'proc-macro = true'])(
+    'rejects a library product without an rlib: %s',
+    (libraryConfig) => {
+      expect(() =>
+        renderCargoFixture({
+          members: {
+            relay: {
+              manifest: `[package]\nname = "tailnet-relay"\n\n[lib]\n${libraryConfig}`,
+              files: ['src/lib.rs'],
+            },
+          },
+          render: 'relay',
+          projectOptions: { buildProducts: [{ kind: 'library', name: 'relay-library' }] },
+        }),
+      ).toThrow(
+        'buildProducts[0] requires a Cargo library target that produces an rlib in rust/relay/Cargo.toml',
+      )
+    },
+  )
 
   it('rejects ambiguous, unknown, repeated, unsafe, and colliding products', () => {
     expect(() => renderPackage({ buildProduct: true })).toThrow(
       'BuildProduct projection requires exactly one binary in rust/relay/Cargo.toml',
     )
     expect(() =>
-      renderPackage({ buildProduct: true, buildProducts: [{ name: 'tailnet-relay' }] }),
+      renderPackage({
+        buildProduct: true,
+        buildProducts: [{ kind: 'executable', name: 'tailnet-relay' }],
+      }),
     ).toThrow('buildProduct and buildProducts are mutually exclusive in rust/relay/Cargo.toml')
     expect(() => renderPackage({ buildProducts: [] })).toThrow(
       'buildProducts must name at least one product in rust/relay/Cargo.toml',
     )
-    expect(() => renderPackage({ buildProducts: [{ name: 'ghost' }] })).toThrow(
+    expect(() => renderPackage({ buildProducts: [{ kind: 'executable', name: 'ghost' }] })).toThrow(
       'buildProducts[0] packages unknown Cargo binary ghost in rust/relay/Cargo.toml (binaries: devnet-edge, tailnet-relay)',
     )
     expect(() =>
       renderPackage({
         buildProducts: [
-          { name: 'tailnet-relay' },
-          { name: 'tailnet-relay', binary: 'devnet-edge' },
+          { kind: 'executable', name: 'tailnet-relay' },
+          { kind: 'executable', name: 'tailnet-relay', binary: 'devnet-edge' },
         ],
       }),
     ).toThrow('buildProducts names repeat in rust/relay/Cargo.toml: tailnet-relay')
     expect(() =>
-      renderPackage({ buildProducts: [{ name: 'a")\nrule(', binary: 'devnet-edge' }] }),
+      renderPackage({
+        buildProducts: [{ kind: 'executable', name: 'a")\nrule(', binary: 'devnet-edge' }],
+      }),
     ).toThrow('buildProducts[0].name is not a Buck target-safe product name')
     expect(() =>
-      renderPackage({ buildProducts: [{ name: 'tailnet-relay', entrypoint: '../escape' }] }),
+      renderPackage({
+        buildProducts: [{ kind: 'executable', name: 'tailnet-relay', entrypoint: '../escape' }],
+      }),
     ).toThrow('buildProducts[0].entrypoint must be a normalized relative path: ../escape')
     expect(() =>
-      renderPackage({ buildProducts: [{ name: 'x', binary: 'tailnet-relay' }] }, [
-        'src/main.rs',
-        'src/bin/x-product.rs',
-      ]),
+      renderPackage(
+        { buildProducts: [{ kind: 'executable', name: 'x', binary: 'tailnet-relay' }] },
+        ['src/main.rs', 'src/bin/x-product.rs'],
+      ),
     ).toThrow(
       'Cargo binary names collide with generated Buck targets in rust/relay/Cargo.toml: x-product',
     )

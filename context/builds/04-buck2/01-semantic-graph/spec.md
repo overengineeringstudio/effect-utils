@@ -76,6 +76,26 @@ verification regenerates into memory or temporary storage, compares exact
 bytes, and reports the owning semantic source on mismatch. Generated files are
 read-only as a local guardrail; Git write bits are not freshness identity.
 
+### Cargo product selection
+
+Cargo package targets and product selections are separate facts. `buildProducts`
+selects independently named products by required kind; one package can select both:
+
+```typescript
+buildProducts: [
+  { kind: 'library', name: 'example-library' },
+  { kind: 'executable', name: 'example-tool', binary: 'example-tool' },
+]
+```
+
+Library crate names, editions, roots, features and dependencies derive from the
+Cargo library target, which must produce an rlib. Product identities are unique
+across the list. `buildProduct: true` selects the package's sole binary as an
+executable product and cannot combine with `buildProducts`.
+
+Traces: BUILD.BUCK.GRAPH-R01/R03/R04/R05.
+
+
 ### Cargo foreign-package instantiation
 
 ```text
