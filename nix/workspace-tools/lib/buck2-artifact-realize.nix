@@ -212,15 +212,15 @@ builder "${name}-buck2-import"
     descriptor="$TMPDIR/descriptor.json"
     ${pkgs.jq}/bin/jq -j .canonical "$observation" > "$descriptor"
     ${lib.optionalString isLibrary ''
-      ${pkgs.rustc}/bin/rustc -vV > "$TMPDIR/rustc-version"
+      ${pkgs.rustc.unwrapped}/bin/rustc -vV > "$TMPDIR/rustc-version"
       ${pkgs.jq}/bin/jq -n \
-        --arg compilerStorePath "${pkgs.rustc}" \
-        --arg sysroot "$(${pkgs.rustc}/bin/rustc --print sysroot)" \
+        --arg compilerStorePath "${pkgs.rustc.unwrapped}" \
+        --arg sysroot "$(${pkgs.coreutils}/bin/readlink -f "$(${pkgs.rustc.unwrapped}/bin/rustc --print sysroot)")" \
         --rawfile verboseVersion "$TMPDIR/rustc-version" \
         --arg targetTriple "${expectedRustTarget}" \
         --arg panicStrategy "${expectedPanicStrategy}" \
         '{rustc: {compilerStorePath: $compilerStorePath, sysroot: $sysroot,
-          verboseVersion: $verboseVersion}, targetTriple: $targetTriple,
+          verboseVersion: ($verboseVersion | gsub("\r\n"; "\n") | sub("\n*$"; "\n"))}, targetTriple: $targetTriple,
           panicStrategy: $panicStrategy}' > "$TMPDIR/consumer-identity"
       ${pkgs.jq}/bin/jq '.library | {rustc: (.rustc | del(.darwinWrapperEvidence)),
         targetTriple, panicStrategy}' "$descriptor" > "$TMPDIR/producer-identity"
