@@ -22,6 +22,9 @@
     "nix/buck2-capabilities.nix": {
       "noStandaloneStaging": "closure: The capability projector is carried in a directory source projection with its manifest."
     },
+    "nix/buck2-products/buck-inputs.nix": {
+      "noStandaloneStaging": "not-a-source: The .genie.ts suffix excludes generator inputs from the Buck dependency projection; no standalone JavaScript or TypeScript source is staged."
+    },
     "nix/buck2-products/consumer-root.nix": {
       "noStandaloneStaging": "build-rules: The TypeScript runner is resolved from the complete rules cell."
     },
