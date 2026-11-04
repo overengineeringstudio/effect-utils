@@ -152,7 +152,7 @@ rust_product_executable(
 build_product(
     name = "ci-storage-product",
     entrypoint = "bin/ci-storage",
-    executable = ":ci-storage-product-executable",
+    artifact = ":ci-storage-product-executable",
     product_name = "ci-storage",
     target_platform = host_platform_label(),
 )

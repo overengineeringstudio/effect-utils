@@ -1,22 +1,27 @@
 #!/usr/bin/env python3
-"""External acceptance/measurement only, not a portable-product validator.
+"""External closure acceptance plus packaged archive/descriptor consistency.
 
-Usage: python3 accept.py PAYLOAD_DIR EXACT_TOOLCHAIN_RUSTC --metadata JSON [--ar llvm-ar]
+Usage: python3 accept.py PAYLOAD_DIR EXACT_TOOLCHAIN_RUSTC --metadata JSON --artifact TAR --descriptor JSON [--ar llvm-ar]
 Run in the producer's native compiler/linker environment. Store references are
 reported and rejected: nonzero counts require remapping investigation (DQ2).
 """
 import argparse
+import base64
+import hashlib
 import json
 from pathlib import Path
 import re
 import subprocess
 import tempfile
+import tarfile
 
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("payload", type=Path)
 parser.add_argument("rustc")
 parser.add_argument("--ar", default="ar", help="native ar or LLVM ar (also on Darwin)")
 parser.add_argument("--metadata", type=Path, required=True)
+parser.add_argument("--artifact", type=Path, required=True)
+parser.add_argument("--descriptor", type=Path, required=True)
 args = parser.parse_args()
 payload = args.payload.resolve(strict=True)
 store = re.compile(rb"/nix/store/[a-z0-9]{32}-[A-Za-z0-9+._?=-]+")
@@ -44,6 +49,43 @@ if total:
     raise SystemExit(f"DQ2, remapping investigation required: {sorted(store_paths)}")
 subprocess.run([args.rustc, "-vV"], check=True)
 product = json.loads(args.metadata.read_text())
+descriptor = json.loads(args.descriptor.read_text())
+archive_bytes = args.artifact.read_bytes()
+digest = "sha256-" + base64.b64encode(hashlib.sha256(archive_bytes).digest()).decode("ascii")
+if descriptor["payload"]["sizeBytes"] != len(archive_bytes) or descriptor["payload"]["digest"]["sri"] != digest:
+    raise SystemExit("Packaged archive size/digest differs from the validated descriptor")
+library = descriptor["library"]
+if any(library[key] != value for key, value in product.items()):
+    raise SystemExit("Packaged descriptor compiler/crate metadata differs from the closure")
+inventory = {entry["path"]: entry["sha256"] for entry in library["artifacts"]}
+# The fixture reaches one leaf twice and a second version via alternate_leaf.
+leaves = [path for path in inventory if re.fullmatch(r"lib/libgeneric_leaf-[^/]+\.rlib", path)]
+if len(leaves) != 2:
+    raise SystemExit(f"Expected exactly two distinct generic_leaf versions after duplicate-edge deduplication: {leaves}")
+primaries = [path for path in inventory if re.fullmatch(r"lib/libexample_library(?:-[^/]+)?\.rlib", path)]
+if primaries != ["lib/libexample_library.rlib"]:
+    raise SystemExit(f"Expected only the stable primary rlib, without a hashed alias: {primaries}")
+with tarfile.open(args.artifact, mode="r:") as archive:
+    members = archive.getmembers()
+    if len({member.name for member in members}) != len(members):
+        raise SystemExit("Packaged archive contains duplicate member paths")
+    if {member.name for member in members} != {"lib", *inventory}:
+        raise SystemExit("Packaged archive members differ from the descriptor inventory")
+    for member in members:
+        if member.name == "lib":
+            if not member.isdir():
+                raise SystemExit("Packaged lib member is not a directory")
+            continue
+        if not member.isfile():
+            raise SystemExit(f"Packaged artifact is not a regular file: {member.name}")
+        contents = archive.extractfile(member).read()
+        if hashlib.sha256(contents).hexdigest() != inventory[member.name]:
+            raise SystemExit(f"Packaged artifact hash differs from inventory: {member.name}")
+        if contents != (payload / member.name.removeprefix("lib/")).read_bytes():
+            raise SystemExit(f"Packaged artifact bytes differ from producer closure: {member.name}")
+if set(inventory) != {f"lib/{path.name}" for path in payload.iterdir()}:
+    raise SystemExit("Packaged inventory omits or adds producer closure artifacts")
+print("Real library descriptor accepted; archive digest, inventory and closure bytes agree.", flush=True)
 compiler = product["rustc"]
 underlying = str(Path(compiler["compilerStorePath"]) / "bin/rustc")
 version = subprocess.check_output([underlying, "-vV"], text=True).rstrip("\n") + "\n"

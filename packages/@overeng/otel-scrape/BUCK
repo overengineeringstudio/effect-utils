@@ -200,7 +200,7 @@ rust_product_executable(
 build_product(
     name = "otel-scrape-product",
     entrypoint = "bin/otel-scrape",
-    executable = ":otel-scrape-product-executable",
+    artifact = ":otel-scrape-product-executable",
     product_name = "otel-scrape",
     target_platform = host_platform_label(),
 )

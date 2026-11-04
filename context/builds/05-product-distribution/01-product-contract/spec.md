@@ -128,6 +128,8 @@ producer disambiguators. The archive contains exactly the declared artifact
 files (and their directory), preserving their bytes; native `.a`/`.o`,
 build-script trees, and copied compiler sysroots are outside this schema.
 
+`build_product(artifact = ...)` dispatches the tagged product provider. Library packaging consumes the adapter's normalized directory and compiler metadata, hashes every file, and reuses executable packaging's deterministic USTAR encoding without executable runtime inspection.
+
 `compilerStorePath` is the sole authoritative compiler build identity: the
 underlying rustc output store path, compared byte-for-byte with the consumer's
 declared compiler output, never the Darwin wrapper. Both it and `sysroot`

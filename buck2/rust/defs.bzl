@@ -3,7 +3,7 @@
 load("@capabilities//:defs.bzl", "CAPABILITIES", "GENERATION")
 load("@prelude//rust:cargo_buildscript.bzl", _prelude_buildscript_run = "buildscript_run")
 load("//buck2/platforms:defs.bzl", "ProductPlatformInfo", "cache_guarded_rule", "product_platform_constraints")
-load("//buck2/provenance:defs.bzl", "product_executable_info")
+load("//buck2/provenance:defs.bzl", "product_artifact_info", "product_executable_info")
 load("//buck2/toolchains:configured.bzl", "BuckSupportToolInfo")
 load("//buck2/toolchains:defs.bzl", "ConfiguredRustToolchainInfo", "host_capability_platform", "require_capability")
 load(":toolchains.bzl", "RUST_COMPILER_WRAPPER_ENV")
@@ -51,15 +51,17 @@ def _rust_product_executable_impl(ctx):
     if actual != expected:
         fail("rust_product_executable toolchain platform {} does not match target {}".format(actual, expected))
     executable = _single_binary_output(ctx.attrs.binary)
+    product_executable = product_executable_info(
+        ctx,
+        executable = executable,
+        recipe = ctx.attrs.recipe,
+        toolchain = toolchain.identity,
+        target_platform = platform,
+    )
     return [
         DefaultInfo(default_output = executable),
-        product_executable_info(
-            ctx,
-            executable = executable,
-            recipe = ctx.attrs.recipe,
-            toolchain = toolchain.identity,
-            target_platform = platform,
-        ),
+        product_executable,
+        product_artifact_info("executable", product_executable, platform, product_executable.provenance),
     ]
 
 _rust_product_executable = cache_guarded_rule(

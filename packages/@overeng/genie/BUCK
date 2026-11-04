@@ -828,7 +828,7 @@ package_tree_product_executable(
 build_product(
     name = "typescript-api-server-product",
     entrypoint = "bin/typescript-api-server",
-    executable = ":typescript-api-server-product-executable",
+    artifact = ":typescript-api-server-product-executable",
     product_name = "typescript-api-server",
     target_platform = host_standalone_platform_label(),
     visibility = ["PUBLIC"],
