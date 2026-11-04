@@ -336,6 +336,10 @@
         "rationale": "Real Nix GC-root symlinks and filesystem publication; concurrent native Bun publishers and PID-based pruning/liveness."
       },
       {
+        "script": "buck2-product-contract.test.sh",
+        "rationale": "Pure Nix descriptor validation and canonical bytes must agree on Darwin and Linux, including host-specific Rust proc-macro extensions."
+      },
+      {
         "script": "buck2-rust-deps.test.sh",
         "rationale": "Physical workspace/CARGO_HOME canonicalization explicitly covers macOS /var-to-/private/var aliases; symlink-escape rejection and real pinned Reindeer/Cargo subprocesses."
       },

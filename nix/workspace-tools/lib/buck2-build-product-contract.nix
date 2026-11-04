@@ -1,4 +1,4 @@
-# Pure, exact validation and canonicalization for buck-build-product/v1.
+# Pure, exact validation and canonicalization for executable and Rust library products.
 # Runtime inspection and artifact realization deliberately live outside this
 # module: accepting a descriptor shape is not proof that its runtime is usable.
 let
@@ -304,7 +304,7 @@ let
       else
         fail "unsupported runtime kind: ${toString kind}";
 
-  validateDescriptor =
+  validateExecutableDescriptor =
     descriptor:
     let
       value = exactAttrs "descriptor" [
@@ -490,6 +490,148 @@ let
       (ensure (nonEmptyString semanticProvenance.toolchain) "descriptor.semanticProvenance.toolchain must be a non-empty string")
       runtimePlatformChecks
     ] value;
+
+  validateLibraryDescriptor =
+    descriptor:
+    let
+      fields =
+        path: names: exactAttrs path (builtins.filter builtins.isString (builtins.split " " names));
+      value =
+        fields "descriptor" "schema kind name payload platform library semanticProvenance"
+          descriptor;
+      platform = exactAttrs "descriptor.platform" [ "os" "architecture" "abi" ] value.platform;
+      payload = exactAttrs "descriptor.payload" [ "file" "format" "sizeBytes" "digest" ] value.payload;
+      digest = exactAttrs "descriptor.payload.digest" [ "algorithm" "sri" ] payload.digest;
+      provenance =
+        fields "descriptor.semanticProvenance" "target recipe toolchain"
+          value.semanticProvenance;
+      library =
+        fields "descriptor.library"
+          "language crateName primary dependencyDirectory targetTriple hostTriple panicStrategy rustc artifacts"
+          value.library;
+      rustc =
+        fields "descriptor.library.rustc" "compilerStorePath verboseVersion sysroot darwinWrapperEvidence"
+          library.rustc;
+      matches = pattern: text: builtins.isString text && builtins.match pattern text != null;
+      storeOutput = "/nix/store/[0-9abcdfghijklmnpqrsvwxyz]{32}-[A-Za-z0-9+._?=-]+";
+      storePath = matches storeOutput;
+      triples = {
+        linux = {
+          glibc = "unknown-linux-gnu";
+          musl = "unknown-linux-musl";
+        };
+        darwin = {
+          darwin = "apple-darwin";
+        };
+      };
+      targetSuffix = triples.${platform.os}.${platform.abi} or null;
+      hostOs =
+        if matches "(x86_64|aarch64)-unknown-linux-(gnu|musl)" library.hostTriple then
+          "linux"
+        else if matches "(x86_64|aarch64)-apple-darwin" library.hostTriple then
+          "darwin"
+        else
+          null;
+      versionLines = builtins.filter builtins.isString (builtins.split "\n" rustc.verboseVersion);
+      versionField = prefix: builtins.filter (line: matches "${prefix}.+" line) versionLines;
+      artifacts =
+        if builtins.isList library.artifacts then
+          map (
+            artifact:
+            let
+              entry = exactAttrs "descriptor.library.artifacts entry" [ "path" "role" "sha256" ] artifact;
+            in
+            force [
+              (ensure (
+                safePath entry.path && matches "lib/[^/]+" entry.path
+              ) "library artifact path must be normalized and flat under lib/")
+              (ensure (matches "[0-9a-f]{64}" entry.sha256) "library artifact sha256 must be lowercase hex")
+              (ensure (
+                (entry.role == "rlib" && matches "lib/.+\\.rlib" entry.path)
+                || (entry.role == "rmeta" && matches "lib/.+\\.rmeta" entry.path)
+                || (
+                  entry.role == "proc-macro"
+                  && (
+                    (hostOs == "linux" && matches "lib/.+\\.so" entry.path)
+                    || (hostOs == "darwin" && matches "lib/.+\\.dylib" entry.path)
+                  )
+                )
+              ) "library artifact role/extension must match the host OS")
+            ] entry
+          ) library.artifacts
+        else
+          fail "descriptor.library.artifacts must be a list";
+      paths = map (entry: entry.path) artifacts;
+      primary = builtins.filter (entry: entry.path == library.primary) artifacts;
+    in
+    force [
+      (ensure (value.kind == "library") "library schema requires kind = library")
+      (ensure (matches "[A-Za-z0-9._+-]+" value.name) "descriptor.name is invalid")
+      (ensure (
+        payload.file == "artifact.tar" && payload.format == "tar"
+      ) "library payload must be artifact.tar in tar format")
+      (ensure (
+        builtins.isInt payload.sizeBytes && payload.sizeBytes > 0
+      ) "descriptor.payload.sizeBytes must be a positive integer")
+      (ensure (
+        digest.algorithm == "sha256" && matches "sha256-[A-Za-z0-9+/]{42}[AEIMQUYcgkosw048]=" digest.sri
+      ) "library payload digest must be canonical sha256 SRI")
+      (ensure (builtins.all nonEmptyString (builtins.attrValues provenance)) "library semantic provenance must contain non-empty strings")
+      (ensure (
+        library.language == "rust" && matches "[A-Za-z_][A-Za-z0-9_]*" library.crateName
+      ) "library must declare a Rust crate name")
+      (ensure (
+        library.primary == "lib/lib${library.crateName}.rlib" && library.dependencyDirectory == "lib"
+      ) "library primary/dependencyDirectory is invalid")
+      (ensure (
+        builtins.elem platform.architecture [
+          "x86_64"
+          "aarch64"
+        ]
+        && targetSuffix != null
+        && library.targetTriple == "${platform.architecture}-${targetSuffix}"
+      ) "library target triple must match platform")
+      (ensure (hostOs != null) "library host triple is unsupported")
+      (ensure (builtins.elem library.panicStrategy [
+        "unwind"
+        "abort"
+      ]) "library panicStrategy must be unwind or abort")
+      (ensure (
+        storePath rustc.compilerStorePath && storePath rustc.sysroot
+      ) "library compilerStorePath/sysroot must be canonical store output paths")
+      (ensure (
+        rustc.darwinWrapperEvidence == ""
+        || (hostOs == "darwin" && matches "${storeOutput}/bin/rustc" rustc.darwinWrapperEvidence)
+      ) "library Darwin wrapper evidence is invalid")
+      (ensure (
+        matches "[^\r]*\n" rustc.verboseVersion && !matches ".*\n\n" rustc.verboseVersion
+      ) "library verboseVersion must use LF and exactly one final newline")
+      (ensure (
+        builtins.all (prefix: builtins.length (versionField prefix) == 1) [
+          "rustc "
+          "release: "
+          "commit-hash: "
+          "commit-date: "
+          "host: "
+          "LLVM version: "
+        ]
+        && versionField "host: " == [ "host: ${library.hostTriple}" ]
+      ) "library verboseVersion must contain full rustc -vV evidence matching hostTriple")
+      (ensure (unique paths) "library artifact paths must be unique")
+      (ensure (
+        paths == builtins.sort builtins.lessThan paths
+      ) "library artifacts must be sorted by path bytes")
+      (ensure (
+        builtins.length primary == 1 && (builtins.head primary).role == "rlib"
+      ) "library primary must appear exactly once with role rlib")
+    ] value;
+
+  validateDescriptor =
+    descriptor:
+    if builtins.isAttrs descriptor && (descriptor.schema or null) == "buck-rust-library-product/v1" then
+      validateLibraryDescriptor descriptor
+    else
+      validateExecutableDescriptor descriptor;
 
   canonicalDescriptorJson = descriptor: builtins.toJSON (validateDescriptor descriptor);
   descriptorDigest =
