@@ -998,25 +998,31 @@ describe('shared wire conformance through the edge (AIG.EDGE-R07)', () => {
       replayCase.request.auth === 'none' && replayCase.response.status === 401
     // Client fixtures may omit auth on a fake transport. The protected edge
     // projection supplies a fixture bearer except for the actual auth refusal.
-    const body: Schema.JsonObject = {
-      model: replayCase.request.match?.model ?? 'fixture/model',
-      stream: replayCase.request.match?.stream ?? false,
-      messages: [{ role: 'user', content: 'Fixture request' }],
-      ...(replayCase.request.match?.responseFormat === undefined
+    const body: Schema.JsonObject =
+      replayCase.id === 'responses.missing-model-400'
         ? {}
         : {
-            response_format: {
-              type: replayCase.request.match.responseFormat,
-              ...(replayCase.schema === undefined
-                ? {}
-                : { json_schema: { name: 'fixture', schema: replayCase.schema } }),
-            },
-          }),
-      ...(replayCase.request.match?.stream === true
-        ? { stream_options: { include_usage: false, fixture_option: true } }
-        : {}),
-      ...replayCase.request.body,
-    }
+            model: replayCase.request.match?.model ?? 'fixture/model',
+            stream: replayCase.request.match?.stream ?? false,
+            ...(replayCase.request.path === '/v1/responses'
+              ? { input: 'Fixture request' }
+              : { messages: [{ role: 'user', content: 'Fixture request' }] }),
+            ...(replayCase.request.match?.responseFormat === undefined
+              ? {}
+              : {
+                  response_format: {
+                    type: replayCase.request.match.responseFormat,
+                    ...(replayCase.schema === undefined
+                      ? {}
+                      : { json_schema: { name: 'fixture', schema: replayCase.schema } }),
+                  },
+                }),
+            ...(replayCase.request.path === '/v1/chat/completions' &&
+            replayCase.request.match?.stream === true
+              ? { stream_options: { include_usage: false, fixture_option: true } }
+              : {}),
+            ...replayCase.request.body,
+          }
     let forwarded = 0
     const upstream = await start(async (request) => {
       forwarded++
@@ -1064,7 +1070,12 @@ describe('shared wire conformance through the edge (AIG.EDGE-R07)', () => {
       expect(metrics.render()).not.toContain('consumer=')
       return
     }
-    expect(forwarded).toBe(1)
+    expect(forwarded).toBe(
+      replayCase.id === 'responses.state-reference-400' ||
+        replayCase.id === 'responses.missing-model-400'
+        ? 0
+        : 1,
+    )
     expect(bytes).toBe(expectedBytes)
     expect(response.headers.get('content-type')).toBe(fakeResponse.headers['content-type'])
     const model =
@@ -1084,6 +1095,11 @@ describe('shared wire conformance through the edge (AIG.EDGE-R07)', () => {
       expect(metrics.render()).toContain(
         `tokens_total{consumer="fixture-consumer",model="${model}",kind="output"} ${usage.output}`,
       )
+      for (const kind of ['cached', 'reasoning'] as const)
+        if (usage[kind] !== undefined)
+          expect(metrics.render()).toContain(
+            `tokens_total{consumer="fixture-consumer",model="${model}",kind="${kind}"} ${usage[kind]}`,
+          )
     }
   })
 })
