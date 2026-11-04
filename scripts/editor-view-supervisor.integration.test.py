@@ -24,6 +24,160 @@ def load_supervisor():
 
 
 class PublicationSupervisorTest(unittest.TestCase):
+    def test_admission_wait_dump_is_once_bounded_and_preserves_admission(self):
+        supervisor = load_supervisor()
+        script = str(Path(__file__).with_name("editor-view-supervisor.py"))
+
+        def until(stream, marker):
+            received = b""
+            deadline = time.monotonic() + 10
+            with selectors.DefaultSelector() as selector:
+                selector.register(stream, selectors.EVENT_READ)
+                while marker not in received:
+                    self.assertTrue(selector.select(max(0, deadline - time.monotonic())), received.decode())
+                    chunk = os.read(stream.fileno(), 8192)
+                    self.assertTrue(chunk, received.decode())
+                    received += chunk
+            return received
+
+        garbage_cases = (b'{"pid":', b"\xff\x00" + str(Path.home()).encode(), b"x" * 16384 + str(Path.home()).encode())
+        for mode, garbage in ((m, g) for m in ("--lock", "--deferred-lock") for g in garbage_cases):
+            with self.subTest(mode=mode, bytes=len(garbage)), tempfile.TemporaryDirectory() as scratch:
+                root = Path(scratch)
+                lock = root / "publication.lock"
+                lock.write_bytes(garbage)
+                release = root / "release"
+                os.mkfifo(release)
+                leases = root / ".editor-view" / ".leases"
+                leases.mkdir(parents=True)
+                (leases / "generation.lock").touch()
+                fixture = r'''
+import os, socket, sys
+endpoint = os.environ.get("EDITOR_VIEW_PUBLICATION_ADMISSION_SOCKET")
+if endpoint:
+    admission = socket.socket(socket.AF_UNIX); admission.connect(endpoint)
+    assert admission.recv(1) == b"1"
+print("admitted", flush=True)
+if sys.argv[1] == "holder":
+    with open(sys.argv[2], "rb", buffering=0) as release: assert release.read(1) == b"1"
+'''
+                env = {**os.environ, "DEVENV_ROOT": scratch,
+                       "EDITOR_VIEW_ADMISSION_DIAGNOSTIC_SECONDS": "0",
+                       "BUCK_ISOLATION_DIR": str(root / "private-isolation")}
+                env.pop("BUCK2_NATIVE_BIN", None)
+                # A crashed owner's metadata must never be required or echoed.
+                with lock.open("r+b") as corrupt_holder:
+                    fcntl.flock(corrupt_holder, fcntl.LOCK_EX)
+                    corrupt_dump = subprocess.run(
+                        [sys.executable, script, "--admission-dump", str(lock)],
+                        env=env, capture_output=True, timeout=10,
+                    )
+                self.assertEqual(corrupt_dump.returncode, 0)
+                self.assertIn(b"holder=unparseable\n", corrupt_dump.stderr)
+                self.assertNotIn(b"/", corrupt_dump.stderr)
+                self.assertLessEqual(len(corrupt_dump.stderr), 8192)
+                self.assertLessEqual(len(corrupt_dump.stderr.splitlines()), 40)
+                # Acquisition must overwrite this same inode and admit normally.
+                command = [sys.executable, script, "none", "0.1", mode, str(lock), sys.executable, "-c", fixture]
+                release_fd = os.open(release, os.O_RDWR)
+                holder = waiter = None
+                try:
+                    holder = subprocess.Popen([*command, "holder", str(release)], env=env,
+                                              stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                              start_new_session=True)
+                    until(holder.stdout, b"admitted\n")
+                    waiter = subprocess.Popen([*command, "waiter"], env=env,
+                                              stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                              start_new_session=True)
+                    captured = until(waiter.stderr, b"[editor-view-admission-wait] end\n")
+                    begin = captured.index(b"[editor-view-admission-wait] begin\n")
+                    dump = captured[begin:]
+                    self.assertIn(f"recorded-pid={holder.pid}".encode(), dump)
+                    self.assertIn(f"command={Path(sys.executable).name}".encode(), dump)
+                    self.assertIn(b"held-seconds=", dump)
+                    self.assertIn(b"buck isolation=private-isolation status=unavailable", dump)
+                    self.assertIn(b"leases root=root controls=1", dump)
+                    self.assertNotIn(b"/", dump)
+                    self.assertNotIn(str(Path.home()).encode(), dump)
+                    self.assertLessEqual(len(dump), 8192)
+                    self.assertLessEqual(len(dump.splitlines()), 40)
+                    os.write(release_fd, b"1")
+                    _, holder_stderr = holder.communicate(timeout=10)
+                    stdout, stderr = waiter.communicate(timeout=10)
+                    self.assertEqual(holder.returncode, 0, holder_stderr.decode())
+                    self.assertEqual(waiter.returncode, 0, stderr.decode())
+                    self.assertEqual(stdout, b"admitted\n")
+                    self.assertEqual((captured + stderr).count(
+                        b"[editor-view-admission-wait] begin"), 1)
+                    self.assertIn(b"publication admitted on lock", stderr)
+                finally:
+                    try:
+                        for process in (holder, waiter):
+                            if process is not None:
+                                if process.poll() is None:
+                                    supervisor.signal_group(process.pid, signal.SIGTERM)
+                                process.communicate(timeout=10)
+                    finally:
+                        os.close(release_fd)
+
+    def test_collector_backpressure_parent_death_and_own_timeout(self):
+        supervisor = load_supervisor()
+        script = str(Path(__file__).with_name("editor-view-supervisor.py"))
+        for action in ("close", "death", "alarm"):
+            with self.subTest(action=action), tempfile.TemporaryDirectory() as scratch:
+                read_fd, write_fd = os.pipe()
+                os.set_blocking(write_fd, False)
+                try:
+                    while True:
+                        os.write(write_fd, b"x")
+                except BlockingIOError:
+                    pass
+                os.set_blocking(write_fd, True)
+                collector = (f'import os,runpy; s=runpy.run_path({script!r}); '
+                             's["guard_collector"](int(__import__("sys").argv[1])); '
+                             'print("ready",flush=True); os.write(2,b"x")')
+                driver = f'''
+import os,runpy,subprocess,sys
+s=runpy.run_path({script!r})
+if {action!r} == "close":
+    d=s["AdmissionDiagnostic"](); d.threshold=0
+    d.observe("missing",0); print("ready",flush=True)
+    sys.stdin.buffer.read(1); d.close(); print("closed",flush=True)
+else:
+    r,w=os.pipe()
+    p=subprocess.Popen([sys.executable,"-c",{collector!r},str(r)],pass_fds=(r,),start_new_session=True)
+    os.close(r); sys.stdin.buffer.read(1); p.wait()
+'''
+                parent = subprocess.Popen([sys.executable, "-c", driver], cwd=scratch,
+                                          stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                                          stderr=write_fd, start_new_session=True)
+                os.close(write_fd)
+                try:
+                    with selectors.DefaultSelector() as selector:
+                        selector.register(parent.stdout, selectors.EVENT_READ)
+                        self.assertTrue(selector.select(10))
+                        self.assertEqual(parent.stdout.readline(), b"ready\n")
+                        if action == "death":
+                            supervisor.signal_group(parent.pid, signal.SIGKILL)
+                        elif action == "close":
+                            parent.stdin.write(b"1"); parent.stdin.flush()
+                            self.assertTrue(selector.select(5))  # Stderr is still full.
+                            self.assertEqual(parent.stdout.readline(), b"closed\n")
+                        else:
+                            parent.stdin.write(b"1"); parent.stdin.flush()
+                    parent.wait(timeout=5)
+                    with selectors.DefaultSelector() as selector:
+                        selector.register(read_fd, selectors.EVENT_READ)
+                        while True:
+                            self.assertTrue(selector.select(5))
+                            if not os.read(read_fd, 8192):
+                                break  # No collector can retain the capture after parent exit.
+                finally:
+                    if parent.poll() is None:
+                        supervisor.signal_group(parent.pid, signal.SIGKILL)
+                    parent.communicate(timeout=5)
+                    os.close(read_fd)
+
     def test_bootstrap_buck_kill_evidence_is_bounded(self):
         repo = Path(__file__).resolve().parent.parent
         bun = os.environ.get("BUN_BIN") or shutil.which("bun")
