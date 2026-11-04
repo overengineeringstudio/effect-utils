@@ -349,6 +349,11 @@ rec {
             inherit pkgs;
             nixpkgsRevision = nixpkgs.rev;
           };
+        } // {
+          buck2-library-consumer = import ./nix/buck2-products/library-check.nix {
+            inherit pkgs;
+            product = nativeProductPackages.example-library;
+          };
         };
         packages =
           cliPackages
