@@ -3,7 +3,7 @@ import { execFileSync } from 'node:child_process'
 import { copyFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { basename, join, resolve } from 'node:path'
 
-const [manifestPath, output, metadataPath, rustc] = process.argv.slice(2)
+const [manifestPath, output, metadataPath, rustc, linker] = process.argv.slice(2)
 const { primary, artifacts, targetTriple, hostTriple, panicStrategy } = JSON.parse(
   readFileSync(manifestPath, 'utf8'),
 )
@@ -59,6 +59,33 @@ if (
 }
 if (crateName === undefined || ['unwind', 'abort'].includes(panicStrategy) === false)
   throw new Error('Missing primary or invalid panic strategy')
+// Check the produced closure, not flags or environment that producers can override.
+// The identity compiler bypasses Nix wrapper flag injection during this check.
+const scratch = resolve(process.env.BUCK_SCRATCH_PATH)
+mkdirSync(scratch, { recursive: true })
+const source = join(scratch, 'panic-probe.rs')
+writeFileSync(source, `extern crate ${crateName}; fn main() {}\n`)
+execFileSync(
+  join(compiler.compilerStorePath, 'bin/rustc'),
+  [
+    '--edition=2024',
+    '--crate-name=library_panic_probe',
+    source,
+    '--extern',
+    `${crateName}=${join(output, `lib${crateName}.rlib`)}`,
+    '-L',
+    `dependency=${output}`,
+    `-Cpanic=${panicStrategy}`,
+    '--sysroot',
+    compiler.sysroot,
+    '--target',
+    targetTriple,
+    `-Clinker=${linker}`,
+    '-o',
+    join(scratch, 'panic-probe'),
+  ],
+  { stdio: 'inherit' },
+)
 writeFileSync(
   metadataPath,
   JSON.stringify({ crateName, targetTriple, hostTriple, panicStrategy, rustc: compiler }) + '\n',
