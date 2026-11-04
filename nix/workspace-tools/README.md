@@ -68,9 +68,10 @@ fail-closed: source-product builds run in the Nix sandbox with only the declared
 package sources and projected support files, so a new dynamic file dependency
 requires updating the projector. Run the source-product contract and all
 registered from-source product builds when changing this boundary.
-The regression also compares whole compile recipes. Cache publication stamps
-HEAD-bound provenance separately; source compilation remains independent of
-Git revision metadata, including clean versus dirty worktree state.
+The regression also compares whole recipes with identical `producerCommit`.
+Cache-publisher recipes (including Genie) intentionally retain HEAD-bound
+provenance; comparing a clean revision URL against a dirty worktree URL changes
+that provenance to the dirty sentinel and is not an input-isolation test.
 
 The Genie product wrapper realizes the pinned descriptor's capabilities through
 a closed provider registry. It supplies `gh` on PATH when the published product
