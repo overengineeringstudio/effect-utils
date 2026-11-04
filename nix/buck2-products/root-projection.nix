@@ -50,8 +50,9 @@ pkgs.lib.fileset.toSource {
         || file.hasExt "bzl"
         || file.hasExt "json"
         || (
-          file.hasExt "ts"
+          (file.hasExt "ts" || file.hasExt "mjs")
           && !(pkgs.lib.hasSuffix ".test.ts" file.name)
+          && !(pkgs.lib.hasSuffix ".test.mjs" file.name)
           && !(pkgs.lib.hasSuffix ".genie.ts" file.name)
         )
       ) (repositoryRoot + "/buck2"))
