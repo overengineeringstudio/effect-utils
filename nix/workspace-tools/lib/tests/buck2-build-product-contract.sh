@@ -3,6 +3,74 @@ set -euo pipefail
 
 repo_root="${1:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../.." && pwd -P)}"
 export BUCK2_BRIDGE_REPO="$repo_root"
+nix-instantiate --eval --strict --expr '
+let
+  repo = builtins.toPath (builtins.getEnv "BUCK2_BRIDGE_REPO");
+  contract = import (repo + "/nix/workspace-tools/lib/buck2-build-product-contract.nix");
+  artifact = path: role: { inherit path role; sha256 = builtins.concatStringsSep "" (builtins.genList (_: "a") 64); };
+  compiler = "/nix/store/00000000000000000000000000000000-rustc-1.90.0";
+  version = host: "rustc 1.90.0 (fixture 2025-09-18)\nbinary: rustc\ncommit-hash: fixture\ncommit-date: 2025-09-18\nhost: ${host}\nrelease: 1.90.0\nLLVM version: 20.1.8\n";
+  valid = {
+    schema = "buck-rust-library-product/v1"; kind = "library"; name = "fixture-library";
+    payload = { file = "artifact.tar"; format = "tar"; sizeBytes = 123;
+      digest = { algorithm = "sha256"; sri = "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="; }; };
+    platform = { os = "linux"; architecture = "aarch64"; abi = "glibc"; };
+    semanticProvenance = { target = "//fixtures:library"; recipe = "rust-library/v1"; toolchain = "rust-native/v1"; };
+    library = {
+      language = "rust"; crateName = "fixture_library"; primary = "lib/libfixture_library.rlib"; dependencyDirectory = "lib";
+      targetTriple = "aarch64-unknown-linux-gnu"; hostTriple = "aarch64-unknown-linux-gnu"; panicStrategy = "unwind";
+      rustc = { compilerStorePath = compiler; sysroot = compiler;
+        verboseVersion = version "aarch64-unknown-linux-gnu"; darwinWrapperEvidence = ""; };
+      # Measured closure shape: primary, four hashed dependencies, two host macros.
+      artifacts = [
+        (artifact "lib/libdep_a-001.rlib" "rlib") (artifact "lib/libdep_b-002.rlib" "rlib")
+        (artifact "lib/libdep_c-003.rlib" "rlib") (artifact "lib/libdep_d-004.rlib" "rlib")
+        (artifact "lib/libderive_a-005.so" "proc-macro") (artifact "lib/libderive_b-006.so" "proc-macro")
+        (artifact "lib/libfixture_library.rlib" "rlib")
+      ];
+    };
+  };
+  withLibrary = patch: valid // { library = valid.library // patch; };
+  withArtifacts = artifacts: withLibrary { inherit artifacts; };
+  rejects = descriptor: !(builtins.tryEval (builtins.deepSeq (contract.validateDescriptor descriptor) true)).success;
+  objects = [
+    { value = valid; replace = x: x; }
+    { value = valid.payload; replace = x: valid // { payload = x; }; }
+    { value = valid.payload.digest; replace = x: valid // { payload = valid.payload // { digest = x; }; }; }
+    { value = valid.platform; replace = x: valid // { platform = x; }; }
+    { value = valid.semanticProvenance; replace = x: valid // { semanticProvenance = x; }; }
+    { value = valid.library; replace = x: valid // { library = x; }; }
+    { value = valid.library.rustc; replace = x: withLibrary { rustc = x; }; }
+    { value = builtins.head valid.library.artifacts; replace = x: withArtifacts ([ x ] ++ builtins.tail valid.library.artifacts); }
+  ];
+  darwin = valid // {
+    platform = { os = "darwin"; architecture = "aarch64"; abi = "darwin"; };
+    library = valid.library // { targetTriple = "aarch64-apple-darwin"; hostTriple = "aarch64-apple-darwin";
+      rustc = valid.library.rustc // { verboseVersion = version "aarch64-apple-darwin"; darwinWrapperEvidence = "${compiler}/bin/rustc"; };
+      artifacts = [ (artifact valid.library.primary "rlib") (artifact "lib/libmacro.dylib" "proc-macro") (artifact "lib/libmetadata.rmeta" "rmeta") ]; };
+  };
+  negatives = [
+    (valid // { kind = "executable"; }) (valid // { schema = "buck-build-product/v1"; }) (valid // { schema = "buck-rust-library-product/v2"; })
+    (withLibrary { panicStrategy = "invalid"; }) (withLibrary { targetTriple = "x86_64-unknown-linux-gnu"; })
+    (withArtifacts (builtins.tail valid.library.artifacts ++ [ (builtins.head valid.library.artifacts) ]))
+    (withArtifacts (valid.library.artifacts ++ [ (builtins.head valid.library.artifacts) ]))
+    (withArtifacts [ (builtins.head valid.library.artifacts) ]) (withArtifacts [ (artifact valid.library.primary "rlib") (artifact valid.library.primary "rlib") ])
+    (withArtifacts [ (artifact valid.library.primary "rmeta") ])
+    (withLibrary { rustc = valid.library.rustc // { verboseVersion = version "aarch64-apple-darwin"; }; })
+    (withLibrary { rustc = valid.library.rustc // { verboseVersion = version valid.library.hostTriple + "\n"; }; })
+    (withLibrary { rustc = valid.library.rustc // { compilerStorePath = "/tmp/rustc"; }; })
+    (darwin // { library = darwin.library // { artifacts = [ (artifact valid.library.primary "rlib") (artifact "lib/libmacro.so" "proc-macro") ]; }; })
+  ] ++ map (path: withArtifacts [ (artifact valid.library.primary "rlib") (artifact path "rlib") ]) [
+    "../lib/libbad.rlib" "lib/../libbad.rlib" "/lib/libbad.rlib" "lib/sub/libbad.rlib" "lib//libbad.rlib" "lib/libbad\\name.rlib" "lib/libbad.a"
+  ] ++ [ (withArtifacts [ (artifact valid.library.primary "rlib") (artifact "lib/libmacro.dylib" "proc-macro") ]) ];
+in
+assert contract.validateDescriptor valid == valid && contract.validateDescriptor darwin == darwin;
+assert contract.validateDescriptor (withLibrary { panicStrategy = "abort"; }) != null;
+assert builtins.all (object: rejects (object.replace (object.value // { unknown = true; })) && builtins.all (field: rejects (object.replace (builtins.removeAttrs object.value [ field ]))) (builtins.attrNames object.value)) objects;
+assert builtins.all rejects negatives;
+assert contract.verifyDescriptor { descriptor = valid; expectedDescriptorDigest = contract.descriptorDigest valid; } == valid;
+"buck2-library-product-contract-test: PASS"
+'
 
 contract_expr='repo = builtins.toPath (builtins.getEnv "BUCK2_BRIDGE_REPO");
   contract = import (repo + "/nix/workspace-tools/lib/buck2-build-product-contract.nix");
