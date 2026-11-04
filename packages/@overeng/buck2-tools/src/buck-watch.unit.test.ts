@@ -1,7 +1,6 @@
 import * as ChildProcess from 'node:child_process'
 import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
-import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import process from 'node:process'
@@ -332,8 +331,6 @@ describe('Buck watch reconciliation', () => {
 
   it('passes every provider read root to publication and never publishes after a failed build', async () => {
     const root = await mkdtemp(join(tmpdir(), 'buck-watch-'))
-    const admission = createServer()
-    const previousEndpoint = process.env.EDITOR_VIEW_PUBLICATION_ADMISSION_SOCKET
     try {
       const manifest = join(root, 'editor-inputs.json')
       await writeFile(
@@ -404,14 +401,6 @@ describe('Buck watch reconciliation', () => {
         input: string | undefined
         detached: boolean | undefined
       }[] = []
-      const events: string[] = []
-      const endpoint = join(root, 'admission.sock')
-      admission.on('connection', (socket) => {
-        events.push('admit')
-        socket.end('1')
-      })
-      await new Promise<void>((resolve) => admission.listen(endpoint, resolve))
-      process.env.EDITOR_VIEW_PUBLICATION_ADMISSION_SOCKET = endpoint
       await reconcileBuckViews({
         request: {
           packagePaths: ['packages/app'],
@@ -433,15 +422,12 @@ describe('Buck watch reconciliation', () => {
           snapshotRetention: 3,
           run: async ({ command, args, input, detached }) => {
             batchInvocations.push({ command, args, input, detached })
-            events.push(command)
             return command === '/tools/buck2'
               ? { stdout: `//packages/app:editor_view_inputs ${manifest}\n`, stderr: '' }
               : { stdout: '', stderr: '' }
           },
         },
       })
-      expect(events).toEqual(['/tools/buck2', 'admit', '/tools/bun'])
-      expect(process.env.EDITOR_VIEW_PUBLICATION_ADMISSION_SOCKET).toBeUndefined()
       expect(batchInvocations).toHaveLength(2)
       expect(batchInvocations[1]?.args).toEqual(['/tools/editor-view', 'publish-batch'])
       expect(batchInvocations[1]?.detached).toBeUndefined()
@@ -476,10 +462,6 @@ describe('Buck watch reconciliation', () => {
       ).rejects.toThrow('stale build')
       expect(failedInvocations).toEqual(['/tools/buck2'])
     } finally {
-      admission.close()
-      if (previousEndpoint === undefined)
-        delete process.env.EDITOR_VIEW_PUBLICATION_ADMISSION_SOCKET
-      else process.env.EDITOR_VIEW_PUBLICATION_ADMISSION_SOCKET = previousEndpoint
       await rm(root, { recursive: true })
     }
   })

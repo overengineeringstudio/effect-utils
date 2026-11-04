@@ -353,7 +353,7 @@
       },
       {
         "script": "editor-view-supervisor.test.sh",
-        "rationale": "Real outer flock/deferred admission, FIFO-controlled Buck daemon contention, process-group termination and child reaping on Linux and Darwin."
+        "rationale": "Real outer flock admission, bounded holder diagnostics, process-group termination and child reaping on Linux and Darwin."
       },
       {
         "script": "genie-compiled-staging.test.sh",
