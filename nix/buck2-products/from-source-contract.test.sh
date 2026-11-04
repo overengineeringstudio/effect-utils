@@ -20,8 +20,7 @@ flake_ref="$(jq -cn --arg url "git+file://$repo_root?rev=$revision&shallow=1" '$
 for system in x86_64-linux aarch64-darwin; do
   nix eval --json \
     --file "$repo_root/nix/buck2-products/compile-identity.test.nix" \
-    --arg flake "builtins.getFlake $flake_ref" \
-    --argstr system "$system"
+    --apply "test: test { flake = builtins.getFlake $flake_ref; system = \"$system\"; }"
 done
 bash "$repo_root/nix/buck2-products/from-source-cores.test.sh" "$repo_root"
 bash "$repo_root/nix/buck2-products/capability-closure.test.sh" "$repo_root"
