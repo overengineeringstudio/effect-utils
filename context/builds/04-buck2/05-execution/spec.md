@@ -249,6 +249,11 @@ alone becomes `lib<crate>.rlib`. Native link records and unbundled shared
 libraries are rejected rather than omitted. `test:buck2:library-closure` checks
 compiler evidence, external derive loading, archive metadata and zero embedded
 store references (BUILD.BUCK.EXEC-R06/R07/R09/R10).
+Before its directory is produced, every library closure must link an external
+binary using the recorded underlying compiler, sysroot and panic strategy;
+incompatible transitive artifacts are rejected regardless of producer flags or
+environment, including Nix wrapper flag injection. The acceptance task covers
+both per-crate flags and environment-injected transitive abort mismatches.
 
 ### Rust Interop Products
 
