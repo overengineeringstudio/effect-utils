@@ -248,7 +248,10 @@ deduplicates identical sources and rejects conflicting destinations. The primary
 alone becomes `lib<crate>.rlib`. Native link records and unbundled shared
 libraries are rejected rather than omitted. `test:buck2:library-closure` checks
 compiler evidence, external derive loading, archive metadata and zero embedded
-store references (BUILD.BUCK.EXEC-R06/R07/R09/R10).
+store references. It also builds the real `build_product` library fixture,
+passes its exact descriptor to the distribution-owned Nix validator, and
+compares archive digest, inventory hashes and bytes with the producer closure
+(BUILD.BUCK.EXEC-R06/R07/R09/R10).
 
 ### Rust Interop Products
 

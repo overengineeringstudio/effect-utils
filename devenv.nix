@@ -1418,7 +1418,7 @@ in
   };
 
   tasks."test:buck2:library-closure" = {
-    description = "Probe the native Rust library closure, external derives and embedded store references";
+    description = "Validate the packaged Rust library descriptor, closure bytes, external derives and store references";
     exec = trace.exec "test:buck2:library-closure" ''
       set -euo pipefail
       root="''${DEVENV_ROOT:-$PWD}"
@@ -1437,8 +1437,21 @@ in
         [[ "$part" = closure ]] || target="$target[$part]"
         "$BUCK2_BIN" build --target-platforms "$platform" --out "$probe/$part" "$target"
       done
+      product=effect_utils//buck2/tests/library_closure:product
+      "$BUCK2_BIN" build --target-platforms "$platform" --out "$probe/artifact.tar" "$product"
+      "$BUCK2_BIN" build --target-platforms "$platform" --out "$probe/descriptor.json" "$product[descriptor]"
+      BUCK2_LIBRARY_ROOT="$root" BUCK2_LIBRARY_DESCRIPTOR="$probe/descriptor.json" \
+        ${pkgs.nix}/bin/nix-instantiate --eval --strict --expr '
+          let
+            contract = import (builtins.toPath (builtins.getEnv "BUCK2_LIBRARY_ROOT") + "/nix/workspace-tools/lib/buck2-build-product-contract.nix");
+            descriptor = builtins.fromJSON (builtins.readFile (builtins.getEnv "BUCK2_LIBRARY_DESCRIPTOR"));
+          in
+          assert descriptor.schema == "buck-rust-library-product/v1";
+          builtins.deepSeq (contract.validateDescriptor descriptor) true
+        '
       ${pkgs.python3}/bin/python3 buck2/tests/library_closure/accept.py "$probe/closure" \
-        "$(${pkgs.coreutils}/bin/cat "$probe/rustc")" --ar "$(${pkgs.coreutils}/bin/cat "$probe/ar")" --metadata "$probe/metadata"
+        "$(${pkgs.coreutils}/bin/cat "$probe/rustc")" --ar "$(${pkgs.coreutils}/bin/cat "$probe/ar")" --metadata "$probe/metadata" \
+        --artifact "$probe/artifact.tar" --descriptor "$probe/descriptor.json"
       ${sourceBun}/bin/bun test ./buck2/tests/library_closure/closure.unit.test.mjs
     '';
   };
