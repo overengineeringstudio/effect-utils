@@ -14,6 +14,8 @@
   importNative ? false,
   expectedPlatform ? null,
   runtimeKind ? null,
+  expectedRustTarget ? pkgs.stdenv.hostPlatform.rust.rustcTarget,
+  expectedPanicStrategy ? "unwind",
   product,
   producerCommit ? null,
   repositoryRoot ? ../..,
@@ -117,7 +119,10 @@ let
   hasDescriptor = product.kind == "javascript" || isBuildProduct;
   buckGlobalArgs = "--isolation-dir nix-product-${safeName}";
   buckBuildArgs = "-j \"$NIX_BUILD_CORES\" --config build.num_tokio_workers=\"$NIX_BUILD_CORES\" --config nix_store.root=${pnpmArchives}${
-    lib.optionalString (builtins.elem product.kind [ "native" "rust-library" ]) " --config rust_profile.mode=release"
+    lib.optionalString (builtins.elem product.kind [
+      "native"
+      "rust-library"
+    ]) " --config rust_profile.mode=release"
   }${
     lib.concatMapStringsSep "" (
       package: " --config ${lib.escapeShellArg "test_capabilities.${package.name}=${package.package}"}"
@@ -160,13 +165,17 @@ assert lib.assertMsg (
 assert lib.assertMsg (
   cargoWorkspaceRoot == null
   || (
-    builtins.elem product.kind [ "native" "rust-library" ]
+    builtins.elem product.kind [
+      "native"
+      "rust-library"
+    ]
     && builtins.match "[A-Za-z0-9_.@-]+(/[A-Za-z0-9_.@-]+)*" cargoWorkspaceRoot != null
     && lib.all (segment: segment != "." && segment != "..") (lib.splitString "/" cargoWorkspaceRoot)
   )
 ) "buck2-products: cargoWorkspaceRoot must be a safe relative path on a native product";
-assert lib.assertMsg (!importNative || isBuildProduct)
-  "buck2-products: importNative requires a build_product recipe";
+assert lib.assertMsg (
+  !importNative || isBuildProduct
+) "buck2-products: importNative requires a build_product recipe";
 assert lib.assertMsg (
   cliBuildStamp == null
   || (
@@ -408,6 +417,7 @@ if importNative then
   (import ../workspace-tools/lib/buck2-artifact-realize.nix { inherit pkgs; }) {
     name = productName;
     expectedTarget = target;
+    inherit expectedRustTarget expectedPanicStrategy;
     expectedPlatform =
       if expectedPlatform == null then
         let
@@ -433,7 +443,10 @@ if importNative then
         "elf-dynamic";
     descriptorPath = lib.escapeShellArg "${sourceProduct}/descriptor.json";
     archivePath = lib.escapeShellArg "${sourceProduct}/${outputName}";
-    passthru.buck2Product = sourceProduct;
+    passthru = {
+      buck2Product = sourceProduct;
+      descriptorPath = "${sourceProduct}/descriptor.json";
+    };
   }
 else
   sourceProduct
