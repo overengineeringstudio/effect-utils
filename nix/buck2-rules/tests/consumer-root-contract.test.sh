@@ -541,7 +541,6 @@ product="$(nix build --impure --no-link --print-out-paths --expr '
       };
     };
     pnpmArchives = flake.packages.${system}.buck2-pnpm-archives;
-    producerCommit = "0000000000000000000000000000000000000000";
     product = {
       name = "consumer-root-rust";
       target = "//rust-fixture:product";

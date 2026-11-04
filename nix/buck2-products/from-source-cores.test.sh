@@ -27,7 +27,6 @@ phase="$(nix eval --impure --raw --expr '
     pnpmArchives = repo;
     repositorySource = repo;
     runtimeClosureTarget = "root//:runtime";
-    producerCommit = "0123456789abcdef0123456789abcdef01234567";
     product = {
       name = "core-budget-fixture";
       kind = "javascript";

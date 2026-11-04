@@ -81,6 +81,7 @@ rec {
         pnpmArchives = import ./nix/buck2-products/pnpm-archives.nix { inherit pkgs; };
         buckProductsFromSource = import ./nix/buck2-products/source-recipes.nix {
           inherit
+            pkgs
             mkBuckProductFromSource
             pnpmArchives
             ;
@@ -114,7 +115,6 @@ rec {
                     package = "${nodePtyNative}/node_modules/node-pty";
                   }
                 ];
-                producerCommit = self.sourceInfo.rev or "0000000000000000000000000000000000000000";
                 repositoryRoot = ./.;
                 product = {
                   name = "vite-runtime-closure-fixture";
@@ -385,9 +385,9 @@ rec {
             '';
             gh-settings-genie = githubRepoSettingsGenie;
             buck-products-from-source = pkgs.linkFarm "effect-utils-buck-products-from-source" (
-              pkgs.lib.mapAttrsToList (name: path: {
+              pkgs.lib.mapAttrsToList (name: product: {
                 name = pkgs.lib.replaceStrings [ "@" "/" ] [ "" "-" ] name;
-                inherit path;
+                path = product.stamped;
               }) buckProductsFromSource
             );
             oxlint-npm = oxlintNpm;
@@ -407,7 +407,7 @@ rec {
           }
           // pkgs.lib.mapAttrs' (
             name: value:
-            pkgs.lib.nameValuePair "buck-product-${pkgs.lib.replaceStrings [ "@" "/" ] [ "" "-" ] name}-from-source" value
+            pkgs.lib.nameValuePair "buck-product-${pkgs.lib.replaceStrings [ "@" "/" ] [ "" "-" ] name}-from-source" value.stamped
           ) buckProductsFromSource;
         # Direnv helper for comparing expected CLI outputs to PATH entries.
         cliOutPaths = {

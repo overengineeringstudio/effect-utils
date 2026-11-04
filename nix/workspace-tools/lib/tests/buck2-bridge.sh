@@ -352,7 +352,6 @@ source_product_let="exported = builtins.storePath (builtins.getEnv \"BUCK2_BRIDG
       inherit repositorySource;
       capabilities = pkgs.runCommand \"empty-buck-capabilities\" { } \"mkdir \$out\";
       pnpmArchives = pkgs.runCommand \"empty-pnpm-archives\" { } \"mkdir \$out\";
-      producerCommit = \"0000000000000000000000000000000000000000\";
       product = {
         kind = \"native\";
         name = productName;
@@ -375,7 +374,6 @@ expect_build_failure \
     importNative = true;
     capabilities = pkgs.hello;
     pnpmArchives = pkgs.hello;
-    producerCommit = \"0000000000000000000000000000000000000000\";
     product = { kind = \"native\"; name = \"fixture-tool\"; outputName = \"artifact.tar\"; target = \"//fixtures:tool\"; cargoWorkspaceRoot = \"rust\"; };
   }"
 cell_descriptor="$(build_expr "let $common_let $source_product_let in

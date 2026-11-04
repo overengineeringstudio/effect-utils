@@ -15,7 +15,6 @@
   expectedPlatform ? null,
   runtimeKind ? null,
   product,
-  producerCommit ? null,
   repositoryRoot ? ../..,
   repositorySource ? null,
   # Committed Genie projection of the Buck input closure, relative to repositoryRoot.
@@ -129,11 +128,6 @@ let
     ) " --config ${lib.escapeShellArg "build_identity.cli_build_stamp=${cliBuildStamp}"}"
   } --local-only --no-remote-cache --console simple --show-simple-output";
 in
-assert lib.assertMsg (
-  producerCommit == null || builtins.match "[0-9a-f]{40}" producerCommit != null
-) "buck2-products: producerCommit must be a full lowercase Git commit";
-assert lib.assertMsg ((producerCommit == null) == (sourcePaths != null))
-  "buck2-products: revision-bound recipes require producerCommit; scoped source recipes must omit it";
 assert lib.assertMsg
   (
     sourcePaths == null
@@ -288,28 +282,13 @@ let
       ${lib.optionalString (expectedSha256 != null) ''
         test "$actual_sha256" = ${lib.escapeShellArg expectedSha256}
       ''}
-      ${
-        if producerCommit == null then
-          ''
-            jq -nS \
-              --arg schema 'effect-utils/buck-product-source-provenance/v1' \
-              --arg sourceDigest ${lib.escapeShellArg sourceDigest} \
-              --arg target ${lib.escapeShellArg target} \
-              --arg productDigest "$actual_sha256" \
-              '{schema:$schema,sourceDigest:$sourceDigest,target:$target,productDigest:$productDigest}' \
-              > provenance.json
-          ''
-        else
-          ''
-            jq -nS \
-              --arg schema 'effect-utils/buck-product-provenance/v1' \
-              --arg producerCommit ${lib.escapeShellArg producerCommit} \
-              --arg target ${lib.escapeShellArg target} \
-              --arg productDigest "$actual_sha256" \
-              '{schema:$schema,producerCommit:$producerCommit,target:$target,productDigest:$productDigest}' \
-              > provenance.json
-          ''
-      }
+      jq -nS \
+        --arg schema 'effect-utils/buck-product-source-provenance/v1' \
+        --arg sourceDigest ${lib.escapeShellArg sourceDigest} \
+        --arg target ${lib.escapeShellArg target} \
+        --arg productDigest "$actual_sha256" \
+        '{schema:$schema,sourceDigest:$sourceDigest,target:$target,productDigest:$productDigest}' \
+        > provenance.json
       runHook postBuild
     '';
 
@@ -333,7 +312,6 @@ let
         cargoArchives
         nativeStorePackages
         pnpmArchives
-        producerCommit
         repositorySource
         rootProjection
         source
@@ -343,6 +321,7 @@ let
         runtimeClosureTarget
         ;
       artifactName = outputName;
+      producerCommit = null;
       inherit productName;
       productKind = product.kind;
       expectedProductSha256 = expectedSha256;
@@ -358,8 +337,8 @@ let
           expectedRuntimeContractVersion,
           expectedExternalCapabilities,
           expectedExternalModules,
-          expectedProducerCommit ? producerCommit,
-          checkProducerCommit ? producerCommit != null,
+          expectedProducerCommit ? null,
+          checkProducerCommit ? false,
           binaryName ? null,
           environment ? { },
           generateCompletions ? binaryName != null,

@@ -332,6 +332,13 @@ The aggregate's `gh-settings-genie-source` entry retains
 Genie import. It is published transitively on both publisher platforms, not
 added to the executable smoke inventory: source products contain module
 artifacts and descriptors rather than `bin/<name>` launchers.
+Compilation carries only source-digest provenance and accepts no Git revision
+or dirty-state input. `source-recipes.nix` attaches a separate `stamped`
+publication derivation, which copies the compiled tree without running Buck,
+checks byte equality, and replaces only `provenance.json` with the producer
+commit and payload digest. Publication flake outputs select this stamp;
+activation and source imports select compilation. The publisher still requires
+the stamped `producerCommit` to equal HEAD before publishing.
 The repository shell selects Netlify, pnpm and oxlint from these same flake
 packages rather than rebuilding them against devenv's independently locked
 nixpkgs. Cachix publishes their transitive store closures, including source
