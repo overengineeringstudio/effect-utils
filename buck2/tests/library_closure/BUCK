@@ -2,6 +2,7 @@
 load("@prelude//:prelude.bzl", "native")
 load("//buck2/rust:library.bzl", "rust_product_library")
 load("//buck2/platforms:defs.bzl", "host_platform_label")
+load(":defs.bzl", "panic_rejection")
 
 native.rust_library(
     name = "generic_leaf",
@@ -54,41 +55,5 @@ rust_product_library(
 )
 
 # Both routes compile abort artifacts behind the normal unwind product toolchain.
-for route, overrides in [
-    ("flags", {"rustc_flags": ["-Cpanic=abort"]}),
-    ("env", {"env": {"NIX_RUSTFLAGS": "-Cpanic=abort"}}),
-]:
-    native.rust_library(
-        name = "panic_" + route,
-        crate_root = "generic.rs",
-        srcs = ["generic.rs"],
-        edition = "2024",
-        **overrides
-    )
-    native.rust_library(
-        name = "transitive_panic_" + route,
-        crate_root = "bridge.rs",
-        srcs = ["bridge.rs"],
-        named_deps = {"generic_leaf": ":panic_" + route},
-        edition = "2024",
-    )
-    rust_product_library(
-        name = "reject_panic_" + route,
-        library = ":transitive_panic_" + route,
-        recipe = "library-panic-rejection/v1",
-        target_platform = host_platform_label(),
-    )
-    # generic.rs never mentions this dependency: only the closure probe loads it.
-    native.rust_library(
-        name = "unused_panic_" + route,
-        crate_root = "generic.rs",
-        srcs = ["generic.rs"],
-        deps = [":panic_" + route],
-        edition = "2024",
-    )
-    rust_product_library(
-        name = "reject_panic_unused_" + route,
-        library = ":unused_panic_" + route,
-        recipe = "library-unused-panic-rejection/v1",
-        target_platform = host_platform_label(),
-    )
+panic_rejection("flags", {"rustc_flags": ["-Cpanic=abort"]})
+panic_rejection("env", {"env": {"NIX_RUSTFLAGS": "-Cpanic=abort"}})
