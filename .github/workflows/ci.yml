@@ -754,7 +754,7 @@ jobs:
               ln -s "$PWD/$modules" "$package/node_modules"
             done
             regression_status=0
-            "$DEVENV_BIN" tasks run --mode single test:buck2-tools devenv-modules:test buck2:capabilities:identity-proof buck2:capabilities:recovery-test || regression_status=$?
+            "$DEVENV_BIN" tasks run --mode single test:buck2-tools devenv-modules:test buck2:capabilities:identity-proof buck2:capabilities:recovery-test buck2:rust:library-closure:test || regression_status=$?
             if [ -n "$bounded_pid" ]; then
               wait "$bounded_pid" || regression_status=1
               bounded_pid=
