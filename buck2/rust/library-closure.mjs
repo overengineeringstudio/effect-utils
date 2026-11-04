@@ -48,6 +48,15 @@ const compiler = JSON.parse(
 if (compiler.verboseVersion.match(/^host: (.+)$/m)?.[1] !== hostTriple) {
   throw new Error(`Compiler host differs from configured host: ${hostTriple}`)
 }
+const wrapper = compiler.darwinWrapperEvidence
+if (
+  typeof wrapper !== 'string' ||
+  (wrapper !== '' &&
+    (hostTriple.endsWith('-apple-darwin') === false ||
+      /^\/nix\/store\/[a-z0-9]{32}-[^/]+\/bin\/rustc$/.test(wrapper) === false))
+) {
+  throw new Error('Invalid compiler Darwin wrapper evidence')
+}
 if (crateName === undefined || ['unwind', 'abort'].includes(panicStrategy) === false)
   throw new Error('Missing primary or invalid panic strategy')
 writeFileSync(

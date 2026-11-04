@@ -160,6 +160,7 @@ def _rust_toolchain_impl(ctx):
         doctests = False,
         nightly_features = False,
         panic_runtime = PanicRuntime("abort" if wasm else ctx.attrs.panic_runtime),
+        restricted_rustc_flags = ["panic"],
         rustc_env = ctx.attrs.compile_env,
         rustc_flags = ctx.attrs.wasm_rustc_flags if wasm else ctx.attrs.rustc_flags,
         rustc_binary_flags = ctx.attrs.wasm_rustc_binary_flags if wasm else ctx.attrs.rustc_binary_flags,

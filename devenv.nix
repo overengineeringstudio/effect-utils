@@ -1434,6 +1434,10 @@ in
       ${pkgs.python3}/bin/python3 buck2/tests/library_closure/accept.py "$probe/closure" \
         "$(${pkgs.coreutils}/bin/cat "$probe/rustc")" --ar "$(${pkgs.coreutils}/bin/cat "$probe/ar")" --metadata "$probe/metadata"
       ${sourceBun}/bin/bun test ./buck2/tests/library_closure/closure.unit.test.mjs
+      if "$BUCK2_BIN" build effect_utils//buck2/tests/library_closure:transitive_panic_override >"$probe/rejected.log" 2>&1; then
+        echo "Transitive per-crate panic override unexpectedly succeeded" >&2; exit 1
+      fi
+      ${pkgs.gnugrep}/bin/grep -F 'rustc flag `-Cpanic=abort` is not allowed' "$probe/rejected.log"
     '';
   };
 
