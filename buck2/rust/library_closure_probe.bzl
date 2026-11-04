@@ -44,11 +44,11 @@ def _impl(ctx):
         category = "rust_library_closure_probe",
         cacheable = False,
     )
-    rustc = ctx.actions.write("rustc.txt", toolchain.compiler.args, allow_args = True)
-    archiver = ctx.actions.write("ar.txt", ctx.attrs._rust_toolchain[ConfiguredRustToolchainInfo].archiver.args, allow_args = True)
+    rustc, rustc_macros = ctx.actions.write("rustc.txt", toolchain.compiler.args, allow_args = True)
+    archiver, archiver_macros = ctx.actions.write("ar.txt", ctx.attrs._rust_toolchain[ConfiguredRustToolchainInfo].archiver.args, allow_args = True)
     return [DefaultInfo(default_output = output, other_outputs = [manifest], sub_targets = {
-        "rustc": [DefaultInfo(default_output = rustc)],
-        "ar": [DefaultInfo(default_output = archiver)],
+        "rustc": [DefaultInfo(default_output = rustc, other_outputs = rustc_macros)],
+        "ar": [DefaultInfo(default_output = archiver, other_outputs = archiver_macros)],
     })]
 
 library_closure_probe = cache_guarded_rule(
