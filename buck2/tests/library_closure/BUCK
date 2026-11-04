@@ -1,6 +1,7 @@
 # Authored internal fixture, like the other buck2/tests packages; not a projection.
 load("@prelude//:prelude.bzl", "native")
 load("//buck2/rust:library.bzl", "rust_product_library")
+load("//buck2/platforms:defs.bzl", "host_platform_label")
 
 native.rust_library(
     name = "generic_leaf",
@@ -49,7 +50,7 @@ native.rust_library(
 
 rust_product_library(
     name = "closure", library = ":example_library", recipe = "library-closure-fixture/v1",
-    target_platform = "//buck2/platforms:host_platform",
+    target_platform = host_platform_label(),
 )
 
 native.rust_library(
