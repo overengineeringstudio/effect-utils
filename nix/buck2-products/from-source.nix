@@ -2,6 +2,47 @@
   pkgs,
   buck2,
 }:
+let
+  lib = pkgs.lib;
+  # All cache products use the same unscoped repository projection. Keep both
+  # dependency discovery and toSource outside the per-product function.
+  unscopedSource =
+    repositoryRoot: cargoWorkspaceRoot:
+    lib.fileset.toSource {
+      root = repositoryRoot;
+      fileset = lib.fileset.unions (
+        [
+          (repositoryRoot + "/.buckconfig")
+          (repositoryRoot + "/.buckroot")
+          (repositoryRoot + "/.watchmanconfig")
+          (repositoryRoot + "/BUCK")
+          (repositoryRoot + "/package.json")
+          (repositoryRoot + "/pnpm-workspace.yaml")
+          (repositoryRoot + "/rust-toolchain.toml")
+          (repositoryRoot + "/.oxfmtrc.json")
+          (repositoryRoot + "/.oxlintrc.json")
+          (repositoryRoot + "/buck2-member.json")
+          (repositoryRoot + "/context")
+          (repositoryRoot + "/genie/weaver-registry")
+          (repositoryRoot + "/devenv.lock")
+          (repositoryRoot + "/devenv.yaml")
+          (repositoryRoot + "/flake.lock")
+          (repositoryRoot + "/flake.nix")
+          (repositoryRoot + "/megarepo.kdl")
+          (repositoryRoot + "/megarepo.lock")
+          (repositoryRoot + "/patches")
+          (repositoryRoot + "/nix/weaver-flake/flake.nix")
+          (repositoryRoot + "/scripts")
+          (lib.fileset.unions (import ./buck-inputs.nix { inherit lib repositoryRoot; }))
+          (repositoryRoot + "/packages/@overeng")
+        ]
+        ++ lib.optionals (cargoWorkspaceRoot != null) [
+          (repositoryRoot + "/${cargoWorkspaceRoot}")
+        ]
+      );
+    };
+  defaultSource = unscopedSource ../.. null;
+in
 
 {
   capabilities,
@@ -30,7 +71,6 @@
 }:
 
 let
-  lib = pkgs.lib;
   watcherPolicies = import ./watcher-policies.nix;
   cargoWorkspaceRoot = product.cargoWorkspaceRoot or null;
   # Cargo manifests in consumer roots live in repositorySource, which can be a
@@ -47,40 +87,10 @@ let
       }
     else if repositorySource != null then
       repositorySource
+    else if repositoryRoot == ../.. && cargoWorkspaceRoot == null then
+      defaultSource
     else
-      lib.fileset.toSource {
-        root = repositoryRoot;
-        fileset = lib.fileset.unions (
-          [
-            (repositoryRoot + "/.buckconfig")
-            (repositoryRoot + "/.buckroot")
-            (repositoryRoot + "/.watchmanconfig")
-            (repositoryRoot + "/BUCK")
-            (repositoryRoot + "/package.json")
-            (repositoryRoot + "/pnpm-workspace.yaml")
-            (repositoryRoot + "/rust-toolchain.toml")
-            (repositoryRoot + "/.oxfmtrc.json")
-            (repositoryRoot + "/.oxlintrc.json")
-            (repositoryRoot + "/buck2-member.json")
-            (repositoryRoot + "/context")
-            (repositoryRoot + "/genie/weaver-registry")
-            (repositoryRoot + "/devenv.lock")
-            (repositoryRoot + "/devenv.yaml")
-            (repositoryRoot + "/flake.lock")
-            (repositoryRoot + "/flake.nix")
-            (repositoryRoot + "/megarepo.kdl")
-            (repositoryRoot + "/megarepo.lock")
-            (repositoryRoot + "/patches")
-            (repositoryRoot + "/nix/weaver-flake/flake.nix")
-            (repositoryRoot + "/scripts")
-            (lib.fileset.unions (import ./buck-inputs.nix { inherit lib repositoryRoot; }))
-            (repositoryRoot + "/packages/@overeng")
-          ]
-          ++ lib.optionals (cargoWorkspaceRoot != null) [
-            (repositoryRoot + "/${cargoWorkspaceRoot}")
-          ]
-        );
-      };
+      unscopedSource repositoryRoot cargoWorkspaceRoot;
   sourceDigest = builtins.hashString "sha256" (toString source);
   # Rust projections rendered with `cliBuildStamp` read this JSON through
   # `build_identity.cli_build_stamp`. Scoped native recipes have no Git

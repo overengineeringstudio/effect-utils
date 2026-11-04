@@ -55,9 +55,11 @@ let
       [ ]
     else
       let
-        text = lib.concatStringsSep "\n" (
-          map (line: builtins.head (lib.splitString "#" line)) (
-            lib.splitString "\n" (builtins.readFile (repositoryRoot + "/${path}"))
+        # Strip comments in one pass. Splitting every generated BUCK line and
+        # then splitting it again at '#' dominates evaluator allocations.
+        text = builtins.concatStringsSep "" (
+          builtins.filter builtins.isString (
+            builtins.split "#[^\n]*" (builtins.readFile (repositoryRoot + "/${path}"))
           )
         );
         # Entrypoint packages also declare tests. Only their rule loads are

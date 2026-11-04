@@ -61,6 +61,9 @@ source-package BUCK files. Loading a `.bzl` file does not pull in that directory
 unrelated BUCK package. The bundled Prelude and generated capability cell remain
 separate tool inputs. Test trees, fixtures and test modules are rejected if
 reachable, rather than silently copied into every recipe.
+The source-product factory shares the default repository projection across cache
+products, including dependency discovery and `toSource`; product selection must
+not rerun this repository-wide work for each inventory entry.
 
 `bash nix/buck2-products/root-projection.test.sh "$PWD"` checks that removing
 `buck2/tests/**` leaves the root projection hash unchanged. Completeness is
