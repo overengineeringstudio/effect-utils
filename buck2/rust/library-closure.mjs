@@ -3,7 +3,7 @@ import { execFileSync } from 'node:child_process'
 import { copyFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { basename, join, resolve } from 'node:path'
 
-const [manifestPath, output, metadataPath, rustc] = process.argv.slice(2)
+const [manifestPath, output, metadataPath, rustc, linker] = process.argv.slice(2)
 const { primary, artifacts, targetTriple, hostTriple, panicStrategy } = JSON.parse(
   readFileSync(manifestPath, 'utf8'),
 )
@@ -59,6 +59,41 @@ if (
 }
 if (crateName === undefined || ['unwind', 'abort'].includes(panicStrategy) === false)
   throw new Error('Missing primary or invalid panic strategy')
+// Check the produced closure, not flags or environment that producers can override.
+// The identity compiler bypasses Nix wrapper flag injection during this check.
+const scratch = resolve(process.env.BUCK_SCRATCH_PATH)
+mkdirSync(scratch, { recursive: true })
+const source = join(scratch, 'panic-probe.rs')
+// Explicit aliases force rustc to load even declared-but-unused dependencies,
+// including host macros and multiple hashes of the same crate name.
+const probeCrates = [...destinations.keys()]
+  .filter((name) => /\.(rlib|so|dylib|dll)$/.test(name))
+  .toSorted()
+  .map((name, index) => ({ alias: `closure_crate_${index}`, path: join(output, name) }))
+writeFileSync(
+  source,
+  probeCrates.map(({ alias }) => `extern crate ${alias};\n`).join('') + 'fn main() {}\n',
+)
+execFileSync(
+  join(compiler.compilerStorePath, 'bin/rustc'),
+  [
+    '--edition=2024',
+    '--crate-name=library_panic_probe',
+    source,
+    ...probeCrates.flatMap(({ alias, path }) => ['--extern', `${alias}=${path}`]),
+    '-L',
+    `dependency=${output}`,
+    `-Cpanic=${panicStrategy}`,
+    '--sysroot',
+    compiler.sysroot,
+    '--target',
+    targetTriple,
+    `-Clinker=${linker}`,
+    '-o',
+    join(scratch, 'panic-probe'),
+  ],
+  { stdio: 'inherit' },
+)
 writeFileSync(
   metadataPath,
   JSON.stringify({ crateName, targetTriple, hostTriple, panicStrategy, rustc: compiler }) + '\n',
