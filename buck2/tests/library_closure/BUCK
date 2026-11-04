@@ -78,3 +78,17 @@ for route, overrides in [
         recipe = "library-panic-rejection/v1",
         target_platform = host_platform_label(),
     )
+    # generic.rs never mentions this dependency: only the closure probe loads it.
+    native.rust_library(
+        name = "unused_panic_" + route,
+        crate_root = "generic.rs",
+        srcs = ["generic.rs"],
+        deps = [":panic_" + route],
+        edition = "2024",
+    )
+    rust_product_library(
+        name = "reject_panic_unused_" + route,
+        library = ":unused_panic_" + route,
+        recipe = "library-unused-panic-rejection/v1",
+        target_platform = host_platform_label(),
+    )
