@@ -35,7 +35,7 @@ platform authority.
 repository-local closed lowercase tag `executable | library`; unknown tags and
 tag/payload mismatches fail analysis. Library payloads carry the flat closure,
 crate identity, compiler metadata and effective configured panic strategy.
-The compiler identity is the underlying `pkgs.rustc` output store path; Nix
+The compiler identity is the `pkgs.rustc.unwrapped` output store path; Nix
 captures its normalized `-vV` and canonical sysroot once. Darwin SDK wrapper
 paths are provenance only, not compiler identity (BUILD.BUCK.PLAT-R01/R02/R05).
 

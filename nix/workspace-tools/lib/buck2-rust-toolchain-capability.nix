@@ -70,12 +70,18 @@ let
     wasm-opt = "wasm-opt";
   };
   # Identity is the underlying compiler output, never either invocation wrapper.
+  compilerStorePath = toString pkgs.rustc.unwrapped;
   compilerIdentity = pkgs.runCommand "buck2-rust-compiler-identity.json" { } ''
-    ${pkgs.rustc}/bin/rustc -vV > version
-    sysroot="$(${pkgs.rustc}/bin/rustc --print sysroot)"
+    ${compilerStorePath}/bin/rustc -vV > version
+    sysroot="$(${compilerStorePath}/bin/rustc --print sysroot)"
+    sysroot="$(${pkgs.coreutils}/bin/readlink -f "$sysroot")"
+    [ "$sysroot" = ${lib.escapeShellArg compilerStorePath} ] || {
+      echo "Underlying rustc sysroot does not match compilerStorePath: $sysroot" >&2
+      exit 1
+    }
     ${pkgs.jq}/bin/jq -n --rawfile version version \
-      --arg compilerStorePath ${lib.escapeShellArg (toString pkgs.rustc)} \
-      --arg sysroot "$(${pkgs.coreutils}/bin/readlink -f "$sysroot")" \
+      --arg compilerStorePath ${lib.escapeShellArg compilerStorePath} \
+      --arg sysroot "$sysroot" \
       --arg darwinWrapperEvidence ${
         lib.escapeShellArg (
           if darwinCapability != null then "${darwinCapability.compiler}/bin/rustc" else ""
