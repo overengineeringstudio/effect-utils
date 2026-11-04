@@ -96,8 +96,9 @@ let
         inherit lib repositoryRoot;
         extraEntryTargets = entryTargets;
       };
+  # Caller-owned rule derivations have no evaluable repository closure to extend.
   rulesProjection =
-    if rootProjection == null || covered then
+    if rootProjection == null || lib.isDerivation rootProjection || covered then
       rootProjection
     else
       import ./root-projection.nix { inherit pkgs repositoryRoot buckInputs; };
@@ -119,6 +120,18 @@ let
       defaultSource
     else
       unscopedSource repositoryRoot cargoWorkspaceRoot buckInputs;
+  # Membership follows the projection's own source/filter, without realizing it.
+  containsFile =
+    projection: relative:
+    builtins.isAttrs projection
+    && projection ? origSrc
+    && projection ? filter
+    && (
+      let
+        file = projection.origSrc + "/${relative}";
+      in
+      builtins.pathExists file && projection.filter (toString file) "regular"
+    );
   sourceDigest = builtins.hashString "sha256" (toString source);
   # Rust projections rendered with `cliBuildStamp` read this JSON through
   # `build_identity.cli_build_stamp`. Scoped native recipes have no Git
@@ -194,15 +207,7 @@ assert lib.assertMsg (
 assert lib.assertMsg (
   repositorySource != null
   || builtins.all (
-    package:
-    let
-      file = repositoryRoot + "/${package}/BUCK";
-    in
-    builtins.pathExists file
-    && (
-      source.filter (toString file) "regular"
-      || (rulesProjection != null && rulesProjection.filter (toString file) "regular")
-    )
+    package: containsFile source "${package}/BUCK" || containsFile rulesProjection "${package}/BUCK"
   ) entryPackages
 ) "buck2-products: entry package BUCK missing from product projection";
 assert lib.assertMsg (

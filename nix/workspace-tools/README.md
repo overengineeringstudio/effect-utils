@@ -56,7 +56,7 @@ descriptor digest and evaluation-time validation unchanged.
 
 `buck2-products/buck-inputs.nix` follows literal load/export/helper dependencies;
 test inputs fail. Cache products share one projection; uncovered entries extend it.
-Entry assertions use repository paths and the projection's eval-time filter, never realized store contents.
+Entry assertions use each projection's original source and eval-time filter, never realized store contents. Caller-owned rule derivations are retained as supplied; their opaque outputs cannot prove entry membership, so the scoped source must contain the entry `BUCK`.
 The isolation regression varies the Git-filtered flake source, excluding unrelated ignored activation state from both sides of the comparison.
 Run `bash nix/buck2-products/root-projection.test.sh "$PWD"` and sandboxed product
 builds for input isolation, real-input sensitivity and projection completeness.
