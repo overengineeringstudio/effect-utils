@@ -516,7 +516,7 @@ describe('generated CI cache trust behavior', () => {
       new URL('../ci-scripts/compiled-products.sh', import.meta.url),
     ).text()
     expect(script).toContain('refs=(.#ci-test-shell-products .#buck2-rules)')
-    expect(script.match(/\bnix build\b/g)).toHaveLength(1)
+    expect(script.match(/\bnix build\b/g)).toHaveLength(2)
     expect(script).toContain('--json "${refs[@]}"')
     expect(script).toContain('cachix push overeng-effect-utils $outputs')
     expect(script).toContain('if [ "$matches" -ne 1 ]; then')
@@ -568,7 +568,13 @@ describe('generated CI cache trust behavior', () => {
       })
       executable({
         path: join(work, 'tools/nix'),
-        content: 'printf \'%s\\n\' "$*" >> "$NIX_LOG"\nprintf \'%s\\n\' "$BUILD_JSON"',
+        content: `printf '%s\\n' "$*" >> "$NIX_LOG"
+if [[ "$*" = *'--log-format raw'* ]]; then
+  printf "building '/fake/input.drv'...\\ncopying path '/fake/output' from 'cache'...\\n" >&2
+  printf '%s\\n' "$BUILD_JSON"
+  exit "\${BUILD_STATUS:-0}"
+fi
+printf '%s\\n' "$BUILD_JSON"`,
       })
       executable({
         path: join(work, 'tools/cachix'),
@@ -579,10 +585,12 @@ describe('generated CI cache trust behavior', () => {
         args,
         selectedOutputs = outputs,
         failProduct = '',
+        buildStatus = 0,
       }: {
         args: string[]
         selectedOutputs?: string[]
         failProduct?: string
+        buildStatus?: number
       }) => {
         for (const path of Object.values(logs)) writeFileSync(path, '')
         return Bun.spawnSync({
@@ -596,11 +604,25 @@ describe('generated CI cache trust behavior', () => {
               selectedOutputs.map((out) => ({ drvPath: `${out}.drv`, outputs: { out } })),
             ),
             FAIL_PRODUCT: failProduct,
+            BUILD_STATUS: String(buildStatus),
           },
           stdout: 'pipe',
           stderr: 'pipe',
         })
       }
+      const build = run({ args: ['--build-only'] })
+      expect(build.exitCode).toBe(0)
+      expect(build.stdout.toString()).toMatch(
+        /product build: duration=\d+s built=1 substituted=1 status=0/,
+      )
+      expect(readFileSync(logs.NIX_LOG, 'utf8').trim().split('\n')).toEqual([
+        'build --no-link --print-build-logs --log-format raw --json .#ci-test-shell-products .#buck2-rules .#compiled-one-compiled .#compiled-two-compiled .#native-one',
+      ])
+      expect(readFileSync(logs.SMOKE_LOG, 'utf8')).toBe('')
+      expect(readFileSync(logs.CACHE_LOG, 'utf8')).toBe('')
+      const failedBuild = run({ args: ['--build-only'], buildStatus: 7 })
+      expect(failedBuild.exitCode).toBe(7)
+      expect(failedBuild.stdout.toString()).toContain('built=1 substituted=1 status=7')
       for (const args of [[], ['--push']]) {
         expect(run({ args }).exitCode).toBe(0)
         expect(readFileSync(logs.NIX_LOG, 'utf8').trim().split('\n')).toEqual([
