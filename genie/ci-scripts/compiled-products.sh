@@ -51,6 +51,7 @@ for inventory in nix/buck2-products/compiled-targets.json nix/buck2-products/nat
 done
 # Publication-interface proof is deliberately two-stage: first realize source,
 # then evaluate the public archive+descriptor importer against that known path.
+# Run in build-only preparation; smoke need not repeat this realized check.
 library_roundtrips() {
   local index name source
   for index in "${!product_names[@]}"; do
@@ -78,7 +79,6 @@ if $build_only; then
 fi
 build_json=$(nix build --no-link --print-build-logs --json "${refs[@]}")
 outputs=$(jq -er '.[] | .outputs.out // error("product build has no out output")' <<<"$build_json")
-library_roundtrips
 
 # Nix JSON reports derivations/outputs, not installable names. Match each
 # inventory row by its executable rather than relying on result ordering.

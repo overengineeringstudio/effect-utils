@@ -97,11 +97,12 @@ buildInputs = pkgs.lib.optionals pkgs.stdenv.hostPlatform.isDarwin [
 
 It uses the product contract's flat `--extern`/`-L dependency` invocation,
 without an unwrapped compiler, explicit linker flag or extra dependency externs.
-`compiled-products.sh` builds this acceptance on Linux and Darwin. After source
-realization it imports the known archive and descriptor through
+`compiled-products.sh --build-only` builds this acceptance on Linux and Darwin.
+After source realization it imports the known archive and descriptor through
 `lib.mkBuck2ArtifactImport`, checks descriptor/inventory/compiler parity, runs
 the same consumer, and rejects a descriptor changed without updating its digest.
 This two-stage local publication-interface test requires no import-from-derivation.
+The subsequent smoke phase does not repeat this realized roundtrip.
 Native/library publication uses source products plus Cachix substitution;
 `publish.sh`'s manifest/descriptor publication supports JavaScript/package rows,
 not native/library rows or a hosted library descriptor registry.
