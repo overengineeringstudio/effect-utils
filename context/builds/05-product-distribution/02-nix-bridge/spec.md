@@ -86,6 +86,24 @@ Cargo projector selects `buildProducts: [{ kind: 'library', name: 'example-libra
 `lib.mkBuck2CargoArchives` receives the consumer's generated third-party BUCK
 files (and pinned `gitSources` where declared). No Cargo build fallback exists.
 
+Foreign path crates are instantiated by the consumer's Cargo projection against
+its own third-party graph. Their source packages need only `cargo-source/<file>`
+exports, not the producer's compile, static-check or product rules. A library's
+`BUCK.foreign.bzl.genie.ts` selects `foreignSourceExportsOnly: true` in the same
+Cargo package projector; Genie emits `BUCK.foreign.bzl` with exactly the ordinary
+projection's source exports and only the standard `@prelude` native load.
+The ordinary producer `BUCK` remains unchanged.
+
+Stage each foreign crate's sources and copy its generated `BUCK.foreign.bzl` to
+`BUCK` at that crate's repository-relative path in the consumer source tree.
+Do not retain the producer `BUCK` there: its root-local rule loads need not
+exist in `mkConsumerBuckRoot`. Declare the complete foreign path closure in
+`foreign-packages.json`; each admitted library in that closure needs its own
+generated export projection. `rust/work-storage` supplies this projection and
+has no further path-crate dependencies. Explicit cross-package build-script or
+compile-time inputs still require their declared source providers; they are
+not implicitly exported by the crate's source-only projection.
+
 The plain consumer derivation declares exactly:
 
 ```nix

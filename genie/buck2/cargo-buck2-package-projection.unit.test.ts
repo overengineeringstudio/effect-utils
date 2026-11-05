@@ -7,6 +7,7 @@ import { describe, expect, it } from 'vitest'
 
 import {
   type CargoBuck2PackageProjectionOptions,
+  cargoBuck2PackageProjection,
   defineCargoBuck2PackageProjection,
 } from '../../rust/buck2-tools/core/cargo-buck2-package-projection.ts'
 
@@ -146,6 +147,8 @@ const renderCargoFixture = ({
   readonly prepareFixture?: (root: string) => void
 }): string => {
   const root = mkdtempSync(path.join(tmpdir(), 'cargo-projection-discovery-'))
+  const projectionFilename =
+    projectOptions.foreignSourceExportsOnly === true ? 'BUCK.foreign.bzl.genie.ts' : 'BUCK.genie.ts'
   const write = (relativePath: string, content: string) => {
     mkdirSync(path.dirname(path.join(root, relativePath)), { recursive: true })
     writeFileSync(path.join(root, relativePath), content)
@@ -220,6 +223,8 @@ const renderCargoFixture = ({
       }
       for (const file of member.files) write(`rust/${memberPath}/${file}`, '// fixture\n')
       write(`rust/${memberPath}/BUCK.genie.ts`, '// Runtime-only projection fixture.\n')
+      if (projectionFilename !== 'BUCK.genie.ts')
+        write(`rust/${memberPath}/${projectionFilename}`, '// Foreign source projection fixture.\n')
     }
     prepareFixture?.(root)
     const project = defineCargoBuck2PackageProjection({
@@ -233,12 +238,76 @@ const renderCargoFixture = ({
     })
     return project({
       ...projectOptions,
-      sourceUrl: pathToFileURL(path.join(root, 'rust', render, 'BUCK.genie.ts')).href,
+      sourceUrl: pathToFileURL(path.join(root, 'rust', render, projectionFilename)).href,
     }).stringify({ cwd: root, location: '' })
   } finally {
     rmSync(root, { recursive: true, force: true })
   }
 }
+
+describe('foreign Cargo source exports', () => {
+  it('exports the same complete library inputs without producer rules or dependencies', () => {
+    const fixture = {
+      members: {
+        pkg: {
+          manifest: '[package]\nname = "pkg"',
+          files: [
+            'src/lib.rs',
+            'src/main.rs',
+            'tests/probe.rs',
+            'build.rs',
+            'schema.json',
+            'config.txt',
+          ],
+        },
+      },
+      render: 'pkg',
+      projectOptions: {
+        buildScriptInputs: [{ path: 'rust/pkg/config.txt' }],
+        compileTimeResources: [{ path: 'rust/pkg/schema.json' }],
+      },
+    } as const
+    const normal = renderCargoFixture(fixture)
+    const foreign = renderCargoFixture({
+      ...fixture,
+      projectOptions: { ...fixture.projectOptions, foreignSourceExportsOnly: true },
+    })
+    const exports = [...foreign.matchAll(/native\.export_file\([\s\S]*?\n\)/g)]
+    expect(exports.map(([rule]) => rule)).toEqual(
+      [...normal.matchAll(/native\.export_file\([\s\S]*?\n\)/g)].map(([rule]) => rule),
+    )
+    expect(exports).toHaveLength(6)
+    expect(foreign.match(/^load\(.*$/gm)).toEqual(['load("@prelude//:prelude.bzl", "native")'])
+    expect(foreign).not.toMatch(
+      /static_source_set|rust_library|rust_binary|buildscript_run|\/\/buck2/,
+    )
+    expect(foreign).toContain('cargo-source/src/main.rs') // Preserve the producer's complete src/ census.
+    expect(foreign).not.toContain('cargo-source/tests/probe.rs')
+    expect(foreign).toContain('cargo-source/config.txt')
+    expect(foreign).toContain('cargo-source/schema.json')
+  })
+
+  it('rejects a binary-only package rather than emitting an empty foreign source package', () => {
+    expect(() =>
+      renderCargoFixture({
+        members: { pkg: { manifest: '[package]\nname = "pkg"', files: ['src/main.rs'] } },
+        render: 'pkg',
+        projectOptions: { foreignSourceExportsOnly: true },
+      }),
+    ).toThrow('Foreign source exports require a Cargo library target')
+  })
+
+  it('makes work-storage source exports loadable without the producer root-local rules', () => {
+    const rendered = cargoBuck2PackageProjection({
+      sourceUrl: new URL('../../rust/work-storage/BUCK.foreign.bzl.genie.ts', import.meta.url).href,
+      foreignSourceExportsOnly: true,
+    }).stringify({ cwd: '', location: '' })
+    expect(rendered.match(/^load\(.*$/gm)).toEqual(['load("@prelude//:prelude.bzl", "native")'])
+    for (const file of ['Cargo.toml', 'build.rs', 'src/lib.rs'])
+      expect(rendered).toContain(`name = "cargo-source/${file}"`)
+    expect(rendered).not.toMatch(/static_source_set|cargo_build_script|\/\/buck2/)
+  })
+})
 
 describe('Cargo compile-time resources', () => {
   const renderResource = (
