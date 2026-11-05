@@ -2396,6 +2396,52 @@ export default ciWorkflow({
       ),
       // Isolated pnpm consumer: no checkout-native Buck or root-shell cache evidence.
       'consumer-smoke': consumerSmokeJob!,
+      // Cache warming bypasses telemetry/artifact adapters and never gates promotion.
+      ...withNixRealisationTimeouts(
+        {
+          'publish-compile-products': {
+            needs: ['publish-products'],
+            if: `(${trustedSecretCiIf.replace(/^\$\{\{\s*|\s*\}\}$/g, '')}) && (${sameRepoPullRequestGuard()})`,
+            'runs-on': linuxX64Runner,
+            concurrency: { group: 'publish-compile-products-main', 'cancel-in-progress': true },
+            'timeout-minutes': 30,
+            'continue-on-error': true,
+            permissions: { contents: 'read' },
+            defaults: bashShellDefaults,
+            steps: [
+              checkoutStep(),
+              installNixStep({ binaryCaches: [binaryCache] }),
+              linuxSandboxPrerequisitesStep({ privileged: 'always' }),
+              cachixCliBuildStep,
+              cachixPushStep({
+                jobIf: trustedSecretCiIf,
+                triggers: ['push', 'workflow_dispatch'],
+                authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}',
+                step: {
+                  name: 'Publish unstamped compile outputs',
+                  env: {
+                    ...githubTokenEnv(),
+                    XDG_CONFIG_HOME:
+                      '${{ runner.temp }}/compile-cachix-${{ github.run_id }}-${{ github.run_attempt }}',
+                  },
+                  run: withCiSourceRoot(
+                    'mkdir -p "$XDG_CONFIG_HOME"\nbash genie/ci-scripts/publish-compile-products.sh',
+                  ),
+                },
+              }),
+              {
+                name: 'Remove isolated compile Cachix configuration',
+                if: 'always()',
+                run: [
+                  'config="${RUNNER_TEMP:?}/compile-cachix-${GITHUB_RUN_ID:?}-${GITHUB_RUN_ATTEMPT:?}"',
+                  'if [ -d "$config" ]; then rm -r -- "$config"; fi',
+                ].join('\n'),
+              },
+            ],
+          },
+        },
+        nixRealisationTimingsSeconds,
+      ),
     },
     // Protected queue heads and fallback main pushes warm the cache opportunistically.
     // PR jobs never receive writer credentials; the dedicated main proof remains strict.
