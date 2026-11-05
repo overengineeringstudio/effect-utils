@@ -424,13 +424,13 @@ manifest PRs, and the identical least-privilege permission set serves both.
 Each publisher mints a token with its own repository explicitly selected, never
 an installation-wide token or a token for the other repository.
 
-| Ordered evidence | Decision |
-| --- | --- |
-| API error, malformed/truncated check evidence | Keep, exit success; retry next publication |
-| No PR / queued / conflict / current-head ejection | Refresh / keep / refresh / refresh |
-| UNKNOWN mergeability | Keep through 180 minutes from head push; then refresh `stale-unknown` |
-| Latest CheckRun FAILURE/TIMED_OUT/STARTUP_FAILURE/ACTION_REQUIRED or StatusContext FAILURE/ERROR | Refresh `failed` |
-| Draft / green / pending or inconclusive checks / missing rollup | Keep / keep / keep through 180 minutes then refresh `stale-pending` / keep |
+| Ordered evidence                                                                                 | Decision                                                                   |
+| ------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------- |
+| API error, malformed/truncated check evidence                                                    | Keep, exit success; retry next publication                                 |
+| No PR / queued / conflict / current-head ejection                                                | Refresh / keep / refresh / refresh                                         |
+| UNKNOWN mergeability                                                                             | Keep through 180 minutes from head push; then refresh `stale-unknown`      |
+| Latest CheckRun FAILURE/TIMED_OUT/STARTUP_FAILURE/ACTION_REQUIRED or StatusContext FAILURE/ERROR | Refresh `failed`                                                           |
+| Draft / green / pending or inconclusive checks / missing rollup                                  | Keep / keep / keep through 180 minutes then refresh `stale-pending` / keep |
 
 Health reads use workflow `GITHUB_TOKEN` (`pull-requests:read`, `checks:read`, existing `statuses:write`); the unchanged App is minted only for refresh writes. Only latest entries per check name/context count: cancellation, skip, neutral and stale conclusions are not failures; missing head time prevents grace expiry, and missing/ambiguous timeline evidence cannot prove ejection (latest queue removal must postdate current-head committed/pushed/force-push time among the last 100 relevant events). The queue tests latest main and the next publication after merge proposes newer products, so slightly older manifests are preferable to restarting CI on every main move.
 
