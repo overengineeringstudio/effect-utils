@@ -100,7 +100,9 @@ let
       };
   # Caller-owned rule derivations have no evaluable repository closure to extend.
   rulesProjection =
-    if rootProjection == null || lib.isDerivation rootProjection || covered then
+    if rootProjection == null && sourcePaths != null then
+      import ./root-projection.nix { inherit pkgs repositoryRoot buckInputs; }
+    else if rootProjection == null || lib.isDerivation rootProjection || covered then
       rootProjection
     else
       import ./root-projection.nix { inherit pkgs repositoryRoot buckInputs; };
@@ -209,7 +211,7 @@ assert lib.assertMsg
   )
   "buck2-products: sourcePaths must be nonempty safe relative paths and cannot be combined with repositorySource";
 assert lib.assertMsg (
-  (sourcePaths == null) == (rootProjection == null)
+  (sourcePaths == null) == (rulesProjection == null)
 ) "buck2-products: scoped sourcePaths require a separate rootProjection";
 assert lib.assertMsg (
   repositorySource != null

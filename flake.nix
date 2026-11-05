@@ -81,7 +81,6 @@ rec {
         pnpmArchives = import ./nix/buck2-products/pnpm-archives.nix { inherit pkgs; };
         buckProductsFromSource = import ./nix/buck2-products/source-recipes.nix {
           inherit
-            pkgs
             mkBuckProductFromSource
             pnpmArchives
             ;
