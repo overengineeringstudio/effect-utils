@@ -237,7 +237,7 @@ assert lib.assertMsg (
   )
 ) "buck2-products: cliBuildStamp must be a non-empty single-line string";
 let
-  sourceProduct = pkgs.stdenv.mkDerivation {
+  compileProduct = pkgs.stdenv.mkDerivation {
     pname = "${safeName}-buck2-from-source";
     version = product.version or "0.0.0";
     src = source;
@@ -350,28 +350,13 @@ let
       ${lib.optionalString (expectedSha256 != null) ''
         test "$actual_sha256" = ${lib.escapeShellArg expectedSha256}
       ''}
-      ${
-        if producerCommit == null then
-          ''
-            jq -nS \
-              --arg schema 'effect-utils/buck-product-source-provenance/v1' \
-              --arg sourceDigest ${lib.escapeShellArg sourceDigest} \
-              --arg target ${lib.escapeShellArg target} \
-              --arg productDigest "$actual_sha256" \
-              '{schema:$schema,sourceDigest:$sourceDigest,target:$target,productDigest:$productDigest}' \
-              > provenance.json
-          ''
-        else
-          ''
-            jq -nS \
-              --arg schema 'effect-utils/buck-product-provenance/v1' \
-              --arg producerCommit ${lib.escapeShellArg producerCommit} \
-              --arg target ${lib.escapeShellArg target} \
-              --arg productDigest "$actual_sha256" \
-              '{schema:$schema,producerCommit:$producerCommit,target:$target,productDigest:$productDigest}' \
-              > provenance.json
-          ''
-      }
+      jq -nS \
+        --arg schema 'effect-utils/buck-product-source-provenance/v1' \
+        --arg sourceDigest ${lib.escapeShellArg sourceDigest} \
+        --arg target ${lib.escapeShellArg target} \
+        --arg productDigest "$actual_sha256" \
+        '{schema:$schema,sourceDigest:$sourceDigest,target:$target,productDigest:$productDigest}' \
+        > provenance.json
       runHook postBuild
     '';
 
@@ -402,11 +387,21 @@ let
         sourcePaths
         target
         runtimeClosureTarget
+        compileProduct
+        recipeIdentity
         ;
       rootProjection = rulesProjection;
       artifactName = outputName;
       inherit productName;
       productKind = product.kind;
+      sourceEvidence =
+        pkgs.runCommand "${safeName}-source-evidence" { nativeBuildInputs = [ pkgs.jq ]; }
+          ''
+            mkdir -p "$out"
+            jq -S --arg recipeIdentity ${lib.escapeShellArg recipeIdentity} \
+              '{schema:"effect-utils/buck-product-source-evidence/v1",recipeIdentity:$recipeIdentity,target,productDigest}' \
+              ${sourceProduct}/provenance.json > "$out/source-evidence.json"
+          '';
       expectedProductSha256 = expectedSha256;
       # The only source JavaScript import entry point. Consumer facts are
       # static; no descriptor or provenance output is read during evaluation.
@@ -464,6 +459,26 @@ let
         };
     };
   };
+  recipeIdentity = builtins.hashString "sha256" compileProduct.drvPath;
+  # Only provenance is revision-stamped; compilation is shared by identical trees.
+  sourceProduct =
+    if producerCommit == null then
+      compileProduct
+    else
+      pkgs.runCommand compileProduct.name
+        {
+          inherit (compileProduct) pname version passthru;
+          nativeBuildInputs = [ pkgs.jq ];
+        }
+        ''
+          mkdir -p "$out"
+          # Cachix artifacts and the publisher require regular files, not symlinks.
+          cp -R --reflink=auto ${compileProduct}/. "$out/"
+          chmod u+w "$out/provenance.json"
+          jq --arg producerCommit ${lib.escapeShellArg producerCommit} \
+            '. + {schema:"effect-utils/buck-product-provenance/v1",producerCommit:$producerCommit} | del(.sourceDigest)' \
+            ${compileProduct}/provenance.json > "$out/provenance.json"
+        '';
 in
 if importNative then
   (import ../workspace-tools/lib/buck2-artifact-realize.nix { inherit pkgs; }) {
