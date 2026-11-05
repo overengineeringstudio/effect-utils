@@ -279,10 +279,12 @@ a publication lock or `check`. Receipts bind graph/scope, authority, immutable
 snapshot identities, publisher/verifier sources, and HEAD plus dirty contents.
 Git identity uses porcelain-v2 changed-file metadata plus streaming hashes of only
 changed tracked and nonignored untracked publication inputs: selected package
-trees (including bootstrap), root manifests/lockfiles, Buck configuration, and
-publisher/task sources. The root `.` scope selects bootstrap inputs, not the
-entire worktree; unrelated CI artifacts and changes outside selected packages do
-not invalidate a receipt. Publication outputs (`.editor-view`, `.devenv`, and
+trees and their transitive workspace dependencies (including bootstrap), root
+manifests/lockfiles, Buck configuration, and publisher/task sources. Closure paths
+come from the publisher's lockfile importer/root Buck alias resolver; an unproven
+closure cannot issue a receipt. The root `.` scope does not select the entire
+worktree; unrelated CI artifacts and changes outside that closure do not
+invalidate a receipt. Publication outputs (`.editor-view`, `.devenv`, and
 `node_modules` at every depth) are excluded independently of ignore rules.
 No binary diffs or raw-tree reads are needed, and missing receipts return before
 computing a fingerprint. Input drift logs at most ten changed paths plus whether
