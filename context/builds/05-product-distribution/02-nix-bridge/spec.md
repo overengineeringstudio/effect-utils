@@ -62,7 +62,8 @@ evidence, sysroot, target triple and panic strategy against the consumer's
 declared toolchain. A mismatch prints both identities and fails without a
 compiler fallback. Passthrough metadata exposes the checked compiler, target,
 panic strategy and descriptor path. The product's `libraryChecks` passthrough
-builds an external rustc consumer against fixed-up metadata and installed proc macros.
+builds an external consumer with the checked unwrapped rustc and stdenv linker,
+including Darwin SDK/iconv, against fixed-up metadata and installed proc macros.
 Its `.mismatch` requires a mismatched import to fail with the compiler diagnostic and
 both identities. Publication follows both checks; executables retain `--help`.
 

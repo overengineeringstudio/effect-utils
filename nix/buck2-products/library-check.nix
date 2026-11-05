@@ -3,9 +3,9 @@ let
   source = product.buck2Product;
   realize = import ../workspace-tools/lib/buck2-artifact-realize.nix { inherit pkgs; };
 in
-pkgs.runCommand "buck2-installed-library-consumer"
+pkgs.runCommandCC "buck2-installed-library-consumer"
   {
-    nativeBuildInputs = [ pkgs.stdenv.cc ];
+    buildInputs = pkgs.lib.optional pkgs.stdenv.hostPlatform.isDarwin pkgs.libiconv;
     dontStrip = true;
     passthru.mismatch = realize {
       name = "content-address-core";
@@ -39,7 +39,7 @@ pkgs.runCommand "buck2-installed-library-consumer"
     RS
     serde=(${product}/lib/libserde-*.rlib)
     derive=(${product}/lib/libserde_derive-*)
-    ${product.rustc}/bin/rustc --edition=2024 consumer.rs \
+    ${product.rustc.unwrapped}/bin/rustc --edition=2024 -C linker="$CC" consumer.rs \
       --extern content_address_core=${product}/lib/libcontent_address_core.rlib \
       --extern serde="''${serde[0]}" --extern serde_derive="''${derive[0]}" \
       -L dependency=${product}/lib -o consumer
