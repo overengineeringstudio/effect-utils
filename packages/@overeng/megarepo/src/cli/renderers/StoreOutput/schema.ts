@@ -101,6 +101,7 @@ export const StoreGcResult = Schema.Struct({
   buckDaemonsUnreachable: Schema.optional(Schema.Array(BuckDaemonUnreachable)),
   /** Live daemons whose active work vetoed teardown. */
   buckDaemonsKeptActive: Schema.optional(Schema.Array(BuckDaemonKeptActive)),
+  candidateSha256: Schema.optional(Schema.String),
 })
 
 /** Inferred type for a store GC result. */
