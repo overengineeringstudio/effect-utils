@@ -61,6 +61,7 @@ assert builtins.all activationUsesCompile [
 ];
 assert (stamp cleanA).compileProduct.drvPath == (compile cleanA).drvPath;
 assert (cleanA.gh-settings-genie).drvPath == (cleanB.gh-settings-genie).drvPath;
+assert cleanA.genie.drvPath != cleanB.genie.drvPath;
 assert cleanA.gh-settings-genie.artifactName == (stamp cleanA).artifactName;
 assert
   cleanA.gh-settings-genie.expectedDescriptor == cleanA.genie.checkedDescriptor

@@ -6,6 +6,10 @@
 }:
 let
   compiled = sourceProduct.compileProduct;
+  # Keep provider/runtime validation, but not the public CLI's revision display stamp.
+  runtime = genie.override (args: {
+    environment = builtins.removeAttrs args.environment [ "CLI_BUILD_STAMP" ];
+  });
   expectedDescriptor = genie.checkedDescriptor // {
     externalCapabilities = pkgs.lib.unique (genie.checkedDescriptor.externalCapabilities ++ [ "gh" ]);
   };
@@ -32,11 +36,11 @@ pkgs.runCommand "github-repo-settings-genie"
       contract == ($expected | contract)
     ' ${compiled}/descriptor.json >/dev/null
     mkdir -p "$out/bin" "$out/libexec"
-    cp ${genie}/bin/genie "$out/bin/genie"
+    cp ${runtime}/bin/genie "$out/bin/genie"
     cp ${compiled}/${compiled.artifactName} "$out/libexec/${genie.checkedDescriptor.modulePath}"
-    ln -s ${genie}/libexec/node_modules "$out/libexec/node_modules"
+    ln -s ${runtime}/libexec/node_modules "$out/libexec/node_modules"
     substituteInPlace "$out/bin/genie" \
-      --replace-fail "${genie}/libexec/${genie.checkedDescriptor.modulePath}" \
+      --replace-fail "${runtime}/libexec/${genie.checkedDescriptor.modulePath}" \
         "$out/libexec/${genie.checkedDescriptor.modulePath}"
     wrapProgram "$out/bin/genie" \
       --prefix PATH : ${pkgs.lib.escapeShellArg (pkgs.lib.makeBinPath [ pkgs.gh ])}

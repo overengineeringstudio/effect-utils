@@ -96,7 +96,7 @@ let
   # `oxfmt` is on PATH because genie calls the executable formatter interface.
   # `actionlint`, the export type-proof compiler and the matching TypeScript API
   # server are absolute binaries, so generated-file checks never depend on PATH.
-  genie = mk "genie" {
+  genie = pkgs.lib.makeOverridable (options: mk "genie" options) {
     binaryName = "genie";
     environment = genieProviders.environment // {
       CLI_BUILD_STAMP = buildStamp;
