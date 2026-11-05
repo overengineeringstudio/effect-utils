@@ -1,17 +1,20 @@
 # Run only after the source archive is realized: descriptor reads never cause IFD.
 {
-  flakeRef,
+  repositoryPath,
   productName,
   sourcePath,
   system ? builtins.currentSystem,
 }:
 let
-  flake = builtins.getFlake flakeRef;
+  flake = builtins.getFlake ("git+file://" + repositoryPath + "?shallow=1");
   pkgs = import flake.inputs.nixpkgs { inherit system; };
   contract = import ../workspace-tools/lib/buck2-build-product-contract.nix;
   source = flake.packages.${system}.${productName};
   archiveRoot = builtins.storePath sourcePath;
-  descriptor = builtins.fromJSON (builtins.readFile "${archiveRoot}/descriptor.json");
+  # Identity strings are data; archiveRoot below retains the explicit store dependency.
+  descriptor = builtins.fromJSON (
+    builtins.unsafeDiscardStringContext (builtins.readFile "${archiveRoot}/descriptor.json")
+  );
   importArtifact = flake.lib.mkBuck2ArtifactImport { inherit pkgs; };
   args = {
     inherit descriptor;
@@ -20,15 +23,17 @@ let
     artifact = "${archiveRoot}/artifact.tar";
   };
   published = importArtifact args;
+  tamperedDescriptor = descriptor // {
+    name = "tampered-library";
+  };
   tampered = importArtifact (
     args
     // {
-      descriptor = descriptor // {
-        name = "tampered-library";
-      };
+      descriptor = tamperedDescriptor;
     }
   );
 in
+assert contract.validateDescriptor tamperedDescriptor == tamperedDescriptor;
 assert !(builtins.tryEval tampered.drvPath).success;
 assert toString source.buck2Product == sourcePath;
 assert published.checkedDescriptor == descriptor;
