@@ -440,11 +440,24 @@ const checkWorkspaceContract = ({
   if (Array.isArray(inventory.products) === false)
     throw new Error('native products must be an array')
 
+  // One census owns each product's recipe kind and package; Rust libraries and
+  // Cargo executables share the exact Cargo inventory fields.
+  const recipes: Readonly<
+    Record<string, readonly [kind: 'native' | 'rust-library', packagePath: string, cargo: boolean]>
+  > = {
+    'ci-storage': ['native', 'rust/ci-storage', true],
+    'content-address-core': ['rust-library', 'rust/content-address-core', true],
+    'otel-scrape': ['native', 'packages/@overeng/otel-scrape', true],
+    otelite: ['native', 'packages/@overeng/otelite', true],
+    pingping: ['native', 'packages/@overeng/pingping', true],
+    'typescript-api-server': ['native', 'packages/@overeng/genie', false],
+  }
   const nativeProducts = inventory.products.map((rawEntry, index) => {
     const entry = requireRecord(rawEntry, `native products[${index}]`)
     const name = requireString(entry.name, `native products[${index}].name`)
-    const rust =
-      name === 'ci-storage' || name === 'otelite' || name === 'otel-scrape' || name === 'pingping'
+    const recipe = recipes[name]
+    if (recipe === undefined) throw new Error(`unknown native product: ${name}`)
+    const [kind, packagePath, rust] = recipe
     requireExactFields({
       value: entry,
       fields: [
@@ -483,10 +496,6 @@ const checkWorkspaceContract = ({
       throw new Error(
         `native products[${index}] must declare exactly the TS sandbox capabilities it uses`,
       )
-    const packagePath =
-      name === 'ci-storage'
-        ? 'rust/ci-storage'
-        : `packages/@overeng/${rust === true ? name : 'genie'}`
     const sourcePaths = requireStrings(entry.sourcePaths, `native products[${index}].sourcePaths`)
     requireUnique(sourcePaths, `native products[${index}].sourcePaths`)
     if (
@@ -500,7 +509,7 @@ const checkWorkspaceContract = ({
       throw new Error(`native products[${index}] must declare safe package-scoped source paths`)
     }
     if (
-      entry.kind !== 'native' ||
+      entry.kind !== kind ||
       entry.outputName !== 'artifact.tar' ||
       entry.version !== '0.0.0' ||
       (rust === true && entry.cargoWorkspaceRoot !== 'rust') ||
@@ -513,10 +522,7 @@ const checkWorkspaceContract = ({
     return name
   })
   requireUnique(nativeProducts, 'native products')
-  if (
-    JSON.stringify(sorted(nativeProducts)) !==
-    JSON.stringify(['ci-storage', 'otel-scrape', 'otelite', 'pingping', 'typescript-api-server'])
-  )
+  if (JSON.stringify(sorted(nativeProducts)) !== JSON.stringify(sorted(Object.keys(recipes))))
     throw new Error('native product target census changed')
 
   checkRustToolchainShadows({ sourceRoot, memberPaths: cargoMemberPaths })
