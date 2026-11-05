@@ -6716,11 +6716,20 @@ jobs:
           git show refs/remotes/origin/main:nix/buck2-products/manifest.json > "$main_manifest"
           pins="$(bootstrap_pins)"
           decision="$(manifest_pr_decide "$main_manifest" "$proposal" "$pins" "$GITHUB_REPOSITORY" "$(date -u +%s)")"
+          pr_manifest=
+          pr="$(gh pr list --base main --head automation/buck2-products-manifest --state open --json number --jq '.[0].number // empty')"
+          if [ -n "$pr" ] && [ "$decision" != open ]; then
+            pr_manifest="${RUNNER_TEMP:?}/open-pr-manifest.json"
+            if ! git fetch origin refs/heads/automation/buck2-products-manifest || ! git show FETCH_HEAD:nix/buck2-products/manifest.json > "$pr_manifest"; then
+              : > "$pr_manifest"
+            fi
+          fi
+          decision="$(manifest_pr_heal_decide "$decision" "$proposal" "$pr_manifest" "$pins")"
           echo "decision=$decision" >> "$GITHUB_OUTPUT"
-          echo "::notice::Manifest PR: $decision; skipped decisions leave existing PRs untouched"
+          echo "::notice::Manifest PR: $decision; skips retain only matching bootstrap proposals"
       - id: publisher-app-config
         name: Check publisher GitHub App configuration
-        if: steps.manifest-pr-gate.outputs.decision == 'open'
+        if: steps.manifest-pr-gate.outputs.decision == 'open' || steps.manifest-pr-gate.outputs.decision == 'close'
         env:
           APP_ID: ${{ vars.NIX_PUBLISHER_GITHUB_APP_ID }}
           APP_PRIVATE_KEY_PRESENT: ${{ secrets.NIX_PUBLISHER_GITHUB_APP_PRIVATE_KEY != '' }}
@@ -6749,6 +6758,13 @@ jobs:
         run: |
           cd "${GITHUB_WORKSPACE:-$PWD}" && set -euo pipefail
           proposal="${RUNNER_TEMP:?RUNNER_TEMP not set}/buck2-products-manifest.json"
+          if [ "${{ steps.manifest-pr-gate.outputs.decision }}" = close ]; then
+            source genie/ci-workflow/manifest-pr-decide.sh
+            if [ "$(manifest_pr_writer_decide "$GITHUB_SHA")" != open ]; then exit 0; fi
+            pr="$(gh pr list --base main --head automation/buck2-products-manifest --state open --json number --jq '.[0].number // empty')"
+            if [ -n "$pr" ]; then gh pr close "$pr" --comment 'Main already matches the latest run; closing this stale bootstrap proposal.'; fi
+            exit 0
+          fi
           branch=automation/buck2-products-manifest
           git fetch origin "+refs/heads/$branch:refs/remotes/origin/$branch" || true
           git switch -C "$branch" refs/remotes/origin/main
@@ -6765,7 +6781,7 @@ jobs:
             exit 0
           fi
           git push --force-with-lease origin "HEAD:refs/heads/$branch"
-          body='Updates the generated v2 manifest for bootstrap changes or the daily safety net. Correctness rests on #2346: stale non-bootstrap rows fall back to from-source by exact recipe identity and evidence. The published ref still receives the full manifest on every main push. Skipped publisher runs leave any existing open publisher PR untouched for maintainers to land.'
+          body='Updates the v2 manifest for bootstrap changes, daily safety, or bootstrap healing. Correctness rests on #2346; published still receives the full manifest on every main push. Skips leave matching bootstrap proposals untouched; stale bootstrap proposals are refreshed or closed if main already matches.'
           pr="$(gh pr list --base main --head "$branch" --state open --json number --jq '.[0].number // empty')"
           if [ -n "$pr" ]; then
             gh pr edit "$pr" --body "$body"
