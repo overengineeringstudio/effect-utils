@@ -349,13 +349,6 @@ skipped decision leaves an existing open publisher PR untouched for maintainers
 to land. Correctness relies on exact recipe/evidence matching and from-source
 fallback for stale non-bootstrap rows; `published` still receives the full
 manifest on every main push, independently of this PR gate.
-The independent `publish-manifest-pr` job receives the proposal through the same
-chunked outputs and shares `buck2-products-manifest-writer` concurrency across
-push and dispatch. It never gates consumers or promotion. A pending writer may
-be replaced safely: the newer writer or main-tip guard owns the proposal.
-Immediately before pushing, the writer checks main's remote tip against the run's
-source SHA. Superseded runs and unavailable tip lookups skip without touching the
-PR, preventing bootstrap downgrades.
 
 Ref creation and advancement remain restricted to main-push runs in the
 upstream repository. Workflow dispatch and pull requests cannot advance the
