@@ -138,7 +138,7 @@ import {
   type OutputModeValue,
   resolveOutputOption,
 } from '../../context.ts'
-import { StoreCommandError } from '../../errors.ts'
+import { StoreCommandError, StoreGcCandidateRefused } from '../../errors.ts'
 import * as Observability from '../../observability.ts'
 import { StoreApp, StoreView } from '../../renderers/StoreOutput/mod.ts'
 import type {
@@ -243,25 +243,40 @@ const planSha256For = ({
   deletionIdentities: ReadonlyMap<string, DeletionIdentity>
 }): string => {
   const canonicalPlan = results
-    .map((result) => ({
-      repo: result.repo,
-      ref: result.ref,
-      refType: result.refType,
-      path: result.path,
-      status: result.status,
-      reason: result.reason,
-      kind: result.kind,
-      artifactClass: result.artifactClass,
-      workspacePath: result.workspacePath,
-      outcome: result.outcome,
-      mtimeMs: result.mtimeMs,
-      ...(deletionIdentities.has(result.path) === true
-        ? { deletionIdentity: deletionIdentities.get(result.path) }
-        : {}),
-    }))
+    .map((result) => canonicalGcCandidate({ result, deletionIdentities }))
     .toSorted((left, right) => compareCanonicalPlanPaths({ left: left.path, right: right.path }))
   return createHash('sha256').update(encodeCanonicalPlan(canonicalPlan)).digest('hex')
 }
+
+const canonicalGcCandidate = ({
+  result,
+  deletionIdentities,
+}: {
+  result: StoreGcResult
+  deletionIdentities: ReadonlyMap<string, DeletionIdentity>
+}) => ({
+  repo: result.repo,
+  ref: result.ref,
+  refType: result.refType,
+  path: result.path,
+  status: result.status,
+  reason: result.reason,
+  kind: result.kind,
+  artifactClass: result.artifactClass,
+  workspacePath: result.workspacePath,
+  outcome: result.outcome,
+  mtimeMs: result.mtimeMs,
+  ...(deletionIdentities.has(result.path) === true
+    ? { deletionIdentity: deletionIdentities.get(result.path) }
+    : {}),
+})
+const candidateSha256For = (input: Parameters<typeof canonicalGcCandidate>[0]) =>
+  createHash('sha256')
+    .update(encodeCanonicalPlan(canonicalGcCandidate(input)))
+    .digest('hex')
+
+const isGcCandidate = (result: StoreGcResult): boolean =>
+  result.status === 'removed' || result.status === 'archived' || result.status === 'reaped'
 
 const planGeneratedArtifacts = ({
   config,
@@ -3190,6 +3205,8 @@ const storeGcCommand = Cli.Command.make(
               repoWorktrees,
             })
             planSha256 = generatedPlan.planSha256
+            for (const [path, identity] of generatedPlan.deletionIdentities)
+              deletionIdentities.set(path, identity)
             if (progressive === false || targetedApply === true) {
               results.push(...generatedPlan.results)
               completedRepoCount += repoWorktrees.length
@@ -3626,6 +3643,7 @@ const storeGcCommand = Cli.Command.make(
             planSha256 = planSha256For({ results, deletionIdentities })
           }
 
+          let selectedCandidate: StoreGcResult | undefined
           if (
             generatedArtifacts === false &&
             targetedApply === true &&
@@ -3640,26 +3658,24 @@ const storeGcCommand = Cli.Command.make(
             const candidates = results.filter(
               (result) =>
                 normalizeStorePath(result.path) === normalizeStorePath(candidatePath.value) &&
-                (result.status === 'removed' ||
-                  result.status === 'archived' ||
-                  result.status === 'reaped'),
+                isGcCandidate(result),
             )
             if (candidates.length !== 1) {
               return yield* new StoreCommandError({
                 message: 'candidate is missing, ambiguous, or no longer eligible',
               })
             }
-            const candidate = candidates[0]!
+            selectedCandidate = candidates[0]!
+          }
+          const applyCandidate = Effect.fn('megarepo/store/gc/apply-candidate')(function* (
+            candidate: StoreGcResult & { readonly approval?: string },
+          ) {
             const owner = repoWorktrees.find(({ repo }) => repo.relativePath === candidate.repo)
             if (owner === undefined) {
               return yield* new StoreCommandError({
                 message: 'candidate owner repository is missing',
               })
             }
-
-            // First pass: hand the candidate back so the caller can retake the
-            // plan under this candidate's owner lock (see `runGcTransaction`).
-            if (ownerLockHeld === false) return candidate.path
 
             // The activation lease names the owner worktree path itself, so a
             // whole-worktree removal, archive, or reap must hold it too: the
@@ -3675,8 +3691,18 @@ const storeGcCommand = Cli.Command.make(
                     message: 'candidate deletion identity is unavailable',
                   })
                 }
-                const worktree = owner.worktrees.filter((entry) => entry.path === candidate.path)
+                const candidateWorktrees =
+                  candidate.approval === undefined
+                    ? owner.worktrees
+                    : yield* collectRepoStoreWorktrees({
+                        fs,
+                        repoPath: owner.repo.fullPath,
+                        bareRepoPath: owner.bareRepoPath,
+                      })
+                const worktree = candidateWorktrees.filter((entry) => entry.path === candidate.path)
                 if (worktree.length !== 1) {
+                  if (candidate.approval !== undefined)
+                    return yield* new StoreGcCandidateRefused({ outcome: 'skipped-missing' })
                   return yield* new StoreCommandError({
                     message: 'candidate worktree is missing or ambiguous',
                   })
@@ -3693,9 +3719,34 @@ const storeGcCommand = Cli.Command.make(
                   (force === false &&
                     (decision.status.isDirty === true || decision.status.hasUnpushed === true))
                 ) {
+                  if (candidate.approval !== undefined)
+                    return yield* new StoreGcCandidateRefused({ outcome: 'skipped-ineligible' })
                   return yield* new StoreCommandError({
                     message: 'candidate is live, dirty, or no longer inspectable',
                   })
+                }
+                if (candidate.approval !== undefined) {
+                  // Fresh evidence can veto approval, never replace its deletion authority.
+                  if (
+                    decision.identity === undefined ||
+                    encodeCanonicalPlan(decision.identity) !== encodeCanonicalPlan(identity)
+                  ) {
+                    return yield* new StoreGcCandidateRefused({ outcome: 'skipped-changed' })
+                  }
+                  const fresh = yield* processGcDecision({
+                    decision,
+                    repoRelativePath: owner.repo.relativePath,
+                    bareRepoPath: owner.bareRepoPath,
+                  })
+                  if (
+                    candidateSha256For({
+                      result: fresh,
+                      deletionIdentities,
+                    }) !== candidate.approval
+                  ) {
+                    return yield* new StoreGcCandidateRefused({ outcome: 'skipped-changed' })
+                  }
+                  candidate = fresh
                 }
                 buckReceipt = yield* readBuckDaemonReceipt({ worktreePath: candidate.path })
                 let ignoredForeignProcesses = 0
@@ -3805,7 +3856,7 @@ const storeGcCommand = Cli.Command.make(
                 dryRun: false,
                 worklogPolicy: yield* loadWorklogTeardownPolicy(config.buildOutputBudgetsPath),
                 candidatePath: candidate.path,
-                lockAlreadyHeld: ownerLockHeld,
+                lockAlreadyHeld: true,
               })
               buckReceipt = {
                 buckDaemonsStopped: appliedResults.flatMap(
@@ -3854,14 +3905,45 @@ const storeGcCommand = Cli.Command.make(
                 })
               }),
             )
-            results.splice(0, results.length, applied)
+            return applied
+          })
+          if (dryRun === true) {
+            for (const [index, result] of results.entries()) {
+              if (isGcCandidate(result) === true || result.outcome === 'would-delete') {
+                results[index] = {
+                  ...result,
+                  candidateSha256: candidateSha256For({ result, deletionIdentities }),
+                }
+              }
+            }
           }
+          let lockCandidate: string | undefined
 
+          if (selectedCandidate !== undefined) {
+            if (ownerLockHeld === false) lockCandidate = selectedCandidate.path
+            else
+              results.splice(
+                0,
+                results.length,
+                yield* applyCandidate({
+                  ...selectedCandidate,
+                  ...(selectedCandidate.status === 'removed' &&
+                  deletionIdentities.has(selectedCandidate.path) === true
+                    ? {
+                        approval: candidateSha256For({
+                          result: selectedCandidate,
+                          deletionIdentities,
+                        }),
+                      }
+                    : {}),
+                }),
+              )
+          }
           statusMessage = undefined
           if (progressive === true || ownerLockHeld === true) {
             yield* dispatchGc({ done: true, forceDispatch: true })
           }
-          return undefined
+          return lockCandidate
         })
 
       /**
