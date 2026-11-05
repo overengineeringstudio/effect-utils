@@ -271,6 +271,16 @@ is reported only after workers settle and locks are released. Each successful
 view retains its stderr timing record. Snapshot/retention formats, lock ownership,
 explicit recovery, and whole-workspace authority checks are unchanged.
 
+CI Unit tests publish `buck2:editor:publish:test:all` once: the union of selected
+source-test and harness scopes, including bootstrap. Its four workers run without
+the ordinary 300-second publication deadline; the CI job timeout bounds the batch.
+Chain installers and repeated bootstrap reuse job-local `.devenv/` receipts without
+a publication lock or `check`. Receipts bind graph/scope, authority, immutable
+snapshot identities, publisher/verifier sources, and HEAD plus dirty contents.
+A job nonce in GitHub-cleaned `RUNNER_TEMP` prevents reuse across jobs.
+Missing or changed evidence logs a miss and runs ordinary scoped publication.
+Developer flows without the CI union retain their existing prerequisites.
+
 If a legacy root install occupies the first hop, immutable GNU
 `mv --exchange --no-copy` installs the symlink without an absent-path window and
 retains the exchanged entry under `.legacy/`. A failure before the pointer flip

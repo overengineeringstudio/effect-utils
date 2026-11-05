@@ -602,6 +602,7 @@ for (const name of sourceTestTasks) {
   })
   const installerName = name.replace(sourceTestChainPrefix, 'test:run:install:')
   const installerDependencies = [...(dependencies.get(installerName) ?? [])]
+  const unionDependencies = ciUnitTest ? ['buck2:editor:publish:test:all'] : []
   const packagePublisher = `buck2:editor:publish:${name.replace(chainExecutionPattern, 'test:')}`
   ok({
     condition:
@@ -610,7 +611,8 @@ for (const name of sourceTestTasks) {
       dependencies.get(name)?.has(packagePublisher) === false &&
       installerDependencies.includes('genie:check') === true &&
       predecessors.every((previous) => installerDependencies.includes(previous)) === true &&
-      installerDependencies.length === predecessors.length + 1,
+      unionDependencies.every((dependency) => installerDependencies.includes(dependency)) &&
+      installerDependencies.length === predecessors.length + 1 + unionDependencies.length,
     name: `${name} admits only its scoped installer after its own predecessor`,
   })
   const installerCommand = tasks.get(installerName)?.command
@@ -691,10 +693,31 @@ const scopedPublisherContracts = {
   },
   ...packagePublisherContracts,
 }
+if (ciUnitTest) {
+  scopedPublisherContracts['buck2:editor:publish:test:all'] = {
+    consumers: [
+      'buck2:editor:publish:test',
+      ...sourceTestTasks.map((name) => name.replace(sourceTestChainPrefix, 'test:run:install:')),
+    ],
+    packagePaths: [
+      ...scopedPublisherContracts['buck2:editor:publish:test'].packagePaths,
+      ...sourceTestTasks.map((name) => tasks.get(name)?.cwd),
+    ],
+  }
+}
 for (const [publisher, { consumers, packagePaths }] of Object.entries(scopedPublisherContracts)) {
   const publisherDependencies = [...(dependencies.get(publisher) ?? [])]
   ok({
-    condition: publisherDependencies.length === 1 && publisherDependencies[0] === 'genie:check',
+    condition:
+      JSON.stringify(publisherDependencies.toSorted()) ===
+      JSON.stringify(
+        [
+          'genie:check',
+          ...(ciUnitTest && publisher === 'buck2:editor:publish:test'
+            ? ['buck2:editor:publish:test:all']
+            : []),
+        ].toSorted(),
+      ),
     name: `${publisher} waits directly and only for standalone generator freshness`,
   })
   const publisherTask = requireTask(publisher)
@@ -714,6 +737,22 @@ for (const [publisher, { consumers, packagePaths }] of Object.entries(scopedPubl
       name: `${publisher} has its distinct trace identity and explicit canonical package scope`,
       detail: command,
     })
+    if (
+      ciUnitTest &&
+      publisher.startsWith('buck2:editor:publish:test') &&
+      packagePaths.every((path) =>
+        scopedPublisherContracts['buck2:editor:publish:test:all'].packagePaths.includes(path),
+      )
+    ) {
+      ok({
+        condition:
+          commandBody.includes('editor-view-receipt.py') &&
+          (publisher.endsWith(':all')
+            ? /editor-view-supervisor\.py"\s+none/u.test(commandBody)
+            : commandBody.includes('receipt check publication')),
+        name: `${publisher} uses job-local receipts and an uncapped union deadline`,
+      })
+    }
   }
   const actualConsumers = [...dependencies]
     .filter(([, taskDependencies]) => taskDependencies.has(publisher))

@@ -46,6 +46,7 @@
   # Aggregate scope may be narrower than the standalone package task surface.
   aggregatePackages ? packages,
   installTask ? "pnpm:install",
+  unionInstallTask ? null,
   extraTests ? [ ],
   packageConcurrency ? null,
   packageWeights ? { },
@@ -274,8 +275,9 @@ let
           env = installer.env or { };
           execIfModified = installer.execIfModified or [ ];
           # trace-audit-allow: reuse the final installer's instrumented command and status.
-          status = installer.status or null;
-          after = (installer.after or [ ]) ++ previous;
+          status = if unionInstallTask == null then installer.status or null else null;
+          after =
+            (installer.after or [ ]) ++ lib.optional (unionInstallTask != null) unionInstallTask ++ previous;
         };
       }
     ) chain.packages;
