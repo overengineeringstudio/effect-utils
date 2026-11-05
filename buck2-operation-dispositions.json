@@ -85,6 +85,9 @@
       "operation": "publish-products"
     },
     {
+      "operation": "publish-manifest-pr"
+    },
+    {
       "disposition": "outside-by-policy:bootstrap-integration",
       "operation": "consumer-smoke"
     },

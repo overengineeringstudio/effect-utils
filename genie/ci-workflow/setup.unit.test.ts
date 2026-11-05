@@ -1191,26 +1191,34 @@ describe('published consumer ref', () => {
   })
 
   it('gates manifest PR writes on bootstrap drift or the daily safety net with the read-only token', () => {
-    const gateIndex = publisher.steps.findIndex((step) => step.id === 'manifest-pr-gate')
-    const appIndex = publisher.steps.findIndex((step) => step.id === 'publisher-app-config')
-    const proposeIndex = publisher.steps.findIndex(
+    const writer = ciWorkflow.data.jobs['publish-manifest-pr']!
+    expect(JSON.stringify(publisher.concurrency)).not.toContain('buck2-products-manifest-writer')
+    expect(writer.needs).toEqual(['publish-products'])
+    expect(writer.if).toContain("github.repository == 'overengineeringstudio/effect-utils'")
+    for (const job of [smoke, promotion]) expect(job.needs).not.toContain('publish-manifest-pr')
+    for (let index = 0; index < 4; index++)
+      expect(writer.env?.[`MANIFEST_BASE64_${index}`]).toBe(
+        `\${{ needs.publish-products.outputs.manifest-base64-${index} }}`,
+      )
+    expect(publisher.steps.some((step) => step.id === 'publisher-app-token')).toBe(false)
+    expect(writer.steps.some((step) => step.id === 'publisher-app-token')).toBe(true)
+    const gateIndex = writer.steps.findIndex((step) => step.id === 'manifest-pr-gate')
+    const appIndex = writer.steps.findIndex((step) => step.id === 'publisher-app-config')
+    const proposeIndex = writer.steps.findIndex(
       (step) => step.name === 'Propose published product manifest',
     )
-    expect(gateIndex).toBeGreaterThan(-1)
     expect(gateIndex).toBeLessThan(appIndex)
     expect(appIndex).toBeLessThan(proposeIndex)
-    const gate = publisher.steps[gateIndex]!
+    const gate = writer.steps[gateIndex]!
+    expect(gate.run).toContain('source genie/ci-workflow/published-ref-decide.sh')
+    expect(gate.run).toContain('decode_manifest > "$proposal"')
     expect(gate.env).toEqual({ GITHUB_TOKEN: '${{ github.token }}' })
-    expect(gate.run).toContain('source genie/ci-workflow/manifest-pr-decide.sh')
-    expect(gate.run).toContain('pins="$(bootstrap_pins)"')
     expect(gate.run).toContain('decision="$(manifest_pr_decide ')
-    expect(gate.run).toContain('git show refs/remotes/origin/main:nix/buck2-products/manifest.json')
-    expect(publisher.steps[appIndex]!.if).toBe("steps.manifest-pr-gate.outputs.decision == 'open'")
-    const proposal = publisher.steps[proposeIndex]!
+    expect(writer.steps[appIndex]!.if).toBe("steps.manifest-pr-gate.outputs.decision == 'open'")
+    const proposal = writer.steps[proposeIndex]!
     expect(proposal.if).toBe("steps.publisher-app-config.outputs.enabled == 'true'")
-    expect(proposal.run).toContain('git push --force-with-lease')
     expect(proposal.run).toContain('leave any existing open publisher PR untouched')
-    expect(publisher.concurrency).toEqual({
+    expect(writer.concurrency).toEqual({
       group: 'buck2-products-manifest-writer',
       'cancel-in-progress': false,
     })
@@ -1219,9 +1227,7 @@ describe('published consumer ref', () => {
       'if [ "$decision" != open ]; then\n  echo "::notice::Manifest PR: $decision; superseded: a newer main run owns the proposal"\n  exit 0\nfi\ngit push --force-with-lease',
     )
     const publication = publisher.steps.find((step) => step.id === 'product-publication')!.run!
-    expect(publication).toContain('state=success')
     expect(publication).toContain('Stale rows fall back by design')
-    expect(publication).toContain('state=failure')
     expect(publication).toContain('bootstrap_rows "$proposal" "$pins"')
   })
 

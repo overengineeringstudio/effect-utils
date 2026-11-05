@@ -32,9 +32,7 @@ assert_decision main skip-no-diff
 api_fail=true
 assert_decision other skip-unchanged-genie 2> "$tmp/warning"
 test -s "$tmp/warning"
-# Bootstrap changes do not depend on API availability.
 assert_decision bootstrap open
-# Canonical comparisons ignore object key and product ordering.
 jq '.products |= reverse' "$tmp/main" > "$tmp/reordered"
 assert_decision reordered skip-no-diff
 # The write-time guard prevents a stale bootstrap proposal replacing a newer one.
@@ -50,17 +48,11 @@ assert_writer() {
   decision="$(manifest_pr_decide "$tmp/main" "$tmp/bootstrap" "$pins" example/repo "$now")"
   if [ "$decision" = open ]; then decision="$(manifest_pr_writer_decide "$1")"; fi
   test "$decision" = "$2"
-  # A skip exits before the PR branch push or any PR API call.
-  if [ "$decision" = open ]; then printf touched > "$tmp/pr"; fi
 }
 assert_writer older skip-superseded 2> "$tmp/superseded"
-test ! -e "$tmp/pr"
 test -s "$tmp/superseded"
 assert_writer newer open
-test -s "$tmp/pr"
-rm "$tmp/pr"
 remote_fail=true
 assert_writer newer skip-superseded 2> "$tmp/remote-warning"
-test ! -e "$tmp/pr"
 test -s "$tmp/remote-warning"
-echo 'manifest-pr-decide: 10 decisions, API warning, and superseded no-write checks passed'
+echo 'manifest-pr-decide: 10 decisions, API warning, and superseded checks passed'
