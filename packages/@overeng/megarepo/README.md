@@ -121,6 +121,11 @@ Dry-run JSON includes `candidateSha256` over each would-act row and its captured
 Single-candidate plain removals also re-collect and classify their owner under the owner lock and activation lease,
 then compare the approved candidate digest before deleting with the freshly captured identity.
 
+`mr store gc --candidates-file candidates.json --output json` applies a strict `{ path, candidateSha256 }` array (no unknown fields or duplicate paths).
+One census orders plain removals; the shared locked/leased verification above authorizes each deletion. Archives, reaps, merged worklogs, and missing deletion identity yield `unsupported-kind`.
+Changed/missing/ineligible candidates skip independently; failures continue but exit nonzero. JSON and human output expose tagged `candidateOutcomes` and `candidateCounts`.
+This mode excludes `--expected-plan`, `--candidate-path`, `--dry-run`, `--all`, `--force`, `--generated-artifacts`, and `--budgets`.
+
 ## Generated artifact cleanup
 
 `mr store gc` can plan old generated directories in registered, clean, inactive store worktrees,
