@@ -1,4 +1,5 @@
 import importlib.util
+import json
 import os
 from pathlib import Path
 import subprocess
@@ -23,12 +24,13 @@ class ReceiptTest(unittest.TestCase):
                     "GITHUB_JOB": "unit", "RUNNER_TEMP": self.temporary.name}
         for name in ("devenv.nix", "nix/devenv-modules/tasks/shared/test.nix",
                      "scripts/editor-view-authority.ts", "scripts/editor-view-receipt.py",
+                     "pnpm-lock.yaml", "outside-receipt-scope.txt",
                      "packages/@overeng/buck2-tools/src/editor-view.ts"):
             path = self.root / name
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text("version-one")
         (self.root / ".gitignore").write_text(".devenv/\n.editor-view/\nnode_modules\n")
-        with (self.root / "large-clean-input.bin").open("wb") as source:
+        with (self.root / "packages/@overeng/buck2-tools/large-clean-input.bin").open("wb") as source:
             source.truncate(8 * 1024 * 1024)
         self.git("init", "-q")
         self.git("add", ".")
@@ -89,31 +91,65 @@ class ReceiptTest(unittest.TestCase):
         # Explicit output exclusion must work even before ignore rules are installed.
         (self.root / ".gitignore").write_text("")
         self.git("add", ".gitignore")
-        before = receipt.git_input_state(self.root)
+        before = receipt.git_input_state(self.root, ["."])
         self.run_helper("begin")
         (self.root / ".editor-view/.store/root-digest/node_modules").mkdir()
         for directory in (".editor-view", ".devenv", "node_modules",
-                          "packages/@overeng/demo/.editor-view", "packages/@overeng/demo/node_modules"):
+                          "packages/@overeng/buck2-tools/.editor-view",
+                          "packages/@overeng/buck2-tools/node_modules"):
             path = self.root / directory / "published-output"
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_bytes(b"publication output")
-        self.assertEqual(receipt.git_input_state(self.root), before)
+        self.assertEqual(receipt.git_input_state(self.root, ["."]), before)
         self.run_helper("write")
         self.assertEqual(self.alias(), "reused")
 
     def test_fingerprint_reads_only_changed_input_bytes(self):
         (self.root / "devenv.nix").write_text("changed")
-        source = self.root / "untracked source.txt"
+        source = self.root / "packages/@overeng/buck2-tools/untracked source.txt"
         source.write_text("untracked")
         with patch.object(receipt, "file_digest", wraps=receipt.file_digest) as opened, \
              patch.object(Path, "read_bytes", side_effect=AssertionError("whole-file read")):
-            before = receipt.git_input_state(self.root)
+            before = receipt.git_input_state(self.root, ["."])
         paths = [call.args[0] for call in opened.call_args_list]
         self.assertEqual(set(paths), {self.root / "devenv.nix", source})
         self.assertEqual(len(paths), 2)
         self.assertLessEqual(sum(path.stat().st_size for path in paths), 32)
         source.write_text("different")
-        self.assertNotEqual(receipt.git_input_state(self.root), before)
+        self.assertNotEqual(receipt.git_input_state(self.root, ["."]), before)
+
+    def test_scope_excludes_unrelated_ci_writes(self):
+        scope = [".", "packages/@overeng/demo", "packages/@overeng/otel-contract"]
+        sources = [self.root / package / "src/index.ts" for package in scope[1:]]
+        for source in sources:
+            source.parent.mkdir(parents=True)
+            source.write_text("source")
+        before = receipt.git_input_state(self.root, scope)
+        self.run_helper("begin")
+        (self.root / "outside-receipt-scope.txt").write_text("unrelated tracked change")
+        artifact = self.root / "ci-artifacts/report.json"
+        artifact.parent.mkdir()
+        artifact.write_text("unrelated untracked output")
+        self.assertEqual(receipt.git_input_state(self.root, scope), before)
+        self.run_helper("write")
+        self.assertEqual(self.alias(), "reused")
+        for source in [*sources, self.root / "pnpm-lock.yaml",
+                       self.root / "packages/@overeng/buck2-tools/src/editor-view.ts"]:
+            original = source.read_text()
+            source.write_text("changed publication input")
+            self.assertNotEqual(receipt.git_input_state(self.root, scope), before, str(source))
+            source.write_text(original)
+
+    def test_input_drift_reports_at_most_ten_paths(self):
+        self.run_helper("begin")
+        paths = [f"packages/@overeng/buck2-tools/src/new-{index:02}.ts" for index in range(25)]
+        for name in paths:
+            (self.root / name).write_text("new publication input")
+        with self.assertRaises(subprocess.CalledProcessError) as failure:
+            self.run_helper("write")
+        diagnostic = failure.exception.stderr.decode()
+        changed = json.loads(diagnostic.split("paths=", 1)[1].split("; headChanged=", 1)[0])
+        self.assertEqual(changed, paths[:10])
 
 
 if __name__ == "__main__":

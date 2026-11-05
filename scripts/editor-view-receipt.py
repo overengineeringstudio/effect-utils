@@ -28,15 +28,28 @@ def file_digest(path):
         return b"deleted"
 
 
-def git_input_state(root):
+def git_input_state(root, scope):
     git = lambda *args: subprocess.check_output(["git", "-C", str(root), *args])
+    # "." is the bootstrap manifest, not permission to fingerprint every CI artifact.
+    inputs = [
+        "package.json", "pnpm-lock.yaml", "pnpm-workspace.yaml", "pnpm-install-contract.json",
+        "BUCK", ".buckconfig", ".buckroot", ".gitignore", ".gitattributes", "buck2",
+        "buck2-member.json", "buck2-test-authority.json", "buck2-operation-dispositions.json",
+        "devenv.nix", "devenv.lock", "devenv.yaml", "flake.nix", "flake.lock",
+        "genie/packages.ts", "genie/ci-workflow/test-scheduling.json",
+        "genie/ci-workflow/test-platforms.json", "nix/devenv-modules/tasks/shared/test.nix",
+        "scripts/editor-view-authority.ts", "scripts/editor-view-supervisor.py",
+        "scripts/editor-view-receipt.py", "packages/@overeng/buck2-tools",
+        *(package for package in scope if package != "."),
+    ]
     # Explicit exclusions also work before/without repository ignore rules. Do not
     # materialize binary diffs or concatenate raw untracked contents (quadratic).
     outputs = (".editor-view", ".devenv", "node_modules")
     exclusions = [f":(exclude,glob)**/{name}{suffix}" for name in outputs for suffix in ("", "/**")]
     status = git("status", "--porcelain=v2", "-z", "--untracked-files=all",
-                 "--no-renames", "--ignore-submodules=none", "--", ".", *exclusions)
+                 "--no-renames", "--ignore-submodules=none", "--", *inputs, *exclusions)
     dirty = hashlib.sha256()
+    files = {}
     for entry in status.split(b"\0"):
         if not entry:
             continue
@@ -45,9 +58,17 @@ def git_input_state(root):
         if fields is None:
             raise ValueError(f"unexpected Git status record: {kind!r}")
         name = entry.split(b" ", fields)[fields]
-        dirty.update(entry + b"\0")
-        dirty.update(file_digest(root / os.fsdecode(name)))
-    return {"head": git("rev-parse", "HEAD").decode().strip(), "dirty": dirty.hexdigest()}
+        value = digest(entry + b"\0" + file_digest(root / os.fsdecode(name)))
+        files[os.fsdecode(name)] = value
+        dirty.update(name + b"\0" + value.encode())
+    return {"head": git("rev-parse", "HEAD").decode().strip(),
+            "dirty": dirty.hexdigest(), "inputFiles": files}
+
+
+def changed_paths(before, after):
+    old, new = before.get("inputFiles", {}), after.get("inputFiles", {})
+    names = sorted(name for name in old.keys() | new.keys() if old.get(name) != new.get(name))
+    return f"paths={json.dumps(names[:10])}; headChanged={before.get('head') != after.get('head')}"
 
 
 def capture(root, scope, inputs_only=False):
@@ -56,9 +77,9 @@ def capture(root, scope, inputs_only=False):
         raise ValueError("no GitHub job identity")
     # GitHub cleans RUNNER_TEMP between jobs, even when a worktree is reused.
     job.append(job_token(root).read_text())
-    inputs = git_input_state(root)
+    inputs = git_input_state(root, scope)
     if inputs_only:
-        return {"job": job, **inputs}
+        return {"job": job, "scope": scope, **inputs}
     snapshots = {}
     for package in scope:
         directory = root / package
@@ -70,7 +91,7 @@ def capture(root, scope, inputs_only=False):
         snapshots[package] = [os.readlink(pointer), str(snapshot), status.st_dev, status.st_ino,
                               status.st_mtime_ns, status.st_ctime_ns, digest(record.read_bytes()),
                               os.readlink(directory / "node_modules")]
-    return {"schema": 2, "job": job, "root": str(root), "scope": scope, **inputs,
+    return {"schema": 3, "job": job, "root": str(root), "scope": scope, **inputs,
             "graph": digest((root / "devenv.nix").read_bytes() +
                             (root / "nix/devenv-modules/tasks/shared/test.nix").read_bytes()),
             "authority": digest((root / ".devenv/editor-workspace-authority.json").read_bytes()),
@@ -97,13 +118,14 @@ def main():
             pending.write_text(json.dumps(capture(root, scope, inputs_only=True)))
             return 0
         current = capture(root, scope)
-        if action == "write" and json.loads(pending.read_text()) != {
-            key: current[key] for key in ("job", "head", "dirty")
-        }:
-            raise ValueError("publication inputs changed while publishing")
+        if action == "write":
+            before = json.loads(pending.read_text())
+            if before != {key: current[key] for key in ("job", "scope", "head", "dirty", "inputFiles")}:
+                raise ValueError(f"publication inputs changed while publishing ({changed_paths(before, current)})")
         if action == "check":
             if previous != current:
-                raise ValueError("graph, git state, authority, version, scope or snapshot identity changed")
+                raise ValueError("graph, git state, authority, version, scope or snapshot identity changed "
+                                 f"({changed_paths(previous, current)})")
             print(f"editor-view receipt: reusing {name}; no publication lock needed", file=sys.stderr)
         elif action == "write":
             temporary = receipt.with_suffix(f".tmp-{os.getpid()}")
