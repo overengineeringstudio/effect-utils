@@ -60,7 +60,7 @@ if (
 if (crateName === undefined || ['unwind', 'abort'].includes(panicStrategy) === false)
   throw new Error('Missing primary or invalid panic strategy')
 // Check the produced closure, not flags or environment that producers can override.
-// The identity compiler bypasses Nix wrapper flag injection during this check.
+// Bypass Nix flag injection while preserving Darwin SDK/link/signing setup.
 const scratch = resolve(process.env.BUCK_SCRATCH_PATH)
 mkdirSync(scratch, { recursive: true })
 const source = join(scratch, 'panic-probe.rs')
@@ -75,8 +75,9 @@ writeFileSync(
   probeCrates.map(({ alias }) => `extern crate ${alias};\n`).join('') + 'fn main() {}\n',
 )
 execFileSync(
-  join(compiler.compilerStorePath, 'bin/rustc'),
+  wrapper || join(compiler.compilerStorePath, 'bin/rustc'),
   [
+    ...(wrapper ? ['--effect-utils-link-probe'] : []),
     '--edition=2024',
     '--crate-name=library_panic_probe',
     source,
