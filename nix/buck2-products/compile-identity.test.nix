@@ -6,6 +6,16 @@
 let
   revisionA = "1111111111111111111111111111111111111111";
   revisionB = "2222222222222222222222222222222222222222";
+  pkgs = import flake.inputs.nixpkgs { inherit system; };
+  settingsFile = flake.outPath + "/nix/gh-settings-genie.nix";
+  buckInputs = import ./buck-inputs.nix {
+    inherit (pkgs) lib;
+    repositoryRoot = flake.outPath;
+  };
+  rules = import ./root-projection.nix {
+    inherit pkgs buckInputs;
+    repositoryRoot = flake.outPath;
+  };
   packagesFor =
     sourceInfo:
     ((import (flake.outPath + "/flake.nix")).outputs (
@@ -22,7 +32,7 @@ let
     dirtyRev = "${revisionA}-dirty";
     dirtyShortRev = "1111111-dirty";
   };
-  compile = packages: packages.ci-test-shell-products.entries.gh-settings-genie-source;
+  compile = packages: packages.buck-product-genie-from-source.compileProduct;
   stamp = packages: packages.buck-product-genie-from-source;
   compilePaths = map (packages: (compile packages).drvPath) [
     cleanA
@@ -35,11 +45,10 @@ let
     dirty
   ];
   activationUsesCompile =
-    packages:
-    builtins.elem (compile packages).drvPath (
-      builtins.attrNames (builtins.getContext packages.gh-settings-genie.buildCommand)
-    );
+    packages: packages.gh-settings-genie.compileProduct.drvPath == (compile packages).drvPath;
 in
+assert !(builtins.elem settingsFile buckInputs.files);
+assert !(builtins.pathExists (rules + "/nix/gh-settings-genie.nix"));
 assert builtins.all (path: path == builtins.head compilePaths) compilePaths;
 assert (stamp cleanA).producerCommit == revisionA;
 assert (stamp cleanB).producerCommit == revisionB;
@@ -50,9 +59,19 @@ assert builtins.all activationUsesCompile [
   cleanB
   dirty
 ];
-assert (stamp cleanA).compiled.drvPath == (compile cleanA).drvPath;
+assert (stamp cleanA).compileProduct.drvPath == (compile cleanA).drvPath;
+assert (cleanA.gh-settings-genie).drvPath == (cleanB.gh-settings-genie).drvPath;
+assert cleanA.gh-settings-genie.artifactName == (stamp cleanA).artifactName;
+assert
+  cleanA.gh-settings-genie.expectedDescriptor == cleanA.genie.checkedDescriptor
+  // {
+    externalCapabilities = flake.inputs.nixpkgs.lib.unique (
+      cleanA.genie.checkedDescriptor.externalCapabilities ++ [ "gh" ]
+    );
+  };
 {
   inherit compilePaths stampPaths;
   revisionAndDirtyIndependent = true;
   settingsUsesCompile = true;
+  settingsRecipeOutsideProjection = true;
 }
