@@ -62,10 +62,50 @@ evidence, sysroot, target triple and panic strategy against the consumer's
 declared toolchain. A mismatch prints both identities and fails without a
 compiler fallback. Passthrough metadata exposes the checked compiler, target,
 panic strategy and descriptor path. The product's `libraryChecks` passthrough
-builds an external consumer with the checked unwrapped rustc and stdenv linker,
-including Darwin SDK/iconv, against fixed-up metadata and installed proc macros.
-Its `.mismatch` requires a mismatched import to fail with the compiler diagnostic and
-both identities. Publication follows both checks; executables retain `--help`.
+uses the exact external recipe below against the installed content-address-core
+library and a realized transitive generic/reexport/derive fixture. Its `.mismatch`
+requires a mismatched import to fail with the compiler diagnostic and both
+identities. Executables retain `--help`.
+
+### External Rust library consumers
+
+```text
+consumer Cargo + generated BUCK + offline archives + shared pkgs
+  -> mkBuckProductFromSource { importNative = true; product.kind = "rust-library"; }
+  -> checked installed library
+  -> plain rustc consumer
+```
+
+External flakes follow effect-utils' nixpkgs input and share their imported
+`pkgs` between producer capabilities, source builder, importer and consumer.
+`lib.mkConsumerBuckRoot` supplies the rules/capability root;
+`lib.mkBuckProductFromSource { inherit pkgs; }` accepts a caller-owned product
+record and staged `repositorySource`, including the consumer's Cargo workspace,
+projected BUCK files and effect-utils path dependency sources. The consumer's
+Cargo projector selects `buildProducts: [{ kind: 'library', name: 'example-library' }]`;
+`lib.mkBuck2CargoArchives` receives the consumer's generated third-party BUCK
+files (and pinned `gitSources` where declared). No Cargo build fallback exists.
+
+The plain consumer derivation declares exactly:
+
+```nix
+nativeBuildInputs = [ pkgs.rustc pkgs.stdenv.cc ];
+buildInputs = pkgs.lib.optionals pkgs.stdenv.hostPlatform.isDarwin [
+  pkgs.apple-sdk pkgs.libiconv
+];
+```
+
+It uses the product contract's flat `--extern`/`-L dependency` invocation,
+without an unwrapped compiler, explicit linker flag or extra dependency externs.
+`compiled-products.sh --build-only` builds this acceptance on Linux and Darwin.
+After source realization it imports the known archive and descriptor through
+`lib.mkBuck2ArtifactImport`, checks descriptor/inventory/compiler parity, runs
+the same consumer, and rejects a descriptor changed without updating its digest.
+This two-stage local publication-interface test requires no import-from-derivation.
+The subsequent smoke phase does not repeat this realized roundtrip.
+Native/library publication uses source products plus Cachix substitution;
+`publish.sh`'s manifest/descriptor publication supports JavaScript/package rows,
+not native/library rows or a hosted library descriptor registry.
 
 ## Cache-backed Product Bridge
 

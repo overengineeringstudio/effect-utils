@@ -516,7 +516,7 @@ describe('generated CI cache trust behavior', () => {
       new URL('../ci-scripts/compiled-products.sh', import.meta.url),
     ).text()
     expect(script).toContain('refs=(.#ci-test-shell-products .#buck2-rules)')
-    expect(script.match(/\bnix build\b/g)).toHaveLength(3)
+    expect(script.match(/\bnix build\b/g)).toHaveLength(5)
     expect(script).toContain('--json "${refs[@]}"')
     expect(script).toContain('cachix push overeng-effect-utils $outputs')
     expect(script).toContain('if [ "$matches" -ne 1 ]; then')
@@ -529,7 +529,7 @@ describe('generated CI cache trust behavior', () => {
     )
   })
 
-  it('realizes every inventoried product once, smokes unordered outputs and publishes only on request', () => {
+  it('roundtrips libraries during preparation, then smokes outputs and publishes only on request', () => {
     const work = mkdtempSync(join(tmpdir(), 'compiled-products-contract-'))
     const script = fileURLToPath(new URL('../ci-scripts/compiled-products.sh', import.meta.url))
     const names = ['compiled-one', 'compiled-two', 'native-one']
@@ -537,6 +537,8 @@ describe('generated CI cache trust behavior', () => {
     const shellOutput = join(work, 'output-shell')
     const rulesOutput = join(work, 'output-buck2-rules')
     const libraryOutput = join(work, 'output-library')
+    const librarySource = join(work, 'source-library')
+    const roundtripCommand = `build --impure --no-link --print-build-logs --file nix/buck2-products/library-roundtrip.nix --argstr repositoryPath ${work} --argstr productName library --argstr sourcePath ${librarySource}`
     const logs = {
       NIX_LOG: join(work, 'nix.log'),
       SMOKE_LOG: join(work, 'smoke.log'),
@@ -582,6 +584,10 @@ if [[ "$*" = *'--log-format raw'* ]]; then
   printf "building '/fake/input.drv'...\\ncopying path '/fake/output' from 'cache'...\\n" >&2
   printf '%s\\n' "$BUILD_JSON"
   exit "\${BUILD_STATUS:-0}"
+elif [[ "$*" = *".buck2Product"* ]]; then
+  printf '%s\\n' '${JSON.stringify([{ outputs: { out: librarySource } }])}'; exit 0
+elif [[ "$*" = *"library-roundtrip.nix"* ]]; then
+  [ "$FAIL_PRODUCT" != roundtrip ]; printf '[]\\n'; exit 0
 elif [[ "$*" = *".mismatch"* ]]; then
   [ "$FAIL_PRODUCT" != mismatch-accepted ] || exit 0
   [ "$FAIL_PRODUCT" != mismatch-unrelated ] || exit 1
@@ -631,12 +637,19 @@ printf '%s\\n' "$BUILD_JSON"`,
       )
       expect(readFileSync(logs.NIX_LOG, 'utf8').trim().split('\n')).toEqual([
         'build --no-link --print-build-logs --log-format raw --json .#ci-test-shell-products .#buck2-rules .#compiled-one-compiled .#compiled-two-compiled .#native-one .#library.libraryChecks .#library',
+        'build --no-link --json .#library.buck2Product',
+        roundtripCommand,
       ])
       expect(readFileSync(logs.SMOKE_LOG, 'utf8')).toBe('')
       expect(readFileSync(logs.CACHE_LOG, 'utf8')).toBe('')
       const failedBuild = run({ args: ['--build-only'], buildStatus: 7 })
       expect(failedBuild.exitCode).toBe(7)
       expect(failedBuild.stdout.toString()).toContain('built=1 substituted=1 status=7')
+      expect(readFileSync(logs.NIX_LOG, 'utf8').trim().split('\n')).toHaveLength(1)
+      expect(run({ args: ['--build-only'], failProduct: 'roundtrip' }).exitCode).not.toBe(0)
+      expect(readFileSync(logs.NIX_LOG, 'utf8').trim().split('\n').at(-1)).toBe(roundtripCommand)
+      expect(readFileSync(logs.SMOKE_LOG, 'utf8')).toBe('')
+      expect(readFileSync(logs.CACHE_LOG, 'utf8')).toBe('')
       for (const args of [[], ['--push']]) {
         expect(run({ args }).exitCode).toBe(0)
         expect(readFileSync(logs.NIX_LOG, 'utf8').trim().split('\n')).toEqual([
