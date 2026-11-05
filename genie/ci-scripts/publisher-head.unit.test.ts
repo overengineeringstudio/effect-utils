@@ -1,130 +1,79 @@
-import { describe, expect, it } from 'bun:test'
+import { expect, it } from 'bun:test'
 
-import {
-  decidePublisherHead,
-  type PublisherState,
-  wasCurrentHeadEjected,
-} from './publisher-head.ts'
+import * as Publisher from './publisher-head.ts'
 
-const healthy = {
-  kind: 'pr',
-  draft: false,
-  queued: false,
-  ejected: false,
-  mergeable: 'MERGEABLE',
-  rollup: 'SUCCESS',
-} satisfies PublisherState
-
-const before = '2026-11-04T22:00:00Z'
-const head = '2026-11-04T23:00:00Z'
-const after = '2026-11-04T23:30:00Z'
-describe('publisher head pinning', () => {
-  const cases: { name: string; state: PublisherState; refresh: boolean; reason: string }[] = [
-    { name: 'no open PR', state: { kind: 'no-pr' }, refresh: true, reason: 'no-pr' },
-    {
-      name: 'pending checks',
-      state: { ...healthy, rollup: 'PENDING' },
-      refresh: false,
-      reason: 'pending',
-    },
-    {
-      name: 'expected checks',
-      state: { ...healthy, rollup: 'EXPECTED' },
-      refresh: false,
-      reason: 'pending',
-    },
-    { name: 'green checks', state: healthy, refresh: false, reason: 'green' },
-    { name: 'queued', state: { ...healthy, queued: true }, refresh: false, reason: 'queued' },
-    {
-      name: 'queued despite failed head checks',
-      state: { ...healthy, queued: true, rollup: 'FAILURE' },
-      refresh: false,
-      reason: 'queued',
-    },
-    {
-      name: 'conflict',
-      state: { ...healthy, mergeable: 'CONFLICTING' },
-      refresh: true,
-      reason: 'conflict',
-    },
-    {
-      name: 'failed checks',
-      state: { ...healthy, rollup: 'FAILURE' },
-      refresh: true,
-      reason: 'failed',
-    },
-    {
-      name: 'errored checks',
-      state: { ...healthy, rollup: 'ERROR' },
-      refresh: true,
-      reason: 'failed',
-    },
-    {
-      name: 'current green head ejected after its push',
-      state: {
-        ...healthy,
-        ejected: wasCurrentHeadEjected({ headTimes: [head], removalTimes: [after] }),
-      },
-      refresh: true,
-      reason: 'ejected',
-    },
-    {
-      name: 'removal before current head is not an ejection of this head',
-      state: {
-        ...healthy,
-        ejected: wasCurrentHeadEjected({ headTimes: [head], removalTimes: [before] }),
-      },
-      refresh: false,
-      reason: 'green',
-    },
-    {
-      name: 'requeued after ejection',
-      state: { ...healthy, queued: true, ejected: true, rollup: 'FAILURE' },
-      refresh: false,
-      reason: 'queued',
-    },
-    {
-      name: 'GitHub recomputing mergeability',
-      state: { ...healthy, mergeable: 'UNKNOWN', rollup: 'FAILURE' },
-      refresh: false,
-      reason: 'unknown',
-    },
-    { name: 'draft', state: { ...healthy, draft: true }, refresh: false, reason: 'draft' },
-    {
-      name: 'missing rollup',
-      state: { ...healthy, rollup: null },
-      refresh: false,
-      reason: 'unknown',
-    },
-    { name: 'API error', state: { kind: 'api-error' }, refresh: false, reason: 'api-error' },
-    {
-      name: 'missing timeline keeps a green head',
-      state: { ...healthy, ejected: wasCurrentHeadEjected({ headTimes: [head] }) },
-      refresh: false,
-      reason: 'green',
-    },
-    {
-      name: 'ejection overrides unknown mergeability',
-      state: { ...healthy, ejected: true, mergeable: 'UNKNOWN' },
-      refresh: true,
-      reason: 'ejected',
-    },
-  ]
-  for (const { name, state, refresh, reason } of cases)
-    it(name, () => expect(decidePublisherHead(state)).toEqual({ refresh, reason }))
+const head = '2026-11-04T20:00:00Z',
+  later = '2026-11-04T21:00:00Z'
+const now = Date.parse(head) + Publisher.PUBLISHER_HEAD_GRACE_MINUTES * 60_000
+const check = (conclusion: string, startedAt = head, name = 'CI') => ({
+  __typename: 'CheckRun',
+  name,
+  status: 'COMPLETED',
+  conclusion,
+  startedAt,
 })
-
-describe('current-head ejection evidence', () => {
-  it('uses a later force-push time rather than the original commit date', () =>
-    expect(wasCurrentHeadEjected({ headTimes: [before, after], removalTimes: [head] })).toBe(false))
-  it('uses the latest removal', () =>
-    expect(wasCurrentHeadEjected({ headTimes: [head], removalTimes: [before, after] })).toBe(true))
-  it('requires removal strictly after the head', () =>
-    expect(wasCurrentHeadEjected({ headTimes: [head], removalTimes: [head] })).toBe(false))
-  it('ignores missing head timestamps', () =>
-    expect(wasCurrentHeadEjected({ removalTimes: [after] })).toBe(false))
-  it('ignores empty timeline', () =>
-    expect(wasCurrentHeadEjected({ headTimes: [head], removalTimes: [] })).toBe(false))
-  it('ignores malformed timeline timestamps', () =>
-    expect(wasCurrentHeadEjected({ headTimes: [head], removalTimes: ['unknown'] })).toBe(false))
+const status = (state: string, createdAt = head) => ({
+  __typename: 'StatusContext',
+  context: 'status',
+  state,
+  createdAt,
+})
+const pr = (nodes: unknown[] = [check('SUCCESS')], overrides: Record<string, unknown> = {}) => [
+  {
+    draft: false,
+    queued: false,
+    mergeable: 'MERGEABLE',
+    headTimes: [head],
+    removalTimes: [],
+    checks: { pageInfo: { hasNextPage: false }, nodes },
+    ...overrides,
+  },
+]
+const rows: [unknown, string, number?][] = [
+  [[], 'no-pr'],
+  [undefined, 'api-error'],
+  [pr(), 'green'],
+  [pr([check('CANCELLED')]), 'pending'],
+  [pr([check('CANCELLED')]), 'stale-pending', now + 1],
+  [pr([check('FAILURE'), check('SUCCESS', later)]), 'green'],
+  [pr([check('SUCCESS'), check('FAILURE', later)]), 'failed'],
+  [pr([check('FAILURE'), check('CANCELLED', later)]), 'pending'],
+  [pr([check('FAILURE'), check('CANCELLED', later, 'other')]), 'failed'],
+  [pr([], { mergeable: 'CONFLICTING' }), 'conflict'],
+  [pr(undefined, { removalTimes: [later] }), 'ejected'],
+  [pr(undefined, { headTimes: [head, later], removalTimes: [head] }), 'green'],
+  [pr(undefined, { queued: true, removalTimes: [later] }), 'queued'],
+  [pr([check('FAILURE')], { queued: true }), 'queued', now + 1],
+  [pr(undefined, { mergeable: 'UNKNOWN' }), 'unknown'],
+  [pr(undefined, { mergeable: 'UNKNOWN' }), 'stale-unknown', now + 1],
+  [pr([], { mergeable: 'UNKNOWN', headTimes: [] }), 'unknown', now + 1],
+  [pr([check('PENDING')]), 'pending', now - 1],
+  [pr([check('PENDING')]), 'stale-pending', now + 1],
+  [pr([check('CANCELLED')], { headTimes: [] }), 'pending', now + 1],
+  [pr(undefined, { draft: true }), 'draft'],
+  [pr(undefined, { removalTimes: undefined }), 'green'],
+  [pr(undefined, { removalTimes: ['invalid'] }), 'green'],
+  [pr(undefined, { checks: null }), 'unknown', now + 1],
+  [pr(undefined, { checks: { pageInfo: { hasNextPage: true }, nodes: [] } }), 'api-error'],
+  [pr([check('FAILURE'), check('CANCELLED')]), 'pending'],
+  [pr([{ ...check('FAILURE'), startedAt: null }]), 'pending'],
+  [pr([status('FAILURE')]), 'failed'],
+  [pr([status('ERROR')]), 'failed'],
+  [pr([status('PENDING')]), 'pending'],
+  [pr([status('FAILURE'), status('SUCCESS', later)]), 'green'],
+  ...['TIMED_OUT', 'STARTUP_FAILURE', 'ACTION_REQUIRED'].map((value): [unknown, string] => [
+    pr([check(value)]),
+    'failed',
+  ]),
+  ...['SKIPPED', 'NEUTRAL'].map((value): [unknown, string] => [pr([check(value)]), 'green']),
+  [pr([check('STALE')]), 'pending'],
+]
+it('decodes API evidence and applies the publisher decision table', () => {
+  for (const [fixture, reason, time = now] of rows)
+    expect(
+      Publisher.decidePublisherHead({ state: Publisher.decodePublisherState(fixture), now: time }),
+    ).toEqual({
+      reason,
+      refresh: /^(no-pr|conflict|ejected|failed|stale-)/.test(reason),
+    })
 })

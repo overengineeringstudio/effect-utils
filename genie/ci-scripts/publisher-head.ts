@@ -1,166 +1,182 @@
 import { execFileSync } from 'node:child_process'
 import { appendFileSync } from 'node:fs'
 
+export const PUBLISHER_HEAD_GRACE_MINUTES = 180
 export type PublisherState =
-  | { kind: 'api-error' }
-  | { kind: 'no-pr' }
+  | { kind: 'api-error' | 'no-pr' }
   | {
       kind: 'pr'
       draft: boolean
       queued: boolean
       ejected: boolean
-      mergeable: 'MERGEABLE' | 'CONFLICTING' | 'UNKNOWN'
-      rollup: 'SUCCESS' | 'PENDING' | 'EXPECTED' | 'FAILURE' | 'ERROR' | null
+      mergeable: string
+      health: 'failed' | 'green' | 'pending' | 'missing'
+      headTime?: number
     }
 
-export type PublisherDecision = {
-  refresh: boolean
-  reason:
-    | 'no-pr'
-    | 'queued'
-    | 'conflict'
-    | 'ejected'
-    | 'failed'
-    | 'pending'
-    | 'green'
-    | 'unknown'
-    | 'draft'
-    | 'api-error'
+const record = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && Array.isArray(value) === false
+const timestamp = (value: unknown): number | undefined => {
+  const time = typeof value === 'string' ? Date.parse(value) : NaN
+  return Number.isFinite(time) === true ? time : undefined
 }
-
-// The queue tests latest main. After this pinned PR merges, the next publication
-// proposes newer products; a slightly older manifest is preferable to CI churn.
-export const decidePublisherHead = (state: PublisherState): PublisherDecision => {
-  if (state.kind === 'api-error') return { refresh: false, reason: 'api-error' }
-  if (state.kind === 'no-pr') return { refresh: true, reason: 'no-pr' }
-  if (state.queued === true) return { refresh: false, reason: 'queued' }
-  if (state.mergeable === 'CONFLICTING') return { refresh: true, reason: 'conflict' }
-  if (state.ejected === true) return { refresh: true, reason: 'ejected' }
-  if (state.mergeable === 'UNKNOWN') return { refresh: false, reason: 'unknown' }
-  if (state.rollup === 'FAILURE' || state.rollup === 'ERROR')
-    return { refresh: true, reason: 'failed' }
-  if (state.draft === true) return { refresh: false, reason: 'draft' }
-  if (state.rollup === 'SUCCESS') return { refresh: false, reason: 'green' }
-  if (state.rollup === 'PENDING' || state.rollup === 'EXPECTED')
-    return { refresh: false, reason: 'pending' }
-  return { refresh: false, reason: 'unknown' }
-}
-
 const latestTime = (values: unknown): number | undefined => {
   if (Array.isArray(values) === false || values.length === 0) return undefined
   let latest = -Infinity
   for (const value of values) {
-    if (typeof value !== 'string') return undefined
-    const time = Date.parse(value)
-    if (Number.isFinite(time) === false) return undefined
+    const time = timestamp(value)
+    if (time === undefined) return undefined
     latest = Math.max(latest, time)
   }
   return latest
 }
 
-/** Missing or ambiguous timeline evidence cannot justify replacing a pinned head. */
-export const wasCurrentHeadEjected = ({
-  headTimes,
-  removalTimes,
+/** Classify only the latest entry per check name/context, never a cancelled rollup. */
+const checkHealth = (
+  connection: unknown,
+): 'failed' | 'green' | 'pending' | 'missing' | undefined => {
+  if (connection === null) return 'missing'
+  if (
+    record(connection) === false ||
+    record(connection.pageInfo) === false ||
+    connection.pageInfo.hasNextPage !== false ||
+    Array.isArray(connection.nodes) === false
+  )
+    return undefined
+  const latest = new Map<string, { time: number; result: string }>()
+  for (const node of connection.nodes) {
+    if (record(node) === false) return undefined
+    const check = node['__typename'] === 'CheckRun'
+    if (check === false && node['__typename'] !== 'StatusContext') return undefined
+    const name = check === true ? node.name : node.context
+    if (typeof name !== 'string') return undefined
+    const time = timestamp(check === true ? node.startedAt : node.createdAt)
+    const result =
+      check === true ? (node.status === 'COMPLETED' ? node.conclusion : 'PENDING') : node.state
+    if (typeof result !== 'string' && result !== null) return undefined
+    const failure =
+      check === true
+        ? ['FAILURE', 'TIMED_OUT', 'STARTUP_FAILURE', 'ACTION_REQUIRED'].includes(result ?? '')
+        : ['FAILURE', 'ERROR'].includes(result ?? '')
+    const outcome =
+      time === undefined
+        ? 'pending'
+        : failure === true
+          ? 'failed'
+          : ['SUCCESS', 'NEUTRAL', 'SKIPPED'].includes(result ?? '') === true
+            ? 'green'
+            : 'pending'
+    const key = `${node['__typename']}:${name}`
+    const old = latest.get(key)
+    if (old === undefined || (time ?? Infinity) > old.time)
+      latest.set(key, { time: time ?? Infinity, result: outcome })
+    else if ((time ?? Infinity) === old.time && outcome !== old.result) old.result = 'pending'
+  }
+  const results = [...latest.values()]
+  if (results.some((entry) => entry.result === 'failed') === true) return 'failed'
+  return results.length > 0 && results.every((entry) => entry.result === 'green') === true
+    ? 'green'
+    : 'pending'
+}
+
+/** Decode the API boundary; incomplete/paginated evidence cannot authorize a push. */
+export const decodePublisherState = (nodes: unknown): PublisherState => {
+  if (Array.isArray(nodes) === false || nodes.length > 1) return { kind: 'api-error' }
+  if (nodes.length === 0) return { kind: 'no-pr' }
+  const pr: unknown = nodes[0]
+  if (
+    record(pr) === false ||
+    typeof pr.draft !== 'boolean' ||
+    typeof pr.queued !== 'boolean' ||
+    ['MERGEABLE', 'CONFLICTING', 'UNKNOWN'].includes(String(pr.mergeable)) === false
+  )
+    return { kind: 'api-error' }
+  const health = checkHealth(pr.checks)
+  if (health === undefined) return { kind: 'api-error' }
+  const headTime = latestTime(pr.headTimes)
+  const removal = latestTime(pr.removalTimes)
+  return {
+    kind: 'pr',
+    draft: pr.draft,
+    queued: pr.queued,
+    mergeable: String(pr.mergeable),
+    health,
+    headTime,
+    ejected: headTime !== undefined && removal !== undefined && removal > headTime,
+  }
+}
+
+// The queue tests latest main; the next publication after merge proposes newer products.
+export const decidePublisherHead = ({
+  state,
+  now,
 }: {
-  headTimes?: unknown
-  removalTimes?: unknown
-}): boolean => {
-  const head = latestTime(headTimes)
-  const removal = latestTime(removalTimes)
-  return head !== undefined && removal !== undefined && removal > head
+  state: PublisherState
+  now: number
+}): { refresh: boolean; reason: string } => {
+  let reason: string = state.kind
+  if (state.kind === 'pr') {
+    const expired =
+      state.headTime !== undefined && now > state.headTime + PUBLISHER_HEAD_GRACE_MINUTES * 60_000
+    if (state.queued === true) reason = 'queued'
+    else if (state.mergeable === 'CONFLICTING') reason = 'conflict'
+    else if (state.ejected === true) reason = 'ejected'
+    else if (state.mergeable === 'UNKNOWN') reason = expired === true ? 'stale-unknown' : 'unknown'
+    else if (state.health === 'failed') reason = 'failed'
+    else if (state.draft === true) reason = 'draft'
+    else if (state.health === 'green') reason = 'green'
+    else if (state.health === 'pending') reason = expired === true ? 'stale-pending' : 'pending'
+    else reason = 'unknown'
+  }
+  return {
+    refresh: ['no-pr', 'conflict', 'ejected', 'failed', 'stale-pending', 'stale-unknown'].includes(
+      reason,
+    ),
+    reason,
+  }
 }
 
 const query = `query($owner:String!, $name:String!) {
   repository(owner:$owner, name:$name) {
-    pullRequests(first:2, states:OPEN, baseRefName:"main", headRefName:"automation/buck2-products-manifest") {
-      nodes {
-        headRefOid isDraft mergeable mergeQueueEntry { state }
-        commits(last:1) { nodes { commit { committedDate pushedDate statusCheckRollup { state } } } }
-        timelineItems(last:100, itemTypes:[REMOVED_FROM_MERGE_QUEUE_EVENT, HEAD_REF_FORCE_PUSHED_EVENT, PULL_REQUEST_COMMIT]) {
-          nodes {
-            __typename
-            ... on RemovedFromMergeQueueEvent { createdAt }
-            ... on HeadRefForcePushedEvent { createdAt afterCommit { oid } }
-            ... on PullRequestCommit { commit { oid committedDate } }
-          }
+    pullRequests(first:2, states:OPEN, baseRefName:"main", headRefName:"automation/buck2-products-manifest") { nodes {
+      headRefOid isDraft mergeable mergeQueueEntry { state }
+      commits(last:1) { nodes { commit { committedDate pushedDate statusCheckRollup { contexts(first:100) {
+        pageInfo { hasNextPage } nodes { __typename
+          ... on CheckRun { name status conclusion startedAt completedAt checkSuite { workflowRun { databaseId } } }
+          ... on StatusContext { context state createdAt }
         }
-      }
-    }
+      } } } } }
+      timelineItems(last:100, itemTypes:[REMOVED_FROM_MERGE_QUEUE_EVENT, HEAD_REF_FORCE_PUSHED_EVENT, PULL_REQUEST_COMMIT]) { nodes { __typename
+        ... on RemovedFromMergeQueueEvent { createdAt }
+        ... on HeadRefForcePushedEvent { createdAt afterCommit { oid } }
+        ... on PullRequestCommit { commit { oid committedDate } }
+      } }
+    } }
   }
 }`
+const projection =
+  '.data.repository.pullRequests.nodes | map(.headRefOid as $head | {draft: .isDraft, mergeable, queued: (.mergeQueueEntry != null), checks: .commits.nodes[0].commit.statusCheckRollup.contexts, headTimes: ([.commits.nodes[0].commit.committedDate, .commits.nodes[0].commit.pushedDate] + [(.timelineItems.nodes // [])[] | select(.__typename == "HeadRefForcePushedEvent" and .afterCommit.oid == $head) | .createdAt] | map(select(. != null))), removalTimes: [(.timelineItems.nodes // [])[] | select(.__typename == "RemovedFromMergeQueueEvent") | .createdAt]})'
 
-/** Decode the flattened API boundary; missing/ambiguous evidence never permits a push. */
 export const readPublisherState = (repository: string): PublisherState => {
   try {
-    const [owner, name, extra] = repository.split('/')
-    if (
-      owner === undefined ||
-      owner === '' ||
-      name === undefined ||
-      name === '' ||
-      extra !== undefined
-    )
-      return { kind: 'api-error' }
-    const output = execFileSync(
-      'gh',
-      [
-        'api',
-        'graphql',
-        '-f',
-        `query=${query}`,
-        '-f',
-        `owner=${owner}`,
-        '-f',
-        `name=${name}`,
-        '--jq',
-        '.data.repository.pullRequests.nodes | map(.headRefOid as $head | {draft: .isDraft, mergeable, queued: (.mergeQueueEntry != null), rollup: .commits.nodes[0].commit.statusCheckRollup.state, headTimes: ([.commits.nodes[0].commit.committedDate, .commits.nodes[0].commit.pushedDate] + [(.timelineItems.nodes // [])[] | select(.__typename == "HeadRefForcePushedEvent" and .afterCommit.oid == $head) | .createdAt] | map(select(. != null))), removalTimes: [(.timelineItems.nodes // [])[] | select(.__typename == "RemovedFromMergeQueueEvent") | .createdAt]})',
-      ],
-      { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] },
-    )
-    const nodes: unknown = JSON.parse(output)
-    if (Array.isArray(nodes) === false) return { kind: 'api-error' }
-    if (nodes.length === 0) return { kind: 'no-pr' }
-    if (nodes.length !== 1) return { kind: 'api-error' }
-    const pr: unknown = nodes[0]
-    if (
-      typeof pr !== 'object' ||
-      pr === null ||
-      !('draft' in pr) ||
-      typeof pr.draft !== 'boolean' ||
-      !('queued' in pr) ||
-      typeof pr.queued !== 'boolean' ||
-      !('mergeable' in pr) ||
-      (pr.mergeable !== 'MERGEABLE' &&
-        pr.mergeable !== 'CONFLICTING' &&
-        pr.mergeable !== 'UNKNOWN') ||
-      !('rollup' in pr) ||
-      (pr.rollup !== null &&
-        pr.rollup !== 'SUCCESS' &&
-        pr.rollup !== 'PENDING' &&
-        pr.rollup !== 'EXPECTED' &&
-        pr.rollup !== 'FAILURE' &&
-        pr.rollup !== 'ERROR')
-    )
-      return { kind: 'api-error' }
-    return {
-      kind: 'pr',
-      draft: pr.draft,
-      queued: pr.queued,
-      ejected: wasCurrentHeadEjected({
-        headTimes: 'headTimes' in pr ? pr.headTimes : undefined,
-        removalTimes: 'removalTimes' in pr ? pr.removalTimes : undefined,
-      }),
-      mergeable: pr.mergeable,
-      rollup: pr.rollup,
-    }
+    if (/^[^/]+\/[^/]+$/.test(repository) === false) return { kind: 'api-error' }
+    const [owner, name] = repository.split('/')
+    const output = execFileSync('gh', ['api', 'graphql', '--input', '-', '--jq', projection], {
+      input: JSON.stringify({ query, variables: { owner, name } }),
+      encoding: 'utf8',
+      stdio: ['pipe', 'pipe', 'pipe'],
+    })
+    return decodePublisherState(JSON.parse(output))
   } catch {
     return { kind: 'api-error' }
   }
 }
 
 if (import.meta.main === true) {
-  const decision = decidePublisherHead(readPublisherState(process.env.GITHUB_REPOSITORY ?? ''))
+  const decision = decidePublisherHead({
+    state: readPublisherState(process.env.GITHUB_REPOSITORY ?? ''),
+    now: Date.now(),
+  })
   console.log(
     `publisher: ${decision.refresh === true ? 'refresh' : 'keep head'} (${decision.reason})`,
   )

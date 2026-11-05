@@ -424,33 +424,17 @@ manifest PRs, and the identical least-privilege permission set serves both.
 Each publisher mints a token with its own repository explicitly selected, never
 an installation-wide token or a token for the other repository.
 
-The publisher pins an existing PR head rather than restarting its CI on every
-main publication. A separate read-only health query uses the workflow's
-`GITHUB_TOKEN` (`pull-requests:read`, `checks:read`, and the job's existing
-`statuses:write`, which also reads statuses). The App retains its narrow
-contents/PR write permissions and is minted only when a refresh is needed.
+Publisher decisions are ordered and log `publisher: keep head (reason)` or `publisher: refresh (reason)`:
 
-The decision is ordered: unreadable API evidence keeps the head and exits
-successfully for the next main publication to retry; no open PR refreshes and
-creates one; a queued PR is kept; otherwise a conflict refreshes, then a current
-head ejection refreshes. Unknown mergeability is kept while GitHub recomputes;
-failed/error checks refresh; drafts are kept; success keeps a green head;
-pending/expected checks keep a pending head; missing rollup keeps the head.
-Each decision logs `publisher: keep head (reason)` or
-`publisher: refresh (reason)` with a fixed reason.
+| Evidence | Decision |
+| --- | --- |
+| API error, malformed/truncated check evidence | Keep, exit success; retry next publication |
+| No PR / queued / conflict / current-head ejection | Refresh / keep / refresh / refresh |
+| UNKNOWN mergeability | Keep through 180 minutes from head push; then refresh `stale-unknown` |
+| Latest CheckRun FAILURE/TIMED_OUT/STARTUP_FAILURE/ACTION_REQUIRED or StatusContext FAILURE/ERROR | Refresh `failed` |
+| Draft / green / pending or inconclusive checks / missing rollup | Keep / keep / keep through 180 minutes then refresh `stale-pending` / keep |
 
-The same query reads the latest 100 relevant timeline items. An open PR whose
-latest queue-removal timestamp is strictly newer than its current head's
-committed/pushed timestamp (including force-push events for that head) was
-ejected and refreshes even if its PR check rollup is still green. This avoids
-repeatedly requeuing a stale manifest that fails only against newer main.
-Removal before the current head does not trigger refresh, and a currently
-requeued PR is always kept. Missing or ambiguous timeline timestamps do not
-prove an ejection and cannot independently authorize a refresh.
-
-The merge queue tests against latest main. After the pinned PR merges, the
-next main publication opens a fresh PR with newer products: a slightly older
-manifest is acceptable, while repeated head churn can prevent CI from finishing.
+Health reads use workflow `GITHUB_TOKEN` (`pull-requests:read`, `checks:read`, existing `statuses:write`); the unchanged App is minted only for refresh writes. Only latest entries per check name/context count: cancellation, skip, neutral and stale conclusions are not failures; missing head time prevents grace expiry, and missing/ambiguous timeline evidence cannot prove ejection (latest queue removal must postdate current-head committed/pushed/force-push time among the last 100 relevant events). The queue tests latest main and the next publication after merge proposes newer products, so slightly older manifests are preferable to restarting CI on every main move.
 
 The app ID is repository Actions variable `NIX_PUBLISHER_GITHUB_APP_ID`; the
 private key is repository Actions secret
