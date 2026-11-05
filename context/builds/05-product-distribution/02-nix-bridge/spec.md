@@ -150,9 +150,11 @@ the exact proposal generated while publishing X's products. An unchanged
 manifest still produces this two-parent commit. The `promote-published` job
 declares `needs: [publish-products, consumer-smoke]`; it performs no Nix
 evaluation or build. Both jobs must succeed and emit X as their `current-sha`.
-The proposal travels as base64 in a job output, capped below GitHub's output
-size limit, without Actions artifacts or caches. `manifest-current` describes
-main's checked-in manifest; its success does not gate promotion. The manifest
+The proposal travels as base64 in four job outputs of at most 100,000 characters
+each, staying below GitHub's total output and Linux's per-environment-string
+limits. Both producer paths reject more than 400,000 characters; promotion
+validates the charset before decoding. No Actions artifacts or caches are used.
+`manifest-current` describes main's checked-in manifest; its success does not gate promotion. The manifest
 PR flow remains for main's own flake users.
 
 Ref creation and advancement remain restricted to main-push runs in the
@@ -170,11 +172,13 @@ without any bypass actors, including the App. History protection does not
 restrict initial ref creation; the App bypasses only the writers ruleset.
 See [GitHub's ruleset semantics](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/available-rules-for-rulesets).
 
-Before each of at most three push attempts, the job refetches T and extracts
-its main candidate M from its second parent, checking the `Published-From`
-trailer; for a legacy main-commit tip, M is T itself. X must be a strict
-descendant of M. An equal, older, or divergent candidate is a successful no-op.
-Thus an older run finishing after a newer run cannot move published backward.
+Before each of at most three push attempts, the job refetches T. If T is on
+the fetched main lineage, it is a legacy tip and its main candidate M is T,
+regardless of trailers. Otherwise T must have exactly two parents, a
+`Published-From` trailer matching its second parent M, and M on main.
+Unrecognized tips fail closed. X must be a strict descendant of M. An equal,
+older, or divergent candidate is a successful no-op. Thus an older run
+finishing after a newer run cannot move published backward.
 
 The publisher App creates P through GitHub's git data API for GitHub signing.
 Before pushing, `git diff --name-only X P` must be empty or exactly the manifest

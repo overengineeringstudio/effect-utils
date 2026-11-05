@@ -1343,8 +1343,14 @@ const extraJobs: Record<string, any> = {
     outputs: {
       'current-sha':
         '${{ steps.publication-scope.outputs.current-sha || steps.product-publication.outputs.current-sha }}',
-      'manifest-base64':
-        '${{ steps.publication-scope.outputs.manifest-base64 || steps.product-publication.outputs.manifest-base64 }}',
+      'manifest-base64-0':
+        '${{ steps.publication-scope.outputs.manifest-base64-0 || steps.product-publication.outputs.manifest-base64-0 }}',
+      'manifest-base64-1':
+        '${{ steps.publication-scope.outputs.manifest-base64-1 || steps.product-publication.outputs.manifest-base64-1 }}',
+      'manifest-base64-2':
+        '${{ steps.publication-scope.outputs.manifest-base64-2 || steps.product-publication.outputs.manifest-base64-2 }}',
+      'manifest-base64-3':
+        '${{ steps.publication-scope.outputs.manifest-base64-3 || steps.product-publication.outputs.manifest-base64-3 }}',
     },
     steps: [
       {
@@ -1392,7 +1398,8 @@ const extraJobs: Record<string, any> = {
           '    -f context=buck2-products/manifest-current -f state=success \\',
           '    -f description="Publisher manifest-only merge is current" \\',
           '    -f target_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"',
-          '  echo "manifest-base64=$(base64 -w0 nix/buck2-products/manifest.json)" >> "$GITHUB_OUTPUT"',
+          '  source genie/ci-workflow/published-ref-decide.sh',
+          '  manifest_outputs nix/buck2-products/manifest.json >> "$GITHUB_OUTPUT"',
           '  echo "current-sha=$GITHUB_SHA" >> "$GITHUB_OUTPUT"',
           'fi',
         ].join('\n'),
@@ -1443,13 +1450,8 @@ const extraJobs: Record<string, any> = {
               '  echo "cause=publish.sh failed (exit $result): build, network, or Cachix error; inspect run" >> "$GITHUB_OUTPUT"',
               '  exit "$result"',
               'fi',
-              // Base64 preserves exact proposal bytes; cap below the 1 MB UTF-16 job-output limit.
-              'manifest="$(base64 -w0 "$proposal")"',
-              'if [ "${#manifest}" -gt 400000 ]; then',
-              '  echo "::error::Manifest exceeds the promotion job-output size limit"',
-              '  exit 1',
-              'fi',
-              'echo "manifest-base64=$manifest" >> "$GITHUB_OUTPUT"',
+              'source genie/ci-workflow/published-ref-decide.sh',
+              'manifest_outputs "$proposal" >> "$GITHUB_OUTPUT"',
               'echo "current-sha=$GITHUB_SHA" >> "$GITHUB_OUTPUT"',
               'if cmp -s nix/buck2-products/manifest.json "$proposal"; then',
               '  echo "::notice::The v2 product manifest is already current"',

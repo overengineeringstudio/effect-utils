@@ -1136,16 +1136,19 @@ describe('published consumer ref', () => {
     for (const id of ['publication-scope', 'product-publication']) {
       const producer = publisher.steps!.find((step) => step.id === id)!
       const script = producer.run as string
-      expect(script).toContain('echo "manifest-base64=')
+      expect(script).toContain('source genie/ci-workflow/published-ref-decide.sh')
+      expect(script).toContain('manifest_outputs ')
       expect(script).toContain('echo "current-sha=$GITHUB_SHA"')
     }
     const publication = publisher.steps!.find((step) => step.id === 'product-publication')!.run!
     expect(publication.indexOf('echo "current-sha=$GITHUB_SHA"')).toBeLessThan(
       publication.indexOf('if cmp -s'),
     )
-    expect(publisher.outputs?.['manifest-base64']).toContain(
-      'steps.product-publication.outputs.manifest-base64',
-    )
+    for (const index of [0, 1, 2, 3]) {
+      expect(publisher.outputs?.[`manifest-base64-${index}`]).toContain(
+        `steps.product-publication.outputs.manifest-base64-${index}`,
+      )
+    }
   })
 
   it('runs the shared consumer harness without the root shell and emits success only afterward', () => {
@@ -1185,10 +1188,16 @@ describe('published consumer ref', () => {
     expect(advance.env?.GH_TOKEN).toBe('${{ steps.published-ref-token.outputs.token }}')
     expect(advance.run).toContain('source genie/ci-workflow/published-ref-decide.sh')
     expect(advance.run).toContain('for attempt in 1 2 3; do')
-    expect(advance.run).toContain('case "$(decide "$tip" "$GITHUB_SHA")" in')
-    expect(advance.env?.MANIFEST_BASE64).toBe(
-      '${{ needs.publish-products.outputs.manifest-base64 }}',
+    expect(advance.run).toContain(
+      'case "$(decide "$tip" "$GITHUB_SHA" refs/remotes/origin/main)" in',
     )
+    expect(advance.run).toContain('git fetch --no-tags origin +refs/heads/main:')
+    expect(advance.run).toContain('decode_manifest > "$proposal"')
+    for (const index of [0, 1, 2, 3]) {
+      expect(advance.env?.[`MANIFEST_BASE64_${index}`]).toBe(
+        `\${{ needs.publish-products.outputs.manifest-base64-${index} }}`,
+      )
+    }
     expect(advance.run).toContain('parents: [$tip, $main]')
     expect(advance.run).toContain('Published-From: ')
     expect(advance.run).toContain('/git/trees')
