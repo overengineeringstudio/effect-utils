@@ -1295,6 +1295,7 @@ const extraJobs: Record<string, any> = {
     ],
   },
   'consumer-smoke': {
+    needs: ['publish-products'],
     if: trustedSecretCiIf,
     'runs-on': namespaceRunner({
       profile: 'namespace-profile-linux-x86-64',
@@ -1305,7 +1306,10 @@ const extraJobs: Record<string, any> = {
     'timeout-minutes': 10,
     permissions: { contents: 'read' },
     defaults: bashShellDefaults,
-    outputs: { 'current-sha': '${{ steps.consumer-smoke.outputs.current-sha }}' },
+    outputs: {
+      'current-sha': '${{ steps.consumer-smoke.outputs.current-sha }}',
+      'smoked-tree': '${{ steps.consumer-smoke.outputs.smoked-tree }}',
+    },
     steps: [
       checkoutStep(),
       installNixStep({ binaryCaches: [binaryCache] }),
@@ -1316,11 +1320,25 @@ const extraJobs: Record<string, any> = {
       {
         id: 'consumer-smoke',
         name: 'Install an isolated consumer from the candidate checkout',
-        env: githubTokenEnv(),
+        env: {
+          ...githubTokenEnv(),
+          MANIFEST_BASE64_0: '${{ needs.publish-products.outputs.manifest-base64-0 }}',
+          MANIFEST_BASE64_1: '${{ needs.publish-products.outputs.manifest-base64-1 }}',
+          MANIFEST_BASE64_2: '${{ needs.publish-products.outputs.manifest-base64-2 }}',
+          MANIFEST_BASE64_3: '${{ needs.publish-products.outputs.manifest-base64-3 }}',
+        },
         run: [
+          'set -euo pipefail',
+          'if [ "$GITHUB_EVENT_NAME" = push ] && [ "$GITHUB_REF" = refs/heads/main ] && [ -n "$MANIFEST_BASE64_0" ]; then',
+          '  source genie/ci-workflow/published-ref-decide.sh',
+          '  decode_manifest > nix/buck2-products/manifest.json',
+          '  git add nix/buck2-products/manifest.json',
+          'fi',
+          'smoked_tree="$(git write-tree)"',
           // Use runner base tools, Nix and the resolved runtime, not the broad root shell.
           'bash nix/fixtures/consumer-smoke/run.sh "$PWD" "${DEVENV_BIN:?DEVENV_BIN not set}"',
           'echo "current-sha=$GITHUB_SHA" >> "$GITHUB_OUTPUT"',
+          'echo "smoked-tree=$smoked_tree" >> "$GITHUB_OUTPUT"',
         ].join('\n'),
       },
     ],
@@ -1354,6 +1372,14 @@ const extraJobs: Record<string, any> = {
     outputs: {
       'current-sha':
         '${{ steps.publication-scope.outputs.current-sha || steps.product-publication.outputs.current-sha }}',
+      'manifest-base64-0':
+        '${{ steps.publication-scope.outputs.manifest-base64-0 || steps.product-publication.outputs.manifest-base64-0 }}',
+      'manifest-base64-1':
+        '${{ steps.publication-scope.outputs.manifest-base64-1 || steps.product-publication.outputs.manifest-base64-1 }}',
+      'manifest-base64-2':
+        '${{ steps.publication-scope.outputs.manifest-base64-2 || steps.product-publication.outputs.manifest-base64-2 }}',
+      'manifest-base64-3':
+        '${{ steps.publication-scope.outputs.manifest-base64-3 || steps.product-publication.outputs.manifest-base64-3 }}',
     },
     steps: [
       {
@@ -1401,6 +1427,8 @@ const extraJobs: Record<string, any> = {
           '    -f context=buck2-products/manifest-current -f state=success \\',
           '    -f description="Publisher manifest-only merge is current" \\',
           '    -f target_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"',
+          '  source genie/ci-workflow/published-ref-decide.sh',
+          '  manifest_outputs nix/buck2-products/manifest.json >> "$GITHUB_OUTPUT"',
           '  echo "current-sha=$GITHUB_SHA" >> "$GITHUB_OUTPUT"',
           'fi',
         ].join('\n'),
@@ -1451,6 +1479,9 @@ const extraJobs: Record<string, any> = {
               '  echo "cause=publish.sh failed (exit $result): build, network, or Cachix error; inspect run" >> "$GITHUB_OUTPUT"',
               '  exit "$result"',
               'fi',
+              'source genie/ci-workflow/published-ref-decide.sh',
+              'manifest_outputs "$proposal" >> "$GITHUB_OUTPUT"',
+              'echo "current-sha=$GITHUB_SHA" >> "$GITHUB_OUTPUT"',
               'if cmp -s nix/buck2-products/manifest.json "$proposal"; then',
               '  echo "::notice::The v2 product manifest is already current"',
               '  echo "changed=false" >> "$GITHUB_OUTPUT"',
@@ -1458,7 +1489,6 @@ const extraJobs: Record<string, any> = {
               '    -f context=buck2-products/manifest-current -f state=success \\',
               '    -f description="Published product manifest is current" \\',
               '    -f target_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"',
-              '  echo "current-sha=$GITHUB_SHA" >> "$GITHUB_OUTPUT"',
               'else',
               '  comparison=$?',
               '  if [ "$comparison" -ne 1 ]; then',
