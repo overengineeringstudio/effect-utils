@@ -149,7 +149,7 @@ describe('shared-runner Cachix upload boundary', () => {
     const script = await Bun.file(
       new URL('../ci-scripts/publish-compile-products.sh', import.meta.url),
     ).text()
-    expect(script).toContain('cachix push "$cache" "$compile_path"')
+    expect(script).toContain('cachix push "$cache" "${compile_paths[@]}"')
     expect(script).not.toMatch(/cachix\s+(?:authtoken|use|watch-store|daemon)\b/)
   })
 })
