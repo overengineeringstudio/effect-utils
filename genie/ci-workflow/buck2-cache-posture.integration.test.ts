@@ -615,9 +615,8 @@ describe('generated CI cache trust behavior', () => {
       for (const args of [[], ['--push']]) {
         expect(run({ args }).exitCode).toBe(0)
         expect(readFileSync(logs.NIX_LOG, 'utf8').trim().split('\n')).toEqual([
-          'eval --impure --raw --expr builtins.currentSystem',
-          'build --no-link --print-build-logs --json .#ci-test-shell-products .#buck2-rules .#compiled-one-compiled .#compiled-two-compiled .#native-one .#checks.aarch64-linux.buck2-library-consumer .#library',
-          'build --no-link --print-build-logs .#checks.aarch64-linux.buck2-library-consumer.mismatch',
+          'build --no-link --print-build-logs --json .#ci-test-shell-products .#buck2-rules .#compiled-one-compiled .#compiled-two-compiled .#native-one .#library.libraryChecks .#library',
+          'build --no-link --print-build-logs .#library.libraryChecks.mismatch',
         ])
         expect(readFileSync(logs.SMOKE_LOG, 'utf8').trim().split('\n')).toEqual(
           names.map((name) => `${name} --help`),

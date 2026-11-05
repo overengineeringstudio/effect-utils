@@ -35,8 +35,7 @@ for inventory in nix/buck2-products/compiled-targets.json nix/buck2-products/nat
     check=''
     case "$kind" in
       rust-library)
-        system=$(nix eval --impure --raw --expr builtins.currentSystem)
-        check=".#checks.$system.buck2-library-consumer"
+        check=".#$name.libraryChecks"
         refs+=("$check")
         ;;
       native|compiled-executable) ;;

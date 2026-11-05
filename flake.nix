@@ -342,21 +342,14 @@ rec {
       in
       {
         buckProducts = trackedBuck2Products;
-        checks =
-          pkgs.lib.optionalAttrs (system == "aarch64-darwin") {
-            macos-app-host-stability = macosAppExample.check;
-            macos-app-primitives = macosAppExample.primitives;
-            macos-app-appkit-link = import ./nix/macos-app/appkit-link-check.nix {
-              inherit pkgs;
-              nixpkgsRevision = nixpkgs.rev;
-            };
-          }
-          // {
-            buck2-library-consumer = import ./nix/buck2-products/library-check.nix {
-              inherit pkgs;
-              product = nativeProductPackages.content-address-core;
-            };
+        checks = pkgs.lib.optionalAttrs (system == "aarch64-darwin") {
+          macos-app-host-stability = macosAppExample.check;
+          macos-app-primitives = macosAppExample.primitives;
+          macos-app-appkit-link = import ./nix/macos-app/appkit-link-check.nix {
+            inherit pkgs;
+            nixpkgsRevision = nixpkgs.rev;
           };
+        };
         packages =
           cliPackages
           // providerCliPackages
