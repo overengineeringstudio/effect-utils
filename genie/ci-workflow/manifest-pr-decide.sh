@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+
 bootstrap_pins() {
   nix eval --impure --json --expr 'builtins.attrNames ((import ./nix/buck2-products/cache.nix {
     pkgs.lib = (builtins.getFlake ("git+file:" + toString ./.)).inputs.nixpkgs.lib;
@@ -30,6 +31,7 @@ manifest_pr_decide() {
     fi
   fi
 }
+
 # Recheck immediately before the remote write, not just before building a proposal.
 manifest_pr_writer_decide() {
   local source="$1" remote tip
