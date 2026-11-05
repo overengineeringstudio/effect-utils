@@ -87,7 +87,7 @@ const nixRealisationTimingsSeconds = {
     macOS: { p95: 466, max: 747 },
   },
   'Build every published from-source product': { p95: 321, max: 329 },
-  'Build and smoke native and compiled products': {
+  'Smoke native and compiled products': {
     Linux: { p95: 179, max: 280 },
     macOS: { p95: 64, max: 74 },
   },
@@ -443,18 +443,18 @@ const playwrightTestRun = (packageName: 'utils' | 'tui-react') =>
     runDevenvTasksBefore(`test:pw:${packageName}`),
   ].join('\n')
 
-// Run 41942221850/job 126965644632: cold prerequisites still downloading at
+// Run 41942221850/job 126965644632: cold product build still downloading at
 // 612 s+ (incomplete); no reliable remaining-byte estimate. ceil(1.5 * 612 / 60) = 16 min.
-const compiledProductsPrerequisitesStep = {
-  name: 'Realise native and compiled product prerequisites',
+const compiledProductsBuildStep = {
+  name: 'Build native and compiled products',
   env: githubTokenEnv(),
-  run: withCiSourceRoot('bash genie/ci-scripts/compiled-products.sh --realise-inputs'),
+  run: withCiSourceRoot('bash genie/ci-scripts/compiled-products.sh --build-only'),
   'timeout-minutes': 16,
 } as const
 
-/** Build and `--help`-smoke compiled-executable and native products. */
+/** Reuse realized outputs for smoke checks; the preceding step owns cold builds. */
 const compiledProductsSmokeStep = {
-  name: 'Build and smoke native and compiled products',
+  name: 'Smoke native and compiled products',
   env: githubTokenEnv(),
   run: withCiSourceRoot('bash genie/ci-scripts/compiled-products.sh'),
 } as const
@@ -585,7 +585,7 @@ const unitTestJob = ({
             env: githubTokenEnv(),
             run: runDevenvTasksBefore('buck2:cache-posture:ci-test'),
           }),
-          buck2TrustedCacheWriterStep(compiledProductsPrerequisitesStep),
+          buck2TrustedCacheWriterStep(compiledProductsBuildStep),
           buck2TrustedCacheWriterStep(compiledProductsSmokeStep),
           {
             name: 'Build Darwin Nix TypeScript product',
@@ -1290,7 +1290,7 @@ const extraJobs: Record<string, any> = {
           ].join('\n'),
         ),
       },
-      compiledProductsPrerequisitesStep,
+      compiledProductsBuildStep,
       compiledProductsSmokeStep,
     ],
   },
