@@ -10,6 +10,11 @@ esac
 [[ "${GITHUB_REF:-}" == refs/heads/main &&
    "${GITHUB_REPOSITORY:-}" == overengineeringstudio/effect-utils ]] || exit 1
 
+# Inspect this runner's package names without forcing unavailable products.
+# Platform-filtered native exports must be skipped before realization.
+available="$(nix eval --impure --json "$repo_root#packages" \
+  --apply 'packages: builtins.attrNames packages.${builtins.currentSystem}')"
+
 for inventory in cache compiled native; do
   names="$(jq -er '.products | map(.name) | join("\n")' "$repo_root/nix/buck2-products/$inventory-targets.json")"
   while IFS= read -r name; do
@@ -22,6 +27,10 @@ for inventory in cache compiled native; do
       compiled) attr="$name-compiled.buck2Product.compileProduct" ;;
       native) attr="$name.buck2Product.compileProduct" ;;
     esac
+    if ! jq -e --arg name "${attr%%.*}" 'index($name) != null' <<<"$available" >/dev/null; then
+      echo "compile cache: skipping $attr (not exported on this system)"
+      continue
+    fi
     # Realizing the unstamped derivation substitutes when available, even when
     # the stamped artifact already substituted or its immutable pin was reused.
     if ! compile_path="$(nix build --no-link --print-out-paths "$repo_root#$attr")"; then

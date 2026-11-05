@@ -21,6 +21,15 @@ case "${1:-}" in
     ;;
 esac
 
+if $push; then
+  [[ ( "${GITHUB_EVENT_NAME:-}" == push || "${GITHUB_EVENT_NAME:-}" == workflow_dispatch ) &&
+     "${GITHUB_REF:-}" == refs/heads/main &&
+     "${GITHUB_REPOSITORY:-}" == overengineeringstudio/effect-utils ]] || {
+    echo 'refusing product publication outside a canonical main push or dispatch' >&2
+    exit 1
+  }
+fi
+
 # Use the same package graph as devenv's repoPackages. Evaluate it once for
 # every inventoried import, the retained shell closure, and the Buck rules cell.
 refs=(.#ci-test-shell-products .#buck2-rules)
@@ -124,4 +133,8 @@ if [ "$push" = true ]; then
   # Store paths contain no whitespace; publish every exact direct output and
   # its transitive closure, including the retained shell and Buck rules cell.
   cachix push overeng-effect-utils $outputs
+  # Stamped outputs do not retain their compile inputs. Reuse the inventory
+  # mapping and best-effort warming for exact unstamped outputs on every OS.
+  bash "$(dirname "${BASH_SOURCE[0]}")/publish-compile-products.sh" "$PWD" ||
+    echo '::warning title=Compile cache warming failed::Product publication succeeded; compile cache warming did not complete' >&2
 fi

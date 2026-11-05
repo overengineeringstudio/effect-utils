@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'bun:test'
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import {
+  chmodSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -42,6 +50,7 @@ const evaluate = (
   ref: string,
   baseRef = 'refs/heads/main',
   tested = false,
+  repository = 'overengineeringstudio/effect-utils',
 ): unknown => {
   if (value.startsWith('${{') === false) return value
   const expression = value
@@ -57,7 +66,7 @@ const evaluate = (
     'needs',
     `return (${expression})`,
   )(
-    { event_name: event, ref, event: { merge_group: { base_ref: baseRef } } },
+    { repository, event_name: event, ref, event: { merge_group: { base_ref: baseRef } } },
     { measurement_baseline_ref: '' },
     { BUCK2_PUBLIC_CACHE_WRITE_AUTH: 'fixture-credential' },
     (text: string, prefix: string) => text.startsWith(prefix),
@@ -510,6 +519,19 @@ describe('generated CI cache trust behavior', () => {
       expect(evaluate(publisher.if!, event, 'refs/heads/main')).toBe(false)
     }
     expect(evaluate(publisher.if!, 'workflow_dispatch', 'refs/heads/topic')).toBe(false)
+    expect(
+      evaluate(publisher.if!, 'push', 'refs/heads/main', 'refs/heads/main', false, 'other/repo'),
+    ).toBe(false)
+    expect(
+      evaluate(
+        publisher.if!,
+        'workflow_dispatch',
+        'refs/heads/main',
+        'refs/heads/main',
+        false,
+        'other/repo',
+      ),
+    ).toBe(false)
     expect(publication.run).toContain('compiled-products.sh --push')
     expect(publication.env?.CACHIX_AUTH_TOKEN).toBe('${{ secrets.CACHIX_AUTH_TOKEN }}')
     const script = await Bun.file(
@@ -522,6 +544,7 @@ describe('generated CI cache trust behavior', () => {
     expect(script).toContain('if [ "$matches" -ne 1 ]; then')
     expect(script).toContain('"$out/bin/$name" --help')
     expect(script).toContain('if [ "$push" = true ]; then')
+    expect(script).toContain('publish-compile-products.sh" "$PWD"')
     const flake = await Bun.file(new URL('../../flake.nix', import.meta.url)).text()
     expect(flake).toContain('ci-test-shell-products = pkgs.linkFarm')
     expect(flake).toContain(
@@ -538,6 +561,16 @@ describe('generated CI cache trust behavior', () => {
     const rulesOutput = join(work, 'output-buck2-rules')
     const libraryOutput = join(work, 'output-library')
     const librarySource = join(work, 'source-library')
+    // Reuse the test runtime's immutable store directory; the fixture never builds.
+    const compileOutput = realpathSync(process.execPath).match(/^\/nix\/store\/[^/]+/)![0]
+    const compileAttrs = [
+      'buck-product-overeng-cache-one-from-source.compileProduct',
+      'compiled-one-compiled.buck2Product.compileProduct',
+      'compiled-two-compiled.buck2Product.compileProduct',
+      'native-one.buck2Product.compileProduct',
+      'library.buck2Product.compileProduct',
+    ]
+    const availablePackages = compileAttrs.map((attr) => attr.split('.')[0]!)
     const roundtripCommand = `build --impure --no-link --print-build-logs --file nix/buck2-products/library-roundtrip.nix --argstr repositoryPath ${work} --argstr productName library --argstr sourcePath ${librarySource}`
     const logs = {
       NIX_LOG: join(work, 'nix.log'),
@@ -554,6 +587,10 @@ describe('generated CI cache trust behavior', () => {
       mkdirSync(shellOutput)
       mkdirSync(rulesOutput)
       mkdirSync(join(libraryOutput, 'lib'), { recursive: true })
+      writeFileSync(
+        join(work, 'nix/buck2-products/cache-targets.json'),
+        JSON.stringify({ products: [{ name: '@overeng/cache-one' }] }),
+      )
       writeFileSync(
         join(work, 'nix/buck2-products/compiled-targets.json'),
         JSON.stringify({
@@ -580,10 +617,17 @@ describe('generated CI cache trust behavior', () => {
       executable({
         path: join(work, 'tools/nix'),
         content: `printf '%s\\n' "$*" >> "$NIX_LOG"
+if [[ "$1" = eval ]]; then
+  printf '%s\\n' "$AVAILABLE_PACKAGES"; exit 0
+fi
 if [[ "$*" = *'--log-format raw'* ]]; then
   printf "building '/fake/input.drv'...\\ncopying path '/fake/output' from 'cache'...\\n" >&2
   printf '%s\\n' "$BUILD_JSON"
   exit "\${BUILD_STATUS:-0}"
+elif [[ "$*" = *".compileProduct"* ]]; then
+  [ "$FAIL_PRODUCT" != compile-realize ] || exit 1
+  if [ "$FAIL_PRODUCT" = compile-invalid ]; then printf '/invalid\\n'; else printf '%s\\n' '${compileOutput}'; fi
+  exit 0
 elif [[ "$*" = *".buck2Product"* ]]; then
   printf '%s\\n' '${JSON.stringify([{ outputs: { out: librarySource } }])}'; exit 0
 elif [[ "$*" = *"library-roundtrip.nix"* ]]; then
@@ -597,7 +641,8 @@ printf '%s\\n' "$BUILD_JSON"`,
       })
       executable({
         path: join(work, 'tools/cachix'),
-        content: 'printf \'%s\\n\' "$*" >> "$CACHE_LOG"',
+        content: `printf '%s\\n' "$*" >> "$CACHE_LOG"
+if [ "$#" = 3 ]; then [ "$FAIL_PRODUCT" != compile-push ]; else [ "$FAIL_PRODUCT" != final-push ]; fi`,
       })
       const outputs = [outputPaths[2]!, shellOutput, rulesOutput, outputPaths[1]!, outputPaths[0]!]
       outputs.unshift(libraryOutput)
@@ -606,11 +651,19 @@ printf '%s\\n' "$BUILD_JSON"`,
         selectedOutputs = outputs,
         failProduct = '',
         buildStatus = 0,
+        event = 'push',
+        ref = 'refs/heads/main',
+        repository = 'overengineeringstudio/effect-utils',
+        available = availablePackages,
       }: {
         args: string[]
         selectedOutputs?: string[]
         failProduct?: string
         buildStatus?: number
+        event?: string
+        ref?: string
+        repository?: string
+        available?: string[]
       }) => {
         for (const path of Object.values(logs)) writeFileSync(path, '')
         return Bun.spawnSync({
@@ -620,9 +673,13 @@ printf '%s\\n' "$BUILD_JSON"`,
             ...process.env,
             ...logs,
             PATH: `${join(work, 'tools')}:${process.env.PATH ?? ''}`,
+            GITHUB_EVENT_NAME: event,
+            GITHUB_REF: ref,
+            GITHUB_REPOSITORY: repository,
             BUILD_JSON: JSON.stringify(
               selectedOutputs.map((out) => ({ drvPath: `${out}.drv`, outputs: { out } })),
             ),
+            AVAILABLE_PACKAGES: JSON.stringify(available),
             FAIL_PRODUCT: failProduct,
             BUILD_STATUS: String(buildStatus),
           },
@@ -630,6 +687,19 @@ printf '%s\\n' "$BUILD_JSON"`,
           stderr: 'pipe',
         })
       }
+      for (const trust of [
+        { event: 'pull_request' },
+        { event: 'merge_group' },
+        { event: 'workflow_dispatch', ref: 'refs/heads/topic' },
+        { event: 'workflow_dispatch', repository: 'other/repo' },
+        { ref: 'refs/heads/topic' },
+        { repository: 'other/repo' },
+      ]) {
+        expect(run({ args: ['--push'], ...trust }).exitCode).not.toBe(0)
+        expect(readFileSync(logs.NIX_LOG, 'utf8')).toBe('')
+        expect(readFileSync(logs.CACHE_LOG, 'utf8')).toBe('')
+      }
+      expect(run({ args: ['--push'], event: 'workflow_dispatch' }).exitCode).toBe(0)
       const build = run({ args: ['--build-only'] })
       expect(build.exitCode).toBe(0)
       expect(build.stdout.toString()).toMatch(
@@ -655,14 +725,47 @@ printf '%s\\n' "$BUILD_JSON"`,
         expect(readFileSync(logs.NIX_LOG, 'utf8').trim().split('\n')).toEqual([
           'build --no-link --print-build-logs --json .#ci-test-shell-products .#buck2-rules .#compiled-one-compiled .#compiled-two-compiled .#native-one .#library.libraryChecks .#library.compositionChecks .#library',
           'build --no-link --print-build-logs .#library.libraryChecks.mismatch',
+          ...(args.length === 0
+            ? []
+            : [
+                `eval --impure --json ${work}#packages --apply packages: builtins.attrNames packages.\${builtins.currentSystem}`,
+              ]),
+          ...(args.length === 0
+            ? []
+            : compileAttrs.map((attr) => `build --no-link --print-out-paths ${work}#${attr}`)),
         ])
         expect(readFileSync(logs.SMOKE_LOG, 'utf8').trim().split('\n')).toEqual(
           names.map((name) => `${name} --help`),
         )
         expect(readFileSync(logs.CACHE_LOG, 'utf8')).toBe(
-          args.length === 0 ? '' : `push overeng-effect-utils ${outputs.join(' ')}\n`,
+          args.length === 0
+            ? ''
+            : `push overeng-effect-utils ${outputs.join(' ')}\n` +
+                compileAttrs.map(() => `push overeng-effect-utils ${compileOutput}\n`).join(''),
         )
       }
+      const platformFiltered = run({
+        args: ['--push'],
+        available: availablePackages.filter((name) => name !== 'native-one'),
+      })
+      expect(platformFiltered.exitCode).toBe(0)
+      expect(platformFiltered.stdout.toString()).toContain(
+        'skipping native-one.buck2Product.compileProduct (not exported on this system)',
+      )
+      expect(readFileSync(logs.NIX_LOG, 'utf8')).not.toContain(
+        `${work}#native-one.buck2Product.compileProduct`,
+      )
+      for (const failProduct of ['compile-realize', 'compile-invalid', 'compile-push']) {
+        const result = run({ args: ['--push'], failProduct })
+        expect(result.exitCode).toBe(0)
+        expect(result.stderr.toString()).toContain('::warning title=Compile cache')
+        expect(readFileSync(logs.NIX_LOG, 'utf8')).toContain(compileAttrs.at(-1)!)
+        expect(readFileSync(logs.CACHE_LOG, 'utf8')).toStartWith(
+          `push overeng-effect-utils ${outputs.join(' ')}\n`,
+        )
+      }
+      expect(run({ args: ['--push'], failProduct: 'final-push' }).exitCode).not.toBe(0)
+      expect(readFileSync(logs.NIX_LOG, 'utf8')).not.toContain('.compileProduct')
       expect(
         run({
           args: ['--push'],
