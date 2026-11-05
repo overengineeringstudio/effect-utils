@@ -22,10 +22,10 @@ case "${1:-}" in
 esac
 
 if $push; then
-  [[ "${GITHUB_EVENT_NAME:-}" == push &&
+  [[ ( "${GITHUB_EVENT_NAME:-}" == push || "${GITHUB_EVENT_NAME:-}" == workflow_dispatch ) &&
      "${GITHUB_REF:-}" == refs/heads/main &&
      "${GITHUB_REPOSITORY:-}" == overengineeringstudio/effect-utils ]] || {
-    echo 'refusing product publication outside a canonical main push' >&2
+    echo 'refusing product publication outside a canonical main push or dispatch' >&2
     exit 1
   }
 fi

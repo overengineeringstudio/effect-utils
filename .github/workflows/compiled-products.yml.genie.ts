@@ -21,7 +21,7 @@ const binaryCache = readBinaryCacheDescriptors(
 )['overeng-effect-utils']!
 
 const protectedMainIf =
-  "${{ github.repository == 'overengineeringstudio/effect-utils' && github.ref == 'refs/heads/main' && github.event_name == 'push' }}"
+  "${{ github.repository == 'overengineeringstudio/effect-utils' && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') }}"
 
 // Protected-main publisher for compiled-executable and native products, the
 // exported Buck rules cell, and the Buck capability closure `test` lanes consume.
@@ -40,6 +40,7 @@ export default ciWorkflow({
   name: 'Native and Compiled Products',
   on: {
     push: { branches: ['main'] },
+    workflow_dispatch: {},
   },
   permissions: { contents: 'read' },
   concurrency: {
@@ -74,7 +75,7 @@ export default ciWorkflow({
         cachixCliBuildStep,
         cachixPushStep({
           jobIf: protectedMainIf,
-          triggers: ['push'],
+          triggers: ['push', 'workflow_dispatch'],
           authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}',
           step: {
             name: 'Publish Buck rules, retained shell, native and compiled products',

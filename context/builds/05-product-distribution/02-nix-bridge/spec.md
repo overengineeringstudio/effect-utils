@@ -188,8 +188,8 @@ publication step budget covers the product builds and pushes.
 
 The Native and Compiled Products workflow owns compile warming in its
 `publish-compiled-products` job, on ephemeral Namespace Linux x86_64 and Darwin
-arm64 runners. Publication requires a `push` to `refs/heads/main` in the
-canonical repository; manual dispatch, PRs and merge groups cannot push.
+arm64 runners. Publication requires a `push` or `workflow_dispatch` on
+`refs/heads/main` in the canonical repository; PRs and merge groups cannot push.
 Neither consumer smoke nor promotion depends on this workflow. Anonymous
 substitution is configured through the Nix installer, with no Cachix action or
 automatic uploader. Only the explicit push step receives the existing

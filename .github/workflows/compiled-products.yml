@@ -9,6 +9,7 @@ permissions:
 on:
   push:
     branches: [main]
+  workflow_dispatch: {}
 
 concurrency:
   group: '${{ github.workflow }}-${{ github.ref }}'
@@ -16,7 +17,7 @@ concurrency:
 
 jobs:
   publish-compiled-products:
-    if: ${{ github.repository == 'overengineeringstudio/effect-utils' && github.ref == 'refs/heads/main' && github.event_name == 'push' }}
+    if: ${{ github.repository == 'overengineeringstudio/effect-utils' && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') }}
     strategy:
       fail-fast: false
       matrix:
@@ -89,7 +90,7 @@ jobs:
         run: |
           cd "${GITHUB_WORKSPACE:-$PWD}" && mkdir -p "$XDG_CONFIG_HOME"
           bash genie/ci-scripts/compiled-products.sh --push
-        if: github.ref == 'refs/heads/main' && (github.event_name == 'push')
+        if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
       - name: Remove isolated compile Cachix configuration
         if: always()
         run: |

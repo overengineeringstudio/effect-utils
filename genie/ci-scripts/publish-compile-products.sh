@@ -4,7 +4,7 @@ set -euo pipefail
 repo_root="${1:-$PWD}"
 cache=overeng-effect-utils
 case "${GITHUB_EVENT_NAME:-}" in
-  push) ;;
+  push|workflow_dispatch) ;;
   *) echo 'refusing compile publication outside a trusted main event' >&2; exit 1 ;;
 esac
 [[ "${GITHUB_REF:-}" == refs/heads/main &&

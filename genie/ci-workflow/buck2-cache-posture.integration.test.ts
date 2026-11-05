@@ -514,13 +514,23 @@ describe('generated CI cache trust behavior', () => {
       (step) => step.name === 'Publish Buck rules, retained shell, native and compiled products',
     )!
     expect(evaluate(publisher.if!, 'push', 'refs/heads/main')).toBe(true)
-    expect(evaluate(publisher.if!, 'workflow_dispatch', 'refs/heads/main')).toBe(false)
+    expect(evaluate(publisher.if!, 'workflow_dispatch', 'refs/heads/main')).toBe(true)
     for (const event of ['pull_request', 'merge_group']) {
       expect(evaluate(publisher.if!, event, 'refs/heads/main')).toBe(false)
     }
     expect(evaluate(publisher.if!, 'workflow_dispatch', 'refs/heads/topic')).toBe(false)
     expect(
       evaluate(publisher.if!, 'push', 'refs/heads/main', 'refs/heads/main', false, 'other/repo'),
+    ).toBe(false)
+    expect(
+      evaluate(
+        publisher.if!,
+        'workflow_dispatch',
+        'refs/heads/main',
+        'refs/heads/main',
+        false,
+        'other/repo',
+      ),
     ).toBe(false)
     expect(publication.run).toContain('compiled-products.sh --push')
     expect(publication.env?.CACHIX_AUTH_TOKEN).toBe('${{ secrets.CACHIX_AUTH_TOKEN }}')
@@ -680,7 +690,8 @@ if [ "$#" = 3 ]; then [ "$FAIL_PRODUCT" != compile-push ]; else [ "$FAIL_PRODUCT
       for (const trust of [
         { event: 'pull_request' },
         { event: 'merge_group' },
-        { event: 'workflow_dispatch' },
+        { event: 'workflow_dispatch', ref: 'refs/heads/topic' },
+        { event: 'workflow_dispatch', repository: 'other/repo' },
         { ref: 'refs/heads/topic' },
         { repository: 'other/repo' },
       ]) {
@@ -688,6 +699,7 @@ if [ "$#" = 3 ]; then [ "$FAIL_PRODUCT" != compile-push ]; else [ "$FAIL_PRODUCT
         expect(readFileSync(logs.NIX_LOG, 'utf8')).toBe('')
         expect(readFileSync(logs.CACHE_LOG, 'utf8')).toBe('')
       }
+      expect(run({ args: ['--push'], event: 'workflow_dispatch' }).exitCode).toBe(0)
       const build = run({ args: ['--build-only'] })
       expect(build.exitCode).toBe(0)
       expect(build.stdout.toString()).toMatch(
@@ -715,7 +727,9 @@ if [ "$#" = 3 ]; then [ "$FAIL_PRODUCT" != compile-push ]; else [ "$FAIL_PRODUCT
           'build --no-link --print-build-logs .#library.libraryChecks.mismatch',
           ...(args.length === 0
             ? []
-            : [`eval --impure --json ${work}#packages --apply packages: builtins.attrNames packages.\${builtins.currentSystem}`]),
+            : [
+                `eval --impure --json ${work}#packages --apply packages: builtins.attrNames packages.\${builtins.currentSystem}`,
+              ]),
           ...(args.length === 0
             ? []
             : compileAttrs.map((attr) => `build --no-link --print-out-paths ${work}#${attr}`)),
