@@ -13,7 +13,6 @@ export type PublisherState =
       health: 'failed' | 'green' | 'pending' | 'missing'
       headTime?: number
     }
-
 const record = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && Array.isArray(value) === false
 const timestamp = (value: unknown): number | undefined => {
@@ -30,7 +29,6 @@ const latestTime = (values: unknown): number | undefined => {
   }
   return latest
 }
-
 const checkHealth = (
   connection: unknown,
 ): 'failed' | 'green' | 'pending' | 'missing' | undefined => {
@@ -57,15 +55,24 @@ const checkHealth = (
       check === true
         ? ['FAILURE', 'TIMED_OUT', 'STARTUP_FAILURE', 'ACTION_REQUIRED'].includes(result ?? '')
         : ['FAILURE', 'ERROR'].includes(result ?? '')
-    const outcome =
-      time === undefined
-        ? 'pending'
-        : failure === true
-          ? 'failed'
-          : ['SUCCESS', 'NEUTRAL', 'SKIPPED'].includes(result ?? '') === true
-            ? 'green'
-            : 'pending'
-    const key = `${node['__typename']}:${name}`
+    let outcome = 'pending'
+    if (time !== undefined && failure === true) outcome = 'failed'
+    else if (
+      time !== undefined &&
+      ['SUCCESS', 'NEUTRAL', 'SKIPPED'].includes(result ?? '') === true
+    )
+      outcome = 'green'
+    const suite = record(node.checkSuite) === true ? node.checkSuite : undefined
+    const app = record(suite?.app) === true ? suite.app : undefined
+    const run = record(suite?.workflowRun) === true ? suite.workflowRun : undefined
+    const workflow = record(run?.workflow) === true ? run.workflow : undefined
+    if (
+      check === true &&
+      (typeof app?.slug !== 'string' ||
+        (app.slug === 'github-actions' && typeof workflow?.name !== 'string'))
+    )
+      return undefined
+    const key = JSON.stringify([node['__typename'], app?.slug, workflow?.name, name])
     const old = latest.get(key)
     if (old === undefined || (time ?? Infinity) > old.time)
       latest.set(key, { time: time ?? Infinity, result: outcome })
@@ -103,14 +110,9 @@ export const decodePublisherState = (nodes: unknown): PublisherState => {
     ejected: headTime !== undefined && removal !== undefined && removal > headTime,
   }
 }
-
-export const decidePublisherHead = ({
-  state,
-  now,
-}: {
-  state: PublisherState
-  now: number
-}): { refresh: boolean; reason: string } => {
+type HeadInput = { state: PublisherState; now: number }
+type HeadDecision = { refresh: boolean; reason: string }
+export const decidePublisherHead = ({ state, now }: HeadInput): HeadDecision => {
   let reason: string = state.kind
   if (state.kind === 'pr') {
     const expired =
@@ -125,32 +127,23 @@ export const decidePublisherHead = ({
     else if (state.health === 'pending') reason = expired === true ? 'stale-pending' : 'pending'
     else reason = 'unknown'
   }
-  return {
-    refresh: /^(no-pr|conflict|ejected|failed|stale-pending|stale-unknown)$/.test(reason),
-    reason,
-  }
+  const refresh = /^(no-pr|conflict|ejected|failed|stale-(pending|unknown))$/.test(reason)
+  return { refresh, reason }
 }
 
-const query = `query($owner:String!, $name:String!) {
-  repository(owner:$owner, name:$name) {
-    pullRequests(first:2, states:OPEN, baseRefName:"main", headRefName:"automation/buck2-products-manifest") { nodes {
-      headRefOid isDraft mergeable mergeQueueEntry { state }
-      commits(last:1) { nodes { commit { committedDate pushedDate statusCheckRollup { contexts(first:100) {
-        pageInfo { hasNextPage } nodes { __typename
-          ... on CheckRun { name status conclusion startedAt completedAt checkSuite { workflowRun { databaseId } } }
-          ... on StatusContext { context state createdAt }
-        }
-      } } } } }
-      timelineItems(last:100, itemTypes:[REMOVED_FROM_MERGE_QUEUE_EVENT, HEAD_REF_FORCE_PUSHED_EVENT, PULL_REQUEST_COMMIT]) { nodes { __typename
-        ... on RemovedFromMergeQueueEvent { createdAt }
-        ... on HeadRefForcePushedEvent { createdAt afterCommit { oid } }
-        ... on PullRequestCommit { commit { oid committedDate } }
-      } }
-    } }
-  }
-}`
+const query = `query($owner:String!, $name:String!) { repository(owner:$owner, name:$name) {
+  pullRequests(first:2, states:OPEN, baseRefName:"main", headRefName:"automation/buck2-products-manifest") { nodes { headRefOid isDraft mergeable mergeQueueEntry { state }
+    commits(last:1) { nodes { commit { pushedDate statusCheckRollup { contexts(first:100) {
+      pageInfo { hasNextPage } nodes { __typename
+        ... on CheckRun { name status conclusion startedAt checkSuite { app { slug } workflowRun { workflow { name } } } }
+        ... on StatusContext { context state createdAt }
+      } } } } } }
+    timelineItems(last:100, itemTypes:[REMOVED_FROM_MERGE_QUEUE_EVENT, HEAD_REF_FORCE_PUSHED_EVENT]) { nodes { __typename
+      ... on RemovedFromMergeQueueEvent { createdAt }
+      ... on HeadRefForcePushedEvent { createdAt afterCommit { oid } } } }
+  } } } }`
 const projection =
-  '.data.repository.pullRequests.nodes | map(.headRefOid as $head | {draft: .isDraft, mergeable, queued: (.mergeQueueEntry != null), checks: .commits.nodes[0].commit.statusCheckRollup.contexts, headTimes: ([.commits.nodes[0].commit.committedDate, .commits.nodes[0].commit.pushedDate] + [(.timelineItems.nodes // [])[] | select(.__typename == "HeadRefForcePushedEvent" and .afterCommit.oid == $head) | .createdAt] | map(select(. != null))), removalTimes: [(.timelineItems.nodes // [])[] | select(.__typename == "RemovedFromMergeQueueEvent") | .createdAt]})'
+  '.data.repository.pullRequests.nodes | map(.headRefOid as $head | {draft: .isDraft, mergeable, queued: (.mergeQueueEntry != null), checks: .commits.nodes[0].commit.statusCheckRollup.contexts, headTimes: ([.commits.nodes[0].commit.pushedDate] + [(.timelineItems.nodes // [])[] | select(.__typename == "HeadRefForcePushedEvent" and .afterCommit.oid == $head) | .createdAt] | map(select(. != null))), removalTimes: [(.timelineItems.nodes // [])[] | select(.__typename == "RemovedFromMergeQueueEvent") | .createdAt]})'
 
 export const readPublisherState = (repository: string): PublisherState => {
   try {

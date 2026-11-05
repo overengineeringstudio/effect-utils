@@ -5,12 +5,15 @@ import * as Publisher from './publisher-head.ts'
 const head = '2026-11-04T20:00:00Z',
   later = '2026-11-04T21:00:00Z'
 const now = Date.parse(head) + Publisher.PUBLISHER_HEAD_GRACE_MINUTES * 60_000
+const app = 'github-actions'
+const suite = (slug = app, name = 'CI') => ({ app: { slug }, workflowRun: { workflow: { name } } })
 const check = (conclusion: string, startedAt = head, name = 'CI') => ({
   __typename: 'CheckRun',
   name,
   status: 'COMPLETED',
   conclusion,
   startedAt,
+  checkSuite: suite(),
 })
 const status = (state: string, createdAt = head) => ({
   __typename: 'StatusContext',
@@ -39,6 +42,11 @@ const rows: [unknown, string, number?][] = [
   [pr([check('SUCCESS'), check('FAILURE', later)]), 'failed'],
   [pr([check('FAILURE'), check('CANCELLED', later)]), 'pending'],
   [pr([check('FAILURE'), check('CANCELLED', later, 'other')]), 'failed'],
+  [pr([check('FAILURE'), { ...check('SUCCESS', later), checkSuite: suite('other') }]), 'failed'],
+  [
+    pr([check('FAILURE'), { ...check('CANCELLED', later), checkSuite: suite(undefined, 'other') }]),
+    'failed',
+  ],
   [pr([], { mergeable: 'CONFLICTING' }), 'conflict'],
   [pr(undefined, { removalTimes: [later] }), 'ejected'],
   [pr(undefined, { headTimes: [head, later], removalTimes: [head] }), 'green'],
@@ -49,7 +57,7 @@ const rows: [unknown, string, number?][] = [
   [pr([], { mergeable: 'UNKNOWN', headTimes: [] }), 'unknown', now + 1],
   [pr([check('PENDING')]), 'pending', now - 1],
   [pr([check('PENDING')]), 'stale-pending', now + 1],
-  [pr([check('CANCELLED')], { headTimes: [] }), 'pending', now + 1],
+  [pr([check('CANCELLED')], { headTimes: [], committedDate: head }), 'pending', now + 1],
   [pr(undefined, { draft: true }), 'draft'],
   [pr(undefined, { removalTimes: undefined }), 'green'],
   [pr(undefined, { removalTimes: ['invalid'] }), 'green'],
