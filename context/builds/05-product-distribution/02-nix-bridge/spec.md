@@ -125,6 +125,24 @@ Native/library publication uses source products plus Cachix substitution;
 `publish.sh`'s manifest/descriptor publication supports JavaScript/package rows,
 not native/library rows or a hosted library descriptor registry.
 
+### Library and tool composition
+
+`lib.mkBuck2ProductComposition { inherit pkgs; } { name = "library-with-tools";
+products = [ library tool ]; }` combines independently validated imports without
+Cargo or a rebuild. Descriptor paths and the library's compiler, target and panic
+strategy remain available in passthrough metadata. Composition revalidates every
+descriptor at build time, requires a common platform, and requires all libraries
+to share compiler, sysroot, verbose compiler identity, host/target and panic
+strategy. Native Rust executables must have exactly the library's recorded
+`semanticProvenance.toolchain`; other executable adapters require platform parity.
+Before copying, sorted destination inventories reject duplicate paths and
+file/directory conflicts, naming both owners. Full trees retain their flat `lib/`
+and `bin/` layout, modes, symlinks and artifact bytes; stripping is disabled,
+library descriptor hashes and every copied file's hash are checked.
+`content-address-core.compositionChecks` compiles and runs the unchanged external
+rustc recipe against the combined output and runs its `bin/otelite --help`.
+The compiled-products CI build runs this check on Linux and Darwin.
+
 ## Cache-backed Product Bridge
 
 The generated product inventory is the source of truth for product name,
