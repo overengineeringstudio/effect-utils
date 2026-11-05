@@ -277,6 +277,11 @@ the ordinary 300-second publication deadline; the CI job timeout bounds the batc
 Chain installers and repeated bootstrap reuse job-local `.devenv/` receipts without
 a publication lock or `check`. Receipts bind graph/scope, authority, immutable
 snapshot identities, publisher/verifier sources, and HEAD plus dirty contents.
+Git identity uses porcelain-v2 changed-file metadata plus streaming hashes of only
+changed tracked and nonignored untracked inputs, not binary diffs or raw-tree reads.
+Publication outputs (`.editor-view`, `.devenv`, and `node_modules` at every depth)
+are excluded independently of ignore rules, so publication cannot invalidate its
+own input receipt. Missing receipts return before computing any fingerprint.
 A job nonce in GitHub-cleaned `RUNNER_TEMP` prevents reuse across jobs.
 Missing or changed evidence logs a miss and runs ordinary scoped publication.
 Developer flows without the CI union retain their existing prerequisites.

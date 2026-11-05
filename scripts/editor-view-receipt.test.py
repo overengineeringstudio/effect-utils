@@ -1,11 +1,16 @@
+import importlib.util
 import os
 from pathlib import Path
 import subprocess
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 
 HELPER = Path(__file__).with_name("editor-view-receipt.py")
+SPEC = importlib.util.spec_from_file_location("editor_view_receipt", HELPER)
+receipt = importlib.util.module_from_spec(SPEC)
+SPEC.loader.exec_module(receipt)
 
 
 class ReceiptTest(unittest.TestCase):
@@ -23,6 +28,8 @@ class ReceiptTest(unittest.TestCase):
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text("version-one")
         (self.root / ".gitignore").write_text(".devenv/\n.editor-view/\nnode_modules\n")
+        with (self.root / "large-clean-input.bin").open("wb") as source:
+            source.truncate(8 * 1024 * 1024)
         self.git("init", "-q")
         self.git("add", ".")
         self.git("config", "commit.gpgsign", "false")
@@ -77,6 +84,36 @@ class ReceiptTest(unittest.TestCase):
         with self.assertRaises(subprocess.CalledProcessError):
             self.run_helper("write")
         self.assertEqual(self.alias(), "scoped-publication")
+
+    def test_publication_outputs_do_not_change_git_inputs(self):
+        # Explicit output exclusion must work even before ignore rules are installed.
+        (self.root / ".gitignore").write_text("")
+        self.git("add", ".gitignore")
+        before = receipt.git_input_state(self.root)
+        self.run_helper("begin")
+        (self.root / ".editor-view/.store/root-digest/node_modules").mkdir()
+        for directory in (".editor-view", ".devenv", "node_modules",
+                          "packages/@overeng/demo/.editor-view", "packages/@overeng/demo/node_modules"):
+            path = self.root / directory / "published-output"
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(b"publication output")
+        self.assertEqual(receipt.git_input_state(self.root), before)
+        self.run_helper("write")
+        self.assertEqual(self.alias(), "reused")
+
+    def test_fingerprint_reads_only_changed_input_bytes(self):
+        (self.root / "devenv.nix").write_text("changed")
+        source = self.root / "untracked source.txt"
+        source.write_text("untracked")
+        with patch.object(receipt, "file_digest", wraps=receipt.file_digest) as opened, \
+             patch.object(Path, "read_bytes", side_effect=AssertionError("whole-file read")):
+            before = receipt.git_input_state(self.root)
+        paths = [call.args[0] for call in opened.call_args_list]
+        self.assertEqual(set(paths), {self.root / "devenv.nix", source})
+        self.assertEqual(len(paths), 2)
+        self.assertLessEqual(sum(path.stat().st_size for path in paths), 32)
+        source.write_text("different")
+        self.assertNotEqual(receipt.git_input_state(self.root), before)
 
 
 if __name__ == "__main__":
