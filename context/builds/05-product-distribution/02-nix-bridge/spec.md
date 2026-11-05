@@ -218,20 +218,24 @@ validates the charset before decoding. No Actions artifacts or caches are used.
 promotion. Non-bootstrap drift succeeds with a “stale rows fall back by design”
 note; bootstrap drift still fails.
 
-For main's flake users, the manifest PR opens for bootstrap drift or a differing
-proposal after 24 hours since main's latest manifest commit. Bootstrap names come
-only from `cache.nix`'s `bootstrapPins`; canonical rows ignore formatting/order.
-History reads use the read-only job token; unavailable history warns and skips
-the safety net. Skips retain only PRs with this run's bootstrap rows. Different
-or unreadable PR rows trigger healing (unreadable rows warn); if main already
-matches the proposal, close the stale PR with an explanation.
-Exact recipe/evidence matching and from-source fallback keep non-bootstrap rows
-correct; `published` still receives the full manifest on every main push.
-The independent `publish-manifest-pr` job reuses chunked outputs and shares
-`buck2-products-manifest-writer` concurrency across push/dispatch, never gating
-consumers or promotion. Cancellation is disabled: GitHub keeps the running writer
-and replaces only older pending writers with the newest, never dropping newest.
-A fresh main-tip check before writes skips superseded runs or tip lookup errors.
+The manifest PR flow remains for main's own flake users. The publisher opens or
+refreshes its PR only when a bootstrap row differs from main, or when the latest
+main commit touching the manifest is at least 24 hours old and the proposal
+differs. Bootstrap names come exclusively from `cache.nix`'s `bootstrapPins`;
+canonical JSON row comparisons ignore formatting and product ordering. The
+history lookup uses the job's read-only GitHub token. An unavailable history
+lookup warns and skips the safety net, never opening a PR speculatively. A
+skipped decision leaves an existing open publisher PR untouched for maintainers
+to land. Correctness relies on exact recipe/evidence matching and from-source
+fallback for stale non-bootstrap rows; `published` still receives the full
+manifest on every main push, independently of this PR gate.
+The independent `publish-manifest-pr` job receives the proposal through the same
+chunked outputs and shares `buck2-products-manifest-writer` concurrency across
+push and dispatch. It never gates consumers or promotion. A pending writer may
+be replaced safely: the newer writer or main-tip guard owns the proposal.
+Immediately before pushing, the writer checks main's remote tip against the run's
+source SHA. Superseded runs and unavailable tip lookups skip without touching the
+PR, preventing bootstrap downgrades.
 
 Ref creation and advancement remain restricted to main-push runs in the
 upstream repository. Workflow dispatch and pull requests cannot advance the

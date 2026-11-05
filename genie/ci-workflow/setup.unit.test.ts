@@ -1202,16 +1202,24 @@ describe('published consumer ref', () => {
         `\${{ needs.publish-products.outputs.manifest-base64-${index} }}`,
       )
     expect(publisher.steps.some((step) => step.id === 'publisher-app-token')).toBe(false)
+    const token = writer.steps.find((step) => step.id === 'publisher-app-token')!
+    expect(token.if).toBe("steps.publisher-app-config.outputs.enabled == 'true'")
     const gateIndex = writer.steps.findIndex((step) => step.id === 'manifest-pr-gate')
-    expect(writer.steps.findIndex((step) => step.id === 'publisher-app-token')).toBeGreaterThan(
-      gateIndex,
+    const appIndex = writer.steps.findIndex((step) => step.id === 'publisher-app-config')
+    const proposeIndex = writer.steps.findIndex(
+      (step) => step.name === 'Propose published product manifest',
     )
+    expect(gateIndex).toBeLessThan(appIndex)
+    expect(appIndex).toBeLessThan(proposeIndex)
     const gate = writer.steps[gateIndex]!
+    expect(gate.run).toContain('source genie/ci-workflow/published-ref-decide.sh')
     expect(gate.run).toContain('decode_manifest > "$proposal"')
     expect(gate.env).toEqual({ GITHUB_TOKEN: '${{ github.token }}' })
-    expect(gate.run).toContain('decision="$(manifest_pr_heal_decide ')
-    const proposal = writer.steps.at(-1)!
-    expect(proposal.run).toContain('gh pr close "$pr" --comment')
+    expect(gate.run).toContain('decision="$(manifest_pr_decide ')
+    expect(writer.steps[appIndex]!.if).toBe("steps.manifest-pr-gate.outputs.decision == 'open'")
+    const proposal = writer.steps[proposeIndex]!
+    expect(proposal.if).toBe("steps.publisher-app-config.outputs.enabled == 'true'")
+    expect(proposal.run).toContain('leave any existing open publisher PR untouched')
     expect(writer.concurrency).toEqual({
       group: 'buck2-products-manifest-writer',
       'cancel-in-progress': false,
@@ -1220,6 +1228,9 @@ describe('published consumer ref', () => {
     expect(proposal.run).toContain(
       'if [ "$decision" != open ]; then\n  echo "::notice::Manifest PR: $decision; superseded: a newer main run owns the proposal"\n  exit 0\nfi\ngit push --force-with-lease',
     )
+    const publication = publisher.steps.find((step) => step.id === 'product-publication')!.run!
+    expect(publication).toContain('Stale rows fall back by design')
+    expect(publication).toContain('bootstrap_rows "$proposal" "$pins"')
   })
 
   it('joins same-SHA publication and consumer proofs before main-push promotion', () => {
