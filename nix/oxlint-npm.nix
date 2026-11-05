@@ -58,7 +58,25 @@ let
   importPlugin =
     productName:
     let
-      product = products.${productName};
+      entry = products.${productName};
+      # Runtime consumers need #2346's unstamped compile output, not publication provenance.
+      compileProduct = entry.sourceImport.product.compileProduct;
+      product =
+        if entry.sourceImport == null then
+          entry
+        else
+          entry
+          // {
+            artifact = "${compileProduct}/${(builtins.fromJSON entry.descriptorContent).modulePath}";
+            descriptor = "${compileProduct}/descriptor.json";
+            sourceImport = entry.sourceImport // {
+              product = compileProduct;
+              facts = entry.sourceImport.facts // {
+                expectedProducerCommit = null;
+                checkProducerCommit = false;
+              };
+            };
+          };
     in
     importProduct {
       inherit (product)
