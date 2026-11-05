@@ -1210,6 +1210,14 @@ describe('published consumer ref', () => {
     expect(proposal.if).toBe("steps.publisher-app-config.outputs.enabled == 'true'")
     expect(proposal.run).toContain('git push --force-with-lease')
     expect(proposal.run).toContain('leave any existing open publisher PR untouched')
+    expect(publisher.concurrency).toEqual({
+      group: 'buck2-products-manifest-writer',
+      'cancel-in-progress': false,
+    })
+    expect(proposal.run).toContain('decision="$(manifest_pr_writer_decide "$GITHUB_SHA")"')
+    expect(proposal.run).toContain(
+      'if [ "$decision" != open ]; then\n  echo "::notice::Manifest PR: $decision; superseded: a newer main run owns the proposal"\n  exit 0\nfi\ngit push --force-with-lease',
+    )
     const publication = publisher.steps.find((step) => step.id === 'product-publication')!.run!
     expect(publication).toContain('state=success')
     expect(publication).toContain('Stale rows fall back by design')

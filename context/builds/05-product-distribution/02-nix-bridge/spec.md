@@ -229,6 +229,11 @@ skipped decision leaves an existing open publisher PR untouched for maintainers
 to land. Correctness relies on exact recipe/evidence matching and from-source
 fallback for stale non-bootstrap rows; `published` still receives the full
 manifest on every main push, independently of this PR gate.
+Push and dispatch publishers share the non-cancelling
+`buck2-products-manifest-writer` job concurrency group; Actions does not support
+step-level concurrency. Immediately before pushing, the writer checks main's
+remote tip afresh against the run's source SHA. Superseded runs and unavailable
+tip lookups skip without touching the PR, preventing bootstrap downgrades.
 
 Ref creation and advancement remain restricted to main-push runs in the
 upstream repository. Workflow dispatch and pull requests cannot advance the

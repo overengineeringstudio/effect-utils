@@ -1401,6 +1401,12 @@ const extraJobs: Record<string, any> = {
   },
   'publish-products': {
     if: trustedSecretCiIf,
+    // Steps cannot own concurrency; serialize the existing publisher job across
+    // push and dispatch, with a fresh main-tip check immediately before PR writes.
+    concurrency: {
+      group: 'buck2-products-manifest-writer',
+      'cancel-in-progress': false,
+    },
     'runs-on': namespaceRunner({
       profile: 'namespace-profile-linux-x86-64',
       runId: '${{ github.run_id }}',
@@ -1625,6 +1631,12 @@ const extraJobs: Record<string, any> = {
             `git config user.email '\${{ vars.NIX_PUBLISHER_GITHUB_APP_ID }}+overeng-nix-publisher[bot]@users.noreply.github.com'`,
             `git commit -m 'chore(buck2): update product cache manifest'`,
             'gh auth setup-git',
+            'source genie/ci-workflow/manifest-pr-decide.sh',
+            'decision="$(manifest_pr_writer_decide "$GITHUB_SHA")"',
+            'if [ "$decision" != open ]; then',
+            '  echo "::notice::Manifest PR: $decision; superseded: a newer main run owns the proposal"',
+            '  exit 0',
+            'fi',
             'git push --force-with-lease origin "HEAD:refs/heads/$branch"',
             `body='Updates the generated v2 manifest for bootstrap changes or the daily safety net. Correctness rests on #2346: stale non-bootstrap rows fall back to from-source by exact recipe identity and evidence. The published ref still receives the full manifest on every main push. Skipped publisher runs leave any existing open publisher PR untouched for maintainers to land.'`,
             'pr="$(gh pr list --base main --head "$branch" --state open --json number --jq \'.[0].number // empty\')"',

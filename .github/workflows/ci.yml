@@ -4435,6 +4435,9 @@ jobs:
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') }}
   publish-products:
     if: ${{ (!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && !(github.event_name == 'workflow_dispatch' && inputs['measure-macos'] == true) }}
+    concurrency:
+      group: buck2-products-manifest-writer
+      cancel-in-progress: false
     runs-on:
       [
         'namespace-profile-linux-x86-64;github.run-id=${{ github.run_id }};container.privileged=true;job.priority=1',
@@ -4684,6 +4687,12 @@ jobs:
           git config user.email '${{ vars.NIX_PUBLISHER_GITHUB_APP_ID }}+overeng-nix-publisher[bot]@users.noreply.github.com'
           git commit -m 'chore(buck2): update product cache manifest'
           gh auth setup-git
+          source genie/ci-workflow/manifest-pr-decide.sh
+          decision="$(manifest_pr_writer_decide "$GITHUB_SHA")"
+          if [ "$decision" != open ]; then
+            echo "::notice::Manifest PR: $decision; superseded: a newer main run owns the proposal"
+            exit 0
+          fi
           git push --force-with-lease origin "HEAD:refs/heads/$branch"
           body='Updates the generated v2 manifest for bootstrap changes or the daily safety net. Correctness rests on #2346: stale non-bootstrap rows fall back to from-source by exact recipe identity and evidence. The published ref still receives the full manifest on every main push. Skipped publisher runs leave any existing open publisher PR untouched for maintainers to land.'
           pr="$(gh pr list --base main --head "$branch" --state open --json number --jq '.[0].number // empty')"
@@ -4717,9 +4726,6 @@ jobs:
         env:
           OTEL_EXPORTER_OTLP_ENDPOINT: ${{ vars.OTEL_EXPORTER_OTLP_ENDPOINT }}
         run: "bash genie/ci-scripts/evidence-job.sh export '${{ job.status }}' || true"
-    concurrency:
-      group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || 'code') }}-publish-products"
-      cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') }}
   trusted-buck2-remote-cache-proof:
     if: ${{ (!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && !(github.event_name == 'workflow_dispatch' && inputs['measure-macos'] == true) }}
     runs-on:

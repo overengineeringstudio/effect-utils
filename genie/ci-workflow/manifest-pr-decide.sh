@@ -34,3 +34,20 @@ manifest_pr_decide() {
     fi
   fi
 }
+
+# Recheck immediately before the remote write, not just before building a proposal.
+manifest_pr_writer_decide() {
+  local source="$1" remote tip
+  if ! remote="$(git ls-remote origin refs/heads/main)"; then
+    echo '::warning::Main tip unavailable; leaving the publisher PR unchanged' >&2
+    echo skip-superseded
+    return
+  fi
+  tip="${remote%%$'\t'*}"
+  if [ -n "$tip" ] && [ "$source" = "$tip" ]; then
+    echo open
+  else
+    echo '::notice::superseded: a newer main run owns the proposal' >&2
+    echo skip-superseded
+  fi
+}
