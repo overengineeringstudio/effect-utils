@@ -46,6 +46,20 @@ let
   ];
   activationUsesCompile =
     packages: packages.gh-settings-genie.compileProduct.drvPath == (compile packages).drvPath;
+  # Remove the real bundle entrypoint, as in root-projection's pure source controls.
+  source = (compile cleanA).source;
+  entrypoint = "packages/@overeng/genie/bin/genie.tsx";
+  editedSource = builtins.path {
+    name = "source";
+    path = source;
+    filter = path: _type: path != "${toString source}/${entrypoint}";
+  };
+  editedCompile = (compile cleanA).overrideAttrs { src = editedSource; };
+  editedSettings = import ../gh-settings-genie.nix {
+    inherit pkgs;
+    genie = cleanA.genie;
+    sourceProduct.compileProduct = editedCompile;
+  };
 in
 assert !(builtins.elem settingsFile buckInputs.files);
 assert !(builtins.pathExists (rules + "/nix/gh-settings-genie.nix"));
@@ -62,6 +76,9 @@ assert builtins.all activationUsesCompile [
 assert (stamp cleanA).compileProduct.drvPath == (compile cleanA).drvPath;
 assert (cleanA.gh-settings-genie).drvPath == (cleanB.gh-settings-genie).drvPath;
 assert cleanA.genie.drvPath != cleanB.genie.drvPath;
+assert builtins.pathExists (source + "/${entrypoint}");
+assert editedCompile.drvPath != (compile cleanA).drvPath;
+assert editedSettings.drvPath != cleanA.gh-settings-genie.drvPath;
 assert cleanA.gh-settings-genie.artifactName == (stamp cleanA).artifactName;
 assert
   cleanA.gh-settings-genie.expectedDescriptor == cleanA.genie.checkedDescriptor
@@ -75,4 +92,5 @@ assert
   revisionAndDirtyIndependent = true;
   settingsUsesCompile = true;
   settingsRecipeOutsideProjection = true;
+  settingsSourceSensitive = true;
 }
