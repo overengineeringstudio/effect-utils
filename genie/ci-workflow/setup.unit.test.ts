@@ -1216,10 +1216,13 @@ describe('published consumer ref', () => {
     expect(gate.run).toContain('decode_manifest > "$proposal"')
     expect(gate.env).toEqual({ GITHUB_TOKEN: '${{ github.token }}' })
     expect(gate.run).toContain('decision="$(manifest_pr_decide ')
-    expect(writer.steps[appIndex]!.if).toBe("steps.manifest-pr-gate.outputs.decision == 'open'")
+    expect(gate.run).toContain('decision="$(manifest_pr_heal_decide ')
+    expect(writer.steps[appIndex]!.if).toBe(
+      "steps.manifest-pr-gate.outputs.decision == 'open' || steps.manifest-pr-gate.outputs.decision == 'close'",
+    )
     const proposal = writer.steps[proposeIndex]!
     expect(proposal.if).toBe("steps.publisher-app-config.outputs.enabled == 'true'")
-    expect(proposal.run).toContain('leave any existing open publisher PR untouched')
+    expect(proposal.run).toContain('matching bootstrap proposals untouched')
     expect(writer.concurrency).toEqual({
       group: 'buck2-products-manifest-writer',
       'cancel-in-progress': false,
@@ -1232,6 +1235,31 @@ describe('published consumer ref', () => {
     expect(publication).toContain('Stale rows fall back by design')
     expect(publication).toContain('bootstrap_rows "$proposal" "$pins"')
   })
+
+  it.each(['source', 'newer', 'unavailable'])(
+    'guards stale-PR closure against main tip %s',
+    (tip) => {
+      const script = ciWorkflow.data.jobs['publish-manifest-pr']!.steps.find(
+        (step) => step.name === 'Propose published product manifest',
+      )!.run!.replace('${{ steps.manifest-pr-gate.outputs.decision }}', 'close')
+      const result = Bun.spawnSync(
+        [
+          'bash',
+          '-c',
+          [
+            'git() { [ "$TIP" != unavailable ] || return 1; printf "%s\\trefs/heads/main\\n" "$TIP"; }',
+            'gh() { if [ "$1 $2" = "pr list" ]; then echo 123; else printf "mutation:%s\\n" "$*"; fi; }',
+            script,
+          ].join('\n'),
+        ],
+        { env: { ...process.env, TIP: tip, GITHUB_SHA: 'source', RUNNER_TEMP: '/tmp' } },
+      )
+      expect(result.exitCode).toBe(0)
+      expect(result.stdout.toString().includes('mutation:pr close 123')).toBe(tip === 'source')
+      if (tip === 'source')
+        expect(result.stdout.toString()).toContain('Main already matches the latest run')
+    },
+  )
 
   it('joins same-SHA publication and consumer proofs before main-push promotion', () => {
     expect(promotion.needs).toEqual(['publish-products', 'consumer-smoke'])

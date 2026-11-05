@@ -55,4 +55,19 @@ assert_writer newer open
 remote_fail=true
 assert_writer newer skip-superseded 2> "$tmp/remote-warning"
 test -s "$tmp/remote-warning"
-echo 'manifest-pr-decide: 10 decisions, API warning, and superseded checks passed'
+assert_healing() {
+  local decision
+  decision="$(manifest_pr_decide "$tmp/main" "$tmp/other" "$pins" example/repo "$now")"
+  test "$(manifest_pr_heal_decide "$decision" "$tmp/other" "$tmp/$1" "$pins")" = "$2"
+}
+api_fail=false
+api_epoch="$recent"
+assert_healing bootstrap open
+assert_healing main skip-recent-safety-net
+assert_healing missing open 2> "$tmp/heal-warning"
+test -s "$tmp/heal-warning"
+api_fail=true
+assert_healing bootstrap open 2> "$tmp/history-healing"
+test -s "$tmp/history-healing"
+test "$(manifest_pr_heal_decide skip-no-diff "$tmp/main" "$tmp/bootstrap" "$pins")" = close
+echo 'manifest-pr-decide: 15 decisions, API/healing warnings, and composed writer checks passed'
