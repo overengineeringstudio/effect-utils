@@ -25,10 +25,19 @@ class ReceiptTest(unittest.TestCase):
         for name in ("devenv.nix", "nix/devenv-modules/tasks/shared/test.nix",
                      "scripts/editor-view-authority.ts", "scripts/editor-view-receipt.py",
                      "pnpm-lock.yaml", "outside-receipt-scope.txt",
-                     "packages/@overeng/buck2-tools/src/editor-view.ts"):
+                     "packages/@overeng/buck2-tools/src/editor-view.ts",
+                     "packages/@overeng/demo/src/index.ts", "packages/@overeng/leaf/src/index.ts"):
             path = self.root / name
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text("version-one")
+        (self.root / "pnpm-lock.yaml").write_text(json.dumps({"importers": {
+            ".": {}, "packages/@overeng/otel-contract": {}, "packages/@overeng/leaf": {},
+            "packages/@overeng/demo": {"dependencies": {"leaf": {
+                "specifier": "workspace:*", "version": "link:../leaf"}}},
+        }}))
+        (self.root / "BUCK").write_text(
+            'alias(name = "editor_inputs", actual = "//packages/@overeng/demo:editor_inputs")\n'
+            'alias(name = "root_editor_package_tree", actual = "//packages/@overeng/demo:package_tree")\n')
         (self.root / ".gitignore").write_text(".devenv/\n.editor-view/\nnode_modules\n")
         with (self.root / "packages/@overeng/buck2-tools/large-clean-input.bin").open("wb") as source:
             source.truncate(8 * 1024 * 1024)
@@ -122,7 +131,7 @@ class ReceiptTest(unittest.TestCase):
         scope = [".", "packages/@overeng/demo", "packages/@overeng/otel-contract"]
         sources = [self.root / package / "src/index.ts" for package in scope[1:]]
         for source in sources:
-            source.parent.mkdir(parents=True)
+            source.parent.mkdir(parents=True, exist_ok=True)
             source.write_text("source")
         before = receipt.git_input_state(self.root, scope)
         self.run_helper("begin")
@@ -133,12 +142,32 @@ class ReceiptTest(unittest.TestCase):
         self.assertEqual(receipt.git_input_state(self.root, scope), before)
         self.run_helper("write")
         self.assertEqual(self.alias(), "reused")
-        for source in [*sources, self.root / "pnpm-lock.yaml",
-                       self.root / "packages/@overeng/buck2-tools/src/editor-view.ts"]:
+        for source in [*sources, self.root / "packages/@overeng/buck2-tools/src/editor-view.ts"]:
             original = source.read_text()
             source.write_text("changed publication input")
             self.assertNotEqual(receipt.git_input_state(self.root, scope), before, str(source))
             source.write_text(original)
+        lock = self.root / "pnpm-lock.yaml"
+        lock.write_text(lock.read_text() + "\n")
+        self.assertNotEqual(receipt.git_input_state(self.root, scope), before)
+
+    def test_transitive_workspace_source_invalidates_bootstrap_receipt(self):
+        state = receipt.git_input_state(self.root, ["."])
+        self.assertEqual(state["inputPaths"], [".", "packages/@overeng/demo", "packages/@overeng/leaf"])
+        self.run_helper("begin")
+        (self.root / "packages/@overeng/leaf/src/index.ts").write_text("transitive change")
+        self.assertEqual(self.alias(), "scoped-publication")
+        with self.assertRaises(subprocess.CalledProcessError):
+            self.run_helper("write")
+
+    def test_unproven_workspace_closure_issues_no_receipt(self):
+        lock = self.root / "pnpm-lock.yaml"
+        data = json.loads(lock.read_text())
+        del data["importers"]["packages/@overeng/leaf"]
+        lock.write_text(json.dumps(data))
+        with self.assertRaises(subprocess.CalledProcessError):
+            self.run_helper("begin")
+        self.assertEqual(self.alias(), "scoped-publication")
 
     def test_input_drift_reports_at_most_ten_paths(self):
         self.run_helper("begin")
