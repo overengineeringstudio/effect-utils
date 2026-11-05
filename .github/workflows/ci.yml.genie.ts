@@ -827,6 +827,23 @@ const jobs: Record<CoreCIJobName, CiWorkflowArgs['jobs'][string]> = {
       timeoutMinutes: 90,
       extraSteps: [
         {
+          // Editor bootstrap builds dependency views, not these scoped compile sandboxes.
+          // --cores sets NIX_BUILD_CORES, which bounds Buck execution/runtime workers.
+          name: 'Build scoped JavaScript cache compile products',
+          if: "${{ github.event_name == 'pull_request' }}",
+          env: githubTokenEnv(),
+          run: withCiSourceRoot(
+            [
+              'nix build -j 2 --cores 2 --no-link --print-build-logs',
+              '.#buck-product-ci-tools-from-source.compileProduct',
+              '.#buck-product-gh-ci-utils-from-source.compileProduct',
+              '.#buck-product-notion-cli-from-source.compileProduct',
+              '.#buck-product-notion-db-runtime-from-source.compileProduct',
+              '.#buck-product-tui-stories-from-source.compileProduct',
+            ].join(' '),
+          ),
+        },
+        {
           name: 'Check published product inventory against the gated diff',
           env: {
             ...githubTokenEnv(),

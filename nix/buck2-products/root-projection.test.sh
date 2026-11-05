@@ -40,6 +40,7 @@ nix eval --impure --json --expr '
       filter = path: type: path != "${toString source}/${relative}"
         && !(lib.hasPrefix "${toString source}/${relative}/" path);
     };
+    scopedNames = [ "ci-tools" "gh-ci-utils" "notion-cli" "notion-db-runtime" "tui-stories" ];
     checkProduct = declaration: let
         cache = builtins.any (product: product.target == declaration.target) (builtins.head inventories).products;
         compiled = declaration.kind == "compiled-executable";
@@ -62,6 +63,34 @@ nix eval --impure --json --expr '
           if recipe.rootProjection == null then { src = changedRules; }
           else { buildPhase = builtins.replaceStrings [ (toString rules) ] [ (toString changedRules) ] recipe.buildPhase; }
         );
+        # Scoped JS products retain these actual staged inputs. Package configs
+        # are self-contained; there is no repository-root tsconfig base.
+        # The raw pnpm lock is translated: its SHA inventory is loaded by the
+        # dependencies BUCK and its archive digests feed pnpmArchives.
+        inputControls = if !(builtins.elem declaration.name scopedNames) then [ ] else map (input:
+          let
+            root = if input.rules or false then rules else source;
+            changed = remove root input.path;
+            changedRecipe = recipe.overrideAttrs (
+              if !(input.rules or false) || recipe.rootProjection == null then { src = changed; }
+              else {
+                buildPhase = builtins.replaceStrings [ (toString rules) ]
+                  [ (toString changed) ] recipe.buildPhase;
+              }
+            );
+          in
+            assert lib.assertMsg (builtins.pathExists (root + "/${input.path}"))
+              "${declaration.name}: missing scoped input ${input.path}";
+            assert lib.assertMsg (recipe.drvPath != changedRecipe.drvPath)
+              "${declaration.name}: compile recipe ignores ${input.path}";
+            input.path
+        ) [
+          { path = "package.json"; }
+          { path = "patches/@myobie__pty@0.10.0.patch"; }
+          { path = "${package}/tsconfig.json"; }
+          { path = "${package}/BUCK"; }
+          { path = "buck2/dependencies/pnpm-lock.sha256.json"; rules = true; }
+        ];
         testlessRecipe = (import (repo + "/nix/buck2-products/from-source.nix") {
           inherit pkgs; buck2 = packages.buck2;
         }) {
@@ -77,12 +106,13 @@ nix eval --impure --json --expr '
         assert toString source == toString (remove source "buck2/tests")
           && toString rules == toString (remove rules "buck2/tests");
         assert recipe.drvPath == testlessRecipe.compileProduct.drvPath;
-        { name = declaration.name; inherit ownFile ruleFile; };
+        { name = declaration.name; inherit ownFile ruleFile inputControls; };
     products = map checkProduct declarations;
   in
     assert before == after;
     assert builtins.all (prefix: !(builtins.any (lib.hasPrefix "${toString repo}/${prefix}") files)) excluded;
     assert builtins.elem (repo + "/buck2/products/vite-runtime-fixture.mjs") extended.files;
     assert builtins.all (name: builtins.any (entry: entry.name == name) products) [ "genie" "typescript-api-server" "otelite" "otel-scrape" ];
+    assert builtins.all (name: builtins.any (entry: entry.name == name) products) scopedNames;
     { rootProjection = before; testTreeIndependent = true; inherit products fixture; }
 '
