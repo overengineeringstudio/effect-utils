@@ -602,7 +602,7 @@ for (const name of sourceTestTasks) {
   })
   const installerName = name.replace(sourceTestChainPrefix, 'test:run:install:')
   const installerDependencies = [...(dependencies.get(installerName) ?? [])]
-  const unionDependencies = ciUnitTest ? ['buck2:editor:publish:test:all'] : []
+  const unionDependencies = ciUnitTest === true ? ['buck2:editor:publish:test:all'] : []
   const packagePublisher = `buck2:editor:publish:${name.replace(chainExecutionPattern, 'test:')}`
   ok({
     condition:
@@ -693,7 +693,7 @@ const scopedPublisherContracts = {
   },
   ...packagePublisherContracts,
 }
-if (ciUnitTest) {
+if (ciUnitTest === true) {
   scopedPublisherContracts['buck2:editor:publish:test:all'] = {
     consumers: [
       'buck2:editor:publish:test',
@@ -713,7 +713,7 @@ for (const [publisher, { consumers, packagePaths }] of Object.entries(scopedPubl
       JSON.stringify(
         [
           'genie:check',
-          ...(ciUnitTest && publisher === 'buck2:editor:publish:test'
+          ...(ciUnitTest === true && publisher === 'buck2:editor:publish:test'
             ? ['buck2:editor:publish:test:all']
             : []),
         ].toSorted(),
@@ -738,16 +738,16 @@ for (const [publisher, { consumers, packagePaths }] of Object.entries(scopedPubl
       detail: command,
     })
     if (
-      ciUnitTest &&
-      publisher.startsWith('buck2:editor:publish:test') &&
+      ciUnitTest === true &&
+      publisher.startsWith('buck2:editor:publish:test') === true &&
       packagePaths.every((path) =>
         scopedPublisherContracts['buck2:editor:publish:test:all'].packagePaths.includes(path),
-      )
+      ) === true
     ) {
       ok({
         condition:
           commandBody.includes('editor-view-receipt.py') &&
-          (publisher.endsWith(':all')
+          (publisher.endsWith(':all') === true
             ? /editor-view-supervisor\.py"\s+none/u.test(commandBody)
             : commandBody.includes('receipt check publication')),
         name: `${publisher} uses job-local receipts and an uncapped union deadline`,
