@@ -347,11 +347,15 @@ or unreadable PR rows trigger healing (unreadable rows warn); if main already
 matches the proposal, close the stale PR with an explanation.
 Exact recipe/evidence matching and from-source fallback keep non-bootstrap rows
 correct; `published` still receives the full manifest on every main push.
-The independent `publish-manifest-pr` job reuses chunked outputs and shares
-`buck2-products-manifest-writer` concurrency across push/dispatch, never gating
-consumers or promotion. Cancellation is disabled: GitHub keeps the running writer
-and replaces only older pending writers with the newest, never dropping newest.
-A fresh main-tip check before writes skips superseded runs or tip lookup errors.
+The independent `publish-manifest-pr` job receives the proposal through the same
+chunked outputs and shares `buck2-products-manifest-writer` concurrency across
+push and dispatch. It never gates consumers or promotion. A pending writer may
+be replaced safely: the newer writer or main-tip guard owns the proposal.
+Immediately before pushing, the writer checks main's remote tip against the run's
+source SHA. Superseded runs and unavailable tip lookups skip without touching the
+PR, preventing bootstrap downgrades.
+Cancellation is disabled: GitHub keeps the running writer and replaces only
+older pending writers with the newest, never dropping the newest.
 
 Ref creation and advancement remain restricted to main-push runs in the
 upstream repository. Workflow dispatch and pull requests cannot advance the
