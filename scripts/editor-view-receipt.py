@@ -28,8 +28,34 @@ def file_digest(path):
         return b"deleted"
 
 
+def workspace_inputs(root, scope):
+    # Reuse the publisher's lockfile importer graph, including generated root Buck aliases.
+    script = """
+import { workspaceEditorDependencies } from './editor-view-authority.ts';
+import { readFileSync } from 'node:fs';
+const [root, scope] = process.argv.slice(-2);
+const graph = workspaceEditorDependencies({
+  serialized: readFileSync(`${root}/pnpm-lock.yaml`, 'utf8'),
+  rootBuck: readFileSync(`${root}/BUCK`, 'utf8'),
+});
+const pending = JSON.parse(scope), paths = new Set();
+while (pending.length) {
+  const path = pending.pop();
+  if (paths.has(path)) continue;
+  if (!Array.isArray(graph[path])) throw new Error(`missing workspace importer ${path}`);
+  paths.add(path);
+  pending.push(...graph[path]);
+}
+console.log(JSON.stringify([...paths].sort()));
+"""
+    return json.loads(subprocess.check_output(
+        [os.environ.get("BUN_BIN", "bun"), "-e", script, str(root), json.dumps(scope)],
+        cwd=Path(__file__).parent, timeout=30))
+
+
 def git_input_state(root, scope):
     git = lambda *args: subprocess.check_output(["git", "-C", str(root), *args])
+    workspace = workspace_inputs(root, scope)
     # "." is the bootstrap manifest, not permission to fingerprint every CI artifact.
     inputs = [
         "package.json", "pnpm-lock.yaml", "pnpm-workspace.yaml", "pnpm-install-contract.json",
@@ -40,7 +66,7 @@ def git_input_state(root, scope):
         "genie/ci-workflow/test-platforms.json", "nix/devenv-modules/tasks/shared/test.nix",
         "scripts/editor-view-authority.ts", "scripts/editor-view-supervisor.py",
         "scripts/editor-view-receipt.py", "packages/@overeng/buck2-tools",
-        *(package for package in scope if package != "."),
+        *(package for package in workspace if package != "."),
     ]
     # Explicit exclusions also work before/without repository ignore rules. Do not
     # materialize binary diffs or concatenate raw untracked contents (quadratic).
@@ -62,7 +88,7 @@ def git_input_state(root, scope):
         files[os.fsdecode(name)] = value
         dirty.update(name + b"\0" + value.encode())
     return {"head": git("rev-parse", "HEAD").decode().strip(),
-            "dirty": dirty.hexdigest(), "inputFiles": files}
+            "dirty": dirty.hexdigest(), "inputFiles": files, "inputPaths": workspace}
 
 
 def changed_paths(before, after):
@@ -91,7 +117,7 @@ def capture(root, scope, inputs_only=False):
         snapshots[package] = [os.readlink(pointer), str(snapshot), status.st_dev, status.st_ino,
                               status.st_mtime_ns, status.st_ctime_ns, digest(record.read_bytes()),
                               os.readlink(directory / "node_modules")]
-    return {"schema": 3, "job": job, "root": str(root), "scope": scope, **inputs,
+    return {"schema": 4, "job": job, "root": str(root), "scope": scope, **inputs,
             "graph": digest((root / "devenv.nix").read_bytes() +
                             (root / "nix/devenv-modules/tasks/shared/test.nix").read_bytes()),
             "authority": digest((root / ".devenv/editor-workspace-authority.json").read_bytes()),
@@ -120,7 +146,7 @@ def main():
         current = capture(root, scope)
         if action == "write":
             before = json.loads(pending.read_text())
-            if before != {key: current[key] for key in ("job", "scope", "head", "dirty", "inputFiles")}:
+            if before != {key: current[key] for key in ("job", "scope", "head", "dirty", "inputFiles", "inputPaths")}:
                 raise ValueError(f"publication inputs changed while publishing ({changed_paths(before, current)})")
         if action == "check":
             if previous != current:
@@ -134,7 +160,7 @@ def main():
         else:
             raise ValueError(f"unknown receipt action: {action}")
         return 0
-    except (OSError, ValueError, subprocess.CalledProcessError) as error:
+    except (OSError, ValueError, subprocess.SubprocessError) as error:
         print(f"editor-view receipt: {name} unavailable ({error}); using normal scoped publication", file=sys.stderr)
         return 1
 
