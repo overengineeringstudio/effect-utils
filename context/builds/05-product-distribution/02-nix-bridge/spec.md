@@ -186,21 +186,21 @@ publishing Cachix action and its push hook are enabled only after preparation.
 Cold substitution and input builds use the job timeout; the unchanged 32-minute
 publication step budget covers the product builds and pushes.
 
-The independent `publish-compile-products` job follows `publish-products` under
-the same protected-main push/dispatch guard, including manifest-only runs.
-Neither consumer smoke nor promotion depends on it: compile warming adds zero
-dependency-path latency to promotion. It uses the admitted self-hosted Linux x64
-runner with anonymous substitution configured through the Nix installer and no
-Cachix action or automatic uploader. Only the explicit push step receives the
-existing cache-scoped token in its environment; no publisher App token or
-additional scope is needed. Cachix configuration is isolated under runner
-temporary storage and removed by an `always()` cleanup step; `cachix authtoken`
-is never invoked. A main-only concurrency group cancels superseded warmers;
-the job is bounded to 30 minutes. Strict Nix sandboxing and disabled fallback
-remain enabled; the shared Linux prerequisite step requires user namespaces
-before any compile realization. Unsupported runners fail rather than weaken isolation.
+The Native and Compiled Products workflow owns compile warming in its
+`publish-compiled-products` job, on ephemeral Namespace Linux x86_64 and Darwin
+arm64 runners. Publication requires a `push` to `refs/heads/main` in the
+canonical repository; manual dispatch, PRs and merge groups cannot push.
+Neither consumer smoke nor promotion depends on this workflow. Anonymous
+substitution is configured through the Nix installer, with no Cachix action or
+automatic uploader. Only the explicit push step receives the existing
+cache-scoped token in its environment; no publisher App token or additional
+scope is needed. Cachix configuration is isolated under runner temporary
+storage and removed by an `always()` cleanup step; `cachix authtoken` is never
+invoked. The workflow serializes main publications without cancellation and
+retains its 120-minute job bound and strict Linux Nix sandboxing.
 `genie/ci-scripts/publish-compile-products.sh` enumerates all cache, compiled and
-native inventory rows. It explicitly realizes each unstamped `.compileProduct`
+native inventory rows, skipping package attributes not exported for the runner's
+current Nix system before realization. It explicitly realizes each unstamped `.compileProduct`
 (via `.buck2Product.compileProduct` for native/compiled imports), then pushes
 that exact output to `overeng-effect-utils` on every run, independently of
 immutable artifact pins. Nix substitutes an existing compile output or builds
@@ -210,17 +210,17 @@ these are this repository's public build inputs, not unrelated store paths.
 Fleet-runner workflow tests forbid authenticated Cachix actions, automatic
 post-build hooks, store watchers and upload daemons.
 Realization and push failures emit product-specific warning annotations and
-continue; job-level failures are advisory and cannot block promotion.
+continue. An unexpected warming-script failure also warns after successful
+final-product publication; existing final-product push failures remain fatal.
 No compile manifest rows, Actions artifacts or Actions cache are involved.
 
-Cold compile warming can cost roughly the complete from-source budget across
-all products (about 17 minutes, an estimate rather than a benchmark).
-Steady-state realization substitutes unchanged derivations; compile identity
-changes only with inputs, but today's coarse source set changes on almost every
-product-touching commit. The separate job may therefore still compile frequently.
-This adds up to one active compile-warming job's CPU, memory, store and upload
-load on the shared fleet; cancellation bounds overlap but does not eliminate
-competition with other runner jobs.
+There are 52 inventory rows (45 cache, one compiled, six native); each supported
+row adds one explicit realization and push. On cache hits, the additional
+main-only work is Nix evaluation/substitution and Cachix closure checks, not
+recompilation. Cold warming can cost roughly the complete from-source budget
+across all products (about 17 minutes per runner, an estimate rather than a
+benchmark). Both platforms warm independently on ephemeral runners, not shared
+fleet capacity.
 Compile outputs are intentionally unpinned, replaceable substitutes.
 [Cachix GC](https://docs.cachix.org/garbage-collection) evicts unpinned paths by
 last access (or creation) when storage reaches its limit; the public cache API

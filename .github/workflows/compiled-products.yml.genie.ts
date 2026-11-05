@@ -3,7 +3,6 @@ import {
   bashShellDefaults,
   cachixCliBuildStep,
   cachixPushStep,
-  cachixStep,
   checkoutStep,
   ciWorkflow,
   type CiWorkflowArgs,
@@ -22,12 +21,13 @@ const binaryCache = readBinaryCacheDescriptors(
 )['overeng-effect-utils']!
 
 const protectedMainIf =
-  "${{ github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') }}"
+  "${{ github.repository == 'overengineeringstudio/effect-utils' && github.ref == 'refs/heads/main' && github.event_name == 'push' }}"
 
 // Protected-main publisher for compiled-executable and native products, the
 // exported Buck rules cell, and the Buck capability closure `test` lanes consume.
 // Products are platform-specific imported store paths, not cache-manifest rows:
 // each matching runner builds and smokes the product before publishing it.
+// The same publisher warms unstamped compile outputs for all three inventories.
 // There is no aarch64 Linux publisher, so its consumers build from source.
 // Merge-group proof uses the same script in ci.yml (`build-products` on Linux x86_64,
 // `test` on Darwin). A separate workflow avoids ci.yml's Actions size limit.
@@ -40,7 +40,6 @@ export default ciWorkflow({
   name: 'Native and Compiled Products',
   on: {
     push: { branches: ['main'] },
-    workflow_dispatch: {},
   },
   permissions: { contents: 'read' },
   concurrency: {
@@ -73,17 +72,30 @@ export default ciWorkflow({
         checkoutStep(),
         installNixStep({ binaryCaches: [binaryCache] }),
         cachixCliBuildStep,
-        cachixStep({ name: 'overeng-effect-utils' }),
         cachixPushStep({
           jobIf: protectedMainIf,
-          triggers: ['push', 'workflow_dispatch'],
+          triggers: ['push'],
           authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}',
           step: {
             name: 'Publish Buck rules, retained shell, native and compiled products',
-            env: githubTokenEnv(),
-            run: withCiSourceRoot('bash genie/ci-scripts/compiled-products.sh --push'),
+            env: {
+              ...githubTokenEnv(),
+              XDG_CONFIG_HOME:
+                '${{ runner.temp }}/compile-cachix-${{ github.run_id }}-${{ github.run_attempt }}',
+            },
+            run: withCiSourceRoot(
+              'mkdir -p "$XDG_CONFIG_HOME"\nbash genie/ci-scripts/compiled-products.sh --push',
+            ),
           },
         }),
+        {
+          name: 'Remove isolated compile Cachix configuration',
+          if: 'always()',
+          run: [
+            'config="${RUNNER_TEMP:?}/compile-cachix-${GITHUB_RUN_ID:?}-${GITHUB_RUN_ATTEMPT:?}"',
+            'if [ -d "$config" ]; then rm -r -- "$config"; fi',
+          ].join('\n'),
+        },
       ],
     },
   }),

@@ -62,6 +62,14 @@ The cache publisher accepts optional `sourcePaths` on scoped inventory entries, 
 `ci-tools`, `gh-ci-utils`, `notion-cli`, `notion-db-runtime` and `tui-stories` use the same generated source boundary, including the transitive `buck2-tools` workspace closure. Package-local generated tsconfigs inline their base; lock/archive inputs enter through the committed SHA sidecar and shared Buck rules, not an undeclared raw lockfile. Context documents are runtime discovery data, not bundle inputs.
 Merge-group CI builds these five products in their scoped Nix sandboxes, so absent transitive files fail before merge without adding ordinary PR builds. The source-identity contract checks context-only/revision isolation and own-source sensitivity; root-projection checks manifests, patches, tsconfig, BUCK and lock/rule inputs.
 
+The Native and Compiled Products workflow publishes on canonical-repository main
+pushes only. Its Linux x86_64 and Darwin arm64 matrix entries also realize and
+push each `compileProduct` from the cache, compiled, and native inventories:
+stamped wrappers do not retain these unstamped outputs in their runtime closure.
+Compile warming uses exact output paths and is best-effort; final-product push
+failures remain fatal. Write credentials are push-step-local, with isolated
+Cachix configuration under `RUNNER_TEMP` and unconditional cleanup.
+
 `buck2-products/buck-inputs.nix` follows literal load/export/helper dependencies;
 test inputs fail. Cache products share one projection; uncovered entries extend it.
 Entry assertions use each projection's original source and eval-time filter, never realized store contents. Caller-owned rule derivations are retained as supplied; their opaque outputs cannot prove entry membership, so the scoped source must contain the entry `BUCK`.

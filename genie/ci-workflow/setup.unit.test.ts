@@ -126,9 +126,12 @@ describe('shared-runner Cachix upload boundary', () => {
     }
   })
 
-  it('isolates compile push credentials and configuration without installing an action', async () => {
-    const job = ciWorkflow.data.jobs['publish-compile-products']!
-    const push = job.steps.find((step) => step.name === 'Publish unstamped compile outputs')!
+  it('isolates compiled-product push credentials and configuration without installing an action', async () => {
+    expect(ciWorkflow.data.jobs).not.toHaveProperty('publish-compile-products')
+    const job = compiledWorkflow.data.jobs['publish-compiled-products']!
+    const push = job.steps.find(
+      (step) => step.name === 'Publish Buck rules, retained shell, native and compiled products',
+    )!
     expect(job.env?.CACHIX_AUTH_TOKEN).toBeUndefined()
     expect(push.env?.CACHIX_AUTH_TOKEN).toBe('${{ secrets.CACHIX_AUTH_TOKEN }}')
     expect(push.env?.XDG_CONFIG_HOME).toBe(
@@ -951,6 +954,7 @@ describe('CI execution admission cleanup', () => {
       'pr-a-inert-buck': 'job',
       'build-products': 'job',
       'publish-products': 'job',
+      'publish-compiled-products': 'job',
       'trusted-buck2-remote-cache-proof': 'job',
       'ci-measurements-report': 'job',
       'pipeline-attempt-close': 'step',
@@ -964,9 +968,11 @@ describe('CI execution admission cleanup', () => {
             /\b(?:always|failure|cancelled|success)\s*\(/.test(step.if ?? '') &&
             (step.run !== undefined || step.uses?.startsWith('./')),
         )
-        // This Nix-only publisher's former cleanup was solely native-proof
-        // collection; proof-disabled jobs must not recreate that local execution.
-        if (jobId === 'publish-compiled-products') expect(cleanup).toHaveLength(0)
+        // This proof-disabled publisher may clean credentials, not run native proof.
+        if (jobId === 'publish-compiled-products')
+          expect(cleanup.map((step) => step.name)).toEqual([
+            'Remove isolated compile Cachix configuration',
+          ])
         if (cleanup.length === 0) continue
         expect(independentRoutes[jobId], jobId).toBeDefined()
         seen.add(jobId)
