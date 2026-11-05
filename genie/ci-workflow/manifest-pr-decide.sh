@@ -30,7 +30,6 @@ manifest_pr_decide() {
     fi
   fi
 }
-
 # Recheck immediately before the remote write, not just before building a proposal.
 manifest_pr_writer_decide() {
   local source="$1" remote tip
