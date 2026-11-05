@@ -1321,6 +1321,7 @@ describe('published consumer ref', () => {
         expect(result.stdout.toString()).toContain('Main already matches the latest run')
     },
   )
+
   it('joins same-SHA publication and consumer proofs before main-push promotion', () => {
     expect(promotion.needs).toEqual(['publish-products', 'consumer-smoke'])
     expect(promotion.if).toBe(publishedRefIf)
