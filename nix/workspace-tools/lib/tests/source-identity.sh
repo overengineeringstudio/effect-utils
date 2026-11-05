@@ -156,3 +156,12 @@ jq -ne --argjson before "$fingerprint_after" --argjson after "$core_after" '
   and $before["typescript-api-server"] != $after["typescript-api-server"]
   and $before["ci-tools-compiled"] != $after["ci-tools-compiled"]
 ' >/dev/null
+
+# Plugin source still keys the compile output even though publication stamps do not.
+printf '\n// shell plugin source control\n' >> "$work/shell/packages/@overeng/oxc-config/src/mod.ts"
+plugin_after="$(BUCK2_SYSTEM=x86_64-linux shell_paths)"
+jq -ne --argjson before "$core_after" --argjson after "$plugin_after" '
+  $before["oxlint-with-plugins"] != $after["oxlint-with-plugins"]
+  and $before["buck2-capabilities"] != $after["buck2-capabilities"]
+  and $before.otelite == $after.otelite
+' >/dev/null

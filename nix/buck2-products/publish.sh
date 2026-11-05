@@ -54,11 +54,18 @@ jq -e '
     type == "array" and
     all(.[]; type == "string" and test("^[a-z0-9]+(-[a-z0-9]+)*$")) and
     . == (unique | sort);
+  def source_paths:
+    type == "array" and length > 0 and
+    all(.[]; type == "string" and
+      test("^[A-Za-z0-9_.@-]+(/[A-Za-z0-9_.@-]+)*$") and
+      (split("/") | all(.[]; . != "." and . != ".."))) and
+    . == (unique | sort);
   (keys | sort) == ["products", "schema", "schemaVersion"] and
   .schema == "effect-utils/buck-cache-targets/v1" and .schemaVersion == 1 and
   (.products | type == "array" and length > 0) and
   (all(.products[];
-    (keys | sort) == ["buildCapabilities","kind","linuxBuildCapabilities","name","outputName","packagePath","packageTreePath","target","version"] and
+    (del(.sourcePaths) | keys | sort) == ["buildCapabilities","kind","linuxBuildCapabilities","name","outputName","packagePath","packageTreePath","target","version"] and
+    (if has("sourcePaths") then (.sourcePaths | source_paths) else true end) and
     (.buildCapabilities | capability_ids and length > 0) and
     (.linuxBuildCapabilities | capability_ids) and
     ((.buildCapabilities + .linuxBuildCapabilities) | length == (unique | length)) and
