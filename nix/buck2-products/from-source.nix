@@ -67,6 +67,8 @@ in
   sourcePaths ? null,
   # Consumer Buck root is a separate Nix input, not a copy of the checkout.
   rootProjection ? null,
+  # Internal acceptance recipes may explicitly stage fixture rules.
+  admitTestFixtureInputs ? false,
   expectedSha256 ? null,
   # Optional Buck tree containing the declared pnpm runtime importer closure.
   runtimeClosureTarget ? null,
@@ -96,6 +98,7 @@ let
     else
       import ./buck-inputs.nix {
         inherit lib repositoryRoot;
+        inherit admitTestFixtureInputs;
         extraEntryTargets = entryTargets;
       };
   # Caller-owned rule derivations have no evaluable repository closure to extend.

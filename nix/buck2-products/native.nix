@@ -109,6 +109,26 @@ builtins.listToAttrs (
             libraryChecks = import ./library-check.nix {
               inherit pkgs;
               product = nativeProduct;
+              fixture = mkBuckProductFromSource {
+                inherit
+                  pnpmArchives
+                  repositoryRoot
+                  rootProjection
+                  cargoArchives
+                  ;
+                capabilities = capabilities.selectProduct product;
+                sourcePaths = product.sourcePaths ++ [ "buck2/tests/library_closure" ];
+                product = {
+                  name = "example-library";
+                  version = "0.0.0";
+                  kind = "rust-library";
+                  target = "effect_utils//buck2/tests/library_closure:product";
+                  outputName = "artifact.tar";
+                  cargoWorkspaceRoot = "buck2/tests/library_closure";
+                };
+                importNative = true;
+                admitTestFixtureInputs = true;
+              };
             };
           };
         })

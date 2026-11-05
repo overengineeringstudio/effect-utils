@@ -49,6 +49,21 @@ for inventory in nix/buck2-products/compiled-targets.json nix/buck2-products/nat
     product_checks+=("$check")
   done <<< "$rows"
 done
+# Publication-interface proof is deliberately two-stage: first realize source,
+# then evaluate the public archive+descriptor importer against that known path.
+# Run in build-only preparation; smoke need not repeat this realized check.
+library_roundtrips() {
+  local index name source
+  for index in "${!product_names[@]}"; do
+    [ -n "${product_checks[$index]}" ] || continue
+    name="${product_names[$index]}"
+    source=$(nix build --no-link --json ".#$name.buck2Product" | jq -er '.[0].outputs.out')
+    nix build --impure --no-link --print-build-logs \
+      --file nix/buck2-products/library-roundtrip.nix \
+      --argstr repositoryPath "$PWD" --argstr productName "$name" --argstr sourcePath "$source"
+  done
+}
+
 
 if $build_only; then
   started=$SECONDS
@@ -59,6 +74,7 @@ if $build_only; then
   built=$(grep -c "^building '" "$log" || true)
   substituted=$(grep -c "^copying path '" "$log" || true)
   echo "product build: duration=$((SECONDS - started))s built=$built substituted=$substituted status=$status"
+  if [ "$status" = 0 ]; then library_roundtrips; fi
   exit "$status"
 fi
 build_json=$(nix build --no-link --print-build-logs --json "${refs[@]}")
