@@ -17,7 +17,7 @@ concurrency:
 
 jobs:
   publish-compiled-products:
-    if: ${{ github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') }}
+    if: ${{ github.repository == 'overengineeringstudio/effect-utils' && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') }}
     strategy:
       fail-fast: false
       matrix:
@@ -82,15 +82,17 @@ jobs:
           set -euo pipefail
           out=$(nix build --no-link --print-out-paths nixpkgs#cachix)
           echo "$out/bin" >> "$GITHUB_PATH"
-      - # v17
-        name: Enable Cachix cache
-        uses: cachix/cachix-action@38b082610b782e7e93e209c35fd730d399dee866
-        with:
-          name: overeng-effect-utils
-          skipPush: true
       - name: Publish Buck rules, retained shell, native and compiled products
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          XDG_CONFIG_HOME: '${{ runner.temp }}/compile-cachix-${{ github.run_id }}-${{ github.run_attempt }}'
           CACHIX_AUTH_TOKEN: ${{ secrets.CACHIX_AUTH_TOKEN }}
-        run: 'cd "${GITHUB_WORKSPACE:-$PWD}" && bash genie/ci-scripts/compiled-products.sh --push'
+        run: |
+          cd "${GITHUB_WORKSPACE:-$PWD}" && mkdir -p "$XDG_CONFIG_HOME"
+          bash genie/ci-scripts/compiled-products.sh --push
         if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+      - name: Remove isolated compile Cachix configuration
+        if: always()
+        run: |
+          config="${RUNNER_TEMP:?}/compile-cachix-${GITHUB_RUN_ID:?}-${GITHUB_RUN_ATTEMPT:?}"
+          if [ -d "$config" ]; then rm -r -- "$config"; fi
