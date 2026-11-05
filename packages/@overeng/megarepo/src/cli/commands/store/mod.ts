@@ -243,25 +243,54 @@ const planSha256For = ({
   deletionIdentities: ReadonlyMap<string, DeletionIdentity>
 }): string => {
   const canonicalPlan = results
-    .map((result) => ({
-      repo: result.repo,
-      ref: result.ref,
-      refType: result.refType,
-      path: result.path,
-      status: result.status,
-      reason: result.reason,
-      kind: result.kind,
-      artifactClass: result.artifactClass,
-      workspacePath: result.workspacePath,
-      outcome: result.outcome,
-      mtimeMs: result.mtimeMs,
-      ...(deletionIdentities.has(result.path) === true
-        ? { deletionIdentity: deletionIdentities.get(result.path) }
-        : {}),
-    }))
+    .map((result) => canonicalGcCandidate({ result, deletionIdentities }))
     .toSorted((left, right) => compareCanonicalPlanPaths({ left: left.path, right: right.path }))
   return createHash('sha256').update(encodeCanonicalPlan(canonicalPlan)).digest('hex')
 }
+
+const canonicalGcCandidate = ({
+  result,
+  deletionIdentities,
+}: {
+  result: StoreGcResult
+  deletionIdentities: ReadonlyMap<string, DeletionIdentity>
+}) => ({
+  repo: result.repo,
+  ref: result.ref,
+  refType: result.refType,
+  path: result.path,
+  status: result.status,
+  reason: result.reason,
+  kind: result.kind,
+  artifactClass: result.artifactClass,
+  workspacePath: result.workspacePath,
+  outcome: result.outcome,
+  mtimeMs: result.mtimeMs,
+  ...(deletionIdentities.has(result.path) === true
+    ? { deletionIdentity: deletionIdentities.get(result.path) }
+    : {}),
+})
+const candidateSha256For = (input: Parameters<typeof canonicalGcCandidate>[0]) =>
+  createHash('sha256')
+    .update(encodeCanonicalPlan(canonicalGcCandidate(input)))
+    .digest('hex')
+
+const isGcCandidate = (result: StoreGcResult): boolean =>
+  result.status === 'removed' || result.status === 'archived' || result.status === 'reaped'
+
+const GcCandidates = Schema.Array(
+  Schema.Struct({
+    path: Schema.String.check(
+      Schema.makeFilter((path) => isNormalizedAbsolutePath(normalizeStorePath(path))),
+    ),
+    candidateSha256: Schema.String.check(Schema.isPattern(/^[0-9a-f]{64}$/u)),
+  }),
+).check(
+  Schema.makeFilter(
+    (entries) =>
+      new Set(entries.map((entry) => normalizeStorePath(entry.path))).size === entries.length,
+  ),
+)
 
 const planGeneratedArtifacts = ({
   config,
@@ -652,6 +681,7 @@ const toStoreGcAction = ({
   statusMessage,
   done,
   planSha256,
+  candidateOutcomes,
 }: {
   basePath: string
   results: ReadonlyArray<StoreGcResult>
@@ -665,6 +695,7 @@ const toStoreGcAction = ({
   statusMessage: string | undefined
   done: boolean
   planSha256?: string | undefined
+  candidateOutcomes?: Extract<StoreAction, { _tag: 'SetGc' }>['candidateOutcomes']
 }): StoreAction => ({
   _tag: 'SetGc',
   basePath,
@@ -686,6 +717,17 @@ const toStoreGcAction = ({
   done,
   censusStatus: repoCount === undefined ? 'unknown' : 'complete',
   ...(planSha256 !== undefined ? { planSha256 } : {}),
+  ...(candidateOutcomes === undefined
+    ? {}
+    : {
+        candidateOutcomes,
+        candidateCounts: {
+          applied: candidateOutcomes.filter((outcome) => outcome._tag === 'applied').length,
+          skipped: candidateOutcomes.filter((outcome) => outcome._tag.startsWith('skipped-'))
+            .length,
+          failed: candidateOutcomes.filter((outcome) => outcome._tag === 'failed').length,
+        },
+      }),
 })
 
 const classifyGcProtection = ({
@@ -2591,8 +2633,24 @@ const storeGcCommand = Cli.Command.make(
       Cli.Flag.withDescription('Apply exactly one candidate from the expected dry-run plan'),
       Cli.Flag.optional,
     ),
+    candidatesFile: Cli.Flag.String('candidates-file').pipe(
+      Cli.Flag.withDescription(
+        'Apply a JSON array of independently verified { path, candidateSha256 } candidates',
+      ),
+      Cli.Flag.optional,
+    ),
   },
-  ({ output, dryRun, force, all, generatedArtifacts, budgets, expectedPlan, candidatePath }) =>
+  ({
+    output,
+    dryRun,
+    force,
+    all,
+    generatedArtifacts,
+    budgets,
+    expectedPlan,
+    candidatePath,
+    candidatesFile,
+  }) =>
     Effect.gen(function* () {
       const outputMode = yield* resolveOutputOption(output)
       const cwd = yield* Cwd
@@ -2609,7 +2667,36 @@ const storeGcCommand = Cli.Command.make(
       let planSha256: string | undefined
       const targetedApply =
         Option.isSome(expectedPlan) === true || Option.isSome(candidatePath) === true
-      const planningOnly = dryRun === true || targetedApply === true
+      const planningOnly =
+        dryRun === true || targetedApply === true || Option.isSome(candidatesFile)
+      if (
+        Option.isSome(candidatesFile) === true &&
+        [targetedApply, dryRun, all, force, generatedArtifacts, Option.isSome(budgets)].includes(
+          true,
+        ) === true
+      ) {
+        return yield* new StoreCommandError({
+          message:
+            '--candidates-file is incompatible with --expected-plan, --candidate-path, --dry-run, --all, --force, --generated-artifacts and --budgets',
+        })
+      }
+      const batch =
+        Option.isSome(candidatesFile) === true
+          ? yield* fs.readFileString(candidatesFile.value).pipe(
+              Effect.flatMap(
+                Schema.decodeUnknownEffect(Schema.fromJsonString(GcCandidates), {
+                  onExcessProperty: 'error',
+                }),
+              ),
+              Effect.mapError(
+                (error) =>
+                  new StoreCommandError({ message: `Invalid candidates file: ${String(error)}` }),
+              ),
+            )
+          : undefined
+      const candidateOutcomes: NonNullable<
+        Extract<StoreAction, { _tag: 'SetGc' }>['candidateOutcomes']
+      >[number][] = []
 
       if (
         Option.isSome(budgets) === true &&
@@ -3054,6 +3141,7 @@ const storeGcCommand = Cli.Command.make(
               statusMessage,
               done,
               planSha256,
+              candidateOutcomes: batch === undefined ? undefined : candidateOutcomes,
             }),
           )
         })
@@ -3190,6 +3278,8 @@ const storeGcCommand = Cli.Command.make(
               repoWorktrees,
             })
             planSha256 = generatedPlan.planSha256
+            for (const [path, identity] of generatedPlan.deletionIdentities)
+              deletionIdentities.set(path, identity)
             if (progressive === false || targetedApply === true) {
               results.push(...generatedPlan.results)
               completedRepoCount += repoWorktrees.length
@@ -3626,6 +3716,7 @@ const storeGcCommand = Cli.Command.make(
             planSha256 = planSha256For({ results, deletionIdentities })
           }
 
+          let selectedCandidate: StoreGcResult | undefined
           if (
             generatedArtifacts === false &&
             targetedApply === true &&
@@ -3640,26 +3731,24 @@ const storeGcCommand = Cli.Command.make(
             const candidates = results.filter(
               (result) =>
                 normalizeStorePath(result.path) === normalizeStorePath(candidatePath.value) &&
-                (result.status === 'removed' ||
-                  result.status === 'archived' ||
-                  result.status === 'reaped'),
+                isGcCandidate(result),
             )
             if (candidates.length !== 1) {
               return yield* new StoreCommandError({
                 message: 'candidate is missing, ambiguous, or no longer eligible',
               })
             }
-            const candidate = candidates[0]!
+            selectedCandidate = candidates[0]!
+          }
+          const applyCandidate = Effect.fn('megarepo/store/gc/apply-candidate')(function* (
+            candidate: StoreGcResult,
+          ) {
             const owner = repoWorktrees.find(({ repo }) => repo.relativePath === candidate.repo)
             if (owner === undefined) {
               return yield* new StoreCommandError({
                 message: 'candidate owner repository is missing',
               })
             }
-
-            // First pass: hand the candidate back so the caller can retake the
-            // plan under this candidate's owner lock (see `runGcTransaction`).
-            if (ownerLockHeld === false) return candidate.path
 
             // The activation lease names the owner worktree path itself, so a
             // whole-worktree removal, archive, or reap must hold it too: the
@@ -3805,7 +3894,7 @@ const storeGcCommand = Cli.Command.make(
                 dryRun: false,
                 worklogPolicy: yield* loadWorklogTeardownPolicy(config.buildOutputBudgetsPath),
                 candidatePath: candidate.path,
-                lockAlreadyHeld: ownerLockHeld,
+                lockAlreadyHeld: true,
               })
               buckReceipt = {
                 buckDaemonsStopped: appliedResults.flatMap(
@@ -3854,14 +3943,29 @@ const storeGcCommand = Cli.Command.make(
                 })
               }),
             )
-            results.splice(0, results.length, applied)
+            return applied
+          })
+          if (dryRun === true) {
+            for (const [index, result] of results.entries()) {
+              if (isGcCandidate(result) === true || result.outcome === 'would-delete') {
+                results[index] = {
+                  ...result,
+                  candidateSha256: candidateSha256For({ result, deletionIdentities }),
+                }
+              }
+            }
           }
+          let lockCandidate: string | undefined
 
+          if (selectedCandidate !== undefined) {
+            if (ownerLockHeld === false) lockCandidate = selectedCandidate.path
+            else results.splice(0, results.length, yield* applyCandidate(selectedCandidate))
+          }
           statusMessage = undefined
           if (progressive === true || ownerLockHeld === true) {
             yield* dispatchGc({ done: true, forceDispatch: true })
           }
-          return undefined
+          return { lockCandidate, applyCandidate }
         })
 
       /**
@@ -3873,7 +3977,50 @@ const storeGcCommand = Cli.Command.make(
        */
       const runGcTransaction = ({ progressive }: { progressive: boolean }) =>
         Effect.gen(function* () {
-          const lockCandidate = yield* executeGc({ progressive })
+          const transaction = yield* executeGc({ progressive: batch === undefined && progressive })
+          if (batch !== undefined) {
+            const fresh = new Map(
+              results.map((result) => [normalizeStorePath(result.path), result]),
+            )
+            results.splice(0, results.length)
+            for (const { path, candidateSha256 } of batch) {
+              const candidate = fresh.get(normalizeStorePath(path))
+              if (candidate === undefined) {
+                candidateOutcomes.push({ _tag: 'skipped-missing', path })
+              } else if (isGcCandidate(candidate) === false) {
+                candidateOutcomes.push({ _tag: 'skipped-ineligible', path })
+              } else if (
+                candidateSha256For({ result: candidate, deletionIdentities }) !== candidateSha256
+              ) {
+                candidateOutcomes.push({ _tag: 'skipped-changed', path })
+              } else {
+                const applied = yield* storeLock
+                  .withWorktreeLock(candidate.path)(transaction.applyCandidate(candidate))
+                  .pipe(
+                    Effect.catch((error) =>
+                      Effect.succeed({
+                        ...candidate,
+                        status: 'error' as const,
+                        message: String(error),
+                      }),
+                    ),
+                  )
+                results.push(applied)
+                candidateOutcomes.push(
+                  applied.status === 'error' || applied.outcome === 'partial'
+                    ? {
+                        _tag: 'failed',
+                        path,
+                        message: applied.message ?? 'candidate deletion was partial',
+                      }
+                    : { _tag: 'applied', path },
+                )
+              }
+            }
+            yield* dispatchGc({ done: true, forceDispatch: true })
+            return
+          }
+          const lockCandidate = transaction.lockCandidate
           if (lockCandidate === undefined) return
           results.splice(0, results.length)
           deletionIdentities.clear()
@@ -3906,6 +4053,7 @@ const storeGcCommand = Cli.Command.make(
             statusMessage,
             done: true,
             planSha256,
+            candidateOutcomes: batch === undefined ? undefined : candidateOutcomes,
           }),
         })
       } else {
@@ -3947,6 +4095,11 @@ const storeGcCommand = Cli.Command.make(
         ).length,
         repoConcurrency: repoConcurrencyForMetrics,
       })
+      if (candidateOutcomes.some((outcome) => outcome._tag === 'failed') === true) {
+        return yield* new StoreCommandError({
+          message: 'store gc candidate application failed; see candidate outcomes',
+        })
+      }
       // Partial removal is not a successful deletion: the receipt is rendered,
       // then the command fails so callers retry from a fresh plan.
       if (results.some((result) => result.outcome === 'partial') === true) {

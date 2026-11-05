@@ -50,6 +50,7 @@ import {
   getWorktreeCommit,
 } from '../test-utils/store-setup.ts'
 import { mrCommand } from './mod.ts'
+import { StoreGcCandidateCounts, StoreGcCandidateOutcome } from './renderers/StoreOutput/schema.ts'
 
 const StoreGcJsonOutput = Schema.Struct({
   results: Schema.Array(
@@ -61,6 +62,7 @@ const StoreGcJsonOutput = Schema.Struct({
       status: Schema.String,
       message: Schema.optional(Schema.String),
       reason: Schema.optional(Schema.String),
+      candidateSha256: Schema.optional(Schema.String),
       buckDaemonsUnreachable: Schema.optional(
         Schema.Array(Schema.Struct({ pid: Schema.Int, reason: Schema.String })),
       ),
@@ -68,6 +70,8 @@ const StoreGcJsonOutput = Schema.Struct({
   ),
   censusStatus: Schema.optional(Schema.Literals(['complete', 'unknown'])),
   planSha256: Schema.optional(Schema.String),
+  candidateOutcomes: Schema.optional(Schema.Array(StoreGcCandidateOutcome)),
+  candidateCounts: Schema.optional(StoreGcCandidateCounts),
 })
 
 const decodeStoreGcJsonOutput = Schema.decodeUnknownSync(Schema.fromJsonString(StoreGcJsonOutput))
@@ -226,6 +230,64 @@ describe('mr store status bare repository health', () => {
 })
 
 describe('mr store gc', () => {
+  for (const scenario of ['same', 'dirty', 'other', 'unknown', 'duplicate'] as const) {
+    it.effect(`applies candidates-file safely: ${scenario}`, () =>
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem
+        const commits = ['a'.repeat(40), 'b'.repeat(40)]
+        const { storePath, worktreePaths } = yield* createStoreFixture([
+          { host: 'github.com', owner: 'acme', repo: 'batch', branches: ['main'], commits },
+        ])
+        const paths = commits.map((ref) => worktreePaths[`github.com/acme/batch#${ref}`]!)
+        const cwd = EffectPath.unsafe.absoluteDir(`${yield* fs.makeTempDirectoryScoped()}/`)
+        const run = (...args: string[]) =>
+          runMrCommand({
+            cwd,
+            env: { MEGAREPO_STORE: storePath },
+            command: ['store', 'gc', '--output', 'json', ...args],
+          })
+        const plan = decodeStoreGcJsonOutput((yield* run('--dry-run')).stdout)
+        const candidates = paths.map((path) => {
+          const row = plan.results.find((result) => result.path === path)
+          expect(row?.candidateSha256).toMatch(/^[0-9a-f]{64}$/)
+          return { path, candidateSha256: row!.candidateSha256! }
+        })
+        if (scenario === 'dirty' || scenario === 'other') {
+          const path =
+            scenario === 'dirty' ? paths[0]! : worktreePaths['github.com/acme/batch#main']!
+          yield* fs.writeFileString(`${path}untracked.txt`, 'changed\n')
+        }
+        const file = `${cwd}candidates.json`
+        const invalid = scenario === 'unknown' || scenario === 'duplicate'
+        const entries = scenario === 'duplicate' ? [candidates[0]!, candidates[0]!] : candidates
+        const contents =
+          scenario === 'unknown' ? entries.map((entry) => ({ ...entry, unknown: true })) : entries
+        yield* fs.writeFileString(file, encodeJson(contents))
+        const applied = yield* run('--candidates-file', file)
+        expect(applied.exitCode, applied.stdout + applied.failure).toBe(invalid === true ? 1 : 0)
+        if (invalid === true) {
+          for (const path of paths) expect(yield* fs.exists(path)).toBe(true)
+          return
+        }
+        const batch = decodeStoreGcJsonOutput(applied.stdout)
+        const skippedCount = scenario === 'dirty' ? 1 : 0
+        expect(batch.candidateCounts).toEqual({
+          applied: 2 - skippedCount,
+          skipped: skippedCount,
+          failed: 0,
+        })
+        expect(batch.candidateOutcomes).toHaveLength(2)
+        for (const [index, path] of paths.entries()) {
+          const skipped = scenario === 'dirty' && index === 0
+          const outcome = batch.candidateOutcomes?.find((entry) => entry.path === path)
+          if (skipped === true) expect(outcome?._tag).toMatch(/^skipped-(changed|ineligible)$/)
+          else expect(outcome).toEqual({ _tag: 'applied', path })
+          expect(yield* fs.exists(path)).toBe(skipped)
+        }
+      }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+    )
+  }
+
   it.effect(
     'completes gc and reports foreign files at every enumeration level without deleting them',
     Effect.fnUntraced(
