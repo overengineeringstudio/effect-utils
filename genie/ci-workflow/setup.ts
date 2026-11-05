@@ -245,6 +245,11 @@ export const installNixStep = (opts?: {
       'experimental-features = nix-command flakes',
       /** Trust flake-level nixConfig (e.g. additional repo-local substituters) */
       'accept-flake-config = true',
+      /** Bound stalled substitutions before falling back to a local build. */
+      'connect-timeout = 10',
+      'stalled-download-timeout = 60',
+      'download-attempts = 3',
+      'fallback = true',
       renderBinaryCachesExtraConf(opts?.binaryCaches ?? []),
       `access-tokens = github.com=${opts?.githubAccessTokenExpression ?? '${{ github.token }}'}`,
       ...(opts?.extraConf !== undefined ? [opts.extraConf] : []),
