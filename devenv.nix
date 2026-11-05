@@ -1974,9 +1974,8 @@ in
     description = "Publish the run-wide union of source-test dependency views once";
     packagePaths = testUnionPackagePaths;
     traceScope = "test:all";
-    # Four workers share the union; the CI job deadline owns this uncapped batch,
-    # as for unmeasured consumer batches. 300 s is not a safe cold Darwin bound.
-    deadlineSeconds = null;
+    # Cold Darwin measured 413s for four workers; 900s bounds the union with >2x headroom.
+    deadlineSeconds = 900;
   });
 
   tasks."buck2:editor:check" = {

@@ -272,8 +272,9 @@ view retains its stderr timing record. Snapshot/retention formats, lock ownershi
 explicit recovery, and whole-workspace authority checks are unchanged.
 
 CI Unit tests publish `buck2:editor:publish:test:all` once: the union of selected
-source-test and harness scopes, including bootstrap. Its four workers run without
-the ordinary 300-second publication deadline; the CI job timeout bounds the batch.
+source-test and harness scopes, including bootstrap. Its four workers have a
+900-second publication deadline, giving over twice the measured 413-second cold
+Darwin duration. Other scoped/bootstrap publishers retain their 300-second caps.
 Chain installers and repeated bootstrap reuse job-local `.devenv/` receipts without
 a publication lock or `check`. Receipts bind graph/scope, authority, immutable
 snapshot identities, publisher/verifier sources, and HEAD plus dirty contents.

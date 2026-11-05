@@ -748,9 +748,12 @@ for (const [publisher, { consumers, packagePaths }] of Object.entries(scopedPubl
         condition:
           commandBody.includes('editor-view-receipt.py') &&
           (publisher.endsWith(':all') === true
-            ? /editor-view-supervisor\.py"\s+none/u.test(commandBody)
+            ? /editor-view-supervisor\.py"\s+900\s+5/u.test(commandBody)
             : commandBody.includes('receipt check publication')),
-        name: `${publisher} uses job-local receipts and an uncapped union deadline`,
+        name:
+          publisher.endsWith(':all') === true
+            ? `${publisher} uses job-local receipts and a bounded 900s union deadline`
+            : `${publisher} reuses the job-local publication receipt`,
       })
     }
   }
@@ -868,6 +871,11 @@ for (const name of editorPublishers) {
         JSON.stringify(budget.missingConsumers.toSorted()) ===
         JSON.stringify(missingConsumers.toSorted()),
       name: `${name} explicitly reports ${fallbackPublicationSeconds}s max-measured fallback consumers: ${missingConsumers.join(', ') || '(none)'}`,
+    })
+  } else if (name === 'buck2:editor:publish:test:all') {
+    ok({
+      condition: actualDeadline === '900',
+      name: `${name} retains its measured 900s union publication cap`,
     })
   } else if (name.startsWith('buck2:editor:publish:batch:') === true) {
     ok({
