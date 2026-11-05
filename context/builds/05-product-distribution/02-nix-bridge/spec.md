@@ -214,8 +214,21 @@ The proposal travels as base64 in four job outputs of at most 100,000 characters
 each, staying below GitHub's total output and Linux's per-environment-string
 limits. Both producer paths reject more than 400,000 characters; promotion
 validates the charset before decoding. No Actions artifacts or caches are used.
-`manifest-current` describes main's checked-in manifest; its success does not gate promotion. The manifest
-PR flow remains for main's own flake users.
+`manifest-current` describes main's checked-in manifest; its success does not gate
+promotion. Non-bootstrap drift succeeds with a “stale rows fall back by design”
+note; bootstrap drift still fails.
+
+The manifest PR flow remains for main's own flake users. The publisher opens or
+refreshes its PR only when a bootstrap row differs from main, or when the latest
+main commit touching the manifest is at least 24 hours old and the proposal
+differs. Bootstrap names come exclusively from `cache.nix`'s `bootstrapPins`;
+canonical JSON row comparisons ignore formatting and product ordering. The
+history lookup uses the job's read-only GitHub token. An unavailable history
+lookup warns and skips the safety net, never opening a PR speculatively. A
+skipped decision leaves an existing open publisher PR untouched for maintainers
+to land. Correctness relies on exact recipe/evidence matching and from-source
+fallback for stale non-bootstrap rows; `published` still receives the full
+manifest on every main push, independently of this PR gate.
 
 Ref creation and advancement remain restricted to main-push runs in the
 upstream repository. Workflow dispatch and pull requests cannot advance the

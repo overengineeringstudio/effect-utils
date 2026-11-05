@@ -1190,6 +1190,33 @@ describe('published consumer ref', () => {
     expect(publish.run).toContain('nix/buck2-products/publish.sh --proposal "$proposal"')
   })
 
+  it('gates manifest PR writes on bootstrap drift or the daily safety net with the read-only token', () => {
+    const gateIndex = publisher.steps.findIndex((step) => step.id === 'manifest-pr-gate')
+    const appIndex = publisher.steps.findIndex((step) => step.id === 'publisher-app-config')
+    const proposeIndex = publisher.steps.findIndex(
+      (step) => step.name === 'Propose published product manifest',
+    )
+    expect(gateIndex).toBeGreaterThan(-1)
+    expect(gateIndex).toBeLessThan(appIndex)
+    expect(appIndex).toBeLessThan(proposeIndex)
+    const gate = publisher.steps[gateIndex]!
+    expect(gate.env).toEqual({ GITHUB_TOKEN: '${{ github.token }}' })
+    expect(gate.run).toContain('source genie/ci-workflow/manifest-pr-decide.sh')
+    expect(gate.run).toContain('pins="$(bootstrap_pins)"')
+    expect(gate.run).toContain('decision="$(manifest_pr_decide ')
+    expect(gate.run).toContain('git show refs/remotes/origin/main:nix/buck2-products/manifest.json')
+    expect(publisher.steps[appIndex]!.if).toBe("steps.manifest-pr-gate.outputs.decision == 'open'")
+    const proposal = publisher.steps[proposeIndex]!
+    expect(proposal.if).toBe("steps.publisher-app-config.outputs.enabled == 'true'")
+    expect(proposal.run).toContain('git push --force-with-lease')
+    expect(proposal.run).toContain('leave any existing open publisher PR untouched')
+    const publication = publisher.steps.find((step) => step.id === 'product-publication')!.run!
+    expect(publication).toContain('state=success')
+    expect(publication).toContain('Stale rows fall back by design')
+    expect(publication).toContain('state=failure')
+    expect(publication).toContain('bootstrap_rows "$proposal" "$pins"')
+  })
+
   it('joins same-SHA publication and consumer proofs before main-push promotion', () => {
     expect(promotion.needs).toEqual(['publish-products', 'consumer-smoke'])
     expect(promotion.if).toBe(publishedRefIf)
