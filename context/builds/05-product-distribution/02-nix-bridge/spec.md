@@ -168,6 +168,41 @@ stale main manifest -> publisher manifest PR -> main push
 Consumers requiring an always-eligible product manifest track `ref published`
 rather than `ref main`. `main` may be temporarily non-current after a
 product-input merge while its publisher manifest proposal is pending.
+
+Cached eligibility requires the row's `recipeIdentity` to equal SHA-256 of the
+current **unstamped compile derivation's drvPath**, plus evidence pinned by store
+path and SHA-256. This binds source, build recipe and toolchain, not just the
+source fileset. Missing evidence/identity or a mismatch selects from-source,
+without reading producer outputs. JavaScript consumers retain their public
+product shape and use the source import validator. Existing inventory, version,
+provenance and artifact-binding checks remain; `assertDeclaredProducts` and
+`assertFullyPublished` check inventory coverage, not cache eligibility.
+
+Unscoped recipes separate compilation from revision stamping. Compilation emits
+payload, descriptor and source provenance without `producerCommit`; a small
+stamp derivation adds the revision-bound provenance. It copies regular files
+with `cp --reflink=auto` because publisher/Cachix artifacts cannot be symlinks.
+Scoped recipes retain their existing derivation. Manifest-only changes and
+different commits with identical trees do not change compile identity.
+
+`cache.nix` declares the sole exception, with its reason: `genie` must check the
+generated inventory defining its own recipe using an earlier published generator.
+Tests assert that the bootstrap pin set is exactly `genie`.
+
+The publisher builds tiny `effect-utils/buck-product-source-evidence/v1` JSON
+binding `recipeIdentity`, `target`, and the built payload's `productDigest`,
+separately pinned by SHA-256 without a revision stamp. Rows carry
+`sourceEvidenceStorePath` and `sourceEvidenceSha256`. The cached artifact's build
+fetches evidence by hash from its store-derived URL and verifies every binding
+before copying payload bytes. Relabeled stale evidence fails loudly. No IFD is
+used. Byte-identical payload pins and identical recipe/payload evidence pins
+remain reusable with their original producer provenance.
+
+Until per-product scoping lands, main mostly rebuilds from source, or substitutes
+from Cachix after the publish run for that SHA; development shells incur the same
+cost. The compile/stamp split requires a one-time rebuild of all products. Each
+recipe/payload identity adds a tiny evidence pin and evidence fetch.
+
 `refs/heads/published` points to a publisher commit P with parents
 `[previous published tip T, main candidate X]` and trailer `Published-From: X`.
 Its tree is X's tree with only `nix/buck2-products/manifest.json` replaced by

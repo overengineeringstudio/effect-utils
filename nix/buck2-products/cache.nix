@@ -8,6 +8,10 @@ let
   lib = pkgs.lib;
   manifest = builtins.fromJSON (builtins.readFile ./manifest.json);
   targetInventory = builtins.fromJSON (builtins.readFile ./cache-targets.json);
+  # CI's generator must bootstrap from an earlier product to check its own sources.
+  bootstrapPins = {
+    genie = "genie checks the generated inventory that defines its own recipe";
+  };
   declaredProductNames = builtins.sort builtins.lessThan (
     map (product: product.name) targetInventory.products
   );
@@ -36,6 +40,14 @@ let
       declared =
         targetByName.${name} or (throw "buck2-products: manifest contains undeclared product ${name}");
       hasDescriptor = declared.kind == "javascript";
+      useCached =
+        builtins.hasAttr name bootstrapPins
+        || (
+          entry ? recipeIdentity
+          && entry ? sourceEvidenceStorePath
+          && entry ? sourceEvidenceSha256
+          && entry.recipeIdentity == recipe.recipeIdentity
+        );
       descriptorContent = if hasDescriptor then builtins.toJSON entry.descriptor else null;
       expectedIntegrity = builtins.convertHash {
         hash = entry.sha256;
@@ -69,6 +81,15 @@ let
           pkgs.writeText "${lib.replaceStrings [ "@" "/" ] [ "" "-" ] name}-provenance.json" (
             builtins.toJSON provenance
           );
+      sourceEvidence = pkgs.fetchurl {
+        name = "${lib.replaceStrings [ "@" "/" ] [ "" "-" ] name}-source-evidence.json";
+        url = "${cacheBase}/${builtins.head (lib.splitString "-" (builtins.baseNameOf entry.sourceEvidenceStorePath))}/source-evidence.json";
+        hash = builtins.convertHash {
+          hash = entry.sourceEvidenceSha256;
+          hashAlgo = "sha256";
+          toHashFormat = "sri";
+        };
+      };
       storeBaseName = builtins.baseNameOf entry.storePath;
       storeHash = builtins.head (lib.splitString "-" storeBaseName);
       expectedUrl = "${cacheBase}/${storeHash}/${artifactName}";
@@ -97,6 +118,14 @@ let
             test -f "$artifact"
             test "$(sha256sum "$artifact" | cut -d' ' -f1)" = ${lib.escapeShellArg entry.sha256}
             test "$(stat -c '%s' "$artifact")" = ${toString entry.size}
+            ${lib.optionalString (!(builtins.hasAttr name bootstrapPins)) ''
+              jq -e --arg recipeIdentity ${lib.escapeShellArg recipe.recipeIdentity} \
+                --arg target ${lib.escapeShellArg recipe.target} --arg productDigest ${lib.escapeShellArg entry.sha256} \
+                'keys == ["productDigest","recipeIdentity","schema","target"] and
+                 .schema == "effect-utils/buck-product-source-evidence/v1" and
+                 .recipeIdentity == $recipeIdentity and .target == $target and .productDigest == $productDigest' \
+                ${sourceEvidence} >/dev/null
+            ''}
             jq -e \
               --arg producerCommit ${lib.escapeShellArg provenance.producerCommit} \
               --arg target ${lib.escapeShellArg provenance.target} \
@@ -112,7 +141,7 @@ let
           '';
     in
     assert lib.assertMsg (
-      builtins.attrNames entry == [
+      builtins.attrNames (removeAttrs entry [ "recipeIdentity" ]) == [
         "artifactUrl"
       ]
       ++ (
@@ -129,6 +158,10 @@ let
         "provenance"
         "sha256"
         "size"
+      ]
+      ++ (if entry ? sourceEvidenceSha256 then [ "sourceEvidenceSha256" ] else [ ])
+      ++ (if entry ? sourceEvidenceStorePath then [ "sourceEvidenceStorePath" ] else [ ])
+      ++ [
         "storePath"
         "version"
       ]
@@ -143,6 +176,21 @@ let
     assert lib.assertMsg (
       builtins.match "[0-9a-f]{64}" entry.sha256 != null
     ) "buck2-products: ${name} sha256 must be lowercase hexadecimal";
+    assert lib.assertMsg (
+      !(entry ? recipeIdentity)
+      || (
+        builtins.isString entry.recipeIdentity && builtins.match "[0-9a-f]{64}" entry.recipeIdentity != null
+      )
+    ) "buck2-products: ${name} recipeIdentity must be lowercase hexadecimal";
+    assert lib.assertMsg (
+      (
+        !(entry ? sourceEvidenceStorePath)
+        || builtins.match "/nix/store/[0-9a-z]{32}-[A-Za-z0-9+._?=-]+" entry.sourceEvidenceStorePath != null
+      )
+      && (
+        !(entry ? sourceEvidenceSha256) || builtins.match "[0-9a-f]{64}" entry.sourceEvidenceSha256 != null
+      )
+    ) "buck2-products: ${name} has invalid source evidence";
     assert lib.assertMsg (
       builtins.isInt entry.size && entry.size > 0
     ) "buck2-products: ${name} size must be a positive integer";
@@ -179,8 +227,8 @@ let
     {
       inherit name;
       value = {
-        artifact = "${checkedArtifact}/${artifactName}";
-        expectedModuleSha256 = entry.sha256;
+        artifact = "${if useCached then checkedArtifact else recipe}/${artifactName}";
+        expectedModuleSha256 = if useCached then entry.sha256 else null;
         inherit (entry)
           artifactUrl
           provenance
@@ -188,12 +236,32 @@ let
           version
           ;
         sourceRecipe = recipe;
-        validated = checkedArtifact;
+        validated = if useCached then checkedArtifact else recipe;
+        sourceImport =
+          if useCached || !hasDescriptor then
+            null
+          else
+            {
+              product = recipe;
+              hasRuntimeClosure = recipe.runtimeClosureTarget != null;
+              facts = {
+                expectedModulePath = entry.descriptor.modulePath;
+                expectedRuntimeKind = entry.descriptor.runtimeKind;
+                expectedRuntimeContract = entry.descriptor.runtimeContract;
+                expectedRuntimeContractVersion = entry.descriptor.runtimeContractVersion;
+                expectedProducerCommit = recipe.producerCommit;
+                checkProducerCommit = recipe.producerCommit != null;
+              };
+            };
       }
       // (
         if hasDescriptor then
           {
-            descriptor = pkgs.writeText "${lib.replaceStrings [ "@" "/" ] [ "" "-" ] name}-product.json" descriptorContent;
+            descriptor =
+              if useCached then
+                pkgs.writeText "${lib.replaceStrings [ "@" "/" ] [ "" "-" ] name}-product.json" descriptorContent
+              else
+                "${recipe}/descriptor.json";
             inherit descriptorContent;
             expectedDescriptorSha256 = entry.descriptorSha256;
           }
@@ -235,6 +303,7 @@ assert lib.assertMsg (
 {
   inherit
     manifest
+    bootstrapPins
     declaredProductNames
     publishedProductNames
     fullyPublished
