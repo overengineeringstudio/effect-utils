@@ -119,7 +119,9 @@ foreign entries are never removed. Existing symlink handling is unchanged.
 
 Apply a candidate set with `mr store gc --candidates-file candidates.json --output json`.
 The strict JSON array contains `{ path, candidateSha256 }` records from dry-run results (no duplicate paths).
-One census verifies candidates independently: changed/missing/ineligible candidates skip; failures do not stop the rest.
+After one census, each plain removal is re-planned under its owner lock and activation lease before comparing its digest.
+Archives, reaps, merged worklogs, and candidates without captured deletion identity report `unsupported-kind` and never apply.
+Changed/missing/ineligible candidates skip; failures do not stop the rest.
 Output includes tagged `candidateOutcomes` and `candidateCounts`; only failures exit nonzero.
 This mode excludes `--expected-plan`, `--candidate-path`, `--dry-run`, `--all`, `--force`, `--generated-artifacts`, and `--budgets`.
 

@@ -110,6 +110,7 @@ export const StoreGcCandidateOutcome = Schema.Union([
   Schema.TaggedStruct('skipped-changed', { path: Schema.String }),
   Schema.TaggedStruct('skipped-ineligible', { path: Schema.String }),
   Schema.TaggedStruct('skipped-missing', { path: Schema.String }),
+  Schema.TaggedStruct('unsupported-kind', { path: Schema.String }),
   Schema.TaggedStruct('failed', { path: Schema.String, message: Schema.String }),
 ])
 

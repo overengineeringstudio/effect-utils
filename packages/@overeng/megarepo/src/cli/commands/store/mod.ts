@@ -138,7 +138,7 @@ import {
   type OutputModeValue,
   resolveOutputOption,
 } from '../../context.ts'
-import { StoreCommandError } from '../../errors.ts'
+import { StoreCommandError, StoreGcCandidateRefused } from '../../errors.ts'
 import * as Observability from '../../observability.ts'
 import { StoreApp, StoreView } from '../../renderers/StoreOutput/mod.ts'
 import type {
@@ -723,8 +723,9 @@ const toStoreGcAction = ({
         candidateOutcomes,
         candidateCounts: {
           applied: candidateOutcomes.filter((outcome) => outcome._tag === 'applied').length,
-          skipped: candidateOutcomes.filter((outcome) => outcome._tag.startsWith('skipped-'))
-            .length,
+          skipped: candidateOutcomes.filter(
+            (outcome) => outcome._tag !== 'applied' && outcome._tag !== 'failed',
+          ).length,
           failed: candidateOutcomes.filter((outcome) => outcome._tag === 'failed').length,
         },
       }),
@@ -3741,7 +3742,7 @@ const storeGcCommand = Cli.Command.make(
             selectedCandidate = candidates[0]!
           }
           const applyCandidate = Effect.fn('megarepo/store/gc/apply-candidate')(function* (
-            candidate: StoreGcResult,
+            candidate: StoreGcResult & { readonly approval?: string },
           ) {
             const owner = repoWorktrees.find(({ repo }) => repo.relativePath === candidate.repo)
             if (owner === undefined) {
@@ -3758,14 +3759,24 @@ const storeGcCommand = Cli.Command.make(
             let buckReceipt: BuckDaemonReceipt | undefined
             const applied: StoreGcResult = yield* Effect.gen(function* () {
               if (candidate.status === 'removed') {
-                const identity = deletionIdentities.get(candidate.path)
+                let identity = deletionIdentities.get(candidate.path)
                 if (platform === 'linux' && identity === undefined) {
                   return yield* new StoreCommandError({
                     message: 'candidate deletion identity is unavailable',
                   })
                 }
-                const worktree = owner.worktrees.filter((entry) => entry.path === candidate.path)
+                const candidateWorktrees =
+                  candidate.approval === undefined
+                    ? owner.worktrees
+                    : yield* collectRepoStoreWorktrees({
+                        fs,
+                        repoPath: owner.repo.fullPath,
+                        bareRepoPath: owner.bareRepoPath,
+                      })
+                const worktree = candidateWorktrees.filter((entry) => entry.path === candidate.path)
                 if (worktree.length !== 1) {
+                  if (candidate.approval !== undefined)
+                    return yield* new StoreGcCandidateRefused({ outcome: 'skipped-missing' })
                   return yield* new StoreCommandError({
                     message: 'candidate worktree is missing or ambiguous',
                   })
@@ -3782,9 +3793,30 @@ const storeGcCommand = Cli.Command.make(
                   (force === false &&
                     (decision.status.isDirty === true || decision.status.hasUnpushed === true))
                 ) {
+                  if (candidate.approval !== undefined)
+                    return yield* new StoreGcCandidateRefused({ outcome: 'skipped-ineligible' })
                   return yield* new StoreCommandError({
                     message: 'candidate is live, dirty, or no longer inspectable',
                   })
+                }
+                if (candidate.approval !== undefined) {
+                  const fresh = yield* processGcDecision({
+                    decision,
+                    repoRelativePath: owner.repo.relativePath,
+                    bareRepoPath: owner.bareRepoPath,
+                  })
+                  identity = decision.identity
+                  if (identity === undefined)
+                    return yield* new StoreGcCandidateRefused({ outcome: 'unsupported-kind' })
+                  if (
+                    candidateSha256For({
+                      result: fresh,
+                      deletionIdentities: new Map([[fresh.path, identity]]),
+                    }) !== candidate.approval
+                  ) {
+                    return yield* new StoreGcCandidateRefused({ outcome: 'skipped-changed' })
+                  }
+                  candidate = fresh
                 }
                 buckReceipt = yield* readBuckDaemonReceipt({ worktreePath: candidate.path })
                 let ignoredForeignProcesses = 0
@@ -3959,7 +3991,23 @@ const storeGcCommand = Cli.Command.make(
 
           if (selectedCandidate !== undefined) {
             if (ownerLockHeld === false) lockCandidate = selectedCandidate.path
-            else results.splice(0, results.length, yield* applyCandidate(selectedCandidate))
+            else
+              results.splice(
+                0,
+                results.length,
+                yield* applyCandidate({
+                  ...selectedCandidate,
+                  ...(selectedCandidate.status === 'removed' &&
+                  deletionIdentities.has(selectedCandidate.path) === true
+                    ? {
+                        approval: candidateSha256For({
+                          result: selectedCandidate,
+                          deletionIdentities,
+                        }),
+                      }
+                    : {}),
+                }),
+              )
           }
           statusMessage = undefined
           if (progressive === true || ownerLockHeld === true) {
@@ -3990,21 +4038,37 @@ const storeGcCommand = Cli.Command.make(
               } else if (isGcCandidate(candidate) === false) {
                 candidateOutcomes.push({ _tag: 'skipped-ineligible', path })
               } else if (
+                candidate.status !== 'removed' ||
+                candidate.kind !== undefined ||
+                deletionIdentities.has(candidate.path) === false
+              ) {
+                candidateOutcomes.push({ _tag: 'unsupported-kind', path })
+              } else if (
                 candidateSha256For({ result: candidate, deletionIdentities }) !== candidateSha256
               ) {
                 candidateOutcomes.push({ _tag: 'skipped-changed', path })
               } else {
                 const applied = yield* storeLock
-                  .withWorktreeLock(candidate.path)(transaction.applyCandidate(candidate))
+                  .withWorktreeLock(candidate.path)(
+                    transaction.applyCandidate({ ...candidate, approval: candidateSha256 }),
+                  )
                   .pipe(
                     Effect.catch((error) =>
-                      Effect.succeed({
-                        ...candidate,
-                        status: 'error' as const,
-                        message: String(error),
-                      }),
+                      Effect.succeed(
+                        error instanceof StoreGcCandidateRefused
+                          ? error
+                          : {
+                              ...candidate,
+                              status: 'error' as const,
+                              message: String(error),
+                            },
+                      ),
                     ),
                   )
+                if (applied instanceof StoreGcCandidateRefused) {
+                  candidateOutcomes.push({ _tag: applied.outcome, path })
+                  continue
+                }
                 results.push(applied)
                 candidateOutcomes.push(
                   applied.status === 'error' || applied.outcome === 'partial'
