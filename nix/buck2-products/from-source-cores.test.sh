@@ -34,7 +34,7 @@ phase="$(nix eval --impure --raw --expr '
       target = "root//:product";
       outputName = "artifact.tar";
     };
-  }).buildPhase
+  }).compileProduct.buildPhase
 ')"
 # The shared buck_build command carries the budgets for all three output paths.
 # Inspect the evaluated derivation, not the Nix source.

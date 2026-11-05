@@ -73,14 +73,14 @@ jq -e '
 ' "$targets" >/dev/null || fail "target inventory violates effect-utils/buck-cache-targets/v1"
 jq -e '
   def cached:
-    (if has("sourceDigest") then
-       (.sourceDigest | type == "string" and test("^[0-9a-f]{64}$"))
+    (if has("recipeIdentity") then
+       (.recipeIdentity | type == "string" and test("^[0-9a-f]{64}$"))
      else true end) and
     (if has("sourceEvidenceStorePath") then
        (.sourceEvidenceStorePath | test("^/nix/store/[0-9a-z]{32}-[A-Za-z0-9+._?=-]+$")) and
        (.sourceEvidenceSha256 | test("^[0-9a-f]{64}$"))
      else (has("sourceEvidenceSha256") | not) end) and
-    (del(.sourceDigest,.sourceEvidenceStorePath,.sourceEvidenceSha256) |
+    (del(.recipeIdentity,.sourceEvidenceStorePath,.sourceEvidenceSha256) |
     (
       (has("descriptor") and
        (keys | sort) == ["artifactUrl", "descriptor", "descriptorSha256", "name", "provenance", "sha256", "size", "storePath", "version"])
@@ -91,7 +91,7 @@ jq -e '
     (.name | type == "string" and length > 0) and
     (.sha256 | type == "string" and test("^[0-9a-f]{64}$")) and
     (.provenance |
-      (del(.sourceDigest) | keys | sort) == ["producerCommit", "productDigest", "schema", "target"] and
+      (keys | sort) == ["producerCommit", "productDigest", "schema", "target"] and
       .schema == "effect-utils/buck-product-provenance/v1" and
       (.producerCommit | test("^[0-9a-f]{40}$")) and
       (.target | type == "string" and length > 0)) and
@@ -262,8 +262,8 @@ while IFS= read -r row; do
   output_name="$(jq -r '.outputName' <<<"$row")"
   safe_name="$(sed 's|^@||; s|/|-|g' <<<"$name")"
   attr="$(product_attr "$name")"
-  source_digest="$(nix eval --raw "$repo_root#$attr.sourceDigest")"
-  [[ "$source_digest" =~ ^[0-9a-f]{64}$ ]] || fail "$name recipe has an invalid source digest"
+  recipe_identity="$(nix eval --raw "$repo_root#$attr.recipeIdentity")"
+  [[ "$recipe_identity" =~ ^[0-9a-f]{64}$ ]] || fail "$name recipe has an invalid identity"
   store_path="$(nix build --no-link --print-out-paths "$repo_root#$attr")"
   [[ "$store_path" == /nix/store/* && -d "$store_path" ]] || fail "$name did not build one store directory"
   artifact="$store_path/$output_name"
@@ -272,18 +272,18 @@ while IFS= read -r row; do
   [[ -f "$provenance_file" && ! -L "$provenance_file" ]] || fail "$name provenance is missing"
   sha256="$(sha256sum "$artifact" | cut -d' ' -f1)"
   size="$(stat -c '%s' "$artifact")"
-  jq -e --arg commit "$head_commit" --arg target "$target" --arg digest "$sha256" --arg source "$source_digest" '
-    (keys | sort) == ["producerCommit","productDigest","schema","sourceDigest","target"] and .sourceDigest == $source and
+  jq -e --arg commit "$head_commit" --arg target "$target" --arg digest "$sha256" '
+    (keys | sort) == ["producerCommit","productDigest","schema","target"] and
     .schema == "effect-utils/buck-product-provenance/v1" and
     .producerCommit == $commit and .target == $target and .productDigest == $digest
   ' "$provenance_file" >/dev/null || fail "$name provenance does not bind the built artifact"
   evidence_path="$(nix build --no-link --print-out-paths "$repo_root#$attr.sourceEvidence")"
   [[ "$evidence_path" =~ ^/nix/store/[0-9a-z]{32}-[A-Za-z0-9+._?=-]+$ ]] || fail "$name evidence is not a store path"
   evidence_file="$evidence_path/source-evidence.json"
-  jq -e --arg source "$source_digest" --arg target "$target" --arg digest "$sha256" '
-    keys == ["productDigest","schema","sourceDigest","target"] and
+  jq -e --arg recipe "$recipe_identity" --arg target "$target" --arg digest "$sha256" '
+    keys == ["productDigest","recipeIdentity","schema","target"] and
     .schema == "effect-utils/buck-product-source-evidence/v1" and
-    .sourceDigest == $source and .target == $target and .productDigest == $digest
+    .recipeIdentity == $recipe and .target == $target and .productDigest == $digest
   ' "$evidence_file" >/dev/null || fail "$name evidence does not bind the current recipe and artifact"
   evidence_sha="$(sha256sum "$evidence_file" | cut -d' ' -f1)"
   evidence_pin="$safe_name-source-$evidence_sha"
@@ -336,7 +336,7 @@ while IFS= read -r row; do
           fail "$pin_name already points at a different store path whose provenance is unavailable"
       fi
       jq -e --arg target "$target" --arg digest "$sha256" '
-        (del(.sourceDigest) | keys | sort) == ["producerCommit","productDigest","schema","target"] and
+        (keys | sort) == ["producerCommit","productDigest","schema","target"] and
         .schema == "effect-utils/buck-product-provenance/v1" and
         (.producerCommit | test("^[0-9a-f]{40}$")) and
         .target == $target and .productDigest == $digest
@@ -352,12 +352,12 @@ while IFS= read -r row; do
   artifact_url="$cache_url/serve/$store_hash/$output_name"
   jq -cnS \
     --arg name "$name" --arg version "$version" --arg sha256 "$sha256" \
-    --arg sourceDigest "$source_digest" \
+    --arg recipeIdentity "$recipe_identity" \
     --arg sourceEvidenceStorePath "$evidence_path" --arg sourceEvidenceSha256 "$evidence_sha" \
     --argjson size "$size" --arg storePath "$store_path" --arg artifactUrl "$artifact_url" \
     --argjson provenance "$(jq -cS . "$provenance_file")" \
     --arg kind "$kind" --argjson descriptor "$descriptor" --arg descriptorSha256 "$descriptor_sha256" \
-    '{name:$name,version:$version,sha256:$sha256,size:$size,sourceDigest:$sourceDigest,sourceEvidenceStorePath:$sourceEvidenceStorePath,sourceEvidenceSha256:$sourceEvidenceSha256,storePath:$storePath,artifactUrl:$artifactUrl,provenance:$provenance}
+    '{name:$name,version:$version,sha256:$sha256,size:$size,recipeIdentity:$recipeIdentity,sourceEvidenceStorePath:$sourceEvidenceStorePath,sourceEvidenceSha256:$sourceEvidenceSha256,storePath:$storePath,artifactUrl:$artifactUrl,provenance:$provenance}
      + (if $kind == "javascript" then {descriptor:$descriptor,descriptorSha256:$descriptorSha256} else {} end)' \
     >>"$entries"
 done < <(jq -c '.[]' <<<"$rows")

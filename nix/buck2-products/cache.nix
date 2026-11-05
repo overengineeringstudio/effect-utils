@@ -43,10 +43,10 @@ let
       useCached =
         builtins.hasAttr name bootstrapPins
         || (
-          entry ? sourceDigest
+          entry ? recipeIdentity
           && entry ? sourceEvidenceStorePath
           && entry ? sourceEvidenceSha256
-          && entry.sourceDigest == recipe.sourceDigest
+          && entry.recipeIdentity == recipe.recipeIdentity
         );
       descriptorContent = if hasDescriptor then builtins.toJSON entry.descriptor else null;
       expectedIntegrity = builtins.convertHash {
@@ -119,18 +119,18 @@ let
             test "$(sha256sum "$artifact" | cut -d' ' -f1)" = ${lib.escapeShellArg entry.sha256}
             test "$(stat -c '%s' "$artifact")" = ${toString entry.size}
             ${lib.optionalString (!(builtins.hasAttr name bootstrapPins)) ''
-              jq -e --arg sourceDigest ${lib.escapeShellArg recipe.sourceDigest} \
+              jq -e --arg recipeIdentity ${lib.escapeShellArg recipe.recipeIdentity} \
                 --arg target ${lib.escapeShellArg recipe.target} --arg productDigest ${lib.escapeShellArg entry.sha256} \
-                'keys == ["productDigest","schema","sourceDigest","target"] and
+                'keys == ["productDigest","recipeIdentity","schema","target"] and
                  .schema == "effect-utils/buck-product-source-evidence/v1" and
-                 .sourceDigest == $sourceDigest and .target == $target and .productDigest == $productDigest' \
+                 .recipeIdentity == $recipeIdentity and .target == $target and .productDigest == $productDigest' \
                 ${sourceEvidence} >/dev/null
             ''}
             jq -e \
               --arg producerCommit ${lib.escapeShellArg provenance.producerCommit} \
               --arg target ${lib.escapeShellArg provenance.target} \
               --arg productDigest ${lib.escapeShellArg provenance.productDigest} \
-              '(del(.sourceDigest) | keys | sort) == ["producerCommit","productDigest","schema","target"] and
+              '(keys | sort) == ["producerCommit","productDigest","schema","target"] and
                .schema == "effect-utils/buck-product-provenance/v1" and
                .producerCommit == $producerCommit and .target == $target and
                .productDigest == $productDigest' \
@@ -141,7 +141,7 @@ let
           '';
     in
     assert lib.assertMsg (
-      builtins.attrNames entry == [
+      builtins.attrNames (removeAttrs entry [ "recipeIdentity" ]) == [
         "artifactUrl"
       ]
       ++ (
@@ -159,7 +159,6 @@ let
         "sha256"
         "size"
       ]
-      ++ (if entry ? sourceDigest then [ "sourceDigest" ] else [ ])
       ++ (if entry ? sourceEvidenceSha256 then [ "sourceEvidenceSha256" ] else [ ])
       ++ (if entry ? sourceEvidenceStorePath then [ "sourceEvidenceStorePath" ] else [ ])
       ++ [
@@ -178,11 +177,11 @@ let
       builtins.match "[0-9a-f]{64}" entry.sha256 != null
     ) "buck2-products: ${name} sha256 must be lowercase hexadecimal";
     assert lib.assertMsg (
-      !(entry ? sourceDigest)
+      !(entry ? recipeIdentity)
       || (
-        builtins.isString entry.sourceDigest && builtins.match "[0-9a-f]{64}" entry.sourceDigest != null
+        builtins.isString entry.recipeIdentity && builtins.match "[0-9a-f]{64}" entry.recipeIdentity != null
       )
-    ) "buck2-products: ${name} sourceDigest must be lowercase hexadecimal";
+    ) "buck2-products: ${name} recipeIdentity must be lowercase hexadecimal";
     assert lib.assertMsg (
       (
         !(entry ? sourceEvidenceStorePath)
@@ -199,7 +198,7 @@ let
       builtins.match "/nix/store/[0-9a-z]{32}-[A-Za-z0-9+._?=-]+" entry.storePath != null
     ) "buck2-products: ${name} has an invalid store path";
     assert lib.assertMsg (
-      builtins.attrNames (removeAttrs provenance [ "sourceDigest" ]) == [
+      builtins.attrNames provenance == [
         "producerCommit"
         "productDigest"
         "schema"

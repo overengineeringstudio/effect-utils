@@ -70,11 +70,10 @@ let
               --arg producerCommit ${lib.escapeShellArg provenance.producerCommit} \
               --arg target ${lib.escapeShellArg provenance.target} \
               --arg productDigest ${lib.escapeShellArg provenance.productDigest} \
-              --argjson sourceDigest ${lib.escapeShellArg (builtins.toJSON (provenance.sourceDigest or null))} \
-              '(del(.sourceDigest) | keys | sort) == ["producerCommit","productDigest","schema","target"] and
+              '(keys | sort) == ["producerCommit","productDigest","schema","target"] and
                .schema == "effect-utils/buck-product-provenance/v1" and
                .producerCommit == $producerCommit and .target == $target and
-               .productDigest == $productDigest and .sourceDigest == $sourceDigest' \
+               .productDigest == $productDigest' \
               ${lib.escapeShellArg "${published}/provenance.json"} >/dev/null
             cp "$artifact" "$out"
           '';
@@ -105,7 +104,7 @@ let
       builtins.match "/nix/store/[0-9a-z]{32}-[A-Za-z0-9+._?=-]+" entry.storePath != null
     ) "private-product-tarballs: ${name} has an invalid store path";
     assert lib.assertMsg (
-      builtins.attrNames (removeAttrs provenance [ "sourceDigest" ]) == [
+      builtins.attrNames provenance == [
         "producerCommit"
         "productDigest"
         "schema"
@@ -115,13 +114,6 @@ let
       && builtins.match "[0-9a-f]{40}" provenance.producerCommit != null
       && builtins.isString provenance.target
       && provenance.productDigest == entry.sha256
-      && (
-        !(provenance ? sourceDigest)
-        || (
-          builtins.isString provenance.sourceDigest
-          && builtins.match "[0-9a-f]{64}" provenance.sourceDigest != null
-        )
-      )
     ) "private-product-tarballs: ${name} has invalid provenance";
     {
       inherit name;

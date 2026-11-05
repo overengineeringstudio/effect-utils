@@ -161,11 +161,11 @@ cat >"$tmp/collision-output/descriptor.json" <<EOF
 {"integrity":"$collision_integrity","productName":"fixture","sizeBytes":8,"target":"effect_utils//packages/@overeng/fixture:fixture-candidate"}
 EOF
 cat >"$tmp/collision-output/provenance.json" <<EOF
-{"producerCommit":"1111111111111111111111111111111111111111","sourceDigest":"$(printf '%064d' 0)","productDigest":"$collision_sha","schema":"effect-utils/buck-product-provenance/v1","target":"effect_utils//packages/@overeng/fixture:fixture-candidate"}
+{"producerCommit":"1111111111111111111111111111111111111111","productDigest":"$collision_sha","schema":"effect-utils/buck-product-provenance/v1","target":"effect_utils//packages/@overeng/fixture:fixture-candidate"}
 EOF
 collision_store="$(nix store add-path "$tmp/collision-output")"
 mkdir -p "$tmp/evidence-output"
-jq -S '{schema:"effect-utils/buck-product-source-evidence/v1",sourceDigest,target,productDigest}' \
+jq -S --arg recipeIdentity "$(printf '%064d' 0)" '{schema:"effect-utils/buck-product-source-evidence/v1",recipeIdentity:$recipeIdentity,target,productDigest}' \
   "$tmp/collision-output/provenance.json" >"$tmp/evidence-output/source-evidence.json"
 export FIXTURE_EVIDENCE_STORE_PATH="$(nix store add-path "$tmp/evidence-output")"
 evidence_sha="$(sha256sum "$tmp/evidence-output/source-evidence.json" | cut -d' ' -f1)"
@@ -298,7 +298,7 @@ jq -e --arg storePath "$published_store" --arg digest "$collision_sha" '
   (.products | length == 1) and
   .products[0].storePath == $storePath and
   .products[0].sha256 == $digest and
-  .products[0].sourceDigest == ("0" * 64) and
+  .products[0].recipeIdentity == ("0" * 64) and
   .products[0].sourceEvidenceStorePath == env.FIXTURE_EVIDENCE_STORE_PATH and
   .products[0].provenance.producerCommit == "2222222222222222222222222222222222222222" and
   (.products[0].artifactUrl | endswith(($storePath | ltrimstr("/nix/store/") | split("-")[0]) + "/fixture.js"))
@@ -435,7 +435,8 @@ loader_bindings="let
   recipe = mkPath \"$store_path\" {
     artifactName = \"fixture.js\";
     target = \"effect_utils//packages/@overeng/fixture:fixture-candidate\";
-    sourceDigest = builtins.concatStringsSep \"\" (builtins.genList (_: \"a\") 64);
+    recipeIdentity = builtins.concatStringsSep \"\" (builtins.genList (_:
+      if builtins.getEnv \"RECIPE_CHANGED\" == \"1\" then \"b\" else \"a\") 64);
   };
   pkgs = {
     coreutils = mkPath \"/nix/store/coreutils\" {};
@@ -490,24 +491,26 @@ jq -e --arg artifact "$store_path/fixture.js" '
 cp "$tmp/products/manifest.json" "$tmp/products/manifest.digestless.json"
 for digest in a b; do
   jq --arg digest "$digest" --arg evidence "$FIXTURE_EVIDENCE_STORE_PATH" --arg sha "$evidence_sha" \
-    '.products[0] += {sourceDigest:($digest * 64),sourceEvidenceStorePath:$evidence,sourceEvidenceSha256:$sha}' \
+    '.products[0] += {recipeIdentity:($digest * 64),sourceEvidenceStorePath:$evidence,sourceEvidenceSha256:$sha}' \
     "$tmp/products/manifest.digestless.json" >"$tmp/products/manifest.json"
   actual="$(nix eval --impure --json --expr "$loader_expr")"
   if [[ "$digest" == a ]]; then
     jq -e '.artifact == "/nix/store/validated-fixture/fixture.js"' <<<"$actual" >/dev/null
+    RECIPE_CHANGED=1 nix eval --impure --json --expr "$loader_expr" |
+      jq -e --arg artifact "$store_path/fixture.js" '.artifact == $artifact' >/dev/null
   else
     jq -e --arg artifact "$store_path/fixture.js" '.artifact == $artifact' <<<"$actual" >/dev/null
   fi
 done
 # Exercise the actual cached derivation's build script, without building a product.
 jq --arg sha "$collision_sha" --arg integrity "$collision_integrity" '
-  .products[0] |= (.sourceDigest = ("a" * 64) | .sha256 = $sha | .size = 8 |
+  .products[0] |= (.recipeIdentity = ("a" * 64) | .sha256 = $sha | .size = 8 |
     .provenance.productDigest = $sha | .descriptor.integrity = $integrity | .descriptor.sizeBytes = 8)
 ' "$tmp/products/manifest.json" >"$tmp/products/manifest.build.json"
 descriptor_sha="$(jq -cS '.products[0].descriptor' "$tmp/products/manifest.build.json" | tr -d '\n' | sha256sum | cut -d' ' -f1)"
 jq --arg sha "$descriptor_sha" '.products[0].descriptorSha256 = $sha' \
   "$tmp/products/manifest.build.json" >"$tmp/products/manifest.json"
-jq '.sourceDigest = ("a" * 64)' "$tmp/evidence-output/source-evidence.json" >"$tmp/source-evidence.json"
+jq '.recipeIdentity = ("a" * 64)' "$tmp/evidence-output/source-evidence.json" >"$tmp/source-evidence.json"
 matching_evidence_sha="$(sha256sum "$tmp/source-evidence.json" | cut -d' ' -f1)"
 jq --arg sha "$matching_evidence_sha" '.products[0].sourceEvidenceSha256 = $sha' \
   "$tmp/products/manifest.json" >"$tmp/products/manifest.hash.json"
