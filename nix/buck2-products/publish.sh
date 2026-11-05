@@ -54,11 +54,18 @@ jq -e '
     type == "array" and
     all(.[]; type == "string" and test("^[a-z0-9]+(-[a-z0-9]+)*$")) and
     . == (unique | sort);
+  def source_paths:
+    type == "array" and length > 0 and
+    all(.[]; type == "string" and
+      test("^[A-Za-z0-9_.@-]+(/[A-Za-z0-9_.@-]+)*$") and
+      (split("/") | all(.[]; . != "." and . != ".."))) and
+    . == (unique | sort);
   (keys | sort) == ["products", "schema", "schemaVersion"] and
   .schema == "effect-utils/buck-cache-targets/v1" and .schemaVersion == 1 and
   (.products | type == "array" and length > 0) and
   (all(.products[];
-    (keys | sort) == ["buildCapabilities","kind","linuxBuildCapabilities","name","outputName","packagePath","packageTreePath","target","version"] and
+    (del(.sourcePaths) | keys | sort) == ["buildCapabilities","kind","linuxBuildCapabilities","name","outputName","packagePath","packageTreePath","target","version"] and
+    (if has("sourcePaths") then (.sourcePaths | source_paths) else true end) and
     (.buildCapabilities | capability_ids and length > 0) and
     (.linuxBuildCapabilities | capability_ids) and
     ((.buildCapabilities + .linuxBuildCapabilities) | length == (unique | length)) and
@@ -73,13 +80,21 @@ jq -e '
 ' "$targets" >/dev/null || fail "target inventory violates effect-utils/buck-cache-targets/v1"
 jq -e '
   def cached:
+    (if has("recipeIdentity") then
+       (.recipeIdentity | type == "string" and test("^[0-9a-f]{64}$"))
+     else true end) and
+    (if has("sourceEvidenceStorePath") then
+       (.sourceEvidenceStorePath | test("^/nix/store/[0-9a-z]{32}-[A-Za-z0-9+._?=-]+$")) and
+       (.sourceEvidenceSha256 | test("^[0-9a-f]{64}$"))
+     else (has("sourceEvidenceSha256") | not) end) and
+    (del(.recipeIdentity,.sourceEvidenceStorePath,.sourceEvidenceSha256) |
     (
       (has("descriptor") and
        (keys | sort) == ["artifactUrl", "descriptor", "descriptorSha256", "name", "provenance", "sha256", "size", "storePath", "version"])
       or
       (has("descriptor") | not) and
       (keys | sort) == ["artifactUrl", "name", "provenance", "sha256", "size", "storePath", "version"]
-    ) and
+    )) and
     (.name | type == "string" and length > 0) and
     (.sha256 | type == "string" and test("^[0-9a-f]{64}$")) and
     (.provenance |
@@ -254,6 +269,8 @@ while IFS= read -r row; do
   output_name="$(jq -r '.outputName' <<<"$row")"
   safe_name="$(sed 's|^@||; s|/|-|g' <<<"$name")"
   attr="$(product_attr "$name")"
+  recipe_identity="$(nix eval --raw "$repo_root#$attr.recipeIdentity")"
+  [[ "$recipe_identity" =~ ^[0-9a-f]{64}$ ]] || fail "$name recipe has an invalid identity"
   store_path="$(nix build --no-link --print-out-paths "$repo_root#$attr")"
   [[ "$store_path" == /nix/store/* && -d "$store_path" ]] || fail "$name did not build one store directory"
   artifact="$store_path/$output_name"
@@ -267,6 +284,24 @@ while IFS= read -r row; do
     .schema == "effect-utils/buck-product-provenance/v1" and
     .producerCommit == $commit and .target == $target and .productDigest == $digest
   ' "$provenance_file" >/dev/null || fail "$name provenance does not bind the built artifact"
+  evidence_path="$(nix build --no-link --print-out-paths "$repo_root#$attr.sourceEvidence")"
+  [[ "$evidence_path" =~ ^/nix/store/[0-9a-z]{32}-[A-Za-z0-9+._?=-]+$ ]] || fail "$name evidence is not a store path"
+  evidence_file="$evidence_path/source-evidence.json"
+  jq -e --arg recipe "$recipe_identity" --arg target "$target" --arg digest "$sha256" '
+    keys == ["productDigest","recipeIdentity","schema","target"] and
+    .schema == "effect-utils/buck-product-source-evidence/v1" and
+    .recipeIdentity == $recipe and .target == $target and .productDigest == $digest
+  ' "$evidence_file" >/dev/null || fail "$name evidence does not bind the current recipe and artifact"
+  evidence_sha="$(sha256sum "$evidence_file" | cut -d' ' -f1)"
+  evidence_pin="$safe_name-source-$evidence_sha"
+  existing_evidence="$(jq -c --arg name "$evidence_pin" '[.[] | select(.name == $name)]' <<<"$pins")"
+  [[ "$(jq length <<<"$existing_evidence")" -le 1 ]] || fail "$evidence_pin has multiple pins"
+  if [[ "$(jq length <<<"$existing_evidence")" == 1 ]]; then
+    jq -e '.[0].lastRevision.artifacts | index("source-evidence.json") != null' <<<"$existing_evidence" >/dev/null ||
+      fail "$evidence_pin lacks its evidence artifact"
+    evidence_path="$(jq -r '.[0].lastRevision.storePath' <<<"$existing_evidence")"
+    [[ "$evidence_path" =~ ^/nix/store/[0-9a-z]{32}-[A-Za-z0-9+._?=-]+$ ]] || fail "$evidence_pin has an invalid store path"
+  fi
   descriptor='null'
   descriptor_sha256='null'
   if [[ "$kind" == javascript ]]; then
@@ -324,10 +359,12 @@ while IFS= read -r row; do
   artifact_url="$cache_url/serve/$store_hash/$output_name"
   jq -cnS \
     --arg name "$name" --arg version "$version" --arg sha256 "$sha256" \
+    --arg recipeIdentity "$recipe_identity" \
+    --arg sourceEvidenceStorePath "$evidence_path" --arg sourceEvidenceSha256 "$evidence_sha" \
     --argjson size "$size" --arg storePath "$store_path" --arg artifactUrl "$artifact_url" \
     --argjson provenance "$(jq -cS . "$provenance_file")" \
     --arg kind "$kind" --argjson descriptor "$descriptor" --arg descriptorSha256 "$descriptor_sha256" \
-    '{name:$name,version:$version,sha256:$sha256,size:$size,storePath:$storePath,artifactUrl:$artifactUrl,provenance:$provenance}
+    '{name:$name,version:$version,sha256:$sha256,size:$size,recipeIdentity:$recipeIdentity,sourceEvidenceStorePath:$sourceEvidenceStorePath,sourceEvidenceSha256:$sourceEvidenceSha256,storePath:$storePath,artifactUrl:$artifactUrl,provenance:$provenance}
      + (if $kind == "javascript" then {descriptor:$descriptor,descriptorSha256:$descriptorSha256} else {} end)' \
     >>"$entries"
 done < <(jq -c '.[]' <<<"$rows")
@@ -364,8 +401,13 @@ while IFS= read -r entry; do
   downloaded="$stage/$safe_name.download"
   env -u CACHIX_AUTH_TOKEN curl -fsS "$artifact_url" -o "$downloaded"
   [[ "$(sha256sum "$downloaded" | cut -d' ' -f1)" == "$sha256" ]] || fail "$name anonymous artifact digest mismatch"
-  [[ "$(stat -c '%s' "$downloaded")" == "$(jq -r '.size' <<<"$entry")" ]] || fail "$name anonymous artifact size mismatch"
-done <"$entries"
+  if [[ "$(jq -r '.size // empty' <<<"$entry")" != "" ]]; then
+    [[ "$(stat -c '%s' "$downloaded")" == "$(jq -r '.size' <<<"$entry")" ]] || fail "$name anonymous artifact size mismatch"
+  fi
+done < <(jq -c --arg cache "$cache_url" '
+  ., {name:(.name + "-source"),sha256:.sourceEvidenceSha256,storePath:.sourceEvidenceStorePath,
+      artifactUrl:($cache + "/serve/" + (.sourceEvidenceStorePath | split("/")[-1] | split("-")[0]) + "/source-evidence.json")}
+' "$entries")
 
 proposal_stage="$stage/manifest.json"
 replacements="$(jq -csS '.' "$entries")"

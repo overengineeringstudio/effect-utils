@@ -1209,12 +1209,13 @@ in
     targets = [ "effect_utils//buck2/static:check_policy" ];
   });
 
-  # The outer devenv verb preserves stage-zero Genie freshness, then delegates
-  # every deterministic repository validation to Buck's static aggregate.
+  # Preserve stage-zero Genie freshness and standalone checks, including Rust
+  # formatting, before delegating the remaining validation to Buck's static aggregate.
   tasks."lint:check".after = lib.mkForce [
     "genie:check"
     "lint:check:no-tailwind"
     "lint:check:getflake"
+    "lint:check:rust"
     "lint:check:standalone-staging"
   ];
   tasks."lint:check".exec = lib.mkForce (buck2BuildExec {
@@ -1418,7 +1419,7 @@ in
   };
 
   tasks."test:buck2:library-closure" = {
-    description = "Probe the native Rust library closure, external derives and embedded store references";
+    description = "Validate the packaged Rust library descriptor, closure bytes, external derives and store references";
     exec = trace.exec "test:buck2:library-closure" ''
       set -euo pipefail
       root="''${DEVENV_ROOT:-$PWD}"
@@ -1426,13 +1427,44 @@ in
       ${publishBuckCapabilities}
       probe="$(${pkgs.coreutils}/bin/mktemp -d)"
       trap '${pkgs.coreutils}/bin/rm -rf -- "$probe"' EXIT
-      for part in closure rustc ar; do
+      platform="effect_utils//buck2/platforms:${
+        if pkgs.stdenv.isDarwin then
+          "macos_aarch64"
+        else
+          "linux_${pkgs.stdenv.hostPlatform.parsed.cpu.name}"
+      }"
+      for part in closure rustc ar metadata; do
         target=effect_utils//buck2/tests/library_closure:closure
         [[ "$part" = closure ]] || target="$target[$part]"
-        "$BUCK2_BIN" build --target-platforms effect_utils//buck2/platforms:host_platform --out "$probe/$part" "$target"
+        "$BUCK2_BIN" build --target-platforms "$platform" --out "$probe/$part" "$target"
       done
+      product=effect_utils//buck2/tests/library_closure:product
+      "$BUCK2_BIN" build --target-platforms "$platform" --out "$probe/artifact.tar" "$product"
+      "$BUCK2_BIN" build --target-platforms "$platform" --out "$probe/descriptor.json" "$product[descriptor]"
+      BUCK2_LIBRARY_ROOT="$root" BUCK2_LIBRARY_DESCRIPTOR="$probe/descriptor.json" \
+        ${pkgs.nix}/bin/nix-instantiate --eval --strict --expr '
+          let
+            contract = import (builtins.toPath (builtins.getEnv "BUCK2_LIBRARY_ROOT") + "/nix/workspace-tools/lib/buck2-build-product-contract.nix");
+            descriptor = builtins.fromJSON (builtins.readFile (builtins.getEnv "BUCK2_LIBRARY_DESCRIPTOR"));
+          in
+          assert descriptor.schema == "buck-rust-library-product/v1";
+          builtins.deepSeq (contract.validateDescriptor descriptor) true
+        '
       ${pkgs.python3}/bin/python3 buck2/tests/library_closure/accept.py "$probe/closure" \
-        "$(${pkgs.coreutils}/bin/cat "$probe/rustc")" --ar "$(${pkgs.coreutils}/bin/cat "$probe/ar")"
+        "$(${pkgs.coreutils}/bin/cat "$probe/rustc")" --ar "$(${pkgs.coreutils}/bin/cat "$probe/ar")" --metadata "$probe/metadata" \
+        --artifact "$probe/artifact.tar" --descriptor "$probe/descriptor.json"
+      ${sourceBun}/bin/bun test ./buck2/tests/library_closure/closure.unit.test.mjs
+      for route in flags env unused_flags unused_env; do
+        if "$BUCK2_BIN" build --target-platforms "$platform" \
+          "effect_utils//buck2/tests/library_closure:reject_panic_$route" >"$probe/$route.log" 2>&1; then
+          echo "Expected transitive abort closure rejection ($route)" >&2
+          exit 1
+        fi
+        ${pkgs.coreutils}/bin/cat "$probe/$route.log"
+        ${pkgs.gnugrep}/bin/grep -F 'requires panic strategy' "$probe/$route.log"
+        ${pkgs.gnugrep}/bin/grep -F 'abort' "$probe/$route.log"
+        ${pkgs.gnugrep}/bin/grep -F 'unwind' "$probe/$route.log"
+      done
     '';
   };
 
@@ -1619,6 +1651,7 @@ in
     after = [
       "cargo:test:buck2-foundation"
       "cargo:proto-bindings:check"
+      "lint:check:rust"
     ];
     exec = trace.exec "cargo:check" ''
       set -euo pipefail
@@ -1626,7 +1659,6 @@ in
         cd rust
         cargo test --locked --workspace --exclude 'buck2-*'
         cargo clippy --locked --workspace --all-targets -- -D warnings
-        cargo fmt --all --check
       )
       cargo check --locked --manifest-path rust/effect-rust-macros/tests/wasm-only/Cargo.toml \
         --target-dir rust/target
@@ -1686,6 +1718,15 @@ in
     after = [ "genie:check" ];
     exec = trace.exec "nix:buck2-cargo-archives:check" ''
       exec ${pkgs.bash}/bin/bash nix/workspace-tools/lib/tests/buck2-cargo-archives.sh "$PWD"
+    '';
+  };
+
+  tasks."lint:check:rust" = {
+    description = "Check formatting of the shared Cargo workspace";
+    exec = trace.exec "lint:check:rust" ''
+      set -euo pipefail
+      cd "''${DEVENV_ROOT:-$PWD}"
+      cd rust && cargo fmt --all --check
     '';
   };
 
@@ -1891,6 +1932,15 @@ in
     after = [ "genie:check" ];
     # trace-audit-allow: editorViewExec returns a trace.exec-wrapped command.
     exec = editorViewExec { mode = "check"; };
+  };
+
+  tasks."buck2:editor:budget:recount" = {
+    description = "Recount host editor-view usage without publishing or evicting";
+    exec = trace.exec "buck2:editor:budget:recount" ''
+      set -euo pipefail
+      root="''${DEVENV_ROOT:-$PWD}"
+      exec ${sourceBun}/bin/bun "$root/packages/@overeng/buck2-tools/src/editor-view.ts" budget recount
+    '';
   };
 
   tasks."buck2:editor:recover-lock" = {

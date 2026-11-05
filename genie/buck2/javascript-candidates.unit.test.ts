@@ -1,5 +1,7 @@
+import { execFileSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
 import process from 'node:process'
+import { fileURLToPath } from 'node:url'
 
 import { describe, expect, it } from 'vitest'
 
@@ -277,4 +279,25 @@ describe('JavaScript candidate projection wrapper', () => {
     expect(output).toContain('    name = "genie-candidate-module",')
     expect(output).toContain('    tree_shaking = False,')
   })
+})
+
+// Run in the ordinary PR candidate suite, without Nix, credentials or builds.
+it('the publisher accepts every generated cache target, including scoped recipes', () => {
+  const root = fileURLToPath(new URL('../../', import.meta.url))
+  const inventory = JSON.parse(readFileSync(`${root}/nix/buck2-products/cache-targets.json`, 'utf8'))
+  const plan = JSON.parse(
+    execFileSync('bash', ['nix/buck2-products/publish.sh', '--dry-run'], {
+      cwd: root,
+      env: { ...process.env, BUCK2_CACHE_PRODUCTS_REPO: root },
+      encoding: 'utf8',
+    }),
+  )
+  expect(plan.schema).toBe('effect-utils/buck-cache-publication-plan/v1')
+  expect(plan.products).toEqual(inventory.products)
+  expect(plan.products.filter((product: { sourcePaths?: string[] }) => product.sourcePaths)).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({ name: 'oxc-config' }),
+      expect.objectContaining({ name: 'oxc-config-stylex-upstream-plugin' }),
+    ]),
+  )
 })

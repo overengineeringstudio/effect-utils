@@ -490,7 +490,7 @@ rust_product_executable(
 build_product(
     name = "product",
     entrypoint = "bin/consumer-root-rust",
-    executable = ":executable",
+    artifact = ":executable",
     product_name = "consumer-root-rust",
     target_platform = host_platform_label(cell = "rules"),
 )
@@ -541,6 +541,7 @@ product="$(nix build --impure --no-link --print-out-paths --expr '
       };
     };
     pnpmArchives = flake.packages.${system}.buck2-pnpm-archives;
+    producerCommit = "0000000000000000000000000000000000000000";
     product = {
       name = "consumer-root-rust";
       target = "//rust-fixture:product";

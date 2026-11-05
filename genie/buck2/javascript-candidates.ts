@@ -49,7 +49,7 @@ const renderCompiledExecutable = (product: JavaScriptProduct): string => {
 build_product(
     name = ${quote(`${product.productName}-compiled-product`)},
     entrypoint = ${quote(`bin/${product.productName}`)},
-    executable = ${quote(`:${executableName}`)},
+    artifact = ${quote(`:${executableName}`)},
     product_name = ${quote(product.productName)},
     target_platform = host_platform_label(),
     visibility = ["PUBLIC"],

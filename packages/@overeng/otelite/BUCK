@@ -283,7 +283,7 @@ rust_product_executable(
 build_product(
     name = "otelite-product",
     entrypoint = "bin/otelite",
-    executable = ":otelite-product-executable",
+    artifact = ":otelite-product-executable",
     product_name = "otelite",
     target_platform = host_platform_label(),
 )

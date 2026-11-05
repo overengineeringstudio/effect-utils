@@ -5,7 +5,6 @@
 # product can never be published without a recipe or vice versa.
 {
   capabilities,
-  pkgs,
   mkBuckProductFromSource,
   pnpmArchives,
   producerCommit,
@@ -18,18 +17,15 @@ in
 builtins.listToAttrs (
   map (product: {
     name = product.name;
-    value =
-      let
-        compiled = mkBuckProductFromSource {
-          inherit pnpmArchives product repositoryRoot;
-          capabilities = capabilities.selectProduct product;
-        };
-      in
-      compiled
-      // {
-        stamped = import ./stamp.nix {
-          inherit pkgs compiled producerCommit;
-        };
-      };
+    value = mkBuckProductFromSource {
+      inherit
+        pnpmArchives
+        product
+        producerCommit
+        repositoryRoot
+        ;
+      capabilities = capabilities.selectProduct product;
+      sourcePaths = product.sourcePaths or null;
+    };
   }) inventory.products
 )

@@ -29,6 +29,16 @@ product platform explicitly and compares all resolved platform fields against
 `ProductExecutableInfo` before packaging — a checked join, not a second
 platform authority.
 
+## Product Artifact Providers
+
+`ProductArtifactInfo { kind, payload, target_platform, provenance }` uses the
+repository-local closed lowercase tag `executable | library`; unknown tags and
+tag/payload mismatches fail analysis. Library payloads carry the flat closure,
+crate identity, compiler metadata and effective configured panic strategy.
+The compiler identity is the `pkgs.rustc.unwrapped` output store path; Nix
+captures its normalized `-vV` and canonical sysroot once. Darwin SDK wrapper
+paths are provenance only, not compiler identity (BUILD.BUCK.PLAT-R01/R02/R05).
+
 ## Executable Providers
 
 ```text

@@ -2,6 +2,10 @@
 {
   pkgs,
   repositoryRoot ? ../..,
+  buckInputs ? import ./buck-inputs.nix {
+    inherit repositoryRoot;
+    inherit (pkgs) lib;
+  },
 }:
 let
   workspacePaths =
@@ -43,18 +47,6 @@ pkgs.lib.fileset.toSource {
       "nix/weaver-flake/flake.nix"
     ])
     ++ map (path: repositoryRoot + "/${path}") patchOwnerPaths
-    ++ [
-      (pkgs.lib.fileset.fileFilter (
-        file:
-        file.name == "BUCK"
-        || file.hasExt "bzl"
-        || file.hasExt "json"
-        || (
-          file.hasExt "ts"
-          && !(pkgs.lib.hasSuffix ".test.ts" file.name)
-          && !(pkgs.lib.hasSuffix ".genie.ts" file.name)
-        )
-      ) (repositoryRoot + "/buck2"))
-    ]
+    ++ buckInputs.files
   );
 }

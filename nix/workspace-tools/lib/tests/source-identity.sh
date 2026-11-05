@@ -36,6 +36,12 @@ let
   };
 in product'
 eval_path() { nix eval --impure --raw --expr "($expr).outPath"; }
+# Opaque rule outputs cannot prove membership; the scoped fileset must own the entry.
+if eval_path >"$work/missing-entry.log" 2>&1; then
+  echo 'missing entry BUCK was accepted' >&2; exit 1
+fi
+[[ "$(<"$work/missing-entry.log")" == *'entry package BUCK missing from product projection'* ]]
+printf '# fixture entry package\n' > "$work/repo/packages/app/BUCK"
 first="$(eval_path)"
 darwin_first="$(BUCK2_SYSTEM=aarch64-darwin eval_path)"
 printf 'unrelated changed\n' > "$work/repo/packages/unrelated/source.txt"
@@ -149,4 +155,13 @@ jq -ne --argjson before "$fingerprint_after" --argjson after "$core_after" '
   and $before.otelite != $after.otelite
   and $before["typescript-api-server"] != $after["typescript-api-server"]
   and $before["ci-tools-compiled"] != $after["ci-tools-compiled"]
+' >/dev/null
+
+# Plugin source still keys the compile output even though publication stamps do not.
+printf '\n// shell plugin source control\n' >> "$work/shell/packages/@overeng/oxc-config/src/mod.ts"
+plugin_after="$(BUCK2_SYSTEM=x86_64-linux shell_paths)"
+jq -ne --argjson before "$core_after" --argjson after "$plugin_after" '
+  $before["oxlint-with-plugins"] != $after["oxlint-with-plugins"]
+  and $before["buck2-capabilities"] != $after["buck2-capabilities"]
+  and $before.otelite == $after.otelite
 ' >/dev/null

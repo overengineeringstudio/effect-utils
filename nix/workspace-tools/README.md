@@ -53,6 +53,17 @@ on Linux does not realize a Darwin source product. Revision-bound consumers
 set `checkProducerCommit = true` and supply the selected revision; an absent or
 mismatched revision fails the build. Published products retain their independent
 descriptor digest and evaluation-time validation unchanged.
+Oxlint's source plugin imports consume the existing unstamped `compileProduct`, retaining payload/descriptor validation without pulling publication-only revision stamps into the shell capability closure.
+Both plugin compile recipes use Genie's committed workspace source closure plus the shared Buck root projection. Publication may stamp that scoped output with a revision; neither unrelated package edits nor revision-only changes enter the retained shell's plugin identity.
+The plugin projection includes the transitive workspace closure of Buck's `buck2-tools` runtime as an additional package root, not just its directory: Buck's generated dependency view also reads that runtime's workspace dependencies.
+The cache publisher accepts optional `sourcePaths` on scoped inventory entries, validating nonempty, sorted, unique, safe repository-relative paths with the recipe's path grammar. Unknown inventory fields remain errors; build-free PR unit coverage checks the committed inventory against the publisher.
+
+`buck2-products/buck-inputs.nix` follows literal load/export/helper dependencies;
+test inputs fail. Cache products share one projection; uncovered entries extend it.
+Entry assertions use each projection's original source and eval-time filter, never realized store contents. Caller-owned rule derivations are retained as supplied; their opaque outputs cannot prove entry membership, so the scoped source must contain the entry `BUCK`.
+The isolation regression varies the Git-filtered flake source, excluding unrelated ignored activation state from both sides of the comparison.
+Run `bash nix/buck2-products/root-projection.test.sh "$PWD"` and sandboxed product
+builds for input isolation, real-input sensitivity and projection completeness.
 
 The Genie product wrapper realizes the pinned descriptor's capabilities through
 a closed provider registry. It supplies `gh` on PATH when the published product

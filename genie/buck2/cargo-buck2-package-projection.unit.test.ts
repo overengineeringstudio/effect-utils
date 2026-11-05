@@ -7,6 +7,7 @@ import { describe, expect, it } from 'vitest'
 
 import {
   type CargoBuck2PackageProjectionOptions,
+  cargoBuck2PackageProjection,
   defineCargoBuck2PackageProjection,
 } from '../../rust/buck2-tools/core/cargo-buck2-package-projection.ts'
 
@@ -146,6 +147,8 @@ const renderCargoFixture = ({
   readonly prepareFixture?: (root: string) => void
 }): string => {
   const root = mkdtempSync(path.join(tmpdir(), 'cargo-projection-discovery-'))
+  const projectionFilename =
+    projectOptions.foreignSourceExportsOnly === true ? 'BUCK.foreign.bzl.genie.ts' : 'BUCK.genie.ts'
   const write = (relativePath: string, content: string) => {
     mkdirSync(path.dirname(path.join(root, relativePath)), { recursive: true })
     writeFileSync(path.join(root, relativePath), content)
@@ -220,6 +223,8 @@ const renderCargoFixture = ({
       }
       for (const file of member.files) write(`rust/${memberPath}/${file}`, '// fixture\n')
       write(`rust/${memberPath}/BUCK.genie.ts`, '// Runtime-only projection fixture.\n')
+      if (projectionFilename !== 'BUCK.genie.ts')
+        write(`rust/${memberPath}/${projectionFilename}`, '// Foreign source projection fixture.\n')
     }
     prepareFixture?.(root)
     const project = defineCargoBuck2PackageProjection({
@@ -233,12 +238,76 @@ const renderCargoFixture = ({
     })
     return project({
       ...projectOptions,
-      sourceUrl: pathToFileURL(path.join(root, 'rust', render, 'BUCK.genie.ts')).href,
+      sourceUrl: pathToFileURL(path.join(root, 'rust', render, projectionFilename)).href,
     }).stringify({ cwd: root, location: '' })
   } finally {
     rmSync(root, { recursive: true, force: true })
   }
 }
+
+describe('foreign Cargo source exports', () => {
+  it('exports the same complete library inputs without producer rules or dependencies', () => {
+    const fixture = {
+      members: {
+        pkg: {
+          manifest: '[package]\nname = "pkg"',
+          files: [
+            'src/lib.rs',
+            'src/main.rs',
+            'tests/probe.rs',
+            'build.rs',
+            'schema.json',
+            'config.txt',
+          ],
+        },
+      },
+      render: 'pkg',
+      projectOptions: {
+        buildScriptInputs: [{ path: 'rust/pkg/config.txt' }],
+        compileTimeResources: [{ path: 'rust/pkg/schema.json' }],
+      },
+    } as const
+    const normal = renderCargoFixture(fixture)
+    const foreign = renderCargoFixture({
+      ...fixture,
+      projectOptions: { ...fixture.projectOptions, foreignSourceExportsOnly: true },
+    })
+    const exports = [...foreign.matchAll(/native\.export_file\([\s\S]*?\n\)/g)]
+    expect(exports.map(([rule]) => rule)).toEqual(
+      [...normal.matchAll(/native\.export_file\([\s\S]*?\n\)/g)].map(([rule]) => rule),
+    )
+    expect(exports).toHaveLength(6)
+    expect(foreign.match(/^load\(.*$/gm)).toEqual(['load("@prelude//:prelude.bzl", "native")'])
+    expect(foreign).not.toMatch(
+      /static_source_set|rust_library|rust_binary|buildscript_run|\/\/buck2/,
+    )
+    expect(foreign).toContain('cargo-source/src/main.rs') // Preserve the producer's complete src/ census.
+    expect(foreign).not.toContain('cargo-source/tests/probe.rs')
+    expect(foreign).toContain('cargo-source/config.txt')
+    expect(foreign).toContain('cargo-source/schema.json')
+  })
+
+  it('rejects a binary-only package rather than emitting an empty foreign source package', () => {
+    expect(() =>
+      renderCargoFixture({
+        members: { pkg: { manifest: '[package]\nname = "pkg"', files: ['src/main.rs'] } },
+        render: 'pkg',
+        projectOptions: { foreignSourceExportsOnly: true },
+      }),
+    ).toThrow('Foreign source exports require a Cargo library target')
+  })
+
+  it('makes work-storage source exports loadable without the producer root-local rules', () => {
+    const rendered = cargoBuck2PackageProjection({
+      sourceUrl: new URL('../../rust/work-storage/BUCK.foreign.bzl.genie.ts', import.meta.url).href,
+      foreignSourceExportsOnly: true,
+    }).stringify({ cwd: '', location: '' })
+    expect(rendered.match(/^load\(.*$/gm)).toEqual(['load("@prelude//:prelude.bzl", "native")'])
+    for (const file of ['Cargo.toml', 'build.rs', 'src/lib.rs'])
+      expect(rendered).toContain(`name = "cargo-source/${file}"`)
+    expect(rendered).not.toMatch(/static_source_set|cargo_build_script|\/\/buck2/)
+  })
+})
 
 describe('Cargo compile-time resources', () => {
   const renderResource = (
@@ -1136,22 +1205,29 @@ describe('Cargo multi-product packages', () => {
     })
   /** The product rule blocks, in emission order. */
   const productBlocks = (rendered: string): readonly string[] =>
-    [...rendered.matchAll(/^(?:rust_product_executable|build_product)\([\s\S]*?^\)$/gm)].map(
-      (match) => match[0],
-    )
+    [
+      ...rendered.matchAll(
+        /^(?:rust_product_executable|rust_product_library|build_product)\([\s\S]*?^\)$/gm,
+      ),
+    ].map((match) => match[0])
 
   it('emits one executable/product pair per named binary', () => {
     const rendered = renderPackage({
       buildProducts: [
-        { name: 'tailnet-relay' },
-        { name: 'edge', binary: 'devnet-edge', entrypoint: 'libexec/devnet-edge' },
+        { kind: 'executable', name: 'tailnet-relay' },
+        {
+          kind: 'executable',
+          name: 'edge',
+          binary: 'devnet-edge',
+          entrypoint: 'libexec/devnet-edge',
+        },
       ],
     })
     expect(productBlocks(rendered)).toEqual([
       'rust_product_executable(\n    name = "tailnet-relay-product-executable",\n    binary = ":tailnet-relay",\n    recipe = "cargo-workspace:tailnet-relay@0.1.0",\n    target_platform = host_platform_label(),\n)',
-      'build_product(\n    name = "tailnet-relay-product",\n    entrypoint = "bin/tailnet-relay",\n    executable = ":tailnet-relay-product-executable",\n    product_name = "tailnet-relay",\n    target_platform = host_platform_label(),\n)',
+      'build_product(\n    name = "tailnet-relay-product",\n    entrypoint = "bin/tailnet-relay",\n    artifact = ":tailnet-relay-product-executable",\n    product_name = "tailnet-relay",\n    target_platform = host_platform_label(),\n)',
       'rust_product_executable(\n    name = "edge-product-executable",\n    binary = ":devnet-edge",\n    recipe = "cargo-workspace:tailnet-relay@0.1.0",\n    target_platform = host_platform_label(),\n)',
-      'build_product(\n    name = "edge-product",\n    entrypoint = "libexec/devnet-edge",\n    executable = ":edge-product-executable",\n    product_name = "edge",\n    target_platform = host_platform_label(),\n)',
+      'build_product(\n    name = "edge-product",\n    entrypoint = "libexec/devnet-edge",\n    artifact = ":edge-product-executable",\n    product_name = "edge",\n    target_platform = host_platform_label(),\n)',
     ])
     expect(rendered).toContain('"build_product")')
   })
@@ -1161,42 +1237,138 @@ describe('Cargo multi-product packages', () => {
     const withoutHeader = (rendered: string) =>
       rendered.replace(/^# Semantic fingerprint: .*$/m, '')
     expect(
-      withoutHeader(renderPackage({ buildProducts: [{ name: 'tailnet-relay' }] }, single)),
+      withoutHeader(
+        renderPackage({ buildProducts: [{ kind: 'executable', name: 'tailnet-relay' }] }, single),
+      ),
     ).toBe(withoutHeader(renderPackage({ buildProduct: true }, single)))
   })
+
+  it.each([
+    [{ kind: 'unknown', name: 'tailnet-relay' }, 'kind'],
+    [{ name: 'tailnet-relay' }, 'kind'],
+    [{ kind: 'library' }, 'name'],
+    [{ kind: 'executable' }, 'name'],
+    [{ kind: 'library', name: 'relay', extra: true }, 'extra'],
+    [{ kind: 'executable', name: 'tailnet-relay', extra: true }, 'extra'],
+    [{ kind: 'library', name: 'relay', binary: 'tailnet-relay' }, 'binary'],
+    [{ kind: 'library', name: 'relay', entrypoint: 'bin/relay' }, 'entrypoint'],
+    [{ kind: 'executable', name: 'tailnet-relay', binary: 1 }, 'binary'],
+    [{ kind: 'executable', name: 'tailnet-relay', entrypoint: false }, 'entrypoint'],
+  ])('rejects malformed product %j at %s', (product, field) => {
+    // JSON models untyped authored input crossing the public projection boundary.
+    const options = JSON.parse(JSON.stringify({ buildProducts: [product] }))
+    expect(() => renderPackage(options, ['src/lib.rs', 'src/main.rs'])).toThrow(
+      new RegExp(`buildProducts\\[0\\]\\.${field} .* in rust/relay/Cargo\\.toml`),
+    )
+  })
+
+  it('projects a pure library using its Cargo crate identity, root, edition and dependencies', () => {
+    const rendered = renderCargoFixture({
+      members: {
+        relay: {
+          manifest:
+            '[package]\nname = "tailnet-relay"\n\n[lib]\nname = "relay_core"\npath = "src/core.rs"\n\n[dependencies]\nserde.workspace = true',
+          files: ['src/core.rs'],
+        },
+      },
+      render: 'relay',
+      projectOptions: { buildProducts: [{ kind: 'library', name: 'relay-library' }] },
+    })
+    expect(rendered).toContain('crate = "relay_core"')
+    expect(rendered).toContain('crate_root = "src/core.rs"')
+    expect(rendered).toContain('edition = "2024"')
+    expect(rendered).toContain('"//rust/third-party:serde"')
+    expect(rendered).toContain('load("//buck2/rust:library.bzl", "rust_product_library")')
+    expect(productBlocks(rendered)).toEqual([
+      'rust_product_library(\n    name = "relay-library-product-library",\n    library = ":lib",\n    recipe = "cargo-workspace:tailnet-relay@0.1.0",\n    target_platform = host_platform_label(),\n)',
+      'build_product(\n    name = "relay-library-product",\n    artifact = ":relay-library-product-library",\n    product_name = "relay-library",\n    target_platform = host_platform_label(),\n)',
+    ])
+  })
+
+  it('selects independent library and executable products from one package', () => {
+    const buildProducts = [
+      { kind: 'library', name: 'relay-library' },
+      { kind: 'executable', name: 'tailnet-relay' },
+    ] as const
+    const rendered = renderPackage({ buildProducts }, ['src/lib.rs', 'src/main.rs'])
+    expect(productBlocks(rendered)).toHaveLength(4)
+    expect(rendered).toContain('load("//buck2/rust:defs.bzl", "rust_product_executable")')
+    expect(rendered).toContain('load("//buck2/rust:library.bzl", "rust_product_library")')
+    expect(() => renderPackage({ buildProducts })).toThrow(
+      'buildProducts[0] requires a Cargo library target in rust/relay/Cargo.toml',
+    )
+    expect(() =>
+      renderPackage(
+        {
+          buildProducts: [
+            { kind: 'library', name: 'tailnet-relay' },
+            { kind: 'executable', name: 'tailnet-relay' },
+          ],
+        },
+        ['src/lib.rs', 'src/main.rs'],
+      ),
+    ).toThrow('buildProducts names repeat in rust/relay/Cargo.toml: tailnet-relay')
+  })
+
+  it.each(['crate-type = ["cdylib"]', 'proc-macro = true'])(
+    'rejects a library product without an rlib: %s',
+    (libraryConfig) => {
+      expect(() =>
+        renderCargoFixture({
+          members: {
+            relay: {
+              manifest: `[package]\nname = "tailnet-relay"\n\n[lib]\n${libraryConfig}`,
+              files: ['src/lib.rs'],
+            },
+          },
+          render: 'relay',
+          projectOptions: { buildProducts: [{ kind: 'library', name: 'relay-library' }] },
+        }),
+      ).toThrow(
+        'buildProducts[0] requires a Cargo library target that produces an rlib in rust/relay/Cargo.toml',
+      )
+    },
+  )
 
   it('rejects ambiguous, unknown, repeated, unsafe, and colliding products', () => {
     expect(() => renderPackage({ buildProduct: true })).toThrow(
       'BuildProduct projection requires exactly one binary in rust/relay/Cargo.toml',
     )
     expect(() =>
-      renderPackage({ buildProduct: true, buildProducts: [{ name: 'tailnet-relay' }] }),
+      renderPackage({
+        buildProduct: true,
+        buildProducts: [{ kind: 'executable', name: 'tailnet-relay' }],
+      }),
     ).toThrow('buildProduct and buildProducts are mutually exclusive in rust/relay/Cargo.toml')
     expect(() => renderPackage({ buildProducts: [] })).toThrow(
       'buildProducts must name at least one product in rust/relay/Cargo.toml',
     )
-    expect(() => renderPackage({ buildProducts: [{ name: 'ghost' }] })).toThrow(
+    expect(() => renderPackage({ buildProducts: [{ kind: 'executable', name: 'ghost' }] })).toThrow(
       'buildProducts[0] packages unknown Cargo binary ghost in rust/relay/Cargo.toml (binaries: devnet-edge, tailnet-relay)',
     )
     expect(() =>
       renderPackage({
         buildProducts: [
-          { name: 'tailnet-relay' },
-          { name: 'tailnet-relay', binary: 'devnet-edge' },
+          { kind: 'executable', name: 'tailnet-relay' },
+          { kind: 'executable', name: 'tailnet-relay', binary: 'devnet-edge' },
         ],
       }),
     ).toThrow('buildProducts names repeat in rust/relay/Cargo.toml: tailnet-relay')
     expect(() =>
-      renderPackage({ buildProducts: [{ name: 'a")\nrule(', binary: 'devnet-edge' }] }),
+      renderPackage({
+        buildProducts: [{ kind: 'executable', name: 'a")\nrule(', binary: 'devnet-edge' }],
+      }),
     ).toThrow('buildProducts[0].name is not a Buck target-safe product name')
     expect(() =>
-      renderPackage({ buildProducts: [{ name: 'tailnet-relay', entrypoint: '../escape' }] }),
+      renderPackage({
+        buildProducts: [{ kind: 'executable', name: 'tailnet-relay', entrypoint: '../escape' }],
+      }),
     ).toThrow('buildProducts[0].entrypoint must be a normalized relative path: ../escape')
     expect(() =>
-      renderPackage({ buildProducts: [{ name: 'x', binary: 'tailnet-relay' }] }, [
-        'src/main.rs',
-        'src/bin/x-product.rs',
-      ]),
+      renderPackage(
+        { buildProducts: [{ kind: 'executable', name: 'x', binary: 'tailnet-relay' }] },
+        ['src/main.rs', 'src/bin/x-product.rs'],
+      ),
     ).toThrow(
       'Cargo binary names collide with generated Buck targets in rust/relay/Cargo.toml: x-product',
     )

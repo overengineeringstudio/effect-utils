@@ -1,0 +1,55 @@
+{
+  "id": "responses.text",
+  "summary": "Pass through a self-contained Responses text result and input, output, cached and reasoning usage.",
+  "requirements": ["AIG-R02", "AIG-R03"],
+  "request": {
+    "method": "POST",
+    "path": "/v1/responses",
+    "auth": "bearer",
+    "match": {
+      "model": "fixture/reasoning-model",
+      "stream": false
+    },
+    "body": {
+      "input": "Say hello.",
+      "store": false
+    }
+  },
+  "response": {
+    "status": 200,
+    "json": {
+      "id": "resp_text",
+      "object": "response",
+      "created_at": 1750000000,
+      "status": "completed",
+      "model": "fixture/reasoning-model",
+      "output": [
+        {
+          "id": "msg_text",
+          "type": "message",
+          "role": "assistant",
+          "status": "completed",
+          "content": [{ "type": "output_text", "text": "Hello!", "annotations": [] }]
+        }
+      ],
+      "usage": {
+        "input_tokens": 20,
+        "output_tokens": 8,
+        "total_tokens": 28,
+        "input_tokens_details": { "cached_tokens": 6 },
+        "output_tokens_details": { "reasoning_tokens": 5 }
+      }
+    }
+  },
+  "expect": {
+    "outcome": "success",
+    "text": "Hello!",
+    "usage": {
+      "input": 20,
+      "output": 8,
+      "total": 28,
+      "cached": 6,
+      "reasoning": 5
+    }
+  }
+}

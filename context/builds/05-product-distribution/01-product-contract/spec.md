@@ -128,6 +128,8 @@ producer disambiguators. The archive contains exactly the declared artifact
 files (and their directory), preserving their bytes; native `.a`/`.o`,
 build-script trees, and copied compiler sysroots are outside this schema.
 
+`build_product(artifact = ...)` dispatches the tagged product provider. Library packaging consumes the adapter's normalized directory and compiler metadata, hashes every file, and reuses executable packaging's deterministic USTAR encoding without executable runtime inspection.
+
 `compilerStorePath` is the sole authoritative compiler build identity: the
 underlying rustc output store path, compared byte-for-byte with the consumer's
 declared compiler output, never the Darwin wrapper. Both it and `sysroot`
@@ -145,13 +147,33 @@ evidence, not alternate identities or undefined content/closure hashes.
 store `bin/rustc` path on Darwin. It is provenance only and never compared
 for compiler equality. Mismatches fail; no release-only or alternate-compiler
 fallback is permitted.
+The `package-library` command rejects malformed compiler evidence before emitting
+the archive descriptor; it shares deterministic USTAR encoding with executable packaging.
 
 Payload inspection independently verifies inventory, host macro architecture,
 target library/compiler and effective panic compatibility; schema acceptance alone
-does not prove usability. If target-cpu, ABI-changing target features, or custom
+does not prove usability. The compatibility probe bypasses producer compiler-flag
+injection while retaining the declared Darwin wrapper's SDK, native-library
+linking, and signing setup. If target-cpu, ABI-changing target features, or custom
 target specifications are admitted, their effective values must be bound into
 a versioned descriptor before acceptance. The library schema has no `entrypoints`
 or `runtime` fields; executable v1 bytes/readers remain unchanged and decode to the executable arm.
+
+An external consumer uses the checked compiler package and ordinary system
+linker, not Cargo or a producer-specific extern manifest:
+
+```sh
+rustc --edition=2024 consumer.rs \
+  --extern example_library=${library}/lib/libexample_library.rlib \
+  -L dependency=${library}/lib -o consumer
+./consumer
+```
+
+The primary crate name comes from the Cargo library target; transitive generic
+code, reexports and host derive macros resolve from the one installed dependency
+directory. Consumers must not mix closures or substitute a different compiler.
+The unchanged recipe requires an unwind-compatible producer; an abort product
+requires an explicitly compatible consumer invocation.
 
 ## Namespace and Compatibility
 

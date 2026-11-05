@@ -2,6 +2,49 @@
   pkgs,
   buck2,
 }:
+let
+  lib = pkgs.lib;
+  defaultInputs = import ./buck-inputs.nix {
+    inherit lib;
+    repositoryRoot = ../..;
+  };
+  unscopedSource =
+    repositoryRoot: cargoWorkspaceRoot: buckInputs:
+    lib.fileset.toSource {
+      root = repositoryRoot;
+      fileset = lib.fileset.unions (
+        [
+          (repositoryRoot + "/.buckconfig")
+          (repositoryRoot + "/.buckroot")
+          (repositoryRoot + "/.watchmanconfig")
+          (repositoryRoot + "/BUCK")
+          (repositoryRoot + "/package.json")
+          (repositoryRoot + "/pnpm-workspace.yaml")
+          (repositoryRoot + "/rust-toolchain.toml")
+          (repositoryRoot + "/.oxfmtrc.json")
+          (repositoryRoot + "/.oxlintrc.json")
+          (repositoryRoot + "/buck2-member.json")
+          (repositoryRoot + "/context")
+          (repositoryRoot + "/genie/weaver-registry")
+          (repositoryRoot + "/devenv.lock")
+          (repositoryRoot + "/devenv.yaml")
+          (repositoryRoot + "/flake.lock")
+          (repositoryRoot + "/flake.nix")
+          (repositoryRoot + "/megarepo.kdl")
+          (repositoryRoot + "/megarepo.lock")
+          (repositoryRoot + "/patches")
+          (repositoryRoot + "/nix/weaver-flake/flake.nix")
+          (repositoryRoot + "/scripts")
+          (lib.fileset.unions buckInputs.files)
+          (repositoryRoot + "/packages/@overeng")
+        ]
+        ++ lib.optionals (cargoWorkspaceRoot != null) [
+          (repositoryRoot + "/${cargoWorkspaceRoot}")
+        ]
+      );
+    };
+  defaultSource = unscopedSource ../.. null defaultInputs;
+in
 
 {
   capabilities,
@@ -14,13 +57,18 @@
   importNative ? false,
   expectedPlatform ? null,
   runtimeKind ? null,
+  expectedRustTarget ? pkgs.stdenv.hostPlatform.rust.rustcTarget,
+  expectedPanicStrategy ? "unwind",
   product,
+  producerCommit ? null,
   repositoryRoot ? ../..,
   repositorySource ? null,
   # Committed Genie projection of the Buck input closure, relative to repositoryRoot.
   sourcePaths ? null,
   # Consumer Buck root is a separate Nix input, not a copy of the checkout.
   rootProjection ? null,
+  # Internal acceptance recipes may explicitly stage fixture rules.
+  admitTestFixtureInputs ? false,
   expectedSha256 ? null,
   # Optional Buck tree containing the declared pnpm runtime importer closure.
   runtimeClosureTarget ? null,
@@ -29,9 +77,38 @@
 }:
 
 let
-  lib = pkgs.lib;
   watcherPolicies = import ./watcher-policies.nix;
   cargoWorkspaceRoot = product.cargoWorkspaceRoot or null;
+  entryTargets = [
+    product.target
+  ]
+  ++ lib.optional (runtimeClosureTarget != null) runtimeClosureTarget;
+  entryPackages = map (
+    target: builtins.head (lib.splitString ":" (lib.last (lib.splitString "//" target)))
+  ) entryTargets;
+  baseInputs =
+    if repositoryRoot == ../.. then
+      defaultInputs
+    else
+      import ./buck-inputs.nix { inherit lib repositoryRoot; };
+  covered = builtins.all (package: builtins.elem package baseInputs.packages) entryPackages;
+  buckInputs =
+    if covered then
+      baseInputs
+    else
+      import ./buck-inputs.nix {
+        inherit lib repositoryRoot;
+        inherit admitTestFixtureInputs;
+        extraEntryTargets = entryTargets;
+      };
+  # Caller-owned rule derivations have no evaluable repository closure to extend.
+  rulesProjection =
+    if rootProjection == null && sourcePaths != null then
+      import ./root-projection.nix { inherit pkgs repositoryRoot buckInputs; }
+    else if rootProjection == null || lib.isDerivation rootProjection || covered then
+      rootProjection
+    else
+      import ./root-projection.nix { inherit pkgs repositoryRoot buckInputs; };
   # Cargo manifests in consumer roots live in repositorySource, which can be a
   # derivation. Read the staged workspace at build time, not repositoryRoot at
   # evaluation time: the latter belongs to this rules package.
@@ -46,40 +123,22 @@ let
       }
     else if repositorySource != null then
       repositorySource
+    else if repositoryRoot == ../.. && cargoWorkspaceRoot == null && covered then
+      defaultSource
     else
-      lib.fileset.toSource {
-        root = repositoryRoot;
-        fileset = lib.fileset.unions (
-          [
-            (repositoryRoot + "/.buckconfig")
-            (repositoryRoot + "/.buckroot")
-            (repositoryRoot + "/.watchmanconfig")
-            (repositoryRoot + "/BUCK")
-            (repositoryRoot + "/package.json")
-            (repositoryRoot + "/pnpm-workspace.yaml")
-            (repositoryRoot + "/rust-toolchain.toml")
-            (repositoryRoot + "/.oxfmtrc.json")
-            (repositoryRoot + "/.oxlintrc.json")
-            (repositoryRoot + "/buck2-member.json")
-            (repositoryRoot + "/context")
-            (repositoryRoot + "/genie/weaver-registry")
-            (repositoryRoot + "/devenv.lock")
-            (repositoryRoot + "/devenv.yaml")
-            (repositoryRoot + "/flake.lock")
-            (repositoryRoot + "/flake.nix")
-            (repositoryRoot + "/megarepo.kdl")
-            (repositoryRoot + "/megarepo.lock")
-            (repositoryRoot + "/patches")
-            (repositoryRoot + "/nix/weaver-flake/flake.nix")
-            (repositoryRoot + "/scripts")
-            (repositoryRoot + "/buck2")
-            (repositoryRoot + "/packages/@overeng")
-          ]
-          ++ lib.optionals (cargoWorkspaceRoot != null) [
-            (repositoryRoot + "/${cargoWorkspaceRoot}")
-          ]
-        );
-      };
+      unscopedSource repositoryRoot cargoWorkspaceRoot buckInputs;
+  # Membership follows the projection's own source/filter, without realizing it.
+  containsFile =
+    projection: relative:
+    builtins.isAttrs projection
+    && projection ? origSrc
+    && projection ? filter
+    && (
+      let
+        file = projection.origSrc + "/${relative}";
+      in
+      builtins.pathExists file && projection.filter (toString file) "regular"
+    );
   sourceDigest = builtins.hashString "sha256" (toString source);
   # Rust projections rendered with `cliBuildStamp` read this JSON through
   # `build_identity.cli_build_stamp`. Scoped native recipes have no Git
@@ -108,6 +167,7 @@ let
   # `swift-app-bundle` Darwin app bundle.
   isBuildProduct = builtins.elem product.kind [
     "native"
+    "rust-library"
     "compiled-executable"
     "swift-app-bundle"
   ];
@@ -115,7 +175,10 @@ let
   hasDescriptor = product.kind == "javascript" || isBuildProduct;
   buckGlobalArgs = "--isolation-dir nix-product-${safeName}";
   buckBuildArgs = "-j \"$NIX_BUILD_CORES\" --config build.num_tokio_workers=\"$NIX_BUILD_CORES\" --config nix_store.root=${pnpmArchives}${
-    lib.optionalString (product.kind == "native") " --config rust_profile.mode=release"
+    lib.optionalString (builtins.elem product.kind [
+      "native"
+      "rust-library"
+    ]) " --config rust_profile.mode=release"
   }${
     lib.concatMapStringsSep "" (
       package: " --config ${lib.escapeShellArg "test_capabilities.${package.name}=${package.package}"}"
@@ -128,6 +191,12 @@ let
     ) " --config ${lib.escapeShellArg "build_identity.cli_build_stamp=${cliBuildStamp}"}"
   } --local-only --no-remote-cache --console simple --show-simple-output";
 in
+assert lib.assertMsg (
+  producerCommit == null || builtins.match "[0-9a-f]{40}" producerCommit != null
+) "buck2-products: producerCommit must be a full lowercase Git commit";
+assert lib.assertMsg (
+  producerCommit != null || sourcePaths != null
+) "buck2-products: unscoped source recipes require producerCommit";
 assert lib.assertMsg
   (
     sourcePaths == null
@@ -145,21 +214,31 @@ assert lib.assertMsg
   )
   "buck2-products: sourcePaths must be nonempty safe relative paths and cannot be combined with repositorySource";
 assert lib.assertMsg (
-  (sourcePaths == null) == (rootProjection == null)
+  (sourcePaths == null) == (rulesProjection == null)
 ) "buck2-products: scoped sourcePaths require a separate rootProjection";
+assert lib.assertMsg (
+  repositorySource != null
+  || builtins.all (
+    package: containsFile source "${package}/BUCK" || containsFile rulesProjection "${package}/BUCK"
+  ) entryPackages
+) "buck2-products: entry package BUCK missing from product projection";
 assert lib.assertMsg (
   !isBuildProduct || outputName == "artifact.tar"
 ) "buck2-products: ${product.kind} products must name the build_product payload artifact.tar";
 assert lib.assertMsg (
   cargoWorkspaceRoot == null
   || (
-    product.kind == "native"
+    builtins.elem product.kind [
+      "native"
+      "rust-library"
+    ]
     && builtins.match "[A-Za-z0-9_.@-]+(/[A-Za-z0-9_.@-]+)*" cargoWorkspaceRoot != null
     && lib.all (segment: segment != "." && segment != "..") (lib.splitString "/" cargoWorkspaceRoot)
   )
 ) "buck2-products: cargoWorkspaceRoot must be a safe relative path on a native product";
-assert lib.assertMsg (!importNative || isBuildProduct)
-  "buck2-products: importNative requires a native, compiled-executable, or swift-app-bundle product";
+assert lib.assertMsg (
+  !importNative || isBuildProduct
+) "buck2-products: importNative requires a build_product recipe";
 assert lib.assertMsg (
   cliBuildStamp == null
   || (
@@ -169,7 +248,7 @@ assert lib.assertMsg (
   )
 ) "buck2-products: cliBuildStamp must be a non-empty single-line string";
 let
-  sourceProduct = pkgs.stdenv.mkDerivation {
+  compileProduct = pkgs.stdenv.mkDerivation {
     pname = "${safeName}-buck2-from-source";
     version = product.version or "0.0.0";
     src = source;
@@ -198,8 +277,8 @@ let
       export XDG_RUNTIME_DIR="$TMPDIR/runtime"
       export SSL_CERT_FILE="${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt"
       mkdir -p .buck2
-      ${lib.optionalString (rootProjection != null) ''
-        cp -R ${rootProjection}/. .
+      ${lib.optionalString (rulesProjection != null) ''
+        cp -R ${rulesProjection}/. .
         chmod -R u+w .buck2 buck2 BUCK .buckconfig .buckroot
       ''}
       mkdir -p "$HOME" "$XDG_CACHE_HOME" "$XDG_RUNTIME_DIR" .buck2/capabilities
@@ -312,18 +391,28 @@ let
         cargoArchives
         nativeStorePackages
         pnpmArchives
+        producerCommit
         repositorySource
-        rootProjection
         source
         sourceDigest
         sourcePaths
         target
         runtimeClosureTarget
+        compileProduct
+        recipeIdentity
         ;
+      rootProjection = rulesProjection;
       artifactName = outputName;
-      producerCommit = null;
       inherit productName;
       productKind = product.kind;
+      sourceEvidence =
+        pkgs.runCommand "${safeName}-source-evidence" { nativeBuildInputs = [ pkgs.jq ]; }
+          ''
+            mkdir -p "$out"
+            jq -S --arg recipeIdentity ${lib.escapeShellArg recipeIdentity} \
+              '{schema:"effect-utils/buck-product-source-evidence/v1",recipeIdentity:$recipeIdentity,target,productDigest}' \
+              ${sourceProduct}/provenance.json > "$out/source-evidence.json"
+          '';
       expectedProductSha256 = expectedSha256;
       # The only source JavaScript import entry point. Consumer facts are
       # static; no descriptor or provenance output is read during evaluation.
@@ -337,8 +426,8 @@ let
           expectedRuntimeContractVersion,
           expectedExternalCapabilities,
           expectedExternalModules,
-          expectedProducerCommit ? null,
-          checkProducerCommit ? false,
+          expectedProducerCommit ? producerCommit,
+          checkProducerCommit ? producerCommit != null,
           binaryName ? null,
           environment ? { },
           generateCompletions ? binaryName != null,
@@ -381,11 +470,32 @@ let
         };
     };
   };
+  recipeIdentity = builtins.hashString "sha256" compileProduct.drvPath;
+  # Only provenance is revision-stamped; compilation is shared by identical trees.
+  sourceProduct =
+    if producerCommit == null then
+      compileProduct
+    else
+      pkgs.runCommand compileProduct.name
+        {
+          inherit (compileProduct) pname version passthru;
+          nativeBuildInputs = [ pkgs.jq ];
+        }
+        ''
+          mkdir -p "$out"
+          # Cachix artifacts and the publisher require regular files, not symlinks.
+          cp -R --reflink=auto ${compileProduct}/. "$out/"
+          chmod u+w "$out/provenance.json"
+          jq --arg producerCommit ${lib.escapeShellArg producerCommit} \
+            '. + {schema:"effect-utils/buck-product-provenance/v1",producerCommit:$producerCommit} | del(.sourceDigest)' \
+            ${compileProduct}/provenance.json > "$out/provenance.json"
+        '';
 in
 if importNative then
   (import ../workspace-tools/lib/buck2-artifact-realize.nix { inherit pkgs; }) {
     name = productName;
     expectedTarget = target;
+    inherit expectedRustTarget expectedPanicStrategy;
     expectedPlatform =
       if expectedPlatform == null then
         let
@@ -401,6 +511,8 @@ if importNative then
     runtimeKind =
       if runtimeKind != null then
         runtimeKind
+      else if product.kind == "rust-library" then
+        "library"
       else if product.kind == "swift-app-bundle" then
         "mach-o-app-bundle"
       else if pkgs.stdenv.hostPlatform.isDarwin then
@@ -409,7 +521,10 @@ if importNative then
         "elf-dynamic";
     descriptorPath = lib.escapeShellArg "${sourceProduct}/descriptor.json";
     archivePath = lib.escapeShellArg "${sourceProduct}/${outputName}";
-    passthru.buck2Product = sourceProduct;
+    passthru = {
+      buck2Product = sourceProduct;
+      descriptorPath = "${sourceProduct}/descriptor.json";
+    };
   }
 else
   sourceProduct

@@ -436,7 +436,7 @@ bun_compiled_product_executable(
 build_product(
     name = "ci-tools-compiled-product",
     entrypoint = "bin/ci-tools",
-    executable = ":ci-tools-compiled-executable",
+    artifact = ":ci-tools-compiled-executable",
     product_name = "ci-tools",
     target_platform = host_platform_label(),
     visibility = ["PUBLIC"],

@@ -101,6 +101,27 @@ export const StoreGcResult = Schema.Struct({
   buckDaemonsUnreachable: Schema.optional(Schema.Array(BuckDaemonUnreachable)),
   /** Live daemons whose active work vetoed teardown. */
   buckDaemonsKeptActive: Schema.optional(Schema.Array(BuckDaemonKeptActive)),
+  candidateSha256: Schema.optional(Schema.String),
+})
+
+/** Per-candidate outcome of a verified GC batch. */
+export const StoreGcCandidateOutcome = Schema.Union([
+  Schema.TaggedStruct('applied', { path: Schema.String }),
+  Schema.TaggedStruct('skipped-changed', { path: Schema.String }),
+  Schema.TaggedStruct('skipped-ineligible', { path: Schema.String }),
+  Schema.TaggedStruct('skipped-missing', { path: Schema.String }),
+  Schema.TaggedStruct('unsupported-kind', { path: Schema.String }),
+  Schema.TaggedStruct('failed', { path: Schema.String, message: Schema.String }),
+])
+
+/** Inferred batch candidate outcome. */
+export type StoreGcCandidateOutcome = Schema.Schema.Type<typeof StoreGcCandidateOutcome>
+
+/** Aggregate counts over candidate outcomes. */
+export const StoreGcCandidateCounts = Schema.Struct({
+  applied: Schema.Finite,
+  skipped: Schema.Finite,
+  failed: Schema.Finite,
 })
 
 /** Inferred type for a store GC result. */
@@ -207,6 +228,8 @@ export const StoreGcState = Schema.TaggedStruct('Gc', {
   interrupted: Schema.optional(Schema.Boolean),
   planSha256: Schema.optional(Schema.String),
   censusStatus: Schema.optional(Schema.Literals(['complete', 'unknown'])),
+  candidateOutcomes: Schema.optional(Schema.Array(StoreGcCandidateOutcome)),
+  candidateCounts: Schema.optional(StoreGcCandidateCounts),
 })
 
 /**
@@ -361,6 +384,8 @@ export const StoreAction = Schema.Union([
     interrupted: Schema.optional(Schema.Boolean),
     planSha256: Schema.optional(Schema.String),
     censusStatus: Schema.optional(Schema.Literals(['complete', 'unknown'])),
+    candidateOutcomes: Schema.optional(Schema.Array(StoreGcCandidateOutcome)),
+    candidateCounts: Schema.optional(StoreGcCandidateCounts),
   }),
   Schema.TaggedStruct('SetAdd', {
     status: Schema.Literals(['added', 'already_exists', 'created']),
@@ -444,6 +469,8 @@ export const storeReducer = ({
         interrupted: action.interrupted,
         planSha256: action.planSha256,
         censusStatus: action.censusStatus,
+        candidateOutcomes: action.candidateOutcomes,
+        candidateCounts: action.candidateCounts,
       }
     case 'SetAdd':
       return {

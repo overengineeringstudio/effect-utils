@@ -13,15 +13,18 @@ import {
   type RepoContext,
 } from '../../../packages/@overeng/genie/src/runtime/repo-context/mod.ts'
 
-/** One Buck product emitted from a named Cargo binary of the projected package. */
+const productFields = {
+  library: ['kind', 'name'],
+  executable: ['kind', 'name', 'binary', 'entrypoint'],
+} as const
+type ProductKind = keyof typeof productFields
+
+/** Required identity fields and optional string fields share the decoder's closed-key table. */
 export type CargoBuck2ProductOptions = {
-  /** Product name; emits `<name>-product-executable` and `<name>-product`. */
-  readonly name: string
-  /** Cargo binary target packaged by the product; defaults to `name`. */
-  readonly binary?: string
-  /** Payload-relative executable path; defaults to `bin/<name>`. */
-  readonly entrypoint?: string
-}
+  [TKind in ProductKind]: { readonly kind: TKind; readonly name: string } & {
+    readonly [TField in Exclude<(typeof productFields)[TKind][number], 'kind' | 'name'>]?: string
+  }
+}[ProductKind]
 
 /** One smoke target per runtime, each named `<product>-smoke-<runtime>`. */
 export type CargoBuck2InteropSmokeOptions = {
@@ -66,8 +69,10 @@ export type CargoBuck2NapiOptions = {
 export type CargoBuck2PackageProjectionOptions = {
   /** One product named after the package from its only binary. Exclusive with `buildProducts`. */
   readonly buildProduct?: boolean
-  /** Several products from one package, one per named Cargo binary. */
+  /** Independently named executable or library products from one package. */
   readonly buildProducts?: readonly CargoBuck2ProductOptions[]
+  /** Emit only cargo-source exports for staging as a foreign package's BUCK. */
+  readonly foreignSourceExportsOnly?: boolean
   readonly cliBuildStamp?: boolean
   readonly wasmBindgen?: CargoBuck2WasmBindgenOptions
   readonly napi?: CargoBuck2NapiOptions
@@ -378,6 +383,7 @@ const cargoBuck2PackageProjectionFor = ({
   definition,
   buildProduct = false,
   buildProducts,
+  foreignSourceExportsOnly = false,
   buildScriptInputs,
   compileTimeResources,
   cliBuildStamp = false,
@@ -410,8 +416,13 @@ const cargoBuck2PackageProjectionFor = ({
     field: 'sourceUrl',
   })
   const projectionSource = path.relative(repoRoot, projectionModulePath).replaceAll('\\', '/')
-  if (path.posix.basename(projectionSource) !== 'BUCK.genie.ts') {
-    throw new Error(`Cargo Buck projection source must be BUCK.genie.ts: ${projectionSource}`)
+  const projectionFilename = foreignSourceExportsOnly
+    ? 'BUCK.foreign.bzl.genie.ts'
+    : 'BUCK.genie.ts'
+  if (path.posix.basename(projectionSource) !== projectionFilename) {
+    throw new Error(
+      `Cargo Buck projection source must be ${projectionFilename}: ${projectionSource}`,
+    )
   }
   const packagePath = foreignMember?.packagePath ?? path.posix.dirname(projectionSource)
   const context = contextForMember({ context: consumerContext, member: foreignMember })
@@ -609,6 +620,7 @@ const cargoBuck2PackageProjectionFor = ({
   )
   const products = resolveProducts({
     binaries,
+    library,
     buildProduct,
     buildProducts,
     manifestPath: member.manifestPath,
@@ -618,7 +630,7 @@ const cargoBuck2PackageProjectionFor = ({
     'static_sources',
     ...(library === undefined ? [] : ['lib']),
     ...products.flatMap((product) => [
-      `${product.name}-product-executable`,
+      `${product.name}-product-${product.kind}`,
       `${product.name}-product`,
     ]),
     ...(buildScript === undefined
@@ -704,6 +716,34 @@ const cargoBuck2PackageProjectionFor = ({
           ]),
     ]),
   ])
+  const sourceExports = (library === undefined ? [] : instanceFiles).flatMap((file) => [
+    'native.export_file(',
+    `    name = ${starlarkString(`cargo-source/${file}`)},`,
+    `    src = ${starlarkString(file)},`,
+    '    visibility = ["PUBLIC"],',
+    ')',
+    '',
+  ])
+  if (foreignSourceExportsOnly === true) {
+    if (library === undefined) {
+      throw new Error(
+        `Foreign source exports require a Cargo library target in ${member.manifestPath}`,
+      )
+    }
+    const data = { packagePath, files: instanceFiles }
+    const exportGenerator = `${generator}/foreign-source`
+    const rendered = [
+      `# Projection source: ${projectionSource}`,
+      `# Projection schema version: ${schemaVersion}`,
+      `# Projection generator: ${exportGenerator}`,
+      `# Semantic fingerprint: ${buck2SemanticFingerprint({ generator: exportGenerator, schemaVersion, semanticData: data })}`,
+      `# Regenerate: ${regenerationCommand}`,
+      '',
+      'load("@prelude//:prelude.bzl", "native")',
+      ...sourceExports,
+    ].join('\n')
+    return createGenieOutput({ data, stringify: () => rendered })
+  }
   // Cargo exposes these variables at compile time, including empty strings
   // for missing manifest fields. See the Cargo reference:
   // https://doc.rust-lang.org/cargo/reference/environment-variables.html#environment-variables-cargo-sets-for-crates
@@ -1163,17 +1203,21 @@ const cargoBuck2PackageProjectionFor = ({
       : `host_platform_label(cell = ${starlarkString(rulesCell)})`
   for (const product of products) {
     rules.push(
-      `rust_product_executable(`,
-      `    name = ${starlarkString(`${product.name}-product-executable`)},`,
-      `    binary = ${starlarkString(`:${product.binary}`)},`,
+      `rust_product_${product.kind}(`,
+      `    name = ${starlarkString(`${product.name}-product-${product.kind}`)},`,
+      product.kind === 'library'
+        ? '    library = ":lib",'
+        : `    binary = ${starlarkString(`:${product.binary}`)},`,
       `    recipe = ${starlarkString(`cargo-workspace:${packageName}@${version}`)},`,
       `    target_platform = ${hostPlatform},`,
       ')',
       '',
       'build_product(',
       `    name = ${starlarkString(`${product.name}-product`)},`,
-      `    entrypoint = ${starlarkString(product.entrypoint)},`,
-      `    executable = ${starlarkString(`:${product.name}-product-executable`)},`,
+      ...(product.kind === 'library'
+        ? []
+        : [`    entrypoint = ${starlarkString(product.entrypoint)},`]),
+      `    artifact = ${starlarkString(`:${product.name}-product-${product.kind}`)},`,
       `    product_name = ${starlarkString(product.name)},`,
       `    target_platform = ${hostPlatform},`,
       ')',
@@ -1213,7 +1257,13 @@ const cargoBuck2PackageProjectionFor = ({
       ? [
           `load(${starlarkString(`${buck2LoadLabelPrefix}/products:defs.bzl`)}, "build_product")`,
           `load(${starlarkString(`${buck2LoadLabelPrefix}/platforms:defs.bzl`)}, "host_platform_label")`,
-          `load(${starlarkString(`${buck2LoadLabelPrefix}/rust:defs.bzl`)}, "rust_product_executable")`,
+          ...(['executable', 'library'] as const).flatMap((kind) =>
+            products.some((product) => product.kind === kind)
+              ? [
+                  `load(${starlarkString(`${buck2LoadLabelPrefix}/rust:${kind === 'library' ? 'library' : 'defs'}.bzl`)}, "rust_product_${kind}")`,
+                ]
+              : [],
+          ),
         ]
       : []),
     ...(buildScript === undefined &&
@@ -1239,14 +1289,7 @@ const cargoBuck2PackageProjectionFor = ({
     '',
     // A library may be instantiated by consumers of other Cargo workspaces (foreign-packages.json),
     // which compile these exact files against their own third-party graph.
-    ...(library === undefined ? [] : instanceFiles).flatMap((file) => [
-      'native.export_file(',
-      `    name = ${starlarkString(`cargo-source/${file}`)},`,
-      `    src = ${starlarkString(file)},`,
-      '    visibility = ["PUBLIC"],',
-      ')',
-      '',
-    ]),
+    ...sourceExports,
     ...rules,
     ...(foreignRules === '' ? [] : [foreignRules]),
   ].join('\n')
@@ -2465,24 +2508,76 @@ const normalizeBuildScriptPath = ({
   return build
 }
 
-type ResolvedProduct = {
-  readonly binary: string
-  readonly entrypoint: string
-  readonly name: string
+type ResolvedProduct =
+  | { readonly kind: 'library'; readonly name: string }
+  | {
+      readonly kind: 'executable'
+      readonly binary: string
+      readonly entrypoint: string
+      readonly name: string
+    }
+
+const isProductKind = (value: unknown): value is ProductKind =>
+  typeof value === 'string' && Object.hasOwn(productFields, value)
+
+const decodeProduct = (
+  value: unknown,
+  field: string,
+  manifestPath: string,
+): CargoBuck2ProductOptions => {
+  const fail = (key: string, reason: string): never => {
+    throw new Error(`${field}${key === '' ? '' : `.${key}`} ${reason} in ${manifestPath}`)
+  }
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    return fail('', 'must be a product object')
+  }
+  if (!('kind' in value) || !isProductKind(value.kind)) {
+    return fail('kind', 'must be "library" or "executable"')
+  }
+  const kind = value.kind
+  for (const key of Object.keys(value)) {
+    if (!productFields[kind].some((allowed) => allowed === key)) {
+      return fail(key, `is not allowed for ${kind} products`)
+    }
+  }
+  if (!('name' in value) || typeof value.name !== 'string') {
+    return fail('name', 'must be a string')
+  }
+  const name = value.name
+  const binary = 'binary' in value ? value.binary : undefined
+  const entrypoint = 'entrypoint' in value ? value.entrypoint : undefined
+  if (binary !== undefined && typeof binary !== 'string') return fail('binary', 'must be a string')
+  if (entrypoint !== undefined && typeof entrypoint !== 'string') {
+    return fail('entrypoint', 'must be a string')
+  }
+  switch (kind) {
+    case 'library':
+      return { kind, name }
+    case 'executable':
+      return {
+        kind,
+        name,
+        ...(binary === undefined ? {} : { binary }),
+        ...(entrypoint === undefined ? {} : { entrypoint }),
+      }
+    default: {
+      const exhaustive: never = kind
+      return fail('kind', `is unsupported: ${exhaustive}`)
+    }
+  }
 }
 
-/**
- * The products a package emits: `buildProduct` packages its only binary under the package
- * name; `buildProducts` names each product and the Cargo binary it packages.
- */
+/** The singleton shorthand always selects an executable; explicit selections carry a kind. */
 const resolveProducts = ({
   binaries,
+  library,
   buildProduct,
   buildProducts,
   manifestPath,
   packageName,
 }: {
   readonly binaries: readonly CargoBinaryTarget[]
+  readonly library: CargoLibraryTarget | undefined
   readonly buildProduct: boolean
   readonly buildProducts: readonly CargoBuck2ProductOptions[] | undefined
   readonly manifestPath: string
@@ -2494,19 +2589,47 @@ const resolveProducts = ({
     if (binary === undefined) {
       throw new Error(`BuildProduct projection requires exactly one binary in ${manifestPath}`)
     }
-    return [{ binary: binary.name, entrypoint: `bin/${packageName}`, name: packageName }]
+    return [
+      {
+        kind: 'executable',
+        binary: binary.name,
+        entrypoint: `bin/${packageName}`,
+        name: packageName,
+      },
+    ]
   }
   if (buildProduct === true) {
     throw new Error(`buildProduct and buildProducts are mutually exclusive in ${manifestPath}`)
+  }
+  if (!Array.isArray(buildProducts)) {
+    throw new Error(`buildProducts must be an array in ${manifestPath}`)
   }
   if (buildProducts.length === 0) {
     throw new Error(`buildProducts must name at least one product in ${manifestPath}`)
   }
   const binaryNames = new Set(binaries.map((binary) => binary.name))
-  const products = buildProducts.map((product, index) => {
+  const products = buildProducts.map((value: unknown, index): ResolvedProduct => {
     const field = `buildProducts[${index}]`
+    const product = decodeProduct(value, field, manifestPath)
     if (/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(product.name) === false) {
-      throw new Error(`${field}.name is not a Buck target-safe product name: ${product.name}`)
+      throw new Error(
+        `${field}.name is not a Buck target-safe product name: ${product.name} in ${manifestPath}`,
+      )
+    }
+    if (product.kind === 'library') {
+      if (library === undefined) {
+        throw new Error(`${field} requires a Cargo library target in ${manifestPath}`)
+      }
+      if (
+        library.procMacro === true ||
+        (library.crateTypes !== undefined &&
+          library.crateTypes.some((type) => type === 'lib' || type === 'rlib') === false)
+      ) {
+        throw new Error(
+          `${field} requires a Cargo library target that produces an rlib in ${manifestPath}`,
+        )
+      }
+      return { kind: 'library', name: product.name }
     }
     const binary = product.binary ?? product.name
     if (binaryNames.has(binary) === false) {
@@ -2519,9 +2642,11 @@ const resolveProducts = ({
       /^[A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)*$/.test(entrypoint) === false ||
       entrypoint.split('/').some((segment) => segment === '.' || segment === '..') === true
     ) {
-      throw new Error(`${field}.entrypoint must be a normalized relative path: ${entrypoint}`)
+      throw new Error(
+        `${field}.entrypoint must be a normalized relative path: ${entrypoint} in ${manifestPath}`,
+      )
     }
-    return { binary, entrypoint, name: product.name }
+    return { kind: 'executable', binary, entrypoint, name: product.name }
   })
   const duplicateNames = products
     .map((product) => product.name)

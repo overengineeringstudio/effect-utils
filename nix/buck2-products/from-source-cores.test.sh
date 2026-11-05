@@ -27,13 +27,14 @@ phase="$(nix eval --impure --raw --expr '
     pnpmArchives = repo;
     repositorySource = repo;
     runtimeClosureTarget = "root//:runtime";
+    producerCommit = "0123456789abcdef0123456789abcdef01234567";
     product = {
       name = "core-budget-fixture";
       kind = "javascript";
       target = "root//:product";
       outputName = "artifact.tar";
     };
-  }).buildPhase
+  }).compileProduct.buildPhase
 ')"
 # The shared buck_build command carries the budgets for all three output paths.
 # Inspect the evaluated derivation, not the Nix source.

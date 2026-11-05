@@ -133,7 +133,7 @@ rust_product_executable(
 build_product(
     name = "pingping-product",
     entrypoint = "bin/pingping",
-    executable = ":pingping-product-executable",
+    artifact = ":pingping-product-executable",
     product_name = "pingping",
     target_platform = host_platform_label(),
 )
