@@ -35,10 +35,20 @@ for mutation in \
   '.products[0].buildCapabilities = ["Not-a-capability"]' \
   '.products[0].linuxBuildCapabilities = "bubblewrap"' \
   '.products[0].linuxBuildCapabilities = ["bun"]' \
+  '.products[0].sourcePaths = null' \
+  '.products[0].sourcePaths = []' \
+  '.products[0].sourcePaths = "packages/example"' \
+  '.products[0].sourcePaths = [1]' \
+  '.products[0].sourcePaths = ["/etc/passwd"]' \
+  '.products[0].sourcePaths = ["packages/../private"]' \
+  '.products[0].sourcePaths = ["packages/./example"]' \
+  '.products[0].sourcePaths = ["packages//example"]' \
+  '.products[0].sourcePaths = ["packages/example", "packages/example"]' \
+  '.products[0].sourcePaths = ["z", "a"]' \
   '.products[0].unexpected = true'; do
   jq "$mutation" "$targets" >"$tmp/invalid-targets/nix/buck2-products/cache-targets.json"
   if BUCK2_CACHE_PRODUCTS_REPO="$tmp/invalid-targets" bash "$publisher" --dry-run >"$tmp/invalid-targets.log" 2>&1; then
-    echo "buck2-cache-products-test: accepted invalid capability inventory: $mutation" >&2
+    echo "buck2-cache-products-test: accepted invalid target inventory: $mutation" >&2
     exit 1
   fi
   grep -F 'target inventory violates effect-utils/buck-cache-targets/v1' "$tmp/invalid-targets.log" >/dev/null
