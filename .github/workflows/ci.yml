@@ -1061,11 +1061,6 @@ jobs:
           EOF
           echo "::warning::Intentional failure for diagnostics validation (#272)"
           exit 1
-      - name: Build scoped JavaScript cache compile products
-        if: ${{ github.event_name == 'pull_request' }}
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        run: 'cd "${GITHUB_WORKSPACE:-$PWD}" && nix build -j 2 --cores 2 --no-link --print-build-logs .#buck-product-ci-tools-from-source.compileProduct .#buck-product-gh-ci-utils-from-source.compileProduct .#buck-product-notion-cli-from-source.compileProduct .#buck-product-notion-db-runtime-from-source.compileProduct .#buck-product-tui-stories-from-source.compileProduct'
       - name: Check published product inventory against the gated diff
         env:
           GITHUB_TOKEN: ${{ github.token }}

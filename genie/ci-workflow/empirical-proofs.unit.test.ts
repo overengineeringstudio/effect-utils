@@ -100,30 +100,6 @@ const admitted = (
   )
 }
 
-test('ordinary PR quality realizes exactly the five scoped JavaScript compile products', () => {
-  expect(admitted('quality', 'pull_request', 'refs/pull/1/merge', 'synchronize')).toBe(true)
-  const quality = ciWorkflow.data.jobs.quality!
-  expect(requiredCIJobs.includes(quality.name ?? 'quality')).toBe(true)
-  const build = quality.steps.find(
-    (step) => step.name === 'Build scoped JavaScript cache compile products',
-  )
-  expect(build?.if).toBe("${{ github.event_name == 'pull_request' }}")
-  expect(build?.['continue-on-error']).not.toBe(true)
-  const command = build !== undefined && 'run' in build ? build.run : undefined
-  expect(command).toContain('nix build -j 2 --cores 2 --no-link --print-build-logs')
-  expect(command?.match(/\.#buck-product-[\w-]+-from-source(?:\.compileProduct)?/g)).toEqual([
-    '.#buck-product-ci-tools-from-source.compileProduct',
-    '.#buck-product-gh-ci-utils-from-source.compileProduct',
-    '.#buck-product-notion-cli-from-source.compileProduct',
-    '.#buck-product-notion-db-runtime-from-source.compileProduct',
-    '.#buck-product-tui-stories-from-source.compileProduct',
-  ])
-  const regression = quality.steps.find(
-    (step) => step.name === 'Genie projection and CI workflow regression tests',
-  )
-  expect(regression?.run).toContain('genie:ci-workflow:test')
-})
-
 test('Notion secrets require main or an explicit branch dispatch, never a PR', () => {
   const job = 'test-integration-notion'
   const select = (event: string, ref: string, optIn: boolean, action = '', baseline = '') =>
