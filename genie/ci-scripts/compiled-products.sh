@@ -59,7 +59,7 @@ library_roundtrips() {
     source=$(nix build --no-link --json ".#$name.buck2Product" | jq -er '.[0].outputs.out')
     nix build --impure --no-link --print-build-logs \
       --file nix/buck2-products/library-roundtrip.nix \
-      --argstr flakeRef "git+file://$PWD" --argstr productName "$name" --argstr sourcePath "$source"
+      --argstr flakeRef "git+file://$PWD?shallow=1" --argstr productName "$name" --argstr sourcePath "$source"
   done
 }
 

@@ -175,7 +175,6 @@ directory. Consumers must not mix closures or substitute a different compiler.
 The unchanged recipe requires an unwind-compatible producer; an abort product
 requires an explicitly compatible consumer invocation.
 
-
 ## Namespace and Compatibility
 
 `buck-build-product/v1` and `buck-rust-library-product/v1` are repository-owned
