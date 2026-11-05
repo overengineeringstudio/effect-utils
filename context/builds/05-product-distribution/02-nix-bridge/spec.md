@@ -100,9 +100,18 @@ Do not retain the producer `BUCK` there: its root-local rule loads need not
 exist in `mkConsumerBuckRoot`. Declare the complete foreign path closure in
 `foreign-packages.json`; each admitted library in that closure needs its own
 generated export projection. `rust/work-storage` supplies this projection and
-has no further path-crate dependencies. Explicit cross-package build-script or
-compile-time inputs still require their declared source providers; they are
-not implicitly exported by the crate's source-only projection.
+has no further path-crate dependencies. Cross-package build-script resources
+declared in `[package.metadata.buck2].buildScriptInputs` keep their original
+labels when the consumer instantiates a foreign crate. Their resource package
+provides `BUCK.foreign.bzl.genie.ts` using the same Cargo projector with
+`foreignBuildScriptExportsOnly: true`. It derives public `native.export_file`
+targets from workspace Cargo metadata, rejecting conflicting labels or sources
+outside the resource package; it loads only standard `@prelude` rules.
+Stage the resource files and copy this companion to that package's `BUCK`, too.
+For `rust/work-storage`, stage `packages/@overeng/work-storage`'s
+`protocol.schema.json`, `fixtures/conformance.json` and resource companion.
+Its ordinary TypeScript `BUCK` is neither required nor staged. Other cross-package
+compile-time inputs still require their declared source providers.
 
 The plain consumer derivation declares exactly:
 
