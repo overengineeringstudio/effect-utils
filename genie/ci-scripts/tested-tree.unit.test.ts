@@ -42,7 +42,7 @@ describe('trusted tested-tree evidence', () => {
       hasRequiredQueueEvidence({
         ...evidence,
         run: failedRun,
-        jobs: [...jobs, { ...jobs[0]!, name: 'pr-a-inert-buck', conclusion: 'failure' }],
+        jobs: [...jobs, { ...jobs[0]!, name: 'ci-measurements-report', conclusion: 'failure' }],
       }),
     ).toBe(true)
   })
