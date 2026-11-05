@@ -111,6 +111,10 @@ const hostRecencyMs = 86_400_000
 const setupBudgetBytes = 40_000_000_000
 // Darwin reader/census scenarios reached 6 s under CI load; allow 30 s without killing their reader children.
 const readerCensusTimeoutMs = 30_000
+const test = (name: string, fn: () => Promise<void>) => it(name, fn, readerCensusTimeoutMs)
+test.each =
+  (snapshots: readonly string[]) => (name: string, fn: (snapshot: string) => Promise<void>) =>
+    it.each(snapshots)(name, fn, readerCensusTimeoutMs)
 
 const savedBudgetTraceContext = {
   TRACEPARENT: process.env.TRACEPARENT,
@@ -1044,13 +1048,9 @@ describe('host budget rejects capacity while preserving managed, live, recent an
     graceRecord = await host.publish(grace)
   })
 
-  it(
-    'rejects protected overflow before reserving or materializing incoming bytes',
-    async () => {
-      overflow = await recordTelemetry(host.root, () => overBudgetPublication(host, incoming, 1))
-    },
-    readerCensusTimeoutMs,
-  )
+  test('rejects protected overflow before reserving or materializing incoming bytes', async () => {
+    overflow = await recordTelemetry(host.root, () => overBudgetPublication(host, incoming, 1))
+  })
 
   it('preserves protected readers and emits actionable JSON plus an asynchronous OTEL span', () => {
     if (overflow === undefined) throw new Error('protected overflow publication did not complete')
@@ -1189,69 +1189,65 @@ describe('concurrent bounded host-budget publication and managed pin admission',
     host.age(live, liveRecord)
   })
 
-  it(
-    'admits a pin and two independent-store publishers to their real reservation barriers',
-    async () => {
-      const baseline = readBudgetLedger(host)
-      expect(baseline.reservations).toEqual([])
-      expect(baseline.contentStores.toSorted()).toEqual(
-        contenders.map(({ options }) => options.contentStore).toSorted(),
-      )
-      const pinEntered = Promise.withResolvers<void>()
-      const pinRelease = host.gate()
-      const materializeRelease = host.gate()
-      const allAdmitted = Promise.withResolvers<void>()
-      let admitted = 0
-      const pin = host.track(
-        pinEditorView({
-          options: pinned.options,
-          name: 'concurrent-reader',
-          snapshot: pinnedRecord.snapshot,
-          afterStoreLock: async () => {
-            pinEntered.resolve()
-            await pinRelease.promise
-          },
-        }),
-      )
-      await Promise.race([
-        pinEntered.promise,
-        pin.then(() => {
-          throw new Error('managed pin completed before its CAS barrier')
-        }),
-      ])
-      const captured = await host.track(
-        captureStderr(async () => {
-          const publications = contenders.map((fixture) =>
-            host.publish(fixture, {
-              hostBudgetBytes: setupBudgetBytes,
-              beforeMaterialize: async () => {
-                admitted++
-                if (admitted === contenders.length) allAdmitted.resolve()
-                await materializeRelease.promise
-              },
-            }),
-          )
-          // Both own a root while the pin holds CAS; neither may wait on the sibling root.
-          pinRelease.resolve()
-          await pin
-          await Promise.race([
-            allAdmitted.promise,
-            Promise.race(publications).then(() => {
-              throw new Error('publication completed before both reservation barriers were reached')
-            }),
-          ])
-          return { publications, admitted }
-        }),
-      )
-      admission = {
-        baseline,
-        ...captured.value,
-        stderr: captured.stderr,
-        release: () => materializeRelease.resolve(),
-      }
-    },
-    readerCensusTimeoutMs,
-  )
+  test('admits a pin and two independent-store publishers to their real reservation barriers', async () => {
+    const baseline = readBudgetLedger(host)
+    expect(baseline.reservations).toEqual([])
+    expect(baseline.contentStores.toSorted()).toEqual(
+      contenders.map(({ options }) => options.contentStore).toSorted(),
+    )
+    const pinEntered = Promise.withResolvers<void>()
+    const pinRelease = host.gate()
+    const materializeRelease = host.gate()
+    const allAdmitted = Promise.withResolvers<void>()
+    let admitted = 0
+    const pin = host.track(
+      pinEditorView({
+        options: pinned.options,
+        name: 'concurrent-reader',
+        snapshot: pinnedRecord.snapshot,
+        afterStoreLock: async () => {
+          pinEntered.resolve()
+          await pinRelease.promise
+        },
+      }),
+    )
+    await Promise.race([
+      pinEntered.promise,
+      pin.then(() => {
+        throw new Error('managed pin completed before its CAS barrier')
+      }),
+    ])
+    const captured = await host.track(
+      captureStderr(async () => {
+        const publications = contenders.map((fixture) =>
+          host.publish(fixture, {
+            hostBudgetBytes: setupBudgetBytes,
+            beforeMaterialize: async () => {
+              admitted++
+              if (admitted === contenders.length) allAdmitted.resolve()
+              await materializeRelease.promise
+            },
+          }),
+        )
+        // Both own a root while the pin holds CAS; neither may wait on the sibling root.
+        pinRelease.resolve()
+        await pin
+        await Promise.race([
+          allAdmitted.promise,
+          Promise.race(publications).then(() => {
+            throw new Error('publication completed before both reservation barriers were reached')
+          }),
+        ])
+        return { publications, admitted }
+      }),
+    )
+    admission = {
+      baseline,
+      ...captured.value,
+      stderr: captured.stderr,
+      release: () => materializeRelease.resolve(),
+    }
+  })
 
   it('sums both stores and held reservations in one bounded host ledger', () => {
     if (admission === undefined) throw new Error('concurrent admission did not complete')
@@ -1294,38 +1290,34 @@ describe('concurrent bounded host-budget publication and managed pin admission',
     reservationsAsserted = true
   })
 
-  it(
-    'finishes both real publishers and removes their global reservations',
-    async () => {
-      if (admission === undefined || reservationsAsserted === false)
-        throw new Error('held reservation assertions did not complete')
-      admission.release()
-      const records = await Promise.all(admission.publications)
-      const finished = readBudgetLedger(host)
-      expect(finished.reservations).toEqual([])
-      expect(finished.usedBytes).toBeGreaterThanOrEqual(admission.baseline.usedBytes)
-      const admissionEpoch = admission.baseline.epoch
-      const newEstimates = finished.journal.filter(({ epoch }) => epoch > admissionEpoch)
-      expect(newEstimates).toHaveLength(2)
-      for (const { estimatedBytes } of newEstimates)
-        expect(estimatedBytes).toBeGreaterThanOrEqual(payloadBytes)
-      expectCurrent(pinned, pinnedRecord)
-      expectCurrent(live, liveRecord)
-      for (let index = 0; index < contenders.length; index++) {
-        const fixture = contenders[index]
-        const record = records[index]
-        if (fixture === undefined || record === undefined)
-          throw new Error('missing concurrent publication record')
-        expectCurrent(fixture, record)
-        expect(
-          readdirSync(join(fixture.editorRoot, '.store')).filter((name) =>
-            name.startsWith('.candidate-'),
-          ),
-        ).toEqual([])
-      }
-    },
-    readerCensusTimeoutMs,
-  )
+  test('finishes both real publishers and removes their global reservations', async () => {
+    if (admission === undefined || reservationsAsserted === false)
+      throw new Error('held reservation assertions did not complete')
+    admission.release()
+    const records = await Promise.all(admission.publications)
+    const finished = readBudgetLedger(host)
+    expect(finished.reservations).toEqual([])
+    expect(finished.usedBytes).toBeGreaterThanOrEqual(admission.baseline.usedBytes)
+    const admissionEpoch = admission.baseline.epoch
+    const newEstimates = finished.journal.filter(({ epoch }) => epoch > admissionEpoch)
+    expect(newEstimates).toHaveLength(2)
+    for (const { estimatedBytes } of newEstimates)
+      expect(estimatedBytes).toBeGreaterThanOrEqual(payloadBytes)
+    expectCurrent(pinned, pinnedRecord)
+    expectCurrent(live, liveRecord)
+    for (let index = 0; index < contenders.length; index++) {
+      const fixture = contenders[index]
+      const record = records[index]
+      if (fixture === undefined || record === undefined)
+        throw new Error('missing concurrent publication record')
+      expectCurrent(fixture, record)
+      expect(
+        readdirSync(join(fixture.editorRoot, '.store')).filter((name) =>
+          name.startsWith('.candidate-'),
+        ),
+      ).toEqual([])
+    }
+  })
 
   it('closes and awaits the reader after both publications', async () => {
     await reader.stop()
@@ -1333,73 +1325,69 @@ describe('concurrent bounded host-budget publication and managed pin admission',
 })
 
 describe('detected unmanaged readers disable eviction for every generation in their root', () => {
-  it(
-    'preserves idle rollback and current bytes and permits a later warm publication',
-    async () => {
-      const host = makeHost()
-      try {
-        const victim = host.fixture('warm-race-victim', 101)
-        const incoming = host.fixture('warm-race-incoming', 102, 64)
-        const rollback = await host.publish(victim)
-        writeFileSync(victim.payload, Buffer.alloc(payloadBytes, 103))
-        const record = await host.publish(victim)
-        const reader = openReader(host, victim, record)
-        await reader.ready
-        mkdirSync(join(incoming.editorRoot, '.store'), { recursive: true })
-        const heldPath = join(incoming.editorRoot, '.publish.lock')
-        mkdirSync(heldPath)
-        writeFileSync(
-          join(heldPath, 'owner.json'),
-          JSON.stringify({
-            schema: 'effect-utils/editor-view-lock/v1',
-            token: 'incoming-owner',
-            pid: process.pid,
+  test('preserves idle rollback and current bytes and permits a later warm publication', async () => {
+    const host = makeHost()
+    try {
+      const victim = host.fixture('warm-race-victim', 101)
+      const incoming = host.fixture('warm-race-incoming', 102, 64)
+      const rollback = await host.publish(victim)
+      writeFileSync(victim.payload, Buffer.alloc(payloadBytes, 103))
+      const record = await host.publish(victim)
+      const reader = openReader(host, victim, record)
+      await reader.ready
+      mkdirSync(join(incoming.editorRoot, '.store'), { recursive: true })
+      const heldPath = join(incoming.editorRoot, '.publish.lock')
+      mkdirSync(heldPath)
+      writeFileSync(
+        join(heldPath, 'owner.json'),
+        JSON.stringify({
+          schema: 'effect-utils/editor-view-lock/v1',
+          token: 'incoming-owner',
+          pid: process.pid,
+        }),
+      )
+      host.advance(hostRecencyMs + hostGraceMs + 1)
+      host.age(victim, record)
+      host.age(victim, rollback)
+      let acquired = 0
+      await expect(
+        host.track(
+          reserveEditorViewBudget({
+            contentStore: host.contentStore,
+            root: { repoRoot: incoming.root, editorRoot: incoming.editorRoot },
+            heldEditorRoot: incoming.editorRoot,
+            discoverRoots: () => [{ repoRoot: victim.root, editorRoot: victim.editorRoot }],
+            reservationBytes: 1,
+            budgetBytes: 1,
+            tryLockRoot: (root) => {
+              acquired++
+              return lockRoot(root)
+            },
           }),
-        )
-        host.advance(hostRecencyMs + hostGraceMs + 1)
-        host.age(victim, record)
-        host.age(victim, rollback)
-        let acquired = 0
-        await expect(
-          host.track(
-            reserveEditorViewBudget({
-              contentStore: host.contentStore,
-              root: { repoRoot: incoming.root, editorRoot: incoming.editorRoot },
-              heldEditorRoot: incoming.editorRoot,
-              discoverRoots: () => [{ repoRoot: victim.root, editorRoot: victim.editorRoot }],
-              reservationBytes: 1,
-              budgetBytes: 1,
-              tryLockRoot: (root) => {
-                acquired++
-                return lockRoot(root)
-              },
-            }),
-          ),
-        ).rejects.toMatchObject({
-          code: 'EDITOR_VIEW_CAPACITY',
-          blockedGenerations: 2,
-          reasons: expect.arrayContaining([
-            'reader protection requires complete legacy evidence and an exclusive generation lease',
-          ]),
-        })
-        expect(acquired).toBeGreaterThan(0)
-        expect(readBudgetLedger(host).reservations).toEqual([])
-        expectCurrent(victim, record)
-        expect(pathExists(join(victim.editorRoot, rollback.snapshot))).toBe(true)
-        expectRunningReader(reader)
-        const warm = await host.publish(victim, {
-          beforeMaterialize: () => {
-            throw new Error('preserved generation should support warm publication')
-          },
-        })
-        expect(warm.snapshot).toBe(record.snapshot)
-        expectCurrent(victim, warm)
-      } finally {
-        await host.cleanup()
-      }
-    },
-    readerCensusTimeoutMs,
-  )
+        ),
+      ).rejects.toMatchObject({
+        code: 'EDITOR_VIEW_CAPACITY',
+        blockedGenerations: 2,
+        reasons: expect.arrayContaining([
+          'reader protection requires complete legacy evidence and an exclusive generation lease',
+        ]),
+      })
+      expect(acquired).toBeGreaterThan(0)
+      expect(readBudgetLedger(host).reservations).toEqual([])
+      expectCurrent(victim, record)
+      expect(pathExists(join(victim.editorRoot, rollback.snapshot))).toBe(true)
+      expectRunningReader(reader)
+      const warm = await host.publish(victim, {
+        beforeMaterialize: () => {
+          throw new Error('preserved generation should support warm publication')
+        },
+      })
+      expect(warm.snapshot).toBe(record.snapshot)
+      expectCurrent(victim, warm)
+    } finally {
+      await host.cleanup()
+    }
+  })
 })
 
 describe('warm publication wins the census-to-victim-lock race', () => {
@@ -1766,46 +1754,42 @@ describe('host-budget reader observations keep a fixed candidate set', () => {
     readerReady = true
   })
 
-  it(
-    'never retires a generation whose recency boundary expires during the real process scan',
-    async () => {
-      if (
-        oldRecord === undefined ||
-        heldRecord === undefined ||
-        reader === undefined ||
-        readerReady === false
-      )
-        throw new Error('boundary regression setup did not complete')
-      let crossed = false
-      const scan = fsMocks.readlinkSync.mockImplementation((...args) => {
-        if (crossed === false && /^\/proc\/[0-9]+\/cwd$/.test(String(args[0])) === true) {
-          crossed = true
-          host.advance(2)
-        }
-        return nativeFs.readlinkSync(...args)
-      })
-      const nativeScan = childProcessMocks.spawnSync.mockImplementation((...args) => {
-        if (crossed === false && String(args[0]) === '/usr/sbin/lsof') {
-          crossed = true
-          host.advance(2)
-        }
-        return nativeChildProcess.spawnSync(...args)
-      })
-      try {
-        await expect(host.publish(incoming, { hostBudgetBytes: 1 })).rejects.toBeInstanceOf(
-          EditorViewCapacityError,
-        )
-      } finally {
-        scan.mockReset().mockImplementation(nativeFs.readlinkSync)
-        nativeScan.mockReset().mockImplementation(nativeChildProcess.spawnSync)
+  test('never retires a generation whose recency boundary expires during the real process scan', async () => {
+    if (
+      oldRecord === undefined ||
+      heldRecord === undefined ||
+      reader === undefined ||
+      readerReady === false
+    )
+      throw new Error('boundary regression setup did not complete')
+    let crossed = false
+    const scan = fsMocks.readlinkSync.mockImplementation((...args) => {
+      if (crossed === false && /^\/proc\/[0-9]+\/cwd$/.test(String(args[0])) === true) {
+        crossed = true
+        host.advance(2)
       }
-      expect(crossed).toBe(true)
-      expect(pathExists(join(old.editorRoot, oldRecord.snapshot))).toBe(false)
-      expectCurrent(held, heldRecord)
-      expectRunningReader(reader)
-    },
-    readerCensusTimeoutMs,
-  )
+      return nativeFs.readlinkSync(...args)
+    })
+    const nativeScan = childProcessMocks.spawnSync.mockImplementation((...args) => {
+      if (crossed === false && String(args[0]) === '/usr/sbin/lsof') {
+        crossed = true
+        host.advance(2)
+      }
+      return nativeChildProcess.spawnSync(...args)
+    })
+    try {
+      await expect(host.publish(incoming, { hostBudgetBytes: 1 })).rejects.toBeInstanceOf(
+        EditorViewCapacityError,
+      )
+    } finally {
+      scan.mockReset().mockImplementation(nativeFs.readlinkSync)
+      nativeScan.mockReset().mockImplementation(nativeChildProcess.spawnSync)
+    }
+    expect(crossed).toBe(true)
+    expect(pathExists(join(old.editorRoot, oldRecord.snapshot))).toBe(false)
+    expectCurrent(held, heldRecord)
+    expectRunningReader(reader)
+  })
 })
 
 describe('detected unmanaged-root capacity rejection never enters destructive teardown', () => {
@@ -1831,36 +1815,31 @@ describe('detected unmanaged-root capacity rejection never enters destructive te
     await reader.ready
   })
 
-  it(
-    'preserves the victim and leaves no admission or settlement after capacity rejection',
-    async () => {
-      if (victimRecord === undefined)
-        throw new Error('teardown victim publication did not complete')
-      let evictionEntered = false
-      let materialized = false
-      const baseline = readBudgetLedger(host)
-      await expect(
-        host.publish(incoming, {
-          hostBudgetBytes: 1,
-          beforeBudgetEviction: () => {
-            evictionEntered = true
-          },
-          beforeMaterialize: () => {
-            materialized = true
-          },
-        }),
-      ).rejects.toBeInstanceOf(EditorViewCapacityError)
-      expect(evictionEntered).toBe(true)
-      expect(materialized).toBe(false)
-      expectCurrent(victim, victimRecord)
-      expect(pathExists(join(incoming.editorRoot, incoming.options.viewName))).toBe(false)
-      expect(pathExists(join(incoming.editorRoot, '.publish.lock'))).toBe(false)
-      const finished = readBudgetLedger(host)
-      expect(finished.reservations).toEqual([])
-      expect(finished.journal.filter(({ epoch }) => epoch > baseline.epoch)).toEqual([])
-    },
-    readerCensusTimeoutMs,
-  )
+  test('preserves the victim and leaves no admission or settlement after capacity rejection', async () => {
+    if (victimRecord === undefined) throw new Error('teardown victim publication did not complete')
+    let evictionEntered = false
+    let materialized = false
+    const baseline = readBudgetLedger(host)
+    await expect(
+      host.publish(incoming, {
+        hostBudgetBytes: 1,
+        beforeBudgetEviction: () => {
+          evictionEntered = true
+        },
+        beforeMaterialize: () => {
+          materialized = true
+        },
+      }),
+    ).rejects.toBeInstanceOf(EditorViewCapacityError)
+    expect(evictionEntered).toBe(true)
+    expect(materialized).toBe(false)
+    expectCurrent(victim, victimRecord)
+    expect(pathExists(join(incoming.editorRoot, incoming.options.viewName))).toBe(false)
+    expect(pathExists(join(incoming.editorRoot, '.publish.lock'))).toBe(false)
+    const finished = readBudgetLedger(host)
+    expect(finished.reservations).toEqual([])
+    expect(finished.journal.filter(({ epoch }) => epoch > baseline.epoch)).toEqual([])
+  })
 })
 
 describe('budget telemetry never waits for exporter delivery', () => {
@@ -2269,59 +2248,55 @@ describe('budget admission defers complete reader proof until eviction needs it'
     }
   })
 
-  it(
-    're-proves readers after acquiring the fence and blocks a newly opened unmanaged reader',
-    async () => {
-      const host = makeHost()
-      try {
-        const victim = host.fixture('fresh-proof-victim', 191)
-        const incoming = host.fixture('fresh-proof-incoming', 192, 64)
-        const record = await host.publish(victim)
-        await host.publish(incoming)
-        const incomingLock = lockRoot(incoming)
-        host.advance(hostRecencyMs + hostGraceMs + 1)
-        host.age(victim, record)
-        const scansBefore = readerScans()
-        let reader: Reader | undefined
-        let scansAtFence = 0
-        await expect(
-          host.track(
-            reserveEditorViewBudget({
-              contentStore: host.contentStore,
-              root: { repoRoot: incoming.root, editorRoot: incoming.editorRoot },
-              heldEditorRoot: incoming.editorRoot,
-              discoverRoots: () => [{ repoRoot: victim.root, editorRoot: victim.editorRoot }],
-              reservationBytes: 1,
-              budgetBytes: 1,
-              tryLockRoot: (root) => {
-                expect(root.editorRoot).toBe(victim.editorRoot)
-                if (reader === undefined) expect(readerScans()).toBe(scansBefore)
-                return lockRoot(root)
-              },
-              beforeRetireRoot: async () => {
-                scansAtFence = readerScans()
-                if (reader === undefined) {
-                  reader = openReader(host, victim, record, { fromContentStore: true })
-                  await reader.ready
-                }
-              },
-            }),
-          ),
-        ).rejects.toBeInstanceOf(EditorViewCapacityError)
-        expect(readerScans()).toBeGreaterThan(scansAtFence)
-        expectCurrent(victim, record)
-        expect(pathExists(join(victim.editorRoot, '.publish.lock'))).toBe(false)
-        expect(pathExists(join(victim.editorRoot, '.evicted-budget-view.json'))).toBe(false)
-        if (reader === undefined) throw new Error('eviction never reached the fence barrier')
-        expectRunningReader(reader)
-        expect(readBudgetLedger(host).reservations).toEqual([])
-        incomingLock.release()
-      } finally {
-        await host.cleanup()
-      }
-    },
-    readerCensusTimeoutMs,
-  )
+  test('re-proves readers after acquiring the fence and blocks a newly opened unmanaged reader', async () => {
+    const host = makeHost()
+    try {
+      const victim = host.fixture('fresh-proof-victim', 191)
+      const incoming = host.fixture('fresh-proof-incoming', 192, 64)
+      const record = await host.publish(victim)
+      await host.publish(incoming)
+      const incomingLock = lockRoot(incoming)
+      host.advance(hostRecencyMs + hostGraceMs + 1)
+      host.age(victim, record)
+      const scansBefore = readerScans()
+      let reader: Reader | undefined
+      let scansAtFence = 0
+      await expect(
+        host.track(
+          reserveEditorViewBudget({
+            contentStore: host.contentStore,
+            root: { repoRoot: incoming.root, editorRoot: incoming.editorRoot },
+            heldEditorRoot: incoming.editorRoot,
+            discoverRoots: () => [{ repoRoot: victim.root, editorRoot: victim.editorRoot }],
+            reservationBytes: 1,
+            budgetBytes: 1,
+            tryLockRoot: (root) => {
+              expect(root.editorRoot).toBe(victim.editorRoot)
+              if (reader === undefined) expect(readerScans()).toBe(scansBefore)
+              return lockRoot(root)
+            },
+            beforeRetireRoot: async () => {
+              scansAtFence = readerScans()
+              if (reader === undefined) {
+                reader = openReader(host, victim, record, { fromContentStore: true })
+                await reader.ready
+              }
+            },
+          }),
+        ),
+      ).rejects.toBeInstanceOf(EditorViewCapacityError)
+      expect(readerScans()).toBeGreaterThan(scansAtFence)
+      expectCurrent(victim, record)
+      expect(pathExists(join(victim.editorRoot, '.publish.lock'))).toBe(false)
+      expect(pathExists(join(victim.editorRoot, '.evicted-budget-view.json'))).toBe(false)
+      if (reader === undefined) throw new Error('eviction never reached the fence barrier')
+      expectRunningReader(reader)
+      expect(readBudgetLedger(host).reservations).toEqual([])
+      incomingLock.release()
+    } finally {
+      await host.cleanup()
+    }
+  })
 
   it('does not inventory package pointers for generation-only census roots', async () => {
     const host = makeHost()
@@ -2404,192 +2379,174 @@ describe('budget admission defers complete reader proof until eviction needs it'
     }
   })
 
-  it(
-    'keeps an unobserved reader-held orphan exposed by pointer removal during locking',
-    async () => {
-      const host = makeHost({ drainAfterEach: true })
-      try {
-        const fixture = host.fixture('pointer-removal-reader', 174, 64)
-        const record = await host.publish(fixture)
-        const readerPayloadBytes = 128 * 1024
-        const retained = join(fixture.editorRoot, '.store', '.candidate-held')
-        const dependency = join(retained, 'node_modules', '.pnpm', 'dep@1', 'node_modules', 'dep')
-        mkdirSync(dependency, { recursive: true })
-        writeFileSync(join(dependency, 'payload.bin'), Buffer.alloc(readerPayloadBytes, 175))
-        // Both orphans have equal census recency, so the newly exposed "-held"
-        // key sorts before "-trigger" in a buggy unrestricted refreshed plan.
-        const pointer = join(fixture.editorRoot, 'orphan-reader')
-        symlinkSync('.store/.candidate-held', pointer)
-        const eligible = join(fixture.editorRoot, '.store', '.candidate-trigger')
-        mkdirSync(eligible)
-        writeFileSync(join(eligible, 'payload.bin'), Buffer.alloc(readerPayloadBytes, 173))
-        const reader = openReader(host, fixture, { ...record, snapshot: '.store/.candidate-held' })
-        await reader.ready
-        const options = {
-          contentStore: host.contentStore,
-          root: { repoRoot: fixture.root, editorRoot: fixture.editorRoot },
-          heldEditorRoot: fixture.editorRoot,
-          discoverRoots: () => [],
-          reservationBytes: 1,
-          tryLockRoot: lockRoot,
-        }
-        const probe = await host.track(
-          reserveEditorViewBudget({ ...options, budgetBytes: setupBudgetBytes }),
+  test('keeps an unobserved reader-held orphan exposed by pointer removal during locking', async () => {
+    const host = makeHost({ drainAfterEach: true })
+    try {
+      const fixture = host.fixture('pointer-removal-reader', 174, 64)
+      const record = await host.publish(fixture)
+      const readerPayloadBytes = 128 * 1024
+      const retained = join(fixture.editorRoot, '.store', '.candidate-held')
+      const dependency = join(retained, 'node_modules', '.pnpm', 'dep@1', 'node_modules', 'dep')
+      mkdirSync(dependency, { recursive: true })
+      writeFileSync(join(dependency, 'payload.bin'), Buffer.alloc(readerPayloadBytes, 175))
+      // Both orphans have equal census recency, so the newly exposed "-held"
+      // key sorts before "-trigger" in a buggy unrestricted refreshed plan.
+      const pointer = join(fixture.editorRoot, 'orphan-reader')
+      symlinkSync('.store/.candidate-held', pointer)
+      const eligible = join(fixture.editorRoot, '.store', '.candidate-trigger')
+      mkdirSync(eligible)
+      writeFileSync(join(eligible, 'payload.bin'), Buffer.alloc(readerPayloadBytes, 173))
+      const reader = openReader(host, fixture, { ...record, snapshot: '.store/.candidate-held' })
+      await reader.ready
+      const options = {
+        contentStore: host.contentStore,
+        root: { repoRoot: fixture.root, editorRoot: fixture.editorRoot },
+        heldEditorRoot: fixture.editorRoot,
+        discoverRoots: () => [],
+        reservationBytes: 1,
+        tryLockRoot: lockRoot,
+      }
+      const probe = await host.track(
+        reserveEditorViewBudget({ ...options, budgetBytes: setupBudgetBytes }),
+      )
+      // Derive pressure from this filesystem's actual footprint (including
+      // directory/journal bytes); one 128 KiB trigger must cover the shortfall.
+      const budgetBytes = readBudgetLedger(host).usedBytes - readerPayloadBytes / 2
+      await cancelEditorViewBudgetReservation({
+        contentStore: host.contentStore,
+        token: probe.token,
+      })
+      let removedPointer = false
+      const captured = await captureStderr(() =>
+        host.track(
+          reserveEditorViewBudget({
+            ...options,
+            budgetBytes,
+            beforeRetireRoot: () => {
+              if (removedPointer === false) {
+                rmSync(pointer)
+                removedPointer = true
+              }
+            },
+          }),
+        ),
+      )
+      expect(removedPointer).toBe(true)
+      expect(pathExists(retained)).toBe(true)
+      expect(captured.stderr).toContain('"stage":"pointer-inventory"')
+      expect(captured.stderr).toContain('"roots":1,"entries":')
+      expect(captured.stderr).toContain('"inventories":[{"editorRoot":')
+      expect(pathExists(eligible)).toBe(false)
+      expect(readFileSync(join(dependency, 'payload.bin'))).toEqual(
+        Buffer.alloc(readerPayloadBytes, 175),
+      )
+      expectRunningReader(reader)
+      expectCurrent(fixture, record)
+      await cancelEditorViewBudgetReservation({
+        contentStore: host.contentStore,
+        token: captured.value.token,
+      })
+    } finally {
+      await host.cleanup()
+    }
+  })
+
+  test('keeps a reader when its generation becomes eligible during root locking', async () => {
+    const host = makeHost({ drainAfterEach: true })
+    try {
+      const victim = host.fixture('newly-eligible-reader', 181)
+      const incoming = host.fixture('newly-eligible-incoming', 182, 64)
+      const record = await host.publish(victim)
+      await host.publish(incoming)
+      host.advance(hostRecencyMs + hostGraceMs + 1)
+      const snapshot = join(victim.editorRoot, record.snapshot)
+      utimesSync(snapshot, new Date(Date.now()), new Date(Date.now() - 360_000 + 1))
+      const orphan = join(victim.editorRoot, '.store', '.candidate-eligible')
+      mkdirSync(orphan)
+      writeFileSync(join(orphan, 'payload.bin'), Buffer.alloc(payloadBytes, 180))
+      const reader = openReader(host, victim, record)
+      await reader.ready
+      await expect(
+        host.track(
+          reserveEditorViewBudget({
+            contentStore: host.contentStore,
+            root: { repoRoot: incoming.root, editorRoot: incoming.editorRoot },
+            heldEditorRoot: incoming.editorRoot,
+            discoverRoots: () => [{ repoRoot: victim.root, editorRoot: victim.editorRoot }],
+            reservationBytes: 1,
+            budgetBytes: 1,
+            tryLockRoot: lockRoot,
+            beforeRetireRoot: () => {
+              host.advance(2)
+            },
+          }),
+        ),
+      ).rejects.toBeInstanceOf(EditorViewCapacityError)
+      expect(pathExists(snapshot)).toBe(true)
+      expectCurrent(victim, record)
+      expectRunningReader(reader)
+      expect(readBudgetLedger(host).reservations).toEqual([])
+    } finally {
+      await host.cleanup()
+    }
+  })
+
+  test('accounts real readers when every retirement epoch fence mismatches', async () => {
+    const host = makeHost()
+    try {
+      const victim = host.fixture('epoch-reader', 179)
+      const incoming = host.fixture('epoch-incoming', 178)
+      const record = await host.publish(victim)
+      await host.publish(incoming)
+      host.advance(hostRecencyMs + hostGraceMs + 1)
+      host.age(victim, record)
+      const reader = openReader(host, victim, record)
+      await reader.ready
+      const options = {
+        contentStore: host.contentStore,
+        root: { repoRoot: incoming.root, editorRoot: incoming.editorRoot },
+        heldEditorRoot: incoming.editorRoot,
+        discoverRoots: () => [{ repoRoot: victim.root, editorRoot: victim.editorRoot }],
+        reservationBytes: 1,
+        tryLockRoot: lockRoot,
+      }
+      const tokens: string[] = []
+      for (let index = 0; index < 8; index += 1) {
+        // eslint-disable-next-line no-await-in-loop -- Each real cancellation must advance a later fence's epoch.
+        tokens.push(
+          (await host.track(reserveEditorViewBudget({ ...options, budgetBytes: setupBudgetBytes })))
+            .token,
         )
-        // Derive pressure from this filesystem's actual footprint (including
-        // directory/journal bytes); one 128 KiB trigger must cover the shortfall.
-        const budgetBytes = readBudgetLedger(host).usedBytes - readerPayloadBytes / 2
-        await cancelEditorViewBudgetReservation({
-          contentStore: host.contentStore,
-          token: probe.token,
-        })
-        let removedPointer = false
-        const captured = await captureStderr(() =>
+      }
+      let mismatches = 0
+      const captured = await captureStderr(() =>
+        expect(
           host.track(
             reserveEditorViewBudget({
               ...options,
-              budgetBytes,
-              beforeRetireRoot: () => {
-                if (removedPointer === false) {
-                  rmSync(pointer)
-                  removedPointer = true
-                }
-              },
-            }),
-          ),
-        )
-        expect(removedPointer).toBe(true)
-        expect(pathExists(retained)).toBe(true)
-        expect(captured.stderr).toContain('"stage":"pointer-inventory"')
-        expect(captured.stderr).toContain('"roots":1,"entries":')
-        expect(captured.stderr).toContain('"inventories":[{"editorRoot":')
-        expect(pathExists(eligible)).toBe(false)
-        expect(readFileSync(join(dependency, 'payload.bin'))).toEqual(
-          Buffer.alloc(readerPayloadBytes, 175),
-        )
-        expectRunningReader(reader)
-        expectCurrent(fixture, record)
-        await cancelEditorViewBudgetReservation({
-          contentStore: host.contentStore,
-          token: captured.value.token,
-        })
-      } finally {
-        await host.cleanup()
-      }
-    },
-    readerCensusTimeoutMs,
-  )
-
-  it(
-    'keeps a reader when its generation becomes eligible during root locking',
-    async () => {
-      const host = makeHost({ drainAfterEach: true })
-      try {
-        const victim = host.fixture('newly-eligible-reader', 181)
-        const incoming = host.fixture('newly-eligible-incoming', 182, 64)
-        const record = await host.publish(victim)
-        await host.publish(incoming)
-        host.advance(hostRecencyMs + hostGraceMs + 1)
-        const snapshot = join(victim.editorRoot, record.snapshot)
-        utimesSync(snapshot, new Date(Date.now()), new Date(Date.now() - 360_000 + 1))
-        const orphan = join(victim.editorRoot, '.store', '.candidate-eligible')
-        mkdirSync(orphan)
-        writeFileSync(join(orphan, 'payload.bin'), Buffer.alloc(payloadBytes, 180))
-        const reader = openReader(host, victim, record)
-        await reader.ready
-        await expect(
-          host.track(
-            reserveEditorViewBudget({
-              contentStore: host.contentStore,
-              root: { repoRoot: incoming.root, editorRoot: incoming.editorRoot },
-              heldEditorRoot: incoming.editorRoot,
-              discoverRoots: () => [{ repoRoot: victim.root, editorRoot: victim.editorRoot }],
-              reservationBytes: 1,
               budgetBytes: 1,
-              tryLockRoot: lockRoot,
-              beforeRetireRoot: () => {
-                host.advance(2)
+              beforeRetireRoot: async () => {
+                const token = tokens.pop()
+                if (token === undefined) throw new Error('unexpected extra retirement round')
+                await cancelEditorViewBudgetReservation({ contentStore: host.contentStore, token })
+                mismatches += 1
               },
             }),
           ),
-        ).rejects.toBeInstanceOf(EditorViewCapacityError)
-        expect(pathExists(snapshot)).toBe(true)
-        expectCurrent(victim, record)
-        expectRunningReader(reader)
-        expect(readBudgetLedger(host).reservations).toEqual([])
-      } finally {
-        await host.cleanup()
-      }
-    },
-    readerCensusTimeoutMs,
-  )
-
-  it(
-    'accounts real readers when every retirement epoch fence mismatches',
-    async () => {
-      const host = makeHost()
-      try {
-        const victim = host.fixture('epoch-reader', 179)
-        const incoming = host.fixture('epoch-incoming', 178)
-        const record = await host.publish(victim)
-        await host.publish(incoming)
-        host.advance(hostRecencyMs + hostGraceMs + 1)
-        host.age(victim, record)
-        const reader = openReader(host, victim, record)
-        await reader.ready
-        const options = {
-          contentStore: host.contentStore,
-          root: { repoRoot: incoming.root, editorRoot: incoming.editorRoot },
-          heldEditorRoot: incoming.editorRoot,
-          discoverRoots: () => [{ repoRoot: victim.root, editorRoot: victim.editorRoot }],
-          reservationBytes: 1,
-          tryLockRoot: lockRoot,
-        }
-        const tokens: string[] = []
-        for (let index = 0; index < 8; index += 1) {
-          // eslint-disable-next-line no-await-in-loop -- Each real cancellation must advance a later fence's epoch.
-          tokens.push(
-            (
-              await host.track(
-                reserveEditorViewBudget({ ...options, budgetBytes: setupBudgetBytes }),
-              )
-            ).token,
-          )
-        }
-        let mismatches = 0
-        const captured = await captureStderr(() =>
-          expect(
-            host.track(
-              reserveEditorViewBudget({
-                ...options,
-                budgetBytes: 1,
-                beforeRetireRoot: async () => {
-                  const token = tokens.pop()
-                  if (token === undefined) throw new Error('unexpected extra retirement round')
-                  await cancelEditorViewBudgetReservation({
-                    contentStore: host.contentStore,
-                    token,
-                  })
-                  mismatches += 1
-                },
-              }),
-            ),
-          ).rejects.toBeInstanceOf(EditorViewCapacityError),
-        )
-        expect(mismatches).toBe(8)
-        expect(readBudgetLedger(host).protectedBytes).toBeGreaterThanOrEqual(payloadBytes * 2)
-        expect(budgetEvents(captured.stderr).at(-1)?.protectedBytes).toBeGreaterThanOrEqual(
-          payloadBytes * 2,
-        )
-        expectCurrent(victim, record)
-        expectRunningReader(reader)
-        expect(readBudgetLedger(host).reservations).toEqual([])
-      } finally {
-        await host.cleanup()
-      }
-    },
-    readerCensusTimeoutMs,
-  )
+        ).rejects.toBeInstanceOf(EditorViewCapacityError),
+      )
+      expect(mismatches).toBe(8)
+      expect(readBudgetLedger(host).protectedBytes).toBeGreaterThanOrEqual(payloadBytes * 2)
+      expect(budgetEvents(captured.stderr).at(-1)?.protectedBytes).toBeGreaterThanOrEqual(
+        payloadBytes * 2,
+      )
+      expectCurrent(victim, record)
+      expectRunningReader(reader)
+      expect(readBudgetLedger(host).reservations).toEqual([])
+    } finally {
+      await host.cleanup()
+    }
+  })
 
   it.each(['root', 'store', 'ledger'])(
     'retakes a shared census when the caller changes its %s',
@@ -2658,107 +2615,103 @@ describe('budget admission defers complete reader proof until eviction needs it'
     },
   )
 
-  it(
-    'shares one near-full census between workers but refreshes a generation mutation before capacity rejection',
-    async () => {
-      const host = makeHost()
-      try {
-        const victim = host.fixture('session-victim', 185)
-        const incoming = host.fixture('session-incoming', 186, 64)
-        const oldRecord = await host.publish(victim)
-        await host.publish(incoming)
-        const incomingLock = lockRoot(incoming)
-        host.advance(hostRecencyMs + hostGraceMs + 1)
-        host.age(victim, oldRecord)
-        const options = {
-          contentStore: host.contentStore,
-          root: { repoRoot: incoming.root, editorRoot: incoming.editorRoot },
-          heldEditorRoot: incoming.editorRoot,
-          discoverRoots: () => [{ repoRoot: victim.root, editorRoot: victim.editorRoot }],
-          reservationBytes: 1,
-          tryLockRoot: lockRoot,
-        }
-        const probe = await host.track(
-          reserveEditorViewBudget({ ...options, budgetBytes: setupBudgetBytes }),
-        )
-        await cancelEditorViewBudgetReservation({
-          contentStore: host.contentStore,
-          token: probe.token,
-        })
-        const baseline = readBudgetLedger(host)
-        const budgetBytes = Math.ceil((baseline.usedBytes + 2) / 0.9)
-        const censusSession = makeEditorViewBudgetCensusSession()
-        const entered = Promise.withResolvers<void>()
-        const release = host.gate()
-        let censuses = 0
-        const onCensus = async () => {
-          censuses++
-          entered.resolve()
-          await release.promise
-        }
-        const scansBefore = readerScans()
-        const workers = [0, 1].map(() =>
-          host.track(reserveEditorViewBudget({ ...options, budgetBytes, censusSession, onCensus })),
-        )
-        await Promise.race([
-          entered.promise,
-          Promise.race(workers).then(() => {
-            throw new Error('worker skipped the census barrier')
-          }),
-        ])
-        release.resolve()
-        const reservations = await Promise.all(workers)
-        expect(censuses).toBe(1)
-        expect(readerScans()).toBe(scansBefore)
-        const held = readBudgetLedger(host)
-        expect(held.reservations).toHaveLength(2)
-        expect(new Set(reservations.map(({ token }) => token)).size).toBe(2)
-        expect(held.usedBytes + 2).toBeGreaterThan(budgetBytes * 0.8)
-        expect(held.usedBytes + 2).toBeLessThanOrEqual(budgetBytes)
-        for (const { token } of reservations)
-          await cancelEditorViewBudgetReservation({ contentStore: host.contentStore, token })
-
-        // The batch session still contains the old generation set. A real publication
-        // changes both that set and the host journal before pressure reuses the session.
-        writeFileSync(victim.payload, Buffer.alloc(payloadBytes, 187))
-        const currentRecord = await host.publish(victim)
-        expect(currentRecord.snapshot).not.toBe(oldRecord.snapshot)
-        const reader = openReader(host, victim, currentRecord, { fromContentStore: true })
-        await reader.ready
-        host.advance(hostRecencyMs + hostGraceMs + 1)
-        host.age(victim, oldRecord)
-        host.age(victim, currentRecord)
-        let attemptedEviction = false
-        await expect(
-          host.track(
-            reserveEditorViewBudget({
-              ...options,
-              budgetBytes: 1,
-              censusSession,
-              onCensus: () => {
-                censuses++
-              },
-              tryLockRoot: (root) => {
-                attemptedEviction = true
-                expect(censuses).toBeGreaterThan(1)
-                return lockRoot(root)
-              },
-            }),
-          ),
-        ).rejects.toBeInstanceOf(EditorViewCapacityError)
-        expect(censuses).toBeGreaterThan(1)
-        expect(attemptedEviction).toBe(true)
-        expect(pathExists(join(victim.editorRoot, oldRecord.snapshot))).toBe(true)
-        expectCurrent(victim, currentRecord)
-        expectRunningReader(reader)
-        expect(readBudgetLedger(host).reservations).toEqual([])
-        incomingLock.release()
-      } finally {
-        await host.cleanup()
+  test('shares one near-full census between workers but refreshes a generation mutation before capacity rejection', async () => {
+    const host = makeHost()
+    try {
+      const victim = host.fixture('session-victim', 185)
+      const incoming = host.fixture('session-incoming', 186, 64)
+      const oldRecord = await host.publish(victim)
+      await host.publish(incoming)
+      const incomingLock = lockRoot(incoming)
+      host.advance(hostRecencyMs + hostGraceMs + 1)
+      host.age(victim, oldRecord)
+      const options = {
+        contentStore: host.contentStore,
+        root: { repoRoot: incoming.root, editorRoot: incoming.editorRoot },
+        heldEditorRoot: incoming.editorRoot,
+        discoverRoots: () => [{ repoRoot: victim.root, editorRoot: victim.editorRoot }],
+        reservationBytes: 1,
+        tryLockRoot: lockRoot,
       }
-    },
-    readerCensusTimeoutMs,
-  )
+      const probe = await host.track(
+        reserveEditorViewBudget({ ...options, budgetBytes: setupBudgetBytes }),
+      )
+      await cancelEditorViewBudgetReservation({
+        contentStore: host.contentStore,
+        token: probe.token,
+      })
+      const baseline = readBudgetLedger(host)
+      const budgetBytes = Math.ceil((baseline.usedBytes + 2) / 0.9)
+      const censusSession = makeEditorViewBudgetCensusSession()
+      const entered = Promise.withResolvers<void>()
+      const release = host.gate()
+      let censuses = 0
+      const onCensus = async () => {
+        censuses++
+        entered.resolve()
+        await release.promise
+      }
+      const scansBefore = readerScans()
+      const workers = [0, 1].map(() =>
+        host.track(reserveEditorViewBudget({ ...options, budgetBytes, censusSession, onCensus })),
+      )
+      await Promise.race([
+        entered.promise,
+        Promise.race(workers).then(() => {
+          throw new Error('worker skipped the census barrier')
+        }),
+      ])
+      release.resolve()
+      const reservations = await Promise.all(workers)
+      expect(censuses).toBe(1)
+      expect(readerScans()).toBe(scansBefore)
+      const held = readBudgetLedger(host)
+      expect(held.reservations).toHaveLength(2)
+      expect(new Set(reservations.map(({ token }) => token)).size).toBe(2)
+      expect(held.usedBytes + 2).toBeGreaterThan(budgetBytes * 0.8)
+      expect(held.usedBytes + 2).toBeLessThanOrEqual(budgetBytes)
+      for (const { token } of reservations)
+        await cancelEditorViewBudgetReservation({ contentStore: host.contentStore, token })
+
+      // The batch session still contains the old generation set. A real publication
+      // changes both that set and the host journal before pressure reuses the session.
+      writeFileSync(victim.payload, Buffer.alloc(payloadBytes, 187))
+      const currentRecord = await host.publish(victim)
+      expect(currentRecord.snapshot).not.toBe(oldRecord.snapshot)
+      const reader = openReader(host, victim, currentRecord, { fromContentStore: true })
+      await reader.ready
+      host.advance(hostRecencyMs + hostGraceMs + 1)
+      host.age(victim, oldRecord)
+      host.age(victim, currentRecord)
+      let attemptedEviction = false
+      await expect(
+        host.track(
+          reserveEditorViewBudget({
+            ...options,
+            budgetBytes: 1,
+            censusSession,
+            onCensus: () => {
+              censuses++
+            },
+            tryLockRoot: (root) => {
+              attemptedEviction = true
+              expect(censuses).toBeGreaterThan(1)
+              return lockRoot(root)
+            },
+          }),
+        ),
+      ).rejects.toBeInstanceOf(EditorViewCapacityError)
+      expect(censuses).toBeGreaterThan(1)
+      expect(attemptedEviction).toBe(true)
+      expect(pathExists(join(victim.editorRoot, oldRecord.snapshot))).toBe(true)
+      expectCurrent(victim, currentRecord)
+      expectRunningReader(reader)
+      expect(readBudgetLedger(host).reservations).toEqual([])
+      incomingLock.release()
+    } finally {
+      await host.cleanup()
+    }
+  })
 })
 
 describe('orphan retirement under the publication exclusion', () => {
@@ -2817,7 +2770,7 @@ describe('orphan retirement under the publication exclusion', () => {
     },
   )
 
-  it.each(['.store/.candidate-reader-held', '.gc-reader-held'])(
+  test.each(['.store/.candidate-reader-held', '.gc-reader-held'])(
     'keeps startup orphan %s held by a real reader and refuses an invalid lock proof',
     async (snapshot) => {
       const host = makeHost()
@@ -2864,56 +2817,49 @@ describe('orphan retirement under the publication exclusion', () => {
         await host.cleanup()
       }
     },
-    readerCensusTimeoutMs,
   )
 
-  it(
-    'keeps a batch candidate opened by a real reader after its census',
-    async () => {
-      const host = makeHost()
-      try {
-        const fixture = host.fixture('batch-reader-held', 166, 64)
-        const record = await host.publish(fixture)
-        const snapshot = '.store/.candidate-reader-after-census'
-        const candidate = join(fixture.editorRoot, snapshot)
-        const dependency = join(candidate, 'node_modules', '.pnpm', 'dep@1', 'node_modules', 'dep')
-        mkdirSync(dependency, { recursive: true })
-        writeFileSync(join(dependency, 'payload.bin'), Buffer.alloc(payloadBytes, 167))
-        let reader: Reader | undefined
-        await expect(
-          host.track(
-            reserveEditorViewBudget({
-              contentStore: host.contentStore,
-              root: { repoRoot: fixture.root, editorRoot: fixture.editorRoot },
-              heldEditorRoot: fixture.editorRoot,
-              discoverRoots: () => [],
-              reservationBytes: 1,
-              budgetBytes: 1,
-              tryLockRoot: lockRoot,
-              beforeRetireRoot: async () => {
-                // This unmanaged orphan reader starts after census, before the
-                // fresh legacy proof. Orphans intentionally have no lease control.
-                if (reader === undefined) {
-                  reader = openReader(host, fixture, { ...record, snapshot })
-                  await reader.ready
-                }
-              },
-            }),
-          ),
-        ).rejects.toBeInstanceOf(EditorViewCapacityError)
-        if (reader === undefined) throw new Error('candidate never reached the retirement batch')
-        expectRunningReader(reader)
-        expect(pathExists(candidate)).toBe(true)
-        expect(readFileSync(join(dependency, 'payload.bin'))).toEqual(
-          Buffer.alloc(payloadBytes, 167),
-        )
-        expect(readBudgetLedger(host).reservations).toEqual([])
-      } finally {
-        await host.cleanup()
-      }
-    },
-    readerCensusTimeoutMs,
-  )
+  test('keeps a batch candidate opened by a real reader after its census', async () => {
+    const host = makeHost()
+    try {
+      const fixture = host.fixture('batch-reader-held', 166, 64)
+      const record = await host.publish(fixture)
+      const snapshot = '.store/.candidate-reader-after-census'
+      const candidate = join(fixture.editorRoot, snapshot)
+      const dependency = join(candidate, 'node_modules', '.pnpm', 'dep@1', 'node_modules', 'dep')
+      mkdirSync(dependency, { recursive: true })
+      writeFileSync(join(dependency, 'payload.bin'), Buffer.alloc(payloadBytes, 167))
+      let reader: Reader | undefined
+      await expect(
+        host.track(
+          reserveEditorViewBudget({
+            contentStore: host.contentStore,
+            root: { repoRoot: fixture.root, editorRoot: fixture.editorRoot },
+            heldEditorRoot: fixture.editorRoot,
+            discoverRoots: () => [],
+            reservationBytes: 1,
+            budgetBytes: 1,
+            tryLockRoot: lockRoot,
+            beforeRetireRoot: async () => {
+              // This unmanaged orphan reader starts after census, before the
+              // fresh legacy proof. Orphans intentionally have no lease control.
+              if (reader === undefined) {
+                reader = openReader(host, fixture, { ...record, snapshot })
+                await reader.ready
+              }
+            },
+          }),
+        ),
+      ).rejects.toBeInstanceOf(EditorViewCapacityError)
+      if (reader === undefined) throw new Error('candidate never reached the retirement batch')
+      expectRunningReader(reader)
+      expect(pathExists(candidate)).toBe(true)
+      expect(readFileSync(join(dependency, 'payload.bin'))).toEqual(Buffer.alloc(payloadBytes, 167))
+      expect(readBudgetLedger(host).reservations).toEqual([])
+    } finally {
+      await host.cleanup()
+    }
+  })
 
   it('preserves reserved and pointer-reached candidates, then converges after release', async () => {
     const host = makeHost()
@@ -3319,103 +3265,99 @@ describe('batched budget candidate retirement', () => {
     }
   }
 
-  it(
-    'a candidate held mid-batch is skipped',
-    async () => {
-      const host = makeHost()
+  test('a candidate held mid-batch is skipped', async () => {
+    const host = makeHost()
+    try {
+      const earlier = host.fixture('lease-batch-a', 201)
+      const later = host.fixture('lease-batch-b', 202)
+      const incoming = host.fixture('lease-batch-incoming', 203, 64)
+      const earlierRecord = await host.publish(earlier)
+      host.advance(1)
+      const laterRecord = await host.publish(later)
+      host.advance(1)
+      const incomingRecord = await host.publish(incoming)
+      host.advance(hostRecencyMs + hostGraceMs + 1)
+      host.age(earlier, earlierRecord)
+      host.age(later, laterRecord)
+      const earlierDir = join(earlier.editorRoot, earlierRecord.snapshot)
+      const laterDir = join(later.editorRoot, laterRecord.snapshot)
+      const generation = laterRecord.snapshot.split('/').at(-1)
+      if (generation === undefined) throw new Error('fixture lacks generation name')
+      const control = join(later.editorRoot, '.leases', `${generation}.lock`)
+      const leaseReadyFile = join(host.root, 'mid-batch-lease.ready')
+      // Publication establishes the control before the CAS-held callback. The
+      // child opens only that inode, never a payload descriptor or the CAS fence.
+      expect(pathExists(control)).toBe(true)
+      const lock = lockRoot(incoming)
       try {
-        const earlier = host.fixture('lease-batch-a', 201)
-        const later = host.fixture('lease-batch-b', 202)
-        const incoming = host.fixture('lease-batch-incoming', 203, 64)
-        const earlierRecord = await host.publish(earlier)
-        host.advance(1)
-        const laterRecord = await host.publish(later)
-        host.advance(1)
-        const incomingRecord = await host.publish(incoming)
-        host.advance(hostRecencyMs + hostGraceMs + 1)
-        host.age(earlier, earlierRecord)
-        host.age(later, laterRecord)
-        const earlierDir = join(earlier.editorRoot, earlierRecord.snapshot)
-        const laterDir = join(later.editorRoot, laterRecord.snapshot)
-        const generation = laterRecord.snapshot.split('/').at(-1)
-        if (generation === undefined) throw new Error('fixture lacks generation name')
-        const control = join(later.editorRoot, '.leases', `${generation}.lock`)
-        const leaseReadyFile = join(host.root, 'mid-batch-lease.ready')
-        // Publication establishes the control before the CAS-held callback. The
-        // child opens only that inode, never a payload descriptor or the CAS fence.
-        expect(pathExists(control)).toBe(true)
-        const lock = lockRoot(incoming)
-        try {
-          let holder: Reader | undefined
-          let firstVisited: string | undefined
-          const started = performance.now()
-          await expect(
-            host.track(
-              reserveEditorViewBudget({
-                contentStore: host.contentStore,
-                root: { repoRoot: incoming.root, editorRoot: incoming.editorRoot },
-                heldEditorRoot: incoming.editorRoot,
-                discoverRoots: () =>
-                  [earlier, later].map(({ root, editorRoot }) => ({
-                    repoRoot: root,
-                    editorRoot,
-                  })),
-                reservationBytes: 1,
-                budgetBytes: 1,
-                tryLockRoot: lockRoot,
-                beforeCandidateRetirement: ({ dir }) => {
-                  firstVisited ??= dir
-                  if (dir !== laterDir || holder !== undefined) return
-                  expect(firstVisited).toBe(earlierDir)
-                  expect(pathExists(earlierDir)).toBe(false)
-                  holder = openReader(host, later, laterRecord, {
-                    leaseControl: control,
-                    leaseReadyFile,
-                  })
-                  // The hook is synchronous. Wait in another process so the
-                  // real holder can signal SH acquisition without pumping this
-                  // process's event loop or taking the already-owned CAS fence.
-                  const ready = spawnSync(
-                    bun,
+        let holder: Reader | undefined
+        let firstVisited: string | undefined
+        const started = performance.now()
+        await expect(
+          host.track(
+            reserveEditorViewBudget({
+              contentStore: host.contentStore,
+              root: { repoRoot: incoming.root, editorRoot: incoming.editorRoot },
+              heldEditorRoot: incoming.editorRoot,
+              discoverRoots: () =>
+                [earlier, later].map(({ root, editorRoot }) => ({
+                  repoRoot: root,
+                  editorRoot,
+                })),
+              reservationBytes: 1,
+              budgetBytes: 1,
+              tryLockRoot: lockRoot,
+              beforeCandidateRetirement: ({ dir }) => {
+                firstVisited ??= dir
+                if (dir !== laterDir || holder !== undefined) return
+                expect(firstVisited).toBe(earlierDir)
+                expect(pathExists(earlierDir)).toBe(false)
+                holder = openReader(host, later, laterRecord, {
+                  leaseControl: control,
+                  leaseReadyFile,
+                })
+                // The hook is synchronous. Wait in another process so the
+                // real holder can signal SH acquisition without pumping this
+                // process's event loop or taking the already-owned CAS fence.
+                const ready = spawnSync(
+                  bun,
+                  [
+                    '--eval',
                     [
-                      '--eval',
-                      [
-                        "import { existsSync } from 'node:fs'",
-                        'const deadline = Date.now() + 5000',
-                        'const pause = new Int32Array(new SharedArrayBuffer(4))',
-                        `while (!existsSync(${JSON.stringify(leaseReadyFile)})) {`,
-                        '  if (Date.now() >= deadline) throw new Error("lease holder readiness timeout")',
-                        '  Atomics.wait(pause, 0, 0, 5)',
-                        '}',
-                      ].join('\n'),
-                    ],
-                    { encoding: 'utf8', timeout: 6000 },
-                  )
-                  expect(ready.error, ready.stderr).toBeUndefined()
-                  expect(ready.status, ready.stderr).toBe(0)
-                },
-              }),
-            ),
-          ).rejects.toBeInstanceOf(EditorViewCapacityError)
-          // Admission must finish while the child still owns SH, rather than
-          // waiting for it to exit or deleting its generation under the lease.
-          expect(performance.now() - started).toBeLessThan(10_000)
-          if (holder === undefined) throw new Error('later candidate was not visited')
-          expectRunningReader(holder)
-          expect(pathExists(earlierDir)).toBe(false)
-          expectCurrent(later, laterRecord)
-          expectCurrent(incoming, incomingRecord)
-          expect(readBudgetLedger(host).reservations).toEqual([])
-          await holder.stop()
-        } finally {
-          lock.release()
-        }
+                      "import { existsSync } from 'node:fs'",
+                      'const deadline = Date.now() + 5000',
+                      'const pause = new Int32Array(new SharedArrayBuffer(4))',
+                      `while (!existsSync(${JSON.stringify(leaseReadyFile)})) {`,
+                      '  if (Date.now() >= deadline) throw new Error("lease holder readiness timeout")',
+                      '  Atomics.wait(pause, 0, 0, 5)',
+                      '}',
+                    ].join('\n'),
+                  ],
+                  { encoding: 'utf8', timeout: 6000 },
+                )
+                expect(ready.error, ready.stderr).toBeUndefined()
+                expect(ready.status, ready.stderr).toBe(0)
+              },
+            }),
+          ),
+        ).rejects.toBeInstanceOf(EditorViewCapacityError)
+        // Admission must finish while the child still owns SH, rather than
+        // waiting for it to exit or deleting its generation under the lease.
+        expect(performance.now() - started).toBeLessThan(10_000)
+        if (holder === undefined) throw new Error('later candidate was not visited')
+        expectRunningReader(holder)
+        expect(pathExists(earlierDir)).toBe(false)
+        expectCurrent(later, laterRecord)
+        expectCurrent(incoming, incomingRecord)
+        expect(readBudgetLedger(host).reservations).toEqual([])
+        await holder.stop()
       } finally {
-        await host.cleanup()
+        lock.release()
       }
-    },
-    readerCensusTimeoutMs,
-  )
+    } finally {
+      await host.cleanup()
+    }
+  })
 
   it('admits pressure requiring ten root retirements in one bounded reader-proof batch', async () => {
     const host = makeHost()
