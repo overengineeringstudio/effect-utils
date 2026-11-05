@@ -132,7 +132,6 @@ jobs:
             connect-timeout = 10
             stalled-download-timeout = 60
             download-attempts = 3
-            fallback = true
             extra-substituters = 
             extra-trusted-public-keys = 
             access-tokens = github.com=${{ github.token }}
@@ -606,7 +605,6 @@ jobs:
             connect-timeout = 10
             stalled-download-timeout = 60
             download-attempts = 3
-            fallback = true
             extra-substituters = https://overeng-effect-utils.cachix.org
             extra-trusted-public-keys = overeng-effect-utils.cachix.org-1:KFmqYNF6Q7ZzVYPl2znpJYZGEolage9YNCA9res6vKc=
             access-tokens = github.com=${{ github.token }}
@@ -944,7 +942,6 @@ jobs:
             connect-timeout = 10
             stalled-download-timeout = 60
             download-attempts = 3
-            fallback = true
             extra-substituters = https://overeng-effect-utils.cachix.org
             extra-trusted-public-keys = overeng-effect-utils.cachix.org-1:KFmqYNF6Q7ZzVYPl2znpJYZGEolage9YNCA9res6vKc=
             access-tokens = github.com=${{ github.token }}
@@ -1560,7 +1557,6 @@ jobs:
             connect-timeout = 10
             stalled-download-timeout = 60
             download-attempts = 3
-            fallback = true
             extra-substituters = https://overeng-effect-utils.cachix.org
             extra-trusted-public-keys = overeng-effect-utils.cachix.org-1:KFmqYNF6Q7ZzVYPl2znpJYZGEolage9YNCA9res6vKc=
             access-tokens = github.com=${{ github.token }}
@@ -1952,7 +1948,6 @@ jobs:
             connect-timeout = 10
             stalled-download-timeout = 60
             download-attempts = 3
-            fallback = true
             extra-substituters = https://overeng-effect-utils.cachix.org
             extra-trusted-public-keys = overeng-effect-utils.cachix.org-1:KFmqYNF6Q7ZzVYPl2znpJYZGEolage9YNCA9res6vKc=
             access-tokens = github.com=${{ github.token }}
@@ -2404,7 +2399,6 @@ jobs:
             connect-timeout = 10
             stalled-download-timeout = 60
             download-attempts = 3
-            fallback = true
             extra-substituters = https://overeng-effect-utils.cachix.org
             extra-trusted-public-keys = overeng-effect-utils.cachix.org-1:KFmqYNF6Q7ZzVYPl2znpJYZGEolage9YNCA9res6vKc=
             access-tokens = github.com=${{ github.token }}
@@ -2793,7 +2787,6 @@ jobs:
             connect-timeout = 10
             stalled-download-timeout = 60
             download-attempts = 3
-            fallback = true
             extra-substituters = https://overeng-effect-utils.cachix.org
             extra-trusted-public-keys = overeng-effect-utils.cachix.org-1:KFmqYNF6Q7ZzVYPl2znpJYZGEolage9YNCA9res6vKc=
             access-tokens = github.com=${{ github.token }}
@@ -3181,7 +3174,6 @@ jobs:
             connect-timeout = 10
             stalled-download-timeout = 60
             download-attempts = 3
-            fallback = true
             extra-substituters = https://overeng-effect-utils.cachix.org
             extra-trusted-public-keys = overeng-effect-utils.cachix.org-1:KFmqYNF6Q7ZzVYPl2znpJYZGEolage9YNCA9res6vKc=
             access-tokens = github.com=${{ github.token }}
@@ -3539,7 +3531,6 @@ jobs:
             connect-timeout = 10
             stalled-download-timeout = 60
             download-attempts = 3
-            fallback = true
             extra-substituters = https://overeng-effect-utils.cachix.org
             extra-trusted-public-keys = overeng-effect-utils.cachix.org-1:KFmqYNF6Q7ZzVYPl2znpJYZGEolage9YNCA9res6vKc=
             access-tokens = github.com=${{ github.token }}
@@ -3832,7 +3823,6 @@ jobs:
             connect-timeout = 10
             stalled-download-timeout = 60
             download-attempts = 3
-            fallback = true
             extra-substituters = https://overeng-effect-utils.cachix.org
             extra-trusted-public-keys = overeng-effect-utils.cachix.org-1:KFmqYNF6Q7ZzVYPl2znpJYZGEolage9YNCA9res6vKc=
             access-tokens = github.com=${{ github.token }}
@@ -4211,7 +4201,6 @@ jobs:
             connect-timeout = 10
             stalled-download-timeout = 60
             download-attempts = 3
-            fallback = true
             extra-substituters = 
             extra-trusted-public-keys = 
             access-tokens = github.com=${{ github.token }}
@@ -4432,7 +4421,6 @@ jobs:
             connect-timeout = 10
             stalled-download-timeout = 60
             download-attempts = 3
-            fallback = true
             extra-substituters = https://overeng-effect-utils.cachix.org
             extra-trusted-public-keys = overeng-effect-utils.cachix.org-1:KFmqYNF6Q7ZzVYPl2znpJYZGEolage9YNCA9res6vKc=
             access-tokens = github.com=${{ github.token }}
@@ -4588,7 +4576,6 @@ jobs:
             connect-timeout = 10
             stalled-download-timeout = 60
             download-attempts = 3
-            fallback = true
             extra-substituters = 
             extra-trusted-public-keys = 
             access-tokens = github.com=${{ github.token }}
@@ -4791,7 +4778,6 @@ jobs:
             connect-timeout = 10
             stalled-download-timeout = 60
             download-attempts = 3
-            fallback = true
             extra-substituters = 
             extra-trusted-public-keys = 
             access-tokens = github.com=${{ github.token }}
@@ -5067,7 +5053,6 @@ jobs:
             connect-timeout = 10
             stalled-download-timeout = 60
             download-attempts = 3
-            fallback = true
             extra-substituters = 
             extra-trusted-public-keys = 
             access-tokens = github.com=${{ github.token }}
@@ -5366,7 +5351,6 @@ jobs:
             connect-timeout = 10
             stalled-download-timeout = 60
             download-attempts = 3
-            fallback = true
             extra-substituters = https://overeng-effect-utils.cachix.org
             extra-trusted-public-keys = overeng-effect-utils.cachix.org-1:KFmqYNF6Q7ZzVYPl2znpJYZGEolage9YNCA9res6vKc=
             access-tokens = github.com=${{ github.token }}
@@ -5677,7 +5661,6 @@ jobs:
             connect-timeout = 10
             stalled-download-timeout = 60
             download-attempts = 3
-            fallback = true
             extra-substituters = https://overeng-effect-utils.cachix.org
             extra-trusted-public-keys = overeng-effect-utils.cachix.org-1:KFmqYNF6Q7ZzVYPl2znpJYZGEolage9YNCA9res6vKc=
             access-tokens = github.com=${{ github.token }}
@@ -5987,7 +5970,6 @@ jobs:
             connect-timeout = 10
             stalled-download-timeout = 60
             download-attempts = 3
-            fallback = true
             extra-substituters = https://overeng-effect-utils.cachix.org
             extra-trusted-public-keys = overeng-effect-utils.cachix.org-1:KFmqYNF6Q7ZzVYPl2znpJYZGEolage9YNCA9res6vKc=
             access-tokens = github.com=${{ github.token }}
@@ -6344,7 +6326,6 @@ jobs:
             connect-timeout = 10
             stalled-download-timeout = 60
             download-attempts = 3
-            fallback = true
             extra-substituters = https://overeng-effect-utils.cachix.org
             extra-trusted-public-keys = overeng-effect-utils.cachix.org-1:KFmqYNF6Q7ZzVYPl2znpJYZGEolage9YNCA9res6vKc=
             access-tokens = github.com=${{ github.token }}
@@ -6773,7 +6754,6 @@ jobs:
             connect-timeout = 10
             stalled-download-timeout = 60
             download-attempts = 3
-            fallback = true
             extra-substituters = 
             extra-trusted-public-keys = 
             access-tokens = github.com=${{ github.token }}
@@ -7174,7 +7154,6 @@ jobs:
             connect-timeout = 10
             stalled-download-timeout = 60
             download-attempts = 3
-            fallback = true
             extra-substituters = https://overeng-effect-utils.cachix.org
             extra-trusted-public-keys = overeng-effect-utils.cachix.org-1:KFmqYNF6Q7ZzVYPl2znpJYZGEolage9YNCA9res6vKc=
             access-tokens = github.com=${{ github.token }}
@@ -7244,7 +7223,6 @@ jobs:
             connect-timeout = 10
             stalled-download-timeout = 60
             download-attempts = 3
-            fallback = true
             extra-substituters = https://overeng-effect-utils.cachix.org
             extra-trusted-public-keys = overeng-effect-utils.cachix.org-1:KFmqYNF6Q7ZzVYPl2znpJYZGEolage9YNCA9res6vKc=
             access-tokens = github.com=${{ github.token }}
@@ -7370,7 +7348,6 @@ jobs:
             connect-timeout = 10
             stalled-download-timeout = 60
             download-attempts = 3
-            fallback = true
             extra-substituters = https://overeng-effect-utils.cachix.org
             extra-trusted-public-keys = overeng-effect-utils.cachix.org-1:KFmqYNF6Q7ZzVYPl2znpJYZGEolage9YNCA9res6vKc=
             access-tokens = github.com=${{ github.token }}

@@ -249,7 +249,6 @@ export const installNixStep = (opts?: {
       'connect-timeout = 10',
       'stalled-download-timeout = 60',
       'download-attempts = 3',
-      'fallback = true',
       renderBinaryCachesExtraConf(opts?.binaryCaches ?? []),
       `access-tokens = github.com=${opts?.githubAccessTokenExpression ?? '${{ github.token }}'}`,
       ...(opts?.extraConf !== undefined ? [opts.extraConf] : []),

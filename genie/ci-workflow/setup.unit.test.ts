@@ -72,7 +72,6 @@ describe('Nix substitution failure policy', () => {
           'connect-timeout = 10',
           'stalled-download-timeout = 60',
           'download-attempts = 3',
-          'fallback = true',
         ])
           expect(lines.filter((line) => line === setting)).toHaveLength(1)
       }
