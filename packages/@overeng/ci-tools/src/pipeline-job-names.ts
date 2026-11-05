@@ -38,6 +38,7 @@ export const pipelineJobIds = [
   'publish-products',
   'consumer-smoke',
   'promote-published',
+  'published-status',
   'devenv-perf',
   'ci-measurements-report',
   'notify-alignment',

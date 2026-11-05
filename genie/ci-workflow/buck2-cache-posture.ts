@@ -66,7 +66,12 @@ export const withMacosMeasurementDispatch = (
   return Object.fromEntries(
     Object.entries(jobs).map(([id, job]) => {
       // Keep explicit measurement exclusions and push-only promotion guards intact.
-      if (id === 'promote-published' || job.if?.includes(`!(${measure})`) === true) return [id, job]
+      if (
+        id === 'promote-published' ||
+        id === 'published-status' ||
+        job.if?.includes(`!(${measure})`) === true
+      )
+        return [id, job]
       return [
         id,
         {
