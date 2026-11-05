@@ -8,7 +8,12 @@ import {
 } from '../../genie/buck2/product-capabilities.ts'
 import { projectBuckProductSourcePaths } from '../../genie/buck2/product-source-paths.ts'
 import buck2ToolsPkg from '../../packages/@overeng/buck2-tools/package.json.genie.ts'
+import ciToolsPkg from '../../packages/@overeng/ci-tools/package.json.genie.ts'
+import ghCiUtilsPkg from '../../packages/@overeng/gh-ci-utils/package.json.genie.ts'
+import type { WorkspacePackageLike } from '../../packages/@overeng/genie/src/runtime/package-json/mod.ts'
+import notionCliPkg from '../../packages/@overeng/notion-cli/package.json.genie.ts'
 import oxcConfigPkg from '../../packages/@overeng/oxc-config/package.json.genie.ts'
+import tuiStoriesPkg from '../../packages/@overeng/tui-stories/package.json.genie.ts'
 import { projectionArtifact } from '../../packages/@overeng/genie/src/runtime/mod.ts'
 import { inputReadFileSync as readFileSync } from '../../packages/@overeng/genie/src/runtime/node/inputs.ts'
 
@@ -48,6 +53,15 @@ const javascriptProducts = [
   ],
   ['tui-stories', 'tui-stories.js', 'packages/@overeng/tui-stories', 'tui-stories-candidate'],
 ] as const
+
+// Owner package roots include the BUCK declarations, even for notion-db's sibling tree.
+const sourcePackages: Record<string, WorkspacePackageLike> = {
+  'packages/@overeng/ci-tools': ciToolsPkg,
+  'packages/@overeng/gh-ci-utils': ghCiUtilsPkg,
+  'packages/@overeng/notion-cli': notionCliPkg,
+  'packages/@overeng/oxc-config': oxcConfigPkg,
+  'packages/@overeng/tui-stories': tuiStoriesPkg,
+}
 
 const packageProducts = [
   '@overeng/agent-session-ingest',
@@ -135,24 +149,27 @@ const packageEntries = packageManifests.map((packageJson) => {
  * the output must not depend on header rules introduced by the same change.
  */
 const buckProductSourceEntries = [
-  ...javascriptProducts.map(([name, outputName, packagePath, targetName, packageTreePath]) => ({
-    kind: 'javascript' as const,
-    name,
-    outputName,
-    packagePath,
-    packageTreePath: packageTreePath ?? packagePath,
-    target: `effect_utils//${packagePath}:${targetName}`,
-    version: '0.0.0',
-    ...(packagePath === 'packages/@overeng/oxc-config'
-      ? {
-          sourcePaths: projectBuckProductSourcePaths({
-            pkg: oxcConfigPkg,
-            additionalPackages: [buck2ToolsPkg],
-            additionalPaths: ['patches'],
+  ...javascriptProducts.map(([name, outputName, packagePath, targetName, packageTreePath]) => {
+    const pkg = sourcePackages[packagePath]
+    return {
+      kind: 'javascript' as const,
+      name,
+      outputName,
+      packagePath,
+      packageTreePath: packageTreePath ?? packagePath,
+      target: `effect_utils//${packagePath}:${targetName}`,
+      version: '0.0.0',
+      ...(pkg === undefined
+        ? {}
+        : {
+            sourcePaths: projectBuckProductSourcePaths({
+              pkg,
+              additionalPackages: [buck2ToolsPkg],
+              additionalPaths: ['patches'],
+            }),
           }),
-        }
-      : {}),
-  })),
+    }
+  }),
   ...packageEntries,
 ]
   .map((product) => ({

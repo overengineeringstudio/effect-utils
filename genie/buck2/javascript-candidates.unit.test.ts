@@ -298,6 +298,18 @@ it('the publisher accepts every generated cache target, including scoped recipes
     expect.arrayContaining([
       expect.objectContaining({ name: 'oxc-config' }),
       expect.objectContaining({ name: 'oxc-config-stylex-upstream-plugin' }),
+      ...['ci-tools', 'gh-ci-utils', 'notion-cli', 'notion-db-runtime', 'tui-stories'].map((name) =>
+        expect.objectContaining({
+          name,
+          sourcePaths: expect.arrayContaining([
+            'package.json',
+            'pnpm-workspace.yaml',
+            'patches',
+            'packages/@overeng/buck2-tools',
+            'packages/@overeng/utils-dev',
+          ]),
+        }),
+      ),
     ]),
   )
 })
