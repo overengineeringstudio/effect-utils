@@ -9,6 +9,7 @@ import type { Buck2CachePosture } from './buck2-cache-posture.ts'
 export const coreProofDisabledJobIds: Readonly<Record<string, true>> = {
   'build-products': true,
   'publish-products': true,
+  'publish-manifest-pr': true,
   'publish-compiled-products': true,
   'publish-compile-products': true,
   cargo: true,
@@ -48,6 +49,7 @@ export const coreCachePostures = {
   'test-live-deploy-ci-tools': 'reader',
   'deploy-storybooks': 'reader',
   'publish-products': 'reader',
+  'publish-manifest-pr': 'none',
   'publish-compile-products': 'none',
   'consumer-smoke': 'none',
   'promote-published': 'none',

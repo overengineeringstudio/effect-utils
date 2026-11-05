@@ -282,6 +282,7 @@ const expectedRequiredChecks = [
   'weaver',
   'source-shape',
   'test-integration-restate',
+  'pr-a-inert-buck',
   'build-products',
   'pr-reviews-resolved',
   'test-storybook-plays',

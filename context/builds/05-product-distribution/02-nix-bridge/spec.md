@@ -334,8 +334,30 @@ The proposal travels as base64 in four job outputs of at most 100,000 characters
 each, staying below GitHub's total output and Linux's per-environment-string
 limits. Both producer paths reject more than 400,000 characters; promotion
 validates the charset before decoding. No Actions artifacts or caches are used.
-`manifest-current` describes main's checked-in manifest; its success does not gate promotion. The manifest
-PR flow remains for main's own flake users.
+`manifest-current` describes main's checked-in manifest; its success does not gate
+promotion. Non-bootstrap drift succeeds with a “stale rows fall back by design”
+note; bootstrap drift still fails.
+
+For main's flake users, the manifest PR opens for bootstrap drift or a differing
+proposal after 24 hours since main's latest manifest commit. Bootstrap names come
+only from `cache.nix`'s `bootstrapPins`; canonical rows ignore formatting/order.
+The shared pin evaluator uses `git+file` with `shallow=1`, so publisher, writer,
+and healing decisions support depth-one checkouts without requiring `revCount`.
+History reads use the read-only job token; unavailable history warns and skips
+the safety net. Skips retain only PRs with this run's bootstrap rows. Different
+or unreadable PR rows trigger healing (unreadable rows warn); if main already
+matches the proposal, close the stale PR with an explanation.
+Exact recipe/evidence matching and from-source fallback keep non-bootstrap rows
+correct; `published` still receives the full manifest on every main push.
+The independent `publish-manifest-pr` job receives the proposal through the same
+chunked outputs and shares `buck2-products-manifest-writer` concurrency across
+push and dispatch. It never gates consumers or promotion. A pending writer may
+be replaced safely: the newer writer or main-tip guard owns the proposal.
+Immediately before pushing, the writer checks main's remote tip against the run's
+source SHA. Superseded runs and unavailable tip lookups skip without touching the
+PR, preventing bootstrap downgrades.
+Cancellation is disabled: GitHub keeps the running writer and replaces only
+older pending writers with the newest, never dropping the newest.
 
 Ref creation and advancement remain restricted to main-push runs in the
 upstream repository. Workflow dispatch and pull requests cannot advance the
