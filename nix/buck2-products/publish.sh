@@ -76,7 +76,11 @@ jq -e '
     (if has("sourceDigest") then
        (.sourceDigest | type == "string" and test("^[0-9a-f]{64}$"))
      else true end) and
-    (del(.sourceDigest) |
+    (if has("sourceEvidenceStorePath") then
+       (.sourceEvidenceStorePath | test("^/nix/store/[0-9a-z]{32}-[A-Za-z0-9+._?=-]+$")) and
+       (.sourceEvidenceSha256 | test("^[0-9a-f]{64}$"))
+     else (has("sourceEvidenceSha256") | not) end) and
+    (del(.sourceDigest,.sourceEvidenceStorePath,.sourceEvidenceSha256) |
     (
       (has("descriptor") and
        (keys | sort) == ["artifactUrl", "descriptor", "descriptorSha256", "name", "provenance", "sha256", "size", "storePath", "version"])
@@ -87,7 +91,7 @@ jq -e '
     (.name | type == "string" and length > 0) and
     (.sha256 | type == "string" and test("^[0-9a-f]{64}$")) and
     (.provenance |
-      (keys | sort) == ["producerCommit", "productDigest", "schema", "target"] and
+      (del(.sourceDigest) | keys | sort) == ["producerCommit", "productDigest", "schema", "target"] and
       .schema == "effect-utils/buck-product-provenance/v1" and
       (.producerCommit | test("^[0-9a-f]{40}$")) and
       (.target | type == "string" and length > 0)) and
@@ -268,11 +272,29 @@ while IFS= read -r row; do
   [[ -f "$provenance_file" && ! -L "$provenance_file" ]] || fail "$name provenance is missing"
   sha256="$(sha256sum "$artifact" | cut -d' ' -f1)"
   size="$(stat -c '%s' "$artifact")"
-  jq -e --arg commit "$head_commit" --arg target "$target" --arg digest "$sha256" '
-    (keys | sort) == ["producerCommit","productDigest","schema","target"] and
+  jq -e --arg commit "$head_commit" --arg target "$target" --arg digest "$sha256" --arg source "$source_digest" '
+    (keys | sort) == ["producerCommit","productDigest","schema","sourceDigest","target"] and .sourceDigest == $source and
     .schema == "effect-utils/buck-product-provenance/v1" and
     .producerCommit == $commit and .target == $target and .productDigest == $digest
   ' "$provenance_file" >/dev/null || fail "$name provenance does not bind the built artifact"
+  evidence_path="$(nix build --no-link --print-out-paths "$repo_root#$attr.sourceEvidence")"
+  [[ "$evidence_path" =~ ^/nix/store/[0-9a-z]{32}-[A-Za-z0-9+._?=-]+$ ]] || fail "$name evidence is not a store path"
+  evidence_file="$evidence_path/source-evidence.json"
+  jq -e --arg source "$source_digest" --arg target "$target" --arg digest "$sha256" '
+    keys == ["productDigest","schema","sourceDigest","target"] and
+    .schema == "effect-utils/buck-product-source-evidence/v1" and
+    .sourceDigest == $source and .target == $target and .productDigest == $digest
+  ' "$evidence_file" >/dev/null || fail "$name evidence does not bind the current recipe and artifact"
+  evidence_sha="$(sha256sum "$evidence_file" | cut -d' ' -f1)"
+  evidence_pin="$safe_name-source-$evidence_sha"
+  existing_evidence="$(jq -c --arg name "$evidence_pin" '[.[] | select(.name == $name)]' <<<"$pins")"
+  [[ "$(jq length <<<"$existing_evidence")" -le 1 ]] || fail "$evidence_pin has multiple pins"
+  if [[ "$(jq length <<<"$existing_evidence")" == 1 ]]; then
+    jq -e '.[0].lastRevision.artifacts | index("source-evidence.json") != null' <<<"$existing_evidence" >/dev/null ||
+      fail "$evidence_pin lacks its evidence artifact"
+    evidence_path="$(jq -r '.[0].lastRevision.storePath' <<<"$existing_evidence")"
+    [[ "$evidence_path" =~ ^/nix/store/[0-9a-z]{32}-[A-Za-z0-9+._?=-]+$ ]] || fail "$evidence_pin has an invalid store path"
+  fi
   descriptor='null'
   descriptor_sha256='null'
   if [[ "$kind" == javascript ]]; then
@@ -314,7 +336,7 @@ while IFS= read -r row; do
           fail "$pin_name already points at a different store path whose provenance is unavailable"
       fi
       jq -e --arg target "$target" --arg digest "$sha256" '
-        (keys | sort) == ["producerCommit","productDigest","schema","target"] and
+        (del(.sourceDigest) | keys | sort) == ["producerCommit","productDigest","schema","target"] and
         .schema == "effect-utils/buck-product-provenance/v1" and
         (.producerCommit | test("^[0-9a-f]{40}$")) and
         .target == $target and .productDigest == $digest
@@ -331,10 +353,11 @@ while IFS= read -r row; do
   jq -cnS \
     --arg name "$name" --arg version "$version" --arg sha256 "$sha256" \
     --arg sourceDigest "$source_digest" \
+    --arg sourceEvidenceStorePath "$evidence_path" --arg sourceEvidenceSha256 "$evidence_sha" \
     --argjson size "$size" --arg storePath "$store_path" --arg artifactUrl "$artifact_url" \
     --argjson provenance "$(jq -cS . "$provenance_file")" \
     --arg kind "$kind" --argjson descriptor "$descriptor" --arg descriptorSha256 "$descriptor_sha256" \
-    '{name:$name,version:$version,sha256:$sha256,size:$size,sourceDigest:$sourceDigest,storePath:$storePath,artifactUrl:$artifactUrl,provenance:$provenance}
+    '{name:$name,version:$version,sha256:$sha256,size:$size,sourceDigest:$sourceDigest,sourceEvidenceStorePath:$sourceEvidenceStorePath,sourceEvidenceSha256:$sourceEvidenceSha256,storePath:$storePath,artifactUrl:$artifactUrl,provenance:$provenance}
      + (if $kind == "javascript" then {descriptor:$descriptor,descriptorSha256:$descriptorSha256} else {} end)' \
     >>"$entries"
 done < <(jq -c '.[]' <<<"$rows")
@@ -371,8 +394,13 @@ while IFS= read -r entry; do
   downloaded="$stage/$safe_name.download"
   env -u CACHIX_AUTH_TOKEN curl -fsS "$artifact_url" -o "$downloaded"
   [[ "$(sha256sum "$downloaded" | cut -d' ' -f1)" == "$sha256" ]] || fail "$name anonymous artifact digest mismatch"
-  [[ "$(stat -c '%s' "$downloaded")" == "$(jq -r '.size' <<<"$entry")" ]] || fail "$name anonymous artifact size mismatch"
-done <"$entries"
+  if [[ "$(jq -r '.size // empty' <<<"$entry")" != "" ]]; then
+    [[ "$(stat -c '%s' "$downloaded")" == "$(jq -r '.size' <<<"$entry")" ]] || fail "$name anonymous artifact size mismatch"
+  fi
+done < <(jq -c --arg cache "$cache_url" '
+  ., {name:(.name + "-source"),sha256:.sourceEvidenceSha256,storePath:.sourceEvidenceStorePath,
+      artifactUrl:($cache + "/serve/" + (.sourceEvidenceStorePath | split("/")[-1] | split("-")[0]) + "/source-evidence.json")}
+' "$entries")
 
 proposal_stage="$stage/manifest.json"
 replacements="$(jq -csS '.' "$entries")"

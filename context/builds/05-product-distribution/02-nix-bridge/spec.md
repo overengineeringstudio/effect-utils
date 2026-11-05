@@ -145,7 +145,8 @@ product-input merge while its publisher manifest proposal is pending.
 
 The pure manifest loader serves cached bytes only when the row's `sourceDigest`
 exactly equals the current from-source recipe's digest (SHA-256 of its source
-store path). Missing or different digests select the current recipe instead,
+store path), and the row pins source evidence by store path and SHA-256. Missing
+evidence, missing digests or different digests select the current recipe instead,
 without reading producer outputs during evaluation. JavaScript consumers retain
 the same public product shape and dispatch through the source import validator;
 cached descriptor facts remain consumer expectations, not permission to use old
@@ -160,10 +161,24 @@ No other product may bypass the source digest comparison.
 
 Repository recipes currently share a coarse source fileset. Until per-product
 scoping lands, main mostly rebuilds from source, or substitutes from Cachix after
-the publish run for that SHA. The publisher evaluates the built recipe's
-`sourceDigest` into every assembled manifest row, including when byte-identical
-artifacts reuse an immutable pin and its older provenance. The row records the
-current source identity; provenance still records the artifact's original producer.
+the publish run for that SHA; development shells incur the same cost. Unscoped
+build provenance includes `sourceDigest`, requiring a one-time rebuild of every
+product when this provenance contract changes.
+
+The publisher records each current recipe's digest and builds a tiny
+`effect-utils/buck-product-source-evidence/v1` JSON projection from that build's
+provenance: `sourceDigest`, `target`, and `productDigest`. It pins evidence
+separately by its SHA-256, omitting `producerCommit` so identical source/payload
+evidence can reuse its own immutable pin. Rows carry `sourceEvidenceStorePath`
+and `sourceEvidenceSha256`; the loader derives the evidence URL from that store
+path, fetches it by hash, and verifies all three bindings during the cached
+artifact's build before copying any payload. A row claiming the current digest
+with stale evidence fails loudly; it never exposes stale bytes. No IFD is used.
+Byte-identical payloads can still reuse their original immutable artifact pin
+and older producer provenance: the separate evidence proves a current-source
+build produced those same bytes. Each source/payload identity requires a small
+evidence pin in addition to its payload pin.
+
 `refs/heads/published` only fast-forwards to main commits whose
 `buck2-products/manifest-current` status and consumer smoke both succeeded for
 that exact SHA. The `promote-published` job declares

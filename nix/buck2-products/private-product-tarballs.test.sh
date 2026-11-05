@@ -30,7 +30,7 @@ sha256="$(sha256sum "$work/producer/fixture-private-lib.tgz" | cut -d' ' -f1)"
 size="$(stat -c '%s' "$work/producer/fixture-private-lib.tgz")"
 jq -nS \
   --arg productDigest "$sha256" \
-  '{schema:"effect-utils/buck-product-provenance/v1",producerCommit:"0123456789abcdef0123456789abcdef01234567",target:"fixture//packages/@fixture/private-lib:dist-package",productDigest:$productDigest}' \
+  '{schema:"effect-utils/buck-product-provenance/v1",producerCommit:"0123456789abcdef0123456789abcdef01234567",sourceDigest:("a" * 64),target:"fixture//packages/@fixture/private-lib:dist-package",productDigest:$productDigest}' \
   >"$work/producer/provenance.json"
 store_path="$(nix store add-path --name fixture-private-lib-buck2-from-source-1.2.3 "$work/producer")"
 

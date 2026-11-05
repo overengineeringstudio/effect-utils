@@ -42,7 +42,12 @@ let
       hasDescriptor = declared.kind == "javascript";
       useCached =
         builtins.hasAttr name bootstrapPins
-        || (entry ? sourceDigest && entry.sourceDigest == recipe.sourceDigest);
+        || (
+          entry ? sourceDigest
+          && entry ? sourceEvidenceStorePath
+          && entry ? sourceEvidenceSha256
+          && entry.sourceDigest == recipe.sourceDigest
+        );
       descriptorContent = if hasDescriptor then builtins.toJSON entry.descriptor else null;
       expectedIntegrity = builtins.convertHash {
         hash = entry.sha256;
@@ -76,6 +81,15 @@ let
           pkgs.writeText "${lib.replaceStrings [ "@" "/" ] [ "" "-" ] name}-provenance.json" (
             builtins.toJSON provenance
           );
+      sourceEvidence = pkgs.fetchurl {
+        name = "${lib.replaceStrings [ "@" "/" ] [ "" "-" ] name}-source-evidence.json";
+        url = "${cacheBase}/${builtins.head (lib.splitString "-" (builtins.baseNameOf entry.sourceEvidenceStorePath))}/source-evidence.json";
+        hash = builtins.convertHash {
+          hash = entry.sourceEvidenceSha256;
+          hashAlgo = "sha256";
+          toHashFormat = "sri";
+        };
+      };
       storeBaseName = builtins.baseNameOf entry.storePath;
       storeHash = builtins.head (lib.splitString "-" storeBaseName);
       expectedUrl = "${cacheBase}/${storeHash}/${artifactName}";
@@ -104,11 +118,19 @@ let
             test -f "$artifact"
             test "$(sha256sum "$artifact" | cut -d' ' -f1)" = ${lib.escapeShellArg entry.sha256}
             test "$(stat -c '%s' "$artifact")" = ${toString entry.size}
+            ${lib.optionalString (!(builtins.hasAttr name bootstrapPins)) ''
+              jq -e --arg sourceDigest ${lib.escapeShellArg recipe.sourceDigest} \
+                --arg target ${lib.escapeShellArg recipe.target} --arg productDigest ${lib.escapeShellArg entry.sha256} \
+                'keys == ["productDigest","schema","sourceDigest","target"] and
+                 .schema == "effect-utils/buck-product-source-evidence/v1" and
+                 .sourceDigest == $sourceDigest and .target == $target and .productDigest == $productDigest' \
+                ${sourceEvidence} >/dev/null
+            ''}
             jq -e \
               --arg producerCommit ${lib.escapeShellArg provenance.producerCommit} \
               --arg target ${lib.escapeShellArg provenance.target} \
               --arg productDigest ${lib.escapeShellArg provenance.productDigest} \
-              '(keys | sort) == ["producerCommit","productDigest","schema","target"] and
+              '(del(.sourceDigest) | keys | sort) == ["producerCommit","productDigest","schema","target"] and
                .schema == "effect-utils/buck-product-provenance/v1" and
                .producerCommit == $producerCommit and .target == $target and
                .productDigest == $productDigest' \
@@ -138,6 +160,8 @@ let
         "size"
       ]
       ++ (if entry ? sourceDigest then [ "sourceDigest" ] else [ ])
+      ++ (if entry ? sourceEvidenceSha256 then [ "sourceEvidenceSha256" ] else [ ])
+      ++ (if entry ? sourceEvidenceStorePath then [ "sourceEvidenceStorePath" ] else [ ])
       ++ [
         "storePath"
         "version"
@@ -160,13 +184,22 @@ let
       )
     ) "buck2-products: ${name} sourceDigest must be lowercase hexadecimal";
     assert lib.assertMsg (
+      (
+        !(entry ? sourceEvidenceStorePath)
+        || builtins.match "/nix/store/[0-9a-z]{32}-[A-Za-z0-9+._?=-]+" entry.sourceEvidenceStorePath != null
+      )
+      && (
+        !(entry ? sourceEvidenceSha256) || builtins.match "[0-9a-f]{64}" entry.sourceEvidenceSha256 != null
+      )
+    ) "buck2-products: ${name} has invalid source evidence";
+    assert lib.assertMsg (
       builtins.isInt entry.size && entry.size > 0
     ) "buck2-products: ${name} size must be a positive integer";
     assert lib.assertMsg (
       builtins.match "/nix/store/[0-9a-z]{32}-[A-Za-z0-9+._?=-]+" entry.storePath != null
     ) "buck2-products: ${name} has an invalid store path";
     assert lib.assertMsg (
-      builtins.attrNames provenance == [
+      builtins.attrNames (removeAttrs provenance [ "sourceDigest" ]) == [
         "producerCommit"
         "productDigest"
         "schema"

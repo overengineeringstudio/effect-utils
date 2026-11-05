@@ -356,9 +356,10 @@ let
             jq -nS \
               --arg schema 'effect-utils/buck-product-provenance/v1' \
               --arg producerCommit ${lib.escapeShellArg producerCommit} \
+              --arg sourceDigest ${lib.escapeShellArg sourceDigest} \
               --arg target ${lib.escapeShellArg target} \
               --arg productDigest "$actual_sha256" \
-              '{schema:$schema,producerCommit:$producerCommit,target:$target,productDigest:$productDigest}' \
+              '{schema:$schema,producerCommit:$producerCommit,sourceDigest:$sourceDigest,target:$target,productDigest:$productDigest}' \
               > provenance.json
           ''
       }
@@ -397,6 +398,13 @@ let
       artifactName = outputName;
       inherit productName;
       productKind = product.kind;
+      sourceEvidence =
+        pkgs.runCommand "${safeName}-source-evidence" { nativeBuildInputs = [ pkgs.jq ]; }
+          ''
+            mkdir -p "$out"
+            jq -S '{schema:"effect-utils/buck-product-source-evidence/v1",sourceDigest,target,productDigest}' \
+              ${sourceProduct}/provenance.json > "$out/source-evidence.json"
+          '';
       expectedProductSha256 = expectedSha256;
       # The only source JavaScript import entry point. Consumer facts are
       # static; no descriptor or provenance output is read during evaluation.
