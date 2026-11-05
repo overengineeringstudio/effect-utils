@@ -156,20 +156,6 @@ assert_eq \
   "$(eval_test_module_attr 4 'builtins.toJSON [ tasks."test:run:install:3:ok-c".exec tasks."test:run:install:3:ok-c".env.INSTALL_TOOL tasks."test:run:install:3:ok-c".status ]' "$weighted")" \
   "scoped installation reuses the final installer command, tool environment and status"
 
-union="$weighted unionInstallTask = \"editor:union\";"
-assert_eq \
-  '["editor:union","test:run:chain:3:native-b"]' \
-  "$(eval_test_module_attr 4 'builtins.toJSON tasks."test:run:install:3:ok-c".after' "$union")" \
-  "CI scoped aliases wait for the run-wide union and their chain predecessor"
-assert_eq \
-  '["scoped-install-command",null]' \
-  "$(eval_test_module_attr 4 'builtins.toJSON [ tasks."test:run:install:3:ok-c".exec tasks."test:run:install:3:ok-c".status ]' "$union")" \
-  "CI aliases preserve receipt-gated fallback execution and cannot skip its check via status"
-assert_eq \
-  '["install:ok-c","test:ok-c"]' \
-  "$(eval_test_module_attr 4 'builtins.toJSON (closureOf "test:ok-c")' "$union")" \
-  "union publication never changes direct developer task dependencies"
-
 # A short chain advances independently: its tail never depends on long chains.
 assert_eq \
   '["native:link","pnpm:install","test:run:chain:3:native-b","test:run:chain:3:ok-c","test:run:chain:3:small-f","test:run:install:3:ok-c"]' \

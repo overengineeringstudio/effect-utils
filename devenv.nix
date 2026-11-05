@@ -474,9 +474,6 @@ let
       ) testPlatforms.moduleScripts.darwin
     ) "packages/@overeng/ci-tools"
   );
-  testUnionPackagePaths = lib.unique (
-    testPublicationPackagePaths ++ map (pkg: pkg.path) sourceTestPackages
-  );
   typescriptPublicationRootPredicate = ''
     typescript_publication_root() {
       local member_root repository_root
@@ -771,19 +768,11 @@ let
       changedSince ? null,
       publicationBudget ? null,
       deadlineSeconds ? 300,
-      reuseTestReceipt ? false,
     }:
     let
       traceName = "buck2:editor:${mode}${lib.optionalString (traceScope != null) ":${traceScope}"}";
-      receiptName =
-        if !ciUnitTest then
-          null
-        else if mode == "bootstrap" && packagePaths == editorBootstrapPackagePaths then
-          "bootstrap"
-        else if traceScope == "test:all" then
-          "publication"
-        else
-          null;
+      bootstrapReceipt =
+        ciUnitTest && mode == "bootstrap" && packagePaths == editorBootstrapPackagePaths;
       packageArgument = lib.optionalString (
         packagePaths != null
       ) " --packages ${lib.escapeShellArg (builtins.toJSON packagePaths)}";
@@ -791,20 +780,13 @@ let
     trace.exec traceName ''
       set -euo pipefail
       root="''${DEVENV_ROOT:-$PWD}"
-      ${lib.optionalString (receiptName != null || reuseTestReceipt) ''
+      ${lib.optionalString bootstrapReceipt ''
         receipt() {
-          ${pkgs.python3}/bin/python "$root/scripts/editor-view-receipt.py" "$1" "$root" "$2" "$3"
+          ${pkgs.python3}/bin/python "$root/scripts/editor-view-receipt.py" "$1" "$root" bootstrap \
+            ${lib.escapeShellArg (builtins.toJSON editorBootstrapPackagePaths)}
         }
-      ''}
-      ${lib.optionalString (receiptName == "bootstrap" || reuseTestReceipt) ''
-        if receipt check ${if reuseTestReceipt then "publication" else "bootstrap"} ${
-          lib.escapeShellArg (
-            builtins.toJSON (if reuseTestReceipt then testUnionPackagePaths else editorBootstrapPackagePaths)
-          )
-        }; then exit 0; fi
-      ''}
-      ${lib.optionalString (receiptName != null) ''
-        receipt begin ${toString receiptName} ${lib.escapeShellArg (builtins.toJSON packagePaths)} || true
+        if receipt check; then exit 0; fi
+        receipt begin || true
       ''}
       ${publishBuckCapabilities}
       # Supervise the whole authority/build/publication process tree, including
@@ -842,10 +824,8 @@ let
           echo "Editor-view ${mode} exceeded its ${toString deadlineSeconds}s execution deadline (5s kill grace); publication failed. Run buck2:editor:materialize explicitly outside the lint/genie heavy lane." >&2
         fi
       ''}
-      ${lib.optionalString (receiptName != null) ''
-        if [ "$status" -eq 0 ]; then
-          receipt write ${toString receiptName} ${lib.escapeShellArg (builtins.toJSON packagePaths)} || true
-        fi
+      ${lib.optionalString bootstrapReceipt ''
+        if [ "$status" -eq 0 ]; then receipt write || true; fi
       ''}
       exit "$status"
     '';
@@ -859,18 +839,10 @@ let
     }:
     {
       inherit description;
-      after = [
-        "genie:check"
-      ]
-      ++ lib.optional (ciUnitTest && traceScope == "test") "buck2:editor:publish:test:all";
+      after = [ "genie:check" ];
       # trace-audit-allow: editorViewExec returns a trace.exec-wrapped command.
       exec = editorViewExec {
         mode = "publish";
-        reuseTestReceipt =
-          ciUnitTest
-          && lib.hasPrefix "test" traceScope
-          && traceScope != "test:all"
-          && lib.all (path: builtins.elem path testUnionPackagePaths) packagePaths;
         inherit
           packagePaths
           traceScope
@@ -955,7 +927,6 @@ in
     (taskModules.test {
       sourceLauncher = "${sourceLease}/bin/editor-view-source";
       installTask = "buck2:editor:publish:test";
-      unionInstallTask = if ciUnitTest then "buck2:editor:publish:test:all" else null;
       packages = map (
         pkg: pkg // { installTask = testPackagePublisherName pkg.name; }
       ) allSourceTestPackages;
@@ -1969,14 +1940,6 @@ in
     packagePaths = testPublicationPackagePaths;
     traceScope = "test";
   };
-
-  tasks."buck2:editor:publish:test:all" = lib.mkIf ciUnitTest (scopedEditorViewPublisher {
-    description = "Publish the run-wide union of source-test dependency views once";
-    packagePaths = testUnionPackagePaths;
-    traceScope = "test:all";
-    # Cold Darwin measured 413s for four workers; 900s bounds the union with >2x headroom.
-    deadlineSeconds = 900;
-  });
 
   tasks."buck2:editor:check" = {
     description = "Fail when any published workspace editor dependency view is stale";

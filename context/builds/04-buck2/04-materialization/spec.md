@@ -271,28 +271,19 @@ is reported only after workers settle and locks are released. Each successful
 view retains its stderr timing record. Snapshot/retention formats, lock ownership,
 explicit recovery, and whole-workspace authority checks are unchanged.
 
-CI Unit tests publish `buck2:editor:publish:test:all` once: the union of selected
-source-test and harness scopes, including bootstrap. Its four workers have a
-900-second publication deadline, giving over twice the measured 413-second cold
-Darwin duration. Other scoped/bootstrap publishers retain their 300-second caps.
-Chain installers and repeated bootstrap reuse job-local `.devenv/` receipts without
-a publication lock or `check`. Receipts bind graph/scope, authority, immutable
-snapshot identities, publisher/verifier sources, and HEAD plus dirty contents.
-Git identity uses porcelain-v2 changed-file metadata plus streaming hashes of only
-changed tracked and nonignored untracked publication inputs: selected package
-trees and their transitive workspace dependencies (including bootstrap), root
-manifests/lockfiles, Buck configuration, and publisher/task sources. Closure paths
-come from the publisher's lockfile importer/root Buck alias resolver; an unproven
-closure cannot issue a receipt. The root `.` scope does not select the entire
-worktree; unrelated CI artifacts and changes outside that closure do not
-invalidate a receipt. Publication outputs (`.editor-view`, `.devenv`, and
-`node_modules` at every depth) are excluded independently of ignore rules.
-No binary diffs or raw-tree reads are needed, and missing receipts return before
-computing a fingerprint. Input drift logs at most ten changed paths plus whether
-HEAD changed, including when publication cannot issue its receipt.
-A job nonce in GitHub-cleaned `RUNNER_TEMP` prevents reuse across jobs.
-Missing or changed evidence logs a miss and runs ordinary scoped publication.
-Developer flows without the CI union retain their existing prerequisites.
+CI bootstrap writes a job-local `.devenv/editor-view-bootstrap-receipt.json`
+after successful publication. Repeated bootstrap in Unit tests reuses that
+receipt before publication admission only when scope, graph, authority,
+immutable snapshot identities, HEAD and changed input contents still match.
+Inputs include the transitive workspace closure from the publisher's lockfile
+importer/root Buck alias resolver; an unproven closure cannot issue a receipt.
+Publication outputs are excluded independently of ignore rules, and a nonce in
+GitHub-cleaned `RUNNER_TEMP` prevents reuse across jobs. Missing or changed
+evidence falls back to ordinary bootstrap with its 300-second execution cap.
+Scoped chain installers publish normally under their existing 300-second caps
+and scheduling edges, allowing early tests to overlap later publications.
+They neither issue nor consume publication receipts or wait for a global union.
+Developer prerequisites are unchanged.
 
 If a legacy root install occupies the first hop, immutable GNU
 `mv --exchange --no-copy` installs the symlink without an absent-path window and

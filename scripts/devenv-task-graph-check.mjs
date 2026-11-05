@@ -336,6 +336,10 @@ ok({
   condition: dependencies.get('genie:check')?.has('buck2:editor:bootstrap') === true,
   name: 'genie:check directly depends on the source-generator bootstrap',
 })
+ok({
+  condition: tasks.has('buck2:editor:publish:test:all') === false,
+  name: 'source-test chains retain pipelined scoped publication without a union barrier',
+})
 for (const entrypoint of ['lint:fix', 'genie:run', 'genie:check', 'setup:strict']) {
   requireTask(entrypoint)
   for (const publisher of [...tasks.keys()].filter(
@@ -602,7 +606,6 @@ for (const name of sourceTestTasks) {
   })
   const installerName = name.replace(sourceTestChainPrefix, 'test:run:install:')
   const installerDependencies = [...(dependencies.get(installerName) ?? [])]
-  const unionDependencies = ciUnitTest === true ? ['buck2:editor:publish:test:all'] : []
   const packagePublisher = `buck2:editor:publish:${name.replace(chainExecutionPattern, 'test:')}`
   ok({
     condition:
@@ -611,8 +614,7 @@ for (const name of sourceTestTasks) {
       dependencies.get(name)?.has(packagePublisher) === false &&
       installerDependencies.includes('genie:check') === true &&
       predecessors.every((previous) => installerDependencies.includes(previous)) === true &&
-      unionDependencies.every((dependency) => installerDependencies.includes(dependency)) &&
-      installerDependencies.length === predecessors.length + 1 + unionDependencies.length,
+      installerDependencies.length === predecessors.length + 1,
     name: `${name} admits only its scoped installer after its own predecessor`,
   })
   const installerCommand = tasks.get(installerName)?.command
@@ -693,31 +695,10 @@ const scopedPublisherContracts = {
   },
   ...packagePublisherContracts,
 }
-if (ciUnitTest === true) {
-  scopedPublisherContracts['buck2:editor:publish:test:all'] = {
-    consumers: [
-      'buck2:editor:publish:test',
-      ...sourceTestTasks.map((name) => name.replace(sourceTestChainPrefix, 'test:run:install:')),
-    ],
-    packagePaths: [
-      ...scopedPublisherContracts['buck2:editor:publish:test'].packagePaths,
-      ...sourceTestTasks.map((name) => tasks.get(name)?.cwd),
-    ],
-  }
-}
 for (const [publisher, { consumers, packagePaths }] of Object.entries(scopedPublisherContracts)) {
   const publisherDependencies = [...(dependencies.get(publisher) ?? [])]
   ok({
-    condition:
-      JSON.stringify(publisherDependencies.toSorted()) ===
-      JSON.stringify(
-        [
-          'genie:check',
-          ...(ciUnitTest === true && publisher === 'buck2:editor:publish:test'
-            ? ['buck2:editor:publish:test:all']
-            : []),
-        ].toSorted(),
-      ),
+    condition: publisherDependencies.length === 1 && publisherDependencies[0] === 'genie:check',
     name: `${publisher} waits directly and only for standalone generator freshness`,
   })
   const publisherTask = requireTask(publisher)
@@ -737,25 +718,6 @@ for (const [publisher, { consumers, packagePaths }] of Object.entries(scopedPubl
       name: `${publisher} has its distinct trace identity and explicit canonical package scope`,
       detail: command,
     })
-    if (
-      ciUnitTest === true &&
-      publisher.startsWith('buck2:editor:publish:test') === true &&
-      packagePaths.every((path) =>
-        scopedPublisherContracts['buck2:editor:publish:test:all'].packagePaths.includes(path),
-      ) === true
-    ) {
-      ok({
-        condition:
-          commandBody.includes('editor-view-receipt.py') &&
-          (publisher.endsWith(':all') === true
-            ? /editor-view-supervisor\.py"\s+900\s+5/u.test(commandBody)
-            : commandBody.includes('receipt check publication')),
-        name:
-          publisher.endsWith(':all') === true
-            ? `${publisher} uses job-local receipts and a bounded 900s union deadline`
-            : `${publisher} reuses the job-local publication receipt`,
-      })
-    }
   }
   const actualConsumers = [...dependencies]
     .filter(([, taskDependencies]) => taskDependencies.has(publisher))
@@ -840,6 +802,22 @@ for (const name of editorPublishers) {
     typeof command === 'string' && existsSync(command) === true ? readFileSync(command, 'utf8') : ''
   const packages = JSON.parse(body.match(/--packages\s+'(\[[^\n]*?\])'/u)?.[1] ?? '[]')
   const actualDeadline = body.match(/editor-view-supervisor\.py" (\d+|none) 5/u)?.[1]
+  const bootstrapReceipt = ciUnitTest === true && name === 'buck2:editor:bootstrap'
+  ok({
+    condition: body.includes('scripts/editor-view-receipt.py') === bootstrapReceipt,
+    name: `${name} uses receipts only for CI bootstrap reuse`,
+  })
+  if (bootstrapReceipt) {
+    ok({
+      condition:
+        body.includes('"$1" "$root" bootstrap') &&
+        body.includes('if receipt check; then exit 0; fi') &&
+        body.indexOf('if receipt check;') < body.indexOf('editor-view-supervisor.py') &&
+        body.includes('receipt begin || true') &&
+        body.includes('if [ "$status" -eq 0 ]; then receipt write || true; fi'),
+      name: 'CI bootstrap reuses proven inputs before admission and issues receipts only after success',
+    })
+  }
   if (name === 'buck2:editor:publish:batch:storybook:test') {
     const budget = JSON.parse(body.match(/# editor-view-batch-budget: ([^\n]+)/u)?.[1] ?? 'null')
     const missingConsumers = packages.filter(
@@ -871,11 +849,6 @@ for (const name of editorPublishers) {
         JSON.stringify(budget.missingConsumers.toSorted()) ===
         JSON.stringify(missingConsumers.toSorted()),
       name: `${name} explicitly reports ${fallbackPublicationSeconds}s max-measured fallback consumers: ${missingConsumers.join(', ') || '(none)'}`,
-    })
-  } else if (name === 'buck2:editor:publish:test:all') {
-    ok({
-      condition: actualDeadline === '900',
-      name: `${name} retains its measured 900s union publication cap`,
     })
   } else if (name.startsWith('buck2:editor:publish:batch:') === true) {
     ok({
