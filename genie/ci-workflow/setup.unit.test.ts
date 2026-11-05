@@ -51,6 +51,34 @@ import {
 } from './shared.ts'
 import testPlatforms from './test-platforms.json' with { type: 'json' }
 
+describe('Nix substitution failure policy', () => {
+  it('bounds stalled downloads in every generated shared install step on all platforms', () => {
+    for (const definition of [
+      ciWorkflow,
+      compiledWorkflow,
+      empiricalWorkflow,
+      storybookPlaysWorkflow,
+      previewBuildWorkflow,
+      previewDeployWorkflow,
+    ]) {
+      const workflow: GitHubWorkflowArgs = definition.data
+      const installs = Object.values(workflow.jobs).flatMap((job) =>
+        job.steps.filter((step) => step.uses === installNixStep().uses),
+      )
+      expect(installs.length).toBeGreaterThan(0)
+      for (const step of installs) {
+        const lines = String(step.with?.['extra-conf']).split('\n')
+        for (const setting of [
+          'connect-timeout = 10',
+          'stalled-download-timeout = 60',
+          'download-attempts = 3',
+        ])
+          expect(lines.filter((line) => line === setting)).toHaveLength(1)
+      }
+    }
+  })
+})
+
 describe('consumer root contracts', () => {
   it('runs the product contract suite through the Nix fetch retry wrapper', () => {
     const step = ciWorkflow.data.jobs['pr-a-inert-buck']!.steps.find(
