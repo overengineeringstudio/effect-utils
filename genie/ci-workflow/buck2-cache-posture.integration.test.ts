@@ -636,7 +636,7 @@ printf '%s\\n' "$BUILD_JSON"`,
         /product build: duration=\d+s built=1 substituted=1 status=0/,
       )
       expect(readFileSync(logs.NIX_LOG, 'utf8').trim().split('\n')).toEqual([
-        'build --no-link --print-build-logs --log-format raw --json .#ci-test-shell-products .#buck2-rules .#compiled-one-compiled .#compiled-two-compiled .#native-one .#library.libraryChecks .#library',
+        'build --no-link --print-build-logs --log-format raw --json .#ci-test-shell-products .#buck2-rules .#compiled-one-compiled .#compiled-two-compiled .#native-one .#library.libraryChecks .#library.compositionChecks .#library',
         'build --no-link --json .#library.buck2Product',
         roundtripCommand,
       ])
@@ -653,7 +653,7 @@ printf '%s\\n' "$BUILD_JSON"`,
       for (const args of [[], ['--push']]) {
         expect(run({ args }).exitCode).toBe(0)
         expect(readFileSync(logs.NIX_LOG, 'utf8').trim().split('\n')).toEqual([
-          'build --no-link --print-build-logs --json .#ci-test-shell-products .#buck2-rules .#compiled-one-compiled .#compiled-two-compiled .#native-one .#library.libraryChecks .#library',
+          'build --no-link --print-build-logs --json .#ci-test-shell-products .#buck2-rules .#compiled-one-compiled .#compiled-two-compiled .#native-one .#library.libraryChecks .#library.compositionChecks .#library',
           'build --no-link --print-build-logs .#library.libraryChecks.mismatch',
         ])
         expect(readFileSync(logs.SMOKE_LOG, 'utf8').trim().split('\n')).toEqual(

@@ -39,6 +39,7 @@ for inventory in nix/buck2-products/compiled-targets.json nix/buck2-products/nat
       rust-library)
         check=".#$name.libraryChecks"
         refs+=("$check")
+        refs+=(".#$name.compositionChecks")
         ;;
       native|compiled-executable) ;;
       *) echo "unsupported inventory kind: $kind" >&2; exit 1 ;;
