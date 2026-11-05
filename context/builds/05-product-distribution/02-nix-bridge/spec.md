@@ -100,6 +100,11 @@ publishing Cachix action and its push hook are enabled only after preparation.
 Cold substitution and input builds use the job timeout; the unchanged 32-minute
 publication step budget covers the product builds and pushes.
 
+Native and compiled product CI separately builds or substitutes the complete
+product outputs before smoke checks. This preparation does not force producer
+inputs when outputs are substitutable, smoke executables, or publish; it records
+duration, built derivations, substituted paths, and exit status, including on failure.
+
 Cache-native rows contain exact `name`, `version`, `sha256`, `size`,
 `storePath`, `artifactUrl`, and `provenance` fields. The Nix loader validates
 every field and treats the recorded store path as the substitution identity.

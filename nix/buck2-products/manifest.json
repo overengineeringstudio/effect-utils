@@ -15,31 +15,31 @@
       "version": "0.1.0"
     },
     {
-      "artifactUrl": "https://overeng-effect-utils.cachix.org/serve/j5lnpgnf3n5awc6qjznzl85jbgrdv5wr/overeng-ai-gateway-conformance.tgz",
+      "artifactUrl": "https://overeng-effect-utils.cachix.org/serve/il45kij2kkwsw9yzmcq7xnl2v2qzlnzf/overeng-ai-gateway-conformance.tgz",
       "name": "@overeng/ai-gateway-conformance",
       "provenance": {
-        "producerCommit": "9e34373dbab9ed3be14c1ef110fb3b4f5e51ee10",
-        "productDigest": "86c063bfc61e189da65e7194b58433dc0d19e5457afcfc0887882edeccdae7e2",
+        "producerCommit": "de9119630f688030c5d47391b01d4d4173c8f700",
+        "productDigest": "21b8015997f7783fb7f63680cfc173e5a02ff2798581df5c0b8bd46ed13556fb",
         "schema": "effect-utils/buck-product-provenance/v1",
         "target": "effect_utils//packages/@overeng/ai-gateway-conformance:dist-package"
       },
-      "sha256": "86c063bfc61e189da65e7194b58433dc0d19e5457afcfc0887882edeccdae7e2",
-      "size": 8717,
-      "storePath": "/nix/store/j5lnpgnf3n5awc6qjznzl85jbgrdv5wr-overeng-ai-gateway-conformance-buck2-from-source-0.1.0",
+      "sha256": "21b8015997f7783fb7f63680cfc173e5a02ff2798581df5c0b8bd46ed13556fb",
+      "size": 9746,
+      "storePath": "/nix/store/il45kij2kkwsw9yzmcq7xnl2v2qzlnzf-overeng-ai-gateway-conformance-buck2-from-source-0.1.0",
       "version": "0.1.0"
     },
     {
-      "artifactUrl": "https://overeng-effect-utils.cachix.org/serve/iv4j7a0614jvqdxqp8yfbmny2j1hvx68/overeng-ai-gateway-edge.tgz",
+      "artifactUrl": "https://overeng-effect-utils.cachix.org/serve/nwvnvd4kxh4knvhapfj59ry2l076n3ly/overeng-ai-gateway-edge.tgz",
       "name": "@overeng/ai-gateway-edge",
       "provenance": {
-        "producerCommit": "9e34373dbab9ed3be14c1ef110fb3b4f5e51ee10",
-        "productDigest": "68ec13faaaa2ac4d7799f1b63d4362469cf0362c12d68d03b76b2678fd8ef397",
+        "producerCommit": "120eb7109abb6ee00e3fbaf717af901152084669",
+        "productDigest": "718fbfb6e767be1bdad995df1878c3f98ddd3a9c7797afe63a52a4c76e6d16e7",
         "schema": "effect-utils/buck-product-provenance/v1",
         "target": "effect_utils//packages/@overeng/ai-gateway-edge:dist-package"
       },
-      "sha256": "68ec13faaaa2ac4d7799f1b63d4362469cf0362c12d68d03b76b2678fd8ef397",
-      "size": 39728,
-      "storePath": "/nix/store/iv4j7a0614jvqdxqp8yfbmny2j1hvx68-overeng-ai-gateway-edge-buck2-from-source-0.1.0",
+      "sha256": "718fbfb6e767be1bdad995df1878c3f98ddd3a9c7797afe63a52a4c76e6d16e7",
+      "size": 48247,
+      "storePath": "/nix/store/nwvnvd4kxh4knvhapfj59ry2l076n3ly-overeng-ai-gateway-edge-buck2-from-source-0.1.0",
       "version": "0.1.0"
     },
     {
@@ -99,17 +99,17 @@
       "version": "0.1.0"
     },
     {
-      "artifactUrl": "https://overeng-effect-utils.cachix.org/serve/m30l52a0wcl9apnw5pc0c58v79b1ggkd/overeng-effect-ai-gateway.tgz",
+      "artifactUrl": "https://overeng-effect-utils.cachix.org/serve/kh9vr5krdl5nnw43lpfa4wvga2s45xwz/overeng-effect-ai-gateway.tgz",
       "name": "@overeng/effect-ai-gateway",
       "provenance": {
-        "producerCommit": "9e34373dbab9ed3be14c1ef110fb3b4f5e51ee10",
-        "productDigest": "e6153c24f378dbf002b0dc709c30f07100ce01b39f0ae7794fcbcf71e18046ce",
+        "producerCommit": "120eb7109abb6ee00e3fbaf717af901152084669",
+        "productDigest": "c94e8043b020f90cc1a47cb08b2dd5f6e051c099e6319fa1bbcafa9887a1ae34",
         "schema": "effect-utils/buck-product-provenance/v1",
         "target": "effect_utils//packages/@overeng/effect-ai-gateway:dist-package"
       },
-      "sha256": "e6153c24f378dbf002b0dc709c30f07100ce01b39f0ae7794fcbcf71e18046ce",
-      "size": 15468,
-      "storePath": "/nix/store/m30l52a0wcl9apnw5pc0c58v79b1ggkd-overeng-effect-ai-gateway-buck2-from-source-0.1.0",
+      "sha256": "c94e8043b020f90cc1a47cb08b2dd5f6e051c099e6319fa1bbcafa9887a1ae34",
+      "size": 15796,
+      "storePath": "/nix/store/kh9vr5krdl5nnw43lpfa4wvga2s45xwz-overeng-effect-ai-gateway-buck2-from-source-0.1.0",
       "version": "0.1.0"
     },
     {
@@ -449,11 +449,11 @@
       "version": "0.1.0"
     },
     {
-      "artifactUrl": "https://overeng-effect-utils.cachix.org/serve/d889slwzkacjsvifridri25ip9jjhmzd/ai-gateway-edge.js",
+      "artifactUrl": "https://overeng-effect-utils.cachix.org/serve/vadm57lfj339yl36s37ykgcym6k237m9/ai-gateway-edge.js",
       "descriptor": {
         "externalCapabilities": [],
         "externalModules": [],
-        "integrity": "sha256-9aM+w/Z0BBAWkwWya3QofF3aCjjfUSiQhXw404AUhpg=",
+        "integrity": "sha256-3P8xZK7HqjXBPh0F87gbWsaHnD7w5GDPUa22Y5Qh3UM=",
         "modulePath": "ai-gateway-edge.js",
         "platform": {
           "abi": "any",
@@ -471,20 +471,20 @@
         "runtimeContractVersion": "v1",
         "runtimeKind": "bun",
         "schema": "effect-utils/javascript-product/v2",
-        "sizeBytes": 670801,
+        "sizeBytes": 674148,
         "target": "effect_utils//packages/@overeng/ai-gateway-edge:ai-gateway-edge-candidate"
       },
-      "descriptorSha256": "171795f62cbd44d51c643e9987106cfce977b88d9c9dd330787484dda83289a0",
+      "descriptorSha256": "244e235d1074e0b1d16a35a5d7654efcbb2cacd550507b5465f416dd4e27cab7",
       "name": "ai-gateway-edge",
       "provenance": {
-        "producerCommit": "9e34373dbab9ed3be14c1ef110fb3b4f5e51ee10",
-        "productDigest": "f5a33ec3f6740410169305b26b74287c5dda0a38df512890857c38d380148698",
+        "producerCommit": "3260574aed0ae892bd55f9ef2139dc84c8ca2ffb",
+        "productDigest": "dcff3164aec7aa35c13e1d05f3b81b5ac6879c3ef0e460cf51adb6639421dd43",
         "schema": "effect-utils/buck-product-provenance/v1",
         "target": "effect_utils//packages/@overeng/ai-gateway-edge:ai-gateway-edge-candidate"
       },
-      "sha256": "f5a33ec3f6740410169305b26b74287c5dda0a38df512890857c38d380148698",
-      "size": 670801,
-      "storePath": "/nix/store/d889slwzkacjsvifridri25ip9jjhmzd-ai-gateway-edge-buck2-from-source-0.0.0",
+      "sha256": "dcff3164aec7aa35c13e1d05f3b81b5ac6879c3ef0e460cf51adb6639421dd43",
+      "size": 674148,
+      "storePath": "/nix/store/vadm57lfj339yl36s37ykgcym6k237m9-ai-gateway-edge-buck2-from-source-0.0.0",
       "version": "0.0.0"
     },
     {

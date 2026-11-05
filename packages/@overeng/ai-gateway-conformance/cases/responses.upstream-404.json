@@ -1,0 +1,37 @@
+{
+  "id": "responses.upstream-404",
+  "summary": "Preserve the upstream Responses refusal status, body and end-to-end headers.",
+  "requirements": ["AIG-R10"],
+  "request": {
+    "method": "POST",
+    "path": "/v1/responses",
+    "auth": "bearer",
+    "match": {
+      "model": "fixture/unknown",
+      "stream": false
+    },
+    "body": {
+      "input": "Say hello.",
+      "store": false
+    }
+  },
+  "response": {
+    "status": 404,
+    "headers": { "x-request-id": "fixture-responses-error" },
+    "json": {
+      "error": {
+        "message": "Unknown model: fixture/unknown",
+        "type": "invalid_request_error",
+        "param": "model",
+        "code": "model_not_found"
+      }
+    }
+  },
+  "expect": {
+    "outcome": "http-error",
+    "error": {
+      "status": 404,
+      "type": "invalid_request_error"
+    }
+  }
+}
