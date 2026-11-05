@@ -151,6 +151,10 @@
     }:
     import ./oxlint-with-plugins.nix { inherit pkgs oxlintNpm; };
 
+  # Combine independently validated library and executable imports.
+  mkBuck2ProductComposition =
+    { pkgs }: import ./workspace-tools/lib/buck2-product-composition.nix { inherit pkgs; };
+
   # Pinned pnpm for the entire megarepo ecosystem.
   # Usage: effectUtils.lib.mkPnpm { inherit pkgs; }
   mkPnpm = { pkgs }: import ./pnpm.nix { inherit pkgs; };
