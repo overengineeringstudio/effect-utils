@@ -119,7 +119,7 @@ foreign entries are never removed. Existing symlink handling is unchanged.
 
 Dry-run JSON includes `candidateSha256` over each would-act row and its captured deletion identity; `planSha256` is unchanged.
 Single-candidate plain removals also re-collect and classify their owner under the owner lock and activation lease,
-then compare the approved candidate digest before deleting with the freshly captured identity.
+then compare fresh evidence against approval before deleting with the original planned identity.
 
 ## Generated artifact cleanup
 
