@@ -424,9 +424,7 @@ manifest PRs, and the identical least-privilege permission set serves both.
 Each publisher mints a token with its own repository explicitly selected, never
 an installation-wide token or a token for the other repository.
 
-Publisher decisions are ordered and log `publisher: keep head (reason)` or `publisher: refresh (reason)`:
-
-| Evidence | Decision |
+| Ordered evidence | Decision |
 | --- | --- |
 | API error, malformed/truncated check evidence | Keep, exit success; retry next publication |
 | No PR / queued / conflict / current-head ejection | Refresh / keep / refresh / refresh |

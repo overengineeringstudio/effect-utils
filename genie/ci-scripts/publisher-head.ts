@@ -31,7 +31,6 @@ const latestTime = (values: unknown): number | undefined => {
   return latest
 }
 
-/** Classify only the latest entry per check name/context, never a cancelled rollup. */
 const checkHealth = (
   connection: unknown,
 ): 'failed' | 'green' | 'pending' | 'missing' | undefined => {
@@ -79,7 +78,6 @@ const checkHealth = (
     : 'pending'
 }
 
-/** Decode the API boundary; incomplete/paginated evidence cannot authorize a push. */
 export const decodePublisherState = (nodes: unknown): PublisherState => {
   if (Array.isArray(nodes) === false || nodes.length > 1) return { kind: 'api-error' }
   if (nodes.length === 0) return { kind: 'no-pr' }
@@ -106,7 +104,6 @@ export const decodePublisherState = (nodes: unknown): PublisherState => {
   }
 }
 
-// The queue tests latest main; the next publication after merge proposes newer products.
 export const decidePublisherHead = ({
   state,
   now,
@@ -129,9 +126,7 @@ export const decidePublisherHead = ({
     else reason = 'unknown'
   }
   return {
-    refresh: ['no-pr', 'conflict', 'ejected', 'failed', 'stale-pending', 'stale-unknown'].includes(
-      reason,
-    ),
+    refresh: /^(no-pr|conflict|ejected|failed|stale-pending|stale-unknown)$/.test(reason),
     reason,
   }
 }

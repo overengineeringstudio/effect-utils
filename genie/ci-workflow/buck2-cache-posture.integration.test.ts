@@ -20,6 +20,7 @@ type GeneratedWorkflow = {
       env?: Record<string, string>
       permissions?: Record<string, string>
       steps: Array<{
+        id?: string
         name?: string
         uses?: string
         if?: string
@@ -493,6 +494,11 @@ describe('generated CI cache trust behavior', () => {
     expect(localTask).toContain('test ./genie/ci-scripts/publisher-head.unit.test.ts')
     expect(localTask).toContain('"genie/ci-scripts/publisher-head*.ts"')
     expect(workflow.jobs['publish-products']!.permissions?.checks).toBe('read')
+    for (const { id, name, env, if: condition } of workflow.jobs['publish-products']!.steps) {
+      if (id === 'publisher-head') expect(env?.GITHUB_TOKEN).toBe('${{ github.token }}')
+      if (id === 'publisher-app-token' || name === 'Propose published product manifest')
+        expect(condition).toBe("steps.publisher-head.outputs.refresh == 'true'")
+    }
   })
 
   it('keeps credential-free build and preview workflows read-only', async () => {
