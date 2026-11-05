@@ -568,7 +568,19 @@ describe('generated CI cache trust behavior', () => {
       })
       executable({
         path: join(work, 'tools/nix'),
-        content: 'printf \'%s\\n\' "$*" >> "$NIX_LOG"\nprintf \'%s\\n\' "$BUILD_JSON"',
+        content: `printf '%s\\n' "$*" >> "$NIX_LOG"
+if [ "$1" = path-info ]; then printf '/fake/product.drv\\n'; else printf '%s\\n' "$BUILD_JSON"; fi`,
+      })
+      executable({
+        path: join(work, 'tools/nix-store'),
+        content: `printf '%s\\n' "$*" >> "$NIX_LOG"
+if [ "$1" = --query ]; then
+  printf '/fake/input.drv\\n/fake/source\\n/fake/input.drv\\n'
+else
+  [ "$*" = '--realise /fake/input.drv /fake/source' ]
+  printf "building '/fake/input.drv'...\\ncopying path '/fake/source' from 'cache'...\\n"
+  exit "\${PREREQUISITE_STATUS:-0}"
+fi`,
       })
       executable({
         path: join(work, 'tools/cachix'),
@@ -579,10 +591,12 @@ describe('generated CI cache trust behavior', () => {
         args,
         selectedOutputs = outputs,
         failProduct = '',
+        prerequisiteStatus = 0,
       }: {
         args: string[]
         selectedOutputs?: string[]
         failProduct?: string
+        prerequisiteStatus?: number
       }) => {
         for (const path of Object.values(logs)) writeFileSync(path, '')
         return Bun.spawnSync({
@@ -596,11 +610,27 @@ describe('generated CI cache trust behavior', () => {
               selectedOutputs.map((out) => ({ drvPath: `${out}.drv`, outputs: { out } })),
             ),
             FAIL_PRODUCT: failProduct,
+            PREREQUISITE_STATUS: String(prerequisiteStatus),
           },
           stdout: 'pipe',
           stderr: 'pipe',
         })
       }
+      const prerequisite = run({ args: ['--realise-inputs'] })
+      expect(prerequisite.exitCode).toBe(0)
+      expect(prerequisite.stdout.toString()).toMatch(
+        /product prerequisites: duration=\d+s built=1 substituted=1 status=0/,
+      )
+      expect(readFileSync(logs.NIX_LOG, 'utf8').trim().split('\n')).toEqual([
+        'path-info --derivation .#compiled-one-compiled.buck2Product .#compiled-two-compiled.buck2Product .#native-one.buck2Product',
+        '--query --references /fake/product.drv',
+        '--realise /fake/input.drv /fake/source',
+      ])
+      expect(readFileSync(logs.SMOKE_LOG, 'utf8')).toBe('')
+      expect(readFileSync(logs.CACHE_LOG, 'utf8')).toBe('')
+      const failedPrerequisite = run({ args: ['--realise-inputs'], prerequisiteStatus: 7 })
+      expect(failedPrerequisite.exitCode).toBe(7)
+      expect(failedPrerequisite.stdout.toString()).toContain('built=1 substituted=1 status=7')
       for (const args of [[], ['--push']]) {
         expect(run({ args }).exitCode).toBe(0)
         expect(readFileSync(logs.NIX_LOG, 'utf8').trim().split('\n')).toEqual([

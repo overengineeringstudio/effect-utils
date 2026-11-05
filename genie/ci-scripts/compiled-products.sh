@@ -10,11 +10,13 @@
 set -euo pipefail
 
 push=false
+realise_inputs=false
 case "${1:-}" in
   '') ;;
   --push) push=true ;;
+  --realise-inputs) realise_inputs=true ;;
   *)
-    echo "usage: $0 [--push]" >&2
+    echo "usage: $0 [--push | --realise-inputs]" >&2
     exit 2
     ;;
 esac
@@ -24,6 +26,7 @@ esac
 refs=(.#ci-test-shell-products .#buck2-rules)
 product_names=()
 product_attrs=()
+source_refs=()
 for inventory in nix/buck2-products/compiled-targets.json nix/buck2-products/native-targets.json; do
   names=$(jq -r '.products[].name' "$inventory")
   for name in $names; do
@@ -32,10 +35,27 @@ for inventory in nix/buck2-products/compiled-targets.json nix/buck2-products/nat
       attr="$name-compiled"
     fi
     refs+=(".#$attr")
+    source_refs+=(".#$attr.buck2Product")
     product_names+=("$name")
     product_attrs+=("$attr")
   done
 done
+
+if $realise_inputs; then
+  started=$SECONDS
+  log=$(mktemp)
+  trap 'rm -f "$log"' EXIT
+  # Query producer derivations, not imports: imports depend on the products
+  # themselves. As in publish.sh, direct references exclude the producer output.
+  drvs=$(nix path-info --derivation "${source_refs[@]}")
+  inputs=$(nix-store --query --references $drvs | sort -u)
+  status=0
+  nix-store --realise $inputs 2>&1 | tee "$log" || status=$?
+  built=$(grep -c "^building '" "$log" || true)
+  substituted=$(grep -c "^copying path '" "$log" || true)
+  echo "product prerequisites: duration=$((SECONDS - started))s built=$built substituted=$substituted status=$status"
+  exit "$status"
+fi
 build_json=$(nix build --no-link --print-build-logs --json "${refs[@]}")
 outputs=$(jq -er '.[] | .outputs.out // error("product build has no out output")' <<<"$build_json")
 

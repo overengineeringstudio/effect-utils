@@ -443,6 +443,15 @@ const playwrightTestRun = (packageName: 'utils' | 'tui-react') =>
     runDevenvTasksBefore(`test:pw:${packageName}`),
   ].join('\n')
 
+// Run 41942221850/job 126965644632: cold prerequisites still downloading at
+// 612 s+ (incomplete); no reliable remaining-byte estimate. ceil(1.5 * 612 / 60) = 16 min.
+const compiledProductsPrerequisitesStep = {
+  name: 'Realise native and compiled product prerequisites',
+  env: githubTokenEnv(),
+  run: withCiSourceRoot('bash genie/ci-scripts/compiled-products.sh --realise-inputs'),
+  'timeout-minutes': 16,
+} as const
+
 /** Build and `--help`-smoke compiled-executable and native products. */
 const compiledProductsSmokeStep = {
   name: 'Build and smoke native and compiled products',
@@ -576,6 +585,7 @@ const unitTestJob = ({
             env: githubTokenEnv(),
             run: runDevenvTasksBefore('buck2:cache-posture:ci-test'),
           }),
+          buck2TrustedCacheWriterStep(compiledProductsPrerequisitesStep),
           buck2TrustedCacheWriterStep(compiledProductsSmokeStep),
           {
             name: 'Build Darwin Nix TypeScript product',
@@ -1280,6 +1290,7 @@ const extraJobs: Record<string, any> = {
           ].join('\n'),
         ),
       },
+      compiledProductsPrerequisitesStep,
       compiledProductsSmokeStep,
     ],
   },
