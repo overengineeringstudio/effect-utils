@@ -730,6 +730,7 @@
         "package.json",
         "packages/@overeng/buck2-tools",
         "packages/@overeng/oxc-config",
+        "packages/@overeng/utils-dev",
         "patches",
         "pnpm-workspace.yaml"
       ],
@@ -748,6 +749,7 @@
         "package.json",
         "packages/@overeng/buck2-tools",
         "packages/@overeng/oxc-config",
+        "packages/@overeng/utils-dev",
         "patches",
         "pnpm-workspace.yaml"
       ],

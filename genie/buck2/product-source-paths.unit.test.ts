@@ -34,5 +34,14 @@ describe('Buck product source projection', () => {
       'packages/middle',
       'pnpm-workspace.yaml',
     ])
+
+    // Buck invokes a workspace runtime that is not a dependency of the product.
+    expect(projectBuckProductSourcePaths({ pkg: leaf, additionalPackages: [app] })).toEqual([
+      'package.json',
+      'packages/app',
+      'packages/leaf',
+      'packages/middle',
+      'pnpm-workspace.yaml',
+    ])
   })
 })
