@@ -142,6 +142,28 @@ stale manifest -> publisher manifest PR -> main push
 Consumers requiring an always-eligible product manifest track `ref published`
 rather than `ref main`. `main` may be temporarily non-current after a
 product-input merge while its publisher manifest proposal is pending.
+
+The pure manifest loader serves cached bytes only when the row's `sourceDigest`
+exactly equals the current from-source recipe's digest (SHA-256 of its source
+store path). Missing or different digests select the current recipe instead,
+without reading producer outputs during evaluation. JavaScript consumers retain
+the same public product shape and dispatch through the source import validator;
+cached descriptor facts remain consumer expectations, not permission to use old
+bytes. All existing inventory, version, provenance and artifact-binding checks
+still apply. `assertDeclaredProducts` and `assertFullyPublished` check inventory
+coverage, not cache eligibility.
+
+`cache.nix` declares the sole bootstrap exception with its reason: `genie` must
+check the generated inventory that defines its own recipe using an earlier
+published generator. Contract tests assert that this pin set is exactly `genie`.
+No other product may bypass the source digest comparison.
+
+Repository recipes currently share a coarse source fileset. Until per-product
+scoping lands, main mostly rebuilds from source, or substitutes from Cachix after
+the publish run for that SHA. The publisher evaluates the built recipe's
+`sourceDigest` into every assembled manifest row, including when byte-identical
+artifacts reuse an immutable pin and its older provenance. The row records the
+current source identity; provenance still records the artifact's original producer.
 `refs/heads/published` only fast-forwards to main commits whose
 `buck2-products/manifest-current` status and consumer smoke both succeeded for
 that exact SHA. The `promote-published` job declares

@@ -73,13 +73,17 @@ jq -e '
 ' "$targets" >/dev/null || fail "target inventory violates effect-utils/buck-cache-targets/v1"
 jq -e '
   def cached:
+    (if has("sourceDigest") then
+       (.sourceDigest | type == "string" and test("^[0-9a-f]{64}$"))
+     else true end) and
+    (del(.sourceDigest) |
     (
       (has("descriptor") and
        (keys | sort) == ["artifactUrl", "descriptor", "descriptorSha256", "name", "provenance", "sha256", "size", "storePath", "version"])
       or
       (has("descriptor") | not) and
       (keys | sort) == ["artifactUrl", "name", "provenance", "sha256", "size", "storePath", "version"]
-    ) and
+    )) and
     (.name | type == "string" and length > 0) and
     (.sha256 | type == "string" and test("^[0-9a-f]{64}$")) and
     (.provenance |
@@ -254,6 +258,8 @@ while IFS= read -r row; do
   output_name="$(jq -r '.outputName' <<<"$row")"
   safe_name="$(sed 's|^@||; s|/|-|g' <<<"$name")"
   attr="$(product_attr "$name")"
+  source_digest="$(nix eval --raw "$repo_root#$attr.sourceDigest")"
+  [[ "$source_digest" =~ ^[0-9a-f]{64}$ ]] || fail "$name recipe has an invalid source digest"
   store_path="$(nix build --no-link --print-out-paths "$repo_root#$attr")"
   [[ "$store_path" == /nix/store/* && -d "$store_path" ]] || fail "$name did not build one store directory"
   artifact="$store_path/$output_name"
@@ -324,10 +330,11 @@ while IFS= read -r row; do
   artifact_url="$cache_url/serve/$store_hash/$output_name"
   jq -cnS \
     --arg name "$name" --arg version "$version" --arg sha256 "$sha256" \
+    --arg sourceDigest "$source_digest" \
     --argjson size "$size" --arg storePath "$store_path" --arg artifactUrl "$artifact_url" \
     --argjson provenance "$(jq -cS . "$provenance_file")" \
     --arg kind "$kind" --argjson descriptor "$descriptor" --arg descriptorSha256 "$descriptor_sha256" \
-    '{name:$name,version:$version,sha256:$sha256,size:$size,storePath:$storePath,artifactUrl:$artifactUrl,provenance:$provenance}
+    '{name:$name,version:$version,sha256:$sha256,size:$size,sourceDigest:$sourceDigest,storePath:$storePath,artifactUrl:$artifactUrl,provenance:$provenance}
      + (if $kind == "javascript" then {descriptor:$descriptor,descriptorSha256:$descriptorSha256} else {} end)' \
     >>"$entries"
 done < <(jq -c '.[]' <<<"$rows")

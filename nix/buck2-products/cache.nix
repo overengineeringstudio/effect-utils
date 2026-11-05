@@ -8,6 +8,10 @@ let
   lib = pkgs.lib;
   manifest = builtins.fromJSON (builtins.readFile ./manifest.json);
   targetInventory = builtins.fromJSON (builtins.readFile ./cache-targets.json);
+  # CI's generator must bootstrap from an earlier product to check its own sources.
+  bootstrapPins = {
+    genie = "genie checks the generated inventory that defines its own recipe";
+  };
   declaredProductNames = builtins.sort builtins.lessThan (
     map (product: product.name) targetInventory.products
   );
@@ -36,6 +40,9 @@ let
       declared =
         targetByName.${name} or (throw "buck2-products: manifest contains undeclared product ${name}");
       hasDescriptor = declared.kind == "javascript";
+      useCached =
+        builtins.hasAttr name bootstrapPins
+        || (entry ? sourceDigest && entry.sourceDigest == recipe.sourceDigest);
       descriptorContent = if hasDescriptor then builtins.toJSON entry.descriptor else null;
       expectedIntegrity = builtins.convertHash {
         hash = entry.sha256;
@@ -129,6 +136,9 @@ let
         "provenance"
         "sha256"
         "size"
+      ]
+      ++ (if entry ? sourceDigest then [ "sourceDigest" ] else [ ])
+      ++ [
         "storePath"
         "version"
       ]
@@ -143,6 +153,12 @@ let
     assert lib.assertMsg (
       builtins.match "[0-9a-f]{64}" entry.sha256 != null
     ) "buck2-products: ${name} sha256 must be lowercase hexadecimal";
+    assert lib.assertMsg (
+      !(entry ? sourceDigest)
+      || (
+        builtins.isString entry.sourceDigest && builtins.match "[0-9a-f]{64}" entry.sourceDigest != null
+      )
+    ) "buck2-products: ${name} sourceDigest must be lowercase hexadecimal";
     assert lib.assertMsg (
       builtins.isInt entry.size && entry.size > 0
     ) "buck2-products: ${name} size must be a positive integer";
@@ -179,8 +195,8 @@ let
     {
       inherit name;
       value = {
-        artifact = "${checkedArtifact}/${artifactName}";
-        expectedModuleSha256 = entry.sha256;
+        artifact = "${if useCached then checkedArtifact else recipe}/${artifactName}";
+        expectedModuleSha256 = if useCached then entry.sha256 else null;
         inherit (entry)
           artifactUrl
           provenance
@@ -188,12 +204,32 @@ let
           version
           ;
         sourceRecipe = recipe;
-        validated = checkedArtifact;
+        validated = if useCached then checkedArtifact else recipe;
+        sourceImport =
+          if useCached || !hasDescriptor then
+            null
+          else
+            {
+              product = recipe;
+              hasRuntimeClosure = recipe.runtimeClosureTarget != null;
+              facts = {
+                expectedModulePath = entry.descriptor.modulePath;
+                expectedRuntimeKind = entry.descriptor.runtimeKind;
+                expectedRuntimeContract = entry.descriptor.runtimeContract;
+                expectedRuntimeContractVersion = entry.descriptor.runtimeContractVersion;
+                expectedProducerCommit = recipe.producerCommit;
+                checkProducerCommit = recipe.producerCommit != null;
+              };
+            };
       }
       // (
         if hasDescriptor then
           {
-            descriptor = pkgs.writeText "${lib.replaceStrings [ "@" "/" ] [ "" "-" ] name}-product.json" descriptorContent;
+            descriptor =
+              if useCached then
+                pkgs.writeText "${lib.replaceStrings [ "@" "/" ] [ "" "-" ] name}-product.json" descriptorContent
+              else
+                "${recipe}/descriptor.json";
             inherit descriptorContent;
             expectedDescriptorSha256 = entry.descriptorSha256;
           }
@@ -235,6 +271,7 @@ assert lib.assertMsg (
 {
   inherit
     manifest
+    bootstrapPins
     declaredProductNames
     publishedProductNames
     fullyPublished

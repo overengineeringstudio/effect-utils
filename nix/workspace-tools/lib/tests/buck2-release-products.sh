@@ -215,6 +215,7 @@ cat >"$tmp/fake-bin/nix" <<'EOF'
 #!/usr/bin/env bash
 case "$1" in
   hash) printf '%s\n' "$FIXTURE_INTEGRITY" ;;
+  eval) printf '%064d\n' 0 ;;
   *) printf '%s\n' "$FIXTURE_STORE_PATH" ;;
 esac
 EOF
@@ -290,6 +291,7 @@ jq -e --arg storePath "$published_store" --arg digest "$collision_sha" '
   (.products | length == 1) and
   .products[0].storePath == $storePath and
   .products[0].sha256 == $digest and
+  .products[0].sourceDigest == ("0" * 64) and
   .products[0].provenance.producerCommit == "2222222222222222222222222222222222222222" and
   (.products[0].artifactUrl | endswith(($storePath | ltrimstr("/nix/store/") | split("-")[0]) + "/fixture.js"))
 ' "$tmp/reuse-manifest.json" >/dev/null || {
@@ -308,6 +310,7 @@ cat >"$tmp/local-bin/nix" <<'EOF'
 #!/usr/bin/env bash
 case "$1" in
   build) printf '%s\n' "$FIXTURE_STORE_PATH" ;;
+  eval) printf '%064d\n' 0 ;;
   copy) printf '%s\n' "$*" >>"$NIX_COPY_LOG" ;;
   hash) printf '%s\n' "$FIXTURE_INTEGRITY" ;;
   *) exit 2 ;;
@@ -424,6 +427,7 @@ loader_bindings="let
   recipe = mkPath \"$store_path\" {
     artifactName = \"fixture.js\";
     target = \"effect_utils//packages/@overeng/fixture:fixture-candidate\";
+    sourceDigest = builtins.concatStringsSep \"\" (builtins.genList (_: \"a\") 64);
   };
   pkgs = {
     coreutils = mkPath \"/nix/store/coreutils\" {};
@@ -448,6 +452,8 @@ loaded.missingProductNames"
 loader_expr="$loader_bindings
 in assert loaded.assertFullyPublished; {
   inherit (loaded) declaredProductNames publishedProductNames fullyPublished assertFullyPublished;
+  bootstrapPins = loaded.bootstrapPins;
+  artifact = loaded.products.fixture.artifact;
   artifactUrl = loaded.products.fixture.artifactUrl;
   productNames = builtins.attrNames loaded.products;
   sourcePath = builtins.toString loaded.products.fixture.sourceRecipe;
@@ -461,6 +467,37 @@ jq -e --arg storePath "$store_path" --arg artifactUrl "$artifact_url" '
   .sourcePath == $storePath and
   .artifactUrl == $artifactUrl
 ' <<<"$summary" >/dev/null
+
+# Only an exact digest serves cached bytes; absent and stale rows use the recipe.
+jq -e --arg artifact "$store_path/fixture.js" '
+  .artifact == $artifact and (.bootstrapPins | keys) == ["genie"] and
+  (.bootstrapPins.genie | length > 0)
+' <<<"$summary" >/dev/null
+cp "$tmp/products/manifest.json" "$tmp/products/manifest.digestless.json"
+for digest in a b; do
+  jq --arg digest "$digest" '.products[0].sourceDigest = ($digest * 64)' \
+    "$tmp/products/manifest.digestless.json" >"$tmp/products/manifest.json"
+  actual="$(nix eval --impure --json --expr "$loader_expr")"
+  if [[ "$digest" == a ]]; then
+    jq -e '.artifact == "/nix/store/validated-fixture/fixture.js"' <<<"$actual" >/dev/null
+  else
+    jq -e --arg artifact "$store_path/fixture.js" '.artifact == $artifact' <<<"$actual" >/dev/null
+  fi
+done
+# The declared bootstrap pin is honored even without a digest.
+cp "$tmp/products/cache-targets.json" "$tmp/products/cache-targets.fixture.json"
+jq '.products[0].name = "genie"' "$tmp/products/cache-targets.fixture.json" >"$tmp/products/cache-targets.json"
+jq '.products[0].name = "genie" | .products[0].descriptor.productName = "genie"' \
+  "$tmp/products/manifest.digestless.json" >"$tmp/products/manifest.json"
+genie_descriptor_sha="$(jq -cS '.products[0].descriptor' "$tmp/products/manifest.json" | tr -d '\n' | sha256sum | cut -d' ' -f1)"
+jq --arg sha "$genie_descriptor_sha" '.products[0].descriptorSha256 = $sha' \
+  "$tmp/products/manifest.json" >"$tmp/products/manifest.genie.json"
+mv "$tmp/products/manifest.genie.json" "$tmp/products/manifest.json"
+nix eval --impure --json --expr "${loader_bindings/fromSourceProducts.fixture/fromSourceProducts.genie}
+in loaded.products.genie.artifact" |
+  jq -e '. == "/nix/store/validated-fixture/fixture.js"' >/dev/null
+cp "$tmp/products/cache-targets.fixture.json" "$tmp/products/cache-targets.json"
+cp "$tmp/products/manifest.digestless.json" "$tmp/products/manifest.json"
 
 # GREEN: a source PR may declare a new product before post-merge publication.
 cp "$tmp/products/cache-targets.json" "$tmp/products/cache-targets.exact.json"

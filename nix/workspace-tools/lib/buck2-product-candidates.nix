@@ -48,6 +48,7 @@ let
           descriptorContent
           expectedDescriptorSha256
           expectedModuleSha256
+          sourceImport
           ;
         expectedProductName = name;
       }
@@ -230,18 +231,21 @@ let
     expectedProductKind = "module";
     generateCompletions = false;
   };
+  oxcConfigModulePath = (builtins.fromJSON products.oxc-config.descriptorContent).modulePath;
+  oxcConfigStylexUpstreamModulePath =
+    (builtins.fromJSON products.oxc-config-stylex-upstream-plugin.descriptorContent).modulePath;
   oxc-config =
     pkgs.runCommand "oxc-config-buck2-candidate"
       {
         passthru = {
-          pluginPath = "${oxcConfigModule}/libexec/${oxcConfigModule.checkedDescriptor.modulePath}";
-          stylexUpstreamPluginPath = "${oxcConfigStylexUpstreamModule}/libexec/${oxcConfigStylexUpstreamModule.checkedDescriptor.modulePath}";
+          pluginPath = "${oxcConfigModule}/libexec/${oxcConfigModulePath}";
+          stylexUpstreamPluginPath = "${oxcConfigStylexUpstreamModule}/libexec/${oxcConfigStylexUpstreamModulePath}";
         };
       }
       ''
         mkdir -p "$out/lib"
-        ln -s ${oxcConfigModule}/libexec/${oxcConfigModule.checkedDescriptor.modulePath} "$out/lib/oxc-config.js"
-        ln -s ${oxcConfigStylexUpstreamModule}/libexec/${oxcConfigStylexUpstreamModule.checkedDescriptor.modulePath} "$out/lib/stylex-upstream-plugin.js"
+        ln -s ${oxcConfigModule}/libexec/${oxcConfigModulePath} "$out/lib/oxc-config.js"
+        ln -s ${oxcConfigStylexUpstreamModule}/libexec/${oxcConfigStylexUpstreamModulePath} "$out/lib/stylex-upstream-plugin.js"
         ${pkgs.nodejs_24 or pkgs.nodejs}/bin/node -e 'Promise.all(process.argv.slice(1).map((path) => import(path)))' \
           "$out/lib/oxc-config.js" "$out/lib/stylex-upstream-plugin.js"
       '';

@@ -67,6 +67,7 @@ let
         descriptorContent
         expectedDescriptorSha256
         expectedModuleSha256
+        sourceImport
         ;
       expectedProductKind = "module";
       expectedProductName = productName;
@@ -74,8 +75,8 @@ let
     };
   overengPlugin = importPlugin "oxc-config";
   stylexUpstreamPlugin = importPlugin "oxc-config-stylex-upstream-plugin";
-  overengPluginModule = "${overengPlugin}/libexec/${overengPlugin.checkedDescriptor.modulePath}";
-  stylexUpstreamPluginModule = "${stylexUpstreamPlugin}/libexec/${stylexUpstreamPlugin.checkedDescriptor.modulePath}";
+  overengPluginModule = "${overengPlugin}/libexec/${(builtins.fromJSON products.oxc-config.descriptorContent).modulePath}";
+  stylexUpstreamPluginModule = "${stylexUpstreamPlugin}/libexec/${(builtins.fromJSON products.oxc-config-stylex-upstream-plugin.descriptorContent).modulePath}";
 
 in
 pkgs.stdenv.mkDerivation (finalAttrs: {
