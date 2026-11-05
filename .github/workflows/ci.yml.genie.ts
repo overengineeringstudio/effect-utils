@@ -2410,21 +2410,33 @@ export default ciWorkflow({
             defaults: bashShellDefaults,
             steps: [
               checkoutStep(),
-              installNixStep(),
+              installNixStep({ binaryCaches: [binaryCache] }),
               linuxSandboxPrerequisitesStep({ privileged: 'always' }),
               cachixCliBuildStep,
-              trustedCachixStep,
-              publishingCachixStep,
               cachixPushStep({
                 jobIf: trustedSecretCiIf,
                 triggers: ['push', 'workflow_dispatch'],
                 authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}',
                 step: {
                   name: 'Publish unstamped compile outputs',
-                  env: githubTokenEnv(),
-                  run: withCiSourceRoot('bash genie/ci-scripts/publish-compile-products.sh'),
+                  env: {
+                    ...githubTokenEnv(),
+                    XDG_CONFIG_HOME:
+                      '${{ runner.temp }}/compile-cachix-${{ github.run_id }}-${{ github.run_attempt }}',
+                  },
+                  run: withCiSourceRoot(
+                    'mkdir -p "$XDG_CONFIG_HOME"\nbash genie/ci-scripts/publish-compile-products.sh',
+                  ),
                 },
               }),
+              {
+                name: 'Remove isolated compile Cachix configuration',
+                if: 'always()',
+                run: [
+                  'config="${RUNNER_TEMP:?}/compile-cachix-${GITHUB_RUN_ID:?}-${GITHUB_RUN_ATTEMPT:?}"',
+                  'if [ -d "$config" ]; then rm -r -- "$config"; fi',
+                ].join('\n'),
+              },
             ],
           },
         },

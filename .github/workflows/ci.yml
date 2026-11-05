@@ -7173,8 +7173,8 @@ jobs:
           extra-conf: |
             experimental-features = nix-command flakes
             accept-flake-config = true
-            extra-substituters = 
-            extra-trusted-public-keys = 
+            extra-substituters = https://overeng-effect-utils.cachix.org
+            extra-trusted-public-keys = overeng-effect-utils.cachix.org-1:KFmqYNF6Q7ZzVYPl2znpJYZGEolage9YNCA9res6vKc=
             access-tokens = github.com=${{ github.token }}
             ${{ runner.os == 'Linux' && 'sandbox = true' || '' }}
             ${{ runner.os == 'Linux' && 'sandbox-fallback = false' || '' }}
@@ -7207,25 +7207,20 @@ jobs:
           out=$(nix build --no-link --print-out-paths nixpkgs#cachix)
           echo "$out/bin" >> "$GITHUB_PATH"
         timeout-minutes: 3
-      - # v17
-        name: Enable Cachix cache
-        uses: cachix/cachix-action@38b082610b782e7e93e209c35fd730d399dee866
-        with:
-          name: overeng-effect-utils
-          skipPush: true
-      - # v17
-        name: Publish to Cachix
-        if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
-        uses: cachix/cachix-action@38b082610b782e7e93e209c35fd730d399dee866
-        with:
-          name: overeng-effect-utils
-          authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
       - name: Publish unstamped compile outputs
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          XDG_CONFIG_HOME: '${{ runner.temp }}/compile-cachix-${{ github.run_id }}-${{ github.run_attempt }}'
           CACHIX_AUTH_TOKEN: ${{ secrets.CACHIX_AUTH_TOKEN }}
-        run: 'cd "${GITHUB_WORKSPACE:-$PWD}" && bash genie/ci-scripts/publish-compile-products.sh'
+        run: |
+          cd "${GITHUB_WORKSPACE:-$PWD}" && mkdir -p "$XDG_CONFIG_HOME"
+          bash genie/ci-scripts/publish-compile-products.sh
         if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+      - name: Remove isolated compile Cachix configuration
+        if: ${{ (always()) && ((runner.os != 'Linux' || steps.linux-sandbox-admission.outcome == 'success')) }}
+        run: |
+          config="${RUNNER_TEMP:?}/compile-cachix-${GITHUB_RUN_ID:?}-${GITHUB_RUN_ATTEMPT:?}"
+          if [ -d "$config" ]; then rm -r -- "$config"; fi
     env:
       FORCE_SETUP: '1'
       CI: 'true'

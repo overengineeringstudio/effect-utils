@@ -145,8 +145,12 @@ The independent `publish-compile-products` job follows `publish-products` under
 the same protected-main push/dispatch guard, including manifest-only runs.
 Neither consumer smoke nor promotion depends on it: compile warming adds zero
 dependency-path latency to promotion. It uses the admitted self-hosted Linux x64
-runner and existing authenticated Cachix setup, with no publisher App token or
-additional scope. A main-only concurrency group cancels superseded warmers;
+runner with anonymous substitution configured through the Nix installer and no
+Cachix action or automatic uploader. Only the explicit push step receives the
+existing cache-scoped token in its environment; no publisher App token or
+additional scope is needed. Cachix configuration is isolated under runner
+temporary storage and removed by an `always()` cleanup step; `cachix authtoken`
+is never invoked. A main-only concurrency group cancels superseded warmers;
 the job is bounded to 30 minutes. Strict Nix sandboxing and disabled fallback
 remain enabled; the shared Linux prerequisite step requires user namespaces
 before any compile realization. Unsupported runners fail rather than weaken isolation.
@@ -156,6 +160,10 @@ native inventory rows. It explicitly realizes each unstamped `.compileProduct`
 that exact output to `overeng-effect-utils` on every run, independently of
 immutable artifact pins. Nix substitutes an existing compile output or builds
 it when absent, even if the revision-stamped artifact was already substituted.
+Each explicit push includes that output's runtime closure by Cachix default;
+these are this repository's public build inputs, not unrelated store paths.
+Fleet-runner workflow tests forbid authenticated Cachix actions, automatic
+post-build hooks, store watchers and upload daemons.
 Realization and push failures emit product-specific warning annotations and
 continue; job-level failures are advisory and cannot block promotion.
 No compile manifest rows, Actions artifacts or Actions cache are involved.
