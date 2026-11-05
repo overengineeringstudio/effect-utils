@@ -1113,7 +1113,7 @@ describe('published consumer ref', () => {
     expect(publish.run).toContain('nix/buck2-products/publish.sh --proposal "$proposal"')
   })
 
-  it('joins independent same-SHA publication and consumer proofs before main-push promotion', () => {
+  it('joins same-SHA publication and consumer proofs before main-push promotion', () => {
     expect(promotion.needs).toEqual(['publish-products', 'consumer-smoke'])
     expect(promotion.if).toBe(publishedRefIf)
     expect(publisher.needs ?? []).not.toContain('consumer-smoke')
@@ -1175,6 +1175,39 @@ describe('published consumer ref', () => {
     )
     expect(steps.some((step) => step.uses?.includes('install-nix'))).toBe(false)
     expect(steps.some((step) => String(step.run).includes('devenv'))).toBe(false)
+  })
+
+  it('smokes the proposal tree and guards every promotion attempt against that tree', () => {
+    expect(smoke.needs).toEqual(['publish-products'])
+    expect(smoke.outputs?.['smoked-tree']).toBe('${{ steps.consumer-smoke.outputs.smoked-tree }}')
+    const smokeStep = smoke.steps!.find((step) => step.id === 'consumer-smoke')!
+    const command = smokeStep.run as string
+    for (const index of [0, 1, 2, 3]) {
+      expect(smokeStep.env?.[`MANIFEST_BASE64_${index}`]).toBe(
+        `\${{ needs.publish-products.outputs.manifest-base64-${index} }}`,
+      )
+    }
+    expect(command).toContain('decode_manifest > nix/buck2-products/manifest.json')
+    expect(command.indexOf('git add nix/buck2-products/manifest.json')).toBeLessThan(
+      command.indexOf('smoked_tree="$(git write-tree)"'),
+    )
+    expect(command.indexOf('smoked_tree="$(git write-tree)"')).toBeLessThan(
+      command.indexOf('bash nix/fixtures/consumer-smoke/run.sh'),
+    )
+    expect(command.indexOf('bash nix/fixtures/consumer-smoke/run.sh')).toBeLessThan(
+      command.indexOf('echo "smoked-tree=$smoked_tree"'),
+    )
+    const advance = steps.find((step) => step.id === 'advance-published-ref')!
+    expect(advance.env?.SMOKED_TREE).toBe('${{ needs.consumer-smoke.outputs.smoked-tree }}')
+    const guard =
+      'git rev-parse "$commit^{tree}")" != "${SMOKED_TREE:?Missing consumer-smoked tree}"'
+    expect(advance.run).toContain(guard)
+    expect(advance.run!.indexOf('for attempt in 1 2 3; do')).toBeLessThan(
+      advance.run!.indexOf(guard),
+    )
+    expect(advance.run!.indexOf(guard)).toBeLessThan(
+      advance.run!.indexOf('git push --force-with-lease'),
+    )
   })
 
   it('uses the publisher App and checks ancestry before and after a raced push', () => {

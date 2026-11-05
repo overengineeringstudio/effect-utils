@@ -6709,6 +6709,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ steps.published-ref-token.outputs.token }}
           GH_TOKEN: ${{ steps.published-ref-token.outputs.token }}
+          SMOKED_TREE: ${{ needs.consumer-smoke.outputs.smoked-tree }}
           MANIFEST_BASE64_0: ${{ needs.publish-products.outputs.manifest-base64-0 }}
           MANIFEST_BASE64_1: ${{ needs.publish-products.outputs.manifest-base64-1 }}
           MANIFEST_BASE64_2: ${{ needs.publish-products.outputs.manifest-base64-2 }}
@@ -6753,6 +6754,10 @@ jobs:
                 changed="$(git diff --name-only "$GITHUB_SHA" "$commit")"
                 if [ -n "$changed" ] && [ "$changed" != nix/buck2-products/manifest.json ]; then
                   echo "::error::Publisher commit changed paths other than the manifest"
+                  exit 1
+                fi
+                if [ "$(git rev-parse "$commit^{tree}")" != "${SMOKED_TREE:?Missing consumer-smoked tree}" ]; then
+                  echo "::error::Publisher commit differs from the consumer-smoked tree"
                   exit 1
                 fi
                 if git push --force-with-lease="refs/heads/published:$tip" origin "$commit:refs/heads/published"; then
@@ -6931,6 +6936,7 @@ jobs:
       group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || 'code') }}-pipeline-traces"
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') }}
   consumer-smoke:
+    needs: [publish-products]
     if: ${{ (!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && !(github.event_name == 'workflow_dispatch' && inputs['measure-macos'] == true) }}
     runs-on:
       [
@@ -6944,6 +6950,7 @@ jobs:
         shell: bash
     outputs:
       current-sha: ${{ steps.consumer-smoke.outputs.current-sha }}
+      smoked-tree: ${{ steps.consumer-smoke.outputs.smoked-tree }}
     steps:
       - id: linux-nix-sandbox-policy
         name: Disable Linux Nix sandbox fallback
@@ -7029,9 +7036,21 @@ jobs:
         name: Install an isolated consumer from the candidate checkout
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          MANIFEST_BASE64_0: ${{ needs.publish-products.outputs.manifest-base64-0 }}
+          MANIFEST_BASE64_1: ${{ needs.publish-products.outputs.manifest-base64-1 }}
+          MANIFEST_BASE64_2: ${{ needs.publish-products.outputs.manifest-base64-2 }}
+          MANIFEST_BASE64_3: ${{ needs.publish-products.outputs.manifest-base64-3 }}
         run: |
+          set -euo pipefail
+          if [ "$GITHUB_EVENT_NAME" = push ] && [ "$GITHUB_REF" = refs/heads/main ] && [ -n "$MANIFEST_BASE64_0" ]; then
+            source genie/ci-workflow/published-ref-decide.sh
+            decode_manifest > nix/buck2-products/manifest.json
+            git add nix/buck2-products/manifest.json
+          fi
+          smoked_tree="$(git write-tree)"
           bash nix/fixtures/consumer-smoke/run.sh "$PWD" "${DEVENV_BIN:?DEVENV_BIN not set}"
           echo "current-sha=$GITHUB_SHA" >> "$GITHUB_OUTPUT"
+          echo "smoked-tree=$smoked_tree" >> "$GITHUB_OUTPUT"
     env:
       FORCE_SETUP: '1'
       CI: 'true'

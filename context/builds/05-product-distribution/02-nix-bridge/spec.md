@@ -131,12 +131,12 @@ without rewriting or bundling them into every dependent package.
 ### Consumer pin eligibility
 
 ```text
-trusted main push X -> publish-products -> proposal manifest + SHA X ------+
-                   -> consumer-smoke  -> successful consumer SHA X ------+
-                                                                         |
-                                           promote-published <------------+
-                                             -> publisher commit P
-                                             -> fast-forward published
+trusted main push X -> publish-products -> proposal manifest + SHA X
+                                            |
+                                            v
+                         consumer-smoke(X + proposal) -> smoked tree
+                                            |
+                                    promote-published -> P -> fast-forward published
 stale main manifest -> publisher manifest PR -> main push
 ```
 
@@ -148,8 +148,8 @@ product-input merge while its publisher manifest proposal is pending.
 Its tree is X's tree with only `nix/buck2-products/manifest.json` replaced by
 the exact proposal generated while publishing X's products. An unchanged
 manifest still produces this two-parent commit. The `promote-published` job
-declares `needs: [publish-products, consumer-smoke]`; it performs no Nix
-evaluation or build. Both jobs must succeed and emit X as their `current-sha`.
+declares `needs: [publish-products, consumer-smoke]`. Both prerequisite jobs
+must succeed and emit X as their `current-sha`.
 The proposal travels as base64 in four job outputs of at most 100,000 characters
 each, staying below GitHub's total output and Linux's per-environment-string
 limits. Both producer paths reject more than 400,000 characters; promotion
@@ -185,7 +185,13 @@ Before pushing, `git diff --name-only X P` must be empty or exactly the manifest
 path. The ref push uses an exact T lease (compare-and-swap), and P has T as its
 first parent, so accepted updates are fast-forwards. A rejected lease refetches
 and re-decides; exhaustion fails unless the candidate is already superseded.
-`consumer-smoke` remains a smoke of X's tree and never reads the manifest.
+`consumer-smoke` now waits for `publish-products` rather than running in parallel.
+On trusted main pushes with a proposal it overlays the exact manifest bytes
+onto X, stages the manifest, records `git write-tree`, and runs the existing
+consumer harness. Without a proposal it retains the checkout's tree.
+After smoke succeeds it emits that tree SHA. Before every push, including lease
+retries, P's tree must equal the successful `smoked-tree` output or promotion
+fails closed. The smoke runner, setup, token permissions, and harness are unchanged.
 This ref guarantees manifest eligibility and consumer smoke admission, not
 success of unrelated CI checks.
 

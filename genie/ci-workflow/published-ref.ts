@@ -25,6 +25,7 @@ export const publishedRefSteps = [
     if: publishedRefIf,
     env: {
       ...githubAccessTokenEnv('${{ steps.published-ref-token.outputs.token }}'),
+      SMOKED_TREE: '${{ needs.consumer-smoke.outputs.smoked-tree }}',
       MANIFEST_BASE64_0: '${{ needs.publish-products.outputs.manifest-base64-0 }}',
       MANIFEST_BASE64_1: '${{ needs.publish-products.outputs.manifest-base64-1 }}',
       MANIFEST_BASE64_2: '${{ needs.publish-products.outputs.manifest-base64-2 }}',
@@ -72,6 +73,10 @@ export const publishedRefSteps = [
       '      changed="$(git diff --name-only "$GITHUB_SHA" "$commit")"',
       '      if [ -n "$changed" ] && [ "$changed" != nix/buck2-products/manifest.json ]; then',
       '        echo "::error::Publisher commit changed paths other than the manifest"',
+      '        exit 1',
+      '      fi',
+      '      if [ "$(git rev-parse "$commit^{tree}")" != "${SMOKED_TREE:?Missing consumer-smoked tree}" ]; then',
+      '        echo "::error::Publisher commit differs from the consumer-smoked tree"',
       '        exit 1',
       '      fi',
       // Lease is an exact compare-and-swap; the commit's first parent preserves FF history.

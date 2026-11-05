@@ -1284,6 +1284,7 @@ const extraJobs: Record<string, any> = {
     ],
   },
   'consumer-smoke': {
+    needs: ['publish-products'],
     if: trustedSecretCiIf,
     'runs-on': namespaceRunner({
       profile: 'namespace-profile-linux-x86-64',
@@ -1294,7 +1295,10 @@ const extraJobs: Record<string, any> = {
     'timeout-minutes': 10,
     permissions: { contents: 'read' },
     defaults: bashShellDefaults,
-    outputs: { 'current-sha': '${{ steps.consumer-smoke.outputs.current-sha }}' },
+    outputs: {
+      'current-sha': '${{ steps.consumer-smoke.outputs.current-sha }}',
+      'smoked-tree': '${{ steps.consumer-smoke.outputs.smoked-tree }}',
+    },
     steps: [
       checkoutStep(),
       installNixStep({ binaryCaches: [binaryCache] }),
@@ -1305,11 +1309,25 @@ const extraJobs: Record<string, any> = {
       {
         id: 'consumer-smoke',
         name: 'Install an isolated consumer from the candidate checkout',
-        env: githubTokenEnv(),
+        env: {
+          ...githubTokenEnv(),
+          MANIFEST_BASE64_0: '${{ needs.publish-products.outputs.manifest-base64-0 }}',
+          MANIFEST_BASE64_1: '${{ needs.publish-products.outputs.manifest-base64-1 }}',
+          MANIFEST_BASE64_2: '${{ needs.publish-products.outputs.manifest-base64-2 }}',
+          MANIFEST_BASE64_3: '${{ needs.publish-products.outputs.manifest-base64-3 }}',
+        },
         run: [
+          'set -euo pipefail',
+          'if [ "$GITHUB_EVENT_NAME" = push ] && [ "$GITHUB_REF" = refs/heads/main ] && [ -n "$MANIFEST_BASE64_0" ]; then',
+          '  source genie/ci-workflow/published-ref-decide.sh',
+          '  decode_manifest > nix/buck2-products/manifest.json',
+          '  git add nix/buck2-products/manifest.json',
+          'fi',
+          'smoked_tree="$(git write-tree)"',
           // Use runner base tools, Nix and the resolved runtime, not the broad root shell.
           'bash nix/fixtures/consumer-smoke/run.sh "$PWD" "${DEVENV_BIN:?DEVENV_BIN not set}"',
           'echo "current-sha=$GITHUB_SHA" >> "$GITHUB_OUTPUT"',
+          'echo "smoked-tree=$smoked_tree" >> "$GITHUB_OUTPUT"',
         ].join('\n'),
       },
     ],
