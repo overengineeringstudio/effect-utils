@@ -1113,7 +1113,7 @@ describe('published consumer ref', () => {
     expect(publish.run).toContain('nix/buck2-products/publish.sh --proposal "$proposal"')
   })
 
-  it('joins independent same-SHA publication and consumer proofs before main-push promotion', () => {
+  it('joins same-SHA publication and consumer proofs before main-push promotion', () => {
     expect(promotion.needs).toEqual(['publish-products', 'consumer-smoke'])
     expect(promotion.if).toBe(publishedRefIf)
     expect(publisher.needs ?? []).not.toContain('consumer-smoke')
@@ -1136,9 +1136,18 @@ describe('published consumer ref', () => {
     for (const id of ['publication-scope', 'product-publication']) {
       const producer = publisher.steps!.find((step) => step.id === id)!
       const script = producer.run as string
-      const success = script.indexOf('-f context=buck2-products/manifest-current -f state=success')
-      expect(success).toBeGreaterThan(-1)
-      expect(script.indexOf('echo "current-sha=$GITHUB_SHA"', success)).toBeGreaterThan(success)
+      expect(script).toContain('source genie/ci-workflow/published-ref-decide.sh')
+      expect(script).toContain('manifest_outputs ')
+      expect(script).toContain('echo "current-sha=$GITHUB_SHA"')
+    }
+    const publication = publisher.steps!.find((step) => step.id === 'product-publication')!.run!
+    expect(publication.indexOf('echo "current-sha=$GITHUB_SHA"')).toBeLessThan(
+      publication.indexOf('if cmp -s'),
+    )
+    for (const index of [0, 1, 2, 3]) {
+      expect(publisher.outputs?.[`manifest-base64-${index}`]).toContain(
+        `steps.product-publication.outputs.manifest-base64-${index}`,
+      )
     }
   })
 
@@ -1168,6 +1177,39 @@ describe('published consumer ref', () => {
     expect(steps.some((step) => String(step.run).includes('devenv'))).toBe(false)
   })
 
+  it('smokes the proposal tree and guards every promotion attempt against that tree', () => {
+    expect(smoke.needs).toEqual(['publish-products'])
+    expect(smoke.outputs?.['smoked-tree']).toBe('${{ steps.consumer-smoke.outputs.smoked-tree }}')
+    const smokeStep = smoke.steps!.find((step) => step.id === 'consumer-smoke')!
+    const command = smokeStep.run as string
+    for (const index of [0, 1, 2, 3]) {
+      expect(smokeStep.env?.[`MANIFEST_BASE64_${index}`]).toBe(
+        `\${{ needs.publish-products.outputs.manifest-base64-${index} }}`,
+      )
+    }
+    expect(command).toContain('decode_manifest > nix/buck2-products/manifest.json')
+    expect(command.indexOf('git add nix/buck2-products/manifest.json')).toBeLessThan(
+      command.indexOf('smoked_tree="$(git write-tree)"'),
+    )
+    expect(command.indexOf('smoked_tree="$(git write-tree)"')).toBeLessThan(
+      command.indexOf('bash nix/fixtures/consumer-smoke/run.sh'),
+    )
+    expect(command.indexOf('bash nix/fixtures/consumer-smoke/run.sh')).toBeLessThan(
+      command.indexOf('echo "smoked-tree=$smoked_tree"'),
+    )
+    const advance = steps.find((step) => step.id === 'advance-published-ref')!
+    expect(advance.env?.SMOKED_TREE).toBe('${{ needs.consumer-smoke.outputs.smoked-tree }}')
+    const guard =
+      'git rev-parse "$commit^{tree}")" != "${SMOKED_TREE:?Missing consumer-smoked tree}"'
+    expect(advance.run).toContain(guard)
+    expect(advance.run!.indexOf('for attempt in 1 2 3; do')).toBeLessThan(
+      advance.run!.indexOf(guard),
+    )
+    expect(advance.run!.indexOf(guard)).toBeLessThan(
+      advance.run!.indexOf('git push --force-with-lease'),
+    )
+  })
+
   it('uses the publisher App and checks ancestry before and after a raced push', () => {
     const token = steps.find((step) => step.id === 'published-ref-token')!
     expect(token.with?.['app-id']).toBe('${{ vars.NIX_PUBLISHER_GITHUB_APP_ID }}')
@@ -1179,9 +1221,25 @@ describe('published consumer ref', () => {
     expect(advance.env?.GH_TOKEN).toBe('${{ steps.published-ref-token.outputs.token }}')
     expect(advance.run).toContain('source genie/ci-workflow/published-ref-decide.sh')
     expect(advance.run).toContain('for attempt in 1 2 3; do')
-    expect(advance.run).toContain('case "$(decide "$tip" "$GITHUB_SHA")" in')
-    expect(advance.run).toContain('git push origin "$GITHUB_SHA:refs/heads/published"')
-    expect(advance.run).not.toContain('--force')
+    expect(advance.run).toContain(
+      'case "$(decide "$tip" "$GITHUB_SHA" refs/remotes/origin/main)" in',
+    )
+    expect(advance.run).toContain('git fetch --no-tags origin +refs/heads/main:')
+    expect(advance.run).toContain('decode_manifest > "$proposal"')
+    for (const index of [0, 1, 2, 3]) {
+      expect(advance.env?.[`MANIFEST_BASE64_${index}`]).toBe(
+        `\${{ needs.publish-products.outputs.manifest-base64-${index} }}`,
+      )
+    }
+    expect(advance.run).toContain('parents: [$tip, $main]')
+    expect(advance.run).toContain('Published-From: ')
+    expect(advance.run).toContain('/git/trees')
+    expect(advance.run).toContain('/git/commits')
+    expect(advance.run).toContain('git diff --name-only "$GITHUB_SHA" "$commit"')
+    expect(advance.run).toContain('[ "$changed" != nix/buck2-products/manifest.json ]')
+    expect(advance.run).toContain(
+      'git push --force-with-lease="refs/heads/published:$tip" origin "$commit:refs/heads/published"',
+    )
     expect(advance.run).toContain('$GITHUB_STEP_SUMMARY')
   })
 })

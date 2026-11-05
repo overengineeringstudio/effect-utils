@@ -2114,7 +2114,20 @@ jobs:
           unset BUCK2_PUBLIC_CACHE_WRITE_AUTH
           __genie_ci_retry_script='${{ runner.temp }}/composition-state/ci-runtime/run-with-nix-gc-race-retry.sh'
           bash "$__genie_ci_retry_script" 'devenv tasks run buck2:cache-posture:ci-test' 'cd "${GITHUB_WORKSPACE:-$PWD}" && if [ -n "${NIX_CONFIG:-}" ]; then NIX_CONFIG_WITH_APPEND=$(printf '"'"'%s\n%s'"'"' "$NIX_CONFIG" '"'"'restrict-eval = false'"'"'); else NIX_CONFIG_WITH_APPEND='"'"'restrict-eval = false'"'"'; fi; NIX_CONFIG="$NIX_CONFIG_WITH_APPEND" DEVENV_TASK_PASSTHROUGH=1 DEVENV_TUI=false ${PIPELINE_RUN_PREFIX:+$PIPELINE_RUN_PREFIX }"${DEVENV_BIN:?DEVENV_BIN not set}" tasks run buck2:cache-posture:ci-test'
-      - name: Build and smoke native and compiled products
+      - name: Build native and compiled products
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          BUCK2_PUBLIC_CACHE_WRITE_AUTH: ${{ ((github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'merge_group' && github.event.merge_group.base_ref == 'refs/heads/main' && startsWith(github.ref, 'refs/heads/gh-readonly-queue/main/'))) && secrets.BUCK2_PUBLIC_CACHE_WRITE_AUTH || '' }}
+        run: |
+          if [ -n "${BUCK2_PUBLIC_CACHE_WRITE_AUTH:-}" ]; then
+            BUCK2_CACHE_WRITE_BASIC_AUTH="$(printf '%s' "$BUCK2_PUBLIC_CACHE_WRITE_AUTH" | base64 | tr -d '\n')"
+            echo "::add-mask::$BUCK2_CACHE_WRITE_BASIC_AUTH"
+            export BUCK2_CACHE_WRITE_BASIC_AUTH
+          fi
+          unset BUCK2_PUBLIC_CACHE_WRITE_AUTH
+          cd "${GITHUB_WORKSPACE:-$PWD}" && bash genie/ci-scripts/compiled-products.sh --build-only
+        timeout-minutes: 16
+      - name: Smoke native and compiled products
         env:
           GITHUB_TOKEN: ${{ github.token }}
           BUCK2_PUBLIC_CACHE_WRITE_AUTH: ${{ ((github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'merge_group' && github.event.merge_group.base_ref == 'refs/heads/main' && startsWith(github.ref, 'refs/heads/gh-readonly-queue/main/'))) && secrets.BUCK2_PUBLIC_CACHE_WRITE_AUTH || '' }}
@@ -4392,7 +4405,12 @@ jobs:
           done
           nix build --no-link --print-build-logs "${product_refs[@]}"
         timeout-minutes: 17
-      - name: Build and smoke native and compiled products
+      - name: Build native and compiled products
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: 'cd "${GITHUB_WORKSPACE:-$PWD}" && bash genie/ci-scripts/compiled-products.sh --build-only'
+        timeout-minutes: 16
+      - name: Smoke native and compiled products
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: 'cd "${GITHUB_WORKSPACE:-$PWD}" && bash genie/ci-scripts/compiled-products.sh'
@@ -4440,6 +4458,10 @@ jobs:
       CI_EVIDENCE_MODE: ${{ vars.CI_EVIDENCE_MODE }}
     outputs:
       current-sha: ${{ steps.publication-scope.outputs.current-sha || steps.product-publication.outputs.current-sha }}
+      manifest-base64-0: ${{ steps.publication-scope.outputs.manifest-base64-0 || steps.product-publication.outputs.manifest-base64-0 }}
+      manifest-base64-1: ${{ steps.publication-scope.outputs.manifest-base64-1 || steps.product-publication.outputs.manifest-base64-1 }}
+      manifest-base64-2: ${{ steps.publication-scope.outputs.manifest-base64-2 || steps.product-publication.outputs.manifest-base64-2 }}
+      manifest-base64-3: ${{ steps.publication-scope.outputs.manifest-base64-3 || steps.product-publication.outputs.manifest-base64-3 }}
     steps:
       - id: linux-nix-sandbox-policy
         name: Disable Linux Nix sandbox fallback
@@ -4502,6 +4524,8 @@ jobs:
               -f context=buck2-products/manifest-current -f state=success \
               -f description="Publisher manifest-only merge is current" \
               -f target_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+            source genie/ci-workflow/published-ref-decide.sh
+            manifest_outputs nix/buck2-products/manifest.json >> "$GITHUB_OUTPUT"
             echo "current-sha=$GITHUB_SHA" >> "$GITHUB_OUTPUT"
           fi
       - # v3.24.1
@@ -4570,6 +4594,9 @@ jobs:
             echo "cause=publish.sh failed (exit $result): build, network, or Cachix error; inspect run" >> "$GITHUB_OUTPUT"
             exit "$result"
           fi
+          source genie/ci-workflow/published-ref-decide.sh
+          manifest_outputs "$proposal" >> "$GITHUB_OUTPUT"
+          echo "current-sha=$GITHUB_SHA" >> "$GITHUB_OUTPUT"
           if cmp -s nix/buck2-products/manifest.json "$proposal"; then
             echo "::notice::The v2 product manifest is already current"
             echo "changed=false" >> "$GITHUB_OUTPUT"
@@ -4577,7 +4604,6 @@ jobs:
               -f context=buck2-products/manifest-current -f state=success \
               -f description="Published product manifest is current" \
               -f target_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
-            echo "current-sha=$GITHUB_SHA" >> "$GITHUB_OUTPUT"
           else
             comparison=$?
             if [ "$comparison" -ne 1 ]; then
@@ -6701,6 +6727,11 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ steps.published-ref-token.outputs.token }}
           GH_TOKEN: ${{ steps.published-ref-token.outputs.token }}
+          SMOKED_TREE: ${{ needs.consumer-smoke.outputs.smoked-tree }}
+          MANIFEST_BASE64_0: ${{ needs.publish-products.outputs.manifest-base64-0 }}
+          MANIFEST_BASE64_1: ${{ needs.publish-products.outputs.manifest-base64-1 }}
+          MANIFEST_BASE64_2: ${{ needs.publish-products.outputs.manifest-base64-2 }}
+          MANIFEST_BASE64_3: ${{ needs.publish-products.outputs.manifest-base64-3 }}
         run: |
           set -euo pipefail
           source genie/ci-workflow/published-ref-decide.sh
@@ -6709,10 +6740,16 @@ jobs:
           if [ "$(git rev-parse --is-shallow-repository)" = true ]; then
             git fetch --no-tags --unshallow origin main
           fi
+          proposal="${RUNNER_TEMP:?}/published-manifest.json"
+          decode_manifest > "$proposal"
+          tree="$(jq -n --rawfile manifest "$proposal" --arg base "$(git rev-parse "$GITHUB_SHA^{tree}")" \
+            '{base_tree: $base, tree: [{path: "nix/buck2-products/manifest.json", mode: "100644", type: "blob", content: $manifest}]}' | \
+            gh api --method POST "repos/$GITHUB_REPOSITORY/git/trees" --input - --jq .sha)"
           fetch_published() {
             local result
             if git ls-remote --exit-code origin refs/heads/published > /dev/null; then
-              git fetch --no-tags origin +refs/heads/published:refs/remotes/origin/published
+              git fetch --no-tags origin +refs/heads/published:refs/remotes/origin/published || return
+              git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main || return
               git rev-parse refs/remotes/origin/published
             else
               result=$?
@@ -6721,20 +6758,34 @@ jobs:
           }
           for attempt in 1 2 3; do
             tip="$(fetch_published)"
-            case "$(decide "$tip" "$GITHUB_SHA")" in
+            case "$(decide "$tip" "$GITHUB_SHA" refs/remotes/origin/main)" in
               noop)
-                echo "published $tip -> $tip (already at or ahead of $GITHUB_SHA)" >> "$GITHUB_STEP_SUMMARY"
+                echo "published $tip -> $tip (candidate $GITHUB_SHA is not newer than the published main parent)" >> "$GITHUB_STEP_SUMMARY"
                 exit 0
                 ;;
               create|push)
-                if git push origin "$GITHUB_SHA:refs/heads/published"; then
-                  echo "published ${tip:-<absent>} -> $GITHUB_SHA" >> "$GITHUB_STEP_SUMMARY"
+                parent="${tip:-$(git rev-parse "$GITHUB_SHA^")}"
+                commit="$(jq -n --arg tree "$tree" --arg tip "$parent" --arg main "$GITHUB_SHA" \
+                  '{tree: $tree, parents: [$tip, $main], message: ("Publish products for " + $main + "\n\nPublished-From: " + $main)}' | \
+                  gh api --method POST "repos/$GITHUB_REPOSITORY/git/commits" --input - --jq .sha)"
+                git fetch --no-tags origin "$commit"
+                changed="$(git diff --name-only "$GITHUB_SHA" "$commit")"
+                if [ -n "$changed" ] && [ "$changed" != nix/buck2-products/manifest.json ]; then
+                  echo "::error::Publisher commit changed paths other than the manifest"
+                  exit 1
+                fi
+                if [ "$(git rev-parse "$commit^{tree}")" != "${SMOKED_TREE:?Missing consumer-smoked tree}" ]; then
+                  echo "::error::Publisher commit differs from the consumer-smoked tree"
+                  exit 1
+                fi
+                if git push --force-with-lease="refs/heads/published:$tip" origin "$commit:refs/heads/published"; then
+                  echo "published ${tip:-<absent>} -> $commit (Published-From: $GITHUB_SHA)" >> "$GITHUB_STEP_SUMMARY"
                   exit 0
                 fi
                 echo "::notice::published push attempt $attempt rejected; refetching before retry"
                 ;;
               diverged)
-                echo "::error::published $tip is not an ancestor of $GITHUB_SHA; refusing non-fast-forward update"
+                echo "::error::Unrecognized published tip $tip; refusing promotion"
                 exit 1
                 ;;
               *)
@@ -6744,7 +6795,7 @@ jobs:
             esac
           done
           tip="$(fetch_published)"
-          if [ "$(decide "$tip" "$GITHUB_SHA")" = noop ]; then
+          if [ "$(decide "$tip" "$GITHUB_SHA" refs/remotes/origin/main)" = noop ]; then
             echo "published $tip -> $tip (concurrent run already advanced past $GITHUB_SHA)" >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
@@ -6903,6 +6954,7 @@ jobs:
       group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || 'code') }}-pipeline-traces"
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') }}
   consumer-smoke:
+    needs: [publish-products]
     if: ${{ (!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && !(github.event_name == 'workflow_dispatch' && inputs['measure-macos'] == true) }}
     runs-on:
       [
@@ -6916,6 +6968,7 @@ jobs:
         shell: bash
     outputs:
       current-sha: ${{ steps.consumer-smoke.outputs.current-sha }}
+      smoked-tree: ${{ steps.consumer-smoke.outputs.smoked-tree }}
     steps:
       - id: linux-nix-sandbox-policy
         name: Disable Linux Nix sandbox fallback
@@ -7001,9 +7054,21 @@ jobs:
         name: Install an isolated consumer from the candidate checkout
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          MANIFEST_BASE64_0: ${{ needs.publish-products.outputs.manifest-base64-0 }}
+          MANIFEST_BASE64_1: ${{ needs.publish-products.outputs.manifest-base64-1 }}
+          MANIFEST_BASE64_2: ${{ needs.publish-products.outputs.manifest-base64-2 }}
+          MANIFEST_BASE64_3: ${{ needs.publish-products.outputs.manifest-base64-3 }}
         run: |
+          set -euo pipefail
+          if [ "$GITHUB_EVENT_NAME" = push ] && [ "$GITHUB_REF" = refs/heads/main ] && [ -n "$MANIFEST_BASE64_0" ]; then
+            source genie/ci-workflow/published-ref-decide.sh
+            decode_manifest > nix/buck2-products/manifest.json
+            git add nix/buck2-products/manifest.json
+          fi
+          smoked_tree="$(git write-tree)"
           bash nix/fixtures/consumer-smoke/run.sh "$PWD" "${DEVENV_BIN:?DEVENV_BIN not set}"
           echo "current-sha=$GITHUB_SHA" >> "$GITHUB_OUTPUT"
+          echo "smoked-tree=$smoked_tree" >> "$GITHUB_OUTPUT"
     env:
       FORCE_SETUP: '1'
       CI: 'true'

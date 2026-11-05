@@ -10,11 +10,13 @@
 set -euo pipefail
 
 push=false
+build_only=false
 case "${1:-}" in
   '') ;;
   --push) push=true ;;
+  --build-only) build_only=true ;;
   *)
-    echo "usage: $0 [--push]" >&2
+    echo "usage: $0 [--push | --build-only]" >&2
     exit 2
     ;;
 esac
@@ -36,6 +38,18 @@ for inventory in nix/buck2-products/compiled-targets.json nix/buck2-products/nat
     product_attrs+=("$attr")
   done
 done
+
+if $build_only; then
+  started=$SECONDS
+  log=$(mktemp)
+  trap 'rm -f "$log"' EXIT
+  status=0
+  nix build --no-link --print-build-logs --log-format raw --json "${refs[@]}" 2>&1 | tee "$log" || status=$?
+  built=$(grep -c "^building '" "$log" || true)
+  substituted=$(grep -c "^copying path '" "$log" || true)
+  echo "product build: duration=$((SECONDS - started))s built=$built substituted=$substituted status=$status"
+  exit "$status"
+fi
 build_json=$(nix build --no-link --print-build-logs --json "${refs[@]}")
 outputs=$(jq -er '.[] | .outputs.out // error("product build has no out output")' <<<"$build_json")
 

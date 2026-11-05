@@ -25,6 +25,12 @@ let
   ];
   compiler = pkgs.writeShellScriptBin "rustc" ''
     set -euo pipefail
+    rustc=${pkgs.rustc}/bin/rustc
+    if [ "''${1:-}" = --effect-utils-link-probe ]; then
+      # Probe closure compatibility without producer NIX_RUSTFLAGS injection.
+      rustc=${pkgs.rustc.unwrapped}/bin/rustc
+      shift
+    fi
     export DEVELOPER_DIR=/forbidden-no-xcode
     export SDKROOT=${lib.escapeShellArg sdk.sdkroot}
     export MACOSX_DEPLOYMENT_TARGET=${lib.escapeShellArg deploymentTarget}
@@ -57,7 +63,7 @@ let
         *) capture_output "$argument" ;;
       esac
     done
-    ${pkgs.rustc}/bin/rustc \
+    "$rustc" \
       -C linker=${pkgs.clang}/bin/clang \
       -C link-arg=-isysroot \
       -C link-arg=${lib.escapeShellArg sdk.sdkroot} \

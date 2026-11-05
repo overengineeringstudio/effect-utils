@@ -81,6 +81,11 @@ publishing Cachix action and its push hook are enabled only after preparation.
 Cold substitution and input builds use the job timeout; the unchanged 32-minute
 publication step budget covers the product builds and pushes.
 
+Native and compiled product CI separately builds or substitutes the complete
+product outputs before smoke checks. This preparation does not force producer
+inputs when outputs are substitutable, smoke executables, or publish; it records
+duration, built derivations, substituted paths, and exit status, including on failure.
+
 Cache-native rows contain exact `name`, `version`, `sha256`, `size`,
 `storePath`, `artifactUrl`, and `provenance` fields. The Nix loader validates
 every field and treats the recorded store path as the substitution identity.
@@ -131,12 +136,13 @@ without rewriting or bundling them into every dependent package.
 ### Consumer pin eligibility
 
 ```text
-trusted main push -> publish-products -> same-SHA manifest-current output --+
-                  -> consumer-smoke  -> successful consumer SHA output ---+
-                                                                         |
-                                           promote-published <------------+
-                                             -> fast-forward published
-stale manifest -> publisher manifest PR -> main push
+trusted main push X -> publish-products -> proposal manifest + SHA X
+                                            |
+                                            v
+                         consumer-smoke(X + proposal) -> smoked tree
+                                            |
+                                    promote-published -> P -> fast-forward published
+stale main manifest -> publisher manifest PR -> main push
 ```
 
 Consumers requiring an always-eligible product manifest track `ref published`
@@ -177,19 +183,24 @@ from Cachix after the publish run for that SHA; development shells incur the sam
 cost. The compile/stamp split requires a one-time rebuild of all products. Each
 recipe/payload identity adds a tiny evidence pin and evidence fetch.
 
-`refs/heads/published` only fast-forwards to main commits whose
-`buck2-products/manifest-current` status and consumer smoke both succeeded for
-that exact SHA. The `promote-published` job declares
-`needs: [publish-products, consumer-smoke]`; it performs no Nix evaluation or
-build. Before advancing the ref, it checks the publisher's manifest-current
-output identifies its own candidate SHA and the successful consumer job's SHA
-output identifies that same SHA. A status from another commit cannot satisfy
-either gate.
+`refs/heads/published` points to a publisher commit P with parents
+`[previous published tip T, main candidate X]` and trailer `Published-From: X`.
+Its tree is X's tree with only `nix/buck2-products/manifest.json` replaced by
+the exact proposal generated while publishing X's products. An unchanged
+manifest still produces this two-parent commit. The `promote-published` job
+declares `needs: [publish-products, consumer-smoke]`. Both prerequisite jobs
+must succeed and emit X as their `current-sha`.
+The proposal travels as base64 in four job outputs of at most 100,000 characters
+each, staying below GitHub's total output and Linux's per-environment-string
+limits. Both producer paths reject more than 400,000 characters; promotion
+validates the charset before decoding. No Actions artifacts or caches are used.
+`manifest-current` describes main's checked-in manifest; its success does not gate promotion. The manifest
+PR flow remains for main's own flake users.
 
 Ref creation and advancement remain restricted to main-push runs in the
 upstream repository. Workflow dispatch and pull requests cannot advance the
-ref. If the ref is absent, the eligible promotion job creates it at its own
-SHA using the App token; no separate human bootstrap push is required.
+ref. If the ref is absent, P uses X's first parent as its first parent and
+X as its second parent, preserving the same two-parent format.
 Promotion requests only `contents: write` for that token. Consumer failure
 blocks promotion, never product publication or manifest-current reporting:
 `publish-products` does not depend on `consumer-smoke`.
@@ -201,12 +212,26 @@ without any bypass actors, including the App. History protection does not
 restrict initial ref creation; the App bypasses only the writers ruleset.
 See [GitHub's ruleset semantics](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/available-rules-for-rulesets).
 
-Before each of at most three push attempts, the job refetches the tip.
-An absent tip permits creation; an ancestor tip permits a fast-forward push.
-A candidate already at or behind the published tip is a successful no-op.
-A rejected push retries this comparison, so an intervening ancestor can still
-be advanced. Divergence fails loudly, as does exhausting the push attempts
-without observing the candidate or a descendant at the published tip.
+Before each of at most three push attempts, the job refetches T. If T is on
+the fetched main lineage, it is a legacy tip and its main candidate M is T,
+regardless of trailers. Otherwise T must have exactly two parents, a
+`Published-From` trailer matching its second parent M, and M on main.
+Unrecognized tips fail closed. X must be a strict descendant of M. An equal,
+older, or divergent candidate is a successful no-op. Thus an older run
+finishing after a newer run cannot move published backward.
+
+The publisher App creates P through GitHub's git data API for GitHub signing.
+Before pushing, `git diff --name-only X P` must be empty or exactly the manifest
+path. The ref push uses an exact T lease (compare-and-swap), and P has T as its
+first parent, so accepted updates are fast-forwards. A rejected lease refetches
+and re-decides; exhaustion fails unless the candidate is already superseded.
+`consumer-smoke` now waits for `publish-products` rather than running in parallel.
+On trusted main pushes with a proposal it overlays the exact manifest bytes
+onto X, stages the manifest, records `git write-tree`, and runs the existing
+consumer harness. Without a proposal it retains the checkout's tree.
+After smoke succeeds it emits that tree SHA. Before every push, including lease
+retries, P's tree must equal the successful `smoked-tree` output or promotion
+fails closed. The smoke runner, setup, token permissions, and harness are unchanged.
 This ref guarantees manifest eligibility and consumer smoke admission, not
 success of unrelated CI checks.
 
