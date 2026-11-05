@@ -164,6 +164,11 @@ cat >"$tmp/collision-output/provenance.json" <<EOF
 {"producerCommit":"1111111111111111111111111111111111111111","productDigest":"$collision_sha","schema":"effect-utils/buck-product-provenance/v1","target":"effect_utils//packages/@overeng/fixture:fixture-candidate"}
 EOF
 collision_store="$(nix store add-path "$tmp/collision-output")"
+mkdir -p "$tmp/evidence-output"
+jq -S --arg recipeIdentity "$(printf '%064d' 0)" '{schema:"effect-utils/buck-product-source-evidence/v1",recipeIdentity:$recipeIdentity,target,productDigest}' \
+  "$tmp/collision-output/provenance.json" >"$tmp/evidence-output/source-evidence.json"
+export FIXTURE_EVIDENCE_STORE_PATH="$(nix store add-path "$tmp/evidence-output")"
+evidence_sha="$(sha256sum "$tmp/evidence-output/source-evidence.json" | cut -d' ' -f1)"
 cat >"$tmp/collision-repo/nix/buck2-products/cache-targets.json" <<'EOF'
 {
   "products": [{
@@ -215,6 +220,8 @@ cat >"$tmp/fake-bin/nix" <<'EOF'
 #!/usr/bin/env bash
 case "$1" in
   hash) printf '%s\n' "$FIXTURE_INTEGRITY" ;;
+  eval) printf '%064d\n' 0 ;;
+  build) if [[ "$*" == *".sourceEvidence" ]]; then printf '%s\n' "$FIXTURE_EVIDENCE_STORE_PATH"; else printf '%s\n' "$FIXTURE_STORE_PATH"; fi ;;
   *) printf '%s\n' "$FIXTURE_STORE_PATH" ;;
 esac
 EOF
@@ -232,6 +239,7 @@ done
 emit() { if [[ -n "$out" ]]; then cat >"$out"; else cat; fi; }
 case "$url" in
   */provenance.json) [[ -n "${PUBLISHED_STORE:-}" ]] && emit <"$PUBLISHED_STORE/provenance.json" && exit 0 ;;
+  */source-evidence.json) emit <"$FIXTURE_EVIDENCE_STORE_PATH/source-evidence.json"; exit 0 ;;
   */fixture.js) [[ -n "${PUBLISHED_STORE:-}" ]] && emit <"$PUBLISHED_STORE/fixture.js" && exit 0 ;;
 esac
 printf '%s\n' "$PIN_LIST" | emit
@@ -278,7 +286,7 @@ published_store="$(nix store add-path "$tmp/published-output")"
 }
 : >"$CACHIX_LOG"
 PUBLISHED_STORE="$published_store" \
-  PIN_LIST="[{\"name\":\"fixture-$collision_sha\",\"lastRevision\":{\"storePath\":\"$published_store\",\"artifacts\":[\"fixture.js\"]}}]" \
+  PIN_LIST="[{\"name\":\"fixture-$collision_sha\",\"lastRevision\":{\"storePath\":\"$published_store\",\"artifacts\":[\"fixture.js\"]}},{\"name\":\"fixture-source-$evidence_sha\",\"lastRevision\":{\"storePath\":\"$FIXTURE_EVIDENCE_STORE_PATH\",\"artifacts\":[\"source-evidence.json\"]}}]" \
   GITHUB_EVENT_NAME=push GITHUB_REF=refs/heads/main \
   PATH="$tmp/fake-bin:$PATH" CACHIX_AUTH_TOKEN=fake BUCK2_CACHE_PRODUCTS_REPO="$tmp/collision-repo" \
   bash "$publisher" --product fixture --proposal "$tmp/reuse-manifest.json" 2>"$tmp/reuse.stderr" || {
@@ -290,6 +298,8 @@ jq -e --arg storePath "$published_store" --arg digest "$collision_sha" '
   (.products | length == 1) and
   .products[0].storePath == $storePath and
   .products[0].sha256 == $digest and
+  .products[0].recipeIdentity == ("0" * 64) and
+  .products[0].sourceEvidenceStorePath == env.FIXTURE_EVIDENCE_STORE_PATH and
   .products[0].provenance.producerCommit == "2222222222222222222222222222222222222222" and
   (.products[0].artifactUrl | endswith(($storePath | ltrimstr("/nix/store/") | split("-")[0]) + "/fixture.js"))
 ' "$tmp/reuse-manifest.json" >/dev/null || {
@@ -307,7 +317,8 @@ cp "$tmp/fake-bin/git" "$tmp/local-bin/git"
 cat >"$tmp/local-bin/nix" <<'EOF'
 #!/usr/bin/env bash
 case "$1" in
-  build) printf '%s\n' "$FIXTURE_STORE_PATH" ;;
+  build) if [[ "$*" == *".sourceEvidence" ]]; then printf '%s\n' "$FIXTURE_EVIDENCE_STORE_PATH"; else printf '%s\n' "$FIXTURE_STORE_PATH"; fi ;;
+  eval) printf '%064d\n' 0 ;;
   copy) printf '%s\n' "$*" >>"$NIX_COPY_LOG" ;;
   hash) printf '%s\n' "$FIXTURE_INTEGRITY" ;;
   *) exit 2 ;;
@@ -325,14 +336,14 @@ for run in first second; do
     bash "$publisher" --product fixture --proposal "$tmp/$run-manifest.json"
 done
 cmp "$tmp/first-manifest.json" "$tmp/second-manifest.json"
-[[ "$(wc -l <"$NIX_COPY_LOG")" == 1 ]] || {
+[[ "$(wc -l <"$NIX_COPY_LOG")" == 2 ]] || {
   echo "buck2-cache-products-test: local cache publication was not idempotent" >&2
   exit 1
 }
 jq -e --arg storePath "$collision_store" --arg artifact "fixture.js" '
-  length == 1 and
-  .[0].lastRevision.storePath == $storePath and
-  .[0].lastRevision.artifacts == [$artifact]
+  length == 2 and
+  any(.[]; .lastRevision.storePath == $storePath and .lastRevision.artifacts == [$artifact]) and
+  any(.[]; .lastRevision.storePath == env.FIXTURE_EVIDENCE_STORE_PATH and .lastRevision.artifacts == ["source-evidence.json"])
 ' "$tmp/local-cache/pins.json" >/dev/null
 jq -e --arg prefix "$local_cache_url/serve/" '
   .schema == "effect-utils/buck-cache-products/v2" and
@@ -362,14 +373,14 @@ jq -e --slurpfile previous "$tmp/collision-repo/nix/buck2-products/manifest.json
   (.products[] | select(.name == "unrelated")) ==
     ($previous[0].products[] | select(.name == "unrelated"))
 ' "$tmp/scoped-manifest.json" >/dev/null
-[[ "$(wc -l <"$NIX_COPY_LOG")" == 1 ]] || {
+[[ "$(wc -l <"$NIX_COPY_LOG")" == 2 ]] || {
   echo "buck2-cache-products-test: scoped publication rebuilt an unrelated product" >&2
   exit 1
 }
 
 mkdir -p "$tmp/products"
 cp "$repo_root/nix/buck2-products/default.nix" "$tmp/products/default.nix"
-cp "$repo_root/nix/buck2-products/cache.nix" "$tmp/products/cache.nix"
+sed 's/builtins ? fetchClosure/false/' "$repo_root/nix/buck2-products/cache.nix" >"$tmp/products/cache.nix"
 store_path="$collision_store"
 store_hash="$(basename "$store_path")"
 store_hash="${store_hash%%-*}"
@@ -424,6 +435,8 @@ loader_bindings="let
   recipe = mkPath \"$store_path\" {
     artifactName = \"fixture.js\";
     target = \"effect_utils//packages/@overeng/fixture:fixture-candidate\";
+    recipeIdentity = builtins.concatStringsSep \"\" (builtins.genList (_:
+      if builtins.getEnv \"RECIPE_CHANGED\" == \"1\" then \"b\" else \"a\") 64);
   };
   pkgs = {
     coreutils = mkPath \"/nix/store/coreutils\" {};
@@ -432,13 +445,19 @@ loader_bindings="let
       assertMsg = condition: message: if condition then true else throw message;
       escapeShellArg = value: \"'\" + value + \"'\";
       replaceStrings = builtins.replaceStrings;
+      optionalString = condition: value: if condition then value else \"\";
       splitString = separator: value: let
         split = builtins.split separator value;
       in builtins.filter builtins.isString split;
       unique = builtins.foldl' (seen: value: if builtins.elem value seen then seen else seen ++ [ value ]) [];
     };
     runCommand = name: attrs: script: mkPath \"/nix/store/validated-fixture\" (attrs // { inherit name script; });
-    writeText = name: text: mkPath \"/nix/store/text-fixture\" { inherit name text; };
+    writeText = name: text: mkPath (builtins.toFile name text) { inherit name text; };
+    fetchurl = args:
+      assert args.name != \"fixture-source-evidence.json\" ||
+        builtins.hashString \"sha256\" (builtins.readFile \"$tmp/source-evidence.json\") ==
+          builtins.convertHash { hash = args.hash; hashAlgo = \"sha256\"; toHashFormat = \"base16\"; };
+      mkPath (if args.name == \"fixture-source-evidence.json\" then \"$tmp/source-evidence.json\" else \"$collision_store/fixture.js\") {};
   };
   loaded = import $tmp/products { inherit pkgs; fromSourceProducts.fixture = recipe; };"
 inventory_expr="$loader_bindings
@@ -448,6 +467,8 @@ loaded.missingProductNames"
 loader_expr="$loader_bindings
 in assert loaded.assertFullyPublished; {
   inherit (loaded) declaredProductNames publishedProductNames fullyPublished assertFullyPublished;
+  bootstrapPins = loaded.bootstrapPins;
+  artifact = loaded.products.fixture.artifact;
   artifactUrl = loaded.products.fixture.artifactUrl;
   productNames = builtins.attrNames loaded.products;
   sourcePath = builtins.toString loaded.products.fixture.sourceRecipe;
@@ -461,6 +482,72 @@ jq -e --arg storePath "$store_path" --arg artifactUrl "$artifact_url" '
   .sourcePath == $storePath and
   .artifactUrl == $artifactUrl
 ' <<<"$summary" >/dev/null
+
+# Only an exact digest serves cached bytes; absent and stale rows use the recipe.
+jq -e --arg artifact "$store_path/fixture.js" '
+  .artifact == $artifact and (.bootstrapPins | keys) == ["genie"] and
+  (.bootstrapPins.genie | length > 0)
+' <<<"$summary" >/dev/null
+cp "$tmp/products/manifest.json" "$tmp/products/manifest.digestless.json"
+for digest in a b; do
+  jq --arg digest "$digest" --arg evidence "$FIXTURE_EVIDENCE_STORE_PATH" --arg sha "$evidence_sha" \
+    '.products[0] += {recipeIdentity:($digest * 64),sourceEvidenceStorePath:$evidence,sourceEvidenceSha256:$sha}' \
+    "$tmp/products/manifest.digestless.json" >"$tmp/products/manifest.json"
+  actual="$(nix eval --impure --json --expr "$loader_expr")"
+  if [[ "$digest" == a ]]; then
+    jq -e '.artifact == "/nix/store/validated-fixture/fixture.js"' <<<"$actual" >/dev/null
+    RECIPE_CHANGED=1 nix eval --impure --json --expr "$loader_expr" |
+      jq -e --arg artifact "$store_path/fixture.js" '.artifact == $artifact' >/dev/null
+  else
+    jq -e --arg artifact "$store_path/fixture.js" '.artifact == $artifact' <<<"$actual" >/dev/null
+  fi
+done
+# Exercise the actual cached derivation's build script, without building a product.
+jq --arg sha "$collision_sha" --arg integrity "$collision_integrity" '
+  .products[0] |= (.recipeIdentity = ("a" * 64) | .sha256 = $sha | .size = 8 |
+    .provenance.productDigest = $sha | .descriptor.integrity = $integrity | .descriptor.sizeBytes = 8)
+' "$tmp/products/manifest.json" >"$tmp/products/manifest.build.json"
+descriptor_sha="$(jq -cS '.products[0].descriptor' "$tmp/products/manifest.build.json" | tr -d '\n' | sha256sum | cut -d' ' -f1)"
+jq --arg sha "$descriptor_sha" '.products[0].descriptorSha256 = $sha' \
+  "$tmp/products/manifest.build.json" >"$tmp/products/manifest.json"
+jq '.recipeIdentity = ("a" * 64)' "$tmp/evidence-output/source-evidence.json" >"$tmp/source-evidence.json"
+matching_evidence_sha="$(sha256sum "$tmp/source-evidence.json" | cut -d' ' -f1)"
+jq --arg sha "$matching_evidence_sha" '.products[0].sourceEvidenceSha256 = $sha' \
+  "$tmp/products/manifest.json" >"$tmp/products/manifest.hash.json"
+mv "$tmp/products/manifest.hash.json" "$tmp/products/manifest.json"
+script="$(nix eval --impure --raw --expr "$loader_bindings in loaded.products.fixture.validated.script")"
+out="$tmp/checked-positive" bash -c "$script"
+cmp "$tmp/checked-positive/fixture.js" "$collision_store/fixture.js"
+# A manifest-only digest edit cannot relabel evidence from another source.
+cp "$tmp/evidence-output/source-evidence.json" "$tmp/source-evidence.json"
+jq --arg sha "$evidence_sha" '.products[0].sourceEvidenceSha256 = $sha' \
+  "$tmp/products/manifest.json" >"$tmp/products/manifest.hash.json"
+mv "$tmp/products/manifest.hash.json" "$tmp/products/manifest.json"
+script="$(nix eval --impure --raw --expr "$loader_bindings in loaded.products.fixture.validated.script")"
+if out="$tmp/checked-negative" bash -c "$script" >"$tmp/evidence-mismatch.log" 2>&1; then
+  echo "buck2-cache-products-test: cached build accepted stale source evidence" >&2
+  exit 1
+fi
+[[ ! -e "$tmp/checked-negative/fixture.js" ]]
+jq 'del(.products[0].sourceEvidenceStorePath,.products[0].sourceEvidenceSha256)' \
+  "$tmp/products/manifest.json" >"$tmp/products/manifest.no-evidence.json"
+mv "$tmp/products/manifest.no-evidence.json" "$tmp/products/manifest.json"
+nix eval --impure --json --expr "$loader_expr" |
+  jq -e --arg artifact "$store_path/fixture.js" '.artifact == $artifact' >/dev/null
+# The declared bootstrap pin is honored even without a digest.
+cp "$tmp/products/cache-targets.json" "$tmp/products/cache-targets.fixture.json"
+jq '.products[0].name = "genie"' "$tmp/products/cache-targets.fixture.json" >"$tmp/products/cache-targets.json"
+jq '.products[0].name = "genie" | .products[0].descriptor.productName = "genie"' \
+  "$tmp/products/manifest.digestless.json" >"$tmp/products/manifest.json"
+genie_descriptor_sha="$(jq -cS '.products[0].descriptor' "$tmp/products/manifest.json" | tr -d '\n' | sha256sum | cut -d' ' -f1)"
+jq --arg sha "$genie_descriptor_sha" '.products[0].descriptorSha256 = $sha' \
+  "$tmp/products/manifest.json" >"$tmp/products/manifest.genie.json"
+mv "$tmp/products/manifest.genie.json" "$tmp/products/manifest.json"
+nix eval --impure --json --expr "${loader_bindings/fromSourceProducts.fixture/fromSourceProducts.genie}
+in loaded.products.genie.artifact" |
+  jq -e '. == "/nix/store/validated-fixture/fixture.js"' >/dev/null
+cp "$tmp/products/cache-targets.fixture.json" "$tmp/products/cache-targets.json"
+cp "$tmp/products/manifest.digestless.json" "$tmp/products/manifest.json"
 
 # GREEN: a source PR may declare a new product before post-merge publication.
 cp "$tmp/products/cache-targets.json" "$tmp/products/cache-targets.exact.json"

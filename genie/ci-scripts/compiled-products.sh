@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
-# Build the exported Buck rules cell, retained shell, and compiled-executable
-# and native products; smoke `bin/<name> --help` for inventoried products only.
+# Build exported rules, retained shell and products; smoke executables and
+# require installed-library consumer success plus diagnosed mismatch rejection.
 # `--push` publishes each realized store path to the public Cachix cache
 # (protected-main publisher only; needs CACHIX_AUTH_TOKEN).
 #
@@ -10,11 +10,13 @@
 set -euo pipefail
 
 push=false
+build_only=false
 case "${1:-}" in
   '') ;;
   --push) push=true ;;
+  --build-only) build_only=true ;;
   *)
-    echo "usage: $0 [--push]" >&2
+    echo "usage: $0 [--push | --build-only]" >&2
     exit 2
     ;;
 esac
@@ -24,18 +26,41 @@ esac
 refs=(.#ci-test-shell-products .#buck2-rules)
 product_names=()
 product_attrs=()
+product_checks=()
 for inventory in nix/buck2-products/compiled-targets.json nix/buck2-products/native-targets.json; do
-  names=$(jq -r '.products[].name' "$inventory")
-  for name in $names; do
+  rows=$(jq -r '.products[] | [.name, .kind] | @tsv' "$inventory")
+  while IFS=$'\t' read -r name kind; do
     attr="$name"
     if [ "$inventory" = nix/buck2-products/compiled-targets.json ]; then
       attr="$name-compiled"
     fi
+    check=''
+    case "$kind" in
+      rust-library)
+        check=".#$name.libraryChecks"
+        refs+=("$check")
+        ;;
+      native|compiled-executable) ;;
+      *) echo "unsupported inventory kind: $kind" >&2; exit 1 ;;
+    esac
     refs+=(".#$attr")
     product_names+=("$name")
     product_attrs+=("$attr")
-  done
+    product_checks+=("$check")
+  done <<< "$rows"
 done
+
+if $build_only; then
+  started=$SECONDS
+  log=$(mktemp)
+  trap 'rm -f "$log"' EXIT
+  status=0
+  nix build --no-link --print-build-logs --log-format raw --json "${refs[@]}" 2>&1 | tee "$log" || status=$?
+  built=$(grep -c "^building '" "$log" || true)
+  substituted=$(grep -c "^copying path '" "$log" || true)
+  echo "product build: duration=$((SECONDS - started))s built=$built substituted=$substituted status=$status"
+  exit "$status"
+fi
 build_json=$(nix build --no-link --print-build-logs --json "${refs[@]}")
 outputs=$(jq -er '.[] | .outputs.out // error("product build has no out output")' <<<"$build_json")
 
@@ -45,6 +70,23 @@ outputs=$(jq -er '.[] | .outputs.out // error("product build has no out output")
 for index in "${!product_names[@]}"; do
   name="${product_names[$index]}"
   attr="${product_attrs[$index]}"
+  check="${product_checks[$index]}"
+  if [ -n "$check" ]; then
+    log=$(mktemp)
+    if nix build --no-link --print-build-logs "$check.mismatch" >"$log" 2>&1; then
+      cat "$log"; rm -f "$log"
+      echo "product $attr: mismatched compiler unexpectedly accepted" >&2; exit 1
+    fi
+    cat "$log"
+    for expected in 'library compiler identity mismatch' 'producer identity:' 'consumer identity:'; do
+      if ! grep -Fq "$expected" "$log"; then
+        rm -f "$log"; echo "product $attr: mismatch failed without $expected" >&2; exit 1
+      fi
+    done
+    rm -f "$log"
+    echo "product $attr: installed-library consumer and mismatch checks passed"
+    continue
+  fi
   matches=0
   out=''
   for candidate in $outputs; do

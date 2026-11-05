@@ -39,7 +39,10 @@ let
           "version"
         ]
       )
-    && product.kind == "native"
+    && builtins.elem product.kind [
+      "native"
+      "rust-library"
+    ]
     && builtins.isString product.name
     && builtins.match "[A-Za-z0-9][A-Za-z0-9._+-]*" product.name != null
     && product.outputName == "artifact.tar"
@@ -100,7 +103,16 @@ builtins.listToAttrs (
               null;
         };
       in
-      if product.shellCompletions or false then
+      if product.kind == "rust-library" then
+        nativeProduct.overrideAttrs (old: {
+          passthru = (old.passthru or { }) // {
+            libraryChecks = import ./library-check.nix {
+              inherit pkgs;
+              product = nativeProduct;
+            };
+          };
+        })
+      else if product.shellCompletions or false then
         nativeProduct.overrideAttrs (old: {
           nativeBuildInputs = (old.nativeBuildInputs or [ ]) ++ [ pkgs.installShellFiles ];
           # The validated import is sealed read-only. Add only shell hooks after
