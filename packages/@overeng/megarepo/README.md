@@ -117,13 +117,9 @@ Store enumeration skips non-directory entries in host, owner, repository, and re
 It emits a warning with the entry's path and type instead of aborting `mr store gc`; these
 foreign entries are never removed. Existing symlink handling is unchanged.
 
-Apply a candidate set with `mr store gc --candidates-file candidates.json --output json`.
-The strict JSON array contains `{ path, candidateSha256 }` records from dry-run results (no duplicate paths).
-After one census, each plain removal is re-planned under its owner lock and activation lease before comparing its digest.
-Archives, reaps, merged worklogs, and candidates without captured deletion identity report `unsupported-kind` and never apply.
-Changed/missing/ineligible candidates skip; failures do not stop the rest.
-Output includes tagged `candidateOutcomes` and `candidateCounts`; only failures exit nonzero.
-This mode excludes `--expected-plan`, `--candidate-path`, `--dry-run`, `--all`, `--force`, `--generated-artifacts`, and `--budgets`.
+Dry-run JSON includes `candidateSha256` over each would-act row and its captured deletion identity; `planSha256` is unchanged.
+Single-candidate plain removals also re-collect and classify their owner under the owner lock and activation lease,
+then compare the approved candidate digest before deleting with the freshly captured identity.
 
 ## Generated artifact cleanup
 

@@ -17,7 +17,6 @@ import type {
   StoreWorktreeStatus,
   StoreWorktreeIssue,
   StoreGcWarning,
-  StoreGcCandidateOutcome,
 } from './schema.ts'
 
 // =============================================================================
@@ -81,8 +80,6 @@ export const StoreView = ({ stateAtom }: StoreViewProps) => {
           statusMessage={state.statusMessage}
           done={state.done}
           interrupted={state.interrupted}
-          candidateOutcomes={state.candidateOutcomes}
-          candidateCounts={state.candidateCounts}
         />
       )
     case 'Add':
@@ -521,8 +518,6 @@ export const StoreGcView = ({
   statusMessage,
   done,
   interrupted,
-  candidateOutcomes,
-  candidateCounts,
   maxInUseToShow = 5,
 }: {
   basePath: string
@@ -538,8 +533,6 @@ export const StoreGcView = ({
   statusMessage?: string | undefined
   done?: boolean | undefined
   interrupted?: boolean | undefined
-  candidateOutcomes?: readonly StoreGcCandidateOutcome[] | undefined
-  candidateCounts?: { applied: number; skipped: number; failed: number } | undefined
   maxInUseToShow?: number
 }) => {
   const removed = results.filter(
@@ -592,14 +585,7 @@ export const StoreGcView = ({
       {warning && <StoreGcWarningRow warning={warning} />}
       <Text dim>{'─'.repeat(40)}</Text>
       <Text> </Text>
-      {candidateOutcomes !== undefined ? (
-        candidateOutcomes.map((o) => (
-          <Text key={o.path}>
-            {o._tag}: {o.path}
-            {o._tag === 'failed' ? ` (${o.message})` : ''}
-          </Text>
-        ))
-      ) : results.length === 0 ? (
+      {results.length === 0 ? (
         <Text dim>
           {interrupted === true
             ? 'Interrupted before any worktrees completed'
@@ -658,14 +644,7 @@ export const StoreGcView = ({
         </>
       )}
       <Text> </Text>
-      {candidateOutcomes !== undefined ? (
-        candidateCounts !== undefined && (
-          <Text>
-            {candidateCounts.applied} applied {SYMBOLS.dot} {candidateCounts.skipped} skipped{' '}
-            {SYMBOLS.dot} {candidateCounts.failed} failed
-          </Text>
-        )
-      ) : interrupted === true ? (
+      {interrupted === true ? (
         <Text color="yellow">
           Interrupted after {processedCount ?? results.length} checked
           {discoveredWorktreeCount !== undefined ? ` / ${discoveredWorktreeCount} found` : ''}

@@ -11,18 +11,7 @@ import { fileURLToPath } from 'node:url'
 
 import { NodeServices } from '@effect/platform-node'
 import { describe, it } from '@effect/vitest'
-import {
-  Cause,
-  Clock,
-  Deferred,
-  Effect,
-  Exit,
-  Fiber,
-  Logger,
-  Option,
-  Schedule,
-  Schema,
-} from 'effect'
+import { Cause, Clock, Effect, Exit, Logger, Option, Schema } from 'effect'
 import * as Cli from 'effect/cli'
 import * as FileSystem from 'effect/FileSystem'
 import { expect } from 'vitest'
@@ -44,7 +33,6 @@ import {
   GcDeletionReceipt,
 } from '../store/store-gc-receipts.ts'
 import { refreshWorkspaceRegistry } from '../store/store-liveness.ts'
-import { makeStoreLockLayer, StoreLock } from '../store/store-lock.ts'
 import { StoreDeletionPlatform } from '../store/store-pinned-deletion.ts'
 import {
   PROCESS_SNAPSHOT_PRODUCER,
@@ -62,7 +50,6 @@ import {
   getWorktreeCommit,
 } from '../test-utils/store-setup.ts'
 import { mrCommand } from './mod.ts'
-import { StoreGcCandidateCounts, StoreGcCandidateOutcome } from './renderers/StoreOutput/schema.ts'
 
 const StoreGcJsonOutput = Schema.Struct({
   results: Schema.Array(
@@ -82,8 +69,6 @@ const StoreGcJsonOutput = Schema.Struct({
   ),
   censusStatus: Schema.optional(Schema.Literals(['complete', 'unknown'])),
   planSha256: Schema.optional(Schema.String),
-  candidateOutcomes: Schema.optional(Schema.Array(StoreGcCandidateOutcome)),
-  candidateCounts: Schema.optional(StoreGcCandidateCounts),
 })
 
 const decodeStoreGcJsonOutput = Schema.decodeUnknownSync(Schema.fromJsonString(StoreGcJsonOutput))
@@ -242,95 +227,6 @@ describe('mr store status bare repository health', () => {
 })
 
 describe('mr store gc', () => {
-  for (const scenario of [
-    'same',
-    'dirty',
-    'other',
-    'unknown',
-    'duplicate',
-    'interleaved',
-  ] as const) {
-    it.effect(`applies candidates-file safely: ${scenario}`, () =>
-      Effect.gen(function* () {
-        const fs = yield* FileSystem.FileSystem
-        const commits = ['a'.repeat(40), 'b'.repeat(40)]
-        const { storePath, worktreePaths } = yield* createStoreFixture([
-          { host: 'github.com', owner: 'acme', repo: 'batch', branches: ['main'], commits },
-        ])
-        const paths = commits.map((ref) => worktreePaths[`github.com/acme/batch#${ref}`]!)
-        const cwd = EffectPath.unsafe.absoluteDir(`${yield* fs.makeTempDirectoryScoped()}/`)
-        const run = (...args: string[]) =>
-          runMrCommand({
-            cwd,
-            env: { MEGAREPO_STORE: storePath },
-            command: ['store', 'gc', '--output', 'json', ...args],
-          })
-        const plan = decodeStoreGcJsonOutput((yield* run('--dry-run')).stdout)
-        const candidates = paths.map((path) => {
-          const row = plan.results.find((result) => result.path === path)
-          expect(row?.candidateSha256).toMatch(/^[0-9a-f]{64}$/)
-          return { path, candidateSha256: row!.candidateSha256! }
-        })
-        if (scenario === 'dirty' || scenario === 'other') {
-          const path =
-            scenario === 'dirty' ? paths[0]! : worktreePaths['github.com/acme/batch#main']!
-          yield* fs.writeFileString(`${path}untracked.txt`, 'changed\n')
-        }
-        const file = `${cwd}candidates.json`
-        const invalid = scenario === 'unknown' || scenario === 'duplicate'
-        const entries = scenario === 'duplicate' ? [candidates[0]!, candidates[0]!] : candidates
-        const contents =
-          scenario === 'unknown' ? entries.map((entry) => ({ ...entry, unknown: true })) : entries
-        yield* fs.writeFileString(file, encodeJson(contents))
-        const applied = yield* Effect.gen(function* () {
-          if (scenario !== 'interleaved') return yield* run('--candidates-file', file)
-          const acquired = yield* Deferred.make<void>()
-          const release = yield* Deferred.make<void>()
-          const holder = yield* Effect.gen(function* () {
-            const lock = yield* StoreLock
-            yield* lock.withWorktreeLock(paths[1]!)(
-              Deferred.succeed(acquired, undefined).pipe(Effect.andThen(Deferred.await(release))),
-            )
-          }).pipe(Effect.provide(makeStoreLockLayer(storePath)), Effect.forkScoped)
-          yield* Deferred.await(acquired)
-          const batch = yield* run('--candidates-file', file).pipe(Effect.forkScoped)
-          // First deletion proves the upfront census finished; the second owner stays locked.
-          yield* fs
-            .exists(paths[0]!)
-            .pipe(
-              Effect.repeat({ while: (exists) => exists, schedule: Schedule.spaced('10 millis') }),
-              Effect.timeout('10 seconds'),
-            )
-          yield* fs.writeFileString(`${paths[1]}untracked.txt`, 'changed during batch\n')
-          yield* Deferred.succeed(release, undefined)
-          yield* Fiber.join(holder)
-          return yield* Fiber.join(batch)
-        }).pipe(Effect.provideService(Clock.Clock, Clock.Clock.defaultValue()))
-        expect(applied.exitCode, applied.stdout + applied.failure).toBe(invalid === true ? 1 : 0)
-        if (invalid === true) {
-          for (const path of paths) expect(yield* fs.exists(path)).toBe(true)
-          return
-        }
-        const batch = decodeStoreGcJsonOutput(applied.stdout)
-        const skippedCount = scenario === 'dirty' || scenario === 'interleaved' ? 1 : 0
-        expect(batch.candidateCounts).toEqual({
-          applied: 2 - skippedCount,
-          skipped: skippedCount,
-          failed: 0,
-        })
-        expect(batch.candidateOutcomes).toHaveLength(2)
-        for (const [index, path] of paths.entries()) {
-          const skipped =
-            (scenario === 'dirty' && index === 0) || (scenario === 'interleaved' && index === 1)
-          const outcome = batch.candidateOutcomes?.find((entry) => entry.path === path)
-          if (skipped === true) expect(outcome?._tag).toMatch(/^skipped-(changed|ineligible)$/)
-          else expect(outcome).toEqual({ _tag: 'applied', path })
-          expect(yield* fs.exists(path)).toBe(skipped)
-        }
-      }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
-    )
-  }
-
   it.effect(
     'completes gc and reports foreign files at every enumeration level without deleting them',
     Effect.fnUntraced(
@@ -1059,65 +955,70 @@ describe('mr store gc', () => {
 })
 
 describe('mr store lease', () => {
-  it.effect('refuses a candidate whose directory identity changes during lease acquisition', () =>
-    Effect.gen(function* () {
-      const fs = yield* FileSystem.FileSystem
-      const ref = 'c'.repeat(40)
-      const { storePath, worktreePaths } = yield* createStoreFixture([
-        {
-          host: 'github.com',
-          owner: 'acme',
-          repo: 'lease-recheck',
-          branches: ['main'],
-          commits: [ref],
-        },
-      ])
-      const candidate = worktreePaths[`github.com/acme/lease-recheck#${ref}`]!
-      const original = yield* fs.stat(candidate)
-      const backup = `${candidate.replace(/\/$/u, '')}-original`
-      const cwd = EffectPath.unsafe.absoluteDir(`${yield* fs.makeTempDirectoryScoped()}/`)
-      const run = (...args: string[]) =>
-        runMrCommand({
-          cwd,
-          env: { MEGAREPO_STORE: storePath },
-          command: ['store', 'gc', '--output', 'json', ...args],
+  it.effect.skipIf(process.platform !== 'linux')(
+    'refuses a candidate whose directory identity changes during lease acquisition',
+    () =>
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem
+        const ref = 'c'.repeat(40)
+        const { storePath, worktreePaths } = yield* createStoreFixture([
+          {
+            host: 'github.com',
+            owner: 'acme',
+            repo: 'lease-recheck',
+            branches: ['main'],
+            commits: [ref],
+          },
+        ])
+        const candidate = worktreePaths[`github.com/acme/lease-recheck#${ref}`]!
+        const original = yield* fs.stat(candidate)
+        const backup = `${candidate.replace(/\/$/u, '')}-original`
+        const cwd = EffectPath.unsafe.absoluteDir(`${yield* fs.makeTempDirectoryScoped()}/`)
+        const run = (...args: string[]) =>
+          runMrCommand({
+            cwd,
+            env: { MEGAREPO_STORE: storePath },
+            command: ['store', 'gc', '--output', 'json', ...args],
+          })
+        const plan = decodeStoreGcJsonOutput((yield* run('--dry-run')).stdout)
+        expect(plan.results.find((row) => row.path === candidate)?.candidateSha256).toMatch(
+          /^[0-9a-f]{64}$/,
+        )
+        const leasePath = deletionLeasePath({
+          storeBasePath: storePath,
+          ownerPath: yield* canonicalizeOwnerPath(candidate),
         })
-      const plan = decodeStoreGcJsonOutput((yield* run('--dry-run')).stdout)
-      const leasePath = deletionLeasePath({
-        storeBasePath: storePath,
-        ownerPath: yield* canonicalizeOwnerPath(candidate),
-      })
-      let changed = false
-      const applied = yield* run(
-        '--expected-plan',
-        plan.planSha256!,
-        '--candidate-path',
-        candidate,
-      ).pipe(
-        Effect.provideService(FileSystem.FileSystem, {
-          ...fs,
-          link: (from, to) =>
-            Effect.gen(function* () {
-              // The second plan and owner lock precede this real lease acquisition.
-              if (to === leasePath && changed === false) {
-                changed = true
-                yield* fs.rename(candidate, backup)
-                yield* fs.copy(backup, candidate)
-              }
-              return yield* fs.link(from, to)
-            }),
-        }),
-      )
-      expect(changed).toBe(true)
-      expect(applied.exitCode, applied.stdout + applied.failure).toBe(1)
-      expect(applied.failure).toContain('GC candidate refused: skipped-changed')
-      expect(yield* fs.exists(candidate)).toBe(true)
-      expect((yield* fs.stat(candidate)).ino).not.toEqual(original.ino)
-      expect((yield* fs.stat(backup)).ino).toEqual(original.ino)
-      expect(yield* Git.getCurrentCommit(candidate)).toBe(yield* Git.getCurrentCommit(backup))
-      expect(yield* Git.runCommand({ cwd: candidate, args: ['status', '--porcelain'] })).toBe('')
-      expect(yield* fs.exists(leasePath)).toBe(false)
-    }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+        let changed = false
+        const applied = yield* run(
+          '--expected-plan',
+          plan.planSha256!,
+          '--candidate-path',
+          candidate,
+        ).pipe(
+          Effect.provideService(FileSystem.FileSystem, {
+            ...fs,
+            link: (from, to) =>
+              Effect.gen(function* () {
+                // The second plan and owner lock precede this real lease acquisition.
+                if (to === leasePath && changed === false) {
+                  changed = true
+                  yield* fs.rename(candidate, backup)
+                  yield* fs.copy(backup, candidate)
+                }
+                return yield* fs.link(from, to)
+              }),
+          }),
+        )
+        expect(changed).toBe(true)
+        expect(applied.exitCode, applied.stdout + applied.failure).toBe(1)
+        expect(applied.failure).toContain('GC candidate refused: skipped-changed')
+        expect(yield* fs.exists(candidate)).toBe(true)
+        expect((yield* fs.stat(candidate)).ino).not.toEqual(original.ino)
+        expect((yield* fs.stat(backup)).ino).toEqual(original.ino)
+        expect(yield* Git.getCurrentCommit(candidate)).toBe(yield* Git.getCurrentCommit(backup))
+        expect(yield* Git.runCommand({ cwd: candidate, args: ['status', '--porcelain'] })).toBe('')
+        expect(yield* fs.exists(leasePath)).toBe(false)
+      }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
   )
 
   it.effect(
