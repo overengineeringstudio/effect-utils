@@ -1934,6 +1934,15 @@ in
     exec = editorViewExec { mode = "check"; };
   };
 
+  tasks."buck2:editor:budget:recount" = {
+    description = "Recount host editor-view usage without publishing or evicting";
+    exec = trace.exec "buck2:editor:budget:recount" ''
+      set -euo pipefail
+      root="''${DEVENV_ROOT:-$PWD}"
+      exec ${sourceBun}/bin/bun "$root/packages/@overeng/buck2-tools/src/editor-view.ts" budget recount
+    '';
+  };
+
   tasks."buck2:editor:recover-lock" = {
     description = "Recover the shared editor publication lock with its exact owner token";
     exec = trace.exec "buck2:editor:recover-lock" ''
