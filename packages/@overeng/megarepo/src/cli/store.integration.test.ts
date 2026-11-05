@@ -22,6 +22,7 @@ import {
   Option,
   Schedule,
   Schema,
+  Tracer,
 } from 'effect'
 import * as Cli from 'effect/cli'
 import * as FileSystem from 'effect/FileSystem'
@@ -182,9 +183,8 @@ describe('mr store JSON subprocess output', () => {
         expect(result.error).toBeUndefined()
         expect(result.status, result.stderr).toBe(0)
         expect(decodeStoreGcJsonOutput(result.stdout).results).toEqual([])
-        expect(result.stderr).toContain(
-          `store enumeration: skipping non-directory entry ${looseEntry}`,
-        )
+        expect(result.stderr).toContain('store enumeration: skipped entries (non-directory=1,')
+        expect(result.stderr).not.toContain('store enumeration: skipping non-directory entry')
         expect(result.stdout).not.toContain('store enumeration:')
       }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
     )
@@ -377,8 +377,12 @@ describe('mr store gc', () => {
             .listWorktrees(parseSourceString('test-owner/foreign-refs')!)
             .pipe(Effect.provide(loggerLayer)),
         ).toEqual([])
+        for (const count of [1, 2, 3]) {
+          expect(warnings).toContain(
+            `store enumeration: skipped entries (non-directory=${count}, foreign-namespace=0, depth-limited=0)`,
+          )
+        }
         for (const path of foreignPaths) {
-          expect(warnings.some((warning) => warning.includes(path))).toBe(true)
           expect((yield* fs.stat(path)).size).toBe(0n)
         }
       },
@@ -1596,6 +1600,70 @@ describe('store discovery is bounded to the layout', () => {
   // bare, with a full working tree). The `_`-prefix skip is the PRIMARY
   // membership boundary that keeps them out — they are co-tenants, never members.
 
+  for (const walk of ['repos', 'worktrees'] as const) {
+    it.effect(
+      `${walk} aggregates many loose entries without per-entry spans or warnings`,
+      Effect.fnUntraced(
+        function* () {
+          const fs = yield* FileSystem.FileSystem
+          const { storePath } = yield* createStoreFixture([
+            { host: 'github.com', owner: 'acme', repo: 'widget', branches: [] },
+          ])
+          const directory =
+            walk === 'repos' ? storePath : `${storePath}github.com/acme/widget/refs/heads/`
+          yield* fs.makeDirectory(directory, { recursive: true })
+          for (let i = 0; i < 100; i++) {
+            yield* fs.writeFileString(`${directory}loose-${i}`, 'foreign entry')
+          }
+          const warnings: Array<string> = []
+          const logger = Logger.layer(
+            [
+              Logger.make(({ logLevel, message }) => {
+                if (logLevel === 'Warn') warnings.push(String(message))
+              }),
+            ],
+            { mergeWithExisting: false },
+          )
+          const spans: Array<Tracer.NativeSpan> = []
+          const tracer = Tracer.make({
+            span: (options) => {
+              const span = new Tracer.NativeSpan(options)
+              spans.push(span)
+              return span
+            },
+          })
+          const store = yield* Effect.provide(Store, makeStoreLayer({ basePath: storePath }))
+          const source = parseSourceString('acme/widget')!
+          const enumerate =
+            walk === 'repos'
+              ? Effect.asVoid(store.listRepos)
+              : Effect.asVoid(store.listWorktrees(source))
+          for (let run = 0; run < 2; run++) {
+            yield* enumerate.pipe(Effect.provide(logger), Effect.withTracer(tracer))
+          }
+          expect(warnings).toEqual(
+            Array(2).fill(
+              'store enumeration: skipped entries (non-directory=100, foreign-namespace=0, depth-limited=0)',
+            ),
+          )
+          expect(spans.map((span) => span.name)).toEqual(
+            Array(2).fill(`megarepo/store/list-${walk}`),
+          )
+          for (const span of spans) {
+            expect(span.attributes.get('megarepo.store.enumeration.non_directory.count')).toBe(100)
+            const samples = yield* Schema.decodeUnknownEffect(
+              Schema.fromJsonString(Schema.Array(Schema.String)),
+            )(span.attributes.get('megarepo.store.enumeration.non_directory.samples'))
+            expect(samples).toHaveLength(10)
+          }
+          expect(yield* fs.readFileString(`${directory}loose-99`)).toBe('foreign entry')
+        },
+        Effect.provide(NodeServices.layer),
+        Effect.scoped,
+      ),
+    )
+  }
+
   it.effect(
     'listRepos returns only layout members, excluding _-prefixed dirs, nested stores, and worktrees',
     Effect.fnUntraced(
@@ -1699,10 +1767,9 @@ describe('store discovery is bounded to the layout', () => {
           'intranet/group/subgroup/repo/',
         ])
         const expectedWarnings = [
-          `store enumeration: ignoring foreign namespace ${storePath}unknown-cache/`,
-          `store enumeration: skipping non-directory entry ${storePath}foreign-file`,
-        ].toSorted()
-        expect(warnings.toSorted()).toEqual(expectedWarnings)
+          'store enumeration: skipped entries (non-directory=1, foreign-namespace=1, depth-limited=1)',
+        ]
+        expect(warnings).toEqual(expectedWarnings)
         expect(visited.some((path) => path.includes('pnpm-store-shared-v1'))).toBe(false)
         expect(visited.some((path) => path.includes('/refs/'))).toBe(false)
         // Remove the synthetic marker: CLI health checks require actual Git repos.

@@ -128,7 +128,12 @@ import {
 } from '../../../store/store-worktree-policy.ts'
 import { classifyStoreWorktreePolicy } from '../../../store/store-worktree-policy.ts'
 import { removeStoreWorktree } from '../../../store/store-worktree-remove.ts'
-import { isStoreDirectory, Store, StoreLayer } from '../../../store/store.ts'
+import {
+  Store,
+  StoreLayer,
+  withStoreEnumeration,
+  type StoreEnumerationTelemetry,
+} from '../../../store/store.ts'
 import { getCloneUrl } from '../../../sync/mod.ts'
 import {
   Cwd,
@@ -784,12 +789,14 @@ const collectStoreWorktrees = ({
   currentPath,
   refType,
   knownRefs,
+  telemetry,
 }: {
   fs: FileSystem.FileSystem
   refTypePath: AbsoluteDirPath
   currentPath: AbsoluteDirPath
   refType: 'heads' | 'tags' | 'commits'
   knownRefs: ReadonlySet<string>
+  telemetry: StoreEnumerationTelemetry
 }): Effect.Effect<Array<CollectedWorktree>, PlatformError> =>
   Effect.gen(function* () {
     const gitPath = EffectPath.ops.join(currentPath, EffectPath.unsafe.relativeFile('.git'))
@@ -840,7 +847,7 @@ const collectStoreWorktrees = ({
       if (entry.startsWith('.') === true) continue
 
       const entryPath = EffectPath.ops.join(currentPath, EffectPath.unsafe.relativeDir(`${entry}/`))
-      if ((yield* isStoreDirectory({ fs, path: entryPath })) === false) continue
+      if ((yield* telemetry.isDirectory({ fs, path: entryPath })) === false) continue
 
       result.push(
         ...(yield* collectStoreWorktrees({
@@ -849,6 +856,7 @@ const collectStoreWorktrees = ({
           currentPath: entryPath,
           refType,
           knownRefs,
+          telemetry,
         })),
       )
     }
@@ -866,7 +874,7 @@ const collectRepoStoreWorktrees = ({
   repoPath: AbsoluteDirPath
   bareRepoPath: AbsoluteDirPath
 }) =>
-  Effect.gen(function* () {
+  withStoreEnumeration('megarepo/store/gc/enumerate-worktrees')(function* (telemetry) {
     const repoPrefix = repoPath.replace(/\/+$/, '')
     const refsPrefix = `${repoPrefix}/refs/`
     const realRepoPrefix = (yield* fs.realPath(repoPath)).replace(/\/+$/, '')
@@ -928,7 +936,7 @@ const collectRepoStoreWorktrees = ({
 
     const refsPath = EffectPath.ops.join(repoPath, EffectPath.unsafe.relativeDir('refs/'))
     if ((yield* fs.exists(refsPath.replace(/\/+$/, ''))) === false) return result
-    if ((yield* isStoreDirectory({ fs, path: refsPath })) === false) return result
+    if ((yield* telemetry.isDirectory({ fs, path: refsPath })) === false) return result
 
     for (const refType of STORE_REF_TYPES) {
       const refTypePath = EffectPath.ops.join(
@@ -936,7 +944,7 @@ const collectRepoStoreWorktrees = ({
         EffectPath.unsafe.relativeDir(`refs/${refType}/`),
       )
       if ((yield* fs.exists(refTypePath.replace(/\/+$/, ''))) === false) continue
-      if ((yield* isStoreDirectory({ fs, path: refTypePath })) === false) continue
+      if ((yield* telemetry.isDirectory({ fs, path: refTypePath })) === false) continue
 
       const layoutWorktrees = yield* collectStoreWorktrees({
         fs,
@@ -944,6 +952,7 @@ const collectRepoStoreWorktrees = ({
         currentPath: refTypePath,
         refType,
         knownRefs: knownRefsByType[refType],
+        telemetry,
       })
 
       for (const worktree of layoutWorktrees) {
