@@ -7,14 +7,14 @@ let
   revisionA = "1111111111111111111111111111111111111111";
   revisionB = "2222222222222222222222222222222222222222";
   pkgs = import flake.inputs.nixpkgs { inherit system; };
-  settingsFile = flake.outPath + "/nix/gh-settings-genie.nix";
+  repositoryRoot = /. + builtins.unsafeDiscardStringContext flake.outPath;
+  settingsFile = repositoryRoot + "/nix/gh-settings-genie.nix";
   buckInputs = import ./buck-inputs.nix {
     inherit (pkgs) lib;
-    repositoryRoot = flake.outPath;
+    inherit repositoryRoot;
   };
   rules = import ./root-projection.nix {
-    inherit pkgs buckInputs;
-    repositoryRoot = flake.outPath;
+    inherit pkgs buckInputs repositoryRoot;
   };
   packagesFor =
     sourceInfo:
