@@ -152,7 +152,9 @@ the archive descriptor; it shares deterministic USTAR encoding with executable p
 
 Payload inspection independently verifies inventory, host macro architecture,
 target library/compiler and effective panic compatibility; schema acceptance alone
-does not prove usability. If target-cpu, ABI-changing target features, or custom
+does not prove usability. The compatibility probe bypasses producer compiler-flag
+injection while retaining the declared Darwin wrapper's SDK, native-library
+linking, and signing setup. If target-cpu, ABI-changing target features, or custom
 target specifications are admitted, their effective values must be bound into
 a versioned descriptor before acceptance. The library schema has no `entrypoints`
 or `runtime` fields; executable v1 bytes/readers remain unchanged and decode to the executable arm.
