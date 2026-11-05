@@ -60,6 +60,9 @@
             "context": "test-integration-restate"
           },
           {
+            "context": "pr-a-inert-buck"
+          },
+          {
             "context": "build-products"
           },
           {
