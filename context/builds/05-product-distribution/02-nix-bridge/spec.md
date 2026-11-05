@@ -141,6 +141,42 @@ publishing Cachix action and its push hook are enabled only after preparation.
 Cold substitution and input builds use the job timeout; the unchanged 32-minute
 publication step budget covers the product builds and pushes.
 
+The independent `publish-compile-products` job follows `publish-products` under
+the same protected-main push/dispatch guard, including manifest-only runs.
+Neither consumer smoke nor promotion depends on it: compile warming adds zero
+dependency-path latency to promotion. It uses the admitted self-hosted Linux x64
+runner and existing authenticated Cachix setup, with no publisher App token or
+additional scope. A main-only concurrency group cancels superseded warmers;
+the job is bounded to 30 minutes. Strict Nix sandboxing and disabled fallback
+remain enabled; the shared Linux prerequisite step requires user namespaces
+before any compile realization. Unsupported runners fail rather than weaken isolation.
+`genie/ci-scripts/publish-compile-products.sh` enumerates all cache, compiled and
+native inventory rows. It explicitly realizes each unstamped `.compileProduct`
+(via `.buck2Product.compileProduct` for native/compiled imports), then pushes
+that exact output to `overeng-effect-utils` on every run, independently of
+immutable artifact pins. Nix substitutes an existing compile output or builds
+it when absent, even if the revision-stamped artifact was already substituted.
+Realization and push failures emit product-specific warning annotations and
+continue; job-level failures are advisory and cannot block promotion.
+No compile manifest rows, Actions artifacts or Actions cache are involved.
+
+Cold compile warming can cost roughly the complete from-source budget across
+all products (about 17 minutes, an estimate rather than a benchmark).
+Steady-state realization substitutes unchanged derivations; compile identity
+changes only with inputs, but today's coarse source set changes on almost every
+product-touching commit. The separate job may therefore still compile frequently.
+This adds up to one active compile-warming job's CPU, memory, store and upload
+load on the shared fleet; cancellation bounds overlap but does not eliminate
+competition with other runner jobs.
+Compile outputs are intentionally unpinned, replaceable substitutes.
+[Cachix GC](https://docs.cachix.org/garbage-collection) evicts unpinned paths by
+last access (or creation) when storage reaches its limit; the public cache API
+does not expose this cache's quota or GC settings. Long-term availability is
+not guaranteed. If retention becomes necessary, a proposed policy is one rolling
+pin per product/platform, retaining the last three revisions or seven days via
+[bounded pin retention](https://docs.cachix.org/pins), not immutable digest pins.
+That retention policy is not implemented.
+
 Native and compiled product CI separately builds or substitutes the complete
 product outputs before smoke checks. This preparation does not force producer
 inputs when outputs are substitutable, smoke executables, or publish; it records

@@ -2396,6 +2396,40 @@ export default ciWorkflow({
       ),
       // Isolated pnpm consumer: no checkout-native Buck or root-shell cache evidence.
       'consumer-smoke': consumerSmokeJob!,
+      // Cache warming bypasses telemetry/artifact adapters and never gates promotion.
+      ...withNixRealisationTimeouts(
+        {
+          'publish-compile-products': {
+            needs: ['publish-products'],
+            if: `(${trustedSecretCiIf.replace(/^\$\{\{\s*|\s*\}\}$/g, '')}) && (${sameRepoPullRequestGuard()})`,
+            'runs-on': linuxX64Runner,
+            concurrency: { group: 'publish-compile-products-main', 'cancel-in-progress': true },
+            'timeout-minutes': 30,
+            'continue-on-error': true,
+            permissions: { contents: 'read' },
+            defaults: bashShellDefaults,
+            steps: [
+              checkoutStep(),
+              installNixStep(),
+              linuxSandboxPrerequisitesStep({ privileged: 'always' }),
+              cachixCliBuildStep,
+              trustedCachixStep,
+              publishingCachixStep,
+              cachixPushStep({
+                jobIf: trustedSecretCiIf,
+                triggers: ['push', 'workflow_dispatch'],
+                authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}',
+                step: {
+                  name: 'Publish unstamped compile outputs',
+                  env: githubTokenEnv(),
+                  run: withCiSourceRoot('bash genie/ci-scripts/publish-compile-products.sh'),
+                },
+              }),
+            ],
+          },
+        },
+        nixRealisationTimingsSeconds,
+      ),
     },
     // Protected queue heads and fallback main pushes warm the cache opportunistically.
     // PR jobs never receive writer credentials; the dedicated main proof remains strict.

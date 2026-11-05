@@ -121,6 +121,28 @@ if ! bun -e 'console.log(JSON.stringify(Bun.YAML.parse(await Bun.file(process.ar
   echo "buck2-cache-products-test: publication jobs must not grant contents/pull-requests write scopes to GITHUB_TOKEN" >&2
   exit 1
 fi
+# Compile warming runs alongside smoke, never on the promotion dependency path.
+bun -e 'console.log(JSON.stringify(Bun.YAML.parse(await Bun.file(process.argv[1]).text())))' "$workflow" |
+  jq -e '
+    .jobs as $jobs |
+    $jobs["publish-compile-products"].needs == ["publish-products"] and
+    $jobs["publish-compile-products"]["continue-on-error"] == true and
+    $jobs["publish-compile-products"].permissions == {contents:"read"} and
+    ($jobs["publish-compile-products"].if | contains("github.ref == \u0027refs/heads/main\u0027") and contains("github.event_name == \u0027push\u0027") and contains("github.event.pull_request.head.repo.full_name == github.repository")) and
+    $jobs["publish-compile-products"]["runs-on"] == ["sh-linux-x64","nix"] and
+    $jobs["publish-compile-products"]["timeout-minutes"] == 30 and
+    $jobs["publish-compile-products"].concurrency == {group:"publish-compile-products-main","cancel-in-progress":true} and
+    any($jobs["publish-compile-products"].steps[]; .name == "Disable Linux Nix sandbox fallback") and
+    any($jobs["publish-compile-products"].steps[]; .id == "linux-sandbox-admission" and (.run | contains("unshare -Ur true"))) and
+    any($jobs["publish-compile-products"].steps[];
+      .name == "Publish unstamped compile outputs" and
+      .env.CACHIX_AUTH_TOKEN == "${{ secrets.CACHIX_AUTH_TOKEN }}" and
+      (.run | contains("bash genie/ci-scripts/publish-compile-products.sh"))) and
+    all($jobs["publish-compile-products"].steps[];
+      (.uses // "" | test("^(actions/(upload-artifact|download-artifact|cache)|actions/create-github-app-token)@") | not)) and
+    all($jobs | to_entries[] | select(.key != "publish-compile-products");
+      (.value.needs // [] | if type == "string" then [.] else . end | index("publish-compile-products")) == null)
+  ' >/dev/null
 # Publication mints the manifest PR token and checks secret presence; the
 # independently gated promotion job now owns the second token-minting step.
 if [ "$(grep -c 'NIX_PUBLISHER_GITHUB_APP_PRIVATE_KEY' <<<"$publish_job")" -ne 2 ] ||
@@ -221,7 +243,17 @@ cat >"$tmp/fake-bin/nix" <<'EOF'
 case "$1" in
   hash) printf '%s\n' "$FIXTURE_INTEGRITY" ;;
   eval) printf '%064d\n' 0 ;;
-  build) if [[ "$*" == *".sourceEvidence" ]]; then printf '%s\n' "$FIXTURE_EVIDENCE_STORE_PATH"; else printf '%s\n' "$FIXTURE_STORE_PATH"; fi ;;
+  build)
+    if [[ "$*" == *".compileProduct" ]]; then
+      printf '%s\n' "$*" >>"$COMPILE_BUILD_LOG"
+      [[ "${FAIL_COMPILE_BUILD:-}" != 1 ]] || exit 1
+      printf '%s\n' "$FIXTURE_COMPILE_STORE_PATH"
+    elif [[ "$*" == *".sourceEvidence" ]]; then
+      printf '%s\n' "$FIXTURE_EVIDENCE_STORE_PATH"
+    else
+      printf '%s\n' "$FIXTURE_STORE_PATH"
+    fi
+    ;;
   *) printf '%s\n' "$FIXTURE_STORE_PATH" ;;
 esac
 EOF
@@ -247,6 +279,7 @@ EOF
 cat >"$tmp/fake-bin/cachix" <<'EOF'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >>"$CACHIX_LOG"
+[[ "${FAIL_COMPILE_PUSH:-}" != 1 || "$*" != *"$FIXTURE_COMPILE_STORE_PATH" ]] || exit 1
 EOF
 chmod +x "$tmp/fake-bin/"*
 export FIXTURE_STORE_PATH="$collision_store"
@@ -311,6 +344,42 @@ jq -e --arg storePath "$published_store" --arg digest "$collision_sha" '
   echo "buck2-cache-products-test: publisher repinned an already published artifact" >&2
   exit 1
 }
+
+# Even with both immutable artifact/evidence pins already present, the separate
+# compile publisher realizes and pushes the unstamped output for every family.
+mkdir -p "$tmp/compile-output"
+cp "$tmp/collision-output/fixture.js" "$tmp/compile-output/fixture.js"
+export FIXTURE_COMPILE_STORE_PATH="$(nix store add-path "$tmp/compile-output")"
+export COMPILE_BUILD_LOG="$tmp/compile-build.log"
+printf '{"products":[{"name":"fixture-native"}]}\n' >"$tmp/collision-repo/nix/buck2-products/native-targets.json"
+printf '{"products":[{"name":"fixture-compiled"}]}\n' >"$tmp/collision-repo/nix/buck2-products/compiled-targets.json"
+compile_publisher="$repo_root/genie/ci-scripts/publish-compile-products.sh"
+for mode in success push-failure build-failure; do
+  : >"$CACHIX_LOG"
+  : >"$COMPILE_BUILD_LOG"
+  fail_push=0; fail_build=0
+  if [[ "$mode" == push-failure ]]; then fail_push=1; fi
+  if [[ "$mode" == build-failure ]]; then fail_build=1; fi
+  GITHUB_EVENT_NAME=push GITHUB_REF=refs/heads/main \
+    GITHUB_REPOSITORY=overengineeringstudio/effect-utils \
+    PATH="$tmp/fake-bin:$PATH" FAIL_COMPILE_PUSH="$fail_push" FAIL_COMPILE_BUILD="$fail_build" \
+    bash "$compile_publisher" "$tmp/collision-repo" 2>"$tmp/compile-$mode.stderr"
+  [[ "$(wc -l <"$COMPILE_BUILD_LOG")" == 3 ]]
+  for attr in buck-product-fixture-from-source.compileProduct \
+    fixture-compiled-compiled.buck2Product.compileProduct fixture-native.buck2Product.compileProduct; do
+    grep -F -- "$tmp/collision-repo#$attr" "$COMPILE_BUILD_LOG" >/dev/null
+  done
+  if [[ "$mode" == build-failure ]]; then
+    [[ ! -s "$CACHIX_LOG" ]]
+    [[ "$(grep -c '::warning title=Compile cache realization failed::' "$tmp/compile-$mode.stderr")" == 3 ]]
+  else
+    [[ "$(wc -l <"$CACHIX_LOG")" == 3 ]]
+    [[ "$(grep -Fxc "push overeng-effect-utils $FIXTURE_COMPILE_STORE_PATH" "$CACHIX_LOG")" == 3 ]]
+    if [[ "$mode" == push-failure ]]; then
+      [[ "$(grep -c '::warning title=Compile cache push failed::' "$tmp/compile-$mode.stderr")" == 3 ]]
+    fi
+  fi
+done
 
 mkdir -p "$tmp/local-bin" "$tmp/local-cache"
 cp "$tmp/fake-bin/git" "$tmp/local-bin/git"
