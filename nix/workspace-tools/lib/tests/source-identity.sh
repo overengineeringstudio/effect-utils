@@ -85,7 +85,10 @@ let
   selected = builtins.getEnv "BUCK2_SYSTEM";
   system = if selected == "" then builtins.currentSystem else selected;
   packages = outputs.packages.${system};
-  names = [
+  jsIdentity = builtins.getEnv "BUCK2_JS_IDENTITY" == "1";
+  names = if jsIdentity then [
+    "ci-tools" "gh-ci-utils" "notion-cli" "notion-db-runtime" "tui-stories"
+  ] else [
     "buck2" "buck2-capabilities" "buck2-archive-tool" "buck2-events"
     "buck2-fingerprint" "buck2-product" "otelite" "otel-scrape"
     "typescript-api-server" "ci-tools-compiled"
@@ -93,7 +96,8 @@ let
   ];
 in builtins.listToAttrs (map (name: {
   inherit name;
-  value = packages.${name}.outPath;
+  value = if jsIdentity then packages."buck-product-${name}-from-source".compileProduct.drvPath
+    else packages.${name}.outPath;
 }) names)'
 shell_paths() { nix eval --impure --json --expr "$shell_expr"; }
 linux_before="$(BUCK2_SYSTEM=x86_64-linux shell_paths)"
@@ -165,3 +169,36 @@ jq -ne --argjson before "$core_after" --argjson after "$plugin_after" '
   and $before["buck2-capabilities"] != $after["buck2-capabilities"]
   and $before.otelite == $after.otelite
 ' >/dev/null
+
+# One package graph per bounded evaluation: never retain several whole-flake
+# source variants together. Root-projection separately covers rule sensitivity.
+js_paths() {
+  BUCK2_JS_IDENTITY=1 BUCK2_SYSTEM=x86_64-linux timeout 600 \
+    nix eval --impure --option allow-import-from-derivation false --json --expr "$shell_expr"
+}
+export BUCK2_SHELL_IDENTITY_REV=1111111111111111111111111111111111111111
+js_before="$(js_paths)"
+printf '\nJS cache unrelated context edit\n' >> "$work/shell/context/pingping/spec.md"
+export BUCK2_SHELL_IDENTITY_REV=2222222222222222222222222222222222222222
+js_after="$(js_paths)"
+[[ "$js_before" == "$js_after" ]] || {
+  echo 'context-only edit and producer revision changed scoped JS compile recipes' >&2; exit 1;
+}
+# Each real own-source mutation must invalidate its product, not just the
+# publication wrapper. Restore between controls so failures name one input.
+while read -r name relative; do
+  cp "$work/shell/$relative" "$work/js-source"
+  printf '\n// JS compile identity source control\n' >> "$work/shell/$relative"
+  changed="$(js_paths)"
+  jq -ne --arg name "$name" --argjson before "$js_after" --argjson after "$changed" \
+    '$before[$name] != $after[$name]' >/dev/null || {
+    echo "own source edit did not change $name compile recipe: $relative" >&2; exit 1;
+  }
+  cp "$work/js-source" "$work/shell/$relative"
+done <<'SOURCES'
+ci-tools packages/@overeng/ci-tools/src/mod.ts
+gh-ci-utils packages/@overeng/gh-ci-utils/src/mod.ts
+notion-cli packages/@overeng/notion-cli/src/mod.ts
+notion-db-runtime packages/@overeng/notion-datasource-sync/src/cli/main.ts
+tui-stories packages/@overeng/tui-stories/src/mod.ts
+SOURCES
