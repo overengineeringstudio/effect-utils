@@ -42,6 +42,7 @@ import {
   touchEditorViewBudgetGeneration,
   collectEditorViewBudgetFootprints,
   reclaimEditorViewOrphans,
+  recountEditorViewBudget,
   withHostBudgetLock,
   type EditorViewBudgetRoot,
   type EditorViewBudgetRootLock,
@@ -4370,6 +4371,11 @@ const main = async (): Promise<void> => {
     setTimeout(() => process.exit(143), 100)
   })
   const args = process.argv.slice(2)
+  if (args[0] === 'budget') {
+    if (args.length !== 2 || args[1] !== 'recount') fail('expected budget recount')
+    process.stdout.write(`${JSON.stringify(await recountEditorViewBudget())}\n`)
+    return
+  }
   if (args[0] === 'publish-batch') {
     if (args.length !== 1) fail('expected publish-batch with a JSON request array on stdin')
     const raw: unknown = JSON.parse(readFileSync(0, 'utf8'))

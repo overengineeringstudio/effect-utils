@@ -26,6 +26,7 @@ import {
   EditorViewCapacityError,
   editorViewHostBudgetStateDirectory,
   makeEditorViewBudgetCensusSession,
+  recountEditorViewBudget as recountEditorViewBudgetUnscoped,
   reserveEditorViewBudget as reserveEditorViewBudgetUnscoped,
   reclaimEditorViewOrphans as reclaimEditorViewOrphansUnscoped,
 } from './editor-view-budget.ts'
@@ -69,6 +70,10 @@ const publishEditorView = scopeEditorViewTestProcesses({
 const reserveEditorViewBudget = scopeEditorViewTestProcesses({
   processIds: fixtureProcessIds,
   operation: reserveEditorViewBudgetUnscoped,
+})
+const recountEditorViewBudget = scopeEditorViewTestProcesses({
+  processIds: fixtureProcessIds,
+  operation: recountEditorViewBudgetUnscoped,
 })
 const reclaimEditorViewOrphans = scopeEditorViewTestProcesses({
   processIds: fixtureProcessIds,
@@ -740,6 +745,81 @@ const expectCurrent = (fixture: Fixture, record: EditorViewRecord): void => {
   expect(readlinkSync(fixture.firstHop)).toBe('../../.editor-view/budget-view/node_modules')
   expect(pathExists(join(fixture.editorRoot, record.snapshot))).toBe(true)
 }
+
+describe('host budget census-only recount', () => {
+  it.each([false, true])('refreshes released usage (directory retired: %s)', async (retired) => {
+    const host = makeHost()
+    try {
+      const fixture = host.fixture('released-recount', 201)
+      await host.publish(fixture)
+      const before = await recountEditorViewBudget()
+      await releaseEditorViewRoot(fixture.options)
+      expect(pathExists(fixture.editorRoot)).toBe(true)
+      if (retired === true) removeOwnedTree(fixture.editorRoot)
+      const epoch = readBudgetLedger(host).epoch
+      const after = await recountEditorViewBudget()
+      expect(after.usedBytes).toBeLessThan(before.usedBytes)
+      expect(after.epochBefore).toBe(epoch)
+      expect(after.epochAfter).toBeGreaterThan(epoch)
+      expect(after.roots).toBe(retired === true ? 0 : 1)
+      expect(readBudgetLedger(host).usedBytes).toBe(after.usedBytes)
+      expect(readBudgetLedger(host).generations).toEqual({})
+      expect(readdirSync(join(host.budgetState, 'footprints'))).toEqual([])
+    } finally {
+      await host.cleanup()
+    }
+  })
+
+  it('preserves live reservations and their absent root registrations', async () => {
+    const host = makeHost()
+    try {
+      const fixture = host.fixture('live-recount', 202, 64)
+      await host.publish(fixture)
+      const { token } = await reserveEditorViewBudget({
+        contentStore: host.contentStore,
+        root: { repoRoot: fixture.root, editorRoot: fixture.editorRoot },
+        heldEditorRoot: fixture.editorRoot,
+        discoverRoots: () => [],
+        reservationBytes: 1,
+        budgetBytes: setupBudgetBytes,
+        tryLockRoot: () => undefined,
+      })
+      const before = readBudgetLedger(host)
+      removeOwnedTree(fixture.editorRoot)
+      const after = await recountEditorViewBudget()
+      expect(after.roots).toBe(1)
+      expect(after.epochAfter).toBeGreaterThan(before.epoch)
+      expect(readBudgetLedger(host).reservations).toEqual(before.reservations)
+      await cancelEditorViewBudgetReservation({ contentStore: host.contentStore, token })
+      expect((await recountEditorViewBudget()).roots).toBe(0)
+    } finally {
+      await host.cleanup()
+    }
+  })
+
+  it('prints one JSON result from the census-only CLI against an isolated ledger', async () => {
+    const host = makeHost()
+    try {
+      const result = spawnSync(
+        bun,
+        [new URL('./editor-view.ts', import.meta.url).pathname, 'budget', 'recount'],
+        { encoding: 'utf8', env: { ...process.env, EDITOR_VIEW_HOST_BUDGET_BYTES: '12345678' } },
+      )
+      expect(result.status).toBe(0)
+      expect(result.stdout.trim().split('\n')).toHaveLength(1)
+      expect(JSON.parse(result.stdout)).toEqual({
+        usedBytes: expect.any(Number),
+        budgetBytes: 12345678,
+        roots: 0,
+        epochBefore: 0,
+        epochAfter: 1,
+        durationMs: expect.any(Number),
+      })
+    } finally {
+      await host.cleanup()
+    }
+  })
+})
 
 describe('host-budget fixture fingerprint admission', () => {
   it('uses the fixture domain for both cold and warm native fingerprints', async () => {

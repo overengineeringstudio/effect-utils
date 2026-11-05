@@ -309,6 +309,18 @@ arriving after observation need not change either value. Non-blocking exclusive
 reader leases in #1990 must be probed at this seam to close that advisory race;
 a held lease skips the candidate without waiting.
 
+`editor-view.ts budget recount` (task `buck2:editor:budget:recount`) refreshes
+host usage independently of publication admission and its execution deadline.
+It performs no admission or eviction. Census walks run outside the host budget
+lock; reservation reclamation, obsolete footprint collection, and the shared
+measured-usage commit run under that lock. Live or uncertain reservations remain.
+Released roots whose directories still exist stay registered but contribute only
+their remaining bytes; vanished roots without reservations are deregistered.
+The command prints one JSON line containing `usedBytes`, `budgetBytes`, `roots`
+(remaining registrations), `epochBefore`, `epochAfter`, and `durationMs`.
+Each recount advances the ledger epoch; concurrent finish estimates remain
+in the journal rather than being folded into measured usage.
+
 Legacy entries are evaluated independently: a referenced displaced install does
 not preserve unrelated legacy entries. A still-referenced legacy entry is
 adopted with one footprint walk and an immutable-identity sidecar when its bytes
