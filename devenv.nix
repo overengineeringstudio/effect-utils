@@ -771,8 +771,7 @@ let
     }:
     let
       traceName = "buck2:editor:${mode}${lib.optionalString (traceScope != null) ":${traceScope}"}";
-      bootstrapReceipt =
-        ciUnitTest && mode == "bootstrap" && packagePaths == editorBootstrapPackagePaths;
+      bootstrapReceipt = ciUnitTest && mode == "bootstrap" && packagePaths == editorBootstrapPackagePaths;
       packageArgument = lib.optionalString (
         packagePaths != null
       ) " --packages ${lib.escapeShellArg (builtins.toJSON packagePaths)}";
