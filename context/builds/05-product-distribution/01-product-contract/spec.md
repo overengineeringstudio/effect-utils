@@ -159,6 +159,23 @@ target specifications are admitted, their effective values must be bound into
 a versioned descriptor before acceptance. The library schema has no `entrypoints`
 or `runtime` fields; executable v1 bytes/readers remain unchanged and decode to the executable arm.
 
+An external consumer uses the checked compiler package and ordinary system
+linker, not Cargo or a producer-specific extern manifest:
+
+```sh
+rustc --edition=2024 consumer.rs \
+  --extern example_library=${library}/lib/libexample_library.rlib \
+  -L dependency=${library}/lib -o consumer
+./consumer
+```
+
+The primary crate name comes from the Cargo library target; transitive generic
+code, reexports and host derive macros resolve from the one installed dependency
+directory. Consumers must not mix closures or substitute a different compiler.
+The unchanged recipe requires an unwind-compatible producer; an abort product
+requires an explicitly compatible consumer invocation.
+
+
 ## Namespace and Compatibility
 
 `buck-build-product/v1` and `buck-rust-library-product/v1` are repository-owned

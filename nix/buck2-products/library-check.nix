@@ -1,11 +1,22 @@
-{ pkgs, product }:
+{
+  pkgs,
+  product,
+  fixture,
+}:
 let
   source = product.buck2Product;
   realize = import ../workspace-tools/lib/buck2-artifact-realize.nix { inherit pkgs; };
 in
-pkgs.runCommandCC "buck2-installed-library-consumer"
+pkgs.runCommand "buck2-installed-library-consumer"
   {
-    buildInputs = pkgs.lib.optional pkgs.stdenv.hostPlatform.isDarwin pkgs.libiconv;
+    nativeBuildInputs = [
+      pkgs.rustc
+      pkgs.stdenv.cc
+    ];
+    buildInputs = pkgs.lib.optionals pkgs.stdenv.hostPlatform.isDarwin [
+      pkgs.apple-sdk
+      pkgs.libiconv
+    ];
     dontStrip = true;
     passthru.mismatch = realize {
       name = "content-address-core";
@@ -28,21 +39,19 @@ pkgs.runCommandCC "buck2-installed-library-consumer"
     ${pkgs.stdenv.cc.bintools}/bin/ar t ${product}/lib/libcontent_address_core.rlib \
       | ${pkgs.gnugrep}/bin/grep 'lib.rmeta'
     cat > consumer.rs <<'RS'
-    #[derive(serde_derive::Serialize)]
-    struct ConsumerMarker { digest: content_address_core::Digest }
-    fn assert_serializable<T: serde::Serialize>() {}
     fn main() {
-        assert_serializable::<ConsumerMarker>();
         let digest = content_address_core::Digest([0; 32]);
         assert_eq!(digest.to_string().parse::<content_address_core::Digest>().unwrap(), digest);
     }
     RS
-    serde=(${product}/lib/libserde-*.rlib)
-    derive=(${product}/lib/libserde_derive-*)
-    ${product.rustc.unwrapped}/bin/rustc --edition=2024 -C linker="$CC" consumer.rs \
+    rustc --edition=2024 consumer.rs \
       --extern content_address_core=${product}/lib/libcontent_address_core.rlib \
-      --extern serde="''${serde[0]}" --extern serde_derive="''${derive[0]}" \
       -L dependency=${product}/lib -o consumer
+    ./consumer
+    cp ${../../buck2/tests/library_closure/consumer.rs} consumer.rs
+    rustc --edition=2024 consumer.rs \
+      --extern example_library=${fixture}/lib/libexample_library.rlib \
+      -L dependency=${fixture}/lib -o consumer
     ./consumer
     echo 'PASS: installed library metadata, external consumer and proc-macro loading'
     touch "$out"

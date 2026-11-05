@@ -2,6 +2,8 @@
   lib,
   repositoryRoot,
   extraEntryTargets ? [ ],
+  # Installed-library acceptance alone stages the otherwise forbidden fixture rules.
+  admitTestFixtureInputs ? false,
 }:
 let
   readProducts =
@@ -100,7 +102,7 @@ let
   forbidden = builtins.filter isTest paths;
 in
 assert lib.assertMsg (
-  forbidden == [ ]
+  admitTestFixtureInputs || forbidden == [ ]
 ) "buck2-products: product rules reference test inputs: ${lib.concatStringsSep ", " forbidden}";
 {
   files = map (path: repositoryRoot + "/${path}") paths;
