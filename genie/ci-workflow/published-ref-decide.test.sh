@@ -31,5 +31,25 @@ assert_decision push "$a" "$b"
 # A rejected creation sees the newly created ancestor and becomes a FF push.
 assert_decision create '' "$b"
 assert_decision push "$a" "$b"
-assert_decision diverged "$d" "$b"
-echo 'published-ref-decide: 8 ancestry assertions passed'
+assert_decision noop "$d" "$b"
+p="$(git commit-tree "$tree" -p "$o" -p "$a" -m "Publish A" -m "Published-From: $a")"
+q="$(git commit-tree "$tree" -p "$p" -p "$b" -m "Publish B" -m "Published-From: $b")"
+assert_decision noop "$p" "$a"
+assert_decision push "$p" "$b"
+assert_decision noop "$q" "$a"
+assert_decision noop "$q" "$b"
+assert_decision noop "$q" "$d"
+# Newer run wins first: an older run must leave the actual ref unchanged.
+git update-ref refs/heads/published "$p"
+assert_decision push "$(git rev-parse published)" "$b"
+git update-ref refs/heads/published "$q" "$p"
+assert_decision noop "$(git rev-parse published)" "$a"
+test "$(git rev-parse published)" = "$q"
+# A stale lease rejects a commit based on the previous tip, even if it is a FF.
+r="$(git commit-tree "$tree" -p "$p" -p "$b" -m "Raced B" -m "Published-From: $b")"
+if git push --force-with-lease="refs/heads/published:$p" . "$r:refs/heads/published"; then
+  echo 'stale published lease unexpectedly accepted' >&2
+  exit 1
+fi
+test "$(git rev-parse published)" = "$q"
+echo 'published-ref-decide: 15 ancestry assertions and out-of-order/lease checks passed'

@@ -1136,10 +1136,16 @@ describe('published consumer ref', () => {
     for (const id of ['publication-scope', 'product-publication']) {
       const producer = publisher.steps!.find((step) => step.id === id)!
       const script = producer.run as string
-      const success = script.indexOf('-f context=buck2-products/manifest-current -f state=success')
-      expect(success).toBeGreaterThan(-1)
-      expect(script.indexOf('echo "current-sha=$GITHUB_SHA"', success)).toBeGreaterThan(success)
+      expect(script).toContain('echo "manifest-base64=')
+      expect(script).toContain('echo "current-sha=$GITHUB_SHA"')
     }
+    const publication = publisher.steps!.find((step) => step.id === 'product-publication')!.run!
+    expect(publication.indexOf('echo "current-sha=$GITHUB_SHA"')).toBeLessThan(
+      publication.indexOf('if cmp -s'),
+    )
+    expect(publisher.outputs?.['manifest-base64']).toContain(
+      'steps.product-publication.outputs.manifest-base64',
+    )
   })
 
   it('runs the shared consumer harness without the root shell and emits success only afterward', () => {
@@ -1180,8 +1186,18 @@ describe('published consumer ref', () => {
     expect(advance.run).toContain('source genie/ci-workflow/published-ref-decide.sh')
     expect(advance.run).toContain('for attempt in 1 2 3; do')
     expect(advance.run).toContain('case "$(decide "$tip" "$GITHUB_SHA")" in')
-    expect(advance.run).toContain('git push origin "$GITHUB_SHA:refs/heads/published"')
-    expect(advance.run).not.toContain('--force')
+    expect(advance.env?.MANIFEST_BASE64).toBe(
+      '${{ needs.publish-products.outputs.manifest-base64 }}',
+    )
+    expect(advance.run).toContain('parents: [$tip, $main]')
+    expect(advance.run).toContain('Published-From: ')
+    expect(advance.run).toContain('/git/trees')
+    expect(advance.run).toContain('/git/commits')
+    expect(advance.run).toContain('git diff --name-only "$GITHUB_SHA" "$commit"')
+    expect(advance.run).toContain('[ "$changed" != nix/buck2-products/manifest.json ]')
+    expect(advance.run).toContain(
+      'git push --force-with-lease="refs/heads/published:$tip" origin "$commit:refs/heads/published"',
+    )
     expect(advance.run).toContain('$GITHUB_STEP_SUMMARY')
   })
 })

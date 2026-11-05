@@ -4440,6 +4440,7 @@ jobs:
       CI_EVIDENCE_MODE: ${{ vars.CI_EVIDENCE_MODE }}
     outputs:
       current-sha: ${{ steps.publication-scope.outputs.current-sha || steps.product-publication.outputs.current-sha }}
+      manifest-base64: ${{ steps.publication-scope.outputs.manifest-base64 || steps.product-publication.outputs.manifest-base64 }}
     steps:
       - id: linux-nix-sandbox-policy
         name: Disable Linux Nix sandbox fallback
@@ -4502,6 +4503,7 @@ jobs:
               -f context=buck2-products/manifest-current -f state=success \
               -f description="Publisher manifest-only merge is current" \
               -f target_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+            echo "manifest-base64=$(base64 -w0 nix/buck2-products/manifest.json)" >> "$GITHUB_OUTPUT"
             echo "current-sha=$GITHUB_SHA" >> "$GITHUB_OUTPUT"
           fi
       - # v3.24.1
@@ -4570,6 +4572,13 @@ jobs:
             echo "cause=publish.sh failed (exit $result): build, network, or Cachix error; inspect run" >> "$GITHUB_OUTPUT"
             exit "$result"
           fi
+          manifest="$(base64 -w0 "$proposal")"
+          if [ "${#manifest}" -gt 400000 ]; then
+            echo "::error::Manifest exceeds the promotion job-output size limit"
+            exit 1
+          fi
+          echo "manifest-base64=$manifest" >> "$GITHUB_OUTPUT"
+          echo "current-sha=$GITHUB_SHA" >> "$GITHUB_OUTPUT"
           if cmp -s nix/buck2-products/manifest.json "$proposal"; then
             echo "::notice::The v2 product manifest is already current"
             echo "changed=false" >> "$GITHUB_OUTPUT"
@@ -4577,7 +4586,6 @@ jobs:
               -f context=buck2-products/manifest-current -f state=success \
               -f description="Published product manifest is current" \
               -f target_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
-            echo "current-sha=$GITHUB_SHA" >> "$GITHUB_OUTPUT"
           else
             comparison=$?
             if [ "$comparison" -ne 1 ]; then
@@ -6701,6 +6709,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ steps.published-ref-token.outputs.token }}
           GH_TOKEN: ${{ steps.published-ref-token.outputs.token }}
+          MANIFEST_BASE64: ${{ needs.publish-products.outputs.manifest-base64 }}
         run: |
           set -euo pipefail
           source genie/ci-workflow/published-ref-decide.sh
@@ -6709,6 +6718,11 @@ jobs:
           if [ "$(git rev-parse --is-shallow-repository)" = true ]; then
             git fetch --no-tags --unshallow origin main
           fi
+          proposal="${RUNNER_TEMP:?}/published-manifest.json"
+          printf %s "${MANIFEST_BASE64:?Missing proposal manifest}" | base64 --decode > "$proposal"
+          tree="$(jq -n --rawfile manifest "$proposal" --arg base "$(git rev-parse "$GITHUB_SHA^{tree}")" \
+            '{base_tree: $base, tree: [{path: "nix/buck2-products/manifest.json", mode: "100644", type: "blob", content: $manifest}]}' | \
+            gh api --method POST "repos/$GITHUB_REPOSITORY/git/trees" --input - --jq .sha)"
           fetch_published() {
             local result
             if git ls-remote --exit-code origin refs/heads/published > /dev/null; then
@@ -6723,19 +6737,25 @@ jobs:
             tip="$(fetch_published)"
             case "$(decide "$tip" "$GITHUB_SHA")" in
               noop)
-                echo "published $tip -> $tip (already at or ahead of $GITHUB_SHA)" >> "$GITHUB_STEP_SUMMARY"
+                echo "published $tip -> $tip (candidate $GITHUB_SHA is not newer than the published main parent)" >> "$GITHUB_STEP_SUMMARY"
                 exit 0
                 ;;
               create|push)
-                if git push origin "$GITHUB_SHA:refs/heads/published"; then
-                  echo "published ${tip:-<absent>} -> $GITHUB_SHA" >> "$GITHUB_STEP_SUMMARY"
+                parent="${tip:-$(git rev-parse "$GITHUB_SHA^")}"
+                commit="$(jq -n --arg tree "$tree" --arg tip "$parent" --arg main "$GITHUB_SHA" \
+                  '{tree: $tree, parents: [$tip, $main], message: ("Publish products for " + $main + "\n\nPublished-From: " + $main)}' | \
+                  gh api --method POST "repos/$GITHUB_REPOSITORY/git/commits" --input - --jq .sha)"
+                git fetch --no-tags origin "$commit"
+                changed="$(git diff --name-only "$GITHUB_SHA" "$commit")"
+                if [ -n "$changed" ] && [ "$changed" != nix/buck2-products/manifest.json ]; then
+                  echo "::error::Publisher commit changed paths other than the manifest"
+                  exit 1
+                fi
+                if git push --force-with-lease="refs/heads/published:$tip" origin "$commit:refs/heads/published"; then
+                  echo "published ${tip:-<absent>} -> $commit (Published-From: $GITHUB_SHA)" >> "$GITHUB_STEP_SUMMARY"
                   exit 0
                 fi
                 echo "::notice::published push attempt $attempt rejected; refetching before retry"
-                ;;
-              diverged)
-                echo "::error::published $tip is not an ancestor of $GITHUB_SHA; refusing non-fast-forward update"
-                exit 1
                 ;;
               *)
                 echo "::error::Unable to classify published ancestry"
