@@ -93,6 +93,10 @@
       "operation": "promote-published"
     },
     {
+      "disposition": "outside-by-policy:ci-control-plane",
+      "operation": "published-status"
+    },
+    {
       "disposition": "outside-by-policy:ci-measurement-with-run-timestamp",
       "operation": "main-source-shape"
     },

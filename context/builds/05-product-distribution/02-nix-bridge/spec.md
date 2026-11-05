@@ -170,6 +170,20 @@ Promotion requests only `contents: write` for that token. Consumer failure
 blocks promotion, never product publication or manifest-current reporting:
 `publish-products` does not depend on `consumer-smoke`.
 
+After all three publication jobs finish, `published-status` reports the commit
+status `published/current` on the main-push SHA X; it emits no pending status.
+It reports `success` when promotion advances to a commit with `Published-From: X`
+or exits successfully because published already contains X or a later main SHA
+(an out-of-order no-op). With green `publish-products` and `consumer-smoke`
+inputs, a failed promotion reports `failure` (including lease, guard, and API
+errors). Failed, skipped, or cancelled inputs report `error`, with each
+non-successful input named in the description (limited to 140 characters).
+A skipped or cancelled promotion with green inputs also reports `error`.
+The reporter runs only for upstream main pushes, even when a dependency fails,
+using the workflow's own token with only `statuses: write`, not the publisher
+App. It uses the admitted general-purpose self-hosted Linux x64 runner class;
+it needs no checkout, Nix bootstrap, Actions artifacts, or cache.
+
 The publisher GitHub App is the sole creation/update actor. The writers
 ruleset restricts creation and updates, with only that App allowed to bypass.
 A separate history ruleset blocks deletion and non-fast-forward updates
