@@ -1,7 +1,7 @@
 # Native products for the evaluating host platform. Rust products use the
 # pinned Cargo archive projection; the TypeScript API server uses pnpm archives.
 # Every product is independently realized and validated by importNative.
-{
+args@{
   pkgs,
   mkBuckProductFromSource,
   capabilities,
@@ -106,9 +106,34 @@ builtins.listToAttrs (
       if product.kind == "rust-library" then
         nativeProduct.overrideAttrs (old: {
           passthru = (old.passthru or { }) // {
+            compositionChecks = import ./composition-check.nix {
+              inherit pkgs;
+              library = nativeProduct;
+              tool = (import ./native.nix args).otelite;
+            };
             libraryChecks = import ./library-check.nix {
               inherit pkgs;
               product = nativeProduct;
+              fixture = mkBuckProductFromSource {
+                inherit
+                  pnpmArchives
+                  repositoryRoot
+                  rootProjection
+                  cargoArchives
+                  ;
+                capabilities = capabilities.selectProduct product;
+                sourcePaths = product.sourcePaths ++ [ "buck2/tests/library_closure" ];
+                product = {
+                  name = "example-library";
+                  version = "0.0.0";
+                  kind = "rust-library";
+                  target = "effect_utils//buck2/tests/library_closure:product";
+                  outputName = "artifact.tar";
+                  cargoWorkspaceRoot = "buck2/tests/library_closure";
+                };
+                importNative = true;
+                admitTestFixtureInputs = true;
+              };
             };
           };
         })

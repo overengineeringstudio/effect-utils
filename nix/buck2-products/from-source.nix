@@ -67,6 +67,8 @@ in
   sourcePaths ? null,
   # Consumer Buck root is a separate Nix input, not a copy of the checkout.
   rootProjection ? null,
+  # Internal acceptance recipes may explicitly stage fixture rules.
+  admitTestFixtureInputs ? false,
   expectedSha256 ? null,
   # Optional Buck tree containing the declared pnpm runtime importer closure.
   runtimeClosureTarget ? null,
@@ -96,11 +98,14 @@ let
     else
       import ./buck-inputs.nix {
         inherit lib repositoryRoot;
+        inherit admitTestFixtureInputs;
         extraEntryTargets = entryTargets;
       };
   # Caller-owned rule derivations have no evaluable repository closure to extend.
   rulesProjection =
-    if rootProjection == null || lib.isDerivation rootProjection || covered then
+    if rootProjection == null && sourcePaths != null then
+      import ./root-projection.nix { inherit pkgs repositoryRoot buckInputs; }
+    else if rootProjection == null || lib.isDerivation rootProjection || covered then
       rootProjection
     else
       import ./root-projection.nix { inherit pkgs repositoryRoot buckInputs; };
@@ -189,8 +194,9 @@ in
 assert lib.assertMsg (
   producerCommit == null || builtins.match "[0-9a-f]{40}" producerCommit != null
 ) "buck2-products: producerCommit must be a full lowercase Git commit";
-assert lib.assertMsg ((producerCommit == null) == (sourcePaths != null))
-  "buck2-products: revision-bound recipes require producerCommit; scoped source recipes must omit it";
+assert lib.assertMsg (
+  producerCommit != null || sourcePaths != null
+) "buck2-products: unscoped source recipes require producerCommit";
 assert lib.assertMsg
   (
     sourcePaths == null
@@ -208,7 +214,7 @@ assert lib.assertMsg
   )
   "buck2-products: sourcePaths must be nonempty safe relative paths and cannot be combined with repositorySource";
 assert lib.assertMsg (
-  (sourcePaths == null) == (rootProjection == null)
+  (sourcePaths == null) == (rulesProjection == null)
 ) "buck2-products: scoped sourcePaths require a separate rootProjection";
 assert lib.assertMsg (
   repositorySource != null

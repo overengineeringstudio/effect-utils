@@ -62,6 +62,67 @@ describe('consumer root contracts', () => {
   })
 })
 
+describe('shared-runner Cachix upload boundary', () => {
+  it('forbids automatic Cachix uploaders on fleet and potentially shared selectors', () => {
+    for (const definition of [
+      ciWorkflow,
+      compiledWorkflow,
+      empiricalWorkflow,
+      storybookPlaysWorkflow,
+      previewBuildWorkflow,
+      previewDeployWorkflow,
+      autoReviewWorkflow,
+    ]) {
+      const workflow: GitHubWorkflowArgs = definition.data
+      for (const [id, job] of Object.entries(workflow.jobs)) {
+        // Opaque/matrix selectors may select fleet runners: protect them too.
+        if (
+          [job['runs-on']]
+            .flat()
+            .every((label) =>
+              /^(namespace-profile-|nscloud-|ubuntu-|macos-|windows-)/.test(label),
+            ) === true
+        )
+          continue
+        for (const step of job.steps) {
+          if (step.uses?.startsWith('cachix/cachix-action@') === true) {
+            expect(step.with?.authToken, id).toBeUndefined()
+            expect(step.with?.signingKey, id).toBeUndefined()
+            expect([true, 'true'], id).toContain(step.with?.skipPush)
+          }
+          expect(JSON.stringify({ run: step.run, with: step.with }), id).not.toMatch(
+            /post-build-hook|cachix\s+(?:watch-store|daemon|authtoken)\b/,
+          )
+        }
+      }
+    }
+  })
+
+  it('isolates compile push credentials and configuration without installing an action', async () => {
+    const job = ciWorkflow.data.jobs['publish-compile-products']!
+    const push = job.steps.find((step) => step.name === 'Publish unstamped compile outputs')!
+    expect(job.env?.CACHIX_AUTH_TOKEN).toBeUndefined()
+    expect(push.env?.CACHIX_AUTH_TOKEN).toBe('${{ secrets.CACHIX_AUTH_TOKEN }}')
+    expect(push.env?.XDG_CONFIG_HOME).toBe(
+      '${{ runner.temp }}/compile-cachix-${{ github.run_id }}-${{ github.run_attempt }}',
+    )
+    for (const step of job.steps) {
+      expect(step.uses ?? '').not.toContain('cachix/cachix-action')
+      if (step !== push) expect(step.env?.CACHIX_AUTH_TOKEN).toBeUndefined()
+    }
+    const cleanup = job.steps.find(
+      (step) => step.name === 'Remove isolated compile Cachix configuration',
+    )!
+    expect(cleanup.if).toContain('always()')
+    expect(cleanup.run).toContain('rm -r -- "$config"')
+    const script = await Bun.file(
+      new URL('../ci-scripts/publish-compile-products.sh', import.meta.url),
+    ).text()
+    expect(script).toContain('cachix push "$cache" "$compile_path"')
+    expect(script).not.toMatch(/cachix\s+(?:authtoken|use|watch-store|daemon)\b/)
+  })
+})
+
 describe('Nix realisation step timeouts', () => {
   it('uses the p95, maximum and noise floor without loosening an existing bound', () => {
     const jobs = withNixRealisationTimeouts(

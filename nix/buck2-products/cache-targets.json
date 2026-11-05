@@ -726,6 +726,14 @@
       "outputName": "oxc-config.js",
       "packagePath": "packages/@overeng/oxc-config",
       "packageTreePath": "packages/@overeng/oxc-config",
+      "sourcePaths": [
+        "package.json",
+        "packages/@overeng/buck2-tools",
+        "packages/@overeng/oxc-config",
+        "packages/@overeng/utils-dev",
+        "patches",
+        "pnpm-workspace.yaml"
+      ],
       "target": "effect_utils//packages/@overeng/oxc-config:oxc-config-candidate",
       "version": "0.0.0"
     },
@@ -737,6 +745,14 @@
       "outputName": "oxc-config-stylex-upstream-plugin.js",
       "packagePath": "packages/@overeng/oxc-config",
       "packageTreePath": "packages/@overeng/oxc-config",
+      "sourcePaths": [
+        "package.json",
+        "packages/@overeng/buck2-tools",
+        "packages/@overeng/oxc-config",
+        "packages/@overeng/utils-dev",
+        "patches",
+        "pnpm-workspace.yaml"
+      ],
       "target": "effect_utils//packages/@overeng/oxc-config:oxc-config-stylex-upstream-plugin-candidate",
       "version": "0.0.0"
     },

@@ -62,10 +62,86 @@ evidence, sysroot, target triple and panic strategy against the consumer's
 declared toolchain. A mismatch prints both identities and fails without a
 compiler fallback. Passthrough metadata exposes the checked compiler, target,
 panic strategy and descriptor path. The product's `libraryChecks` passthrough
-builds an external consumer with the checked unwrapped rustc and stdenv linker,
-including Darwin SDK/iconv, against fixed-up metadata and installed proc macros.
-Its `.mismatch` requires a mismatched import to fail with the compiler diagnostic and
-both identities. Publication follows both checks; executables retain `--help`.
+uses the exact external recipe below against the installed content-address-core
+library and a realized transitive generic/reexport/derive fixture. Its `.mismatch`
+requires a mismatched import to fail with the compiler diagnostic and both
+identities. Executables retain `--help`.
+
+### External Rust library consumers
+
+```text
+consumer Cargo + generated BUCK + offline archives + shared pkgs
+  -> mkBuckProductFromSource { importNative = true; product.kind = "rust-library"; }
+  -> checked installed library
+  -> plain rustc consumer
+```
+
+External flakes follow effect-utils' nixpkgs input and share their imported
+`pkgs` between producer capabilities, source builder, importer and consumer.
+`lib.mkConsumerBuckRoot` supplies the rules/capability root;
+`lib.mkBuckProductFromSource { inherit pkgs; }` accepts a caller-owned product
+record and staged `repositorySource`, including the consumer's Cargo workspace,
+projected BUCK files and effect-utils path dependency sources. The consumer's
+Cargo projector selects `buildProducts: [{ kind: 'library', name: 'example-library' }]`;
+`lib.mkBuck2CargoArchives` receives the consumer's generated third-party BUCK
+files (and pinned `gitSources` where declared). No Cargo build fallback exists.
+
+Foreign path crates are instantiated by the consumer's Cargo projection against
+its own third-party graph. Their source packages need only `cargo-source/<file>`
+exports, not the producer's compile, static-check or product rules. A library's
+`BUCK.foreign.bzl.genie.ts` selects `foreignSourceExportsOnly: true` in the same
+Cargo package projector; Genie emits `BUCK.foreign.bzl` with exactly the ordinary
+projection's source exports and only the standard `@prelude` native load.
+The ordinary producer `BUCK` remains unchanged.
+
+Stage each foreign crate's sources and copy its generated `BUCK.foreign.bzl` to
+`BUCK` at that crate's repository-relative path in the consumer source tree.
+Do not retain the producer `BUCK` there: its root-local rule loads need not
+exist in `mkConsumerBuckRoot`. Declare the complete foreign path closure in
+`foreign-packages.json`; each admitted library in that closure needs its own
+generated export projection. `rust/work-storage` supplies this projection and
+has no further path-crate dependencies. Explicit cross-package build-script or
+compile-time inputs still require their declared source providers; they are
+not implicitly exported by the crate's source-only projection.
+
+The plain consumer derivation declares exactly:
+
+```nix
+nativeBuildInputs = [ pkgs.rustc pkgs.stdenv.cc ];
+buildInputs = pkgs.lib.optionals pkgs.stdenv.hostPlatform.isDarwin [
+  pkgs.apple-sdk pkgs.libiconv
+];
+```
+
+It uses the product contract's flat `--extern`/`-L dependency` invocation,
+without an unwrapped compiler, explicit linker flag or extra dependency externs.
+`compiled-products.sh --build-only` builds this acceptance on Linux and Darwin.
+After source realization it imports the known archive and descriptor through
+`lib.mkBuck2ArtifactImport`, checks descriptor/inventory/compiler parity, runs
+the same consumer, and rejects a descriptor changed without updating its digest.
+This two-stage local publication-interface test requires no import-from-derivation.
+The subsequent smoke phase does not repeat this realized roundtrip.
+Native/library publication uses source products plus Cachix substitution;
+`publish.sh`'s manifest/descriptor publication supports JavaScript/package rows,
+not native/library rows or a hosted library descriptor registry.
+
+### Library and tool composition
+
+`lib.mkBuck2ProductComposition { inherit pkgs; } { name = "library-with-tools";
+products = [ library tool ]; }` combines independently validated imports without
+Cargo or a rebuild. Descriptor paths and the library's compiler, target and panic
+strategy remain available in passthrough metadata. Composition revalidates every
+descriptor at build time, requires a common platform, and requires all libraries
+to share compiler, sysroot, verbose compiler identity, host/target and panic
+strategy. Native Rust executables must have exactly the library's recorded
+`semanticProvenance.toolchain`; other executable adapters require platform parity.
+Before copying, sorted destination inventories reject duplicate paths and
+file/directory conflicts, naming both owners. Full trees retain their flat `lib/`
+and `bin/` layout, modes, symlinks and artifact bytes; stripping is disabled,
+library descriptor hashes and every copied file's hash are checked.
+`content-address-core.compositionChecks` compiles and runs the unchanged external
+rustc recipe against the combined output and runs its `bin/otelite --help`.
+The compiled-products CI build runs this check on Linux and Darwin.
 
 ## Cache-backed Product Bridge
 
@@ -100,6 +176,50 @@ publication-scope condition as publication, but no Cachix write token. The
 publishing Cachix action and its push hook are enabled only after preparation.
 Cold substitution and input builds use the job timeout; the unchanged 32-minute
 publication step budget covers the product builds and pushes.
+
+The independent `publish-compile-products` job follows `publish-products` under
+the same protected-main push/dispatch guard, including manifest-only runs.
+Neither consumer smoke nor promotion depends on it: compile warming adds zero
+dependency-path latency to promotion. It uses the admitted self-hosted Linux x64
+runner with anonymous substitution configured through the Nix installer and no
+Cachix action or automatic uploader. Only the explicit push step receives the
+existing cache-scoped token in its environment; no publisher App token or
+additional scope is needed. Cachix configuration is isolated under runner
+temporary storage and removed by an `always()` cleanup step; `cachix authtoken`
+is never invoked. A main-only concurrency group cancels superseded warmers;
+the job is bounded to 30 minutes. Strict Nix sandboxing and disabled fallback
+remain enabled; the shared Linux prerequisite step requires user namespaces
+before any compile realization. Unsupported runners fail rather than weaken isolation.
+`genie/ci-scripts/publish-compile-products.sh` enumerates all cache, compiled and
+native inventory rows. It explicitly realizes each unstamped `.compileProduct`
+(via `.buck2Product.compileProduct` for native/compiled imports), then pushes
+that exact output to `overeng-effect-utils` on every run, independently of
+immutable artifact pins. Nix substitutes an existing compile output or builds
+it when absent, even if the revision-stamped artifact was already substituted.
+Each explicit push includes that output's runtime closure by Cachix default;
+these are this repository's public build inputs, not unrelated store paths.
+Fleet-runner workflow tests forbid authenticated Cachix actions, automatic
+post-build hooks, store watchers and upload daemons.
+Realization and push failures emit product-specific warning annotations and
+continue; job-level failures are advisory and cannot block promotion.
+No compile manifest rows, Actions artifacts or Actions cache are involved.
+
+Cold compile warming can cost roughly the complete from-source budget across
+all products (about 17 minutes, an estimate rather than a benchmark).
+Steady-state realization substitutes unchanged derivations; compile identity
+changes only with inputs, but today's coarse source set changes on almost every
+product-touching commit. The separate job may therefore still compile frequently.
+This adds up to one active compile-warming job's CPU, memory, store and upload
+load on the shared fleet; cancellation bounds overlap but does not eliminate
+competition with other runner jobs.
+Compile outputs are intentionally unpinned, replaceable substitutes.
+[Cachix GC](https://docs.cachix.org/garbage-collection) evicts unpinned paths by
+last access (or creation) when storage reaches its limit; the public cache API
+does not expose this cache's quota or GC settings. Long-term availability is
+not guaranteed. If retention becomes necessary, a proposed policy is one rolling
+pin per product/platform, retaining the last three revisions or seven days via
+[bounded pin retention](https://docs.cachix.org/pins), not immutable digest pins.
+That retention policy is not implemented.
 
 Native and compiled product CI separately builds or substitutes the complete
 product outputs before smoke checks. This preparation does not force producer

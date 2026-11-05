@@ -71,6 +71,8 @@ export type CargoBuck2PackageProjectionOptions = {
   readonly buildProduct?: boolean
   /** Independently named executable or library products from one package. */
   readonly buildProducts?: readonly CargoBuck2ProductOptions[]
+  /** Emit only cargo-source exports for staging as a foreign package's BUCK. */
+  readonly foreignSourceExportsOnly?: boolean
   readonly cliBuildStamp?: boolean
   readonly wasmBindgen?: CargoBuck2WasmBindgenOptions
   readonly napi?: CargoBuck2NapiOptions
@@ -381,6 +383,7 @@ const cargoBuck2PackageProjectionFor = ({
   definition,
   buildProduct = false,
   buildProducts,
+  foreignSourceExportsOnly = false,
   buildScriptInputs,
   compileTimeResources,
   cliBuildStamp = false,
@@ -413,8 +416,13 @@ const cargoBuck2PackageProjectionFor = ({
     field: 'sourceUrl',
   })
   const projectionSource = path.relative(repoRoot, projectionModulePath).replaceAll('\\', '/')
-  if (path.posix.basename(projectionSource) !== 'BUCK.genie.ts') {
-    throw new Error(`Cargo Buck projection source must be BUCK.genie.ts: ${projectionSource}`)
+  const projectionFilename = foreignSourceExportsOnly
+    ? 'BUCK.foreign.bzl.genie.ts'
+    : 'BUCK.genie.ts'
+  if (path.posix.basename(projectionSource) !== projectionFilename) {
+    throw new Error(
+      `Cargo Buck projection source must be ${projectionFilename}: ${projectionSource}`,
+    )
   }
   const packagePath = foreignMember?.packagePath ?? path.posix.dirname(projectionSource)
   const context = contextForMember({ context: consumerContext, member: foreignMember })
@@ -708,6 +716,34 @@ const cargoBuck2PackageProjectionFor = ({
           ]),
     ]),
   ])
+  const sourceExports = (library === undefined ? [] : instanceFiles).flatMap((file) => [
+    'native.export_file(',
+    `    name = ${starlarkString(`cargo-source/${file}`)},`,
+    `    src = ${starlarkString(file)},`,
+    '    visibility = ["PUBLIC"],',
+    ')',
+    '',
+  ])
+  if (foreignSourceExportsOnly === true) {
+    if (library === undefined) {
+      throw new Error(
+        `Foreign source exports require a Cargo library target in ${member.manifestPath}`,
+      )
+    }
+    const data = { packagePath, files: instanceFiles }
+    const exportGenerator = `${generator}/foreign-source`
+    const rendered = [
+      `# Projection source: ${projectionSource}`,
+      `# Projection schema version: ${schemaVersion}`,
+      `# Projection generator: ${exportGenerator}`,
+      `# Semantic fingerprint: ${buck2SemanticFingerprint({ generator: exportGenerator, schemaVersion, semanticData: data })}`,
+      `# Regenerate: ${regenerationCommand}`,
+      '',
+      'load("@prelude//:prelude.bzl", "native")',
+      ...sourceExports,
+    ].join('\n')
+    return createGenieOutput({ data, stringify: () => rendered })
+  }
   // Cargo exposes these variables at compile time, including empty strings
   // for missing manifest fields. See the Cargo reference:
   // https://doc.rust-lang.org/cargo/reference/environment-variables.html#environment-variables-cargo-sets-for-crates
@@ -1253,14 +1289,7 @@ const cargoBuck2PackageProjectionFor = ({
     '',
     // A library may be instantiated by consumers of other Cargo workspaces (foreign-packages.json),
     // which compile these exact files against their own third-party graph.
-    ...(library === undefined ? [] : instanceFiles).flatMap((file) => [
-      'native.export_file(',
-      `    name = ${starlarkString(`cargo-source/${file}`)},`,
-      `    src = ${starlarkString(file)},`,
-      '    visibility = ["PUBLIC"],',
-      ')',
-      '',
-    ]),
+    ...sourceExports,
     ...rules,
     ...(foreignRules === '' ? [] : [foreignRules]),
   ].join('\n')
