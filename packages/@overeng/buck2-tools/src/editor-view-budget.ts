@@ -1600,9 +1600,9 @@ const listRoots = ({
   state,
   unknown,
 }: {
-  readonly contentStore: string
-  readonly root: EditorViewBudgetRoot
-  readonly heldEditorRoot: string
+  readonly contentStore?: string | undefined
+  readonly root?: EditorViewBudgetRoot | undefined
+  readonly heldEditorRoot?: string | undefined
   readonly discoverRoots: () => readonly EditorViewBudgetRoot[]
   readonly state: BudgetState
   readonly unknown: string[]
@@ -1610,9 +1610,13 @@ const listRoots = ({
   const candidates = new Map<string, EditorViewBudgetRoot & { readonly contentStore: string }>()
   for (const [editorRoot, entry] of state.roots)
     candidates.set(editorRoot, { ...entry, editorRoot })
-  for (const entry of [...discoverRoots(), root]) {
+  for (const entry of [...discoverRoots(), ...(root === undefined ? [] : [root])]) {
+    if (contentStore === undefined) continue
     const editorRoot = resolve(entry.editorRoot)
-    if (candidates.has(editorRoot) === false || editorRoot === resolve(root.editorRoot))
+    if (
+      candidates.has(editorRoot) === false ||
+      (root !== undefined && editorRoot === resolve(root.editorRoot))
+    )
       candidates.set(editorRoot, {
         repoRoot: resolve(entry.repoRoot),
         editorRoot,
@@ -1621,7 +1625,7 @@ const listRoots = ({
   }
   const views: RootView[] = []
   for (const candidate of candidates.values()) {
-    const held = candidate.editorRoot === resolve(heldEditorRoot)
+    const held = heldEditorRoot !== undefined && candidate.editorRoot === resolve(heldEditorRoot)
     const registration = state.roots.get(candidate.editorRoot)
     const inspected = inspectRoot({
       root: candidate,
@@ -1732,9 +1736,9 @@ const takeCensus = async ({
   discoverRoots,
   staged,
 }: {
-  readonly contentStore: string
-  readonly root: EditorViewBudgetRoot
-  readonly heldEditorRoot: string
+  readonly contentStore?: string | undefined
+  readonly root?: EditorViewBudgetRoot | undefined
+  readonly heldEditorRoot?: string | undefined
   readonly discoverRoots: () => readonly EditorViewBudgetRoot[]
   readonly staged: Map<string, string>
 }): Promise<Census> => {
@@ -2908,6 +2912,74 @@ const requireSnapshotName = (snapshot: string): string =>
   snapshotPattern.exec(snapshot)?.[1] ??
   fail(`snapshot must be a .store/<view>-<digest> pointer: ${snapshot}`)
 
+/** Commit measured usage identically for admission, failed admission, and explicit recount. */
+const recordCensusUsage = ({
+  state,
+  census,
+  protectedBytes,
+}: {
+  readonly state: BudgetState
+  readonly census: Census
+  readonly protectedBytes: number
+}): void => {
+  // Estimates remain in the journal; usage contains measured bytes only.
+  state.usage = { usedBytes: census.usedBytes, protectedBytes, measuredAtMs: census.measuredAtMs }
+}
+
+/** Refresh host accounting without admission, eviction, or a publication deadline. */
+export const recountEditorViewBudget = async (): Promise<{
+  readonly usedBytes: number
+  readonly budgetBytes: number
+  readonly roots: number
+  readonly epochBefore: number
+  readonly epochAfter: number
+  readonly durationMs: number
+}> => {
+  const started = performance.now()
+  const budgetBytes = editorViewHostBudgetBytes()
+  const staged = new Map<string, string>()
+  const epochBefore = await withHostBudgetLock(async () => {
+    const state = readState()
+    const epoch = state.epoch
+    const owners = budgetProcessOwners()
+    reclaimDeadReservations({ state, owners })
+    collectObsoleteSidecars({ state, owners, obsolete: obsoleteGenerationFootprints() })
+    writeState(state)
+    return epoch
+  })
+  try {
+    // Like admission, walk outside the host flock; only metadata commits hold it.
+    const census = await takeCensus({ discoverRoots: () => [], staged })
+    return await withHostBudgetLock(async () => {
+      const state = readState()
+      const owners = budgetProcessOwners()
+      reclaimDeadReservations({ state, owners })
+      for (const [key, entry] of census.cache)
+        if (
+          cachedTreeIdentity({ editorRoot: entry.editorRoot, name: entry.name })?.identity ===
+            entry.identity &&
+          installSidecar({ staged, entry }) === true
+        )
+          state.generations.set(key, entry)
+      collectObsoleteSidecars({ state, owners, obsolete: obsoleteGenerationFootprints() })
+      // Recount makes no retirement proofs, so conservatively mark measured bytes protected.
+      recordCensusUsage({ state, census, protectedBytes: census.usedBytes })
+      state.epoch += 1
+      writeState(state)
+      return {
+        usedBytes: census.usedBytes,
+        budgetBytes,
+        roots: state.roots.size,
+        epochBefore,
+        epochAfter: state.epoch,
+        durationMs: Math.round(performance.now() - started),
+      }
+    })
+  } finally {
+    discardSidecarStages(staged)
+  }
+}
+
 /**
  * Reserve conservative incoming bytes before materialization. Unreferenced CAS
  * blobs, then old and idle current generations are retired LRU-first until the
@@ -3094,12 +3166,7 @@ export const reserveEditorViewBudget = async ({
               state.generations.set(key, entry)
           // Never erase a newer warm touch, finish, or registration using an older census.
           collectObsoleteSidecars({ state, owners, obsolete })
-          // Usage records only measured census values; estimates stay in the journal.
-          state.usage = {
-            usedBytes: census.usedBytes,
-            protectedBytes: plan.protectedBytes,
-            measuredAtMs: census.measuredAtMs,
-          }
+          recordCensusUsage({ state, census, protectedBytes: plan.protectedBytes })
           const admitted = stale === false && used + reservationBytes <= budgetBytes
           if (admitted === true) {
             state.reservations.set(token, {
@@ -3388,11 +3455,11 @@ export const reserveEditorViewBudget = async ({
       })
       await withHostBudgetLock(async () => {
         const state = readState()
-        state.usage = {
-          usedBytes: census.usedBytes,
+        recordCensusUsage({
+          state,
+          census,
           protectedBytes: last?.plan.protectedBytes ?? census.usedBytes,
-          measuredAtMs: census.measuredAtMs,
-        }
+        })
         updateWarning({
           state,
           contentStore: store,

@@ -54,6 +54,7 @@ export const MAIN_ONLY_CI_JOB_NAMES = [
   'publish-products',
   'consumer-smoke',
   'promote-published',
+  'published-status',
   'main-source-shape',
 ] as const
 

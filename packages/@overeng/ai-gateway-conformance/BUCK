@@ -4,7 +4,7 @@
 # Projection source: packages/@overeng/ai-gateway-conformance/BUCK.genie.ts
 # Projection schema version: 13
 # Projection generator: effect-utils/genie/buck2-typescript-package-projection
-# Semantic fingerprint: sha256:fa3c2018c31c8b6e805959686dd61cde3be8207e77e420eaf0099fcb81985ccf
+# Semantic fingerprint: sha256:193689340ca8e98e33ba2be490e5c9191ca32f3e922ec55a3f36c56b10a831dc
 # Regenerate: devenv tasks run genie:run
 
 load("//buck2:materialization.bzl", "export_materialization_inputs", "package_view")
@@ -73,6 +73,11 @@ package_view(
         "cases/errors.rate-limited-429.json": "cases/errors.rate-limited-429.json",
         "cases/errors.upstream-404.json": "cases/errors.upstream-404.json",
         "cases/models.list.json": "cases/models.list.json",
+        "cases/responses.missing-model-400.json": "cases/responses.missing-model-400.json",
+        "cases/responses.state-reference-400.json": "cases/responses.state-reference-400.json",
+        "cases/responses.stream.usage.json": "cases/responses.stream.usage.json",
+        "cases/responses.text.json": "cases/responses.text.json",
+        "cases/responses.upstream-404.json": "cases/responses.upstream-404.json",
         "cases/structured.invalid.json": "cases/structured.invalid.json",
         "cases/structured.rejected-400.json": "cases/structured.rejected-400.json",
         "cases/structured.valid.json": "cases/structured.valid.json",
@@ -110,6 +115,11 @@ package_view(
         "cases/errors.rate-limited-429.json": "cases/errors.rate-limited-429.json",
         "cases/errors.upstream-404.json": "cases/errors.upstream-404.json",
         "cases/models.list.json": "cases/models.list.json",
+        "cases/responses.missing-model-400.json": "cases/responses.missing-model-400.json",
+        "cases/responses.state-reference-400.json": "cases/responses.state-reference-400.json",
+        "cases/responses.stream.usage.json": "cases/responses.stream.usage.json",
+        "cases/responses.text.json": "cases/responses.text.json",
+        "cases/responses.upstream-404.json": "cases/responses.upstream-404.json",
         "cases/structured.invalid.json": "cases/structured.invalid.json",
         "cases/structured.rejected-400.json": "cases/structured.rejected-400.json",
         "cases/structured.valid.json": "cases/structured.valid.json",

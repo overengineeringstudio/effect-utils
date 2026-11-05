@@ -1,4 +1,7 @@
-import { productBuildCapabilities, productLinuxBuildCapabilities } from '../../genie/buck2/product-capabilities.ts'
+import {
+  productBuildCapabilities,
+  productLinuxBuildCapabilities,
+} from '../../genie/buck2/product-capabilities.ts'
 import { projectBuckProductSourcePaths } from '../../genie/buck2/product-source-paths.ts'
 import { nixOnlyPackages } from '../../genie/packages.ts'
 import geniePkg from '../../packages/@overeng/genie/package.json.genie.ts'
@@ -12,10 +15,29 @@ const products = [
     name: pkg.name,
     outputName: 'artifact.tar',
     ...('shellCompletions' in pkg ? { shellCompletions: pkg.shellCompletions } : {}),
-    sourcePaths: [pkg.cratePath, 'rust/Cargo.toml', 'rust/Cargo.lock', 'rust/third-party'].toSorted(),
+    sourcePaths: [
+      pkg.cratePath,
+      'rust/Cargo.toml',
+      'rust/Cargo.lock',
+      'rust/third-party',
+    ].toSorted(),
     target: `effect_utils//${pkg.cratePath}:${pkg.name}-product`,
     version: '0.0.0',
   })),
+  {
+    cargoWorkspaceRoot: 'rust',
+    kind: 'rust-library' as const,
+    name: 'content-address-core',
+    outputName: 'artifact.tar',
+    sourcePaths: [
+      'rust/content-address-core',
+      'rust/Cargo.lock',
+      'rust/Cargo.toml',
+      'rust/third-party',
+    ],
+    target: 'effect_utils//rust/content-address-core:content-address-core-product',
+    version: '0.0.0',
+  },
   {
     kind: 'native' as const,
     name: 'typescript-api-server',
@@ -28,7 +50,9 @@ const products = [
     version: '0.0.0',
   },
 ]
-  .map((product) => ({ ...product, buildCapabilities: productBuildCapabilities(product),
+  .map((product) => ({
+    ...product,
+    buildCapabilities: productBuildCapabilities(product),
     linuxBuildCapabilities: productLinuxBuildCapabilities(product),
   }))
   .toSorted((left, right) => left.name.localeCompare(right.name))

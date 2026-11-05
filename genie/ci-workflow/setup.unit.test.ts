@@ -14,7 +14,10 @@ import {
   pipelineDevenvStepName,
   pipelineIdentityStepName,
 } from '../../packages/@overeng/ci-tools/src/pipeline-job-names.ts'
-import { collectWorkflowPolicyViolations } from '../../packages/@overeng/genie/src/runtime/github-workflow/policy.ts'
+import {
+  collectWorkflowPolicyViolations,
+  sameRepoPullRequestGuard,
+} from '../../packages/@overeng/genie/src/runtime/github-workflow/policy.ts'
 import type { GitHubWorkflowArgs } from '../../packages/@overeng/genie/src/runtime/mod.ts'
 import { defaultRefPolicyCheckStep } from './megarepo.ts'
 import { pipelineCloseJob } from './pipeline-telemetry.ts'
@@ -1081,6 +1084,80 @@ describe('published consumer ref', () => {
   const promotion = ciWorkflow.data.jobs['promote-published']!
   const steps = promotion.steps!
 
+  it('reports only terminal upstream main-push status with the workflow token', () => {
+    const reporter = ciWorkflow.data.jobs['published-status']!
+    expect(reporter.needs).toEqual(['publish-products', 'consumer-smoke', 'promote-published'])
+    expect(reporter.if).toBe(
+      `always() && (${sameRepoPullRequestGuard()}) && github.repository == 'overengineeringstudio/effect-utils' && github.event_name == 'push' && github.ref == 'refs/heads/main'`,
+    )
+    expect(reporter.permissions).toEqual({ statuses: 'write' })
+    expect(reporter['runs-on']).toEqual(['sh-linux-x64', 'nix'])
+    expect(reporter.steps.every((step) => step.uses === undefined)).toBe(true)
+    const report = reporter.steps.find((step) => step.name === 'Report published/current status')!
+    expect(report.env).toEqual({
+      GH_TOKEN: '${{ github.token }}',
+      PUBLISH_RESULT: '${{ needs.publish-products.result }}',
+      SMOKE_RESULT: '${{ needs.consumer-smoke.result }}',
+      PROMOTE_RESULT: '${{ needs.promote-published.result }}',
+    })
+    expect(report.run).toContain('-f context=published/current')
+    expect(report.run).not.toContain('pending')
+    expect(report.run).toContain('-f description="${description:0:140}"')
+    expect(report.run).toContain('"repos/$GITHUB_REPOSITORY/statuses/$GITHUB_SHA"')
+    const advance = steps.find((step) => step.id === 'advance-published-ref')!.run!
+    expect(advance).toContain('noop)\n')
+    expect(advance).toContain(
+      'is not newer than the published main parent)" >> "$GITHUB_STEP_SUMMARY"\n      exit 0',
+    )
+    expect(advance).toContain(
+      '(Published-From: $GITHUB_SHA)" >> "$GITHUB_STEP_SUMMARY"\n        exit 0',
+    )
+  })
+
+  it.each([
+    ['success', 'success', 'success', 'success', 'Published contains'],
+    ['success', 'success', 'failure', 'failure', 'promote-published failed'],
+    ['success', 'success', 'skipped', 'error', 'promote-published=skipped'],
+    ['success', 'success', 'cancelled', 'error', 'promote-published=cancelled'],
+    ...['failure', 'skipped', 'cancelled'].flatMap((result) => [
+      [result, 'success', 'skipped', 'error', `publish-products=${result}`],
+      ['success', result, 'skipped', 'error', `consumer-smoke=${result}`],
+    ]),
+    [
+      'failure',
+      'cancelled',
+      'skipped',
+      'error',
+      'publish-products=failure consumer-smoke=cancelled',
+    ],
+  ])(
+    'maps publication=%s smoke=%s promotion=%s to %s',
+    (publish, smokeResult, promote, state, description) => {
+      const script = ciWorkflow.data.jobs['published-status']!.steps.find(
+        (step) => step.name === 'Report published/current status',
+      )!.run!
+      // Capture the API request without network access, exercising the emitted Bash.
+      const result = Bun.spawnSync(['bash', '-c', `gh() { printf '%s\\n' "$@"; }\n${script}`], {
+        env: {
+          ...process.env,
+          PUBLISH_RESULT: publish!,
+          SMOKE_RESULT: smokeResult!,
+          PROMOTE_RESULT: promote!,
+          GITHUB_REPOSITORY: 'overengineeringstudio/effect-utils',
+          GITHUB_SHA: 'candidate',
+          GITHUB_SERVER_URL: 'https://github.com',
+          GITHUB_RUN_ID: '123',
+        },
+      })
+      expect(result.exitCode).toBe(0)
+      const request = result.stdout.toString()
+      expect(request).toContain(`state=${state}\n`)
+      expect(request).toContain('context=published/current\n')
+      expect(request).toContain(description!)
+      expect(request).toContain('repos/overengineeringstudio/effect-utils/statuses/candidate\n')
+    },
+  )
+
   it('realises publication inputs before the unchanged build-and-push timeout', () => {
     const realiseIndex = publisher.steps.findIndex(
       (step) => step.name === 'Realise publish-products build inputs',
@@ -1113,7 +1190,7 @@ describe('published consumer ref', () => {
     expect(publish.run).toContain('nix/buck2-products/publish.sh --proposal "$proposal"')
   })
 
-  it('joins independent same-SHA publication and consumer proofs before main-push promotion', () => {
+  it('joins same-SHA publication and consumer proofs before main-push promotion', () => {
     expect(promotion.needs).toEqual(['publish-products', 'consumer-smoke'])
     expect(promotion.if).toBe(publishedRefIf)
     expect(publisher.needs ?? []).not.toContain('consumer-smoke')
@@ -1136,9 +1213,18 @@ describe('published consumer ref', () => {
     for (const id of ['publication-scope', 'product-publication']) {
       const producer = publisher.steps!.find((step) => step.id === id)!
       const script = producer.run as string
-      const success = script.indexOf('-f context=buck2-products/manifest-current -f state=success')
-      expect(success).toBeGreaterThan(-1)
-      expect(script.indexOf('echo "current-sha=$GITHUB_SHA"', success)).toBeGreaterThan(success)
+      expect(script).toContain('source genie/ci-workflow/published-ref-decide.sh')
+      expect(script).toContain('manifest_outputs ')
+      expect(script).toContain('echo "current-sha=$GITHUB_SHA"')
+    }
+    const publication = publisher.steps!.find((step) => step.id === 'product-publication')!.run!
+    expect(publication.indexOf('echo "current-sha=$GITHUB_SHA"')).toBeLessThan(
+      publication.indexOf('if cmp -s'),
+    )
+    for (const index of [0, 1, 2, 3]) {
+      expect(publisher.outputs?.[`manifest-base64-${index}`]).toContain(
+        `steps.product-publication.outputs.manifest-base64-${index}`,
+      )
     }
   })
 
@@ -1168,6 +1254,39 @@ describe('published consumer ref', () => {
     expect(steps.some((step) => String(step.run).includes('devenv'))).toBe(false)
   })
 
+  it('smokes the proposal tree and guards every promotion attempt against that tree', () => {
+    expect(smoke.needs).toEqual(['publish-products'])
+    expect(smoke.outputs?.['smoked-tree']).toBe('${{ steps.consumer-smoke.outputs.smoked-tree }}')
+    const smokeStep = smoke.steps!.find((step) => step.id === 'consumer-smoke')!
+    const command = smokeStep.run as string
+    for (const index of [0, 1, 2, 3]) {
+      expect(smokeStep.env?.[`MANIFEST_BASE64_${index}`]).toBe(
+        `\${{ needs.publish-products.outputs.manifest-base64-${index} }}`,
+      )
+    }
+    expect(command).toContain('decode_manifest > nix/buck2-products/manifest.json')
+    expect(command.indexOf('git add nix/buck2-products/manifest.json')).toBeLessThan(
+      command.indexOf('smoked_tree="$(git write-tree)"'),
+    )
+    expect(command.indexOf('smoked_tree="$(git write-tree)"')).toBeLessThan(
+      command.indexOf('bash nix/fixtures/consumer-smoke/run.sh'),
+    )
+    expect(command.indexOf('bash nix/fixtures/consumer-smoke/run.sh')).toBeLessThan(
+      command.indexOf('echo "smoked-tree=$smoked_tree"'),
+    )
+    const advance = steps.find((step) => step.id === 'advance-published-ref')!
+    expect(advance.env?.SMOKED_TREE).toBe('${{ needs.consumer-smoke.outputs.smoked-tree }}')
+    const guard =
+      'git rev-parse "$commit^{tree}")" != "${SMOKED_TREE:?Missing consumer-smoked tree}"'
+    expect(advance.run).toContain(guard)
+    expect(advance.run!.indexOf('for attempt in 1 2 3; do')).toBeLessThan(
+      advance.run!.indexOf(guard),
+    )
+    expect(advance.run!.indexOf(guard)).toBeLessThan(
+      advance.run!.indexOf('git push --force-with-lease'),
+    )
+  })
+
   it('uses the publisher App and checks ancestry before and after a raced push', () => {
     const token = steps.find((step) => step.id === 'published-ref-token')!
     expect(token.with?.['app-id']).toBe('${{ vars.NIX_PUBLISHER_GITHUB_APP_ID }}')
@@ -1179,9 +1298,25 @@ describe('published consumer ref', () => {
     expect(advance.env?.GH_TOKEN).toBe('${{ steps.published-ref-token.outputs.token }}')
     expect(advance.run).toContain('source genie/ci-workflow/published-ref-decide.sh')
     expect(advance.run).toContain('for attempt in 1 2 3; do')
-    expect(advance.run).toContain('case "$(decide "$tip" "$GITHUB_SHA")" in')
-    expect(advance.run).toContain('git push origin "$GITHUB_SHA:refs/heads/published"')
-    expect(advance.run).not.toContain('--force')
+    expect(advance.run).toContain(
+      'case "$(decide "$tip" "$GITHUB_SHA" refs/remotes/origin/main)" in',
+    )
+    expect(advance.run).toContain('git fetch --no-tags origin +refs/heads/main:')
+    expect(advance.run).toContain('decode_manifest > "$proposal"')
+    for (const index of [0, 1, 2, 3]) {
+      expect(advance.env?.[`MANIFEST_BASE64_${index}`]).toBe(
+        `\${{ needs.publish-products.outputs.manifest-base64-${index} }}`,
+      )
+    }
+    expect(advance.run).toContain('parents: [$tip, $main]')
+    expect(advance.run).toContain('Published-From: ')
+    expect(advance.run).toContain('/git/trees')
+    expect(advance.run).toContain('/git/commits')
+    expect(advance.run).toContain('git diff --name-only "$GITHUB_SHA" "$commit"')
+    expect(advance.run).toContain('[ "$changed" != nix/buck2-products/manifest.json ]')
+    expect(advance.run).toContain(
+      'git push --force-with-lease="refs/heads/published:$tip" origin "$commit:refs/heads/published"',
+    )
     expect(advance.run).toContain('$GITHUB_STEP_SUMMARY')
   })
 })

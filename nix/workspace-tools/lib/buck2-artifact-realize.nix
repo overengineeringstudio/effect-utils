@@ -44,6 +44,7 @@ let
     "mach-o-dynamic"
     "mach-o-app-bundle"
     "wasm-guest"
+    "library"
   ];
   # The contract is pure Nix; a store-less, read-only evaluator applies it to a
   # descriptor that only exists inside this build.
@@ -69,7 +70,7 @@ let
             digest = contract.descriptorDigest descriptor;
             name = checked.name;
             platform = checked.platform;
-            runtimeKind = checked.runtime.kind;
+            runtimeKind = if (checked.kind or null) == "library" then "library" else checked.runtime.kind;
             target = checked.semanticProvenance.target;
           }
         ' > "$2"
@@ -84,10 +85,44 @@ in
   archivePath,
   expectedDescriptorDigest ? null,
   expectedTarget ? null,
+  expectedRustTarget ? pkgs.stdenv.hostPlatform.rust.rustcTarget,
+  expectedPanicStrategy ? "unwind",
   passthru ? { },
 }:
 
 let
+  isLibrary = runtimeKind == "library";
+  checkLibrary = ''
+    ${pkgs.findutils}/bin/find "$out" -mindepth 1 -printf '%P\n' \
+      | LC_ALL=C ${pkgs.coreutils}/bin/sort > "$TMPDIR/actual-inventory"
+    ${pkgs.jq}/bin/jq -r '["lib"] + [.library.artifacts[].path] | sort | .[]' "$descriptor" \
+      > "$TMPDIR/expected-inventory"
+    ${pkgs.diffutils}/bin/cmp "$TMPDIR/expected-inventory" "$TMPDIR/actual-inventory" \
+      || fail "library inventory mismatch"
+    while IFS=$'\t' read -r path hash; do
+      [ -f "$out/$path" ] && [ ! -L "$out/$path" ] || fail "not a regular artifact: $path"
+      actual="$(${pkgs.coreutils}/bin/sha256sum "$out/$path")"
+      [ "''${actual%% *}" = "$hash" ] || fail "library artifact hash mismatch: $path"
+    done < <(${pkgs.jq}/bin/jq -r '.library.artifacts[] | [.path, .sha256] | @tsv' "$descriptor")
+  '';
+  builder =
+    if isLibrary then
+      name: attrs: script:
+      pkgs.stdenvNoCC.mkDerivation (
+        attrs
+        // {
+          inherit name;
+          phases = [
+            "installPhase"
+            "fixupPhase"
+          ];
+          installPhase = script;
+          dontStrip = true;
+          postFixup = checkLibrary;
+        }
+      )
+    else
+      pkgs.runCommand;
   dynamicElfRuntimeInputs = lib.optionals (runtimeKind == "elf-dynamic") [
     pkgs.glibc
     pkgs.libgcc
@@ -127,7 +162,7 @@ assert lib.assertMsg (
     && pkgs.stdenv.hostPlatform.libc == expectedPlatform.abi
   )
 ) "buck2-artifact-realize: elf-dynamic platform must match pkgs.stdenv.hostPlatform";
-pkgs.runCommand "${name}-buck2-import"
+builder "${name}-buck2-import"
   {
     nativeBuildInputs = [
       pkgs.openssl
@@ -137,7 +172,14 @@ pkgs.runCommand "${name}-buck2-import"
     allowedReferences = lib.optionals (runtimeKind == "elf-dynamic") (
       [ "out" ] ++ dynamicElfRuntimeInputs
     );
-    inherit passthru;
+    passthru =
+      passthru
+      // lib.optionalAttrs isLibrary {
+        rustc = pkgs.rustc;
+        rustTarget = expectedRustTarget;
+        panicStrategy = expectedPanicStrategy;
+        descriptorPath = passthru.descriptorPath or descriptorPath;
+      };
   }
   ''
     set -euo pipefail
@@ -169,6 +211,25 @@ pkgs.runCommand "${name}-buck2-import"
     }
     descriptor="$TMPDIR/descriptor.json"
     ${pkgs.jq}/bin/jq -j .canonical "$observation" > "$descriptor"
+    ${lib.optionalString isLibrary ''
+      ${pkgs.rustc.unwrapped}/bin/rustc -vV > "$TMPDIR/rustc-version"
+      ${pkgs.jq}/bin/jq -n \
+        --arg compilerStorePath "${pkgs.rustc.unwrapped}" \
+        --arg sysroot "$(${pkgs.coreutils}/bin/readlink -f "$(${pkgs.rustc.unwrapped}/bin/rustc --print sysroot)")" \
+        --rawfile verboseVersion "$TMPDIR/rustc-version" \
+        --arg targetTriple "${expectedRustTarget}" \
+        --arg panicStrategy "${expectedPanicStrategy}" \
+        '{rustc: {compilerStorePath: $compilerStorePath, sysroot: $sysroot,
+          verboseVersion: ($verboseVersion | gsub("\r\n"; "\n") | sub("\n*$"; "\n"))}, targetTriple: $targetTriple,
+          panicStrategy: $panicStrategy}' > "$TMPDIR/consumer-identity"
+      ${pkgs.jq}/bin/jq '.library | {rustc: (.rustc | del(.darwinWrapperEvidence)),
+        targetTriple, panicStrategy}' "$descriptor" > "$TMPDIR/producer-identity"
+      if ! ${pkgs.diffutils}/bin/diff -u "$TMPDIR/producer-identity" "$TMPDIR/consumer-identity"; then
+        echo "producer identity:" >&2; cat "$TMPDIR/producer-identity" >&2
+        echo "consumer identity:" >&2; cat "$TMPDIR/consumer-identity" >&2
+        fail "library compiler identity mismatch"
+      fi
+    ''}
 
     expected_size="$(${pkgs.jq}/bin/jq -r .payload.sizeBytes "$descriptor")"
     actual_size="$(${pkgs.coreutils}/bin/stat --format=%s "$archive")"
@@ -184,7 +245,7 @@ pkgs.runCommand "${name}-buck2-import"
     ${pkgs.gnutar}/bin/tar --extract --file "$archive" --directory "$out" \
       --no-same-owner --no-same-permissions --delay-directory-restore
     ${scan} tree "$out"
-    ${inspector} "$descriptor" "$out"
+    ${if isLibrary then checkLibrary else ''${inspector} "$descriptor" "$out"''}
     ${lib.optionalString (runtimeKind == "elf-dynamic") ''
       ${pkgs.findutils}/bin/find "$out" -type f -exec chmod u+w {} +
       autoPatchelf "$out"

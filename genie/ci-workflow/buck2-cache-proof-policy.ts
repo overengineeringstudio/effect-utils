@@ -22,6 +22,7 @@ export const coreProofDisabledJobIds: Readonly<Record<string, true>> = {
   'consumer-smoke': true,
   'pr-reviews-resolved': true,
   'promote-published': true,
+  'published-status': true,
   'pr-a-inert-buck': true,
 }
 
@@ -48,6 +49,7 @@ export const coreCachePostures = {
   'publish-products': 'reader',
   'consumer-smoke': 'none',
   'promote-published': 'none',
+  'published-status': 'none',
   'notify-alignment': 'reader',
   'trusted-buck2-remote-cache-proof': 'writer',
   'pr-a-inert-buck': 'none',

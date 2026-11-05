@@ -1,0 +1,89 @@
+{
+  "id": "responses.stream.usage",
+  "summary": "Pass through Responses text deltas and terminal response.completed with nested response.usage, without a chat DONE marker.",
+  "requirements": ["AIG-R03"],
+  "request": {
+    "method": "POST",
+    "path": "/v1/responses",
+    "auth": "bearer",
+    "match": {
+      "model": "fixture/reasoning-model",
+      "stream": true
+    },
+    "body": {
+      "input": "Say hello.",
+      "store": false
+    }
+  },
+  "response": {
+    "status": 200,
+    "sse": [
+      {
+        "type": "response.created",
+        "sequence_number": 0,
+        "response": {
+          "id": "resp_stream",
+          "object": "response",
+          "status": "in_progress",
+          "model": "fixture/reasoning-model",
+          "output": [],
+          "usage": null
+        }
+      },
+      {
+        "type": "response.output_text.delta",
+        "sequence_number": 1,
+        "item_id": "msg_stream",
+        "output_index": 0,
+        "content_index": 0,
+        "delta": "Hel"
+      },
+      {
+        "type": "response.output_text.delta",
+        "sequence_number": 2,
+        "item_id": "msg_stream",
+        "output_index": 0,
+        "content_index": 0,
+        "delta": "lo!"
+      },
+      {
+        "type": "response.completed",
+        "sequence_number": 3,
+        "response": {
+          "id": "resp_stream",
+          "object": "response",
+          "created_at": 1750000000,
+          "status": "completed",
+          "model": "fixture/reasoning-model",
+          "output": [
+            {
+              "id": "msg_stream",
+              "type": "message",
+              "role": "assistant",
+              "status": "completed",
+              "content": [{ "type": "output_text", "text": "Hello!", "annotations": [] }]
+            }
+          ],
+          "usage": {
+            "input_tokens": 24,
+            "output_tokens": 10,
+            "total_tokens": 34,
+            "input_tokens_details": { "cached_tokens": 8 },
+            "output_tokens_details": { "reasoning_tokens": 7 }
+          }
+        }
+      }
+    ]
+  },
+  "expect": {
+    "outcome": "success",
+    "text": "Hello!",
+    "usage": {
+      "input": 24,
+      "output": 10,
+      "total": 34,
+      "cached": 8,
+      "reasoning": 7
+    }
+  }
+}

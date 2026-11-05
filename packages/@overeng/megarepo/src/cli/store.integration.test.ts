@@ -33,7 +33,7 @@ import {
   GcDeletionReceipt,
 } from '../store/store-gc-receipts.ts'
 import { refreshWorkspaceRegistry } from '../store/store-liveness.ts'
-import { StoreDeletionPlatform } from '../store/store-pinned-deletion.ts'
+import { captureDeletionIdentity, StoreDeletionPlatform } from '../store/store-pinned-deletion.ts'
 import {
   PROCESS_SNAPSHOT_PRODUCER,
   WORKSPACE_ACTIVITY_V2_SCHEMA,
@@ -61,6 +61,7 @@ const StoreGcJsonOutput = Schema.Struct({
       status: Schema.String,
       message: Schema.optional(Schema.String),
       reason: Schema.optional(Schema.String),
+      candidateSha256: Schema.optional(Schema.String),
       buckDaemonsUnreachable: Schema.optional(
         Schema.Array(Schema.Struct({ pid: Schema.Int, reason: Schema.String })),
       ),
@@ -954,6 +955,78 @@ describe('mr store gc', () => {
 })
 
 describe('mr store lease', () => {
+  it.effect.skipIf(process.platform !== 'linux')(
+    'refuses a candidate whose directory identity changes during lease acquisition',
+    (context) =>
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem
+        const ref = 'c'.repeat(40)
+        const { storePath, worktreePaths } = yield* createStoreFixture([
+          {
+            host: 'github.com',
+            owner: 'acme',
+            repo: 'lease-recheck',
+            branches: ['main'],
+            commits: [ref],
+          },
+        ])
+        const candidate = worktreePaths[`github.com/acme/lease-recheck#${ref}`]!
+        const identity = yield* captureDeletionIdentity({ rootPath: storePath, path: candidate })
+        if (identity.at(-1)?._tag === 'OverlayDirectory') {
+          return context.skip(
+            'Overlay directory identity binds only mountId + path; inode replacement cannot be proven',
+          )
+        }
+        const original = yield* fs.stat(candidate)
+        const backup = `${candidate.replace(/\/$/u, '')}-original`
+        const cwd = EffectPath.unsafe.absoluteDir(`${yield* fs.makeTempDirectoryScoped()}/`)
+        const run = (...args: string[]) =>
+          runMrCommand({
+            cwd,
+            env: { MEGAREPO_STORE: storePath },
+            command: ['store', 'gc', '--output', 'json', ...args],
+          })
+        const plan = decodeStoreGcJsonOutput((yield* run('--dry-run')).stdout)
+        expect(plan.results.find((row) => row.path === candidate)?.candidateSha256).toMatch(
+          /^[0-9a-f]{64}$/,
+        )
+        const leasePath = deletionLeasePath({
+          storeBasePath: storePath,
+          ownerPath: yield* canonicalizeOwnerPath(candidate),
+        })
+        let changed = false
+        const applied = yield* run(
+          '--expected-plan',
+          plan.planSha256!,
+          '--candidate-path',
+          candidate,
+        ).pipe(
+          Effect.provideService(FileSystem.FileSystem, {
+            ...fs,
+            link: (from, to) =>
+              Effect.gen(function* () {
+                // The second plan and owner lock precede this real lease acquisition.
+                if (to === leasePath && changed === false) {
+                  changed = true
+                  yield* fs.rename(candidate, backup)
+                  yield* fs.copy(backup, candidate)
+                }
+                return yield* fs.link(from, to)
+              }),
+          }),
+        )
+        expect(changed).toBe(true)
+        expect(applied.exitCode, applied.stdout + applied.failure).toBe(1)
+        expect(applied.failure).toContain('GC candidate refused: skipped-changed')
+        expect(yield* fs.exists(candidate)).toBe(true)
+        expect((yield* fs.stat(candidate)).ino).not.toEqual(original.ino)
+        expect((yield* fs.stat(backup)).ino).toEqual(original.ino)
+        expect(yield* Git.getCurrentCommit(candidate)).toBe(yield* Git.getCurrentCommit(backup))
+        expect(yield* Git.runCommand({ cwd: candidate, args: ['status', '--porcelain'] })).toBe('')
+        expect(yield* fs.exists(leasePath)).toBe(false)
+      }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+  )
+
   it.effect(
     'holds the owner lease for the wrapped command and releases it on both outcomes',
     Effect.fnUntraced(
