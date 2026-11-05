@@ -14,6 +14,14 @@ trap 'report_failure "$?" "${failure_line:-unknown}" "${failure_command:-$BASH_C
 repo_root="${1:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)}"
 export BUCK2_PRODUCTS_REPO="$repo_root"
 bash "$repo_root/nix/buck2-products/root-projection.test.sh" "$repo_root"
+# The same tracked source must not rebuild settings for revision-only changes.
+revision="$(git -C "$repo_root" rev-parse HEAD)"
+flake_ref="$(jq -cn --arg url "git+file://$repo_root?rev=$revision&shallow=1" '$url')"
+for system in x86_64-linux aarch64-darwin; do
+  nix eval --json \
+    --file "$repo_root/nix/buck2-products/compile-identity.test.nix" \
+    --apply "test: test { flake = builtins.getFlake $flake_ref; system = \"$system\"; }"
+done
 bash "$repo_root/nix/buck2-products/from-source-cores.test.sh" "$repo_root"
 bash "$repo_root/nix/buck2-products/capability-closure.test.sh" "$repo_root"
 contract="$(nix eval --impure --json --expr '

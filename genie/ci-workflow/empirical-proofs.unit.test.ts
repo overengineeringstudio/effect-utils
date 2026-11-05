@@ -220,6 +220,19 @@ test('heavy product lanes run only on the mandatory native merge-group head', ()
   }
 })
 
+test('inert Buck contracts are required but skipped on PRs like product builds', () => {
+  expect(requiredCIJobs).toContain('pr-a-inert-buck')
+  expect(ciWorkflow.data.jobs['pr-a-inert-buck']!.if).toBe(
+    ciWorkflow.data.jobs['build-products']!.if,
+  )
+  for (const jobId of ['pr-a-inert-buck', 'build-products']) {
+    expect(admitted(jobId, 'pull_request', 'refs/pull/1/merge', 'synchronize')).toBe(false)
+    expect(
+      admitted(jobId, 'merge_group', 'refs/heads/gh-readonly-queue/main/pr-1', 'checks_requested'),
+    ).toBe(true)
+  }
+})
+
 test('empirical proof opt-in does not admit the dispatch-only performance lane', () => {
   expect(admitted('devenv-perf', 'workflow_dispatch', 'refs/heads/main')).toBe(true)
   for (const event of ['push', 'schedule', 'pull_request']) {

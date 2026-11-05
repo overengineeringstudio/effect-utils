@@ -287,46 +287,11 @@ rec {
           cli-build-stamp = cliBuildStamp.package;
           otel-span = import ./nix/devenv-modules/otel/otel-span.nix { inherit pkgs; };
         };
-        # Keep the admitted Genie's runtime closure and capabilities, adding gh
-        # for settings reconciliation and running the current source module.
-        githubRepoSettingsGenie =
-          pkgs.runCommand "github-repo-settings-genie"
-            {
-              nativeBuildInputs = [
-                pkgs.makeWrapper
-                pkgs.jq
-              ];
-            }
-            ''
-              jq -e --argjson expected ${
-                pkgs.lib.escapeShellArg (
-                  builtins.toJSON (
-                    cliPackages.genie.checkedDescriptor
-                    // {
-                      externalCapabilities = pkgs.lib.unique (
-                        cliPackages.genie.checkedDescriptor.externalCapabilities ++ [ "gh" ]
-                      );
-                    }
-                  )
-                )
-              } '
-                def contract: {
-                  externalCapabilities: (.externalCapabilities | sort),
-                  externalModules, modulePath, productKind, productName,
-                  runtimeContract, runtimeContractVersion, runtimeKind
-                };
-                contract == ($expected | contract)
-              ' ${buckProductsFromSource.genie}/descriptor.json >/dev/null
-              mkdir -p "$out/bin" "$out/libexec"
-              cp ${cliPackages.genie}/bin/genie "$out/bin/genie"
-              cp ${buckProductsFromSource.genie}/${buckProductsFromSource.genie.artifactName} "$out/libexec/${cliPackages.genie.checkedDescriptor.modulePath}"
-              ln -s ${cliPackages.genie}/libexec/node_modules "$out/libexec/node_modules"
-              substituteInPlace "$out/bin/genie" \
-                --replace-fail "${cliPackages.genie}/libexec/${cliPackages.genie.checkedDescriptor.modulePath}" \
-                  "$out/libexec/${cliPackages.genie.checkedDescriptor.modulePath}"
-              wrapProgram "$out/bin/genie" \
-                --prefix PATH : ${pkgs.lib.escapeShellArg (pkgs.lib.makeBinPath [ pkgs.gh ])}
-            '';
+        githubRepoSettingsGenie = import ./nix/gh-settings-genie.nix {
+          inherit pkgs;
+          genie = cliPackages.genie;
+          sourceProduct = buckProductsFromSource.genie;
+        };
         mkGithubRepoSettingsLauncher = import ./nix/github-repo-settings.nix {
           inherit pkgs;
           genieBin = "${githubRepoSettingsGenie}/bin/genie";
