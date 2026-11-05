@@ -45,7 +45,7 @@ import {
 } from '../store/store-gc-receipts.ts'
 import { refreshWorkspaceRegistry } from '../store/store-liveness.ts'
 import { makeStoreLockLayer, StoreLock } from '../store/store-lock.ts'
-import { StoreDeletionPlatform } from '../store/store-pinned-deletion.ts'
+import { captureDeletionIdentity, StoreDeletionPlatform } from '../store/store-pinned-deletion.ts'
 import {
   PROCESS_SNAPSHOT_PRODUCER,
   WORKSPACE_ACTIVITY_V2_SCHEMA,
@@ -1057,7 +1057,7 @@ describe('mr store gc', () => {
 describe('mr store lease', () => {
   it.effect.skipIf(process.platform !== 'linux')(
     'refuses a candidate whose directory identity changes during lease acquisition',
-    () =>
+    (context) =>
       Effect.gen(function* () {
         const fs = yield* FileSystem.FileSystem
         const ref = 'c'.repeat(40)
@@ -1071,6 +1071,12 @@ describe('mr store lease', () => {
           },
         ])
         const candidate = worktreePaths[`github.com/acme/lease-recheck#${ref}`]!
+        const identity = yield* captureDeletionIdentity({ rootPath: storePath, path: candidate })
+        if (identity.at(-1)?._tag === 'OverlayDirectory') {
+          return context.skip(
+            'Overlay directory identity binds only mountId + path; inode replacement cannot be proven',
+          )
+        }
         const original = yield* fs.stat(candidate)
         const backup = `${candidate.replace(/\/$/u, '')}-original`
         const cwd = EffectPath.unsafe.absoluteDir(`${yield* fs.makeTempDirectoryScoped()}/`)

@@ -3759,7 +3759,7 @@ const storeGcCommand = Cli.Command.make(
             let buckReceipt: BuckDaemonReceipt | undefined
             const applied: StoreGcResult = yield* Effect.gen(function* () {
               if (candidate.status === 'removed') {
-                let identity = deletionIdentities.get(candidate.path)
+                const identity = deletionIdentities.get(candidate.path)
                 if (platform === 'linux' && identity === undefined) {
                   return yield* new StoreCommandError({
                     message: 'candidate deletion identity is unavailable',
@@ -3800,18 +3800,22 @@ const storeGcCommand = Cli.Command.make(
                   })
                 }
                 if (candidate.approval !== undefined) {
+                  // Fresh evidence can veto approval, never replace its deletion authority.
+                  if (
+                    decision.identity === undefined ||
+                    encodeCanonicalPlan(decision.identity) !== encodeCanonicalPlan(identity)
+                  ) {
+                    return yield* new StoreGcCandidateRefused({ outcome: 'skipped-changed' })
+                  }
                   const fresh = yield* processGcDecision({
                     decision,
                     repoRelativePath: owner.repo.relativePath,
                     bareRepoPath: owner.bareRepoPath,
                   })
-                  identity = decision.identity
-                  if (identity === undefined)
-                    return yield* new StoreGcCandidateRefused({ outcome: 'unsupported-kind' })
                   if (
                     candidateSha256For({
                       result: fresh,
-                      deletionIdentities: new Map([[fresh.path, identity]]),
+                      deletionIdentities,
                     }) !== candidate.approval
                   ) {
                     return yield* new StoreGcCandidateRefused({ outcome: 'skipped-changed' })
