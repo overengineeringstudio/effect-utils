@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 bootstrap_pins() {
   nix eval --impure --json --expr 'builtins.attrNames ((import ./nix/buck2-products/cache.nix {
-    pkgs.lib = (builtins.getFlake ("git+file:" + toString ./.)).inputs.nixpkgs.lib;
+    pkgs.lib = (builtins.getFlake ("git+file:" + toString ./. + "?shallow=1")).inputs.nixpkgs.lib;
     fromSourceProducts = {};
   }).bootstrapPins)'
 }

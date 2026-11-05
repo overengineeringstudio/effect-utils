@@ -341,6 +341,8 @@ note; bootstrap drift still fails.
 For main's flake users, the manifest PR opens for bootstrap drift or a differing
 proposal after 24 hours since main's latest manifest commit. Bootstrap names come
 only from `cache.nix`'s `bootstrapPins`; canonical rows ignore formatting/order.
+The shared pin evaluator uses `git+file` with `shallow=1`, so publisher, writer,
+and healing decisions support depth-one checkouts without requiring `revCount`.
 History reads use the read-only job token; unavailable history warns and skips
 the safety net. Skips retain only PRs with this run's bootstrap rows. Different
 or unreadable PR rows trigger healing (unreadable rows warn); if main already

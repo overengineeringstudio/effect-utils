@@ -3,6 +3,25 @@ set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/manifest-pr-decide.sh"
 tmp="$(mktemp -d)"
 trap 'rm -r "$tmp"' EXIT
+# Exercise the actual helper in the same depth-one checkout used by both jobs.
+helper="$(realpath "$(dirname "${BASH_SOURCE[0]}")/manifest-pr-decide.sh")"
+repository="$(git -C "$(dirname "$helper")" rev-parse --show-toplevel)"
+git clone --quiet --depth 1 "file://$repository" "$tmp/shallow"
+test "$(git -C "$tmp/shallow" rev-parse --is-shallow-repository)" = true
+(
+  cd "$tmp/shallow"
+  bootstrap_pins > "$tmp/pins"
+)
+jq -e 'type == "array" and length > 0 and all(.[]; type == "string")' "$tmp/pins" >/dev/null
+# A genuine evaluation error must abort the strict job before any later write.
+mv "$tmp/shallow/nix/buck2-products/cache.nix" "$tmp/cache.nix"
+if bash -euo pipefail -c 'cd "$1"; source "$2"; pins="$(bootstrap_pins)"; touch "$3"' \
+  bash "$tmp/shallow" "$helper" "$tmp/write-reached" 2> "$tmp/eval-error"; then
+  echo 'bootstrap_pins unexpectedly accepted an invalid checkout' >&2
+  exit 1
+fi
+test -s "$tmp/eval-error"
+test ! -e "$tmp/write-reached"
 export GITHUB_TOKEN=read-only
 pins='["bootstrap"]'
 now=1760000000
