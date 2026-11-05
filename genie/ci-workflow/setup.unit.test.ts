@@ -14,7 +14,10 @@ import {
   pipelineDevenvStepName,
   pipelineIdentityStepName,
 } from '../../packages/@overeng/ci-tools/src/pipeline-job-names.ts'
-import { collectWorkflowPolicyViolations } from '../../packages/@overeng/genie/src/runtime/github-workflow/policy.ts'
+import {
+  collectWorkflowPolicyViolations,
+  sameRepoPullRequestGuard,
+} from '../../packages/@overeng/genie/src/runtime/github-workflow/policy.ts'
 import type { GitHubWorkflowArgs } from '../../packages/@overeng/genie/src/runtime/mod.ts'
 import { defaultRefPolicyCheckStep } from './megarepo.ts'
 import { pipelineCloseJob } from './pipeline-telemetry.ts'
@@ -1080,6 +1083,80 @@ describe('published consumer ref', () => {
   const smoke = ciWorkflow.data.jobs['consumer-smoke']!
   const promotion = ciWorkflow.data.jobs['promote-published']!
   const steps = promotion.steps!
+
+  it('reports only terminal upstream main-push status with the workflow token', () => {
+    const reporter = ciWorkflow.data.jobs['published-status']!
+    expect(reporter.needs).toEqual(['publish-products', 'consumer-smoke', 'promote-published'])
+    expect(reporter.if).toBe(
+      `always() && (${sameRepoPullRequestGuard()}) && github.repository == 'overengineeringstudio/effect-utils' && github.event_name == 'push' && github.ref == 'refs/heads/main'`,
+    )
+    expect(reporter.permissions).toEqual({ statuses: 'write' })
+    expect(reporter['runs-on']).toEqual(['sh-linux-x64', 'nix'])
+    expect(reporter.steps.every((step) => step.uses === undefined)).toBe(true)
+    const report = reporter.steps.find((step) => step.name === 'Report published/current status')!
+    expect(report.env).toEqual({
+      GH_TOKEN: '${{ github.token }}',
+      PUBLISH_RESULT: '${{ needs.publish-products.result }}',
+      SMOKE_RESULT: '${{ needs.consumer-smoke.result }}',
+      PROMOTE_RESULT: '${{ needs.promote-published.result }}',
+    })
+    expect(report.run).toContain('-f context=published/current')
+    expect(report.run).not.toContain('pending')
+    expect(report.run).toContain('-f description="${description:0:140}"')
+    expect(report.run).toContain('"repos/$GITHUB_REPOSITORY/statuses/$GITHUB_SHA"')
+    const advance = steps.find((step) => step.id === 'advance-published-ref')!.run!
+    expect(advance).toContain('noop)\n')
+    expect(advance).toContain(
+      'is not newer than the published main parent)" >> "$GITHUB_STEP_SUMMARY"\n      exit 0',
+    )
+    expect(advance).toContain(
+      '(Published-From: $GITHUB_SHA)" >> "$GITHUB_STEP_SUMMARY"\n        exit 0',
+    )
+  })
+
+  it.each([
+    ['success', 'success', 'success', 'success', 'Published contains'],
+    ['success', 'success', 'failure', 'failure', 'promote-published failed'],
+    ['success', 'success', 'skipped', 'error', 'promote-published=skipped'],
+    ['success', 'success', 'cancelled', 'error', 'promote-published=cancelled'],
+    ...['failure', 'skipped', 'cancelled'].flatMap((result) => [
+      [result, 'success', 'skipped', 'error', `publish-products=${result}`],
+      ['success', result, 'skipped', 'error', `consumer-smoke=${result}`],
+    ]),
+    [
+      'failure',
+      'cancelled',
+      'skipped',
+      'error',
+      'publish-products=failure consumer-smoke=cancelled',
+    ],
+  ])(
+    'maps publication=%s smoke=%s promotion=%s to %s',
+    (publish, smokeResult, promote, state, description) => {
+      const script = ciWorkflow.data.jobs['published-status']!.steps.find(
+        (step) => step.name === 'Report published/current status',
+      )!.run!
+      // Capture the API request without network access, exercising the emitted Bash.
+      const result = Bun.spawnSync(['bash', '-c', `gh() { printf '%s\\n' "$@"; }\n${script}`], {
+        env: {
+          ...process.env,
+          PUBLISH_RESULT: publish!,
+          SMOKE_RESULT: smokeResult!,
+          PROMOTE_RESULT: promote!,
+          GITHUB_REPOSITORY: 'overengineeringstudio/effect-utils',
+          GITHUB_SHA: 'candidate',
+          GITHUB_SERVER_URL: 'https://github.com',
+          GITHUB_RUN_ID: '123',
+        },
+      })
+      expect(result.exitCode).toBe(0)
+      const request = result.stdout.toString()
+      expect(request).toContain(`state=${state}\n`)
+      expect(request).toContain('context=published/current\n')
+      expect(request).toContain(description!)
+      expect(request).toContain('repos/overengineeringstudio/effect-utils/statuses/candidate\n')
+    },
+  )
 
   it('realises publication inputs before the unchanged build-and-push timeout', () => {
     const realiseIndex = publisher.steps.findIndex(

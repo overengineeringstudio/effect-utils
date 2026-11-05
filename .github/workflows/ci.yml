@@ -6809,6 +6809,62 @@ jobs:
     concurrency:
       group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || 'code') }}-promote-published"
       cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') }}
+  published-status:
+    needs: [publish-products, consumer-smoke, promote-published]
+    if: always() && ((github.event_name == 'push' || github.event_name == 'merge_group' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') || ((github.event_name == 'pull_request' || github.event_name == 'pull_request_review' || github.event_name == 'pull_request_review_comment') && github.event.pull_request.head.repo.full_name == github.repository) || (github.event_name == 'workflow_run' && github.event.workflow_run.head_repository.full_name == github.repository)) && github.repository == 'overengineeringstudio/effect-utils' && github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: [sh-linux-x64, nix]
+    timeout-minutes: 3
+    permissions:
+      statuses: write
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - id: linux-nix-sandbox-policy
+        name: Disable Linux Nix sandbox fallback
+        if: ${{ runner.os == 'Linux' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf 'NIX_CONFIG<<EOF\n%s\nsandbox = true\nsandbox-fallback = false\nEOF\n' "${NIX_CONFIG:-}" >> "$GITHUB_ENV"
+      - id: buck2-ci-job-instance
+        name: Initialize Buck2 CI job instance
+        shell: bash
+        run: printf 'BUCK2_CI_JOB_INSTANCE=%s\n' "$(od -An -N32 -tx1 /dev/urandom | tr -d ' \n')" >> "$GITHUB_ENV"
+      - name: Report published/current status
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PUBLISH_RESULT: ${{ needs.publish-products.result }}
+          SMOKE_RESULT: ${{ needs.consumer-smoke.result }}
+          PROMOTE_RESULT: ${{ needs.promote-published.result }}
+        run: |
+          set -euo pipefail
+          state=error
+          if [ "$PUBLISH_RESULT" != success ] || [ "$SMOKE_RESULT" != success ]; then
+            description="Promotion blocked:"
+            if [ "$PUBLISH_RESULT" != success ]; then description+=" publish-products=$PUBLISH_RESULT"; fi
+            if [ "$SMOKE_RESULT" != success ]; then description+=" consumer-smoke=$SMOKE_RESULT"; fi
+          elif [ "$PROMOTE_RESULT" = success ]; then
+            state=success
+            description="Published contains this main commit or a later main commit"
+          elif [ "$PROMOTE_RESULT" = failure ]; then
+            state=failure
+            description="promote-published failed with green publication and consumer inputs"
+          else
+            description="promote-published=$PROMOTE_RESULT with green inputs"
+          fi
+          gh api --method POST "repos/$GITHUB_REPOSITORY/statuses/$GITHUB_SHA" \
+            -f state="$state" -f context=published/current \
+            -f description="${description:0:140}" \
+            -f target_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+    env:
+      FORCE_SETUP: '1'
+      CI: 'true'
+      BUCK2_NO_REMOTE_CACHE: '1'
+      BUCK2_PUBLIC_CACHE_READ_ONLY: '1'
+    concurrency:
+      group: "${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '' && format('measurement-baseline-{0}', inputs.measurement_baseline_ref) || (github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_id) || 'code') }}-published-status"
+      cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '') }}
   pipeline-attempt-close:
     runs-on: ubuntu-latest
     needs:
@@ -6826,6 +6882,7 @@ jobs:
       - build-products
       - consumer-smoke
       - promote-published
+      - published-status
       - publish-products
       - trusted-buck2-remote-cache-proof
       - pr-reviews-resolved

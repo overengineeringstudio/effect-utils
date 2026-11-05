@@ -63,9 +63,11 @@ import {
 import { effectUtilsWorkflowPolicy } from '../../genie/ci-workflow/policy.ts'
 import { publishedRefIf, publishedRefSteps } from '../../genie/ci-workflow/published-ref.ts'
 import readerComposition from '../../genie/ci-workflow/reader-composition.json'
+import { linuxX64Runner } from '../../genie/ci-workflow/runners.ts'
 import type { CoreCIJobName } from '../../genie/ci.ts'
 import { pipelineJobIdentifierSet } from '../../packages/@overeng/ci-tools/src/pipeline-job-names.ts'
 import { pinnedAction } from '../../packages/@overeng/genie/src/runtime/github-workflow/action-pins.ts'
+import { sameRepoPullRequestGuard } from '../../packages/@overeng/genie/src/runtime/github-workflow/policy.ts'
 
 const workflowReportFlakeRef =
   "github:${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name || github.repository }}/${{ github.event_name == 'pull_request' && github.head_ref || github.ref_name }}#ci-tools"
@@ -1357,6 +1359,46 @@ const extraJobs: Record<string, any> = {
     defaults: bashShellDefaults,
     steps: [checkoutStep(), ...publishedRefSteps],
   },
+  'published-status': {
+    needs: ['publish-products', 'consumer-smoke', 'promote-published'],
+    if: `always() && (${sameRepoPullRequestGuard()}) && github.repository == 'overengineeringstudio/effect-utils' && github.event_name == 'push' && github.ref == 'refs/heads/main'`,
+    'runs-on': linuxX64Runner,
+    'timeout-minutes': 3,
+    permissions: { statuses: 'write' },
+    defaults: bashShellDefaults,
+    steps: [
+      {
+        name: 'Report published/current status',
+        env: {
+          GH_TOKEN: '${{ github.token }}',
+          PUBLISH_RESULT: '${{ needs.publish-products.result }}',
+          SMOKE_RESULT: '${{ needs.consumer-smoke.result }}',
+          PROMOTE_RESULT: '${{ needs.promote-published.result }}',
+        },
+        run: [
+          'set -euo pipefail',
+          'state=error',
+          'if [ "$PUBLISH_RESULT" != success ] || [ "$SMOKE_RESULT" != success ]; then',
+          '  description="Promotion blocked:"',
+          '  if [ "$PUBLISH_RESULT" != success ]; then description+=" publish-products=$PUBLISH_RESULT"; fi',
+          '  if [ "$SMOKE_RESULT" != success ]; then description+=" consumer-smoke=$SMOKE_RESULT"; fi',
+          'elif [ "$PROMOTE_RESULT" = success ]; then',
+          '  state=success',
+          '  description="Published contains this main commit or a later main commit"',
+          'elif [ "$PROMOTE_RESULT" = failure ]; then',
+          '  state=failure',
+          '  description="promote-published failed with green publication and consumer inputs"',
+          'else',
+          '  description="promote-published=$PROMOTE_RESULT with green inputs"',
+          'fi',
+          'gh api --method POST "repos/$GITHUB_REPOSITORY/statuses/$GITHUB_SHA" \\',
+          '  -f state="$state" -f context=published/current \\',
+          '  -f description="${description:0:140}" \\',
+          '  -f target_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"',
+        ].join('\n'),
+      },
+    ],
+  },
   'publish-products': {
     if: trustedSecretCiIf,
     'runs-on': namespaceRunner({
@@ -2263,6 +2305,7 @@ const productCiJobs: CiWorkflowArgs['jobs'] = {
 const {
   'consumer-smoke': consumerSmokeJob,
   'promote-published': promotePublishedJob,
+  'published-status': publishedStatusJob,
   ...instrumentedProductCiJobs
 } = productCiJobs
 
@@ -2340,6 +2383,7 @@ export default ciWorkflow({
           },
           ...withPipelineTelemetry(withBuck2CacheEvidence(instrumentedProductCiJobs)),
           'promote-published': promotePublishedJob!,
+          'published-status': publishedStatusJob!,
           // API/OTel adapters and Nix's nested ci-tools build execute no checkout-native Buck.
           // Shared proof policy declares their `none` postures and disabled membership.
           'pipeline-attempt-close': pipelineCloseJob({
