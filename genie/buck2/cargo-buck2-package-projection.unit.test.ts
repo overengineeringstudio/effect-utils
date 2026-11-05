@@ -148,7 +148,9 @@ const renderCargoFixture = ({
 }): string => {
   const root = mkdtempSync(path.join(tmpdir(), 'cargo-projection-discovery-'))
   const projectionFilename =
-    projectOptions.foreignSourceExportsOnly === true ? 'BUCK.foreign.bzl.genie.ts' : 'BUCK.genie.ts'
+    projectOptions.foreignSourceExportsOnly || projectOptions.foreignBuildScriptExportsOnly
+      ? 'BUCK.foreign.bzl.genie.ts'
+      : 'BUCK.genie.ts'
   const write = (relativePath: string, content: string) => {
     mkdirSync(path.dirname(path.join(root, relativePath)), { recursive: true })
     writeFileSync(path.join(root, relativePath), content)
@@ -306,6 +308,39 @@ describe('foreign Cargo source exports', () => {
     for (const file of ['Cargo.toml', 'build.rs', 'src/lib.rs'])
       expect(rendered).toContain(`name = "cargo-source/${file}"`)
     expect(rendered).not.toMatch(/static_source_set|cargo_build_script|\/\/buck2/)
+  })
+  it('exports cross-package build-script resources under their unchanged consumer labels', () => {
+    const render = (inputs: string) =>
+      renderCargoFixture({
+        members: {
+          pkg: {
+            manifest: `[package]\nname = "pkg"\n[package.metadata.buck2]\nbuildScriptInputs = ${inputs}`,
+            files: ['src/lib.rs', 'build.rs'],
+          },
+        },
+        extraFiles: [
+          'rust/resources/schema.json',
+          'rust/resources/other.json',
+          'rust/resources/BUCK.foreign.bzl.genie.ts',
+        ],
+        render: 'resources',
+        projectOptions: { foreignBuildScriptExportsOnly: true },
+      })
+    const rendered = render(
+      '[{ path = "../resources/schema.json", label = "//rust/resources:schema" }]',
+    )
+    expect(rendered).toContain('name = "schema"')
+    expect(rendered).toContain('src = "schema.json"')
+    expect(rendered.match(/^load\(.*$/gm)).toEqual(['load("@prelude//:prelude.bzl", "native")'])
+    expect(rendered).not.toMatch(/\/\/buck2|cargo_build_script|typescript/)
+    expect(() =>
+      render(
+        '[{ path = "../resources/schema.json", label = "//rust/resources:schema" }, { path = "../resources/other.json", label = "//rust/resources:schema" }]',
+      ),
+    ).toThrow('Conflicting build-script export')
+    expect(() =>
+      render('[{ path = "../third-party/BUCK", label = "//rust/resources:schema" }]'),
+    ).toThrow('must be inside rust/resources')
   })
 })
 

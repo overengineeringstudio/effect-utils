@@ -132,27 +132,13 @@ if ! bun -e 'console.log(JSON.stringify(Bun.YAML.parse(await Bun.file(process.ar
   echo "buck2-cache-products-test: publication jobs must not grant contents/pull-requests write scopes to GITHUB_TOKEN" >&2
   exit 1
 fi
-# Compile warming runs alongside smoke, never on the promotion dependency path.
+# Compile warming belongs to the cross-platform product publisher, not promotion.
 bun -e 'console.log(JSON.stringify(Bun.YAML.parse(await Bun.file(process.argv[1]).text())))' "$workflow" |
   jq -e '
     .jobs as $jobs |
-    $jobs["publish-compile-products"].needs == ["publish-products"] and
-    $jobs["publish-compile-products"]["continue-on-error"] == true and
-    $jobs["publish-compile-products"].permissions == {contents:"read"} and
-    ($jobs["publish-compile-products"].if | contains("github.ref == \u0027refs/heads/main\u0027") and contains("github.event_name == \u0027push\u0027") and contains("github.event.pull_request.head.repo.full_name == github.repository")) and
-    $jobs["publish-compile-products"]["runs-on"] == ["sh-linux-x64","nix"] and
-    $jobs["publish-compile-products"]["timeout-minutes"] == 30 and
-    $jobs["publish-compile-products"].concurrency == {group:"publish-compile-products-main","cancel-in-progress":true} and
-    any($jobs["publish-compile-products"].steps[]; .name == "Disable Linux Nix sandbox fallback") and
-    any($jobs["publish-compile-products"].steps[]; .id == "linux-sandbox-admission" and (.run | contains("unshare -Ur true"))) and
-    any($jobs["publish-compile-products"].steps[];
-      .name == "Publish unstamped compile outputs" and
-      .env.CACHIX_AUTH_TOKEN == "${{ secrets.CACHIX_AUTH_TOKEN }}" and
-      (.run | contains("bash genie/ci-scripts/publish-compile-products.sh"))) and
-    all($jobs["publish-compile-products"].steps[];
-      (.uses // "" | test("^(actions/(upload-artifact|download-artifact|cache)|actions/create-github-app-token)@") | not)) and
-    all($jobs | to_entries[] | select(.key != "publish-compile-products");
-      (.value.needs // [] | if type == "string" then [.] else . end | index("publish-compile-products")) == null)
+    ($jobs | has("publish-compile-products") | not) and
+    all($jobs[];
+      (.needs // [] | if type == "string" then [.] else . end | index("publish-compile-products")) == null)
   ' >/dev/null
 # The isolated writer mints the manifest PR token and checks secret presence;
 # publication has no App key, and promotion owns its independently gated token.
@@ -254,7 +240,13 @@ cat >"$tmp/fake-bin/nix" <<'EOF'
 #!/usr/bin/env bash
 case "$1" in
   hash) printf '%s\n' "$FIXTURE_INTEGRITY" ;;
-  eval) printf '%064d\n' 0 ;;
+  eval)
+    if [[ "$*" == *"#packages"* ]]; then
+      printf '%s\n' '["buck-product-fixture-from-source","fixture-compiled-compiled","fixture-native"]'
+    else
+      printf '%064d\n' 0
+    fi
+    ;;
   build)
     if [[ "$*" == *".compileProduct" ]]; then
       printf '%s\n' "$*" >>"$COMPILE_BUILD_LOG"
@@ -357,7 +349,7 @@ jq -e --arg storePath "$published_store" --arg digest "$collision_sha" '
   exit 1
 }
 
-# Even with both immutable artifact/evidence pins already present, the separate
+# Even with both immutable artifact/evidence pins already present, the shared
 # compile publisher realizes and pushes the unstamped output for every family.
 mkdir -p "$tmp/compile-output"
 cp "$tmp/collision-output/fixture.js" "$tmp/compile-output/fixture.js"

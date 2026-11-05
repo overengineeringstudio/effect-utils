@@ -73,6 +73,8 @@ export type CargoBuck2PackageProjectionOptions = {
   readonly buildProducts?: readonly CargoBuck2ProductOptions[]
   /** Emit only cargo-source exports for staging as a foreign package's BUCK. */
   readonly foreignSourceExportsOnly?: boolean
+  /** Export Cargo-declared build-script resources hosted by this non-Cargo package. */
+  readonly foreignBuildScriptExportsOnly?: boolean
   readonly cliBuildStamp?: boolean
   readonly wasmBindgen?: CargoBuck2WasmBindgenOptions
   readonly napi?: CargoBuck2NapiOptions
@@ -384,6 +386,7 @@ const cargoBuck2PackageProjectionFor = ({
   buildProduct = false,
   buildProducts,
   foreignSourceExportsOnly = false,
+  foreignBuildScriptExportsOnly = false,
   buildScriptInputs,
   compileTimeResources,
   cliBuildStamp = false,
@@ -416,13 +419,67 @@ const cargoBuck2PackageProjectionFor = ({
     field: 'sourceUrl',
   })
   const projectionSource = path.relative(repoRoot, projectionModulePath).replaceAll('\\', '/')
-  const projectionFilename = foreignSourceExportsOnly
-    ? 'BUCK.foreign.bzl.genie.ts'
-    : 'BUCK.genie.ts'
+  const projectionFilename =
+    foreignSourceExportsOnly || foreignBuildScriptExportsOnly
+      ? 'BUCK.foreign.bzl.genie.ts'
+      : 'BUCK.genie.ts'
   if (path.posix.basename(projectionSource) !== projectionFilename) {
     throw new Error(
       `Cargo Buck projection source must be ${projectionFilename}: ${projectionSource}`,
     )
+  }
+  if (foreignBuildScriptExportsOnly) {
+    const resourcePackage = path.posix.dirname(projectionSource)
+    const exports = new Map<string, string>()
+    for (const member of workspaceMembers) {
+      const inputs = resolveBuildScript({
+        member,
+        packagePath: member.packagePath,
+        repo,
+        buildScriptInputs: undefined,
+      })?.inputs
+      for (const input of inputs ?? []) {
+        const prefix = `//${resourcePackage}:`
+        if (input.label?.startsWith(prefix) !== true) continue
+        if (!input.path.startsWith(`${resourcePackage}/`)) {
+          throw new Error(`Build-script export ${input.label} must be inside ${resourcePackage}`)
+        }
+        const name = input.label.slice(prefix.length)
+        const previous = exports.get(name)
+        if (previous !== undefined && previous !== input.path) {
+          throw new Error(
+            `Conflicting build-script export ${input.label}: ${previous}, ${input.path}`,
+          )
+        }
+        exports.set(name, input.path)
+      }
+    }
+    if (exports.size === 0)
+      throw new Error(`No declared build-script exports in ${resourcePackage}`)
+    const data = {
+      packagePath: resourcePackage,
+      exports: [...exports].sort(([a], [b]) => compareStrings({ left: a, right: b })),
+    }
+    const generator = 'cargo-buck2-package-projection/foreign-build-script'
+    return createGenieOutput({
+      data,
+      stringify: () =>
+        [
+          `# Projection source: ${projectionSource}`,
+          `# Semantic fingerprint: ${buck2SemanticFingerprint({ generator, schemaVersion: 1, semanticData: data })}`,
+          `# Regenerate: ${regenerationCommand}`,
+          '',
+          'load("@prelude//:prelude.bzl", "native")',
+          ...data.exports.flatMap(([name, file]) => [
+            'native.export_file(',
+            `    name = ${starlarkString(name)},`,
+            `    src = ${starlarkString(path.posix.relative(resourcePackage, file))},`,
+            '    visibility = ["PUBLIC"],',
+            ')',
+            '',
+          ]),
+        ].join('\n'),
+    })
   }
   const packagePath = foreignMember?.packagePath ?? path.posix.dirname(projectionSource)
   const context = contextForMember({ context: consumerContext, member: foreignMember })
