@@ -21,7 +21,7 @@ manifest_pr_decide() {
     if ! commits="$(GH_TOKEN="${GITHUB_TOKEN:?}" gh api "repos/$repository/commits?path=nix/buck2-products/manifest.json&sha=main&per_page=1")" ||
       ! timestamp="$(jq -er '.[0].commit.committer.date' <<<"$commits")" ||
       ! epoch="$(date -u -d "$timestamp" +%s)"; then
-      echo '::warning::Manifest history unavailable; leaving the publisher PR unchanged' >&2
+      echo '::warning::Manifest history unavailable; skipping the daily safety net' >&2
       echo skip-unchanged-genie
     elif [ "$((now - epoch))" -ge 86400 ]; then
       echo open
