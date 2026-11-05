@@ -54,6 +54,7 @@ set `checkProducerCommit = true` and supply the selected revision; an absent or
 mismatched revision fails the build. Published products retain their independent
 descriptor digest and evaluation-time validation unchanged.
 Oxlint's source plugin imports consume the existing unstamped `compileProduct`, retaining payload/descriptor validation without pulling publication-only revision stamps into the shell capability closure.
+Both plugin compile recipes use Genie's committed workspace source closure plus the shared Buck root projection. Publication may stamp that scoped output with a revision; neither unrelated package edits nor revision-only changes enter the retained shell's plugin identity.
 
 `buck2-products/buck-inputs.nix` follows literal load/export/helper dependencies;
 test inputs fail. Cache products share one projection; uncovered entries extend it.

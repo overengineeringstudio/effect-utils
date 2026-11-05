@@ -41,11 +41,12 @@ nix eval --impure --json --expr '
         && !(lib.hasPrefix "${toString source}/${relative}/" path);
     };
     checkProduct = declaration: let
-        cache = !(declaration ? sourcePaths); compiled = declaration.kind == "compiled-executable";
+        cache = builtins.any (product: product.target == declaration.target) (builtins.head inventories).products;
+        compiled = declaration.kind == "compiled-executable";
         exported = if cache then
           packages."buck-product-${lib.replaceStrings [ "@" "/" ] [ "" "-" ] declaration.name}-from-source"
         else packages."${declaration.name}${lib.optionalString compiled "-compiled"}";
-        recipe = exported.buck2Product or exported;
+        recipe = (exported.buck2Product or exported).compileProduct;
         source = recipe.source;
         rules = if recipe.rootProjection == null then source else recipe.rootProjection;
         package = builtins.head (lib.splitString ":" (lib.last (lib.splitString "//" declaration.target)));
@@ -75,7 +76,7 @@ nix eval --impure --json --expr '
         assert recipe.drvPath != sourceRecipe.drvPath && recipe.drvPath != ruleRecipe.drvPath;
         assert toString source == toString (remove source "buck2/tests")
           && toString rules == toString (remove rules "buck2/tests");
-        assert recipe.drvPath == testlessRecipe.drvPath;
+        assert recipe.drvPath == testlessRecipe.compileProduct.drvPath;
         { name = declaration.name; inherit ownFile ruleFile; };
     products = map checkProduct declarations;
   in

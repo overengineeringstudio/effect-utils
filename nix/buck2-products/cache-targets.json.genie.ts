@@ -6,6 +6,8 @@ import {
   productBuildCapabilities,
   productLinuxBuildCapabilities,
 } from '../../genie/buck2/product-capabilities.ts'
+import { projectBuckProductSourcePaths } from '../../genie/buck2/product-source-paths.ts'
+import oxcConfigPkg from '../../packages/@overeng/oxc-config/package.json.genie.ts'
 import { projectionArtifact } from '../../packages/@overeng/genie/src/runtime/mod.ts'
 import { inputReadFileSync as readFileSync } from '../../packages/@overeng/genie/src/runtime/node/inputs.ts'
 
@@ -140,6 +142,14 @@ const buckProductSourceEntries = [
     packageTreePath: packageTreePath ?? packagePath,
     target: `effect_utils//${packagePath}:${targetName}`,
     version: '0.0.0',
+    ...(packagePath === 'packages/@overeng/oxc-config'
+      ? {
+          sourcePaths: projectBuckProductSourcePaths({
+            pkg: oxcConfigPkg,
+            additionalPaths: ['packages/@overeng/buck2-tools', 'patches'],
+          }),
+        }
+      : {}),
   })),
   ...packageEntries,
 ]

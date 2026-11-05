@@ -59,7 +59,7 @@ let
     productName:
     let
       entry = products.${productName};
-      # Runtime consumers need #2346's unstamped compile output, not publication provenance.
+      # Runtime consumers need the unstamped compile output, not publication provenance.
       compileProduct = entry.sourceImport.product.compileProduct;
       product =
         if entry.sourceImport == null then

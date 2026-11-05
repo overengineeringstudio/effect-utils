@@ -4,6 +4,7 @@
 # reads it as the target set and this file derives one recipe per entry, so a
 # product can never be published without a recipe or vice versa.
 {
+  pkgs,
   capabilities,
   mkBuckProductFromSource,
   pnpmArchives,
@@ -13,6 +14,7 @@
 
 let
   inventory = builtins.fromJSON (builtins.readFile ./cache-targets.json);
+  rootProjection = import ./root-projection.nix { inherit pkgs repositoryRoot; };
 in
 builtins.listToAttrs (
   map (product: {
@@ -25,6 +27,8 @@ builtins.listToAttrs (
         repositoryRoot
         ;
       capabilities = capabilities.selectProduct product;
+      sourcePaths = product.sourcePaths or null;
+      rootProjection = if product ? sourcePaths then rootProjection else null;
     };
   }) inventory.products
 )

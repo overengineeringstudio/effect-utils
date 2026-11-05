@@ -189,8 +189,9 @@ in
 assert lib.assertMsg (
   producerCommit == null || builtins.match "[0-9a-f]{40}" producerCommit != null
 ) "buck2-products: producerCommit must be a full lowercase Git commit";
-assert lib.assertMsg ((producerCommit == null) == (sourcePaths != null))
-  "buck2-products: revision-bound recipes require producerCommit; scoped source recipes must omit it";
+assert lib.assertMsg (
+  producerCommit != null || sourcePaths != null
+) "buck2-products: unscoped source recipes require producerCommit";
 assert lib.assertMsg
   (
     sourcePaths == null
