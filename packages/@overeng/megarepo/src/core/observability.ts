@@ -118,6 +118,28 @@ const labelOperation = (name: string) =>
 export const withLabelSpan = ({ name, labelValue }: { name: string; labelValue: string }) =>
   trustedWith({ operation: labelOperation(name), attributes: { label: labelValue } })
 
+const StoreEnumerationAttributes = Schema.Struct({
+  'megarepo.store.enumeration.non_directory.count': Schema.Int,
+  'megarepo.store.enumeration.non_directory.samples': Schema.Array(Schema.String).pipe(
+    OtelAttr.encode('json'),
+  ),
+  'megarepo.store.enumeration.foreign_namespace.count': Schema.Int,
+  'megarepo.store.enumeration.foreign_namespace.samples': Schema.Array(Schema.String).pipe(
+    OtelAttr.encode('json'),
+  ),
+  'megarepo.store.enumeration.depth_limited.count': Schema.Int,
+  'megarepo.store.enumeration.depth_limited.samples': Schema.Array(Schema.String).pipe(
+    OtelAttr.encode('json'),
+  ),
+})
+const storeEnumerationAttrs = OtelAttrs.defineSync(StoreEnumerationAttributes)
+
+/** Annotate one enumeration with counts and bounded path samples (trace-only). */
+export const annotateStoreEnumeration = (value: typeof StoreEnumerationAttributes.Type) =>
+  trustOtelContract<void, never, never>(
+    OtelSpan.annotate({ attributes: storeEnumerationAttrs, value }),
+  )
+
 // ---- DYNAMIC-NAME BRIDGES (megarepo.*): span name varies → stay inline, rebuilt from catalog ----
 
 const repoPathAttrs = OtelAttrs.defineSync(
