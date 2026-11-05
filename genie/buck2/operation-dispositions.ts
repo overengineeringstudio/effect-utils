@@ -67,6 +67,7 @@ export const ciOperationDispositions = {
   // This control-plane job mutates a live GitHub ref; it has no build action.
   'promote-published': 'outside-by-policy:live-publication',
   'publish-products': 'outside-by-policy:live-publication',
+  'publish-manifest-pr': 'outside-by-policy:live-publication',
   'published-status': 'outside-by-policy:ci-control-plane',
   quality: 'outside-by-policy:aggregate-includes-stage-zero-freshness-and-native-policy',
   'source-shape': 'outside-by-policy:ci-measurement-with-run-timestamp',
