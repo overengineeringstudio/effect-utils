@@ -1513,7 +1513,7 @@ const extraJobs: Record<string, any> = {
       priority: deliveryJobPriority,
     }),
     'timeout-minutes': 120,
-    permissions: { contents: 'read', statuses: 'write' },
+    permissions: { contents: 'read', 'pull-requests': 'read', statuses: 'write' },
     defaults: bashShellDefaults,
     env: githubTokenEnv(),
     outputs: {

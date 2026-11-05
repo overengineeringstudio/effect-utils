@@ -1193,6 +1193,7 @@ describe('published consumer ref', () => {
   it('gates manifest PR writes on bootstrap drift or the daily safety net with the read-only token', () => {
     const writer = ciWorkflow.data.jobs['publish-manifest-pr']!
     expect(JSON.stringify(publisher.concurrency)).not.toContain('buck2-products-manifest-writer')
+    expect(publisher.permissions?.['pull-requests']).toBe('read')
     expect(writer.needs).toEqual(['publish-products'])
     expect(writer.if).toContain("github.repository == 'overengineeringstudio/effect-utils'")
     for (const job of [smoke, promotion]) expect(job.needs).not.toContain('publish-manifest-pr')
