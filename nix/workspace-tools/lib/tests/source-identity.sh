@@ -36,6 +36,12 @@ let
   };
 in product'
 eval_path() { nix eval --impure --raw --expr "($expr).outPath"; }
+# Opaque rule outputs cannot prove membership; the scoped fileset must own the entry.
+if eval_path >"$work/missing-entry.log" 2>&1; then
+  echo 'missing entry BUCK was accepted' >&2; exit 1
+fi
+[[ "$(<"$work/missing-entry.log")" == *'entry package BUCK missing from product projection'* ]]
+printf '# fixture entry package\n' > "$work/repo/packages/app/BUCK"
 first="$(eval_path)"
 darwin_first="$(BUCK2_SYSTEM=aarch64-darwin eval_path)"
 printf 'unrelated changed\n' > "$work/repo/packages/unrelated/source.txt"
