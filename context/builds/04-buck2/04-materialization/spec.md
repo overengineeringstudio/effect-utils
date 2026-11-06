@@ -288,6 +288,15 @@ the nonnegative `casUnclassifiedMs` residual: held time minus these details and 
 `filesReused` counts source-manifest skips; `filesProcessed` counts all other
 files successfully shared or retained by the cross-device fallback.
 
+Finite materialization hashes source files before private copying and looks up
+CAS addresses by digest plus normalized executable mode. A stable source stat
+through the end of the copy lets sharing consume that digest without hashing the
+candidate again; a source race discards the hint. The independent full candidate
+fingerprint comparison against the admitted roots remains mandatory.
+`hashFirstMs` sums source hashing time, `hashFirstMissMs` the hashing time of
+address misses, and `filesHashFirstAttempts`/`filesHashFirstMiss` count those
+lookups. Source hashing and existing-blob byte validation stay outside CAS flock.
+
 CI bootstrap writes a job-local `.devenv/editor-view-bootstrap-receipt.json`
 after successful publication. Repeated bootstrap in Unit tests reuses that
 receipt before publication admission only when scope, graph, authority,

@@ -1,5 +1,5 @@
 import { spawn, spawnSync } from 'node:child_process'
-import { createHash } from 'node:crypto'
+import { createHash, Hash, webcrypto } from 'node:crypto'
 import {
   type BigIntStats,
   accessSync,
@@ -34,6 +34,7 @@ import {
   repairEditorViewContentStore,
   defaultEditorViewContentStore,
   editorViewStagingCreatorIdentity,
+  materializeEditorViewSourceFiles,
   shareSnapshotFiles,
 } from './editor-view-sharing.ts'
 import { editorViewTimingContext } from './typescript-runner.ts'
@@ -367,6 +368,80 @@ const replaceBlob = (
 }
 
 describe('host-wide editor snapshot content store', () => {
+  it.each([
+    { hit: false, size: 32 },
+    { hit: true, size: 32 },
+    { hit: false, size: 65_537 },
+    { hit: true, size: 65_537 },
+  ])('hashes payload once across hash-first copy and sharing (%j)', async ({ hit, size }) => {
+    await withStore(async ({ candidate, contentStore }) => {
+      const bytes = 'x'.repeat(size)
+      if (hit === true) {
+        payload(candidate('seed'), 'file', bytes)
+        await shareSnapshotFiles({ candidate: candidate('seed'), contentStore })
+      }
+      const source = payload(candidate('source'), 'file', bytes)
+      const destination = join(candidate('next'), 'file')
+      const hash = vi.spyOn(webcrypto.subtle, 'digest')
+      const streamingHash = vi.spyOn(Hash.prototype, 'digest')
+      const timings: Record<string, number> = {}
+      try {
+        const preparedSources = await editorViewTimingContext.run(
+          timings,
+          materializeEditorViewSourceFiles,
+          { contentStore, files: [{ source, path: destination }] },
+        )
+        await shareSnapshotFiles({
+          candidate: candidate('next'),
+          contentStore,
+          preparedSources,
+        })
+        expect(hash).toHaveBeenCalledTimes(size <= 65_536 ? 1 : 0)
+        expect(streamingHash).toHaveBeenCalledTimes(size > 65_536 ? 1 : 0)
+        expect(readFileSync(destination, 'utf8')).toBe(bytes)
+        expect(inode(destination)).not.toBe(inode(source))
+        expect(timings.filesHashFirstAttempts).toBe(1)
+        expect(timings.filesHashFirstMiss ?? 0).toBe(hit === true ? 0 : 1)
+        expect(timings.hashFirstMs).toBeGreaterThanOrEqual(0)
+        expectReadonlyStore(contentStore)
+      } finally {
+        hash.mockRestore()
+        streamingHash.mockRestore()
+      }
+    })
+  })
+
+  it('rejects a changed candidate instead of reusing its prepared digest', async () => {
+    await withStore(async ({ candidate, contentStore }) => {
+      const source = payload(candidate('source'), 'file', 'original')
+      const destination = join(candidate('next'), 'file')
+      const preparedSources = await materializeEditorViewSourceFiles({
+        contentStore,
+        files: [{ source, path: destination }],
+      })
+      writeFileSync(destination, 'changed')
+      await expect(
+        shareSnapshotFiles({ candidate: candidate('next'), contentStore, preparedSources }),
+      ).rejects.toThrow('prepared candidate changed')
+    })
+  })
+
+  it('discards a source digest when its identity changes before the copy finishes', async () => {
+    await withStore(async ({ candidate, contentStore }) => {
+      const source = payload(candidate('source'), 'file', 'original')
+      const destination = join(candidate('next'), 'file')
+      const preparedSources = await materializeEditorViewSourceFiles({
+        contentStore,
+        files: [{ source, path: destination }],
+        afterSourceHash: () => writeFileSync(source, 'changed'),
+      })
+      expect(preparedSources.has(destination)).toBe(false)
+      await shareSnapshotFiles({ candidate: candidate('next'), contentStore, preparedSources })
+      expect(readFileSync(destination, 'utf8')).toBe('changed')
+      expectReadonlyStore(contentStore)
+    })
+  })
+
   it('keeps staging creator identity invariant across caller timezones and locales', async () => {
     await withStore(async ({ root }) => {
       const script = join(root, 'probe-staging-identity.ts')
