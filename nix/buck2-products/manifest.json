@@ -578,11 +578,11 @@
         "schema": "effect-utils/buck-product-provenance/v1",
         "target": "effect_utils//packages/@overeng/ai-gateway-edge:ai-gateway-edge-candidate"
       },
-      "recipeIdentity": "832fb3f44bec04ca51a42a53284ef5b7200a7d64dcf798d1e6daae04c3cef518",
+      "recipeIdentity": "370c50463f3bc79406a87cc28226ec22336b249ad1a3ba570c0cf42fcc9ee950",
       "sha256": "dcff3164aec7aa35c13e1d05f3b81b5ac6879c3ef0e460cf51adb6639421dd43",
       "size": 674148,
-      "sourceEvidenceSha256": "329924c558abd275039735acbd9b1fbc1d42d1a34e174e0b6ccac6911df96cd8",
-      "sourceEvidenceStorePath": "/nix/store/j4ixp4324sdrf68rrd770iqxxf2rsvnq-ai-gateway-edge-source-evidence",
+      "sourceEvidenceSha256": "76838d24c157686f7376b41d18469ff7003a02eed07abe14d5b6128c78009a44",
+      "sourceEvidenceStorePath": "/nix/store/706w4z8llkn57zi2kkpsp7gi1cyvyi72-ai-gateway-edge-source-evidence",
       "storePath": "/nix/store/vadm57lfj339yl36s37ykgcym6k237m9-ai-gateway-edge-buck2-from-source-0.0.0",
       "version": "0.0.0"
     },
@@ -678,11 +678,11 @@
         "schema": "effect-utils/buck-product-provenance/v1",
         "target": "effect_utils//packages/@overeng/genie:genie-candidate"
       },
-      "recipeIdentity": "fb0495e64fbf62ca023677fcfc7675efa5737cfda62c7ab52cb6e14c023447ba",
+      "recipeIdentity": "2f442af698331686c1a50952a708bb8e4713bcd3c34eec5b7cf121808567ae1b",
       "sha256": "4b6208d85017c1f2f75837120731689084c1f04e59c22dde205716a80baa1ab2",
       "size": 7070364,
-      "sourceEvidenceSha256": "a3a24158d1bc5ac5300fdd7cc223769a4ac10965fef996b9e484868c93655535",
-      "sourceEvidenceStorePath": "/nix/store/jwkg98v0bx9z2x7q277pyzim5g96scf9-genie-source-evidence",
+      "sourceEvidenceSha256": "7d85073de171088ca56f07e6ddb0354e0c0a10ded7272c89609ed8858b5031a5",
+      "sourceEvidenceStorePath": "/nix/store/9d9din1i0g75df39fss3r6s0sdx1hvmd-genie-source-evidence",
       "storePath": "/nix/store/aavqs08hnx2687gsfxbrmn1v54j1hb24-genie-buck2-from-source-0.0.0",
       "version": "0.0.0"
     },
@@ -722,11 +722,11 @@
         "schema": "effect-utils/buck-product-provenance/v1",
         "target": "effect_utils//packages/@overeng/genie:genie-bootstrap-closure-check-candidate"
       },
-      "recipeIdentity": "d30674e352077171f03f49fb260cac72932c0dadd86c71915728da70628ae1d4",
+      "recipeIdentity": "90571ba56f14281ce29b918dcf9093c3846205c9fa282ae7ab00459bfb67842c",
       "sha256": "4676ae10a0eb70b98879b720522ada73a11a993e8a6c83f13880c4d9a43cc76e",
       "size": 595618,
-      "sourceEvidenceSha256": "bb28e2e5ecf25a02554f003441e93c6a027457d32d503f30226c57abafdb84df",
-      "sourceEvidenceStorePath": "/nix/store/2i72gzc4ww1pdj0ygzvlg2rii74xrgxq-genie-bootstrap-closure-check-source-evidence",
+      "sourceEvidenceSha256": "29bd5cee337fa7ccc5a3ca25684accb5aeaf65e636e9bb403b7668b7e5c4ffb0",
+      "sourceEvidenceStorePath": "/nix/store/y8zs6kyyy6wrp99s5iw2zxb6lc1shjkc-genie-bootstrap-closure-check-source-evidence",
       "storePath": "/nix/store/mysrrv96r5zx1lgz9ll26dgvdayz6hj7-genie-bootstrap-closure-check-buck2-from-source-0.0.0",
       "version": "0.0.0"
     },
@@ -813,11 +813,11 @@
         "schema": "effect-utils/buck-product-provenance/v1",
         "target": "effect_utils//packages/@overeng/megarepo:megarepo-candidate"
       },
-      "recipeIdentity": "050973712a8d98b3e4b1d92caca1fe094a7d96f38a05662312b554f3c311c755",
+      "recipeIdentity": "7e5ba81f4b255b198182546ac5a7f109943b278a6c3afc29066d2a1701e1ee32",
       "sha256": "8ed1e04f272b02294fa99d9211feebaae5d70686f20dfb687282d1c962281282",
       "size": 3007337,
-      "sourceEvidenceSha256": "b0695f1d90557fa3f1f6fc990a8a348682df934f7e5bcb2886b5eb9a29e14e9d",
-      "sourceEvidenceStorePath": "/nix/store/vma1qmcibpidbyv6cf904j5imy0569jf-megarepo-source-evidence",
+      "sourceEvidenceSha256": "6abd1eb6c015700ac912e2777e139986249f17dad0e7ae32895b9aeb6369bbc5",
+      "sourceEvidenceStorePath": "/nix/store/xpp8s6mr12ix1y0jgq3bvnnrdpwlc02s-megarepo-source-evidence",
       "storePath": "/nix/store/yiikjkzj9vi25bkic135d5ms5wj7dvw3-megarepo-buck2-from-source-0.0.0",
       "version": "0.0.0"
     },
@@ -950,11 +950,11 @@
         "schema": "effect-utils/buck-product-provenance/v1",
         "target": "effect_utils//packages/@overeng/notion-md:notion-md-candidate"
       },
-      "recipeIdentity": "663a508168a1d9ccf2e8824bdbf8ee57d62f21d3ed4810b3388a63df6650808f",
+      "recipeIdentity": "ef8b9258894639b3b1e0c8324231b18ac97b4da7d709aa120e4ef34c991da3de",
       "sha256": "424452ede94708231642003105cadd5c3e96c79f4c65f5d52f7866f14f4a636a",
       "size": 1680655,
-      "sourceEvidenceSha256": "ea2942ac9bcd85368f9899ef148a1ca690c71e93093553cccf19c6ddbcaccacf",
-      "sourceEvidenceStorePath": "/nix/store/4hj2wlvi5vf57qvi2y06ymdngigzj9nk-notion-md-source-evidence",
+      "sourceEvidenceSha256": "1d7e530c0b8165c19032a041cf0974f0f84aea0c0bfc166418a0dcd5084487be",
+      "sourceEvidenceStorePath": "/nix/store/6dr28zh65apzs5g42gn49w80mz1k1abr-notion-md-source-evidence",
       "storePath": "/nix/store/17c8qdkqm1yaw6adl8mfga62jpkipdxa-notion-md-buck2-from-source-0.0.0",
       "version": "0.0.0"
     },
@@ -994,11 +994,11 @@
         "schema": "effect-utils/buck-product-provenance/v1",
         "target": "effect_utils//packages/@overeng/npm-release:npm-release-candidate"
       },
-      "recipeIdentity": "befec02084e58b57ade2a2bebbee2e1799ed127e8a460071ea7b4d7dd807bdb6",
+      "recipeIdentity": "e4ea5436cd5698bd5e3739b800dffb53e5d51b9287a31898b1bc40d07dafcf74",
       "sha256": "5c48fec6aa40cb89e230181b4d7795aea81f237d0c5dbc07136f5cf0eeea669e",
       "size": 590143,
-      "sourceEvidenceSha256": "6a3bb19c7ff9ac7c5a25d1b5c0dd10d66977438c6cd49af7de395b36bd8abf4e",
-      "sourceEvidenceStorePath": "/nix/store/gl073ya198wsp276dv1dbh6wv44mrwj5-npm-release-source-evidence",
+      "sourceEvidenceSha256": "0b08a010379f0ed844eeaf11e1672174692325738cdfd3feafe8903dd7e9a110",
+      "sourceEvidenceStorePath": "/nix/store/zvxrd9ac1c4acn5c2h09ixlk9pv4g68z-npm-release-source-evidence",
       "storePath": "/nix/store/dv3wysl7rr8g6xl6dfwd30ihcxnp18wq-npm-release-buck2-from-source-0.0.0",
       "version": "0.0.0"
     },
