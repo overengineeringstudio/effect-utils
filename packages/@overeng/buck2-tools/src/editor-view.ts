@@ -10,7 +10,6 @@ import {
   openSync,
   readSync,
   type BigIntStats,
-  copyFileSync,
   chmodSync,
   existsSync,
   lstatSync,
@@ -80,6 +79,8 @@ import {
   editorViewSourceKey,
   readEditorViewSourceManifest,
   reuseEditorViewSourceFiles,
+  materializeEditorViewSourceFiles,
+  type EditorViewPreparedSource,
   type EditorViewSourceFile,
 } from './editor-view-sharing.ts'
 import { emitCompletedSpanAsync, type OtelSpanAttribute } from './otel-span-cli.ts'
@@ -1571,6 +1572,7 @@ type MaterializedDeclaredRoots = {
   readonly sourceFiles: Map<string, { readonly source: string; readonly sourceKey: string }>
   readonly manifest: Map<string, EditorViewSourceFile>
   readonly reusedFiles: Set<string>
+  readonly preparedSources: Map<string, EditorViewPreparedSource>
 }
 
 const materializeDeclaredRoots = async ({
@@ -1588,6 +1590,7 @@ const materializeDeclaredRoots = async ({
   const sourceFiles = new Map<string, { source: string; sourceKey: string }>()
   const manifest = new Map<string, EditorViewSourceFile>()
   const reusable: { path: string; entry: EditorViewSourceFile }[] = []
+  const pending: { source: string; path: string }[] = []
   const visit = ({ source, destination }: { source: string; destination: string }): void => {
     mkdirSync(destination, { recursive: true })
     for (const name of readdirSync(source)) {
@@ -1606,11 +1609,7 @@ const materializeDeclaredRoots = async ({
           reusable.push({ path: destinationPath, entry: previous })
           manifest.set(relative(candidate, destinationPath), previous)
         } else {
-          copyFileSync(
-            sourcePath,
-            destinationPath,
-            constants.COPYFILE_EXCL | constants.COPYFILE_FICLONE,
-          )
+          pending.push({ source: sourcePath, path: destinationPath })
         }
       } else fail(`declared root contains unsupported special file: ${sourcePath}`)
     }
@@ -1622,9 +1621,16 @@ const materializeDeclaredRoots = async ({
     if (reusedFiles.has(file.path) === true) continue
     const source = sourceFiles.get(file.path) ?? fail(`source file mapping is absent: ${file.path}`)
     manifest.delete(relative(candidate, file.path))
-    copyFileSync(source.source, file.path, constants.COPYFILE_EXCL | constants.COPYFILE_FICLONE)
+    pending.push({ source: source.source, path: file.path })
   }
-  return { links: rewriteSnapshotLinks({ candidate, roots }), sourceFiles, manifest, reusedFiles }
+  const preparedSources = await materializeEditorViewSourceFiles({ contentStore, files: pending })
+  return {
+    links: rewriteSnapshotLinks({ candidate, roots }),
+    sourceFiles,
+    manifest,
+    reusedFiles,
+    preparedSources,
+  }
 }
 
 const assertByteOwnedFiniteSnapshot = ({
@@ -3492,6 +3498,15 @@ const publishEditorViewCoordinated = async ({
       budgetReservation = reserved?.token
       candidate = join(paths.storeDir, `.candidate-${token}`)
       mkdirSync(candidate)
+      const payloadTimings: Record<string, number> = {
+        casExistingBlobVerifyMs: 0,
+        casBlobInstallMs: 0,
+        casViewLinkMs: 0,
+        casDirectoryMs: 0,
+        filesLinked: 0,
+        filesAlreadyShared: 0,
+        blobsCreated: 0,
+      }
       enterPhase('materialize')
       let materialized = false
       let materializedLinks: Map<string, (readonly [path: string, target: string])[]> | undefined
@@ -3511,12 +3526,11 @@ const publishEditorViewCoordinated = async ({
           previousSnapshot === undefined
             ? new Map<string, EditorViewSourceFile>()
             : readEditorViewSourceManifest(join(previousSnapshot, editorViewSourceManifestName))
-        materializedRoots = await materializeDeclaredRoots({
-          candidate,
-          roots,
-          contentStore: paths.contentStore,
-          previousManifest,
-        })
+        materializedRoots = await editorViewTimingContext.run(
+          payloadTimings,
+          materializeDeclaredRoots,
+          { candidate, roots, contentStore: paths.contentStore, previousManifest },
+        )
         materializedLinks = materializedRoots.links
         assertByteOwnedFiniteSnapshot({
           sources: roots.map((root) => root.source),
@@ -3545,15 +3559,6 @@ const publishEditorViewCoordinated = async ({
         })
       }
       enterPhase('payload')
-      const payloadTimings: Record<string, number> = {
-        casExistingBlobVerifyMs: 0,
-        casBlobInstallMs: 0,
-        casViewLinkMs: 0,
-        casDirectoryMs: 0,
-        filesLinked: 0,
-        filesAlreadyShared: 0,
-        blobsCreated: 0,
-      }
       const payloadStartedAt = performance.now()
       const payload = await editorViewTimingContext.run(
         payloadTimings,
@@ -3613,6 +3618,7 @@ const publishEditorViewCoordinated = async ({
           : {
               reusedFiles: materializedRoots.reusedFiles,
               candidateFiles: materializedRoots.sourceFiles.keys(),
+              preparedSources: materializedRoots.preparedSources,
             }),
         onSharedFile: (file) => {
           if (materializedRoots === undefined) return

@@ -3,6 +3,7 @@ import { spawnSync } from 'node:child_process'
 import { createHash, randomUUID, webcrypto } from 'node:crypto'
 import {
   constants,
+  copyFileSync,
   linkSync,
   lstatSync,
   readFileSync,
@@ -779,6 +780,68 @@ const validateBlob = async ({
   return status
 }
 
+/** A guarded digest of a private copy; consumed only after the full candidate proof. */
+export type EditorViewPreparedSource = {
+  readonly digest: string
+  readonly status: BigIntStats
+  readonly blob?: BigIntStats
+}
+
+/** Move payload hashing ahead of copying; never hash under the CAS exclusion. */
+export const materializeEditorViewSourceFiles = async ({
+  contentStore,
+  files,
+  afterSourceHash,
+}: {
+  readonly contentStore: string
+  readonly files: readonly { readonly source: string; readonly path: string }[]
+  readonly afterSourceHash?: (source: string) => void
+}): Promise<Map<string, EditorViewPreparedSource>> => {
+  const prepared = new Map<string, EditorViewPreparedSource>()
+  const store = resolve(contentStore)
+  const timings = editorViewTimingContext.getStore()
+  for (let index = 0; index < files.length; index += 4) {
+    // eslint-disable-next-line no-await-in-loop -- Bound hash buffers and open files.
+    const batch = await Promise.allSettled(
+      files.slice(index, index + 4).map(async ({ source, path }) => {
+        const before = await lstat(source, { bigint: true })
+        const started = performance.now()
+        const digest =
+          (await fingerprint({ path: source, expected: before })) ??
+          fail(`source disappeared while hashing: ${source}`)
+        const hashMs = performance.now() - started
+        afterSourceHash?.(source)
+        const mode = (before.mode & 0o111n) === 0n ? 0o444 : 0o555
+        const blob = await validateBlob({
+          contentStore: store,
+          path: join(store, digest.slice(0, 2), `${digest}-${mode === 0o444 ? '0444' : '0555'}`),
+          digest,
+          mode,
+        })
+        if (timings !== undefined) {
+          timings.hashFirstMs = (timings.hashFirstMs ?? 0) + hashMs
+          timings.filesHashFirstAttempts = (timings.filesHashFirstAttempts ?? 0) + 1
+          if (blob === undefined) {
+            timings.hashFirstMissMs = (timings.hashFirstMissMs ?? 0) + hashMs
+            timings.filesHashFirstMiss = (timings.filesHashFirstMiss ?? 0) + 1
+          }
+        }
+        copyFileSync(source, path, constants.COPYFILE_EXCL | constants.COPYFILE_FICLONE)
+        const after = await lstat(source, { bigint: true })
+        // A source race invalidates the hint. The normal path hashes the copy instead.
+        if (unchanged({ left: before, right: after }) === true && before.ctimeNs === after.ctimeNs)
+          prepared.set(path, {
+            digest,
+            status: await lstat(path, { bigint: true }),
+            ...(blob === undefined ? {} : { blob }),
+          })
+      }),
+    )
+    for (const result of batch) if (result.status === 'rejected') throw result.reason
+  }
+  return prepared
+}
+
 type PreparedFile = {
   readonly path: string
   readonly status: BigIntStats
@@ -1189,6 +1252,7 @@ export const shareSnapshotFiles = async ({
   afterBlobInstall,
   reusedFiles,
   candidateFiles,
+  preparedSources,
   onSharedFile,
 }: {
   readonly candidate: string
@@ -1202,6 +1266,7 @@ export const shareSnapshotFiles = async ({
   }) => void | Promise<void>
   readonly reusedFiles?: ReadonlySet<string>
   readonly candidateFiles?: Iterable<string>
+  readonly preparedSources?: ReadonlyMap<string, EditorViewPreparedSource>
   readonly onSharedFile?: (file: {
     path: string
     digest: string
@@ -1243,8 +1308,15 @@ export const shareSnapshotFiles = async ({
       })
   }
   const prepare = async (path: string): Promise<PreparedFile> => {
+    const supplied = preparedSources?.get(path)
+    if (
+      supplied !== undefined &&
+      unchanged({ left: supplied.status, right: await lstat(path, { bigint: true }) }) === false
+    )
+      fail(`prepared candidate changed before normalization: ${path}`)
     const status = await normalizeCandidate(path)
     const digest =
+      supplied?.digest ??
       (await fingerprint({ path: path, expected: status })) ??
       fail(`candidate disappeared while hashing: ${path}`)
     const mode = Number(permissions(status))
