@@ -87,7 +87,7 @@ let
   packages = outputs.packages.${system};
   jsIdentity = builtins.getEnv "BUCK2_JS_IDENTITY" == "1";
   names = if jsIdentity then [
-    "ci-tools" "gh-ci-utils" "notion-cli" "notion-db-runtime" "tui-stories"
+    "ai-gateway-edge" "ci-tools" "gh-ci-utils" "notion-cli" "notion-db-runtime" "tui-stories"
   ] else [
     "buck2" "buck2-capabilities" "buck2-archive-tool" "buck2-events"
     "buck2-fingerprint" "buck2-product" "otelite" "otel-scrape"
@@ -184,6 +184,12 @@ js_after="$(js_paths)"
 [[ "$js_before" == "$js_after" ]] || {
   echo 'context-only edit and producer revision changed scoped JS compile recipes' >&2; exit 1;
 }
+# An unrelated package source edit must not invalidate the selected JS products.
+printf '\n// unrelated package source control\n' >> "$work/shell/packages/@overeng/megarepo/src/mod.ts"
+js_unrelated="$(js_paths)"
+[[ "$js_after" == "$js_unrelated" ]] || {
+  echo 'unrelated megarepo source edit changed scoped JS compile recipes' >&2; exit 1;
+}
 # Each real own-source mutation must invalidate its product, not just the
 # publication wrapper. Restore between controls so failures name one input.
 while read -r name relative; do
@@ -196,6 +202,7 @@ while read -r name relative; do
   }
   cp "$work/js-source" "$work/shell/$relative"
 done <<'SOURCES'
+ai-gateway-edge packages/@overeng/ai-gateway-edge/src/mod.ts
 ci-tools packages/@overeng/ci-tools/src/mod.ts
 gh-ci-utils packages/@overeng/gh-ci-utils/src/mod.ts
 notion-cli packages/@overeng/notion-cli/src/mod.ts
