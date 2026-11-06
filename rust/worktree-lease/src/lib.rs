@@ -1,5 +1,7 @@
 //! Scoped per-worktree exclusion. Dropping a lease closes its non-inheritable descriptor.
+pub mod record;
 use std::{
+    cell::Cell,
     fs::{self, File, OpenOptions},
     io,
     os::{
@@ -120,6 +122,7 @@ pub struct Lease {
     file: File,
     identity: Identity,
     path: PathBuf,
+    held: Cell<Option<bool>>,
 }
 impl Lease {
     pub fn open(identity: Identity) -> Result<Self> {
@@ -138,6 +141,7 @@ impl Lease {
             file,
             identity,
             path,
+            held: Cell::new(None),
         };
         lease.validate()?;
         Ok(lease)
@@ -156,6 +160,9 @@ impl Lease {
     }
     /// Blocking acquisition is interruptible; callers must arrange cancellation/deadlines.
     pub fn acquire(&self, exclusive: bool, blocking: bool) -> Result<()> {
+        if self.held.get().is_some() {
+            return Err(Refusal::InvalidInput);
+        }
         self.validate()?;
         let op = if exclusive {
             libc::LOCK_EX
@@ -172,7 +179,9 @@ impl Lease {
                 },
             );
         }
-        self.validate()
+        self.validate()?;
+        self.held.set(Some(exclusive));
+        Ok(())
     }
 }
 pub fn exit_code(status: ExitStatus) -> i32 {

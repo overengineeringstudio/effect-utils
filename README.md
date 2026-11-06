@@ -317,6 +317,8 @@ JSON emits one tagged result with optional job correlation on stderr. Refusal ex
 SIGINT/SIGTERM/SIGHUP are forwarded to the isolated child process group; foreground terminal ownership and child status are restored.
 Identity lookup clears every `GIT_*` environment variable. Linux-only PDEATHSIG kills the immediate child when its supervisor dies; macOS has no equivalent protection here.
 Release never removes the lock file. PDEATHSIG kills only the direct payload, not its process group; grandchildren can survive the supervisor's death and require separate caller supervision.
+The Rust `record` API atomically creates schema-1 last-holder evidence in `gate-lease.json`, inspects bounded no-follow reads, and renews only through an acquired `Lease`.
+Renewal preserves the first creator, purpose and creation time; records are not a complete shared-holder registry and expiry never revokes a live flock.
 
 ### Work storage contract
 
