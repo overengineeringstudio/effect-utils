@@ -901,6 +901,7 @@ const jobs: Record<CoreCIJobName, CiWorkflowArgs['jobs'][string]> = {
         ),
         {
           name: 'Validate stage-zero Cargo lock canonicality offline',
+          env: githubTokenEnv(),
           run: withCiSourceRoot('nix build --no-link .#checks.x86_64-linux.stage0-cargo-metadata'),
         },
         {
