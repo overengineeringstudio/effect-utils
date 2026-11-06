@@ -77,6 +77,15 @@ const sourcePackages: Record<string, WorkspacePackageLike> = {
   'packages/@overeng/tui-stories': tuiStoriesPkg,
 }
 
+// Preserve the declared pnpm view's workspace dependencies, not its development sources.
+const helperDependencyPaths = projectBuckProductSourcePaths({ pkg: buck2ToolsPkg })
+  .filter((path) => path !== 'packages/@overeng/buck2-tools')
+const cacheSourcePaths = (pkg: WorkspacePackageLike): readonly string[] =>
+  [...new Set([
+    ...projectBuckProductSourcePaths({ pkg, additionalPaths: ['patches'] }),
+    ...helperDependencyPaths,
+  ])].filter((path) => path !== 'packages/@overeng/buck2-tools').toSorted()
+
 const packageProducts = [
   '@overeng/agent-session-ingest',
   '@overeng/ai-gateway-conformance',
@@ -154,11 +163,7 @@ const packageEntries = packageManifests.map((packageJson) => {
     packageTreePath: packagePath,
     // Package-local tsconfigs/assets and declared workspace dependencies cover
     // dist-package inputs; shared Buck rules/toolchains remain separate inputs.
-    sourcePaths: projectBuckProductSourcePaths({
-      pkg,
-      additionalPackages: [buck2ToolsPkg],
-      additionalPaths: ['patches'],
-    }),
+    sourcePaths: cacheSourcePaths(pkg),
     target: `effect_utils//${packagePath}:dist-package`,
     version: packageJson.version,
   } as const
@@ -187,11 +192,7 @@ const buckProductSourceEntries = [
       packageTreePath: packageTreePath ?? packagePath,
       target: `effect_utils//${packagePath}:${targetName}`,
       version: '0.0.0',
-      sourcePaths: projectBuckProductSourcePaths({
-        pkg,
-        additionalPackages: [buck2ToolsPkg],
-        additionalPaths: ['patches'],
-      }),
+      sourcePaths: cacheSourcePaths(pkg),
     }
   }),
   ...packageEntries,

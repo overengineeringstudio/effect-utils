@@ -305,7 +305,6 @@ it('the publisher accepts every generated cache target, including scoped recipes
             'package.json',
             'pnpm-workspace.yaml',
             'patches',
-            'packages/@overeng/buck2-tools',
             'packages/@overeng/utils-dev',
           ]),
         }),

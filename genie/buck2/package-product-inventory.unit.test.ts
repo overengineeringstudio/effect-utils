@@ -36,7 +36,6 @@ describe('published package product inventory', () => {
         packageTreePath: `packages/${name}`,
         sourcePaths: [
           'package.json',
-          'packages/@overeng/buck2-tools',
           ...(name === '@overeng/effect-rust' ? [] : ['packages/@overeng/content-address']),
           ...(name === '@overeng/data-graph' ? ['packages/@overeng/data-graph'] : []),
           'packages/@overeng/effect-rust',
@@ -69,7 +68,6 @@ describe('published package product inventory', () => {
       packageTreePath: 'packages/@overeng/effect-rust',
       sourcePaths: [
         'package.json',
-        'packages/@overeng/buck2-tools',
         'packages/@overeng/effect-rust',
         'packages/@overeng/utils-dev',
         'patches',

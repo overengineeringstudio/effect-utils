@@ -67,6 +67,8 @@ in
   sourcePaths ? null,
   # Consumer Buck root is a separate Nix input, not a copy of the checkout.
   rootProjection ? null,
+  # Cache products opt into the committed, production-only helper cell.
+  productionHelpers ? false,
   # Internal acceptance recipes may explicitly stage fixture rules.
   admitTestFixtureInputs ? false,
   expectedSha256 ? null,
@@ -127,6 +129,9 @@ let
       defaultSource
     else
       unscopedSource repositoryRoot cargoWorkspaceRoot buckInputs;
+  helperProjection = if productionHelpers then import ./production-helpers.nix {
+    inherit pkgs repositoryRoot;
+  } else null;
   # Membership follows the projection's own source/filter, without realizing it.
   containsFile =
     projection: relative:
@@ -281,6 +286,9 @@ let
         cp -R ${rulesProjection}/. .
         chmod -R u+w .buck2 buck2 BUCK .buckconfig .buckroot
       ''}
+      ${lib.optionalString (helperProjection != null) ''
+        cp -R ${helperProjection}/. .
+      ''}
       mkdir -p "$HOME" "$XDG_CACHE_HOME" "$XDG_RUNTIME_DIR" .buck2/capabilities
       cp -R ${capabilities}/. .buck2/capabilities
       # Nix inputs are immutable and Watchman's state-directory chmod is not
@@ -392,6 +400,8 @@ let
         nativeStorePackages
         pnpmArchives
         producerCommit
+        productionHelpers
+        helperProjection
         repositorySource
         source
         sourceDigest
