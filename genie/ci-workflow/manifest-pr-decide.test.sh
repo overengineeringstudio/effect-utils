@@ -89,4 +89,70 @@ api_fail=true
 assert_healing bootstrap open 2> "$tmp/history-healing"
 test -s "$tmp/history-healing"
 test "$(manifest_pr_heal_decide skip-no-diff "$tmp/main" "$tmp/bootstrap" "$pins")" = close
-echo 'manifest-pr-decide: 15 decisions, API/healing warnings, and composed writer checks passed'
+# The queue lookup uses the read-only token, while pushes keep their existing auth.
+export GH_TOKEN=publisher-write
+queue_result=false
+lookup_fail=false
+push_status=0
+push_output=pushed
+gh() {
+  test "$GH_TOKEN" = read-only
+  test "$1 $2" = 'api graphql'
+  [[ "$*" == *'mergeQueueEntry { id }'* ]]
+  [[ "$*" == *'owner=example'* && "$*" == *'name=repo'* ]]
+  [[ "$*" == *'branch=automation/buck2-products-manifest'* ]]
+  if "$lookup_fail"; then echo 'lookup failed' >&2; return 1; fi
+  echo "$queue_result"
+}
+git() {
+  test "$GH_TOKEN" = publisher-write
+  test "$*" = 'push --force-with-lease origin HEAD:refs/heads/automation/buck2-products-manifest'
+  touch "$tmp/pushed"
+  echo "$push_output" >&2
+  return "$push_status"
+}
+assert_push() {
+  local expected="$1" pushed="$2" decision
+  rm -f "$tmp/pushed" "$tmp/edited"
+  # Mirror the strict workflow: a failed helper aborts, skip-queued exits before PR edits.
+  (
+    decision="$(manifest_pr_writer_push example/repo automation/buck2-products-manifest)"
+    if [ "$decision" = skip-queued ]; then exit 0; fi
+    test "$decision" = open
+    touch "$tmp/edited"
+  ) > "$tmp/push-stdout" 2> "$tmp/push-stderr"
+  if [ "$pushed" = yes ]; then test -e "$tmp/pushed"; else test ! -e "$tmp/pushed"; fi
+  if [ "$expected" = skip-queued ]; then
+    test ! -e "$tmp/edited"
+    test ! -s "$tmp/push-stdout"
+    [[ "$(cat "$tmp/push-stderr")" == *'::notice::Manifest PR: skip-queued;'* ]]
+  else
+    test -e "$tmp/edited"
+  fi
+}
+queue_result=true
+assert_push skip-queued no
+queue_result=false
+assert_push open yes
+lookup_fail=true
+assert_push open yes
+lookup_fail=false
+push_status=1
+push_output='remote: error: GH006: Protected branch update failed. A pull request for this branch has been added to a merge queue.'
+export -f gh git
+export tmp queue_result lookup_fail push_status push_output
+assert_push skip-queued yes
+# Only the combination of GH006 and merge queue can turn a push error into a skip.
+for push_output in 'remote: GH006: Protected branch update failed' \
+  'remote: merge queue unavailable' 'fatal: authentication failed'; do
+  rm -f "$tmp/pushed" "$tmp/edited"
+  if bash -euo pipefail -c 'source "$1"; decision="$(manifest_pr_writer_push example/repo automation/buck2-products-manifest)"; touch "$tmp/edited"' \
+    bash "$helper" > "$tmp/push-stdout" 2> "$tmp/push-stderr"; then
+    echo 'push error unexpectedly accepted' >&2
+    exit 1
+  fi
+  test -e "$tmp/pushed"
+  test ! -e "$tmp/edited"
+  [[ "$(cat "$tmp/push-stderr")" == *"$push_output"* ]]
+done
+echo 'manifest-pr-decide: 15 decisions, API/healing warnings, writer guards, and queued push checks passed'

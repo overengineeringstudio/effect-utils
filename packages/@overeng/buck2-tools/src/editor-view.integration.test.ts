@@ -68,6 +68,7 @@ import * as fingerprintRunner from './typescript-runner.ts'
 // Namespace-property spies do not replace Bun's native named-import bindings.
 // Capture native functions, then register stable mocked exports for fault injection.
 const nativeFs = { ...process.getBuiltinModule('fs') }
+const nativeFsPromises = { ...process.getBuiltinModule('fs/promises') }
 // Scope every retirement entrypoint to real fixture PIDs on Linux and macOS.
 // Host-wide fail-closed policy has one explicit native-lease integration case.
 const fixtureProcessIds = new Set([process.pid])
@@ -88,6 +89,7 @@ const releaseEditorViewRoot = scopeEditorViewTestProcesses({
   operation: releaseEditorViewRootUnscoped,
 })
 const fsMocks = {
+  linkSync: vi.fn(nativeFs.linkSync),
   openSync: vi.fn(nativeFs.openSync),
   fchmodSync: vi.fn(nativeFs.fchmodSync),
   readSync: vi.fn(nativeFs.readSync),
@@ -98,6 +100,8 @@ const fsMocks = {
   realpathSync: vi.fn(nativeFs.realpathSync),
 }
 vi.mock('node:fs', () => ({ ...nativeFs, ...fsMocks }))
+const fsPromisesMocks = { link: vi.fn(nativeFsPromises.link) }
+vi.mock('node:fs/promises', () => ({ ...nativeFsPromises, ...fsPromisesMocks }))
 const nativeChildProcess = {
   ...ChildProcess,
   spawn: trackEditorViewTestSpawn({
@@ -191,6 +195,8 @@ afterEach(async () => {
     editorCliProcesses.delete(child)
   }
   fsMocks.openSync.mockReset().mockImplementation(nativeFs.openSync)
+  fsMocks.linkSync.mockReset().mockImplementation(nativeFs.linkSync)
+  fsPromisesMocks.link.mockReset().mockImplementation(nativeFsPromises.link)
   fsMocks.fchmodSync.mockReset().mockImplementation(nativeFs.fchmodSync)
   fsMocks.readSync.mockReset().mockImplementation(nativeFs.readSync)
   fsMocks.readFileSync.mockReset().mockImplementation(nativeFs.readFileSync)
@@ -3149,6 +3155,57 @@ describe('editor view publisher', () => {
       cleanup(seed)
     }
   })
+
+  it.each(['EMLINK', 'EPERM'])(
+    'publishes a private readonly copy after persistent %s',
+    async (code) => {
+      const seed = makeFixture()
+      const fixture = makeFixture()
+      const stderr = vi.spyOn(process.stderr, 'write')
+      try {
+        await publishEditorView(seed.options)
+        const options = {
+          ...fixture.options,
+          contentStore: seed.options.contentStore!,
+          backingRoots: [fixture.nodeModules],
+        }
+        let directFailures = 0
+        let substitutionFailures = 0
+        fsMocks.linkSync.mockImplementation((source, destination) => {
+          if (String(source).startsWith(`${options.contentStore}/`) === true) {
+            directFailures += 1
+            throw Object.assign(new Error(code), { code })
+          }
+          return nativeFs.linkSync(source, destination)
+        })
+        fsPromisesMocks.link.mockImplementation(async (source, destination) => {
+          if (String(source).startsWith(`${options.contentStore}/`) === true) {
+            substitutionFailures += 1
+            throw Object.assign(new Error(code), { code })
+          }
+          return nativeFsPromises.link(source, destination)
+        })
+        const record = await publishEditorView(options)
+        expect(directFailures).toBeGreaterThan(0)
+        expect(substitutionFailures).toBeGreaterThan(0)
+        const payload = join(fixture.editorRoot, record.snapshot, 'node_modules', 'dep', 'index.js')
+        expect(statSync(payload).nlink).toBe(1)
+        expect(statSync(payload).mode & 0o777).toBe(0o444)
+        expect(readFileSync(payload, 'utf8')).toBe('export default 1\n')
+        await expect(checkEditorView(options)).resolves.toEqual(record)
+        const content = stderr.mock.calls
+          .map(([line]) => String(line))
+          .findLast((line) => line.startsWith('[editor-view-content] '))!
+        expect(
+          JSON.parse(content.slice('[editor-view-content] '.length)).copiedFiles,
+        ).toBeGreaterThan(0)
+      } finally {
+        stderr.mockRestore()
+        cleanup(fixture)
+        cleanup(seed)
+      }
+    },
+  )
 
   it('fails closed when a declared backing root changes while materializing', async () => {
     const fixture = makeFixture()

@@ -6,7 +6,6 @@ import {
   copyFileSync,
   linkSync,
   lstatSync,
-  unlinkSync,
   readFileSync,
   realpathSync,
   type BigIntStats,
@@ -1075,13 +1074,14 @@ const substituteCandidate = async ({
     try {
       await link(file.blob, temporary)
     } catch (error) {
-      if (hasCode({ error: error, code: 'EXDEV' }) === false) throw error
+      if (['EXDEV', 'EMLINK', 'EPERM'].some((code) => hasCode({ error, code })) === false)
+        throw error
       // The caller already proved independent byte ownership. Keeping this
       // normalized inode avoids another redundant copy of its admitted bytes.
       if (
         unchanged({ left: file.status, right: await lstat(file.path, { bigint: true }) }) === false
       )
-        fail(`candidate payload changed during cross-device fallback: ${file.path}`)
+        fail(`candidate payload changed during private-copy fallback: ${file.path}`)
       sharing.copiedFiles += 1
       sharing.copiedBytes += Number(file.status.size)
       return
@@ -1481,10 +1481,8 @@ export const reuseEditorViewSourceFiles = async ({
             throw error
           }
           const linked = lstatSync(file.path, { bigint: true })
-          if (linked.nlink < 2n || unchanged({ left: status, right: linked }) === false) {
-            unlinkSync(file.path)
-            continue
-          }
+          if (linked.nlink < 2n || unchanged({ left: status, right: linked }) === false)
+            fail(`reused blob changed while linking: ${blob}`)
           remember({ status: linked, digest: file.entry.digest })
           reused.add(file.path)
           afterLink?.()

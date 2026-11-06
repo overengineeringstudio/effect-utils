@@ -46,6 +46,41 @@ manifest_pr_writer_decide() {
     echo skip-superseded
   fi
 }
+# A queued PR owns this branch until it merges; the next main run refreshes it.
+# Lookup failures deliberately fall through to the push, preserving write errors.
+manifest_pr_writer_push() {
+  local repository="$1" branch="$2" queued output status
+  if queued="$(GH_TOKEN="${GITHUB_TOKEN:?}" gh api graphql \
+    -f query='query($owner: String!, $name: String!, $branch: String!) {
+      repository(owner: $owner, name: $name) {
+        pullRequests(headRefName: $branch, baseRefName: "main", states: OPEN, first: 100) {
+          nodes { mergeQueueEntry { id } }
+        }
+      }
+    }' -f owner="${repository%%/*}" -f name="${repository#*/}" -f branch="$branch" \
+    --jq '[.data.repository.pullRequests.nodes[] | .mergeQueueEntry != null] | any')"; then
+    if [ "$queued" = true ]; then
+      manifest_pr_writer_skip_queued
+      return
+    fi
+  fi
+  if output="$(git push --force-with-lease origin "HEAD:refs/heads/$branch" 2>&1)"; then
+    printf '%s\n' "$output" >&2
+    echo open
+  else
+    status=$?
+    printf '%s\n' "$output" >&2
+    if [[ "$output" == *'GH006:'* && "$output" == *'merge queue'* ]]; then
+      manifest_pr_writer_skip_queued
+    else
+      return "$status"
+    fi
+  fi
+}
+manifest_pr_writer_skip_queued() {
+  echo '::notice::Manifest PR: skip-queued; the queued PR will merge; the next main run (writer or main-tip guard) proposes a fresh manifest' >&2
+  echo skip-queued
+}
 # A skipped run must not leave a different bootstrap proposal available to merge.
 manifest_pr_heal_decide() {
   local decision="$1" proposal="$2" pr_manifest="$3" pins="$4" rows
