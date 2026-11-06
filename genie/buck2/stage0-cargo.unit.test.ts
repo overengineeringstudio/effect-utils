@@ -1,8 +1,10 @@
 import { expect, it } from 'bun:test'
-import { readFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { dirname, join } from 'node:path'
 
 import { cargoAuthority, refreshCommand } from './stage0-cargo-resolver.ts'
-import { stage0CargoProjection } from './stage0-cargo.ts'
+import { assertStage0SourceInputs, stage0CargoProjection } from './stage0-cargo.ts'
 import { projectStage0Workspace, stage0Tools } from './stage0-workspace.ts'
 
 const manifest = readFileSync('rust/Cargo.toml', 'utf8')
@@ -46,4 +48,31 @@ it('fails loud on stale versions, checksums, or altered projected records', () =
   expect(cargoAuthority({ projection: changed, rootLock: lock, readMember })).not.toBe(
     seed.authority,
   )
+})
+
+it('rejects unprojected build scripts, manifest build keys and Cargo configuration', () => {
+  for (const [path, content] of [
+    ['rust/tool/build.rs', 'fn main() {}'],
+    ['rust/tool/Cargo.toml', '[package]\nname = "tool"\nbuild = "custom.rs"\n'],
+    ['rust/tool/Cargo.toml', '[package]\nname = "tool"\nbuild = false\n'],
+    ['rust/.cargo/config', ''],
+    ['rust/.cargo/config.toml', ''],
+    ['.cargo/config', ''],
+    ['.cargo/config.toml', ''],
+    ['.cargo/config.backup', ''],
+  ] as const) {
+    const root = mkdtempSync(join(tmpdir(), 'stage0-source-guard-'))
+    try {
+      mkdirSync(join(root, 'rust/tool'), { recursive: true })
+      writeFileSync(join(root, 'rust/tool/Cargo.toml'), '[package]\nname = "tool"\n')
+      assertStage0SourceInputs({ members: ['tool'], root })
+      mkdirSync(dirname(join(root, path)), { recursive: true })
+      writeFileSync(join(root, path), content)
+      expect(() => assertStage0SourceInputs({ members: ['tool'], root })).toThrow(
+        'the source filter of nix/buck2-stage0-tools.nix has to be extended first',
+      )
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  }
 })
