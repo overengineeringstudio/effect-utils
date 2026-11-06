@@ -558,6 +558,7 @@ const withStoreLock = async <T>({
     } catch (error) {
       outcome = { error }
     }
+    const restoreAt = performance.now()
     const errors: unknown[] = []
     for (const directory of directories.values()) {
       try {
@@ -578,6 +579,7 @@ const withStoreLock = async <T>({
         }
       }
     }
+    recordViewTiming({ phase: 'casDirectoryMs', started: restoreAt })
     if (errors.length !== 0)
       throw new AggregateError(
         'error' in outcome ? [outcome.error, ...errors] : errors,
@@ -943,10 +945,12 @@ const substituteCandidate = async ({
   readonly blobStatus: BigIntStats
   readonly sharing: EditorViewContentSharing
 }): Promise<void> => {
+  const timings = editorViewTimingContext.getStore()
   if (unchanged({ left: file.status, right: await lstat(file.path, { bigint: true }) }) === false)
     fail(`candidate payload changed before linking: ${file.path}`)
   if (sameInode({ left: file.status, right: blobStatus }) === true) {
     sharing.linkedFiles += 1
+    if (timings !== undefined) timings.filesAlreadyShared = (timings.filesAlreadyShared ?? 0) + 1
     return
   }
   const temporary = join(dirname(file.path), `.${basename(file.path)}.share-${randomUUID()}`)
@@ -978,6 +982,7 @@ const substituteCandidate = async ({
     await rename(temporary, file.path)
     linked = false
     sharing.linkedFiles += 1
+    if (timings !== undefined) timings.filesLinked = (timings.filesLinked ?? 0) + 1
   } finally {
     if (linked === true) await unlinkIfPresent(temporary)
   }
@@ -1005,6 +1010,7 @@ const shareBatch = async ({
     | undefined
   readonly sharing: EditorViewContentSharing
 }): Promise<void> => {
+  const timings = editorViewTimingContext.getStore()
   let pending: readonly PreparedFile[] = files
   let failure: { readonly error: unknown } | undefined
   try {
@@ -1040,23 +1046,28 @@ const shareBatch = async ({
               false
             )
               fail(`candidate payload changed before store installation: ${file.path}`)
+            const directoryAt = performance.now()
             const shard = await shardDirectory({
               contentStore: contentStore,
               shard: file.digest.slice(0, 2),
               directories: directories,
               create: true,
             })
+            recordViewTiming({ phase: 'casDirectoryMs', started: directoryAt })
             if (shard === undefined) fail(`content-store shard is absent: ${file.blob}`)
+            const verifyAt = performance.now()
             let blobStatus = await statusIfPresent(file.blob)
             if (blobStatus !== undefined) {
               requireBlob({ path: file.blob, status: blobStatus, mode: file.mode })
               const knownDigest = verified.get(verificationKey(blobStatus))
               if (knownDigest === undefined) {
                 retry.push(file)
+                recordViewTiming({ phase: 'casExistingBlobVerifyMs', started: verifyAt })
                 continue
               }
               if (knownDigest !== file.digest)
                 fail(`blob content does not match its address: ${file.blob}`)
+              recordViewTiming({ phase: 'casExistingBlobVerifyMs', started: verifyAt })
             } else {
               const source = file.copy ?? { path: file.path, status: file.status }
               if (
@@ -1066,7 +1077,10 @@ const shareBatch = async ({
                 }) === false
               )
                 fail(`prepared blob source changed before installation: ${source.path}`)
+              const writableAt = performance.now()
               await makeWritable(shard)
+              recordViewTiming({ phase: 'casDirectoryMs', started: writableAt })
+              const installAt = performance.now()
               const temporary = join(shard.path, `.tmp-${randomUUID()}`)
               let linked = false
               try {
@@ -1094,6 +1108,7 @@ const shareBatch = async ({
                   // Final blob paths are never opened for writing or truncation.
                   await link(temporary, file.blob)
                   sharing.createdBlobs += 1
+                  if (timings !== undefined) timings.blobsCreated = (timings.blobsCreated ?? 0) + 1
                 } catch (error) {
                   if (hasCode({ error: error, code: 'EEXIST' }) === false) throw error
                   const raced = await statusIfPresent(file.blob)
@@ -1114,13 +1129,16 @@ const shareBatch = async ({
                 })
               } finally {
                 if (linked === true) await unlinkIfPresent(temporary)
+                recordViewTiming({ phase: 'casBlobInstallMs', started: installAt })
               }
             }
+            const viewLinkAt = performance.now()
             await substituteCandidate({
               file: file,
               blobStatus: blobStatus ?? fail(`installed blob is absent: ${file.blob}`),
               sharing: sharing,
             })
+            recordViewTiming({ phase: 'casViewLinkMs', started: viewLinkAt })
           }
           return retry
         },

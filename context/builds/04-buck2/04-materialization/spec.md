@@ -277,6 +277,16 @@ mixed-shard transactions. Every transaction retains byte/inode checks, repair,
 and readonly restoration under the same flock. Per-view `[editor-view-payload]`
 diagnostics report `casTransactions` acquisitions and `casRepairMs` repair time
 inside the existing `casHeldMs` interval.
+Held-time details separate existing-blob lookup/verified-inode checks, new blob
+installation, candidate linking, and directory opening/readonly restoration;
+ordinary existing-blob byte verification remains in preflight outside the lock.
+`filesLinked` counts actual candidate replacements; `filesAlreadyShared` counts
+same-inode substitutions avoided among processed files (including new blob
+sources); `blobsCreated` counts successful new CAS installs. Source-manifest
+reuse skips sharing entirely. Unclassified control/candidate checks remain in
+the nonnegative `casUnclassifiedMs` residual: held time minus these details and repair.
+`filesReused` counts source-manifest skips; `filesProcessed` counts all other
+files successfully shared or retained by the cross-device fallback.
 
 CI bootstrap writes a job-local `.devenv/editor-view-bootstrap-receipt.json`
 after successful publication. Repeated bootstrap in Unit tests reuses that

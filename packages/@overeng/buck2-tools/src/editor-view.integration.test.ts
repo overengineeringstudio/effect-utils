@@ -680,11 +680,15 @@ describe('editor view publisher', () => {
 
   it('publishes a dereferenced byte-owned snapshot with distinct inodes and stable hops', async () => {
     const fixture = makeFixture()
+    const stderr = vi.spyOn(process.stderr, 'write')
     try {
       const packageManifest = join(fixture.packageDir, 'package.json')
       const manifestContent = readFileSync(packageManifest)
       const manifestIdentity = statSync(packageManifest, { bigint: true }).ino
       const record = await publishEditorView(fixture.options)
+      expect(stderr).toHaveBeenCalledWith(
+        expect.stringMatching(/^\[editor-view-payload\] .*"casUnclassifiedMs":\d/),
+      )
       expect(readFileSync(packageManifest)).toEqual(manifestContent)
       expect(statSync(packageManifest, { bigint: true }).ino).not.toBe(manifestIdentity)
       expect(statSync(fixture.consumerCache).mode & 0o200).not.toBe(0)
@@ -754,6 +758,7 @@ describe('editor view publisher', () => {
       expect(existsSync(join(fixture.editorRoot, '.legacy', legacyEntries[0]!))).toBe(false)
       await expect(checkEditorView(fixture.options)).resolves.toEqual(record)
     } finally {
+      stderr.mockRestore()
       cleanup(fixture)
     }
   })
