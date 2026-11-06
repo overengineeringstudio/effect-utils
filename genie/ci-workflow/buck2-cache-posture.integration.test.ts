@@ -555,6 +555,9 @@ describe('generated CI cache trust behavior', () => {
   it('roundtrips libraries during preparation, then smokes outputs and publishes only on request', () => {
     const work = mkdtempSync(join(tmpdir(), 'compiled-products-contract-'))
     const script = fileURLToPath(new URL('../ci-scripts/compiled-products.sh', import.meta.url))
+    const compileScript = fileURLToPath(
+      new URL('../ci-scripts/publish-compile-products.sh', import.meta.url),
+    )
     const names = ['compiled-one', 'compiled-two', 'native-one']
     const outputPaths = names.map((name) => join(work, `output-${name}`))
     const shellOutput = join(work, 'output-shell')
@@ -571,6 +574,8 @@ describe('generated CI cache trust behavior', () => {
       'library.buck2Product.compileProduct',
     ]
     const availablePackages = compileAttrs.map((attr) => attr.split('.')[0]!)
+    const compileBuild = `build --no-link --print-out-paths --keep-going ${compileAttrs.map((attr) => `${work}#${attr}`).join(' ')}`
+    const compilePush = `push overeng-effect-utils ${compileAttrs.map(() => compileOutput).join(' ')}\n`
     const roundtripCommand = `build --impure --no-link --print-build-logs --file nix/buck2-products/library-roundtrip.nix --argstr repositoryPath ${work} --argstr productName library --argstr sourcePath ${librarySource}`
     const logs = {
       NIX_LOG: join(work, 'nix.log'),
@@ -626,7 +631,15 @@ if [[ "$*" = *'--log-format raw'* ]]; then
   exit "\${BUILD_STATUS:-0}"
 elif [[ "$*" = *".compileProduct"* ]]; then
   [ "$FAIL_PRODUCT" != compile-realize ] || exit 1
-  if [ "$FAIL_PRODUCT" = compile-invalid ]; then printf '/invalid\\n'; else printf '%s\\n' '${compileOutput}'; fi
+  if [ "$FAIL_PRODUCT" = compile-partial ]; then
+    if [ "$1" = build ]; then exit 1; fi
+    [[ "$*" = *'${compileAttrs[0]}' || "$*" = *'${compileAttrs.at(-1)}' ]] || exit 1
+    printf '%s\\n' '${compileOutput}'; exit 0
+  fi
+  for ref in "$@"; do
+    [[ "$ref" = *".compileProduct" ]] || continue
+    if [ "$FAIL_PRODUCT" = compile-invalid ]; then printf '/invalid\\n'; else printf '%s\\n' '${compileOutput}'; fi
+  done
   exit 0
 elif [[ "$*" = *".buck2Product"* ]]; then
   printf '%s\\n' '${JSON.stringify([{ outputs: { out: librarySource } }])}'; exit 0
@@ -642,7 +655,7 @@ printf '%s\\n' "$BUILD_JSON"`,
       executable({
         path: join(work, 'tools/cachix'),
         content: `printf '%s\\n' "$*" >> "$CACHE_LOG"
-if [ "$#" = 3 ]; then [ "$FAIL_PRODUCT" != compile-push ]; else [ "$FAIL_PRODUCT" != final-push ]; fi`,
+if [[ "$*" = *'${libraryOutput}'* ]]; then [ "$FAIL_PRODUCT" != final-push ]; else [ "$FAIL_PRODUCT" != compile-push ]; fi`,
       })
       const outputs = [outputPaths[2]!, shellOutput, rulesOutput, outputPaths[1]!, outputPaths[0]!]
       outputs.unshift(libraryOutput)
@@ -655,6 +668,7 @@ if [ "$#" = 3 ]; then [ "$FAIL_PRODUCT" != compile-push ]; else [ "$FAIL_PRODUCT
         ref = 'refs/heads/main',
         repository = 'overengineeringstudio/effect-utils',
         available = availablePackages,
+        compileOnly = false,
       }: {
         args: string[]
         selectedOutputs?: string[]
@@ -664,10 +678,11 @@ if [ "$#" = 3 ]; then [ "$FAIL_PRODUCT" != compile-push ]; else [ "$FAIL_PRODUCT
         ref?: string
         repository?: string
         available?: string[]
+        compileOnly?: boolean
       }) => {
         for (const path of Object.values(logs)) writeFileSync(path, '')
         return Bun.spawnSync({
-          cmd: ['bash', script, ...args],
+          cmd: compileOnly === true ? ['bash', compileScript, work] : ['bash', script, ...args],
           cwd: work,
           env: {
             ...process.env,
@@ -696,6 +711,9 @@ if [ "$#" = 3 ]; then [ "$FAIL_PRODUCT" != compile-push ]; else [ "$FAIL_PRODUCT
         { repository: 'other/repo' },
       ]) {
         expect(run({ args: ['--push'], ...trust }).exitCode).not.toBe(0)
+        expect(readFileSync(logs.NIX_LOG, 'utf8')).toBe('')
+        expect(readFileSync(logs.CACHE_LOG, 'utf8')).toBe('')
+        expect(run({ args: [], compileOnly: true, ...trust }).exitCode).not.toBe(0)
         expect(readFileSync(logs.NIX_LOG, 'utf8')).toBe('')
         expect(readFileSync(logs.CACHE_LOG, 'utf8')).toBe('')
       }
@@ -730,20 +748,37 @@ if [ "$#" = 3 ]; then [ "$FAIL_PRODUCT" != compile-push ]; else [ "$FAIL_PRODUCT
             : [
                 `eval --impure --json ${work}#packages --apply packages: builtins.attrNames packages.\${builtins.currentSystem}`,
               ]),
-          ...(args.length === 0
-            ? []
-            : compileAttrs.map((attr) => `build --no-link --print-out-paths ${work}#${attr}`)),
+          ...(args.length === 0 ? [] : [compileBuild]),
         ])
         expect(readFileSync(logs.SMOKE_LOG, 'utf8').trim().split('\n')).toEqual(
           names.map((name) => `${name} --help`),
         )
         expect(readFileSync(logs.CACHE_LOG, 'utf8')).toBe(
-          args.length === 0
-            ? ''
-            : `push overeng-effect-utils ${outputs.join(' ')}\n` +
-                compileAttrs.map(() => `push overeng-effect-utils ${compileOutput}\n`).join(''),
+          args.length === 0 ? '' : `push overeng-effect-utils ${outputs.join(' ')}\n${compilePush}`,
         )
       }
+      expect(run({ args: [], compileOnly: true }).exitCode).toBe(0)
+      expect(readFileSync(logs.NIX_LOG, 'utf8').trim().split('\n')).toEqual([
+        `eval --impure --json ${work}#packages --apply packages: builtins.attrNames packages.\${builtins.currentSystem}`,
+        compileBuild,
+      ])
+      expect(readFileSync(logs.CACHE_LOG, 'utf8')).toBe(compilePush)
+      const partial = run({ args: [], compileOnly: true, failProduct: 'compile-partial' })
+      expect(partial.exitCode).toBe(0)
+      expect(partial.stderr.toString()).toContain(
+        '::warning title=Compile cache realization failed::',
+      )
+      expect(readFileSync(logs.NIX_LOG, 'utf8').trim().split('\n')).toEqual([
+        `eval --impure --json ${work}#packages --apply packages: builtins.attrNames packages.\${builtins.currentSystem}`,
+        compileBuild,
+        ...compileAttrs.map((attr) => `path-info ${work}#${attr}`),
+      ])
+      expect(readFileSync(logs.CACHE_LOG, 'utf8')).toBe(
+        `push overeng-effect-utils ${compileOutput} ${compileOutput}\n`,
+      )
+      expect(run({ args: [], compileOnly: true, available: [] }).exitCode).toBe(0)
+      expect(readFileSync(logs.NIX_LOG, 'utf8').trim().split('\n')).toHaveLength(1)
+      expect(readFileSync(logs.CACHE_LOG, 'utf8')).toBe('')
       const platformFiltered = run({
         args: ['--push'],
         available: availablePackages.filter((name) => name !== 'native-one'),
