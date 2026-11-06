@@ -186,6 +186,35 @@ chmod 444 "$worktree/readonly/nested/file"
 chmod 555 "$worktree/readonly" "$worktree/readonly/nested" "$TEMP_ROOT/external"
 ln -s "$TEMP_ROOT/external" "$worktree/external-link"
 
+# pnpm source-input snapshots share immutable file inodes with an external store.
+# Teardown may unlock owned directories, but must not chmod the shared payload.
+pnpm_snapshot="$worktree/inputs/pnpm-source"
+pnpm_store="$TEMP_ROOT/pnpm-store"
+mkdir -p "$pnpm_snapshot/generations/1" "$pnpm_store"
+printf 'shared package contents\n' >"$pnpm_store/package.json"
+chmod 444 "$pnpm_store/package.json"
+ln "$pnpm_store/package.json" "$pnpm_snapshot/generations/1/package.json"
+ln -s generations/1 "$pnpm_snapshot/current"
+chmod 555 "$pnpm_snapshot" "$pnpm_snapshot/generations" "$pnpm_snapshot/generations/1"
+pnpm_snapshot_state() {
+  "$BUN" -e '
+    const fs = require("node:fs");
+    const [snapshot, store] = process.argv.slice(1);
+    const metadata = (path) => {
+      const stat = fs.lstatSync(path);
+      return [stat.mode, stat.ino, stat.nlink, stat.size, stat.mtimeMs, stat.ctimeMs];
+    };
+    console.log(JSON.stringify([
+      metadata(`${snapshot}/generations/1/package.json`),
+      metadata(`${store}/package.json`),
+      fs.readFileSync(`${store}/package.json`, "utf8"),
+      metadata(`${snapshot}/current`),
+      fs.readlinkSync(`${snapshot}/current`),
+    ]));
+  ' "$pnpm_snapshot" "$pnpm_store"
+}
+pnpm_before="$(pnpm_snapshot_state)"
+
 # Both an escaping and an in-base ancestor symlink must be refused before any
 # daemon, watch, cache or directory mutation. Use isolated fake state homes.
 attack_home="$TEMP_ROOT/attack-home"
@@ -231,8 +260,10 @@ fi
 (cd "$worktree" && "$DEVENV" tasks run worktree:teardown --mode single)
 # Also prove an unreachable Watchman remains a successful no-op.
 (cd "$worktree" && WATCHMAN_SOCK="$TEMP_ROOT/missing.sock" "$DEVENV" tasks run worktree:teardown --mode single)
+[ "$(pnpm_snapshot_state)" = "$pnpm_before" ] || fail 'teardown changed a pnpm shared payload or snapshot symlink'
 git -C "$main" worktree remove "$worktree"
 [ ! -e "$worktree" ] || fail 'ordinary git worktree remove failed'
+[ "$(cat "$pnpm_store/package.json")" = 'shared package contents' ] || fail 'worktree removal changed the external pnpm store'
 echo 'PASS: two live Buck isolations stopped; buckd/watch/root caches/editor roots retired; second and unreachable-Watchman runs exit 0; unrelated state and file modes preserved; git worktree remove succeeds without chmod'
 
 # A descendant absolute checkout path shares its parent's buckd namespace, but
