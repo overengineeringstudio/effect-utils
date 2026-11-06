@@ -1,0 +1,11 @@
+[package]
+name = "worktree-lease"
+workspace = ".."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+clap = { version = "4", features = ["derive", "env"] }
+libc = "0.2"

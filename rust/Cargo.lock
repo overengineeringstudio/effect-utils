@@ -3874,6 +3874,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "worktree-lease"
+version = "0.0.0"
+dependencies = [
+ "clap",
+ "libc",
+]
+
+[[package]]
 name = "writeable"
 version = "0.6.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"

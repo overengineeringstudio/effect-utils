@@ -308,6 +308,12 @@ freshness lane) runs `content-address:contract:check`, which uses that same runt
 and requires byte-identical regeneration of the committed contract and provenance.
 The check restores checkout read-only permissions without rewriting any bytes.
 
+### Worktree leases
+
+`worktree-lease run WORKTREE --mode shared|exclusive --try [--agent AGENT] [--job JOB] -- COMMAND...`
+holds a per-worktree lease until command exit. Exclusive callers require an `agent/…` identity.
+Refusal exits are 75 (busy), 1 (safety), and 2 (input). Release never removes the lock file.
+
 ### Work storage contract
 
 [`@overeng/work-storage`](./packages/@overeng/work-storage) and the
