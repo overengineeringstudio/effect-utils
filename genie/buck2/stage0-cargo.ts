@@ -1,4 +1,10 @@
-import { inputReadFileSync } from '../../packages/@overeng/genie/src/runtime/node/inputs.ts'
+import { join } from 'node:path'
+
+import {
+  inputExistsSync,
+  inputReadFileSync,
+  inputReaddirSync,
+} from '../../packages/@overeng/genie/src/runtime/node/inputs.ts'
 import { cargoAuthority, refreshCommand, resolveCargoLock } from './stage0-cargo-resolver.ts'
 import { projectStage0Workspace, stage0Tools, type Stage0Workspace } from './stage0-workspace.ts'
 
@@ -17,6 +23,33 @@ const text = (value: unknown): string => {
 }
 const read = (path: string) => inputReadFileSync(path, 'utf8')
 
+const reject = (path: string): never => {
+  throw new Error(
+    `Unsupported stage-zero Cargo input (${path}); the source filter of nix/buck2-stage0-tools.nix has to be extended first`,
+  )
+}
+/** Reject Cargo inputs not yet represented by the stage-zero Nix source filter. */
+export const assertStage0SourceInputs = ({
+  members,
+  root = '.',
+}: {
+  members: string[]
+  root?: string
+}) => {
+  for (const config of ['rust/.cargo/config', 'rust/.cargo/config.toml'])
+    if (inputExistsSync(join(root, config)) === true) reject(config)
+  if (inputExistsSync(join(root, '.cargo')) === true)
+    for (const name of inputReaddirSync(join(root, '.cargo')))
+      if (name.startsWith('config') === true) reject(`.cargo/${name}`)
+  for (const member of members) {
+    const manifest = `rust/${member}/Cargo.toml`
+    const pkg = object(object(Bun.TOML.parse(read(join(root, manifest)))).package)
+    if (Object.hasOwn(pkg, 'build') === true) reject(`${manifest}: package.build`)
+    const script = `rust/${member}/build.rs`
+    if (inputExistsSync(join(root, script)) === true) reject(script)
+  }
+}
+
 export const stage0CargoProjection = () => {
   const refresh = process.env.STAGE0_CARGO_REFRESH === '1'
   const previous =
@@ -33,6 +66,7 @@ export const stage0CargoProjection = () => {
         }),
         lock: rootLock,
       }
+      assertStage0SourceInputs({ members: projection.members })
       const seed = refresh === true ? {} : object(object(previous)[tool])
       projection.lock = refresh === true ? resolveCargoLock(projection) : text(seed.lock)
       const authority = cargoAuthority({ projection, rootLock, readMember })

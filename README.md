@@ -890,6 +890,8 @@ addressing. `checks.<system>.stage0-cargo-metadata` validates each tool with
 The PR/merge-group quality lane builds this check. Tool sources currently support
 `Cargo.toml` and `src/**/*.rs`; future `build.rs`, `include!`, or `.cargo` inputs
 must extend that explicit source contract before adoption.
+Static Genie validation rejects build scripts, manifest `build` keys, and root or
+Rust workspace Cargo configuration until that source filter is extended.
 
 Fixed-source Nix products use `NIX_BUILD_CORES` for Buck execution (`build -j`),
 Tokio workers (`build --config build.num_tokio_workers`), and daemon blocking
