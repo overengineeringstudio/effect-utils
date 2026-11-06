@@ -495,7 +495,6 @@ describe('host-wide editor snapshot content store', () => {
       expectIdleStoreLock(contentStore)
     })
   })
-
   it('keeps full shard batches and rejects a changed candidate in a mixed tail', async () => {
     await withStore(async ({ contentStore, candidate }) => {
       const directory = candidate('full-and-tail')
