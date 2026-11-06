@@ -3545,7 +3545,15 @@ const publishEditorViewCoordinated = async ({
         })
       }
       enterPhase('payload')
-      const payloadTimings: Record<string, number> = {}
+      const payloadTimings: Record<string, number> = {
+        casExistingBlobVerifyMs: 0,
+        casBlobInstallMs: 0,
+        casViewLinkMs: 0,
+        casDirectoryMs: 0,
+        filesLinked: 0,
+        filesAlreadyShared: 0,
+        blobsCreated: 0,
+      }
       const payloadStartedAt = performance.now()
       const payload = await editorViewTimingContext.run(
         payloadTimings,
@@ -3619,6 +3627,9 @@ const publishEditorViewCoordinated = async ({
         },
       })
       payloadTimings.shareMs = performance.now() - sharingStartedAt
+      payloadTimings.filesReused = materializedRoots?.reusedFiles.size ?? 0
+      payloadTimings.filesProcessed =
+        sharing.linkedFiles + sharing.copiedFiles - payloadTimings.filesReused
       if (materializedRoots !== undefined)
         writeFileSync(
           join(candidate, editorViewSourceManifestName),
@@ -3629,6 +3640,17 @@ const publishEditorViewCoordinated = async ({
         process.stderr.write(`[editor-view-content] ${JSON.stringify(sharing)}\n`)
       const durationMs = performance.now() - payloadStartedAt
       const otherMs = durationMs - payloadTimings.snapshotFingerprintMs - payloadTimings.shareMs
+      const casClassifiedMs = [
+        'casExistingBlobVerifyMs',
+        'casBlobInstallMs',
+        'casViewLinkMs',
+        'casDirectoryMs',
+        'casRepairMs',
+      ].reduce((sum, phase) => sum + (payloadTimings[phase] ?? 0), 0)
+      payloadTimings.casUnclassifiedMs = Math.max(
+        0,
+        (payloadTimings.casHeldMs ?? 0) - casClassifiedMs,
+      )
       process.stderr.write(
         `[editor-view-payload] ${JSON.stringify({ phase: 'payload-detail', packagePath: options.package, durationMs, ...payloadTimings, otherMs })}\n`,
       )
