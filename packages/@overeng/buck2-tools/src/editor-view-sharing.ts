@@ -25,7 +25,7 @@ import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:pat
 import { setTimeout } from 'node:timers/promises'
 import { fileURLToPath } from 'node:url'
 
-import { recordViewTiming } from './typescript-runner.ts'
+import { editorViewTimingContext, recordViewTiming } from './typescript-runner.ts'
 
 const batchSize = 128
 const blobNamePattern = /^([a-f0-9]{64})-(0444|0555)$/
@@ -532,6 +532,8 @@ const withStoreLock = async <T>({
   const waitingAt = performance.now()
   const lock = await acquireLock({ contentStore, afterStoreLockContended })
   recordViewTiming({ phase: 'casWaitMs', started: waitingAt })
+  const timings = editorViewTimingContext.getStore()
+  if (timings !== undefined) timings.casTransactions = (timings.casTransactions ?? 0) + 1
   const heldAt = performance.now()
   try {
     const marker = Buffer.alloc(1)
@@ -541,11 +543,13 @@ const withStoreLock = async <T>({
     // Mark before repair too: a crash during repair must leave the next holder
     // able to finish it. Only successful directory restoration clears this byte.
     await lock.write('1', 0, 'utf8')
+    const repairAt = performance.now()
     await repairStore({
       contentStore,
       dirty: bytesRead === 0 || marker[0] === 49 || writableRepair !== undefined,
       ...(writableRepair === undefined ? {} : { writableRepair }),
     })
+    recordViewTiming({ phase: 'casRepairMs', started: repairAt })
     const directories: Directories = new Map()
     let outcome: { readonly value: T } | { readonly error: unknown }
     try {
@@ -1200,16 +1204,9 @@ export const shareSnapshotFiles = async ({
     copiedBytes: 0,
     createdBlobs: 0,
   }
-  // Group bounded link transactions by shard, so each transaction opens and
-  // restores one shard instead of most of the store's 256 directories.
+  // Full transactions stay shard-local; compact their final tails to amortize repair.
   const batches = new Map<string, PreparedFile[]>()
-  const flush = async ({
-    shard,
-    files,
-  }: {
-    shard: string
-    files: PreparedFile[]
-  }): Promise<void> => {
+  const flush = async (files: PreparedFile[]): Promise<void> => {
     if (files.length === 0) return
     await shareBatch({
       contentStore: store,
@@ -1226,7 +1223,6 @@ export const shareSnapshotFiles = async ({
         mode: file.mode,
         blobKey: verificationKey(lstatSync(file.path, { bigint: true })),
       })
-    batches.delete(shard)
   }
   const prepare = async (path: string): Promise<PreparedFile> => {
     const status = await normalizeCandidate(path)
@@ -1259,7 +1255,10 @@ export const shareSnapshotFiles = async ({
       const batch = batches.get(shard) ?? []
       batch.push(file)
       batches.set(shard, batch)
-      if (batch.length === batchSize) await flush({ shard, files: batch })
+      if (batch.length === batchSize) {
+        await flush(batch)
+        batches.delete(shard)
+      }
     }
   }
   for await (const path of candidateFiles ?? regularFiles({ directory: root })) {
@@ -1268,7 +1267,17 @@ export const shareSnapshotFiles = async ({
     if (paths.length === 4) await prepareBatch()
   }
   await prepareBatch()
-  for (const [shard, files] of batches) await flush({ shard, files })
+  const tail: PreparedFile[] = []
+  for (const files of batches.values()) {
+    for (const file of files) {
+      tail.push(file)
+      if (tail.length === batchSize) {
+        await flush(tail)
+        tail.length = 0
+      }
+    }
+  }
+  await flush(tail)
   return sharing
 }
 /* eslint-enable no-await-in-loop */
