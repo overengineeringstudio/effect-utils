@@ -271,6 +271,13 @@ is reported only after workers settle and locks are released. Each successful
 view retains its stderr timing record. Snapshot/retention formats, lock ownership,
 explicit recovery, and whole-workspace authority checks are unchanged.
 
+CAS sharing commits at most 128 prepared files per transaction. Full batches
+remain shard-local; undersized final shard tails are combined into bounded
+mixed-shard transactions. Every transaction retains byte/inode checks, repair,
+and readonly restoration under the same flock. Per-view `[editor-view-payload]`
+diagnostics report `casTransactions` acquisitions and `casRepairMs` repair time
+inside the existing `casHeldMs` interval.
+
 CI bootstrap writes a job-local `.devenv/editor-view-bootstrap-receipt.json`
 after successful publication. Repeated bootstrap in Unit tests reuses that
 receipt before publication admission only when scope, graph, authority,
