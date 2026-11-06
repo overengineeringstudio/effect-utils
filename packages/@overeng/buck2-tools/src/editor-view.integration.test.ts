@@ -3107,6 +3107,49 @@ describe('editor view publisher', () => {
     }
   })
 
+  it('discards a failed direct-link candidate and preserves disjoint payload counters', async () => {
+    const seed = makeFixture()
+    const fixture = makeFixture()
+    const stderr = vi.spyOn(process.stderr, 'write')
+    try {
+      await publishEditorView(seed.options)
+      const options = {
+        ...fixture.options,
+        contentStore: seed.options.contentStore!,
+        backingRoots: [fixture.nodeModules],
+      }
+      await expect(
+        publishEditorView({
+          ...options,
+          afterDirectLink: () => {
+            throw new Error('direct-link fault')
+          },
+        }),
+      ).rejects.toThrow('direct-link fault')
+      expect(ownedSnapshots(fixture)).toHaveLength(0)
+      expect(readdirSync(join(fixture.editorRoot, '.store'))).toEqual([])
+      for (const shard of readdirSync(options.contentStore))
+        expect(statSync(join(options.contentStore, shard)).mode & 0o777).toBe(0o555)
+      await publishEditorView(options)
+      const line = stderr.mock.calls
+        .map(([line]) => String(line))
+        .findLast((line) => line.startsWith('[editor-view-payload] '))!
+      const counters = JSON.parse(line.slice('[editor-view-payload] '.length))
+      expect(counters.filesDirectLinked).toBeGreaterThan(0)
+      expect(counters.filesReused).toBe(0)
+      expect(counters.filesProcessed).toBe(
+        counters.filesDirectLinked + counters.filesLinked + counters.filesAlreadyShared,
+      )
+      expect(counters.filesHashFirstAttempts).toBe(
+        counters.filesDirectLinked + counters.filesDirectLinkFallback,
+      )
+    } finally {
+      stderr.mockRestore()
+      cleanup(fixture)
+      cleanup(seed)
+    }
+  })
+
   it('fails closed when a declared backing root changes while materializing', async () => {
     const fixture = makeFixture()
     try {
