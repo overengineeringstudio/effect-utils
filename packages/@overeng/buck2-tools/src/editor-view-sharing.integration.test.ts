@@ -36,6 +36,7 @@ import {
   editorViewStagingCreatorIdentity,
   shareSnapshotFiles,
 } from './editor-view-sharing.ts'
+import { editorViewTimingContext } from './typescript-runner.ts'
 
 /** Reads one Buck-declared immutable tool path; nothing resolves through an ambient PATH. */
 const requireTool = (name: string): string => {
@@ -409,6 +410,74 @@ describe('host-wide editor snapshot content store', () => {
           .split(/\s+/)[19]
         expect(western.native).toMatch(new RegExp(`^linux-[a-f0-9]{32}-${starttime}$`))
       }
+    })
+  })
+
+  it('coalesces mixed-shard tails into transactions of at most 128 proven files', async () => {
+    await withStore(async ({ contentStore, candidate }) => {
+      const directory = candidate('mixed-tails')
+      const files = Array.from({ length: 257 }, (_, index) => {
+        const bytes = `distinct payload ${index}`
+        return { path: payload(directory, `${index}.js`, bytes), bytes }
+      })
+      const shards = new Set(
+        files.map(({ bytes }) => createHash('sha256').update(bytes).digest('hex').slice(0, 2)),
+      )
+      expect(shards.size).toBeGreaterThan(100)
+      const sizes: number[] = []
+      const timings: Record<string, number> = {}
+      await editorViewTimingContext.run(timings, shareSnapshotFiles, {
+        candidate: directory,
+        contentStore,
+        afterStoreLock: () => {
+          sizes.push(0)
+        },
+        afterBlobInstall: () => {
+          sizes[sizes.length - 1]! += 1
+        },
+      })
+      expect(sizes).toEqual([128, 128, 1])
+      expect(timings.casTransactions).toBe(3)
+      expect(timings.casRepairMs).toBeGreaterThanOrEqual(0)
+      for (const { path, bytes } of files) {
+        expect(readFileSync(path, 'utf8')).toBe(bytes)
+        expect(inode(path)).toBe(inode(blobPath(contentStore, bytes)))
+        expect(mode(path)).toBe(0o444)
+      }
+      expectReadonlyStore(contentStore)
+      expectIdleStoreLock(contentStore)
+    })
+  })
+
+  it('keeps full shard batches and rejects a changed candidate in a mixed tail', async () => {
+    await withStore(async ({ contentStore, candidate }) => {
+      const directory = candidate('full-and-tail')
+      for (let index = 0; index < 128; index++) payload(directory, `${index}.js`, 'full shard')
+      const changed = payload(directory, 'changed.js', 'tail one')
+      payload(directory, 'other.js', 'tail two')
+      let transactions = 0
+      await expect(
+        shareSnapshotFiles({
+          candidate: directory,
+          contentStore,
+          candidateFiles: [
+            ...Array.from({ length: 128 }, (_, index) => join(directory, `${index}.js`)),
+            changed,
+            join(directory, 'other.js'),
+          ],
+          afterStoreLock: () => {
+            transactions += 1
+            if (transactions === 2) {
+              chmodSync(changed, 0o644)
+              writeFileSync(changed, 'changed after hashing')
+            }
+          },
+        }),
+      ).rejects.toThrow('candidate payload changed before store installation')
+      expect(transactions).toBe(2)
+      expect(inode(join(directory, '0.js'))).toBe(inode(blobPath(contentStore, 'full shard')))
+      expectReadonlyStore(contentStore)
+      expectIdleStoreLock(contentStore)
     })
   })
 
