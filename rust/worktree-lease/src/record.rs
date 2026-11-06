@@ -10,7 +10,7 @@ use std::{
 };
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Holder {
     pub agent: String,
     pub pid: u32,
@@ -18,7 +18,7 @@ pub struct Holder {
     pub host: String,
 }
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Record {
     pub schema: u8,
     pub creator_seat: String,
@@ -106,6 +106,8 @@ impl Record {
         holder: Holder,
         ttl: u64,
     ) -> Result<Self> {
+        let scope = Lease::open(identity.clone())?;
+        scope.acquire(false, false)?;
         let record = Self {
             schema: 1,
             creator_seat: creator,
@@ -124,6 +126,15 @@ impl Record {
         let mut temporary =
             tempfile::NamedTempFile::new_in(&identity.admin).map_err(|_| Refusal::InvalidInput)?;
         serde_json::to_writer(&mut temporary, self).map_err(|_| Refusal::InvalidInput)?;
+        if temporary
+            .as_file()
+            .metadata()
+            .map_err(|_| Refusal::InvalidInput)?
+            .len()
+            > 65_536
+        {
+            return Err(Refusal::InvalidInput);
+        }
         temporary
             .as_file()
             .sync_all()
@@ -137,7 +148,7 @@ impl Record {
         } else {
             fs::hard_link(temporary.path(), destination).map_err(|_| Refusal::InvalidInput)?;
         }
-        Ok(())
+        sync_directory(&identity.admin)
     }
 }
 impl Lease {
@@ -153,4 +164,20 @@ impl Lease {
         self.validate()?;
         Ok(record)
     }
+}
+fn sync_directory(path: &std::path::Path) -> Result<()> {
+    OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_DIRECTORY | libc::O_NOFOLLOW | libc::O_CLOEXEC)
+        .open(path)
+        .and_then(|directory| directory.sync_all())
+        .map_err(|_| Refusal::InvalidInput)
+}
+#[test]
+fn directory_sync_errors_propagate() {
+    let root = tempfile::tempdir().unwrap();
+    assert_eq!(
+        sync_directory(&root.path().join("missing")),
+        Err(Refusal::InvalidInput)
+    );
 }

@@ -23,17 +23,26 @@ fn publication_and_scoped_renewal() {
         .success());
     let identity = Identity::resolve(root.path()).unwrap();
     assert_eq!(Record::inspect(&identity).unwrap(), None);
+    let oversized = format!("agent/{}", "x".repeat(65_536));
     for (creator, purpose, ttl) in [
         ("invalid", "gate", 10),
         ("agent/test", "invalid", 10),
         ("agent/test", "gate", 0),
         ("agent/test", "gate", u64::MAX),
+        (oversized.as_str(), "gate", 10),
     ] {
         assert_eq!(
             Record::create(&identity, creator.into(), purpose.into(), holder(), ttl),
             Err(Refusal::InvalidInput)
         );
     }
+    let exclusive = Lease::open(identity.clone()).unwrap();
+    exclusive.acquire(true, false).unwrap();
+    assert_eq!(
+        Record::create(&identity, "agent/test".into(), "gate".into(), holder(), 10),
+        Err(Refusal::Busy)
+    );
+    drop(exclusive);
     let barrier = Barrier::new(2);
     let results = std::thread::scope(|scope| {
         let create = |creator: &str| {
@@ -63,14 +72,9 @@ fn publication_and_scoped_renewal() {
     let mut next_holder = holder();
     next_holder.agent = "agent/renewed".into();
     let renewed = lease.renew(next_holder.clone(), 20).unwrap();
-    assert_eq!(
-        (&renewed.creator_seat, &renewed.purpose, &renewed.created_at),
-        (
-            &original.creator_seat,
-            &original.purpose,
-            &original.created_at
-        )
-    );
+    assert_eq!(renewed.creator_seat, original.creator_seat);
+    assert_eq!(renewed.purpose, original.purpose);
+    assert_eq!(renewed.created_at, original.created_at);
     assert_eq!(renewed.holder, next_holder);
     assert!(renewed.expires_at > original.expires_at);
     assert_eq!(lease.renew(holder(), 0), Err(Refusal::InvalidInput));
@@ -84,6 +88,10 @@ fn publication_and_scoped_renewal() {
     assert!(!names
         .iter()
         .any(|name| name.to_string_lossy().starts_with(".tmp")));
+    let mut unknown = serde_json::to_value(original).unwrap();
+    unknown["unknown"] = serde_json::json!(true);
+    fs::write(identity.admin.join("gate-lease.json"), unknown.to_string()).unwrap();
+    assert_eq!(Record::inspect(&identity), Err(Refusal::UnsafeLock));
     fs::write(identity.admin.join("gate-lease.json"), b"{broken").unwrap();
     assert_eq!(Record::inspect(&identity), Err(Refusal::UnsafeLock));
 }

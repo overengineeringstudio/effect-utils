@@ -47,7 +47,7 @@ impl Refusal {
     }
 }
 pub type Result<T, E = Refusal> = std::result::Result<T, E>;
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Identity {
     pub worktree: PathBuf,
     pub admin: PathBuf,
