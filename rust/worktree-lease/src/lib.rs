@@ -53,8 +53,7 @@ impl Identity {
             git.env_remove(key);
         }
         let output = git
-            .arg("-C")
-            .arg(path)
+            .current_dir(path)
             .args([
                 "rev-parse",
                 "--path-format=absolute",
