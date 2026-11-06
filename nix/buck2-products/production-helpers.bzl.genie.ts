@@ -5,5 +5,6 @@ import inventory from './production-helpers.json.genie.ts'
 
 export default createGenieOutput({
   data: inventory.data,
-  stringify: (context) => productionHelperBuck(sourceBuck.stringify(context), inventory.data.files),
+  stringify: (context) =>
+    productionHelperBuck({ source: sourceBuck.stringify(context), files: inventory.data.files }),
 })
