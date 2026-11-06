@@ -1,8 +1,8 @@
+//! Linux-only PDEATHSIG protects the direct payload; macOS has no parent-death protection here.
 use clap::{Parser, ValueEnum};
-#[cfg(target_os = "linux")]
-use std::os::unix::process::CommandExt;
 use std::{
     io::Write,
+    os::unix::process::CommandExt,
     path::PathBuf,
     process::Command,
     sync::atomic::{AtomicBool, AtomicI32, Ordering},
@@ -13,7 +13,6 @@ use worktree_lease::{exit_code, Identity, Lease, Refusal, Result};
 static SIGNAL: AtomicI32 = AtomicI32::new(0);
 static CHILD: AtomicI32 = AtomicI32::new(0);
 static WAITING: AtomicBool = AtomicBool::new(false);
-static FORWARD: AtomicBool = AtomicBool::new(false);
 unsafe extern "C" {
     fn setitimer(
         which: libc::c_int,
@@ -21,19 +20,11 @@ unsafe extern "C" {
         old: *mut libc::itimerval,
     ) -> libc::c_int;
 }
-/// Same-group broadcasts are not relayed. An outside-group group kill remains
-/// indistinguishable from a direct signal and can reach the child twice.
-extern "C" fn signal(sig: i32, info: *mut libc::siginfo_t, _: *mut libc::c_void) {
+extern "C" fn signal(sig: i32) {
     if sig == libc::SIGALRM {
         let _ = SIGNAL.compare_exchange(0, sig, Ordering::SeqCst, Ordering::SeqCst);
     } else {
         SIGNAL.store(sig, Ordering::SeqCst);
-        // SAFETY: SA_SIGINFO supplies initialized information for this handler.
-        let sender = unsafe { (*info).si_pid() };
-        FORWARD.store(
-            sender > 0 && unsafe { libc::getpgid(sender) != libc::getpgrp() },
-            Ordering::SeqCst,
-        );
     }
     forward(sig);
     if WAITING.load(Ordering::SeqCst) && sig != libc::SIGALRM {
@@ -43,9 +34,9 @@ extern "C" fn signal(sig: i32, info: *mut libc::siginfo_t, _: *mut libc::c_void)
 fn forward(sig: i32) {
     let pid = CHILD.load(Ordering::SeqCst);
     // SAFETY: lock-free atomics and signal-safe kernel operations only.
-    if pid > 0 && sig != libc::SIGALRM && FORWARD.load(Ordering::SeqCst) {
+    if pid > 0 && sig != libc::SIGALRM {
         unsafe {
-            libc::kill(pid, sig);
+            libc::kill(-pid, sig);
         }
     }
 }
@@ -86,6 +77,18 @@ fn emit(tag: &str, reason: &str, warning: Option<&str>, job: Option<&str>) {
         },
     );
     let _ = stderr.write_all(b"\n");
+}
+fn foreground(group: i32) -> Result<()> {
+    // SAFETY: ignore SIGTTOU only while transferring the controlling terminal.
+    unsafe {
+        let previous = libc::signal(libc::SIGTTOU, libc::SIG_IGN);
+        let result = libc::tcsetpgrp(libc::STDIN_FILENO, group);
+        libc::signal(libc::SIGTTOU, previous);
+        if result != 0 {
+            return Err(Refusal::UnsafeLock);
+        }
+    }
+    Ok(())
 }
 #[derive(Clone, ValueEnum)]
 enum Mode {
@@ -132,7 +135,6 @@ fn run(args: &Args) -> Result<i32> {
     unsafe {
         let mut action: libc::sigaction = std::mem::zeroed();
         action.sa_sigaction = signal as *const () as usize;
-        action.sa_flags = libc::SA_SIGINFO;
         libc::sigemptyset(&mut action.sa_mask);
         for sig in [libc::SIGINT, libc::SIGTERM, libc::SIGHUP, libc::SIGALRM] {
             if libc::sigaction(sig, &action, std::ptr::null_mut()) != 0 {
@@ -160,6 +162,15 @@ fn run(args: &Args) -> Result<i32> {
             }
         }
     }
+    let mut blocked: libc::sigset_t = unsafe { std::mem::zeroed() };
+    // SAFETY: defer forwarding until the child process group is published.
+    unsafe {
+        libc::sigemptyset(&mut blocked);
+        libc::sigaddset(&mut blocked, libc::SIGINT);
+        libc::sigaddset(&mut blocked, libc::SIGTERM);
+        libc::sigaddset(&mut blocked, libc::SIGHUP);
+        libc::sigprocmask(libc::SIG_BLOCK, &blocked, std::ptr::null_mut());
+    }
     let interrupted = SIGNAL.load(Ordering::SeqCst);
     if interrupted == libc::SIGALRM {
         return Err(Refusal::Deadline);
@@ -167,7 +178,7 @@ fn run(args: &Args) -> Result<i32> {
     if interrupted != 0 {
         if args.json {
             emit(
-                "UnsafeLock",
+                "Cancelled",
                 "acquisition cancelled",
                 warning,
                 args.job.as_deref(),
@@ -180,7 +191,14 @@ fn run(args: &Args) -> Result<i32> {
     acquired?;
     lease.validate()?;
     let mut command = Command::new(&args.command[0]);
-    command.args(&args.command[1..]);
+    command.args(&args.command[1..]).process_group(0);
+    // SAFETY: restore the inherited signal mask before executing the payload.
+    unsafe {
+        command.pre_exec(move || {
+            libc::sigprocmask(libc::SIG_UNBLOCK, &blocked, std::ptr::null_mut());
+            Ok(())
+        });
+    }
     #[cfg(target_os = "linux")]
     // SAFETY: the post-fork hook uses only kernel operations and allocation-free OS errors.
     unsafe {
@@ -201,11 +219,21 @@ fn run(args: &Args) -> Result<i32> {
         i32::try_from(child.id()).map_err(|_| Refusal::UnsafeLock)?,
         Ordering::SeqCst,
     );
-    let interrupted = SIGNAL.load(Ordering::SeqCst);
-    if interrupted != 0 {
-        forward(interrupted);
+    // SAFETY: terminal queries have no memory preconditions.
+    let terminal = unsafe { libc::tcgetpgrp(0) == libc::getpgrp() };
+    if terminal {
+        if foreground(CHILD.load(Ordering::SeqCst)).is_err() {
+            unsafe { libc::kill(-CHILD.load(Ordering::SeqCst), libc::SIGKILL) };
+            let _ = child.wait();
+            return Err(Refusal::UnsafeLock);
+        }
+        unsafe { libc::kill(-CHILD.load(Ordering::SeqCst), libc::SIGCONT) };
     }
-    let status = child.wait().map_err(|_| Refusal::UnsafeLock)?;
+    unsafe { libc::sigprocmask(libc::SIG_UNBLOCK, &blocked, std::ptr::null_mut()) };
+    let status = child.wait().map_err(|_| Refusal::UnsafeLock);
+    if terminal {
+        foreground(unsafe { libc::getpgrp() })?;
+    }
     CHILD.store(0, Ordering::SeqCst);
     if args.json {
         emit(
@@ -216,7 +244,7 @@ fn run(args: &Args) -> Result<i32> {
         );
     }
     drop(lease);
-    Ok(exit_code(status))
+    Ok(exit_code(status?))
 }
 fn main() {
     let args = match Args::try_parse() {

@@ -1,5 +1,4 @@
 source tests/try.sh
-set -m
 printf '%s/.git\n' "$root/linked" > "$admin/gitdir"
 hold() {
     "$LEASE" run "$root/linked" --mode "$1" --try --agent agent/test -- sh -c 'echo ready > "$1"; read -r line < "$2"' sh "$root/ready" "$root/release" &
@@ -48,19 +47,10 @@ wait_open "$waiter"
 kill -TERM "$waiter"
 result=0; wait "$waiter" || result=$?
 test "$result" = 143
-grep -q 'acquisition cancelled' "$root/error"
+python3 -c 'import json,sys; assert json.load(open(sys.argv[1]))["_tag"] == "Cancelled"' "$root/error"
 test ! -e "$root/payload"
 release
-for sig in INT TERM HUP; do
-    hold shared
-    kill -"$sig" "$holder"
-    result=0; wait "$holder" || result=$?
-    case "$sig" in
-        INT) test "$result" = 130 ;;
-        TERM) test "$result" = 143 ;;
-        HUP) test "$result" = 129 ;;
-    esac
-done
+
 for mutation in registration lock; do
     hold exclusive
     "$LEASE" run "$root/linked" --mode shared --await 5 --agent agent/test --json -- false 2>"$root/error" &
@@ -78,9 +68,10 @@ for mutation in registration lock; do
     grep -q Retired "$root/error"
     printf '%s/.git\n' "$root/linked" > "$admin/gitdir"
 done
-set +m
 python3 tests/group.py "$LEASE" "$root/linked" "$root"
 python3 tests/group.py "$LEASE" "$root/linked" "$root" HUP
+python3 tests/group.py "$LEASE" "$root/linked" "$root" INT
+python3 tests/terminal.py "$LEASE" "$root/linked"
 python3 tests/death.py "$LEASE" "$root/linked" "$root"
 run "$root/linked" exclusive true
 refuse 2 InvalidInput "$LEASE" run --json
