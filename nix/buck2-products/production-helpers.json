@@ -1,0 +1,19 @@
+{
+  "applicationEntries": ["packages/@overeng/buck2-tools/src/editor-view-lifecycle.ts"],
+  "files": [
+    "packages/@overeng/buck2-tools/package.json",
+    "packages/@overeng/buck2-tools/src/bun-test-preload.ts",
+    "packages/@overeng/buck2-tools/src/bun-test-runner.ts",
+    "packages/@overeng/buck2-tools/src/bun-test-timeout.ts",
+    "packages/@overeng/buck2-tools/src/editor-view-lifecycle.ts",
+    "packages/@overeng/buck2-tools/src/javascript-runner.ts",
+    "packages/@overeng/buck2-tools/src/package-command-runner.ts",
+    "packages/@overeng/buck2-tools/src/package-tree.ts",
+    "packages/@overeng/buck2-tools/src/real-path.ts",
+    "packages/@overeng/buck2-tools/src/test-verdict.ts",
+    "packages/@overeng/buck2-tools/src/typescript-runner.ts",
+    "packages/@overeng/buck2-tools/tsconfig.json"
+  ],
+  "schema": "effect-utils/production-helpers/v1",
+  "schemaVersion": 1
+}
