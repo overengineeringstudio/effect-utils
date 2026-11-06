@@ -1,5 +1,5 @@
 let
-  flake = builtins.getFlake ("git+file://" + toString ../..);
+  flake = builtins.getFlake ("git+file://" + toString ../.. + "?shallow=1");
   system = builtins.currentSystem;
   pkgs = import flake.inputs.nixpkgs { inherit system; };
 in
