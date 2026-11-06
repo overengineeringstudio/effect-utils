@@ -11,17 +11,17 @@ import { rootWorkspacePackages } from '../../package.json.genie.ts'
 import aiGatewayEdgePkg from '../../packages/@overeng/ai-gateway-edge/package.json.genie.ts'
 import buck2ToolsPkg from '../../packages/@overeng/buck2-tools/package.json.genie.ts'
 import ciToolsPkg from '../../packages/@overeng/ci-tools/package.json.genie.ts'
-import ghCiUtilsPkg from '../../packages/@overeng/gh-ci-utils/package.json.genie.ts'
 import geniePkg from '../../packages/@overeng/genie/package.json.genie.ts'
-import megarepoPkg from '../../packages/@overeng/megarepo/package.json.genie.ts'
+import { projectionArtifact } from '../../packages/@overeng/genie/src/runtime/mod.ts'
+import { inputReadFileSync as readFileSync } from '../../packages/@overeng/genie/src/runtime/node/inputs.ts'
 import type { WorkspacePackageLike } from '../../packages/@overeng/genie/src/runtime/package-json/mod.ts'
+import ghCiUtilsPkg from '../../packages/@overeng/gh-ci-utils/package.json.genie.ts'
+import megarepoPkg from '../../packages/@overeng/megarepo/package.json.genie.ts'
 import notionCliPkg from '../../packages/@overeng/notion-cli/package.json.genie.ts'
 import notionMdPkg from '../../packages/@overeng/notion-md/package.json.genie.ts'
 import npmReleasePkg from '../../packages/@overeng/npm-release/package.json.genie.ts'
 import oxcConfigPkg from '../../packages/@overeng/oxc-config/package.json.genie.ts'
 import tuiStoriesPkg from '../../packages/@overeng/tui-stories/package.json.genie.ts'
-import { projectionArtifact } from '../../packages/@overeng/genie/src/runtime/mod.ts'
-import { inputReadFileSync as readFileSync } from '../../packages/@overeng/genie/src/runtime/node/inputs.ts'
 
 const javascriptProducts = [
   [
@@ -78,13 +78,18 @@ const sourcePackages: Record<string, WorkspacePackageLike> = {
 }
 
 // Preserve the declared pnpm view's workspace dependencies, not its development sources.
-const helperDependencyPaths = projectBuckProductSourcePaths({ pkg: buck2ToolsPkg })
-  .filter((path) => path !== 'packages/@overeng/buck2-tools')
+const helperDependencyPaths = projectBuckProductSourcePaths({ pkg: buck2ToolsPkg }).filter(
+  (path) => path !== 'packages/@overeng/buck2-tools',
+)
 const cacheSourcePaths = (pkg: WorkspacePackageLike): readonly string[] =>
-  [...new Set([
-    ...projectBuckProductSourcePaths({ pkg, additionalPaths: ['patches'] }),
-    ...helperDependencyPaths,
-  ])].filter((path) => path !== 'packages/@overeng/buck2-tools').toSorted()
+  [
+    ...new Set([
+      ...projectBuckProductSourcePaths({ pkg, additionalPaths: ['patches'] }),
+      ...helperDependencyPaths,
+    ]),
+  ]
+    .filter((path) => path !== 'packages/@overeng/buck2-tools')
+    .toSorted()
 
 const packageProducts = [
   '@overeng/agent-session-ingest',
