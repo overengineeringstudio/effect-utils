@@ -285,7 +285,8 @@ repository_static_checks(
     "//rust/effect-rust-fixtures/wasm-adapter:static_sources",
     "//rust/effect-rust-macros:static_sources",
     "//rust/effect-rust:static_sources",
-    "//rust/work-storage:static_sources"
+    "//rust/work-storage:static_sources",
+    "//rust/worktree-lease:static_sources"
 ],
     visibility = ["PUBLIC"],
 )
