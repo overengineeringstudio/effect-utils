@@ -293,9 +293,15 @@ CAS addresses by digest plus normalized executable mode. A stable source stat
 through the end of the copy lets sharing consume that digest without hashing the
 candidate again; a source race discards the hint. The independent full candidate
 fingerprint comparison against the admitted roots remains mandatory.
-`hashFirstMs` sums source hashing time, `hashFirstMissMs` the hashing time of
-address misses, and `filesHashFirstAttempts`/`filesHashFirstMiss` count those
-lookups. Source hashing and existing-blob byte validation stay outside CAS flock.
+Validated readonly CAS hits link directly into absent candidate paths: exact
+inode recheck, link and post-link proof share the GC exclusion. Missing/replaced
+blobs and EXDEV/EMLINK/EPERM fall back to the private-copy path.
+`hashFirstMs` sums source hashing time; `hashFirstMissMs` sums hashing time for
+attempts that fall back. `filesHashFirstAttempts`/`filesHashFirstMiss` count initial
+lookups/address misses. Source and blob hashing stay outside CAS flock.
+`filesDirectLinked` is disjoint from `filesReused` and normal sharing outcomes;
+`filesProcessed = filesDirectLinked + normal outcomes`; total is processed plus reused.
+`filesDirectLinkFallback` is a subset of normal outcomes; direct-linked plus fallback equals attempts.
 
 CI bootstrap writes a job-local `.devenv/editor-view-bootstrap-receipt.json`
 after successful publication. Repeated bootstrap in Unit tests reuses that
