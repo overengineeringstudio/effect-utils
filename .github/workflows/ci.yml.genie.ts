@@ -1479,7 +1479,10 @@ const extraJobs: Record<string, any> = {
       {
         name: 'Propose published product manifest',
         if: "steps.publisher-app-config.outputs.enabled == 'true'",
-        env: githubAccessTokenEnv('${{ steps.publisher-app-token.outputs.token }}'),
+        env: {
+          ...githubAccessTokenEnv('${{ steps.publisher-app-token.outputs.token }}'),
+          GITHUB_TOKEN: '${{ github.token }}',
+        },
         run: withCiSourceRoot(
           [
             'set -euo pipefail',
@@ -1506,7 +1509,8 @@ const extraJobs: Record<string, any> = {
             '  echo "::notice::Manifest PR: $decision; superseded: a newer main run owns the proposal"',
             '  exit 0',
             'fi',
-            'git push --force-with-lease origin "HEAD:refs/heads/$branch"',
+            'decision="$(manifest_pr_writer_push "$GITHUB_REPOSITORY" "$branch")"',
+            'if [ "$decision" = skip-queued ]; then exit 0; fi',
             `body='Updates the v2 manifest for bootstrap changes, daily safety, or bootstrap healing. Correctness rests on #2346; published still receives the full manifest on every main push. Skips leave matching bootstrap proposals untouched; stale bootstrap proposals are refreshed or closed if main already matches.'`,
             'pr="$(gh pr list --base main --head "$branch" --state open --json number --jq \'.[0].number // empty\')"',
             'if [ -n "$pr" ]; then',
