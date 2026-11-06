@@ -25,7 +25,13 @@ const dependencies = (block: string) =>
   [
     ...(block.match(/^dependencies = \[\n([\s\S]*?)^\]/m)?.[1] ?? '').matchAll(/^ "([^"]+)",$/gm),
   ].map((match) => match[1]!)
-const dependencyKey = (dependency: string, available: LockRecord[]) => {
+const dependencyKey = ({
+  dependency,
+  available,
+}: {
+  dependency: string
+  available: LockRecord[]
+}) => {
   const [, name, version, source] = /^(\S+)(?: (\S+))?(?: \((.*)\))?$/.exec(dependency) ?? []
   const matches = available.filter(
     ({ key }) =>
@@ -37,11 +43,15 @@ const dependencyKey = (dependency: string, available: LockRecord[]) => {
     throw new Error(`Invalid projected Cargo dependency: ${dependency}; ${refreshCommand}`)
   return matches[0]!.key
 }
-export const cargoAuthority = (
-  projection: CargoProjection,
-  rootLock: string,
-  readMember: (member: string) => string,
-) => {
+export const cargoAuthority = ({
+  projection,
+  rootLock,
+  readMember,
+}: {
+  projection: CargoProjection
+  rootLock: string
+  readMember: (member: string) => string
+}) => {
   const original = records(rootLock),
     projected = records(projection.lock)
   const roots = new Map(original.map(({ key, block }) => [key, block]))
@@ -53,11 +63,12 @@ export const cargoAuthority = (
         withoutDependencies(block) !== withoutDependencies(candidate) ||
         dependencies(candidate).some(
           (dependency) =>
-            !dependencies(block).some(
+            dependencies(block).some(
               (rootDependency) =>
-                dependencyKey(dependency, projected) === dependencyKey(rootDependency, original),
-            ),
-        )
+                dependencyKey({ dependency, available: projected }) ===
+                dependencyKey({ dependency: rootDependency, available: original }),
+            ) === false,
+        ) === true
       ) {
         throw new Error(`Stale stage-zero Cargo record; refresh: ${refreshCommand}`)
       }
@@ -79,7 +90,7 @@ export const cargoAuthority = (
 export const resolveCargoLock = (projection: CargoProjection) => {
   const cargo = process.env.STAGE0_CARGO
   const vendor = process.env.STAGE0_VENDOR
-  if (!cargo || !vendor)
+  if (cargo === undefined || vendor === undefined)
     throw new Error(`Refresh needs pinned Cargo and Nix vendor; run: ${refreshCommand}`)
   mkdirSync('tmp', { recursive: true })
   const root = mkdtempSync('tmp/stage0-refresh-')
