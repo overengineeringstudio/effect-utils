@@ -340,6 +340,7 @@ const checkWorkspaceContract = ({
     'pingping',
     'pingping-netinfo-macos',
     'work-storage',
+    'worktree-lease',
   ]
   const cargoPackageNames: string[] = []
   for (const memberPath of cargoMemberPaths) {
