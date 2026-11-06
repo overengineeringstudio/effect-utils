@@ -339,8 +339,8 @@ const make = ({
       return fs.exists(gitFilePath)
     },
 
-    // Admit namespaces using the canonical marker at host/owner/repo only.
-    // Never recursively search an unclassified co-tenant's payload for members.
+    // Admission is a bounded breadth-first marker search, never a full census.
+    // Exhausting admission limits means foreign; admitted census stays fail-closed.
     listRepos: withStoreEnumeration('megarepo/store/list-repos')(function* (telemetry) {
       const exists = yield* fs.exists(basePath)
       if (exists === false) {
@@ -442,25 +442,38 @@ const make = ({
             )
             if ((yield* telemetry.isDirectory({ fs, path: entryPath })) === false) return
 
-            const owners = yield* fs.readDirectory(entryPath)
+            const pending: Array<{ path: string; depth: number }> = [{ path: entryPath, depth: 1 }]
+            let reads = 0
+            let entriesChecked = 0
             let memberNamespace = false
-            for (const owner of owners) {
-              if (owner.startsWith('.') === true) continue
-              const ownerPath = `${entryPath}${owner}`
-              if ((yield* isStoreDirectory({ fs, path: ownerPath })) === false) continue
-              for (const repo of yield* fs.readDirectory(ownerPath)) {
-                if (repo.startsWith('.') === true) continue
-                if ((yield* isStoreDirectory({ fs, path: `${ownerPath}/${repo}` })) === false)
-                  continue
-                const marker = `${ownerPath}/${repo}/.bare`
-                if ((yield* fs.exists(marker)) === true) {
-                  if ((yield* isStoreDirectory({ fs, path: marker })) === true) {
-                    memberNamespace = true
-                    break
-                  }
+            for (let index = 0; index < pending.length; index++) {
+              const current = pending[index]!
+              if (current.depth >= 3 && (yield* fs.exists(`${current.path}/.bare`)) === true) {
+                if ((yield* isStoreDirectory({ fs, path: `${current.path}/.bare` })) === true) {
+                  memberNamespace = true
+                  break
                 }
               }
-              if (memberNamespace === true) break
+              if (current.depth >= STORE_REPO_WALK_MAX_DEPTH) continue
+              if ((yield* fs.exists(`${current.path}/.git`)) === true) continue
+              if (
+                current.depth > 1 &&
+                ((yield* fs.exists(`${current.path}/.state`)) === true ||
+                  (yield* fs.exists(`${current.path}/.locks`)) === true)
+              )
+                continue
+              // Per root: at most 128 directory reads and 4096 candidate entries,
+              // bounding both IO and the BFS queue even for very broad caches.
+              if (reads >= 128) break
+              reads++
+              for (const child of yield* fs.readDirectory(current.path)) {
+                if (entriesChecked >= 4096) break
+                entriesChecked++
+                if (child.startsWith('.') === true) continue
+                const path = `${current.path.replace(/\/$/, '')}/${child}`
+                if ((yield* isStoreDirectory({ fs, path })) === true)
+                  pending.push({ path, depth: current.depth + 1 })
+              }
             }
             if (memberNamespace === false) {
               telemetry.foreignNamespace(entryPath)
