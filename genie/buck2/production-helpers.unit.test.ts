@@ -10,7 +10,7 @@ import {
 import { buck2StagedRuntimes } from './runtime-modules.ts'
 
 const source = readFileSync(`${helperRoot}/BUCK`, 'utf8')
-const generated = readFileSync('nix/buck2-products/production-helpers.BUCK', 'utf8')
+const generated = readFileSync('nix/buck2-products/production-helpers.bzl', 'utf8')
 
 describe('production helper projection', () => {
   it('commits the complete derived runtime and application import closure', () => {
@@ -54,6 +54,8 @@ describe('production helper projection', () => {
   })
 
   it('copies every production target from development with identical non-source attributes', () => {
+    expect(generated.startsWith('# Generated file - DO NOT EDIT\n')).toBe(true)
+    expect(generated.split('\n').some((line) => line.startsWith('//'))).toBe(false)
     expect(generated.endsWith(productionHelperBuck(source, inventory.files))).toBe(true)
     const key = (block: string) => /\n    name = "([^"]+)",/.exec(block)?.[1] ?? block.split('(')[0]
     const withoutSources = (block: string) => block.split('\n')

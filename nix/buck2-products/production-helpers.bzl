@@ -1,5 +1,6 @@
-// Generated file - DO NOT EDIT
-// Source: production-helpers.BUCK.genie.ts
+# Generated file - DO NOT EDIT
+# Source: production-helpers.bzl.genie.ts
+
 load("//buck2/package_tools.bzl", "package_command_runtime")
 load("//buck2:materialization.bzl", "runtime_modules")
 load("//buck2:materialization.bzl", "export_materialization_inputs", "package_view")
