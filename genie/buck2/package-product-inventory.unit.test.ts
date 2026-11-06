@@ -17,7 +17,11 @@ const effectRust = { name: '@overeng/effect-rust' }
 
 describe('published package product inventory', () => {
   it('publishes data-graph alongside its runtime package dependency closure', () => {
-    for (const name of ['@overeng/data-graph', '@overeng/content-address', '@overeng/effect-rust']) {
+    for (const name of [
+      '@overeng/data-graph',
+      '@overeng/content-address',
+      '@overeng/effect-rust',
+    ]) {
       expect(cacheTargets.data).toContainEqual({
         buildCapabilities: [
           'action-env',
@@ -36,7 +40,6 @@ describe('published package product inventory', () => {
         packageTreePath: `packages/${name}`,
         sourcePaths: [
           'package.json',
-          'packages/@overeng/buck2-tools',
           ...(name === '@overeng/effect-rust' ? [] : ['packages/@overeng/content-address']),
           ...(name === '@overeng/data-graph' ? ['packages/@overeng/data-graph'] : []),
           'packages/@overeng/effect-rust',
@@ -69,7 +72,6 @@ describe('published package product inventory', () => {
       packageTreePath: 'packages/@overeng/effect-rust',
       sourcePaths: [
         'package.json',
-        'packages/@overeng/buck2-tools',
         'packages/@overeng/effect-rust',
         'packages/@overeng/utils-dev',
         'patches',
@@ -147,7 +149,9 @@ describe('product capability inventory', () => {
       )
       expect(productLinuxBuildCapabilities(product)).toEqual(['bubblewrap'])
     }
-    expect(productLinuxBuildCapabilities({ kind: 'native', cargoWorkspaceRoot: 'rust' })).toEqual([])
+    expect(productLinuxBuildCapabilities({ kind: 'native', cargoWorkspaceRoot: 'rust' })).toEqual(
+      [],
+    )
     for (const product of cacheTargets.data) {
       expect(product.linuxBuildCapabilities).toEqual(['bubblewrap'])
     }
