@@ -9,7 +9,7 @@ run_nix_gc_race_retry() {
   local heartbeat="${CI_PROGRESS_HEARTBEAT_SECONDS:-60}"
   local daemon_socket_retry_delay="${NIX_DAEMON_SOCKET_RETRY_DELAY_SECONDS:-2}"
   # Diagnostic threshold only: one bounded dump per attempt, never a deadline.
-  local preparation_threshold="${CI_PREPARATION_DIAGNOSTIC_SECONDS:-600}"
+  local preparation_threshold="${CI_PREPARATION_DIAGNOSTIC_SECONDS:-120}"
   local attempt=1
   local repaired_missing_subpaths=()
   # The guillemets Nix wraps a flake reference in, built from their UTF-8 bytes so this
@@ -76,6 +76,96 @@ marker = os.path.join(state, "preparation-dumped")
 if elapsed < 0 or elapsed < threshold or os.path.exists(marker):
     sys.exit()
 open(marker, "w").close()
+
+def redact(value):
+    # Do not expose URL credentials/query tokens, secret argv options, or known env secrets.
+    value = re.sub(r"(?i)\b[a-z][a-z0-9+.-]*://[^\s]+", "[REDACTED_URL]", value)
+    value = re.sub(r"""(?i)((?:--)?[\w-]*(?:token|password|secret|authorization|credential|api[_-]?key)[\w-]*[=:\s]+)(?:bearer\s+)?(?:"[^"]*"|'[^']*'|[^\s]+)""", r"\1[REDACTED]", value)
+    value = re.sub(r"\b(?:gh[pousr]_[A-Za-z0-9_]+|github_pat_[A-Za-z0-9_]+)\b", "[REDACTED]", value)
+    for key, secret in os.environ.items():
+        if re.search(r"(?i)token|password|secret|credential|api.?key", key) and secret:
+            value = value.replace(secret, "[REDACTED]")
+    home = os.environ.get("HOME")
+    return value.replace(home, "~") if home else value
+
+snapshot = ["Preparation snapshot (best effort; no lock ownership inferred)"]
+def probe(argv):
+    try:
+        result = subprocess.run(argv, capture_output=True, text=True, timeout=2)
+        return result.stdout if result.returncode == 0 else "unavailable"
+    except (OSError, subprocess.SubprocessError):
+        return "unavailable"
+
+try:
+    group = os.getpgid(int(root))
+    # pgid is used only for selection; include wait channel and bounded argv in evidence.
+    processes = probe(["ps", "-axo", "pid=,ppid=,pgid=,stat=,wchan:32=,etime=,args="])
+    rows = [raw.split(None, 6) for raw in processes.splitlines()]
+    rows = [row for row in rows if len(row) == 7 and all(x.isdigit() for x in row[:3])]
+    if not rows:
+        processes = probe(["ps", "-axo", "pid=,ppid=,pgid=,stat=,etime=,args="])
+        for raw in processes.splitlines():
+            fields = raw.split(None, 5)
+            if len(fields) == 6 and all(x.isdigit() for x in fields[:3]):
+                rows.append(fields[:4] + ["-"] + fields[4:])
+    snapshot.append("pid ppid stat wchan etime args (argv truncated to 240 characters)")
+    nix_pids = []
+    for pid, parent, pgid, status, channel, age, argv in rows:
+        if re.search(r"(?:^|/|\s)nix(?:-daemon|-store)?(?:\s|$)", argv):
+            nix_pids.append(pid)
+        if pgid == str(group):
+            if len(snapshot) < 66:
+                snapshot.append(f"{pid} {parent} {status} {channel} {age} {redact(argv)[:240]}")
+            elif len(snapshot) == 66:
+                snapshot.append("[truncated: process group]")
+    if sys.platform == "darwin":
+        daemon = "unavailable"
+        for label in ["org.nixos.nix-daemon", "systems.determinate.nix-daemon"]:
+            daemon = probe(["launchctl", "print", "system/" + label])
+            if daemon != "unavailable":
+                break
+        daemon = "\n".join(daemon.splitlines()[:12])
+    else:
+        daemon = probe(["systemctl", "show", "nix-daemon.service",
+            "--property=ActiveState,SubState,MainPID", "--no-pager"])
+    snapshot.append("nix daemon: " + daemon[:1024])
+    snapshot.append("open /nix/var/nix descriptors (not proof of lock ownership):")
+    for pid in nix_pids[:16]:
+        try:
+            for fd in list(os.scandir(f"/proc/{pid}/fd"))[:256]:
+                try:
+                    target = os.readlink(fd.path)
+                    if target.startswith("/nix/var/nix/"):
+                        snapshot.append(f"pid={pid} fd={fd.name} {target}")
+                except OSError:
+                    pass
+        except OSError:
+            snapshot.append(f"pid={pid}: descriptors unavailable")
+except (OSError, ValueError):
+    snapshot.append("process group unavailable")
+
+# The resolving child sets this directory too; derive it here because child env cannot
+# propagate back to the retry wrapper. Each attempt has its own marker and snapshot.
+diag = os.environ.get("NIX_STORE_DIAGNOSTICS_DIR") or os.path.join(
+    os.environ.get("RUNNER_TEMP", state), "composition-state", "nix-store-diagnostics",
+    "-".join(os.environ.get(key, default) for key, default in
+        [("GITHUB_JOB", "job"), ("RUNNER_OS", "unknown"), ("GITHUB_RUN_ATTEMPT", "0")]))
+try:
+    import glob
+    for path in sorted(glob.glob(os.path.join(diag, "locked-input-prefetch", "*.log")))[:8]:
+        if not os.path.isfile(path):
+            continue
+        with open(path, "rb") as stream:
+            stream.seek(max(0, os.fstat(stream.fileno()).st_size - 4096))
+            snapshot.append("prefetch tail: " + os.path.basename(path))
+            snapshot.extend(stream.read().decode(errors="replace").splitlines()[-20:])
+    os.makedirs(diag, exist_ok=True)
+    import tempfile
+    with tempfile.NamedTemporaryFile(mode="w", prefix="preparation-", suffix=".log",
+                                     dir=diag, delete=False) as stream:
+        stream.write(redact("\n".join(snapshot))[:24576] + "\n")
+except OSError:
+    pass
 
 def safe_name(value):
     # Only basenames: never replay paths, URL credentials/query strings or argv.

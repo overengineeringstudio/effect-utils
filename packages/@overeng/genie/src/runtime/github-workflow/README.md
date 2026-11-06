@@ -171,3 +171,17 @@ reviewable update to existing migration debt, not an exception mechanism.
 ## Type Reference
 
 See [GitHub Actions workflow syntax](https://docs.github.com/en/actions/using-workflows/workflow-syntax-for-github-actions) for detailed documentation on all options.
+
+## Devenv resolution diagnostics
+
+The shared resolver streams Nix build stderr into the job log and an incremental
+`resolve-devenv.nix-build.*.log` in the uploaded Nix diagnostics directory.
+Invalid-store-path repair reads that persisted log; each resolution keeps its own copy.
+
+Before tasks start, the retry wrapper takes one best-effort preparation snapshot per
+attempt after 120 seconds (below the Linux and macOS resolution deadlines). The
+snapshot includes bounded process-group arguments and wait channels, daemon state,
+open Nix state descriptors, and prefetch log tails. URLs, credential options, and
+known environment secrets are redacted before persistence. Descriptor presence is
+not proof of lock ownership. This observation never kills or changes the attempt;
+retry counts, step deadlines, and download settings remain unchanged.
