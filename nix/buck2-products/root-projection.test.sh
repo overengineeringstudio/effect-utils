@@ -117,7 +117,7 @@ nix eval --impure --json --expr '
     products = map checkProduct declarations;
   in
     assert before == after;
-    assert builtins.all (entry: entry.kind != "javascript"
+    assert builtins.all (entry: !(builtins.elem entry.kind [ "javascript" "package" ])
       || (entry ? sourcePaths && builtins.isList entry.sourcePaths && entry.sourcePaths != []))
       (builtins.head inventories).products;
     assert builtins.all (prefix: !(builtins.any (lib.hasPrefix "${toString repo}/${prefix}") files)) excluded;
