@@ -20,7 +20,8 @@ def status(pid):
     return dict(line.split(":", 1) for line in Path(f"/proc/{pid}/status").read_text().splitlines())
 
 
-lease, worktree, root = sys.argv[1:]
+lease, worktree, root, *requested = sys.argv[1:]
+sig = getattr(signal, "SIG" + (requested[0] if requested else "TERM"))
 payload = """
 import os, signal, sys
 count = 0
@@ -29,7 +30,7 @@ def received(*_):
     count += 1
     if count == 1:
         os.kill(os.getpid(), signal.SIGSTOP)
-signal.signal(signal.SIGTERM, received)
+signal.signal(int(sys.argv[2]), received)
 with open(sys.argv[1] + '/ready', 'w') as ready:
     ready.write(str(os.getpid()) + '\\n')
 with open(sys.argv[1] + '/release') as release:
@@ -39,14 +40,14 @@ sys.exit(23 if count == 1 else 1)
 for group in (False, True):
     wrapper = subprocess.Popen([
         lease, "run", worktree, "--mode", "shared", "--try", "--agent", "agent/test",
-        "--", sys.executable, "-c", payload, root,
+        "--", sys.executable, "-c", payload, root, str(sig),
     ], start_new_session=group)
     with open(root + "/ready") as ready:
         child = int(ready.readline())
     try:
-        os.kill(-wrapper.pid if group else wrapper.pid, signal.SIGTERM)
+        os.kill(-wrapper.pid if group else wrapper.pid, sig)
         spin(lambda: status(child)["State"].lstrip().startswith("T"))
-        spin(lambda: all(int(status(wrapper.pid)[key], 16) & (1 << 14) == 0 for key in ("SigPnd", "ShdPnd", "SigBlk")))
+        spin(lambda: all(int(status(wrapper.pid)[key], 16) & (1 << (sig - 1)) == 0 for key in ("SigPnd", "ShdPnd", "SigBlk")))
         os.kill(child, signal.SIGCONT)
         with open(root + "/release", "w") as release:
             release.write("release\n")
