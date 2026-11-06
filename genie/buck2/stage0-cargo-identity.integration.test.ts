@@ -28,6 +28,8 @@ it('disconnected crates preserve stage-zero/product identities; reachable author
       mkdirSync(dirname(`${fixture}/${file}`), { recursive: true })
       cpSync(`${repo}/${file}`, `${fixture}/${file}`)
     }
+    // Genie anchors relative inputs at the nearest Git root, not an arbitrary nested cwd.
+    run({ args: ['git', 'init', '-q'], cwd: fixture })
     const manifest = readFileSync(`${fixture}/rust/Cargo.toml`, 'utf8')
     const lock = readFileSync(`${fixture}/rust/Cargo.lock`, 'utf8')
     const generate = (refresh: boolean) =>
