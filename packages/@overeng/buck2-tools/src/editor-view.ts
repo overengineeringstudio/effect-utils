@@ -3630,7 +3630,7 @@ const publishEditorViewCoordinated = async ({
       const durationMs = performance.now() - payloadStartedAt
       const otherMs = durationMs - payloadTimings.snapshotFingerprintMs - payloadTimings.shareMs
       process.stderr.write(
-        `[editor-view-timing] ${JSON.stringify({ phase: 'payload-detail', packagePath: options.package, durationMs, ...payloadTimings, otherMs })}\n`,
+        `[editor-view-payload] ${JSON.stringify({ phase: 'payload-detail', packagePath: options.package, durationMs, ...payloadTimings, otherMs })}\n`,
       )
     }
     if (created === true) {

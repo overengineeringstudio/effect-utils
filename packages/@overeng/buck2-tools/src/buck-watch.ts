@@ -597,6 +597,7 @@ export const reconcileBuckViews = async ({
     for (const line of lines)
       if (
         line.startsWith('[editor-view-phase] ') === true ||
+        line.startsWith('[editor-view-payload] ') === true ||
         line.startsWith('[editor-view-budget] ') === true
       )
         process.stderr.write(`${line}\n`)
