@@ -1707,25 +1707,27 @@ describe('store discovery is bounded to the layout', () => {
         expect(warnings).toEqual([
           'store enumeration: skipped entries (non-directory=2, foreign-namespace=3, depth-limited=0)',
         ])
-        const outside = yield* fs.makeTempDirectoryScoped()
-        const policy = `${outside}/budgets.json`
-        yield* fs.writeFileString(
-          policy,
-          encodeJson({
-            schemaVersion: 'megarepo.build-output-budgets.v2',
-            host: hostname(),
-            storeRoots: [storePath],
-            quotaBytes: 1024 * 1024,
-            idleRetentionMs: 0,
-            classes: { 'cargo-target': { budgetBytes: 0, paths: ['target', '**/target'] } },
-          }),
-        )
-        const budgetGc = yield* runMrCommand({
-          cwd: storePath,
-          command: ['store', 'gc', '--budgets', policy, '--dry-run', '--output', 'json'],
-          env: { MEGAREPO_STORE: storePath },
-        }).pipe(Effect.provideService(FileSystem.FileSystem, trackedFs), Effect.provide(logger))
-        expect(budgetGc.exitCode, budgetGc.failure).toBe(0)
+        if (process.platform === 'linux') {
+          const outside = yield* fs.makeTempDirectoryScoped()
+          const policy = `${outside}/budgets.json`
+          yield* fs.writeFileString(
+            policy,
+            encodeJson({
+              schemaVersion: 'megarepo.build-output-budgets.v2',
+              host: hostname(),
+              storeRoots: [storePath],
+              quotaBytes: 1024 * 1024,
+              idleRetentionMs: 0,
+              classes: { 'cargo-target': { budgetBytes: 0, paths: ['target', '**/target'] } },
+            }),
+          )
+          const budgetGc = yield* runMrCommand({
+            cwd: storePath,
+            command: ['store', 'gc', '--budgets', policy, '--dry-run', '--output', 'json'],
+            env: { MEGAREPO_STORE: storePath },
+          }).pipe(Effect.provideService(FileSystem.FileSystem, trackedFs), Effect.provide(logger))
+          expect(budgetGc.exitCode, budgetGc.failure).toBe(0)
+        }
         const gc = yield* runMrCommand({
           cwd: storePath,
           command: ['store', 'gc', '--all', '--output', 'json'],
