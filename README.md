@@ -870,6 +870,20 @@ archives.
 `genie/buck2/stage0-workspace.ts` derives each stage-zero tool's transitive path
 dependency members while preserving shared workspace configuration byte-for-byte.
 
+Stage-zero Cargo projections are committed in `nix/stage0-cargo/inventory.json`.
+Normal Genie checks validate root-lock and manifest authority without Cargo or a
+registry cache. Refresh explicitly with `bash nix/stage0-cargo/refresh.sh`, which
+uses pinned Cargo offline against Nix-vendored dependencies. Root feature-unification
+changes can require a refresh even when the resulting projected lock stays identical.
+Refresh preparation is offline too, including the repository-declared Genie package.
+Missing local inputs fail with an explicit provisioning command; refresh never downloads.
+Inputs resolve for the current host system; lock resolution is platform-independent.
+On fleet hosts, callers wrap the whole script with
+`gate-slot --lane build -- nice -n 19 bash nix/stage0-cargo/refresh.sh`;
+standalone use needs no fleet tooling.
+Static fingerprints detect authority drift, not Cargo canonicality: that requires
+the separate locked, offline Cargo metadata check.
+
 Fixed-source Nix products use `NIX_BUILD_CORES` for Buck execution (`build -j`),
 Tokio workers (`build --config build.num_tokio_workers`), and daemon blocking
 threads (`BUCK2_MAX_BLOCKING_THREADS`). An unset or zero Nix budget becomes one,
