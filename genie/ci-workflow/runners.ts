@@ -1,7 +1,11 @@
+/** Dedicated manifest-writer scale set, selected without generic runner labels. */
+export const manifestWriterRunner = ['sh-linux-x64-effect-utils-manifest'] as const
+
 /** Fleet labels admitted by the workflow policy; Namespace runners remain legacy-only. */
 export const fleetRunnerLabels = {
   linuxX64: 'sh-linux-x64',
   linuxX64Heavy: 'sh-linux-x64-heavy',
+  linuxX64Manifest: manifestWriterRunner[0],
   linuxArm64: 'sh-linux-arm64',
   darwinArm64: 'sh-darwin-arm64',
   linuxX64Publish: 'sh-linux-x64-publish',
@@ -16,6 +20,7 @@ export const fleetRunnerPlatforms = {
   [fleetRunnerLabels.linuxX64]: 'x86_64-linux',
   [fleetRunnerLabels.linuxArm64]: 'aarch64-linux',
   [fleetRunnerLabels.linuxX64Heavy]: 'x86_64-linux',
+  [fleetRunnerLabels.linuxX64Manifest]: 'x86_64-linux',
   [fleetRunnerLabels.darwinArm64]: 'aarch64-darwin',
   [fleetRunnerLabels.linuxX64Publish]: 'x86_64-linux',
   [fleetRunnerLabels.linuxArm64Publish]: 'aarch64-linux',
@@ -51,6 +56,7 @@ export const selfHostedRunnerLabels = [
     ...LEGACY_RUNNER_PROFILES,
     ...linuxX64Runner,
     ...linuxArm64Runner,
+    ...manifestWriterRunner,
     fleetRunnerLabels.linuxX64Publish,
     fleetRunnerLabels.linuxArm64Publish,
     ...darwinArm64Runner,

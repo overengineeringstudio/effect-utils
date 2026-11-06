@@ -6717,7 +6717,7 @@ jobs:
   publish-manifest-pr:
     needs: [publish-products]
     if: ((!(github.event_name == 'workflow_dispatch' && inputs.measurement_baseline_ref != '')) && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && !(github.event_name == 'workflow_dispatch' && inputs['measure-macos'] == true)) && ((github.event_name == 'push' || github.event_name == 'merge_group' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') || ((github.event_name == 'pull_request' || github.event_name == 'pull_request_review' || github.event_name == 'pull_request_review_comment') && github.event.pull_request.head.repo.full_name == github.repository) || (github.event_name == 'workflow_run' && github.event.workflow_run.head_repository.full_name == github.repository)) && github.repository == 'overengineeringstudio/effect-utils' && needs.publish-products.outputs.manifest-writer-tip == 'true'
-    runs-on: [sh-linux-x64, nix]
+    runs-on: [sh-linux-x64-effect-utils-manifest]
     timeout-minutes: 15
     permissions:
       contents: read
@@ -6989,7 +6989,7 @@ jobs:
   published-status:
     needs: [publish-products, consumer-smoke, promote-published]
     if: always() && ((github.event_name == 'push' || github.event_name == 'merge_group' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') || ((github.event_name == 'pull_request' || github.event_name == 'pull_request_review' || github.event_name == 'pull_request_review_comment') && github.event.pull_request.head.repo.full_name == github.repository) || (github.event_name == 'workflow_run' && github.event.workflow_run.head_repository.full_name == github.repository)) && github.repository == 'overengineeringstudio/effect-utils' && github.event_name == 'push' && github.ref == 'refs/heads/main'
-    runs-on: [sh-linux-x64, nix]
+    runs-on: [sh-linux-x64-effect-utils-manifest]
     timeout-minutes: 3
     permissions:
       statuses: write
