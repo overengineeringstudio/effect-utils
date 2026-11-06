@@ -1431,8 +1431,10 @@ describe('published consumer ref', () => {
     })
     expect(proposal.run).toContain('decision="$(manifest_pr_writer_decide "$GITHUB_SHA")"')
     expect(proposal.run).toContain(
-      'if [ "$decision" != open ]; then\n  echo "::notice::Manifest PR: $decision; superseded: a newer main run owns the proposal"\n  exit 0\nfi\ngit push --force-with-lease',
+      'if [ "$decision" != open ]; then\n  echo "::notice::Manifest PR: $decision; superseded: a newer main run owns the proposal"\n  exit 0\nfi\ndecision="$(manifest_pr_writer_push "$GITHUB_REPOSITORY" "$branch")"\nif [ "$decision" = skip-queued ]; then exit 0; fi',
     )
+    expect(proposal.env?.GITHUB_TOKEN).toBe('${{ github.token }}')
+    expect(proposal.env?.GH_TOKEN).toBe('${{ steps.publisher-app-token.outputs.token }}')
     const publication = publisher.steps.find((step) => step.id === 'product-publication')!.run!
     expect(publication).toContain('Stale rows fall back by design')
     expect(publication).toContain('bootstrap_rows "$proposal" "$pins"')
