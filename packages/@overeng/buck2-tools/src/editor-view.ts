@@ -3640,6 +3640,17 @@ const publishEditorViewCoordinated = async ({
         process.stderr.write(`[editor-view-content] ${JSON.stringify(sharing)}\n`)
       const durationMs = performance.now() - payloadStartedAt
       const otherMs = durationMs - payloadTimings.snapshotFingerprintMs - payloadTimings.shareMs
+      const casClassifiedMs = [
+        'casExistingBlobVerifyMs',
+        'casBlobInstallMs',
+        'casViewLinkMs',
+        'casDirectoryMs',
+        'casRepairMs',
+      ].reduce((sum, phase) => sum + (payloadTimings[phase] ?? 0), 0)
+      payloadTimings.casUnclassifiedMs = Math.max(
+        0,
+        (payloadTimings.casHeldMs ?? 0) - casClassifiedMs,
+      )
       process.stderr.write(
         `[editor-view-payload] ${JSON.stringify({ phase: 'payload-detail', packagePath: options.package, durationMs, ...payloadTimings, otherMs })}\n`,
       )
