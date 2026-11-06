@@ -7,7 +7,7 @@ let
     fileset = pkgs.lib.fileset.unions (map (file: repositoryRoot + "/${file}") inventory.files);
   };
   buck = pkgs.writeText "production-helpers-BUCK" (
-    builtins.readFile (repositoryRoot + "/nix/buck2-products/production-helpers.BUCK")
+    builtins.readFile (repositoryRoot + "/nix/buck2-products/production-helpers.bzl")
   );
 in
 assert inventory.schema == "effect-utils/production-helpers/v1" && inventory.schemaVersion == 1;
