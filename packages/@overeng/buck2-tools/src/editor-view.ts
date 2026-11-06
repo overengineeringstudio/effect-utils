@@ -3627,6 +3627,9 @@ const publishEditorViewCoordinated = async ({
         },
       })
       payloadTimings.shareMs = performance.now() - sharingStartedAt
+      payloadTimings.filesReused = materializedRoots?.reusedFiles.size ?? 0
+      payloadTimings.filesProcessed =
+        sharing.linkedFiles + sharing.copiedFiles - payloadTimings.filesReused
       if (materializedRoots !== undefined)
         writeFileSync(
           join(candidate, editorViewSourceManifestName),

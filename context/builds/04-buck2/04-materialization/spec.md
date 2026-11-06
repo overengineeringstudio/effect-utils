@@ -285,6 +285,8 @@ same-inode substitutions avoided among processed files (including new blob
 sources); `blobsCreated` counts successful new CAS installs. Source-manifest
 reuse skips sharing entirely. Unclassified control/candidate checks remain in
 the `casHeldMs` residual.
+`filesReused` counts source-manifest skips; `filesProcessed` counts all other
+files successfully shared or retained by the cross-device fallback.
 
 CI bootstrap writes a job-local `.devenv/editor-view-bootstrap-receipt.json`
 after successful publication. Repeated bootstrap in Unit tests reuses that
