@@ -21,7 +21,7 @@ run "$root/linked" exclusive sh -c 'echo ready > "$1"; read -r line < "$2"' sh "
 holder=$!
 read -r ready < "$root/ready"
 for path in "$root/alias" "$root/linked/sub"; do
-    refuse 75 Busy env GIT_DIR="$root/main/.git" GIT_WORK_TREE="$root/main" GIT_INDEX_FILE=bad GIT_COMMON_DIR=bad GIT_OBJECT_DIRECTORY=bad GIT_ALTERNATE_OBJECT_DIRECTORIES=bad "$LEASE" run "$path" --mode shared --try --agent agent/test -- false
+    refuse 75 Busy env GIT_DIR="$root/main/.git" GIT_WORK_TREE="$root/main" GIT_INDEX_FILE=bad GIT_COMMON_DIR=bad GIT_OBJECT_DIRECTORY=bad GIT_ALTERNATE_OBJECT_DIRECTORIES=bad GIT_CONFIG_PARAMETERS=invalid GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=core.bare GIT_CONFIG_VALUE_0=true GIT_CEILING_DIRECTORIES="$root/linked" "$LEASE" run "$path" --mode shared --try --agent agent/test -- false
 done
 printf 'release\n' > "$root/release"
 wait "$holder"
