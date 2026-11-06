@@ -294,8 +294,11 @@ through the end of the copy lets sharing consume that digest without hashing the
 candidate again; a source race discards the hint. The independent full candidate
 fingerprint comparison against the admitted roots remains mandatory.
 Validated readonly CAS hits link directly into absent candidate paths: exact
-inode recheck, link and post-link proof share the GC exclusion. Missing/replaced
-blobs and EXDEV/EMLINK/EPERM fall back to the private-copy path.
+inode recheck, link and post-link proof share the GC exclusion. Blobs missing or
+replaced before the recheck and EXDEV/EMLINK/EPERM use the private-copy path.
+Later substitution also retains that readonly private copy on these link errors,
+counting a copy fallback. A post-link inode mismatch fails publication closed;
+it is an integrity signal, never a recoverable lookup miss.
 `hashFirstMs` sums source hashing time; `hashFirstMissMs` sums hashing time for
 attempts that fall back. `filesHashFirstAttempts`/`filesHashFirstMiss` count initial
 lookups/address misses. Source and blob hashing stay outside CAS flock.
