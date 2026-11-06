@@ -859,6 +859,12 @@ in [workspace tools](./nix/workspace-tools/README.md). Live pnpm workspaces shar
 install policy and source-input algebra; Buck products use immutable dependency
 archives.
 
+Stage-zero Cargo projections are committed in `nix/stage0-cargo/inventory.json`.
+Normal Genie checks validate root-lock and manifest authority without Cargo or a
+registry cache. Refresh explicitly with `bash nix/stage0-cargo/refresh.sh`, which
+uses pinned Cargo offline against Nix-vendored dependencies. Root feature-unification
+changes can require a refresh even when the resulting projected lock stays identical.
+
 Fixed-source Nix products use `NIX_BUILD_CORES` for Buck execution (`build -j`),
 Tokio workers (`build --config build.num_tokio_workers`), and daemon blocking
 threads (`BUCK2_MAX_BLOCKING_THREADS`). An unset or zero Nix budget becomes one,
