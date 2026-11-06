@@ -1530,15 +1530,12 @@ in
         builtins.length megarepoInstallers == 1
       ) "genie:buck2:test requires exactly one scheduled megarepo installer";
       [ "buck2:editor:publish:test" ] ++ megarepoInstallers;
-    env = {
-      STAGE0_GENIE = "${repoPackages.genie}/bin/genie";
-      STAGE0_CARGO = "${pkgs.cargo}/bin/cargo";
-      STAGE0_RUSTC = "${pkgs.rustc}/bin/rustc";
-      STAGE0_VENDOR = "${pkgs.rustPlatform.importCargoLock { lockFile = ./rust/Cargo.lock; }}";
-    };
     exec = trace.exec "genie:buck2:test" ''
       set -euo pipefail
       cd "''${DEVENV_ROOT:-$PWD}"
+      inputs="$(nix build --offline --impure --no-link --print-out-paths --file nix/stage0-cargo/refresh-inputs.nix)"
+      export STAGE0_GENIE="$inputs/genie/bin/genie" STAGE0_CARGO="$inputs/cargo/bin/cargo"
+      export STAGE0_RUSTC="$inputs/rustc/bin/rustc" STAGE0_VENDOR="$inputs/vendor"
       # An explicit directory preserves recursive discovery without matching
       # the copies Buck stages under buck-out, like genie:ci-workflow:test.
       exec ${sourceBun}/bin/bun ./packages/@overeng/buck2-tools/src/bun-test-runner.ts test ./genie/buck2/ ./packages/@overeng/genie/src/runtime/package-json/catalog-optional-peers.unit.test.ts ./buck2/dependencies/genie-input-manifest.integration.test.ts ./scripts/editor-view-authority.unit.test.ts ./scripts/editor-view-source.integration.test.ts ./scripts/buck2-daemon-reaper.integration.test.ts
@@ -1547,6 +1544,9 @@ in
       "BUCK"
       "genie/buck2/**/*.ts"
       "genie/buck2/fixtures/**/*"
+      "nix/stage0-cargo/*"
+      "rust/**/Cargo.toml"
+      "rust/Cargo.lock"
       "buck2/dependencies/**/*.ts"
       "packages/@overeng/genie/src/**/*.ts"
       "genie/ci-workflow/test-scheduling.json"
