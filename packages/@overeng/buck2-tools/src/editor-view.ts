@@ -181,6 +181,8 @@ export type EditorViewOptions = {
    * changed inside that window are caught by the publication stability check.
    */
   readonly beforeMaterialize?: () => void | Promise<void>
+  /** Fault barrier after a direct CAS link, before leaving its exclusion. */
+  readonly afterDirectLink?: () => void
   /** Metadata barrier after managed-pin inspection, while retirement holds the CAS flock. */
   readonly beforeSnapshotRetirement?: () => void | Promise<void>
   /** Barrier while budget eviction holds another root's lock, before final eligibility checks. */
@@ -1580,11 +1582,13 @@ const materializeDeclaredRoots = async ({
   roots,
   contentStore,
   previousManifest,
+  afterDirectLink,
 }: {
   candidate: string
   roots: readonly DeclaredSnapshotRoot[]
   contentStore: string
   previousManifest: ReadonlyMap<string, EditorViewSourceFile>
+  afterDirectLink?: (() => void) | undefined
 }): Promise<MaterializedDeclaredRoots> => {
   mkdirSync(join(candidate, '.backing'))
   const sourceFiles = new Map<string, { source: string; sourceKey: string }>()
@@ -1623,7 +1627,21 @@ const materializeDeclaredRoots = async ({
     manifest.delete(relative(candidate, file.path))
     pending.push({ source: source.source, path: file.path })
   }
-  const preparedSources = await materializeEditorViewSourceFiles({ contentStore, files: pending })
+  const preparedSources = await materializeEditorViewSourceFiles({
+    contentStore,
+    files: pending,
+    reusedFiles,
+    afterDirectLink,
+  })
+  for (const [path, file] of preparedSources) {
+    if (reusedFiles.has(path) === false) continue
+    manifest.set(relative(candidate, path), {
+      sourceKey: sourceFiles.get(path)!.sourceKey,
+      digest: file.digest,
+      mode: Number(file.status.mode & 0o777n),
+      blobKey: editorViewSourceKey(file.status),
+    })
+  }
   return {
     links: rewriteSnapshotLinks({ candidate, roots }),
     sourceFiles,
@@ -3506,6 +3524,12 @@ const publishEditorViewCoordinated = async ({
         filesLinked: 0,
         filesAlreadyShared: 0,
         blobsCreated: 0,
+        filesDirectLinked: 0,
+        filesDirectLinkFallback: 0,
+        filesHashFirstAttempts: 0,
+        filesHashFirstMiss: 0,
+        hashFirstMs: 0,
+        hashFirstMissMs: 0,
       }
       enterPhase('materialize')
       let materialized = false
@@ -3529,7 +3553,13 @@ const publishEditorViewCoordinated = async ({
         materializedRoots = await editorViewTimingContext.run(
           payloadTimings,
           materializeDeclaredRoots,
-          { candidate, roots, contentStore: paths.contentStore, previousManifest },
+          {
+            candidate,
+            roots,
+            contentStore: paths.contentStore,
+            previousManifest,
+            afterDirectLink: options.afterDirectLink,
+          },
         )
         materializedLinks = materializedRoots.links
         assertByteOwnedFiniteSnapshot({
@@ -3633,7 +3663,9 @@ const publishEditorViewCoordinated = async ({
         },
       })
       payloadTimings.shareMs = performance.now() - sharingStartedAt
-      payloadTimings.filesReused = materializedRoots?.reusedFiles.size ?? 0
+      // Direct links are disjoint from prior-manifest reuse and normal CAS outcomes.
+      payloadTimings.filesReused =
+        (materializedRoots?.reusedFiles.size ?? 0) - (payloadTimings.filesDirectLinked ?? 0)
       payloadTimings.filesProcessed =
         sharing.linkedFiles + sharing.copiedFiles - payloadTimings.filesReused
       if (materializedRoots !== undefined)

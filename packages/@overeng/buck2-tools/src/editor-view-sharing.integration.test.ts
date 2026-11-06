@@ -385,16 +385,18 @@ describe('host-wide editor snapshot content store', () => {
       const hash = vi.spyOn(webcrypto.subtle, 'digest')
       const streamingHash = vi.spyOn(Hash.prototype, 'digest')
       const timings: Record<string, number> = {}
+      const reusedFiles = new Set<string>()
       try {
         const preparedSources = await editorViewTimingContext.run(
           timings,
           materializeEditorViewSourceFiles,
-          { contentStore, files: [{ source, path: destination }] },
+          { contentStore, files: [{ source, path: destination }], reusedFiles },
         )
-        await shareSnapshotFiles({
+        await editorViewTimingContext.run(timings, shareSnapshotFiles, {
           candidate: candidate('next'),
           contentStore,
           preparedSources,
+          reusedFiles,
         })
         expect(hash).toHaveBeenCalledTimes(size <= 65_536 ? 1 : 0)
         expect(streamingHash).toHaveBeenCalledTimes(size > 65_536 ? 1 : 0)
@@ -403,6 +405,7 @@ describe('host-wide editor snapshot content store', () => {
         expect(timings.filesHashFirstAttempts).toBe(1)
         expect(timings.filesHashFirstMiss ?? 0).toBe(hit === true ? 0 : 1)
         expect(timings.hashFirstMs).toBeGreaterThanOrEqual(0)
+        expect(reusedFiles.size).toBe(hit === true ? 1 : 0)
         expectReadonlyStore(contentStore)
       } finally {
         hash.mockRestore()
@@ -438,6 +441,74 @@ describe('host-wide editor snapshot content store', () => {
       expect(preparedSources.has(destination)).toBe(false)
       await shareSnapshotFiles({ candidate: candidate('next'), contentStore, preparedSources })
       expect(readFileSync(destination, 'utf8')).toBe('changed')
+      expectReadonlyStore(contentStore)
+    })
+  })
+
+  it.each([false, true])('keys hash-first blobs by executable mode (%s)', async (executable) => {
+    await withStore(async ({ candidate, contentStore }) => {
+      payload(candidate('seed'), 'file', 'bytes', executable === true ? 0o555 : 0o444)
+      await shareSnapshotFiles({ candidate: candidate('seed'), contentStore })
+      const source = payload(
+        candidate('source'),
+        'file',
+        'bytes',
+        executable === true ? 0o644 : 0o755,
+      )
+      const path = join(candidate('next'), 'file')
+      const reusedFiles = new Set<string>()
+      const preparedSources = await materializeEditorViewSourceFiles({
+        contentStore,
+        files: [{ source, path }],
+        reusedFiles,
+      })
+      expect(reusedFiles.size).toBe(0)
+      await shareSnapshotFiles({ candidate: candidate('next'), contentStore, preparedSources })
+      expect(mode(path)).toBe(executable === true ? 0o444 : 0o555)
+      expect(inode(path)).not.toBe(inode(blobPath(contentStore, 'bytes', executable)))
+    })
+  })
+
+  it.each([
+    'recheck-delete',
+    'recheck-replace',
+    'link-delete',
+    'link-replace',
+    'EXDEV',
+    'EMLINK',
+    'EPERM',
+  ])('falls back without a wrong direct link on %s', async (fault) => {
+    await withStore(async ({ candidate, contentStore }) => {
+      payload(candidate('seed'), 'file', 'bytes')
+      await shareSnapshotFiles({ candidate: candidate('seed'), contentStore })
+      const source = payload(candidate('source'), 'file', 'bytes')
+      const path = join(candidate('next'), 'file')
+      const reusedFiles = new Set<string>()
+      const timings: Record<string, number> = {}
+      await editorViewTimingContext.run(timings, materializeEditorViewSourceFiles, {
+        contentStore,
+        files: [{ source, path }],
+        reusedFiles,
+        beforeDirectLink: (blob, phase) => {
+          if (fault.startsWith(`${phase}-`) === true) {
+            chmodSync(dirname(blob), 0o755)
+            try {
+              unlinkSync(blob)
+              if (fault.endsWith('replace') === true)
+                payload(dirname(blob), basename(blob), 'wrong', 0o444)
+            } finally {
+              chmodSync(dirname(blob), 0o555)
+            }
+          } else if (phase === 'link' && fault === fault.toUpperCase()) {
+            throw Object.assign(new Error(fault), { code: fault })
+          }
+        },
+      })
+      expect(reusedFiles.size).toBe(0)
+      expect(readFileSync(path, 'utf8')).toBe('bytes')
+      expect(lstatSync(path).nlink).toBe(1)
+      expect(timings.filesDirectLinkFallback).toBe(1)
+      expect(timings.hashFirstMissMs).toBe(timings.hashFirstMs)
       expectReadonlyStore(contentStore)
     })
   })
