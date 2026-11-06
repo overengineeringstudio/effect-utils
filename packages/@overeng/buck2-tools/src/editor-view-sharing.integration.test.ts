@@ -477,7 +477,7 @@ describe('host-wide editor snapshot content store', () => {
     'EXDEV',
     'EMLINK',
     'EPERM',
-  ])('falls back without a wrong direct link on %s', async (fault) => {
+  ])('handles a hash-first link fault safely (%s)', async (fault) => {
     await withStore(async ({ candidate, contentStore }) => {
       payload(candidate('seed'), 'file', 'bytes')
       await shareSnapshotFiles({ candidate: candidate('seed'), contentStore })
@@ -485,25 +485,35 @@ describe('host-wide editor snapshot content store', () => {
       const path = join(candidate('next'), 'file')
       const reusedFiles = new Set<string>()
       const timings: Record<string, number> = {}
-      await editorViewTimingContext.run(timings, materializeEditorViewSourceFiles, {
-        contentStore,
-        files: [{ source, path }],
-        reusedFiles,
-        beforeDirectLink: (blob, phase) => {
-          if (fault.startsWith(`${phase}-`) === true) {
-            chmodSync(dirname(blob), 0o755)
-            try {
-              unlinkSync(blob)
-              if (fault.endsWith('replace') === true)
-                payload(dirname(blob), basename(blob), 'wrong', 0o444)
-            } finally {
-              chmodSync(dirname(blob), 0o555)
+      const materialization = editorViewTimingContext.run(
+        timings,
+        materializeEditorViewSourceFiles,
+        {
+          contentStore,
+          files: [{ source, path }],
+          reusedFiles,
+          beforeDirectLink: (blob, phase) => {
+            if (fault.startsWith(`${phase}-`) === true) {
+              chmodSync(dirname(blob), 0o755)
+              try {
+                unlinkSync(blob)
+                if (fault.endsWith('replace') === true)
+                  payload(dirname(blob), basename(blob), 'wrong', 0o444)
+              } finally {
+                chmodSync(dirname(blob), 0o555)
+              }
+            } else if (phase === 'link' && fault === fault.toUpperCase()) {
+              throw Object.assign(new Error(fault), { code: fault })
             }
-          } else if (phase === 'link' && fault === fault.toUpperCase()) {
-            throw Object.assign(new Error(fault), { code: fault })
-          }
+          },
         },
-      })
+      )
+      if (fault === 'link-replace') {
+        await expect(materialization).rejects.toThrow('reused blob changed while linking')
+        expectReadonlyStore(contentStore)
+        return
+      }
+      await materialization
       expect(reusedFiles.size).toBe(0)
       expect(readFileSync(path, 'utf8')).toBe('bytes')
       expect(lstatSync(path).nlink).toBe(1)

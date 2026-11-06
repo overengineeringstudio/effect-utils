@@ -707,7 +707,7 @@ const cheapInertBuckSteps = [
       [
         'set -euo pipefail',
         "tracked_editor=$(git ls-files -- '**/.editor-view/**' '.editor-view/**')",
-        `tracked_product=$(git ls-files -- 'nix/buck2-products/**' ${rootNixSourceGlobs.map((glob) => `':(glob,exclude)nix/buck2-products/${glob}'`).join(' ')} | grep -Ev '^nix/buck2-products/(cache-targets\\.json|cache-targets\\.json\\.genie\\.ts|capability-closure\\.test\\.sh|compiled-targets\\.json|compiled-targets\\.json\\.genie\\.ts|from-source-contract\\.test\\.sh|from-source-cores\\.test\\.sh|manifest\\.json|native-targets\\.json|native-targets\\.json\\.genie\\.ts|private-product-tarballs\\.test\\.sh|publish\\.sh|root-projection\\.test\\.sh|targets\\.json|targets\\.json\\.genie\\.ts)$' || true)`,
+        `tracked_product=$(git ls-files -- 'nix/buck2-products/**' ${rootNixSourceGlobs.map((glob) => `':(glob,exclude)nix/buck2-products/${glob}'`).join(' ')} | grep -Ev '^nix/buck2-products/(cache-targets\\.json|cache-targets\\.json\\.genie\\.ts|capability-closure\\.test\\.sh|compiled-targets\\.json|compiled-targets\\.json\\.genie\\.ts|from-source-contract\\.test\\.sh|from-source-cores\\.test\\.sh|manifest\\.json|native-targets\\.json|native-targets\\.json\\.genie\\.ts|private-product-tarballs\\.test\\.sh|production-helpers\\.bzl|production-helpers\\.bzl\\.genie\\.ts|production-helpers\\.json|production-helpers\\.json\\.genie\\.ts|production-helpers\\.test\\.sh|publish\\.sh|root-projection\\.test\\.sh|targets\\.json|targets\\.json\\.genie\\.ts)$' || true)`,
         'invalid_sources=()',
         "while IFS= read -r -d '' path; do",
         '  case "/$path/" in',
@@ -899,6 +899,11 @@ const jobs: Record<CoreCIJobName, CiWorkflowArgs['jobs'][string]> = {
             ],
           }),
         ),
+        {
+          name: 'Validate stage-zero Cargo lock canonicality offline',
+          env: githubTokenEnv(),
+          run: withCiSourceRoot('nix build --no-link .#checks.x86_64-linux.stage0-cargo-metadata'),
+        },
         {
           name: 'CI policy action isolation smoke',
           env: githubTokenEnv(),
@@ -1479,7 +1484,10 @@ const extraJobs: Record<string, any> = {
       {
         name: 'Propose published product manifest',
         if: "steps.publisher-app-config.outputs.enabled == 'true'",
-        env: githubAccessTokenEnv('${{ steps.publisher-app-token.outputs.token }}'),
+        env: {
+          ...githubAccessTokenEnv('${{ steps.publisher-app-token.outputs.token }}'),
+          GITHUB_TOKEN: '${{ github.token }}',
+        },
         run: withCiSourceRoot(
           [
             'set -euo pipefail',
@@ -1506,7 +1514,8 @@ const extraJobs: Record<string, any> = {
             '  echo "::notice::Manifest PR: $decision; superseded: a newer main run owns the proposal"',
             '  exit 0',
             'fi',
-            'git push --force-with-lease origin "HEAD:refs/heads/$branch"',
+            'decision="$(manifest_pr_writer_push "$GITHUB_REPOSITORY" "$branch")"',
+            'if [ "$decision" = skip-queued ]; then exit 0; fi',
             `body='Updates the v2 manifest for bootstrap changes, daily safety, or bootstrap healing. Correctness rests on #2346; published still receives the full manifest on every main push. Skips leave matching bootstrap proposals untouched; stale bootstrap proposals are refreshed or closed if main already matches.'`,
             'pr="$(gh pr list --base main --head "$branch" --state open --json number --jq \'.[0].number // empty\')"',
             'if [ -n "$pr" ]; then',

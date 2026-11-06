@@ -19,7 +19,6 @@
       "sourcePaths": [
         "package.json",
         "packages/@overeng/agent-session-ingest",
-        "packages/@overeng/buck2-tools",
         "packages/@overeng/content-address",
         "packages/@overeng/effect-distributed-lock",
         "packages/@overeng/effect-rust",
@@ -51,7 +50,6 @@
       "sourcePaths": [
         "package.json",
         "packages/@overeng/ai-gateway-conformance",
-        "packages/@overeng/buck2-tools",
         "packages/@overeng/utils-dev",
         "patches",
         "pnpm-workspace.yaml"
@@ -79,7 +77,6 @@
         "package.json",
         "packages/@overeng/ai-gateway-conformance",
         "packages/@overeng/ai-gateway-edge",
-        "packages/@overeng/buck2-tools",
         "packages/@overeng/utils-dev",
         "patches",
         "pnpm-workspace.yaml"
@@ -105,7 +102,6 @@
       "packageTreePath": "packages/@overeng/content-address",
       "sourcePaths": [
         "package.json",
-        "packages/@overeng/buck2-tools",
         "packages/@overeng/content-address",
         "packages/@overeng/effect-rust",
         "packages/@overeng/utils-dev",
@@ -133,7 +129,6 @@
       "packageTreePath": "packages/@overeng/data-graph",
       "sourcePaths": [
         "package.json",
-        "packages/@overeng/buck2-tools",
         "packages/@overeng/content-address",
         "packages/@overeng/data-graph",
         "packages/@overeng/effect-rust",
@@ -162,7 +157,6 @@
       "packageTreePath": "packages/@overeng/devbar",
       "sourcePaths": [
         "package.json",
-        "packages/@overeng/buck2-tools",
         "packages/@overeng/content-address",
         "packages/@overeng/devbar",
         "packages/@overeng/effect-distributed-lock",
@@ -202,7 +196,6 @@
       "packageTreePath": "packages/@overeng/effect-ai-claude-cli",
       "sourcePaths": [
         "package.json",
-        "packages/@overeng/buck2-tools",
         "packages/@overeng/effect-ai-claude-cli",
         "packages/@overeng/utils-dev",
         "patches",
@@ -230,7 +223,6 @@
       "sourcePaths": [
         "package.json",
         "packages/@overeng/ai-gateway-conformance",
-        "packages/@overeng/buck2-tools",
         "packages/@overeng/effect-ai-gateway",
         "packages/@overeng/utils-dev",
         "patches",
@@ -257,7 +249,6 @@
       "packageTreePath": "packages/@overeng/effect-distributed-lock",
       "sourcePaths": [
         "package.json",
-        "packages/@overeng/buck2-tools",
         "packages/@overeng/effect-distributed-lock",
         "packages/@overeng/utils-dev",
         "patches",
@@ -284,7 +275,6 @@
       "packageTreePath": "packages/@overeng/effect-react",
       "sourcePaths": [
         "package.json",
-        "packages/@overeng/buck2-tools",
         "packages/@overeng/content-address",
         "packages/@overeng/effect-distributed-lock",
         "packages/@overeng/effect-react",
@@ -317,7 +307,6 @@
       "packageTreePath": "packages/@overeng/effect-rpc-explorer",
       "sourcePaths": [
         "package.json",
-        "packages/@overeng/buck2-tools",
         "packages/@overeng/content-address",
         "packages/@overeng/effect-rpc-explorer",
         "packages/@overeng/effect-rpc-observer",
@@ -348,7 +337,6 @@
       "packageTreePath": "packages/@overeng/effect-rpc-explorer-react",
       "sourcePaths": [
         "package.json",
-        "packages/@overeng/buck2-tools",
         "packages/@overeng/content-address",
         "packages/@overeng/effect-distributed-lock",
         "packages/@overeng/effect-rpc-explorer",
@@ -384,7 +372,6 @@
       "packageTreePath": "packages/@overeng/effect-rpc-observer",
       "sourcePaths": [
         "package.json",
-        "packages/@overeng/buck2-tools",
         "packages/@overeng/effect-rpc-observer",
         "packages/@overeng/utils-dev",
         "patches",
@@ -411,7 +398,6 @@
       "packageTreePath": "packages/@overeng/effect-rust",
       "sourcePaths": [
         "package.json",
-        "packages/@overeng/buck2-tools",
         "packages/@overeng/effect-rust",
         "packages/@overeng/utils-dev",
         "patches",
@@ -438,7 +424,6 @@
       "packageTreePath": "packages/@overeng/genie",
       "sourcePaths": [
         "package.json",
-        "packages/@overeng/buck2-tools",
         "packages/@overeng/content-address",
         "packages/@overeng/effect-distributed-lock",
         "packages/@overeng/effect-rust",
@@ -473,7 +458,6 @@
       "packageTreePath": "packages/@overeng/meters",
       "sourcePaths": [
         "package.json",
-        "packages/@overeng/buck2-tools",
         "packages/@overeng/content-address",
         "packages/@overeng/effect-distributed-lock",
         "packages/@overeng/effect-rust",
@@ -507,7 +491,6 @@
       "packageTreePath": "packages/@overeng/notion-core",
       "sourcePaths": [
         "package.json",
-        "packages/@overeng/buck2-tools",
         "packages/@overeng/notion-core",
         "packages/@overeng/utils-dev",
         "patches",
@@ -534,7 +517,6 @@
       "packageTreePath": "packages/@overeng/notion-effect-client",
       "sourcePaths": [
         "package.json",
-        "packages/@overeng/buck2-tools",
         "packages/@overeng/content-address",
         "packages/@overeng/effect-distributed-lock",
         "packages/@overeng/effect-rust",
@@ -568,7 +550,6 @@
       "packageTreePath": "packages/@overeng/notion-effect-schema",
       "sourcePaths": [
         "package.json",
-        "packages/@overeng/buck2-tools",
         "packages/@overeng/notion-core",
         "packages/@overeng/notion-effect-schema",
         "packages/@overeng/utils-dev",
@@ -596,7 +577,6 @@
       "packageTreePath": "packages/@overeng/notion-md",
       "sourcePaths": [
         "package.json",
-        "packages/@overeng/buck2-tools",
         "packages/@overeng/content-address",
         "packages/@overeng/effect-distributed-lock",
         "packages/@overeng/effect-rust",
@@ -635,7 +615,6 @@
       "packageTreePath": "packages/@overeng/notion-property-write",
       "sourcePaths": [
         "package.json",
-        "packages/@overeng/buck2-tools",
         "packages/@overeng/notion-core",
         "packages/@overeng/notion-effect-schema",
         "packages/@overeng/notion-property-write",
@@ -664,7 +643,6 @@
       "packageTreePath": "packages/@overeng/notion-react",
       "sourcePaths": [
         "package.json",
-        "packages/@overeng/buck2-tools",
         "packages/@overeng/content-address",
         "packages/@overeng/effect-distributed-lock",
         "packages/@overeng/effect-rust",
@@ -704,7 +682,6 @@
       "packageTreePath": "packages/@overeng/otel-contract",
       "sourcePaths": [
         "package.json",
-        "packages/@overeng/buck2-tools",
         "packages/@overeng/content-address",
         "packages/@overeng/effect-rust",
         "packages/@overeng/otel-contract",
@@ -733,7 +710,6 @@
       "packageTreePath": "packages/@overeng/outline",
       "sourcePaths": [
         "package.json",
-        "packages/@overeng/buck2-tools",
         "packages/@overeng/outline",
         "packages/@overeng/utils-dev",
         "patches",
@@ -760,7 +736,6 @@
       "packageTreePath": "packages/@overeng/restate-effect",
       "sourcePaths": [
         "package.json",
-        "packages/@overeng/buck2-tools",
         "packages/@overeng/content-address",
         "packages/@overeng/effect-distributed-lock",
         "packages/@overeng/effect-rust",
@@ -792,7 +767,6 @@
       "packageTreePath": "packages/@overeng/rpc-devtools",
       "sourcePaths": [
         "package.json",
-        "packages/@overeng/buck2-tools",
         "packages/@overeng/content-address",
         "packages/@overeng/effect-distributed-lock",
         "packages/@overeng/effect-rpc-explorer",
@@ -831,7 +805,6 @@
       "packageTreePath": "packages/@overeng/stylex-tokens",
       "sourcePaths": [
         "package.json",
-        "packages/@overeng/buck2-tools",
         "packages/@overeng/stylex-tokens",
         "packages/@overeng/utils-dev",
         "patches",
@@ -858,7 +831,6 @@
       "packageTreePath": "packages/@overeng/tui-core",
       "sourcePaths": [
         "package.json",
-        "packages/@overeng/buck2-tools",
         "packages/@overeng/tui-core",
         "packages/@overeng/utils-dev",
         "patches",
@@ -885,7 +857,6 @@
       "packageTreePath": "packages/@overeng/tui-react",
       "sourcePaths": [
         "package.json",
-        "packages/@overeng/buck2-tools",
         "packages/@overeng/content-address",
         "packages/@overeng/effect-distributed-lock",
         "packages/@overeng/effect-rust",
@@ -919,7 +890,6 @@
       "packageTreePath": "packages/@overeng/utils",
       "sourcePaths": [
         "package.json",
-        "packages/@overeng/buck2-tools",
         "packages/@overeng/content-address",
         "packages/@overeng/effect-distributed-lock",
         "packages/@overeng/effect-rust",
@@ -950,7 +920,6 @@
       "packageTreePath": "packages/@overeng/utils-dev",
       "sourcePaths": [
         "package.json",
-        "packages/@overeng/buck2-tools",
         "packages/@overeng/utils-dev",
         "patches",
         "pnpm-workspace.yaml"
@@ -976,7 +945,6 @@
       "packageTreePath": "packages/@overeng/utils-storybook",
       "sourcePaths": [
         "package.json",
-        "packages/@overeng/buck2-tools",
         "packages/@overeng/content-address",
         "packages/@overeng/effect-distributed-lock",
         "packages/@overeng/effect-rust",
@@ -1002,7 +970,6 @@
         "package.json",
         "packages/@overeng/ai-gateway-conformance",
         "packages/@overeng/ai-gateway-edge",
-        "packages/@overeng/buck2-tools",
         "packages/@overeng/utils-dev",
         "patches",
         "pnpm-workspace.yaml"
@@ -1020,7 +987,6 @@
       "packageTreePath": "packages/@overeng/ci-tools",
       "sourcePaths": [
         "package.json",
-        "packages/@overeng/buck2-tools",
         "packages/@overeng/ci-tools",
         "packages/@overeng/content-address",
         "packages/@overeng/effect-distributed-lock",
@@ -1044,7 +1010,6 @@
       "packageTreePath": "packages/@overeng/genie",
       "sourcePaths": [
         "package.json",
-        "packages/@overeng/buck2-tools",
         "packages/@overeng/content-address",
         "packages/@overeng/effect-distributed-lock",
         "packages/@overeng/effect-rust",
@@ -1071,7 +1036,6 @@
       "packageTreePath": "packages/@overeng/genie",
       "sourcePaths": [
         "package.json",
-        "packages/@overeng/buck2-tools",
         "packages/@overeng/content-address",
         "packages/@overeng/effect-distributed-lock",
         "packages/@overeng/effect-rust",
@@ -1098,7 +1062,6 @@
       "packageTreePath": "packages/@overeng/gh-ci-utils",
       "sourcePaths": [
         "package.json",
-        "packages/@overeng/buck2-tools",
         "packages/@overeng/ci-tools",
         "packages/@overeng/content-address",
         "packages/@overeng/effect-distributed-lock",
@@ -1126,7 +1089,6 @@
       "packageTreePath": "packages/@overeng/megarepo",
       "sourcePaths": [
         "package.json",
-        "packages/@overeng/buck2-tools",
         "packages/@overeng/content-address",
         "packages/@overeng/effect-distributed-lock",
         "packages/@overeng/effect-path",
@@ -1156,7 +1118,6 @@
       "packageTreePath": "packages/@overeng/notion-cli",
       "sourcePaths": [
         "package.json",
-        "packages/@overeng/buck2-tools",
         "packages/@overeng/content-address",
         "packages/@overeng/effect-distributed-lock",
         "packages/@overeng/effect-path",
@@ -1190,7 +1151,6 @@
       "packageTreePath": "packages/@overeng/notion-datasource-sync",
       "sourcePaths": [
         "package.json",
-        "packages/@overeng/buck2-tools",
         "packages/@overeng/content-address",
         "packages/@overeng/effect-distributed-lock",
         "packages/@overeng/effect-path",
@@ -1224,7 +1184,6 @@
       "packageTreePath": "packages/@overeng/notion-md",
       "sourcePaths": [
         "package.json",
-        "packages/@overeng/buck2-tools",
         "packages/@overeng/content-address",
         "packages/@overeng/effect-distributed-lock",
         "packages/@overeng/effect-rust",
@@ -1255,7 +1214,6 @@
       "packageTreePath": "packages/@overeng/npm-release",
       "sourcePaths": [
         "package.json",
-        "packages/@overeng/buck2-tools",
         "packages/@overeng/npm-release",
         "packages/@overeng/utils-dev",
         "patches",
@@ -1274,7 +1232,6 @@
       "packageTreePath": "packages/@overeng/oxc-config",
       "sourcePaths": [
         "package.json",
-        "packages/@overeng/buck2-tools",
         "packages/@overeng/oxc-config",
         "packages/@overeng/utils-dev",
         "patches",
@@ -1293,7 +1250,6 @@
       "packageTreePath": "packages/@overeng/oxc-config",
       "sourcePaths": [
         "package.json",
-        "packages/@overeng/buck2-tools",
         "packages/@overeng/oxc-config",
         "packages/@overeng/utils-dev",
         "patches",
@@ -1312,7 +1268,6 @@
       "packageTreePath": "packages/@overeng/tui-stories",
       "sourcePaths": [
         "package.json",
-        "packages/@overeng/buck2-tools",
         "packages/@overeng/content-address",
         "packages/@overeng/effect-distributed-lock",
         "packages/@overeng/effect-path",

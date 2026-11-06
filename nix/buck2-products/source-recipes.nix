@@ -26,6 +26,7 @@ builtins.listToAttrs (
         ;
       capabilities = capabilities.selectProduct product;
       sourcePaths = product.sourcePaths or null;
+      productionHelpers = true;
     };
   }) inventory.products
 )
