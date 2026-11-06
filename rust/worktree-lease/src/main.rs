@@ -1,6 +1,5 @@
 use clap::{Parser, ValueEnum};
 use std::{
-    io::Write,
     path::PathBuf,
     process::Command,
     sync::atomic::{AtomicBool, AtomicI32, Ordering},
@@ -11,6 +10,7 @@ use worktree_lease::{exit_code, Identity, Lease, Refusal, Result};
 static SIGNAL: AtomicI32 = AtomicI32::new(0);
 static CHILD: AtomicI32 = AtomicI32::new(0);
 static WAITING: AtomicBool = AtomicBool::new(false);
+static FORWARD: AtomicBool = AtomicBool::new(false);
 unsafe extern "C" {
     fn setitimer(
         which: libc::c_int,
@@ -18,21 +18,32 @@ unsafe extern "C" {
         old: *mut libc::itimerval,
     ) -> libc::c_int;
 }
-extern "C" fn signal(sig: i32) {
+/// Same-group broadcasts are not relayed. An outside-group group kill remains
+/// indistinguishable from a direct signal and can reach the child twice.
+extern "C" fn signal(sig: i32, info: *mut libc::siginfo_t, _: *mut libc::c_void) {
     if sig == libc::SIGALRM {
         let _ = SIGNAL.compare_exchange(0, sig, Ordering::SeqCst, Ordering::SeqCst);
     } else {
         SIGNAL.store(sig, Ordering::SeqCst);
+        // SAFETY: SA_SIGINFO supplies initialized information for this handler.
+        let sender = unsafe { (*info).si_pid() };
+        FORWARD.store(
+            sender > 0 && unsafe { libc::getpgid(sender) != libc::getpgrp() },
+            Ordering::SeqCst,
+        );
     }
+    forward(sig);
+    if WAITING.load(Ordering::SeqCst) && sig != libc::SIGALRM {
+        let _ = timer(0, true);
+    }
+}
+fn forward(sig: i32) {
     let pid = CHILD.load(Ordering::SeqCst);
-    // SAFETY: the handler uses lock-free atomics and signal-safe kernel operations only.
-    if pid > 0 && sig != libc::SIGALRM {
+    // SAFETY: lock-free atomics and signal-safe kernel operations only.
+    if pid > 0 && sig != libc::SIGALRM && FORWARD.load(Ordering::SeqCst) {
         unsafe {
             libc::kill(pid, sig);
         }
-    }
-    if WAITING.load(Ordering::SeqCst) && sig != libc::SIGALRM {
-        let _ = timer(0, true);
     }
 }
 fn timer(seconds: u32, active: bool) -> Result<()> {
@@ -52,26 +63,6 @@ fn timer(seconds: u32, active: bool) -> Result<()> {
         return Err(Refusal::UnsafeLock);
     }
     Ok(())
-}
-fn emit(tag: &str, reason: &str, warning: Option<&str>, job: Option<&str>) {
-    #[derive(serde::Serialize)]
-    struct Record<'a> {
-        _tag: &'a str,
-        reason: &'a str,
-        warning: Option<&'a str>,
-        job: Option<&'a str>,
-    }
-    let mut stderr = std::io::stderr().lock();
-    let _ = serde_json::to_writer(
-        &mut stderr,
-        &Record {
-            _tag: tag,
-            reason,
-            warning,
-            job,
-        },
-    );
-    let _ = stderr.write_all(b"\n");
 }
 #[derive(Clone, ValueEnum)]
 enum Mode {
@@ -93,8 +84,6 @@ struct Args {
     agent: Option<String>,
     #[arg(long)]
     job: Option<String>,
-    #[arg(long)]
-    json: bool,
     #[arg(last = true, required = true)]
     command: Vec<std::ffi::OsString>,
 }
@@ -104,20 +93,19 @@ fn run(args: &Args) -> Result<i32> {
         .agent
         .as_deref()
         .is_some_and(|a| a.starts_with("agent/") && a.len() > 6);
-    let warning = (!attributed)
-        .then_some("missing or invalid agent attribution; continuing with shared protection");
     if !attributed {
         if exclusive {
             return Err(Refusal::AttributionFailure);
         }
-        if !args.json {
-            eprintln!("warning: {}", warning.unwrap_or_default());
-        }
+        eprintln!(
+            "warning: missing or invalid agent attribution; continuing with shared protection"
+        );
     }
     // SAFETY: single-threaded supervisor; sigaction is initialized and handlers do not restart flock.
     unsafe {
         let mut action: libc::sigaction = std::mem::zeroed();
         action.sa_sigaction = signal as *const () as usize;
+        action.sa_flags = libc::SA_SIGINFO;
         libc::sigemptyset(&mut action.sa_mask);
         for sig in [libc::SIGINT, libc::SIGTERM, libc::SIGALRM] {
             if libc::sigaction(sig, &action, std::ptr::null_mut()) != 0 {
@@ -150,14 +138,7 @@ fn run(args: &Args) -> Result<i32> {
         return Err(Refusal::Deadline);
     }
     if interrupted != 0 {
-        if args.json {
-            emit(
-                "UnsafeLock",
-                "acquisition cancelled",
-                warning,
-                args.job.as_deref(),
-            );
-        }
+        eprintln!("worktree-lease: acquisition cancelled");
         return Ok(128 + interrupted);
     }
     acquired?;
@@ -172,42 +153,16 @@ fn run(args: &Args) -> Result<i32> {
     );
     let interrupted = SIGNAL.load(Ordering::SeqCst);
     if interrupted != 0 {
-        signal(interrupted);
+        forward(interrupted);
     }
     let status = child.wait().map_err(|_| Refusal::UnsafeLock)?;
     CHILD.store(0, Ordering::SeqCst);
-    if args.json {
-        emit(
-            "Granted",
-            "scoped lease completed",
-            warning,
-            args.job.as_deref(),
-        );
-    }
     drop(lease);
     Ok(exit_code(status))
 }
 fn main() {
-    let args = match Args::try_parse() {
-        Ok(args) => args,
-        Err(error) => {
-            if std::env::args_os()
-                .take_while(|a| a != "--")
-                .any(|a| a == "--json")
-            {
-                emit("InvalidInput", "invalid command line", None, None);
-                std::process::exit(2);
-            }
-            error.exit();
-        }
-    };
-    let json = args.json;
-    let code = run(&args).unwrap_or_else(|error| {
-        if json {
-            emit(error.tag(), error.tag(), None, args.job.as_deref());
-        } else {
-            eprintln!("worktree-lease: {error:?}");
-        }
+    let code = run(&Args::parse()).unwrap_or_else(|error| {
+        eprintln!("worktree-lease: {error:?}");
         error.code()
     });
     std::process::exit(code);
