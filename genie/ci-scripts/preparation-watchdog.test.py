@@ -3,6 +3,7 @@
 import os
 from pathlib import Path
 import selectors
+import shutil
 import signal
 import subprocess
 import tempfile
@@ -14,7 +15,7 @@ SCRIPT = (ROOT / "genie/ci-scripts/nix-gc-race-retry.sh").read_text()
 
 
 class PreparationWatchdogTest(unittest.TestCase):
-    def exercise(self, terminate=False, tasks=False):
+    def exercise(self, terminate=False, tasks=False, portable_ps=False):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             for name in ("tick", "release"):
@@ -44,8 +45,19 @@ class PreparationWatchdogTest(unittest.TestCase):
             )
             for name in ("sleep", "devenv"):
                 (root / name).chmod(0o755)
+            if portable_ps:
+                (root / "ps").write_text(
+                    '#!/usr/bin/env bash\n'
+                    'case "$*" in\n'
+                    '  *wchan*) echo "unsupported wchan" >&2; exit 1 ;;\n'
+                    '  *pgid*) read -r group < <("$REAL_PS" -o pgid= -p $$)\n'
+                    '    printf "424242 1 %s S 00:01 portable-fixture\\n" "$group" ;;\n'
+                    '  *) exec "$REAL_PS" "$@" ;;\n'
+                    'esac\n'
+                )
+                (root / "ps").chmod(0o755)
             env = dict(os.environ, PATH=f"{root}:{os.environ['PATH']}", FIXTURE=str(root),
-                       CI_PREPARATION_DIAGNOSTIC_SECONDS="0",
+                       REAL_PS=shutil.which("ps"), CI_PREPARATION_DIAGNOSTIC_SECONDS="0",
                        NIX_STORE_DIAGNOSTICS_DIR=str(diag))
             process = subprocess.Popen(
                 ["bash", "-euo", "pipefail", "-c",
@@ -116,6 +128,8 @@ class PreparationWatchdogTest(unittest.TestCase):
                     self.assertNotIn("private-password", snapshot)
                     self.assertNotIn("fixture-sensitive-value", snapshot)
                     self.assertNotIn("token=hidden", snapshot)
+                    if portable_ps:
+                        self.assertIn("424242 1 S - 00:01 portable-fixture", snapshot)
             finally:
                 if process.poll() is None:
                     os.killpg(process.pid, signal.SIGKILL)
@@ -131,6 +145,9 @@ class PreparationWatchdogTest(unittest.TestCase):
 
     def test_tasks_marker_disables_preparation_dump(self):
         self.exercise(tasks=True)
+
+    def test_ps_without_wait_channel_uses_portable_fallback(self):
+        self.exercise(portable_ps=True)
 
     def test_resolve_build_stderr_is_live_and_persisted_before_exit(self):
         with tempfile.TemporaryDirectory() as directory:

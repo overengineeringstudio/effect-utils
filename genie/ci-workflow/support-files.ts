@@ -224,7 +224,7 @@ snapshot = ["Preparation snapshot (best effort; no lock ownership inferred)"]
 def probe(argv):
     try:
         result = subprocess.run(argv, capture_output=True, text=True, timeout=2)
-        return result.stdout + result.stderr
+        return result.stdout if result.returncode == 0 else "unavailable"
     except (OSError, subprocess.SubprocessError):
         return "unavailable"
 
@@ -232,13 +232,17 @@ try:
     group = os.getpgid(int(root))
     # pgid is used only for selection; include wait channel and bounded argv in evidence.
     processes = probe(["ps", "-axo", "pid=,ppid=,pgid=,stat=,wchan:32=,etime=,args="])
+    rows = [raw.split(None, 6) for raw in processes.splitlines()]
+    rows = [row for row in rows if len(row) == 7 and all(x.isdigit() for x in row[:3])]
+    if not rows:
+        processes = probe(["ps", "-axo", "pid=,ppid=,pgid=,stat=,etime=,args="])
+        for raw in processes.splitlines():
+            fields = raw.split(None, 5)
+            if len(fields) == 6 and all(x.isdigit() for x in fields[:3]):
+                rows.append(fields[:4] + ["-"] + fields[4:])
     snapshot.append("pid ppid stat wchan etime args (argv truncated to 240 characters)")
     nix_pids = []
-    for raw in processes.splitlines():
-        fields = raw.split(None, 6)
-        if len(fields) != 7:
-            continue
-        pid, parent, pgid, status, channel, age, argv = fields
+    for pid, parent, pgid, status, channel, age, argv in rows:
         if re.search(r"(?:^|/|\s)nix(?:-daemon|-store)?(?:\s|$)", argv):
             nix_pids.append(pid)
         if pgid == str(group):
@@ -246,8 +250,17 @@ try:
                 snapshot.append(f"{pid} {parent} {status} {channel} {age} {redact(argv)[:240]}")
             elif len(snapshot) == 66:
                 snapshot.append("[truncated: process group]")
-    snapshot.append("nix daemon: " + probe(["systemctl", "show", "nix-daemon.service",
-        "--property=ActiveState,SubState,MainPID", "--no-pager"])[:1024])
+    if sys.platform == "darwin":
+        daemon = "unavailable"
+        for label in ["org.nixos.nix-daemon", "systems.determinate.nix-daemon"]:
+            daemon = probe(["launchctl", "print", "system/" + label])
+            if daemon != "unavailable":
+                break
+        daemon = "\n".join(daemon.splitlines()[:12])
+    else:
+        daemon = probe(["systemctl", "show", "nix-daemon.service",
+            "--property=ActiveState,SubState,MainPID", "--no-pager"])
+    snapshot.append("nix daemon: " + daemon[:1024])
     snapshot.append("open /nix/var/nix descriptors (not proof of lock ownership):")
     for pid in nix_pids[:16]:
         try:
