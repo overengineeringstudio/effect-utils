@@ -339,6 +339,8 @@ const make = ({
       return fs.exists(gitFilePath)
     },
 
+    // Admit namespaces using the canonical marker at host/owner/repo only.
+    // Never recursively search an unclassified co-tenant's payload for members.
     listRepos: withStoreEnumeration('megarepo/store/list-repos')(function* (telemetry) {
       const exists = yield* fs.exists(basePath)
       if (exists === false) {
@@ -357,14 +359,13 @@ const make = ({
       }: {
         dir: AbsoluteDirPath
         depth: number
-        census: { repos: number; overflow: AbsoluteDirPath | undefined }
+        census: { overflow: AbsoluteDirPath | undefined }
       }): Effect.Effect<void, PlatformError> =>
         Effect.gen(function* () {
           yield* Effect.yieldNow
           const barePath = EffectPath.ops.join(dir, EffectPath.unsafe.relativeDir('.bare/'))
           const hasBare = yield* fs.exists(barePath)
           if (hasBare === true) {
-            census.repos++
             const relativePath = `${dir.slice(basePath.length).replace(/^\/+/, '').replace(/\/?$/, '/')}`
             result.push({
               relativePath: EffectPath.unsafe.relativeDir(relativePath),
@@ -395,8 +396,8 @@ const make = ({
             isHostNamespace === false && (hasNestedState === true || hasNestedLocks === true)
           if (isNestedStore === true) return
 
-          // Classify overflow only after the whole namespace has been visited:
-          // a foreign subtree is ignorable, but incomplete member census is not.
+          // Admission already established ownership; incomplete census of a
+          // member namespace must fail closed even if no repo was reached yet.
           if (depth >= STORE_REPO_WALK_MAX_DEPTH) {
             census.overflow ??= dir
             telemetry.depthLimited(dir)
@@ -430,6 +431,8 @@ const make = ({
         (entry) =>
           Effect.gen(function* () {
             if (shouldSkipStoreRootEntry(entry) === true) {
+              if (RESERVED_STORE_TOOL_ROOTS.has(entry) === true)
+                telemetry.foreignNamespace(`${basePath}${entry}/`)
               return
             }
 
@@ -439,17 +442,39 @@ const make = ({
             )
             if ((yield* telemetry.isDirectory({ fs, path: entryPath })) === false) return
 
-            const census = { repos: 0, overflow: undefined as AbsoluteDirPath | undefined }
+            const owners = yield* fs.readDirectory(entryPath)
+            let memberNamespace = false
+            for (const owner of owners) {
+              if (owner.startsWith('.') === true) continue
+              const ownerPath = `${entryPath}${owner}`
+              if ((yield* isStoreDirectory({ fs, path: ownerPath })) === false) continue
+              for (const repo of yield* fs.readDirectory(ownerPath)) {
+                if (repo.startsWith('.') === true) continue
+                if ((yield* isStoreDirectory({ fs, path: `${ownerPath}/${repo}` })) === false)
+                  continue
+                const marker = `${ownerPath}/${repo}/.bare`
+                if ((yield* fs.exists(marker)) === true) {
+                  if ((yield* isStoreDirectory({ fs, path: marker })) === true) {
+                    memberNamespace = true
+                    break
+                  }
+                }
+              }
+              if (memberNamespace === true) break
+            }
+            if (memberNamespace === false) {
+              telemetry.foreignNamespace(entryPath)
+              return
+            }
+
+            const census = { overflow: undefined as AbsoluteDirPath | undefined }
             yield* walk({ dir: entryPath, depth: 1, census })
             if (census.overflow !== undefined) {
-              if (census.repos > 0) {
-                return yield* Effect.die(
-                  new Error(
-                    `store listRepos census exceeded the supported depth at ${census.overflow}`,
-                  ),
-                )
-              }
-              telemetry.foreignNamespace(entryPath)
+              return yield* Effect.die(
+                new Error(
+                  `store listRepos census exceeded the supported depth at ${census.overflow}`,
+                ),
+              )
             }
           }),
         { concurrency: 32 },

@@ -1665,6 +1665,91 @@ describe('store discovery is bounded to the layout', () => {
   }
 
   it.effect(
+    'admits fixed-depth member layouts without descending into co-tenant payloads during GC',
+    Effect.fnUntraced(
+      function* () {
+        const fs = yield* FileSystem.FileSystem
+        const { storePath } = yield* createStoreFixture([
+          { host: 'github.com', owner: 'acme', repo: 'real', branches: [] },
+          { host: 'intranet', owner: 'team', repo: 'real', branches: [] },
+        ])
+        const payloads = ['pnpm-store-shared-v1', 'store', 'cache.example']
+        const deep = 'v11/links/@libsql/core/0.17.4/hash/node_modules/deep/payload'
+        for (const root of payloads) {
+          yield* fs.makeDirectory(`${storePath}${root}/${deep}/.bare`, { recursive: true })
+          yield* fs.writeFileString(`${storePath}${root}/${deep}/keep`, 'co-tenant')
+        }
+        yield* fs.writeFileString(`${storePath}loose.log`, 'log')
+        yield* fs.writeFileString(`${storePath}loose.sh`, 'script')
+        const visited: Array<string> = []
+        const trackedFs = {
+          ...fs,
+          readDirectory: (path: string) => {
+            visited.push(path)
+            return fs.readDirectory(path)
+          },
+        }
+        const warnings: Array<string> = []
+        const logger = Logger.layer(
+          [
+            Logger.make(({ logLevel, message }) => {
+              if (logLevel === 'Warn') warnings.push(String(message))
+            }),
+          ],
+          { mergeWithExisting: false },
+        )
+        const store = yield* Effect.provide(Store, makeStoreLayer({ basePath: storePath })).pipe(
+          Effect.provideService(FileSystem.FileSystem, trackedFs),
+        )
+        expect(
+          (yield* store.listRepos.pipe(Effect.provide(logger))).map((repo) => repo.relativePath),
+        ).toEqual(['github.com/acme/real/', 'intranet/team/real/'])
+        expect(warnings).toEqual([
+          'store enumeration: skipped entries (non-directory=2, foreign-namespace=3, depth-limited=0)',
+        ])
+        const outside = yield* fs.makeTempDirectoryScoped()
+        const policy = `${outside}/budgets.json`
+        yield* fs.writeFileString(
+          policy,
+          encodeJson({
+            schemaVersion: 'megarepo.build-output-budgets.v2',
+            host: hostname(),
+            storeRoots: [storePath],
+            quotaBytes: 1024 * 1024,
+            idleRetentionMs: 0,
+            classes: { 'cargo-target': { budgetBytes: 0, paths: ['target', '**/target'] } },
+          }),
+        )
+        const budgetGc = yield* runMrCommand({
+          cwd: storePath,
+          command: ['store', 'gc', '--budgets', policy, '--dry-run', '--output', 'json'],
+          env: { MEGAREPO_STORE: storePath },
+        }).pipe(Effect.provideService(FileSystem.FileSystem, trackedFs), Effect.provide(logger))
+        expect(budgetGc.exitCode, budgetGc.failure).toBe(0)
+        const gc = yield* runMrCommand({
+          cwd: storePath,
+          command: ['store', 'gc', '--all', '--output', 'json'],
+          env: { MEGAREPO_STORE: storePath },
+        }).pipe(Effect.provideService(FileSystem.FileSystem, trackedFs), Effect.provide(logger))
+        expect(gc.exitCode, gc.failure).toBe(0)
+        for (const root of payloads) {
+          expect(
+            visited
+              .filter((path) => path.startsWith(`${storePath}${root}/`))
+              .every(
+                (path) => path.replace(/\/$/, '').slice(storePath.length).split('/').length <= 2,
+              ),
+          ).toBe(true)
+          expect(yield* fs.readFileString(`${storePath}${root}/${deep}/keep`)).toBe('co-tenant')
+        }
+        expect(yield* fs.readFileString(`${storePath}loose.log`)).toBe('log')
+      },
+      Effect.provide(NodeServices.layer),
+      Effect.scoped,
+    ),
+  )
+
+  it.effect(
     'listRepos returns only layout members, excluding _-prefixed dirs, nested stores, and worktrees',
     Effect.fnUntraced(
       function* () {
@@ -1678,8 +1763,7 @@ describe('store discovery is bounded to the layout', () => {
             { recursive: true },
           )
 
-        // Legit member at depth 2 (a bare repo placed directly under a pseudo-host
-        // dir, like the real store's `other/contrib-bare`) — must be INCLUDED.
+        // A marker outside host/owner/repo is not namespace admission evidence.
         yield* mkdirp('other/contrib/.bare')
         // Host namespaces may carry their own metadata; a lone `.state` must not
         // make the host look like a nested store and hide all repos below it.
@@ -1713,11 +1797,11 @@ describe('store discovery is bounded to the layout', () => {
         const repos = (yield* store.listRepos).map((r) => r.relativePath)
 
         expect(repos).toContain('github.com/acme/real/')
-        expect(repos).toContain('other/contrib/')
+        expect(repos).not.toContain('other/contrib/')
         expect(repos.some((p) => p.startsWith('_iso/'))).toBe(false)
         expect(repos.some((p) => p.startsWith('evergreen/'))).toBe(false)
         expect(repos.some((p) => p.startsWith('stray/'))).toBe(false)
-        expect(repos).toHaveLength(2)
+        expect(repos).toHaveLength(1)
       },
       Effect.provide(NodeServices.layer),
       Effect.scoped,
@@ -1741,6 +1825,7 @@ describe('store discovery is bounded to the layout', () => {
         yield* fs.makeDirectory(`${storePath}intranet/group/subgroup/repo/.bare`, {
           recursive: true,
         })
+        yield* fs.makeDirectory(`${storePath}intranet/group/direct/.bare`, { recursive: true })
         const visited: Array<string> = []
         const trackedFs = {
           ...fs,
@@ -1764,10 +1849,11 @@ describe('store discovery is bounded to the layout', () => {
         const repos = yield* store.listRepos.pipe(Effect.provide(loggerLayer))
         expect(repos.map((repo) => repo.relativePath)).toEqual([
           'github.com/acme/real/',
+          'intranet/group/direct/',
           'intranet/group/subgroup/repo/',
         ])
         const expectedWarnings = [
-          'store enumeration: skipped entries (non-directory=1, foreign-namespace=1, depth-limited=1)',
+          'store enumeration: skipped entries (non-directory=1, foreign-namespace=2, depth-limited=0)',
         ]
         expect(warnings).toEqual(expectedWarnings)
         expect(visited.some((path) => path.includes('pnpm-store-shared-v1'))).toBe(false)
