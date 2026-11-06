@@ -37,9 +37,23 @@ pub enum Command {
         git_dir: PathBuf,
     },
 }
-fn output(value: &impl serde::Serialize) -> Result<()> {
+fn output(tag: &str, value: &impl serde::Serialize) -> Result<()> {
+    #[derive(serde::Serialize)]
+    struct Success<'a, T> {
+        _tag: &'a str,
+        reason: &'a str,
+        record: &'a T,
+    }
     let mut stdout = std::io::stdout().lock();
-    serde_json::to_writer(&mut stdout, value).map_err(|_| Refusal::InvalidInput)?;
+    serde_json::to_writer(
+        &mut stdout,
+        &Success {
+            _tag: tag,
+            reason: tag,
+            record: value,
+        },
+    )
+    .map_err(|_| Refusal::InvalidInput)?;
     stdout.write_all(b"\n").map_err(|_| Refusal::InvalidInput)
 }
 impl Command {
@@ -55,13 +69,16 @@ impl Command {
                 // SAFETY: getppid has no memory preconditions; adapters can pass an explicit PID.
                 let pid = holder_pid.unwrap_or_else(|| unsafe { libc::getppid() as u32 });
                 let holder = Holder::capture(creator.clone(), pid)?;
-                output(&Record::create(
-                    &Identity::resolve(&worktree)?,
-                    creator,
-                    purpose,
-                    holder,
-                    ttl,
-                )?)
+                output(
+                    "Created",
+                    &Record::create(
+                        &Identity::resolve(&worktree)?,
+                        creator,
+                        purpose,
+                        holder,
+                        ttl,
+                    )?,
+                )
             }
             Self::Renew {
                 worktree,
@@ -71,14 +88,18 @@ impl Command {
             } => {
                 let lease = Lease::open(Identity::resolve(&worktree)?)?;
                 lease.acquire(false, false)?;
-                output(&lease.renew(Holder::capture(agent, holder_pid)?, ttl)?)
+                output(
+                    "Renewed",
+                    &lease.renew(Holder::capture(agent, holder_pid)?, ttl)?,
+                )
             }
-            Self::Inspect { worktree, .. } => {
-                output(&Record::inspect(&Identity::resolve(&worktree)?)?)
-            }
+            Self::Inspect { worktree, .. } => output(
+                "Inspected",
+                &Record::inspect(&Identity::resolve(&worktree)?)?,
+            ),
             Self::Guard { git_dir } => {
                 drop(guard::reclaim(Identity::resolve_admin(&git_dir)?)?);
-                Ok(())
+                output("Eligible", &Option::<Record>::None)
             }
         }
     }
