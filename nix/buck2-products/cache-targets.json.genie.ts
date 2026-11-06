@@ -7,6 +7,7 @@ import {
   productLinuxBuildCapabilities,
 } from '../../genie/buck2/product-capabilities.ts'
 import { projectBuckProductSourcePaths } from '../../genie/buck2/product-source-paths.ts'
+import { rootWorkspacePackages } from '../../package.json.genie.ts'
 import aiGatewayEdgePkg from '../../packages/@overeng/ai-gateway-edge/package.json.genie.ts'
 import buck2ToolsPkg from '../../packages/@overeng/buck2-tools/package.json.genie.ts'
 import ciToolsPkg from '../../packages/@overeng/ci-tools/package.json.genie.ts'
@@ -141,12 +142,23 @@ assertPublishedPackageClosure({ packages: packageManifests, workspaceNames })
 const packageEntries = packageManifests.map((packageJson) => {
   const name = packageJson.name
   const packagePath = `packages/${name}`
+  const pkg = rootWorkspacePackages.find((member) => member.data.name === name)
+  if (pkg === undefined) {
+    throw new Error(`Missing workspace package generator for cache product ${name}`)
+  }
   return {
     kind: 'package',
     name,
     outputName: `${name.replace('@', '').replace('/', '-')}.tgz`,
     packagePath,
     packageTreePath: packagePath,
+    // Package-local tsconfigs/assets and declared workspace dependencies cover
+    // dist-package inputs; shared Buck rules/toolchains remain separate inputs.
+    sourcePaths: projectBuckProductSourcePaths({
+      pkg,
+      additionalPackages: [buck2ToolsPkg],
+      additionalPaths: ['patches'],
+    }),
     target: `effect_utils//${packagePath}:dist-package`,
     version: packageJson.version,
   } as const
