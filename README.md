@@ -316,7 +316,7 @@ Exclusive callers require an `agent/…` identity; shared callers without attrib
 JSON emits one tagged result with optional job correlation on stderr. Refusal exits are 75 (busy/deadline), 1 (safety), and 2 (input).
 SIGINT/SIGTERM/SIGHUP are forwarded to the isolated child process group; foreground terminal ownership and child status are restored.
 Identity lookup clears every `GIT_*` environment variable. Linux-only PDEATHSIG kills the immediate child when its supervisor dies; macOS has no equivalent protection here.
-Release never removes the lock file; parent-death handling does not supervise descendants.
+Release never removes the lock file. PDEATHSIG kills only the direct payload, not its process group; grandchildren can survive the supervisor's death and require separate caller supervision.
 
 ### Work storage contract
 

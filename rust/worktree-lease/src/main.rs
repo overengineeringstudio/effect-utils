@@ -1,4 +1,6 @@
 //! Linux-only PDEATHSIG protects the direct payload; macOS has no parent-death protection here.
+//! PDEATHSIG kills only the direct payload, not its process group; grandchildren can survive
+//! the supervisor's death, so descendant cleanup requires separate caller supervision.
 use clap::{Parser, ValueEnum};
 use std::{
     io::Write,
