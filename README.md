@@ -310,9 +310,11 @@ The check restores checkout read-only permissions without rewriting any bytes.
 
 ### Worktree leases
 
-`worktree-lease run WORKTREE --mode shared|exclusive --try [--agent AGENT] [--job JOB] -- COMMAND...`
-holds a per-worktree lease until command exit. Exclusive callers require an `agent/…` identity.
-Refusal exits are 75 (busy), 1 (safety), and 2 (input). Release never removes the lock file.
+`worktree-lease run WORKTREE --mode shared|exclusive (--try|--await SECONDS) [--agent AGENT] [--job JOB] -- COMMAND...`
+holds a per-worktree lease until command exit. Await uses interruptible kernel waiting with an integer-second deadline.
+Exclusive callers require an `agent/…` identity; shared callers without attribution warn and continue.
+Refusal exits are 75 (busy/deadline), 1 (safety), and 2 (input).
+SIGINT/SIGTERM are forwarded to the isolated child process group; foreground terminal ownership and child status are restored. Release never removes the lock file.
 
 ### Work storage contract
 
