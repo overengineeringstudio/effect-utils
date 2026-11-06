@@ -16,6 +16,7 @@ use std::{
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Refusal {
     Busy,
+    Deadline,
     UnknownIdentity,
     UnsafeLock,
     Retired,
@@ -25,9 +26,20 @@ pub enum Refusal {
 impl Refusal {
     pub fn code(self) -> i32 {
         match self {
-            Self::Busy => 75,
+            Self::Busy | Self::Deadline => 75,
             Self::InvalidInput => 2,
             _ => 1,
+        }
+    }
+    pub fn tag(self) -> &'static str {
+        match self {
+            Self::Busy => "Busy",
+            Self::Deadline => "Deadline",
+            Self::UnknownIdentity => "UnknownIdentity",
+            Self::UnsafeLock => "UnsafeLock",
+            Self::Retired => "Retired",
+            Self::AttributionFailure => "AttributionFailure",
+            Self::InvalidInput => "InvalidInput",
         }
     }
 }
@@ -67,24 +79,28 @@ impl Identity {
             return Err(Refusal::UnknownIdentity);
         }
         let text = std::str::from_utf8(&output.stdout).map_err(|_| Refusal::UnknownIdentity)?;
-        let paths: Vec<_> = text
-            .lines()
-            .map(fs::canonicalize)
-            .collect::<io::Result<_>>()
-            .map_err(|_| Refusal::UnknownIdentity)?;
-        let [admin, common, worktree]: [PathBuf; 3] =
-            paths.try_into().map_err(|_| Refusal::UnknownIdentity)?;
-        let identity = Self {
-            admin,
-            common,
-            worktree,
+        let mut paths = text.lines().map(fs::canonicalize);
+        let mut next = || {
+            paths
+                .next()
+                .ok_or(Refusal::UnknownIdentity)?
+                .map_err(|_| Refusal::UnknownIdentity)
         };
+        let identity = Self {
+            admin: next()?,
+            common: next()?,
+            worktree: next()?,
+        };
+        if paths.next().is_some() {
+            return Err(Refusal::UnknownIdentity);
+        }
         identity.validate()?;
         Ok(identity)
     }
     fn validate(&self) -> Result<()> {
         let registered = if self.admin == self.common {
-            fs::canonicalize(self.worktree.join(".git")).ok() == Some(self.admin.clone())
+            fs::canonicalize(self.worktree.join(".git")).ok().as_deref()
+                == Some(self.admin.as_path())
         } else {
             let gitfile = self.worktree.join(".git");
             let backlink = fs::read_to_string(self.admin.join("gitdir"))
@@ -96,7 +112,7 @@ impl Identity {
                 .and_then(|p| fs::canonicalize(self.worktree.join(p)).ok());
             backlink.is_some()
                 && backlink == fs::canonicalize(gitfile).ok()
-                && forward == Some(self.admin.clone())
+                && forward.as_deref() == Some(self.admin.as_path())
                 && self.admin.parent() == Some(self.common.join("worktrees").as_path())
         };
         if !registered || !self.admin.is_dir() {
