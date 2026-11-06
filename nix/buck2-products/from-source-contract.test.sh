@@ -44,6 +44,7 @@ contract="$(nix eval --impure --json --expr '
     hasPreparedDeps = product ? preparedDeps;
     hasStandaloneRoot = product ? standaloneRoot;
     source = toString product.source;
+    rootProjection = toString product.rootProjection;
   }
 ')"
 capabilities="$(jq -r .capabilities <<<"$contract")"
@@ -53,6 +54,7 @@ registered_archives="$(jq -r .registeredArchives <<<"$contract")"
 has_prepared_deps="$(jq -r .hasPreparedDeps <<<"$contract")"
 has_standalone_root="$(jq -r .hasStandaloneRoot <<<"$contract")"
 source="$(jq -r .source <<<"$contract")"
+root_projection="$(jq -r .rootProjection <<<"$contract")"
 
 [[ "$capabilities" == "$registered_capabilities" ]] || {
   printf 'megarepo source product did not select its declared capability closure\n' >&2
@@ -70,12 +72,16 @@ jq -e "(.requiredCapabilities | sort) == (.expectedCapabilities | sort)" <<<"$co
 }
 [[ "$has_prepared_deps" == false ]]
 [[ "$has_standalone_root" == false ]]
-[[ -d "$source/genie/weaver-registry" ]]
-[[ -f "$source/nix/weaver-flake/flake.nix" ]]
-[[ -f "$source/.buckconfig" ]]
-[[ -f "$source/buck2/dependencies/BUCK" ]]
-[[ -f "$source/buck2/rust/library-closure.mjs" ]]
+# Package sources and shared rules are staged separately for scoped products.
+[[ -f "$source/packages/@overeng/megarepo/BUCK" ]]
+[[ -f "$source/packages/@overeng/megarepo/src/mod.ts" ]]
+[[ -d "$root_projection/genie/weaver-registry" ]]
+[[ -f "$root_projection/nix/weaver-flake/flake.nix" ]]
+[[ -f "$root_projection/.buckconfig" ]]
+[[ -f "$root_projection/buck2/dependencies/BUCK" ]]
+[[ -f "$root_projection/buck2/rust/library-closure.mjs" ]]
 [[ ! -e "$source/buck2/tests/library_closure/closure.unit.test.mjs" ]]
+[[ ! -e "$root_projection/buck2/tests/library_closure/closure.unit.test.mjs" ]]
 
 nix build "$repo_root#buck-product-megarepo-from-source" --no-link
 

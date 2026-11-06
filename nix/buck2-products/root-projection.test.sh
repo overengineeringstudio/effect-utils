@@ -113,6 +113,9 @@ nix eval --impure --json --expr '
     products = map checkProduct declarations;
   in
     assert before == after;
+    assert builtins.all (entry: entry.kind != "javascript"
+      || (entry ? sourcePaths && builtins.isList entry.sourcePaths && entry.sourcePaths != []))
+      (builtins.head inventories).products;
     assert builtins.all (prefix: !(builtins.any (lib.hasPrefix "${toString repo}/${prefix}") files)) excluded;
     assert builtins.elem (repo + "/buck2/products/vite-runtime-fixture.mjs") extended.files;
     assert builtins.all (name: builtins.any (entry: entry.name == name) products) [ "genie" "typescript-api-server" "otelite" "otel-scrape" ];

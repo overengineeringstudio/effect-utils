@@ -164,6 +164,9 @@ const packageEntries = packageManifests.map((packageJson) => {
 const buckProductSourceEntries = [
   ...javascriptProducts.map(([name, outputName, packagePath, targetName, packageTreePath]) => {
     const pkg = sourcePackages[packagePath]
+    if (pkg === undefined) {
+      throw new Error(`Missing workspace package generator for JavaScript cache product ${name}`)
+    }
     return {
       kind: 'javascript' as const,
       name,
@@ -172,15 +175,11 @@ const buckProductSourceEntries = [
       packageTreePath: packageTreePath ?? packagePath,
       target: `effect_utils//${packagePath}:${targetName}`,
       version: '0.0.0',
-      ...(pkg === undefined
-        ? {}
-        : {
-            sourcePaths: projectBuckProductSourcePaths({
-              pkg,
-              additionalPackages: [buck2ToolsPkg],
-              additionalPaths: ['patches'],
-            }),
-          }),
+      sourcePaths: projectBuckProductSourcePaths({
+        pkg,
+        additionalPackages: [buck2ToolsPkg],
+        additionalPaths: ['patches'],
+      }),
     }
   }),
   ...packageEntries,
