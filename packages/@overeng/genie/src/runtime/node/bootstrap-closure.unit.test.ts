@@ -11,7 +11,7 @@ import {
 import os from 'node:os'
 import path from 'node:path'
 
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
 
 import {
   discoverGenieFiles,
@@ -25,9 +25,6 @@ import {
   formatViolationChain,
 } from './bootstrap-closure.ts'
 
-const nativeFs = { ...process.getBuiltinModule('fs') }
-const discoveryIo = { readdirSync: vi.fn(nativeFs.readdirSync) }
-vi.mock('node:fs', () => ({ ...nativeFs, ...discoveryIo }))
 const GENIE_MEMBER_OVERRIDE_MAP_ENV = 'GENIE_MEMBER_OVERRIDE_MAP'
 const GENIE_TYPESCRIPT_API_SERVER_ENV = 'GENIE_TYPESCRIPT_API_SERVER'
 
@@ -48,7 +45,6 @@ const write = (dir: string, relativePath: string, content: string): string => {
 }
 
 afterEach(() => {
-  discoveryIo.readdirSync.mockReset().mockImplementation(nativeFs.readdirSync)
   delete process.env[GENIE_MEMBER_OVERRIDE_MAP_ENV]
   delete process.env.MEGAREPO_STORE
   for (const dir of createdDirs.splice(0)) {
@@ -506,7 +502,7 @@ describe('discoverGenieFiles', () => {
       write(dir, `${root}/.leases/ignored.genie.ts`, `export default {}`)
     }
 
-    expect(discoverGenieFiles(dir)).toEqual([nestedSource, rootSource])
+    expect(discoverGenieFiles({ repoRoot: dir })).toEqual([nestedSource, rootSource])
   })
 
   it('excludes a stale publication-lock listing that disappears during source discovery', () => {
@@ -515,34 +511,33 @@ describe('discoverGenieFiles', () => {
     const editorRoot = path.join(dir, 'packages', '.editor-view')
     const lock = path.join(editorRoot, '.publish.lock')
     write(dir, 'packages/.editor-view/.publish.lock/owner.json', '{}')
-    const staleListing = nativeFs.readdirSync(editorRoot, { withFileTypes: true })
+    const staleListing = readdirSync(editorRoot, { withFileTypes: true })
     let removed = false
-    discoveryIo.readdirSync.mockImplementation((...args) => {
-      const directory = String(args[0])
+    const visited: string[] = []
+    const readDirectory = (directory: string) => {
+      visited.push(directory)
       // A former walker would receive the lock Dirent, then fail reading the removed lock.
       if (directory === editorRoot) return staleListing
-      const entries = nativeFs.readdirSync(...args)
+      const entries = readdirSync(directory, { withFileTypes: true })
       if (directory === dir) {
         rmSync(lock, { recursive: true })
         removed = true
       }
       return entries
-    })
-    expect(discoverGenieFiles(dir)).toEqual([source])
+    }
+    expect(discoverGenieFiles({ repoRoot: dir, readDirectory })).toEqual([source])
     expect(removed).toBe(true)
-    expect(
-      discoveryIo.readdirSync.mock.calls.some(([directory]) => String(directory) === editorRoot),
-    ).toBe(false)
+    expect(visited).not.toContain(editorRoot)
   })
 
   it('still fails when a real source directory disappears during discovery', () => {
     const dir = makeDir()
     write(dir, 'sources/source.genie.ts', `export default {}`)
-    discoveryIo.readdirSync.mockImplementation((...args) => {
-      const entries = nativeFs.readdirSync(...args)
-      if (String(args[0]) === dir) rmSync(path.join(dir, 'sources'), { recursive: true })
+    const readDirectory = (directory: string) => {
+      const entries = readdirSync(directory, { withFileTypes: true })
+      if (directory === dir) rmSync(path.join(dir, 'sources'), { recursive: true })
       return entries
-    })
-    expect(() => discoverGenieFiles(dir)).toThrow('ENOENT')
+    }
+    expect(() => discoverGenieFiles({ repoRoot: dir, readDirectory })).toThrow('ENOENT')
   })
 })

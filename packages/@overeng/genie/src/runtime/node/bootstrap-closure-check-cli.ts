@@ -1,4 +1,4 @@
-import { existsSync, readdirSync, readFileSync, realpathSync } from 'node:fs'
+import { type Dirent, existsSync, readdirSync, readFileSync, realpathSync } from 'node:fs'
 import path from 'node:path'
 
 import { parseGeneratorPhase } from '../../core/phase.ts'
@@ -246,11 +246,17 @@ const parseArgs = ({
 }
 
 /** Discover source-tree `.genie.ts` files without requiring Git or package-manager install state. */
-export const discoverGenieFiles = (repoRoot: string): readonly string[] => {
+export const discoverGenieFiles = ({
+  repoRoot,
+  readDirectory = (directory) => readdirSync(directory, { withFileTypes: true }),
+}: {
+  repoRoot: string
+  readDirectory?: (directory: string) => readonly Dirent[]
+}): readonly string[] => {
   const files: string[] = []
 
   const visit = (dir: string): void => {
-    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    for (const entry of readDirectory(dir)) {
       if (entry.isSymbolicLink() === true) continue
 
       const entryPath = path.join(dir, entry.name)
@@ -290,7 +296,7 @@ export const bootstrapClosureCheckMain = async ({
       return
     }
 
-    const allGenieFiles = discoverGenieFiles(repoRoot)
+    const allGenieFiles = discoverGenieFiles({ repoRoot })
     if (editorViewPackagePaths !== undefined && editorViewRootPackagePath !== undefined) {
       const result = await checkBootstrapClosure({
         genieFiles: allGenieFiles,
