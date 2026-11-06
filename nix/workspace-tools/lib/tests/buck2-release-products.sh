@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+fail() { echo "buck2-release-products: $*" >&2; exit 1; }
+
 repo_root="${1:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../.." && pwd -P)}"
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
@@ -250,13 +252,20 @@ case "$1" in
   build)
     if [[ "$*" == *".compileProduct" ]]; then
       printf '%s\n' "$*" >>"$COMPILE_BUILD_LOG"
-      [[ "${FAIL_COMPILE_BUILD:-}" != 1 ]] || exit 1
-      printf '%s\n' "$FIXTURE_COMPILE_STORE_PATH"
+      [[ "${FAIL_COMPILE_BUILD:-}" == 0 ]] || exit 1
+      for ref in "$@"; do
+        [[ "$ref" != *".compileProduct" ]] || printf '%s\n' "$FIXTURE_COMPILE_STORE_PATH"
+      done
     elif [[ "$*" == *".sourceEvidence" ]]; then
       printf '%s\n' "$FIXTURE_EVIDENCE_STORE_PATH"
     else
       printf '%s\n' "$FIXTURE_STORE_PATH"
     fi
+    ;;
+  path-info)
+    printf '%s\n' "$*" >>"$COMPILE_QUERY_LOG"
+    [[ "${FAIL_COMPILE_BUILD:-}" == partial && "$*" != *"fixture-native.buck2Product.compileProduct" ]] || exit 1
+    printf '%s\n' "$FIXTURE_COMPILE_STORE_PATH"
     ;;
   *) printf '%s\n' "$FIXTURE_STORE_PATH" ;;
 esac
@@ -355,32 +364,60 @@ mkdir -p "$tmp/compile-output"
 cp "$tmp/collision-output/fixture.js" "$tmp/compile-output/fixture.js"
 export FIXTURE_COMPILE_STORE_PATH="$(nix store add-path "$tmp/compile-output")"
 export COMPILE_BUILD_LOG="$tmp/compile-build.log"
+export COMPILE_QUERY_LOG="$tmp/compile-query.log"
 printf '{"products":[{"name":"fixture-native"}]}\n' >"$tmp/collision-repo/nix/buck2-products/native-targets.json"
 printf '{"products":[{"name":"fixture-compiled"}]}\n' >"$tmp/collision-repo/nix/buck2-products/compiled-targets.json"
 compile_publisher="$repo_root/genie/ci-scripts/publish-compile-products.sh"
-for mode in success push-failure build-failure; do
+compile_refs=(
+  "$tmp/collision-repo#buck-product-fixture-from-source.compileProduct"
+  "$tmp/collision-repo#fixture-compiled-compiled.buck2Product.compileProduct"
+  "$tmp/collision-repo#fixture-native.buck2Product.compileProduct"
+)
+for mode in success push-failure build-failure partial-failure; do
   : >"$CACHIX_LOG"
   : >"$COMPILE_BUILD_LOG"
+  : >"$COMPILE_QUERY_LOG"
   fail_push=0; fail_build=0
   if [[ "$mode" == push-failure ]]; then fail_push=1; fi
   if [[ "$mode" == build-failure ]]; then fail_build=1; fi
+  if [[ "$mode" == partial-failure ]]; then fail_build=partial; fi
   GITHUB_EVENT_NAME=push GITHUB_REF=refs/heads/main \
     GITHUB_REPOSITORY=overengineeringstudio/effect-utils \
     PATH="$tmp/fake-bin:$PATH" FAIL_COMPILE_PUSH="$fail_push" FAIL_COMPILE_BUILD="$fail_build" \
-    bash "$compile_publisher" "$tmp/collision-repo" 2>"$tmp/compile-$mode.stderr"
-  [[ "$(wc -l <"$COMPILE_BUILD_LOG")" == 3 ]]
-  for attr in buck-product-fixture-from-source.compileProduct \
-    fixture-compiled-compiled.buck2Product.compileProduct fixture-native.buck2Product.compileProduct; do
-    grep -F -- "$tmp/collision-repo#$attr" "$COMPILE_BUILD_LOG" >/dev/null
-  done
-  if [[ "$mode" == build-failure ]]; then
-    [[ ! -s "$CACHIX_LOG" ]]
-    [[ "$(grep -c '::warning title=Compile cache realization failed::' "$tmp/compile-$mode.stderr")" == 3 ]]
+    bash "$compile_publisher" "$tmp/collision-repo" 2>"$tmp/compile-$mode.stderr" ||
+    fail "$mode: compile warming must remain warning-only"
+  [[ "$(wc -l <"$COMPILE_BUILD_LOG")" == 1 ]] ||
+    fail "$mode: expected one batched compile build"
+  grep -Fx -- "build --no-link --print-out-paths --keep-going ${compile_refs[*]}" "$COMPILE_BUILD_LOG" >/dev/null ||
+    fail "$mode: batch must build every filtered compile reference with --keep-going"
+  if [[ "$fail_build" != 0 ]]; then
+    [[ "$(wc -l <"$COMPILE_QUERY_LOG")" == 3 ]] ||
+      fail "$mode: recovery must query exactly the selected attributes without rebuilding"
+    for ref in "${compile_refs[@]}"; do
+      grep -Fx -- "path-info $ref" "$COMPILE_QUERY_LOG" >/dev/null ||
+        fail "$mode: missing exact path-info recovery for $ref"
+    done
   else
-    [[ "$(wc -l <"$CACHIX_LOG")" == 3 ]]
-    [[ "$(grep -Fxc "push overeng-effect-utils $FIXTURE_COMPILE_STORE_PATH" "$CACHIX_LOG")" == 3 ]]
+    [[ ! -s "$COMPILE_QUERY_LOG" ]] || fail "$mode: successful builds must not need recovery"
+  fi
+  if [[ "$mode" == build-failure ]]; then
+    [[ ! -s "$CACHIX_LOG" ]] || fail "$mode: missing outputs must not be pushed"
+    [[ "$(grep -c '::warning title=Compile cache realization failed::' "$tmp/compile-$mode.stderr")" == 4 ]] ||
+      fail "$mode: expected batch and per-attribute realization warnings"
+  else
+    expected_push="push overeng-effect-utils $FIXTURE_COMPILE_STORE_PATH $FIXTURE_COMPILE_STORE_PATH"
+    if [[ "$mode" == partial-failure ]]; then
+      [[ "$(grep -c '::warning title=Compile cache realization failed::' "$tmp/compile-$mode.stderr")" == 2 ]] ||
+        fail "$mode: expected batch and missing-output realization warnings"
+    else
+      expected_push+=" $FIXTURE_COMPILE_STORE_PATH"
+    fi
+    [[ "$(wc -l <"$CACHIX_LOG")" == 1 ]] || fail "$mode: expected one compile cache push"
+    grep -Fx -- "$expected_push" "$CACHIX_LOG" >/dev/null ||
+      fail "$mode: push must contain every validated successful output"
     if [[ "$mode" == push-failure ]]; then
-      [[ "$(grep -c '::warning title=Compile cache push failed::' "$tmp/compile-$mode.stderr")" == 3 ]]
+      [[ "$(grep -c '::warning title=Compile cache push failed::' "$tmp/compile-$mode.stderr")" == 1 ]] ||
+        fail "$mode: expected one batch push warning"
     fi
   fi
 done

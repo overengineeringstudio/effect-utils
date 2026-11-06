@@ -49,7 +49,49 @@ import {
   withNixRealisationTimeouts,
   withCiSourceRoot,
 } from './shared.ts'
+import {
+  ciWorkflowResolveDevenvScript,
+  ciWorkflowNixGcRaceRetryScript,
+  preparationDiagnosticSeconds,
+} from './support-files.ts'
 import testPlatforms from './test-platforms.json' with { type: 'json' }
+
+describe('Resolve devenv hang diagnostics', () => {
+  it('streams stderr to the job and a retained repair log', () => {
+    expect(ciWorkflowResolveDevenvScript).toContain('exec {build_stderr}> >(tee -a "$log" >&2)')
+    expect(ciWorkflowResolveDevenvScript).toContain('2>&"$build_stderr"')
+    expect(ciWorkflowResolveDevenvScript).toContain(
+      'mktemp "$DIAG_ROOT/resolve-devenv.nix-build.XXXXXX.log"',
+    )
+    expect(ciWorkflowResolveDevenvScript).toContain('valid( store path)?" "$log"')
+    expect(ciWorkflowResolveDevenvScript).not.toContain('rm -f "$log"')
+  })
+
+  it('observes before every generated resolution deadline without changing it', () => {
+    expect(ciWorkflowNixGcRaceRetryScript).toContain(
+      `CI_PREPARATION_DIAGNOSTIC_SECONDS:-${preparationDiagnosticSeconds}`,
+    )
+    for (const job of Object.values(ciWorkflow.data.jobs)) {
+      for (const step of job.steps) {
+        if (step.name !== pipelineDevenvStepName || step['timeout-minutes'] === undefined) continue
+        const minutes = String(step['timeout-minutes']).match(/\d+/g)!.map(Number)
+        expect(preparationDiagnosticSeconds).toBeLessThan(Math.min(...minutes) * 60)
+      }
+    }
+  })
+
+  it('redacts before persisting bounded process and prefetch evidence', () => {
+    expect(ciWorkflowNixGcRaceRetryScript).toContain('stream.write(redact("\\n".join(snapshot))')
+    expect(ciWorkflowNixGcRaceRetryScript).toContain(
+      'token|password|secret|authorization|credential',
+    )
+    expect(ciWorkflowNixGcRaceRetryScript).toContain('[REDACTED_URL]')
+    expect(ciWorkflowNixGcRaceRetryScript).toContain(
+      'pid=,ppid=,pgid=,stat=,wchan:32=,etime=,args=',
+    )
+    expect(ciWorkflowNixGcRaceRetryScript).toContain('"locked-input-prefetch", "*.log"')
+  })
+})
 
 describe('Nix substitution failure policy', () => {
   it('bounds stalled downloads in every generated shared install step on all platforms', () => {
@@ -149,7 +191,7 @@ describe('shared-runner Cachix upload boundary', () => {
     const script = await Bun.file(
       new URL('../ci-scripts/publish-compile-products.sh', import.meta.url),
     ).text()
-    expect(script).toContain('cachix push "$cache" "$compile_path"')
+    expect(script).toContain('cachix push "$cache" "${compile_paths[@]}"')
     expect(script).not.toMatch(/cachix\s+(?:authtoken|use|watch-store|daemon)\b/)
   })
 })
@@ -1283,6 +1325,71 @@ describe('published consumer ref', () => {
     }
     expect(realise.run).toBe(withCiSourceRoot('nix/buck2-products/publish.sh --realise-inputs'))
     expect(publish.run).toContain('nix/buck2-products/publish.sh --proposal "$proposal"')
+  })
+
+  it('skips known-superseded manifest writers before runner admission without gating consumers', () => {
+    const writer = ciWorkflow.data.jobs['publish-manifest-pr']!
+    expect(writer.if).toContain("needs.publish-products.outputs.manifest-writer-tip == 'true'")
+    expect(publisher.outputs?.['manifest-writer-tip']).toBe(
+      '${{ steps.manifest-writer-tip.outputs.manifest-writer-tip }}',
+    )
+    const tipIndex = publisher.steps.findIndex((step) => step.id === 'manifest-writer-tip')
+    expect(tipIndex).toBeGreaterThan(
+      publisher.steps.findIndex((step) => step.id === 'product-publication'),
+    )
+    // Also runs after the manifest-only fast path: no publication-scope condition.
+    expect(publisher.steps[tipIndex]!.if).toBeUndefined()
+    const dependents = Object.entries(ciWorkflow.data.jobs).filter(([, job]) =>
+      job.needs?.includes('publish-manifest-pr'),
+    )
+    expect(dependents.map(([id]) => id)).toEqual(['pipeline-attempt-close'])
+    expect(dependents[0]![1].if).toBe(
+      "${{ !(github.event_name == 'workflow_dispatch' && inputs['measure-macos'] == true) && (always()) }}",
+    )
+    expect(JSON.stringify(dependents[0]![1])).not.toContain('needs.publish-manifest-pr.result')
+    expect(JSON.stringify(ciWorkflow.data.jobs['published-status']!)).not.toContain(
+      'publish-manifest-pr',
+    )
+  })
+
+  it.each([
+    ['current', 'a'.repeat(40), 0, 'true'],
+    ['superseded', 'b'.repeat(40), 0, 'false'],
+    ['network/API failure', '', 1, 'true'],
+    ['failed lookup with partial output', 'b'.repeat(40), 1, 'true'],
+    ['empty response', '', 0, 'true'],
+    ['malformed response', 'null', 0, 'true'],
+  ])('checks the canonical main tip, failing open for %s', (_, tip, status, enabled) => {
+    const script = publisher.steps.find((step) => step.id === 'manifest-writer-tip')!.run!
+    const result = Bun.spawnSync(
+      [
+        'bash',
+        '-c',
+        [
+          'export GITHUB_OUTPUT="$(mktemp)"',
+          'trap \'rm -f "$GITHUB_OUTPUT"\' EXIT',
+          'gh() {',
+          '  [ "$*" = "api repos/overengineeringstudio/effect-utils/git/ref/heads/main --jq .object.sha" ] || exit 99',
+          '  printf "%s\\n" "$TIP"',
+          '  return "$LOOKUP_STATUS"',
+          '}',
+          script,
+          'cat "$GITHUB_OUTPUT"',
+        ].join('\n'),
+      ],
+      {
+        env: {
+          ...process.env,
+          TIP: tip!,
+          LOOKUP_STATUS: String(status),
+          GITHUB_SHA: 'a'.repeat(40),
+          GITHUB_REPOSITORY: 'other/repository',
+        },
+      },
+    )
+    expect(result.exitCode).toBe(0)
+    expect(result.stderr.toString()).toBe('')
+    expect(result.stdout.toString()).toContain(`manifest-writer-tip=${enabled}\n`)
   })
 
   it('gates manifest PR writes on bootstrap drift or the daily safety net with the read-only token', () => {

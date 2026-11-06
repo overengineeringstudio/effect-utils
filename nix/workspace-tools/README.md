@@ -63,11 +63,15 @@ The cache publisher accepts optional `sourcePaths` on scoped inventory entries, 
 Merge-group CI builds these five products in their scoped Nix sandboxes, so absent transitive files fail before merge without adding ordinary PR builds. The source-identity contract checks context-only/revision isolation and own-source sensitivity; root-projection checks manifests, patches, tsconfig, BUCK and lock/rule inputs.
 
 The Native and Compiled Products workflow publishes on canonical-repository main
-pushes or manual dispatches on main. Its Linux x86_64 and Darwin arm64 matrix entries also realize and
-push each `compileProduct` from the cache, compiled, and native inventories:
-stamped wrappers do not retain these unstamped outputs in their runtime closure.
-Compile warming uses exact output paths and is best-effort; final-product push
-failures remain fatal. Write credentials are push-step-local, with isolated
+pushes or manual dispatches on main. Its Linux x86_64 and Darwin arm64 matrix entries
+filter the cache, compiled, and native inventories to current-system exports, then
+realize their `compileProduct` outputs in one `nix build --keep-going` and publish
+the validated store directories in one Cachix push. Stamped wrappers do not retain
+these unstamped outputs in their runtime closure.
+If the batch fails, exact per-attribute `nix path-info` queries recover successfully
+realized outputs without rebuilding missing ones or scanning the store. Realization,
+output-validation, and compile-push failures only warn; final-product push failures
+remain fatal. Write credentials are push-step-local, with isolated
 Cachix configuration under `RUNNER_TEMP` and unconditional cleanup.
 
 `buck2-products/buck-inputs.nix` follows literal load/export/helper dependencies;

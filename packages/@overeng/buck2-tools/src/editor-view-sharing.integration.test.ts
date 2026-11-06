@@ -1,5 +1,5 @@
 import { spawn, spawnSync } from 'node:child_process'
-import { createHash } from 'node:crypto'
+import { createHash, Hash, webcrypto } from 'node:crypto'
 import {
   type BigIntStats,
   accessSync,
@@ -34,8 +34,10 @@ import {
   repairEditorViewContentStore,
   defaultEditorViewContentStore,
   editorViewStagingCreatorIdentity,
+  materializeEditorViewSourceFiles,
   shareSnapshotFiles,
 } from './editor-view-sharing.ts'
+import { editorViewTimingContext } from './typescript-runner.ts'
 
 /** Reads one Buck-declared immutable tool path; nothing resolves through an ambient PATH. */
 const requireTool = (name: string): string => {
@@ -366,6 +368,80 @@ const replaceBlob = (
 }
 
 describe('host-wide editor snapshot content store', () => {
+  it.each([
+    { hit: false, size: 32 },
+    { hit: true, size: 32 },
+    { hit: false, size: 65_537 },
+    { hit: true, size: 65_537 },
+  ])('hashes payload once across hash-first copy and sharing (%j)', async ({ hit, size }) => {
+    await withStore(async ({ candidate, contentStore }) => {
+      const bytes = 'x'.repeat(size)
+      if (hit === true) {
+        payload(candidate('seed'), 'file', bytes)
+        await shareSnapshotFiles({ candidate: candidate('seed'), contentStore })
+      }
+      const source = payload(candidate('source'), 'file', bytes)
+      const destination = join(candidate('next'), 'file')
+      const hash = vi.spyOn(webcrypto.subtle, 'digest')
+      const streamingHash = vi.spyOn(Hash.prototype, 'digest')
+      const timings: Record<string, number> = {}
+      try {
+        const preparedSources = await editorViewTimingContext.run(
+          timings,
+          materializeEditorViewSourceFiles,
+          { contentStore, files: [{ source, path: destination }] },
+        )
+        await shareSnapshotFiles({
+          candidate: candidate('next'),
+          contentStore,
+          preparedSources,
+        })
+        expect(hash).toHaveBeenCalledTimes(size <= 65_536 ? 1 : 0)
+        expect(streamingHash).toHaveBeenCalledTimes(size > 65_536 ? 1 : 0)
+        expect(readFileSync(destination, 'utf8')).toBe(bytes)
+        expect(inode(destination)).not.toBe(inode(source))
+        expect(timings.filesHashFirstAttempts).toBe(1)
+        expect(timings.filesHashFirstMiss ?? 0).toBe(hit === true ? 0 : 1)
+        expect(timings.hashFirstMs).toBeGreaterThanOrEqual(0)
+        expectReadonlyStore(contentStore)
+      } finally {
+        hash.mockRestore()
+        streamingHash.mockRestore()
+      }
+    })
+  })
+
+  it('rejects a changed candidate instead of reusing its prepared digest', async () => {
+    await withStore(async ({ candidate, contentStore }) => {
+      const source = payload(candidate('source'), 'file', 'original')
+      const destination = join(candidate('next'), 'file')
+      const preparedSources = await materializeEditorViewSourceFiles({
+        contentStore,
+        files: [{ source, path: destination }],
+      })
+      writeFileSync(destination, 'changed')
+      await expect(
+        shareSnapshotFiles({ candidate: candidate('next'), contentStore, preparedSources }),
+      ).rejects.toThrow('prepared candidate changed')
+    })
+  })
+
+  it('discards a source digest when its identity changes before the copy finishes', async () => {
+    await withStore(async ({ candidate, contentStore }) => {
+      const source = payload(candidate('source'), 'file', 'original')
+      const destination = join(candidate('next'), 'file')
+      const preparedSources = await materializeEditorViewSourceFiles({
+        contentStore,
+        files: [{ source, path: destination }],
+        afterSourceHash: () => writeFileSync(source, 'changed'),
+      })
+      expect(preparedSources.has(destination)).toBe(false)
+      await shareSnapshotFiles({ candidate: candidate('next'), contentStore, preparedSources })
+      expect(readFileSync(destination, 'utf8')).toBe('changed')
+      expectReadonlyStore(contentStore)
+    })
+  })
+
   it('keeps staging creator identity invariant across caller timezones and locales', async () => {
     await withStore(async ({ root }) => {
       const script = join(root, 'probe-staging-identity.ts')
@@ -412,6 +488,120 @@ describe('host-wide editor snapshot content store', () => {
     })
   })
 
+  it('coalesces mixed-shard tails into transactions of at most 128 proven files', async () => {
+    await withStore(async ({ contentStore, candidate }) => {
+      const directory = candidate('mixed-tails')
+      const files = Array.from({ length: 257 }, (_, index) => {
+        const bytes = `distinct payload ${index}`
+        return { path: payload(directory, `${index}.js`, bytes), bytes }
+      })
+      const shards = new Set(
+        files.map(({ bytes }) => createHash('sha256').update(bytes).digest('hex').slice(0, 2)),
+      )
+      expect(shards.size).toBeGreaterThan(100)
+      const sizes: number[] = []
+      const timings: Record<string, number> = {}
+      await editorViewTimingContext.run(timings, shareSnapshotFiles, {
+        candidate: directory,
+        contentStore,
+        afterStoreLock: () => {
+          sizes.push(0)
+        },
+        afterBlobInstall: () => {
+          sizes[sizes.length - 1]! += 1
+        },
+      })
+      expect(sizes).toEqual([128, 128, 1])
+      expect(timings.casTransactions).toBe(3)
+      expect(timings.casRepairMs).toBeGreaterThanOrEqual(0)
+      for (const { path, bytes } of files) {
+        expect(readFileSync(path, 'utf8')).toBe(bytes)
+        expect(inode(path)).toBe(inode(blobPath(contentStore, bytes)))
+        expect(mode(path)).toBe(0o444)
+      }
+      expectReadonlyStore(contentStore)
+      expectIdleStoreLock(contentStore)
+    })
+  })
+
+  it('restores both shards after a mixed-tail fault and repairs the dirty acquisition', async () => {
+    await withStore(async ({ contentStore, candidate }) => {
+      const directory = candidate('mixed-tail-fault')
+      const first = payload(directory, 'first.js', 'first shard')
+      const second = payload(directory, 'second.js', 'second shard')
+      const shards = new Set<string>()
+      let transactions = 0
+      const failure = new Error('second mixed-tail shard installed')
+      await expect(
+        shareSnapshotFiles({
+          candidate: directory,
+          candidateFiles: [first, second],
+          contentStore,
+          afterStoreLock: () => {
+            transactions += 1
+          },
+          afterBlobInstall: ({ blob }) => {
+            shards.add(dirname(blob))
+            if (shards.size === 2) {
+              for (const shard of shards) expect(mode(shard)).toBe(0o755)
+              throw failure
+            }
+          },
+        }),
+      ).rejects.toBe(failure)
+      expect(transactions).toBe(1)
+      expect(shards.size).toBe(2)
+      for (const shard of shards) expect(mode(shard)).toBe(0o555)
+      expectReadonlyStore(contentStore)
+      expectIdleStoreLock(contentStore)
+      expect(readFileSync(`${contentStore}.flock`, 'utf8')).toBe('1')
+      let repaired = false
+      await shareSnapshotFiles({
+        candidate: directory,
+        contentStore,
+        afterStoreLock: () => {
+          expectReadonlyStore(contentStore)
+          repaired = true
+        },
+      })
+      expect(repaired).toBe(true)
+      expect(readFileSync(`${contentStore}.flock`, 'utf8')).toBe('0')
+      expectReadonlyStore(contentStore)
+      expectIdleStoreLock(contentStore)
+    })
+  })
+  it('keeps full shard batches and rejects a changed candidate in a mixed tail', async () => {
+    await withStore(async ({ contentStore, candidate }) => {
+      const directory = candidate('full-and-tail')
+      for (let index = 0; index < 128; index++) payload(directory, `${index}.js`, 'full shard')
+      const changed = payload(directory, 'changed.js', 'tail one')
+      payload(directory, 'other.js', 'tail two')
+      let transactions = 0
+      await expect(
+        shareSnapshotFiles({
+          candidate: directory,
+          contentStore,
+          candidateFiles: [
+            ...Array.from({ length: 128 }, (_, index) => join(directory, `${index}.js`)),
+            changed,
+            join(directory, 'other.js'),
+          ],
+          afterStoreLock: () => {
+            transactions += 1
+            if (transactions === 2) {
+              chmodSync(changed, 0o644)
+              writeFileSync(changed, 'changed after hashing')
+            }
+          },
+        }),
+      ).rejects.toThrow('candidate payload changed before store installation')
+      expect(transactions).toBe(2)
+      expect(inode(join(directory, '0.js'))).toBe(inode(blobPath(contentStore, 'full shard')))
+      expectReadonlyStore(contentStore)
+      expectIdleStoreLock(contentStore)
+    })
+  })
+
   it('shares one readonly CAS inode across worktrees, state roots, views, and names', async () => {
     await withStore(async ({ contentStore, candidate }) => {
       const first = candidate('worktrees', 'one', 'state-a', 'views', 'alpha', 'candidate')
@@ -421,7 +611,27 @@ describe('host-wide editor snapshot content store', () => {
       const renamed = payload(first, 'nested/renamed.js', 'same payload', 0o600)
       const siblingFile = payload(sibling, 'another.js', 'same payload')
       const otherFile = payload(otherWorktree, 'payload.js', 'same payload', 0o444)
-      const firstResult = await shareSnapshotFiles({ candidate: first, contentStore })
+      const timings: Record<string, number> = {}
+      const firstResult = await editorViewTimingContext.run(timings, shareSnapshotFiles, {
+        candidate: first,
+        contentStore,
+      })
+      expect(timings.filesAlreadyShared).toBe(1)
+      expect(timings.filesLinked).toBe(1)
+      expect(timings.blobsCreated).toBe(1)
+      for (const phase of [
+        'casExistingBlobVerifyMs',
+        'casBlobInstallMs',
+        'casViewLinkMs',
+        'casDirectoryMs',
+      ])
+        expect(timings[phase]).toBeGreaterThanOrEqual(0)
+      await editorViewTimingContext.run(timings, shareSnapshotFiles, {
+        candidate: first,
+        contentStore,
+      })
+      expect(timings.filesAlreadyShared).toBe(3)
+      expect(timings.filesLinked).toBe(1)
       expect(firstResult).toEqual({
         linkedFiles: 2,
         copiedFiles: 0,

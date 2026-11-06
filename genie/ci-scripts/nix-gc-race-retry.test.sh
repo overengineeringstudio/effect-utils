@@ -119,7 +119,9 @@ if (match === null) {
   process.exit(1)
 }
 
-const embedded = match[1].replaceAll('${dollar}', '$').trimEnd()
+const threshold = supportFilesSource.match(/export const preparationDiagnosticSeconds = (\d+)/)[1]
+const embedded = match[1].replaceAll('${dollar}', '$')
+  .replaceAll('${preparationDiagnosticSeconds}', threshold).trimEnd()
 const normalizedStandalone = standalone.replace(
   /^#!\/usr\/bin\/env bash\n# Generated file - DO NOT EDIT\n# Source: nix-gc-race-retry\.sh\.genie\.ts\n\n/,
   '#!/usr/bin/env bash\n',

@@ -3,6 +3,7 @@ import { spawnSync } from 'node:child_process'
 import { createHash, randomUUID, webcrypto } from 'node:crypto'
 import {
   constants,
+  copyFileSync,
   linkSync,
   lstatSync,
   readFileSync,
@@ -24,6 +25,8 @@ import { homedir } from 'node:os'
 import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path'
 import { setTimeout } from 'node:timers/promises'
 import { fileURLToPath } from 'node:url'
+
+import { editorViewTimingContext, recordViewTiming } from './typescript-runner.ts'
 
 const batchSize = 128
 const blobNamePattern = /^([a-f0-9]{64})-(0444|0555)$/
@@ -527,7 +530,12 @@ const withStoreLock = async <T>({
   readonly run: (directories: Directories) => Promise<T>
 }): Promise<T> => {
   await ensureParent({ contentStore, create: true })
+  const waitingAt = performance.now()
   const lock = await acquireLock({ contentStore, afterStoreLockContended })
+  recordViewTiming({ phase: 'casWaitMs', started: waitingAt })
+  const timings = editorViewTimingContext.getStore()
+  if (timings !== undefined) timings.casTransactions = (timings.casTransactions ?? 0) + 1
+  const heldAt = performance.now()
   try {
     const marker = Buffer.alloc(1)
     const { bytesRead } = await lock.read(marker, 0, 1, 0)
@@ -536,11 +544,13 @@ const withStoreLock = async <T>({
     // Mark before repair too: a crash during repair must leave the next holder
     // able to finish it. Only successful directory restoration clears this byte.
     await lock.write('1', 0, 'utf8')
+    const repairAt = performance.now()
     await repairStore({
       contentStore,
       dirty: bytesRead === 0 || marker[0] === 49 || writableRepair !== undefined,
       ...(writableRepair === undefined ? {} : { writableRepair }),
     })
+    recordViewTiming({ phase: 'casRepairMs', started: repairAt })
     const directories: Directories = new Map()
     let outcome: { readonly value: T } | { readonly error: unknown }
     try {
@@ -549,6 +559,7 @@ const withStoreLock = async <T>({
     } catch (error) {
       outcome = { error }
     }
+    const restoreAt = performance.now()
     const errors: unknown[] = []
     for (const directory of directories.values()) {
       try {
@@ -569,6 +580,7 @@ const withStoreLock = async <T>({
         }
       }
     }
+    recordViewTiming({ phase: 'casDirectoryMs', started: restoreAt })
     if (errors.length !== 0)
       throw new AggregateError(
         'error' in outcome ? [outcome.error, ...errors] : errors,
@@ -581,6 +593,7 @@ const withStoreLock = async <T>({
     // flock ownership belongs to this open description, never to a pathname or
     // owner record. Close releases it on success, failure, and process death.
     await lock.close()
+    recordViewTiming({ phase: 'casHeldMs', started: heldAt })
   }
 }
 /* eslint-enable no-await-in-loop */
@@ -767,6 +780,68 @@ const validateBlob = async ({
   return status
 }
 
+/** A guarded digest of a private copy; consumed only after the full candidate proof. */
+export type EditorViewPreparedSource = {
+  readonly digest: string
+  readonly status: BigIntStats
+  readonly blob?: BigIntStats
+}
+
+/** Move payload hashing ahead of copying; never hash under the CAS exclusion. */
+export const materializeEditorViewSourceFiles = async ({
+  contentStore,
+  files,
+  afterSourceHash,
+}: {
+  readonly contentStore: string
+  readonly files: readonly { readonly source: string; readonly path: string }[]
+  readonly afterSourceHash?: (source: string) => void
+}): Promise<Map<string, EditorViewPreparedSource>> => {
+  const prepared = new Map<string, EditorViewPreparedSource>()
+  const store = resolve(contentStore)
+  const timings = editorViewTimingContext.getStore()
+  for (let index = 0; index < files.length; index += 4) {
+    // eslint-disable-next-line no-await-in-loop -- Bound hash buffers and open files.
+    const batch = await Promise.allSettled(
+      files.slice(index, index + 4).map(async ({ source, path }) => {
+        const before = await lstat(source, { bigint: true })
+        const started = performance.now()
+        const digest =
+          (await fingerprint({ path: source, expected: before })) ??
+          fail(`source disappeared while hashing: ${source}`)
+        const hashMs = performance.now() - started
+        afterSourceHash?.(source)
+        const mode = (before.mode & 0o111n) === 0n ? 0o444 : 0o555
+        const blob = await validateBlob({
+          contentStore: store,
+          path: join(store, digest.slice(0, 2), `${digest}-${mode === 0o444 ? '0444' : '0555'}`),
+          digest,
+          mode,
+        })
+        if (timings !== undefined) {
+          timings.hashFirstMs = (timings.hashFirstMs ?? 0) + hashMs
+          timings.filesHashFirstAttempts = (timings.filesHashFirstAttempts ?? 0) + 1
+          if (blob === undefined) {
+            timings.hashFirstMissMs = (timings.hashFirstMissMs ?? 0) + hashMs
+            timings.filesHashFirstMiss = (timings.filesHashFirstMiss ?? 0) + 1
+          }
+        }
+        copyFileSync(source, path, constants.COPYFILE_EXCL | constants.COPYFILE_FICLONE)
+        const after = await lstat(source, { bigint: true })
+        // A source race invalidates the hint. The normal path hashes the copy instead.
+        if (unchanged({ left: before, right: after }) === true && before.ctimeNs === after.ctimeNs)
+          prepared.set(path, {
+            digest,
+            status: await lstat(path, { bigint: true }),
+            ...(blob === undefined ? {} : { blob }),
+          })
+      }),
+    )
+    for (const result of batch) if (result.status === 'rejected') throw result.reason
+  }
+  return prepared
+}
+
 type PreparedFile = {
   readonly path: string
   readonly status: BigIntStats
@@ -933,10 +1008,12 @@ const substituteCandidate = async ({
   readonly blobStatus: BigIntStats
   readonly sharing: EditorViewContentSharing
 }): Promise<void> => {
+  const timings = editorViewTimingContext.getStore()
   if (unchanged({ left: file.status, right: await lstat(file.path, { bigint: true }) }) === false)
     fail(`candidate payload changed before linking: ${file.path}`)
   if (sameInode({ left: file.status, right: blobStatus }) === true) {
     sharing.linkedFiles += 1
+    if (timings !== undefined) timings.filesAlreadyShared = (timings.filesAlreadyShared ?? 0) + 1
     return
   }
   const temporary = join(dirname(file.path), `.${basename(file.path)}.share-${randomUUID()}`)
@@ -968,6 +1045,7 @@ const substituteCandidate = async ({
     await rename(temporary, file.path)
     linked = false
     sharing.linkedFiles += 1
+    if (timings !== undefined) timings.filesLinked = (timings.filesLinked ?? 0) + 1
   } finally {
     if (linked === true) await unlinkIfPresent(temporary)
   }
@@ -995,12 +1073,14 @@ const shareBatch = async ({
     | undefined
   readonly sharing: EditorViewContentSharing
 }): Promise<void> => {
+  const timings = editorViewTimingContext.getStore()
   let pending: readonly PreparedFile[] = files
   let failure: { readonly error: unknown } | undefined
   try {
     while (pending.length !== 0) {
       // All walks, hashes and EXDEV preparation occur before acquisition. A
       // concurrent GC may unlink a validated key; private candidate bytes remain.
+      const preflightAt = performance.now()
       for (let index = 0; index < pending.length; index += 4) {
         const prepared = await Promise.allSettled(
           pending.slice(index, index + 4).map(async (file) => {
@@ -1016,6 +1096,7 @@ const shareBatch = async ({
         )
         for (const result of prepared) if (result.status === 'rejected') throw result.reason
       }
+      recordViewTiming({ phase: 'casPreflightInclusiveMs', started: preflightAt })
       pending = await withStoreLock({
         contentStore,
         afterStoreLock,
@@ -1028,23 +1109,28 @@ const shareBatch = async ({
               false
             )
               fail(`candidate payload changed before store installation: ${file.path}`)
+            const directoryAt = performance.now()
             const shard = await shardDirectory({
               contentStore: contentStore,
               shard: file.digest.slice(0, 2),
               directories: directories,
               create: true,
             })
+            recordViewTiming({ phase: 'casDirectoryMs', started: directoryAt })
             if (shard === undefined) fail(`content-store shard is absent: ${file.blob}`)
+            const verifyAt = performance.now()
             let blobStatus = await statusIfPresent(file.blob)
             if (blobStatus !== undefined) {
               requireBlob({ path: file.blob, status: blobStatus, mode: file.mode })
               const knownDigest = verified.get(verificationKey(blobStatus))
               if (knownDigest === undefined) {
                 retry.push(file)
+                recordViewTiming({ phase: 'casExistingBlobVerifyMs', started: verifyAt })
                 continue
               }
               if (knownDigest !== file.digest)
                 fail(`blob content does not match its address: ${file.blob}`)
+              recordViewTiming({ phase: 'casExistingBlobVerifyMs', started: verifyAt })
             } else {
               const source = file.copy ?? { path: file.path, status: file.status }
               if (
@@ -1054,7 +1140,10 @@ const shareBatch = async ({
                 }) === false
               )
                 fail(`prepared blob source changed before installation: ${source.path}`)
+              const writableAt = performance.now()
               await makeWritable(shard)
+              recordViewTiming({ phase: 'casDirectoryMs', started: writableAt })
+              const installAt = performance.now()
               const temporary = join(shard.path, `.tmp-${randomUUID()}`)
               let linked = false
               try {
@@ -1082,6 +1171,7 @@ const shareBatch = async ({
                   // Final blob paths are never opened for writing or truncation.
                   await link(temporary, file.blob)
                   sharing.createdBlobs += 1
+                  if (timings !== undefined) timings.blobsCreated = (timings.blobsCreated ?? 0) + 1
                 } catch (error) {
                   if (hasCode({ error: error, code: 'EEXIST' }) === false) throw error
                   const raced = await statusIfPresent(file.blob)
@@ -1102,13 +1192,16 @@ const shareBatch = async ({
                 })
               } finally {
                 if (linked === true) await unlinkIfPresent(temporary)
+                recordViewTiming({ phase: 'casBlobInstallMs', started: installAt })
               }
             }
+            const viewLinkAt = performance.now()
             await substituteCandidate({
               file: file,
               blobStatus: blobStatus ?? fail(`installed blob is absent: ${file.blob}`),
               sharing: sharing,
             })
+            recordViewTiming({ phase: 'casViewLinkMs', started: viewLinkAt })
           }
           return retry
         },
@@ -1159,6 +1252,7 @@ export const shareSnapshotFiles = async ({
   afterBlobInstall,
   reusedFiles,
   candidateFiles,
+  preparedSources,
   onSharedFile,
 }: {
   readonly candidate: string
@@ -1172,6 +1266,7 @@ export const shareSnapshotFiles = async ({
   }) => void | Promise<void>
   readonly reusedFiles?: ReadonlySet<string>
   readonly candidateFiles?: Iterable<string>
+  readonly preparedSources?: ReadonlyMap<string, EditorViewPreparedSource>
   readonly onSharedFile?: (file: {
     path: string
     digest: string
@@ -1192,16 +1287,9 @@ export const shareSnapshotFiles = async ({
     copiedBytes: 0,
     createdBlobs: 0,
   }
-  // Group bounded link transactions by shard, so each transaction opens and
-  // restores one shard instead of most of the store's 256 directories.
+  // Full transactions stay shard-local; compact their final tails to amortize repair.
   const batches = new Map<string, PreparedFile[]>()
-  const flush = async ({
-    shard,
-    files,
-  }: {
-    shard: string
-    files: PreparedFile[]
-  }): Promise<void> => {
+  const flush = async (files: PreparedFile[]): Promise<void> => {
     if (files.length === 0) return
     await shareBatch({
       contentStore: store,
@@ -1218,11 +1306,17 @@ export const shareSnapshotFiles = async ({
         mode: file.mode,
         blobKey: verificationKey(lstatSync(file.path, { bigint: true })),
       })
-    batches.delete(shard)
   }
   const prepare = async (path: string): Promise<PreparedFile> => {
+    const supplied = preparedSources?.get(path)
+    if (
+      supplied !== undefined &&
+      unchanged({ left: supplied.status, right: await lstat(path, { bigint: true }) }) === false
+    )
+      fail(`prepared candidate changed before normalization: ${path}`)
     const status = await normalizeCandidate(path)
     const digest =
+      supplied?.digest ??
       (await fingerprint({ path: path, expected: status })) ??
       fail(`candidate disappeared while hashing: ${path}`)
     const mode = Number(permissions(status))
@@ -1238,7 +1332,9 @@ export const shareSnapshotFiles = async ({
   const prepareBatch = async (): Promise<void> => {
     // Four small-file digests run on the native crypto worker pool. Large files
     // remain streaming; neither promises nor payload buffers scale with the tree.
+    const prepareAt = performance.now()
     const prepared = await Promise.allSettled(paths.map(prepare))
+    recordViewTiming({ phase: 'casPrepareMs', started: prepareAt })
     const files = prepared.map((result) => {
       if (result.status === 'rejected') throw result.reason
       return result.value
@@ -1249,7 +1345,10 @@ export const shareSnapshotFiles = async ({
       const batch = batches.get(shard) ?? []
       batch.push(file)
       batches.set(shard, batch)
-      if (batch.length === batchSize) await flush({ shard, files: batch })
+      if (batch.length === batchSize) {
+        await flush(batch)
+        batches.delete(shard)
+      }
     }
   }
   for await (const path of candidateFiles ?? regularFiles({ directory: root })) {
@@ -1258,7 +1357,17 @@ export const shareSnapshotFiles = async ({
     if (paths.length === 4) await prepareBatch()
   }
   await prepareBatch()
-  for (const [shard, files] of batches) await flush({ shard, files })
+  const tail: PreparedFile[] = []
+  for (const files of batches.values()) {
+    for (const file of files) {
+      tail.push(file)
+      if (tail.length === batchSize) {
+        await flush(tail)
+        tail.length = 0
+      }
+    }
+  }
+  await flush(tail)
   return sharing
 }
 /* eslint-enable no-await-in-loop */

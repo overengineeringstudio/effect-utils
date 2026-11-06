@@ -336,6 +336,10 @@ ok({
   condition: dependencies.get('genie:check')?.has('buck2:editor:bootstrap') === true,
   name: 'genie:check directly depends on the source-generator bootstrap',
 })
+ok({
+  condition: tasks.has('buck2:editor:publish:test:all') === false,
+  name: 'source-test chains retain pipelined scoped publication without a union barrier',
+})
 for (const entrypoint of ['lint:fix', 'genie:run', 'genie:check', 'setup:strict']) {
   requireTask(entrypoint)
   for (const publisher of [...tasks.keys()].filter(
@@ -798,6 +802,22 @@ for (const name of editorPublishers) {
     typeof command === 'string' && existsSync(command) === true ? readFileSync(command, 'utf8') : ''
   const packages = JSON.parse(body.match(/--packages\s+'(\[[^\n]*?\])'/u)?.[1] ?? '[]')
   const actualDeadline = body.match(/editor-view-supervisor\.py" (\d+|none) 5/u)?.[1]
+  const bootstrapReceipt = ciUnitTest === true && name === 'buck2:editor:bootstrap'
+  ok({
+    condition: body.includes('scripts/editor-view-receipt.py') === bootstrapReceipt,
+    name: `${name} uses receipts only for CI bootstrap reuse`,
+  })
+  if (bootstrapReceipt === true) {
+    ok({
+      condition:
+        body.includes('"$1" "$root" bootstrap') === true &&
+        body.includes('if receipt check; then exit 0; fi') === true &&
+        body.indexOf('if receipt check;') < body.indexOf('editor-view-supervisor.py') &&
+        body.includes('receipt begin || true') === true &&
+        body.includes('if [ "$status" -eq 0 ]; then receipt write || true; fi') === true,
+      name: 'CI bootstrap reuses proven inputs before admission and issues receipts only after success',
+    })
+  }
   if (name === 'buck2:editor:publish:batch:storybook:test') {
     const budget = JSON.parse(body.match(/# editor-view-batch-budget: ([^\n]+)/u)?.[1] ?? 'null')
     const missingConsumers = packages.filter(

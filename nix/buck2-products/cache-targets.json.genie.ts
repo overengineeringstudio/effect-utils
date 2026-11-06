@@ -7,11 +7,17 @@ import {
   productLinuxBuildCapabilities,
 } from '../../genie/buck2/product-capabilities.ts'
 import { projectBuckProductSourcePaths } from '../../genie/buck2/product-source-paths.ts'
+import { rootWorkspacePackages } from '../../package.json.genie.ts'
+import aiGatewayEdgePkg from '../../packages/@overeng/ai-gateway-edge/package.json.genie.ts'
 import buck2ToolsPkg from '../../packages/@overeng/buck2-tools/package.json.genie.ts'
 import ciToolsPkg from '../../packages/@overeng/ci-tools/package.json.genie.ts'
 import ghCiUtilsPkg from '../../packages/@overeng/gh-ci-utils/package.json.genie.ts'
+import geniePkg from '../../packages/@overeng/genie/package.json.genie.ts'
+import megarepoPkg from '../../packages/@overeng/megarepo/package.json.genie.ts'
 import type { WorkspacePackageLike } from '../../packages/@overeng/genie/src/runtime/package-json/mod.ts'
 import notionCliPkg from '../../packages/@overeng/notion-cli/package.json.genie.ts'
+import notionMdPkg from '../../packages/@overeng/notion-md/package.json.genie.ts'
+import npmReleasePkg from '../../packages/@overeng/npm-release/package.json.genie.ts'
 import oxcConfigPkg from '../../packages/@overeng/oxc-config/package.json.genie.ts'
 import tuiStoriesPkg from '../../packages/@overeng/tui-stories/package.json.genie.ts'
 import { projectionArtifact } from '../../packages/@overeng/genie/src/runtime/mod.ts'
@@ -55,10 +61,18 @@ const javascriptProducts = [
 ] as const
 
 // Owner package roots include the BUCK declarations, even for notion-db's sibling tree.
+// Bootstrap checking and npm release read consumer files only at runtime:
+// their bundles have no build-time scripts/ or extra root-file dependencies.
+// Root manifests, patches and the Buck helper workspace closure remain explicit.
 const sourcePackages: Record<string, WorkspacePackageLike> = {
+  'packages/@overeng/ai-gateway-edge': aiGatewayEdgePkg,
   'packages/@overeng/ci-tools': ciToolsPkg,
   'packages/@overeng/gh-ci-utils': ghCiUtilsPkg,
+  'packages/@overeng/genie': geniePkg,
+  'packages/@overeng/megarepo': megarepoPkg,
   'packages/@overeng/notion-cli': notionCliPkg,
+  'packages/@overeng/notion-md': notionMdPkg,
+  'packages/@overeng/npm-release': npmReleasePkg,
   'packages/@overeng/oxc-config': oxcConfigPkg,
   'packages/@overeng/tui-stories': tuiStoriesPkg,
 }
@@ -128,12 +142,23 @@ assertPublishedPackageClosure({ packages: packageManifests, workspaceNames })
 const packageEntries = packageManifests.map((packageJson) => {
   const name = packageJson.name
   const packagePath = `packages/${name}`
+  const pkg = rootWorkspacePackages.find((member) => member.data.name === name)
+  if (pkg === undefined) {
+    throw new Error(`Missing workspace package generator for cache product ${name}`)
+  }
   return {
     kind: 'package',
     name,
     outputName: `${name.replace('@', '').replace('/', '-')}.tgz`,
     packagePath,
     packageTreePath: packagePath,
+    // Package-local tsconfigs/assets and declared workspace dependencies cover
+    // dist-package inputs; shared Buck rules/toolchains remain separate inputs.
+    sourcePaths: projectBuckProductSourcePaths({
+      pkg,
+      additionalPackages: [buck2ToolsPkg],
+      additionalPaths: ['patches'],
+    }),
     target: `effect_utils//${packagePath}:dist-package`,
     version: packageJson.version,
   } as const
@@ -151,6 +176,9 @@ const packageEntries = packageManifests.map((packageJson) => {
 const buckProductSourceEntries = [
   ...javascriptProducts.map(([name, outputName, packagePath, targetName, packageTreePath]) => {
     const pkg = sourcePackages[packagePath]
+    if (pkg === undefined) {
+      throw new Error(`Missing workspace package generator for JavaScript cache product ${name}`)
+    }
     return {
       kind: 'javascript' as const,
       name,
@@ -159,15 +187,11 @@ const buckProductSourceEntries = [
       packageTreePath: packageTreePath ?? packagePath,
       target: `effect_utils//${packagePath}:${targetName}`,
       version: '0.0.0',
-      ...(pkg === undefined
-        ? {}
-        : {
-            sourcePaths: projectBuckProductSourcePaths({
-              pkg,
-              additionalPackages: [buck2ToolsPkg],
-              additionalPaths: ['patches'],
-            }),
-          }),
+      sourcePaths: projectBuckProductSourcePaths({
+        pkg,
+        additionalPackages: [buck2ToolsPkg],
+        additionalPaths: ['patches'],
+      }),
     }
   }),
   ...packageEntries,

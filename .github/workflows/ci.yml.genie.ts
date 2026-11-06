@@ -1401,7 +1401,7 @@ const extraJobs: Record<string, any> = {
   },
   'publish-manifest-pr': {
     needs: ['publish-products'],
-    if: `(${trustedSecretCiIf.replace(/^\$\{\{\s*|\s*\}\}$/g, '')}) && (${sameRepoPullRequestGuard()}) && github.repository == 'overengineeringstudio/effect-utils'`,
+    if: `(${trustedSecretCiIf.replace(/^\$\{\{\s*|\s*\}\}$/g, '')}) && (${sameRepoPullRequestGuard()}) && github.repository == 'overengineeringstudio/effect-utils' && needs.publish-products.outputs.manifest-writer-tip == 'true'`,
     'runs-on': linuxX64Runner,
     'timeout-minutes': 15,
     permissions: { contents: 'read', 'pull-requests': 'read' },
@@ -1533,6 +1533,7 @@ const extraJobs: Record<string, any> = {
     defaults: bashShellDefaults,
     env: githubTokenEnv(),
     outputs: {
+      'manifest-writer-tip': '${{ steps.manifest-writer-tip.outputs.manifest-writer-tip }}',
       'current-sha':
         '${{ steps.publication-scope.outputs.current-sha || steps.product-publication.outputs.current-sha }}',
       'manifest-base64-0':
@@ -1680,6 +1681,22 @@ const extraJobs: Record<string, any> = {
           ),
         },
       }),
+      {
+        id: 'manifest-writer-tip',
+        name: 'Check manifest writer main tip before queueing',
+        run: [
+          'set -euo pipefail',
+          // Avoid queueing a known-superseded writer on a scarce runner. Unknown
+          // tips fail open; the writer retains its final tip guard before mutation.
+          'writer_tip=true',
+          'if main_tip="$(gh api repos/overengineeringstudio/effect-utils/git/ref/heads/main --jq .object.sha)" && [[ "$main_tip" =~ ^[0-9a-f]{40}$ ]]; then',
+          '  if [ "$main_tip" != "$GITHUB_SHA" ]; then writer_tip=false; fi',
+          'else',
+          '  echo "::notice::Main tip unavailable; leaving the manifest writer enabled"',
+          'fi',
+          'echo "manifest-writer-tip=$writer_tip" >> "$GITHUB_OUTPUT"',
+        ].join('\n'),
+      },
       {
         name: 'Keep interrupted publication pending',
         if: "failure() && steps.product-publication.outputs.stale-status != 'true' && steps.publication-scope.outputs.current-sha != github.sha && steps.product-publication.outputs.current-sha != github.sha",

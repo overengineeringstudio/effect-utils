@@ -466,14 +466,19 @@ describe('Buck watch reconciliation', () => {
     }
   })
 
-  it.each([false, true])(
-    'forwards budget diagnostics before the publisher exits (batch=%s)',
-    async (batchPublication) => {
+  it.each([
+    [false, 'budget'],
+    [true, 'budget'],
+    [false, 'payload'],
+    [true, 'payload'],
+  ] as const)(
+    'forwards publisher diagnostics before exit (batch=%s, prefix=%s)',
+    async (batchPublication, diagnosticPrefix) => {
       const root = await mkdtemp(join(tmpdir(), 'buck-watch-budget-'))
       const release = join(root, 'release')
       const publisher = join(root, 'publisher.mjs')
       const manifest = join(root, 'editor-inputs.json')
-      const diagnostic = '[editor-view-budget] {"event":"working","reason":"census"}\n'
+      const diagnostic = `[editor-view-${diagnosticPrefix}] {"event":"working","reason":"census"}\n`
       const observed = Promise.withResolvers<void>()
       const shutdown = new AbortController()
       const stderr = vi.spyOn(process.stderr, 'write').mockImplementation((line) => {

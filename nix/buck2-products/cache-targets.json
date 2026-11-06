@@ -16,6 +16,19 @@
       "outputName": "overeng-agent-session-ingest.tgz",
       "packagePath": "packages/@overeng/agent-session-ingest",
       "packageTreePath": "packages/@overeng/agent-session-ingest",
+      "sourcePaths": [
+        "package.json",
+        "packages/@overeng/agent-session-ingest",
+        "packages/@overeng/buck2-tools",
+        "packages/@overeng/content-address",
+        "packages/@overeng/effect-distributed-lock",
+        "packages/@overeng/effect-rust",
+        "packages/@overeng/otel-contract",
+        "packages/@overeng/utils",
+        "packages/@overeng/utils-dev",
+        "patches",
+        "pnpm-workspace.yaml"
+      ],
       "target": "effect_utils//packages/@overeng/agent-session-ingest:dist-package",
       "version": "0.1.0"
     },
@@ -35,6 +48,14 @@
       "outputName": "overeng-ai-gateway-conformance.tgz",
       "packagePath": "packages/@overeng/ai-gateway-conformance",
       "packageTreePath": "packages/@overeng/ai-gateway-conformance",
+      "sourcePaths": [
+        "package.json",
+        "packages/@overeng/ai-gateway-conformance",
+        "packages/@overeng/buck2-tools",
+        "packages/@overeng/utils-dev",
+        "patches",
+        "pnpm-workspace.yaml"
+      ],
       "target": "effect_utils//packages/@overeng/ai-gateway-conformance:dist-package",
       "version": "0.1.0"
     },
@@ -54,6 +75,15 @@
       "outputName": "overeng-ai-gateway-edge.tgz",
       "packagePath": "packages/@overeng/ai-gateway-edge",
       "packageTreePath": "packages/@overeng/ai-gateway-edge",
+      "sourcePaths": [
+        "package.json",
+        "packages/@overeng/ai-gateway-conformance",
+        "packages/@overeng/ai-gateway-edge",
+        "packages/@overeng/buck2-tools",
+        "packages/@overeng/utils-dev",
+        "patches",
+        "pnpm-workspace.yaml"
+      ],
       "target": "effect_utils//packages/@overeng/ai-gateway-edge:dist-package",
       "version": "0.1.0"
     },
@@ -73,6 +103,15 @@
       "outputName": "overeng-content-address.tgz",
       "packagePath": "packages/@overeng/content-address",
       "packageTreePath": "packages/@overeng/content-address",
+      "sourcePaths": [
+        "package.json",
+        "packages/@overeng/buck2-tools",
+        "packages/@overeng/content-address",
+        "packages/@overeng/effect-rust",
+        "packages/@overeng/utils-dev",
+        "patches",
+        "pnpm-workspace.yaml"
+      ],
       "target": "effect_utils//packages/@overeng/content-address:dist-package",
       "version": "0.1.0"
     },
@@ -92,6 +131,16 @@
       "outputName": "overeng-data-graph.tgz",
       "packagePath": "packages/@overeng/data-graph",
       "packageTreePath": "packages/@overeng/data-graph",
+      "sourcePaths": [
+        "package.json",
+        "packages/@overeng/buck2-tools",
+        "packages/@overeng/content-address",
+        "packages/@overeng/data-graph",
+        "packages/@overeng/effect-rust",
+        "packages/@overeng/utils-dev",
+        "patches",
+        "pnpm-workspace.yaml"
+      ],
       "target": "effect_utils//packages/@overeng/data-graph:dist-package",
       "version": "0.1.0"
     },
@@ -111,6 +160,27 @@
       "outputName": "overeng-devbar.tgz",
       "packagePath": "packages/@overeng/devbar",
       "packageTreePath": "packages/@overeng/devbar",
+      "sourcePaths": [
+        "package.json",
+        "packages/@overeng/buck2-tools",
+        "packages/@overeng/content-address",
+        "packages/@overeng/devbar",
+        "packages/@overeng/effect-distributed-lock",
+        "packages/@overeng/effect-rpc-explorer",
+        "packages/@overeng/effect-rpc-explorer-react",
+        "packages/@overeng/effect-rpc-observer",
+        "packages/@overeng/effect-rust",
+        "packages/@overeng/meters",
+        "packages/@overeng/otel-browser",
+        "packages/@overeng/otel-contract",
+        "packages/@overeng/rpc-devtools",
+        "packages/@overeng/stylex-tokens",
+        "packages/@overeng/utils",
+        "packages/@overeng/utils-dev",
+        "packages/@overeng/utils-storybook",
+        "patches",
+        "pnpm-workspace.yaml"
+      ],
       "target": "effect_utils//packages/@overeng/devbar:dist-package",
       "version": "0.1.0"
     },
@@ -130,6 +200,14 @@
       "outputName": "overeng-effect-ai-claude-cli.tgz",
       "packagePath": "packages/@overeng/effect-ai-claude-cli",
       "packageTreePath": "packages/@overeng/effect-ai-claude-cli",
+      "sourcePaths": [
+        "package.json",
+        "packages/@overeng/buck2-tools",
+        "packages/@overeng/effect-ai-claude-cli",
+        "packages/@overeng/utils-dev",
+        "patches",
+        "pnpm-workspace.yaml"
+      ],
       "target": "effect_utils//packages/@overeng/effect-ai-claude-cli:dist-package",
       "version": "0.1.0"
     },
@@ -149,6 +227,15 @@
       "outputName": "overeng-effect-ai-gateway.tgz",
       "packagePath": "packages/@overeng/effect-ai-gateway",
       "packageTreePath": "packages/@overeng/effect-ai-gateway",
+      "sourcePaths": [
+        "package.json",
+        "packages/@overeng/ai-gateway-conformance",
+        "packages/@overeng/buck2-tools",
+        "packages/@overeng/effect-ai-gateway",
+        "packages/@overeng/utils-dev",
+        "patches",
+        "pnpm-workspace.yaml"
+      ],
       "target": "effect_utils//packages/@overeng/effect-ai-gateway:dist-package",
       "version": "0.1.0"
     },
@@ -168,6 +255,14 @@
       "outputName": "overeng-effect-distributed-lock.tgz",
       "packagePath": "packages/@overeng/effect-distributed-lock",
       "packageTreePath": "packages/@overeng/effect-distributed-lock",
+      "sourcePaths": [
+        "package.json",
+        "packages/@overeng/buck2-tools",
+        "packages/@overeng/effect-distributed-lock",
+        "packages/@overeng/utils-dev",
+        "patches",
+        "pnpm-workspace.yaml"
+      ],
       "target": "effect_utils//packages/@overeng/effect-distributed-lock:dist-package",
       "version": "0.1.0"
     },
@@ -187,6 +282,20 @@
       "outputName": "overeng-effect-react.tgz",
       "packagePath": "packages/@overeng/effect-react",
       "packageTreePath": "packages/@overeng/effect-react",
+      "sourcePaths": [
+        "package.json",
+        "packages/@overeng/buck2-tools",
+        "packages/@overeng/content-address",
+        "packages/@overeng/effect-distributed-lock",
+        "packages/@overeng/effect-react",
+        "packages/@overeng/effect-rust",
+        "packages/@overeng/otel-contract",
+        "packages/@overeng/utils",
+        "packages/@overeng/utils-dev",
+        "packages/@overeng/utils-storybook",
+        "patches",
+        "pnpm-workspace.yaml"
+      ],
       "target": "effect_utils//packages/@overeng/effect-react:dist-package",
       "version": "0.1.0"
     },
@@ -206,6 +315,18 @@
       "outputName": "overeng-effect-rpc-explorer.tgz",
       "packagePath": "packages/@overeng/effect-rpc-explorer",
       "packageTreePath": "packages/@overeng/effect-rpc-explorer",
+      "sourcePaths": [
+        "package.json",
+        "packages/@overeng/buck2-tools",
+        "packages/@overeng/content-address",
+        "packages/@overeng/effect-rpc-explorer",
+        "packages/@overeng/effect-rpc-observer",
+        "packages/@overeng/effect-rust",
+        "packages/@overeng/otel-contract",
+        "packages/@overeng/utils-dev",
+        "patches",
+        "pnpm-workspace.yaml"
+      ],
       "target": "effect_utils//packages/@overeng/effect-rpc-explorer:dist-package",
       "version": "0.1.0"
     },
@@ -225,6 +346,23 @@
       "outputName": "overeng-effect-rpc-explorer-react.tgz",
       "packagePath": "packages/@overeng/effect-rpc-explorer-react",
       "packageTreePath": "packages/@overeng/effect-rpc-explorer-react",
+      "sourcePaths": [
+        "package.json",
+        "packages/@overeng/buck2-tools",
+        "packages/@overeng/content-address",
+        "packages/@overeng/effect-distributed-lock",
+        "packages/@overeng/effect-rpc-explorer",
+        "packages/@overeng/effect-rpc-explorer-react",
+        "packages/@overeng/effect-rpc-observer",
+        "packages/@overeng/effect-rust",
+        "packages/@overeng/otel-contract",
+        "packages/@overeng/stylex-tokens",
+        "packages/@overeng/utils",
+        "packages/@overeng/utils-dev",
+        "packages/@overeng/utils-storybook",
+        "patches",
+        "pnpm-workspace.yaml"
+      ],
       "target": "effect_utils//packages/@overeng/effect-rpc-explorer-react:dist-package",
       "version": "0.1.0"
     },
@@ -244,6 +382,14 @@
       "outputName": "overeng-effect-rpc-observer.tgz",
       "packagePath": "packages/@overeng/effect-rpc-observer",
       "packageTreePath": "packages/@overeng/effect-rpc-observer",
+      "sourcePaths": [
+        "package.json",
+        "packages/@overeng/buck2-tools",
+        "packages/@overeng/effect-rpc-observer",
+        "packages/@overeng/utils-dev",
+        "patches",
+        "pnpm-workspace.yaml"
+      ],
       "target": "effect_utils//packages/@overeng/effect-rpc-observer:dist-package",
       "version": "0.1.0"
     },
@@ -263,6 +409,14 @@
       "outputName": "overeng-effect-rust.tgz",
       "packagePath": "packages/@overeng/effect-rust",
       "packageTreePath": "packages/@overeng/effect-rust",
+      "sourcePaths": [
+        "package.json",
+        "packages/@overeng/buck2-tools",
+        "packages/@overeng/effect-rust",
+        "packages/@overeng/utils-dev",
+        "patches",
+        "pnpm-workspace.yaml"
+      ],
       "target": "effect_utils//packages/@overeng/effect-rust:dist-package",
       "version": "0.1.0"
     },
@@ -282,6 +436,22 @@
       "outputName": "overeng-genie.tgz",
       "packagePath": "packages/@overeng/genie",
       "packageTreePath": "packages/@overeng/genie",
+      "sourcePaths": [
+        "package.json",
+        "packages/@overeng/buck2-tools",
+        "packages/@overeng/content-address",
+        "packages/@overeng/effect-distributed-lock",
+        "packages/@overeng/effect-rust",
+        "packages/@overeng/genie",
+        "packages/@overeng/otel-contract",
+        "packages/@overeng/tui-core",
+        "packages/@overeng/tui-react",
+        "packages/@overeng/utils",
+        "packages/@overeng/utils-dev",
+        "packages/@overeng/utils-storybook",
+        "patches",
+        "pnpm-workspace.yaml"
+      ],
       "target": "effect_utils//packages/@overeng/genie:dist-package",
       "version": "0.1.0"
     },
@@ -301,6 +471,21 @@
       "outputName": "overeng-meters.tgz",
       "packagePath": "packages/@overeng/meters",
       "packageTreePath": "packages/@overeng/meters",
+      "sourcePaths": [
+        "package.json",
+        "packages/@overeng/buck2-tools",
+        "packages/@overeng/content-address",
+        "packages/@overeng/effect-distributed-lock",
+        "packages/@overeng/effect-rust",
+        "packages/@overeng/meters",
+        "packages/@overeng/otel-browser",
+        "packages/@overeng/otel-contract",
+        "packages/@overeng/utils",
+        "packages/@overeng/utils-dev",
+        "packages/@overeng/utils-storybook",
+        "patches",
+        "pnpm-workspace.yaml"
+      ],
       "target": "effect_utils//packages/@overeng/meters:dist-package",
       "version": "0.1.0"
     },
@@ -320,6 +505,14 @@
       "outputName": "overeng-notion-core.tgz",
       "packagePath": "packages/@overeng/notion-core",
       "packageTreePath": "packages/@overeng/notion-core",
+      "sourcePaths": [
+        "package.json",
+        "packages/@overeng/buck2-tools",
+        "packages/@overeng/notion-core",
+        "packages/@overeng/utils-dev",
+        "patches",
+        "pnpm-workspace.yaml"
+      ],
       "target": "effect_utils//packages/@overeng/notion-core:dist-package",
       "version": "0.1.0"
     },
@@ -339,6 +532,21 @@
       "outputName": "overeng-notion-effect-client.tgz",
       "packagePath": "packages/@overeng/notion-effect-client",
       "packageTreePath": "packages/@overeng/notion-effect-client",
+      "sourcePaths": [
+        "package.json",
+        "packages/@overeng/buck2-tools",
+        "packages/@overeng/content-address",
+        "packages/@overeng/effect-distributed-lock",
+        "packages/@overeng/effect-rust",
+        "packages/@overeng/notion-core",
+        "packages/@overeng/notion-effect-client",
+        "packages/@overeng/notion-effect-schema",
+        "packages/@overeng/otel-contract",
+        "packages/@overeng/utils",
+        "packages/@overeng/utils-dev",
+        "patches",
+        "pnpm-workspace.yaml"
+      ],
       "target": "effect_utils//packages/@overeng/notion-effect-client:dist-package",
       "version": "0.1.0"
     },
@@ -358,6 +566,15 @@
       "outputName": "overeng-notion-effect-schema.tgz",
       "packagePath": "packages/@overeng/notion-effect-schema",
       "packageTreePath": "packages/@overeng/notion-effect-schema",
+      "sourcePaths": [
+        "package.json",
+        "packages/@overeng/buck2-tools",
+        "packages/@overeng/notion-core",
+        "packages/@overeng/notion-effect-schema",
+        "packages/@overeng/utils-dev",
+        "patches",
+        "pnpm-workspace.yaml"
+      ],
       "target": "effect_utils//packages/@overeng/notion-effect-schema:dist-package",
       "version": "0.1.0"
     },
@@ -377,6 +594,26 @@
       "outputName": "overeng-notion-md.tgz",
       "packagePath": "packages/@overeng/notion-md",
       "packageTreePath": "packages/@overeng/notion-md",
+      "sourcePaths": [
+        "package.json",
+        "packages/@overeng/buck2-tools",
+        "packages/@overeng/content-address",
+        "packages/@overeng/effect-distributed-lock",
+        "packages/@overeng/effect-rust",
+        "packages/@overeng/notion-core",
+        "packages/@overeng/notion-effect-client",
+        "packages/@overeng/notion-effect-schema",
+        "packages/@overeng/notion-md",
+        "packages/@overeng/notion-property-write",
+        "packages/@overeng/otel-contract",
+        "packages/@overeng/tui-core",
+        "packages/@overeng/tui-react",
+        "packages/@overeng/utils",
+        "packages/@overeng/utils-dev",
+        "packages/@overeng/utils-storybook",
+        "patches",
+        "pnpm-workspace.yaml"
+      ],
       "target": "effect_utils//packages/@overeng/notion-md:dist-package",
       "version": "0.1.0"
     },
@@ -396,6 +633,16 @@
       "outputName": "overeng-notion-property-write.tgz",
       "packagePath": "packages/@overeng/notion-property-write",
       "packageTreePath": "packages/@overeng/notion-property-write",
+      "sourcePaths": [
+        "package.json",
+        "packages/@overeng/buck2-tools",
+        "packages/@overeng/notion-core",
+        "packages/@overeng/notion-effect-schema",
+        "packages/@overeng/notion-property-write",
+        "packages/@overeng/utils-dev",
+        "patches",
+        "pnpm-workspace.yaml"
+      ],
       "target": "effect_utils//packages/@overeng/notion-property-write:dist-package",
       "version": "0.1.0"
     },
@@ -415,6 +662,27 @@
       "outputName": "overeng-notion-react.tgz",
       "packagePath": "packages/@overeng/notion-react",
       "packageTreePath": "packages/@overeng/notion-react",
+      "sourcePaths": [
+        "package.json",
+        "packages/@overeng/buck2-tools",
+        "packages/@overeng/content-address",
+        "packages/@overeng/effect-distributed-lock",
+        "packages/@overeng/effect-rust",
+        "packages/@overeng/notion-core",
+        "packages/@overeng/notion-effect-client",
+        "packages/@overeng/notion-effect-schema",
+        "packages/@overeng/notion-md",
+        "packages/@overeng/notion-property-write",
+        "packages/@overeng/notion-react",
+        "packages/@overeng/otel-contract",
+        "packages/@overeng/tui-core",
+        "packages/@overeng/tui-react",
+        "packages/@overeng/utils",
+        "packages/@overeng/utils-dev",
+        "packages/@overeng/utils-storybook",
+        "patches",
+        "pnpm-workspace.yaml"
+      ],
       "target": "effect_utils//packages/@overeng/notion-react:dist-package",
       "version": "0.1.0"
     },
@@ -434,6 +702,16 @@
       "outputName": "overeng-otel-contract.tgz",
       "packagePath": "packages/@overeng/otel-contract",
       "packageTreePath": "packages/@overeng/otel-contract",
+      "sourcePaths": [
+        "package.json",
+        "packages/@overeng/buck2-tools",
+        "packages/@overeng/content-address",
+        "packages/@overeng/effect-rust",
+        "packages/@overeng/otel-contract",
+        "packages/@overeng/utils-dev",
+        "patches",
+        "pnpm-workspace.yaml"
+      ],
       "target": "effect_utils//packages/@overeng/otel-contract:dist-package",
       "version": "0.1.0"
     },
@@ -453,6 +731,14 @@
       "outputName": "overeng-outline.tgz",
       "packagePath": "packages/@overeng/outline",
       "packageTreePath": "packages/@overeng/outline",
+      "sourcePaths": [
+        "package.json",
+        "packages/@overeng/buck2-tools",
+        "packages/@overeng/outline",
+        "packages/@overeng/utils-dev",
+        "patches",
+        "pnpm-workspace.yaml"
+      ],
       "target": "effect_utils//packages/@overeng/outline:dist-package",
       "version": "0.1.0"
     },
@@ -472,6 +758,19 @@
       "outputName": "overeng-restate-effect.tgz",
       "packagePath": "packages/@overeng/restate-effect",
       "packageTreePath": "packages/@overeng/restate-effect",
+      "sourcePaths": [
+        "package.json",
+        "packages/@overeng/buck2-tools",
+        "packages/@overeng/content-address",
+        "packages/@overeng/effect-distributed-lock",
+        "packages/@overeng/effect-rust",
+        "packages/@overeng/otel-contract",
+        "packages/@overeng/restate-effect",
+        "packages/@overeng/utils",
+        "packages/@overeng/utils-dev",
+        "patches",
+        "pnpm-workspace.yaml"
+      ],
       "target": "effect_utils//packages/@overeng/restate-effect:dist-package",
       "version": "0.1.0"
     },
@@ -491,6 +790,26 @@
       "outputName": "overeng-rpc-devtools.tgz",
       "packagePath": "packages/@overeng/rpc-devtools",
       "packageTreePath": "packages/@overeng/rpc-devtools",
+      "sourcePaths": [
+        "package.json",
+        "packages/@overeng/buck2-tools",
+        "packages/@overeng/content-address",
+        "packages/@overeng/effect-distributed-lock",
+        "packages/@overeng/effect-rpc-explorer",
+        "packages/@overeng/effect-rpc-explorer-react",
+        "packages/@overeng/effect-rpc-observer",
+        "packages/@overeng/effect-rust",
+        "packages/@overeng/meters",
+        "packages/@overeng/otel-browser",
+        "packages/@overeng/otel-contract",
+        "packages/@overeng/rpc-devtools",
+        "packages/@overeng/stylex-tokens",
+        "packages/@overeng/utils",
+        "packages/@overeng/utils-dev",
+        "packages/@overeng/utils-storybook",
+        "patches",
+        "pnpm-workspace.yaml"
+      ],
       "target": "effect_utils//packages/@overeng/rpc-devtools:dist-package",
       "version": "0.1.0"
     },
@@ -510,6 +829,14 @@
       "outputName": "overeng-stylex-tokens.tgz",
       "packagePath": "packages/@overeng/stylex-tokens",
       "packageTreePath": "packages/@overeng/stylex-tokens",
+      "sourcePaths": [
+        "package.json",
+        "packages/@overeng/buck2-tools",
+        "packages/@overeng/stylex-tokens",
+        "packages/@overeng/utils-dev",
+        "patches",
+        "pnpm-workspace.yaml"
+      ],
       "target": "effect_utils//packages/@overeng/stylex-tokens:dist-package",
       "version": "0.1.0"
     },
@@ -529,6 +856,14 @@
       "outputName": "overeng-tui-core.tgz",
       "packagePath": "packages/@overeng/tui-core",
       "packageTreePath": "packages/@overeng/tui-core",
+      "sourcePaths": [
+        "package.json",
+        "packages/@overeng/buck2-tools",
+        "packages/@overeng/tui-core",
+        "packages/@overeng/utils-dev",
+        "patches",
+        "pnpm-workspace.yaml"
+      ],
       "target": "effect_utils//packages/@overeng/tui-core:dist-package",
       "version": "0.1.0"
     },
@@ -548,6 +883,21 @@
       "outputName": "overeng-tui-react.tgz",
       "packagePath": "packages/@overeng/tui-react",
       "packageTreePath": "packages/@overeng/tui-react",
+      "sourcePaths": [
+        "package.json",
+        "packages/@overeng/buck2-tools",
+        "packages/@overeng/content-address",
+        "packages/@overeng/effect-distributed-lock",
+        "packages/@overeng/effect-rust",
+        "packages/@overeng/otel-contract",
+        "packages/@overeng/tui-core",
+        "packages/@overeng/tui-react",
+        "packages/@overeng/utils",
+        "packages/@overeng/utils-dev",
+        "packages/@overeng/utils-storybook",
+        "patches",
+        "pnpm-workspace.yaml"
+      ],
       "target": "effect_utils//packages/@overeng/tui-react:dist-package",
       "version": "0.1.0"
     },
@@ -567,6 +917,18 @@
       "outputName": "overeng-utils.tgz",
       "packagePath": "packages/@overeng/utils",
       "packageTreePath": "packages/@overeng/utils",
+      "sourcePaths": [
+        "package.json",
+        "packages/@overeng/buck2-tools",
+        "packages/@overeng/content-address",
+        "packages/@overeng/effect-distributed-lock",
+        "packages/@overeng/effect-rust",
+        "packages/@overeng/otel-contract",
+        "packages/@overeng/utils",
+        "packages/@overeng/utils-dev",
+        "patches",
+        "pnpm-workspace.yaml"
+      ],
       "target": "effect_utils//packages/@overeng/utils:dist-package",
       "version": "0.1.0"
     },
@@ -586,6 +948,13 @@
       "outputName": "overeng-utils-dev.tgz",
       "packagePath": "packages/@overeng/utils-dev",
       "packageTreePath": "packages/@overeng/utils-dev",
+      "sourcePaths": [
+        "package.json",
+        "packages/@overeng/buck2-tools",
+        "packages/@overeng/utils-dev",
+        "patches",
+        "pnpm-workspace.yaml"
+      ],
       "target": "effect_utils//packages/@overeng/utils-dev:dist-package",
       "version": "0.1.0"
     },
@@ -605,6 +974,19 @@
       "outputName": "overeng-utils-storybook.tgz",
       "packagePath": "packages/@overeng/utils-storybook",
       "packageTreePath": "packages/@overeng/utils-storybook",
+      "sourcePaths": [
+        "package.json",
+        "packages/@overeng/buck2-tools",
+        "packages/@overeng/content-address",
+        "packages/@overeng/effect-distributed-lock",
+        "packages/@overeng/effect-rust",
+        "packages/@overeng/otel-contract",
+        "packages/@overeng/utils",
+        "packages/@overeng/utils-dev",
+        "packages/@overeng/utils-storybook",
+        "patches",
+        "pnpm-workspace.yaml"
+      ],
       "target": "effect_utils//packages/@overeng/utils-storybook:dist-package",
       "version": "0.1.0"
     },
@@ -616,6 +998,15 @@
       "outputName": "ai-gateway-edge.js",
       "packagePath": "packages/@overeng/ai-gateway-edge",
       "packageTreePath": "packages/@overeng/ai-gateway-edge",
+      "sourcePaths": [
+        "package.json",
+        "packages/@overeng/ai-gateway-conformance",
+        "packages/@overeng/ai-gateway-edge",
+        "packages/@overeng/buck2-tools",
+        "packages/@overeng/utils-dev",
+        "patches",
+        "pnpm-workspace.yaml"
+      ],
       "target": "effect_utils//packages/@overeng/ai-gateway-edge:ai-gateway-edge-candidate",
       "version": "0.0.0"
     },
@@ -651,6 +1042,22 @@
       "outputName": "genie.js",
       "packagePath": "packages/@overeng/genie",
       "packageTreePath": "packages/@overeng/genie",
+      "sourcePaths": [
+        "package.json",
+        "packages/@overeng/buck2-tools",
+        "packages/@overeng/content-address",
+        "packages/@overeng/effect-distributed-lock",
+        "packages/@overeng/effect-rust",
+        "packages/@overeng/genie",
+        "packages/@overeng/otel-contract",
+        "packages/@overeng/tui-core",
+        "packages/@overeng/tui-react",
+        "packages/@overeng/utils",
+        "packages/@overeng/utils-dev",
+        "packages/@overeng/utils-storybook",
+        "patches",
+        "pnpm-workspace.yaml"
+      ],
       "target": "effect_utils//packages/@overeng/genie:genie-candidate",
       "version": "0.0.0"
     },
@@ -662,6 +1069,22 @@
       "outputName": "genie-bootstrap-closure-check.js",
       "packagePath": "packages/@overeng/genie",
       "packageTreePath": "packages/@overeng/genie",
+      "sourcePaths": [
+        "package.json",
+        "packages/@overeng/buck2-tools",
+        "packages/@overeng/content-address",
+        "packages/@overeng/effect-distributed-lock",
+        "packages/@overeng/effect-rust",
+        "packages/@overeng/genie",
+        "packages/@overeng/otel-contract",
+        "packages/@overeng/tui-core",
+        "packages/@overeng/tui-react",
+        "packages/@overeng/utils",
+        "packages/@overeng/utils-dev",
+        "packages/@overeng/utils-storybook",
+        "patches",
+        "pnpm-workspace.yaml"
+      ],
       "target": "effect_utils//packages/@overeng/genie:genie-bootstrap-closure-check-candidate",
       "version": "0.0.0"
     },
@@ -701,6 +1124,25 @@
       "outputName": "mr.js",
       "packagePath": "packages/@overeng/megarepo",
       "packageTreePath": "packages/@overeng/megarepo",
+      "sourcePaths": [
+        "package.json",
+        "packages/@overeng/buck2-tools",
+        "packages/@overeng/content-address",
+        "packages/@overeng/effect-distributed-lock",
+        "packages/@overeng/effect-path",
+        "packages/@overeng/effect-rust",
+        "packages/@overeng/kdl",
+        "packages/@overeng/kdl-effect",
+        "packages/@overeng/megarepo",
+        "packages/@overeng/otel-contract",
+        "packages/@overeng/tui-core",
+        "packages/@overeng/tui-react",
+        "packages/@overeng/utils",
+        "packages/@overeng/utils-dev",
+        "packages/@overeng/utils-storybook",
+        "patches",
+        "pnpm-workspace.yaml"
+      ],
       "target": "effect_utils//packages/@overeng/megarepo:megarepo-candidate",
       "version": "0.0.0"
     },
@@ -780,6 +1222,26 @@
       "outputName": "notion-md.js",
       "packagePath": "packages/@overeng/notion-md",
       "packageTreePath": "packages/@overeng/notion-md",
+      "sourcePaths": [
+        "package.json",
+        "packages/@overeng/buck2-tools",
+        "packages/@overeng/content-address",
+        "packages/@overeng/effect-distributed-lock",
+        "packages/@overeng/effect-rust",
+        "packages/@overeng/notion-core",
+        "packages/@overeng/notion-effect-client",
+        "packages/@overeng/notion-effect-schema",
+        "packages/@overeng/notion-md",
+        "packages/@overeng/notion-property-write",
+        "packages/@overeng/otel-contract",
+        "packages/@overeng/tui-core",
+        "packages/@overeng/tui-react",
+        "packages/@overeng/utils",
+        "packages/@overeng/utils-dev",
+        "packages/@overeng/utils-storybook",
+        "patches",
+        "pnpm-workspace.yaml"
+      ],
       "target": "effect_utils//packages/@overeng/notion-md:notion-md-candidate",
       "version": "0.0.0"
     },
@@ -791,6 +1253,14 @@
       "outputName": "npm-release.js",
       "packagePath": "packages/@overeng/npm-release",
       "packageTreePath": "packages/@overeng/npm-release",
+      "sourcePaths": [
+        "package.json",
+        "packages/@overeng/buck2-tools",
+        "packages/@overeng/npm-release",
+        "packages/@overeng/utils-dev",
+        "patches",
+        "pnpm-workspace.yaml"
+      ],
       "target": "effect_utils//packages/@overeng/npm-release:npm-release-candidate",
       "version": "0.0.0"
     },

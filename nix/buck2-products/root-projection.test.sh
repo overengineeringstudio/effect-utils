@@ -40,7 +40,9 @@ nix eval --impure --json --expr '
       filter = path: type: path != "${toString source}/${relative}"
         && !(lib.hasPrefix "${toString source}/${relative}/" path);
     };
-    scopedNames = [ "ci-tools" "gh-ci-utils" "notion-cli" "notion-db-runtime" "tui-stories" ];
+    packageNames = map (product: product.name) (builtins.filter
+      (product: product.kind == "package") (builtins.head inventories).products);
+    scopedNames = packageNames ++ [ "ai-gateway-edge" "ci-tools" "gh-ci-utils" "notion-cli" "notion-db-runtime" "tui-stories" ];
     checkProduct = declaration: let
         cache = builtins.any (product: product.target == declaration.target) (builtins.head inventories).products;
         compiled = declaration.kind == "compiled-executable";
@@ -58,12 +60,14 @@ nix eval --impure --json --expr '
         ownFile = lib.removePrefix "${toString source}/" (toString (builtins.head ownFiles));
         ruleFile = "buck2/platforms/defs.bzl";
         changedSource = remove source ownFile; changedRules = remove rules ruleFile;
+        unrelatedSource = remove source "packages/@overeng/megarepo/src/mod.ts";
+        unrelatedRecipe = recipe.overrideAttrs { src = unrelatedSource; };
         sourceRecipe = recipe.overrideAttrs { src = changedSource; };
         ruleRecipe = recipe.overrideAttrs (
           if recipe.rootProjection == null then { src = changedRules; }
           else { buildPhase = builtins.replaceStrings [ (toString rules) ] [ (toString changedRules) ] recipe.buildPhase; }
         );
-        # Scoped JS products retain these actual staged inputs. Package configs
+        # Scoped JS/package products retain these actual staged inputs. Package configs
         # are self-contained; there is no repository-root tsconfig base.
         # The raw pnpm lock is translated: its SHA inventory is loaded by the
         # dependencies BUCK and its archive digests feed pnpmArchives.
@@ -103,6 +107,9 @@ nix eval --impure --json --expr '
       in
         assert builtins.pathExists (rules + "/${ruleFile}");
         assert recipe.drvPath != sourceRecipe.drvPath && recipe.drvPath != ruleRecipe.drvPath;
+        assert !(builtins.elem declaration.name scopedNames)
+          || builtins.elem "packages/@overeng/megarepo" declaration.sourcePaths
+          || recipe.drvPath == unrelatedRecipe.drvPath;
         assert toString source == toString (remove source "buck2/tests")
           && toString rules == toString (remove rules "buck2/tests");
         assert recipe.drvPath == testlessRecipe.compileProduct.drvPath;
@@ -110,6 +117,9 @@ nix eval --impure --json --expr '
     products = map checkProduct declarations;
   in
     assert before == after;
+    assert builtins.all (entry: !(builtins.elem entry.kind [ "javascript" "package" ])
+      || (entry ? sourcePaths && builtins.isList entry.sourcePaths && entry.sourcePaths != []))
+      (builtins.head inventories).products;
     assert builtins.all (prefix: !(builtins.any (lib.hasPrefix "${toString repo}/${prefix}") files)) excluded;
     assert builtins.elem (repo + "/buck2/products/vite-runtime-fixture.mjs") extended.files;
     assert builtins.all (name: builtins.any (entry: entry.name == name) products) [ "genie" "typescript-api-server" "otelite" "otel-scrape" ];

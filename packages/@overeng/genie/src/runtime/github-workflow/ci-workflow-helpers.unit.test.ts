@@ -758,6 +758,7 @@ describe('ci workflow pnpm preparation and Nix cache defaults', () => {
           encoding: 'utf8',
           env: {
             ...process.env,
+            DIAG_ROOT: root,
             GITHUB_JOB: 'unit',
             GITHUB_RUN_ATTEMPT: '1',
             GITHUB_RUN_ID: 'no-retry',
@@ -820,6 +821,7 @@ printf '%s\\n' "$NIX_OUTPUT"
           encoding: 'utf8',
           env: {
             ...process.env,
+            DIAG_ROOT: root,
             GITHUB_JOB: 'unit',
             GITHUB_RUN_ATTEMPT: '1',
             GITHUB_RUN_ID: 'retry',

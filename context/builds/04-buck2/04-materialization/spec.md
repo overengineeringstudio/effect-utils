@@ -271,6 +271,46 @@ is reported only after workers settle and locks are released. Each successful
 view retains its stderr timing record. Snapshot/retention formats, lock ownership,
 explicit recovery, and whole-workspace authority checks are unchanged.
 
+CAS sharing commits at most 128 prepared files per transaction. Full batches
+remain shard-local; undersized final shard tails are combined into bounded
+mixed-shard transactions. Every transaction retains byte/inode checks, repair,
+and readonly restoration under the same flock. Per-view `[editor-view-payload]`
+diagnostics report `casTransactions` acquisitions and `casRepairMs` repair time
+inside the existing `casHeldMs` interval.
+Held-time details separate existing-blob lookup/verified-inode checks, new blob
+installation, candidate linking, and directory opening/readonly restoration;
+ordinary existing-blob byte verification remains in preflight outside the lock.
+`filesLinked` counts actual candidate replacements; `filesAlreadyShared` counts
+same-inode substitutions avoided among processed files (including new blob
+sources); `blobsCreated` counts successful new CAS installs. Source-manifest
+reuse skips sharing entirely. Unclassified control/candidate checks remain in
+the nonnegative `casUnclassifiedMs` residual: held time minus these details and repair.
+`filesReused` counts source-manifest skips; `filesProcessed` counts all other
+files successfully shared or retained by the cross-device fallback.
+
+Finite materialization hashes source files before private copying and looks up
+CAS addresses by digest plus normalized executable mode. A stable source stat
+through the end of the copy lets sharing consume that digest without hashing the
+candidate again; a source race discards the hint. The independent full candidate
+fingerprint comparison against the admitted roots remains mandatory.
+`hashFirstMs` sums source hashing time, `hashFirstMissMs` the hashing time of
+address misses, and `filesHashFirstAttempts`/`filesHashFirstMiss` count those
+lookups. Source hashing and existing-blob byte validation stay outside CAS flock.
+
+CI bootstrap writes a job-local `.devenv/editor-view-bootstrap-receipt.json`
+after successful publication. Repeated bootstrap in Unit tests reuses that
+receipt before publication admission only when scope, graph, authority,
+immutable snapshot identities, HEAD and changed input contents still match.
+Inputs include the transitive workspace closure from the publisher's lockfile
+importer/root Buck alias resolver; an unproven closure cannot issue a receipt.
+Publication outputs are excluded independently of ignore rules, and a nonce in
+GitHub-cleaned `RUNNER_TEMP` prevents reuse across jobs. Missing or changed
+evidence falls back to ordinary bootstrap with its 300-second execution cap.
+Scoped chain installers publish normally under their existing 300-second caps
+and scheduling edges, allowing early tests to overlap later publications.
+They neither issue nor consume publication receipts or wait for a global union.
+Developer prerequisites are unchanged.
+
 If a legacy root install occupies the first hop, immutable GNU
 `mv --exchange --no-copy` installs the symlink without an absent-path window and
 retains the exchanged entry under `.legacy/`. A failure before the pointer flip
