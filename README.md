@@ -314,7 +314,7 @@ The check restores checkout read-only permissions without rewriting any bytes.
 holds a per-worktree lease until command exit. Await uses interruptible kernel waiting with an integer-second deadline.
 Exclusive callers require an `agent/…` identity; shared callers without attribution warn and continue.
 Refusal exits are 75 (busy/deadline), 1 (safety), and 2 (input).
-SIGINT/SIGTERM are forwarded to the child; child status is preserved. Release never removes the lock file.
+SIGINT/SIGTERM are forwarded to the isolated child process group; foreground terminal ownership and child status are restored. Release never removes the lock file.
 
 ### Work storage contract
 
