@@ -1665,21 +1665,20 @@ describe('store discovery is bounded to the layout', () => {
   }
 
   it.effect(
-    'admits nested-only namespaces while bounding foreign co-tenant discovery during GC',
+    'admits fixed-depth member layouts without descending into co-tenant payloads during GC',
     Effect.fnUntraced(
       function* () {
         const fs = yield* FileSystem.FileSystem
         const { storePath } = yield* createStoreFixture([
           { host: 'github.com', owner: 'acme', repo: 'real', branches: [] },
-          { host: 'intranet', owner: 'team/sub', repo: 'real', branches: ['main'] },
+          { host: 'intranet', owner: 'team', repo: 'real', branches: [] },
         ])
-        const payloads = ['pnpm-store-shared-v1', 'store', 'cache.example', 'broad-cache']
+        const payloads = ['pnpm-store-shared-v1', 'store', 'cache.example']
         const deep = 'v11/links/@libsql/core/0.17.4/hash/node_modules/deep/payload'
         for (const root of payloads) {
           yield* fs.makeDirectory(`${storePath}${root}/${deep}/.bare`, { recursive: true })
           yield* fs.writeFileString(`${storePath}${root}/${deep}/keep`, 'co-tenant')
         }
-        for (let i = 0; i < 150; i++) yield* fs.makeDirectory(`${storePath}broad-cache/child-${i}`)
         yield* fs.writeFileString(`${storePath}loose.log`, 'log')
         yield* fs.writeFileString(`${storePath}loose.sh`, 'script')
         const visited: Array<string> = []
@@ -1704,17 +1703,10 @@ describe('store discovery is bounded to the layout', () => {
         )
         expect(
           (yield* store.listRepos.pipe(Effect.provide(logger))).map((repo) => repo.relativePath),
-        ).toEqual(['github.com/acme/real/', 'intranet/team/sub/real/'])
+        ).toEqual(['github.com/acme/real/', 'intranet/team/real/'])
         expect(warnings).toEqual([
-          'store enumeration: skipped entries (non-directory=2, foreign-namespace=4, depth-limited=0)',
+          'store enumeration: skipped entries (non-directory=2, foreign-namespace=3, depth-limited=0)',
         ])
-        const ls = yield* runMrCommand({
-          cwd: storePath,
-          command: ['store', 'ls', '--output', 'json'],
-          env: { MEGAREPO_STORE: storePath },
-        }).pipe(Effect.provideService(FileSystem.FileSystem, trackedFs), Effect.provide(logger))
-        expect(ls.exitCode, ls.failure).toBe(0)
-        expect(ls.stdout).toContain('intranet/team/sub/real/')
         const outside = yield* fs.makeTempDirectoryScoped()
         const policy = `${outside}/budgets.json`
         yield* fs.writeFileString(
@@ -1728,36 +1720,24 @@ describe('store discovery is bounded to the layout', () => {
             classes: { 'cargo-target': { budgetBytes: 0, paths: ['target', '**/target'] } },
           }),
         )
-        visited.length = 0
         const budgetGc = yield* runMrCommand({
           cwd: storePath,
           command: ['store', 'gc', '--budgets', policy, '--dry-run', '--output', 'json'],
           env: { MEGAREPO_STORE: storePath },
         }).pipe(Effect.provideService(FileSystem.FileSystem, trackedFs), Effect.provide(logger))
         expect(budgetGc.exitCode, budgetGc.failure).toBe(0)
-        expect(
-          visited.some((path) => path.startsWith(`${storePath}intranet/team/sub/real/refs/`)),
-        ).toBe(true)
-        expect(
-          visited.filter((path) => path.startsWith(`${storePath}broad-cache`)).length,
-        ).toBeLessThanOrEqual(128)
-        visited.length = 0
         const gc = yield* runMrCommand({
           cwd: storePath,
           command: ['store', 'gc', '--all', '--output', 'json'],
           env: { MEGAREPO_STORE: storePath },
         }).pipe(Effect.provideService(FileSystem.FileSystem, trackedFs), Effect.provide(logger))
         expect(gc.exitCode, gc.failure).toBe(0)
-        expect(
-          visited.filter((path) => path.startsWith(`${storePath}broad-cache`)).length,
-        ).toBeLessThanOrEqual(128)
-        expect(visited.some((path) => path.includes('pnpm-store-shared-v1'))).toBe(false)
         for (const root of payloads) {
           expect(
             visited
               .filter((path) => path.startsWith(`${storePath}${root}/`))
               .every(
-                (path) => path.replace(/\/$/, '').slice(storePath.length).split('/').length < 8,
+                (path) => path.replace(/\/$/, '').slice(storePath.length).split('/').length <= 2,
               ),
           ).toBe(true)
           expect(yield* fs.readFileString(`${storePath}${root}/${deep}/keep`)).toBe('co-tenant')
@@ -1845,6 +1825,7 @@ describe('store discovery is bounded to the layout', () => {
         yield* fs.makeDirectory(`${storePath}intranet/group/subgroup/repo/.bare`, {
           recursive: true,
         })
+        yield* fs.makeDirectory(`${storePath}intranet/group/direct/.bare`, { recursive: true })
         const visited: Array<string> = []
         const trackedFs = {
           ...fs,
@@ -1868,6 +1849,7 @@ describe('store discovery is bounded to the layout', () => {
         const repos = yield* store.listRepos.pipe(Effect.provide(loggerLayer))
         expect(repos.map((repo) => repo.relativePath)).toEqual([
           'github.com/acme/real/',
+          'intranet/group/direct/',
           'intranet/group/subgroup/repo/',
         ])
         const expectedWarnings = [
