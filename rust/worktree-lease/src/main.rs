@@ -1,5 +1,8 @@
 use clap::{Parser, ValueEnum};
+#[cfg(target_os = "linux")]
+use std::os::unix::process::CommandExt;
 use std::{
+    io::Write,
     path::PathBuf,
     process::Command,
     sync::atomic::{AtomicBool, AtomicI32, Ordering},
@@ -64,6 +67,26 @@ fn timer(seconds: u32, active: bool) -> Result<()> {
     }
     Ok(())
 }
+fn emit(tag: &str, reason: &str, warning: Option<&str>, job: Option<&str>) {
+    #[derive(serde::Serialize)]
+    struct Record<'a> {
+        _tag: &'a str,
+        reason: &'a str,
+        warning: Option<&'a str>,
+        job: Option<&'a str>,
+    }
+    let mut stderr = std::io::stderr().lock();
+    let _ = serde_json::to_writer(
+        &mut stderr,
+        &Record {
+            _tag: tag,
+            reason,
+            warning,
+            job,
+        },
+    );
+    let _ = stderr.write_all(b"\n");
+}
 #[derive(Clone, ValueEnum)]
 enum Mode {
     Shared,
@@ -84,6 +107,8 @@ struct Args {
     agent: Option<String>,
     #[arg(long)]
     job: Option<String>,
+    #[arg(long)]
+    json: bool,
     #[arg(last = true, required = true)]
     command: Vec<std::ffi::OsString>,
 }
@@ -93,13 +118,15 @@ fn run(args: &Args) -> Result<i32> {
         .agent
         .as_deref()
         .is_some_and(|a| a.starts_with("agent/") && a.len() > 6);
+    let warning = (!attributed)
+        .then_some("missing or invalid agent attribution; continuing with shared protection");
     if !attributed {
         if exclusive {
             return Err(Refusal::AttributionFailure);
         }
-        eprintln!(
-            "warning: missing or invalid agent attribution; continuing with shared protection"
-        );
+        if !args.json {
+            eprintln!("warning: {}", warning.unwrap_or_default());
+        }
     }
     // SAFETY: single-threaded supervisor; sigaction is initialized and handlers do not restart flock.
     unsafe {
@@ -107,7 +134,7 @@ fn run(args: &Args) -> Result<i32> {
         action.sa_sigaction = signal as *const () as usize;
         action.sa_flags = libc::SA_SIGINFO;
         libc::sigemptyset(&mut action.sa_mask);
-        for sig in [libc::SIGINT, libc::SIGTERM, libc::SIGALRM] {
+        for sig in [libc::SIGINT, libc::SIGTERM, libc::SIGHUP, libc::SIGALRM] {
             if libc::sigaction(sig, &action, std::ptr::null_mut()) != 0 {
                 return Err(Refusal::UnsafeLock);
             }
@@ -138,15 +165,38 @@ fn run(args: &Args) -> Result<i32> {
         return Err(Refusal::Deadline);
     }
     if interrupted != 0 {
-        eprintln!("worktree-lease: acquisition cancelled");
+        if args.json {
+            emit(
+                "UnsafeLock",
+                "acquisition cancelled",
+                warning,
+                args.job.as_deref(),
+            );
+        } else {
+            eprintln!("worktree-lease: acquisition cancelled");
+        }
         return Ok(128 + interrupted);
     }
     acquired?;
     lease.validate()?;
-    let mut child = Command::new(&args.command[0])
-        .args(&args.command[1..])
-        .spawn()
-        .map_err(|_| Refusal::InvalidInput)?;
+    let mut command = Command::new(&args.command[0]);
+    command.args(&args.command[1..]);
+    #[cfg(target_os = "linux")]
+    // SAFETY: the post-fork hook uses only kernel operations and allocation-free OS errors.
+    unsafe {
+        let parent = libc::getpid();
+        command.pre_exec(move || {
+            if libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGKILL) != 0 {
+                return Err(std::io::Error::last_os_error());
+            }
+            // Close the race where the parent died before PR_SET_PDEATHSIG was installed.
+            if libc::getppid() != parent {
+                return Err(std::io::Error::from_raw_os_error(libc::ESRCH));
+            }
+            Ok(())
+        });
+    }
+    let mut child = command.spawn().map_err(|_| Refusal::InvalidInput)?;
     CHILD.store(
         i32::try_from(child.id()).map_err(|_| Refusal::UnsafeLock)?,
         Ordering::SeqCst,
@@ -157,12 +207,38 @@ fn run(args: &Args) -> Result<i32> {
     }
     let status = child.wait().map_err(|_| Refusal::UnsafeLock)?;
     CHILD.store(0, Ordering::SeqCst);
+    if args.json {
+        emit(
+            "Granted",
+            "scoped lease completed",
+            warning,
+            args.job.as_deref(),
+        );
+    }
     drop(lease);
     Ok(exit_code(status))
 }
 fn main() {
-    let code = run(&Args::parse()).unwrap_or_else(|error| {
-        eprintln!("worktree-lease: {error:?}");
+    let args = match Args::try_parse() {
+        Ok(args) => args,
+        Err(error) => {
+            if std::env::args_os()
+                .take_while(|a| a != "--")
+                .any(|a| a == "--json")
+            {
+                emit("InvalidInput", "invalid command line", None, None);
+                std::process::exit(2);
+            }
+            error.exit();
+        }
+    };
+    let json = args.json;
+    let code = run(&args).unwrap_or_else(|error| {
+        if json {
+            emit(error.tag(), error.tag(), None, args.job.as_deref());
+        } else {
+            eprintln!("worktree-lease: {error:?}");
+        }
         error.code()
     });
     std::process::exit(code);

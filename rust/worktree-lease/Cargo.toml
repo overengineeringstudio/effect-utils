@@ -9,3 +9,5 @@ publish = false
 [dependencies]
 clap = { version = "4", features = ["derive", "env"] }
 libc = "0.2"
+serde.workspace = true
+serde_json.workspace = true

@@ -310,11 +310,13 @@ The check restores checkout read-only permissions without rewriting any bytes.
 
 ### Worktree leases
 
-`worktree-lease run WORKTREE --mode shared|exclusive (--try|--await SECONDS) [--agent AGENT] [--job JOB] -- COMMAND...`
+`worktree-lease run WORKTREE --mode shared|exclusive (--try|--await SECONDS) [--agent AGENT] [--job JOB] [--json] -- COMMAND...`
 holds a per-worktree lease until command exit. Await uses interruptible kernel waiting with an integer-second deadline.
 Exclusive callers require an `agent/…` identity; shared callers without attribution warn and continue.
-Refusal exits are 75 (busy/deadline), 1 (safety), and 2 (input).
-SIGINT/SIGTERM are forwarded to the child; child status is preserved. Release never removes the lock file.
+JSON emits one tagged result with optional job correlation on stderr. Refusal exits are 75 (busy/deadline), 1 (safety), and 2 (input).
+SIGINT/SIGTERM/SIGHUP directed at the supervisor are relayed; same-group broadcasts are not. Child status is preserved.
+Identity lookup clears every `GIT_*` environment variable. On Linux, the immediate child is killed when its supervisor dies.
+Release never removes the lock file; parent-death handling does not supervise descendants.
 
 ### Work storage contract
 
