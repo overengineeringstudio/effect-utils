@@ -10,6 +10,7 @@ fn holder() -> Holder {
         pid: 1,
         start_time: "123".into(),
         host: "test-host".into(),
+        pid_namespace: None,
     }
 }
 #[test]
@@ -81,6 +82,33 @@ fn publication_and_scoped_renewal() {
     drop(lease);
     let identity = Identity::resolve(root.path()).unwrap();
     assert_eq!(Record::inspect(&identity).unwrap(), Some(renewed));
+    let barrier = Barrier::new(2);
+    let results = std::thread::scope(|threads| {
+        let renew = |ttl| {
+            let scope = Lease::open(identity.clone()).unwrap();
+            scope.acquire(false, false).unwrap();
+            barrier.wait();
+            scope.renew(holder(), ttl).unwrap()
+        };
+        let long = threads.spawn(move || renew(600));
+        let short = threads.spawn(move || renew(1));
+        [long.join().unwrap(), short.join().unwrap()]
+    });
+    let maximum = Record::inspect(&identity).unwrap().unwrap();
+    assert!(results
+        .iter()
+        .all(|record| record.expires_at <= maximum.expires_at));
+    let scope = Lease::open(identity.clone()).unwrap();
+    scope.acquire(false, false).unwrap();
+    assert_eq!(
+        scope.renew(holder(), 1).unwrap().expires_at,
+        maximum.expires_at
+    );
+    let publication = identity.admin.join("gate-lease.publish.lock");
+    fs::remove_file(&publication).unwrap();
+    std::os::unix::fs::symlink(root.path().join("missing"), publication).unwrap();
+    assert_eq!(scope.renew(holder(), 1), Err(Refusal::UnsafeLock));
+    drop(scope);
     let names: Vec<_> = fs::read_dir(&identity.admin)
         .unwrap()
         .map(|entry| entry.unwrap().file_name())

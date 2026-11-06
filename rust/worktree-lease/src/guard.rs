@@ -1,6 +1,6 @@
 //! Reclamation requires both exclusive kernel authority and positively dead, expired evidence.
 use crate::{
-    record::{timestamp, Holder, Record},
+    record::{timestamp, Holder, PidNamespace, Record},
     Identity, Lease, Refusal, Result,
 };
 use std::{fs, io, time::SystemTime};
@@ -10,6 +10,24 @@ pub enum ProcessState {
     Alive(String),
     Dead,
     Unknown,
+}
+pub fn pid_namespace() -> Option<PidNamespace> {
+    #[cfg(target_os = "linux")]
+    {
+        use std::os::unix::fs::MetadataExt;
+        let metadata = fs::metadata("/proc/self/ns/pid").ok()?;
+        Some(PidNamespace {
+            dev: metadata.dev(),
+            ino: metadata.ino(),
+        })
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        None
+    }
+}
+fn same_namespace(holder: &Holder, namespace: Option<PidNamespace>) -> bool {
+    !cfg!(target_os = "linux") || (namespace.is_some() && holder.pid_namespace == namespace)
 }
 pub fn hostname() -> Result<String> {
     let mut bytes = [0u8; 256];
@@ -120,18 +138,30 @@ impl Holder {
         let ProcessState::Alive(start_time) = process(pid) else {
             return Err(Refusal::UnsafeLock);
         };
+        let pid_namespace = pid_namespace();
+        if cfg!(target_os = "linux") && pid_namespace.is_none() {
+            return Err(Refusal::UnsafeLock);
+        }
         Ok(Self {
             agent,
             pid,
             start_time,
             host: hostname()?,
+            pid_namespace,
         })
     }
 }
 /// Eligibility alone never authorizes mutation; retain the returned guard Lease through mutation.
-pub fn eligible(record: &Record, host: &str, now: SystemTime, state: &ProcessState) -> bool {
+pub fn eligible(
+    record: &Record,
+    host: &str,
+    now: SystemTime,
+    state: &ProcessState,
+    namespace: Option<PidNamespace>,
+) -> bool {
     record.validate().is_ok()
         && record.holder.host == host
+        && same_namespace(&record.holder, namespace)
         && valid_start(&record.holder.start_time)
         && timestamp(&record.expires_at)
             .is_ok_and(|expiry| expiry <= chrono::DateTime::<chrono::Utc>::from(now))
@@ -159,14 +189,13 @@ pub fn reclaim(identity: Identity) -> Result<Lease> {
     }
     if let Some(record) = Record::inspect(&lease.identity)? {
         let host = hostname()?;
-        if record.holder.host != host
-            || !eligible(
-                &record,
-                &host,
-                SystemTime::now(),
-                &process(record.holder.pid),
-            )
-        {
+        let namespace = pid_namespace();
+        let state = if record.holder.host == host && same_namespace(&record.holder, namespace) {
+            process(record.holder.pid)
+        } else {
+            ProcessState::Unknown
+        };
+        if !eligible(&record, &host, SystemTime::now(), &state, namespace) {
             return Err(Refusal::Protected);
         }
     }

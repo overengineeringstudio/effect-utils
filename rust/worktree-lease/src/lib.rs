@@ -147,8 +147,11 @@ pub struct Lease {
 }
 impl Lease {
     pub fn open(identity: Identity) -> Result<Self> {
+        Self::open_named(identity, "gate-lease.lock")
+    }
+    fn open_named(identity: Identity, name: &str) -> Result<Self> {
         identity.validate()?;
-        let path = identity.admin.join("gate-lease.lock");
+        let path = identity.admin.join(name);
         let file = OpenOptions::new()
             .read(true)
             .write(true)
