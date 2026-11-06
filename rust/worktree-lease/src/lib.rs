@@ -60,8 +60,7 @@ impl Identity {
             }
         }
         let output = git
-            .arg("-C")
-            .arg(path)
+            .current_dir(path)
             .args([
                 "rev-parse",
                 "--path-format=absolute",
