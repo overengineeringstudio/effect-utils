@@ -3545,7 +3545,15 @@ const publishEditorViewCoordinated = async ({
         })
       }
       enterPhase('payload')
-      const payloadTimings: Record<string, number> = {}
+      const payloadTimings: Record<string, number> = {
+        casExistingBlobVerifyMs: 0,
+        casBlobInstallMs: 0,
+        casViewLinkMs: 0,
+        casDirectoryMs: 0,
+        filesLinked: 0,
+        filesAlreadyShared: 0,
+        blobsCreated: 0,
+      }
       const payloadStartedAt = performance.now()
       const payload = await editorViewTimingContext.run(
         payloadTimings,

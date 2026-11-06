@@ -490,7 +490,27 @@ describe('host-wide editor snapshot content store', () => {
       const renamed = payload(first, 'nested/renamed.js', 'same payload', 0o600)
       const siblingFile = payload(sibling, 'another.js', 'same payload')
       const otherFile = payload(otherWorktree, 'payload.js', 'same payload', 0o444)
-      const firstResult = await shareSnapshotFiles({ candidate: first, contentStore })
+      const timings: Record<string, number> = {}
+      const firstResult = await editorViewTimingContext.run(timings, shareSnapshotFiles, {
+        candidate: first,
+        contentStore,
+      })
+      expect(timings.filesAlreadyShared).toBe(1)
+      expect(timings.filesLinked).toBe(1)
+      expect(timings.blobsCreated).toBe(1)
+      for (const phase of [
+        'casExistingBlobVerifyMs',
+        'casBlobInstallMs',
+        'casViewLinkMs',
+        'casDirectoryMs',
+      ])
+        expect(timings[phase]).toBeGreaterThanOrEqual(0)
+      await editorViewTimingContext.run(timings, shareSnapshotFiles, {
+        candidate: first,
+        contentStore,
+      })
+      expect(timings.filesAlreadyShared).toBe(3)
+      expect(timings.filesLinked).toBe(1)
       expect(firstResult).toEqual({
         linkedFiles: 2,
         copiedFiles: 0,
