@@ -859,6 +859,9 @@ in [workspace tools](./nix/workspace-tools/README.md). Live pnpm workspaces shar
 install policy and source-input algebra; Buck products use immutable dependency
 archives.
 
+`genie/buck2/stage0-workspace.ts` derives each stage-zero tool's transitive path
+dependency members while preserving shared workspace configuration byte-for-byte.
+
 Stage-zero Cargo projections are committed in `nix/stage0-cargo/inventory.json`.
 Normal Genie checks validate root-lock and manifest authority without Cargo or a
 registry cache. Refresh explicitly with `bash nix/stage0-cargo/refresh.sh`, which
