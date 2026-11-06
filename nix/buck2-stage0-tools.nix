@@ -34,8 +34,8 @@ let
         root = workspaceRoot;
         fileset = mkRustFileset definition;
       };
-      manifest = pkgs.writeText "Cargo.toml" definition.manifest;
-      lock = pkgs.writeText "Cargo.lock" definition.lock;
+      manifest = builtins.toFile "Cargo.toml" definition.manifest;
+      lock = builtins.toFile "Cargo.lock" definition.lock;
     in
     pkgs.runCommand "buck2-stage0-source" { } ''
       mkdir -p "$out/nix"
@@ -57,7 +57,7 @@ let
       src = mkSource definition;
       cargoRoot = "rust";
       buildAndTestSubdir = "rust";
-      cargoLock.lockFile = pkgs.writeText "Cargo.lock" definition.lock;
+      cargoLock.lockFile = builtins.toFile "Cargo.lock" definition.lock;
       preBuild = ''
         export RUSTFLAGS="''${RUSTFLAGS:+$RUSTFLAGS }--remap-path-prefix=$NIX_BUILD_TOP=/build"
       '';
