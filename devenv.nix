@@ -771,6 +771,7 @@ let
     }:
     let
       traceName = "buck2:editor:${mode}${lib.optionalString (traceScope != null) ":${traceScope}"}";
+      bootstrapReceipt = ciUnitTest && mode == "bootstrap" && packagePaths == editorBootstrapPackagePaths;
       packageArgument = lib.optionalString (
         packagePaths != null
       ) " --packages ${lib.escapeShellArg (builtins.toJSON packagePaths)}";
@@ -778,6 +779,14 @@ let
     trace.exec traceName ''
       set -euo pipefail
       root="''${DEVENV_ROOT:-$PWD}"
+      ${lib.optionalString bootstrapReceipt ''
+        receipt() {
+          ${pkgs.python3}/bin/python "$root/scripts/editor-view-receipt.py" "$1" "$root" bootstrap \
+            ${lib.escapeShellArg (builtins.toJSON editorBootstrapPackagePaths)}
+        }
+        if receipt check; then exit 0; fi
+        receipt begin || true
+      ''}
       ${publishBuckCapabilities}
       # Supervise the whole authority/build/publication process tree, including
       # filesystem work and lock waits that an in-process JS timer cannot interrupt.
@@ -813,6 +822,9 @@ let
         if [ "$status" -eq 124 ] || [ "$status" -eq 137 ]; then
           echo "Editor-view ${mode} exceeded its ${toString deadlineSeconds}s execution deadline (5s kill grace); publication failed. Run buck2:editor:materialize explicitly outside the lint/genie heavy lane." >&2
         fi
+      ''}
+      ${lib.optionalString bootstrapReceipt ''
+        if [ "$status" -eq 0 ]; then receipt write || true; fi
       ''}
       exit "$status"
     '';
