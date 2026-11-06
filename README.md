@@ -322,6 +322,8 @@ Renewal preserves the first creator, purpose and creation time; records are not 
 Creation holds a shared gate scope; publication rejects records over 65,536 bytes, syncs record bytes before atomic publication and syncs the admin directory before success. Unknown schema fields are malformed.
 `guard::reclaim` returns an exclusively held lease only for absent records or supported expired, same-host, positively dead holders; unknown identity and live kernel locks retain.
 Either `WORKTREE/reclaim-keep` or `ADMIN/reclaim-keep`, including unreadable marker state, retains the worktree. This eligibility guard does not establish clean-tree, reference or live-cwd deletion safety.
+The standalone CLI exposes `create WORKTREE --purpose gate|lander|ci-baseline --creator AGENT [--holder-pid PID] --ttl SECONDS`, `renew WORKTREE --holder-pid PID --agent AGENT --ttl SECONDS`, `inspect WORKTREE --json`, and `guard --git-dir ADMIN`.
+Create defaults holder PID to its parent; adapters can preserve their caller with an explicit PID. Renew acquires a shared scope internally; inspect prints a record or `null`, without granting mutation authority. Guard success is only an eligibility observation, not a lock surviving CLI exit.
 
 ### Work storage contract
 
