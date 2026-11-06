@@ -1533,7 +1533,7 @@ in
     exec = trace.exec "genie:buck2:test" ''
       set -euo pipefail
       cd "''${DEVENV_ROOT:-$PWD}"
-      inputs="$(nix build --offline --impure --no-link --print-out-paths --file nix/stage0-cargo/refresh-inputs.nix)"
+      inputs="$(nix build --impure --no-link --print-out-paths --file nix/stage0-cargo/refresh-inputs.nix)"
       export STAGE0_GENIE="$inputs/genie/bin/genie" STAGE0_CARGO="$inputs/cargo/bin/cargo"
       export STAGE0_RUSTC="$inputs/rustc/bin/rustc" STAGE0_VENDOR="$inputs/vendor"
       # An explicit directory preserves recursive discovery without matching
