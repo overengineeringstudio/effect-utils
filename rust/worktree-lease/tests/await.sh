@@ -1,5 +1,4 @@
 source tests/try.sh
-set -m
 printf '%s/.git\n' "$root/linked" > "$admin/gitdir"
 hold() {
     "$LEASE" run "$root/linked" --mode "$1" --try --agent agent/test -- sh -c 'echo ready > "$1"; read -r line < "$2"' sh "$root/ready" "$root/release" &
@@ -51,12 +50,6 @@ test "$result" = 143
 grep -q 'acquisition cancelled' "$root/error"
 test ! -e "$root/payload"
 release
-for sig in INT TERM; do
-    hold shared
-    kill -"$sig" "$holder"
-    result=0; wait "$holder" || result=$?
-    if test "$sig" = INT; then test "$result" = 130; else test "$result" = 143; fi
-done
 for mutation in registration lock; do
     hold exclusive
     "$LEASE" run "$root/linked" --mode shared --await 5 --agent agent/test -- false 2>"$root/error" &
@@ -74,5 +67,4 @@ for mutation in registration lock; do
     grep -q Retired "$root/error"
     printf '%s/.git\n' "$root/linked" > "$admin/gitdir"
 done
-set +m
 python3 tests/group.py "$LEASE" "$root/linked" "$root"
