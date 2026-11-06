@@ -1,9 +1,9 @@
 #[test]
 fn acceptance() {
-    assert!(std::process::Command::new("bash")
-        .arg("tests/try.sh")
+    let output = std::process::Command::new("bash")
+        .arg("tests/await.sh")
         .env("LEASE", env!("CARGO_BIN_EXE_worktree-lease"))
-        .status()
-        .unwrap()
-        .success());
+        .output()
+        .unwrap();
+    assert!(output.status.success(), "{output:?}");
 }

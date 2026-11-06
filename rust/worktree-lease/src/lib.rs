@@ -16,6 +16,7 @@ use std::{
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Refusal {
     Busy,
+    Deadline,
     UnknownIdentity,
     UnsafeLock,
     Retired,
@@ -25,7 +26,7 @@ pub enum Refusal {
 impl Refusal {
     pub fn code(self) -> i32 {
         match self {
-            Self::Busy => 75,
+            Self::Busy | Self::Deadline => 75,
             Self::InvalidInput => 2,
             _ => 1,
         }
@@ -83,7 +84,8 @@ impl Identity {
     }
     fn validate(&self) -> Result<()> {
         let registered = if self.admin == self.common {
-            fs::canonicalize(self.worktree.join(".git")).ok() == Some(self.admin.clone())
+            fs::canonicalize(self.worktree.join(".git")).ok().as_deref()
+                == Some(self.admin.as_path())
         } else {
             let gitfile = self.worktree.join(".git");
             let backlink = fs::read_to_string(self.admin.join("gitdir"))
@@ -95,7 +97,7 @@ impl Identity {
                 .and_then(|p| fs::canonicalize(self.worktree.join(p)).ok());
             backlink.is_some()
                 && backlink == fs::canonicalize(gitfile).ok()
-                && forward == Some(self.admin.clone())
+                && forward.as_deref() == Some(self.admin.as_path())
                 && self.admin.parent() == Some(self.common.join("worktrees").as_path())
         };
         if !registered || !self.admin.is_dir() {
