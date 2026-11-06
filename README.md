@@ -869,6 +869,10 @@ uses pinned Cargo offline against Nix-vendored dependencies. Root feature-unific
 changes can require a refresh even when the resulting projected lock stays identical.
 Refresh preparation is offline too, including the repository-declared Genie package.
 Missing local inputs fail with an explicit provisioning command; refresh never downloads.
+Inputs resolve for the current host system; lock resolution is platform-independent.
+On fleet hosts, callers wrap the whole script with
+`gate-slot --lane build -- nice -n 19 bash nix/stage0-cargo/refresh.sh`;
+standalone use needs no fleet tooling.
 Static fingerprints detect authority drift, not Cargo canonicality: that requires
 the separate locked, offline Cargo metadata check.
 
