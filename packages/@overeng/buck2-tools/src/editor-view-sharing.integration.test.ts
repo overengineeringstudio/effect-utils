@@ -50,6 +50,12 @@ const requireTool = (name: string): string => {
 const bun = requireTool('BUN_BIN')
 const ps = requireTool('PS_BIN')
 const sharingModule = new URL('./editor-view-sharing.ts', import.meta.url)
+const directReuseTimingPhases = [
+  'casDirectReuseDirectoryMs',
+  'casDirectReuseBlobRecheckMs',
+  'casDirectReuseLinkMs',
+  'casDirectReusePostLinkMs',
+] as const
 
 const crossDeviceDirectories = ['/dev/shm', '/tmp', '/var/tmp'].filter((directory) => {
   try {
@@ -406,6 +412,9 @@ describe('host-wide editor snapshot content store', () => {
         expect(timings.filesHashFirstMiss ?? 0).toBe(hit === true ? 0 : 1)
         expect(timings.hashFirstMs).toBeGreaterThanOrEqual(0)
         expect(reusedFiles.size).toBe(hit === true ? 1 : 0)
+        if (hit === true)
+          for (const phase of directReuseTimingPhases)
+            expect(timings[phase]).toBeGreaterThanOrEqual(0)
         expectReadonlyStore(contentStore)
       } finally {
         hash.mockRestore()
@@ -510,10 +519,13 @@ describe('host-wide editor snapshot content store', () => {
       )
       if (fault === 'link-replace') {
         await expect(materialization).rejects.toThrow('reused blob changed while linking')
+        for (const phase of directReuseTimingPhases)
+          expect(timings[phase]).toBeGreaterThanOrEqual(0)
         expectReadonlyStore(contentStore)
         return
       }
       await materialization
+      for (const phase of directReuseTimingPhases) expect(timings[phase]).toBeGreaterThanOrEqual(0)
       expect(reusedFiles.size).toBe(0)
       expect(readFileSync(path, 'utf8')).toBe('bytes')
       expect(lstatSync(path).nlink).toBe(1)
