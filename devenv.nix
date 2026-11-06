@@ -1530,6 +1530,12 @@ in
         builtins.length megarepoInstallers == 1
       ) "genie:buck2:test requires exactly one scheduled megarepo installer";
       [ "buck2:editor:publish:test" ] ++ megarepoInstallers;
+    env = {
+      STAGE0_GENIE = "${repoPackages.genie}/bin/genie";
+      STAGE0_CARGO = "${pkgs.cargo}/bin/cargo";
+      STAGE0_RUSTC = "${pkgs.rustc}/bin/rustc";
+      STAGE0_VENDOR = "${pkgs.rustPlatform.importCargoLock { lockFile = ./rust/Cargo.lock; }}";
+    };
     exec = trace.exec "genie:buck2:test" ''
       set -euo pipefail
       cd "''${DEVENV_ROOT:-$PWD}"

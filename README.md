@@ -875,6 +875,9 @@ the separate locked, offline Cargo metadata check.
 The stage-zero source and `cargoLock` consume the same projected lock before
 addressing. `checks.<system>.stage0-cargo-metadata` validates each tool with
 `cargo metadata --locked --offline` against its Nix vendor tree, without compiling.
+The PR/merge-group quality lane builds this check. Tool sources currently support
+`Cargo.toml` and `src/**/*.rs`; future `build.rs`, `include!`, or `.cargo` inputs
+must extend that explicit source contract before adoption.
 
 Fixed-source Nix products use `NIX_BUILD_CORES` for Buck execution (`build -j`),
 Tokio workers (`build --config build.num_tokio_workers`), and daemon blocking

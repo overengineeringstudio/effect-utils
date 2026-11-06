@@ -377,6 +377,20 @@ describe('generated CI cache trust behavior', () => {
     ).toBe(false)
   })
 
+  it('builds the offline stage-zero metadata check on PRs and merge groups', async () => {
+    const quality = (await readWorkflow()).jobs.quality!
+    const step = quality.steps.find(
+      ({ name }) => name === 'Validate stage-zero Cargo lock canonicality offline',
+    )
+    expect(step?.run).toContain('nix build --no-link .#checks.x86_64-linux.stage0-cargo-metadata')
+    expect(step?.if).toBeUndefined()
+    expect(step?.['continue-on-error']).toBeUndefined()
+    expect(Boolean(evaluate(quality.if!, 'pull_request', 'refs/pull/123/merge'))).toBe(true)
+    expect(
+      Boolean(evaluate(quality.if!, 'merge_group', 'refs/heads/gh-readonly-queue/main/pr-123')),
+    ).toBe(true)
+  })
+
   it('selects exact focused source files rather than suffix-matching staged Buck copies', async () => {
     const workflow = await readWorkflow()
     const files = [

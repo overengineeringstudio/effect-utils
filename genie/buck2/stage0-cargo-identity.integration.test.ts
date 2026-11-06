@@ -2,7 +2,7 @@ import { expect, it } from 'bun:test'
 import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 
-const genie = '/nix/store/015rck220f45nwg9v2xlxi1q71x8d86c-genie-buck2-candidate/bin/genie'
+const genie = process.env.STAGE0_GENIE ?? 'genie'
 const run = ({
   args,
   cwd,
@@ -40,6 +40,7 @@ it('disconnected crates preserve stage-zero/product identities; reachable author
           ...process.env,
           OTEL_SDK_DISABLED: 'true',
           STAGE0_CARGO_REFRESH: refresh === true ? '1' : '0',
+          RUSTC: process.env.STAGE0_RUSTC ?? process.env.RUSTC,
         },
       })
     const paths = () =>

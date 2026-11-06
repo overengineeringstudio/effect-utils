@@ -900,6 +900,10 @@ const jobs: Record<CoreCIJobName, CiWorkflowArgs['jobs'][string]> = {
           }),
         ),
         {
+          name: 'Validate stage-zero Cargo lock canonicality offline',
+          run: withCiSourceRoot('nix build --no-link .#checks.x86_64-linux.stage0-cargo-metadata'),
+        },
+        {
           name: 'CI policy action isolation smoke',
           env: githubTokenEnv(),
           run: withCiSourceRoot(
