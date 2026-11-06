@@ -184,12 +184,15 @@ js_after="$(js_paths)"
 [[ "$js_before" == "$js_after" ]] || {
   echo 'context-only edit and producer revision changed scoped JS compile recipes' >&2; exit 1;
 }
-# An unrelated package source edit must not invalidate the selected JS products.
+# ai-gateway-edge does not declare megarepo (unlike tui-stories).
+cp "$work/shell/packages/@overeng/megarepo/src/mod.ts" "$work/js-unrelated-source"
 printf '\n// unrelated package source control\n' >> "$work/shell/packages/@overeng/megarepo/src/mod.ts"
 js_unrelated="$(js_paths)"
-[[ "$js_after" == "$js_unrelated" ]] || {
-  echo 'unrelated megarepo source edit changed scoped JS compile recipes' >&2; exit 1;
+jq -ne --argjson before "$js_after" --argjson after "$js_unrelated" \
+  '$before["ai-gateway-edge"] == $after["ai-gateway-edge"]' >/dev/null || {
+  echo 'unrelated megarepo source edit changed ai-gateway-edge compile recipe' >&2; exit 1;
 }
+cp "$work/js-unrelated-source" "$work/shell/packages/@overeng/megarepo/src/mod.ts"
 # Each real own-source mutation must invalidate its product, not just the
 # publication wrapper. Restore between controls so failures name one input.
 while read -r name relative; do
