@@ -25,6 +25,8 @@ import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:pat
 import { setTimeout } from 'node:timers/promises'
 import { fileURLToPath } from 'node:url'
 
+import { recordViewTiming } from './typescript-runner.ts'
+
 const batchSize = 128
 const blobNamePattern = /^([a-f0-9]{64})-(0444|0555)$/
 const shardPattern = /^[a-f0-9]{2}$/
@@ -527,7 +529,10 @@ const withStoreLock = async <T>({
   readonly run: (directories: Directories) => Promise<T>
 }): Promise<T> => {
   await ensureParent({ contentStore, create: true })
+  const waitingAt = performance.now()
   const lock = await acquireLock({ contentStore, afterStoreLockContended })
+  recordViewTiming({ phase: 'casWaitMs', started: waitingAt })
+  const heldAt = performance.now()
   try {
     const marker = Buffer.alloc(1)
     const { bytesRead } = await lock.read(marker, 0, 1, 0)
@@ -581,6 +586,7 @@ const withStoreLock = async <T>({
     // flock ownership belongs to this open description, never to a pathname or
     // owner record. Close releases it on success, failure, and process death.
     await lock.close()
+    recordViewTiming({ phase: 'casHeldMs', started: heldAt })
   }
 }
 /* eslint-enable no-await-in-loop */
@@ -1001,6 +1007,7 @@ const shareBatch = async ({
     while (pending.length !== 0) {
       // All walks, hashes and EXDEV preparation occur before acquisition. A
       // concurrent GC may unlink a validated key; private candidate bytes remain.
+      const preflightAt = performance.now()
       for (let index = 0; index < pending.length; index += 4) {
         const prepared = await Promise.allSettled(
           pending.slice(index, index + 4).map(async (file) => {
@@ -1016,6 +1023,7 @@ const shareBatch = async ({
         )
         for (const result of prepared) if (result.status === 'rejected') throw result.reason
       }
+      recordViewTiming({ phase: 'casPreflightInclusiveMs', started: preflightAt })
       pending = await withStoreLock({
         contentStore,
         afterStoreLock,
@@ -1238,7 +1246,9 @@ export const shareSnapshotFiles = async ({
   const prepareBatch = async (): Promise<void> => {
     // Four small-file digests run on the native crypto worker pool. Large files
     // remain streaming; neither promises nor payload buffers scale with the tree.
+    const prepareAt = performance.now()
     const prepared = await Promise.allSettled(paths.map(prepare))
+    recordViewTiming({ phase: 'casPrepareMs', started: prepareAt })
     const files = prepared.map((result) => {
       if (result.status === 'rejected') throw result.reason
       return result.value

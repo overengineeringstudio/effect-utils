@@ -84,7 +84,11 @@ import {
 } from './editor-view-sharing.ts'
 import { emitCompletedSpanAsync, type OtelSpanAttribute } from './otel-span-cli.ts'
 import { canonicalizeParent, canonicalizePath, realpathThroughName } from './real-path.ts'
-import { closeFingerprintAdmission, runFingerprintTool } from './typescript-runner.ts'
+import {
+  closeFingerprintAdmission,
+  editorViewTimingContext,
+  runFingerprintTool,
+} from './typescript-runner.ts'
 
 /** Versioned identity of the persisted scoped editor-view record. */
 export const editorViewSchema = 'effect-utils/editor-view/v2' as const
@@ -3541,13 +3545,20 @@ const publishEditorViewCoordinated = async ({
         })
       }
       enterPhase('payload')
-      const payload = await fingerprintSnapshotPayload({
-        snapshotDir: candidate,
-        fingerprintTool: options.fingerprintTool,
-        admissionDirectory: options.admissionDirectory,
-        onFailure: captureFailure,
-        ...(finite === true ? { roots } : {}),
-      })
+      const payloadTimings: Record<string, number> = {}
+      const payloadStartedAt = performance.now()
+      const payload = await editorViewTimingContext.run(
+        payloadTimings,
+        fingerprintSnapshotPayload,
+        {
+          snapshotDir: candidate,
+          fingerprintTool: options.fingerprintTool,
+          admissionDirectory: options.admissionDirectory,
+          onFailure: captureFailure,
+          ...(finite === true ? { roots } : {}),
+        },
+      )
+      payloadTimings.snapshotFingerprintMs = performance.now() - payloadStartedAt
       if (materialized === true && declaredRoots !== undefined) {
         // The materialized copy is compared against the state admitted before the
         // copy in owner-resolved link form, so a faithful copy of unmodified roots
@@ -3585,7 +3596,8 @@ const publishEditorViewCoordinated = async ({
       created = true
       onContentChanged()
       const sharedCandidate = candidate
-      const sharing = await shareSnapshotFiles({
+      const sharingStartedAt = performance.now()
+      const sharing = await editorViewTimingContext.run(payloadTimings, shareSnapshotFiles, {
         candidate,
         contentStore: paths.contentStore,
         ...(materializedRoots === undefined
@@ -3606,6 +3618,7 @@ const publishEditorViewCoordinated = async ({
             })
         },
       })
+      payloadTimings.shareMs = performance.now() - sharingStartedAt
       if (materializedRoots !== undefined)
         writeFileSync(
           join(candidate, editorViewSourceManifestName),
@@ -3614,6 +3627,11 @@ const publishEditorViewCoordinated = async ({
         )
       if (sharing.copiedFiles > 0)
         process.stderr.write(`[editor-view-content] ${JSON.stringify(sharing)}\n`)
+      const durationMs = performance.now() - payloadStartedAt
+      const otherMs = durationMs - payloadTimings.snapshotFingerprintMs - payloadTimings.shareMs
+      process.stderr.write(
+        `[editor-view-timing] ${JSON.stringify({ phase: 'payload-detail', packagePath: options.package, durationMs, ...payloadTimings, otherMs })}\n`,
+      )
     }
     if (created === true) {
       enterPhase('harden')
