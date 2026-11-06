@@ -807,14 +807,14 @@ for (const name of editorPublishers) {
     condition: body.includes('scripts/editor-view-receipt.py') === bootstrapReceipt,
     name: `${name} uses receipts only for CI bootstrap reuse`,
   })
-  if (bootstrapReceipt) {
+  if (bootstrapReceipt === true) {
     ok({
       condition:
-        body.includes('"$1" "$root" bootstrap') &&
-        body.includes('if receipt check; then exit 0; fi') &&
+        body.includes('"$1" "$root" bootstrap') === true &&
+        body.includes('if receipt check; then exit 0; fi') === true &&
         body.indexOf('if receipt check;') < body.indexOf('editor-view-supervisor.py') &&
-        body.includes('receipt begin || true') &&
-        body.includes('if [ "$status" -eq 0 ]; then receipt write || true; fi'),
+        body.includes('receipt begin || true') === true &&
+        body.includes('if [ "$status" -eq 0 ]; then receipt write || true; fi') === true,
       name: 'CI bootstrap reuses proven inputs before admission and issues receipts only after success',
     })
   }
