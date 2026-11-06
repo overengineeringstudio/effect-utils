@@ -867,6 +867,9 @@ in [workspace tools](./nix/workspace-tools/README.md). Live pnpm workspaces shar
 install policy and source-input algebra; Buck products use immutable dependency
 archives.
 
+`genie/buck2/stage0-workspace.ts` derives each stage-zero tool's transitive path
+dependency members while preserving shared workspace configuration byte-for-byte.
+
 Fixed-source Nix products use `NIX_BUILD_CORES` for Buck execution (`build -j`),
 Tokio workers (`build --config build.num_tokio_workers`), and daemon blocking
 threads (`BUCK2_MAX_BLOCKING_THREADS`). An unset or zero Nix budget becomes one,
