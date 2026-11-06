@@ -5,7 +5,7 @@ TESTS_DIR="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$TESTS_DIR/../../../../.." && pwd)"
 
 while IFS=' ' read -r output_name tool_name; do
-  tool_definition="$(sed -nE "/^    $tool_name = \{/{p;q;}" "$ROOT/nix/buck2-stage0-tools.nix")"
+  tool_definition="$(jq -r --arg tool "$tool_name" '.tools[$tool].package // empty' "$ROOT/nix/stage0-cargo/inventory.json")"
   if [ -z "$tool_definition" ]; then
     echo "FAIL: flake package $output_name references missing stage-0 tool $tool_name" >&2
     exit 1
@@ -47,8 +47,9 @@ assert_excludes() {
 }
 
 for tool in archive-tool events fingerprint product; do
-  assert_contains "$tool" rust/Cargo.toml
-  assert_contains "$tool" rust/Cargo.lock
+  assert_contains "$tool" nix/stage0-cargo/inventory.json
+  assert_excludes "$tool" rust/Cargo.toml
+  assert_excludes "$tool" rust/Cargo.lock
   assert_contains "$tool" rust-toolchain.toml
   assert_contains "$tool" "rust/buck2-tools/$tool/Cargo.toml"
   case "$tool" in

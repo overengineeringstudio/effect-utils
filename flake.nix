@@ -307,7 +307,10 @@ rec {
       in
       {
         buckProducts = trackedBuck2Products;
-        checks = pkgs.lib.optionalAttrs (system == "aarch64-darwin") {
+        checks = {
+          stage0-cargo-metadata = buck2-stage0-tools.metadata-check;
+        }
+        // pkgs.lib.optionalAttrs (system == "aarch64-darwin") {
           macos-app-host-stability = macosAppExample.check;
           macos-app-primitives = macosAppExample.primitives;
           macos-app-appkit-link = import ./nix/macos-app/appkit-link-check.nix {

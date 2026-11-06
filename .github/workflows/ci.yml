@@ -1203,6 +1203,10 @@ jobs:
             fi
             exit "$regression_status"
           '
+      - name: Validate stage-zero Cargo lock canonicality offline
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: 'cd "${GITHUB_WORKSPACE:-$PWD}" && nix build --no-link .#checks.x86_64-linux.stage0-cargo-metadata'
       - name: CI policy action isolation smoke
         env:
           GITHUB_TOKEN: ${{ github.token }}

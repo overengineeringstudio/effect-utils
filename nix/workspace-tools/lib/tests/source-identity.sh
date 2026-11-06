@@ -127,11 +127,13 @@ jq -ne --argjson before "$linux_after" --argjson after "$events_after" '
   and $before["buck2-archive-tool"] == $after["buck2-archive-tool"]
   and $before.otelite == $after.otelite
 ' >/dev/null
+# Stage-0 tools use committed projected locks, so an unrelated root lock edit
+# must preserve their identities while still invalidating root-lock consumers.
 printf '\n# shell cache lock input edit\n' >> "$work/shell/rust/Cargo.lock"
 lock_after="$(BUCK2_SYSTEM=x86_64-linux shell_paths)"
 jq -ne --argjson before "$events_after" --argjson after "$lock_after" '
-  $before["buck2-events"] != $after["buck2-events"]
-  and $before["buck2-archive-tool"] != $after["buck2-archive-tool"]
+  $before["buck2-events"] == $after["buck2-events"]
+  and $before["buck2-archive-tool"] == $after["buck2-archive-tool"]
   and $before.otelite != $after.otelite
 ' >/dev/null
 
