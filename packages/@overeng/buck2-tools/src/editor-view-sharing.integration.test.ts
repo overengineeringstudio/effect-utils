@@ -449,6 +449,52 @@ describe('host-wide editor snapshot content store', () => {
     })
   })
 
+  it('restores both shards after a mixed-tail fault and repairs the dirty acquisition', async () => {
+    await withStore(async ({ contentStore, candidate }) => {
+      const directory = candidate('mixed-tail-fault')
+      const first = payload(directory, 'first.js', 'first shard')
+      const second = payload(directory, 'second.js', 'second shard')
+      const shards = new Set<string>()
+      let transactions = 0
+      const failure = new Error('second mixed-tail shard installed')
+      await expect(
+        shareSnapshotFiles({
+          candidate: directory,
+          candidateFiles: [first, second],
+          contentStore,
+          afterStoreLock: () => {
+            transactions += 1
+          },
+          afterBlobInstall: ({ blob }) => {
+            shards.add(dirname(blob))
+            if (shards.size === 2) {
+              for (const shard of shards) expect(mode(shard)).toBe(0o755)
+              throw failure
+            }
+          },
+        }),
+      ).rejects.toBe(failure)
+      expect(transactions).toBe(1)
+      expect(shards.size).toBe(2)
+      for (const shard of shards) expect(mode(shard)).toBe(0o555)
+      expectReadonlyStore(contentStore)
+      expectIdleStoreLock(contentStore)
+      expect(readFileSync(`${contentStore}.flock`, 'utf8')).toBe('1')
+      let repaired = false
+      await shareSnapshotFiles({
+        candidate: directory,
+        contentStore,
+        afterStoreLock: () => {
+          expectReadonlyStore(contentStore)
+          repaired = true
+        },
+      })
+      expect(repaired).toBe(true)
+      expect(readFileSync(`${contentStore}.flock`, 'utf8')).toBe('0')
+      expectReadonlyStore(contentStore)
+      expectIdleStoreLock(contentStore)
+    })
+  })
   it('keeps full shard batches and rejects a changed candidate in a mixed tail', async () => {
     await withStore(async ({ contentStore, candidate }) => {
       const directory = candidate('full-and-tail')
