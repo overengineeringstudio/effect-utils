@@ -481,6 +481,10 @@ first-party package imported outside that declaration, so a new edge cannot
 silently rely on a stale whole-workspace publication. Bootstrap therefore stays
 bounded by source-generator dependencies instead of every workspace package. It
 exists only to make `genie:check` runnable and reports no governed evidence.
+Generator discovery excludes every `.editor-view` artifact directory, including
+copied dependency sources and transient publication/lease controls. It can run
+alongside publication without taking the publication lock because those artifacts
+are outside its source-tree input set; missing actual source directories still fail.
 After freshness and workspace reconciliation, `buck2:editor:publish` and
 `buck2:editor:check` derive the complete root-plus-package set from the canonical
 source registry, regenerate whole-workspace ownership authority, build every

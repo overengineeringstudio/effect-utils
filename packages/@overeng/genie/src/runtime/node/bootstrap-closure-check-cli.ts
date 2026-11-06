@@ -18,6 +18,8 @@ workspace package views published before genie:check.`
 const ignoredDiscoveryDirs = new Set([
   '.devenv',
   '.direnv',
+  // Generated dependency views, including transient publication/lease controls, are not sources.
+  '.editor-view',
   '.git',
   '.next',
   '.turbo',
