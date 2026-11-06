@@ -31,17 +31,6 @@ impl Refusal {
             _ => 1,
         }
     }
-    pub fn tag(self) -> &'static str {
-        match self {
-            Self::Busy => "Busy",
-            Self::Deadline => "Deadline",
-            Self::UnknownIdentity => "UnknownIdentity",
-            Self::UnsafeLock => "UnsafeLock",
-            Self::Retired => "Retired",
-            Self::AttributionFailure => "AttributionFailure",
-            Self::InvalidInput => "InvalidInput",
-        }
-    }
 }
 pub type Result<T, E = Refusal> = std::result::Result<T, E>;
 #[derive(Debug, PartialEq, Eq)]
@@ -79,21 +68,18 @@ impl Identity {
             return Err(Refusal::UnknownIdentity);
         }
         let text = std::str::from_utf8(&output.stdout).map_err(|_| Refusal::UnknownIdentity)?;
-        let mut paths = text.lines().map(fs::canonicalize);
-        let mut next = || {
-            paths
-                .next()
-                .ok_or(Refusal::UnknownIdentity)?
-                .map_err(|_| Refusal::UnknownIdentity)
-        };
+        let paths: Vec<_> = text
+            .lines()
+            .map(fs::canonicalize)
+            .collect::<io::Result<_>>()
+            .map_err(|_| Refusal::UnknownIdentity)?;
+        let [admin, common, worktree]: [PathBuf; 3] =
+            paths.try_into().map_err(|_| Refusal::UnknownIdentity)?;
         let identity = Self {
-            admin: next()?,
-            common: next()?,
-            worktree: next()?,
+            admin,
+            common,
+            worktree,
         };
-        if paths.next().is_some() {
-            return Err(Refusal::UnknownIdentity);
-        }
         identity.validate()?;
         Ok(identity)
     }

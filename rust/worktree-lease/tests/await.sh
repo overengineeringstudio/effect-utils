@@ -1,4 +1,5 @@
 source tests/try.sh
+set -m
 printf '%s/.git\n' "$root/linked" > "$admin/gitdir"
 hold() {
     "$LEASE" run "$root/linked" --mode "$1" --try --agent agent/test -- sh -c 'echo ready > "$1"; read -r line < "$2"' sh "$root/ready" "$root/release" &
@@ -23,12 +24,12 @@ for existing in shared exclusive; do
     for requested in shared exclusive; do
         hold "$existing"
         if test "$existing/$requested" = shared/shared; then
-            "$LEASE" run "$root/linked" --mode "$requested" --try --agent agent/test --json -- true 2>"$root/granted"
+            "$LEASE" run "$root/linked" --mode "$requested" --try --agent agent/test -- true
         else
-            refuse 75 Busy "$LEASE" run "$root/linked" --mode "$requested" --try --agent agent/test --json -- false
-            refuse 75 Deadline "$LEASE" run "$root/linked" --mode "$requested" --await 1 --agent agent/test --json -- touch "$root/payload"
+            refuse 75 Busy "$LEASE" run "$root/linked" --mode "$requested" --try --agent agent/test -- false
+            refuse 75 Deadline "$LEASE" run "$root/linked" --mode "$requested" --await 1 --agent agent/test -- touch "$root/payload"
             test ! -e "$root/payload"
-            "$LEASE" run "$root/linked" --mode "$requested" --await 5 --agent agent/test --json -- sh -c 'exit 23' &
+            "$LEASE" run "$root/linked" --mode "$requested" --await 5 --agent agent/test -- sh -c 'exit 23' &
             waiter=$!
             wait_open "$waiter"
             release
@@ -41,7 +42,7 @@ for existing in shared exclusive; do
 done
 hold exclusive
 run "$root/main" exclusive true
-"$LEASE" run "$root/linked" --mode shared --await 5 --agent agent/test --json -- touch "$root/payload" 2>"$root/error" &
+"$LEASE" run "$root/linked" --mode shared --await 5 --agent agent/test -- touch "$root/payload" 2>"$root/error" &
 waiter=$!
 wait_open "$waiter"
 kill -TERM "$waiter"
@@ -58,7 +59,7 @@ for sig in INT TERM; do
 done
 for mutation in registration lock; do
     hold exclusive
-    "$LEASE" run "$root/linked" --mode shared --await 5 --agent agent/test --json -- false 2>"$root/error" &
+    "$LEASE" run "$root/linked" --mode shared --await 5 --agent agent/test -- false 2>"$root/error" &
     waiter=$!
     wait_open "$waiter"
     if test "$mutation" = registration; then
@@ -73,7 +74,5 @@ for mutation in registration lock; do
     grep -q Retired "$root/error"
     printf '%s/.git\n' "$root/linked" > "$admin/gitdir"
 done
-refuse 2 InvalidInput "$LEASE" run --json
-refuse 1 AttributionFailure "$LEASE" run "$root/linked" --mode exclusive --try --agent invalid --json -- false
-"$LEASE" run "$root/linked" --mode shared --try --agent invalid --job test-job --json -- true 2>"$root/granted"
-cat "$root/granted"
+set +m
+python3 tests/group.py "$LEASE" "$root/linked" "$root"
