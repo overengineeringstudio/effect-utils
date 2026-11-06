@@ -496,6 +496,9 @@ The generated `nix/buck2-products/production-helpers.{json,BUCK}` contract deriv
 build runtimes and application helper imports from source. Its closure and
 development-target parity are checked by `genie/buck2/production-helpers.unit.test.ts`;
 regenerate it with Genie, never by editing the generated inventory or declarations.
+Cache products stage this as a separate build input, not the development package.
+`nix/buck2-products/production-helpers.test.sh` checks compile identity isolation
+for test/validation edits and sensitivity to real runtime and configuration edits.
 
 ### Type Checking
 

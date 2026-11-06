@@ -100,7 +100,7 @@ nix eval --impure --json --expr '
         }) {
           product = declaration;
           inherit (recipe) capabilities pnpmArchives cargoArchives producerCommit
-            repositorySource sourcePaths runtimeClosureTarget nativeStorePackages;
+            repositorySource sourcePaths runtimeClosureTarget nativeStorePackages productionHelpers;
           repositoryRoot = /. + builtins.unsafeDiscardStringContext (toString withoutTests);
           rootProjection = if recipe.rootProjection == null then null else project withoutTests;
         };
