@@ -492,6 +492,11 @@ the interop service and wasm guest packager integration tests. Both tasks partic
 in `test:run`; the platform-neutral Rust generator suite runs in the Linux CI partition,
 while the Darwin partition retains only host-sensitive suites.
 
+The generated `nix/buck2-products/production-helpers.{json,BUCK}` contract derives
+build runtimes and application helper imports from source. Its closure and
+development-target parity are checked by `genie/buck2/production-helpers.unit.test.ts`;
+regenerate it with Genie, never by editing the generated inventory or declarations.
+
 ### Type Checking
 
 Buck is the only repository-wide TypeScript check authority:
