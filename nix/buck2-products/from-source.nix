@@ -129,9 +129,13 @@ let
       defaultSource
     else
       unscopedSource repositoryRoot cargoWorkspaceRoot buckInputs;
-  helperProjection = if productionHelpers then import ./production-helpers.nix {
-    inherit pkgs repositoryRoot;
-  } else null;
+  helperProjection =
+    if productionHelpers then
+      import ./production-helpers.nix {
+        inherit pkgs repositoryRoot;
+      }
+    else
+      null;
   # Membership follows the projection's own source/filter, without realizing it.
   containsFile =
     projection: relative:
