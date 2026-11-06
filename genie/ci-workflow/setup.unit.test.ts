@@ -49,7 +49,49 @@ import {
   withNixRealisationTimeouts,
   withCiSourceRoot,
 } from './shared.ts'
+import {
+  ciWorkflowResolveDevenvScript,
+  ciWorkflowNixGcRaceRetryScript,
+  preparationDiagnosticSeconds,
+} from './support-files.ts'
 import testPlatforms from './test-platforms.json' with { type: 'json' }
+
+describe('Resolve devenv hang diagnostics', () => {
+  it('streams stderr to the job and a retained repair log', () => {
+    expect(ciWorkflowResolveDevenvScript).toContain('exec {build_stderr}> >(tee -a "$log" >&2)')
+    expect(ciWorkflowResolveDevenvScript).toContain('2>&"$build_stderr"')
+    expect(ciWorkflowResolveDevenvScript).toContain(
+      'mktemp "$DIAG_ROOT/resolve-devenv.nix-build.XXXXXX.log"',
+    )
+    expect(ciWorkflowResolveDevenvScript).toContain('valid( store path)?" "$log"')
+    expect(ciWorkflowResolveDevenvScript).not.toContain('rm -f "$log"')
+  })
+
+  it('observes before every generated resolution deadline without changing it', () => {
+    expect(ciWorkflowNixGcRaceRetryScript).toContain(
+      `CI_PREPARATION_DIAGNOSTIC_SECONDS:-${preparationDiagnosticSeconds}`,
+    )
+    for (const job of Object.values(ciWorkflow.data.jobs)) {
+      for (const step of job.steps) {
+        if (step.name !== pipelineDevenvStepName || step['timeout-minutes'] === undefined) continue
+        const minutes = String(step['timeout-minutes']).match(/\d+/g)!.map(Number)
+        expect(preparationDiagnosticSeconds).toBeLessThan(Math.min(...minutes) * 60)
+      }
+    }
+  })
+
+  it('redacts before persisting bounded process and prefetch evidence', () => {
+    expect(ciWorkflowNixGcRaceRetryScript).toContain('stream.write(redact("\\n".join(snapshot))')
+    expect(ciWorkflowNixGcRaceRetryScript).toContain(
+      'token|password|secret|authorization|credential',
+    )
+    expect(ciWorkflowNixGcRaceRetryScript).toContain('[REDACTED_URL]')
+    expect(ciWorkflowNixGcRaceRetryScript).toContain(
+      'pid=,ppid=,pgid=,stat=,wchan:32=,etime=,args=',
+    )
+    expect(ciWorkflowNixGcRaceRetryScript).toContain('"locked-input-prefetch", "*.log"')
+  })
+})
 
 describe('Nix substitution failure policy', () => {
   it('bounds stalled downloads in every generated shared install step on all platforms', () => {
