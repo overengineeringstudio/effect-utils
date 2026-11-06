@@ -319,6 +319,8 @@ Identity lookup clears every `GIT_*` environment variable. Linux-only PDEATHSIG 
 Release never removes the lock file. PDEATHSIG kills only the direct payload, not its process group; grandchildren can survive the supervisor's death and require separate caller supervision.
 The Rust `record` API atomically creates schema-1 last-holder evidence in `gate-lease.json`, inspects bounded no-follow reads, and renews only through an acquired `Lease`.
 Renewal preserves the first creator, purpose and creation time; records are not a complete shared-holder registry and expiry never revokes a live flock.
+`guard::reclaim` returns an exclusively held lease only for absent records or supported expired, same-host, positively dead holders; unknown identity and live kernel locks retain.
+Either `WORKTREE/reclaim-keep` or `ADMIN/reclaim-keep`, including unreadable marker state, retains the worktree. This eligibility guard does not establish clean-tree, reference or live-cwd deletion safety.
 
 ### Work storage contract
 

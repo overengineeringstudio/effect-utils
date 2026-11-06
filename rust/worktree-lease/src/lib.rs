@@ -1,4 +1,5 @@
 //! Scoped per-worktree exclusion. Dropping a lease closes its non-inheritable descriptor.
+pub mod guard;
 pub mod record;
 use std::{
     cell::Cell,
@@ -25,6 +26,7 @@ pub enum Refusal {
     Retired,
     AttributionFailure,
     InvalidInput,
+    Protected,
 }
 impl Refusal {
     pub fn code(self) -> i32 {
@@ -43,6 +45,7 @@ impl Refusal {
             Self::Retired => "Retired",
             Self::AttributionFailure => "AttributionFailure",
             Self::InvalidInput => "InvalidInput",
+            Self::Protected => "Protected",
         }
     }
 }
