@@ -864,6 +864,9 @@ Normal Genie checks validate root-lock and manifest authority without Cargo or a
 registry cache. Refresh explicitly with `bash nix/stage0-cargo/refresh.sh`, which
 uses pinned Cargo offline against Nix-vendored dependencies. Root feature-unification
 changes can require a refresh even when the resulting projected lock stays identical.
+The stage-zero source and `cargoLock` consume the same projected lock before
+addressing. `checks.<system>.stage0-cargo-metadata` validates each tool with
+`cargo metadata --locked --offline` against its Nix vendor tree, without compiling.
 
 Fixed-source Nix products use `NIX_BUILD_CORES` for Buck execution (`build -j`),
 Tokio workers (`build --config build.num_tokio_workers`), and daemon blocking

@@ -4,13 +4,11 @@ let
   repositoryRoot = ../.;
   workspaceRoot = repositoryRoot + "/rust";
 
-  sharedRustFileset = lib.fileset.unions [
-    (workspaceRoot + "/Cargo.toml")
-    (workspaceRoot + "/Cargo.lock")
-  ];
+  inventory = builtins.fromJSON (builtins.readFile ./stage0-cargo/inventory.json);
   sharedRootFiles = [
     (repositoryRoot + "/rust-toolchain.toml")
     (repositoryRoot + "/nix/buck2-stage0-tools.nix")
+    (repositoryRoot + "/nix/stage0-cargo/inventory.json")
   ];
   # Coercing a file beneath a flake store root retains that whole root's
   # context. Materialize the bytes instead, so unrelated commits do not change
@@ -27,10 +25,7 @@ let
     ];
   mkRustFileset =
     definition:
-    lib.fileset.unions (
-      [ sharedRustFileset ]
-      ++ map mkCrateFileset ([ definition.packageRoot ] ++ definition.dependencyRoots)
-    );
+    lib.fileset.unions (map (member: mkCrateFileset (workspaceRoot + "/${member}")) definition.members);
   mkSourceInputs = definition: sharedRootFiles ++ lib.fileset.toList (mkRustFileset definition);
   mkSource =
     definition:
@@ -39,92 +34,49 @@ let
         root = workspaceRoot;
         fileset = mkRustFileset definition;
       };
+      manifest = pkgs.writeText "Cargo.toml" definition.manifest;
+      lock = pkgs.writeText "Cargo.lock" definition.lock;
     in
     pkgs.runCommand "buck2-stage0-source" { } ''
       mkdir -p "$out/nix"
       cp -R ${rustSource} "$out/rust"
+      chmod u+w "$out/rust"
+      cp ${manifest} "$out/rust/Cargo.toml"
+      cp ${lock} "$out/rust/Cargo.lock"
       cp ${toolchainFile} "$out/rust-toolchain.toml"
       cp ${recipeFile} "$out/nix/buck2-stage0-tools.nix"
     '';
 
-  toolDefinitions = {
-    fingerprint = {
-      package = "buck2-fingerprint";
-      packageRoot = workspaceRoot + "/buck2-tools/fingerprint";
-      workspaceMember = "buck2-tools/fingerprint";
-      dependencyRoots = [ ];
-    };
-    archive-tool = {
-      package = "buck2-archive-tool";
-      packageRoot = workspaceRoot + "/buck2-tools/archive-tool";
-      workspaceMember = "buck2-tools/archive-tool";
-      dependencyRoots = [ (workspaceRoot + "/buck2-tools/core") ];
-    };
-    events = {
-      package = "buck2-events";
-      packageRoot = workspaceRoot + "/buck2-tools/events";
-      workspaceMember = "buck2-tools/events";
-      dependencyRoots = [ ];
-    };
-    product = {
-      package = "buck2-product";
-      packageRoot = workspaceRoot + "/buck2-tools/product";
-      workspaceMember = "buck2-tools/product";
-      dependencyRoots = [ (workspaceRoot + "/buck2-tools/core") ];
-    };
-  };
+  toolDefinitions = inventory.tools;
 
   mkTool =
-    {
-      package,
-      packageRoot,
-      workspaceMember,
-      dependencyRoots,
-      mainProgram ? package,
-    }:
+    definition:
     pkgs.rustPlatform.buildRustPackage {
-      pname = package;
+      pname = definition.package;
       version = "0.0.0";
-      src = mkSource { inherit packageRoot dependencyRoots; };
+      src = mkSource definition;
       cargoRoot = "rust";
       buildAndTestSubdir = "rust";
-      cargoLock.lockFile = workspaceRoot + "/Cargo.lock";
-      nativeBuildInputs = [ pkgs.gawk ];
+      cargoLock.lockFile = pkgs.writeText "Cargo.lock" definition.lock;
       preBuild = ''
         export RUSTFLAGS="''${RUSTFLAGS:+$RUSTFLAGS }--remap-path-prefix=$NIX_BUILD_TOP=/build"
       '';
       cargoBuildFlags = [
         "--package"
-        package
+        definition.package
       ];
-      # Cargo parses every workspace member before selecting --package. Keep
-      # only this crate and its actual path dependencies, with the root lock
-      # remaining the dependency authority.
-      postPatch = ''
-        awk -v members='${
-          builtins.toJSON (
-            [ workspaceMember ]
-            ++ map (root: lib.removePrefix "${toString workspaceRoot}/" (toString root)) dependencyRoots
-          )
-        }' '
-          /^members = \[/ { print "members = " members; skipping = 1; next }
-          skipping && /^\]/ { skipping = 0; next }
-          !skipping { print }
-        ' rust/Cargo.toml > rust/Cargo.toml.narrow
-        mv rust/Cargo.toml.narrow rust/Cargo.toml
-      '';
       doCheck = false;
       meta = {
         description = "Nix-realized Buck2 execution capability";
         license = lib.licenses.mit;
-        inherit mainProgram;
+        mainProgram = definition.package;
       };
     };
+  tools = lib.mapAttrs (_: definition: mkTool definition) toolDefinitions;
 in
-{
-  archive-tool = mkTool toolDefinitions.archive-tool;
-  events = mkTool toolDefinitions.events;
-  fingerprint = mkTool toolDefinitions.fingerprint;
-  product = mkTool toolDefinitions.product;
+assert inventory.schema == "effect-utils/stage0-cargo/v1";
+tools
+// {
+  metadata-check = import ./stage0-cargo/check.nix { inherit pkgs tools; };
   source-inputs = lib.mapAttrs (_: definition: mkSourceInputs definition) toolDefinitions;
 }
