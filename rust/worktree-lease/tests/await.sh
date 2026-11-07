@@ -1,3 +1,4 @@
+python3 tests/reap-matrix.py || exit
 source tests/try.sh
 printf '%s/.git\n' "$root/linked" > "$admin/gitdir"
 hold() {

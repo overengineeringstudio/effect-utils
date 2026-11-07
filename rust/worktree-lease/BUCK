@@ -4,7 +4,7 @@
 # Projection source: rust/worktree-lease/BUCK.genie.ts
 # Projection schema version: 1
 # Projection generator: effect-utils/rust/cargo-buck2-package-projection
-# Semantic fingerprint: sha256:5e26aee8815d4a7c9556b29b7eaa4936549cd1387b1736d8d1097e37547105a6
+# Semantic fingerprint: sha256:7d2186f96a156347a3de5504c6f8b3080e533329b33f3f80456a4ec3d1970245
 # Semantic inputs: genie/buck2/mod.ts, packages/@overeng/otel-scrape/Cargo.toml, packages/@overeng/otelite/Cargo.toml, packages/@overeng/pingping/Cargo.toml, packages/@overeng/pingping/crates/netinfo-macos/Cargo.toml, rust/Cargo.lock, rust/Cargo.toml, rust/ai-gateway/Cargo.toml, rust/buck2-tools/archive-tool/Cargo.toml, rust/buck2-tools/core/Cargo.toml, rust/buck2-tools/core/cargo-buck2-package-projection.ts, rust/buck2-tools/events/Cargo.toml, rust/buck2-tools/fingerprint/Cargo.toml, rust/buck2-tools/product/Cargo.toml, rust/ci-storage/Cargo.toml, rust/content-address-contract/Cargo.toml, rust/content-address-core/Cargo.toml, rust/content-address-interop/Cargo.toml, rust/effect-rust-fixtures/hash-core/Cargo.toml, rust/effect-rust-fixtures/hash-interop/Cargo.toml, rust/effect-rust-fixtures/math-core/Cargo.toml, rust/effect-rust-fixtures/math-interop/Cargo.toml, rust/effect-rust-fixtures/napi-adapter/Cargo.toml, rust/effect-rust-fixtures/wasm-adapter/Cargo.toml, rust/effect-rust-macros/Cargo.toml, rust/effect-rust/Cargo.toml, rust/reindeer.toml, rust/third-party/BUCK, rust/work-storage/Cargo.toml, rust/worktree-lease/BUCK.genie.ts, rust/worktree-lease/Cargo.toml, rust/worktree-lease/src/**/*.rs, rust/worktree-lease/tests/**/*.rs
 # Regenerate: devenv tasks run genie:run
 
@@ -23,6 +23,7 @@ static_source_set(
         "src/guard.rs",
         "src/lib.rs",
         "src/main.rs",
+        "src/reap.rs",
         "src/record.rs",
         "src/record_cli.rs",
         "tests/cli.rs",
@@ -57,6 +58,12 @@ native.export_file(
 )
 
 native.export_file(
+    name = "cargo-source/src/reap.rs",
+    src = "src/reap.rs",
+    visibility = ["PUBLIC"],
+)
+
+native.export_file(
     name = "cargo-source/src/record.rs",
     src = "src/record.rs",
     visibility = ["PUBLIC"],
@@ -76,6 +83,7 @@ native.rust_library(
         "src/guard.rs",
         "src/lib.rs",
         "src/main.rs",
+        "src/reap.rs",
         "src/record.rs",
         "src/record_cli.rs",
     ],
@@ -119,6 +127,7 @@ native.rust_binary(
         "src/guard.rs",
         "src/lib.rs",
         "src/main.rs",
+        "src/reap.rs",
         "src/record.rs",
         "src/record_cli.rs",
     ],
