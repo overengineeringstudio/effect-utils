@@ -1,4 +1,5 @@
 //! Scoped per-worktree exclusion. Dropping a lease closes its non-inheritable descriptor.
+pub mod compat;
 pub mod guard;
 pub mod reap;
 mod reap_safety;

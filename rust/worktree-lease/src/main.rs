@@ -118,6 +118,11 @@ struct Args {
 }
 #[derive(Parser)]
 enum Cli {
+    #[command(hide = true)]
+    Compat {
+        #[command(subcommand)]
+        command: worktree_lease::compat::Command,
+    },
     Run(Args),
     /// Run an archive command for conservatively eligible managed worktrees.
     Reap {
@@ -283,6 +288,16 @@ fn main() {
         }
     };
     let args = match cli {
+        Cli::Compat { command } => {
+            let code = command.execute().map_or_else(
+                |error| {
+                    eprintln!("worktree-lease: {}", error.tag());
+                    1
+                },
+                |()| 0,
+            );
+            std::process::exit(code);
+        }
         Cli::Run(args) => args,
         Cli::ValidateInherited { worktree, lock_fd } => {
             let result = Identity::resolve(&worktree)

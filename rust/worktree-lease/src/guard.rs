@@ -213,13 +213,22 @@ pub fn reclaim(identity: Identity) -> Result<Lease> {
             error
         }
     })?;
-    for root in [&lease.identity.worktree, &lease.identity.admin] {
+    check(&lease.identity)?;
+    lease.validate()?;
+    Ok(lease)
+}
+/// Eligibility is evidence only; callers must retain a validated exclusive scope.
+pub fn check(identity: &Identity) -> Result<()> {
+    check_at(identity, SystemTime::now())
+}
+pub fn check_at(identity: &Identity, now: SystemTime) -> Result<()> {
+    for root in [&identity.worktree, &identity.admin] {
         match fs::symlink_metadata(root.join("reclaim-keep")) {
             Err(error) if error.kind() == io::ErrorKind::NotFound => (),
             _ => return Err(Refusal::Protected),
         }
     }
-    if let Some(record) = Record::inspect(&lease.identity)? {
+    if let Some(record) = Record::inspect(identity)? {
         let host = hostname()?;
         let namespace = pid_namespace();
         let state = if record.holder.host == host && same_namespace(&record.holder, namespace) {
@@ -227,12 +236,11 @@ pub fn reclaim(identity: Identity) -> Result<Lease> {
         } else {
             ProcessState::Unknown
         };
-        if !eligible(&record, &host, SystemTime::now(), &state, namespace) {
+        if !eligible(&record, &host, now, &state, namespace) {
             return Err(Refusal::Protected);
         }
     }
-    lease.validate()?;
-    Ok(lease)
+    Ok(())
 }
 #[cfg(all(test, target_os = "linux"))]
 #[test]
