@@ -1,4 +1,5 @@
 //! Scoped per-worktree exclusion. Dropping a lease closes its non-inheritable descriptor.
+pub mod actor;
 pub mod compat;
 pub mod guard;
 pub mod reap;
@@ -150,6 +151,21 @@ pub struct Lease {
     held: Cell<Option<bool>>,
 }
 impl Lease {
+    pub fn raw_fd(&self) -> RawFd {
+        self.file.as_raw_fd()
+    }
+    pub fn identity(&self) -> &Identity {
+        &self.identity
+    }
+    /// Revoke this open description's authority, including inherited duplicates.
+    pub fn release(&self) -> Result<()> {
+        // SAFETY: the owned file remains open; LOCK_UN affects this description only.
+        if unsafe { libc::flock(self.file.as_raw_fd(), libc::LOCK_UN) } != 0 {
+            return Err(Refusal::UnsafeLock);
+        }
+        self.held.set(None);
+        Ok(())
+    }
     /// Duplicate and validate a caller-owned inherited exclusive flock without upgrading it.
     /// The original description must remain open; this scope never unlocks or downgrades it.
     pub fn validate_inherited_exclusive(identity: Identity, fd: RawFd) -> Result<Self> {
