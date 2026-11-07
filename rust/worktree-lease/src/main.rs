@@ -119,6 +119,13 @@ struct Args {
 #[derive(Parser)]
 enum Cli {
     Run(Args),
+    /// Run an archive command for conservatively eligible managed worktrees.
+    Reap {
+        #[arg(long)]
+        common_dir: PathBuf,
+        #[arg(last = true, required = true)]
+        command: Vec<std::ffi::OsString>,
+    },
     #[command(flatten)]
     Record(record_cli::Command),
 }
@@ -269,6 +276,22 @@ fn main() {
     };
     let args = match cli {
         Cli::Run(args) => args,
+        Cli::Reap {
+            common_dir,
+            command,
+        } => {
+            let result = worktree_lease::reap::reap(&common_dir, &command, |decision| {
+                println!(
+                    "{}",
+                    serde_json::to_string(&decision).expect("serializable decision")
+                );
+            });
+            if let Err(error) = result {
+                emit(error.tag(), error.tag(), None, None);
+                std::process::exit(error.code());
+            }
+            return;
+        }
         Cli::Record(command) => {
             let code = command.execute().map_or_else(
                 |error| {
