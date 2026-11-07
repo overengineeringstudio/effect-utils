@@ -1445,6 +1445,7 @@ export const reuseEditorViewSourceFiles = async ({
   afterLink,
   linkConcurrency = directLinkConcurrency,
   afterLinkPhase,
+  linkFile = link,
 }: {
   readonly contentStore: string
   readonly files: readonly {
@@ -1457,6 +1458,7 @@ export const reuseEditorViewSourceFiles = async ({
   readonly afterLink?: (() => void) | undefined
   readonly linkConcurrency?: number
   readonly afterLinkPhase?: (wallMs: number) => void
+  readonly linkFile?: typeof link
 }): Promise<Set<string>> => {
   const reused = new Set<string>()
   if (files.length === 0) return reused
@@ -1540,7 +1542,7 @@ export const reuseEditorViewSourceFiles = async ({
                     durations.casDirectReuseSourceRecheckMs += performance.now() - sourceRecheckAt
                   }
                 }
-                await link(blob, file.path)
+                await linkFile(blob, file.path)
               } catch (error) {
                 if (
                   ['EXDEV', 'EMLINK', 'EPERM', 'ENOENT'].some((code) =>
