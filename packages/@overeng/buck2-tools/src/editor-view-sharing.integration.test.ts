@@ -581,6 +581,94 @@ describe('host-wide editor snapshot content store', () => {
     })
   })
 
+  it.each([
+    { kind: 'same', bytes: ['same payload', 'same payload', 'same payload'] },
+    { kind: 'mixed', bytes: ['first shard', 'second shard', 'first shard', 'second shard'] },
+  ])('admits each directory once in a $kind-shard transaction', async ({ kind, bytes }) => {
+    await withStore(async ({ contentStore, candidate }) => {
+      const seed = candidate('seed')
+      const directory = candidate('next')
+      const files = bytes.map((bytes, index) => {
+        payload(seed, `${index}.js`, bytes)
+        return { path: payload(directory, `${index}.js`, bytes), bytes }
+      })
+      await shareSnapshotFiles({ candidate: seed, contentStore })
+      const shards = new Set(bytes.map((bytes) => dirname(blobPath(contentStore, bytes))))
+      expect(shards.size).toBe(kind === 'same' ? 1 : 2)
+      const lstat = vi.spyOn(fsPromises, 'lstat')
+      const open = vi.spyOn(fsPromises, 'open')
+      let transactions = 0
+      try {
+        await shareSnapshotFiles({
+          candidate: directory,
+          contentStore,
+          afterStoreLock: () => {
+            transactions += 1
+            // Exclude preflight and repair; observe real filesystem admission/restoration.
+            lstat.mockClear()
+            open.mockClear()
+          },
+        })
+        expect(transactions).toBe(1)
+        for (const directory of [contentStore, ...shards]) {
+          // One existence probe, one first-open lstat, one final named-inode proof.
+          expect(lstat.mock.calls.filter(([path]) => path === directory)).toHaveLength(3)
+          expect(open.mock.calls.filter(([path]) => path === directory)).toHaveLength(1)
+        }
+      } finally {
+        lstat.mockRestore()
+        open.mockRestore()
+      }
+      for (const { path, bytes } of files) {
+        expect(readFileSync(path, 'utf8')).toBe(bytes)
+        expect(inode(path)).toBe(inode(blobPath(contentStore, bytes)))
+      }
+      expectReadonlyStore(contentStore)
+      expectIdleStoreLock(contentStore)
+    })
+  })
+
+  it('readmits a shard in the next transaction and rejects its replaced pathname', async () => {
+    await withStore(async ({ root, contentStore, candidate }) => {
+      const bytes = 'shared across transactions'
+      payload(candidate('seed'), 'file', bytes)
+      await shareSnapshotFiles({ candidate: candidate('seed'), contentStore })
+      const directory = candidate('next')
+      const files = Array.from({ length: 129 }, (_, index) =>
+        payload(directory, `${index}.js`, bytes),
+      )
+      const shard = dirname(blobPath(contentStore, bytes))
+      const retired = join(root, 'retired-shard')
+      let transactions = 0
+      await expect(
+        shareSnapshotFiles({
+          candidate: directory,
+          contentStore,
+          afterStoreLock: () => {
+            transactions += 1
+            if (transactions !== 2) return
+            // After preflight, before this transaction admits any directory. The
+            // first transaction's handles must not authorize the replaced name.
+            chmodSync(contentStore, 0o755)
+            try {
+              chmodSync(shard, 0o755)
+              renameSync(shard, retired)
+              chmodSync(retired, 0o555)
+              symlinkSync(retired, shard)
+            } finally {
+              chmodSync(contentStore, 0o555)
+            }
+          },
+        }),
+      ).rejects.toThrow(`directory must be canonical and real, without symbolic links: ${shard}`)
+      expect(transactions).toBe(2)
+      expect(files.filter((path) => lstatSync(path).nlink > 1)).toHaveLength(128)
+      expect(mode(contentStore)).toBe(0o555)
+      expect(mode(retired)).toBe(0o555)
+      expectIdleStoreLock(contentStore)
+    })
+  })
+
   it('coalesces mixed-shard tails into transactions of at most 128 proven files', async () => {
     await withStore(async ({ contentStore, candidate }) => {
       const directory = candidate('mixed-tails')
