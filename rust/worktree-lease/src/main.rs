@@ -106,7 +106,7 @@ struct Args {
     /// Validate the inherited exclusive fence instead of acquiring another lock.
     #[arg(long)]
     inherited: bool,
-    #[arg(long = "try", required_unless_present = "await_seconds")]
+    #[arg(long = "try", required_unless_present_any = ["await_seconds", "inherited"])]
     attempt: bool,
     #[arg(long = "await", conflicts_with = "attempt", value_name = "SECONDS")]
     await_seconds: Option<u32>,
@@ -291,11 +291,11 @@ fn run(args: &Args) -> Result<i32> {
     }
     unsafe { libc::sigprocmask(libc::SIG_UNBLOCK, &blocked, std::ptr::null_mut()) };
     let status = child.wait().map_err(|_| Refusal::UnsafeLock);
-    if terminal {
-        foreground(unsafe { libc::getpgrp() })?;
-    }
     if !args.inherited {
         lease.release()?;
+    }
+    if terminal {
+        foreground(unsafe { libc::getpgrp() })?;
     }
     CHILD.store(0, Ordering::SeqCst);
     if args.json {
