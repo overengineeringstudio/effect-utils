@@ -139,18 +139,39 @@ let
     ];
     smokeTestArgs = [ "--version" ];
   };
+  megarepoProviders = (import ./javascript-capability-providers.nix { lib = pkgs.lib; }) {
+    required =
+      if products.megarepo.sourceImport != null then
+        [
+          "git"
+          "nix"
+          "worktree-lease"
+        ]
+      else
+        (builtins.fromJSON products.megarepo.descriptorContent).externalCapabilities;
+    providers = {
+      git = {
+        capability = "git";
+        pathPackages = [ pkgs.git ];
+      };
+      nix = {
+        capability = "nix";
+        pathPackages = [ pkgs.nix ];
+      };
+      worktree-lease = {
+        capability = "worktree-lease";
+        environment.WORKTREE_LEASE_BIN = "${nativeProducts.worktree-lease}/bin/worktree-lease";
+      };
+    };
+  };
   megarepo = mk "megarepo" {
     binaryName = "mr";
-    environment.CLI_BUILD_STAMP = buildStamp;
-    expectedExternalCapabilities = [
-      "git"
-      "nix"
-    ];
+    environment = megarepoProviders.environment // {
+      CLI_BUILD_STAMP = buildStamp;
+    };
+    expectedExternalCapabilities = megarepoProviders.capabilities;
     expectedProductKind = "cli";
-    pathPackages = [
-      pkgs.git
-      pkgs.nix
-    ];
+    pathPackages = megarepoProviders.pathPackages;
     smokeTestArgs = [ "--help" ];
   };
   tui-stories = mk "tui-stories" {

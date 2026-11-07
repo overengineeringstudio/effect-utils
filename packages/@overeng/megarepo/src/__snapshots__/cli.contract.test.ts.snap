@@ -136,6 +136,7 @@ SUBCOMMANDS
   store        Manage the shared git store
   generate     Generate configuration files
   deps         Show the Nix input dependency graph between megarepo members.
+  worktree     Worktree lifecycle operations
 ",
 }
 `;
