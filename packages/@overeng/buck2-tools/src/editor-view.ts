@@ -3523,6 +3523,7 @@ const publishEditorViewCoordinated = async ({
         casDirectoryMs: 0,
         casDirectReuseDirectoryMs: 0,
         casDirectReuseBlobRecheckMs: 0,
+        casDirectReuseSourceRecheckMs: 0,
         casDirectReuseLinkMs: 0,
         casDirectReusePostLinkMs: 0,
         casDirectReuseAdmissionHits: 0,
@@ -3692,6 +3693,7 @@ const publishEditorViewCoordinated = async ({
         'casRepairMs',
         'casDirectReuseDirectoryMs',
         'casDirectReuseBlobRecheckMs',
+        'casDirectReuseSourceRecheckMs',
         'casDirectReuseLinkMs',
         'casDirectReusePostLinkMs',
       ].reduce((sum, phase) => sum + (payloadTimings[phase] ?? 0), 0)

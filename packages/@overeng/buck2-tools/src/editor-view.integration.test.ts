@@ -3154,6 +3154,7 @@ describe('editor view publisher', () => {
       const directPhases = [
         'casDirectReuseDirectoryMs',
         'casDirectReuseBlobRecheckMs',
+        'casDirectReuseSourceRecheckMs',
         'casDirectReuseLinkMs',
         'casDirectReusePostLinkMs',
       ]
