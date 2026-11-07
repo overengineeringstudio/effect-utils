@@ -333,6 +333,7 @@ The exclusive fence stays held through archive command exit. The command receive
 The archive command must recheck the expected HEAD/branch and preserve its independent consent/reference gates; eligibility is not permission to skip them. An empty expected branch denotes detached HEAD.
 Linux scans process cwd links conservatively; other platforms retain. Each pass examines at most 64 children and attempts at most four archives; Git probes have a three-second deadline. Failed archives are reported without aborting other candidates.
 Passes take a common nonblocking singleton fence, rotate a sorted persisted cursor even for retained children, and stamp attempts before invoking archives. Scheduled passes observe a 600-second interval; corrupt cursors or unreadable progress state refuse a pass.
+The pass stops at the fourth archive attempt, including failures, leaving the next unattempted child at the start of the following rotated pass.
 `Lease::validate_inherited_exclusive(identity, fd)` duplicates a caller-owned FD with close-on-exec, checks the named lock inode, independently probes shared-lock contention, and requires successful nonblocking exclusive flock.
 `validate-inherited WORKTREE --lock-fd N` performs the same validation and emits `Validated`; invalid, closed, wrong-inode, unlocked or shared descriptors refuse. This observation leaves the caller's original fence untouched, but confers no scope after CLI exit.
 

@@ -225,7 +225,7 @@ pub fn reap(
     for path in paths.into_iter().take(64) {
         crate::schedule::examined(&common, &path)?;
         match candidate(&common, &path) {
-            Ok((lease, head, branch)) if attempts < 4 => {
+            Ok((lease, head, branch)) => {
                 attempts += 1;
                 let fd = lease.file.as_raw_fd();
                 let mut archive = Command::new(&command[0]);
@@ -251,14 +251,13 @@ pub fn reap(
                     archive_status,
                 });
             }
-            Ok(_) => emit(Decision::Retained {
-                worktree: path,
-                reason: "AttemptLimit",
-            }),
             Err(reason) => emit(Decision::Retained {
                 worktree: path,
                 reason,
             }),
+        }
+        if attempts == 4 {
+            break;
         }
     }
     Ok(())
