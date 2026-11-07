@@ -3,6 +3,7 @@ lease = os.environ['LEASE']
 with tempfile.TemporaryDirectory() as tmp:
     root = pathlib.Path(tmp)
     subprocess.check_call(['git', 'init', '-q', str(root)])
+    (root / '.git/gate-worktrees').mkdir()
     def invoke(*args, **kwargs):
         return subprocess.run([lease, *args], capture_output=True, **kwargs)
     for actor in ['unit/maintenance@daily.service', 'launchd/org.example.maintenance']:
