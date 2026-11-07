@@ -3,7 +3,6 @@ use crate::{
     record::{timestamp, Holder, PidNamespace, Record},
     Identity, Lease, Refusal, Result,
 };
-#[cfg(target_os = "linux")]
 use std::path::Path;
 use std::{fs, io, time::SystemTime};
 
@@ -213,6 +212,14 @@ pub fn reclaim(identity: Identity) -> Result<Lease> {
             error
         }
     })?;
+    check(&lease.identity)?;
+    lease.validate()?;
+    Ok(lease)
+}
+/// Retain this lease through orphan-admin mutation; missing backlink is the only relaxation.
+pub fn reclaim_orphan(admin: &Path) -> Result<Lease> {
+    let lease = Lease::open(Identity::resolve_orphan_admin(admin)?)?;
+    lease.acquire(true, false)?;
     check(&lease.identity)?;
     lease.validate()?;
     Ok(lease)

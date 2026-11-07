@@ -33,8 +33,14 @@ pub enum Command {
         json: bool,
     },
     Guard {
+        #[arg(
+            long,
+            required_unless_present = "orphan_admin",
+            conflicts_with = "orphan_admin"
+        )]
+        git_dir: Option<PathBuf>,
         #[arg(long)]
-        git_dir: PathBuf,
+        orphan_admin: Option<PathBuf>,
         #[arg(long, env = "WORKTREE_LEASE_AGENT")]
         agent: Option<String>,
     },
@@ -99,14 +105,25 @@ impl Command {
                 "Inspected",
                 &Record::inspect(&Identity::resolve(&worktree)?)?,
             ),
-            Self::Guard { git_dir, agent } => {
+            Self::Guard {
+                git_dir,
+                orphan_admin,
+                agent,
+            } => {
                 if agent
                     .as_deref()
                     .is_some_and(|actor| !worktree_lease::actor::lock_scope(actor))
                 {
                     return Err(Refusal::AttributionFailure);
                 }
-                drop(guard::reclaim(Identity::resolve_admin(&git_dir)?)?);
+                let lease = if let Some(admin) = orphan_admin {
+                    guard::reclaim_orphan(&admin)?
+                } else {
+                    guard::reclaim(Identity::resolve_admin(
+                        &git_dir.ok_or(Refusal::InvalidInput)?,
+                    )?)?
+                };
+                drop(lease);
                 output("Eligible", &Option::<Record>::None)
             }
         }

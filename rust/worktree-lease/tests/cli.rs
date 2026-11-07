@@ -42,6 +42,16 @@ fn service_actors() {
 }
 
 #[test]
+fn orphan_admin() {
+    let output = std::process::Command::new("python3")
+        .arg("tests/orphan.py")
+        .env("LEASE", env!("CARGO_BIN_EXE_worktree-lease"))
+        .output()
+        .unwrap();
+    assert!(output.status.success(), "{output:?}");
+}
+
+#[test]
 #[cfg(target_os = "linux")]
 fn compatibility() {
     use std::{
