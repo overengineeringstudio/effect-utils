@@ -460,7 +460,10 @@ describe('host-wide editor snapshot content store', () => {
       for (let index = 0; index < 8; index++)
         payload(candidate('seed'), `${index}`, `bytes-${index}`)
       await shareSnapshotFiles({ candidate: candidate('seed'), contentStore })
-      const nativeLink = fsPromises.link
+      // Exercise a preexisting suite mock: spyOn mutates that function in place.
+      vi.spyOn(fsPromises, 'link').mockImplementation(process.getBuiltinModule('fs/promises').link)
+      const nativeLink = process.getBuiltinModule('fs/promises').link
+      expect(nativeLink).not.toBe(fsPromises.link)
       const outcomes = []
       for (const linkConcurrency of [1, 8]) {
         const files = reuseFiles(contentStore, candidate(`next-${linkConcurrency}`), 32)
@@ -535,7 +538,7 @@ describe('host-wide editor snapshot content store', () => {
       const files = reuseFiles(contentStore, candidate('next'), 8).toSorted((a, b) =>
         a.entry.digest.localeCompare(b.entry.digest),
       )
-      const nativeLink = fsPromises.link
+      const nativeLink = process.getBuiltinModule('fs/promises').link
       const started = Promise.withResolvers<void>(),
         contended = Promise.withResolvers<void>()
       const gates = files.map(() => Promise.withResolvers<void>())
