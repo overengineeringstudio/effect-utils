@@ -552,10 +552,7 @@ describe('host-wide editor snapshot content store', () => {
       })
       try {
         const operation = reuseEditorViewSourceFiles({ contentStore, files, linkConcurrency: 8 })
-        const outcome = operation.then(
-          () => undefined,
-          (error: unknown) => error,
-        )
+        const outcome = operation.catch((error: unknown) => error)
         await Promise.race([started.promise, operation])
         const contender = withEditorViewContentStoreLock({
           contentStore,
