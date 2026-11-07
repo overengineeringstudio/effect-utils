@@ -76,7 +76,7 @@ export const javaScriptProductRegistry = {
   'packages/@overeng/megarepo': [
     {
       entrypoint: 'bin/mr.ts',
-      externalCapabilities: ['git', 'nix'],
+      externalCapabilities: ['git', 'nix', 'worktree-lease'],
       kind: 'cli',
       output: 'mr.js',
       productName: 'megarepo',
