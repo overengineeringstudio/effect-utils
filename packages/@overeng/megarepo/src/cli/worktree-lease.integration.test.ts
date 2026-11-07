@@ -10,6 +10,7 @@ const mr = fileURLToPath(new URL('../../bin/mr.ts', import.meta.url))
 
 it('delegates grammar, relative paths, parent attribution, JSON streams and exit codes without reinterpretation', () => {
   const root = mkdtempSync(join(tmpdir(), 'lease-front-'))
+  const dot = `${root}/.`
   try {
     const binary = join(root, 'native-boundary')
     const argv = join(root, 'argv')
@@ -45,7 +46,7 @@ exit "$LEASE_EXIT"
       invoke(['create', '.', '--purpose', 'gate', '--creator', 'agent/test', '--ttl', '60']),
     ).toEqual([
       'create',
-      `${root}/.`,
+      dot,
       '--purpose',
       'gate',
       '--creator',
@@ -74,7 +75,7 @@ exit "$LEASE_EXIT"
     ])
     expect(
       invoke(['renew', '.', '--holder-pid', '123', '--agent', 'agent/test', '--ttl', '60']),
-    ).toEqual(['renew', `${root}/.`, '--holder-pid', '123', '--ttl', '60', '--agent', 'agent/test'])
+    ).toEqual(['renew', dot, '--holder-pid', '123', '--ttl', '60', '--agent', 'agent/test'])
     expect(
       invoke(['reap', '--common-dir', '.git', '--scheduled', '--', 'archive', '--yes']),
     ).toEqual(['reap', '--common-dir', join(root, '.git'), '--scheduled', '--', 'archive', '--yes'])
@@ -84,18 +85,7 @@ exit "$LEASE_EXIT"
           ['run', '.', '--mode', 'shared', '--try', '--json', '--', 'sh', '-c', 'exit 9'],
           code,
         ),
-      ).toEqual([
-        'run',
-        `${root}/.`,
-        '--mode',
-        'shared',
-        '--try',
-        '--json',
-        '--',
-        'sh',
-        '-c',
-        'exit 9',
-      ])
+      ).toEqual(['run', dot, '--mode', 'shared', '--try', '--json', '--', 'sh', '-c', 'exit 9'])
     }
   } finally {
     rmSync(root, { recursive: true, force: true })
