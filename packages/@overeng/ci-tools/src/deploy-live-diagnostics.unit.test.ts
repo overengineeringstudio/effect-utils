@@ -76,7 +76,57 @@ describe('live deploy failure diagnostics', () => {
           }),
         }),
       ),
-    ).toEqual({ exitStatus: 1, errorKind: 'ProviderOperationFailed', operation: 'deploy' })
+    ).toEqual({
+      exitStatus: 1,
+      errorKind: 'ProviderOperationFailed',
+      operation: 'deploy',
+      providerFailureKind: 'unknown',
+    })
+  })
+
+  it.each([
+    ['Error: [rate_limited] Too many requests', 'rate_limited'],
+    ['Error: [builds_rate_limited] Try again tomorrow', 'rate_limited'],
+    ['Error: [forbidden] Not authorized', 'auth'],
+    ['Error: [not_found] Resource unavailable', 'not_found'],
+    ['Error: request timed out', 'timeout'],
+    ['Error: Deployment rejected for another reason', 'unknown'],
+  ])('prints a redacted provider reason for %s', (stderr, kind) => {
+    const formatted = JSON.parse(
+      formatLiveDeployFailure({
+        status: 1,
+        includeProviderCause: true,
+        secretValues: ['fixture-token', 'fixture-bypass'],
+        report: report({
+          exitCode: '1',
+          stderr: `${stderr}\ncredential fixture-token bypass fixture-bypass\nAuthorization: Bearer fixture-other\ntoken=fixture-param`,
+        }),
+      }),
+    )
+    expect(formatted.providerFailureKind).toBe(kind)
+    expect(formatted.providerDiagnostic).toBe(
+      `${stderr}\ncredential [REDACTED] bypass [REDACTED]\nAuthorization: Bearer [REDACTED]\ntoken=[REDACTED]`,
+    )
+  })
+
+  it('redacts before bounding the last 20 lines and 4096 characters', () => {
+    const secret = `fixture-${'s'.repeat(4100)}`
+    const formatted = JSON.parse(
+      formatLiveDeployFailure({
+        status: 1,
+        includeProviderCause: true,
+        secretValues: [secret],
+        report: report({
+          stderr: `${'discarded\n'.repeat(25)}${'x'.repeat(5000)}\n${secret}\nError: deployment rejected`,
+        }),
+      }),
+    )
+    expect(formatted.providerDiagnostic.length).toBe(4096)
+    expect(formatted.providerDiagnostic.split('\n').length <= 20).toBe(true)
+    expect(formatted.providerDiagnostic.includes('discarded')).toBe(false)
+    expect(formatted.providerDiagnostic.endsWith('[REDACTED]\nError: deployment rejected')).toBe(
+      true,
+    )
   })
 
   it('retains only secret-named inherited Vercel values for leak assertions', () => {

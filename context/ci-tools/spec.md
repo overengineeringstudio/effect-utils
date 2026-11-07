@@ -618,8 +618,18 @@ Vercel prebuilt-output delegation.
 
 ### Non-required Live E2E
 
-Normal CI also runs non-required live Netlify and Vercel E2E jobs when secrets
-are available.
+Normal CI runs non-required live Netlify and Vercel E2E on pushes to `main`
+and eligible manual dispatches on `main` when secrets are available; the live job
+does not run for pull requests or merge groups.
+
+Vercel command failures retain redacted stderr/stdout tails (last 20 lines,
+at most 4096 characters each) and a finite `failureKind` diagnostic:
+`rate_limited`, `auth`, `not_found`, `timeout`, or `unknown`.
+The live test prints a bounded `providerDiagnostic` stderr tail on failure,
+redacted again with inherited Vercel credentials. Raw child output is not printed.
+Classification is diagnostic only and introduces no retry or skip policy.
+API code meanings follow the [Vercel error reference](https://vercel.com/docs/rest-api/errors);
+rate limits follow the [Vercel limits reference](https://vercel.com/docs/limits#rate-limits).
 
 Cloudflare Workers live E2E is opt-in and skipped by default. This integration
 does not claim a live deployment was exercised. Set

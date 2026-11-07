@@ -46,6 +46,64 @@ import {
   writeGithubDeployOutputs,
 } from './deploy-io.ts'
 
+/** Finite CLI/API classifications, not retry policy or proof of an HTTP status. */
+export const vercelFailureKind = ({
+  stderr,
+}: {
+  readonly stderr: string
+}): 'rate_limited' | 'auth' | 'not_found' | 'timeout' | 'unknown' => {
+  // API codes: https://vercel.com/docs/rest-api/errors
+  // Deployment limits: https://vercel.com/docs/limits#rate-limits
+  if (
+    /rate[_ -]?limit|builds_rate_limited|creating deployments at a very fast pace/iu.test(
+      stderr,
+    ) === true
+  ) {
+    return 'rate_limited'
+  }
+  if (/unauthorized|forbidden|invalid token|not authorized/iu.test(stderr) === true) return 'auth'
+  if (/\bnot_found\b|project not found|could not find project|not linked/iu.test(stderr) === true)
+    return 'not_found'
+  if (/timed? ?out|timeout|ETIMEDOUT/iu.test(stderr) === true) return 'timeout'
+  return 'unknown'
+}
+
+/** Redact before truncation so a credential crossing either boundary cannot leak a fragment. */
+export const vercelDiagnosticExcerpt = (opts: {
+  readonly text: string
+  readonly secretValues: readonly string[]
+}): string =>
+  redactDeployDiagnosticText(opts.text, { secretValues: opts.secretValues })
+    .trim()
+    .split(/\r?\n/u)
+    .slice(-20)
+    .join('\n')
+    .slice(-4096)
+
+// CLI Diagnostic renders names as "Error: [name] ...". Never expose arbitrary codes.
+const vercelErrorCodes: Record<string, true> = {
+  rate_limited: true,
+  builds_rate_limited: true,
+  too_many_files: true,
+  forbidden: true,
+  missing_files: true,
+  cert_missing: true,
+  not_found: true,
+  missing_project_settings: true,
+}
+
+/** Extract only known CLI Diagnostic codes, never arbitrary provider text. */
+export const vercelProviderCodes = ({
+  stderr,
+}: {
+  readonly stderr: string
+}): readonly string[] | undefined => {
+  const codes = [...stderr.matchAll(/Error:\s*\[([a-z][a-z0-9_]{1,63})\]/gu)]
+    .map((match) => match[1])
+    .filter((code): code is string => code !== undefined && Object.hasOwn(vercelErrorCodes, code))
+  return codes.length === 0 ? undefined : [...new Set(codes)].toSorted()
+}
+
 const decodeInputResult = Schema.decodeUnknownResult(DeployInputV1)
 const decodeDeployResult = Schema.decodeUnknownResult(DeployResultV1)
 
@@ -605,18 +663,17 @@ const classifyVercelFailure = (opts: {
   readonly authToken: string
   readonly operation: 'prepare' | 'deploy' | 'alias' | 'cleanup'
 }) => {
-  const sanitizedStderr = redactDeployDiagnosticText(opts.stderr, {
-    secretValues: [opts.authToken],
-  }).trim()
-  const sanitizedStdout = redactDeployDiagnosticText(opts.stdout, {
-    secretValues: [opts.authToken],
-  }).trim()
+  const secretValues = [opts.authToken]
+  const sanitizedStderr = vercelDiagnosticExcerpt({ text: opts.stderr, secretValues })
+  const sanitizedStdout = vercelDiagnosticExcerpt({ text: opts.stdout, secretValues })
+  const failureKind = vercelFailureKind({ stderr: `${sanitizedStderr}\n${sanitizedStdout}` })
   const diagnostics = {
     exitCode: String(opts.status),
+    failureKind,
     ...(sanitizedStderr.length === 0 ? {} : { stderr: sanitizedStderr }),
     ...(sanitizedStdout.length === 0 ? {} : { stdout: sanitizedStdout }),
   }
-  if (/unauthorized|forbidden|invalid token|not authorized/iu.test(opts.stderr) === true) {
+  if (failureKind === 'auth') {
     return new Unauthorized({
       provider: 'vercel',
       target: opts.target,
@@ -624,11 +681,7 @@ const classifyVercelFailure = (opts: {
       diagnostics,
     })
   }
-  if (
-    /project not found|could not find project|not linked/iu.test(
-      `${opts.stderr}\n${opts.stdout}`,
-    ) === true
-  ) {
+  if (failureKind === 'not_found') {
     return new ProviderProjectLookupFailed({
       provider: 'vercel',
       target: opts.target,

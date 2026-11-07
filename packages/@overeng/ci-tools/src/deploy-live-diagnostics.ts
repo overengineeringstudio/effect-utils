@@ -1,5 +1,7 @@
 import { Result, Schema } from 'effect'
 
+import { vercelDiagnosticExcerpt, vercelFailureKind, vercelProviderCodes } from './deploy-vercel.ts'
+
 /** Captured child-process outcome retained until live deployment assertions finish. */
 export type LiveDeployProcessResult = {
   readonly status: number | null
@@ -57,39 +59,12 @@ const httpStatus = (value: unknown) => {
   return status >= 100 && status <= 599 ? status : undefined
 }
 
-// Vercel 60.1.3's output manager renders Diagnostic names as "Error: [name] ...".
-// Only publish these known deploy error codes, not arbitrary grammar-valid text
-// (a credential could itself match the code grammar).
-const vercelErrorCodes: Record<string, true> = {
-  builds_rate_limited: true,
-  too_many_files: true,
-  forbidden: true,
-  missing_files: true,
-  cert_missing: true,
-  not_found: true,
-  missing_project_settings: true,
-}
-const providerCodes = (stderr: string) => {
-  const codes = [...stderr.matchAll(/Error:\s*\[([a-z][a-z0-9_]{1,63})\]/gu)]
-    .map((match) => match[1])
-    .filter((code): code is string => code !== undefined && Object.hasOwn(vercelErrorCodes, code))
-  return codes.length === 0 ? undefined : [...new Set(codes)].toSorted()
-}
-
-const providerFailureKind = (stderr: string) => {
-  if (/rate.?limit|creating deployments at a very fast pace/iu.test(stderr) === true) {
-    return 'rate_limited'
-  }
-  if (/timed? ?out|timeout|ETIMEDOUT/u.test(stderr) === true) return 'timeout'
-  if (/unauthorized|forbidden|invalid token|not authorized/iu.test(stderr) === true) return 'auth'
-  return undefined
-}
-
-/** Publish only finite classifications, numeric statuses and allowlisted provider error codes. */
+/** Publish finite classifications and, with explicit secrets, a redacted bounded stderr tail. */
 export const formatLiveDeployFailure = (opts: {
   readonly status: LiveDeployProcessResult['status']
   readonly report: string | undefined
   readonly includeProviderCause?: boolean | undefined
+  readonly secretValues?: readonly string[]
 }): string => {
   const line = opts.report?.split('\n').find((entry) => entry.startsWith('WORKFLOW_REPORT_V1: '))
   const decoded =
@@ -113,8 +88,16 @@ export const formatLiveDeployFailure = (opts: {
               exitCode !== undefined && /^\d{1,3}$/u.test(exitCode) === true
                 ? Number(exitCode)
                 : undefined,
-            providerErrorCodes: providerCodes(data?.diagnostics?.stderr ?? ''),
-            providerFailureKind: providerFailureKind(data?.diagnostics?.stderr ?? ''),
+            providerErrorCodes: vercelProviderCodes({ stderr: data?.diagnostics?.stderr ?? '' }),
+            providerFailureKind: vercelFailureKind({ stderr: data?.diagnostics?.stderr ?? '' }),
+            ...(opts.secretValues === undefined
+              ? {}
+              : {
+                  providerDiagnostic: vercelDiagnosticExcerpt({
+                    text: data?.diagnostics?.stderr ?? '',
+                    secretValues: opts.secretValues,
+                  }),
+                }),
           }),
     },
     undefined,
