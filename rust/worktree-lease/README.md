@@ -23,3 +23,19 @@ inherited duplicates close. Linux parent-death protection kills the direct
 payload, not its grandchildren; macOS has no parent-death protection. Callers
 must supervise descendants and must not treat abrupt supervisor death as
 revocation. A payload is trusted not to unlock or transfer its descriptor.
+
+## Lock-scope attribution
+
+Lock scopes accept `agent/<nonempty>`, `unit/<name>.service` (1–240 ASCII
+letters, digits, `@ : . _ -` in the name), and `launchd/<label>` (1–240 ASCII
+letters, digits, `. _ -`, starting with a letter or digit). `run` requires valid
+attribution for exclusive acquisition. `validate-inherited`, `reap`, and `guard`
+accept optional `--agent`; all use `WORKTREE_LEASE_AGENT` as its environment
+default. Invalid supplied actors fail closed on these validation/maintenance
+commands. Existing unattributed callers of those commands remain supported.
+
+Attribution is not authentication: labels do not establish a caller's identity
+or permissions, and never replace kernel lock or record-evidence checks.
+Persistent schema-1 records remain **agent-only** for both creator and holder:
+`create`, `renew`, `gate-lease.json`, and compatibility record writers reject
+service actors. No schema migration or additional record format is introduced.

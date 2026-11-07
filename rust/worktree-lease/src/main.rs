@@ -133,6 +133,8 @@ enum Cli {
         common_dir: PathBuf,
         #[arg(long)]
         scheduled: bool,
+        #[arg(long, env = "WORKTREE_LEASE_AGENT")]
+        agent: Option<String>,
         #[arg(last = true, required = true)]
         command: Vec<std::ffi::OsString>,
     },
@@ -141,16 +143,24 @@ enum Cli {
         worktree: PathBuf,
         #[arg(long)]
         lock_fd: i32,
+        #[arg(long, env = "WORKTREE_LEASE_AGENT")]
+        agent: Option<String>,
     },
     #[command(flatten)]
     Record(record_cli::Command),
+}
+fn validate_actor(actor: Option<&str>) -> Result<()> {
+    if actor.is_some_and(|actor| !worktree_lease::actor::lock_scope(actor)) {
+        return Err(Refusal::AttributionFailure);
+    }
+    Ok(())
 }
 fn run(args: &Args) -> Result<i32> {
     let exclusive = matches!(args.mode, Mode::Exclusive);
     let attributed = args
         .agent
         .as_deref()
-        .is_some_and(|a| a.starts_with("agent/") && a.len() > 6);
+        .is_some_and(worktree_lease::actor::lock_scope);
     let warning = (!attributed)
         .then_some("missing or invalid agent attribution; continuing with shared protection");
     if !attributed {
@@ -285,19 +295,25 @@ fn run(args: &Args) -> Result<i32> {
         if foreground(CHILD.load(Ordering::SeqCst)).is_err() {
             unsafe { libc::kill(-CHILD.load(Ordering::SeqCst), libc::SIGKILL) };
             let _ = child.wait();
+            if !args.inherited {
+                let _ = lease.release();
+            }
             return Err(Refusal::UnsafeLock);
         }
         unsafe { libc::kill(-CHILD.load(Ordering::SeqCst), libc::SIGCONT) };
     }
     unsafe { libc::sigprocmask(libc::SIG_UNBLOCK, &blocked, std::ptr::null_mut()) };
     let status = child.wait().map_err(|_| Refusal::UnsafeLock);
-    if !args.inherited {
-        lease.release()?;
-    }
+    let released = if args.inherited {
+        Ok(())
+    } else {
+        lease.release()
+    };
     if terminal {
         foreground(unsafe { libc::getpgrp() })?;
     }
     CHILD.store(0, Ordering::SeqCst);
+    released?;
     if args.json {
         emit(
             "Granted",
@@ -335,8 +351,13 @@ fn main() {
             std::process::exit(code);
         }
         Cli::Run(args) => args,
-        Cli::ValidateInherited { worktree, lock_fd } => {
-            let result = Identity::resolve(&worktree)
+        Cli::ValidateInherited {
+            worktree,
+            lock_fd,
+            agent,
+        } => {
+            let result = validate_actor(agent.as_deref())
+                .and_then(|()| Identity::resolve(&worktree))
                 .and_then(|identity| Lease::validate_inherited_exclusive(identity, lock_fd));
             match result {
                 Ok(_scope) => println!(r#"{{"_tag":"Validated"}}"#),
@@ -351,12 +372,15 @@ fn main() {
             common_dir,
             scheduled,
             command,
+            agent,
         } => {
-            let result = worktree_lease::reap::reap(&common_dir, scheduled, &command, |decision| {
-                println!(
-                    "{}",
-                    serde_json::to_string(&decision).expect("serializable decision")
-                );
+            let result = validate_actor(agent.as_deref()).and_then(|()| {
+                worktree_lease::reap::reap(&common_dir, scheduled, &command, |decision| {
+                    println!(
+                        "{}",
+                        serde_json::to_string(&decision).expect("serializable decision")
+                    );
+                })
             });
             if let Err(error) = result {
                 emit(error.tag(), error.tag(), None, None);

@@ -125,3 +125,18 @@ fn unreaped_zombie_is_positively_dead() {
     }
     unsafe { libc::waitpid(pid, std::ptr::null_mut(), 0) };
 }
+
+#[test]
+fn record_holder_capture_is_agent_only() {
+    let pid = std::process::id();
+    assert!(Holder::capture("agent/test".into(), pid).is_ok());
+    for actor in [
+        "unit/maintenance.service",
+        "launchd/org.example.maintenance",
+    ] {
+        assert_eq!(
+            Holder::capture(actor.into(), pid),
+            Err(Refusal::InvalidInput)
+        );
+    }
+}
