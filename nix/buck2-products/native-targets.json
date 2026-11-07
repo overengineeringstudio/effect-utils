@@ -215,6 +215,45 @@
       ],
       "target": "effect_utils//packages/@overeng/genie:typescript-api-server-product",
       "version": "0.0.0"
+    },
+    {
+      "buildCapabilities": [
+        "action-env",
+        "archive-tool",
+        "bun",
+        "product",
+        "python-bootstrap",
+        "rust-archiver",
+        "rust-c-compiler",
+        "rust-clippy-driver",
+        "rust-compiler",
+        "rust-cxx-compiler",
+        "rust-dwp",
+        "rust-linker",
+        "rust-nm",
+        "rust-objcopy",
+        "rust-objdump",
+        "rust-ranlib",
+        "rust-rustdoc",
+        "rust-shell",
+        "rust-strip",
+        "rust-wasm-compiler",
+        "rust-wasm-linker",
+        "rust-wasm-rustdoc"
+      ],
+      "cargoWorkspaceRoot": "rust",
+      "kind": "native",
+      "linuxBuildCapabilities": [],
+      "name": "worktree-lease",
+      "outputName": "artifact.tar",
+      "sourcePaths": [
+        "rust/Cargo.lock",
+        "rust/Cargo.toml",
+        "rust/third-party",
+        "rust/worktree-lease"
+      ],
+      "target": "effect_utils//rust/worktree-lease:worktree-lease-product",
+      "version": "0.0.0"
     }
   ],
   "schema": "effect-utils/buck-native-targets/v1",
