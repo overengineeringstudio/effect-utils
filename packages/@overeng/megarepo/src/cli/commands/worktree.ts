@@ -6,7 +6,7 @@ import * as ChildProcess from 'effect/process/ChildProcess'
 
 import { Cwd } from '../context.ts'
 
-const worktree = Cli.Argument.String('worktree').pipe(
+const worktreeArg = Cli.Argument.String('worktree').pipe(
   Cli.Argument.withDescription('Worktree or subdirectory, resolved by native Git'),
 )
 const optional = (name: string) => Cli.Flag.String(name).pipe(Cli.Flag.optional)
@@ -14,7 +14,7 @@ const optionArgs = ({ name, value }: { name: string; value: Option.Option<string
   Option.isSome(value) === true ? [`--${name}`, value.value] : []
 const flagArgs = ({ name, enabled }: { name: string; enabled: boolean }) =>
   enabled === true ? [`--${name}`] : []
-const command = Cli.Argument.String('command').pipe(
+const commandArg = Cli.Argument.String('command').pipe(
   Cli.Argument.withDescription('Command and arguments after --'),
   Cli.Argument.atLeast(1),
 )
@@ -49,7 +49,7 @@ const runWorktree = Effect.fn('worktree.lease.resolve')(function* (
 const create = Cli.Command.make(
   'create',
   {
-    worktree,
+    worktree: worktreeArg,
     purpose: Cli.Flag.String('purpose'),
     creator: Cli.Flag.String('creator'),
     holderPid: optional('holder-pid'),
@@ -70,7 +70,7 @@ const create = Cli.Command.make(
 const renew = Cli.Command.make(
   'renew',
   {
-    worktree,
+    worktree: worktreeArg,
     holderPid: Cli.Flag.String('holder-pid'),
     agent: optional('agent'),
     ttl: Cli.Flag.String('ttl'),
@@ -87,7 +87,7 @@ const renew = Cli.Command.make(
 const inspect = Cli.Command.make(
   'inspect',
   {
-    worktree,
+    worktree: worktreeArg,
     json: Cli.Flag.Boolean('json'),
   },
   ({ worktree, json }) => runWorktree('inspect', worktree, flagArgs({ name: 'json', enabled: json })),
@@ -109,14 +109,14 @@ const guard = Cli.Command.make(
 const run = Cli.Command.make(
   'run',
   {
-    worktree,
+    worktree: worktreeArg,
     mode: Cli.Flag.String('mode'),
     attempt: Cli.Flag.Boolean('try'),
     awaitSeconds: optional('await'),
     agent: optional('agent'),
     job: optional('job'),
     json: Cli.Flag.Boolean('json'),
-    command,
+    command: commandArg,
   },
   ({ worktree, mode, attempt, awaitSeconds, agent, job, json, command }) =>
     runWorktree('run', worktree, [
@@ -136,7 +136,7 @@ const reap = Cli.Command.make(
   {
     commonDir: Cli.Flag.String('common-dir'),
     scheduled: Cli.Flag.Boolean('scheduled'),
-    command,
+    command: commandArg,
   },
   ({ commonDir, scheduled, command }) =>
     Effect.gen(function* () {
