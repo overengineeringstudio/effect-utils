@@ -1572,25 +1572,29 @@ export const reuseEditorViewSourceFiles = async ({
             }
             const outcomes = new Map<string, PromiseSettledResult<string | undefined>>()
             const groups = [...chains.values()]
-            for (let offset = 0; offset < groups.length; offset += linkConcurrency) {
-              // eslint-disable-next-line no-await-in-loop -- Settle every blob chain before releasing the lock.
-              await Promise.allSettled(
-                groups.slice(offset, offset + linkConcurrency).map(async (chain) => {
-                  for (const item of chain) {
-                    try {
-                      outcomes.set(item.file.path, {
-                        status: 'fulfilled',
-                        // eslint-disable-next-line no-await-in-loop -- Stable order arbitrates each inode's hardlink slots.
-                        value: await attempt(item),
-                      })
-                    } catch (reason) {
-                      outcomes.set(item.file.path, { status: 'rejected', reason })
-                      break
-                    }
+            let nextChain = 0
+            const worker = async () => {
+              for (;;) {
+                const chain = groups[nextChain++]
+                if (chain === undefined) return
+                for (const item of chain) {
+                  try {
+                    outcomes.set(item.file.path, {
+                      status: 'fulfilled',
+                      // eslint-disable-next-line no-await-in-loop -- Stable order arbitrates each inode's hardlink slots.
+                      value: await attempt(item),
+                    })
+                  } catch (reason) {
+                    outcomes.set(item.file.path, { status: 'rejected', reason })
+                    break
                   }
-                }),
-              )
+                }
+              }
             }
+            // Settle every worker before errors escape or the lock releases.
+            await Promise.allSettled(
+              Array.from({ length: Math.min(linkConcurrency, groups.length) }, worker),
+            )
             for (const { file } of admitted) {
               const result = outcomes.get(file.path)
               if (result?.status === 'rejected') throw result.reason
