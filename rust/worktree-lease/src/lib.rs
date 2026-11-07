@@ -1,6 +1,7 @@
 //! Scoped per-worktree exclusion. Dropping a lease closes its non-inheritable descriptor.
 pub mod guard;
 pub mod reap;
+mod reap_safety;
 pub mod record;
 mod schedule;
 use std::{
