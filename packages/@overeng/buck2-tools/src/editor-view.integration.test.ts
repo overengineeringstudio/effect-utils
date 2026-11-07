@@ -3142,6 +3142,8 @@ describe('editor view publisher', () => {
         .findLast((line) => line.startsWith('[editor-view-payload] '))!
       const counters = JSON.parse(line.slice('[editor-view-payload] '.length))
       expect(counters.filesDirectLinked).toBeGreaterThan(0)
+      expect(counters.casDirectReuseAdmissionHits).toBeGreaterThanOrEqual(0)
+      expect(counters.casDirectReuseAdmissionCold).toBeGreaterThan(0)
       expect(counters.filesReused).toBe(0)
       expect(counters.filesProcessed).toBe(
         counters.filesDirectLinked + counters.filesLinked + counters.filesAlreadyShared,
