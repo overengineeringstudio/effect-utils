@@ -10,10 +10,10 @@ const worktree = Cli.Argument.String('worktree').pipe(
   Cli.Argument.withDescription('Worktree or subdirectory, resolved by native Git'),
 )
 const optional = (name: string) => Cli.Flag.String(name).pipe(Cli.Flag.optional)
-const optionArgs = (name: string, value: Option.Option<string>): ReadonlyArray<string> =>
-  Option.isSome(value) ? [`--${name}`, value.value] : []
-const flagArgs = (name: string, enabled: boolean): ReadonlyArray<string> =>
-  enabled ? [`--${name}`] : []
+const optionArgs = ({ name, value }: { name: string; value: Option.Option<string> }) =>
+  Option.isSome(value) === true ? [`--${name}`, value.value] : []
+const flagArgs = ({ name, enabled }: { name: string; enabled: boolean }) =>
+  enabled === true ? [`--${name}`] : []
 const command = Cli.Argument.String('command').pipe(
   Cli.Argument.withDescription('Command and arguments after --'),
   Cli.Argument.atLeast(1),
@@ -36,7 +36,7 @@ const runNative = Effect.fn('worktree.lease.native')(function* (args: ReadonlyAr
 const resolveNativePath = Effect.fn('worktree.lease.path')(function* (path: string) {
   const cwd = yield* Cwd
   // Do not collapse symlink/.. components before native physical identity resolution.
-  return isAbsolute(path) ? path : `${cwd}${path}`
+  return isAbsolute(path) === true ? path : `${cwd}${path}`
 })
 const runWorktree = Effect.fn('worktree.lease.resolve')(function* (
   operation: string,
@@ -81,7 +81,7 @@ const renew = Cli.Command.make(
       holderPid,
       '--ttl',
       ttl,
-      ...optionArgs('agent', agent),
+      ...optionArgs({ name: 'agent', value: agent }),
     ]),
 ).pipe(Cli.Command.withDescription('Renew attribution through a native shared scope'))
 const inspect = Cli.Command.make(
@@ -90,7 +90,7 @@ const inspect = Cli.Command.make(
     worktree,
     json: Cli.Flag.Boolean('json'),
   },
-  ({ worktree, json }) => runWorktree('inspect', worktree, flagArgs('json', json)),
+  ({ worktree, json }) => runWorktree('inspect', worktree, flagArgs({ name: 'json', enabled: json })),
 ).pipe(Cli.Command.withDescription('Inspect attribution as tagged JSON; grants no exclusion'))
 const guard = Cli.Command.make(
   'guard',
@@ -122,11 +122,11 @@ const run = Cli.Command.make(
     runWorktree('run', worktree, [
       '--mode',
       mode,
-      ...flagArgs('try', attempt),
-      ...optionArgs('await', awaitSeconds),
-      ...optionArgs('agent', agent),
-      ...optionArgs('job', job),
-      ...flagArgs('json', json),
+      ...flagArgs({ name: 'try', enabled: attempt }),
+      ...optionArgs({ name: 'await', value: awaitSeconds }),
+      ...optionArgs({ name: 'agent', value: agent }),
+      ...optionArgs({ name: 'job', value: job }),
+      ...flagArgs({ name: 'json', enabled: json }),
       '--',
       ...command,
     ]),
@@ -144,13 +144,14 @@ const reap = Cli.Command.make(
         'reap',
         '--common-dir',
         yield* resolveNativePath(commonDir),
-        ...flagArgs('scheduled', scheduled),
+        ...flagArgs({ name: 'scheduled', enabled: scheduled }),
         '--',
         ...command,
       ])
     }),
 ).pipe(Cli.Command.withDescription('Run an archive command for eligible managed worktrees'))
 
+/** Native worktree lease commands with transparent argument and exit-code forwarding. */
 export const worktreeCommand = Cli.Command.make('worktree').pipe(
   Cli.Command.withSubcommands([
     Cli.Command.make('lease').pipe(
