@@ -1,6 +1,7 @@
 //! Linux-only PDEATHSIG protects the direct payload; macOS has no parent-death protection here.
 //! PDEATHSIG kills only the direct payload, not its process group; grandchildren can survive
 //! the supervisor's death, so descendant cleanup requires separate caller supervision.
+mod record_cli;
 use clap::{Parser, ValueEnum};
 use std::{
     io::Write,
@@ -97,10 +98,8 @@ enum Mode {
     Shared,
     Exclusive,
 }
-#[derive(Parser)]
+#[derive(clap::Args)]
 struct Args {
-    #[arg(value_parser = ["run"])]
-    action: String,
     worktree: PathBuf,
     #[arg(long, value_enum)]
     mode: Mode,
@@ -116,6 +115,12 @@ struct Args {
     json: bool,
     #[arg(last = true, required = true)]
     command: Vec<std::ffi::OsString>,
+}
+#[derive(Parser)]
+enum Cli {
+    Run(Args),
+    #[command(flatten)]
+    Record(record_cli::Command),
 }
 fn run(args: &Args) -> Result<i32> {
     let exclusive = matches!(args.mode, Mode::Exclusive);
@@ -249,7 +254,7 @@ fn run(args: &Args) -> Result<i32> {
     Ok(exit_code(status?))
 }
 fn main() {
-    let args = match Args::try_parse() {
+    let cli = match Cli::try_parse() {
         Ok(args) => args,
         Err(error) => {
             if std::env::args_os()
@@ -260,6 +265,19 @@ fn main() {
                 std::process::exit(2);
             }
             error.exit();
+        }
+    };
+    let args = match cli {
+        Cli::Run(args) => args,
+        Cli::Record(command) => {
+            let code = command.execute().map_or_else(
+                |error| {
+                    emit(error.tag(), error.tag(), None, None);
+                    error.code()
+                },
+                |()| 0,
+            );
+            std::process::exit(code);
         }
     };
     let json = args.json;

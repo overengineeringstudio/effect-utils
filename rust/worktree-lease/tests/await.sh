@@ -77,4 +77,5 @@ run "$root/linked" exclusive true
 refuse 2 InvalidInput "$LEASE" run --json
 refuse 1 AttributionFailure "$LEASE" run "$root/linked" --mode exclusive --try --agent invalid --json -- false
 "$LEASE" run "$root/linked" --mode shared --try --agent invalid --job test-job --json -- true 2>"$root/granted"
+source tests/schema.sh
 cat "$root/granted"

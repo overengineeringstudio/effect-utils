@@ -97,6 +97,24 @@ impl Identity {
         identity.validate()?;
         Ok(identity)
     }
+    pub fn resolve_admin(path: &Path) -> Result<Self> {
+        let admin = fs::canonicalize(path).map_err(|_| Refusal::UnknownIdentity)?;
+        let worktree = match fs::read_to_string(admin.join("gitdir")) {
+            Ok(backlink) => Path::new(backlink.trim_end())
+                .parent()
+                .map(Path::to_path_buf),
+            Err(error) if error.kind() == io::ErrorKind::NotFound => {
+                admin.parent().map(Path::to_path_buf)
+            }
+            Err(_) => return Err(Refusal::UnknownIdentity),
+        }
+        .ok_or(Refusal::UnknownIdentity)?;
+        let identity = Self::resolve(&worktree)?;
+        if identity.admin != admin {
+            return Err(Refusal::UnknownIdentity);
+        }
+        Ok(identity)
+    }
     fn validate(&self) -> Result<()> {
         let registered = if self.admin == self.common {
             fs::canonicalize(self.worktree.join(".git")).ok().as_deref()
