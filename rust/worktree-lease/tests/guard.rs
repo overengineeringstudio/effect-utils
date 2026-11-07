@@ -186,3 +186,29 @@ fn record_holder_capture_is_agent_only() {
         );
     }
 }
+
+#[test]
+fn orphan_reattached_between_resolution_and_acquisition() {
+    let root = tempfile::tempdir().unwrap();
+    let root = root.path().canonicalize().unwrap();
+    assert!(Command::new("git")
+        .args(["init", "-q"])
+        .arg(&root)
+        .status()
+        .unwrap()
+        .success());
+    let admin = root.join(".git/worktrees/orphan");
+    let tree = root.join("missing");
+    fs::create_dir_all(&admin).unwrap();
+    fs::create_dir(&tree).unwrap();
+    fs::write(admin.join("commondir"), "../..").unwrap();
+    fs::write(admin.join("gitdir"), tree.join(".git").to_str().unwrap()).unwrap();
+    let identity = Identity::resolve_orphan_admin(&admin).unwrap();
+    let lease = Lease::open(identity).unwrap();
+    fs::write(tree.join(".git"), format!("gitdir: {}", admin.display())).unwrap();
+    assert_eq!(lease.acquire(true, false), Err(Refusal::Protected));
+    fs::remove_file(tree.join(".git")).unwrap();
+    lease.acquire(true, false).unwrap();
+    fs::write(tree.join(".git"), format!("gitdir: {}", admin.display())).unwrap();
+    assert_eq!(lease.validate(), Err(Refusal::Protected));
+}

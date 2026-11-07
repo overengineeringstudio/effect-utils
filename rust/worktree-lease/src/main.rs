@@ -100,7 +100,14 @@ enum Mode {
 }
 #[derive(clap::Args)]
 struct Args {
-    worktree: PathBuf,
+    #[arg(
+        required_unless_present = "orphan_admin",
+        conflicts_with = "orphan_admin"
+    )]
+    worktree: Option<PathBuf>,
+    /// Scope exclusive mutation of an orphaned linked admin directory.
+    #[arg(long)]
+    orphan_admin: Option<PathBuf>,
     #[arg(long, value_enum)]
     mode: Mode,
     /// Validate the inherited exclusive fence instead of acquiring another lock.
@@ -140,7 +147,13 @@ enum Cli {
     },
     /// Validate a caller-owned inherited exclusive fence; no authority survives this process.
     ValidateInherited {
-        worktree: PathBuf,
+        #[arg(
+            required_unless_present = "orphan_admin",
+            conflicts_with = "orphan_admin"
+        )]
+        worktree: Option<PathBuf>,
+        #[arg(long)]
+        orphan_admin: Option<PathBuf>,
         #[arg(long)]
         lock_fd: i32,
         #[arg(long, env = "WORKTREE_LEASE_AGENT")]
@@ -155,8 +168,21 @@ fn validate_actor(actor: Option<&str>) -> Result<()> {
     }
     Ok(())
 }
+fn resolve_target(
+    worktree: Option<&std::path::Path>,
+    orphan: Option<&std::path::Path>,
+) -> Result<Identity> {
+    match (worktree, orphan) {
+        (Some(path), None) => Identity::resolve(path),
+        (None, Some(admin)) => Identity::resolve_orphan_admin(admin),
+        _ => Err(Refusal::InvalidInput),
+    }
+}
 fn run(args: &Args) -> Result<i32> {
     let exclusive = matches!(args.mode, Mode::Exclusive);
+    if args.orphan_admin.is_some() && !exclusive {
+        return Err(Refusal::InvalidInput);
+    }
     let attributed = args
         .agent
         .as_deref()
@@ -182,7 +208,7 @@ fn run(args: &Args) -> Result<i32> {
             }
         }
     }
-    let identity = Identity::resolve(&args.worktree)?;
+    let identity = resolve_target(args.worktree.as_deref(), args.orphan_admin.as_deref())?;
     let lease = if args.inherited {
         let fd = std::env::var("WORKTREE_LEASE_LOCK_FD")
             .ok()
@@ -242,14 +268,22 @@ fn run(args: &Args) -> Result<i32> {
         return Ok(128 + interrupted);
     }
     acquired?;
+    if args.orphan_admin.is_some() {
+        worktree_lease::guard::check(lease.identity())?;
+    }
     lease.validate()?;
     let mut command = Command::new(&args.command[0]);
     command.args(&args.command[1..]).process_group(0);
     let fence_fd = if exclusive || args.inherited {
         let fd = lease.raw_fd();
-        command
-            .env("WORKTREE_LEASE_LOCK_FD", fd.to_string())
-            .env("WORKTREE_LEASE_WORKTREE", &lease.identity().worktree);
+        command.env("WORKTREE_LEASE_LOCK_FD", fd.to_string()).env(
+            "WORKTREE_LEASE_WORKTREE",
+            if args.orphan_admin.is_some() {
+                &lease.identity().admin
+            } else {
+                &lease.identity().worktree
+            },
+        );
         Some(fd)
     } else {
         command
@@ -353,12 +387,20 @@ fn main() {
         Cli::Run(args) => args,
         Cli::ValidateInherited {
             worktree,
+            orphan_admin,
             lock_fd,
             agent,
         } => {
             let result = validate_actor(agent.as_deref())
-                .and_then(|()| Identity::resolve(&worktree))
-                .and_then(|identity| Lease::validate_inherited_exclusive(identity, lock_fd));
+                .and_then(|()| resolve_target(worktree.as_deref(), orphan_admin.as_deref()))
+                .and_then(|identity| Lease::validate_inherited_exclusive(identity, lock_fd))
+                .and_then(|lease| {
+                    if orphan_admin.is_some() {
+                        worktree_lease::guard::check(lease.identity())?;
+                        lease.validate()?;
+                    }
+                    Ok(lease)
+                });
             match result {
                 Ok(_scope) => println!(r#"{{"_tag":"Validated"}}"#),
                 Err(error) => {

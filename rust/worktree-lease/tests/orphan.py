@@ -7,8 +7,13 @@ with tempfile.TemporaryDirectory() as tmp:
     subprocess.check_call(['git', '-C', str(repo), '-c', 'core.hooksPath=/dev/null', '-c', 'commit.gpgsign=false', '-c', 'user.name=Test', '-c', 'user.email=test@example.org', 'commit', '--allow-empty', '-qm', 'initial'])
     subprocess.check_call(['git', '-C', str(repo), 'worktree', 'add', '-q', str(tree)])
     admin = repo / '.git/worktrees/tree'
+    def run(path=admin, *options, command=('true',)):
+        return subprocess.run([lease, 'run', '--orphan-admin', str(path), '--mode', 'exclusive', '--try', '--agent', 'unit/maintenance.service', *options, '--', *command], capture_output=True)
     def guard(path=admin):
-        return subprocess.run([lease, 'guard', '--orphan-admin', str(path), '--agent', 'unit/maintenance.service'], capture_output=True)
+        result = subprocess.run([lease, 'guard', '--orphan-admin', str(path), '--agent', 'unit/maintenance.service'], capture_output=True)
+        scoped = run(path)
+        assert scoped.returncode == result.returncode, (result, scoped)
+        return result
     assert guard().returncode != 0
     subprocess.check_call([lease, 'create', str(tree), '--purpose', 'gate', '--creator', 'agent/test', '--holder-pid', str(os.getpid()), '--ttl', '60'], stdout=subprocess.DEVNULL)
     shutil.rmtree(tree)
@@ -57,3 +62,41 @@ with tempfile.TemporaryDirectory() as tmp:
     # Reattachment invalidates the orphan identity again.
     (tree / '.git').write_text('gitdir: ' + str(admin))
     assert guard().returncode != 0
+    (tree / '.git').unlink()
+    assert run(admin, str(tree)).returncode == 2
+    assert subprocess.run([lease, 'run', '--orphan-admin', str(admin), '--mode', 'shared', '--try', '--', 'true'], capture_output=True).returncode == 2
+    payload = """
+import fcntl, os, pathlib, shutil, subprocess
+admin = pathlib.Path(os.environ['WORKTREE_LEASE_WORKTREE'])
+assert admin == pathlib.Path(os.environ['EXPECTED_ADMIN'])
+fd = int(os.environ['WORKTREE_LEASE_LOCK_FD'])
+validate = [os.environ['LEASE'], 'validate-inherited', '--orphan-admin', str(admin), '--lock-fd', str(fd)]
+assert subprocess.run(validate, pass_fds=(fd,)).returncode == 0
+base = [os.environ['LEASE'], 'run', '--orphan-admin', str(admin), '--mode', 'exclusive', '--agent', 'agent/test']
+assert subprocess.run(base + ['--inherited', '--', 'true'], pass_fds=(fd,)).returncode == 0
+assert subprocess.run(base + ['--try', '--', 'true']).returncode == 75
+with (admin / 'gate-lease.lock').open('r+') as independent:
+    try:
+        fcntl.flock(independent, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        raise AssertionError('payload lost exclusive fence')
+    except BlockingIOError:
+        pass
+with (admin / 'foreign.lock').open('w+') as other:
+    fcntl.flock(other, fcntl.LOCK_EX)
+    assert subprocess.run(validate[:-1] + [str(other.fileno())], pass_fds=(other.fileno(),)).returncode != 0
+tree = pathlib.Path((admin / 'gitdir').read_text().strip()).parent
+(tree / '.git').write_text('gitdir: ' + str(admin))
+assert subprocess.run(validate, pass_fds=(fd,)).returncode != 0
+assert subprocess.run(base + ['--inherited', '--', 'true'], pass_fds=(fd,)).returncode != 0
+(tree / '.git').unlink()
+(admin / 'reclaim-keep').touch()
+assert subprocess.run(validate, pass_fds=(fd,)).returncode != 0
+assert subprocess.run(base + ['--inherited', '--', 'true'], pass_fds=(fd,)).returncode != 0
+(admin / 'reclaim-keep').unlink()
+shutil.rmtree(admin)
+fcntl.fcntl(fd, fcntl.F_GETFD)
+"""
+    os.environ['EXPECTED_ADMIN'] = str(admin)
+    result = run(command=('python3', '-c', payload))
+    assert result.returncode == 0, result
+    assert not admin.exists()
