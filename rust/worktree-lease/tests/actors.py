@@ -7,6 +7,7 @@ with tempfile.TemporaryDirectory() as tmp:
         return subprocess.run([lease, *args], capture_output=True, **kwargs)
     for actor in ['unit/maintenance@daily.service', 'launchd/org.example.maintenance']:
         assert invoke('run', str(root), '--mode', 'exclusive', '--try', '--agent', actor, '--', 'true').returncode == 0
+        assert invoke('guard', '--git-dir', str(root / '.git'), '--agent', actor).returncode == 0
         for args in [
             ['create', str(root), '--purpose', 'gate', '--creator', actor, '--holder-pid', str(os.getpid()), '--ttl', '60'],
             ['compat', 'write', str(root), 'gate', actor, str(os.getpid()), '60'],
