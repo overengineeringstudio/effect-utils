@@ -60,6 +60,7 @@ pub struct Identity {
     pub worktree: PathBuf,
     pub admin: PathBuf,
     pub common: PathBuf,
+    orphan: bool,
 }
 impl Identity {
     pub fn resolve(path: &Path) -> Result<Self> {
@@ -95,6 +96,7 @@ impl Identity {
             admin: next()?,
             common: next()?,
             worktree: next()?,
+            orphan: false,
         };
         if paths.next().is_some() {
             return Err(Refusal::UnknownIdentity);
@@ -120,7 +122,82 @@ impl Identity {
         }
         Ok(identity)
     }
+    /// Resolve only a contained linked admin whose worktree no longer links back.
+    pub fn resolve_orphan_admin(path: &Path) -> Result<Self> {
+        let admin = fs::canonicalize(path).map_err(|_| Refusal::UnknownIdentity)?;
+        let lexical = if path.is_absolute() {
+            path.to_path_buf()
+        } else {
+            std::env::current_dir()
+                .map_err(|_| Refusal::UnknownIdentity)?
+                .join(path)
+        };
+        if lexical != admin {
+            return Err(Refusal::UnknownIdentity);
+        }
+        let read = |name: &str| -> Result<String> {
+            let path = admin.join(name);
+            if !fs::symlink_metadata(&path)
+                .map_err(|_| Refusal::UnknownIdentity)?
+                .is_file()
+            {
+                return Err(Refusal::UnknownIdentity);
+            }
+            fs::read_to_string(path).map_err(|_| Refusal::UnknownIdentity)
+        };
+        let common = fs::canonicalize(admin.join(read("commondir")?.trim_end()))
+            .map_err(|_| Refusal::UnknownIdentity)?;
+        let registered = common.join("worktrees");
+        if admin.parent() != Some(registered.as_path())
+            || !fs::symlink_metadata(&registered)
+                .map_err(|_| Refusal::UnknownIdentity)?
+                .is_dir()
+            || !common.join("objects").is_dir()
+            || !common.join("HEAD").is_file()
+        {
+            return Err(Refusal::UnknownIdentity);
+        }
+        let backlink = PathBuf::from(read("gitdir")?.trim_end());
+        if !backlink.is_absolute() || backlink.file_name() != Some(std::ffi::OsStr::new(".git")) {
+            return Err(Refusal::UnknownIdentity);
+        }
+        let worktree = backlink
+            .parent()
+            .ok_or(Refusal::UnknownIdentity)?
+            .to_path_buf();
+        match fs::symlink_metadata(&backlink) {
+            Err(error) if error.kind() == io::ErrorKind::NotFound => (),
+            Ok(metadata) if metadata.is_file() => {
+                let text = fs::read_to_string(&backlink).map_err(|_| Refusal::UnknownIdentity)?;
+                let target = text
+                    .strip_prefix("gitdir: ")
+                    .map(str::trim)
+                    .filter(|target| !target.is_empty())
+                    .ok_or(Refusal::UnknownIdentity)?;
+                match fs::canonicalize(worktree.join(target)) {
+                    Ok(target) if target == admin => return Err(Refusal::Protected),
+                    Ok(_) => (),
+                    Err(error) if error.kind() == io::ErrorKind::NotFound => (),
+                    Err(_) => return Err(Refusal::UnknownIdentity),
+                }
+            }
+            _ => return Err(Refusal::UnknownIdentity),
+        }
+        Ok(Self {
+            admin,
+            common,
+            worktree,
+            orphan: true,
+        })
+    }
     fn validate(&self) -> Result<()> {
+        if self.orphan {
+            return if Self::resolve_orphan_admin(&self.admin)? == *self {
+                Ok(())
+            } else {
+                Err(Refusal::Retired)
+            };
+        }
         let registered = if self.admin == self.common {
             fs::canonicalize(self.worktree.join(".git")).ok().as_deref()
                 == Some(self.admin.as_path())
