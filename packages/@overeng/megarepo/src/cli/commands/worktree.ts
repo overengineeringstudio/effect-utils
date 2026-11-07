@@ -90,7 +90,8 @@ const inspect = Cli.Command.make(
     worktree: worktreeArg,
     json: Cli.Flag.Boolean('json'),
   },
-  ({ worktree, json }) => runWorktree('inspect', worktree, flagArgs({ name: 'json', enabled: json })),
+  ({ worktree, json }) =>
+    runWorktree('inspect', worktree, flagArgs({ name: 'json', enabled: json })),
 ).pipe(Cli.Command.withDescription('Inspect attribution as tagged JSON; grants no exclusion'))
 const guard = Cli.Command.make(
   'guard',
