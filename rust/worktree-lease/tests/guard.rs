@@ -125,3 +125,45 @@ fn unreaped_zombie_is_positively_dead() {
     }
     unsafe { libc::waitpid(pid, std::ptr::null_mut(), 0) };
 }
+
+#[test]
+fn orphan_scope_revalidates_reattachment() {
+    let root = tempfile::tempdir().unwrap();
+    let canonical = fs::canonicalize(root.path()).unwrap();
+    let repo = canonical.join("repo");
+    let tree = canonical.join("tree");
+    let git = |args: &[&str]| {
+        assert!(Command::new("git").args(args).status().unwrap().success());
+    };
+    git(&["init", "-q", repo.to_str().unwrap()]);
+    git(&[
+        "-C",
+        repo.to_str().unwrap(),
+        "-c",
+        "user.name=Test",
+        "-c",
+        "user.email=test@example.org",
+        "commit",
+        "--allow-empty",
+        "-qm",
+        "initial",
+    ]);
+    git(&[
+        "-C",
+        repo.to_str().unwrap(),
+        "worktree",
+        "add",
+        "-q",
+        tree.to_str().unwrap(),
+    ]);
+    let admin = repo.join(".git/worktrees/tree");
+    fs::remove_dir_all(&tree).unwrap();
+    let lease = worktree_lease::guard::reclaim_orphan(&admin).unwrap();
+    assert_eq!(
+        worktree_lease::guard::reclaim_orphan(&admin).err(),
+        Some(Refusal::Busy)
+    );
+    fs::create_dir(&tree).unwrap();
+    fs::write(tree.join(".git"), format!("gitdir: {}", admin.display())).unwrap();
+    assert_eq!(lease.validate(), Err(Refusal::Protected));
+}

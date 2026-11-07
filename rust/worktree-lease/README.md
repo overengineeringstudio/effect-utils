@@ -39,3 +39,24 @@ or permissions, and never replace kernel lock or record-evidence checks.
 Persistent schema-1 records remain **agent-only** for both creator and holder:
 `create`, `renew`, `gate-lease.json`, and compatibility record writers reject
 service actors. No schema migration or additional record format is introduced.
+
+## Orphaned linked admin directories
+
+`guard --orphan-admin <common>/worktrees/<name> --agent unit/maintenance.service`
+checks an orphan without requiring a live worktree backlink. Unlike
+`guard --git-dir <admin>`, it refuses a live linked worktree. The admin must
+resolve directly below the common directory's real `worktrees` directory;
+symlink aliases and containment escapes are rejected. Regular `commondir` and
+`gitdir` files must identify that common directory and an absolute worktree
+`.git` path. The target must be absent or have a `.git` file that demonstrably
+does not link back; unreadable or ambiguous state is refused.
+
+Only the backlink requirement is relaxed. The same `gate-lease.lock`,
+`gate-lease.json`, retention markers, expiry, host, namespace, and process-death
+checks apply, with identity revalidation around acquisition and record reads.
+A held lock returns `Busy`. Reattaching the worktree invalidates the orphan
+identity. This mode does not authorize deleting the worktree path.
+
+Like normal `guard`, the CLI returns an eligibility snapshot, not continuing
+authority after it exits. Rust callers performing mutation must retain the
+`guard::reclaim_orphan` lease through the operation, then drop it.
