@@ -169,13 +169,16 @@ impl Identity {
             Err(error) if error.kind() == io::ErrorKind::NotFound => (),
             Ok(metadata) if metadata.is_file() => {
                 let text = fs::read_to_string(&backlink).map_err(|_| Refusal::UnknownIdentity)?;
-                if let Some(target) = text.strip_prefix("gitdir: ") {
-                    match fs::canonicalize(worktree.join(target.trim())) {
-                        Ok(target) if target == admin => return Err(Refusal::Protected),
-                        Ok(_) => (),
-                        Err(error) if error.kind() == io::ErrorKind::NotFound => (),
-                        Err(_) => return Err(Refusal::UnknownIdentity),
-                    }
+                let target = text
+                    .strip_prefix("gitdir: ")
+                    .map(str::trim)
+                    .filter(|target| !target.is_empty())
+                    .ok_or(Refusal::UnknownIdentity)?;
+                match fs::canonicalize(worktree.join(target)) {
+                    Ok(target) if target == admin => return Err(Refusal::Protected),
+                    Ok(_) => (),
+                    Err(error) if error.kind() == io::ErrorKind::NotFound => (),
+                    Err(_) => return Err(Refusal::UnknownIdentity),
                 }
             }
             _ => return Err(Refusal::UnknownIdentity),

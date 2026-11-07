@@ -45,8 +45,13 @@ with tempfile.TemporaryDirectory() as tmp:
     escape.symlink_to(outside)
     assert guard(escape).returncode != 0
     assert guard(outside).returncode != 0
-    # Existing directory with a .git file that no longer points back is orphaned.
+    # Malformed or empty gitfiles do not prove an orphan.
     tree.mkdir()
+    for malformed in ['not a gitfile', '', 'gitdir: ']:
+        (tree / '.git').write_text(malformed)
+        result = guard()
+        assert result.returncode != 0 and b'UnknownIdentity' in result.stderr, result
+    # A valid gitfile pointing elsewhere does prove the missing backlink.
     (tree / '.git').write_text('gitdir: ' + str(outside))
     assert guard().returncode == 0
     # Reattachment invalidates the orphan identity again.
