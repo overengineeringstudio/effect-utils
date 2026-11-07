@@ -122,6 +122,10 @@ Keep semantic `devbarTokens` roles `canvas`, `panel`, `panelActive`, `text`, `mu
 
 Traces: DT.BAR-R13–R14. With `panelControls: 'none'` the row holds no toggle or panel buttons; `openPanel` and `onOpenPanelChange` remain the only selection contract. An open panel renders a `tablist` of every panel in its header (Arrow keys, Home and End move and select), its section becomes the `tabpanel`, and Ctrl/Meta+Backquote and Escape behave as with buttons. `panelElementId` gives host triggers a stable `aria-controls` target. When a panel closes with focus inside it, focus returns to the element focused when it opened. `trailing` is measured out of the segment budget like the controls. `stripSizing: 'content'` stops the strip growing, so free space falls after the segments; with no `strip` it omits the slot and reserves no width, letting a host compose every meter as a segment. `MeterStrip`'s `freezeControl: false` removes its freeze button for hosts that freeze elsewhere. Width priority is otherwise unchanged. `MeterTile` (`onActivate`, `expanded`, `controls`) and `MeterStrip` (`detailExpanded`, `detailControls`) report that state on their own buttons; `BuildIdentitySegment`'s `action` does the same for a version chip.
 
+### Row focus
+
+Traces: DT.BAR-R15. The row is a `toolbar` named `Developer bar` with roving tabindex over its reachable items: buttons, links and focusable host content not inside an `inert` (overflowed) wrapper, a popover or an `aria-hidden` subtree. The shell rewrites only `tabindex`, so host elements keep their identity across re-renders. A `MutationObserver` re-evaluates items after host changes; when the focused item leaves the reachable set while focus is in the row, focus moves to the `+N` control if present, otherwise to the item at the same index. Text inputs and sliders keep their own arrow keys.
+
 ### Segment fitting and overflow
 
 ```text

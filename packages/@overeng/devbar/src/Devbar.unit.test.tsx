@@ -43,7 +43,7 @@ const Host = ({
   )
 }
 
-const bar = () => screen.getByRole('group', { name: 'Developer bar' })
+const bar = () => screen.getByRole('toolbar', { name: 'Developer bar' })
 const toggle = () => screen.getByRole('button', { name: 'Toggle developer tools' })
 const pointerClick = (element: HTMLElement) => fireEvent.click(element, { detail: 1 })
 
@@ -324,6 +324,89 @@ describe('Devbar interaction', () => {
       expect(document.activeElement).toBe(outside)
     },
   )
+})
+
+describe('row focus', () => {
+  const buttons: readonly DevbarSegment[] = ['alpha', 'beta', 'gamma'].map((id) => ({
+    id,
+    render: () => <button type="button">{id}</button>,
+  }))
+  const Row = ({ shown = buttons }: { shown?: readonly DevbarSegment[] }): React.ReactNode => (
+    <Devbar
+      panels={panels}
+      panelControls="none"
+      openPanel={undefined}
+      onOpenPanelChange={() => {}}
+      segments={shown}
+    />
+  )
+  // Give the row room so no segment overflows; the shell measures with real layout otherwise.
+  const roomy = () => {
+    vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(1000)
+    vi.spyOn(Element.prototype, 'getBoundingClientRect').mockReturnValue(
+      DOMRect.fromRect({ width: 40, height: 20 }),
+    )
+  }
+  // Measurement reveals segments after mount; the row re-evaluates on that DOM change.
+  const settle = () =>
+    act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    })
+  const tabStops = () =>
+    Array.from(bar().querySelectorAll<HTMLElement>('button')).filter(
+      (button) =>
+        button.closest('[inert], [popover]') === null && button.getAttribute('tabindex') !== '-1',
+    )
+
+  it('is one Tab stop, with arrows, Home and End moving between items', async () => {
+    roomy()
+    render(<Row />)
+    await settle()
+    expect(tabStops().map((button) => button.textContent)).toEqual(['alpha'])
+    const alpha = screen.getByRole('button', { name: 'alpha' })
+    act(() => alpha.focus())
+    fireEvent.keyDown(alpha, { key: 'ArrowRight' })
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'beta' }))
+    expect(tabStops().map((button) => button.textContent)).toEqual(['beta'])
+    fireEvent.keyDown(document.activeElement!, { key: 'End' })
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'gamma' }))
+    fireEvent.keyDown(document.activeElement!, { key: 'ArrowRight' })
+    expect(document.activeElement).toBe(alpha)
+    fireEvent.keyDown(alpha, { key: 'ArrowLeft' })
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'gamma' }))
+    fireEvent.keyDown(document.activeElement!, { key: 'Home' })
+    expect(document.activeElement).toBe(alpha)
+  })
+
+  it('keeps focus on the same item across re-renders with new render functions', async () => {
+    roomy()
+    const { rerender } = render(<Row />)
+    await settle()
+    const beta = screen.getByRole('button', { name: 'beta' })
+    act(() => beta.focus())
+    rerender(
+      <Row
+        shown={buttons.map((segment) => ({
+          ...segment,
+          render: () => <button type="button">{segment.id}</button>,
+        }))}
+      />,
+    )
+    await settle()
+    expect(document.activeElement).toBe(beta)
+    expect(tabStops().map((button) => button.textContent)).toEqual(['beta'])
+  })
+
+  it('moves focus to a remaining item, not the body, when the focused item disappears', async () => {
+    roomy()
+    const { rerender } = render(<Row />)
+    await settle()
+    act(() => screen.getByRole('button', { name: 'gamma' }).focus())
+    rerender(<Row shown={buttons.slice(0, 2)} />)
+    await settle()
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'beta' }))
+    expect(tabStops().map((button) => button.textContent)).toEqual(['beta'])
+  })
 })
 
 describe('host-driven panels', () => {
