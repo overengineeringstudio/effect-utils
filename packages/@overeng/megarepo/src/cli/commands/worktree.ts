@@ -3,7 +3,7 @@ import { isAbsolute } from 'node:path'
 import { Effect, Option } from 'effect'
 import * as Cli from 'effect/cli'
 import * as FileSystem from 'effect/FileSystem'
-import * as ChildProcess from 'effect/unstable/process/ChildProcess'
+import * as ChildProcess from 'effect/process/ChildProcess'
 
 import { Cwd } from '../context.ts'
 
