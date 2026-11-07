@@ -452,6 +452,7 @@ const checkWorkspaceContract = ({
     otelite: ['native', 'packages/@overeng/otelite', true],
     pingping: ['native', 'packages/@overeng/pingping', true],
     'typescript-api-server': ['native', 'packages/@overeng/genie', false],
+    'worktree-lease': ['native', 'rust/worktree-lease', true],
   }
   const nativeProducts = inventory.products.map((rawEntry, index) => {
     const entry = requireRecord(rawEntry, `native products[${index}]`)
