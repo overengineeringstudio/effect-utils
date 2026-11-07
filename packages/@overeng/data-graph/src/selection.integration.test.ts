@@ -6,7 +6,15 @@ import { expect } from 'vitest'
 
 import { ContentManifest, objectPathForDigest, utf8Bytes } from '@overeng/content-address'
 
-import { DataGraph, GraphExecutionError, GraphStore, NodeKind, type NodeDef } from './mod.ts'
+import {
+  AttemptStatus,
+  DataGraph,
+  GraphExecutionError,
+  GraphStore,
+  NodeKind,
+  writeJson,
+  type NodeDef,
+} from './mod.ts'
 
 it.effect(
   'durable status exposes stale acceptance and rejection across service restart',
@@ -109,6 +117,122 @@ it.effect(
     }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
   { timeout: 60_000 },
 )
+
+for (const scenario of [
+  { name: 'accepted then rejected', outcomes: ['reject'], fresh: false },
+  { name: 'accepted then failed', outcomes: ['fail'], fresh: true },
+  { name: 'accepted then rejected then failed', outcomes: ['reject', 'fail'], fresh: false },
+  {
+    name: 'older rejection then current acceptance',
+    outcomes: ['reject', 'change', 'accept'],
+    fresh: true,
+  },
+  { name: 'rejected then accepted same action', outcomes: ['reject', 'accept'], fresh: true },
+  {
+    name: 'rejection belongs to a different action',
+    outcomes: ['change', 'reject', 'restore'],
+    fresh: true,
+  },
+  { name: 'old-format accepted', outcomes: ['accept'], fresh: true, legacy: true },
+  { name: 'old-format rejected', outcomes: ['reject'], fresh: false, legacy: true },
+  {
+    name: 'old-format failed has no known rejection',
+    outcomes: ['reject', 'fail'],
+    fresh: true,
+    legacy: true,
+  },
+] as const) {
+  it.effect(
+    `freshness verdict: ${scenario.name}`,
+    () =>
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem
+        const root = yield* fs.makeTempDirectoryScoped({ prefix: 'data-graph-verdict-' })
+        const kind = yield* Schema.decodeEffect(NodeKind)('verdict')
+        let version = '1'
+        let outcome: 'accept' | 'reject' | 'fail' = 'accept'
+        const node: NodeDef = {
+          _tag: 'Observe',
+          kind,
+          outputs: ['value'],
+          inputs: () => ({}),
+          recipe: () => ({ kind, version, config: {} }),
+          execute: () =>
+            outcome === 'fail'
+              ? Effect.fail(new GraphExecutionError({ message: 'unavailable' }))
+              : Effect.succeed(
+                  outcome === 'reject'
+                    ? { _tag: 'Rejected' as const, reason: 'policy denied', receipts: [] }
+                    : {
+                        _tag: 'Accepted' as const,
+                        receipts: [],
+                        outputs: { value: { bytes: utf8Bytes('value'), mediaType: 'text/plain' } },
+                      },
+                ),
+        }
+        const target = DataGraph.ref({ node: node, scope: {}, output: 'value' })
+        const pull = () =>
+          DataGraph.materialize(target, { refresh: [DataGraph.nodeId({ kind, scope: {} })] }).pipe(
+            Effect.provide(GraphStore.fileSystem(root)),
+          )
+        const status = () =>
+          DataGraph.getSelectionStatus(target).pipe(Effect.provide(GraphStore.fileSystem(root)))
+        yield* pull()
+        for (const step of scenario.outcomes) {
+          if (step === 'change' || step === 'restore') {
+            version = step === 'change' ? '2' : '1'
+            continue
+          }
+          outcome = step
+          yield* TestClock.adjust('1 second')
+          yield* pull().pipe(Effect.result)
+        }
+        if ('legacy' in scenario) {
+          const latest = Option.getOrThrow((yield* status()).latestAttempt)
+          yield* Effect.gen(function* () {
+            const store = yield* GraphStore
+            const descriptor = yield* writeJson(AttemptStatus, latest)
+            const wrapper = yield* store.manifest(
+              ContentManifest.make({
+                schemaVersion: 1,
+                role: 'data-graph.selection-status',
+                entries: [
+                  { role: 'status', descriptor },
+                  { role: 'action', descriptor: latest.action },
+                  ...(latest.attempt === undefined
+                    ? []
+                    : [{ role: 'attempt', descriptor: latest.attempt }]),
+                  ...(latest.materialization === undefined
+                    ? []
+                    : [{ role: 'materialization', descriptor: latest.materialization }]),
+                ],
+              }),
+            )
+            yield* store.pin(
+              `data-graph/attempts/${DataGraph.nodeIdDigest({ kind, scope: {} }).slice('sha256:'.length)}`,
+              wrapper,
+            )
+          }).pipe(Effect.provide(GraphStore.fileSystem(root)))
+        }
+        // Each read rebuilds the layer against disk rather than retaining an in-memory verdict.
+        for (let restart = 0; restart < 2; restart++) {
+          const selected = yield* status()
+          expect(selected.acceptance).toBe('Current')
+          expect(Option.getOrThrow(selected.latestAttempt)._tag).toBe(
+            outcome === 'fail' ? 'Failed' : outcome === 'reject' ? 'Rejected' : 'Accepted',
+          )
+          expect(
+            DataGraph.checkFreshness({
+              status: selected,
+              now: Option.getOrThrow(selected.head).lastConfirmedAt! + 100,
+              maxAge: 60_000,
+            }),
+          ).toBe(scenario.fresh)
+        }
+      }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+    { timeout: 60_000 },
+  )
+}
 
 it.effect(
   'rejects conflicting definitions before reusing a selected upstream status',
