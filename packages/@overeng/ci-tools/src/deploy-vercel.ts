@@ -46,6 +46,100 @@ import {
   writeGithubDeployOutputs,
 } from './deploy-io.ts'
 
+/** Finite CLI/API classifications, not retry policy or proof of an HTTP status. */
+export const vercelFailureKind = ({
+  stderr,
+}: {
+  readonly stderr: string
+}): 'rate_limited' | 'auth' | 'not_found' | 'timeout' | 'unknown' => {
+  // API codes: https://vercel.com/docs/rest-api/errors
+  // Deployment limits: https://vercel.com/docs/limits#rate-limits
+  if (
+    /rate[_ -]?limit|builds_rate_limited|creating deployments at a very fast pace/iu.test(
+      stderr,
+    ) === true
+  ) {
+    return 'rate_limited'
+  }
+  if (/unauthorized|forbidden|invalid token|not authorized/iu.test(stderr) === true) return 'auth'
+  if (/\bnot_found\b|project not found|could not find project|not linked/iu.test(stderr) === true)
+    return 'not_found'
+  if (/timed? ?out|timeout|ETIMEDOUT/iu.test(stderr) === true) return 'timeout'
+  return 'unknown'
+}
+
+// Diagnostic codes plus deployment-limit names from https://vercel.com/docs/limits#rate-limits.
+// A grammar alone also accepts private team/project slugs.
+const publishedVercelCodes: Record<string, true> = {
+  builds_rate_limited: true,
+  too_many_files: true,
+  forbidden: true,
+  missing_files: true,
+  cert_missing: true,
+  not_found: true,
+  missing_project_settings: true,
+  rate_limited: true,
+  'api-deployments-free-per-day': true,
+  'api-deployments-paid-per-day': true,
+  'api-deployments-enterprise-per-day': true,
+  'api-deployments-free-per-hour': true,
+  'api-deployments-paid-per-hour': true,
+  'api-deployments-enterprise-per-hour': true,
+  'api-deployments-flood': true,
+  'api-deployments-flood-pro': true,
+  'api-deployments-flood-enterprise': true,
+}
+
+/** Extract structured CLI fields only; provider prose must never enter public reports. */
+export const vercelFailureDiagnostics = (opts: {
+  readonly stderr: string
+  readonly secretValues: readonly string[]
+  readonly vercelErrorCode?: string | undefined
+  readonly httpStatus?: string | number | undefined
+  readonly retryAfter?: string | undefined
+  readonly failureKind?: 'rate_limited' | 'auth' | 'not_found' | 'timeout' | 'unknown' | undefined
+}) => {
+  // CLI 60.1.3: chunks/chunk-EWWFNMPZ.js renders Diagnostic as Error: [name].
+  // Deployment API messages also carry limit identifiers in code: "..." context.
+  const code = opts.stderr.match(/Error:\s*\[([^\]]*)\]|\bcode:\s*"([^"]*)"/u)
+  const candidate = opts.vercelErrorCode ?? code?.[1] ?? code?.[2]
+  const vercelErrorCode =
+    candidate === undefined
+      ? undefined
+      : /^[a-z0-9_-]{1,64}$/u.test(candidate) === true &&
+          Object.hasOwn(publishedVercelCodes, candidate) === true &&
+          opts.secretValues.some(
+            (secret) =>
+              secret.length > 0 &&
+              (candidate.includes(secret) === true || secret.includes(candidate) === true),
+          ) === false
+        ? candidate
+        : 'unrecognized'
+  const status =
+    opts.httpStatus === undefined
+      ? opts.stderr.match(
+          /\b(?:HTTP|httpStatus|status(?:Code| code)?)\b\s*[:=]?\s*([^\s,;)]+)/iu,
+        )?.[1]
+      : String(opts.httpStatus)
+  const retryAfter =
+    opts.retryAfter ?? opts.stderr.match(/\bretry[- ]?after\s*[:=]\s*([^\s,;)]+)/iu)?.[1]
+  const failureKind =
+    vercelErrorCode !== undefined && vercelErrorCode.startsWith('api-deployments-') === true
+      ? 'rate_limited'
+      : (opts.failureKind ??
+        vercelFailureKind({
+          stderr: redactDeployDiagnosticText(opts.stderr, { secretValues: opts.secretValues }),
+        }))
+  return {
+    failureKind,
+    ...(vercelErrorCode === undefined ? {} : { vercelErrorCode }),
+    ...(status !== undefined && /^[1-5]\d{2}$/u.test(status) === true
+      ? { httpStatus: status }
+      : {}),
+    ...(retryAfter !== undefined && /^\d+$/u.test(retryAfter) === true ? { retryAfter } : {}),
+  }
+}
+
 const decodeInputResult = Schema.decodeUnknownResult(DeployInputV1)
 const decodeDeployResult = Schema.decodeUnknownResult(DeployResultV1)
 
@@ -605,16 +699,12 @@ const classifyVercelFailure = (opts: {
   readonly authToken: string
   readonly operation: 'prepare' | 'deploy' | 'alias' | 'cleanup'
 }) => {
-  const sanitizedStderr = redactDeployDiagnosticText(opts.stderr, {
-    secretValues: [opts.authToken],
-  }).trim()
-  const sanitizedStdout = redactDeployDiagnosticText(opts.stdout, {
-    secretValues: [opts.authToken],
-  }).trim()
   const diagnostics = {
     exitCode: String(opts.status),
-    ...(sanitizedStderr.length === 0 ? {} : { stderr: sanitizedStderr }),
-    ...(sanitizedStdout.length === 0 ? {} : { stdout: sanitizedStdout }),
+    ...vercelFailureDiagnostics({
+      stderr: opts.stderr,
+      secretValues: [opts.authToken],
+    }),
   }
   if (/unauthorized|forbidden|invalid token|not authorized/iu.test(opts.stderr) === true) {
     return new Unauthorized({
