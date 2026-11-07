@@ -322,6 +322,7 @@ Bun's own WorkPool, not libuv's four-worker default: [link dispatch](https://git
 The bound is eight, capped by pool size. A failed chain stops only itself; its worker takes the next chain. Every worker settles before errors escape or the flock releases.
 Successful results and the first fatal error follow digest/path order, never completion order.
 Source check and link submission have no intervening await; post-link proof follows that file's completion.
+The blob recheck stays in the concurrent per-file task: moving it into sequential admission removes its overlap with in-flight links (Linux A/B: held +10.6%, recheck per file unchanged).
 Link is concurrent-phase wall time minus nonoverlapping synchronous blob/source/post-link segments, including link hooks/errors.
 At N=1 this equals summed per-file link-phase times; at N>1 it measures link wait (wall), not summed latency. Classified details plus nonnegative residual equal held wall time.
 
