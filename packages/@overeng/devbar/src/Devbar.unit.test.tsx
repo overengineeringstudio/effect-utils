@@ -326,6 +326,66 @@ describe('Devbar interaction', () => {
   )
 })
 
+describe('host-driven panels', () => {
+  const Driven = (): React.ReactNode => {
+    const [openPanel, setOpenPanel] = React.useState<string | undefined>(undefined)
+    return (
+      <Devbar
+        panels={panels}
+        panelControls="none"
+        panelElementId="drawer"
+        openPanel={openPanel}
+        onOpenPanelChange={setOpenPanel}
+        strip={
+          <button
+            type="button"
+            aria-expanded={openPanel === 'logs'}
+            onClick={() => setOpenPanel((open) => (open === 'logs' ? undefined : 'logs'))}
+          >
+            Meter
+          </button>
+        }
+        trailing={<button type="button">Version</button>}
+      />
+    )
+  }
+
+  it('renders no panel buttons, only host triggers and the trailing item', () => {
+    render(<Driven />)
+    expect(screen.queryByRole('button', { name: 'Toggle developer tools' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Logs' })).toBeNull()
+    expect(screen.queryByRole('tablist')).toBeNull()
+    expect(screen.getByRole('button', { name: 'Version' })).toBeTruthy()
+  })
+
+  it('opens from a host trigger onto tabs at a stable panel id', () => {
+    render(<Driven />)
+    pointerClick(screen.getByRole('button', { name: 'Meter' }))
+    expect(screen.getByRole('tab', { name: 'Logs' }).getAttribute('aria-selected')).toBe('true')
+    expect(screen.getByRole('tabpanel', { name: 'Logs' }).id).toBe('drawer')
+    expect(screen.getByRole('tab', { name: 'Logs' }).getAttribute('aria-controls')).toBe('drawer')
+    pointerClick(screen.getByRole('button', { name: 'Meter' }))
+    expect(screen.queryByRole('tabpanel')).toBeNull()
+  })
+
+  it('moves between tabs by keyboard and returns focus to the opener on close', () => {
+    render(<Driven />)
+    const meter = screen.getByRole('button', { name: 'Meter' })
+    act(() => meter.focus())
+    pointerClick(meter)
+    const tab = screen.getByRole('tab', { name: 'Logs' })
+    act(() => tab.focus())
+    fireEvent.keyDown(tab, { key: 'ArrowRight' })
+    const wrapped = screen.getByRole('tab', { name: /Performance/ })
+    expect(document.activeElement).toBe(wrapped)
+    expect(screen.getByRole('tabpanel', { name: 'Performance' })).toBeTruthy()
+    expect(meter.getAttribute('aria-expanded')).toBe('false')
+    fireEvent.keyDown(wrapped, { key: 'Escape' })
+    expect(screen.queryByRole('tabpanel')).toBeNull()
+    expect(document.activeElement).toBe(meter)
+  })
+})
+
 describe('Devbar composition and geometry', () => {
   it('orders the row as controls, strip, then host segments', () => {
     render(

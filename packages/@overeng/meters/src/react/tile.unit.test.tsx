@@ -58,7 +58,12 @@ const fixture = () => {
     aggregation: { _tag: 'Bucket', mode: 'Gauge', bucketMs: 250, buckets: 8, unit: 'count' },
     value: (value) => value.value,
   })
-  const view = (options: { readonly frozen?: MeterFreeze; readonly onCommit?: () => void }) => (
+  const view = (
+    options: Pick<React.ComponentProps<typeof MeterTile>, 'onActivate' | 'expanded' | 'controls'> & {
+      readonly frozen?: MeterFreeze
+      readonly onCommit?: () => void
+    },
+  ) => (
     <React.Profiler id="tile" onRender={() => options.onCommit?.()}>
       <MetersProvider meters={meters}>
         <MeterTile
@@ -66,6 +71,9 @@ const fixture = () => {
           block={block}
           theme={lightMeterTheme}
           frozen={options.frozen}
+          onActivate={options.onActivate}
+          expanded={options.expanded}
+          controls={options.controls}
           heightPx={30}
           platform={canvas.platform}
         />
@@ -80,7 +88,7 @@ const fixture = () => {
     series,
     block,
     /** Mount once, or re-render the same provider so the session keeps running. */
-    mount: (options: { readonly frozen?: MeterFreeze; readonly onCommit?: () => void } = {}) =>
+    mount: (options: Parameters<typeof view>[0] = {}) =>
       Effect.promise(() =>
         act(async () => {
           if (rendered === undefined) rendered = render(view(options))
@@ -310,6 +318,22 @@ describe('MeterTile', () => {
       fireEvent.mouseEnter(tile)
       expect(screen.getByRole('tooltip').textContent).toContain('Snapshot taken on hover')
       fireEvent.mouseLeave(tile)
+      expect(screen.queryByRole('tooltip')).toBeNull()
+    }),
+  )
+
+  it.effect('hands activation to the host as a disclosure, without an evidence card', () =>
+    Effect.gen(function* () {
+      const f = fixture()
+      const onActivate = vi.fn()
+      yield* f.mount({ onActivate, expanded: true, controls: 'drawer' })
+      const tile = screen.getByRole('button', { name: 'work' })
+      expect(tile.getAttribute('aria-expanded')).toBe('true')
+      expect(tile.getAttribute('aria-controls')).toBe('drawer')
+      act(() => tile.focus())
+      expect(screen.getByRole('tooltip')).toBeTruthy()
+      fireEvent.click(tile)
+      expect(onActivate).toHaveBeenCalledOnce()
       expect(screen.queryByRole('tooltip')).toBeNull()
     }),
   )

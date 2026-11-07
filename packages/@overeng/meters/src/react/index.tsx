@@ -112,6 +112,10 @@ export interface MeterStripProps {
   readonly frozen: boolean
   readonly onFrozenChange: (frozen: boolean) => void
   readonly onOpenDetail: (selection: { readonly id: string }) => void
+  /** Whether a meter's detail is open; present makes its overlay a disclosure button. */
+  readonly detailExpanded?: (selection: { readonly id: string }) => boolean
+  /** DOM id of the open detail element. */
+  readonly detailControls?: string
   readonly heightPx?: number
   readonly gapPx?: number
   readonly historyMs?: number
@@ -230,6 +234,10 @@ export const MeterStrip = (props: MeterStripProps): React.ReactNode => {
               type="button"
               aria-label={`${item.shortLabel ?? item.label} ${texts[index] ?? 'n/a (NoSamples)'}`}
               aria-describedby={`${descriptionId}-${index}`}
+              aria-expanded={props.detailExpanded?.({ id: item.id })}
+              aria-controls={
+                props.detailExpanded?.({ id: item.id }) === true ? props.detailControls : undefined
+              }
               onClick={() => props.onOpenDetail({ id: item.id })}
               onFocus={() => setInteraction({ _tag: 'Focus', id: item.id })}
               onBlur={() => setInteraction({ _tag: 'None' })}

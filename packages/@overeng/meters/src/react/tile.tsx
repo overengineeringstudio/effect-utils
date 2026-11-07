@@ -115,6 +115,12 @@ export interface MeterTileProps {
   readonly frozen?: MeterFreeze | undefined
   readonly heightPx?: number | undefined
   readonly platform?: CanvasPlatform | undefined
+  /** Host action on click, Enter or Space, such as opening a panel; it replaces the activation card. */
+  readonly onActivate?: (() => void) | undefined
+  /** Whether what `onActivate` controls is open; present makes the tile a disclosure button. */
+  readonly expanded?: boolean | undefined
+  /** DOM id of what `onActivate` controls, while expanded. */
+  readonly controls?: string | undefined
 }
 
 interface Captured {
@@ -216,7 +222,17 @@ export const MeterTile = (props: MeterTileProps): React.ReactNode => {
         title={block.label}
         aria-describedby={captured === undefined ? undefined : cardId}
         aria-keyshortcuts="R"
-        onClick={() => capture('Activation')}
+        aria-expanded={props.expanded}
+        aria-controls={props.expanded === true ? props.controls : undefined}
+        onClick={() => {
+          if (props.onActivate === undefined) {
+            capture('Activation')
+            return
+          }
+          // The card would sit over the panel this activation opens.
+          dismiss()
+          props.onActivate()
+        }}
         onFocus={() => capture('Focus')}
         onBlur={() => {
           if (hovered.current === false) setCaptured(undefined)
