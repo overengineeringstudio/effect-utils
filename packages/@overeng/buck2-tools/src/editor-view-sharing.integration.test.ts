@@ -35,6 +35,9 @@ import {
   repairEditorViewContentStore,
   defaultEditorViewContentStore,
   editorViewStagingCreatorIdentity,
+  editorViewSourceKey,
+  reuseEditorViewSourceFiles,
+  withEditorViewContentStoreLock,
   materializeEditorViewSourceFiles,
   shareSnapshotFiles,
 } from './editor-view-sharing.ts'
@@ -437,6 +440,139 @@ describe('host-wide editor snapshot content store', () => {
       await expect(
         shareSnapshotFiles({ candidate: candidate('next'), contentStore, preparedSources }),
       ).rejects.toThrow('prepared candidate changed')
+    })
+  })
+  it('bounds async links and preserves manifests, fallbacks and wall attribution', async () => {
+    await withStore(async ({ candidate, contentStore }) => {
+      for (let index = 0; index < 16; index++)
+        payload(candidate('seed'), `${index}`, `bytes-${index}`)
+      await shareSnapshotFiles({ candidate: candidate('seed'), contentStore })
+      const nativeLink = fsPromises.link
+      const outcomes = []
+      for (const linkConcurrency of [1, 8]) {
+        const files = Array.from({ length: 16 }, (_, index) => {
+          const digest = createHash('sha256').update(`bytes-${index}`).digest('hex')
+          const blob = blobPath(contentStore, `bytes-${index}`)
+          return {
+            path: join(candidate(`next-${linkConcurrency}`), `${index}`),
+            entry: {
+              sourceKey: '',
+              digest,
+              mode: 0o444,
+              blobKey: editorViewSourceKey(lstatSync(blob, { bigint: true })),
+            },
+          }
+        })
+        let active = 0,
+          maximum = 0
+        const gates: (() => void)[] = []
+        const spy = vi.spyOn(fsPromises, 'link').mockImplementation(async (source, destination) => {
+          maximum = Math.max(maximum, ++active)
+          const gate = Promise.withResolvers<void>()
+          gates.push(gate.resolve)
+          if (gates.length === linkConcurrency)
+            for (const resolve of gates.splice(0).toReversed()) resolve()
+          try {
+            await gate.promise
+            if (Number(basename(String(destination))) % 3 === 0)
+              throw Object.assign(new Error('EMLINK'), { code: 'EMLINK' })
+            await nativeLink(source, destination)
+          } finally {
+            active -= 1
+          }
+        })
+        const timings: Record<string, number> = {}
+        try {
+          const linked = await editorViewTimingContext.run(timings, reuseEditorViewSourceFiles, {
+            contentStore,
+            files,
+            linkConcurrency,
+          })
+          expect(maximum).toBe(linkConcurrency)
+          expect(active).toBe(0)
+          const manifest = [...linked].map((path) => ({
+            path: basename(path),
+            digest: createHash('sha256').update(readFileSync(path)).digest('hex'),
+            mode: lstatSync(path).mode & 0o777,
+          }))
+          const fallback = files
+            .filter(({ path }) => linked.has(path) === false)
+            .map(({ path }) => basename(path))
+          outcomes.push({ manifest, fallback })
+          const synchronous =
+            timings.casDirectReuseBlobRecheckMs! +
+            timings.casDirectReuseSourceRecheckMs! +
+            timings.casDirectReusePostLinkMs!
+          const classified =
+            synchronous + timings.casDirectReuseLinkMs! + timings.casDirectReuseDirectoryMs!
+          const residual = timings.casHeldMs! - classified
+          expect(residual).toBeGreaterThanOrEqual(0)
+          expect(classified + residual).toBeCloseTo(timings.casHeldMs!, 8)
+          expect(synchronous + timings.casDirectReuseLinkMs!).toBeLessThanOrEqual(
+            timings.casHeldMs! - timings.casDirectReuseDirectoryMs!,
+          )
+        } finally {
+          spy.mockRestore()
+        }
+      }
+      expect(outcomes[0]).toEqual(outcomes[1])
+    })
+  })
+
+  it('settles every link before releasing the lock and throws the first stable error', async () => {
+    await withStore(async ({ candidate, contentStore }) => {
+      payload(candidate('seed'), 'file', 'bytes')
+      await shareSnapshotFiles({ candidate: candidate('seed'), contentStore })
+      const blob = blobPath(contentStore, 'bytes')
+      const files = Array.from({ length: 8 }, (_, index) => ({
+        path: join(candidate('next'), `${index}`),
+        entry: {
+          sourceKey: '',
+          digest: basename(blob).slice(0, 64),
+          mode: 0o444,
+          blobKey: editorViewSourceKey(lstatSync(blob, { bigint: true })),
+        },
+      }))
+      const nativeLink = fsPromises.link
+      const started = Promise.withResolvers<void>(),
+        contended = Promise.withResolvers<void>()
+      const gates = files.map(() => Promise.withResolvers<void>())
+      let active = 0,
+        completed = 0
+      const spy = vi.spyOn(fsPromises, 'link').mockImplementation(async (source, destination) => {
+        if (++active === 8) started.resolve()
+        const index = Number(basename(String(destination)))
+        try {
+          await gates[index]!.promise
+          if (index < 2) throw new Error(`fatal-${index}`)
+          await nativeLink(source, destination)
+        } finally {
+          completed += 1
+        }
+      })
+      try {
+        const operation = reuseEditorViewSourceFiles({ contentStore, files, linkConcurrency: 8 })
+        const outcome = operation.then(
+          () => undefined,
+          (error: unknown) => error,
+        )
+        await Promise.race([started.promise, operation])
+        const contender = withEditorViewContentStoreLock({
+          contentStore,
+          afterStoreLockContended: contended.resolve,
+          run: async () => {
+            expect(completed).toBe(8)
+          },
+        })
+        await Promise.race([contended.promise, contender])
+        for (const gate of gates.toReversed()) gate.resolve()
+        expect(await outcome).toHaveProperty('message', 'fatal-0')
+        await contender
+        expect(completed).toBe(8)
+      } finally {
+        for (const gate of gates) gate.resolve()
+        spy.mockRestore()
+      }
     })
   })
 

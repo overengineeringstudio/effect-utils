@@ -316,6 +316,14 @@ lookups/address misses. Source and blob hashing stay outside CAS flock.
 `filesDirectLinkFallback` is a subset of normal outcomes; direct-linked plus fallback equals attempts.
 Direct reuse (including source-manifest reuse) reports five disjoint held-time
 details, aggregated per transaction:
+Shard admission is sequential; groups of at most eight async links run inside the unchanged 128-file transaction.
+Bun's own WorkPool, not libuv's four-worker default: [link dispatch](https://github.com/oven-sh/bun/blob/bun-v1.3.14/src/runtime/node/node_fs.zig#L42) →
+[pool sizing](https://github.com/oven-sh/bun/blob/bun-v1.3.14/src/threading/work_pool.zig#L11) → [CPU count or UV_THREADPOOL_SIZE/GOMAXPROCS](https://github.com/oven-sh/bun/blob/bun-v1.3.14/src/bun.zig#L3603-L3627).
+The bound is eight, capped by pool size. Every group settles before errors escape or the flock releases.
+Successful results and the first fatal error follow digest/path order, never completion order.
+Source check and link submission have no intervening await; post-link proof follows that file's completion.
+Link is concurrent-phase wall time minus nonoverlapping synchronous blob/source/post-link segments, including link hooks/errors.
+At N=1 this equals summed per-file link-phase times; at N>1 it measures link wait (wall), not summed latency. Classified details plus nonnegative residual equal held wall time.
 
 | Counter                         | Timed work                                                                                        |
 | ------------------------------- | ------------------------------------------------------------------------------------------------- |
