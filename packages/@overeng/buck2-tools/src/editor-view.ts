@@ -3521,6 +3521,10 @@ const publishEditorViewCoordinated = async ({
         casBlobInstallMs: 0,
         casViewLinkMs: 0,
         casDirectoryMs: 0,
+        casDirectReuseDirectoryMs: 0,
+        casDirectReuseBlobRecheckMs: 0,
+        casDirectReuseLinkMs: 0,
+        casDirectReusePostLinkMs: 0,
         filesLinked: 0,
         filesAlreadyShared: 0,
         blobsCreated: 0,
@@ -3684,6 +3688,10 @@ const publishEditorViewCoordinated = async ({
         'casViewLinkMs',
         'casDirectoryMs',
         'casRepairMs',
+        'casDirectReuseDirectoryMs',
+        'casDirectReuseBlobRecheckMs',
+        'casDirectReuseLinkMs',
+        'casDirectReusePostLinkMs',
       ].reduce((sum, phase) => sum + (payloadTimings[phase] ?? 0), 0)
       payloadTimings.casUnclassifiedMs = Math.max(
         0,

@@ -305,6 +305,23 @@ lookups/address misses. Source and blob hashing stay outside CAS flock.
 `filesDirectLinked` is disjoint from `filesReused` and normal sharing outcomes;
 `filesProcessed = filesDirectLinked + normal outcomes`; total is processed plus reused.
 `filesDirectLinkFallback` is a subset of normal outcomes; direct-linked plus fallback equals attempts.
+Direct reuse (including source-manifest reuse) reports four disjoint held-time
+details, aggregated per transaction:
+
+| Counter                       | Timed work                                                      |
+| ----------------------------- | --------------------------------------------------------------- |
+| `casDirectReuseDirectoryMs`   | Root/shard admission, including existence checks                |
+| `casDirectReuseBlobRecheckMs` | Blob lstat, verification key and inode/mode/owner checks        |
+| `casDirectReuseLinkMs`        | Candidate hardlink attempt, including recoverable link errors   |
+| `casDirectReusePostLinkMs`    | Post-link proof, verified-inode bookkeeping and reuse admission |
+
+These counters include their phase's test hook, record early exits/failures, and
+remain zero when no direct-reuse transaction runs. They exclude source/blob
+hashing, private-copy fallback, dirty-marker repair and directory restoration.
+`casViewLinkMs` continues to measure normal sharing substitution, not direct reuse.
+`casUnclassifiedMs` remains `max(0, casHeldMs - sum(classified held-time details))`,
+including these four counters exactly once. Summed per-file `hashFirstMs` is
+concurrent hash work, not a wall-clock phase or a component of `casHeldMs`.
 
 CI bootstrap writes a job-local `.devenv/editor-view-bootstrap-receipt.json`
 after successful publication. Repeated bootstrap in Unit tests reuses that

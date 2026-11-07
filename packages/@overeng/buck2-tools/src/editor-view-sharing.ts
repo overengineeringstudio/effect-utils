@@ -1446,46 +1446,82 @@ export const reuseEditorViewSourceFiles = async ({
     await withStoreLock({
       contentStore: store,
       run: async (directories) => {
-        for (const file of files.slice(index, index + batchSize)) {
-          // eslint-disable-next-line no-await-in-loop -- Directory handles are scoped to this exclusion.
-          const shard = await shardDirectory({
-            contentStore: store,
-            shard: file.entry.digest.slice(0, 2),
-            directories,
-            create: false,
-          })
-          if (shard === undefined) continue
-          const blob = join(
-            shard.path,
-            `${file.entry.digest}-${file.entry.mode === 0o444 ? '0444' : '0555'}`,
-          )
-          let status: BigIntStats
-          try {
-            beforeLink?.(blob, 'recheck')
-            status = lstatSync(blob, { bigint: true })
-          } catch (error) {
-            if (hasCode({ error, code: 'ENOENT' }) === true) continue
-            throw error
-          }
-          if (status.nlink < 1n || verificationKey(status) !== file.entry.blobKey) continue
-          requireBlob({ path: blob, status, mode: file.entry.mode })
-          try {
-            beforeLink?.(blob, 'link')
-            linkSync(blob, file.path)
-          } catch (error) {
-            if (
-              ['EXDEV', 'EMLINK', 'EPERM', 'ENOENT'].some((code) => hasCode({ error, code })) ===
-              true
+        // Aggregate once per transaction; no timing records or buffers scale with files.
+        const durations = {
+          casDirectReuseDirectoryMs: 0,
+          casDirectReuseBlobRecheckMs: 0,
+          casDirectReuseLinkMs: 0,
+          casDirectReusePostLinkMs: 0,
+        }
+        try {
+          for (const file of files.slice(index, index + batchSize)) {
+            const directoryAt = performance.now()
+            let shard: OpenDirectory | undefined
+            try {
+              // eslint-disable-next-line no-await-in-loop -- Directory handles are scoped to this exclusion.
+              shard = await shardDirectory({
+                contentStore: store,
+                shard: file.entry.digest.slice(0, 2),
+                directories,
+                create: false,
+              })
+            } finally {
+              durations.casDirectReuseDirectoryMs += performance.now() - directoryAt
+            }
+            if (shard === undefined) continue
+            const blob = join(
+              shard.path,
+              `${file.entry.digest}-${file.entry.mode === 0o444 ? '0444' : '0555'}`,
             )
-              continue
-            throw error
+            let status: BigIntStats
+            const recheckAt = performance.now()
+            try {
+              try {
+                beforeLink?.(blob, 'recheck')
+                status = lstatSync(blob, { bigint: true })
+              } catch (error) {
+                if (hasCode({ error, code: 'ENOENT' }) === true) continue
+                throw error
+              }
+              if (status.nlink < 1n || verificationKey(status) !== file.entry.blobKey) continue
+              requireBlob({ path: blob, status, mode: file.entry.mode })
+            } finally {
+              durations.casDirectReuseBlobRecheckMs += performance.now() - recheckAt
+            }
+            const linkAt = performance.now()
+            try {
+              try {
+                beforeLink?.(blob, 'link')
+                linkSync(blob, file.path)
+              } catch (error) {
+                if (
+                  ['EXDEV', 'EMLINK', 'EPERM', 'ENOENT'].some((code) =>
+                    hasCode({ error, code }),
+                  ) === true
+                )
+                  continue
+                throw error
+              }
+            } finally {
+              durations.casDirectReuseLinkMs += performance.now() - linkAt
+            }
+            const postLinkAt = performance.now()
+            try {
+              const linked = lstatSync(file.path, { bigint: true })
+              if (linked.nlink < 2n || unchanged({ left: status, right: linked }) === false)
+                fail(`reused blob changed while linking: ${blob}`)
+              remember({ status: linked, digest: file.entry.digest })
+              reused.add(file.path)
+              afterLink?.()
+            } finally {
+              durations.casDirectReusePostLinkMs += performance.now() - postLinkAt
+            }
           }
-          const linked = lstatSync(file.path, { bigint: true })
-          if (linked.nlink < 2n || unchanged({ left: status, right: linked }) === false)
-            fail(`reused blob changed while linking: ${blob}`)
-          remember({ status: linked, digest: file.entry.digest })
-          reused.add(file.path)
-          afterLink?.()
+        } finally {
+          const timings = editorViewTimingContext.getStore()
+          if (timings !== undefined)
+            for (const [phase, durationMs] of Object.entries(durations))
+              timings[phase] = (timings[phase] ?? 0) + durationMs
         }
       },
     })
