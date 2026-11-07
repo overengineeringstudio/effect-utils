@@ -1444,6 +1444,7 @@ export const reuseEditorViewSourceFiles = async ({
   beforeLink,
   afterLink,
   linkConcurrency = directLinkConcurrency,
+  afterLinkPhase,
 }: {
   readonly contentStore: string
   readonly files: readonly {
@@ -1455,6 +1456,7 @@ export const reuseEditorViewSourceFiles = async ({
   readonly beforeLink?: ((blob: string, phase: 'recheck' | 'link') => void) | undefined
   readonly afterLink?: (() => void) | undefined
   readonly linkConcurrency?: number
+  readonly afterLinkPhase?: (wallMs: number) => void
 }): Promise<Set<string>> => {
   const reused = new Set<string>()
   if (files.length === 0) return reused
@@ -1504,86 +1506,110 @@ export const reuseEditorViewSourceFiles = async ({
           }
           const phaseAt = performance.now()
           try {
-            for (let offset = 0; offset < admitted.length; offset += linkConcurrency) {
-              // eslint-disable-next-line no-await-in-loop -- Settle the bounded group before any error escapes.
-              const results = await Promise.allSettled(
-                admitted.slice(offset, offset + linkConcurrency).map(async ({ file, shard }) => {
-                  const blob = join(
-                    shard.path,
-                    `${file.entry.digest}-${file.entry.mode === 0o444 ? '0444' : '0555'}`,
-                  )
-                  let status: BigIntStats
-                  const recheckAt = performance.now()
+            const attempt = async ({ file, shard }: (typeof admitted)[number]) => {
+              const blob = join(
+                shard.path,
+                `${file.entry.digest}-${file.entry.mode === 0o444 ? '0444' : '0555'}`,
+              )
+              let status: BigIntStats
+              const recheckAt = performance.now()
+              try {
+                try {
+                  beforeLink?.(blob, 'recheck')
+                  status = lstatSync(blob, { bigint: true })
+                } catch (error) {
+                  if (hasCode({ error, code: 'ENOENT' }) === true) return
+                  throw error
+                }
+                if (status.nlink < 1n || verificationKey(status) !== file.entry.blobKey) return
+                requireBlob({ path: blob, status, mode: file.entry.mode })
+              } finally {
+                durations.casDirectReuseBlobRecheckMs += performance.now() - recheckAt
+              }
+              try {
+                beforeLink?.(blob, 'link')
+                if (file.source !== undefined) {
+                  const sourceRecheckAt = performance.now()
                   try {
-                    try {
-                      beforeLink?.(blob, 'recheck')
-                      status = lstatSync(blob, { bigint: true })
-                    } catch (error) {
-                      if (hasCode({ error, code: 'ENOENT' }) === true) return
-                      throw error
-                    }
-                    if (status.nlink < 1n || verificationKey(status) !== file.entry.blobKey) return
-                    requireBlob({ path: blob, status, mode: file.entry.mode })
-                  } finally {
-                    durations.casDirectReuseBlobRecheckMs += performance.now() - recheckAt
-                  }
-                  try {
-                    beforeLink?.(blob, 'link')
-                    if (file.source !== undefined) {
-                      const sourceRecheckAt = performance.now()
-                      try {
-                        if (
-                          sourceIdentityKey(lstatSync(file.source, { bigint: true })) !==
-                          file.sourceIdentity
-                        )
-                          return
-                      } finally {
-                        durations.casDirectReuseSourceRecheckMs +=
-                          performance.now() - sourceRecheckAt
-                      }
-                    }
-                    await link(blob, file.path)
-                  } catch (error) {
                     if (
-                      ['EXDEV', 'EMLINK', 'EPERM', 'ENOENT'].some((code) =>
-                        hasCode({ error, code }),
-                      ) === true
+                      sourceIdentityKey(lstatSync(file.source, { bigint: true })) !==
+                      file.sourceIdentity
                     )
                       return
-                    throw error
-                  }
-                  const postLinkAt = performance.now()
-                  try {
-                    const linked = lstatSync(file.path, { bigint: true })
-                    if (linked.nlink < 2n || unchanged({ left: status, right: linked }) === false)
-                      fail(`reused blob changed while linking: ${blob}`)
-                    remember({ status: linked, digest: file.entry.digest })
-                    return file.path
                   } finally {
-                    durations.casDirectReusePostLinkMs += performance.now() - postLinkAt
+                    durations.casDirectReuseSourceRecheckMs += performance.now() - sourceRecheckAt
+                  }
+                }
+                await link(blob, file.path)
+              } catch (error) {
+                if (
+                  ['EXDEV', 'EMLINK', 'EPERM', 'ENOENT'].some((code) =>
+                    hasCode({ error, code }),
+                  ) === true
+                )
+                  return
+                throw error
+              }
+              const postLinkAt = performance.now()
+              try {
+                const linked = lstatSync(file.path, { bigint: true })
+                if (linked.nlink < 2n || unchanged({ left: status, right: linked }) === false)
+                  fail(`reused blob changed while linking: ${blob}`)
+                remember({ status: linked, digest: file.entry.digest })
+                return file.path
+              } finally {
+                durations.casDirectReusePostLinkMs += performance.now() - postLinkAt
+              }
+            }
+            const chains = new Map<string, typeof admitted>()
+            for (const item of admitted) {
+              const key = `${item.file.entry.digest}-${item.file.entry.mode}`
+              const chain = chains.get(key) ?? []
+              chain.push(item)
+              chains.set(key, chain)
+            }
+            const outcomes = new Map<string, PromiseSettledResult<string | undefined>>()
+            const groups = [...chains.values()]
+            for (let offset = 0; offset < groups.length; offset += linkConcurrency) {
+              // eslint-disable-next-line no-await-in-loop -- Settle every blob chain before releasing the lock.
+              await Promise.allSettled(
+                groups.slice(offset, offset + linkConcurrency).map(async (chain) => {
+                  for (const item of chain) {
+                    try {
+                      outcomes.set(item.file.path, {
+                        status: 'fulfilled',
+                        // eslint-disable-next-line no-await-in-loop -- Stable order arbitrates each inode's hardlink slots.
+                        value: await attempt(item),
+                      })
+                    } catch (reason) {
+                      outcomes.set(item.file.path, { status: 'rejected', reason })
+                      break
+                    }
                   }
                 }),
               )
-              for (const result of results) {
-                if (result.status === 'rejected') throw result.reason
-                if (result.value !== undefined) {
-                  reused.add(result.value)
-                  const hookAt = performance.now()
-                  try {
-                    afterLink?.()
-                  } finally {
-                    durations.casDirectReusePostLinkMs += performance.now() - hookAt
-                  }
+            }
+            for (const { file } of admitted) {
+              const result = outcomes.get(file.path)
+              if (result?.status === 'rejected') throw result.reason
+              if (result?.value !== undefined) {
+                reused.add(result.value)
+                const hookAt = performance.now()
+                try {
+                  afterLink?.()
+                } finally {
+                  durations.casDirectReusePostLinkMs += performance.now() - hookAt
                 }
               }
             }
           } finally {
+            const wallMs = performance.now() - phaseAt
             durations.casDirectReuseLinkMs +=
-              performance.now() -
-              phaseAt -
+              wallMs -
               durations.casDirectReuseBlobRecheckMs -
               durations.casDirectReuseSourceRecheckMs -
               durations.casDirectReusePostLinkMs
+            afterLinkPhase?.(wallMs)
           }
         } finally {
           const timings = editorViewTimingContext.getStore()

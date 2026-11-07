@@ -442,30 +442,33 @@ describe('host-wide editor snapshot content store', () => {
       ).rejects.toThrow('prepared candidate changed')
     })
   })
+  const reuseFiles = (store: string, directory: string, count: number) =>
+    Array.from({ length: count }, (_, index) => {
+      const blob = blobPath(store, `bytes-${index % 8}`)
+      return {
+        path: join(directory, `${index}`),
+        entry: {
+          sourceKey: '',
+          digest: basename(blob).slice(0, 64),
+          mode: 0o444,
+          blobKey: editorViewSourceKey(lstatSync(blob, { bigint: true })),
+        },
+      }
+    })
   it('bounds async links and preserves manifests, fallbacks and wall attribution', async () => {
     await withStore(async ({ candidate, contentStore }) => {
-      for (let index = 0; index < 16; index++)
+      for (let index = 0; index < 8; index++)
         payload(candidate('seed'), `${index}`, `bytes-${index}`)
       await shareSnapshotFiles({ candidate: candidate('seed'), contentStore })
       const nativeLink = fsPromises.link
       const outcomes = []
       for (const linkConcurrency of [1, 8]) {
-        const files = Array.from({ length: 16 }, (_, index) => {
-          const digest = createHash('sha256').update(`bytes-${index}`).digest('hex')
-          const blob = blobPath(contentStore, `bytes-${index}`)
-          return {
-            path: join(candidate(`next-${linkConcurrency}`), `${index}`),
-            entry: {
-              sourceKey: '',
-              digest,
-              mode: 0o444,
-              blobKey: editorViewSourceKey(lstatSync(blob, { bigint: true })),
-            },
-          }
-        })
+        const files = reuseFiles(contentStore, candidate(`next-${linkConcurrency}`), 32)
         let active = 0,
           maximum = 0
         const gates: (() => void)[] = []
+        const used = new Map<string, number>()
+        let phaseWallMs = 0
         const spy = vi.spyOn(fsPromises, 'link').mockImplementation(async (source, destination) => {
           maximum = Math.max(maximum, ++active)
           const gate = Promise.withResolvers<void>()
@@ -474,8 +477,9 @@ describe('host-wide editor snapshot content store', () => {
             for (const resolve of gates.splice(0).toReversed()) resolve()
           try {
             await gate.promise
-            if (Number(basename(String(destination))) % 3 === 0)
-              throw Object.assign(new Error('EMLINK'), { code: 'EMLINK' })
+            const count = (used.get(String(source)) ?? 0) + 1
+            used.set(String(source), count)
+            if (count > 2) throw Object.assign(new Error('EMLINK'), { code: 'EMLINK' })
             await nativeLink(source, destination)
           } finally {
             active -= 1
@@ -487,6 +491,9 @@ describe('host-wide editor snapshot content store', () => {
             contentStore,
             files,
             linkConcurrency,
+            afterLinkPhase: (wallMs) => {
+              phaseWallMs += wallMs
+            },
           })
           expect(maximum).toBe(linkConcurrency)
           expect(active).toBe(0)
@@ -498,6 +505,7 @@ describe('host-wide editor snapshot content store', () => {
           const fallback = files
             .filter(({ path }) => linked.has(path) === false)
             .map(({ path }) => basename(path))
+          expect(fallback).toHaveLength(16)
           outcomes.push({ manifest, fallback })
           const synchronous =
             timings.casDirectReuseBlobRecheckMs! +
@@ -509,7 +517,7 @@ describe('host-wide editor snapshot content store', () => {
           expect(residual).toBeGreaterThanOrEqual(0)
           expect(classified + residual).toBeCloseTo(timings.casHeldMs!, 8)
           expect(synchronous + timings.casDirectReuseLinkMs!).toBeLessThanOrEqual(
-            timings.casHeldMs! - timings.casDirectReuseDirectoryMs!,
+            phaseWallMs + 1e-8,
           )
         } finally {
           spy.mockRestore()
@@ -521,18 +529,12 @@ describe('host-wide editor snapshot content store', () => {
 
   it('settles every link before releasing the lock and throws the first stable error', async () => {
     await withStore(async ({ candidate, contentStore }) => {
-      payload(candidate('seed'), 'file', 'bytes')
+      for (let index = 0; index < 8; index++)
+        payload(candidate('seed'), `${index}`, `bytes-${index}`)
       await shareSnapshotFiles({ candidate: candidate('seed'), contentStore })
-      const blob = blobPath(contentStore, 'bytes')
-      const files = Array.from({ length: 8 }, (_, index) => ({
-        path: join(candidate('next'), `${index}`),
-        entry: {
-          sourceKey: '',
-          digest: basename(blob).slice(0, 64),
-          mode: 0o444,
-          blobKey: editorViewSourceKey(lstatSync(blob, { bigint: true })),
-        },
-      }))
+      const files = reuseFiles(contentStore, candidate('next'), 8).toSorted((a, b) =>
+        a.entry.digest.localeCompare(b.entry.digest),
+      )
       const nativeLink = fsPromises.link
       const started = Promise.withResolvers<void>(),
         contended = Promise.withResolvers<void>()
@@ -563,7 +565,8 @@ describe('host-wide editor snapshot content store', () => {
         })
         await Promise.race([contended.promise, contender])
         for (const gate of gates.toReversed()) gate.resolve()
-        expect(await outcome).toHaveProperty('message', 'fatal-0')
+        const firstFatal = files.find(({ path }) => Number(basename(path)) < 2)!
+        expect(await outcome).toHaveProperty('message', `fatal-${basename(firstFatal.path)}`)
         await contender
         expect(completed).toBe(8)
       } finally {
