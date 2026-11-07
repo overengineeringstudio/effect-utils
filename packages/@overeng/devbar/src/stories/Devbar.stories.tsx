@@ -395,7 +395,7 @@ export const MeterDriven: Story = {
 
 export const MeterDrivenNarrow: Story = {
   render: () => (
-    <div {...stylex.props(styles.sample)} style={{ width: 240 }}>
+    <div {...stylex.props(styles.sample)} style={{ width: 160 }}>
       <MeterDrivenDevbar />
     </div>
   ),
