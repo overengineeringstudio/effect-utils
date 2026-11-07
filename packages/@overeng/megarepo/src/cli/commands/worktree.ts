@@ -8,9 +8,7 @@ import * as ChildProcess from 'effect/process/ChildProcess'
 import { Cwd } from '../context.ts'
 
 const worktree = Cli.Argument.String('worktree').pipe(
-  Cli.Argument.withDescription(
-    'Worktree or subdirectory; native Git identity resolution is authoritative',
-  ),
+  Cli.Argument.withDescription('Worktree or subdirectory, resolved by native Git'),
 )
 const optional = (name: string) => Cli.Flag.String(name).pipe(Cli.Flag.optional)
 const optionArgs = (name: string, value: Option.Option<string>): ReadonlyArray<string> =>
@@ -34,10 +32,7 @@ const runNative = Effect.fn('worktree.lease.native')(function* (args: ReadonlyAr
       stderr: 'inherit',
     },
   )
-  const code = yield* child.exitCode
-  yield* Effect.sync(() => {
-    process.exitCode = code
-  })
+  process.exitCode = yield* child.exitCode
 })
 const resolveNativePath = Effect.fn('worktree.lease.path')(function* (path: string) {
   const cwd = yield* Cwd
@@ -157,19 +152,13 @@ const reap = Cli.Command.make(
         ...command,
       ])
     }),
-).pipe(
-  Cli.Command.withDescription(
-    'Invoke an archive command for conservatively eligible managed worktrees',
-  ),
-)
+).pipe(Cli.Command.withDescription('Run an archive command for eligible managed worktrees'))
 
 export const worktreeCommand = Cli.Command.make('worktree').pipe(
   Cli.Command.withSubcommands([
     Cli.Command.make('lease').pipe(
       Cli.Command.withSubcommands([create, renew, inspect, guard, run, reap]),
-      Cli.Command.withDescription(
-        'Native per-worktree leases; JSON streams and child exit codes pass through',
-      ),
+      Cli.Command.withDescription('Native leases; JSON streams and exit codes pass through'),
     ),
   ]),
   Cli.Command.withDescription('Worktree lifecycle operations'),

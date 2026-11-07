@@ -140,7 +140,15 @@ let
     smokeTestArgs = [ "--version" ];
   };
   megarepoProviders = (import ./javascript-capability-providers.nix { lib = pkgs.lib; }) {
-    required = (builtins.fromJSON products.megarepo.descriptorContent).externalCapabilities;
+    required =
+      if products.megarepo.sourceImport != null then
+        [
+          "git"
+          "nix"
+          "worktree-lease"
+        ]
+      else
+        (builtins.fromJSON products.megarepo.descriptorContent).externalCapabilities;
     providers = {
       git = {
         capability = "git";
@@ -158,7 +166,9 @@ let
   };
   megarepo = mk "megarepo" {
     binaryName = "mr";
-    environment = megarepoProviders.environment // { CLI_BUILD_STAMP = buildStamp; };
+    environment = megarepoProviders.environment // {
+      CLI_BUILD_STAMP = buildStamp;
+    };
     expectedExternalCapabilities = megarepoProviders.capabilities;
     expectedProductKind = "cli";
     pathPackages = megarepoProviders.pathPackages;
