@@ -103,6 +103,9 @@ struct Args {
     worktree: PathBuf,
     #[arg(long, value_enum)]
     mode: Mode,
+    /// Validate the inherited exclusive fence instead of acquiring another lock.
+    #[arg(long)]
+    inherited: bool,
     #[arg(long = "try", required_unless_present = "await_seconds")]
     attempt: bool,
     #[arg(long = "await", conflicts_with = "attempt", value_name = "SECONDS")]
@@ -169,9 +172,22 @@ fn run(args: &Args) -> Result<i32> {
             }
         }
     }
-    let lease = Lease::open(Identity::resolve(&args.worktree)?)?;
+    let identity = Identity::resolve(&args.worktree)?;
+    let lease = if args.inherited {
+        let fd = std::env::var("WORKTREE_LEASE_LOCK_FD")
+            .ok()
+            .and_then(|value| value.parse().ok())
+            .ok_or(Refusal::UnsafeLock)?;
+        Lease::validate_inherited_exclusive(identity, fd)?
+    } else {
+        Lease::open(identity)?
+    };
     let start = Instant::now();
-    let mut acquired = lease.acquire(exclusive, false);
+    let mut acquired = if args.inherited {
+        Ok(())
+    } else {
+        lease.acquire(exclusive, false)
+    };
     if acquired == Err(Refusal::Busy) {
         if let Some(seconds) = args.await_seconds {
             WAITING.store(true, Ordering::SeqCst);
@@ -219,10 +235,27 @@ fn run(args: &Args) -> Result<i32> {
     lease.validate()?;
     let mut command = Command::new(&args.command[0]);
     command.args(&args.command[1..]).process_group(0);
+    let fence_fd = if exclusive || args.inherited {
+        let fd = lease.raw_fd();
+        command
+            .env("WORKTREE_LEASE_LOCK_FD", fd.to_string())
+            .env("WORKTREE_LEASE_WORKTREE", &lease.identity().worktree);
+        Some(fd)
+    } else {
+        command
+            .env_remove("WORKTREE_LEASE_LOCK_FD")
+            .env_remove("WORKTREE_LEASE_WORKTREE");
+        None
+    };
     // SAFETY: restore the inherited signal mask before executing the payload.
     unsafe {
         command.pre_exec(move || {
             libc::sigprocmask(libc::SIG_UNBLOCK, &blocked, std::ptr::null_mut());
+            if let Some(fd) = fence_fd {
+                if libc::fcntl(fd, libc::F_SETFD, 0) == -1 {
+                    return Err(std::io::Error::last_os_error());
+                }
+            }
             Ok(())
         });
     }
@@ -260,6 +293,9 @@ fn run(args: &Args) -> Result<i32> {
     let status = child.wait().map_err(|_| Refusal::UnsafeLock);
     if terminal {
         foreground(unsafe { libc::getpgrp() })?;
+    }
+    if !args.inherited {
+        lease.release()?;
     }
     CHILD.store(0, Ordering::SeqCst);
     if args.json {
