@@ -100,7 +100,10 @@ enum Mode {
 }
 #[derive(clap::Args)]
 struct Args {
-    #[arg(required_unless_present = "orphan_admin", conflicts_with = "orphan_admin")]
+    #[arg(
+        required_unless_present = "orphan_admin",
+        conflicts_with = "orphan_admin"
+    )]
     worktree: Option<PathBuf>,
     /// Scope exclusive mutation of an orphaned linked admin directory.
     #[arg(long)]
@@ -144,7 +147,10 @@ enum Cli {
     },
     /// Validate a caller-owned inherited exclusive fence; no authority survives this process.
     ValidateInherited {
-        #[arg(required_unless_present = "orphan_admin", conflicts_with = "orphan_admin")]
+        #[arg(
+            required_unless_present = "orphan_admin",
+            conflicts_with = "orphan_admin"
+        )]
         worktree: Option<PathBuf>,
         #[arg(long)]
         orphan_admin: Option<PathBuf>,
@@ -270,16 +276,14 @@ fn run(args: &Args) -> Result<i32> {
     command.args(&args.command[1..]).process_group(0);
     let fence_fd = if exclusive || args.inherited {
         let fd = lease.raw_fd();
-        command
-            .env("WORKTREE_LEASE_LOCK_FD", fd.to_string())
-            .env(
-                "WORKTREE_LEASE_WORKTREE",
-                if args.orphan_admin.is_some() {
-                    &lease.identity().admin
-                } else {
-                    &lease.identity().worktree
-                },
-            );
+        command.env("WORKTREE_LEASE_LOCK_FD", fd.to_string()).env(
+            "WORKTREE_LEASE_WORKTREE",
+            if args.orphan_admin.is_some() {
+                &lease.identity().admin
+            } else {
+                &lease.identity().worktree
+            },
+        );
         Some(fd)
     } else {
         command
