@@ -8,7 +8,7 @@ import {
   type BuildIdentity,
 } from '@overeng/utils/build-identity'
 
-import { AnchoredDisclosure } from './disclosure.tsx'
+import { AnchoredDisclosure, UnseenDot } from './disclosure.tsx'
 import { devbarTokens } from './tokens.stylex.ts'
 
 /** Optional build identity disclosure with a live or caller-supplied clock. */
@@ -19,6 +19,16 @@ export interface BuildIdentitySegmentProps {
   readonly now?: number | undefined
   readonly style?: StyleXStyles
   readonly disclosure?: BuildIdentityDisclosure | undefined
+  /** Activation owned by the host, such as opening a panel; takes precedence over `disclosure`. */
+  readonly action?: BuildIdentityAction | undefined
+}
+
+/** A host-controlled trigger: the host owns what opens and reports its expanded state. */
+export interface BuildIdentityAction {
+  readonly onActivate: () => void
+  readonly expanded: boolean
+  readonly controls?: string | undefined
+  readonly hasAlert?: boolean | undefined
 }
 
 /** Host-owned disclosure content and unseen state; rendering is lazy while open. */
@@ -110,6 +120,7 @@ const IdentityView = ({
   now,
   style,
   disclosure,
+  action,
 }: BuildIdentitySegmentProps & { readonly now: number }): React.ReactNode => {
   const tooltipId = React.useId()
   const triggerRef = React.useRef<HTMLButtonElement>(null)
@@ -147,7 +158,26 @@ const IdentityView = ({
       }}
       onMouseLeave={() => setHovered(false)}
     >
-      {disclosure === undefined ? (
+      {action !== undefined ? (
+        <button
+          ref={triggerRef}
+          type="button"
+          aria-label={`Build identity: ${short}${action.hasAlert === true ? ', unseen changes' : ''}`}
+          aria-expanded={action.expanded}
+          aria-controls={action.expanded === true ? action.controls : undefined}
+          aria-describedby={visible === true ? tooltipId : undefined}
+          onClick={action.onActivate}
+          onFocus={() => {
+            setFocused(true)
+            show()
+          }}
+          onBlur={() => setFocused(false)}
+          {...stylex.props(styles.trigger, styles.action)}
+        >
+          {short}
+          {action.hasAlert === true && <UnseenDot />}
+        </button>
+      ) : disclosure === undefined ? (
         <button
           ref={triggerRef}
           type="button"

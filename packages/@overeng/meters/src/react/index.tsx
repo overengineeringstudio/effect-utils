@@ -112,6 +112,12 @@ export interface MeterStripProps {
   readonly frozen: boolean
   readonly onFrozenChange: (frozen: boolean) => void
   readonly onOpenDetail: (selection: { readonly id: string }) => void
+  /** Whether a meter's detail is open; present makes its overlay a disclosure button. */
+  readonly detailExpanded?: (selection: { readonly id: string }) => boolean
+  /** DOM id of the open detail element. */
+  readonly detailControls?: string
+  /** Render the strip's own freeze button; defaults to true. Hosts without it own any freezing. */
+  readonly freezeControl?: boolean
   readonly heightPx?: number
   readonly gapPx?: number
   readonly historyMs?: number
@@ -230,6 +236,10 @@ export const MeterStrip = (props: MeterStripProps): React.ReactNode => {
               type="button"
               aria-label={`${item.shortLabel ?? item.label} ${texts[index] ?? 'n/a (NoSamples)'}`}
               aria-describedby={`${descriptionId}-${index}`}
+              aria-expanded={props.detailExpanded?.({ id: item.id })}
+              aria-controls={
+                props.detailExpanded?.({ id: item.id }) === true ? props.detailControls : undefined
+              }
               onClick={() => props.onOpenDetail({ id: item.id })}
               onFocus={() => setInteraction({ _tag: 'Focus', id: item.id })}
               onBlur={() => setInteraction({ _tag: 'None' })}
@@ -310,40 +320,42 @@ export const MeterStrip = (props: MeterStripProps): React.ReactNode => {
           </div>
         )}
       </div>
-      <button
-        type="button"
-        aria-label={props.frozen === true ? 'Resume meters' : 'Freeze meters'}
-        aria-pressed={props.frozen}
-        title={props.frozen === true ? 'Resume meters' : 'Freeze meters'}
-        onClick={() => props.onFrozenChange(props.frozen === false)}
-        style={{
-          display: 'inline-flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          flexShrink: 0,
-          width: 24,
-          height: 24,
-          padding: 0,
-          borderWidth: 0,
-          borderRadius: 4,
-          cursor: 'pointer',
-          color: props.frozen === true ? props.theme.foreground : props.theme.muted,
-          background: props.frozen === true ? props.theme.border : 'transparent',
-          outlineColor: props.theme.focus,
-          outlineOffset: -2,
-        }}
-      >
-        <svg aria-hidden="true" width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
-          {props.frozen === true ? (
-            <path d="M3 1.5v9l7.5-4.5z" />
-          ) : (
-            <>
-              <rect x="2.5" y="1.5" width="2.5" height="9" rx="0.5" />
-              <rect x="7" y="1.5" width="2.5" height="9" rx="0.5" />
-            </>
-          )}
-        </svg>
-      </button>
+      {props.freezeControl !== false && (
+        <button
+          type="button"
+          aria-label={props.frozen === true ? 'Resume meters' : 'Freeze meters'}
+          aria-pressed={props.frozen}
+          title={props.frozen === true ? 'Resume meters' : 'Freeze meters'}
+          onClick={() => props.onFrozenChange(props.frozen === false)}
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            flexShrink: 0,
+            width: 24,
+            height: 24,
+            padding: 0,
+            borderWidth: 0,
+            borderRadius: 4,
+            cursor: 'pointer',
+            color: props.frozen === true ? props.theme.foreground : props.theme.muted,
+            background: props.frozen === true ? props.theme.border : 'transparent',
+            outlineColor: props.theme.focus,
+            outlineOffset: -2,
+          }}
+        >
+          <svg aria-hidden="true" width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
+            {props.frozen === true ? (
+              <path d="M3 1.5v9l7.5-4.5z" />
+            ) : (
+              <>
+                <rect x="2.5" y="1.5" width="2.5" height="9" rx="0.5" />
+                <rect x="7" y="1.5" width="2.5" height="9" rx="0.5" />
+              </>
+            )}
+          </svg>
+        </button>
+      )}
     </div>
   )
 }

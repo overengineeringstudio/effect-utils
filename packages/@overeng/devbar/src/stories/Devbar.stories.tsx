@@ -286,6 +286,128 @@ export const Requests: Story = { args: { openPanel: 'requests' } }
 export const Logs: Story = { args: { openPanel: 'logs', strip: placeholderStrip, segments } }
 export const EmptyComposition: Story = { args: { panels: [] } }
 
+const meterGroups = {
+  fps: 'performance',
+  heap: 'performance',
+  latency: 'network',
+  errors: 'network',
+} as const
+type MeterId = keyof typeof meterGroups
+const meterDrawerPanels: readonly DevbarPanel[] = [
+  {
+    id: 'performance',
+    label: 'Performance',
+    render: () => <p {...stylex.props(styles.panelContent)}>Frames and heap</p>,
+  },
+  {
+    id: 'network',
+    label: 'Network',
+    render: () => <p {...stylex.props(styles.panelContent)}>Latency and errors</p>,
+  },
+  {
+    id: 'build',
+    label: 'Build',
+    render: () => <p {...stylex.props(styles.panelContent)}>Version and changes</p>,
+  },
+]
+const drawerPanelId = 'devbar-story-drawer'
+
+/** Meters and a trailing chip are the only way in; each reports the drawer's state on its own button. */
+const MeterDrivenDevbar = () => {
+  const [openPanel, setOpenPanel] = React.useState<string | undefined>(undefined)
+  const toggle = (panel: string) => setOpenPanel((open) => (open === panel ? undefined : panel))
+  const meter = (id: MeterId) => (
+    <button
+      type="button"
+      aria-label={`${id} meter`}
+      aria-expanded={openPanel === meterGroups[id]}
+      aria-controls={openPanel === meterGroups[id] ? drawerPanelId : undefined}
+      onClick={() => toggle(meterGroups[id])}
+    >
+      {id}
+    </button>
+  )
+  return (
+    <Devbar
+      panels={meterDrawerPanels}
+      panelControls="none"
+      panelElementId={drawerPanelId}
+      openPanel={openPanel}
+      onOpenPanelChange={setOpenPanel}
+      placement="container"
+      stripSizing="content"
+      segments={[
+        { id: 'fps', label: 'FPS', priority: 2, render: () => meter('fps') },
+        { id: 'heap', label: 'Heap', priority: 2, render: () => meter('heap') },
+        { id: 'latency', label: 'Latency', priority: 1, render: () => meter('latency') },
+        { id: 'errors', label: 'Errors', render: () => meter('errors') },
+      ]}
+      trailing={
+        <button
+          type="button"
+          aria-label="Build"
+          aria-expanded={openPanel === 'build'}
+          onClick={() => toggle('build')}
+        >
+          v1*
+        </button>
+      }
+    />
+  )
+}
+
+export const MeterDriven: Story = {
+  render: () => (
+    <div {...stylex.props(styles.sample)}>
+      <MeterDrivenDevbar />
+    </div>
+  ),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement)
+    await expect(canvas.queryByRole('button', { name: 'Toggle developer tools' })).toBeNull()
+    const fps = canvas.getByRole('button', { name: 'fps meter' })
+    await expect(fps).toHaveAttribute('aria-expanded', 'false')
+
+    await userEvent.click(fps)
+    await expect(fps).toHaveAttribute('aria-expanded', 'true')
+    await expect(canvas.getByRole('tab', { name: 'Performance' })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    )
+    await expect(canvas.getByRole('tabpanel', { name: 'Performance' })).toBeVisible()
+
+    canvas.getByRole('tab', { name: 'Performance' }).focus()
+    await userEvent.keyboard('{ArrowRight}')
+    await expect(canvas.getByRole('tab', { name: 'Network' })).toHaveFocus()
+    await expect(canvas.getByRole('tabpanel', { name: 'Network' })).toBeVisible()
+    await expect(fps).toHaveAttribute('aria-expanded', 'false')
+
+    await userEvent.keyboard('{Escape}')
+    await expect(canvas.queryByRole('tabpanel')).toBeNull()
+    await expect(fps).toHaveFocus()
+
+    await userEvent.keyboard('{Enter}')
+    await expect(canvas.getByRole('tabpanel', { name: 'Performance' })).toBeVisible()
+    await userEvent.click(fps)
+    await expect(canvas.queryByRole('tabpanel')).toBeNull()
+  },
+}
+
+export const MeterDrivenNarrow: Story = {
+  render: () => (
+    <div {...stylex.props(styles.sample)} style={{ width: 240 }}>
+      <MeterDrivenDevbar />
+    </div>
+  ),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement)
+    await waitFor(() =>
+      expect(canvas.getByRole('button', { name: /more status items/ })).toBeVisible(),
+    )
+    await expect(canvas.getByRole('button', { name: 'Build' })).toBeVisible()
+  },
+}
+
 export const AllStates: Story = {
   render: () => (
     <div {...stylex.props(styles.collection)}>
