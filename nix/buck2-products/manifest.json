@@ -69,20 +69,20 @@
       "version": "0.1.0"
     },
     {
-      "artifactUrl": "https://overeng-effect-utils.cachix.org/serve/mwg9mi5139s16ipxd4z6fk18jrmspmf7/overeng-data-graph.tgz",
+      "artifactUrl": "https://overeng-effect-utils.cachix.org/serve/pn6s8ayjpryf61y0wqf0l23jmvrd4n3d/overeng-data-graph.tgz",
       "name": "@overeng/data-graph",
       "provenance": {
-        "producerCommit": "9e34373dbab9ed3be14c1ef110fb3b4f5e51ee10",
-        "productDigest": "2a2f5612633989f01065c0f4fa34e1117e2b63b7f78e32220d834dd6b17a0621",
+        "producerCommit": "3761c058b223f418de436ba5af46c2435beb0f43",
+        "productDigest": "dbf58bb0e64c04f461e475f0712a46649bd8ea1bdf5f76894b18eb986c04aa80",
         "schema": "effect-utils/buck-product-provenance/v1",
         "target": "effect_utils//packages/@overeng/data-graph:dist-package"
       },
-      "recipeIdentity": "41471031b87ee8c070a6a3070e80bd1257bc5d7e0bbddb0d37d3248b1ed91141",
-      "sha256": "2a2f5612633989f01065c0f4fa34e1117e2b63b7f78e32220d834dd6b17a0621",
-      "size": 60162,
-      "sourceEvidenceSha256": "d357943def527dcf837c876defa0aad2eec501a3ac759447f1e79706dd9fb397",
-      "sourceEvidenceStorePath": "/nix/store/4h7wj3aqz0flqbvjyyjslqf91rfpywsp-overeng-data-graph-source-evidence",
-      "storePath": "/nix/store/mwg9mi5139s16ipxd4z6fk18jrmspmf7-overeng-data-graph-buck2-from-source-0.1.0",
+      "recipeIdentity": "3afd65c78a6744b4cf587c460e59b3a456782765e791cb35d34ab60570de02dd",
+      "sha256": "dbf58bb0e64c04f461e475f0712a46649bd8ea1bdf5f76894b18eb986c04aa80",
+      "size": 64122,
+      "sourceEvidenceSha256": "e9502624d26559040a53739cc7f06eb3b0078a93ef52c5cdfb645a6020193dce",
+      "sourceEvidenceStorePath": "/nix/store/s4lh3xgicwjf7xa7hq4qldqmympnf90f-overeng-data-graph-source-evidence",
+      "storePath": "/nix/store/pn6s8ayjpryf61y0wqf0l23jmvrd4n3d-overeng-data-graph-buck2-from-source-0.1.0",
       "version": "0.1.0"
     },
     {
