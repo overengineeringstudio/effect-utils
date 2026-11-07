@@ -68,6 +68,28 @@ export const vercelFailureKind = ({
   return 'unknown'
 }
 
+// Diagnostic codes plus deployment-limit names from https://vercel.com/docs/limits#rate-limits.
+// A grammar alone also accepts private team/project slugs.
+const publishedVercelCodes: Record<string, true> = {
+  builds_rate_limited: true,
+  too_many_files: true,
+  forbidden: true,
+  missing_files: true,
+  cert_missing: true,
+  not_found: true,
+  missing_project_settings: true,
+  rate_limited: true,
+  'api-deployments-free-per-day': true,
+  'api-deployments-paid-per-day': true,
+  'api-deployments-enterprise-per-day': true,
+  'api-deployments-free-per-hour': true,
+  'api-deployments-paid-per-hour': true,
+  'api-deployments-enterprise-per-hour': true,
+  'api-deployments-flood': true,
+  'api-deployments-flood-pro': true,
+  'api-deployments-flood-enterprise': true,
+}
+
 /** Extract structured CLI fields only; provider prose must never enter public reports. */
 export const vercelFailureDiagnostics = (opts: {
   readonly stderr: string
@@ -85,6 +107,7 @@ export const vercelFailureDiagnostics = (opts: {
     candidate === undefined
       ? undefined
       : /^[a-z0-9_-]{1,64}$/u.test(candidate) === true &&
+          Object.hasOwn(publishedVercelCodes, candidate) === true &&
           opts.secretValues.some(
             (secret) =>
               secret.length > 0 &&
@@ -101,8 +124,7 @@ export const vercelFailureDiagnostics = (opts: {
   const retryAfter =
     opts.retryAfter ?? opts.stderr.match(/\bretry[- ]?after\s*[:=]\s*([^\s,;)]+)/iu)?.[1]
   const failureKind =
-    vercelErrorCode !== undefined &&
-    /^api-deployments-.*-(?:day|hour|flood)$/u.test(vercelErrorCode) === true
+    vercelErrorCode !== undefined && vercelErrorCode.startsWith('api-deployments-') === true
       ? 'rate_limited'
       : (opts.failureKind ??
         vercelFailureKind({
@@ -680,12 +702,11 @@ const classifyVercelFailure = (opts: {
   const diagnostics = {
     exitCode: String(opts.status),
     ...vercelFailureDiagnostics({
-      stderr: `${opts.stderr}\n${opts.stdout}`,
+      stderr: opts.stderr,
       secretValues: [opts.authToken],
     }),
   }
-  const failureKind = diagnostics.failureKind
-  if (failureKind === 'auth') {
+  if (/unauthorized|forbidden|invalid token|not authorized/iu.test(opts.stderr) === true) {
     return new Unauthorized({
       provider: 'vercel',
       target: opts.target,
@@ -693,7 +714,11 @@ const classifyVercelFailure = (opts: {
       diagnostics,
     })
   }
-  if (failureKind === 'not_found') {
+  if (
+    /project not found|could not find project|not linked/iu.test(
+      `${opts.stderr}\n${opts.stdout}`,
+    ) === true
+  ) {
     return new ProviderProjectLookupFailed({
       provider: 'vercel',
       target: opts.target,

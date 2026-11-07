@@ -626,13 +626,18 @@ Vercel command failures and live-test logs publish only structured provider
 diagnostics: `failureKind` (`rate_limited`, `auth`, `not_found`, `timeout`,
 `unknown`), `vercelErrorCode`, `httpStatus` (100–599), and digit-only `retryAfter`
 when present, plus the existing exit/error/operation fields.
-Codes are extracted only from CLI `Error: [code]` or `code: "..."` contexts,
-validated against `^[a-z0-9_-]{1,64}$`, and replaced by `unrecognized` if invalid
-or overlapping a known credential. Structured report fields are revalidated
-before live-test publication. Provider stdout/stderr and free-text tails are
+Codes are extracted only from stderr CLI `Error: [code]` or `code: "..."`
+contexts, validated against `^[a-z0-9_-]{1,64}$` and an enumerated allowlist of
+known Diagnostic/API codes and documented deployment-limit names. Unknown,
+invalid, or credential-overlapping values become `unrecognized`; a grammar
+alone cannot distinguish a provider code from a private project slug.
+Structured report fields are revalidated before live-test publication.
+Provider stdout/stderr and free-text tails are
 never included in command failure diagnostics or live-test output: redaction
 alone cannot protect project/team names, account identities, URLs, or emails.
 Classification is diagnostic only and introduces no retry or skip policy.
+Error-class selection retains the original auth regex over stderr and project
+lookup regex over stderr plus stdout; `failureKind` never chooses the class.
 API code meanings follow the [Vercel error reference](https://vercel.com/docs/rest-api/errors);
 rate limits follow the [Vercel limits reference](https://vercel.com/docs/limits#rate-limits).
 

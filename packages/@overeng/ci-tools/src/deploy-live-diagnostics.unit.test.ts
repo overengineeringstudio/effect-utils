@@ -38,6 +38,8 @@ describe('live deploy failure diagnostics', () => {
     ['Error: [UPPERCASE code] Other failure', 'unknown', 'unrecognized'],
     ['Error: [fixturetokenabcdefghijkl] Other failure', 'unknown', 'unrecognized'],
     ['Error: [prefix-fixturetokenabcdefghijkl-suffix] Other failure', 'unknown', 'unrecognized'],
+    ['code: "my-team-slug"', 'unknown', 'unrecognized'],
+    ['code: "api-deployments-private-project-day"', 'unknown', 'unrecognized'],
   ])('publishes only structured diagnostics for %s', (stderr, failureKind, vercelErrorCode) => {
     const formatted = JSON.parse(
       formatLiveDeployFailure({
@@ -60,6 +62,18 @@ describe('live deploy failure diagnostics', () => {
       httpStatus: '429',
       retryAfter: '3600',
     })
+  })
+
+  it('rejects even an allowlisted code that overlaps a credential', () => {
+    const formatted = JSON.parse(
+      formatLiveDeployFailure({
+        status: 1,
+        includeProviderCause: true,
+        secretValues: ['forbidden'],
+        report: report({ stderr: 'Error: [forbidden] Request rejected' }),
+      }),
+    )
+    expect(formatted.vercelErrorCode).toBe('unrecognized')
   })
 
   it('revalidates structured report fields without publishing provider prose', () => {
