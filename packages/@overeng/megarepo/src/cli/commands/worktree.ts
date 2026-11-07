@@ -2,7 +2,6 @@ import { isAbsolute } from 'node:path'
 
 import { Effect, Option } from 'effect'
 import * as Cli from 'effect/cli'
-import * as FileSystem from 'effect/FileSystem'
 import * as ChildProcess from 'effect/process/ChildProcess'
 
 import { Cwd } from '../context.ts'
@@ -36,10 +35,8 @@ const runNative = Effect.fn('worktree.lease.native')(function* (args: ReadonlyAr
 })
 const resolveNativePath = Effect.fn('worktree.lease.path')(function* (path: string) {
   const cwd = yield* Cwd
-  const fs = yield* FileSystem.FileSystem
-  const absolute = isAbsolute(path) ? path : `${cwd}${path}`
-  // Preserve physical symlink/.. semantics. Unknown paths still reach native tagged refusal.
-  return yield* fs.realPath(absolute).pipe(Effect.orElseSucceed(() => absolute))
+  // Do not collapse symlink/.. components before native physical identity resolution.
+  return isAbsolute(path) ? path : `${cwd}${path}`
 })
 const runWorktree = Effect.fn('worktree.lease.resolve')(function* (
   operation: string,

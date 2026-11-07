@@ -45,7 +45,7 @@ exit "$LEASE_EXIT"
       invoke(['create', '.', '--purpose', 'gate', '--creator', 'agent/test', '--ttl', '60']),
     ).toEqual([
       'create',
-      root,
+      `${root}/.`,
       '--purpose',
       'gate',
       '--creator',
@@ -59,7 +59,7 @@ exit "$LEASE_EXIT"
     symlinkSync(join(root, 'physical/child'), join(root, 'alias'))
     expect(invoke(['inspect', 'alias/..', '--json'])).toEqual([
       'inspect',
-      join(root, 'physical'),
+      `${root}/alias/..`,
       '--json',
     ])
     expect(invoke(['inspect', 'child', '--json'])).toEqual([
@@ -74,7 +74,7 @@ exit "$LEASE_EXIT"
     ])
     expect(
       invoke(['renew', '.', '--holder-pid', '123', '--agent', 'agent/test', '--ttl', '60']),
-    ).toEqual(['renew', root, '--holder-pid', '123', '--ttl', '60', '--agent', 'agent/test'])
+    ).toEqual(['renew', `${root}/.`, '--holder-pid', '123', '--ttl', '60', '--agent', 'agent/test'])
     expect(
       invoke(['reap', '--common-dir', '.git', '--scheduled', '--', 'archive', '--yes']),
     ).toEqual(['reap', '--common-dir', join(root, '.git'), '--scheduled', '--', 'archive', '--yes'])
@@ -84,7 +84,18 @@ exit "$LEASE_EXIT"
           ['run', '.', '--mode', 'shared', '--try', '--json', '--', 'sh', '-c', 'exit 9'],
           code,
         ),
-      ).toEqual(['run', root, '--mode', 'shared', '--try', '--json', '--', 'sh', '-c', 'exit 9'])
+      ).toEqual([
+        'run',
+        `${root}/.`,
+        '--mode',
+        'shared',
+        '--try',
+        '--json',
+        '--',
+        'sh',
+        '-c',
+        'exit 9',
+      ])
     }
   } finally {
     rmSync(root, { recursive: true, force: true })
