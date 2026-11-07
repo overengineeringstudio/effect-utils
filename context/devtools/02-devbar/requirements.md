@@ -21,6 +21,8 @@ Decision references identify the confirmed choices captured by this VRS: Q1 canv
 ### Must compose without owning tools
 
 - **DT.BAR-R01 Anatomy:** The bottom row must be 32px high and ordered `[panel toggle + tabs] [canvas strip] [host segments]`; an open panel must appear above it without moving the row. Implements Q1 and mission anatomy.
+- **DT.BAR-R13 Host-driven panels:** A host may omit the toggle and panel buttons (`panelControls: 'none'`), opening panels from its own triggers. The open panel must then expose every panel as a keyboard-operable tab; trigger semantics (a name, expanded state, and panel relationship) are host-owned, and closing must return focus to the trigger that opened it. Implements Q7.
+- **DT.BAR-R14 Row placement:** A host may keep the strip at its stated width (`stripSizing: 'content'`) so segments follow it directly, and pin one item to the trailing end (`trailing`) that never joins segment overflow.
 - **DT.BAR-R02 Slots:** Hosts must explicitly supply all panels, the optional strip, and optional status/action segments. Empty slots must not install default tools or observations. Implements Q5.
 - **DT.BAR-R03 Independence:** Devbar must not import meters, RPC observer, RPC integration, or explorer packages. Tool content must enter through public composition slots. Implements Q3 and Q12–Q13.
 - **DT.BAR-R04 Shared measurement:** Devbar must not own an independent FPS observer or source-owning FPS component. Any FPS detail view must read the host's existing meter session. Implements Q3.
