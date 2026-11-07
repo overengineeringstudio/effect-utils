@@ -123,8 +123,16 @@ enum Cli {
     Reap {
         #[arg(long)]
         common_dir: PathBuf,
+        #[arg(long)]
+        scheduled: bool,
         #[arg(last = true, required = true)]
         command: Vec<std::ffi::OsString>,
+    },
+    /// Validate a caller-owned inherited exclusive fence; no authority survives this process.
+    ValidateInherited {
+        worktree: PathBuf,
+        #[arg(long)]
+        lock_fd: i32,
     },
     #[command(flatten)]
     Record(record_cli::Command),
@@ -276,11 +284,24 @@ fn main() {
     };
     let args = match cli {
         Cli::Run(args) => args,
+        Cli::ValidateInherited { worktree, lock_fd } => {
+            let result = Identity::resolve(&worktree)
+                .and_then(|identity| Lease::validate_inherited_exclusive(identity, lock_fd));
+            match result {
+                Ok(_scope) => println!(r#"{{"_tag":"Validated"}}"#),
+                Err(error) => {
+                    emit(error.tag(), error.tag(), None, None);
+                    std::process::exit(error.code());
+                }
+            }
+            return;
+        }
         Cli::Reap {
             common_dir,
+            scheduled,
             command,
         } => {
-            let result = worktree_lease::reap::reap(&common_dir, &command, |decision| {
+            let result = worktree_lease::reap::reap(&common_dir, scheduled, &command, |decision| {
                 println!(
                     "{}",
                     serde_json::to_string(&decision).expect("serializable decision")
