@@ -60,3 +60,24 @@ identity. This mode does not authorize deleting the worktree path.
 Like normal `guard`, the CLI returns an eligibility snapshot, not continuing
 authority after it exits. Rust callers performing mutation must retain the
 `guard::reclaim_orphan` lease through the operation, then drop it.
+
+### Scoped orphan mutation
+
+`run --mode exclusive --orphan-admin <common>/worktrees/<name> --try
+--agent unit/maintenance.service -- <command>` retains the same exclusive fence
+through the payload, which may delete the admin directory inside that scope.
+`--orphan-admin` conflicts with the positional worktree and rejects shared mode.
+Use `--await <seconds>` instead of `--try` to wait for the fence.
+All orphan resolver, retention, and record-evidence checks above apply, with
+identity and evidence revalidated under the lock before starting the payload.
+
+For this mode, `WORKTREE_LEASE_WORKTREE` contains the **canonical admin directory
+path**, not the missing worktree path from `gitdir`. `WORKTREE_LEASE_LOCK_FD`
+still names the inherited exclusive descriptor. Nested commands use
+`run --mode exclusive --inherited --orphan-admin <admin>
+--agent unit/maintenance.service -- <command>` or
+`validate-inherited --orphan-admin <admin> --lock-fd <n>`. Both validate the same
+orphan identity and evidence, fail closed on reattachment or a foreign fence,
+and must run before the payload deletes the admin directory. Environment values
+alone never authorize mutation, nor does this scope authorize deleting the
+former worktree path.
