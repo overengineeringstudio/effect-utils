@@ -71,6 +71,8 @@ fn hidden_processes_prevent_cwd_absence() {
         let info = format!("1 0 0:1 / /proc rw,{option} - proc proc rw\n");
         assert!(!proc_visible(&info));
     }
-    assert!(proc_visible("1 0 0:1 / /proc rw - proc proc rw,hidepid=0\n"));
+    assert!(proc_visible(
+        "1 0 0:1 / /proc rw - proc proc rw,hidepid=0\n"
+    ));
     assert!(!proc_visible("unreadable or malformed"));
 }
