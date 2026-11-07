@@ -1,6 +1,6 @@
 import { Result, Schema } from 'effect'
 
-import { vercelDiagnosticExcerpt, vercelFailureKind, vercelProviderCodes } from './deploy-vercel.ts'
+import { vercelFailureDiagnostics } from './deploy-vercel.ts'
 
 /** Captured child-process outcome retained until live deployment assertions finish. */
 export type LiveDeployProcessResult = {
@@ -46,6 +46,11 @@ const DiagnosticReport = Schema.fromJsonString(
           httpStatus: Schema.optional(Schema.Union([Schema.String, Schema.Finite])),
           exitCode: Schema.optional(Schema.String),
           stderr: Schema.optional(Schema.String),
+          failureKind: Schema.optional(
+            Schema.Literals(['rate_limited', 'auth', 'not_found', 'timeout', 'unknown']),
+          ),
+          vercelErrorCode: Schema.optional(Schema.String),
+          retryAfter: Schema.optional(Schema.String),
         }),
       ),
     }),
@@ -59,7 +64,7 @@ const httpStatus = (value: unknown) => {
   return status >= 100 && status <= 599 ? status : undefined
 }
 
-/** Publish finite classifications and, with explicit secrets, a redacted bounded stderr tail. */
+/** Publish only validated structured fields; never provider prose or identifiers. */
 export const formatLiveDeployFailure = (opts: {
   readonly status: LiveDeployProcessResult['status']
   readonly report: string | undefined
@@ -88,16 +93,11 @@ export const formatLiveDeployFailure = (opts: {
               exitCode !== undefined && /^\d{1,3}$/u.test(exitCode) === true
                 ? Number(exitCode)
                 : undefined,
-            providerErrorCodes: vercelProviderCodes({ stderr: data?.diagnostics?.stderr ?? '' }),
-            providerFailureKind: vercelFailureKind({ stderr: data?.diagnostics?.stderr ?? '' }),
-            ...(opts.secretValues === undefined
-              ? {}
-              : {
-                  providerDiagnostic: vercelDiagnosticExcerpt({
-                    text: data?.diagnostics?.stderr ?? '',
-                    secretValues: opts.secretValues,
-                  }),
-                }),
+            ...vercelFailureDiagnostics({
+              ...data?.diagnostics,
+              stderr: data?.diagnostics?.stderr ?? '',
+              secretValues: opts.secretValues ?? [],
+            }),
           }),
     },
     undefined,

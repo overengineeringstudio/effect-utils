@@ -622,11 +622,16 @@ Normal CI runs non-required live Netlify and Vercel E2E on pushes to `main`
 and eligible manual dispatches on `main` when secrets are available; the live job
 does not run for pull requests or merge groups.
 
-Vercel command failures retain redacted stderr/stdout tails (last 20 lines,
-at most 4096 characters each) and a finite `failureKind` diagnostic:
-`rate_limited`, `auth`, `not_found`, `timeout`, or `unknown`.
-The live test prints a bounded `providerDiagnostic` stderr tail on failure,
-redacted again with inherited Vercel credentials. Raw child output is not printed.
+Vercel command failures and live-test logs publish only structured provider
+diagnostics: `failureKind` (`rate_limited`, `auth`, `not_found`, `timeout`,
+`unknown`), `vercelErrorCode`, `httpStatus` (100–599), and digit-only `retryAfter`
+when present, plus the existing exit/error/operation fields.
+Codes are extracted only from CLI `Error: [code]` or `code: "..."` contexts,
+validated against `^[a-z0-9_-]{1,64}$`, and replaced by `unrecognized` if invalid
+or overlapping a known credential. Structured report fields are revalidated
+before live-test publication. Provider stdout/stderr and free-text tails are
+never included in command failure diagnostics or live-test output: redaction
+alone cannot protect project/team names, account identities, URLs, or emails.
 Classification is diagnostic only and introduces no retry or skip policy.
 API code meanings follow the [Vercel error reference](https://vercel.com/docs/rest-api/errors);
 rate limits follow the [Vercel limits reference](https://vercel.com/docs/limits#rate-limits).

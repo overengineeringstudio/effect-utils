@@ -870,9 +870,12 @@ exit 1
         errorKind: 'ProviderOperationFailed',
         retryable: false,
         attempts: 2,
+        diagnostics: { exitCode: '1', failureKind: 'unknown' },
       })
       expect(record.summary).toMatch(/alias/iu)
-      expect(JSON.stringify(record)).toContain('already in use')
+      expect(JSON.stringify(record)).not.toContain('already in use')
+      expect(record.data?.diagnostics).not.toHaveProperty('stderr')
+      expect(record.data?.diagnostics).not.toHaveProperty('stdout')
     } finally {
       rmSync(workspace.root, { recursive: true, force: true })
     }

@@ -68,40 +68,54 @@ export const vercelFailureKind = ({
   return 'unknown'
 }
 
-/** Redact before truncation so a credential crossing either boundary cannot leak a fragment. */
-export const vercelDiagnosticExcerpt = (opts: {
-  readonly text: string
-  readonly secretValues: readonly string[]
-}): string =>
-  redactDeployDiagnosticText(opts.text, { secretValues: opts.secretValues })
-    .trim()
-    .split(/\r?\n/u)
-    .slice(-20)
-    .join('\n')
-    .slice(-4096)
-
-// CLI Diagnostic renders names as "Error: [name] ...". Never expose arbitrary codes.
-const vercelErrorCodes: Record<string, true> = {
-  rate_limited: true,
-  builds_rate_limited: true,
-  too_many_files: true,
-  forbidden: true,
-  missing_files: true,
-  cert_missing: true,
-  not_found: true,
-  missing_project_settings: true,
-}
-
-/** Extract only known CLI Diagnostic codes, never arbitrary provider text. */
-export const vercelProviderCodes = ({
-  stderr,
-}: {
+/** Extract structured CLI fields only; provider prose must never enter public reports. */
+export const vercelFailureDiagnostics = (opts: {
   readonly stderr: string
-}): readonly string[] | undefined => {
-  const codes = [...stderr.matchAll(/Error:\s*\[([a-z][a-z0-9_]{1,63})\]/gu)]
-    .map((match) => match[1])
-    .filter((code): code is string => code !== undefined && Object.hasOwn(vercelErrorCodes, code))
-  return codes.length === 0 ? undefined : [...new Set(codes)].toSorted()
+  readonly secretValues: readonly string[]
+  readonly vercelErrorCode?: string | undefined
+  readonly httpStatus?: string | number | undefined
+  readonly retryAfter?: string | undefined
+  readonly failureKind?: 'rate_limited' | 'auth' | 'not_found' | 'timeout' | 'unknown' | undefined
+}) => {
+  // CLI 60.1.3: chunks/chunk-EWWFNMPZ.js renders Diagnostic as Error: [name].
+  // Deployment API messages also carry limit identifiers in code: "..." context.
+  const code = opts.stderr.match(/Error:\s*\[([^\]]*)\]|\bcode:\s*"([^"]*)"/u)
+  const candidate = opts.vercelErrorCode ?? code?.[1] ?? code?.[2]
+  const vercelErrorCode =
+    candidate === undefined
+      ? undefined
+      : /^[a-z0-9_-]{1,64}$/u.test(candidate) === true &&
+          opts.secretValues.some(
+            (secret) =>
+              secret.length > 0 &&
+              (candidate.includes(secret) === true || secret.includes(candidate) === true),
+          ) === false
+        ? candidate
+        : 'unrecognized'
+  const status =
+    opts.httpStatus === undefined
+      ? opts.stderr.match(
+          /\b(?:HTTP|httpStatus|status(?:Code| code)?)\b\s*[:=]?\s*([^\s,;)]+)/iu,
+        )?.[1]
+      : String(opts.httpStatus)
+  const retryAfter =
+    opts.retryAfter ?? opts.stderr.match(/\bretry[- ]?after\s*[:=]\s*([^\s,;)]+)/iu)?.[1]
+  const failureKind =
+    vercelErrorCode !== undefined &&
+    /^api-deployments-.*-(?:day|hour|flood)$/u.test(vercelErrorCode) === true
+      ? 'rate_limited'
+      : (opts.failureKind ??
+        vercelFailureKind({
+          stderr: redactDeployDiagnosticText(opts.stderr, { secretValues: opts.secretValues }),
+        }))
+  return {
+    failureKind,
+    ...(vercelErrorCode === undefined ? {} : { vercelErrorCode }),
+    ...(status !== undefined && /^[1-5]\d{2}$/u.test(status) === true
+      ? { httpStatus: status }
+      : {}),
+    ...(retryAfter !== undefined && /^\d+$/u.test(retryAfter) === true ? { retryAfter } : {}),
+  }
 }
 
 const decodeInputResult = Schema.decodeUnknownResult(DeployInputV1)
@@ -663,16 +677,14 @@ const classifyVercelFailure = (opts: {
   readonly authToken: string
   readonly operation: 'prepare' | 'deploy' | 'alias' | 'cleanup'
 }) => {
-  const secretValues = [opts.authToken]
-  const sanitizedStderr = vercelDiagnosticExcerpt({ text: opts.stderr, secretValues })
-  const sanitizedStdout = vercelDiagnosticExcerpt({ text: opts.stdout, secretValues })
-  const failureKind = vercelFailureKind({ stderr: `${sanitizedStderr}\n${sanitizedStdout}` })
   const diagnostics = {
     exitCode: String(opts.status),
-    failureKind,
-    ...(sanitizedStderr.length === 0 ? {} : { stderr: sanitizedStderr }),
-    ...(sanitizedStdout.length === 0 ? {} : { stdout: sanitizedStdout }),
+    ...vercelFailureDiagnostics({
+      stderr: `${opts.stderr}\n${opts.stdout}`,
+      secretValues: [opts.authToken],
+    }),
   }
+  const failureKind = diagnostics.failureKind
   if (failureKind === 'auth') {
     return new Unauthorized({
       provider: 'vercel',

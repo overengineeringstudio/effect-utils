@@ -27,106 +27,106 @@ describe('live deploy failure diagnostics', () => {
     })
   })
 
-  it('extracts only known codes from the pinned CLI Diagnostic error format', () => {
-    expect(
-      JSON.parse(
-        formatLiveDeployFailure({
-          status: 1,
-          includeProviderCause: true,
-          report: report({
-            exitCode: '1',
-            apiStatus: '429',
-            stderr:
-              'Vercel CLI 60.1.3\nError: [builds_rate_limited] private provider message\nError: [unknown_private_code] other text',
-          }),
-        }),
-      ),
-    ).toEqual({
-      exitStatus: 1,
-      errorKind: 'ProviderOperationFailed',
-      operation: 'deploy',
-      apiStatus: 429,
-      providerExitCode: 1,
-      providerErrorCodes: ['builds_rate_limited'],
-      providerFailureKind: 'rate_limited',
-    })
-  })
-
   it.each([
-    'private/token with spaces',
-    'private%2ftoken+with+spaces',
-    'private%2Ftoken%20with%20spaces',
-    String.raw`private\/token`,
-    String.raw`private-\"quoted\"-token`,
-    String.raw`\u0070\u0072\u0069\u0076\u0061\u0074\u0065`,
-    Buffer.from('private-token').toString('base64'),
-    'private_token_that_matches_code_grammar',
-    'split-private\nsentinel',
-  ])('never publishes free text with provider diagnostics enabled: %j', (secret) => {
-    expect(
-      JSON.parse(
-        formatLiveDeployFailure({
-          status: 1,
-          includeProviderCause: true,
-          report: report({
-            exitCode: '1-private',
-            stdout: secret,
-            stderr: `${secret}\nError: [${secret}] private\nError: private (${secret})`,
-            code: secret,
-          }),
-        }),
-      ),
-    ).toEqual({
-      exitStatus: 1,
-      errorKind: 'ProviderOperationFailed',
-      operation: 'deploy',
-      providerFailureKind: 'unknown',
-    })
-  })
-
-  it.each([
-    ['Error: [rate_limited] Too many requests', 'rate_limited'],
-    ['Error: [builds_rate_limited] Try again tomorrow', 'rate_limited'],
-    ['Error: [forbidden] Not authorized', 'auth'],
-    ['Error: [not_found] Resource unavailable', 'not_found'],
-    ['Error: request timed out', 'timeout'],
-    ['Error: Deployment rejected for another reason', 'unknown'],
-  ])('prints a redacted provider reason for %s', (stderr, kind) => {
+    [
+      'Error: Resource is limited (more than 100, code: "api-deployments-free-per-day")',
+      'rate_limited',
+      'api-deployments-free-per-day',
+    ],
+    ['Error: [forbidden] Not authorized', 'auth', 'forbidden'],
+    ['Error: [not_found] Resource unavailable', 'not_found', 'not_found'],
+    ['Error: [UPPERCASE code] Other failure', 'unknown', 'unrecognized'],
+    ['Error: [fixturetokenabcdefghijkl] Other failure', 'unknown', 'unrecognized'],
+    ['Error: [prefix-fixturetokenabcdefghijkl-suffix] Other failure', 'unknown', 'unrecognized'],
+  ])('publishes only structured diagnostics for %s', (stderr, failureKind, vercelErrorCode) => {
     const formatted = JSON.parse(
       formatLiveDeployFailure({
         status: 1,
         includeProviderCause: true,
-        secretValues: ['fixture-token', 'fixture-bypass'],
+        secretValues: ['fixturetokenabcdefghijkl'],
         report: report({
           exitCode: '1',
-          stderr: `${stderr}\ncredential fixture-token bypass fixture-bypass\nAuthorization: Bearer fixture-other\ntoken=fixture-param`,
+          stderr: `${stderr}\nteam private-team, owner person@example.invalid, https://private.example.invalid/project\nHTTP 429\nRetry-After: 3600`,
         }),
       }),
     )
-    expect(formatted.providerFailureKind).toBe(kind)
-    expect(formatted.providerDiagnostic).toBe(
-      `${stderr}\ncredential [REDACTED] bypass [REDACTED]\nAuthorization: Bearer [REDACTED]\ntoken=[REDACTED]`,
-    )
+    expect(formatted).toEqual({
+      exitStatus: 1,
+      errorKind: 'ProviderOperationFailed',
+      operation: 'deploy',
+      providerExitCode: 1,
+      failureKind,
+      vercelErrorCode,
+      httpStatus: '429',
+      retryAfter: '3600',
+    })
   })
 
-  it('redacts before bounding the last 20 lines and 4096 characters', () => {
-    const secret = `fixture-${'s'.repeat(4100)}`
-    const formatted = JSON.parse(
-      formatLiveDeployFailure({
-        status: 1,
-        includeProviderCause: true,
-        secretValues: [secret],
-        report: report({
-          stderr: `${'discarded\n'.repeat(25)}${'x'.repeat(5000)}\n${secret}\nError: deployment rejected`,
+  it('revalidates structured report fields without publishing provider prose', () => {
+    expect(
+      JSON.parse(
+        formatLiveDeployFailure({
+          status: 1,
+          includeProviderCause: true,
+          secretValues: ['fixture-token'],
+          report: report({
+            failureKind: 'rate_limited',
+            vercelErrorCode: 'api-deployments-free-per-day',
+            httpStatus: '429',
+            retryAfter: '300',
+            stdout: 'private-team person@example.invalid https://private.invalid',
+          }),
         }),
-      }),
-    )
-    expect(formatted.providerDiagnostic.length).toBe(4096)
-    expect(formatted.providerDiagnostic.split('\n').length <= 20).toBe(true)
-    expect(formatted.providerDiagnostic.includes('discarded')).toBe(false)
-    expect(formatted.providerDiagnostic.endsWith('[REDACTED]\nError: deployment rejected')).toBe(
-      true,
-    )
+      ),
+    ).toEqual({
+      exitStatus: 1,
+      errorKind: 'ProviderOperationFailed',
+      operation: 'deploy',
+      failureKind: 'rate_limited',
+      vercelErrorCode: 'api-deployments-free-per-day',
+      httpStatus: '429',
+      retryAfter: '300',
+    })
+  })
+
+  it.each(['HTTP 999\nRetry-After: 12-private', 'status: 429-secret\nRetry-After: tomorrow'])(
+    'omits malformed numeric CLI fields: %s',
+    (stderr) => {
+      expect(
+        JSON.parse(
+          formatLiveDeployFailure({
+            status: 1,
+            includeProviderCause: true,
+            report: report({ stderr }),
+          }),
+        ),
+      ).toEqual({
+        exitStatus: 1,
+        errorKind: 'ProviderOperationFailed',
+        operation: 'deploy',
+        failureKind: 'unknown',
+      })
+    },
+  )
+
+  it('does not treat a free token as a code', () => {
+    expect(
+      JSON.parse(
+        formatLiveDeployFailure({
+          status: 1,
+          includeProviderCause: true,
+          report: report({
+            stderr:
+              'fixturetokenabcdefghijkl private-team person@example.invalid https://private.invalid',
+          }),
+        }),
+      ),
+    ).toEqual({
+      exitStatus: 1,
+      errorKind: 'ProviderOperationFailed',
+      operation: 'deploy',
+      failureKind: 'unknown',
+    })
   })
 
   it('retains only secret-named inherited Vercel values for leak assertions', () => {
