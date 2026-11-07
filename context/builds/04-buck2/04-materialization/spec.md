@@ -304,9 +304,10 @@ follow stable digest/path order; reuse transactions still contain at most 128
 files. Immediately before each hash-first link, the source path's current
 verification key must match its hashed identity; a changed source is copied and
 its stale digest discarded. Hash failures are selected in target-path order.
-Per-view metadata is O(files): budget approximately 4 KiB per entry (two bigint
-stats, digest/proof strings, records and array references), excluding existing
-path-string storage and bounded hash buffers; this is an estimate, not an RSS cap.
+Per-view metadata retains compact proof strings, not bigint stats: a Bun 1.4.2
+40k-entry heap probe measured 474 bytes/entry (18.96 MB), excluding preallocated
+source/target paths and bounded hash buffers; this is not an RSS cap.
+The per-file source lstat inside the lock is charged to `casDirectReuseLinkMs`.
 Validated readonly CAS hits link directly into absent candidate paths: exact
 inode recheck, link and post-link proof share the GC exclusion. Blobs missing or
 replaced before the recheck and EXDEV/EMLINK/EPERM use the private-copy path.
