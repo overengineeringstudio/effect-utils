@@ -1360,7 +1360,7 @@ const extraJobs: Record<string, any> = {
       priority: deliveryJobPriority,
     }),
     'timeout-minutes': 5,
-    permissions: { contents: 'read' },
+    permissions: { contents: 'read', statuses: 'write' },
     defaults: bashShellDefaults,
     steps: [checkoutStep(), ...publishedRefSteps],
   },
