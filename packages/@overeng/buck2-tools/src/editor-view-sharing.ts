@@ -875,8 +875,10 @@ export const materializeEditorViewSourceFiles = async ({
   })
   const linked = await reuseEditorViewSourceFiles({
     contentStore,
-    files: hashed.flatMap(({ source, path, sourceKey, digest, mode, blobKey }) =>
-      blobKey === undefined ? [] : [{ source, path, entry: { sourceKey, digest, mode, blobKey } }],
+    files: hashed.flatMap(({ source, sourceIdentity, path, sourceKey, digest, mode, blobKey }) =>
+      blobKey === undefined
+        ? []
+        : [{ source, sourceIdentity, path, entry: { sourceKey, digest, mode, blobKey } }],
     ),
     beforeLink: beforeDirectLink,
     afterLink: afterDirectLink,
@@ -1440,6 +1442,7 @@ export const reuseEditorViewSourceFiles = async ({
   readonly files: readonly {
     readonly path: string
     readonly source?: string
+    readonly sourceIdentity?: string
     readonly entry: EditorViewSourceFile
   }[]
   readonly beforeLink?: ((blob: string, phase: 'recheck' | 'link') => void) | undefined
@@ -1505,10 +1508,10 @@ export const reuseEditorViewSourceFiles = async ({
             try {
               try {
                 beforeLink?.(blob, 'link')
-                // Check the source, not the absent candidate, after the whole-view preflight.
                 if (
                   file.source !== undefined &&
-                  verificationKey(lstatSync(file.source, { bigint: true })) !== file.entry.sourceKey
+                  sourceIdentityKey(lstatSync(file.source, { bigint: true })) !==
+                    file.sourceIdentity
                 )
                   continue
                 linkSync(blob, file.path)

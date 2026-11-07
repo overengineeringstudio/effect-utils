@@ -299,15 +299,9 @@ CAS addresses by digest plus normalized executable mode. A stable source stat
 through the end of the copy lets sharing consume that digest without hashing the
 candidate again; a source race discards the hint. The independent full candidate
 fingerprint comparison against the admitted roots remains mandatory.
-The complete view is preflighted in groups of four, then reuse and copy fallback
-follow stable digest/path order; reuse transactions still contain at most 128
-files. Immediately before each hash-first link, the source path's current
-verification key must match its hashed identity; a changed source is copied and
-its stale digest discarded. Hash failures are selected in target-path order.
-Per-view metadata retains compact proof strings, not bigint stats: a Bun 1.4.2
-40k-entry heap probe measured 474 bytes/entry (18.96 MB), excluding preallocated
-source/target paths and bounded hash buffers; this is not an RSS cap.
-The per-file source lstat inside the lock is charged to `casDirectReuseLinkMs`.
+Whole-view preflight runs four files at a time; reuse/copy follows digest/path order in ≤128-file transactions. Hash failures use target-path order.
+Before hash-first linking, full source identity (including ctime) must match preflight; races copy and discard stale digests. Source lstat is charged to `casDirectReuseLinkMs`.
+Compact proofs replace bigint stats: a Bun 1.4.2 40k-entry heap probe measured 474 bytes/entry (18.96 MB), excluding preallocated paths and bounded hash buffers; not an RSS cap.
 Validated readonly CAS hits link directly into absent candidate paths: exact
 inode recheck, link and post-link proof share the GC exclusion. Blobs missing or
 replaced before the recheck and EXDEV/EMLINK/EPERM use the private-copy path.
@@ -337,10 +331,7 @@ hashing, private-copy fallback, dirty-marker repair and directory restoration.
 `casUnclassifiedMs` remains `max(0, casHeldMs - sum(classified held-time details))`,
 including these four counters exactly once. Summed per-file `hashFirstMs` is
 concurrent hash work, not a wall-clock phase or a component of `casHeldMs`.
-`casDirectReuseAdmissionHits`/`casDirectReuseAdmissionCold` count files whose shard
-handle was already admitted / required cold admission in that transaction;
-the first cold admission also admits the root. Absence is never cached.
-These are counts, excluded from the held-time millisecond sum.
+`casDirectReuseAdmissionHits`/`casDirectReuseAdmissionCold` count files using admitted / cold-admitted shard handles (first cold also admits root); absence is never cached. Counts are excluded from held-time sums.
 
 CI bootstrap writes a job-local `.devenv/editor-view-bootstrap-receipt.json`
 after successful publication. Repeated bootstrap in Unit tests reuses that

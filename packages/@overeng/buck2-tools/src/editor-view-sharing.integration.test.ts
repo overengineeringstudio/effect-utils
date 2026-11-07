@@ -18,6 +18,7 @@ import {
   rmSync,
   symlinkSync,
   unlinkSync,
+  utimesSync,
   writeFileSync,
 } from 'node:fs'
 import * as fsPromises from 'node:fs/promises'
@@ -445,6 +446,11 @@ describe('host-wide editor snapshot content store', () => {
         await shareSnapshotFiles({ candidate: candidate('seed'), contentStore })
       }
       const source = payload(candidate('source'), 'file', 'original')
+      utimesSync(source, 1234567890, 1234567890)
+      if (hit === true) {
+        linkSync(source, `${source}.alias`)
+        chmodSync(source, 0o444)
+      }
       const destination = join(candidate('next'), 'file')
       const reusedFiles = new Set<string>()
       const preparedSources = await materializeEditorViewSourceFiles({
@@ -452,90 +458,89 @@ describe('host-wide editor snapshot content store', () => {
         files: [{ source, path: destination }],
         reusedFiles,
         afterSourceHash: () => {
-          if (hit === false) writeFileSync(source, 'changed')
+          if (hit === false) writeFileSync(source, 'modified')
         },
         beforeDirectLink: (_blob, phase) => {
-          if (phase === 'link') writeFileSync(source, 'changed')
+          if (phase !== 'link') return
+          const before = lstatSync(source, { bigint: true })
+          expect(before.nlink).toBe(2n)
+          chmodSync(source, 0o644)
+          writeFileSync(source, 'modified')
+          utimesSync(source, 1234567890, 1234567890)
+          chmodSync(source, 0o444)
+          expect(lstatSync(source, { bigint: true }).ctimeNs).not.toBe(before.ctimeNs)
         },
       })
       expect(reusedFiles.size).toBe(0)
       expect(preparedSources.has(destination)).toBe(false)
       await shareSnapshotFiles({ candidate: candidate('next'), contentStore, preparedSources })
-      expect(readFileSync(destination, 'utf8')).toBe('changed')
+      expect(readFileSync(destination, 'utf8')).toBe('modified')
       expectReadonlyStore(contentStore)
     })
   })
 
-  it.each([false, true])(
-    'orders whole-view reuse and fallback by digest then path (hit=%s)',
-    async (hit) => {
-      await withStore(async ({ candidate, contentStore }) => {
-        const contents = Array.from({ length: 8 }, (_, index) => `ordered shard ${index}`)
-        if (hit === true) {
-          for (const [index, bytes] of contents.entries())
-            payload(candidate('seed'), `${index}`, bytes)
-          await shareSnapshotFiles({ candidate: candidate('seed'), contentStore })
-        }
-        const files = Array.from({ length: 8 * 129 }, (_, index) => {
-          const bytes = contents[index % contents.length]!
-          const name = String(8 * 129 - index).padStart(4, '0')
-          return {
-            source: payload(candidate('source'), name, bytes),
-            path: join(candidate('next'), name),
-            bytes,
-          }
-        })
-        const timings: Record<string, number> = {}
-        const sizes: number[] = []
-        const shards: Set<string>[] = []
-        let hashed = 0
-        const prepared = await editorViewTimingContext.run(
-          timings,
-          materializeEditorViewSourceFiles,
-          {
-            contentStore,
-            files,
-            afterSourceHash: () => {
-              hashed += 1
-            },
-            beforeDirectLink: (blob, phase) => {
-              if (phase !== 'link') return
-              expect(hashed).toBe(files.length)
-              const transaction = timings.casTransactions! - 1
-              sizes[transaction] = (sizes[transaction] ?? 0) + 1
-              ;(shards[transaction] ??= new Set()).add(dirname(blob))
-            },
+  it.each([false, true])('orders reuse and fallback by digest/path (hit=%s)', async (hit) => {
+    await withStore(async ({ candidate, contentStore }) => {
+      const contents = Array.from({ length: 8 }, (_, index) => `ordered shard ${index}`)
+      if (hit === true) {
+        for (const [index, bytes] of contents.entries())
+          payload(candidate('seed'), `${index}`, bytes)
+        await shareSnapshotFiles({ candidate: candidate('seed'), contentStore })
+      }
+      const files = Array.from({ length: 8 * 129 }, (_, index) => ({
+        source: payload(candidate('source'), `${index}`, contents[index % contents.length]!),
+        path: join(candidate('next'), String(8 * 129 - index).padStart(4, '0')),
+        bytes: contents[index % contents.length]!,
+      }))
+      const timings: Record<string, number> = {}
+      const sizes: number[] = []
+      const shards: Set<string>[] = []
+      let hashed = 0
+      const prepared = await editorViewTimingContext.run(
+        timings,
+        materializeEditorViewSourceFiles,
+        {
+          contentStore,
+          files,
+          afterSourceHash: () => {
+            hashed += 1
           },
-        )
-        const expected = contents
-          .toSorted((a, b) => (blobPath(contentStore, a) < blobPath(contentStore, b) ? -1 : 1))
-          .flatMap((bytes) =>
-            files
-              .filter((file) => file.bytes === bytes)
-              .map((file) => file.path)
-              .sort(),
-          )
-        expect([...prepared.keys()]).toEqual(expected)
-        for (const file of files) expect(readFileSync(file.path, 'utf8')).toBe(file.bytes)
-        if (hit === true) {
-          expect(sizes).toEqual([...Array(8).fill(128), 8])
-          // Each sorted shard run has 129 files: 128 positions cannot cross two boundaries.
-          for (const batch of shards) expect(batch.size).toBeLessThanOrEqual(2)
-          const cold = shards.reduce((sum, batch) => sum + batch.size, 0)
-          expect(timings.casDirectReuseAdmissionCold).toBe(cold)
-          expect(timings.casDirectReuseAdmissionHits).toBe(files.length - cold)
-        }
-      })
-    },
-  )
+          beforeDirectLink: (blob, phase) => {
+            if (phase !== 'link') return
+            expect(hashed).toBe(files.length)
+            const transaction = timings.casTransactions! - 1
+            sizes[transaction] = (sizes[transaction] ?? 0) + 1
+            ;(shards[transaction] ??= new Set()).add(dirname(blob))
+          },
+        },
+      )
+      const expected = files
+        .toSorted((a, b) => {
+          const left = blobPath(contentStore, a.bytes),
+            right = blobPath(contentStore, b.bytes)
+          return left === right ? a.path.localeCompare(b.path) : left.localeCompare(right)
+        })
+        .map((file) => file.path)
+      expect([...prepared.keys()]).toEqual(expected)
+      for (const file of files) expect(readFileSync(file.path, 'utf8')).toBe(file.bytes)
+      if (hit === true) {
+        expect(sizes).toEqual([...Array(8).fill(128), 8])
+        // Each sorted shard run has 129 files: 128 positions cannot cross two boundaries.
+        for (const batch of shards) expect(batch.size).toBeLessThanOrEqual(2)
+        const cold = shards.reduce((sum, batch) => sum + batch.size, 0)
+        expect(timings.casDirectReuseAdmissionCold).toBe(cold)
+        expect(timings.casDirectReuseAdmissionHits).toBe(files.length - cold)
+      }
+    })
+  })
 
   it('reports preflight errors in target-path order, not completion or input order', async () => {
     await withStore(async ({ root, contentStore }) => {
       await expect(
         materializeEditorViewSourceFiles({
           contentStore,
-          files: ['b', 'a'].map((name) => ({
-            source: join(root, `missing-${name}`),
+          files: ['missing-b', 'missing-a'].map((name) => ({
+            source: join(root, name),
             path: join(root, name),
           })),
         }),
