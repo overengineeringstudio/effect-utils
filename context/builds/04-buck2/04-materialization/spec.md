@@ -277,6 +277,12 @@ mixed-shard transactions. Every transaction retains byte/inode checks, repair,
 and readonly restoration under the same flock. Per-view `[editor-view-payload]`
 diagnostics report `casTransactions` acquisitions and `casRepairMs` repair time
 inside the existing `casHeldMs` interval.
+Root/shard admission reuses handles already proved in that same held transaction
+before repeating existence I/O. Only successful admission is cached; absent
+directories are checked again and create-on-demand behavior is unchanged.
+The handle map is discarded after every transaction. First-open canonical-path,
+owner/mode and descriptor identity checks, plus final named-inode/0555 checks
+and readonly restoration, remain mandatory.
 Held-time details separate existing-blob lookup/verified-inode checks, new blob
 installation, candidate linking, and directory opening/readonly restoration;
 ordinary existing-blob byte verification remains in preflight outside the lock.
