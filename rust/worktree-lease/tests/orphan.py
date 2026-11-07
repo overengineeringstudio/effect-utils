@@ -4,7 +4,7 @@ with tempfile.TemporaryDirectory() as tmp:
     root = pathlib.Path(tmp).resolve()
     repo, tree = root / 'repo', root / 'tree'
     subprocess.check_call(['git', 'init', '-q', str(repo)])
-    subprocess.check_call(['git', '-C', str(repo), '-c', 'user.name=Test', '-c', 'user.email=test@example.org', 'commit', '--allow-empty', '-qm', 'initial'])
+    subprocess.check_call(['git', '-C', str(repo), '-c', 'core.hooksPath=/dev/null', '-c', 'commit.gpgsign=false', '-c', 'user.name=Test', '-c', 'user.email=test@example.org', 'commit', '--allow-empty', '-qm', 'initial'])
     subprocess.check_call(['git', '-C', str(repo), 'worktree', 'add', '-q', str(tree)])
     admin = repo / '.git/worktrees/tree'
     def guard(path=admin):
