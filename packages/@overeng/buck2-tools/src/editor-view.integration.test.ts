@@ -3192,16 +3192,10 @@ describe('editor view publisher', () => {
         }
         let directFailures = 0
         let substitutionFailures = 0
-        fsMocks.linkSync.mockImplementation((source, destination) => {
-          if (String(source).startsWith(`${options.contentStore}/`) === true) {
-            directFailures += 1
-            throw Object.assign(new Error(code), { code })
-          }
-          return nativeFs.linkSync(source, destination)
-        })
         fsPromisesMocks.link.mockImplementation(async (source, destination) => {
           if (String(source).startsWith(`${options.contentStore}/`) === true) {
-            substitutionFailures += 1
+            if (String(destination).includes('.share-') === true) substitutionFailures += 1
+            else directFailures += 1
             throw Object.assign(new Error(code), { code })
           }
           return nativeFsPromises.link(source, destination)
