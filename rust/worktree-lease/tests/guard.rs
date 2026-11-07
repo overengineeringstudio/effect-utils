@@ -171,3 +171,18 @@ fn orphan_scope_revalidates_reattachment() {
     fs::write(tree.join(".git"), format!("gitdir: {}", admin.display())).unwrap();
     assert_eq!(lease.validate(), Err(Refusal::Protected));
 }
+
+#[test]
+fn record_holder_capture_is_agent_only() {
+    let pid = std::process::id();
+    assert!(Holder::capture("agent/test".into(), pid).is_ok());
+    for actor in [
+        "unit/maintenance.service",
+        "launchd/org.example.maintenance",
+    ] {
+        assert_eq!(
+            Holder::capture(actor.into(), pid),
+            Err(Refusal::InvalidInput)
+        );
+    }
+}
