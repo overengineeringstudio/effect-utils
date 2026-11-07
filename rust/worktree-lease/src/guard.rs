@@ -1,8 +1,10 @@
 //! Reclamation requires both exclusive kernel authority and positively dead, expired evidence.
 use crate::{
-    record::{timestamp, Holder, Record},
+    record::{timestamp, Holder, PidNamespace, Record},
     Identity, Lease, Refusal, Result,
 };
+#[cfg(target_os = "linux")]
+use std::path::Path;
 use std::{fs, io, time::SystemTime};
 
 #[derive(Debug, PartialEq, Eq)]
@@ -10,6 +12,39 @@ pub enum ProcessState {
     Alive(String),
     Dead,
     Unknown,
+}
+#[cfg(target_os = "linux")]
+fn procfs_consistent(root: &Path) -> bool {
+    fs::read_link(root.join("self")).ok().and_then(|path| {
+        path.to_str()
+            .filter(|pid| !pid.starts_with('0') && pid.bytes().all(|byte| byte.is_ascii_digit()))
+            .and_then(|pid| pid.parse::<u32>().ok())
+    }) == Some(std::process::id())
+}
+#[cfg(target_os = "linux")]
+fn pid_namespace_at(root: &Path) -> Option<PidNamespace> {
+    use std::os::unix::fs::MetadataExt;
+    if !procfs_consistent(root) {
+        return None;
+    }
+    let metadata = fs::metadata(root.join("self/ns/pid")).ok()?;
+    Some(PidNamespace {
+        dev: metadata.dev(),
+        ino: metadata.ino(),
+    })
+}
+pub fn pid_namespace() -> Option<PidNamespace> {
+    #[cfg(target_os = "linux")]
+    {
+        pid_namespace_at(Path::new("/proc"))
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        None
+    }
+}
+fn same_namespace(holder: &Holder, namespace: Option<PidNamespace>) -> bool {
+    !cfg!(target_os = "linux") || (namespace.is_some() && holder.pid_namespace == namespace)
 }
 pub fn hostname() -> Result<String> {
     let mut bytes = [0u8; 256];
@@ -29,11 +64,18 @@ pub fn hostname() -> Result<String> {
 }
 #[cfg(target_os = "linux")]
 pub fn process(pid: u32) -> ProcessState {
-    let text = match fs::read_to_string(format!("/proc/{pid}/stat")) {
+    process_at(pid, Path::new("/proc"))
+}
+#[cfg(target_os = "linux")]
+fn process_at(pid: u32, root: &Path) -> ProcessState {
+    if !procfs_consistent(root) {
+        return ProcessState::Unknown;
+    }
+    let text = match fs::read_to_string(root.join(format!("{pid}/stat"))) {
         Ok(text) => text,
         Err(error)
             if error.kind() == io::ErrorKind::NotFound
-                && fs::read_to_string("/proc/self/stat").is_ok() =>
+                && fs::read_to_string(root.join("self/stat")).is_ok() =>
         {
             return ProcessState::Dead
         }
@@ -114,24 +156,44 @@ fn valid_start(start: &str) -> bool {
 }
 impl Holder {
     pub fn capture(agent: String, pid: u32) -> Result<Self> {
+        Self::capture_using(agent, pid, process, pid_namespace)
+    }
+    fn capture_using(
+        agent: String,
+        pid: u32,
+        probe: impl FnOnce(u32) -> ProcessState,
+        namespace: impl FnOnce() -> Option<PidNamespace>,
+    ) -> Result<Self> {
         if !agent.starts_with("agent/") || agent.len() <= 6 || pid == 0 || pid > i32::MAX as u32 {
             return Err(Refusal::InvalidInput);
         }
-        let ProcessState::Alive(start_time) = process(pid) else {
+        let ProcessState::Alive(start_time) = probe(pid) else {
             return Err(Refusal::UnsafeLock);
         };
+        let pid_namespace = namespace();
+        if cfg!(target_os = "linux") && pid_namespace.is_none() {
+            return Err(Refusal::UnsafeLock);
+        }
         Ok(Self {
             agent,
             pid,
             start_time,
             host: hostname()?,
+            pid_namespace,
         })
     }
 }
 /// Eligibility alone never authorizes mutation; retain the returned guard Lease through mutation.
-pub fn eligible(record: &Record, host: &str, now: SystemTime, state: &ProcessState) -> bool {
+pub fn eligible(
+    record: &Record,
+    host: &str,
+    now: SystemTime,
+    state: &ProcessState,
+    namespace: Option<PidNamespace>,
+) -> bool {
     record.validate().is_ok()
         && record.holder.host == host
+        && same_namespace(&record.holder, namespace)
         && valid_start(&record.holder.start_time)
         && timestamp(&record.expires_at)
             .is_ok_and(|expiry| expiry <= chrono::DateTime::<chrono::Utc>::from(now))
@@ -159,17 +221,50 @@ pub fn reclaim(identity: Identity) -> Result<Lease> {
     }
     if let Some(record) = Record::inspect(&lease.identity)? {
         let host = hostname()?;
-        if record.holder.host != host
-            || !eligible(
-                &record,
-                &host,
-                SystemTime::now(),
-                &process(record.holder.pid),
-            )
-        {
+        let namespace = pid_namespace();
+        let state = if record.holder.host == host && same_namespace(&record.holder, namespace) {
+            process(record.holder.pid)
+        } else {
+            ProcessState::Unknown
+        };
+        if !eligible(&record, &host, SystemTime::now(), &state, namespace) {
             return Err(Refusal::Protected);
         }
     }
     lease.validate()?;
     Ok(lease)
+}
+#[cfg(all(test, target_os = "linux"))]
+#[test]
+fn mismatched_procfs_refuses_holder_capture() {
+    use std::os::unix::fs::symlink;
+    let root = tempfile::tempdir().unwrap();
+    fs::create_dir_all(root.path().join("0/ns")).unwrap();
+    symlink("0", root.path().join("self")).unwrap();
+    fs::write(
+        root.path().join("0/stat"),
+        fs::read("/proc/self/stat").unwrap(),
+    )
+    .unwrap();
+    symlink("/proc/self/ns/pid", root.path().join("0/ns/pid")).unwrap();
+    assert!(fs::metadata(root.path().join("self/ns/pid")).is_ok());
+    assert_eq!(
+        process_at(std::process::id(), root.path()),
+        ProcessState::Unknown
+    );
+    assert_eq!(pid_namespace_at(root.path()), None);
+    for state in [
+        process_at(std::process::id(), root.path()),
+        ProcessState::Alive("1".into()),
+    ] {
+        assert_eq!(
+            Holder::capture_using(
+                "agent/test".into(),
+                std::process::id(),
+                |_| state,
+                || pid_namespace_at(root.path())
+            ),
+            Err(Refusal::UnsafeLock)
+        );
+    }
 }

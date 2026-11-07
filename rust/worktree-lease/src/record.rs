@@ -16,6 +16,14 @@ pub struct Holder {
     pub pid: u32,
     pub start_time: String,
     pub host: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pid_namespace: Option<PidNamespace>,
+}
+#[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct PidNamespace {
+    pub dev: u64,
+    pub ino: u64,
 }
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -157,9 +165,14 @@ impl Lease {
             return Err(Refusal::UnsafeLock);
         }
         self.validate()?;
+        let publication = Lease::open_named(self.identity.clone(), "gate-lease.publish.lock")?;
+        publication.acquire(true, true)?;
         let mut record = Record::inspect(&self.identity)?.ok_or(Refusal::InvalidInput)?;
         record.holder = holder;
-        record.expires_at = expiry(ttl)?;
+        let candidate = expiry(ttl)?;
+        if timestamp(&candidate)? > timestamp(&record.expires_at)? {
+            record.expires_at = candidate;
+        }
         record.publish(&self.identity, true)?;
         self.validate()?;
         Ok(record)

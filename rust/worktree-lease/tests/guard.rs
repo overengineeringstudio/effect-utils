@@ -1,13 +1,18 @@
 use std::{fs, process::Command, time::SystemTime};
 use worktree_lease::{
-    guard::{eligible, hostname, process, reclaim, ProcessState},
-    record::{Holder, Record},
+    guard::{eligible, hostname, pid_namespace, process, reclaim, ProcessState},
+    record::{Holder, PidNamespace, Record},
     Identity, Lease, Refusal,
 };
 
 #[test]
 fn death_matrix_and_kernel_veto() {
     let mut record: Record = serde_json::from_str(r#"{"schema":1,"creatorSeat":"agent/test","purpose":"gate","createdAt":"2000-01-01T00:00:00Z","expiresAt":"2001-01-01T00:00:00Z","holder":{"agent":"agent/test","pid":123,"startTime":"123","host":"test-host"}}"#).unwrap();
+    let namespace = pid_namespace();
+    record.holder.pid_namespace = namespace;
+    let eligible = |record: &Record, host: &str, now, state: &ProcessState| {
+        eligible(record, host, now, state, namespace)
+    };
     let previous = if cfg!(target_os = "linux") {
         "123"
     } else {
@@ -74,6 +79,21 @@ fn death_matrix_and_kernel_veto() {
     assert_eq!(process(record.holder.pid), ProcessState::Dead);
     fs::write(&path, serde_json::to_vec(&record).unwrap()).unwrap();
     assert!(reclaim(identity()).is_ok());
+    if cfg!(target_os = "linux") {
+        for unavailable in [None, Some(PidNamespace { dev: 0, ino: 0 })] {
+            record.holder.pid_namespace = unavailable;
+            fs::write(&path, serde_json::to_vec(&record).unwrap()).unwrap();
+            assert_eq!(reclaim(identity()).err(), Some(Refusal::Protected));
+        }
+        record.holder.pid_namespace = namespace;
+        assert!(!worktree_lease::guard::eligible(
+            &record,
+            &record.holder.host,
+            now,
+            &ProcessState::Dead,
+            None
+        ));
+    }
     for field in ["schema", "creatorSeat", "purpose", "createdAt"] {
         let mut bad = serde_json::to_value(&record).unwrap();
         bad[field] = if field == "schema" {
