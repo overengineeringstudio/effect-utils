@@ -1461,6 +1461,7 @@ export const reuseEditorViewSourceFiles = async ({
         const durations = {
           casDirectReuseDirectoryMs: 0,
           casDirectReuseBlobRecheckMs: 0,
+          casDirectReuseSourceRecheckMs: 0,
           casDirectReuseLinkMs: 0,
           casDirectReusePostLinkMs: 0,
         }
@@ -1505,15 +1506,22 @@ export const reuseEditorViewSourceFiles = async ({
               durations.casDirectReuseBlobRecheckMs += performance.now() - recheckAt
             }
             const linkAt = performance.now()
+            let sourceRecheckMs = 0
             try {
               try {
                 beforeLink?.(blob, 'link')
-                if (
-                  file.source !== undefined &&
-                  sourceIdentityKey(lstatSync(file.source, { bigint: true })) !==
-                    file.sourceIdentity
-                )
-                  continue
+                if (file.source !== undefined) {
+                  const sourceRecheckAt = performance.now()
+                  try {
+                    if (
+                      sourceIdentityKey(lstatSync(file.source, { bigint: true })) !==
+                      file.sourceIdentity
+                    )
+                      continue
+                  } finally {
+                    sourceRecheckMs = performance.now() - sourceRecheckAt
+                  }
+                }
                 linkSync(blob, file.path)
               } catch (error) {
                 if (
@@ -1525,7 +1533,8 @@ export const reuseEditorViewSourceFiles = async ({
                 throw error
               }
             } finally {
-              durations.casDirectReuseLinkMs += performance.now() - linkAt
+              durations.casDirectReuseSourceRecheckMs += sourceRecheckMs
+              durations.casDirectReuseLinkMs += performance.now() - linkAt - sourceRecheckMs
             }
             const postLinkAt = performance.now()
             try {

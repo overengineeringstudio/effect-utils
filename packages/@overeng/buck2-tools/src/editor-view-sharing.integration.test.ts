@@ -54,6 +54,7 @@ const sharingModule = new URL('./editor-view-sharing.ts', import.meta.url)
 const directReuseTimingPhases = [
   'casDirectReuseDirectoryMs',
   'casDirectReuseBlobRecheckMs',
+  'casDirectReuseSourceRecheckMs',
   'casDirectReuseLinkMs',
   'casDirectReusePostLinkMs',
 ] as const
