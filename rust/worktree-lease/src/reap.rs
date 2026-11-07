@@ -1,5 +1,5 @@
 //! Conservative recovery; the archive command retains its own consent and reference gates.
-use crate::{guard, record::Record, Identity, Lease, Refusal, Result};
+use crate::{guard, reap_safety as safety, record::Record, Identity, Lease, Refusal, Result};
 use std::{
     ffi::OsString,
     fs,
@@ -23,11 +23,25 @@ pub enum Decision {
     Eligible {
         worktree: std::path::PathBuf,
         archive_status: i32,
+        ignored_content: &'static str,
     },
     Retained {
         worktree: std::path::PathBuf,
         reason: &'static str,
     },
+}
+pub struct Candidate {
+    pub lease: Lease,
+    pub head: String,
+    pub branch: String,
+    pub directory: (u64, u64),
+}
+impl Candidate {
+    /// Recheck the directory fence and both keep markers immediately before mutation.
+    pub fn validate(&self) -> std::result::Result<(), &'static str> {
+        safety::handoff(&self.lease.identity, self.directory)?;
+        self.lease.validate().map_err(|_| "Retired")
+    }
 }
 fn git(identity: &Identity, args: &[&str]) -> std::result::Result<String, &'static str> {
     let mut command = Command::new("git");
@@ -66,6 +80,13 @@ fn no_cwd(worktree: &Path) -> bool {
     if guard::pid_namespace().is_none() {
         return false;
     }
+    let Ok(mountinfo) = fs::read_to_string("/proc/self/mountinfo") else {
+        return false;
+    };
+    // SAFETY: geteuid has no memory or ownership preconditions.
+    if !safety::proc_visible(&mountinfo, unsafe { libc::geteuid() }) {
+        return false;
+    }
     let Ok(entries) = fs::read_dir("/proc") else {
         return false;
     };
@@ -94,20 +115,15 @@ fn no_cwd(_: &Path) -> bool {
 
 /// Returns an exclusive scope plus the exact HEAD/branch that the archive command must recheck.
 /// No attribution record is not sufficient for reaper eligibility (unlike the general guard).
-pub fn candidate(
-    common: &Path,
-    path: &Path,
-) -> std::result::Result<(Lease, String, String), &'static str> {
+pub fn candidate(common: &Path, path: &Path) -> std::result::Result<Candidate, &'static str> {
     candidate_with_cwd(common, path, no_cwd)
 }
 fn candidate_with_cwd(
     common: &Path,
     path: &Path,
     cwd_absent: impl FnOnce(&Path) -> bool,
-) -> std::result::Result<(Lease, String, String), &'static str> {
-    if !fs::symlink_metadata(path).is_ok_and(|metadata| metadata.is_dir()) {
-        return Err("NotManagedChild");
-    }
+) -> std::result::Result<Candidate, &'static str> {
+    let directory = safety::pin(path)?;
     let identity = Identity::resolve(path).map_err(|_| "Unregistered")?;
     if identity.common != common
         || identity.worktree != path
@@ -116,6 +132,25 @@ fn candidate_with_cwd(
         return Err("NotManagedChild");
     }
     let lease = guard::reclaim(identity.clone()).map_err(|_| "Protected")?;
+    if git(
+        &identity,
+        &[
+            "status",
+            "--porcelain=v1",
+            "--ignored=matching",
+            "--untracked-files=normal",
+            "-z",
+        ],
+    )?
+    .split('\0')
+    .filter_map(|entry| entry.strip_prefix("!! "))
+    .filter_map(|path| Path::new(path.trim_end_matches('/')).file_name())
+    .any(|name| {
+        let name = name.as_bytes();
+        name == b".env" || name.starts_with(b".env.") || name.ends_with(b".local")
+    }) {
+        return Err("SensitiveIgnoredContent");
+    }
     let record = Record::inspect(&identity)
         .map_err(|_| "InvalidRecord")?
         .ok_or("MissingRecord")?;
@@ -166,8 +201,14 @@ fn candidate_with_cwd(
     if !cwd_absent(path) {
         return Err("CwdLiveOrUnknown");
     }
-    lease.validate().map_err(|_| "Retired")?;
-    Ok((lease, head.trim().into(), branch.into()))
+    let candidate = Candidate {
+        lease,
+        head: head.trim().into(),
+        branch: branch.into(),
+        directory,
+    };
+    candidate.validate()?;
+    Ok(candidate)
 }
 
 fn singleton(common: &Path) -> Result<fs::File> {
@@ -203,6 +244,15 @@ pub fn reap(
     command: &[OsString],
     mut emit: impl FnMut(Decision),
 ) -> Result<()> {
+    reap_with_cwd(common, scheduled, command, &mut emit, no_cwd)
+}
+fn reap_with_cwd(
+    common: &Path,
+    scheduled: bool,
+    command: &[OsString],
+    mut emit: impl FnMut(Decision),
+    cwd_absent: impl Fn(&Path) -> bool,
+) -> Result<()> {
     if command.is_empty() {
         return Err(Refusal::InvalidInput);
     }
@@ -224,17 +274,24 @@ pub fn reap(
     let mut attempts = 0;
     for path in paths.into_iter().take(64) {
         crate::schedule::examined(&common, &path)?;
-        match candidate(&common, &path) {
-            Ok((lease, head, branch)) => {
-                attempts += 1;
-                let fd = lease.file.as_raw_fd();
+        match candidate_with_cwd(&common, &path, &cwd_absent) {
+            Ok(candidate) => {
+                let fd = candidate.lease.file.as_raw_fd();
                 let mut archive = Command::new(&command[0]);
                 archive
                     .args(&command[1..])
                     .stdout(std::io::stderr())
                     .env("WORKTREE_LEASE_WORKTREE", &path)
-                    .env("WORKTREE_LEASE_EXPECT_HEAD", head)
-                    .env("WORKTREE_LEASE_EXPECT_BRANCH", branch)
+                    .env("WORKTREE_LEASE_EXPECT_HEAD", &candidate.head)
+                    .env("WORKTREE_LEASE_EXPECT_BRANCH", &candidate.branch)
+                    .env(
+                        "WORKTREE_LEASE_WORKTREE_DEV",
+                        candidate.directory.0.to_string(),
+                    )
+                    .env(
+                        "WORKTREE_LEASE_WORKTREE_INO",
+                        candidate.directory.1.to_string(),
+                    )
                     .env("WORKTREE_LEASE_LOCK_FD", fd.to_string());
                 // SAFETY: post-fork, only fcntl and allocation-free error construction; parent remains CLOEXEC.
                 unsafe {
@@ -245,10 +302,19 @@ pub fn reap(
                         Ok(())
                     });
                 }
+                if let Err(reason) = candidate.validate() {
+                    emit(Decision::Retained {
+                        worktree: path,
+                        reason,
+                    });
+                    continue;
+                }
+                attempts += 1;
                 let archive_status = archive.status().map_or(127, crate::exit_code);
                 emit(Decision::Eligible {
                     worktree: path,
                     archive_status,
+                    ignored_content: "disposable",
                 });
             }
             Err(reason) => emit(Decision::Retained {
@@ -264,7 +330,7 @@ pub fn reap(
 }
 #[cfg(all(test, target_os = "linux"))]
 #[test]
-fn expired_dead_clean_candidate_holds_exclusive_scope() {
+fn recovery_safety_and_failed_archive_rotation() {
     let root = tempfile::tempdir().unwrap();
     let status = Command::new("bash").arg("-c").arg(r#"
 set -eu
@@ -287,12 +353,100 @@ git worktree add --detach .git/gate-worktrees/candidate >/dev/null
     .unwrap();
     // Shared CI hosts cannot establish global cwd absence. Inject only that oracle;
     // every Git, record, identity and kernel-lock check still uses the real implementation.
-    let (scope, head, branch) = candidate_with_cwd(&common, &tree, |_| true).unwrap();
-    assert!(!head.is_empty());
-    assert!(branch.is_empty());
+    let candidate = candidate_with_cwd(&common, &tree, |_| true).unwrap();
+    assert!(!candidate.head.is_empty());
+    assert!(candidate.branch.is_empty());
     assert_eq!(
         Lease::open(identity.clone()).unwrap().acquire(false, false),
         Err(Refusal::Busy)
     );
-    drop(scope);
+    drop(candidate);
+    fs::write(
+        common.join("info/exclude"),
+        "node_modules/\n.env\n.env.*\n*.local\n",
+    )
+    .unwrap();
+    fs::create_dir(tree.join("node_modules")).unwrap();
+    fs::write(tree.join("node_modules/generated"), "disposable").unwrap();
+    assert!(candidate_with_cwd(&common, &tree, |_| true).is_ok());
+    for secret in [".env", ".env.secret", "settings.local", ".envrc.local"] {
+        fs::write(tree.join(secret), "sensitive").unwrap();
+        assert_eq!(
+            candidate_with_cwd(&common, &tree, |_| true).err(),
+            Some("SensitiveIgnoredContent")
+        );
+        fs::remove_file(tree.join(secret)).unwrap();
+    }
+    for marker in [
+        tree.join("reclaim-keep"),
+        identity.admin.join("reclaim-keep"),
+    ] {
+        let result = candidate_with_cwd(&common, &tree, |_| {
+            fs::write(&marker, "").unwrap();
+            true
+        });
+        assert_eq!(result.err(), Some("Protected"));
+        fs::remove_file(marker).unwrap();
+    }
+    let moved = common.join("relocated");
+    let result = candidate_with_cwd(&common, &tree, |_| {
+        fs::rename(&tree, &moved).unwrap();
+        std::os::unix::fs::symlink(&moved, &tree).unwrap();
+        true
+    });
+    assert_eq!(result.err(), Some("WorktreeChanged"));
+    fs::remove_file(&tree).unwrap();
+    fs::rename(moved, &tree).unwrap();
+    for index in 0..5 {
+        let path = common.join("gate-worktrees").join(format!("next-{index}"));
+        git(
+            &identity,
+            &["worktree", "add", "--detach", path.to_str().unwrap()],
+        )
+        .unwrap();
+        let admin = Identity::resolve(&path).unwrap().admin;
+        fs::write(
+            admin.join("gate-lease.json"),
+            serde_json::to_vec(&record).unwrap(),
+        )
+        .unwrap();
+    }
+    let log = root.path().join("attempts");
+    let command = [
+        "sh",
+        "-c",
+        r#"set -eu
+test -e "/proc/self/fd/$WORKTREE_LEASE_LOCK_FD"
+test "$(stat -c '%d:%i' "$WORKTREE_LEASE_WORKTREE")" = "$WORKTREE_LEASE_WORKTREE_DEV:$WORKTREE_LEASE_WORKTREE_INO"
+printf '%s\n' "$WORKTREE_LEASE_WORKTREE" >> "$1"
+case "${WORKTREE_LEASE_WORKTREE##*/}" in candidate|next-1) exit 7;; *) exit 0;; esac"#,
+        "archive",
+    ]
+    .map(OsString::from)
+    .into_iter()
+    .chain([log.clone().into_os_string()])
+    .collect::<Vec<_>>();
+    let mut statuses = Vec::new();
+    for _ in 0..2 {
+        reap_with_cwd(
+            &common,
+            false,
+            &command,
+            |decision| {
+                if let Decision::Eligible { archive_status, .. } = decision {
+                    assert!(matches!(archive_status, 0 | 7));
+                    statuses.push(archive_status);
+                }
+            },
+            |_| true,
+        )
+        .unwrap();
+    }
+    assert_eq!(statuses.len(), 8);
+    assert_eq!(&statuses[..2], &[7, 0]);
+    let log = fs::read_to_string(log).unwrap();
+    assert_eq!(
+        log.lines().collect::<std::collections::BTreeSet<_>>().len(),
+        6
+    );
 }

@@ -336,6 +336,11 @@ Passes take a common nonblocking singleton fence, rotate a sorted persisted curs
 The pass stops at the fourth archive attempt, including failures, leaving the next unattempted child at the start of the following rotated pass.
 `Lease::validate_inherited_exclusive(identity, fd)` duplicates a caller-owned FD with close-on-exec, checks the named lock inode, independently probes shared-lock contention, and requires successful nonblocking exclusive flock.
 `validate-inherited WORKTREE --lock-fd N` performs the same validation and emits `Validated`; invalid, closed, wrong-inode, unlocked or shared descriptors refuse. This observation leaves the caller's original fence untouched, but confers no scope after CLI exit.
+Ignored content in managed worktrees is disposable by policy: `Eligible` decisions include `ignored_content: "disposable"`. Matching ignored `.env`, `.env.*`, `*.local` and `.envrc.local` entries retain; ignored directories such as `node_modules` are treated as opaque disposable units rather than recursively inventoried.
+The directory's device/inode is pinned before probing and rechecked without following symlinks, along with both keep markers, immediately before handoff. The archive command receives `WORKTREE_LEASE_WORKTREE_DEV`/`WORKTREE_LEASE_WORKTREE_INO` and must recheck them before deleting.
+Archive command stdout is redirected to stderr: stdout is reserved for decision JSON. Only HEAD's containment in a remote ref is established here; stashes and other unpushed branches remain the archive command's responsibility.
+All `WORKTREE_LEASE_*` values are metadata, not authentication; consumers must validate the inherited fence. Descendants of the archive command can inherit and keep that fence after its direct child exits.
+Non-root Linux callers retain when mountinfo reports restricted process visibility (`hidepid`, `invisible`, `noaccess` or `subset=pid`); unreadable visibility evidence also retains.
 
 ### Work storage contract
 
