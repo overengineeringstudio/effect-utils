@@ -320,6 +320,9 @@ Release never removes the lock file. PDEATHSIG kills only the direct payload, no
 The Rust `record` API atomically creates schema-1 last-holder evidence in `gate-lease.json`, inspects bounded no-follow reads, and renews only through an acquired `Lease`.
 Renewal preserves the first creator, purpose and creation time; records are not a complete shared-holder registry and expiry never revokes a live flock.
 Creation holds a shared gate scope; publication rejects records over 65,536 bytes, syncs record bytes before atomic publication and syncs the admin directory before success. Unknown schema fields are malformed.
+Renewal serializes read/max/write using the separate, never-unlinked `gate-lease.publish.lock` sidecar; expiry never decreases, including concurrent shared publishers.
+Linux holders persist the device/inode of `/proc/self/ns/pid`; absent, unreadable or differing PID-namespace identity means unknown process state and retains legacy evidence rather than interpreting a PID in another namespace.
+Linux probes also require `readlink("/proc/self")` to match the caller's PID; mismatched procfs numbering is unknown, retaining records and refusing holder capture.
 `guard::reclaim` returns an exclusively held lease only for absent records or supported expired, same-host, positively dead holders; unknown identity and live kernel locks retain.
 Either `WORKTREE/reclaim-keep` or `ADMIN/reclaim-keep`, including unreadable marker state, retains the worktree. This eligibility guard does not establish clean-tree, reference or live-cwd deletion safety.
 The standalone CLI exposes `create WORKTREE --purpose gate|lander|ci-baseline --creator AGENT [--holder-pid PID] --ttl SECONDS`, `renew WORKTREE --holder-pid PID --agent AGENT --ttl SECONDS`, `inspect WORKTREE --json`, and `guard --git-dir ADMIN`.
