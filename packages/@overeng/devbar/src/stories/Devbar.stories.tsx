@@ -286,12 +286,29 @@ export const Requests: Story = { args: { openPanel: 'requests' } }
 export const Logs: Story = { args: { openPanel: 'logs', strip: placeholderStrip, segments } }
 export const EmptyComposition: Story = { args: { panels: [] } }
 
-const meterGroups = { fps: 'performance', heap: 'performance', latency: 'network', errors: 'network' } as const
+const meterGroups = {
+  fps: 'performance',
+  heap: 'performance',
+  latency: 'network',
+  errors: 'network',
+} as const
 type MeterId = keyof typeof meterGroups
 const meterDrawerPanels: readonly DevbarPanel[] = [
-  { id: 'performance', label: 'Performance', render: () => <p {...stylex.props(styles.panelContent)}>Frames and heap</p> },
-  { id: 'network', label: 'Network', render: () => <p {...stylex.props(styles.panelContent)}>Latency and errors</p> },
-  { id: 'build', label: 'Build', render: () => <p {...stylex.props(styles.panelContent)}>Version and changes</p> },
+  {
+    id: 'performance',
+    label: 'Performance',
+    render: () => <p {...stylex.props(styles.panelContent)}>Frames and heap</p>,
+  },
+  {
+    id: 'network',
+    label: 'Network',
+    render: () => <p {...stylex.props(styles.panelContent)}>Latency and errors</p>,
+  },
+  {
+    id: 'build',
+    label: 'Build',
+    render: () => <p {...stylex.props(styles.panelContent)}>Version and changes</p>,
+  },
 ]
 const drawerPanelId = 'devbar-story-drawer'
 
@@ -319,14 +336,19 @@ const MeterDrivenDevbar = () => {
       onOpenPanelChange={setOpenPanel}
       placement="container"
       stripSizing="content"
-      stripMinWidth={120}
-      strip={<span>{meter('fps')} {meter('heap')}</span>}
       segments={[
+        { id: 'fps', label: 'FPS', priority: 2, render: () => meter('fps') },
+        { id: 'heap', label: 'Heap', priority: 2, render: () => meter('heap') },
         { id: 'latency', label: 'Latency', priority: 1, render: () => meter('latency') },
         { id: 'errors', label: 'Errors', render: () => meter('errors') },
       ]}
       trailing={
-        <button type="button" aria-label="Build" aria-expanded={openPanel === 'build'} onClick={() => toggle('build')}>
+        <button
+          type="button"
+          aria-label="Build"
+          aria-expanded={openPanel === 'build'}
+          onClick={() => toggle('build')}
+        >
           v1*
         </button>
       }
@@ -348,7 +370,10 @@ export const MeterDriven: Story = {
 
     await userEvent.click(fps)
     await expect(fps).toHaveAttribute('aria-expanded', 'true')
-    await expect(canvas.getByRole('tab', { name: 'Performance' })).toHaveAttribute('aria-selected', 'true')
+    await expect(canvas.getByRole('tab', { name: 'Performance' })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    )
     await expect(canvas.getByRole('tabpanel', { name: 'Performance' })).toBeVisible()
 
     canvas.getByRole('tab', { name: 'Performance' }).focus()
@@ -376,7 +401,9 @@ export const MeterDrivenNarrow: Story = {
   ),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement)
-    await waitFor(() => expect(canvas.getByRole('button', { name: /more status items/ })).toBeVisible())
+    await waitFor(() =>
+      expect(canvas.getByRole('button', { name: /more status items/ })).toBeVisible(),
+    )
     await expect(canvas.getByRole('button', { name: 'Build' })).toBeVisible()
   },
 }

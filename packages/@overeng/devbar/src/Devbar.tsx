@@ -44,7 +44,10 @@ export interface DevbarProps {
   readonly strip?: React.ReactNode | undefined
   /** Minimum strip slot width in CSS pixels before the whole row scrolls; defaults to 160. */
   readonly stripMinWidth?: number | undefined
-  /** `fill` (default) grows the strip into free space; `content` keeps it at `stripMinWidth` so segments follow it directly. */
+  /**
+   * `fill` (default) grows the strip slot into free space, even when empty. `content` keeps it at
+   * `stripMinWidth` so segments follow it directly, and omits it entirely when there is no strip.
+   */
   readonly stripSizing?: 'fill' | 'content' | undefined
   readonly segments?: readonly DevbarSegment[] | undefined
   /** Host-owned item pinned to the row's trailing end; it never joins segment overflow. */
@@ -249,7 +252,8 @@ export const Devbar = ({
     const open = selectedId !== undefined
     if (open === true && wasOpen.current === false) {
       const focused = document.activeElement
-      opener.current = focused instanceof HTMLElement && focused !== document.body ? focused : undefined
+      opener.current =
+        focused instanceof HTMLElement && focused !== document.body ? focused : undefined
     }
     wasOpen.current = open
     if (open === false && restoreFocus.current === true) {
@@ -314,8 +318,16 @@ export const Devbar = ({
   }, [])
 
   const isOpen = selected !== undefined
+  const omitStrip = strip === undefined && stripSizing === 'content'
+  const reservedStripWidth = omitStrip === true ? 0 : stripMinWidth
   const tabbed = panelControls === 'none'
-  const moveTab = (event: React.KeyboardEvent<HTMLButtonElement>, index: number): void => {
+  const moveTab = ({
+    event,
+    index,
+  }: {
+    event: React.KeyboardEvent<HTMLButtonElement>
+    index: number
+  }): void => {
     const target =
       event.key === 'ArrowRight'
         ? (index + 1) % panels.length
@@ -369,7 +381,7 @@ export const Devbar = ({
                     aria-controls={panelId}
                     tabIndex={panel.id === selectedId ? 0 : -1}
                     onClick={() => propose({ next: panel.id })}
-                    onKeyDown={(event) => moveTab(event, index)}
+                    onKeyDown={(event) => moveTab({ event, index })}
                     {...stylex.props(styles.button, panel.id === selectedId && styles.active)}
                   >
                     {panel.label}
@@ -431,19 +443,21 @@ export const Devbar = ({
             })}
           </div>
         )}
-        <div
-          {...stylex.props(
-            styles.strip,
-            styles.stripWidth(stripMinWidth),
-            stripSizing === 'content' && styles.stripContentSized,
-          )}
-        >
-          <div {...stylex.props(styles.stripContent)}>{strip}</div>
-        </div>
+        {omitStrip === false && (
+          <div
+            {...stylex.props(
+              styles.strip,
+              styles.stripWidth(stripMinWidth),
+              stripSizing === 'content' && styles.stripContentSized,
+            )}
+          >
+            <div {...stylex.props(styles.stripContent)}>{strip}</div>
+          </div>
+        )}
         {segments !== undefined && segments.length > 0 && (
           <SegmentGroup
             segments={segments}
-            stripMinWidth={stripMinWidth}
+            stripMinWidth={reservedStripWidth}
             controlsRef={controlsRef}
             trailingRef={trailingRef}
           />

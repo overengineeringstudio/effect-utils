@@ -327,6 +327,30 @@ describe('Devbar interaction', () => {
 })
 
 describe('host-driven panels', () => {
+  it('omits an empty strip slot when the strip is content-sized', () => {
+    const { rerender } = render(
+      <Devbar
+        panels={panels}
+        panelControls="none"
+        openPanel={undefined}
+        onOpenPanelChange={() => {}}
+        stripSizing="content"
+        segments={segments}
+      />,
+    )
+    expect(bar().children).toHaveLength(1)
+    rerender(
+      <Devbar
+        panels={panels}
+        panelControls="none"
+        openPanel={undefined}
+        onOpenPanelChange={() => {}}
+        segments={segments}
+      />,
+    )
+    expect(bar().children).toHaveLength(2)
+  })
+
   const Driven = (): React.ReactNode => {
     const [openPanel, setOpenPanel] = React.useState<string | undefined>(undefined)
     return (

@@ -59,7 +59,10 @@ const fixture = () => {
     value: (value) => value.value,
   })
   const view = (
-    options: Pick<React.ComponentProps<typeof MeterTile>, 'onActivate' | 'expanded' | 'controls'> & {
+    options: Pick<
+      React.ComponentProps<typeof MeterTile>,
+      'onActivate' | 'expanded' | 'controls'
+    > & {
       readonly frozen?: MeterFreeze
       readonly onCommit?: () => void
     },
