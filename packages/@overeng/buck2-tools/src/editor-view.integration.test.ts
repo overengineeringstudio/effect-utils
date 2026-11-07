@@ -3149,6 +3149,24 @@ describe('editor view publisher', () => {
       expect(counters.filesHashFirstAttempts).toBe(
         counters.filesDirectLinked + counters.filesDirectLinkFallback,
       )
+      const directPhases = [
+        'casDirectReuseDirectoryMs',
+        'casDirectReuseBlobRecheckMs',
+        'casDirectReuseLinkMs',
+        'casDirectReusePostLinkMs',
+      ]
+      for (const phase of directPhases) expect(counters[phase]).toBeGreaterThanOrEqual(0)
+      const classifiedMs = [
+        ...directPhases,
+        'casExistingBlobVerifyMs',
+        'casBlobInstallMs',
+        'casViewLinkMs',
+        'casDirectoryMs',
+        'casRepairMs',
+      ].reduce((sum, phase) => sum + (counters[phase] ?? 0), 0)
+      expect(counters.casUnclassifiedMs).toBeGreaterThanOrEqual(0)
+      expect(counters.casUnclassifiedMs).toBe(Math.max(0, counters.casHeldMs - classifiedMs))
+      expect(classifiedMs + counters.casUnclassifiedMs).toBeCloseTo(counters.casHeldMs, 8)
     } finally {
       stderr.mockRestore()
       cleanup(fixture)
