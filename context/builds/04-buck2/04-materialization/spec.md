@@ -299,6 +299,14 @@ CAS addresses by digest plus normalized executable mode. A stable source stat
 through the end of the copy lets sharing consume that digest without hashing the
 candidate again; a source race discards the hint. The independent full candidate
 fingerprint comparison against the admitted roots remains mandatory.
+The complete view is preflighted in groups of four, then reuse and copy fallback
+follow stable digest/path order; reuse transactions still contain at most 128
+files. Immediately before each hash-first link, the source path's current
+verification key must match its hashed identity; a changed source is copied and
+its stale digest discarded. Hash failures are selected in target-path order.
+Per-view metadata is O(files): budget approximately 4 KiB per entry (two bigint
+stats, digest/proof strings, records and array references), excluding existing
+path-string storage and bounded hash buffers; this is an estimate, not an RSS cap.
 Validated readonly CAS hits link directly into absent candidate paths: exact
 inode recheck, link and post-link proof share the GC exclusion. Blobs missing or
 replaced before the recheck and EXDEV/EMLINK/EPERM use the private-copy path.
@@ -328,6 +336,10 @@ hashing, private-copy fallback, dirty-marker repair and directory restoration.
 `casUnclassifiedMs` remains `max(0, casHeldMs - sum(classified held-time details))`,
 including these four counters exactly once. Summed per-file `hashFirstMs` is
 concurrent hash work, not a wall-clock phase or a component of `casHeldMs`.
+`casDirectReuseAdmissionHits`/`casDirectReuseAdmissionCold` count files whose shard
+handle was already admitted / required cold admission in that transaction;
+the first cold admission also admits the root. Absence is never cached.
+These are counts, excluded from the held-time millisecond sum.
 
 CI bootstrap writes a job-local `.devenv/editor-view-bootstrap-receipt.json`
 after successful publication. Repeated bootstrap in Unit tests reuses that

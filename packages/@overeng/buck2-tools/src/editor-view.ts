@@ -3525,6 +3525,8 @@ const publishEditorViewCoordinated = async ({
         casDirectReuseBlobRecheckMs: 0,
         casDirectReuseLinkMs: 0,
         casDirectReusePostLinkMs: 0,
+        casDirectReuseAdmissionHits: 0,
+        casDirectReuseAdmissionCold: 0,
         filesLinked: 0,
         filesAlreadyShared: 0,
         blobsCreated: 0,

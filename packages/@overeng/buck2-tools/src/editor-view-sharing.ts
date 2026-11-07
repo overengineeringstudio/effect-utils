@@ -810,91 +810,94 @@ export const materializeEditorViewSourceFiles = async ({
   const prepared = new Map<string, EditorViewPreparedSource>()
   const store = resolve(contentStore)
   const timings = editorViewTimingContext.getStore()
-  for (let index = 0; index < files.length; index += batchSize) {
-    const hashed: {
-      source: string
-      path: string
-      before: BigIntStats
-      digest: string
-      mode: number
-      blob: BigIntStats | undefined
-      hashMs: number
-    }[] = []
-    for (let offset = index; offset < Math.min(index + batchSize, files.length); offset += 4) {
-      // eslint-disable-next-line no-await-in-loop -- Bound hash buffers and open files.
-      const batch = await Promise.allSettled(
-        files
-          .slice(offset, Math.min(offset + 4, index + batchSize))
-          .map(async ({ source, path }) => {
-            const before = await lstat(source, { bigint: true })
-            const started = performance.now()
-            const digest =
-              (await fingerprint({ path: source, expected: before })) ??
-              fail(`source disappeared while hashing: ${source}`)
-            const hashMs = performance.now() - started
-            afterSourceHash?.(source)
-            const mode = (before.mode & 0o111n) === 0n ? 0o444 : 0o555
-            const blob = await validateBlob({
-              contentStore: store,
-              path: join(
-                store,
-                digest.slice(0, 2),
-                `${digest}-${mode === 0o444 ? '0444' : '0555'}`,
-              ),
-              digest,
-              mode,
-            })
-            if (timings !== undefined) {
-              timings.hashFirstMs = (timings.hashFirstMs ?? 0) + hashMs
-              timings.filesHashFirstAttempts = (timings.filesHashFirstAttempts ?? 0) + 1
-              if (blob === undefined) {
-                timings.hashFirstMissMs = (timings.hashFirstMissMs ?? 0) + hashMs
-                timings.filesHashFirstMiss = (timings.filesHashFirstMiss ?? 0) + 1
-              }
-            }
-            hashed.push({ source, path, before, digest, mode, blob, hashMs })
-          }),
-      )
-      for (const result of batch) if (result.status === 'rejected') throw result.reason
+  const hashed: {
+    source: string
+    path: string
+    before: BigIntStats
+    digest: string
+    mode: number
+    blob: BigIntStats | undefined
+    hashMs: number
+  }[] = []
+  const sources = files.toSorted((left, right) =>
+    left.path === right.path ? 0 : left.path < right.path ? -1 : 1,
+  )
+  for (let offset = 0; offset < sources.length; offset += 4) {
+    // eslint-disable-next-line no-await-in-loop -- Bound hash buffers and open files.
+    const batch = await Promise.allSettled(
+      sources.slice(offset, offset + 4).map(async ({ source, path }) => {
+        const before = await lstat(source, { bigint: true })
+        const started = performance.now()
+        const digest =
+          (await fingerprint({ path: source, expected: before })) ??
+          fail(`source disappeared while hashing: ${source}`)
+        const hashMs = performance.now() - started
+        afterSourceHash?.(source)
+        const mode = (before.mode & 0o111n) === 0n ? 0o444 : 0o555
+        const blob = await validateBlob({
+          contentStore: store,
+          path: join(store, digest.slice(0, 2), `${digest}-${mode === 0o444 ? '0444' : '0555'}`),
+          digest,
+          mode,
+        })
+        if (timings !== undefined) {
+          timings.hashFirstMs = (timings.hashFirstMs ?? 0) + hashMs
+          timings.filesHashFirstAttempts = (timings.filesHashFirstAttempts ?? 0) + 1
+          if (blob === undefined) {
+            timings.hashFirstMissMs = (timings.hashFirstMissMs ?? 0) + hashMs
+            timings.filesHashFirstMiss = (timings.filesHashFirstMiss ?? 0) + 1
+          }
+        }
+        return { source, path, before, digest, mode, blob, hashMs }
+      }),
+    )
+    for (const result of batch) {
+      if (result.status === 'rejected') throw result.reason
+      hashed.push(result.value)
     }
-    // eslint-disable-next-line no-await-in-loop -- One bounded metadata transaction follows preflight.
-    const linked = await reuseEditorViewSourceFiles({
-      contentStore,
-      files: hashed.flatMap((file) =>
-        file.blob === undefined
-          ? []
-          : [
-              {
-                path: file.path,
-                entry: {
-                  sourceKey: verificationKey(file.before),
-                  digest: file.digest,
-                  mode: file.mode,
-                  blobKey: verificationKey(file.blob),
-                },
+  }
+  hashed.sort((left, right) => {
+    const a = left.digest === right.digest ? left.path : left.digest
+    const b = left.digest === right.digest ? right.path : right.digest
+    return a === b ? 0 : a < b ? -1 : 1
+  })
+  const linked = await reuseEditorViewSourceFiles({
+    contentStore,
+    files: hashed.flatMap((file) =>
+      file.blob === undefined
+        ? []
+        : [
+            {
+              path: file.path,
+              source: file.source,
+              entry: {
+                sourceKey: verificationKey(file.before),
+                digest: file.digest,
+                mode: file.mode,
+                blobKey: verificationKey(file.blob),
               },
-            ],
-      ),
-      beforeLink: beforeDirectLink,
-      afterLink: afterDirectLink,
-    })
-    for (const { source, path, before, digest, blob, hashMs } of hashed) {
-      if (linked.has(path) === true) reusedFiles.add(path)
-      else copyFileSync(source, path, constants.COPYFILE_EXCL | constants.COPYFILE_FICLONE)
-      if (timings !== undefined) {
-        const counter = linked.has(path) === true ? 'filesDirectLinked' : 'filesDirectLinkFallback'
-        timings[counter] = (timings[counter] ?? 0) + 1
-        if (linked.has(path) === false && blob !== undefined)
-          timings.hashFirstMissMs = (timings.hashFirstMissMs ?? 0) + hashMs
-      }
-      const after = lstatSync(source, { bigint: true })
-      // A source race invalidates the hint. The normal path hashes the copy instead.
-      if (
-        linked.has(path) === true ||
-        (unchanged({ left: before, right: after }) === true && before.ctimeNs === after.ctimeNs)
-      )
-        prepared.set(path, { digest, status: lstatSync(path, { bigint: true }) })
+            },
+          ],
+    ),
+    beforeLink: beforeDirectLink,
+    afterLink: afterDirectLink,
+  })
+  for (const { source, path, before, digest, blob, hashMs } of hashed) {
+    if (linked.has(path) === true) reusedFiles.add(path)
+    else copyFileSync(source, path, constants.COPYFILE_EXCL | constants.COPYFILE_FICLONE)
+    if (timings !== undefined) {
+      const counter = linked.has(path) === true ? 'filesDirectLinked' : 'filesDirectLinkFallback'
+      timings[counter] = (timings[counter] ?? 0) + 1
+      if (linked.has(path) === false && blob !== undefined)
+        timings.hashFirstMissMs = (timings.hashFirstMissMs ?? 0) + hashMs
     }
+    const after = lstatSync(source, { bigint: true })
+    // A source race invalidates the hint. The normal path hashes the copy instead.
+    if (
+      linked.has(path) === true ||
+      (unchanged({ left: before, right: after }) === true && before.ctimeNs === after.ctimeNs)
+    )
+      prepared.set(path, { digest, status: lstatSync(path, { bigint: true }) })
   }
   return prepared
 }
@@ -1438,7 +1441,11 @@ export const reuseEditorViewSourceFiles = async ({
   afterLink,
 }: {
   readonly contentStore: string
-  readonly files: readonly { readonly path: string; readonly entry: EditorViewSourceFile }[]
+  readonly files: readonly {
+    readonly path: string
+    readonly source?: string
+    readonly entry: EditorViewSourceFile
+  }[]
   readonly beforeLink?: ((blob: string, phase: 'recheck' | 'link') => void) | undefined
   readonly afterLink?: (() => void) | undefined
 }): Promise<Set<string>> => {
@@ -1458,11 +1465,16 @@ export const reuseEditorViewSourceFiles = async ({
           casDirectReuseLinkMs: 0,
           casDirectReusePostLinkMs: 0,
         }
+        let admissionHits = 0
+        let admissionCold = 0
         try {
           for (const file of files.slice(index, index + batchSize)) {
             const directoryAt = performance.now()
             let shard: OpenDirectory | undefined
             try {
+              if (directories.has(join(store, file.entry.digest.slice(0, 2))) === true)
+                admissionHits += 1
+              else admissionCold += 1
               // eslint-disable-next-line no-await-in-loop -- Directory handles are scoped to this exclusion.
               shard = await shardDirectory({
                 contentStore: store,
@@ -1497,6 +1509,12 @@ export const reuseEditorViewSourceFiles = async ({
             try {
               try {
                 beforeLink?.(blob, 'link')
+                // Check the source, not the absent candidate, after the whole-view preflight.
+                if (
+                  file.source !== undefined &&
+                  verificationKey(lstatSync(file.source, { bigint: true })) !== file.entry.sourceKey
+                )
+                  continue
                 linkSync(blob, file.path)
               } catch (error) {
                 if (
@@ -1524,9 +1542,14 @@ export const reuseEditorViewSourceFiles = async ({
           }
         } finally {
           const timings = editorViewTimingContext.getStore()
-          if (timings !== undefined)
+          if (timings !== undefined) {
             for (const [phase, durationMs] of Object.entries(durations))
               timings[phase] = (timings[phase] ?? 0) + durationMs
+            timings.casDirectReuseAdmissionHits =
+              (timings.casDirectReuseAdmissionHits ?? 0) + admissionHits
+            timings.casDirectReuseAdmissionCold =
+              (timings.casDirectReuseAdmissionCold ?? 0) + admissionCold
+          }
         }
       },
     })
